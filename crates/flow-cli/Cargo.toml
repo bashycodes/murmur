@@ -1,0 +1,15 @@
+[package]
+name = "flow-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Dev harness: run the full flow-core pipeline on a WAV file"
+
+[features]
+default = ["whisper"]
+whisper = ["flow-core/whisper"]
+
+[dependencies]
+flow-core = { path = "../flow-core" }
+serde_json.workspace = true
+hound = "3"
