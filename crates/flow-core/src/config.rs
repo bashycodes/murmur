@@ -112,6 +112,16 @@ pub struct SessionConfig {
     pub press_enter_enabled: bool,
     /// Line appended to eligible emails, e.g. "— Sent by voice". Off by default.
     pub email_signature: Option<String>,
+    /// Energy + zero-crossing VAD at commit: no speech → EMPTY without ASR;
+    /// leading/trailing silence is trimmed before ASR. Default on.
+    pub vad: bool,
+    /// Drop Whisper's stock silence phrases ("Thank you.", "you", subtitle
+    /// credits) when there was little or no speech. Default on.
+    pub hallucination_guard: bool,
+    /// Prefill the LLM's KV cache with the prompt (context + partial
+    /// transcript) while the user is still speaking, so commit only decodes
+    /// the difference. Only when the LLM would run. Default on.
+    pub llm_prefill: bool,
 }
 
 impl Default for SessionConfig {
@@ -132,6 +142,9 @@ impl Default for SessionConfig {
             user_names: Vec::new(),
             press_enter_enabled: true,
             email_signature: None,
+            vad: true,
+            hallucination_guard: true,
+            llm_prefill: true,
         }
     }
 }

@@ -1,0 +1,187 @@
+//! Additive API surface requested by the shells (docs/core-change-requests.md):
+//! distinct load errors (CR-1) and structured paste segments (CR-2).
+
+use std::sync::Arc;
+
+use flow_core::asr::MockAsr;
+use flow_core::config::{FieldContext, ModelConfig, SessionConfig};
+use flow_core::paste::{PasteKey, PasteSegment};
+use flow_core::FlowCore;
+
+fn speech(ms: usize) -> Vec<i16> {
+    (0..ms * 16)
+        .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)
+        .collect()
+}
+
+fn run_text(asr_text: &str, cfg: SessionConfig, ctx: FieldContext) -> flow_core::CommitResult {
+    let core = FlowCore::from_engines(Arc::new(MockAsr::new(asr_text)), None);
+    core.start_session(cfg).unwrap();
+    core.set_context(ctx);
+    core.push_audio(&speech(300));
+    core.commit()
+}
+
+fn text(s: &str) -> PasteSegment {
+    PasteSegment::Text { text: s.into() }
+}
+fn key(k: PasteKey) -> PasteSegment {
+    PasteSegment::Key { key: k }
+}
+
+#[cfg(feature = "whisper")]
+#[test]
+fn missing_whisper_model_is_model_not_found() {
+    let cfg = ModelConfig {
+        asr_path: "/nonexistent/ggml-x.bin".into(),
+        ..Default::default()
+    };
+    match FlowCore::load_models(&cfg) {
+        Err(flow_core::CoreError::ModelNotFound { path }) => {
+            assert_eq!(path, "/nonexistent/ggml-x.bin")
+        }
+        Err(e) => panic!("wrong error: {e:?}"),
+        Ok(_) => panic!("loaded a missing model"),
+    }
+}
+
+#[cfg(feature = "llm")]
+#[test]
+fn missing_llm_model_is_model_not_found() {
+    let cfg = ModelConfig {
+        asr_backend: flow_core::config::AsrBackend::Mock { text: "x".into() },
+        llm_path: Some("/nonexistent/q.gguf".into()),
+        ..Default::default()
+    };
+    match FlowCore::load_models(&cfg) {
+        Err(flow_core::CoreError::ModelNotFound { path }) => {
+            assert_eq!(path, "/nonexistent/q.gguf")
+        }
+        Err(e) => panic!("wrong error: {e:?}"),
+        Ok(_) => panic!("loaded a missing model"),
+    }
+}
+
+#[cfg(feature = "llm")]
+#[test]
+fn missing_llm_plugin_is_llm_lib_not_found() {
+    let model = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+    let cfg = ModelConfig {
+        asr_backend: flow_core::config::AsrBackend::Mock { text: "x".into() },
+        llm_path: Some(model.into()),
+        llm_lib: Some("/nonexistent/libflow_llm.so".into()),
+        ..Default::default()
+    };
+    match FlowCore::load_models(&cfg) {
+        Err(e @ flow_core::CoreError::LlmLibNotFound { .. }) => {
+            assert!(e.to_string().contains("/nonexistent/libflow_llm.so"), "{e}")
+        }
+        Err(e) => panic!("wrong error: {e:?}"),
+        Ok(_) => panic!("loaded without a plugin"),
+    }
+}
+
+#[test]
+fn error_kind_is_stable_snake_case() {
+    use flow_core::CoreError;
+    assert_eq!(
+        CoreError::ModelNotFound { path: "p".into() }.kind(),
+        "model_not_found"
+    );
+    assert_eq!(
+        CoreError::LlmLibNotFound { tried: vec![] }.kind(),
+        "llm_lib_not_found"
+    );
+    assert_eq!(CoreError::Load("x".into()).kind(), "load");
+}
+
+#[test]
+fn plain_commit_is_one_text_segment() {
+    let r = run_text(
+        "hello world",
+        SessionConfig::default(),
+        FieldContext::default(),
+    );
+    assert_eq!(r.segments, vec![text(&r.final_text)]);
+    assert_eq!(r.plain_text, r.final_text);
+}
+
+#[test]
+fn ide_tagging_becomes_break_and_tab_keys_while_final_text_keeps_markers() {
+    let ctx = FieldContext {
+        app_id: "cursor".into(),
+        file_names: vec!["index.ts".into(), "app.tsx".into()],
+        ..Default::default()
+    };
+    let r = run_text(
+        "Look at index dot ts and fix it.",
+        SessionConfig::default(),
+        ctx,
+    );
+    assert!(r.final_text.contains("@{{BREAK}}index.ts{{TAB}}"), "{r:?}");
+    let i = r.final_text.find('@').unwrap();
+    let head = &r.final_text[..=i];
+    let tail = &r.final_text[r.final_text.find("{{TAB}}").unwrap() + 7..];
+    assert_eq!(
+        r.segments,
+        vec![
+            text(head),
+            key(PasteKey::Break),
+            text("index.ts"),
+            key(PasteKey::Tab),
+            text(tail),
+        ]
+    );
+    assert!(!r.plain_text.contains("{{"), "{r:?}");
+    assert!(r.plain_text.contains("@index.ts"), "{r:?}");
+}
+
+#[test]
+fn press_enter_is_a_trailing_enter_segment() {
+    let r = run_text(
+        "Send it press enter",
+        SessionConfig::default(),
+        FieldContext::default(),
+    );
+    assert!(r.press_enter);
+    assert_eq!(r.segments, vec![text("Send it"), key(PasteKey::Enter)]);
+}
+
+#[test]
+fn empty_commit_has_no_segments() {
+    let core = FlowCore::from_engines(Arc::new(MockAsr::new("x")), None);
+    core.start_session(SessionConfig::default()).unwrap();
+    let r = core.commit();
+    assert!(r.segments.is_empty());
+}
+
+#[test]
+fn segments_serialize_as_text_or_key_objects() {
+    let r = run_text(
+        "Send it press enter",
+        SessionConfig::default(),
+        FieldContext::default(),
+    );
+    let j = serde_json::to_value(&r).unwrap();
+    assert_eq!(
+        j["segments"],
+        serde_json::json!([{"text": "Send it"}, {"key": "Enter"}])
+    );
+    // Old JSON without the new fields still parses (shells built earlier).
+    let mut old = j.clone();
+    old.as_object_mut().unwrap().remove("segments");
+    old.as_object_mut().unwrap().remove("plain_text");
+    let back: flow_core::CommitResult = serde_json::from_value(old).unwrap();
+    assert!(back.segments.is_empty());
+}
+
+#[test]
+fn segment_splitter_handles_adjacent_markers() {
+    use flow_core::paste::segments;
+    assert_eq!(
+        segments("{{TAB}}{{BREAK}}", false),
+        vec![key(PasteKey::Tab), key(PasteKey::Break)]
+    );
+    assert_eq!(segments("", true), vec![key(PasteKey::Enter)]);
+    assert!(segments("", false).is_empty());
+}

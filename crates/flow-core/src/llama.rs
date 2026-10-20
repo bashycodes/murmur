@@ -50,6 +50,19 @@ type CleanFn = unsafe extern "C" fn(
 type InfoFn = unsafe extern "C" fn(*const Handle) -> *mut c_char;
 type FreeStrFn = unsafe extern "C" fn(*mut c_char);
 type UnloadFn = unsafe extern "C" fn(*mut Handle);
+type PrefillFn = unsafe extern "C" fn(*const Handle, *const c_char) -> i32;
+type PrefillCancelFn = unsafe extern "C" fn(*const Handle);
+
+/// Why [`LlamaCleaner::load`] failed.
+#[derive(Debug, thiserror::Error)]
+pub enum LlamaLoadError {
+    /// No lookup location held a loadable plugin; `tried` = "path: error".
+    #[error("llm plugin not found ({})", tried.join("; "))]
+    PluginNotFound { tried: Vec<String> },
+    /// The plugin loaded but failed (bad ABI, model load error, ...).
+    #[error("{0}")]
+    Backend(String),
+}
 
 #[repr(C)]
 struct Handle {
@@ -105,6 +118,9 @@ pub struct LlamaCleaner {
     info_fn: InfoFn,
     free_str: FreeStrFn,
     unload: UnloadFn,
+    /// Optional (plugins built before prefill-ahead lack them).
+    prefill: Option<PrefillFn>,
+    prefill_cancel: Option<PrefillCancelFn>,
     /// Plugin-reported load info (JSON), for the CLI and tests.
     pub info: String,
     pub plugin_path: PathBuf,
@@ -135,7 +151,7 @@ unsafe impl Sync for LlamaCleaner {}
 impl LlamaCleaner {
     /// Load the plugin and the GGUF model, then prefill the default prompt
     /// (light, default style) so the first commit is already warm.
-    pub fn load(model: &str, threads: usize, plugin: Option<&str>) -> Result<Self, CleanError> {
+    pub fn load(model: &str, threads: usize, plugin: Option<&str>) -> Result<Self, LlamaLoadError> {
         let mut errs = Vec::new();
         let mut found = None;
         for p in plugin_candidates(plugin) {
@@ -147,17 +163,15 @@ impl LlamaCleaner {
                 Err(e) => errs.push(format!("{}: {e}", p.display())),
             }
         }
-        let (lib, plugin_path) = found.ok_or_else(|| {
-            CleanError::Backend(format!("llm plugin not found ({})", errs.join("; ")))
-        })?;
-        let sym_err = |e: libloading::Error| CleanError::Backend(format!("llm plugin: {e}"));
+        let (lib, plugin_path) = found.ok_or(LlamaLoadError::PluginNotFound { tried: errs })?;
+        let sym_err = |e: libloading::Error| LlamaLoadError::Backend(format!("llm plugin: {e}"));
         // SAFETY: symbol types match the ABI in crates/flow-llm/src/lib.rs;
         // the version check guards against a mismatched plugin.
         unsafe {
             let ver: Symbol<unsafe extern "C" fn() -> u32> =
                 lib.get(b"flow_llm_abi_version\0").map_err(sym_err)?;
             if ver() != ABI_VERSION {
-                return Err(CleanError::Backend(format!(
+                return Err(LlamaLoadError::Backend(format!(
                     "llm plugin ABI {} != {ABI_VERSION}",
                     ver()
                 )));
@@ -169,6 +183,11 @@ impl LlamaCleaner {
                 .get::<FreeStrFn>(b"flow_llm_free_string\0")
                 .map_err(sym_err)?;
             let unload: UnloadFn = *lib.get::<UnloadFn>(b"flow_llm_unload\0").map_err(sym_err)?;
+            let prefill = lib.get::<PrefillFn>(b"flow_llm_prefill\0").ok().map(|f| *f);
+            let prefill_cancel = lib
+                .get::<PrefillCancelFn>(b"flow_llm_prefill_cancel\0")
+                .ok()
+                .map(|f| *f);
 
             let warm = cleanup::build_prompt(
                 "",
@@ -182,7 +201,7 @@ impl LlamaCleaner {
             let threads = i32::try_from(threads.max(1)).unwrap_or(4);
             let handle = load(m.as_ptr(), threads, wm.as_ptr(), &mut err);
             if handle.is_null() {
-                return Err(CleanError::Backend(take_string(free_str, err)));
+                return Err(LlamaLoadError::Backend(take_string(free_str, err)));
             }
             let info = take_string(free_str, info_fn(handle));
             Ok(Self {
@@ -191,6 +210,8 @@ impl LlamaCleaner {
                 info_fn,
                 free_str,
                 unload,
+                prefill,
+                prefill_cancel,
                 info,
                 plugin_path,
             })
@@ -210,6 +231,25 @@ impl LlamaCleaner {
 impl Cleaner for LlamaCleaner {
     fn clean(&self, prompt: &CleanPrompt, deadline: Instant) -> Result<String, CleanError> {
         self.clean_cancellable(prompt, deadline, &AbortFlag::default())
+    }
+
+    fn prefill(&self, prompt: &CleanPrompt) {
+        if let Some(f) = self.prefill {
+            let m = cstr(&messages_json(prompt));
+            // SAFETY: live handle, NUL-terminated string; the plugin copies it.
+            unsafe { f(self.handle, m.as_ptr()) };
+        }
+    }
+
+    fn cancel_prefill(&self) {
+        if let Some(f) = self.prefill_cancel {
+            // SAFETY: live handle.
+            unsafe { f(self.handle) };
+        }
+    }
+
+    fn info_json(&self) -> Option<String> {
+        Some(LlamaCleaner::info_json(self))
     }
 
     fn clean_cancellable(
@@ -282,5 +322,6 @@ mod tests {
             .err()
             .unwrap();
         assert!(e.to_string().contains("plugin not found"), "{e}");
+        assert!(matches!(e, LlamaLoadError::PluginNotFound { .. }), "{e}");
     }
 }

@@ -62,6 +62,21 @@ pub trait Cleaner: Send + Sync {
     ) -> Result<String, CleanError> {
         self.clean(prompt, deadline)
     }
+
+    /// Non-blocking hint: a `clean` whose prompt shares a prefix with
+    /// `prompt` is likely soon, so warm the backend's cache now. The core
+    /// calls this while the user is still speaking (session start, context,
+    /// partials). Default: no-op.
+    fn prefill(&self, _prompt: &CleanPrompt) {}
+
+    /// Stop any running [`Cleaner::prefill`] work quickly (the final ASR
+    /// needs the CPU). Default: no-op.
+    fn cancel_prefill(&self) {}
+
+    /// Backend counters as JSON, for tools and benchmarks.
+    fn info_json(&self) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

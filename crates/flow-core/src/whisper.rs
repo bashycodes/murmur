@@ -81,6 +81,7 @@ impl AsrEngine for WhisperEngine {
             return Ok(AsrOutput {
                 text: String::new(),
                 language: lang,
+                no_speech_prob: None,
             });
         }
         let mut p = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
@@ -105,7 +106,10 @@ impl AsrEngine for WhisperEngine {
         st.full(p, &audio)
             .map_err(|e| AsrError::Transcribe(e.to_string()))?;
         let mut text = String::new();
+        let mut no_speech: Option<f32> = None;
         for seg in st.as_iter() {
+            let p = seg.no_speech_probability();
+            no_speech = Some(no_speech.map_or(p, |q| q.max(p)));
             text.push_str(
                 &seg.to_str_lossy()
                     .map_err(|e| AsrError::Transcribe(e.to_string()))?,
@@ -118,6 +122,7 @@ impl AsrEngine for WhisperEngine {
         Ok(AsrOutput {
             text: clean_text(&text),
             language,
+            no_speech_prob: no_speech,
         })
     }
 }

@@ -155,7 +155,7 @@ impl AsrEngine for TextAsr {
     fn transcribe(&self, _pcm: &[f32], _req: &AsrRequest) -> Result<AsrOutput, AsrError> {
         Ok(AsrOutput {
             text: self.0.lock().unwrap().clone(),
-            language: None,
+            ..Default::default()
         })
     }
 }

@@ -277,6 +277,7 @@ impl flow_core::asr::AsrEngine for SwapAsr {
         Ok(flow_core::asr::AsrOutput {
             text: self.0.lock().unwrap().clone(),
             language: Some("en".into()),
+            ..Default::default()
         })
     }
 }

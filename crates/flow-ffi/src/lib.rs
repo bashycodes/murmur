@@ -22,11 +22,22 @@ pub struct FlowHandle(FlowCore);
 
 thread_local! {
     static LAST_ERROR: RefCell<CString> = RefCell::new(CString::default());
+    static LAST_ERROR_KIND: RefCell<CString> = RefCell::new(CString::default());
 }
 
 fn set_error(msg: impl Into<String>) {
+    set_error_kind("error", msg);
+}
+
+fn set_error_kind(kind: &str, msg: impl Into<String>) {
     let s = CString::new(msg.into().replace('\0', " ")).unwrap_or_default();
     LAST_ERROR.with(|e| *e.borrow_mut() = s);
+    let k = CString::new(kind).unwrap_or_default();
+    LAST_ERROR_KIND.with(|e| *e.borrow_mut() = k);
+}
+
+fn clear_error() {
+    set_error_kind("", "");
 }
 
 fn guard<T>(fallback: T, f: impl FnOnce() -> T) -> T {
@@ -52,9 +63,15 @@ pub mod json_api {
     use super::*;
 
     pub fn load_models(cfg_json: &str) -> Result<FlowCore, String> {
-        let cfg: ModelConfig =
-            serde_json::from_str(cfg_json).map_err(|e| format!("bad model config: {e}"))?;
-        FlowCore::load_models(&cfg).map_err(|e| e.to_string())
+        load_models_kind(cfg_json).map_err(|(_, msg)| msg)
+    }
+
+    /// Like [`load_models`], with the error's stable kind
+    /// (`bad_config`, or [`flow_core::CoreError::kind`]).
+    pub fn load_models_kind(cfg_json: &str) -> Result<FlowCore, (&'static str, String)> {
+        let cfg: ModelConfig = serde_json::from_str(cfg_json)
+            .map_err(|e| ("bad_config", format!("bad model config: {e}")))?;
+        FlowCore::load_models(&cfg).map_err(|e| (e.kind(), e.to_string()))
     }
 
     pub fn start_session(core: &FlowCore, cfg_json: &str) -> Result<(), String> {
@@ -83,8 +100,9 @@ pub mod json_api {
         serde_json::json!({
             "status": "ERROR", "asr_text": "", "final_text": "", "language": null,
             "timings": {"audio_ms": 0, "asr_ms": 0, "llm_ms": 0, "postprocess_ms": 0,
-                        "total_ms": 0, "dropped_samples": 0},
+                        "total_ms": 0, "dropped_samples": 0, "asr_audio_ms": 0},
             "press_enter": false, "fallback_reason": null, "truncated": false, "error": msg,
+            "segments": [], "plain_text": "", "empty_reason": null,
         })
         .to_string()
     }
@@ -102,13 +120,16 @@ pub mod json_api {
 pub unsafe extern "C" fn flow_load_models(model_config_json: *const c_char) -> *mut FlowHandle {
     guard(std::ptr::null_mut(), || {
         let Some(j) = str_arg(model_config_json) else {
-            set_error("bad model config: null or non-UTF-8");
+            set_error_kind("bad_config", "bad model config: null or non-UTF-8");
             return std::ptr::null_mut();
         };
-        match json_api::load_models(j) {
-            Ok(c) => Box::into_raw(Box::new(FlowHandle(c))),
-            Err(e) => {
-                set_error(e);
+        match json_api::load_models_kind(j) {
+            Ok(c) => {
+                clear_error();
+                Box::into_raw(Box::new(FlowHandle(c)))
+            }
+            Err((kind, e)) => {
+                set_error_kind(kind, e);
                 std::ptr::null_mut()
             }
         }
@@ -246,6 +267,14 @@ pub unsafe extern "C" fn flow_learn_edit(
 #[no_mangle]
 pub extern "C" fn flow_last_error() -> *const c_char {
     LAST_ERROR.with(|e| e.borrow().as_ptr())
+}
+
+/// Stable kind of the last error on this thread: "" (none / last load
+/// succeeded), "bad_config", "model_not_found", "llm_lib_not_found",
+/// "load", or "error" (anything else). Valid until the next call on it.
+#[no_mangle]
+pub extern "C" fn flow_last_error_kind() -> *const c_char {
+    LAST_ERROR_KIND.with(|e| e.borrow().as_ptr())
 }
 
 /// # Safety

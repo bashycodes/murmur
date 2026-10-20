@@ -18,6 +18,9 @@
 //!         // 0 = ok (*out = text), 1 = cancelled/deadline, 2 = error (*out = message)
 //! // messages = JSON [["system","…"],["user","…"],["assistant","…"],…,["user","…"]]
 //! char*   flow_llm_info(void* h);   // JSON
+//! // Optional (added 2026-10, still ABI 1; loaders look them up lazily):
+//! int32_t flow_llm_prefill(void* h, const char* messages); // non-blocking, 0 ok / 2 bad json
+//! void    flow_llm_prefill_cancel(void* h);
 //! void    flow_llm_free_string(char*);
 //! void    flow_llm_unload(void* h);
 //! ```
@@ -28,7 +31,7 @@ use std::ffi::{c_char, CStr, CString};
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
-pub use engine::{CleanErr, Engine, Info, Prompt, Stats};
+pub use engine::{AheadStats, CleanErr, Engine, Info, Prompt, Stats};
 
 pub const ABI_VERSION: u32 = 1;
 
@@ -160,6 +163,44 @@ pub unsafe extern "C" fn flow_llm_clean(
     }
 }
 
+/// Non-blocking prefill-ahead of `messages` (same JSON as
+/// [`flow_llm_clean`]). 0 = queued, 2 = bad arguments.
+///
+/// # Safety
+/// `h` is a live handle from [`flow_llm_load`]; `messages` is null or
+/// NUL-terminated.
+#[no_mangle]
+pub unsafe extern "C" fn flow_llm_prefill(h: *const Engine, messages: *const c_char) -> i32 {
+    let Some(e) = h.as_ref() else {
+        return CLEAN_ERROR;
+    };
+    let Ok(messages) = parse_messages(&from_c(messages)) else {
+        return CLEAN_ERROR;
+    };
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        e.prefill(Prompt {
+            messages,
+            transcript: String::new(),
+        })
+    }));
+    if r.is_ok() {
+        CLEAN_OK
+    } else {
+        CLEAN_ERROR
+    }
+}
+
+/// Stop a running prefill-ahead.
+///
+/// # Safety
+/// `h` is null or a live handle from [`flow_llm_load`].
+#[no_mangle]
+pub unsafe extern "C" fn flow_llm_prefill_cancel(h: *const Engine) {
+    if let Some(e) = h.as_ref() {
+        e.cancel_prefill();
+    }
+}
+
 /// # Safety
 /// `h` is a live handle from [`flow_llm_load`].
 #[no_mangle]
@@ -169,6 +210,7 @@ pub unsafe extern "C" fn flow_llm_info(h: *const Engine) -> *mut c_char {
     };
     let i = &e.info;
     let st = e.last_stats();
+    let ah = e.ahead_stats();
     to_c(
         &serde_json::json!({
             "n_params": i.n_params,
@@ -184,6 +226,13 @@ pub unsafe extern "C" fn flow_llm_info(h: *const Engine) -> *mut c_char {
                 "gen_ms": st.gen_ms,
                 "gen_steps": st.gen_steps,
                 "draft_accepted": st.draft_accepted,
+            },
+            "ahead": {
+                "requests": ah.requests,
+                "completed": ah.completed,
+                "preempted": ah.preempted,
+                "tokens": ah.tokens,
+                "ms": ah.ms,
             },
         })
         .to_string(),
