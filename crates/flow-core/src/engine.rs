@@ -1,7 +1,7 @@
 //! Session engine: handle, ring buffer, core-owned worker thread, commit
 //! pipeline (ASR -> optional LLM -> deterministic post-processing).
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
-use crate::asr::{build_initial_prompt, AsrEngine, AsrRequest};
+use crate::asr::{build_initial_prompt, AbortFlag, AsrEngine, AsrRequest};
 use crate::cleanup::{self, CleanOutcome, Cleaner};
 use crate::config::{FieldContext, ModelConfig, SessionConfig, SAMPLE_RATE};
 use crate::dictionary::Dictionary;
@@ -117,6 +117,8 @@ struct Shared {
     dictionary: Mutex<Dictionary>,
     dropped: AtomicU64,
     next_id: AtomicU64,
+    /// Set by commit/cancel so an in-flight partial decode stops early.
+    stop_partial: Arc<AtomicBool>,
 }
 
 /// Opaque core handle (§9 `Handle`). One active session at a time.
@@ -160,6 +162,7 @@ impl FlowCore {
             dictionary: Mutex::new(Dictionary::default()),
             dropped: AtomicU64::new(0),
             next_id: AtomicU64::new(1),
+            stop_partial: Arc::new(AtomicBool::new(false)),
         });
         let (tx, rx) = mpsc::channel();
         let ws = shared.clone();
@@ -193,6 +196,7 @@ impl FlowCore {
         *self.shared.partial.lock().unwrap() = None;
         *self.shared.dictionary.lock().unwrap() = cfg.dictionary.clone();
         self.shared.dropped.store(0, Ordering::Relaxed);
+        self.shared.stop_partial.store(false, Ordering::Relaxed);
         let mut slot = self.shared.producer.lock().unwrap();
         *slot = Some(Producer { id, prod });
         self.ctrl
@@ -238,6 +242,7 @@ impl FlowCore {
         let Some(Producer { id, .. }) = self.shared.producer.lock().unwrap().take() else {
             return CommitResult::error("no active session");
         };
+        self.shared.stop_partial.store(true, Ordering::Relaxed);
         let (tx, rx) = mpsc::channel();
         if self.ctrl.send(Ctrl::Commit { id, reply: tx }).is_err() {
             return CommitResult::error("core worker is gone");
@@ -253,6 +258,7 @@ impl FlowCore {
     /// Abort the session; audio is discarded.
     pub fn cancel(&self) {
         if let Some(Producer { id, .. }) = self.shared.producer.lock().unwrap().take() {
+            self.shared.stop_partial.store(true, Ordering::Relaxed);
             let _ = self.ctrl.send(Ctrl::Cancel { id });
         }
     }
@@ -349,6 +355,7 @@ impl Worker {
         AsrRequest {
             initial_prompt: build_initial_prompt(&cfg.dictionary, &ctx.screen_words),
             language: cfg.forced_language().map(str::to_string),
+            abort: AbortFlag::default(),
         }
     }
 
@@ -366,7 +373,11 @@ impl Worker {
         }
         s.last_partial_len = s.buf.len();
         let start = s.buf.len().saturating_sub(PARTIAL_WINDOW);
-        let req = self.asr_request(&self.session.as_ref().unwrap().cfg);
+        if self.shared.stop_partial.load(Ordering::Relaxed) {
+            return;
+        }
+        let mut req = self.asr_request(&self.session.as_ref().unwrap().cfg);
+        req.abort = AbortFlag(Some(self.shared.stop_partial.clone()));
         let s = self.session.as_ref().unwrap();
         if let Ok(out) = self.asr.transcribe(&s.buf[start..], &req) {
             let t = out.text.trim();

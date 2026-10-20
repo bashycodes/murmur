@@ -96,6 +96,10 @@ impl AsrEngine for WhisperEngine {
         if !req.initial_prompt.is_empty() {
             p.set_initial_prompt(&req.initial_prompt);
         }
+        if req.abort.0.is_some() {
+            let flag = req.abort.clone();
+            p.set_abort_callback_safe(move || flag.is_set());
+        }
         let audio = pad(pcm);
         let mut st = self.state.lock().unwrap();
         st.full(p, &audio)
