@@ -27,6 +27,10 @@ if [[ $what == llm || $what == all ]]; then
   get https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf Llama-3.2-3B-Instruct-Q4_K_M.gguf
 fi
 
+if [[ $what == llm7b || $what == all ]]; then  # reference point: is quality reachable at all on CPU?
+  get https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf Qwen2.5-7B-Instruct-Q4_K_M.gguf
+fi
+
 if [[ $what == parakeet || $what == all ]]; then
   SO=v1.13.8
   if [ ! -x "$CACHE/sherpa-onnx/bin/sherpa-onnx-offline" ]; then

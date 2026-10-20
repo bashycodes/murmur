@@ -38,8 +38,9 @@ def tarball() -> pathlib.Path:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pick", type=int, default=0)
+    ap.add_argument("--manifest", default="asr_manifest.json")
     a = ap.parse_args()
-    man = json.loads((HERE / "asr_manifest.json").read_text())
+    man = json.loads((HERE / a.manifest).read_text())
     out = CACHE / "audio"; out.mkdir(parents=True, exist_ok=True)
 
     jfk_src = CACHE / "whisper.cpp/samples/jfk.wav"

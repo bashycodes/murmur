@@ -21,7 +21,7 @@ import argparse, json, os, pathlib, re, subprocess, sys, time, urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from wer import edit_distance  # noqa: E402
+from wer import edit_distance, normalise  # noqa: E402
 
 CACHE = pathlib.Path(os.environ.get("CACHE", pathlib.Path.home() / "Claude/research/wispr/.cache"))
 SERVER = CACHE / "llama.cpp/build/bin/llama-server"
@@ -74,7 +74,8 @@ def char_sim(a, b):
 def guard_reject(raw, out, expected):
     if not out.strip():
         return bool(expected.strip())
-    rw, ow = raw.lower().split(), re.sub(r"<[^>]+>", " ", out).lower().split()
+    # word-level, punctuation/case-insensitive (wer.normalise), HTML list tags stripped
+    rw, ow = normalise(raw), normalise(re.sub(r"<[^>]+>", " ", out))
     return edit_distance(rw, ow) / max(len(rw), 1) > 0.6
 
 
@@ -83,11 +84,21 @@ def main():
     ap.add_argument("--models", default=",".join(DEFAULT_MODELS))
     ap.add_argument("--threads", type=int, default=8)
     ap.add_argument("--port", type=int, default=8091)
+    ap.add_argument("--prompt", choices=["rules", "fewshot"], default="rules",
+                    help="rules = 03 §7.2 long rule list; fewshot = cleanup_fewshot.json short prompt + examples")
     a = ap.parse_args()
-    system = (HERE / "cleanup_system_prompt.txt").read_text()
+    if a.prompt == "rules":
+        prefix = [{"role": "system", "content": (HERE / "cleanup_system_prompt.txt").read_text()}]
+        umsg = user_msg
+    else:
+        fs = json.loads((HERE / "cleanup_fewshot.json").read_text())
+        prefix = [{"role": "system", "content": fs["system"]}]
+        for sh in fs["shots"]:
+            prefix += [{"role": "user", "content": sh["user"]}, {"role": "assistant", "content": sh["assistant"]}]
+        umsg = lambda c: f"APP: {c['app']} | CATEGORY: {c['category']}\nTRANSCRIPT: «{c['input']}»"
     cases = json.loads((HERE / "cleanup_cases.json").read_text())["cases"]
     res_dir = CACHE / "results"; res_dir.mkdir(exist_ok=True)
-    out = res_dir / f"llm-{time.strftime('%Y%m%d-%H%M%S')}-t{a.threads}.jsonl"
+    out = res_dir / f"llm-{a.prompt}-{time.strftime('%Y%m%d-%H%M%S')}-t{a.threads}.jsonl"
     summary = []
     with open(out, "w") as fo:
         for mname in a.models.split(","):
@@ -98,7 +109,7 @@ def main():
             try:
                 load_s = wait_ready(a.port, proc)
                 def ask(c, cache=True, max_tokens=None, ignore_eos=False):
-                    msgs = [{"role": "system", "content": system}, {"role": "user", "content": user_msg(c)}]
+                    msgs = prefix + [{"role": "user", "content": umsg(c)}]
                     n_in = len(c["input"].split()) * 2  # ~tokens; cheap estimate for the max_tokens rule
                     body = {"messages": msgs, "temperature": 0, "cache_prompt": cache,
                             "max_tokens": max_tokens or min(2 * n_in + 32, 256)}
@@ -130,7 +141,7 @@ def main():
                     rows.append(rec)
                     fo.write(json.dumps(rec, ensure_ascii=False) + "\n"); fo.flush()
                 n = len(rows)
-                srow = {"model": mname, "threads": a.threads, "load_s": load_s,
+                srow = {"model": mname, "prompt": a.prompt, "threads": a.threads, "load_s": load_s,
                         "fixed60_prompt_n": fixed["prompt_n"], "fixed60_prompt_ms": fixed["prompt_ms"],
                         "fixed60_gen_tps": fixed["gen_n"] / fixed["gen_ms"] * 1000,
                         "fixed60_pp_tps": fixed["prompt_n"] / fixed["prompt_ms"] * 1000,

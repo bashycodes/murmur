@@ -33,7 +33,7 @@ MODELS = {
 
 
 def evict(path: pathlib.Path):
-    for p in ([path] if path.is_file() else list(path.glob("*"))):
+    for p in ([path] if path.is_file() else [q for q in path.glob("*") if q.is_file()]):
         fd = os.open(p, os.O_RDONLY)
         try:
             os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
@@ -42,15 +42,23 @@ def evict(path: pathlib.Path):
 
 
 def warm_cache(path: pathlib.Path):
-    for p in ([path] if path.is_file() else list(path.glob("*"))):
+    for p in ([path] if path.is_file() else [q for q in path.glob("*") if q.is_file()]):
         with open(p, "rb") as f:
             while f.read(1 << 24):
                 pass
 
 
+AUDIO_CTX_AUTO = False
+
+
 def run_whisper(model: pathlib.Path, wav: pathlib.Path, threads: int):
     cmd = [str(WCLI), "-m", str(model), "-f", str(wav), "-t", str(threads), "-l", "en", "-nt",
            "-bs", "1", "-bo", "1"]
+    if AUDIO_CTX_AUTO:
+        # Encoder normally always processes a 30 s window (1500 frames). Shrink it to the clip length
+        # (50 frames/s) plus ~1 s margin; trades some accuracy for latency on short dictations.
+        dur = os.path.getsize(wav) / 32000  # 16 kHz PCM16 mono, header negligible
+        cmd += ["-ac", str(min(1500, int(dur * 50) + 64))]
     t0 = time.perf_counter()
     p = subprocess.run(cmd, capture_output=True, text=True)
     wall = (time.perf_counter() - t0) * 1000
@@ -85,11 +93,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--models", default="tiny,base,small,turbo,parakeet")
     ap.add_argument("--threads", default="4,8")
+    ap.add_argument("--manifest", default="asr_manifest.json")
+    ap.add_argument("--audio-ctx-auto", action="store_true", help="whisper -ac sized to each clip")
     a = ap.parse_args()
-    man = json.loads((HERE / "asr_manifest.json").read_text())["utterances"]
+    global AUDIO_CTX_AUTO
+    AUDIO_CTX_AUTO = a.audio_ctx_auto
+    man = json.loads((HERE / a.manifest).read_text())["utterances"]
     audio = CACHE / "audio"
     res_dir = CACHE / "results"; res_dir.mkdir(exist_ok=True)
-    out = res_dir / f"asr-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
+    out = res_dir / f"asr-{pathlib.Path(a.manifest).stem}{'-ac' if a.audio_ctx_auto else ''}-{time.strftime('%Y%m%d-%H%M%S')}.jsonl"
     summary = []
     with open(out, "w") as fo:
         for name in a.models.split(","):
@@ -116,7 +128,7 @@ def main():
                                          "wall_ms": wall, "infer_ms": inf, "timings": tim,
                                          "load1": os.getloadavg()[0]}) + "\n")
                     fo.flush()
-                row = dict(model=name, threads=th, wer=errs / words, rtf_infer=infer / audio_ms,
+                row = dict(model=name + ("+ac" if a.audio_ctx_auto and name != "parakeet" else ""), threads=th, wer=errs / words, rtf_infer=infer / audio_ms,
                            rtf_wall=wall_sum / audio_ms, cold_jfk_ms=cold_wall,
                            mean_infer_ms=infer / len(man), load1=os.getloadavg()[0])
                 summary.append(row)
