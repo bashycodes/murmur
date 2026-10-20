@@ -6,8 +6,9 @@
 //! 4. wait 500/3000/5000 ms (per app), restore iff sequence number unchanged
 
 use super::{
-    fallback_after_clipboard_failure, initial_strategy, is_restorable_format, restore_delay_ms,
-    should_restore, unicode_text_bytes, PasteOptions, Strategy,
+    fallback_after_clipboard_failure, initial_strategy, integrity, is_restorable_format,
+    restore_delay_ms, should_restore, uipi_blocks, unicode_text_bytes, PasteOptions, Strategy,
+    ELEVATED_TARGET_MSG,
 };
 use crate::input::{self, Stroke};
 use std::time::Duration;
@@ -183,6 +184,14 @@ fn send_chord(shift_insert: bool) -> Result<(), String> {
 /// Insert `text` into the focused control. Blocking (sleeps for the restore
 /// delay) — call from a worker thread.
 pub fn paste(text: &str, opts: &PasteOptions) -> Result<(), String> {
+    // UIPI drops our input silently (SendInput still "succeeds"), so check
+    // first and leave the text on the clipboard for a manual Ctrl+V.
+    if uipi_blocks(integrity::own(), integrity::foreground()) {
+        if let Some(_g) = ClipGuard::open() {
+            unsafe { set_text_excluded_from_history(text) };
+        }
+        return Err(ELEVATED_TARGET_MSG.into());
+    }
     let shift_insert = match initial_strategy(opts.method) {
         Strategy::Type => return type_text(text),
         Strategy::Clipboard { shift_insert } => shift_insert,
