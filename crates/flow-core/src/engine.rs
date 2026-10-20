@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::asr::{build_initial_prompt, AbortFlag, AsrEngine, AsrRequest};
 use crate::cleanup::{self, CleanOutcome, Cleaner};
-use crate::config::{FieldContext, ModelConfig, SessionConfig, SAMPLE_RATE};
+use crate::config::{CleanupLevel, FieldContext, ModelConfig, SessionConfig, SAMPLE_RATE};
 use crate::dictionary::Dictionary;
 use crate::learn::{self, Candidate};
 use crate::paste::{self, PasteSegment};
@@ -131,6 +131,7 @@ impl CoreError {
     }
 }
 
+#[cfg(any(feature = "whisper", feature = "llm"))]
 fn require_file(path: &str) -> Result<(), CoreError> {
     if std::path::Path::new(path).is_file() {
         Ok(())
@@ -606,10 +607,17 @@ impl Worker {
         let mut ctx = self.shared.context.lock().unwrap().clone();
         ctx.app_category = postprocess::effective_category(s.cfg.platform, &ctx);
         let mut text = r.asr_text.clone();
-        r.status = CommitStatus::RawTranscript;
         // A whole-utterance snippet trigger is pasted as its expansion; the
         // LLM must not see (or reword) it (03 §7.1).
         let snippet = s.matcher.whole_snippet(&r.asr_text).is_some();
+        if s.cfg.spoken_cleanup && s.cfg.cleanup_level != CleanupLevel::None && !snippet {
+            text = postprocess::spoken::spoken_cleanup(&text);
+            if text.trim().is_empty() {
+                r.empty_reason = Some("only_filler".into());
+                return r;
+            }
+        }
+        r.status = CommitStatus::RawTranscript;
         let run_llm = cleanup::should_run(&s.cfg, ctx.app_category) && !snippet;
         if let (true, Some(cl)) = (run_llm, &self.cleaner) {
             let style = s.cfg.styles.for_category(ctx.app_category);

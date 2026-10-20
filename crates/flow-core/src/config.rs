@@ -122,6 +122,11 @@ pub struct SessionConfig {
     /// transcript) while the user is still speaking, so commit only decodes
     /// the difference. Only when the LLM would run. Default on.
     pub llm_prefill: bool,
+    /// Deterministic spoken cleanup before the LLM and post-processing:
+    /// spoken punctuation, fillers, stutters, "scratch that"/"no wait"
+    /// backtracking, money/time/date formatting (`postprocess::spoken`).
+    /// Off at cleanup level `none`. Default on.
+    pub spoken_cleanup: bool,
 }
 
 impl Default for SessionConfig {
@@ -145,6 +150,7 @@ impl Default for SessionConfig {
             vad: true,
             hallucination_guard: true,
             llm_prefill: true,
+            spoken_cleanup: true,
         }
     }
 }
