@@ -15,7 +15,7 @@ use flow_core::dictionary::Dictionary;
 use flow_core::{audio, FlowCore};
 
 const USAGE: &str =
-    "usage: flow-cli transcribe (--model ggml.bin | --mock TEXT) [--dict dict.json] \
+    "usage: flow-cli transcribe (--model ggml.bin | --engine parakeet --model DIR | --mock TEXT) [--dict dict.json] \
 [--session session.json] [--context ctx.json] [--lang xx]... [--platform windows|android] \
 [--threads N] [--llm model.gguf [--llm-lib libflow_llm.so]] [--level none|light|medium|high] \
 [--realtime] [--json] file.wav
@@ -52,6 +52,7 @@ fn parse(argv: &[String]) -> Result<Args, String> {
     let mut dict: Option<Dictionary> = None;
     let mut langs = Vec::new();
     let mut platform = None;
+    let mut engine = None;
     let (mut context, mut wav, mut json, mut realtime, mut have_model) =
         (None, None, false, false, false);
     while let Some(a) = it.next() {
@@ -65,6 +66,13 @@ fn parse(argv: &[String]) -> Result<Args, String> {
                 model.asr_backend = AsrBackend::Whisper;
                 model.asr_path = val()?;
                 have_model = true;
+            }
+            "--engine" => {
+                engine = Some(match val()?.as_str() {
+                    "whisper" => AsrBackend::Whisper,
+                    "parakeet" => AsrBackend::Parakeet,
+                    e => return Err(format!("unknown engine {e} (whisper|parakeet)")),
+                })
             }
             "--mock" => {
                 model.asr_backend = AsrBackend::Mock { text: val()? };
@@ -102,6 +110,12 @@ fn parse(argv: &[String]) -> Result<Args, String> {
             s if clean_mode => texts.push(s.to_string()),
             s => wav = Some(PathBuf::from(s)),
         }
+    }
+    if let Some(e) = engine {
+        if matches!(model.asr_backend, AsrBackend::Mock { .. }) {
+            return Err(format!("--engine needs --model, not --mock\n{USAGE}"));
+        }
+        model.asr_backend = e;
     }
     if let Some(l) = level {
         session.cleanup_level = l;

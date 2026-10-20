@@ -185,6 +185,9 @@ impl Default for FieldContext {
 #[serde(rename_all = "snake_case")]
 pub enum AsrBackend {
     Whisper,
+    /// Parakeet-TDT through sherpa-onnx (feature `parakeet`); `asr_path` is
+    /// the model directory. English only.
+    Parakeet,
     /// Returns a fixed transcript for any non-silent audio; for shell
     /// development and tests without a model.
     Mock {
@@ -195,6 +198,9 @@ pub enum AsrBackend {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ModelConfig {
+    /// `"whisper"` (default), `"parakeet"` or `{"mock":{"text":…}}`; also
+    /// accepted as `asr_engine`.
+    #[serde(alias = "asr_engine")]
     pub asr_backend: AsrBackend,
     pub asr_path: String,
     /// GGUF instruct model for LLM cleanup (feature `llm`); `None` = no LLM.
@@ -262,6 +268,19 @@ mod tests {
         assert_eq!(s.for_category(AppCategory::PersonalChat), Style::VeryCasual);
         assert_eq!(s.for_category(AppCategory::Email), Style::Default);
         assert_eq!(s.for_category(AppCategory::Terminal), Style::Default);
+    }
+
+    #[test]
+    fn asr_engine_selector_defaults_to_whisper() {
+        let c: ModelConfig = serde_json::from_str("{}").unwrap();
+        assert_eq!(c.asr_backend, AsrBackend::Whisper);
+        for j in [
+            r#"{"asr_engine":"parakeet"}"#,
+            r#"{"asr_backend":"parakeet"}"#,
+        ] {
+            let c: ModelConfig = serde_json::from_str(j).unwrap();
+            assert_eq!(c.asr_backend, AsrBackend::Parakeet);
+        }
     }
 
     #[test]
