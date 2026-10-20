@@ -11,6 +11,7 @@ crates/
   flow-ffi/    C ABI (cdylib/staticlib, include/flow_core.h) + JNI (feature `jni`)
   flow-cli/    dev harness: `flow-cli transcribe` = full pipeline on a WAV; `flow-cli clean` = LLM cleanup on text
   flow-llm/    llama.cpp cleanup engine as a cdylib plugin (libflow_llm.so / flow_llm.dll), loaded at runtime
+  flow-asr-sherpa/  Parakeet-TDT ASR via the official sherpa-onnx crate (flow-core feature `parakeet`)
 ```
 
 ## API (§9 v2)
@@ -33,8 +34,9 @@ lands. Renaming it only changes the `Java_…` symbol prefix in
 
 All config types are serde structs in which every field has a default, so a
 shell can send partial JSON (`{}` is a valid `SessionConfig`).
-`ModelConfig.asr_backend` is either `"whisper"` or `{"mock":{"text":"…"}}`. The
-mock lets shells be developed without a model.
+`ModelConfig.asr_backend` (alias `asr_engine`) is `"whisper"` (default),
+`"parakeet"` or `{"mock":{"text":"…"}}`. The mock lets shells be developed
+without a model.
 
 `CommitResult` JSON:
 ```
@@ -78,6 +80,44 @@ shell UI thread ──start/commit/cancel──▶ control channel (mpsc) ──
    * The cleaner runs on its own thread with a hard timeout (`SessionConfig.llm_timeout_ms`, default 1.5 s). On timeout the core raises a cancel flag (`Cleaner::clean_cancellable`) so the backend frees its context within one decode step.
    * Output scrubbing: preambles ("Here is the cleaned text:"), trailing "Note:" commentary and one layer of quotes or guillemets are stripped.
    * Guardrail: word-level divergence between ASR and LLM output (edit distance / words) above a per-level threshold (light 0.6, medium/high 0.9; 03 §7.1) means the output is not used and the result falls back to `RAW_TRANSCRIPT`.
+
+### ASR backend: Parakeet (feature `parakeet`, crate `flow-asr-sherpa`)
+D4 makes Parakeet-TDT-0.6B-v2 int8 the English default on desktops with ≥ 4 GB RAM (`docs/model-benchmarks.md`: WER 1.2% vs 3.7% for whisper base, RTF 0.14).
+
+* **Selecting it.** `ModelConfig` JSON `{"asr_engine":"parakeet","asr_path":"<model dir>","threads":4}` (`asr_backend` works too). `asr_path` is the sherpa-onnx model *directory* (`encoder/decoder/joiner*.onnx`, `tokens.txt`; `*.int8.onnx` preferred). The build must enable `parakeet` (flow-core, flow-ffi or flow-cli); otherwise `load_models` fails with "built without the `parakeet` feature". CLI: `flow-cli transcribe --engine parakeet --model <dir> file.wav`. Whisper stays the default, and the only choice for non-English or auto-detect; the shell picks the engine (English-only user + model present → parakeet).
+* **Packaging.** It uses the official `sherpa-onnx` crate (=1.13.8, k2-fsa, safe wrapper over the C API) with `features = ["shared"]`. It links `libsherpa-onnx-c-api.so` (3.6 MB) + `libonnxruntime.so` (27 MB, x86_64). No plugin is needed, unlike llama.cpp (D10): onnxruntime does not contain ggml, so whisper.cpp and Parakeet share one binary. Proof: `flow-cli` with whisper + llm + parakeet runs both engines, and the `--all-features` test suite (whisper_e2e, parakeet_e2e, llm_e2e, JNI) passes in one build.
+  * Build: `SHERPA_ONNX_LIB_DIR=<dir with the two .so>`. Without it, `sherpa-onnx-sys` downloads the v1.13.8 prebuilt archive from GitHub at **build** time. The runtime never touches the network.
+  * The build copies the .so files next to the outputs in `target/<profile>/`. `flow-cli/build.rs` and `flow-asr-sherpa/build.rs` add `-rpath,$ORIGIN`, because sherpa-onnx-sys's own rpath arg only applies to its own crate. Shells ship both .so files next to the exe (Windows: `sherpa-onnx-c-api.dll` + `onnxruntime.dll`) or in `jniLibs/arm64-v8a` (Android, see below).
+  * Cost when the feature is off: none. The feature is not in any default feature set.
+* **Engine.** One `OfflineRecognizer` stays warm (the three onnxruntime sessions), and each decode uses a fresh stream. The silence gate (RMS < 0.003) returns empty, and input shorter than 1 s is padded. Language is always `en`. A sherpa decode cannot be interrupted, so the abort flag is only checked before the decode. That is acceptable at RTF ≈ 0.1-0.15, but a live partial cannot be cut short.
+* **Contextual biasing (hotwords): supported.** sherpa-onnx's NeMo transducer runs `modified_beam_search` with per-stream hotwords (an Aho-Corasick context graph), TDT included.
+  * The adapter turns the whisper `initial_prompt` vocabulary (dictionary words and replacement targets, then screen words, ≤ 200 words) back into phrases (`parakeet::hotwords_from_prompt`, round-trip unit-tested against `build_initial_prompt`). It passes them `/`-separated, deduped and capped at 100 phrases.
+  * The NeMo export ships no `bpe.vocab`, so `flow-asr-sherpa` derives one from `tokens.txt` with score = -id, which is sentencepiece BPE merge order. It writes the vocab to the temp dir (or `bpe.vocab` in the model dir if one is present) and deletes it once loaded. If it cannot be written, the engine falls back to greedy search without hotwords. **Android: the shell should set `TMPDIR` to the app cache dir, or ship `bpe.vocab` in the model dir.**
+  * A flat vocab (all scores 0) was harmful: words split into single letters, every letter earned the bonus, and an unrelated hotword was inserted everywhere.
+  * Measured (`tools/probes/parakeet_wer.py`, results in `tools/probes/results/`). Extended 40-clip set, 22 hotwords: 3 relevant (Battleax, Meadowcroft, "Vive le roi") and 19 unrelated tech names:
+
+    | decode | WER | surface-only word changes vs greedy (case/punct) |
+    |---|---|---|
+    | greedy, no hotwords | 1.2% (11/955) | 0 |
+    | beam 4, no hotwords | 1.2% | 4 |
+    | beam 4, hotwords score 0.5 / 1.0 / 1.5 | 0.9% (9/955) each | 12 / 17 / 22 |
+    | beam 2, hotwords 1.5 | 2.1% (split apostrophes, "Persocratic") | — |
+    | 3 clips, one nonsense hotword, score 3.5 / 5 | nonsense hotword inserted / garbage | — |
+
+    Defaults: beam 4, score 1.0. Higher scores fix more names but re-case ordinary words ("the Captain", "Fir Tree"). `FLOW_PARAKEET_HOTWORDS_SCORE` overrides the score; `0` means greedy with no hotwords.
+  * Proof: `tests/parakeet_e2e.rs`. LibriSpeech 5142-36377-0008 gives "Meadocroft" unbiased and "Meadowcroft" with the dictionary word.
+* **Measured** (i7-6700, 4 threads, load 6-25 from other jobs, release):
+  * WER/RTF spot check on the 40-clip extended set: WER **1.2%** (11/955), the same errors as the bench, with greedy RTF 0.16. Core 13-clip set: WER 0.6%, RTF 0.10-0.12 greedy and 0.14-0.20 beam 4. On a quiet box, beam 4 costs about +20-40% over greedy, though the noise is as large as the effect.
+  * jfk.wav (11 s) through `flow-cli --engine parakeet`: ASR 0.9-1.6 s.
+  * **Preload / cold start:** `load_models` takes 2.9-4.0 s with the model in the page cache and 10.3-11.2 s cold (page cache evicted, HDD). Beam vs greedy makes no difference to load time. The bench saw 12-47 s cold under heavier load. RSS is about 880 MB. Shells must therefore load at app start or on the first hotkey press, never per dictation, and keep the core resident.
+* **Android arm64:** see "Android: Parakeet" below.
+* **flow-core lines touched** (all additive, for the merge with `core-p1`):
+  * `crates/flow-core/Cargo.toml`: the `parakeet` feature, the optional `flow-asr-sherpa` dependency, and the `[[test]] parakeet_e2e` entry.
+  * `src/lib.rs`: `#[cfg(feature = "parakeet")] pub mod parakeet;` after `pub mod llama;`.
+  * `src/config.rs`: the `AsrBackend::Parakeet` variant (after `Whisper`), `#[serde(alias = "asr_engine")]` and its doc comment on `ModelConfig.asr_backend`, and the test `asr_engine_selector_defaults_to_whisper`.
+  * `src/engine.rs` `load_models`: two match arms, `#[cfg(feature = "parakeet")] AsrBackend::Parakeet` and its `not(feature)` error twin, inserted after the `not(feature = "whisper")` arm. core-p1 rewrote the `Whisper` arm just above, so expect a trivial textual conflict there.
+  * New files: `src/parakeet.rs`, `tests/parakeet_e2e.rs`. `AsrRequest` and `AsrOutput` are unchanged; the adapter builds `AsrOutput` with `..Default::default()`, so core-p1's `no_speech_prob` field merges cleanly.
+  * Outside flow-core: the workspace `members`, `flow-ffi`/`flow-cli` `parakeet` features, `flow-cli --engine`, `flow-cli/build.rs`, and `tools/fetch-models.sh --parakeet`.
 
 ### LLM backend (feature `llm`, crate `flow-llm`)
 `load_models` with `llm_path` set loads the GGUF model once and keeps it warm. `unload` (or drop) frees the model and its context. A bad path, a missing plugin or a build without `llm` fails `load_models`.
@@ -148,6 +188,11 @@ cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
 cargo test --all-features                 # + JNI round trip (needs `java`) + flow-llm plugin + llm_e2e
 tools/fetch-models.sh [ggml-base.en.bin]  # explicit, user-run model download into models/
 tools/fetch-models.sh --llm [0.5b 1.5b]   # Qwen2.5-Instruct Q4_K_M GGUF for LLM cleanup
+tools/fetch-models.sh --parakeet          # Parakeet-TDT-0.6B-v2 int8 model dir (sherpa-onnx)
+export SHERPA_ONNX_LIB_DIR=…/sherpa-onnx/lib   # optional; else sherpa-onnx-sys downloads its prebuilt libs at build time
+cargo run --release -p flow-cli --features parakeet -- transcribe --engine parakeet --model models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8 models/jfk.wav
+cargo run --release -p flow-asr-sherpa --example spot_check -- <model dir> tools/probes/bench/asr_manifest_extended.json <audio dir> > out.jsonl
+python3 tools/probes/parakeet_wer.py out.jsonl  # WER/RTF with the bench normaliser
 cargo run --release -p flow-cli -- transcribe --model models/ggml-tiny.en.bin models/jfk.wav --json
 cargo build --release -p flow-cli -p flow-llm   # plugin lands next to flow-cli
 target/release/flow-cli clean --llm models/qwen2.5-0.5b-instruct-q4_k_m.gguf "um so scratch that hi"

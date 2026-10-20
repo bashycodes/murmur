@@ -2,9 +2,20 @@
 # Explicit, user-initiated model download (D9: the app itself never fetches).
 #   tools/fetch-models.sh [ggml-whisper.bin ...]   whisper models (default ggml-tiny.en.bin)
 #   tools/fetch-models.sh --llm [0.5b|1.5b ...]    Qwen2.5-Instruct Q4_K_M GGUF for LLM cleanup (default 0.5b)
+#   tools/fetch-models.sh --parakeet               Parakeet-TDT-0.6B-v2 int8 (sherpa-onnx, 640 MB unpacked) + jfk.wav
 set -euo pipefail
 dir="$(cd "$(dirname "$0")/.." && pwd)/models"
 mkdir -p "$dir"
+if [ "${1:-}" = "--parakeet" ]; then
+  p=sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8
+  if [ ! -f "$dir/$p/tokens.txt" ]; then
+    curl -fSL -o "$dir/$p.tar.bz2.part" "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/$p.tar.bz2"
+    tar -xjf "$dir/$p.tar.bz2.part" -C "$dir" && rm -f "$dir/$p.tar.bz2.part"
+  fi
+  [ -f "$dir/jfk.wav" ] || curl -fSL -o "$dir/jfk.wav" https://github.com/ggml-org/whisper.cpp/raw/master/samples/jfk.wav
+  ls -la "$dir/$p"
+  exit 0
+fi
 if [ "${1:-}" = "--llm" ]; then
   shift
   for s in "${@:-0.5b}"; do

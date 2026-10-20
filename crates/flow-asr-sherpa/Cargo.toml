@@ -1,0 +1,25 @@
+[package]
+name = "flow-asr-sherpa"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Parakeet-TDT (NeMo transducer) ASR through sherpa-onnx, for flow-core's `parakeet` engine"
+
+# Standalone on purpose: no flow-core dependency, so flow-core can depend on
+# this crate behind its `parakeet` feature (like whisper-rs) without a cycle.
+#
+# Native libs: the official `sherpa-onnx` crate links libsherpa-onnx-c-api +
+# libonnxruntime as shared libraries. Point SHERPA_ONNX_LIB_DIR at a directory
+# that holds them (desktop: the sherpa-onnx `*-shared-lib` release, Android:
+# its jniLibs/<abi>); without it, sherpa-onnx-sys downloads the matching
+# v1.13.8 prebuilt archive at *build* time. Nothing is fetched at runtime.
+# onnxruntime shares no symbols with whisper.cpp's ggml, so unlike llama.cpp
+# (D10) it can live in the same process as whisper; see
+# docs/core-architecture.md "ASR backend: Parakeet".
+[dependencies]
+sherpa-onnx = { version = "=1.13.8", default-features = false, features = ["shared"] }
+thiserror.workspace = true
+
+[dev-dependencies]
+hound = "3"
+serde_json.workspace = true
