@@ -154,7 +154,7 @@ fn make_overlay_passive(w: &WebviewWindow) {
     }
 }
 
-/// Bottom-centre of the primary monitor's work area (above the taskbar).
+/// 512x614 canvas, bottom-centre of the primary work area (above the taskbar).
 fn position_overlay(w: &WebviewWindow) {
     let mut wa = RECT::default();
     let ok = unsafe {
@@ -171,7 +171,9 @@ fn position_overlay(w: &WebviewWindow) {
     }
     if let Ok(size) = w.outer_size() {
         let x = wa.left + ((wa.right - wa.left) - size.width as i32) / 2;
-        let y = wa.bottom - size.height as i32 - 8;
+        // Wispr: canvas flush with the work-area bottom minus a 2 px gap.
+        let gap = (2.0 * w.scale_factor().unwrap_or(1.0)).round() as i32;
+        let y = wa.bottom - size.height as i32 - gap;
         let _ = w.set_position(PhysicalPosition::new(x, y));
     }
 }

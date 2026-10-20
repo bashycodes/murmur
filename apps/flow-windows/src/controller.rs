@@ -320,7 +320,11 @@ mod tests {
                 "overlay Resting",
             ]
         );
-        assert_eq!(r.fake.levels.lock().unwrap().len(), 30 + 1, "30 Hz + reset");
+        assert_eq!(
+            r.fake.levels.lock().unwrap().len(),
+            6 + 1,
+            "1 s = 6 x 160 ms + reset"
+        );
     }
 
     #[test]

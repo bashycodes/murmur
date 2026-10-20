@@ -102,36 +102,55 @@ pub fn level_from_rms(rms: f32) -> f32 {
     ((db + 60.0) / 60.0).clamp(0.0, 1.0)
 }
 
-/// Accumulates 16 kHz audio and emits one overlay level per `window`
-/// samples (default ≈30 Hz), whatever chunk sizes the device delivers.
+/// Overlay level exactly like Wispr's pipeline (overlay-spec.json
+/// `waveform.level_pipeline`): per 40 ms chunk `dB = 20·log10(rms+1e-10)`;
+/// an auto floor that starts at 0 dB and follows the quietest chunk
+/// (never below −60 dB); `scaled = clamp((dB − floor)/20, 0, 1)`; emitted as
+/// the mean of every 4 chunks (~150 ms). One meter per dictation.
 #[derive(Debug, Clone)]
 pub struct LevelMeter {
-    window: usize,
-    sum_sq: f64,
-    n: usize,
+    floor_db: f64,
+    chunk_sum_sq: f64,
+    chunk_n: usize,
+    scaled_sum: f64,
+    chunks: usize,
 }
 
 impl LevelMeter {
-    pub fn new(window: usize) -> Self {
+    pub const CHUNK: usize = 640;
+    pub const CHUNKS_PER_EMIT: usize = 4;
+
+    pub fn new() -> Self {
         LevelMeter {
-            window: window.max(1),
-            sum_sq: 0.0,
-            n: 0,
+            floor_db: 0.0,
+            chunk_sum_sq: 0.0,
+            chunk_n: 0,
+            scaled_sum: 0.0,
+            chunks: 0,
         }
     }
 
-    /// Returns the levels of all windows completed by this chunk.
+    /// Returns the levels of all emit windows completed by this push.
     pub fn push(&mut self, pcm: &[i16]) -> Vec<f32> {
         let mut out = Vec::new();
         for s in pcm {
             let f = *s as f64 / 32768.0;
-            self.sum_sq += f * f;
-            self.n += 1;
-            if self.n == self.window {
-                let r = (self.sum_sq / self.n as f64).sqrt() as f32;
-                out.push(level_from_rms(r));
-                self.sum_sq = 0.0;
-                self.n = 0;
+            self.chunk_sum_sq += f * f;
+            self.chunk_n += 1;
+            if self.chunk_n < Self::CHUNK {
+                continue;
+            }
+            let rms = (self.chunk_sum_sq / self.chunk_n as f64).sqrt();
+            self.chunk_sum_sq = 0.0;
+            self.chunk_n = 0;
+            let db = 20.0 * (rms + 1e-10).log10();
+            self.floor_db = self.floor_db.min(db).max(-60.0);
+            self.scaled_sum += ((db - self.floor_db) / 20.0).clamp(0.0, 1.0);
+            self.chunks += 1;
+            if self.chunks == Self::CHUNKS_PER_EMIT {
+                out.push((self.scaled_sum / self.chunks as f64) as f32);
+                self.scaled_sum = 0.0;
+                self.chunks = 0;
             }
         }
         out
@@ -140,7 +159,7 @@ impl LevelMeter {
 
 impl Default for LevelMeter {
     fn default() -> Self {
-        LevelMeter::new(TARGET_RATE as usize / 30)
+        Self::new()
     }
 }
 
@@ -148,16 +167,48 @@ impl Default for LevelMeter {
 mod tests {
     use super::*;
 
+    fn dc(v: i16, n: usize) -> Vec<i16> {
+        vec![v; n]
+    }
+
     #[test]
-    fn level_meter_emits_per_window_across_chunks() {
-        let mut m = LevelMeter::new(100);
-        assert!(m.push(&[16384; 60]).is_empty());
-        let l = m.push(&[16384; 140]);
-        assert_eq!(l.len(), 2);
-        assert!((l[0] - level_from_rms(0.5)).abs() < 1e-4);
-        assert_eq!(m.push(&[0; 99]).len(), 0);
-        assert_eq!(m.push(&[0; 1]), vec![0.0]);
-        assert_eq!(LevelMeter::default().window, 533);
+    fn level_meter_silence_is_zero_after_four_chunks() {
+        let mut m = LevelMeter::new();
+        assert!(m.push(&dc(0, 3 * 640)).is_empty());
+        assert_eq!(m.push(&dc(0, 640)), vec![0.0]);
+    }
+
+    #[test]
+    fn level_meter_auto_floor_follows_quietest_chunk() {
+        let mut m = LevelMeter::new();
+        let mut x = dc(1036, 640); // about -30 dBFS: floor -30, scaled 0
+        x.extend(dc(10362, 3 * 640)); // about -10 dBFS: scaled 1
+        let l = m.push(&x);
+        assert_eq!(l.len(), 1);
+        assert!((l[0] - 0.75).abs() < 0.01, "{l:?}");
+    }
+
+    #[test]
+    fn level_meter_floor_never_below_minus_60() {
+        let mut m = LevelMeter::new();
+        let mut x = dc(0, 640); // -200 dB: floor clamps at -60
+        x.extend(dc(33, 3 * 640)); // about -60 dBFS: scaled about 0
+        let l = m.push(&x);
+        assert!(l[0] < 0.01, "{l:?}");
+    }
+
+    #[test]
+    fn level_meter_is_chunking_independent() {
+        let x: Vec<i16> = (0..16_000).map(|i| ((i % 50) * 300) as i16).collect();
+        let mut a = LevelMeter::new();
+        let one = a.push(&x);
+        let mut b = LevelMeter::new();
+        let mut many = Vec::new();
+        for c in x.chunks(97) {
+            many.extend(b.push(c));
+        }
+        assert_eq!(one, many);
+        assert_eq!(one.len(), 6, "25 chunks of 40 ms -> 6 emits");
     }
 
     fn sine(rate: u32, freq: f32, secs: f32, channels: u16) -> Vec<f32> {
