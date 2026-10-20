@@ -482,3 +482,204 @@ fn whole_utterance_snippet_skips_llm() {
     assert_eq!(r.status, CommitStatus::RawTranscript);
     assert_eq!(r.fallback_reason, None, "LLM must not even run: {r:?}");
 }
+
+#[test]
+fn dict_matcher_is_built_once_per_dictionary() {
+    let (core, _) = mock_core("btw hi");
+    let dict = |r: &str| SessionConfig {
+        dictionary: Dictionary {
+            entries: vec![DictEntry::replacement("btw", r)],
+        },
+        ..Default::default()
+    };
+    for _ in 0..3 {
+        core.start_session(dict("by the way")).unwrap();
+        push_all(&core, &speech(300));
+        assert!(core.commit().final_text.contains("by the way"));
+    }
+    assert_eq!(core.dict_matcher_builds(), 1);
+    core.start_session(dict("BTW")).unwrap();
+    push_all(&core, &speech(300));
+    assert!(core.commit().final_text.contains("BTW"));
+    assert_eq!(core.dict_matcher_builds(), 2);
+}
+
+fn noise(ms: usize, amp: i16, seed: u32) -> Vec<i16> {
+    let mut x = seed.wrapping_mul(2_654_435_761).max(1);
+    (0..ms * 16)
+        .map(|_| {
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            ((x as f32 / u32::MAX as f32 * 2.0 - 1.0) * amp as f32) as i16
+        })
+        .collect()
+}
+
+#[test]
+fn vad_skips_asr_on_room_noise() {
+    let (core, asr) = mock_core("Thank you.");
+    core.start_session(SessionConfig::default()).unwrap();
+    // RMS ≈ 0.0035: passes the old whole-buffer RMS gate, has no speech.
+    push_all(&core, &noise(2000, 200, 7));
+    let r = core.commit();
+    assert_eq!(r.status, CommitStatus::Empty, "{r:?}");
+    assert_eq!(r.empty_reason.as_deref(), Some("no_speech"));
+    assert_eq!(asr.calls(), 0);
+}
+
+#[test]
+fn vad_trims_leading_and_trailing_silence_before_asr() {
+    let (core, asr) = mock_core("hello");
+    core.start_session(SessionConfig::default()).unwrap();
+    let pcm = [vec![0i16; 32_000], speech(1000), vec![0i16; 32_000]].concat();
+    push_all(&core, &pcm);
+    let r = core.commit();
+    assert_eq!(r.status, CommitStatus::RawTranscript, "{r:?}");
+    assert_eq!(r.timings.audio_ms, 5000);
+    // 1 s of speech + 300 ms head + 400 ms tail padding (± one frame).
+    let got = asr.last_len();
+    assert!((1680 * 16..=1720 * 16).contains(&got), "{got}");
+    assert!((1680..=1720).contains(&r.timings.asr_audio_ms), "{r:?}");
+}
+
+#[test]
+fn vad_off_passes_the_whole_buffer() {
+    let (core, asr) = mock_core("hello");
+    core.start_session(SessionConfig {
+        vad: false,
+        ..Default::default()
+    })
+    .unwrap();
+    let pcm = [vec![0i16; 32_000], speech(1000)].concat();
+    push_all(&core, &pcm);
+    core.commit();
+    assert_eq!(asr.last_len(), pcm.len());
+}
+
+#[test]
+fn stock_phrase_on_a_breath_is_suppressed() {
+    let (core, _) = mock_core("Thank you.");
+    core.start_session(SessionConfig::default()).unwrap();
+    // 100 ms burst in a second of silence: VAD sees speech, too little.
+    push_all(
+        &core,
+        &[vec![0i16; 8000], speech(100), vec![0i16; 8000]].concat(),
+    );
+    let r = core.commit();
+    assert_eq!(r.status, CommitStatus::Empty, "{r:?}");
+    assert_eq!(r.empty_reason.as_deref(), Some("hallucination"));
+    assert_eq!(r.asr_text, "Thank you.");
+    assert!(r.final_text.is_empty() && r.segments.is_empty());
+}
+
+#[test]
+fn spoken_stock_phrase_is_kept() {
+    let (core, _) = mock_core("Thank you.");
+    core.start_session(SessionConfig::default()).unwrap();
+    push_all(&core, &speech(800));
+    let r = core.commit();
+    assert_eq!(r.status, CommitStatus::RawTranscript, "{r:?}");
+    assert!(r.final_text.contains("Thank you."));
+}
+
+#[test]
+fn hallucination_guard_can_be_disabled() {
+    let (core, _) = mock_core("Thank you.");
+    core.start_session(SessionConfig {
+        hallucination_guard: false,
+        ..Default::default()
+    })
+    .unwrap();
+    push_all(
+        &core,
+        &[vec![0i16; 8000], speech(100), vec![0i16; 8000]].concat(),
+    );
+    assert_eq!(core.commit().status, CommitStatus::RawTranscript);
+}
+
+/// Records prefill hints; cleans to a fixed text.
+#[derive(Default)]
+struct PrefillSpy {
+    prefills: std::sync::Mutex<Vec<CleanPrompt>>,
+    cancels: std::sync::atomic::AtomicUsize,
+}
+impl Cleaner for PrefillSpy {
+    fn clean(&self, p: &CleanPrompt, _d: Instant) -> Result<String, CleanError> {
+        Ok(p.transcript.clone())
+    }
+    fn prefill(&self, p: &CleanPrompt) {
+        self.prefills.lock().unwrap().push(p.clone());
+    }
+    fn cancel_prefill(&self) {
+        self.cancels
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+fn wait_until(mut f: impl FnMut() -> bool) -> bool {
+    let end = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < end {
+        if f() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    false
+}
+
+#[test]
+fn llm_prefill_follows_context_and_partials_while_speaking() {
+    let spy = Arc::new(PrefillSpy::default());
+    let core = FlowCore::from_engines(Arc::new(MockAsr::new("hello world")), Some(spy.clone()));
+    core.start_session(SessionConfig {
+        partial_interval_ms: Some(100),
+        ..Default::default()
+    })
+    .unwrap();
+    // Session start warms the session's level/style with an empty transcript.
+    assert!(wait_until(|| !spy.prefills.lock().unwrap().is_empty()));
+    assert!(spy.prefills.lock().unwrap()[0].transcript.is_empty());
+    core.set_context(FieldContext {
+        app_id: "slack.exe".into(),
+        ..Default::default()
+    });
+    assert!(wait_until(|| spy
+        .prefills
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|p| p.user.contains("slack.exe"))));
+    push_all(&core, &speech(500));
+    assert!(wait_until(|| spy.prefills.lock().unwrap().iter().any(
+        |p| p.transcript == "hello world" && p.user.contains("slack.exe")
+    )));
+    let n = spy.prefills.lock().unwrap().len();
+    let r = core.commit();
+    assert_eq!(r.status, CommitStatus::Formatted, "{r:?}");
+    assert!(spy.cancels.load(std::sync::atomic::Ordering::Relaxed) >= 1);
+    // Unchanged context + partial: no duplicate hints.
+    assert!(n <= 4, "{n} prefills");
+}
+
+#[test]
+fn llm_prefill_is_skipped_when_llm_would_not_run() {
+    for cfg in [
+        SessionConfig {
+            raw_mode: true,
+            ..Default::default()
+        },
+        SessionConfig {
+            llm_prefill: false,
+            ..Default::default()
+        },
+    ] {
+        let spy = Arc::new(PrefillSpy::default());
+        let core = FlowCore::from_engines(Arc::new(MockAsr::new("hi")), Some(spy.clone()));
+        core.start_session(cfg).unwrap();
+        push_all(&core, &speech(300));
+        std::thread::sleep(Duration::from_millis(100));
+        core.commit();
+        assert!(spy.prefills.lock().unwrap().is_empty());
+    }
+}

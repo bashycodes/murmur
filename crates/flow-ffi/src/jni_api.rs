@@ -19,7 +19,7 @@ use jni::objects::{JClass, JShortArray, JString};
 use jni::sys::{jboolean, jint, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
 
-use crate::{json_api, set_error, FlowHandle, LAST_ERROR};
+use crate::{json_api, set_error, set_error_kind, FlowHandle, LAST_ERROR};
 
 thread_local! {
     // Reused per AudioRecord thread so pushAudio never allocates after the first call.
@@ -114,10 +114,12 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLoadModels(
         let Some(j) = jstr(&mut env, &cfg, "bad model config") else {
             return 0;
         };
-        match json_api::load_models(&j) {
+        match json_api::load_models_kind(&j) {
             Ok(c) => Box::into_raw(Box::new(FlowHandle(c))) as jlong,
-            Err(e) => {
-                set_error(e);
+            // The message keeps a stable prefix per kind ("model not found:
+            // <path>", "llm plugin not found (…)") for nativeLastError.
+            Err((kind, e)) => {
+                set_error_kind(kind, e);
                 0
             }
         }
