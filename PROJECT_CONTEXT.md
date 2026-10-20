@@ -12,7 +12,7 @@ Branch `core` (flow-core). Every row below is backed by a passing test (`cargo t
 | Deterministic post-processing ported from Wispr: all 108 Windows + 58 Android ground-truth vectors, plus an Android→Windows cross-check | `tests/vectors.rs` |
 | LLM seam: 03 §7 prompt (KV-reuse layout + 6 few-shot turns), timeout → RAW_TRANSCRIPT + backend cancel flag, preamble scrubbing, divergence guardrail, snippet/terminal/raw skip | `cleanup.rs` unit tests + session tests (mock cleaner) |
 | Real local LLM cleanup: llama.cpp `LlamaCleaner` (flow-llm plugin, loaded once in `load_models`, warm KV prefix, greedy, 2×input+32, per-token deadline/cancel, unload frees) on 8 messy dictations through `FlowCore`: safety contract at the 1.5 s budget; quality 4/8 (Qwen2.5-0.5B) / 8/8 (1.5B) at a generous budget | `flow-core/tests/llm_e2e.rs` (skip if model/plugin missing; `tools/fetch-models.sh --llm`), `flow-llm` unit tests, `llama.rs` loader tests |
-| `flow-cli clean --llm m.gguf TEXT…` / `transcribe --llm` | manual (`docs/core-architecture.md` Build/test); loader path covered by `llm_e2e` |
+| `flow-cli clean --llm m.gguf TEXT…` (+ `transcribe --llm`): FORMATTED output, warm-prefix prefill counters | `flow-cli/tests/cli.rs::clean_with_real_llm_if_present` (skip if model missing) |
 | learn_edit candidates (word alignment) | `learn.rs`, `align.rs` unit tests |
 | C ABI + header (C program links the staticlib and runs a session) | `flow-ffi/tests/c_abi.rs`, `c_header.rs` |
 | JNI exports in a real JVM (`com.flowclone.core.NativeFlowCore`) | `flow-ffi/tests/jni_smoke.rs` (`--features jni`) |
