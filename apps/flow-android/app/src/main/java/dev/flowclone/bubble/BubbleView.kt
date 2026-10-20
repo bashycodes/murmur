@@ -20,7 +20,16 @@ data class BubbleUi(
     val state: DictationState = DictationState.Idle,
     val showCopy: Boolean = false,
     val level: Float = 0f,
-)
+    /** Shrunk to a 36dp dot after 5 s in Ready (07 §5.3). */
+    val minimized: Boolean = false,
+    /** Accessibility service off or dead: alert icon, tap opens the repair screen (07 §5.4 Repair). */
+    val repair: Boolean = false,
+    /** Window shown at all (presence policy: snooze, shake reveal, repair). */
+    val visible: Boolean = state != DictationState.Idle,
+) {
+    /** Resting (no dictation in flight), so the repair / minimised looks apply. */
+    val resting: Boolean get() = state == DictationState.Idle || state == DictationState.Ready
+}
 
 enum class BubbleButton { MAIN, CANCEL, DONE, COPY, PASTE, DISMISS }
 
@@ -67,14 +76,14 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
 
     fun update(newUi: BubbleUi) {
         if (newUi.state is DictationState.Processing && ui.state !is DictationState.Processing) processingSince = SystemClock.uptimeMillis()
-        val resize = widthDpFor(newUi) != widthDpFor(ui)
+        val resize = widthDpFor(newUi) != widthDpFor(ui) || heightDpFor(newUi) != heightDpFor(ui)
         ui = newUi
         if (resize) requestLayout()
         invalidate()
     }
 
     /** Widths from 07 §5.4 (56 circle, 120 with copy, 230 tap row, 160 hold row). */
-    fun widthDpFor(u: BubbleUi): Float = when (val s = u.state) {
+    fun widthDpFor(u: BubbleUi): Float = if (u.resting && u.repair) 56f else if (u.resting && u.minimized && !u.showCopy) 36f else when (val s = u.state) {
         DictationState.Idle -> 56f
         DictationState.Ready -> if (u.showCopy) 120f else 56f
         is DictationState.Recording -> if (s.hold) 160f else 230f
@@ -82,8 +91,10 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
         is DictationState.Error -> if (s.kind is ErrorKind.FailedToPaste) 120f else 56f
     }
 
+    fun heightDpFor(u: BubbleUi): Float = if (u.resting && u.minimized && !u.repair && !u.showCopy) 36f else 56f
+
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        setMeasuredDimension(dp(widthDpFor(ui)).toInt(), dp(56f).toInt())
+        setMeasuredDimension(dp(widthDpFor(ui)).toInt(), dp(heightDpFor(ui)).toInt())
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -93,7 +104,15 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
         val pill = RectF(0f, 0f, width.toFloat(), h)
         canvas.drawRoundRect(pill, r, r, bg)
         when (s) {
-            DictationState.Idle, DictationState.Ready -> {
+            DictationState.Idle, DictationState.Ready -> if (ui.repair) {
+                val pulse = 0.6f + 0.4f * kotlin.math.abs(((SystemClock.uptimeMillis() % 2000) / 1000f) - 1f)
+                danger.alpha = (255 * pulse).toInt()
+                circleButton(canvas, 0f, danger, BubbleButton.MAIN) { cx, cy -> drawGlyph(canvas, "!", cx, cy) }
+                danger.alpha = 255
+                postInvalidateOnAnimation()
+            } else if (ui.minimized && !ui.showCopy) {
+                circleButton(canvas, 0f, accent, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy, 9f) }
+            } else {
                 circleButton(canvas, 0f, accent, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy) }
                 if (ui.showCopy) circleButton(canvas, dp(64f), bg, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }
             }
@@ -130,15 +149,15 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
 
     private inline fun circleButton(c: Canvas, left: Float, paint: Paint, b: BubbleButton, content: (Float, Float) -> Unit) {
         val h = height.toFloat()
-        val inset = dp(4f)
+        val inset = if (h < dp(40f)) dp(2f) else dp(4f)
         val rect = RectF(left, 0f, left + h, h)
         c.drawCircle(rect.centerX(), rect.centerY(), h / 2 - inset, paint)
         content(rect.centerX(), rect.centerY())
         buttons += rect to b
     }
 
-    private fun drawMic(c: Canvas, cx: Float, cy: Float) {
-        val half = dp(14f).toInt()
+    private fun drawMic(c: Canvas, cx: Float, cy: Float, halfDp: Float = 14f) {
+        val half = dp(halfDp).toInt()
         mic.setBounds((cx - half).toInt(), (cy - half).toInt(), (cx + half).toInt(), (cy + half).toInt())
         mic.draw(c)
     }

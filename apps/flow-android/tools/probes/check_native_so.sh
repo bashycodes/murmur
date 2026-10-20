@@ -24,11 +24,27 @@ for f in "$dir"/*.so; do
   if [[ -n "$bad" ]]; then echo "$(basename "$f"): LOAD align < 16 KB: $bad"; fail=1
   else echo "$(basename "$f"): LOAD segments 16 KB aligned"; fi
 done
-for n in $("$bin/llvm-readelf" -dW "$so" | sed -n 's/.*NEEDED.*\[\(.*\)\]/\1/p'); do
-  case "$n" in libc.so|libm.so|libdl.so|liblog.so|libandroid.so) ;;
-    *) [[ -f "$dir/$n" ]] || { echo "NEEDED $n not shipped"; fail=1; } ;;
-  esac
+for f in "$dir"/*.so; do
+  for n in $("$bin/llvm-readelf" -dW "$f" | sed -n 's/.*NEEDED.*\[\(.*\)\]/\1/p'); do
+    case "$n" in libc.so|libm.so|libdl.so|liblog.so|libandroid.so) ;;
+      *) [[ -f "$dir/$n" ]] || { echo "$(basename "$f"): NEEDED $n not shipped"; fail=1; } ;;
+    esac
+  done
 done
+llm="$dir/libflow_llm.so"
+if [[ -f "$llm" ]]; then
+  # The plugin must export only the flow_llm_* C ABI (flow-core/src/llama.rs); exporting its
+  # ggml would let the dynamic linker interpose it with whisper's ggml in libflow_ffi.so.
+  llm_have=$("$bin/llvm-nm" -D --defined-only "$llm" | awk '$2=="T"{print $3}' | sort -u)
+  llm_want=$(printf '%s\n' flow_llm_abi_version flow_llm_clean flow_llm_free_string flow_llm_info flow_llm_load flow_llm_unload)
+  if [[ "$llm_have" == "$llm_want" ]]; then echo "libflow_llm.so: exports exactly the 6 flow_llm_* symbols"
+  else echo "libflow_llm.so: unexpected exports: $(comm -3 <(echo "$llm_have") <(echo "$llm_want") | tr -d '\t' | tr '\n' ' ')"; fail=1; fi
+  if "$bin/llvm-nm" -D --defined-only "$so" | grep -q ' T ggml_'; then
+    echo "note: libflow_ffi.so exports ggml_* (whisper's); the plugin keeps its own ggml private"
+  fi
+else
+  echo "libflow_llm.so: not packaged (AI cleanup unavailable; build with --llm)"
+fi
 echo "whisper linked: $("$bin/llvm-nm" "$so" 2>/dev/null | grep -c ' whisper_full' || true) whisper_full* symbols"
 if [[ -n "${1:-}" ]]; then
   za=$(ls -d "$HOME"/Android/Sdk/build-tools/* | sort -V | tail -1)/zipalign
