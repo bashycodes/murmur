@@ -683,3 +683,62 @@ fn llm_prefill_is_skipped_when_llm_would_not_run() {
         assert!(spy.prefills.lock().unwrap().is_empty());
     }
 }
+
+#[test]
+fn spoken_cleanup_runs_by_default_and_can_be_disabled() {
+    let r = run_text(
+        "um so send it to Sarah no wait to Tom period",
+        SessionConfig::default(),
+        FieldContext::default(),
+    );
+    assert_eq!(r.final_text, "Send it to Tom. ", "{r:?}");
+    assert_eq!(r.asr_text, "um so send it to Sarah no wait to Tom period");
+    let off = SessionConfig {
+        spoken_cleanup: false,
+        ..Default::default()
+    };
+    let r = run_text("um send it period", off, FieldContext::default());
+    assert!(r.final_text.contains("period"), "{r:?}");
+}
+
+#[test]
+fn spoken_cleanup_is_off_at_level_none() {
+    let cfg = SessionConfig {
+        cleanup_level: flow_core::config::CleanupLevel::None,
+        ..Default::default()
+    };
+    let r = run_text("um send it period", cfg, FieldContext::default());
+    assert!(r.final_text.contains("um send it period"), "{r:?}");
+}
+
+#[test]
+fn only_filler_is_empty() {
+    let r = run_text(
+        "Um, uh, hmm.",
+        SessionConfig::default(),
+        FieldContext::default(),
+    );
+    assert_eq!(r.status, CommitStatus::Empty, "{r:?}");
+    assert_eq!(r.empty_reason.as_deref(), Some("only_filler"));
+}
+
+#[test]
+fn llm_sees_the_spoken_cleanup_output() {
+    struct Echo(std::sync::Mutex<String>);
+    impl Cleaner for Echo {
+        fn clean(&self, p: &CleanPrompt, _d: Instant) -> Result<String, CleanError> {
+            *self.0.lock().unwrap() = p.transcript.clone();
+            Ok(p.transcript.clone())
+        }
+    }
+    let echo = Arc::new(Echo(Default::default()));
+    let core = FlowCore::from_engines(
+        Arc::new(MockAsr::new("um I I think it works period")),
+        Some(echo.clone()),
+    );
+    core.start_session(SessionConfig::default()).unwrap();
+    push_all(&core, &speech(500));
+    let r = core.commit();
+    assert_eq!(*echo.0.lock().unwrap(), "I think it works.");
+    assert_eq!(r.status, CommitStatus::Formatted, "{r:?}");
+}
