@@ -1,0 +1,21 @@
+//! Windows shell of the local Wispr Flow clone.
+//!
+//! Pure, platform-independent logic (chord matching, dictation state machine,
+//! resampling, paste planning, context truncation/bucketing, prefs) lives in
+//! plain modules and is unit-tested on any host. Win32 code sits behind
+//! `#[cfg(windows)]` in `win` submodules.
+
+#[cfg(all(feature = "app", windows))]
+pub mod app;
+pub mod audio;
+pub mod context;
+pub mod controller;
+pub mod core_adapter;
+pub mod core_api;
+pub mod dictation;
+pub mod ducking;
+pub mod hotkeys;
+pub mod input;
+pub mod paste;
+pub mod prefs;
+pub mod sounds;

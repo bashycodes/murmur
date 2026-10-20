@@ -23,6 +23,8 @@ E2E timing on this box (i7-6700, 8 logical cores, no GPU, load ≈ 8-14 from oth
 
 Post-processing takes under 1 ms. With live partials on, commit takes about 1.8 s versus 1.5 s without them, because the in-flight partial decode is aborted.
 
+- `apps/flow-windows` (Windows shell): pure logic (chord matcher, dictation machine w/ Wispr timings, resampler/level meter, paste plan, context/app kinds, prefs, controller loop) — 111 tests green on Linux; Win32 + Tauri code `cargo clippy`-clean for `x86_64-pc-windows-msvc` (incl. `--features app` via check shim). Not yet run on real Windows; uses `StubCore` until flow-core lands (see `apps/flow-windows/README.md`).
+
 ## Outstanding work — priority order
 1. `flow-core` crate — DONE on branch `core` (see What works). Remaining core gaps:
    * llama.cpp `Cleaner` backend (feature `llm` is an empty stub; `llm_path` is ignored);
@@ -30,6 +32,6 @@ Post-processing takes under 1 ms. With live partials on, commit takes about 1.8 
    * the JNI class name must match `apps/flow-android/JNI_CONTRACT.md`;
    * VAD and endpointing;
    * a per-session cache for the DictMatcher (it is rebuilt each commit).
-2. Windows shell (Tauri): hooks, capture, paste, overlay, tray.
+2. Windows shell: wire flow-core in `apps/flow-windows/src/core_adapter.rs`; run manual checklist in `apps/flow-windows/README.md` on real Windows; gaps there (clickable hands-free buttons, UIPI pre-check, hook re-install).
 3. Android shell: a11y service, overlay bubble, FGS recorder, JNI to core.
 4. P1: LLM cleanup, context, learn-from-edits.
