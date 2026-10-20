@@ -92,6 +92,100 @@ class NativeFlowCoreHostTest {
         }
     }
 
+    // ---- LLM cleanup through the real binding (flow-ffi `llm` + the flow-llm plugin) ----
+
+    private fun llm(): Pair<String, String>? {
+        val model = System.getProperty("flow.llmModel").orEmpty()
+        val lib = System.getProperty("flow.llmLib").orEmpty()
+        return if (File(model).isFile && File(lib).isFile) model to lib else null
+    }
+
+    /** The shell's own settings path: LLM on, light cleanup (the Android default when enabled). */
+    private fun llmSession(budgetMs: Long) =
+        dev.flowclone.data.Settings(language = "en", llmEnabled = true).toSessionConfig(emptyList()).copy(llmTimeoutMs = budgetMs)
+
+    private fun report(line: String) {
+        println(line)
+        File(System.getProperty("flow.reportDir") ?: "build/reports/host-native").apply { mkdirs() }.resolve("timings.txt").appendText(line + "\n")
+    }
+
+    @Test fun llmCleansTranscriptThroughKotlinBinding() {
+        requireLib()
+        val (model, lib) = llm() ?: return assumeTrue("no LLM model/plugin", false)
+        val raw = "so um i think we should meet tomorrow at noon and uh bring the slides"
+        val t0 = System.nanoTime()
+        val core = NativeFlowCore.loadModels(ModelConfig(asrPath = "", mockText = raw, llmPath = model, llmLib = lib, threads = 4))
+        val loadMs = (System.nanoTime() - t0) / 1_000_000
+        try {
+            core.startSession(llmSession(budgetMs = 60_000))
+            core.setContext(FieldContext(appId = "com.google.android.gm", appCategory = "email"))
+            assertTrue(core.pushAudio(sine(16_000), 16_000))
+            val r = core.commit()
+            report("llm model=${File(model).name} load_ms=$loadMs llm_ms=${r.timings.llmMs} status=${r.status} fallback=${r.fallbackReason}\nraw=$raw\nllm=${r.finalText}")
+            assertEquals(r.toString(), CommitStatus.FORMATTED, r.status)
+            assertTrue(r.timings.llmMs > 0)
+            assertTrue(r.finalText, r.finalText.contains("tomorrow", ignoreCase = true) && r.finalText.contains("slides"))
+        } finally {
+            core.unload()
+        }
+    }
+
+    @Test fun llmOffInSettingsNeverCallsTheModel() {
+        requireLib()
+        val (model, lib) = llm() ?: return assumeTrue("no LLM model/plugin", false)
+        val core = NativeFlowCore.loadModels(ModelConfig(asrPath = "", mockText = "um hello there", llmPath = model, llmLib = lib, threads = 4))
+        try {
+            core.startSession(dev.flowclone.data.Settings(language = "en", llmEnabled = false).toSessionConfig(emptyList()))
+            core.pushAudio(sine(16_000), 16_000)
+            val r = core.commit()
+            assertEquals(CommitStatus.RAW_TRANSCRIPT, r.status)
+            assertEquals(0L, r.timings.llmMs)
+        } finally {
+            core.unload()
+        }
+    }
+
+    @Test fun missingPluginFallsBackToAsrOnlyThroughEnginePlan() {
+        requireLib()
+        val model = llm()?.first ?: return assumeTrue("no LLM model", false)
+        val plan = dev.flowclone.data.EnginePlan.Plan.Native(
+            ModelConfig(asrPath = "", mockText = "hello", llmPath = model, llmLib = "/nonexistent/libflow_llm.so", threads = 2),
+            dev.flowclone.data.EnginePlan.LlmStatus.Loaded(File(model).name),
+        )
+        val r = dev.flowclone.data.EnginePlan.load(plan, NativeFlowCore)
+        assertTrue(r.toString(), r.core != null && r.llm is dev.flowclone.data.EnginePlan.LlmStatus.Failed)
+        report("llm fallback: ${(r.llm as dev.flowclone.data.EnginePlan.LlmStatus.Failed).message}")
+        r.core!!.unload()
+    }
+
+    @Test fun whisperThenLlmInOneJvmProcess() {
+        requireLib()
+        val (llmModel, lib) = llm() ?: return assumeTrue("no LLM model/plugin", false)
+        val model = System.getProperty("flow.model").orEmpty()
+        val wav = System.getProperty("flow.wav").orEmpty()
+        assumeTrue("no model/wav", File(model).isFile && File(wav).isFile)
+        val pcm = readWav16kMono(File(wav))
+        val core = NativeFlowCore.loadModels(ModelConfig(asrPath = model, llmPath = llmModel, llmLib = lib, threads = 4))
+        try {
+            core.startSession(llmSession(budgetMs = 60_000))
+            core.setContext(FieldContext(appId = "com.google.android.keep", appCategory = "document"))
+            val frame = ShortArray(1600)
+            var off = 0
+            while (off < pcm.size) {
+                val n = minOf(1600, pcm.size - off)
+                System.arraycopy(pcm, off, frame, 0, n)
+                core.pushAudio(frame, n); off += n
+            }
+            val r = core.commit()
+            report("whisper+llm asr=${File(model).name} llm=${File(llmModel).name} asr_ms=${r.timings.asrMs} llm_ms=${r.timings.llmMs} status=${r.status} fallback=${r.fallbackReason}\ntext=${r.finalText}")
+            assertTrue(r.toString(), r.status == CommitStatus.FORMATTED || r.status == CommitStatus.RAW_TRANSCRIPT)
+            assertTrue(r.toString(), r.fallbackReason == null || r.fallbackReason == "llm_diverged")
+            assertTrue(r.finalText, r.finalText.lowercase().contains("country"))
+        } finally {
+            core.unload()
+        }
+    }
+
     private fun sine(n: Int) = ShortArray(n) { (Math.sin(it * 0.05) * 8000).toInt().toShort() }
 
     /** Minimal RIFF reader: PCM16, 16 kHz, mono only (what MicRecorder produces). */

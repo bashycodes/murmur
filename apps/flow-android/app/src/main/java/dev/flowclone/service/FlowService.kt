@@ -130,7 +130,7 @@ class FlowService : Service() {
             }.collect { overlay.renderPreview(it) }
         }
         scope.launch {
-            while (true) { checkHealth(); delay(HEALTH_TICK_MS) }
+            while (true) { checkHealth(); updateShakeListener(); delay(HEALTH_TICK_MS) }
         }
         registerReceiver(screenReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT)
