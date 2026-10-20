@@ -17,23 +17,25 @@ pub enum Mode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Listening {
+    pub mode: Mode,
+    pub session: SessionId,
+    pub since_ms: u64,
+    pub warned: bool,
+    /// PTT released before the debounce window ended: dismissed at
+    /// `since + debounce` unless pressed again in time (→ double-tap lock).
+    pub early_release: bool,
+    /// When the session became locked (triple-press detection).
+    pub locked_at: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Phase {
     Idle,
-    Listening {
-        mode: Mode,
-        session: SessionId,
-        since_ms: u64,
-        warned: bool,
-    },
-    Processing {
-        session: SessionId,
-    },
-    Pasted {
-        since_ms: u64,
-    },
-    Error {
-        since_ms: u64,
-    },
+    Listening(Listening),
+    Processing { session: SessionId, since_ms: u64 },
+    Pasted { since_ms: u64 },
+    Error { since_ms: u64 },
 }
 
 /// Visual state of the overlay pill (05 §7.3: the five states that matter).
@@ -107,14 +109,21 @@ pub enum Effect {
     Overlay(OverlayState),
 }
 
+/// Timings from Wispr 1.6.1167 main process (windows-research
+/// `findings/data/overlay-spec.json` `main_side_dictation_timings`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Policy {
     /// Hard stop: the dictation is committed (not discarded) at this length.
     pub max_ms: u64,
     pub warn_ms: u64,
-    /// PTT taps shorter than this are treated as accidental and discarded.
-    pub min_ptt_ms: u64,
+    /// `DICTATION_DEBOUNCE_DELAY`: PTT released sooner = tap (dismissed
+    /// unless a second press locks it); second press sooner = double-tap
+    /// lock; press sooner after locking = triple-press dismiss.
+    pub debounce_ms: u64,
+    /// Processing longer than this is an error (Wispr: 35 s).
+    pub processing_timeout_ms: u64,
     pub pasted_linger_ms: u64,
+    /// Error pill shows this long, then rests (Wispr: 500 ms).
     pub error_linger_ms: u64,
 }
 
@@ -123,9 +132,10 @@ impl Default for Policy {
         Policy {
             max_ms: 20 * 60 * 1000,
             warn_ms: 19 * 60 * 1000,
-            min_ptt_ms: 250,
-            pasted_linger_ms: 800,
-            error_linger_ms: 2500,
+            debounce_ms: 500,
+            processing_timeout_ms: 35_000,
+            pasted_linger_ms: 0,
+            error_linger_ms: 500,
         }
     }
 }
@@ -163,133 +173,131 @@ impl Dictation {
 
     /// Listening or processing: Esc should be swallowed.
     pub fn is_active(&self) -> bool {
-        matches!(
-            self.phase,
-            Phase::Listening { .. } | Phase::Processing { .. }
-        )
+        matches!(self.phase, Phase::Listening(_) | Phase::Processing { .. })
     }
 
     pub fn handle(&mut self, input: Input, now_ms: u64) -> Vec<Effect> {
-        use HotkeyAction::*;
-        match (self.phase.clone(), input) {
-            // ---- start -------------------------------------------------
-            (Phase::Idle | Phase::Pasted { .. } | Phase::Error { .. }, Input::Hotkey(PttDown)) => {
-                self.begin(Mode::Ptt, now_ms)
+        match self.phase.clone() {
+            Phase::Idle | Phase::Pasted { .. } | Phase::Error { .. } => {
+                self.handle_resting(input, now_ms)
             }
-            (
-                Phase::Idle | Phase::Pasted { .. } | Phase::Error { .. },
-                Input::Hotkey(HandsFreeToggle),
-            ) => self.begin(Mode::Locked, now_ms),
+            Phase::Listening(l) => self.handle_listening(l, input, now_ms),
+            Phase::Processing { session, since_ms } => {
+                self.handle_processing(session, since_ms, input, now_ms)
+            }
+        }
+    }
 
-            // ---- listening ---------------------------------------------
-            (
-                Phase::Listening {
-                    mode: Mode::Ptt,
-                    session,
-                    since_ms,
-                    warned,
-                },
-                Input::Hotkey(HandsFreeToggle),
-            ) => {
-                self.phase = Phase::Listening {
-                    mode: Mode::Locked,
-                    session,
-                    since_ms,
-                    warned,
-                };
-                vec![
-                    Effect::Sound(Sound::Lock),
-                    Effect::Overlay(OverlayState::ActiveLocked),
-                ]
+    fn handle_resting(&mut self, input: Input, now_ms: u64) -> Vec<Effect> {
+        let p = self.policy;
+        match (&self.phase, input) {
+            (_, Input::Hotkey(HotkeyAction::PttDown)) => self.begin(Mode::Ptt, now_ms),
+            (_, Input::Hotkey(HotkeyAction::HandsFreeToggle)) => self.begin(Mode::Locked, now_ms),
+            (Phase::Pasted { since_ms }, Input::Tick)
+                if now_ms.saturating_sub(*since_ms) >= p.pasted_linger_ms =>
+            {
+                self.phase = Phase::Idle;
+                Vec::new()
             }
-            (
-                Phase::Listening {
-                    mode: Mode::Ptt,
-                    session,
-                    since_ms,
-                    ..
-                },
-                Input::Hotkey(PttUp),
-            ) => {
-                if now_ms.saturating_sub(since_ms) < self.policy.min_ptt_ms {
-                    self.cancel_listening(session)
-                } else {
-                    self.stop(session)
-                }
+            (Phase::Error { since_ms }, Input::Tick)
+                if now_ms.saturating_sub(*since_ms) >= p.error_linger_ms =>
+            {
+                self.phase = Phase::Idle;
+                vec![Effect::Overlay(OverlayState::Resting)]
             }
-            (
-                Phase::Listening {
-                    mode: Mode::Ptt,
-                    session,
-                    ..
-                },
-                Input::Hotkey(PttAborted),
-            ) => self.cancel_listening(session),
-            (
-                Phase::Listening {
-                    mode: Mode::Locked,
-                    session,
-                    ..
-                },
-                Input::Hotkey(HandsFreeToggle),
-            ) => self.stop(session),
-            (Phase::Listening { session, .. }, Input::Hotkey(Cancel)) => {
-                self.cancel_listening(session)
-            }
-            (
-                Phase::Listening { session, .. },
-                Input::StartFailed {
-                    session: s,
-                    message,
-                },
-            ) if s == session => {
-                let mut fx = self.cancel_listening(session);
+            _ => Vec::new(),
+        }
+    }
+
+    fn handle_listening(&mut self, mut l: Listening, input: Input, now_ms: u64) -> Vec<Effect> {
+        use HotkeyAction::*;
+        let p = self.policy;
+        let elapsed = now_ms.saturating_sub(l.since_ms);
+        match (l.mode, input) {
+            (_, Input::Hotkey(Cancel)) => self.cancel_listening(l.session),
+            (_, Input::StartFailed { session, message }) if session == l.session => {
+                let mut fx = self.cancel_listening(l.session);
                 fx.pop(); // replace the "resting" overlay with the error
                 fx.extend(self.fail(message, now_ms));
                 fx
             }
-            (
-                Phase::Listening {
-                    mode,
-                    session,
-                    since_ms,
-                    warned,
-                },
-                Input::Tick,
-            ) => {
-                let elapsed = now_ms.saturating_sub(since_ms);
-                if elapsed >= self.policy.max_ms {
-                    self.stop(session)
-                } else if elapsed >= self.policy.warn_ms && !warned {
-                    self.phase = Phase::Listening {
-                        mode,
-                        session,
-                        since_ms,
-                        warned: true,
-                    };
+
+            // ---- push-to-talk ----
+            (Mode::Ptt, Input::Hotkey(PttDown)) if l.early_release => {
+                if elapsed < p.debounce_ms {
+                    self.lock(l, now_ms)
+                } else {
+                    self.cancel_listening(l.session)
+                }
+            }
+            (Mode::Ptt, Input::Hotkey(PttUp)) if !l.early_release => {
+                if elapsed < p.debounce_ms {
+                    l.early_release = true;
+                    self.phase = Phase::Listening(l);
+                    Vec::new()
+                } else {
+                    self.stop(l.session, now_ms)
+                }
+            }
+            (Mode::Ptt, Input::Hotkey(PttAborted)) => self.cancel_listening(l.session),
+            (Mode::Ptt, Input::Hotkey(HandsFreeToggle)) => self.lock(l, now_ms),
+
+            // ---- locked (hands-free) ----
+            (Mode::Locked, Input::Hotkey(PttDown)) => {
+                let since_lock = now_ms.saturating_sub(l.locked_at.unwrap_or(l.since_ms));
+                if since_lock < p.debounce_ms {
+                    self.cancel_listening(l.session) // triple press
+                } else {
+                    self.stop(l.session, now_ms)
+                }
+            }
+            (Mode::Locked, Input::Hotkey(HandsFreeToggle)) => {
+                if elapsed < p.debounce_ms {
+                    self.cancel_listening(l.session) // quick double
+                } else {
+                    self.stop(l.session, now_ms)
+                }
+            }
+
+            // ---- clock ----
+            (_, Input::Tick) => {
+                if l.early_release && elapsed >= p.debounce_ms {
+                    self.cancel_listening(l.session)
+                } else if elapsed >= p.max_ms {
+                    self.stop(l.session, now_ms)
+                } else if elapsed >= p.warn_ms && !l.warned {
+                    l.warned = true;
+                    self.phase = Phase::Listening(l);
                     vec![Effect::MaxDurationWarning {
-                        remaining_ms: self.policy.max_ms - elapsed,
+                        remaining_ms: p.max_ms - elapsed,
                     }]
                 } else {
                     Vec::new()
                 }
             }
+            _ => Vec::new(),
+        }
+    }
 
-            // ---- processing --------------------------------------------
-            (Phase::Processing { session }, Input::Hotkey(Cancel)) => {
+    fn handle_processing(
+        &mut self,
+        session: SessionId,
+        since_ms: u64,
+        input: Input,
+        now_ms: u64,
+    ) -> Vec<Effect> {
+        match input {
+            Input::Hotkey(HotkeyAction::Cancel) => {
                 self.phase = Phase::Idle;
                 vec![
                     Effect::CancelSession(session),
                     Effect::Overlay(OverlayState::Resting),
                 ]
             }
-            (
-                Phase::Processing { session },
-                Input::Committed {
-                    session: s,
-                    outcome,
-                },
-            ) if s == session => match outcome {
+            Input::Committed {
+                session: s,
+                outcome,
+            } if s == session => match outcome {
                 CommitOutcome::Text(text) => vec![Effect::Paste { session, text }],
                 CommitOutcome::Empty => {
                     self.phase = Phase::Idle;
@@ -297,35 +305,22 @@ impl Dictation {
                 }
                 CommitOutcome::Failed(message) => self.fail(message, now_ms),
             },
-            (Phase::Processing { session }, Input::PasteFinished { session: s, result })
-                if s == session =>
-            {
-                match result {
-                    Ok(()) => {
-                        self.phase = Phase::Pasted { since_ms: now_ms };
-                        vec![
-                            Effect::Sound(Sound::Paste),
-                            Effect::Overlay(OverlayState::Resting),
-                        ]
-                    }
-                    Err(message) => self.fail(message, now_ms),
+            Input::PasteFinished { session: s, result } if s == session => match result {
+                // No success pill: back to rest, the paste sound is the feedback.
+                Ok(()) => {
+                    self.phase = Phase::Pasted { since_ms: now_ms };
+                    vec![
+                        Effect::Sound(Sound::Paste),
+                        Effect::Overlay(OverlayState::Resting),
+                    ]
                 }
+                Err(message) => self.fail(message, now_ms),
+            },
+            Input::Tick if now_ms.saturating_sub(since_ms) >= self.policy.processing_timeout_ms => {
+                let mut fx = vec![Effect::CancelSession(session)];
+                fx.extend(self.fail("Transcription timed out".into(), now_ms));
+                fx
             }
-
-            // ---- linger ------------------------------------------------
-            (Phase::Pasted { since_ms }, Input::Tick)
-                if now_ms.saturating_sub(since_ms) >= self.policy.pasted_linger_ms =>
-            {
-                self.phase = Phase::Idle;
-                Vec::new()
-            }
-            (Phase::Error { since_ms }, Input::Tick)
-                if now_ms.saturating_sub(since_ms) >= self.policy.error_linger_ms =>
-            {
-                self.phase = Phase::Idle;
-                vec![Effect::Overlay(OverlayState::Resting)]
-            }
-
             _ => Vec::new(),
         }
     }
@@ -333,12 +328,14 @@ impl Dictation {
     fn begin(&mut self, mode: Mode, now_ms: u64) -> Vec<Effect> {
         let session = self.next_session;
         self.next_session += 1;
-        self.phase = Phase::Listening {
+        self.phase = Phase::Listening(Listening {
             mode,
             session,
             since_ms: now_ms,
             warned: false,
-        };
+            early_release: false,
+            locked_at: (mode == Mode::Locked).then_some(now_ms),
+        });
         let (sound, overlay) = match mode {
             Mode::Ptt => (Sound::Start, OverlayState::ActivePtt),
             Mode::Locked => (Sound::Lock, OverlayState::ActiveLocked),
@@ -351,8 +348,22 @@ impl Dictation {
         ]
     }
 
-    fn stop(&mut self, session: SessionId) -> Vec<Effect> {
-        self.phase = Phase::Processing { session };
+    fn lock(&mut self, mut l: Listening, now_ms: u64) -> Vec<Effect> {
+        l.mode = Mode::Locked;
+        l.early_release = false;
+        l.locked_at = Some(now_ms);
+        self.phase = Phase::Listening(l);
+        vec![
+            Effect::Sound(Sound::Lock),
+            Effect::Overlay(OverlayState::ActiveLocked),
+        ]
+    }
+
+    fn stop(&mut self, session: SessionId, now_ms: u64) -> Vec<Effect> {
+        self.phase = Phase::Processing {
+            session,
+            since_ms: now_ms,
+        };
         vec![
             Effect::EndCapture,
             Effect::Unduck,
@@ -403,6 +414,36 @@ mod tests {
             .expect("BeginSession")
     }
 
+    fn listening(d: &Dictation) -> &Listening {
+        match d.phase() {
+            Phase::Listening(l) => l,
+            other => panic!("not listening: {other:?}"),
+        }
+    }
+
+    fn cancel_fx(s: SessionId) -> Vec<Effect> {
+        vec![
+            Effect::EndCapture,
+            Effect::Unduck,
+            Effect::CancelSession(s),
+            Effect::Overlay(OverlayState::Resting),
+        ]
+    }
+
+    fn lock_fx() -> Vec<Effect> {
+        vec![
+            Effect::Sound(Sound::Lock),
+            Effect::Overlay(OverlayState::ActiveLocked),
+        ]
+    }
+
+    fn processing(d: &Dictation) -> SessionId {
+        match d.phase() {
+            Phase::Processing { session, .. } => *session,
+            other => panic!("not processing: {other:?}"),
+        }
+    }
+
     #[test]
     fn ptt_down_starts_listening_with_sound_before_duck() {
         let mut d = d();
@@ -417,21 +458,15 @@ mod tests {
                 Effect::Overlay(OverlayState::ActivePtt),
             ]
         );
-        assert!(matches!(
-            d.phase(),
-            Phase::Listening {
-                mode: Mode::Ptt,
-                ..
-            }
-        ));
+        assert_eq!(listening(&d).mode, Mode::Ptt);
         assert!(d.is_active());
     }
 
     #[test]
-    fn ptt_up_commits() {
+    fn ptt_hold_past_debounce_then_release_commits() {
         let mut d = d();
         let s = session_of(&hk(&mut d, PttDown, 0));
-        let fx = hk(&mut d, PttUp, 2000);
+        let fx = hk(&mut d, PttUp, 500);
         assert_eq!(
             fx,
             vec![
@@ -442,28 +477,135 @@ mod tests {
                 Effect::Overlay(OverlayState::Processing),
             ]
         );
-        assert_eq!(d.phase(), &Phase::Processing { session: s });
+        assert_eq!(
+            d.phase(),
+            &Phase::Processing {
+                session: s,
+                since_ms: 500
+            }
+        );
     }
 
     #[test]
-    fn short_ptt_tap_is_discarded() {
+    fn short_tap_waits_out_debounce_then_dismisses() {
         let mut d = d();
         let s = session_of(&hk(&mut d, PttDown, 1000));
-        let fx = hk(&mut d, PttUp, 1100);
-        assert_eq!(
-            fx,
-            vec![
-                Effect::EndCapture,
-                Effect::Unduck,
-                Effect::CancelSession(s),
-                Effect::Overlay(OverlayState::Resting),
-            ]
+        assert!(
+            hk(&mut d, PttUp, 1100).is_empty(),
+            "keeps listening for a 2nd tap"
         );
+        assert!(listening(&d).early_release);
+        assert!(d.handle(Input::Tick, 1499).is_empty());
+        assert_eq!(d.handle(Input::Tick, 1500), cancel_fx(s));
         assert_eq!(d.phase(), &Phase::Idle);
     }
 
     #[test]
-    fn commit_text_pastes_then_pasted_then_idle_after_linger() {
+    fn double_tap_locks_same_session() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        hk(&mut d, PttUp, 100);
+        assert_eq!(hk(&mut d, PttDown, 300), lock_fx());
+        let l = listening(&d);
+        assert_eq!(
+            (l.mode, l.session, l.locked_at),
+            (Mode::Locked, s, Some(300))
+        );
+        assert!(
+            hk(&mut d, PttUp, 350).is_empty(),
+            "release ignored when locked"
+        );
+        assert!(
+            d.handle(Input::Tick, 2000).is_empty(),
+            "no dismiss once locked"
+        );
+    }
+
+    #[test]
+    fn triple_press_dismisses() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        hk(&mut d, PttUp, 100);
+        hk(&mut d, PttDown, 300);
+        hk(&mut d, PttUp, 350);
+        assert_eq!(hk(&mut d, PttDown, 700), cancel_fx(s));
+    }
+
+    #[test]
+    fn locked_ptt_press_after_debounce_commits() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        hk(&mut d, PttUp, 100);
+        hk(&mut d, PttDown, 300);
+        let fx = hk(&mut d, PttDown, 5000);
+        assert!(fx.contains(&Effect::Commit(s)));
+    }
+
+    #[test]
+    fn late_second_tap_after_debounce_dismisses() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        hk(&mut d, PttUp, 100);
+        assert_eq!(
+            hk(&mut d, PttDown, 600),
+            cancel_fx(s),
+            "no tick arrived yet"
+        );
+    }
+
+    #[test]
+    fn hands_free_chord_on_top_of_ptt_locks() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        assert_eq!(hk(&mut d, HandsFreeToggle, 40), lock_fx());
+        assert_eq!(listening(&d).session, s);
+        assert!(hk(&mut d, PttUp, 200).is_empty());
+        // Stopping with the same chord: Ctrl+Win (PttDown) arrives first.
+        let fx = hk(&mut d, PttDown, 4000);
+        assert!(fx.contains(&Effect::Commit(s)));
+        assert!(
+            hk(&mut d, HandsFreeToggle, 4010).is_empty(),
+            "ignored while processing"
+        );
+    }
+
+    #[test]
+    fn hands_free_from_idle() {
+        let mut d = d();
+        let fx = hk(&mut d, HandsFreeToggle, 0);
+        let s = session_of(&fx);
+        assert_eq!(fx[0], Effect::Sound(Sound::Lock));
+        assert_eq!(fx[1], Effect::Duck);
+        assert_eq!(fx[3], Effect::Overlay(OverlayState::ActiveLocked));
+        assert!(hk(&mut d, PttAborted, 70).is_empty());
+        let fx = hk(&mut d, HandsFreeToggle, 3000);
+        assert!(fx.contains(&Effect::Commit(s)));
+    }
+
+    #[test]
+    fn hands_free_quick_double_dismisses() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, HandsFreeToggle, 0));
+        assert_eq!(hk(&mut d, HandsFreeToggle, 300), cancel_fx(s));
+    }
+
+    #[test]
+    fn cancel_while_listening() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, HandsFreeToggle, 0));
+        assert_eq!(hk(&mut d, Cancel, 5000), cancel_fx(s));
+        assert_eq!(d.phase(), &Phase::Idle);
+    }
+
+    #[test]
+    fn ptt_aborted_cancels() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        assert_eq!(hk(&mut d, PttAborted, 3000), cancel_fx(s));
+    }
+
+    #[test]
+    fn commit_text_pastes_then_rests_without_success_state() {
         let mut d = d();
         let s = session_of(&hk(&mut d, PttDown, 0));
         hk(&mut d, PttUp, 1000);
@@ -496,10 +638,8 @@ mod tests {
                 Effect::Overlay(OverlayState::Resting)
             ]
         );
-        assert_eq!(d.phase(), &Phase::Pasted { since_ms: 1700 });
         assert!(!d.is_active());
-        assert!(d.handle(Input::Tick, 2000).is_empty());
-        d.handle(Input::Tick, 2600);
+        d.handle(Input::Tick, 1700);
         assert_eq!(d.phase(), &Phase::Idle);
     }
 
@@ -520,7 +660,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_commit_shows_error_then_idle() {
+    fn failed_commit_shows_error_for_500ms() {
         let mut d = d();
         let s = session_of(&hk(&mut d, PttDown, 0));
         hk(&mut d, PttUp, 1000);
@@ -540,8 +680,11 @@ mod tests {
                 })
             ]
         );
-        assert_eq!(d.phase(), &Phase::Error { since_ms: 1200 });
-        d.handle(Input::Tick, 1200 + 2500);
+        assert!(d.handle(Input::Tick, 1699).is_empty());
+        assert_eq!(
+            d.handle(Input::Tick, 1700),
+            vec![Effect::Overlay(OverlayState::Resting)]
+        );
         assert_eq!(d.phase(), &Phase::Idle);
     }
 
@@ -569,66 +712,14 @@ mod tests {
     }
 
     #[test]
-    fn ptt_then_space_locks_without_new_session() {
+    fn processing_times_out_after_35s() {
         let mut d = d();
         let s = session_of(&hk(&mut d, PttDown, 0));
-        let fx = hk(&mut d, HandsFreeToggle, 100);
-        assert_eq!(
-            fx,
-            vec![
-                Effect::Sound(Sound::Lock),
-                Effect::Overlay(OverlayState::ActiveLocked)
-            ]
-        );
-        assert!(matches!(
-            d.phase(),
-            Phase::Listening { mode: Mode::Locked, session, since_ms: 0, .. } if *session == s
-        ));
-    }
-
-    #[test]
-    fn hands_free_from_idle_and_second_toggle_commits() {
-        let mut d = d();
-        let fx = hk(&mut d, HandsFreeToggle, 0);
-        let s = session_of(&fx);
-        assert_eq!(fx[0], Effect::Sound(Sound::Lock));
-        assert_eq!(fx[1], Effect::Duck);
-        assert_eq!(fx[3], Effect::Overlay(OverlayState::ActiveLocked));
-        // PTT chord edges are ignored while locked.
-        assert!(hk(&mut d, PttDown, 50).is_empty());
-        assert!(hk(&mut d, PttUp, 60).is_empty());
-        assert!(hk(&mut d, PttAborted, 70).is_empty());
-        let fx = hk(&mut d, HandsFreeToggle, 100);
-        assert!(
-            fx.contains(&Effect::Commit(s)),
-            "no min-duration for locked"
-        );
-    }
-
-    #[test]
-    fn cancel_while_listening() {
-        let mut d = d();
-        let s = session_of(&hk(&mut d, HandsFreeToggle, 0));
-        let fx = hk(&mut d, Cancel, 5000);
-        assert_eq!(
-            fx,
-            vec![
-                Effect::EndCapture,
-                Effect::Unduck,
-                Effect::CancelSession(s),
-                Effect::Overlay(OverlayState::Resting),
-            ]
-        );
-        assert_eq!(d.phase(), &Phase::Idle);
-    }
-
-    #[test]
-    fn ptt_aborted_cancels() {
-        let mut d = d();
-        let s = session_of(&hk(&mut d, PttDown, 0));
-        let fx = hk(&mut d, PttAborted, 3000);
-        assert!(fx.contains(&Effect::CancelSession(s)));
-        assert_eq!(d.phase(), &Phase::Idle);
+        hk(&mut d, PttUp, 1000);
+        assert!(d.handle(Input::Tick, 35_999).is_empty());
+        let fx = d.handle(Input::Tick, 36_000);
+        assert_eq!(fx[0], Effect::CancelSession(s));
+        assert!(matches!(d.phase(), Phase::Error { .. }));
     }
 
     #[test]
@@ -636,9 +727,8 @@ mod tests {
         let mut d = d();
         let s = session_of(&hk(&mut d, PttDown, 0));
         hk(&mut d, PttUp, 1000);
-        let fx = hk(&mut d, Cancel, 1100);
         assert_eq!(
-            fx,
+            hk(&mut d, Cancel, 1100),
             vec![
                 Effect::CancelSession(s),
                 Effect::Overlay(OverlayState::Resting)
@@ -671,7 +761,7 @@ mod tests {
             3100,
         );
         assert!(fx.is_empty());
-        assert_eq!(d.phase(), &Phase::Processing { session: s2 });
+        assert_eq!(processing(&d), s2);
     }
 
     #[test]
@@ -692,7 +782,7 @@ mod tests {
     }
 
     #[test]
-    fn new_dictation_can_start_during_pasted_or_error_linger() {
+    fn new_dictation_can_start_during_error_linger() {
         let mut d = d();
         let s = session_of(&hk(&mut d, PttDown, 0));
         hk(&mut d, PttUp, 1000);
@@ -725,7 +815,7 @@ mod tests {
         );
         let fx = d.handle(Input::Tick, p.max_ms);
         assert!(fx.contains(&Effect::Commit(s)), "hard stop keeps the audio");
-        assert_eq!(d.phase(), &Phase::Processing { session: s });
+        assert_eq!(processing(&d), s);
     }
 
     #[test]
@@ -752,7 +842,6 @@ mod tests {
             ]
         );
         assert_eq!(d.phase(), &Phase::Error { since_ms: 10 });
-        // A later PttUp for the dead session does nothing.
         assert!(hk(&mut d, PttUp, 500).is_empty());
     }
 
@@ -770,11 +859,17 @@ mod tests {
             30,
         );
         assert!(fx.is_empty());
-        assert!(matches!(d.phase(), Phase::Listening { session, .. } if *session == s2));
+        assert_eq!(listening(&d).session, s2);
     }
 
     #[test]
-    fn max_samples_is_20_min_at_16k() {
-        assert_eq!(Policy::default().max_samples(), 20 * 60 * 16_000);
+    fn policy_matches_wispr_timings() {
+        let p = Policy::default();
+        assert_eq!(p.max_ms, 1_200_000);
+        assert_eq!(p.warn_ms, 1_140_000);
+        assert_eq!(p.debounce_ms, 500);
+        assert_eq!(p.processing_timeout_ms, 35_000);
+        assert_eq!(p.error_linger_ms, 500);
+        assert_eq!(p.max_samples(), 20 * 60 * 16_000);
     }
 }
