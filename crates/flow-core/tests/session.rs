@@ -458,3 +458,27 @@ fn commit_preempts_in_flight_partial() {
     assert!(r.timings.total_ms < 1300, "{:?}", r.timings);
     assert_eq!(r.status, CommitStatus::RawTranscript);
 }
+
+#[test]
+fn whole_utterance_snippet_skips_llm() {
+    let asr = Arc::new(MockAsr::new("My email."));
+    let core = FlowCore::from_engines(
+        asr,
+        Some(Arc::new(FixedCleaner(
+            "Totally different words here",
+            Duration::ZERO,
+        ))),
+    );
+    core.start_session(SessionConfig {
+        dictionary: Dictionary {
+            entries: vec![DictEntry::snippet("my email", "me@example.com")],
+        },
+        ..Default::default()
+    })
+    .unwrap();
+    push_all(&core, &speech(300));
+    let r = core.commit();
+    assert_eq!(r.final_text, "me@example.com");
+    assert_eq!(r.status, CommitStatus::RawTranscript);
+    assert_eq!(r.fallback_reason, None, "LLM must not even run: {r:?}");
+}

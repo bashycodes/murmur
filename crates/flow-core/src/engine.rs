@@ -415,7 +415,13 @@ impl Worker {
         ctx.app_category = postprocess::effective_category(s.cfg.platform, &ctx);
         let mut text = r.asr_text.clone();
         r.status = CommitStatus::RawTranscript;
-        if let (true, Some(cl)) = (cleanup::should_run(&s.cfg, ctx.app_category), &self.cleaner) {
+        // A whole-utterance snippet trigger is pasted as its expansion; the
+        // LLM must not see (or reword) it (03 §7.1).
+        let snippet = postprocess::DictMatcher::new(&s.cfg.dictionary.entries, &[])
+            .whole_snippet(&r.asr_text)
+            .is_some();
+        let run_llm = cleanup::should_run(&s.cfg, ctx.app_category) && !snippet;
+        if let (true, Some(cl)) = (run_llm, &self.cleaner) {
             let style = s.cfg.styles.for_category(ctx.app_category);
             let prompt =
                 cleanup::build_prompt(&text, s.cfg.cleanup_level, style, &ctx, &s.cfg.dictionary);
