@@ -15,6 +15,7 @@ pub mod vk {
     pub const LWIN: u16 = 0x5B;
     pub const RWIN: u16 = 0x5C;
     pub const RETURN: u16 = 0x0D;
+    pub const TAB: u16 = 0x09;
     pub const INSERT: u16 = 0x2D;
     pub const V: u16 = 0x56;
     /// Masking key for lone Win/Alt releases (Wispr uses VK_LCONTROL, not 0xFF).

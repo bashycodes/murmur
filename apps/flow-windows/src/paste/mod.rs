@@ -122,6 +122,52 @@ pub fn unicode_text_bytes(text: &str) -> Vec<u8> {
         .collect()
 }
 
+/// Paste-layer markers flow-core emits for Cursor/Windsurf "@file"
+/// tagging (`postprocess::cursor_tag`): `{{BREAK}}` = split the insertion
+/// (let the mention popup open), `{{TAB}}` = press Tab (accept it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Segment<'a> {
+    Text(&'a str),
+    Tab,
+    Break,
+}
+
+pub const BREAK_MARKER: &str = "{{BREAK}}";
+pub const TAB_MARKER: &str = "{{TAB}}";
+/// Pause at a `{{BREAK}}` so the target app reacts to the `@` first.
+pub const BREAK_PAUSE_MS: u64 = 150;
+
+pub fn segments(text: &str) -> Vec<Segment<'_>> {
+    let mut out = Vec::new();
+    let mut rest = text;
+    while !rest.is_empty() {
+        let b = rest.find(BREAK_MARKER);
+        let t = rest.find(TAB_MARKER);
+        let (at, seg, len) = match (b, t) {
+            (Some(b), Some(t)) if t < b => (t, Segment::Tab, TAB_MARKER.len()),
+            (Some(b), _) => (b, Segment::Break, BREAK_MARKER.len()),
+            (None, Some(t)) => (t, Segment::Tab, TAB_MARKER.len()),
+            (None, None) => {
+                out.push(Segment::Text(rest));
+                break;
+            }
+        };
+        if at > 0 {
+            out.push(Segment::Text(&rest[..at]));
+        }
+        out.push(seg);
+        rest = &rest[at + len..];
+    }
+    out
+}
+
+/// Plain text (the common case) goes through the normal clipboard paste;
+/// marker-carrying text is typed segment by segment (no clipboard, so the
+/// user's clipboard needs no multi-step restore).
+pub fn has_markers(text: &str) -> bool {
+    text.contains(BREAK_MARKER) || text.contains(TAB_MARKER)
+}
+
 /// Mandatory integrity RIDs (`SECURITY_MANDATORY_*_RID`).
 pub mod rid {
     pub const LOW: u32 = 0x1000;
@@ -145,6 +191,20 @@ pub const ELEVATED_TARGET_MSG: &str = "The app you're dictating into runs as adm
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn segments_split_cursor_markers() {
+        use Segment::*;
+        assert_eq!(segments("plain text"), vec![Text("plain text")]);
+        assert!(!has_markers("plain text"));
+        assert_eq!(
+            segments("open @{{BREAK}}main.rs{{TAB}} now"),
+            vec![Text("open @"), Break, Text("main.rs"), Tab, Text(" now")]
+        );
+        assert_eq!(segments("{{TAB}}{{BREAK}}"), vec![Tab, Break]);
+        assert_eq!(segments(""), Vec::<Segment>::new());
+        assert!(has_markers("a{{TAB}}"));
+    }
 
     #[test]
     fn uipi_blocks_only_higher_integrity_targets() {

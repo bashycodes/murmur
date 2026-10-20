@@ -7,8 +7,8 @@
 
 use super::{
     fallback_after_clipboard_failure, initial_strategy, integrity, is_restorable_format,
-    restore_delay_ms, should_restore, uipi_blocks, unicode_text_bytes, PasteOptions, Strategy,
-    ELEVATED_TARGET_MSG,
+    restore_delay_ms, segments, should_restore, uipi_blocks, unicode_text_bytes, PasteOptions,
+    Segment, Strategy, BREAK_PAUSE_MS, ELEVATED_TARGET_MSG,
 };
 use crate::input::{self, Stroke};
 use std::time::Duration;
@@ -169,6 +169,19 @@ fn type_text(text: &str) -> Result<(), String> {
     send_all(&s)
 }
 
+/// Cursor/Windsurf "@file" output: type text, Tab to accept the mention,
+/// pause at breaks so the popup opens first.
+fn type_segments(text: &str) -> Result<(), String> {
+    for seg in segments(text) {
+        match seg {
+            Segment::Text(t) => type_text(t)?,
+            Segment::Tab => send_all(&[Stroke::down(input::vk::TAB), Stroke::up(input::vk::TAB)])?,
+            Segment::Break => std::thread::sleep(Duration::from_millis(BREAK_PAUSE_MS)),
+        }
+    }
+    Ok(())
+}
+
 /// `[downs]` → hold 50 ms → `[ups]`; a short up batch is retried once so a
 /// modifier is never left stuck down (Wispr 0x1403231ca).
 fn send_chord(shift_insert: bool) -> Result<(), String> {
@@ -191,6 +204,9 @@ pub fn paste(text: &str, opts: &PasteOptions) -> Result<(), String> {
             unsafe { set_text_excluded_from_history(text) };
         }
         return Err(ELEVATED_TARGET_MSG.into());
+    }
+    if super::has_markers(text) {
+        return type_segments(text);
     }
     let shift_insert = match initial_strategy(opts.method) {
         Strategy::Type => return type_text(text),
