@@ -36,6 +36,15 @@ dependencies {
     testImplementation("org.json:json:20240303")
 }
 
+// tools/probes/jni_stub/run.sh: link-test NativeFlowCore against a host stub .so.
+val jniStubDir = providers.gradleProperty("flow.jniStubDir").orNull
+tasks.withType<Test>().configureEach {
+    if (jniStubDir != null) {
+        systemProperty("java.library.path", jniStubDir)
+        systemProperty("flow.jniStub", "1")
+    }
+}
+
 // ---- Privacy gate: the APK must never be able to reach the network. ----
 // Reads each variant's MERGED manifest (so permissions added by any dependency count)
 // and fails the build if a network permission survives. assemble*/test*UnitTest/check

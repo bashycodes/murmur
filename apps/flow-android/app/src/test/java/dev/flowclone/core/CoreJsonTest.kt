@@ -119,6 +119,7 @@ class FakeFlowCoreTest {
 
 class NativeFlowCoreTest {
     @Test fun missingLibraryIsReportedNotThrown() {
+        org.junit.Assume.assumeTrue(System.getProperty("flow.jniStub") == null)
         val r = NativeFlowCore.loadLibrary()
         assertTrue(r is NativeFlowCore.LibraryState.Unavailable)
         assertTrue((r as NativeFlowCore.LibraryState.Unavailable).message.contains("flow_ffi"))
