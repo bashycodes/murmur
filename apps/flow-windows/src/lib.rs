@@ -5,5 +5,6 @@
 //! plain modules and is unit-tested on any host. Win32 code sits behind
 //! `#[cfg(windows)]` in `win` submodules.
 
+pub mod dictation;
 pub mod hotkeys;
 pub mod input;
