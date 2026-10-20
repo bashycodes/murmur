@@ -110,7 +110,7 @@ D4 makes Parakeet-TDT-0.6B-v2 int8 the English default on desktops with ≥ 4 GB
   * WER/RTF spot check on the 40-clip extended set: WER **1.2%** (11/955), the same errors as the bench, with greedy RTF 0.16. Core 13-clip set: WER 0.6%, RTF 0.10-0.12 greedy and 0.14-0.20 beam 4. On a quiet box, beam 4 costs about +20-40% over greedy, though the noise is as large as the effect.
   * jfk.wav (11 s) through `flow-cli --engine parakeet`: ASR 0.9-1.6 s.
   * **Preload / cold start:** `load_models` takes 2.9-4.0 s with the model in the page cache and 10.3-11.2 s cold (page cache evicted, HDD). Beam vs greedy makes no difference to load time. The bench saw 12-47 s cold under heavier load. RSS is about 880 MB. Shells must therefore load at app start or on the first hotkey press, never per dictation, and keep the core resident.
-* **Android arm64:** see "Android: Parakeet" below.
+* **Android arm64:** built, see "Android: Parakeet" below.
 * **flow-core lines touched** (all additive, for the merge with `core-p1`):
   * `crates/flow-core/Cargo.toml`: the `parakeet` feature, the optional `flow-asr-sherpa` dependency, and the `[[test]] parakeet_e2e` entry.
   * `src/lib.rs`: `#[cfg(feature = "parakeet")] pub mod parakeet;` after `pub mod llama;`.
@@ -118,6 +118,27 @@ D4 makes Parakeet-TDT-0.6B-v2 int8 the English default on desktops with ≥ 4 GB
   * `src/engine.rs` `load_models`: two match arms, `#[cfg(feature = "parakeet")] AsrBackend::Parakeet` and its `not(feature)` error twin, inserted after the `not(feature = "whisper")` arm. core-p1 rewrote the `Whisper` arm just above, so expect a trivial textual conflict there.
   * New files: `src/parakeet.rs`, `tests/parakeet_e2e.rs`. `AsrRequest` and `AsrOutput` are unchanged; the adapter builds `AsrOutput` with `..Default::default()`, so core-p1's `no_speech_prob` field merges cleanly.
   * Outside flow-core: the workspace `members`, `flow-ffi`/`flow-cli` `parakeet` features, `flow-cli --engine`, `flow-cli/build.rs`, and `tools/fetch-models.sh --parakeet`.
+
+### Android: Parakeet (arm64-v8a)
+**Feasible, and built; not yet run on a device.** `tools/build-android-parakeet.sh` (NDK 27.2.12479018, cargo-ndk, API 33) cross-builds `libflow_ffi.so` with `jni,whisper,parakeet` into `target/android-parakeet/jniLibs/arm64-v8a/`. It links against the official prebuilt `sherpa-onnx-v1.13.8-android.tar.bz2` (`jniLibs/arm64-v8a`; pass it as `SHERPA_ANDROID_LIBS`, otherwise sherpa-onnx-sys downloads it at build time). `apps/` is not touched. `tools/probes/check_parakeet_so.sh` checks the output:
+
+| file | size | notes |
+|---|---|---|
+| `libflow_ffi.so` | 5.4 MB (was 3.9 MB with whisper only) | all 11 JNI contract symbols; NEEDED: `libc++_shared.so`, `libsherpa-onnx-c-api.so`, bionic |
+| `libsherpa-onnx-c-api.so` | 4.5 MB | prebuilt; NEEDED `libonnxruntime.so`, `libandroid`, `liblog`; its libc++ is static |
+| `libonnxruntime.so` | 22.2 MB | prebuilt 1.28 (CPU EP; NNAPI/XNNPACK not enabled) |
+| `libc++_shared.so` | 1.8 MB | already shipped for whisper |
+
+Every LOAD segment of all four is 16 KB aligned: k2-fsa's prebuilts already are, and flow-ffi gets the same `-z max-page-size=16384` flags as `build-native.sh`. The sherpa `libsherpa-onnx-jni.so` / `-cxx-api.so` are not needed, because flow-ffi uses the C API.
+
+APK packaging, for the Android shell owner:
+1. Copy the four .so files into `apps/flow-android/app/src/main/jniLibs/arm64-v8a/`, or point `tools/build-native.sh` at the same features. bionic resolves `libsherpa-onnx-c-api.so` and `libonnxruntime.so` from the app's lib dir when `System.loadLibrary("flow_ffi")` runs; no extra `loadLibrary` calls are needed.
+2. Keep `jniLibs.useLegacyPackaging = false` (stored + 16 KB zip-aligned, as today). The APK grows by about 28 MB uncompressed. If that matters, a "parakeet" product flavor can ship the libs only there; flow-ffi without the feature does not reference them.
+3. The model (661 MB: `encoder.int8.onnx` 652 MB, `decoder` 7 MB, `joiner` 2 MB, `tokens.txt`) is user-imported like the whisper model (D9, SAF) into a directory under `filesDir`. `loadModels` takes `{"asr_engine":"parakeet","asr_path":"<that dir>","threads":4}`.
+4. Before `loadModels`, call `Os.setenv("TMPDIR", cacheDir.path, true)`. The derived `bpe.vocab` for hotwords is written there; otherwise hotwords are silently disabled. Alternatively, write `bpe.vocab` into the model dir at import (`flow_asr_sherpa::bpe_vocab_from_tokens`).
+5. Expect about 0.9 GB RSS (desktop measurement) and several seconds of load. Offer the engine only on phones with ≥ 6-8 GB RAM, preload it in the keep-alive service, and fall back to whisper on load failure. Phone RTF is unmeasured. The bench estimate is ≈ 1-2.5 s for a 10 s dictation on a flagship (`docs/model-benchmarks.md`).
+
+Not yet verified: loading on bionic (first device run), and whether whisper's libc++_shared and sherpa's static libc++ coexist at runtime. They coexist on desktop, and the C API boundary passes no C++ objects.
 
 ### LLM backend (feature `llm`, crate `flow-llm`)
 `load_models` with `llm_path` set loads the GGUF model once and keeps it warm. `unload` (or drop) frees the model and its context. A bad path, a missing plugin or a build without `llm` fails `load_models`.

@@ -59,6 +59,7 @@ Branch `android-int` (merged): Android shell + real core.
    * the mouse/Caps Lock shortcuts.
 3. Android shell. Code is done (`apps/flow-android/`). Remaining:
    a. JNI + arm64 packaging: DONE (see What works). The .so has never been loaded on bionic. The first device run must confirm `Native engine: flow-ffi 0.1.0`.
+   a2. Parakeet on Android: arm64-v8a `libflow_ffi.so` (jni,whisper,parakeet) + sherpa/onnxruntime prebuilts cross-built and 16 KB aligned (`tools/build-android-parakeet.sh`, `tools/probes/check_parakeet_so.sh`); packaging steps in `docs/core-architecture.md` "Android: Parakeet". Not yet in `apps/` and never loaded on a device.
    b. **Device verification (needs the user's phone).** Full checklist: `apps/flow-android/INSTALL.md` §"Device test checklist". In order:
       - grant mic, overlay, a11y and notifications;
       - mock engine: tap and hold dictation into Notes, WhatsApp, Chrome URL bar, a notification reply and a password field (must be hidden);
