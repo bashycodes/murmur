@@ -39,11 +39,20 @@ dependencies {
 }
 
 // tools/probes/jni_stub/run.sh: link-test NativeFlowCore against a host stub .so.
+// tools/probes/host_native/run.sh: load a host build of the real crates/flow-ffi instead.
 val jniStubDir = providers.gradleProperty("flow.jniStubDir").orNull
+val jniLibDir = providers.gradleProperty("flow.jniLibDir").orNull
 tasks.withType<Test>().configureEach {
     if (jniStubDir != null) {
         systemProperty("java.library.path", jniStubDir)
         systemProperty("flow.jniStub", "1")
+    } else if (jniLibDir != null) {
+        systemProperty("java.library.path", jniLibDir)
+        systemProperty("flow.jniReal", "1")
+        for (k in listOf("flow.model", "flow.wav", "flow.threads", "flow.reportDir")) {
+            providers.gradleProperty(k).orNull?.let { systemProperty(k, it) }
+        }
+        testLogging { showStandardStreams = true }
     }
 }
 
