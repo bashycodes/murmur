@@ -15,6 +15,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.media.AudioManager
 import android.media.ToneGenerator
+import android.os.Build
 import android.os.IBinder
 import android.os.PersistableBundle
 import android.os.SystemClock
@@ -139,16 +140,19 @@ class FlowService : Service() {
 
     private fun hasMic() = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
+    /** FGS types: `specialUse` exists from API 34; on 33 the host runs untyped and adds `microphone` when recording. */
     private fun promote(withMic: Boolean): Boolean {
-        val special = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        val special = if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
         val want = if (withMic && hasMic()) special or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else special
+        fun start(type: Int) =
+            if (type == 0) startForeground(NOTIF_ID, serviceNotification()) else startForeground(NOTIF_ID, serviceNotification(), type)
         return try {
-            startForeground(NOTIF_ID, serviceNotification(), want)
+            start(want)
             micPromoted = want and ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE != 0
             true
         } catch (e: Exception) { // ForegroundServiceStartNotAllowedException / SecurityException
             Log.w(TAG, "startForeground($want) refused", e)
-            if (want != special) runCatching { startForeground(NOTIF_ID, serviceNotification(), special) }.isSuccess else false
+            if (want != special) runCatching { start(special) }.isSuccess else false
         }
     }
 
