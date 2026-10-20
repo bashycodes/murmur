@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Spec 07 §2: Wispr's config minus key filtering and gestures (no consumer in Wispr either).
+     typeWindowsChanged = IME window appear/disappear is the trigger; focus is read on demand.
+     flagRetrieveInteractiveWindows makes getWindows() include the IME window.
+     flagInputMethodEditor + onCreateInputMethod() (API 33) give us commitText.
+     flagReportViewIds feeds the dictation-start node identity hash. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/a11y_description"
+    android:summary="@string/a11y_label"
+    android:accessibilityEventTypes="typeWindowsChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="10"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagInputMethodEditor"
+    android:canRetrieveWindowContent="true"
+    android:isAccessibilityTool="true" />
