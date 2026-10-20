@@ -1,0 +1,245 @@
+{
+ "about": "Extended ASR set: first 5-20 s utterance of each LibriSpeech test-clean speaker (CC BY 4.0). Audio fetched by fetch_audio.py --manifest asr_manifest_extended.json.",
+ "utterances": [
+  {
+   "source": "librispeech-test-clean",
+   "id": "6930-75918-0006",
+   "dur_s": 5.85,
+   "ref": "THIS HAS INDEED BEEN A HARASSING DAY CONTINUED THE YOUNG MAN HIS EYES FIXED UPON HIS FRIEND"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "1320-122617-0003",
+   "dur_s": 6.29,
+   "ref": "THERE WAS SOMETHING IN HIS AIR AND MANNER THAT BETRAYED TO THE SCOUT THE UTTER CONFUSION OF THE STATE OF HIS MIND"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "5639-40744-0032",
+   "dur_s": 17.43,
+   "ref": "FOR GOD'S SAKE MY LADY MOTHER GIVE ME A WIFE WHO WOULD BE AN AGREEABLE COMPANION NOT ONE WHO WILL DISGUST ME SO THAT WE MAY BOTH BEAR EVENLY AND WITH MUTUAL GOOD WILL THE YOKE IMPOSED ON US BY HEAVEN INSTEAD OF PULLING THIS WAY AND THAT WAY AND FRETTING EACH OTHER TO DEATH"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "260-123440-0004",
+   "dur_s": 12.02,
+   "ref": "ALICE TOOK UP THE FAN AND GLOVES AND AS THE HALL WAS VERY HOT SHE KEPT FANNING HERSELF ALL THE TIME SHE WENT ON TALKING DEAR DEAR HOW QUEER EVERYTHING IS TO DAY"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "7729-102255-0045",
+   "dur_s": 6.8,
+   "ref": "CAPTAIN MARTIN SAID I SHALL GIVE YOU A PISTOL TO HELP PROTECT YOURSELF IF WORSE COMES TO WORST"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "2094-142345-0059",
+   "dur_s": 10.01,
+   "ref": "THIS MISSUS POYSER SAID BLUSHING AND BELIEVING THAT THE CAPTAIN WAS REALLY INTERESTED IN HER MILK PANS AND WOULD ADJUST HIS OPINION OF HER TO THE APPEARANCE OF HER DAIRY"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "3575-170457-0023",
+   "dur_s": 9.1,
+   "ref": "I CAREFULLY AVOID ANY APPEARANCE OF PREOCCUPATION AND ECCENTRICITY WHICH MIGHT LEAD THOSE I LIVE AMONGST TO SUSPECT THE NATURE OF MY PURSUITS"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "7127-75947-0040",
+   "dur_s": 13.79,
+   "ref": "IN THIS WAY THE FETE OF THE WHOLE COURT WAS A FETE ALSO FOR THE MYSTERIOUS INHABITANTS OF THE FOREST FOR CERTAINLY THE DEER IN THE BRAKE THE PHEASANT ON THE BRANCH THE FOX IN ITS HOLE WERE ALL LISTENING"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "2961-960-0012",
+   "dur_s": 6.89,
+   "ref": "MANY IF NOT ALL THE ELEMENTS OF THE PRE SOCRATIC PHILOSOPHY ARE INCLUDED IN THE TIMAEUS"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "8463-287645-0003",
+   "dur_s": 7.91,
+   "ref": "OF THIS PARTY EDWARD A BOY OF SEVENTEEN CALLED FORTH MUCH SYMPATHY HE TOO WAS CLAIMED BY HOLLAN"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "8230-279154-0015",
+   "dur_s": 8.05,
+   "ref": "THEY MUST HAVE SOME CHARACTERISTIC WHICH MAKES US REGARD THEM AS REFERRING TO MORE OR LESS REMOTE PORTIONS OF THE PAST"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "7176-92135-0018",
+   "dur_s": 8.94,
+   "ref": "IN THE MODERN WELL CONSTRUCTED PLAY HE SIMPLY RINGS UP AN IMAGINARY CONFEDERATE AND TELLS HIM WHAT HE IS GOING TO DO COULD ANYTHING BE MORE NATURAL"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "1995-1836-0008",
+   "dur_s": 6.99,
+   "ref": "I BELIEVE IN THE TRAINING OF PEOPLE TO THEIR HIGHEST CAPACITY THE ENGLISHMAN HERE HEARTILY SECONDED HIM"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "1284-1181-0008",
+   "dur_s": 6.08,
+   "ref": "I THINK THAT WILL DO SHE CONTINUED FOR THE OTHER QUALITIES ARE NOT NEEDED IN A SERVANT"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "5142-36377-0008",
+   "dur_s": 15.43,
+   "ref": "MISTER MEADOWCROFT THE ELDER HAVING NOT SPOKEN ONE WORD THUS FAR HIMSELF INTRODUCED THE NEWCOMER TO ME WITH A SIDE GLANCE AT HIS SONS WHICH HAD SOMETHING LIKE DEFIANCE IN IT A GLANCE WHICH AS I WAS SORRY TO NOTICE WAS RETURNED WITH THE DEFIANCE ON THEIR SIDE BY THE TWO YOUNG MEN"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "8455-210777-0069",
+   "dur_s": 8.91,
+   "ref": "IF YOU WILL GIVE US YOUR PROMISE TO MEET CAPTAIN BATTLEAX HERE AT THIS TIME TO MORROW WE WILL STRETCH A POINT AND DELAY THE DEPARTURE OF THE JOHN BRIGHT FOR TWENTY FOUR HOURS"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "2830-3980-0055",
+   "dur_s": 7.33,
+   "ref": "TO BESTOW PEACE AND GRACE LIES IN THE PROVINCE OF GOD WHO ALONE CAN CREATE THESE BLESSINGS THE ANGELS CANNOT"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "4446-2271-0014",
+   "dur_s": 5.34,
+   "ref": "WESTMERE AND I WERE BACK AFTER THE FIRST ACT AND WE THOUGHT SHE SEEMED QUITE UNCERTAIN OF HERSELF"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "4077-13754-0003",
+   "dur_s": 5.68,
+   "ref": "MOREOVER HAD THE PEOPLE BEEN INCLINED TO REBELLION WHAT GREATER OPPORTUNITY COULD THEY HAVE WISHED"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "1221-135767-0022",
+   "dur_s": 14.39,
+   "ref": "BUT THE PROPRIETOR APPEARED ALREADY TO HAVE RELINQUISHED AS HOPELESS THE EFFORT TO PERPETUATE ON THIS SIDE OF THE ATLANTIC IN A HARD SOIL AND AMID THE CLOSE STRUGGLE FOR SUBSISTENCE THE NATIVE ENGLISH TASTE FOR ORNAMENTAL GARDENING"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "908-157963-0020",
+   "dur_s": 9.8,
+   "ref": "TILL WE ARISE LINK'D IN A GOLDEN BAND AND NEVER PART BUT WALK UNITED BEARING FOOD TO ALL OUR TENDER FLOWERS"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "7021-79759-0005",
+   "dur_s": 13.02,
+   "ref": "THE PAIN PRODUCED BY AN ACT OF HASTY AND ANGRY VIOLENCE TO WHICH A FATHER SUBJECTS HIS SON MAY SOON PASS AWAY BUT THE MEMORY OF IT DOES NOT PASS AWAY WITH THE PAIN"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "8224-274384-0000",
+   "dur_s": 7.61,
+   "ref": "HE PASSED THROUGH HENLEY SAINT ALBANS AND CAME SO NEAR TO LONDON AS HARROW ON THE HILL"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "4507-16021-0025",
+   "dur_s": 9.21,
+   "ref": "TO MEET THE NEEDS OF THIS CONFLICT WRETCHEDNESS HAS INVENTED A LANGUAGE OF COMBAT WHICH IS SLANG"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "672-122797-0038",
+   "dur_s": 8.8,
+   "ref": "THOUGHT THE FIR TREE AND BELIEVED IT ALL BECAUSE THE MAN WHO TOLD THE STORY WAS SO GOOD LOOKING WELL WELL"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "5105-28241-0012",
+   "dur_s": 6.78,
+   "ref": "IS IT NOT IMPOSSIBLE HE MURMURED ALOUD THAT ANY CITY SHOULD DISAPPEAR SO COMPLETELY"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "3729-6852-0036",
+   "dur_s": 5.24,
+   "ref": "WHEN THE KING COMES TO PARIS EVERYBODY CALLS OUT VIVE LE ROI"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "1089-134691-0016",
+   "dur_s": 9.06,
+   "ref": "THEY WERE VOYAGING ACROSS THE DESERTS OF THE SKY A HOST OF NOMADS ON THE MARCH VOYAGING HIGH OVER IRELAND WESTWARD BOUND"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "1188-133604-0019",
+   "dur_s": 13.93,
+   "ref": "THE LARGE LETTER CONTAINS INDEED ENTIRELY FEEBLE AND ILL DRAWN FIGURES THAT IS MERELY CHILDISH AND FAILING WORK OF AN INFERIOR HAND IT IS NOT CHARACTERISTIC OF GOTHIC OR ANY OTHER SCHOOL"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "2300-131720-0037",
+   "dur_s": 7.96,
+   "ref": "HE WEIGHED AND REWEIGHED THE METER PLATES AND PURSUED EVERY LINE OF INVESTIGATION IMAGINABLE BUT ALL IN VAIN"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "6829-68769-0034",
+   "dur_s": 6.05,
+   "ref": "I'M GOING TO SEE MISTER MARSHALL SAID KENNETH AND DISCOVER WHAT I CAN DO TO ASSIST YOU THANK YOU SIR"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "1580-141083-0010",
+   "dur_s": 5.32,
+   "ref": "I GAVE HIM A LITTLE BRANDY AND LEFT HIM COLLAPSED IN A CHAIR WHILE I MADE A MOST CAREFUL EXAMINATION OF THE ROOM"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "4970-29095-0016",
+   "dur_s": 6.95,
+   "ref": "RUTH SAT QUITE STILL FOR A TIME WITH FACE INTENT AND FLUSHED IT WAS OUT NOW"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "4992-41797-0009",
+   "dur_s": 13.2,
+   "ref": "HENRY LORD WITH THE DEGREE OF PH D TO HIS CREDIT HAD BEEN PROFESSOR OF ZOOLOGY AT A NEW ENGLAND COLLEGE BUT HAD RESIGNED HIS POST IN ORDER TO WRITE A SERIES OF SCIENTIFIC TEXT BOOKS"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "61-70968-0011",
+   "dur_s": 6.38,
+   "ref": "HE GAVE WAY TO THE OTHERS VERY READILY AND RETREATED UNPERCEIVED BY THE SQUIRE AND MISTRESS FITZOOTH TO THE REAR OF THE TENT"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "8555-292519-0005",
+   "dur_s": 9.57,
+   "ref": "WHILE THE OLD GOLD AND THE MARBLE STAYS FOREVER GLEAMING ITS SOFT STRONG BLAZE CALM IN THE EARLY EVENING GLOW"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "237-134500-0000",
+   "dur_s": 6.13,
+   "ref": "FRANK READ ENGLISH SLOWLY AND THE MORE HE READ ABOUT THIS DIVORCE CASE THE ANGRIER HE GREW"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "3570-5694-0021",
+   "dur_s": 10.55,
+   "ref": "WHENEVER AS IN THESE CASES THE MENIAL SERVICE IN QUESTION HAS TO DO DIRECTLY WITH THE PRIMARY LEISURE EMPLOYMENTS OF FIGHTING AND HUNTING IT EASILY ACQUIRES A REFLECTED HONORIFIC CHARACTER"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "5683-32865-0008",
+   "dur_s": 6.12,
+   "ref": "I BELIEVE I HAVE A LITTLE TASTE THAT WAY THOSE ARE ALL REAL YOU KNOW THOSE JEWELS"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "121-121726-0000",
+   "dur_s": 8.46,
+   "ref": "ALSO A POPULAR CONTRIVANCE WHEREBY LOVE MAKING MAY BE SUSPENDED BUT NOT STOPPED DURING THE PICNIC SEASON"
+  }
+ ]
+}
