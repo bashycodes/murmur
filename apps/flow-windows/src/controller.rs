@@ -8,12 +8,15 @@
 
 use crate::audio::LevelMeter;
 use crate::context::{build_field_context, RawSnapshot};
-use crate::core_api::{to_outcome, CoreApi};
-use crate::dictation::{Dictation, Effect, Input, OverlayState, Sound};
+use crate::core_api::{to_outcome, CommitResult, CommitStatus, CoreApi, FieldContext};
+use crate::dictation::{Dictation, Effect, Input, OverlayState, Phase, SessionId, Sound};
+use crate::history::{self, History};
+use crate::hotkeys::HotkeyAction;
 use crate::prefs::Prefs;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 pub type AudioSink = Box<dyn FnMut(&[i16]) + Send + 'static>;
@@ -32,6 +35,28 @@ pub trait Platform: Send + Sync + 'static {
     fn overlay(&self, st: &OverlayState);
     fn level(&self, level: f32);
     fn max_duration_warning(&self, remaining_ms: u64);
+    /// Live partial transcript above the pill (`""` = hide).
+    fn preview(&self, _text: &str) {}
+    /// Spoken "press enter": send Enter after the paste. Worker thread.
+    fn send_enter(&self) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+/// Per-session facts collected for the history row.
+#[derive(Default)]
+struct SessionInfo {
+    context: Option<FieldContext>,
+    samples: Arc<AtomicU64>,
+    result: Option<CommitResult>,
+}
+
+#[derive(Default)]
+struct Shared {
+    sessions: Mutex<HashMap<SessionId, SessionInfo>>,
+    /// Last transcript (pasted or not): "paste last transcript" source when
+    /// history is off/unavailable.
+    last_text: Mutex<Option<String>>,
 }
 
 pub struct Controller {
@@ -42,6 +67,9 @@ pub struct Controller {
     tx: Sender<Input>,
     dictating: Arc<AtomicBool>,
     clock: Box<dyn Fn() -> u64 + Send>,
+    shared: Arc<Shared>,
+    history: Option<Arc<Mutex<History>>>,
+    preview_shown: String,
 }
 
 impl Controller {
@@ -61,7 +89,19 @@ impl Controller {
             tx,
             dictating: Arc::new(AtomicBool::new(false)),
             clock,
+            shared: Arc::default(),
+            history: None,
+            preview_shown: String::new(),
         }
+    }
+
+    /// Record transcripts to the local SQLite history (retention from prefs).
+    pub fn with_history(mut self, h: Arc<Mutex<History>>) -> Self {
+        if let Ok(g) = h.lock() {
+            let _ = g.prune(self.prefs.read().unwrap().retention, history::now_ms());
+        }
+        self.history = Some(h);
+        self
     }
 
     /// Shared with the keyboard hook (swallow Esc only while dictating).
@@ -75,12 +115,107 @@ impl Controller {
 
     pub fn handle(&mut self, input: Input) {
         let now = (self.clock)();
+        match &input {
+            Input::Hotkey(HotkeyAction::PasteLast) => {
+                self.paste_last();
+                return;
+            }
+            Input::PasteFinished { session, result } => self.record(*session, result),
+            _ => {}
+        }
+        let tick = input == Input::Tick;
         let effects = self.machine.handle(input, now);
         self.dictating
             .store(self.machine.is_active(), Ordering::Relaxed);
         for e in effects {
             self.execute(e);
         }
+        if tick {
+            self.update_preview();
+        }
+        if !matches!(self.machine.phase(), Phase::Listening(_)) && !self.preview_shown.is_empty() {
+            self.preview_shown.clear();
+            self.platform.preview("");
+        }
+        self.drop_finished_sessions();
+    }
+
+    /// Sessions that are neither listening nor processing are done.
+    fn drop_finished_sessions(&self) {
+        let live = match self.machine.phase() {
+            Phase::Listening(l) => Some(l.session),
+            Phase::Processing { session, .. } => Some(*session),
+            _ => None,
+        };
+        self.shared
+            .sessions
+            .lock()
+            .unwrap()
+            .retain(|id, _| Some(*id) == live);
+    }
+
+    fn update_preview(&mut self) {
+        if !matches!(self.machine.phase(), Phase::Listening(_)) {
+            return;
+        }
+        if !self.prefs.read().unwrap().live_preview {
+            return;
+        }
+        let p = self.core.partial().unwrap_or_default();
+        let p = p.trim();
+        if p != self.preview_shown {
+            self.preview_shown = p.to_string();
+            self.platform.preview(p);
+        }
+    }
+
+    /// Store the history row once the paste outcome is known.
+    fn record(&self, session: SessionId, paste: &Result<(), String>) {
+        let info = self.shared.sessions.lock().unwrap().remove(&session);
+        let Some(info) = info else { return };
+        let Some(r) = info.result else { return };
+        *self.shared.last_text.lock().unwrap() = Some(r.final_text.clone());
+        let Some(h) = &self.history else { return };
+        let ctx = info.context.unwrap_or_default();
+        let entry = history::Entry {
+            ts: history::now_ms(),
+            app: ctx.app_id,
+            url: ctx.url_host,
+            raw: r.asr_text,
+            formatted: (r.status == CommitStatus::Formatted).then(|| r.final_text.clone()),
+            pasted: paste.is_ok().then(|| r.final_text.clone()),
+            edited: None,
+            duration_ms: (info.samples.load(Ordering::Relaxed) / 16) as i64,
+            words: history::word_count(&r.final_text),
+            lang: r.language,
+        };
+        let retention = self.prefs.read().unwrap().retention;
+        if let Err(e) = h.lock().unwrap().record(&entry, retention, entry.ts) {
+            eprintln!("[history] {e}");
+        }
+    }
+
+    /// Re-insert the last transcript; ignored while a dictation is running.
+    fn paste_last(&self) {
+        if self.machine.is_active() {
+            return;
+        }
+        let prefs = self.prefs.read().unwrap().clone();
+        let mut text = self.shared.last_text.lock().unwrap().clone();
+        if let Some(h) = &self.history {
+            if let Ok(Some(e)) = h.lock().unwrap().latest(prefs.retention, history::now_ms()) {
+                text = Some(e.best_text().to_string());
+            }
+        }
+        let Some(text) = text.filter(|t| !t.is_empty()) else {
+            return;
+        };
+        let platform = self.platform.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = platform.paste(&text, &prefs) {
+                platform.overlay(&OverlayState::Error { message: e });
+            }
+        });
     }
 
     /// Event loop: ticks every 100 ms when idle of input.
@@ -117,13 +252,26 @@ impl Controller {
                     let _ = self.tx.send(Input::StartFailed { session, message });
                     return;
                 }
+                let samples = Arc::new(AtomicU64::new(0));
+                self.shared.sessions.lock().unwrap().insert(
+                    session,
+                    SessionInfo {
+                        samples: samples.clone(),
+                        ..SessionInfo::default()
+                    },
+                );
                 if prefs.use_ax_context {
                     // set_context may legitimately arrive after audio started.
                     let platform = self.platform.clone();
                     let core = self.core.clone();
+                    let shared = self.shared.clone();
                     std::thread::spawn(move || {
                         if let Some(raw) = platform.snapshot_context() {
-                            core.set_context(build_field_context(&raw));
+                            let ctx = build_field_context(&raw);
+                            if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
+                                i.context = Some(ctx.clone());
+                            }
+                            core.set_context(ctx);
                         }
                     });
                 }
@@ -131,6 +279,7 @@ impl Controller {
                 let platform = self.platform.clone();
                 let mut meter = LevelMeter::default();
                 let sink: AudioSink = Box::new(move |pcm: &[i16]| {
+                    samples.fetch_add(pcm.len() as u64, Ordering::Relaxed);
                     core.push_audio(pcm);
                     for l in meter.push(pcm) {
                         platform.level(l);
@@ -147,20 +296,33 @@ impl Controller {
             Effect::Commit(session) => {
                 let core = self.core.clone();
                 let tx = self.tx.clone();
+                let shared = self.shared.clone();
                 std::thread::spawn(move || {
                     let r = core.commit();
-                    let _ = tx.send(Input::Committed {
-                        session,
-                        outcome: to_outcome(&r),
-                    });
+                    let outcome = to_outcome(&r);
+                    if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
+                        i.result = Some(r);
+                    }
+                    let _ = tx.send(Input::Committed { session, outcome });
                 });
             }
             Effect::CancelSession(_) => self.core.cancel(),
             Effect::Paste { session, text } => {
+                let press_enter = self
+                    .shared
+                    .sessions
+                    .lock()
+                    .unwrap()
+                    .get(&session)
+                    .and_then(|i| i.result.as_ref())
+                    .is_some_and(|r| r.press_enter);
                 let platform = self.platform.clone();
                 let tx = self.tx.clone();
                 std::thread::spawn(move || {
-                    let result = platform.paste(&text, &prefs);
+                    let mut result = platform.paste(&text, &prefs);
+                    if result.is_ok() && press_enter {
+                        result = platform.send_enter();
+                    }
                     let _ = tx.send(Input::PasteFinished { session, result });
                 });
             }

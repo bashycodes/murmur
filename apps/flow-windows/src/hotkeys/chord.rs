@@ -210,6 +210,8 @@ pub struct Bindings {
     pub hands_free: Chord,
     /// Cancel the current dictation (only swallowed while dictating).
     pub cancel: Chord,
+    /// Re-insert the last transcript (Wispr Windows default Shift+Alt+Z).
+    pub paste_last: Chord,
 }
 
 impl Default for Bindings {
@@ -218,6 +220,7 @@ impl Default for Bindings {
             ptt: Chord::new([Key::Ctrl, Key::Win]),
             hands_free: Chord::new([Key::Ctrl, Key::Win, Key::Space]),
             cancel: Chord::new([Key::Esc]),
+            paste_last: Chord::new([Key::Shift, Key::Alt, Key::Vk(b'Z' as u16)]),
         }
     }
 }
@@ -236,6 +239,8 @@ pub enum HotkeyAction {
     HandsFreeToggle,
     /// Cancel key pressed.
     Cancel,
+    /// Paste-last-transcript chord pressed.
+    PasteLast,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -344,6 +349,12 @@ impl ChordMatcher {
                 if !ev.key.is_modifier() {
                     d.suppress = true;
                 }
+            } else if self.pressed == *self.bindings.paste_last.keys() {
+                d.actions.push(HotkeyAction::PasteLast);
+                self.chord_fired();
+                if !ev.key.is_modifier() {
+                    d.suppress = true;
+                }
             } else if self.is_cancel(ev.key) {
                 d.actions.push(HotkeyAction::Cancel);
                 if dictating {
@@ -411,6 +422,26 @@ mod tests {
         evs.iter()
             .flat_map(|e| m.handle(*e, false).actions)
             .collect()
+    }
+
+    #[test]
+    fn paste_last_chord_fires_and_swallows_the_letter() {
+        let mut m = m();
+        let z = Key::Vk(b'Z' as u16);
+        assert!(m
+            .handle(KeyEvent::down(Key::Shift), false)
+            .actions
+            .is_empty());
+        assert!(m.handle(KeyEvent::down(Key::Alt), false).actions.is_empty());
+        let d = m.handle(KeyEvent::down(z), false);
+        assert_eq!(d.actions, vec![PasteLast]);
+        assert!(d.suppress, "Z must not reach the app");
+        assert!(m.handle(KeyEvent::up(z), false).suppress);
+        let alt_up = m.handle(KeyEvent::up(Key::Alt), false);
+        assert!(
+            alt_up.mask_release,
+            "lone Alt release would focus the menu bar"
+        );
     }
 
     #[test]
@@ -652,7 +683,7 @@ mod tests {
         let j = serde_json::to_string(&Bindings::default()).unwrap();
         assert_eq!(
             j,
-            r#"{"ptt":"Ctrl+Win","hands_free":"Ctrl+Win+Space","cancel":"Esc"}"#
+            r#"{"ptt":"Ctrl+Win","hands_free":"Ctrl+Win+Space","cancel":"Esc","paste_last":"Alt+Shift+Z"}"#
         );
         let b: Bindings = serde_json::from_str(r#"{"ptt":"Ctrl+Shift"}"#).unwrap();
         assert_eq!(b.ptt.to_string(), "Ctrl+Shift");

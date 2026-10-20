@@ -6,10 +6,13 @@ description = "Windows shell (Tauri 2) of the fully-local Wispr Flow clone"
 license = "MIT"
 publish = false
 
-# Standalone workspace root: keeps this crate buildable regardless of whether a
-# repo-root workspace exists yet. When flow-core lands, either add this crate to
-# the root workspace (and delete this table) or keep it standalone with a path dep.
+# Standalone workspace root (Tauri + Win32 deps stay out of the core
+# workspace's lockfile); flow-core comes in as a path dependency.
 [workspace]
+
+# whisper.cpp is unusably slow unoptimised (same as the root workspace).
+[profile.dev.package.whisper-rs-sys]
+opt-level = 3
 
 [lib]
 name = "flow_windows"
@@ -21,7 +24,11 @@ path = "src/main.rs"
 required-features = ["app"]
 
 [features]
-default = []
+default = ["whisper"]
+# Real local ASR (whisper.cpp via flow-core). Separate from `app` because
+# whisper-rs-sys' cmake/C++ build cannot cross-compile to MSVC from Linux:
+# the Linux cross-check runs `--no-default-features --features app`.
+whisper = ["flow-core/whisper"]
 # The Tauri shell (tray, overlay window, event loop). Off by default so the
 # platform-independent logic can be built/tested on any host without webkit.
 app = ["dep:tauri", "dep:tauri-build"]
@@ -29,6 +36,9 @@ app = ["dep:tauri", "dep:tauri-build"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+flow-core = { path = "../../crates/flow-core" }
+# Local history (audio is never stored). `bundled` = no system sqlite needed.
+rusqlite = { version = "0.32", features = ["bundled"] }
 tauri = { version = "2", optional = true, features = ["tray-icon", "image-png"] }
 
 [build-dependencies]
@@ -43,6 +53,8 @@ windows = { version = "0.58", features = [
   "Win32_System_Memory",
   "Win32_System_Ole",
   "Win32_System_Threading",
+  "Win32_System_SystemInformation",
+  "Win32_Security",
   "Win32_System_LibraryLoader",
   "Win32_System_Variant",
   "Win32_System_Registry",
@@ -56,3 +68,4 @@ windows = { version = "0.58", features = [
 ] }
 
 [dev-dependencies]
+hound = "3"

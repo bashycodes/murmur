@@ -1,0 +1,13 @@
+#!/bin/sh
+# CHECK-ONLY stand-in for MSVC lib.exe, so that build scripts using cc-rs
+# (rusqlite's bundled SQLite) get past the archive step when
+#   AR_x86_64_pc_windows_msvc=$PWD/tools/check-shims/fake-lib \
+#     cargo clippy --target x86_64-pc-windows-msvc ...
+# runs on a Linux host. `cargo check`/`clippy` never link, so an empty .lib
+# is fine. NEVER use this for a real build.
+for a in "$@"; do
+  case "$a" in
+    -out:*|-OUT:*|/out:*|/OUT:*) : > "${a#*:}" ;;
+  esac
+done
+exit 0

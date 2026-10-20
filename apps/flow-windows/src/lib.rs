@@ -14,6 +14,7 @@ pub mod core_adapter;
 pub mod core_api;
 pub mod dictation;
 pub mod ducking;
+pub mod history;
 pub mod hotkeys;
 pub mod input;
 pub mod paste;

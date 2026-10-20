@@ -2,26 +2,15 @@
 //! `config.json`). Unknown/missing fields fall back to defaults so old files
 //! keep loading; a corrupt file is moved aside rather than silently lost.
 
+pub use crate::core_api::DictEntry;
 use crate::core_api::{CleanupLevel, SessionConfig, Styles};
 use crate::dictation::Policy;
 use crate::hotkeys::{Bindings, Chord};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 pub const APP_DIR: &str = "FlowClone";
 pub const FILE_NAME: &str = "prefs.json";
-
-/// Shared dictionary/snippet export shape (spec §9): `{word, replacement, isSnippet}`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DictEntry {
-    pub word: String,
-    #[serde(default)]
-    pub replacement: Option<String>,
-    #[serde(default)]
-    pub is_snippet: bool,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -71,6 +60,14 @@ pub struct Prefs {
     pub type_fallback_max_chars: usize,
     pub retention: Retention,
     pub max_dictation_minutes: u64,
+    /// Whisper ggml model; `None` = `%APPDATA%\FlowClone\models\ggml-base.bin`.
+    /// Never downloaded automatically (DECISIONS D9).
+    pub model_path: Option<String>,
+    /// ASR threads; `None` = core default (half the logical CPUs).
+    pub asr_threads: Option<usize>,
+    /// Show the live partial transcript above the pill.
+    pub live_preview: bool,
+    pub live_preview_interval_ms: u32,
 }
 
 impl Default for Prefs {
@@ -99,6 +96,10 @@ impl Default for Prefs {
             type_fallback_max_chars: 200,
             retention: Retention::Keep,
             max_dictation_minutes: 20,
+            model_path: None,
+            asr_threads: None,
+            live_preview: true,
+            live_preview_interval_ms: 1500,
         }
     }
 }
@@ -155,8 +156,12 @@ impl Prefs {
         check("push-to-talk", &s.ptt, false)?;
         check("hands-free", &s.hands_free, false)?;
         check("cancel", &s.cancel, true)?;
-        if s.ptt == s.hands_free || s.ptt == s.cancel || s.hands_free == s.cancel {
-            return Err("shortcuts must differ from each other".into());
+        check("paste-last", &s.paste_last, false)?;
+        let all = [&s.ptt, &s.hands_free, &s.cancel, &s.paste_last];
+        for (i, a) in all.iter().enumerate() {
+            if all[i + 1..].contains(a) {
+                return Err("shortcuts must differ from each other".into());
+            }
         }
         Ok(())
     }
@@ -171,29 +176,29 @@ impl Prefs {
     }
 
     pub fn session_config(&self) -> SessionConfig {
-        let mut dictionary = Vec::new();
-        let mut snippets = BTreeMap::new();
-        let mut replacements = BTreeMap::new();
-        for e in &self.dictionary {
-            match (&e.replacement, e.is_snippet) {
-                (Some(r), true) => {
-                    snippets.insert(e.word.clone(), r.clone());
-                }
-                (Some(r), false) => {
-                    replacements.insert(e.word.clone(), r.clone());
-                }
-                (None, _) => dictionary.push(e.word.clone()),
-            }
-        }
         SessionConfig {
             languages: self.languages.clone(),
-            dictionary,
-            snippets,
-            replacements,
+            dictionary: self
+                .dictionary
+                .iter()
+                .filter(|e| !e.word.trim().is_empty())
+                .cloned()
+                .collect(),
             styles: self.styles.clone(),
             cleanup_level: self.cleanup_level,
             raw_mode: self.raw_mode,
             max_samples: self.policy().max_samples(),
+            partial_interval_ms: self
+                .live_preview
+                .then_some(self.live_preview_interval_ms.max(250)),
+        }
+    }
+
+    /// `%APPDATA%\FlowClone\models\ggml-base.bin` unless overridden.
+    pub fn resolved_model_path(&self, appdata: Option<&str>) -> PathBuf {
+        match self.model_path.as_deref().map(str::trim) {
+            Some(p) if !p.is_empty() => PathBuf::from(p),
+            _ => crate::core_adapter::default_model_path(appdata),
         }
     }
 }
@@ -292,7 +297,7 @@ mod tests {
     }
 
     #[test]
-    fn session_config_splits_dictionary() {
+    fn session_config_passes_dictionary_in_order() {
         let mut p = Prefs::default();
         p.languages = vec!["en".into()];
         p.dictionary = vec![
@@ -312,14 +317,18 @@ mod tests {
                 is_snippet: true,
             },
         ];
+        p.dictionary.push(DictEntry {
+            word: "  ".into(),
+            replacement: None,
+            is_snippet: false,
+        });
         let c = p.session_config();
         assert_eq!(c.languages, vec!["en"]);
-        assert_eq!(c.dictionary, vec!["Wispr"]);
-        assert_eq!(c.replacements.get("gh").map(String::as_str), Some("GitHub"));
-        assert_eq!(
-            c.snippets.get("my address").map(String::as_str),
-            Some("1 Main St")
-        );
+        assert_eq!(c.dictionary.len(), 3, "blank word dropped, order kept");
+        assert_eq!(c.dictionary[0].word, "Wispr");
+        assert_eq!(c.dictionary[1].replacement.as_deref(), Some("GitHub"));
+        assert!(c.dictionary[2].is_snippet);
+        assert_eq!(c.partial_interval_ms, Some(1500));
         assert_eq!(c.max_samples, p.policy().max_samples());
         assert_eq!(c.cleanup_level, CleanupLevel::Light);
     }

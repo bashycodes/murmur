@@ -1,18 +1,28 @@
 //! Seam to `flow-core` (spec 10 §9 v2 API).
 //!
-//! The shell codes against [`CoreApi`] only. `flow-core` is being built on
-//! another branch; integration = add the path dependency and implement this
-//! trait for its handle in `core_adapter.rs` (one file). Until then
-//! [`StubCore`] lets the shell run end-to-end (it reports what it heard as a
-//! duration string, so hotkeys → capture → paste can be exercised on a real
-//! Windows box without models).
+//! The shell codes against [`CoreApi`] only; `core_adapter.rs` implements it
+//! on top of `flow_core::FlowCore` (the shell's types are mapped there, so
+//! controller tests never need a model). [`StubCore`] stays as a model-free
+//! stand-in for tests: it reports what it heard as a duration string.
 //!
 //! `load_models`/`unload` are adapter-construction concerns (the adapter owns
 //! the handle), so they are not trait methods.
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::sync::Mutex;
+
+/// Shared dictionary/snippet export shape (spec §9): `{word, replacement, isSnippet}`.
+/// No replacement = vocabulary word (ASR bias); replacement = deterministic
+/// rewrite; `isSnippet` = the replacement is an expansion body.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DictEntry {
+    pub word: String,
+    #[serde(default)]
+    pub replacement: Option<String>,
+    #[serde(default)]
+    pub is_snippet: bool,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -60,13 +70,14 @@ pub struct Styles {
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct SessionConfig {
     pub languages: Vec<String>,
-    pub dictionary: Vec<String>,
-    pub snippets: BTreeMap<String, String>,
-    pub replacements: BTreeMap<String, String>,
+    /// Kept as one ordered list (the core's dictionary regex honours order).
+    pub dictionary: Vec<DictEntry>,
     pub styles: Styles,
     pub cleanup_level: CleanupLevel,
     pub raw_mode: bool,
     pub max_samples: u64,
+    /// Live preview: re-decode every N ms of new audio; `None` = off.
+    pub partial_interval_ms: Option<u32>,
 }
 
 /// `set_context` payload (≤500 chars each for before/selected/after).
@@ -105,8 +116,34 @@ pub struct CommitResult {
     pub final_text: String,
     pub language: Option<String>,
     pub timings: Timings,
+    /// Spoken "press enter": send Enter after inserting.
+    pub press_enter: bool,
+    /// Why the LLM output was not used (RAW_TRANSCRIPT fallbacks).
+    pub fallback_reason: Option<String>,
     /// Set when `status == Error`.
     pub error: Option<String>,
+}
+
+impl CommitResult {
+    pub fn with_status(status: CommitStatus) -> Self {
+        CommitResult {
+            status,
+            asr_text: String::new(),
+            final_text: String::new(),
+            language: None,
+            timings: Timings::default(),
+            press_enter: false,
+            fallback_reason: None,
+            error: None,
+        }
+    }
+
+    pub fn failed(message: impl Into<String>) -> Self {
+        CommitResult {
+            error: Some(message.into()),
+            ..Self::with_status(CommitStatus::Error)
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -181,23 +218,13 @@ impl CoreApi for StubCore {
         s.active = false;
         let secs = s.samples as f64 / 16_000.0;
         if s.samples == 0 {
-            return CommitResult {
-                status: CommitStatus::Empty,
-                asr_text: String::new(),
-                final_text: String::new(),
-                language: None,
-                timings: Timings::default(),
-                error: None,
-            };
+            return CommitResult::with_status(CommitStatus::Empty);
         }
         let text = format!("[stub: {secs:.1} s of audio]");
         CommitResult {
-            status: CommitStatus::RawTranscript,
             asr_text: text.clone(),
             final_text: text,
-            language: None,
-            timings: Timings::default(),
-            error: None,
+            ..CommitResult::with_status(CommitStatus::RawTranscript)
         }
     }
 
@@ -252,14 +279,7 @@ mod tests {
 
     #[test]
     fn outcome_mapping() {
-        let mut r = CommitResult {
-            status: CommitStatus::Error,
-            asr_text: String::new(),
-            final_text: String::new(),
-            language: None,
-            timings: Timings::default(),
-            error: Some("boom".into()),
-        };
+        let mut r = CommitResult::failed("boom");
         assert_eq!(to_outcome(&r), CommitOutcome::Failed("boom".into()));
         r.status = CommitStatus::Formatted;
         assert_eq!(to_outcome(&r), CommitOutcome::Empty, "formatted but empty");

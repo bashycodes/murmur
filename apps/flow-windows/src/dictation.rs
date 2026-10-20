@@ -78,6 +78,8 @@ pub enum Input {
         session: SessionId,
         result: Result<(), String>,
     },
+    /// Overlay ✓ clicked: finish and paste (any listening mode).
+    Finish,
     /// Mic couldn't be opened / core refused the session.
     StartFailed {
         session: SessionId,
@@ -215,6 +217,7 @@ impl Dictation {
         let elapsed = now_ms.saturating_sub(l.since_ms);
         match (l.mode, input) {
             (_, Input::Hotkey(Cancel)) => self.cancel_listening(l.session),
+            (_, Input::Finish) => self.stop(l.session, now_ms),
             (_, Input::StartFailed { session, message }) if session == l.session => {
                 let mut fx = self.cancel_listening(l.session);
                 fx.pop(); // replace the "resting" overlay with the error
@@ -860,6 +863,31 @@ mod tests {
         );
         assert!(fx.is_empty());
         assert_eq!(listening(&d).session, s2);
+    }
+
+    #[test]
+    fn overlay_finish_commits_even_right_after_lock() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, HandsFreeToggle, 0));
+        // A HandsFreeToggle this soon would be a "quick double" cancel;
+        // the ✓ button always means finish.
+        let fx = d.handle(Input::Finish, 100);
+        assert!(fx.contains(&Effect::Commit(s)));
+        assert!(matches!(d.phase(), Phase::Processing { .. }));
+        assert!(
+            d.handle(Input::Finish, 200).is_empty(),
+            "ignored while processing"
+        );
+    }
+
+    #[test]
+    fn paste_last_hotkey_does_not_disturb_the_machine() {
+        let mut d = d();
+        assert!(hk(&mut d, PasteLast, 0).is_empty());
+        assert_eq!(d.phase(), &Phase::Idle);
+        let s = session_of(&hk(&mut d, PttDown, 10));
+        assert!(hk(&mut d, PasteLast, 20).is_empty());
+        assert_eq!(listening(&d).session, s);
     }
 
     #[test]
