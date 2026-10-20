@@ -9,7 +9,8 @@ on-device; the core makes no network calls.
 crates/
   flow-core/   lib: session engine, ASR/LLM seams, deterministic post-processing
   flow-ffi/    C ABI (cdylib/staticlib, include/flow_core.h) + JNI (feature `jni`)
-  flow-cli/    dev harness: `flow-cli transcribe` = full pipeline on a WAV
+  flow-cli/    dev harness: `flow-cli transcribe` = full pipeline on a WAV; `flow-cli clean` = LLM cleanup on text
+  flow-llm/    llama.cpp cleanup engine as a cdylib plugin (libflow_llm.so / flow_llm.dll), loaded at runtime
 ```
 
 ## API (§9 v2)
@@ -73,9 +74,32 @@ shell UI thread ──start/commit/cancel──▶ control channel (mpsc) ──
    * It is also skipped when the whole utterance is a snippet trigger.
    * `cleanup::build_prompt` implements the windows-research 03 §7.2 template: Wispr's verbatim dictation framing, level/style descriptions and the backtrack list, plus a one-shot built from Wispr's UI example pair. Cursor before/after text (≤300/150 chars), the selection, the dictionary and screen words go in the user message.
    * HTML `<ol>`/`<ul>` lists in the LLM output become `1.` / `- ` lines.
-   * The cleaner runs on its own thread with a hard timeout (default 1.5 s).
+   * Prompt layout is chosen for KV-cache reuse. The system prompt and six few-shot chat turns depend only on the level: Wispr's UI example pair plus one example each for backtracking, spoken punctuation with "no wait", an ordered list, a question that must not be answered, and email layout. Everything per dictation goes in the final user message: app, category, style bucket, non-empty context lines and the transcript.
+   * The cleaner runs on its own thread with a hard timeout (`SessionConfig.llm_timeout_ms`, default 1.5 s). On timeout the core raises a cancel flag (`Cleaner::clean_cancellable`) so the backend frees its context within one decode step.
+   * Output scrubbing: preambles ("Here is the cleaned text:"), trailing "Note:" commentary and one layer of quotes or guillemets are stripped.
    * Guardrail: word-level divergence between ASR and LLM output (edit distance / words) above a per-level threshold (light 0.6, medium/high 0.9; 03 §7.1) means the output is not used and the result falls back to `RAW_TRANSCRIPT`.
-   * The llama.cpp backend (feature `llm`) is **not wired yet**. `load_models` ignores `llm_path`.
+
+### LLM backend (feature `llm`, crate `flow-llm`)
+`load_models` with `llm_path` set loads the GGUF model once and keeps it warm. `unload` (or drop) frees the model and its context. A bad path, a missing plugin or a build without `llm` fails `load_models`.
+
+* **Packaging.** llama.cpp cannot be linked into the same binary as whisper.cpp: `whisper-rs-sys` and `llama-cpp-sys-2` each bundle a different ggml, and the link fails with duplicate `ggml_*` symbols. So the engine is the `flow-llm` cdylib, which exports only `flow_llm_*` (C ABI v1, documented in `crates/flow-llm/src/lib.rs`; chat messages travel as JSON). flow-core's `llm` feature is only a `libloading` loader (`flow_core::llama::LlamaCleaner`).
+  * Plugin lookup: `ModelConfig.llm_lib`, else `FLOW_LLM_LIB`, else next to the executable (and its parent directory, for cargo test binaries), else the bare name through the system loader (Android: the packaged `libflow_llm.so`).
+  * Shells ship `libflow_llm.so` / `flow_llm.dll` next to the app.
+  * The library is never `dlclose`d. Closing a library that owns OpenMP threads and TLS destructors segfaulted at exit.
+* **Engine.** One thread owns the model, one 4096-token context and its KV cache.
+  * It renders the model's own chat template (Qwen2.5, Llama-3.2), with a ChatML fallback.
+  * Prefix reuse: only the tokens after the first difference with the previous prompt are prefilled. `load` prefills the default (light, default-style) prompt, so a warm commit prefills only about 20 tokens of a ~1.2k-token prompt.
+  * Decoding is greedy with at most 2 × transcript tokens + 32 new tokens (03 §7.5), stopping on EOG or a stop string (`<|im_end|>`, `<|eot_id|>`, `\nTRANSCRIPT:`, …). The deadline and cancel flag are checked between 128-token prefill chunks and before every token.
+  * Exact-greedy prompt-lookup drafting is implemented, but off by default (`FLOW_LLM_DRAFT=n` enables it). On this CPU a batch of drafted tokens cost more than the forward passes it saved (`tools/probes/llm_ab.sh`).
+  * llama.cpp logs are silenced unless `FLOW_LLM_LOG` is set.
+* **Measured** (`tests/llm_e2e.rs`, 8 messy dictations; i7-6700, 4 threads, box shared with a concurrent llama-server at load 6-13, so treat the times as upper bounds):
+
+  | model (Q4_K_M) | quality (generous budget) | llm per call | load + warm prefill |
+  |---|---|---|---|
+  | Qwen2.5-0.5B-Instruct | 4/8 (misses "scratch that", "no wait", filler "um", lists) | 0.75-1.1 s at load 6, up to 2.7 s at load 12 (then it falls back at 1.5 s) | 10-48 s |
+  | Qwen2.5-1.5B-Instruct | 8/8 | 1.1-1.8 s at load 6, 2.6-5.3 s at load 12 | 23-38 s |
+
+  Decode runs at 15-35 tok/s for 0.5B and 7-13 tok/s for 1.5B on this contended box. The first call after an app or style switch also prefills the user-message prefix (~100 tokens, +0.3-0.8 s).
 3. **Deterministic post-processing** (`postprocess`). This is the client fallback path. The clone has no server, so it always runs the steps, in this order:
    1. all-lowercase mode;
    2. dictionary regex. Uses `fancy-regex` look-around, JS first-alternative order, longest key first, Unicode boundaries and the `'t` guard. Personal entries override team entries;
@@ -121,10 +145,15 @@ The cloud `/llm/extract_edited_words` step is left to the shell or to a future l
 ## Build / test
 ```
 cargo fmt && cargo clippy --all-targets -- -D warnings && cargo test
-cargo test --all-features                 # + JNI round trip in a real JVM (needs `java`)
+cargo test --all-features                 # + JNI round trip (needs `java`) + flow-llm plugin + llm_e2e
 tools/fetch-models.sh [ggml-base.en.bin]  # explicit, user-run model download into models/
+tools/fetch-models.sh --llm [0.5b 1.5b]   # Qwen2.5-Instruct Q4_K_M GGUF for LLM cleanup
 cargo run --release -p flow-cli -- transcribe --model models/ggml-tiny.en.bin models/jfk.wav --json
+cargo build --release -p flow-cli -p flow-llm   # plugin lands next to flow-cli
+target/release/flow-cli clean --llm models/qwen2.5-0.5b-instruct-q4_k_m.gguf "um so scratch that hi"
 cargo check -p flow-ffi --features jni --target aarch64-linux-android   # NDK needed only to link
 ```
 * The model-dependent tests (`whisper_e2e`, `cli::real_model_on_jfk_if_present`) skip with a note when `models/` is missing.
-* `whisper-rs-sys` is built at opt-level 3 even in dev builds.
+* `whisper-rs-sys` is built at opt-level 3 even in dev builds. `llama-cpp-sys-2` builds llama.cpp as RelWithDebInfo (`-O2`) in dev builds anyway.
+* `llama-cpp-sys-2` runs bindgen. On this box libclang 18 has no resource headers, so the build needs `BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include"` (otherwise: `'stdbool.h' file not found`).
+* The LLM tests (`llm_e2e`, which skips without a model or plugin) take ~1 min. `FLOW_LLM_MODEL`, `FLOW_LLM_BUDGET_MS`, `FLOW_LLM_QUALITY_BUDGET_MS` and `FLOW_LLM_MIN_GOOD` tune them.

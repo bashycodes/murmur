@@ -10,7 +10,9 @@ Branch `core` (flow-core). Every row below is backed by a passing test (`cargo t
 | §9 v2 session lifecycle: start/push/set_context (late)/partial/commit/cancel; isolation; max_samples; non-blocking push | `crates/flow-core/tests/session.rs` (29) |
 | Real local ASR end to end: whisper.cpp tiny.en on jfk.wav → correct text + dictionary applied | `tests/whisper_e2e.rs`, `flow-cli/tests/cli.rs::real_model_on_jfk_if_present` (skip if `models/` missing; `tools/fetch-models.sh`) |
 | Deterministic post-processing ported from Wispr: all 108 Windows + 58 Android ground-truth vectors, plus an Android→Windows cross-check | `tests/vectors.rs` |
-| LLM seam: 03 §7 prompt, timeout → RAW_TRANSCRIPT, divergence guardrail, snippet/terminal/raw skip | `cleanup.rs` unit tests + session tests (mock cleaner) |
+| LLM seam: 03 §7 prompt (KV-reuse layout + 6 few-shot turns), timeout → RAW_TRANSCRIPT + backend cancel flag, preamble scrubbing, divergence guardrail, snippet/terminal/raw skip | `cleanup.rs` unit tests + session tests (mock cleaner) |
+| Real local LLM cleanup: llama.cpp `LlamaCleaner` (flow-llm plugin, loaded once in `load_models`, warm KV prefix, greedy, 2×input+32, per-token deadline/cancel, unload frees) on 8 messy dictations through `FlowCore`: safety contract at the 1.5 s budget; quality 4/8 (Qwen2.5-0.5B) / 8/8 (1.5B) at a generous budget | `flow-core/tests/llm_e2e.rs` (skip if model/plugin missing; `tools/fetch-models.sh --llm`), `flow-llm` unit tests, `llama.rs` loader tests |
+| `flow-cli clean --llm m.gguf TEXT…` / `transcribe --llm` | manual (`docs/core-architecture.md` Build/test); loader path covered by `llm_e2e` |
 | learn_edit candidates (word alignment) | `learn.rs`, `align.rs` unit tests |
 | C ABI + header (C program links the staticlib and runs a session) | `flow-ffi/tests/c_abi.rs`, `c_header.rs` |
 | JNI exports in a real JVM (`com.flowclone.core.NativeFlowCore`) | `flow-ffi/tests/jni_smoke.rs` (`--features jni`) |
@@ -27,7 +29,7 @@ Post-processing takes under 1 ms. With live partials on, commit takes about 1.8 
 
 ## Outstanding work — priority order
 1. `flow-core` crate — DONE on branch `core` (see What works). Remaining core gaps:
-   * llama.cpp `Cleaner` backend (feature `llm` is an empty stub; `llm_path` is ignored);
+   * LLM latency on CPU: 1.5B is 8/8 but ~1.1-5 s per call on this shared box (0.5B: 4/8, 0.75-2.7 s). Next levers: prefill the context + partial transcript into the KV cache while the user speaks; a LoRA on (raw → formatted) pairs for 0.5B (03 §7.5); pick the shipped model from `docs/model-benchmarks.md`. Shells must ship `libflow_llm` next to the exe (Windows) / in jniLibs (Android, untested);
    * Android link via cargo-ndk (needs the NDK; type-checks for aarch64-linux-android);
    * the JNI class name must match `apps/flow-android/JNI_CONTRACT.md`;
    * VAD and endpointing;
