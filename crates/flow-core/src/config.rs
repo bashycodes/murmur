@@ -167,13 +167,20 @@ pub struct ModelConfig {
     pub threads: usize,
 }
 
+/// Half the logical CPUs (≈ physical cores), capped at 8: ggml's spinning
+/// workers collapse when oversubscribed onto hyperthreads (measured 8 → 4
+/// threads on a loaded i7-6700: 16.7 s → 1.2 s for 11 s of audio, tiny.en).
+pub fn default_threads() -> usize {
+    std::thread::available_parallelism().map_or(4, |n| (n.get() / 2).clamp(1, 8))
+}
+
 impl Default for ModelConfig {
     fn default() -> Self {
         Self {
             asr_backend: AsrBackend::Whisper,
             asr_path: String::new(),
             llm_path: None,
-            threads: std::thread::available_parallelism().map_or(4, |n| n.get()),
+            threads: default_threads(),
         }
     }
 }

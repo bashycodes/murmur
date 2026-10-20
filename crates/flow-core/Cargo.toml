@@ -9,6 +9,7 @@ description = "Shared local dictation core: ASR session, cleanup, deterministic 
 default = []
 whisper = ["dep:whisper-rs"]
 llm = []
+wav = ["dep:hound"]
 
 [dependencies]
 serde.workspace = true
@@ -17,3 +18,8 @@ thiserror.workspace = true
 regex = "1"
 rtrb = "0.3"
 whisper-rs = { version = "0.16", optional = true }
+hound = { version = "3", optional = true }
+
+[[test]]
+name = "whisper_e2e"
+required-features = ["whisper", "wav"]
