@@ -22,8 +22,9 @@ use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 pub const DEFAULT_MODEL_FILE: &str = "ggml-base.bin";
-/// How long a dictation started during model load waits for it.
-pub const LOAD_WAIT: Duration = Duration::from_secs(15);
+/// How long a dictation started during model load waits for it. Short:
+/// `start_session` runs on the controller loop, which must stay responsive.
+pub const LOAD_WAIT: Duration = Duration::from_secs(3);
 
 /// `%APPDATA%\FlowClone\models`.
 pub fn models_dir(appdata: Option<&str>) -> PathBuf {

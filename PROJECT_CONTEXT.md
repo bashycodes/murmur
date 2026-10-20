@@ -23,7 +23,18 @@ E2E timing on this box (i7-6700, 8 logical cores, no GPU, load ≈ 8-14 from oth
 
 Post-processing takes under 1 ms. With live partials on, commit takes about 1.8 s versus 1.5 s without them, because the in-flight partial decode is aborted.
 
-- `apps/flow-windows` (Windows shell): pure logic (chord matcher, dictation machine w/ Wispr timings, resampler/level meter, paste plan, context/app kinds, prefs, controller loop) — 111 tests green on Linux; Win32 + Tauri code `cargo clippy`-clean for `x86_64-pc-windows-msvc` (incl. `--features app` via check shim). Not yet run on real Windows; uses `StubCore` until flow-core lands (see `apps/flow-windows/README.md`).
+Branch `integration`: Windows shell (`apps/flow-windows`) wired to the real core. Proof = `cd apps/flow-windows && cargo test` (146 tests: 139 lib + 7 integration).
+
+| Capability | Proof (test) |
+|---|---|
+| Shell drives real flow-core: PTT → capture → push_audio → commit → paste plan, with the dictionary from prefs applied by the core | `apps/flow-windows/tests/core_integration.rs::mock_asr_audio_to_commit_to_paste_and_history` |
+| Real whisper.cpp through the shell: tiny.en on jfk.wav → "ask not what your country…" pasted, `lang=en` in history | `core_integration.rs::real_tiny_model_on_jfk_pastes_the_speech` (skips without `models/`) |
+| §9 status handling: EMPTY pastes nothing; press_enter → Enter after paste; missing model → error pill naming the path, never downloads | `core_integration.rs` (silence / press_enter / missing_model), `core_adapter.rs` tests |
+| Live partials → overlay preview, cleared when listening ends | `core_integration.rs::live_partials_reach_the_overlay_preview` |
+| Local SQLite history (10-clone-spec §2 columns, no audio column), keep/24h/never retention; paste-last (Shift+Alt+Z) from it | `history.rs` tests, `core_integration.rs` (paste-last, retention never) |
+| Hook watchdog (LowLevelHooksTimeout removal → probe → re-install); UIPI integrity pre-check; clickable hands-free ✕/✓ hit-test; {{BREAK}}/{{TAB}} paste segments | `hotkeys/watchdog.rs`, `paste/mod.rs` (`uipi_blocks`, `segments`), `overlay.rs` tests. Win32 sides are only `cargo clippy`-clean for `x86_64-pc-windows-msvc --no-default-features --features app` (whisper-rs-sys can't cross-build; see README) |
+
+Not yet run on real Windows. The manual checklist is in `apps/flow-windows/README.md`. Core requests: `docs/core-change-requests.md`.
 
 ## Outstanding work — priority order
 1. `flow-core` crate — DONE on branch `core` (see What works). Remaining core gaps:
@@ -32,6 +43,10 @@ Post-processing takes under 1 ms. With live partials on, commit takes about 1.8 
    * the JNI class name must match `apps/flow-android/JNI_CONTRACT.md`;
    * VAD and endpointing;
    * a per-session cache for the DictMatcher (it is rebuilt each commit).
-2. Windows shell: wire flow-core in `apps/flow-windows/src/core_adapter.rs`; run manual checklist in `apps/flow-windows/README.md` on real Windows; gaps there (clickable hands-free buttons, UIPI pre-check, hook re-install).
+2. Windows shell: flow-core wired (branch `integration`). Remaining:
+   * a real-Windows build and run of the README manual checklist (needs the user's Windows box);
+   * a history UI and "copy last transcript";
+   * learn-from-edits (`edited` column);
+   * the mouse/Caps Lock shortcuts.
 3. Android shell: a11y service, overlay bubble, FGS recorder, JNI to core.
 4. P1: LLM cleanup, context, learn-from-edits.
