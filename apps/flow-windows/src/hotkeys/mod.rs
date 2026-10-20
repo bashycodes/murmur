@@ -1,6 +1,7 @@
 //! Global hotkeys: platform-independent chord matcher + WH_KEYBOARD_LL hook.
 
 pub mod chord;
+pub mod watchdog;
 #[cfg(windows)]
 pub mod win;
 
