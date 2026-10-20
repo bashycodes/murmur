@@ -11,8 +11,30 @@ const BOOL_FIELDS = [
     "use_ax_context",
     "raw_mode",
     "restore_clipboard",
+    "live_preview",
 ];
 let current = null;
+function showModel(st) {
+    const el = $("model_status");
+    switch (st.state) {
+        case "loading":
+            el.textContent = `Loading ${st.path}…`;
+            el.className = "hint";
+            break;
+        case "ready":
+            el.textContent = `Ready: ${st.path} (loaded in ${st.load_ms} ms)`;
+            el.className = "hint ok";
+            break;
+        case "missing":
+            el.textContent = `Model file not found: ${st.path}. Dictation is unavailable until it exists.`;
+            el.className = "hint err";
+            break;
+        case "failed":
+            el.textContent = `Model failed to load (${st.path}): ${st.message}`;
+            el.className = "hint err";
+            break;
+    }
+}
 /** One entry per line: `word`, `spoken => replacement`, `trigger ==> snippet`. */
 function parseDictionary(text) {
     const out = [];
@@ -40,11 +62,19 @@ function formatDictionary(d) {
         .join("\n");
 }
 async function load() {
-    const [prefs, mics] = await Promise.all([
+    const [prefs, mics, model] = await Promise.all([
         invoke("get_prefs"),
         invoke("list_microphones"),
+        invoke("get_model_status"),
     ]);
     current = prefs;
+    showModel(model.status);
+    $("models_dir").textContent = model.models_dir;
+    const mp = $("model_path");
+    mp.placeholder = model.default_path;
+    mp.value = prefs.model_path ?? "";
+    $("paste_last").value = prefs.shortcuts.paste_last;
+    $("retention").value = prefs.retention;
     $("ptt").value = prefs.shortcuts.ptt;
     $("hands_free").value = prefs.shortcuts.hands_free;
     $("cancel").value = prefs.shortcuts.cancel;
@@ -72,7 +102,10 @@ async function save(ev) {
         ptt: $("ptt").value.trim(),
         hands_free: $("hands_free").value.trim(),
         cancel: $("cancel").value.trim(),
+        paste_last: $("paste_last").value.trim(),
     };
+    next.model_path = $("model_path").value.trim() || null;
+    next.retention = $("retention").value;
     next.microphone = $("microphone").value || null;
     for (const f of BOOL_FIELDS)
         next[f] = $(f).checked;
@@ -97,4 +130,5 @@ async function save(ev) {
     }
 }
 $("form").addEventListener("submit", (e) => void save(e));
+void window.__TAURI__.event.listen("model:status", (e) => showModel(e.payload));
 void load();
