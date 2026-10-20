@@ -1,0 +1,18 @@
+[package]
+name = "flow-llm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "llama.cpp cleanup engine, shipped as a plugin library that flow-core loads at runtime"
+
+# cdylib = the plugin flow-core dlopens; rlib = the Rust API for tests.
+# It must stay a separate shared library: llama.cpp and whisper.cpp each
+# bundle their own (different) ggml, and linking both into one binary fails
+# with duplicate ggml symbols. A cdylib exports only the `flow_llm_*`
+# functions, so its ggml stays private.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+llama-cpp-2 = { version = "0.1.160", default-features = false, features = ["openmp", "android-shared-stdcxx"] }
+serde_json.workspace = true

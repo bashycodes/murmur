@@ -11,6 +11,8 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 [features]
 default = []
 whisper = ["flow-core/whisper"]
+# Runtime-loads the flow-llm plugin (ship libflow_llm next to the executable).
+llm = ["flow-core/llm"]
 jni = ["dep:jni"]
 
 [dependencies]
