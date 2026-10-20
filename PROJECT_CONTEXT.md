@@ -25,7 +25,7 @@ E2E timing on this box (i7-6700, 8 logical cores, no GPU, load ≈ 8-14 from oth
 
 Post-processing takes under 1 ms. With live partials on, commit takes about 1.8 s versus 1.5 s without them, because the in-flight partial decode is aborted.
 
-Branch `integration`: Windows shell (`apps/flow-windows`) wired to the real core. Proof = `cd apps/flow-windows && cargo test` (146 tests: 139 lib + 7 integration).
+Branch `integration` + `win-p1`: Windows shell (`apps/flow-windows`) wired to the real core. Proof = `cd apps/flow-windows && cargo test` (184 tests: 171 lib + 13 integration; the 3 real-model ones skip without `models/` / the plugin).
 
 | Capability | Proof (test) |
 |---|---|
@@ -34,6 +34,10 @@ Branch `integration`: Windows shell (`apps/flow-windows`) wired to the real core
 | §9 status handling: EMPTY pastes nothing; press_enter → Enter after paste; missing model → error pill naming the path, never downloads | `core_integration.rs` (silence / press_enter / missing_model), `core_adapter.rs` tests |
 | Live partials → overlay preview, cleared when listening ends | `core_integration.rs::live_partials_reach_the_overlay_preview` |
 | Local SQLite history (10-clone-spec §2 columns, no audio column), keep/24h/never retention; paste-last (Shift+Alt+Z) from it | `history.rs` tests, `core_integration.rs` (paste-last, retention never) |
+| Optional LLM cleanup through the shell: real `flow_llm` plugin + Qwen2.5-0.5B → FORMATTED pasted, raw ASR kept in history; whisper tiny.en + llama in one shell process; missing plugin/GGUF = `LlmStatus` notice while dictation still pastes RAW; two-phase load (ASR ready first, LLM joins without reloading whisper), supersede on toggle | `core_integration.rs::real_llm_plugin_formats_through_the_shell`, `real_whisper_then_real_llm_in_the_shell_process` (skip without plugin/GGUF), `missing_llm_plugin_still_dictates_raw`; `core_adapter.rs` two-phase tests (fake cleaner) |
+| Learn-from-edits: after a paste the field is re-read; the user's correction (`whisper flow` → `Wispr Flow`) becomes a pending suggestion (never auto-added) and fills history `edited`; Wispr end reasons, anchor-bounded region, trailing-typing trim | `core_integration.rs::user_correction_becomes_a_suggestion_not_an_entry`, `learning_off_or_untouched_paste_suggests_nothing`, `learn.rs`, `suggestions.rs` tests. UIA reader only clippy-checked |
+| History tab backend (search/get/delete/clear/set_edited, undo-AI-edit flag), copy-last (Shift+Alt+X), dictionary import/export of the shared JSON | `history.rs`, `dictionary.rs`, `chord.rs` tests, `core_integration.rs::copy_last_puts_the_transcript_on_the_clipboard` |
+| Settings UI tabs (General / AI cleanup / History / Dictionary) render and run against a mocked `__TAURI__` in headless Chromium | `tools/probes/settings_mock/` (manual screenshot check, not a test) |
 | Hook watchdog (LowLevelHooksTimeout removal → probe → re-install); UIPI integrity pre-check; clickable hands-free ✕/✓ hit-test; {{BREAK}}/{{TAB}} paste segments | `hotkeys/watchdog.rs`, `paste/mod.rs` (`uipi_blocks`, `segments`), `overlay.rs` tests. Win32 sides are only `cargo clippy`-clean for `x86_64-pc-windows-msvc --no-default-features --features app` (whisper-rs-sys can't cross-build; see README) |
 
 Not yet run on real Windows. The manual checklist is in `apps/flow-windows/README.md`. Core requests: `docs/core-change-requests.md`.
@@ -53,9 +57,9 @@ Branch `android-int` (merged): Android shell + real core.
    * a per-session cache for the DictMatcher (it is rebuilt each commit).
 2. Windows shell: flow-core wired (branch `integration`). Remaining:
    * a real-Windows build and run of the README manual checklist (needs the user's Windows box);
-   * a history UI and "copy last transcript";
-   * learn-from-edits (`edited` column);
-   * the mouse/Caps Lock shortcuts.
+   * the mouse/Caps Lock shortcuts;
+   * the new P1 items (LLM cleanup + flow_llm.dll packaging, history tab, learn-from-edits via UIA, dictionary editor) are only cross-checked for MSVC: the README checklist covers them on real Windows;
+   * learn-from-edits: UIA TextChanged events instead of 1 s polling; optional local-LLM vetting of candidates (03 §6).
 3. Android shell. Code is done (`apps/flow-android/`). Remaining:
    a. JNI + arm64 packaging: DONE (see What works). The .so has never been loaded on bionic. The first device run must confirm `Native engine: flow-ffi 0.1.0`.
    b. **Device verification (needs the user's phone).** Full checklist: `apps/flow-android/INSTALL.md` §"Device test checklist". In order:
@@ -69,4 +73,4 @@ Branch `android-int` (merged): Android shell + real core.
       - 16 KB-page device (Android 15): installs without the compat dialog;
       - MIC vs VOICE_RECOGNITION.
    c. P1 (07 / 10 §6): shake/snooze, bubble minimise, watchdog/boot recovery, battery-optimisation onboarding, VAD trim, partials.
-4. P1: LLM cleanup, context, learn-from-edits.
+4. P1: LLM cleanup, context, learn-from-edits — Windows shell wired (branch `win-p1`, see What works); Android pending.

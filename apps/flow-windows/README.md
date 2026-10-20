@@ -2,7 +2,7 @@
 
 Tauri 2 tray app: hold **Ctrl+Win** to dictate, **Ctrl+Win+Space** (or double-tap
 Ctrl+Win) for hands-free, **Esc** to cancel, **Shift+Alt+Z** to paste the last
-transcript again. Text is pasted into the focused app. Nothing touches the
+transcript again, **Shift+Alt+X** to copy it. Text is pasted into the focused app. Nothing touches the
 network. Speech-to-text is the real `crates/flow-core` (whisper.cpp), reached
 through the `CoreApi` trait in `src/core_adapter.rs`.
 
@@ -17,6 +17,24 @@ The model loads in the background at startup. A missing or broken file
 shows in the tray menu and tooltip, opens Settings, and makes a dictation end
 in an error pill that names the path.
 
+## AI cleanup (optional, off by default)
+
+Settings → AI cleanup turns on llama.cpp cleanup (fillers, "scratch that",
+spoken lists, per-app style; DECISIONS D5/D10/D11). It needs two files, and
+neither is downloaded automatically:
+
+* the GGUF model, default `%APPDATA%\FlowClone\models\qwen2.5-0.5b-instruct-q4_k_m.gguf`
+  (`qwen2.5-1.5b-instruct-q4_k_m.gguf` is more accurate, ~2x slower);
+  `tools/fetch-models.sh --llm` fetches both on explicit request;
+* the engine plugin `flow_llm.dll` **next to `flow-windows.exe`** (or the
+  path in "Engine library"). llama.cpp cannot be linked into the exe:
+  whisper.cpp and llama.cpp each bundle a different ggml (D10).
+
+Speech recognition is ready long before the LLM (10-50 s load on CPU);
+until then, and whenever cleanup fails or exceeds its budget, the plain
+transcript is pasted. The tray line "AI cleanup: …" and Settings show the
+state (off / loading / ready / model missing / engine missing / failed).
+
 ## Layout
 
 | Path | What |
@@ -27,18 +45,23 @@ in an error pill that names the path.
 | `src/controller.rs` | Runs the machine's effects against a `Platform` trait plus `CoreApi`; integration-tested with fakes |
 | `src/audio/` | Resampler to 16 kHz mono i16 and a Wispr-style level meter (pure); `capture.rs` = cpal/WASAPI |
 | `src/paste/` | Pure strategy, restore guard and per-app restore delay; `win.rs` = clipboard snapshot → CF_UNICODETEXT plus history/monitor opt-outs → masked Alt/Win release → `[Ctrl↓,V↓]` 50 ms `[V↑,Ctrl↑]` → restore if the sequence number is unchanged. Falls back to KEYEVENTF_UNICODE |
-| `src/context/` | Truncation, password suppression, app kind and style bucket from `data/app-lists.json` (pure); `uia.rs` = UI Automation snapshot with a 300 ms timeout |
+| `src/context/` | Truncation, password suppression, app kind and style bucket from `data/app-lists.json` (pure); `uia.rs` = UI Automation snapshot with a 300 ms timeout, and `UiaFieldReader` (re-reads the pasted-into control, `CompareElements` for focus) |
 | `src/ducking/` | Mute plan and restore rule (pure); `win.rs` = WASAPI sessions on an MTA thread |
 | `src/sounds.rs` | Synthesised cue WAVs (pure) played with `PlaySoundW(SND_MEMORY)` |
 | `src/prefs.rs` | `%APPDATA%\FlowClone\prefs.json`: tolerant load, atomic save, validation |
 | `src/core_api.rs` | §9 API seam (shell types) plus `StubCore` for tests |
-| `src/core_adapter.rs` | `CoreApi` on `flow_core::FlowCore`: background model load, `ModelStatus` (loading/ready/missing/failed), shell→core type mapping |
-| `src/history.rs` | Local SQLite history (`history.sqlite`, 10-clone-spec §2 columns, no audio), keep / 24 h / never retention |
+| `src/core_adapter.rs` | `CoreApi` on `flow_core::FlowCore`: two-phase background load (whisper engine, then the optional `flow_llm` cleaner, composed with `FlowCore::from_engines`), `ModelStatus` / `LlmStatus`, shell→core type mapping |
+| `src/history.rs` | Local SQLite history (`history.sqlite`, 10-clone-spec §2 columns, no audio), keep / 24 h / never retention; list/search/get/delete/clear/set_edited for the History tab |
+| `src/learn.rs` | Learn-from-edits (03 §3), pure: anchor-bounded region, Wispr end reasons, watch state machine in injected time, semi-global trim of text typed after the dictation |
+| `src/suggestions.rs` | Learned words waiting for an explicit accept (`suggestions.json`); dismissed words are never re-suggested |
+| `src/dictionary.rs` | Import/export of the shared `[{word, replacement, isSnippet}]` JSON: tolerant parse, validation, case-insensitive merge |
 | `src/overlay.rs` | Pill hit-testing so the hands-free ✕/✓ are clickable while the canvas stays click-through |
 | `src/hotkeys/watchdog.rs` | Hook-liveness watchdog (probe + re-install after a `LowLevelHooksTimeout` removal) |
 | `tests/core_integration.rs` | Controller + real flow-core (MockAsr, and whisper tiny.en on `jfk.wav` when present): audio → commit → paste plan → history |
 | `src/app.rs` | Tauri: tray, overlay window (512x614, click-through, `WS_EX_NOACTIVATE`), settings window, commands, autostart |
-| `ui/` | Plain TypeScript → `ui/dist/*.js` (committed). No bundler, no CDN, no web fonts; the CSP is `'self'` only |
+| `ui/` | Plain TypeScript → `ui/dist/*.js` (committed). No bundler, no CDN, no web fonts; the CSP is `'self'` only. Settings tabs: General, AI cleanup, History, Dictionary |
+| `tauri.llm.conf.json` | Config overlay that bundles `flow_llm.dll` next to the exe (`cargo tauri build --config tauri.llm.conf.json`) |
+| `tools/probes/settings_mock/` | Serves `ui/dist` with a fake `__TAURI__` for checking the settings page in a plain/headless browser |
 
 ## Develop on Linux (what CI/agents can run)
 
@@ -60,7 +83,12 @@ python3 tools/gen_icons.py                          # after editing the icon
 
 The real-model test looks for `ggml-tiny.en.bin` + `jfk.wav` in `../../models/`
 (or the main checkout's `models/`, or `FLOW_MODEL` / `FLOW_WAV`) and skips
-with a note when they are missing.
+with a note when they are missing. The real-LLM tests additionally need the
+plugin (`cargo build --release -p flow-llm` in the repo root →
+`../../target/release/libflow_llm.so`, or `FLOW_LLM_LIB`) and
+`qwen2.5-0.5b-instruct-q4_k_m.gguf` (or `FLOW_LLM_MODEL`); building
+llama.cpp needs `BINDGEN_EXTRA_CLANG_ARGS` on this box (see
+`docs/core-architecture.md`).
 
 Linking a Windows binary on Linux is not supported (no MSVC linker or SDK).
 
@@ -78,12 +106,24 @@ Linking a Windows binary on Linux is not supported (no MSVC linker or SDK).
    npm --prefix ui ci
    npm --prefix ui run build
    ```
-3. Run it:
+3. Build the AI cleanup plugin (optional; skip it and AI cleanup reports "engine missing"):
+   ```powershell
+   cd ..\..                                  # repo root
+   cargo build --release -p flow-llm          # -> target\release\flow_llm.dll
+   cd apps\flow-windows
+   ```
+   llama-cpp-sys-2 needs CMake, clang (`LIBCLANG_PATH`) and MSVC, like whisper. It is built with OpenMP, so `vcomp140.dll` (Visual C++ Redistributable) must be present on the target PC.
+4. Run it:
    ```powershell
    cargo run --features app
+   copy ..\..\target\release\flow_llm.dll target\debug\   # plugin next to the exe
    ```
-   Optionally install the CLI first (`cargo install tauri-cli --version "^2"`); then `cargo tauri dev` or `cargo tauri build` produces an NSIS installer in `target\release\bundle\nsis\`.
-4. First launch opens Settings, because there is no `prefs.json` yet.
+   (Or set Settings → AI cleanup → Engine library to the DLL's path.) Optionally install the CLI first (`cargo install tauri-cli --version "^2"`); then `cargo tauri dev`, or for an NSIS installer in `target\release\bundle\nsis\` that ships the plugin next to the exe:
+   ```powershell
+   cargo tauri build --config tauri.llm.conf.json
+   ```
+   (Plain `cargo tauri build` builds an installer without AI cleanup.)
+5. First launch opens Settings, because there is no `prefs.json` yet.
    - The tray icon lives in the notification area.
    - Copy a model to `%APPDATA%\FlowClone\models\ggml-base.bin` (see above). The tray menu's first line says "Speech model: ggml-base.bin" once it is loaded.
    - Hold Ctrl+Win in Notepad and speak. When you release, the transcript is pasted.
@@ -112,6 +152,17 @@ Linking a Windows binary on Linux is not supported (no MSVC linker or SDK).
 - [ ] The UIA context reaches the core: check `StubCore::last_context` in a debugger, or log it in `core_adapter`.
 - [ ] Unplugging the mic during capture leaves an error pill, not a stuck "listening" pill.
 - [ ] "Launch at login" writes `HKCU\…\Run\FlowClone`.
+- [ ] Shift+Alt+X puts the last transcript on the clipboard (no paste); Ctrl+V in Notepad shows it.
+- [ ] AI cleanup off (default): tray "AI cleanup: off", results unchanged.
+- [ ] AI cleanup on without `flow_llm.dll`: tray "⚠ AI cleanup engine (flow_llm.dll) missing", dictation still pastes.
+- [ ] AI cleanup on with the DLL + Qwen 0.5B GGUF: tray goes "loading…" → "AI cleanup: qwen2.5-0.5b…"; dictation works during the load; afterwards "um so i think we should uh meet tomorrow" pastes cleaned up, and History shows "AI edited".
+- [ ] The NSIS installer built with `--config tauri.llm.conf.json` puts `flow_llm.dll` beside `Flow Clone.exe`, and AI cleanup loads on a PC without Rust/VS (only the VC++ redistributable).
+- [ ] Per-app styles: with Personal = Very casual, dictating into WhatsApp gives lowercase without a final period; Email stays formal.
+- [ ] History tab: search filters, Copy, Re-paste (Settings hides, text lands in the previously focused app), Delete, Delete all (second click), retention change prunes.
+- [ ] Undo AI edit: the diff shows removed/added words; "Re-paste original" inserts the raw ASR text.
+- [ ] Learn from edits: dictate "I use whisper flow daily" into Notepad, fix it to "Wispr Flow" within ~45 s, click elsewhere → tray "1 dictionary suggestion…"; Dictionary tab lists it; nothing was added until "Add word". Same in Chrome (textarea), Word and Slack.
+- [ ] Learn from edits ignores password fields, and a chat message sent with "press enter".
+- [ ] Dictionary editor: add/edit/delete rows, snippet with a multi-line body, Save; export writes `Downloads\flow-dictionary.json`; importing that file (merge) changes nothing; importing the Android app's export works.
 
 ## Known gaps / v1 limitations
 
@@ -120,9 +171,10 @@ Linking a Windows binary on Linux is not supported (no MSVC linker or SDK).
 - RTF and file-drop clipboard contents **are** preserved, unlike Wispr, on purpose: the RE checklist calls Wispr's behaviour lossy.
 - The UIPI pre-check compares token integrity levels only. UIAccess targets and protected processes (level unreadable) fall through to the normal paste.
 - The hook watchdog probes only while the user is active and at most every 5 s, so a dead hook is noticed after the next input, not instantly.
-- There is no mouse-button shortcut (`WH_MOUSE_LL`) and no Caps Lock single-key shortcut. There is no "copy last transcript" (Wispr Shift+Alt+X) and no history UI yet.
-- History rows have `edited = NULL`: learn-from-edits (re-reading the field after the paste) is not implemented.
-- LLM cleanup is off: flow-core's llama.cpp backend is not wired yet, so results are `RAW_TRANSCRIPT` (deterministic post-processing only).
+- There is no mouse-button shortcut (`WH_MOUSE_LL`) and no Caps Lock single-key shortcut.
+- Learn-from-edits polls (default every 1 s for 45 s) instead of subscribing to UIA `TextChanged` events, and uses no local LLM to vet candidates ("is this a proper noun?", 03 §6): flow-core's alignment filters plus the user's explicit accept do that job. Controls without TextPattern/ValuePattern (some Electron/canvas editors) are not watched.
+- LLM cleanup load is 10-50 s on CPU and quality with the default 0.5B model is 4/8 on the core's messy-dictation set (1.5B: 8/8, ~2x slower); see `docs/core-architecture.md`.
+- "Re-paste" from the History tab hides Settings and pastes into whatever window Windows activates next (normally the one used before Settings).
 - Cue sounds are synthesised tones, not Wispr's WAVs (those are not redistributable).
 
 ## flow-core integration
