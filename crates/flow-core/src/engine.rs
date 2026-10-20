@@ -145,6 +145,17 @@ impl FlowCore {
                     "built without the `whisper` feature".into(),
                 ))
             }
+            #[cfg(feature = "parakeet")]
+            AsrBackend::Parakeet => Arc::new(
+                crate::parakeet::ParakeetAsr::load(&cfg.asr_path, cfg.threads)
+                    .map_err(|e| CoreError::Load(e.to_string()))?,
+            ),
+            #[cfg(not(feature = "parakeet"))]
+            AsrBackend::Parakeet => {
+                return Err(CoreError::Load(
+                    "built without the `parakeet` feature".into(),
+                ))
+            }
         };
         let cleaner: Option<Arc<dyn Cleaner>> = match cfg.llm_path.as_deref() {
             None | Some("") => None,

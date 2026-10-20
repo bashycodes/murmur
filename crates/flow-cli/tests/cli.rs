@@ -222,3 +222,50 @@ fn whisper_then_llm_in_one_process_if_present() {
     let t = v["final_text"].as_str().unwrap().to_lowercase();
     assert!(t.contains("ask not what your country"), "{v}");
 }
+
+#[cfg(feature = "parakeet")]
+#[test]
+fn parakeet_engine_on_jfk_if_present() {
+    let m = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../models");
+    let (dir, wav) = (
+        m.join("sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"),
+        m.join("jfk.wav"),
+    );
+    if !dir.join("tokens.txt").exists() || !wav.exists() {
+        eprintln!("SKIP: parakeet model/sample missing (tools/fetch-models.sh --parakeet)");
+        return;
+    }
+    let out = bin()
+        .args([
+            "transcribe",
+            "--json",
+            "--engine",
+            "parakeet",
+            "--threads",
+            "4",
+            "--model",
+        ])
+        .arg(&dir)
+        .arg(&wav)
+        .output()
+        .unwrap();
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{err}");
+    eprintln!("{err}");
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        v["asr_text"].as_str().unwrap(),
+        "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country.",
+        "{v}"
+    );
+}
+
+#[test]
+fn unknown_engine_is_a_usage_error() {
+    let out = bin()
+        .args(["transcribe", "--engine", "vosk", "--model", "x", "a.wav"])
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("unknown engine"));
+}

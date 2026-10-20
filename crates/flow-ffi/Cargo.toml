@@ -14,6 +14,8 @@ whisper = ["flow-core/whisper"]
 # Runtime-loads the flow-llm plugin (ship libflow_llm next to the executable).
 llm = ["flow-core/llm"]
 jni = ["dep:jni"]
+# Parakeet-TDT engine; ship libsherpa-onnx-c-api.so + libonnxruntime.so with the library.
+parakeet = ["flow-core/parakeet"]
 
 [dependencies]
 flow-core = { path = "../flow-core" }

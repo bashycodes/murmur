@@ -11,6 +11,9 @@ whisper = ["flow-core/whisper"]
 # Needs the flow-llm plugin at runtime (`cargo build -p flow-llm`); the
 # feature itself only adds the loader.
 llm = ["flow-core/llm"]
+# `--engine parakeet`: links libsherpa-onnx-c-api + libonnxruntime, which the
+# build copies next to the binary (build.rs adds an $ORIGIN rpath).
+parakeet = ["flow-core/parakeet"]
 
 [dependencies]
 flow-core = { path = "../flow-core", features = ["wav"] }

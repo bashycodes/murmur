@@ -11,6 +11,8 @@ mod engine;
 pub mod learn;
 #[cfg(feature = "llm")]
 pub mod llama;
+#[cfg(feature = "parakeet")]
+pub mod parakeet;
 pub mod postprocess;
 #[cfg(feature = "whisper")]
 pub mod whisper;
