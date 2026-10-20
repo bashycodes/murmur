@@ -400,7 +400,8 @@ impl Worker {
         if r.asr_text.is_empty() {
             return r;
         }
-        let ctx = self.shared.context.lock().unwrap().clone();
+        let mut ctx = self.shared.context.lock().unwrap().clone();
+        ctx.app_category = postprocess::effective_category(s.cfg.platform, &ctx);
         let mut text = r.asr_text.clone();
         r.status = CommitStatus::RawTranscript;
         if let (true, Some(cl)) = (cleanup::should_run(&s.cfg, ctx.app_category), &self.cleaner) {
