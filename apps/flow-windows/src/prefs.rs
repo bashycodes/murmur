@@ -68,6 +68,23 @@ pub struct Prefs {
     /// Show the live partial transcript above the pill.
     pub live_preview: bool,
     pub live_preview_interval_ms: u32,
+    /// Local LLM cleanup (llama.cpp via the `flow_llm` plugin). Off by
+    /// default (DECISIONS D5): deterministic post-processing always runs.
+    pub llm_enabled: bool,
+    /// GGUF instruct model; `None` = `%APPDATA%\FlowClone\models\`
+    /// `qwen2.5-0.5b-instruct-q4_k_m.gguf` (D11). Never downloaded.
+    pub llm_model_path: Option<String>,
+    /// Explicit `flow_llm.dll`; `None` = next to the exe (the shipped layout).
+    pub llm_lib_path: Option<String>,
+    /// Cleanup budget per dictation before falling back to RAW_TRANSCRIPT.
+    pub llm_timeout_ms: u64,
+    /// Watch the field after a paste and suggest dictionary words from the
+    /// user's corrections (03 §3). Suggestions are never auto-added.
+    pub learn_from_edits: bool,
+    /// How long to watch after a paste.
+    pub learn_window_ms: u64,
+    /// Re-read interval while watching.
+    pub learn_poll_ms: u64,
 }
 
 impl Default for Prefs {
@@ -83,8 +100,9 @@ impl Default for Prefs {
             use_ax_context: true,
             cleanup_level: CleanupLevel::Light,
             raw_mode: false,
+            // 03 §1.3: every Wispr bucket defaults to formal + light.
             styles: Styles {
-                personal: "casual".into(),
+                personal: "formal".into(),
                 work: "formal".into(),
                 email: "formal".into(),
                 other: "formal".into(),
@@ -100,6 +118,13 @@ impl Default for Prefs {
             asr_threads: None,
             live_preview: true,
             live_preview_interval_ms: 1500,
+            llm_enabled: false,
+            llm_model_path: None,
+            llm_lib_path: None,
+            llm_timeout_ms: 1500,
+            learn_from_edits: true,
+            learn_window_ms: 45_000,
+            learn_poll_ms: 1_000,
         }
     }
 }
@@ -157,7 +182,14 @@ impl Prefs {
         check("hands-free", &s.hands_free, false)?;
         check("cancel", &s.cancel, true)?;
         check("paste-last", &s.paste_last, false)?;
-        let all = [&s.ptt, &s.hands_free, &s.cancel, &s.paste_last];
+        check("copy-last", &s.copy_last, false)?;
+        let all = [
+            &s.ptt,
+            &s.hands_free,
+            &s.cancel,
+            &s.paste_last,
+            &s.copy_last,
+        ];
         for (i, a) in all.iter().enumerate() {
             if all[i + 1..].contains(a) {
                 return Err("shortcuts must differ from each other".into());
@@ -191,6 +223,24 @@ impl Prefs {
             partial_interval_ms: self
                 .live_preview
                 .then_some(self.live_preview_interval_ms.max(250)),
+            llm_timeout_ms: self.llm_timeout_ms.clamp(200, 30_000),
+        }
+    }
+
+    pub fn watch_opts(&self) -> crate::learn::WatchOpts {
+        let window_ms = self.learn_window_ms.clamp(1_000, 120_000);
+        crate::learn::WatchOpts {
+            window_ms,
+            baseline_ms: 3_000.min(window_ms),
+            poll_ms: self.learn_poll_ms.clamp(100, 5_000),
+        }
+    }
+
+    /// The GGUF to load when cleanup is enabled.
+    pub fn resolved_llm_path(&self, appdata: Option<&str>) -> PathBuf {
+        match self.llm_model_path.as_deref().map(str::trim) {
+            Some(p) if !p.is_empty() => PathBuf::from(p),
+            _ => crate::core_adapter::default_llm_path(appdata),
         }
     }
 

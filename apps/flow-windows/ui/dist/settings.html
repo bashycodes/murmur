@@ -7,70 +7,115 @@
     <link rel="stylesheet" href="settings.css" />
   </head>
   <body>
-    <form id="form">
+    <header>
       <h1>Flow Clone</h1>
       <p class="sub">Everything runs on this PC. Nothing is sent over the network.</p>
+      <nav class="tabs" role="tablist">
+        <button type="button" role="tab" data-tab="general">General</button>
+        <button type="button" role="tab" data-tab="ai">AI cleanup</button>
+        <button type="button" role="tab" data-tab="history">History</button>
+        <button type="button" role="tab" data-tab="dictionary">Dictionary <span id="sugg_badge" class="badge" hidden></span></button>
+      </nav>
+    </header>
 
-      <fieldset>
-        <legend>Shortcuts</legend>
-        <label>Push to talk (hold) <input id="ptt" placeholder="Ctrl+Win" /></label>
-        <label>Hands-free (toggle) <input id="hands_free" placeholder="Ctrl+Win+Space" /></label>
-        <label>Cancel <input id="cancel" placeholder="Esc" /></label>
-        <label>Paste last transcript <input id="paste_last" placeholder="Shift+Alt+Z" /></label>
-        <p class="hint">Keys: Ctrl, Win, Alt, Shift, Space, Esc, A–Z, 0–9, F1–F24. Max 3 keys, at least one modifier.</p>
-      </fieldset>
+    <form id="form">
+      <section class="panel" data-panel="general">
+        <fieldset>
+          <legend>Shortcuts</legend>
+          <label>Push to talk (hold) <input id="ptt" placeholder="Ctrl+Win" /></label>
+          <label>Hands-free (toggle) <input id="hands_free" placeholder="Ctrl+Win+Space" /></label>
+          <label>Cancel <input id="cancel" placeholder="Esc" /></label>
+          <label>Paste last transcript <input id="paste_last" placeholder="Shift+Alt+Z" /></label>
+          <label>Copy last transcript <input id="copy_last" placeholder="Shift+Alt+X" /></label>
+          <p class="hint">Keys: Ctrl, Win, Alt, Shift, Space, Esc, A–Z, 0–9, F1–F24. Max 3 keys, at least one modifier.</p>
+        </fieldset>
 
-      <fieldset>
-        <legend>Audio</legend>
-        <label>Microphone <select id="microphone"></select></label>
-        <label class="row"><input type="checkbox" id="enable_sounds" /> Dictation sounds</label>
-        <label class="row"><input type="checkbox" id="mute_audio_while_dictating" /> Mute other audio while dictating</label>
-        <label>Max dictation length (minutes) <input id="max_dictation_minutes" type="number" min="1" max="60" /></label>
-      </fieldset>
+        <fieldset>
+          <legend>Audio</legend>
+          <label>Microphone <select id="microphone"></select></label>
+          <label class="row"><input type="checkbox" id="enable_sounds" /> Dictation sounds</label>
+          <label class="row"><input type="checkbox" id="mute_audio_while_dictating" /> Mute other audio while dictating</label>
+          <label>Max dictation length (minutes) <input id="max_dictation_minutes" type="number" min="1" max="60" /></label>
+        </fieldset>
 
-      <fieldset>
-        <legend>Speech model</legend>
-        <p id="model_status" class="hint">Checking…</p>
-        <label>Model file (empty = default) <input id="model_path" spellcheck="false" /></label>
-        <p class="hint">A whisper.cpp ggml model, e.g. <code>ggml-base.bin</code> (default) or <code>ggml-small-q5_1.bin</code> for better accuracy. Models are never downloaded automatically: put the file in <code id="models_dir"></code>.</p>
-      </fieldset>
+        <fieldset>
+          <legend>Speech model</legend>
+          <p id="model_status" class="hint">Checking…</p>
+          <label>Model file (empty = default) <input id="model_path" spellcheck="false" /></label>
+          <p class="hint">A whisper.cpp ggml model, e.g. <code>ggml-base.bin</code> (default) or <code>ggml-small-q5_1.bin</code> for better accuracy. Models are never downloaded automatically: put the file in <code id="models_dir"></code>.</p>
+        </fieldset>
 
-      <fieldset>
-        <legend>Transcription</legend>
-        <label>Languages (comma-separated, empty = auto) <input id="languages" placeholder="en, de" /></label>
-        <label>Cleanup
-          <select id="cleanup_level">
-            <option value="none">None — exactly what you said</option>
-            <option value="light">Light — fillers and grammar</option>
-            <option value="medium">Medium — clarity</option>
-            <option value="high">High — rewrite for polish</option>
-          </select>
-        </label>
-        <label class="row"><input type="checkbox" id="raw_mode" /> Raw mode (no formatting at all)</label>
-        <label class="row"><input type="checkbox" id="use_ax_context" /> Use text around the cursor as context (stays local)</label>
-        <label class="row"><input type="checkbox" id="live_preview" /> Show live transcript while dictating</label>
-      </fieldset>
+        <fieldset>
+          <legend>Transcription</legend>
+          <label>Languages (comma-separated, empty = auto) <input id="languages" placeholder="en, de" /></label>
+          <label class="row"><input type="checkbox" id="raw_mode" /> Raw mode (no formatting at all)</label>
+          <label class="row"><input type="checkbox" id="use_ax_context" /> Use text around the cursor as context (stays local)</label>
+          <label class="row"><input type="checkbox" id="live_preview" /> Show live transcript while dictating</label>
+          <label class="row"><input type="checkbox" id="learn_from_edits" /> Suggest dictionary words from my corrections</label>
+          <p class="hint">After a paste the field is re-read for about 45 s. Words you fix show up under Dictionary → Suggestions; nothing is added without your OK.</p>
+        </fieldset>
 
-      <fieldset>
-        <legend>Insertion</legend>
-        <label>Method
-          <select id="paste_method">
-            <option value="ctrl_v">Clipboard + Ctrl+V</option>
-            <option value="shift_insert">Clipboard + Shift+Insert</option>
-            <option value="type">Type characters</option>
-          </select>
-        </label>
-        <label class="row"><input type="checkbox" id="restore_clipboard" /> Restore my clipboard afterwards</label>
-      </fieldset>
+        <fieldset>
+          <legend>Insertion</legend>
+          <label>Method
+            <select id="paste_method">
+              <option value="ctrl_v">Clipboard + Ctrl+V</option>
+              <option value="shift_insert">Clipboard + Shift+Insert</option>
+              <option value="type">Type characters</option>
+            </select>
+          </label>
+          <label class="row"><input type="checkbox" id="restore_clipboard" /> Restore my clipboard afterwards</label>
+        </fieldset>
 
-      <fieldset>
-        <legend>Dictionary &amp; snippets</legend>
-        <textarea id="dictionary" rows="8" spellcheck="false" placeholder="Kubernetes&#10;gh => GitHub&#10;my address ==> 1 Main Street"></textarea>
-        <p class="hint"><code>word</code> = vocabulary hint, <code>a =&gt; b</code> = replacement, <code>trigger ==&gt; text</code> = snippet.</p>
-      </fieldset>
+        <fieldset>
+          <legend>App</legend>
+          <label class="row"><input type="checkbox" id="show_flow_bar_always" /> Show the Flow bar when idle</label>
+          <label class="row"><input type="checkbox" id="launch_at_login" /> Launch at login</label>
+        </fieldset>
+      </section>
 
+      <section class="panel" data-panel="ai">
+        <fieldset>
+          <legend>AI cleanup (local LLM)</legend>
+          <label class="row"><input type="checkbox" id="llm_enabled" /> Clean up dictations with a local language model</label>
+          <p id="llm_status" class="hint">Off.</p>
+          <p class="hint">Removes fillers, applies "scratch that" and spoken lists, and adapts tone per app. Runs llama.cpp on this PC (<code id="llm_plugin"></code> next to the app). Off: deterministic formatting only. If the model is slow, the plain transcript is pasted instead.</p>
+          <label>Model file (GGUF, empty = default) <input id="llm_model_path" spellcheck="false" /></label>
+          <p class="hint">Qwen2.5-0.5B-Instruct Q4_K_M is the fast default; Qwen2.5-1.5B-Instruct is more accurate and about twice as slow. Never downloaded automatically.</p>
+          <label>Engine library (empty = next to the app) <input id="llm_lib_path" spellcheck="false" /></label>
+          <label>Time budget per dictation (ms) <input id="llm_timeout_ms" type="number" min="200" max="30000" step="100" /></label>
+          <label>Cleanup level
+            <select id="cleanup_level">
+              <option value="none">None — exactly what you said</option>
+              <option value="light">Light — fillers and grammar</option>
+              <option value="medium">Medium — clarity</option>
+              <option value="high">High — rewrite for polish</option>
+            </select>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Style per app</legend>
+          <p class="hint">Which style applies depends on the app you dictate into.</p>
+          <div class="styles">
+            <label>Personal messages <small>WhatsApp, Messenger, Telegram</small> <select id="style_personal" class="style"></select></label>
+            <label>Work messages <small>Slack, Teams</small> <select id="style_work" class="style"></select></label>
+            <label>Email <small>Outlook, Gmail</small> <select id="style_email" class="style"></select></label>
+            <label>Everything else <select id="style_other" class="style"></select></label>
+          </div>
+        </fieldset>
+      </section>
+
+      <footer><button type="submit">Save</button> <span id="status"></span></footer>
+    </form>
+
+    <section class="panel" data-panel="history">
       <fieldset>
         <legend>History</legend>
+        <div class="toolbar">
+          <input id="hist_query" type="search" placeholder="Search transcripts" spellcheck="false" />
+          <button type="button" id="hist_clear" class="danger">Delete all</button>
+        </div>
         <label>Keep transcripts on this PC
           <select id="retention">
             <option value="keep">Forever</option>
@@ -78,17 +123,54 @@
             <option value="never">Never (nothing is stored)</option>
           </select>
         </label>
-        <p class="hint">Text only, in a local SQLite file. Audio is never stored.</p>
+        <p class="hint">Text only, in a local SQLite file. Audio is never stored. <span id="hist_status"></span></p>
+      </fieldset>
+      <ol id="hist_list" class="hist"></ol>
+      <p id="hist_empty" class="hint" hidden>No transcripts.</p>
+    </section>
+
+    <section class="panel" data-panel="dictionary">
+      <fieldset id="sugg_box" hidden>
+        <legend>Suggestions from your corrections</legend>
+        <p class="hint">You changed these words after a dictation. Add them so they are recognised next time.</p>
+        <ul id="sugg_list" class="sugg"></ul>
       </fieldset>
 
       <fieldset>
-        <legend>App</legend>
-        <label class="row"><input type="checkbox" id="show_flow_bar_always" /> Show the Flow bar when idle</label>
-        <label class="row"><input type="checkbox" id="launch_at_login" /> Launch at login</label>
+        <legend>Dictionary &amp; snippets</legend>
+        <div class="toolbar">
+          <input id="dict_filter" type="search" placeholder="Filter" spellcheck="false" />
+          <button type="button" id="dict_add">Add</button>
+        </div>
+        <table class="dict">
+          <thead><tr><th>Word or trigger</th><th>Replace with / snippet text</th><th title="Snippet">Snip</th><th></th></tr></thead>
+          <tbody id="dict_rows"></tbody>
+        </table>
+        <p class="hint">Word only = vocabulary hint (names, jargon). With a replacement = always rewritten. Snippet = saying the trigger inserts the text.</p>
+        <div class="toolbar">
+          <button type="button" id="dict_save">Save dictionary</button>
+          <span id="dict_status"></span>
+        </div>
       </fieldset>
 
-      <footer><button type="submit">Save</button> <span id="status"></span></footer>
-    </form>
+      <fieldset>
+        <legend>Import / export</legend>
+        <p class="hint">JSON list of <code>{"word", "replacement", "isSnippet"}</code>, the same file the Android app uses.</p>
+        <div class="toolbar">
+          <label class="row">Import <input id="dict_file" type="file" accept=".json,application/json" /></label>
+          <select id="dict_mode">
+            <option value="merge">Merge</option>
+            <option value="replace">Replace all</option>
+          </select>
+        </div>
+        <div class="toolbar">
+          <button type="button" id="dict_export">Export to Downloads</button>
+          <button type="button" id="dict_copy" class="secondary">Copy JSON</button>
+        </div>
+        <p id="io_status" class="hint"></p>
+      </fieldset>
+    </section>
+
     <script src="settings.js"></script>
   </body>
 </html>

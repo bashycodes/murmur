@@ -12,7 +12,9 @@ use crate::core_api::{to_outcome, CommitResult, CommitStatus, CoreApi, FieldCont
 use crate::dictation::{Dictation, Effect, Input, OverlayState, Phase, SessionId, Sound};
 use crate::history::{self, History};
 use crate::hotkeys::HotkeyAction;
+use crate::learn::{self, Anchors, EditWatch, FieldReader, Read};
 use crate::prefs::Prefs;
+use crate::suggestions::SuggestionStore;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
@@ -41,6 +43,20 @@ pub trait Platform: Send + Sync + 'static {
     fn send_enter(&self) -> Result<(), String> {
         Ok(())
     }
+    /// Plain clipboard copy ("copy last transcript"). Worker thread.
+    fn copy_text(&self, _text: &str) -> Result<(), String> {
+        Err("clipboard not available".into())
+    }
+    /// A reader bound to the control focused right now (learn-from-edits),
+    /// `None` when it can't be read (no text pattern, password field).
+    /// Called and used on the watch thread.
+    fn field_reader(&self) -> Option<Box<dyn FieldReader>> {
+        None
+    }
+    /// A history row was added or changed (the History tab refreshes).
+    fn history_changed(&self) {}
+    /// New dictionary suggestions are waiting (`pending` in total).
+    fn suggestions_changed(&self, _pending: usize) {}
 }
 
 /// Per-session facts collected for the history row.
@@ -69,6 +85,9 @@ pub struct Controller {
     clock: Box<dyn Fn() -> u64 + Send>,
     shared: Arc<Shared>,
     history: Option<Arc<Mutex<History>>>,
+    suggestions: Option<Arc<Mutex<SuggestionStore>>>,
+    /// Bumped per dictation: a running edit watch stops when it changes.
+    watch_gen: Arc<AtomicU64>,
     preview_shown: String,
 }
 
@@ -91,8 +110,17 @@ impl Controller {
             clock,
             shared: Arc::default(),
             history: None,
+            suggestions: None,
+            watch_gen: Arc::default(),
             preview_shown: String::new(),
         }
+    }
+
+    /// Collect learn-from-edits suggestions into `store` (needs
+    /// `learn_from_edits` in prefs and a readable field).
+    pub fn with_suggestions(mut self, store: Arc<Mutex<SuggestionStore>>) -> Self {
+        self.suggestions = Some(store);
+        self
     }
 
     /// Record transcripts to the local SQLite history (retention from prefs).
@@ -118,6 +146,10 @@ impl Controller {
         match &input {
             Input::Hotkey(HotkeyAction::PasteLast) => {
                 self.paste_last();
+                return;
+            }
+            Input::Hotkey(HotkeyAction::CopyLast) => {
+                self.copy_last();
                 return;
             }
             Input::PasteFinished { session, result } => self.record(*session, result),
@@ -169,30 +201,115 @@ impl Controller {
         }
     }
 
-    /// Store the history row once the paste outcome is known.
+    /// Store the history row once the paste outcome is known, then watch
+    /// the field for corrections.
     fn record(&self, session: SessionId, paste: &Result<(), String>) {
         let info = self.shared.sessions.lock().unwrap().remove(&session);
         let Some(info) = info else { return };
         let Some(r) = info.result else { return };
         *self.shared.last_text.lock().unwrap() = Some(r.final_text.clone());
-        let Some(h) = &self.history else { return };
-        let ctx = info.context.unwrap_or_default();
-        let entry = history::Entry {
-            ts: history::now_ms(),
-            app: ctx.app_id,
-            url: ctx.url_host,
-            raw: r.asr_text,
-            formatted: (r.status == CommitStatus::Formatted).then(|| r.final_text.clone()),
-            pasted: paste.is_ok().then(|| r.final_text.clone()),
-            edited: None,
-            duration_ms: (info.samples.load(Ordering::Relaxed) / 16) as i64,
-            words: history::word_count(&r.final_text),
-            lang: r.language,
-        };
-        let retention = self.prefs.read().unwrap().retention;
-        if let Err(e) = h.lock().unwrap().record(&entry, retention, entry.ts) {
-            eprintln!("[history] {e}");
+        let mut row = None;
+        if let Some(h) = &self.history {
+            let ctx = info.context.clone().unwrap_or_default();
+            let entry = history::Entry {
+                id: 0,
+                ts: history::now_ms(),
+                app: ctx.app_id,
+                url: ctx.url_host,
+                raw: r.asr_text.clone(),
+                formatted: (r.status == CommitStatus::Formatted).then(|| r.final_text.clone()),
+                pasted: paste.is_ok().then(|| r.final_text.clone()),
+                edited: None,
+                duration_ms: (info.samples.load(Ordering::Relaxed) / 16) as i64,
+                words: history::word_count(&r.final_text),
+                lang: r.language.clone(),
+            };
+            let retention = self.prefs.read().unwrap().retention;
+            match h.lock().unwrap().record(&entry, retention, entry.ts) {
+                Ok(id) => row = id,
+                Err(e) => eprintln!("[history] {e}"),
+            }
+            self.platform.history_changed();
         }
+        if paste.is_ok() {
+            self.watch_for_edits(info.context, &r, row);
+        }
+    }
+
+    /// Learn from edits (03 §3): re-read the field for a while after the
+    /// paste; corrections become suggestions, never dictionary entries.
+    fn watch_for_edits(&self, ctx: Option<FieldContext>, r: &CommitResult, row: Option<i64>) {
+        let prefs = self.prefs.read().unwrap().clone();
+        // A sent message (press enter) clears the field: nothing to learn.
+        if !prefs.learn_from_edits || !prefs.use_ax_context || r.press_enter {
+            return;
+        }
+        // No snapshot = no anchors to find the dictated region by.
+        let Some(ctx) = ctx else { return };
+        let pasted = crate::paste::plain_text(&r.final_text);
+        if pasted.trim().is_empty() {
+            return;
+        }
+        let gen = self.watch_gen.load(Ordering::SeqCst);
+        let watch_gen = self.watch_gen.clone();
+        let platform = self.platform.clone();
+        let core = self.core.clone();
+        let history = self.history.clone();
+        let suggestions = self.suggestions.clone();
+        let live_prefs = self.prefs.clone();
+        let spawned = std::thread::Builder::new()
+            .name("flow-learn".into())
+            .spawn(move || {
+                let Some(mut inner) = platform.field_reader() else {
+                    return;
+                };
+                let mut reader = StopOnNewDictation {
+                    inner: &mut *inner,
+                    gen,
+                    watch_gen: &watch_gen,
+                };
+                let t0 = std::time::Instant::now();
+                let mut watch =
+                    EditWatch::new(&pasted, Anchors::from_context(&ctx), 0, prefs.watch_opts());
+                let outcome = learn::run_watch(
+                    &mut reader,
+                    &mut watch,
+                    &|| t0.elapsed().as_millis() as u64,
+                    &|ms| std::thread::sleep(Duration::from_millis(ms)),
+                );
+                drop(inner);
+                let Some(edited) = outcome.edited else { return };
+                if let (Some(h), Some(id)) = (&history, row) {
+                    let _ = h.lock().unwrap().set_edited(id, &edited);
+                    platform.history_changed();
+                }
+                let bounded = learn::bound_edit(&pasted, &edited);
+                let cands = core.learn_edit(&pasted, &bounded);
+                let Some(store) = suggestions else { return };
+                let dict = live_prefs.read().unwrap().dictionary.clone();
+                let mut s = store.lock().unwrap();
+                if s.data.add(&cands, &ctx.app_id, history::now_ms(), &dict) > 0 {
+                    if let Err(e) = s.save() {
+                        eprintln!("[suggestions] {e}");
+                    }
+                    platform.suggestions_changed(s.data.pending.len());
+                }
+            });
+        if let Err(e) = spawned {
+            eprintln!("[learn] {e}");
+        }
+    }
+
+    /// Last transcript: history first (survives restarts), else memory.
+    fn last_text(&self) -> Option<String> {
+        let retention = self.prefs.read().unwrap().retention;
+        let mut text = self.shared.last_text.lock().unwrap().clone();
+        if let Some(h) = &self.history {
+            if let Ok(Some(e)) = h.lock().unwrap().latest(retention, history::now_ms()) {
+                text = Some(e.best_text().to_string());
+            }
+        }
+        text.filter(|t| !t.is_empty())
     }
 
     /// Re-insert the last transcript; ignored while a dictation is running.
@@ -200,20 +317,24 @@ impl Controller {
         if self.machine.is_active() {
             return;
         }
+        let Some(text) = self.last_text() else { return };
         let prefs = self.prefs.read().unwrap().clone();
-        let mut text = self.shared.last_text.lock().unwrap().clone();
-        if let Some(h) = &self.history {
-            if let Ok(Some(e)) = h.lock().unwrap().latest(prefs.retention, history::now_ms()) {
-                text = Some(e.best_text().to_string());
-            }
-        }
-        let Some(text) = text.filter(|t| !t.is_empty()) else {
-            return;
-        };
         let platform = self.platform.clone();
         std::thread::spawn(move || {
             if let Err(e) = platform.paste(&text, &prefs) {
                 platform.overlay(&OverlayState::Error { message: e });
+            }
+        });
+    }
+
+    /// Put the last transcript on the clipboard (Wispr Shift+Alt+X).
+    fn copy_last(&self) {
+        let Some(text) = self.last_text() else { return };
+        let text = crate::paste::plain_text(&text);
+        let platform = self.platform.clone();
+        std::thread::spawn(move || {
+            if let Err(e) = platform.copy_text(&text) {
+                eprintln!("[copy-last] {e}");
             }
         });
     }
@@ -248,6 +369,7 @@ impl Controller {
                 }
             }
             Effect::BeginSession(session) => {
+                self.watch_gen.fetch_add(1, Ordering::SeqCst);
                 if let Err(message) = self.core.start_session(prefs.session_config()) {
                     let _ = self.tx.send(Input::StartFailed { session, message });
                     return;
@@ -331,6 +453,23 @@ impl Controller {
             }
             Effect::Overlay(st) => self.platform.overlay(&st),
         }
+    }
+}
+
+/// Ends a watch as soon as the next dictation starts: its paste would
+/// otherwise look like the user typing into the watched region.
+struct StopOnNewDictation<'a> {
+    inner: &'a mut dyn FieldReader,
+    gen: u64,
+    watch_gen: &'a AtomicU64,
+}
+
+impl FieldReader for StopOnNewDictation<'_> {
+    fn read(&mut self) -> Read {
+        if self.watch_gen.load(Ordering::SeqCst) != self.gen {
+            return Read::FocusChanged;
+        }
+        self.inner.read()
     }
 }
 

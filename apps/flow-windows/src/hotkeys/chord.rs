@@ -212,6 +212,8 @@ pub struct Bindings {
     pub cancel: Chord,
     /// Re-insert the last transcript (Wispr Windows default Shift+Alt+Z).
     pub paste_last: Chord,
+    /// Put the last transcript on the clipboard (Wispr default Shift+Alt+X).
+    pub copy_last: Chord,
 }
 
 impl Default for Bindings {
@@ -221,6 +223,7 @@ impl Default for Bindings {
             hands_free: Chord::new([Key::Ctrl, Key::Win, Key::Space]),
             cancel: Chord::new([Key::Esc]),
             paste_last: Chord::new([Key::Shift, Key::Alt, Key::Vk(b'Z' as u16)]),
+            copy_last: Chord::new([Key::Shift, Key::Alt, Key::Vk(b'X' as u16)]),
         }
     }
 }
@@ -241,6 +244,8 @@ pub enum HotkeyAction {
     Cancel,
     /// Paste-last-transcript chord pressed.
     PasteLast,
+    /// Copy-last-transcript chord pressed.
+    CopyLast,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -355,6 +360,12 @@ impl ChordMatcher {
                 if !ev.key.is_modifier() {
                     d.suppress = true;
                 }
+            } else if self.pressed == *self.bindings.copy_last.keys() {
+                d.actions.push(HotkeyAction::CopyLast);
+                self.chord_fired();
+                if !ev.key.is_modifier() {
+                    d.suppress = true;
+                }
             } else if self.is_cancel(ev.key) {
                 d.actions.push(HotkeyAction::Cancel);
                 if dictating {
@@ -422,6 +433,18 @@ mod tests {
         evs.iter()
             .flat_map(|e| m.handle(*e, false).actions)
             .collect()
+    }
+
+    #[test]
+    fn copy_last_chord_fires_and_swallows_the_letter() {
+        let mut m = m();
+        let x = Key::Vk(b'X' as u16);
+        m.handle(KeyEvent::down(Key::Shift), false);
+        m.handle(KeyEvent::down(Key::Alt), false);
+        let d = m.handle(KeyEvent::down(x), false);
+        assert_eq!(d.actions, vec![CopyLast]);
+        assert!(d.suppress, "X must not reach the app");
+        assert!(m.handle(KeyEvent::up(x), false).suppress);
     }
 
     #[test]
@@ -683,7 +706,7 @@ mod tests {
         let j = serde_json::to_string(&Bindings::default()).unwrap();
         assert_eq!(
             j,
-            r#"{"ptt":"Ctrl+Win","hands_free":"Ctrl+Win+Space","cancel":"Esc","paste_last":"Alt+Shift+Z"}"#
+            r#"{"ptt":"Ctrl+Win","hands_free":"Ctrl+Win+Space","cancel":"Esc","paste_last":"Alt+Shift+Z","copy_last":"Alt+Shift+X"}"#
         );
         let b: Bindings = serde_json::from_str(r#"{"ptt":"Ctrl+Shift"}"#).unwrap();
         assert_eq!(b.ptt.to_string(), "Ctrl+Shift");

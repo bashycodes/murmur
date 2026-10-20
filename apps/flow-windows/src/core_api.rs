@@ -78,6 +78,8 @@ pub struct SessionConfig {
     pub max_samples: u64,
     /// Live preview: re-decode every N ms of new audio; `None` = off.
     pub partial_interval_ms: Option<u32>,
+    /// LLM cleanup budget; 0 = core default (1.5 s).
+    pub llm_timeout_ms: u64,
 }
 
 /// `set_context` payload (≤500 chars each for before/selected/after).
@@ -148,7 +150,10 @@ impl CommitResult {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LearnCandidate {
+    /// The word(s) the user typed: the proposed dictionary entry.
     pub word: String,
+    /// What the dictation had produced in their place.
+    pub heard: String,
     pub replacement: Option<String>,
 }
 

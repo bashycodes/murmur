@@ -162,3 +162,83 @@ unsafe fn browser_url(uia: &IUIAutomation, hwnd: HWND) -> Option<String> {
     let looks_like_url = !v.contains(' ') && v.contains('.');
     looks_like_url.then_some(v)
 }
+
+// ------------------------------------------------------------ learn-from-edits
+
+/// Longest field text read back while watching (characters).
+const WATCH_MAX_CHARS: i32 = 20_000;
+
+/// Re-reads the control that had focus when it was created
+/// ([`crate::learn::FieldReader`]). Lives on one MTA thread: create, use
+/// and drop it there.
+pub struct UiaFieldReader {
+    // `Option` so Drop can release the COM objects before CoUninitialize.
+    com: Option<(IUIAutomation, IUIAutomationElement)>,
+    inited: bool,
+}
+
+/// Bind to the focused control; `None` for password fields and controls
+/// exposing neither TextPattern nor ValuePattern.
+pub fn field_reader() -> Option<UiaFieldReader> {
+    unsafe {
+        let inited = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
+        let mut r = UiaFieldReader { com: None, inited };
+        let uia: IUIAutomation =
+            CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
+        let el = uia.GetFocusedElement().ok()?;
+        if el.CurrentIsPassword().map(|b| b.as_bool()).unwrap_or(true) {
+            return None;
+        }
+        read_whole(&el)?;
+        r.com = Some((uia, el));
+        Some(r)
+    }
+}
+
+/// Whole text of `el` (TextPattern document, else ValuePattern value).
+unsafe fn read_whole(el: &IUIAutomationElement) -> Option<String> {
+    if let Ok(tp) = el.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId) {
+        if let Ok(doc) = tp.DocumentRange() {
+            if let Ok(t) = doc.GetText(WATCH_MAX_CHARS) {
+                return Some(t.to_string());
+            }
+        }
+    }
+    let vp = el
+        .GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId)
+        .ok()?;
+    vp.CurrentValue().ok().map(|v| v.to_string())
+}
+
+impl crate::learn::FieldReader for UiaFieldReader {
+    fn read(&mut self) -> crate::learn::Read {
+        use crate::learn::Read;
+        let Some((uia, el)) = &self.com else {
+            return Read::FocusChanged;
+        };
+        unsafe {
+            match uia.GetFocusedElement() {
+                Ok(now) => {
+                    let same = uia.CompareElements(el, &now).map(|b| b.as_bool());
+                    if !same.unwrap_or(false) {
+                        return Read::FocusChanged;
+                    }
+                }
+                Err(_) => return Read::Unavailable,
+            }
+            match read_whole(el) {
+                Some(t) => Read::Text(t),
+                None => Read::Unavailable,
+            }
+        }
+    }
+}
+
+impl Drop for UiaFieldReader {
+    fn drop(&mut self) {
+        self.com = None;
+        if self.inited {
+            unsafe { CoUninitialize() };
+        }
+    }
+}

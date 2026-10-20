@@ -15,8 +15,10 @@ use std::path::{Path, PathBuf};
 pub const FILE_NAME: &str = "history.sqlite";
 const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 pub struct Entry {
+    /// Row id (0 for an entry not yet stored).
+    pub id: i64,
     /// Unix epoch milliseconds.
     pub ts: i64,
     /// Process name (`slack.exe`).
@@ -29,12 +31,70 @@ pub struct Entry {
     /// What was inserted; `None` when the paste failed (text still kept so
     /// "paste last transcript" can recover it).
     pub pasted: Option<String>,
-    /// The user's later correction (learn-from-edits; not captured yet).
+    /// The field text the user left after correcting the paste
+    /// (learn-from-edits, `learn.rs`).
     pub edited: Option<String>,
     /// Dictation length in ms of audio.
     pub duration_ms: i64,
     pub words: i64,
     pub lang: Option<String>,
+}
+
+/// What the settings History tab shows for one row.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Item {
+    #[serde(flatten)]
+    pub entry: Entry,
+    /// What was (or would have been) inserted.
+    pub final_text: String,
+    /// The LLM changed the wording: "undo AI edit" has something to undo.
+    pub ai_edited: bool,
+}
+
+impl From<Entry> for Item {
+    fn from(entry: Entry) -> Item {
+        let final_text = entry.best_text().to_string();
+        let ai_edited = entry
+            .formatted
+            .as_deref()
+            .is_some_and(|f| f.trim() != entry.raw.trim());
+        Item {
+            entry,
+            final_text,
+            ai_edited,
+        }
+    }
+}
+
+const COLUMNS: &str = "id, ts, app, url, raw, formatted, pasted, edited, duration, words, lang";
+
+fn row_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<Entry> {
+    Ok(Entry {
+        id: row.get(0)?,
+        ts: row.get(1)?,
+        app: row.get(2)?,
+        url: row.get(3)?,
+        raw: row.get(4)?,
+        formatted: row.get(5)?,
+        pasted: row.get(6)?,
+        edited: row.get(7)?,
+        duration_ms: row.get(8)?,
+        words: row.get(9)?,
+        lang: row.get(10)?,
+    })
+}
+
+/// `LIKE` pattern matching `q` literally anywhere.
+fn like_pattern(q: &str) -> String {
+    let mut p = String::from("%");
+    for c in q.trim().chars() {
+        if matches!(c, '%' | '_' | '\\') {
+            p.push('\\');
+        }
+        p.push(c);
+    }
+    p.push('%');
+    p
 }
 
 impl Entry {
@@ -145,25 +205,67 @@ impl History {
         let min_ts = cutoff(r, now).unwrap_or(i64::MIN);
         self.conn
             .query_row(
-                "SELECT ts, app, url, raw, formatted, pasted, edited, duration, words, lang
-                 FROM history WHERE ts >= ?1 ORDER BY ts DESC, id DESC LIMIT 1",
+                &format!(
+                    "SELECT {COLUMNS} FROM history WHERE ts >= ?1 ORDER BY ts DESC, id DESC LIMIT 1"
+                ),
                 [min_ts],
-                |row| {
-                    Ok(Entry {
-                        ts: row.get(0)?,
-                        app: row.get(1)?,
-                        url: row.get(2)?,
-                        raw: row.get(3)?,
-                        formatted: row.get(4)?,
-                        pasted: row.get(5)?,
-                        edited: row.get(6)?,
-                        duration_ms: row.get(7)?,
-                        words: row.get(8)?,
-                        lang: row.get(9)?,
-                    })
-                },
+                row_entry,
             )
             .optional()
+    }
+
+    /// Newest first; `query` matches any text column or the app name
+    /// (case-insensitive for ASCII, literally: `%`/`_` are not wildcards).
+    pub fn list(
+        &self,
+        query: &str,
+        limit: usize,
+        r: Retention,
+        now: i64,
+    ) -> rusqlite::Result<Vec<Entry>> {
+        let min_ts = cutoff(r, now).unwrap_or(i64::MIN);
+        let mut st = self.conn.prepare(&format!(
+            "SELECT {COLUMNS} FROM history
+             WHERE ts >= ?1 AND (?2 = '%%' OR raw LIKE ?2 ESCAPE '\\'
+               OR formatted LIKE ?2 ESCAPE '\\' OR pasted LIKE ?2 ESCAPE '\\'
+               OR edited LIKE ?2 ESCAPE '\\' OR app LIKE ?2 ESCAPE '\\')
+             ORDER BY ts DESC, id DESC LIMIT ?3"
+        ))?;
+        let rows = st.query_map(
+            params![min_ts, like_pattern(query), limit.min(10_000) as i64],
+            row_entry,
+        )?;
+        rows.collect()
+    }
+
+    pub fn get(&self, id: i64) -> rusqlite::Result<Option<Entry>> {
+        self.conn
+            .query_row(
+                &format!("SELECT {COLUMNS} FROM history WHERE id = ?1"),
+                [id],
+                row_entry,
+            )
+            .optional()
+    }
+
+    /// True when a row was removed.
+    pub fn delete(&self, id: i64) -> rusqlite::Result<bool> {
+        Ok(self
+            .conn
+            .execute("DELETE FROM history WHERE id = ?1", [id])?
+            > 0)
+    }
+
+    pub fn clear(&self) -> rusqlite::Result<usize> {
+        self.conn.execute("DELETE FROM history", [])
+    }
+
+    /// Store the user's correction of row `id` (learn-from-edits).
+    pub fn set_edited(&self, id: i64, edited: &str) -> rusqlite::Result<bool> {
+        Ok(self.conn.execute(
+            "UPDATE history SET edited = ?2 WHERE id = ?1",
+            params![id, edited],
+        )? > 0)
     }
 
     pub fn count(&self) -> rusqlite::Result<i64> {
@@ -240,6 +342,69 @@ mod tests {
             ..Entry::default()
         };
         assert_eq!(e.best_text(), "Formatted words.");
+    }
+
+    #[test]
+    fn list_searches_newest_first_and_escapes_wildcards() {
+        let h = History::open_in_memory().unwrap();
+        h.record(&entry(1, "alpha one"), Retention::Keep, 10)
+            .unwrap();
+        h.record(&entry(2, "beta 100% sure"), Retention::Keep, 10)
+            .unwrap();
+        h.record(&entry(3, "Alpha two"), Retention::Keep, 10)
+            .unwrap();
+        let all = h.list("", 10, Retention::Keep, 10).unwrap();
+        assert_eq!(
+            all.iter().map(|e| e.raw.as_str()).collect::<Vec<_>>(),
+            ["Alpha two", "beta 100% sure", "alpha one"]
+        );
+        assert!(all.iter().all(|e| e.id > 0));
+        let a = h.list("ALPHA", 10, Retention::Keep, 10).unwrap();
+        assert_eq!(a.len(), 2, "case-insensitive");
+        assert_eq!(h.list("%", 10, Retention::Keep, 10).unwrap().len(), 1);
+        assert_eq!(h.list("_", 10, Retention::Keep, 10).unwrap().len(), 0);
+        assert_eq!(h.list("notepad", 10, Retention::Keep, 10).unwrap().len(), 3);
+        assert_eq!(h.list("", 1, Retention::Keep, 10).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn get_delete_clear_and_set_edited() {
+        let h = History::open_in_memory().unwrap();
+        let id = h
+            .record(&entry(1, "teh plan"), Retention::Keep, 1)
+            .unwrap()
+            .unwrap();
+        let other = h
+            .record(&entry(2, "other"), Retention::Keep, 2)
+            .unwrap()
+            .unwrap();
+        assert!(h.set_edited(id, "the plan").unwrap());
+        assert_eq!(
+            h.get(id).unwrap().unwrap().edited.as_deref(),
+            Some("the plan")
+        );
+        assert!(h.list("the plan", 5, Retention::Keep, 2).unwrap().len() == 1);
+        assert!(h.delete(id).unwrap());
+        assert!(!h.delete(id).unwrap());
+        assert!(h.get(id).unwrap().is_none());
+        assert!(h.get(other).unwrap().is_some());
+        assert_eq!(h.clear().unwrap(), 1);
+        assert_eq!(h.count().unwrap(), 0);
+    }
+
+    #[test]
+    fn item_flags_ai_edits_for_undo() {
+        let mut e = entry(1, "um send it");
+        e.formatted = Some("Send it.".into());
+        e.pasted = Some("Send it.".into());
+        let i = Item::from(e.clone());
+        assert!(i.ai_edited);
+        assert_eq!(i.final_text, "Send it.");
+        e.formatted = None;
+        assert!(!Item::from(e).ai_edited, "RAW_TRANSCRIPT has no AI edit");
+        let j = serde_json::to_value(Item::from(entry(1, "x"))).unwrap();
+        assert_eq!(j["raw"], "x", "entry fields flattened for the UI");
+        assert_eq!(j["final_text"], "x");
     }
 
     #[test]
