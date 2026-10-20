@@ -5,23 +5,38 @@
 //! the O(1) matcher step and an `mpsc::send`, staying far below
 //! `LowLevelHooksTimeout`. A 1 s `WM_TIMER` probes held keys with
 //! `GetAsyncKeyState` to recover from missed key-ups (lock screen, UAC
-//! desktop switch, hook timeouts).
+//! desktop switch, hook timeouts). The same timer runs the liveness
+//! [`watchdog`](super::watchdog): Windows silently removes a hook that
+//! overran `LowLevelHooksTimeout`, so we probe it and re-install when dead.
 
+use super::watchdog::{self, Watchdog};
 use super::{Bindings, ChordMatcher, HotkeyAction, Key, KeyEvent};
 use crate::input;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::GetCurrentThreadId;
-use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetAsyncKeyState, GetLastInputInfo, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT,
+    KEYEVENTF_KEYUP, LASTINPUTINFO, VIRTUAL_KEY,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, KillTimer, PostThreadMessageW, SetTimer,
-    SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, HC_ACTION, KBDLLHOOKSTRUCT, MSG,
-    WH_KEYBOARD_LL, WM_KEYDOWN, WM_QUIT, WM_SYSKEYDOWN, WM_TIMER,
+    SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, HC_ACTION, HHOOK, KBDLLHOOKSTRUCT,
+    MSG, WH_KEYBOARD_LL, WM_KEYDOWN, WM_QUIT, WM_SYSKEYDOWN, WM_TIMER,
 };
+
+/// dwExtraInfo of watchdog probes (distinct from our paste/mask tag); the
+/// hook swallows them so no app ever sees the probe key.
+const PROBE_TAG: usize = input::EXTRA_INFO_TAG ^ 0x5052_4F42; // "PROB"
+/// VK 0xFF: no key is mapped to it.
+const PROBE_VK: u16 = 0xFF;
+
+/// Every hook callback bumps this (watchdog liveness signal).
+static HOOK_EVENTS: AtomicU64 = AtomicU64::new(0);
 
 struct HookState {
     matcher: ChordMatcher,
@@ -94,7 +109,7 @@ unsafe fn hook_thread(ready: Sender<Result<u32, String>>) {
     let hmod = GetModuleHandleW(None)
         .map(|h| HINSTANCE(h.0))
         .unwrap_or_default();
-    let hook = match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), hmod, 0) {
+    let mut hook = match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), hmod, 0) {
         Ok(h) => h,
         Err(e) => {
             let _ = ready.send(Err(format!("Failed to create keyboard hook: {e}")));
@@ -103,10 +118,26 @@ unsafe fn hook_thread(ready: Sender<Result<u32, String>>) {
     };
     let timer = SetTimer(None, 0, 1000, None);
     let _ = ready.send(Ok(GetCurrentThreadId()));
+    let start = std::time::Instant::now();
+    let mut dog = Watchdog::new(watchdog::Config::default());
     let mut msg = MSG::default();
     while GetMessageW(&mut msg, None, 0, 0).as_bool() {
         if msg.message == WM_TIMER {
             check_stale_keys();
+            let now = start.elapsed().as_millis() as u64;
+            let events = HOOK_EVENTS.load(Ordering::Relaxed);
+            match dog.tick(now, last_input_tick(), events) {
+                watchdog::Action::Nothing => {}
+                watchdog::Action::Probe => {
+                    if send_probe() {
+                        dog.probe_sent(now, events);
+                    }
+                }
+                watchdog::Action::Reinstall => {
+                    reinstall(&mut hook, hmod);
+                    dog.reset(HOOK_EVENTS.load(Ordering::Relaxed));
+                }
+            }
             continue;
         }
         let _ = TranslateMessage(&msg);
@@ -114,6 +145,57 @@ unsafe fn hook_thread(ready: Sender<Result<u32, String>>) {
     }
     let _ = KillTimer(None, timer);
     let _ = UnhookWindowsHookEx(hook);
+}
+
+fn last_input_tick() -> u32 {
+    let mut li = LASTINPUTINFO {
+        cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
+        dwTime: 0,
+    };
+    unsafe {
+        let _ = GetLastInputInfo(&mut li);
+    }
+    li.dwTime
+}
+
+/// Tagged VK 0xFF down+up; the hook swallows it. False = not injected
+/// (e.g. a secure desktop is active), so there is nothing to wait for.
+fn send_probe() -> bool {
+    let key = |flags| INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VIRTUAL_KEY(PROBE_VK),
+                wScan: 0,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: PROBE_TAG,
+            },
+        },
+    };
+    let inputs = [key(Default::default()), key(KEYEVENTF_KEYUP)];
+    unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) as usize == inputs.len() }
+}
+
+/// The OS dropped our hook: install a fresh one on this thread. Held keys
+/// are force-released first so an in-progress PTT ends instead of sticking.
+unsafe fn reinstall(hook: &mut HHOOK, hmod: HINSTANCE) {
+    eprintln!("[hotkeys] keyboard hook stopped receiving events; re-installing");
+    let _ = UnhookWindowsHookEx(*hook);
+    match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), hmod, 0) {
+        Ok(h) => *hook = h,
+        Err(e) => eprintln!("[hotkeys] re-install failed: {e}"),
+    }
+    let mut guard = STATE.lock().unwrap();
+    if let Some(s) = guard.as_mut() {
+        let held: Vec<Key> = s.matcher.pressed().collect();
+        for k in held {
+            for a in s.matcher.force_release(k) {
+                let _ = s.tx.send(a);
+            }
+        }
+        s.matcher.reset();
+    }
 }
 
 fn is_physically_down(key: Key) -> bool {
@@ -137,7 +219,11 @@ fn check_stale_keys() {
 
 unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code == HC_ACTION as i32 {
+        HOOK_EVENTS.fetch_add(1, Ordering::Relaxed);
         let kb = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
+        if kb.dwExtraInfo == PROBE_TAG {
+            return LRESULT(1); // watchdog probe: seen, never delivered
+        }
         // Skip only *our own* injections (tagged dwExtraInfo, like Wispr's
         // "WFMK"); other injected input (RDP, on-screen keyboard, AHK) is
         // matched normally.
