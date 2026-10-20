@@ -196,6 +196,18 @@ fn send_chord(shift_insert: bool) -> Result<(), String> {
 
 /// Insert `text` into the focused control. Blocking (sleeps for the restore
 /// delay) — call from a worker thread.
+/// "Copy last transcript": an ordinary clipboard copy (unlike a paste it
+/// is meant to stay, so it is not excluded from Win+V history).
+pub fn copy_text(text: &str) -> Result<(), String> {
+    let _g = ClipGuard::open().ok_or("clipboard is busy")?;
+    unsafe {
+        if EmptyClipboard().is_err() || !set_bytes(CF_UNICODETEXT, &unicode_text_bytes(text)) {
+            return Err("could not set the clipboard".into());
+        }
+    }
+    Ok(())
+}
+
 pub fn paste(text: &str, opts: &PasteOptions) -> Result<(), String> {
     // UIPI drops our input silently (SendInput still "succeeds"), so check
     // first and leave the text on the clipboard for a manual Ctrl+V.

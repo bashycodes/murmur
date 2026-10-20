@@ -78,6 +78,13 @@ pub struct Prefs {
     pub llm_lib_path: Option<String>,
     /// Cleanup budget per dictation before falling back to RAW_TRANSCRIPT.
     pub llm_timeout_ms: u64,
+    /// Watch the field after a paste and suggest dictionary words from the
+    /// user's corrections (03 §3). Suggestions are never auto-added.
+    pub learn_from_edits: bool,
+    /// How long to watch after a paste.
+    pub learn_window_ms: u64,
+    /// Re-read interval while watching.
+    pub learn_poll_ms: u64,
 }
 
 impl Default for Prefs {
@@ -115,6 +122,9 @@ impl Default for Prefs {
             llm_model_path: None,
             llm_lib_path: None,
             llm_timeout_ms: 1500,
+            learn_from_edits: true,
+            learn_window_ms: 45_000,
+            learn_poll_ms: 1_000,
         }
     }
 }
@@ -172,7 +182,14 @@ impl Prefs {
         check("hands-free", &s.hands_free, false)?;
         check("cancel", &s.cancel, true)?;
         check("paste-last", &s.paste_last, false)?;
-        let all = [&s.ptt, &s.hands_free, &s.cancel, &s.paste_last];
+        check("copy-last", &s.copy_last, false)?;
+        let all = [
+            &s.ptt,
+            &s.hands_free,
+            &s.cancel,
+            &s.paste_last,
+            &s.copy_last,
+        ];
         for (i, a) in all.iter().enumerate() {
             if all[i + 1..].contains(a) {
                 return Err("shortcuts must differ from each other".into());
@@ -207,6 +224,15 @@ impl Prefs {
                 .live_preview
                 .then_some(self.live_preview_interval_ms.max(250)),
             llm_timeout_ms: self.llm_timeout_ms.clamp(200, 30_000),
+        }
+    }
+
+    pub fn watch_opts(&self) -> crate::learn::WatchOpts {
+        let window_ms = self.learn_window_ms.clamp(1_000, 120_000);
+        crate::learn::WatchOpts {
+            window_ms,
+            baseline_ms: 3_000.min(window_ms),
+            poll_ms: self.learn_poll_ms.clamp(100, 5_000),
         }
     }
 
