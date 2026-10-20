@@ -180,3 +180,45 @@ fn clean_with_real_llm_if_present() {
         );
     }
 }
+
+/// whisper.cpp (linked) and llama.cpp (plugin) bring different ggml builds;
+/// both must work in one process for the real pipeline.
+#[test]
+fn whisper_then_llm_in_one_process_if_present() {
+    let m = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../models");
+    let (asr, llm, wav) = (
+        m.join("ggml-tiny.en.bin"),
+        m.join("qwen2.5-0.5b-instruct-q4_k_m.gguf"),
+        m.join("jfk.wav"),
+    );
+    let exe = PathBuf::from(env!("CARGO_BIN_EXE_flow-cli"));
+    let plugin = exe.parent().unwrap().join("deps/libflow_llm.so");
+    if ![&asr, &llm, &wav, &plugin].iter().all(|p| p.is_file()) {
+        eprintln!("SKIP: whisper/LLM model, sample or plugin missing");
+        return;
+    }
+    let session = tmp("llm-session2.json");
+    std::fs::write(&session, r#"{"llm_timeout_ms":30000}"#).unwrap();
+    let out = bin()
+        .args(["transcribe", "--json", "--model"])
+        .arg(&asr)
+        .arg("--llm")
+        .arg(&llm)
+        .arg("--llm-lib")
+        .arg(&plugin)
+        .arg("--session")
+        .arg(&session)
+        .arg(&wav)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["status"], "FORMATTED", "{v}");
+    assert!(v["timings"]["llm_ms"].as_u64().unwrap() > 0);
+    let t = v["final_text"].as_str().unwrap().to_lowercase();
+    assert!(t.contains("ask not what your country"), "{v}");
+}
