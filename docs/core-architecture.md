@@ -70,9 +70,11 @@ shell UI thread ──start/commit/cancel──▶ control channel (mpsc) ──
    * Default threads = logical CPUs / 2. On this HT box, 8 threads was 14× slower than 4.
 2. **LLM cleanup** (`Cleaner` trait, optional).
    * It is skipped for raw mode, level `none` and terminal apps.
-   * `cleanup::build_prompt` builds the prompt from the level, style, app category, cursor text and dictionary.
+   * It is also skipped when the whole utterance is a snippet trigger.
+   * `cleanup::build_prompt` implements the windows-research 03 §7.2 template: Wispr's verbatim dictation framing, level/style descriptions and the backtrack list, plus a one-shot built from Wispr's UI example pair. Cursor before/after text (≤300/150 chars), the selection, the dictionary and screen words go in the user message.
+   * HTML `<ol>`/`<ul>` lists in the LLM output become `1.` / `- ` lines.
    * The cleaner runs on its own thread with a hard timeout (default 1.5 s).
-   * Guardrail: word-level divergence between ASR and LLM output (edit distance / words) above a per-level threshold (light 0.5, medium 0.7, high 0.9) means the output is not used and the result falls back to `RAW_TRANSCRIPT`.
+   * Guardrail: word-level divergence between ASR and LLM output (edit distance / words) above a per-level threshold (light 0.6, medium/high 0.9; 03 §7.1) means the output is not used and the result falls back to `RAW_TRANSCRIPT`.
    * The llama.cpp backend (feature `llm`) is **not wired yet**. `load_models` ignores `llm_path`.
 3. **Deterministic post-processing** (`postprocess`). This is the client fallback path. The clone has no server, so it always runs the steps, in this order:
    1. all-lowercase mode;
