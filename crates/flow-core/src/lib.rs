@@ -8,6 +8,7 @@ pub mod cleanup;
 pub mod config;
 pub mod dictionary;
 mod engine;
+pub mod guard;
 pub mod hallucination;
 pub mod learn;
 #[cfg(feature = "llm")]

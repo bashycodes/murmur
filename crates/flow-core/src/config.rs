@@ -100,7 +100,9 @@ pub struct SessionConfig {
     pub partial_interval_ms: Option<u32>,
     /// LLM cleanup budget before falling back to RAW_TRANSCRIPT.
     pub llm_timeout_ms: u64,
-    /// Override the LLM divergence guardrail threshold (0..1).
+    /// Optional extra guard: reject LLM output whose word edit distance /
+    /// words exceeds this (0..1; the old 03 §7.1 check). `None` (default):
+    /// only the support/coverage guard (`guard::check`) runs.
     pub divergence_threshold: Option<f64>,
     /// Ring-buffer capacity between `push_audio` and the worker.
     pub ring_capacity_samples: usize,
