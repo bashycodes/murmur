@@ -125,3 +125,58 @@ fn real_model_on_jfk_if_present() {
         "{v}"
     );
 }
+
+#[test]
+fn clean_needs_llm_and_text() {
+    let out = bin().args(["clean", "hello"]).output().unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("usage"));
+}
+
+#[test]
+fn clean_with_real_llm_if_present() {
+    let model = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../models/qwen2.5-0.5b-instruct-q4_k_m.gguf");
+    // `cargo test` builds the plugin into deps/ without copying it up.
+    let exe = PathBuf::from(env!("CARGO_BIN_EXE_flow-cli"));
+    let plugin = exe.parent().unwrap().join("deps/libflow_llm.so");
+    if !model.is_file() || !plugin.is_file() {
+        eprintln!("SKIP: LLM model or plugin missing (tools/fetch-models.sh --llm)");
+        return;
+    }
+    let session = tmp("llm-session.json");
+    std::fs::write(&session, r#"{"llm_timeout_ms":30000}"#).unwrap();
+    let out = bin()
+        .args(["clean", "--json", "--llm"])
+        .arg(&model)
+        .arg("--llm-lib")
+        .arg(&plugin)
+        .arg("--session")
+        .arg(&session)
+        .args([
+            "i i think the the problem is in the cache layer",
+            "hello there",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let lines: Vec<serde_json::Value> = String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 2);
+    for v in &lines {
+        assert_eq!(v["result"]["status"], "FORMATTED", "{v}");
+        assert!(v["llm"]["gen_tokens"].as_u64().unwrap() > 0, "{v}");
+        // Warm KV prefix: only the tail of the prompt is prefilled.
+        assert!(
+            v["llm"]["prefill_tokens"].as_u64().unwrap() * 4
+                < v["llm"]["prompt_tokens"].as_u64().unwrap(),
+            "{v}"
+        );
+    }
+}
