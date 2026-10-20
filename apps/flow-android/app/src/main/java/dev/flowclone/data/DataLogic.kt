@@ -43,13 +43,33 @@ data class Settings(
     val capMinutes: Int = 5,
     val mockEngine: Boolean = false,
     val userDenylist: Set<String> = emptySet(),
+    /** Local LLM cleanup (flow-llm plugin + an imported GGUF). Off by default (10 §5). */
+    val llmEnabled: Boolean = false,
+    /** Live preview of partial transcripts next to the bubble. */
+    val livePreview: Boolean = true,
+    /** Shake to bring a snoozed bubble back / reveal it for 10 s (07 §5.5). */
+    val shakeToReveal: Boolean = true,
+    /** Shrink the Ready bubble to 36dp after 5 s (07 §5.3 `shrinkBubbleEnabled`). */
+    val shrinkBubble: Boolean = true,
 ) {
+    companion object {
+        /** Phones decode slower than the desktop default budget of 1.5 s. */
+        const val ANDROID_LLM_TIMEOUT_MS = 3_000L
+        const val PARTIAL_INTERVAL_MS = 1_500
+    }
+
+    /** The effective cleanup level: LLM off → NONE; on with NONE selected → LIGHT. */
+    val effectiveCleanup: CleanupLevel
+        get() = if (!llmEnabled) CleanupLevel.NONE else cleanup.takeIf { it != CleanupLevel.NONE } ?: CleanupLevel.LIGHT
+
     fun toSessionConfig(dictionary: List<DictEntry>) = SessionConfig(
         languages = if (language == "auto" || language.isBlank()) emptyList() else listOf(language),
         dictionary = dictionary,
-        cleanupLevel = cleanup,
-        rawMode = cleanup == CleanupLevel.NONE,
+        cleanupLevel = effectiveCleanup,
+        rawMode = effectiveCleanup == CleanupLevel.NONE,
         maxSamples = sessionCap().maxSamples,
+        partialIntervalMs = if (livePreview) PARTIAL_INTERVAL_MS else null,
+        llmTimeoutMs = ANDROID_LLM_TIMEOUT_MS,
     )
 
     fun sessionCap() = SessionCap(capMinutes.coerceIn(1, 20) * 60_000L)
