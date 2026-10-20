@@ -5,6 +5,7 @@
 use std::path::PathBuf;
 
 use flow_core::config::{AsrBackend, ModelConfig, SessionConfig};
+use flow_core::dictionary::{DictEntry, Dictionary};
 use flow_core::{audio, CommitStatus, FlowCore};
 
 fn models_dir() -> PathBuf {
@@ -46,7 +47,16 @@ fn jfk_transcribes_end_to_end() {
     })
     .expect("load model");
     let pcm = audio::read_wav_16k_mono(&wav).unwrap();
-    core.start_session(SessionConfig::default()).unwrap();
+    core.start_session(SessionConfig {
+        dictionary: Dictionary {
+            entries: vec![DictEntry::replacement(
+                "fellow americans",
+                "fellow Americans!",
+            )],
+        },
+        ..Default::default()
+    })
+    .unwrap();
     for c in pcm.chunks(640) {
         core.push_audio(c);
     }
@@ -58,6 +68,11 @@ fn jfk_transcribes_end_to_end() {
         lower.contains("ask not what your country can do for you"),
         "{}",
         r.asr_text
+    );
+    assert!(
+        r.final_text.contains("fellow Americans!"),
+        "dictionary applied: {}",
+        r.final_text
     );
     assert_eq!(r.language.as_deref(), Some("en"));
     assert!(r.timings.audio_ms > 10_000);

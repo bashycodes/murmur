@@ -84,6 +84,7 @@ fn level_text(l: CleanupLevel) -> &'static str {
 
 fn style_text(s: Style) -> &'static str {
     match s {
+        Style::Default => "neutral: normal capitalization and punctuation",
         Style::Formal => "formal: proper capitalization and full punctuation",
         Style::Casual => "casual: capitalization, lighter punctuation",
         Style::VeryCasual => "very casual: no capitalization, minimal punctuation",

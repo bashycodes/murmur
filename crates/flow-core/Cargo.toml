@@ -16,6 +16,8 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 regex = "1"
+fancy-regex = "0.14"
+unicode-normalization = "0.1"
 rtrb = "0.3"
 whisper-rs = { version = "0.16", optional = true }
 hound = { version = "3", optional = true }

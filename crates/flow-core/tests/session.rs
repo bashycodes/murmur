@@ -180,6 +180,7 @@ fn raw_mode_skips_llm() {
     push_all(&core, &speech(500));
     let r = core.commit();
     assert_eq!(r.status, CommitStatus::RawTranscript);
+    assert_eq!(r.fallback_reason, None, "skipped, not failed");
     assert!(!r.final_text.contains("CHANGED"));
 }
 
@@ -312,4 +313,129 @@ fn commit_result_serializes_to_spec_json() {
     assert_eq!(j["status"], "RAW_TRANSCRIPT");
     assert!(j["timings"]["asr_ms"].is_u64());
     assert_eq!(j["asr_text"], "hello");
+}
+
+fn run_text(asr_text: &str, cfg: SessionConfig, ctx: FieldContext) -> flow_core::CommitResult {
+    let (core, _) = mock_core(asr_text);
+    core.start_session(cfg).unwrap();
+    core.set_context(ctx);
+    push_all(&core, &speech(300));
+    core.commit()
+}
+
+#[test]
+fn postprocess_dictionary_and_cursor_context_applied() {
+    let cfg = SessionConfig {
+        dictionary: Dictionary {
+            entries: vec![DictEntry::replacement("btw", "by the way")],
+        },
+        ..Default::default()
+    };
+    let ctx = FieldContext {
+        before: "I said that".into(),
+        app_id: "notepad".into(),
+        ..Default::default()
+    };
+    let r = run_text("Btw we left.", cfg, ctx);
+    assert_eq!(r.final_text, " by the way we left. ");
+    assert_eq!(r.asr_text, "Btw we left.");
+}
+
+#[test]
+fn pronoun_i_keeps_capital_mid_sentence() {
+    // Intentional divergence from Wispr vector ctx_pronoun_I_quirk.
+    let ctx = FieldContext {
+        before: "and then".into(),
+        ..Default::default()
+    };
+    assert_eq!(
+        run_text("I left early.", SessionConfig::default(), ctx).final_text,
+        " I left early. "
+    );
+}
+
+#[test]
+fn screen_word_proper_noun_keeps_capital() {
+    let ctx = FieldContext {
+        before: "I met".into(),
+        screen_words: vec!["John".into()],
+        ..Default::default()
+    };
+    assert_eq!(
+        run_text("John Smith came.", SessionConfig::default(), ctx).final_text,
+        " John Smith came. "
+    );
+}
+
+#[test]
+fn press_enter_is_reported_on_windows_only() {
+    let r = run_text(
+        "Send it press enter",
+        SessionConfig::default(),
+        FieldContext::default(),
+    );
+    assert!(r.press_enter);
+    assert_eq!(r.final_text, "Send it"); // Wispr trims before the phrase
+    let android = SessionConfig {
+        platform: flow_core::config::Platform::Android,
+        ..Default::default()
+    };
+    let r = run_text("Send it press enter", android, FieldContext::default());
+    assert!(!r.press_enter);
+}
+
+#[test]
+fn chat_app_drops_trailing_period_by_classification() {
+    let ctx = FieldContext {
+        app_id: "slack".into(),
+        ..Default::default()
+    };
+    assert_eq!(
+        run_text("Sounds good.", SessionConfig::default(), ctx).final_text,
+        "Sounds good "
+    );
+    let android = SessionConfig {
+        platform: flow_core::config::Platform::Android,
+        ..Default::default()
+    };
+    let ctx = FieldContext {
+        app_id: "com.whatsapp".into(),
+        ..Default::default()
+    };
+    assert_eq!(
+        run_text("Sounds good.", android, ctx).final_text,
+        "Sounds good "
+    );
+}
+
+#[test]
+fn android_unknown_context_gets_no_trailing_space() {
+    let android = SessionConfig {
+        platform: flow_core::config::Platform::Android,
+        ..Default::default()
+    };
+    let ctx = FieldContext {
+        context_known: false,
+        ..Default::default()
+    };
+    assert_eq!(
+        run_text("Hello world.", android, ctx).final_text,
+        "Hello world."
+    );
+}
+
+#[test]
+fn terminal_skips_llm() {
+    let asr = Arc::new(MockAsr::new("ls dash la"));
+    let core = FlowCore::from_engines(asr, Some(Arc::new(FixedCleaner("CHANGED", Duration::ZERO))));
+    core.start_session(SessionConfig::default()).unwrap();
+    core.set_context(FieldContext {
+        app_id: "windowsterminal".into(),
+        ..Default::default()
+    });
+    push_all(&core, &speech(300));
+    let r = core.commit();
+    assert_eq!(r.status, CommitStatus::RawTranscript);
+    assert_eq!(r.fallback_reason, None, "skipped, not failed");
+    assert!(!r.final_text.contains("CHANGED"));
 }

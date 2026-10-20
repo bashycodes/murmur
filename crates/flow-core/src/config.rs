@@ -33,7 +33,9 @@ pub enum CleanupLevel {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Style {
+    /// Wispr "default": period drop only in messaging apps (<= 2 sentences).
     #[default]
+    Default,
     Formal,
     Casual,
     VeryCasual,
@@ -102,6 +104,14 @@ pub struct SessionConfig {
     pub divergence_threshold: Option<f64>,
     /// Ring-buffer capacity between `push_audio` and the worker.
     pub ring_capacity_samples: usize,
+    /// Wispr "All lowercase" format mode.
+    pub all_lowercase: bool,
+    /// User's first/last name: proper nouns that keep their capital.
+    pub user_names: Vec<String>,
+    /// Spoken "press enter" strips the phrase and sets `press_enter`.
+    pub press_enter_enabled: bool,
+    /// Line appended to eligible emails, e.g. "— Sent by voice". Off by default.
+    pub email_signature: Option<String>,
 }
 
 impl Default for SessionConfig {
@@ -118,6 +128,10 @@ impl Default for SessionConfig {
             llm_timeout_ms: 1500,
             divergence_threshold: None,
             ring_capacity_samples: SAMPLE_RATE * 30,
+            all_lowercase: false,
+            user_names: Vec::new(),
+            press_enter_enabled: true,
+            email_signature: None,
         }
     }
 }
@@ -133,7 +147,7 @@ impl SessionConfig {
 }
 
 /// Focused-field context; may arrive after audio started.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct FieldContext {
     pub app_id: String,
@@ -145,6 +159,26 @@ pub struct FieldContext {
     pub after: String,
     /// Words visible on screen (proper-noun hints, ASR bias).
     pub screen_words: Vec<String>,
+    /// Open file names in an IDE (Cursor/Windsurf @file tagging).
+    pub file_names: Vec<String>,
+    /// False when the shell could not read the field at all.
+    pub context_known: bool,
+}
+
+impl Default for FieldContext {
+    fn default() -> Self {
+        Self {
+            app_id: String::new(),
+            url_host: String::new(),
+            app_category: AppCategory::Other,
+            before: String::new(),
+            selected: String::new(),
+            after: String::new(),
+            screen_words: Vec::new(),
+            file_names: Vec::new(),
+            context_known: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -211,7 +245,7 @@ mod tests {
         assert_eq!(c.cleanup_level, CleanupLevel::Medium);
         assert_eq!(c.dictionary.entries.len(), 1);
         assert_eq!(c.styles.work, Style::Casual);
-        assert_eq!(c.styles.email, Style::Formal);
+        assert_eq!(c.styles.email, Style::Default);
     }
 
     #[test]
@@ -221,8 +255,8 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(s.for_category(AppCategory::PersonalChat), Style::VeryCasual);
-        assert_eq!(s.for_category(AppCategory::Email), Style::Formal);
-        assert_eq!(s.for_category(AppCategory::Terminal), Style::Formal);
+        assert_eq!(s.for_category(AppCategory::Email), Style::Default);
+        assert_eq!(s.for_category(AppCategory::Terminal), Style::Default);
     }
 
     #[test]
