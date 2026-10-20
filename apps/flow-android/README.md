@@ -15,9 +15,9 @@ cd apps/flow-android
 ./gradlew testDebugUnitTest assembleDebug     # APK: app/build/outputs/apk/debug/app-debug.apk
 tools/unit.sh                                  # same tests, compact summary
 tools/probes/jni_stub/run.sh                   # link-test NativeFlowCore against a host C stub of the JNI contract
-tools/build-native.sh --whisper                # arm64 libflow_ffi.so + libc++_shared.so into app/src/main/jniLibs/
-tools/probes/check_native_so.sh [apk]          # contract symbols, 16 KB alignment, NEEDED libs (+ APK zipalign -P 16)
-tools/probes/host_native/run.sh [model.bin]    # real host flow-ffi under the real NativeFlowCore: whisper on jfk.wav
+tools/build-native.sh --whisper --llm          # arm64 libflow_ffi.so (+ LLM loader) + libflow_llm.so + libc++_shared.so into app/src/main/jniLibs/
+tools/probes/check_native_so.sh [apk]          # contract symbols, 16 KB alignment, NEEDED libs, plugin exports (+ APK zipalign -P 16)
+tools/probes/host_native/run.sh [model.bin]    # real host flow-ffi under the real NativeFlowCore: whisper on jfk.wav, + LLM cleanup if a GGUF is in models/
 ```
 
 Install on a phone (sideload, permissions, model import, device checklist): [`INSTALL.md`](INSTALL.md).
@@ -54,21 +54,32 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
 | `insert/` | `V3Inserter` (07 §3), `InsertionCoordinator` (mutex, 3500 ms budget, sensitive clipboard), `ImeKeepAlive` (07 §3.5), `TextMatching` (06 §4), `Ports` (injectable editor abstraction) | yes |
 | `policy/` | `EditorInputType`, `BubbleVisibilityPolicy` (sensitive + banking + user denylist + clone deviations), `AppCategorizer`, generated `PolicyLists` | yes |
 | `session/` | `DictationController` (state machine, debounce, cap 239/299 s, 20 s timeout), `LevelMeter`, `AudioBatcher`, `SessionCap` | yes |
-| `bubble/` | `BubbleGesture` (tap / hold / drag), `BubblePositioner` (anchors + persistence), `Waveform`; `BubbleView`/`BubbleOverlay` (Android) | logic yes |
-| `data/` | `Retention`, `DictionaryMerge`, `Settings`, `FieldContextBuilder`; `Stores` (SharedPreferences, JSON dictionary file, SQLite history) | logic yes |
-| `service/` | `FlowAccessibilityService`, `ShellInputMethod`/node adapters, `FlowService` (FGS) | device only |
+| `bubble/` | `BubbleGesture` (tap / hold / drag), `BubblePositioner` (anchors + persistence), `Waveform`, `BubblePresence` (minimise 5 s, snooze 10 min, shake reveal), `ShakeDetector`, `SnoozeTarget`, `PreviewContent`/`PreviewPlacement` (live preview line); `BubbleView`/`BubbleOverlay` (Android: bubble + preview + snooze-target windows) | logic yes |
+| `data/` | `Retention`, `DictionaryMerge`, `Settings`, `FieldContextBuilder`, `EnginePlan` (ASR + optional LLM, ASR-only fallback), `ModelFiles` (ggml/GGUF sniffing, LLM recommendations), `DictionaryEdit`, `HistoryView`; `Stores` (SharedPreferences, JSON dictionary file, SQLite history v2) | logic yes |
+| `health/` | `A11ySetting` (enabled-services parse), `AccessibilityHealth` (ghost binding), `ServiceWatchdog` (≥ 5 s respawn), `OemGuidance` (autostart steps + deep links) | yes |
+| `service/` | `FlowAccessibilityService` (+ 15 s heartbeat / FlowService watchdog), `ShellInputMethod`/node adapters, `FlowService` (FGS, shake sensor, health tick, unlock re-check) | device only |
+| `receiver/` | `BootReceiver` (BOOT_COMPLETED, MY_PACKAGE_REPLACED, USER_UNLOCKED → start FGS or "re-enable" notification) | device only |
 | `audio/` | `MicRecorder` (MIC 16 k mono PCM16, 100 ms frames → `push_audio`) | device only |
-| `ui/` | Main/onboarding, model import (SAF), settings, dictionary (shared JSON import/export), history | device only |
+| `ui/` | Main/onboarding (mic → overlay → a11y + ghost fix → battery → notifications → OEM), model import (SAF; speech ggml and LLM GGUF), settings, dictionary editor (search, tabs, edit, shared JSON import/export), history (search, copy, delete, raw vs formatted) | device only |
 
 `policy/PolicyLists.kt` is generated: `python3 -I tools/gen_policy_lists.py` from
 `policy-data/*.json`, which are verbatim copies of android-research `findings/data/`.
 
 ## Deviations from Wispr (deliberate)
 - V3 inserter only, with every A/B feature on. No Legacy path.
-- Single process, so no AIDL bridge, watchdog, job or boot receivers in the MVP.
-- No accelerometer shake or snooze target. Sounds use `ToneGenerator` beeps instead of
-  bundled samples.
-- The bubble position is persisted. No minimise/shrink yet.
+- Single process, so no AIDL bridge and no JobScheduler recovery job. The watchdog lives in
+  the a11y service's 15 s health tick (respawns FlowService ≥ 5 s apart); `BootReceiver`
+  covers boot/update/unlock; FlowService re-checks on `USER_PRESENT`.
+- Shake, snooze target and minimise follow 07 §5.3/§5.5 (no gravity pull on the target).
+  Minimise and shake are settings (default on). The accelerometer is only registered while
+  the screen is on. Sounds use `ToneGenerator` beeps instead of bundled samples.
+- The bubble position is persisted; a snooze puts it back on its saved anchor.
+- Live preview: a click-through window above the bubble shows the core's partial
+  (`partial_interval_ms` 1500, polled every 250 ms) plus "can't hear you" after 3 s of
+  leading silence and "no speech detected" on EMPTY. Wispr has neither.
+- LLM cleanup is opt-in (default off), with a 3 s budget on Android (desktop 1.5 s). If the
+  plugin or GGUF fails to load, dictation keeps working ASR-only and the main screen says why.
+- Snippet expansions may be up to 2000 characters (Wispr: 60).
 - The cap is configurable (1–20 min, default 5) and warns 61 s / stops 1 s before the cap.
 - A blank transcript is treated as empty. Browser+GO never un-hides a password field.
   `isAccessibilityDataSensitive` hides the bubble. A user app denylist sits next to the
