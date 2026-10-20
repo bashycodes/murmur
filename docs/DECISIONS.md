@@ -13,3 +13,5 @@ User goal: clone Wispr Flow (Windows + Android), all STT/LLM local, zero third-p
 | D7 | Distribution | sideload / F-Droid; no INTERNET permission in core APK | privacy + Play a11y policy |
 | D8 | Reconstructed proto (windows-research) | keep as-is, do not extend; clone never speaks it | not needed by clone |
 | D9 | Network | none at runtime; model download only via explicit user action (separate optional flavor on Android) | goal |
+| D10 | LLM packaging | llama.cpp lives in the `flow-llm` cdylib plugin, loaded at runtime by flow-core's `llm` feature; never linked into the same binary as whisper.cpp | whisper-rs-sys and llama-cpp-sys-2 each bundle a different ggml → duplicate-symbol link failure; a cdylib exports only `flow_llm_*` |
+| D11 | Recommended LLM | Qwen2.5-0.5B-Instruct Q4_K_M for the 1.5 s CPU budget; 1.5B when the budget or hardware allows (8/8 vs 4/8 on the messy-dictation set, ~2× latency) | measured, `tests/llm_e2e.rs`; final pick pending `docs/model-benchmarks.md` |
