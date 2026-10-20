@@ -1,0 +1,162 @@
+/* Flow bar pill. System fonts only (no network fonts). The window itself is
+   transparent and sized to the pill; the backend positions it bottom-centre. */
+:root {
+  --bg: rgba(18, 18, 24, 0.92);
+  --fg: #ffffff;
+  --accent: #7c5cff;
+  --error: #ff5a5a;
+  --audio-scale: 0.15;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  font: 12px/1.2 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+}
+
+body {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.pill {
+  position: relative;
+  box-sizing: border-box;
+  height: 36px;
+  min-width: 120px;
+  margin-bottom: 2px;
+  padding: 0 14px;
+  border-radius: 18px;
+  background: var(--bg);
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  transition:
+    min-width 160ms ease,
+    height 160ms ease,
+    opacity 160ms ease,
+    background 160ms ease;
+}
+
+/* ---- resting: small, dim ---- */
+.pill[data-state="resting"] {
+  min-width: 48px;
+  height: 10px;
+  padding: 0;
+  opacity: 0.55;
+}
+.pill[data-state="resting"] > * {
+  display: none !important;
+}
+
+/* ---- bars ---- */
+.bars {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  height: 20px;
+}
+.bar {
+  width: 2px;
+  height: 20px;
+  border-radius: 1px;
+  background: var(--fg);
+  transform: scaleY(calc(var(--audio-scale) * var(--bar-height-scale)));
+  transition: transform 60ms linear;
+  animation: breathe 1s ease-in-out infinite alternate;
+}
+.bar:nth-child(odd) {
+  animation-delay: -0.5s;
+}
+@keyframes breathe {
+  from {
+    opacity: 0.75;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.pill[data-state="active_ptt"] .bars,
+.pill[data-state="active_locked"] .bars {
+  display: flex;
+}
+
+/* ---- locked: accent ring + stop square ---- */
+.lock {
+  display: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--error);
+}
+.pill[data-state="active_locked"] {
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+.pill[data-state="active_locked"] .lock {
+  display: block;
+}
+
+/* ---- processing: three pulsing dots ---- */
+.dots {
+  display: none;
+  gap: 4px;
+}
+.dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--fg);
+  animation: pulse 900ms ease-in-out infinite;
+}
+.dots i:nth-child(2) {
+  animation-delay: 150ms;
+}
+.dots i:nth-child(3) {
+  animation-delay: 300ms;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+.pill[data-state="processing"] .dots {
+  display: flex;
+}
+
+/* ---- error ---- */
+.msg {
+  display: none;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pill[data-state="error"] {
+  background: rgba(60, 12, 16, 0.95);
+  box-shadow: 0 0 0 1px var(--error);
+}
+.pill[data-state="error"] .msg {
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar,
+  .dots i {
+    animation: none;
+  }
+}
