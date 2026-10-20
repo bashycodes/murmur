@@ -15,7 +15,7 @@ Branch `core` (flow-core). Every row below is backed by a passing test (`cargo t
 | `flow-cli clean --llm m.gguf TEXT…`: FORMATTED output, warm-prefix prefill counters; `transcribe --model whisper --llm gguf`: real ASR → real LLM in one process (whisper ggml linked, llama ggml in the plugin) | `flow-cli/tests/cli.rs::clean_with_real_llm_if_present`, `whisper_then_llm_in_one_process_if_present` (skip if models missing) |
 | learn_edit candidates (word alignment) | `learn.rs`, `align.rs` unit tests |
 | C ABI + header (C program links the staticlib and runs a session) | `flow-ffi/tests/c_abi.rs`, `c_header.rs` |
-| JNI exports in a real JVM (`com.flowclone.core.NativeFlowCore`) | `flow-ffi/tests/jni_smoke.rs` (`--features jni`) |
+| JNI exports match `apps/flow-android/JNI_CONTRACT.md` (`dev.flowclone.core.NativeFlowCore.native*`, CoreJson-shaped payloads) in a real JVM; exported set == contract table | `flow-ffi/tests/jni_smoke.rs` (`--features jni`) |
 | `flow-cli transcribe` dev harness (mock / whisper) | `flow-cli/tests/cli.rs` |
 
 E2E timing on this box (i7-6700, 8 logical cores, no GPU, load ≈ 8-14 from other jobs, 4 threads, release build), jfk.wav 11.0 s:
@@ -38,11 +38,17 @@ Branch `integration`: Windows shell (`apps/flow-windows`) wired to the real core
 
 Not yet run on real Windows. The manual checklist is in `apps/flow-windows/README.md`. Core requests: `docs/core-change-requests.md`.
 
+Branch `android-int` (merged): Android shell + real core.
+
+- Android shell builds: `cd apps/flow-android && ./gradlew testDebugUnitTest assembleDebug` is green (166 JVM tests; APK without the .so). The merged manifest has no network permission, which a Gradle gate and a unit test enforce.
+- Android V3 insertion state machine (07 §3), keep-alive, bubble/visibility policy, dictation controller (cap, timeout, debounce), gesture/position/waveform logic: unit-tested on the JVM with virtual time.
+- The Kotlin↔JNI contract (`apps/flow-android/JNI_CONTRACT.md`) is link-tested against a host C stub (`tools/probes/jni_stub/run.sh`).
+- Real flow-ffi under the shipped Kotlin binding (no device): an x86_64 host `libflow_ffi.so` (jni,whisper) loaded by `NativeFlowCore` + `CoreJson` handles start → push (jfk.wav in 100 ms frames) → commit and returns the correct transcript, with 0 dropped samples. Mock-engine round trip and the missing-model error path also pass. Run with `apps/flow-android/tools/probes/host_native/run.sh [model]`. Host timings (i7-6700, load 12-20 from other jobs, 4 threads, 11 s audio): tiny.en ASR 5.5-9.5 s, model load 0.2-1.1 s; base.en ASR 12.6-17.6 s; worst push_audio call 4-19 ms under that load. These are not phone numbers.
+- arm64-v8a `libflow_ffi.so` with whisper is cross-built (`tools/build-native.sh --whisper`; NDK toolchain wrapper, ggml armv8.2-a+dotprod+fp16) and packaged with `libc++_shared.so`. `tools/probes/check_native_so.sh app-debug.apk` confirms: all 11 contract symbols exported, every LOAD segment 16 KB aligned, NEEDED libs satisfied, and the APK `.so` entries stored and 16 KB zip-aligned. `./gradlew testDebugUnitTest assembleDebug` is green (169 tests, 5 gated skips) and the no-network gate passes. The debug APK with the .so is 9.3 MB (.so 3.9 MB stripped + libc++ 1.3 MB). Install guide: `apps/flow-android/INSTALL.md`.
+
 ## Outstanding work — priority order
 1. `flow-core` crate — DONE on branch `core` (see What works). Remaining core gaps:
    * LLM latency on CPU: 1.5B is 8/8 but ~1.1-5 s per call on this shared box (0.5B: 4/8, 0.75-2.7 s). Next levers: prefill the context + partial transcript into the KV cache while the user speaks; a LoRA on (raw → formatted) pairs for 0.5B (03 §7.5); pick the shipped model from `docs/model-benchmarks.md`. Shells must ship `libflow_llm` next to the exe (Windows) / in jniLibs (Android, untested);
-   * Android link via cargo-ndk (needs the NDK; type-checks for aarch64-linux-android);
-   * the JNI class name must match `apps/flow-android/JNI_CONTRACT.md`;
    * VAD and endpointing;
    * a per-session cache for the DictMatcher (it is rebuilt each commit).
 2. Windows shell: flow-core wired (branch `integration`). Remaining:
@@ -50,5 +56,17 @@ Not yet run on real Windows. The manual checklist is in `apps/flow-windows/READM
    * a history UI and "copy last transcript";
    * learn-from-edits (`edited` column);
    * the mouse/Caps Lock shortcuts.
-3. Android shell: a11y service, overlay bubble, FGS recorder, JNI to core.
+3. Android shell. Code is done (`apps/flow-android/`). Remaining:
+   a. JNI + arm64 packaging: DONE (see What works). The .so has never been loaded on bionic. The first device run must confirm `Native engine: flow-ffi 0.1.0`.
+   b. **Device verification (needs the user's phone).** Full checklist: `apps/flow-android/INSTALL.md` §"Device test checklist". In order:
+      - grant mic, overlay, a11y and notifications;
+      - mock engine: tap and hold dictation into Notes, WhatsApp, Chrome URL bar, a notification reply and a password field (must be hidden);
+      - check that the banking app is hidden;
+      - insertion fallbacks: commitText vs ACTION_SET_TEXT vs clipboard (logcat tag `FlowA11y` prints the step trail);
+      - FGS microphone promotion on Android 14+;
+      - the 5-min cap;
+      - SAF import of `ggml-base.en-q5_1.bin` (quantised models are untested; tiny.en/base.en f16 are proven on host), then real ASR latency; no SIGILL (dotprod/fp16 build);
+      - 16 KB-page device (Android 15): installs without the compat dialog;
+      - MIC vs VOICE_RECOGNITION.
+   c. P1 (07 / 10 §6): shake/snooze, bubble minimise, watchdog/boot recovery, battery-optimisation onboarding, VAD trim, partials.
 4. P1: LLM cleanup, context, learn-from-edits.
