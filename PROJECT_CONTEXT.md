@@ -14,6 +14,14 @@ Branch `core` (flow-core). Every row below is backed by a passing test (`cargo t
 | Real local LLM cleanup: llama.cpp `LlamaCleaner` (flow-llm plugin, loaded once in `load_models`, warm KV prefix, greedy, 2×input+32, per-token deadline/cancel, unload frees) on 8 messy dictations through `FlowCore`: safety contract at the 1.5 s budget; quality 4/8 (Qwen2.5-0.5B) / 8/8 (1.5B) at a generous budget | `flow-core/tests/llm_e2e.rs` (skip if model/plugin missing; `tools/fetch-models.sh --llm`), `flow-llm` unit tests, `llama.rs` loader tests |
 | `flow-cli clean --llm m.gguf TEXT…`: FORMATTED output, warm-prefix prefill counters; `transcribe --model whisper --llm gguf`: real ASR → real LLM in one process (whisper ggml linked, llama ggml in the plugin) | `flow-cli/tests/cli.rs::clean_with_real_llm_if_present`, `whisper_then_llm_in_one_process_if_present` (skip if models missing) |
 | learn_edit candidates (word alignment) | `learn.rs`, `align.rs` unit tests |
+| Branch `core-p1`: distinct load errors `ModelNotFound`/`LlmLibNotFound` + `kind()` + C `flow_last_error_kind` (CR-1); paste `segments` `[{text}|{key}]` + `plain_text` (CR-2) | `tests/api_additions.rs`, `flow-ffi/tests/c_abi.rs` |
+| Energy+ZCR VAD: room noise → EMPTY without ASR (saves 0.7 s tiny / 3.9 s base per empty press), edges trimmed; optional whisper.cpp Silero (`vad_model_path`) | `vad.rs` units, `session.rs::vad_*`, `tests/vad_bench.rs` (ignored, numbers in core-architecture) |
+| Whisper silence-hallucination guard ("Thank you.", "you", credits) gated on VAD speech / no_speech_prob | `tests/hallucination_vectors.rs`, `session.rs::stock_phrase_*` |
+| Deterministic spoken cleanup (punctuation words, fillers, stutters, backtracking, money/time/date ITN), default on: bench 20 cases 0.710 → 0.920 mean similarity with no LLM | `postprocess/spoken.rs` units, `tests/spoken_bench.rs` |
+| LLM guardrail = support + coverage (`guard::check`): 79/79 good kept, 14/14 harmful rejected on 120 judged bench outputs (old ratio: 75/79, 4/14) | `tests/guard_bench.rs` |
+| Short few-shot LLM prompt; engine on bench 20 with Qwen2.5-1.5B: 0.919 mean similarity, no fallbacks | `llm_e2e.rs::bench_cases_through_the_engine` (opt-in `FLOW_LLM_BENCH=1`) |
+| LLM prefill-ahead while speaking (start, set_context, partials; coalesced, preempted by commit): commit prefill 81 → 10-29 tokens (≈ 0.7-1.4 s saved on this box) | `session.rs::llm_prefill_*`, measurement in `docs/bench/llm-prefill-2026-10-20/` |
+| DictMatcher compiled once per dictionary | `session.rs::dict_matcher_is_built_once_per_dictionary` |
 | C ABI + header (C program links the staticlib and runs a session) | `flow-ffi/tests/c_abi.rs`, `c_header.rs` |
 | JNI exports match `apps/flow-android/JNI_CONTRACT.md` (`dev.flowclone.core.NativeFlowCore.native*`, CoreJson-shaped payloads) in a real JVM; exported set == contract table | `flow-ffi/tests/jni_smoke.rs` (`--features jni`) |
 | `flow-cli transcribe` dev harness (mock / whisper) | `flow-cli/tests/cli.rs` |
@@ -48,9 +56,10 @@ Branch `android-int` (merged): Android shell + real core.
 
 ## Outstanding work — priority order
 1. `flow-core` crate — DONE on branch `core` (see What works). Remaining core gaps:
-   * LLM latency on CPU: 1.5B is 8/8 but ~1.1-5 s per call on this shared box (0.5B: 4/8, 0.75-2.7 s). Next levers: prefill the context + partial transcript into the KV cache while the user speaks; a LoRA on (raw → formatted) pairs for 0.5B (03 §7.5); pick the shipped model from `docs/model-benchmarks.md`. Shells must ship `libflow_llm` next to the exe (Windows) / in jniLibs (Android, untested);
-   * VAD and endpointing;
-   * a per-session cache for the DictMatcher (it is rebuilt each commit).
+   * Branch `core-p1` (VAD, hallucination guard, spoken cleanup, new guard + prompt, prefill-ahead, CR-1/CR-2, matcher cache) is done; shells adopt per core-architecture "Changelog for shells".
+   * LLM latency on CPU: prefill-ahead is in; generation (≈ 25 tokens at 5-16 tok/s here) now dominates, so 1.5B misses the 1.5 s budget about half the time. Levers left: a LoRA on (raw → formatted) pairs for 0.5B (03 §7.5); `audio_ctx` for whisper with a repetition guard (benchmark: small 1.8× faster); Parakeet (separate agent). Shells must ship `libflow_llm` next to the exe (Windows) / in jniLibs (Android, untested);
+   * spoken cleanup gaps: no list formatting, no comma splices / grammar, no email layout (LLM only); c04-style "actually I mean" restructures keep the correction's wording;
+   * endpointing (auto-stop on trailing silence in hands-free mode) is not done: the VAD runs at commit and on partials only.
 2. Windows shell: flow-core wired (branch `integration`). Remaining:
    * a real-Windows build and run of the README manual checklist (needs the user's Windows box);
    * a history UI and "copy last transcript";

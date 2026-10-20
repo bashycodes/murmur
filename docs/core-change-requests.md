@@ -11,6 +11,8 @@ instead file requests here. Each entry says what the shell does in the meantime.
 
 **Workaround.** `core_adapter::load_blocking` checks `path.is_file()` first and reports `ModelStatus::Missing`.
 
+**Status: DONE (branch `core-p1`).** `CoreError::ModelNotFound{path}` (ASR and LLM model), plus `CoreError::LlmLibNotFound{tried}`, `CoreError::kind()` and C `flow_last_error_kind()`. See core-architecture "Changelog for shells".
+
 ## CR-2: structured paste segments instead of in-band markers (Windows shell)
 
 **Problem.** `cursor_tag` puts `{{BREAK}}`/`{{TAB}}` inside `final_text`. Every `@` gets a `{{BREAK}}`, even inside an email address. History and "paste last" then store the markers, and a shell that forgets to parse them pastes them literally.
@@ -18,6 +20,8 @@ instead file requests here. Each entry says what the shell does in the meantime.
 **Ask.** Keep `final_text` marker-free and add `segments: [{text} | "tab" | "break"]` (or a `paste_plan` field) to `CommitResult`.
 
 **Workaround.** `paste::segments` splits the markers, and marker-carrying text is typed segment by segment. History stores `final_text` as returned.
+
+**Status: DONE (branch `core-p1`), additively.** `CommitResult.segments: [{text} | {key: "Enter"|"Tab"|"Break"}]` (Enter = spoken "press enter", last) and `plain_text` (marker-free). `final_text` keeps the markers so current shells keep working; the `@` → `{{BREAK}}` rule itself is unchanged (it is Wispr's).
 
 ## CR-3: whisper-rs-sys cannot be cross-checked for MSVC from Linux (info)
 

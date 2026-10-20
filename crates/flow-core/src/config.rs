@@ -224,6 +224,9 @@ pub struct ModelConfig {
     /// (see `flow_core::llama`).
     pub llm_lib: Option<String>,
     pub threads: usize,
+    /// Optional Silero VAD model for whisper.cpp's built-in VAD (feature
+    /// `whisper`; e.g. `ggml-silero-v5.1.2.bin`). `None` = energy VAD only.
+    pub vad_model_path: Option<String>,
 }
 
 /// Half the logical CPUs (≈ physical cores), capped at 8: ggml's spinning
@@ -241,6 +244,7 @@ impl Default for ModelConfig {
             llm_path: None,
             llm_lib: None,
             threads: default_threads(),
+            vad_model_path: None,
         }
     }
 }
