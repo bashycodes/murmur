@@ -1,0 +1,19 @@
+[package]
+name = "flow-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared local dictation core: ASR session, cleanup, deterministic post-processing"
+
+[features]
+default = []
+whisper = ["dep:whisper-rs"]
+llm = []
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+regex = "1"
+rtrb = "0.3"
+whisper-rs = { version = "0.16", optional = true }
