@@ -114,6 +114,7 @@ impl ModelSpec {
                 asr_backend: fc::AsrBackend::Whisper,
                 asr_path: path.display().to_string(),
                 llm_path: None,
+                llm_lib: None,
                 threads: threads.unwrap_or_else(fc::default_threads).max(1),
             },
             ModelSpec::Mock { text } => fc::ModelConfig {
