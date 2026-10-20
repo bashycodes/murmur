@@ -193,10 +193,13 @@ impl FlowCore {
             #[cfg(feature = "whisper")]
             AsrBackend::Whisper => {
                 require_file(&cfg.asr_path)?;
-                Arc::new(
-                    crate::whisper::WhisperEngine::load(&cfg.asr_path, cfg.threads)
-                        .map_err(|e| CoreError::Load(e.to_string()))?,
-                )
+                let mut w = crate::whisper::WhisperEngine::load(&cfg.asr_path, cfg.threads)
+                    .map_err(|e| CoreError::Load(e.to_string()))?;
+                if let Some(v) = cfg.vad_model_path.as_deref().filter(|v| !v.is_empty()) {
+                    require_file(v)?;
+                    w = w.with_silero_vad(v);
+                }
+                Arc::new(w)
             }
             #[cfg(not(feature = "whisper"))]
             AsrBackend::Whisper => {

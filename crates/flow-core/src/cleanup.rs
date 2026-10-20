@@ -161,8 +161,10 @@ fn style_rule(s: Style) -> Option<&'static str> {
     }
 }
 
-/// Worked examples (from the benchmark's few-shot set; none overlaps its
-/// test cases): (app, category, transcript, cleaned).
+/// Worked examples (the benchmark's few-shot set, with the list and
+/// question inputs unpunctuated as raw Whisper/lowercase dictation often
+/// is, so small models learn to add the structure; none overlaps its test
+/// cases): (app, category, transcript, cleaned).
 const EXAMPLES: &[(&str, AppCategory, &str, &str)] = &[
     ("Slack", AppCategory::WorkChat, "uh so the the demo is um on thursday right", "The demo is on Thursday, right?"),
     ("Messages", AppCategory::PersonalChat, "I'll pick you up at seven, no wait, at eight thirty.", "I'll pick you up at 8:30."),
@@ -175,7 +177,7 @@ const EXAMPLES: &[(&str, AppCategory, &str, &str)] = &[
     (
         "Docs",
         AppCategory::Document,
-        "For the trip we need, first, tickets, second, a hotel, and third, a rental car.",
+        "for the trip we need first tickets second a hotel and third a rental car",
         "For the trip we need:\n\n<ol><li>Tickets</li><li>A hotel</li><li>A rental car</li></ol>",
     ),
     (
@@ -184,7 +186,7 @@ const EXAMPLES: &[(&str, AppCategory, &str, &str)] = &[
         "Hi Maria, just checking you got the invoice. Let me know if anything's missing. Cheers, Dan.",
         "Hi Maria,\n\nJust checking you got the invoice. Let me know if anything's missing.\n\nCheers,\nDan",
     ),
-    ("Slack", AppCategory::WorkChat, "What time does the store close today?", "What time does the store close today?"),
+    ("Slack", AppCategory::WorkChat, "what time does the store close today", "What time does the store close today?"),
     ("Slack", AppCategory::WorkChat, "um, hmm, uh.", ""),
 ];
 
