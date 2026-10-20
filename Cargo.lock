@@ -129,6 +129,7 @@ dependencies = [
 name = "flow-core"
 version = "0.1.0"
 dependencies = [
+ "hound",
  "regex",
  "rtrb",
  "serde",
