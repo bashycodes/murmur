@@ -623,10 +623,9 @@ impl Worker {
             let style = s.cfg.styles.for_category(ctx.app_category);
             let prompt =
                 cleanup::build_prompt(&text, s.cfg.cleanup_level, style, &ctx, &s.cfg.dictionary);
-            let max_div = s
-                .cfg
-                .divergence_threshold
-                .unwrap_or_else(|| cleanup::default_divergence(s.cfg.cleanup_level));
+            // The edit-distance guard only runs when a shell asks for it;
+            // the default guard is `guard::check` (support + coverage).
+            let max_div = s.cfg.divergence_threshold.unwrap_or(f64::INFINITY);
             let t = Instant::now();
             match cleanup::run_cleanup(
                 cl.clone(),

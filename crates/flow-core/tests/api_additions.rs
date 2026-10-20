@@ -4,7 +4,9 @@
 use std::sync::Arc;
 
 use flow_core::asr::MockAsr;
-use flow_core::config::{FieldContext, ModelConfig, SessionConfig};
+#[cfg(any(feature = "whisper", feature = "llm"))]
+use flow_core::config::ModelConfig;
+use flow_core::config::{FieldContext, SessionConfig};
 use flow_core::paste::{PasteKey, PasteSegment};
 use flow_core::FlowCore;
 
