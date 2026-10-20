@@ -11,3 +11,5 @@ pub mod core_api;
 pub mod dictation;
 pub mod hotkeys;
 pub mod input;
+pub mod paste;
+pub mod prefs;
