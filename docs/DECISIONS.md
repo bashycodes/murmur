@@ -7,11 +7,11 @@ User goal: clone Wispr Flow (Windows + Android), all STT/LLM local, zero third-p
 | D1 | Framework | Tauri 2 / Rust (Windows shell), Kotlin shell (Android) | spec recommendation; one Rust core |
 | D2 | Shared core | Yes — `flow-core` Rust crate, §9 v2 API | both specs agree |
 | D3 | ASR engine | whisper.cpp via `whisper-rs`, multilingual; engine behind a trait so Parakeet/sherpa-onnx can be added | languages unknown -> multilingual is the safe superset |
-| D4 | Models | desktop: large-v3-turbo q5 (GPU) / small q5 (CPU); Android: base q5. Tests: tiny | dev box has no GPU |
-| D5 | LLM cleanup | llama.cpp, optional, OFF by default; deterministic post-processing always on | CPU-only target; privacy unaffected |
+| D4 | Models (rev. 2026-10-20 from `docs/model-benchmarks.md`) | English + ≥4 GB RAM: Parakeet-TDT-0.6B-v2 int8 (sherpa-onnx; 1.2% WER, RTF 0.14); else whisper base q5_1 (3.7%, RTF 0.25); GPU: large-v3-turbo q5_0; Android low-RAM: tiny q5_1; small q5_1 = opt-in "accurate (slow)". threads=min(physical,6); preload at start. Tests: tiny | measured on i7-6700 CPU, 40 LibriSpeech utts |
+| D5 | LLM cleanup (rev.) | OFF by default on CPU/Android; ON by default only with GPU ≥6 GB VRAM. Fillers, spoken punctuation, backtrack phrases, number ITN move into the always-on deterministic pass. Short few-shot prompt + cached prefix; containment guardrail w/ backtrack exemption | long rule prompt fails on ≤3B; few-shot Qwen2.5-3B 16/20 ok, 0 harmful, 3.9 s CPU |
 | D6 | Min Android | 13 (API 33) — a11y InputMethod | matches Wispr |
 | D7 | Distribution | sideload / F-Droid; no INTERNET permission in core APK | privacy + Play a11y policy |
 | D8 | Reconstructed proto (windows-research) | keep as-is, do not extend; clone never speaks it | not needed by clone |
 | D9 | Network | none at runtime; model download only via explicit user action (separate optional flavor on Android) | goal |
 | D10 | LLM packaging | llama.cpp lives in the `flow-llm` cdylib plugin, loaded at runtime by flow-core's `llm` feature; never linked into the same binary as whisper.cpp | whisper-rs-sys and llama-cpp-sys-2 each bundle a different ggml → duplicate-symbol link failure; a cdylib exports only `flow_llm_*` |
-| D11 | Recommended LLM | Qwen2.5-0.5B-Instruct Q4_K_M for the 1.5 s CPU budget; 1.5B when the budget or hardware allows (8/8 vs 4/8 on the messy-dictation set, ~2× latency) | measured, `tests/llm_e2e.rs`; final pick pending `docs/model-benchmarks.md` |
+| D11 | Recommended LLM (rev.) | opt-in Qwen2.5-3B-Instruct Q4_K_M desktop; Qwen2.5-1.5B on slow CPU / Android ≥8 GB RAM; 0.5B and Llama-3.2-1B rejected (harmful edits) | `docs/model-benchmarks.md` 20-case set supersedes the 8-case D11 v1 |
