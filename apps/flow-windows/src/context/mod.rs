@@ -4,7 +4,7 @@
 #[cfg(windows)]
 pub mod uia;
 
-use crate::core_api::{FieldContext, StyleBucket};
+use crate::core_api::{AppKind, FieldContext, StyleBucket};
 
 pub const MAX_FIELD_CHARS: usize = 500;
 
@@ -53,71 +53,101 @@ pub fn url_host(url: &str) -> Option<String> {
     }
 }
 
-const WORK_EXES: &[&str] = &["slack.exe", "teams.exe", "ms-teams.exe", "zoom.exe"];
-const EMAIL_EXES: &[&str] = &[
-    "outlook.exe",
-    "olk.exe",
-    "thunderbird.exe",
-    "hxoutlook.exe",
-    "superhuman.exe",
-];
-const PERSONAL_EXES: &[&str] = &[
-    "whatsapp.exe",
-    "whatsapp.root.exe",
-    "telegram.exe",
-    "signal.exe",
-    "messenger.exe",
-    "wechat.exe",
-    "weixin.exe",
-    "discord.exe",
-];
-const WORK_HOSTS: &[&str] = &["app.slack.com", "teams.microsoft.com", "teams.live.com"];
-const EMAIL_HOSTS: &[&str] = &[
-    "mail.google.com",
-    "outlook.live.com",
-    "outlook.office.com",
-    "outlook.office365.com",
-    "mail.proton.me",
-    "mail.yahoo.com",
-];
-const PERSONAL_HOSTS: &[&str] = &[
-    "web.whatsapp.com",
-    "www.messenger.com",
-    "messenger.com",
-    "web.telegram.org",
-    "discord.com",
-];
+/// The app lists (windows-research `findings/data/app-lists.json`,
+/// copied verbatim into `data/`). Process names are exe stems, lowercase.
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+struct AppLists {
+    ai_apps: Vec<String>,
+    email_apps: Vec<String>,
+    document_apps: Vec<String>,
+    messaging_apps: Vec<String>,
+    work_messaging_apps: Vec<String>,
+    windows_ai_process_names: Vec<String>,
+    windows_email_process_names: Vec<String>,
+    windows_messaging_process_names: Vec<String>,
+    windows_terminal_process_names: Vec<String>,
+}
+
+fn lists() -> &'static AppLists {
+    static L: std::sync::OnceLock<AppLists> = std::sync::OnceLock::new();
+    L.get_or_init(|| {
+        serde_json::from_str(include_str!("../../data/app-lists.json"))
+            .expect("data/app-lists.json is valid")
+    })
+}
+
+/// Windows process names the lists miss (new Outlook, new Teams).
+const EXTRA_EMAIL_PROCS: &[&str] = &["olk", "hxoutlook"];
+const EXTRA_WORK_PROCS: &[&str] = &["ms-teams"];
+
+fn has(list: &[String], s: &str) -> bool {
+    list.iter().any(|x| x.eq_ignore_ascii_case(s))
+}
+
+/// App category. Precedence: work chat > email > messaging > AI > terminal
+/// > document > other.
+pub fn app_kind(exe: &str, host: Option<&str>) -> AppKind {
+    let l = lists();
+    if let Some(h) = host {
+        let h = h.to_ascii_lowercase();
+        let h = h.strip_prefix("www.").unwrap_or(&h);
+        return if has(&l.work_messaging_apps, h) {
+            AppKind::WorkMessaging
+        } else if has(&l.email_apps, h) {
+            AppKind::Email
+        } else if has(&l.messaging_apps, h) {
+            AppKind::Messaging
+        } else if has(&l.ai_apps, h) {
+            AppKind::Ai
+        } else if has(&l.document_apps, h) {
+            AppKind::Document
+        } else {
+            AppKind::Other
+        };
+    }
+    let lower = exe.to_ascii_lowercase();
+    let stem = lower.strip_suffix(".exe").unwrap_or(&lower);
+    if has(&l.work_messaging_apps, stem) || EXTRA_WORK_PROCS.contains(&stem) {
+        AppKind::WorkMessaging
+    } else if has(&l.windows_email_process_names, stem) || EXTRA_EMAIL_PROCS.contains(&stem) {
+        AppKind::Email
+    } else if has(&l.windows_messaging_process_names, stem) {
+        AppKind::Messaging
+    } else if has(&l.windows_ai_process_names, stem) {
+        AppKind::Ai
+    } else if has(&l.windows_terminal_process_names, stem) {
+        AppKind::Terminal
+    } else if has(&l.document_apps, stem) {
+        AppKind::Document
+    } else {
+        AppKind::Other
+    }
+}
+
 const WORK_TITLES: &[&str] = &["slack", "microsoft teams"];
 const EMAIL_TITLES: &[&str] = &["gmail", "outlook", "proton mail"];
 const PERSONAL_TITLES: &[&str] = &["whatsapp", "messenger", "telegram"];
 
-/// App → style bucket (03 §1.3 lists, adapted to Windows exe names + web hosts).
+/// Style bucket: work chat → work, email → email, other messaging →
+/// personal, everything else (AI apps, terminals, documents) → other.
+pub fn bucket_of(kind: AppKind) -> StyleBucket {
+    match kind {
+        AppKind::WorkMessaging => StyleBucket::Work,
+        AppKind::Email => StyleBucket::Email,
+        AppKind::Messaging => StyleBucket::Personal,
+        _ => StyleBucket::Other,
+    }
+}
+
+/// App → style bucket, with a tab-title fallback for browsers whose address
+/// bar couldn't be read.
 pub fn classify(exe: &str, host: Option<&str>, title: &str) -> StyleBucket {
-    let exe = exe.to_ascii_lowercase();
-    if WORK_EXES.contains(&exe.as_str()) {
-        return StyleBucket::Work;
+    let kind = app_kind(exe, host);
+    if kind != AppKind::Other || host.is_some() {
+        return bucket_of(kind);
     }
-    if EMAIL_EXES.contains(&exe.as_str()) {
-        return StyleBucket::Email;
-    }
-    if PERSONAL_EXES.contains(&exe.as_str()) {
-        return StyleBucket::Personal;
-    }
-    if let Some(h) = host {
-        let h = h.to_ascii_lowercase();
-        if WORK_HOSTS.contains(&h.as_str()) {
-            return StyleBucket::Work;
-        }
-        if EMAIL_HOSTS.contains(&h.as_str()) {
-            return StyleBucket::Email;
-        }
-        if PERSONAL_HOSTS.contains(&h.as_str()) {
-            return StyleBucket::Personal;
-        }
-        return StyleBucket::Other;
-    }
-    // Browser without a readable address bar: fall back to the tab title
-    // ("… - Gmail - Google Chrome"), matched on " - "-separated segments.
+    // "… - Gmail - Google Chrome": match " - "-separated segments.
     let segs: Vec<String> = title
         .split(" - ")
         .map(|s| s.trim().to_ascii_lowercase())
@@ -152,6 +182,7 @@ pub fn title_words(title: &str) -> Vec<String> {
 pub fn build_field_context(raw: &RawSnapshot) -> FieldContext {
     let app_id = exe_name(&raw.exe_path);
     let url_host = raw.url.as_deref().and_then(url_host);
+    let app_kind = app_kind(&app_id, url_host.as_deref());
     let app_category = classify(&app_id, url_host.as_deref(), &raw.window_title);
     let (before, selected, after) = if raw.is_password {
         (String::new(), String::new(), String::new())
@@ -166,6 +197,7 @@ pub fn build_field_context(raw: &RawSnapshot) -> FieldContext {
         app_id,
         url_host,
         app_category,
+        app_kind,
         before,
         selected,
         after,
@@ -209,6 +241,42 @@ mod tests {
             Some("example.com")
         );
         assert_eq!(url_host(""), None);
+    }
+
+    #[test]
+    fn app_kinds_from_lists() {
+        assert_eq!(
+            app_kind("code.exe", None),
+            AppKind::Ai,
+            "VS Code is an AI app"
+        );
+        assert_eq!(app_kind("Cursor.exe", None), AppKind::Ai);
+        assert_eq!(app_kind("WindowsTerminal.exe", None), AppKind::Terminal);
+        assert_eq!(app_kind("pwsh.exe", None), AppKind::Terminal);
+        assert_eq!(
+            app_kind("warp.exe", None),
+            AppKind::Ai,
+            "AI wins over terminal"
+        );
+        assert_eq!(app_kind("slack.exe", None), AppKind::WorkMessaging);
+        assert_eq!(app_kind("discord.exe", None), AppKind::Messaging);
+        assert_eq!(app_kind("outlook.exe", None), AppKind::Email);
+        assert_eq!(app_kind("notepad.exe", None), AppKind::Document);
+        assert_eq!(app_kind("calc.exe", None), AppKind::Other);
+        assert_eq!(app_kind("chrome.exe", Some("claude.ai")), AppKind::Ai);
+        assert_eq!(
+            app_kind("chrome.exe", Some("docs.google.com")),
+            AppKind::Document
+        );
+    }
+
+    #[test]
+    fn terminals_and_ai_apps_use_other_style() {
+        assert_eq!(
+            classify("windowsterminal.exe", None, ""),
+            StyleBucket::Other
+        );
+        assert_eq!(classify("code.exe", None, ""), StyleBucket::Other);
     }
 
     #[test]

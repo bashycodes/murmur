@@ -34,6 +34,21 @@ pub enum StyleBucket {
     Other,
 }
 
+/// Finer app category than the style bucket (AI apps / terminals change
+/// formatting, e.g. no trailing-period drop or raw paste in terminals).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppKind {
+    Ai,
+    Email,
+    WorkMessaging,
+    Messaging,
+    Document,
+    Terminal,
+    #[default]
+    Other,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Styles {
     pub personal: String,
@@ -60,6 +75,7 @@ pub struct FieldContext {
     pub app_id: String,
     pub url_host: Option<String>,
     pub app_category: StyleBucket,
+    pub app_kind: AppKind,
     pub before: String,
     pub selected: String,
     pub after: String,
