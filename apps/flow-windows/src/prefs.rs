@@ -63,8 +63,9 @@ pub struct Prefs {
     pub dictionary: Vec<DictEntry>,
     pub paste_method: PasteMethod,
     pub restore_clipboard: bool,
-    /// Wait between Ctrl+V and clipboard restore.
-    pub paste_restore_delay_ms: u64,
+    /// Override for the wait between Ctrl+V and clipboard restore; `None` =
+    /// per-app default (500 ms, 3 s Outlook/Word/WhatsApp, 5 s remote viewers).
+    pub paste_restore_delay_ms: Option<u64>,
     /// Texts at most this long use KEYEVENTF_UNICODE when the clipboard
     /// can't be opened.
     pub type_fallback_max_chars: usize,
@@ -94,7 +95,7 @@ impl Default for Prefs {
             dictionary: Vec::new(),
             paste_method: PasteMethod::CtrlV,
             restore_clipboard: true,
-            paste_restore_delay_ms: 150,
+            paste_restore_delay_ms: None,
             type_fallback_max_chars: 200,
             retention: Retention::Keep,
             max_dictation_minutes: 20,

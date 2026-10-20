@@ -259,8 +259,9 @@ pub struct Decision {
     pub actions: Vec<HotkeyAction>,
     /// Return 1 from the hook (don't pass the event on).
     pub suppress: bool,
-    /// Inject a dummy VK 0xFF down/up before passing this key-up through.
-    pub mask_before: bool,
+    /// Swallow this Win/Alt key-up and inject a masked release instead
+    /// (`input::masked_release`: `[LCtrl↓, key↑, LCtrl↑]`). Implies `suppress`.
+    pub mask_release: bool,
 }
 
 /// Stateful chord matcher. Feed physical (non-injected) events only.
@@ -370,7 +371,8 @@ impl ChordMatcher {
             }
             d.suppress = self.swallowed.remove(&ev.key);
             if !d.suppress && self.needs_mask.remove(&ev.key) {
-                d.mask_before = true;
+                d.mask_release = true;
+                d.suppress = true;
             }
         }
         d
@@ -503,11 +505,13 @@ mod tests {
     }
 
     #[test]
-    fn modifiers_are_never_swallowed() {
+    fn modifier_events_pass_through_except_masked_release() {
         let mut m = m();
         assert!(!m.handle(KeyEvent::down(Key::Ctrl), false).suppress);
         assert!(!m.handle(KeyEvent::down(Key::Win), false).suppress);
-        assert!(!m.handle(KeyEvent::up(Key::Win), false).suppress);
+        assert!(!m.handle(KeyEvent::up(Key::Ctrl), false).suppress);
+        let d = m.handle(KeyEvent::up(Key::Win), false);
+        assert!(d.suppress && d.mask_release);
     }
 
     #[test]
@@ -516,17 +520,19 @@ mod tests {
         m.handle(KeyEvent::down(Key::Ctrl), false);
         m.handle(KeyEvent::down(Key::Win), false);
         assert!(
-            !m.handle(KeyEvent::up(Key::Ctrl), false).mask_before,
+            !m.handle(KeyEvent::up(Key::Ctrl), false).mask_release,
             "ctrl needs no mask"
         );
-        assert!(m.handle(KeyEvent::up(Key::Win), false).mask_before);
+        let d = m.handle(KeyEvent::up(Key::Win), false);
+        assert!(d.mask_release);
+        assert!(d.suppress, "real key-up replaced by the masked one");
     }
 
     #[test]
     fn win_release_without_chord_is_not_masked() {
         let mut m = m();
         m.handle(KeyEvent::down(Key::Win), false);
-        assert!(!m.handle(KeyEvent::up(Key::Win), false).mask_before);
+        assert!(!m.handle(KeyEvent::up(Key::Win), false).mask_release);
     }
 
     #[test]
@@ -538,7 +544,7 @@ mod tests {
         let mut m = ChordMatcher::new(b);
         m.handle(KeyEvent::down(Key::Alt), false);
         m.handle(KeyEvent::down(Key::Ctrl), false);
-        assert!(m.handle(KeyEvent::up(Key::Alt), false).mask_before);
+        assert!(m.handle(KeyEvent::up(Key::Alt), false).mask_release);
     }
 
     #[test]
