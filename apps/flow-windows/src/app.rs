@@ -4,7 +4,7 @@
 use crate::audio::capture::{self, Capture};
 use crate::context::{uia, RawSnapshot};
 use crate::controller::{AudioSink, Controller, Platform};
-use crate::core_adapter::{self, FlowCoreAdapter, ModelSpec, ModelStatus};
+use crate::core_adapter::{self, FlowCoreAdapter, LlmSpec, LlmStatus, ModelSpec, ModelStatus};
 use crate::dictation::{Input, OverlayState, Sound};
 use crate::ducking::win::Ducker;
 use crate::hotkeys::{self, win::HookHandle};
@@ -173,6 +173,35 @@ fn apply_model_status(app: &AppHandle, item: &MenuItem<tauri::Wry>, st: &ModelSt
     }
 }
 
+/// Tray line for the optional LLM cleanup (D5: off by default). A failure
+/// is a notice only: dictation keeps pasting deterministic output.
+fn apply_llm_status(app: &AppHandle, item: &MenuItem<tauri::Wry>, st: &LlmStatus) {
+    let file = |p: &str| {
+        std::path::Path::new(p)
+            .file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    let line = match st {
+        LlmStatus::Off => "AI cleanup: off".to_string(),
+        LlmStatus::Loading { path } => format!("AI cleanup: loading {}…", file(path)),
+        LlmStatus::Ready { path, .. } => format!("AI cleanup: {}", file(path)),
+        LlmStatus::Missing { .. } => "⚠ AI cleanup model missing — open Settings".to_string(),
+        LlmStatus::PluginMissing { .. } => {
+            format!(
+                "⚠ AI cleanup engine ({}) missing",
+                core_adapter::llm_plugin_file()
+            )
+        }
+        LlmStatus::Failed { .. } => "⚠ AI cleanup failed to load — open Settings".to_string(),
+    };
+    let _ = item.set_text(line);
+    let _ = app.emit_to(SETTINGS, "llm:status", st);
+    if let Some(problem) = st.problem() {
+        eprintln!("[llm] {problem}");
+    }
+}
+
 // ---------------------------------------------------------------- commands
 
 #[tauri::command]
@@ -188,13 +217,20 @@ fn set_prefs(state: tauri::State<'_, AppState>, prefs: Prefs) -> Result<(), Stri
         h.set_bindings(prefs.shortcuts.clone());
     }
     let _ = autostart::set(prefs.launch_at_login);
-    let reload = {
+    let (reload, reload_llm) = {
         let old = state.prefs.read().unwrap();
-        core_adapter::needs_reload(&old, &prefs) || !model_ready(&state)
+        (
+            core_adapter::needs_reload(&old, &prefs) || !model_ready(&state),
+            core_adapter::needs_llm_reload(&old, &prefs) || llm_wanted_but_down(&state, &prefs),
+        )
     };
-    if reload {
-        if let Some(core) = state.core.get() {
-            core.load(ModelSpec::from_prefs(&prefs, state.appdata.as_deref()));
+    if let Some(core) = state.core.get() {
+        let ad = state.appdata.as_deref();
+        if reload {
+            core.load(ModelSpec::from_prefs(&prefs, ad));
+        }
+        if reload_llm {
+            core.load_llm(LlmSpec::from_prefs(&prefs, ad));
         }
     }
     *state.prefs.write().unwrap() = prefs;
@@ -205,11 +241,23 @@ fn model_ready(state: &AppState) -> bool {
     state.core.get().is_some_and(|c| c.status().is_ready())
 }
 
+/// Saving again retries a failed LLM load (e.g. after copying the file in).
+fn llm_wanted_but_down(state: &AppState, prefs: &Prefs) -> bool {
+    prefs.llm_enabled
+        && state
+            .core
+            .get()
+            .is_some_and(|c| c.llm_status().problem().is_some())
+}
+
 #[derive(serde::Serialize)]
 struct ModelInfo {
     status: ModelStatus,
     default_path: String,
     models_dir: String,
+    llm: LlmStatus,
+    default_llm_path: String,
+    llm_plugin: &'static str,
 }
 
 #[tauri::command]
@@ -225,6 +273,13 @@ fn get_model_status(state: tauri::State<'_, AppState>) -> ModelInfo {
             }),
         default_path: core_adapter::default_model_path(ad).display().to_string(),
         models_dir: core_adapter::models_dir(ad).display().to_string(),
+        llm: state
+            .core
+            .get()
+            .map(|c| c.llm_status())
+            .unwrap_or(LlmStatus::Off),
+        default_llm_path: core_adapter::default_llm_path(ad).display().to_string(),
+        llm_plugin: core_adapter::llm_plugin_file(),
     }
 }
 
@@ -424,16 +479,17 @@ pub fn run() {
             // Tray.
             let model_item =
                 MenuItem::with_id(app, "model", "Speech model: loading…", true, None::<&str>)?;
+            let llm_item = MenuItem::with_id(app, "llm", "AI cleanup: off", true, None::<&str>)?;
             let sep0 = PredefinedMenuItem::separator(app)?;
             let open = MenuItem::with_id(app, "open", "Settings…", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Flow Clone", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&model_item, &sep0, &open, &sep, &quit])?;
+            let menu = Menu::with_items(app, &[&model_item, &llm_item, &sep0, &open, &sep, &quit])?;
             let mut tray = TrayIconBuilder::with_id("main")
                 .tooltip(TRAY_TIP)
                 .menu(&menu)
                 .on_menu_event(|app, ev| match ev.id.as_ref() {
-                    "open" | "model" => show_settings(app),
+                    "open" | "model" | "llm" => show_settings(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -476,6 +532,9 @@ pub fn run() {
                 let h = handle.clone();
                 let item = model_item.clone();
                 core.on_status(move |st| apply_model_status(&h, &item, st));
+                let h = handle.clone();
+                let item = llm_item.clone();
+                core.on_llm_status(move |st| apply_llm_status(&h, &item, st));
             }
             let _ = app.state::<AppState>().core.set(core.clone());
             let start = Instant::now();

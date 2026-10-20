@@ -9,7 +9,7 @@
 
 use flow_windows::context::RawSnapshot;
 use flow_windows::controller::{AudioSink, Controller, Platform};
-use flow_windows::core_adapter::{FlowCoreAdapter, ModelSpec, ModelStatus};
+use flow_windows::core_adapter::{FlowCoreAdapter, LlmSpec, LlmStatus, ModelSpec, ModelStatus};
 use flow_windows::dictation::{Input, OverlayState, Phase, Sound};
 use flow_windows::history::History;
 use flow_windows::hotkeys::HotkeyAction;
@@ -301,7 +301,6 @@ fn live_partials_reach_the_overlay_preview() {
     r.settle(Duration::from_secs(10));
 }
 
-#[cfg(feature = "whisper")]
 fn find(env: &str, rel: &[&str]) -> Option<PathBuf> {
     if let Ok(p) = std::env::var(env) {
         return Some(PathBuf::from(p)).filter(|p| p.is_file());
@@ -359,4 +358,149 @@ fn real_tiny_model_on_jfk_pastes_the_speech() {
         .unwrap();
     assert_eq!(e.lang.as_deref(), Some("en"));
     assert!(e.words > 15);
+}
+
+#[test]
+fn missing_llm_plugin_still_dictates_raw() {
+    let a = mock_core("send the notes to the team");
+    let st = a.load_llm_now(Some(LlmSpec {
+        // Any existing file passes the GGUF check; the plugin lookup fails first.
+        model_path: PathBuf::from(env!("CARGO_MANIFEST_PATH")),
+        lib_path: Some(PathBuf::from("/nonexistent/libflow_llm.so")),
+        threads: Some(1),
+    }));
+    assert!(matches!(st, LlmStatus::PluginMissing { .. }), "{st:?}");
+    let mut r = rig(a, FakeOs::new("notepad.exe"), Prefs::default());
+    r.dictate(&tone(1.2), Duration::from_secs(10));
+    assert_eq!(r.os.pastes().len(), 1);
+    let e = r
+        .history
+        .lock()
+        .unwrap()
+        .latest(Retention::Keep, i64::MAX / 2)
+        .unwrap()
+        .unwrap();
+    assert!(e.formatted.is_none());
+}
+
+/// The real llama.cpp plugin (`cargo build --release -p flow-llm` in the
+/// repo root) and a Qwen GGUF (`tools/fetch-models.sh --llm`); skips
+/// without them. FLOW_LLM_LIB / FLOW_LLM_MODEL override the lookup.
+fn real_llm() -> Option<LlmSpec> {
+    let plugin = flow_windows::core_adapter::llm_plugin_file();
+    let lib = find(
+        "FLOW_LLM_LIB",
+        &[
+            &format!("../../target/release/{plugin}"),
+            &format!("../../target/debug/{plugin}"),
+        ],
+    );
+    let model = find(
+        "FLOW_LLM_MODEL",
+        &[
+            "../../models/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+            "../../../../../models/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+        ],
+    );
+    match (lib, model) {
+        (Some(lib), Some(model)) => Some(LlmSpec {
+            model_path: model,
+            lib_path: Some(lib),
+            threads: None,
+        }),
+        _ => {
+            eprintln!("SKIP: flow_llm plugin or Qwen GGUF not found");
+            None
+        }
+    }
+}
+
+/// Generous: this shared CPU box runs 0.5B at 0.75-2.7 s per call.
+fn llm_prefs() -> Prefs {
+    Prefs {
+        llm_enabled: true,
+        llm_timeout_ms: 30_000,
+        live_preview: false,
+        ..Prefs::default()
+    }
+}
+
+#[test]
+fn real_llm_plugin_formats_through_the_shell() {
+    let Some(spec) = real_llm() else { return };
+    let messy = "um so i think we should uh meet tomorrow at three to go over the budget";
+    let a = mock_core(messy);
+    let st = a.load_llm_now(Some(spec));
+    assert!(st.is_ready(), "{st:?}");
+    let mut r = rig(a, FakeOs::new("outlook.exe"), llm_prefs());
+    r.dictate(&tone(2.0), Duration::from_secs(60));
+    let pastes = r.os.pastes();
+    assert_eq!(pastes.len(), 1, "{:?}", r.os.log.lock().unwrap());
+    let e = r
+        .history
+        .lock()
+        .unwrap()
+        .latest(Retention::Keep, i64::MAX / 2)
+        .unwrap()
+        .unwrap();
+    eprintln!("raw: {}\npasted: {}", e.raw, pastes[0]);
+    assert_eq!(e.raw, messy, "raw ASR kept for undo-AI-edit");
+    assert_eq!(
+        e.formatted.as_deref(),
+        Some(pastes[0].as_str()),
+        "FORMATTED: the LLM output passed the guardrail and was pasted"
+    );
+    let t = pastes[0].to_lowercase();
+    assert!(t.contains("budget") && t.contains("tomorrow"), "{t}");
+}
+
+#[cfg(feature = "whisper")]
+#[test]
+fn real_whisper_then_real_llm_in_the_shell_process() {
+    let Some(spec) = real_llm() else { return };
+    let model = find(
+        "FLOW_MODEL",
+        &[
+            "../../models/ggml-tiny.en.bin",
+            "../../../../../models/ggml-tiny.en.bin",
+        ],
+    );
+    let wav = find(
+        "FLOW_WAV",
+        &["../../models/jfk.wav", "../../../../../models/jfk.wav"],
+    );
+    let (Some(model), Some(wav)) = (model, wav) else {
+        eprintln!("SKIP: tiny model / jfk.wav not found");
+        return;
+    };
+    let pcm: Vec<i16> = hound::WavReader::open(&wav)
+        .unwrap()
+        .samples::<i16>()
+        .map(Result::unwrap)
+        .collect();
+    let a = FlowCoreAdapter::new();
+    assert!(a
+        .load_now(&ModelSpec::Whisper {
+            path: model,
+            threads: None
+        })
+        .is_ready());
+    // whisper's ggml is linked into this test binary; llama's lives in the
+    // plugin (D10). Both must coexist in one process.
+    assert!(a.load_llm_now(Some(spec)).is_ready());
+    let mut r = rig(a, FakeOs::new("notepad.exe"), llm_prefs());
+    r.dictate(&pcm, Duration::from_secs(120));
+    let pastes = r.os.pastes();
+    assert_eq!(pastes.len(), 1, "{:?}", r.os.log.lock().unwrap());
+    let t = pastes[0].to_lowercase();
+    eprintln!("pasted: {t}");
+    assert!(t.contains("your country"), "{t}");
+    let e = r
+        .history
+        .lock()
+        .unwrap()
+        .latest(Retention::Keep, i64::MAX / 2)
+        .unwrap()
+        .unwrap();
+    assert!(e.raw.to_lowercase().contains("ask not what your country"));
 }

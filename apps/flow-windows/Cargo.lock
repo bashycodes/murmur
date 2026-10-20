@@ -947,6 +947,7 @@ name = "flow-core"
 version = "0.1.0"
 dependencies = [
  "fancy-regex",
+ "libloading 0.8.9",
  "regex",
  "rtrb",
  "serde",
