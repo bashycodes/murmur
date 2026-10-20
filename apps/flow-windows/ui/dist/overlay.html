@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flow Bar</title>
+    <link rel="stylesheet" href="overlay.css" />
+  </head>
+  <body>
+    <div class="stage">
+      <div id="pill" class="pill" data-state="resting" data-mic="inactive">
+        <span class="btn cancel" aria-label="Cancel">
+          <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+        </span>
+        <div id="wave" class="wave" aria-hidden="true"></div>
+        <div id="spinner" class="spinner" aria-hidden="true"></div>
+        <span class="btn stop" aria-label="Finish and paste">
+          <svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
+        </span>
+        <div id="msg" class="msg" role="status"></div>
+      </div>
+    </div>
+    <script src="overlay.js"></script>
+  </body>
+</html>
