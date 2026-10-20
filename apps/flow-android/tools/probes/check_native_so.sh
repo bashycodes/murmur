@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Static checks on the packaged native libs (no device needed):
+#  1. every C symbol in JNI_CONTRACT.md is exported by libflow_ffi.so;
+#  2. every LOAD segment of every .so is >= 16 KB aligned (Android 15 16 KB pages);
+#  3. NEEDED libs are bionic or shipped next to it (libc++_shared.so);
+#  4. optional APK: zipalign -P 16 says the .so entries are page-aligned + stored.
+# Usage: tools/probes/check_native_so.sh [app.apk]
+set -euo pipefail
+app="$(cd "$(dirname "$0")/../.." && pwd)"
+ndk="${ANDROID_NDK_HOME:-$HOME/Android/Sdk/ndk/27.2.12479018}"
+bin="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+dir="$app/app/src/main/jniLibs/arm64-v8a"
+so="$dir/libflow_ffi.so"
+fail=0
+want=$(grep -o 'Java_dev_flowclone_core_NativeFlowCore_native[A-Za-z]*' "$app/JNI_CONTRACT.md" | sort -u)
+have=$("$bin/llvm-nm" -D --defined-only "$so" | awk '$2=="T"{print $3}' | grep '^Java_' | sort -u)
+missing=$(comm -23 <(echo "$want") <(echo "$have"))
+extra=$(comm -13 <(echo "$want") <(echo "$have"))
+echo "contract symbols: $(echo "$want" | wc -l) wanted, $(echo "$have" | wc -l) exported"
+[[ -z "$missing" ]] || { echo "MISSING: $missing"; fail=1; }
+[[ -z "$extra" ]] || { echo "EXTRA (not in contract): $extra"; fail=1; }
+for f in "$dir"/*.so; do
+  bad=$("$bin/llvm-readelf" -lW "$f" | awk '$1=="LOAD"{a=strtonum($NF); if (a < 16384) print $NF}')
+  if [[ -n "$bad" ]]; then echo "$(basename "$f"): LOAD align < 16 KB: $bad"; fail=1
+  else echo "$(basename "$f"): LOAD segments 16 KB aligned"; fi
+done
+for n in $("$bin/llvm-readelf" -dW "$so" | sed -n 's/.*NEEDED.*\[\(.*\)\]/\1/p'); do
+  case "$n" in libc.so|libm.so|libdl.so|liblog.so|libandroid.so) ;;
+    *) [[ -f "$dir/$n" ]] || { echo "NEEDED $n not shipped"; fail=1; } ;;
+  esac
+done
+echo "whisper linked: $("$bin/llvm-nm" "$so" 2>/dev/null | grep -c ' whisper_full' || true) whisper_full* symbols"
+if [[ -n "${1:-}" ]]; then
+  za=$(ls -d "$HOME"/Android/Sdk/build-tools/* | sort -V | tail -1)/zipalign
+  if "$za" -c -P 16 -v 4 "$1" | grep -E 'lib/.*\.so' | grep -v '(OK' ; then echo "APK: .so not 16 KB aligned"; fail=1
+  else echo "APK: lib/*.so entries 16 KB aligned (zipalign -P 16)"; fi
+  unzip -lv "$1" | awk '/lib\/.*\.so/{print "  " $8, $1, "bytes", $2}'
+fi
+exit $fail
