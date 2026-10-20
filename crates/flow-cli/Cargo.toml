@@ -6,8 +6,11 @@ license.workspace = true
 description = "Dev harness: run the full flow-core pipeline on a WAV file"
 
 [features]
-default = ["whisper"]
+default = ["whisper", "llm"]
 whisper = ["flow-core/whisper"]
+# Needs the flow-llm plugin at runtime (`cargo build -p flow-llm`); the
+# feature itself only adds the loader.
+llm = ["flow-core/llm"]
 
 [dependencies]
 flow-core = { path = "../flow-core", features = ["wav"] }

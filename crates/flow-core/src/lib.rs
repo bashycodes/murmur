@@ -9,6 +9,8 @@ pub mod config;
 pub mod dictionary;
 mod engine;
 pub mod learn;
+#[cfg(feature = "llm")]
+pub mod llama;
 pub mod postprocess;
 #[cfg(feature = "whisper")]
 pub mod whisper;

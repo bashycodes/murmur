@@ -197,7 +197,11 @@ pub enum AsrBackend {
 pub struct ModelConfig {
     pub asr_backend: AsrBackend,
     pub asr_path: String,
+    /// GGUF instruct model for LLM cleanup (feature `llm`); `None` = no LLM.
     pub llm_path: Option<String>,
+    /// Path of the `flow-llm` plugin library; `None` = default lookup
+    /// (see `flow_core::llama`).
+    pub llm_lib: Option<String>,
     pub threads: usize,
 }
 
@@ -214,6 +218,7 @@ impl Default for ModelConfig {
             asr_backend: AsrBackend::Whisper,
             asr_path: String::new(),
             llm_path: None,
+            llm_lib: None,
             threads: default_threads(),
         }
     }

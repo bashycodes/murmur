@@ -1,0 +1,286 @@
+//! `LlamaCleaner`: the llama.cpp [`Cleaner`] (feature `llm`).
+//!
+//! The engine lives in the `flow-llm` plugin library, which this module
+//! loads at runtime. It cannot be linked in: llama.cpp and whisper.cpp each
+//! bundle a different ggml, and one binary holding both fails to link with
+//! duplicate symbols. The plugin exports only `flow_llm_*`, so its ggml stays
+//! private (C ABI documented in `crates/flow-llm/src/lib.rs`).
+//!
+//! Plugin lookup, first hit wins:
+//! 1. `ModelConfig.llm_lib`, or the `FLOW_LLM_LIB` environment variable;
+//! 2. next to the current executable, then its parent directory (cargo
+//!    puts test binaries in `target/<profile>/deps/`);
+//! 3. the bare file name, which leaves the search to the system loader
+//!    (on Android this finds the app's packaged `libflow_llm.so`).
+
+use std::ffi::{c_char, CStr, CString};
+use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
+use std::sync::Mutex;
+use std::time::Instant;
+
+use libloading::{Library, Symbol};
+
+use crate::asr::AbortFlag;
+use crate::cleanup::{self, CleanError, CleanPrompt, Cleaner};
+use crate::config::{CleanupLevel, FieldContext, Style};
+use crate::dictionary::Dictionary;
+
+const ABI_VERSION: u32 = 1;
+
+/// Platform file name of the plugin.
+pub const PLUGIN_FILE: &str = if cfg!(windows) {
+    "flow_llm.dll"
+} else if cfg!(target_os = "macos") {
+    "libflow_llm.dylib"
+} else {
+    "libflow_llm.so"
+};
+
+type LoadFn =
+    unsafe extern "C" fn(*const c_char, i32, *const c_char, *mut *mut c_char) -> *mut Handle;
+type CleanFn = unsafe extern "C" fn(
+    *const Handle,
+    *const c_char,
+    *const c_char,
+    u64,
+    *const bool,
+    *mut *mut c_char,
+) -> i32;
+type InfoFn = unsafe extern "C" fn(*const Handle) -> *mut c_char;
+type FreeStrFn = unsafe extern "C" fn(*mut c_char);
+type UnloadFn = unsafe extern "C" fn(*mut Handle);
+
+#[repr(C)]
+struct Handle {
+    _opaque: [u8; 0],
+}
+
+/// Candidate plugin paths in lookup order.
+pub fn plugin_candidates(explicit: Option<&str>) -> Vec<PathBuf> {
+    let mut v = Vec::new();
+    if let Some(p) = explicit.filter(|p| !p.is_empty()) {
+        v.push(PathBuf::from(p));
+        return v;
+    }
+    if let Some(p) = std::env::var_os("FLOW_LLM_LIB") {
+        v.push(PathBuf::from(p));
+        return v;
+    }
+    if let Some(dir) = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(PathBuf::from))
+    {
+        v.push(dir.join(PLUGIN_FILE));
+        if let Some(up) = dir.parent() {
+            v.push(up.join(PLUGIN_FILE));
+        }
+    }
+    v.push(PathBuf::from(PLUGIN_FILE));
+    v
+}
+
+fn take_string(free: FreeStrFn, p: *mut c_char) -> String {
+    if p.is_null() {
+        return String::new();
+    }
+    // SAFETY: the plugin returned a NUL-terminated string it owns.
+    let s = unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned();
+    unsafe { free(p) };
+    s
+}
+
+/// The plugin's message format: `[[role, content], …]`.
+fn messages_json(p: &CleanPrompt) -> String {
+    serde_json::to_string(&p.messages()).expect("strings serialise")
+}
+
+fn cstr(s: &str) -> CString {
+    CString::new(s.replace('\0', "")).expect("NULs removed")
+}
+
+pub struct LlamaCleaner {
+    handle: *mut Handle,
+    clean: CleanFn,
+    info_fn: InfoFn,
+    free_str: FreeStrFn,
+    unload: UnloadFn,
+    /// Plugin-reported load info (JSON), for the CLI and tests.
+    pub info: String,
+    pub plugin_path: PathBuf,
+}
+
+/// Plugins are loaded once per path and never closed. dlclose of a library
+/// that owns OpenMP worker threads and C++/Rust TLS destructors segfaults at
+/// exit. `unload` still frees the model and context, which is the memory
+/// that matters; the code pages stay mapped.
+static PLUGINS: Mutex<Vec<(PathBuf, &'static Library)>> = Mutex::new(Vec::new());
+
+fn open_plugin(p: &PathBuf) -> Result<&'static Library, libloading::Error> {
+    let mut v = PLUGINS.lock().unwrap();
+    if let Some((_, l)) = v.iter().find(|(q, _)| q == p) {
+        return Ok(l);
+    }
+    // SAFETY: loading our own plugin; its initialisers are llama.cpp's.
+    let l: &'static Library = Box::leak(Box::new(unsafe { Library::new(p) }?));
+    v.push((p.clone(), l));
+    Ok(l)
+}
+
+// SAFETY: the plugin's handle is internally synchronised (a job channel
+// onto its own thread); every entry point may be called from any thread.
+unsafe impl Send for LlamaCleaner {}
+unsafe impl Sync for LlamaCleaner {}
+
+impl LlamaCleaner {
+    /// Load the plugin and the GGUF model, then prefill the default prompt
+    /// (light, default style) so the first commit is already warm.
+    pub fn load(model: &str, threads: usize, plugin: Option<&str>) -> Result<Self, CleanError> {
+        let mut errs = Vec::new();
+        let mut found = None;
+        for p in plugin_candidates(plugin) {
+            match open_plugin(&p) {
+                Ok(l) => {
+                    found = Some((l, p));
+                    break;
+                }
+                Err(e) => errs.push(format!("{}: {e}", p.display())),
+            }
+        }
+        let (lib, plugin_path) = found.ok_or_else(|| {
+            CleanError::Backend(format!("llm plugin not found ({})", errs.join("; ")))
+        })?;
+        let sym_err = |e: libloading::Error| CleanError::Backend(format!("llm plugin: {e}"));
+        // SAFETY: symbol types match the ABI in crates/flow-llm/src/lib.rs;
+        // the version check guards against a mismatched plugin.
+        unsafe {
+            let ver: Symbol<unsafe extern "C" fn() -> u32> =
+                lib.get(b"flow_llm_abi_version\0").map_err(sym_err)?;
+            if ver() != ABI_VERSION {
+                return Err(CleanError::Backend(format!(
+                    "llm plugin ABI {} != {ABI_VERSION}",
+                    ver()
+                )));
+            }
+            let load: LoadFn = *lib.get::<LoadFn>(b"flow_llm_load\0").map_err(sym_err)?;
+            let clean: CleanFn = *lib.get::<CleanFn>(b"flow_llm_clean\0").map_err(sym_err)?;
+            let info_fn: InfoFn = *lib.get::<InfoFn>(b"flow_llm_info\0").map_err(sym_err)?;
+            let free_str: FreeStrFn = *lib
+                .get::<FreeStrFn>(b"flow_llm_free_string\0")
+                .map_err(sym_err)?;
+            let unload: UnloadFn = *lib.get::<UnloadFn>(b"flow_llm_unload\0").map_err(sym_err)?;
+
+            let warm = cleanup::build_prompt(
+                "",
+                CleanupLevel::Light,
+                Style::Default,
+                &FieldContext::default(),
+                &Dictionary::default(),
+            );
+            let (m, wm) = (cstr(model), cstr(&messages_json(&warm)));
+            let mut err: *mut c_char = std::ptr::null_mut();
+            let threads = i32::try_from(threads.max(1)).unwrap_or(4);
+            let handle = load(m.as_ptr(), threads, wm.as_ptr(), &mut err);
+            if handle.is_null() {
+                return Err(CleanError::Backend(take_string(free_str, err)));
+            }
+            let info = take_string(free_str, info_fn(handle));
+            Ok(Self {
+                handle,
+                clean,
+                info_fn,
+                free_str,
+                unload,
+                info,
+                plugin_path,
+            })
+        }
+    }
+}
+
+impl LlamaCleaner {
+    /// Plugin info JSON, including `last` = prefill/decode counters of the
+    /// most recent call.
+    pub fn info_json(&self) -> String {
+        // SAFETY: live handle.
+        take_string(self.free_str, unsafe { (self.info_fn)(self.handle) })
+    }
+}
+
+impl Cleaner for LlamaCleaner {
+    fn clean(&self, prompt: &CleanPrompt, deadline: Instant) -> Result<String, CleanError> {
+        self.clean_cancellable(prompt, deadline, &AbortFlag::default())
+    }
+
+    fn clean_cancellable(
+        &self,
+        prompt: &CleanPrompt,
+        deadline: Instant,
+        cancel: &AbortFlag,
+    ) -> Result<String, CleanError> {
+        let budget = deadline.saturating_duration_since(Instant::now());
+        let (msgs, t) = (cstr(&messages_json(prompt)), cstr(&prompt.transcript));
+        // `cancel` (an Arc clone) is borrowed for the whole blocking call.
+        let flag: *const bool = cancel
+            .0
+            .as_ref()
+            .map_or(std::ptr::null(), |a| AtomicBool::as_ptr(a) as *const bool);
+        let mut out: *mut c_char = std::ptr::null_mut();
+        // SAFETY: valid handle and NUL-terminated strings for the call.
+        let rc = unsafe {
+            (self.clean)(
+                self.handle,
+                msgs.as_ptr(),
+                t.as_ptr(),
+                budget.as_millis() as u64,
+                flag,
+                &mut out,
+            )
+        };
+        let text = take_string(self.free_str, out);
+        match rc {
+            0 => Ok(text),
+            1 => Err(CleanError::Backend("llm deadline".into())),
+            _ => Err(CleanError::Backend(text)),
+        }
+    }
+}
+
+impl Drop for LlamaCleaner {
+    fn drop(&mut self) {
+        // SAFETY: handle from flow_llm_load, freed exactly once; the library
+        // is never closed.
+        unsafe { (self.unload)(self.handle) };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_plugin_path_wins() {
+        assert_eq!(
+            plugin_candidates(Some("/x/libp.so")),
+            vec![PathBuf::from("/x/libp.so")]
+        );
+    }
+
+    #[test]
+    fn default_lookup_ends_with_bare_name() {
+        if std::env::var_os("FLOW_LLM_LIB").is_some() {
+            return;
+        }
+        let c = plugin_candidates(None);
+        assert_eq!(c.last().unwrap(), &PathBuf::from(PLUGIN_FILE));
+        assert!(c.len() >= 2);
+    }
+
+    #[test]
+    fn missing_plugin_is_a_load_error() {
+        let e = LlamaCleaner::load("m.gguf", 1, Some("/nonexistent/libflow_llm.so"))
+            .err()
+            .unwrap();
+        assert!(e.to_string().contains("plugin not found"), "{e}");
+    }
+}

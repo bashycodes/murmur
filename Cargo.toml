@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/flow-core", "crates/flow-ffi", "crates/flow-cli"]
+members = ["crates/flow-core", "crates/flow-ffi", "crates/flow-cli", "crates/flow-llm"]
 
 [workspace.package]
 edition = "2021"

@@ -8,7 +8,7 @@ description = "Shared local dictation core: ASR session, cleanup, deterministic 
 [features]
 default = []
 whisper = ["dep:whisper-rs"]
-llm = []
+llm = ["dep:libloading"]
 wav = ["dep:hound"]
 
 [dependencies]
@@ -21,6 +21,7 @@ unicode-normalization = "0.1"
 rtrb = "0.3"
 whisper-rs = { version = "0.16", optional = true }
 hound = { version = "3", optional = true }
+libloading = { version = "0.8", optional = true }
 
 [[test]]
 name = "whisper_e2e"
