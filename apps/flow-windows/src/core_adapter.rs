@@ -632,6 +632,7 @@ impl CoreApi for FlowCoreAdapter {
             .into_iter()
             .map(|cand| LearnCandidate {
                 word: cand.corrected,
+                heard: cand.original,
                 replacement: None,
             })
             .collect()

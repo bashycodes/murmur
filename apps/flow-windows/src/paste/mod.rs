@@ -161,6 +161,19 @@ pub fn segments(text: &str) -> Vec<Segment<'_>> {
     out
 }
 
+/// `text` without paste markers: what the user sees after the paste, for
+/// "copy last transcript" and learn-from-edits.
+pub fn plain_text(text: &str) -> String {
+    segments(text)
+        .into_iter()
+        .map(|s| match s {
+            Segment::Text(t) => t,
+            Segment::Tab => "\t",
+            Segment::Break => "",
+        })
+        .collect()
+}
+
 /// Plain text (the common case) goes through the normal clipboard paste;
 /// marker-carrying text is typed segment by segment (no clipboard, so the
 /// user's clipboard needs no multi-step restore).
@@ -191,6 +204,15 @@ pub const ELEVATED_TARGET_MSG: &str = "The app you're dictating into runs as adm
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plain_text_drops_markers() {
+        assert_eq!(
+            plain_text("see @{{BREAK}}main.rs{{TAB}} now"),
+            "see @main.rs\t now"
+        );
+        assert_eq!(plain_text("plain"), "plain");
+    }
 
     #[test]
     fn segments_split_cursor_markers() {

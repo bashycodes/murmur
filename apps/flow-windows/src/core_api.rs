@@ -150,7 +150,10 @@ impl CommitResult {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LearnCandidate {
+    /// The word(s) the user typed: the proposed dictionary entry.
     pub word: String,
+    /// What the dictation had produced in their place.
+    pub heard: String,
     pub replacement: Option<String>,
 }
 

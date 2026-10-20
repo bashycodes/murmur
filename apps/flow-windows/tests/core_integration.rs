@@ -13,7 +13,9 @@ use flow_windows::core_adapter::{FlowCoreAdapter, LlmSpec, LlmStatus, ModelSpec,
 use flow_windows::dictation::{Input, OverlayState, Phase, Sound};
 use flow_windows::history::History;
 use flow_windows::hotkeys::HotkeyAction;
+use flow_windows::learn::{FieldReader, Read};
 use flow_windows::prefs::{Prefs, Retention};
+use flow_windows::suggestions::SuggestionStore;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
@@ -27,6 +29,21 @@ struct FakeOs {
     pastes: Mutex<Vec<String>>,
     previews: Mutex<Vec<String>>,
     exe: String,
+    copies: Mutex<Vec<String>>,
+    /// Learn-from-edits: how the user rewrites the last paste (from, to).
+    edit: Option<(String, String)>,
+}
+
+/// Field as UIA would see it: the paste, then the user's correction, then
+/// focus moves away.
+struct ScriptedField {
+    reads: std::collections::VecDeque<Read>,
+}
+
+impl FieldReader for ScriptedField {
+    fn read(&mut self) -> Read {
+        self.reads.pop_front().unwrap_or(Read::FocusChanged)
+    }
 }
 
 impl FakeOs {
@@ -88,6 +105,24 @@ impl Platform for FakeOs {
         self.push("enter");
         Ok(())
     }
+    fn copy_text(&self, text: &str) -> Result<(), String> {
+        self.copies.lock().unwrap().push(text.to_string());
+        Ok(())
+    }
+    fn field_reader(&self) -> Option<Box<dyn FieldReader>> {
+        let (from, to) = self.edit.clone()?;
+        let pasted = self.pastes().last()?.clone();
+        let edited = pasted.replace(&from, &to);
+        Some(Box::new(ScriptedField {
+            reads: [
+                Read::Text(pasted),
+                Read::Unavailable,
+                Read::Text(edited.clone()),
+                Read::Text(edited),
+            ]
+            .into(),
+        }))
+    }
 }
 
 struct Rig {
@@ -99,12 +134,21 @@ struct Rig {
 }
 
 fn rig(core: Arc<FlowCoreAdapter>, os: FakeOs, prefs: Prefs) -> Rig {
+    rig_with(core, os, prefs, None)
+}
+
+fn rig_with(
+    core: Arc<FlowCoreAdapter>,
+    os: FakeOs,
+    prefs: Prefs,
+    suggestions: Option<Arc<Mutex<SuggestionStore>>>,
+) -> Rig {
     let os = Arc::new(os);
     let (tx, rx) = mpsc::channel();
     let t = Arc::new(AtomicU64::new(0));
     let tc = t.clone();
     let history = Arc::new(Mutex::new(History::open_in_memory().unwrap()));
-    let c = Controller::new(
+    let mut c = Controller::new(
         os.clone(),
         core,
         Arc::new(RwLock::new(prefs)),
@@ -112,6 +156,9 @@ fn rig(core: Arc<FlowCoreAdapter>, os: FakeOs, prefs: Prefs) -> Rig {
         Box::new(move || tc.load(Ordering::SeqCst)),
     )
     .with_history(history.clone());
+    if let Some(s) = suggestions {
+        c = c.with_suggestions(s);
+    }
     Rig {
         c,
         rx,
@@ -503,4 +550,108 @@ fn real_whisper_then_real_llm_in_the_shell_process() {
         .unwrap()
         .unwrap();
     assert!(e.raw.to_lowercase().contains("ask not what your country"));
+}
+
+fn wait_for(what: &str, mut f: impl FnMut() -> bool) {
+    for _ in 0..500 {
+        if f() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    panic!("timed out waiting for {what}");
+}
+
+#[test]
+fn copy_last_puts_the_transcript_on_the_clipboard() {
+    let mut r = rig(
+        mock_core("copy this please"),
+        FakeOs::new("notepad.exe"),
+        Prefs::default(),
+    );
+    r.dictate(&tone(1.2), Duration::from_secs(10));
+    r.at(5000, Input::Hotkey(HotkeyAction::CopyLast));
+    wait_for("copy", || !r.os.copies.lock().unwrap().is_empty());
+    assert_eq!(*r.os.copies.lock().unwrap(), r.os.pastes());
+    assert_eq!(r.os.pastes().len(), 1, "copy does not paste");
+}
+
+#[test]
+fn user_correction_becomes_a_suggestion_not_an_entry() {
+    let os = FakeOs {
+        edit: Some(("whisper flow".into(), "Wispr Flow".into())),
+        ..FakeOs::new("slack.exe")
+    };
+    let prefs = Prefs {
+        learn_window_ms: 1_000,
+        learn_poll_ms: 100,
+        ..Prefs::default()
+    };
+    let store = Arc::new(Mutex::new(SuggestionStore::in_memory()));
+    let mut r = rig_with(
+        mock_core("i use whisper flow every day"),
+        os,
+        prefs,
+        Some(store.clone()),
+    );
+    r.dictate(&tone(1.5), Duration::from_secs(10));
+    wait_for("suggestion", || {
+        !store.lock().unwrap().data.pending.is_empty()
+    });
+    let s = store.lock().unwrap().data.pending.clone();
+    assert_eq!(s.len(), 1, "{s:?}");
+    assert_eq!(s[0].word, "Wispr Flow");
+    assert_eq!(s[0].heard, "whisper flow");
+    assert_eq!(s[0].app, "slack.exe");
+    wait_for("edited column", || {
+        r.history
+            .lock()
+            .unwrap()
+            .latest(Retention::Keep, i64::MAX / 2)
+            .unwrap()
+            .unwrap()
+            .edited
+            .is_some()
+    });
+    let e = r
+        .history
+        .lock()
+        .unwrap()
+        .latest(Retention::Keep, i64::MAX / 2)
+        .unwrap()
+        .unwrap();
+    assert!(e.edited.unwrap().contains("Wispr Flow"));
+    // Never auto-added: prefs' dictionary is untouched (the controller only
+    // reads it), and accepting is a separate, explicit step.
+    let accepted = store
+        .lock()
+        .unwrap()
+        .data
+        .accept("Wispr Flow", false)
+        .unwrap();
+    assert_eq!(accepted.word, "Wispr Flow");
+}
+
+#[test]
+fn learning_off_or_untouched_paste_suggests_nothing() {
+    for (learn, edit) in [
+        (false, Some(("whisper".to_string(), "Wispr".to_string()))),
+        (true, None),
+    ] {
+        let os = FakeOs {
+            edit,
+            ..FakeOs::new("notepad.exe")
+        };
+        let prefs = Prefs {
+            learn_from_edits: learn,
+            learn_window_ms: 1_000,
+            learn_poll_ms: 100,
+            ..Prefs::default()
+        };
+        let store = Arc::new(Mutex::new(SuggestionStore::in_memory()));
+        let mut r = rig_with(mock_core("whisper rocks"), os, prefs, Some(store.clone()));
+        r.dictate(&tone(1.2), Duration::from_secs(10));
+        std::thread::sleep(Duration::from_millis(1_500));
+        assert!(store.lock().unwrap().data.pending.is_empty());
+    }
 }

@@ -7,9 +7,11 @@ use crate::controller::{AudioSink, Controller, Platform};
 use crate::core_adapter::{self, FlowCoreAdapter, LlmSpec, LlmStatus, ModelSpec, ModelStatus};
 use crate::dictation::{Input, OverlayState, Sound};
 use crate::ducking::win::Ducker;
+use crate::history::{self, History};
 use crate::hotkeys::{self, win::HookHandle};
 use crate::paste::{self, PasteOptions};
 use crate::prefs::{LoadOutcome, Prefs};
+use crate::suggestions::{self as sugg, SuggestionStore};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
@@ -35,6 +37,10 @@ struct AppState {
     core: OnceLock<Arc<FlowCoreAdapter>>,
     /// Controller input (overlay ✕/✓ clicks).
     input: OnceLock<mpsc::Sender<Input>>,
+    history: Option<Arc<Mutex<History>>>,
+    suggestions: Arc<Mutex<SuggestionStore>>,
+    /// Tray line "Dictionary suggestions (n)…".
+    suggest_item: OnceLock<MenuItem<tauri::Wry>>,
 }
 
 fn hwnd_of(w: &WebviewWindow) -> Option<HWND> {
@@ -127,6 +133,38 @@ impl Platform for WinPlatform {
             Err("could not send Enter".into())
         }
     }
+
+    fn copy_text(&self, text: &str) -> Result<(), String> {
+        paste::win::copy_text(text)
+    }
+
+    fn field_reader(&self) -> Option<Box<dyn crate::learn::FieldReader>> {
+        uia::field_reader().map(|r| Box::new(r) as Box<dyn crate::learn::FieldReader>)
+    }
+
+    fn history_changed(&self) {
+        let _ = self.app.emit_to(SETTINGS, "history:changed", ());
+    }
+
+    fn suggestions_changed(&self, pending: usize) {
+        show_suggestion_count(&self.app, pending);
+    }
+}
+
+/// Non-intrusive notice: a tray line (and a Settings badge via the event);
+/// no toast, no focus change. Accepting happens in Settings → Dictionary.
+fn show_suggestion_count(app: &AppHandle, pending: usize) {
+    let state = app.state::<AppState>();
+    if let Some(item) = state.suggest_item.get() {
+        let text = match pending {
+            0 => "No dictionary suggestions".to_string(),
+            1 => "1 dictionary suggestion…".to_string(),
+            n => format!("{n} dictionary suggestions…"),
+        };
+        let _ = item.set_text(text);
+        let _ = item.set_enabled(pending > 0);
+    }
+    let _ = app.emit_to(SETTINGS, "suggestions:changed", pending);
 }
 
 // ---------------------------------------------------------------- model notice
@@ -210,7 +248,12 @@ fn get_prefs(state: tauri::State<'_, AppState>) -> Prefs {
 }
 
 #[tauri::command]
-fn set_prefs(state: tauri::State<'_, AppState>, prefs: Prefs) -> Result<(), String> {
+fn set_prefs(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    mut prefs: Prefs,
+) -> Result<(), String> {
+    prefs.dictionary = crate::dictionary::normalize(prefs.dictionary);
     prefs.validate()?;
     prefs.save(&state.path).map_err(|e| e.to_string())?;
     if let Some(h) = state.hook.lock().unwrap().as_ref() {
@@ -233,8 +276,196 @@ fn set_prefs(state: tauri::State<'_, AppState>, prefs: Prefs) -> Result<(), Stri
             core.load_llm(LlmSpec::from_prefs(&prefs, ad));
         }
     }
+    if let Some(h) = &state.history {
+        let _ = h.lock().unwrap().prune(prefs.retention, history::now_ms());
+    }
+    let pending = {
+        let mut s = state.suggestions.lock().unwrap();
+        s.data.prune_known(&prefs.dictionary);
+        let _ = s.save();
+        s.data.pending.len()
+    };
     *state.prefs.write().unwrap() = prefs;
+    show_suggestion_count(&app, pending);
     Ok(())
+}
+
+// ------------------------------------------------- history tab (05 §3, 03 §6)
+
+fn history_db(state: &AppState) -> Result<&Arc<Mutex<History>>, String> {
+    state
+        .history
+        .as_ref()
+        .ok_or_else(|| "history is unavailable (see the log)".to_string())
+}
+
+#[tauri::command]
+fn history_list(
+    state: tauri::State<'_, AppState>,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<history::Item>, String> {
+    let retention = state.prefs.read().unwrap().retention;
+    let rows = history_db(&state)?
+        .lock()
+        .unwrap()
+        .list(&query, limit.unwrap_or(200), retention, history::now_ms())
+        .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(history::Item::from).collect())
+}
+
+#[tauri::command]
+fn history_delete(state: tauri::State<'_, AppState>, id: i64) -> Result<bool, String> {
+    history_db(&state)?
+        .lock()
+        .unwrap()
+        .delete(id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn history_clear(state: tauri::State<'_, AppState>) -> Result<usize, String> {
+    history_db(&state)?
+        .lock()
+        .unwrap()
+        .clear()
+        .map_err(|e| e.to_string())
+}
+
+/// Row text: the raw ASR text ("undo AI edit") or what was inserted.
+fn history_text(state: &AppState, id: i64, raw: bool) -> Result<String, String> {
+    let e = history_db(state)?
+        .lock()
+        .unwrap()
+        .get(id)
+        .map_err(|e| e.to_string())?
+        .ok_or("that transcript is gone")?;
+    let t = if raw {
+        e.raw.clone()
+    } else {
+        e.best_text().to_string()
+    };
+    Ok(paste::plain_text(&t))
+}
+
+#[tauri::command]
+fn history_copy(state: tauri::State<'_, AppState>, id: i64, raw: bool) -> Result<(), String> {
+    paste::win::copy_text(&history_text(&state, id, raw)?)
+}
+
+/// Hide Settings so focus returns to the app the user was in, then paste.
+#[tauri::command]
+fn history_repaste(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    id: i64,
+    raw: bool,
+) -> Result<(), String> {
+    let text = history_text(&state, id, raw)?;
+    let prefs = state.prefs.read().unwrap().clone();
+    let settings = app.get_webview_window(SETTINGS);
+    // As an integer: HWND is not Send.
+    let own = settings.as_ref().and_then(hwnd_of).map(|h| h.0 as usize);
+    if let Some(w) = &settings {
+        let _ = w.hide();
+    }
+    std::thread::spawn(move || {
+        use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+        let t0 = Instant::now();
+        while t0.elapsed() < Duration::from_millis(1500) {
+            std::thread::sleep(Duration::from_millis(50));
+            let fg = unsafe { GetForegroundWindow() };
+            if !fg.is_invalid() && Some(fg.0 as usize) != own {
+                break;
+            }
+        }
+        std::thread::sleep(Duration::from_millis(100));
+        if let Err(e) = paste::win::paste(&text, &PasteOptions::from_prefs(&prefs)) {
+            eprintln!("[history] re-paste: {e}");
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+fn clipboard_copy(text: String) -> Result<(), String> {
+    paste::win::copy_text(&text)
+}
+
+// ------------------------------------------------- dictionary tab
+
+#[tauri::command]
+fn suggestions_list(state: tauri::State<'_, AppState>) -> Vec<sugg::Suggestion> {
+    state.suggestions.lock().unwrap().data.pending.clone()
+}
+
+/// Explicit accept: the only way a learned word reaches the dictionary.
+#[tauri::command]
+fn suggestion_accept(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    word: String,
+    as_replacement: bool,
+) -> Result<Prefs, String> {
+    let entry = state
+        .suggestions
+        .lock()
+        .unwrap()
+        .data
+        .accept(&word, as_replacement)
+        .ok_or("suggestion not found")?;
+    let mut prefs = state.prefs.read().unwrap().clone();
+    let merged = crate::dictionary::merge(&prefs.dictionary, vec![entry]);
+    prefs.dictionary = merged.entries;
+    set_prefs(app, state.clone(), prefs)?;
+    Ok(state.prefs.read().unwrap().clone())
+}
+
+#[tauri::command]
+fn suggestion_dismiss(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    word: String,
+) -> Result<(), String> {
+    let pending = {
+        let mut s = state.suggestions.lock().unwrap();
+        s.data.dismiss(&word);
+        s.save().map_err(|e| e.to_string())?;
+        s.data.pending.len()
+    };
+    show_suggestion_count(&app, pending);
+    Ok(())
+}
+
+/// Parse an exchange file the UI read and merge it into `entries` (not
+/// saved until the user presses Save).
+#[tauri::command]
+fn dictionary_import(
+    entries: Vec<crate::prefs::DictEntry>,
+    json: String,
+    replace: bool,
+) -> Result<crate::dictionary::MergeReport, String> {
+    crate::dictionary::import(&entries, &json, replace)
+}
+
+/// Write the exchange JSON to the Downloads folder; returns the path.
+#[tauri::command]
+fn dictionary_export(entries: Vec<crate::prefs::DictEntry>) -> Result<String, String> {
+    let base = std::env::var("USERPROFILE")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let dir = [base.join("Downloads"), base.join("Documents"), base]
+        .into_iter()
+        .find(|d| d.is_dir())
+        .ok_or("no Downloads folder")?;
+    let path = dir.join("flow-dictionary.json");
+    std::fs::write(&path, crate::dictionary::export(&entries)).map_err(|e| e.to_string())?;
+    Ok(path.display().to_string())
+}
+
+#[tauri::command]
+fn dictionary_export_text(entries: Vec<crate::prefs::DictEntry>) -> String {
+    crate::dictionary::export(&entries)
 }
 
 fn model_ready(state: &AppState) -> bool {
@@ -448,6 +679,9 @@ pub fn run() {
                 None
             }
         };
+    let suggestions = Arc::new(Mutex::new(SuggestionStore::open(&sugg::default_path(
+        appdata.as_deref(),
+    ))));
 
     tauri::Builder::default()
         .manage(AppState {
@@ -457,13 +691,28 @@ pub fn run() {
             hook: Mutex::new(None),
             core: OnceLock::new(),
             input: OnceLock::new(),
+            history: history.clone(),
+            suggestions: suggestions.clone(),
+            suggest_item: OnceLock::new(),
         })
         .invoke_handler(tauri::generate_handler![
             get_prefs,
             set_prefs,
             list_microphones,
             get_model_status,
-            overlay_action
+            overlay_action,
+            history_list,
+            history_delete,
+            history_clear,
+            history_copy,
+            history_repaste,
+            clipboard_copy,
+            suggestions_list,
+            suggestion_accept,
+            suggestion_dismiss,
+            dictionary_import,
+            dictionary_export,
+            dictionary_export_text
         ])
         .on_window_event(|window, event| {
             if window.label() == SETTINGS {
@@ -480,16 +729,42 @@ pub fn run() {
             let model_item =
                 MenuItem::with_id(app, "model", "Speech model: loading…", true, None::<&str>)?;
             let llm_item = MenuItem::with_id(app, "llm", "AI cleanup: off", true, None::<&str>)?;
+            let suggest_item = MenuItem::with_id(
+                app,
+                "suggestions",
+                "No dictionary suggestions",
+                false,
+                None::<&str>,
+            )?;
+            let _ = app
+                .state::<AppState>()
+                .suggest_item
+                .set(suggest_item.clone());
             let sep0 = PredefinedMenuItem::separator(app)?;
             let open = MenuItem::with_id(app, "open", "Settings…", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Flow Clone", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&model_item, &llm_item, &sep0, &open, &sep, &quit])?;
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &model_item,
+                    &llm_item,
+                    &suggest_item,
+                    &sep0,
+                    &open,
+                    &sep,
+                    &quit,
+                ],
+            )?;
             let mut tray = TrayIconBuilder::with_id("main")
                 .tooltip(TRAY_TIP)
                 .menu(&menu)
                 .on_menu_event(|app, ev| match ev.id.as_ref() {
                     "open" | "model" | "llm" => show_settings(app),
+                    "suggestions" => {
+                        show_settings(app);
+                        let _ = app.emit_to(SETTINGS, "settings:tab", "dictionary");
+                    }
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -548,6 +823,9 @@ pub fn run() {
             if let Some(h) = history.clone() {
                 controller = controller.with_history(h);
             }
+            controller = controller.with_suggestions(suggestions.clone());
+            let pending = suggestions.lock().unwrap().data.pending.len();
+            show_suggestion_count(&handle, pending);
             let dictating = controller.dictating_flag();
             std::thread::Builder::new()
                 .name("flow-controller".into())
