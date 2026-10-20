@@ -72,9 +72,21 @@ pub mod json_api {
 
     pub fn commit(core: Option<&FlowCore>) -> String {
         match core {
-            Some(c) => serde_json::to_string(&c.commit()).unwrap(),
-            None => r#"{"status":"ERROR","asr_text":"","final_text":"","language":null,"timings":{"audio_ms":0,"asr_ms":0,"llm_ms":0,"postprocess_ms":0,"total_ms":0,"dropped_samples":0},"press_enter":false,"fallback_reason":null,"truncated":false,"error":"null handle"}"#.into(),
+            Some(c) => serde_json::to_string(&c.commit())
+                .unwrap_or_else(|e| error_result(&format!("serialize: {e}"))),
+            None => error_result("null handle"),
         }
+    }
+
+    /// A `CommitResult` JSON with status ERROR, for failures outside the core.
+    pub fn error_result(msg: &str) -> String {
+        serde_json::json!({
+            "status": "ERROR", "asr_text": "", "final_text": "", "language": null,
+            "timings": {"audio_ms": 0, "asr_ms": 0, "llm_ms": 0, "postprocess_ms": 0,
+                        "total_ms": 0, "dropped_samples": 0},
+            "press_enter": false, "fallback_reason": null, "truncated": false, "error": msg,
+        })
+        .to_string()
     }
 
     pub fn learn_edit(core: &FlowCore, pasted: &str, edited: &str) -> String {
