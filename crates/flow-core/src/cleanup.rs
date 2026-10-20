@@ -220,24 +220,33 @@ struct UserMsg<'a> {
 }
 
 impl UserMsg<'_> {
+    /// Empty context lines are left out: on a 4-core CPU every prompt token
+    /// not reused from the KV cache costs ~5-15 ms, and a typical dictation
+    /// has no selection or dictionary.
     fn render(&self) -> String {
         let (sname, sdesc, srules) = style_text(self.style);
-        format!(
-            "APP: {} | CATEGORY: {} | LANGUAGE: auto\n\
-STYLE: {sname} \u{2014} \"{sdesc}\". {srules}\n\
-DICTIONARY: {}\n\
-TEXT BEFORE CURSOR: \u{ab}{}\u{bb}\n\
-SELECTED TEXT (will be replaced): \u{ab}{}\u{bb}\n\
-TEXT AFTER CURSOR: \u{ab}{}\u{bb}\n\
-TRANSCRIPT: \u{ab}{}\u{bb}",
+        let mut s = format!(
+            "APP: {} | CATEGORY: {} | LANGUAGE: auto\nSTYLE: {sname} \u{2014} \"{sdesc}\". {srules}\n",
             self.app,
             category_name(self.cat),
-            self.terms,
-            self.before,
-            self.selected,
-            self.after,
-            self.transcript
-        )
+        );
+        for (label, v) in [
+            ("DICTIONARY: ", self.terms),
+            ("TEXT BEFORE CURSOR: ", self.before),
+            ("SELECTED TEXT (will be replaced): ", self.selected),
+            ("TEXT AFTER CURSOR: ", self.after),
+        ] {
+            if v.trim().is_empty() {
+                continue;
+            }
+            if label == "DICTIONARY: " {
+                s.push_str(&format!("{label}{v}\n"));
+            } else {
+                s.push_str(&format!("{label}\u{ab}{v}\u{bb}\n"));
+            }
+        }
+        s.push_str(&format!("TRANSCRIPT: \u{ab}{}\u{bb}", self.transcript));
+        s
     }
 }
 
@@ -703,6 +712,21 @@ mod tests {
         // The level changes the prefix (rules + Wispr example target).
         let h = build_prompt("x", CleanupLevel::High, Style::Formal, &c, &d);
         assert_ne!(h.system, a.system);
+    }
+
+    #[test]
+    fn empty_context_lines_are_omitted() {
+        let p = build_prompt(
+            "hi",
+            CleanupLevel::Light,
+            Style::Formal,
+            &FieldContext::default(),
+            &Dictionary::default(),
+        );
+        assert!(!p.user.contains("DICTIONARY"), "{}", p.user);
+        assert!(!p.user.contains("SELECTED TEXT"), "{}", p.user);
+        assert!(!p.user.contains("TEXT BEFORE"), "{}", p.user);
+        assert!(p.user.ends_with("TRANSCRIPT: «hi»"));
     }
 
     #[test]
