@@ -7,6 +7,7 @@
 
 pub mod audio;
 pub mod context;
+pub mod controller;
 pub mod core_api;
 pub mod dictation;
 pub mod ducking;
