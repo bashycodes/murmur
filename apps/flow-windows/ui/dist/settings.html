@@ -16,6 +16,7 @@
         <label>Push to talk (hold) <input id="ptt" placeholder="Ctrl+Win" /></label>
         <label>Hands-free (toggle) <input id="hands_free" placeholder="Ctrl+Win+Space" /></label>
         <label>Cancel <input id="cancel" placeholder="Esc" /></label>
+        <label>Paste last transcript <input id="paste_last" placeholder="Shift+Alt+Z" /></label>
         <p class="hint">Keys: Ctrl, Win, Alt, Shift, Space, Esc, A–Z, 0–9, F1–F24. Max 3 keys, at least one modifier.</p>
       </fieldset>
 
@@ -25,6 +26,13 @@
         <label class="row"><input type="checkbox" id="enable_sounds" /> Dictation sounds</label>
         <label class="row"><input type="checkbox" id="mute_audio_while_dictating" /> Mute other audio while dictating</label>
         <label>Max dictation length (minutes) <input id="max_dictation_minutes" type="number" min="1" max="60" /></label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Speech model</legend>
+        <p id="model_status" class="hint">Checking…</p>
+        <label>Model file (empty = default) <input id="model_path" spellcheck="false" /></label>
+        <p class="hint">A whisper.cpp ggml model, e.g. <code>ggml-base.bin</code> (default) or <code>ggml-small-q5_1.bin</code> for better accuracy. Models are never downloaded automatically: put the file in <code id="models_dir"></code>.</p>
       </fieldset>
 
       <fieldset>
@@ -40,6 +48,7 @@
         </label>
         <label class="row"><input type="checkbox" id="raw_mode" /> Raw mode (no formatting at all)</label>
         <label class="row"><input type="checkbox" id="use_ax_context" /> Use text around the cursor as context (stays local)</label>
+        <label class="row"><input type="checkbox" id="live_preview" /> Show live transcript while dictating</label>
       </fieldset>
 
       <fieldset>
@@ -58,6 +67,18 @@
         <legend>Dictionary &amp; snippets</legend>
         <textarea id="dictionary" rows="8" spellcheck="false" placeholder="Kubernetes&#10;gh => GitHub&#10;my address ==> 1 Main Street"></textarea>
         <p class="hint"><code>word</code> = vocabulary hint, <code>a =&gt; b</code> = replacement, <code>trigger ==&gt; text</code> = snippet.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>History</legend>
+        <label>Keep transcripts on this PC
+          <select id="retention">
+            <option value="keep">Forever</option>
+            <option value="day">24 hours</option>
+            <option value="never">Never (nothing is stored)</option>
+          </select>
+        </label>
+        <p class="hint">Text only, in a local SQLite file. Audio is never stored.</p>
       </fieldset>
 
       <fieldset>

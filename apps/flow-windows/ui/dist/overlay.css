@@ -203,3 +203,38 @@ body {
 .msg {
   display: none;
 }
+
+/* ---- live partial transcript (flow-core partials), above the pill ---- */
+.preview {
+  position: absolute;
+  left: 50%;
+  bottom: 54px;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  max-width: 480px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.35;
+  /* Show the newest words: clamp to 3 lines, overflow at the top. */
+  display: none;
+  max-height: calc(3 * 1.35em + 12px);
+  overflow: hidden;
+  flex-direction: column;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+.preview.visible {
+  display: flex;
+}
+
+/* Hands-free buttons are clickable: the shell turns click-through off
+   while the cursor is over the locked pill. */
+.pill[data-state="active_locked"] .btn {
+  cursor: pointer;
+}
+.pill[data-state="active_locked"] .btn:hover {
+  filter: brightness(1.2);
+}

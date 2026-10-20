@@ -17,6 +17,7 @@ pub mod ducking;
 pub mod history;
 pub mod hotkeys;
 pub mod input;
+pub mod overlay;
 pub mod paste;
 pub mod prefs;
 pub mod sounds;

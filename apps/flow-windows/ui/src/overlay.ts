@@ -18,6 +18,7 @@ const pill = document.getElementById("pill") as HTMLDivElement;
 const wave = document.getElementById("wave") as HTMLDivElement;
 const msg = document.getElementById("msg") as HTMLDivElement;
 const spinner = document.getElementById("spinner") as HTMLDivElement;
+const preview = document.getElementById("preview") as HTMLDivElement;
 
 // Bar heights g = max(0, 1 - h^2/48), h = |(n-1)/2 - i|; phase delays 0.1*m[i] s.
 const PHASE = [0, 1, 2, 3, 4, -5, -4, -3, -2, -1];
@@ -60,15 +61,36 @@ function apply(s: OverlayState): void {
   if (!isActive()) {
     target = 0;
     v = 0;
+    showPreview("");
   }
   if (isActive() && !wasActive) {
     pill.dataset.mic = "inactive"; // dim, still bars until real audio arrives
   }
 }
 
+function showPreview(text: string): void {
+  preview.textContent = text;
+  preview.classList.toggle("visible", text.length > 0 && isActive());
+}
+
 apply({ state: "resting" });
 
 const { listen } = window.__TAURI__.event;
+const overlayInvoke = window.__TAURI__.core.invoke;
+
+// ✕ / ✓ in hands-free mode. The window never takes focus (WS_EX_NOACTIVATE),
+// so clicking does not steal the caret from the target app.
+for (const [id, action] of [
+  ["btn-cancel", "cancel"],
+  ["btn-finish", "finish"],
+] as const) {
+  document.getElementById(id)?.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    if (pillState === "active_locked") void overlayInvoke("overlay_action", { action });
+  });
+}
+
+void listen<string>("dictation:preview", (e) => showPreview(e.payload));
 void listen<OverlayState>("dictation:status", (e) => apply(e.payload));
 void listen<number>("audio:level", (e) => {
   if (!isActive()) return;

@@ -17,11 +17,11 @@ use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, RunEvent, WebviewWindow, WindowEvent};
-use windows::Win32::Foundation::{HWND, RECT};
+use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongPtrW, SetWindowLongPtrW, ShowWindow, SystemParametersInfoW, GWL_EXSTYLE,
-    SPI_GETWORKAREA, SW_HIDE, SW_SHOWNOACTIVATE, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
-    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    GetCursorPos, GetWindowLongPtrW, GetWindowRect, SetWindowLongPtrW, ShowWindow,
+    SystemParametersInfoW, GWL_EXSTYLE, SPI_GETWORKAREA, SW_HIDE, SW_SHOWNOACTIVATE,
+    SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
 };
 
 const OVERLAY: &str = "overlay";
@@ -33,6 +33,8 @@ struct AppState {
     appdata: Option<String>,
     hook: Mutex<Option<HookHandle>>,
     core: OnceLock<Arc<FlowCoreAdapter>>,
+    /// Controller input (overlay ✕/✓ clicks).
+    input: OnceLock<mpsc::Sender<Input>>,
 }
 
 fn hwnd_of(w: &WebviewWindow) -> Option<HWND> {
@@ -46,6 +48,8 @@ struct WinPlatform {
     prefs: Arc<RwLock<Prefs>>,
     capture: Mutex<Option<Capture>>,
     ducker: Ducker,
+    /// Last state sent to the pill (the hover watcher reads it).
+    overlay_state: Arc<Mutex<OverlayState>>,
 }
 
 impl WinPlatform {
@@ -94,6 +98,7 @@ impl Platform for WinPlatform {
     }
 
     fn overlay(&self, st: &OverlayState) {
+        *self.overlay_state.lock().unwrap() = st.clone();
         let always = self.prefs.read().unwrap().show_flow_bar_always;
         self.set_overlay_visible(always || *st != OverlayState::Resting);
         let _ = self.app.emit_to(OVERLAY, "dictation:status", st);
@@ -223,6 +228,20 @@ fn get_model_status(state: tauri::State<'_, AppState>) -> ModelInfo {
     }
 }
 
+/// ✕ / ✓ clicked on the hands-free pill.
+#[tauri::command]
+fn overlay_action(state: tauri::State<'_, AppState>, action: String) -> Result<(), String> {
+    let input = match action.as_str() {
+        "cancel" => Input::Hotkey(hotkeys::HotkeyAction::Cancel),
+        "finish" => Input::Finish,
+        other => return Err(format!("unknown overlay action {other}")),
+    };
+    if let Some(tx) = state.input.get() {
+        let _ = tx.send(input);
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn list_microphones() -> Vec<String> {
     capture::list_input_devices()
@@ -249,6 +268,50 @@ fn make_overlay_passive(w: &WebviewWindow) {
             SetWindowLongPtrW(h, GWL_EXSTYLE, ex | add);
         }
     }
+}
+
+/// Click-through except while the cursor is over the locked pill, so the
+/// hands-free ✕/✓ are clickable but the transparent canvas never eats clicks.
+fn spawn_hover_watch(app: AppHandle, state: Arc<Mutex<OverlayState>>) {
+    let _ = std::thread::Builder::new()
+        .name("flow-overlay-hover".into())
+        .spawn(move || {
+            let mut ignoring = true;
+            loop {
+                std::thread::sleep(Duration::from_millis(30));
+                let st = state.lock().unwrap().clone();
+                if st != OverlayState::ActiveLocked && ignoring {
+                    continue;
+                }
+                let Some(w) = app.get_webview_window(OVERLAY) else {
+                    continue;
+                };
+                let want = match hwnd_of(&w) {
+                    Some(h) if st == OverlayState::ActiveLocked => {
+                        let mut r = RECT::default();
+                        let mut p = POINT::default();
+                        let ok = unsafe {
+                            GetWindowRect(h, &mut r).is_ok() && GetCursorPos(&mut p).is_ok()
+                        };
+                        !ok || crate::overlay::click_through(
+                            &st,
+                            crate::overlay::Rect {
+                                left: r.left as f64,
+                                top: r.top as f64,
+                                right: r.right as f64,
+                                bottom: r.bottom as f64,
+                            },
+                            w.scale_factor().unwrap_or(1.0),
+                            (p.x as f64, p.y as f64),
+                        )
+                    }
+                    _ => true,
+                };
+                if want != ignoring && w.set_ignore_cursor_events(want).is_ok() {
+                    ignoring = want;
+                }
+            }
+        });
 }
 
 /// 512x614 canvas, bottom-centre of the primary work area (above the taskbar).
@@ -338,12 +401,14 @@ pub fn run() {
             appdata: appdata.clone(),
             hook: Mutex::new(None),
             core: OnceLock::new(),
+            input: OnceLock::new(),
         })
         .invoke_handler(tauri::generate_handler![
             get_prefs,
             set_prefs,
             list_microphones,
-            get_model_status
+            get_model_status,
+            overlay_action
         ])
         .on_window_event(|window, event| {
             if window.label() == SETTINGS {
@@ -395,11 +460,15 @@ pub fn run() {
 
             // Controller + hook.
             let (tx, rx) = mpsc::channel::<Input>();
+            let _ = app.state::<AppState>().input.set(tx.clone());
+            let overlay_state = Arc::new(Mutex::new(OverlayState::Resting));
+            spawn_hover_watch(handle.clone(), overlay_state.clone());
             let platform = Arc::new(WinPlatform {
                 app: handle.clone(),
                 prefs: prefs.clone(),
                 capture: Mutex::new(None),
                 ducker: Ducker::spawn(),
+                overlay_state,
             });
             // Load the model in the background; the tray notice tracks it.
             let core = core_adapter::make_core(&prefs.read().unwrap(), appdata.as_deref());

@@ -96,3 +96,11 @@ button {
 #status.err {
   color: var(--err);
 }
+
+#model_status.ok {
+  color: #2e7d32;
+}
+#model_status.err {
+  color: #c62828;
+  font-weight: 600;
+}

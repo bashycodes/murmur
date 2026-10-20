@@ -8,7 +8,7 @@ interface DictEntry {
 }
 
 interface Prefs {
-  shortcuts: { ptt: string; hands_free: string; cancel: string };
+  shortcuts: { ptt: string; hands_free: string; cancel: string; paste_last: string };
   microphone: string | null;
   languages: string[];
   enable_sounds: boolean;
@@ -22,7 +22,21 @@ interface Prefs {
   paste_method: string;
   restore_clipboard: boolean;
   max_dictation_minutes: number;
+  retention: string;
+  model_path: string | null;
   [k: string]: unknown;
+}
+
+type ModelStatus =
+  | { state: "loading"; path: string }
+  | { state: "ready"; path: string; load_ms: number }
+  | { state: "missing"; path: string }
+  | { state: "failed"; path: string; message: string };
+
+interface ModelInfo {
+  status: ModelStatus;
+  default_path: string;
+  models_dir: string;
 }
 
 const { invoke } = window.__TAURI__.core;
@@ -37,9 +51,32 @@ const BOOL_FIELDS = [
   "use_ax_context",
   "raw_mode",
   "restore_clipboard",
+  "live_preview",
 ] as const;
 
 let current: Prefs | null = null;
+
+function showModel(st: ModelStatus): void {
+  const el = $<HTMLParagraphElement>("model_status");
+  switch (st.state) {
+    case "loading":
+      el.textContent = `Loading ${st.path}…`;
+      el.className = "hint";
+      break;
+    case "ready":
+      el.textContent = `Ready: ${st.path} (loaded in ${st.load_ms} ms)`;
+      el.className = "hint ok";
+      break;
+    case "missing":
+      el.textContent = `Model file not found: ${st.path}. Dictation is unavailable until it exists.`;
+      el.className = "hint err";
+      break;
+    case "failed":
+      el.textContent = `Model failed to load (${st.path}): ${st.message}`;
+      el.className = "hint err";
+      break;
+  }
+}
 
 /** One entry per line: `word`, `spoken => replacement`, `trigger ==> snippet`. */
 function parseDictionary(text: string): DictEntry[] {
@@ -71,11 +108,19 @@ function formatDictionary(d: DictEntry[]): string {
 }
 
 async function load(): Promise<void> {
-  const [prefs, mics] = await Promise.all([
+  const [prefs, mics, model] = await Promise.all([
     invoke<Prefs>("get_prefs"),
     invoke<string[]>("list_microphones"),
+    invoke<ModelInfo>("get_model_status"),
   ]);
   current = prefs;
+  showModel(model.status);
+  $<HTMLElement>("models_dir").textContent = model.models_dir;
+  const mp = $<HTMLInputElement>("model_path");
+  mp.placeholder = model.default_path;
+  mp.value = prefs.model_path ?? "";
+  $<HTMLInputElement>("paste_last").value = prefs.shortcuts.paste_last;
+  $<HTMLSelectElement>("retention").value = prefs.retention;
   $<HTMLInputElement>("ptt").value = prefs.shortcuts.ptt;
   $<HTMLInputElement>("hands_free").value = prefs.shortcuts.hands_free;
   $<HTMLInputElement>("cancel").value = prefs.shortcuts.cancel;
@@ -101,7 +146,10 @@ async function save(ev: Event): Promise<void> {
     ptt: $<HTMLInputElement>("ptt").value.trim(),
     hands_free: $<HTMLInputElement>("hands_free").value.trim(),
     cancel: $<HTMLInputElement>("cancel").value.trim(),
+    paste_last: $<HTMLInputElement>("paste_last").value.trim(),
   };
+  next.model_path = $<HTMLInputElement>("model_path").value.trim() || null;
+  next.retention = $<HTMLSelectElement>("retention").value;
   next.microphone = $<HTMLSelectElement>("microphone").value || null;
   for (const f of BOOL_FIELDS) next[f] = $<HTMLInputElement>(f).checked;
   next.cleanup_level = $<HTMLSelectElement>("cleanup_level").value;
@@ -128,4 +176,5 @@ async function save(ev: Event): Promise<void> {
 }
 
 $<HTMLFormElement>("form").addEventListener("submit", (e) => void save(e));
+void window.__TAURI__.event.listen<ModelStatus>("model:status", (e) => showModel(e.payload));
 void load();
