@@ -146,11 +146,23 @@ impl FlowCore {
                 ))
             }
         };
-        if cfg.llm_path.is_some() {
-            // The `llm` backend is not wired yet; run without cleanup rather
-            // than fail dictation (deterministic post-processing still runs).
-        }
-        Ok(Self::from_engines(asr, None))
+        let cleaner: Option<Arc<dyn Cleaner>> = match cfg.llm_path.as_deref() {
+            None | Some("") => None,
+            #[cfg(feature = "llm")]
+            Some(p) => Some(Arc::new(
+                crate::llama::LlamaCleaner::load(p, cfg.threads, cfg.llm_lib.as_deref())
+                    .map_err(|e| CoreError::Load(e.to_string()))?,
+            )),
+            // Asking for cleanup from a build that cannot do it is a config
+            // error, not something to drop silently.
+            #[cfg(not(feature = "llm"))]
+            Some(_) => {
+                return Err(CoreError::Load(
+                    "llm_path set but built without the `llm` feature".into(),
+                ))
+            }
+        };
+        Ok(Self::from_engines(asr, cleaner))
     }
 
     /// Build a core around caller-supplied engines (tests, custom backends).
@@ -186,6 +198,8 @@ impl FlowCore {
     }
 
     /// Free models and stop the worker (Android onTrimMemory, idle timeout).
+    /// Dropping joins the worker, which drops the ASR engine and the cleaner;
+    /// `LlamaCleaner` joins its own thread, freeing context then model.
     pub fn unload(self) {}
 
     /// Begin a dictation. Replaces any session still open.
