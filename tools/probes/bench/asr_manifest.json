@@ -1,0 +1,22 @@
+{
+ "about": "ASR benchmark test set. Audio is NOT in the repo; fetch_audio.py materialises it into $CACHE/audio/<id>.wav (16 kHz mono PCM16).",
+ "licences": {
+  "librispeech-test-clean": "LibriSpeech ASR corpus (OpenSLR SLR12), CC BY 4.0, derived from public-domain LibriVox audiobooks. Panayotov, Chen, Povey, Khudanpur, ICASSP 2015. Utterances picked by fetch_audio.py --pick 12 (one per speaker, 5-20 s).",
+  "whisper.cpp-samples": "jfk.wav shipped in whisper.cpp samples/ (MIT repo); audio is the JFK 1961 inaugural address, US government work, public domain."
+ },
+ "utterances": [
+  {"id": "jfk", "source": "whisper.cpp-samples", "dur_s": 11.0, "ref": "And so my fellow Americans, ask not what your country can do for you, ask what you can do for your country."},
+  {"id": "6930-75918-0006", "source": "librispeech-test-clean", "dur_s": 5.85, "ref": "THIS HAS INDEED BEEN A HARASSING DAY CONTINUED THE YOUNG MAN HIS EYES FIXED UPON HIS FRIEND"},
+  {"id": "260-123440-0004", "source": "librispeech-test-clean", "dur_s": 12.02, "ref": "ALICE TOOK UP THE FAN AND GLOVES AND AS THE HALL WAS VERY HOT SHE KEPT FANNING HERSELF ALL THE TIME SHE WENT ON TALKING DEAR DEAR HOW QUEER EVERYTHING IS TO DAY"},
+  {"id": "3575-170457-0023", "source": "librispeech-test-clean", "dur_s": 9.1, "ref": "I CAREFULLY AVOID ANY APPEARANCE OF PREOCCUPATION AND ECCENTRICITY WHICH MIGHT LEAD THOSE I LIVE AMONGST TO SUSPECT THE NATURE OF MY PURSUITS"},
+  {"id": "8463-287645-0003", "source": "librispeech-test-clean", "dur_s": 7.91, "ref": "OF THIS PARTY EDWARD A BOY OF SEVENTEEN CALLED FORTH MUCH SYMPATHY HE TOO WAS CLAIMED BY HOLLAN"},
+  {"id": "1995-1836-0008", "source": "librispeech-test-clean", "dur_s": 6.99, "ref": "I BELIEVE IN THE TRAINING OF PEOPLE TO THEIR HIGHEST CAPACITY THE ENGLISHMAN HERE HEARTILY SECONDED HIM"},
+  {"id": "8455-210777-0069", "source": "librispeech-test-clean", "dur_s": 8.91, "ref": "IF YOU WILL GIVE US YOUR PROMISE TO MEET CAPTAIN BATTLEAX HERE AT THIS TIME TO MORROW WE WILL STRETCH A POINT AND DELAY THE DEPARTURE OF THE JOHN BRIGHT FOR TWENTY FOUR HOURS"},
+  {"id": "4077-13754-0003", "source": "librispeech-test-clean", "dur_s": 5.68, "ref": "MOREOVER HAD THE PEOPLE BEEN INCLINED TO REBELLION WHAT GREATER OPPORTUNITY COULD THEY HAVE WISHED"},
+  {"id": "7021-79759-0005", "source": "librispeech-test-clean", "dur_s": 13.02, "ref": "THE PAIN PRODUCED BY AN ACT OF HASTY AND ANGRY VIOLENCE TO WHICH A FATHER SUBJECTS HIS SON MAY SOON PASS AWAY BUT THE MEMORY OF IT DOES NOT PASS AWAY WITH THE PAIN"},
+  {"id": "672-122797-0038", "source": "librispeech-test-clean", "dur_s": 8.8, "ref": "THOUGHT THE FIR TREE AND BELIEVED IT ALL BECAUSE THE MAN WHO TOLD THE STORY WAS SO GOOD LOOKING WELL WELL"},
+  {"id": "1089-134691-0016", "source": "librispeech-test-clean", "dur_s": 9.06, "ref": "THEY WERE VOYAGING ACROSS THE DESERTS OF THE SKY A HOST OF NOMADS ON THE MARCH VOYAGING HIGH OVER IRELAND WESTWARD BOUND"},
+  {"id": "6829-68769-0034", "source": "librispeech-test-clean", "dur_s": 6.05, "ref": "I'M GOING TO SEE MISTER MARSHALL SAID KENNETH AND DISCOVER WHAT I CAN DO TO ASSIST YOU THANK YOU SIR"},
+  {"id": "4992-41797-0009", "source": "librispeech-test-clean", "dur_s": 13.2, "ref": "HENRY LORD WITH THE DEGREE OF PH D TO HIS CREDIT HAD BEEN PROFESSOR OF ZOOLOGY AT A NEW ENGLAND COLLEGE BUT HAD RESIGNED HIS POST IN ORDER TO WRITE A SERIES OF SCIENTIFIC TEXT BOOKS"}
+ ]
+}
