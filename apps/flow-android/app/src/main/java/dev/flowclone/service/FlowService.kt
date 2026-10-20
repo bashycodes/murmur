@@ -219,6 +219,7 @@ class FlowService : Service() {
                     startActivity(Intent(this@FlowService, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 }
                 FeedbackEvent.PasteRetryFailed -> toast(R.string.toast_paste_failed)
+                FeedbackEvent.NoSpeech -> Unit
             }
         }
 

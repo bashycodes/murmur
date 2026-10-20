@@ -27,7 +27,10 @@ class FakeFlowCore(@Volatile var transcript: String = "") : FlowCore {
 
     override fun setContext(ctx: FieldContext) { lastContext = ctx }
 
-    override fun partial(): String? = null
+    /** What [partial] returns while a session is active (tests / live-preview demo). */
+    @Volatile var partialText: String? = null
+
+    override fun partial(): String? = if (active) partialText else null
 
     override fun commit(): CommitResult {
         if (!active) return CommitResult(CommitStatus.ERROR, error = "no active session")

@@ -49,7 +49,8 @@ class DictationControllerTest {
         override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?) { history += result to inserted }
         override fun hasMicPermission() = micGranted
         override fun captureContext() = context
-        override fun sessionConfig() = SessionConfig(languages = listOf("en"))
+        var config = SessionConfig(languages = listOf("en"))
+        override fun sessionConfig() = config
         override fun onRecordingActive(active: Boolean) { recordingActive += active }
     }
 
@@ -267,6 +268,70 @@ class DictationControllerTest {
         assertEquals(1f, c.level.value, 0.01f)
         c.cancel()
         assertEquals(0f, c.level.value, 0f)
+    }
+
+    // ---- live preview + silence hints (07 §7 HeadSilenceTracker threshold; 10 §4 partials) ----
+
+    private fun silence(ms: Int) { repeat(ms / 100) { audio.sink?.invoke(ShortArray(1600), 1600) } }
+
+    @Test fun partialsArePolledWhileRecordingAndClearedOnSubmit() = runTest {
+        host.config = host.config.copy(partialIntervalMs = 1000)
+        val c = controller()
+        c.toggle(false); audio.speak()
+        core.partialText = "hello wor"
+        advanceTimeBy(DictationController.PARTIAL_POLL_MS + 1); runCurrent()
+        assertEquals("hello wor", c.partial.value)
+        advanceTimeBy(600); c.toggle(false); settle()
+        assertEquals(null, c.partial.value)
+    }
+
+    @Test fun partialsNotPolledWhenPreviewOff() = runTest {
+        val c = controller()
+        c.toggle(false); audio.speak()
+        core.partialText = "hello"
+        advanceTimeBy(2_000); runCurrent()
+        assertEquals(null, c.partial.value)
+        c.cancel()
+    }
+
+    @Test fun cancelClearsPartial() = runTest {
+        host.config = host.config.copy(partialIntervalMs = 1000)
+        val c = controller()
+        c.toggle(false); audio.speak(); core.partialText = "abc"
+        advanceTimeBy(1_000); runCurrent()
+        c.cancel()
+        assertEquals(null, c.partial.value)
+    }
+
+    @Test fun threeSecondsOfLeadingSilenceShowsCantHearYou() = runTest {
+        val c = controller()
+        c.toggle(false)
+        silence(2_900)
+        assertEquals(null, c.hint.value)
+        silence(200)
+        assertEquals(DictationHint.NoSpeechYet, c.hint.value)
+        audio.speak(200)
+        assertEquals(null, c.hint.value)
+        c.cancel()
+    }
+
+    @Test fun emptyResultShowsNoSpeechDetectedThenClears() = runTest {
+        val c = controller()
+        c.toggle(false); silence(1_000); advanceTimeBy(600); c.toggle(false); settle()
+        assertEquals(DictationHint.NoSpeechDetected, c.hint.value)
+        assertTrue(FeedbackEvent.NoSpeech in host.events)
+        advanceTimeBy(DictationController.HINT_MS + 1); runCurrent()
+        assertEquals(null, c.hint.value)
+    }
+
+    @Test fun newRecordingClearsOldHint() = runTest {
+        val c = controller()
+        c.toggle(false); silence(500); advanceTimeBy(600); c.toggle(false); settle()
+        assertEquals(DictationHint.NoSpeechDetected, c.hint.value)
+        advanceTimeBy(600)
+        c.toggle(false)
+        assertEquals(null, c.hint.value)
+        c.cancel()
     }
 }
 

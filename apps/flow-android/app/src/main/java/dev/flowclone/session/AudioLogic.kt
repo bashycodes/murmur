@@ -61,3 +61,26 @@ data class SessionCap(val capMs: Long = 300_000) {
     /** Hard core-side bound handed to `start_session`. */
     val maxSamples: Long get() = capMs / 1000 * SAMPLE_RATE
 }
+
+/**
+ * Wispr `HeadSilenceTracker` (07 §7): a frame is signal when mean(s²) > 33856 (RMS ≈ 184,
+ * ≈ −45 dBFS). Tracks the leading silence so the shell can say "can't hear you".
+ */
+class SilenceTracker {
+    companion object { const val SIGNAL_MEAN_SQUARE = 33_856.0 }
+
+    @Volatile var heardSpeech = false; private set
+    @Volatile var leadingSilenceMs = 0L; private set
+    private var leadingSamples = 0L
+
+    fun reset() { heardSpeech = false; leadingSilenceMs = 0; leadingSamples = 0 }
+
+    fun update(pcm: ShortArray, length: Int) {
+        if (heardSpeech || length <= 0) return
+        var sum = 0.0
+        for (i in 0 until length) { val v = pcm[i].toDouble(); sum += v * v }
+        if (sum / length > SIGNAL_MEAN_SQUARE) { heardSpeech = true; return }
+        leadingSamples += length
+        leadingSilenceMs = leadingSamples * 1000 / SAMPLE_RATE
+    }
+}
