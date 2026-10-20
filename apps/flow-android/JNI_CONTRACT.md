@@ -53,7 +53,8 @@ still runs and shows an in-app message (`NativeFlowCore.loadLibrary()` returns
 ```jsonc
 // ModelConfig
 {"asr_backend":"whisper" /* or {"mock":{"text":"…"}} */, "asr_path":"/data/user/0/dev.flowclone/files/models/ggml-base-q5_1.bin",
- "llm_path":null, "threads":4}
+ "llm_path":null /* or ".../files/llm/qwen2.5-0.5b-instruct-q4_k_m.gguf" when AI cleanup is on */,
+ "llm_lib":null /* default lookup; host tests pass a path */, "threads":4}
 // SessionConfig
 {"languages":["en"], "dictionary":[{"word":"wispr","replacement":"Wispr","isSnippet":false}],
  "styles":{"personal":"formal","work":"formal","email":"formal","other":"formal"},
@@ -87,5 +88,11 @@ Android-specific notes for the Rust side:
   `default_threads()` on Android, because big.LITTLE makes `available_parallelism` misleading.
 - The model path always points to app-private storage (`filesDir/models/`, which the
   SAF import screen copies into). The core needs no Android storage APIs.
+- LLM plugin: with `llm_path` set, `libflow_ffi.so` must be built with feature `llm`
+  (`tools/build-native.sh --whisper --llm`), and `libflow_llm.so` ships next to it. Kotlin
+  calls `System.loadLibrary("flow_llm")` before `nativeLoadModels`, so the core's bare-name
+  `dlopen("libflow_llm.so")` resolves to the already-loaded library (jniLibs aren't
+  extracted to disk, so there is no path to pass). A missing plugin fails `load_models`;
+  the shell then reloads ASR-only.
 - No network: the APK has no `INTERNET` permission (enforced by the
   `verifyNoNetworkPermissions` Gradle task), so any socket the core opens will fail.
