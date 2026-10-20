@@ -22,4 +22,13 @@
     <string name="toast_need_mic">Microphone permission is needed. Open Flow Clone to grant it.</string>
     <string name="toast_no_overlay">Allow \"Display over other apps\" for Flow Clone to show the bubble.</string>
     <string name="toast_mic_unavailable">Microphone is busy or unavailable.</string>
+    <string name="notif_channel_status">Tips and Flow Clone status</string>
+    <string name="notif_text_ghost">Dictation stopped. Turn Flow Clone off and on again in Accessibility settings.</string>
+    <string name="notif_text_a11y_off">Accessibility is off. Tap to turn Flow Clone on.</string>
+    <string name="notif_snooze_title">Flow Clone bubble hidden</string>
+    <string name="notif_snooze_text">Tap to bring it back, or shake your phone.</string>
+    <string name="notif_boot_title">Turn Flow Clone back on</string>
+    <string name="notif_boot_text">Accessibility for Flow Clone is off, so the dictation bubble can\'t appear. Tap to fix.</string>
+    <string name="toast_snoozed">Snoozed for 10 min. Shake your phone to bring it back.</string>
+    <string name="toast_back">Flow Clone is back!</string>
 </resources>
