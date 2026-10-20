@@ -20,6 +20,8 @@ import dev.flowclone.FlowApp
 import dev.flowclone.R
 import dev.flowclone.core.FieldContext
 import dev.flowclone.data.FieldContextBuilder
+import dev.flowclone.health.AccessibilityHealth
+import dev.flowclone.health.ServiceWatchdog
 import dev.flowclone.insert.ClipboardPort
 import dev.flowclone.insert.EditableNode
 import dev.flowclone.insert.ImeKeepAlive
@@ -61,6 +63,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
 
     private lateinit var coordinator: InsertionCoordinator
     private lateinit var keepAlive: ImeKeepAlive
+    private val watchdog = ServiceWatchdog()
 
     private fun newScope() = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val app get() = FlowApp.of(this)
@@ -73,11 +76,42 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         val env = Environment()
         coordinator = InsertionCoordinator(V3Inserter(env, SystemClock::elapsedRealtime), Clipboard(), SystemClock::elapsedRealtime)
         keepAlive = ImeKeepAlive(KeepAliveDeps(env), SystemClock::elapsedRealtime)
-        app.accessibility = this
-        startLoop()
+        connected()
         // Host the bubble. Starting the FGS from a bound a11y service is allowed.
+        if (!app.settings.serviceStoppedByUser) startFlowService()
+    }
+
+    private fun connected() {
+        app.accessibility = this
+        app.a11yConnectedAt = SystemClock.elapsedRealtime()
+        app.a11yHeartbeatAt = null
+        startLoop()
+        startHealthTick()
+    }
+
+    private fun startFlowService() {
         runCatching { startForegroundService(Intent(this, FlowService::class.java).setAction(FlowService.ACTION_SHOW)) }
             .onFailure { Log.w(TAG, "could not start FlowService", it) }
+    }
+
+    /**
+     * Every 15 s: prove the binding is alive (a `getWindows()` probe that returns windows is
+     * the heartbeat the ghost check reads), and respawn FlowService if it died unexpectedly
+     * (`MainServiceWatchdog`, ≥ 5 s apart).
+     */
+    private fun startHealthTick() {
+        scope.launch {
+            while (true) {
+                val alive = runCatching { windows.isNotEmpty() }.getOrDefault(false)
+                if (alive) app.a11yHeartbeatAt = SystemClock.elapsedRealtime()
+                val wanted = android.provider.Settings.canDrawOverlays(this@FlowAccessibilityService) && !app.settings.serviceStoppedByUser
+                if (watchdog.shouldRestart(wanted, FlowService.running, SystemClock.elapsedRealtime())) {
+                    Log.w(TAG, "FlowService not running; restarting")
+                    startFlowService()
+                }
+                delay(AccessibilityHealth.HEARTBEAT_INTERVAL_MS)
+            }
+        }
     }
 
     private fun startLoop() {
@@ -103,8 +137,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
     override fun onRebind(intent: Intent?) {
         super.onRebind(intent)
         scope = newScope()
-        app.accessibility = this
-        startLoop()
+        connected()
     }
 
     override fun onDestroy() {
@@ -115,7 +148,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
     private fun teardown() {
         if (::keepAlive.isInitialized) keepAlive.disarm()
         scope.cancel()
-        if (app.accessibility === this) app.accessibility = null
+        if (app.accessibility === this) { app.accessibility = null; app.a11yConnectedAt = null }
         app.fieldFocus.value = null
     }
 
