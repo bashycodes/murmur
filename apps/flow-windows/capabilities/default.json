@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Overlay + settings: event listening and the app's own commands only.",
+  "windows": ["overlay", "settings"],
+  "permissions": ["core:event:default", "core:app:default"]
+}

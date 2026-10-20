@@ -4,7 +4,7 @@
 
 use crate::core_api::{CleanupLevel, SessionConfig, Styles};
 use crate::dictation::Policy;
-use crate::hotkeys::Bindings;
+use crate::hotkeys::{Bindings, Chord};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -141,6 +141,23 @@ impl Prefs {
         let json = serde_json::to_string_pretty(self).map_err(std::io::Error::other)?;
         std::fs::write(&tmp, json)?;
         std::fs::rename(&tmp, path)
+    }
+
+    /// Reject shortcut sets the matcher can't serve sensibly.
+    pub fn validate(&self) -> Result<(), String> {
+        let s = &self.shortcuts;
+        let check = |name: &str, c: &Chord, allow_single: bool| {
+            Chord::parse_validated(&c.to_string(), allow_single)
+                .map(|_| ())
+                .map_err(|e| format!("{name} shortcut: {e}"))
+        };
+        check("push-to-talk", &s.ptt, false)?;
+        check("hands-free", &s.hands_free, false)?;
+        check("cancel", &s.cancel, true)?;
+        if s.ptt == s.hands_free || s.ptt == s.cancel || s.hands_free == s.cancel {
+            return Err("shortcuts must differ from each other".into());
+        }
+        Ok(())
     }
 
     pub fn policy(&self) -> Policy {
@@ -311,5 +328,26 @@ mod tests {
         let e: DictEntry =
             serde_json::from_str(r#"{"word":"a","replacement":"b","isSnippet":true}"#).unwrap();
         assert!(e.is_snippet);
+    }
+
+    #[test]
+    fn validate_accepts_defaults() {
+        assert_eq!(Prefs::default().validate(), Ok(()));
+    }
+
+    #[test]
+    fn validate_rejects_modifierless_or_clashing_shortcuts() {
+        let mut p = Prefs::default();
+        p.shortcuts.ptt = "A".parse().unwrap();
+        assert!(p.validate().unwrap_err().contains("push-to-talk"));
+        let mut p = Prefs::default();
+        p.shortcuts.hands_free = p.shortcuts.ptt.clone();
+        assert!(p.validate().unwrap_err().contains("differ"));
+        let mut p = Prefs::default();
+        p.shortcuts.cancel = "Ctrl+Win".parse().unwrap();
+        assert!(p.validate().is_err(), "cancel == ptt");
+        let mut p = Prefs::default();
+        p.shortcuts.ptt = "Ctrl+Win+Alt+Shift".parse().unwrap();
+        assert!(p.validate().unwrap_err().contains("max 3"));
     }
 }

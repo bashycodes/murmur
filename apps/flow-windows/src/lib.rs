@@ -5,9 +5,12 @@
 //! plain modules and is unit-tested on any host. Win32 code sits behind
 //! `#[cfg(windows)]` in `win` submodules.
 
+#[cfg(all(feature = "app", windows))]
+pub mod app;
 pub mod audio;
 pub mod context;
 pub mod controller;
+pub mod core_adapter;
 pub mod core_api;
 pub mod dictation;
 pub mod ducking;
