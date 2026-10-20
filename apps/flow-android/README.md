@@ -15,8 +15,12 @@ cd apps/flow-android
 ./gradlew testDebugUnitTest assembleDebug     # APK: app/build/outputs/apk/debug/app-debug.apk
 tools/unit.sh                                  # same tests, compact summary
 tools/probes/jni_stub/run.sh                   # link-test NativeFlowCore against a host C stub of the JNI contract
-tools/build-native.sh [--whisper]              # build libflow_ffi.so (needs crates/flow-ffi with the `jni` feature)
+tools/build-native.sh --whisper                # arm64 libflow_ffi.so + libc++_shared.so into app/src/main/jniLibs/
+tools/probes/check_native_so.sh [apk]          # contract symbols, 16 KB alignment, NEEDED libs (+ APK zipalign -P 16)
+tools/probes/host_native/run.sh [model.bin]    # real host flow-ffi under the real NativeFlowCore: whisper on jfk.wav
 ```
+
+Install on a phone (sideload, permissions, model import, device checklist): [`INSTALL.md`](INSTALL.md).
 
 - The Gradle daemon is pinned to JDK 21 (`gradle/gradle-daemon-jvm.properties`). This host's
   default `java` is a JDK-25 JRE without `javac`. Gradle picks up the JDK 21 already
@@ -72,4 +76,4 @@ tools/build-native.sh [--whisper]              # build libflow_ffi.so (needs cra
 - History stores text only, never audio.
 
 ## Needs a device
-See `PROJECT_CONTEXT.md` (repo root) §Android for the on-device checklist.
+See the checklist in [`INSTALL.md`](INSTALL.md) and `PROJECT_CONTEXT.md` §Android.
