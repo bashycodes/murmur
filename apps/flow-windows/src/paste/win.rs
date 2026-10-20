@@ -2,14 +2,13 @@
 //!
 //! 1. snapshot every restorable clipboard format
 //! 2. set CF_UNICODETEXT + history/monitor opt-out formats
-//! 3. release physically-held modifiers (mask Win/Alt) and SendInput Ctrl+V
-//! 4. wait, then restore the snapshot iff the sequence number is unchanged
+//! 3. masked key-up for held Alt/Win, then [Ctrl↓,V↓] … 50 ms … [V↑,Ctrl↑]
+//! 4. wait 500/3000/5000 ms (per app), restore iff sequence number unchanged
 
 use super::{
-    fallback_after_clipboard_failure, initial_strategy, is_restorable_format, should_restore,
-    unicode_text_bytes, PasteOptions, Strategy,
+    fallback_after_clipboard_failure, initial_strategy, is_restorable_format, restore_delay_ms,
+    should_restore, unicode_text_bytes, PasteOptions, Strategy,
 };
-use crate::hotkeys::Key;
 use crate::input::{self, Stroke};
 use std::time::Duration;
 use windows::core::w;
@@ -30,14 +29,22 @@ struct ClipGuard;
 impl ClipGuard {
     /// OpenClipboard with retries: another process (clipboard managers, RDP)
     /// commonly holds it for a few ms.
+    /// Backoff 5, 10, 20, 40, 80, then the rest of a 250 ms budget (Wispr).
     fn open() -> Option<ClipGuard> {
-        for _ in 0..10 {
+        let mut waited = 0u64;
+        let mut step = 5u64;
+        loop {
             if unsafe { OpenClipboard(None) }.is_ok() {
                 return Some(ClipGuard);
             }
-            std::thread::sleep(Duration::from_millis(15));
+            if waited >= 250 {
+                return None;
+            }
+            let d = step.min(250 - waited);
+            std::thread::sleep(Duration::from_millis(d));
+            waited += d;
+            step *= 2;
         }
-        None
     }
 }
 
@@ -119,6 +126,10 @@ unsafe fn set_text_excluded_from_history(text: &str) -> bool {
     if f != 0 {
         set_bytes(f, &zero);
     }
+    let f = RegisterClipboardFormatW(w!("Clipboard Viewer Ignore"));
+    if f != 0 {
+        set_bytes(f, &zero);
+    }
     true
 }
 
@@ -131,14 +142,11 @@ unsafe fn restore(snap: &Snapshot) {
     }
 }
 
-fn held_modifiers() -> Vec<Key> {
-    [Key::Ctrl, Key::Win, Key::Alt, Key::Shift]
+/// Concrete VKs (L/R) currently physically held among Alt/Win.
+fn held_alt_win_vks() -> Vec<u16> {
+    input::RELEASE_BEFORE_PASTE_VKS
         .into_iter()
-        .filter(|k| {
-            input::vks_for(*k)
-                .into_iter()
-                .any(|vk| unsafe { (GetAsyncKeyState(vk as i32) as u16) & 0x8000 != 0 })
-        })
+        .filter(|vk| unsafe { (GetAsyncKeyState(*vk as i32) as u16) & 0x8000 != 0 })
         .collect()
 }
 
@@ -155,9 +163,21 @@ fn send_all(strokes: &[Stroke]) -> Result<(), String> {
 }
 
 fn type_text(text: &str) -> Result<(), String> {
-    let mut s = input::release_modifiers(&held_modifiers());
+    let mut s = input::release_before_paste(&held_alt_win_vks());
     s.extend(input::unicode_text(text));
     send_all(&s)
+}
+
+/// `[downs]` → hold 50 ms → `[ups]`; a short up batch is retried once so a
+/// modifier is never left stuck down (Wispr 0x1403231ca).
+fn send_chord(shift_insert: bool) -> Result<(), String> {
+    let (downs, ups) = input::paste_chord(shift_insert);
+    let sent = send_all(&downs);
+    std::thread::sleep(Duration::from_millis(input::PASTE_HOLD_MS));
+    if input::win::send(&ups) != ups.len() {
+        input::win::send(&ups);
+    }
+    sent
 }
 
 /// Insert `text` into the focused control. Blocking (sleeps for the restore
@@ -182,10 +202,19 @@ pub fn paste(text: &str, opts: &PasteOptions) -> Result<(), String> {
             (snap, GetClipboardSequenceNumber())
         }
     };
-    let mut strokes = input::release_modifiers(&held_modifiers());
-    strokes.extend(input::paste_chord(shift_insert));
-    let sent = send_all(&strokes);
-    std::thread::sleep(Duration::from_millis(opts.restore_delay_ms));
+    let delay = opts.restore_delay_ms.unwrap_or_else(|| {
+        let (_, exe, _) = crate::context::uia::foreground_app();
+        restore_delay_ms(&crate::context::exe_name(&exe))
+    });
+    let release = input::release_before_paste(&held_alt_win_vks());
+    let mut sent = send_all(&release);
+    let chord = send_chord(shift_insert);
+    if sent.is_ok() {
+        sent = chord;
+    }
+    std::thread::sleep(Duration::from_millis(delay));
+    // Unlike Wispr's immediate path we also check the sequence number, so a
+    // copy made by the user/target meanwhile is never clobbered.
     let now_seq = unsafe { GetClipboardSequenceNumber() };
     if should_restore(opts.restore_clipboard, our_seq, now_seq) {
         if let Some(_g) = ClipGuard::open() {

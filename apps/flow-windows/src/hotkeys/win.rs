@@ -19,8 +19,8 @@ use windows::Win32::System::Threading::GetCurrentThreadId;
 use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, DispatchMessageW, GetMessageW, KillTimer, PostThreadMessageW, SetTimer,
-    SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, HC_ACTION, KBDLLHOOKSTRUCT,
-    LLKHF_INJECTED, MSG, WH_KEYBOARD_LL, WM_KEYDOWN, WM_QUIT, WM_SYSKEYDOWN, WM_TIMER,
+    SetWindowsHookExW, TranslateMessage, UnhookWindowsHookEx, HC_ACTION, KBDLLHOOKSTRUCT, MSG,
+    WH_KEYBOARD_LL, WM_KEYDOWN, WM_QUIT, WM_SYSKEYDOWN, WM_TIMER,
 };
 
 struct HookState {
@@ -138,8 +138,10 @@ fn check_stale_keys() {
 unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code == HC_ACTION as i32 {
         let kb = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
-        // Ignore anything injected (our own Ctrl+V / mask taps included).
-        if kb.flags.0 & LLKHF_INJECTED.0 == 0 {
+        // Skip only *our own* injections (tagged dwExtraInfo, like Wispr's
+        // "WFMK"); other injected input (RDP, on-screen keyboard, AHK) is
+        // matched normally.
+        if kb.dwExtraInfo != input::EXTRA_INFO_TAG {
             let msg = wparam.0 as u32;
             let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
             let ev = KeyEvent {
@@ -160,8 +162,10 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                 }
             };
             if let Some(d) = decision {
-                if d.mask_before {
-                    input::win::send(&input::mask_sequence());
+                if d.mask_release {
+                    let lctrl_held =
+                        (GetAsyncKeyState(input::vk::LCONTROL as i32) as u16) & 0x8000 != 0;
+                    input::win::send(&input::masked_release(kb.vkCode as u16, lctrl_held));
                 }
                 if d.suppress {
                     return LRESULT(1);

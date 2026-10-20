@@ -17,8 +17,8 @@ pub mod vk {
     pub const RETURN: u16 = 0x0D;
     pub const INSERT: u16 = 0x2D;
     pub const V: u16 = 0x56;
-    /// Unassigned VK used as a harmless "something else was pressed" marker.
-    pub const MASK: u16 = 0xFF;
+    /// Masking key for lone Win/Alt releases (Wispr uses VK_LCONTROL, not 0xFF).
+    pub const LCONTROL: u16 = 0xA2;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,10 +43,40 @@ impl Stroke {
     }
 }
 
-/// Dummy VK 0xFF tap: tells the shell "a key was pressed while Win/Alt was
-/// down" so the following Win/Alt release does not open Start / the menu bar.
-pub fn mask_sequence() -> Vec<Stroke> {
-    vec![Stroke::down(vk::MASK), Stroke::up(vk::MASK)]
+/// Masked release of Win/Alt (`vk` = the concrete L/R key), replacing the
+/// physical key-up the hook swallowed: `[LCtrl↓, key↑, LCtrl↑]`. The shell
+/// sees "another key was involved", so Start / the menu bar don't open.
+/// The trailing LCtrl↑ is skipped when LCtrl is physically held (the user's
+/// Ctrl must stay logically down). Mirrors Wispr's helper (02 §REA note 3).
+pub fn masked_release(vk: u16, lctrl_held: bool) -> Vec<Stroke> {
+    let mut v = vec![Stroke::down(vk::LCONTROL), Stroke::up(vk)];
+    if !lctrl_held {
+        v.push(Stroke::up(vk::LCONTROL));
+    }
+    v
+}
+
+/// Modifiers that get a synthetic (masked) key-up before the paste chord.
+pub const RELEASE_BEFORE_PASTE_VKS: [u16; 5] = [vk::MENU, 0xA4, 0xA5, vk::LWIN, vk::RWIN];
+
+/// Hold time between the paste chord's down and up batches.
+pub const PASTE_HOLD_MS: u64 = 50;
+
+/// For each physically-held Alt/Win: `[Ctrl↓, key↑, Ctrl↑]`, so our Ctrl+V
+/// isn't read as Ctrl+Win+V / Ctrl+Alt+V while the user still holds the PTT
+/// chord. Held Ctrl/Shift are left alone (Wispr parity, 02 §REA note 6).
+pub fn release_before_paste(held_vks: &[u16]) -> Vec<Stroke> {
+    held_vks
+        .iter()
+        .filter(|v| RELEASE_BEFORE_PASTE_VKS.contains(v))
+        .flat_map(|v| {
+            [
+                Stroke::down(vk::CONTROL),
+                Stroke::up(*v),
+                Stroke::up(vk::CONTROL),
+            ]
+        })
+        .collect()
 }
 
 /// Concrete VK codes that may be physically held for a normalised key (used
@@ -63,40 +93,17 @@ pub fn vks_for(key: Key) -> Vec<u16> {
     }
 }
 
-/// Key-ups for every held modifier, so our Ctrl+V isn't seen as e.g.
-/// Ctrl+Win+V (clipboard history!) while the user still holds the PTT chord.
-/// Win/Alt releases are preceded by a mask tap.
-pub fn release_modifiers(held: &[Key]) -> Vec<Stroke> {
-    let mut out = Vec::new();
-    let needs_mask = held.iter().any(|k| k.needs_release_mask());
-    if needs_mask {
-        out.extend(mask_sequence());
-    }
-    for k in held.iter().filter(|k| k.is_modifier()) {
-        for v in vks_for(*k) {
-            out.push(Stroke::up(v));
-        }
-    }
-    out
-}
-
-/// The paste keystroke: Ctrl+V, or Shift+Insert for terminals/remote viewers.
-pub fn paste_chord(shift_insert: bool) -> Vec<Stroke> {
-    if shift_insert {
-        vec![
-            Stroke::down(vk::SHIFT),
-            Stroke::down(vk::INSERT),
-            Stroke::up(vk::INSERT),
-            Stroke::up(vk::SHIFT),
-        ]
+/// The paste chord as (down batch, up batch): `[Ctrl↓, V↓]` … 50 ms …
+/// `[V↑, Ctrl↑]` (or Shift+Insert). Sent as two `SendInput` calls.
+pub fn paste_chord(shift_insert: bool) -> (Vec<Stroke>, Vec<Stroke>) {
+    let keys = if shift_insert {
+        [vk::SHIFT, vk::INSERT]
     } else {
-        vec![
-            Stroke::down(vk::CONTROL),
-            Stroke::down(vk::V),
-            Stroke::up(vk::V),
-            Stroke::up(vk::CONTROL),
-        ]
-    }
+        [vk::CONTROL, vk::V]
+    };
+    let downs = keys.iter().map(|k| Stroke::down(*k)).collect();
+    let ups = keys.iter().rev().map(|k| Stroke::up(*k)).collect();
+    (downs, ups)
 }
 
 /// KEYEVENTF_UNICODE typing fallback. Newlines become VK_RETURN (many apps
@@ -119,29 +126,31 @@ pub fn unicode_text(text: &str) -> Vec<Stroke> {
     out
 }
 
+/// `dwExtraInfo` on every event we inject; our hook passes events carrying
+/// it straight to `CallNextHookEx` (Wispr does the same with "WFMK").
+pub const EXTRA_INFO_TAG: usize = 0x464C_4F57; // "FLOW"
+
 #[cfg(windows)]
 pub mod win {
-    use super::Stroke;
+    use super::{vk, Stroke, EXTRA_INFO_TAG};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS, KEYEVENTF_KEYUP,
-        KEYEVENTF_UNICODE, VIRTUAL_KEY,
+        SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
+        KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, VIRTUAL_KEY,
     };
-
-    /// Tag on dwExtraInfo so our own hook can recognise our injections even
-    /// if LLKHF_INJECTED filtering is ever relaxed.
-    pub const EXTRA_INFO_TAG: usize = 0x464C_4F57; // "FLOW"
 
     fn to_input(s: Stroke) -> INPUT {
         let (vk, scan, flags) = match s {
-            Stroke::Vk { vk, up } => (
-                vk,
-                0u16,
-                if up {
+            Stroke::Vk { vk: v, up } => {
+                let mut f = if up {
                     KEYEVENTF_KEYUP
                 } else {
                     KEYBD_EVENT_FLAGS(0)
-                },
-            ),
+                };
+                if v == vk::INSERT {
+                    f |= KEYEVENTF_EXTENDEDKEY;
+                }
+                (v, 0u16, f)
+            }
             Stroke::Unicode { unit, up } => (
                 0,
                 unit,
@@ -182,42 +191,59 @@ pub mod win {
 mod tests {
     use super::*;
 
+    // Wispr helper 0x1403235c0 (02 §REA note 3): [LCtrl↓, key↑, LCtrl↑].
     #[test]
-    fn mask_is_vk_ff_tap() {
-        assert_eq!(mask_sequence(), vec![Stroke::down(0xFF), Stroke::up(0xFF)]);
-    }
-
-    #[test]
-    fn release_modifiers_masks_before_win_release() {
-        let s = release_modifiers(&[Key::Ctrl, Key::Win]);
-        assert_eq!(&s[..2], &mask_sequence()[..]);
-        assert!(s.contains(&Stroke::up(0xA2)));
-        assert!(s.contains(&Stroke::up(0x5B)));
-        assert!(s.contains(&Stroke::up(0x5C)));
-        assert!(s[2..]
-            .iter()
-            .all(|x| matches!(x, Stroke::Vk { up: true, .. })));
-    }
-
-    #[test]
-    fn release_modifiers_ctrl_only_needs_no_mask_and_skips_non_modifiers() {
-        let s = release_modifiers(&[Key::Ctrl, Key::Space]);
-        assert_eq!(s, vec![Stroke::up(0xA2), Stroke::up(0xA3)]);
-        assert!(release_modifiers(&[]).is_empty());
-    }
-
-    #[test]
-    fn paste_chord_variants() {
+    fn masked_release_wraps_key_up_in_lcontrol() {
         assert_eq!(
-            paste_chord(false),
+            masked_release(0x5B, false),
+            vec![Stroke::down(0xA2), Stroke::up(0x5B), Stroke::up(0xA2)]
+        );
+    }
+
+    #[test]
+    fn masked_release_keeps_physically_held_lcontrol_down() {
+        assert_eq!(
+            masked_release(0x5C, true),
+            vec![Stroke::down(0xA2), Stroke::up(0x5C)]
+        );
+    }
+
+    // 02 §REA note 6: only held Alt/Win get [Ctrl↓, key↑, Ctrl↑]; Ctrl and
+    // Shift are left alone.
+    #[test]
+    fn release_before_paste_only_touches_alt_and_win() {
+        assert_eq!(
+            release_before_paste(&[0xA2, 0x5B, 0xA0, 0xA4]),
             vec![
                 Stroke::down(0x11),
-                Stroke::down(0x56),
-                Stroke::up(0x56),
-                Stroke::up(0x11)
+                Stroke::up(0x5B),
+                Stroke::up(0x11),
+                Stroke::down(0x11),
+                Stroke::up(0xA4),
+                Stroke::up(0x11),
             ]
         );
-        assert_eq!(paste_chord(true)[1], Stroke::down(0x2D));
+        assert!(release_before_paste(&[0xA2, 0xA1]).is_empty());
+        assert!(release_before_paste(&[]).is_empty());
+    }
+
+    // 02 §REA note 4: downs in one SendInput, 50 ms, ups in reverse order.
+    #[test]
+    fn paste_chord_is_down_batch_then_reversed_up_batch() {
+        let (d, u) = paste_chord(false);
+        assert_eq!(d, vec![Stroke::down(0x11), Stroke::down(0x56)]);
+        assert_eq!(u, vec![Stroke::up(0x56), Stroke::up(0x11)]);
+        let (d, u) = paste_chord(true);
+        assert_eq!(d, vec![Stroke::down(0x10), Stroke::down(0x2D)]);
+        assert_eq!(u, vec![Stroke::up(0x2D), Stroke::up(0x10)]);
+        assert_eq!(PASTE_HOLD_MS, 50);
+    }
+
+    #[test]
+    fn modifier_vk_lists() {
+        assert!(RELEASE_BEFORE_PASTE_VKS.contains(&0x12));
+        assert!(RELEASE_BEFORE_PASTE_VKS.contains(&0x5C));
+        assert!(!RELEASE_BEFORE_PASTE_VKS.contains(&0xA2));
     }
 
     #[test]

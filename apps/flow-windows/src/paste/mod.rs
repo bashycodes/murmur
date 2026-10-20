@@ -19,7 +19,8 @@ pub enum Strategy {
 pub struct PasteOptions {
     pub method: PasteMethod,
     pub restore_clipboard: bool,
-    pub restore_delay_ms: u64,
+    /// `None` = per-app default ([`restore_delay_ms`]).
+    pub restore_delay_ms: Option<u64>,
     pub type_fallback_max_chars: usize,
 }
 
@@ -31,6 +32,33 @@ impl PasteOptions {
             restore_delay_ms: p.paste_restore_delay_ms,
             type_fallback_max_chars: p.type_fallback_max_chars,
         }
+    }
+}
+
+/// Wait between the paste chord and restoring the user's clipboard, keyed
+/// on the foreground exe (Wispr helper 0x1403188a0, 02 §REA note 12): slow
+/// readers (Office, WhatsApp) and remote viewers fetch the clipboard late.
+pub fn restore_delay_ms(exe: &str) -> u64 {
+    const REMOTE_VIEWERS: &[&str] = &[
+        "vncviewer",
+        "tvnviewer",
+        "mstsc",
+        "msrdc",
+        "wfica32",
+        "vmware-view",
+        "rdcman",
+        "anydesk",
+        "teamviewer",
+    ];
+    const SLOW_READERS: &[&str] = &["outlook", "olk", "winword", "whatsapp"];
+    let lower = exe.to_ascii_lowercase();
+    let stem = lower.strip_suffix(".exe").unwrap_or(&lower);
+    if REMOTE_VIEWERS.contains(&stem) {
+        5000
+    } else if SLOW_READERS.contains(&stem) {
+        3000
+    } else {
+        500
     }
 }
 
@@ -95,6 +123,19 @@ pub fn unicode_text_bytes(text: &str) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restore_delay_per_app() {
+        assert_eq!(restore_delay_ms("notepad.exe"), 500);
+        assert_eq!(restore_delay_ms("OUTLOOK.EXE"), 3000);
+        assert_eq!(restore_delay_ms("olk.exe"), 3000);
+        assert_eq!(restore_delay_ms("WINWORD.EXE"), 3000);
+        assert_eq!(restore_delay_ms("WhatsApp.exe"), 3000);
+        assert_eq!(restore_delay_ms("mstsc.exe"), 5000);
+        assert_eq!(restore_delay_ms("AnyDesk.exe"), 5000);
+        assert_eq!(restore_delay_ms("TeamViewer"), 5000);
+        assert_eq!(restore_delay_ms(""), 500);
+    }
 
     #[test]
     fn strategy_from_method() {
