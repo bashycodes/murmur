@@ -5,6 +5,8 @@
 //! snapshotted) and tested here; `win` does the Win32 calls.
 
 #[cfg(windows)]
+pub mod integrity;
+#[cfg(windows)]
 pub mod win;
 
 use crate::prefs::PasteMethod;
@@ -120,9 +122,46 @@ pub fn unicode_text_bytes(text: &str) -> Vec<u8> {
         .collect()
 }
 
+/// Mandatory integrity RIDs (`SECURITY_MANDATORY_*_RID`).
+pub mod rid {
+    pub const LOW: u32 = 0x1000;
+    pub const MEDIUM: u32 = 0x2000;
+    pub const MEDIUM_PLUS: u32 = 0x2100;
+    pub const HIGH: u32 = 0x3000;
+    pub const SYSTEM: u32 = 0x4000;
+}
+
+/// UIPI: input injected by a process is silently dropped by windows of a
+/// higher integrity level — and `SendInput` still reports success, so the
+/// only way to notice is to compare levels *before* sending. `None` (level
+/// unreadable) = assume OK and let the paste try.
+pub fn uipi_blocks(own: Option<u32>, target: Option<u32>) -> bool {
+    matches!((own, target), (Some(o), Some(t)) if t > o)
+}
+
+pub const ELEVATED_TARGET_MSG: &str = "The app you're dictating into runs as administrator, so \
+     Windows blocks pasting from Flow Clone. The text is on your clipboard: press Ctrl+V.";
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn uipi_blocks_only_higher_integrity_targets() {
+        assert!(uipi_blocks(Some(rid::MEDIUM), Some(rid::HIGH)), "admin cmd");
+        assert!(uipi_blocks(Some(rid::MEDIUM), Some(rid::SYSTEM)));
+        assert!(!uipi_blocks(Some(rid::MEDIUM), Some(rid::MEDIUM)));
+        assert!(
+            !uipi_blocks(Some(rid::MEDIUM), Some(rid::LOW)),
+            "sandboxed browser"
+        );
+        assert!(
+            !uipi_blocks(Some(rid::HIGH), Some(rid::HIGH)),
+            "we run elevated too"
+        );
+        assert!(!uipi_blocks(Some(rid::MEDIUM), None), "unreadable = try");
+        assert!(!uipi_blocks(None, Some(rid::HIGH)));
+    }
 
     #[test]
     fn restore_delay_per_app() {
