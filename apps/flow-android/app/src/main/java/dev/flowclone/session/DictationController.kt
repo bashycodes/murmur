@@ -54,7 +54,8 @@ class DictationController(
     private val core: () -> FlowCore,
     /** Where the blocking `commit()` runs (Dispatchers.Default in the app). */
     private val commitDispatcher: CoroutineDispatcher,
-    private val cap: SessionCap = SessionCap(),
+    /** Read at each recording start, so a settings change applies to the next session. */
+    var cap: SessionCap = SessionCap(),
     private val now: () -> Long,
 ) {
     constructor(
@@ -88,6 +89,8 @@ class DictationController(
     private var fieldFocused = false
     private var lastToggleAt = Long.MIN_VALUE / 2
     private var capJob: Job? = null
+    private var processingJob: Job? = null
+    private var processingCore: FlowCore? = null
     private var session: FlowCore? = null
     private var sessionAppId: String? = null
     private val meter = LevelMeter()
@@ -119,7 +122,15 @@ class DictationController(
         if (_state.value is DictationState.Recording) stopAndSubmit()
     }
 
+    /** X button: discards a recording, or abandons processing (late result dropped). */
     fun cancel() {
+        if (_state.value is DictationState.Processing) {
+            processingJob?.cancel(); processingJob = null
+            processingCore?.cancel(); processingCore = null
+            host.feedback(FeedbackEvent.CancelHaptic)
+            _state.value = restingState()
+            return
+        }
         if (_state.value !is DictationState.Recording) return
         endAudio()
         session?.cancel()
@@ -202,7 +213,8 @@ class DictationController(
         session = null
         val appId = sessionAppId
         _state.value = DictationState.Processing(rec.hold, now())
-        scope.launch {
+        processingCore = c
+        processingJob = scope.launch {
             // Not a child: a hung native commit must be abandonable.
             val pending = CoroutineScope(commitDispatcher).async { c.commit() }
             val result = withTimeoutOrNull(PROCESSING_TIMEOUT_MS) { pending.await() }

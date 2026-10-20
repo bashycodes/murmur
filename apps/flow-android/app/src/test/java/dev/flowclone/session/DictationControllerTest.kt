@@ -235,6 +235,21 @@ class DictationControllerTest {
         hung.release.complete(Unit)
     }
 
+    @Test fun cancelDuringProcessingDropsTheLateResult() = runTest {
+        val hung = HangingCore(core)
+        val c = controller(c = hung, dispatcher = kotlinx.coroutines.Dispatchers.IO)
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false)
+        runCurrent()
+        assertTrue(c.state.value is DictationState.Processing)
+        c.cancel()
+        assertTrue(hung.cancelled)
+        assertEquals(DictationState.Ready, c.state.value)
+        Thread.sleep(50) // let the IO-thread commit return
+        settle()
+        assertTrue(host.inserted.isEmpty())
+        assertEquals(DictationState.Ready, c.state.value)
+    }
+
     @Test fun focusLossWhileRecordingKeepsRecordingAndEndsIdle() = runTest {
         val c = controller()
         c.toggle(false); audio.speak()
