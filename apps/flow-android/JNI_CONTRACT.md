@@ -2,8 +2,11 @@
 
 The Kotlin side is `app/src/main/java/dev/flowclone/core/NativeFlowCore.kt`.
 The Rust side must export exactly these symbols from `libflow_ffi.so`
-(`crate-type = cdylib`, feature `jni`, built for `arm64-v8a` with
-`cargo ndk -t arm64-v8a -o apps/flow-android/app/src/main/jniLibs build -p flow-ffi --release --features jni,whisper`).
+(`crate-type = cdylib`, feature `jni`, built for `arm64-v8a` by `tools/build-native.sh --whisper`,
+which wraps `cargo ndk -t arm64-v8a --platform 33 --link-libcxx-shared … --features jni,whisper` and adds
+the NDK CMake toolchain and 16 KB page-size link flags). `libc++_shared.so` (needed by whisper.cpp)
+ships next to it. Implemented in `crates/flow-ffi/src/jni_api.rs`; `tools/probes/check_native_so.sh`
+checks the exported set against this table.
 
 The library is loaded with `System.loadLibrary("flow_ffi")`. If it's missing, the app
 still runs and shows an in-app message (`NativeFlowCore.loadLibrary()` returns

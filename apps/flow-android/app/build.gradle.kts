@@ -5,6 +5,8 @@ plugins {
 android {
     namespace = "dev.flowclone"
     compileSdk = 35
+    // Same NDK as tools/build-native.sh, so AGP can strip the prebuilt jniLibs.
+    ndkVersion = "27.2.12479018"
 
     defaultConfig {
         applicationId = "dev.flowclone"
