@@ -6,6 +6,7 @@
 //! `#[cfg(windows)]` in `win` submodules.
 
 pub mod audio;
+pub mod context;
 pub mod core_api;
 pub mod dictation;
 pub mod hotkeys;
