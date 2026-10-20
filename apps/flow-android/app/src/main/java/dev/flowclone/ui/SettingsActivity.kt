@@ -21,6 +21,7 @@ class SettingsActivity : Activity() {
         "ru" to "Russian", "uk" to "Ukrainian", "pl" to "Polish", "tr" to "Turkish", "hi" to "Hindi",
         "zh" to "Chinese", "ja" to "Japanese", "ko" to "Korean",
     )
+    private val levels = listOf(CleanupLevel.LIGHT to "Light (punctuation, fillers)", CleanupLevel.MEDIUM to "Medium", CleanupLevel.HIGH to "High (rewrite for clarity)")
     private val retentions = listOf(Retention.KEEP to "Keep", Retention.DAY to "24 hours", Retention.NEVER to "Never save")
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,12 +33,31 @@ class SettingsActivity : Activity() {
         lateinit var cap: EditText
         lateinit var mock: CheckBox
         lateinit var deny: EditText
+        lateinit var llmOn: CheckBox
+        lateinit var preview: CheckBox
+        lateinit var shake: CheckBox
+        lateinit var shrink: CheckBox
         page {
             heading("Language")
             lang = spinner(languages.map { it.second }, languages.indexOfFirst { it.first == s.language }.coerceAtLeast(0))
-            heading("AI cleanup")
-            body("Local LLM cleanup isn't bundled yet; \"none\" = deterministic post-processing only.")
-            cleanup = spinner(CleanupLevel.entries.map { it.wire }, s.cleanup.ordinal)
+            heading("AI cleanup (local LLM)")
+            body(
+                "Off by default. When on, a small language model on this phone rewrites each transcript " +
+                    "(punctuation, filler words, \"scratch that\", lists). Needs an imported GGUF model and adds 1–3 s; " +
+                    "if it takes longer than 3 s, or changes too much, the plain transcript is inserted. " +
+                    "Dictionary replacements and snippets apply either way.",
+            )
+            llmOn = CheckBox(context).apply { text = "Clean up with local AI"; isChecked = s.llmEnabled }.also(::addView)
+            val llmModel = app.settings.llmModelPath?.let { java.io.File(it).name }
+            body("Model: ${llmModel ?: "none imported"}", if (llmModel != null) OK_COLOR else null)
+            button("AI cleanup model…") { startActivity(ModelImportActivity.llmIntent(this@SettingsActivity)) }
+            body("Strength")
+            cleanup = spinner(levels.map { it.second }, levels.indexOfFirst { it.first == s.cleanup }.coerceAtLeast(0))
+            heading("Bubble")
+            preview = CheckBox(context).apply { text = "Live preview of the transcript while you speak (uses more battery)"; isChecked = s.livePreview }.also(::addView)
+            shrink = CheckBox(context).apply { text = "Shrink the bubble to a dot after 5 s"; isChecked = s.shrinkBubble }.also(::addView)
+            shake = CheckBox(context).apply { text = "Shake the phone to bring a snoozed or hidden bubble back"; isChecked = s.shakeToReveal }.also(::addView)
+            body("Drag the bubble onto the target at the bottom of the screen to snooze it for 10 minutes.")
             heading("Session limit (minutes, 1–20)")
             cap = EditText(context).apply { inputType = InputType.TYPE_CLASS_NUMBER; setText(s.capMinutes.toString()) }.also(::addView)
             heading("History retention")
@@ -53,7 +73,11 @@ class SettingsActivity : Activity() {
             button("Save") {
                 val n = s.copy(
                     language = languages[lang.selectedItemPosition].first,
-                    cleanup = CleanupLevel.entries[cleanup.selectedItemPosition],
+                    cleanup = levels[cleanup.selectedItemPosition].first,
+                    llmEnabled = llmOn.isChecked,
+                    livePreview = preview.isChecked,
+                    shrinkBubble = shrink.isChecked,
+                    shakeToReveal = shake.isChecked,
                     capMinutes = cap.text.toString().toIntOrNull()?.coerceIn(1, 20) ?: 5,
                     retention = retentions[retention.selectedItemPosition].first,
                     userDenylist = deny.text.lines().map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
@@ -61,7 +85,10 @@ class SettingsActivity : Activity() {
                 )
                 app.settings.save(n)
                 if (n.retention != s.retention) app.history.purge(n.retention)
-                if (n.mockEngine != s.mockEngine) app.engine.reload()
+                if (n.mockEngine != s.mockEngine || n.llmEnabled != s.llmEnabled) app.engine.reload()
+                if (n.llmEnabled && app.settings.llmModelPath == null) {
+                    Toast.makeText(this@SettingsActivity, "AI cleanup needs a GGUF model: import one first.", Toast.LENGTH_LONG).show()
+                }
                 Toast.makeText(this@SettingsActivity, "Saved", Toast.LENGTH_SHORT).show()
                 finish()
             }
