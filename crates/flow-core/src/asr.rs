@@ -4,18 +4,42 @@
 //! session worker owns buffering. Bias replaces Wispr's server-side
 //! DynamicVocabulary with Whisper's `initial_prompt`.
 
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use crate::dictionary::Dictionary;
 
 /// Whisper's prompt window is ~224 tokens; 200 words is Wispr's dictionary cap.
 pub const MAX_PROMPT_WORDS: usize = 200;
 
+/// Cooperative cancellation for best-effort decodes (live partials): the
+/// engine should stop as soon as it observes `true`.
+#[derive(Debug, Clone, Default)]
+pub struct AbortFlag(pub Option<Arc<AtomicBool>>);
+
+impl AbortFlag {
+    pub fn is_set(&self) -> bool {
+        self.0.as_ref().is_some_and(|f| f.load(Ordering::Relaxed))
+    }
+}
+
+impl PartialEq for AbortFlag {
+    fn eq(&self, o: &Self) -> bool {
+        match (&self.0, &o.0) {
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        }
+    }
+}
+impl Eq for AbortFlag {}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AsrRequest {
     pub initial_prompt: String,
     /// `None` = auto-detect.
     pub language: Option<String>,
+    pub abort: AbortFlag,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -101,7 +125,13 @@ impl AsrEngine for MockAsr {
             c.0 += 1;
             c.1 = Some(req.clone());
         }
-        std::thread::sleep(self.delay);
+        let end = std::time::Instant::now() + self.delay;
+        while std::time::Instant::now() < end {
+            if req.abort.is_set() {
+                return Err(AsrError::Transcribe("aborted".into()));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5).min(self.delay));
+        }
         let silent = pcm.iter().all(|s| s.abs() < 1e-4);
         Ok(AsrOutput {
             text: if silent {
@@ -159,6 +189,7 @@ mod tests {
         let req = AsrRequest {
             initial_prompt: "Wispr.".into(),
             language: Some("de".into()),
+            ..Default::default()
         };
         m.transcribe(&[0.5; 10], &req).unwrap();
         assert_eq!(m.last_request().unwrap(), req);

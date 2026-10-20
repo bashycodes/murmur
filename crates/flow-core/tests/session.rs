@@ -439,3 +439,22 @@ fn terminal_skips_llm() {
     assert_eq!(r.fallback_reason, None, "skipped, not failed");
     assert!(!r.final_text.contains("CHANGED"));
 }
+
+#[test]
+fn commit_preempts_in_flight_partial() {
+    // A partial decode that is running when the user releases must not add
+    // its full duration to release->text latency.
+    let asr = Arc::new(MockAsr::new("x").with_delay(Duration::from_millis(800)));
+    let core = FlowCore::from_engines(asr, None);
+    core.start_session(SessionConfig {
+        partial_interval_ms: Some(40),
+        ..Default::default()
+    })
+    .unwrap();
+    push_all(&core, &speech(500));
+    std::thread::sleep(Duration::from_millis(100)); // partial decode now in flight
+    let r = core.commit();
+    // Final decode itself costs 800 ms; an un-aborted partial would add up to 800 more.
+    assert!(r.timings.total_ms < 1300, "{:?}", r.timings);
+    assert_eq!(r.status, CommitStatus::RawTranscript);
+}
