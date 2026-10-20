@@ -102,9 +102,63 @@ pub fn level_from_rms(rms: f32) -> f32 {
     ((db + 60.0) / 60.0).clamp(0.0, 1.0)
 }
 
+/// Accumulates 16 kHz audio and emits one overlay level per `window`
+/// samples (default ≈30 Hz), whatever chunk sizes the device delivers.
+#[derive(Debug, Clone)]
+pub struct LevelMeter {
+    window: usize,
+    sum_sq: f64,
+    n: usize,
+}
+
+impl LevelMeter {
+    pub fn new(window: usize) -> Self {
+        LevelMeter {
+            window: window.max(1),
+            sum_sq: 0.0,
+            n: 0,
+        }
+    }
+
+    /// Returns the levels of all windows completed by this chunk.
+    pub fn push(&mut self, pcm: &[i16]) -> Vec<f32> {
+        let mut out = Vec::new();
+        for s in pcm {
+            let f = *s as f64 / 32768.0;
+            self.sum_sq += f * f;
+            self.n += 1;
+            if self.n == self.window {
+                let r = (self.sum_sq / self.n as f64).sqrt() as f32;
+                out.push(level_from_rms(r));
+                self.sum_sq = 0.0;
+                self.n = 0;
+            }
+        }
+        out
+    }
+}
+
+impl Default for LevelMeter {
+    fn default() -> Self {
+        LevelMeter::new(TARGET_RATE as usize / 30)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn level_meter_emits_per_window_across_chunks() {
+        let mut m = LevelMeter::new(100);
+        assert!(m.push(&[16384; 60]).is_empty());
+        let l = m.push(&[16384; 140]);
+        assert_eq!(l.len(), 2);
+        assert!((l[0] - level_from_rms(0.5)).abs() < 1e-4);
+        assert_eq!(m.push(&[0; 99]).len(), 0);
+        assert_eq!(m.push(&[0; 1]), vec![0.0]);
+        assert_eq!(LevelMeter::default().window, 533);
+    }
 
     fn sine(rate: u32, freq: f32, secs: f32, channels: u16) -> Vec<f32> {
         let n = (rate as f32 * secs) as usize;

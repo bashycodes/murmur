@@ -76,6 +76,11 @@ pub enum Input {
         session: SessionId,
         result: Result<(), String>,
     },
+    /// Mic couldn't be opened / core refused the session.
+    StartFailed {
+        session: SessionId,
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -230,6 +235,18 @@ impl Dictation {
             ) => self.stop(session),
             (Phase::Listening { session, .. }, Input::Hotkey(Cancel)) => {
                 self.cancel_listening(session)
+            }
+            (
+                Phase::Listening { session, .. },
+                Input::StartFailed {
+                    session: s,
+                    message,
+                },
+            ) if s == session => {
+                let mut fx = self.cancel_listening(session);
+                fx.pop(); // replace the "resting" overlay with the error
+                fx.extend(self.fail(message, now_ms));
+                fx
             }
             (
                 Phase::Listening {
@@ -709,6 +726,51 @@ mod tests {
         let fx = d.handle(Input::Tick, p.max_ms);
         assert!(fx.contains(&Effect::Commit(s)), "hard stop keeps the audio");
         assert_eq!(d.phase(), &Phase::Processing { session: s });
+    }
+
+    #[test]
+    fn start_failure_while_listening_tears_down_and_errors() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        let fx = d.handle(
+            Input::StartFailed {
+                session: s,
+                message: "no mic".into(),
+            },
+            10,
+        );
+        assert_eq!(
+            fx,
+            vec![
+                Effect::EndCapture,
+                Effect::Unduck,
+                Effect::CancelSession(s),
+                Effect::Sound(Sound::Error),
+                Effect::Overlay(OverlayState::Error {
+                    message: "no mic".into()
+                }),
+            ]
+        );
+        assert_eq!(d.phase(), &Phase::Error { since_ms: 10 });
+        // A later PttUp for the dead session does nothing.
+        assert!(hk(&mut d, PttUp, 500).is_empty());
+    }
+
+    #[test]
+    fn stale_start_failure_is_ignored() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        hk(&mut d, Cancel, 10);
+        let s2 = session_of(&hk(&mut d, PttDown, 20));
+        let fx = d.handle(
+            Input::StartFailed {
+                session: s,
+                message: "x".into(),
+            },
+            30,
+        );
+        assert!(fx.is_empty());
+        assert!(matches!(d.phase(), Phase::Listening { session, .. } if *session == s2));
     }
 
     #[test]
