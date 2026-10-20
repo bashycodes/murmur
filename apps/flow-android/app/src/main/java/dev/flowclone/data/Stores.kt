@@ -85,6 +85,10 @@ data class HistoryRow(
     val finalText: String,
     val inserted: Boolean,
     val audioMs: Long,
+    val fallbackReason: String? = null,
+    val asrMs: Long = 0,
+    val llmMs: Long = 0,
+    val totalMs: Long = 0,
 )
 
 /** Local-only history (plain SQLite; no audio stored). */

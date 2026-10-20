@@ -14,6 +14,7 @@ object CoreJson {
         put("asr_backend", c.mockText?.let { JSONObject().put("mock", JSONObject().put("text", it)) } ?: "whisper")
         put("asr_path", c.asrPath)
         put("llm_path", c.llmPath ?: JSONObject.NULL)
+        put("llm_lib", c.llmLib ?: JSONObject.NULL)
         put("threads", c.threads)
     }.toString()
 

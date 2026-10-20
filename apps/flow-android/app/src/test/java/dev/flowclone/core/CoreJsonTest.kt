@@ -16,6 +16,7 @@ class CoreJsonTest {
         assertEquals("/m/base.bin", j.getString("asr_path"))
         assertEquals(4, j.getInt("threads"))
         assertTrue(j.isNull("llm_path"))
+        assertTrue("default plugin lookup", j.isNull("llm_lib"))
     }
 
     @Test fun modelConfigMockBackendIsExternallyTagged() {
