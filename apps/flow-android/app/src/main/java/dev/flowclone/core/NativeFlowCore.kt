@@ -62,9 +62,36 @@ class NativeFlowCore private constructor(private var handle: Long) : FlowCore {
             return s
         }
 
+        const val LLM_LIBRARY = "flow_llm"
+        @Volatile private var llmState: LibraryState? = null
+
+        /**
+         * Load the flow-llm plugin into the app's linker namespace so the core's bare-name
+         * `dlopen("libflow_llm.so")` finds it (jniLibs are not extracted to disk on API 23+,
+         * so there is no file path to hand the core). Idempotent; never throws.
+         */
+        @Synchronized
+        fun loadLlmPlugin(): LibraryState {
+            llmState?.let { return it }
+            val s = try {
+                System.loadLibrary(LLM_LIBRARY)
+                LibraryState.Loaded("lib$LLM_LIBRARY.so")
+            } catch (e: UnsatisfiedLinkError) {
+                LibraryState.Unavailable("AI cleanup plugin lib$LLM_LIBRARY.so is missing from this build (tools/build-native.sh --whisper --llm): ${e.message}")
+            } catch (e: SecurityException) {
+                LibraryState.Unavailable("AI cleanup plugin lib$LLM_LIBRARY.so could not be loaded: ${e.message}")
+            }
+            llmState = s
+            return s
+        }
+
         override fun loadModels(cfg: ModelConfig): FlowCore {
             val s = loadLibrary()
             if (s is LibraryState.Unavailable) throw CoreException(s.message)
+            if (cfg.llmPath != null && cfg.llmLib == null) {
+                val l = loadLlmPlugin()
+                if (l is LibraryState.Unavailable) throw CoreException(l.message)
+            }
             val h = nativeLoadModels(CoreJson.encode(cfg))
             if (h == 0L) throw CoreException(nativeLastError() ?: "load_models failed")
             return NativeFlowCore(h)

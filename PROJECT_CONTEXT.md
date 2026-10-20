@@ -46,9 +46,22 @@ Branch `android-int` (merged): Android shell + real core.
 - Real flow-ffi under the shipped Kotlin binding (no device): an x86_64 host `libflow_ffi.so` (jni,whisper) loaded by `NativeFlowCore` + `CoreJson` handles start → push (jfk.wav in 100 ms frames) → commit and returns the correct transcript, with 0 dropped samples. Mock-engine round trip and the missing-model error path also pass. Run with `apps/flow-android/tools/probes/host_native/run.sh [model]`. Host timings (i7-6700, load 12-20 from other jobs, 4 threads, 11 s audio): tiny.en ASR 5.5-9.5 s, model load 0.2-1.1 s; base.en ASR 12.6-17.6 s; worst push_audio call 4-19 ms under that load. These are not phone numbers.
 - arm64-v8a `libflow_ffi.so` with whisper is cross-built (`tools/build-native.sh --whisper`; NDK toolchain wrapper, ggml armv8.2-a+dotprod+fp16) and packaged with `libc++_shared.so`. `tools/probes/check_native_so.sh app-debug.apk` confirms: all 11 contract symbols exported, every LOAD segment 16 KB aligned, NEEDED libs satisfied, and the APK `.so` entries stored and 16 KB zip-aligned. `./gradlew testDebugUnitTest assembleDebug` is green (169 tests, 5 gated skips) and the no-network gate passes. The debug APK with the .so is 9.3 MB (.so 3.9 MB stripped + libc++ 1.3 MB). Install guide: `apps/flow-android/INSTALL.md`.
 
+Branch `android-p1`: Android P1 (robustness, preview, LLM, editors). `./gradlew testDebugUnitTest assembleDebug` green: 238 JVM tests (9 gated skips), no-network gate passes. Debug APK with all three .so: 14.2 MB.
+
+| Capability | Proof (test) |
+|---|---|
+| Shake detector (2 impulses ≤ 1.2 s, 100 ms cooldown), bubble presence (minimise after 5 s, snooze 10 min from Ready only / not in Repair, shake un-snooze / 10 s reveal, lock-screen ignore), snooze-target geometry | `bubble/BubblePresenceTest.kt` (virtual time) |
+| Ghost a11y detection (enabled but unbound after 15 s grace, or heartbeat stale > 60 s with the screen on), enabled-services parsing, FlowService watchdog spacing ≥ 5 s, OEM autostart guidance | `health/HealthTest.kt` |
+| Live partials polled from the core while recording (only when `partial_interval_ms` is set), cleared on submit/cancel; "can't hear you" after 3 s leading silence (Wispr HeadSilenceTracker threshold); EMPTY → transient "no speech detected" | `session/DictationControllerTest.kt` (+6), `bubble/PreviewLogicTest.kt` |
+| LLM settings (default off, LIGHT when on, 3 s budget), EnginePlan with ASR-only fallback when the GGUF/plugin fails, ggml-vs-GGUF sniffing, dictionary edit/validate/filter, history search/raw-vs-formatted | `data/EditorLogicTest.kt` |
+| arm64 `libflow_llm.so` cross-built (`tools/build-native.sh --whisper --llm`; llama-cpp-sys-2 drives the NDK toolchain, OpenMP off, ggml armv8.2-a+dotprod+fp16) and packaged; exports exactly the 6 `flow_llm_*` symbols, NEEDED = libc++_shared/libc/libm/libdl, 16 KB aligned; flow-ffi built with the `llm` loader | `tools/probes/check_native_so.sh app-debug.apk` |
+| Real LLM cleanup through the shipped Kotlin binding on the host JVM (flow-ffi jni,whisper,llm + host flow-llm plugin, Qwen2.5-0.5B Q4_K_M, settings path = shell's own `Settings.toSessionConfig`): FORMATTED ("so um i think … uh bring the slides" → "So, I think we should meet tomorrow at noon and bring the slides."), llm 2.1 s, load 15.9 s at load ~17; LLM off → RAW with llm_ms 0; bad plugin path → EnginePlan falls back to ASR-only; whisper tiny.en + LLM in one JVM: FORMATTED (asr 9.4 s, llm 3.3 s) | `NativeFlowCoreHostTest` via `tools/probes/host_native/run.sh` (7/7) |
+
+Wired on Android, unverified on a device: snooze target + notification undo, shake listener (screen-on only), 36dp minimised dot, Repair bubble + ghost notification text, a11y 15 s heartbeat + FlowService respawn, `BootReceiver` (BOOT_COMPLETED / MY_PACKAGE_REPLACED / USER_UNLOCKED), USER_PRESENT re-attach, battery-exemption + OEM steps in onboarding, preview window, GGUF import, dictionary editor, history screen, history DB v2 (fallback reason + per-stage timings).
+
 ## Outstanding work — priority order
 1. `flow-core` crate — DONE on branch `core` (see What works). Remaining core gaps:
-   * LLM latency on CPU: 1.5B is 8/8 but ~1.1-5 s per call on this shared box (0.5B: 4/8, 0.75-2.7 s). Next levers: prefill the context + partial transcript into the KV cache while the user speaks; a LoRA on (raw → formatted) pairs for 0.5B (03 §7.5); pick the shipped model from `docs/model-benchmarks.md`. Shells must ship `libflow_llm` next to the exe (Windows) / in jniLibs (Android, untested);
+   * LLM latency on CPU: 1.5B is 8/8 but ~1.1-5 s per call on this shared box (0.5B: 4/8, 0.75-2.7 s). Next levers: prefill the context + partial transcript into the KV cache while the user speaks; a LoRA on (raw → formatted) pairs for 0.5B (03 §7.5); pick the shipped model from `docs/model-benchmarks.md`. Shells must ship `libflow_llm` next to the exe (Windows) / in jniLibs (Android: packaged on `android-p1`, host-JVM-proven, not yet loaded on bionic);
    * VAD and endpointing;
    * a per-session cache for the DictMatcher (it is rebuilt each commit).
 2. Windows shell: flow-core wired (branch `integration`). Remaining:
@@ -68,5 +81,6 @@ Branch `android-int` (merged): Android shell + real core.
       - SAF import of `ggml-base.en-q5_1.bin` (quantised models are untested; tiny.en/base.en f16 are proven on host), then real ASR latency; no SIGILL (dotprod/fp16 build);
       - 16 KB-page device (Android 15): installs without the compat dialog;
       - MIC vs VOICE_RECOGNITION.
-   c. P1 (07 / 10 §6): shake/snooze, bubble minimise, watchdog/boot recovery, battery-optimisation onboarding, VAD trim, partials.
-4. P1: LLM cleanup, context, learn-from-edits.
+   c. P1 (07 / 10 §6): DONE on branch `android-p1` except on-device proof — shake/snooze, minimise, watchdog/boot/unlock recovery, ghost check, battery + OEM onboarding, live partials + silence hints, LLM cleanup packaging + toggle + GGUF import, dictionary editor, history screen. Device checks: INSTALL.md §"Device test checklist" (AI cleanup, Robustness, Live preview, Dictionary & history). Open questions only a device answers: does USER_UNLOCKED reach the manifest receiver; partial-decode CPU cost on a phone (preview default on); LLM latency/RAM with whisper + 0.5B both resident; which OEM deep links resolve.
+   d. Not done: VAD head/tail trim (core side; the shell only reports silence), `shrinkBubbleInSearch`, snooze-target gravity pull, learn-from-edits.
+4. P1: context awareness, learn-from-edits.

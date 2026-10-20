@@ -50,6 +50,8 @@ data class ModelConfig(
     val llmPath: String? = null,
     val threads: Int = 4,
     val mockText: String? = null,
+    /** flow-llm plugin path; null = the core's lookup (on Android: the packaged libflow_llm.so). */
+    val llmLib: String? = null,
 )
 
 enum class CleanupLevel(val wire: String) { NONE("none"), LIGHT("light"), MEDIUM("medium"), HIGH("high") }

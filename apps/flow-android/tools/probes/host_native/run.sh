@@ -4,6 +4,8 @@
 # real core, mock engine plus whisper on jfk.wav when a model is present.
 # Proves the Kotlin<->Rust boundary without a device. Timings are appended to
 # app/build/reports/host-native/timings.txt (one line per run).
+# With a GGUF (FLOW_LLM_MODEL, default models/qwen2.5-0.5b-instruct-q4_k_m.gguf) it also builds the
+# flow-llm plugin and runs LLM cleanup through the same binding (flow-ffi feature llm).
 # Usage: tools/probes/host_native/run.sh [model.bin] [wav]   (default: tiny.en + jfk.wav from models/)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -13,12 +15,19 @@ models="${FLOW_MODELS:-$repo/models}"
 [[ -d "$models" ]] || models="$(cd "$repo/../../.." && pwd)/models"  # worktree -> main checkout
 model="${1:-$models/ggml-tiny.en.bin}"
 wav="${2:-$models/jfk.wav}"
-(cd "$repo" && cargo build -q -p flow-ffi --release --features jni,whisper --lib)
+llm_model="${FLOW_LLM_MODEL:-$models/qwen2.5-0.5b-instruct-q4_k_m.gguf}"
+# llama-cpp-sys-2 runs bindgen; this box's libclang lacks its resource headers.
+export BINDGEN_EXTRA_CLANG_ARGS="${BINDGEN_EXTRA_CLANG_ARGS:--I/usr/lib/gcc/x86_64-linux-gnu/13/include}"
+if [[ -f "$llm_model" ]]; then
+  (cd "$repo" && cargo build -q -p flow-llm --release --lib && cargo build -q -p flow-ffi --release --features jni,whisper,llm --lib)
+else
+  (cd "$repo" && cargo build -q -p flow-ffi --release --features jni,whisper --lib)
+fi
 lib="$repo/target/release"
 test -f "$lib/libflow_ffi.so"
 cd "$app"
 ./gradlew testDebugUnitTest -q --rerun -Pflow.jniLibDir="$lib" -Pflow.model="$model" -Pflow.wav="$wav" \
-  -Pflow.threads="${FLOW_THREADS:-4}" -Pflow.reportDir="$app/app/build/reports/host-native" \
+  -Pflow.threads="${FLOW_THREADS:-4}" -Pflow.llmModel="$llm_model" -Pflow.llmLib="$lib/libflow_llm.so" -Pflow.reportDir="$app/app/build/reports/host-native" \
   --tests 'dev.flowclone.core.NativeFlowCoreHostTest'
 python3 -I - "$app" <<'PY'
 import sys, xml.etree.ElementTree as ET, pathlib

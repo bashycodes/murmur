@@ -6,11 +6,13 @@ import dev.flowclone.core.CoreException
 import dev.flowclone.core.FakeFlowCore
 import dev.flowclone.core.FlowCore
 import dev.flowclone.core.FlowCoreLoader
-import dev.flowclone.core.ModelConfig
 import dev.flowclone.core.NativeFlowCore
 import dev.flowclone.data.DictionaryStore
 import dev.flowclone.data.HistoryStore
+import dev.flowclone.data.EnginePlan
 import dev.flowclone.data.SettingsStore
+import dev.flowclone.health.A11ySetting
+import dev.flowclone.health.AccessibilityHealth
 import dev.flowclone.policy.BubbleVisibilityPolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +34,27 @@ class FlowApp : Application() {
 
     /** The live accessibility service, when connected. */
     @Volatile var accessibility: AccessibilityBridge? = null
+
+    /** Health-monitor inputs (elapsedRealtime ms). */
+    val processStartAt: Long = android.os.SystemClock.elapsedRealtime()
+    @Volatile var a11yConnectedAt: Long? = null
+    @Volatile var a11yHeartbeatAt: Long? = null
+
+    /** Ghost-service check (Wispr AccessibilityHealthMonitor), see [AccessibilityHealth]. */
+    fun accessibilityHealth(): AccessibilityHealth.Status {
+        val enabled = A11ySetting.isEnabled(
+            android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),
+            packageName, dev.flowclone.service.FlowAccessibilityService::class.java.name,
+        )
+        val screenOn = getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: true
+        return AccessibilityHealth.evaluate(
+            AccessibilityHealth.Input(
+                enabledInSettings = enabled, connected = accessibility != null, processStartAt = processStartAt,
+                connectedAt = a11yConnectedAt, lastHeartbeatAt = a11yHeartbeatAt, screenOn = screenOn,
+                now = android.os.SystemClock.elapsedRealtime(),
+            ),
+        )
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -61,7 +84,7 @@ class EngineHolder(private val app: FlowApp, private val loader: FlowCoreLoader 
     sealed interface State {
         data object NotLoaded : State
         data object Loading : State
-        data class Ready(val core: FlowCore, val description: String) : State
+        data class Ready(val core: FlowCore, val description: String, val llm: EnginePlan.LlmStatus = EnginePlan.LlmStatus.Off) : State
         data class Failed(val message: String) : State
     }
 
@@ -104,17 +127,20 @@ class EngineHolder(private val app: FlowApp, private val loader: FlowCoreLoader 
         State.NotLoaded -> { ensureLoaded(); throw CoreException("Speech model is loading, try again in a moment.") }
     }
 
+    fun llmDir() = File(app.filesDir, "llm").apply { mkdirs() }
+
     private fun load(): State {
-        val settings = app.settings.load()
-        if (settings.mockEngine) return State.Ready(FakeFlowCore("This is a test of on-device dictation."), "mock engine")
-        val path = app.settings.modelPath
-        if (path == null || !File(path).isFile) return State.Failed("No speech model imported. Open Flow Clone → Speech model.")
-        return try {
-            val threads = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
-            State.Ready(loader.loadModels(ModelConfig(asrPath = path, threads = threads)), File(path).name)
-        } catch (e: CoreException) {
-            Log.w("FlowEngine", "load failed", e)
-            State.Failed(e.message ?: "Speech engine failed to load")
+        val threads = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
+        val plan = EnginePlan.plan(app.settings.load(), app.settings.modelPath, app.settings.llmModelPath, { File(it).isFile }, threads)
+        return when (plan) {
+            EnginePlan.Plan.Mock -> State.Ready(FakeFlowCore("This is a test of on-device dictation."), "mock engine")
+            is EnginePlan.Plan.Missing -> State.Failed(plan.message)
+            is EnginePlan.Plan.Native -> {
+                val r = EnginePlan.load(plan, loader)
+                if (r.llm is EnginePlan.LlmStatus.Failed) Log.w("FlowEngine", "LLM disabled: ${r.llm.message}")
+                if (r.core == null) { Log.w("FlowEngine", "load failed: ${r.error}"); State.Failed(r.error ?: "Speech engine failed to load") }
+                else State.Ready(r.core, r.description, r.llm)
+            }
         }
     }
 }

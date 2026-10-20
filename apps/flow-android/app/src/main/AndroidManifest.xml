@@ -10,6 +10,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- P1 recovery (07 §1/§6): restart after boot / update; battery-optimisation onboarding step. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <!-- Privacy guarantee: this APK can never open a socket. If any dependency's
          manifest adds these, the merger strips them; verifyNoNetworkPermissions
@@ -19,6 +22,8 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
 
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
+    <!-- Shake to un-snooze / reveal. Wispr requires it; the clone works without it. -->
+    <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
 
     <application
         android:name=".FlowApp"
@@ -70,5 +75,18 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <!-- USER_UNLOCKED is best effort (not every build delivers it to manifest receivers);
+             FlowService also re-checks on USER_PRESENT while it runs. -->
+        <receiver
+            android:name=".receiver.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

@@ -49,7 +49,7 @@ tasks.withType<Test>().configureEach {
     } else if (jniLibDir != null) {
         systemProperty("java.library.path", jniLibDir)
         systemProperty("flow.jniReal", "1")
-        for (k in listOf("flow.model", "flow.wav", "flow.threads", "flow.reportDir")) {
+        for (k in listOf("flow.model", "flow.wav", "flow.threads", "flow.reportDir", "flow.llmModel", "flow.llmLib")) {
             providers.gradleProperty(k).orNull?.let { systemProperty(k, it) }
         }
         testLogging { showStandardStreams = true }
