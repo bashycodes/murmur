@@ -32,6 +32,13 @@ class NativeFlowCore private constructor(private var handle: Long, val isRouter:
         if (!guardLink { nativeUpdateRouter(h(), routerConfigJson) }) throw lastError("update_config failed")
     }
 
+    /** Router handles only: close the circuit breaker (Developer "Reset circuit"). */
+    fun resetCircuit() { if (isRouter && handle != 0L) guardLink { nativeResetCircuit(handle) } }
+
+    /** Router handles only: blocking probe of the saved server config; updates the circuit + "Server info". */
+    fun probeSaved(): HealthReport =
+        if (!isRouter || handle == 0L) HealthReport(ok = false, error = "error", message = "no router") else RouterJson.decodeHealth(guardLink { nativeProbeRouter(handle) })
+
     /** Router handles only: last route + circuit + last probe. */
     fun routeStatus(): RouteStatus =
         if (!isRouter || handle == 0L) RouteStatus() else RouterJson.decodeRouteStatus(guardLink { nativeRouteStatus(handle) })
@@ -178,5 +185,7 @@ class NativeFlowCore private constructor(private var handle: Long, val isRouter:
         @JvmStatic external fun nativeUpdateRouter(handle: Long, routerConfigJson: String): Boolean
         @JvmStatic external fun nativeProbeServer(serverConfigJson: String): String
         @JvmStatic external fun nativeRouteStatus(handle: Long): String
+        @JvmStatic external fun nativeResetCircuit(handle: Long)
+        @JvmStatic external fun nativeProbeRouter(handle: Long): String
     }
 }
