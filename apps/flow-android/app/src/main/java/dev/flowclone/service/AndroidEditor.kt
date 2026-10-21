@@ -73,6 +73,15 @@ class ShellInputMethod(service: AccessibilityService, private val onStarted: () 
         }
     }
 
+    /** Down + up of [keyCode] on the current input connection (Enter / Tab paste segments). */
+    fun sendKey(keyCode: Int): Boolean {
+        val ic = currentInputConnection ?: return false
+        val t = android.os.SystemClock.uptimeMillis()
+        ic.sendKeyEvent(android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_DOWN, keyCode, 0))
+        ic.sendKeyEvent(android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_UP, keyCode, 0))
+        return true
+    }
+
     /** Raw surrounding text + selection for field context capture. */
     fun readSurrounding(before: Int, after: Int): Triple<String, Int, Int>? {
         val st = currentInputConnection?.getSurroundingText(before, after, 0) ?: return null

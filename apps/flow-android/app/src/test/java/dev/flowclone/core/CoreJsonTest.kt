@@ -65,6 +65,64 @@ class CoreJsonTest {
         assertNull(r.error)
     }
 
+    @Test fun modelConfigSelectsParakeet() {
+        val j = JSONObject(CoreJson.encode(ModelConfig(asrPath = "/m/parakeet", asrEngine = AsrEngine.PARAKEET)))
+        assertEquals("parakeet", j.getString("asr_backend"))
+        assertEquals("/m/parakeet", j.getString("asr_path"))
+    }
+
+    @Test fun sessionConfigSendsCoreP1Flags() {
+        val j = JSONObject(CoreJson.encode(SessionConfig(spokenCleanup = false)))
+        assertTrue(j.getBoolean("vad"))
+        assertTrue(j.getBoolean("hallucination_guard"))
+        assertFalse(j.getBoolean("spoken_cleanup"))
+        assertTrue(j.getBoolean("llm_prefill"))
+    }
+
+    /** Shape produced by flow-core core-p1 (`paste::PasteSegment` untagged, CR-2) + D17 `route`. */
+    @Test fun decodesSegmentsPlainTextEmptyReasonAndRoute() {
+        val json = """{"status":"FORMATTED","asr_text":"x","final_text":"@foo{{TAB}} bar","language":"en",
+            "timings":{"audio_ms":1,"asr_ms":1,"llm_ms":0,"postprocess_ms":0,"total_ms":2,"dropped_samples":0,"asr_audio_ms":1},
+            "press_enter":true,"fallback_reason":null,"truncated":false,"error":null,
+            "segments":[{"text":"@foo"},{"key":"Tab"},{"text":" bar"},{"key":"Break"},{"key":"Enter"},{"key":"Future"},{"weird":1}],
+            "plain_text":"@foo bar","empty_reason":null,
+            "route":{"engine":"local","fallback":"connect_failed","server":"100.64.0.10:7313","rtt_ms":null,"queue_ms":3,"server_core":null}}"""
+        val r = CoreJson.decodeCommit(json)
+        assertEquals(
+            listOf(
+                PasteSegment.Text("@foo"), PasteSegment.Key(PasteKey.TAB), PasteSegment.Text(" bar"),
+                PasteSegment.Key(PasteKey.BREAK), PasteSegment.Key(PasteKey.ENTER),
+            ),
+            r.segments,
+        )
+        assertEquals(r.segments, r.pastePlan())
+        assertEquals("@foo bar", r.historyText)
+        assertEquals(RouteInfo("local", "connect_failed", "100.64.0.10:7313", null, 3, null), r.route)
+    }
+
+    @Test fun preCoreP1ResultStillPastesFinalTextThenEnter() {
+        val r = CoreJson.decodeCommit("""{"status":"RAW_TRANSCRIPT","asr_text":"a","final_text":"Send it.","press_enter":true}""")
+        assertEquals(listOf(PasteSegment.Text("Send it."), PasteSegment.Key(PasteKey.ENTER)), r.pastePlan())
+        assertEquals("Send it.", r.historyText)
+        assertNull(r.route)
+    }
+
+    @Test fun emptyResultCarriesReason() {
+        val r = CoreJson.decodeCommit("""{"status":"EMPTY","asr_text":"","final_text":"","segments":[],"plain_text":"","empty_reason":"no_speech"}""")
+        assertEquals("no_speech", r.emptyReason)
+        assertTrue(r.pastePlan().isEmpty())
+    }
+
+    @Test fun loadErrorKindsAreRecoveredFromStablePrefixes() {
+        assertEquals("model_not_found", CoreException.kindOf("model not found: /x/y.bin"))
+        assertEquals("llm_lib_not_found", CoreException.kindOf("llm plugin not found (libflow_llm.so)"))
+        assertEquals("no_engine_enabled", CoreException.kindOf("no_engine_enabled: both off"))
+        assertNull(CoreException.kindOf("something else"))
+        assertEquals("load", CoreException.of("x", "load", "f").kind)
+        assertEquals("model_not_found", CoreException.of("model not found: a", "error", "f").kind)
+        assertEquals("f", CoreException.of(null, null, "f").message)
+    }
+
     @Test fun malformedCommitJsonBecomesErrorResult() {
         val r = CoreJson.decodeCommit("not json")
         assertEquals(CommitStatus.ERROR, r.status)

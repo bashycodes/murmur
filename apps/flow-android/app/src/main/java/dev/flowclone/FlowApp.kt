@@ -32,6 +32,9 @@ class FlowApp : Application() {
     /** Latest keyboard/field decision from the accessibility service (null = no allowed field). */
     val fieldFocus = MutableStateFlow<BubbleVisibilityPolicy.Decision?>(null)
 
+    /** Last dictation's result + route (Developer page, engine badge). In-memory only (§5). */
+    val lastRoute = MutableStateFlow<dev.flowclone.data.LastDictation?>(null)
+
     /** The live accessibility service, when connected. */
     @Volatile var accessibility: AccessibilityBridge? = null
 
@@ -72,6 +75,8 @@ class FlowApp : Application() {
 /** What FlowService needs from FlowAccessibilityService (same process). */
 interface AccessibilityBridge {
     suspend fun insertTextAndVerify(text: String): Boolean
+    /** Enter / Tab through the a11y InputMethod's connection (paste segments). */
+    suspend fun sendKey(key: dev.flowclone.core.PasteKey): Boolean
     fun captureFieldContext(): dev.flowclone.core.FieldContext?
     fun onDictationActive(active: Boolean)
 }
