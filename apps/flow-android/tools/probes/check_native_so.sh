@@ -4,12 +4,17 @@
 #  2. every LOAD segment of every .so is >= 16 KB aligned (Android 15 16 KB pages);
 #  3. NEEDED libs are bionic or shipped next to it (libc++_shared.so);
 #  4. optional APK: zipalign -P 16 says the .so entries are page-aligned + stored.
-# Usage: tools/probes/check_native_so.sh [app.apk]
+#  5. per flavour (D17): remote ships no ASR/LLM libs and libflow_ffi.so has no whisper_/llama_
+#     symbols; local's libflow_ffi.so has no WebSocket/TLS code.
+# Usage: tools/probes/check_native_so.sh [--flavor local|hybrid|remote] [app.apk]
 set -euo pipefail
 app="$(cd "$(dirname "$0")/../.." && pwd)"
 ndk="${ANDROID_NDK_HOME:-$HOME/Android/Sdk/ndk/27.2.12479018}"
 bin="$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
-dir="$app/app/src/main/jniLibs/arm64-v8a"
+flavor=local
+if [[ "${1:-}" == "--flavor" ]]; then flavor="$2"; shift 2; fi
+dir="$app/app/src/$flavor/jniLibs/arm64-v8a"
+echo "flavor $flavor: $dir"
 so="$dir/libflow_ffi.so"
 fail=0
 want=$(grep -o 'Java_dev_flowclone_core_NativeFlowCore_native[A-Za-z]*' "$app/JNI_CONTRACT.md" | sort -u)
@@ -46,6 +51,15 @@ else
   echo "libflow_llm.so: not packaged (AI cleanup unavailable; build with --llm)"
 fi
 echo "whisper linked: $("$bin/llvm-nm" "$so" 2>/dev/null | grep -c ' whisper_full' || true) whisper_full* symbols"
+case "$flavor" in
+  remote)
+    bad=$(ls "$dir" | grep -E '^lib(whisper|sherpa|onnxruntime|flow_llm|c\+\+_shared|llama|ggml)' || true)
+    [[ -z "$bad" ]] && echo "remote: no ASR/LLM libs" || { echo "remote: ships $bad"; fail=1; }
+    n=$("$bin/llvm-nm" -D --defined-only "$so" | grep -cE ' (whisper_|llama_|ggml_)' || true)
+    [[ "$n" == 0 ]] && echo "remote: libflow_ffi.so exports no whisper_/llama_/ggml_" || { echo "remote: $n ASR symbols exported"; fail=1; } ;;
+  local)
+    if grep -qaE 'tungstenite|rustls' "$so"; then echo "local: network code in libflow_ffi.so"; fail=1; else echo "local: no tungstenite/rustls in libflow_ffi.so"; fi ;;
+esac
 if [[ -n "${1:-}" ]]; then
   za=$(ls -d "$HOME"/Android/Sdk/build-tools/* | sort -V | tail -1)/zipalign
   if "$za" -c -P 16 -v 4 "$1" | grep -E 'lib/.*\.so' | grep -v '(OK' ; then echo "APK: .so not 16 KB aligned"; fail=1

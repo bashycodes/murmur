@@ -2,7 +2,7 @@
 
 The Kotlin side is `app/src/main/java/dev/flowclone/core/NativeFlowCore.kt`.
 The Rust side must export exactly these symbols from `libflow_ffi.so`
-(`crate-type = cdylib`, feature `jni`, built for `arm64-v8a` by `tools/build-native.sh --whisper`,
+(`crate-type = cdylib`, feature `jni`, built for `arm64-v8a` by `tools/build-native.sh --flavor local|hybrid|remote`,
 which wraps `cargo ndk -t arm64-v8a --platform 33 --link-libcxx-shared … --features jni,whisper` and adds
 the NDK CMake toolchain and 16 KB page-size link flags). `libc++_shared.so` (needed by whisper.cpp)
 ships next to it. Implemented in `crates/flow-ffi/src/jni_api.rs`; `tools/probes/check_native_so.sh`
@@ -16,7 +16,9 @@ still runs and shows an in-app message (`NativeFlowCore.loadLibrary()` returns
 
 - All methods are **static** natives on class `dev.flowclone.core.NativeFlowCore`.
   The second C parameter is therefore a `jclass` (`JClass` in jni-rs 0.21).
-- The **handle** is an opaque `jlong`: `Box::into_raw(Box<FlowCore>) as jlong`. `0` means
+- The **handle** is an opaque `jlong`: `Box::into_raw(Box<FlowHandle>) as jlong`, where
+  `FlowHandle` is a bare `FlowCore` (`nativeLoadModels`) or a `flow_router::Router`
+  (`nativeOpenRouter`, D17). Every session function works on both kinds. `0` means
   "no handle / failure". After `nativeUnload(h)` Kotlin never uses `h` again. It
   serialises `unload` against itself. Other calls may come from several threads:
   `pushAudio` comes from the AudioRecord thread, `commit` from a worker coroutine,
@@ -48,18 +50,46 @@ still runs and shows an in-app message (`NativeFlowCore.loadLibrary()` returns
 | `nativeCancel(handle: Long)` | `(J)V` | `Java_dev_flowclone_core_NativeFlowCore_nativeCancel` | `(env, _: JClass, h: jlong)` | `cancel()`. Idempotent |
 | `nativeLearnEdit(handle: Long, pasted: String, edited: String): String` | `(JLjava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeLearnEdit` | `(env, _: JClass, h: jlong, pasted: JString, edited: JString) -> jstring` | JSON array `[{"original":…,"corrected":…}]`. Return `"[]"` on error |
 
+## Router (D17, docs/hybrid-architecture.md §6.2) — additive
+
+Since the hybrid work the app opens **one router handle** and sends every session call to it:
+`nativeLoadModels` (local engine, when the flavour has one and the client route needs it) →
+`nativeOpenRouter(cfg, localHandle)` → `nativeStartSession(router, …)` etc. `nativeUnload(router)`
+frees the router and the local engine it owns.
+
+| Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | Semantics |
+|---|---|---|---|
+| `nativeLastErrorKind(): String?` | `()Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeLastErrorKind` | Stable kind of the last error on this thread (`model_not_found`, `llm_lib_not_found`, `load`, `bad_config`, `no_engine_enabled`, `local_not_ready`, `server_not_configured`, `server_unavailable`, `error`), or `null`. C: `flow_last_error_kind` |
+| `nativeCapabilities(): String` | `()Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCapabilities` | `Capabilities` JSON of this build (`local` = an ASR feature is built in, `remote` = feature `remote`). Must match `BuildConfig.CAP_LOCAL/CAP_REMOTE` (main screen error otherwise) |
+| `nativeOpenRouter(routerConfigJson: String, localHandle: Long): Long` | `(Ljava/lang/String;J)J` | `Java_dev_flowclone_core_NativeFlowCore_nativeOpenRouter` | Takes ownership of `localHandle` (0 = none) **whatever the outcome**; Kotlin calls `NativeFlowCore.release()` first and never unloads it. Validates the config (`RouterConfig::validate`). `0` + kind `no_engine_enabled` (both routes off) / `bad_config` |
+| `nativeUpdateRouter(h: Long, routerConfigJson: String): Boolean` | `(JLjava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeUpdateRouter` | `Router::update_config` (validated), applies from the next `start_session`; models are not reloaded. `false` + `bad_config` |
+| `nativeProbeServer(serverConfigJson: String): String` | `(Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeProbeServer` | Blocking `HealthReport` JSON for an unsaved `ServerConfig` (Test connection; connect + hello + 3 pings). Never throws; without `remote`: `ok:false, error:"server_not_configured"` |
+| `nativeProbeRouter(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeProbeRouter` | Blocking probe of the router's saved server; updates its circuit and `RouteStatus.health` (run after Save) |
+| `nativeRouteStatus(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeRouteStatus` | `RouteStatus` JSON `{last: RouteInfo?, circuit: {open, reason, retry_in_ms, until_config_change}, health: HealthReport?}`; `{}` for a core handle |
+| `nativeResetCircuit(h: Long)` | `(J)V` | `Java_dev_flowclone_core_NativeFlowCore_nativeResetCircuit` | Close the circuit breaker (Developer "Reset circuit"); no-op for a core handle |
+
+Router errors: `nativeStartSession(router)` returns `false` with kind `no_engine_enabled` /
+`local_not_ready` / `server_not_configured` / `server_unavailable` (server-only and
+unreachable); `nativeCommit` then returns `ERROR` whose `error` starts with the kind.
+Every started router session's `CommitResult` carries `route`
+(`{"engine":"local"|"remote","fallback","server","rtt_ms","queue_ms","server_core"}`).
+JSON shapes are pinned by `crates/flow-router/fixtures/*.json` (Kotlin: `RouterJsonTest`).
+Libraries: `--features jni,remote` adds the WebSocket client (`flow-remote`, rustls for
+`wss://`); the `local` flavour's library is built without it (no network code, I3).
+
 ## JSON payloads Kotlin sends (see `CoreJson.kt`, pinned by `CoreJsonTest`)
 
 ```jsonc
 // ModelConfig
-{"asr_backend":"whisper" /* or {"mock":{"text":"…"}} */, "asr_path":"/data/user/0/dev.flowclone/files/models/ggml-base-q5_1.bin",
+{"asr_backend":"whisper" /* or "parakeet" (asr_path = model dir) or {"mock":{"text":"…"}} */, "asr_path":"/data/user/0/dev.flowclone/files/models/ggml-base-q5_1.bin",
  "llm_path":null /* or ".../files/llm/qwen2.5-0.5b-instruct-q4_k_m.gguf" when AI cleanup is on */,
  "llm_lib":null /* default lookup; host tests pass a path */, "threads":4}
 // SessionConfig
 {"languages":["en"], "dictionary":[{"word":"wispr","replacement":"Wispr","isSnippet":false}],
  "styles":{"personal":"formal","work":"formal","email":"formal","other":"formal"},
  "cleanup_level":"none", "raw_mode":false, "max_samples":4800000, "platform":"android",
- "partial_interval_ms":null, "llm_timeout_ms":1500}
+ "partial_interval_ms":null, "llm_timeout_ms":1500,
+ "vad":true, "hallucination_guard":true, "spoken_cleanup":true /* user pref */, "llm_prefill":true}
 // FieldContext
 {"app_id":"com.Slack","url_host":"","app_category":"work_chat","before":"…≤500","selected":"","after":"…≤500","screen_words":[]}
 ```
@@ -67,8 +97,10 @@ still runs and shows an in-app message (`NativeFlowCore.loadLibrary()` returns
 `CommitResult` as Kotlin parses it:
 `{"status":"FORMATTED|RAW_TRANSCRIPT|EMPTY|ERROR","asr_text","final_text","language"?,
 "timings":{"audio_ms","asr_ms","llm_ms","postprocess_ms","total_ms","dropped_samples"},
-"press_enter","fallback_reason"?,"truncated","error"?}`. If the status is unknown or the
-JSON is malformed, Kotlin treats the result as `ERROR`.
+"press_enter","fallback_reason"?,"truncated","error"?, "segments":[{"text"}|{"key":"Enter|Tab|Break"}],
+"plain_text","empty_reason"?, "route"?}`. Kotlin pastes `segments` (not `final_text` +
+`press_enter`), stores `plain_text` in history, and shows `empty_reason`. If the status is
+unknown or the JSON is malformed, Kotlin treats the result as `ERROR`.
 
 ## Rust skeleton
 
@@ -94,5 +126,10 @@ Android-specific notes for the Rust side:
   `dlopen("libflow_llm.so")` resolves to the already-loaded library (jniLibs aren't
   extracted to disk, so there is no path to pass). A missing plugin fails `load_models`;
   the shell then reloads ASR-only.
-- No network: the APK has no `INTERNET` permission (enforced by the
-  `verifyNoNetworkPermissions` Gradle task), so any socket the core opens will fail.
+- Network (D17): only the `hybrid` / `remote` flavours have `INTERNET`, and only their
+  library is built with `remote`. The `local` APK has no network permission
+  (`verifyLocal<BT>NoNetworkPermissions`) and no WebSocket/TLS code in `libflow_ffi.so`
+  (`verifyLocal<BT>NoNetworkCode`).
+- Parakeet (`asr_backend:"parakeet"`): Kotlin sets `TMPDIR` to `cacheDir` before
+  `nativeLoadModels` (hotword `bpe.vocab`); `libsherpa-onnx-c-api.so` + `libonnxruntime.so`
+  ship next to `libflow_ffi.so` and resolve from the app's lib dir.

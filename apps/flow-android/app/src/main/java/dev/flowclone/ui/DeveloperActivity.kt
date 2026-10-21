@@ -196,7 +196,16 @@ class DeveloperActivity : Activity() {
         app.engine.applyDevSettings(s)
         Toast.makeText(this, if (s.effective(caps).bothOff) DevSettingsForm.BOTH_OFF else "Saved: applies to the next dictation", Toast.LENGTH_LONG).show()
         // §5: a probe runs after each save; its result fills "Server info".
-        if (s.effective(caps).allowServer && s.serverConfigured) probe(s)
+        if (s.effective(caps).allowServer && s.serverConfigured) {
+            val r = app.engine.router()
+            if (r == null) probe(s) else {
+                probeLine.text = "Probing ${s.host}:${s.port}…"
+                thread(name = "dev-probe-saved") {
+                    val h = runCatching { r.probeSaved() }.getOrElse { HealthReport(ok = false, error = "error", message = it.message) }
+                    runOnUiThread { lastProbe = h; probeLine.text = DevText.probe(h); refreshRows() }
+                }
+            }
+        }
     }
 
     private fun onTestConnection() {
@@ -241,8 +250,7 @@ class DeveloperActivity : Activity() {
     private fun onResetCircuit() {
         val r = app.engine.router()
         if (r == null) { Toast.makeText(this, "No router loaded", Toast.LENGTH_SHORT).show(); return }
-        // update_config with the same config closes the circuit (flow_router resets it on config updates).
-        runCatching { r.updateRouter(app.dev.load().routerConfigFor(caps)) }
+        runCatching { r.resetCircuit() }
         refreshRows()
     }
 
