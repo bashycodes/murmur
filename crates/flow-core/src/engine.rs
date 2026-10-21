@@ -140,6 +140,16 @@ fn require_file(path: &str) -> Result<(), CoreError> {
     }
 }
 
+/// Parakeet's `asr_path` is a model directory, not a file.
+#[cfg(feature = "parakeet")]
+fn require_dir(path: &str) -> Result<(), CoreError> {
+    if std::path::Path::new(path).is_dir() {
+        Ok(())
+    } else {
+        Err(CoreError::ModelNotFound { path: path.into() })
+    }
+}
+
 enum Ctrl {
     Start {
         id: u64,
@@ -208,10 +218,13 @@ impl FlowCore {
                 ))
             }
             #[cfg(feature = "parakeet")]
-            AsrBackend::Parakeet => Arc::new(
-                crate::parakeet::ParakeetAsr::load(&cfg.asr_path, cfg.threads)
-                    .map_err(|e| CoreError::Load(e.to_string()))?,
-            ),
+            AsrBackend::Parakeet => {
+                require_dir(&cfg.asr_path)?;
+                Arc::new(
+                    crate::parakeet::ParakeetAsr::load(&cfg.asr_path, cfg.threads)
+                        .map_err(|e| CoreError::Load(e.to_string()))?,
+                )
+            }
             #[cfg(not(feature = "parakeet"))]
             AsrBackend::Parakeet => {
                 return Err(CoreError::Load(
