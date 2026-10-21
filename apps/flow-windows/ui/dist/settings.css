@@ -282,3 +282,70 @@ ul.sugg li {
 ul.sugg .what {
   flex: 1;
 }
+
+/* ---- Developer tab ---- */
+.field-err {
+  display: block;
+  color: #c0392b;
+  font-size: 12px;
+  min-height: 0;
+}
+.field-err:empty {
+  display: none;
+}
+input.invalid {
+  border-color: #c0392b;
+}
+.warnings {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  color: #b9770e;
+}
+.warnings li.err {
+  color: #c0392b;
+  font-weight: 600;
+}
+.routes {
+  margin: 4px 0 8px;
+  padding-left: 22px;
+}
+.routes li {
+  margin: 2px 0;
+}
+.routes li.off {
+  opacity: 0.5;
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: 3fr 1fr;
+  gap: 8px;
+}
+.grid3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+.token-row {
+  display: flex;
+  gap: 4px;
+}
+.token-row input {
+  flex: 1;
+}
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+.kv dt {
+  font-weight: 600;
+}
+.kv dd {
+  margin: 0;
+  word-break: break-word;
+}
+.version {
+  cursor: default;
+  user-select: none;
+}

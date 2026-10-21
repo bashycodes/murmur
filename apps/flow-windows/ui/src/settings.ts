@@ -163,6 +163,7 @@ function showTab(name: string): void {
   }
   $<HTMLFormElement>("form").hidden = name !== "general" && name !== "ai";
   if (name === "history") void loadHistory();
+  if (name === "developer") void loadDev();
   if (name === "dictionary") void loadSuggestions();
 }
 
@@ -617,6 +618,370 @@ async function loadSuggestions(): Promise<void> {
   );
 }
 
+
+// ------------------------------------------------------------------ developer
+// Hybrid local/server routing (docs/hybrid-architecture.md §5). The backend
+// owns validation (`dev_validate`), so the inline errors and Save use the
+// same rules; the token is shown here but stored DPAPI-encrypted.
+
+type Route = "server" | "client";
+
+interface DevForm {
+  allow_server: boolean;
+  allow_client: boolean;
+  route_order: Route[];
+  host: string;
+  port: number;
+  tls: boolean;
+  tls_pin_sha256: string;
+  token: string;
+  connect_timeout_ms: number;
+  commit_timeout_base_ms: number;
+  health_ttl_s: number;
+  keep_local_warm: boolean;
+  show_engine_badge: boolean;
+  dev_unlocked: boolean;
+}
+
+interface FieldError {
+  field: string;
+  message: string;
+}
+
+interface DevCheck {
+  errors: FieldError[];
+  warnings: string[];
+  tls_forced: boolean;
+}
+
+interface Health {
+  ok: boolean;
+  error: string | null;
+  message: string | null;
+  server: string | null;
+  rtt_ms: { min: number; median: number; max: number } | null;
+  server_version: string | null;
+  server_core: string | null;
+  postprocess_match: boolean | null;
+  proto: number | null;
+  asr_backend: string | null;
+  asr_model: string | null;
+  llm: boolean | null;
+  workers: number | null;
+  busy: number | null;
+}
+
+interface LastDictation {
+  engine: string | null;
+  fallback: string | null;
+  server: string | null;
+  rtt_ms: number | null;
+  queue_ms: number | null;
+  asr_ms: number;
+  total_ms: number;
+  status: string;
+  empty_reason: string | null;
+  at_ms: number;
+}
+
+interface RouteView {
+  last: LastDictation | null;
+  circuit: { open: boolean; reason: string | null; retry_in_ms: number | null; until_config_change: boolean };
+  health: Health | null;
+}
+
+interface DevView {
+  form: DevForm;
+  caps: { local: boolean; remote: boolean };
+  capabilities: { local: boolean; remote: boolean; asr_engines: string[]; llm: boolean; proto: number; core_version: string };
+  visible: boolean;
+  version: string;
+  check: DevCheck;
+  route: RouteView;
+}
+
+interface SessionTest {
+  status: string;
+  empty_reason: string | null;
+  error: string | null;
+  engine: string | null;
+  fallback: string | null;
+  total_ms: number;
+}
+
+const ROUTE_LABEL: Record<Route, string> = { server: "Server", client: "This PC (client)" };
+const DEV_NUM = ["port", "connect_timeout_ms", "commit_timeout_base_ms", "health_ttl_s"] as const;
+const DEV_TEXT = ["host", "tls_pin_sha256", "token"] as const;
+const DEV_BOOL = ["allow_server", "allow_client", "tls", "keep_local_warm", "show_engine_badge"] as const;
+
+let devView: DevView | null = null;
+let devOrder: Route[] = ["server", "client"];
+let devValid = true;
+
+const HINTS: Record<string, string> = {
+  auth_failed: "token rejected — copy it again from the server's token file",
+  connect_failed: "is flow-server running / Tailscale up?",
+  proto_mismatch: "client and server protocol versions differ — update one of them",
+  server_not_configured: "enter the server host first",
+  timeout: "the server is too slow or stuck",
+  busy: "the server is busy with another dictation",
+};
+
+function hint(code: string | null): string {
+  return code ? (HINTS[code] ?? "") : "";
+}
+
+function readDev(): DevForm {
+  const base = devView?.form;
+  const f = { ...(base as DevForm) };
+  for (const k of DEV_BOOL) f[k] = $<HTMLInputElement>(`dev_${k}`).checked;
+  for (const k of DEV_TEXT) f[k] = $<HTMLInputElement>(`dev_${k}`).value;
+  for (const k of DEV_NUM) {
+    const v = $<HTMLInputElement>(`dev_${k}`).value.trim();
+    f[k] = v === "" ? -1 : Number(v);
+  }
+  f.route_order = [...devOrder];
+  return f;
+}
+
+function fillDev(f: DevForm): void {
+  for (const k of DEV_BOOL) $<HTMLInputElement>(`dev_${k}`).checked = f[k];
+  for (const k of DEV_TEXT) $<HTMLInputElement>(`dev_${k}`).value = f[k];
+  for (const k of DEV_NUM) $<HTMLInputElement>(`dev_${k}`).value = String(f[k]);
+  devOrder = [...f.route_order];
+  renderRoutes();
+}
+
+function renderRoutes(): void {
+  const srv = $<HTMLInputElement>("dev_allow_server").checked;
+  const cli = $<HTMLInputElement>("dev_allow_client").checked;
+  const on = (r: Route): boolean => (r === "server" ? srv : cli);
+  $<HTMLElement>("dev_order_box").hidden = devOrder.filter(on).length < 2;
+  $<HTMLOListElement>("dev_routes").replaceChildren(
+    ...devOrder.map((r, i) => {
+      const li = el("li", on(r) ? "" : "off", ROUTE_LABEL[r] + " ");
+      if (i > 0) {
+        li.append(
+          button("Move up", () => {
+            [devOrder[i - 1], devOrder[i]] = [devOrder[i], devOrder[i - 1]];
+            renderRoutes();
+            scheduleCheck();
+          }, "small secondary"),
+        );
+      }
+      return li;
+    }),
+  );
+  $<HTMLElement>("dev_server_box").hidden = !srv;
+  $<HTMLElement>("dev_pin_row").hidden = !$<HTMLInputElement>("dev_tls").checked;
+}
+
+function showCheck(c: DevCheck): void {
+  for (const s of document.querySelectorAll<HTMLElement>("[data-err]")) s.textContent = "";
+  for (const i of document.querySelectorAll<HTMLInputElement>("[data-panel=developer] input")) i.classList.remove("invalid");
+  for (const e of c.errors) {
+    const slot = document.querySelector<HTMLElement>(`[data-err="${e.field}"]`);
+    if (slot) slot.textContent = e.message;
+    $<HTMLInputElement>(`dev_${e.field}`)?.classList.add("invalid");
+  }
+  devValid = c.errors.length === 0;
+  $<HTMLButtonElement>("dev_save").disabled = !devValid;
+  $<HTMLButtonElement>("dev_test_conn").disabled = !devValid;
+  $<HTMLElement>("dev_tls_forced").hidden = !c.tls_forced;
+  const tls = $<HTMLInputElement>("dev_tls");
+  if (c.tls_forced) tls.checked = true;
+  tls.disabled = c.tls_forced;
+  $<HTMLUListElement>("dev_warnings").replaceChildren(
+    ...c.warnings.map((w) => el("li", w.startsWith("Dictation disabled") ? "err" : "", w)),
+  );
+}
+
+let checkTimer = 0;
+function scheduleCheck(): void {
+  renderRoutes();
+  clearTimeout(checkTimer);
+  checkTimer = setTimeout(() => {
+    void invoke<DevCheck>("dev_validate", { form: readDev() }).then(showCheck);
+  }, 150);
+}
+
+function healthText(h: Health): string {
+  if (!h.ok) {
+    const code = h.error ?? "error";
+    const why = hint(code);
+    return `${code}${h.message ? `: ${h.message}` : ""}${why ? ` — ${why}` : ""}`;
+  }
+  const r = h.rtt_ms;
+  const parts = [
+    r ? `OK · median ${r.median} ms (${r.min}-${r.max})` : "OK",
+    h.server_version ?? "",
+    h.asr_backend ?? "",
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
+function showServerInfo(h: Health | null): void {
+  const e = $<HTMLElement>("dev_server_info");
+  if (!h) {
+    e.textContent = "Not probed yet";
+    e.className = "";
+    return;
+  }
+  if (!h.ok) {
+    e.textContent = healthText(h);
+    e.className = "err";
+    return;
+  }
+  const pp = h.postprocess_match === false ? " · ⚠ server pipeline ≠ client pipeline; results may differ" : " · pipeline ✓";
+  e.textContent =
+    `${h.server ?? ""} · ${h.server_version ?? "?"} (core ${h.server_core ?? "?"}, proto ${h.proto ?? "?"})` +
+    ` · ASR ${h.asr_backend ?? "?"} ${h.asr_model ?? ""} · LLM ${h.llm ? "on" : "off"}` +
+    ` · workers ${h.workers ?? "?"} (busy ${h.busy ?? "?"})${pp}`;
+  e.className = h.postprocess_match === false ? "err" : "ok";
+}
+
+function showRoute(r: RouteView): void {
+  const last = r.last;
+  const e = $<HTMLElement>("dev_last");
+  if (!last) {
+    e.textContent = "No dictation yet";
+  } else {
+    const engine = last.engine === "remote" ? "server" : last.engine === "local" ? "client" : "none";
+    const bits = [
+      engine,
+      last.fallback ? `fallback: ${last.fallback}` : "",
+      last.server ? `server ${last.server}` : "",
+      last.rtt_ms != null ? `rtt ${last.rtt_ms} ms` : "",
+      last.queue_ms != null ? `queue ${last.queue_ms} ms` : "",
+      `asr ${last.asr_ms} ms / total ${last.total_ms} ms`,
+      last.status,
+      last.empty_reason ?? "",
+      new Date(last.at_ms).toLocaleTimeString(),
+    ].filter(Boolean);
+    e.textContent = bits.join(" · ");
+  }
+  const c = r.circuit;
+  $<HTMLElement>("dev_circuit").textContent = !c.open
+    ? "closed"
+    : c.until_config_change
+      ? `open until the server settings change (${c.reason ?? "?"})`
+      : `open until ${new Date(Date.now() + (c.retry_in_ms ?? 0)).toLocaleTimeString()} (${c.reason ?? "?"})`;
+  showServerInfo(r.health);
+}
+
+function showDev(v: DevView): void {
+  devView = v;
+  $<HTMLElement>("tab_developer").hidden = !v.visible;
+  $<HTMLElement>("version_row").textContent = `Flow Clone ${v.version}`;
+  $<HTMLElement>("privacy_line").textContent = v.caps.remote
+    ? "Speech is processed on this PC or on your own server. Nothing goes to a third party."
+    : "Everything runs on this PC. Nothing is sent over the network.";
+  fillDev(v.form);
+  $<HTMLInputElement>("dev_allow_server").disabled = !v.caps.remote;
+  $<HTMLInputElement>("dev_allow_client").disabled = !v.caps.local;
+  $<HTMLElement>("dev_server_na").hidden = v.caps.remote;
+  $<HTMLElement>("dev_client_na").hidden = v.caps.local;
+  $<HTMLElement>("dev_lock").hidden = v.caps.remote;
+  const c = v.capabilities;
+  $<HTMLElement>("dev_build").textContent =
+    `${[c.local ? "client" : "", c.remote ? "server" : ""].filter(Boolean).join(" + ") || "no engine"}` +
+    ` · ASR ${c.asr_engines.join(", ") || "none"} · LLM ${c.llm ? "yes" : "no"} · proto ${c.proto} · core ${c.core_version}`;
+  showCheck(v.check);
+  showRoute(v.route);
+}
+
+async function loadDev(): Promise<void> {
+  try {
+    showDev(await invoke<DevView>("dev_get"));
+  } catch (e) {
+    setStatus("dev_status", String(e), false);
+  }
+}
+
+async function devCall<T>(cmd: string, args: Record<string, unknown>, okText: string): Promise<T | null> {
+  try {
+    const r = await invoke<T>(cmd, args);
+    setStatus("dev_status", okText, true);
+    return r;
+  } catch (e) {
+    const errs = e as FieldError[] | string;
+    if (Array.isArray(errs)) {
+      showCheck({ errors: errs, warnings: [], tls_forced: false });
+      setStatus("dev_status", "Fix the highlighted fields", false);
+    } else {
+      setStatus("dev_status", String(e), false);
+    }
+    return null;
+  }
+}
+
+async function devSave(): Promise<void> {
+  if (!devValid) return;
+  const v = await devCall<DevView>("dev_set", { form: readDev() }, "Saved — applies to the next dictation");
+  if (v) showDev(v);
+}
+
+async function devTestConnection(): Promise<void> {
+  if (!devValid) return;
+  const out = $<HTMLElement>("dev_test");
+  out.textContent = "Testing…";
+  out.className = "hint";
+  try {
+    const h = await invoke<Health>("dev_test_connection", { form: readDev() });
+    out.textContent = `Test connection: ${healthText(h)}`;
+    out.className = h.ok ? "hint ok" : "hint err";
+  } catch (e) {
+    out.textContent = String(e);
+    out.className = "hint err";
+  }
+}
+
+async function devTestSession(): Promise<void> {
+  const out = $<HTMLElement>("dev_test");
+  out.textContent = "Running a 1 s silent session through the saved settings…";
+  out.className = "hint";
+  try {
+    const r = await invoke<SessionTest>("dev_test_session");
+    const engine = r.engine === "remote" ? "server" : r.engine === "local" ? "client" : "none";
+    const ok = r.status === "EMPTY" && r.empty_reason === "no_speech";
+    out.textContent =
+      `Test session: ${r.status}${r.empty_reason ? ` (${r.empty_reason})` : ""} via ${engine}` +
+      `${r.fallback ? ` (fallback: ${r.fallback} — ${hint(r.fallback)})` : ""} in ${r.total_ms} ms` +
+      `${r.error ? ` — ${r.error}` : ""}`;
+    out.className = ok ? "hint ok" : "hint err";
+  } catch (e) {
+    out.textContent = String(e);
+    out.className = "hint err";
+  }
+  void refreshRoute();
+}
+
+async function refreshRoute(): Promise<void> {
+  try {
+    showRoute(await invoke<RouteView>("dev_route_status"));
+  } catch {
+    /* tab not loaded yet */
+  }
+}
+
+let versionTaps = 0;
+let versionTimer = 0;
+function versionTapped(): void {
+  if (!devView || devView.visible) return;
+  versionTaps++;
+  clearTimeout(versionTimer);
+  versionTimer = setTimeout(() => (versionTaps = 0), 3000);
+  if (versionTaps >= 7) {
+    versionTaps = 0;
+    void devCall<DevView>("dev_unlock", { unlocked: true }, "Developer settings unlocked").then((v) => {
+      if (v) {
+        showDev(v);
+        showTab("developer");
+      }
+    });
+  }
+}
+
 // ------------------------------------------------------------------ boot
 
 async function load(): Promise<void> {
@@ -644,6 +1009,7 @@ async function load(): Promise<void> {
   dict = prefs.dictionary.map((e) => ({ ...e }));
   renderDict();
   await loadSuggestions();
+  await loadDev();
 }
 
 for (const b of document.querySelectorAll<HTMLButtonElement>("nav.tabs button")) {
@@ -651,6 +1017,46 @@ for (const b of document.querySelectorAll<HTMLButtonElement>("nav.tabs button"))
 }
 $<HTMLFormElement>("form").addEventListener("submit", (e) => void saveForm(e));
 $<HTMLSelectElement>("asr_engine").addEventListener("change", showEngineFields);
+for (const i of document.querySelectorAll<HTMLInputElement>("[data-panel=developer] input")) {
+  i.addEventListener("input", scheduleCheck);
+  i.addEventListener("change", scheduleCheck);
+}
+$<HTMLButtonElement>("dev_save").addEventListener("click", () => void devSave());
+$<HTMLButtonElement>("dev_test_conn").addEventListener("click", () => void devTestConnection());
+$<HTMLButtonElement>("dev_test_session").addEventListener("click", () => void devTestSession());
+$<HTMLButtonElement>("dev_reset_circuit").addEventListener("click", () =>
+  void devCall<RouteView>("dev_reset_circuit", {}, "Circuit reset").then((r) => r && showRoute(r)),
+);
+$<HTMLButtonElement>("dev_reset").addEventListener("click", () =>
+  void devCall<DevView>("dev_reset_defaults", {}, "Defaults restored").then((v) => v && showDev(v)),
+);
+$<HTMLButtonElement>("dev_lock").addEventListener("click", () =>
+  void devCall<DevView>("dev_unlock", { unlocked: false }, "Developer settings locked").then((v) => {
+    if (v) {
+      showDev(v);
+      showTab("general");
+    }
+  }),
+);
+$<HTMLButtonElement>("dev_token_show").addEventListener("click", () => {
+  const t = $<HTMLInputElement>("dev_token");
+  t.type = t.type === "password" ? "text" : "password";
+  $<HTMLButtonElement>("dev_token_show").textContent = t.type === "password" ? "Show" : "Hide";
+});
+$<HTMLButtonElement>("dev_token_paste").addEventListener("click", () => {
+  void navigator.clipboard
+    .readText()
+    .then((t) => {
+      $<HTMLInputElement>("dev_token").value = t.trim();
+      scheduleCheck();
+    })
+    .catch(() => setStatus("dev_status", "Clipboard not readable: paste with Ctrl+V", false));
+});
+$<HTMLButtonElement>("dev_token_clear").addEventListener("click", () => {
+  $<HTMLInputElement>("dev_token").value = "";
+  scheduleCheck();
+});
+$<HTMLElement>("version_row").addEventListener("click", versionTapped);
 let searchTimer = 0;
 $<HTMLInputElement>("hist_query").addEventListener("input", () => {
   clearTimeout(searchTimer);
@@ -674,6 +1080,7 @@ void onEvent<ModelStatus>("model:status", (e) => showModel(e.payload));
 void onEvent<LlmStatus>("llm:status", (e) => showLlm(e.payload));
 void onEvent<number>("suggestions:changed", () => void loadSuggestions());
 void onEvent<string>("settings:tab", (e) => showTab(e.payload));
+void onEvent<RouteView>("dev:route", (e) => showRoute(e.payload));
 void onEvent<null>("history:changed", () => {
   if (!$<HTMLElement>("hist_list").closest("[hidden]")) void loadHistory();
 });
