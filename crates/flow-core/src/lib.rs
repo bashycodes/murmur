@@ -21,4 +21,13 @@ pub mod vad;
 #[cfg(feature = "whisper")]
 pub mod whisper;
 
-pub use engine::{CommitResult, CommitStatus, CoreError, FlowCore, Timings};
+pub use engine::{CommitResult, CommitStatus, CoreError, FlowCore, RouteInfo, Timings};
+
+/// flow-core version (reported by the hybrid router and server).
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Revision of the deterministic pipeline (VAD, hallucination guard,
+/// spoken cleanup, Wispr post-processing, paste segments). Bump it whenever
+/// any of them changes output for the same input, so a hybrid client and
+/// its server can detect pipeline skew (D17).
+pub const POSTPROCESS_REV: &str = "2026-10-21.1";
