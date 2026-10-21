@@ -5,12 +5,14 @@ use crate::audio::capture::{self, Capture};
 use crate::context::{uia, RawSnapshot};
 use crate::controller::{AudioSink, Controller, Platform};
 use crate::core_adapter::{self, FlowCoreAdapter, LlmSpec, LlmStatus, ModelSpec, ModelStatus};
+use crate::dev_settings::{BuildCaps, DevForm, DevSettings, FieldError};
 use crate::dictation::{Input, OverlayState, Sound};
 use crate::ducking::win::Ducker;
 use crate::history::{self, History};
 use crate::hotkeys::{self, win::HookHandle};
 use crate::paste::{self, PasteOptions};
 use crate::prefs::{LoadOutcome, Prefs};
+use crate::router_adapter::{self, RouteView, RouterAdapter, SessionTest};
 use crate::suggestions::{self as sugg, SuggestionStore};
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -34,7 +36,12 @@ struct AppState {
     path: PathBuf,
     appdata: Option<String>,
     hook: Mutex<Option<HookHandle>>,
+    /// The local model slot; empty in server-only builds.
     core: OnceLock<Arc<FlowCoreAdapter>>,
+    /// Every dictation goes through this (D17, invariant I1).
+    router: OnceLock<Arc<RouterAdapter>>,
+    /// Controller's "dictation running" flag (Test session must not race it).
+    dictating: OnceLock<Arc<std::sync::atomic::AtomicBool>>,
     /// Controller input (overlay ✕/✓ clicks).
     input: OnceLock<mpsc::Sender<Input>>,
     history: Option<Arc<Mutex<History>>>,
@@ -124,13 +131,19 @@ impl Platform for WinPlatform {
         let _ = self.app.emit_to(OVERLAY, "dictation:preview", text);
     }
 
-    fn send_enter(&self) -> Result<(), String> {
+    fn send_key(&self, key: crate::core_api::PasteKey) -> Result<(), String> {
+        use crate::core_api::PasteKey;
         use crate::input::{vk, Stroke};
-        let s = [Stroke::down(vk::RETURN), Stroke::up(vk::RETURN)];
+        let code = match key {
+            PasteKey::Enter => vk::RETURN,
+            PasteKey::Tab => vk::TAB,
+            PasteKey::Break => return Ok(()),
+        };
+        let s = [Stroke::down(code), Stroke::up(code)];
         if crate::input::win::send(&s) == s.len() {
             Ok(())
         } else {
-            Err("could not send Enter".into())
+            Err(format!("could not send {key:?}"))
         }
     }
 
@@ -253,6 +266,9 @@ fn set_prefs(
     state: tauri::State<'_, AppState>,
     mut prefs: Prefs,
 ) -> Result<(), String> {
+    // The Developer tab saves its own section (dev_set); a General/AI save
+    // from a page loaded earlier must not roll it back.
+    prefs.developer = state.prefs.read().unwrap().developer.clone();
     prefs.dictionary = crate::dictionary::normalize(prefs.dictionary);
     prefs.validate()?;
     prefs.save(&state.path).map_err(|e| e.to_string())?;
@@ -269,11 +285,13 @@ fn set_prefs(
     };
     if let Some(core) = state.core.get() {
         let ad = state.appdata.as_deref();
-        if reload {
-            core.load(ModelSpec::from_prefs(&prefs, ad));
-        }
-        if reload_llm {
-            core.load_llm(LlmSpec::from_prefs(&prefs, ad));
+        if want_local(&prefs) {
+            if reload {
+                core.load(ModelSpec::from_prefs(&prefs, ad));
+            }
+            if reload_llm {
+                core.load_llm(LlmSpec::from_prefs(&prefs, ad));
+            }
         }
     }
     if let Some(h) = &state.history {
@@ -485,6 +503,7 @@ fn llm_wanted_but_down(state: &AppState, prefs: &Prefs) -> bool {
 struct ModelInfo {
     status: ModelStatus,
     default_path: String,
+    default_parakeet_dir: String,
     models_dir: String,
     llm: LlmStatus,
     default_llm_path: String,
@@ -503,6 +522,7 @@ fn get_model_status(state: tauri::State<'_, AppState>) -> ModelInfo {
                 path: String::new(),
             }),
         default_path: core_adapter::default_model_path(ad).display().to_string(),
+        default_parakeet_dir: core_adapter::default_parakeet_dir(ad).display().to_string(),
         models_dir: core_adapter::models_dir(ad).display().to_string(),
         llm: state
             .core
@@ -531,6 +551,261 @@ fn overlay_action(state: tauri::State<'_, AppState>, action: String) -> Result<(
 #[tauri::command]
 fn list_microphones() -> Vec<String> {
     capture::list_input_devices()
+}
+
+// ------------------------------------------------- developer tab (D17 §5)
+
+/// Load the on-device models? Only when the build has them, the client
+/// route is allowed, and it may be needed soon: always when it is primary,
+/// and as a warm fallback behind the server unless `keep_local_warm` is off.
+fn want_local(prefs: &Prefs) -> bool {
+    let caps = BuildCaps::current();
+    let d = &prefs.developer;
+    let (srv, cli) = d.effective(caps);
+    cli && (d.keep_local_warm || !srv || d.prefer() == crate::dev_settings::Route::Client)
+}
+
+/// Load local models now if the settings want them and nothing is loaded
+/// (e.g. Allow client was just turned on). Never reloads a loaded model.
+fn ensure_local(state: &AppState, prefs: &Prefs) {
+    let Some(core) = state.core.get() else { return };
+    if !want_local(prefs) {
+        return;
+    }
+    let ad = state.appdata.as_deref();
+    // A slot that never started a load reports `Loading` with no path.
+    if matches!(core.status(), ModelStatus::Loading { ref path } if path.is_empty()) {
+        core.load(ModelSpec::from_prefs(prefs, ad));
+        core.load_llm(LlmSpec::from_prefs(prefs, ad));
+    }
+}
+
+#[derive(serde::Serialize)]
+struct DevCheck {
+    errors: Vec<FieldError>,
+    warnings: Vec<String>,
+    tls_forced: bool,
+}
+
+fn dev_check(form: &DevForm) -> DevCheck {
+    let caps = BuildCaps::current();
+    match form.validate(caps) {
+        Ok((s, token)) => {
+            let mut s2 = s.clone();
+            s2.token_dpapi = if token.is_empty() {
+                String::new()
+            } else {
+                "set".into()
+            };
+            // The router's own validation must agree (it is the gate).
+            let errors = match router_adapter::server_config(&s, &token) {
+                Ok(_) => Vec::new(),
+                Err(m) => vec![FieldError {
+                    field: "host",
+                    message: m,
+                }],
+            };
+            DevCheck {
+                errors,
+                warnings: s2.warnings(caps),
+                tls_forced: !s.server.host.is_empty()
+                    && crate::dev_settings::host_is_public(&s.server.host),
+            }
+        }
+        Err(errors) => DevCheck {
+            errors,
+            warnings: Vec::new(),
+            tls_forced: !form.host.trim().is_empty()
+                && crate::dev_settings::normalize_host(&form.host)
+                    .is_ok_and(|h| crate::dev_settings::host_is_public(&h)),
+        },
+    }
+}
+
+#[derive(serde::Serialize)]
+struct DevView {
+    form: DevForm,
+    caps: BuildCaps,
+    capabilities: flow_router::Capabilities,
+    visible: bool,
+    version: &'static str,
+    check: DevCheck,
+    route: Option<RouteView>,
+}
+
+fn dev_view(state: &AppState) -> DevView {
+    let caps = BuildCaps::current();
+    let dev = state.prefs.read().unwrap().developer.clone();
+    let form = DevForm::from_settings(&dev, &dev.token());
+    let router = state.router.get();
+    DevView {
+        check: dev_check(&form),
+        form,
+        caps,
+        capabilities: router
+            .map(|r| r.router().capabilities())
+            .unwrap_or_else(|| flow_router::Capabilities {
+                local: caps.local,
+                remote: caps.remote,
+                asr_engines: Vec::new(),
+                llm: false,
+                proto: 0,
+                core_version: String::new(),
+            }),
+        visible: dev.tab_visible(caps),
+        version: env!("CARGO_PKG_VERSION"),
+        route: router.map(|r| r.route_view()),
+    }
+}
+
+/// Save developer settings: validate → DPAPI the token → prefs.json →
+/// `router.update_config` (next session) → probe in the background.
+fn save_dev(app: &AppHandle, state: &AppState, dev: DevSettings) -> Result<(), String> {
+    let mut prefs = state.prefs.read().unwrap().clone();
+    prefs.developer = dev;
+    if let Some(r) = state.router.get() {
+        r.apply(&prefs.developer)?;
+    }
+    prefs.save(&state.path).map_err(|e| e.to_string())?;
+    ensure_local(state, &prefs);
+    *state.prefs.write().unwrap() = prefs;
+    probe_in_background(app);
+    Ok(())
+}
+
+/// Refresh "Server info" off the UI thread when a server is configured.
+fn probe_in_background(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let Some(r) = state.router.get().cloned() else {
+        return;
+    };
+    let dev = state.prefs.read().unwrap().developer.clone();
+    let (srv, _) = dev.effective(BuildCaps::current());
+    if !srv || dev.server.host.is_empty() {
+        let _ = app.emit_to(SETTINGS, "dev:route", r.route_view());
+        return;
+    }
+    let app = app.clone();
+    let _ = std::thread::Builder::new()
+        .name("flow-probe".into())
+        .spawn(move || {
+            let _ = r.router().probe_server();
+            let _ = app.emit_to(SETTINGS, "dev:route", r.route_view());
+        });
+}
+
+#[tauri::command]
+fn dev_get(state: tauri::State<'_, AppState>) -> DevView {
+    dev_view(&state)
+}
+
+#[tauri::command]
+fn dev_validate(form: DevForm) -> DevCheck {
+    dev_check(&form)
+}
+
+#[tauri::command]
+fn dev_set(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    form: DevForm,
+) -> Result<DevView, Vec<FieldError>> {
+    let (mut dev, token) = form.validate(BuildCaps::current())?;
+    let as_error = |m: String| {
+        vec![FieldError {
+            field: "host",
+            message: m,
+        }]
+    };
+    router_adapter::server_config(&dev, &token).map_err(as_error)?;
+    dev.token_dpapi = crate::secrets::protect(&token).map_err(|m| {
+        vec![FieldError {
+            field: "token",
+            message: m,
+        }]
+    })?;
+    save_dev(&app, &state, dev).map_err(as_error)?;
+    Ok(dev_view(&state))
+}
+
+/// Probe the form's (unsaved) server; blocking, so async = off the UI thread.
+#[tauri::command]
+async fn dev_test_connection(
+    app: AppHandle,
+    form: DevForm,
+) -> Result<flow_router::HealthReport, String> {
+    let (dev, token) = form.validate(BuildCaps::current()).map_err(|e| {
+        e.into_iter()
+            .map(|e| e.message)
+            .collect::<Vec<_>>()
+            .join("; ")
+    })?;
+    let server = router_adapter::server_config(&dev, &token)?;
+    let state = app.state::<AppState>();
+    let router = state.router.get().cloned().ok_or("router not ready")?;
+    tauri::async_runtime::spawn_blocking(move || router.router().probe_config(&server))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn dev_test_session(app: AppHandle) -> Result<SessionTest, String> {
+    let state = app.state::<AppState>();
+    if state
+        .dictating
+        .get()
+        .is_some_and(|d| d.load(std::sync::atomic::Ordering::Relaxed))
+    {
+        return Err("a dictation is running".into());
+    }
+    let router = state.router.get().cloned().ok_or("router not ready")?;
+    let cfg = state.prefs.read().unwrap().session_config();
+    let r = tauri::async_runtime::spawn_blocking(move || router.test_session(cfg))
+        .await
+        .map_err(|e| e.to_string())?;
+    if let Some(router) = state.router.get() {
+        let _ = app.emit_to(SETTINGS, "dev:route", router.route_view());
+    }
+    Ok(r)
+}
+
+#[tauri::command]
+fn dev_route_status(state: tauri::State<'_, AppState>) -> Option<RouteView> {
+    state.router.get().map(|r| r.route_view())
+}
+
+#[tauri::command]
+fn dev_reset_circuit(state: tauri::State<'_, AppState>) -> Option<RouteView> {
+    let r = state.router.get()?;
+    r.router().reset_circuit();
+    Some(r.route_view())
+}
+
+#[tauri::command]
+fn dev_reset_defaults(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<DevView, String> {
+    let unlocked = state.prefs.read().unwrap().developer.dev_unlocked;
+    let dev = DevSettings {
+        dev_unlocked: unlocked,
+        ..DevSettings::default()
+    };
+    save_dev(&app, &state, dev)?;
+    Ok(dev_view(&state))
+}
+
+/// 7 taps on the version row (client-only builds) / the Lock button.
+#[tauri::command]
+fn dev_unlock(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    unlocked: bool,
+) -> Result<DevView, String> {
+    let mut dev = state.prefs.read().unwrap().developer.clone();
+    dev.dev_unlocked = unlocked;
+    save_dev(&app, &state, dev)?;
+    Ok(dev_view(&state))
 }
 
 // ---------------------------------------------------------------- windows
@@ -690,6 +965,8 @@ pub fn run() {
             appdata: appdata.clone(),
             hook: Mutex::new(None),
             core: OnceLock::new(),
+            router: OnceLock::new(),
+            dictating: OnceLock::new(),
             input: OnceLock::new(),
             history: history.clone(),
             suggestions: suggestions.clone(),
@@ -712,7 +989,16 @@ pub fn run() {
             suggestion_dismiss,
             dictionary_import,
             dictionary_export,
-            dictionary_export_text
+            dictionary_export_text,
+            dev_get,
+            dev_validate,
+            dev_set,
+            dev_test_connection,
+            dev_test_session,
+            dev_route_status,
+            dev_reset_circuit,
+            dev_reset_defaults,
+            dev_unlock
         ])
         .on_window_event(|window, event| {
             if window.label() == SETTINGS {
@@ -801,21 +1087,56 @@ pub fn run() {
                 ducker: Ducker::spawn(),
                 overlay_state,
             });
-            // Load the model in the background; the tray notice tracks it.
-            let core = core_adapter::make_core(&prefs.read().unwrap(), appdata.as_deref());
-            {
+            // Local engine (client builds): load in the background; the
+            // tray notice tracks it. Server-only builds have no model slot.
+            let caps = BuildCaps::current();
+            let local = caps.local.then(FlowCoreAdapter::new);
+            if let Some(core) = &local {
                 let h = handle.clone();
                 let item = model_item.clone();
                 core.on_status(move |st| apply_model_status(&h, &item, st));
                 let h = handle.clone();
                 let item = llm_item.clone();
                 core.on_llm_status(move |st| apply_llm_status(&h, &item, st));
+                let p = prefs.read().unwrap().clone();
+                if want_local(&p) {
+                    core.load(ModelSpec::from_prefs(&p, appdata.as_deref()));
+                    core.load_llm(LlmSpec::from_prefs(&p, appdata.as_deref()));
+                } else {
+                    let _ = model_item.set_text("Speech model: not loaded (server first)");
+                }
+                let _ = app.state::<AppState>().core.set(core.clone());
+            } else {
+                let _ = model_item.set_text("Speech: your flow-server (no local model)");
+                let _ = llm_item.set_text("AI cleanup: on the server");
             }
-            let _ = app.state::<AppState>().core.set(core.clone());
+            // Every dictation goes through the router (D17).
+            let dev = prefs.read().unwrap().developer.clone();
+            let cfg = router_adapter::router_config(&dev, caps).unwrap_or_else(|e| {
+                eprintln!("[developer] invalid settings, using defaults: {e}");
+                router_adapter::router_config(&DevSettings::default(), caps)
+                    .expect("default router config")
+            });
+            let router = RouterAdapter::new(cfg, local, router_adapter::remote_factory());
+            {
+                let h = handle.clone();
+                let p = prefs.clone();
+                let r = Arc::downgrade(&router);
+                router.on_route(move |last| {
+                    if p.read().unwrap().developer.show_engine_badge {
+                        let _ = h.emit_to(OVERLAY, "dictation:route", last.badge());
+                    }
+                    if let Some(r) = r.upgrade() {
+                        let _ = h.emit_to(SETTINGS, "dev:route", r.route_view());
+                    }
+                });
+            }
+            let _ = app.state::<AppState>().router.set(router.clone());
+            probe_in_background(&handle);
             let start = Instant::now();
             let mut controller = Controller::new(
                 platform.clone(),
-                core,
+                router,
                 prefs.clone(),
                 tx.clone(),
                 Box::new(move || start.elapsed().as_millis() as u64),
@@ -827,6 +1148,7 @@ pub fn run() {
             let pending = suggestions.lock().unwrap().data.pending.len();
             show_suggestion_count(&handle, pending);
             let dictating = controller.dictating_flag();
+            let _ = app.state::<AppState>().dictating.set(dictating.clone());
             std::thread::Builder::new()
                 .name("flow-controller".into())
                 .spawn(move || controller.run(rx))?;

@@ -31,6 +31,16 @@ pub enum Retention {
     Never,
 }
 
+/// Local speech engine (D4/D12). Parakeet is English-only and needs a
+/// build with the `parakeet` feature.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AsrEngineChoice {
+    #[default]
+    Whisper,
+    Parakeet,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Prefs {
@@ -65,6 +75,14 @@ pub struct Prefs {
     pub model_path: Option<String>,
     /// ASR threads; `None` = core default (half the logical CPUs).
     pub asr_threads: Option<usize>,
+    /// Which local engine `model_path` / `parakeet_model_dir` feed.
+    pub asr_engine: AsrEngineChoice,
+    /// Parakeet model directory; `None` = `%APPDATA%\FlowClone\models\`
+    /// `sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8`. Never downloaded.
+    pub parakeet_model_dir: Option<String>,
+    /// Deterministic spoken cleanup in the core (core-p1, D15): spoken
+    /// punctuation, fillers, "scratch that", money/time/date formatting.
+    pub spoken_cleanup: bool,
     /// Show the live partial transcript above the pill.
     pub live_preview: bool,
     pub live_preview_interval_ms: u32,
@@ -85,6 +103,8 @@ pub struct Prefs {
     pub learn_window_ms: u64,
     /// Re-read interval while watching.
     pub learn_poll_ms: u64,
+    /// Developer settings: engine routing (local / self-hosted server).
+    pub developer: crate::dev_settings::DevSettings,
 }
 
 impl Default for Prefs {
@@ -116,6 +136,9 @@ impl Default for Prefs {
             max_dictation_minutes: 20,
             model_path: None,
             asr_threads: None,
+            asr_engine: AsrEngineChoice::Whisper,
+            parakeet_model_dir: None,
+            spoken_cleanup: true,
             live_preview: true,
             live_preview_interval_ms: 1500,
             llm_enabled: false,
@@ -125,6 +148,7 @@ impl Default for Prefs {
             learn_from_edits: true,
             learn_window_ms: 45_000,
             learn_poll_ms: 1_000,
+            developer: crate::dev_settings::DevSettings::default(),
         }
     }
 }
@@ -224,6 +248,8 @@ impl Prefs {
                 .live_preview
                 .then_some(self.live_preview_interval_ms.max(250)),
             llm_timeout_ms: self.llm_timeout_ms.clamp(200, 30_000),
+            spoken_cleanup: self.spoken_cleanup,
+            ..SessionConfig::default()
         }
     }
 
@@ -241,6 +267,14 @@ impl Prefs {
         match self.llm_model_path.as_deref().map(str::trim) {
             Some(p) if !p.is_empty() => PathBuf::from(p),
             _ => crate::core_adapter::default_llm_path(appdata),
+        }
+    }
+
+    /// The Parakeet model directory when that engine is chosen.
+    pub fn resolved_parakeet_dir(&self, appdata: Option<&str>) -> PathBuf {
+        match self.parakeet_model_dir.as_deref().map(str::trim) {
+            Some(p) if !p.is_empty() => PathBuf::from(p),
+            _ => crate::core_adapter::default_parakeet_dir(appdata),
         }
     }
 
@@ -381,6 +415,37 @@ mod tests {
         assert_eq!(c.partial_interval_ms, Some(1500));
         assert_eq!(c.max_samples, p.policy().max_samples());
         assert_eq!(c.cleanup_level, CleanupLevel::Light);
+        assert!(c.spoken_cleanup, "core-p1 default on");
+        p.spoken_cleanup = false;
+        assert!(!p.session_config().spoken_cleanup);
+    }
+
+    #[test]
+    fn developer_section_round_trips_and_defaults() {
+        let d = tmpdir("dev");
+        let path = d.join(FILE_NAME);
+        let mut p = Prefs::default();
+        p.developer.server.host = "100.64.0.10".into();
+        p.developer.token_dpapi = crate::secrets::protect("0123456789abcdef").unwrap();
+        p.save(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"developer\""));
+        assert!(!text.contains("0123456789abcdef"));
+        let (q, _) = Prefs::load(&path);
+        assert_eq!(q.developer, p.developer);
+        assert_eq!(q.developer.token(), "0123456789abcdef");
+        let old: Prefs = serde_json::from_str(r#"{"enable_sounds":true}"#).unwrap();
+        assert_eq!(old.developer, crate::dev_settings::DevSettings::default());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn old_prefs_files_get_whisper_and_spoken_cleanup() {
+        let p: Prefs = serde_json::from_str(r#"{"model_path":"C:/m/x.bin"}"#).unwrap();
+        assert_eq!(p.asr_engine, AsrEngineChoice::Whisper);
+        assert!(p.spoken_cleanup);
+        let p: Prefs = serde_json::from_str(r#"{"asr_engine":"parakeet"}"#).unwrap();
+        assert_eq!(p.asr_engine, AsrEngineChoice::Parakeet);
     }
 
     #[test]

@@ -10,6 +10,7 @@
 use flow_windows::context::RawSnapshot;
 use flow_windows::controller::{AudioSink, Controller, Platform};
 use flow_windows::core_adapter::{FlowCoreAdapter, LlmSpec, LlmStatus, ModelSpec, ModelStatus};
+use flow_windows::core_api::PasteKey;
 use flow_windows::dictation::{Input, OverlayState, Phase, Sound};
 use flow_windows::history::History;
 use flow_windows::hotkeys::HotkeyAction;
@@ -101,8 +102,8 @@ impl Platform for FakeOs {
     fn preview(&self, text: &str) {
         self.previews.lock().unwrap().push(text.to_string());
     }
-    fn send_enter(&self) -> Result<(), String> {
-        self.push("enter");
+    fn send_key(&self, key: PasteKey) -> Result<(), String> {
+        self.push(format!("key {key:?}"));
         Ok(())
     }
     fn copy_text(&self, text: &str) -> Result<(), String> {
@@ -264,7 +265,7 @@ fn spoken_press_enter_sends_enter_after_paste() {
         !pastes[0].to_lowercase().contains("press enter"),
         "{pastes:?}"
     );
-    assert!(r.os.log.lock().unwrap().iter().any(|l| l == "enter"));
+    assert!(r.os.log.lock().unwrap().iter().any(|l| l == "key Enter"));
 }
 
 #[test]
@@ -276,6 +277,17 @@ fn silence_is_empty_and_pastes_nothing() {
     );
     r.dictate(&vec![0i16; 16_000], Duration::from_secs(10));
     assert!(r.os.pastes().is_empty());
+    // core-p1 `empty_reason: no_speech` → a short notice, then rest.
+    assert!(matches!(r.c.machine().phase(), Phase::Error { .. }));
+    assert!(r
+        .os
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|l| l.contains("Notice") && l.contains("No speech heard")));
+    assert!(!r.os.log.lock().unwrap().iter().any(|l| l == "play Error"));
+    r.at(60_000, Input::Tick);
     assert_eq!(r.c.machine().phase(), &Phase::Idle);
     assert_eq!(r.history.lock().unwrap().count().unwrap(), 0);
 }
@@ -405,6 +417,59 @@ fn real_tiny_model_on_jfk_pastes_the_speech() {
         .unwrap();
     assert_eq!(e.lang.as_deref(), Some("en"));
     assert!(e.words > 15);
+}
+
+/// D12 through the shell: Parakeet-TDT (sherpa-onnx) chosen as the local
+/// engine. Model dir from FLOW_PARAKEET_DIR or the research cache.
+#[cfg(feature = "parakeet")]
+#[test]
+fn real_parakeet_on_jfk_pastes_the_speech() {
+    let dir = std::env::var("FLOW_PARAKEET_DIR")
+        .map(PathBuf::from)
+        .ok()
+        .or_else(|| {
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            [
+                "../../models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
+                "../../../../../../.cache/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
+            ]
+            .iter()
+            .map(|r| root.join(r))
+            .find(|p| p.is_dir())
+        });
+    let wav = find(
+        "FLOW_WAV",
+        &["../../models/jfk.wav", "../../../../../models/jfk.wav"],
+    );
+    let (Some(dir), Some(wav)) = (dir, wav) else {
+        eprintln!("SKIP: Parakeet model dir / jfk.wav not found");
+        return;
+    };
+    let pcm: Vec<i16> = hound::WavReader::open(&wav)
+        .unwrap()
+        .samples::<i16>()
+        .map(Result::unwrap)
+        .collect();
+    let a = FlowCoreAdapter::new();
+    let st = a.load_now(&ModelSpec::Parakeet {
+        dir,
+        threads: Some(4),
+    });
+    assert!(st.is_ready(), "{st:?}");
+    let prefs = Prefs {
+        live_preview: false,
+        ..Prefs::default()
+    };
+    let mut r = rig(a, FakeOs::new("notepad.exe"), prefs);
+    r.dictate(&pcm, Duration::from_secs(120));
+    let pastes = r.os.pastes();
+    assert_eq!(pastes.len(), 1, "{:?}", r.os.log.lock().unwrap());
+    assert!(
+        pastes[0]
+            .to_lowercase()
+            .contains("ask not what your country"),
+        "{pastes:?}"
+    );
 }
 
 #[test]

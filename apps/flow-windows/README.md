@@ -2,9 +2,49 @@
 
 Tauri 2 tray app: hold **Ctrl+Win** to dictate, **Ctrl+Win+Space** (or double-tap
 Ctrl+Win) for hands-free, **Esc** to cancel, **Shift+Alt+Z** to paste the last
-transcript again, **Shift+Alt+X** to copy it. Text is pasted into the focused app. Nothing touches the
-network. Speech-to-text is the real `crates/flow-core` (whisper.cpp), reached
-through the `CoreApi` trait in `src/core_adapter.rs`.
+transcript again, **Shift+Alt+X** to copy it. Text is pasted into the focused app.
+Speech-to-text runs either on this PC (the real `crates/flow-core`: whisper.cpp
+or Parakeet) or on **your own** `flow-server` over LAN/Tailscale (hybrid mode,
+`docs/hybrid-architecture.md`, D17). Every dictation goes through
+`flow_router::Router` (`src/router_adapter.rs`); nothing reaches a third party,
+and a client-only build contains no network code at all.
+
+## Build flavours (Cargo features)
+
+| Build | Command | Engines |
+|---|---|---|
+| Hybrid (default) | `cargo build --features app` | this PC + your server, fallback between them |
+| Client only | `cargo build --no-default-features --features local,app` | this PC only; no network code linked |
+| Server only | `cargo build --no-default-features --features remote,app` | your server only; no whisper / `flow_llm.dll` / models needed |
+
+`parakeet` adds the Parakeet-TDT engine to `local` (needs `SHERPA_ONNX_LIB_DIR`
+at build time; ship `sherpa-onnx-c-api.dll` + `onnxruntime.dll` next to the exe).
+`local-engine` is the local backend without a native ASR engine (what the MSVC
+cross-check builds).
+
+## Developer settings (hybrid mode)
+
+Settings → **Developer** (always visible in builds with `remote`; in a
+client-only build tap the version line under General → App 7 times, "Lock"
+hides it again):
+
+* **Allow server** / **Allow client** — both on: the first entry of the route
+  order runs, the other is the fallback (server first by default; audio pushed
+  before a failure is replayed locally, nothing is lost). One on: only that
+  engine. Both off: dictation shows "Dictation disabled — enable server or
+  client in Developer settings".
+* Server **host/IP** (IPv4, IPv6, or a name such as `box.tailnet.ts.net`;
+  no `ws://`, path or port) and **port** (default 7313), TLS + optional
+  certificate pin (required and forced for a public address), **token**
+  (from `flow-server gen-token`; stored DPAPI-encrypted for your Windows
+  account, never logged), connect / commit timeouts, health cache, keep the
+  local model warm, S/L badge on the Flow bar.
+* **Test connection** probes the unsaved form (hello + 3 pings: median RTT,
+  server version, ASR engine). **Test session** sends 1 s of silence through
+  the saved settings and should answer `EMPTY (no_speech)` and say which
+  engine ran. Status rows: build capabilities, last dictation's engine /
+  fallback / timings, server info (pipeline-version match), circuit breaker.
+* Saving applies to the next dictation (no restart, no model reload).
 
 ## Speech model (never downloaded automatically)
 
@@ -57,9 +97,13 @@ state (off / loading / ready / model missing / engine missing / failed).
 | `src/dictionary.rs` | Import/export of the shared `[{word, replacement, isSnippet}]` JSON: tolerant parse, validation, case-insensitive merge |
 | `src/overlay.rs` | Pill hit-testing so the hands-free ✕/✓ are clickable while the canvas stays click-through |
 | `src/hotkeys/watchdog.rs` | Hook-liveness watchdog (probe + re-install after a `LowLevelHooksTimeout` removal) |
+| `src/router_adapter.rs` | D17: `CoreApi` on `flow_router::Router` (every build), `LocalBackend` over the `FlowCoreAdapter` slot, remote = `flow_remote::factory` (feature `remote`), router errors → pill text, last-route record (Developer page, S/L badge) |
+| `src/dev_settings.rs` | Developer settings: `prefs.json` `"developer"` section, form validation (host/port/pin/token/timeouts, public host ⇒ TLS), mapping to the router's `RouterConfig` JSON (pinned by `crates/flow-router/fixtures`) |
+| `src/secrets.rs` | DPAPI (`CryptProtectData`) blobs for secrets in prefs (server token; reusable for later API keys) |
+| `tests/router_integration.rs` | Controller → router → flow-remote → in-process flow-server (MockAsr) vs local MockAsr: all four toggle combos, server down / killed mid-dictation (no lost audio), error pills, Test connection / Test session |
 | `tests/core_integration.rs` | Controller + real flow-core (MockAsr, and whisper tiny.en on `jfk.wav` when present): audio → commit → paste plan → history |
 | `src/app.rs` | Tauri: tray, overlay window (512x614, click-through, `WS_EX_NOACTIVATE`), settings window, commands, autostart |
-| `ui/` | Plain TypeScript → `ui/dist/*.js` (committed). No bundler, no CDN, no web fonts; the CSP is `'self'` only. Settings tabs: General, AI cleanup, History, Dictionary |
+| `ui/` | Plain TypeScript → `ui/dist/*.js` (committed). No bundler, no CDN, no web fonts; the CSP is `'self'` only. Settings tabs: General, AI cleanup, History, Dictionary, Developer |
 | `tauri.llm.conf.json` | Config overlay that bundles `flow_llm.dll` next to the exe (`cargo tauri build --config tauri.llm.conf.json`) |
 | `tools/probes/settings_mock/` | Serves `ui/dist` with a fake `__TAURI__` for checking the settings page in a plain/headless browser |
 
@@ -75,8 +119,12 @@ rustup target add x86_64-pc-windows-msvc
 # cross-build to MSVC from Linux at all, so the cross-check turns the
 # default `whisper` feature off; the Rust side of whisper is covered by the
 # host build.
-RC=$PWD/tools/check-shims/fake-windres AR_x86_64_pc_windows_msvc=$PWD/tools/check-shims/fake-lib \
-  cargo clippy --all-targets --target x86_64-pc-windows-msvc --no-default-features --features app -- -D warnings
+# Each flavour without whisper/sherpa (they can't cross-build): hybrid
+# (with and without TLS), client-only and server-only.
+for f in app,local-engine,remote,tls app,local-engine,remote app,local-engine app,remote; do
+  RC=$PWD/tools/check-shims/fake-windres AR_x86_64_pc_windows_msvc=$PWD/tools/check-shims/fake-lib \
+    cargo clippy --all-targets --target x86_64-pc-windows-msvc --no-default-features --features $f -- -D warnings
+done
 npm --prefix ui ci && npm --prefix ui run build    # after editing ui/src/*.ts
 python3 tools/gen_icons.py                          # after editing the icon
 ```
@@ -163,6 +211,25 @@ Linking a Windows binary on Linux is not supported (no MSVC linker or SDK).
 - [ ] Learn from edits: dictate "I use whisper flow daily" into Notepad, fix it to "Wispr Flow" within ~45 s, click elsewhere → tray "1 dictionary suggestion…"; Dictionary tab lists it; nothing was added until "Add word". Same in Chrome (textarea), Word and Slack.
 - [ ] Learn from edits ignores password fields, and a chat message sent with "press enter".
 - [ ] Dictionary editor: add/edit/delete rows, snippet with a multi-line body, Save; export writes `Downloads\flow-dictionary.json`; importing that file (merge) changes nothing; importing the Android app's export works.
+- [ ] Dictating into silence shows "No speech heard" above the pill for ~1.5 s, with no error sound.
+- [ ] Settings → General: "Auto-format punctuation, fillers and corrections" off → "comma" stays a word; Engine = Parakeet with the model folder in `models\` (parakeet build) → tray shows the folder name and jfk-style speech pastes.
+
+#### Developer settings / hybrid mode (needs a `flow-server` on the LAN or Tailscale)
+
+- [ ] Hybrid build: Developer tab is visible; Build row says "client + server"; header line no longer says "nothing is sent over the network".
+- [ ] Host field: `ws://1.2.3.4`, `1.2.3.4:7313`, `256.1.1.1`, `my box` each show an inline error and disable Save / Test connection; `100.64.0.10`, `[fd7a:115c:a1e0::1]`, `box.tailnet.ts.net` are accepted (brackets dropped on save). Port 0 / 70000 rejected.
+- [ ] Host `example.com` ticks and locks "Use TLS"; a 100.x / 192.168.x host shows "Unencrypted: OK on Tailscale…".
+- [ ] Token: Show / Paste / Clear work; a 10-char token is rejected; after Save, `prefs.json` contains `token_dpapi` and **not** the token text; copying `prefs.json` to another Windows account leaves the token empty there.
+- [ ] Test connection with the server up: "OK · median N ms (a-b) · flow-server 0.1.0 · parakeet"; with a wrong token: "auth_failed … token rejected"; with the server stopped: "connect_failed … is flow-server running / Tailscale up?".
+- [ ] Test session: "EMPTY (no_speech) via server"; with the server stopped: "via client (fallback: connect_failed)".
+- [ ] Both toggles on, server up: dictate in Notepad → Active engine row = server, rtt shown; with the S/L badge on, the pill shows **S**.
+- [ ] `systemctl stop flow-server` (or quit Tailscale), dictate again → text still pastes (local), row = client, fallback `connect_failed`, badge **L** with a red dot; the next dictation within 5 s shows `circuit_open` and does not wait for the connect timeout; "Reset circuit" clears it.
+- [ ] Kill the server mid-dictation (hold Ctrl+Win, stop it, keep speaking, release): the whole utterance pastes, nothing from before the kill is lost.
+- [ ] Allow client off + server down → error pill "Server unreachable (…)"; Allow server off → dictation never opens a connection (check with `netstat -n` / Resource Monitor); both off → "Dictation disabled — enable server or client in Developer settings".
+- [ ] Changing toggles / host and pressing Save takes effect on the next dictation without restarting; the local model is not reloaded (tray line unchanged).
+- [ ] Route order "Move up" (client first) with both on → dictation runs on this PC even with the server up.
+- [ ] Client-only build (`--no-default-features --features local,app`): Developer tab hidden; 7 taps on the version line unlock it ("not in this build" next to Allow server); Lock hides it; `flow-windows.exe` has no ws/tls code (`cargo tree -e normal --no-default-features --features local,app | findstr tungstenite` prints nothing).
+- [ ] Server-only build (`--no-default-features --features remote,app`): starts without any model file or `flow_llm.dll`, tray says "Speech: your flow-server"; dictation works through the server; Allow client is disabled ("not in this build").
 
 ## Known gaps / v1 limitations
 
@@ -185,7 +252,7 @@ stays a standalone workspace (Tauri/Win32 deps stay out of the core lockfile).
 
 * `SessionConfig`: the ordered `[{word, replacement, isSnippet}]` list, languages, styles (strings → `Style`), cleanup level, raw mode, `max_samples` from the 20-min policy, `platform: windows`, `partial_interval_ms` from the live-preview pref.
 * `FieldContext`: exe stem as `app_id`, URL host, `AppKind`/`StyleBucket` → `AppCategory`, before/selected/after.
-* `CommitResult`: `FORMATTED`/`RAW_TRANSCRIPT` paste `final_text` (then Enter when `press_enter`), `EMPTY` pastes nothing, `ERROR` shows the error pill.
+* `CommitResult`: `FORMATTED`/`RAW_TRANSCRIPT` paste the core's `segments` plan (text runs, Tab/Break, trailing Enter for spoken "press enter"; `press_enter` itself is not read), history keeps `plain_text`; `EMPTY` pastes nothing (`empty_reason: no_speech` shows "No speech heard"), `ERROR` shows the error pill; `route` (router) says which engine ran.
 
 Requests for core changes go to `docs/core-change-requests.md` (the core is
 developed on another branch).

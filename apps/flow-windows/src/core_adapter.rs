@@ -32,6 +32,9 @@ use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 pub const DEFAULT_MODEL_FILE: &str = "ggml-base.bin";
+/// D12: Parakeet-TDT-0.6B-v2 int8 (sherpa-onnx), a model *directory*.
+/// English only; faster and more accurate than whisper on this CPU tier.
+pub const DEFAULT_PARAKEET_DIR: &str = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
 /// D11: the 1.5 s CPU budget model. `qwen2.5-1.5b-instruct-q4_k_m.gguf` is
 /// the quality step up (8/8 vs 4/8 on the messy-dictation set, ~2x slower).
 pub const DEFAULT_LLM_FILE: &str = "qwen2.5-0.5b-instruct-q4_k_m.gguf";
@@ -50,6 +53,10 @@ pub fn models_dir(appdata: Option<&str>) -> PathBuf {
 
 pub fn default_model_path(appdata: Option<&str>) -> PathBuf {
     models_dir(appdata).join(DEFAULT_MODEL_FILE)
+}
+
+pub fn default_parakeet_dir(appdata: Option<&str>) -> PathBuf {
+    models_dir(appdata).join(DEFAULT_PARAKEET_DIR)
 }
 
 pub fn default_llm_path(appdata: Option<&str>) -> PathBuf {
@@ -73,9 +80,12 @@ pub enum ModelStatus {
         path: String,
         load_ms: u64,
     },
-    /// The model file does not exist. Never downloaded automatically.
+    /// The model file (Parakeet: directory) does not exist. Never
+    /// downloaded automatically. `engine`: "whisper" | "parakeet".
     Missing {
         path: String,
+        #[serde(default)]
+        engine: String,
     },
     Failed {
         path: String,
@@ -93,7 +103,11 @@ impl ModelStatus {
         match self {
             ModelStatus::Ready { .. } => None,
             ModelStatus::Loading { .. } => Some("Speech model is still loading".into()),
-            ModelStatus::Missing { path } => Some(format!(
+            ModelStatus::Missing { path, engine } if engine == "parakeet" => Some(format!(
+                "Speech model not found: {path}. Put the Parakeet model folder there \
+                 ({DEFAULT_PARAKEET_DIR}) or choose one in Settings. Nothing is downloaded automatically."
+            )),
+            ModelStatus::Missing { path, .. } => Some(format!(
                 "Speech model not found: {path}. Put a whisper.cpp ggml model there \
                  (e.g. ggml-base.bin) or choose one in Settings. Nothing is downloaded automatically."
             )),
@@ -168,22 +182,42 @@ pub enum ModelSpec {
         path: PathBuf,
         threads: Option<usize>,
     },
+    /// Parakeet-TDT (D12, feature `parakeet`); `dir` = the model directory.
+    Parakeet {
+        dir: PathBuf,
+        threads: Option<usize>,
+    },
     /// flow-core's `MockAsr` (fixed transcript): tests and model-free dev.
     Mock { text: String },
 }
 
 impl ModelSpec {
     pub fn from_prefs(prefs: &crate::prefs::Prefs, appdata: Option<&str>) -> Self {
-        ModelSpec::Whisper {
-            path: prefs.resolved_model_path(appdata),
-            threads: prefs.asr_threads,
+        match prefs.asr_engine {
+            crate::prefs::AsrEngineChoice::Whisper => ModelSpec::Whisper {
+                path: prefs.resolved_model_path(appdata),
+                threads: prefs.asr_threads,
+            },
+            crate::prefs::AsrEngineChoice::Parakeet => ModelSpec::Parakeet {
+                dir: prefs.resolved_parakeet_dir(appdata),
+                threads: prefs.asr_threads,
+            },
         }
     }
 
     fn label(&self) -> String {
         match self {
             ModelSpec::Whisper { path, .. } => path.display().to_string(),
+            ModelSpec::Parakeet { dir, .. } => dir.display().to_string(),
             ModelSpec::Mock { .. } => "mock".into(),
+        }
+    }
+
+    fn engine(&self) -> &'static str {
+        match self {
+            ModelSpec::Whisper { .. } => "whisper",
+            ModelSpec::Parakeet { .. } => "parakeet",
+            ModelSpec::Mock { .. } => "mock",
         }
     }
 
@@ -196,6 +230,12 @@ impl ModelSpec {
                 asr_path: path.display().to_string(),
                 llm_path: None,
                 llm_lib: None,
+                threads: threads.unwrap_or_else(fc::default_threads).max(1),
+                ..fc::ModelConfig::default()
+            },
+            ModelSpec::Parakeet { dir, threads } => fc::ModelConfig {
+                asr_backend: fc::AsrBackend::Parakeet,
+                asr_path: dir.display().to_string(),
                 threads: threads.unwrap_or_else(fc::default_threads).max(1),
                 ..fc::ModelConfig::default()
             },
@@ -250,18 +290,19 @@ pub fn llama_loader() -> LlmLoader {
                 let plugin = c.plugin_path.display().to_string();
                 Ok((Arc::new(c) as Arc<dyn Cleaner>, plugin))
             }
-            Err(e) => Err(classify_llm_error(path, e.to_string())),
+            Err(e) => Err(classify_llm_error(path, e)),
         }
     })
 }
 
-/// flow-core reports every LLM failure as a string; tell "plugin not
-/// found" apart so the settings page can say "ship flow_llm.dll".
-fn classify_llm_error(path: String, message: String) -> LlmStatus {
-    if message.starts_with("llm plugin not found") {
-        LlmStatus::PluginMissing { path, message }
-    } else {
-        LlmStatus::Failed { path, message }
+/// Typed since core-p1 (CR-1): "plugin not found" gets its own status so
+/// the settings page can say "ship flow_llm.dll".
+fn classify_llm_error(path: String, e: flow_core::llama::LlamaLoadError) -> LlmStatus {
+    use flow_core::llama::LlamaLoadError;
+    let message = e.to_string();
+    match e {
+        LlamaLoadError::PluginNotFound { .. } => LlmStatus::PluginMissing { path, message },
+        LlamaLoadError::Backend(_) => LlmStatus::Failed { path, message },
     }
 }
 
@@ -552,14 +593,14 @@ impl FlowCoreAdapter {
 fn load_asr(spec: &ModelSpec) -> (ModelStatus, Option<Arc<dyn AsrEngine>>) {
     let path = spec.label();
     let t0 = Instant::now();
-    let engine: Result<Arc<dyn AsrEngine>, String> = match spec {
-        ModelSpec::Mock { text } => Ok(Arc::new(flow_core::asr::MockAsr::new(text))),
-        ModelSpec::Whisper { path: p, threads } => {
-            if !p.is_file() {
-                return (ModelStatus::Missing { path }, None);
-            }
-            whisper_engine(p, threads.unwrap_or_else(fc::default_threads).max(1))
-        }
+    let threads = |t: &Option<usize>| t.unwrap_or_else(fc::default_threads).max(1);
+    let engine = match spec {
+        ModelSpec::Mock { text } => Ok(Arc::new(flow_core::asr::MockAsr::new(text)) as _),
+        ModelSpec::Whisper {
+            path: p,
+            threads: t,
+        } => whisper_engine(p, threads(t)),
+        ModelSpec::Parakeet { dir, threads: t } => parakeet_engine(dir, threads(t)),
     };
     match engine {
         Ok(e) => (
@@ -569,51 +610,155 @@ fn load_asr(spec: &ModelSpec) -> (ModelStatus, Option<Arc<dyn AsrEngine>>) {
             },
             Some(e),
         ),
-        Err(message) => (ModelStatus::Failed { path, message }, None),
+        Err(e) => (status_of_load_error(path, spec.engine(), e), None),
+    }
+}
+
+/// Typed load errors (CR-1): `ModelNotFound` is the "put a model there"
+/// state; everything else is a failed load.
+fn status_of_load_error(path: String, engine: &str, e: flow_core::CoreError) -> ModelStatus {
+    match e {
+        flow_core::CoreError::ModelNotFound { path } => ModelStatus::Missing {
+            path,
+            engine: engine.into(),
+        },
+        e => ModelStatus::Failed {
+            path,
+            message: e.to_string(),
+        },
+    }
+}
+
+/// The shell composes engines itself (two-phase LLM load), so it cannot go
+/// through `FlowCore::load_models`; this mirrors its existence check and
+/// returns the same typed errors.
+fn require(p: &std::path::Path, dir: bool) -> Result<String, flow_core::CoreError> {
+    let ok = if dir { p.is_dir() } else { p.is_file() };
+    let s = p.display().to_string();
+    if ok {
+        Ok(s)
+    } else {
+        Err(flow_core::CoreError::ModelNotFound { path: s })
     }
 }
 
 #[cfg(feature = "whisper")]
-fn whisper_engine(p: &std::path::Path, threads: usize) -> Result<Arc<dyn AsrEngine>, String> {
-    flow_core::whisper::WhisperEngine::load(&p.display().to_string(), threads)
+fn whisper_engine(
+    p: &std::path::Path,
+    threads: usize,
+) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+    let path = require(p, false)?;
+    flow_core::whisper::WhisperEngine::load(&path, threads)
         .map(|e| Arc::new(e) as Arc<dyn AsrEngine>)
-        .map_err(|e| e.to_string())
+        .map_err(|e| flow_core::CoreError::Load(e.to_string()))
 }
 
 #[cfg(not(feature = "whisper"))]
-fn whisper_engine(_p: &std::path::Path, _threads: usize) -> Result<Arc<dyn AsrEngine>, String> {
-    Err("built without the `whisper` feature".into())
+fn whisper_engine(
+    p: &std::path::Path,
+    _threads: usize,
+) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+    require(p, false)?;
+    Err(flow_core::CoreError::Load(
+        "this build has no whisper engine (feature `whisper`)".into(),
+    ))
 }
 
-impl CoreApi for FlowCoreAdapter {
-    fn start_session(&self, cfg: SessionConfig) -> Result<(), String> {
+#[cfg(feature = "parakeet")]
+fn parakeet_engine(
+    dir: &std::path::Path,
+    threads: usize,
+) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+    let path = require(dir, true)?;
+    flow_core::parakeet::ParakeetAsr::load(&path, threads)
+        .map(|e| Arc::new(e) as Arc<dyn AsrEngine>)
+        .map_err(|e| flow_core::CoreError::Load(e.to_string()))
+}
+
+#[cfg(not(feature = "parakeet"))]
+fn parakeet_engine(
+    dir: &std::path::Path,
+    _threads: usize,
+) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+    require(dir, true)?;
+    Err(flow_core::CoreError::Load(
+        "this build has no Parakeet engine (feature `parakeet`)".into(),
+    ))
+}
+
+/// Session calls in flow-core's own types: what the router's local
+/// backend (`router_adapter::LocalBackend`) drives. The [`CoreApi`] impl
+/// below maps the shell's types onto these.
+impl FlowCoreAdapter {
+    /// Speech model loaded (dictation can start without waiting).
+    pub fn is_ready(&self) -> bool {
+        self.slot.lock().unwrap().core.is_some()
+    }
+
+    /// Wait up to `wait` for a load in progress; `Err` = why it can't run.
+    pub fn wait_ready(&self, wait: Duration) -> Result<(), String> {
+        self.ready_core(wait).map(|_| ())
+    }
+
+    pub fn core_start(&self, cfg: fc::SessionConfig) -> Result<(), String> {
         let core = self.ready_core(LOAD_WAIT)?;
-        core.start_session(to_core_session(&cfg))
-            .map_err(|e| e.to_string())?;
+        core.start_session(cfg).map_err(|e| e.to_string())?;
         *self.active.write().unwrap() = Some(core);
         Ok(())
     }
 
-    fn push_audio(&self, pcm: &[i16]) {
-        if let Some(c) = self.active.read().unwrap().as_ref() {
-            c.push_audio(pcm);
+    pub fn core_push(&self, pcm: &[i16]) -> bool {
+        match self.active.read().unwrap().as_ref() {
+            Some(c) => c.push_audio(pcm),
+            None => false,
         }
     }
 
-    fn set_context(&self, ctx: FieldContext) {
+    pub fn core_set_context(&self, ctx: fc::FieldContext) {
         if let Some(c) = self.active() {
-            c.set_context(to_core_context(&ctx));
+            c.set_context(ctx);
         }
     }
 
-    fn partial(&self) -> Option<String> {
+    pub fn core_partial(&self) -> Option<String> {
         self.active()?.partial().filter(|p| !p.trim().is_empty())
     }
 
-    fn commit(&self) -> CommitResult {
+    /// `None` = no active session.
+    pub fn core_commit(&self) -> Option<flow_core::CommitResult> {
         let core = self.active.write().unwrap().take();
-        match core {
-            Some(c) => from_core_result(c.commit()),
+        core.map(|c| c.commit())
+    }
+
+    pub fn core_learn_edit(&self, pasted: &str, edited: &str) -> Vec<flow_core::learn::Candidate> {
+        let core = self
+            .active()
+            .or_else(|| self.slot.lock().unwrap().core.clone());
+        core.map(|c| c.learn_edit(pasted, edited))
+            .unwrap_or_default()
+    }
+}
+
+impl CoreApi for FlowCoreAdapter {
+    fn start_session(&self, cfg: SessionConfig) -> Result<(), String> {
+        self.core_start(to_core_session(&cfg))
+    }
+
+    fn push_audio(&self, pcm: &[i16]) {
+        self.core_push(pcm);
+    }
+
+    fn set_context(&self, ctx: FieldContext) {
+        self.core_set_context(to_core_context(&ctx));
+    }
+
+    fn partial(&self) -> Option<String> {
+        self.core_partial()
+    }
+
+    fn commit(&self) -> CommitResult {
+        match self.core_commit() {
+            Some(r) => from_core_result(r),
             None => CommitResult::failed("no active session"),
         }
     }
@@ -625,11 +770,7 @@ impl CoreApi for FlowCoreAdapter {
     }
 
     fn learn_edit(&self, pasted: &str, edited: &str) -> Vec<LearnCandidate> {
-        let core = self
-            .active()
-            .or_else(|| self.slot.lock().unwrap().core.clone());
-        let Some(c) = core else { return Vec::new() };
-        c.learn_edit(pasted, edited)
+        self.core_learn_edit(pasted, edited)
             .into_iter()
             .map(|cand| LearnCandidate {
                 word: cand.corrected,
@@ -650,7 +791,7 @@ pub fn make_core(prefs: &crate::prefs::Prefs, appdata: Option<&str>) -> Arc<Flow
 
 /// True when the prefs change means a different speech model must be loaded.
 pub fn needs_reload(old: &crate::prefs::Prefs, new: &crate::prefs::Prefs) -> bool {
-    old.model_path != new.model_path || old.asr_threads != new.asr_threads
+    ModelSpec::from_prefs(old, None) != ModelSpec::from_prefs(new, None)
 }
 
 /// True when the prefs change means the LLM must be loaded or dropped.
@@ -711,6 +852,10 @@ pub fn to_core_session(c: &SessionConfig) -> fc::SessionConfig {
         } else {
             c.llm_timeout_ms
         },
+        vad: c.vad,
+        hallucination_guard: c.hallucination_guard,
+        spoken_cleanup: c.spoken_cleanup,
+        llm_prefill: c.llm_prefill,
         ..fc::SessionConfig::default()
     }
 }
@@ -764,10 +909,17 @@ pub fn from_core_result(r: flow_core::CommitResult) -> CommitResult {
             asr_ms: r.timings.asr_ms,
             llm_ms: r.timings.llm_ms,
             total_ms: r.timings.total_ms,
+            audio_ms: r.timings.audio_ms,
+            dropped_samples: r.timings.dropped_samples,
         },
         press_enter: r.press_enter,
         fallback_reason: r.fallback_reason,
         error: r.error,
+        segments: r.segments,
+        plain_text: r.plain_text,
+        empty_reason: r.empty_reason,
+        truncated: r.truncated,
+        route: r.route,
     }
 }
 
@@ -1075,6 +1227,63 @@ mod tests {
         assert_eq!(c.llm_timeout_ms, 2500);
         let c = to_core_session(&SessionConfig::default());
         assert_eq!(c.llm_timeout_ms, 1500, "0 = core default");
+    }
+
+    #[test]
+    fn parakeet_pref_selects_the_model_directory() {
+        let p = crate::prefs::Prefs {
+            asr_engine: crate::prefs::AsrEngineChoice::Parakeet,
+            ..Default::default()
+        };
+        let spec = ModelSpec::from_prefs(&p, Some("/ad"));
+        let ModelSpec::Parakeet { dir, .. } = &spec else {
+            panic!("{spec:?}")
+        };
+        assert!(dir.ends_with(DEFAULT_PARAKEET_DIR));
+        assert_eq!(spec.model_config().asr_backend, fc::AsrBackend::Parakeet);
+        assert!(needs_reload(&crate::prefs::Prefs::default(), &p));
+        let a = FlowCoreAdapter::new();
+        let st = a.load_now(&ModelSpec::Parakeet {
+            dir: PathBuf::from("/nonexistent/parakeet"),
+            threads: None,
+        });
+        assert!(
+            matches!(&st, ModelStatus::Missing { engine, .. } if engine == "parakeet"),
+            "{st:?}"
+        );
+        assert!(st.problem().unwrap().contains("Parakeet model folder"));
+    }
+
+    #[test]
+    fn session_flags_reach_the_core() {
+        let c = to_core_session(&SessionConfig {
+            spoken_cleanup: false,
+            vad: false,
+            ..SessionConfig::default()
+        });
+        assert!(!c.spoken_cleanup && !c.vad);
+        assert!(c.hallucination_guard && c.llm_prefill);
+    }
+
+    #[test]
+    fn core_p1_result_fields_survive_mapping() {
+        let a = FlowCoreAdapter::new();
+        a.load_now(&ModelSpec::Mock {
+            text: "ship it press enter".into(),
+        });
+        let r = dictate(&a);
+        assert_eq!(
+            r.segments.last(),
+            Some(&crate::core_api::PasteSegment::Key {
+                key: crate::core_api::PasteKey::Enter
+            })
+        );
+        assert!(!r.plain_text.is_empty());
+        a.start_session(session()).unwrap();
+        a.push_audio(&[0; 16_000]);
+        let r = a.commit();
+        assert_eq!(r.status, CommitStatus::Empty);
+        assert_eq!(r.empty_reason.as_deref(), Some("no_speech"), "{r:?}");
     }
 
     #[test]
