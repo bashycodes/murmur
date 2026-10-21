@@ -686,35 +686,79 @@ fn parakeet_engine(
     ))
 }
 
-impl CoreApi for FlowCoreAdapter {
-    fn start_session(&self, cfg: SessionConfig) -> Result<(), String> {
+/// Session calls in flow-core's own types: what the router's local
+/// backend (`router_adapter::LocalBackend`) drives. The [`CoreApi`] impl
+/// below maps the shell's types onto these.
+impl FlowCoreAdapter {
+    /// Speech model loaded (dictation can start without waiting).
+    pub fn is_ready(&self) -> bool {
+        self.slot.lock().unwrap().core.is_some()
+    }
+
+    /// Wait up to `wait` for a load in progress; `Err` = why it can't run.
+    pub fn wait_ready(&self, wait: Duration) -> Result<(), String> {
+        self.ready_core(wait).map(|_| ())
+    }
+
+    pub fn core_start(&self, cfg: fc::SessionConfig) -> Result<(), String> {
         let core = self.ready_core(LOAD_WAIT)?;
-        core.start_session(to_core_session(&cfg))
-            .map_err(|e| e.to_string())?;
+        core.start_session(cfg).map_err(|e| e.to_string())?;
         *self.active.write().unwrap() = Some(core);
         Ok(())
     }
 
-    fn push_audio(&self, pcm: &[i16]) {
-        if let Some(c) = self.active.read().unwrap().as_ref() {
-            c.push_audio(pcm);
+    pub fn core_push(&self, pcm: &[i16]) -> bool {
+        match self.active.read().unwrap().as_ref() {
+            Some(c) => c.push_audio(pcm),
+            None => false,
         }
     }
 
-    fn set_context(&self, ctx: FieldContext) {
+    pub fn core_set_context(&self, ctx: fc::FieldContext) {
         if let Some(c) = self.active() {
-            c.set_context(to_core_context(&ctx));
+            c.set_context(ctx);
         }
     }
 
-    fn partial(&self) -> Option<String> {
+    pub fn core_partial(&self) -> Option<String> {
         self.active()?.partial().filter(|p| !p.trim().is_empty())
     }
 
-    fn commit(&self) -> CommitResult {
+    /// `None` = no active session.
+    pub fn core_commit(&self) -> Option<flow_core::CommitResult> {
         let core = self.active.write().unwrap().take();
-        match core {
-            Some(c) => from_core_result(c.commit()),
+        core.map(|c| c.commit())
+    }
+
+    pub fn core_learn_edit(&self, pasted: &str, edited: &str) -> Vec<flow_core::learn::Candidate> {
+        let core = self
+            .active()
+            .or_else(|| self.slot.lock().unwrap().core.clone());
+        core.map(|c| c.learn_edit(pasted, edited))
+            .unwrap_or_default()
+    }
+}
+
+impl CoreApi for FlowCoreAdapter {
+    fn start_session(&self, cfg: SessionConfig) -> Result<(), String> {
+        self.core_start(to_core_session(&cfg))
+    }
+
+    fn push_audio(&self, pcm: &[i16]) {
+        self.core_push(pcm);
+    }
+
+    fn set_context(&self, ctx: FieldContext) {
+        self.core_set_context(to_core_context(&ctx));
+    }
+
+    fn partial(&self) -> Option<String> {
+        self.core_partial()
+    }
+
+    fn commit(&self) -> CommitResult {
+        match self.core_commit() {
+            Some(r) => from_core_result(r),
             None => CommitResult::failed("no active session"),
         }
     }
@@ -726,11 +770,7 @@ impl CoreApi for FlowCoreAdapter {
     }
 
     fn learn_edit(&self, pasted: &str, edited: &str) -> Vec<LearnCandidate> {
-        let core = self
-            .active()
-            .or_else(|| self.slot.lock().unwrap().core.clone());
-        let Some(c) = core else { return Vec::new() };
-        c.learn_edit(pasted, edited)
+        self.core_learn_edit(pasted, edited)
             .into_iter()
             .map(|cand| LearnCandidate {
                 word: cand.corrected,

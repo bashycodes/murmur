@@ -62,6 +62,8 @@ function showTab(name) {
     $("form").hidden = name !== "general" && name !== "ai";
     if (name === "history")
         void loadHistory();
+    if (name === "developer")
+        void loadDev();
     if (name === "dictionary")
         void loadSuggestions();
 }
@@ -471,6 +473,273 @@ async function loadSuggestions() {
         return li;
     }));
 }
+const ROUTE_LABEL = { server: "Server", client: "This PC (client)" };
+const DEV_NUM = ["port", "connect_timeout_ms", "commit_timeout_base_ms", "health_ttl_s"];
+const DEV_TEXT = ["host", "tls_pin_sha256", "token"];
+const DEV_BOOL = ["allow_server", "allow_client", "tls", "keep_local_warm", "show_engine_badge"];
+let devView = null;
+let devOrder = ["server", "client"];
+let devValid = true;
+const HINTS = {
+    auth_failed: "token rejected — copy it again from the server's token file",
+    connect_failed: "is flow-server running / Tailscale up?",
+    proto_mismatch: "client and server protocol versions differ — update one of them",
+    server_not_configured: "enter the server host first",
+    timeout: "the server is too slow or stuck",
+    busy: "the server is busy with another dictation",
+};
+function hint(code) {
+    return code ? (HINTS[code] ?? "") : "";
+}
+function readDev() {
+    const base = devView?.form;
+    const f = { ...base };
+    for (const k of DEV_BOOL)
+        f[k] = $(`dev_${k}`).checked;
+    for (const k of DEV_TEXT)
+        f[k] = $(`dev_${k}`).value;
+    for (const k of DEV_NUM) {
+        const v = $(`dev_${k}`).value.trim();
+        f[k] = v === "" ? -1 : Number(v);
+    }
+    f.route_order = [...devOrder];
+    return f;
+}
+function fillDev(f) {
+    for (const k of DEV_BOOL)
+        $(`dev_${k}`).checked = f[k];
+    for (const k of DEV_TEXT)
+        $(`dev_${k}`).value = f[k];
+    for (const k of DEV_NUM)
+        $(`dev_${k}`).value = String(f[k]);
+    devOrder = [...f.route_order];
+    renderRoutes();
+}
+function renderRoutes() {
+    const srv = $("dev_allow_server").checked;
+    const cli = $("dev_allow_client").checked;
+    const on = (r) => (r === "server" ? srv : cli);
+    $("dev_order_box").hidden = devOrder.filter(on).length < 2;
+    $("dev_routes").replaceChildren(...devOrder.map((r, i) => {
+        const li = el("li", on(r) ? "" : "off", ROUTE_LABEL[r] + " ");
+        if (i > 0) {
+            li.append(button("Move up", () => {
+                [devOrder[i - 1], devOrder[i]] = [devOrder[i], devOrder[i - 1]];
+                renderRoutes();
+                scheduleCheck();
+            }, "small secondary"));
+        }
+        return li;
+    }));
+    $("dev_server_box").hidden = !srv;
+    $("dev_pin_row").hidden = !$("dev_tls").checked;
+}
+function showCheck(c) {
+    for (const s of document.querySelectorAll("[data-err]"))
+        s.textContent = "";
+    for (const i of document.querySelectorAll("[data-panel=developer] input"))
+        i.classList.remove("invalid");
+    for (const e of c.errors) {
+        const slot = document.querySelector(`[data-err="${e.field}"]`);
+        if (slot)
+            slot.textContent = e.message;
+        $(`dev_${e.field}`)?.classList.add("invalid");
+    }
+    devValid = c.errors.length === 0;
+    $("dev_save").disabled = !devValid;
+    $("dev_test_conn").disabled = !devValid;
+    $("dev_tls_forced").hidden = !c.tls_forced;
+    const tls = $("dev_tls");
+    if (c.tls_forced)
+        tls.checked = true;
+    tls.disabled = c.tls_forced;
+    $("dev_warnings").replaceChildren(...c.warnings.map((w) => el("li", w.startsWith("Dictation disabled") ? "err" : "", w)));
+}
+let checkTimer = 0;
+function scheduleCheck() {
+    renderRoutes();
+    clearTimeout(checkTimer);
+    checkTimer = setTimeout(() => {
+        void invoke("dev_validate", { form: readDev() }).then(showCheck);
+    }, 150);
+}
+function healthText(h) {
+    if (!h.ok) {
+        const code = h.error ?? "error";
+        const why = hint(code);
+        return `${code}${h.message ? `: ${h.message}` : ""}${why ? ` — ${why}` : ""}`;
+    }
+    const r = h.rtt_ms;
+    const parts = [
+        r ? `OK · median ${r.median} ms (${r.min}-${r.max})` : "OK",
+        h.server_version ?? "",
+        h.asr_backend ?? "",
+    ].filter(Boolean);
+    return parts.join(" · ");
+}
+function showServerInfo(h) {
+    const e = $("dev_server_info");
+    if (!h) {
+        e.textContent = "Not probed yet";
+        e.className = "";
+        return;
+    }
+    if (!h.ok) {
+        e.textContent = healthText(h);
+        e.className = "err";
+        return;
+    }
+    const pp = h.postprocess_match === false ? " · ⚠ server pipeline ≠ client pipeline; results may differ" : " · pipeline ✓";
+    e.textContent =
+        `${h.server ?? ""} · ${h.server_version ?? "?"} (core ${h.server_core ?? "?"}, proto ${h.proto ?? "?"})` +
+            ` · ASR ${h.asr_backend ?? "?"} ${h.asr_model ?? ""} · LLM ${h.llm ? "on" : "off"}` +
+            ` · workers ${h.workers ?? "?"} (busy ${h.busy ?? "?"})${pp}`;
+    e.className = h.postprocess_match === false ? "err" : "ok";
+}
+function showRoute(r) {
+    const last = r.last;
+    const e = $("dev_last");
+    if (!last) {
+        e.textContent = "No dictation yet";
+    }
+    else {
+        const engine = last.engine === "remote" ? "server" : last.engine === "local" ? "client" : "none";
+        const bits = [
+            engine,
+            last.fallback ? `fallback: ${last.fallback}` : "",
+            last.server ? `server ${last.server}` : "",
+            last.rtt_ms != null ? `rtt ${last.rtt_ms} ms` : "",
+            last.queue_ms != null ? `queue ${last.queue_ms} ms` : "",
+            `asr ${last.asr_ms} ms / total ${last.total_ms} ms`,
+            last.status,
+            last.empty_reason ?? "",
+            new Date(last.at_ms).toLocaleTimeString(),
+        ].filter(Boolean);
+        e.textContent = bits.join(" · ");
+    }
+    const c = r.circuit;
+    $("dev_circuit").textContent = !c.open
+        ? "closed"
+        : c.until_config_change
+            ? `open until the server settings change (${c.reason ?? "?"})`
+            : `open until ${new Date(Date.now() + (c.retry_in_ms ?? 0)).toLocaleTimeString()} (${c.reason ?? "?"})`;
+    showServerInfo(r.health);
+}
+function showDev(v) {
+    devView = v;
+    $("tab_developer").hidden = !v.visible;
+    $("version_row").textContent = `Flow Clone ${v.version}`;
+    $("privacy_line").textContent = v.caps.remote
+        ? "Speech is processed on this PC or on your own server. Nothing goes to a third party."
+        : "Everything runs on this PC. Nothing is sent over the network.";
+    fillDev(v.form);
+    $("dev_allow_server").disabled = !v.caps.remote;
+    $("dev_allow_client").disabled = !v.caps.local;
+    $("dev_server_na").hidden = v.caps.remote;
+    $("dev_client_na").hidden = v.caps.local;
+    $("dev_lock").hidden = v.caps.remote;
+    const c = v.capabilities;
+    $("dev_build").textContent =
+        `${[c.local ? "client" : "", c.remote ? "server" : ""].filter(Boolean).join(" + ") || "no engine"}` +
+            ` · ASR ${c.asr_engines.join(", ") || "none"} · LLM ${c.llm ? "yes" : "no"} · proto ${c.proto} · core ${c.core_version}`;
+    showCheck(v.check);
+    showRoute(v.route);
+}
+async function loadDev() {
+    try {
+        showDev(await invoke("dev_get"));
+    }
+    catch (e) {
+        setStatus("dev_status", String(e), false);
+    }
+}
+async function devCall(cmd, args, okText) {
+    try {
+        const r = await invoke(cmd, args);
+        setStatus("dev_status", okText, true);
+        return r;
+    }
+    catch (e) {
+        const errs = e;
+        if (Array.isArray(errs)) {
+            showCheck({ errors: errs, warnings: [], tls_forced: false });
+            setStatus("dev_status", "Fix the highlighted fields", false);
+        }
+        else {
+            setStatus("dev_status", String(e), false);
+        }
+        return null;
+    }
+}
+async function devSave() {
+    if (!devValid)
+        return;
+    const v = await devCall("dev_set", { form: readDev() }, "Saved — applies to the next dictation");
+    if (v)
+        showDev(v);
+}
+async function devTestConnection() {
+    if (!devValid)
+        return;
+    const out = $("dev_test");
+    out.textContent = "Testing…";
+    out.className = "hint";
+    try {
+        const h = await invoke("dev_test_connection", { form: readDev() });
+        out.textContent = `Test connection: ${healthText(h)}`;
+        out.className = h.ok ? "hint ok" : "hint err";
+    }
+    catch (e) {
+        out.textContent = String(e);
+        out.className = "hint err";
+    }
+}
+async function devTestSession() {
+    const out = $("dev_test");
+    out.textContent = "Running a 1 s silent session through the saved settings…";
+    out.className = "hint";
+    try {
+        const r = await invoke("dev_test_session");
+        const engine = r.engine === "remote" ? "server" : r.engine === "local" ? "client" : "none";
+        const ok = r.status === "EMPTY" && r.empty_reason === "no_speech";
+        out.textContent =
+            `Test session: ${r.status}${r.empty_reason ? ` (${r.empty_reason})` : ""} via ${engine}` +
+                `${r.fallback ? ` (fallback: ${r.fallback} — ${hint(r.fallback)})` : ""} in ${r.total_ms} ms` +
+                `${r.error ? ` — ${r.error}` : ""}`;
+        out.className = ok ? "hint ok" : "hint err";
+    }
+    catch (e) {
+        out.textContent = String(e);
+        out.className = "hint err";
+    }
+    void refreshRoute();
+}
+async function refreshRoute() {
+    try {
+        showRoute(await invoke("dev_route_status"));
+    }
+    catch {
+        /* tab not loaded yet */
+    }
+}
+let versionTaps = 0;
+let versionTimer = 0;
+function versionTapped() {
+    if (!devView || devView.visible)
+        return;
+    versionTaps++;
+    clearTimeout(versionTimer);
+    versionTimer = setTimeout(() => (versionTaps = 0), 3000);
+    if (versionTaps >= 7) {
+        versionTaps = 0;
+        void devCall("dev_unlock", { unlocked: true }, "Developer settings unlocked").then((v) => {
+            if (v) {
+                showDev(v);
+                showTab("developer");
+            }
+        });
+    }
+}
 // ------------------------------------------------------------------ boot
 async function load() {
     const [prefs, mics, model] = await Promise.all([
@@ -495,12 +764,47 @@ async function load() {
     dict = prefs.dictionary.map((e) => ({ ...e }));
     renderDict();
     await loadSuggestions();
+    await loadDev();
 }
 for (const b of document.querySelectorAll("nav.tabs button")) {
     b.addEventListener("click", () => showTab(b.dataset.tab ?? "general"));
 }
 $("form").addEventListener("submit", (e) => void saveForm(e));
 $("asr_engine").addEventListener("change", showEngineFields);
+for (const i of document.querySelectorAll("[data-panel=developer] input")) {
+    i.addEventListener("input", scheduleCheck);
+    i.addEventListener("change", scheduleCheck);
+}
+$("dev_save").addEventListener("click", () => void devSave());
+$("dev_test_conn").addEventListener("click", () => void devTestConnection());
+$("dev_test_session").addEventListener("click", () => void devTestSession());
+$("dev_reset_circuit").addEventListener("click", () => void devCall("dev_reset_circuit", {}, "Circuit reset").then((r) => r && showRoute(r)));
+$("dev_reset").addEventListener("click", () => void devCall("dev_reset_defaults", {}, "Defaults restored").then((v) => v && showDev(v)));
+$("dev_lock").addEventListener("click", () => void devCall("dev_unlock", { unlocked: false }, "Developer settings locked").then((v) => {
+    if (v) {
+        showDev(v);
+        showTab("general");
+    }
+}));
+$("dev_token_show").addEventListener("click", () => {
+    const t = $("dev_token");
+    t.type = t.type === "password" ? "text" : "password";
+    $("dev_token_show").textContent = t.type === "password" ? "Show" : "Hide";
+});
+$("dev_token_paste").addEventListener("click", () => {
+    void navigator.clipboard
+        .readText()
+        .then((t) => {
+        $("dev_token").value = t.trim();
+        scheduleCheck();
+    })
+        .catch(() => setStatus("dev_status", "Clipboard not readable: paste with Ctrl+V", false));
+});
+$("dev_token_clear").addEventListener("click", () => {
+    $("dev_token").value = "";
+    scheduleCheck();
+});
+$("version_row").addEventListener("click", versionTapped);
 let searchTimer = 0;
 $("hist_query").addEventListener("input", () => {
     clearTimeout(searchTimer);
@@ -523,6 +827,7 @@ void onEvent("model:status", (e) => showModel(e.payload));
 void onEvent("llm:status", (e) => showLlm(e.payload));
 void onEvent("suggestions:changed", () => void loadSuggestions());
 void onEvent("settings:tab", (e) => showTab(e.payload));
+void onEvent("dev:route", (e) => showRoute(e.payload));
 void onEvent("history:changed", () => {
     if (!$("hist_list").closest("[hidden]"))
         void loadHistory();
