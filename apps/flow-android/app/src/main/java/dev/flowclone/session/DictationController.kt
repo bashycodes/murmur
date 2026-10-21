@@ -5,6 +5,9 @@ import dev.flowclone.core.CommitStatus
 import dev.flowclone.core.CoreException
 import dev.flowclone.core.FieldContext
 import dev.flowclone.core.FlowCore
+import dev.flowclone.core.PasteKey
+import dev.flowclone.core.PasteSegment
+import dev.flowclone.core.RouterErrors
 import dev.flowclone.core.SessionConfig
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -30,6 +33,8 @@ enum class DictationHint {
     NoSpeechYet,
     /** The core returned EMPTY (silence gate / blank ASR): nothing was inserted. */
     NoSpeechDetected,
+    /** EMPTY with `empty_reason = only_filler`: only "um"/"uh" was heard. */
+    OnlyFiller,
 }
 
 /** 10-clone-spec-android §3: Idle → Ready → Recording(hold|tap) → Processing → Ready | Error. */
@@ -75,6 +80,8 @@ class DictationController(
         fun feedback(e: FeedbackEvent)
         /** insertTextAndVerify (incl. clipboard fallback on failure). */
         suspend fun insert(text: String): Boolean
+        /** Send Enter / Tab into the focused field after a text run (paste `segments`). */
+        suspend fun sendKey(key: PasteKey): Boolean = false
         fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?)
         fun hasMicPermission(): Boolean
         /** captureFieldSnapshot at dictation start; null when extraction isn't allowed. */
@@ -91,6 +98,15 @@ class DictationController(
         const val PARTIAL_POLL_MS = 250L
         const val NO_SPEECH_HINT_AFTER_MS = 3_000L
         const val HINT_MS = 2_500L
+        /** `Break` segment: let the app react (e.g. open an @-mention popup) before the next run. */
+        const val BREAK_PAUSE_MS = 150L
+
+        /** A commit ERROR caused by the router (both engines off, server-only and unreachable). */
+        fun routerFailure(r: CommitResult): String? {
+            val kind = CoreException.kindOf(r.error) ?: return null
+            if (kind !in RouterErrors.KINDS) return null
+            return RouterErrors.userMessage(kind, r.error ?: kind)
+        }
     }
 
     private val _state = MutableStateFlow<DictationState>(DictationState.Idle)
@@ -185,14 +201,15 @@ class DictationController(
         val c = try {
             core()
         } catch (e: CoreException) {
-            _state.value = DictationState.Error(DictationState.ErrorKind.EngineUnavailable(e.message ?: "engine unavailable"))
+            _state.value = DictationState.Error(DictationState.ErrorKind.EngineUnavailable(RouterErrors.userMessage(e.kind, e.message ?: "engine unavailable")))
             return
         }
         val cfg = host.sessionConfig().copy(maxSamples = cap.maxSamples)
         try {
             c.startSession(cfg)
         } catch (e: CoreException) {
-            _state.value = DictationState.Error(DictationState.ErrorKind.EngineUnavailable(e.message ?: "start failed"))
+            // e.g. router `no_engine_enabled`: "Dictation disabled — enable server or client …"
+            _state.value = DictationState.Error(DictationState.ErrorKind.EngineUnavailable(RouterErrors.userMessage(e.kind, e.message ?: "start failed")))
             return
         }
         val ctx = host.captureContext()
@@ -264,22 +281,43 @@ class DictationController(
             }
             if (result.status == CommitStatus.ERROR) {
                 host.recordHistory(result, false, appId)
-                _state.value = DictationState.Error(DictationState.ErrorKind.FailedToTranscribe)
+                val routed = routerFailure(result)
+                _state.value = DictationState.Error(
+                    if (routed != null) DictationState.ErrorKind.EngineUnavailable(routed) else DictationState.ErrorKind.FailedToTranscribe,
+                )
                 return@launch
             }
-            val text = result.finalText
-            if (result.status == CommitStatus.EMPTY || text.isBlank()) {
+            // core-p1: paste `segments` (text runs + Break/Tab/Enter) instead of final_text + press_enter.
+            val plan = result.pastePlan()
+            if (result.status == CommitStatus.EMPTY || plan.none { it is PasteSegment.Text && it.text.isNotBlank() }) {
                 host.recordHistory(result, false, appId)
                 host.feedback(FeedbackEvent.NoSpeech)
-                _hint.value = DictationHint.NoSpeechDetected
-                hintJob = scope.launch { delay(HINT_MS); if (_hint.value == DictationHint.NoSpeechDetected) _hint.value = null }
+                val h = if (result.emptyReason == "only_filler") DictationHint.OnlyFiller else DictationHint.NoSpeechDetected
+                _hint.value = h
+                hintJob = scope.launch { delay(HINT_MS); if (_hint.value == h) _hint.value = null }
                 _state.value = restingState()
                 return@launch
             }
-            val inserted = host.insert(text)
+            val unpasted = paste(plan)
+            val inserted = unpasted == null
             host.recordHistory(result, inserted, appId)
             _state.value = if (inserted) restingState()
-            else DictationState.Error(DictationState.ErrorKind.FailedToPaste(text))
+            else DictationState.Error(DictationState.ErrorKind.FailedToPaste(unpasted!!))
         }
+    }
+
+    /** Runs the paste plan. Returns null when every text run went in, else the text not inserted. */
+    private suspend fun paste(plan: List<PasteSegment>): String? {
+        for ((i, seg) in plan.withIndex()) when (seg) {
+            is PasteSegment.Text -> if (seg.text.isNotEmpty() && !host.insert(seg.text)) {
+                return plan.drop(i).filterIsInstance<PasteSegment.Text>().joinToString("") { it.text }
+            }
+            is PasteSegment.Key -> when (seg.key) {
+                PasteKey.BREAK -> delay(BREAK_PAUSE_MS)
+                // A missing key is not worth an error state: the text is in.
+                PasteKey.TAB, PasteKey.ENTER -> host.sendKey(seg.key)
+            }
+        }
+        return null
     }
 }
