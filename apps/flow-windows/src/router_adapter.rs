@@ -205,9 +205,17 @@ pub fn server_config(dev: &DevSettings, token: &str) -> Result<ServerConfig, Str
 
 /// The remote side of this build: `None` without the `remote` feature.
 pub fn remote_factory() -> Option<RemoteFactory> {
-    // flow-remote (the WS client) lands on hybrid-server after flow-router;
-    // until then the remote side is absent even in `remote` builds.
-    None
+    #[cfg(feature = "remote")]
+    {
+        Some(flow_remote::factory(concat!(
+            "flow-windows ",
+            env!("CARGO_PKG_VERSION")
+        )))
+    }
+    #[cfg(not(feature = "remote"))]
+    {
+        None
+    }
 }
 
 // ------------------------------------------------------------------ adapter
@@ -382,7 +390,14 @@ impl CoreApi for RouterAdapter {
         let mut r = from_core_result(self.router.commit());
         // Server-only failure: say so in the pill (§5 "Errors in normal UI").
         if r.status == CommitStatus::Error {
-            if let Some(fb) = r.route.as_ref().and_then(|x| x.fallback.clone()) {
+            // A session that never started reports the start error again;
+            // give it the same pill text as `start_session` would.
+            let detail = r.error.clone().unwrap_or_default();
+            if detail.starts_with("no_engine_enabled") {
+                r.error = Some(NO_ENGINE_MSG.into());
+            } else if detail.starts_with("local_not_ready") {
+                r.error = Some(self.start_error(RouterError::LocalNotReady));
+            } else if let Some(fb) = r.route.as_ref().and_then(|x| x.fallback.clone()) {
                 let detail = r.error.clone().unwrap_or_default();
                 r.error = Some(if detail.is_empty() {
                     format!("Server unreachable ({fb})")
