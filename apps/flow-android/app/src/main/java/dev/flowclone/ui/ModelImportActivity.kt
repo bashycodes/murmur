@@ -30,13 +30,16 @@ class ModelImportActivity : Activity() {
         get() = if (llm) app.settings.llmModelPath else app.settings.modelPath
         set(v) { if (llm) app.settings.llmModelPath = v else app.settings.modelPath = v }
 
+    private val parakeet get() = intent.getStringExtra(EXTRA_KIND) == KIND_PARAKEET
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = if (llm) "AI cleanup model" else "Speech model"
+        title = if (llm) "AI cleanup model" else if (parakeet) "Parakeet model" else "Speech model"
         render()
     }
 
     private fun render(status: String? = null) {
+        if (parakeet) return renderParakeet(status)
         page {
             if (llm) {
                 heading("AI cleanup model (GGUF)")
@@ -88,6 +91,7 @@ class ModelImportActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         val uri = data?.data
         if (requestCode == REQ_PICK && resultCode == RESULT_OK && uri != null) importFrom(uri)
+        if (requestCode == REQ_TREE && resultCode == RESULT_OK && uri != null) importTree(uri)
     }
 
     private fun meta(uri: Uri): Pair<String, Long> =
@@ -139,6 +143,101 @@ class ModelImportActivity : Activity() {
         }
     }
 
+    // ---- Parakeet: a sherpa-onnx model *folder* (encoder/decoder/joiner *.onnx + tokens.txt) ----
+
+    private fun renderParakeet(status: String?) {
+        page {
+            heading("Parakeet-TDT 0.6B v2 (int8)")
+            body(
+                "English only, more accurate than whisper base (WER 1.2% vs 3.7% on the desktop bench). Copy the folder " +
+                    "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8 (~661 MB: encoder.int8.onnx, decoder.int8.onnx, joiner.int8.onnx, tokens.txt) " +
+                    "to the phone, then pick that folder here. Needs ~1 GB free RAM; recommended on phones with 6-8 GB.",
+            )
+            status?.let { body(it) }
+            val current = app.settings.parakeetPath
+            body("Active: ${current?.let { File(it).name } ?: "none"}", if (current != null) OK_COLOR else BAD_COLOR)
+            button(if (busy) "Importing…" else "Import model folder…") {
+                @Suppress("DEPRECATION")
+                if (!busy) startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQ_TREE)
+            }
+            heading("Imported")
+            val dirs = app.engine.parakeetDir().listFiles()?.filter { !it.name.endsWith(".part") && dev.flowclone.data.ParakeetFiles.isModelDir(it) }?.sortedBy { it.name }.orEmpty()
+            if (dirs.isEmpty()) body("None yet.")
+            for (d in dirs) {
+                val active = d.absolutePath == current
+                body("${d.name} — ${d.walk().filter { it.isFile }.sumOf { it.length() } / 1_000_000} MB${if (active) " (active)" else ""}")
+                row(
+                    Button(context).apply { text = "Use"; isAllCaps = false; isEnabled = !active; setOnClickListener { activateParakeet(d) } },
+                    Button(context).apply {
+                        text = "Delete"; isAllCaps = false
+                        setOnClickListener {
+                            if (active) { app.settings.parakeetPath = null; reloadEngine() }
+                            d.deleteRecursively(); render()
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    private fun importTree(tree: Uri) {
+        val docId = android.provider.DocumentsContract.getTreeDocumentId(tree)
+        val children = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId)
+        val entries = HashMap<String, Pair<Uri, Long>>()
+        contentResolver.query(
+            children,
+            arrayOf(android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID, android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME, android.provider.DocumentsContract.Document.COLUMN_SIZE),
+            null, null, null,
+        )?.use { c ->
+            while (c.moveToNext()) {
+                val name = c.getString(1) ?: continue
+                entries[name] = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0)) to (if (c.isNull(2)) -1L else c.getLong(2))
+            }
+        }
+        val pick = dev.flowclone.data.ParakeetFiles.select(entries.keys)
+            ?: return render("Not a Parakeet model folder; missing ${dev.flowclone.data.ParakeetFiles.missing(entries.keys).joinToString()}.")
+        val folder = (docId.substringAfterLast('/').substringAfterLast(':').ifEmpty { "parakeet" }).replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val dest = File(app.engine.parakeetDir(), folder)
+        val tmp = File(app.engine.parakeetDir(), "$folder.part")
+        val total = pick.values.sumOf { entries.getValue(it).second.coerceAtLeast(0) }
+        if (app.engine.parakeetDir().usableSpace < total + 100_000_000) return render("Not enough free space: needs ${total / 1_000_000} MB.")
+        busy = true
+        render("Copying ${pick.size} files (${total / 1_000_000} MB)…")
+        thread(name = "parakeet-import") {
+            val result = runCatching {
+                tmp.deleteRecursively(); tmp.mkdirs()
+                var done = 0L
+                for (name in pick.values) {
+                    contentResolver.openInputStream(entries.getValue(name).first)!!.use { input ->
+                        File(tmp, name).outputStream().use { out ->
+                            val buf = ByteArray(1 shl 20)
+                            while (true) {
+                                val n = input.read(buf); if (n < 0) break
+                                out.write(buf, 0, n); done += n
+                                if (done % 64_000_000 < n) runOnUiThread { render("Copying… ${done / 1_000_000} / ${total / 1_000_000} MB") }
+                            }
+                        }
+                    }
+                }
+                dest.deleteRecursively()
+                check(tmp.renameTo(dest)) { "Could not save the model folder." }
+            }
+            runOnUiThread {
+                busy = false
+                result.onSuccess { activateParakeet(dest) }.onFailure { tmp.deleteRecursively(); render("Import failed: ${it.message}") }
+            }
+        }
+    }
+
+    private fun activateParakeet(d: File) {
+        app.settings.parakeetPath = d.absolutePath
+        val s = app.settings.load()
+        if (s.asrEngine != dev.flowclone.core.AsrEngine.PARAKEET) app.settings.save(s.copy(asrEngine = dev.flowclone.core.AsrEngine.PARAKEET))
+        reloadEngine()
+        Toast.makeText(this, "Using Parakeet (${d.name}).", Toast.LENGTH_LONG).show()
+        render()
+    }
+
     private fun activate(f: File) {
         activePath = f.absolutePath
         reloadEngine()
@@ -151,6 +250,9 @@ class ModelImportActivity : Activity() {
 
     companion object {
         private const val REQ_PICK = 10
+        private const val REQ_TREE = 11
+        const val KIND_PARAKEET = "parakeet"
+        fun parakeetIntent(c: Context) = Intent(c, ModelImportActivity::class.java).putExtra(EXTRA_KIND, KIND_PARAKEET)
         const val EXTRA_KIND = "kind"
         const val KIND_LLM = "llm"
 

@@ -51,6 +51,10 @@ data class Settings(
     val shakeToReveal: Boolean = true,
     /** Shrink the Ready bubble to 36dp after 5 s (07 §5.3 `shrinkBubbleEnabled`). */
     val shrinkBubble: Boolean = true,
+    /** core-p1 deterministic spoken cleanup ("Auto-format punctuation, fillers and corrections"). */
+    val spokenCleanup: Boolean = true,
+    /** On-device ASR engine; Parakeet is English-only (D4/D12). */
+    val asrEngine: dev.flowclone.core.AsrEngine = dev.flowclone.core.AsrEngine.WHISPER,
 ) {
     companion object {
         /** Phones decode slower than the desktop default budget of 1.5 s. */
@@ -70,6 +74,7 @@ data class Settings(
         maxSamples = sessionCap().maxSamples,
         partialIntervalMs = if (livePreview) PARTIAL_INTERVAL_MS else null,
         llmTimeoutMs = ANDROID_LLM_TIMEOUT_MS,
+        spokenCleanup = spokenCleanup,
     )
 
     fun sessionCap() = SessionCap(capMinutes.coerceIn(1, 20) * 60_000L)

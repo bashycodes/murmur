@@ -44,6 +44,7 @@
         <activity android:name=".ui.SettingsActivity" android:exported="false" android:label="@string/title_settings" />
         <activity android:name=".ui.DictionaryActivity" android:exported="false" android:label="@string/title_dictionary" />
         <activity android:name=".ui.HistoryActivity" android:exported="false" android:label="@string/title_history" />
+        <activity android:name=".ui.DeveloperActivity" android:exported="false" android:label="@string/title_developer" />
 
         <service
             android:name=".service.FlowService"
