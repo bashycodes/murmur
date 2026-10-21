@@ -498,3 +498,35 @@ exactly as in §1.2; any change needs this doc updated first.
 2. `flow-server` on the i7-6700 under systemd; Windows hybrid dictation via Tailscale shows route `remote`, then `local` with `connect_failed` after `systemctl stop flow-server`, with no lost words.
 3. Android `local` APK identical in behaviour to today (no-network gate green); `remote` APK has no ASR libs (gate green) and dictates through the server; `hybrid` falls back on airplane mode.
 4. Developer page in both apps: toggles, host/port validation, Test connection with latency, active-engine row.
+
+---
+
+## Changelog for shells
+
+Implementation notes for W and A against the §1.2 API (branch `hybrid-server`).
+Every item is additive: code written against §1.2 compiles unchanged.
+
+**2026-10-21 — flow-protocol + flow-router landed**
+
+* Types §1.2 left open, now concrete (`crates/flow-router/src/lib.rs`):
+  * `StartInfo { queued: bool }`.
+  * `BackendError { kind: Failure, message: String }`; `Failure` serialises to the `route.fallback` strings (`connect_failed`, `auth_failed`, `proto_mismatch`, `busy`, `timeout`, `disconnected`, `circuit_open`, `server_not_configured`, `local_not_ready`, plus `error` for a local engine failure).
+  * `HealthReport` (JSON = `fixtures/health_*.json`): `ok`, `engine`, `error` (a `Failure` string), `message`, `server` ("host:port"), `rtt_ms {min,median,max}`, `server_version`, `server_core`, `postprocess_rev`, `postprocess_match`, `proto`, `asr_backend`, `asr_model`, `llm`, `workers`, `busy`, `checked_at_ms`.
+  * `RouteStatus { last: Option<RouteInfo>, circuit: CircuitStatus { open, reason, retry_in_ms, until_config_change }, health: Option<HealthReport> }` (`fixtures/route_status.json`).
+  * `RouterError` = `NoEngineEnabled | LocalNotReady | ServerNotConfigured | ServerUnavailable(String) | BadConfig(String)`, `kind()` = the §1.2 snake_case strings; `Display` = `"<kind>: <detail>"`.
+* `Backend::session_failure(&self) -> Option<BackendError>` — new trait method **with a default** (`None`); shells' local wrappers need not implement it. The router polls it on every push to detect a dead remote session (busy, lost connection, no `started` in time).
+* New `Router` methods: `with_local_capability(bool)` (builder: declare a local engine before its models are loaded, so `allow_client` with no model gives `local_not_ready`, not `no_engine_enabled`; default = a local backend was passed to `new`/`set_local`), `with_local_info(asr_engines, llm)` (fills `capabilities()`), `config()`, `probe_config(&ServerConfig)` (Test connection with the unsaved form; touches no router state), `reset_circuit()`.
+* Validation: `RouterConfig::validate() -> Result<(), RouterError::BadConfig>` implements the §5 rules (host syntax via `flow_router::net::validate_host`, public host requires `tls`, pin 64 hex, token empty or ≥ 16, timeout ranges). `ServerConfig::addr()` gives "host:port" (IPv6 bracketed). `flow_router::net::classify(host)` is the §2.6 address class.
+* flow-core: besides `CommitResult.route` / `RouteInfo` / `POSTPROCESS_REV`, `flow_core::VERSION` (crate version, used for `Capabilities.core_version` and `hello.core`).
+* Behaviour decisions:
+  * Server-only (`allow_client` off) and the server is unreachable at start: `start_session` returns `Err(server_unavailable: …)` (or `server_not_configured`) **and** a following `commit()` returns ERROR with `route.fallback` set, so either check works.
+  * Both toggles off: `Err(no_engine_enabled)`; `commit()` returns ERROR `no_engine_enabled: …` (route `None`).
+  * `commit()` with no session (never started / cancelled) returns ERROR `no active session` with `route: None`; every started session's result has `route`.
+  * Circuit breaker: transient failures (`connect_failed`, `timeout`, `disconnected`) open it for 5 s doubling to 60 s, only consulted when a local fallback is ready; after the backoff the next session tries the server again (half-open; no background re-probe thread). `auth_failed`/`proto_mismatch` keep it open until the server config changes (also without a fallback). `busy` never opens it. A successful remote result or probe closes it.
+  * Health is probed only by `probe_server()` / `probe_config()` (the shell calls it after Save and from Test connection); the router starts no background probes.
+  * Fallback replay enlarges the local session's `ring_capacity_samples` to fit the buffer + 30 s, so no replayed sample is dropped.
+* **Designed for a third route (opt-in cloud STT, planned; not implemented).**
+  * `EngineKind`, `Prefer` and `Failure` are `#[non_exhaustive]`: shells must `match` with a `_` arm (a `Cloud` engine kind and cloud failures such as quota errors will be added).
+  * `RouterConfig::route_order() -> Vec<EngineKind>` is the policy as an ordered list of allowed routes (today derived from `prefer` + the toggles). The cloud follow-up will add an `order: [..]` config field that supersedes `prefer` (which stays accepted as legacy JSON); shells that read the order through `route_order()` need no change.
+  * `RouteInfo.provider: Option<String>` (flow-core, omitted from JSON when `None`) will name the cloud provider (`"openai"`, `"elevenlabs"`, `"openrouter"`, …).
+  * Running the deterministic pipeline on an externally produced transcript already has a clean entry point: a cloud STT client is an `flow_core::asr::AsrEngine` (`transcribe(pcm, &AsrRequest) -> AsrOutput`, the request carries the dictionary/screen-word prompt and language), wrapped by `FlowCore::from_engines(asr, cleaner)`. That keeps VAD (no audio is sent for silence), the hallucination guard, spoken cleanup, the dictionary, the LLM step and post-processing on-device, so a cloud route is a third `Backend` built from a `FlowCore` and needs no flow-core change. TODO (cloud follow-up): if a provider returns text only after its own streaming endpointing, add `FlowCore::process_transcript(text, &SessionConfig, &FieldContext) -> CommitResult` for text-in/result-out without PCM.
