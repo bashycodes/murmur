@@ -23,6 +23,7 @@ pub mod learn;
 pub mod overlay;
 pub mod paste;
 pub mod prefs;
+pub mod router_adapter;
 pub mod secrets;
 pub mod sounds;
 pub mod suggestions;

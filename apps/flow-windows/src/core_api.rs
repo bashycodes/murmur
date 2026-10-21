@@ -14,6 +14,8 @@ use std::sync::Mutex;
 /// The paste plan (core-p1 CR-2) is plain data, so the shell reuses the
 /// core's type rather than mirroring it: `{"text": ".."}` / `{"key": "Enter"|"Tab"|"Break"}`.
 pub use flow_core::paste::{PasteKey, PasteSegment};
+/// Which engine produced a result (D17), filled by the router.
+pub use flow_core::RouteInfo;
 
 /// Shared dictionary/snippet export shape (spec §9): `{word, replacement, isSnippet}`.
 /// No replacement = vocabulary word (ASR bias); replacement = deterministic
@@ -169,6 +171,8 @@ pub struct CommitResult {
     pub empty_reason: Option<String>,
     /// The session hit `max_samples`.
     pub truncated: bool,
+    /// Engine that served the dictation and any fallback (router only).
+    pub route: Option<RouteInfo>,
 }
 
 impl CommitResult {
@@ -186,6 +190,7 @@ impl CommitResult {
             plain_text: String::new(),
             empty_reason: None,
             truncated: false,
+            route: None,
         }
     }
 

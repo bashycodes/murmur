@@ -201,14 +201,9 @@ pub fn server_config(dev: &DevSettings, token: &str) -> Result<ServerConfig, Str
 
 /// The remote side of this build: `None` without the `remote` feature.
 pub fn remote_factory() -> Option<RemoteFactory> {
-    #[cfg(feature = "remote")]
-    {
-        Some(flow_remote::factory())
-    }
-    #[cfg(not(feature = "remote"))]
-    {
-        None
-    }
+    // flow-remote (the WS client) lands on hybrid-server after flow-router;
+    // until then the remote side is absent even in `remote` builds.
+    None
 }
 
 // ------------------------------------------------------------------ adapter
@@ -261,10 +256,18 @@ impl RouterAdapter {
         *self.listener.lock().unwrap() = Some(Box::new(f));
     }
 
+    /// What this router can serve (the engines it was built with).
+    pub fn caps(&self) -> BuildCaps {
+        let c = self.router.capabilities();
+        BuildCaps {
+            local: c.local,
+            remote: c.remote,
+        }
+    }
+
     /// Settings → router; applies from the next `start_session` (§5).
     pub fn apply(&self, dev: &DevSettings) -> Result<(), String> {
-        self.router
-            .update_config(router_config(dev, BuildCaps::current())?);
+        self.router.update_config(router_config(dev, self.caps())?);
         Ok(())
     }
 
@@ -528,7 +531,8 @@ mod tests {
             c2.fetch_add(1, Ordering::SeqCst);
             Arc::new(FakeRemote(s2.clone())) as Arc<dyn Backend>
         });
-        let router = RouterAdapter::new(router_config(d, BOTH).unwrap(), Some(local), Some(factory));
+        let router =
+            RouterAdapter::new(router_config(d, BOTH).unwrap(), Some(local), Some(factory));
         Rig {
             router,
             server,
@@ -639,7 +643,10 @@ mod tests {
         assert_eq!(dictate(&r.router).unwrap().route.unwrap().engine, "local");
         r.router.apply(&dev(false, false)).unwrap();
         assert!(dictate(&r.router).is_err());
-        assert!(r.router.local().unwrap().status().is_ready(), "never reloaded");
+        assert!(
+            r.router.local().unwrap().status().is_ready(),
+            "never reloaded"
+        );
     }
 
     #[test]
@@ -654,7 +661,9 @@ mod tests {
     #[test]
     fn learn_edit_runs_locally_with_the_last_dictionary() {
         let r = rig(&dev(true, true));
-        let cands = r.router.learn_edit("I use whisper flow", "I use Wispr Flow");
+        let cands = r
+            .router
+            .learn_edit("I use whisper flow", "I use Wispr Flow");
         assert!(cands.iter().any(|c| c.word.contains("Wispr")), "{cands:?}");
     }
 
@@ -721,8 +730,8 @@ mod tests {
                 host: "flow.example.com".into(),
                 port: 443,
                 tls: true,
-                tls_pin_sha256:
-                    "3f2a9c0b7e4d1f6a8b5c2e9d0a7f4b1c6e3d8a5f2b9c0e7d4a1f6b3c8e5d2a9f".into(),
+                tls_pin_sha256: "3f2a9c0b7e4d1f6a8b5c2e9d0a7f4b1c6e3d8a5f2b9c0e7d4a1f6b3c8e5d2a9f"
+                    .into(),
                 connect_timeout_ms: 1500,
                 ..ServerSettings::default()
             },
