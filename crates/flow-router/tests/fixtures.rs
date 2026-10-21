@@ -167,7 +167,7 @@ fn remote_route() -> RouteInfo {
         rtt_ms: Some(4),
         queue_ms: Some(0),
         server_core: Some("0.1.0".into()),
-        provider: None,
+        ..Default::default()
     }
 }
 
