@@ -97,9 +97,13 @@ state (off / loading / ready / model missing / engine missing / failed).
 | `src/dictionary.rs` | Import/export of the shared `[{word, replacement, isSnippet}]` JSON: tolerant parse, validation, case-insensitive merge |
 | `src/overlay.rs` | Pill hit-testing so the hands-free ✕/✓ are clickable while the canvas stays click-through |
 | `src/hotkeys/watchdog.rs` | Hook-liveness watchdog (probe + re-install after a `LowLevelHooksTimeout` removal) |
+| `src/router_adapter.rs` | D17: `CoreApi` on `flow_router::Router` (every build), `LocalBackend` over the `FlowCoreAdapter` slot, remote = `flow_remote::factory` (feature `remote`), router errors → pill text, last-route record (Developer page, S/L badge) |
+| `src/dev_settings.rs` | Developer settings: `prefs.json` `"developer"` section, form validation (host/port/pin/token/timeouts, public host ⇒ TLS), mapping to the router's `RouterConfig` JSON (pinned by `crates/flow-router/fixtures`) |
+| `src/secrets.rs` | DPAPI (`CryptProtectData`) blobs for secrets in prefs (server token; reusable for later API keys) |
+| `tests/router_integration.rs` | Controller → router → flow-remote → in-process flow-server (MockAsr) vs local MockAsr: all four toggle combos, server down / killed mid-dictation (no lost audio), error pills, Test connection / Test session |
 | `tests/core_integration.rs` | Controller + real flow-core (MockAsr, and whisper tiny.en on `jfk.wav` when present): audio → commit → paste plan → history |
 | `src/app.rs` | Tauri: tray, overlay window (512x614, click-through, `WS_EX_NOACTIVATE`), settings window, commands, autostart |
-| `ui/` | Plain TypeScript → `ui/dist/*.js` (committed). No bundler, no CDN, no web fonts; the CSP is `'self'` only. Settings tabs: General, AI cleanup, History, Dictionary |
+| `ui/` | Plain TypeScript → `ui/dist/*.js` (committed). No bundler, no CDN, no web fonts; the CSP is `'self'` only. Settings tabs: General, AI cleanup, History, Dictionary, Developer |
 | `tauri.llm.conf.json` | Config overlay that bundles `flow_llm.dll` next to the exe (`cargo tauri build --config tauri.llm.conf.json`) |
 | `tools/probes/settings_mock/` | Serves `ui/dist` with a fake `__TAURI__` for checking the settings page in a plain/headless browser |
 
@@ -115,9 +119,9 @@ rustup target add x86_64-pc-windows-msvc
 # cross-build to MSVC from Linux at all, so the cross-check turns the
 # default `whisper` feature off; the Rust side of whisper is covered by the
 # host build.
-# Each flavour without whisper/sherpa (they can't cross-build): hybrid,
-# client-only and server-only.
-for f in app,local-engine,remote app,local-engine app,remote; do
+# Each flavour without whisper/sherpa (they can't cross-build): hybrid
+# (with and without TLS), client-only and server-only.
+for f in app,local-engine,remote,tls app,local-engine,remote app,local-engine app,remote; do
   RC=$PWD/tools/check-shims/fake-windres AR_x86_64_pc_windows_msvc=$PWD/tools/check-shims/fake-lib \
     cargo clippy --all-targets --target x86_64-pc-windows-msvc --no-default-features --features $f -- -D warnings
 done
@@ -248,7 +252,7 @@ stays a standalone workspace (Tauri/Win32 deps stay out of the core lockfile).
 
 * `SessionConfig`: the ordered `[{word, replacement, isSnippet}]` list, languages, styles (strings → `Style`), cleanup level, raw mode, `max_samples` from the 20-min policy, `platform: windows`, `partial_interval_ms` from the live-preview pref.
 * `FieldContext`: exe stem as `app_id`, URL host, `AppKind`/`StyleBucket` → `AppCategory`, before/selected/after.
-* `CommitResult`: `FORMATTED`/`RAW_TRANSCRIPT` paste `final_text` (then Enter when `press_enter`), `EMPTY` pastes nothing, `ERROR` shows the error pill.
+* `CommitResult`: `FORMATTED`/`RAW_TRANSCRIPT` paste the core's `segments` plan (text runs, Tab/Break, trailing Enter for spoken "press enter"; `press_enter` itself is not read), history keeps `plain_text`; `EMPTY` pastes nothing (`empty_reason: no_speech` shows "No speech heard"), `ERROR` shows the error pill; `route` (router) says which engine ran.
 
 Requests for core changes go to `docs/core-change-requests.md` (the core is
 developed on another branch).

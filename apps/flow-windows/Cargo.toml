@@ -27,7 +27,7 @@ required-features = ["app"]
 # Hybrid build (D17): on-device engine + self-hosted server.
 #   client-only: --no-default-features --features local,app
 #   server-only: --no-default-features --features remote,app
-default = ["local", "remote"]
+default = ["local", "remote", "tls"]
 # On-device ASR ("client"): the FlowCoreAdapter local backend + whisper.
 local = ["whisper"]
 # The local backend without a native ASR engine: what the MSVC cross-check
@@ -40,8 +40,11 @@ whisper = ["local-engine", "flow-core/whisper"]
 # Parakeet-TDT (D12) via sherpa-onnx: links sherpa-onnx-c-api + onnxruntime
 # (SHERPA_ONNX_LIB_DIR at build time; the DLLs ship next to the exe).
 parakeet = ["local-engine", "flow-core/parakeet"]
-# Self-hosted flow-server over WebSocket ("server").
-remote = []
+# Self-hosted flow-server over WebSocket ("server"): the only network code.
+remote = ["dep:flow-remote"]
+# wss:// to a server outside LAN/Tailscale (rustls + ring). In the default
+# build; separate so the Linux MSVC cross-check can leave ring's C out.
+tls = ["remote", "flow-remote/tls"]
 # The Tauri shell (tray, overlay window, event loop). Off by default so the
 # platform-independent logic can be built/tested on any host without webkit.
 app = ["dep:tauri", "dep:tauri-build"]
@@ -58,6 +61,7 @@ flow-core = { path = "../../crates/flow-core", features = ["llm"] }
 # D17: every dictation goes through the router (no network code in it;
 # the remote backend is injected by `remote`).
 flow-router = { path = "../../crates/flow-router" }
+flow-remote = { path = "../../crates/flow-remote", optional = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
 tauri = { version = "2", optional = true, features = ["tray-icon", "image-png"] }
 
@@ -90,3 +94,6 @@ windows = { version = "0.58", features = [
 
 [dev-dependencies]
 hound = "3"
+# tests/router_integration.rs: an in-process flow-server (MockAsr).
+flow-server = { path = "../../crates/flow-server", default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros"] }
