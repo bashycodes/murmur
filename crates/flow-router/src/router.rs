@@ -345,9 +345,12 @@ impl Router {
         };
     }
 
-    /// The shell (re)loaded (or unloaded) its local models.
+    /// The shell (re)loaded (or unloaded) its local models. Also drops the
+    /// cached cloud backend, which shares the local LLM cleaner, so the next
+    /// cloud session is built with the current one.
     pub fn set_local(&self, local: Option<Arc<dyn Backend>>) {
         let mut st = self.state.lock().unwrap();
+        st.cloud = None;
         if local.is_some() {
             st.local_capable = true;
         }

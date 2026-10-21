@@ -62,9 +62,28 @@ pub fn attach(router: Router, cleaner: Option<Arc<dyn Cleaner>>) -> Router {
 
 /// `flow_router::CloudFactory` building a [`CloudBackend`].
 pub fn factory(cleaner: Option<Arc<dyn Cleaner>>) -> CloudFactory {
+    factory_with(move || cleaner.clone())
+}
+
+/// Like [`factory`], but asks for the cleaner each time a backend is built,
+/// for shells whose LLM loads after the router exists (the router rebuilds
+/// the cloud backend after `Router::set_local`).
+pub fn factory_with(
+    cleaner: impl Fn() -> Option<Arc<dyn Cleaner>> + Send + Sync + 'static,
+) -> CloudFactory {
     Box::new(move |p: &CloudProviderConfig, key: SecretString| {
-        Arc::new(CloudBackend::new(p.clone(), key, cleaner.clone())) as Arc<dyn Backend>
+        Arc::new(CloudBackend::new(p.clone(), key, cleaner())) as Arc<dyn Backend>
     })
+}
+
+/// [`attach`] with a cleaner looked up per backend build ([`factory_with`]).
+pub fn attach_with(
+    router: Router,
+    cleaner: impl Fn() -> Option<Arc<dyn Cleaner>> + Send + Sync + 'static,
+) -> Router {
+    router
+        .with_cloud(factory_with(cleaner))
+        .with_cloud_adapters(ADAPTERS.iter().map(|s| s.to_string()).collect())
 }
 
 /// What the last provider call did (Developer page; no secrets, no text).
