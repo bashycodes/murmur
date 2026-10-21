@@ -8,12 +8,16 @@ pub mod cleanup;
 pub mod config;
 pub mod dictionary;
 mod engine;
+pub mod guard;
+pub mod hallucination;
 pub mod learn;
 #[cfg(feature = "llm")]
 pub mod llama;
 #[cfg(feature = "parakeet")]
 pub mod parakeet;
+pub mod paste;
 pub mod postprocess;
+pub mod vad;
 #[cfg(feature = "whisper")]
 pub mod whisper;
 

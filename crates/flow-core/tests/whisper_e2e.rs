@@ -77,3 +77,50 @@ fn jfk_transcribes_end_to_end() {
     assert_eq!(r.language.as_deref(), Some("en"));
     assert!(r.timings.audio_ms > 10_000);
 }
+
+#[test]
+fn missing_silero_model_is_model_not_found() {
+    let Some((model, _)) = fixture() else {
+        return;
+    };
+    let r = FlowCore::load_models(&ModelConfig {
+        asr_backend: AsrBackend::Whisper,
+        asr_path: model.to_string_lossy().into(),
+        vad_model_path: Some("/nonexistent/ggml-silero.bin".into()),
+        ..Default::default()
+    });
+    match r {
+        Err(flow_core::CoreError::ModelNotFound { path }) => {
+            assert_eq!(path, "/nonexistent/ggml-silero.bin")
+        }
+        Err(e) => panic!("{e:?}"),
+        Ok(_) => panic!("loaded"),
+    }
+}
+
+/// Runs only when a Silero model is present (`FLOW_SILERO_MODEL` or
+/// `models/ggml-silero-v5.1.2.bin`; never downloaded by tests).
+#[test]
+fn silero_vad_keeps_the_speech_if_model_present() {
+    let Some((model, wav)) = fixture() else {
+        return;
+    };
+    let silero = std::env::var_os("FLOW_SILERO_MODEL")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| models_dir().join("ggml-silero-v5.1.2.bin"));
+    if !silero.exists() {
+        eprintln!("SKIP: {} missing", silero.display());
+        return;
+    }
+    let core = FlowCore::load_models(&ModelConfig {
+        asr_backend: AsrBackend::Whisper,
+        asr_path: model.to_string_lossy().into(),
+        vad_model_path: Some(silero.to_string_lossy().into()),
+        ..Default::default()
+    })
+    .unwrap();
+    core.start_session(SessionConfig::default()).unwrap();
+    core.push_audio(&audio::read_wav_16k_mono(&wav).unwrap());
+    let r = core.commit();
+    assert!(r.asr_text.to_lowercase().contains("ask not"), "{r:?}");
+}

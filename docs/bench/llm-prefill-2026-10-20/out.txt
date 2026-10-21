@@ -1,0 +1,55 @@
+== np_false rep 1 load 12.34
+load 40798 ms | audio 11000 ms | asr 1041 ms | llm 1500 ms | post 3 ms | commit 2546 ms | RawTranscript
+llm last {"draft_accepted":0,"gen_ms":0,"gen_steps":0,"gen_tokens":0,"prefill_ms":0,"prefill_tokens":0,"prompt_tokens":0} | ahead {"completed":0,"ms":0,"preempted":0,"requests":0,"tokens":0}
+== np_true rep 1 load 10.61
+load 29392 ms | audio 11000 ms | asr 934 ms | llm 1500 ms | post 1 ms | commit 2438 ms | RawTranscript
+llm last {"draft_accepted":0,"gen_ms":0,"gen_steps":0,"gen_tokens":0,"prefill_ms":0,"prefill_tokens":0,"prompt_tokens":0} | ahead {"completed":1,"ms":2257,"preempted":0,"requests":1,"tokens":58}
+== pa_false rep 1 load 10.76
+load 21522 ms | audio 11000 ms | asr 2863 ms | llm 1502 ms | post 1 ms | commit 5407 ms | RawTranscript
+llm last {"draft_accepted":0,"gen_ms":0,"gen_steps":0,"gen_tokens":0,"prefill_ms":0,"prefill_tokens":0,"prompt_tokens":0} | ahead {"completed":0,"ms":0,"preempted":0,"requests":0,"tokens":0}
+== pa_true rep 1 load 9.92
+load 30921 ms | audio 11000 ms | asr 1049 ms | llm 1500 ms | post 1 ms | commit 2867 ms | RawTranscript
+llm last {"draft_accepted":0,"gen_ms":0,"gen_steps":0,"gen_tokens":0,"prefill_ms":0,"prefill_tokens":0,"prompt_tokens":0} | ahead {"completed":3,"ms":7781,"preempted":0,"requests":3,"tokens":81}
+== np_false_long rep 1 load 12.84
+load 36777 ms | audio 11000 ms | asr 2349 ms | llm 8287 ms | post 0 ms | commit 10638 ms | Formatted
+llm last {"draft_accepted":0,"gen_ms":5442,"gen_steps":27,"gen_tokens":27,"prefill_ms":2834,"prefill_tokens":81,"prompt_tokens":1223} | ahead {"completed":0,"ms":0,"preempted":0,"requests":0,"tokens":0}
+And so my fellow Americans ask not what your country can do for you, but what you can do for your country 
+== np_true_long rep 1 load 14.29
+load 30328 ms | audio 11000 ms | asr 1270 ms | llm 7725 ms | post 3 ms | commit 9001 ms | Formatted
+llm last {"draft_accepted":0,"gen_ms":6118,"gen_steps":27,"gen_tokens":27,"prefill_ms":1591,"prefill_tokens":29,"prompt_tokens":1223} | ahead {"completed":1,"ms":1092,"preempted":0,"requests":1,"tokens":58}
+And so my fellow Americans ask not what your country can do for you, but what you can do for your country 
+== pa_false_long rep 1 load 13.64
+load 74504 ms | audio 11000 ms | asr 1624 ms | llm 5351 ms | post 0 ms | commit 8534 ms | Formatted
+llm last {"draft_accepted":0,"gen_ms":2961,"gen_steps":27,"gen_tokens":27,"prefill_ms":2379,"prefill_tokens":81,"prompt_tokens":1223} | ahead {"completed":0,"ms":0,"preempted":0,"requests":0,"tokens":0}
+And so my fellow Americans ask not what your country can do for you, but what you can do for your country 
+== pa_true_long rep 1 load 23.62
+load 27206 ms | audio 11000 ms | asr 4081 ms | llm 4865 ms | post 1 ms | commit 9376 ms | Formatted
+llm last {"draft_accepted":0,"gen_ms":3585,"gen_steps":27,"gen_tokens":27,"prefill_ms":1249,"prefill_tokens":21,"prompt_tokens":1223} | ahead {"completed":3,"ms":6476,"preempted":0,"requests":3,"tokens":82}
+And so my fellow Americans ask not what your country can do for you, but what you can do for your country 
+== np_false rep 2 load 21.66
+load 32143 ms | audio 11000 ms | asr 1933 ms | llm 1502 ms | post 1 ms | commit 3436 ms | RawTranscript
+llm last {"draft_accepted":0,"gen_ms":0,"gen_steps":0,"gen_tokens":0,"prefill_ms":0,"prefill_tokens":0,"prompt_tokens":0} | ahead {"completed":0,"ms":0,"preempted":0,"requests":0,"tokens":0}
+== np_true rep 2 load 17.82
+load 31980 ms | audio 11000 ms | asr 3822 ms | llm 1500 ms | post 1 ms | commit 5326 ms | RawTranscript
+llm last {"draft_accepted":0,"gen_ms":0,"gen_steps":0,"gen_tokens":0,"prefill_ms":0,"prefill_tokens":0,"prompt_tokens":0} | ahead {"completed":1,"ms":2007,"preempted":0,"requests":1,"tokens":58}
+== pa_false rep 2 load 14.89
+load 17620 ms | audio 11000 ms | asr 929 ms | llm 1500 ms | post 1 ms | commit 2645 ms | RawTranscript
+llm last {"draft_accepted":0,"gen_ms":0,"gen_steps":0,"gen_tokens":0,"prefill_ms":0,"prefill_tokens":0,"prompt_tokens":0} | ahead {"completed":0,"ms":0,"preempted":0,"requests":0,"tokens":0}
+== pa_true rep 2 load 11.19
+load 17598 ms | audio 11000 ms | asr 899 ms | llm 1500 ms | post 1 ms | commit 3319 ms | RawTranscript
+llm last {"draft_accepted":0,"gen_ms":0,"gen_steps":0,"gen_tokens":0,"prefill_ms":0,"prefill_tokens":0,"prompt_tokens":0} | ahead {"completed":4,"ms":2226,"preempted":0,"requests":4,"tokens":95}
+== np_false_long rep 2 load 9.75
+load 15856 ms | audio 11000 ms | asr 946 ms | llm 2951 ms | post 0 ms | commit 3900 ms | Formatted
+llm last {"draft_accepted":0,"gen_ms":1689,"gen_steps":27,"gen_tokens":27,"prefill_ms":1255,"prefill_tokens":81,"prompt_tokens":1223} | ahead {"completed":0,"ms":0,"preempted":0,"requests":0,"tokens":0}
+And so my fellow Americans ask not what your country can do for you, but what you can do for your country 
+== np_true_long rep 2 load 7.42
+load 15874 ms | audio 11000 ms | asr 9865 ms | llm 10000 ms | post 1 ms | commit 19868 ms | RawTranscript
+llm last {"draft_accepted":0,"gen_ms":0,"gen_steps":0,"gen_tokens":0,"prefill_ms":0,"prefill_tokens":0,"prompt_tokens":0} | ahead {"completed":1,"ms":1108,"preempted":0,"requests":1,"tokens":58}
+== pa_false_long rep 2 load 8.54
+load 20214 ms | audio 11000 ms | asr 1099 ms | llm 4046 ms | post 0 ms | commit 6017 ms | Formatted
+llm last {"draft_accepted":0,"gen_ms":2101,"gen_steps":27,"gen_tokens":27,"prefill_ms":1936,"prefill_tokens":81,"prompt_tokens":1223} | ahead {"completed":0,"ms":0,"preempted":0,"requests":0,"tokens":0}
+And so my fellow Americans ask not what your country can do for you, but what you can do for your country 
+== pa_true_long rep 2 load 7.99
+load 51596 ms | audio 11000 ms | asr 1056 ms | llm 2699 ms | post 1 ms | commit 4577 ms | Formatted
+llm last {"draft_accepted":0,"gen_ms":2175,"gen_steps":27,"gen_tokens":27,"prefill_ms":514,"prefill_tokens":10,"prompt_tokens":1223} | ahead {"completed":5,"ms":6430,"preempted":0,"requests":5,"tokens":105}
+And so my fellow Americans ask not what your country can do for you, but what you can do for your country 

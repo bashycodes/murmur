@@ -51,6 +51,10 @@ fn bad_json_reports_error() {
         assert!(flow_load_models(c("{not json").as_ptr()).is_null());
         let e = CStr::from_ptr(flow_last_error()).to_str().unwrap();
         assert!(e.contains("config"), "{e}");
+        assert_eq!(
+            CStr::from_ptr(flow_last_error_kind()).to_str(),
+            Ok("bad_config")
+        );
         let h = flow_load_models(c(r#"{"asr_backend":{"mock":{"text":"x"}}}"#).as_ptr());
         assert_eq!(flow_start_session(h, c("[").as_ptr()), -1);
         flow_unload(h);
@@ -112,5 +116,33 @@ fn whisper_without_feature_or_model_fails_cleanly() {
             .to_str()
             .unwrap()
             .is_empty());
+    }
+}
+
+#[cfg(feature = "whisper")]
+#[test]
+fn missing_model_kind_is_model_not_found() {
+    unsafe {
+        let h = flow_load_models(
+            c(r#"{"asr_backend":"whisper","asr_path":"/nonexistent.bin"}"#).as_ptr(),
+        );
+        assert!(h.is_null());
+        assert_eq!(
+            CStr::from_ptr(flow_last_error_kind()).to_str(),
+            Ok("model_not_found")
+        );
+        let e = CStr::from_ptr(flow_last_error()).to_str().unwrap();
+        assert_eq!(e, "model not found: /nonexistent.bin");
+    }
+}
+
+#[test]
+fn successful_load_clears_error_kind() {
+    unsafe {
+        assert!(flow_load_models(c("{not json").as_ptr()).is_null());
+        let h = flow_load_models(c(r#"{"asr_backend":{"mock":{"text":"x"}}}"#).as_ptr());
+        assert!(!h.is_null());
+        assert_eq!(CStr::from_ptr(flow_last_error_kind()).to_str(), Ok(""));
+        flow_unload(h);
     }
 }
