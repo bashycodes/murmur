@@ -117,6 +117,8 @@ pub struct LastDictation {
     pub server_core: Option<String>,
     pub asr_ms: u64,
     pub total_ms: u64,
+    pub audio_ms: u64,
+    pub dropped_samples: u64,
     pub status: CommitStatus,
     pub empty_reason: Option<String>,
     pub error: Option<String>,
@@ -135,6 +137,8 @@ impl LastDictation {
             server_core: route.and_then(|x| x.server_core.clone()),
             asr_ms: r.timings.asr_ms,
             total_ms: r.timings.total_ms,
+            audio_ms: r.timings.audio_ms,
+            dropped_samples: r.timings.dropped_samples,
             status: r.status,
             empty_reason: r.empty_reason.clone(),
             error: r.error.clone(),
@@ -599,6 +603,8 @@ mod tests {
         }
         let out = r.router.commit();
         assert_eq!(out.final_text.trim(), "from this pc", "{out:?}");
+        assert_eq!(out.timings.audio_ms, 1000, "I5: replayed + live = all");
+        assert_eq!(out.timings.dropped_samples, 0);
         let route = out.route.unwrap();
         assert_eq!(route.engine, "local");
         assert!(route.fallback.is_some());
