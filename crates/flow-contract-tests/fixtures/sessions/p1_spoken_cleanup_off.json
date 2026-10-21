@@ -1,0 +1,11 @@
+{
+ "asr": {
+  "mock": "um so uh hello"
+ },
+ "audio": "speech:1000",
+ "contexts": [],
+ "name": "p1_spoken_cleanup_off",
+ "session_config": {
+  "spoken_cleanup": false
+ }
+}

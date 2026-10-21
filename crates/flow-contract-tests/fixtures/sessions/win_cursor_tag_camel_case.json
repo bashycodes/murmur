@@ -1,0 +1,21 @@
+{
+ "asr": {
+  "mock": "Open user service dot py please"
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 1200,
+   "ctx": {
+    "file_names": [
+     "userService.py"
+    ]
+   }
+  }
+ ],
+ "name": "win_cursor_tag_camel_case",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

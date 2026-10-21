@@ -1,0 +1,25 @@
+{
+ "asr": {
+  "mock": "Sounds good."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "notepad"
+   }
+  }
+ ],
+ "name": "win_period_default_style_non_messaging",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows",
+  "styles": {
+   "email": "excited",
+   "other": "excited",
+   "personal": "excited",
+   "work": "excited"
+  }
+ }
+}

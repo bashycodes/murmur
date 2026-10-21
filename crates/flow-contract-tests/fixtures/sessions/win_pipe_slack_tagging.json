@@ -1,0 +1,22 @@
+{
+ "asr": {
+  "mock": "ask at John about it"
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "slack",
+    "screen_words": [
+     "John"
+    ]
+   }
+  }
+ ],
+ "name": "win_pipe_slack_tagging",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

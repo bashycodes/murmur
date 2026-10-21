@@ -1,0 +1,19 @@
+{
+ "asr": {
+  "mock": "See you tomorrow."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "outlook"
+   }
+  }
+ ],
+ "name": "win_pipe_email_signature_short_no_greeting",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

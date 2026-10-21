@@ -1,0 +1,21 @@
+{
+ "asr": {
+  "mock": "Nothing to see here."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "file_names": [
+     "main.rs"
+    ]
+   }
+  }
+ ],
+ "name": "win_cursor_tag_no_match",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

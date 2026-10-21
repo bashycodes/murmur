@@ -1,0 +1,11 @@
+{
+ "asr": {
+  "mock": "Hello There Bob"
+ },
+ "audio": "speech:1000",
+ "contexts": [],
+ "name": "p1_all_lowercase",
+ "session_config": {
+  "all_lowercase": true
+ }
+}

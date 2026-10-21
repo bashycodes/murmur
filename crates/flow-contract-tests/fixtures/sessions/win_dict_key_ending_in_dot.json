@@ -1,0 +1,17 @@
+{
+ "asr": {
+  "mock": "see e.g. this"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_dict_key_ending_in_dot",
+ "session_config": {
+  "dictionary": [
+   {
+    "replacement": "for example",
+    "word": "e.g."
+   }
+  ],
+  "platform": "windows"
+ }
+}

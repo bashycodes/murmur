@@ -1,0 +1,12 @@
+{
+ "asr": {
+  "mock": "ok fyi"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_dict_team_used_when_no_personal",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

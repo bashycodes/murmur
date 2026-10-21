@@ -1,0 +1,12 @@
+{
+ "asr": {
+  "mock": "please press entering"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_enter_suffix_not_matched",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}
