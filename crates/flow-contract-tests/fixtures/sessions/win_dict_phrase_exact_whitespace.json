@@ -1,0 +1,17 @@
+{
+ "asr": {
+  "mock": "by  the way and by the way"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_dict_phrase_exact_whitespace",
+ "session_config": {
+  "dictionary": [
+   {
+    "replacement": "BTW",
+    "word": "by the way"
+   }
+  ],
+  "platform": "windows"
+ }
+}

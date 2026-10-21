@@ -1,0 +1,19 @@
+{
+ "asr": {
+  "mock": "hi team the report is attached thanks"
+ },
+ "audio": "speech:1500",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_category": "email",
+    "app_id": "outlook"
+   }
+  }
+ ],
+ "name": "p1_email_signature",
+ "session_config": {
+  "email_signature": "Sent by voice"
+ }
+}

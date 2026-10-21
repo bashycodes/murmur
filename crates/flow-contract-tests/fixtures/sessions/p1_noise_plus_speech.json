@@ -1,0 +1,9 @@
+{
+ "asr": {
+  "mock": "hello there"
+ },
+ "audio": "noise+speech:1500",
+ "contexts": [],
+ "name": "p1_noise_plus_speech",
+ "session_config": {}
+}

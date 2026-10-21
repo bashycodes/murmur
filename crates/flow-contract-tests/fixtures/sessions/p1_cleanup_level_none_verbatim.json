@@ -1,0 +1,11 @@
+{
+ "asr": {
+  "mock": "um so period hello"
+ },
+ "audio": "speech:1000",
+ "contexts": [],
+ "name": "p1_cleanup_level_none_verbatim",
+ "session_config": {
+  "cleanup_level": "none"
+ }
+}

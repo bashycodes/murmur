@@ -1,0 +1,20 @@
+{
+ "asr": {
+  "mock": "See below."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "notepad",
+    "before": "note ("
+   }
+  }
+ ],
+ "name": "win_ctx_open_paren_before",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}
