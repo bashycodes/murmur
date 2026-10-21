@@ -1,0 +1,11 @@
+{
+  "asr_engines": [
+    "whisper",
+    "parakeet"
+  ],
+  "core_version": "0.1.0",
+  "llm": true,
+  "local": true,
+  "proto": 1,
+  "remote": true
+}

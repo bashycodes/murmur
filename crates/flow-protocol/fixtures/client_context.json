@@ -1,0 +1,17 @@
+{
+  "t": "context",
+  "sid": 7,
+  "ctx": {
+    "app_id": "com.slack",
+    "url_host": "",
+    "app_category": "work_chat",
+    "before": "Hi team, ",
+    "selected": "",
+    "after": "",
+    "screen_words": [
+      "Kubernetes"
+    ],
+    "file_names": [],
+    "context_known": true
+  }
+}
