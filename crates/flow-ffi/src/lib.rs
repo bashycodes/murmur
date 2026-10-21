@@ -5,20 +5,119 @@
 //! `flow_last_error`), 1 = ignored (no active session). Returned strings
 //! are owned by the caller and must be freed with `flow_string_free`.
 //! No function panics across the boundary.
+//!
+//! D17: a handle is either a bare `FlowCore` (`flow_load_models`) or a
+//! `flow_router::Router` (`flow_open_router`, which may own a FlowCore as its
+//! local backend). Every session function works on both kinds. The network
+//! client (`flow-remote`) is linked only with feature `remote`.
 
 use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
+use std::sync::Arc;
+
 use flow_core::config::{FieldContext, ModelConfig, SessionConfig};
-use flow_core::FlowCore;
+use flow_core::{CommitResult, FlowCore};
+use flow_router::{Backend, Router, RouterConfig, ServerConfig};
 
 #[cfg(feature = "jni")]
 pub mod jni_api;
 
-/// Opaque handle.
-pub struct FlowHandle(FlowCore);
+/// Opaque handle: a bare engine or the router (D17 §6.2).
+pub enum FlowHandle {
+    Core(FlowCore),
+    // Boxed: the router is ~1.3 KB, the core a few words.
+    Router(Box<Router>),
+}
+
+impl FlowHandle {
+    fn start_session(&self, cfg: SessionConfig) -> Result<(), (&'static str, String)> {
+        match self {
+            FlowHandle::Core(c) => c.start_session(cfg).map_err(|e| ("error", e.to_string())),
+            FlowHandle::Router(r) => r.start_session(cfg).map_err(|e| (e.kind(), e.to_string())),
+        }
+    }
+    fn push_audio(&self, pcm: &[i16]) -> bool {
+        match self {
+            FlowHandle::Core(c) => c.push_audio(pcm),
+            FlowHandle::Router(r) => r.push_audio(pcm),
+        }
+    }
+    fn set_context(&self, ctx: FieldContext) {
+        match self {
+            FlowHandle::Core(c) => c.set_context(ctx),
+            FlowHandle::Router(r) => r.set_context(ctx),
+        }
+    }
+    fn partial(&self) -> Option<String> {
+        match self {
+            FlowHandle::Core(c) => c.partial(),
+            FlowHandle::Router(r) => r.partial(),
+        }
+    }
+    fn commit(&self) -> CommitResult {
+        match self {
+            FlowHandle::Core(c) => c.commit(),
+            FlowHandle::Router(r) => r.commit(),
+        }
+    }
+    fn cancel(&self) {
+        match self {
+            FlowHandle::Core(c) => c.cancel(),
+            FlowHandle::Router(r) => r.cancel(),
+        }
+    }
+    fn learn_edit(&self, pasted: &str, edited: &str) -> Vec<flow_core::learn::Candidate> {
+        match self {
+            FlowHandle::Core(c) => c.learn_edit(pasted, edited),
+            FlowHandle::Router(r) => r.learn_edit(pasted, edited),
+        }
+    }
+    pub fn router(&self) -> Option<&Router> {
+        match self {
+            FlowHandle::Router(r) => Some(r),
+            FlowHandle::Core(_) => None,
+        }
+    }
+}
+
+/// What this library was built with: local engines (ASR features) and the server route.
+fn build_local_engines() -> Vec<String> {
+    let mut v = Vec::new();
+    if cfg!(feature = "whisper") {
+        v.push("whisper".to_string());
+    }
+    if cfg!(feature = "parakeet") {
+        v.push("parakeet".to_string());
+    }
+    v
+}
+
+fn remote_factory() -> Option<flow_router::RemoteFactory> {
+    #[cfg(feature = "remote")]
+    {
+        Some(flow_remote::factory(concat!(
+            "flow-ffi ",
+            env!("CARGO_PKG_VERSION")
+        )))
+    }
+    #[cfg(not(feature = "remote"))]
+    {
+        None
+    }
+}
+
+fn new_router(cfg: RouterConfig, local: Option<Arc<dyn Backend>>) -> Router {
+    let engines = build_local_engines();
+    // A passed-in core (even a mock-ASR one) is a local engine; with none, the
+    // build's ASR features decide (allow_client without a model = local_not_ready).
+    let capable = local.is_some() || !engines.is_empty();
+    Router::new(cfg, local, remote_factory())
+        .with_local_capability(capable)
+        .with_local_info(engines, cfg!(feature = "llm"))
+}
 
 thread_local! {
     static LAST_ERROR: RefCell<CString> = RefCell::new(CString::default());
@@ -74,20 +173,20 @@ pub mod json_api {
         FlowCore::load_models(&cfg).map_err(|e| (e.kind(), e.to_string()))
     }
 
-    pub fn start_session(core: &FlowCore, cfg_json: &str) -> Result<(), String> {
-        let cfg: SessionConfig =
-            serde_json::from_str(cfg_json).map_err(|e| format!("bad session config: {e}"))?;
-        core.start_session(cfg).map_err(|e| e.to_string())
+    pub fn start_session(h: &FlowHandle, cfg_json: &str) -> Result<(), (&'static str, String)> {
+        let cfg: SessionConfig = serde_json::from_str(cfg_json)
+            .map_err(|e| ("bad_config", format!("bad session config: {e}")))?;
+        h.start_session(cfg)
     }
 
-    pub fn set_context(core: &FlowCore, ctx_json: &str) -> Result<(), String> {
+    pub fn set_context(core: &FlowHandle, ctx_json: &str) -> Result<(), String> {
         let ctx: FieldContext =
             serde_json::from_str(ctx_json).map_err(|e| format!("bad context: {e}"))?;
         core.set_context(ctx);
         Ok(())
     }
 
-    pub fn commit(core: Option<&FlowCore>) -> String {
+    pub fn commit(core: Option<&FlowHandle>) -> String {
         match core {
             Some(c) => serde_json::to_string(&c.commit())
                 .unwrap_or_else(|e| error_result(&format!("serialize: {e}"))),
@@ -107,8 +206,76 @@ pub mod json_api {
         .to_string()
     }
 
-    pub fn learn_edit(core: &FlowCore, pasted: &str, edited: &str) -> String {
+    pub fn learn_edit(core: &FlowHandle, pasted: &str, edited: &str) -> String {
         serde_json::to_string(&core.learn_edit(pasted, edited)).unwrap()
+    }
+
+    /// `flow_router::Capabilities` of this build (no handle needed).
+    pub fn capabilities() -> String {
+        serde_json::to_string(&new_router(RouterConfig::default(), None).capabilities())
+            .unwrap_or_else(|_| "{}".into())
+    }
+
+    /// Parse + validate a `RouterConfig` (`bad_config` on failure).
+    pub fn router_config(json: &str) -> Result<RouterConfig, (&'static str, String)> {
+        let cfg: RouterConfig = serde_json::from_str(json)
+            .map_err(|e| ("bad_config", format!("bad_config: bad router config: {e}")))?;
+        cfg.validate().map_err(|e| (e.kind(), e.to_string()))?;
+        Ok(cfg)
+    }
+
+    /// Router over an optional local engine. Both routes off is refused
+    /// here (`no_engine_enabled`) so the shell can say so before a session.
+    pub fn open_router(
+        json: &str,
+        local: Option<FlowCore>,
+    ) -> Result<FlowHandle, (&'static str, String)> {
+        let cfg = router_config(json)?;
+        if !cfg.allow_server && !cfg.allow_client {
+            let e = flow_router::RouterError::NoEngineEnabled;
+            return Err((e.kind(), e.to_string()));
+        }
+        let local = local.map(|c| Arc::new(c) as Arc<dyn Backend>);
+        Ok(FlowHandle::Router(Box::new(new_router(cfg, local))))
+    }
+
+    pub fn update_router(h: &FlowHandle, json: &str) -> Result<(), (&'static str, String)> {
+        let r = h
+            .router()
+            .ok_or(("bad_config", "not a router handle".to_string()))?;
+        r.update_config(router_config(json)?);
+        Ok(())
+    }
+
+    /// Blocking probe of an unsaved server config (Developer "Test connection").
+    pub fn probe_server(server_json: &str) -> String {
+        let report = match serde_json::from_str::<ServerConfig>(server_json) {
+            Ok(server) => new_router(RouterConfig::default(), None).probe_config(&server),
+            Err(e) => flow_router::HealthReport::failed(
+                flow_router::EngineKind::Remote,
+                &flow_router::BackendError::new(
+                    flow_router::Failure::Error,
+                    format!("bad server config: {e}"),
+                ),
+            ),
+        };
+        serde_json::to_string(&report).unwrap_or_else(|_| "{\"ok\":false}".into())
+    }
+
+    pub fn probe_router(h: &FlowHandle) -> String {
+        match h.router() {
+            Some(r) => {
+                serde_json::to_string(&r.probe_server()).unwrap_or_else(|_| "{\"ok\":false}".into())
+            }
+            None => "{\"ok\":false,\"error\":\"error\",\"message\":\"not a router handle\"}".into(),
+        }
+    }
+
+    pub fn route_status(h: &FlowHandle) -> String {
+        match h.router() {
+            Some(r) => serde_json::to_string(&r.route_status()).unwrap_or_else(|_| "{}".into()),
+            None => "{}".into(),
+        }
     }
 }
 
@@ -126,7 +293,7 @@ pub unsafe extern "C" fn flow_load_models(model_config_json: *const c_char) -> *
         match json_api::load_models_kind(j) {
             Ok(c) => {
                 clear_error();
-                Box::into_raw(Box::new(FlowHandle(c)))
+                Box::into_raw(Box::new(FlowHandle::Core(c)))
             }
             Err((kind, e)) => {
                 set_error_kind(kind, e);
@@ -159,9 +326,9 @@ pub unsafe extern "C" fn flow_start_session(
             set_error("null handle or config");
             return -1;
         };
-        json_api::start_session(&h.0, j).map_or_else(
-            |e| {
-                set_error(e);
+        json_api::start_session(h, j).map_or_else(
+            |(kind, e)| {
+                set_error_kind(kind, e);
                 -1
             },
             |_| 0,
@@ -182,7 +349,7 @@ pub unsafe extern "C" fn flow_push_audio(h: *mut FlowHandle, pcm: *const i16, le
         } else {
             std::slice::from_raw_parts(pcm, len)
         };
-        if h.0.push_audio(s) {
+        if h.push_audio(s) {
             0
         } else {
             1
@@ -201,7 +368,7 @@ pub unsafe extern "C" fn flow_set_context(
         let (Some(h), Some(j)) = (h.as_ref(), str_arg(context_json)) else {
             return -1;
         };
-        json_api::set_context(&h.0, j).map_or_else(
+        json_api::set_context(h, j).map_or_else(
             |e| {
                 set_error(e);
                 -1
@@ -218,7 +385,7 @@ pub unsafe extern "C" fn flow_set_context(
 #[no_mangle]
 pub unsafe extern "C" fn flow_partial(h: *mut FlowHandle) -> *mut c_char {
     guard(std::ptr::null_mut(), || {
-        match h.as_ref().and_then(|h| h.0.partial()) {
+        match h.as_ref().and_then(|h| h.partial()) {
             Some(p) => out_string(p),
             None => std::ptr::null_mut(),
         }
@@ -232,7 +399,7 @@ pub unsafe extern "C" fn flow_partial(h: *mut FlowHandle) -> *mut c_char {
 #[no_mangle]
 pub unsafe extern "C" fn flow_commit(h: *mut FlowHandle) -> *mut c_char {
     guard(std::ptr::null_mut(), || {
-        out_string(json_api::commit(h.as_ref().map(|h| &h.0)))
+        out_string(json_api::commit(h.as_ref()))
     })
 }
 
@@ -241,7 +408,7 @@ pub unsafe extern "C" fn flow_commit(h: *mut FlowHandle) -> *mut c_char {
 #[no_mangle]
 pub unsafe extern "C" fn flow_cancel(h: *mut FlowHandle) {
     if let Some(h) = h.as_ref() {
-        guard((), || h.0.cancel());
+        guard((), || h.cancel());
     }
 }
 
@@ -259,8 +426,128 @@ pub unsafe extern "C" fn flow_learn_edit(
         let (Some(h), Some(p), Some(e)) = (h.as_ref(), str_arg(pasted), str_arg(edited)) else {
             return std::ptr::null_mut();
         };
-        out_string(json_api::learn_edit(&h.0, p, e))
+        out_string(json_api::learn_edit(h, p, e))
     })
+}
+
+// ---- D17 router (docs/hybrid-architecture.md §6.2) ----------------------
+
+/// `Capabilities` JSON of this build. Free with `flow_string_free`.
+#[no_mangle]
+pub extern "C" fn flow_capabilities() -> *mut c_char {
+    guard(
+        std::ptr::null_mut(),
+        || out_string(json_api::capabilities()),
+    )
+}
+
+/// Open a router over `local` (a `flow_load_models` handle or NULL). Takes
+/// ownership of `local` whatever the outcome (do not unload it afterwards).
+/// NULL + last error kind `no_engine_enabled` / `bad_config` on failure.
+///
+/// # Safety
+/// `json` valid string or NULL; `local` NULL or a core handle not used afterwards.
+#[no_mangle]
+pub unsafe extern "C" fn flow_open_router(
+    json: *const c_char,
+    local: *mut FlowHandle,
+) -> *mut FlowHandle {
+    guard(std::ptr::null_mut(), || {
+        let local = if local.is_null() {
+            None
+        } else {
+            Some(*Box::from_raw(local))
+        };
+        let local = match local {
+            None => None,
+            Some(FlowHandle::Core(c)) => Some(c),
+            Some(FlowHandle::Router(_)) => {
+                set_error_kind("bad_config", "bad_config: local handle is a router");
+                return std::ptr::null_mut();
+            }
+        };
+        let Some(j) = str_arg(json) else {
+            set_error_kind("bad_config", "bad_config: null router config");
+            return std::ptr::null_mut();
+        };
+        match json_api::open_router(j, local) {
+            Ok(h) => {
+                clear_error();
+                Box::into_raw(Box::new(h))
+            }
+            Err((kind, e)) => {
+                set_error_kind(kind, e);
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// `Router::update_config` (from the next session). 0 ok, -1 error.
+///
+/// # Safety
+/// `h` a router handle or NULL; `json` valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_update_router(h: *mut FlowHandle, json: *const c_char) -> c_int {
+    guard(-1, || {
+        let (Some(h), Some(j)) = (h.as_ref(), str_arg(json)) else {
+            set_error_kind("bad_config", "null handle or config");
+            return -1;
+        };
+        json_api::update_router(h, j).map_or_else(
+            |(kind, e)| {
+                set_error_kind(kind, e);
+                -1
+            },
+            |_| 0,
+        )
+    })
+}
+
+/// Blocking `HealthReport` JSON for a `ServerConfig` (unsaved form values).
+///
+/// # Safety
+/// `json` valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_probe_server(json: *const c_char) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        out_string(json_api::probe_server(str_arg(json).unwrap_or("")))
+    })
+}
+
+/// Blocking probe of the router's saved server (updates circuit + health).
+///
+/// # Safety
+/// `h` valid handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_probe_router(h: *mut FlowHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || match h.as_ref() {
+        Some(h) => out_string(json_api::probe_router(h)),
+        None => std::ptr::null_mut(),
+    })
+}
+
+/// `RouteStatus` JSON (`{}` for a core handle).
+///
+/// # Safety
+/// `h` valid handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_route_status(h: *mut FlowHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || match h.as_ref() {
+        Some(h) => out_string(json_api::route_status(h)),
+        None => std::ptr::null_mut(),
+    })
+}
+
+/// Close the circuit breaker. No-op for a core handle.
+///
+/// # Safety
+/// `h` valid handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_reset_circuit(h: *mut FlowHandle) {
+    if let Some(r) = h.as_ref().and_then(FlowHandle::router) {
+        guard((), || r.reset_circuit());
+    }
 }
 
 /// Last error on this thread ("" if none). Valid until the next call on it.
@@ -271,7 +558,8 @@ pub extern "C" fn flow_last_error() -> *const c_char {
 
 /// Stable kind of the last error on this thread: "" (none / last load
 /// succeeded), "bad_config", "model_not_found", "llm_lib_not_found",
-/// "load", or "error" (anything else). Valid until the next call on it.
+/// "load", the router kinds ("no_engine_enabled", "local_not_ready",
+/// "server_not_configured", "server_unavailable"), or "error". Valid until the next call on it.
 #[no_mangle]
 pub extern "C" fn flow_last_error_kind() -> *const c_char {
     LAST_ERROR_KIND.with(|e| e.borrow().as_ptr())
