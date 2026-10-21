@@ -1,0 +1,25 @@
+{
+ "asr": {
+  "mock": "Sounds good."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "notepad"
+   }
+  }
+ ],
+ "name": "win_period_drop_casual_any_app",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows",
+  "styles": {
+   "email": "casual",
+   "other": "casual",
+   "personal": "casual",
+   "work": "casual"
+  }
+ }
+}

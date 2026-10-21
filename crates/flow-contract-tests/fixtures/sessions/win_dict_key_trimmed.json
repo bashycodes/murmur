@@ -1,0 +1,17 @@
+{
+ "asr": {
+  "mock": "say btw now"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_dict_key_trimmed",
+ "session_config": {
+  "dictionary": [
+   {
+    "replacement": "by the way",
+    "word": "  btw "
+   }
+  ],
+  "platform": "windows"
+ }
+}

@@ -1,0 +1,21 @@
+{
+ "asr": {
+  "mock": "New words."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "after": " y",
+    "before": "x ",
+    "selected": "old text"
+   }
+  }
+ ],
+ "name": "and_commit_replaces_selection",
+ "session_config": {
+  "dictionary": [],
+  "platform": "android"
+ }
+}

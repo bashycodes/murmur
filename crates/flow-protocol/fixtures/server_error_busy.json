@@ -1,0 +1,7 @@
+{
+  "t": "error",
+  "sid": 7,
+  "code": "busy",
+  "message": "all workers busy",
+  "fatal": false
+}

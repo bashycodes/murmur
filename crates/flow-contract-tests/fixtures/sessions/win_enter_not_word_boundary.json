@@ -1,0 +1,12 @@
+{
+ "asr": {
+  "mock": "We are pressing enter keys"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_enter_not_word_boundary",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

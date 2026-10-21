@@ -1,0 +1,19 @@
+{
+ "asr": {
+  "mock": "Then we left."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "before": "I said that"
+   }
+  }
+ ],
+ "name": "and_verbatim_mid_sentence_no_recase",
+ "session_config": {
+  "dictionary": [],
+  "platform": "android"
+ }
+}

@@ -1,0 +1,22 @@
+{
+ "asr": {
+  "mock": "New words."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "after": "y",
+    "app_id": "notepad",
+    "before": "x",
+    "selected": " old text "
+   }
+  }
+ ],
+ "name": "win_ctx_selected_lowercase",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

@@ -1,0 +1,18 @@
+{
+ "asr": {
+  "mock": "My email."
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "and_verbatim_snippet_trigger_not_expanded_on_client",
+ "session_config": {
+  "dictionary": [
+   {
+    "isSnippet": true,
+    "replacement": "me@example.com",
+    "word": "my email"
+   }
+  ],
+  "platform": "android"
+ }
+}

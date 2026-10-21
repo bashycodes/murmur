@@ -1,0 +1,19 @@
+{
+ "asr": {
+  "mock": "Really?"
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "slack"
+   }
+  }
+ ],
+ "name": "win_period_keep_question_mark",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

@@ -1,0 +1,10 @@
+{
+  "asr_engines": [
+    "whisper"
+  ],
+  "core_version": "0.1.0",
+  "llm": true,
+  "local": true,
+  "proto": 1,
+  "remote": false
+}

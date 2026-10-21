@@ -1,0 +1,12 @@
+{
+ "asr": {
+  "mock": "Hello world."
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "and_verbatim_no_trailing_space_empty_field",
+ "session_config": {
+  "dictionary": [],
+  "platform": "android"
+ }
+}

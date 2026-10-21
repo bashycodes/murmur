@@ -1,0 +1,20 @@
+{
+ "asr": {
+  "mock": "New words."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "notepad",
+    "selected": "Old text."
+   }
+  }
+ ],
+ "name": "win_ctx_selected_with_period",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

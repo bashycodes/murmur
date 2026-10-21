@@ -187,3 +187,44 @@ fn segment_splitter_handles_adjacent_markers() {
     assert_eq!(segments("", true), vec![key(PasteKey::Enter)]);
     assert!(segments("", false).is_empty());
 }
+
+// --- Hybrid (D17): route info is the router's, never the core's ---
+
+#[test]
+fn core_never_sets_route_and_omits_it_from_json() {
+    let r = run_text("hello", SessionConfig::default(), FieldContext::default());
+    assert!(r.route.is_none());
+    let j = serde_json::to_value(&r).unwrap();
+    assert!(
+        j.get("route").is_none(),
+        "route must be skipped when None: {j}"
+    );
+}
+
+#[test]
+fn route_info_round_trips_and_old_json_still_parses() {
+    let mut r = run_text("hello", SessionConfig::default(), FieldContext::default());
+    r.route = Some(flow_core::RouteInfo {
+        engine: "remote".into(),
+        fallback: None,
+        server: Some("100.64.0.10:7313".into()),
+        rtt_ms: Some(4),
+        queue_ms: Some(0),
+        server_core: Some("0.1.0".into()),
+        provider: None,
+    });
+    let j = serde_json::to_string(&r).unwrap();
+    let back: flow_core::CommitResult = serde_json::from_str(&j).unwrap();
+    assert_eq!(back, r);
+    // A CommitResult serialised before `route` existed still parses.
+    let mut v = serde_json::to_value(&r).unwrap();
+    v.as_object_mut().unwrap().remove("route");
+    let old: flow_core::CommitResult = serde_json::from_value(v).unwrap();
+    assert!(old.route.is_none());
+}
+
+#[test]
+fn postprocess_rev_and_version_are_exposed() {
+    assert!(!flow_core::POSTPROCESS_REV.is_empty());
+    assert_eq!(flow_core::VERSION, env!("CARGO_PKG_VERSION"));
+}
