@@ -1,0 +1,43 @@
+{
+  "t": "start",
+  "sid": 7,
+  "config": {
+    "languages": [
+      "en"
+    ],
+    "dictionary": [
+      {
+        "word": "wispr",
+        "replacement": "Wispr",
+        "isSnippet": false
+      },
+      {
+        "word": "my address",
+        "replacement": "1 Main St",
+        "isSnippet": true
+      }
+    ],
+    "styles": {
+      "personal": "default",
+      "work": "default",
+      "email": "default",
+      "other": "default"
+    },
+    "cleanup_level": "light",
+    "raw_mode": false,
+    "max_samples": 19200000,
+    "platform": "android",
+    "partial_interval_ms": 500,
+    "llm_timeout_ms": 1500,
+    "divergence_threshold": null,
+    "ring_capacity_samples": 480000,
+    "all_lowercase": false,
+    "user_names": [],
+    "press_enter_enabled": true,
+    "email_signature": null,
+    "vad": true,
+    "hallucination_guard": true,
+    "llm_prefill": true,
+    "spoken_cleanup": true
+  }
+}

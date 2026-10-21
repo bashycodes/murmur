@@ -1,0 +1,21 @@
+{
+ "asr": {
+  "mock": "new york is new"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_dict_longest_first",
+ "session_config": {
+  "dictionary": [
+   {
+    "replacement": "NEW",
+    "word": "new"
+   },
+   {
+    "replacement": "New York City",
+    "word": "new york"
+   }
+  ],
+  "platform": "windows"
+ }
+}

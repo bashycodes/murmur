@@ -1,0 +1,17 @@
+{
+ "asr": {
+  "mock": "can's can'tx can't"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_dict_contraction_guard_only_t",
+ "session_config": {
+  "dictionary": [
+   {
+    "replacement": "CAN",
+    "word": "can"
+   }
+  ],
+  "platform": "windows"
+ }
+}

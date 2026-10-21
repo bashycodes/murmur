@@ -1,0 +1,20 @@
+{
+ "asr": {
+  "mock": "Done."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "notepad",
+    "before": "step one -"
+   }
+  }
+ ],
+ "name": "win_ctx_dash_spaced_before",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

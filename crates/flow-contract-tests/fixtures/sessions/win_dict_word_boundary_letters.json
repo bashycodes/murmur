@@ -1,0 +1,18 @@
+{
+ "asr": {
+  "mock": "btwx and xbtw stay"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_dict_word_boundary_letters",
+ "session_config": {
+  "dictionary": [
+   {
+    "isSnippet": false,
+    "replacement": "by the way",
+    "word": "btw"
+   }
+  ],
+  "platform": "windows"
+ }
+}

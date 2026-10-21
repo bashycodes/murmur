@@ -1,0 +1,20 @@
+{
+ "asr": {
+  "mock": "Next one."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 1200,
+   "ctx": {
+    "app_id": "notepad",
+    "before": "He said \"stop.\""
+   }
+  }
+ ],
+ "name": "win_ctx_closing_quote_after_period",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

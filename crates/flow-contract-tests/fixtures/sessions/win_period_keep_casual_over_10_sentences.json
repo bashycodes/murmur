@@ -1,0 +1,25 @@
+{
+ "asr": {
+  "mock": "A. B. C. D. E. F. G. H. I. J. K."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "notepad"
+   }
+  }
+ ],
+ "name": "win_period_keep_casual_over_10_sentences",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows",
+  "styles": {
+   "email": "casual",
+   "other": "casual",
+   "personal": "casual",
+   "work": "casual"
+  }
+ }
+}

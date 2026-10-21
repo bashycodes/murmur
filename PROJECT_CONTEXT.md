@@ -13,6 +13,11 @@ crates/
   flow-cli/         dev harness: `flow-cli transcribe` (WAV → full pipeline), `flow-cli clean` (LLM cleanup on text)
   flow-llm/         llama.cpp cleanup engine as a cdylib plugin (libflow_llm.so / flow_llm.dll), loaded at runtime (D10)
   flow-asr-sherpa/  Parakeet-TDT ASR via the official sherpa-onnx crate (flow-core feature `parakeet`, D12)
+  flow-protocol/    hybrid wire protocol v1 types + golden fixtures (D17; spec docs/protocol.md)
+  flow-router/      Router: the §9 API over local FlowCore + injected remote backend; policy, buffer replay, circuit breaker (no network code)
+  flow-remote/      RemoteBackend: WebSocket client of flow-server (the only client-side network code; feature `tls`)
+  flow-server/      self-hosted server: unmodified FlowCore per session, bearer auth, worker pool, systemd unit in dist/
+  flow-contract-tests/  equivalence (local vs server), toggle matrix, build matrix, TLS
 apps/
   flow-windows/     Tauri 2 shell (own cargo workspace; MSVC cross-check shims in tools/check-shims)
   flow-android/     Kotlin shell (Gradle; JNI contract JNI_CONTRACT.md, install guide INSTALL.md)
@@ -23,6 +28,7 @@ tools/              fetch-models.sh, build-android-parakeet.sh, probes/
 ## How to verify
 
 * Core: `cargo test --workspace`. Full: `BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include" SHERPA_ONNX_LIB_DIR=<sherpa-onnx lib dir> cargo test --workspace --all-features` and `cargo clippy --workspace --all-targets --all-features -- -D warnings` (llama-cpp-sys-2 needs the BINDGEN flag even for the default build on this box). Real-model tests skip without `models/` (`tools/fetch-models.sh [--llm] [--parakeet]`).
+* Hybrid (D17): `cargo test -p flow-contract-tests` (+ `--all-features` with `FLOW_MODELS_DIR`/`FLOW_PARAKEET_DIR` for real-model equivalence); `tools/check-build-matrix.sh`; end-to-end smoke with a real server: `tools/probes/hybrid_smoke/run.sh` (PARAKEET_DIR, AUDIO_DIR).
 * Windows shell: `cd apps/flow-windows && cargo test` (184: 171 lib + 13 integration), plus the MSVC clippy cross-check in its README.
 * Android shell: `cd apps/flow-android && ANDROID_HOME=~/Android/Sdk ./gradlew testDebugUnitTest assembleDebug` (Gradle daemon on JDK 21): 238 JVM tests, 9 gated skips.
 
@@ -59,6 +65,21 @@ E2E timing on this box (i7-6700, 8 logical cores, no GPU, load ≈ 8-14 from oth
 * Parakeet int8 (`flow-cli --engine parakeet`): ASR 0.9-1.6 s.
 
 Post-processing takes under 1 ms. With live partials on, commit takes about 1.8 s versus 1.5 s without them, because the in-flight partial decode is aborted.
+
+### Hybrid local/server (D17; branch `hybrid-server`)
+Spec `docs/hybrid-architecture.md`, protocol `docs/protocol.md`. Shell adoption (W/A) not done yet.
+
+| Capability | Proof (test) |
+|---|---|
+| `flow_router::Router` serves the §9 API in every build: local-only path equals FlowCore directly; policy for all 4 toggle combos, server-first with buffered fallback, client-first, circuit breaker (5→60 s; auth/proto until config change), `route` on every result | `flow-router/tests/policy.rs` (27, fake backends), `tests/local_core.rs` |
+| Fallback replay loses nothing: 60 s session, remote dies at 50 s → local ASR receives 100 % of samples, 0 dropped | `flow-router/tests/local_core.rs::fallback_replay_of_a_long_buffer_drops_nothing` |
+| Wire protocol v1 pinned by golden fixtures; router JSON fixtures shared with the shells | `flow-protocol/tests/fixtures.rs`, `flow-router/tests/fixtures.rs` |
+| I2 equivalence: 119 session fixtures (Wispr vectors + core-p1 cases) byte-identical locally and through Router → flow-remote → in-process flow-server; empty reasons, segments/press_enter, late context, partials, truncation, learn_edit; real whisper tiny.en + Parakeet on jfk.wav and Qwen2.5-0.5B cleanup identical | `flow-contract-tests/tests/equivalence.rs` (real-model cases need `--all-features` + models) |
+| Toggle matrix through the real client + server: up / down / busy / stalled commit / killed mid-session / bad token / circuit open / prefer client / both off / config change; `ws://8.8.8.8` refused without a socket; warm connection reused | `flow-contract-tests/tests/toggle_matrix.rs` (20) |
+| wss:// with a pinned self-signed cert; wrong or missing pin refused | `flow-contract-tests/tests/tls.rs` |
+| I6: server writes nothing (real binary, empty HOME/TMPDIR/cwd) and logs no transcript even at debug; bearer auth (401 before upgrade, constant-time), worker queue + replay, protocol errors | `flow-server/tests/{no_persist,auth,queue,ws_protocol}.rs` |
+| I3 gate: flow-protocol/flow-router and flow-ffi `jni,whisper[,llm,parakeet]` have no network crates (flow-ffi `remote`, flow-windows `local`/`remote` checks SKIP until the shells add the features) | `flow-contract-tests/tests/build_matrix.rs` → `tools/check-build-matrix.sh` |
+| Real server on this box (release, Parakeet, 127.0.0.1, token): 10 LibriSpeech clips, text identical to local 10/10, commit→result mean 1666 ms via server vs 1687 ms local on the same CPU; overhead beyond ASR median 3 ms | `tools/probes/hybrid_smoke/run.sh`, `docs/model-benchmarks.md` "Hybrid" |
 
 ### Windows shell (`apps/flow-windows`)
 Wired to the real core (from branch `win-p1`). Proof = `cd apps/flow-windows && cargo test` (184 tests: 171 lib + 13 integration; the real-model ones skip without `models/` / the plugin).
@@ -97,8 +118,8 @@ From branches `android-int` + `android-p1`. `./gradlew testDebugUnitTest assembl
 Wired on Android, unverified on a device: snooze target + notification undo, shake listener (screen-on only), 36dp minimised dot, Repair bubble + ghost notification text, a11y 15 s heartbeat + FlowService respawn, `BootReceiver` (BOOT_COMPLETED / MY_PACKAGE_REPLACED / USER_UNLOCKED), USER_PRESENT re-attach, battery-exemption + OEM steps in onboarding, preview window, GGUF import, dictionary editor, history screen, history DB v2 (fallback reason + per-stage timings).
 
 ## Outstanding work — priority order
-**Active work:** hybrid local/server ASR (D17), spec in `docs/hybrid-architecture.md`.
-**Next:** opt-in cloud STT — docs/cloud-stt.md (starts after hybrid-* branches merge)
+**Active work:** hybrid local/server ASR (D17), spec in `docs/hybrid-architecture.md`. Server/client stack done on `hybrid-server` (see What works); remaining: shells adopt the router (W: Windows features + Developer tab; A: flow-ffi router handle + Android flavours), then `CHECK_BUILD_MATRIX_STRICT=1 tools/check-build-matrix.sh`, then install the systemd unit on the i7-6700 (user action) and test Windows/Android over Tailscale (§6.4 DoD 2-4).
+**Next:** opt-in cloud STT — docs/cloud-stt.md (D18; starts after hybrid-* branches merge; design hooks in the hybrid doc's Changelog for shells)
 1. **Core gaps** (the core itself is done; see What works):
    * Shells adopt the core-p1 API per core-architecture "Changelog for shells": paste `segments` instead of acting on `press_enter`, `plain_text` in history, `empty_reason` ("no speech heard"), typed load errors (Windows can drop its `is_file()` pre-check), optional `spoken_cleanup` pref. Both shells build and pass against the merged core (Windows needed only a `..Default` and a test fix); adoption itself is not done.
    * LLM latency on CPU: prefill-ahead is in; generation (≈ 25 tokens at 5-16 tok/s here) now dominates, so 1.5B misses the 1.5 s budget about half the time. Levers left: a LoRA on (raw → formatted) pairs for 0.5B (03 §7.5); `audio_ctx` for whisper with a repetition guard (benchmark: small 1.8× faster); Parakeet (D12) as the faster English engine. Shells must ship `libflow_llm` next to the exe (Windows) / in jniLibs (Android: packaged, host-JVM-proven, not yet loaded on bionic).

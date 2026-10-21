@@ -1,0 +1,20 @@
+{
+ "asr": {
+  "mock": "Hello world."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 1200,
+   "ctx": {
+    "app_id": "notion.id",
+    "before": "Untitled"
+   }
+  }
+ ],
+ "name": "win_skip_notion_placeholder",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

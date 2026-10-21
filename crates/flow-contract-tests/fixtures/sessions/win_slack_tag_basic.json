@@ -1,0 +1,21 @@
+{
+ "asr": {
+  "mock": "ask at John about it"
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "screen_words": [
+     "John"
+    ]
+   }
+  }
+ ],
+ "name": "win_slack_tag_basic",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

@@ -1,0 +1,19 @@
+{
+ "asr": {
+  "mock": "I use whisper flow daily"
+ },
+ "audio": "speech:1000",
+ "contexts": [],
+ "learn": {
+  "edited": "I use Wispr Flow daily",
+  "pasted": "I use whisper flow daily"
+ },
+ "name": "p1_learn_edit",
+ "session_config": {
+  "dictionary": [
+   {
+    "word": "Kubernetes"
+   }
+  ]
+ }
+}

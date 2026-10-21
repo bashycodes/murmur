@@ -1,0 +1,6 @@
+{
+  "t": "error",
+  "code": "proto_mismatch",
+  "message": "client 2..3, server 1..1",
+  "fatal": true
+}

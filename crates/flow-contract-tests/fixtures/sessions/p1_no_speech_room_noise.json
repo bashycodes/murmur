@@ -1,0 +1,9 @@
+{
+ "asr": {
+  "mock": "never used"
+ },
+ "audio": "noise:1500",
+ "contexts": [],
+ "name": "p1_no_speech_room_noise",
+ "session_config": {}
+}

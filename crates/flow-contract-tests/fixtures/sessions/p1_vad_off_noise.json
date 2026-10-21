@@ -1,0 +1,11 @@
+{
+ "asr": {
+  "mock": "noise words"
+ },
+ "audio": "noise:1000",
+ "contexts": [],
+ "name": "p1_vad_off_noise",
+ "session_config": {
+  "vad": false
+ }
+}

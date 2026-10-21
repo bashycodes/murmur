@@ -1,0 +1,36 @@
+[package]
+name = "flow-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Self-hosted flow-core server for hybrid dictation (LAN/Tailscale only; stores no audio or text)"
+
+[features]
+default = ["whisper", "tls"]
+whisper = ["flow-core/whisper"]
+parakeet = ["flow-core/parakeet"]
+llm = ["flow-core/llm"]
+tls = ["dep:tokio-rustls", "dep:rustls", "dep:rustls-pemfile"]
+
+[dependencies]
+flow-core = { path = "../flow-core" }
+flow-protocol = { path = "../flow-protocol" }
+serde.workspace = true
+serde_json.workspace = true
+axum = { version = "0.8", default-features = false, features = ["ws", "http1", "tokio"] }
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto", "http1", "service"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros", "signal"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+toml = "0.8"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+getrandom = "0.2"
+base64 = "0.22"
+tokio-rustls = { version = "0.26", optional = true, default-features = false, features = ["ring", "tls12"] }
+rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pemfile = { version = "2", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake"] }

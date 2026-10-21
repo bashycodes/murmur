@@ -236,3 +236,32 @@ Raw result files from this session (in `.cache/results/`):
 | ASR `-ac` | `asr-asr_manifest-ac-20261020-170*.jsonl` |
 | LLM rules | `llm-20261020-155222-t4.jsonl`, `llm-rules-20261020-162610-t4.jsonl` |
 | LLM fewshot | `llm-fewshot-20261020-160825-t4.jsonl`, `-161801-t4`, `-170741-t4`, `-171725-t8` |
+
+## Hybrid: local vs via flow-server (2026-10-22)
+
+Smoke test of the D17 path on the i7-6700 (load ≈ 8-11 from other jobs):
+a release `flow-server` (Parakeet-TDT-0.6B-v2 int8, 4 threads, 1 worker) in
+the foreground on `127.0.0.1:17313` with a bearer token, and the same 10
+LibriSpeech clips (5.3-14.4 s) dictated in-process (FlowCore, Parakeet,
+4 threads) and through `Router` → `flow-remote` → server. Audio was pushed in
+100 ms frames at real-time pace, so the number is commit → result
+("release → text"). Script: `tools/probes/hybrid_smoke/run.sh`; raw rows:
+`docs/bench/hybrid-2026-10-22/latency.tsv`.
+
+| | Local (in-process) | Via server (loopback) |
+|---|---|---|
+| commit → result, mean of 10 | 1687 ms | 1666 ms |
+| ASR time inside it | = commit | server `asr_ms` |
+| Overhead beyond ASR (remote commit − server ASR) | — | median 3 ms (1-10 ms, one 112 ms outlier) |
+| Probe RTT (hello + 3 pings) | — | 0-1 ms |
+| Transcript equal to local | — | 10 / 10 |
+| Server model load before listening | — | 16.8 s (cold) |
+
+Both sides ran on the same loaded CPU one after the other, so per-file
+differences (e.g. 720 vs 2045 ms) are load noise, not protocol cost: the
+protocol and pipeline overhead is single-digit milliseconds on loopback.
+Over Tailscale add the network RTT (a few ms on a LAN path). The win of the
+server mode comes from running on a faster machine than the client (a phone),
+which this single-box test cannot show. After the run the server's state
+directory (its cwd, HOME and TMPDIR) was empty, and its log had 10 `result`
+lines with no transcript text.

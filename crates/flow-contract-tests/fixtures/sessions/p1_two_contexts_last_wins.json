@@ -1,0 +1,24 @@
+{
+ "asr": {
+  "mock": "hello world"
+ },
+ "audio": "speech:1000",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "notepad",
+    "before": "Dear "
+   }
+  },
+  {
+   "at_ms": 1000,
+   "ctx": {
+    "app_id": "slack",
+    "before": ""
+   }
+  }
+ ],
+ "name": "p1_two_contexts_last_wins",
+ "session_config": {}
+}

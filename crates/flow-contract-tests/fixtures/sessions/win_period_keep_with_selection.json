@@ -1,0 +1,20 @@
+{
+ "asr": {
+  "mock": "Sounds good."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 1200,
+   "ctx": {
+    "app_id": "slack",
+    "selected": "X"
+   }
+  }
+ ],
+ "name": "win_period_keep_with_selection",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

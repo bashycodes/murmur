@@ -1,0 +1,34 @@
+{
+  "asr_text": "ask not what your country can do",
+  "empty_reason": null,
+  "error": null,
+  "fallback_reason": null,
+  "final_text": "ask not what your country can do ",
+  "language": "en",
+  "plain_text": "ask not what your country can do ",
+  "press_enter": false,
+  "route": {
+    "engine": "local",
+    "fallback": "connect_failed",
+    "queue_ms": null,
+    "rtt_ms": null,
+    "server": "100.64.0.10:7313",
+    "server_core": null
+  },
+  "segments": [
+    {
+      "text": "ask not what your country can do "
+    }
+  ],
+  "status": "RAW_TRANSCRIPT",
+  "timings": {
+    "asr_audio_ms": 1000,
+    "asr_ms": 310,
+    "audio_ms": 1000,
+    "dropped_samples": 0,
+    "llm_ms": 0,
+    "postprocess_ms": 0,
+    "total_ms": 330
+  },
+  "truncated": false
+}

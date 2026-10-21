@@ -1,0 +1,12 @@
+{
+ "asr": {
+  "mock": "Press enter."
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_enter_alone",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

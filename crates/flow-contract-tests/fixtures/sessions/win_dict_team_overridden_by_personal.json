@@ -1,0 +1,17 @@
+{
+ "asr": {
+  "mock": "ok btw"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_dict_team_overridden_by_personal",
+ "session_config": {
+  "dictionary": [
+   {
+    "replacement": "personal",
+    "word": "btw"
+   }
+  ],
+  "platform": "windows"
+ }
+}

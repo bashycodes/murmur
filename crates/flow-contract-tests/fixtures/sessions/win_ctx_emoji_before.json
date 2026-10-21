@@ -1,0 +1,20 @@
+{
+ "asr": {
+  "mock": "Nice work."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "notepad",
+    "before": "great \ud83d\udc4d"
+   }
+  }
+ ],
+ "name": "win_ctx_emoji_before",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}
