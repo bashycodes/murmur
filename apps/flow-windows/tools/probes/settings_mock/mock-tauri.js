@@ -17,7 +17,42 @@
     paste_method: "ctrl_v", restore_clipboard: true, max_dictation_minutes: 20, retention: "keep",
     model_path: null, live_preview: true, llm_enabled: true, llm_model_path: null, llm_lib_path: null,
     llm_timeout_ms: 1500, learn_from_edits: true,
+    asr_engine: "whisper", parakeet_model_dir: null, spoken_cleanup: true,
   };
+  let dev = {
+    allow_server: true, allow_client: true, route_order: ["server", "client"], host: "100.64.0.10", port: 7313,
+    tls: false, tls_pin_sha256: "", token: "dev-token-0123456789abcdef", connect_timeout_ms: 800,
+    commit_timeout_base_ms: 3000, health_ttl_s: 30, keep_local_warm: true, show_engine_badge: true, dev_unlocked: false,
+  };
+  // Rough stand-in for the backend's DevForm::validate (the real rules are Rust).
+  const devCheck = (f) => {
+    const errors = [];
+    const h = f.host.trim();
+    if (h && (/[\s/]|:\/\//.test(h) || (/^[\d.]+$/.test(h) && !/^(\d{1,3}\.){3}\d{1,3}$/.test(h)) || /^[^\[:]*:\d+$/.test(h)))
+      errors.push({ field: "host", message: "Not a valid host" });
+    if (!(f.port >= 1 && f.port <= 65535)) errors.push({ field: "port", message: "Port must be a whole number from 1 to 65535" });
+    if (f.token && f.token.length < 16) errors.push({ field: "token", message: "Token must be at least 16 characters (or empty)" });
+    const warnings = [];
+    if (!f.allow_server && !f.allow_client) warnings.push("Dictation disabled — enable server or client in Developer settings");
+    else if (f.allow_server && !f.tls && h) warnings.push("Unencrypted: OK on Tailscale (WireGuard), LAN only otherwise.");
+    return { errors, warnings, tls_forced: /\.(com|org|net)$/.test(h) && !h.endsWith(".ts.net") };
+  };
+  const health = {
+    ok: true, engine: "remote", error: null, message: null, server: "100.64.0.10:7313", rtt_ms: { min: 3, median: 4, max: 6 },
+    server_version: "flow-server 0.1.0", server_core: "0.1.0", postprocess_rev: "2026-10-21.1", postprocess_match: true,
+    proto: 1, asr_backend: "parakeet", asr_model: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", llm: false, workers: 1, busy: 0,
+  };
+  const route = () => ({
+    last: { engine: "local", fallback: "connect_failed", server: "100.64.0.10:7313", rtt_ms: null, queue_ms: null,
+            server_core: null, asr_ms: 812, total_ms: 1630, status: "FORMATTED", empty_reason: null, error: null, at_ms: Date.now() - 5000 },
+    circuit: { open: true, reason: "connect_failed", retry_in_ms: 4200, until_config_change: false },
+    health,
+  });
+  const devView = () => ({
+    form: structuredClone(dev), caps: { local: true, remote: true },
+    capabilities: { local: true, remote: true, asr_engines: ["whisper", "parakeet"], llm: true, proto: 1, core_version: "0.1.0" },
+    visible: true, version: "0.1.0", check: devCheck(dev), route: route(),
+  });
   let history = [
     { id: 3, ts: now - 60e3, app: "outlook.exe", url: null, raw: "um so i think we should uh meet tomorrow at three",
       formatted: "I think we should meet tomorrow at 3.", pasted: "I think we should meet tomorrow at 3.", edited: null,
@@ -36,7 +71,7 @@
     list_microphones: () => ["USB Mic", "Realtek"],
     get_model_status: () => ({
       status: { state: "ready", path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\ggml-base.bin", load_ms: 312 },
-      default_path: "C:\\…\\ggml-base.bin", models_dir: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models",
+      default_path: "C:\\…\\ggml-base.bin", default_parakeet_dir: "C:\\…\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", models_dir: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models",
       llm: { state: "plugin_missing", path: "C:\\…\\qwen.gguf", message: "llm plugin not found (C:\\Program Files\\Flow Clone\\flow_llm.dll: not found)" },
       default_llm_path: "C:\\…\\qwen2.5-0.5b-instruct-q4_k_m.gguf", llm_plugin: "flow_llm.dll",
     }),
@@ -54,6 +89,15 @@
     dictionary_import: ({ entries, json }) => ({ entries: entries.concat(JSON.parse(json)), added: 1, updated: 0, skipped: 0 }),
     dictionary_export: () => "C:\\Users\\u\\Downloads\\flow-dictionary.json",
     dictionary_export_text: ({ entries }) => JSON.stringify(entries, null, 2),
+    dev_get: devView,
+    dev_validate: ({ form }) => devCheck(form),
+    dev_set: ({ form }) => { const c = devCheck(form); if (c.errors.length) throw c.errors; dev = structuredClone(form); return devView(); },
+    dev_test_connection: () => health,
+    dev_test_session: () => ({ status: "EMPTY", empty_reason: "no_speech", error: null, engine: "remote", fallback: null, total_ms: 212 }),
+    dev_route_status: route,
+    dev_reset_circuit: route,
+    dev_reset_defaults: devView,
+    dev_unlock: devView,
   };
   window.__mockCalls = [];
   window.__TAURI__ = {
