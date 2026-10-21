@@ -66,8 +66,8 @@ E2E timing on this box (i7-6700, 8 logical cores, no GPU, load ≈ 8-14 from oth
 
 Post-processing takes under 1 ms. With live partials on, commit takes about 1.8 s versus 1.5 s without them, because the in-flight partial decode is aborted.
 
-### Hybrid local/server (D17; branch `hybrid-server`)
-Spec `docs/hybrid-architecture.md`, protocol `docs/protocol.md`. Shell adoption (W/A) not done yet.
+### Hybrid local/server (D17; branches `hybrid-server` + `hybrid-windows` + `hybrid-android`, merged into `integration`)
+Spec `docs/hybrid-architecture.md`, protocol `docs/protocol.md`. Both shells use the router; not yet tested against a real server over Tailscale (§6.4 DoD 2-4).
 
 | Capability | Proof (test) |
 |---|---|
@@ -78,11 +78,13 @@ Spec `docs/hybrid-architecture.md`, protocol `docs/protocol.md`. Shell adoption 
 | Toggle matrix through the real client + server: up / down / busy / stalled commit / killed mid-session / bad token / circuit open / prefer client / both off / config change; `ws://8.8.8.8` refused without a socket; warm connection reused | `flow-contract-tests/tests/toggle_matrix.rs` (20) |
 | wss:// with a pinned self-signed cert; wrong or missing pin refused | `flow-contract-tests/tests/tls.rs` |
 | I6: server writes nothing (real binary, empty HOME/TMPDIR/cwd) and logs no transcript even at debug; bearer auth (401 before upgrade, constant-time), worker queue + replay, protocol errors | `flow-server/tests/{no_persist,auth,queue,ws_protocol}.rs` |
-| I3 gate: flow-protocol/flow-router and flow-ffi `jni,whisper[,llm,parakeet]` have no network crates (flow-ffi `remote`, flow-windows `local`/`remote` checks SKIP until the shells add the features) | `flow-contract-tests/tests/build_matrix.rs` → `tools/check-build-matrix.sh` |
+| I3/I4 gate, strict and fully green (0 SKIP): flow-protocol/flow-router and flow-ffi `jni,whisper[,llm,parakeet]` have no network crates; flow-ffi `jni,remote` and flow-windows `remote,app` have no ASR/LLM libs; flow-windows `local,app` has no WS client | `CHECK_BUILD_MATRIX_STRICT=1 tools/check-build-matrix.sh` |
+| Hybrid Developer settings in both apps (server host/port/TLS/pin/token, allow server/client, prefer, Test connection, active-engine row); token in OS secure storage (Windows Credential Manager, Android Keystore) | Windows `cargo test` (229), Android unit tests (297/flavour) |
+| Merged tree green (2026-10-22): root `cargo test --workspace` 274 passed (285 with `--all-features` + models), clippy `-D warnings`; Windows 229 tests + clippy + MSVC cross-clippy for 4 flavours; Android `testLocal/Hybrid/RemoteDebugUnitTest` 297 each (10 gated skips) + `assembleDebug`. APKs with natives: local 41.4 MB, hybrid 43.6 MB, remote 9.9 MB | see How to verify |
 | Real server on this box (release, Parakeet, 127.0.0.1, token): 10 LibriSpeech clips, text identical to local 10/10, commit→result mean 1666 ms via server vs 1687 ms local on the same CPU; overhead beyond ASR median 3 ms | `tools/probes/hybrid_smoke/run.sh`, `docs/model-benchmarks.md` "Hybrid" |
 
 ### Windows shell (`apps/flow-windows`)
-Wired to the real core (from branch `win-p1`). Proof = `cd apps/flow-windows && cargo test` (184 tests: 171 lib + 13 integration; the real-model ones skip without `models/` / the plugin).
+Wired to the real core (from branch `win-p1`) and the hybrid router (`hybrid-windows`: features `local`/`remote`/`tls`, Developer tab). Proof = `cd apps/flow-windows && cargo test` (229 tests; the real-model ones skip without `models/` / the plugin).
 
 | Capability | Proof (test) |
 |---|---|
@@ -100,7 +102,7 @@ Wired to the real core (from branch `win-p1`). Proof = `cd apps/flow-windows && 
 Not yet run on real Windows. The manual checklist is in `apps/flow-windows/README.md`.
 
 ### Android shell (`apps/flow-android`)
-From branches `android-int` + `android-p1`. `./gradlew testDebugUnitTest assembleDebug` is green (238 JVM tests, 9 gated skips) and the no-network gate passes: the merged manifest has no network permission, which a Gradle gate and a unit test enforce. Debug APK with all three .so (flow_ffi, flow_llm, libc++_shared): 14.2 MB; with flow_ffi only: 9.3 MB (.so 3.9 MB stripped + libc++ 1.3 MB). Install guide: `apps/flow-android/INSTALL.md`.
+From branches `android-int` + `android-p1` + `hybrid-android` (flavours `local`/`hybrid`/`remote`; only `local` is network-free). `./gradlew testLocalDebugUnitTest testHybridDebugUnitTest testRemoteDebugUnitTest assembleDebug` is green (297 JVM tests per flavour, 10 gated skips) and the no-network gate passes for `local`: its merged manifest has no network permission, which a Gradle gate and a unit test enforce. Debug APK with all three .so (flow_ffi, flow_llm, libc++_shared): 14.2 MB; with flow_ffi only: 9.3 MB (.so 3.9 MB stripped + libc++ 1.3 MB). Install guide: `apps/flow-android/INSTALL.md`.
 
 | Capability | Proof (test) |
 |---|---|
@@ -118,7 +120,7 @@ From branches `android-int` + `android-p1`. `./gradlew testDebugUnitTest assembl
 Wired on Android, unverified on a device: snooze target + notification undo, shake listener (screen-on only), 36dp minimised dot, Repair bubble + ghost notification text, a11y 15 s heartbeat + FlowService respawn, `BootReceiver` (BOOT_COMPLETED / MY_PACKAGE_REPLACED / USER_UNLOCKED), USER_PRESENT re-attach, battery-exemption + OEM steps in onboarding, preview window, GGUF import, dictionary editor, history screen, history DB v2 (fallback reason + per-stage timings).
 
 ## Outstanding work — priority order
-**Active work:** hybrid local/server ASR (D17), spec in `docs/hybrid-architecture.md`. Server/client stack done on `hybrid-server` (see What works); remaining: shells adopt the router (W: Windows features + Developer tab; A: flow-ffi router handle + Android flavours), then `CHECK_BUILD_MATRIX_STRICT=1 tools/check-build-matrix.sh`, then install the systemd unit on the i7-6700 (user action) and test Windows/Android over Tailscale (§6.4 DoD 2-4).
+**Active work:** hybrid local/server ASR (D17), spec in `docs/hybrid-architecture.md`. Server/client stack and both shells merged into `integration`, strict build matrix green; remaining: install the systemd unit on the i7-6700 (user action) and test Windows/Android over Tailscale (§6.4 DoD 2-4).
 **Next:** opt-in cloud STT — docs/cloud-stt.md (D18; starts after hybrid-* branches merge; design hooks in the hybrid doc's Changelog for shells)
 1. **Core gaps** (the core itself is done; see What works):
    * Shells adopt the core-p1 API per core-architecture "Changelog for shells": paste `segments` instead of acting on `press_enter`, `plain_text` in history, `empty_reason` ("no speech heard"), typed load errors (Windows can drop its `is_file()` pre-check), optional `spoken_cleanup` pref. Both shells build and pass against the merged core (Windows needed only a `..Default` and a test fix); adoption itself is not done.
