@@ -75,6 +75,32 @@ pub struct CommitResult {
     /// suppressed phrase). `None` for other statuses.
     #[serde(default)]
     pub empty_reason: Option<String>,
+    /// Which engine produced this result (hybrid router, D17). `FlowCore`
+    /// never sets it; `flow_router::Router` always does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route: Option<RouteInfo>,
+}
+
+/// Where a result came from (`docs/hybrid-architecture.md` §1.2).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RouteInfo {
+    /// `"local"` or `"remote"`.
+    pub engine: String,
+    /// Why the preferred engine was not used: `connect_failed`,
+    /// `auth_failed`, `proto_mismatch`, `busy`, `timeout`, `disconnected`,
+    /// `circuit_open`, `server_not_configured`, `local_not_ready`.
+    pub fallback: Option<String>,
+    /// `"host:port"` of the server, when one was involved.
+    pub server: Option<String>,
+    pub rtt_ms: Option<u32>,
+    pub queue_ms: Option<u32>,
+    /// The server's flow-core version (pipeline skew detection).
+    pub server_core: Option<String>,
+    /// Engine provider id for engines with several providers (reserved for
+    /// opt-in cloud STT, e.g. `"openai"`; `None` for local / own server).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
 }
 
 impl CommitResult {
@@ -92,6 +118,7 @@ impl CommitResult {
             segments: Vec::new(),
             plain_text: String::new(),
             empty_reason: None,
+            route: None,
         }
     }
     fn error(msg: impl Into<String>) -> Self {

@@ -1,0 +1,16 @@
+{
+  "allow_client": true,
+  "allow_server": true,
+  "keep_local_warm": true,
+  "prefer": "server",
+  "server": {
+    "commit_timeout_base_ms": 3000,
+    "connect_timeout_ms": 800,
+    "health_ttl_s": 30,
+    "host": "100.64.0.10",
+    "port": 7313,
+    "tls": false,
+    "tls_pin_sha256": null,
+    "token": "dev-token-0123456789abcdef"
+  }
+}
