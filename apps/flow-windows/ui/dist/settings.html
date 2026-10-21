@@ -39,7 +39,7 @@
           <label>Max dictation length (minutes) <input id="max_dictation_minutes" type="number" min="1" max="60" /></label>
         </fieldset>
 
-        <fieldset>
+        <fieldset data-needs="local">
           <legend>Speech model</legend>
           <p id="model_status" class="hint">Checking…</p>
           <label>Engine
@@ -86,7 +86,7 @@
       </section>
 
       <section class="panel" data-panel="ai">
-        <fieldset>
+        <fieldset data-needs="local">
           <legend>AI cleanup (local LLM)</legend>
           <label class="row"><input type="checkbox" id="llm_enabled" /> Clean up dictations with a local language model</label>
           <p id="llm_status" class="hint">Off.</p>
