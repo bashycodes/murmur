@@ -147,7 +147,9 @@ impl InProcessServer {
         };
         let handle = rt.block_on(async {
             let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-            flow_server::serve(cfg, vec![l]).await.expect("server starts")
+            flow_server::serve(cfg, vec![l])
+                .await
+                .expect("server starts")
         });
         Self {
             addr: handle.addr().to_string(),
