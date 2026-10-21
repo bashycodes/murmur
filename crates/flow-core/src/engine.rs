@@ -9,7 +9,9 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
-use crate::asr::{build_initial_prompt, AbortFlag, AsrEngine, AsrRequest};
+use crate::asr::{
+    build_initial_prompt, dedupe_terms, AbortFlag, AsrEngine, AsrPurpose, AsrRequest,
+};
 use crate::cleanup::{self, CleanOutcome, Cleaner};
 use crate::config::{CleanupLevel, FieldContext, ModelConfig, SessionConfig, SAMPLE_RATE};
 use crate::dictionary::Dictionary;
@@ -97,10 +99,43 @@ pub struct RouteInfo {
     pub queue_ms: Option<u32>,
     /// The server's flow-core version (pipeline skew detection).
     pub server_core: Option<String>,
-    /// Engine provider id for engines with several providers (reserved for
-    /// opt-in cloud STT, e.g. `"openai"`; `None` for local / own server).
+    /// Engine provider id for engines with several providers (opt-in cloud
+    /// STT: the configured provider id, e.g. `"openrouter-1"`; `None` for
+    /// local / own server).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    /// Cloud STT model id (D18).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Audio the cloud provider billed (D18).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub billed_audio_ms: Option<u32>,
+    /// Cloud cost of this dictation: provider-reported, or an estimate
+    /// from the price table when `cost_estimated` (D18).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_usd: Option<Usd>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_estimated: Option<bool>,
+}
+
+/// An amount in US dollars. A plain JSON number; a newtype only so the
+/// structs holding it keep `Eq` (compared by bit pattern).
+#[derive(Debug, Clone, Copy, Default, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Usd(pub f64);
+
+impl Eq for Usd {}
+
+impl std::hash::Hash for Usd {
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.0.to_bits().hash(h)
+    }
+}
+
+impl std::fmt::Display for Usd {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "${:.4}", self.0)
+    }
 }
 
 impl CommitResult {
@@ -379,6 +414,13 @@ impl FlowCore {
         self.cleaner_info.as_ref().and_then(|c| c.info_json())
     }
 
+    /// The LLM cleaner this core was built with, if any. Lets a second
+    /// core (e.g. the cloud STT backend) share the loaded model instead of
+    /// loading it twice. Additive (D18).
+    pub fn cleaner(&self) -> Option<Arc<dyn Cleaner>> {
+        self.cleaner_info.clone()
+    }
+
     /// Latest live-preview transcript, if partials are enabled.
     pub fn partial(&self) -> Option<String> {
         self.shared.partial.lock().unwrap().clone()
@@ -567,12 +609,18 @@ impl Worker {
         m
     }
 
-    fn asr_request(&self, cfg: &SessionConfig) -> AsrRequest {
+    fn asr_request(&self, cfg: &SessionConfig, purpose: AsrPurpose) -> AsrRequest {
         let ctx = self.shared.context.lock().unwrap();
+        let mut seen = Vec::new();
+        let dictionary_terms = dedupe_terms(cfg.dictionary.vocabulary(), &mut seen);
+        let screen_terms = dedupe_terms(ctx.screen_words.iter().map(String::as_str), &mut seen);
         AsrRequest {
             initial_prompt: build_initial_prompt(&cfg.dictionary, &ctx.screen_words),
             language: cfg.forced_language().map(str::to_string),
             abort: AbortFlag::default(),
+            dictionary_terms,
+            screen_terms,
+            purpose,
         }
     }
 
@@ -602,7 +650,7 @@ impl Worker {
             };
             window = &window[sp.start..sp.end];
         }
-        let mut req = self.asr_request(&s.cfg);
+        let mut req = self.asr_request(&s.cfg, AsrPurpose::Partial);
         req.abort = AbortFlag(Some(self.shared.stop_partial.clone()));
         if let Ok(out) = self.asr.transcribe(window, &req) {
             let t = out.text.trim();
@@ -633,7 +681,7 @@ impl Worker {
             (&s.buf[..], None)
         };
         r.timings.asr_audio_ms = (pcm.len() * 1000 / SAMPLE_RATE) as u64;
-        let req = self.asr_request(&s.cfg);
+        let req = self.asr_request(&s.cfg, AsrPurpose::Final);
         let t = Instant::now();
         let out = match self.asr.transcribe(pcm, &req) {
             Ok(o) => o,
