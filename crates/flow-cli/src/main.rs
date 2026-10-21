@@ -169,7 +169,7 @@ impl AsrEngine for TextAsr {
     fn transcribe(&self, _pcm: &[f32], _req: &AsrRequest) -> Result<AsrOutput, AsrError> {
         Ok(AsrOutput {
             text: self.0.lock().unwrap().clone(),
-            language: None,
+            ..Default::default()
         })
     }
 }
@@ -246,6 +246,10 @@ fn run(a: Args) -> Result<String, String> {
         "load {load_ms} ms | audio {} ms | asr {} ms | llm {} ms | post {} ms | commit {} ms | {:?}",
         r.timings.audio_ms, r.timings.asr_ms, r.timings.llm_ms, r.timings.postprocess_ms, r.timings.total_ms, r.status
     );
+    if let Some(info) = core.llm_info() {
+        let v: serde_json::Value = serde_json::from_str(&info).unwrap_or_default();
+        eprintln!("llm last {} | ahead {}", v["last"], v["ahead"]);
+    }
     if a.json {
         Ok(serde_json::to_string_pretty(&r).unwrap())
     } else {

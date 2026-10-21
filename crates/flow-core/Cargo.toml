@@ -33,3 +33,7 @@ required-features = ["whisper", "wav"]
 [[test]]
 name = "parakeet_e2e"
 required-features = ["parakeet", "wav"]
+
+[[test]]
+name = "vad_bench"
+required-features = ["whisper", "wav"]

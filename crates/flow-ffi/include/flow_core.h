@@ -21,6 +21,8 @@ char *flow_commit(FlowHandle *h);                                    /* CommitRe
 void flow_cancel(FlowHandle *h);
 char *flow_learn_edit(FlowHandle *h, const char *pasted, const char *edited); /* JSON array */
 const char *flow_last_error(void);
+/* "" | "bad_config" | "model_not_found" | "llm_lib_not_found" | "load" | "error" */
+const char *flow_last_error_kind(void);
 void flow_string_free(char *s);
 
 #ifdef __cplusplus

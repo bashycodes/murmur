@@ -100,7 +100,9 @@ pub struct SessionConfig {
     pub partial_interval_ms: Option<u32>,
     /// LLM cleanup budget before falling back to RAW_TRANSCRIPT.
     pub llm_timeout_ms: u64,
-    /// Override the LLM divergence guardrail threshold (0..1).
+    /// Optional extra guard: reject LLM output whose word edit distance /
+    /// words exceeds this (0..1; the old 03 §7.1 check). `None` (default):
+    /// only the support/coverage guard (`guard::check`) runs.
     pub divergence_threshold: Option<f64>,
     /// Ring-buffer capacity between `push_audio` and the worker.
     pub ring_capacity_samples: usize,
@@ -112,6 +114,21 @@ pub struct SessionConfig {
     pub press_enter_enabled: bool,
     /// Line appended to eligible emails, e.g. "— Sent by voice". Off by default.
     pub email_signature: Option<String>,
+    /// Energy + zero-crossing VAD at commit: no speech → EMPTY without ASR;
+    /// leading/trailing silence is trimmed before ASR. Default on.
+    pub vad: bool,
+    /// Drop Whisper's stock silence phrases ("Thank you.", "you", subtitle
+    /// credits) when there was little or no speech. Default on.
+    pub hallucination_guard: bool,
+    /// Prefill the LLM's KV cache with the prompt (context + partial
+    /// transcript) while the user is still speaking, so commit only decodes
+    /// the difference. Only when the LLM would run. Default on.
+    pub llm_prefill: bool,
+    /// Deterministic spoken cleanup before the LLM and post-processing:
+    /// spoken punctuation, fillers, stutters, "scratch that"/"no wait"
+    /// backtracking, money/time/date formatting (`postprocess::spoken`).
+    /// Off at cleanup level `none`. Default on.
+    pub spoken_cleanup: bool,
 }
 
 impl Default for SessionConfig {
@@ -132,6 +149,10 @@ impl Default for SessionConfig {
             user_names: Vec::new(),
             press_enter_enabled: true,
             email_signature: None,
+            vad: true,
+            hallucination_guard: true,
+            llm_prefill: true,
+            spoken_cleanup: true,
         }
     }
 }
@@ -209,6 +230,9 @@ pub struct ModelConfig {
     /// (see `flow_core::llama`).
     pub llm_lib: Option<String>,
     pub threads: usize,
+    /// Optional Silero VAD model for whisper.cpp's built-in VAD (feature
+    /// `whisper`; e.g. `ggml-silero-v5.1.2.bin`). `None` = energy VAD only.
+    pub vad_model_path: Option<String>,
 }
 
 /// Half the logical CPUs (≈ physical cores), capped at 8: ggml's spinning
@@ -226,6 +250,7 @@ impl Default for ModelConfig {
             llm_path: None,
             llm_lib: None,
             threads: default_threads(),
+            vad_model_path: None,
         }
     }
 }

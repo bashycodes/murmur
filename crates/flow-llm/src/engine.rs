@@ -18,7 +18,7 @@
 
 use std::num::NonZeroU32;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
@@ -39,6 +39,8 @@ const N_CTX: u32 = 4096;
 /// Prefill chunk size. It is also the granularity of the cancel check
 /// during prefill.
 const N_BATCH: usize = 128;
+/// Prefill-ahead chunk: smaller, so a commit preempts it within ~32 tokens.
+const N_BATCH_AHEAD: usize = 32;
 
 /// Text after which the model is rambling past its answer. EOG tokens
 /// cover normal termination; these catch template leaks and the model
@@ -117,14 +119,38 @@ struct Job {
     reply: mpsc::Sender<Result<String, CleanErr>>,
 }
 
+enum Msg {
+    Clean(Job),
+    /// Warm the KV cache with this prompt (prefill-ahead while the user is
+    /// still speaking). Runs only if no later message is queued; stops when
+    /// `epoch` moves past the value it was queued with.
+    Prefill(Prompt, u64),
+}
+
+/// Counters of prefill-ahead work since load.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AheadStats {
+    /// Prefill requests received / run to the end / preempted.
+    pub requests: u64,
+    pub completed: u64,
+    pub preempted: u64,
+    /// Tokens decoded by prefill-ahead, and the time it took.
+    pub tokens: u64,
+    pub ms: u64,
+}
+
 // SAFETY: `cancel` is either null or points at an AtomicBool that the
 // caller of `Engine::clean` keeps alive until the reply arrives, and
 // `clean` blocks on that reply.
 unsafe impl Send for Job {}
 
 pub struct Engine {
-    jobs: Mutex<Option<mpsc::Sender<Job>>>,
+    jobs: Mutex<Option<mpsc::Sender<Msg>>>,
     stats: Arc<Mutex<Stats>>,
+    ahead: Arc<Mutex<AheadStats>>,
+    /// Bumped by every clean and by `cancel_prefill`; a running prefill
+    /// stops when it changes.
+    epoch: Arc<AtomicU64>,
     worker: Mutex<Option<JoinHandle<()>>>,
     pub info: Info,
 }
@@ -137,12 +163,16 @@ impl Engine {
             return Err(format!("llm model not found: {path}"));
         }
         let t0 = Instant::now();
-        let (jobs_tx, jobs_rx) = mpsc::channel::<Job>();
+        let (jobs_tx, jobs_rx) = mpsc::channel::<Msg>();
         let (ready_tx, ready_rx) = mpsc::channel::<Result<Info, String>>();
         let p = path.to_string();
         let threads = threads.max(1) as i32;
         let stats = Arc::new(Mutex::new(Stats::default()));
         let wstats = stats.clone();
+        let ahead = Arc::new(Mutex::new(AheadStats::default()));
+        let wahead = ahead.clone();
+        let epoch = Arc::new(AtomicU64::new(0));
+        let wepoch = epoch.clone();
         let worker = std::thread::Builder::new()
             .name("flow-llm".into())
             .spawn(move || {
@@ -195,13 +225,43 @@ impl Engine {
                 if ready_tx.send(Ok(info)).is_err() {
                     return;
                 }
-                for job in jobs_rx {
-                    // SAFETY: see `unsafe impl Send for Job`.
-                    let cancel = unsafe { job.cancel.as_ref() };
-                    st.stats = Stats::default();
-                    let r = st.run(&job.prompt, job.deadline, cancel);
-                    *wstats.lock().unwrap() = st.stats;
-                    let _ = job.reply.send(r);
+                while let Ok(first) = jobs_rx.recv() {
+                    // Everything queued right now: a prefill that has a
+                    // later message behind it is stale and skipped.
+                    let batch: Vec<Msg> =
+                        std::iter::once(first).chain(jobs_rx.try_iter()).collect();
+                    let n = batch.len();
+                    for (i, m) in batch.into_iter().enumerate() {
+                        match m {
+                            Msg::Clean(job) => {
+                                // SAFETY: see `unsafe impl Send for Job`.
+                                let cancel = unsafe { job.cancel.as_ref() };
+                                st.stats = Stats::default();
+                                let r = st.run(&job.prompt, job.deadline, cancel);
+                                *wstats.lock().unwrap() = st.stats;
+                                let _ = job.reply.send(r);
+                            }
+                            Msg::Prefill(p, e) => {
+                                let mut a = wahead.lock().unwrap();
+                                a.requests += 1;
+                                if i + 1 < n || wepoch.load(Ordering::Relaxed) != e {
+                                    continue;
+                                }
+                                drop(a);
+                                let t = Instant::now();
+                                let stop = || wepoch.load(Ordering::Relaxed) != e;
+                                let (toks, done) = st.prefill_ahead(&p, &stop);
+                                let mut a = wahead.lock().unwrap();
+                                a.tokens += toks as u64;
+                                a.ms += t.elapsed().as_millis() as u64;
+                                if done {
+                                    a.completed += 1;
+                                } else {
+                                    a.preempted += 1;
+                                }
+                            }
+                        }
+                    }
                 }
             })
             .map_err(|e| format!("spawn llm thread: {e}"))?;
@@ -220,6 +280,8 @@ impl Engine {
         Ok(Self {
             jobs: Mutex::new(Some(jobs_tx)),
             stats,
+            ahead,
+            epoch,
             worker: Mutex::new(Some(worker)),
             info,
         })
@@ -239,12 +301,14 @@ impl Engine {
             let Some(jobs) = jobs.as_ref() else {
                 return Err(CleanErr::Backend("llm unloaded".into()));
             };
-            jobs.send(Job {
+            // Preempt any prefill-ahead in flight.
+            self.epoch.fetch_add(1, Ordering::Relaxed);
+            jobs.send(Msg::Clean(Job {
                 prompt: prompt.clone(),
                 deadline,
                 cancel: cancel.map_or(std::ptr::null(), |c| c as *const AtomicBool),
                 reply: tx,
-            })
+            }))
             .map_err(|_| CleanErr::Backend("llm thread gone".into()))?;
         }
         rx.recv()
@@ -256,6 +320,28 @@ impl Engine {
     /// Counters of the last finished `clean` call.
     pub fn last_stats(&self) -> Stats {
         *self.stats.lock().unwrap()
+    }
+
+    /// Prefill-ahead counters since load.
+    pub fn ahead_stats(&self) -> AheadStats {
+        *self.ahead.lock().unwrap()
+    }
+
+    /// Non-blocking: queue a prefill of `prompt` so a following `clean`
+    /// whose prompt shares its prefix only decodes the difference. Stale
+    /// requests are coalesced (only the newest runs); `clean` and
+    /// [`Engine::cancel_prefill`] preempt it within one 32-token chunk.
+    pub fn prefill(&self, prompt: Prompt) {
+        let jobs = self.jobs.lock().unwrap();
+        if let Some(jobs) = jobs.as_ref() {
+            let e = self.epoch.load(Ordering::Relaxed);
+            let _ = jobs.send(Msg::Prefill(prompt, e));
+        }
+    }
+
+    /// Stop the running prefill-ahead (the KV cache keeps what it decoded).
+    pub fn cancel_prefill(&self) {
+        self.epoch.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -322,6 +408,15 @@ impl State<'_> {
     /// last token ready for sampling. Only the suffix after the longest
     /// common prefix with the cache is decoded.
     fn prefill(&mut self, toks: &[LlamaToken], stop: &dyn Fn() -> bool) -> Result<(), PrefillErr> {
+        self.prefill_chunked(toks, stop, N_BATCH)
+    }
+
+    fn prefill_chunked(
+        &mut self,
+        toks: &[LlamaToken],
+        stop: &dyn Fn() -> bool,
+        chunk: usize,
+    ) -> Result<(), PrefillErr> {
         let common = self
             .cached
             .iter()
@@ -342,7 +437,7 @@ impl State<'_> {
         self.stats.prompt_tokens = toks.len();
         self.stats.prefill_tokens = toks.len() - keep;
         let t0 = Instant::now();
-        let r = self.prefill_from(toks, keep, stop);
+        let r = self.prefill_from(toks, keep, stop, chunk);
         self.stats.prefill_ms = t0.elapsed().as_millis() as u64;
         r
     }
@@ -352,10 +447,11 @@ impl State<'_> {
         toks: &[LlamaToken],
         keep: usize,
         stop: &dyn Fn() -> bool,
+        n_chunk: usize,
     ) -> Result<(), PrefillErr> {
-        let mut batch = LlamaBatch::new(N_BATCH, 1);
+        let mut batch = LlamaBatch::new(n_chunk, 1);
         let mut pos = keep;
-        for chunk in toks[keep..].chunks(N_BATCH) {
+        for chunk in toks[keep..].chunks(n_chunk) {
             if stop() {
                 return Err(PrefillErr::Cancelled);
             }
@@ -375,6 +471,36 @@ impl State<'_> {
             pos += chunk.len();
         }
         Ok(())
+    }
+
+    /// Prefill-ahead: bring the cache to `p`'s tokens in small chunks. If the
+    /// commit's transcript equals this one, the commit decodes one token;
+    /// otherwise it decodes from the first differing token on. Returns
+    /// (tokens decoded, finished).
+    fn prefill_ahead(&mut self, p: &Prompt, stop: &dyn Fn() -> bool) -> (usize, bool) {
+        let Ok(text) = self.render(p) else {
+            return (0, true);
+        };
+        let toks = self.tokenize(&text);
+        if toks.len() + 64 > N_CTX as usize {
+            return (0, true);
+        }
+        let common = self
+            .cached
+            .iter()
+            .zip(&toks)
+            .take_while(|(a, b)| a == b)
+            .count()
+            .min(toks.len().saturating_sub(1));
+        let saved = self.stats;
+        let r = self.prefill_chunked(&toks, stop, N_BATCH_AHEAD);
+        let decoded = self.cached.len().saturating_sub(common);
+        self.stats = saved;
+        match r {
+            Ok(()) => (decoded, true),
+            Err(PrefillErr::Cancelled) => (decoded, false),
+            Err(PrefillErr::Backend(_)) => (0, false),
+        }
     }
 
     fn warm(&mut self, p: &Prompt) -> usize {

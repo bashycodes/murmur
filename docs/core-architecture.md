@@ -41,14 +41,22 @@ without a model.
 `CommitResult` JSON:
 ```
 {status: FORMATTED|RAW_TRANSCRIPT|EMPTY|ERROR, asr_text, final_text, language,
- timings{audio_ms, asr_ms, llm_ms, postprocess_ms, total_ms, dropped_samples},
- press_enter, fallback_reason, truncated, error}
+ timings{audio_ms, asr_ms, llm_ms, postprocess_ms, total_ms, dropped_samples, asr_audio_ms},
+ press_enter, fallback_reason, truncated, error,
+ segments: [{"text": "…"} | {"key": "Enter"|"Tab"|"Break"}], plain_text, empty_reason}
 ```
 Status meanings:
 * `FORMATTED`: the LLM cleanup ran and passed the guardrail.
-* `RAW_TRANSCRIPT`: post-processed ASR text. This covers LLM off, LLM skipped (raw mode, level `none`, terminal) and LLM failed. `fallback_reason` says why it failed: `llm_timeout`, `llm_error: …`, `llm_diverged` or `llm_empty`.
-* `EMPTY`: no audio, or blank ASR. Blank counts as empty, which is the recommended deviation from Wispr Android, where `"   "` is inserted.
+* `RAW_TRANSCRIPT`: post-processed ASR text. This covers LLM off, LLM skipped (raw mode, level `none`, terminal) and LLM failed. `fallback_reason` says why it failed: `llm_timeout`, `llm_error: …`, `llm_unsupported` (an output sentence is not backed by the input), `llm_dropped` (input content missing), `llm_empty`, or `llm_diverged` (only with an explicit `divergence_threshold`).
+* `EMPTY`: nothing to paste. `empty_reason`: `no_audio`; `no_speech` (the VAD found no speech, ASR was skipped); `blank_asr`; `hallucination` (a Whisper silence phrase was suppressed; `asr_text` holds it); `only_filler` (the spoken-cleanup pass removed everything). Blank counts as empty, which is the recommended deviation from Wispr Android, where `"   "` is inserted.
 * `ERROR`: ASR error, no session, or the session was cancelled or superseded.
+
+Paste fields:
+* `final_text` keeps the in-band `{{BREAK}}`/`{{TAB}}` markers (compatibility).
+* `segments` is the same text as a paste plan: text runs, `Tab` (press Tab), `Break` (finish inserting, pause ~150 ms, continue; no key), and a trailing `Enter` when `press_enter` is set. A shell that pastes `segments` must not also act on `press_enter`. Empty for EMPTY/ERROR.
+* `plain_text` is `final_text` without markers (history, "paste last").
+
+Load errors (`CoreError`, `#[non_exhaustive]`): `ModelNotFound{path}` (ASR or LLM model file missing, checked before whisper.cpp/llama.cpp run), `LlmLibNotFound{tried}` (no `flow-llm` plugin at any lookup location), `Load(String)` (anything else), `WorkerGone`. `CoreError::kind()` gives a stable snake_case name; C callers read it with `flow_last_error_kind()` (`""`, `bad_config`, `model_not_found`, `llm_lib_not_found`, `load`, `error`). Messages keep stable prefixes for JNI (`nativeLastError`): `model not found: <path>`, `llm plugin not found (…)`.
 
 ## Threads and buffering
 
@@ -66,20 +74,25 @@ shell UI thread ──start/commit/cancel──▶ control channel (mpsc) ──
 
 ## Commit pipeline
 
+0. **VAD** (`vad`, `SessionConfig.vad`, default on). Energy + zero-crossing per 20 ms frame, noise floor = 10th-percentile frame RMS, speech = RMS ≥ clamp(3 × floor, 0.004, 0.015), or ≥ half that with ZCR ≥ 0.3 (fricatives), in runs of ≥ 60 ms. No speech → EMPTY `no_speech` without calling ASR. Otherwise the span from 300 ms before the first speech to 400 ms after the last goes to ASR (`timings.asr_audio_ms`). It fails open: a loud stationary signal counts as speech everywhere. Partials are not decoded until there is speech. Optional Silero: `ModelConfig.vad_model_path` (a whisper.cpp Silero ggml model such as `ggml-silero-v5.1.2.bin`, user-supplied, never downloaded; missing file = `ModelNotFound`) turns on whisper.cpp's built-in VAD in addition (`WhisperEngine::with_silero_vad`); untested here because no Silero model is on this box.
 1. **ASR** (`AsrEngine` trait). `WhisperEngine` (feature `whisper`, `whisper-rs` 0.16) keeps one warm context and state.
    * `initial_prompt` = dictionary vocabulary (replacement targets and plain words; snippets excluded), then screen words, deduped, capped at 200 words.
    * Language: exactly one configured language is forced; zero or several means auto-detect. `.en` models are forced to `en`.
    * Silence gate: RMS < 0.003 returns empty. Input shorter than 1.1 s is padded. `[BLANK_AUDIO]` / `(music)` annotations are removed.
    * Default threads = logical CPUs / 2. On this HT box, 8 threads was 14× slower than 4.
+   * `AsrOutput.no_speech_prob`: the highest per-segment Whisper no-speech probability.
+   * **Hallucination guard** (`hallucination`, `SessionConfig.hallucination_guard`, default on). Whisper's stock silence phrases ("Thank you.", "you", "Thanks for watching!", "Bye.", repeated forms) are dropped (EMPTY `hallucination`) only with evidence of little speech: VAD speech < 400 ms or `no_speech_prob` ≥ 0.6. Subtitle credits ("Subtitles by the Amara.org community") are always dropped. Table: `tests/hallucination_vectors.rs`.
+1b. **Spoken cleanup** (`postprocess::spoken`, `SessionConfig.spoken_cleanup`, default on, off at level `none`, skipped for whole-utterance snippets). Deterministic: spoken punctuation ("comma", "period", "question mark", "new line", "new paragraph", …, not after "the/a/trial/Oxford…"), fillers (um/uh/er/hmm; ", like," and ", you know," between commas; "was like $40"; a leading "so"/"okay so"), stutters ("I I" → "I"; not "that that"/"had had"), backtracking ("scratch that", "never mind", "forget that", "no wait", "actually I mean", "or rather"; the correction replaces from its first word's last match in the sentence, else the retracted clause back to its comma, else the last word; literal uses such as "don't forget that", "there's no wait", sentence-initial "Never mind the …" are left alone) and ITN for money ("$120", "$25.50"), percent, clock times ("3:30 PM", "4pm" → "4 PM") and dates ("March 5th"). Its output feeds the LLM and the Wispr port; text that becomes empty is EMPTY `only_filler`. On the benchmark's 20 cases (`tests/spoken_bench.rs`) it lifts mean similarity from 0.710 (raw) to 0.920 without an LLM, never worse than raw (the few-shot Qwen2.5-1.5B LLM scored 0.876 on the same set). The Wispr vectors call `postprocess::process`, which does not include this pass.
 2. **LLM cleanup** (`Cleaner` trait, optional).
    * It is skipped for raw mode, level `none` and terminal apps.
    * It is also skipped when the whole utterance is a snippet trigger.
-   * `cleanup::build_prompt` implements the windows-research 03 §7.2 template: Wispr's verbatim dictation framing, level/style descriptions and the backtrack list, plus a one-shot built from Wispr's UI example pair. Cursor before/after text (≤300/150 chars), the selection, the dictionary and screen words go in the user message.
+   * `cleanup::build_prompt` uses a short system prompt (one rule paragraph from the benchmark's few-shot variant plus one line per level) and 7 worked chat turns (fillers, "no wait" + time, spoken punctuation + money, ordered list, email layout, a question that must not be answered, filler-only → empty). The long 03 §7.2 rule list made ≤3B models echo or answer the input (docs/model-benchmarks.md on the bench branch). Cursor before/after text (≤300/150 chars), the selection, the dictionary and screen words go in the user message; a `STYLE:` line appears only for non-default styles.
    * HTML `<ol>`/`<ul>` lists in the LLM output become `1.` / `- ` lines.
-   * Prompt layout is chosen for KV-cache reuse. The system prompt and six few-shot chat turns depend only on the level: Wispr's UI example pair plus one example each for backtracking, spoken punctuation with "no wait", an ordered list, a question that must not be answered, and email layout. Everything per dictation goes in the final user message: app, category, style bucket, non-empty context lines and the transcript.
+   * Prompt layout is chosen for KV-cache reuse. The system prompt and the few-shot turns depend only on the level. Everything per dictation goes in the final user message: app, category, style, non-empty context lines and the transcript.
+   * **Prefill-ahead** (`SessionConfig.llm_prefill`, default on, only when the LLM would run). While the user speaks, the worker sends `Cleaner::prefill` the prompt the commit will probably use: at session start (empty transcript), after every `set_context`, and after every new partial. The plugin coalesces stale requests, prefills in 32-token chunks and is preempted by a commit (`Cleaner::cancel_prefill` is called before the final ASR so the two do not fight for the CPU; what was decoded stays cached). Commit then decodes only from the first token that differs.
    * The cleaner runs on its own thread with a hard timeout (`SessionConfig.llm_timeout_ms`, default 1.5 s). On timeout the core raises a cancel flag (`Cleaner::clean_cancellable`) so the backend frees its context within one decode step.
    * Output scrubbing: preambles ("Here is the cleaned text:"), trailing "Note:" commentary and one layer of quotes or guillemets are stripped.
-   * Guardrail: word-level divergence between ASR and LLM output (edit distance / words) above a per-level threshold (light 0.6, medium/high 0.9; 03 §7.1) means the output is not used and the result falls back to `RAW_TRANSCRIPT`.
+   * Guardrail (`guard::check`, replaces the 03 §7.1 edit-distance ratio). *Support*: every output sentence's content words must mostly occur in the input (≥ 75 %; 1-2-word sentences fully), and no sentence may repeat → else `llm_unsupported`. *Coverage*: every clause of the spoken-cleaned input must keep ≥ 50 % of its content words and must not lose two in a row, except the clause a backtracking phrase retracts → else `llm_dropped`. Number words match their digits. On the benchmark's 120 judged few-shot outputs (`tests/guard_bench.rs`) it accepts 79/79 paste-ready and rejects 14/14 harmful outputs; the old ratio > 0.6 rejected 4/79 paste-ready and passed 10/14 harmful (20 cases, one rater: treat as a regression fixture, not a precision estimate). `divergence_threshold` set explicitly re-enables the old check in addition.
 
 ### ASR backend: Parakeet (feature `parakeet`, crate `flow-asr-sherpa`)
 D4 makes Parakeet-TDT-0.6B-v2 int8 the English default on desktops with ≥ 4 GB RAM (`docs/model-benchmarks.md`: WER 1.2% vs 3.7% for whisper base, RTF 0.14).
@@ -149,7 +162,7 @@ Not yet verified: loading on bionic (first device run), and whether whisper's li
   * The library is never `dlclose`d. Closing a library that owns OpenMP threads and TLS destructors segfaulted at exit.
 * **Engine.** One thread owns the model, one 4096-token context and its KV cache.
   * It renders the model's own chat template (Qwen2.5, Llama-3.2), with a ChatML fallback.
-  * Prefix reuse: only the tokens after the first difference with the previous prompt are prefilled. `load` prefills the default (light, default-style) prompt, so a warm commit prefills only about 20 tokens of a ~1.2k-token prompt.
+  * Prefix reuse: only the tokens after the first difference with the previous prompt are prefilled. Optional ABI-1 symbols `flow_llm_prefill(h, messages)` (non-blocking) and `flow_llm_prefill_cancel(h)` drive prefill-ahead; flow-core looks them up lazily, so an older plugin still loads. `flow_llm_info` adds `ahead{requests, completed, preempted, tokens, ms}`. `load` prefills the default (light, default-style) prompt, so a warm commit prefills only about 20 tokens of a ~1.2k-token prompt.
   * Decoding is greedy with at most 2 × transcript tokens + 32 new tokens (03 §7.5), stopping on EOG or a stop string (`<|im_end|>`, `<|eot_id|>`, `\nTRANSCRIPT:`, …). The deadline and cancel flag are checked between 128-token prefill chunks and before every token.
   * Exact-greedy prompt-lookup drafting is implemented, but off by default (`FLOW_LLM_DRAFT=n` enables it). On this CPU a batch of drafted tokens cost more than the forward passes it saved (`tools/probes/llm_ab.sh`).
   * llama.cpp logs are silenced unless `FLOW_LLM_LOG` is set.
@@ -161,7 +174,7 @@ Not yet verified: loading on bionic (first device run), and whether whisper's li
   | Qwen2.5-1.5B-Instruct | 8/8 | 1.1-1.8 s at load 6, 2.6-5.3 s at load 12 | 23-38 s |
 
   Decode runs at 15-35 tok/s for 0.5B and 7-13 tok/s for 1.5B on this contended box. The first call after an app or style switch also prefills the user-message prefix (~100 tokens, +0.3-0.8 s).
-3. **Deterministic post-processing** (`postprocess`). This is the client fallback path. The clone has no server, so it always runs the steps, in this order:
+3. **Deterministic post-processing** (`postprocess`). The dictionary matcher (look-around regex) is compiled once per distinct dictionary and shared by later sessions, instead of twice per commit (`FlowCore::dict_matcher_builds`, `postprocess::process_with`/`apply_with`). This is the client fallback path. The clone has no server, so it always runs the steps, in this order:
    1. all-lowercase mode;
    2. dictionary regex. Uses `fancy-regex` look-around, JS first-alternative order, longest key first, Unicode boundaries and the `'t` guard. Personal entries override team entries;
    3. cursor context: mid-sentence lowercasing, leading and trailing spaces, stripping `.!?` before a continuation, CJK handling, the selection path, the style-dependent trailing-period drop, and the Notion and Flow-app skips;
@@ -223,3 +236,47 @@ cargo check -p flow-ffi --features jni --target aarch64-linux-android   # NDK ne
 * `whisper-rs-sys` is built at opt-level 3 even in dev builds. `llama-cpp-sys-2` builds llama.cpp as RelWithDebInfo (`-O2`) in dev builds anyway.
 * `llama-cpp-sys-2` runs bindgen. On this box libclang 18 has no resource headers, so the build needs `BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include"` (otherwise: `'stdbool.h' file not found`).
 * The LLM tests (`llm_e2e`, which skips without a model or plugin) take ~1 min. `FLOW_LLM_MODEL`, `FLOW_LLM_BUDGET_MS`, `FLOW_LLM_QUALITY_BUDGET_MS` and `FLOW_LLM_MIN_GOOD` tune them.
+
+## Measurements (2026-10-20, i7-6700, 4 threads, box shared with other agents' builds, load 7-24)
+
+**LLM prefill-ahead**, `flow-cli transcribe --realtime` on jfk.wav (11 s), tiny.en + Qwen2.5-1.5B Q4_K_M, context `{app_id: slack.exe, before: "Hey team,"}`, budget 10 s so every run finishes; counters are the commit's own prefill. Raw log: `docs/bench/llm-prefill-2026-10-20/` (old prompt, 1223 prompt tokens).
+
+| partials | prefill-ahead | tokens prefilled at commit | commit prefill ms | llm ms |
+|---|---|---|---|---|
+| off | off | 81, 81 | 2834, 1255 | 8287, 2951 |
+| off | on (context only) | 29 | 1591 | 7725 |
+| every 1 s | off | 81, 81 | 2379, 1936 | 5351, 4046 |
+| every 1 s | on | 21, 10 | 1249, 514 | 4865, 2699 |
+
+Prefill-ahead removes 75-90 % of the commit's prefill (≈ 0.7-1.4 s here). Generation (27 tokens at 5-16 tok/s on this contended box: 1.7-6 s) still dominates, so the 1.5 s budget falls back to RAW_TRANSCRIPT on this box with 1.5B either way. One np_true rep (ASR 9.9 s, LLM timeout) was a load spike and is excluded.
+
+## Changelog for shells
+
+All additions are backward compatible: new JSON fields have serde defaults (old JSON still parses, extra fields are ignored by org.json/serde), new `SessionConfig` fields default to the recommended behaviour, and new C/plugin symbols are optional.
+
+2026-10-20 (branch `core-p1`):
+* `CommitResult.segments` / `plain_text` (CR-2). Adopt: paste `segments` in order (`Break` = pause, `Tab`/`Enter` = key) and stop acting on `press_enter` separately; store `plain_text` in history.
+* `CommitResult.empty_reason`, `timings.asr_audio_ms`. Optional: show "no speech heard" for `no_speech`.
+* `fallback_reason` gains `llm_unsupported`, `llm_dropped` (`llm_diverged` only with an explicit `divergence_threshold`).
+* `CoreError::ModelNotFound{path}`, `CoreError::LlmLibNotFound{tried}`, `CoreError::kind()`; C `flow_last_error_kind()` (in `flow_core.h`) (CR-1). Adopt: Windows can drop its `is_file()` pre-check; Android can map `nativeLastError` prefixes `model not found:` / `llm plugin not found` (no JNI symbol was added).
+* `SessionConfig` (all default on): `vad`, `hallucination_guard`, `spoken_cleanup`, `llm_prefill`. Shells may expose `spoken_cleanup` as a pref ("Auto-format punctuation, fillers and corrections"). `divergence_threshold` now defaults to off.
+* Behaviour: room noise without speech is EMPTY (no ASR call); Whisper "Thank you." on a breath is EMPTY; fillers/spoken punctuation/backtracking/ITN are applied without the LLM; the LLM prompt is the short few-shot one.
+* `FlowCore::llm_info()` (backend counters JSON); `Cleaner::prefill`/`cancel_prefill`/`info_json` default methods; `postprocess::spoken`, `guard`, `vad`, `hallucination`, `paste` modules are public.
+* Breaking only for code that builds these structs by hand: `AsrOutput` gained `no_speech_prob` (and lost `Eq`); `LlamaCleaner::load` returns `LlamaLoadError`. No shell does either.
+
+**VAD** (`tests/vad_bench.rs`, release, min of 2; synthetic room noise RMS ≈ 0.0023 padding / ≈ 0.005 noise-only):
+
+| model | case | VAD off: ASR ms | VAD on: ASR ms | audio to ASR |
+|---|---|---|---|---|
+| tiny.en | jfk 11 s | 896 | 847 | 11.0 → 11.0 s |
+| tiny.en | 3 s noise + jfk + 3 s noise | 879 | 803 | 17.0 → 11.6 s |
+| tiny.en | 3 s noise only | 733 (blank) | **0** (EMPTY `no_speech`) | 3.0 → 0 s |
+| base.en | jfk 11 s | 1809 | 1698 | |
+| base.en | 3 s noise + jfk + 3 s noise | 1760 | 1780 | 17.0 → 11.6 s |
+| base.en | 3 s noise only | 3915 (blank) | **0** | |
+
+Trimming barely changes Whisper's time below 30 s, because its encoder always runs a full 30 s window (as the benchmark found); the win is skipping ASR entirely on presses without speech (0.7-3.9 s saved, and no chance of a silence hallucination). Trimming matters past 30 s (one fewer window per 30 s of silence) and for `audio_ctx` sizing later.
+
+**Cleanup quality with the new pipeline** (spoken cleanup → few-shot LLM → guard → post), Qwen2.5-1.5B Q4_K_M, generous budget:
+* benchmark 20 cases (`FLOW_LLM_BENCH=1 … llm_e2e bench_cases`): mean similarity **0.919** (raw 0.710; spoken cleanup alone 0.920; the benchmark's 1.5B few-shot alone 0.876); 19 FORMATTED, c17 EMPTY; no fallbacks; llm 0.9-3.9 s per case on this box. On CPU the LLM adds layout (email, lists, colons) but no net similarity over the rules.
+* the 8 llm_e2e dictations: quality 6/8 (was 8/8 with the long prompt). The two misses: "milk comma eggs … period thanks", where the model dropped "thanks" and the guard fell back to the deterministic text (which is correct), and an unpunctuated "first … second … third" that the model wrote as three sentences instead of a numbered list. At the real 1.5 s budget, 5/8 FORMATTED (p50 1.0 s).

@@ -42,10 +42,13 @@ pub struct AsrRequest {
     pub abort: AbortFlag,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct AsrOutput {
     pub text: String,
     pub language: Option<String>,
+    /// Highest per-segment no-speech probability, when the engine knows it
+    /// (Whisper). Feeds the hallucination guard.
+    pub no_speech_prob: Option<f32>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -94,6 +97,7 @@ pub fn build_initial_prompt(dict: &Dictionary, screen_words: &[String]) -> Strin
 pub struct MockAsr {
     text: String,
     calls: Mutex<(usize, Option<AsrRequest>)>,
+    last_len: std::sync::atomic::AtomicUsize,
     delay: std::time::Duration,
 }
 
@@ -102,6 +106,7 @@ impl MockAsr {
         Self {
             text: text.into(),
             calls: Mutex::new((0, None)),
+            last_len: Default::default(),
             delay: Default::default(),
         }
     }
@@ -116,6 +121,10 @@ impl MockAsr {
     pub fn last_request(&self) -> Option<AsrRequest> {
         self.calls.lock().unwrap().1.clone()
     }
+    /// Samples passed to the most recent `transcribe`.
+    pub fn last_len(&self) -> usize {
+        self.last_len.load(Ordering::Relaxed)
+    }
 }
 
 impl AsrEngine for MockAsr {
@@ -125,6 +134,7 @@ impl AsrEngine for MockAsr {
             c.0 += 1;
             c.1 = Some(req.clone());
         }
+        self.last_len.store(pcm.len(), Ordering::Relaxed);
         let end = std::time::Instant::now() + self.delay;
         while std::time::Instant::now() < end {
             if req.abort.is_set() {
@@ -140,6 +150,7 @@ impl AsrEngine for MockAsr {
                 self.text.clone()
             },
             language: Some(req.language.clone().unwrap_or_else(|| "en".into())),
+            no_speech_prob: None,
         })
     }
 }

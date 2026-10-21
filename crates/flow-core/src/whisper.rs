@@ -48,6 +48,8 @@ pub struct WhisperEngine {
     state: Mutex<WhisperState>,
     multilingual: bool,
     threads: usize,
+    /// Silero VAD model (ggml) for whisper.cpp's built-in VAD, if set.
+    silero: Option<String>,
     // Keep the context alive for the state's lifetime.
     _ctx: WhisperContext,
 }
@@ -65,8 +67,17 @@ impl WhisperEngine {
             multilingual: ctx.is_multilingual(),
             state: Mutex::new(state),
             threads: threads.max(1),
+            silero: None,
             _ctx: ctx,
         })
+    }
+
+    /// Enable whisper.cpp's built-in Silero VAD (model file such as
+    /// `ggml-silero-v5.1.2.bin`): whisper then decodes only the speech
+    /// segments it finds. Runs in addition to flow-core's energy VAD.
+    pub fn with_silero_vad(mut self, model_path: &str) -> Self {
+        self.silero = Some(model_path.to_string());
+        self
     }
 }
 
@@ -81,6 +92,7 @@ impl AsrEngine for WhisperEngine {
             return Ok(AsrOutput {
                 text: String::new(),
                 language: lang,
+                no_speech_prob: None,
             });
         }
         let mut p = FullParams::new(SamplingStrategy::Greedy { best_of: 1 });
@@ -96,6 +108,10 @@ impl AsrEngine for WhisperEngine {
         if !req.initial_prompt.is_empty() {
             p.set_initial_prompt(&req.initial_prompt);
         }
+        if let Some(v) = &self.silero {
+            p.set_vad_model_path(Some(v));
+            p.enable_vad(true);
+        }
         if req.abort.0.is_some() {
             let flag = req.abort.clone();
             p.set_abort_callback_safe(move || flag.is_set());
@@ -105,7 +121,10 @@ impl AsrEngine for WhisperEngine {
         st.full(p, &audio)
             .map_err(|e| AsrError::Transcribe(e.to_string()))?;
         let mut text = String::new();
+        let mut no_speech: Option<f32> = None;
         for seg in st.as_iter() {
+            let p = seg.no_speech_probability();
+            no_speech = Some(no_speech.map_or(p, |q| q.max(p)));
             text.push_str(
                 &seg.to_str_lossy()
                     .map_err(|e| AsrError::Transcribe(e.to_string()))?,
@@ -118,6 +137,7 @@ impl AsrEngine for WhisperEngine {
         Ok(AsrOutput {
             text: clean_text(&text),
             language,
+            no_speech_prob: no_speech,
         })
     }
 }

@@ -277,6 +277,7 @@ impl flow_core::asr::AsrEngine for SwapAsr {
         Ok(flow_core::asr::AsrOutput {
             text: self.0.lock().unwrap().clone(),
             language: Some("en".into()),
+            ..Default::default()
         })
     }
 }
@@ -346,4 +347,98 @@ fn bad_model_path_fails_load() {
     .err()
     .expect("must fail");
     assert!(e.to_string().contains("not found"), "{e}");
+}
+
+fn sim(a: &str, b: &str) -> f64 {
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    let n = a.len().max(b.len());
+    if n == 0 {
+        return 1.0;
+    }
+    let mut prev: Vec<usize> = (0..=b.len()).collect();
+    for i in 1..=a.len() {
+        let mut cur = vec![i; b.len() + 1];
+        for j in 1..=b.len() {
+            let c = usize::from(a[i - 1] != b[j - 1]);
+            cur[j] = (prev[j] + 1).min(cur[j - 1] + 1).min(prev[j - 1] + c);
+        }
+        prev = cur;
+    }
+    1.0 - prev[b.len()] as f64 / n as f64
+}
+
+/// The benchmark's 20 cases through the full engine (spoken cleanup → LLM
+/// → guard → post-processing). Opt-in (`FLOW_LLM_BENCH=1`; ~2-5 min); a
+/// report, not a gate: prints status and similarity per case and the mean.
+/// Budget: `FLOW_LLM_QUALITY_BUDGET_MS` (default 30 s).
+#[test]
+fn bench_cases_through_the_engine() {
+    let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    if std::env::var_os("FLOW_LLM_BENCH").is_none() {
+        eprintln!("SKIP: set FLOW_LLM_BENCH=1 (and FLOW_LLM_MODEL) to run the 20-case report");
+        return;
+    }
+    let Some(model) = model_path() else {
+        eprintln!("SKIP: LLM model missing");
+        return;
+    };
+    let j: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/bench_cleanup_cases.json")).unwrap();
+    let text = Arc::new(std::sync::Mutex::new(String::new()));
+    let cleaner = flow_core::llama::LlamaCleaner::load(
+        model.to_str().unwrap(),
+        flow_core::config::default_threads(),
+        None,
+    )
+    .expect("load llm");
+    let core = FlowCore::from_engines(Arc::new(SwapAsr(text.clone())), Some(Arc::new(cleaner)));
+    let budget = env_u64("FLOW_LLM_QUALITY_BUDGET_MS", 30_000);
+    let (mut sum_raw, mut sum, mut n) = (0.0, 0.0, 0.0);
+    let mut statuses = std::collections::BTreeMap::<String, usize>::new();
+    for c in j["cases"].as_array().unwrap() {
+        let input = c["input"].as_str().unwrap();
+        let want = c["expected"].as_str().unwrap();
+        let cat = match c["category"].as_str().unwrap() {
+            "email" => AppCategory::Email,
+            "work" => AppCategory::WorkChat,
+            "personal" => AppCategory::PersonalChat,
+            _ => AppCategory::Other,
+        };
+        *text.lock().unwrap() = input.to_string();
+        core.start_session(SessionConfig {
+            llm_timeout_ms: budget,
+            ..Default::default()
+        })
+        .unwrap();
+        core.set_context(FieldContext {
+            app_id: c["app"].as_str().unwrap().to_string(),
+            app_category: cat,
+            context_known: false,
+            ..Default::default()
+        });
+        core.push_audio(&speech(1000));
+        let r = core.commit();
+        assert_ne!(r.status, CommitStatus::Error, "{r:?}");
+        let got = r.final_text.trim();
+        let s = sim(got, want);
+        sum += s;
+        sum_raw += sim(input, want);
+        n += 1.0;
+        let key = format!(
+            "{:?} {}",
+            r.status,
+            r.fallback_reason.clone().unwrap_or_default()
+        );
+        *statuses.entry(key).or_default() += 1;
+        eprintln!(
+            "{} {:?} {:?} llm {} ms sim {s:.3} | {got:?}",
+            c["id"], r.status, r.fallback_reason, r.timings.llm_ms
+        );
+    }
+    eprintln!(
+        "model {} | mean sim {:.3} (raw {:.3}) | {statuses:?}",
+        model.display(),
+        sum / n,
+        sum_raw / n
+    );
 }
