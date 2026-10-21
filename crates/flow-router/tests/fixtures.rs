@@ -62,6 +62,56 @@ fn configs() -> Vec<(&'static str, RouterConfig)> {
     ]
 }
 
+/// D18: a hybrid config with OpenRouter enabled and consented (no key:
+/// keys never appear in config JSON).
+fn cloud_config() -> RouterConfig {
+    RouterConfig {
+        server: server(),
+        allow_cloud: true,
+        order: vec![Route::Cloud, Route::Server, Route::Client],
+        cloud: CloudConfig {
+            active: "openrouter-1".into(),
+            providers: vec![
+                CloudProviderConfig {
+                    id: "openrouter-1".into(),
+                    preset: "openrouter".into(),
+                    adapter: "openrouter".into(),
+                    label: "OpenRouter".into(),
+                    base_url: "https://openrouter.ai/api/v1".into(),
+                    model: "openai/gpt-transcribe".into(),
+                    consent_host: "openrouter.ai".into(),
+                    consent_at_ms: 1_792_540_800_000,
+                    ..Default::default()
+                },
+                CloudProviderConfig {
+                    id: "groq-1".into(),
+                    preset: "groq".into(),
+                    adapter: "openai_compat".into(),
+                    label: "Groq".into(),
+                    base_url: "https://api.groq.com/openai/v1".into(),
+                    model: "whisper-large-v3-turbo".into(),
+                    zero_retention: false,
+                    ..Default::default()
+                },
+            ],
+            monthly_budget_usd: Some(Usd(5.0)),
+        },
+        ..Default::default()
+    }
+}
+
+fn cloud_route() -> RouteInfo {
+    RouteInfo {
+        engine: "cloud".into(),
+        provider: Some("openrouter-1".into()),
+        model: Some("openai/gpt-transcribe".into()),
+        billed_audio_ms: Some(1000),
+        cost_usd: Some(Usd(0.000075)),
+        cost_estimated: Some(false),
+        ..Default::default()
+    }
+}
+
 fn capabilities() -> Vec<(&'static str, Capabilities)> {
     let base = Capabilities {
         proto: 1,
@@ -190,7 +240,80 @@ fn route_status() -> RouteStatus {
             until_config_change: false,
         },
         health: Some(health_ok()),
+        cloud_circuit: None,
     }
+}
+
+#[allow(clippy::vec_init_then_push)]
+fn cloud_fixtures() -> Vec<(String, Value)> {
+    let mut v: Vec<(String, Value)> = Vec::new();
+    v.push((
+        "router_config_cloud".into(),
+        serde_json::to_value(cloud_config()).unwrap(),
+    ));
+    v.push((
+        "commit_result_cloud".into(),
+        serde_json::to_value(result(cloud_route())).unwrap(),
+    ));
+    v.push((
+        "route_status_cloud".into(),
+        serde_json::to_value(RouteStatus {
+            last: Some(RouteInfo {
+                engine: "local".into(),
+                fallback: Some("auth_failed".into()),
+                ..Default::default()
+            }),
+            cloud_circuit: Some(CircuitStatus {
+                open: true,
+                reason: Some("auth_failed".into()),
+                retry_in_ms: None,
+                until_config_change: true,
+            }),
+            ..Default::default()
+        })
+        .unwrap(),
+    ));
+    v.push((
+        "health_cloud_ok".into(),
+        serde_json::to_value(HealthReport {
+            ok: true,
+            engine: EngineKind::Cloud,
+            provider: Some("openrouter-1".into()),
+            model: Some("openai/gpt-transcribe".into()),
+            transcript: Some("And so, my fellow Americans,".into()),
+            latency_ms: Some(820),
+            cost_usd: Some(Usd(0.000225)),
+            checked_at_ms: 1_792_540_800_000,
+            ..Default::default()
+        })
+        .unwrap(),
+    ));
+    v.push((
+        "cloud_capabilities".into(),
+        serde_json::to_value(CloudCapabilities {
+            cloud: true,
+            adapters: flow_router::cloud::ADAPTERS
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        })
+        .unwrap(),
+    ));
+    v.push((
+        "cloud_usage".into(),
+        serde_json::to_value(CloudUsage {
+            month: "2026-10".into(),
+            providers: vec![ProviderUsage {
+                provider_id: "openrouter-1".into(),
+                requests: 42,
+                billed_audio_ms: 312_000,
+                cost_usd: Usd(0.0234),
+                cost_estimated: false,
+            }],
+        })
+        .unwrap(),
+    ));
+    v
 }
 
 fn all() -> Vec<(String, Value)> {
@@ -221,6 +344,7 @@ fn all() -> Vec<(String, Value)> {
         "commit_result_fallback".into(),
         serde_json::to_value(result(fallback_route())).unwrap(),
     ));
+    v.extend(cloud_fixtures());
     v
 }
 
@@ -251,18 +375,22 @@ fn every_fixture_parses_and_round_trips() {
         let p = e.unwrap().path();
         let name = p.file_stem().unwrap().to_str().unwrap().to_string();
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
-        let back = match name.split('_').next().unwrap() {
-            "router" => round_trip::<RouterConfig>(&v),
-            "capabilities" => round_trip::<Capabilities>(&v),
-            "health" => round_trip::<HealthReport>(&v),
-            "route" => round_trip::<RouteStatus>(&v),
-            "commit" => round_trip::<CommitResult>(&v),
-            other => panic!("unknown fixture kind {other} ({name})"),
+        let back = match name.as_str() {
+            "cloud_capabilities" => round_trip::<CloudCapabilities>(&v),
+            "cloud_usage" => round_trip::<CloudUsage>(&v),
+            _ => match name.split('_').next().unwrap() {
+                "router" => round_trip::<RouterConfig>(&v),
+                "capabilities" => round_trip::<Capabilities>(&v),
+                "health" => round_trip::<HealthReport>(&v),
+                "route" => round_trip::<RouteStatus>(&v),
+                "commit" => round_trip::<CommitResult>(&v),
+                other => panic!("unknown fixture kind {other} ({name})"),
+            },
         };
         assert_eq!(back, v, "{name}");
         n += 1;
     }
-    assert_eq!(n, 12);
+    assert_eq!(n, 18);
 }
 
 #[test]
@@ -270,6 +398,7 @@ fn configs_validate_and_partial_json_gets_defaults() {
     for (n, c) in configs() {
         assert!(c.validate().is_ok(), "{n}");
     }
+    assert_eq!(cloud_config().validate(), Ok(()));
     let c: RouterConfig = serde_json::from_str(r#"{"server":{"host":"desktop"}}"#).unwrap();
     assert!(c.allow_server && c.allow_client && c.keep_local_warm);
     assert_eq!(c.prefer, Prefer::Server);
