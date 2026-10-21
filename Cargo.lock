@@ -583,9 +583,12 @@ name = "flow-ffi"
 version = "0.1.0"
 dependencies = [
  "flow-core",
+ "flow-remote",
  "flow-router",
+ "flow-server",
  "jni",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
