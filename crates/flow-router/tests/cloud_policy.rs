@@ -746,3 +746,22 @@ fn now_ms() -> u64 {
         .unwrap()
         .as_millis() as u64
 }
+
+#[test]
+fn set_local_rebuilds_the_cloud_backend() {
+    let k = rig(cloud_cfg(&[Route::Cloud, Route::Client]));
+    k.router.start_session(SessionConfig::default()).unwrap();
+    dictate(&k.router);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    dictate(&k.router);
+    assert_eq!(k.cloud_calls.load(Ordering::SeqCst), 1, "cached");
+    k.router
+        .set_local(Some(k.local.clone() as Arc<dyn Backend>));
+    k.router.start_session(SessionConfig::default()).unwrap();
+    dictate(&k.router);
+    assert_eq!(
+        k.cloud_calls.load(Ordering::SeqCst),
+        2,
+        "rebuilt with the new cleaner"
+    );
+}
