@@ -195,6 +195,7 @@ impl CloudAsr {
             let out = match self.adapter.transcribe(&self.http, &self.key, &req) {
                 Ok(o) => o,
                 Err(e) => {
+                    let e = scrub(e, &self.key);
                     info.encode_ms = encode_ms as u32;
                     info.latency_ms = t0.elapsed().as_millis() as u32;
                     info.error = Some(e.failure().as_str().into());
@@ -235,6 +236,22 @@ impl CloudAsr {
             }),
             info,
         )
+    }
+}
+
+/// Drop a provider error code that contains (part of) the key: a hostile
+/// or buggy provider may echo it back (C3).
+fn scrub(e: CloudError, key: &SecretString) -> CloudError {
+    match e {
+        CloudError::BadRequest {
+            status,
+            code: Some(c),
+        } if !key.is_empty()
+            && (c.contains(key.expose()) || (c.len() >= 8 && key.expose().contains(&c))) =>
+        {
+            CloudError::BadRequest { status, code: None }
+        }
+        e => e,
     }
 }
 
