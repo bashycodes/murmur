@@ -1,0 +1,39 @@
+{
+  "asr_text": "ask not what your country can do",
+  "empty_reason": null,
+  "error": null,
+  "fallback_reason": null,
+  "final_text": "ask not what your country can do ",
+  "language": "en",
+  "plain_text": "ask not what your country can do ",
+  "press_enter": false,
+  "route": {
+    "billed_audio_ms": 1000,
+    "cost_estimated": false,
+    "cost_usd": 0.000075,
+    "engine": "cloud",
+    "fallback": null,
+    "model": "openai/gpt-transcribe",
+    "provider": "openrouter-1",
+    "queue_ms": null,
+    "rtt_ms": null,
+    "server": null,
+    "server_core": null
+  },
+  "segments": [
+    {
+      "text": "ask not what your country can do "
+    }
+  ],
+  "status": "RAW_TRANSCRIPT",
+  "timings": {
+    "asr_audio_ms": 1000,
+    "asr_ms": 310,
+    "audio_ms": 1000,
+    "dropped_samples": 0,
+    "llm_ms": 0,
+    "postprocess_ms": 0,
+    "total_ms": 330
+  },
+  "truncated": false
+}

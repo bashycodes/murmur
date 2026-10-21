@@ -11,7 +11,10 @@ use std::time::Duration;
 
 use flow_core::config::{AsrBackend, FieldContext, ModelConfig, SessionConfig};
 use flow_core::{CommitResult, FlowCore};
-use flow_router::{Backend, Router, RouterConfig, ServerConfig};
+use flow_router::{
+    Backend, CloudConfig, CloudProviderConfig, Route, Router, RouterConfig, SecretString,
+    ServerConfig,
+};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -143,6 +146,59 @@ pub fn hybrid_router(cfg: RouterConfig, local: Option<Arc<FlowCore>>) -> Router 
         local.map(|l| l as Arc<dyn Backend>),
         Some(flow_remote::factory("flow-contract-tests")),
     )
+}
+
+// ---- cloud STT (D18) -----------------------------------------------------
+
+/// Sentinel API key: must never appear in any output (C3).
+pub const CLOUD_KEY: &str = "sk-LEAKCHECK-7f3a9c0b1e2d4f6a8b5c";
+
+/// A mock provider (OpenAI-compatible wire format) answering `text`; the
+/// language echoes the request's, else `en` (what `MockAsr` reports).
+pub fn mock_provider(text: &str) -> flow_cloud::testing::MockServer {
+    let text = text.to_string();
+    flow_cloud::testing::MockServer::start(move |r, _| {
+        let lang = r.field("language").unwrap_or_else(|| "en".into());
+        flow_cloud::testing::Reply::json(200, serde_json::json!({"text": text, "language": lang}))
+    })
+}
+
+/// The Groq preset pointed at `base_url` (a mock), consented.
+pub fn cloud_provider(base_url: &str) -> CloudProviderConfig {
+    let mut p = flow_cloud::presets()
+        .into_iter()
+        .find(|p| p.preset == "groq")
+        .unwrap();
+    p.id = "groq-1".into();
+    p.base_url = base_url.into();
+    p.consent_host = "127.0.0.1".into();
+    p.consent_at_ms = 1_792_540_800_000;
+    p
+}
+
+/// `cfg` with the cloud enabled for `provider` and routes `order`.
+pub fn with_cloud(
+    mut cfg: RouterConfig,
+    provider: CloudProviderConfig,
+    order: &[Route],
+) -> RouterConfig {
+    cfg.allow_cloud = true;
+    cfg.order = order.to_vec();
+    cfg.cloud = CloudConfig {
+        active: provider.id.clone(),
+        providers: vec![provider],
+        monthly_budget_usd: None,
+    };
+    cfg
+}
+
+/// Hybrid router (flow-remote) + flow-cloud attached + the sentinel key.
+pub fn cloud_router(cfg: RouterConfig, local: Option<Arc<FlowCore>>) -> Router {
+    cfg.validate().expect("valid cloud config");
+    let id = cfg.cloud.active.clone();
+    let r = flow_cloud::attach(hybrid_router(cfg, local), None);
+    r.set_cloud_key(&id, Some(SecretString::new(CLOUD_KEY)));
+    r
 }
 
 /// Everything except `timings` and `route`, as JSON.

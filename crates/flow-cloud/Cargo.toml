@@ -1,0 +1,26 @@
+[package]
+name = "flow-cloud"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Opt-in third-party cloud STT backend (D18): provider adapters over HTTPS, feature-gated out of client-only builds"
+
+[features]
+default = []
+# In-process mock HTTP server for contract tests (std only, no extra deps).
+mock-server = []
+
+[dependencies]
+flow-core = { path = "../flow-core", default-features = false }
+flow-router = { path = "../flow-router" }
+serde.workspace = true
+serde_json.workspace = true
+base64 = "0.22"
+flacenc = "0.5"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "multipart", "rustls-tls-webpki-roots"] }
+
+[dev-dependencies]
+claxon = "0.4"
+flow-cloud = { path = ".", features = ["mock-server"] }
+flow-core = { path = "../flow-core", features = ["wav"] }
+hound = "3"

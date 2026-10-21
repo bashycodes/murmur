@@ -307,3 +307,43 @@ fn equivalence_llm_if_present() {
     );
     assert_eq!(normalize(&l), normalize(&r));
 }
+
+/// D18 C5: every mock session fixture gives the same result through the
+/// cloud route (Router → flow-cloud → mock provider over HTTP returning the
+/// fixture's ASR text) as with that text from a local engine: the provider
+/// only replaces ASR; everything after it runs locally.
+#[test]
+fn equivalence_cloud_mock_http() {
+    let mut n = 0;
+    let mut uploads = 0;
+    for c in load_cases().iter().filter(|c| c.mock_text().is_some()) {
+        let text = c.mock_text().unwrap();
+        let pcm = audio(&c.audio);
+        let local = run_case(&mock_core(text), c, &pcm);
+        let provider = mock_provider(text);
+        let cfg = with_cloud(
+            flow_router::RouterConfig {
+                allow_server: false,
+                allow_client: false,
+                ..Default::default()
+            },
+            cloud_provider(&provider.url("/openai/v1")),
+            &[flow_router::Route::Cloud],
+        );
+        let router = cloud_router(cfg, None);
+        let cloud = run_case(&router, c, &pcm);
+        let route = cloud.route.clone().expect("route");
+        assert_eq!(route.engine, "cloud", "{}: {:?}", c.name, cloud.error);
+        assert_eq!(normalize(&local), normalize(&cloud), "case {}", c.name);
+        // Silence / no audio never reaches the provider (C6).
+        if local.empty_reason.as_deref() == Some("no_speech")
+            || local.empty_reason.as_deref() == Some("no_audio")
+        {
+            assert_eq!(provider.count(), 0, "{}: uploaded silence", c.name);
+        }
+        uploads += provider.count();
+        n += 1;
+    }
+    eprintln!("{n} mock fixtures equivalent via cloud ({uploads} uploads)");
+    assert!(n >= 40 && uploads >= 30);
+}

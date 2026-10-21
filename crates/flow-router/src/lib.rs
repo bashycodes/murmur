@@ -2,9 +2,11 @@
 //! remote `flow-server` backend (D17, `docs/hybrid-architecture.md` §1).
 //!
 //! Shells talk only to [`Router`]. The remote backend is injected as a
-//! [`RemoteFactory`] (from `flow-remote`), so a client-only build links this
-//! crate without any network code.
+//! [`RemoteFactory`] (from `flow-remote`) and the opt-in cloud STT backend
+//! (D18) as a [`CloudFactory`] (from `flow-cloud`), so a client-only build
+//! links this crate without any network code.
 
+pub mod cloud;
 mod local;
 pub mod net;
 mod router;
@@ -13,14 +15,17 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+pub use cloud::{
+    month_of, CloudConfig, CloudProviderConfig, CloudUsage, ProviderUsage, Route, SecretString, Usd,
+};
 pub use flow_core::config::{FieldContext, SessionConfig};
 pub use flow_core::learn::Candidate;
 pub use flow_core::{CommitResult, CommitStatus, RouteInfo};
 pub use router::Router;
 
-/// Which engine ran (or would run) a session. Non-exhaustive: an opt-in
-/// third-party cloud STT route is planned (`RouteInfo::provider` then names
-/// the provider); match with a `_` arm.
+/// Which engine ran (or would run) a session. Non-exhaustive: match with a
+/// `_` arm. `Cloud` = opt-in third-party STT (D18; `RouteInfo::provider`
+/// names the provider).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
@@ -28,6 +33,7 @@ pub enum EngineKind {
     #[default]
     Local,
     Remote,
+    Cloud,
 }
 
 impl EngineKind {
@@ -35,6 +41,7 @@ impl EngineKind {
         match self {
             EngineKind::Local => "local",
             EngineKind::Remote => "remote",
+            EngineKind::Cloud => "cloud",
         }
     }
 }
@@ -60,6 +67,23 @@ pub struct RouterConfig {
     /// Shell hint: load local models at app start even when the server is
     /// preferred, so a fallback costs only local ASR time.
     pub keep_local_warm: bool,
+    /// Opt-in third-party cloud STT (D18). Off by default; even when on,
+    /// the cloud is used only if `order` lists `cloud`, the active provider
+    /// has a recorded consent and a key (`Router::set_cloud_key`), and the
+    /// monthly budget is not used up. Omitted from JSON while false.
+    #[serde(skip_serializing_if = "is_false")]
+    pub allow_cloud: bool,
+    /// Routes in the order they are tried. Empty = legacy D17 policy from
+    /// `prefer` (which never includes the cloud). Omitted while empty.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub order: Vec<Route>,
+    /// Cloud providers (no keys). Omitted while default.
+    #[serde(skip_serializing_if = "CloudConfig::is_default")]
+    pub cloud: CloudConfig,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl Default for RouterConfig {
@@ -70,6 +94,9 @@ impl Default for RouterConfig {
             prefer: Prefer::Server,
             server: ServerConfig::default(),
             keep_local_warm: true,
+            allow_cloud: false,
+            order: Vec::new(),
+            cloud: CloudConfig::default(),
         }
     }
 }
@@ -177,24 +204,51 @@ impl ServerConfig {
 
 impl RouterConfig {
     /// Allowed engines in the order the router tries them (first =
-    /// primary). Today derived from `prefer` + the two toggles; a future
-    /// third route (cloud STT) will extend this list rather than add flags.
-    /// Build capability is not applied here (see `Router::capabilities`).
+    /// primary): `order` when set, else derived from `prefer` + the two
+    /// toggles (never the cloud). Build capability, keys, consent and
+    /// budget are not applied here (see `Router::capabilities`).
     pub fn route_order(&self) -> Vec<EngineKind> {
-        let mut v = match self.prefer {
-            Prefer::Server => vec![EngineKind::Remote, EngineKind::Local],
-            Prefer::Client => vec![EngineKind::Local, EngineKind::Remote],
+        let routes = if self.order.is_empty() {
+            match self.prefer {
+                Prefer::Server => vec![Route::Server, Route::Client],
+                Prefer::Client => vec![Route::Client, Route::Server],
+            }
+        } else {
+            self.order.clone()
         };
-        v.retain(|k| match k {
-            EngineKind::Remote => self.allow_server,
-            EngineKind::Local => self.allow_client,
-        });
-        v
+        routes
+            .into_iter()
+            .filter(|r| self.route_allowed(*r))
+            .map(Route::engine)
+            .collect()
+    }
+
+    /// The user toggle for a route.
+    pub fn route_allowed(&self, r: Route) -> bool {
+        match r {
+            Route::Server => self.allow_server,
+            Route::Client => self.allow_client,
+            Route::Cloud => self.allow_cloud,
+        }
     }
 
     /// Validate before `Router::update_config` / `flow_open_router`.
     pub fn validate(&self) -> Result<(), RouterError> {
-        self.server.validate().map_err(RouterError::BadConfig)
+        self.server.validate().map_err(RouterError::BadConfig)?;
+        self.validate_order()?;
+        self.cloud.validate().map_err(RouterError::BadConfig)
+    }
+
+    pub(crate) fn validate_order(&self) -> Result<(), RouterError> {
+        for (i, r) in self.order.iter().enumerate() {
+            if self.order[..i].contains(r) {
+                return Err(RouterError::BadConfig(format!(
+                    "route order lists {:?} twice",
+                    r
+                )));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -208,6 +262,17 @@ pub struct Capabilities {
     pub llm: bool,
     pub proto: u32,
     pub core_version: String,
+}
+
+/// Cloud STT support of this build (D18, `Router::cloud_capabilities`).
+/// Separate from [`Capabilities`] so that type's fields stay as they were.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CloudCapabilities {
+    /// The build can reach a third-party provider (`Router::with_cloud`).
+    pub cloud: bool,
+    /// Adapters compiled in (`openai_compat`, `openrouter`, …).
+    pub adapters: Vec<String>,
 }
 
 /// Why a backend could not serve a session (`RouteInfo::fallback` values).
@@ -226,6 +291,16 @@ pub enum Failure {
     LocalNotReady,
     /// Anything else (e.g. a local engine error).
     Error,
+    /// Cloud route skipped: no active provider, no consent for its host,
+    /// or no key (D18).
+    CloudNotConfigured,
+    /// Cloud route skipped: the monthly budget is used up.
+    BudgetExceeded,
+    /// Provider says the account is out of credits / quota (HTTP 402 …).
+    QuotaExceeded,
+    /// Provider answered with an error (5xx, 4xx other than auth/quota/
+    /// rate limit) or an unparseable body.
+    ProviderError,
 }
 
 impl Failure {
@@ -241,6 +316,10 @@ impl Failure {
             Failure::ServerNotConfigured => "server_not_configured",
             Failure::LocalNotReady => "local_not_ready",
             Failure::Error => "error",
+            Failure::CloudNotConfigured => "cloud_not_configured",
+            Failure::BudgetExceeded => "budget_exceeded",
+            Failure::QuotaExceeded => "quota_exceeded",
+            Failure::ProviderError => "provider_error",
         }
     }
 }
@@ -308,6 +387,18 @@ pub struct HealthReport {
     pub busy: Option<u32>,
     /// Unix time of the probe (ms).
     pub checked_at_ms: u64,
+    /// Cloud "Test provider" (D18): provider id, model, the transcript of
+    /// the test clip, wall time and cost. Omitted while `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transcript: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_usd: Option<Usd>,
 }
 
 impl HealthReport {
@@ -345,6 +436,11 @@ pub struct RouteStatus {
     pub circuit: CircuitStatus,
     /// Last probe result (`probe_server`), if any.
     pub health: Option<HealthReport>,
+    /// Cloud route circuit (D18); present only in builds with cloud
+    /// support. Auth/quota failures keep it open until the key or the
+    /// provider config changes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cloud_circuit: Option<CircuitStatus>,
 }
 
 /// Errors from `Router::start_session` (stable snake_case kinds).
@@ -399,6 +495,11 @@ pub trait Backend: Send + Sync {
 }
 
 pub type RemoteFactory = Box<dyn Fn(&ServerConfig) -> Arc<dyn Backend> + Send + Sync>;
+
+/// Builds the cloud backend for a provider + its key (`flow-cloud`).
+/// Called at most once per (provider config, key) and cached.
+pub type CloudFactory =
+    Box<dyn Fn(&CloudProviderConfig, SecretString) -> Arc<dyn Backend> + Send + Sync>;
 
 pub(crate) fn now_unix_ms() -> u64 {
     std::time::SystemTime::now()
