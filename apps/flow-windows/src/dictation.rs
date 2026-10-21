@@ -33,9 +33,18 @@ pub struct Listening {
 pub enum Phase {
     Idle,
     Listening(Listening),
-    Processing { session: SessionId, since_ms: u64 },
-    Pasted { since_ms: u64 },
-    Error { since_ms: u64 },
+    Processing {
+        session: SessionId,
+        since_ms: u64,
+    },
+    Pasted {
+        since_ms: u64,
+    },
+    /// Error pill, or a notice (EMPTY with a reason), shown for `linger_ms`.
+    Error {
+        since_ms: u64,
+        linger_ms: u64,
+    },
 }
 
 /// Visual state of the overlay pill (05 §7.3: the five states that matter).
@@ -46,7 +55,13 @@ pub enum OverlayState {
     ActivePtt,
     ActiveLocked,
     Processing,
-    Error { message: String },
+    Error {
+        message: String,
+    },
+    /// Informational pill text (no error sound), e.g. "No speech heard".
+    Notice {
+        message: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,6 +77,8 @@ pub enum Sound {
 pub enum CommitOutcome {
     Text(String),
     Empty,
+    /// Nothing to paste, with a reason worth showing (EMPTY `no_speech`).
+    Notice(String),
     Failed(String),
 }
 
@@ -127,6 +144,8 @@ pub struct Policy {
     pub pasted_linger_ms: u64,
     /// Error pill shows this long, then rests (Wispr: 500 ms).
     pub error_linger_ms: u64,
+    /// Notice pill ("No speech heard") shows this long.
+    pub notice_linger_ms: u64,
 }
 
 impl Default for Policy {
@@ -138,6 +157,7 @@ impl Default for Policy {
             processing_timeout_ms: 35_000,
             pasted_linger_ms: 0,
             error_linger_ms: 500,
+            notice_linger_ms: 1500,
         }
     }
 }
@@ -201,9 +221,13 @@ impl Dictation {
                 self.phase = Phase::Idle;
                 Vec::new()
             }
-            (Phase::Error { since_ms }, Input::Tick)
-                if now_ms.saturating_sub(*since_ms) >= p.error_linger_ms =>
-            {
+            (
+                Phase::Error {
+                    since_ms,
+                    linger_ms,
+                },
+                Input::Tick,
+            ) if now_ms.saturating_sub(*since_ms) >= *linger_ms => {
                 self.phase = Phase::Idle;
                 vec![Effect::Overlay(OverlayState::Resting)]
             }
@@ -306,6 +330,13 @@ impl Dictation {
                     self.phase = Phase::Idle;
                     vec![Effect::Overlay(OverlayState::Resting)]
                 }
+                CommitOutcome::Notice(message) => {
+                    self.phase = Phase::Error {
+                        since_ms: now_ms,
+                        linger_ms: self.policy.notice_linger_ms,
+                    };
+                    vec![Effect::Overlay(OverlayState::Notice { message })]
+                }
                 CommitOutcome::Failed(message) => self.fail(message, now_ms),
             },
             Input::PasteFinished { session: s, result } if s == session => match result {
@@ -387,7 +418,10 @@ impl Dictation {
     }
 
     fn fail(&mut self, message: String, now_ms: u64) -> Vec<Effect> {
-        self.phase = Phase::Error { since_ms: now_ms };
+        self.phase = Phase::Error {
+            since_ms: now_ms,
+            linger_ms: self.policy.error_linger_ms,
+        };
         vec![
             Effect::Sound(Sound::Error),
             Effect::Overlay(OverlayState::Error { message }),
@@ -785,6 +819,32 @@ mod tests {
     }
 
     #[test]
+    fn no_speech_notice_lingers_without_error_sound() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        hk(&mut d, PttUp, 1000);
+        let fx = d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Notice("No speech heard".into()),
+            },
+            1200,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Overlay(OverlayState::Notice {
+                message: "No speech heard".into()
+            })]
+        );
+        assert!(!d.is_active());
+        assert!(d.handle(Input::Tick, 2699).is_empty());
+        assert_eq!(
+            d.handle(Input::Tick, 2700),
+            vec![Effect::Overlay(OverlayState::Resting)]
+        );
+    }
+
+    #[test]
     fn new_dictation_can_start_during_error_linger() {
         let mut d = d();
         let s = session_of(&hk(&mut d, PttDown, 0));
@@ -844,7 +904,13 @@ mod tests {
                 }),
             ]
         );
-        assert_eq!(d.phase(), &Phase::Error { since_ms: 10 });
+        assert_eq!(
+            d.phase(),
+            &Phase::Error {
+                since_ms: 10,
+                linger_ms: 500
+            }
+        );
         assert!(hk(&mut d, PttUp, 500).is_empty());
     }
 

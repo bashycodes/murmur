@@ -29,6 +29,9 @@ default = ["whisper"]
 # whisper-rs-sys' cmake/C++ build cannot cross-compile to MSVC from Linux:
 # the Linux cross-check runs `--no-default-features --features app`.
 whisper = ["flow-core/whisper"]
+# Parakeet-TDT (D12) via sherpa-onnx: links sherpa-onnx-c-api + onnxruntime
+# (SHERPA_ONNX_LIB_DIR at build time; the DLLs ship next to the exe).
+parakeet = ["flow-core/parakeet"]
 # The Tauri shell (tray, overlay window, event loop). Off by default so the
 # platform-independent logic can be built/tested on any host without webkit.
 app = ["dep:tauri", "dep:tauri-build"]

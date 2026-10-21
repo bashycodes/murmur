@@ -181,6 +181,46 @@ pub fn has_markers(text: &str) -> bool {
     text.contains(BREAK_MARKER) || text.contains(TAB_MARKER)
 }
 
+/// One step of executing the core's paste plan (`CommitResult.segments`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Step {
+    /// Insert text: clipboard paste, or typed (`KEYEVENTF_UNICODE`) when
+    /// the plan has Tab/Break keys (an @-mention popup must see keystrokes,
+    /// and the clipboard then needs no multi-step restore).
+    Insert { text: String, typed: bool },
+    /// Press Tab or Enter.
+    Key(crate::core_api::PasteKey),
+    /// `Break`: let the target app react (open its popup) before going on.
+    Pause(u64),
+}
+
+/// Turn the core's segments into steps. A trailing Enter (spoken "press
+/// enter") is just another step, so the shell never reads `press_enter`.
+pub fn plan(segs: &[crate::core_api::PasteSegment]) -> Vec<Step> {
+    use crate::core_api::{PasteKey, PasteSegment};
+    let typed = segs.iter().any(|s| {
+        matches!(
+            s,
+            PasteSegment::Key {
+                key: PasteKey::Tab | PasteKey::Break
+            }
+        )
+    });
+    segs.iter()
+        .filter_map(|s| match s {
+            PasteSegment::Text { text } if text.is_empty() => None,
+            PasteSegment::Text { text } => Some(Step::Insert {
+                text: text.clone(),
+                typed,
+            }),
+            PasteSegment::Key {
+                key: PasteKey::Break,
+            } => Some(Step::Pause(BREAK_PAUSE_MS)),
+            PasteSegment::Key { key } => Some(Step::Key(*key)),
+        })
+        .collect()
+}
+
 /// Mandatory integrity RIDs (`SECURITY_MANDATORY_*_RID`).
 pub mod rid {
     pub const LOW: u32 = 0x1000;
@@ -212,6 +252,49 @@ mod tests {
             "see @main.rs\t now"
         );
         assert_eq!(plain_text("plain"), "plain");
+    }
+
+    #[test]
+    fn plan_pastes_plain_text_then_enter() {
+        use crate::core_api::{PasteKey, PasteSegment};
+        let segs = flow_core::paste::segments("Hello there.", true);
+        assert_eq!(
+            plan(&segs),
+            vec![
+                Step::Insert {
+                    text: "Hello there.".into(),
+                    typed: false
+                },
+                Step::Key(PasteKey::Enter)
+            ]
+        );
+        assert!(plan(&[]).is_empty());
+        assert!(plan(&[PasteSegment::Text { text: "".into() }]).is_empty());
+    }
+
+    #[test]
+    fn plan_types_mention_segments() {
+        use crate::core_api::PasteKey;
+        let segs = flow_core::paste::segments("open @{{BREAK}}main.rs{{TAB}} now", false);
+        assert_eq!(
+            plan(&segs),
+            vec![
+                Step::Insert {
+                    text: "open @".into(),
+                    typed: true
+                },
+                Step::Pause(BREAK_PAUSE_MS),
+                Step::Insert {
+                    text: "main.rs".into(),
+                    typed: true
+                },
+                Step::Key(PasteKey::Tab),
+                Step::Insert {
+                    text: " now".into(),
+                    typed: true
+                },
+            ]
+        );
     }
 
     #[test]

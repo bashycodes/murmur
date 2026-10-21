@@ -11,6 +11,10 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
+/// The paste plan (core-p1 CR-2) is plain data, so the shell reuses the
+/// core's type rather than mirroring it: `{"text": ".."}` / `{"key": "Enter"|"Tab"|"Break"}`.
+pub use flow_core::paste::{PasteKey, PasteSegment};
+
 /// Shared dictionary/snippet export shape (spec §9): `{word, replacement, isSnippet}`.
 /// No replacement = vocabulary word (ASR bias); replacement = deterministic
 /// rewrite; `isSnippet` = the replacement is an expansion body.
@@ -67,7 +71,7 @@ pub struct Styles {
     pub other: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionConfig {
     pub languages: Vec<String>,
     /// Kept as one ordered list (the core's dictionary regex honours order).
@@ -80,6 +84,36 @@ pub struct SessionConfig {
     pub partial_interval_ms: Option<u32>,
     /// LLM cleanup budget; 0 = core default (1.5 s).
     pub llm_timeout_ms: u64,
+    /// core-p1 session flags (all default on, like the core).
+    /// Energy VAD at commit: no speech → EMPTY `no_speech` without ASR.
+    pub vad: bool,
+    /// Drop Whisper's stock silence phrases.
+    pub hallucination_guard: bool,
+    /// Deterministic spoken cleanup (punctuation words, fillers,
+    /// backtracking, ITN); user pref "Auto-format punctuation, fillers and
+    /// corrections".
+    pub spoken_cleanup: bool,
+    /// LLM KV prefill while the user speaks.
+    pub llm_prefill: bool,
+}
+
+impl Default for SessionConfig {
+    fn default() -> Self {
+        SessionConfig {
+            languages: Vec::new(),
+            dictionary: Vec::new(),
+            styles: Styles::default(),
+            cleanup_level: CleanupLevel::default(),
+            raw_mode: false,
+            max_samples: 0,
+            partial_interval_ms: None,
+            llm_timeout_ms: 0,
+            vad: true,
+            hallucination_guard: true,
+            spoken_cleanup: true,
+            llm_prefill: true,
+        }
+    }
 }
 
 /// `set_context` payload (≤500 chars each for before/selected/after).
@@ -118,12 +152,23 @@ pub struct CommitResult {
     pub final_text: String,
     pub language: Option<String>,
     pub timings: Timings,
-    /// Spoken "press enter": send Enter after inserting.
+    /// Spoken "press enter". Informational: the Enter is already the last
+    /// entry of `segments`, so the shell never acts on this flag itself.
     pub press_enter: bool,
     /// Why the LLM output was not used (RAW_TRANSCRIPT fallbacks).
     pub fallback_reason: Option<String>,
     /// Set when `status == Error`.
     pub error: Option<String>,
+    /// `final_text` as a paste plan (text runs, Tab/Break keys, trailing
+    /// Enter). Empty when there is nothing to paste.
+    pub segments: Vec<PasteSegment>,
+    /// `final_text` without paste markers: history, paste/copy last.
+    pub plain_text: String,
+    /// Why an EMPTY result is empty (`no_audio`, `no_speech`, `blank_asr`,
+    /// `hallucination`, `only_filler`).
+    pub empty_reason: Option<String>,
+    /// The session hit `max_samples`.
+    pub truncated: bool,
 }
 
 impl CommitResult {
@@ -137,6 +182,42 @@ impl CommitResult {
             press_enter: false,
             fallback_reason: None,
             error: None,
+            segments: Vec::new(),
+            plain_text: String::new(),
+            empty_reason: None,
+            truncated: false,
+        }
+    }
+
+    /// A text result with its paste plan derived the way the core does it.
+    pub fn text(status: CommitStatus, text: impl Into<String>, press_enter: bool) -> Self {
+        let text = text.into();
+        CommitResult {
+            asr_text: text.clone(),
+            segments: flow_core::paste::segments(&text, press_enter),
+            plain_text: flow_core::paste::plain_text(&text),
+            final_text: text,
+            press_enter,
+            ..Self::with_status(status)
+        }
+    }
+
+    /// The paste plan; derived from `final_text` + `press_enter` for results
+    /// that carry none (a pre-core-p1 producer).
+    pub fn paste_segments(&self) -> Vec<PasteSegment> {
+        if self.segments.is_empty() && !self.final_text.is_empty() {
+            flow_core::paste::segments(&self.final_text, self.press_enter)
+        } else {
+            self.segments.clone()
+        }
+    }
+
+    /// What the user ended up with, without markers.
+    pub fn plain(&self) -> String {
+        if self.plain_text.is_empty() {
+            flow_core::paste::plain_text(&self.final_text)
+        } else {
+            self.plain_text.clone()
         }
     }
 
@@ -225,12 +306,11 @@ impl CoreApi for StubCore {
         if s.samples == 0 {
             return CommitResult::with_status(CommitStatus::Empty);
         }
-        let text = format!("[stub: {secs:.1} s of audio]");
-        CommitResult {
-            asr_text: text.clone(),
-            final_text: text,
-            ..CommitResult::with_status(CommitStatus::RawTranscript)
-        }
+        CommitResult::text(
+            CommitStatus::RawTranscript,
+            format!("[stub: {secs:.1} s of audio]"),
+            false,
+        )
     }
 
     fn cancel(&self) {
@@ -254,7 +334,21 @@ pub fn to_outcome(r: &CommitResult) -> crate::dictation::CommitOutcome {
         CommitStatus::Error => {
             CommitOutcome::Failed(r.error.clone().unwrap_or_else(|| "core error".into()))
         }
+        CommitStatus::Empty => match empty_notice(r.empty_reason.as_deref()) {
+            Some(n) => CommitOutcome::Notice(n.into()),
+            None => CommitOutcome::Empty,
+        },
         _ => CommitOutcome::Empty,
+    }
+}
+
+/// Pill text for an EMPTY result, when the reason is worth telling: only a
+/// press where the VAD heard no speech at all ("is the mic muted?"). Blank
+/// ASR, hallucinations and filler-only presses rest silently.
+pub fn empty_notice(reason: Option<&str>) -> Option<&'static str> {
+    match reason {
+        Some("no_speech") => Some("No speech heard"),
+        _ => None,
     }
 }
 
@@ -288,6 +382,46 @@ mod tests {
         assert_eq!(to_outcome(&r), CommitOutcome::Failed("boom".into()));
         r.status = CommitStatus::Formatted;
         assert_eq!(to_outcome(&r), CommitOutcome::Empty, "formatted but empty");
+    }
+
+    #[test]
+    fn no_speech_is_a_notice_other_empties_are_silent() {
+        let mut r = CommitResult::with_status(CommitStatus::Empty);
+        assert_eq!(to_outcome(&r), CommitOutcome::Empty);
+        r.empty_reason = Some("no_speech".into());
+        assert_eq!(
+            to_outcome(&r),
+            CommitOutcome::Notice("No speech heard".into())
+        );
+        for quiet in ["no_audio", "blank_asr", "hallucination", "only_filler"] {
+            r.empty_reason = Some(quiet.into());
+            assert_eq!(to_outcome(&r), CommitOutcome::Empty, "{quiet}");
+        }
+    }
+
+    #[test]
+    fn segments_fall_back_to_final_text_and_press_enter() {
+        let mut r = CommitResult::with_status(CommitStatus::Formatted);
+        r.final_text = "see @{{BREAK}}main.rs{{TAB}}".into();
+        r.press_enter = true;
+        let segs = r.paste_segments();
+        assert_eq!(
+            segs.last(),
+            Some(&PasteSegment::Key {
+                key: PasteKey::Enter
+            })
+        );
+        assert!(segs.contains(&PasteSegment::Key { key: PasteKey::Tab }));
+        assert_eq!(r.plain(), "see @main.rs");
+        let t = CommitResult::text(CommitStatus::Formatted, "Hi.", false);
+        assert_eq!(t.segments, vec![PasteSegment::Text { text: "Hi.".into() }]);
+        assert_eq!(t.plain_text, "Hi.");
+    }
+
+    #[test]
+    fn session_flags_default_on() {
+        let c = SessionConfig::default();
+        assert!(c.vad && c.hallucination_guard && c.spoken_cleanup && c.llm_prefill);
     }
 
     #[test]

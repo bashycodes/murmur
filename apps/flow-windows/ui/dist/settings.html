@@ -41,13 +41,22 @@
         <fieldset>
           <legend>Speech model</legend>
           <p id="model_status" class="hint">Checking…</p>
-          <label>Model file (empty = default) <input id="model_path" spellcheck="false" /></label>
-          <p class="hint">A whisper.cpp ggml model, e.g. <code>ggml-base.bin</code> (default) or <code>ggml-small-q5_1.bin</code> for better accuracy. Models are never downloaded automatically: put the file in <code id="models_dir"></code>.</p>
+          <label>Engine
+            <select id="asr_engine">
+              <option value="whisper">Whisper (any language)</option>
+              <option value="parakeet">Parakeet (English only, faster)</option>
+            </select>
+          </label>
+          <label data-engine="whisper">Model file (empty = default) <input id="model_path" spellcheck="false" /></label>
+          <label data-engine="parakeet">Parakeet model folder (empty = default) <input id="parakeet_model_dir" spellcheck="false" /></label>
+          <p class="hint">Whisper: a whisper.cpp ggml model, e.g. <code>ggml-base.bin</code> (default) or <code>ggml-small-q5_1.bin</code> for better accuracy. Parakeet: the <code>sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8</code> folder (needs a build with the <code>parakeet</code> feature). Models are never downloaded automatically: put them in <code id="models_dir"></code>.</p>
         </fieldset>
 
         <fieldset>
           <legend>Transcription</legend>
           <label>Languages (comma-separated, empty = auto) <input id="languages" placeholder="en, de" /></label>
+          <label class="row"><input type="checkbox" id="spoken_cleanup" /> Auto-format punctuation, fillers and corrections</label>
+          <p class="hint">"comma", "new line", "um", "scratch that", "$5", "3pm" — handled on this PC without the AI model.</p>
           <label class="row"><input type="checkbox" id="raw_mode" /> Raw mode (no formatting at all)</label>
           <label class="row"><input type="checkbox" id="use_ax_context" /> Use text around the cursor as context (stays local)</label>
           <label class="row"><input type="checkbox" id="live_preview" /> Show live transcript while dictating</label>

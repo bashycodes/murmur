@@ -41,6 +41,7 @@ const BOOL_FIELDS = [
     "live_preview",
     "llm_enabled",
     "learn_from_edits",
+    "spoken_cleanup",
 ];
 const STYLES = [
     ["formal", "Formal — capitals, full punctuation"],
@@ -116,8 +117,17 @@ function showLlm(st) {
     }
 }
 // ------------------------------------------------------------------ general + AI form
+function showEngineFields() {
+    const engine = $("asr_engine").value;
+    for (const l of document.querySelectorAll("[data-engine]")) {
+        l.hidden = l.dataset.engine !== engine;
+    }
+}
 function fillForm(prefs) {
     $("model_path").value = prefs.model_path ?? "";
+    $("asr_engine").value = prefs.asr_engine;
+    $("parakeet_model_dir").value = prefs.parakeet_model_dir ?? "";
+    showEngineFields();
     $("ptt").value = prefs.shortcuts.ptt;
     $("hands_free").value = prefs.shortcuts.hands_free;
     $("cancel").value = prefs.shortcuts.cancel;
@@ -149,6 +159,8 @@ function readForm(base) {
         copy_last: $("copy_last").value.trim(),
     };
     next.model_path = $("model_path").value.trim() || null;
+    next.asr_engine = $("asr_engine").value;
+    next.parakeet_model_dir = $("parakeet_model_dir").value.trim() || null;
     next.microphone = $("microphone").value || null;
     for (const f of BOOL_FIELDS)
         next[f] = $(f).checked;
@@ -472,6 +484,7 @@ async function load() {
     $("models_dir").textContent = model.models_dir;
     $("llm_plugin").textContent = model.llm_plugin;
     $("model_path").placeholder = model.default_path;
+    $("parakeet_model_dir").placeholder = model.default_parakeet_dir;
     $("llm_model_path").placeholder = model.default_llm_path;
     const mic = $("microphone");
     mic.replaceChildren(new Option("System default", ""), ...mics.map((m) => new Option(m, m)));
@@ -487,6 +500,7 @@ for (const b of document.querySelectorAll("nav.tabs button")) {
     b.addEventListener("click", () => showTab(b.dataset.tab ?? "general"));
 }
 $("form").addEventListener("submit", (e) => void saveForm(e));
+$("asr_engine").addEventListener("change", showEngineFields);
 let searchTimer = 0;
 $("hist_query").addEventListener("input", () => {
     clearTimeout(searchTimer);
