@@ -24,14 +24,24 @@ path = "src/main.rs"
 required-features = ["app"]
 
 [features]
-default = ["whisper"]
+# Hybrid build (D17): on-device engine + self-hosted server.
+#   client-only: --no-default-features --features local,app
+#   server-only: --no-default-features --features remote,app
+default = ["local", "remote"]
+# On-device ASR ("client"): the FlowCoreAdapter local backend + whisper.
+local = ["whisper"]
+# The local backend without a native ASR engine: what the MSVC cross-check
+# builds (whisper.cpp/sherpa can't cross-compile from Linux).
+local-engine = []
 # Real local ASR (whisper.cpp via flow-core). Separate from `app` because
 # whisper-rs-sys' cmake/C++ build cannot cross-compile to MSVC from Linux:
 # the Linux cross-check runs `--no-default-features --features app`.
-whisper = ["flow-core/whisper"]
+whisper = ["local-engine", "flow-core/whisper"]
 # Parakeet-TDT (D12) via sherpa-onnx: links sherpa-onnx-c-api + onnxruntime
 # (SHERPA_ONNX_LIB_DIR at build time; the DLLs ship next to the exe).
-parakeet = ["flow-core/parakeet"]
+parakeet = ["local-engine", "flow-core/parakeet"]
+# Self-hosted flow-server over WebSocket ("server").
+remote = []
 # The Tauri shell (tray, overlay window, event loop). Off by default so the
 # platform-independent logic can be built/tested on any host without webkit.
 app = ["dep:tauri", "dep:tauri-build"]
@@ -39,6 +49,7 @@ app = ["dep:tauri", "dep:tauri-build"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+base64 = "0.22"
 # `llm` = only a libloading loader for the flow_llm plugin (llama.cpp lives
 # in that separate DLL, docs/DECISIONS.md D10), so it is always on and
 # cross-checks for MSVC like any pure-Rust crate.
@@ -61,6 +72,7 @@ windows = { version = "0.58", features = [
   "Win32_System_Threading",
   "Win32_System_SystemInformation",
   "Win32_Security",
+  "Win32_Security_Cryptography",
   "Win32_System_LibraryLoader",
   "Win32_System_Variant",
   "Win32_System_Registry",

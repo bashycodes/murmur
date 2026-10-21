@@ -103,6 +103,8 @@ pub struct Prefs {
     pub learn_window_ms: u64,
     /// Re-read interval while watching.
     pub learn_poll_ms: u64,
+    /// Developer settings: engine routing (local / self-hosted server).
+    pub developer: crate::dev_settings::DevSettings,
 }
 
 impl Default for Prefs {
@@ -146,6 +148,7 @@ impl Default for Prefs {
             learn_from_edits: true,
             learn_window_ms: 45_000,
             learn_poll_ms: 1_000,
+            developer: crate::dev_settings::DevSettings::default(),
         }
     }
 }
@@ -415,6 +418,25 @@ mod tests {
         assert!(c.spoken_cleanup, "core-p1 default on");
         p.spoken_cleanup = false;
         assert!(!p.session_config().spoken_cleanup);
+    }
+
+    #[test]
+    fn developer_section_round_trips_and_defaults() {
+        let d = tmpdir("dev");
+        let path = d.join(FILE_NAME);
+        let mut p = Prefs::default();
+        p.developer.server.host = "100.64.0.10".into();
+        p.developer.token_dpapi = crate::secrets::protect("0123456789abcdef").unwrap();
+        p.save(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("\"developer\""));
+        assert!(!text.contains("0123456789abcdef"));
+        let (q, _) = Prefs::load(&path);
+        assert_eq!(q.developer, p.developer);
+        assert_eq!(q.developer.token(), "0123456789abcdef");
+        let old: Prefs = serde_json::from_str(r#"{"enable_sounds":true}"#).unwrap();
+        assert_eq!(old.developer, crate::dev_settings::DevSettings::default());
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
