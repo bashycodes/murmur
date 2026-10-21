@@ -41,10 +41,18 @@ fn jvm_round_trip() {
     );
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/java/dev/flowclone/core/JniSmoke.java");
+    // With `remote`: an in-process flow-server (mock ASR) the JVM routes to.
+    #[cfg(feature = "remote")]
+    let server = InProcessServer::start("hello btw");
+    #[cfg(feature = "remote")]
+    let server_args = vec![server.addr.clone(), TOKEN.to_string()];
+    #[cfg(not(feature = "remote"))]
+    let server_args: Vec<String> = Vec::new();
     let out = Command::new("java")
         .arg(format!("-Djava.library.path={}", lib_dir.display()))
         .arg("--enable-native-access=ALL-UNNAMED")
         .arg(&src)
+        .args(&server_args)
         .output()
         .unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout);
@@ -74,9 +82,14 @@ fn jvm_round_trip() {
     let routed: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
     assert_eq!(routed["status"], "RAW_TRANSCRIPT", "{routed}");
     assert_eq!(routed["final_text"], "hello by the way ");
-    assert_eq!(routed["route"]["engine"], "local", "{routed}");
+    let engine = if cfg!(feature = "remote") {
+        "remote"
+    } else {
+        "local"
+    };
+    assert_eq!(routed["route"]["engine"], engine, "{routed}");
     let status: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
-    assert_eq!(status["last"]["engine"], "local", "{status}");
+    assert_eq!(status["last"]["engine"], engine, "{status}");
     assert_eq!(status["circuit"]["open"], false);
     let cands: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
     assert_eq!(
@@ -96,6 +109,52 @@ fn jvm_round_trip() {
         "server_not_configured"
     };
     assert_eq!(probe["error"], want, "{probe}");
+    if cfg!(feature = "remote") {
+        let ok: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+        assert_eq!(ok["ok"], true, "{ok}");
+        assert!(ok["rtt_ms"]["median"].is_number(), "{ok}");
+        assert_eq!(ok["postprocess_match"], true, "{ok}");
+    }
+}
+
+#[cfg(feature = "remote")]
+const TOKEN: &str = "jni-smoke-token-0123456789abcdef";
+
+#[cfg(feature = "remote")]
+struct InProcessServer {
+    addr: String,
+    _handle: flow_server::ServerHandle,
+    _rt: tokio::runtime::Runtime,
+}
+
+#[cfg(feature = "remote")]
+impl InProcessServer {
+    fn start(text: &str) -> Self {
+        use flow_core::config::{AsrBackend, ModelConfig};
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let cfg = flow_server::config::Config {
+            bind: vec!["127.0.0.1:0".into()],
+            token: Some(TOKEN.into()),
+            model: ModelConfig {
+                asr_backend: AsrBackend::Mock { text: text.into() },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let handle = rt.block_on(async {
+            let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            flow_server::serve(cfg, vec![l]).await.expect("server starts")
+        });
+        Self {
+            addr: handle.addr().to_string(),
+            _handle: handle,
+            _rt: rt,
+        }
+    }
 }
 
 /// Every symbol in JNI_CONTRACT.md is exported by the cdylib, and no stale
