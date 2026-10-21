@@ -1,0 +1,19 @@
+{
+ "asr": {
+  "mock": "See you."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "chrome"
+   }
+  }
+ ],
+ "name": "win_period_drop_whatsapp_web",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

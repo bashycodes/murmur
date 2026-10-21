@@ -1,0 +1,21 @@
+{
+ "asr": {
+  "mock": "at Mary and Mary again"
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 1200,
+   "ctx": {
+    "screen_words": [
+     "Mary"
+    ]
+   }
+  }
+ ],
+ "name": "win_slack_tag_all_mentions",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

@@ -1,0 +1,16 @@
+{
+ "asr": {
+  "mock": "send it now press enter"
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "slack"
+   }
+  }
+ ],
+ "name": "p1_press_enter_segments",
+ "session_config": {}
+}

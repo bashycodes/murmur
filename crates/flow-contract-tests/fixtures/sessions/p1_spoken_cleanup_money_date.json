@@ -1,0 +1,9 @@
+{
+ "asr": {
+  "mock": "it costs twenty five dollars on march third"
+ },
+ "audio": "speech:1500",
+ "contexts": [],
+ "name": "p1_spoken_cleanup_money_date",
+ "session_config": {}
+}

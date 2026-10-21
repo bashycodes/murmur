@@ -1,0 +1,11 @@
+{
+ "asr": {
+  "mock": "Thank you."
+ },
+ "audio": "speech:60",
+ "contexts": [],
+ "name": "p1_hallucination_guard_off",
+ "session_config": {
+  "hallucination_guard": false
+ }
+}

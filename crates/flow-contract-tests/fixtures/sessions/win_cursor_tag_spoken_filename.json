@@ -1,0 +1,22 @@
+{
+ "asr": {
+  "mock": "Look at index dot ts and fix it."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "file_names": [
+     "index.ts",
+     "app.tsx"
+    ]
+   }
+  }
+ ],
+ "name": "win_cursor_tag_spoken_filename",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

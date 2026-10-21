@@ -1,0 +1,26 @@
+{
+ "asr": {
+  "mock": "my email"
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "notepad",
+    "before": "x"
+   }
+  }
+ ],
+ "name": "win_pipe_raw_snippet_trigger_wins",
+ "session_config": {
+  "dictionary": [
+   {
+    "isSnippet": true,
+    "replacement": "me@example.com",
+    "word": "my email"
+   }
+  ],
+  "platform": "windows"
+ }
+}
