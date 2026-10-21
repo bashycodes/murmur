@@ -141,3 +141,19 @@ fn partial_requests_are_refused_without_a_request() {
     assert!(a.transcribe(&speech(1000), &r).is_err());
     assert_eq!(srv.count(), 0);
 }
+
+#[test]
+fn an_echoed_key_is_dropped_from_the_error_code() {
+    let srv = MockServer::fixed(Reply::json(
+        422,
+        serde_json::json!({"error": {"code": KEY}}),
+    ));
+    let e = run(
+        &asr(provider("groq", &srv, "/openai/v1")),
+        &req(&[], &[], None),
+    )
+    .unwrap_err();
+    assert_eq!(e.kind, flow_router::Failure::ProviderError);
+    assert!(!e.message.contains("LEAKCHECK"), "{e}");
+    assert!(e.message.contains("HTTP 422"));
+}

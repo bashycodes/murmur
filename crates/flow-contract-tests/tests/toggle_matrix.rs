@@ -414,3 +414,145 @@ fn warm_connection_is_reused_across_sessions() {
     assert_eq!(k.server.connections(), 1);
     assert_eq!(k.server.sessions(), 3);
 }
+
+// ---- cloud route (D18, docs/cloud-stt.md §3.2) ------------------------------
+
+use flow_cloud::testing::{MockServer, Reply};
+use flow_router::Route;
+use std::sync::atomic::{AtomicU16, Ordering};
+
+struct CloudRig {
+    server: TestServer,
+    asr: Arc<MockAsr>,
+    router: Router,
+    provider: MockServer,
+    status: Arc<AtomicU16>,
+}
+
+/// Real flow-server + a mock provider answering `status` (200 = "hello
+/// world" from the cloud) + a local MockAsr core.
+fn cloud_rig(order: &[Route]) -> CloudRig {
+    let server = spawn_mock_server(TEXT);
+    let (asr, core) = local();
+    let status = Arc::new(AtomicU16::new(200));
+    let s2 = status.clone();
+    let provider = MockServer::start(move |_, _| match s2.load(Ordering::SeqCst) {
+        200 => Reply::json(
+            200,
+            serde_json::json!({"text": "cloud words", "language": "en"}),
+        ),
+        s => Reply::json(s, serde_json::json!({})),
+    });
+    let mut cfg = router_config(server.addr(), true, true);
+    cfg.server.commit_timeout_base_ms = 500;
+    let cfg = with_cloud(cfg, cloud_provider(&provider.url("/openai/v1")), order);
+    let router = cloud_router(cfg, Some(core));
+    CloudRig {
+        server,
+        asr,
+        router,
+        provider,
+        status,
+    }
+}
+
+fn cloud_full_audio_reached_local(k: &CloudRig, r: &CommitResult) {
+    assert_eq!(
+        k.asr.last_len(),
+        AUDIO_MS * 16,
+        "local ASR saw every sample"
+    );
+    assert_eq!(r.timings.dropped_samples, 0);
+    assert_eq!(normalize(r), normalize(&reference()));
+}
+
+#[test]
+fn matrix_cloud_first_uses_the_provider() {
+    let k = cloud_rig(&[Route::Cloud, Route::Client]);
+    let (s, r) = dictate(&k.router);
+    s.unwrap();
+    assert_eq!(engine(&r), ("cloud".into(), None));
+    assert_eq!(r.asr_text, "cloud words");
+    assert_eq!(k.asr.calls(), 0);
+    assert_eq!(k.provider.count(), 1);
+    assert_eq!(k.server.sessions(), 0, "server not involved");
+}
+
+#[test]
+fn matrix_cloud_401_is_auth_failed_sticky_and_local_gets_everything() {
+    let k = cloud_rig(&[Route::Cloud, Route::Client]);
+    k.status.store(401, Ordering::SeqCst);
+    let (_, r) = dictate(&k.router);
+    assert_eq!(engine(&r), ("local".into(), Some("auth_failed".into())));
+    cloud_full_audio_reached_local(&k, &r);
+    // Sticky: the provider is not asked again until the key changes.
+    k.status.store(200, Ordering::SeqCst);
+    let (_, r) = dictate(&k.router);
+    assert_eq!(engine(&r), ("local".into(), Some("circuit_open".into())));
+    assert_eq!(k.provider.count(), 1);
+    k.router.set_cloud_key(
+        "groq-1",
+        Some(flow_router::SecretString::new("sk-another-key-000")),
+    );
+    let (_, r) = dictate(&k.router);
+    assert_eq!(engine(&r), ("cloud".into(), None));
+}
+
+#[test]
+fn matrix_cloud_500_goes_local_with_all_samples() {
+    let k = cloud_rig(&[Route::Cloud, Route::Client]);
+    k.status.store(500, Ordering::SeqCst);
+    let (_, r) = dictate(&k.router);
+    assert_eq!(engine(&r), ("local".into(), Some("provider_error".into())));
+    cloud_full_audio_reached_local(&k, &r);
+}
+
+#[test]
+fn matrix_cloud_server_down_then_cloud() {
+    let k = cloud_rig(&[Route::Server, Route::Cloud, Route::Client]);
+    let (_, r) = dictate(&k.router);
+    assert_eq!(engine(&r), ("remote".into(), None));
+    assert_eq!(k.provider.count(), 0, "cloud only when the server is down");
+    k.server.kill();
+    k.router.reset_circuit();
+    let (_, r) = dictate(&k.router);
+    assert_eq!(engine(&r), ("cloud".into(), Some("connect_failed".into())));
+    assert_eq!(r.asr_text, "cloud words");
+    assert_eq!(k.asr.calls(), 0);
+}
+
+#[test]
+fn matrix_cloud_server_dies_mid_session_replays_to_cloud() {
+    let k = cloud_rig(&[Route::Server, Route::Cloud, Route::Client]);
+    let (_, r) = dictate_with(&k.router, || k.server.kill());
+    assert_eq!(engine(&r).0, "cloud", "{r:?}");
+    assert_eq!(r.asr_text, "cloud words");
+    let up = &k.provider.requests()[0];
+    let file = up.parts().into_iter().find(|p| p.name == "file").unwrap();
+    // FLAC of the whole replayed buffer: decode its sample count.
+    let n = claxon::FlacReader::new(std::io::Cursor::new(file.data))
+        .unwrap()
+        .streaminfo()
+        .samples
+        .unwrap();
+    assert_eq!(
+        n as usize,
+        AUDIO_MS * 16,
+        "every sample reached the provider"
+    );
+}
+
+#[test]
+fn matrix_cloud_airplane_mode_goes_local() {
+    let k = cloud_rig(&[Route::Cloud, Route::Client]);
+    // Provider unreachable: point the config at a closed port.
+    let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = dead.local_addr().unwrap().port();
+    drop(dead);
+    let mut cfg = k.router.config();
+    cfg.cloud.providers[0].base_url = format!("http://127.0.0.1:{port}/openai/v1");
+    k.router.update_config(cfg);
+    let (_, r) = dictate(&k.router);
+    assert_eq!(engine(&r), ("local".into(), Some("connect_failed".into())));
+    cloud_full_audio_reached_local(&k, &r);
+}
