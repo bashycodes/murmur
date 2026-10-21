@@ -108,3 +108,20 @@ void listen<number>("audio:level", (e) => {
   target = Math.max(0, Math.min(1, e.payload));
   if (target > 0) pill.dataset.mic = "active";
 });
+
+// Developer setting "show engine badge": which engine served the last
+// dictation (S = your server, L = this PC); red dot = it fell back.
+const badge = document.getElementById("engine-badge") as HTMLSpanElement;
+let badgeTimer = 0;
+void listen<{ letter: string; fallback: boolean } | null>("dictation:route", (e) => {
+  clearTimeout(badgeTimer);
+  if (!e.payload) {
+    badge.hidden = true;
+    return;
+  }
+  badge.textContent = e.payload.letter;
+  badge.classList.toggle("fallback", e.payload.fallback);
+  badge.title = e.payload.fallback ? "fell back" : "";
+  badge.hidden = false;
+  badgeTimer = setTimeout(() => (badge.hidden = true), 4000);
+});
