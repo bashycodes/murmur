@@ -197,6 +197,7 @@ impl ModelSpec {
                 llm_path: None,
                 llm_lib: None,
                 threads: threads.unwrap_or_else(fc::default_threads).max(1),
+                ..fc::ModelConfig::default()
             },
             ModelSpec::Mock { text } => fc::ModelConfig {
                 asr_backend: fc::AsrBackend::Mock { text: text.clone() },
@@ -775,6 +776,16 @@ mod tests {
     use super::*;
     use std::path::Path;
 
+    /// `SessionConfig::default()` has `max_samples: 0` (→ a 1-sample cap).
+    /// The mock ASR ignored that; since core-p1 the VAD (D16) calls a
+    /// 1-sample buffer silence and commits EMPTY, so give the session room.
+    fn session() -> SessionConfig {
+        SessionConfig {
+            max_samples: 16_000 * 60,
+            ..SessionConfig::default()
+        }
+    }
+
     #[test]
     fn default_model_path_is_under_appdata() {
         let p = default_model_path(Some(r"C:\Users\u\AppData\Roaming"));
@@ -871,7 +882,7 @@ mod tests {
         a.load(ModelSpec::Mock {
             text: "hello there".into(),
         });
-        a.start_session(SessionConfig::default()).unwrap();
+        a.start_session(session()).unwrap();
         a.push_audio(&[3000; 16_000]);
         let r = a.commit();
         assert_eq!(r.status, CommitStatus::RawTranscript);
@@ -887,7 +898,7 @@ mod tests {
     fn cancel_then_commit_is_error_not_stale_text() {
         let a = FlowCoreAdapter::new();
         a.load_now(&ModelSpec::Mock { text: "x".into() });
-        a.start_session(SessionConfig::default()).unwrap();
+        a.start_session(session()).unwrap();
         a.push_audio(&[3000; 16_000]);
         a.cancel();
         assert_eq!(a.commit().status, CommitStatus::Error);
@@ -929,7 +940,7 @@ mod tests {
     const SPEECH: &str = "please send the report today";
 
     fn dictate(a: &FlowCoreAdapter) -> CommitResult {
-        a.start_session(SessionConfig::default()).unwrap();
+        a.start_session(session()).unwrap();
         a.push_audio(&[3000; 16_000]);
         a.commit()
     }
