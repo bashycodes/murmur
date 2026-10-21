@@ -457,6 +457,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow-protocol"
+version = "0.1.0"
+dependencies = [
+ "flow-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "flow-router"
+version = "0.1.0"
+dependencies = [
+ "flow-core",
+ "flow-protocol",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "form_urlencoded"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
