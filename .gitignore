@@ -3,3 +3,19 @@ models/
 /models
 *.bin
 *.gguf
+# agent worktrees / local tool state
+.claude/
+# local junk
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+local.properties
+.gradle/
+build/
+*.log
