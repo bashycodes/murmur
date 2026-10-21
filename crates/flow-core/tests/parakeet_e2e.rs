@@ -127,5 +127,11 @@ fn parakeet_bad_dir_fails_load() {
         asr_path: "/nonexistent/parakeet".into(),
         ..Default::default()
     });
-    assert!(r.is_err());
+    match r {
+        Err(flow_core::CoreError::ModelNotFound { path }) => {
+            assert_eq!(path, "/nonexistent/parakeet")
+        }
+        Err(e) => panic!("wrong error: {e:?}"),
+        Ok(_) => panic!("loaded a missing model dir"),
+    }
 }
