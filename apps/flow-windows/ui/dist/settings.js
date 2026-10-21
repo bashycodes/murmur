@@ -633,6 +633,9 @@ function showDev(v) {
         ? "Speech is processed on this PC or on your own server. Nothing goes to a third party."
         : "Everything runs on this PC. Nothing is sent over the network.";
     fillDev(v.form);
+    // Server-only builds have no local model: no model paths or LLM files.
+    for (const f of document.querySelectorAll("[data-needs=local]"))
+        f.hidden = !v.caps.local;
     $("dev_allow_server").disabled = !v.caps.remote;
     $("dev_allow_client").disabled = !v.caps.local;
     $("dev_server_na").hidden = v.caps.remote;
