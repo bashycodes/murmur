@@ -36,8 +36,15 @@ class FakeFlowCore(@Volatile var transcript: String = "") : FlowCore {
         if (!active) return CommitResult(CommitStatus.ERROR, error = "no active session")
         active = false
         val audioMs = samplesPushed / 16L
-        return if (!heardSignal || transcript.isBlank()) CommitResult(CommitStatus.EMPTY, timings = Timings(audioMs = audioMs))
-        else CommitResult(CommitStatus.RAW_TRANSCRIPT, asrText = transcript, finalText = transcript, timings = Timings(audioMs = audioMs))
+        // Same shape as core-p1: EMPTY carries empty_reason; text results carry segments + plain_text.
+        return if (!heardSignal || transcript.isBlank()) {
+            CommitResult(CommitStatus.EMPTY, timings = Timings(audioMs = audioMs), emptyReason = if (samplesPushed == 0) "no_audio" else "no_speech")
+        } else {
+            CommitResult(
+                CommitStatus.RAW_TRANSCRIPT, asrText = transcript, finalText = transcript, timings = Timings(audioMs = audioMs),
+                segments = listOf(PasteSegment.Text(transcript)), plainText = transcript,
+            )
+        }
     }
 
     override fun cancel() { active = false }

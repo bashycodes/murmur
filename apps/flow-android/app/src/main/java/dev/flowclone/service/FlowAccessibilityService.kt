@@ -225,6 +225,17 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         return FieldContextBuilder.build(pkg, type, text, node?.textSelectionStart ?: -1, node?.textSelectionEnd ?: -1)
     }
 
+    override suspend fun sendKey(key: dev.flowclone.core.PasteKey): Boolean = withContext(Dispatchers.Main) {
+        val code = when (key) {
+            dev.flowclone.core.PasteKey.ENTER -> android.view.KeyEvent.KEYCODE_ENTER
+            dev.flowclone.core.PasteKey.TAB -> android.view.KeyEvent.KEYCODE_TAB
+            dev.flowclone.core.PasteKey.BREAK -> return@withContext true
+        }
+        val ok = inputMethod?.sendKey(code) == true
+        Log.i(TAG, "sendKey $key ok=$ok")
+        ok
+    }
+
     override fun onDictationActive(active: Boolean) {
         scope.launch {
             if (active) keepAlive.arm(scope) else { keepAlive.disarm(); }

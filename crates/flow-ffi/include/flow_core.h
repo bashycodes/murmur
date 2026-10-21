@@ -21,9 +21,22 @@ char *flow_commit(FlowHandle *h);                                    /* CommitRe
 void flow_cancel(FlowHandle *h);
 char *flow_learn_edit(FlowHandle *h, const char *pasted, const char *edited); /* JSON array */
 const char *flow_last_error(void);
-/* "" | "bad_config" | "model_not_found" | "llm_lib_not_found" | "load" | "error" */
+/* "" | "bad_config" | "model_not_found" | "llm_lib_not_found" | "load" | "error"
+ * | router: "no_engine_enabled" | "local_not_ready" | "server_not_configured" | "server_unavailable" */
 const char *flow_last_error_kind(void);
 void flow_string_free(char *s);
+
+/* D17 hybrid router (docs/hybrid-architecture.md §6.2). A router handle works
+ * with every session function above; flow_unload frees it (and its local engine). */
+char *flow_capabilities(void);                                       /* Capabilities JSON */
+/* Takes ownership of `local` (a flow_load_models handle, or NULL) whatever the outcome.
+ * NULL on error: kind "no_engine_enabled" / "bad_config". */
+FlowHandle *flow_open_router(const char *router_config_json, FlowHandle *local);
+int flow_update_router(FlowHandle *h, const char *router_config_json); /* next session */
+char *flow_probe_server(const char *server_config_json);             /* HealthReport JSON; blocks */
+char *flow_probe_router(FlowHandle *h);                              /* probe saved server; blocks */
+char *flow_route_status(FlowHandle *h);                              /* RouteStatus JSON */
+void flow_reset_circuit(FlowHandle *h);
 
 #ifdef __cplusplus
 }

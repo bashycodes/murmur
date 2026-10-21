@@ -46,6 +46,8 @@ class DictationControllerTest {
         var recordingActive = mutableListOf<Boolean>()
         override fun feedback(e: FeedbackEvent) { events += e }
         override suspend fun insert(text: String): Boolean { insertGate?.await(); inserted += text; return insertOk }
+        val keys = mutableListOf<dev.flowclone.core.PasteKey>()
+        override suspend fun sendKey(key: dev.flowclone.core.PasteKey): Boolean { keys += key; inserted += "<${key.wire}>"; return true }
         override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?) { history += result to inserted }
         override fun hasMicPermission() = micGranted
         override fun captureContext() = context
@@ -333,6 +335,62 @@ class DictationControllerTest {
         assertEquals(null, c.hint.value)
         c.cancel()
     }
+
+    private fun TestScope.dictate(result: CommitResult): DictationController {
+        val c = controller(ScriptedCore(core, result))
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        return c
+    }
+
+    @Test fun pastesSegmentsInOrderWithKeysAndBreakPause() = runTest {
+        val r = CommitResult(
+            dev.flowclone.core.CommitStatus.FORMATTED, finalText = "@foo{{TAB}} bar", pressEnter = true, plainText = "@foo bar",
+            segments = listOf(
+                dev.flowclone.core.PasteSegment.Text("@foo"), dev.flowclone.core.PasteSegment.Key(dev.flowclone.core.PasteKey.TAB),
+                dev.flowclone.core.PasteSegment.Text(" bar"), dev.flowclone.core.PasteSegment.Key(dev.flowclone.core.PasteKey.BREAK),
+                dev.flowclone.core.PasteSegment.Key(dev.flowclone.core.PasteKey.ENTER),
+            ),
+        )
+        val c = dictate(r)
+        assertEquals("press_enter is not acted on twice", listOf("@foo", "<Tab>", " bar", "<Enter>"), host.inserted)
+        assertEquals(DictationState.Ready, c.state.value)
+        assertTrue(host.history.single().second)
+    }
+
+    @Test fun failedRunReportsTheRemainingText() = runTest {
+        host.insertOk = false
+        val r = CommitResult(
+            dev.flowclone.core.CommitStatus.RAW_TRANSCRIPT, finalText = "a{{BREAK}}b",
+            segments = listOf(dev.flowclone.core.PasteSegment.Text("a"), dev.flowclone.core.PasteSegment.Key(dev.flowclone.core.PasteKey.BREAK), dev.flowclone.core.PasteSegment.Text("b")),
+        )
+        val c = dictate(r)
+        assertEquals(DictationState.Error(ErrorKind.FailedToPaste("ab")), c.state.value)
+    }
+
+    @Test fun onlyFillerShowsItsOwnHint() = runTest {
+        val c = dictate(CommitResult(dev.flowclone.core.CommitStatus.EMPTY, emptyReason = "only_filler"))
+        assertEquals(DictationHint.OnlyFiller, c.hint.value)
+        assertTrue(host.inserted.isEmpty())
+    }
+
+    @Test fun serverOnlyFailureSaysServerUnreachable() = runTest {
+        val c = dictate(CommitResult(dev.flowclone.core.CommitStatus.ERROR, error = "server_unavailable: connect_failed"))
+        val s = c.state.value as DictationState.Error
+        assertEquals(ErrorKind.EngineUnavailable("Server unreachable (connect_failed)"), s.kind)
+    }
+
+    @Test fun bothTogglesOffIsAClearErrorAtStart() = runTest {
+        val refusing = object : FlowCore by core {
+            override fun startSession(cfg: SessionConfig) = throw dev.flowclone.core.CoreException("no_engine_enabled: both off", "no_engine_enabled")
+        }
+        val c = controller(refusing)
+        c.toggle(false)
+        assertEquals(
+            DictationState.Error(ErrorKind.EngineUnavailable("Dictation disabled — enable server or client in Developer settings")),
+            c.state.value,
+        )
+        assertEquals(0, audio.starts)
+    }
 }
 
 /** A core whose commit blocks until [release] — simulates a hung ASR worker. */
@@ -344,4 +402,9 @@ class HangingCore(private val inner: FakeFlowCore) : FlowCore by inner {
         return inner.commit()
     }
     override fun cancel() { cancelled = true; release.complete(Unit); inner.cancel() }
+}
+
+/** Returns [result] from commit (after the inner fake has seen the audio). */
+class ScriptedCore(private val inner: FakeFlowCore, private val result: CommitResult) : FlowCore by inner {
+    override fun commit(): CommitResult { inner.commit(); return result }
 }

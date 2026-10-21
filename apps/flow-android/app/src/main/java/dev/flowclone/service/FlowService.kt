@@ -126,7 +126,8 @@ class FlowService : Service() {
         }
         scope.launch {
             combine(controller.state, controller.partial, controller.hint, presence.presence) { s, p, h, _ ->
-                PreviewContent.line(s, p, h, app.settings.load().livePreview)
+                val badge = if (app.dev.load().showEngineBadge) dev.flowclone.core.DevText.badge(app.lastRoute.value?.result?.route) else null
+                PreviewContent.line(s, p, h, app.settings.load().livePreview, badge)
             }.collect { overlay.renderPreview(it) }
         }
         scope.launch {
@@ -385,14 +386,17 @@ class FlowService : Service() {
             return ok
         }
 
+        override suspend fun sendKey(key: dev.flowclone.core.PasteKey): Boolean = app.accessibility?.sendKey(key) ?: false
+
         override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?) {
+            app.lastRoute.value = dev.flowclone.data.LastDictation.of(result, System.currentTimeMillis())
             val retention = app.settings.load().retention
             val t = result.timings
             val row = HistoryRow(
-                0, System.currentTimeMillis(), appId, result.status.name, result.asrText, result.finalText, inserted, t.audioMs,
+                0, System.currentTimeMillis(), appId, result.status.name, result.asrText, result.historyText, inserted, t.audioMs,
                 fallbackReason = result.fallbackReason, asrMs = t.asrMs, llmMs = t.llmMs, totalMs = t.totalMs,
             )
-            Log.i(TAG, "commit ${result.status} audio=${t.audioMs}ms asr=${t.asrMs}ms llm=${t.llmMs}ms total=${t.totalMs}ms dropped=${t.droppedSamples} ${result.fallbackReason ?: ""}")
+            Log.i(TAG, "commit ${result.status} audio=${t.audioMs}ms asr=${t.asrMs}ms llm=${t.llmMs}ms total=${t.totalMs}ms dropped=${t.droppedSamples} ${result.fallbackReason ?: ""} ${result.emptyReason ?: ""} route=${result.route?.engine ?: "-"}/${result.route?.fallback ?: "-"}")
             scope.launch(Dispatchers.IO) { runCatching { app.history.add(row, retention) } }
         }
 

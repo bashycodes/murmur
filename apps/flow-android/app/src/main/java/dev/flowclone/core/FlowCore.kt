@@ -42,16 +42,67 @@ fun interface FlowCoreLoader {
     fun loadModels(cfg: ModelConfig): FlowCore
 }
 
-class CoreException(message: String) : Exception(message)
+/**
+ * [kind] is the stable `CoreError::kind()` (`model_not_found`, `llm_lib_not_found`, `load`,
+ * `bad_config`, …) or a router error kind (`no_engine_enabled`, `local_not_ready`,
+ * `server_not_configured`, `server_unavailable`); null when unknown.
+ */
+class CoreException(message: String, val kind: String? = null) : Exception(message) {
+    companion object {
+        /**
+         * Typed load errors (core-p1 CR-1). The JNI message keeps a stable prefix per kind
+         * ("model not found: <path>", "llm plugin not found (…)"), so the kind can be
+         * recovered even from a library without `nativeLastErrorKind`.
+         */
+        fun kindOf(message: String?): String? = when {
+            message == null -> null
+            message.startsWith("model not found:") -> "model_not_found"
+            message.startsWith("llm plugin not found") -> "llm_lib_not_found"
+            message.startsWith("bad model config") || message.startsWith("bad config") -> "bad_config"
+            message.startsWith("model load failed") -> "load"
+            else -> RouterErrors.KINDS.firstOrNull { message.startsWith(it) }
+        }
+
+        fun of(message: String?, kind: String? = null, fallback: String): CoreException {
+            val m = message?.takeIf { it.isNotBlank() } ?: fallback
+            return CoreException(m, kind?.takeIf { it.isNotBlank() && it != "error" } ?: kindOf(m))
+        }
+    }
+}
+
+/** flow_router `RouterError` kinds (docs/hybrid-architecture.md §1.2), surfaced as last error. */
+object RouterErrors {
+    const val NO_ENGINE_ENABLED = "no_engine_enabled"
+    const val LOCAL_NOT_READY = "local_not_ready"
+    const val SERVER_NOT_CONFIGURED = "server_not_configured"
+    const val SERVER_UNAVAILABLE = "server_unavailable"
+    const val BAD_CONFIG = "bad_config"
+    val KINDS = listOf(NO_ENGINE_ENABLED, LOCAL_NOT_READY, SERVER_NOT_CONFIGURED, SERVER_UNAVAILABLE, BAD_CONFIG)
+
+    /** User-facing text for the bubble / main screen (§5 "Errors in normal UI"). */
+    fun userMessage(kind: String?, message: String): String = when (kind) {
+        NO_ENGINE_ENABLED -> "Dictation disabled — enable server or client in Developer settings"
+        SERVER_UNAVAILABLE -> "Server unreachable (${message.substringAfter(':', message).trim()})"
+        SERVER_NOT_CONFIGURED -> "No server configured — set the host in Developer settings"
+        LOCAL_NOT_READY -> "On-device speech model is not ready"
+        "model_not_found" -> "Speech model file is missing (${message.substringAfter(':').trim()}). Re-import it."
+        else -> message
+    }
+}
+
+/** `ModelConfig.asr_engine`: whisper.cpp (any language) or Parakeet-TDT (English, D12). */
+enum class AsrEngine(val wire: String) { WHISPER("whisper"), PARAKEET("parakeet") }
 
 /** crates/flow-core `ModelConfig`. [mockText] selects the core's `Mock` ASR backend. */
 data class ModelConfig(
+    /** whisper: the ggml-*.bin file; parakeet: the sherpa-onnx model directory. */
     val asrPath: String,
     val llmPath: String? = null,
     val threads: Int = 4,
     val mockText: String? = null,
     /** flow-llm plugin path; null = the core's lookup (on Android: the packaged libflow_llm.so). */
     val llmLib: String? = null,
+    val asrEngine: AsrEngine = AsrEngine.WHISPER,
 )
 
 enum class CleanupLevel(val wire: String) { NONE("none"), LIGHT("light"), MEDIUM("medium"), HIGH("high") }
@@ -78,6 +129,12 @@ data class SessionConfig(
     val maxSamples: Long = 300L * 16_000,
     val partialIntervalMs: Int? = null,
     val llmTimeoutMs: Long = 1500,
+    // core-p1 session flags (all default on in the core; the shell always sends them).
+    val vad: Boolean = true,
+    val hallucinationGuard: Boolean = true,
+    /** Deterministic spoken cleanup (punctuation words, fillers, backtracking, ITN). User pref. */
+    val spokenCleanup: Boolean = true,
+    val llmPrefill: Boolean = true,
 )
 
 /** crates/flow-core `FieldContext`; [before]/[after] ≤ 500 chars (shell truncates). */
@@ -103,6 +160,37 @@ data class Timings(
     val droppedSamples: Long = 0,
 )
 
+/** A key the shell sends between text runs (crates/flow-core `paste::PasteKey`). */
+enum class PasteKey(val wire: String) {
+    /** Spoken "press enter"; always last. */
+    ENTER("Enter"),
+    TAB("Tab"),
+    /** Paste boundary: finish inserting, pause briefly, continue. No key is sent. */
+    BREAK("Break"),
+}
+
+/** CommitResult.segments entry: `{"text": "…"}` or `{"key": "Enter"|"Tab"|"Break"}` (CR-2). */
+sealed interface PasteSegment {
+    data class Text(val text: String) : PasteSegment
+    data class Key(val key: PasteKey) : PasteSegment
+}
+
+/**
+ * CommitResult.route (D17): which engine produced the result. Set by flow_router only;
+ * null when the result came straight from a FlowCore handle (or an older native lib).
+ */
+data class RouteInfo(
+    /** "local" | "remote" */
+    val engine: String,
+    /** connect_failed, auth_failed, proto_mismatch, busy, timeout, disconnected, circuit_open, server_not_configured, local_not_ready */
+    val fallback: String? = null,
+    /** "host:port" */
+    val server: String? = null,
+    val rttMs: Long? = null,
+    val queueMs: Long? = null,
+    val serverCore: String? = null,
+)
+
 data class CommitResult(
     val status: CommitStatus,
     val asrText: String = "",
@@ -113,6 +201,24 @@ data class CommitResult(
     val fallbackReason: String? = null,
     val truncated: Boolean = false,
     val error: String? = null,
-)
+    /** Paste plan: [finalText] split at {{BREAK}}/{{TAB}}, plus a trailing Enter for press_enter. */
+    val segments: List<PasteSegment> = emptyList(),
+    /** [finalText] without paste markers (history, copy-last). */
+    val plainText: String = "",
+    /** EMPTY only: no_audio | no_speech | blank_asr | hallucination | only_filler. */
+    val emptyReason: String? = null,
+    val route: RouteInfo? = null,
+) {
+    /** What to paste: [segments] when the core sent them, else the pre-core-p1 fields. */
+    fun pastePlan(): List<PasteSegment> = segments.ifEmpty {
+        buildList {
+            if (finalText.isNotBlank()) add(PasteSegment.Text(finalText))
+            if (pressEnter && isNotEmpty()) add(PasteSegment.Key(PasteKey.ENTER))
+        }
+    }
+
+    /** History / copy text: [plainText], else [finalText] (older libs). */
+    val historyText: String get() = plainText.ifEmpty { finalText }
+}
 
 data class LearnCandidate(val original: String, val corrected: String)

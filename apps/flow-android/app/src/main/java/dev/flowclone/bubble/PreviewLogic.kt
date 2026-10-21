@@ -7,13 +7,20 @@ import dev.flowclone.session.DictationState
 object PreviewContent {
     const val MAX_CHARS = 140
     const val CANT_HEAR = "Can't hear you. Check the microphone."
-    const val NO_SPEECH = "No speech detected. Nothing was inserted."
+    const val NO_SPEECH = "No speech heard. Nothing was inserted."
+    const val ONLY_FILLER = "Only filler words heard. Nothing was inserted."
 
     data class Line(val text: String, val dim: Boolean)
 
-    fun line(state: DictationState, partial: String?, hint: DictationHint?, enabled: Boolean): Line? {
+    /** [badge]: D17 `show_engine_badge` — the last dictation's engine (S / L / L•), prefixed while recording. */
+    fun line(state: DictationState, partial: String?, hint: DictationHint?, enabled: Boolean, badge: String? = null): Line? =
+        lineNoBadge(state, partial, hint, enabled)?.let { l -> if (badge == null) l else l.copy(text = "[$badge] ${l.text}") }
+            ?: if (badge != null && state is DictationState.Recording) Line("[$badge]", dim = true) else null
+
+    private fun lineNoBadge(state: DictationState, partial: String?, hint: DictationHint?, enabled: Boolean): Line? {
         when (hint) {
             DictationHint.NoSpeechDetected -> return Line(NO_SPEECH, dim = false)
+            DictationHint.OnlyFiller -> return Line(ONLY_FILLER, dim = false)
             DictationHint.NoSpeechYet -> if (state is DictationState.Recording) return Line(CANT_HEAR, dim = false)
             null -> Unit
         }

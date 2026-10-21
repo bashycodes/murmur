@@ -11,7 +11,7 @@ import org.json.JSONObject
  */
 object CoreJson {
     fun encode(c: ModelConfig): String = JSONObject().apply {
-        put("asr_backend", c.mockText?.let { JSONObject().put("mock", JSONObject().put("text", it)) } ?: "whisper")
+        put("asr_backend", c.mockText?.let { JSONObject().put("mock", JSONObject().put("text", it)) } ?: c.asrEngine.wire)
         put("asr_path", c.asrPath)
         put("llm_path", c.llmPath ?: JSONObject.NULL)
         put("llm_lib", c.llmLib ?: JSONObject.NULL)
@@ -31,6 +31,10 @@ object CoreJson {
         put("platform", "android")
         put("partial_interval_ms", c.partialIntervalMs ?: JSONObject.NULL)
         put("llm_timeout_ms", c.llmTimeoutMs)
+        put("vad", c.vad)
+        put("hallucination_guard", c.hallucinationGuard)
+        put("spoken_cleanup", c.spokenCleanup)
+        put("llm_prefill", c.llmPrefill)
     }.toString()
 
     fun encode(c: FieldContext): String = JSONObject().apply {
@@ -43,7 +47,30 @@ object CoreJson {
         put("screen_words", JSONArray(c.screenWords))
     }.toString()
 
-    private fun JSONObject.optStringOrNull(k: String): String? = if (isNull(k)) null else optString(k)
+    internal fun JSONObject.optStringOrNull(k: String): String? = if (isNull(k)) null else optString(k)
+    internal fun JSONObject.optLongOrNull(k: String): Long? = if (isNull(k)) null else optLong(k)
+
+    /** Unknown keys / malformed rows are skipped (a newer core may add segment kinds). */
+    private fun decodeSegments(a: JSONArray?): List<PasteSegment> {
+        if (a == null) return emptyList()
+        return (0 until a.length()).mapNotNull { i ->
+            val o = a.optJSONObject(i) ?: return@mapNotNull null
+            when {
+                o.has("text") -> PasteSegment.Text(o.optString("text"))
+                o.has("key") -> PasteKey.entries.firstOrNull { it.wire == o.optString("key") }?.let { PasteSegment.Key(it) }
+                else -> null
+            }
+        }
+    }
+
+    fun decodeRoute(o: JSONObject) = RouteInfo(
+        engine = o.optString("engine"),
+        fallback = o.optStringOrNull("fallback"),
+        server = o.optStringOrNull("server"),
+        rttMs = o.optLongOrNull("rtt_ms"),
+        queueMs = o.optLongOrNull("queue_ms"),
+        serverCore = o.optStringOrNull("server_core"),
+    )
 
     fun decodeCommit(json: String): CommitResult = try {
         val o = JSONObject(json)
@@ -62,6 +89,10 @@ object CoreJson {
             fallbackReason = o.optStringOrNull("fallback_reason"),
             truncated = o.optBoolean("truncated"),
             error = o.optStringOrNull("error"),
+            segments = decodeSegments(o.optJSONArray("segments")),
+            plainText = o.optString("plain_text"),
+            emptyReason = o.optStringOrNull("empty_reason"),
+            route = o.optJSONObject("route")?.let(::decodeRoute),
         )
     } catch (e: JSONException) {
         CommitResult(CommitStatus.ERROR, error = "bad commit json: ${e.message}")
