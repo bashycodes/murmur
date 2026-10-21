@@ -37,22 +37,43 @@ class SettingsActivity : Activity() {
         lateinit var preview: CheckBox
         lateinit var shake: CheckBox
         lateinit var shrink: CheckBox
+        lateinit var spoken: CheckBox
+        var parakeet: CheckBox? = null
+        val local = app.caps.local
         page {
             heading("Language")
             lang = spinner(languages.map { it.second }, languages.indexOfFirst { it.first == s.language }.coerceAtLeast(0))
-            heading("AI cleanup (local LLM)")
-            body(
+            spoken = CheckBox(context).apply {
+                text = "Auto-format punctuation, fillers and corrections (\"comma\", \"um\", \"scratch that\", \"five dollars\")"
+                isChecked = s.spokenCleanup
+            }.also(::addView)
+            if (local) {
+                heading("On-device speech engine")
+                parakeet = CheckBox(context).apply {
+                    text = "Use Parakeet (English only, more accurate; needs the imported model folder and ~1 GB RAM). Falls back to whisper if it can't load."
+                    isChecked = s.asrEngine == dev.flowclone.core.AsrEngine.PARAKEET
+                }.also(::addView)
+                val pk = app.settings.parakeetPath?.let { java.io.File(it).name }
+                body("Parakeet model: ${pk ?: "none imported"}", if (pk != null) OK_COLOR else null)
+                button("Parakeet model folder…") { startActivity(ModelImportActivity.parakeetIntent(this@SettingsActivity)) }
+            }
+            if (local) heading("AI cleanup (local LLM)")
+            if (local) body(
                 "Off by default. When on, a small language model on this phone rewrites each transcript " +
                     "(punctuation, filler words, \"scratch that\", lists). Needs an imported GGUF model and adds 1–3 s; " +
                     "if it takes longer than 3 s, or changes too much, the plain transcript is inserted. " +
                     "Dictionary replacements and snippets apply either way.",
             )
-            llmOn = CheckBox(context).apply { text = "Clean up with local AI"; isChecked = s.llmEnabled }.also(::addView)
-            val llmModel = app.settings.llmModelPath?.let { java.io.File(it).name }
-            body("Model: ${llmModel ?: "none imported"}", if (llmModel != null) OK_COLOR else null)
-            button("AI cleanup model…") { startActivity(ModelImportActivity.llmIntent(this@SettingsActivity)) }
-            body("Strength")
-            cleanup = spinner(levels.map { it.second }, levels.indexOfFirst { it.first == s.cleanup }.coerceAtLeast(0))
+            llmOn = CheckBox(context).apply { text = "Clean up with local AI"; isChecked = s.llmEnabled && local }
+            cleanup = spinner(levels.map { it.second }, levels.indexOfFirst { it.first == s.cleanup }.coerceAtLeast(0)).apply { if (!local) visibility = android.view.View.GONE }
+            if (local) {
+                removeView(cleanup); addView(llmOn)
+                val llmModel = app.settings.llmModelPath?.let { java.io.File(it).name }
+                body("Model: ${llmModel ?: "none imported"}", if (llmModel != null) OK_COLOR else null)
+                button("AI cleanup model…") { startActivity(ModelImportActivity.llmIntent(this@SettingsActivity)) }
+                body("Strength")
+                addView(cleanup)
+            }
             heading("Bubble")
             preview = CheckBox(context).apply { text = "Live preview of the transcript while you speak (uses more battery)"; isChecked = s.livePreview }.also(::addView)
             shrink = CheckBox(context).apply { text = "Shrink the bubble to a dot after 5 s"; isChecked = s.shrinkBubble }.also(::addView)
@@ -69,6 +90,7 @@ class SettingsActivity : Activity() {
                 minLines = 3; setText(s.userDenylist.sorted().joinToString("\n"))
             }.also(::addView)
             heading("Developer")
+            if (app.dev.visible) button("Developer settings (engines, server)…") { startActivity(android.content.Intent(this@SettingsActivity, DeveloperActivity::class.java)) }
             mock = CheckBox(context).apply { text = "Mock engine (inserts a fixed sentence; for testing without a model)"; isChecked = s.mockEngine }.also(::addView)
             button("Save") {
                 val n = s.copy(
@@ -82,15 +104,32 @@ class SettingsActivity : Activity() {
                     retention = retentions[retention.selectedItemPosition].first,
                     userDenylist = deny.text.lines().map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
                     mockEngine = mock.isChecked,
+                    spokenCleanup = spoken.isChecked,
+                    asrEngine = if (parakeet?.isChecked == true) dev.flowclone.core.AsrEngine.PARAKEET else dev.flowclone.core.AsrEngine.WHISPER,
                 )
                 app.settings.save(n)
                 if (n.retention != s.retention) app.history.purge(n.retention)
-                if (n.mockEngine != s.mockEngine || n.llmEnabled != s.llmEnabled) app.engine.reload()
+                if (n.mockEngine != s.mockEngine || n.llmEnabled != s.llmEnabled || n.asrEngine != s.asrEngine) app.engine.reload()
                 if (n.llmEnabled && app.settings.llmModelPath == null) {
                     Toast.makeText(this@SettingsActivity, "AI cleanup needs a GGUF model: import one first.", Toast.LENGTH_LONG).show()
                 }
                 Toast.makeText(this@SettingsActivity, "Saved", Toast.LENGTH_SHORT).show()
                 finish()
+            }
+            // §5 Access: in builds without `remote`, 7 taps here reveal Developer settings.
+            val unlock = dev.flowclone.data.DevUnlock({ android.os.SystemClock.elapsedRealtime() })
+            body("Version ${dev.flowclone.BuildConfig.VERSION_NAME} (${app.caps.flavor})").apply {
+                setPadding(0, dp(24), 0, dp(8))
+                setOnClickListener {
+                    if (app.dev.visible) return@setOnClickListener
+                    if (unlock.tap()) {
+                        app.dev.devUnlocked = true
+                        Toast.makeText(this@SettingsActivity, "Developer settings unlocked", Toast.LENGTH_SHORT).show()
+                        recreate()
+                    } else if (unlock.remaining <= 4) {
+                        Toast.makeText(this@SettingsActivity, "${unlock.remaining} more taps", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         }
     }

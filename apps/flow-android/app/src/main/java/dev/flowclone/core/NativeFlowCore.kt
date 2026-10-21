@@ -7,7 +7,7 @@ package dev.flowclone.core
  * The library is optional at build time: [loadLibrary] reports a missing/broken .so as
  * [LibraryState.Unavailable] instead of throwing, and the UI shows that message.
  */
-class NativeFlowCore private constructor(private var handle: Long) : FlowCore {
+class NativeFlowCore private constructor(private var handle: Long, val isRouter: Boolean = false) : FlowCore {
     sealed interface LibraryState {
         data class Loaded(val version: String) : LibraryState
         data class Unavailable(val message: String) : LibraryState
@@ -16,8 +16,25 @@ class NativeFlowCore private constructor(private var handle: Long) : FlowCore {
     private fun h(): Long = handle.also { check(it != 0L) { "NativeFlowCore used after unload" } }
 
     override fun startSession(cfg: SessionConfig) {
-        if (!nativeStartSession(h(), CoreJson.encode(cfg))) throw CoreException(nativeLastError() ?: "start_session failed")
+        if (!nativeStartSession(h(), CoreJson.encode(cfg))) throw lastError("start_session failed")
     }
+
+    /**
+     * Gives the handle away (to `nativeOpenRouter`, which takes ownership). This instance is
+     * unusable afterwards and its [unload] is a no-op.
+     */
+    @Synchronized
+    fun release(): Long { val x = handle; handle = 0; return x }
+
+    /** Router handles only: `update_config` (applies from the next session; models are not reloaded). */
+    fun updateRouter(routerConfigJson: String) {
+        check(isRouter) { "not a router handle" }
+        if (!guardLink { nativeUpdateRouter(h(), routerConfigJson) }) throw lastError("update_config failed")
+    }
+
+    /** Router handles only: last route + circuit + last probe. */
+    fun routeStatus(): RouteStatus =
+        if (!isRouter || handle == 0L) RouteStatus() else RouterJson.decodeRouteStatus(guardLink { nativeRouteStatus(handle) })
 
     override fun pushAudio(pcm: ShortArray, length: Int): Boolean =
         handle != 0L && nativePushAudio(handle, pcm, length)
@@ -93,8 +110,52 @@ class NativeFlowCore private constructor(private var handle: Long) : FlowCore {
                 if (l is LibraryState.Unavailable) throw CoreException(l.message)
             }
             val h = nativeLoadModels(CoreJson.encode(cfg))
-            if (h == 0L) throw CoreException(nativeLastError() ?: "load_models failed")
+            if (h == 0L) throw lastError("load_models failed")
             return NativeFlowCore(h)
+        }
+
+        /** Last error + its stable kind (`nativeLastErrorKind`, else recovered from the message prefix). */
+        internal fun lastError(fallback: String): CoreException {
+            val kind = runCatching { nativeLastErrorKind() }.getOrNull()
+            return CoreException.of(nativeLastError(), kind, fallback)
+        }
+
+        /** A library built before the router symbols: report, don't crash. */
+        private inline fun <T> guardLink(f: () -> T): T = try {
+            f()
+        } catch (e: UnsatisfiedLinkError) {
+            throw CoreException("native library has no engine router (rebuild with tools/build-native.sh --flavor …): ${e.message}", "bad_config")
+        }
+
+        /** `nativeOpenRouter`: wraps [local] (ownership moves to the router; may be null) per [routerConfigJson]. */
+        val routerOpener = dev.flowclone.data.RouterOpener { json, local ->
+            val s = loadLibrary()
+            if (s is LibraryState.Unavailable) throw CoreException(s.message)
+            val lh = when (local) {
+                null -> 0L
+                is NativeFlowCore -> local.release()
+                else -> throw CoreException("router needs a native local engine, got ${local::class.simpleName}")
+            }
+            val h = guardLink { nativeOpenRouter(json, lh) }
+            if (h == 0L) throw lastError("open_router failed")
+            NativeFlowCore(h, isRouter = true)
+        }
+
+        /** What the loaded library was built with (`flow_router::Capabilities`); null without the library/symbol. */
+        fun capabilities(): Capabilities? {
+            if (loadLibrary() !is LibraryState.Loaded) return null
+            return runCatching { RouterJson.decodeCapabilities(nativeCapabilities()) }.getOrNull()
+        }
+
+        /** Blocking (connect + hello + 3 pings): call off the main thread. Never throws. */
+        fun probeServer(serverConfigJson: String): HealthReport {
+            val s = loadLibrary()
+            if (s is LibraryState.Unavailable) return HealthReport(ok = false, error = "error", message = s.message)
+            return try {
+                RouterJson.decodeHealth(nativeProbeServer(serverConfigJson))
+            } catch (e: UnsatisfiedLinkError) {
+                HealthReport(ok = false, error = "error", message = "native library has no engine router: ${e.message}")
+            }
         }
 
         // ---- JNI surface (static natives on dev.flowclone.core.NativeFlowCore) ----
@@ -109,5 +170,13 @@ class NativeFlowCore private constructor(private var handle: Long) : FlowCore {
         @JvmStatic external fun nativeCommit(handle: Long): String
         @JvmStatic external fun nativeCancel(handle: Long)
         @JvmStatic external fun nativeLearnEdit(handle: Long, pasted: String, edited: String): String
+
+        // ---- D17 router additions (JNI_CONTRACT.md "Router"); every symbol above works on router handles too ----
+        @JvmStatic external fun nativeLastErrorKind(): String?
+        @JvmStatic external fun nativeCapabilities(): String
+        @JvmStatic external fun nativeOpenRouter(routerConfigJson: String, localHandle: Long): Long
+        @JvmStatic external fun nativeUpdateRouter(handle: Long, routerConfigJson: String): Boolean
+        @JvmStatic external fun nativeProbeServer(serverConfigJson: String): String
+        @JvmStatic external fun nativeRouteStatus(handle: Long): String
     }
 }

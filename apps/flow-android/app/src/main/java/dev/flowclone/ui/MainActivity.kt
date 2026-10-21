@@ -60,11 +60,27 @@ class MainActivity : Activity() {
     private fun render() {
         page {
             heading("Flow Clone")
-            body("On-device voice dictation. This app has no internet permission: audio, transcripts and history never leave the phone.")
+            body(
+                when (app.caps.flavor) {
+                    "local" -> "On-device voice dictation. This app has no internet permission: audio, transcripts and history never leave the phone."
+                    "hybrid" -> "Voice dictation on this phone or on your own flow-server (LAN / Tailscale; Developer settings). Voice never goes to a third party; history stays on the phone."
+                    else -> "Voice dictation through your own flow-server (LAN / Tailscale; Developer settings). Voice never goes to a third party; history stays on the phone."
+                },
+            )
 
             heading("Speech engine")
             when (val lib = app.engine.libraryState()) {
-                is NativeFlowCore.LibraryState.Loaded -> body("Native engine: ${lib.version}", OK_COLOR)
+                is NativeFlowCore.LibraryState.Loaded -> {
+                    body("Native engine: ${lib.version}", OK_COLOR)
+                    // BuildConfig.CAP_* must equal nativeCapabilities() (D17 §1.4).
+                    NativeFlowCore.capabilities()?.let { c ->
+                        if (c.local != app.caps.local || c.remote != app.caps.remote) body(
+                            "Native library flavour mismatch: this is the ${app.caps.flavor} APK but libflow_ffi.so was built with " +
+                                "local=${c.local} remote=${c.remote} (tools/build-native.sh --flavor ${app.caps.flavor}).",
+                            BAD_COLOR,
+                        )
+                    }
+                }
                 is NativeFlowCore.LibraryState.Unavailable -> body(
                     "Native engine unavailable. ${lib.message}\n\nThis build was packaged without libflow_ffi.so " +
                         "(see apps/flow-android/README.md). Dictation needs it, or turn on the mock engine in Settings to test the shell.",
@@ -87,7 +103,8 @@ class MainActivity : Activity() {
                 is EnginePlan.LlmStatus.Loaded -> body("AI cleanup: ${l.name}", OK_COLOR)
                 is EnginePlan.LlmStatus.Failed -> body("AI cleanup failed to load, using plain transcripts: ${l.message}", BAD_COLOR)
             }
-            button("Speech model…") { startActivity(Intent(this@MainActivity, ModelImportActivity::class.java)) }
+            if (app.caps.local) button("Speech model…") { startActivity(Intent(this@MainActivity, ModelImportActivity::class.java)) }
+            if (app.dev.visible) button("Developer settings (engines, server)") { startActivity(Intent(this@MainActivity, DeveloperActivity::class.java)) }
 
             heading("1. Microphone")
             val mic = granted(Manifest.permission.RECORD_AUDIO)

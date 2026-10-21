@@ -39,4 +39,12 @@ class PreviewLogicTest {
         val p = PreviewPlacement.place(bubbleX = 60, bubbleY = 150, bubbleW = 168, bubbleH = 168, previewH = 100, screenW = 1080, gapPx = 24, topMarginPx = 100)
         assertEquals(PreviewPlacement.Place(false, 60, 342), p)
     }
+
+    @Test fun engineBadgePrefixesTheLineWhileRecording() {
+        val rec = DictationState.Recording(false, 0)
+        assertEquals("[S] hello", PreviewContent.line(rec, "hello", null, true, "S")!!.text)
+        assertEquals("[L•]", PreviewContent.line(rec, null, null, true, "L•")!!.text)
+        assertEquals(null, PreviewContent.line(DictationState.Ready, null, null, true, "S"))
+        assertEquals("hello", PreviewContent.line(rec, "hello", null, true, null)!!.text)
+    }
 }

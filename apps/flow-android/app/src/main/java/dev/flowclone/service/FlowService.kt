@@ -126,7 +126,8 @@ class FlowService : Service() {
         }
         scope.launch {
             combine(controller.state, controller.partial, controller.hint, presence.presence) { s, p, h, _ ->
-                PreviewContent.line(s, p, h, app.settings.load().livePreview)
+                val badge = if (app.dev.load().showEngineBadge) dev.flowclone.core.DevText.badge(app.lastRoute.value?.result?.route) else null
+                PreviewContent.line(s, p, h, app.settings.load().livePreview, badge)
             }.collect { overlay.renderPreview(it) }
         }
         scope.launch {

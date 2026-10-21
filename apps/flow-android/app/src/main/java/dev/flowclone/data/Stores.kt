@@ -25,6 +25,8 @@ class SettingsStore(context: Context) {
         livePreview = sp.getBoolean("live_preview", true),
         shakeToReveal = sp.getBoolean("shake_to_reveal", true),
         shrinkBubble = sp.getBoolean("shrink_bubble", true),
+        spokenCleanup = sp.getBoolean("spoken_cleanup", true),
+        asrEngine = dev.flowclone.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.flowclone.core.AsrEngine.WHISPER,
     )
 
     fun save(s: Settings) {
@@ -39,12 +41,19 @@ class SettingsStore(context: Context) {
             .putBoolean("live_preview", s.livePreview)
             .putBoolean("shake_to_reveal", s.shakeToReveal)
             .putBoolean("shrink_bubble", s.shrinkBubble)
+            .putBoolean("spoken_cleanup", s.spokenCleanup)
+            .putString("asr_engine", s.asrEngine.wire)
             .apply()
     }
 
     var modelPath: String?
         get() = sp.getString("model_path", null)
         set(v) { sp.edit().putString("model_path", v).apply() }
+
+    /** Imported Parakeet model directory (filesDir/parakeet/<name>/). */
+    var parakeetPath: String?
+        get() = sp.getString("parakeet_path", null)
+        set(v) { sp.edit().putString("parakeet_path", v).apply() }
 
     /** Imported GGUF for LLM cleanup (filesDir/llm/…). */
     var llmModelPath: String?
