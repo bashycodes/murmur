@@ -1,0 +1,18 @@
+{
+ "asr": {
+  "mock": "myemail!!"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_snippet_whole_utterance_spacing",
+ "session_config": {
+  "dictionary": [
+   {
+    "isSnippet": true,
+    "replacement": "me@example.com",
+    "word": "my email"
+   }
+  ],
+  "platform": "windows"
+ }
+}

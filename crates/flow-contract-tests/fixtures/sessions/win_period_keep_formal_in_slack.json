@@ -1,0 +1,25 @@
+{
+ "asr": {
+  "mock": "Sounds good."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 1200,
+   "ctx": {
+    "app_id": "slack"
+   }
+  }
+ ],
+ "name": "win_period_keep_formal_in_slack",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows",
+  "styles": {
+   "email": "formal",
+   "other": "formal",
+   "personal": "formal",
+   "work": "formal"
+  }
+ }
+}

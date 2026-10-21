@@ -1,0 +1,9 @@
+{
+ "asr": {
+  "mock": ""
+ },
+ "audio": "speech:1000",
+ "contexts": [],
+ "name": "p1_blank_asr",
+ "session_config": {}
+}

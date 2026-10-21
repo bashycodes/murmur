@@ -1,0 +1,20 @@
+{
+ "asr": {
+  "mock": "See you soon."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "notepad",
+    "before": "Dear Bob,\n"
+   }
+  }
+ ],
+ "name": "win_ctx_multiline_before_uses_last_line",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

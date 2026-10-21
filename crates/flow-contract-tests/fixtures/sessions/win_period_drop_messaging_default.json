@@ -1,0 +1,19 @@
+{
+ "asr": {
+  "mock": "Sounds good."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "slack"
+   }
+  }
+ ],
+ "name": "win_period_drop_messaging_default",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

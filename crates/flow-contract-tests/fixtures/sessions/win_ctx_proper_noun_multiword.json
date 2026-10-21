@@ -1,0 +1,20 @@
+{
+ "asr": {
+  "mock": "John Smith came."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "notepad",
+    "before": "I met"
+   }
+  }
+ ],
+ "name": "win_ctx_proper_noun_multiword",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

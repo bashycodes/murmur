@@ -1,0 +1,25 @@
+{
+ "asr": {
+  "mock": "Hello btw."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "slack"
+   }
+  }
+ ],
+ "name": "win_pipe_server_pasted_text_skips_client",
+ "session_config": {
+  "dictionary": [
+   {
+    "isSnippet": false,
+    "replacement": "by the way",
+    "word": "btw"
+   }
+  ],
+  "platform": "windows"
+ }
+}

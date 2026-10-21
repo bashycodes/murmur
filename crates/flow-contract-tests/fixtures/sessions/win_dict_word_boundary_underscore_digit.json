@@ -1,0 +1,18 @@
+{
+ "asr": {
+  "mock": "my_btw btw2 2btw btw"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_dict_word_boundary_underscore_digit",
+ "session_config": {
+  "dictionary": [
+   {
+    "isSnippet": false,
+    "replacement": "by the way",
+    "word": "btw"
+   }
+  ],
+  "platform": "windows"
+ }
+}

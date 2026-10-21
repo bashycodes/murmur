@@ -1,0 +1,11 @@
+{
+ "asr": {
+  "mock": "send it now press enter"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "p1_press_enter_disabled",
+ "session_config": {
+  "press_enter_enabled": false
+ }
+}

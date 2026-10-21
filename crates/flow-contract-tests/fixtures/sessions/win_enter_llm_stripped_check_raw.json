@@ -1,0 +1,12 @@
+{
+ "asr": {
+  "mock": "send it press enter"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_enter_llm_stripped_check_raw",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

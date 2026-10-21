@@ -1,0 +1,21 @@
+{
+ "asr": {
+  "mock": "at John hi"
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "screen_words": [
+     "John"
+    ]
+   }
+  }
+ ],
+ "name": "win_slack_tag_already_tagged",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}
