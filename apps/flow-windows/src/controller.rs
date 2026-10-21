@@ -8,7 +8,7 @@
 
 use crate::audio::LevelMeter;
 use crate::context::{build_field_context, RawSnapshot};
-use crate::core_api::{to_outcome, CommitResult, CommitStatus, CoreApi, FieldContext};
+use crate::core_api::{to_outcome, CommitResult, CommitStatus, CoreApi, FieldContext, PasteKey};
 use crate::dictation::{Dictation, Effect, Input, OverlayState, Phase, SessionId, Sound};
 use crate::history::{self, History};
 use crate::hotkeys::HotkeyAction;
@@ -39,8 +39,9 @@ pub trait Platform: Send + Sync + 'static {
     fn max_duration_warning(&self, remaining_ms: u64);
     /// Live partial transcript above the pill (`""` = hide).
     fn preview(&self, _text: &str) {}
-    /// Spoken "press enter": send Enter after the paste. Worker thread.
-    fn send_enter(&self) -> Result<(), String> {
+    /// Press Tab or Enter (paste plan keys; Enter = spoken "press
+    /// enter"). Worker thread.
+    fn send_key(&self, _key: PasteKey) -> Result<(), String> {
         Ok(())
     }
     /// Plain clipboard copy ("copy last transcript"). Worker thread.
@@ -207,7 +208,8 @@ impl Controller {
         let info = self.shared.sessions.lock().unwrap().remove(&session);
         let Some(info) = info else { return };
         let Some(r) = info.result else { return };
-        *self.shared.last_text.lock().unwrap() = Some(r.final_text.clone());
+        let plain = r.plain();
+        *self.shared.last_text.lock().unwrap() = Some(plain.clone());
         let mut row = None;
         if let Some(h) = &self.history {
             let ctx = info.context.clone().unwrap_or_default();
@@ -217,11 +219,11 @@ impl Controller {
                 app: ctx.app_id,
                 url: ctx.url_host,
                 raw: r.asr_text.clone(),
-                formatted: (r.status == CommitStatus::Formatted).then(|| r.final_text.clone()),
-                pasted: paste.is_ok().then(|| r.final_text.clone()),
+                formatted: (r.status == CommitStatus::Formatted).then(|| plain.clone()),
+                pasted: paste.is_ok().then(|| plain.clone()),
                 edited: None,
                 duration_ms: (info.samples.load(Ordering::Relaxed) / 16) as i64,
-                words: history::word_count(&r.final_text),
+                words: history::word_count(&plain),
                 lang: r.language.clone(),
             };
             let retention = self.prefs.read().unwrap().retention;
@@ -241,12 +243,20 @@ impl Controller {
     fn watch_for_edits(&self, ctx: Option<FieldContext>, r: &CommitResult, row: Option<i64>) {
         let prefs = self.prefs.read().unwrap().clone();
         // A sent message (press enter) clears the field: nothing to learn.
-        if !prefs.learn_from_edits || !prefs.use_ax_context || r.press_enter {
+        let sent = r.paste_segments().iter().any(|s| {
+            matches!(
+                s,
+                crate::core_api::PasteSegment::Key {
+                    key: PasteKey::Enter
+                }
+            )
+        });
+        if !prefs.learn_from_edits || !prefs.use_ax_context || sent {
             return;
         }
         // No snapshot = no anchors to find the dictated region by.
         let Some(ctx) = ctx else { return };
-        let pasted = crate::paste::plain_text(&r.final_text);
+        let pasted = r.plain();
         if pasted.trim().is_empty() {
             return;
         }
@@ -430,21 +440,23 @@ impl Controller {
             }
             Effect::CancelSession(_) => self.core.cancel(),
             Effect::Paste { session, text } => {
-                let press_enter = self
+                // The core's paste plan (core-p1): text runs, Tab/Break and
+                // a trailing Enter. `text` is only the fallback for a result
+                // without one.
+                let segs = self
                     .shared
                     .sessions
                     .lock()
                     .unwrap()
                     .get(&session)
                     .and_then(|i| i.result.as_ref())
-                    .is_some_and(|r| r.press_enter);
+                    .map(|r| r.paste_segments())
+                    .unwrap_or_else(|| flow_core::paste::segments(&text, false));
+                let steps = crate::paste::plan(&segs);
                 let platform = self.platform.clone();
                 let tx = self.tx.clone();
                 std::thread::spawn(move || {
-                    let mut result = platform.paste(&text, &prefs);
-                    if result.is_ok() && press_enter {
-                        result = platform.send_enter();
-                    }
+                    let result = run_paste_plan(&*platform, &steps, &prefs);
                     let _ = tx.send(Input::PasteFinished { session, result });
                 });
             }
@@ -454,6 +466,28 @@ impl Controller {
             Effect::Overlay(st) => self.platform.overlay(&st),
         }
     }
+}
+
+/// Execute paste steps in order; the first failure stops the plan.
+pub fn run_paste_plan(
+    platform: &dyn Platform,
+    steps: &[crate::paste::Step],
+    prefs: &Prefs,
+) -> Result<(), String> {
+    use crate::paste::Step;
+    let typed_prefs = Prefs {
+        paste_method: crate::prefs::PasteMethod::Type,
+        ..prefs.clone()
+    };
+    for step in steps {
+        match step {
+            Step::Insert { text, typed: false } => platform.paste(text, prefs)?,
+            Step::Insert { text, typed: true } => platform.paste(text, &typed_prefs)?,
+            Step::Key(k) => platform.send_key(*k)?,
+            Step::Pause(ms) => std::thread::sleep(Duration::from_millis(*ms)),
+        }
+    }
+    Ok(())
 }
 
 /// Ends a watch as soon as the next dictation starts: its paste would

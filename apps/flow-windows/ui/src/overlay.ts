@@ -9,7 +9,8 @@ type OverlayState =
   | { state: "active_ptt" }
   | { state: "active_locked" }
   | { state: "processing" }
-  | { state: "error"; message: string };
+  | { state: "error"; message: string }
+  | { state: "notice"; message: string };
 
 const BAR_COUNT = 10;
 const GAIN = 5; // --audio-scale = max(1, 5 * v) for dictation
@@ -57,11 +58,21 @@ function apply(s: OverlayState): void {
   const wasActive = isActive();
   pillState = s.state;
   pill.dataset.state = s.state;
-  msg.textContent = s.state === "error" ? s.message : "";
+  const message = s.state === "error" || s.state === "notice" ? s.message : "";
+  msg.textContent = message;
   if (!isActive()) {
     target = 0;
     v = 0;
     showPreview("");
+  }
+  // Error / notice text ("Dictation disabled — …", "No speech heard")
+  // shows in the bubble above the pill for as long as the pill lingers.
+  if (message) {
+    preview.textContent = message;
+    preview.dataset.kind = s.state;
+    preview.classList.add("visible");
+  } else {
+    delete preview.dataset.kind;
   }
   if (isActive() && !wasActive) {
     pill.dataset.mic = "inactive"; // dim, still bars until real audio arrives
@@ -96,4 +107,21 @@ void listen<number>("audio:level", (e) => {
   if (!isActive()) return;
   target = Math.max(0, Math.min(1, e.payload));
   if (target > 0) pill.dataset.mic = "active";
+});
+
+// Developer setting "show engine badge": which engine served the last
+// dictation (S = your server, L = this PC); red dot = it fell back.
+const badge = document.getElementById("engine-badge") as HTMLSpanElement;
+let badgeTimer = 0;
+void listen<{ letter: string; fallback: boolean } | null>("dictation:route", (e) => {
+  clearTimeout(badgeTimer);
+  if (!e.payload) {
+    badge.hidden = true;
+    return;
+  }
+  badge.textContent = e.payload.letter;
+  badge.classList.toggle("fallback", e.payload.fallback);
+  badge.title = e.payload.fallback ? "fell back" : "";
+  badge.hidden = false;
+  badgeTimer = setTimeout(() => (badge.hidden = true), 4000);
 });

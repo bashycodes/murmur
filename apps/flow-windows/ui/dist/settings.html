@@ -9,12 +9,13 @@
   <body>
     <header>
       <h1>Flow Clone</h1>
-      <p class="sub">Everything runs on this PC. Nothing is sent over the network.</p>
+      <p class="sub" id="privacy_line">Everything runs on this PC. Nothing is sent over the network.</p>
       <nav class="tabs" role="tablist">
         <button type="button" role="tab" data-tab="general">General</button>
         <button type="button" role="tab" data-tab="ai">AI cleanup</button>
         <button type="button" role="tab" data-tab="history">History</button>
         <button type="button" role="tab" data-tab="dictionary">Dictionary <span id="sugg_badge" class="badge" hidden></span></button>
+        <button type="button" role="tab" data-tab="developer" id="tab_developer" hidden>Developer</button>
       </nav>
     </header>
 
@@ -38,16 +39,25 @@
           <label>Max dictation length (minutes) <input id="max_dictation_minutes" type="number" min="1" max="60" /></label>
         </fieldset>
 
-        <fieldset>
+        <fieldset data-needs="local">
           <legend>Speech model</legend>
           <p id="model_status" class="hint">Checking…</p>
-          <label>Model file (empty = default) <input id="model_path" spellcheck="false" /></label>
-          <p class="hint">A whisper.cpp ggml model, e.g. <code>ggml-base.bin</code> (default) or <code>ggml-small-q5_1.bin</code> for better accuracy. Models are never downloaded automatically: put the file in <code id="models_dir"></code>.</p>
+          <label>Engine
+            <select id="asr_engine">
+              <option value="whisper">Whisper (any language)</option>
+              <option value="parakeet">Parakeet (English only, faster)</option>
+            </select>
+          </label>
+          <label data-engine="whisper">Model file (empty = default) <input id="model_path" spellcheck="false" /></label>
+          <label data-engine="parakeet">Parakeet model folder (empty = default) <input id="parakeet_model_dir" spellcheck="false" /></label>
+          <p class="hint">Whisper: a whisper.cpp ggml model, e.g. <code>ggml-base.bin</code> (default) or <code>ggml-small-q5_1.bin</code> for better accuracy. Parakeet: the <code>sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8</code> folder (needs a build with the <code>parakeet</code> feature). Models are never downloaded automatically: put them in <code id="models_dir"></code>.</p>
         </fieldset>
 
         <fieldset>
           <legend>Transcription</legend>
           <label>Languages (comma-separated, empty = auto) <input id="languages" placeholder="en, de" /></label>
+          <label class="row"><input type="checkbox" id="spoken_cleanup" /> Auto-format punctuation, fillers and corrections</label>
+          <p class="hint">"comma", "new line", "um", "scratch that", "$5", "3pm" — handled on this PC without the AI model.</p>
           <label class="row"><input type="checkbox" id="raw_mode" /> Raw mode (no formatting at all)</label>
           <label class="row"><input type="checkbox" id="use_ax_context" /> Use text around the cursor as context (stays local)</label>
           <label class="row"><input type="checkbox" id="live_preview" /> Show live transcript while dictating</label>
@@ -71,11 +81,12 @@
           <legend>App</legend>
           <label class="row"><input type="checkbox" id="show_flow_bar_always" /> Show the Flow bar when idle</label>
           <label class="row"><input type="checkbox" id="launch_at_login" /> Launch at login</label>
+          <p class="hint version" id="version_row" title="Version">Flow Clone</p>
         </fieldset>
       </section>
 
       <section class="panel" data-panel="ai">
-        <fieldset>
+        <fieldset data-needs="local">
           <legend>AI cleanup (local LLM)</legend>
           <label class="row"><input type="checkbox" id="llm_enabled" /> Clean up dictations with a local language model</label>
           <p id="llm_status" class="hint">Off.</p>
@@ -168,6 +179,72 @@
           <button type="button" id="dict_copy" class="secondary">Copy JSON</button>
         </div>
         <p id="io_status" class="hint"></p>
+      </fieldset>
+    </section>
+
+
+    <section class="panel" data-panel="developer">
+      <fieldset>
+        <legend>Engines</legend>
+        <p class="hint">Where speech is turned into text. <strong>Client</strong> = this PC. <strong>Server</strong> = your own flow-server (LAN or Tailscale); audio goes only there, never to a third party.</p>
+        <label class="row"><input type="checkbox" id="dev_allow_server" /> Allow server <small id="dev_server_na" class="hint" hidden>(not in this build)</small></label>
+        <label class="row"><input type="checkbox" id="dev_allow_client" /> Allow client (this PC) <small id="dev_client_na" class="hint" hidden>(not in this build)</small></label>
+        <div id="dev_order_box">
+          <p class="hint">Try in this order (the next one is the fallback):</p>
+          <ol id="dev_routes" class="routes"></ol>
+        </div>
+        <label class="row"><input type="checkbox" id="dev_keep_local_warm" /> Keep the local model loaded while the server is preferred (instant fallback)</label>
+        <label class="row"><input type="checkbox" id="dev_show_engine_badge" /> Show S / L on the Flow bar after each dictation (red dot = fell back)</label>
+        <ul id="dev_warnings" class="warnings"></ul>
+      </fieldset>
+
+      <fieldset id="dev_server_box">
+        <legend>Server</legend>
+        <div class="grid2">
+          <label>Host or IP <input id="dev_host" spellcheck="false" placeholder="100.64.0.10 or mybox.tailnet.ts.net" /><small class="field-err" data-err="host"></small></label>
+          <label>Port <input id="dev_port" type="number" min="1" max="65535" /><small class="field-err" data-err="port"></small></label>
+        </div>
+        <label class="row"><input type="checkbox" id="dev_tls" /> Use TLS (wss) <small id="dev_tls_forced" class="hint" hidden>— required for a public address</small></label>
+        <label id="dev_pin_row">Certificate pin (SHA-256, optional) <input id="dev_tls_pin_sha256" spellcheck="false" placeholder="64 hex characters" /><small class="field-err" data-err="tls_pin_sha256"></small></label>
+        <label>Token
+          <span class="token-row">
+            <input id="dev_token" type="password" autocomplete="off" spellcheck="false" placeholder="from flow-server gen-token" />
+            <button type="button" class="small secondary" id="dev_token_show">Show</button>
+            <button type="button" class="small secondary" id="dev_token_paste">Paste</button>
+            <button type="button" class="small secondary" id="dev_token_clear">Clear</button>
+          </span>
+          <small class="field-err" data-err="token"></small>
+        </label>
+        <p class="hint">Stored encrypted for your Windows account (DPAPI); never logged.</p>
+        <div class="grid3">
+          <label>Connect timeout (ms) <input id="dev_connect_timeout_ms" type="number" min="100" max="10000" step="100" /><small class="field-err" data-err="connect_timeout_ms"></small></label>
+          <label>Commit timeout base (ms) <input id="dev_commit_timeout_base_ms" type="number" min="500" max="60000" step="100" /><small class="field-err" data-err="commit_timeout_base_ms"></small></label>
+          <label>Health cache (s) <input id="dev_health_ttl_s" type="number" min="5" max="600" /><small class="field-err" data-err="health_ttl_s"></small></label>
+        </div>
+      </fieldset>
+
+      <!-- Room for more route kinds (e.g. opt-in cloud providers): each gets
+           its own fieldset here and an entry in the route order above. -->
+
+      <div class="toolbar">
+        <button type="button" id="dev_save">Save</button>
+        <button type="button" id="dev_test_conn" class="secondary">Test connection</button>
+        <button type="button" id="dev_test_session" class="secondary">Test session</button>
+        <button type="button" id="dev_reset_circuit" class="secondary">Reset circuit</button>
+        <button type="button" id="dev_reset" class="secondary danger">Reset to defaults</button>
+        <button type="button" id="dev_lock" class="secondary" hidden>Lock</button>
+      </div>
+      <p id="dev_status" class="hint"></p>
+      <p id="dev_test" class="hint"></p>
+
+      <fieldset>
+        <legend>Status</legend>
+        <dl class="kv">
+          <dt>Build</dt><dd id="dev_build">…</dd>
+          <dt>Active engine (last dictation)</dt><dd id="dev_last">No dictation yet</dd>
+          <dt>Server info</dt><dd id="dev_server_info">Not probed yet</dd>
+          <dt>Circuit</dt><dd id="dev_circuit">closed</dd>
+        </dl>
       </fieldset>
     </section>
 

@@ -70,7 +70,8 @@ body {
 .pill[data-state="active_ptt"],
 .pill[data-state="active_locked"],
 .pill[data-state="processing"],
-.pill[data-state="error"] {
+.pill[data-state="error"],
+.pill[data-state="notice"] {
   height: 30px;
   border-radius: 22.5px;
   background: var(--pill-bg);
@@ -93,11 +94,15 @@ body {
   width: 91px;
   border: 1.5px solid var(--error);
 }
+.pill[data-state="notice"] {
+  width: 91px;
+}
 
 .pill[data-state="active_ptt"] .wave,
 .pill[data-state="active_locked"] .wave,
 .pill[data-state="processing"] .wave,
-.pill[data-state="error"] .wave {
+.pill[data-state="error"] .wave,
+.pill[data-state="notice"] .wave {
   display: flex;
 }
 .pill[data-state="active_locked"] .btn {
@@ -124,7 +129,8 @@ body {
 }
 .pill[data-mic="inactive"] .bar,
 .pill[data-state="processing"] .bar,
-.pill[data-state="error"] .bar {
+.pill[data-state="error"] .bar,
+.pill[data-state="notice"] .bar {
   background: var(--bar-inactive);
   animation: none;
 }
@@ -229,6 +235,9 @@ body {
 .preview.visible {
   display: flex;
 }
+.preview[data-kind="error"] {
+  border: 1.5px solid var(--error);
+}
 
 /* Hands-free buttons are clickable: the shell turns click-through off
    while the cursor is over the locked pill. */
@@ -237,4 +246,32 @@ body {
 }
 .pill[data-state="active_locked"] .btn:hover {
   filter: brightness(1.2);
+}
+
+/* ---- Developer "show engine badge": S = server, L = this PC ---- */
+.engine-badge {
+  position: absolute;
+  left: calc(50% + 52px);
+  bottom: 8px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--pill-bg);
+  color: #fff;
+  font: 600 10px/14px system-ui, sans-serif;
+  text-align: center;
+}
+.engine-badge[hidden] {
+  display: none;
+}
+.engine-badge.fallback::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--error);
 }
