@@ -42,6 +42,56 @@ class NativeFlowCoreHostTest {
         assertEquals(CommitStatus.ERROR, core.commit().status)
     }
 
+    /**
+     * D17: the shell's real engine assembly (EngineRoute → nativeLoadModels → nativeOpenRouter)
+     * against the host library: per flavour toggles, the session goes through the router and
+     * the result carries `route`; both-off and bad configs come back as typed errors.
+     * With `-Pflow.server=host:port[/token]` (a running flow-server) the server route is used.
+     */
+    @Test fun routerRoundTripThroughTheShellsAssembly() {
+        requireLib()
+        val caps = NativeFlowCore.capabilities()!!
+        assertEquals(1, caps.proto)
+        val loader = FlowCoreLoader { NativeFlowCore.loadModels(it.copy(mockText = "hello btw")) }
+        val plan = dev.flowclone.data.EnginePlan.Plan.Native(ModelConfig(asrPath = "", threads = 2), dev.flowclone.data.EnginePlan.LlmStatus.Off)
+        val server = System.getProperty("flow.server")?.takeIf { it.isNotBlank() }
+        val dev0 = dev.flowclone.data.DevSettings(allowServer = server != null, allowClient = true)
+        val dev1 = if (server == null) dev0 else dev0.copy(
+            host = server.substringBefore('/').substringBeforeLast(':'), port = server.substringBefore('/').substringAfterLast(':').toInt(),
+            token = server.substringAfter('/', ""),
+        )
+        val routed = dev.flowclone.data.EngineRoute.plan(plan, dev1, dev.flowclone.data.BuildCaps(true, caps.remote)) as dev.flowclone.data.EngineRoute.Plan.Routed
+        val a = dev.flowclone.data.EngineRoute.assemble(routed, loader, NativeFlowCore.routerOpener)
+        val r = a.core as NativeFlowCore
+        assertTrue(r.isRouter)
+        r.startSession(SessionConfig(languages = listOf("en"), dictionary = listOf(DictEntry("btw", "by the way"))))
+        assertTrue(r.pushAudio(sine(16_000), 16_000))
+        val res = r.commit()
+        assertEquals(res.toString(), CommitStatus.RAW_TRANSCRIPT, res.status)
+        assertEquals(listOf(PasteSegment.Text("hello by the way ")), res.pastePlan())
+        assertEquals(if (server != null && caps.remote) "remote" else "local", res.route!!.engine)
+        assertEquals(res.route, r.routeStatus().last)
+        // Settings change in place, then a bad one is refused with its kind.
+        r.updateRouter(dev1.copy(routeOrder = dev.flowclone.data.DevSettings.orderFor(dev.flowclone.data.DevSettings.Prefer.CLIENT)).toRouterConfigJson().toString())
+        val bad = runCatching { r.updateRouter("""{"server":{"port":0}}""") }.exceptionOrNull() as CoreException
+        assertEquals("bad_config", bad.kind)
+        r.resetCircuit()
+        r.unload()
+        // Both routes off: a typed error before any session.
+        val off = runCatching { NativeFlowCore.routerOpener.open("""{"allow_server":false,"allow_client":false}""", null) }.exceptionOrNull() as CoreException
+        assertEquals("no_engine_enabled", off.kind)
+        assertTrue(RouterErrors.userMessage(off.kind, off.message!!).startsWith("Dictation disabled"))
+        // Test connection to a closed port: never throws.
+        val h = NativeFlowCore.probeServer("""{"host":"127.0.0.1","port":9,"connect_timeout_ms":300}""")
+        assertFalse(h.ok)
+        assertEquals(if (caps.remote) "connect_failed" else "server_not_configured", h.error)
+        if (server != null) {
+            val ok = NativeFlowCore.probeServer(dev1.toServerConfigJson().toString())
+            assertTrue(ok.toString(), ok.ok)
+            println("HOST-ROUTER probe: ${DevText.probe(ok)}")
+        }
+    }
+
     @Test fun missingModelSurfacesCoreError() {
         requireLib()
         val e = runCatching { NativeFlowCore.loadModels(ModelConfig(asrPath = "/nonexistent/ggml.bin")) }.exceptionOrNull()

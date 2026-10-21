@@ -1,7 +1,18 @@
 # Installing Flow Clone on an Android phone
 
-Flow Clone has **no INTERNET permission**. It can't download anything, including the
-speech model. You fetch the model on a PC and copy it to the phone yourself.
+Flow Clone comes in three **flavours** (D17, `docs/hybrid-architecture.md`). They share one
+application id (`dev.flowclone`), so installing another flavour over the current one is an
+in-place update that keeps settings, dictionary and history.
+
+| Flavour | APK | Dictates with | Network |
+|---|---|---|---|
+| `local` | `app-local-debug.apk` | the speech model on the phone | **none**: no INTERNET permission, no network code in the native library |
+| `hybrid` | `app-hybrid-debug.apk` | your own `flow-server` (LAN / Tailscale), falling back to the phone's model | INTERNET only, used only for the server you enter |
+| `remote` | `app-remote-debug.apk` | your own `flow-server` only; no models, no ASR libraries (~10x smaller) | INTERNET only |
+
+The `local` flavour can't download anything, including the speech model: you fetch the model
+on a PC and copy it to the phone yourself. The `hybrid`/`remote` flavours only talk to the
+server address you type in Developer settings; voice never reaches a third party.
 
 Requirements: Android 13 or newer (minSdk 33), an arm64 phone, and about 200 MB free
 (APK about 14 MB, model 30–150 MB). Optional AI cleanup needs another 0.5–1.1 GB of storage
@@ -12,22 +23,34 @@ and roughly as much free RAM. Android 15 phones with 16 KB pages are supported: 
 
 ```sh
 cd apps/flow-android
-tools/build-native.sh --whisper --llm    # libflow_ffi.so + libflow_llm.so + libc++_shared.so -> app/src/main/jniLibs/arm64-v8a/
-./gradlew testDebugUnitTest assembleDebug
-tools/probes/check_native_so.sh app/build/outputs/apk/debug/app-debug.apk
+export SHERPA_ANDROID_LIBS=<sherpa-onnx-v1.13.8-android>/jniLibs/arm64-v8a   # Parakeet runtime (local/hybrid)
+export BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include"  # this box's libclang
+tools/build-native.sh --flavor local     # -> app/src/local/jniLibs/arm64-v8a/
+tools/build-native.sh --flavor hybrid    # -> app/src/hybrid/jniLibs/arm64-v8a/
+tools/build-native.sh --flavor remote    # -> app/src/remote/jniLibs/arm64-v8a/ (libflow_ffi.so only)
+./gradlew testDebugUnitTest assembleDebug          # all three flavours + their gates
+tools/probes/check_native_so.sh --flavor local app/build/outputs/apk/local/debug/app-local-debug.apk
 ```
 
-The output is `app/build/outputs/apk/debug/app-debug.apk`, debug-signed. If you skip
-`build-native.sh`, the APK still installs, but the main screen says "Native engine
-unavailable". Only the mock engine works in that build. Without `--llm` the APK has no
-`libflow_llm.so` (about 4.5 MB): dictation works, and turning on AI cleanup shows "AI cleanup
-failed to load … plugin missing" on the main screen.
+`--no-parakeet` / `--no-llm` build smaller local/hybrid libraries. The outputs are
+`app/build/outputs/apk/<flavour>/debug/app-<flavour>-debug.apk`, debug-signed. The build
+fails if a flavour breaks its promise: `verifyLocalDebugNoNetworkPermissions` (+
+`…NoNetworkCode`), `verifyHybridDebugOnlyInternetPermission`,
+`verifyRemoteDebugOnlyInternetPermission` and `verifyRemoteDebugNoAsrLibs` (no
+whisper/sherpa/onnxruntime/flow_llm/libc++ in the APK, no `whisper_`/`llama_` exports).
+
+If you skip `build-native.sh`, the APK still installs, but the main screen says "Native engine
+unavailable". Only the mock engine works in that build. Without the LLM plugin
+(`--no-llm`) dictation works, and turning on AI cleanup shows "AI cleanup failed to load …
+plugin missing" on the main screen. If the main screen says **"Native library flavour
+mismatch"**, the APK was packaged with another flavour's `libflow_ffi.so`: rebuild with the
+matching `--flavor`.
 
 The whisper code is compiled for `armv8.2-a+dotprod+fp16`, which covers any big core from
 2018 on (Cortex-A75 and later, all recent Snapdragon, Tensor, Exynos and Dimensity chips).
 If the app crashes with `SIGILL` the first time it transcribes, your phone has only older
 cores, such as a Cortex-A53-only budget SoC. Rebuild for it:
-`FLOW_ARM_ARCH=armv8-a tools/build-native.sh --whisper`.
+`FLOW_ARM_ARCH=armv8-a tools/build-native.sh --flavor local`.
 
 ## 2. Get a speech model (on the PC)
 
@@ -53,9 +76,13 @@ Copy the file to the phone's `Download/` folder, over USB file transfer or any w
 Do one of these:
 
 - **USB with platform-tools.** Turn on Developer options → USB debugging, then run the
-  platform-tools `install` command on `app-debug.apk` (add `-r` to update in place).
-- **No PC tools.** Copy `app-debug.apk` to the phone and open it in Files. Allow
+  platform-tools `install` command on `app-<flavour>-debug.apk` (add `-r` to update in place).
+- **No PC tools.** Copy `app-<flavour>-debug.apk` to the phone and open it in Files. Allow
   "Install unknown apps" for Files when Android asks.
+
+Switching flavour: install the other APK over the current one (same signature). Settings,
+dictionary, history and the developer settings survive; toggles the new flavour can't honour
+read as off (e.g. *Allow server* in `local`).
 
 Updating keeps your data. Uninstalling deletes the imported model, the dictionary and the
 history.
@@ -94,6 +121,29 @@ The app copies the file into its private storage (`files/models/`) and loads it.
 original in `Download/` can be deleted afterwards. The main screen should then show
 `Native engine: flow-ffi 0.1.0` and `Loaded: ggml-base.en-q5_1.bin`. To switch models,
 use *Use* on another imported file. *Delete* frees the space.
+
+### Parakeet (optional, local / hybrid)
+
+English-only, more accurate engine (D12). On the PC, get the folder
+`sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8` (`tools/fetch-models.sh --parakeet`; ~661 MB:
+`encoder.int8.onnx`, `decoder.int8.onnx`, `joiner.int8.onnx`, `tokens.txt`) and copy the whole
+folder to the phone. *Settings → Parakeet model folder… → Import model folder…* and pick the
+folder; the app copies the four files into `files/parakeet/<name>/` and switches the engine.
+*Settings → Use Parakeet* toggles back to whisper. If Parakeet fails to load (RAM, files), the
+app loads the whisper model instead and the main screen says "Parakeet failed: …".
+
+## 5b. Server mode (hybrid / remote)
+
+1. On the server box: run `flow-server` (see `docs/protocol.md` / `crates/flow-server`), bound
+   to its Tailscale `100.x` address or the LAN; `flow-server gen-token` prints the token.
+2. Phone: install Tailscale (or be on the same LAN). No extra permission is needed.
+3. Main screen → **Developer settings** (visible by default in hybrid/remote): host = the
+   server's `100.x.y.z` or `name.tailnet.ts.net`, port `7313`, paste the token, *Save*,
+   then *Test connection* → "OK · median N ms (…) · flow-server … · parakeet".
+4. Dictate: *Active engine (last dictation)* shows `Server 100.x.y.z:7313`.
+
+In the `local` flavour Developer settings are hidden: tap the version row at the bottom of
+Settings 7 times to show them (only the client toggle and timeouts apply there).
 
 ## 6. AI cleanup (optional)
 
@@ -134,6 +184,37 @@ preview). "Can't hear you" means 3 s of silence; "No speech detected" means noth
 inserted. History (search, copy, delete, raw vs cleaned) is on the main screen.
 
 ## Device test checklist
+
+**Flavours / developer settings (D17)** — one APK of each flavour, same phone, installed over each other
+- [ ] `local`: App info → Permissions shows no network; main screen text says "no internet
+      permission"; Developer settings hidden until 7 taps on Settings' version row ("Developer
+      settings unlocked"); *Allow server* shows "not in this build"; *Lock* hides it again.
+- [ ] `local`: dictation works exactly as before (main screen `Loaded: client: …`); *Test
+      session* says `OK: Client (on-device) · … EMPTY (no_speech)`.
+- [ ] `hybrid` over `local`: dictionary/history kept. Developer settings visible; host
+      validation: `http://x`, `10.0.0.1:7313`, `256.1.1.1`, `a_b.com` show inline errors and
+      Save greys out; `8.8.8.8` / `example.com` lock *Use TLS* on.
+- [ ] `hybrid`, server up (Tailscale): *Test connection* shows median RTT + server version;
+      dictation → last engine `Server …`, optional badge `[S]` on the preview line; Server info
+      shows "pipeline ✓".
+- [ ] `hybrid`, airplane mode (or `systemctl stop flow-server`): dictation still inserts, last
+      engine `Client (on-device) · fallback: connect_failed`, no words lost; a second dictation
+      within 5 s shows `circuit_open`; Circuit row "open until hh:mm:ss"; *Reset circuit* closes it.
+- [ ] `hybrid`, wrong token: Test connection "auth_failed: token rejected"; dictation falls back
+      to the client and the circuit stays open until the server settings change.
+- [ ] `hybrid`, kill the server mid-dictation (long hands-free session): the text is complete
+      (fallback `disconnected`, buffered audio replayed).
+- [ ] Both toggles off → Save shows the red "Dictation disabled" warning; tapping the bubble
+      toasts "Dictation disabled — enable server or client in Developer settings".
+- [ ] `remote` over `hybrid`: APK ~10x smaller; no Speech model / AI cleanup entries; Allow
+      client "not in this build"; server down → bubble error "Server unreachable (connect_failed)".
+- [ ] Settings changes apply to the next dictation without reloading the model (main screen
+      keeps `Loaded:`; logcat `FlowEngine` shows no reload) unless *Keep … loaded* changed.
+- [ ] Token survives an app restart (Keystore); *Clear* + Save removes it.
+- [ ] Parakeet (local/hybrid, 6-8 GB phone): folder import, `Loaded: client: Parakeet …`, jfk-style
+      dictation accuracy and latency; hotwords work (`TMPDIR` = cache dir); low-RAM phone falls back to whisper.
+- [ ] core-p1: "comma"/"period" spoken → punctuation (Settings *Auto-format* on), off → literal
+      words; "um uh" only → "Only filler words heard"; "… press enter" sends Enter once in a chat.
 
 None of this can be checked on the build machine. Record the results in
 `PROJECT_CONTEXT.md`.

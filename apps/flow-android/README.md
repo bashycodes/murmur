@@ -1,8 +1,10 @@
 # flow-android: Android shell of the local Wispr Flow clone
 
 This is a Kotlin shell around the shared Rust core (`crates/flow-core` via `crates/flow-ffi`).
-It's single-process with no AndroidX and no `INTERNET` permission. minSdk 33 (it needs
-`AccessibilityService.InputMethod`), targetSdk 35, arm64-v8a.
+It's single-process with no AndroidX. minSdk 33 (it needs `AccessibilityService.InputMethod`),
+targetSdk 35, arm64-v8a. Three product flavours (D17): `local` (no `INTERNET`, on-device
+only), `hybrid` (own flow-server + on-device fallback), `remote` (server only, no ASR libs).
+Every session goes through the native `flow_router::Router` (`nativeOpenRouter`).
 
 Specs: android-research `findings/by-topic/07-android-shell-impl-spec.md` (primary), 05, 06,
 10. Core API: windows-research `10-clone-spec.md` §9. The JNI surface is in
@@ -12,11 +14,11 @@ Specs: android-research `findings/by-topic/07-android-shell-impl-spec.md` (prima
 
 ```sh
 cd apps/flow-android
-./gradlew testDebugUnitTest assembleDebug     # APK: app/build/outputs/apk/debug/app-debug.apk
+./gradlew testDebugUnitTest assembleDebug     # all flavours; APKs: app/build/outputs/apk/<flavour>/debug/
 tools/unit.sh                                  # same tests, compact summary
 tools/probes/jni_stub/run.sh                   # link-test NativeFlowCore against a host C stub of the JNI contract
-tools/build-native.sh --whisper --llm          # arm64 libflow_ffi.so (+ LLM loader) + libflow_llm.so + libc++_shared.so into app/src/main/jniLibs/
-tools/probes/check_native_so.sh [apk]          # contract symbols, 16 KB alignment, NEEDED libs, plugin exports (+ APK zipalign -P 16)
+tools/build-native.sh --flavor local|hybrid|remote   # arm64 native libs into app/src/<flavour>/jniLibs/ (see INSTALL.md)
+tools/probes/check_native_so.sh --flavor F [apk]  # contract symbols, 16 KB alignment, NEEDED libs, plugin exports, flavour rules (+ APK zipalign -P 16)
 tools/probes/host_native/run.sh [model.bin]    # real host flow-ffi under the real NativeFlowCore: whisper on jfk.wav, + LLM cleanup if a GGUF is in models/
 ```
 
@@ -26,7 +28,7 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
   default `java` is a JDK-25 JRE without `javac`. Gradle picks up the JDK 21 already
   provisioned at `~/.gradle/jdks/`; on other machines the foojay resolver provisions it.
 - `local.properties` (git-ignored) holds `sdk.dir=~/Android/Sdk`.
-- Without `app/src/main/jniLibs/arm64-v8a/libflow_ffi.so` the APK still builds and runs. The
+- Without `app/src/<flavour>/jniLibs/arm64-v8a/libflow_ffi.so` the APK still builds and runs. The
   main screen then says the native engine is unavailable, and dictation shows an
   "engine unavailable" bubble error instead of crashing. **Settings → Mock engine** swaps in
   `FakeFlowCore`, which inserts a fixed sentence, so the shell can be tested on a device
@@ -38,29 +40,29 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
 - `cargo-ndk` 4.1.2 was already installed; the `aarch64-linux-android` rustup target was
   already present.
 
-## Privacy gate
-- The manifest strips `INTERNET`, `ACCESS_NETWORK_STATE` and `ACCESS_WIFI_STATE` with
-  `tools:node="remove"`.
-- `verify<Variant>NoNetworkPermissions` reads the **merged** manifest and fails the
-  assemble, test or check run if any network permission survives. It was verified by
-  temporarily re-adding INTERNET: the build failed.
-- `ManifestPrivacyTest` checks the same thing from the unit suite.
+## Privacy gates (per flavour)
+- `src/local/AndroidManifest.xml` strips every network permission with `tools:node="remove"`;
+  `src/hybrid` / `src/remote` add `INTERNET` and strip the rest. The main manifest decides nothing.
+- `verifyLocal<BT>NoNetworkPermissions` / `verify{Hybrid,Remote}<BT>OnlyInternetPermission`
+  read the **merged** manifest; `verifyRemote<BT>NoAsrLibs` and `verifyLocal<BT>NoNetworkCode`
+  inspect the packaged APK. They fail assemble / test / check.
+- `ManifestPrivacyTest` checks each flavour's merged manifest from the unit suite.
 - Backups and device transfer are disabled (`allowBackup=false` plus data-extraction rules).
 
 ## Layout (`app/src/main/java/dev/flowclone/`)
 | Package | What | Tested on JVM |
 |---|---|---|
-| `core/` | `FlowCore` (§9 mirror), `CoreJson` (wire format), `NativeFlowCore` (JNI), `FakeFlowCore` | yes, plus the stub link test |
+| `core/` | `FlowCore` (§9 mirror), `CoreJson` (wire format), `RouterJson` + `DevText` (router JSON, D17), `NativeFlowCore` (JNI, core + router handles), `FakeFlowCore` | yes, plus the stub link test and `RouterJsonTest` on `crates/flow-router/fixtures` |
 | `insert/` | `V3Inserter` (07 §3), `InsertionCoordinator` (mutex, 3500 ms budget, sensitive clipboard), `ImeKeepAlive` (07 §3.5), `TextMatching` (06 §4), `Ports` (injectable editor abstraction) | yes |
 | `policy/` | `EditorInputType`, `BubbleVisibilityPolicy` (sensitive + banking + user denylist + clone deviations), `AppCategorizer`, generated `PolicyLists` | yes |
 | `session/` | `DictationController` (state machine, debounce, cap 239/299 s, 20 s timeout), `LevelMeter`, `AudioBatcher`, `SessionCap` | yes |
 | `bubble/` | `BubbleGesture` (tap / hold / drag), `BubblePositioner` (anchors + persistence), `Waveform`, `BubblePresence` (minimise 5 s, snooze 10 min, shake reveal), `ShakeDetector`, `SnoozeTarget`, `PreviewContent`/`PreviewPlacement` (live preview line); `BubbleView`/`BubbleOverlay` (Android: bubble + preview + snooze-target windows) | logic yes |
-| `data/` | `Retention`, `DictionaryMerge`, `Settings`, `FieldContextBuilder`, `EnginePlan` (ASR + optional LLM, ASR-only fallback), `ModelFiles` (ggml/GGUF sniffing, LLM recommendations), `DictionaryEdit`, `HistoryView`; `Stores` (SharedPreferences, JSON dictionary file, SQLite history v2) | logic yes |
+| `data/` | `Retention`, `DictionaryMerge`, `Settings`, `FieldContextBuilder`, `EnginePlan` (ASR + optional LLM, ASR-only fallback), `ModelFiles` (ggml/GGUF sniffing, LLM recommendations), `DictionaryEdit`, `HistoryView`; `Stores` (SharedPreferences, JSON dictionary file, SQLite history v2); D17: `DevSettings` (+ `HostRules`, `DevSettingsForm`, `DevUnlock`), `DevStore` + `TokenVault` (Keystore AES-GCM), `EngineRoute` (local engine → router), `ParakeetFiles` | logic yes |
 | `health/` | `A11ySetting` (enabled-services parse), `AccessibilityHealth` (ghost binding), `ServiceWatchdog` (≥ 5 s respawn), `OemGuidance` (autostart steps + deep links) | yes |
 | `service/` | `FlowAccessibilityService` (+ 15 s heartbeat / FlowService watchdog), `ShellInputMethod`/node adapters, `FlowService` (FGS, shake sensor, health tick, unlock re-check) | device only |
 | `receiver/` | `BootReceiver` (BOOT_COMPLETED, MY_PACKAGE_REPLACED, USER_UNLOCKED → start FGS or "re-enable" notification) | device only |
 | `audio/` | `MicRecorder` (MIC 16 k mono PCM16, 100 ms frames → `push_audio`) | device only |
-| `ui/` | Main/onboarding (mic → overlay → a11y + ghost fix → battery → notifications → OEM), model import (SAF; speech ggml and LLM GGUF), settings, dictionary editor (search, tabs, edit, shared JSON import/export), history (search, copy, delete, raw vs formatted) | device only |
+| `ui/` | Main/onboarding (mic → overlay → a11y + ghost fix → battery → notifications → OEM), model import (SAF; speech ggml, Parakeet folder, LLM GGUF), settings, Developer settings (D17 §5), dictionary editor (search, tabs, edit, shared JSON import/export), history (search, copy, delete, raw vs formatted) | device only |
 
 `policy/PolicyLists.kt` is generated: `python3 -I tools/gen_policy_lists.py` from
 `policy-data/*.json`, which are verbatim copies of android-research `findings/data/`.
