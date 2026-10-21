@@ -4,4 +4,4 @@ local.properties
 .kotlin/
 *.iml
 .idea/
-app/src/main/jniLibs/
+app/src/*/jniLibs/

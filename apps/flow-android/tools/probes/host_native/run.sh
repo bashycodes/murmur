@@ -26,12 +26,12 @@ fi
 lib="$repo/target/release"
 test -f "$lib/libflow_ffi.so"
 cd "$app"
-./gradlew testDebugUnitTest -q --rerun -Pflow.jniLibDir="$lib" -Pflow.model="$model" -Pflow.wav="$wav" \
+./gradlew testLocalDebugUnitTest -q --rerun -Pflow.jniLibDir="$lib" -Pflow.model="$model" -Pflow.wav="$wav" \
   -Pflow.threads="${FLOW_THREADS:-4}" -Pflow.llmModel="$llm_model" -Pflow.llmLib="$lib/libflow_llm.so" -Pflow.reportDir="$app/app/build/reports/host-native" \
   --tests 'dev.flowclone.core.NativeFlowCoreHostTest'
 python3 -I - "$app" <<'PY'
 import sys, xml.etree.ElementTree as ET, pathlib
-p = pathlib.Path(sys.argv[1], "app/build/test-results/testDebugUnitTest/TEST-dev.flowclone.core.NativeFlowCoreHostTest.xml")
+p = pathlib.Path(sys.argv[1], "app/build/test-results/testLocalDebugUnitTest/TEST-dev.flowclone.core.NativeFlowCoreHostTest.xml")
 r = ET.parse(p).getroot()
 print(f"host native test: {r.get('tests')} run, {int(r.get('failures'))+int(r.get('errors'))} failed, {r.get('skipped')} skipped")
 PY

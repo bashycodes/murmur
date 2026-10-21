@@ -3,12 +3,13 @@
 # Usage: tools/unit.sh [extra gradle args, e.g. --tests 'dev.flowclone.insert.*']
 set -uo pipefail
 cd "$(dirname "$0")/.."
-./gradlew testDebugUnitTest -q "$@" 2>&1 | grep -E "^e: |FAILED|Test.*>|BUILD|What went wrong" -A2 | grep -vE "^\s+at " | head -60
+task=testDebugUnitTest; [[ $# -gt 0 ]] && task=testLocalDebugUnitTest  # --tests needs a concrete variant task
+./gradlew --offline "$task" -q "$@" 2>&1 | grep -E "^e: |FAILED|Test.*>|BUILD|What went wrong" -A2 | grep -vE "^\s+at " | head -60
 status=${PIPESTATUS[0]}
 python3 -I - <<'EOF'
 import glob, xml.etree.ElementTree as ET
 t = f = 0
-for p in glob.glob("app/build/test-results/testDebugUnitTest/*.xml"):
+for p in glob.glob("app/build/test-results/test*DebugUnitTest/*.xml"):
     r = ET.parse(p).getroot()
     t += int(r.get("tests")); f += int(r.get("failures")) + int(r.get("errors"))
     for c in r.iter("testcase"):
