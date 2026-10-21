@@ -1,0 +1,45 @@
+# systemd unit for flow-server (docs/hybrid-architecture.md §3.4).
+# Install (manually, as root): copy the binary to /usr/local/bin/flow-server,
+# this file to /etc/systemd/system/, the config to /etc/flow-server/config.toml,
+# create the token with `flow-server gen-token --out /etc/flow-server/token`
+# (readable by the service: DynamicUser gets it via LoadCredential below), put
+# models under /var/lib/flow-server/models, then `systemctl enable --now flow-server`.
+[Unit]
+Description=flow-server (self-hosted dictation ASR; LAN/Tailscale only)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/flow-server --config /etc/flow-server/config.toml --token-file ${CREDENTIALS_DIRECTORY}/token
+LoadCredential=token:/etc/flow-server/token
+DynamicUser=yes
+StateDirectory=flow-server
+Environment=TMPDIR=/var/lib/flow-server/tmp
+ExecStartPre=/bin/mkdir -p /var/lib/flow-server/tmp
+Restart=on-failure
+RestartSec=3
+Nice=5
+MemoryMax=8G
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# The kernel enforces "no third party": only loopback, private LAN and
+# Tailscale peers can talk to the server, and it cannot reach anything else.
+IPAddressDeny=any
+IPAddressAllow=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fd7a:115c:a1e0::/48 fe80::/10
+
+[Install]
+WantedBy=multi-user.target
