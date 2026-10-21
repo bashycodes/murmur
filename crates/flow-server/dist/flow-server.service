@@ -16,6 +16,8 @@ LoadCredential=token:/etc/flow-server/token
 DynamicUser=yes
 StateDirectory=flow-server
 Environment=TMPDIR=/var/lib/flow-server/tmp
+# Parakeet builds: libsherpa-onnx-c-api.so + libonnxruntime.so must be findable.
+# Environment=LD_LIBRARY_PATH=/usr/local/lib/flow-server
 ExecStartPre=/bin/mkdir -p /var/lib/flow-server/tmp
 Restart=on-failure
 RestartSec=3
