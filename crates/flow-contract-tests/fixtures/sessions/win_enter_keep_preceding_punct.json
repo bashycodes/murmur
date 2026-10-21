@@ -1,0 +1,12 @@
+{
+ "asr": {
+  "mock": "Send it. Press enter."
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_enter_keep_preceding_punct",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

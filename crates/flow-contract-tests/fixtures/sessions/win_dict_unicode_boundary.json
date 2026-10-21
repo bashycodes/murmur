@@ -1,0 +1,17 @@
+{
+ "asr": {
+  "mock": "cafe, cafes, Caf\u00e9"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_dict_unicode_boundary",
+ "session_config": {
+  "dictionary": [
+   {
+    "replacement": "caf\u00e9",
+    "word": "cafe"
+   }
+  ],
+  "platform": "windows"
+ }
+}

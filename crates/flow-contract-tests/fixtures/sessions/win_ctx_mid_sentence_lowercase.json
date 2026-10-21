@@ -1,0 +1,20 @@
+{
+ "asr": {
+  "mock": "Then we left."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "notepad",
+    "before": "I said that"
+   }
+  }
+ ],
+ "name": "win_ctx_mid_sentence_lowercase",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

@@ -1,0 +1,19 @@
+{
+ "asr": {
+  "mock": "first line new line second tab third"
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "cursor",
+    "file_names": [
+     "main.rs"
+    ]
+   }
+  }
+ ],
+ "name": "p1_break_and_tab_markers",
+ "session_config": {}
+}

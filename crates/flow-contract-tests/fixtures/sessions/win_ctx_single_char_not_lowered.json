@@ -1,0 +1,20 @@
+{
+ "asr": {
+  "mock": "A"
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "notepad",
+    "before": "plan"
+   }
+  }
+ ],
+ "name": "win_ctx_single_char_not_lowered",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

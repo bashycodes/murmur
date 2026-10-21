@@ -1,0 +1,17 @@
+{
+ "asr": {
+  "mock": "Use gpt. Or gpt?"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_dict_trailing_punct_kept",
+ "session_config": {
+  "dictionary": [
+   {
+    "replacement": "GPT",
+    "word": "gpt"
+   }
+  ],
+  "platform": "windows"
+ }
+}

@@ -1,0 +1,18 @@
+{
+ "asr": {
+  "mock": "btw, BTW and Btw."
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_dict_multiple_hits",
+ "session_config": {
+  "dictionary": [
+   {
+    "isSnippet": false,
+    "replacement": "by the way",
+    "word": "btw"
+   }
+  ],
+  "platform": "windows"
+ }
+}
