@@ -909,6 +909,8 @@ pub fn from_core_result(r: flow_core::CommitResult) -> CommitResult {
             asr_ms: r.timings.asr_ms,
             llm_ms: r.timings.llm_ms,
             total_ms: r.timings.total_ms,
+            audio_ms: r.timings.audio_ms,
+            dropped_samples: r.timings.dropped_samples,
         },
         press_enter: r.press_enter,
         fallback_reason: r.fallback_reason,

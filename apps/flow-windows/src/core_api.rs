@@ -145,6 +145,10 @@ pub struct Timings {
     pub asr_ms: u64,
     pub llm_ms: u64,
     pub total_ms: u64,
+    /// Audio the engine received (after any fallback replay).
+    pub audio_ms: u64,
+    /// Samples lost because a buffer was full (0 = nothing lost).
+    pub dropped_samples: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
