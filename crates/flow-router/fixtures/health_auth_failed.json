@@ -1,0 +1,19 @@
+{
+  "asr_backend": null,
+  "asr_model": null,
+  "busy": null,
+  "checked_at_ms": 1792540800000,
+  "engine": "remote",
+  "error": "auth_failed",
+  "llm": null,
+  "message": "server rejected the token (HTTP 401)",
+  "ok": false,
+  "postprocess_match": null,
+  "postprocess_rev": null,
+  "proto": null,
+  "rtt_ms": null,
+  "server": "100.64.0.10:7313",
+  "server_core": null,
+  "server_version": null,
+  "workers": null
+}
