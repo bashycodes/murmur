@@ -1,0 +1,13 @@
+[package]
+name = "flow-router"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Hybrid local/server router: the §9 session API over a local FlowCore and an injected remote backend (no network code)"
+
+[dependencies]
+flow-core = { path = "../flow-core", default-features = false }
+flow-protocol = { path = "../flow-protocol" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
