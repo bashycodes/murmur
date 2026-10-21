@@ -1,6 +1,6 @@
 # Cloud speech-to-text (opt-in, third party)
 
-Status: design (branch `cloud-design`), decision **D-CLOUD** in `docs/DECISIONS.md`.
+Status: design (branch `cloud-design`), decision **D18** in `docs/DECISIONS.md`.
 Builds on D17 / `docs/hybrid-architecture.md` (router, `Backend` trait, buffered
 fallback) and the in-progress router on `hybrid-server` (`Failure`, `BackendError`,
 `Backend::session_failure`, `with_local_capability`, `probe_config`).

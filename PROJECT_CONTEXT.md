@@ -98,6 +98,7 @@ Wired on Android, unverified on a device: snooze target + notification undo, sha
 
 ## Outstanding work — priority order
 **Active work:** hybrid local/server ASR (D17), spec in `docs/hybrid-architecture.md`.
+**Next:** opt-in cloud STT — docs/cloud-stt.md (starts after hybrid-* branches merge)
 1. **Core gaps** (the core itself is done; see What works):
    * Shells adopt the core-p1 API per core-architecture "Changelog for shells": paste `segments` instead of acting on `press_enter`, `plain_text` in history, `empty_reason` ("no speech heard"), typed load errors (Windows can drop its `is_file()` pre-check), optional `spoken_cleanup` pref. Both shells build and pass against the merged core (Windows needed only a `..Default` and a test fix); adoption itself is not done.
    * LLM latency on CPU: prefill-ahead is in; generation (≈ 25 tokens at 5-16 tok/s here) now dominates, so 1.5B misses the 1.5 s budget about half the time. Levers left: a LoRA on (raw → formatted) pairs for 0.5B (03 §7.5); `audio_ctx` for whisper with a repetition guard (benchmark: small 1.8× faster); Parakeet (D12) as the faster English engine. Shells must ship `libflow_llm` next to the exe (Windows) / in jniLibs (Android: packaged, host-JVM-proven, not yet loaded on bionic).
