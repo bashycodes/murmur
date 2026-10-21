@@ -1,0 +1,18 @@
+{
+ "asr": {
+  "mock": "I say BTW a lot"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_dict_basic_case_insensitive",
+ "session_config": {
+  "dictionary": [
+   {
+    "isSnippet": false,
+    "replacement": "by the way",
+    "word": "btw"
+   }
+  ],
+  "platform": "windows"
+ }
+}

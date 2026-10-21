@@ -1,0 +1,21 @@
+{
+ "asr": {
+  "mock": "Is it ready?"
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "after": "maybe",
+    "app_id": "notepad",
+    "before": "Hi. "
+   }
+  }
+ ],
+ "name": "win_ctx_question_after_continuation",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

@@ -1,0 +1,17 @@
+{
+ "asr": {
+  "mock": "I can\u2019t but I can"
+ },
+ "audio": "speech:1200",
+ "contexts": [],
+ "name": "win_dict_contraction_guard_curly",
+ "session_config": {
+  "dictionary": [
+   {
+    "replacement": "CAN",
+    "word": "can"
+   }
+  ],
+  "platform": "windows"
+ }
+}

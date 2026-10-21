@@ -1,0 +1,20 @@
+{
+ "asr": {
+  "mock": "\u4e16\u754c\u3002"
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 1200,
+   "ctx": {
+    "app_id": "notepad",
+    "before": "\u4f60\u597d"
+   }
+  }
+ ],
+ "name": "win_ctx_cjk_before",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

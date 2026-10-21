@@ -1,0 +1,23 @@
+{
+ "asr": {
+  "mock": "John."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 0,
+   "ctx": {
+    "app_id": "notepad",
+    "before": "Talk to",
+    "screen_words": [
+     "John"
+    ]
+   }
+  }
+ ],
+ "name": "win_ctx_proper_noun_single_onscreen",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

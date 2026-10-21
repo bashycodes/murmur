@@ -1,0 +1,20 @@
+{
+ "asr": {
+  "mock": "Paris is nice."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 1200,
+   "ctx": {
+    "app_id": "notepad",
+    "selected": "london"
+   }
+  }
+ ],
+ "name": "win_ctx_selected_proper_noun",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}

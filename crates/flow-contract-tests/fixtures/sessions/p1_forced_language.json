@@ -1,0 +1,13 @@
+{
+ "asr": {
+  "mock": "bonjour tout le monde"
+ },
+ "audio": "speech:1000",
+ "contexts": [],
+ "name": "p1_forced_language",
+ "session_config": {
+  "languages": [
+   "fr"
+  ]
+ }
+}

@@ -1,0 +1,20 @@
+{
+ "asr": {
+  "mock": "I left early."
+ },
+ "audio": "speech:1200",
+ "contexts": [
+  {
+   "at_ms": 1200,
+   "ctx": {
+    "app_id": "notepad",
+    "before": "and then"
+   }
+  }
+ ],
+ "name": "win_ctx_pronoun_i_quirk",
+ "session_config": {
+  "dictionary": [],
+  "platform": "windows"
+ }
+}
