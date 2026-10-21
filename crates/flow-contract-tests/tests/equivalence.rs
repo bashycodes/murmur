@@ -7,11 +7,11 @@ use std::time::{Duration, Instant};
 
 use flow_contract_tests::*;
 use flow_core::asr::MockAsr;
-use flow_core::config::SessionConfig;
 #[cfg(any(feature = "whisper", feature = "parakeet"))]
 use flow_core::config::FieldContext;
 #[cfg(any(feature = "whisper", feature = "parakeet", feature = "llm"))]
 use flow_core::config::ModelConfig;
+use flow_core::config::SessionConfig;
 use flow_core::{CommitStatus, FlowCore};
 
 fn mock_core(text: &str) -> FlowCore {
