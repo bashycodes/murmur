@@ -124,13 +124,19 @@ impl Platform for WinPlatform {
         let _ = self.app.emit_to(OVERLAY, "dictation:preview", text);
     }
 
-    fn send_enter(&self) -> Result<(), String> {
+    fn send_key(&self, key: crate::core_api::PasteKey) -> Result<(), String> {
+        use crate::core_api::PasteKey;
         use crate::input::{vk, Stroke};
-        let s = [Stroke::down(vk::RETURN), Stroke::up(vk::RETURN)];
+        let code = match key {
+            PasteKey::Enter => vk::RETURN,
+            PasteKey::Tab => vk::TAB,
+            PasteKey::Break => return Ok(()),
+        };
+        let s = [Stroke::down(code), Stroke::up(code)];
         if crate::input::win::send(&s) == s.len() {
             Ok(())
         } else {
-            Err("could not send Enter".into())
+            Err(format!("could not send {key:?}"))
         }
     }
 
@@ -485,6 +491,7 @@ fn llm_wanted_but_down(state: &AppState, prefs: &Prefs) -> bool {
 struct ModelInfo {
     status: ModelStatus,
     default_path: String,
+    default_parakeet_dir: String,
     models_dir: String,
     llm: LlmStatus,
     default_llm_path: String,
@@ -503,6 +510,7 @@ fn get_model_status(state: tauri::State<'_, AppState>) -> ModelInfo {
                 path: String::new(),
             }),
         default_path: core_adapter::default_model_path(ad).display().to_string(),
+        default_parakeet_dir: core_adapter::default_parakeet_dir(ad).display().to_string(),
         models_dir: core_adapter::models_dir(ad).display().to_string(),
         llm: state
             .core

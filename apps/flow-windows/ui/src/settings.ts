@@ -32,6 +32,9 @@ interface Prefs {
   max_dictation_minutes: number;
   retention: string;
   model_path: string | null;
+  asr_engine: string;
+  parakeet_model_dir: string | null;
+  spoken_cleanup: boolean;
   llm_enabled: boolean;
   llm_model_path: string | null;
   llm_lib_path: string | null;
@@ -43,7 +46,7 @@ interface Prefs {
 type ModelStatus =
   | { state: "loading"; path: string }
   | { state: "ready"; path: string; load_ms: number }
-  | { state: "missing"; path: string }
+  | { state: "missing"; path: string; engine?: string }
   | { state: "failed"; path: string; message: string };
 
 type LlmStatus =
@@ -57,6 +60,7 @@ type LlmStatus =
 interface ModelInfo {
   status: ModelStatus;
   default_path: string;
+  default_parakeet_dir: string;
   models_dir: string;
   llm: LlmStatus;
   default_llm_path: string;
@@ -135,6 +139,7 @@ const BOOL_FIELDS = [
   "live_preview",
   "llm_enabled",
   "learn_from_edits",
+  "spoken_cleanup",
 ] as const;
 
 const STYLES: [string, string][] = [
@@ -217,8 +222,18 @@ function showLlm(st: LlmStatus): void {
 
 // ------------------------------------------------------------------ general + AI form
 
+function showEngineFields(): void {
+  const engine = $<HTMLSelectElement>("asr_engine").value;
+  for (const l of document.querySelectorAll<HTMLElement>("[data-engine]")) {
+    l.hidden = l.dataset.engine !== engine;
+  }
+}
+
 function fillForm(prefs: Prefs): void {
   $<HTMLInputElement>("model_path").value = prefs.model_path ?? "";
+  $<HTMLSelectElement>("asr_engine").value = prefs.asr_engine;
+  $<HTMLInputElement>("parakeet_model_dir").value = prefs.parakeet_model_dir ?? "";
+  showEngineFields();
   $<HTMLInputElement>("ptt").value = prefs.shortcuts.ptt;
   $<HTMLInputElement>("hands_free").value = prefs.shortcuts.hands_free;
   $<HTMLInputElement>("cancel").value = prefs.shortcuts.cancel;
@@ -250,6 +265,8 @@ function readForm(base: Prefs): Prefs {
     copy_last: $<HTMLInputElement>("copy_last").value.trim(),
   };
   next.model_path = $<HTMLInputElement>("model_path").value.trim() || null;
+  next.asr_engine = $<HTMLSelectElement>("asr_engine").value;
+  next.parakeet_model_dir = $<HTMLInputElement>("parakeet_model_dir").value.trim() || null;
   next.microphone = $<HTMLSelectElement>("microphone").value || null;
   for (const f of BOOL_FIELDS) next[f] = $<HTMLInputElement>(f).checked;
   next.cleanup_level = $<HTMLSelectElement>("cleanup_level").value;
@@ -614,6 +631,7 @@ async function load(): Promise<void> {
   $<HTMLElement>("models_dir").textContent = model.models_dir;
   $<HTMLElement>("llm_plugin").textContent = model.llm_plugin;
   $<HTMLInputElement>("model_path").placeholder = model.default_path;
+  $<HTMLInputElement>("parakeet_model_dir").placeholder = model.default_parakeet_dir;
   $<HTMLInputElement>("llm_model_path").placeholder = model.default_llm_path;
   const mic = $<HTMLSelectElement>("microphone");
   mic.replaceChildren(new Option("System default", ""), ...mics.map((m) => new Option(m, m)));
@@ -632,6 +650,7 @@ for (const b of document.querySelectorAll<HTMLButtonElement>("nav.tabs button"))
   b.addEventListener("click", () => showTab(b.dataset.tab ?? "general"));
 }
 $<HTMLFormElement>("form").addEventListener("submit", (e) => void saveForm(e));
+$<HTMLSelectElement>("asr_engine").addEventListener("change", showEngineFields);
 let searchTimer = 0;
 $<HTMLInputElement>("hist_query").addEventListener("input", () => {
   clearTimeout(searchTimer);

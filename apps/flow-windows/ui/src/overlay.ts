@@ -9,7 +9,8 @@ type OverlayState =
   | { state: "active_ptt" }
   | { state: "active_locked" }
   | { state: "processing" }
-  | { state: "error"; message: string };
+  | { state: "error"; message: string }
+  | { state: "notice"; message: string };
 
 const BAR_COUNT = 10;
 const GAIN = 5; // --audio-scale = max(1, 5 * v) for dictation
@@ -57,11 +58,21 @@ function apply(s: OverlayState): void {
   const wasActive = isActive();
   pillState = s.state;
   pill.dataset.state = s.state;
-  msg.textContent = s.state === "error" ? s.message : "";
+  const message = s.state === "error" || s.state === "notice" ? s.message : "";
+  msg.textContent = message;
   if (!isActive()) {
     target = 0;
     v = 0;
     showPreview("");
+  }
+  // Error / notice text ("Dictation disabled — …", "No speech heard")
+  // shows in the bubble above the pill for as long as the pill lingers.
+  if (message) {
+    preview.textContent = message;
+    preview.dataset.kind = s.state;
+    preview.classList.add("visible");
+  } else {
+    delete preview.dataset.kind;
   }
   if (isActive() && !wasActive) {
     pill.dataset.mic = "inactive"; // dim, still bars until real audio arrives

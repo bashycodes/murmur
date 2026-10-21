@@ -44,11 +44,22 @@ function apply(s) {
     const wasActive = isActive();
     pillState = s.state;
     pill.dataset.state = s.state;
-    msg.textContent = s.state === "error" ? s.message : "";
+    const message = s.state === "error" || s.state === "notice" ? s.message : "";
+    msg.textContent = message;
     if (!isActive()) {
         target = 0;
         v = 0;
         showPreview("");
+    }
+    // Error / notice text ("Dictation disabled — …", "No speech heard")
+    // shows in the bubble above the pill for as long as the pill lingers.
+    if (message) {
+        preview.textContent = message;
+        preview.dataset.kind = s.state;
+        preview.classList.add("visible");
+    }
+    else {
+        delete preview.dataset.kind;
     }
     if (isActive() && !wasActive) {
         pill.dataset.mic = "inactive"; // dim, still bars until real audio arrives
