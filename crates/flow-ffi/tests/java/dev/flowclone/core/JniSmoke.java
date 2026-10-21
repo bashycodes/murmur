@@ -44,6 +44,40 @@ public class JniSmoke {
         System.out.println(NativeFlowCore.nativeLearnEdit(0, "a", "b"));
         NativeFlowCore.nativeUnload(h);
         NativeFlowCore.nativeUnload(0);
+
+        // ---- D17 router: the shell's real flow (load local, hand it to the router, session on the router) ----
+        // args[0] (optional): "host:port" of a running flow-server (mock ASR) to route to.
+        String server = args.length > 0 ? args[0] : null;
+        long local = NativeFlowCore.nativeLoadModels("{\"asr_backend\":{\"mock\":{\"text\":\"hello btw\"}},\"asr_path\":\"\",\"threads\":1}");
+        String host = server == null ? "" : server.substring(0, server.lastIndexOf(':'));
+        String port = server == null ? "7313" : server.substring(server.lastIndexOf(':') + 1);
+        String cfg = "{\"allow_server\":" + (server != null) + ",\"allow_client\":true,\"prefer\":\"server\",\"keep_local_warm\":true,"
+            + "\"server\":{\"host\":\"" + host + "\",\"port\":" + port + ",\"tls\":false,\"tls_pin_sha256\":null,"
+            + "\"token\":\"" + (args.length > 1 ? args[1] : "") + "\",\"connect_timeout_ms\":800,\"commit_timeout_base_ms\":3000,\"health_ttl_s\":30}}";
+        long r = NativeFlowCore.nativeOpenRouter(cfg, local);
+        check(r != 0, "open_router: " + NativeFlowCore.nativeLastError());
+        check(NativeFlowCore.nativeStartSession(r, "{\"languages\":[\"en\"],\"platform\":\"android\",\"dictionary\":[{\"word\":\"btw\",\"replacement\":\"by the way\",\"isSnippet\":false}]}"), "router start: " + NativeFlowCore.nativeLastError());
+        for (int c = 0; c < 25; c++) {
+            for (int i = 0; i < buf.length; i++) buf[i] = (short) (Math.sin((c * 640 + i) * 0.05) * 8000);
+            NativeFlowCore.nativePushAudio(r, buf, buf.length);
+        }
+        System.out.println(NativeFlowCore.nativeCommit(r));
+        System.out.println(NativeFlowCore.nativeRouteStatus(r));
+        System.out.println(NativeFlowCore.nativeLearnEdit(r, "ask whisper now", "ask Wispr now"));
+        check(NativeFlowCore.nativeUpdateRouter(r, cfg.replace("\"prefer\":\"server\"", "\"prefer\":\"client\"")), "update: " + NativeFlowCore.nativeLastError());
+        check(!NativeFlowCore.nativeUpdateRouter(r, "{\"server\":{\"port\":0}}"), "port 0 must be bad_config");
+        System.out.println("KIND " + NativeFlowCore.nativeLastErrorKind());
+        NativeFlowCore.nativeResetCircuit(r);
+        NativeFlowCore.nativeUnload(r);
+        check(NativeFlowCore.nativeOpenRouter("{\"allow_server\":false,\"allow_client\":false}", 0) == 0, "both off must refuse");
+        System.out.println("KIND " + NativeFlowCore.nativeLastErrorKind());
+        System.out.println(NativeFlowCore.nativeCapabilities());
+        // Nothing listens on port 9 of loopback: a fast connect_failed (or "no server support" without `remote`).
+        System.out.println(NativeFlowCore.nativeProbeServer("{\"host\":\"127.0.0.1\",\"port\":9,\"connect_timeout_ms\":300}"));
+        if (server != null) {
+            String probe = NativeFlowCore.nativeProbeServer(cfg.substring(cfg.indexOf("\"server\":") + 9, cfg.length() - 1));
+            System.out.println(probe);
+        }
     }
 }
 
@@ -59,4 +93,12 @@ class NativeFlowCore {
     static native String nativeCommit(long h);
     static native void nativeCancel(long h);
     static native String nativeLearnEdit(long h, String pasted, String edited);
+    static native String nativeLastErrorKind();
+    static native String nativeCapabilities();
+    static native long nativeOpenRouter(String cfg, long local);
+    static native boolean nativeUpdateRouter(long h, String cfg);
+    static native String nativeProbeServer(String cfg);
+    static native String nativeProbeRouter(long h);
+    static native String nativeRouteStatus(long h);
+    static native void nativeResetCircuit(long h);
 }

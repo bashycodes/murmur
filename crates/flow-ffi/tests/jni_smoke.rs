@@ -12,6 +12,12 @@ fn jvm_round_trip() {
         return;
     }
     // `cargo test` does not emit the cdylib; build it (same profile/target dir).
+    // Same features as this test binary, so `--features jni,remote` exercises the server route.
+    let features = if cfg!(feature = "remote") {
+        "jni,remote"
+    } else {
+        "jni"
+    };
     let st = Command::new(env!("CARGO"))
         .args([
             "build",
@@ -19,7 +25,7 @@ fn jvm_round_trip() {
             "-p",
             "flow-ffi",
             "--features",
-            "jni",
+            features,
             "--lib",
         ])
         .status()
@@ -63,6 +69,33 @@ fn jvm_round_trip() {
     let null_commit: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
     assert_eq!(null_commit["status"], "ERROR");
     assert_eq!(lines.next().unwrap(), "[]");
+
+    // D17 router round trip (client only, mock local handed over by handle).
+    let routed: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+    assert_eq!(routed["status"], "RAW_TRANSCRIPT", "{routed}");
+    assert_eq!(routed["final_text"], "hello by the way ");
+    assert_eq!(routed["route"]["engine"], "local", "{routed}");
+    let status: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+    assert_eq!(status["last"]["engine"], "local", "{status}");
+    assert_eq!(status["circuit"]["open"], false);
+    let cands: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+    assert_eq!(
+        cands[0]["corrected"], "Wispr",
+        "router learn_edit uses the last dictionary"
+    );
+    assert_eq!(lines.next().unwrap(), "KIND bad_config");
+    assert_eq!(lines.next().unwrap(), "KIND no_engine_enabled");
+    let caps: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+    assert_eq!(caps["remote"], cfg!(feature = "remote"), "{caps}");
+    assert_eq!(caps["proto"], 1);
+    let probe: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+    assert_eq!(probe["ok"], false, "{probe}");
+    let want = if cfg!(feature = "remote") {
+        "connect_failed"
+    } else {
+        "server_not_configured"
+    };
+    assert_eq!(probe["error"], want, "{probe}");
 }
 
 /// Every symbol in JNI_CONTRACT.md is exported by the cdylib, and no stale
@@ -77,7 +110,7 @@ fn contract_symbols_exported() {
         .split('`')
         .filter(|w| w.starts_with("Java_dev_flowclone_core_NativeFlowCore_native"))
         .collect();
-    assert_eq!(want.len(), 11, "{want:?}");
+    assert_eq!(want.len(), 19, "{want:?}");
     let src = include_str!("../src/jni_api.rs");
     let have: std::collections::BTreeSet<&str> = src
         .split(|c: char| !c.is_alphanumeric() && c != '_')

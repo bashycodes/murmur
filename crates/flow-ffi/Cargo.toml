@@ -16,8 +16,13 @@ llm = ["flow-core/llm"]
 jni = ["dep:jni"]
 # Parakeet-TDT engine; ship libsherpa-onnx-c-api.so + libonnxruntime.so with the library.
 parakeet = ["flow-core/parakeet"]
+# D17: the server route (WebSocket client, wss with rustls). Client-only builds
+# leave it off: flow-router is always linked, flow-remote (the only network
+# code) is not (I3; tools/check-build-matrix.sh).
+remote = []  # becomes ["dep:flow-remote"] when flow-remote is merged
 
 [dependencies]
 flow-core = { path = "../flow-core" }
+flow-router = { path = "../flow-router" }
 serde_json.workspace = true
 jni = { version = "0.21", optional = true }
