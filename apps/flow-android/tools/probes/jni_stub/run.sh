@@ -9,10 +9,10 @@ out="$app/app/build/jni-stub"
 mkdir -p "$out"
 gcc -shared -fPIC -O1 -I"$jdk/include" -I"$jdk/include/linux" -o "$out/libflow_ffi.so" "$here/flow_ffi_stub.c"
 cd "$app"
-./gradlew testDebugUnitTest -q -Pflow.jniStubDir="$out" --tests 'dev.flowclone.core.NativeFlowCoreStubTest'
+./gradlew testLocalDebugUnitTest -q -Pflow.jniStubDir="$out" --tests 'dev.flowclone.core.NativeFlowCoreStubTest'
 python3 -I - "$app" <<'EOF'
 import sys, xml.etree.ElementTree as ET, pathlib
-p = pathlib.Path(sys.argv[1], "app/build/test-results/testDebugUnitTest/TEST-dev.flowclone.core.NativeFlowCoreStubTest.xml")
+p = pathlib.Path(sys.argv[1], "app/build/test-results/testLocalDebugUnitTest/TEST-dev.flowclone.core.NativeFlowCoreStubTest.xml")
 r = ET.parse(p).getroot()
 print(f"jni stub link test: {r.get('tests')} run, {int(r.get('failures'))+int(r.get('errors'))} failed, {r.get('skipped')} skipped")
 EOF
