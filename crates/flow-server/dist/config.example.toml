@@ -1,0 +1,27 @@
+# flow-server example config (/etc/flow-server/config.toml).
+# Bind only to loopback / LAN / Tailscale addresses; the server must never be
+# reachable from the internet. Recommended: the machine's Tailscale 100.x IP.
+bind = ["127.0.0.1:7313"]          # e.g. ["127.0.0.1:7313", "100.64.0.10:7313"]
+token_file = "/etc/flow-server/token"  # create with: flow-server gen-token --out /etc/flow-server/token
+# auth = "none"                    # only accepted when every bind address is loopback
+workers = 1            # FlowCore instances; each holds its models (Parakeet ~0.9 GB RSS)
+max_queue = 2          # sessions waiting for a worker
+queue_timeout_ms = 30000
+idle_timeout_s = 120   # close idle connections
+max_session_s = 1200   # 20 min, same as the Windows hard stop
+
+[model]                # = flow_core::ModelConfig
+asr_engine = "parakeet"
+asr_path = "/var/lib/flow-server/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
+threads = 4            # 4 on the i7-6700: oversubscribing hyperthreads is far slower
+# llm_path = "/var/lib/flow-server/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+# llm_lib = "/usr/local/lib/libflow_llm.so"
+# vad_model_path = "/var/lib/flow-server/models/ggml-silero-v5.1.2.bin"
+
+# [tls]                # optional wss:// (LAN without Tailscale); pin the cert in the client
+# cert = "/etc/flow-server/cert.pem"
+# key = "/etc/flow-server/key.pem"
+
+[log]
+level = "info"
+log_text = false       # true prints transcripts at debug level (startup warns)
