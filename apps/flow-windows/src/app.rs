@@ -6,13 +6,13 @@ use crate::context::{uia, RawSnapshot};
 use crate::controller::{AudioSink, Controller, Platform};
 use crate::core_adapter::{self, FlowCoreAdapter, LlmSpec, LlmStatus, ModelSpec, ModelStatus};
 use crate::dev_settings::{BuildCaps, DevForm, DevSettings, FieldError};
-use crate::router_adapter::{self, RouteView, RouterAdapter, SessionTest};
 use crate::dictation::{Input, OverlayState, Sound};
 use crate::ducking::win::Ducker;
 use crate::history::{self, History};
 use crate::hotkeys::{self, win::HookHandle};
 use crate::paste::{self, PasteOptions};
 use crate::prefs::{LoadOutcome, Prefs};
+use crate::router_adapter::{self, RouteView, RouterAdapter, SessionTest};
 use crate::suggestions::{self as sugg, SuggestionStore};
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -553,7 +553,6 @@ fn list_microphones() -> Vec<String> {
     capture::list_input_devices()
 }
 
-
 // ------------------------------------------------- developer tab (D17 §5)
 
 /// Load the on-device models? Only when the build has them, the client
@@ -593,7 +592,11 @@ fn dev_check(form: &DevForm) -> DevCheck {
     match form.validate(caps) {
         Ok((s, token)) => {
             let mut s2 = s.clone();
-            s2.token_dpapi = if token.is_empty() { String::new() } else { "set".into() };
+            s2.token_dpapi = if token.is_empty() {
+                String::new()
+            } else {
+                "set".into()
+            };
             // The router's own validation must agree (it is the gate).
             let errors = match router_adapter::server_config(&s, &token) {
                 Ok(_) => Vec::new(),
@@ -673,7 +676,9 @@ fn save_dev(app: &AppHandle, state: &AppState, dev: DevSettings) -> Result<(), S
 /// Refresh "Server info" off the UI thread when a server is configured.
 fn probe_in_background(app: &AppHandle) {
     let state = app.state::<AppState>();
-    let Some(r) = state.router.get().cloned() else { return };
+    let Some(r) = state.router.get().cloned() else {
+        return;
+    };
     let dev = state.prefs.read().unwrap().developer.clone();
     let (srv, _) = dev.effective(BuildCaps::current());
     if !srv || dev.server.host.is_empty() {
@@ -729,9 +734,12 @@ async fn dev_test_connection(
     app: AppHandle,
     form: DevForm,
 ) -> Result<flow_router::HealthReport, String> {
-    let (dev, token) = form
-        .validate(BuildCaps::current())
-        .map_err(|e| e.into_iter().map(|e| e.message).collect::<Vec<_>>().join("; "))?;
+    let (dev, token) = form.validate(BuildCaps::current()).map_err(|e| {
+        e.into_iter()
+            .map(|e| e.message)
+            .collect::<Vec<_>>()
+            .join("; ")
+    })?;
     let server = router_adapter::server_config(&dev, &token)?;
     let state = app.state::<AppState>();
     let router = state.router.get().cloned().ok_or("router not ready")?;

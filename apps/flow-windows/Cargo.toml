@@ -55,6 +55,9 @@ base64 = "0.22"
 # cross-checks for MSVC like any pure-Rust crate.
 flow-core = { path = "../../crates/flow-core", features = ["llm"] }
 # Local history (audio is never stored). `bundled` = no system sqlite needed.
+# D17: every dictation goes through the router (no network code in it;
+# the remote backend is injected by `remote`).
+flow-router = { path = "../../crates/flow-router" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 tauri = { version = "2", optional = true, features = ["tray-icon", "image-png"] }
 
