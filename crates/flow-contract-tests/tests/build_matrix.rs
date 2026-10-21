@@ -46,3 +46,41 @@ fn gate_detects_network_code_in_flow_remote() {
         "{text}"
     );
 }
+
+/// D18 C2: the gate's cloud pattern matches what flow-cloud really pulls
+/// in, and the client-only checks ran (not skipped).
+#[test]
+fn gate_detects_the_cloud_client_and_checks_client_only_builds() {
+    let out = Command::new(env!("CARGO"))
+        .current_dir(root())
+        .args([
+            "tree",
+            "-e",
+            "normal",
+            "--prefix",
+            "none",
+            "--format",
+            "{p}",
+            "-p",
+            "flow-cloud",
+        ])
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    for c in ["reqwest v", "rustls v", "hyper v"] {
+        assert!(text.lines().any(|l| l.starts_with(c)), "{c}: {text}");
+    }
+    let out = Command::new("bash")
+        .arg(root().join("tools/check-build-matrix.sh"))
+        .output()
+        .unwrap();
+    let gate = String::from_utf8_lossy(&out.stdout);
+    for line in [
+        "ok    flow-ffi jni,whisper,llm,parakeet (local flavour) has no cloud client",
+        "ok    flow-windows local,app has no cloud client",
+        "ok    flow-router has no cloud client",
+        "ok    flow-cloud has no ASR/LLM libs",
+    ] {
+        assert!(gate.contains(line), "missing {line:?}:\n{gate}");
+    }
+}

@@ -21,7 +21,7 @@ pub mod vad;
 #[cfg(feature = "whisper")]
 pub mod whisper;
 
-pub use engine::{CommitResult, CommitStatus, CoreError, FlowCore, RouteInfo, Timings};
+pub use engine::{CommitResult, CommitStatus, CoreError, FlowCore, RouteInfo, Timings, Usd};
 
 /// flow-core version (reported by the hybrid router and server).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

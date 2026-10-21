@@ -485,3 +485,161 @@ W and A then proceed in parallel. Each merge green under the D17 §6.3 commands 
 2. Live smoke green for at least OpenRouter, ElevenLabs and Groq with real keys (WER ≤ 10 % on jfk.wav), latency and cost recorded in this doc.
 3. Windows default build: enable cloud with consent, dictate → route `cloud`, badge `C`; revoke key → `auth_failed` → local fallback with no lost words.
 4. Android `local` APK: no flow-cloud symbols, no network permission (gates green); `hybrid` APK: same flow as 3.
+
+---
+
+## Changelog for shells
+
+Implementation notes for W and A against the core/router side (branch `cloud-core`,
+from `integration` after the three hybrid merges). Every item is additive: shell code
+written against the merged D17 router compiles and behaves unchanged; nothing below is
+reachable until a shell enables cloud.
+
+**2026-10-22 — flow-core CR, router cloud route, flow-cloud, contract tests landed**
+
+* **Deviations from §3 / §6 (read these first).**
+  * `Capabilities` is unchanged (Windows builds it with a struct literal). Cloud support
+    is `Router::cloud_capabilities() -> CloudCapabilities { cloud: bool, adapters:
+    Vec<String> }` (fixture `cloud_capabilities.json`).
+  * `RouterError` gains **no** variant (Windows matches it exhaustively). A config whose
+    only listed route is `cloud` and the cloud is unusable (no provider / consent / key,
+    or budget used up) gives `NoEngineEnabled`; the reason is in the dead session's
+    `commit().route.fallback` (`cloud_not_configured` / `budget_exceeded`) and in the
+    error text. A cloud start failure with no other route gives `ServerUnavailable`.
+  * Keys: `SecretString` lives in `flow_router` (`flow_router::SecretString`, re-exported
+    nowhere else), not in flow-cloud, because `set_cloud_key` / `CloudFactory` need it in
+    builds without flow-cloud. No `zeroize` dependency (manual volatile wipe), so the
+    Windows lockfile does not change.
+  * flow-cloud does not log at all (no `log`/`tracing`); per-call metadata for the dev page
+    is `CloudBackend::last_call() -> CallInfo { provider_id, adapter, model, requests,
+    bytes, audio_ms, billed_audio_ms, cost_usd, cost_estimated, encode_ms, latency_ms,
+    request_id, error, message }` (no key, headers, bodies or text).
+  * OpenRouter sends no biasing terms in v1 (§7 `provider.options.<slug>.prompt` not
+    wired). Fixtures in `crates/flow-cloud/fixtures/` follow the providers' documented
+    shapes; they are not captured responses (no keys on the dev box).
+* **flow-core** (CR): `AsrRequest` gains `dictionary_terms`, `screen_terms`, `purpose:
+  AsrPurpose { Final, Partial }` (all `Default`; `initial_prompt` unchanged);
+  `FlowCore::cleaner() -> Option<Arc<dyn Cleaner>>`; `RouteInfo` gains `model`,
+  `billed_audio_ms`, `cost_usd: Option<Usd>`, `cost_estimated` (all omitted from JSON when
+  `None`). `flow_core::Usd(pub f64)` is a plain JSON number (newtype only so structs keep
+  `Eq`). Code that builds `RouteInfo { .. }` with every field listed needs `..Default::default()`.
+* **flow-router** (all `#[serde(default)]`, omitted from JSON while default, so every
+  pre-existing fixture is byte-identical):
+  * `RouterConfig.allow_cloud: bool`, `.order: Vec<Route>` (`"server"|"client"|"cloud"`),
+    `.cloud: CloudConfig { active, providers: Vec<CloudProviderConfig>, monthly_budget_usd:
+    Option<Usd> }`; `CloudProviderConfig` = the §8.1 schema exactly (fixture
+    `router_config_cloud.json`). `RouterConfig::validate()` now also rejects duplicate
+    routes in `order` and runs `CloudConfig::validate()` (§8.1 rules; `http://` only for
+    private/tailnet hosts; no credentials in URLs). `CloudProviderConfig::host()`,
+    `consent_ok()` (consent is void once the base URL's host changes), `display_name()`.
+    `RouterConfig::route_order()` follows `order` when set; `route_allowed(Route)`.
+  * `EngineKind::Cloud` (`"cloud"`); `Failure::{CloudNotConfigured, BudgetExceeded,
+    QuotaExceeded, ProviderError}` (`cloud_not_configured`, `budget_exceeded`,
+    `quota_exceeded`, `provider_error`). Both enums were already `#[non_exhaustive]`.
+  * `Router::with_cloud(CloudFactory)`, `with_cloud_adapters(Vec<String>)` (builders; use
+    `flow_cloud::attach` instead), `set_cloud_key(id, Option<SecretString>)`,
+    `has_cloud_key(id)`, `probe_cloud(&CloudProviderConfig, Option<SecretString>) ->
+    HealthReport` (Test provider: transcribes the bundled 3 s JFK clip; `key: None` = the
+    stored key; needs no consent; a success for the active provider closes the cloud
+    circuit), `cloud_usage() -> CloudUsage`, `set_cloud_usage(CloudUsage)` (restore at
+    startup; other months are dropped), `reset_cloud_usage()`, `cloud_capabilities()`.
+    `reset_circuit()` resets both circuits. `set_local()` also drops the cached cloud
+    backend (so it picks up a newly loaded LLM cleaner).
+  * `CloudUsage { month: "YYYY-MM" (UTC), providers: [ProviderUsage { provider_id,
+    requests, billed_audio_ms, cost_usd, cost_estimated }] }` (fixture `cloud_usage.json`).
+    The router counts only cloud results with billed audio (silence is not a request);
+    the shell persists it (`cloud_usage.json` / prefs) after each commit and on exit.
+  * `HealthReport` gains `provider`, `model`, `transcript`, `latency_ms`, `cost_usd`
+    (fixture `health_cloud_ok.json`); `RouteStatus` gains `cloud_circuit:
+    Option<CircuitStatus>` (present only with a cloud factory; fixture
+    `route_status_cloud.json`). `commit_result_cloud.json` shows a cloud `route`.
+* **Behaviour** (proved by `flow-router/tests/cloud_policy.rs`, 29 tests):
+  * C1: the cloud is tried only with a cloud factory **and** `allow_cloud` **and** `cloud`
+    in `order` **and** consent for the active provider's current host **and** a key **and**
+    budget left. Missing consent/key/provider → route skipped with `cloud_not_configured`
+    in `route.fallback`; budget → `budget_exceeded`. `allow_cloud` off or `cloud` not in
+    `order` → silently not a route (no fallback reason). `order: []` = legacy `prefer`
+    policy, never the cloud.
+  * One policy walks the list: the first route that starts is primary; later routes are
+    the fallback chain (up to 2). Any failure (start, mid-session, commit) replays 100 %
+    of the buffered audio into the next route; a route that failed is not retried in the
+    session. `route.fallback` = the primary's failure (later hops keep it).
+    `route.provider`/`model`/`cost_*` are set only when the result came from the cloud.
+  * Cloud circuit: `auth_failed`, `quota_exceeded` → open until the key (`set_cloud_key`)
+    or the active provider config changes; `connect_failed`/`timeout`/`provider_error`
+    → 5 s doubling to 60 s; 429 (`busy`) → 5 s. Like the server circuit it is honoured
+    only when a later route can serve the session (then `circuit_open`).
+  * Cloud commit deadline = `timeout_base_ms + 0.5 × audio + llm_timeout_ms`, ≤ 90 s.
+* **flow-cloud** (new crate, link only in cloud flavours): `flow_cloud::attach(router,
+  cleaner)` or `attach_with(router, || current_cleaner())` (pass the local core's
+  `FlowCore::cleaner()`); `presets() -> Vec<CloudProviderConfig>` (§8.2, no id/consent;
+  the Developer "Add provider" list), `price_per_hour(&p)`, `ADAPTERS`, `TEST_CLIP`.
+  `CloudBackend` forces `partial_interval_ms = None` (pill: "Transcribing via
+  <provider>…", no live preview). Errors are typed (`CloudError` → `Failure`) and carry
+  only the HTTP status and a sanitised provider code.
+* **Build matrix**: `tools/check-build-matrix.sh` now also requires that flow-core,
+  flow-router, flow-ffi `jni,whisper,llm,parakeet` and flow-windows `local,app` contain no
+  `flow-cloud|reqwest|hyper|rustls|webpki`, and that flow-cloud contains no ASR/LLM libs.
+  Two checks wait for the shells' `cloud` feature and SKIP until then: `flow-ffi
+  jni,remote,cloud` and `flow-windows remote,cloud,app` (no ASR/LLM libs). They do not
+  fail `CHECK_BUILD_MATRIX_STRICT=1`; run `CHECK_BUILD_MATRIX_STRICT_CLOUD=1` after the
+  W/A cloud merges.
+
+### What A needs (flow-ffi + Android)
+
+* `crates/flow-ffi/Cargo.toml`: `cloud = ["dep:flow-cloud"]`, `flow-cloud = { path =
+  "../flow-cloud", optional = true }`. Enable it in `tools/build-native.sh --flavor hybrid`
+  and `--flavor remote` only (never `local`; the gate above enforces it). flow-cloud uses
+  rustls + webpki-roots (no OpenSSL), so the NDK build needs nothing new; `ring` needs
+  the NDK clang already used for whisper.
+* `new_router`: under `#[cfg(feature = "cloud")]`, `flow_cloud::attach_with(router, move
+  || local_core.cleaner())` (the `FlowCore` passed to `flow_open_router`, if any).
+* New C ABI (same conventions: JSON strings, `flow_string_free`, never panics):
+
+| C | JNI (`NativeFlowCore`, static) | Semantics |
+|---|---|---|
+| `int flow_set_cloud_key(FlowHandle*, const char* provider_id, const char* key_or_null)` | `nativeSetCloudKey(h: Long, providerId: String, key: String?): Boolean` | `Router::set_cloud_key`; `null`/empty = forget. Call at startup for every stored provider and on Save/Delete. `-1`/`false` + kind `error` for a core handle. Zero the Java/C copies after the call where possible; never log the arguments |
+| `char* flow_probe_cloud(FlowHandle*, const char* provider_json, const char* key_or_null)` | `nativeProbeCloud(h: Long, providerJson: String, key: String?): String` | Blocking `HealthReport` JSON (Test provider) for an unsaved `CloudProviderConfig`; `key` null = stored key. `h = 0` allowed (uses a temporary router: then a key is required). Without feature `cloud`: `ok:false, error:"cloud_not_configured"` |
+| `char* flow_cloud_usage(FlowHandle*)` | `nativeCloudUsage(h: Long): String` | `CloudUsage` JSON (persist it after each commit) |
+| `int flow_set_cloud_usage(FlowHandle*, const char* usage_json)` | `nativeSetCloudUsage(h: Long, usageJson: String): Boolean` | Restore persisted counters at router open |
+| `void flow_reset_cloud_usage(FlowHandle*)` | `nativeResetCloudUsage(h: Long)` | Developer "Reset counters" |
+| `char* flow_cloud_capabilities(void)` | `nativeCloudCapabilities(): String` | `CloudCapabilities` JSON of this build (`cloud:false, adapters:[]` without the feature); must match a new `BuildConfig.CAP_CLOUD` |
+| `char* flow_cloud_presets(void)` | `nativeCloudPresets(): String` | `presets()` as a JSON array (`[]` without the feature) |
+
+* Existing natives need no signature change: `nativeOpenRouter` / `nativeUpdateRouter`
+  accept the cloud fields in the config JSON; `nativeRouteStatus` returns `cloud_circuit`;
+  `nativeCommit`'s `route` may be `engine:"cloud"` with `provider`, `model`,
+  `billed_audio_ms`, `cost_usd`, `cost_estimated`. New error kind strings on
+  `route.fallback`: the four `Failure` values above.
+* Kotlin: `DevSettings.cloud` ↔ `RouterConfig.cloud`/`allow_cloud`/`order` (must
+  serialise to `router_config_cloud.json` exactly; the existing four fixtures are
+  unchanged); `SecretVault("flow_cloud_<id>")`; consent dialog writes `consent_host` =
+  host of `base_url` and `consent_at_ms`; changing the base URL host or the adapter clears
+  both (the router also refuses a stale consent). Bubble badge `C` when
+  `route.engine == "cloud"`. Hide the section when `CloudCapabilities.cloud` is false.
+
+### What W needs (Windows)
+
+* `apps/flow-windows/Cargo.toml`: feature `cloud = ["dep:flow-cloud"]` (default set
+  becomes `local,remote,tls,cloud`); `local,app` must stay without it. Update the MSVC
+  cross-check loop with a `app,local-engine,remote,cloud` flavour (rustls/ring cross-check
+  like flow-remote's `tls`). The Windows `Cargo.lock` gains reqwest/flacenc.
+* Router construction: `flow_cloud::attach_with(router, move || adapter.cleaner())` where
+  `adapter.cleaner()` returns the loaded core's `FlowCore::cleaner()`; keep calling
+  `Router::set_local` after the two-phase LLM load (that rebuilds the cloud backend with
+  the cleaner).
+* Keys: `CredentialStore` → Credential Manager `flow-clone/cloud/<id>`; at startup call
+  `set_cloud_key(id, Some(SecretString::new(secret)))` for each provider; on Save/Delete
+  likewise (`None` to forget). Never put keys in `prefs.json`, Tauri events or logs.
+* Tauri commands (§8.3) map 1:1: `dev_cloud_test` → `probe_cloud(&form, key_from_form)`,
+  `dev_cloud_set_key` / `dev_cloud_clear_key` → `set_cloud_key`, `dev_cloud_usage` →
+  `cloud_usage()` (persist to `cloud_usage.json`; restore with `set_cloud_usage` at
+  start), plus `dev_cloud_presets` → `flow_cloud::presets()` and
+  `cloud_capabilities()` for showing the section.
+* Prefs `developer.cloud` + `allow_cloud` + `order` must serialise to
+  `router_config_cloud.json` exactly. The engine row: `cloud · <provider> · <model> ·
+  $<cost_usd>` (`≈` when `cost_estimated`); overlay badge `C` whenever
+  `route.engine == "cloud"`; a cloud failure message from `route.fallback`
+  (`auth_failed` → "key rejected", `quota_exceeded` → "out of credits",
+  `connect_failed` → "no internet / base URL wrong", `budget_exceeded` → "monthly budget
+  reached", `cloud_not_configured` → "set a key and accept the consent").

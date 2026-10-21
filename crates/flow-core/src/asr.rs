@@ -34,12 +34,50 @@ impl PartialEq for AbortFlag {
 }
 impl Eq for AbortFlag {}
 
+/// Why the core asks for a transcript (cloud engines refuse partials).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AsrPurpose {
+    /// The utterance at commit.
+    #[default]
+    Final,
+    /// A best-effort live preview while recording.
+    Partial,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AsrRequest {
     pub initial_prompt: String,
     /// `None` = auto-detect.
     pub language: Option<String>,
     pub abort: AbortFlag,
+    /// Dictionary vocabulary only (no snippets), trimmed, deduplicated
+    /// case-insensitively, original order. For engines with a structured
+    /// biasing field (cloud keyterms); local engines use `initial_prompt`.
+    pub dictionary_terms: Vec<String>,
+    /// On-screen words, same rules (minus anything already in
+    /// `dictionary_terms`). Cloud engines send them only when the user
+    /// opted in.
+    pub screen_terms: Vec<String>,
+    pub purpose: AsrPurpose,
+}
+
+/// Trimmed, non-empty, case-insensitively deduplicated terms in order;
+/// terms already in `seen` (lowercased) are skipped and added to it.
+pub fn dedupe_terms<'a>(
+    terms: impl IntoIterator<Item = &'a str>,
+    seen: &mut Vec<String>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for t in terms {
+        let t = t.trim();
+        let k = t.to_lowercase();
+        if t.is_empty() || seen.contains(&k) {
+            continue;
+        }
+        seen.push(k);
+        out.push(t.to_string());
+    }
+    out
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -192,6 +230,15 @@ mod tests {
         assert_eq!(m.calls(), 1);
         let silent = m.transcribe(&[0.0; 1600], &AsrRequest::default()).unwrap();
         assert_eq!(silent.text, "");
+    }
+
+    #[test]
+    fn dedupe_terms_keeps_order_and_skips_seen() {
+        let mut seen = Vec::new();
+        let d = dedupe_terms(["Kubernetes", " wispr ", "", "kubernetes"], &mut seen);
+        assert_eq!(d, ["Kubernetes", "wispr"]);
+        let s = dedupe_terms(["Alice", "WISPR"], &mut seen);
+        assert_eq!(s, ["Alice"]);
     }
 
     #[test]

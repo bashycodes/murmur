@@ -1,0 +1,12 @@
+{
+  "month": "2026-10",
+  "providers": [
+    {
+      "billed_audio_ms": 312000,
+      "cost_estimated": false,
+      "cost_usd": 0.0234,
+      "provider_id": "openrouter-1",
+      "requests": 42
+    }
+  ]
+}

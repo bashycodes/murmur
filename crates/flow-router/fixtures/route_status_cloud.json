@@ -1,0 +1,23 @@
+{
+  "circuit": {
+    "open": false,
+    "reason": null,
+    "retry_in_ms": null,
+    "until_config_change": false
+  },
+  "cloud_circuit": {
+    "open": true,
+    "reason": "auth_failed",
+    "retry_in_ms": null,
+    "until_config_change": true
+  },
+  "health": null,
+  "last": {
+    "engine": "local",
+    "fallback": "auth_failed",
+    "queue_ms": null,
+    "rtt_ms": null,
+    "server": null,
+    "server_core": null
+  }
+}

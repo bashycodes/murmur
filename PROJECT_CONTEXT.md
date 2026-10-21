@@ -16,8 +16,9 @@ crates/
   flow-protocol/    hybrid wire protocol v1 types + golden fixtures (D17; spec docs/protocol.md)
   flow-router/      Router: the §9 API over local FlowCore + injected remote backend; policy, buffer replay, circuit breaker (no network code)
   flow-remote/      RemoteBackend: WebSocket client of flow-server (the only client-side network code; feature `tls`)
+  flow-cloud/       opt-in third-party cloud STT (D18): CloudAsr/CloudBackend + 5 provider adapters over HTTPS (reqwest/rustls); linked only into cloud flavours
   flow-server/      self-hosted server: unmodified FlowCore per session, bearer auth, worker pool, systemd unit in dist/
-  flow-contract-tests/  equivalence (local vs server), toggle matrix, build matrix, TLS
+  flow-contract-tests/  equivalence (local vs server / mock cloud), toggle matrix, build matrix, TLS, key-leak
 apps/
   flow-windows/     Tauri 2 shell (own cargo workspace; MSVC cross-check shims in tools/check-shims)
   flow-android/     Kotlin shell (Gradle; JNI contract JNI_CONTRACT.md, install guide INSTALL.md)
@@ -29,6 +30,7 @@ tools/              fetch-models.sh, build-android-parakeet.sh, probes/
 
 * Core: `cargo test --workspace`. Full: `BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include" SHERPA_ONNX_LIB_DIR=<sherpa-onnx lib dir> cargo test --workspace --all-features` and `cargo clippy --workspace --all-targets --all-features -- -D warnings` (llama-cpp-sys-2 needs the BINDGEN flag even for the default build on this box). Real-model tests skip without `models/` (`tools/fetch-models.sh [--llm] [--parakeet]`).
 * Hybrid (D17): `cargo test -p flow-contract-tests` (+ `--all-features` with `FLOW_MODELS_DIR`/`FLOW_PARAKEET_DIR` for real-model equivalence); `tools/check-build-matrix.sh`; end-to-end smoke with a real server: `tools/probes/hybrid_smoke/run.sh` (PARAKEET_DIR, AUDIO_DIR).
+* Cloud STT (D18): `cargo test -p flow-cloud -p flow-router -p flow-contract-tests` (mock HTTP; no keys needed). Live provider smoke: `FLOW_CLOUD_LIVE_<OPENROUTER|ELEVENLABS|GROQ|OPENAI|DEEPGRAM|ASSEMBLYAI>_KEY=… cargo test -p flow-cloud --test live_smoke -- --nocapture` (skips without keys; costs money).
 * Windows shell: `cd apps/flow-windows && cargo test` (184: 171 lib + 13 integration), plus the MSVC clippy cross-check in its README.
 * Android shell: `cd apps/flow-android && ANDROID_HOME=~/Android/Sdk ./gradlew testDebugUnitTest assembleDebug` (Gradle daemon on JDK 21): 238 JVM tests, 9 gated skips.
 
@@ -83,6 +85,19 @@ Spec `docs/hybrid-architecture.md`, protocol `docs/protocol.md`. Both shells use
 | Merged tree green (2026-10-22): root `cargo test --workspace` 274 passed (285 with `--all-features` + models), clippy `-D warnings`; Windows 229 tests + clippy + MSVC cross-clippy for 4 flavours; Android `testLocal/Hybrid/RemoteDebugUnitTest` 297 each (10 gated skips) + `assembleDebug`. APKs with natives: local 41.4 MB, hybrid 43.6 MB, remote 9.9 MB | see How to verify |
 | Real server on this box (release, Parakeet, 127.0.0.1, token): 10 LibriSpeech clips, text identical to local 10/10, commit→result mean 1666 ms via server vs 1687 ms local on the same CPU; overhead beyond ASR median 3 ms | `tools/probes/hybrid_smoke/run.sh`, `docs/model-benchmarks.md` "Hybrid" |
 
+### Opt-in cloud STT (D18; branch `cloud-core`, core/router side only)
+Spec `docs/cloud-stt.md` (shell API: its "Changelog for shells"). Shells (W/A) have not adopted it; no live provider has been called (no keys on this box), so DoD 2-4 are open.
+
+| Capability | Proof (test) |
+|---|---|
+| C1: cloud used only with build support + `allow_cloud` + `cloud` in `order` + consent for the provider's current host + key + budget; order walking (cloud,client / server,cloud,client / client,cloud), 3-hop chains replay 100 % of samples, cloud circuit (auth/quota sticky until key/provider change, backoff), per-month usage + budget, `order: []` = unchanged D17 policy | `flow-router/tests/cloud_policy.rs` (29, fake backends); all 27 legacy `policy.rs` + 20 toggle-matrix tests unchanged |
+| Five adapters' wire contracts against a mock HTTP server: openai_compat (whisper / gpt_transcribe dialects), openrouter (JSON base64, zdr, reported cost, 55 s chunking), elevenlabs (raw PCM, keyterms), deepgram (keyterm query, mip_opt_out), assemblyai (upload/create/poll/delete); full status mapping 401/402/403/413/422/429(+Retry-After)/5xx/timeout/refused/malformed with the one-retry rules | `flow-cloud/tests/contract_*.rs` |
+| C5/C6: provider text runs through the local pipeline identically to a local engine for every mock session fixture; silence never uploaded; no upload before commit (partials refused); FLAC bit-exact | `flow-contract-tests/tests/equivalence.rs::equivalence_cloud_mock_http`, `flow-cloud/tests/{session,encode}.rs` |
+| Real client/server/provider matrix: provider 401 → local with all samples and sticky; 500 → local; server down → cloud; server killed mid-session → provider receives every buffered sample; provider unreachable → local | `flow-contract-tests/tests/toggle_matrix.rs::matrix_cloud_*` |
+| C3/C4: sentinel key absent from config JSON/Debug, route status, health, capabilities, usage, results and errors of every failure path (incl. a provider echoing the key) and from every flow-protocol frame sent to flow-server | `flow-contract-tests/tests/no_key_leak.rs` |
+| C2: client-only flavours (flow-ffi local, flow-windows `local,app`), flow-core and flow-router contain no cloud client stack; flow-cloud no ASR/LLM libs | `tools/check-build-matrix.sh` (+ `build_matrix.rs`); shell `cloud` flavour checks SKIP until W/A add the feature |
+| Branch green (2026-10-22): root `cargo test --workspace` 389 passed (400 with `--all-features` + models; was 274/285), clippy `-D warnings`, fmt; strict build matrix ok (2 cloud checks pending); Windows 229 tests + clippy + MSVC cross-clippy unchanged | see How to verify |
+
 ### Windows shell (`apps/flow-windows`)
 Wired to the real core (from branch `win-p1`) and the hybrid router (`hybrid-windows`: features `local`/`remote`/`tls`, Developer tab). Proof = `cd apps/flow-windows && cargo test` (229 tests; the real-model ones skip without `models/` / the plugin).
 
@@ -121,7 +136,7 @@ Wired on Android, unverified on a device: snooze target + notification undo, sha
 
 ## Outstanding work — priority order
 **Active work:** hybrid local/server ASR (D17), spec in `docs/hybrid-architecture.md`. Server/client stack and both shells merged into `integration`, strict build matrix green; remaining: install the systemd unit on the i7-6700 (user action) and test Windows/Android over Tailscale (§6.4 DoD 2-4).
-**Next:** opt-in cloud STT — docs/cloud-stt.md (D18; starts after hybrid-* branches merge; design hooks in the hybrid doc's Changelog for shells)
+**Next:** opt-in cloud STT — docs/cloud-stt.md (D18). Core/router side done on `cloud-core` (see What works); remaining: W `cloud-windows` and A `cloud-android` per its "Changelog for shells", then `CHECK_BUILD_MATRIX_STRICT_CLOUD=1`, then live smoke with real keys (user action: provide OpenRouter / ElevenLabs / Groq keys).
 1. **Core gaps** (the core itself is done; see What works):
    * Shells adopt the core-p1 API per core-architecture "Changelog for shells": paste `segments` instead of acting on `press_enter`, `plain_text` in history, `empty_reason` ("no speech heard"), typed load errors (Windows can drop its `is_file()` pre-check), optional `spoken_cleanup` pref. Both shells build and pass against the merged core (Windows needed only a `..Default` and a test fix); adoption itself is not done.
    * LLM latency on CPU: prefill-ahead is in; generation (≈ 25 tokens at 5-16 tok/s here) now dominates, so 1.5B misses the 1.5 s budget about half the time. Levers left: a LoRA on (raw → formatted) pairs for 0.5B (03 §7.5); `audio_ctx` for whisper with a repetition guard (benchmark: small 1.8× faster); Parakeet (D12) as the faster English engine. Shells must ship `libflow_llm` next to the exe (Windows) / in jniLibs (Android: packaged, host-JVM-proven, not yet loaded on bionic).

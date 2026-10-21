@@ -211,7 +211,7 @@ fn route_info_round_trips_and_old_json_still_parses() {
         rtt_ms: Some(4),
         queue_ms: Some(0),
         server_core: Some("0.1.0".into()),
-        provider: None,
+        ..Default::default()
     });
     let j = serde_json::to_string(&r).unwrap();
     let back: flow_core::CommitResult = serde_json::from_str(&j).unwrap();
@@ -227,4 +227,124 @@ fn route_info_round_trips_and_old_json_still_parses() {
 fn postprocess_rev_and_version_are_exposed() {
     assert!(!flow_core::POSTPROCESS_REV.is_empty());
     assert_eq!(flow_core::VERSION, env!("CARGO_PKG_VERSION"));
+}
+
+// ---- D18 (cloud STT) additions -------------------------------------------
+
+/// Records every request; answers "x".
+struct Spy(std::sync::Mutex<Vec<flow_core::asr::AsrRequest>>);
+impl flow_core::asr::AsrEngine for Spy {
+    fn transcribe(
+        &self,
+        _pcm: &[f32],
+        req: &flow_core::asr::AsrRequest,
+    ) -> Result<flow_core::asr::AsrOutput, flow_core::asr::AsrError> {
+        self.0.lock().unwrap().push(req.clone());
+        Ok(flow_core::asr::AsrOutput {
+            text: "x".into(),
+            ..Default::default()
+        })
+    }
+}
+
+#[test]
+fn asr_request_carries_dictionary_and_screen_terms_separately() {
+    use flow_core::asr::AsrPurpose;
+    use flow_core::dictionary::{DictEntry, Dictionary};
+    let spy = Arc::new(Spy(Default::default()));
+    let core = FlowCore::from_engines(spy.clone(), None);
+    let cfg = SessionConfig {
+        dictionary: Dictionary {
+            entries: vec![
+                DictEntry::word("Kubernetes"),
+                DictEntry::replacement("wispr", "Wispr"),
+                DictEntry::word("kubernetes"),
+            ],
+        },
+        ..Default::default()
+    };
+    core.start_session(cfg).unwrap();
+    core.set_context(FieldContext {
+        screen_words: vec!["Alice".into(), "WISPR".into(), " ".into()],
+        ..Default::default()
+    });
+    core.push_audio(&speech(300));
+    core.commit();
+    let reqs = spy.0.lock().unwrap();
+    let req = reqs.last().unwrap();
+    assert_eq!(req.dictionary_terms, ["Kubernetes", "Wispr"]);
+    assert_eq!(req.screen_terms, ["Alice"]);
+    assert_eq!(req.purpose, AsrPurpose::Final);
+    // The whisper prompt is unchanged.
+    assert_eq!(req.initial_prompt, "Kubernetes, Wispr, Alice.");
+}
+
+#[test]
+fn partial_requests_are_marked_partial() {
+    use flow_core::asr::AsrPurpose;
+    let spy = Arc::new(Spy(Default::default()));
+    let core = FlowCore::from_engines(spy.clone(), None);
+    core.start_session(SessionConfig {
+        partial_interval_ms: Some(100),
+        ..Default::default()
+    })
+    .unwrap();
+    for c in speech(1000).chunks(1600) {
+        core.push_audio(c);
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while core.partial().is_none() && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    core.commit();
+    let reqs = spy.0.lock().unwrap();
+    assert!(reqs.iter().any(|r| r.purpose == AsrPurpose::Partial));
+    assert_eq!(reqs.last().unwrap().purpose, AsrPurpose::Final);
+}
+
+#[test]
+fn cleaner_accessor_returns_the_shared_cleaner() {
+    struct C;
+    impl flow_core::cleanup::Cleaner for C {
+        fn clean(
+            &self,
+            _p: &flow_core::cleanup::CleanPrompt,
+            _d: std::time::Instant,
+        ) -> Result<String, flow_core::cleanup::CleanError> {
+            Ok(String::new())
+        }
+    }
+    let c: Arc<dyn flow_core::cleanup::Cleaner> = Arc::new(C);
+    let core = FlowCore::from_engines(Arc::new(MockAsr::new("x")), Some(c.clone()));
+    assert!(Arc::ptr_eq(&core.cleaner().unwrap(), &c));
+    let bare = FlowCore::from_engines(Arc::new(MockAsr::new("x")), None);
+    assert!(bare.cleaner().is_none());
+}
+
+#[test]
+fn route_info_cloud_fields_round_trip_and_are_omitted_when_none() {
+    let r = flow_core::RouteInfo {
+        engine: "cloud".into(),
+        provider: Some("openrouter-1".into()),
+        model: Some("openai/gpt-transcribe".into()),
+        billed_audio_ms: Some(3200),
+        cost_usd: Some(flow_core::Usd(0.00024)),
+        cost_estimated: Some(false),
+        ..Default::default()
+    };
+    let j = serde_json::to_value(&r).unwrap();
+    assert_eq!(j["cost_usd"], serde_json::json!(0.00024));
+    assert_eq!(j["billed_audio_ms"], 3200);
+    let back: flow_core::RouteInfo = serde_json::from_value(j).unwrap();
+    assert_eq!(back, r);
+    let local = serde_json::to_value(flow_core::RouteInfo::default()).unwrap();
+    for k in [
+        "provider",
+        "model",
+        "billed_audio_ms",
+        "cost_usd",
+        "cost_estimated",
+    ] {
+        assert!(local.get(k).is_none(), "{k} must be omitted: {local}");
+    }
 }
