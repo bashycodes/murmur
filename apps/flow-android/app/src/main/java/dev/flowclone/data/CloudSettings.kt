@@ -561,15 +561,28 @@ object CloudKeyPolicy {
 
     sealed interface TestKey {
         data class Use(val key: String) : TestKey
+        /** Keyless self-hosted server: send no key at all (the router adds no Authorization header). */
+        data object Keyless : TestKey
         data class Missing(val message: String) : TestKey
     }
+
+    /**
+     * Router `keyless_ok` (crates-final, review P3): a `custom`-preset openai_compat provider on a
+     * loopback / LAN / Tailscale host may run without an API key. Named presets, public hosts
+     * and other adapters always need one.
+     */
+    fun keylessOk(p: CloudProvider): Boolean =
+        p.preset == "custom" && p.adapter == "openai_compat" && p.host.isNotEmpty() && HostRules.plaintextOk(p.host)
 
     /** "Test provider": the typed key, else the stored key only when the form still has the saved host + adapter. */
     fun testKey(saved: CloudProvider?, form: CloudProvider, typed: String?, stored: String?): TestKey {
         typed?.trim()?.takeIf { it.isNotEmpty() }?.let { return TestKey.Use(it) }
-        if (saved == null || stored.isNullOrEmpty()) return TestKey.Missing("Paste an API key first.")
-        if (bindingChanged(saved, form)) return TestKey.Missing("Host or adapter changed: $NEED_KEY.")
-        return TestKey.Use(stored)
+        val haveStored = saved != null && !stored.isNullOrEmpty()
+        if (haveStored && !bindingChanged(saved, form)) return TestKey.Use(stored!!)
+        // A key stored for another host is never replaced by "no key" silently: ask for it.
+        if (haveStored) return TestKey.Missing("Host or adapter changed: $NEED_KEY.")
+        if (keylessOk(form)) return TestKey.Keyless
+        return TestKey.Missing("Paste an API key first.")
     }
 
     /** What Save does with the keys. */

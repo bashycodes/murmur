@@ -209,6 +209,7 @@ class CloudProviderActivity : Activity() {
         val k = when (val t = CloudKeyPolicy.testKey(saved, p, key.text.toString(), app.cloudKeys.get(p.id))) {
             is CloudKeyPolicy.TestKey.Missing -> { testLine.text = t.message; return }
             is CloudKeyPolicy.TestKey.Use -> t.key
+            CloudKeyPolicy.TestKey.Keyless -> null // the router sends no Authorization header
         }
         testLine.text = "Testing ${p.displayName} (${p.host})…"
         testLine.setTextColor(currentTextColor())
