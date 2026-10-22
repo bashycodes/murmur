@@ -8,7 +8,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex, PoisonError};
+use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
@@ -322,6 +322,22 @@ pub struct Router {
     cloud_factory: Option<CloudFactory>,
 }
 
+/// `lock()` that survives a panic in a backend or factory called under
+/// the lock (review C8): without it one panic poisons the mutex and every
+/// later call panics too (the FFI turns that into a dead router).
+trait LockExt<T> {
+    fn lk(&self) -> MutexGuard<'_, T>;
+}
+
+impl<T> LockExt<T> for Mutex<T> {
+    fn lk(&self) -> MutexGuard<'_, T> {
+        self.lock().unwrap_or_else(|e| {
+            self.clear_poison();
+            e.into_inner()
+        })
+    }
+}
+
 fn error_result(msg: impl Into<String>, route: Option<RouteInfo>) -> CommitResult {
     let mut r: CommitResult = serde_json::from_str(
         r#"{"status":"ERROR","asr_text":"","final_text":"","language":null,"timings":{"audio_ms":0,"asr_ms":0,"llm_ms":0,"postprocess_ms":0,"total_ms":0,"dropped_samples":0},"press_enter":false,"fallback_reason":null,"truncated":false,"error":null}"#,
@@ -379,14 +395,14 @@ impl Router {
     /// loaded (`capabilities().local`, the `allow_client` gate). Default:
     /// whether a local backend was given to `new` / `set_local`. Additive.
     pub fn with_local_capability(self, yes: bool) -> Self {
-        self.state.lock().unwrap().local_capable = yes;
+        self.state.lk().local_capable = yes;
         self
     }
 
     /// Local ASR engines / LLM for `capabilities()`. Additive.
     pub fn with_local_info(self, asr_engines: Vec<String>, llm: bool) -> Self {
         {
-            let mut st = self.state.lock().unwrap();
+            let mut st = self.state.lk();
             st.asr_engines = asr_engines;
             st.llm = llm;
         }
@@ -403,7 +419,7 @@ impl Router {
 
     /// Cloud adapters for `capabilities().cloud_adapters`. Additive.
     pub fn with_cloud_adapters(self, adapters: Vec<String>) -> Self {
-        self.state.lock().unwrap().cloud_adapters = adapters;
+        self.state.lk().cloud_adapters = adapters;
         self
     }
 
@@ -414,7 +430,7 @@ impl Router {
     /// drops the cached remote backend and resets the circuit; a changed
     /// active cloud provider does the same for the cloud route.
     pub fn update_config(&self, cfg: RouterConfig) {
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.state.lk();
         if st.cfg.server != cfg.server {
             st.remote = None;
             st.circuit = Circuit::new(false);
@@ -441,7 +457,7 @@ impl Router {
     /// is in the config, it binds to the first saved one.
     pub fn set_cloud_key(&self, provider_id: &str, key: Option<SecretString>) {
         let bound = {
-            let st = self.state.lock().unwrap();
+            let st = self.state.lk();
             st.cfg
                 .cloud
                 .providers
@@ -464,7 +480,7 @@ impl Router {
         key: Option<SecretString>,
         bound: Option<(String, String)>,
     ) {
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.state.lk();
         match key.filter(|k| !k.is_empty()) {
             Some(key) => {
                 st.cloud_keys
@@ -487,8 +503,7 @@ impl Router {
     /// Whether a key is set for `provider_id` (Developer page). Additive.
     pub fn has_cloud_key(&self, provider_id: &str) -> bool {
         self.state
-            .lock()
-            .unwrap()
+            .lk()
             .cloud_keys
             .get(provider_id)
             .is_some_and(|k| !k.key.is_empty())
@@ -496,7 +511,7 @@ impl Router {
 
     /// This month's cloud counters (the shell persists them). Additive.
     pub fn cloud_usage(&self) -> CloudUsage {
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.state.lk();
         st.cloud_usage.roll(&month_of(now_unix_ms()));
         st.cloud_usage.clone()
     }
@@ -505,12 +520,12 @@ impl Router {
     /// dropped. Additive.
     pub fn set_cloud_usage(&self, mut usage: CloudUsage) {
         usage.roll(&month_of(now_unix_ms()));
-        self.state.lock().unwrap().cloud_usage = usage;
+        self.state.lk().cloud_usage = usage;
     }
 
     /// Developer "Reset counters". Additive.
     pub fn reset_cloud_usage(&self) {
-        self.state.lock().unwrap().cloud_usage = CloudUsage {
+        self.state.lk().cloud_usage = CloudUsage {
             month: month_of(now_unix_ms()),
             providers: Vec::new(),
         };
@@ -520,7 +535,7 @@ impl Router {
     /// cached cloud backend, which shares the local LLM cleaner, so the next
     /// cloud session is built with the current one.
     pub fn set_local(&self, local: Option<Arc<dyn Backend>>) {
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.state.lk();
         st.cloud = None;
         if local.is_some() {
             st.local_capable = true;
@@ -529,11 +544,11 @@ impl Router {
     }
 
     pub fn config(&self) -> RouterConfig {
-        self.state.lock().unwrap().cfg.clone()
+        self.state.lk().cfg.clone()
     }
 
     pub fn capabilities(&self) -> Capabilities {
-        let st = self.state.lock().unwrap();
+        let st = self.state.lk();
         Capabilities {
             local: st.local_capable,
             remote: self.remote_factory.is_some(),
@@ -546,7 +561,7 @@ impl Router {
 
     /// Cloud STT support of this build (D18). Additive.
     pub fn cloud_capabilities(&self) -> CloudCapabilities {
-        let st = self.state.lock().unwrap();
+        let st = self.state.lk();
         let cloud = self.cloud_factory.is_some();
         CloudCapabilities {
             cloud,
@@ -571,11 +586,11 @@ impl Router {
     pub fn start_session_info(&self, cfg: SessionConfig) -> Result<StartInfo, RouterError> {
         // One start at a time: a concurrent start must see (and cancel) the
         // session this one installs, never overwrite it (review C7).
-        let _starting = self.starting.lock().unwrap_or_else(PoisonError::into_inner);
+        let _starting = self.starting.lk();
         // Only the open session: a commit still running for the previous
         // dictation (hands-free back-to-back) is not aborted.
         self.cancel_session();
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.state.lk();
         st.last_dictionary = cfg.dictionary.clone();
         let (active, res) = self.start_routes(&mut st, cfg);
         drop(st);
@@ -583,20 +598,41 @@ impl Router {
             queued,
             route: active.live_route(),
         });
-        *self.session.lock().unwrap() = Some(active);
+        *self.session() = Some(active);
         res
+    }
+
+    /// The open session. After a panic under this lock the session may be
+    /// half-updated: it is cancelled and dropped (review C8).
+    fn session(&self) -> MutexGuard<'_, Option<Active>> {
+        match self.session.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                self.session.clear_poison();
+                let mut g = e.into_inner();
+                if let Some(mut a) = g.take() {
+                    if let Some(sw) = a.switching.take() {
+                        sw.cancel.store(true, Ordering::SeqCst);
+                    }
+                    if let Some(e) = a.engine.take() {
+                        e.cancel();
+                    }
+                }
+                g
+            }
+        }
     }
 
     /// The route the live session uses now (changes when a mid-session
     /// failure switches route); `None` without a live session. Additive.
     pub fn session_route(&self) -> Option<SessionRoute> {
-        self.session.lock().unwrap().as_ref()?.live_route()
+        self.session().as_ref()?.live_route()
     }
 
     /// Never blocks on the network: a failover found here connects on a
     /// helper thread while the audio keeps being buffered (review C3).
     pub fn push_audio(&self, pcm: &[i16]) -> bool {
-        let mut g = self.session.lock().unwrap();
+        let mut g = self.session();
         let Some(a) = g.as_mut() else { return false };
         if let Some(ep) = a.endpointer.as_mut() {
             ep.push_i16(pcm);
@@ -632,7 +668,7 @@ impl Router {
     }
 
     pub fn set_context(&self, ctx: FieldContext) {
-        let mut g = self.session.lock().unwrap();
+        let mut g = self.session();
         let Some(a) = g.as_mut() else { return };
         if a.switching.is_some() {
             self.poll_switch(a, false);
@@ -644,14 +680,14 @@ impl Router {
     }
 
     pub fn partial(&self) -> Option<String> {
-        let g = self.session.lock().unwrap();
+        let g = self.session();
         g.as_ref()?.engine.as_ref()?.partial()
     }
 
     /// Hands-free endpoint state of the active session (D19), when
     /// `endpoint_silence_ms` is set. Same on every route.
     pub fn endpoint(&self) -> Option<EndpointState> {
-        let g = self.session.lock().unwrap();
+        let g = self.session();
         g.as_ref()?.endpointer.as_ref().map(Endpointer::state)
     }
 
@@ -663,7 +699,7 @@ impl Router {
     /// one call. Poll it on the partial timer: `route` changes when a
     /// mid-session failure switches route (e.g. server dies → local).
     pub fn poll(&self) -> RouterPoll {
-        let mut g = self.session.lock().unwrap();
+        let mut g = self.session();
         let Some(a) = g.as_mut() else {
             return RouterPoll::default();
         };
@@ -682,12 +718,12 @@ impl Router {
     /// while this blocks returns at once with ERROR `cancelled` (the engine
     /// is told to abort; no fallback is tried; review C4).
     pub fn commit(&self) -> CommitResult {
-        let Some(mut a) = self.session.lock().unwrap().take() else {
+        let Some(mut a) = self.session().take() else {
             return error_result("no active session", None);
         };
         let (tx, rx) = mpsc::channel();
         let cancelled = Arc::new(AtomicBool::new(false));
-        *self.committing.lock().unwrap() = Some(CommitCtl {
+        *self.committing.lk() = Some(CommitCtl {
             cancelled: cancelled.clone(),
             engine: None,
             wake: tx.clone(),
@@ -701,7 +737,7 @@ impl Router {
         }
         {
             // Only our own slot: a later session's commit may have replaced it.
-            let mut g = self.committing.lock().unwrap();
+            let mut g = self.committing.lk();
             if g.as_ref()
                 .is_some_and(|c| Arc::ptr_eq(&c.cancelled, &cancelled))
             {
@@ -713,7 +749,7 @@ impl Router {
                 sw.cancel.store(true, Ordering::SeqCst);
             }
         }
-        self.state.lock().unwrap().last_route = r.route.clone();
+        self.state.lk().last_route = r.route.clone();
         r
     }
 
@@ -723,7 +759,7 @@ impl Router {
         if self.cancel_session() {
             return;
         }
-        if let Some(c) = self.committing.lock().unwrap().as_ref() {
+        if let Some(c) = self.committing.lk().as_ref() {
             c.cancelled.store(true, Ordering::SeqCst);
             if let Some(e) = &c.engine {
                 e.cancel();
@@ -734,7 +770,7 @@ impl Router {
 
     /// Drop the open session (not a running commit). True if there was one.
     fn cancel_session(&self) -> bool {
-        let Some(mut a) = self.session.lock().unwrap().take() else {
+        let Some(mut a) = self.session().take() else {
             return false;
         };
         if let Some(sw) = a.switching.take() {
@@ -748,7 +784,7 @@ impl Router {
 
     /// Always local and model-free: same answer in every build.
     pub fn learn_edit(&self, pasted: &str, edited: &str) -> Vec<Candidate> {
-        let st = self.state.lock().unwrap();
+        let st = self.state.lk();
         flow_core::learn::learn_edit(pasted, edited, &st.last_dictionary)
     }
 
@@ -756,7 +792,7 @@ impl Router {
     /// connection"). Never panics; failures come back in the report.
     pub fn probe_server(&self) -> HealthReport {
         let (server, backend) = {
-            let mut st = self.state.lock().unwrap();
+            let mut st = self.state.lk();
             let server = st.cfg.server.clone();
             if self.remote_factory.is_none() {
                 return HealthReport::failed(
@@ -777,7 +813,7 @@ impl Router {
         };
         let mut h = backend.probe();
         h.server.get_or_insert_with(|| server.addr());
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.state.lk();
         if st.cfg.server == server {
             if h.ok {
                 st.circuit = Circuit::new(false);
@@ -836,7 +872,7 @@ impl Router {
             return fail(Failure::CloudNotConfigured, &e);
         }
         let typed = key.filter(|k| !k.is_empty());
-        let key = typed.or_else(|| self.state.lock().unwrap().key_for(p));
+        let key = typed.or_else(|| self.state.lk().key_for(p));
         let Some(key) = key.filter(|k| !k.is_empty()) else {
             let stored = self.has_cloud_key(&p.id);
             let msg = if stored {
@@ -850,7 +886,7 @@ impl Router {
         h.engine = EngineKind::Cloud;
         h.provider.get_or_insert_with(|| p.id.clone());
         h.model.get_or_insert_with(|| p.model.clone());
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.state.lk();
         if st.cfg.cloud.active_provider() == Some(p) {
             if h.ok {
                 st.cloud_circuit = Circuit::new(true);
@@ -862,7 +898,7 @@ impl Router {
     }
 
     pub fn route_status(&self) -> RouteStatus {
-        let st = self.state.lock().unwrap();
+        let st = self.state.lk();
         let now = Instant::now();
         RouteStatus {
             last: st.last_route.clone(),
@@ -877,7 +913,7 @@ impl Router {
 
     /// Close the circuit breakers (Developer "Reset circuit"). Additive.
     pub fn reset_circuit(&self) {
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.state.lk();
         st.circuit = Circuit::new(false);
         st.cloud_circuit = Circuit::new(true);
     }
@@ -914,7 +950,7 @@ impl Router {
     }
 
     fn note_failure(&self, kind: EngineKind, f: Failure) {
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.state.lk();
         let now = Instant::now();
         match kind {
             EngineKind::Remote => st.circuit.record_failure(f, now),
@@ -1014,10 +1050,10 @@ impl Router {
     /// allowed and leave a server/cloud engine that is no longer allowed
     /// right away (its audio is replayed to the next allowed route).
     fn recheck_active(&self) {
-        let mut g = self.session.lock().unwrap();
+        let mut g = self.session();
         let Some(a) = g.as_mut() else { return };
         let current_ok = {
-            let mut st = self.state.lock().unwrap();
+            let mut st = self.state.lk();
             a.fallbacks
                 .retain(|h| self.ident_allowed(&mut st, &h.ident));
             // A running server session keeps going (the user's own
@@ -1265,8 +1301,7 @@ impl Router {
             // the wait (and tell the engine) at any time.
             if let Some(c) = self
                 .committing
-                .lock()
-                .unwrap()
+                .lk()
                 .as_mut()
                 .filter(|c| std::ptr::eq(Arc::as_ptr(&c.cancelled), cancelled))
             {
@@ -1305,7 +1340,7 @@ impl Router {
     }
 
     fn commit_deadline(&self, kind: EngineKind, audio_ms: u64, cfg: &SessionConfig) -> Instant {
-        let st = self.state.lock().unwrap();
+        let st = self.state.lk();
         let ms = match kind {
             EngineKind::Cloud => {
                 let base = st.cloud.as_ref().map_or(6000, |(p, _)| p.timeout_base_ms);
@@ -1319,7 +1354,7 @@ impl Router {
 
     /// A remote/cloud backend produced the (final) result.
     fn finish_remote(&self, a: &Active, mut r: CommitResult) -> CommitResult {
-        let mut st = self.state.lock().unwrap();
+        let mut st = self.state.lk();
         let mut route = a.route.clone();
         let rr = r.route.take();
         match a.kind {
@@ -1376,7 +1411,7 @@ impl Router {
         }
         // S5: never replay to a route the current config no longer allows.
         let hops: VecDeque<Hop> = {
-            let mut st = self.state.lock().unwrap();
+            let mut st = self.state.lk();
             std::mem::take(&mut a.fallbacks)
                 .into_iter()
                 .filter(|h| self.ident_allowed(&mut st, &h.ident))
@@ -1473,7 +1508,7 @@ impl Router {
             return;
         };
         // S5 at replay time: the config may have changed while connecting.
-        if !self.ident_allowed(&mut self.state.lock().unwrap(), &hop.ident) {
+        if !self.ident_allowed(&mut self.state.lk(), &hop.ident) {
             hop.backend.cancel();
             let cause =
                 BackendError::new(Failure::CloudNotConfigured, "route turned off mid-session");
@@ -1489,7 +1524,7 @@ impl Router {
             hop.backend.set_context(ctx);
         }
         if hop.kind == EngineKind::Remote {
-            let st = self.state.lock().unwrap();
+            let st = self.state.lk();
             a.route.server.get_or_insert_with(|| st.cfg.server.addr());
         }
         if hop.kind != EngineKind::Cloud {
