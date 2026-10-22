@@ -109,6 +109,19 @@ pub fn client_for(https_only: bool) -> Client {
         .expect("reqwest client without redirects")
 }
 
+/// A plain-http client that connects only to `addrs` for `host` (the
+/// addresses already checked as private): no second DNS lookup.
+pub fn pinned_client(host: &str, addrs: &[std::net::SocketAddr]) -> Client {
+    Client::builder()
+        .connect_timeout(CONNECT_TIMEOUT)
+        .user_agent(concat!("flow-clone/", env!("CARGO_PKG_VERSION")))
+        .redirect(reqwest::redirect::Policy::none())
+        .referer(false)
+        .resolve_to_addrs(host, addrs)
+        .build()
+        .expect("reqwest client without redirects")
+}
+
 /// Time left until `deadline`, or `Timeout`.
 pub fn remaining(deadline: Instant) -> Result<Duration, CloudError> {
     let now = Instant::now();

@@ -121,6 +121,18 @@ pub struct CloudAsr {
     http: http::Client,
     key: SecretString,
     slot: Mutex<CallSlot>,
+    resolver: Resolver,
+}
+
+/// Host lookup used for http:// base URLs (tests inject one).
+pub type Resolver =
+    Arc<dyn Fn(&str, u16) -> std::io::Result<Vec<std::net::SocketAddr>> + Send + Sync>;
+
+fn system_resolver() -> Resolver {
+    Arc::new(|host: &str, port: u16| {
+        use std::net::ToSocketAddrs;
+        (host, port).to_socket_addrs().map(|a| a.collect())
+    })
 }
 
 impl CloudAsr {
@@ -136,7 +148,42 @@ impl CloudAsr {
             http: http::client_for(https),
             key,
             slot: Mutex::new(CallSlot::default()),
+            resolver: system_resolver(),
         }
+    }
+
+    /// Replace the host lookup used for http:// base URLs (tests).
+    pub fn with_resolver(
+        mut self,
+        f: impl Fn(&str, u16) -> std::io::Result<Vec<std::net::SocketAddr>> + Send + Sync + 'static,
+    ) -> Self {
+        self.resolver = Arc::new(f);
+        self
+    }
+
+    /// The client for one call. https: the pooled one. http (allowed only
+    /// for private hosts): resolve now, require every address to be private
+    /// (review S6) and pin the request to exactly those addresses.
+    fn call_client(&self) -> Result<http::Client, CloudError> {
+        let b = flow_router::cloud::parse_base_url(&self.provider.base_url)
+            .map_err(|_| CloudError::Connect("base url".into()))?;
+        if b.https {
+            return Ok(self.http.clone());
+        }
+        let port = b.port.unwrap_or(80);
+        let addrs = match b.ip {
+            Some(ip) => vec![std::net::SocketAddr::new(ip, port)],
+            None => {
+                (self.resolver)(&b.host, port).map_err(|_| CloudError::Connect("dns".into()))?
+            }
+        };
+        let ips: Vec<std::net::IpAddr> = addrs.iter().map(|a| a.ip()).collect();
+        flow_router::net::plaintext_ok_resolved(&ips, &flow_router::net::route_source)
+            .map_err(|_| CloudError::Connect("plaintext to a non-private address".into()))?;
+        Ok(match b.ip {
+            Some(_) => self.http.clone(),
+            None => http::pinned_client(&b.host, &addrs),
+        })
     }
 
     pub fn provider(&self) -> &CloudProviderConfig {
@@ -216,7 +263,10 @@ impl CloudAsr {
                 terms,
                 deadline,
             };
-            let out = match self.adapter.transcribe(&self.http, &self.key, &req) {
+            let out = match self
+                .call_client()
+                .and_then(|c| self.adapter.transcribe(&c, &self.key, &req))
+            {
                 Ok(o) => o,
                 Err(e) => {
                     let e = scrub(e, &self.key);
