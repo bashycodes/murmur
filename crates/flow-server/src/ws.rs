@@ -321,7 +321,9 @@ impl Conn {
             inflight: Arc::default(),
         };
         if let Some(l) = self.state.pool.try_lease() {
-            let _ = l.core.start_session(s.cfg.clone());
+            if let Err(e) = l.core.start_session(s.cfg.clone()) {
+                return self.worker_failed(sid, e);
+            }
             s.lease = Some(l);
             self.send(&ServerMsg::Started { sid, queued: false });
         } else if self.state.pool.enqueue() {
@@ -343,6 +345,18 @@ impl Conn {
             return;
         }
         self.sess = Some(s);
+    }
+
+    /// `start_session` failed (the core's worker thread is gone): report
+    /// it instead of a `started` that would never produce a result.
+    fn worker_failed(&self, sid: u64, e: flow_core::CoreError) {
+        tracing::error!(sid, peer = %self.peer, kind = e.kind(), "start_session failed: {e}");
+        self.send(&ServerMsg::error(
+            Some(sid),
+            code::SERVER_ERROR,
+            format!("worker failed: {}", e.kind()),
+            false,
+        ));
     }
 
     fn on_audio(&mut self, b: &[u8]) {
@@ -430,7 +444,10 @@ impl Conn {
                         cfg.ring_capacity_samples = cfg
                             .ring_capacity_samples
                             .max(s.queued_audio.len() + SAMPLE_RATE * 30);
-                        let _ = l.core.start_session(cfg);
+                        if let Err(e) = l.core.start_session(cfg) {
+                            self.sess = None;
+                            return self.worker_failed(sid, e);
+                        }
                         l.core.push_audio(&std::mem::take(&mut s.queued_audio));
                         if let Some(ctx) = &s.ctx {
                             l.core.set_context(ctx.clone());
