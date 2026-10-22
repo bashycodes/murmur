@@ -45,6 +45,7 @@
         <activity android:name=".ui.DictionaryActivity" android:exported="false" android:label="@string/title_dictionary" />
         <activity android:name=".ui.HistoryActivity" android:exported="false" android:label="@string/title_history" />
         <activity android:name=".ui.DeveloperActivity" android:exported="false" android:label="@string/title_developer" />
+        <activity android:name=".ui.CloudProviderActivity" android:exported="false" android:label="Cloud provider" />
 
         <service
             android:name=".service.FlowService"

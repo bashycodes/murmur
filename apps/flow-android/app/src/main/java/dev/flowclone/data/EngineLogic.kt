@@ -202,7 +202,7 @@ object EngineRoute {
         return when (local) {
             is EnginePlan.Plan.Native -> Plan.Routed(local, null, json, eff)
             is EnginePlan.Plan.Missing ->
-                if (eff.allowServer) Plan.Routed(null, local.message, json, eff)
+                if (eff.allowServer || eff.cloudRouted) Plan.Routed(null, local.message, json, eff)
                 else Plan.Unavailable(local.message, "model_not_found")
             EnginePlan.Plan.Mock -> Plan.Mock
         }
@@ -220,10 +220,14 @@ object EngineRoute {
             if (r.core == null) localErr = r.error ?: "Speech engine failed to load"
             else desc += "client: ${r.description}"
         }
-        if (localCore == null && !p.dev.allowServer) {
+        if (localCore == null && !p.dev.allowServer && !p.dev.cloudRouted) {
             return Assembled(null, desc.joinToString(), llm, localErr ?: "Speech engine failed to load", "load")
         }
         if (p.dev.allowServer) desc.add(if (p.dev.prefer == DevSettings.Prefer.SERVER) 0 else desc.size, "server: ${p.dev.host.ifEmpty { "(not set)" }}:${p.dev.port}")
+        if (p.dev.cloudRouted) {
+            val name = p.dev.cloud.activeProvider?.displayName ?: "(no provider)"
+            desc.add(if (p.dev.cloudFirst) 0 else desc.size, "cloud: $name")
+        }
         if (localErr != null) desc += "client unavailable: $localErr"
         return try {
             Assembled(opener.open(p.routerConfigJson, localCore), desc.joinToString(" → "), llm)

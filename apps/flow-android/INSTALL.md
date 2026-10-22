@@ -26,8 +26,8 @@ cd apps/flow-android
 export SHERPA_ANDROID_LIBS=<sherpa-onnx-v1.13.8-android>/jniLibs/arm64-v8a   # Parakeet runtime (local/hybrid)
 export BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include"  # this box's libclang
 tools/build-native.sh --flavor local     # -> app/src/local/jniLibs/arm64-v8a/
-tools/build-native.sh --flavor hybrid    # -> app/src/hybrid/jniLibs/arm64-v8a/
-tools/build-native.sh --flavor remote    # -> app/src/remote/jniLibs/arm64-v8a/ (libflow_ffi.so only)
+tools/build-native.sh --flavor hybrid    # -> app/src/hybrid/jniLibs/arm64-v8a/ (+ cloud STT client)
+tools/build-native.sh --flavor remote    # -> app/src/remote/jniLibs/arm64-v8a/ (libflow_ffi.so only, + cloud STT client)
 ./gradlew testDebugUnitTest assembleDebug          # all three flavours + their gates
 tools/probes/check_native_so.sh --flavor local app/build/outputs/apk/local/debug/app-local-debug.apk
 ```
@@ -38,6 +38,8 @@ fails if a flavour breaks its promise: `verifyLocalDebugNoNetworkPermissions` (+
 `…NoNetworkCode`), `verifyHybridDebugOnlyInternetPermission`,
 `verifyRemoteDebugOnlyInternetPermission` and `verifyRemoteDebugNoAsrLibs` (no
 whisper/sherpa/onnxruntime/flow_llm/libc++ in the APK, no `whisper_`/`llama_` exports).
+`…NoNetworkCode` also rejects the cloud STT client (`reqwest` / `webpki` / `flow-cloud`) in the
+local library (D18 C2); `check_native_so.sh --flavor hybrid|remote` requires it there.
 
 If you skip `build-native.sh`, the APK still installs, but the main screen says "Native engine
 unavailable". Only the mock engine works in that build. Without the LLM plugin
@@ -142,6 +144,25 @@ app loads the whisper model instead and the main screen says "Parakeet failed: �
    then *Test connection* → "OK · median N ms (…) · flow-server … · parakeet".
 4. Dictate: *Active engine (last dictation)* shows `Server 100.x.y.z:7313`.
 
+## 5c. Cloud speech-to-text (hybrid / remote, opt-in, third party)
+
+Off by default. When on, the audio of each dictation (after on-device silence trimming) is
+uploaded to the provider you pick, under that provider's terms; everything else (cleanup,
+dictionary, AI cleanup) still runs on the phone. No extra permission: it uses `INTERNET`.
+
+1. Developer settings → **Cloud providers (sends audio to a third party)** → *Add provider…* →
+   OpenRouter, ElevenLabs, Groq, OpenAI, Deepgram, AssemblyAI or Custom (OpenAI-compatible).
+2. On the provider page paste the API key (stored only Keystore-encrypted; the page shows
+   `••••` + the last 4 characters), adjust model / language, *Add provider*, then
+   *Test provider* → "OK · heard "And so, my fellow Americans" · N ms · $…".
+3. Back on Developer settings tick **Allow cloud**: the consent dialog names the provider and
+   its host; *Send audio to <provider>* records consent and puts *Cloud* first in the route
+   order (reorder with ↑ / ↓). *Save*.
+4. Dictate: the preview line shows `[C]` and *Active engine* shows
+   `cloud · <provider> · <model> · $…`; *Usage this month* counts it.
+
+## Local flavour: Developer settings
+
 In the `local` flavour Developer settings are hidden: tap the version row at the bottom of
 Settings 7 times to show them (only the client toggle and timeouts apply there).
 
@@ -220,6 +241,38 @@ None of this can be checked on the build machine. Record the results in
 `PROJECT_CONTEXT.md`.
 
 Logcat tags: `FlowA11y` (insertion step trail), `FlowService`, `FlowMic`, `FlowEngine`.
+
+**Cloud STT (D18)** — `hybrid` (and `remote`) APK, a real key for at least one provider; record
+provider, model, latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CONTEXT.md`
+- [ ] `local`: Developer settings → Cloud providers shows *Allow cloud — not in this build* (disabled);
+      App info shows no network permission (unchanged).
+- [ ] `hybrid`: *Allow cloud* is off on a fresh install; ticking it without a provider says "Add a
+      provider first" and opens the preset list.
+- [ ] Add Groq (or OpenRouter / ElevenLabs): the key field is masked, *Show* reveals it, after *Add
+      provider* the field is empty and the page shows `Stored key: ••••abcd`; *Test provider* →
+      "OK · heard "And so, my fellow Americans…" · N ms"; with a wrong key → "auth_failed: key rejected".
+- [ ] Tick *Allow cloud*: the dialog title is "Send audio to Groq?" and the body names
+      `api.groq.com`; *Cancel* unticks; *Send audio to Groq* records consent (provider row
+      `consent ✓`) and the route order becomes `1. Cloud · 2. … · 3. …`; *Save*.
+- [ ] Dictate 10 s in Notes: text inserted, preview badge `[C]` even with *Show the engine* off,
+      *Active engine* `cloud · Groq · whisper-large-v3-turbo · ≈$0.000…`, usage `1 dictation`.
+      Note stop → text latency vs on-device.
+- [ ] Silence-only dictation ("No speech heard"): usage count unchanged (silence is never uploaded).
+- [ ] Airplane mode with cloud first and on-device second: text still inserted from the phone model,
+      toast "Cloud STT failed (no internet / base URL wrong); used on-device", no words lost.
+- [ ] Revoke / rotate the key at the provider: next dictation toasts "Cloud STT failed (key
+      rejected); used on-device"; *Cloud circuit* row shows "open until the key or provider changes
+      (auth_failed)"; saving a new key on the provider page closes it.
+- [ ] Edit the provider's base URL to another host (Custom preset): saving says consent was
+      cleared; the next dictation goes on-device with `cloud_not_configured` until consent is given again.
+- [ ] Monthly budget lower than this month's cost → toast "monthly budget reached"; Usage says
+      "reached"; *Reset counters* resumes the cloud.
+- [ ] Usage survives an app restart and *Reset to defaults*; keys do not survive *Reset to
+      defaults* or *Delete provider* (row shows `no key`).
+- [ ] Order `Server, Cloud, On-device` with the server up: last engine `Server …`; stop the
+      server → cloud is used; the form showed "When your server is unreachable, audio goes to …".
+- [ ] `remote` flavour: cloud-only (*Allow server* off, *Allow cloud* on) dictates through the provider.
+- [ ] logcat (`FlowEngine`, `FlowService`) never shows the key (`grep` for its last 8 characters).
 
 **Native engine / packaging**
 - [ ] The main screen shows `Native engine: flow-ffi 0.1.0`, not "unavailable". This is

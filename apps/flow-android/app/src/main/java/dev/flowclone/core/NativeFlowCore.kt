@@ -43,6 +43,29 @@ class NativeFlowCore private constructor(private var handle: Long, val isRouter:
     fun routeStatus(): RouteStatus =
         if (!isRouter || handle == 0L) RouteStatus() else RouterJson.decodeRouteStatus(guardLink { nativeRouteStatus(handle) })
 
+    // ---- D18 cloud STT (router handles; JNI_CONTRACT.md "Cloud STT") ----
+
+    /** Hand the router a provider's API key (`null` / "" forgets it). Never logged. */
+    fun setCloudKey(providerId: String, key: String?) {
+        if (!isRouter || handle == 0L) return
+        if (!guardLink { nativeSetCloudKey(handle, providerId, key) }) throw lastError("set_cloud_key failed")
+    }
+
+    /** Blocking "Test provider" with an unsaved provider; `key` null = the router's stored key. */
+    fun probeCloud(providerJson: String, key: String?): HealthReport =
+        if (!isRouter || handle == 0L) Companion.probeCloud(providerJson, key)
+        else cloudCall { RouterJson.decodeHealth(nativeProbeCloud(handle, providerJson, key)) }
+
+    /** This month's counters (`CloudUsage` JSON), or null without a router / symbol. */
+    fun cloudUsageJson(): String? =
+        if (!isRouter || handle == 0L) null else runCatching { nativeCloudUsage(handle) }.getOrNull()
+
+    /** Restore persisted counters (after open). False on bad JSON or an old library. */
+    fun setCloudUsage(json: String): Boolean =
+        isRouter && handle != 0L && runCatching { nativeSetCloudUsage(handle, json) }.getOrDefault(false)
+
+    fun resetCloudUsage() { if (isRouter && handle != 0L) runCatching { nativeResetCloudUsage(handle) } }
+
     override fun pushAudio(pcm: ShortArray, length: Int): Boolean =
         handle != 0L && nativePushAudio(handle, pcm, length)
 
@@ -165,6 +188,32 @@ class NativeFlowCore private constructor(private var handle: Long, val isRouter:
             }
         }
 
+        /** A library without the D18 symbols reads as "no cloud" (never a crash). */
+        private inline fun cloudCall(f: () -> HealthReport): HealthReport = try {
+            f()
+        } catch (e: UnsatisfiedLinkError) {
+            HealthReport(ok = false, engine = "cloud", error = "cloud_not_configured", message = "native library has no cloud support: ${e.message}")
+        }
+
+        /** `nativeCloudCapabilities`; no cloud without the library or the symbol. */
+        fun cloudCapabilities(): CloudCapabilities {
+            if (loadLibrary() !is LibraryState.Loaded) return CloudCapabilities()
+            return runCatching { RouterJson.decodeCloudCapabilities(nativeCloudCapabilities()) }.getOrDefault(CloudCapabilities())
+        }
+
+        /** `nativeCloudPresets` (provider templates JSON array), or null. */
+        fun cloudPresetsJson(): String? {
+            if (loadLibrary() !is LibraryState.Loaded) return null
+            return runCatching { nativeCloudPresets() }.getOrNull()
+        }
+
+        /** Test provider before a router exists (temporary native router: [key] is required). Blocking. */
+        fun probeCloud(providerJson: String, key: String?): HealthReport {
+            val s = loadLibrary()
+            if (s is LibraryState.Unavailable) return HealthReport(ok = false, engine = "cloud", error = "error", message = s.message)
+            return cloudCall { RouterJson.decodeHealth(nativeProbeCloud(0, providerJson, key)) }
+        }
+
         // ---- JNI surface (static natives on dev.flowclone.core.NativeFlowCore) ----
         @JvmStatic external fun nativeVersion(): String
         @JvmStatic external fun nativeLastError(): String?
@@ -187,5 +236,14 @@ class NativeFlowCore private constructor(private var handle: Long, val isRouter:
         @JvmStatic external fun nativeRouteStatus(handle: Long): String
         @JvmStatic external fun nativeResetCircuit(handle: Long)
         @JvmStatic external fun nativeProbeRouter(handle: Long): String
+
+        // ---- D18 cloud STT (JNI_CONTRACT.md "Cloud STT"); present in every flavour's library ----
+        @JvmStatic external fun nativeSetCloudKey(handle: Long, providerId: String, key: String?): Boolean
+        @JvmStatic external fun nativeProbeCloud(handle: Long, providerJson: String, key: String?): String
+        @JvmStatic external fun nativeCloudUsage(handle: Long): String
+        @JvmStatic external fun nativeSetCloudUsage(handle: Long, usageJson: String): Boolean
+        @JvmStatic external fun nativeResetCloudUsage(handle: Long)
+        @JvmStatic external fun nativeCloudCapabilities(): String
+        @JvmStatic external fun nativeCloudPresets(): String
     }
 }

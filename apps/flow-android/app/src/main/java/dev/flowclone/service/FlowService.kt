@@ -126,7 +126,8 @@ class FlowService : Service() {
         }
         scope.launch {
             combine(controller.state, controller.partial, controller.hint, presence.presence) { s, p, h, _ ->
-                val badge = if (app.dev.load().showEngineBadge) dev.flowclone.core.DevText.badge(app.lastRoute.value?.result?.route) else null
+                // D18 C7: "C" whenever the last dictation went to a cloud provider, even with the badge off.
+                val badge = dev.flowclone.core.DevText.bubbleBadge(app.lastRoute.value?.result?.route, app.dev.load().showEngineBadge)
                 PreviewContent.line(s, p, h, app.settings.load().livePreview, badge)
             }.collect { overlay.renderPreview(it) }
         }
@@ -390,6 +391,11 @@ class FlowService : Service() {
 
         override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?) {
             app.lastRoute.value = dev.flowclone.data.LastDictation.of(result, System.currentTimeMillis())
+            // D18: persist this month's cloud counters; say so when the cloud failed and another engine took over.
+            if (result.route?.engine == "cloud") scope.launch(Dispatchers.IO) { runCatching { app.engine.persistCloudUsage() } }
+            dev.flowclone.data.CloudText.fallbackMessage(result.route, app.dev.load().effective(app.caps).cloudFirst)?.let { m ->
+                scope.launch(Dispatchers.Main) { toast(m) }
+            }
             val retention = app.settings.load().retention
             val t = result.timings
             val row = HistoryRow(

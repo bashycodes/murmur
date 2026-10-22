@@ -20,6 +20,7 @@ tools/probes/jni_stub/run.sh                   # link-test NativeFlowCore agains
 tools/build-native.sh --flavor local|hybrid|remote   # arm64 native libs into app/src/<flavour>/jniLibs/ (see INSTALL.md)
 tools/probes/check_native_so.sh --flavor F [apk]  # contract symbols, 16 KB alignment, NEEDED libs, plugin exports, flavour rules (+ APK zipalign -P 16)
 tools/probes/host_native/run.sh [model.bin]    # real host flow-ffi under the real NativeFlowCore: whisper on jfk.wav, + LLM cleanup if a GGUF is in models/
+tools/probes/host_cloud/run.sh                 # D18: real host flow-ffi (jni,cloud) under the shipped Kotlin cloud path vs a JVM mock provider
 ```
 
 Install on a phone (sideload, permissions, model import, device checklist): [`INSTALL.md`](INSTALL.md).
@@ -41,6 +42,10 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
   already present.
 
 ## Privacy gates (per flavour)
+- D18 cloud STT (`docs/cloud-stt.md`): only the `hybrid` / `remote` libraries link the provider
+  client (flow-ffi feature `cloud`; `BuildConfig.CAP_CLOUD`); `verifyLocal<BT>NoNetworkCode` and
+  `check_native_so.sh` reject it in `local`. Off by default; per-provider consent naming the host;
+  API keys only in the Keystore (`SecretVault("flow_cloud_<id>")`) and native memory.
 - `src/local/AndroidManifest.xml` strips every network permission with `tools:node="remove"`;
   `src/hybrid` / `src/remote` add `INTERNET` and strip the rest. The main manifest decides nothing.
 - `verifyLocal<BT>NoNetworkPermissions` / `verify{Hybrid,Remote}<BT>OnlyInternetPermission`
@@ -57,12 +62,12 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
 | `policy/` | `EditorInputType`, `BubbleVisibilityPolicy` (sensitive + banking + user denylist + clone deviations), `AppCategorizer`, generated `PolicyLists` | yes |
 | `session/` | `DictationController` (state machine, debounce, cap 239/299 s, 20 s timeout), `LevelMeter`, `AudioBatcher`, `SessionCap` | yes |
 | `bubble/` | `BubbleGesture` (tap / hold / drag), `BubblePositioner` (anchors + persistence), `Waveform`, `BubblePresence` (minimise 5 s, snooze 10 min, shake reveal), `ShakeDetector`, `SnoozeTarget`, `PreviewContent`/`PreviewPlacement` (live preview line); `BubbleView`/`BubbleOverlay` (Android: bubble + preview + snooze-target windows) | logic yes |
-| `data/` | `Retention`, `DictionaryMerge`, `Settings`, `FieldContextBuilder`, `EnginePlan` (ASR + optional LLM, ASR-only fallback), `ModelFiles` (ggml/GGUF sniffing, LLM recommendations), `DictionaryEdit`, `HistoryView`; `Stores` (SharedPreferences, JSON dictionary file, SQLite history v2); D17: `DevSettings` (+ `HostRules`, `DevSettingsForm`, `DevUnlock`), `DevStore` + `TokenVault` (Keystore AES-GCM), `EngineRoute` (local engine → router), `ParakeetFiles` | logic yes |
+| `data/` | `Retention`, `DictionaryMerge`, `Settings`, `FieldContextBuilder`, `EnginePlan` (ASR + optional LLM, ASR-only fallback), `ModelFiles` (ggml/GGUF sniffing, LLM recommendations), `DictionaryEdit`, `HistoryView`; `Stores` (SharedPreferences, JSON dictionary file, SQLite history v2); D17: `DevSettings` (+ `HostRules`, `DevSettingsForm`, `DevUnlock`), `DevStore` + `SecretVault` (Keystore AES-GCM: server token, cloud keys), `EngineRoute` (local engine → router), `ParakeetFiles`; D18: `CloudSettings` (`CloudProvider`, presets, consent, `CloudRules`, `CloudText`, `CloudUsage`), `CloudKeyStore` | logic yes |
 | `health/` | `A11ySetting` (enabled-services parse), `AccessibilityHealth` (ghost binding), `ServiceWatchdog` (≥ 5 s respawn), `OemGuidance` (autostart steps + deep links) | yes |
 | `service/` | `FlowAccessibilityService` (+ 15 s heartbeat / FlowService watchdog), `ShellInputMethod`/node adapters, `FlowService` (FGS, shake sensor, health tick, unlock re-check) | device only |
 | `receiver/` | `BootReceiver` (BOOT_COMPLETED, MY_PACKAGE_REPLACED, USER_UNLOCKED → start FGS or "re-enable" notification) | device only |
 | `audio/` | `MicRecorder` (MIC 16 k mono PCM16, 100 ms frames → `push_audio`) | device only |
-| `ui/` | Main/onboarding (mic → overlay → a11y + ghost fix → battery → notifications → OEM), model import (SAF; speech ggml, Parakeet folder, LLM GGUF), settings, Developer settings (D17 §5), dictionary editor (search, tabs, edit, shared JSON import/export), history (search, copy, delete, raw vs formatted) | device only |
+| `ui/` | Main/onboarding (mic → overlay → a11y + ghost fix → battery → notifications → OEM), model import (SAF; speech ggml, Parakeet folder, LLM GGUF), settings, Developer settings (D17 §5; D18 cloud section + `CloudProviderActivity`), dictionary editor (search, tabs, edit, shared JSON import/export), history (search, copy, delete, raw vs formatted) | device only |
 
 `policy/PolicyLists.kt` is generated: `python3 -I tools/gen_policy_lists.py` from
 `policy-data/*.json`, which are verbatim copies of android-research `findings/data/`.

@@ -29,6 +29,13 @@ data class DevSettings(
     val keepLocalWarm: Boolean = true,
     /** (ui) Show S / L on the bubble's preview line, red dot on fallback. */
     val showEngineBadge: Boolean = false,
+    /**
+     * D18 (docs/cloud-stt.md): third-party cloud STT. Off by default; used only when this is on
+     * AND [Route.CLOUD] is in [routeOrder] AND the active provider has consent and a key.
+     */
+    val allowCloud: Boolean = false,
+    /** Providers (no keys: those live in [CloudKeyStore]). */
+    val cloud: CloudSettings = CloudSettings(),
 ) {
     enum class Prefer(val wire: String) { SERVER("server"), CLIENT("client") }
 
@@ -36,20 +43,36 @@ data class DevSettings(
     enum class Route(val wire: String, val needsNetwork: Boolean) {
         SERVER("server", true),
         CLIENT("client", false),
+        /** D18: only in builds with `BuildCaps.cloud`; only in the order once the user put it there. */
+        CLOUD("cloud", true),
     }
 
     /** flow_router `prefer`: whichever of server / client comes first in [routeOrder]. */
     val prefer: Prefer
         get() = if (routeOrder.firstOrNull { it == Route.SERVER || it == Route.CLIENT } == Route.CLIENT) Prefer.CLIENT else Prefer.SERVER
 
-    /** Toggles AND build capability (§1.3 "effective flags"); public hosts force TLS (§2.6). */
+    /**
+     * Toggles AND build capability (§1.3 "effective flags"); public hosts force TLS (§2.6).
+     * A build without the cloud client sends the router no cloud settings at all (C2).
+     */
     fun effective(caps: BuildCaps) = copy(
         allowServer = allowServer && caps.remote,
         allowClient = allowClient && caps.local,
         tls = tls || (host.isNotEmpty() && HostRules.classify(host) == HostRules.AddrClass.PUBLIC),
+        allowCloud = allowCloud && caps.cloud,
+        routeOrder = if (caps.cloud) routeOrder else routeOrder - Route.CLOUD,
+        cloud = if (caps.cloud) cloud else CloudSettings(),
     )
 
-    val bothOff: Boolean get() = !allowServer && !allowClient
+    /** The cloud is a route the router may take (it still checks consent, key and budget). */
+    val cloudRouted: Boolean get() = allowCloud && Route.CLOUD in routeOrder
+
+    /** The cloud route comes before every other enabled route. */
+    val cloudFirst: Boolean
+        get() = cloudRouted && routeOrder.firstOrNull { it == Route.CLOUD || (it == Route.SERVER && allowServer) || (it == Route.CLIENT && allowClient) } == Route.CLOUD
+
+    /** No route can dictate ("both off" predates the cloud route; a cloud-only setup is not off). */
+    val bothOff: Boolean get() = !allowServer && !allowClient && !cloudRouted
     val serverConfigured: Boolean get() = host.isNotBlank()
 
     fun toServerConfigJson(): JSONObject = JSONObject().apply {
@@ -69,6 +92,13 @@ data class DevSettings(
         put("prefer", prefer.wire)
         put("server", toServerConfigJson())
         put("keep_local_warm", keepLocalWarm)
+        // D18 fields only once the cloud is touched: pre-cloud fixtures stay byte-identical,
+        // like the router's `skip_serializing_if = default`. `order` (when set) replaces `prefer`.
+        if (allowCloud || !cloud.isDefault || Route.CLOUD in routeOrder) {
+            put("allow_cloud", allowCloud)
+            put("cloud", cloud.toJson())
+        }
+        if (Route.CLOUD in routeOrder) put("order", org.json.JSONArray(routeOrder.map { it.wire }))
     }
 
     /** What the router gets: effective toggles for this build (a local build never asks for a server). */
@@ -77,7 +107,8 @@ data class DevSettings(
     /** Never print the token. */
     override fun toString(): String =
         "DevSettings(server=$allowServer client=$allowClient prefer=${prefer.wire} host=$host:$port tls=$tls " +
-            "pin=${tlsPinSha256.isNotEmpty()} token=${if (token.isEmpty()) "none" else "set"} timeouts=$connectTimeoutMs/$commitTimeoutBaseMs/$healthTtlS warm=$keepLocalWarm)"
+            "pin=${tlsPinSha256.isNotEmpty()} token=${if (token.isEmpty()) "none" else "set"} timeouts=$connectTimeoutMs/$commitTimeoutBaseMs/$healthTtlS warm=$keepLocalWarm " +
+            "cloud=$allowCloud order=${routeOrder.joinToString(",") { it.wire }} providers=${cloud.providers.size})"
 
     companion object {
         const val DEFAULT_PORT = 7313
@@ -86,11 +117,18 @@ data class DevSettings(
 
         fun orderFor(p: Prefer) = if (p == Prefer.CLIENT) listOf(Route.CLIENT, Route.SERVER) else DEFAULT_ORDER
 
-        /** Stored form `server,client`; unknown names (from a newer build) are skipped, missing known routes appended. */
+        /**
+         * Stored form `server,client[,cloud]`; unknown names (from a newer build) are skipped, missing
+         * server / client appended. The cloud is never appended: it is in the order only when the
+         * user put it there (enable flow, §3.1 step 4).
+         */
         fun parseOrder(csv: String?): List<Route> {
             val named = csv.orEmpty().split(',').mapNotNull { n -> Route.entries.firstOrNull { it.wire == n.trim() } }.distinct()
-            return named + Route.entries.filter { it !in named }
+            return named + Route.entries.filter { it !in named && it != Route.CLOUD }
         }
+
+        /** §3.1 step 4: enabling the cloud puts it first, keeping the previous server / client order. */
+        fun withCloudFirst(order: List<Route>) = listOf(Route.CLOUD) + (order - Route.CLOUD)
 
         /** §5 defaults: server on in hybrid/remote builds, client on in local/hybrid builds. */
         fun defaults(caps: BuildCaps) = DevSettings(allowServer = caps.remote, allowClient = caps.local)
@@ -100,10 +138,12 @@ data class DevSettings(
             val o = JSONObject(json)
             val d = defaults(caps)
             val s = o.optJSONObject("server") ?: JSONObject()
+            val order = o.optJSONArray("order")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty()
             return DevSettings(
                 allowServer = o.optBoolean("allow_server", d.allowServer),
                 allowClient = o.optBoolean("allow_client", d.allowClient),
-                routeOrder = orderFor(Prefer.entries.firstOrNull { it.wire == o.optString("prefer") } ?: Prefer.SERVER),
+                routeOrder = if (order.isNotEmpty()) parseOrder(order.joinToString(","))
+                else orderFor(Prefer.entries.firstOrNull { it.wire == o.optString("prefer") } ?: Prefer.SERVER),
                 host = s.optString("host", ""),
                 port = s.optInt("port", DEFAULT_PORT),
                 tls = s.optBoolean("tls", false),
@@ -113,13 +153,18 @@ data class DevSettings(
                 commitTimeoutBaseMs = s.optLong("commit_timeout_base_ms", 3_000),
                 healthTtlS = s.optLong("health_ttl_s", 30),
                 keepLocalWarm = o.optBoolean("keep_local_warm", true),
+                allowCloud = o.optBoolean("allow_cloud", false),
+                cloud = CloudSettings.fromJson(o.optJSONObject("cloud")),
             )
         }
     }
 }
 
-/** This APK's flavour capabilities (`BuildConfig.CAP_LOCAL` / `CAP_REMOTE`). */
-data class BuildCaps(val local: Boolean, val remote: Boolean) {
+/**
+ * This APK's flavour capabilities (`BuildConfig.CAP_LOCAL` / `CAP_REMOTE` / `CAP_CLOUD`).
+ * [cloud] (D18): the native library has the third-party STT client (hybrid / remote).
+ */
+data class BuildCaps(val local: Boolean, val remote: Boolean, val cloud: Boolean = remote) {
     val flavor: String get() = when {
         local && remote -> "hybrid"
         remote -> "remote"
@@ -128,9 +173,9 @@ data class BuildCaps(val local: Boolean, val remote: Boolean) {
 
     companion object {
         val ALL = BuildCaps(local = true, remote = true)
-        val LOCAL = BuildCaps(local = true, remote = false)
+        val LOCAL = BuildCaps(local = true, remote = false, cloud = false)
         val REMOTE = BuildCaps(local = false, remote = true)
-        fun current() = BuildCaps(dev.flowclone.BuildConfig.CAP_LOCAL, dev.flowclone.BuildConfig.CAP_REMOTE)
+        fun current() = BuildCaps(dev.flowclone.BuildConfig.CAP_LOCAL, dev.flowclone.BuildConfig.CAP_REMOTE, dev.flowclone.BuildConfig.CAP_CLOUD)
     }
 }
 
@@ -261,7 +306,7 @@ object HostRules {
  * disabled while [Result.errors] is non-empty; [Result.warnings] never block saving.
  */
 object DevSettingsForm {
-    enum class Field { HOST, PORT, PIN, TOKEN, CONNECT_TIMEOUT, COMMIT_TIMEOUT, HEALTH_TTL }
+    enum class Field { HOST, PORT, PIN, TOKEN, CONNECT_TIMEOUT, COMMIT_TIMEOUT, HEALTH_TTL, CLOUD_BUDGET }
 
     data class Input(
         val allowServer: Boolean,
@@ -277,12 +322,20 @@ object DevSettingsForm {
         val healthTtlS: String,
         val keepLocalWarm: Boolean,
         val showEngineBadge: Boolean,
+        val allowCloud: Boolean = false,
+        /** Providers + active id as stored (edited on the provider page); budget comes from [cloudBudget]. */
+        val cloud: CloudSettings = CloudSettings(),
+        /** Monthly budget in USD; blank = none. */
+        val cloudBudget: String = "",
     ) {
         companion object {
             fun of(s: DevSettings) = Input(
                 s.allowServer, s.allowClient, s.routeOrder, s.host, s.port.toString(), s.tls, s.tlsPinSha256, s.token,
                 s.connectTimeoutMs.toString(), s.commitTimeoutBaseMs.toString(), s.healthTtlS.toString(), s.keepLocalWarm, s.showEngineBadge,
+                s.allowCloud, s.cloud, s.cloud.monthlyBudgetUsd?.let { budgetText(it) }.orEmpty(),
             )
+
+            fun budgetText(v: Double): String = if (v == Math.floor(v)) v.toLong().toString() else v.toString()
         }
     }
 
@@ -299,6 +352,9 @@ object DevSettingsForm {
     const val BOTH_OFF = "Dictation disabled: turn on Allow server or Allow client."
     const val NO_HOST = "Server enabled but no host set: dictation will use the client (or fail if the client is off)."
     const val PLAINTEXT = "Unencrypted (ws://): OK on Tailscale (WireGuard), LAN only otherwise."
+    const val CLOUD_NO_PROVIDER = "Cloud allowed but no provider is active: add one under Cloud providers."
+    const val CLOUD_NO_CONSENT = "The active cloud provider has no consent for its current host: it will be skipped."
+    const val CLOUD_NOT_IN_ORDER = "Cloud allowed but not in the route order: it will not be used."
 
     fun validate(i: Input, caps: BuildCaps): Result {
         val errors = LinkedHashMap<Field, String>()
@@ -327,14 +383,33 @@ object DevSettingsForm {
         val tls = i.tls || tlsLocked
         val allowServer = i.allowServer && caps.remote
         val allowClient = i.allowClient && caps.local
-        if (!allowServer && !allowClient) warnings += BOTH_OFF
+        val allowCloud = i.allowCloud && caps.cloud
+        val budgetRaw = i.cloudBudget.trim().removePrefix("$").trim()
+        val budget = if (budgetRaw.isEmpty()) null else budgetRaw.toDoubleOrNull()?.takeIf { it >= 0.0 && it.isFinite() }
+        if (budgetRaw.isNotEmpty() && budget == null) errors[Field.CLOUD_BUDGET] = "Budget must be an amount in USD (e.g. 5 or 2.50), or empty for none"
+        val order = if (caps.cloud) i.routeOrder else i.routeOrder - DevSettings.Route.CLOUD
+        val cloudRouted = allowCloud && DevSettings.Route.CLOUD in order
+        if (!allowServer && !allowClient && !cloudRouted) warnings += BOTH_OFF
+        if (allowCloud) {
+            val p = i.cloud.activeProvider
+            when {
+                p == null -> warnings += CLOUD_NO_PROVIDER
+                !p.consentOk -> warnings += CLOUD_NO_CONSENT
+            }
+            if (DevSettings.Route.CLOUD !in order) warnings += CLOUD_NOT_IN_ORDER
+            CloudText.orderWarning(order, p)?.let { warnings += it }
+        }
         if (allowServer && host.isEmpty() && Field.HOST !in errors) warnings += NO_HOST
         if (allowServer && host.isNotEmpty() && !tls) warnings += PLAINTEXT
         if (allowServer && host.isNotEmpty() && token.isEmpty()) warnings += "No token: a server with auth (the default) will reject the connection."
         val settings = if (errors.isEmpty()) DevSettings(
-            allowServer = allowServer, allowClient = allowClient, routeOrder = i.routeOrder, host = host, port = port!!.toInt(),
+            allowServer = allowServer, allowClient = allowClient, host = host, port = port!!.toInt(),
             tls = tls, tlsPinSha256 = if (tls) pin else "", token = token, connectTimeoutMs = ct!!, commitTimeoutBaseMs = cb!!,
             healthTtlS = ttl!!, keepLocalWarm = i.keepLocalWarm, showEngineBadge = i.showEngineBadge,
+            // A build without the cloud keeps the stored providers / order untouched (prefs survive a
+            // flavour switch); effective() strips them from what the router sees.
+            allowCloud = allowCloud, routeOrder = i.routeOrder,
+            cloud = if (caps.cloud) i.cloud.copy(monthlyBudgetUsd = budget) else i.cloud,
         ) else null
         return Result(settings, errors, warnings, tlsLocked)
     }

@@ -180,15 +180,24 @@ sealed interface PasteSegment {
  * null when the result came straight from a FlowCore handle (or an older native lib).
  */
 data class RouteInfo(
-    /** "local" | "remote" */
+    /** "local" | "remote" | "cloud" (D18) */
     val engine: String,
-    /** connect_failed, auth_failed, proto_mismatch, busy, timeout, disconnected, circuit_open, server_not_configured, local_not_ready */
+    /**
+     * connect_failed, auth_failed, proto_mismatch, busy, timeout, disconnected, circuit_open, server_not_configured,
+     * local_not_ready; D18: cloud_not_configured, budget_exceeded, quota_exceeded, provider_error
+     */
     val fallback: String? = null,
     /** "host:port" */
     val server: String? = null,
     val rttMs: Long? = null,
     val queueMs: Long? = null,
     val serverCore: String? = null,
+    /** D18, cloud results only: provider id, model, billed audio, cost (reported, or estimated when [costEstimated]). */
+    val provider: String? = null,
+    val model: String? = null,
+    val billedAudioMs: Long? = null,
+    val costUsd: Double? = null,
+    val costEstimated: Boolean? = null,
 )
 
 data class CommitResult(
