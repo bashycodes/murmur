@@ -67,11 +67,11 @@ jobs:
         run: |
           v=1.13.8
           name=sherpa-onnx-v$v-win-x64-shared-MT-Release-lib
-          dir="$RUNNER_TEMP/sherpa"
+          dir="$(cygpath -u "$RUNNER_TEMP")/sherpa"
           mkdir -p "$dir"
           curl -fsSL -o "$dir/a.tar.bz2" \
             "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$v/$name.tar.bz2"
-          tar -xjf "$dir/a.tar.bz2" -C "$dir"
+          (cd "$dir" && tar -xjf a.tar.bz2)  # a "D:" path would read as a remote host
           lib="$dir/$name/lib"
           # Keep every DLL next to the import libraries.
           find "$dir/$name" -name '*.dll' -exec cp -n {} "$lib/" \;
