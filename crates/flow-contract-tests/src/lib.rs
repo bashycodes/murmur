@@ -60,6 +60,10 @@ impl TestServer {
     pub fn sessions(&self) -> u64 {
         self.handle.sessions()
     }
+    /// Workers currently leased.
+    pub fn busy(&self) -> u32 {
+        self.handle.pool().busy()
+    }
 }
 
 impl Drop for TestServer {
@@ -88,6 +92,21 @@ pub fn server_cfg(model: ModelConfig) -> ServerFileConfig {
 }
 
 pub fn spawn_server(cfg: ServerFileConfig) -> TestServer {
+    spawn_server_with(cfg, None)
+}
+
+/// A server whose single worker's final decode takes `delay` (MockAsr).
+pub fn spawn_slow_mock_server(text: &str, delay: Duration) -> TestServer {
+    let cfg = server_cfg(mock_model(text));
+    let core = FlowCore::from_engines(
+        Arc::new(flow_core::asr::MockAsr::new(text).with_delay(delay)),
+        None,
+    );
+    let pool = flow_server::Pool::from_cores(vec![Arc::new(core)], &cfg.model, cfg.max_queue);
+    spawn_server_with(cfg, Some(Arc::new(pool)))
+}
+
+fn spawn_server_with(cfg: ServerFileConfig, pool: Option<Arc<flow_server::Pool>>) -> TestServer {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
@@ -95,9 +114,11 @@ pub fn spawn_server(cfg: ServerFileConfig) -> TestServer {
         .unwrap();
     let handle = rt.block_on(async {
         let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        flow_server::serve(cfg, vec![l])
-            .await
-            .expect("server starts")
+        match pool {
+            Some(p) => flow_server::serve_with_pool(cfg, p, vec![l]).await,
+            None => flow_server::serve(cfg, vec![l]).await,
+        }
+        .expect("server starts")
     });
     TestServer {
         handle,
