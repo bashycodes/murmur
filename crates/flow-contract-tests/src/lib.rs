@@ -140,6 +140,22 @@ pub fn remote_router(addr: SocketAddr) -> Router {
     )
 }
 
+/// [`remote_router`] for the real-model equivalence tests. They compare
+/// results, not latency, so the commit deadline is generous: the product
+/// default (`commit_timeout_base_ms` 3 s + 0.3 x audio + LLM budget, ~7.8 s
+/// for jfk.wav) is a fallback trigger sized for a dedicated server, and a
+/// debug-build whisper/Parakeet run sharing a loaded CPU with the rest of the
+/// test suite can exceed it (seen: "no result before the deadline"). The
+/// product deadline itself is exercised by `toggle_matrix` (stalled commit).
+pub fn remote_router_real_model(addr: SocketAddr) -> Router {
+    let mut cfg = router_config(addr, true, false);
+    cfg.server.commit_timeout_base_ms = REAL_MODEL_COMMIT_TIMEOUT_MS;
+    Router::new(cfg, None, Some(flow_remote::factory("flow-contract-tests")))
+}
+
+/// Commit deadline base for [`remote_router_real_model`].
+pub const REAL_MODEL_COMMIT_TIMEOUT_MS: u64 = 120_000;
+
 pub fn hybrid_router(cfg: RouterConfig, local: Option<Arc<FlowCore>>) -> Router {
     Router::new(
         cfg,

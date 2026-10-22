@@ -218,11 +218,16 @@ fn real_equivalence(model: ModelConfig, wav: &str, cfg: SessionConfig) -> Option
     let l = run_case(local.as_ref(), &c, &pcm);
     drop(local);
     let server = spawn_server(server_cfg(model));
-    let router = remote_router(server.addr());
+    let router = remote_router_real_model(server.addr());
+    let t0 = Instant::now();
     let r = run_case(&router, &c, &pcm);
     eprintln!(
-        "local: asr {} ms total {} ms | remote: total {} ms | {:?}",
-        l.timings.asr_ms, l.timings.total_ms, r.timings.total_ms, r.final_text
+        "local: asr {} ms total {} ms | remote: total {} ms, wall {} ms | {:?}",
+        l.timings.asr_ms,
+        l.timings.total_ms,
+        r.timings.total_ms,
+        t0.elapsed().as_millis(),
+        r.final_text
     );
     assert_eq!(r.route.as_ref().unwrap().engine, "remote");
     assert_eq!(normalize(&l), normalize(&r));
@@ -300,7 +305,7 @@ fn equivalence_llm_if_present() {
     let l = run_case(local.as_ref(), &c, &pcm);
     drop(local);
     let server = spawn_server(server_cfg(model));
-    let r = run_case(&remote_router(server.addr()), &c, &pcm);
+    let r = run_case(&remote_router_real_model(server.addr()), &c, &pcm);
     eprintln!(
         "llm local {:?}: {} | remote: {}",
         l.status, l.final_text, r.final_text
