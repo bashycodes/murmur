@@ -540,3 +540,45 @@ object CloudProviderForm {
         return Result(next, null, i.base.consentOk && !next.consentOk)
     }
 }
+
+/**
+ * Review S1 / S4 (hybrid-architecture "Changelog for shells", review fixes): a stored API key is
+ * bound to the saved provider's base-URL host + adapter. It is never sent to an edited host
+ * (Test provider) and is deleted, then asked for again, when the saved host or adapter changes.
+ */
+object CloudKeyPolicy {
+    const val NEED_KEY = "enter the API key: the stored key is only sent to the saved host"
+
+    /** True when [next] would send a key stored for [saved] somewhere else. */
+    fun bindingChanged(saved: CloudProvider?, next: CloudProvider): Boolean =
+        saved != null && (!saved.host.equals(next.host, ignoreCase = true) || saved.adapter != next.adapter)
+
+    sealed interface TestKey {
+        data class Use(val key: String) : TestKey
+        data class Missing(val message: String) : TestKey
+    }
+
+    /** "Test provider": the typed key, else the stored key only when the form still has the saved host + adapter. */
+    fun testKey(saved: CloudProvider?, form: CloudProvider, typed: String?, stored: String?): TestKey {
+        typed?.trim()?.takeIf { it.isNotEmpty() }?.let { return TestKey.Use(it) }
+        if (saved == null || stored.isNullOrEmpty()) return TestKey.Missing("Paste an API key first.")
+        if (bindingChanged(saved, form)) return TestKey.Missing("Host or adapter changed: $NEED_KEY.")
+        return TestKey.Use(stored)
+    }
+
+    /** What Save does with the keys. */
+    data class SaveKeys(
+        /** Delete the stored key (Keystore + router) before anything else. */
+        val deleteStored: Boolean,
+        /** Store + hand to the router (`nativeSetCloudKeyFor` with the saved provider). */
+        val set: String?,
+        /** The old key was deleted and none was typed: ask for it again. */
+        val askAgain: Boolean,
+    )
+
+    fun onSave(saved: CloudProvider?, next: CloudProvider, typed: String?, hadStored: Boolean): SaveKeys {
+        val k = typed?.trim()?.takeIf { it.isNotEmpty() }
+        val rebind = bindingChanged(saved, next) && hadStored
+        return SaveKeys(deleteStored = rebind, set = k, askAgain = rebind && k == null)
+    }
+}

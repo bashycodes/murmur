@@ -68,6 +68,22 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
         lease.use({}) { h -> if (!guardLink { nativeSetCloudKey(h, providerId, key) }) throw lastError("set_cloud_key failed") }
     }
 
+    /**
+     * Review S4: like [setCloudKey], bound to exactly [providerJson]'s base-URL host + adapter
+     * (`nativeSetCloudKeyFor`); an older library falls back to the id-only call.
+     */
+    fun setCloudKeyFor(providerJson: String, providerId: String, key: String?) {
+        if (!isRouter) return
+        lease.use({}) { h ->
+            val ok = try {
+                nativeSetCloudKeyFor(h, providerJson, key)
+            } catch (e: UnsatisfiedLinkError) {
+                guardLink { nativeSetCloudKey(h, providerId, key) }
+            }
+            if (!ok) throw lastError("set_cloud_key_for failed")
+        }
+    }
+
     /** Blocking "Test provider" with an unsaved provider; `key` null = the router's stored key. */
     fun probeCloud(providerJson: String, key: String?): HealthReport =
         if (!isRouter) Companion.probeCloud(providerJson, key)
@@ -287,6 +303,7 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
 
         // ---- D18 cloud STT (JNI_CONTRACT.md "Cloud STT"); present in every flavour's library ----
         @JvmStatic external fun nativeSetCloudKey(handle: Long, providerId: String, key: String?): Boolean
+        @JvmStatic external fun nativeSetCloudKeyFor(handle: Long, providerJson: String, key: String?): Boolean
         @JvmStatic external fun nativeProbeCloud(handle: Long, providerJson: String, key: String?): String
         @JvmStatic external fun nativeCloudUsage(handle: Long): String
         @JvmStatic external fun nativeSetCloudUsage(handle: Long, usageJson: String): Boolean
