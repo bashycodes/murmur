@@ -20,7 +20,7 @@ use crate::cloud::{month_of, CloudProviderConfig, CloudUsage, Route, SecretStrin
 use crate::{
     now_unix_ms, Backend, BackendError, Capabilities, CircuitStatus, CloudCapabilities,
     CloudFactory, EngineKind, Failure, HealthReport, Prefer, RemoteFactory, RouteStatus,
-    RouterConfig, RouterError, ServerConfig,
+    RouterConfig, RouterError, RouterPoll, ServerConfig, SessionRoute, StartInfo,
 };
 
 const BACKOFF_MIN: Duration = Duration::from_secs(5);
@@ -210,7 +210,8 @@ fn error_result(msg: impl Into<String>, route: Option<RouteInfo>) -> CommitResul
 
 /// Outcome of trying one route at session start.
 enum Try {
-    Started(Arc<dyn Backend>),
+    /// The backend and whether it queued the session (server busy).
+    Started(Arc<dyn Backend>, bool),
     Skip(BackendError),
 }
 
@@ -395,13 +396,31 @@ impl Router {
     // ---- §9 mirror -------------------------------------------------------
 
     pub fn start_session(&self, cfg: SessionConfig) -> Result<(), RouterError> {
+        self.start_session_info(cfg).map(|_| ())
+    }
+
+    /// `start_session` that also says how the session started: the route
+    /// (engine, cloud provider/model, server, start-time fallback) for a
+    /// "Transcribing via …" label, and `queued` (server busy, waiting for
+    /// a worker). Additive (2026-10-22).
+    pub fn start_session_info(&self, cfg: SessionConfig) -> Result<StartInfo, RouterError> {
         self.cancel();
         let mut st = self.state.lock().unwrap();
         st.last_dictionary = cfg.dictionary.clone();
         let (active, res) = self.start_routes(&mut st, cfg);
         drop(st);
+        let res = res.map(|queued| StartInfo {
+            queued,
+            route: active.live_route(),
+        });
         *self.session.lock().unwrap() = Some(active);
         res
+    }
+
+    /// The route the live session uses now (changes when a mid-session
+    /// failure switches route); `None` without a live session. Additive.
+    pub fn session_route(&self) -> Option<SessionRoute> {
+        self.session.lock().unwrap().as_ref()?.live_route()
     }
 
     pub fn push_audio(&self, pcm: &[i16]) -> bool {
@@ -460,14 +479,19 @@ impl Router {
         self.endpoint().is_some_and(|e| e.reached)
     }
 
-    /// Partial + endpoint in one call (mirrors `FlowCore::poll`).
-    pub fn poll(&self) -> SessionPoll {
+    /// Partial + endpoint (mirrors `FlowCore::poll`) + the live route, in
+    /// one call. Poll it on the partial timer: `route` changes when a
+    /// mid-session failure switches route (e.g. server dies → local).
+    pub fn poll(&self) -> RouterPoll {
         let g = self.session.lock().unwrap();
         let Some(a) = g.as_ref() else {
-            return SessionPoll::default();
+            return RouterPoll::default();
         };
         let partial = a.engine.as_ref().and_then(|e| e.partial());
-        SessionPoll::new(partial, a.endpointer.as_ref().map(Endpointer::state))
+        RouterPoll {
+            session: SessionPoll::new(partial, a.endpointer.as_ref().map(Endpointer::state)),
+            route: a.live_route(),
+        }
     }
 
     /// Never fails: errors come back as an `ERROR` result. `route` is set
@@ -718,7 +742,7 @@ impl Router {
         &self,
         st: &mut State,
         cfg: SessionConfig,
-    ) -> (Active, Result<(), RouterError>) {
+    ) -> (Active, Result<bool, RouterError>) {
         if let Err(e) = st.cfg.validate_order() {
             return (Active::dead(cfg, e.to_string(), None), Err(e));
         }
@@ -738,7 +762,7 @@ impl Router {
             let tried = match r {
                 Route::Client => match st.local.clone().filter(|l| l.ready()) {
                     Some(l) => match l.start_session(&cfg) {
-                        Ok(_) => Try::Started(l),
+                        Ok(i) => Try::Started(l, i.queued),
                         Err(e) => {
                             // A broken local engine is final, as in D17.
                             let msg = format!("local engine: {}", e.message);
@@ -764,7 +788,7 @@ impl Router {
                 Route::Cloud => self.try_cloud(st, &cfg, &routes, i, &mut route),
             };
             match tried {
-                Try::Started(backend) => {
+                Try::Started(backend, queued) => {
                     route.engine = kind.as_str().into();
                     if kind != EngineKind::Cloud {
                         route.provider = None;
@@ -783,7 +807,7 @@ impl Router {
                         a.buffer = Some(Vec::new());
                     }
                     a.fallbacks = fallbacks;
-                    return (a, Ok(()));
+                    return (a, Ok(queued));
                 }
                 Try::Skip(e) => {
                     route.fallback.get_or_insert_with(|| e.kind.as_str().into());
@@ -856,7 +880,7 @@ impl Router {
                     "server queued the session",
                 ))
             }
-            Ok(_) => Try::Started(remote),
+            Ok(i) => Try::Started(remote, i.queued),
             Err(e) => {
                 st.circuit.record_failure(e.kind, Instant::now());
                 Try::Skip(e)
@@ -893,7 +917,7 @@ impl Router {
         }
         let cloud = self.cloud_for(st, p, key);
         match cloud.start_session(cfg) {
-            Ok(_) => Try::Started(cloud),
+            Ok(i) => Try::Started(cloud, i.queued),
             Err(e) => Try::Skip(e),
         }
     }
@@ -1051,6 +1075,13 @@ impl Router {
 }
 
 impl Active {
+    /// The route in use, or `None` when no backend is live (dead session).
+    fn live_route(&self) -> Option<SessionRoute> {
+        self.engine
+            .as_ref()
+            .map(|_| SessionRoute::from_route_info(&self.route))
+    }
+
     /// A queued (busy) server is only a failure when there is a ready local
     /// engine (or another remote route) to go to; otherwise the session
     /// waits for a server worker.

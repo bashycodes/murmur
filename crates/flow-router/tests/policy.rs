@@ -111,6 +111,7 @@ impl Backend for Fake {
                 self.active.store(true, Ordering::SeqCst);
                 Ok(StartInfo {
                     queued: m == StartMode::Queued,
+                    ..Default::default()
                 })
             }
         }
@@ -745,4 +746,167 @@ fn route_order_follows_prefer_and_toggles() {
     assert_eq!(cfg(true, false).route_order(), [Remote]);
     assert_eq!(cfg(false, true).route_order(), [Local]);
     assert!(cfg(false, false).route_order().is_empty());
+}
+
+// ---- live session route (start info + poll) ---------------------------------
+
+fn live(r: &Router) -> SessionRoute {
+    r.poll().route.expect("live session reports its route")
+}
+
+/// The route at start equals the committed route when no fallback happened.
+fn assert_start_matches_commit(start: &SessionRoute, r: &CommitResult) {
+    assert_eq!(*start, SessionRoute::from_route_info(&route(r)), "{r:?}");
+}
+
+#[test]
+fn start_info_and_poll_report_the_server_route() {
+    let k = rig(true, true);
+    let info = k
+        .router
+        .start_session_info(SessionConfig::default())
+        .unwrap();
+    let start = info.route.clone().expect("start route");
+    assert_eq!(start.engine, EngineKind::Remote);
+    assert_eq!(start.server.as_deref(), Some("100.64.0.10:7313"));
+    assert_eq!(start.fallback, None);
+    assert_eq!(start.provider, None);
+    assert!(!info.queued);
+    assert_eq!(live(&k.router), start);
+    assert_eq!(k.router.session_route(), Some(start.clone()));
+    let p = k.router.poll();
+    assert_eq!(
+        p.partial.as_deref(),
+        Some("remote partial"),
+        "SessionPoll fields kept"
+    );
+    let r = dictate(&k.router);
+    assert_start_matches_commit(&start, &r);
+    assert_eq!(k.router.poll().route, None, "no session after commit");
+    assert_eq!(k.router.session_route(), None);
+}
+
+#[test]
+fn start_info_and_poll_report_the_local_route() {
+    let k = rig(false, true);
+    let start = k
+        .router
+        .start_session_info(SessionConfig::default())
+        .unwrap()
+        .route
+        .unwrap();
+    assert_eq!(start.engine, EngineKind::Local);
+    assert_eq!((start.server.clone(), start.fallback.clone()), (None, None));
+    assert_eq!(live(&k.router), start);
+    assert_start_matches_commit(&start, &dictate(&k.router));
+}
+
+#[test]
+fn start_route_names_the_fallback_when_the_server_is_down_at_start() {
+    let k = rig_with(
+        cfg(true, true),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).with_start(StartMode::Fail(Failure::ConnectFailed)),
+    );
+    let start = k
+        .router
+        .start_session_info(SessionConfig::default())
+        .unwrap()
+        .route
+        .unwrap();
+    assert_eq!(start.engine, EngineKind::Local);
+    assert_eq!(start.fallback.as_deref(), Some("connect_failed"));
+    assert_eq!(start.server, None, "server only named while it serves");
+    // A start-time fallback is already in the start route: still equal.
+    assert_start_matches_commit(&start, &dictate(&k.router));
+}
+
+#[test]
+fn poll_switches_to_local_after_a_mid_session_server_death() {
+    let k = rig_with(
+        cfg(true, true),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).dying_after(8000),
+    );
+    let start = k
+        .router
+        .start_session_info(SessionConfig::default())
+        .unwrap()
+        .route
+        .unwrap();
+    assert_eq!(start.engine, EngineKind::Remote);
+    assert!(k.router.push_audio(&[100i16; 4000]));
+    assert_eq!(live(&k.router).engine, EngineKind::Remote);
+    assert!(k.router.push_audio(&[100i16; 4000]));
+    let now = live(&k.router);
+    assert_eq!(now.engine, EngineKind::Local, "pill must change live");
+    assert_eq!(now.fallback.as_deref(), Some("disconnected"));
+    assert_eq!(now.server, None);
+    assert_eq!(k.router.poll().partial.as_deref(), Some("local partial"));
+    let r = k.router.commit();
+    assert_eq!(route(&r).engine, "local");
+    assert_ne!(
+        start,
+        SessionRoute::from_route_info(&route(&r)),
+        "fallback happened"
+    );
+    assert_eq!(
+        now,
+        SessionRoute::from_route_info(&route(&r)),
+        "last poll = commit"
+    );
+}
+
+#[test]
+fn failed_start_reports_no_live_route() {
+    let k = rig_with(
+        cfg(true, false),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).with_start(StartMode::Fail(Failure::ConnectFailed)),
+    );
+    assert!(k
+        .router
+        .start_session_info(SessionConfig::default())
+        .is_err());
+    assert_eq!(k.router.poll(), RouterPoll::default());
+    assert_eq!(k.router.session_route(), None);
+}
+
+#[test]
+fn queued_start_without_fallback_reports_queued() {
+    let k = rig_with(
+        cfg(true, false),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).with_start(StartMode::Queued),
+    );
+    let info = k
+        .router
+        .start_session_info(SessionConfig::default())
+        .unwrap();
+    assert!(info.queued);
+    assert_eq!(info.route.unwrap().engine, EngineKind::Remote);
+}
+
+#[test]
+fn router_poll_json_is_session_poll_plus_optional_route() {
+    // No session: byte-identical to the core SessionPoll JSON.
+    let idle = serde_json::to_string(&RouterPoll::default()).unwrap();
+    assert_eq!(
+        idle,
+        serde_json::to_string(&flow_core::SessionPoll::default()).unwrap()
+    );
+    let p: RouterPoll = serde_json::from_str(
+        r#"{"partial":"hi","endpoint_reached":true,"speech_ms":5,"trailing_silence_ms":7,
+            "route":{"engine":"remote","server":"h:1"}}"#,
+    )
+    .unwrap();
+    assert!(p.endpoint_reached);
+    assert_eq!(p.route.as_ref().unwrap().engine, EngineKind::Remote);
+    let core: flow_core::SessionPoll = p.clone().into();
+    assert_eq!(core.speech_ms, 5);
+    // StartInfo: `route` omitted while None.
+    assert_eq!(
+        serde_json::to_string(&StartInfo::default()).unwrap(),
+        r#"{"queued":false}"#
+    );
 }

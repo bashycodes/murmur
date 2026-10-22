@@ -345,7 +345,67 @@ fn all() -> Vec<(String, Value)> {
         serde_json::to_value(result(fallback_route())).unwrap(),
     ));
     v.extend(cloud_fixtures());
+    v.extend(live_route_fixtures());
     v
+}
+
+/// 2026-10-22: the live route (`Router::start_session_info`, `Router::poll`).
+fn live_route_fixtures() -> Vec<(String, Value)> {
+    let cloud = SessionRoute {
+        engine: EngineKind::Cloud,
+        provider: Some("openrouter-1".into()),
+        model: Some("openai/gpt-transcribe".into()),
+        ..Default::default()
+    };
+    let remote = SessionRoute {
+        engine: EngineKind::Remote,
+        server: Some("100.64.0.10:7313".into()),
+        ..Default::default()
+    };
+    vec![
+        (
+            "start_info_remote".into(),
+            serde_json::to_value(StartInfo {
+                queued: false,
+                route: Some(remote),
+            })
+            .unwrap(),
+        ),
+        (
+            "poll_cloud".into(),
+            serde_json::to_value(RouterPoll {
+                session: SessionPoll {
+                    partial: Some("ask not what".into()),
+                    endpoint_reached: false,
+                    speech_ms: 1200,
+                    trailing_silence_ms: 300,
+                },
+                route: Some(cloud),
+            })
+            .unwrap(),
+        ),
+        (
+            "poll_fallback".into(),
+            serde_json::to_value(RouterPoll {
+                session: SessionPoll {
+                    partial: None,
+                    endpoint_reached: true,
+                    speech_ms: 2400,
+                    trailing_silence_ms: 2000,
+                },
+                route: Some(SessionRoute {
+                    engine: EngineKind::Local,
+                    fallback: Some("disconnected".into()),
+                    ..Default::default()
+                }),
+            })
+            .unwrap(),
+        ),
+        (
+            "poll_idle".into(),
+            serde_json::to_value(RouterPoll::default()).unwrap(),
+        ),
+    ]
 }
 
 #[test]
@@ -384,13 +444,15 @@ fn every_fixture_parses_and_round_trips() {
                 "health" => round_trip::<HealthReport>(&v),
                 "route" => round_trip::<RouteStatus>(&v),
                 "commit" => round_trip::<CommitResult>(&v),
+                "start" => round_trip::<StartInfo>(&v),
+                "poll" => round_trip::<RouterPoll>(&v),
                 other => panic!("unknown fixture kind {other} ({name})"),
             },
         };
         assert_eq!(back, v, "{name}");
         n += 1;
     }
-    assert_eq!(n, 18);
+    assert_eq!(n, 22);
 }
 
 #[test]
