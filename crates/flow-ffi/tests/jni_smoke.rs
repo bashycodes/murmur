@@ -186,7 +186,7 @@ fn contract_symbols_exported() {
         .split('`')
         .filter(|w| w.starts_with("Java_dev_flowclone_core_NativeFlowCore_native"))
         .collect();
-    assert_eq!(want.len(), 28, "{want:?}");
+    assert_eq!(want.len(), 29, "{want:?}");
     let src = include_str!("../src/jni_api.rs");
     let have: std::collections::BTreeSet<&str> = src
         .split(|c: char| !c.is_alphanumeric() && c != '_')

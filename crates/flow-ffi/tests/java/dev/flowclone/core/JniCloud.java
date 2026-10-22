@@ -78,7 +78,8 @@ public class JniCloud {
         String cloudOnly = routerConfig(ok).replace("\"allow_client\":true", "\"allow_client\":false").replace("[\"cloud\",\"client\"]", "[\"cloud\"]");
         long c = NativeFlowCore.nativeOpenRouter(cloudOnly, 0);
         check(c != 0, "cloud-only open: " + NativeFlowCore.nativeLastError());
-        NativeFlowCore.nativeSetCloudKey(c, "groq-1", key);
+        // Bound to the provider config being saved (host + adapter).
+        check(NativeFlowCore.nativeSetCloudKeyFor(c, provider(ok), key), "set key for: " + NativeFlowCore.nativeLastError());
         System.out.println(dictate(c));                                                 // 17 cloud only
         // Live route while recording: provider + model before commit.
         System.out.println(NativeFlowCore.nativeStartSessionInfo(c, SESSION));          // 18 start info
@@ -105,6 +106,7 @@ class NativeFlowCore {
     static native boolean nativeUpdateRouter(long h, String cfg);
     static native String nativeRouteStatus(long h);
     static native boolean nativeSetCloudKey(long h, String providerId, String key);
+    static native boolean nativeSetCloudKeyFor(long h, String providerJson, String key);
     static native String nativeProbeCloud(long h, String providerJson, String key);
     static native String nativeCloudUsage(long h);
     static native boolean nativeSetCloudUsage(long h, String usageJson);

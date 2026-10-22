@@ -356,6 +356,26 @@ pub mod json_api {
         Ok(())
     }
 
+    /// `Router::set_cloud_key_for`: the key is bound to this provider's
+    /// base-URL host + adapter (review S4).
+    pub fn set_cloud_key_for(
+        h: &FlowHandle,
+        provider_json: &str,
+        key: Option<String>,
+    ) -> Result<(), (&'static str, String)> {
+        let r = h
+            .router()
+            .ok_or(("error", "not a router handle".to_string()))?;
+        let p: CloudProviderConfig = serde_json::from_str(provider_json).map_err(|e| {
+            (
+                "bad_config",
+                format!("bad_config: bad provider config: {e}"),
+            )
+        })?;
+        r.set_cloud_key_for(&p, key.map(SecretString::new));
+        Ok(())
+    }
+
     /// Blocking "Test provider" `HealthReport` for an unsaved provider
     /// config. Without a router handle a temporary router is used (then the
     /// key must be passed).
@@ -750,6 +770,35 @@ pub unsafe extern "C" fn flow_set_cloud_key(
         };
         let key = str_arg(key_or_null).map(str::to_owned);
         json_api::set_cloud_key(h, id, key).map_or_else(
+            |(kind, e)| {
+                set_error_kind(kind, e);
+                -1
+            },
+            |_| 0,
+        )
+    })
+}
+
+/// Like `flow_set_cloud_key`, bound to exactly this `CloudProviderConfig`
+/// (its base-URL host + adapter): the key is never sent anywhere else, and a
+/// later config that changes either drops it. 0 ok, -1 (`bad_config` for bad
+/// JSON, `error` for a core handle). Non-blocking.
+///
+/// # Safety
+/// `h` a handle or NULL; strings valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_set_cloud_key_for(
+    h: *mut FlowHandle,
+    provider_json: *const c_char,
+    key_or_null: *const c_char,
+) -> c_int {
+    guard(-1, || {
+        let (Some(h), Some(p)) = (h.as_ref(), str_arg(provider_json)) else {
+            set_error("null handle or provider");
+            return -1;
+        };
+        let key = str_arg(key_or_null).map(str::to_owned);
+        json_api::set_cloud_key_for(h, p, key).map_or_else(
             |(kind, e)| {
                 set_error_kind(kind, e);
                 -1
