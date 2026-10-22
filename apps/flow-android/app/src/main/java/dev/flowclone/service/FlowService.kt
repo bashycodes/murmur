@@ -421,6 +421,9 @@ class FlowService : Service() {
 
         override fun endpointSilenceMs(): Int? = app.settings.load().handsFreeEndpointMs()
 
+        override fun insertTarget(explicit: Boolean) =
+            app.accessibility?.insertTarget(explicit) ?: dev.flowclone.session.InsertTarget.OK
+
         override fun onRecordingActive(active: Boolean) {
             if (active && !micPromoted) promote(withMic = true)
             app.accessibility?.onDictationActive(active)

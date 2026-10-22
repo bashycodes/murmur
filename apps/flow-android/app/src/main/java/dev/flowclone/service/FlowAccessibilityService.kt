@@ -31,6 +31,7 @@ import dev.flowclone.insert.InsertionEnvironment
 import dev.flowclone.insert.V3Inserter
 import dev.flowclone.policy.BubbleVisibilityPolicy
 import dev.flowclone.policy.EditorInputType
+import dev.flowclone.policy.InsertGuard
 import dev.flowclone.policy.PolicyLists
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -234,6 +235,30 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         val ok = inputMethod?.sendKey(code) == true
         Log.i(TAG, "sendKey $key ok=$ok")
         ok
+    }
+
+    override fun insertTarget(explicit: Boolean): dev.flowclone.session.InsertTarget {
+        runCatching { evaluateCurrentState() }
+        val pkg = currentPackageName
+        val node = focusedNode()
+        val editor = inputMethod?.focusedEditor ?: FocusedEditor.EMPTY
+        // The keyboard may have closed during processing (the node tier still inserts): judge the field, not the IME.
+        val allowed = BubbleVisibilityPolicy.evaluate(
+            BubbleVisibilityPolicy.Input(
+                inputType = editor.inputType.takeIf { editor.packageName != null } ?: node?.inputType ?: 0,
+                imeOptions = editor.imeOptions,
+                packageName = if (pkg == packageName) null else pkg,
+                nodePassword = node?.isPassword, imeVisible = true,
+                notificationReplyContext = replyContext,
+                accessibilityDataSensitive = Build.VERSION.SDK_INT >= 34 && node?.isAccessibilityDataSensitive == true,
+            ),
+            app.settings.load().userDenylist,
+        ).show && pkg != packageName
+        val start = startSnapshot?.let { InsertGuard.Field(it.pkg, it.looseHash) }
+        val now = InsertGuard.Field(pkg ?: node?.packageName?.toString(), node?.let { FocusedNodeFinder.identityHash(it, false) })
+        val r = InsertGuard.check(start, now, allowed, explicit)
+        if (r != dev.flowclone.session.InsertTarget.OK) Log.i(TAG, "insert target $r (explicit=$explicit)")
+        return r
     }
 
     override fun onDictationActive(active: Boolean) {
