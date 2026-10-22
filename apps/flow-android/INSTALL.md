@@ -34,14 +34,14 @@ APKs built on this PC (`tools/dist.sh`, after `tools/build-native.sh --flavor lo
 
 | APK | Size | SHA-256 |
 |---|---|---|
-| `flow-clone-hybrid-debug.apk` | 46.3 MB (46274225 bytes) | `582e14a582e8c1f8fbe8913114d758c490fd6e7bf6e43a5c40e55c96eff129bc` |
-| `flow-clone-hybrid-release-unsigned.apk` | 45.4 MB (45417457 bytes) | `64c84e99cde04b0cbc18e78a1d6ba4d7e65e5257cf75d37b6d0b55ca4c163afe` |
-| `flow-clone-local-debug.apk` | 42.1 MB (42129049 bytes) | `b46e6f650a996050109b6c0b59c88205a8837a91c643aa7dda9db503ad65d695` |
-| `flow-clone-local-release-unsigned.apk` | 41.3 MB (41272269 bytes) | `b13e04b70685a5b1049484aa0b1a046ad260242cde8b989d162fa5a770a9ebe6` |
-| `flow-clone-remote-debug.apk` | 12.6 MB (12582027 bytes) | `0d9ec8fd78161a718fabfc26005227eba6e1e8917a08a86547191b178bd750dc` |
-| `flow-clone-remote-release-unsigned.apk` | 11.7 MB (11725259 bytes) | `9e48abac048505a0a8cd85a91230388215d0a4b3708fbf6022b99142a0735363` |
+| `flow-clone-hybrid-debug.apk` | 46.3 MB (46274225 bytes) | `090afb6cd51c51432bef471463674eb25d246f656154cca76eaa94e304c8d46b` |
+| `flow-clone-hybrid-release-unsigned.apk` | 45.4 MB (45417457 bytes) | `162404689e4025825b010cb9ef900da7de17f20cae0d7c15a91e7ffe1c9d3944` |
+| `flow-clone-local-debug.apk` | 42.1 MB (42129049 bytes) | `ddf6f992aaa1c96785f086464ba1c61e1c2adbd7748df62b07db2978a5106d56` |
+| `flow-clone-local-release-unsigned.apk` | 41.3 MB (41272269 bytes) | `105833d373382d1553c38feb6ce7ea49bc36585f1b7e859a7bdfd6c90a3c4be8` |
+| `flow-clone-remote-debug.apk` | 12.6 MB (12582027 bytes) | `c71ee2291cbc0d07d93abfc57ae59ef6d9fbbff3e8589e3c47e018e58979eae0` |
+| `flow-clone-remote-release-unsigned.apk` | 11.7 MB (11725259 bytes) | `687114ecd3cfdfe2beec40389ac9fa9bc79fb6920fa21a2a80f580fa2be5d00a` |
 
-Built 2026-10-22 from branch `android-final` (natives rebuilt from the same tree; `*-release-unsigned.apk` are not installable until signed, see "Release build" below).
+Built 2026-10-22 from branch `android-final` (commit 403b7ff) (natives rebuilt from the same tree; `*-release-unsigned.apk` are not installable until signed, see "Release build" below).
 
 Check a copy with `sha256sum flow-clone-hybrid-debug.apk` before installing it. An APK from
 another machine or from the CI artifact (`.github/workflows/android-build.yml`) has a different
