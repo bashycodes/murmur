@@ -633,3 +633,61 @@ pre-existing fixtures are byte-identical.
    further polls once finishing started.
 5. Tests: `RouterJsonTest` can decode `poll_cloud.json`, `poll_fallback.json`, `poll_idle.json`,
    `start_info_remote.json` from `crates/flow-router/fixtures/`.
+
+**2026-10-22 — review fixes, core/router/cloud/ffi side (branch `router-route`; review `docs/reviews/2026-10-22-integration.md` on `review-2026-10-22`)**
+
+All additive at the API level (no signature removed); behaviour changes are listed so W and A
+can adapt. Server-side items (S7-S10, C5, the server half of C4) are on branch `server-fixes`.
+
+* **S1 Test provider / S4 key binding** (`flow-router`). A stored cloud key is bound to the saved
+  provider's base-URL host + adapter. `update_config` with a changed host or adapter (or a removed
+  provider) drops it; a key set by id before its provider is in the config binds to the first one
+  saved. `probe_cloud(p, None)` uses the stored key only if `p` has exactly that host + adapter;
+  otherwise `ok:false, error:"cloud_not_configured"`, message "enter the API key: the stored key is
+  only sent to the saved host". New: `Router::set_cloud_key_for(&CloudProviderConfig, Option<SecretString>)`,
+  C `flow_set_cloud_key_for(h, provider_json, key)`, JNI `nativeSetCloudKeyFor(h, providerJson, key): Boolean`.
+  * W: on Save call `set_cloud_key_for(&saved_provider, key)`; when the host or adapter of a saved
+    provider changes, delete its Credential Manager entry and ask for the key again (never re-send the
+    old key, or it is bound to the new host). "Test provider" on an edited form must pass the typed key;
+    show the message above when the field is empty.
+  * A: same with `nativeSetCloudKeyFor` and the Keystore entry (`CloudSettings.edited`); the provider
+    form's Test button passes the typed key when the host/adapter differ from the saved ones.
+* **S2 URL parsing** (`flow-router`). `flow_router::cloud::parse_base_url(&str) -> Result<BaseUrl{https, host, port, ip}, String>`
+  uses the `url` crate (reqwest's parser). It refuses `\`, whitespace / control characters anywhere,
+  any userinfo (`user@`, `:pw@`), non-http(s) schemes and empty hosts; `CloudProviderConfig::host()`,
+  consent and the http cleartext rule all use its host (WHATWG IPv4 forms like `0x7f.1` become
+  dotted quads; percent escapes are decoded). **The Kotlin mirror (`CloudSettings.kt`) must match the
+  vectors in `crates/flow-router/tests/url_parse.rs`** (the Android agent ports it). W: drop the
+  hand-rolled host classifier in `dev_settings.rs` (~640-665) and call `parse_base_url` /
+  `CloudProviderConfig::validate` instead.
+* **S3 redirects** (`flow-cloud`). Provider calls never follow redirects (no Referer, https-only for
+  https base URLs); a 3xx is `provider_error`. No shell change.
+* **S5 mid-session re-check** (`flow-router`). Every fallback hop and replay re-checks the current
+  toggles, `order`, consent and key; `update_config` / `set_cloud_key*` prune the live session's hops,
+  and a live cloud session that is no longer allowed switches to the next allowed route at once (the
+  pill changes on the next poll). A running server session keeps its route until the next session.
+  No shell change (just call `update_config` as today).
+* **S6 cleartext by resolved address** (`flow-remote`, `flow-cloud`, `flow_router::net`). `ws://`
+  (and cloud `http://`) to a name resolves it and requires **every** address to be loopback, RFC 1918,
+  ULA, link-local, or tailnet (100.64/10, fd7a:115c:a1e0::/48) reached through an interface that holds
+  a tailnet address (`net::plaintext_ok_resolved`, `net::route_source`); the connection then goes to
+  exactly those addresses. `*.local`, single-label and `*.ts.net` names still pass the config-time
+  check (`ServerConfig::validate`) but no longer count as private by name. Choice/limit: carrier CGNAT
+  also uses 100.64/10, so a phone on such a network with Tailscale down cannot be told apart here;
+  that case needs `wss://`. Failure: `connect_failed` "…: plaintext refused: … (enable TLS)"; shells
+  may show it as "Use TLS for this server".
+* **S11 stale preview** (`flow-core`). A partial decode of a cancelled/committed session can no
+  longer appear in the next session; commit and cancel clear the preview. No shell change.
+* **C2 blocking calls.** Documented in `flow_core.h` and JNI_CONTRACT.md "Threading". A: move
+  `nativeStartSession*` off Main (it can block up to `connect_timeout_ms` on the server route).
+  W: `start_session` blocks the same way; keep it off the UI/hook thread.
+* **C3 failover off the audio thread** (`flow-router`). `push_audio` never connects: a mid-session
+  failover runs on a helper thread while audio is buffered; `poll().route` names the route being
+  switched to and `partial` is `None` until it is installed. No shell change.
+* **C4 cancel during commit** (`flow-router`, `flow-core`, `flow-remote`, `flow-cloud`). `cancel()`
+  with no open session aborts a `commit()` running on another thread: it returns at once with ERROR
+  `cancelled` (route set), the engine is told to stop (local ASR abort flag, server `cancel`, cloud
+  upload skipped if not started), and no fallback is tried. `start_session` no longer cancels a
+  running commit (only the open session). W: Esc during processing (and the 35 s timeout) should call
+  `cancel()` and treat an ERROR `cancelled` result as "dropped, nothing to paste". A: same for the
+  20 s UI timeout, which already calls `nativeCancel`.
