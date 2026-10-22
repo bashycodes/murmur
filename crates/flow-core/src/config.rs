@@ -241,6 +241,12 @@ pub struct ModelConfig {
     /// Optional Silero VAD model for whisper.cpp's built-in VAD (feature
     /// `whisper`; e.g. `ggml-silero-v5.1.2.bin`). `None` = energy VAD only.
     pub vad_model_path: Option<String>,
+    /// Whisper: size the encoder window to the clip (`audio_ctx` = clip +
+    /// 1 s) instead of always encoding 30 s, re-decoding with the full
+    /// window when the output looks degenerate (repetition / too many
+    /// words). Default on (D20: 40 LibriSpeech clips, tiny.en 2.7× / base.en
+    /// 1.8× / small 3.4× faster, WER −0.4 / +0.3 / +0.1 points).
+    pub whisper_fit_ctx: bool,
 }
 
 /// Half the logical CPUs (≈ physical cores), capped at 8: ggml's spinning
@@ -259,6 +265,7 @@ impl Default for ModelConfig {
             llm_lib: None,
             threads: default_threads(),
             vad_model_path: None,
+            whisper_fit_ctx: true,
         }
     }
 }
@@ -320,6 +327,7 @@ mod tests {
     fn asr_engine_selector_defaults_to_whisper() {
         let c: ModelConfig = serde_json::from_str("{}").unwrap();
         assert_eq!(c.asr_backend, AsrBackend::Whisper);
+        assert!(c.whisper_fit_ctx);
         for j in [
             r#"{"asr_engine":"parakeet"}"#,
             r#"{"asr_backend":"parakeet"}"#,
