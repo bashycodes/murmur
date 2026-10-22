@@ -224,10 +224,15 @@ impl State {
 /// A self-hosted OpenAI-compatible server (speaches, LocalAI, …) on a
 /// loopback / LAN / Tailscale host may run without an API key: the
 /// openai_compat adapter then sends no `Authorization` header (review P3).
-/// Public hosts and the other adapters always need a key.
+/// Only the `custom` preset: a named service (Groq, OpenAI, …) always
+/// needs a key, wherever its base URL points; so do public hosts and the
+/// other adapters.
 fn keyless_ok(p: &CloudProviderConfig) -> bool {
     let host = p.host();
-    p.adapter == "openai_compat" && !host.is_empty() && crate::net::classify(&host).plaintext_ok()
+    p.preset == "custom"
+        && p.adapter == "openai_compat"
+        && !host.is_empty()
+        && crate::net::classify(&host).plaintext_ok()
 }
 
 /// Which configured endpoint a backend talks to: re-checked against the
