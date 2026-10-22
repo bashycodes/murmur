@@ -742,3 +742,144 @@ fn llm_sees_the_spoken_cleanup_output() {
     assert_eq!(*echo.0.lock().unwrap(), "I think it works.");
     assert_eq!(r.status, CommitStatus::Formatted, "{r:?}");
 }
+
+// ---- S11: a previous session's partial never leaks into the next ------------
+
+/// Partial decodes block on a gate the first time (an in-flight decode that
+/// ignores the abort flag) and say which call they were.
+struct GatedPartialAsr {
+    calls: std::sync::atomic::AtomicUsize,
+    entered: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>>,
+    release: std::sync::Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+}
+
+impl AsrEngine for GatedPartialAsr {
+    fn transcribe(&self, _pcm: &[f32], req: &AsrRequest) -> Result<AsrOutput, AsrError> {
+        if req.purpose != flow_core::asr::AsrPurpose::Partial {
+            return Ok(AsrOutput {
+                text: "final".into(),
+                ..Default::default()
+            });
+        }
+        let n = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if n == 0 {
+            if let Some(tx) = self.entered.lock().unwrap().take() {
+                let _ = tx.send(());
+            }
+            if let Some(rx) = self.release.lock().unwrap().take() {
+                let _ = rx.recv();
+            }
+            return Ok(AsrOutput {
+                text: "old secret".into(),
+                ..Default::default()
+            });
+        }
+        Ok(AsrOutput {
+            text: format!("new {n}"),
+            ..Default::default()
+        })
+    }
+}
+
+fn partial_cfg() -> SessionConfig {
+    SessionConfig {
+        partial_interval_ms: Some(100),
+        vad: false,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn stale_partial_from_a_cancelled_session_is_dropped() {
+    let (etx, erx) = std::sync::mpsc::channel();
+    let (rtx, rrx) = std::sync::mpsc::channel();
+    let asr = Arc::new(GatedPartialAsr {
+        calls: Default::default(),
+        entered: std::sync::Mutex::new(Some(etx)),
+        release: std::sync::Mutex::new(Some(rrx)),
+    });
+    let core = FlowCore::from_engines(asr, None);
+    core.start_session(partial_cfg()).unwrap();
+    push_all(&core, &speech(500));
+    erx.recv_timeout(Duration::from_secs(5))
+        .expect("partial decode started");
+    core.cancel();
+    core.start_session(partial_cfg()).unwrap();
+    rtx.send(()).unwrap();
+    std::thread::sleep(Duration::from_millis(150));
+    assert_ne!(
+        core.partial().as_deref(),
+        Some("old secret"),
+        "the cancelled session's preview leaked into the new one"
+    );
+    core.cancel();
+}
+
+#[test]
+fn cancel_and_commit_clear_the_partial() {
+    for commit in [false, true] {
+        let (core, _) = mock_core("hello there");
+        core.start_session(partial_cfg()).unwrap();
+        push_all(&core, &speech(500));
+        let t0 = Instant::now();
+        while core.partial().is_none() && t0.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(core.partial().is_some(), "partial produced");
+        if commit {
+            core.commit();
+        } else {
+            core.cancel();
+        }
+        assert_eq!(core.partial(), None, "commit={commit}");
+    }
+}
+
+// ---- C4: cancel() during commit aborts the running pipeline -----------------
+
+/// Final decodes run until aborted (or 5 s).
+struct AbortableAsr;
+impl AsrEngine for AbortableAsr {
+    fn transcribe(&self, _pcm: &[f32], req: &AsrRequest) -> Result<AsrOutput, AsrError> {
+        let t0 = Instant::now();
+        while !req.abort.is_set() && t0.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        if req.abort.is_set() {
+            return Err(AsrError::Transcribe("aborted".into()));
+        }
+        Ok(AsrOutput {
+            text: "too late".into(),
+            ..Default::default()
+        })
+    }
+}
+
+#[test]
+fn cancel_during_commit_aborts_it_and_frees_the_worker() {
+    let core = FlowCore::from_engines(Arc::new(AbortableAsr), None);
+    let cfg = SessionConfig {
+        vad: false,
+        ..Default::default()
+    };
+    core.start_session(cfg.clone()).unwrap();
+    push_all(&core, &speech(500));
+    let (r, took) = std::thread::scope(|sc| {
+        let h = sc.spawn(|| {
+            let t = Instant::now();
+            (core.commit(), t.elapsed())
+        });
+        std::thread::sleep(Duration::from_millis(100));
+        core.cancel();
+        h.join().unwrap()
+    });
+    assert!(took < Duration::from_secs(2), "{took:?}");
+    assert_eq!(r.status, CommitStatus::Error);
+    assert!(r.error.as_deref().unwrap().contains("cancelled"), "{r:?}");
+    // The worker is free: the next session commits normally (and its own
+    // commit is not affected by the earlier cancel).
+    core.start_session(cfg).unwrap();
+    push_all(&core, &speech(200));
+    core.cancel();
+    assert_eq!(core.commit().status, CommitStatus::Error, "no session");
+}

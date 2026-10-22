@@ -14,7 +14,7 @@ mod conn;
 #[cfg(feature = "tls")]
 mod tls;
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -51,12 +51,18 @@ struct Session {
     failed: Option<BackendError>,
 }
 
+/// `(sid, connection, cancelled)` of the commit being awaited.
+type Committing = (u64, Arc<Conn>, Arc<AtomicBool>);
+
 struct Inner {
     cfg: ServerConfig,
     client: String,
     rt: Option<tokio::runtime::Runtime>,
     conn: Mutex<Option<Arc<Conn>>>,
     session: Mutex<Option<Session>>,
+    /// The session whose commit is being awaited (`cancel` reaches it,
+    /// review C4) and whether it was cancelled.
+    committing: Mutex<Option<Committing>>,
     next_sid: AtomicU64,
 }
 
@@ -86,6 +92,7 @@ impl RemoteBackend {
                 rt: Some(rt),
                 conn: Mutex::new(None),
                 session: Mutex::new(None),
+                committing: Mutex::new(None),
                 next_sid: AtomicU64::new(1),
             }),
         }
@@ -264,8 +271,14 @@ impl Backend for RemoteBackend {
                 "connection closed at commit",
             ));
         }
+        let cancelled = Arc::new(AtomicBool::new(false));
+        *self.inner.committing.lock().unwrap() = Some((s.sid, s.conn.clone(), cancelled.clone()));
         let out = s.conn.wait_result(s.sid, deadline);
+        *self.inner.committing.lock().unwrap() = None;
         s.conn.end_session();
+        if cancelled.load(Ordering::SeqCst) {
+            return Err(BackendError::new(Failure::Error, "cancelled"));
+        }
         match out {
             Ok((mut r, t)) => {
                 r.route = Some(self.route(&s.conn, Some(t.queue_ms.min(u32::MAX as u64) as u32)));
@@ -281,10 +294,18 @@ impl Backend for RemoteBackend {
         }
     }
 
+    /// Cancels the open session, or (none open) the commit being awaited:
+    /// the server is sent `cancel` (frees its worker) and `commit` stops
+    /// waiting at once with an error (review C4).
     fn cancel(&self) {
         if let Some(s) = self.inner.session.lock().unwrap().take() {
             Self::send_ctl(&s.conn, &ClientMsg::Cancel { sid: s.sid });
             s.conn.end_session();
+        } else if let Some((sid, conn, cancelled)) = self.inner.committing.lock().unwrap().as_ref()
+        {
+            cancelled.store(true, Ordering::SeqCst);
+            Self::send_ctl(conn, &ClientMsg::Cancel { sid: *sid });
+            conn.end_session();
         }
     }
 

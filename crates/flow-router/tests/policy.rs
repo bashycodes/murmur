@@ -35,6 +35,10 @@ struct Fake {
     contexts: Mutex<Vec<FieldContext>>,
     last_cfg: Mutex<Option<SessionConfig>>,
     active: AtomicBool,
+    /// start_session takes this long (a slow connect).
+    start_delay: Mutex<std::time::Duration>,
+    /// commit blocks until cancel() (or 10 s).
+    block_commit: AtomicBool,
 }
 
 impl Fake {
@@ -52,7 +56,17 @@ impl Fake {
             contexts: Mutex::new(Vec::new()),
             last_cfg: Mutex::new(None),
             active: AtomicBool::new(false),
+            start_delay: Mutex::new(std::time::Duration::ZERO),
+            block_commit: AtomicBool::new(false),
         })
+    }
+    fn slow_start(self: Arc<Self>, ms: u64) -> Arc<Self> {
+        *self.start_delay.lock().unwrap() = std::time::Duration::from_millis(ms);
+        self
+    }
+    fn blocking_commit(self: Arc<Self>) -> Arc<Self> {
+        self.block_commit.store(true, Ordering::SeqCst);
+        self
     }
     fn with_start(self: Arc<Self>, m: StartMode) -> Arc<Self> {
         *self.start.lock().unwrap() = m;
@@ -102,6 +116,7 @@ impl Backend for Fake {
     }
     fn start_session(&self, cfg: &SessionConfig) -> Result<StartInfo, BackendError> {
         self.starts.fetch_add(1, Ordering::SeqCst);
+        std::thread::sleep(*self.start_delay.lock().unwrap());
         *self.last_cfg.lock().unwrap() = Some(cfg.clone());
         match *self.start.lock().unwrap() {
             StartMode::Fail(f) => Err(BackendError::new(f, "fake start failure")),
@@ -111,6 +126,7 @@ impl Backend for Fake {
                 self.active.store(true, Ordering::SeqCst);
                 Ok(StartInfo {
                     queued: m == StartMode::Queued,
+                    ..Default::default()
                 })
             }
         }
@@ -130,6 +146,16 @@ impl Backend for Fake {
     }
     fn commit(&self, deadline: Instant) -> Result<CommitResult, BackendError> {
         self.commits.fetch_add(1, Ordering::SeqCst);
+        if self.block_commit.load(Ordering::SeqCst) {
+            let t0 = Instant::now();
+            let c0 = self.cancels.load(Ordering::SeqCst);
+            while self.cancels.load(Ordering::SeqCst) == c0
+                && t0.elapsed() < std::time::Duration::from_secs(10)
+            {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            return Err(BackendError::new(Failure::Error, "cancelled"));
+        }
         self.active.store(false, Ordering::SeqCst);
         assert!(deadline > Instant::now());
         if self.dead() {
@@ -745,4 +771,272 @@ fn route_order_follows_prefer_and_toggles() {
     assert_eq!(cfg(true, false).route_order(), [Remote]);
     assert_eq!(cfg(false, true).route_order(), [Local]);
     assert!(cfg(false, false).route_order().is_empty());
+}
+
+// ---- live session route (start info + poll) ---------------------------------
+
+fn live(r: &Router) -> SessionRoute {
+    r.poll().route.expect("live session reports its route")
+}
+
+/// The route at start equals the committed route when no fallback happened.
+fn assert_start_matches_commit(start: &SessionRoute, r: &CommitResult) {
+    assert_eq!(*start, SessionRoute::from_route_info(&route(r)), "{r:?}");
+}
+
+#[test]
+fn start_info_and_poll_report_the_server_route() {
+    let k = rig(true, true);
+    let info = k
+        .router
+        .start_session_info(SessionConfig::default())
+        .unwrap();
+    let start = info.route.clone().expect("start route");
+    assert_eq!(start.engine, EngineKind::Remote);
+    assert_eq!(start.server.as_deref(), Some("100.64.0.10:7313"));
+    assert_eq!(start.fallback, None);
+    assert_eq!(start.provider, None);
+    assert!(!info.queued);
+    assert_eq!(live(&k.router), start);
+    assert_eq!(k.router.session_route(), Some(start.clone()));
+    let p = k.router.poll();
+    assert_eq!(
+        p.partial.as_deref(),
+        Some("remote partial"),
+        "SessionPoll fields kept"
+    );
+    let r = dictate(&k.router);
+    assert_start_matches_commit(&start, &r);
+    assert_eq!(k.router.poll().route, None, "no session after commit");
+    assert_eq!(k.router.session_route(), None);
+}
+
+#[test]
+fn start_info_and_poll_report_the_local_route() {
+    let k = rig(false, true);
+    let start = k
+        .router
+        .start_session_info(SessionConfig::default())
+        .unwrap()
+        .route
+        .unwrap();
+    assert_eq!(start.engine, EngineKind::Local);
+    assert_eq!((start.server.clone(), start.fallback.clone()), (None, None));
+    assert_eq!(live(&k.router), start);
+    assert_start_matches_commit(&start, &dictate(&k.router));
+}
+
+#[test]
+fn start_route_names_the_fallback_when_the_server_is_down_at_start() {
+    let k = rig_with(
+        cfg(true, true),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).with_start(StartMode::Fail(Failure::ConnectFailed)),
+    );
+    let start = k
+        .router
+        .start_session_info(SessionConfig::default())
+        .unwrap()
+        .route
+        .unwrap();
+    assert_eq!(start.engine, EngineKind::Local);
+    assert_eq!(start.fallback.as_deref(), Some("connect_failed"));
+    assert_eq!(start.server, None, "server only named while it serves");
+    // A start-time fallback is already in the start route: still equal.
+    assert_start_matches_commit(&start, &dictate(&k.router));
+}
+
+#[test]
+fn poll_switches_to_local_after_a_mid_session_server_death() {
+    let k = rig_with(
+        cfg(true, true),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).dying_after(8000),
+    );
+    let start = k
+        .router
+        .start_session_info(SessionConfig::default())
+        .unwrap()
+        .route
+        .unwrap();
+    assert_eq!(start.engine, EngineKind::Remote);
+    assert!(k.router.push_audio(&[100i16; 4000]));
+    assert_eq!(live(&k.router).engine, EngineKind::Remote);
+    assert!(k.router.push_audio(&[100i16; 4000]));
+    let now = live(&k.router);
+    assert_eq!(now.engine, EngineKind::Local, "pill must change live");
+    assert_eq!(now.fallback.as_deref(), Some("disconnected"));
+    assert_eq!(now.server, None);
+    // The failover connects off the push thread: partials resume once the
+    // local engine is installed.
+    let t0 = Instant::now();
+    while k.router.poll().partial.is_none() && t0.elapsed().as_secs() < 2 {
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    assert_eq!(k.router.poll().partial.as_deref(), Some("local partial"));
+    assert_eq!(live(&k.router), now, "installed route = announced route");
+    let r = k.router.commit();
+    assert_eq!(route(&r).engine, "local");
+    assert_ne!(
+        start,
+        SessionRoute::from_route_info(&route(&r)),
+        "fallback happened"
+    );
+    assert_eq!(
+        now,
+        SessionRoute::from_route_info(&route(&r)),
+        "last poll = commit"
+    );
+}
+
+#[test]
+fn failed_start_reports_no_live_route() {
+    let k = rig_with(
+        cfg(true, false),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).with_start(StartMode::Fail(Failure::ConnectFailed)),
+    );
+    assert!(k
+        .router
+        .start_session_info(SessionConfig::default())
+        .is_err());
+    assert_eq!(k.router.poll(), RouterPoll::default());
+    assert_eq!(k.router.session_route(), None);
+}
+
+#[test]
+fn queued_start_without_fallback_reports_queued() {
+    let k = rig_with(
+        cfg(true, false),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).with_start(StartMode::Queued),
+    );
+    let info = k
+        .router
+        .start_session_info(SessionConfig::default())
+        .unwrap();
+    assert!(info.queued);
+    assert_eq!(info.route.unwrap().engine, EngineKind::Remote);
+}
+
+#[test]
+fn router_poll_json_is_session_poll_plus_optional_route() {
+    // No session: byte-identical to the core SessionPoll JSON.
+    let idle = serde_json::to_string(&RouterPoll::default()).unwrap();
+    assert_eq!(
+        idle,
+        serde_json::to_string(&flow_core::SessionPoll::default()).unwrap()
+    );
+    let p: RouterPoll = serde_json::from_str(
+        r#"{"partial":"hi","endpoint_reached":true,"speech_ms":5,"trailing_silence_ms":7,
+            "route":{"engine":"remote","server":"h:1"}}"#,
+    )
+    .unwrap();
+    assert!(p.endpoint_reached);
+    assert_eq!(p.route.as_ref().unwrap().engine, EngineKind::Remote);
+    let core: flow_core::SessionPoll = p.clone().into();
+    assert_eq!(core.speech_ms, 5);
+    // StartInfo: `route` omitted while None.
+    assert_eq!(
+        serde_json::to_string(&StartInfo::default()).unwrap(),
+        r#"{"queued":false}"#
+    );
+}
+
+// ---- C3: a mid-session failover never blocks the audio thread ---------------
+
+#[test]
+fn failover_connect_runs_off_the_push_thread() {
+    let k = rig_with(
+        cfg(true, true),
+        Fake::new(EngineKind::Local).slow_start(400),
+        Fake::new(EngineKind::Remote).dying_after(8000),
+    );
+    k.router.start_session(SessionConfig::default()).unwrap();
+    let mut worst = std::time::Duration::ZERO;
+    for _ in 0..10 {
+        let t = Instant::now();
+        assert!(k.router.push_audio(&[100i16; N / 10]));
+        worst = worst.max(t.elapsed());
+    }
+    assert!(
+        worst < std::time::Duration::from_millis(100),
+        "push blocked {worst:?} on the failover connect"
+    );
+    // Pill already names where the session is going.
+    assert_eq!(k.router.poll().route.unwrap().engine, EngineKind::Local);
+    let r = k.router.commit();
+    assert_eq!(
+        r.final_text, "local 16000 ",
+        "all audio replayed + live tail"
+    );
+    assert_eq!(route(&r).fallback.as_deref(), Some("disconnected"));
+}
+
+#[test]
+fn audio_pushed_while_switching_reaches_the_new_engine() {
+    let k = rig_with(
+        cfg(true, true),
+        Fake::new(EngineKind::Local).slow_start(150),
+        Fake::new(EngineKind::Remote).dying_after(4000),
+    );
+    k.router.start_session(SessionConfig::default()).unwrap();
+    for _ in 0..10 {
+        assert!(k.router.push_audio(&[100i16; N / 10]));
+        std::thread::sleep(std::time::Duration::from_millis(30));
+    }
+    let r = k.router.commit();
+    assert_eq!(r.final_text, "local 16000 ");
+    assert_eq!(k.local.starts(), 1);
+}
+
+// ---- C4: cancel during commit aborts it ----------------------------------------
+
+fn cancel_while_committing(k: &Rig) -> (CommitResult, std::time::Duration) {
+    for _ in 0..10 {
+        k.router.push_audio(&[100i16; N / 10]);
+    }
+    std::thread::scope(|sc| {
+        let h = sc.spawn(|| {
+            let t = Instant::now();
+            (k.router.commit(), t.elapsed())
+        });
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        k.router.cancel();
+        h.join().unwrap()
+    })
+}
+
+#[test]
+fn cancel_during_a_remote_commit_aborts_without_fallback() {
+    let k = rig_with(
+        cfg(true, true),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).blocking_commit(),
+    );
+    k.router.start_session(SessionConfig::default()).unwrap();
+    let (r, took) = cancel_while_committing(&k);
+    assert!(took < std::time::Duration::from_secs(2), "{took:?}");
+    assert_eq!(r.status, CommitStatus::Error);
+    assert!(r.error.as_deref().unwrap().contains("cancelled"), "{r:?}");
+    assert!(k.remote.cancels.load(Ordering::SeqCst) >= 1, "server told");
+    assert_eq!(
+        k.local.starts(),
+        0,
+        "a cancelled dictation never falls back"
+    );
+}
+
+#[test]
+fn cancel_during_a_local_commit_aborts() {
+    let k = rig_with(
+        cfg(false, true),
+        Fake::new(EngineKind::Local).blocking_commit(),
+        Fake::new(EngineKind::Remote),
+    );
+    k.router.start_session(SessionConfig::default()).unwrap();
+    let (r, took) = cancel_while_committing(&k);
+    assert!(took < std::time::Duration::from_secs(2), "{took:?}");
+    assert_eq!(r.status, CommitStatus::Error);
+    assert!(k.local.cancels.load(Ordering::SeqCst) >= 1);
 }

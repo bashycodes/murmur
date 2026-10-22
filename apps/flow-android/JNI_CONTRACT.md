@@ -89,7 +89,8 @@ in a wiped-on-drop `SecretString` and never logs or returns them (C3).
 | Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | C ABI | Semantics |
 |---|---|---|---|---|
 | `nativeSetCloudKey(h: Long, providerId: String, key: String?): Boolean` | `(JLjava/lang/String;Ljava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudKey` | `flow_set_cloud_key` | `Router::set_cloud_key`; `null` / `""` forgets it. Call after `nativeOpenRouter` for every stored provider and on Save / Delete. `false` + kind `error` for a core handle |
-| `nativeProbeCloud(h: Long, providerJson: String, key: String?): String` | `(JLjava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeProbeCloud` | `flow_probe_cloud` | Blocking "Test provider": `HealthReport` (`engine:"cloud"`, `provider`, `model`, `transcript`, `latency_ms`, `cost_usd`) for an unsaved `CloudProviderConfig`; uploads the bundled 3 s JFK clip. `key` null = the stored key; `h = 0` = temporary router (key required). Without `cloud`: `ok:false, error:"cloud_not_configured"` |
+| `nativeSetCloudKeyFor(h: Long, providerJson: String, key: String?): Boolean` | `(JLjava/lang/String;Ljava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudKeyFor` | `flow_set_cloud_key_for` | 2026-10-22, review S4: like `nativeSetCloudKey`, bound to exactly this `CloudProviderConfig` (base-URL host + adapter). Use it on Save with the provider being saved. `false` + `bad_config` (bad JSON) / `error` (core handle) |
+| `nativeProbeCloud(h: Long, providerJson: String, key: String?): String` | `(JLjava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeProbeCloud` | `flow_probe_cloud` | Blocking "Test provider": `HealthReport` (`engine:"cloud"`, `provider`, `model`, `transcript`, `latency_ms`, `cost_usd`) for an unsaved `CloudProviderConfig`; uploads the bundled 3 s JFK clip. `key` null = the stored key, **only** if `providerJson` has the host + adapter that key was saved for (review S1); a new or edited form must pass the typed key (else `ok:false, error:"cloud_not_configured"`, message "enter the API key…"). `h = 0` = temporary router (key required). Without `cloud`: `ok:false, error:"cloud_not_configured"` |
 | `nativeCloudUsage(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCloudUsage` | `flow_cloud_usage` | `CloudUsage` JSON `{month:"YYYY-MM", providers:[{provider_id, requests, billed_audio_ms, cost_usd, cost_estimated}]}`; Kotlin persists it after each commit |
 | `nativeSetCloudUsage(h: Long, usageJson: String): Boolean` | `(JLjava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudUsage` | `flow_set_cloud_usage` | Restore persisted counters after `nativeOpenRouter` (another month's are dropped). `false` + `bad_config` on bad JSON |
 | `nativeResetCloudUsage(h: Long)` | `(J)V` | `Java_dev_flowclone_core_NativeFlowCore_nativeResetCloudUsage` | `flow_reset_cloud_usage` | Developer "Reset counters" |
@@ -103,6 +104,68 @@ Existing natives are unchanged: `nativeOpenRouter` / `nativeUpdateRouter` accept
 `cloud_not_configured`, `budget_exceeded`, `quota_exceeded`, `provider_error`. Host test:
 `cargo test -p flow-ffi --features jni,cloud --test jni_cloud` (real JVM, real router, flow-cloud's
 mock provider: no key → device, key → cloud, 401 → `auth_failed` + full replay, key never echoed).
+
+## Live route + hands-free endpointing (2026-10-22) — additive
+
+Lets the shell show "Transcribing via <route>…" **while recording** and run hands-free
+endpointing (D19). Every flavour exports both; they work on core and router handles, but only
+a router handle reports `route`. Existing natives are unchanged (`nativeStartSession` still
+returns a `Boolean`; Kotlin may keep using it for push-to-talk).
+
+| Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | C ABI | Semantics |
+|---|---|---|---|---|
+| `nativeStartSessionInfo(handle: Long, sessionConfigJson: String): String?` | `(JLjava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeStartSessionInfo` | `flow_start_session_info` | Same as `nativeStartSession`, but returns `StartInfo` JSON `{"queued":bool,"route"?:SessionRoute}` (fixture `start_info_remote.json`), or `null` with the same last error / kind as `nativeStartSession`'s `false`. `queued` = the server accepted but has no free worker yet |
+| `nativePoll(handle: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativePoll` | `flow_poll` | Non-blocking `RouterPoll` JSON `{"partial":str\|null,"endpoint_reached":bool,"speech_ms":n,"trailing_silence_ms":n,"route"?:SessionRoute}` (fixtures `poll_*.json`). Never `null` (handle `0` = idle poll). Call it on the partial timer instead of `nativePartial`. `route` is present while a session is live and **changes** when a mid-session failure switches route (server dies → local replay; cloud error → next route); absent with no session or when every route failed (the commit will be `ERROR`) |
+
+`SessionRoute` = `{"engine":"local"|"remote"|"cloud","provider"?,"model"?,"server"?,"fallback"?}`:
+`provider` / `model` only for `cloud` (`CloudProviderConfig.id` / `.model`), `server`
+(`"host:port"`) only for `remote`, `fallback` = why the first route is not the one in use (the
+`route.fallback` strings). Absent fields are omitted. After the commit,
+`CommitResult.route` projected the same way equals the last polled `route`.
+
+Hands-free: send `"endpoint_silence_ms": <pref, 300-10000, default 2000>` in `SessionConfig`
+**only** for hands-free sessions (omit / `null` for push-to-talk), poll with `nativePoll` on the
+partial timer, and when `endpoint_reached` is `true` run the normal finish path (stop sound,
+`nativeCommit`, paste) exactly as if the user had ended the session. `endpoint_reached` latches;
+it is always `false` without `endpoint_silence_ms`.
+
+## Threading: blocking vs non-blocking (review C2)
+
+Kotlin must never call a **blocking** native on the main thread.
+
+| Blocking (worker thread / `Dispatchers.IO`) | Non-blocking (any thread, incl. main and the AudioRecord thread) |
+|---|---|
+| `nativeLoadModels` (model load) | `nativePushAudio` (never waits; a mid-session failover connects on a native helper thread) |
+| `nativeStartSession`, `nativeStartSessionInfo` (server route: TCP + TLS + WebSocket hello, up to `connect_timeout_ms`; local: may wait for the previous commit's worker) | `nativePoll`, `nativePartial`, `nativeSetContext` |
+| `nativeCommit` (ASR + LLM; server/cloud round trip) | `nativeCancel` (also aborts a commit running on another thread, see below) |
+| `nativeProbeServer`, `nativeProbeRouter`, `nativeProbeCloud` | `nativeRouteStatus`, `nativeCapabilities`, `nativeCloudCapabilities`, `nativeCloudPresets`, `nativeLastError*` |
+| `nativeUnload` (joins the engine worker; waits for a running commit) | `nativeOpenRouter`, `nativeUpdateRouter`, `nativeResetCircuit` (no network) |
+| | `nativeSetCloudKey`, `nativeSetCloudKeyFor`, `nativeCloudUsage`, `nativeSetCloudUsage`, `nativeResetCloudUsage` |
+
+Session semantics (2026-10-22, review fixes):
+
+* `nativeCancel(h)` with no open session aborts a `nativeCommit` running on another thread:
+  that commit returns at once with `{"status":"ERROR","error":"cancelled"…}`, the engine is
+  told to stop (local ASR aborted, server sent `cancel`), and no fallback route is tried.
+  `nativeStartSession*` only cancels the open session, never a commit still running for the
+  previous dictation (hands-free back-to-back).
+* A mid-session failover (server dies → next route) runs off the calling thread: while it
+  connects, `nativePoll`'s `route` already names the route being switched to and `partial`
+  is `null`; all audio pushed meanwhile reaches the new route.
+* `nativeUpdateRouter` / `nativeSetCloudKey*` re-check the live session: fallback hops the new
+  config no longer allows (toggle off, cloud not in `order`, consent revoked, key removed or
+  re-bound) are dropped, and a live **cloud** session that is no longer allowed switches to the
+  next allowed route immediately (a running server session keeps its route until the next
+  session).
+* Cloud keys are bound to the provider's base-URL host + adapter: a config that changes either
+  (or removes the provider) drops the key in native code. Kotlin must also delete the stored
+  key in that case and ask for it again; it must not re-send the old key for the new host.
+* Base URLs are parsed with the `url` crate (reqwest's parser): `\`, whitespace, control
+  characters and any userinfo are refused (`bad_config`). `CloudSettings.kt`'s mirror must
+  give the same answers as `crates/flow-router/tests/url_parse.rs`.
+* `ws://` and `http://` (cloud) to a **name** are decided by its resolved addresses: every
+  address must be loopback / private / link-local, or tailnet (100.64/10, fd7a:115c:a1e0::/48)
+  reached through a tailnet interface; otherwise `connect_failed` "plaintext refused" (use TLS).
 
 ## JSON payloads Kotlin sends (see `CoreJson.kt`, pinned by `CoreJsonTest`)
 

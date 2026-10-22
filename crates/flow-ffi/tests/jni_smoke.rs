@@ -83,14 +83,25 @@ fn jvm_round_trip() {
     assert_eq!(lines.next().unwrap(), "[]");
 
     // D17 router round trip (client only, mock local handed over by handle).
-    let routed: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
-    assert_eq!(routed["status"], "RAW_TRANSCRIPT", "{routed}");
-    assert_eq!(routed["final_text"], "hello by the way ");
     let engine = if cfg!(feature = "remote") {
         "remote"
     } else {
         "local"
     };
+    // 2026-10-22: start info + poll carry the live route.
+    let start: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+    assert_eq!(start["queued"], false, "{start}");
+    assert_eq!(start["route"]["engine"], engine, "{start}");
+    let poll: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+    assert_eq!(poll["route"], start["route"], "{poll}");
+    assert_eq!(poll["endpoint_reached"], false, "{poll}");
+    assert!(poll["speech_ms"].is_number(), "endpointing on: {poll}");
+    let idle: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+    assert!(idle.get("route").is_none(), "{idle}");
+    assert_eq!(lines.next().unwrap(), "INFO null KIND bad_config");
+    let routed: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+    assert_eq!(routed["status"], "RAW_TRANSCRIPT", "{routed}");
+    assert_eq!(routed["final_text"], "hello by the way ");
     assert_eq!(routed["route"]["engine"], engine, "{routed}");
     let status: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
     assert_eq!(status["last"]["engine"], engine, "{status}");
@@ -175,7 +186,7 @@ fn contract_symbols_exported() {
         .split('`')
         .filter(|w| w.starts_with("Java_dev_flowclone_core_NativeFlowCore_native"))
         .collect();
-    assert_eq!(want.len(), 26, "{want:?}");
+    assert_eq!(want.len(), 29, "{want:?}");
     let src = include_str!("../src/jni_api.rs");
     let have: std::collections::BTreeSet<&str> = src
         .split(|c: char| !c.is_alphanumeric() && c != '_')

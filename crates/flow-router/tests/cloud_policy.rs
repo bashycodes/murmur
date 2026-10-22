@@ -765,3 +765,270 @@ fn set_local_rebuilds_the_cloud_backend() {
         "rebuilt with the new cleaner"
     );
 }
+
+// ---- live session route (start info + poll) ---------------------------------
+
+#[test]
+fn start_info_and_poll_report_the_cloud_provider() {
+    let k = rig(cloud_cfg(&[Route::Cloud, Route::Client]));
+    let start = k
+        .router
+        .start_session_info(SessionConfig::default())
+        .unwrap()
+        .route
+        .expect("start route");
+    assert_eq!(start.engine, EngineKind::Cloud);
+    assert_eq!(start.provider.as_deref(), Some("or-1"));
+    assert_eq!(start.model.as_deref(), Some("openai/gpt-transcribe"));
+    assert_eq!((start.server.clone(), start.fallback.clone()), (None, None));
+    assert_eq!(k.router.poll().route.as_ref(), Some(&start));
+    let json = serde_json::to_value(&start).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({"engine":"cloud","provider":"or-1","model":"openai/gpt-transcribe"})
+    );
+    let r = dictate(&k.router);
+    assert_eq!(SessionRoute::from_route_info(&route(&r)), start);
+}
+
+#[test]
+fn cloud_skipped_at_start_names_the_next_route_and_why() {
+    let k = rig_opts(cloud_cfg(&[Route::Cloud, Route::Client]), true, false);
+    let start = k
+        .router
+        .start_session_info(SessionConfig::default())
+        .unwrap()
+        .route
+        .unwrap();
+    assert_eq!(start.engine, EngineKind::Local);
+    assert_eq!(start.fallback.as_deref(), Some("cloud_not_configured"));
+    assert_eq!((start.provider.clone(), start.model.clone()), (None, None));
+    assert_eq!(
+        SessionRoute::from_route_info(&route(&dictate(&k.router))),
+        start
+    );
+}
+
+#[test]
+fn poll_follows_a_cloud_to_server_switch() {
+    let k = rig(cloud_cfg(&[Route::Cloud, Route::Server, Route::Client]));
+    *k.cloud.die_after.lock().unwrap() = Some(8000);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(k.router.poll().route.unwrap().engine, EngineKind::Cloud);
+    for _ in 0..2 {
+        assert!(k.router.push_audio(&[100i16; 4000]));
+    }
+    let now = k.router.poll().route.unwrap();
+    assert_eq!(now.engine, EngineKind::Remote);
+    assert_eq!(now.server.as_deref(), Some("100.64.0.10:7313"));
+    assert_eq!((now.provider.clone(), now.model.clone()), (None, None));
+    assert_eq!(now.fallback.as_deref(), Some("disconnected"));
+    assert_eq!(
+        SessionRoute::from_route_info(&route(&dictate(&k.router))),
+        now
+    );
+}
+
+// ---- S1 / S4: a stored key only ever goes to the host + adapter it was saved for
+
+fn keys_seen(k: &Rig) -> Vec<String> {
+    k.keys_seen.lock().unwrap().clone()
+}
+
+#[test]
+fn probe_with_a_changed_host_never_uses_the_stored_key() {
+    let k = rig(cloud_cfg(&[Route::Cloud]));
+    let mut p = provider();
+    p.base_url = "https://evil.example.com/v1".into();
+    let h = k.router.probe_cloud(&p, None);
+    assert!(!h.ok, "{h:?}");
+    assert_eq!(h.error.as_deref(), Some("cloud_not_configured"));
+    assert!(h.message.unwrap().contains("key"), "asks for the key");
+    assert!(
+        keys_seen(&k).is_empty(),
+        "stored key sent to an unsaved host"
+    );
+    // Typed into the form: the user chose to send it there.
+    let h = k
+        .router
+        .probe_cloud(&p, Some(SecretString::new("sk-typed")));
+    assert!(h.ok, "{h:?}");
+    assert_eq!(keys_seen(&k), ["sk-typed"]);
+}
+
+#[test]
+fn probe_with_a_changed_adapter_never_uses_the_stored_key() {
+    let k = rig(cloud_cfg(&[Route::Cloud]));
+    let mut p = provider();
+    p.adapter = "openai_compat".into();
+    assert!(!k.router.probe_cloud(&p, None).ok);
+    assert!(keys_seen(&k).is_empty());
+    // The saved provider itself still probes with the stored key.
+    assert!(k.router.probe_cloud(&provider(), None).ok);
+    assert_eq!(keys_seen(&k), [KEY]);
+}
+
+fn moved(host_url: &str, consent_host: &str) -> RouterConfig {
+    let mut c = cloud_cfg(&[Route::Cloud, Route::Client]);
+    c.cloud.providers[0].base_url = host_url.into();
+    c.cloud.providers[0].consent_host = consent_host.into();
+    c
+}
+
+#[test]
+fn a_host_change_invalidates_the_key_even_after_re_consent() {
+    let k = rig(cloud_cfg(&[Route::Cloud, Route::Client]));
+    // User edits the base URL and re-consents to the new host.
+    k.router
+        .update_config(moved("https://other.example.com/v1", "other.example.com"));
+    assert!(!k.router.has_cloud_key("or-1"), "key bound to the old host");
+    k.router.start_session(SessionConfig::default()).unwrap();
+    let r = dictate(&k.router);
+    assert_eq!(route(&r).engine, "local");
+    assert_eq!(route(&r).fallback.as_deref(), Some("cloud_not_configured"));
+    assert_cloud_unused(&k);
+    // Entering the key again (for the new host) makes it usable.
+    k.router
+        .set_cloud_key("or-1", Some(SecretString::new("sk-new")));
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(route(&dictate(&k.router)).engine, "cloud");
+    assert_eq!(keys_seen(&k), ["sk-new"]);
+}
+
+#[test]
+fn an_adapter_change_invalidates_the_key() {
+    let k = rig(cloud_cfg(&[Route::Cloud, Route::Client]));
+    let mut c = cloud_cfg(&[Route::Cloud, Route::Client]);
+    c.cloud.providers[0].adapter = "openai_compat".into();
+    k.router.update_config(c);
+    assert!(!k.router.has_cloud_key("or-1"));
+}
+
+#[test]
+fn unrelated_config_changes_keep_the_key() {
+    let k = rig(cloud_cfg(&[Route::Cloud, Route::Client]));
+    let mut c = cloud_cfg(&[Route::Cloud, Route::Client]);
+    c.cloud.providers[0].model = "whisper-1".into();
+    c.cloud.providers[0].label = "renamed".into();
+    c.allow_server = false;
+    k.router.update_config(c);
+    assert!(k.router.has_cloud_key("or-1"));
+}
+
+#[test]
+fn a_key_set_before_its_provider_binds_to_the_first_saved_host() {
+    let mut c = cloud_cfg(&[Route::Cloud, Route::Client]);
+    c.cloud.providers.clear();
+    c.cloud.active.clear();
+    let k = rig_opts(c, true, false);
+    k.router.set_cloud_key("or-1", Some(SecretString::new(KEY)));
+    k.router
+        .update_config(cloud_cfg(&[Route::Cloud, Route::Client]));
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(route(&dictate(&k.router)).engine, "cloud");
+    k.router
+        .update_config(moved("https://other.example.com/v1", "other.example.com"));
+    assert!(!k.router.has_cloud_key("or-1"));
+}
+
+#[test]
+fn set_cloud_key_for_binds_to_the_given_provider() {
+    let k = rig_opts(cloud_cfg(&[Route::Cloud, Route::Client]), true, false);
+    let mut elsewhere = provider();
+    elsewhere.base_url = "https://other.example.com/v1".into();
+    k.router
+        .set_cloud_key_for(&elsewhere, Some(SecretString::new(KEY)));
+    // Saved config still points at openrouter.ai: the key is not used there.
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(route(&dictate(&k.router)).engine, "local");
+    assert_cloud_unused(&k);
+    k.router
+        .set_cloud_key_for(&provider(), Some(SecretString::new(KEY)));
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(route(&dictate(&k.router)).engine, "cloud");
+}
+
+// ---- S5: toggles, consent and keys are re-checked at every hop -----------------
+
+/// Server primary that dies after 0.5 s, with cloud then local as fallbacks;
+/// `change` runs mid-session, before the death.
+fn server_dies_after(change: impl Fn(&Rig)) -> (Rig, CommitResult) {
+    let k = rig(cloud_cfg(&[Route::Server, Route::Cloud, Route::Client]));
+    *k.remote.die_after.lock().unwrap() = Some(8000);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert!(k.router.push_audio(&[100i16; 4000]));
+    change(&k);
+    let r = dictate(&k.router);
+    (k, r)
+}
+
+fn assert_went_local(k: &Rig, r: &CommitResult) {
+    assert_eq!(route(r).engine, "local", "{r:?}");
+    assert_eq!(r.final_text, "local 20000", "full replay into local");
+    assert_eq!(k.cloud.starts(), 0, "buffered audio replayed to the cloud");
+}
+
+#[test]
+fn allow_cloud_off_mid_session_skips_the_cloud_hop() {
+    let (k, r) = server_dies_after(|k| {
+        let mut c = cloud_cfg(&[Route::Server, Route::Cloud, Route::Client]);
+        c.allow_cloud = false;
+        k.router.update_config(c);
+    });
+    assert_went_local(&k, &r);
+}
+
+#[test]
+fn cloud_removed_from_order_mid_session_skips_the_cloud_hop() {
+    let (k, r) = server_dies_after(|k| {
+        k.router
+            .update_config(cloud_cfg(&[Route::Server, Route::Client]));
+    });
+    assert_went_local(&k, &r);
+}
+
+#[test]
+fn key_deleted_mid_session_skips_the_cloud_hop() {
+    let (k, r) = server_dies_after(|k| k.router.set_cloud_key("or-1", None));
+    assert_went_local(&k, &r);
+}
+
+#[test]
+fn consent_revoked_mid_session_skips_the_cloud_hop() {
+    let (k, r) = server_dies_after(|k| {
+        let mut c = cloud_cfg(&[Route::Server, Route::Cloud, Route::Client]);
+        c.cloud.providers[0].consent_at_ms = 0;
+        k.router.update_config(c);
+    });
+    assert_went_local(&k, &r);
+}
+
+#[test]
+fn allow_server_off_mid_session_skips_the_server_hop() {
+    let k = rig(cloud_cfg(&[Route::Cloud, Route::Server, Route::Client]));
+    *k.cloud.die_after.lock().unwrap() = Some(8000);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert!(k.router.push_audio(&[100i16; 4000]));
+    let mut c = cloud_cfg(&[Route::Cloud, Route::Server, Route::Client]);
+    c.allow_server = false;
+    k.router.update_config(c);
+    let r = dictate(&k.router);
+    assert_eq!(route(&r).engine, "local");
+    assert_eq!(k.remote.starts(), 0);
+}
+
+#[test]
+fn turning_cloud_off_mid_session_stops_the_cloud_engine_now() {
+    let k = rig(cloud_cfg(&[Route::Cloud, Route::Client]));
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert!(k.router.push_audio(&[100i16; 4000]));
+    let mut c = cloud_cfg(&[Route::Cloud, Route::Client]);
+    c.allow_cloud = false;
+    k.router.update_config(c);
+    let live = k.router.poll().route.expect("still live");
+    assert_eq!(live.engine, EngineKind::Local, "pill switches right away");
+    let r = dictate(&k.router);
+    assert_eq!(route(&r).engine, "local");
+    assert_eq!(r.final_text, "local 20000", "nothing lost");
+    assert_eq!(k.cloud.commits.load(Ordering::SeqCst), 0, "no upload");
+}

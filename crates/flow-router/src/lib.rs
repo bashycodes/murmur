@@ -20,7 +20,7 @@ pub use cloud::{
 };
 pub use flow_core::config::{FieldContext, SessionConfig};
 pub use flow_core::learn::Candidate;
-pub use flow_core::{CommitResult, CommitStatus, RouteInfo};
+pub use flow_core::{CommitResult, CommitStatus, RouteInfo, SessionPoll};
 pub use router::Router;
 
 /// Which engine ran (or would run) a session. Non-exhaustive: match with a
@@ -346,11 +346,95 @@ impl BackendError {
     }
 }
 
-/// Result of a successful `Backend::start_session`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// Result of a successful `Backend::start_session` and of
+/// `Router::start_session_info`. JSON: `{"queued":bool,"route"?:SessionRoute}`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct StartInfo {
     /// The server accepted the session but has no free worker yet.
     pub queued: bool,
+    /// The route the session started on. Set by the router
+    /// (`Router::start_session_info`); backends leave it `None`. Omitted
+    /// from JSON while `None`. Added 2026-10-22 (additive).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub route: Option<SessionRoute>,
+}
+
+/// The route a live session is using right now: what a shell shows as
+/// "Transcribing via …" while recording. A projection of the session's
+/// [`RouteInfo`]: once the session commits,
+/// `SessionRoute::from_route_info(result.route)` equals the last value
+/// `Router::poll` reported. Added 2026-10-22 (additive).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SessionRoute {
+    /// `local` / `remote` (own server) / `cloud`. Always serialised.
+    pub engine: EngineKind,
+    /// Cloud provider id (`CloudProviderConfig::id`); cloud only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// Cloud model id; cloud only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// `"host:port"` of the server; remote only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server: Option<String>,
+    /// Why the first route is not the one in use (a [`Failure`] string,
+    /// same as `RouteInfo::fallback`): set at start when a route was
+    /// skipped, or mid-session after a switch.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback: Option<String>,
+}
+
+impl SessionRoute {
+    /// The live-route view of a `RouteInfo` (`CommitResult.route`).
+    /// `server` is kept only for the remote engine and `provider`/`model`
+    /// only for the cloud, so a start-time server address that was tried
+    /// and skipped does not leak into a local route.
+    pub fn from_route_info(r: &RouteInfo) -> Self {
+        let engine = match r.engine.as_str() {
+            "remote" => EngineKind::Remote,
+            "cloud" => EngineKind::Cloud,
+            _ => EngineKind::Local,
+        };
+        let cloud = engine == EngineKind::Cloud;
+        Self {
+            engine,
+            provider: r.provider.clone().filter(|_| cloud),
+            model: r.model.clone().filter(|_| cloud),
+            server: r.server.clone().filter(|_| engine == EngineKind::Remote),
+            fallback: r.fallback.clone(),
+        }
+    }
+}
+
+/// `Router::poll`: the core [`SessionPoll`] (partial + hands-free endpoint,
+/// D19) plus the live route. JSON = the `SessionPoll` fields flattened, plus
+/// `route` (omitted while no session is live, so the idle JSON is
+/// byte-identical to `SessionPoll`'s). Derefs to `SessionPoll`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RouterPoll {
+    #[serde(flatten)]
+    pub session: SessionPoll,
+    /// Route in use by the live session; `None` with no session, after
+    /// `commit`/`cancel`, or when every route failed (the commit will be
+    /// an ERROR).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub route: Option<SessionRoute>,
+}
+
+impl std::ops::Deref for RouterPoll {
+    type Target = SessionPoll;
+    fn deref(&self) -> &SessionPoll {
+        &self.session
+    }
+}
+
+impl From<RouterPoll> for SessionPoll {
+    fn from(p: RouterPoll) -> Self {
+        p.session
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

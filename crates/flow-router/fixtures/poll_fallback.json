@@ -1,0 +1,10 @@
+{
+  "endpoint_reached": true,
+  "partial": null,
+  "route": {
+    "engine": "local",
+    "fallback": "disconnected"
+  },
+  "speech_ms": 2400,
+  "trailing_silence_ms": 2000
+}
