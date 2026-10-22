@@ -254,11 +254,10 @@ impl CloudProviderConfig {
                 self.format_override
             ));
         }
-        let (https, host) = split_url(&self.base_url)
-            .ok_or_else(|| "base URL must be http(s)://host[/path]".to_string())?;
-        if host.is_empty() {
-            return Err("base URL has no host".into());
-        }
+        let BaseUrl { https, host, .. } = parse_base_url(&self.base_url)?;
+        // Names (`*.local`, single-label, `*.ts.net`) pass here; flow-cloud
+        // resolves them before an http:// call and requires every address
+        // to be private (S6).
         if !https && !net::classify(&host).plaintext_ok() {
             return Err("public base URL: https:// is required".into());
         }
@@ -277,29 +276,62 @@ impl CloudProviderConfig {
     }
 }
 
-/// `(is_https, host)` for `http(s)://host[:port][/path]`; `None` for any
-/// other scheme. The host is lower-cased and unbracketed.
-fn split_url(url: &str) -> Option<(bool, String)> {
-    let url = url.trim();
-    let (https, rest) = if let Some(r) = strip_prefix_ci(url, "https://") {
-        (true, r)
-    } else {
-        (false, strip_prefix_ci(url, "http://")?)
-    };
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
-    if authority.contains('@') {
-        return None; // no credentials in URLs
-    }
-    let host = if let Some(r) = authority.strip_prefix('[') {
-        r.split(']').next().unwrap_or("")
-    } else {
-        authority.split(':').next().unwrap_or("")
-    };
-    Some((https, host.to_ascii_lowercase()))
+/// A provider base URL as the HTTP client will see it (review S2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BaseUrl {
+    pub https: bool,
+    /// Lower-case domain, or the IP literal (IPv6 without brackets), exactly
+    /// as the `url` crate (reqwest's parser) resolves it: WHATWG IPv4 forms
+    /// (`0x7f.1`, `2130706433`) become dotted quads, percent escapes are
+    /// decoded, IDNA names become punycode.
+    pub host: String,
+    pub port: Option<u16>,
+    /// `host` as an IP address, when it is one.
+    pub ip: Option<std::net::IpAddr>,
 }
 
-fn strip_prefix_ci<'a>(s: &'a str, p: &str) -> Option<&'a str> {
-    (s.len() >= p.len() && s[..p.len()].eq_ignore_ascii_case(p)).then(|| &s[p.len()..])
+/// Parse a cloud provider base URL with the `url` crate (the parser
+/// reqwest uses, so the host checked here is the host contacted). Refuses
+/// everything ambiguous: any `\` (WHATWG reads it as `/`), whitespace or
+/// control characters anywhere (WHATWG silently strips tab/newline),
+/// userinfo (`user@`, `:pw@`), schemes other than http/https, no host.
+pub fn parse_base_url(raw: &str) -> Result<BaseUrl, String> {
+    const BAD: &str = "base URL must be http(s)://host[:port][/path]";
+    if raw.is_empty() {
+        return Err(BAD.into());
+    }
+    if raw.contains('\\') {
+        return Err("base URL must not contain a backslash".into());
+    }
+    if raw.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err("base URL must not contain spaces or control characters".into());
+    }
+    let u = url::Url::parse(raw).map_err(|_| BAD.to_string())?;
+    let https = match u.scheme() {
+        "https" => true,
+        "http" => false,
+        _ => return Err(BAD.into()),
+    };
+    if !u.username().is_empty() || u.password().is_some() {
+        return Err("base URL must not contain credentials (user@)".into());
+    }
+    let (host, ip) = match u.host() {
+        Some(url::Host::Domain(d)) if !d.is_empty() => (d.to_ascii_lowercase(), None),
+        Some(url::Host::Ipv4(a)) => (a.to_string(), Some(std::net::IpAddr::V4(a))),
+        Some(url::Host::Ipv6(a)) => (a.to_string(), Some(std::net::IpAddr::V6(a))),
+        _ => return Err("base URL has no host".into()),
+    };
+    Ok(BaseUrl {
+        https,
+        host,
+        port: u.port(),
+        ip,
+    })
+}
+
+/// `(is_https, host)`; `None` when [`parse_base_url`] refuses the URL.
+fn split_url(url: &str) -> Option<(bool, String)> {
+    parse_base_url(url).ok().map(|b| (b.https, b.host))
 }
 
 /// Per-provider counters for one calendar month (UTC). Kept in memory by
