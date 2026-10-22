@@ -24,6 +24,7 @@ crates/
 | `push_audio(pcm16)` | `push_audio(&[i16]) -> bool` | `flow_push_audio(h, ptr, len)` | `pushAudio(h, short[], len)` |
 | `set_context(FieldContext)` | `set_context(ctx)` | `flow_set_context(h, json)` | `setContext(h, json)` |
 | `partial()` | `partial() -> Option<String>` | `flow_partial(h)` | `partial(h): String?` |
+| *(clone)* poll | `poll() -> SessionPoll`, `endpoint() -> Option<EndpointState>`, `endpoint_reached() -> bool` | not yet exported (see changelog) | not yet exported |
 | `commit()` | `commit() -> CommitResult` | `flow_commit(h) -> json` | `commit(h): String` |
 | `cancel()` | `cancel()` | `flow_cancel(h)` | `cancel(h)` |
 | `learn_edit(pasted, edited)` | `learn_edit() -> Vec<Candidate>` | `flow_learn_edit(h,p,e) -> json` | `learnEdit(h,p,e)` |
@@ -70,6 +71,7 @@ shell UI thread ──start/commit/cancel──▶ control channel (mpsc) ──
 * **Session isolation by construction.** Every `start_session` creates a new ring. `commit` and `cancel` take the producer away synchronously, so audio pushed after that (or before any start) is rejected (`false`, or C `1`). The worker drains a ring to its end after its producer is dropped.
 * **Late context.** `set_context` may arrive at any time before `commit`. Context is read when commit runs, so screen words still reach the Whisper `initial_prompt` and the post-processing.
 * **Partials.** With `partial_interval_ms` set, the worker re-decodes the last 30 s window. These partials are for preview only. `commit` always decodes the whole utterance.
+* **Hands-free endpointing** (D19, `SessionConfig.endpoint_silence_ms`, default off). `push_audio` also feeds a streaming copy of the VAD (`endpoint::Endpointer`: same 20 ms frames, speech bars and 60 ms runs as D16; noise floor from the last 30 s). After ≥ 300 ms of speech and `endpoint_silence_ms` (min 300; recommended 2000) of trailing silence, `poll().endpoint_reached` latches true for the rest of the session. It runs on the pushing thread (a few µs per 20 ms frame), so a slow partial decode on the worker cannot delay it. The core never commits by itself. `flow_router::Router` runs the same detector on its own pushes, so the signal is identical on every route.
 * `max_samples` is a hard safety bound only; the session-length policy lives in the shells (spec §9). Audio past the bound is discarded and `truncated` is set.
 
 ## Commit pipeline
@@ -78,11 +80,13 @@ shell UI thread ──start/commit/cancel──▶ control channel (mpsc) ──
 1. **ASR** (`AsrEngine` trait). `WhisperEngine` (feature `whisper`, `whisper-rs` 0.16) keeps one warm context and state.
    * `initial_prompt` = dictionary vocabulary (replacement targets and plain words; snippets excluded), then screen words, deduped, capped at 200 words.
    * Language: exactly one configured language is forced; zero or several means auto-detect. `.en` models are forced to `en`.
+   * **Encoder window** (D20, `ModelConfig.whisper_fit_ctx`, default on): `audio_ctx` = clip + 1 s (50 positions/s, full window from 29 s up), so a 5 s dictation encodes 6 s instead of 30 s. A repetition/length guard (`whisper::looks_degenerate`) re-decodes with the full window; `WhisperEngine::redecodes()` counts it. 40 clips: tiny.en 2.6×, base.en 1.8×, small 3.4× faster; WER −0.4 / +0.3 / +0.1 points.
    * Silence gate: RMS < 0.003 returns empty. Input shorter than 1.1 s is padded. `[BLANK_AUDIO]` / `(music)` annotations are removed.
    * Default threads = logical CPUs / 2. On this HT box, 8 threads was 14× slower than 4.
    * `AsrOutput.no_speech_prob`: the highest per-segment Whisper no-speech probability.
    * **Hallucination guard** (`hallucination`, `SessionConfig.hallucination_guard`, default on). Whisper's stock silence phrases ("Thank you.", "you", "Thanks for watching!", "Bye.", repeated forms) are dropped (EMPTY `hallucination`) only with evidence of little speech: VAD speech < 400 ms or `no_speech_prob` ≥ 0.6. Subtitle credits ("Subtitles by the Amara.org community") are always dropped. Table: `tests/hallucination_vectors.rs`.
 1b. **Spoken cleanup** (`postprocess::spoken`, `SessionConfig.spoken_cleanup`, default on, off at level `none`, skipped for whole-utterance snippets). Deterministic: spoken punctuation ("comma", "period", "question mark", "new line", "new paragraph", …, not after "the/a/trial/Oxford…"), fillers (um/uh/er/hmm; ", like," and ", you know," between commas; "was like $40"; a leading "so"/"okay so"), stutters ("I I" → "I"; not "that that"/"had had"), backtracking ("scratch that", "never mind", "forget that", "no wait", "actually I mean", "or rather"; the correction replaces from its first word's last match in the sentence, else the retracted clause back to its comma, else the last word; literal uses such as "don't forget that", "there's no wait", sentence-initial "Never mind the …" are left alone) and ITN for money ("$120", "$25.50"), percent, clock times ("3:30 PM", "4pm" → "4 PM") and dates ("March 5th"). Its output feeds the LLM and the Wispr port; text that becomes empty is EMPTY `only_filler`. On the benchmark's 20 cases (`tests/spoken_bench.rs`) it lifts mean similarity from 0.710 (raw) to 0.920 without an LLM, never worse than raw (the few-shot Qwen2.5-1.5B LLM scored 0.876 on the same set). The Wispr vectors call `postprocess::process`, which does not include this pass.
+   **Layout** (`spoken::layout`, same gate, 2026-10-22), the deterministic list and email layout rules: ≥ 3 enumerated items become a numbered list in the format `cleanup::lists_to_plain` gives the LLM's `<ol>` (`Intro:\n\n1. …\n2. …`). Markers are ordinals 1, 2, 3, … in order ("first … second … and third/finally"; not after a determiner: "the first time", "wait a second"), "number/step one …", or a bare "one," / "1." at a clause start; 2 items stay prose; the last item ends at its sentence end and the rest becomes a paragraph; not in terminals. In email apps a spoken greeting ("Hi Tom,", ≤ 3 words) gets its own line and a spoken sign-off ("Best regards, Anna." / "Thanks, Raj.") its own paragraph with the name on the next line; nothing is invented ("Thanks." without a name stays). Bench 20 cases: 0.920 → 0.957 (c09, c11, c12 now exact; c08's unordered list is left to the LLM).
 2. **LLM cleanup** (`Cleaner` trait, optional).
    * It is skipped for raw mode, level `none` and terminal apps.
    * It is also skipped when the whole utterance is a snippet trigger.
@@ -253,6 +257,11 @@ Prefill-ahead removes 75-90 % of the commit's prefill (≈ 0.7-1.4 s here). Gene
 ## Changelog for shells
 
 All additions are backward compatible: new JSON fields have serde defaults (old JSON still parses, extra fields are ignored by org.json/serde), new `SessionConfig` fields default to the recommended behaviour, and new C/plugin symbols are optional.
+
+2026-10-22 (branch `core-endpoint`):
+* Hands-free endpointing (D19). `SessionConfig.endpoint_silence_ms: Option<u32>` (omitted from JSON when unset, so old servers see the same config). New `FlowCore::poll() -> SessionPoll` / `Router::poll()`: JSON `{"partial": str|null, "endpoint_reached": bool, "speech_ms": u64, "trailing_silence_ms": u64}`; plus `endpoint()`, `endpoint_reached()`. Adopt (shells; flow-ffi owner): export `flow_poll(h) -> json` (C) / `poll(h): String` (JNI) wrapping `Router::poll`; in hands-free mode start sessions with `endpoint_silence_ms: 2000` (a user pref, 300-10000), poll it on the existing partial timer, and on `endpoint_reached` run the normal finish path (stop sound + `commit` + paste), exactly as if the user had pressed the hands-free key. Push-to-talk should leave it unset.
+* `ModelConfig.whisper_fit_ctx` (D20, default on): Whisper encodes only the clip + 1 s, with a full-window re-decode on repetition. No shell change; a shell may expose it as a developer toggle ("Fast Whisper encoder") and send `false` to get the old behaviour.
+* Behaviour: spoken cleanup now lays out numbered lists ("first … second … third" → `1.` lines) and, in email apps, greeting / sign-off lines without the LLM. `POSTPROCESS_REV` → `2026-10-22.1`. No shell change; the "Auto-format" pref (`spoken_cleanup`) turns it off too.
 
 2026-10-20 (branch `core-p1`):
 * `CommitResult.segments` / `plain_text` (CR-2). Adopt: paste `segments` in order (`Break` = pause, `Tab`/`Enter` = key) and stop acting on `press_enter` separately; store `plain_text` in history.

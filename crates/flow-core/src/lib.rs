@@ -7,6 +7,7 @@ pub mod audio;
 pub mod cleanup;
 pub mod config;
 pub mod dictionary;
+pub mod endpoint;
 mod engine;
 pub mod guard;
 pub mod hallucination;
@@ -21,7 +22,10 @@ pub mod vad;
 #[cfg(feature = "whisper")]
 pub mod whisper;
 
-pub use engine::{CommitResult, CommitStatus, CoreError, FlowCore, RouteInfo, Timings, Usd};
+pub use endpoint::EndpointState;
+pub use engine::{
+    CommitResult, CommitStatus, CoreError, FlowCore, RouteInfo, SessionPoll, Timings, Usd,
+};
 
 /// flow-core version (reported by the hybrid router and server).
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -30,4 +34,4 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// spoken cleanup, Wispr post-processing, paste segments). Bump it whenever
 /// any of them changes output for the same input, so a hybrid client and
 /// its server can detect pipeline skew (D17).
-pub const POSTPROCESS_REV: &str = "2026-10-21.1";
+pub const POSTPROCESS_REV: &str = "2026-10-22.1";

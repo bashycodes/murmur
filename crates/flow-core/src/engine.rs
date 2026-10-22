@@ -15,6 +15,7 @@ use crate::asr::{
 use crate::cleanup::{self, CleanOutcome, Cleaner};
 use crate::config::{CleanupLevel, FieldContext, ModelConfig, SessionConfig, SAMPLE_RATE};
 use crate::dictionary::Dictionary;
+use crate::endpoint::{EndpointState, Endpointer};
 use crate::learn::{self, Candidate};
 use crate::paste::{self, PasteSegment};
 use crate::postprocess::{self, DictMatcher};
@@ -81,6 +82,36 @@ pub struct CommitResult {
     /// never sets it; `flow_router::Router` always does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub route: Option<RouteInfo>,
+}
+
+/// One poll of the live session (`FlowCore::poll`, `Router::poll`): the
+/// latest partial plus the hands-free endpoint signal (D19). Added
+/// 2026-10-22; every field defaults.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SessionPoll {
+    /// Same as `partial()`.
+    pub partial: Option<String>,
+    /// `SessionConfig.endpoint_silence_ms` of trailing silence followed
+    /// speech: a hands-free shell should commit now. Latched; always false
+    /// when endpointing is off or no session is active.
+    pub endpoint_reached: bool,
+    /// Speech heard so far (0 when endpointing is off).
+    pub speech_ms: u64,
+    /// Audio since the last speech (0 when endpointing is off).
+    pub trailing_silence_ms: u64,
+}
+
+impl SessionPoll {
+    pub fn new(partial: Option<String>, ep: Option<EndpointState>) -> Self {
+        let ep = ep.unwrap_or_default();
+        Self {
+            partial,
+            endpoint_reached: ep.reached,
+            speech_ms: ep.speech_ms,
+            trailing_silence_ms: ep.trailing_silence_ms,
+        }
+    }
 }
 
 /// Where a result came from (`docs/hybrid-architecture.md` §1.2).
@@ -231,6 +262,9 @@ enum Ctrl {
 struct Producer {
     id: u64,
     prod: rtrb::Producer<i16>,
+    /// Hands-free endpointing, fed on the pushing thread so a long partial
+    /// decode on the worker cannot delay the signal.
+    endpointer: Option<Endpointer>,
 }
 
 struct Shared {
@@ -266,7 +300,8 @@ impl FlowCore {
             AsrBackend::Whisper => {
                 require_file(&cfg.asr_path)?;
                 let mut w = crate::whisper::WhisperEngine::load(&cfg.asr_path, cfg.threads)
-                    .map_err(|e| CoreError::Load(e.to_string()))?;
+                    .map_err(|e| CoreError::Load(e.to_string()))?
+                    .with_fit_ctx(cfg.whisper_fit_ctx);
                 if let Some(v) = cfg.vad_model_path.as_deref().filter(|v| !v.is_empty()) {
                     require_file(v)?;
                     w = w.with_silero_vad(v);
@@ -375,7 +410,11 @@ impl FlowCore {
         self.shared.dropped.store(0, Ordering::Relaxed);
         self.shared.stop_partial.store(false, Ordering::Relaxed);
         let mut slot = self.shared.producer.lock().unwrap();
-        *slot = Some(Producer { id, prod });
+        *slot = Some(Producer {
+            id,
+            prod,
+            endpointer: Endpointer::for_session(&cfg),
+        });
         self.ctrl
             .send(Ctrl::Start {
                 id,
@@ -395,6 +434,9 @@ impl FlowCore {
             if let Ok(chunk) = p.prod.write_chunk_uninit(n) {
                 chunk.fill_from_iter(pcm[..n].iter().copied());
             }
+        }
+        if let Some(ep) = p.endpointer.as_mut() {
+            ep.push_i16(pcm);
         }
         let lost = (pcm.len() - n) as u64;
         if lost > 0 {
@@ -424,6 +466,23 @@ impl FlowCore {
     /// Latest live-preview transcript, if partials are enabled.
     pub fn partial(&self) -> Option<String> {
         self.shared.partial.lock().unwrap().clone()
+    }
+
+    /// Hands-free endpoint state, when `endpoint_silence_ms` is set and a
+    /// session is active.
+    pub fn endpoint(&self) -> Option<EndpointState> {
+        let slot = self.shared.producer.lock().unwrap();
+        slot.as_ref()?.endpointer.as_ref().map(Endpointer::state)
+    }
+
+    /// True once the active session's endpoint was reached (D19).
+    pub fn endpoint_reached(&self) -> bool {
+        self.endpoint().is_some_and(|e| e.reached)
+    }
+
+    /// Partial + endpoint in one call (what a shell polls while recording).
+    pub fn poll(&self) -> SessionPoll {
+        SessionPoll::new(self.partial(), self.endpoint())
     }
 
     /// Stop capture and run the full pipeline. Blocks until the result is ready.
@@ -714,6 +773,9 @@ impl Worker {
         let snippet = s.matcher.whole_snippet(&r.asr_text).is_some();
         if s.cfg.spoken_cleanup && s.cfg.cleanup_level != CleanupLevel::None && !snippet {
             text = postprocess::spoken::spoken_cleanup(&text);
+            // Numbered lists and email structure without the LLM (the
+            // LLM, when it runs, starts from this layout).
+            text = postprocess::spoken::layout(&text, ctx.app_category);
             if text.trim().is_empty() {
                 r.empty_reason = Some("only_filler".into());
                 return r;

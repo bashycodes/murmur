@@ -124,3 +124,44 @@ fn silero_vad_keeps_the_speech_if_model_present() {
     let r = core.commit();
     assert!(r.asr_text.to_lowercase().contains("ask not"), "{r:?}");
 }
+
+/// D20: the encoder window sized to the clip gives the same words as the
+/// full 30 s window, on the whole clip and on a short (padded) piece.
+#[test]
+fn fit_ctx_matches_the_full_window() {
+    use flow_core::asr::{AsrEngine, AsrRequest};
+    use flow_core::whisper::WhisperEngine;
+    let Some((model, wav)) = fixture() else {
+        return;
+    };
+    let pcm: Vec<f32> = audio::read_wav_16k_mono(&wav)
+        .unwrap()
+        .iter()
+        .map(|&s| s as f32 / 32768.0)
+        .collect();
+    let words = |s: &str| {
+        s.to_lowercase()
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|w| !w.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    let req = AsrRequest::default();
+    for clip in [&pcm[..], &pcm[..16_000 * 3]] {
+        let full = WhisperEngine::load(model.to_str().unwrap(), 4)
+            .unwrap()
+            .with_fit_ctx(false)
+            .transcribe(clip, &req)
+            .unwrap()
+            .text;
+        let fit = WhisperEngine::load(model.to_str().unwrap(), 4)
+            .unwrap()
+            .with_fit_ctx(true);
+        let text = fit.transcribe(clip, &req).unwrap().text;
+        eprintln!(
+            "full {full:?} | fit {text:?} | re-decodes {}",
+            fit.redecodes()
+        );
+        assert_eq!(words(&text), words(&full));
+    }
+}

@@ -129,6 +129,13 @@ pub struct SessionConfig {
     /// backtracking, money/time/date formatting (`postprocess::spoken`).
     /// Off at cleanup level `none`. Default on.
     pub spoken_cleanup: bool,
+    /// Hands-free endpointing (D19): after at least 300 ms of speech, this
+    /// much trailing silence sets `SessionPoll.endpoint_reached` (see
+    /// `FlowCore::poll`). The core never stops by itself; the shell commits
+    /// when it sees the signal. `None` (default) = off. Values below 300
+    /// are raised to 300; `endpoint::RECOMMENDED_SILENCE_MS` = 2000.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endpoint_silence_ms: Option<u32>,
 }
 
 impl Default for SessionConfig {
@@ -153,6 +160,7 @@ impl Default for SessionConfig {
             hallucination_guard: true,
             llm_prefill: true,
             spoken_cleanup: true,
+            endpoint_silence_ms: None,
         }
     }
 }
@@ -233,6 +241,12 @@ pub struct ModelConfig {
     /// Optional Silero VAD model for whisper.cpp's built-in VAD (feature
     /// `whisper`; e.g. `ggml-silero-v5.1.2.bin`). `None` = energy VAD only.
     pub vad_model_path: Option<String>,
+    /// Whisper: size the encoder window to the clip (`audio_ctx` = clip +
+    /// 1 s) instead of always encoding 30 s, re-decoding with the full
+    /// window when the output looks degenerate (repetition / too many
+    /// words). Default on (D20: 40 LibriSpeech clips, tiny.en 2.7× / base.en
+    /// 1.8× / small 3.4× faster, WER −0.4 / +0.3 / +0.1 points).
+    pub whisper_fit_ctx: bool,
 }
 
 /// Half the logical CPUs (≈ physical cores), capped at 8: ggml's spinning
@@ -251,6 +265,7 @@ impl Default for ModelConfig {
             llm_lib: None,
             threads: default_threads(),
             vad_model_path: None,
+            whisper_fit_ctx: true,
         }
     }
 }
@@ -267,6 +282,19 @@ mod tests {
         assert_eq!(c.platform, Platform::Windows);
         assert_eq!(c.max_samples, 16_000 * 60 * 20);
         assert!(c.languages.is_empty());
+        assert_eq!(c.endpoint_silence_ms, None);
+    }
+
+    #[test]
+    fn endpoint_silence_is_opt_in_and_round_trips() {
+        // Off: not serialised, so the JSON an old server sees is unchanged.
+        let off = serde_json::to_value(SessionConfig::default()).unwrap();
+        assert!(off.get("endpoint_silence_ms").is_none());
+        let c: SessionConfig = serde_json::from_str(r#"{"endpoint_silence_ms":1500}"#).unwrap();
+        assert_eq!(c.endpoint_silence_ms, Some(1500));
+        let back: SessionConfig =
+            serde_json::from_value(serde_json::to_value(&c).unwrap()).unwrap();
+        assert_eq!(back, c);
     }
 
     #[test]
@@ -299,6 +327,7 @@ mod tests {
     fn asr_engine_selector_defaults_to_whisper() {
         let c: ModelConfig = serde_json::from_str("{}").unwrap();
         assert_eq!(c.asr_backend, AsrBackend::Whisper);
+        assert!(c.whisper_fit_ctx);
         for j in [
             r#"{"asr_engine":"parakeet"}"#,
             r#"{"asr_backend":"parakeet"}"#,

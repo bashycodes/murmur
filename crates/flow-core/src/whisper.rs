@@ -19,6 +19,50 @@ pub const MIN_SAMPLES: usize = SAMPLE_RATE + SAMPLE_RATE / 10;
 /// RMS below this is treated as no speech (avoids silence hallucinations).
 const SILENCE_RMS: f32 = 0.003;
 
+/// Encoder positions per second of audio (1500 per 30 s window).
+const CTX_PER_SEC: usize = 50;
+const FULL_CTX: usize = 1500;
+
+/// `audio_ctx` for `samples` of (padded) audio: its length plus 1 s, in
+/// encoder positions; 0 (= the full 30 s window) when that is no smaller.
+pub fn audio_ctx_for(samples: usize) -> i32 {
+    let ctx = (samples * CTX_PER_SEC).div_ceil(SAMPLE_RATE) + CTX_PER_SEC;
+    if ctx >= FULL_CTX {
+        0
+    } else {
+        ctx as i32
+    }
+}
+
+/// Repetition/length guard for a shrunken encoder window (the benchmark
+/// saw `-ac` loop a sentence 3× on base and garble tiny): more than
+/// 4 words per second (+3), or a repeated phrase (below), means "decode
+/// again with the full window". A false alarm only costs the re-decode.
+pub fn looks_degenerate(text: &str, secs: f32) -> bool {
+    let words: Vec<String> = text
+        .split_whitespace()
+        .map(|w| {
+            w.trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase()
+        })
+        .filter(|w| !w.is_empty())
+        .collect();
+    if words.len() as f32 > 4.0 * secs + 3.0 {
+        return true;
+    }
+    // A phrase of 3+ words twice in a row ("And so my fellow Americans.
+    // And so my fellow Americans." on a 3 s clip), or a 1-2 word one three
+    // times (not "no no no" / "very very very": short single words).
+    let rep = |k: usize, times: usize| {
+        (0..(words.len() + 1).saturating_sub(times * k))
+            .any(|i| (1..times).all(|t| words[i..i + k] == words[i + t * k..i + (t + 1) * k]))
+    };
+    (3..=12).any(|k| rep(k, 2))
+        || rep(2, 3)
+        || (0..words.len().saturating_sub(2))
+            .any(|i| words[i].len() > 4 && words[i] == words[i + 1] && words[i] == words[i + 2])
+}
+
 pub fn pad(pcm: &[f32]) -> Vec<f32> {
     let mut v = pcm.to_vec();
     if v.len() < MIN_SAMPLES {
@@ -50,6 +94,11 @@ pub struct WhisperEngine {
     threads: usize,
     /// Silero VAD model (ggml) for whisper.cpp's built-in VAD, if set.
     silero: Option<String>,
+    /// Shrink the encoder window to the clip (`audio_ctx`), with a
+    /// repetition guard that re-decodes with the full window.
+    fit_ctx: bool,
+    /// Full-window re-decodes caused by the guard (tests, benchmarks).
+    redecodes: std::sync::atomic::AtomicU64,
     // Keep the context alive for the state's lifetime.
     _ctx: WhisperContext,
 }
@@ -68,6 +117,8 @@ impl WhisperEngine {
             state: Mutex::new(state),
             threads: threads.max(1),
             silero: None,
+            fit_ctx: false,
+            redecodes: Default::default(),
             _ctx: ctx,
         })
     }
@@ -79,10 +130,47 @@ impl WhisperEngine {
         self.silero = Some(model_path.to_string());
         self
     }
+
+    /// Size the encoder window to the clip (`ModelConfig.whisper_fit_ctx`).
+    pub fn with_fit_ctx(mut self, on: bool) -> Self {
+        self.fit_ctx = on;
+        self
+    }
+
+    /// How many decodes the repetition guard re-ran with the full window.
+    pub fn redecodes(&self) -> u64 {
+        self.redecodes.load(std::sync::atomic::Ordering::Relaxed)
+    }
 }
 
 impl AsrEngine for WhisperEngine {
     fn transcribe(&self, pcm: &[f32], req: &AsrRequest) -> Result<AsrOutput, AsrError> {
+        let audio = pad(pcm);
+        let ctx = if self.fit_ctx {
+            audio_ctx_for(audio.len())
+        } else {
+            0
+        };
+        let out = self.decode(pcm, &audio, req, ctx)?;
+        if ctx > 0 && looks_degenerate(&out.text, audio.len() as f32 / SAMPLE_RATE as f32) {
+            self.redecodes
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            return self.decode(pcm, &audio, req, 0);
+        }
+        Ok(out)
+    }
+}
+
+impl WhisperEngine {
+    /// One whisper.cpp run; `pcm` is the unpadded input (silence gate),
+    /// `audio` the padded one; `audio_ctx` 0 = full window.
+    fn decode(
+        &self,
+        pcm: &[f32],
+        audio: &[f32],
+        req: &AsrRequest,
+        audio_ctx: i32,
+    ) -> Result<AsrOutput, AsrError> {
         let lang = if self.multilingual {
             req.language.clone()
         } else {
@@ -105,6 +193,9 @@ impl AsrEngine for WhisperEngine {
         p.set_print_realtime(false);
         p.set_print_special(false);
         p.set_print_timestamps(false);
+        if audio_ctx > 0 {
+            p.set_audio_ctx(audio_ctx);
+        }
         if !req.initial_prompt.is_empty() {
             p.set_initial_prompt(&req.initial_prompt);
         }
@@ -116,9 +207,8 @@ impl AsrEngine for WhisperEngine {
             let flag = req.abort.clone();
             p.set_abort_callback_safe(move || flag.is_set());
         }
-        let audio = pad(pcm);
         let mut st = self.state.lock().unwrap();
-        st.full(p, &audio)
+        st.full(p, audio)
             .map_err(|e| AsrError::Transcribe(e.to_string()))?;
         let mut text = String::new();
         let mut no_speech: Option<f32> = None;
@@ -163,6 +253,34 @@ mod tests {
     fn pads_short_audio_to_minimum() {
         assert_eq!(pad(&[0.1; 100]).len(), MIN_SAMPLES);
         assert_eq!(pad(&vec![0.1; 40_000]).len(), 40_000);
+    }
+
+    #[test]
+    fn audio_ctx_fits_the_clip_plus_a_second() {
+        assert_eq!(audio_ctx_for(MIN_SAMPLES), 55 + 50);
+        assert_eq!(audio_ctx_for(SAMPLE_RATE * 5), 300);
+        assert_eq!(audio_ctx_for(SAMPLE_RATE * 29), 0);
+        assert_eq!(audio_ctx_for(SAMPLE_RATE * 40), 0);
+    }
+
+    #[test]
+    fn repetition_guard() {
+        let jfk = "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country.";
+        assert!(!looks_degenerate(jfk, 11.0));
+        let looped = "I went home. I went home. I went home. I went home.";
+        assert!(looks_degenerate(looped, 5.0));
+        assert!(looks_degenerate(&format!("{jfk} {jfk} {jfk}"), 11.0));
+        // Too many words for the audio.
+        assert!(looks_degenerate(&"word ".repeat(30), 5.0));
+        // Natural repeats stay.
+        assert!(!looks_degenerate("No no no, that is not it.", 2.0));
+        assert!(!looks_degenerate("It is very very very good.", 2.0));
+        // Short clip: one sentence twice is already a loop.
+        assert!(looks_degenerate(
+            "And so my fellow Americans. And so my fellow Americans.",
+            3.0
+        ));
+        assert!(!looks_degenerate("I think, I think we should go.", 3.0));
     }
 
     #[test]
