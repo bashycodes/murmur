@@ -59,6 +59,25 @@ jobs:
         with:
           node-version: 20
 
+      # sherpa-onnx-sys would download this itself into target/, but the
+      # rust-cache restore keeps its build-script output and drops that
+      # folder (link error "cannot open sherpa-onnx-c-api.lib"), so fetch it
+      # to a stable place and point SHERPA_ONNX_LIB_DIR at it.
+      - name: sherpa-onnx prebuilt (Parakeet)
+        run: |
+          v=1.13.8
+          name=sherpa-onnx-v$v-win-x64-shared-MT-Release-lib
+          dir="$RUNNER_TEMP/sherpa"
+          mkdir -p "$dir"
+          curl -fsSL -o "$dir/a.tar.bz2" \
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$v/$name.tar.bz2"
+          tar -xjf "$dir/a.tar.bz2" -C "$dir"
+          lib="$dir/$name/lib"
+          # Keep every DLL next to the import libraries.
+          find "$dir/$name" -name '*.dll' -exec cp -n {} "$lib/" \;
+          ls -la "$lib"
+          echo "SHERPA_ONNX_LIB_DIR=$(cygpath -w "$lib")" >> "$GITHUB_ENV"
+
       - name: Front-end (ui/dist)
         run: npm --prefix ui ci && npm --prefix ui run build
 
@@ -74,6 +93,7 @@ jobs:
       - name: Release build (hybrid + Parakeet) and the DLL bundle overlay
         run: |
           cargo build --locked --release --features app,parakeet
+          ls target/release/*.dll || true
           tools/ci/parakeet-conf.sh target/release
 
       - name: Installers (hybrid + cloud, whisper + Parakeet)
