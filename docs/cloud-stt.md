@@ -647,3 +647,5 @@ reachable until a shell enables cloud.
   (`auth_failed` → "key rejected", `quota_exceeded` → "out of credits",
   `connect_failed` → "no internet / base URL wrong", `budget_exceeded` → "monthly budget
   reached", `cloud_not_configured` → "set a key and accept the consent").
+
+**2026-10-22 (crates-final):** keyless `custom`-preset `openai_compat` providers on loopback/LAN/Tailscale hosts (no `Authorization` header, consent still required); AssemblyAI create/upload not retried on 504 and still-processing transcripts deleted in the background; budget/C10 routing fix. Details in `docs/hybrid-architecture.md` "Changelog for shells" (remaining review fixes entry).
