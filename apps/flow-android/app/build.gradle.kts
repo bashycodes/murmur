@@ -131,7 +131,8 @@ abstract class VerifyManifestNetwork : DefaultTask() {
 /**
  * Inspects the packaged APK(s). `remote`: no ASR/LLM native libs and a libflow_ffi.so that
  * exports no whisper_/llama_ symbols (I4). `local`: libflow_ffi.so carries no WebSocket/TLS
- * client code (I3, backs up the cargo-tree gate in tools/check-build-matrix.sh).
+ * client code (I3) and no cloud STT client (D18 C2: reqwest / webpki / flow-cloud); backs up the
+ * cargo-tree gate in tools/check-build-matrix.sh.
  */
 abstract class VerifyApkNativeLibs : DefaultTask() {
     @get:InputFiles abstract val apkDir: DirectoryProperty
@@ -187,7 +188,7 @@ abstract class VerifyApkNativeLibs : DefaultTask() {
                     }
                     "noNetCode" -> if (n == "libflow_ffi.so") {
                         val s = String(bytes, Charsets.ISO_8859_1)
-                        for (m in listOf("tungstenite", "rustls", "flow-remote", "flow_remote")) if (s.contains(m)) errors += "${apk.name}: libflow_ffi.so contains '$m' (network code in the local flavour)"
+                        for (m in listOf("tungstenite", "rustls", "flow-remote", "flow_remote", "reqwest", "webpki", "flow-cloud")) if (s.contains(m)) errors += "${apk.name}: libflow_ffi.so contains '$m' (network / cloud STT code in the local flavour, D17 I3 / D18 C2)"
                     }
                 }
             }

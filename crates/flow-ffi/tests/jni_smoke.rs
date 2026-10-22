@@ -13,11 +13,15 @@ fn jvm_round_trip() {
     }
     // `cargo test` does not emit the cdylib; build it (same profile/target dir).
     // Same features as this test binary, so `--features jni,remote` exercises the server route.
-    let features = if cfg!(feature = "remote") {
-        "jni,remote"
-    } else {
-        "jni"
-    };
+    // (+ `cloud` when set, so jni_cloud's build of the same cdylib is not undone in between.)
+    let mut features = vec!["jni"];
+    if cfg!(feature = "remote") {
+        features.push("remote");
+    }
+    if cfg!(feature = "cloud") {
+        features.push("cloud");
+    }
+    let features = features.join(",");
     let st = Command::new(env!("CARGO"))
         .args([
             "build",
@@ -25,7 +29,7 @@ fn jvm_round_trip() {
             "-p",
             "flow-ffi",
             "--features",
-            features,
+            &features,
             "--lib",
         ])
         .status()
@@ -171,7 +175,7 @@ fn contract_symbols_exported() {
         .split('`')
         .filter(|w| w.starts_with("Java_dev_flowclone_core_NativeFlowCore_native"))
         .collect();
-    assert_eq!(want.len(), 19, "{want:?}");
+    assert_eq!(want.len(), 26, "{want:?}");
     let src = include_str!("../src/jni_api.rs");
     let have: std::collections::BTreeSet<&str> = src
         .split(|c: char| !c.is_alphanumeric() && c != '_')

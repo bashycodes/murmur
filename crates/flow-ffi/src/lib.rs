@@ -10,6 +10,10 @@
 //! `flow_router::Router` (`flow_open_router`, which may own a FlowCore as its
 //! local backend). Every session function works on both kinds. The network
 //! client (`flow-remote`) is linked only with feature `remote`.
+//!
+//! D18: with feature `cloud` the router also gets the third-party cloud STT
+//! route (`flow_cloud::attach_with`); keys enter only via `flow_set_cloud_key`.
+//! Without it every cloud function answers "not in this build".
 
 use std::cell::RefCell;
 use std::ffi::{CStr, CString};
@@ -20,7 +24,10 @@ use std::sync::Arc;
 
 use flow_core::config::{FieldContext, ModelConfig, SessionConfig};
 use flow_core::{CommitResult, FlowCore};
-use flow_router::{Backend, Router, RouterConfig, ServerConfig};
+use flow_router::{
+    Backend, CloudProviderConfig, CloudUsage, Route, Router, RouterConfig, SecretString,
+    ServerConfig,
+};
 
 #[cfg(feature = "jni")]
 pub mod jni_api;
@@ -109,14 +116,28 @@ fn remote_factory() -> Option<flow_router::RemoteFactory> {
     }
 }
 
-fn new_router(cfg: RouterConfig, local: Option<Arc<dyn Backend>>) -> Router {
+fn new_router(cfg: RouterConfig, local: Option<Arc<FlowCore>>) -> Router {
     let engines = build_local_engines();
     // A passed-in core (even a mock-ASR one) is a local engine; with none, the
     // build's ASR features decide (allow_client without a model = local_not_ready).
     let capable = local.is_some() || !engines.is_empty();
-    Router::new(cfg, local, remote_factory())
+    let backend = local.clone().map(|c| c as Arc<dyn Backend>);
+    let router = Router::new(cfg, backend, remote_factory())
         .with_local_capability(capable)
-        .with_local_info(engines, cfg!(feature = "llm"))
+        .with_local_info(engines, cfg!(feature = "llm"));
+    attach_cloud(router, local)
+}
+
+/// D18: the cloud route shares the local core's LLM cleaner (if one is loaded),
+/// so provider text goes through the same local pipeline (C5).
+#[cfg(feature = "cloud")]
+fn attach_cloud(router: Router, local: Option<Arc<FlowCore>>) -> Router {
+    flow_cloud::attach_with(router, move || local.as_ref().and_then(|c| c.cleaner()))
+}
+
+#[cfg(not(feature = "cloud"))]
+fn attach_cloud(router: Router, _local: Option<Arc<FlowCore>>) -> Router {
+    router
 }
 
 thread_local! {
@@ -231,12 +252,16 @@ pub mod json_api {
         local: Option<FlowCore>,
     ) -> Result<FlowHandle, (&'static str, String)> {
         let cfg = router_config(json)?;
-        if !cfg.allow_server && !cfg.allow_client {
+        // A cloud-only config (D18) is an engine too, in builds that have it.
+        let cloud = cfg!(feature = "cloud") && cfg.allow_cloud && cfg.order.contains(&Route::Cloud);
+        if !cfg.allow_server && !cfg.allow_client && !cloud {
             let e = flow_router::RouterError::NoEngineEnabled;
             return Err((e.kind(), e.to_string()));
         }
-        let local = local.map(|c| Arc::new(c) as Arc<dyn Backend>);
-        Ok(FlowHandle::Router(Box::new(new_router(cfg, local))))
+        Ok(FlowHandle::Router(Box::new(new_router(
+            cfg,
+            local.map(Arc::new),
+        ))))
     }
 
     pub fn update_router(h: &FlowHandle, json: &str) -> Result<(), (&'static str, String)> {
@@ -276,6 +301,82 @@ pub mod json_api {
             Some(r) => serde_json::to_string(&r.route_status()).unwrap_or_else(|_| "{}".into()),
             None => "{}".into(),
         }
+    }
+
+    // ---- D18 cloud STT (docs/cloud-stt.md "What A needs") ----------------
+
+    /// `Router::set_cloud_key`; `None` / empty forgets the key. The key is
+    /// moved into a `SecretString` (wiped on drop) and never logged or echoed.
+    pub fn set_cloud_key(
+        h: &FlowHandle,
+        provider_id: &str,
+        key: Option<String>,
+    ) -> Result<(), (&'static str, String)> {
+        let r = h
+            .router()
+            .ok_or(("error", "not a router handle".to_string()))?;
+        r.set_cloud_key(provider_id, key.map(SecretString::new));
+        Ok(())
+    }
+
+    /// Blocking "Test provider" `HealthReport` for an unsaved provider
+    /// config. Without a router handle a temporary router is used (then the
+    /// key must be passed).
+    pub fn probe_cloud(h: Option<&FlowHandle>, provider_json: &str, key: Option<String>) -> String {
+        let report = match serde_json::from_str::<CloudProviderConfig>(provider_json) {
+            Ok(p) => {
+                let key = key.map(SecretString::new);
+                match h.and_then(FlowHandle::router) {
+                    Some(r) => r.probe_cloud(&p, key),
+                    None => new_router(RouterConfig::default(), None).probe_cloud(&p, key),
+                }
+            }
+            Err(e) => flow_router::HealthReport::failed(
+                flow_router::EngineKind::Cloud,
+                &flow_router::BackendError::new(
+                    flow_router::Failure::CloudNotConfigured,
+                    format!("bad provider config: {e}"),
+                ),
+            ),
+        };
+        serde_json::to_string(&report).unwrap_or_else(|_| "{\"ok\":false}".into())
+    }
+
+    /// `CloudUsage` JSON (an empty month for a core handle).
+    pub fn cloud_usage(h: &FlowHandle) -> String {
+        let u = h.router().map(Router::cloud_usage).unwrap_or_default();
+        serde_json::to_string(&u).unwrap_or_else(|_| "{}".into())
+    }
+
+    pub fn set_cloud_usage(h: &FlowHandle, json: &str) -> Result<(), (&'static str, String)> {
+        let r = h
+            .router()
+            .ok_or(("error", "not a router handle".to_string()))?;
+        let u: CloudUsage = serde_json::from_str(json)
+            .map_err(|e| ("bad_config", format!("bad_config: bad cloud usage: {e}")))?;
+        r.set_cloud_usage(u);
+        Ok(())
+    }
+
+    pub fn reset_cloud_usage(h: &FlowHandle) {
+        if let Some(r) = h.router() {
+            r.reset_cloud_usage();
+        }
+    }
+
+    /// `CloudCapabilities` of this build (`cloud:false, adapters:[]` without `cloud`).
+    pub fn cloud_capabilities() -> String {
+        serde_json::to_string(&new_router(RouterConfig::default(), None).cloud_capabilities())
+            .unwrap_or_else(|_| "{\"cloud\":false,\"adapters\":[]}".into())
+    }
+
+    /// Provider presets (`flow_cloud::presets()`), `[]` without `cloud`.
+    pub fn cloud_presets() -> String {
+        #[cfg(feature = "cloud")]
+        let presets = flow_cloud::presets();
+        #[cfg(not(feature = "cloud"))]
+        let presets: Vec<CloudProviderConfig> = Vec::new();
+        serde_json::to_string(&presets).unwrap_or_else(|_| "[]".into())
     }
 }
 
@@ -548,6 +649,120 @@ pub unsafe extern "C" fn flow_reset_circuit(h: *mut FlowHandle) {
     if let Some(r) = h.as_ref().and_then(FlowHandle::router) {
         guard((), || r.reset_circuit());
     }
+}
+
+// ---- D18 cloud STT (docs/cloud-stt.md "What A needs") -----------------------
+
+/// Set (`key` non-NULL, non-empty) or forget (NULL / "") a provider's API key.
+/// 0 ok, -1 + kind `error` for a core / NULL handle. Never logs the key.
+///
+/// # Safety
+/// `h` a handle or NULL; strings valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_set_cloud_key(
+    h: *mut FlowHandle,
+    provider_id: *const c_char,
+    key_or_null: *const c_char,
+) -> c_int {
+    guard(-1, || {
+        let (Some(h), Some(id)) = (h.as_ref(), str_arg(provider_id)) else {
+            set_error("null handle or provider id");
+            return -1;
+        };
+        let key = str_arg(key_or_null).map(str::to_owned);
+        json_api::set_cloud_key(h, id, key).map_or_else(
+            |(kind, e)| {
+                set_error_kind(kind, e);
+                -1
+            },
+            |_| 0,
+        )
+    })
+}
+
+/// Blocking "Test provider" `HealthReport` JSON for an unsaved
+/// `CloudProviderConfig`. `key` NULL = the stored key; `h` NULL = a temporary
+/// router (a key is then required).
+///
+/// # Safety
+/// `h` a handle or NULL; strings valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_probe_cloud(
+    h: *mut FlowHandle,
+    provider_json: *const c_char,
+    key_or_null: *const c_char,
+) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        let key = str_arg(key_or_null).map(str::to_owned);
+        out_string(json_api::probe_cloud(
+            h.as_ref(),
+            str_arg(provider_json).unwrap_or(""),
+            key,
+        ))
+    })
+}
+
+/// This month's `CloudUsage` JSON.
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_cloud_usage(h: *mut FlowHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || match h.as_ref() {
+        Some(h) => out_string(json_api::cloud_usage(h)),
+        None => std::ptr::null_mut(),
+    })
+}
+
+/// Restore persisted `CloudUsage` (other months are dropped). 0 ok, -1 error.
+///
+/// # Safety
+/// `h` a handle or NULL; `usage_json` valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_set_cloud_usage(
+    h: *mut FlowHandle,
+    usage_json: *const c_char,
+) -> c_int {
+    guard(-1, || {
+        let (Some(h), Some(j)) = (h.as_ref(), str_arg(usage_json)) else {
+            set_error("null handle or usage");
+            return -1;
+        };
+        json_api::set_cloud_usage(h, j).map_or_else(
+            |(kind, e)| {
+                set_error_kind(kind, e);
+                -1
+            },
+            |_| 0,
+        )
+    })
+}
+
+/// Developer "Reset counters". No-op for a core / NULL handle.
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_reset_cloud_usage(h: *mut FlowHandle) {
+    if let Some(h) = h.as_ref() {
+        guard((), || json_api::reset_cloud_usage(h));
+    }
+}
+
+/// `CloudCapabilities` JSON of this build.
+#[no_mangle]
+pub extern "C" fn flow_cloud_capabilities() -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        out_string(json_api::cloud_capabilities())
+    })
+}
+
+/// Provider presets as a JSON array (`[]` without feature `cloud`).
+#[no_mangle]
+pub extern "C" fn flow_cloud_presets() -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        out_string(json_api::cloud_presets())
+    })
 }
 
 /// Last error on this thread ("" if none). Valid until the next call on it.
