@@ -1032,3 +1032,83 @@ fn turning_cloud_off_mid_session_stops_the_cloud_engine_now() {
     assert_eq!(r.final_text, "local 20000", "nothing lost");
     assert_eq!(k.cloud.commits.load(Ordering::SeqCst), 0, "no upload");
 }
+
+#[test]
+fn unusable_cloud_does_not_make_an_open_server_circuit_skip_the_server() {
+    // C10: [server, cloud] with no cloud key: the cloud is no fallback, so
+    // an open server circuit is retried (half-open) rather than skipped.
+    let k = rig_opts(cloud_cfg(&[Route::Server, Route::Cloud]), true, false);
+    k.remote.fail_start(Some(Failure::ConnectFailed));
+    assert!(k.router.start_session(SessionConfig::default()).is_err());
+    k.router.cancel();
+    assert!(k.router.route_status().circuit.open);
+    k.remote.fail_start(None);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(route(&dictate(&k.router)).engine, "remote");
+    assert_cloud_unused(&k);
+}
+
+// ---- P3: keyless self-hosted openai_compat servers -------------------------
+
+fn self_hosted(base_url: &str, host: &str) -> RouterConfig {
+    let mut c = cloud_cfg(&[Route::Cloud, Route::Client]);
+    let p = &mut c.cloud.providers[0];
+    p.preset = "custom".into();
+    p.adapter = "openai_compat".into();
+    p.base_url = base_url.into();
+    p.model = "Systran/faster-whisper-small".into();
+    p.consent_host = host.into();
+    c
+}
+
+#[test]
+fn keyless_self_hosted_openai_compat_server_is_usable() {
+    let k = rig_opts(
+        self_hosted("http://100.64.0.20:8000/v1", "100.64.0.20"),
+        true,
+        false,
+    );
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(route(&dictate(&k.router)).engine, "cloud");
+    assert_eq!(*k.keys_seen.lock().unwrap(), [""], "no key is sent");
+    let p = k.router.config().cloud.providers[0].clone();
+    assert!(k.router.probe_cloud(&p, None).ok);
+    // A key stored for this id but saved for another host is never sent,
+    // and does not silently turn into "no key" either (S1).
+    let mut other = p.clone();
+    other.base_url = "http://100.64.0.99:8000/v1".into();
+    k.router
+        .set_cloud_key_for(&other, Some(SecretString::new(KEY)));
+    let h = k.router.probe_cloud(&p, None);
+    assert!(!h.ok);
+    assert!(h.message.unwrap().contains("enter the API key"));
+    assert!(!k.keys_seen.lock().unwrap().iter().any(|s| s == KEY));
+}
+
+#[test]
+fn keyless_is_only_for_private_openai_compat_hosts() {
+    // A public host (e.g. Groq) still needs a key.
+    let k = rig_opts(
+        self_hosted("https://api.groq.com/openai/v1", "api.groq.com"),
+        true,
+        false,
+    );
+    k.router.start_session(SessionConfig::default()).unwrap();
+    let r = dictate(&k.router);
+    assert_eq!(route(&r).engine, "local");
+    assert_eq!(route(&r).fallback.as_deref(), Some("cloud_not_configured"));
+    // A named preset (here Groq) needs one even when pointed at the LAN.
+    let mut c = self_hosted("http://100.64.0.20:8000/v1", "100.64.0.20");
+    c.cloud.providers[0].preset = "groq".into();
+    let k = rig_opts(c, true, false);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(route(&dictate(&k.router)).engine, "local");
+    assert_cloud_unused(&k);
+    // Other adapters always need one, even on the LAN.
+    let mut c = self_hosted("http://100.64.0.20:8000/v1", "100.64.0.20");
+    c.cloud.providers[0].adapter = "deepgram".into();
+    let k = rig_opts(c, true, false);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(route(&dictate(&k.router)).engine, "local");
+    assert_cloud_unused(&k);
+}

@@ -14,7 +14,11 @@ pub fn downmix(interleaved: &[i16], channels: usize) -> Vec<i16> {
 }
 
 /// Linear-interpolation resampler; adequate for speech into Whisper.
+/// `rate == 0` (an unknown rate) gives no audio rather than a panic.
 pub fn resample_to_16k(pcm: &[i16], rate: u32) -> Vec<i16> {
+    if rate == 0 {
+        return Vec::new();
+    }
     if rate as usize == SAMPLE_RATE || pcm.is_empty() {
         return pcm.to_vec();
     }
@@ -83,5 +87,10 @@ mod tests {
     fn resample_44k1_length() {
         let x = vec![0i16; 44_100];
         assert_eq!(resample_to_16k(&x, 44_100).len(), 16_000);
+    }
+
+    #[test]
+    fn resample_from_rate_zero_is_empty_not_a_panic() {
+        assert!(resample_to_16k(&[1i16, 2, 3], 0).is_empty());
     }
 }

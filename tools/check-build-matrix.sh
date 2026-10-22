@@ -79,6 +79,19 @@ check "flow-windows local,app has no cloud client" "$CLOUD" "${WIN[@]}" --featur
 check "flow-ffi jni,remote,cloud (remote+cloud flavour) has no ASR/LLM libs" "$ASR" -p flow-ffi --features jni,remote,cloud
 check "flow-windows remote,cloud,app has no ASR/LLM libs" "$ASR" "${WIN[@]}" --features remote,cloud,app
 
+# The same flavour checks on the shells' real targets (review P4): `cargo
+# tree` on the host misses target-specific dependencies
+# (`[target.'cfg(...)'.dependencies]`). Resolution only; no target
+# toolchain is needed.
+ANDROID=(--target aarch64-linux-android)
+WINT=(--target x86_64-pc-windows-msvc)
+check "flow-ffi jni,whisper,llm,parakeet (local flavour, android) has no network deps" "$NET" -p flow-ffi --features jni,whisper,llm,parakeet "${ANDROID[@]}"
+check "flow-ffi jni,whisper,llm,parakeet (local flavour, android) has no cloud client" "$CLOUD" -p flow-ffi --features jni,whisper,llm,parakeet "${ANDROID[@]}"
+check "flow-ffi jni,remote,cloud (remote+cloud flavour, android) has no ASR/LLM libs" "$ASR" -p flow-ffi --features jni,remote,cloud "${ANDROID[@]}"
+check "flow-windows local,app (windows) has no WS client" "$WIN_NET" "${WIN[@]}" --features local,app "${WINT[@]}"
+check "flow-windows local,app (windows) has no cloud client" "$CLOUD" "${WIN[@]}" --features local,app "${WINT[@]}"
+check "flow-windows remote,cloud,app (windows) has no ASR/LLM libs" "$ASR" "${WIN[@]}" --features remote,cloud,app "${WINT[@]}"
+
 if [ "$fail" -ne 0 ]; then
     echo "build matrix: FAILED"
     exit 1
