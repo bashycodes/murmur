@@ -86,13 +86,27 @@ impl std::fmt::Display for CloudError {
 impl std::error::Error for CloudError {}
 
 /// One client per backend, kept across sessions (pooled TLS connection).
+/// Never follows a redirect (review S3): reqwest would forward custom key
+/// headers (`xi-api-key`, `token` auth) and re-post the audio to a host
+/// the user never consented to; a 3xx is a `provider_error` instead. No
+/// `Referer` either (query strings can hold dictionary terms).
 pub fn client() -> Client {
+    client_for(false)
+}
+
+/// [`client`], refusing any non-https request when `https_only` (a base
+/// URL that is https never downgrades).
+pub fn client_for(https_only: bool) -> Client {
     Client::builder()
         .connect_timeout(CONNECT_TIMEOUT)
         .pool_idle_timeout(Duration::from_secs(90))
         .user_agent(concat!("flow-clone/", env!("CARGO_PKG_VERSION")))
+        .redirect(reqwest::redirect::Policy::none())
+        .referer(false)
+        .https_only(https_only)
         .build()
-        .unwrap_or_else(|_| Client::new())
+        // Never fall back to a default client: it would follow redirects.
+        .expect("reqwest client without redirects")
 }
 
 /// Time left until `deadline`, or `Timeout`.
@@ -145,6 +159,12 @@ pub fn send(rb: RequestBuilder, deadline: Instant) -> Result<Response, CloudErro
         401 | 403 => CloudError::Auth,
         413 => CloudError::TooLarge,
         429 => CloudError::RateLimited { retry_after_ms },
+        // Redirects are never followed (S3): the provider moved, or
+        // something tries to send the key/audio elsewhere.
+        300..=399 => CloudError::BadRequest {
+            status,
+            code: Some("redirect".into()),
+        },
         500..=599 => CloudError::Server(status),
         _ => CloudError::BadRequest { status, code },
     })
