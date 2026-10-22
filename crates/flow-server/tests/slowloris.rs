@@ -159,3 +159,35 @@ async fn a_stalled_tls_handshake_is_closed() {
         .await
         .is_some());
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_client_that_never_reads_cannot_grow_the_outbound_queue() {
+    // C17: every ping gets a pong; a client that floods pings and reads
+    // nothing must be disconnected instead of buffering pongs without limit.
+    use futures_util::SinkExt;
+    use tokio_tungstenite::tungstenite::Message;
+    let s = start(mock_cfg("x")).await;
+    let mut ws = session(s.addr()).await;
+    assert_eq!(s.open_connections(), 1);
+    let ping = flow_protocol::ClientMsg::Ping { n: 1 }.to_json();
+    let t0 = Instant::now();
+    'flood: for _ in 0..2000 {
+        for _ in 0..500 {
+            if ws.feed(Message::Text(ping.clone().into())).await.is_err() {
+                break 'flood;
+            }
+        }
+        if ws.flush().await.is_err() || s.open_connections() == 0 {
+            break;
+        }
+        assert!(t0.elapsed() < Duration::from_secs(60));
+    }
+    let t1 = Instant::now();
+    while s.open_connections() > 0 {
+        assert!(
+            t1.elapsed() < Duration::from_secs(5),
+            "connection still open with an unread backlog"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}

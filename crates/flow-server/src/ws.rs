@@ -20,6 +20,9 @@ use crate::AppState;
 
 const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
 const PARTIAL_POLL: Duration = Duration::from_millis(100);
+/// Outbound messages waiting for the socket (C17). A client that stops
+/// reading fills it and is disconnected instead of growing server memory.
+const OUT_QUEUE: usize = 256;
 
 enum Event {
     Leased(u64, Result<Lease, LeaseError>),
@@ -76,7 +79,9 @@ impl Drop for Sess {
 struct Conn {
     state: Arc<AppState>,
     peer: SocketAddr,
-    out: mpsc::UnboundedSender<Message>,
+    out: mpsc::Sender<Message>,
+    /// Set when `out` was full: the client is not reading.
+    overflow: std::cell::Cell<bool>,
     ev: mpsc::UnboundedSender<Event>,
     sess: Option<Sess>,
     dropped_audio: u64,
@@ -88,7 +93,7 @@ struct Conn {
 
 pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAddr) {
     let (mut sink, mut stream) = socket.split();
-    let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Message>();
+    let (out_tx, mut out_rx) = mpsc::channel::<Message>(OUT_QUEUE);
     let writer = tokio::spawn(async move {
         while let Some(m) = out_rx.recv().await {
             let close = matches!(m, Message::Close(_));
@@ -100,7 +105,7 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
     });
     let mut kill = state.kill.clone();
     let send = |m: &ServerMsg| {
-        let _ = out_tx.send(Message::Text(m.to_json().into()));
+        let _ = out_tx.try_send(Message::Text(m.to_json().into()));
     };
 
     // ---- hello ----
@@ -119,7 +124,7 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
             "expected hello",
             true,
         ));
-        let _ = out_tx.send(Message::Close(None));
+        let _ = out_tx.try_send(Message::Close(None));
         let _ = writer.await;
         return;
     };
@@ -129,7 +134,7 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
             h.proto_min, h.proto_max
         );
         send(&ServerMsg::error(None, code::PROTO_MISMATCH, msg, true));
-        let _ = out_tx.send(Message::Close(Some(CloseFrame {
+        let _ = out_tx.try_send(Message::Close(Some(CloseFrame {
             code: CLOSE_PROTO_MISMATCH,
             reason: "proto_mismatch".into(),
         })));
@@ -144,6 +149,7 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
         state: state.clone(),
         peer,
         out: out_tx.clone(),
+        overflow: Default::default(),
         ev: ev_tx,
         sess: None,
         dropped_audio: 0,
@@ -157,6 +163,10 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
     let max_wall = Duration::from_secs(state.cfg.max_session_s);
     let mut ping = tokio::time::interval_at(tokio::time::Instant::now() + ping_every, ping_every);
     loop {
+        if c.overflow.get() {
+            tracing::info!(%peer, "client is not reading its messages; closing");
+            break;
+        }
         tokio::select! {
             _ = kill.changed() => break,
             m = stream.next() => {
@@ -176,7 +186,7 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
             }
             Some(ev) = ev_rx.recv() => c.on_event(ev),
             _ = ping.tick() => {
-                let _ = out_tx.send(Message::Ping(Default::default()));
+                c.push(Message::Ping(Default::default()));
             }
             _ = tick.tick() => {
                 // C5: a peer that has sent nothing, not even a pong, for the
@@ -184,13 +194,13 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
                 // Dropping `c` drops the session and frees its worker.
                 if c.last_rx.elapsed() > dead {
                     tracing::info!(%peer, "no frame within the dead interval; closing");
-                    let _ = out_tx.send(Message::Close(None));
+                    c.push(Message::Close(None));
                     break;
                 }
                 c.enforce_wall_clock(max_wall);
                 c.poll_partial();
                 if c.sess.is_none() && c.last_activity.elapsed() > idle {
-                    let _ = out_tx.send(Message::Close(None));
+                    c.push(Message::Close(None));
                     break;
                 }
             }
@@ -202,7 +212,7 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
     if c.dropped_audio > 0 {
         tracing::debug!(%peer, frames = c.dropped_audio, "audio frames without a session");
     }
-    if *kill.borrow() {
+    if *kill.borrow() || c.overflow.get() {
         writer.abort();
     } else {
         drop(c);
@@ -213,7 +223,13 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
 
 impl Conn {
     fn send(&self, m: &ServerMsg) {
-        let _ = self.out.send(Message::Text(m.to_json().into()));
+        self.push(Message::Text(m.to_json().into()));
+    }
+
+    fn push(&self, m: Message) {
+        if let Err(mpsc::error::TrySendError::Full(_)) = self.out.try_send(m) {
+            self.overflow.set(true);
+        }
     }
 
     fn err(&self, sid: Option<u64>, c: &str, msg: impl Into<String>) {
@@ -497,7 +513,7 @@ impl Conn {
         if let Some(text) = p.clone().filter(|_| p != s.last_partial) {
             s.last_partial = p;
             let m = ServerMsg::Partial { sid: s.sid, text };
-            let _ = self.out.send(Message::Text(m.to_json().into()));
+            self.push(Message::Text(m.to_json().into()));
         }
     }
 }

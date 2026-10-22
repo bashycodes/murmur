@@ -119,6 +119,10 @@ impl ServerHandle {
     pub fn cancels(&self) -> u64 {
         self.state.cancels.load(Ordering::SeqCst)
     }
+    /// Connections currently open (HTTP or upgraded WebSocket).
+    pub fn open_connections(&self) -> usize {
+        self.state.cfg.max_connections.max(1) - self.state.conn_slots.available_permits()
+    }
     pub fn hooks(&self) -> &Hooks {
         &self.state.hooks
     }
