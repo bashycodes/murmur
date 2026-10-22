@@ -132,6 +132,15 @@ impl State {
     /// be skipped (C1: consent + key + budget; `allow_cloud` and `order`
     /// are checked by the caller).
     fn cloud_gate(&mut self) -> Result<(CloudProviderConfig, SecretString), BackendError> {
+        if self.cfg.cloud.monthly_budget_usd.is_some() {
+            self.cloud_usage.roll(&month_of(now_unix_ms()));
+        }
+        self.cloud_check()
+    }
+
+    /// [`State::cloud_gate`] without side effects (counters of a past month
+    /// count as zero instead of being rolled).
+    fn cloud_check(&self) -> Result<(CloudProviderConfig, SecretString), BackendError> {
         let not_cfg = |m: &str| BackendError::new(Failure::CloudNotConfigured, m);
         let p = self
             .cfg
@@ -147,8 +156,12 @@ impl State {
             .key_for(&p)
             .ok_or_else(|| not_cfg("no API key set for the cloud provider"))?;
         if let Some(b) = self.cfg.cloud.monthly_budget_usd {
-            self.cloud_usage.roll(&month_of(now_unix_ms()));
-            if self.cloud_usage.total_cost() >= b.0 {
+            let spent = if self.cloud_usage.month == month_of(now_unix_ms()) {
+                self.cloud_usage.total_cost()
+            } else {
+                0.0
+            };
+            if spent >= b.0 {
                 return Err(BackendError::new(
                     Failure::BudgetExceeded,
                     "monthly cloud budget reached",
@@ -934,14 +947,15 @@ impl Router {
     }
 
     /// Is some route after `i` likely to serve the session (a ready local
-    /// engine, or a closed-circuit server/cloud)? Open circuits are only
-    /// honoured when it is.
+    /// engine, a closed-circuit server, or a closed-circuit cloud that has
+    /// a provider, consent, key and budget)? Open circuits are only
+    /// honoured when it is (an unusable cloud is no fallback, review C10).
     fn viable_after(&self, st: &State, routes: &[Route], i: usize) -> bool {
         let now = Instant::now();
         routes[i + 1..].iter().any(|r| match r {
             Route::Client => st.local.as_ref().is_some_and(|l| l.ready()),
             Route::Server => st.cfg.server.is_configured() && !st.circuit.is_open(now),
-            Route::Cloud => !st.cloud_circuit.is_open(now),
+            Route::Cloud => !st.cloud_circuit.is_open(now) && st.cloud_check().is_ok(),
         })
     }
 
