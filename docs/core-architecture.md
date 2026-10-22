@@ -80,6 +80,7 @@ shell UI thread ──start/commit/cancel──▶ control channel (mpsc) ──
 1. **ASR** (`AsrEngine` trait). `WhisperEngine` (feature `whisper`, `whisper-rs` 0.16) keeps one warm context and state.
    * `initial_prompt` = dictionary vocabulary (replacement targets and plain words; snippets excluded), then screen words, deduped, capped at 200 words.
    * Language: exactly one configured language is forced; zero or several means auto-detect. `.en` models are forced to `en`.
+   * **Encoder window** (D20, `ModelConfig.whisper_fit_ctx`, default on): `audio_ctx` = clip + 1 s (50 positions/s, full window from 29 s up), so a 5 s dictation encodes 6 s instead of 30 s. A repetition/length guard (`whisper::looks_degenerate`) re-decodes with the full window; `WhisperEngine::redecodes()` counts it. 40 clips: tiny.en 2.6×, base.en 1.8×, small 3.4× faster; WER −0.4 / +0.3 / +0.1 points.
    * Silence gate: RMS < 0.003 returns empty. Input shorter than 1.1 s is padded. `[BLANK_AUDIO]` / `(music)` annotations are removed.
    * Default threads = logical CPUs / 2. On this HT box, 8 threads was 14× slower than 4.
    * `AsrOutput.no_speech_prob`: the highest per-segment Whisper no-speech probability.
@@ -259,6 +260,7 @@ All additions are backward compatible: new JSON fields have serde defaults (old 
 
 2026-10-22 (branch `core-endpoint`):
 * Hands-free endpointing (D19). `SessionConfig.endpoint_silence_ms: Option<u32>` (omitted from JSON when unset, so old servers see the same config). New `FlowCore::poll() -> SessionPoll` / `Router::poll()`: JSON `{"partial": str|null, "endpoint_reached": bool, "speech_ms": u64, "trailing_silence_ms": u64}`; plus `endpoint()`, `endpoint_reached()`. Adopt (shells; flow-ffi owner): export `flow_poll(h) -> json` (C) / `poll(h): String` (JNI) wrapping `Router::poll`; in hands-free mode start sessions with `endpoint_silence_ms: 2000` (a user pref, 300-10000), poll it on the existing partial timer, and on `endpoint_reached` run the normal finish path (stop sound + `commit` + paste), exactly as if the user had pressed the hands-free key. Push-to-talk should leave it unset.
+* `ModelConfig.whisper_fit_ctx` (D20, default on): Whisper encodes only the clip + 1 s, with a full-window re-decode on repetition. No shell change; a shell may expose it as a developer toggle ("Fast Whisper encoder") and send `false` to get the old behaviour.
 * Behaviour: spoken cleanup now lays out numbered lists ("first … second … third" → `1.` lines) and, in email apps, greeting / sign-off lines without the LLM. `POSTPROCESS_REV` → `2026-10-22.1`. No shell change; the "Auto-format" pref (`spoken_cleanup`) turns it off too.
 
 2026-10-20 (branch `core-p1`):

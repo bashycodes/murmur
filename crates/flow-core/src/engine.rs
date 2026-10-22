@@ -300,7 +300,8 @@ impl FlowCore {
             AsrBackend::Whisper => {
                 require_file(&cfg.asr_path)?;
                 let mut w = crate::whisper::WhisperEngine::load(&cfg.asr_path, cfg.threads)
-                    .map_err(|e| CoreError::Load(e.to_string()))?;
+                    .map_err(|e| CoreError::Load(e.to_string()))?
+                    .with_fit_ctx(cfg.whisper_fit_ctx);
                 if let Some(v) = cfg.vad_model_path.as_deref().filter(|v| !v.is_empty()) {
                     require_file(v)?;
                     w = w.with_silero_vad(v);
