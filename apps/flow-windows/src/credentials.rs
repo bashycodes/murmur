@@ -104,9 +104,9 @@ pub fn mask(key: &str) -> String {
 
 pub fn key_state(store: &dyn CredentialStore, provider_id: &str) -> KeyState {
     match store.get(provider_id) {
-        Ok(Some(k)) if !k.is_empty() => KeyState {
+        Ok(Some(raw)) if !decode(&raw).key.is_empty() => KeyState {
             set: true,
-            masked: mask(&k),
+            masked: mask(&decode(&raw).key),
         },
         _ => KeyState {
             set: false,
@@ -129,6 +129,118 @@ pub fn normalize_key(raw: &str) -> Result<String, String> {
         return Err("API key is too long".into());
     }
     Ok(k.to_string())
+}
+
+// ------------------------------------------------ host + adapter binding
+
+/// A stored key and the endpoint it was saved for (review S4): the
+/// provider's base-URL host and adapter. A key is only ever handed to the
+/// router for a provider with exactly that binding; a host or adapter
+/// change deletes it and the page asks for the key again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredKey {
+    pub key: String,
+    /// `(host, adapter)`; `None` = a key stored before bindings existed.
+    pub bound: Option<(String, String)>,
+}
+
+const BOUND_V1: &str = "flow-bound-v1\n";
+
+/// `(host, adapter)` of a provider config.
+pub fn binding(p: &flow_router::CloudProviderConfig) -> (String, String) {
+    (p.host(), p.adapter.clone())
+}
+
+/// Credential blob: `flow-bound-v1\n<host>\n<adapter>\n<key>`.
+pub fn encode(key: &str, bound: &(String, String)) -> String {
+    format!("{BOUND_V1}{}\n{}\n{key}", bound.0, bound.1)
+}
+
+pub fn decode(raw: &str) -> StoredKey {
+    if let Some(rest) = raw.strip_prefix(BOUND_V1) {
+        let mut it = rest.splitn(3, '\n');
+        if let (Some(h), Some(a), Some(k)) = (it.next(), it.next(), it.next()) {
+            return StoredKey {
+                key: k.to_string(),
+                bound: Some((h.to_string(), a.to_string())),
+            };
+        }
+    }
+    StoredKey {
+        key: raw.to_string(),
+        bound: None,
+    }
+}
+
+/// Store `key` bound to `p`'s host + adapter.
+pub fn store_bound(
+    store: &dyn CredentialStore,
+    p: &flow_router::CloudProviderConfig,
+    key: &str,
+) -> Result<(), String> {
+    let b = binding(p);
+    if b.0.is_empty() {
+        return Err("Enter a valid base URL before saving the key".into());
+    }
+    store.set(&p.id, &encode(key, &b))
+}
+
+/// The key to hand the router for the saved provider `p`, or `None`.
+/// A legacy (unbound) key is bound to `p` on the way; a key bound to
+/// another host/adapter is deleted (never re-sent to the new endpoint).
+pub fn key_for(
+    store: &dyn CredentialStore,
+    p: &flow_router::CloudProviderConfig,
+) -> Option<String> {
+    let raw = store.get(&p.id).ok().flatten()?;
+    let sk = decode(&raw);
+    if sk.key.is_empty() {
+        return None;
+    }
+    match &sk.bound {
+        Some(b) if *b == binding(p) => Some(sk.key),
+        Some(_) => {
+            let _ = store.delete(&p.id);
+            None
+        }
+        None => {
+            let _ = store_bound(store, p, &sk.key);
+            Some(sk.key)
+        }
+    }
+}
+
+/// On Save: drop every stored key whose provider changed host or adapter
+/// (bound keys: against their binding; legacy keys: against the saved
+/// config). Returns the ids whose key was removed (the page asks again).
+pub fn reconcile_keys(
+    store: &dyn CredentialStore,
+    saved: &flow_router::CloudConfig,
+    new: &flow_router::CloudConfig,
+) -> Vec<String> {
+    let mut dropped = Vec::new();
+    for p in &new.providers {
+        let Some(raw) = store.get(&p.id).ok().flatten() else {
+            continue;
+        };
+        let sk = decode(&raw);
+        let ok = match &sk.bound {
+            Some(b) => *b == binding(p),
+            None => saved
+                .providers
+                .iter()
+                .find(|o| o.id == p.id)
+                .is_none_or(|o| binding(o) == binding(p)),
+        };
+        if ok {
+            if sk.bound.is_none() {
+                let _ = store_bound(store, p, &sk.key);
+            }
+        } else if store.delete(&p.id).is_ok() {
+            dropped.push(p.id.clone());
+        }
+    }
+    dropped
 }
 
 #[cfg(windows)]
@@ -251,5 +363,92 @@ mod tests {
         assert!(normalize_key("sk abc").is_err());
         assert!(normalize_key("sk-a\r\nX-Evil: 1").is_err());
         assert!(normalize_key("ключ").is_err());
+    }
+
+    fn groq(host: &str, adapter: &str) -> flow_router::CloudProviderConfig {
+        flow_router::CloudProviderConfig {
+            id: "groq-1".into(),
+            adapter: adapter.into(),
+            base_url: format!("https://{host}/openai/v1"),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn keys_are_stored_with_their_host_and_adapter() {
+        let s = MemoryStore::new();
+        let p = groq("api.groq.com", "openai_compat");
+        store_bound(&*s, &p, "gsk_abcdefgh1234").unwrap();
+        let raw = s.get("groq-1").unwrap().unwrap();
+        assert_eq!(
+            decode(&raw),
+            StoredKey {
+                key: "gsk_abcdefgh1234".into(),
+                bound: Some(("api.groq.com".into(), "openai_compat".into()))
+            }
+        );
+        assert_eq!(key_state(&*s, "groq-1").masked, "••••1234");
+        assert_eq!(key_for(&*s, &p).as_deref(), Some("gsk_abcdefgh1234"));
+    }
+
+    #[test]
+    fn a_key_never_follows_a_host_or_adapter_change() {
+        let s = MemoryStore::new();
+        let p = groq("api.groq.com", "openai_compat");
+        store_bound(&*s, &p, "gsk_abcdefgh1234").unwrap();
+        // prefs.json edited behind our back: the key is not handed out.
+        assert_eq!(key_for(&*s, &groq("evil.example", "openai_compat")), None);
+        assert_eq!(s.get("groq-1").unwrap(), None, "and deleted");
+        store_bound(&*s, &p, "gsk_abcdefgh1234").unwrap();
+        let saved = flow_router::CloudConfig {
+            providers: vec![p.clone()],
+            ..Default::default()
+        };
+        let moved = flow_router::CloudConfig {
+            providers: vec![groq("api.groq.com", "elevenlabs")],
+            ..Default::default()
+        };
+        assert_eq!(reconcile_keys(&*s, &saved, &saved), Vec::<String>::new());
+        assert_eq!(reconcile_keys(&*s, &saved, &moved), vec!["groq-1"]);
+        assert!(!key_state(&*s, "groq-1").set);
+    }
+
+    #[test]
+    fn a_key_saved_for_the_edited_form_survives_its_save() {
+        // Host edited, key typed and saved for the new host, then Save.
+        let s = MemoryStore::new();
+        let old = groq("api.groq.com", "openai_compat");
+        let new = groq("stt.example.org", "openai_compat");
+        store_bound(&*s, &new, "sk-new-key-0000").unwrap();
+        let saved = flow_router::CloudConfig {
+            providers: vec![old],
+            ..Default::default()
+        };
+        let next = flow_router::CloudConfig {
+            providers: vec![new.clone()],
+            ..Default::default()
+        };
+        assert!(reconcile_keys(&*s, &saved, &next).is_empty());
+        assert_eq!(key_for(&*s, &new).as_deref(), Some("sk-new-key-0000"));
+    }
+
+    #[test]
+    fn legacy_unbound_keys_bind_to_the_saved_provider() {
+        let s = MemoryStore::new();
+        s.set("groq-1", "gsk_legacy12345").unwrap();
+        let p = groq("api.groq.com", "openai_compat");
+        assert_eq!(key_for(&*s, &p).as_deref(), Some("gsk_legacy12345"));
+        assert!(decode(&s.get("groq-1").unwrap().unwrap()).bound.is_some());
+        // A legacy key whose provider changes host on Save is dropped.
+        s.set("groq-1", "gsk_legacy12345").unwrap();
+        let saved = flow_router::CloudConfig {
+            providers: vec![p],
+            ..Default::default()
+        };
+        let moved = flow_router::CloudConfig {
+            providers: vec![groq("evil.example", "openai_compat")],
+            ..Default::default()
+        };
+        assert_eq!(reconcile_keys(&*s, &saved, &moved), vec!["groq-1"]);
     }
 }
