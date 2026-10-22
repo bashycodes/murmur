@@ -281,7 +281,7 @@ impl DevSettings {
                 "Cloud is not used until you accept sending audio to {name}."
             ));
         }
-        if !has_key(&p.id) {
+        if !has_key(&p.id) && !keyless_ok(p) {
             w.push(format!(
                 "Cloud is not used until an API key for {} is saved.",
                 p.display_name()
@@ -307,6 +307,17 @@ impl DevSettings {
         }
         w
     }
+}
+
+/// A `custom` openai_compat provider on a loopback / LAN / Tailscale host
+/// runs without an API key (router, review P3 follow-up): no "key
+/// required" warning for it. Same rule as `flow_router`'s `keyless_ok`.
+pub fn keyless_ok(p: &CloudProviderConfig) -> bool {
+    let host = p.host();
+    p.preset == "custom"
+        && p.adapter == "openai_compat"
+        && !host.is_empty()
+        && flow_router::net::classify(&host).plaintext_ok()
 }
 
 /// Trim the free-text fields of every provider (validation runs after).
@@ -820,6 +831,21 @@ mod tests {
         f.cloud.providers[0].base_url = "https://API.Groq.com/openai/v1".into();
         let (s, _) = f.validate(BOTH).unwrap();
         assert_eq!(s.cloud.providers[0].host(), "api.groq.com");
+    }
+
+    #[test]
+    fn keyless_only_for_a_custom_server_on_a_private_host() {
+        let mut p = groq(0);
+        p.preset = "custom".into();
+        p.base_url = "http://192.168.1.20:8000/v1".into();
+        assert!(keyless_ok(&p));
+        p.base_url = "http://speaches.tail1234.ts.net:8000/v1".into();
+        assert!(keyless_ok(&p));
+        p.base_url = "https://stt.example.com/v1".into();
+        assert!(!keyless_ok(&p), "public host");
+        let mut named = groq(0);
+        named.base_url = "http://192.168.1.20:8000/v1".into();
+        assert!(!keyless_ok(&named), "a named preset always needs a key");
     }
 
     #[test]
