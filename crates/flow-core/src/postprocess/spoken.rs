@@ -17,6 +17,12 @@
 //! period of", "don't forget that", "there's no wait") is left alone, and
 //! clean text comes back unchanged. Gated by `SessionConfig.spoken_cleanup`.
 
+use std::sync::LazyLock;
+
+use regex::Regex;
+
+use crate::config::AppCategory;
+
 const FILLERS: &[&str] = &[
     "um", "umm", "uh", "uhh", "uhm", "erm", "er", "hmm", "hm", "mm", "mhm",
 ];
@@ -953,6 +959,366 @@ pub fn spoken_cleanup(text: &str) -> String {
     render(&toks)
 }
 
+// ---- layout: numbered lists and email structure -------------------------------
+//
+// The
+// list is written the way `cleanup::lists_to_plain` renders the LLM's
+// `<ol>`: `1. item` lines.
+
+/// Words after which an ordinal is an adjective ("the first time", "wait a
+/// second"), never a list marker.
+const ORDINAL_BLOCK: &[&str] = &[
+    "the", "a", "an", "my", "your", "his", "her", "its", "our", "their", "this", "that", "these",
+    "those", "whose", "which", "what", "at", "in", "on", "of", "for", "every", "each", "very",
+    "came", "come", "comes", "is", "was", "were", "are", "be",
+];
+/// Closes an ordinal list after "first … second …": "and finally …".
+const FINAL_MARKERS: &[&str] = &["finally", "lastly"];
+const JOINERS: &[&str] = &["and", "then"];
+/// Longest item, in tokens: a longer "item" means the ordinals were prose.
+const MAX_ITEM_TOKENS: usize = 60;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum MarkerKind {
+    Ordinal,
+    Cardinal,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Marker {
+    /// Token range of the marker ("number one", "first of all,").
+    start: usize,
+    end: usize,
+    n: u64,
+    kind: MarkerKind,
+}
+
+fn at_boundary(toks: &[Tok], i: usize) -> bool {
+    i == 0 || {
+        let p = &toks[i - 1];
+        p.is_break() || p.ends_sentence() || p.ends_clause()
+    }
+}
+
+/// Start of the separator before token `i`: an unpunctuated "and"/"then"
+/// (", and third") belongs to neither item.
+fn joiner_start(toks: &[Tok], c: &[String], mut i: usize) -> usize {
+    while i > 0
+        && JOINERS.contains(&c[i - 1].as_str())
+        && toks[i - 1].suffix().is_empty()
+        && !toks[i - 1].is_break()
+    {
+        i -= 1;
+    }
+    i
+}
+
+fn marker_at(toks: &[Tok], c: &[String], i: usize) -> Option<Marker> {
+    if toks[i].is_break() {
+        return None;
+    }
+    let w = c[i].as_str();
+    let alpha = toks[i].text.chars().next().is_some_and(char::is_alphabetic);
+    let ord = ordinal_word(w).or_else(|| ordinal_word(w.strip_suffix("ly")?));
+    if let Some(n) = ord.filter(|_| alpha) {
+        let blocked =
+            i > 0 && ORDINAL_BLOCK.contains(&c[i - 1].as_str()) && toks[i - 1].suffix().is_empty();
+        if blocked {
+            return None;
+        }
+        let end = if n == 1 && toks[i].suffix().is_empty() && matches_at(c, i + 1, &["of", "all"]) {
+            i + 3
+        } else {
+            i + 1
+        };
+        return Some(Marker {
+            start: i,
+            end,
+            n,
+            kind: MarkerKind::Ordinal,
+        });
+    }
+    let n = if alpha {
+        number_word(w).filter(|_| !w.contains('-'))
+    } else {
+        w.parse::<u64>().ok()
+    }
+    .filter(|n| (1..=20).contains(n))?;
+    // "number one", "step two": the prefix is part of the marker.
+    if i > 0 && matches!(c[i - 1].as_str(), "number" | "step") && toks[i - 1].suffix().is_empty() {
+        let start = i - 1;
+        // Anywhere but after a determiner ("my number one priority").
+        let blocked = start > 0
+            && ORDINAL_BLOCK.contains(&c[start - 1].as_str())
+            && toks[start - 1].suffix().is_empty();
+        return (!blocked).then_some(Marker {
+            start,
+            end: i + 1,
+            n,
+            kind: MarkerKind::Cardinal,
+        });
+    }
+    // A bare number only at a clause start and followed by punctuation:
+    // "One, clone the repo." / "1. Clone the repo."
+    let punct = matches!(toks[i].suffix(), "," | "." | ":" | ")" | ".)");
+    (punct && at_boundary(toks, joiner_start(toks, c, i))).then_some(Marker {
+        start: i,
+        end: i + 1,
+        n,
+        kind: MarkerKind::Cardinal,
+    })
+}
+
+/// Find the first run of ≥ 3 markers numbered 1, 2, 3, … (same kind) in
+/// one paragraph, each followed by at least one word.
+fn find_list(toks: &[Tok], c: &[String], from: usize) -> Option<Vec<Marker>> {
+    let content = |a: usize, b: usize| {
+        let words = toks[a..b]
+            .iter()
+            .filter(|t| !t.is_break() && !t.core().is_empty())
+            .count();
+        words > 0 && b - a <= MAX_ITEM_TOKENS
+    };
+    for i in from..toks.len() {
+        let Some(first) = marker_at(toks, c, i).filter(|m| m.n == 1) else {
+            continue;
+        };
+        let mut ms = vec![first];
+        let mut k = first.end;
+        while k < toks.len() {
+            let last = *ms.last().unwrap();
+            if toks[k].text == "\n\n" {
+                break;
+            }
+            if k - last.end > MAX_ITEM_TOKENS {
+                break;
+            }
+            if let Some(m) = marker_at(toks, c, k) {
+                if m.kind == last.kind
+                    && m.n == last.n + 1
+                    && content(last.end, joiner_start(toks, c, m.start))
+                {
+                    ms.push(m);
+                    k = m.end;
+                    continue;
+                }
+            }
+            let fin = last.kind == MarkerKind::Ordinal
+                && ms.len() >= 2
+                && FINAL_MARKERS.contains(&c[k].as_str())
+                && content(last.end, joiner_start(toks, c, k));
+            if fin && k + 1 < toks.len() {
+                ms.push(Marker {
+                    start: k,
+                    end: k + 1,
+                    n: last.n + 1,
+                    kind: MarkerKind::Ordinal,
+                });
+                break;
+            }
+            k += 1;
+        }
+        if ms.len() >= 3 {
+            return Some(ms);
+        }
+    }
+    None
+}
+
+/// Trim an item: no leading/trailing break, no trailing clause comma.
+fn finish_item(mut item: Vec<Tok>) -> Vec<Tok> {
+    while item.first().is_some_and(Tok::is_break) {
+        item.remove(0);
+    }
+    while item.last().is_some_and(Tok::is_break) {
+        item.pop();
+    }
+    if let Some(t) = item.last_mut() {
+        if t.ends_clause() && !t.ends_sentence() {
+            t.strip_suffix();
+        }
+    }
+    item
+}
+
+/// Numbered lists: "the steps are, first, clone the repo. Second, run the
+/// install script. And third, start the server." → "The steps are:\n\n1.
+/// Clone the repo.\n2. Run the install script.\n3. Start the server."
+fn lists(toks: Vec<Tok>) -> Vec<Tok> {
+    let c = cores(&toks);
+    let Some(ms) = find_list(&toks, &c, 0) else {
+        return toks;
+    };
+    let first = ms[0];
+    let para = toks[..first.start]
+        .iter()
+        .rposition(|t| t.text == "\n\n")
+        .map_or(0, |p| p + 1);
+    let intro_end = joiner_start(&toks, &c, first.start);
+    let mut out: Vec<Tok> = toks[..para].to_vec();
+    let mut intro = finish_item(toks[para..intro_end].to_vec());
+    if let Some(t) = intro.last_mut() {
+        if !t.ends_sentence() {
+            t.strip_suffix();
+            t.text.push(':');
+        }
+    }
+    // Items: up to the next marker's joiner; the last one to the end of
+    // its sentence.
+    let mut items: Vec<Vec<Tok>> = Vec::new();
+    let mut rest_start = toks.len();
+    for (k, m) in ms.iter().enumerate() {
+        let end = match ms.get(k + 1) {
+            Some(next) => joiner_start(&toks, &c, next.start),
+            None => {
+                let e = (m.end..toks.len())
+                    .find(|&j| toks[j].is_break() || toks[j].ends_sentence())
+                    .map_or(toks.len(), |j| j + usize::from(!toks[j].is_break()));
+                rest_start = e;
+                e
+            }
+        };
+        let item = finish_item(toks[m.end..end].to_vec());
+        if item.is_empty() {
+            return toks;
+        }
+        items.push(item);
+    }
+    // Periods: all items get one when any non-last item has one; else the
+    // last item's sentence period goes too.
+    let dotted = items[..items.len() - 1]
+        .iter()
+        .any(|it| it.last().is_some_and(|t| t.suffix().ends_with('.')));
+    for it in &mut items {
+        let t = it.last_mut().unwrap();
+        if dotted && !t.ends_sentence() {
+            t.text.push('.');
+        } else if !dotted && t.suffix() == "." {
+            t.strip_suffix();
+        }
+    }
+    if !intro.is_empty() {
+        out.extend(intro);
+        out.push(Tok::new("\n\n"));
+    }
+    for (k, it) in items.into_iter().enumerate() {
+        if k > 0 {
+            out.push(Tok::new("\n"));
+        }
+        out.push(Tok::new(&format!("{}.", k + 1)));
+        out.extend(it);
+    }
+    let rest = lists(toks[rest_start..].to_vec());
+    if rest.iter().any(|t| !t.is_break()) {
+        out.push(Tok::new("\n\n"));
+        out.extend(rest.into_iter().skip_while(Tok::is_break));
+    }
+    out
+}
+
+static GREETING: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)^(hi|hello|hey|dear|good (?:morning|afternoon|evening)|greetings)\b([^,.!?:;\n]*?)\s*(?:[,.!:]\s*|\n+\s*)(\S[\s\S]*)$",
+    )
+    .unwrap()
+});
+static SIGN_OFF: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"(?i)^([\s\S]*?[.!?\n])\s*(best regards|kind regards|warm regards|warmest regards|regards|best wishes|all the best|yours truly|yours sincerely|sincerely|many thanks|thanks so much|thanks again|thank you|thanks|cheers|best|talk soon|take care)(?:[,.!]?\s+((?-i:\p{Lu}[\p{L}'-]*)(?:\s+(?-i:\p{Lu}[\p{L}'-]*)){0,2}))?[.!]?\s*$",
+    )
+    .unwrap()
+});
+/// Sign-offs that stand alone without a name ("Best regards.").
+const SIGN_OFF_ALONE: &[&str] = &[
+    "best regards",
+    "kind regards",
+    "warm regards",
+    "warmest regards",
+    "regards",
+    "best wishes",
+    "all the best",
+    "yours truly",
+    "yours sincerely",
+    "sincerely",
+];
+/// Capitalised words after "Thanks" that are not a name.
+const NOT_A_NAME: &[&str] = &[
+    "you",
+    "all",
+    "everyone",
+    "everybody",
+    "again",
+    "so",
+    "much",
+    "for",
+    "in",
+    "a",
+    "the",
+    "guys",
+];
+
+/// Email structure (category email only): a spoken greeting gets its own
+/// line ending in a comma, a spoken sign-off its own paragraph with the
+/// name on the next line. Nothing is added that was not said.
+pub fn email_layout(text: &str) -> String {
+    let t = text.trim();
+    let (greeting, rest) = match GREETING.captures(t) {
+        Some(g) if g[2].split_whitespace().count() <= 3 => (
+            Some(capitalise(&format!("{}{}", &g[1], g[2].trim_end())) + ","),
+            g.get(3).unwrap().as_str(),
+        ),
+        _ => (None, t),
+    };
+    let (body, sign_off) = match SIGN_OFF.captures(rest) {
+        Some(s) => {
+            let phrase = s[2].to_lowercase();
+            let name = s.get(3).map(|m| m.as_str());
+            let named = name.is_some_and(|n| {
+                let first = n.split_whitespace().next().unwrap_or("").to_lowercase();
+                !NOT_A_NAME.contains(&first.as_str())
+            });
+            if named || (name.is_none() && SIGN_OFF_ALONE.contains(&phrase.as_str())) {
+                let line = capitalise(&s[2]) + ",";
+                let block = match name.filter(|_| named) {
+                    Some(n) => format!("{line}\n{n}"),
+                    None => line,
+                };
+                (s[1].trim().to_string(), Some(block))
+            } else {
+                (rest.to_string(), None)
+            }
+        }
+        None => (rest.to_string(), None),
+    };
+    if greeting.is_none() && sign_off.is_none() {
+        return text.to_string();
+    }
+    let body = capitalise(body.trim());
+    [greeting, Some(body).filter(|b| !b.is_empty()), sign_off]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
+/// Layout pass after [`spoken_cleanup`]: numbered lists (not in
+/// terminals) and, in email apps, greeting / sign-off structure. Returns
+/// `text` unchanged when neither applies.
+pub fn layout(text: &str, category: AppCategory) -> String {
+    let mut out = text.to_string();
+    if category != AppCategory::Terminal {
+        let toks = tokenize(&out);
+        let listed = lists(toks.clone());
+        if listed != toks {
+            out = render(&tidy(listed));
+        }
+    }
+    if category == AppCategory::Email {
+        out = email_layout(&out);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1093,5 +1459,115 @@ mod tests {
             let once = t(s);
             assert_eq!(t(&once), once, "{s}");
         }
+    }
+
+    // ---- layout ----
+
+    fn lay(s: &str, cat: AppCategory) -> String {
+        layout(&spoken_cleanup(s), cat)
+    }
+
+    #[test]
+    fn ordinal_enumeration_becomes_a_numbered_list() {
+        assert_eq!(
+            lay("The steps are, first, clone the repo. Second, run the install script. And third, uh, start the dev server.", AppCategory::Other),
+            "The steps are:\n\n1. Clone the repo.\n2. Run the install script.\n3. Start the dev server."
+        );
+        // Unpunctuated ASR (the llm_e2e case the 1.5B model missed).
+        assert_eq!(
+            lay("first we need to update the docs second fix the login bug and third ship the release", AppCategory::Document),
+            "1. We need to update the docs\n2. Fix the login bug\n3. Ship the release"
+        );
+        assert_eq!(
+            lay("For the trip, first, book the flights, second, reserve the hotel, and finally, rent a car.", AppCategory::Other),
+            "For the trip:\n\n1. Book the flights\n2. Reserve the hotel\n3. Rent a car"
+        );
+        assert_eq!(
+            lay("First of all, thanks. Secondly, the budget. Thirdly, the hires. Let me know what you think.", AppCategory::WorkChat),
+            "1. Thanks.\n2. The budget.\n3. The hires.\n\nLet me know what you think."
+        );
+    }
+
+    #[test]
+    fn cardinal_enumeration_becomes_a_numbered_list() {
+        assert_eq!(
+            lay(
+                "I need three things. One, eggs. Two, milk. Three, bread.",
+                AppCategory::Other
+            ),
+            "I need three things.\n\n1. Eggs.\n2. Milk.\n3. Bread."
+        );
+        assert_eq!(
+            lay(
+                "number one call mom number two pay rent and number three water the plants",
+                AppCategory::Other
+            ),
+            "1. Call mom\n2. Pay rent\n3. Water the plants"
+        );
+        assert_eq!(
+            lay(
+                "Agenda: 1. Budget. 2. Hiring. 3. Launch.",
+                AppCategory::Other
+            ),
+            "Agenda:\n\n1. Budget.\n2. Hiring.\n3. Launch."
+        );
+    }
+
+    #[test]
+    fn prose_ordinals_and_short_enumerations_stay_prose() {
+        for s in [
+            "The first time I saw it, the second time I loved it, and the third time I bought it.",
+            "Wait a second, I first need to check the third floor.",
+            "First, eggs, second, milk.",
+            "I have one, maybe two, three dogs.",
+            "We came first, second and third in the races.",
+            "One of them called, two of them wrote and three never answered.",
+            "first ls second pwd third whoami",
+            "It is my number one priority, and number two on her list.",
+        ] {
+            let cat = if s.starts_with("first ls") {
+                AppCategory::Terminal
+            } else {
+                AppCategory::Other
+            };
+            let want = spoken_cleanup(s);
+            assert_eq!(layout(&want, cat), want, "{s}");
+        }
+    }
+
+    #[test]
+    fn email_gets_greeting_and_sign_off_lines() {
+        assert_eq!(
+            lay("Hi Tom, thanks for sending over the contract. I had a quick look and um it all looks good to me. I'll sign it tomorrow morning. Best regards, Anna.", AppCategory::Email),
+            "Hi Tom,\n\nThanks for sending over the contract. I had a quick look and it all looks good to me. I'll sign it tomorrow morning.\n\nBest regards,\nAnna"
+        );
+        assert_eq!(
+            lay(
+                "hi bob new paragraph thanks for the update new paragraph best regards",
+                AppCategory::Email
+            ),
+            "Hi bob,\n\nThanks for the update\n\nBest regards,"
+        );
+        assert_eq!(
+            email_layout("Can you send the deck? Thanks, Raj."),
+            "Can you send the deck?\n\nThanks,\nRaj"
+        );
+    }
+
+    #[test]
+    fn email_layout_never_invents_structure() {
+        for s in [
+            "Can you send the deck by Friday?",
+            "Thanks for the update.",
+            "Hey can you send me the file when you get a chance.",
+            "Please review it. Thanks.",
+            "Please review it. Thank you so much.",
+            "Please review it. Thanks Everyone.",
+        ] {
+            assert_eq!(email_layout(s), s, "{s}");
+        }
+        // Not an email app: no email layout.
+        let s = "Hi Tom, the build is green. Thanks, Anna.";
+        assert_eq!(layout(s, AppCategory::WorkChat), s);
     }
 }
