@@ -251,6 +251,10 @@ enum Ctrl {
     },
     Commit {
         id: u64,
+        /// The session's field context, snapshotted when `commit` was
+        /// called: a `start_session` overlapping this commit resets the
+        /// shared one for the next dictation (review C6).
+        ctx: Box<FieldContext>,
         reply: mpsc::Sender<CommitResult>,
         /// Set by `cancel()` while this commit runs (review C4).
         abort: Arc<AtomicBool>,
@@ -518,9 +522,17 @@ impl FlowCore {
     /// Stop capture and run the full pipeline. Blocks until the result is ready.
     pub fn commit(&self) -> CommitResult {
         let t0 = Instant::now();
-        let Some(Producer { id, .. }) = self.shared.producer.lock().unwrap().take() else {
-            return CommitResult::error("no active session");
+        // Snapshot the per-session state now: a `start_session` overlapping
+        // this commit (hands-free back-to-back) resets it (review C6).
+        // `dropped` only grows under the producer lock, taken here.
+        let (id, dropped) = {
+            let mut slot = self.shared.producer.lock().unwrap();
+            let Some(Producer { id, .. }) = slot.take() else {
+                return CommitResult::error("no active session");
+            };
+            (id, self.shared.dropped.load(Ordering::Relaxed))
         };
+        let ctx = Box::new(self.shared.context.lock().unwrap().clone());
         self.shared.stop_partial.store(true, Ordering::Relaxed);
         self.shared.clear_partial(id);
         let (tx, rx) = mpsc::channel();
@@ -530,6 +542,7 @@ impl FlowCore {
             .ctrl
             .send(Ctrl::Commit {
                 id,
+                ctx,
                 reply: tx,
                 abort,
             })
@@ -547,7 +560,7 @@ impl FlowCore {
             }
         }
         r.timings.total_ms = t0.elapsed().as_millis() as u64;
-        r.timings.dropped_samples = self.shared.dropped.load(Ordering::Relaxed);
+        r.timings.dropped_samples = dropped;
         r
     }
 
@@ -645,14 +658,19 @@ impl Worker {
                     });
                     self.maybe_prefill();
                 }
-                Ok(Ctrl::Commit { id, reply, abort }) => {
+                Ok(Ctrl::Commit {
+                    id,
+                    ctx,
+                    reply,
+                    abort,
+                }) => {
                     let r = match self.session.take() {
                         Some(mut s) if s.id == id => {
                             if let Some(cl) = &self.cleaner {
                                 cl.cancel_prefill();
                             }
                             s.drain();
-                            let r = self.finalize(s, &abort);
+                            let r = self.finalize(s, &ctx, &abort);
                             if abort.load(Ordering::SeqCst) {
                                 CommitResult::error("cancelled")
                             } else {
@@ -726,8 +744,7 @@ impl Worker {
         m
     }
 
-    fn asr_request(&self, cfg: &SessionConfig, purpose: AsrPurpose) -> AsrRequest {
-        let ctx = self.shared.context.lock().unwrap();
+    fn asr_request(cfg: &SessionConfig, ctx: &FieldContext, purpose: AsrPurpose) -> AsrRequest {
         let mut seen = Vec::new();
         let dictionary_terms = dedupe_terms(cfg.dictionary.vocabulary(), &mut seen);
         let screen_terms = dedupe_terms(ctx.screen_words.iter().map(String::as_str), &mut seen);
@@ -767,7 +784,8 @@ impl Worker {
             };
             window = &window[sp.start..sp.end];
         }
-        let mut req = self.asr_request(&s.cfg, AsrPurpose::Partial);
+        let ctx = self.shared.context.lock().unwrap().clone();
+        let mut req = Self::asr_request(&s.cfg, &ctx, AsrPurpose::Partial);
         req.abort = AbortFlag(Some(self.shared.stop_partial.clone()));
         if let Ok(out) = self.asr.transcribe(window, &req) {
             let t = out.text.trim();
@@ -781,7 +799,7 @@ impl Worker {
         }
     }
 
-    fn finalize(&self, s: Session, abort: &Arc<AtomicBool>) -> CommitResult {
+    fn finalize(&self, s: Session, ctx: &FieldContext, abort: &Arc<AtomicBool>) -> CommitResult {
         let audio_ms = (s.buf.len() * 1000 / SAMPLE_RATE) as u64;
         let mut r = CommitResult::status(CommitStatus::Empty);
         r.truncated = s.truncated;
@@ -802,7 +820,7 @@ impl Worker {
             (&s.buf[..], None)
         };
         r.timings.asr_audio_ms = (pcm.len() * 1000 / SAMPLE_RATE) as u64;
-        let mut req = self.asr_request(&s.cfg, AsrPurpose::Final);
+        let mut req = Self::asr_request(&s.cfg, ctx, AsrPurpose::Final);
         req.abort = AbortFlag(Some(abort.clone()));
         let t = Instant::now();
         let out = match self.asr.transcribe(pcm, &req) {
@@ -828,7 +846,7 @@ impl Worker {
             r.empty_reason = Some("hallucination".into());
             return r;
         }
-        let mut ctx = self.shared.context.lock().unwrap().clone();
+        let mut ctx = ctx.clone();
         ctx.app_category = postprocess::effective_category(s.cfg.platform, &ctx);
         let mut text = r.asr_text.clone();
         // A whole-utterance snippet trigger is pasted as its expansion; the

@@ -883,3 +883,69 @@ fn cancel_during_commit_aborts_it_and_frees_the_worker() {
     core.cancel();
     assert_eq!(core.commit().status, CommitStatus::Error, "no session");
 }
+
+// ---- C6: a start that overlaps a commit keeps the committing session's state
+
+/// Final decodes signal `entered`, then wait for `release`.
+struct GatedFinalAsr {
+    entered: std::sync::Mutex<Option<std::sync::mpsc::Sender<()>>>,
+    release: std::sync::Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+}
+impl AsrEngine for GatedFinalAsr {
+    fn transcribe(&self, _pcm: &[f32], _req: &AsrRequest) -> Result<AsrOutput, AsrError> {
+        if let Some(tx) = self.entered.lock().unwrap().take() {
+            let _ = tx.send(());
+        }
+        if let Some(rx) = self.release.lock().unwrap().take() {
+            let _ = rx.recv_timeout(Duration::from_secs(5));
+        }
+        Ok(AsrOutput {
+            text: "Sounds good.".into(),
+            ..Default::default()
+        })
+    }
+}
+
+#[test]
+fn start_during_commit_keeps_the_committing_sessions_context_and_drops() {
+    let (etx, erx) = std::sync::mpsc::channel();
+    let (rtx, rrx) = std::sync::mpsc::channel();
+    let core = FlowCore::from_engines(
+        Arc::new(GatedFinalAsr {
+            entered: std::sync::Mutex::new(Some(etx)),
+            release: std::sync::Mutex::new(Some(rrx)),
+        }),
+        None,
+    );
+    let cfg = SessionConfig {
+        vad: false,
+        ring_capacity_samples: 16_000,
+        ..Default::default()
+    };
+    core.start_session(cfg.clone()).unwrap();
+    core.set_context(FieldContext {
+        app_id: "slack".into(),
+        ..Default::default()
+    });
+    // One 3 s push into a 1 s ring: 2 s are dropped, deterministically.
+    assert!(core.push_audio(&speech(3000)));
+    let r = std::thread::scope(|sc| {
+        let h = sc.spawn(|| core.commit());
+        erx.recv_timeout(Duration::from_secs(5))
+            .expect("final decode started");
+        // Hands-free back-to-back: the next dictation starts in another app.
+        core.start_session(cfg.clone()).unwrap();
+        core.set_context(FieldContext {
+            app_id: "notepad".into(),
+            ..Default::default()
+        });
+        rtx.send(()).unwrap();
+        h.join().unwrap()
+    });
+    assert_eq!(
+        r.final_text, "Sounds good ",
+        "cleaned with slack's context: {r:?}"
+    );
+    assert_eq!(r.timings.dropped_samples, 32_000, "{r:?}");
+    core.cancel();
+}
