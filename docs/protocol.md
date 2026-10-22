@@ -130,6 +130,11 @@ Developer page warns.
   included, for `ws_dead_ms` (45 s), with or without a session; its session
   ends and the worker is freed. A session that has not committed after
   `max_session_s` of wall-clock time ends with `error too_large`.
+* `cancel` (or a replacing `start`, or a disconnect) while a commit is
+  running is answered at once; the result is dropped and the server calls
+  `FlowCore::cancel()` on the in-flight core (only until the job ends, so it
+  never reaches the worker's next lessee). The worker returns to the pool
+  when the core stops the job.
 * A session leases a worker at `start` and returns it at `result`,
   `cancelled` or disconnect.
 * Never written to disk: audio, transcripts, contexts, dictionaries. Logs
