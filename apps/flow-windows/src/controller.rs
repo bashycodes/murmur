@@ -1129,6 +1129,10 @@ mod tests {
     fn endpoint_reached_finishes_a_hands_free_dictation() {
         let mut r = rig(Fake::default(), Prefs::default());
         r.at(0, Input::Hotkey(HotkeyAction::HandsFreeToggle));
+        // The start runs on a background thread and the stub reports its
+        // poll only once a session is active: on a slow runner the ticks
+        // below could otherwise all land before the start.
+        r.wait_config(1);
         r.fake.feed_audio(&[1000; 16_000]);
         r.at(1000, Input::Tick);
         assert!(r.rx.try_recv().is_err(), "no endpoint yet");
