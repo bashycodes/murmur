@@ -2,12 +2,12 @@
 
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
-use flow_core::CommitResult;
+use flow_core::{CommitResult, FlowCore};
 use flow_protocol::{
     code, decode_pcm, negotiate, samples_to_ms, ClientMsg, FrameError, ServerMsg, ServerTimings,
     CLOSE_PROTO_MISMATCH, PROTO_MAX, PROTO_MIN,
@@ -41,6 +41,25 @@ struct Sess {
     last_partial: Option<String>,
     /// The task waiting for a worker while queued (aborted with the session).
     waiter: Option<tokio::task::AbortHandle>,
+    /// The core running this session's commit, reachable until the job
+    /// ends so a cancel or disconnect can abort it (C4).
+    inflight: Arc<Mutex<Option<Arc<FlowCore>>>>,
+}
+
+impl Sess {
+    /// Ask the core to abort a running commit. The lock is what the commit
+    /// task takes before returning the worker, so this can never reach a
+    /// core that has been leased to another session.
+    fn abort_commit(&self) {
+        if let Some(core) = self
+            .inflight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
+            core.cancel();
+        }
+    }
 }
 
 impl Drop for Sess {
@@ -48,6 +67,9 @@ impl Drop for Sess {
         if let Some(w) = self.waiter.take() {
             w.abort();
         }
+        // Cancel, a replacing start, a wall-clock cap or a disconnect while
+        // committing: the result is no longer wanted.
+        self.abort_commit();
     }
 }
 
@@ -280,6 +302,7 @@ impl Conn {
             committing: false,
             last_partial: None,
             waiter: None,
+            inflight: Arc::default(),
         };
         if let Some(l) = self.state.pool.try_lease() {
             let _ = l.core.start_session(s.cfg.clone());
@@ -363,8 +386,12 @@ impl Conn {
         }
         let lease = s.lease.take().expect("leased");
         let (sid, ev) = (s.sid, self.ev.clone());
+        *s.inflight.lock().unwrap_or_else(|e| e.into_inner()) = Some(lease.core.clone());
+        let inflight = s.inflight.clone();
         tokio::task::spawn_blocking(move || {
             let r = lease.core.commit();
+            // Unpublish the core before the worker goes back to the pool.
+            *inflight.lock().unwrap_or_else(|e| e.into_inner()) = None;
             drop(lease); // the worker is free only after its commit finished
             let _ = ev.send(Event::Result(sid, Box::new(r)));
         });
