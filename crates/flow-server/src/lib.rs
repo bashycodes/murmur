@@ -9,6 +9,7 @@
 pub mod config;
 mod health;
 pub mod limits;
+pub mod logging;
 pub mod pool;
 mod ws;
 

@@ -119,4 +119,6 @@ Developer page warns.
 * A session leases a worker at `start` and returns it at `result`,
   `cancelled` or disconnect.
 * Never written to disk: audio, transcripts, contexts, dictionaries. Logs
-  carry sizes and timings only, unless `log_text = true`.
+  carry sizes and timings only, unless `log_text = true`. This holds at any
+  `RUST_LOG` level: events from dependencies (tungstenite, hyper, axum) are
+  capped at INFO so frame and request dumps never reach the log.
