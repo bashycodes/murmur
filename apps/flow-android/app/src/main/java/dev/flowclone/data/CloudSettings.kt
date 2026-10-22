@@ -196,29 +196,169 @@ object CloudRules {
     private val ID = Regex("^[a-z0-9-]{1,32}$")
     const val MAX_PROVIDERS = 8
 
-    /** Host of an `http(s)://host[:port][/path]` URL, lower-cased; null for anything else. */
-    fun host(url: String): String? {
-        val u = url.trim()
-        val rest = when {
-            u.startsWith("https://", ignoreCase = true) -> u.substring(8)
-            u.startsWith("http://", ignoreCase = true) -> u.substring(7)
-            else -> return null
+    /** A parsed provider base URL (`flow_router::cloud::BaseUrl`). [port] is null for the scheme's default port. */
+    data class BaseUrl(val https: Boolean, val host: String, val port: Int?)
+
+    /** [url] on success, else [error] (the router's wording). */
+    data class Parsed(val url: BaseUrl?, val error: String?)
+
+    private const val BAD_URL = "base URL must be http(s)://host[:port][/path]"
+
+    /**
+     * Review S2: Kotlin mirror of `flow_router::cloud::parse_base_url` (the `url` crate, i.e.
+     * WHATWG, which is what reqwest connects to). Pinned to the router by the shared vectors in
+     * `crates/flow-ffi/tests/fixtures/url_parse_vectors.json`. Refuses `\`, whitespace / control
+     * characters anywhere and any userinfo; numeric IPv4 forms (`0x7f.1`, `2130706433`) become
+     * dotted quads and percent escapes are decoded, so the host here is the host the request hits.
+     */
+    fun parseBaseUrl(raw: String): Parsed {
+        fun bad(m: String = BAD_URL) = Parsed(null, m)
+        if (raw.isEmpty()) return bad()
+        if (raw.contains('\\')) return bad("base URL must not contain a backslash")
+        if (raw.any { it.isWhitespace() || it.isISOControl() || Character.isSpaceChar(it) }) {
+            return bad("base URL must not contain spaces or control characters")
         }
-        val authority = rest.split('/', '?', '#').first()
-        if (authority.contains('@')) return null
-        val h = if (authority.startsWith("[")) authority.substring(1).substringBefore(']') else authority.substringBefore(':')
-        return h.lowercase()
+        val colon = raw.indexOf(':')
+        if (colon <= 0) return bad()
+        val https = when (raw.substring(0, colon).lowercase()) {
+            "https" -> true
+            "http" -> false
+            else -> return bad()
+        }
+        // Special schemes: any number of slashes after "scheme:" (WHATWG).
+        val rest = raw.substring(colon + 1).trimStart('/')
+        val authority = rest.substring(0, rest.indexOfAny(charArrayOf('/', '?', '#')).let { if (it < 0) rest.length else it })
+        if (authority.contains('@')) return bad("base URL must not contain credentials (user@)")
+        val hostPart: String
+        val portPart: String?
+        if (authority.startsWith("[")) {
+            val close = authority.indexOf(']')
+            if (close < 0) return bad()
+            hostPart = authority.substring(0, close + 1)
+            val after = authority.substring(close + 1)
+            portPart = when {
+                after.isEmpty() -> null
+                after.startsWith(":") -> after.substring(1)
+                else -> return bad()
+            }
+        } else {
+            val c = authority.indexOf(':')
+            hostPart = if (c < 0) authority else authority.substring(0, c)
+            portPart = if (c < 0) null else authority.substring(c + 1)
+        }
+        var port: Int? = null
+        if (!portPart.isNullOrEmpty()) {
+            if (!portPart.all { it in '0'..'9' }) return bad()
+            val n = portPart.trimStart('0').ifEmpty { "0" }
+            if (n.length > 5 || n.toInt() > 65535) return bad()
+            port = n.toInt().takeIf { it != (if (https) 443 else 80) }
+        }
+        if (hostPart.isEmpty()) return bad("base URL has no host")
+        val host = parseHost(hostPart) ?: return bad()
+        if (host.isEmpty()) return bad("base URL has no host")
+        return Parsed(BaseUrl(https, host, port), null)
     }
 
-    fun isHttps(url: String) = url.trim().startsWith("https://", ignoreCase = true)
+    /** WHATWG host parser (special scheme): IPv6 literal, IPv4 number forms, or an ASCII domain; null = failure. */
+    private fun parseHost(input: String): String? {
+        if (input.startsWith("[")) {
+            if (!input.endsWith("]")) return null
+            return HostRules.parseIpv6(input.substring(1, input.length - 1))?.let(::formatIpv6)
+        }
+        val decoded = percentDecode(input) ?: return null
+        val ascii = if (decoded.all { it.code < 0x80 }) decoded.lowercase()
+        else runCatching { java.net.IDN.toASCII(decoded, java.net.IDN.ALLOW_UNASSIGNED) }.getOrNull()?.lowercase() ?: return null
+        if (ascii.isEmpty()) return null
+        if (ascii.any { it.code <= 0x20 || it.code >= 0x7f || it in FORBIDDEN_DOMAIN }) return null
+        if (endsInNumber(ascii)) return parseIpv4Number(ascii)?.let { v -> (0..3).joinToString(".") { ((v shr (24 - 8 * it)) and 0xff).toString() } }
+        return ascii
+    }
+
+    private const val FORBIDDEN_DOMAIN = "#%/:<>?@[\\]^|"
+
+    private fun percentDecode(s: String): String? {
+        if (!s.contains('%')) return s
+        val out = java.io.ByteArrayOutputStream()
+        var i = 0
+        val bytes = s.toByteArray(Charsets.UTF_8)
+        while (i < bytes.size) {
+            val b = bytes[i]
+            if (b == '%'.code.toByte()) {
+                if (i + 2 >= bytes.size) return null
+                val h = String(bytes, i + 1, 2, Charsets.US_ASCII).toIntOrNull(16) ?: return null
+                out.write(h); i += 3
+            } else { out.write(b.toInt()); i++ }
+        }
+        val dec = java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+        return runCatching { dec.decode(java.nio.ByteBuffer.wrap(out.toByteArray())).toString() }.getOrNull()
+    }
+
+    private fun ipv4Part(p: String): Long? {
+        if (p.isEmpty()) return null
+        val (digits, radix) = when {
+            p.length >= 2 && (p.startsWith("0x") || p.startsWith("0X")) -> p.substring(2) to 16
+            p.length >= 2 && p.startsWith("0") -> p.substring(1) to 8
+            else -> p to 10
+        }
+        if (digits.isEmpty()) return 0
+        if (!digits.all { Character.digit(it, radix) >= 0 }) return null
+        // Anything longer than this overflows 2^32 anyway: cap the parse.
+        if (digits.trimStart('0').length > 12) return Long.MAX_VALUE
+        return digits.toLong(radix)
+    }
+
+    private fun endsInNumber(s: String): Boolean {
+        val parts = s.split('.').toMutableList()
+        if (parts.last().isEmpty()) { if (parts.size == 1) return false; parts.removeAt(parts.lastIndex) }
+        val last = parts.last()
+        if (last.isNotEmpty() && last.all { it in '0'..'9' }) return true
+        return (last.startsWith("0x") || last.startsWith("0X")) && last.substring(2).all { Character.digit(it, 16) >= 0 }
+    }
+
+    private fun parseIpv4Number(s: String): Long? {
+        val parts = s.split('.').toMutableList()
+        if (parts.last().isEmpty() && parts.size > 1) parts.removeAt(parts.lastIndex)
+        if (parts.size > 4) return null
+        val nums = parts.map { ipv4Part(it) ?: return null }
+        if (nums.dropLast(1).any { it > 255 }) return null
+        val last = nums.last()
+        if (last >= 1L shl (8 * (5 - nums.size))) return null
+        var v = last
+        for ((i, n) in nums.dropLast(1).withIndex()) v += n shl (8 * (3 - i))
+        return v
+    }
+
+    /** Rust `Ipv6Addr` Display: `::ffff:a.b.c.d` for v4-mapped, else RFC 5952 (longest run ≥ 2 zero groups → `::`). */
+    private fun formatIpv6(g: IntArray): String {
+        if ((0 until 5).all { g[it] == 0 } && g[5] == 0xffff) {
+            return "::ffff:${g[6] shr 8}.${g[6] and 0xff}.${g[7] shr 8}.${g[7] and 0xff}"
+        }
+        var bestStart = -1; var bestLen = 0; var i = 0
+        while (i < 8) {
+            if (g[i] == 0) {
+                var j = i
+                while (j < 8 && g[j] == 0) j++
+                if (j - i > bestLen) { bestStart = i; bestLen = j - i }
+                i = j
+            } else i++
+        }
+        fun hex(r: IntRange) = r.joinToString(":") { Integer.toHexString(g[it]) }
+        return if (bestLen > 1) hex(0 until bestStart) + "::" + hex(bestStart + bestLen until 8) else hex(0 until 8)
+    }
+
+    /** Host of a base URL as the router sees it (lower-cased, IPv6 unbracketed), or null when [parseBaseUrl] refuses it. */
+    fun host(url: String): String? = parseBaseUrl(url).url?.host
+
+    fun isHttps(url: String) = parseBaseUrl(url).url?.https == true
 
     /** Null when valid, else the first problem (same order as the router). */
     fun validate(p: CloudProvider): String? {
         if (!ID.matches(p.id)) return "provider id must be 1-32 of a-z, 0-9, -"
         if (p.adapter !in ADAPTERS) return "unknown adapter ${p.adapter}"
-        val h = host(p.baseUrl) ?: return "base URL must be https://host[/path]"
-        if (h.isEmpty()) return "base URL has no host"
-        if (!isHttps(p.baseUrl) && !HostRules.plaintextOk(h)) return "public base URL: https:// is required"
+        val u = parseBaseUrl(p.baseUrl).let { it.url ?: return it.error }
+        // Names (`*.local`, single-label, `*.ts.net`) pass here; the native client resolves them
+        // before an http:// call and requires every address to be private (review S6).
+        if (!u.https && !HostRules.plaintextOk(u.host)) return "public base URL: https:// is required"
         if (p.model.isBlank()) return "model must be set"
         if (p.timeoutBaseMs !in 1_000..60_000) return "timeout must be 1000-60000 ms"
         if (p.pricePerHourUsd != null && !(p.pricePerHourUsd >= 0.0)) return "price must be a non-negative amount"
