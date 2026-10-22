@@ -60,9 +60,29 @@ android {
         getByName("test").resources.directories.add("../../../crates/flow-ffi/tests/fixtures")
     }
 
+    // Release signing without secrets in git: the keystore and its passwords come from Gradle
+    // properties or environment variables (e.g. ~/.gradle/gradle.properties, or CI secrets):
+    //   flow.release.storeFile / FLOW_RELEASE_STORE_FILE, flow.release.storePassword / FLOW_RELEASE_STORE_PASSWORD,
+    //   flow.release.keyAlias / FLOW_RELEASE_KEY_ALIAS, flow.release.keyPassword / FLOW_RELEASE_KEY_PASSWORD.
+    // Without them `assemble<Flavour>Release` still builds, unsigned (INSTALL.md "Release build").
+    fun releaseProp(name: String, env: String): String? =
+        providers.gradleProperty("flow.release.$name").orNull ?: System.getenv(env)
+    val releaseStore = releaseProp("storeFile", "FLOW_RELEASE_STORE_FILE")?.let { file(it) }?.takeIf { it.isFile }
+    if (releaseStore != null) {
+        signingConfigs {
+            create("release") {
+                storeFile = releaseStore
+                storePassword = releaseProp("storePassword", "FLOW_RELEASE_STORE_PASSWORD")
+                keyAlias = releaseProp("keyAlias", "FLOW_RELEASE_KEY_ALIAS")
+                keyPassword = releaseProp("keyPassword", "FLOW_RELEASE_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (releaseStore != null) signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
