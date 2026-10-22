@@ -39,6 +39,9 @@ struct Fake {
     start_delay: Mutex<std::time::Duration>,
     /// commit blocks until cancel() (or 10 s).
     block_commit: AtomicBool,
+    /// The next push_audio / start_session panics (C8).
+    panic_push: AtomicBool,
+    panic_start: AtomicBool,
 }
 
 impl Fake {
@@ -58,6 +61,8 @@ impl Fake {
             active: AtomicBool::new(false),
             start_delay: Mutex::new(std::time::Duration::ZERO),
             block_commit: AtomicBool::new(false),
+            panic_push: AtomicBool::new(false),
+            panic_start: AtomicBool::new(false),
         })
     }
     fn slow_start(self: Arc<Self>, ms: u64) -> Arc<Self> {
@@ -116,6 +121,9 @@ impl Backend for Fake {
     }
     fn start_session(&self, cfg: &SessionConfig) -> Result<StartInfo, BackendError> {
         self.starts.fetch_add(1, Ordering::SeqCst);
+        if self.panic_start.swap(false, Ordering::SeqCst) {
+            panic!("fake start panic");
+        }
         std::thread::sleep(*self.start_delay.lock().unwrap());
         *self.last_cfg.lock().unwrap() = Some(cfg.clone());
         match *self.start.lock().unwrap() {
@@ -132,6 +140,9 @@ impl Backend for Fake {
         }
     }
     fn push_audio(&self, pcm: &[i16]) -> bool {
+        if self.panic_push.swap(false, Ordering::SeqCst) {
+            panic!("fake push panic");
+        }
         if !self.active.load(Ordering::SeqCst) || self.dead() {
             return false;
         }
@@ -1087,4 +1098,29 @@ fn concurrent_starts_cancel_the_session_they_replace() {
         "the replaced session is cancelled"
     );
     k.router.cancel();
+}
+
+#[test]
+fn a_backend_panic_does_not_wedge_the_router() {
+    // C8: a panic while the router holds its session (push) or state
+    // (start) lock must not poison it for good.
+    let k = rig(false, true);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    k.local.panic_push.store(true, Ordering::SeqCst);
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        k.router.push_audio(&[1; 100])
+    }));
+    assert!(r.is_err(), "the panic reaches the caller");
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(dictate(&k.router).final_text, "local 16000 com.slack");
+
+    k.local.panic_start.store(true, Ordering::SeqCst);
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        k.router.start_session(SessionConfig::default())
+    }));
+    assert!(r.is_err());
+    let _ = k.router.config();
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(dictate(&k.router).final_text, "local 16000 com.slack");
+    assert!(k.router.poll().route.is_none(), "no session left open");
 }
