@@ -101,6 +101,8 @@ interface AccessibilityBridge {
     suspend fun sendKey(key: PasteKey): Boolean
     fun captureFieldContext(): FieldContext?
     fun onDictationActive(active: Boolean)
+    /** S12: may the transcript go into the field focused now (see [dev.flowclone.policy.InsertGuard])? */
+    fun insertTarget(explicit: Boolean): dev.flowclone.session.InsertTarget = dev.flowclone.session.InsertTarget.OK
 }
 
 /**

@@ -197,6 +197,24 @@ class V3InserterTest {
         assertFalse(insert("x").succeeded)
     }
 
+    /** S12: the node tier no longer accepts whatever app is focused now, only the pinned start app. */
+    @Test fun nodeOfTheNowFocusedAppIsRefusedWhenTheStartAppDiffers() = runTest {
+        env.replyContext = true
+        val other = FakeField(pkg = "com.whatsapp")
+        env.focusedNode = other
+        env.startPkg = "com.example.notes"; env.currentPkg = "com.whatsapp"
+        assertFalse(insert("x").succeeded)
+        assertTrue(other.setTexts.isEmpty())
+    }
+
+    @Test fun bankingAppFocusedAtInsertTimeIsRefused() = runTest {
+        env.currentPkg = "com.chase.sig.android"
+        val r = insert("x")
+        assertFalse(r.succeeded)
+        assertEquals(InsertResult.FailureReason.EXCLUDED_FIELD, r.reason)
+        assertTrue(field.commits.isEmpty() && field.setTexts.isEmpty())
+    }
+
     @Test fun relocatedDictationStartNodeIsUsedWhenFocusLost() = runTest {
         env.replyContext = true; env.focusedNode = null; env.relocatedNode = field
         assertTrue(insert("x").succeeded)

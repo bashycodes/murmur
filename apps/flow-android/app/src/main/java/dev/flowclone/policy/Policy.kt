@@ -93,3 +93,21 @@ object AppCategorizer {
         }
     }
 }
+
+/**
+ * Review S12: the transcript goes only into the field that was focused when the dictation
+ * started. Right before inserting, the shell compares that pinned field with the one focused
+ * now and re-runs the bubble policy (banking list, user denylist, password / sensitive input).
+ */
+object InsertGuard {
+    /** Package + loose identity hash (package, class, view id, description) of a focused field. */
+    data class Field(val pkg: String?, val identity: Long?)
+
+    fun check(start: Field?, now: Field, policyAllows: Boolean, explicit: Boolean): dev.flowclone.session.InsertTarget {
+        if (!policyAllows) return dev.flowclone.session.InsertTarget.PROTECTED
+        if (explicit || start == null) return dev.flowclone.session.InsertTarget.OK
+        if (start.pkg != null && now.pkg != null && start.pkg != now.pkg) return dev.flowclone.session.InsertTarget.CHANGED
+        if (start.identity != null && now.identity != null && start.identity != now.identity) return dev.flowclone.session.InsertTarget.CHANGED
+        return dev.flowclone.session.InsertTarget.OK
+    }
+}
