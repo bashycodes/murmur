@@ -207,7 +207,8 @@ class EngineHolder(
         if (!app.caps.cloud) return
         for (p in app.dev.load().cloud.providers) {
             val key = app.cloudKeys.get(p.id) ?: continue
-            runCatching { r.setCloudKey(p.id, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key ${p.id}: ${it.message}") }
+            // S4: bound to the saved provider's host + adapter.
+            runCatching { r.setCloudKeyFor(p.toJson().toString(), p.id, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key ${p.id}: ${it.message}") }
         }
         app.dev.cloudUsageJson?.let { r.setCloudUsage(it) }
     }
@@ -215,6 +216,11 @@ class EngineHolder(
     /** A provider's key was saved / cleared on the Developer page: tell the live router. */
     fun setCloudKey(providerId: String, key: String?) {
         runCatching { router()?.setCloudKey(providerId, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key $providerId: ${it.message}") }
+    }
+
+    /** Save on the provider page (S4): the key is bound to [p]'s host + adapter in the live router. */
+    fun setCloudKeyFor(p: dev.flowclone.data.CloudProvider, key: String?) {
+        runCatching { router()?.setCloudKeyFor(p.toJson().toString(), p.id, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key_for ${p.id}: ${it.message}") }
     }
 
     /** Persist the router's cloud counters (after a cloud dictation, and on Reset counters). */
