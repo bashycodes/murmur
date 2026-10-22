@@ -1032,3 +1032,18 @@ fn turning_cloud_off_mid_session_stops_the_cloud_engine_now() {
     assert_eq!(r.final_text, "local 20000", "nothing lost");
     assert_eq!(k.cloud.commits.load(Ordering::SeqCst), 0, "no upload");
 }
+
+#[test]
+fn unusable_cloud_does_not_make_an_open_server_circuit_skip_the_server() {
+    // C10: [server, cloud] with no cloud key: the cloud is no fallback, so
+    // an open server circuit is retried (half-open) rather than skipped.
+    let k = rig_opts(cloud_cfg(&[Route::Server, Route::Cloud]), true, false);
+    k.remote.fail_start(Some(Failure::ConnectFailed));
+    assert!(k.router.start_session(SessionConfig::default()).is_err());
+    k.router.cancel();
+    assert!(k.router.route_status().circuit.open);
+    k.remote.fail_start(None);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(route(&dictate(&k.router)).engine, "remote");
+    assert_cloud_unused(&k);
+}
