@@ -8,7 +8,7 @@
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
@@ -302,6 +302,9 @@ pub struct Router {
     session: Mutex<Option<Active>>,
     /// The commit in progress, if any (`cancel` aborts it, review C4).
     committing: Mutex<Option<CommitCtl>>,
+    /// Serialises `start_session` (review C7): each start cancels the
+    /// session open before it, so two concurrent starts never orphan one.
+    starting: Mutex<()>,
     remote_factory: Option<RemoteFactory>,
     cloud_factory: Option<CloudFactory>,
 }
@@ -353,6 +356,7 @@ impl Router {
             }),
             session: Mutex::new(None),
             committing: Mutex::new(None),
+            starting: Mutex::new(()),
             remote_factory: remote,
             cloud_factory: None,
         }
@@ -552,6 +556,9 @@ impl Router {
     /// "Transcribing via …" label, and `queued` (server busy, waiting for
     /// a worker). Additive (2026-10-22).
     pub fn start_session_info(&self, cfg: SessionConfig) -> Result<StartInfo, RouterError> {
+        // One start at a time: a concurrent start must see (and cancel) the
+        // session this one installs, never overwrite it (review C7).
+        let _starting = self.starting.lock().unwrap_or_else(PoisonError::into_inner);
         // Only the open session: a commit still running for the previous
         // dictation (hands-free back-to-back) is not aborted.
         self.cancel_session();

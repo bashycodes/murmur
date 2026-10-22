@@ -1062,3 +1062,29 @@ fn replay_past_max_samples_reports_truncated() {
     assert_eq!(k.local.received(), 12_000, "replay is capped");
     assert!(r.truncated, "audio past max_samples was lost: {r:?}");
 }
+
+#[test]
+fn concurrent_starts_cancel_the_session_they_replace() {
+    // C7: the second start must not orphan the first session.
+    let k = rig_with(
+        cfg(false, true),
+        Fake::new(EngineKind::Local).slow_start(300),
+        Fake::new(EngineKind::Remote),
+    );
+    std::thread::scope(|sc| {
+        let a = sc.spawn(|| k.router.start_session(SessionConfig::default()));
+        // B gets past its own "cancel the open session" step while A is
+        // still starting, then waits for A.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let b = sc.spawn(|| k.router.start_session(SessionConfig::default()));
+        a.join().unwrap().unwrap();
+        b.join().unwrap().unwrap();
+    });
+    assert_eq!(k.local.starts(), 2);
+    assert_eq!(
+        k.local.cancels.load(Ordering::SeqCst),
+        1,
+        "the replaced session is cancelled"
+    );
+    k.router.cancel();
+}
