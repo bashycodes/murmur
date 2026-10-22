@@ -2,13 +2,9 @@ package dev.flowclone.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.InputMethod
-import android.content.ClipData
-import android.content.ClipDescription
-import android.content.ClipboardManager
 import android.content.Intent
 import android.graphics.Rect
 import android.os.Build
-import android.os.PersistableBundle
 import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -336,15 +332,11 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         override fun onStaleTick() = staleProbeSurface(anchorPkg()) && env.reacquireStaleSession()
     }
 
-    /** 07 §3.4: ClipData with EXTRA_IS_SENSITIVE so the system clip preview stays masked. */
+    /** 07 §3.4: ClipData with EXTRA_IS_SENSITIVE so the system clip preview stays masked; S16: removed after 60 s. */
     private inner class Clipboard : ClipboardPort {
         override fun copySensitive(text: String) {
-            val cm = getSystemService(ClipboardManager::class.java) ?: return
-            val clip = ClipData.newPlainText("Flow Clone", text).apply {
-                description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
-            }
-            cm.setPrimaryClip(clip)
-            Toast.makeText(this@FlowAccessibilityService, R.string.toast_copied, Toast.LENGTH_SHORT).show()
+            app.clipboard.copy(text)
+            Toast.makeText(this@FlowAccessibilityService, R.string.toast_copied_for_a_minute, Toast.LENGTH_SHORT).show()
         }
     }
 

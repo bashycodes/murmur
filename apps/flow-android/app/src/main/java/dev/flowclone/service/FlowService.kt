@@ -6,9 +6,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.ClipData
-import android.content.ClipDescription
-import android.content.ClipboardManager
 import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.ComponentCallbacks2
@@ -25,7 +22,6 @@ import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Build
 import android.os.IBinder
-import android.os.PersistableBundle
 import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -352,13 +348,8 @@ class FlowService : Service() {
         runCatching { getSystemService(Vibrator::class.java)?.vibrate(VibrationEffect.createPredefined(effect)) }
     }
 
-    private fun copySensitive(text: String) {
-        val cm = getSystemService(ClipboardManager::class.java) ?: return
-        val clip = ClipData.newPlainText("Flow Clone", text).apply {
-            description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
-        }
-        cm.setPrimaryClip(clip)
-    }
+    /** S16: sensitive clip, taken off the clipboard again after a minute (or once the text is inserted). */
+    private fun copySensitive(text: String) = app.clipboard.copy(text)
 
     private inner class Host : DictationController.Host {
         override fun feedback(e: FeedbackEvent) {
@@ -386,6 +377,7 @@ class FlowService : Service() {
             copyJob = scope.launch { delay(COPY_DELAY_MS); showCopy.value = true }
             val bridge = app.accessibility
             val ok = if (bridge != null) bridge.insertTextAndVerify(text) else { copySensitive(text); false }
+            if (ok) app.clipboard.onInserted() // S16: a failed earlier text leaves the clipboard now
             copyJob?.cancel()
             if (showCopy.value || !ok) {
                 showCopy.value = true
