@@ -2,7 +2,7 @@
 
 Research inputs: `research/windows/findings/by-topic/10-clone-spec.md` (§9 = core API), `research/android/findings/by-topic/10-clone-spec-android.md`. Decisions: `docs/DECISIONS.md` (D1-D16). Core architecture + "Changelog for shells": `docs/core-architecture.md`. Core requests from the shells: `docs/core-change-requests.md`. Model choices: `docs/model-benchmarks.md`.
 
-Branch `integration` holds everything: `core`, `core-p1`, `parakeet`, `win-p1`, `android-int` and `android-p1` are merged into it.
+Branch `integration` holds everything: `core`, `core-p1`, `parakeet`, `win-p1`, `android-int`, `android-p1`, the hybrid branches, `cloud-core`, `core-endpoint`, `win-cloud` and `android-cloud` are merged into it.
 
 ## Layout
 
@@ -31,8 +31,8 @@ tools/              fetch-models.sh, build-android-parakeet.sh, probes/
 * Core: `cargo test --workspace`. Full: `BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include" SHERPA_ONNX_LIB_DIR=<sherpa-onnx lib dir> cargo test --workspace --all-features` and `cargo clippy --workspace --all-targets --all-features -- -D warnings` (llama-cpp-sys-2 needs the BINDGEN flag even for the default build on this box). Real-model tests skip without `models/` (`tools/fetch-models.sh [--llm] [--parakeet]`).
 * Hybrid (D17): `cargo test -p flow-contract-tests` (+ `--all-features` with `FLOW_MODELS_DIR`/`FLOW_PARAKEET_DIR` for real-model equivalence); `tools/check-build-matrix.sh`; end-to-end smoke with a real server: `tools/probes/hybrid_smoke/run.sh` (PARAKEET_DIR, AUDIO_DIR).
 * Cloud STT (D18): `cargo test -p flow-cloud -p flow-router -p flow-contract-tests` (mock HTTP; no keys needed). Live provider smoke: `FLOW_CLOUD_LIVE_<OPENROUTER|ELEVENLABS|GROQ|OPENAI|DEEPGRAM|ASSEMBLYAI>_KEY=… cargo test -p flow-cloud --test live_smoke -- --nocapture` (skips without keys; costs money).
-* Windows shell: `cd apps/flow-windows && cargo test` (184: 171 lib + 13 integration), plus the MSVC clippy cross-check in its README.
-* Android shell: `cd apps/flow-android && ANDROID_HOME=~/Android/Sdk ./gradlew testDebugUnitTest assembleDebug` (Gradle daemon on JDK 21): 238 JVM tests, 9 gated skips.
+* Windows shell: `cd apps/flow-windows && cargo test` (259: 224 lib + 35 integration), plus the MSVC clippy cross-check in its README.
+* Android shell: `cd apps/flow-android && ANDROID_HOME=~/Android/Sdk ./gradlew testDebugUnitTest assembleDebug` (Gradle daemon on JDK 21): 317 JVM tests per flavour, 11 gated skips; native libs `tools/build-native.sh --flavor F` + `tools/probes/check_native_so.sh --flavor F <apk>`.
 
 ## What works
 
@@ -87,8 +87,8 @@ Spec `docs/hybrid-architecture.md`, protocol `docs/protocol.md`. Both shells use
 | Merged tree green (2026-10-22): root `cargo test --workspace` 274 passed (285 with `--all-features` + models), clippy `-D warnings`; Windows 229 tests + clippy + MSVC cross-clippy for 4 flavours; Android `testLocal/Hybrid/RemoteDebugUnitTest` 297 each (10 gated skips) + `assembleDebug`. APKs with natives: local 41.4 MB, hybrid 43.6 MB, remote 9.9 MB | see How to verify |
 | Real server on this box (release, Parakeet, 127.0.0.1, token): 10 LibriSpeech clips, text identical to local 10/10, commit→result mean 1666 ms via server vs 1687 ms local on the same CPU; overhead beyond ASR median 3 ms | `tools/probes/hybrid_smoke/run.sh`, `docs/model-benchmarks.md` "Hybrid" |
 
-### Opt-in cloud STT (D18; branch `cloud-core`, core/router side only)
-Spec `docs/cloud-stt.md` (shell API: its "Changelog for shells"). Shells (W/A) have not adopted it; no live provider has been called (no keys on this box), so DoD 2-4 are open.
+### Opt-in cloud STT (D18; branches `cloud-core` + `win-cloud` + `android-cloud`, merged into `integration`)
+Spec `docs/cloud-stt.md` (shell API: its "Changelog for shells"). Core/router and both shells are done; no live provider has been called (no keys on this box), so DoD 2-4 (live smoke, on-device) are open.
 
 | Capability | Proof (test) |
 |---|---|
@@ -97,11 +97,14 @@ Spec `docs/cloud-stt.md` (shell API: its "Changelog for shells"). Shells (W/A) h
 | C5/C6: provider text runs through the local pipeline identically to a local engine for every mock session fixture; silence never uploaded; no upload before commit (partials refused); FLAC bit-exact | `flow-contract-tests/tests/equivalence.rs::equivalence_cloud_mock_http`, `flow-cloud/tests/{session,encode}.rs` |
 | Real client/server/provider matrix: provider 401 → local with all samples and sticky; 500 → local; server down → cloud; server killed mid-session → provider receives every buffered sample; provider unreachable → local | `flow-contract-tests/tests/toggle_matrix.rs::matrix_cloud_*` |
 | C3/C4: sentinel key absent from config JSON/Debug, route status, health, capabilities, usage, results and errors of every failure path (incl. a provider echoing the key) and from every flow-protocol frame sent to flow-server | `flow-contract-tests/tests/no_key_leak.rs` |
-| C2: client-only flavours (flow-ffi local, flow-windows `local,app`), flow-core and flow-router contain no cloud client stack; flow-cloud no ASR/LLM libs | `tools/check-build-matrix.sh` (+ `build_matrix.rs`); shell `cloud` flavour checks SKIP until W/A add the feature |
+| C2: client-only flavours (flow-ffi local, flow-windows `local,app`), flow-core and flow-router contain no cloud client stack; flow-cloud no ASR/LLM libs | `CHECK_BUILD_MATRIX_STRICT=1 CHECK_BUILD_MATRIX_STRICT_CLOUD=1 tools/check-build-matrix.sh` (+ `build_matrix.rs`): 0 skipped, 0 cloud pending; incl. flow-ffi `jni,remote,cloud` and flow-windows `remote,cloud,app` without ASR/LLM libs |
 | Branch green (2026-10-22): root `cargo test --workspace` 389 passed (400 with `--all-features` + models; was 274/285), clippy `-D warnings`, fmt; strict build matrix ok (2 cloud checks pending); Windows 229 tests + clippy + MSVC cross-clippy unchanged | see How to verify |
+| Windows cloud STT (`cloud` feature): keys in Credential Manager, cloud routing, Developer cloud providers UI, C badge | `cd apps/flow-windows && cargo test`: 224 unit + 8 `cloud_integration` + 5 `cloud_settings` (+ 13 core_integration + 9 other); MSVC cross-clippy incl. `app,local-engine,remote,cloud` |
+| Android cloud STT in `hybrid`/`remote` (settings, Keystore keys, per-provider consent, UI); flow-ffi `cloud` C/JNI surface | `testLocal/Hybrid/RemoteDebugUnitTest` 317 each (11 gated skips); host JNI cloud test (`tools/probes/host_cloud/run.sh`: real host flow-ffi `jni,cloud` under the Kotlin cloud path vs a JVM mock provider; `flow-ffi/tests/jni_cloud.rs`); `check_native_so.sh` per flavour (local rejects cloud, hybrid/remote require it); debug APKs local 42.0 / hybrid 46.3 / remote 12.6 MB on the branch (merged-tree rebuild 41.8 / 46.1 / 12.4 MB) |
+| Merged tree green (2026-10-22, integration after core-endpoint + win-cloud + android-cloud): root `cargo test --workspace` 413 passed (425 with `--all-features` + models), clippy `-D warnings`, fmt; strict build matrix incl. cloud 0 SKIP; Windows 259 tests + clippy + MSVC cross-clippy 5 flavours; Android 317/flavour + assembleDebug + native .so/APK gates for all 3 flavours | see How to verify |
 
 ### Windows shell (`apps/flow-windows`)
-Wired to the real core (from branch `win-p1`) and the hybrid router (`hybrid-windows`: features `local`/`remote`/`tls`, Developer tab). Proof = `cd apps/flow-windows && cargo test` (229 tests; the real-model ones skip without `models/` / the plugin).
+Wired to the real core (from branch `win-p1`) and the hybrid router (`hybrid-windows`: features `local`/`remote`/`tls`, Developer tab). Proof = `cd apps/flow-windows && cargo test` (259 tests: 224 lib + 35 integration; the real-model ones skip without `models/` / the plugin).
 
 | Capability | Proof (test) |
 |---|---|
@@ -119,7 +122,7 @@ Wired to the real core (from branch `win-p1`) and the hybrid router (`hybrid-win
 Not yet run on real Windows. The manual checklist is in `apps/flow-windows/README.md`.
 
 ### Android shell (`apps/flow-android`)
-From branches `android-int` + `android-p1` + `hybrid-android` (flavours `local`/`hybrid`/`remote`; only `local` is network-free). `./gradlew testLocalDebugUnitTest testHybridDebugUnitTest testRemoteDebugUnitTest assembleDebug` is green (297 JVM tests per flavour, 10 gated skips) and the no-network gate passes for `local`: its merged manifest has no network permission, which a Gradle gate and a unit test enforce. Debug APK with all three .so (flow_ffi, flow_llm, libc++_shared): 14.2 MB; with flow_ffi only: 9.3 MB (.so 3.9 MB stripped + libc++ 1.3 MB). Install guide: `apps/flow-android/INSTALL.md`.
+From branches `android-int` + `android-p1` + `hybrid-android` (flavours `local`/`hybrid`/`remote`; only `local` is network-free). `./gradlew testLocalDebugUnitTest testHybridDebugUnitTest testRemoteDebugUnitTest assembleDebug` is green (317 JVM tests per flavour, 11 gated skips) and the no-network gate passes for `local`: its merged manifest has no network permission, which a Gradle gate and a unit test enforce. Debug APK with all three .so (flow_ffi, flow_llm, libc++_shared): 14.2 MB; with flow_ffi only: 9.3 MB (.so 3.9 MB stripped + libc++ 1.3 MB). Install guide: `apps/flow-android/INSTALL.md`.
 
 | Capability | Proof (test) |
 |---|---|
@@ -138,7 +141,7 @@ Wired on Android, unverified on a device: snooze target + notification undo, sha
 
 ## Outstanding work — priority order
 **Active work:** hybrid local/server ASR (D17), spec in `docs/hybrid-architecture.md`. Server/client stack and both shells merged into `integration`, strict build matrix green; remaining: install the systemd unit on the i7-6700 (user action) and test Windows/Android over Tailscale (§6.4 DoD 2-4).
-**Next:** opt-in cloud STT — docs/cloud-stt.md (D18). Core/router side done on `cloud-core` (see What works); remaining: W `cloud-windows` and A `cloud-android` per its "Changelog for shells", then `CHECK_BUILD_MATRIX_STRICT_CLOUD=1`, then live smoke with real keys (user action: provide OpenRouter / ElevenLabs / Groq keys).
+**Next:** opt-in cloud STT — docs/cloud-stt.md (D18). Core/router + both shells merged into `integration`, `CHECK_BUILD_MATRIX_STRICT_CLOUD=1` green; remaining: live smoke with real keys (user action: provide OpenRouter / ElevenLabs / Groq keys) and on-device checks (INSTALL.md "Cloud STT (D18)").
 1. **Core gaps** (the core itself is done; see What works):
    * Shells adopt the core-p1 API per core-architecture "Changelog for shells": paste `segments` instead of acting on `press_enter`, `plain_text` in history, `empty_reason` ("no speech heard"), typed load errors (Windows can drop its `is_file()` pre-check), optional `spoken_cleanup` pref. Both shells build and pass against the merged core (Windows needed only a `..Default` and a test fix); adoption itself is not done.
    * LLM latency on CPU: prefill-ahead is in; generation (≈ 25 tokens at 5-16 tok/s here) now dominates, so 1.5B misses the 1.5 s budget about half the time. Levers left: a LoRA on (raw → formatted) pairs for 0.5B (03 §7.5); Parakeet (D12) as the faster English engine. Shells must ship `libflow_llm` next to the exe (Windows) / in jniLibs (Android: packaged, host-JVM-proven, not yet loaded on bionic).
