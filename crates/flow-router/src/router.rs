@@ -116,8 +116,9 @@ struct State {
     health: Option<HealthReport>,
     /// Dictionary of the last session (`learn_edit`).
     last_dictionary: Dictionary,
-    /// Cloud keys by provider id (memory only; never serialised).
-    cloud_keys: HashMap<String, SecretString>,
+    /// Cloud keys by provider id (memory only; never serialised), each
+    /// bound to the host + adapter it was saved for (review S1/S4).
+    cloud_keys: HashMap<String, BoundKey>,
     /// Cloud backend built for this provider config + key.
     cloud: Option<(CloudProviderConfig, Arc<dyn Backend>)>,
     cloud_circuit: Circuit,
@@ -142,10 +143,7 @@ impl State {
             return Err(not_cfg("no consent recorded for this provider's host"));
         }
         let key = self
-            .cloud_keys
-            .get(&p.id)
-            .filter(|k| !k.is_empty())
-            .cloned()
+            .key_for(&p)
             .ok_or_else(|| not_cfg("no API key set for the cloud provider"))?;
         if let Some(b) = self.cfg.cloud.monthly_budget_usd {
             self.cloud_usage.roll(&month_of(now_unix_ms()));
@@ -157,6 +155,53 @@ impl State {
             }
         }
         Ok((p, key))
+    }
+}
+
+/// A stored cloud key and the provider identity it may be sent to.
+struct BoundKey {
+    key: SecretString,
+    /// `(host, adapter)` it was saved for; `None` until the provider id
+    /// first appears in the config (a key set before its provider).
+    bound: Option<(String, String)>,
+}
+
+impl BoundKey {
+    fn binding(p: &CloudProviderConfig) -> (String, String) {
+        (p.host(), p.adapter.clone())
+    }
+
+    fn matches(&self, p: &CloudProviderConfig) -> bool {
+        self.bound.as_ref() == Some(&Self::binding(p))
+    }
+}
+
+impl State {
+    /// Bind unbound keys to the saved provider of the same id, and drop a
+    /// key whose provider changed host or adapter, or was removed: a key
+    /// is never sent to anything but the endpoint it was saved for (S4).
+    fn rebind_keys(&mut self) {
+        let providers = &self.cfg.cloud.providers;
+        self.cloud_keys
+            .retain(|id, k| match providers.iter().find(|p| &p.id == id) {
+                None => k.bound.is_none(),
+                Some(p) => match &k.bound {
+                    None => {
+                        k.bound = Some(BoundKey::binding(p));
+                        !p.host().is_empty()
+                    }
+                    Some(_) => k.matches(p),
+                },
+            });
+    }
+
+    /// The stored key for `p`, only when it was saved for `p`'s host and
+    /// adapter.
+    fn key_for(&self, p: &CloudProviderConfig) -> Option<SecretString> {
+        self.cloud_keys
+            .get(&p.id)
+            .filter(|k| !k.key.is_empty() && !p.host().is_empty() && k.matches(p))
+            .map(|k| k.key.clone())
     }
 }
 
@@ -295,17 +340,48 @@ impl Router {
             st.cloud_circuit = Circuit::new(true);
         }
         st.cfg = cfg;
+        st.rebind_keys();
     }
 
     /// Set (or with `None` forget) the API key of a cloud provider. Keys
     /// only ever enter the router here: never through config JSON, and
     /// nothing the router returns contains them. A changed key resets the
     /// cloud circuit (auth/quota failures are retried). Additive (D18).
+    ///
+    /// The key is bound to the saved provider of that id (its base-URL host
+    /// and adapter); a later config that changes either drops it, and it
+    /// is never sent anywhere else (review S1/S4). Set before the provider
+    /// is in the config, it binds to the first saved one.
     pub fn set_cloud_key(&self, provider_id: &str, key: Option<SecretString>) {
+        let bound = {
+            let st = self.state.lock().unwrap();
+            st.cfg
+                .cloud
+                .providers
+                .iter()
+                .find(|p| p.id == provider_id)
+                .map(BoundKey::binding)
+        };
+        self.store_key(provider_id, key, bound);
+    }
+
+    /// `set_cloud_key` bound to exactly this provider config (host +
+    /// adapter), e.g. the form being saved. Additive (review S4).
+    pub fn set_cloud_key_for(&self, p: &CloudProviderConfig, key: Option<SecretString>) {
+        self.store_key(&p.id, key, Some(BoundKey::binding(p)));
+    }
+
+    fn store_key(
+        &self,
+        provider_id: &str,
+        key: Option<SecretString>,
+        bound: Option<(String, String)>,
+    ) {
         let mut st = self.state.lock().unwrap();
         match key.filter(|k| !k.is_empty()) {
-            Some(k) => {
-                st.cloud_keys.insert(provider_id.to_string(), k);
+            Some(key) => {
+                st.cloud_keys
+                    .insert(provider_id.to_string(), BoundKey { key, bound });
             }
             None => {
                 st.cloud_keys.remove(provider_id);
@@ -326,7 +402,7 @@ impl Router {
             .unwrap()
             .cloud_keys
             .get(provider_id)
-            .is_some_and(|k| !k.is_empty())
+            .is_some_and(|k| !k.key.is_empty())
     }
 
     /// This month's cloud counters (the shell persists them). Additive.
@@ -580,9 +656,11 @@ impl Router {
 
     /// Developer "Test provider" (D18): transcribe the bundled test clip
     /// with an (unsaved) provider config. `key: None` = the stored key for
-    /// `p.id`. Blocking; never panics. Does not need consent (the clip is
-    /// public-domain audio, not the user's). A success for the active
-    /// provider closes the cloud circuit. Additive.
+    /// `p.id`, **only** when `p` has the host and adapter that key was
+    /// saved for; for a changed / new form the key must be passed (else
+    /// `cloud_not_configured`, review S1). Blocking; never panics. Does not
+    /// need consent (the clip is public-domain audio, not the user's). A
+    /// success for the active provider closes the cloud circuit.
     pub fn probe_cloud(&self, p: &CloudProviderConfig, key: Option<SecretString>) -> HealthReport {
         let fail = |k: Failure, m: &str| {
             let mut h = HealthReport::failed(EngineKind::Cloud, &BackendError::new(k, m));
@@ -599,11 +677,16 @@ impl Router {
         if let Err(e) = p.validate() {
             return fail(Failure::CloudNotConfigured, &e);
         }
-        let key = key
-            .filter(|k| !k.is_empty())
-            .or_else(|| self.state.lock().unwrap().cloud_keys.get(&p.id).cloned());
+        let typed = key.filter(|k| !k.is_empty());
+        let key = typed.or_else(|| self.state.lock().unwrap().key_for(p));
         let Some(key) = key.filter(|k| !k.is_empty()) else {
-            return fail(Failure::CloudNotConfigured, "no API key");
+            let stored = self.has_cloud_key(&p.id);
+            let msg = if stored {
+                "enter the API key: the stored key is only sent to the saved host"
+            } else {
+                "no API key"
+            };
+            return fail(Failure::CloudNotConfigured, msg);
         };
         let mut h = f(p, key).probe();
         h.engine = EngineKind::Cloud;
