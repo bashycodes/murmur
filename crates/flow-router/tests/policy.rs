@@ -1040,3 +1040,25 @@ fn cancel_during_a_local_commit_aborts() {
     assert_eq!(r.status, CommitStatus::Error);
     assert!(k.local.cancels.load(Ordering::SeqCst) >= 1);
 }
+
+#[test]
+fn replay_past_max_samples_reports_truncated() {
+    let k = rig_with(
+        cfg(true, true),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).with_commit(CommitMode::Fail(Failure::Timeout)),
+    );
+    k.router
+        .start_session(SessionConfig {
+            max_samples: 12_000,
+            ..Default::default()
+        })
+        .unwrap();
+    for _ in 0..20 {
+        k.router.push_audio(&[1; 1000]);
+    }
+    let r = k.router.commit();
+    assert_eq!(route(&r).engine, "local");
+    assert_eq!(k.local.received(), 12_000, "replay is capped");
+    assert!(r.truncated, "audio past max_samples was lost: {r:?}");
+}

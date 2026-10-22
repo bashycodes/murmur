@@ -949,3 +949,28 @@ fn start_during_commit_keeps_the_committing_sessions_context_and_drops() {
     assert_eq!(r.timings.dropped_samples, 32_000, "{r:?}");
     core.cancel();
 }
+
+// ---- C18: audio past max_samples is truncated, never counted as dropped ----
+
+#[test]
+fn audio_past_max_samples_is_not_counted_as_dropped() {
+    let (core, _) = mock_core("hello");
+    core.start_session(SessionConfig {
+        max_samples: 8_000,
+        ring_capacity_samples: 16_000,
+        vad: false,
+        ..Default::default()
+    })
+    .unwrap();
+    // Three 1 s pushes into a 1 s ring, with time for the worker to drain
+    // between them: nothing overflows unless samples past the cap stay in
+    // the ring.
+    for _ in 0..3 {
+        assert!(core.push_audio(&speech(1000)));
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    let r = core.commit();
+    assert!(r.truncated, "{r:?}");
+    assert_eq!(r.timings.audio_ms, 500);
+    assert_eq!(r.timings.dropped_samples, 0, "{r:?}");
+}
