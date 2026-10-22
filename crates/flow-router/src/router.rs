@@ -673,7 +673,15 @@ impl Router {
             wake: tx.clone(),
         });
         let r = self.commit_active(&mut a, &rx, &tx, &cancelled);
-        *self.committing.lock().unwrap() = None;
+        {
+            // Only our own slot: a later session's commit may have replaced it.
+            let mut g = self.committing.lock().unwrap();
+            if g.as_ref()
+                .is_some_and(|c| Arc::ptr_eq(&c.cancelled, &cancelled))
+            {
+                *g = None;
+            }
+        }
         if cancelled.load(Ordering::SeqCst) {
             if let Some(sw) = a.switching.take() {
                 sw.cancel.store(true, Ordering::SeqCst);
@@ -1228,7 +1236,13 @@ impl Router {
             };
             // The engine commits on a helper thread so `cancel()` can stop
             // the wait (and tell the engine) at any time.
-            if let Some(c) = self.committing.lock().unwrap().as_mut() {
+            if let Some(c) = self
+                .committing
+                .lock()
+                .unwrap()
+                .as_mut()
+                .filter(|c| std::ptr::eq(Arc::as_ptr(&c.cancelled), cancelled))
+            {
                 c.engine = Some(engine.clone());
             }
             if cancelled.load(Ordering::SeqCst) {
