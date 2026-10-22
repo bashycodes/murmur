@@ -1,6 +1,8 @@
 package dev.flowclone.core
 
 import dev.flowclone.data.BuildCaps
+import dev.flowclone.data.CloudPresets
+import dev.flowclone.data.CloudSettings
 import dev.flowclone.data.DevSettings
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -47,6 +49,56 @@ class RouterJsonTest {
             // …and parse back to the same settings (the UI-only badge flag is not part of RouterConfig).
             assertEquals(file, s, DevSettings.fromRouterConfigJson(fixture(file)))
         }
+    }
+
+    /** D18: the cloud fields serialise to exactly `router_config_cloud.json` (keys are never in it). */
+    @Test fun devSettingsSerialiseToTheCloudFixture() {
+        val s = DevSettings.defaults(BuildCaps.ALL).copy(
+            host = "100.64.0.10", token = "dev-token-0123456789abcdef", allowCloud = true,
+            routeOrder = listOf(DevSettings.Route.CLOUD, DevSettings.Route.SERVER, DevSettings.Route.CLIENT),
+            cloud = CloudSettings(
+                active = "openrouter-1", monthlyBudgetUsd = 5.0,
+                providers = listOf(
+                    CloudPresets.of("openrouter").newProvider(emptyList()).copy(consentHost = "openrouter.ai", consentAtMs = 1792540800000),
+                    CloudPresets.of("groq").newProvider(emptyList()),
+                ),
+            ),
+        )
+        assertEquals("openrouter-1", s.cloud.providers[0].id)
+        assertEquals("groq-1", s.cloud.providers[1].id)
+        assertSameJson(fixture("router_config_cloud.json"), s.toRouterConfigJson())
+        assertEquals(s, DevSettings.fromRouterConfigJson(fixture("router_config_cloud.json")))
+        assertTrue(s.cloud.activeProvider!!.consentOk)
+        assertFalse(s.cloud.provider("groq-1")!!.consentOk)
+        // prefer still follows the first of server / client, for routers that ignore `order`.
+        assertEquals(DevSettings.Prefer.SERVER, s.prefer)
+        // A local build never sends cloud fields at all (C2).
+        val local = JSONObject(s.routerConfigFor(BuildCaps.LOCAL))
+        assertFalse(local.has("cloud")); assertFalse(local.has("order")); assertFalse(local.has("allow_cloud"))
+    }
+
+    @Test fun cloudFixturesDecode() {
+        assertEquals(CloudCapabilities(true, listOf("openai_compat", "openrouter", "elevenlabs", "deepgram", "assemblyai")),
+            RouterJson.decodeCloudCapabilities(fixture("cloud_capabilities.json")))
+        val h = RouterJson.decodeHealth(fixture("health_cloud_ok.json"))
+        assertTrue(h.ok); assertEquals("cloud", h.engine); assertEquals("openrouter-1", h.provider)
+        assertEquals("And so, my fellow Americans,", h.transcript); assertEquals(820L, h.latencyMs); assertEquals(0.000225, h.costUsd!!, 1e-12)
+        assertEquals("OK · heard \"And so, my fellow Americans,\" · 820 ms · $0.0002 · openai/gpt-transcribe", DevText.probe(h))
+        val st = RouterJson.decodeRouteStatus(fixture("route_status_cloud.json"))
+        assertEquals(CircuitStatus(open = true, reason = "auth_failed", untilConfigChange = true), st.cloudCircuit)
+        assertEquals("auth_failed", st.last!!.fallback)
+        assertNull(RouterJson.decodeRouteStatus(fixture("route_status.json")).cloudCircuit)
+        val c = CoreJson.decodeCommit(fixture("commit_result_cloud.json"))
+        val r = c.route!!
+        assertEquals("cloud", r.engine); assertEquals("openrouter-1", r.provider); assertEquals("openai/gpt-transcribe", r.model)
+        assertEquals(1000L, r.billedAudioMs); assertEquals(0.000075, r.costUsd!!, 1e-12); assertEquals(false, r.costEstimated)
+        assertEquals("C", DevText.badge(r))
+        assertEquals("C", DevText.bubbleBadge(r, showEngineBadge = false))
+        assertNull(DevText.bubbleBadge(CoreJson.decodeCommit(fixture("commit_result_remote.json")).route, showEngineBadge = false))
+        assertTrue(DevText.lastDictation(c) { "OpenRouter" }, DevText.lastDictation(c) { "OpenRouter" }.startsWith("cloud · OpenRouter · openai/gpt-transcribe · $0.0001"))
+        val u = dev.flowclone.data.CloudUsage.decode(fixture("cloud_usage.json"))
+        assertEquals("2026-10", u.month)
+        assertEquals(dev.flowclone.data.CloudUsage.ProviderUsage("openrouter-1", 42, 312000, 0.0234, false), u.providers.single())
     }
 
     @Test fun capabilitiesFixturesMatchTheFlavours() {

@@ -28,6 +28,8 @@ android {
     //   local  - on-device ASR only; no network permission at all (I3)
     //   hybrid - on-device ASR + self-hosted flow-server; adds only INTERNET
     //   remote - flow-server only; adds only INTERNET; no ASR/LLM native libs or models (I4)
+    // D18: CAP_CLOUD = the native library carries the opt-in third-party STT client (hybrid,
+    // remote; never local: C2). No new permission: it uses the INTERNET hybrid/remote already have.
     // jniLibs live in src/<flavour>/jniLibs (tools/build-native.sh --flavor <f>).
     flavorDimensions += "net"
     productFlavors {
@@ -35,16 +37,19 @@ android {
             dimension = "net"
             buildConfigField("boolean", "CAP_LOCAL", "true")
             buildConfigField("boolean", "CAP_REMOTE", "false")
+            buildConfigField("boolean", "CAP_CLOUD", "false")
         }
         create("hybrid") {
             dimension = "net"
             buildConfigField("boolean", "CAP_LOCAL", "true")
             buildConfigField("boolean", "CAP_REMOTE", "true")
+            buildConfigField("boolean", "CAP_CLOUD", "true")
         }
         create("remote") {
             dimension = "net"
             buildConfigField("boolean", "CAP_LOCAL", "false")
             buildConfigField("boolean", "CAP_REMOTE", "true")
+            buildConfigField("boolean", "CAP_CLOUD", "true")
         }
     }
     buildFeatures { buildConfig = true }
