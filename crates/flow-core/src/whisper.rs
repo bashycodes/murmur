@@ -203,13 +203,30 @@ impl WhisperEngine {
             p.set_vad_model_path(Some(v));
             p.enable_vad(true);
         }
-        if req.abort.0.is_some() {
-            let flag = req.abort.clone();
-            p.set_abort_callback_safe(move || flag.is_set());
+        // whisper-rs 0.16's `set_abort_callback_safe` boxes the closure as
+        // `Box<dyn FnMut>` but its trampoline reads it back as the concrete
+        // closure type, so the callback read garbage and aborted decodes at
+        // random (whisper error -6). Pass the flag itself instead; `flag`
+        // (an `Arc`) outlives `st.full` below.
+        let flag = req.abort.0.clone();
+        if let Some(f) = &flag {
+            unsafe extern "C" fn abort_cb(user_data: *mut std::ffi::c_void) -> bool {
+                // SAFETY: user_data is `Arc::as_ptr` of a live AtomicBool.
+                unsafe {
+                    (*(user_data as *const std::sync::atomic::AtomicBool))
+                        .load(std::sync::atomic::Ordering::Relaxed)
+                }
+            }
+            // SAFETY: the pointer stays valid for the whole `full` call.
+            unsafe {
+                p.set_abort_callback(Some(abort_cb));
+                p.set_abort_callback_user_data(std::sync::Arc::as_ptr(f) as *mut std::ffi::c_void);
+            }
         }
         let mut st = self.state.lock().unwrap();
-        st.full(p, audio)
-            .map_err(|e| AsrError::Transcribe(e.to_string()))?;
+        let full = st.full(p, audio);
+        drop(flag);
+        full.map_err(|e| AsrError::Transcribe(e.to_string()))?;
         let mut text = String::new();
         let mut no_speech: Option<f32> = None;
         for seg in st.as_iter() {
