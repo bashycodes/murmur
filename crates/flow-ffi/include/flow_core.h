@@ -49,6 +49,17 @@ void flow_reset_cloud_usage(FlowHandle *h);
 char *flow_cloud_capabilities(void);                                 /* CloudCapabilities JSON */
 char *flow_cloud_presets(void);                                      /* CloudProviderConfig[] JSON ([] without cloud) */
 
+/* Live route + hands-free endpointing (2026-10-22, additive). Both work on core and router
+ * handles; only a router reports "route" ({"engine":"local"|"remote"|"cloud","provider"?,
+ * "model"?,"server"?,"fallback"?}). */
+/* flow_start_session that returns StartInfo JSON {"queued":bool,"route"?:{…}};
+ * NULL on error (same flow_last_error / flow_last_error_kind as flow_start_session). */
+char *flow_start_session_info(FlowHandle *h, const char *session_config_json);
+/* Non-blocking RouterPoll JSON {"partial":str|null,"endpoint_reached":bool,"speech_ms":n,
+ * "trailing_silence_ms":n,"route"?:{…}}: call on the partial timer. "route" is present while a
+ * session is live and changes when a mid-session failure switches route. NULL for a NULL handle. */
+char *flow_poll(FlowHandle *h);
+
 #ifdef __cplusplus
 }
 #endif

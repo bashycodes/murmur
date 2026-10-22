@@ -104,6 +104,30 @@ Existing natives are unchanged: `nativeOpenRouter` / `nativeUpdateRouter` accept
 `cargo test -p flow-ffi --features jni,cloud --test jni_cloud` (real JVM, real router, flow-cloud's
 mock provider: no key → device, key → cloud, 401 → `auth_failed` + full replay, key never echoed).
 
+## Live route + hands-free endpointing (2026-10-22) — additive
+
+Lets the shell show "Transcribing via <route>…" **while recording** and run hands-free
+endpointing (D19). Every flavour exports both; they work on core and router handles, but only
+a router handle reports `route`. Existing natives are unchanged (`nativeStartSession` still
+returns a `Boolean`; Kotlin may keep using it for push-to-talk).
+
+| Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | C ABI | Semantics |
+|---|---|---|---|---|
+| `nativeStartSessionInfo(handle: Long, sessionConfigJson: String): String?` | `(JLjava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeStartSessionInfo` | `flow_start_session_info` | Same as `nativeStartSession`, but returns `StartInfo` JSON `{"queued":bool,"route"?:SessionRoute}` (fixture `start_info_remote.json`), or `null` with the same last error / kind as `nativeStartSession`'s `false`. `queued` = the server accepted but has no free worker yet |
+| `nativePoll(handle: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativePoll` | `flow_poll` | Non-blocking `RouterPoll` JSON `{"partial":str\|null,"endpoint_reached":bool,"speech_ms":n,"trailing_silence_ms":n,"route"?:SessionRoute}` (fixtures `poll_*.json`). Never `null` (handle `0` = idle poll). Call it on the partial timer instead of `nativePartial`. `route` is present while a session is live and **changes** when a mid-session failure switches route (server dies → local replay; cloud error → next route); absent with no session or when every route failed (the commit will be `ERROR`) |
+
+`SessionRoute` = `{"engine":"local"|"remote"|"cloud","provider"?,"model"?,"server"?,"fallback"?}`:
+`provider` / `model` only for `cloud` (`CloudProviderConfig.id` / `.model`), `server`
+(`"host:port"`) only for `remote`, `fallback` = why the first route is not the one in use (the
+`route.fallback` strings). Absent fields are omitted. After the commit,
+`CommitResult.route` projected the same way equals the last polled `route`.
+
+Hands-free: send `"endpoint_silence_ms": <pref, 300-10000, default 2000>` in `SessionConfig`
+**only** for hands-free sessions (omit / `null` for push-to-talk), poll with `nativePoll` on the
+partial timer, and when `endpoint_reached` is `true` run the normal finish path (stop sound,
+`nativeCommit`, paste) exactly as if the user had ended the session. `endpoint_reached` latches;
+it is always `false` without `endpoint_silence_ms`.
+
 ## JSON payloads Kotlin sends (see `CoreJson.kt`, pinned by `CoreJsonTest`)
 
 ```jsonc

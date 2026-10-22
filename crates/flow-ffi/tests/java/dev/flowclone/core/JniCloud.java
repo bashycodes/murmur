@@ -80,6 +80,12 @@ public class JniCloud {
         check(c != 0, "cloud-only open: " + NativeFlowCore.nativeLastError());
         NativeFlowCore.nativeSetCloudKey(c, "groq-1", key);
         System.out.println(dictate(c));                                                 // 17 cloud only
+        // Live route while recording: provider + model before commit.
+        System.out.println(NativeFlowCore.nativeStartSessionInfo(c, SESSION));          // 18 start info
+        NativeFlowCore.nativePushAudio(c, new short[1600], 1600);
+        System.out.println(NativeFlowCore.nativePoll(c));                               // 19 poll
+        NativeFlowCore.nativeCancel(c);
+        System.out.println(NativeFlowCore.nativePoll(c));                               // 20 idle poll
         NativeFlowCore.nativeUnload(c);
     }
 }
@@ -92,6 +98,9 @@ class NativeFlowCore {
     static native boolean nativeStartSession(long h, String cfg);
     static native boolean nativePushAudio(long h, short[] pcm, int len);
     static native String nativeCommit(long h);
+    static native void nativeCancel(long h);
+    static native String nativeStartSessionInfo(long h, String cfg);
+    static native String nativePoll(long h);
     static native long nativeOpenRouter(String cfg, long local);
     static native boolean nativeUpdateRouter(long h, String cfg);
     static native String nativeRouteStatus(long h);
