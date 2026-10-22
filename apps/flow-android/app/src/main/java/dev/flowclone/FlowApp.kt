@@ -2,6 +2,8 @@ package dev.flowclone
 
 import dev.flowclone.core.RouterErrors
 import dev.flowclone.core.BlockingCalls
+import dev.flowclone.insert.ClipboardGuard
+import dev.flowclone.service.AndroidClipPort
 import dev.flowclone.data.LastDictation
 import dev.flowclone.data.CloudKeyStore
 import dev.flowclone.data.RouterOpener
@@ -45,6 +47,11 @@ class FlowApp : Application() {
     /** D18: cloud STT API keys (Keystore-sealed, one vault per provider). */
     lateinit var cloudKeys: CloudKeyStore; private set
     val caps: BuildCaps = BuildCaps.current()
+
+    /** S16: every transcript the app puts on the clipboard is removed again after a minute. */
+    val clipboard: ClipboardGuard by lazy {
+        ClipboardGuard(AndroidClipPort(this), CoroutineScope(SupervisorJob() + Dispatchers.Main))
+    }
 
     /** Latest keyboard/field decision from the accessibility service (null = no allowed field). */
     val fieldFocus = MutableStateFlow<BubbleVisibilityPolicy.Decision?>(null)

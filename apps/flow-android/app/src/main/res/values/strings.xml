@@ -21,7 +21,8 @@
     <string name="toast_target_changed">You switched fields while dictating, so nothing was inserted. Tap Paste to insert it here.</string>
     <string name="toast_target_protected">Not inserted: this field or app is protected (password, banking or excluded).</string>
     <string name="toast_mic_lost">The microphone stopped. Transcribing what was heard.</string>
-    <string name="toast_copied">Copied to clipboard</string>
+    <string name="toast_copied">Copied to clipboard (cleared after 1 minute)</string>
+    <string name="toast_copied_for_a_minute">Not inserted: copied to the clipboard for 1 minute</string>
     <string name="toast_transcribe_failed">Failed to transcribe. Saved in the app.</string>
     <string name="toast_need_mic">Microphone permission is needed. Open Flow Clone to grant it.</string>
     <string name="toast_no_overlay">Allow \"Display over other apps\" for Flow Clone to show the bubble.</string>

@@ -29,6 +29,15 @@ class InsertionCoordinatorTest {
         assertEquals(listOf("hello"), clips)
     }
 
+    /** S16: text meant for a password / sensitive field never reaches the clipboard. */
+    @Test fun excludedFieldIsNotCopied() = runTest {
+        env.editorType = 0x81 // TEXT_PASSWORD
+        val c = InsertionCoordinator(V3Inserter(env) { currentTime }, clipboard) { currentTime }
+        val r = c.insertTextAndVerify("secret")
+        assertEquals(InsertResult.FailureReason.EXCLUDED_FIELD, r.reason)
+        assertTrue(clips.isEmpty())
+    }
+
     @Test fun insertionsAreSerializedAndQueueTimeCountsAgainstDeadline() = runTest {
         // First insert burns its full verify window (never lands, non-empty field).
         env.field.text = "x"; env.field.commitSilentlyDropped = true
