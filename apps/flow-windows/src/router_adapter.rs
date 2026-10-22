@@ -477,10 +477,10 @@ impl RouterAdapter {
     fn cloud_ready(&self, cfg: &RouterConfig) -> bool {
         self.router.cloud_capabilities().cloud
             && cfg.allow_cloud
-            && cfg
-                .cloud
-                .active_provider()
-                .is_some_and(|p| p.consent_ok() && self.router.has_cloud_key(&p.id))
+            && cfg.cloud.active_provider().is_some_and(|p| {
+                p.consent_ok()
+                    && (self.router.has_cloud_key(&p.id) || crate::dev_settings::keyless_ok(p))
+            })
     }
 
     /// Only the cloud route is allowed (start errors then name the cloud).
