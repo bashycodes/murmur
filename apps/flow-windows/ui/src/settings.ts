@@ -624,7 +624,53 @@ async function loadSuggestions(): Promise<void> {
 // owns validation (`dev_validate`), so the inline errors and Save use the
 // same rules; the token is shown here but stored DPAPI-encrypted.
 
-type Route = "server" | "client";
+type Route = "server" | "client" | "cloud";
+
+// Router `CloudProviderConfig` (flow-router; no keys, ever).
+interface CloudProvider {
+  id: string;
+  preset: string;
+  adapter: string;
+  dialect: string;
+  label: string;
+  base_url: string;
+  model: string;
+  language: string;
+  send_dictionary: boolean;
+  send_screen_words: boolean;
+  zero_retention: boolean;
+  format_override: string;
+  timeout_base_ms: number;
+  price_per_hour_usd: number | null;
+  consent_host: string;
+  consent_at_ms: number;
+}
+
+interface CloudConfig {
+  active: string;
+  providers: CloudProvider[];
+  monthly_budget_usd: number | null;
+}
+
+interface KeyState {
+  set: boolean;
+  masked: string;
+}
+
+interface UsageView {
+  month: string;
+  rows: { provider_id: string; label: string; requests: number; minutes: number; cost: string }[];
+  total: string;
+  budget: number | null;
+  budget_reached: boolean;
+}
+
+interface CloudView {
+  capabilities: { cloud: boolean; adapters: string[] };
+  keys: Record<string, KeyState>;
+  usage: UsageView;
+  presets: CloudProvider[];
+}
 
 interface DevForm {
   allow_server: boolean;
@@ -641,6 +687,8 @@ interface DevForm {
   keep_local_warm: boolean;
   show_engine_badge: boolean;
   dev_unlocked: boolean;
+  allow_cloud: boolean;
+  cloud: CloudConfig;
 }
 
 interface FieldError {
@@ -669,6 +717,11 @@ interface Health {
   llm: boolean | null;
   workers: number | null;
   busy: number | null;
+  provider?: string;
+  model?: string;
+  transcript?: string;
+  latency_ms?: number;
+  cost_usd?: number;
 }
 
 interface LastDictation {
@@ -682,22 +735,33 @@ interface LastDictation {
   status: string;
   empty_reason: string | null;
   at_ms: number;
+  row: string | null;
+  notice: string | null;
+}
+
+interface Circuit {
+  open: boolean;
+  reason: string | null;
+  retry_in_ms: number | null;
+  until_config_change: boolean;
 }
 
 interface RouteView {
   last: LastDictation | null;
-  circuit: { open: boolean; reason: string | null; retry_in_ms: number | null; until_config_change: boolean };
+  circuit: Circuit;
   health: Health | null;
+  cloud_circuit: Circuit | null;
 }
 
 interface DevView {
   form: DevForm;
-  caps: { local: boolean; remote: boolean };
+  caps: { local: boolean; remote: boolean; cloud: boolean };
   capabilities: { local: boolean; remote: boolean; asr_engines: string[]; llm: boolean; proto: number; core_version: string };
   visible: boolean;
   version: string;
   check: DevCheck;
   route: RouteView;
+  cloud: CloudView;
 }
 
 interface SessionTest {
@@ -709,13 +773,17 @@ interface SessionTest {
   total_ms: number;
 }
 
-const ROUTE_LABEL: Record<Route, string> = { server: "Server", client: "This PC (client)" };
+const ROUTE_LABEL: Record<Route, string> = {
+  server: "Server",
+  client: "This PC (client)",
+  cloud: "Cloud provider (third party)",
+};
 const DEV_NUM = ["port", "connect_timeout_ms", "commit_timeout_base_ms", "health_ttl_s"] as const;
 const DEV_TEXT = ["host", "tls_pin_sha256", "token"] as const;
 const DEV_BOOL = ["allow_server", "allow_client", "tls", "keep_local_warm", "show_engine_badge"] as const;
 
 let devView: DevView | null = null;
-let devOrder: Route[] = ["server", "client"];
+let devOrder: Route[] = ["server", "client", "cloud"];
 let devValid = true;
 
 const HINTS: Record<string, string> = {
@@ -741,6 +809,9 @@ function readDev(): DevForm {
     f[k] = v === "" ? -1 : Number(v);
   }
   f.route_order = [...devOrder];
+  f.allow_cloud = $<HTMLInputElement>("dev_allow_cloud").checked;
+  const budget = $<HTMLInputElement>("dev_cloud_budget").value.trim();
+  f.cloud = { ...cloudCfg, monthly_budget_usd: budget === "" ? null : Number(budget) };
   return f;
 }
 
@@ -749,21 +820,32 @@ function fillDev(f: DevForm): void {
   for (const k of DEV_TEXT) $<HTMLInputElement>(`dev_${k}`).value = f[k];
   for (const k of DEV_NUM) $<HTMLInputElement>(`dev_${k}`).value = String(f[k]);
   devOrder = [...f.route_order];
+  $<HTMLInputElement>("dev_allow_cloud").checked = f.allow_cloud;
+  cloudCfg = structuredClone(f.cloud);
+  $<HTMLInputElement>("dev_cloud_budget").value =
+    f.cloud.monthly_budget_usd == null ? "" : String(f.cloud.monthly_budget_usd);
+  if (!cloudCfg.providers.some((p) => p.id === cloudSel)) cloudSel = cloudCfg.active || null;
   renderRoutes();
+  renderCloud();
 }
 
 function renderRoutes(): void {
   const srv = $<HTMLInputElement>("dev_allow_server").checked;
   const cli = $<HTMLInputElement>("dev_allow_client").checked;
-  const on = (r: Route): boolean => (r === "server" ? srv : cli);
-  $<HTMLElement>("dev_order_box").hidden = devOrder.filter(on).length < 2;
+  const cloud = $<HTMLInputElement>("dev_allow_cloud").checked && !!devView?.caps.cloud;
+  const on = (r: Route): boolean => (r === "server" ? srv : r === "client" ? cli : cloud);
+  // Cloud is listed only in builds that have it.
+  const shown = devOrder.filter((r) => r !== "cloud" || !!devView?.caps.cloud);
+  $<HTMLElement>("dev_order_box").hidden = shown.filter(on).length < 2;
   $<HTMLOListElement>("dev_routes").replaceChildren(
-    ...devOrder.map((r, i) => {
+    ...shown.map((r, i) => {
       const li = el("li", on(r) ? "" : "off", ROUTE_LABEL[r] + " ");
       if (i > 0) {
         li.append(
           button("Move up", () => {
-            [devOrder[i - 1], devOrder[i]] = [devOrder[i], devOrder[i - 1]];
+            const a = devOrder.indexOf(shown[i - 1]);
+            const b = devOrder.indexOf(r);
+            [devOrder[a], devOrder[b]] = [devOrder[b], devOrder[a]];
             renderRoutes();
             scheduleCheck();
           }, "small secondary"),
@@ -846,9 +928,11 @@ function showRoute(r: RouteView): void {
   if (!last) {
     e.textContent = "No dictation yet";
   } else {
-    const engine = last.engine === "remote" ? "server" : last.engine === "local" ? "client" : "none";
+    const engine =
+      last.engine === "remote" ? "server" : last.engine === "local" ? "client" : (last.engine ?? "none");
     const bits = [
-      engine,
+      last.row ?? engine,
+      last.notice ?? "",
       last.fallback ? `fallback: ${last.fallback}` : "",
       last.server ? `server ${last.server}` : "",
       last.rtt_ms != null ? `rtt ${last.rtt_ms} ms` : "",
@@ -867,6 +951,16 @@ function showRoute(r: RouteView): void {
       ? `open until the server settings change (${c.reason ?? "?"})`
       : `open until ${new Date(Date.now() + (c.retry_in_ms ?? 0)).toLocaleTimeString()} (${c.reason ?? "?"})`;
   showServerInfo(r.health);
+  const cc = r.cloud_circuit;
+  $<HTMLElement>("dev_cloud_circuit_dt").hidden = !cc;
+  $<HTMLElement>("dev_cloud_circuit").hidden = !cc;
+  if (cc) {
+    $<HTMLElement>("dev_cloud_circuit").textContent = !cc.open
+      ? "closed"
+      : cc.until_config_change
+        ? `open until the key or provider changes (${cloudHint(cc.reason)})`
+        : `open until ${new Date(Date.now() + (cc.retry_in_ms ?? 0)).toLocaleTimeString()} (${cloudHint(cc.reason)})`;
+  }
 }
 
 function showDev(v: DevView): void {
@@ -884,6 +978,17 @@ function showDev(v: DevView): void {
   $<HTMLElement>("dev_server_na").hidden = v.caps.remote;
   $<HTMLElement>("dev_client_na").hidden = v.caps.local;
   $<HTMLElement>("dev_lock").hidden = v.caps.remote;
+  $<HTMLElement>("dev_cloud_box").hidden = !v.caps.cloud;
+  if (v.caps.cloud) {
+    $<HTMLElement>("privacy_line").textContent =
+      "Speech is processed on this PC or on your own server, and by a cloud provider only if you turn it on in Developer settings.";
+  }
+  cloudKeys = { ...v.cloud.keys };
+  cloudPresets = v.cloud.presets;
+  $<HTMLSelectElement>("dev_cloud_preset").replaceChildren(
+    ...v.cloud.presets.map((p) => new Option(p.preset === "custom" ? "Custom (OpenAI-compatible URL)" : p.label, p.preset)),
+  );
+  showUsage(v.cloud.usage);
   const c = v.capabilities;
   $<HTMLElement>("dev_build").textContent =
     `${[c.local ? "client" : "", c.remote ? "server" : ""].filter(Boolean).join(" + ") || "no engine"}` +
@@ -919,6 +1024,12 @@ async function devCall<T>(cmd: string, args: Record<string, unknown>, okText: st
 
 async function devSave(): Promise<void> {
   if (!devValid) return;
+  // Allowing the cloud with an active provider that has no consent for its
+  // current host asks first (a changed host or adapter cleared it).
+  const active = activeProvider();
+  if ($<HTMLInputElement>("dev_allow_cloud").checked && active && !consentOk(active)) {
+    if (!(await askConsent(active))) return;
+  }
   const v = await devCall<DevView>("dev_set", { form: readDev() }, "Saved — applies to the next dictation");
   if (v) showDev(v);
 }
@@ -964,6 +1075,264 @@ async function refreshRoute(): Promise<void> {
   } catch {
     /* tab not loaded yet */
   }
+}
+
+// ------------------------------------------------- cloud providers (D18)
+// Provider edits live in `cloudCfg` until Save (`dev_set`). Keys never
+// come back from the backend: only set / ••••last4 (KeyState).
+
+let cloudCfg: CloudConfig = { active: "", providers: [], monthly_budget_usd: null };
+let cloudSel: string | null = null;
+let cloudKeys: Record<string, KeyState> = {};
+let cloudPresets: CloudProvider[] = [];
+
+const CLOUD_HINTS: Record<string, string> = {
+  auth_failed: "key rejected",
+  quota_exceeded: "out of credits",
+  connect_failed: "no internet / base URL wrong",
+  budget_exceeded: "monthly budget reached",
+  cloud_not_configured: "set a key and accept the consent",
+  provider_error: "the provider returned an error",
+  timeout: "the provider took too long",
+  busy: "rate limited by the provider",
+};
+
+// What each provider keeps (docs/cloud-stt.md §2), for the consent dialog.
+const RETENTION: Record<string, string> = {
+  openrouter: "OpenRouter keeps no audio unless your account opts into logging; with zero retention on, only zero-data-retention upstreams are used.",
+  elevenlabs: "ElevenLabs keeps logs/history by default; zero retention needs an enterprise plan.",
+  openai_compat: "Retention follows the provider's API terms (Groq: up to 30 days unless ZDR is on in Data Controls; OpenAI: no training by default).",
+  deepgram: "Deepgram may use audio for model improvement unless opted out (zero retention on sends mip_opt_out).",
+  assemblyai: "AssemblyAI deletes audio in 24-48 h and transcripts after 30 days; zero retention deletes the transcript right after use.",
+};
+
+const ZDR_TEXT: Record<string, string> = {
+  openrouter: "Zero data retention: route only to providers that keep nothing (provider.zdr)",
+  elevenlabs: "Zero retention (enable_logging=false; needs an ElevenLabs enterprise plan)",
+  deepgram: "Opt out of Deepgram's model-improvement programme (mip_opt_out)",
+  assemblyai: "Delete the transcript at AssemblyAI right after it is fetched",
+};
+
+function cloudHint(code: string | null): string {
+  return code ? (CLOUD_HINTS[code] ?? code) : "?";
+}
+
+function hostOf(url: string): string {
+  const m = /^https?:\/\/(\[[^\]]*\]|[^/:?#]*)/i.exec(url.trim());
+  return m ? m[1].replace(/^\[|\]$/g, "").toLowerCase() : "";
+}
+
+function consentOk(p: CloudProvider): boolean {
+  const h = hostOf(p.base_url);
+  return p.consent_at_ms > 0 && h !== "" && p.consent_host.toLowerCase() === h;
+}
+
+function activeProvider(): CloudProvider | null {
+  return cloudCfg.providers.find((p) => p.id === cloudCfg.active) ?? null;
+}
+
+function selectedProvider(): CloudProvider | null {
+  return cloudCfg.providers.find((p) => p.id === cloudSel) ?? null;
+}
+
+function providerName(p: CloudProvider): string {
+  return `${p.label || p.id} (${hostOf(p.base_url) || "no host"})`;
+}
+
+/** "Send audio to <provider>?" Records consent for the current host. */
+function askConsent(p: CloudProvider): Promise<boolean> {
+  const d = $<HTMLDialogElement>("dev_consent");
+  const name = p.label || p.id;
+  $<HTMLElement>("dev_consent_title").textContent = `Send audio to ${name}?`;
+  $<HTMLElement>("dev_consent_body").textContent = cloudBanner(p);
+  $<HTMLElement>("dev_consent_retention").textContent = RETENTION[p.adapter] ?? "";
+  $<HTMLButtonElement>("dev_consent_ok").textContent = `Send audio to ${name}`;
+  return new Promise((resolve) => {
+    const done = (ok: boolean): void => {
+      $<HTMLButtonElement>("dev_consent_ok").onclick = null;
+      $<HTMLButtonElement>("dev_consent_cancel").onclick = null;
+      d.close();
+      if (ok) {
+        p.consent_host = hostOf(p.base_url);
+        p.consent_at_ms = Date.now();
+        renderCloud();
+        scheduleCheck();
+      }
+      resolve(ok);
+    };
+    $<HTMLButtonElement>("dev_consent_ok").onclick = () => done(true);
+    $<HTMLButtonElement>("dev_consent_cancel").onclick = () => done(false);
+    d.oncancel = () => done(false);
+    d.showModal();
+  });
+}
+
+function cloudBanner(p: CloudProvider | null): string {
+  const who = p ? providerName(p) : "the provider you choose";
+  return (
+    `Off by default. When on, the audio of your dictations leaves this device and is sent to ${who}, ` +
+    "along with your dictionary words. It is processed under that provider's terms, not by your server."
+  );
+}
+
+function renderCloud(): void {
+  $<HTMLElement>("dev_cloud_banner").textContent = cloudBanner(activeProvider());
+  $<HTMLUListElement>("dev_cloud_list").replaceChildren(
+    ...cloudCfg.providers.map((p) => {
+      const li = el("li", p.id === cloudSel ? "selected" : "");
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "dev_cloud_active";
+      radio.title = "Use this provider for the cloud route";
+      radio.checked = p.id === cloudCfg.active;
+      radio.addEventListener("change", () => {
+        cloudCfg.active = p.id;
+        renderCloud();
+        scheduleCheck();
+      });
+      const k = cloudKeys[p.id];
+      const status = [
+        p.model,
+        k?.set ? `key ${k.masked}` : "no key",
+        consentOk(p) ? "consent ✓" : "no consent",
+      ].join(" · ");
+      li.append(
+        radio,
+        el("span", "grow", `${providerName(p)} — ${status}`),
+        button("Edit", () => {
+          cloudSel = p.id;
+          renderCloud();
+        }, "small secondary"),
+        button("Delete", () => void deleteProvider(p.id), "small secondary danger"),
+      );
+      return li;
+    }),
+  );
+  const p = selectedProvider();
+  $<HTMLElement>("dev_cloud_edit").hidden = !p;
+  if (!p) return;
+  $<HTMLElement>("dev_cloud_edit_title").textContent = `${p.label || p.id} (${p.preset}, ${p.adapter})`;
+  for (const f of ["label", "language", "base_url", "model"] as const) {
+    const i = $<HTMLInputElement>(`dev_cloud_${f}`);
+    if (document.activeElement !== i) i.value = p[f];
+  }
+  // Fixed endpoints for the dedicated adapters; editable for OpenAI-compatible ones.
+  $<HTMLInputElement>("dev_cloud_base_url").readOnly = p.adapter !== "openai_compat";
+  for (const f of ["send_dictionary", "send_screen_words", "zero_retention"] as const) {
+    $<HTMLInputElement>(`dev_cloud_${f}`).checked = p[f];
+  }
+  const zdr = ZDR_TEXT[p.adapter];
+  $<HTMLElement>("dev_cloud_zdr_row").hidden = !zdr;
+  $<HTMLElement>("dev_cloud_zdr_text").textContent = zdr ?? "";
+  $<HTMLElement>("dev_cloud_consent_line").textContent = consentOk(p)
+    ? `You agreed to send audio to ${p.consent_host} on ${new Date(p.consent_at_ms).toLocaleDateString()}.`
+    : `Not yet agreed: the first use asks before any audio goes to ${hostOf(p.base_url) || "this provider"}.`;
+  const k = cloudKeys[p.id];
+  $<HTMLElement>("dev_cloud_key_state").textContent = k?.set ? `Key set: ${k.masked}` : "No key saved";
+}
+
+/** Text field edits on the selected provider. A new host or adapter voids consent. */
+function cloudFieldChanged(f: "label" | "language" | "base_url" | "model"): void {
+  const p = selectedProvider();
+  if (!p) return;
+  const v = $<HTMLInputElement>(`dev_cloud_${f}`).value;
+  if (f === "base_url" && hostOf(v) !== hostOf(p.base_url)) {
+    p.consent_host = "";
+    p.consent_at_ms = 0;
+  }
+  p[f] = v;
+  renderCloud();
+}
+
+async function addProvider(): Promise<void> {
+  const preset = $<HTMLSelectElement>("dev_cloud_preset").value;
+  const base = cloudPresets.find((p) => p.preset === preset);
+  if (!base) return;
+  const id = await invoke<string>("dev_cloud_new_id", {
+    preset,
+    taken: cloudCfg.providers.map((p) => p.id),
+  });
+  const p: CloudProvider = { ...structuredClone(base), id, consent_host: "", consent_at_ms: 0 };
+  cloudCfg.providers.push(p);
+  if (!cloudCfg.active) cloudCfg.active = id;
+  cloudSel = id;
+  renderCloud();
+  scheduleCheck();
+}
+
+async function deleteProvider(id: string): Promise<void> {
+  cloudCfg.providers = cloudCfg.providers.filter((p) => p.id !== id);
+  if (cloudCfg.active === id) cloudCfg.active = cloudCfg.providers[0]?.id ?? "";
+  if (cloudSel === id) cloudSel = null;
+  // The key leaves Credential Manager now; Save drops the provider.
+  try {
+    cloudKeys[id] = await invoke<KeyState>("dev_cloud_clear_key", { providerId: id });
+  } catch (e) {
+    setStatus("dev_status", String(e), false);
+  }
+  renderCloud();
+  scheduleCheck();
+}
+
+async function saveKey(): Promise<void> {
+  const p = selectedProvider();
+  const input = $<HTMLInputElement>("dev_cloud_key");
+  if (!p || input.value.trim() === "") return;
+  try {
+    cloudKeys[p.id] = await invoke<KeyState>("dev_cloud_set_key", { providerId: p.id, key: input.value });
+    input.value = "";
+    setStatus("dev_status", "Key saved in Credential Manager", true);
+  } catch (e) {
+    setStatus("dev_status", String(e), false);
+  }
+  renderCloud();
+  scheduleCheck();
+}
+
+async function clearKey(): Promise<void> {
+  const p = selectedProvider();
+  if (!p) return;
+  try {
+    cloudKeys[p.id] = await invoke<KeyState>("dev_cloud_clear_key", { providerId: p.id });
+    setStatus("dev_status", "Key removed", true);
+  } catch (e) {
+    setStatus("dev_status", String(e), false);
+  }
+  renderCloud();
+  scheduleCheck();
+}
+
+async function testProvider(): Promise<void> {
+  const p = selectedProvider();
+  if (!p) return;
+  const out = $<HTMLElement>("dev_cloud_test_out");
+  out.textContent = `Sending a 3 s public-domain clip to ${hostOf(p.base_url)}…`;
+  out.className = "hint";
+  try {
+    const key = $<HTMLInputElement>("dev_cloud_key").value;
+    const h = await invoke<Health>("dev_cloud_test", { provider: p, key: key.trim() === "" ? null : key });
+    if (h.ok) {
+      const cost = h.cost_usd != null ? ` · $${h.cost_usd.toFixed(5)}` : "";
+      out.textContent = `OK · "${h.transcript ?? ""}" · ${h.latency_ms ?? "?"} ms${cost}`;
+      out.className = "hint ok";
+    } else {
+      const code = h.error ?? "error";
+      out.textContent = `${code} — ${cloudHint(code)}${h.message ? ` (${h.message})` : ""}`;
+      out.className = "hint err";
+    }
+  } catch (e) {
+    out.textContent = String(e);
+    out.className = "hint err";
+  }
+}
+
+function showUsage(u: UsageView): void {
+  $<HTMLElement>("dev_cloud_month").textContent = u.month;
+  $<HTMLElement>("dev_cloud_total").textContent =
+    u.total + (u.budget != null ? ` of $${u.budget.toFixed(2)}${u.budget_reached ? " — budget reached, cloud paused" : ""}` : "");
+  $<HTMLUListElement>("dev_cloud_usage").replaceChildren(
+    ...u.rows.map((r) => el("li", "", `${r.label}: ${r.requests} dictations · ${r.minutes} min · ${r.cost}`)),
+  );
 }
 
 let versionTaps = 0;
@@ -1059,6 +1428,43 @@ $<HTMLButtonElement>("dev_token_clear").addEventListener("click", () => {
   scheduleCheck();
 });
 $<HTMLElement>("version_row").addEventListener("click", versionTapped);
+$<HTMLInputElement>("dev_allow_cloud").addEventListener("change", () => {
+  const box = $<HTMLInputElement>("dev_allow_cloud");
+  const p = activeProvider();
+  // Turning cloud on puts it first in the route order (§3.1); the user can reorder.
+  if (box.checked) {
+    devOrder = ["cloud", ...devOrder.filter((r) => r !== "cloud")];
+    if (p && !consentOk(p)) {
+      void askConsent(p).then((ok) => {
+        if (!ok) box.checked = false;
+        scheduleCheck();
+      });
+    }
+  }
+  renderCloud();
+});
+for (const f of ["label", "language", "base_url", "model"] as const) {
+  $<HTMLInputElement>(`dev_cloud_${f}`).addEventListener("input", () => cloudFieldChanged(f));
+}
+for (const f of ["send_dictionary", "send_screen_words", "zero_retention"] as const) {
+  $<HTMLInputElement>(`dev_cloud_${f}`).addEventListener("change", () => {
+    const p = selectedProvider();
+    if (p) p[f] = $<HTMLInputElement>(`dev_cloud_${f}`).checked;
+  });
+}
+$<HTMLButtonElement>("dev_cloud_add").addEventListener("click", () => void addProvider());
+$<HTMLButtonElement>("dev_cloud_key_save").addEventListener("click", () => void saveKey());
+$<HTMLButtonElement>("dev_cloud_key_clear").addEventListener("click", () => void clearKey());
+$<HTMLButtonElement>("dev_cloud_key_paste").addEventListener("click", () => {
+  void navigator.clipboard
+    .readText()
+    .then((t) => ($<HTMLInputElement>("dev_cloud_key").value = t.trim()))
+    .catch(() => setStatus("dev_status", "Clipboard not readable: paste with Ctrl+V", false));
+});
+$<HTMLButtonElement>("dev_cloud_test").addEventListener("click", () => void testProvider());
+$<HTMLButtonElement>("dev_cloud_reset_usage").addEventListener("click", () =>
+  void devCall<UsageView>("dev_cloud_reset_usage", {}, "Usage counters reset").then((u) => u && showUsage(u)),
+);
 let searchTimer = 0;
 $<HTMLInputElement>("hist_query").addEventListener("input", () => {
   clearTimeout(searchTimer);
@@ -1082,7 +1488,10 @@ void onEvent<ModelStatus>("model:status", (e) => showModel(e.payload));
 void onEvent<LlmStatus>("llm:status", (e) => showLlm(e.payload));
 void onEvent<number>("suggestions:changed", () => void loadSuggestions());
 void onEvent<string>("settings:tab", (e) => showTab(e.payload));
-void onEvent<RouteView>("dev:route", (e) => showRoute(e.payload));
+void onEvent<RouteView>("dev:route", (e) => {
+  showRoute(e.payload);
+  if (devView?.caps.cloud) void invoke<UsageView>("dev_cloud_usage").then(showUsage);
+});
 void onEvent<null>("history:changed", () => {
   if (!$<HTMLElement>("hist_list").closest("[hidden]")) void loadHistory();
 });

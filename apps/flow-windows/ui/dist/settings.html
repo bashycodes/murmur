@@ -223,8 +223,66 @@
         </div>
       </fieldset>
 
-      <!-- Room for more route kinds (e.g. opt-in cloud providers): each gets
-           its own fieldset here and an entry in the route order above. -->
+      <!-- D18 (docs/cloud-stt.md §8.3): the only place audio can reach a
+           third party. Hidden in builds without the cloud client. -->
+      <fieldset id="dev_cloud_box" hidden>
+        <legend>Cloud providers (sends audio to a third party)</legend>
+        <p id="dev_cloud_banner" class="banner"></p>
+        <label class="row"><input type="checkbox" id="dev_allow_cloud" /> Allow cloud</label>
+        <ul id="dev_cloud_list" class="providers"></ul>
+        <div class="token-row">
+          <select id="dev_cloud_preset" aria-label="Provider preset"></select>
+          <button type="button" class="small secondary" id="dev_cloud_add">Add provider</button>
+        </div>
+        <small class="field-err" data-err="cloud"></small>
+
+        <div id="dev_cloud_edit" hidden>
+          <h4 id="dev_cloud_edit_title"></h4>
+          <div class="grid2">
+            <label>Name <input id="dev_cloud_label" spellcheck="false" /></label>
+            <label>Language <input id="dev_cloud_language" spellcheck="false" placeholder="auto" /></label>
+          </div>
+          <label>Base URL <input id="dev_cloud_base_url" spellcheck="false" placeholder="https://host/v1" /></label>
+          <label>Model <input id="dev_cloud_model" spellcheck="false" /></label>
+          <p id="dev_cloud_consent_line" class="hint"></p>
+          <label>API key
+            <span class="token-row">
+              <input id="dev_cloud_key" type="password" autocomplete="off" spellcheck="false" placeholder="paste the provider's API key" />
+              <button type="button" class="small secondary" id="dev_cloud_key_paste">Paste</button>
+              <button type="button" class="small" id="dev_cloud_key_save">Save key</button>
+              <button type="button" class="small secondary" id="dev_cloud_key_clear">Clear key</button>
+            </span>
+          </label>
+          <p id="dev_cloud_key_state" class="hint"></p>
+          <p class="hint">Keys are stored in Windows Credential Manager (flow-clone/cloud/&lt;id&gt;), never in prefs.json, and never logged.</p>
+          <label class="row"><input type="checkbox" id="dev_cloud_send_dictionary" /> Send dictionary words (improves spelling of names)</label>
+          <label class="row"><input type="checkbox" id="dev_cloud_send_screen_words" /> Send words from the screen (off: on-screen text stays on this PC)</label>
+          <label class="row" id="dev_cloud_zdr_row"><input type="checkbox" id="dev_cloud_zero_retention" /> <span id="dev_cloud_zdr_text">Zero retention</span></label>
+          <div class="toolbar">
+            <button type="button" class="secondary" id="dev_cloud_test">Test provider</button>
+          </div>
+          <p id="dev_cloud_test_out" class="hint"></p>
+        </div>
+
+        <div class="grid2">
+          <label>Monthly budget (USD, optional) <input id="dev_cloud_budget" type="number" min="0" step="0.5" placeholder="no limit" /></label>
+          <span></span>
+        </div>
+        <p class="hint">Usage this month (<span id="dev_cloud_month"></span>): <span id="dev_cloud_total"></span></p>
+        <ul id="dev_cloud_usage" class="routes"></ul>
+        <button type="button" class="small secondary" id="dev_cloud_reset_usage">Reset counters</button>
+      </fieldset>
+
+      <dialog id="dev_consent">
+        <h3 id="dev_consent_title"></h3>
+        <p id="dev_consent_body"></p>
+        <p id="dev_consent_retention" class="hint"></p>
+        <p class="hint">You can turn this off at any time.</p>
+        <div class="toolbar">
+          <button type="button" class="secondary" id="dev_consent_cancel">Cancel</button>
+          <button type="button" id="dev_consent_ok"></button>
+        </div>
+      </dialog>
 
       <div class="toolbar">
         <button type="button" id="dev_save">Save</button>
@@ -244,6 +302,7 @@
           <dt>Active engine (last dictation)</dt><dd id="dev_last">No dictation yet</dd>
           <dt>Server info</dt><dd id="dev_server_info">Not probed yet</dd>
           <dt>Circuit</dt><dd id="dev_circuit">closed</dd>
+          <dt id="dev_cloud_circuit_dt" hidden>Cloud circuit</dt><dd id="dev_cloud_circuit" hidden>closed</dd>
         </dl>
       </fieldset>
     </section>
