@@ -491,6 +491,36 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudKey(
     })
 }
 
+/// `nativeSetCloudKey` bound to a provider config (host + adapter), review S4.
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudKeyFor(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    provider_json: JString,
+    key: JString,
+) -> jboolean {
+    guard(JNI_FALSE, || {
+        let Some(h) = handle(h) else {
+            set_error("null handle");
+            return JNI_FALSE;
+        };
+        let Some(p) = jstr(
+            &mut env,
+            &provider_json,
+            "bad_config: cloud provider config",
+        ) else {
+            return JNI_FALSE;
+        };
+        let key = opt_jstr(&mut env, &key);
+        jbool(
+            json_api::set_cloud_key_for(h, &p, key)
+                .map_err(|(kind, e)| set_error_kind(kind, e))
+                .is_ok(),
+        )
+    })
+}
+
 #[no_mangle]
 pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeProbeCloud(
     mut env: JNIEnv,

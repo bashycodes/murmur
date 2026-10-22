@@ -203,7 +203,12 @@ fn cloud_symbols_over_c_abi() {
             flow_set_cloud_key(rt, c("groq-1").as_ptr(), key.as_ptr()),
             0
         );
-        // Stored key used by the probe (key NULL).
+        // S1: a key set by id only, for a provider not in the saved
+        // config, is never sent to the form's host.
+        let unsaved = take(flow_probe_cloud(rt, p.as_ptr(), ptr::null()));
+        assert!(unsaved.contains("cloud_not_configured"), "{unsaved}");
+        // Bound to exactly this provider: the probe may use it (key NULL).
+        assert_eq!(flow_set_cloud_key_for(rt, p.as_ptr(), key.as_ptr()), 0);
         let stored = take(flow_probe_cloud(rt, p.as_ptr(), ptr::null()));
         assert_eq!(
             stored.contains(r#""ok":true"#),

@@ -83,6 +83,10 @@ int main(void) {
     FlowHandle *rt2 = flow_open_router(client_only, core2);
     if (flow_set_cloud_key(rt2, "groq-1", "sk-x") != 0) return 13;
     if (flow_set_cloud_key(rt2, "groq-1", NULL) != 0) return 14;
+    const char *gp = "{\"id\":\"groq-1\",\"adapter\":\"openai_compat\",\"base_url\":\"https://api.groq.com/openai/v1\",\"model\":\"m\"}";
+    if (flow_set_cloud_key_for(rt2, gp, "sk-x") != 0) return 22;
+    if (flow_set_cloud_key_for(rt2, "[", "sk-x") != -1 || strcmp(flow_last_error_kind(), "bad_config") != 0) return 23;
+    if (flow_set_cloud_key_for(rt2, gp, NULL) != 0) return 24;
     if (flow_set_cloud_usage(rt2, "{\"month\":\"1999-01\",\"providers\":[]}") != 0) return 15;
     flow_reset_cloud_usage(rt2);
     char *u = flow_cloud_usage(rt2);
