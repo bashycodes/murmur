@@ -125,10 +125,15 @@ pub struct CloudAsr {
 
 impl CloudAsr {
     pub fn new(provider: CloudProviderConfig, key: SecretString) -> Self {
+        let https = provider
+            .base_url
+            .trim()
+            .to_ascii_lowercase()
+            .starts_with("https://");
         Self {
             adapter: for_provider(&provider),
             provider,
-            http: http::client(),
+            http: http::client_for(https),
             key,
             slot: Mutex::new(CallSlot::default()),
         }
