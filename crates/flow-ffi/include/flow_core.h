@@ -1,6 +1,16 @@
 /* flow-core C ABI. All configs/results are UTF-8 JSON (see docs/core-architecture.md).
  * int returns: 0 ok, -1 error (flow_last_error), 1 ignored (no active session).
- * Strings returned by flow_* are caller-owned: free with flow_string_free. */
+ * Strings returned by flow_* are caller-owned: free with flow_string_free.
+ *
+ * Threading (review C2). BLOCKING, never call on a UI thread: flow_load_models,
+ * flow_unload (joins the worker, waits for a running commit), flow_start_session /
+ * flow_start_session_info (server route: TCP+TLS+WS handshake up to connect_timeout_ms),
+ * flow_commit, flow_probe_server, flow_probe_router, flow_probe_cloud.
+ * NON-BLOCKING: everything else, notably flow_push_audio (a mid-session failover connects on
+ * a helper thread), flow_poll, flow_partial, flow_set_context, flow_cancel, flow_update_router,
+ * flow_set_cloud_key*, flow_route_status.
+ * flow_cancel with no open session aborts a flow_commit running on another thread (it returns
+ * ERROR "cancelled" at once, no fallback); flow_start_session* never aborts a running commit. */
 #ifndef FLOW_CORE_H
 #define FLOW_CORE_H
 #include <stddef.h>
@@ -42,12 +52,26 @@ void flow_reset_circuit(FlowHandle *h);
  * keep these symbols: they report "not in this build". Keys only ever enter
  * here (never in router JSON); the library never logs or returns them. */
 int flow_set_cloud_key(FlowHandle *h, const char *provider_id, const char *key_or_null); /* NULL/"" = forget; -1 for a core handle */
+/* Key bound to this CloudProviderConfig's base-URL host + adapter; a later config changing either drops it. */
+int flow_set_cloud_key_for(FlowHandle *h, const char *provider_json, const char *key_or_null);
+/* key_or_null NULL = the stored key, used only if provider_json has the host + adapter it was saved for */
 char *flow_probe_cloud(FlowHandle *h, const char *provider_json, const char *key_or_null); /* HealthReport JSON; blocks; h may be NULL (key required) */
 char *flow_cloud_usage(FlowHandle *h);                               /* CloudUsage JSON */
 int flow_set_cloud_usage(FlowHandle *h, const char *usage_json);     /* restore persisted counters */
 void flow_reset_cloud_usage(FlowHandle *h);
 char *flow_cloud_capabilities(void);                                 /* CloudCapabilities JSON */
 char *flow_cloud_presets(void);                                      /* CloudProviderConfig[] JSON ([] without cloud) */
+
+/* Live route + hands-free endpointing (2026-10-22, additive). Both work on core and router
+ * handles; only a router reports "route" ({"engine":"local"|"remote"|"cloud","provider"?,
+ * "model"?,"server"?,"fallback"?}). */
+/* flow_start_session that returns StartInfo JSON {"queued":bool,"route"?:{…}};
+ * NULL on error (same flow_last_error / flow_last_error_kind as flow_start_session). */
+char *flow_start_session_info(FlowHandle *h, const char *session_config_json);
+/* Non-blocking RouterPoll JSON {"partial":str|null,"endpoint_reached":bool,"speech_ms":n,
+ * "trailing_silence_ms":n,"route"?:{…}}: call on the partial timer. "route" is present while a
+ * session is live and changes when a mid-session failure switches route. NULL for a NULL handle. */
+char *flow_poll(FlowHandle *h);
 
 #ifdef __cplusplus
 }

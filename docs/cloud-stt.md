@@ -495,6 +495,10 @@ from `integration` after the three hybrid merges). Every item is additive: shell
 written against the merged D17 router compiles and behaves unchanged; nothing below is
 reachable until a shell enables cloud.
 
+**2026-10-22 (review fixes):** cloud keys bound to host + adapter (`set_cloud_key_for`), Test provider needs the typed key for an edited host, `url`-crate base-URL parsing (Kotlin mirror must match `tests/url_parse.rs`), no redirects, http:// by resolved address; details in `docs/hybrid-architecture.md` "Changelog for shells" (review fixes entry).
+
+**2026-10-22 (later) — live route:** while recording, `Router::poll().route` / `start_session_info().route` (JNI `nativePoll` / `nativeStartSessionInfo`) name the cloud provider + model (`{"engine":"cloud","provider":…,"model":…}`), so the pill can say "Transcribing via <provider>…" before the commit; see `docs/hybrid-architecture.md` "Changelog for shells" (live route entry).
+
 **2026-10-22 — flow-core CR, router cloud route, flow-cloud, contract tests landed**
 
 * **Deviations from §3 / §6 (read these first).**

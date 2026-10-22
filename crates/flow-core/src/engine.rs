@@ -252,6 +252,8 @@ enum Ctrl {
     Commit {
         id: u64,
         reply: mpsc::Sender<CommitResult>,
+        /// Set by `cancel()` while this commit runs (review C4).
+        abort: Arc<AtomicBool>,
     },
     Cancel {
         id: u64,
@@ -280,6 +282,28 @@ struct Shared {
     dict_builds: AtomicU64,
     /// Set by commit/cancel so an in-flight partial decode stops early.
     stop_partial: Arc<AtomicBool>,
+    /// Id of the session whose partial may be shown (0 = none). A partial
+    /// decode publishes only while this still equals its session id, so a
+    /// decode of a cancelled/committed session that finishes late never
+    /// shows up in the next session's preview (review S11).
+    current: AtomicU64,
+    /// The commit in progress: its session id and abort flag.
+    inflight: Mutex<Option<(u64, Arc<AtomicBool>)>>,
+}
+
+impl Shared {
+    /// Session `id` ended: hide its preview and stop late decodes from
+    /// publishing one (a newer session keeps its own).
+    fn clear_partial(&self, id: u64) {
+        let mut p = self.partial.lock().unwrap();
+        if self
+            .current
+            .compare_exchange(id, 0, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            *p = None;
+        }
+    }
 }
 
 /// Opaque core handle (§9 `Handle`). One active session at a time.
@@ -370,6 +394,8 @@ impl FlowCore {
             dict_builds: AtomicU64::new(0),
             context_ver: AtomicU64::new(0),
             stop_partial: Arc::new(AtomicBool::new(false)),
+            current: AtomicU64::new(0),
+            inflight: Mutex::new(None),
         });
         let (tx, rx) = mpsc::channel();
         let ws = shared.clone();
@@ -405,7 +431,11 @@ impl FlowCore {
         let id = self.shared.next_id.fetch_add(1, Ordering::Relaxed);
         let (prod, consumer) = rtrb::RingBuffer::new(cfg.ring_capacity_samples.max(SAMPLE_RATE));
         *self.shared.context.lock().unwrap() = FieldContext::default();
-        *self.shared.partial.lock().unwrap() = None;
+        {
+            let mut p = self.shared.partial.lock().unwrap();
+            self.shared.current.store(id, Ordering::SeqCst);
+            *p = None;
+        }
         *self.shared.dictionary.lock().unwrap() = cfg.dictionary.clone();
         self.shared.dropped.store(0, Ordering::Relaxed);
         self.shared.stop_partial.store(false, Ordering::Relaxed);
@@ -492,23 +522,46 @@ impl FlowCore {
             return CommitResult::error("no active session");
         };
         self.shared.stop_partial.store(true, Ordering::Relaxed);
+        self.shared.clear_partial(id);
         let (tx, rx) = mpsc::channel();
-        if self.ctrl.send(Ctrl::Commit { id, reply: tx }).is_err() {
+        let abort = Arc::new(AtomicBool::new(false));
+        *self.shared.inflight.lock().unwrap() = Some((id, abort.clone()));
+        if self
+            .ctrl
+            .send(Ctrl::Commit {
+                id,
+                reply: tx,
+                abort,
+            })
+            .is_err()
+        {
             return CommitResult::error("core worker is gone");
         }
         let mut r = rx
             .recv()
             .unwrap_or_else(|_| CommitResult::error("core worker is gone"));
+        {
+            let mut g = self.shared.inflight.lock().unwrap();
+            if g.as_ref().is_some_and(|(i, _)| *i == id) {
+                *g = None;
+            }
+        }
         r.timings.total_ms = t0.elapsed().as_millis() as u64;
         r.timings.dropped_samples = self.shared.dropped.load(Ordering::Relaxed);
         r
     }
 
-    /// Abort the session; audio is discarded.
+    /// Abort the session; audio is discarded. With no open session, abort
+    /// the commit running on another thread instead: its ASR gets the abort
+    /// flag, the LLM step is skipped, and that `commit` returns ERROR
+    /// `cancelled` (review C4).
     pub fn cancel(&self) {
         if let Some(Producer { id, .. }) = self.shared.producer.lock().unwrap().take() {
             self.shared.stop_partial.store(true, Ordering::Relaxed);
+            self.shared.clear_partial(id);
             let _ = self.ctrl.send(Ctrl::Cancel { id });
+        } else if let Some((_, abort)) = self.shared.inflight.lock().unwrap().as_ref() {
+            abort.store(true, Ordering::SeqCst);
         }
     }
 
@@ -592,14 +645,19 @@ impl Worker {
                     });
                     self.maybe_prefill();
                 }
-                Ok(Ctrl::Commit { id, reply }) => {
+                Ok(Ctrl::Commit { id, reply, abort }) => {
                     let r = match self.session.take() {
                         Some(mut s) if s.id == id => {
                             if let Some(cl) = &self.cleaner {
                                 cl.cancel_prefill();
                             }
                             s.drain();
-                            self.finalize(s)
+                            let r = self.finalize(s, &abort);
+                            if abort.load(Ordering::SeqCst) {
+                                CommitResult::error("cancelled")
+                            } else {
+                                r
+                            }
                         }
                         other => {
                             self.session = other;
@@ -714,12 +772,16 @@ impl Worker {
         if let Ok(out) = self.asr.transcribe(window, &req) {
             let t = out.text.trim();
             if !t.is_empty() {
-                *self.shared.partial.lock().unwrap() = Some(t.to_string());
+                let mut p = self.shared.partial.lock().unwrap();
+                // Only while this session is still the shown one (S11).
+                if self.shared.current.load(Ordering::SeqCst) == s.id {
+                    *p = Some(t.to_string());
+                }
             }
         }
     }
 
-    fn finalize(&self, s: Session) -> CommitResult {
+    fn finalize(&self, s: Session, abort: &Arc<AtomicBool>) -> CommitResult {
         let audio_ms = (s.buf.len() * 1000 / SAMPLE_RATE) as u64;
         let mut r = CommitResult::status(CommitStatus::Empty);
         r.truncated = s.truncated;
@@ -740,7 +802,8 @@ impl Worker {
             (&s.buf[..], None)
         };
         r.timings.asr_audio_ms = (pcm.len() * 1000 / SAMPLE_RATE) as u64;
-        let req = self.asr_request(&s.cfg, AsrPurpose::Final);
+        let mut req = self.asr_request(&s.cfg, AsrPurpose::Final);
+        req.abort = AbortFlag(Some(abort.clone()));
         let t = Instant::now();
         let out = match self.asr.transcribe(pcm, &req) {
             Ok(o) => o,
@@ -782,6 +845,9 @@ impl Worker {
             }
         }
         r.status = CommitStatus::RawTranscript;
+        if abort.load(Ordering::SeqCst) {
+            return CommitResult::error("cancelled");
+        }
         let run_llm = cleanup::should_run(&s.cfg, ctx.app_category) && !snippet;
         if let (true, Some(cl)) = (run_llm, &self.cleaner) {
             let style = s.cfg.styles.for_category(ctx.app_category);

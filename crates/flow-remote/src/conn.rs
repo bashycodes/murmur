@@ -63,7 +63,19 @@ fn connect_failed(m: impl std::fmt::Display) -> BackendError {
 /// `connect_timeout_ms`.
 pub async fn connect(cfg: &ServerConfig, client: &str) -> Result<Arc<Conn>, BackendError> {
     let host = net::bare_host(&cfg.host).to_string();
-    let tcp = tokio::net::TcpStream::connect((host.as_str(), cfg.port))
+    // Resolve first; plain ws:// only if *every* address is private /
+    // loopback / link-local / tailnet-via-tailnet (review S6), and then
+    // connect to exactly those addresses (no second lookup to rebind).
+    let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host.as_str(), cfg.port))
+        .await
+        .map_err(|e| connect_failed(format!("{}: cannot resolve: {e}", cfg.addr())))?
+        .collect();
+    if !cfg.tls {
+        let ips: Vec<std::net::IpAddr> = addrs.iter().map(|a| a.ip()).collect();
+        net::plaintext_ok_resolved(&ips, &net::route_source)
+            .map_err(|e| connect_failed(format!("{}: plaintext refused: {e}", cfg.addr())))?;
+    }
+    let tcp = tokio::net::TcpStream::connect(&addrs[..])
         .await
         .map_err(|e| connect_failed(format!("{}: {e}", cfg.addr())))?;
     let _ = tcp.set_nodelay(true);
@@ -282,8 +294,10 @@ impl Conn {
         self.touch();
     }
 
+    /// Also wakes a `wait_result` for the old session (it returns).
     pub fn end_session(&self) {
         self.st.lock().unwrap().sid = None;
+        self.cv.notify_all();
         self.touch();
     }
 

@@ -56,7 +56,21 @@ public class JniSmoke {
             + "\"token\":\"" + (args.length > 1 ? args[1] : "") + "\",\"connect_timeout_ms\":800,\"commit_timeout_base_ms\":3000,\"health_ttl_s\":30}}";
         long r = NativeFlowCore.nativeOpenRouter(cfg, local);
         check(r != 0, "open_router: " + NativeFlowCore.nativeLastError());
-        check(NativeFlowCore.nativeStartSession(r, "{\"languages\":[\"en\"],\"platform\":\"android\",\"dictionary\":[{\"word\":\"btw\",\"replacement\":\"by the way\",\"isSnippet\":false}]}"), "router start: " + NativeFlowCore.nativeLastError());
+        String rsess = "{\"languages\":[\"en\"],\"platform\":\"android\",\"dictionary\":[{\"word\":\"btw\",\"replacement\":\"by the way\",\"isSnippet\":false}]";
+        // Hands-free session: endpoint_silence_ms only in hands-free mode.
+        String info = NativeFlowCore.nativeStartSessionInfo(r, rsess + ",\"endpoint_silence_ms\":2000}");
+        check(info != null, "router start: " + NativeFlowCore.nativeLastError());
+        System.out.println(info);
+        for (int c = 0; c < 25; c++) {
+            for (int i = 0; i < buf.length; i++) buf[i] = (short) (Math.sin((c * 640 + i) * 0.05) * 8000);
+            NativeFlowCore.nativePushAudio(r, buf, buf.length);
+        }
+        System.out.println(NativeFlowCore.nativePoll(r));
+        System.out.println(NativeFlowCore.nativePoll(0));
+        String badInfo = NativeFlowCore.nativeStartSessionInfo(r, "[");
+        System.out.println("INFO " + badInfo + " KIND " + NativeFlowCore.nativeLastErrorKind());
+        // Push-to-talk: plain start (no endpointing), as before.
+        check(NativeFlowCore.nativeStartSession(r, rsess + "}"), "router start: " + NativeFlowCore.nativeLastError());
         for (int c = 0; c < 25; c++) {
             for (int i = 0; i < buf.length; i++) buf[i] = (short) (Math.sin((c * 640 + i) * 0.05) * 8000);
             NativeFlowCore.nativePushAudio(r, buf, buf.length);
@@ -101,4 +115,6 @@ class NativeFlowCore {
     static native String nativeProbeRouter(long h);
     static native String nativeRouteStatus(long h);
     static native void nativeResetCircuit(long h);
+    static native String nativeStartSessionInfo(long h, String cfg);
+    static native String nativePoll(long h);
 }
