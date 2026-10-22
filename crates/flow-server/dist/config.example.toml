@@ -12,6 +12,9 @@ max_queue = 2          # sessions waiting for a worker
 queue_timeout_ms = 30000
 idle_timeout_s = 120   # close idle connections
 max_session_s = 1200   # 20 min, same as the Windows hard stop
+handshake_timeout_ms = 10000  # TLS handshake + HTTP upgrade request must finish by then
+max_connections = 64          # open sockets in total (unauthenticated ones included)
+max_connections_per_ip = 16   # open sockets per peer address
 
 [model]                # = flow_core::ModelConfig
 asr_engine = "parakeet"

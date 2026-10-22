@@ -53,6 +53,12 @@ pub struct Config {
     pub queue_timeout_ms: u64,
     pub idle_timeout_s: u64,
     pub max_session_s: u64,
+    /// TLS handshake and HTTP request-header deadline (S7): a peer that
+    /// has not finished its upgrade request by then is dropped.
+    pub handshake_timeout_ms: u64,
+    /// Open TCP connections, total and per peer IP (S7).
+    pub max_connections: usize,
+    pub max_connections_per_ip: usize,
     pub model: ModelConfig,
     pub tls: Option<TlsConfig>,
     pub log: LogConfig,
@@ -74,6 +80,9 @@ impl Default for Config {
             queue_timeout_ms: 30_000,
             idle_timeout_s: 120,
             max_session_s: 1200,
+            handshake_timeout_ms: 10_000,
+            max_connections: 64,
+            max_connections_per_ip: 16,
             model: ModelConfig::default(),
             tls: None,
             log: LogConfig::default(),
@@ -165,6 +174,9 @@ impl Config {
         self.check_bind()?;
         if self.workers == 0 {
             return Err("workers must be >= 1".into());
+        }
+        if self.max_connections == 0 || self.max_connections_per_ip == 0 {
+            return Err("max_connections and max_connections_per_ip must be >= 1".into());
         }
         if let Some(t) = &self.tls {
             if !cfg!(feature = "tls") {

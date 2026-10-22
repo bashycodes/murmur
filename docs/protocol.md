@@ -120,6 +120,11 @@ Developer page warns.
   binds are always allowed; `0.0.0.0`, `::` or a public address only with
   `[tls]` or `--insecure-bind-any` (which logs a WARNING). Peers outside those
   private classes are dropped at accept unless `--insecure-bind-any`.
+* Connection limits (S7): the TLS handshake and the HTTP request head must
+  complete within `handshake_timeout_ms` (default 10 s; a silent socket is
+  dropped too); at most `max_connections` (64) sockets in total and
+  `max_connections_per_ip` (16) per peer are open, upgraded WebSockets
+  included. Excess connections are closed at accept.
 * A session leases a worker at `start` and returns it at `result`,
   `cancelled` or disconnect.
 * Never written to disk: audio, transcripts, contexts, dictionaries. Logs
