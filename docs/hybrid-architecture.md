@@ -545,3 +545,91 @@ Every item is additive: code written against §1.2 compiles unchanged.
 * `flow-server` (crate `crates/flow-server`): `flow-server [--config PATH] [--token-file PATH]`, `flow-server gen-token --out PATH` (43-char token, mode 0600, never overwrites), `flow-server check-config`. Features: `whisper` (default), `parakeet`, `llm`, `tls` (default). Example config and the systemd unit (with the kernel IP allowlist) are in `crates/flow-server/dist/`; the unit passes the token via `LoadCredential`. Not installed on any machine by this branch.
 * Behaviour notes vs §3: auth failure is an HTTP 401 on the upgrade request (clients map 401/403 to `auth_failed`; the 4001 close code is reserved); a start while queued keeps the queued audio (≤ `max_samples`) and replays it into the worker with an enlarged ring; `max_session_s` overrun ends the session with `error too_large`; cancelling a queued session aborts its wait so the slot frees immediately.
 * `tools/check-build-matrix.sh` (run by `cargo test -p flow-contract-tests --test build_matrix`) checks the flow-ffi and flow-windows flavours with `cargo tree`; the checks for features the shells have not added yet (`flow-ffi/remote`, `flow-windows/local`, `flow-windows/remote`) print SKIP. Run with `CHECK_BUILD_MATRIX_STRICT=1` after merging 3a/3b. Because Tauri itself depends on tokio, the Windows client-only check looks for the WS client stack (`flow-remote`, `tungstenite`, `axum`) rather than for tokio.
+
+**2026-10-22 — live route + hands-free endpointing for the shells (branch `router-route`)**
+
+Goal: the pill says "Transcribing via <route>…" **while recording** (and updates if the route
+changes mid-session), and hands-free mode stops by itself on silence (D19). All additive;
+pre-existing fixtures are byte-identical.
+
+* **flow-router API** (`crates/flow-router/src/lib.rs`, tests `policy.rs` / `cloud_policy.rs`
+  "live session route", fixtures `start_info_remote.json`, `poll_cloud.json`,
+  `poll_fallback.json`, `poll_idle.json`):
+  * `SessionRoute { engine: EngineKind, provider, model, server, fallback: Option<String> }`
+    — JSON `{"engine":"local"|"remote"|"cloud","provider"?,"model"?,"server"?,"fallback"?}`
+    (absent = omitted). `provider`/`model` (= `CloudProviderConfig.id` / `.model`) only for
+    `cloud`; `server` ("host:port") only for `remote`; `fallback` = why the first route is not
+    the one in use (the `route.fallback` strings). `SessionRoute::from_route_info(&RouteInfo)`
+    is the same projection of a `CommitResult.route`.
+  * `StartInfo` gains `route: Option<SessionRoute>` (backends leave it `None`; it lost `Copy`,
+    and a struct literal needs `..Default::default()`; no shell builds one). It now has serde:
+    `{"queued":bool,"route"?:…}`.
+  * `Router::start_session_info(cfg) -> Result<StartInfo, RouterError>`: `start_session` that
+    returns the start route (and `queued`: server busy, waiting for a worker).
+    `start_session` is unchanged (it delegates).
+  * `Router::poll()` now returns `RouterPoll { session: SessionPoll, route: Option<SessionRoute> }`
+    (was `SessionPoll`). It `Deref`s to `SessionPoll` (`p.partial`, `p.endpoint_reached` still
+    work) and `impl From<RouterPoll> for SessionPoll` (`.into()` / `.session` where a
+    `SessionPoll` is needed). JSON = the `SessionPoll` fields flattened + `route`, so the idle
+    JSON (no session) is byte-identical to `SessionPoll`'s.
+  * `Router::session_route() -> Option<SessionRoute>` (just the route).
+  * Semantics (contract tests): the start route is `Local` / `Remote{server}` /
+    `Cloud{provider, model}`; a start-time skip is already in it (`fallback: "connect_failed"`,
+    `"cloud_not_configured"`, …). After a mid-session switch (server dies → local replay; cloud
+    dies → server) the next `poll().route` shows the new engine with `fallback` set (e.g.
+    `{"engine":"local","fallback":"disconnected"}`). `route` is `None` with no session, after
+    `commit`/`cancel`, after a failed start, and when every route failed (the commit is ERROR).
+    Invariant: `SessionRoute::from_route_info(commit().route)` == the last polled route, and ==
+    the start route unless a mid-session fallback happened.
+* **flow-ffi**: C `char *flow_start_session_info(h, session_json)` (StartInfo JSON, NULL + the
+  same last error/kind as `flow_start_session`) and `char *flow_poll(h)` (RouterPoll JSON; NULL
+  for a NULL handle) in `flow_core.h`; JNI `nativeStartSessionInfo(h: Long, cfg: String): String?`
+  (`(JLjava/lang/String;)Ljava/lang/String;`) and `nativePoll(h: Long): String` (`(J)Ljava/lang/String;`,
+  never null; `0` = idle poll). Core handles answer too, without `route`. See
+  `apps/flow-android/JNI_CONTRACT.md` "Live route + hands-free endpointing".
+
+**What W must do** (flow-windows calls `flow_router::Router` directly, `router_adapter.rs`):
+
+1. Start: replace `self.router.start_session(to_core_session(&cfg))` with
+   `self.router.start_session_info(…)` and keep `info.route` (map the error exactly as today).
+   Set the recording pill to the label of `info.route` right away (before the first partial).
+2. Partial timer: replace `self.router.partial()` with one `let p = self.router.poll();` per tick.
+   Use `p.partial` as today (`.filter(|s| !s.trim().is_empty())`), and when `p.route` differs
+   from the shown one, relabel the pill (this is how "server died → local" shows up live).
+   `p.route == None` mid-recording = the session is dead; keep the last label (the commit
+   reports the error).
+3. Labels (suggested): `local` → "Transcribing on this PC"; `remote` → "Transcribing via server"
+   (+ `server` in a tooltip); `cloud` → "Transcribing via <provider display name> (<model>)",
+   looking up `provider` in `RouterConfig.cloud.providers` for `display_name()`; with `fallback`
+   set, append a short reason (e.g. "server unreachable" for `connect_failed`/`disconnected`/
+   `timeout`, "cloud not set up" for `cloud_not_configured`). Match `EngineKind` with a `_` arm.
+4. Hands-free (D19): in hands-free mode only, set `SessionConfig.endpoint_silence_ms =
+   Some(pref)` (pref 300-10000 ms, default 2000; push-to-talk leaves it `None`). On the same
+   partial tick, if `p.endpoint_reached` run the normal finish path (stop sound + `commit` off
+   the UI thread + paste) exactly as when the user presses the hands-free key again; stop
+   polling once finishing started. `endpoint_reached` is latched and the same on every route
+   (computed in the router from the pushed audio, not by the backend).
+5. The trait `CoreApi` is W's own; add a `poll()` (or `route()`) method there with a default
+   so `StubCore` / `FlowCoreAdapter` keep compiling (`FlowCore::poll()` gives the
+   `SessionPoll`; a bare core has no route — show "on this PC").
+
+**What A must do** (Kotlin over JNI, `NativeFlowCore.kt`):
+
+1. Declare `@JvmStatic external fun nativeStartSessionInfo(handle: Long, sessionConfigJson: String): String?`
+   and `@JvmStatic external fun nativePoll(handle: Long): String`. (The libraries of every
+   flavour export them; `check_native_so.sh` reads the list from JNI_CONTRACT.md, and the JNI
+   stub in `tools/probes/jni_stub/` needs the two symbols added when Kotlin declares them.)
+2. Start: call `nativeStartSessionInfo` instead of `nativeStartSession`; `null` = the same
+   failure as `false` (read `nativeLastError` / `nativeLastErrorKind` as today). Parse
+   `route` (org.json, all fields optional) and show it in the recording pill immediately.
+3. Partial timer: replace `nativePartial` with `nativePoll` (one JNI call per tick); parse
+   `partial`, `endpoint_reached`, `route`; relabel the pill when `route` changes; absent
+   `route` while recording = dead session, keep the last label. Labels as for W (cloud: the
+   provider's `label` from `DevSettings` for `route.provider`, plus `route.model`).
+4. Hands-free: put `"endpoint_silence_ms": <pref>` in `SessionConfig` JSON only for hands-free
+   sessions (`null`/omitted for push-to-talk; `CoreJson` should keep sending every other field).
+   When a poll says `endpoint_reached: true`, run the normal finish path (stop sound,
+   `nativeCommit` on `Dispatchers.Default`, paste) exactly as when the user stops; ignore
+   further polls once finishing started.
+5. Tests: `RouterJsonTest` can decode `poll_cloud.json`, `poll_fallback.json`, `poll_idle.json`,
+   `start_info_remote.json` from `crates/flow-router/fixtures/`.
