@@ -1097,6 +1097,13 @@ fn keyless_is_only_for_private_openai_compat_hosts() {
     let r = dictate(&k.router);
     assert_eq!(route(&r).engine, "local");
     assert_eq!(route(&r).fallback.as_deref(), Some("cloud_not_configured"));
+    // A named preset (here Groq) needs one even when pointed at the LAN.
+    let mut c = self_hosted("http://100.64.0.20:8000/v1", "100.64.0.20");
+    c.cloud.providers[0].preset = "groq".into();
+    let k = rig_opts(c, true, false);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(route(&dictate(&k.router)).engine, "local");
+    assert_cloud_unused(&k);
     // Other adapters always need one, even on the LAN.
     let mut c = self_hosted("http://100.64.0.20:8000/v1", "100.64.0.20");
     c.cloud.providers[0].adapter = "deepgram".into();
