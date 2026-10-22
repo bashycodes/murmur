@@ -148,8 +148,11 @@ impl History {
     }
 
     fn init(conn: Connection) -> rusqlite::Result<History> {
+        // secure_delete: deleted rows are overwritten with zeros, not left
+        // readable in free pages (review S17).
         conn.execute_batch(
-            "PRAGMA journal_mode=WAL;
+            "PRAGMA secure_delete=ON;
+             PRAGMA journal_mode=WAL;
              CREATE TABLE IF NOT EXISTS history (
                id        INTEGER PRIMARY KEY AUTOINCREMENT,
                ts        INTEGER NOT NULL,
@@ -170,10 +173,25 @@ impl History {
 
     /// Delete rows older than the retention window.
     pub fn prune(&self, r: Retention, now: i64) -> rusqlite::Result<usize> {
-        match cutoff(r, now) {
-            None => Ok(0),
-            Some(c) => self.conn.execute("DELETE FROM history WHERE ts < ?1", [c]),
+        let n = match cutoff(r, now) {
+            None => 0,
+            Some(c) => self
+                .conn
+                .execute("DELETE FROM history WHERE ts < ?1", [c])?,
+        };
+        if n > 0 {
+            self.scrub();
         }
+        Ok(n)
+    }
+
+    /// After a delete: fold the WAL into the database and truncate it, so
+    /// removed transcripts do not linger in `history.sqlite-wal` (S17).
+    /// Best effort (a concurrent reader can keep frames for a moment).
+    fn scrub(&self) {
+        let _ = self
+            .conn
+            .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |_| Ok(()));
     }
 
     /// Store `e` if retention allows; returns the row id when stored.
@@ -250,14 +268,19 @@ impl History {
 
     /// True when a row was removed.
     pub fn delete(&self, id: i64) -> rusqlite::Result<bool> {
-        Ok(self
+        let n = self
             .conn
-            .execute("DELETE FROM history WHERE id = ?1", [id])?
-            > 0)
+            .execute("DELETE FROM history WHERE id = ?1", [id])?;
+        self.scrub();
+        Ok(n > 0)
     }
 
     pub fn clear(&self) -> rusqlite::Result<usize> {
-        self.conn.execute("DELETE FROM history", [])
+        let n = self.conn.execute("DELETE FROM history", [])?;
+        // A full clear also returns the pages to the OS.
+        let _ = self.conn.execute_batch("VACUUM;");
+        self.scrub();
+        Ok(n)
     }
 
     /// Store the user's correction of row `id` (learn-from-edits).
@@ -291,6 +314,46 @@ mod tests {
             words: word_count(text),
             ..Entry::default()
         }
+    }
+
+    /// Bytes of the database and its WAL on disk.
+    fn disk_bytes(path: &std::path::Path) -> Vec<u8> {
+        let mut all = std::fs::read(path).unwrap_or_default();
+        let wal = path.with_extension("sqlite-wal");
+        all.extend(std::fs::read(wal).unwrap_or_default());
+        all
+    }
+
+    fn contains(hay: &[u8], needle: &str) -> bool {
+        hay.windows(needle.len()).any(|w| w == needle.as_bytes())
+    }
+
+    #[test]
+    fn deleted_transcripts_leave_no_trace_on_disk() {
+        // review S17: secure_delete + WAL truncate.
+        let dir = std::env::temp_dir().join(format!("flow-hist-scrub-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("history.sqlite");
+        let h = History::open(&path).unwrap();
+        for (i, t) in ["SECRET-ONE-alpha", "SECRET-TWO-bravo", "keep-this-row"]
+            .iter()
+            .enumerate()
+        {
+            h.record(&entry(i as i64 + 1, t), Retention::Keep, 10)
+                .unwrap();
+        }
+        let first = h.list("SECRET-ONE", 10, Retention::Keep, 10).unwrap()[0].id;
+        assert!(h.delete(first).unwrap());
+        assert!(!contains(&disk_bytes(&path), "SECRET-ONE-alpha"), "delete");
+        // Retention "never" prunes everything.
+        h.prune(Retention::Never, 10).unwrap();
+        h.clear().unwrap();
+        let bytes = disk_bytes(&path);
+        for t in ["SECRET-TWO-bravo", "keep-this-row"] {
+            assert!(!contains(&bytes, t), "{t} still on disk after clear");
+        }
+        drop(h);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -64,6 +64,69 @@ pub fn restore_delay_ms(exe: &str) -> u64 {
     }
 }
 
+/// Registered clipboard formats set (to DWORD 0) next to every text we put
+/// on the clipboard, paste or copy (S14): no Win+V history, no cloud
+/// clipboard upload, no clipboard monitors / viewers.
+pub const PRIVACY_FORMATS: [&str; 4] = [
+    "ExcludeClipboardContentFromMonitorProcessing",
+    "CanIncludeInClipboardHistory",
+    "CanUploadToCloudClipboard",
+    "Clipboard Viewer Ignore",
+];
+
+/// The window a dictation is meant for (review S13): the foreground window
+/// when the dictation started, re-checked right before every paste step.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FocusTarget {
+    /// HWND as an integer (HWND is not `Send`).
+    pub hwnd: usize,
+    pub pid: u32,
+    /// Exe file name (for the message).
+    pub exe: String,
+}
+
+/// Why a paste was not done.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GuardFailure {
+    /// Another window (or app) has the focus now: the text goes to the
+    /// clipboard instead.
+    Moved,
+    /// The focus moved to a password field: nothing is inserted or copied.
+    Guarded,
+}
+
+impl GuardFailure {
+    pub fn message(&self) -> &'static str {
+        match self {
+            GuardFailure::Moved => {
+                "Not pasted: the focus moved to another window. The text is on the clipboard (Ctrl+V)."
+            }
+            GuardFailure::Guarded => "Not pasted into a password field.",
+        }
+    }
+}
+
+/// Paste only into the window the dictation started in (S13). `start` =
+/// target at dictation start (`None` = unknown: no check), `now` = the
+/// current foreground, `password_now` / `password_at_start` = the focused
+/// control is a password field (`None` = unknown).
+pub fn paste_guard(
+    start: Option<&FocusTarget>,
+    now: Option<&FocusTarget>,
+    password_at_start: Option<bool>,
+    password_now: Option<bool>,
+) -> Result<(), GuardFailure> {
+    let Some(start) = start else { return Ok(()) };
+    match now {
+        Some(n) if n.hwnd == start.hwnd && n.pid == start.pid => {}
+        _ => return Err(GuardFailure::Moved),
+    }
+    if password_now == Some(true) && password_at_start != Some(true) {
+        return Err(GuardFailure::Guarded);
+    }
+    Ok(())
+}
+
 /// Preferred strategy before touching the clipboard.
 pub fn initial_strategy(method: PasteMethod) -> Strategy {
     match method {
@@ -244,6 +307,57 @@ pub const ELEVATED_TARGET_MSG: &str = "The app you're dictating into runs as adm
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn t(hwnd: usize, pid: u32) -> FocusTarget {
+        FocusTarget {
+            hwnd,
+            pid,
+            exe: "x.exe".into(),
+        }
+    }
+
+    #[test]
+    fn paste_goes_only_to_the_window_the_dictation_started_in() {
+        let a = t(1, 10);
+        assert_eq!(paste_guard(Some(&a), Some(&a), None, None), Ok(()));
+        assert_eq!(
+            paste_guard(None, Some(&t(9, 9)), None, None),
+            Ok(()),
+            "unknown start"
+        );
+        assert_eq!(
+            paste_guard(Some(&a), Some(&t(2, 10)), None, None),
+            Err(GuardFailure::Moved),
+            "other window of the same app"
+        );
+        assert_eq!(
+            paste_guard(Some(&a), Some(&t(1, 11)), None, None),
+            Err(GuardFailure::Moved),
+            "hwnd reused by another process"
+        );
+        assert_eq!(
+            paste_guard(Some(&a), None, None, None),
+            Err(GuardFailure::Moved)
+        );
+    }
+
+    #[test]
+    fn a_password_field_that_appeared_meanwhile_is_guarded() {
+        let a = t(1, 10);
+        assert_eq!(
+            paste_guard(Some(&a), Some(&a), Some(false), Some(true)),
+            Err(GuardFailure::Guarded)
+        );
+        assert_eq!(
+            paste_guard(Some(&a), Some(&a), None, Some(true)),
+            Err(GuardFailure::Guarded)
+        );
+        // Dictating into a password field on purpose (it was one at start).
+        assert_eq!(
+            paste_guard(Some(&a), Some(&a), Some(true), Some(true)),
+            Ok(())
+        );
+    }
 
     #[test]
     fn plain_text_drops_markers() {

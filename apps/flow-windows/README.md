@@ -139,6 +139,8 @@ state (off / loading / ready / model missing / engine missing / failed).
 | `tests/router_integration.rs` | Controller → router → flow-remote → in-process flow-server (MockAsr) vs local MockAsr: all four toggle combos, server down / killed mid-dictation (no lost audio), error pills, Test connection / Test session |
 | `tests/core_integration.rs` | Controller + real flow-core (MockAsr, and whisper tiny.en on `jfk.wav` when present): audio → commit → paste plan → history |
 | `src/app.rs` | Tauri: tray, overlay window (512x614, click-through, `WS_EX_NOACTIVATE`), settings window, commands, autostart |
+| `build.rs`, `capabilities/` | Every command is declared in the app manifest; the settings window gets all of them, the overlay only `overlay_action` (`tests/capabilities.rs`) |
+| `tools/ci/` | CI helpers: Parakeet DLL bundle overlay, installer collection (`.github/workflows/windows-build.yml`) |
 | `ui/` | Plain TypeScript → `ui/dist/*.js` (committed). No bundler, no CDN, no web fonts; the CSP is `'self'` only. Settings tabs: General, AI cleanup, History, Dictionary, Developer |
 | `tauri.llm.conf.json` | Config overlay that bundles `flow_llm.dll` next to the exe (`cargo tauri build --config tauri.llm.conf.json`) |
 | `tools/probes/settings_mock/` | Serves `ui/dist` with a fake `__TAURI__` for checking the settings page in a plain/headless browser |
@@ -176,6 +178,60 @@ llama.cpp needs `BINDGEN_EXTRA_CLANG_ARGS` on this box (see
 `docs/core-architecture.md`).
 
 Linking a Windows binary on Linux is not supported (no MSVC linker or SDK).
+
+## Live test on Windows (CI installers)
+
+The `windows-build` workflow (`.github/workflows/windows-build.yml`) builds the
+real MSVC app on `windows-latest` (on every push to `integration` that touches
+`apps/flow-windows/**` or `crates/**`, or by hand: `gh workflow run
+windows-build.yml --ref <branch>`), runs `cargo test` for both feature sets
+and clippy, and uploads two artifacts, each with an MSI and an NSIS setup:
+
+| Artifact | Flavour | Engines |
+|---|---|---|
+| `flow-clone-windows-hybrid` | default (`app,parakeet`) | this PC (whisper.cpp + Parakeet) + your flow-server + opt-in cloud STT |
+| `flow-clone-windows-client` | `--no-default-features --features local,app,parakeet` | this PC only; no network code |
+
+Both ship `sherpa-onnx-c-api.dll` + `onnxruntime.dll` next to the exe
+(Parakeet). They do **not** ship `flow_llm.dll` (AI cleanup reports "engine
+missing"; build it as in step 3 below if you want it) and no model files.
+The installers are unsigned: SmartScreen says "Windows protected your PC" →
+More info → Run anyway.
+
+1. **Download**: `gh run download <run-id> -n flow-clone-windows-hybrid`
+   (or the run page → Artifacts), unzip, run `Flow-Clone_0.1.0_x64-setup_hybrid.exe`
+   (per-user, no admin) or the `.msi`. Install only one flavour at a time
+   (same app id). The tray icon appears; Settings opens on first start.
+2. **Model** (only for "this PC"): copy `ggml-base.bin` (or `ggml-tiny.en.bin`
+   + set the path in Settings → Speech model) to
+   `%APPDATA%\FlowClone\models\`, or the Parakeet folder
+   `sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8` there and pick Engine =
+   Parakeet. The tray's first line turns into "Speech model: …".
+3. **Server** (hybrid build): on the server, `flow-server gen-token --out
+   <file>` and start it bound to its Tailscale/LAN address (see
+   `crates/flow-server/dist/config.example.toml`). On Windows: Settings →
+   Developer → Host = the server's Tailscale IP or name (no `ws://`, no
+   port), Port = 7313, Token = the file's contents (Paste), TLS only if the
+   server has `[tls]` (then paste the certificate pin), Save. **Test
+   connection** must say `OK · median N ms · flow-server … · parakeet`;
+   **Test session** must say `EMPTY (no_speech) via server`.
+
+### 10-minute smoke checklist
+
+- [ ] (1 min) Hold Ctrl+Win in Notepad, say "testing one two three", release → the text is pasted; the line above the pill said "Transcribing via server…" (hybrid, server up) or "Transcribing via this PC…".
+- [ ] (1 min) Stop the server (or quit Tailscale), dictate again → still pasted; the line says "Transcribing via this PC… (server unreachable)"; Developer → Active engine row = client, fallback `connect_failed`.
+- [ ] (1 min) Start the server again; hold Ctrl+Win, stop the server while speaking, keep talking, release → the whole sentence pastes and the line switched to "this PC" mid-dictation.
+- [ ] (1 min) Hands-free: Ctrl+Win+Space, speak, then stay silent → it stops and pastes by itself after ~2 s (Settings → General → "Hands-free: stop after … s of silence"; 0 = never). Push-to-talk never stops on silence.
+- [ ] (1 min) Esc while the pill is processing → nothing is pasted, no error pill; the next dictation works at once (the server is not left busy).
+- [ ] (1 min) Dictate, and while it is processing Alt+Tab to another window → nothing is typed there; the pill says "the focus moved…", Ctrl+V pastes the text. Dictate into a normal field and tab into a password box before it finishes → nothing is pasted or copied.
+- [ ] (1 min) Copy something, dictate → afterwards Ctrl+V gives your original clipboard. Press Shift+Alt+Z twice quickly → still your original clipboard afterwards. Shift+Alt+X then Win+V → the transcript is **not** in clipboard history.
+- [ ] (1 min) Run `cmd` as administrator, hold Ctrl+Win over it and release → the "runs as administrator" pill; then type `dle` in Notepad: plain letters appear (a stuck Win key would show the desktop / lock the PC), and Start did not open.
+- [ ] (1 min) Cloud (optional, costs cents): Developer → Add provider (Groq) → paste key → Save key → Test provider `OK · "And so, my fellow Americans"…`; Allow cloud → accept consent → Save; dictate → the line says "Transcribing via Groq (whisper-large-v3-turbo)…", the pill shows **C**. Change the base URL host, Save → "the API key of Groq was removed … enter the key again".
+- [ ] (1 min) Client-only build: Developer tab hidden; dictation works with the model; `netstat -ano | findstr <pid>` shows no outbound connection.
+
+Report failures with `%APPDATA%\FlowClone\prefs.json` (no secrets in it) and the
+console output (`"C:\Program Files\Flow Clone\Flow Clone.exe"` started from a
+terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 
 ## Build and run on a real Windows 10/11 machine
 
@@ -282,7 +338,10 @@ Linking a Windows binary on Linux is not supported (no MSVC linker or SDK).
 
 ## Known gaps / v1 limitations
 
-- Cloud (D18): the **C** badge appears after the commit (like S/L), not while recording, and the pill does not say "Transcribing via <provider>…" (the router does not expose the active route before the result). Cloud keys stored before a provider is saved stay in Credential Manager until "Clear key" or the provider is deleted. HTTPS uses webpki roots, so a corporate TLS-inspection CA in the Windows store is not trusted.
+- Cloud (D18): the **C** badge appears after the commit (like S/L); while recording the line above the pill names the provider. A key saved for a provider that is never saved stays in Credential Manager (bound to the host it was typed for) until "Clear key" or the provider is deleted. HTTPS uses webpki roots, so a corporate TLS-inspection CA in the Windows store is not trusted.
+- Hands-free auto-stop (D19) applies to dictations *started* hands-free (Ctrl+Win+Space). A push-to-talk dictation locked later (double tap, or Space added to the chord) has no endpoint, because the router fixes `endpoint_silence_ms` at session start; stop it with the key or ✓.
+- Paste target (S13): the guard compares the foreground window (HWND + process) with the one at dictation start; switching tabs *inside* the same window (browser tabs) is not detected. The password-field re-check needs UI Automation to answer within 300 ms; otherwise only the window check applies.
+- Clipboard privacy formats (S14) are honoured by Windows' own history/cloud sync; third-party clipboard managers that ignore `ExcludeClipboardContentFromMonitorProcessing` still see the text.
 
 - Hands-free ✕/✓ use a 30 ms cursor poll that toggles click-through over the pill (not `setShape`). A click in the first ~30 ms after the cursor arrives can fall through.
 - There is no delayed clipboard rendering (`WM_RENDERFORMAT`). The immediate path is used with a sequence-number guard, as the RE checklist recommends.

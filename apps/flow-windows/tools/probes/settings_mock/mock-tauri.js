@@ -14,7 +14,7 @@
       { word: "gh", replacement: "GitHub", isSnippet: false },
       { word: "my address", replacement: "1 Main Street\nSpringfield", isSnippet: true },
     ],
-    paste_method: "ctrl_v", restore_clipboard: true, max_dictation_minutes: 20, retention: "keep",
+    paste_method: "ctrl_v", restore_clipboard: true, max_dictation_minutes: 20, hands_free_silence_ms: 2000, retention: "keep",
     model_path: null, live_preview: true, llm_enabled: true, llm_model_path: null, llm_lib_path: null,
     llm_timeout_ms: 1500, learn_from_edits: true,
     asr_engine: "whisper", parakeet_model_dir: null, spoken_cleanup: true,

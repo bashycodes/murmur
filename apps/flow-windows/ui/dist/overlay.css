@@ -275,3 +275,31 @@ body {
   border-radius: 3px;
   background: var(--error);
 }
+
+/* ---- live route: "Transcribing via this PC / server / <provider>…" ---- */
+.route-label {
+  position: absolute;
+  left: 50%;
+  bottom: 50px;
+  transform: translateX(-50%);
+  max-width: 480px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.65);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.route-label[hidden] {
+  display: none;
+}
+.route-label[data-engine="cloud"] {
+  border: 1px solid rgba(163, 148, 199, 0.9);
+}
+body.has-route .preview {
+  bottom: 74px;
+}

@@ -57,6 +57,17 @@ pub fn masked_release(vk: u16, lctrl_held: bool) -> Vec<Stroke> {
     v
 }
 
+/// Review C11: may the hook swallow a physical Win/Alt key-up and replace
+/// it with [`masked_release`]? Only if the injection can land. Over an
+/// elevated foreground window UIPI drops injected keys, and a swallowed
+/// key-up would leave Win/Alt logically down (then L locks the PC, D shows
+/// the desktop). `uipi_blocked` = the foreground has a higher integrity
+/// level than us; `sent` = events `SendInput` inserted of `wanted`.
+/// `true` = suppress the physical key-up.
+pub fn suppress_physical_release(uipi_blocked: bool, sent: usize, wanted: usize) -> bool {
+    !uipi_blocked && wanted > 0 && sent == wanted
+}
+
 /// Modifiers that get a synthetic (masked) key-up before the paste chord.
 pub const RELEASE_BEFORE_PASTE_VKS: [u16; 5] = [vk::MENU, 0xA4, 0xA5, vk::LWIN, vk::RWIN];
 
@@ -65,20 +76,26 @@ pub const PASTE_HOLD_MS: u64 = 50;
 
 /// For each physically-held Alt/Win: `[Ctrl↓, key↑, Ctrl↑]`, so our Ctrl+V
 /// isn't read as Ctrl+Win+V / Ctrl+Alt+V while the user still holds the PTT
-/// chord. Held Ctrl/Shift are left alone (Wispr parity, 02 §REA note 6).
-pub fn release_before_paste(held_vks: &[u16]) -> Vec<Stroke> {
+/// chord. Held Ctrl/Shift are left alone (Wispr parity, 02 §REA note 6):
+/// with a Ctrl physically held (`ctrl_held`) the trailing Ctrl↑ is
+/// skipped, so the user's Ctrl stays logically down (review C13).
+pub fn release_before_paste(held_vks: &[u16], ctrl_held: bool) -> Vec<Stroke> {
     held_vks
         .iter()
         .filter(|v| RELEASE_BEFORE_PASTE_VKS.contains(v))
         .flat_map(|v| {
-            [
-                Stroke::down(vk::CONTROL),
-                Stroke::up(*v),
-                Stroke::up(vk::CONTROL),
-            ]
+            let mut s = vec![Stroke::down(vk::CONTROL), Stroke::up(*v)];
+            if !ctrl_held {
+                s.push(Stroke::up(vk::CONTROL));
+            }
+            s
         })
         .collect()
 }
+
+/// Modifiers whose physical release a shortcut-triggered paste waits for
+/// (paste-last fires while Shift+Alt are still down; review C13).
+pub const CHORD_MODIFIER_VKS: [u16; 8] = [0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, vk::LWIN, vk::RWIN];
 
 /// Concrete VK codes that may be physically held for a normalised key (used
 /// both to release them and for GetAsyncKeyState stale-key probes).
@@ -212,9 +229,28 @@ mod tests {
     // 02 §REA note 6: only held Alt/Win get [Ctrl↓, key↑, Ctrl↑]; Ctrl and
     // Shift are left alone.
     #[test]
+    fn a_held_ctrl_stays_down_through_the_release() {
+        assert_eq!(
+            release_before_paste(&[vk::LWIN], true),
+            vec![Stroke::down(vk::CONTROL), Stroke::up(vk::LWIN)]
+        );
+    }
+
+    #[test]
+    fn physical_release_is_swallowed_only_when_the_mask_landed() {
+        assert!(suppress_physical_release(false, 3, 3));
+        assert!(
+            !suppress_physical_release(true, 0, 3),
+            "elevated foreground"
+        );
+        assert!(!suppress_physical_release(false, 0, 3), "SendInput blocked");
+        assert!(!suppress_physical_release(false, 1, 3), "partial");
+    }
+
+    #[test]
     fn release_before_paste_only_touches_alt_and_win() {
         assert_eq!(
-            release_before_paste(&[0xA2, 0x5B, 0xA0, 0xA4]),
+            release_before_paste(&[0xA2, 0x5B, 0xA0, 0xA4], false),
             vec![
                 Stroke::down(0x11),
                 Stroke::up(0x5B),
@@ -224,8 +260,8 @@ mod tests {
                 Stroke::up(0x11),
             ]
         );
-        assert!(release_before_paste(&[0xA2, 0xA1]).is_empty());
-        assert!(release_before_paste(&[]).is_empty());
+        assert!(release_before_paste(&[0xA2, 0xA1], false).is_empty());
+        assert!(release_before_paste(&[], false).is_empty());
     }
 
     // 02 §REA note 4: downs in one SendInput, 50 ms, ups in reverse order.
