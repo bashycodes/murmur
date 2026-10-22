@@ -692,6 +692,8 @@ mod tests {
     struct FakeServer {
         core: flow_core::FlowCore,
         up: AtomicBool,
+        /// Answer like flow-remote refusing ws:// to a public address (S6).
+        public: AtomicBool,
         starts: AtomicUsize,
         samples: AtomicU64,
     }
@@ -706,6 +708,7 @@ mod tests {
             Arc::new(FakeServer {
                 core,
                 up: AtomicBool::new(true),
+                public: AtomicBool::new(false),
                 starts: AtomicUsize::new(0),
                 samples: AtomicU64::new(0),
             })
@@ -725,6 +728,12 @@ mod tests {
             &self,
             cfg: &flow_core::config::SessionConfig,
         ) -> Result<StartInfo, BackendError> {
+            if self.0.public.load(Ordering::SeqCst) {
+                return Err(BackendError::new(
+                    Failure::ConnectFailed,
+                    "box.example:7313: plaintext refused: 203.0.113.5 is not private",
+                ));
+            }
             if !self.0.up.load(Ordering::SeqCst) {
                 return Err(BackendError::new(Failure::ConnectFailed, "refused"));
             }
@@ -863,6 +872,38 @@ mod tests {
         let route = out.route.unwrap();
         assert_eq!(route.engine, "local");
         assert!(route.fallback.is_some());
+    }
+
+    #[test]
+    fn plaintext_refused_reads_server_needs_tls() {
+        let r = rig(&dev(true, false));
+        r.server.public.store(true, Ordering::SeqCst);
+        let err = match dictate(&r.router) {
+            Err(e) => e,
+            Ok(res) => res.error.unwrap_or_default(),
+        };
+        assert_eq!(err, SERVER_NEEDS_TLS);
+        assert!(needs_tls(
+            "connect_failed: plaintext to public address (enable TLS)"
+        ));
+        assert!(!needs_tls("connect_failed: refused"));
+    }
+
+    #[test]
+    fn a_cancelled_commit_is_returned_as_is() {
+        let r = rig(&dev(true, true));
+        CoreApi::start_session(&*r.router, session()).unwrap();
+        CoreApi::push_audio(&*r.router, &[0i16; 1600]);
+        let router = r.router.clone();
+        let t = std::thread::spawn(move || CoreApi::commit(&*router));
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        CoreApi::cancel(&*r.router);
+        let res = t.join().unwrap();
+        // Either the commit finished first or it was cancelled; a cancel is
+        // never rewritten into a "Server unreachable" pill.
+        if res.status == CommitStatus::Error {
+            assert_eq!(res.error.as_deref(), Some(crate::core_api::CANCELLED));
+        }
     }
 
     #[test]
