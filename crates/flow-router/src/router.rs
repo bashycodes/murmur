@@ -12,8 +12,9 @@ use std::time::{Duration, Instant};
 
 use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
 use flow_core::dictionary::Dictionary;
+use flow_core::endpoint::{EndpointState, Endpointer};
 use flow_core::learn::Candidate;
-use flow_core::{CommitResult, CommitStatus, RouteInfo};
+use flow_core::{CommitResult, CommitStatus, RouteInfo, SessionPoll};
 
 use crate::cloud::{month_of, CloudProviderConfig, CloudUsage, Route, SecretString};
 use crate::{
@@ -181,6 +182,10 @@ struct Active {
     dead: Option<String>,
     /// The primary already failed over once (later hops keep its reason).
     switched: bool,
+    /// Hands-free endpointing (D19), computed here from the pushed audio
+    /// so every route (local, server, cloud) gives the same signal with no
+    /// protocol change, and a fallback replay does not reset it.
+    endpointer: Option<Endpointer>,
 }
 
 /// The §9 session API over local, remote and cloud backends. Thread-safe;
@@ -402,6 +407,9 @@ impl Router {
     pub fn push_audio(&self, pcm: &[i16]) -> bool {
         let mut g = self.session.lock().unwrap();
         let Some(a) = g.as_mut() else { return false };
+        if let Some(ep) = a.endpointer.as_mut() {
+            ep.push_i16(pcm);
+        }
         if a.engine.is_none() {
             return true;
         }
@@ -439,6 +447,27 @@ impl Router {
     pub fn partial(&self) -> Option<String> {
         let g = self.session.lock().unwrap();
         g.as_ref()?.engine.as_ref()?.partial()
+    }
+
+    /// Hands-free endpoint state of the active session (D19), when
+    /// `endpoint_silence_ms` is set. Same on every route.
+    pub fn endpoint(&self) -> Option<EndpointState> {
+        let g = self.session.lock().unwrap();
+        g.as_ref()?.endpointer.as_ref().map(Endpointer::state)
+    }
+
+    pub fn endpoint_reached(&self) -> bool {
+        self.endpoint().is_some_and(|e| e.reached)
+    }
+
+    /// Partial + endpoint in one call (mirrors `FlowCore::poll`).
+    pub fn poll(&self) -> SessionPoll {
+        let g = self.session.lock().unwrap();
+        let Some(a) = g.as_ref() else {
+            return SessionPoll::default();
+        };
+        let partial = a.engine.as_ref().and_then(|e| e.partial());
+        SessionPoll::new(partial, a.endpointer.as_ref().map(Endpointer::state))
     }
 
     /// Never fails: errors come back as an `ERROR` result. `route` is set
@@ -1042,6 +1071,7 @@ impl Active {
         route: RouteInfo,
     ) -> Self {
         Self {
+            endpointer: Endpointer::for_session(&cfg),
             cfg,
             engine: Some(engine),
             kind,
@@ -1057,6 +1087,7 @@ impl Active {
 
     fn dead(cfg: SessionConfig, msg: String, route: Option<RouteInfo>) -> Self {
         Self {
+            endpointer: Endpointer::for_session(&cfg),
             cfg,
             engine: None,
             kind: EngineKind::Local,

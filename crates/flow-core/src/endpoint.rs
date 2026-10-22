@@ -1,0 +1,273 @@
+//! Hands-free endpointing: notice that the user stopped talking.
+//!
+//! Wispr Flow has no speech endpointing (hands-free ends on a key press or
+//! the check button; its only silence detector is a broken-mic warning on
+//! all-zero chunks; research/windows/findings/by-topic/01 §"Silence
+//! detection", research/android/findings/by-topic/02). This is a clone
+//! addition (D19), opt-in per session with
+//! `SessionConfig.endpoint_silence_ms`.
+//!
+//! It is the commit-time VAD (`vad`, D16) run as a stream: the same 20 ms
+//! frames, the same RMS/ZCR speech bars and the same 60 ms minimum run, but
+//! the noise floor comes from the last 30 s of frames seen so far. The
+//! endpoint is reached once at least [`MIN_SPEECH_MS`] of speech was heard
+//! and the audio since the last speech run is at least the configured
+//! silence. It latches: once reached it stays reached for the session, so a
+//! shell polling it cannot miss it or see it flicker.
+//!
+//! The detector only reads the audio the shell pushes, so `FlowCore` and
+//! `flow_router::Router` (every route: local, own server, cloud) compute
+//! the same answer from the same pushes, with no protocol change.
+
+use std::collections::VecDeque;
+
+use serde::{Deserialize, Serialize};
+
+use crate::config::SAMPLE_RATE;
+use crate::vad::{frame_stats, Thresholds, FRAME, MIN_RUN};
+
+/// Recommended `endpoint_silence_ms` for a shell's hands-free mode: long
+/// enough for a pause to think mid-sentence, short enough that waiting for
+/// the paste does not feel stuck (D19).
+pub const RECOMMENDED_SILENCE_MS: u32 = 2000;
+/// Smaller configured values are raised to this.
+pub const MIN_SILENCE_MS: u32 = 300;
+/// Speech needed before the endpoint can fire, so a cough, a click or the
+/// start chime does not end a dictation that has not begun.
+pub const MIN_SPEECH_MS: u32 = 300;
+/// Noise-floor window: the last 30 s of frames.
+const FLOOR_FRAMES: usize = 30 * 50;
+const FRAME_MS: u64 = (FRAME * 1000 / SAMPLE_RATE) as u64;
+
+/// Endpoint state of the current session.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct EndpointState {
+    /// The user spoke and has been silent for `endpoint_silence_ms`.
+    /// Latched for the rest of the session.
+    pub reached: bool,
+    /// Speech heard so far (20 ms frames in runs of ≥ 60 ms).
+    pub speech_ms: u64,
+    /// Audio since the end of the last speech run (since the start when
+    /// there was no speech yet).
+    pub trailing_silence_ms: u64,
+}
+
+/// Streaming endpoint detector over pushed PCM.
+#[derive(Debug, Clone)]
+pub struct Endpointer {
+    silence_frames: u64,
+    min_speech_frames: u64,
+    /// Samples of the current, incomplete frame.
+    pending: Vec<f32>,
+    /// (RMS, ZCR) of the last `FLOOR_FRAMES` frames.
+    window: VecDeque<(f32, f32)>,
+    frames: u64,
+    run: usize,
+    speech_frames: u64,
+    /// Frame index just after the last speech run.
+    speech_end: u64,
+    reached: bool,
+}
+
+impl Endpointer {
+    /// `silence_ms` below [`MIN_SILENCE_MS`] is raised to it.
+    pub fn new(silence_ms: u32) -> Self {
+        let frames = |ms: u32| (ms.max(1) as u64).div_ceil(FRAME_MS);
+        Self {
+            silence_frames: frames(silence_ms.max(MIN_SILENCE_MS)),
+            min_speech_frames: frames(MIN_SPEECH_MS),
+            pending: Vec::with_capacity(FRAME),
+            window: VecDeque::with_capacity(FLOOR_FRAMES),
+            frames: 0,
+            run: 0,
+            speech_frames: 0,
+            speech_end: 0,
+            reached: false,
+        }
+    }
+
+    /// The detector for a session config (`None` = endpointing off).
+    pub fn for_session(cfg: &crate::config::SessionConfig) -> Option<Self> {
+        cfg.endpoint_silence_ms.map(Self::new)
+    }
+
+    /// Feed PCM16 as pushed by the shell.
+    pub fn push_i16(&mut self, pcm: &[i16]) {
+        for &s in pcm {
+            self.sample(s as f32 / 32768.0);
+        }
+    }
+
+    /// Feed normalised samples (as the commit-time VAD sees them).
+    pub fn push(&mut self, pcm: &[f32]) {
+        for &s in pcm {
+            self.sample(s);
+        }
+    }
+
+    fn sample(&mut self, s: f32) {
+        self.pending.push(s);
+        if self.pending.len() == FRAME {
+            let st = frame_stats(&self.pending);
+            self.pending.clear();
+            self.frame(st);
+        }
+    }
+
+    fn frame(&mut self, st: (f32, f32)) {
+        if self.window.len() == FLOOR_FRAMES {
+            self.window.pop_front();
+        }
+        self.window.push_back(st);
+        self.frames += 1;
+        let speech = Thresholds::from_stats(self.window.make_contiguous()).is_speech(st);
+        if speech {
+            self.run += 1;
+            if self.run == MIN_RUN {
+                self.speech_frames += MIN_RUN as u64;
+            } else if self.run > MIN_RUN {
+                self.speech_frames += 1;
+            }
+            if self.run >= MIN_RUN {
+                self.speech_end = self.frames;
+            }
+        } else {
+            self.run = 0;
+        }
+        if !self.reached
+            && self.speech_frames >= self.min_speech_frames
+            && self.frames - self.speech_end >= self.silence_frames
+        {
+            self.reached = true;
+        }
+    }
+
+    pub fn reached(&self) -> bool {
+        self.reached
+    }
+
+    pub fn state(&self) -> EndpointState {
+        EndpointState {
+            reached: self.reached,
+            speech_ms: self.speech_frames * FRAME_MS,
+            trailing_silence_ms: (self.frames - self.speech_end) * FRAME_MS,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const S: usize = SAMPLE_RATE;
+
+    fn voiced(ms: usize) -> Vec<i16> {
+        (0..ms * S / 1000)
+            .map(|i| {
+                let t = i as f32 / S as f32;
+                (6000.0 * (2.0 * std::f32::consts::PI * 150.0 * t).sin()) as i16
+            })
+            .collect()
+    }
+
+    fn noise(ms: usize, amp: f32, seed: u32) -> Vec<i16> {
+        let mut x = seed.wrapping_mul(2_654_435_761).max(1);
+        (0..ms * S / 1000)
+            .map(|_| {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                ((x as f32 / u32::MAX as f32 * 2.0 - 1.0) * amp * 32768.0) as i16
+            })
+            .collect()
+    }
+
+    /// Push `pcm` in 40 ms chunks (Wispr's chunk size); returns the
+    /// pushed time (ms) at which the endpoint was first reached.
+    fn fire_at(ep: &mut Endpointer, pcm: &[i16], offset_ms: usize) -> Option<usize> {
+        for (i, c) in pcm.chunks(S / 25).enumerate() {
+            ep.push_i16(c);
+            if ep.reached() {
+                return Some(offset_ms + (i + 1) * 40);
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn fires_after_configured_trailing_silence() {
+        let mut ep = Endpointer::new(1000);
+        assert_eq!(fire_at(&mut ep, &noise(500, 0.001, 1), 0), None);
+        assert_eq!(fire_at(&mut ep, &voiced(1500), 500), None);
+        let at = fire_at(&mut ep, &noise(3000, 0.001, 2), 2000).expect("endpoint");
+        assert!((3000..=3080).contains(&at), "{at}");
+        let st = ep.state();
+        assert!(st.reached);
+        assert!((1400..=1600).contains(&st.speech_ms), "{st:?}");
+        assert!(st.trailing_silence_ms >= 1000, "{st:?}");
+    }
+
+    #[test]
+    fn never_fires_without_speech() {
+        let mut ep = Endpointer::new(500);
+        assert_eq!(fire_at(&mut ep, &noise(10_000, 0.004, 3), 0), None);
+        assert_eq!(fire_at(&mut ep, &vec![0; 5 * S], 0), None);
+        assert_eq!(ep.state().speech_ms, 0);
+    }
+
+    #[test]
+    fn a_short_blip_is_not_enough_speech() {
+        let mut ep = Endpointer::new(500);
+        let mut pcm = noise(1000, 0.001, 4);
+        pcm.extend(voiced(100)); // < MIN_SPEECH_MS
+        pcm.extend(noise(3000, 0.001, 5));
+        assert_eq!(fire_at(&mut ep, &pcm, 0), None);
+    }
+
+    #[test]
+    fn pauses_shorter_than_the_threshold_do_not_fire() {
+        let mut ep = Endpointer::new(1500);
+        let mut pcm = Vec::new();
+        for i in 0..4 {
+            pcm.extend(voiced(800));
+            pcm.extend(noise(1200, 0.001, 10 + i));
+        }
+        assert_eq!(fire_at(&mut ep, &pcm, 0), None);
+        assert!(fire_at(&mut ep, &noise(2000, 0.001, 20), 8000).is_some());
+    }
+
+    #[test]
+    fn latches_once_reached() {
+        let mut ep = Endpointer::new(500);
+        let mut pcm = voiced(600);
+        pcm.extend(vec![0; S]);
+        assert!(fire_at(&mut ep, &pcm, 0).is_some());
+        ep.push_i16(&voiced(1000));
+        assert!(ep.reached());
+    }
+
+    #[test]
+    fn chunking_does_not_change_the_answer() {
+        let mut pcm = noise(300, 0.002, 6);
+        pcm.extend(voiced(700));
+        pcm.extend(noise(1700, 0.002, 7));
+        let mut whole = Endpointer::new(1200);
+        whole.push_i16(&pcm);
+        let mut odd = Endpointer::new(1200);
+        for c in pcm.chunks(333) {
+            odd.push_i16(c);
+        }
+        assert_eq!(whole.state(), odd.state());
+        assert!(whole.reached());
+    }
+
+    #[test]
+    fn tiny_thresholds_are_raised_to_the_minimum() {
+        let mut ep = Endpointer::new(0);
+        let mut pcm = voiced(500);
+        pcm.extend(vec![0; S / 5]); // 200 ms < MIN_SILENCE_MS
+        assert_eq!(fire_at(&mut ep, &pcm, 0), None);
+        assert!(fire_at(&mut ep, &vec![0; S / 5], 700).is_some());
+    }
+}

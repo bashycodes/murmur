@@ -24,6 +24,7 @@ crates/
 | `push_audio(pcm16)` | `push_audio(&[i16]) -> bool` | `flow_push_audio(h, ptr, len)` | `pushAudio(h, short[], len)` |
 | `set_context(FieldContext)` | `set_context(ctx)` | `flow_set_context(h, json)` | `setContext(h, json)` |
 | `partial()` | `partial() -> Option<String>` | `flow_partial(h)` | `partial(h): String?` |
+| *(clone)* poll | `poll() -> SessionPoll`, `endpoint() -> Option<EndpointState>`, `endpoint_reached() -> bool` | not yet exported (see changelog) | not yet exported |
 | `commit()` | `commit() -> CommitResult` | `flow_commit(h) -> json` | `commit(h): String` |
 | `cancel()` | `cancel()` | `flow_cancel(h)` | `cancel(h)` |
 | `learn_edit(pasted, edited)` | `learn_edit() -> Vec<Candidate>` | `flow_learn_edit(h,p,e) -> json` | `learnEdit(h,p,e)` |
@@ -70,6 +71,7 @@ shell UI thread ──start/commit/cancel──▶ control channel (mpsc) ──
 * **Session isolation by construction.** Every `start_session` creates a new ring. `commit` and `cancel` take the producer away synchronously, so audio pushed after that (or before any start) is rejected (`false`, or C `1`). The worker drains a ring to its end after its producer is dropped.
 * **Late context.** `set_context` may arrive at any time before `commit`. Context is read when commit runs, so screen words still reach the Whisper `initial_prompt` and the post-processing.
 * **Partials.** With `partial_interval_ms` set, the worker re-decodes the last 30 s window. These partials are for preview only. `commit` always decodes the whole utterance.
+* **Hands-free endpointing** (D19, `SessionConfig.endpoint_silence_ms`, default off). `push_audio` also feeds a streaming copy of the VAD (`endpoint::Endpointer`: same 20 ms frames, speech bars and 60 ms runs as D16; noise floor from the last 30 s). After ≥ 300 ms of speech and `endpoint_silence_ms` (min 300; recommended 2000) of trailing silence, `poll().endpoint_reached` latches true for the rest of the session. It runs on the pushing thread (a few µs per 20 ms frame), so a slow partial decode on the worker cannot delay it. The core never commits by itself. `flow_router::Router` runs the same detector on its own pushes, so the signal is identical on every route.
 * `max_samples` is a hard safety bound only; the session-length policy lives in the shells (spec §9). Audio past the bound is discarded and `truncated` is set.
 
 ## Commit pipeline
@@ -253,6 +255,9 @@ Prefill-ahead removes 75-90 % of the commit's prefill (≈ 0.7-1.4 s here). Gene
 ## Changelog for shells
 
 All additions are backward compatible: new JSON fields have serde defaults (old JSON still parses, extra fields are ignored by org.json/serde), new `SessionConfig` fields default to the recommended behaviour, and new C/plugin symbols are optional.
+
+2026-10-22 (branch `core-endpoint`):
+* Hands-free endpointing (D19). `SessionConfig.endpoint_silence_ms: Option<u32>` (omitted from JSON when unset, so old servers see the same config). New `FlowCore::poll() -> SessionPoll` / `Router::poll()`: JSON `{"partial": str|null, "endpoint_reached": bool, "speech_ms": u64, "trailing_silence_ms": u64}`; plus `endpoint()`, `endpoint_reached()`. Adopt (shells; flow-ffi owner): export `flow_poll(h) -> json` (C) / `poll(h): String` (JNI) wrapping `Router::poll`; in hands-free mode start sessions with `endpoint_silence_ms: 2000` (a user pref, 300-10000), poll it on the existing partial timer, and on `endpoint_reached` run the normal finish path (stop sound + `commit` + paste), exactly as if the user had pressed the hands-free key. Push-to-talk should leave it unset.
 
 2026-10-20 (branch `core-p1`):
 * `CommitResult.segments` / `plain_text` (CR-2). Adopt: paste `segments` in order (`Break` = pause, `Tab`/`Enter` = key) and stop acting on `press_enter` separately; store `plain_text` in history.

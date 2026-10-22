@@ -129,6 +129,13 @@ pub struct SessionConfig {
     /// backtracking, money/time/date formatting (`postprocess::spoken`).
     /// Off at cleanup level `none`. Default on.
     pub spoken_cleanup: bool,
+    /// Hands-free endpointing (D19): after at least 300 ms of speech, this
+    /// much trailing silence sets `SessionPoll.endpoint_reached` (see
+    /// `FlowCore::poll`). The core never stops by itself; the shell commits
+    /// when it sees the signal. `None` (default) = off. Values below 300
+    /// are raised to 300; `endpoint::RECOMMENDED_SILENCE_MS` = 2000.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub endpoint_silence_ms: Option<u32>,
 }
 
 impl Default for SessionConfig {
@@ -153,6 +160,7 @@ impl Default for SessionConfig {
             hallucination_guard: true,
             llm_prefill: true,
             spoken_cleanup: true,
+            endpoint_silence_ms: None,
         }
     }
 }
@@ -267,6 +275,19 @@ mod tests {
         assert_eq!(c.platform, Platform::Windows);
         assert_eq!(c.max_samples, 16_000 * 60 * 20);
         assert!(c.languages.is_empty());
+        assert_eq!(c.endpoint_silence_ms, None);
+    }
+
+    #[test]
+    fn endpoint_silence_is_opt_in_and_round_trips() {
+        // Off: not serialised, so the JSON an old server sees is unchanged.
+        let off = serde_json::to_value(SessionConfig::default()).unwrap();
+        assert!(off.get("endpoint_silence_ms").is_none());
+        let c: SessionConfig = serde_json::from_str(r#"{"endpoint_silence_ms":1500}"#).unwrap();
+        assert_eq!(c.endpoint_silence_ms, Some(1500));
+        let back: SessionConfig =
+            serde_json::from_value(serde_json::to_value(&c).unwrap()).unwrap();
+        assert_eq!(back, c);
     }
 
     #[test]
