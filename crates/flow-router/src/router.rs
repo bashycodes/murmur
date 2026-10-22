@@ -210,13 +210,24 @@ impl State {
     }
 
     /// The stored key for `p`, only when it was saved for `p`'s host and
-    /// adapter.
+    /// adapter; an empty key for a keyless self-hosted server.
+    /// A key stored for the id but bound elsewhere disables the keyless
+    /// path too: the form must then be given the key (S1).
     fn key_for(&self, p: &CloudProviderConfig) -> Option<SecretString> {
-        self.cloud_keys
-            .get(&p.id)
-            .filter(|k| !k.key.is_empty() && !p.host().is_empty() && k.matches(p))
-            .map(|k| k.key.clone())
+        match self.cloud_keys.get(&p.id).filter(|k| !k.key.is_empty()) {
+            Some(k) => (!p.host().is_empty() && k.matches(p)).then(|| k.key.clone()),
+            None => keyless_ok(p).then(SecretString::default),
+        }
     }
+}
+
+/// A self-hosted OpenAI-compatible server (speaches, LocalAI, …) on a
+/// loopback / LAN / Tailscale host may run without an API key: the
+/// openai_compat adapter then sends no `Authorization` header (review P3).
+/// Public hosts and the other adapters always need a key.
+fn keyless_ok(p: &CloudProviderConfig) -> bool {
+    let host = p.host();
+    p.adapter == "openai_compat" && !host.is_empty() && crate::net::classify(&host).plaintext_ok()
 }
 
 /// Which configured endpoint a backend talks to: re-checked against the
@@ -873,7 +884,7 @@ impl Router {
         }
         let typed = key.filter(|k| !k.is_empty());
         let key = typed.or_else(|| self.state.lk().key_for(p));
-        let Some(key) = key.filter(|k| !k.is_empty()) else {
+        let Some(key) = key.filter(|k| !k.is_empty() || keyless_ok(p)) else {
             let stored = self.has_cloud_key(&p.id);
             let msg = if stored {
                 "enter the API key: the stored key is only sent to the saved host"
