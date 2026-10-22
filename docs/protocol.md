@@ -71,7 +71,7 @@ The server bounds every client-controlled size (`crates/flow-server/src/limits.r
 | WebSocket message / frame | 128 KiB (larger → the connection closes) |
 | `max_samples` | clamped to the server's `max_session_s` × 16 000 (advertised as `hello_ok.max_samples`) |
 | `ring_capacity_samples` | ≤ that cap + 30 s replay headroom, else `too_large` |
-| `llm_timeout_ms` | ≤ 30 000, else `too_large` |
+| `llm_timeout_ms` | ≤ 120 000, else `too_large` |
 | `partial_interval_ms` | raised to at least 100 |
 | `context` | `before`/`selected`/`after`/`app_id`/`url_host` ≤ 8 KiB each; `screen_words` + `file_names` ≤ 1 000 entries, else `too_large` |
 

@@ -10,8 +10,9 @@ use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
 /// Extra ring room on top of the session cap: the router enlarges the ring
 /// to replay buffered audio after a fallback (`REPLAY_HEADROOM`).
 pub const RING_HEADROOM_SAMPLES: usize = SAMPLE_RATE * 30;
-/// Longest LLM cleanup budget a client may ask for.
-pub const MAX_LLM_TIMEOUT_MS: u64 = 30_000;
+/// Longest LLM cleanup budget a client may ask for (contract tests use 60 s
+/// for a deterministic CPU decode).
+pub const MAX_LLM_TIMEOUT_MS: u64 = 120_000;
 /// Partials are polled every 100 ms; asking for more is wasted decodes.
 pub const MIN_PARTIAL_INTERVAL_MS: u32 = 100;
 /// `before` / `selected` / `after` / `app_id` / `url_host`, each (bytes).
