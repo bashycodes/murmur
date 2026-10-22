@@ -39,6 +39,9 @@ struct Fake {
     start_delay: Mutex<std::time::Duration>,
     /// commit blocks until cancel() (or 10 s).
     block_commit: AtomicBool,
+    /// The next push_audio / start_session panics (C8).
+    panic_push: AtomicBool,
+    panic_start: AtomicBool,
 }
 
 impl Fake {
@@ -58,6 +61,8 @@ impl Fake {
             active: AtomicBool::new(false),
             start_delay: Mutex::new(std::time::Duration::ZERO),
             block_commit: AtomicBool::new(false),
+            panic_push: AtomicBool::new(false),
+            panic_start: AtomicBool::new(false),
         })
     }
     fn slow_start(self: Arc<Self>, ms: u64) -> Arc<Self> {
@@ -116,6 +121,9 @@ impl Backend for Fake {
     }
     fn start_session(&self, cfg: &SessionConfig) -> Result<StartInfo, BackendError> {
         self.starts.fetch_add(1, Ordering::SeqCst);
+        if self.panic_start.swap(false, Ordering::SeqCst) {
+            panic!("fake start panic");
+        }
         std::thread::sleep(*self.start_delay.lock().unwrap());
         *self.last_cfg.lock().unwrap() = Some(cfg.clone());
         match *self.start.lock().unwrap() {
@@ -132,6 +140,9 @@ impl Backend for Fake {
         }
     }
     fn push_audio(&self, pcm: &[i16]) -> bool {
+        if self.panic_push.swap(false, Ordering::SeqCst) {
+            panic!("fake push panic");
+        }
         if !self.active.load(Ordering::SeqCst) || self.dead() {
             return false;
         }
@@ -1039,4 +1050,115 @@ fn cancel_during_a_local_commit_aborts() {
     assert!(took < std::time::Duration::from_secs(2), "{took:?}");
     assert_eq!(r.status, CommitStatus::Error);
     assert!(k.local.cancels.load(Ordering::SeqCst) >= 1);
+}
+
+#[test]
+fn replay_past_max_samples_reports_truncated() {
+    let k = rig_with(
+        cfg(true, true),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).with_commit(CommitMode::Fail(Failure::Timeout)),
+    );
+    k.router
+        .start_session(SessionConfig {
+            max_samples: 12_000,
+            ..Default::default()
+        })
+        .unwrap();
+    for _ in 0..20 {
+        k.router.push_audio(&[1; 1000]);
+    }
+    let r = k.router.commit();
+    assert_eq!(route(&r).engine, "local");
+    assert_eq!(k.local.received(), 12_000, "replay is capped");
+    assert!(r.truncated, "audio past max_samples was lost: {r:?}");
+}
+
+#[test]
+fn concurrent_starts_cancel_the_session_they_replace() {
+    // C7: the second start must not orphan the first session.
+    let k = rig_with(
+        cfg(false, true),
+        Fake::new(EngineKind::Local).slow_start(300),
+        Fake::new(EngineKind::Remote),
+    );
+    std::thread::scope(|sc| {
+        let a = sc.spawn(|| k.router.start_session(SessionConfig::default()));
+        // B gets past its own "cancel the open session" step while A is
+        // still starting, then waits for A.
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let b = sc.spawn(|| k.router.start_session(SessionConfig::default()));
+        a.join().unwrap().unwrap();
+        b.join().unwrap().unwrap();
+    });
+    assert_eq!(k.local.starts(), 2);
+    assert_eq!(
+        k.local.cancels.load(Ordering::SeqCst),
+        1,
+        "the replaced session is cancelled"
+    );
+    k.router.cancel();
+}
+
+#[test]
+fn a_backend_panic_does_not_wedge_the_router() {
+    // C8: a panic while the router holds its session (push) or state
+    // (start) lock must not poison it for good.
+    let k = rig(false, true);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    k.local.panic_push.store(true, Ordering::SeqCst);
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        k.router.push_audio(&[1; 100])
+    }));
+    assert!(r.is_err(), "the panic reaches the caller");
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(dictate(&k.router).final_text, "local 16000 com.slack");
+
+    k.local.panic_start.store(true, Ordering::SeqCst);
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        k.router.start_session(SessionConfig::default())
+    }));
+    assert!(r.is_err());
+    let _ = k.router.config();
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(dictate(&k.router).final_text, "local 16000 com.slack");
+    assert!(k.router.poll().route.is_none(), "no session left open");
+}
+
+#[test]
+fn endpoint_survives_a_mid_session_failover() {
+    // P4: the endpointer lives in the router, so a server death between the
+    // speech and the trailing silence neither resets nor re-triggers it.
+    let k = rig_with(
+        cfg(true, true),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).dying_after(16 * 1000),
+    );
+    k.router
+        .start_session(SessionConfig {
+            endpoint_silence_ms: Some(1000),
+            ..Default::default()
+        })
+        .unwrap();
+    let speech: Vec<i16> = (0..16 * 1200)
+        .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)
+        .collect();
+    for c in speech.chunks(640) {
+        k.router.push_audio(c);
+    }
+    assert!(!k.router.endpoint_reached());
+    for c in vec![0i16; 16 * 1100].chunks(640) {
+        k.router.push_audio(c);
+    }
+    let p = k.router.poll();
+    assert_eq!(
+        p.route.as_ref().map(|r| r.engine),
+        Some(EngineKind::Local),
+        "switched"
+    );
+    assert!(p.session.endpoint_reached, "{p:?}");
+    assert!(p.session.speech_ms >= 1000, "{p:?}");
+    let r = k.router.commit();
+    assert_eq!(route(&r).engine, "local");
+    assert_eq!(k.local.received(), 16 * 2300, "replay + live, nothing lost");
 }
