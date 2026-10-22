@@ -100,7 +100,16 @@ impl Platform for WinPlatform {
     }
 
     fn start_capture(&self, device: Option<String>, sink: AudioSink) -> Result<(), String> {
-        let c = Capture::start(device, sink)?;
+        self.start_capture_reporting(device, sink, Box::new(|_| {}))
+    }
+
+    fn start_capture_reporting(
+        &self,
+        device: Option<String>,
+        sink: AudioSink,
+        on_error: crate::controller::CaptureError,
+    ) -> Result<(), String> {
+        let c = Capture::start(device, sink, Arc::from(on_error))?;
         *self.capture.lock().unwrap() = Some(c);
         Ok(())
     }
@@ -136,6 +145,10 @@ impl Platform for WinPlatform {
         let _ = self.app.emit_to(OVERLAY, "dictation:preview", text);
     }
 
+    fn live_route(&self, label: Option<&crate::core_api::LiveRouteLabel>) {
+        let _ = self.app.emit_to(OVERLAY, "dictation:live-route", label);
+    }
+
     fn send_key(&self, key: crate::core_api::PasteKey) -> Result<(), String> {
         use crate::core_api::PasteKey;
         use crate::input::{vk, Stroke};
@@ -154,6 +167,29 @@ impl Platform for WinPlatform {
 
     fn copy_text(&self, text: &str) -> Result<(), String> {
         paste::win::copy_text(text)
+    }
+
+    fn focus_target(&self) -> Option<paste::FocusTarget> {
+        use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+        let (hwnd, exe, _) = uia::foreground_app();
+        if hwnd.is_invalid() {
+            return None;
+        }
+        let mut pid = 0u32;
+        unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+        Some(paste::FocusTarget {
+            hwnd: hwnd.0 as usize,
+            pid,
+            exe: crate::context::exe_name(&exe),
+        })
+    }
+
+    fn focused_is_password(&self) -> Option<bool> {
+        uia::focused_is_password(Duration::from_millis(300))
+    }
+
+    fn wait_shortcut_released(&self) {
+        paste::win::wait_modifiers_released(Duration::from_millis(1000));
     }
 
     fn field_reader(&self) -> Option<Box<dyn crate::learn::FieldReader>> {
@@ -656,6 +692,9 @@ struct DevView {
     check: DevCheck,
     route: Option<RouteView>,
     cloud: CloudView,
+    /// Providers whose key was just removed because their host or adapter
+    /// changed (the page asks for the key again).
+    keys_cleared: Vec<String>,
 }
 
 fn cloud_view(state: &AppState, dev: &DevSettings) -> CloudView {
@@ -681,11 +720,12 @@ fn cloud_view(state: &AppState, dev: &DevSettings) -> CloudView {
 fn dev_view(state: &AppState) -> DevView {
     let caps = BuildCaps::current();
     let dev = state.prefs.read().unwrap().developer.clone();
-    let form = DevForm::from_settings(&dev, &dev.token());
+    // S18: the decrypted token never goes to the webview.
+    let form = DevForm::for_page(&dev);
     let router = state.router.get();
     DevView {
         cloud: cloud_view(state, &dev),
-        check: dev_check(&form, &*state.creds),
+        check: dev_check(&form.with_token(&dev), &*state.creds),
         form,
         caps,
         capabilities: router
@@ -701,6 +741,7 @@ fn dev_view(state: &AppState) -> DevView {
         visible: dev.tab_visible(caps),
         version: env!("CARGO_PKG_VERSION"),
         route: router.map(|r| r.route_view()),
+        keys_cleared: Vec::new(),
     }
 }
 
@@ -709,10 +750,15 @@ fn dev_view(state: &AppState) -> DevView {
 /// Cloud: consent is reconciled against the saved settings (a new host or
 /// adapter asks again), and a deleted provider's key leaves Credential
 /// Manager and the router.
-fn save_dev(app: &AppHandle, state: &AppState, mut dev: DevSettings) -> Result<(), String> {
+fn save_dev(
+    app: &AppHandle,
+    state: &AppState,
+    mut dev: DevSettings,
+) -> Result<Vec<String>, String> {
     let mut prefs = state.prefs.read().unwrap().clone();
     crate::dev_settings::reconcile_consent(&prefs.developer.cloud, &mut dev.cloud);
     let removed = crate::dev_settings::removed_providers(&prefs.developer.cloud, &dev.cloud);
+    let old_cloud = prefs.developer.cloud.clone();
     prefs.developer = dev;
     if let Some(r) = state.router.get() {
         r.apply(&prefs.developer)?;
@@ -726,10 +772,17 @@ fn save_dev(app: &AppHandle, state: &AppState, mut dev: DevSettings) -> Result<(
             r.router().set_cloud_key(&id, None);
         }
     }
+    // S4: a provider whose host or adapter changed loses its key (never
+    // re-sent to the new endpoint); the rest are re-bound to the saved
+    // providers with `set_cloud_key_for`.
+    let cleared = credentials::reconcile_keys(&*state.creds, &old_cloud, &prefs.developer.cloud);
+    if let Some(r) = state.router.get() {
+        r.load_cloud_keys(&prefs.developer, &*state.creds);
+    }
     ensure_local(state, &prefs);
     *state.prefs.write().unwrap() = prefs;
     probe_in_background(app);
-    Ok(())
+    Ok(cleared)
 }
 
 /// Refresh "Server info" off the UI thread when a server is configured.
@@ -760,7 +813,8 @@ fn dev_get(state: tauri::State<'_, AppState>) -> DevView {
 
 #[tauri::command]
 fn dev_validate(state: tauri::State<'_, AppState>, form: DevForm) -> DevCheck {
-    dev_check(&form, &*state.creds)
+    let saved = state.prefs.read().unwrap().developer.clone();
+    dev_check(&form.with_token(&saved), &*state.creds)
 }
 
 #[tauri::command]
@@ -769,7 +823,8 @@ fn dev_set(
     state: tauri::State<'_, AppState>,
     form: DevForm,
 ) -> Result<DevView, Vec<FieldError>> {
-    let (mut dev, token) = form.validate(BuildCaps::current())?;
+    let saved = state.prefs.read().unwrap().developer.clone();
+    let (mut dev, token) = form.with_token(&saved).validate(BuildCaps::current())?;
     let as_error = |m: String| {
         vec![FieldError {
             field: "host",
@@ -783,8 +838,11 @@ fn dev_set(
             message: m,
         }]
     })?;
-    save_dev(&app, &state, dev).map_err(as_error)?;
-    Ok(dev_view(&state))
+    let cleared = save_dev(&app, &state, dev).map_err(as_error)?;
+    Ok(DevView {
+        keys_cleared: cleared,
+        ..dev_view(&state)
+    })
 }
 
 /// Probe the form's (unsaved) server; blocking, so async = off the UI thread.
@@ -793,12 +851,22 @@ async fn dev_test_connection(
     app: AppHandle,
     form: DevForm,
 ) -> Result<flow_router::HealthReport, String> {
-    let (dev, token) = form.validate(BuildCaps::current()).map_err(|e| {
-        e.into_iter()
-            .map(|e| e.message)
-            .collect::<Vec<_>>()
-            .join("; ")
-    })?;
+    let saved = app
+        .state::<AppState>()
+        .prefs
+        .read()
+        .unwrap()
+        .developer
+        .clone();
+    let (dev, token) = form
+        .with_token(&saved)
+        .validate(BuildCaps::current())
+        .map_err(|e| {
+            e.into_iter()
+                .map(|e| e.message)
+                .collect::<Vec<_>>()
+                .join("; ")
+        })?;
     let server = router_adapter::server_config(&dev, &token)?;
     let state = app.state::<AppState>();
     let router = state.router.get().cloned().ok_or("router not ready")?;
@@ -881,20 +949,46 @@ fn valid_provider_id(id: &str) -> Result<(), String> {
     }
 }
 
-/// Store a key: Credential Manager, then the router. The key is never
+/// Store a key: Credential Manager, then the router. The key is bound to
+/// the provider as shown in the form (`provider`; its host + adapter), so
+/// it is only ever sent there (`set_cloud_key_for`, review S4). It is never
 /// echoed back; the page gets `KeyState` only.
 #[tauri::command]
 fn dev_cloud_set_key(
     state: tauri::State<'_, AppState>,
     provider_id: String,
     key: String,
+    provider: Option<flow_router::CloudProviderConfig>,
 ) -> Result<KeyState, String> {
     valid_provider_id(&provider_id)?;
     let key = credentials::normalize_key(&key)?;
-    state.creds.set(&provider_id, &key)?;
+    let saved = state
+        .prefs
+        .read()
+        .unwrap()
+        .developer
+        .cloud
+        .providers
+        .iter()
+        .find(|p| p.id == provider_id)
+        .cloned();
+    let target = match provider {
+        Some(p) => {
+            let cloud = crate::dev_settings::normalize_cloud(&flow_router::CloudConfig {
+                providers: vec![p],
+                ..Default::default()
+            });
+            let mut p = cloud.providers.into_iter().next().ok_or("no provider")?;
+            p.id = provider_id.clone();
+            p
+        }
+        None => saved.ok_or("Add the provider before saving its key")?,
+    };
+    flow_router::cloud::parse_base_url(&target.base_url)?;
+    credentials::store_bound(&*state.creds, &target, &key)?;
     if let Some(r) = state.router.get() {
         r.router()
-            .set_cloud_key(&provider_id, Some(flow_router::SecretString::new(key)));
+            .set_cloud_key_for(&target, Some(flow_router::SecretString::new(key)));
     }
     Ok(credentials::key_state(&*state.creds, &provider_id))
 }

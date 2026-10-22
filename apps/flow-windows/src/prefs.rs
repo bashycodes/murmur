@@ -86,6 +86,10 @@ pub struct Prefs {
     /// Show the live partial transcript above the pill.
     pub live_preview: bool,
     pub live_preview_interval_ms: u32,
+    /// Hands-free dictation stops by itself after this much silence
+    /// following speech (D19; 300-10000 ms, 0 = never). Push-to-talk is
+    /// never ended by silence.
+    pub hands_free_silence_ms: u32,
     /// Local LLM cleanup (llama.cpp via the `flow_llm` plugin). Off by
     /// default (DECISIONS D5): deterministic post-processing always runs.
     pub llm_enabled: bool,
@@ -141,6 +145,7 @@ impl Default for Prefs {
             spoken_cleanup: true,
             live_preview: true,
             live_preview_interval_ms: 1500,
+            hands_free_silence_ms: 2000,
             llm_enabled: false,
             llm_model_path: None,
             llm_lib_path: None,
@@ -219,7 +224,27 @@ impl Prefs {
                 return Err("shortcuts must differ from each other".into());
             }
         }
+        let hf = self.hands_free_silence_ms;
+        if hf != 0 && !(300..=10_000).contains(&hf) {
+            return Err("hands-free auto-stop must be 0.3-10 s of silence (or off)".into());
+        }
         Ok(())
+    }
+
+    /// `SessionConfig.endpoint_silence_ms` for a hands-free session
+    /// (`None` = auto-stop off).
+    pub fn hands_free_endpoint(&self) -> Option<u32> {
+        (self.hands_free_silence_ms != 0).then(|| self.hands_free_silence_ms.clamp(300, 10_000))
+    }
+
+    /// Session config for a dictation started in `mode`: only hands-free
+    /// sessions get the endpoint (D19).
+    pub fn session_config_for(&self, mode: crate::dictation::Mode) -> SessionConfig {
+        let mut c = self.session_config();
+        if mode == crate::dictation::Mode::Locked {
+            c.endpoint_silence_ms = self.hands_free_endpoint();
+        }
+        c
     }
 
     pub fn policy(&self) -> Policy {
@@ -453,6 +478,28 @@ mod tests {
         let e: DictEntry =
             serde_json::from_str(r#"{"word":"a","replacement":"b","isSnippet":true}"#).unwrap();
         assert!(e.is_snippet);
+    }
+
+    #[test]
+    fn hands_free_endpoint_only_for_locked_sessions() {
+        use crate::dictation::Mode;
+        let mut p = Prefs::default();
+        assert_eq!(p.hands_free_silence_ms, 2000);
+        assert_eq!(p.session_config_for(Mode::Ptt).endpoint_silence_ms, None);
+        assert_eq!(
+            p.session_config_for(Mode::Locked).endpoint_silence_ms,
+            Some(2000)
+        );
+        p.hands_free_silence_ms = 0;
+        assert_eq!(p.session_config_for(Mode::Locked).endpoint_silence_ms, None);
+        assert_eq!(p.validate(), Ok(()));
+        p.hands_free_silence_ms = 100;
+        assert!(p.validate().is_err());
+        p.hands_free_silence_ms = 10_001;
+        assert!(p.validate().is_err());
+        // Old prefs.json without the field: default 2 s.
+        let old: Prefs = serde_json::from_str("{}").unwrap();
+        assert_eq!(old.hands_free_silence_ms, 2000);
     }
 
     #[test]

@@ -97,6 +97,12 @@ pub enum Input {
     },
     /// Overlay ✓ clicked: finish and paste (any listening mode).
     Finish,
+    /// The background session start returned with a route to show (the
+    /// controller handles it; the machine ignores it).
+    Started {
+        session: SessionId,
+        route: crate::core_api::SessionRoute,
+    },
     /// Mic couldn't be opened / core refused the session.
     StartFailed {
         session: SessionId,

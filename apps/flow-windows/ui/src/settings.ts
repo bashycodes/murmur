@@ -30,6 +30,7 @@ interface Prefs {
   paste_method: string;
   restore_clipboard: boolean;
   max_dictation_minutes: number;
+  hands_free_silence_ms: number;
   retention: string;
   model_path: string | null;
   asr_engine: string;
@@ -246,6 +247,8 @@ function fillForm(prefs: Prefs): void {
   $<HTMLSelectElement>("paste_method").value = prefs.paste_method;
   $<HTMLInputElement>("languages").value = prefs.languages.join(", ");
   $<HTMLInputElement>("max_dictation_minutes").value = String(prefs.max_dictation_minutes);
+  $<HTMLInputElement>("hands_free_silence_s").value =
+    prefs.hands_free_silence_ms > 0 ? String(prefs.hands_free_silence_ms / 1000) : "0";
   $<HTMLInputElement>("llm_model_path").value = prefs.llm_model_path ?? "";
   $<HTMLInputElement>("llm_lib_path").value = prefs.llm_lib_path ?? "";
   $<HTMLInputElement>("llm_timeout_ms").value = String(prefs.llm_timeout_ms);
@@ -280,6 +283,10 @@ function readForm(base: Prefs): Prefs {
     1,
     parseInt($<HTMLInputElement>("max_dictation_minutes").value, 10) || 20,
   );
+  // Hands-free auto-stop (D19): 0 = off, else 0.3-10 s of silence.
+  const hf = parseFloat($<HTMLInputElement>("hands_free_silence_s").value);
+  next.hands_free_silence_ms =
+    !Number.isFinite(hf) || hf <= 0 ? 0 : Math.round(Math.min(10, Math.max(0.3, hf)) * 1000);
   next.llm_model_path = $<HTMLInputElement>("llm_model_path").value.trim() || null;
   next.llm_lib_path = $<HTMLInputElement>("llm_lib_path").value.trim() || null;
   next.llm_timeout_ms = Math.min(
@@ -681,6 +688,7 @@ interface DevForm {
   tls: boolean;
   tls_pin_sha256: string;
   token: string;
+  token_saved?: boolean;
   connect_timeout_ms: number;
   commit_timeout_base_ms: number;
   health_ttl_s: number;
@@ -762,6 +770,7 @@ interface DevView {
   check: DevCheck;
   route: RouteView;
   cloud: CloudView;
+  keys_cleared?: string[];
 }
 
 interface SessionTest {
@@ -819,6 +828,7 @@ function fillDev(f: DevForm): void {
   for (const k of DEV_BOOL) $<HTMLInputElement>(`dev_${k}`).checked = f[k];
   for (const k of DEV_TEXT) $<HTMLInputElement>(`dev_${k}`).value = f[k];
   for (const k of DEV_NUM) $<HTMLInputElement>(`dev_${k}`).value = String(f[k]);
+  showTokenSaved(!!f.token_saved);
   devOrder = [...f.route_order];
   $<HTMLInputElement>("dev_allow_cloud").checked = f.allow_cloud;
   cloudCfg = structuredClone(f.cloud);
@@ -827,6 +837,14 @@ function fillDev(f: DevForm): void {
   if (!cloudCfg.providers.some((p) => p.id === cloudSel)) cloudSel = cloudCfg.active || null;
   renderRoutes();
   renderCloud();
+}
+
+// The saved token never comes back to the page (S18): an empty field
+// keeps it; typing replaces it; Clear removes it on Save.
+function showTokenSaved(saved: boolean): void {
+  $<HTMLInputElement>("dev_token").placeholder = saved
+    ? "saved (hidden) — leave empty to keep it"
+    : "from flow-server gen-token";
 }
 
 function renderRoutes(): void {
@@ -890,6 +908,10 @@ function scheduleCheck(): void {
 function healthText(h: Health): string {
   if (!h.ok) {
     const code = h.error ?? "error";
+    // flow-remote refuses ws:// to an address that is not private/tailnet (S6).
+    if (/plaintext (refused|to public address)/.test(h.message ?? "")) {
+      return "Server needs TLS — its address is not private (or resolves to a public one); turn on TLS and set a certificate pin";
+    }
     const why = hint(code);
     return `${code}${h.message ? `: ${h.message}` : ""}${why ? ` — ${why}` : ""}`;
   }
@@ -1031,7 +1053,21 @@ async function devSave(): Promise<void> {
     if (!(await askConsent(active))) return;
   }
   const v = await devCall<DevView>("dev_set", { form: readDev() }, "Saved — applies to the next dictation");
-  if (v) showDev(v);
+  if (v) {
+    showDev(v);
+    const cleared = v.keys_cleared ?? [];
+    if (cleared.length > 0) {
+      // A key is bound to the host + adapter it was saved for (S4).
+      const names = cleared
+        .map((id) => v.form.cloud.providers.find((p) => p.id === id)?.label || id)
+        .join(", ");
+      setStatus(
+        "dev_status",
+        `Saved. The API key of ${names} was removed because its host or adapter changed — enter the key again.`,
+        false,
+      );
+    }
+  }
 }
 
 async function devTestConnection(): Promise<void> {
@@ -1279,7 +1315,8 @@ async function saveKey(): Promise<void> {
   const input = $<HTMLInputElement>("dev_cloud_key");
   if (!p || input.value.trim() === "") return;
   try {
-    cloudKeys[p.id] = await invoke<KeyState>("dev_cloud_set_key", { providerId: p.id, key: input.value });
+    // Bound to this form's host + adapter: the key is only sent there.
+    cloudKeys[p.id] = await invoke<KeyState>("dev_cloud_set_key", { providerId: p.id, key: input.value, provider: p });
     input.value = "";
     setStatus("dev_status", "Key saved in Credential Manager", true);
   } catch (e) {
@@ -1425,6 +1462,8 @@ $<HTMLButtonElement>("dev_token_paste").addEventListener("click", () => {
 });
 $<HTMLButtonElement>("dev_token_clear").addEventListener("click", () => {
   $<HTMLInputElement>("dev_token").value = "";
+  if (devView) devView.form.token_saved = false;
+  showTokenSaved(false);
   scheduleCheck();
 });
 $<HTMLElement>("version_row").addEventListener("click", versionTapped);
