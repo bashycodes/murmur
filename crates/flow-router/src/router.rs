@@ -7,7 +7,8 @@
 //! list is the legacy D17 `prefer` order, which never contains the cloud.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
@@ -255,6 +256,43 @@ struct Active {
     /// so every route (local, server, cloud) gives the same signal with no
     /// protocol change, and a fallback replay does not reset it.
     endpointer: Option<Endpointer>,
+    /// A failover in progress on a helper thread (review C3): audio keeps
+    /// going into `buffer` until it is installed.
+    switching: Option<Switch>,
+}
+
+/// A failover running off the caller's thread.
+struct Switch {
+    rx: mpsc::Receiver<SwitchDone>,
+    /// Audio pushed while the helper connects and replays; handed to the
+    /// new backend on install (capped at `max_samples`).
+    tail: Vec<i16>,
+    cancel: Arc<AtomicBool>,
+    /// The first candidate, shown as the live route meanwhile.
+    next: Option<(EngineKind, Ident)>,
+    /// The failure that started it (for the dead-session message).
+    cause: BackendError,
+}
+
+/// What the helper thread hands back.
+struct SwitchDone {
+    started: Option<Hop>,
+    rest: VecDeque<Hop>,
+    failures: Vec<(EngineKind, Failure)>,
+    dead: Option<String>,
+}
+
+/// Messages to a blocked `commit` (review C4).
+enum CommitMsg {
+    Done(Box<Result<CommitResult, BackendError>>),
+    Cancelled,
+}
+
+/// What `cancel()` needs to reach a commit in progress.
+struct CommitCtl {
+    cancelled: Arc<AtomicBool>,
+    engine: Option<Arc<dyn Backend>>,
+    wake: mpsc::Sender<CommitMsg>,
 }
 
 /// The §9 session API over local, remote and cloud backends. Thread-safe;
@@ -262,6 +300,8 @@ struct Active {
 pub struct Router {
     state: Mutex<State>,
     session: Mutex<Option<Active>>,
+    /// The commit in progress, if any (`cancel` aborts it, review C4).
+    committing: Mutex<Option<CommitCtl>>,
     remote_factory: Option<RemoteFactory>,
     cloud_factory: Option<CloudFactory>,
 }
@@ -312,6 +352,7 @@ impl Router {
                 cloud_adapters: Vec::new(),
             }),
             session: Mutex::new(None),
+            committing: Mutex::new(None),
             remote_factory: remote,
             cloud_factory: None,
         }
@@ -511,7 +552,9 @@ impl Router {
     /// "Transcribing via …" label, and `queued` (server busy, waiting for
     /// a worker). Additive (2026-10-22).
     pub fn start_session_info(&self, cfg: SessionConfig) -> Result<StartInfo, RouterError> {
-        self.cancel();
+        // Only the open session: a commit still running for the previous
+        // dictation (hands-free back-to-back) is not aborted.
+        self.cancel_session();
         let mut st = self.state.lock().unwrap();
         st.last_dictionary = cfg.dictionary.clone();
         let (active, res) = self.start_routes(&mut st, cfg);
@@ -530,20 +573,27 @@ impl Router {
         self.session.lock().unwrap().as_ref()?.live_route()
     }
 
+    /// Never blocks on the network: a failover found here connects on a
+    /// helper thread while the audio keeps being buffered (review C3).
     pub fn push_audio(&self, pcm: &[i16]) -> bool {
         let mut g = self.session.lock().unwrap();
         let Some(a) = g.as_mut() else { return false };
         if let Some(ep) = a.endpointer.as_mut() {
             ep.push_i16(pcm);
         }
+        if let Some(sw) = a.switching.as_mut() {
+            let room = a.cfg.max_samples.saturating_sub(sw.tail.len());
+            sw.tail.extend_from_slice(&pcm[..pcm.len().min(room)]);
+            a.samples += pcm.len() as u64;
+            a.buffer_audio(pcm);
+            self.poll_switch(a, false);
+            return true;
+        }
         if a.engine.is_none() {
             return true;
         }
         a.samples += pcm.len() as u64;
-        if let Some(buf) = a.buffer.as_mut() {
-            let room = a.cfg.max_samples.saturating_sub(buf.len());
-            buf.extend_from_slice(&pcm[..pcm.len().min(room)]);
-        }
+        a.buffer_audio(pcm);
         let engine = a.engine.clone().unwrap();
         if a.kind == EngineKind::Local {
             engine.push_audio(pcm);
@@ -556,7 +606,7 @@ impl Router {
         if let Some(e) = failure {
             let e = normalize_mid_session(e);
             self.note_failure(a.kind, e.kind);
-            self.switch_next(a, e);
+            self.begin_switch(a, e);
         }
         true
     }
@@ -564,6 +614,9 @@ impl Router {
     pub fn set_context(&self, ctx: FieldContext) {
         let mut g = self.session.lock().unwrap();
         let Some(a) = g.as_mut() else { return };
+        if a.switching.is_some() {
+            self.poll_switch(a, false);
+        }
         if let Some(e) = &a.engine {
             e.set_context(&ctx);
         }
@@ -590,10 +643,13 @@ impl Router {
     /// one call. Poll it on the partial timer: `route` changes when a
     /// mid-session failure switches route (e.g. server dies → local).
     pub fn poll(&self) -> RouterPoll {
-        let g = self.session.lock().unwrap();
-        let Some(a) = g.as_ref() else {
+        let mut g = self.session.lock().unwrap();
+        let Some(a) = g.as_mut() else {
             return RouterPoll::default();
         };
+        if a.switching.is_some() {
+            self.poll_switch(a, false);
+        }
         let partial = a.engine.as_ref().and_then(|e| e.partial());
         RouterPoll {
             session: SessionPoll::new(partial, a.endpointer.as_ref().map(Endpointer::state)),
@@ -602,21 +658,58 @@ impl Router {
     }
 
     /// Never fails: errors come back as an `ERROR` result. `route` is set
-    /// whenever a session was started.
+    /// whenever a session was started. A `cancel()` from another thread
+    /// while this blocks returns at once with ERROR `cancelled` (the engine
+    /// is told to abort; no fallback is tried; review C4).
     pub fn commit(&self) -> CommitResult {
         let Some(mut a) = self.session.lock().unwrap().take() else {
             return error_result("no active session", None);
         };
-        let r = self.commit_active(&mut a);
+        let (tx, rx) = mpsc::channel();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        *self.committing.lock().unwrap() = Some(CommitCtl {
+            cancelled: cancelled.clone(),
+            engine: None,
+            wake: tx.clone(),
+        });
+        let r = self.commit_active(&mut a, &rx, &tx, &cancelled);
+        *self.committing.lock().unwrap() = None;
+        if cancelled.load(Ordering::SeqCst) {
+            if let Some(sw) = a.switching.take() {
+                sw.cancel.store(true, Ordering::SeqCst);
+            }
+        }
         self.state.lock().unwrap().last_route = r.route.clone();
         r
     }
 
+    /// Abort the open session, or (with none open) the commit in progress
+    /// on another thread. Idempotent.
     pub fn cancel(&self) {
-        let a = self.session.lock().unwrap().take();
-        if let Some(e) = a.and_then(|a| a.engine) {
+        if self.cancel_session() {
+            return;
+        }
+        if let Some(c) = self.committing.lock().unwrap().as_ref() {
+            c.cancelled.store(true, Ordering::SeqCst);
+            if let Some(e) = &c.engine {
+                e.cancel();
+            }
+            let _ = c.wake.send(CommitMsg::Cancelled);
+        }
+    }
+
+    /// Drop the open session (not a running commit). True if there was one.
+    fn cancel_session(&self) -> bool {
+        let Some(mut a) = self.session.lock().unwrap().take() else {
+            return false;
+        };
+        if let Some(sw) = a.switching.take() {
+            sw.cancel.store(true, Ordering::SeqCst);
+        }
+        if let Some(e) = a.engine {
             e.cancel();
         }
+        true
     }
 
     /// Always local and model-free: same answer in every build.
@@ -900,12 +993,12 @@ impl Router {
                 || self.ident_allowed(&mut st, &a.ident)
         };
         if !current_ok {
-            self.switch_next(
+            self.begin_switch(
                 a,
                 BackendError::new(Failure::CloudNotConfigured, "cloud turned off mid-session"),
             );
         }
-        if a.fallbacks.is_empty() {
+        if a.fallbacks.is_empty() && a.switching.is_none() {
             a.buffer = None;
         }
     }
@@ -1102,29 +1195,69 @@ impl Router {
         }
     }
 
-    fn commit_active(&self, a: &mut Active) -> CommitResult {
+    fn commit_active(
+        &self,
+        a: &mut Active,
+        rx: &mpsc::Receiver<CommitMsg>,
+        tx: &mpsc::Sender<CommitMsg>,
+        cancelled: &AtomicBool,
+    ) -> CommitResult {
+        let cancelled_result = |a: &Active| error_result("cancelled", Some(a.route.clone()));
         loop {
+            if cancelled.load(Ordering::SeqCst) {
+                return cancelled_result(a);
+            }
+            if a.switching.is_some() && !self.wait_switch(a, cancelled) {
+                return cancelled_result(a);
+            }
             if let Some(msg) = a.dead.clone() {
                 return error_result(msg, Some(a.route.clone()));
             }
             let engine = a.engine.clone().expect("live session has an engine");
+            let deadline = if a.kind == EngineKind::Local {
+                far_deadline()
+            } else {
+                if let Some(e) = a.relevant_failure(engine.session_failure()) {
+                    let e = normalize_mid_session(e);
+                    self.note_failure(a.kind, e.kind);
+                    self.begin_switch(a, e);
+                    continue;
+                }
+                let audio_ms = a.samples * 1000 / SAMPLE_RATE as u64;
+                self.commit_deadline(a.kind, audio_ms, &a.cfg)
+            };
+            // The engine commits on a helper thread so `cancel()` can stop
+            // the wait (and tell the engine) at any time.
+            if let Some(c) = self.committing.lock().unwrap().as_mut() {
+                c.engine = Some(engine.clone());
+            }
+            if cancelled.load(Ordering::SeqCst) {
+                engine.cancel();
+                return cancelled_result(a);
+            }
+            let (e2, tx2) = (engine.clone(), tx.clone());
+            std::thread::Builder::new()
+                .name("flow-router-commit".into())
+                .spawn(move || {
+                    let _ = tx2.send(CommitMsg::Done(Box::new(e2.commit(deadline))));
+                })
+                .expect("spawn commit thread");
+            let out = match rx.recv() {
+                Ok(CommitMsg::Done(r)) => *r,
+                Ok(CommitMsg::Cancelled) | Err(_) => return cancelled_result(a),
+            };
+            if cancelled.load(Ordering::SeqCst) {
+                return cancelled_result(a);
+            }
             if a.kind == EngineKind::Local {
-                return finish(engine.commit(far_deadline()), &a.route);
+                return finish(out, &a.route);
             }
-            if let Some(e) = a.relevant_failure(engine.session_failure()) {
-                let e = normalize_mid_session(e);
-                self.note_failure(a.kind, e.kind);
-                self.switch_next(a, e);
-                continue;
-            }
-            let audio_ms = a.samples * 1000 / SAMPLE_RATE as u64;
-            let deadline = self.commit_deadline(a.kind, audio_ms, &a.cfg);
-            match engine.commit(deadline) {
+            match out {
                 Ok(r) => return self.finish_remote(a, r),
                 Err(e) => {
-                    // `switch_next` cancels the failed session.
+                    // `begin_switch` cancels the failed session.
                     self.note_failure(a.kind, e.kind);
-                    self.switch_next(a, e);
+                    self.begin_switch(a, e);
                 }
             }
         }
@@ -1187,9 +1320,11 @@ impl Router {
         r
     }
 
-    /// The current backend failed: continue on the next one in the chain
-    /// with the buffered audio, or die.
-    fn switch_next(&self, a: &mut Active, e: BackendError) {
+    /// The current backend failed: continue on the next allowed one in
+    /// the chain with the buffered audio, or die. The new backend's
+    /// connect + replay run on a helper thread (review C3); audio pushed
+    /// meanwhile is buffered and handed over on install.
+    fn begin_switch(&self, a: &mut Active, e: BackendError) {
         if let Some(r) = a.engine.take() {
             r.cancel();
         }
@@ -1198,74 +1333,248 @@ impl Router {
             a.route.fallback = Some(e.kind.as_str().into());
             a.switched = true;
         }
-        loop {
-            let Some(hop) = a.fallbacks.pop_front() else {
-                a.dead = Some(format!("server_unavailable: {e}"));
-                return;
-            };
-            // S5: the toggles, consent and key may have changed since the
-            // session started; never replay to a route that is now off.
-            if !self.ident_allowed(&mut self.state.lock().unwrap(), &hop.ident) {
-                continue;
-            }
-            if hop.kind == EngineKind::Local && !hop.backend.ready() {
-                if a.fallbacks.is_empty() {
-                    a.dead = Some(format!("server_unavailable: {e}; local model not ready"));
-                    return;
-                }
-                continue;
-            }
-            let more = !a.fallbacks.is_empty();
-            let buf = if more {
-                a.buffer.clone().unwrap_or_default()
-            } else {
-                a.buffer.take().unwrap_or_default()
-            };
-            let mut cfg = a.cfg.clone();
-            cfg.ring_capacity_samples = cfg.ring_capacity_samples.max(buf.len() + REPLAY_HEADROOM);
-            match hop.backend.start_session(&cfg) {
-                Ok(_) => {}
-                Err(le) if hop.kind == EngineKind::Local => {
-                    a.dead = Some(format!(
-                        "server_unavailable: {e}; local engine: {}",
-                        le.message
-                    ));
-                    return;
-                }
-                Err(le) => {
-                    self.note_failure(hop.kind, le.kind);
-                    continue;
-                }
-            }
-            for chunk in buf.chunks(flow_protocol::RECOMMENDED_FRAME_SAMPLES * 10) {
-                hop.backend.push_audio(chunk);
-            }
-            if let Some(ctx) = &a.last_ctx {
-                hop.backend.set_context(ctx);
-            }
-            if hop.kind == EngineKind::Remote {
-                let st = self.state.lock().unwrap();
-                a.route.server.get_or_insert_with(|| st.cfg.server.addr());
-            }
-            if hop.kind != EngineKind::Cloud {
-                a.route.provider = None;
-                a.route.model = None;
-            }
-            a.engine = Some(hop.backend);
-            a.kind = hop.kind;
-            a.ident = hop.ident;
-            a.route.engine = hop.kind.as_str().into();
+        // S5: never replay to a route the current config no longer allows.
+        let hops: VecDeque<Hop> = {
+            let mut st = self.state.lock().unwrap();
+            std::mem::take(&mut a.fallbacks)
+                .into_iter()
+                .filter(|h| self.ident_allowed(&mut st, &h.ident))
+                .collect()
+        };
+        if hops.is_empty() {
+            a.dead = Some(format!("server_unavailable: {e}"));
+            a.buffer = None;
             return;
         }
+        let snapshot = a.buffer.clone().unwrap_or_default();
+        if a.buffer.is_none() {
+            a.buffer = Some(Vec::new());
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        let next = hops.front().map(|h| (h.kind, h.ident.clone()));
+        let (tx, rx) = mpsc::channel();
+        let (cfg, ctx, c2, cause) = (a.cfg.clone(), a.last_ctx.clone(), cancel.clone(), e.clone());
+        std::thread::Builder::new()
+            .name("flow-router-failover".into())
+            .spawn(move || {
+                let done = run_switch(hops, snapshot, &cfg, ctx.as_ref(), &c2, &cause);
+                if let Err(mpsc::SendError(done)) = tx.send(done) {
+                    // The session is gone (cancel / commit cancelled).
+                    if let Some(h) = done.started {
+                        h.backend.cancel();
+                    }
+                }
+            })
+            .expect("spawn failover thread");
+        a.switching = Some(Switch {
+            rx,
+            tail: Vec::new(),
+            cancel,
+            next,
+            cause: e,
+        });
     }
+
+    /// Install a finished failover (`block`: wait for it).
+    fn poll_switch(&self, a: &mut Active, block: bool) {
+        let Some(sw) = a.switching.as_ref() else {
+            return;
+        };
+        let done = if block {
+            sw.rx.recv().ok()
+        } else {
+            match sw.rx.try_recv() {
+                Ok(d) => Some(d),
+                Err(mpsc::TryRecvError::Empty) => return,
+                Err(mpsc::TryRecvError::Disconnected) => None,
+            }
+        };
+        let sw = a.switching.take().unwrap();
+        let Some(done) = done else {
+            a.dead = Some(format!("server_unavailable: {}; failover failed", sw.cause));
+            return;
+        };
+        self.install_switch(a, sw, done);
+    }
+
+    /// Wait for a failover, giving up when `cancelled` (false then).
+    fn wait_switch(&self, a: &mut Active, cancelled: &AtomicBool) -> bool {
+        while a.switching.is_some() {
+            if cancelled.load(Ordering::SeqCst) {
+                return false;
+            }
+            let sw = a.switching.as_ref().unwrap();
+            match sw.rx.recv_timeout(Duration::from_millis(20)) {
+                Ok(done) => {
+                    let sw = a.switching.take().unwrap();
+                    self.install_switch(a, sw, done);
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    let sw = a.switching.take().unwrap();
+                    a.dead = Some(format!("server_unavailable: {}; failover failed", sw.cause));
+                }
+            }
+        }
+        true
+    }
+
+    fn install_switch(&self, a: &mut Active, sw: Switch, done: SwitchDone) {
+        for (k, f) in &done.failures {
+            self.note_failure(*k, *f);
+        }
+        a.fallbacks = done.rest;
+        let Some(hop) = done.started else {
+            a.dead = done
+                .dead
+                .or_else(|| Some(format!("server_unavailable: {}", sw.cause)));
+            a.buffer = None;
+            return;
+        };
+        // S5 at replay time: the config may have changed while connecting.
+        if !self.ident_allowed(&mut self.state.lock().unwrap(), &hop.ident) {
+            hop.backend.cancel();
+            let cause =
+                BackendError::new(Failure::CloudNotConfigured, "route turned off mid-session");
+            return self.begin_switch(a, cause);
+        }
+        // Audio that arrived while the helper connected and replayed.
+        let tail = sw.tail;
+        let mut ok = true;
+        for chunk in tail.chunks(flow_protocol::RECOMMENDED_FRAME_SAMPLES * 10) {
+            ok &= hop.backend.push_audio(chunk);
+        }
+        if let Some(ctx) = &a.last_ctx {
+            hop.backend.set_context(ctx);
+        }
+        if hop.kind == EngineKind::Remote {
+            let st = self.state.lock().unwrap();
+            a.route.server.get_or_insert_with(|| st.cfg.server.addr());
+        }
+        if hop.kind != EngineKind::Cloud {
+            a.route.provider = None;
+            a.route.model = None;
+        } else if let Some(p) = &hop.ident.cloud {
+            a.route.provider = Some(p.id.clone());
+            a.route.model = Some(p.model.clone());
+        }
+        a.route.engine = hop.kind.as_str().into();
+        // Local never fails over: no buffer to keep (review C9).
+        if hop.kind == EngineKind::Local || a.fallbacks.is_empty() {
+            a.fallbacks.clear();
+            a.buffer = None;
+        }
+        a.engine = Some(hop.backend);
+        a.kind = hop.kind;
+        a.ident = hop.ident;
+        if !ok && a.kind != EngineKind::Local {
+            let e = BackendError::new(Failure::Disconnected, "audio not accepted after failover");
+            self.note_failure(a.kind, e.kind);
+            self.begin_switch(a, e);
+        }
+    }
+}
+
+/// The failover itself (helper thread): start the next usable hop, replay
+/// the buffer into it (checking every push), set the last context.
+fn run_switch(
+    mut hops: VecDeque<Hop>,
+    buf: Vec<i16>,
+    cfg: &SessionConfig,
+    ctx: Option<&FieldContext>,
+    cancel: &AtomicBool,
+    e: &BackendError,
+) -> SwitchDone {
+    let mut failures = Vec::new();
+    let dead = |m: String, failures, hops| SwitchDone {
+        started: None,
+        rest: hops,
+        failures,
+        dead: Some(m),
+    };
+    while let Some(hop) = hops.pop_front() {
+        if cancel.load(Ordering::SeqCst) {
+            return dead("cancelled".into(), failures, hops);
+        }
+        if hop.kind == EngineKind::Local && !hop.backend.ready() {
+            if hops.is_empty() {
+                return dead(
+                    format!("server_unavailable: {e}; local model not ready"),
+                    failures,
+                    hops,
+                );
+            }
+            continue;
+        }
+        let mut cfg = cfg.clone();
+        cfg.ring_capacity_samples = cfg.ring_capacity_samples.max(buf.len() + REPLAY_HEADROOM);
+        match hop.backend.start_session(&cfg) {
+            Ok(_) => {}
+            Err(le) if hop.kind == EngineKind::Local => {
+                return dead(
+                    format!("server_unavailable: {e}; local engine: {}", le.message),
+                    failures,
+                    hops,
+                );
+            }
+            Err(le) => {
+                failures.push((hop.kind, le.kind));
+                continue;
+            }
+        }
+        let mut replayed = true;
+        for chunk in buf.chunks(flow_protocol::RECOMMENDED_FRAME_SAMPLES * 10) {
+            if !hop.backend.push_audio(chunk) && hop.kind != EngineKind::Local {
+                replayed = false;
+                break;
+            }
+        }
+        if !replayed {
+            hop.backend.cancel();
+            failures.push((hop.kind, Failure::Disconnected));
+            continue;
+        }
+        if let Some(ctx) = ctx {
+            hop.backend.set_context(ctx);
+        }
+        if cancel.load(Ordering::SeqCst) {
+            hop.backend.cancel();
+            return dead("cancelled".into(), failures, hops);
+        }
+        return SwitchDone {
+            started: Some(hop),
+            rest: hops,
+            failures,
+            dead: None,
+        };
+    }
+    dead(format!("server_unavailable: {e}"), failures, hops)
 }
 
 impl Active {
     /// The route in use, or `None` when no backend is live (dead session).
     fn live_route(&self) -> Option<SessionRoute> {
+        if let Some((kind, id)) = self.switching.as_ref().and_then(|s| s.next.as_ref()) {
+            // Failover in progress: name the route being switched to.
+            return Some(SessionRoute {
+                engine: *kind,
+                provider: id.cloud.as_ref().map(|p| p.id.clone()),
+                model: id.cloud.as_ref().map(|p| p.model.clone()),
+                server: id.server.as_ref().map(ServerConfig::addr),
+                fallback: self.route.fallback.clone(),
+            });
+        }
         self.engine
             .as_ref()
             .map(|_| SessionRoute::from_route_info(&self.route))
+    }
+
+    /// Keep `pcm` for a possible replay (capped at `max_samples`).
+    fn buffer_audio(&mut self, pcm: &[i16]) {
+        if let Some(buf) = self.buffer.as_mut() {
+            let room = self.cfg.max_samples.saturating_sub(buf.len());
+            buf.extend_from_slice(&pcm[..pcm.len().min(room)]);
+        }
     }
 
     /// A queued (busy) server is only a failure when there is a ready local
@@ -1300,6 +1609,7 @@ impl Active {
             route,
             dead: None,
             switched: false,
+            switching: None,
         }
     }
 
@@ -1317,6 +1627,7 @@ impl Active {
             route: route.unwrap_or_default(),
             dead: Some(msg),
             switched: false,
+            switching: None,
         }
     }
 }
