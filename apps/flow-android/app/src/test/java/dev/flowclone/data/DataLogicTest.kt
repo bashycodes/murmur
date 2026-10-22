@@ -100,4 +100,14 @@ class FieldContextBuilderTest {
         assertEquals(1500, Settings.parseEndpointMs(" 1500 "))
         assertEquals("toSessionConfig leaves it for the controller (hands-free only)", null, Settings().toSessionConfig(emptyList()).endpointSilenceMs)
     }
+
+    /** Review S17: the SQL the history store runs so deleted rows do not linger on disk. */
+    @Test fun historyHygieneStatements() {
+        assertEquals("PRAGMA secure_delete=ON", HistoryHygiene.ON_OPEN)
+        assertEquals("PRAGMA wal_checkpoint(TRUNCATE)", HistoryHygiene.AFTER_DELETE)
+        assertEquals("VACUUM", HistoryHygiene.AFTER_CLEAR)
+        val src = java.io.File("src/main/java/dev/flowclone/data/Stores.kt").readText()
+        assertTrue("every delete path scrubs", Regex("""fun (delete|clear)\(.*scrub\(""").findAll(src).count() == 2)
+        assertTrue(src.contains("override fun onConfigure"))
+    }
 }
