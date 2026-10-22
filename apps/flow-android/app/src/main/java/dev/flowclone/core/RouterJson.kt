@@ -1,5 +1,6 @@
 package dev.flowclone.core
 
+import dev.flowclone.core.CoreJson.optDoubleOrNull
 import dev.flowclone.core.CoreJson.optLongOrNull
 import dev.flowclone.core.CoreJson.optStringOrNull
 import org.json.JSONException
@@ -16,6 +17,9 @@ data class Capabilities(
 )
 
 data class Rtt(val min: Long, val median: Long, val max: Long)
+
+/** flow_router `CloudCapabilities` (`nativeCloudCapabilities()`, D18): does this library carry the cloud client. */
+data class CloudCapabilities(val cloud: Boolean = false, val adapters: List<String> = emptyList())
 
 /** flow_router `HealthReport` (`nativeProbeServer`, `RouteStatus.health`). */
 data class HealthReport(
@@ -37,6 +41,12 @@ data class HealthReport(
     val workers: Int? = null,
     val busy: Int? = null,
     val checkedAtMs: Long? = null,
+    /** D18 Test provider (`engine:"cloud"`): provider id, model, what it heard, round trip, cost. */
+    val provider: String? = null,
+    val model: String? = null,
+    val transcript: String? = null,
+    val latencyMs: Long? = null,
+    val costUsd: Double? = null,
 )
 
 data class CircuitStatus(
@@ -48,7 +58,13 @@ data class CircuitStatus(
 )
 
 /** flow_router `RouteStatus` (`nativeRouteStatus`). */
-data class RouteStatus(val last: RouteInfo? = null, val circuit: CircuitStatus = CircuitStatus(), val health: HealthReport? = null)
+data class RouteStatus(
+    val last: RouteInfo? = null,
+    val circuit: CircuitStatus = CircuitStatus(),
+    val health: HealthReport? = null,
+    /** D18: the cloud route's own breaker; null in builds without the cloud. */
+    val cloudCircuit: CircuitStatus? = null,
+)
 
 /** Router JSON (D17 §1.2) ↔ Kotlin. Pinned by RouterJsonTest against crates/flow-router/fixtures. */
 object RouterJson {
@@ -65,6 +81,14 @@ object RouterJson {
         )
     } catch (e: JSONException) {
         Capabilities()
+    }
+
+    fun decodeCloudCapabilities(json: String): CloudCapabilities = try {
+        val o = JSONObject(json)
+        val a = o.optJSONArray("adapters")
+        CloudCapabilities(o.optBoolean("cloud"), if (a == null) emptyList() else (0 until a.length()).map { a.getString(it) })
+    } catch (e: JSONException) {
+        CloudCapabilities()
     }
 
     fun decodeHealth(json: String): HealthReport = try {
@@ -91,19 +115,25 @@ object RouterJson {
         workers = o.optIntOrNull("workers"),
         busy = o.optIntOrNull("busy"),
         checkedAtMs = o.optLongOrNull("checked_at_ms"),
+        provider = o.optStringOrNull("provider"),
+        model = o.optStringOrNull("model"),
+        transcript = o.optStringOrNull("transcript"),
+        latencyMs = o.optLongOrNull("latency_ms"),
+        costUsd = o.optDoubleOrNull("cost_usd"),
     )
 
     fun decodeRouteStatus(json: String): RouteStatus = try {
         val o = JSONObject(json)
-        val c = o.optJSONObject("circuit") ?: JSONObject()
+        fun circuit(c: JSONObject) = CircuitStatus(
+            open = c.optBoolean("open"), reason = c.optStringOrNull("reason"),
+            retryInMs = c.optLongOrNull("retry_in_ms"),
+            untilConfigChange = c.optBoolean("until_config_change"),
+        )
         RouteStatus(
             last = o.optJSONObject("last")?.let(CoreJson::decodeRoute),
-            circuit = CircuitStatus(
-                open = c.optBoolean("open"), reason = c.optStringOrNull("reason"),
-                retryInMs = c.optLongOrNull("retry_in_ms"),
-                untilConfigChange = c.optBoolean("until_config_change"),
-            ),
+            circuit = circuit(o.optJSONObject("circuit") ?: JSONObject()),
             health = o.optJSONObject("health")?.let(::decodeHealth),
+            cloudCircuit = o.optJSONObject("cloud_circuit")?.let(::circuit),
         )
     } catch (e: JSONException) {
         RouteStatus()
@@ -113,6 +143,7 @@ object RouterJson {
 /** User-facing lines for the Developer page (§5), kept pure for the JVM tests. */
 object DevText {
     fun probe(h: HealthReport): String {
+        if (h.engine == "cloud") return cloudProbe(h)
         if (h.ok) {
             val rtt = h.rttMs?.let { "median ${it.median} ms (${it.min}-${it.max})" } ?: "no RTT"
             return listOfNotNull("OK", rtt, h.serverVersion, h.asrBackend).joinToString(" · ")
@@ -126,6 +157,18 @@ object DevText {
             "timeout" -> "server too slow to answer"
             else -> null
         }
+        return listOfNotNull("${h.error ?: "error"}${hint?.let { ": $it" } ?: ""}", h.message).joinToString(" — ")
+    }
+
+    /** D18 "Test provider" result line. */
+    fun cloudProbe(h: HealthReport): String {
+        if (h.ok) {
+            return listOfNotNull(
+                "OK", h.transcript?.let { "heard \"$it\"" }, h.latencyMs?.let { "$it ms" },
+                h.costUsd?.let { dev.flowclone.data.CloudText.usd(it) }, h.model,
+            ).joinToString(" · ")
+        }
+        val hint = dev.flowclone.data.CloudText.hint(h.error)
         return listOfNotNull("${h.error ?: "error"}${hint?.let { ": $it" } ?: ""}", h.message).joinToString(" — ")
     }
 
@@ -144,18 +187,19 @@ object DevText {
         ).joinToString("\n")
     }
 
-    fun circuit(c: CircuitStatus, nowMs: Long, clock: (Long) -> String): String = when {
+    fun circuit(c: CircuitStatus, nowMs: Long, untilWhat: String = "the server settings change", clock: (Long) -> String): String = when {
         !c.open -> "closed"
-        c.untilConfigChange -> "open until the server settings change (${c.reason ?: "?"})"
+        c.untilConfigChange -> "open until $untilWhat (${c.reason ?: "?"})"
         c.retryInMs != null -> "open until ${clock(nowMs + c.retryInMs)} (${c.reason ?: "?"})"
         else -> "open (${c.reason ?: "?"})"
     }
 
     /** "Active engine (last dictation)" row. */
-    fun lastDictation(r: CommitResult?): String {
+    fun lastDictation(r: CommitResult?, providerLabel: (String) -> String? = { null }): String {
         if (r == null) return "No dictation yet in this process."
         val route = r.route
         val engine = when (route?.engine) {
+            "cloud" -> dev.flowclone.data.CloudText.engineRow(route, route.provider?.let(providerLabel))
             "remote" -> "Server${route.server?.let { " $it" } ?: ""}"
             "local" -> "Client (on-device)"
             null -> "Client (no router info)"
@@ -170,8 +214,16 @@ object DevText {
         return parts.joinToString(" · ")
     }
 
-    /** Bubble badge letter: S / L, with fallback flagged (§5 `show_engine_badge`). */
+    /**
+     * What the bubble's preview line shows: the engine letter when `show_engine_badge` is on;
+     * C whenever the last dictation went to a cloud provider, even with the badge off (D18 C7).
+     */
+    fun bubbleBadge(route: RouteInfo?, showEngineBadge: Boolean): String? =
+        if (showEngineBadge) badge(route) else if (route?.engine == "cloud") "C" else null
+
+    /** Bubble badge letter: S / L / C (D18 cloud), with fallback flagged (§5 `show_engine_badge`). */
     fun badge(route: RouteInfo?): String? = when (route?.engine) {
+        "cloud" -> "C"
         "remote" -> "S"
         "local" -> if (route.fallback != null) "L•" else "L"
         else -> null

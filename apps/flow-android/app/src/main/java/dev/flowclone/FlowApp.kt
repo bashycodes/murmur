@@ -2,6 +2,7 @@ package dev.flowclone
 
 import dev.flowclone.core.RouterErrors
 import dev.flowclone.data.LastDictation
+import dev.flowclone.data.CloudKeyStore
 import dev.flowclone.data.RouterOpener
 import dev.flowclone.data.ParakeetFiles
 import dev.flowclone.data.EngineRoute
@@ -40,6 +41,8 @@ class FlowApp : Application() {
     lateinit var history: HistoryStore; private set
     lateinit var engine: EngineHolder; private set
     lateinit var dev: DevStore; private set
+    /** D18: cloud STT API keys (Keystore-sealed, one vault per provider). */
+    lateinit var cloudKeys: CloudKeyStore; private set
     val caps: BuildCaps = BuildCaps.current()
 
     /** Latest keyboard/field decision from the accessibility service (null = no allowed field). */
@@ -78,6 +81,7 @@ class FlowApp : Application() {
         dictionary = DictionaryStore(this)
         history = HistoryStore(this)
         dev = DevStore(this, caps)
+        cloudKeys = CloudKeyStore(this)
         engine = EngineHolder(this)
     }
 
@@ -143,6 +147,7 @@ class EngineHolder(
 
     @Synchronized
     fun unload() {
+        runCatching { persistCloudUsage() }
         (_state.value as? State.Ready)?.core?.unload()
         _state.value = State.NotLoaded
         loadedWithLocal = null
@@ -175,6 +180,29 @@ class EngineHolder(
 
     fun llmDir() = File(app.filesDir, "llm").apply { mkdirs() }
 
+    /**
+     * D18: a freshly opened router gets every stored provider key (keys never travel in the
+     * config JSON) and this month's persisted usage counters.
+     */
+    private fun syncCloud(r: NativeFlowCore) {
+        if (!app.caps.cloud) return
+        for (p in app.dev.load().cloud.providers) {
+            val key = app.cloudKeys.get(p.id) ?: continue
+            runCatching { r.setCloudKey(p.id, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key ${p.id}: ${it.message}") }
+        }
+        app.dev.cloudUsageJson?.let { r.setCloudUsage(it) }
+    }
+
+    /** A provider's key was saved / cleared on the Developer page: tell the live router. */
+    fun setCloudKey(providerId: String, key: String?) {
+        runCatching { router()?.setCloudKey(providerId, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key $providerId: ${it.message}") }
+    }
+
+    /** Persist the router's cloud counters (after a cloud dictation, and on Reset counters). */
+    fun persistCloudUsage() {
+        router()?.cloudUsageJson()?.let { app.dev.cloudUsageJson = it }
+    }
+
     private fun load(): State {
         val threads = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
         val s = app.settings.load()
@@ -196,6 +224,7 @@ class EngineHolder(
                     State.Failed(RouterErrors.userMessage(r.errorKind, r.error ?: "Speech engine failed to load"), r.errorKind)
                 } else {
                     loadedWithLocal = plan.local != null
+                    (r.core as? NativeFlowCore)?.takeIf { it.isRouter }?.let(::syncCloud)
                     State.Ready(r.core, r.description, r.llm)
                 }
             }

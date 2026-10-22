@@ -49,6 +49,7 @@ object CoreJson {
 
     internal fun JSONObject.optStringOrNull(k: String): String? = if (isNull(k)) null else optString(k)
     internal fun JSONObject.optLongOrNull(k: String): Long? = if (isNull(k)) null else optLong(k)
+    internal fun JSONObject.optDoubleOrNull(k: String): Double? = if (isNull(k)) null else optDouble(k).takeIf { !it.isNaN() }
 
     /** Unknown keys / malformed rows are skipped (a newer core may add segment kinds). */
     private fun decodeSegments(a: JSONArray?): List<PasteSegment> {
@@ -70,6 +71,11 @@ object CoreJson {
         rttMs = o.optLongOrNull("rtt_ms"),
         queueMs = o.optLongOrNull("queue_ms"),
         serverCore = o.optStringOrNull("server_core"),
+        provider = o.optStringOrNull("provider"),
+        model = o.optStringOrNull("model"),
+        billedAudioMs = o.optLongOrNull("billed_audio_ms"),
+        costUsd = o.optDoubleOrNull("cost_usd"),
+        costEstimated = if (o.isNull("cost_estimated")) null else o.optBoolean("cost_estimated"),
     )
 
     fun decodeCommit(json: String): CommitResult = try {
