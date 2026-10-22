@@ -48,5 +48,29 @@ int main(void) {
     printf("%s\n", caps);
     ok = strstr(caps, "\"proto\":1") != NULL;
     flow_string_free(caps);
-    return ok ? 0 : 11;
+    if (!ok) return 11;
+
+    /* D18 cloud symbols (this staticlib is built without `cloud`). */
+    char *cc = flow_cloud_capabilities();
+    printf("%s\n", cc);
+    ok = strstr(cc, "\"cloud\":false") != NULL;
+    flow_string_free(cc);
+    char *pr = flow_cloud_presets();
+    ok = ok && strcmp(pr, "[]") == 0;
+    flow_string_free(pr);
+    char *probe = flow_probe_cloud(NULL, "{\"id\":\"groq-1\",\"base_url\":\"https://api.groq.com/openai/v1\",\"model\":\"m\"}", "sk-x");
+    ok = ok && strstr(probe, "cloud_not_configured") && !strstr(probe, "sk-x");
+    flow_string_free(probe);
+    FlowHandle *core2 = flow_load_models("{\"asr_backend\":{\"mock\":{\"text\":\"x\"}}}");
+    if (flow_set_cloud_key(core2, "groq-1", "sk-x") != -1) return 12; /* core handle */
+    FlowHandle *rt2 = flow_open_router(client_only, core2);
+    if (flow_set_cloud_key(rt2, "groq-1", "sk-x") != 0) return 13;
+    if (flow_set_cloud_key(rt2, "groq-1", NULL) != 0) return 14;
+    if (flow_set_cloud_usage(rt2, "{\"month\":\"1999-01\",\"providers\":[]}") != 0) return 15;
+    flow_reset_cloud_usage(rt2);
+    char *u = flow_cloud_usage(rt2);
+    ok = ok && strstr(u, "\"providers\":[]");
+    flow_string_free(u);
+    flow_unload(rt2);
+    return ok ? 0 : 16;
 }

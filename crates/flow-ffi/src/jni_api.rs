@@ -410,3 +410,137 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeResetCircuit
         guard((), || r.reset_circuit());
     }
 }
+
+// ---- D18 cloud STT (JNI_CONTRACT.md "Cloud") -----------------------------
+// Keys arrive only through nativeSetCloudKey / nativeProbeCloud and are moved
+// into the router's SecretString; nothing here logs or returns them.
+
+/// A nullable Java string (`null` → `None`; conversion failure → `None`).
+fn opt_jstr(env: &mut JNIEnv, s: &JString) -> Option<String> {
+    if s.is_null() {
+        return None;
+    }
+    match env.get_string(s) {
+        Ok(s) => Some(s.into()),
+        Err(_) => {
+            clear(env);
+            None
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudKey(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    provider_id: JString,
+    key: JString,
+) -> jboolean {
+    guard(JNI_FALSE, || {
+        let Some(h) = handle(h) else {
+            set_error("null handle");
+            return JNI_FALSE;
+        };
+        let Some(id) = jstr(&mut env, &provider_id, "cloud provider id") else {
+            return JNI_FALSE;
+        };
+        let key = opt_jstr(&mut env, &key);
+        jbool(
+            json_api::set_cloud_key(h, &id, key)
+                .map_err(|(kind, e)| set_error_kind(kind, e))
+                .is_ok(),
+        )
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeProbeCloud(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    provider_json: JString,
+    key: JString,
+) -> jstring {
+    let args = guard(None, || {
+        Some((
+            jstr(&mut env, &provider_json, "cloud provider config"),
+            opt_jstr(&mut env, &key),
+        ))
+    });
+    let r = guard(
+        r#"{"ok":false,"engine":"cloud","error":"error","message":"panic in probe"}"#.to_owned(),
+        || {
+            let (p, k) = args.unwrap_or((None, None));
+            json_api::probe_cloud(handle(h), p.as_deref().unwrap_or(""), k)
+        },
+    );
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudUsage(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+) -> jstring {
+    let r = guard("{}".to_owned(), || {
+        handle(h).map_or_else(|| "{}".to_owned(), json_api::cloud_usage)
+    });
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudUsage(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    usage: JString,
+) -> jboolean {
+    guard(JNI_FALSE, || {
+        let Some(h) = handle(h) else {
+            set_error("null handle");
+            return JNI_FALSE;
+        };
+        let Some(j) = jstr(&mut env, &usage, "bad_config: cloud usage") else {
+            return JNI_FALSE;
+        };
+        jbool(
+            json_api::set_cloud_usage(h, &j)
+                .map_err(|(kind, e)| set_error_kind(kind, e))
+                .is_ok(),
+        )
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeResetCloudUsage(
+    _env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+) {
+    if let Some(h) = handle(h) {
+        guard((), || json_api::reset_cloud_usage(h));
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudCapabilities(
+    mut env: JNIEnv,
+    _c: JClass,
+) -> jstring {
+    let r = guard(
+        r#"{"cloud":false,"adapters":[]}"#.to_owned(),
+        json_api::cloud_capabilities,
+    );
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudPresets(
+    mut env: JNIEnv,
+    _c: JClass,
+) -> jstring {
+    let r = guard("[]".to_owned(), json_api::cloud_presets);
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}

@@ -5,7 +5,8 @@
 #  3. NEEDED libs are bionic or shipped next to it (libc++_shared.so);
 #  4. optional APK: zipalign -P 16 says the .so entries are page-aligned + stored.
 #  5. per flavour (D17): remote ships no ASR/LLM libs and libflow_ffi.so has no whisper_/llama_
-#     symbols; local's libflow_ffi.so has no WebSocket/TLS code.
+#     symbols; local's libflow_ffi.so has no WebSocket/TLS code and no cloud STT client (D18 C2);
+#     hybrid/remote's carries the cloud client (feature `cloud`).
 # Usage: tools/probes/check_native_so.sh [--flavor local|hybrid|remote] [app.apk]
 set -euo pipefail
 app="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -58,7 +59,13 @@ case "$flavor" in
     n=$("$bin/llvm-nm" -D --defined-only "$so" | grep -cE ' (whisper_|llama_|ggml_)' || true)
     [[ "$n" == 0 ]] && echo "remote: libflow_ffi.so exports no whisper_/llama_/ggml_" || { echo "remote: $n ASR symbols exported"; fail=1; } ;;
   local)
-    if grep -qaE 'tungstenite|rustls' "$so"; then echo "local: network code in libflow_ffi.so"; fail=1; else echo "local: no tungstenite/rustls in libflow_ffi.so"; fi ;;
+    if grep -qaE 'tungstenite|rustls' "$so"; then echo "local: network code in libflow_ffi.so"; fail=1; else echo "local: no tungstenite/rustls in libflow_ffi.so"; fi
+    if grep -qaE 'reqwest|webpki|flow-cloud' "$so"; then echo "local: cloud STT client in libflow_ffi.so"; fail=1; else echo "local: no reqwest/webpki/flow-cloud in libflow_ffi.so"; fi ;;
+esac
+case "$flavor" in
+  hybrid|remote)
+    if grep -qaE 'flow-cloud' "$so" && grep -qaE 'reqwest' "$so"; then echo "$flavor: cloud STT client linked (feature cloud)"
+    else echo "$flavor: libflow_ffi.so lacks the cloud client (build-native.sh --flavor $flavor adds feature cloud)"; fail=1; fi ;;
 esac
 if [[ -n "${1:-}" ]]; then
   za=$(ls -d "$HOME"/Android/Sdk/build-tools/* | sort -V | tail -1)/zipalign
