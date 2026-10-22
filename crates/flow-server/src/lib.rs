@@ -8,6 +8,7 @@
 
 pub mod config;
 mod health;
+pub mod limits;
 pub mod pool;
 mod ws;
 
@@ -234,6 +235,7 @@ async fn stream_handler(
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
     ws.protocols([flow_protocol::SUBPROTOCOL])
-        .max_message_size(flow_protocol::MAX_FRAME_BYTES * 2)
+        .max_message_size(limits::MAX_WS_MESSAGE_BYTES)
+        .max_frame_size(limits::MAX_WS_MESSAGE_BYTES)
         .on_upgrade(move |socket| ws::run(socket, state, peer))
 }

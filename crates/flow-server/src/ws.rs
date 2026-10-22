@@ -197,6 +197,9 @@ impl Conn {
             ClientMsg::Hello(_) => self.err(None, code::BAD_REQUEST, "hello already done"),
             ClientMsg::Start { sid, config } => self.start(sid, config),
             ClientMsg::Context { sid, ctx } => {
+                if let Err(e) = crate::limits::context(&ctx) {
+                    return self.err(Some(sid), code::TOO_LARGE, e);
+                }
                 if self.check_sid(sid) {
                     let s = self.sess.as_mut().unwrap();
                     if let Some(l) = &s.lease {
@@ -233,6 +236,10 @@ impl Conn {
     fn start(&mut self, sid: u64, cfg: SessionConfig) {
         // A start while a session is active cancels it (FlowCore semantics).
         self.sess = None;
+        let cfg = match crate::limits::session(cfg, self.state.cfg.max_session_samples()) {
+            Ok(c) => c,
+            Err(e) => return self.err(Some(sid), code::TOO_LARGE, e),
+        };
         self.state.sessions.fetch_add(1, Ordering::SeqCst);
         let mut s = Sess {
             sid,
@@ -291,7 +298,7 @@ impl Conn {
                 )
             }
         };
-        let max_session = self.state.cfg.max_session_s * SAMPLE_RATE as u64;
+        let max_session = self.state.cfg.max_session_samples() as u64;
         let Some(s) = self
             .sess
             .as_mut()

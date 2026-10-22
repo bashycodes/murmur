@@ -87,6 +87,11 @@ impl Config {
         Self::from_toml(&s)
     }
 
+    /// The server's per-session audio cap (`max_session_s` at 16 kHz).
+    pub fn max_session_samples(&self) -> usize {
+        (self.max_session_s as usize).saturating_mul(flow_core::config::SAMPLE_RATE)
+    }
+
     pub fn bind_addrs(&self) -> Result<Vec<SocketAddr>, String> {
         if self.bind.is_empty() {
             return Err("bind: at least one address".into());
