@@ -53,9 +53,24 @@ pub struct Config {
     pub queue_timeout_ms: u64,
     pub idle_timeout_s: u64,
     pub max_session_s: u64,
+    /// TLS handshake and HTTP request-header deadline (S7): a peer that
+    /// has not finished its upgrade request by then is dropped.
+    pub handshake_timeout_ms: u64,
+    /// Open TCP connections, total and per peer IP (S7).
+    pub max_connections: usize,
+    pub max_connections_per_ip: usize,
+    /// WebSocket ping interval, and how long a connection may stay silent
+    /// (not even a pong) before it is dropped with its session (C5;
+    /// protocol.md §1: 15 s / 45 s).
+    pub ws_ping_ms: u64,
+    pub ws_dead_ms: u64,
     pub model: ModelConfig,
     pub tls: Option<TlsConfig>,
     pub log: LogConfig,
+    /// `--insecure-bind-any`: allow a wildcard or public bind without TLS
+    /// and accept peers outside loopback/LAN/Tailscale. Command line only.
+    #[serde(skip)]
+    pub insecure_bind_any: bool,
 }
 
 impl Default for Config {
@@ -70,9 +85,15 @@ impl Default for Config {
             queue_timeout_ms: 30_000,
             idle_timeout_s: 120,
             max_session_s: 1200,
+            handshake_timeout_ms: 10_000,
+            max_connections: 64,
+            max_connections_per_ip: 16,
+            ws_ping_ms: flow_protocol::WS_PING_S * 1000,
+            ws_dead_ms: flow_protocol::WS_DEAD_S * 1000,
             model: ModelConfig::default(),
             tls: None,
             log: LogConfig::default(),
+            insecure_bind_any: false,
         }
     }
 }
@@ -87,6 +108,11 @@ impl Config {
         Self::from_toml(&s)
     }
 
+    /// The server's per-session audio cap (`max_session_s` at 16 kHz).
+    pub fn max_session_samples(&self) -> usize {
+        (self.max_session_s as usize).saturating_mul(flow_core::config::SAMPLE_RATE)
+    }
+
     pub fn bind_addrs(&self) -> Result<Vec<SocketAddr>, String> {
         if self.bind.is_empty() {
             return Err("bind: at least one address".into());
@@ -95,6 +121,25 @@ impl Config {
             .iter()
             .map(|b| b.parse().map_err(|e| format!("bind {b:?}: {e}")))
             .collect()
+    }
+
+    /// S10: a wildcard (`0.0.0.0`, `::`) or public bind is refused without
+    /// `[tls]` unless `insecure_bind_any` is set. Returns the addresses that
+    /// are reachable beyond loopback/LAN/Tailscale (for the startup warning).
+    pub fn check_bind(&self) -> Result<Vec<SocketAddr>, String> {
+        let wide: Vec<SocketAddr> = self
+            .bind_addrs()?
+            .into_iter()
+            .filter(|a| !crate::net::classify(a.ip()).is_local())
+            .collect();
+        if wide.is_empty() || self.tls.is_some() || self.insecure_bind_any {
+            return Ok(wide);
+        }
+        let list: Vec<String> = wide.iter().map(|a| a.to_string()).collect();
+        Err(format!(
+            "bind {} is a wildcard or public address: plain ws:// would expose audio and the token beyond loopback/LAN/Tailscale. Bind a loopback, LAN or Tailscale address, configure [tls], or pass --insecure-bind-any",
+            list.join(", ")
+        ))
     }
 
     /// Resolve the bearer token (`None` = auth disabled) and check the
@@ -132,10 +177,13 @@ impl Config {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        self.bind_addrs()?;
         self.resolve_token()?;
+        self.check_bind()?;
         if self.workers == 0 {
             return Err("workers must be >= 1".into());
+        }
+        if self.max_connections == 0 || self.max_connections_per_ip == 0 {
+            return Err("max_connections and max_connections_per_ip must be >= 1".into());
         }
         if let Some(t) = &self.tls {
             if !cfg!(feature = "tls") {
@@ -210,6 +258,30 @@ mod tests {
         assert!(c.resolve_token().is_err());
         let c = Config::from_toml("bind = [\"[::1]:7313\"]\nauth = \"none\"").unwrap();
         assert!(c.resolve_token().is_ok());
+    }
+
+    #[test]
+    fn wildcard_bind_needs_tls_or_the_override() {
+        let c = Config::from_toml("bind = [\"0.0.0.0:7313\"]").unwrap();
+        assert!(c.check_bind().unwrap_err().contains("--insecure-bind-any"));
+        let c = Config {
+            tls: Some(TlsConfig::default()),
+            ..c
+        };
+        assert_eq!(c.check_bind().unwrap().len(), 1);
+        let c = Config {
+            tls: None,
+            insecure_bind_any: true,
+            ..c
+        };
+        assert!(c.check_bind().is_ok());
+        assert!(Config::default().check_bind().unwrap().is_empty());
+    }
+
+    #[test]
+    fn insecure_bind_any_cannot_come_from_the_file() {
+        let c = Config::from_toml("insecure_bind_any = true\nbind = [\"0.0.0.0:1\"]");
+        assert!(c.map_or(true, |c| !c.insecure_bind_any));
     }
 
     #[test]

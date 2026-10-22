@@ -325,7 +325,7 @@ concurrency).
 ### 3.4 Startup and systemd
 
 * Models load before the listener binds (`load_models` fails → exit 1 with `CoreError::kind()`; systemd restarts). Log line: `ready workers=1 asr=parakeet load_ms=…`.
-* `dist/flow-server.service`: `DynamicUser=yes`, `StateDirectory=flow-server`, `Environment=TMPDIR=/var/lib/flow-server/tmp` (Parakeet `bpe.vocab`), `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `NoNewPrivileges=yes`, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`, **`IPAddressDeny=any` + `IPAddressAllow=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fd7a:115c:a1e0::/48 fe80::/10`** (the kernel enforces "no third party"), `MemoryMax=8G`, `Restart=on-failure`, `Nice=5`.
+* `dist/flow-server.service`: `DynamicUser=yes`, `StateDirectory=flow-server`, `Environment=TMPDIR=/var/lib/flow-server/tmp` (Parakeet `bpe.vocab`), `ProtectSystem=strict`, `ProtectHome=yes`, `PrivateTmp=yes`, `NoNewPrivileges=yes`, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`, **`IPAddressDeny=any` + `IPAddressAllow=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16 fc00::/7 fe80::/10`** (the kernel enforces "no third party"; the server applies the same classes itself at accept, so a manual start or a container is not exposed), `MemoryMax=8G`, `Restart=on-failure`, `Nice=5`.
 
 ### 3.5 Privacy and logging
 

@@ -62,6 +62,19 @@ additive core fields need no protocol change. The server never sets
   per-user state.
 * `ModelConfig` (model paths, threads) is server configuration only.
 
+### 3.1 Server limits
+
+The server bounds every client-controlled size (`crates/flow-server/src/limits.rs`):
+
+| Item | Limit |
+|---|---|
+| WebSocket message / frame | 128 KiB (larger → the connection closes) |
+| `max_samples` | clamped to the server's `max_session_s` × 16 000 (advertised as `hello_ok.max_samples`) |
+| `ring_capacity_samples` | ≤ that cap + 30 s replay headroom, else `too_large` |
+| `llm_timeout_ms` | ≤ 120 000, else `too_large` |
+| `partial_interval_ms` | raised to at least 100 |
+| `context` | `before`/`selected`/`after`/`app_id`/`url_host` ≤ 8 KiB each; `screen_words` + `file_names` ≤ 1 000 entries, else `too_large` |
+
 ## 4. Error codes
 
 | Code | When | Fatal |
@@ -72,7 +85,7 @@ additive core fields need no protocol change. The server never sets
 | `bad_request` | unparsable JSON, unknown `t`, odd-length audio, anything before `hello` (fatal then) | no / yes |
 | `stale_sid` | control message for a session that is not current | no |
 | `no_session` | `commit`/`context` with no active session | no |
-| `too_large` | audio frame > 64 KiB, or session longer than the server's `max_session_s` (the session is cancelled). Audio over the session's `max_samples` is not an error: the core sets `truncated` | no |
+| `too_large` | audio frame > 64 KiB, or session longer than the server's `max_session_s` (the session is cancelled), or a `start`/`context` over the server limits (§3.1; the message is ignored). Audio over the session's `max_samples` is not an error: the core sets `truncated` | no |
 | `server_error` | anything else | no |
 
 ## 5. Version negotiation
@@ -103,7 +116,28 @@ Developer page warns.
 * Runs an unmodified `FlowCore` session per `start`, fed the client's
   `SessionConfig` / `FieldContext`: VAD → ASR → hallucination guard → spoken
   cleanup → optional LLM → guard → post-processing → segments.
+* Bind policy (S10): loopback, RFC 1918, 100.64/10, link-local and IPv6 ULA
+  binds are always allowed; `0.0.0.0`, `::` or a public address only with
+  `[tls]` or `--insecure-bind-any` (which logs a WARNING). Peers outside those
+  private classes are dropped at accept unless `--insecure-bind-any`.
+* Connection limits (S7): the TLS handshake and the HTTP request head must
+  complete within `handshake_timeout_ms` (default 10 s; a silent socket is
+  dropped too); at most `max_connections` (64) sockets in total and
+  `max_connections_per_ip` (16) per peer are open, upgraded WebSockets
+  included. Excess connections are closed at accept.
+* Keepalive (C5): the server sends a WebSocket ping every `ws_ping_ms`
+  (15 s) and drops a connection that has sent no frame at all, pongs
+  included, for `ws_dead_ms` (45 s), with or without a session; its session
+  ends and the worker is freed. A session that has not committed after
+  `max_session_s` of wall-clock time ends with `error too_large`.
+* `cancel` (or a replacing `start`, or a disconnect) while a commit is
+  running is answered at once; the result is dropped and the server calls
+  `FlowCore::cancel()` on the in-flight core (only until the job ends, so it
+  never reaches the worker's next lessee). The worker returns to the pool
+  when the core stops the job.
 * A session leases a worker at `start` and returns it at `result`,
   `cancelled` or disconnect.
 * Never written to disk: audio, transcripts, contexts, dictionaries. Logs
-  carry sizes and timings only, unless `log_text = true`.
+  carry sizes and timings only, unless `log_text = true`. This holds at any
+  `RUST_LOG` level: events from dependencies (tungstenite, hyper, axum) are
+  capped at INFO so frame and request dumps never reach the log.
