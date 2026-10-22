@@ -29,7 +29,7 @@ const FLOOR_FACTOR: f32 = 3.0;
 const UNVOICED_FACTOR: f32 = 0.5;
 const ZCR_UNVOICED: f32 = 0.3;
 /// 60 ms of consecutive speech frames.
-const MIN_RUN: usize = 3;
+pub(crate) const MIN_RUN: usize = 3;
 pub const PAD_HEAD: usize = SAMPLE_RATE * 3 / 10; // 300 ms
 pub const PAD_TAIL: usize = SAMPLE_RATE * 2 / 5; // 400 ms
 
@@ -48,7 +48,7 @@ impl Speech {
     }
 }
 
-fn frame_stats(f: &[f32]) -> (f32, f32) {
+pub(crate) fn frame_stats(f: &[f32]) -> (f32, f32) {
     let rms = (f.iter().map(|s| s * s).sum::<f32>() / f.len() as f32).sqrt();
     let zc = f
         .windows(2)
@@ -63,15 +63,33 @@ pub fn frame_flags(pcm: &[f32]) -> Vec<bool> {
     if stats.is_empty() {
         return Vec::new();
     }
-    let mut rms: Vec<f32> = stats.iter().map(|s| s.0).collect();
-    rms.sort_by(f32::total_cmp);
-    let floor = rms[rms.len() / 10];
-    let voiced = (floor * FLOOR_FACTOR).clamp(ABS_MIN, ABS_CAP);
-    let unvoiced = (voiced * UNVOICED_FACTOR).max(ABS_MIN);
-    stats
-        .iter()
-        .map(|&(r, z)| r >= voiced || (r >= unvoiced && z >= ZCR_UNVOICED))
-        .collect()
+    let thr = Thresholds::from_stats(&stats);
+    stats.iter().map(|&s| thr.is_speech(s)).collect()
+}
+
+/// Speech bars derived from the noise floor of a set of frames.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Thresholds {
+    voiced: f32,
+    unvoiced: f32,
+}
+
+impl Thresholds {
+    /// `stats` = per-frame (RMS, ZCR); must be non-empty.
+    pub(crate) fn from_stats(stats: &[(f32, f32)]) -> Self {
+        let mut rms: Vec<f32> = stats.iter().map(|s| s.0).collect();
+        let k = rms.len() / 10;
+        let (_, floor, _) = rms.select_nth_unstable_by(k, f32::total_cmp);
+        let voiced = (*floor * FLOOR_FACTOR).clamp(ABS_MIN, ABS_CAP);
+        Self {
+            voiced,
+            unvoiced: (voiced * UNVOICED_FACTOR).max(ABS_MIN),
+        }
+    }
+
+    pub(crate) fn is_speech(&self, (r, z): (f32, f32)) -> bool {
+        r >= self.voiced || (r >= self.unvoiced && z >= ZCR_UNVOICED)
+    }
 }
 
 /// The span of `pcm` that holds speech, or `None` when there is none.

@@ -6,7 +6,18 @@
 //! (pasting the raw input scores 0.712). The pass must beat raw on
 //! average, never make a case worse, and get the rule-shaped cases exact.
 
-use flow_core::postprocess::spoken::spoken_cleanup;
+use flow_core::cleanup::lists_to_plain;
+use flow_core::config::AppCategory;
+use flow_core::postprocess::spoken::{layout, spoken_cleanup};
+
+fn category(c: &str) -> AppCategory {
+    match c {
+        "email" => AppCategory::Email,
+        "work" => AppCategory::WorkChat,
+        "personal" => AppCategory::PersonalChat,
+        _ => AppCategory::Other,
+    }
+}
 
 fn lev(a: &str, b: &str) -> usize {
     let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
@@ -33,7 +44,7 @@ fn sim(a: &str, b: &str) -> f64 {
 
 /// Cases whose expected output is reachable by rules alone.
 const EXACT: &[&str] = &[
-    "c03", "c06", "c07", "c14", "c15", "c16", "c17", "c18", "c19",
+    "c03", "c06", "c07", "c09", "c11", "c12", "c14", "c15", "c16", "c17", "c18", "c19",
 ];
 
 #[test]
@@ -46,8 +57,11 @@ fn bench_cases_improve_without_an_llm() {
     for c in j["cases"].as_array().unwrap() {
         let id = c["id"].as_str().unwrap();
         let input = c["input"].as_str().unwrap();
-        let want = c["expected"].as_str().unwrap();
-        let got = spoken_cleanup(input);
+        // The expected lists are the LLM's HTML; the pipeline pastes them
+        // as `1.` / `- ` lines (cleanup::lists_to_plain).
+        let want = &lists_to_plain(c["expected"].as_str().unwrap());
+        let cat = category(c["category"].as_str().unwrap_or("other"));
+        let got = layout(&spoken_cleanup(input), cat);
         let (rs, ds) = (sim(input, want), sim(&got, want));
         eprintln!("{id} raw {rs:.3} det {ds:.3} | {got:?}");
         raw_sum += rs;
@@ -56,7 +70,7 @@ fn bench_cases_improve_without_an_llm() {
         if ds + 0.02 < rs {
             worse.push(format!("{id}: {got:?}"));
         }
-        if EXACT.contains(&id) && got != want {
+        if EXACT.contains(&id) && got != *want {
             not_exact.push(format!("{id}: {got:?} != {want:?}"));
         }
     }

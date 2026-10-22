@@ -347,3 +347,79 @@ fn equivalence_cloud_mock_http() {
     eprintln!("{n} mock fixtures equivalent via cloud ({uploads} uploads)");
     assert!(n >= 40 && uploads >= 30);
 }
+
+/// D19: the hands-free endpoint fires at the same pushed chunk directly on
+/// `FlowCore`, through the router's local route and through its server
+/// route, and the committed result is still equivalent.
+#[test]
+fn equivalence_hands_free_endpoint() {
+    let cfg = SessionConfig {
+        endpoint_silence_ms: Some(1000),
+        ..Default::default()
+    };
+    let mut pcm = noise(400, 30, 7);
+    pcm.extend(speech(1500));
+    pcm.extend(noise(2000, 30, 8));
+    // Returns (index of the first 100 ms chunk after which the endpoint
+    // was reached, the commit).
+    fn drive(
+        start: &dyn Fn(),
+        push: &dyn Fn(&[i16]),
+        poll: &dyn Fn() -> flow_core::SessionPoll,
+        commit: &dyn Fn() -> flow_core::CommitResult,
+        pcm: &[i16],
+    ) -> (Option<usize>, flow_core::CommitResult) {
+        start();
+        let mut at = None;
+        for (i, c) in pcm.chunks(FRAME).enumerate() {
+            push(c);
+            std::thread::sleep(Duration::from_millis(1));
+            if at.is_none() && poll().endpoint_reached {
+                at = Some(i);
+            }
+        }
+        (at, commit())
+    }
+    let core = mock_core("hands free");
+    let direct = drive(
+        &|| core.start_session(cfg.clone()).unwrap(),
+        &|c| {
+            core.push_audio(c);
+        },
+        &|| core.poll(),
+        &|| core.commit(),
+        &pcm,
+    );
+    let server = spawn_mock_server("hands free");
+    let remote = remote_router(server.addr());
+    let local = hybrid_router(
+        router_config(server.addr(), false, true),
+        Some(Arc::new(mock_core("hands free"))),
+    );
+    let mut results = vec![("direct", direct)];
+    for (name, r) in [("server", &remote), ("local", &local)] {
+        let out = drive(
+            &|| r.start_session(cfg.clone()).unwrap(),
+            &|c| {
+                r.push_audio(c);
+            },
+            &|| r.poll(),
+            &|| r.commit(),
+            &pcm,
+        );
+        assert_eq!(
+            out.1.route.as_ref().map(|r| r.engine.as_str()),
+            Some(if name == "server" { "remote" } else { "local" }),
+            "{name}"
+        );
+        results.push((name, out));
+    }
+    // 400 + 1500 ms of audio, then 1000 ms of silence: chunk 28 (2.9 s).
+    let at = results[0].1 .0.expect("endpoint reached");
+    assert!((28..=29).contains(&at), "{at}");
+    for (name, (a, r)) in &results {
+        assert_eq!(*a, Some(at), "{name}");
+        assert_eq!(normalize(r), normalize(&results[0].1 .1), "{name}");
+        assert_eq!(r.final_text.trim(), "hands free", "{name}");
+    }
+}
