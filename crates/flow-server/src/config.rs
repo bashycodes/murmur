@@ -59,6 +59,11 @@ pub struct Config {
     /// Open TCP connections, total and per peer IP (S7).
     pub max_connections: usize,
     pub max_connections_per_ip: usize,
+    /// WebSocket ping interval, and how long a connection may stay silent
+    /// (not even a pong) before it is dropped with its session (C5;
+    /// protocol.md §1: 15 s / 45 s).
+    pub ws_ping_ms: u64,
+    pub ws_dead_ms: u64,
     pub model: ModelConfig,
     pub tls: Option<TlsConfig>,
     pub log: LogConfig,
@@ -83,6 +88,8 @@ impl Default for Config {
             handshake_timeout_ms: 10_000,
             max_connections: 64,
             max_connections_per_ip: 16,
+            ws_ping_ms: flow_protocol::WS_PING_S * 1000,
+            ws_dead_ms: flow_protocol::WS_DEAD_S * 1000,
             model: ModelConfig::default(),
             tls: None,
             log: LogConfig::default(),

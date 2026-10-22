@@ -125,6 +125,11 @@ Developer page warns.
   dropped too); at most `max_connections` (64) sockets in total and
   `max_connections_per_ip` (16) per peer are open, upgraded WebSockets
   included. Excess connections are closed at accept.
+* Keepalive (C5): the server sends a WebSocket ping every `ws_ping_ms`
+  (15 s) and drops a connection that has sent no frame at all, pongs
+  included, for `ws_dead_ms` (45 s), with or without a session; its session
+  ends and the worker is freed. A session that has not committed after
+  `max_session_s` of wall-clock time ends with `error too_large`.
 * A session leases a worker at `start` and returns it at `result`,
   `cancelled` or disconnect.
 * Never written to disk: audio, transcripts, contexts, dictionaries. Logs

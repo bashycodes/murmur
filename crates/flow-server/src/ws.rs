@@ -58,7 +58,10 @@ struct Conn {
     ev: mpsc::UnboundedSender<Event>,
     sess: Option<Sess>,
     dropped_audio: u64,
+    /// Last client message other than ping/pong (idle close).
     last_activity: Instant,
+    /// Last frame of any kind, pongs included (dead-peer detection).
+    last_rx: Instant,
 }
 
 pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAddr) {
@@ -123,23 +126,46 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
         sess: None,
         dropped_audio: 0,
         last_activity: Instant::now(),
+        last_rx: Instant::now(),
     };
     let mut tick = tokio::time::interval(PARTIAL_POLL);
     let idle = Duration::from_secs(state.cfg.idle_timeout_s.max(1));
+    let ping_every = Duration::from_millis(state.cfg.ws_ping_ms.max(10));
+    let dead = Duration::from_millis(state.cfg.ws_dead_ms.max(1));
+    let max_wall = Duration::from_secs(state.cfg.max_session_s);
+    let mut ping = tokio::time::interval_at(tokio::time::Instant::now() + ping_every, ping_every);
     loop {
         tokio::select! {
             _ = kill.changed() => break,
             m = stream.next() => {
-                c.last_activity = Instant::now();
+                c.last_rx = Instant::now();
                 match m {
-                    Some(Ok(Message::Text(t))) => c.on_text(&t),
-                    Some(Ok(Message::Binary(b))) => c.on_audio(&b),
+                    Some(Ok(Message::Text(t))) => {
+                        c.last_activity = c.last_rx;
+                        c.on_text(&t)
+                    }
+                    Some(Ok(Message::Binary(b))) => {
+                        c.last_activity = c.last_rx;
+                        c.on_audio(&b)
+                    }
                     Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
                     Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
                 }
             }
             Some(ev) = ev_rx.recv() => c.on_event(ev),
+            _ = ping.tick() => {
+                let _ = out_tx.send(Message::Ping(Default::default()));
+            }
             _ = tick.tick() => {
+                // C5: a peer that has sent nothing, not even a pong, for the
+                // dead interval is gone (half-open, NAT drop, app killed).
+                // Dropping `c` drops the session and frees its worker.
+                if c.last_rx.elapsed() > dead {
+                    tracing::info!(%peer, "no frame within the dead interval; closing");
+                    let _ = out_tx.send(Message::Close(None));
+                    break;
+                }
+                c.enforce_wall_clock(max_wall);
                 c.poll_partial();
                 if c.sess.is_none() && c.last_activity.elapsed() > idle {
                     let _ = out_tx.send(Message::Close(None));
@@ -414,6 +440,24 @@ impl Conn {
                 });
             }
         }
+    }
+
+    /// End a session that has been open longer than `max_session_s` of
+    /// wall-clock time without committing (C5: pongs alone must not hold a
+    /// worker forever). A running commit is left to finish.
+    fn enforce_wall_clock(&mut self, max: Duration) {
+        let Some(s) = &self.sess else { return };
+        if s.committing || s.created.elapsed() <= max {
+            return;
+        }
+        let sid = s.sid;
+        self.sess = None;
+        tracing::info!(sid, peer = %self.peer, "session over max_session_s wall-clock");
+        self.err(
+            Some(sid),
+            code::TOO_LARGE,
+            "session longer than max_session_s",
+        );
     }
 
     fn poll_partial(&mut self) {
