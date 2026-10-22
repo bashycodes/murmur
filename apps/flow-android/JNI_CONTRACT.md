@@ -111,7 +111,10 @@ mock provider: no key → device, key → cloud, 401 → `auth_failed` + full re
 ## Live route + hands-free endpointing (2026-10-22) — additive
 
 Lets the shell show "Transcribing via <route>…" **while recording** and run hands-free
-endpointing (D19). Every flavour exports both; they work on core and router handles, but only
+endpointing (D19). Kotlin uses both since branch `android-final`: `NativeFlowCore.startSessionInfo` / `poll`
+(`DictationController` polls every 250 ms while recording; the bubble preview shows
+`RouteLabel` "via phone | server | <provider> (model)" and relabels on failover; a tap
+(hands-free) session sends the user's "stop after silence" pref, default 2000 ms, push-to-talk never). Every flavour exports both; they work on core and router handles, but only
 a router handle reports `route`. Existing natives are unchanged (`nativeStartSession` still
 returns a `Boolean`; Kotlin may keep using it for push-to-talk).
 

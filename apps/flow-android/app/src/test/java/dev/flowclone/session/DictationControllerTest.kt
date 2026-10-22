@@ -7,6 +7,7 @@ import dev.flowclone.core.FlowCore
 import dev.flowclone.core.SessionConfig
 import dev.flowclone.session.DictationState.ErrorKind
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -26,11 +27,14 @@ class DictationControllerTest {
         var sink: ((ShortArray, Int) -> Unit)? = null
         var startOk = true
         var starts = 0; var stops = 0
+        var onError: (() -> Unit)? = null
         override fun start(onFrame: (ShortArray, Int) -> Unit): Boolean {
             starts++
             if (!startOk) return false
             sink = onFrame; return true
         }
+        override fun start(onFrame: (ShortArray, Int) -> Unit, onError: () -> Unit): Boolean =
+            start(onFrame).also { if (it) this.onError = onError }
         override fun stop() { stops++; sink = null }
         fun speak(ms: Int = 1000) { repeat(ms / 100) { sink?.invoke(ShortArray(1600) { 3000 }, 1600) } }
     }
@@ -54,6 +58,11 @@ class DictationControllerTest {
         var config = SessionConfig(languages = listOf("en"))
         override fun sessionConfig() = config
         override fun onRecordingActive(active: Boolean) { recordingActive += active }
+        var endpointMs: Int? = 2000
+        override fun endpointSilenceMs() = endpointMs
+        var target = InsertTarget.OK
+        var explicitTarget = InsertTarget.OK
+        override fun insertTarget(explicit: Boolean) = if (explicit) explicitTarget else target
     }
 
     /** advanceUntilIdle ignores backgroundScope work, where the controller lives. */
@@ -382,6 +391,7 @@ class DictationControllerTest {
     @Test fun bothTogglesOffIsAClearErrorAtStart() = runTest {
         val refusing = object : FlowCore by core {
             override fun startSession(cfg: SessionConfig) = throw dev.flowclone.core.CoreException("no_engine_enabled: both off", "no_engine_enabled")
+            override fun startSessionInfo(cfg: SessionConfig) = startSession(cfg).let { dev.flowclone.core.StartInfo() }
         }
         val c = controller(refusing)
         c.toggle(false)
@@ -389,7 +399,187 @@ class DictationControllerTest {
             DictationState.Error(ErrorKind.EngineUnavailable("Dictation disabled — enable server or client in Developer settings")),
             c.state.value,
         )
-        assertEquals(0, audio.starts)
+        // C2: the mic opens before the (off-Main) start answers; a refused start closes it again.
+        assertEquals(1, audio.starts)
+        assertEquals(1, audio.stops)
+        assertEquals(listOf(true, false), host.recordingActive)
+    }
+
+    // ---- 2026-10-22 shell changelog: hands-free endpointing, live route, off-Main start, cancel ----
+
+    @Test fun handsFreeSendsEndpointSilenceAndPushToTalkDoesNot() = runTest {
+        val c = controller()
+        c.toggle(hold = false)
+        assertEquals(2000, core.lastConfig!!.endpointSilenceMs)
+        c.cancel(); advanceTimeBy(600)
+        c.toggle(hold = true)
+        assertEquals(null, core.lastConfig!!.endpointSilenceMs)
+    }
+
+    @Test fun endpointReachedRunsTheNormalFinishPath() = runTest {
+        core.endpointAfterSamples = 16_000
+        val c = controller()
+        c.toggle(hold = false)
+        audio.speak(500)
+        advanceTimeBy(DictationController.PARTIAL_POLL_MS * 2); runCurrent()
+        assertTrue("not yet", c.state.value is DictationState.Recording)
+        audio.speak(600)
+        advanceTimeBy(DictationController.PARTIAL_POLL_MS + 1); runCurrent()
+        assertTrue(FeedbackEvent.StopSound in host.events)
+        settle()
+        assertEquals(listOf("hello world"), host.inserted)
+        assertEquals(DictationState.Ready, c.state.value)
+    }
+
+    @Test fun endpointIsIgnoredForPushToTalk() = runTest {
+        core.endpointAfterSamples = 1
+        val c = controller()
+        c.toggle(hold = true)
+        audio.speak(1000)
+        advanceTimeBy(2_000); runCurrent()
+        assertTrue(c.state.value is DictationState.Recording)
+    }
+
+    @Test fun liveRouteShownAtStartAndUpdatedOnFailover() = runTest {
+        core.route = dev.flowclone.core.SessionRoute("remote", server = "100.64.0.10:7313")
+        val c = controller()
+        c.toggle(false)
+        assertEquals("start route before the first poll", "remote", c.route.value!!.engine)
+        audio.speak(300)
+        core.route = dev.flowclone.core.SessionRoute("local", fallback = "disconnected")
+        advanceTimeBy(DictationController.PARTIAL_POLL_MS + 1); runCurrent()
+        assertEquals(dev.flowclone.core.SessionRoute("local", fallback = "disconnected"), c.route.value)
+        core.route = null // dead session mid-recording: keep the last label
+        advanceTimeBy(DictationController.PARTIAL_POLL_MS + 1); runCurrent()
+        assertEquals("local", c.route.value!!.engine)
+        advanceTimeBy(600); c.toggle(false); settle()
+        assertEquals(null, c.route.value)
+    }
+
+    @Test fun cancelledCommitInsertsNothingAndLeavesNoHistory() = runTest {
+        val cancelled = object : FlowCore by core {
+            override fun startSessionInfo(cfg: SessionConfig) = core.startSessionInfo(cfg)
+            override fun commit() = CommitResult(dev.flowclone.core.CommitStatus.ERROR, error = "cancelled")
+        }
+        val c = controller(cancelled)
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        assertTrue(host.inserted.isEmpty())
+        assertTrue(host.history.isEmpty())
+        assertEquals(DictationState.Ready, c.state.value)
+    }
+
+    /** StrictMode-style (review C2): the blocking start never runs on the caller's (Main) thread. */
+    @Test fun sessionStartRunsOffTheCallerThreadAndKeepsEarlyAudio() = runTest {
+        val caller = Thread.currentThread()
+        val startThreads = java.util.Collections.synchronizedList(mutableListOf<Thread>())
+        val gate = java.util.concurrent.CountDownLatch(1)
+        core.onStart = { startThreads += Thread.currentThread(); gate.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+        val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val io = pool.asCoroutineDispatcherForTest()
+        try {
+            val c = DictationController(
+                backgroundScope, audio, host, { core }, StandardTestDispatcher(testScheduler), SessionCap(), { currentTime }, io,
+            ).also { it.onFieldFocusChanged(true) }
+            c.toggle(false)
+            assertTrue("recording while the start connects", c.state.value is DictationState.Recording)
+            audio.speak(500) // captured before the session exists
+            gate.countDown()
+            val until = System.currentTimeMillis() + 5_000
+            while (core.samplesPushed < 8_000 && System.currentTimeMillis() < until) { runCurrent(); Thread.sleep(5) }
+            assertEquals("early frames replayed", 8_000, core.samplesPushed)
+            assertTrue(startThreads.isNotEmpty() && startThreads.none { it === caller })
+            audio.speak(200)
+            assertEquals(11_200, core.samplesPushed)
+        } finally { pool.shutdownNow() }
+    }
+
+    /** The guard itself: an inline (Main) start is reported, the IO start is not. */
+    @Test fun blockingCallGuardFlagsAStartOnTheCallerThread() = runTest {
+        val caller = Thread.currentThread()
+        val violations = java.util.Collections.synchronizedList(mutableListOf<String>())
+        dev.flowclone.core.BlockingCalls.isMainThread = { Thread.currentThread() === caller }
+        dev.flowclone.core.BlockingCalls.onViolation = { violations += it }
+        val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            controller().toggle(false) // Unconfined start = on the caller thread
+            assertEquals(listOf("startSession"), violations.toList())
+            violations.clear()
+            core.cancel()
+            val ioStarts = java.util.concurrent.atomic.AtomicInteger()
+            core.onStart = { ioStarts.incrementAndGet() }
+            val c = DictationController(
+                backgroundScope, FakeAudio(), host, { core }, StandardTestDispatcher(testScheduler), SessionCap(), { currentTime },
+                pool.asCoroutineDispatcherForTest(),
+            ).also { it.onFieldFocusChanged(true) }
+            c.toggle(false)
+            val until = System.currentTimeMillis() + 5_000
+            while (ioStarts.get() == 0 && System.currentTimeMillis() < until) Thread.sleep(5)
+            assertEquals(1, ioStarts.get())
+            assertTrue(violations.toList().toString(), violations.isEmpty())
+        } finally {
+            pool.shutdownNow()
+            dev.flowclone.core.BlockingCalls.isMainThread = { false }
+            dev.flowclone.core.BlockingCalls.onViolation = {}
+        }
+    }
+
+    @Test fun cancelWhileStartingCancelsTheLateSession() = runTest {
+        val gate = java.util.concurrent.CountDownLatch(1)
+        core.onStart = { gate.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+        val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val c = DictationController(
+                backgroundScope, audio, host, { core }, StandardTestDispatcher(testScheduler), SessionCap(), { currentTime },
+                pool.asCoroutineDispatcherForTest(),
+            ).also { it.onFieldFocusChanged(true) }
+            c.toggle(false)
+            c.cancel()
+            assertEquals(DictationState.Ready, c.state.value)
+            gate.countDown()
+            val until = System.currentTimeMillis() + 5_000
+            while (core.lastConfig == null && System.currentTimeMillis() < until) Thread.sleep(5)
+            Thread.sleep(50); runCurrent()
+            assertFalse("late session cancelled", core.pushAudio(ShortArray(10), 10))
+            advanceTimeBy(600); c.toggle(false); runCurrent()
+            assertTrue(c.state.value is DictationState.Recording)
+        } finally { pool.shutdownNow() }
+    }
+
+    @Test fun focusMovedDuringProcessingInsertsNothingUntilPaste() = runTest {
+        host.target = InsertTarget.CHANGED
+        val c = controller()
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        assertTrue(host.inserted.isEmpty())
+        assertTrue(FeedbackEvent.TargetChanged in host.events)
+        assertEquals(DictationState.Error(ErrorKind.FailedToPaste("hello world")), c.state.value)
+        assertFalse(host.history.single().second)
+        c.pasteRetry(); settle()
+        assertEquals("explicit Paste goes into the field focused now", listOf("hello world"), host.inserted)
+    }
+
+    @Test fun protectedFieldIsNeverInsertedEvenOnPaste() = runTest {
+        host.target = InsertTarget.PROTECTED
+        host.explicitTarget = InsertTarget.PROTECTED
+        val c = controller()
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        assertTrue(FeedbackEvent.TargetProtected in host.events)
+        c.pasteRetry(); settle()
+        assertTrue(host.inserted.isEmpty())
+        assertTrue(c.state.value is DictationState.Error)
+    }
+
+    @Test fun micErrorSubmitsWhatWasHeardAndIgnoresLateFrames() = runTest {
+        val c = controller()
+        c.toggle(false); audio.speak(500)
+        val sink = audio.sink!!
+        audio.onError!!.invoke(); runCurrent()
+        assertTrue(FeedbackEvent.MicLost in host.events)
+        assertTrue(c.state.value is DictationState.Processing || c.state.value == DictationState.Ready)
+        val before = core.samplesPushed
+        sink(ShortArray(1600) { 3000 }, 1600) // tail of the dead capture thread
+        assertEquals(before, core.samplesPushed)
+        settle()
+        assertEquals(listOf("hello world"), host.inserted)
     }
 }
 
@@ -408,3 +598,5 @@ class HangingCore(private val inner: FakeFlowCore) : FlowCore by inner {
 class ScriptedCore(private val inner: FakeFlowCore, private val result: CommitResult) : FlowCore by inner {
     override fun commit(): CommitResult { inner.commit(); return result }
 }
+
+private fun java.util.concurrent.ExecutorService.asCoroutineDispatcherForTest() = asCoroutineDispatcher()

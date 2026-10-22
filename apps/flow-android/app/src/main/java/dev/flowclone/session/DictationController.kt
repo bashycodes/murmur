@@ -9,23 +9,50 @@ import dev.flowclone.core.PasteKey
 import dev.flowclone.core.PasteSegment
 import dev.flowclone.core.RouterErrors
 import dev.flowclone.core.SessionConfig
+import dev.flowclone.core.SessionRoute
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Microphone capture. [start] delivers frames on its own thread until [stop] (which drains the tail). */
 interface AudioSource {
     fun start(onFrame: (ShortArray, Int) -> Unit): Boolean
+
+    /** Like [start]; [onError] runs once (capture thread) when the capture dies mid-session (review C15). */
+    fun start(onFrame: (ShortArray, Int) -> Unit, onError: () -> Unit): Boolean = start(onFrame)
+
     fun stop()
 }
 
-enum class FeedbackEvent { StartSound, StopSound, CancelHaptic, CapWarning, CapReached, NeedMicPermission, PasteRetryFailed, NoSpeech }
+/** S12: may the transcript go into the field focused now? */
+enum class InsertTarget {
+    /** Same field as at dictation start (auto insert), or an allowed field (explicit paste). */
+    OK,
+    /** Focus moved to another app / field since the dictation started. */
+    CHANGED,
+    /** The focused field is protected (banking app, password / sensitive field, user denylist). */
+    PROTECTED,
+}
+
+enum class FeedbackEvent {
+    StartSound, StopSound, CancelHaptic, CapWarning, CapReached, NeedMicPermission, PasteRetryFailed, NoSpeech,
+    /** S12: focus moved during the dictation; nothing was inserted (Paste puts it in the field focused now). */
+    TargetChanged,
+    /** S12: the focused field is protected; nothing was inserted there. */
+    TargetProtected,
+    /** C15: the microphone stopped delivering audio; what was heard is transcribed. */
+    MicLost,
+}
 
 /** Transient hint shown next to the bubble (live preview line). */
 enum class DictationHint {
@@ -58,6 +85,10 @@ sealed interface DictationState {
  * Platform-free dictation orchestrator: owns the state machine, the 5-min cap timer,
  * the processing timeout, the 500 ms toggle debounce and the hand-off to insertion.
  * Android specifics (FGS promotion, keep-alive arming, sounds) hang off [Host].
+ *
+ * Threading (review C2): every blocking core call (`startSessionInfo`, `commit`) runs on
+ * [startDispatcher] / [commitDispatcher], never on the caller's (Main) thread. The mic starts
+ * at once and the [StartGate] holds its frames until the session is up.
  */
 class DictationController(
     private val scope: CoroutineScope,
@@ -70,6 +101,11 @@ class DictationController(
     /** Read at each recording start, so a settings change applies to the next session. */
     var cap: SessionCap = SessionCap(),
     private val now: () -> Long,
+    /**
+     * Where the blocking `start_session` runs (Dispatchers.IO in the app: the server route
+     * connects there). Unconfined = inline, for tests that need no thread hop.
+     */
+    private val startDispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
 ) {
     constructor(
         scope: CoroutineScope, audio: AudioSource, host: Host, core: () -> FlowCore,
@@ -84,17 +120,25 @@ class DictationController(
         suspend fun sendKey(key: PasteKey): Boolean = false
         fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?)
         fun hasMicPermission(): Boolean
-        /** captureFieldSnapshot at dictation start; null when extraction isn't allowed. */
+        /** captureFieldSnapshot at dictation start (also pins the target field, S12); null when extraction isn't allowed. */
         fun captureContext(): FieldContext?
         fun sessionConfig(): SessionConfig
         /** true at record start (promote FGS to microphone, arm keep-alive), false when audio stops. */
         fun onRecordingActive(active: Boolean)
+        /** D19: trailing silence that ends a hands-free (tap) dictation, 300-10000 ms; null = never. */
+        fun endpointSilenceMs(): Int? = null
+        /**
+         * S12: re-check the target right before inserting. [explicit] = the user pressed Paste
+         * (any allowed field is fine); otherwise the field must still be the one pinned by
+         * [captureContext], and it must still pass the banking / password / denylist guard.
+         */
+        fun insertTarget(explicit: Boolean): InsertTarget = InsertTarget.OK
     }
 
     companion object {
         const val TOGGLE_DEBOUNCE_MS = 500L
         const val PROCESSING_TIMEOUT_MS = 20_000L
-        /** How often the live preview reads the core's latest partial (a cached string). */
+        /** How often the preview tick polls the core (partial, endpoint, live route). */
         const val PARTIAL_POLL_MS = 250L
         const val NO_SPEECH_HINT_AFTER_MS = 3_000L
         const val HINT_MS = 2_500L
@@ -107,6 +151,9 @@ class DictationController(
             if (kind !in RouterErrors.KINDS) return null
             return RouterErrors.userMessage(kind, r.error ?: kind)
         }
+
+        /** C4: ERROR `cancelled` = the dictation was dropped on purpose; nothing to insert or report. */
+        fun isCancelled(r: CommitResult) = r.status == CommitStatus.ERROR && r.error?.trim() == "cancelled"
     }
 
     private val _state = MutableStateFlow<DictationState>(DictationState.Idle)
@@ -116,9 +163,12 @@ class DictationController(
     private val _partial = MutableStateFlow<String?>(null)
     /** Latest live-preview text while recording / processing (only with `partialIntervalMs`). */
     val partial: StateFlow<String?> = _partial
+    private val _route = MutableStateFlow<SessionRoute?>(null)
+    /** Route of the live session ("via phone | server | provider"), updated on failover; null when idle. */
+    val route: StateFlow<SessionRoute?> = _route
     private val _hint = MutableStateFlow<DictationHint?>(null)
     val hint: StateFlow<DictationHint?> = _hint
-    private var partialJob: Job? = null
+    private var pollJob: Job? = null
     private var hintJob: Job? = null
     private val silence = SilenceTracker()
 
@@ -128,7 +178,13 @@ class DictationController(
     private var processingJob: Job? = null
     private var processingCore: FlowCore? = null
     private var session: FlowCore? = null
+    /** Completes true once the session started (false: start failed or the dictation was dropped). */
+    private var started: Deferred<Boolean>? = null
     private var sessionAppId: String? = null
+    /** Bumped by every start / cancel: late frames, start results and mic errors of an older dictation are ignored. */
+    @Volatile private var generation = 0L
+    /** Generation whose mic frames are accepted; 0 once its audio stopped (C15: no stale tail). */
+    @Volatile private var liveFrames = 0L
     private val meter = LevelMeter()
 
     private fun restingState(): DictationState = if (fieldFocused) DictationState.Ready else DictationState.Idle
@@ -147,7 +203,8 @@ class DictationController(
         if (t - lastToggleAt < TOGGLE_DEBOUNCE_MS) return
         lastToggleAt = t
         when (_state.value) {
-            DictationState.Idle, DictationState.Ready, is DictationState.Error -> start(hold)
+            // A previous start still connecting (it was cancelled): one session start at a time.
+            DictationState.Idle, DictationState.Ready, is DictationState.Error -> if (started?.isActive != true) start(hold)
             is DictationState.Recording -> stopAndSubmit()
             is DictationState.Processing -> Unit
         }
@@ -158,21 +215,26 @@ class DictationController(
         if (_state.value is DictationState.Recording) stopAndSubmit()
     }
 
-    /** X button: discards a recording, or abandons processing (late result dropped). */
+    /** X button: discards a recording, or abandons processing (C4: the core aborts the commit; late result dropped). */
     fun cancel() {
         if (_state.value is DictationState.Processing) {
+            generation++
             processingJob?.cancel(); processingJob = null
             processingCore?.cancel(); processingCore = null
             _partial.value = null
+            _route.value = null
             host.feedback(FeedbackEvent.CancelHaptic)
             _state.value = restingState()
             return
         }
         if (_state.value !is DictationState.Recording) return
+        generation++
         endAudio()
         _partial.value = null
         _hint.value = null
-        session?.cancel()
+        _route.value = null
+        // Started: cancel it now. Still starting: the start sees the new generation and cancels itself.
+        if (started?.let { it.isCompleted && !it.isCancelled } == true) session?.cancel()
         session = null
         host.feedback(FeedbackEvent.CancelHaptic)
         host.feedback(FeedbackEvent.StopSound)
@@ -184,6 +246,11 @@ class DictationController(
         if (s !is DictationState.Error || s.kind !is DictationState.ErrorKind.FailedToPaste) return
         val text = s.kind.text
         scope.launch {
+            // S12: an explicit paste may go into another field, never into a protected one.
+            if (host.insertTarget(explicit = true) == InsertTarget.PROTECTED) {
+                host.feedback(FeedbackEvent.TargetProtected)
+                return@launch
+            }
             if (host.insert(text)) _state.value = restingState()
             else host.feedback(FeedbackEvent.PasteRetryFailed)
         }
@@ -204,42 +271,76 @@ class DictationController(
             _state.value = DictationState.Error(DictationState.ErrorKind.EngineUnavailable(RouterErrors.userMessage(e.kind, e.message ?: "engine unavailable")))
             return
         }
-        val cfg = host.sessionConfig().copy(maxSamples = cap.maxSamples)
-        try {
-            c.startSession(cfg)
-        } catch (e: CoreException) {
-            // e.g. router `no_engine_enabled`: "Dictation disabled — enable server or client …"
-            _state.value = DictationState.Error(DictationState.ErrorKind.EngineUnavailable(RouterErrors.userMessage(e.kind, e.message ?: "start failed")))
-            return
-        }
+        val handsFree = !hold
+        val cfg = host.sessionConfig().copy(
+            maxSamples = cap.maxSamples,
+            // D19: only hands-free sessions end themselves on silence; push-to-talk leaves it unset.
+            endpointSilenceMs = if (handsFree) host.endpointSilenceMs() else null,
+        )
+        val gen = ++generation
         val ctx = host.captureContext()
         sessionAppId = ctx?.appId
-        ctx?.let(c::setContext)
         session = c
         meter.reset()
         silence.reset()
-        hintJob?.cancel(); _hint.value = null; _partial.value = null
+        hintJob?.cancel(); _hint.value = null; _partial.value = null; _route.value = null
+        val gate = StartGate()
         host.onRecordingActive(true)
-        val ok = audio.start { pcm, n ->
-            c.pushAudio(pcm, n)
+        liveFrames = gen
+        val ok = audio.start({ pcm, n ->
+            if (liveFrames != gen) return@start // C15: a late tail of a stopped or older dictation
+            gate.push(pcm, n)
             _level.value = meter.update(pcm, n)
             silence.update(pcm, n)
             val h = _hint.value
             if (silence.heardSpeech) { if (h == DictationHint.NoSpeechYet) _hint.value = null }
             else if (h == null && silence.leadingSilenceMs >= NO_SPEECH_HINT_AFTER_MS) _hint.value = DictationHint.NoSpeechYet
-        }
+        }, {
+            scope.launch {
+                if (generation == gen && _state.value is DictationState.Recording) {
+                    host.feedback(FeedbackEvent.MicLost)
+                    stopAndSubmit()
+                }
+            }
+        })
         if (!ok) {
-            c.cancel(); session = null
+            generation++
+            liveFrames = 0
+            session = null
             host.onRecordingActive(false)
             _state.value = DictationState.Error(DictationState.ErrorKind.MicUnavailable)
             return
         }
         host.feedback(FeedbackEvent.StartSound)
         _state.value = DictationState.Recording(hold, now())
-        if (cfg.partialIntervalMs != null) partialJob = scope.launch {
-            while (true) {
+        // C2: the (possibly network-bound) start runs off the caller's thread; frames wait in the gate.
+        started = scope.async(start = CoroutineStart.UNDISPATCHED) {
+            val info = try {
+                withContext(startDispatcher) { c.startSessionInfo(cfg) }
+            } catch (e: CoreException) {
+                if (generation == gen) failStart(e)
+                return@async false
+            }
+            if (generation != gen) { c.cancel(); return@async false } // cancelled while connecting
+            ctx?.let(c::setContext)
+            gate.open { pcm, n -> c.pushAudio(pcm, n) }
+            if (_route.value == null) _route.value = info.route
+            true
+        }
+        val preview = cfg.partialIntervalMs != null
+        pollJob = scope.launch {
+            if (started?.await() != true) return@launch
+            while (generation == gen) {
                 delay(PARTIAL_POLL_MS)
-                c.partial()?.takeIf { it.isNotBlank() }?.let { _partial.value = it.trim() }
+                if (generation != gen || _state.value !is DictationState.Recording) break
+                val p = c.poll()
+                if (preview) p.partial?.takeIf { it.isNotBlank() }?.let { _partial.value = it.trim() }
+                // Absent route mid-recording = the session is dead: keep the last label (the commit reports it).
+                p.route?.let { if (it != _route.value) _route.value = it }
+                if (handsFree && p.endpointReached) {
+                    stopAndSubmit() // D19: exactly as if the user tapped stop
+                    break
+                }
             }
         }
         capJob = scope.launch {
@@ -251,10 +352,22 @@ class DictationController(
         }
     }
 
+    /** The session could not start (router: no engine, server-only and unreachable, …). */
+    private fun failStart(e: CoreException) {
+        val msg = RouterErrors.userMessage(e.kind, e.message ?: "start failed")
+        if (_state.value is DictationState.Recording) endAudio()
+        session = null
+        _route.value = null
+        _partial.value = null
+        // e.g. router `no_engine_enabled`: "Dictation disabled — enable server or client …"
+        _state.value = DictationState.Error(DictationState.ErrorKind.EngineUnavailable(msg))
+    }
+
     private fun endAudio() {
         capJob?.cancel(); capJob = null
-        partialJob?.cancel(); partialJob = null
-        audio.stop()
+        pollJob?.cancel(); pollJob = null
+        audio.stop() // drains the tail into the session
+        liveFrames = 0
         if (_hint.value == DictationHint.NoSpeechYet) _hint.value = null
         _level.value = 0f
         host.onRecordingActive(false)
@@ -267,16 +380,27 @@ class DictationController(
         val c = session ?: return
         session = null
         val appId = sessionAppId
+        val start = started
+        val gen = generation
         _state.value = DictationState.Processing(rec.hold, now())
         processingCore = c
         processingJob = scope.launch {
+            // The start may still be connecting; a failed start already showed its error.
+            if (start != null && !start.await()) return@launch
             // Not a child: a hung native commit must be abandonable.
             val pending = CoroutineScope(commitDispatcher).async { c.commit() }
             val result = withTimeoutOrNull(PROCESSING_TIMEOUT_MS) { pending.await() }
             _partial.value = null
+            if (generation != gen) return@launch
             if (result == null) {
-                c.cancel()
+                c.cancel() // C4: the core aborts the running commit
+                _route.value = null
                 _state.value = DictationState.Error(DictationState.ErrorKind.FailedToTranscribe)
+                return@launch
+            }
+            _route.value = null
+            if (isCancelled(result)) {
+                _state.value = restingState()
                 return@launch
             }
             if (result.status == CommitStatus.ERROR) {
@@ -297,6 +421,18 @@ class DictationController(
                 hintJob = scope.launch { delay(HINT_MS); if (_hint.value == h) _hint.value = null }
                 _state.value = restingState()
                 return@launch
+            }
+            // S12: only into the field focused at dictation start, and only while it is still allowed.
+            when (host.insertTarget(explicit = false)) {
+                InsertTarget.OK -> Unit
+                InsertTarget.CHANGED, InsertTarget.PROTECTED -> {
+                    val protected = host.insertTarget(explicit = true) == InsertTarget.PROTECTED
+                    host.feedback(if (protected) FeedbackEvent.TargetProtected else FeedbackEvent.TargetChanged)
+                    host.recordHistory(result, false, appId)
+                    val text = plan.filterIsInstance<PasteSegment.Text>().joinToString("") { it.text }
+                    _state.value = DictationState.Error(DictationState.ErrorKind.FailedToPaste(text))
+                    return@launch
+                }
             }
             val unpasted = paste(plan)
             val inserted = unpasted == null

@@ -24,6 +24,7 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
     private fun gone(): Nothing = throw CoreException("Speech engine was unloaded, try again in a moment.", "local_not_ready")
 
     override fun startSession(cfg: SessionConfig) = lease.use(::gone) { h ->
+        BlockingCalls.check("nativeStartSession")
         if (!nativeStartSession(h, CoreJson.encode(cfg))) throw lastError("start_session failed")
     }
 
@@ -51,6 +52,7 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
     /** Router handles only: blocking probe of the saved server config; updates the circuit + "Server info". */
     fun probeSaved(): HealthReport {
         val none = { HealthReport(ok = false, error = "error", message = "no router") }
+        BlockingCalls.check("nativeProbeRouter")
         return if (!isRouter) none() else lease.use(none) { h -> RouterJson.decodeHealth(guardLink { nativeProbeRouter(h) }) }
     }
 
@@ -69,7 +71,10 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
     /** Blocking "Test provider" with an unsaved provider; `key` null = the router's stored key. */
     fun probeCloud(providerJson: String, key: String?): HealthReport =
         if (!isRouter) Companion.probeCloud(providerJson, key)
-        else lease.use({ Companion.probeCloud(providerJson, key) }) { h -> cloudCall { RouterJson.decodeHealth(nativeProbeCloud(h, providerJson, key)) } }
+        else lease.use({ Companion.probeCloud(providerJson, key) }) { h ->
+            BlockingCalls.check("nativeProbeCloud")
+            cloudCall { RouterJson.decodeHealth(nativeProbeCloud(h, providerJson, key)) }
+        }
 
     /** This month's counters (`CloudUsage` JSON), or null without a router / symbol. */
     fun cloudUsageJson(): String? =
@@ -88,9 +93,33 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
 
     override fun partial(): String? = lease.use({ null }) { h -> nativePartial(h) }
 
+    /** `nativeStartSessionInfo`; a library without it falls back to `nativeStartSession`. */
+    override fun startSessionInfo(cfg: SessionConfig): StartInfo = lease.use(::gone) { h ->
+        BlockingCalls.check("nativeStartSessionInfo")
+        val json = CoreJson.encode(cfg)
+        val info = try {
+            nativeStartSessionInfo(h, json) ?: throw lastError("start_session failed")
+        } catch (e: UnsatisfiedLinkError) {
+            if (!nativeStartSession(h, json)) throw lastError("start_session failed")
+            return@use StartInfo()
+        }
+        RouterJson.decodeStartInfo(info)
+    }
+
+    /** `nativePoll` (partial + endpoint + live route); `nativePartial` on an older library. */
+    override fun poll(): CorePoll = lease.use({ CorePoll() }) { h ->
+        try {
+            RouterJson.decodePoll(nativePoll(h))
+        } catch (e: UnsatisfiedLinkError) {
+            CorePoll(partial = nativePartial(h))
+        }
+    }
 
     override fun commit(): CommitResult =
-        lease.use({ CommitResult(CommitStatus.ERROR, error = "unloaded") }) { h -> CoreJson.decodeCommit(nativeCommit(h)) }
+        lease.use({ CommitResult(CommitStatus.ERROR, error = "unloaded") }) { h ->
+            BlockingCalls.check("nativeCommit")
+            CoreJson.decodeCommit(nativeCommit(h))
+        }
 
     override fun cancel() = lease.use({}) { h -> nativeCancel(h) }
 
@@ -151,6 +180,7 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
                 val l = loadLlmPlugin()
                 if (l is LibraryState.Unavailable) throw CoreException(l.message)
             }
+            BlockingCalls.check("nativeLoadModels")
             val h = nativeLoadModels(CoreJson.encode(cfg))
             if (h == 0L) throw lastError("load_models failed")
             return NativeFlowCore(h)
@@ -191,6 +221,7 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
 
         /** Blocking (connect + hello + 3 pings): call off the main thread. Never throws. */
         fun probeServer(serverConfigJson: String): HealthReport {
+            BlockingCalls.check("nativeProbeServer")
             val s = loadLibrary()
             if (s is LibraryState.Unavailable) return HealthReport(ok = false, error = "error", message = s.message)
             return try {
@@ -221,6 +252,7 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
 
         /** Test provider before a router exists (temporary native router: [key] is required). Blocking. */
         fun probeCloud(providerJson: String, key: String?): HealthReport {
+            BlockingCalls.check("nativeProbeCloud")
             val s = loadLibrary()
             if (s is LibraryState.Unavailable) return HealthReport(ok = false, engine = "cloud", error = "error", message = s.message)
             return cloudCall { RouterJson.decodeHealth(nativeProbeCloud(0, providerJson, key)) }
@@ -239,6 +271,9 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
         @JvmStatic external fun nativeCancel(handle: Long)
         @JvmStatic external fun nativeLearnEdit(handle: Long, pasted: String, edited: String): String
 
+        // ---- 2026-10-22 live route + hands-free endpointing (JNI_CONTRACT.md); every flavour exports them ----
+        @JvmStatic external fun nativeStartSessionInfo(handle: Long, sessionConfigJson: String): String?
+        @JvmStatic external fun nativePoll(handle: Long): String
 
         // ---- D17 router additions (JNI_CONTRACT.md "Router"); every symbol above works on router handles too ----
         @JvmStatic external fun nativeLastErrorKind(): String?

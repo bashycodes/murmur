@@ -183,4 +183,9 @@ class NativeFlowCoreTest {
         assertTrue(r is NativeFlowCore.LibraryState.Unavailable)
         assertTrue((r as NativeFlowCore.LibraryState.Unavailable).message.contains("flow_ffi"))
     }
+
+    @Test fun endpointSilenceOnlyForHandsFree() {
+        assertFalse("omitted, not null, for push-to-talk", org.json.JSONObject(CoreJson.encode(SessionConfig())).has("endpoint_silence_ms"))
+        assertEquals(2000, org.json.JSONObject(CoreJson.encode(SessionConfig(endpointSilenceMs = 2000))).getInt("endpoint_silence_ms"))
+    }
 }

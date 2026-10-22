@@ -147,4 +147,24 @@ class RouterJsonTest {
         assertEquals("L•", DevText.badge(fb.route))
         assertTrue(DevText.lastDictation(fb), DevText.lastDictation(fb).startsWith("Client (on-device) · fallback: connect_failed"))
     }
+
+    // ---- 2026-10-22 live route + hands-free endpointing (crates/flow-router/fixtures) ----
+
+    @Test fun decodesStartInfoAndPollFixtures() {
+        assertEquals(
+            StartInfo(queued = false, route = SessionRoute("remote", server = "100.64.0.10:7313")),
+            RouterJson.decodeStartInfo(fixture("start_info_remote.json")),
+        )
+        assertEquals(
+            CorePoll("ask not what", false, 1200, 300, SessionRoute("cloud", provider = "openrouter-1", model = "openai/gpt-transcribe")),
+            RouterJson.decodePoll(fixture("poll_cloud.json")),
+        )
+        assertEquals(
+            CorePoll(null, true, 2400, 2000, SessionRoute("local", fallback = "disconnected")),
+            RouterJson.decodePoll(fixture("poll_fallback.json")),
+        )
+        assertEquals(CorePoll(), RouterJson.decodePoll(fixture("poll_idle.json")))
+        assertEquals(CorePoll(), RouterJson.decodePoll("not json"))
+        assertEquals(StartInfo(), RouterJson.decodeStartInfo("{}"))
+    }
 }

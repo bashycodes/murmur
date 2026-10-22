@@ -1,6 +1,7 @@
 package dev.flowclone
 
 import dev.flowclone.core.RouterErrors
+import dev.flowclone.core.BlockingCalls
 import dev.flowclone.data.LastDictation
 import dev.flowclone.data.CloudKeyStore
 import dev.flowclone.data.RouterOpener
@@ -77,6 +78,9 @@ class FlowApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Review C2: a blocking native call on Main is a bug (ANR on the server route); say so loudly.
+        BlockingCalls.isMainThread = { android.os.Looper.myLooper() == android.os.Looper.getMainLooper() }
+        BlockingCalls.onViolation = { Log.e("FlowEngine", "blocking native call on the main thread: $it", Throwable("C2")) }
         settings = SettingsStore(this)
         dictionary = DictionaryStore(this)
         history = HistoryStore(this)
