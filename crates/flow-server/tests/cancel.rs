@@ -122,12 +122,10 @@ async fn a_cancel_after_the_job_never_touches_the_next_lessee() {
     }
 }
 
-/// Needs flow-core to honour `FlowCore::cancel()` during `commit()` (the
-/// core half of C4: today the final decode has no abort flag, so the worker
-/// stays busy until the job ends). The server already calls `cancel()` on
-/// the in-flight core; un-ignore once flow-core aborts the commit.
+/// Both halves of C4: the server calls `FlowCore::cancel()` on the in-flight
+/// core, and flow-core's commit abort flag stops the final decode, so the
+/// worker goes back to the pool long before the job would have ended.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs flow-core commit abort (C4 core side)"]
 async fn cancel_during_commit_frees_the_worker_promptly() {
     let s = slow_server().await;
     let mut ws = session(s.addr()).await;
