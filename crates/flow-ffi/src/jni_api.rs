@@ -163,6 +163,43 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeStartSession
     })
 }
 
+/// `nativeStartSession` returning the `StartInfo` JSON, or `null` with the
+/// last error / kind set (2026-10-22, additive).
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeStartSessionInfo(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    cfg: JString,
+) -> jstring {
+    let r = guard(None, || {
+        let Some(h) = handle(h) else {
+            set_error("null handle");
+            return None;
+        };
+        let j = jstr(&mut env, &cfg, "bad session config")?;
+        json_api::start_session_info(h, &j)
+            .map_err(|(kind, e)| set_error_kind(kind, e))
+            .ok()
+    });
+    match r {
+        Some(s) => guard(std::ptr::null_mut(), || out(&mut env, &s)),
+        None => std::ptr::null_mut(),
+    }
+}
+
+/// Non-blocking `RouterPoll` JSON (partial + endpoint + live route). Never
+/// null: a `0` handle gives the idle poll (2026-10-22, additive).
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativePoll(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+) -> jstring {
+    let r = guard(json_api::idle_poll(), || json_api::poll(handle(h)));
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
+
 #[no_mangle]
 pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativePushAudio(
     mut env: JNIEnv,

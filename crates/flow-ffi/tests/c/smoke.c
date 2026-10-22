@@ -24,7 +24,24 @@ int main(void) {
     FlowHandle *core = flow_load_models("{\"asr_backend\":{\"mock\":{\"text\":\"hello from c\"}}}");
     FlowHandle *rt = flow_open_router(client_only, core); /* owns core now */
     if (!rt) { fprintf(stderr, "open_router: %s\n", flow_last_error()); return 5; }
-    if (flow_start_session(rt, "{}") != 0) { fprintf(stderr, "router start: %s (%s)\n", flow_last_error(), flow_last_error_kind()); return 6; }
+    char *si = flow_start_session_info(rt, "{\"endpoint_silence_ms\":2000}");
+    if (!si) { fprintf(stderr, "router start: %s (%s)\n", flow_last_error(), flow_last_error_kind()); return 6; }
+    printf("%s\n", si);
+    ok = strstr(si, "\"route\":{\"engine\":\"local\"}") != NULL;
+    flow_string_free(si);
+    if (!ok) return 17;
+    for (int c = 0; c < 25; c++) {
+        for (int i = 0; i < 640; i++) buf[i] = (int16_t)(sin((c * 640 + i) * 0.05) * 8000);
+        flow_push_audio(rt, buf, 640);
+    }
+    char *pl = flow_poll(rt);
+    printf("%s\n", pl);
+    ok = strstr(pl, "\"route\":{\"engine\":\"local\"}") && strstr(pl, "\"endpoint_reached\":");
+    flow_string_free(pl);
+    if (!ok) return 18;
+    if (flow_poll(NULL) != NULL) return 19;
+    if (flow_start_session_info(rt, "[") != NULL || strcmp(flow_last_error_kind(), "bad_config") != 0) return 20;
+    if (flow_start_session(rt, "{}") != 0) return 21;
     for (int c = 0; c < 25; c++) {
         for (int i = 0; i < 640; i++) buf[i] = (int16_t)(sin((c * 640 + i) * 0.05) * 8000);
         flow_push_audio(rt, buf, 640);

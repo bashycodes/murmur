@@ -25,8 +25,8 @@ use std::sync::Arc;
 use flow_core::config::{FieldContext, ModelConfig, SessionConfig};
 use flow_core::{CommitResult, FlowCore};
 use flow_router::{
-    Backend, CloudProviderConfig, CloudUsage, Route, Router, RouterConfig, SecretString,
-    ServerConfig,
+    Backend, CloudProviderConfig, CloudUsage, Route, Router, RouterConfig, RouterPoll,
+    SecretString, ServerConfig, StartInfo,
 };
 
 #[cfg(feature = "jni")]
@@ -40,10 +40,26 @@ pub enum FlowHandle {
 }
 
 impl FlowHandle {
-    fn start_session(&self, cfg: SessionConfig) -> Result<(), (&'static str, String)> {
+    /// A core handle reports no route (`StartInfo::default()`).
+    fn start_session(&self, cfg: SessionConfig) -> Result<StartInfo, (&'static str, String)> {
         match self {
-            FlowHandle::Core(c) => c.start_session(cfg).map_err(|e| ("error", e.to_string())),
-            FlowHandle::Router(r) => r.start_session(cfg).map_err(|e| (e.kind(), e.to_string())),
+            FlowHandle::Core(c) => c
+                .start_session(cfg)
+                .map(|_| StartInfo::default())
+                .map_err(|e| ("error", e.to_string())),
+            FlowHandle::Router(r) => r
+                .start_session_info(cfg)
+                .map_err(|e| (e.kind(), e.to_string())),
+        }
+    }
+    /// `Router::poll`; a core handle gives `FlowCore::poll` with no route.
+    fn poll(&self) -> RouterPoll {
+        match self {
+            FlowHandle::Core(c) => RouterPoll {
+                session: c.poll(),
+                route: None,
+            },
+            FlowHandle::Router(r) => r.poll(),
         }
     }
     fn push_audio(&self, pcm: &[i16]) -> bool {
@@ -195,9 +211,30 @@ pub mod json_api {
     }
 
     pub fn start_session(h: &FlowHandle, cfg_json: &str) -> Result<(), (&'static str, String)> {
+        start_session_info(h, cfg_json).map(|_| ())
+    }
+
+    /// Like [`start_session`], returning the `StartInfo` JSON
+    /// (`{"queued":bool,"route"?:SessionRoute}`; no `route` for a core handle).
+    pub fn start_session_info(
+        h: &FlowHandle,
+        cfg_json: &str,
+    ) -> Result<String, (&'static str, String)> {
         let cfg: SessionConfig = serde_json::from_str(cfg_json)
             .map_err(|e| ("bad_config", format!("bad session config: {e}")))?;
-        h.start_session(cfg)
+        let info = h.start_session(cfg)?;
+        Ok(serde_json::to_string(&info).unwrap_or_else(|_| "{\"queued\":false}".into()))
+    }
+
+    /// `RouterPoll` JSON: partial + hands-free endpoint (D19) + live `route`
+    /// (router handles while a session is live). `None` handle = idle poll.
+    pub fn poll(h: Option<&FlowHandle>) -> String {
+        let p = h.map(FlowHandle::poll).unwrap_or_default();
+        serde_json::to_string(&p).unwrap_or_else(|_| idle_poll())
+    }
+
+    pub fn idle_poll() -> String {
+        serde_json::to_string(&RouterPoll::default()).unwrap_or_else(|_| "{}".into())
     }
 
     pub fn set_context(core: &FlowHandle, ctx_json: &str) -> Result<(), String> {
@@ -434,6 +471,48 @@ pub unsafe extern "C" fn flow_start_session(
             },
             |_| 0,
         )
+    })
+}
+
+/// `flow_start_session` returning the `StartInfo` JSON
+/// (`{"queued":bool,"route"?:{"engine","provider"?,"model"?,"server"?,"fallback"?}}`),
+/// or NULL with the same last error / kind as `flow_start_session`.
+///
+/// # Safety
+/// As `flow_start_session`.
+#[no_mangle]
+pub unsafe extern "C" fn flow_start_session_info(
+    h: *mut FlowHandle,
+    session_config_json: *const c_char,
+) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        let (Some(h), Some(j)) = (h.as_ref(), str_arg(session_config_json)) else {
+            set_error("null handle or config");
+            return std::ptr::null_mut();
+        };
+        match json_api::start_session_info(h, j) {
+            Ok(s) => {
+                clear_error();
+                out_string(s)
+            }
+            Err((kind, e)) => {
+                set_error_kind(kind, e);
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// Non-blocking `RouterPoll` JSON: `{"partial","endpoint_reached","speech_ms",
+/// "trailing_silence_ms","route"?}`. NULL for a NULL handle.
+///
+/// # Safety
+/// `h` valid handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_poll(h: *mut FlowHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || match h.as_ref() {
+        Some(h) => out_string(json_api::poll(Some(h))),
+        None => std::ptr::null_mut(),
     })
 }
 

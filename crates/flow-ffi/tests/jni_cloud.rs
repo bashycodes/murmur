@@ -166,6 +166,18 @@ fn jvm_cloud_route_through_native_router() {
     assert_eq!(only["route"]["engine"], "cloud", "{only}");
     assert_eq!(only["final_text"], "cloud words by the way ");
 
+    let want =
+        serde_json::json!({"engine":"cloud","provider":"groq-1","model":"whisper-large-v3-turbo"});
+    let info = json(l.next().unwrap());
+    assert_eq!(info["route"], want, "{info}");
+    let poll = json(l.next().unwrap());
+    assert_eq!(
+        poll["route"], want,
+        "pill shows the provider while recording: {poll}"
+    );
+    let idle = json(l.next().unwrap());
+    assert!(idle.get("route").is_none(), "{idle}");
+
     // What the provider saw: Bearer auth with the key, multipart audio, the
     // dictionary term as the Whisper prompt — and nothing else of ours.
     let reqs = ok.requests();
