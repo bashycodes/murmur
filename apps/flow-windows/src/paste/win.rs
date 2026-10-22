@@ -4,6 +4,12 @@
 //! 2. set CF_UNICODETEXT + history/monitor opt-out formats
 //! 3. masked key-up for held Alt/Win, then [Ctrl↓,V↓] … 50 ms … [V↑,Ctrl↑]
 //! 4. wait 500/3000/5000 ms (per app), restore iff sequence number unchanged
+//!
+//! Every clipboard operation (paste, copy) holds [`CLIPBOARD_OP`] for its
+//! whole snapshot → set → chord → restore cycle (review S15): two pastes
+//! that overlap (paste-last pressed twice, a dictation finishing while a
+//! History re-paste runs) would otherwise snapshot each other's text as
+//! "the user's clipboard" and lose the real one.
 
 use super::{
     fallback_after_clipboard_failure, initial_strategy, integrity, is_restorable_format,
@@ -12,7 +18,6 @@ use super::{
 };
 use crate::input::{self, Stroke};
 use std::time::Duration;
-use windows::core::w;
 use windows::Win32::Foundation::{GlobalFree, HANDLE, HGLOBAL};
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData,
@@ -24,6 +29,15 @@ use windows::Win32::System::Memory::{
 use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
 
 const CF_UNICODETEXT: u32 = 13;
+
+/// Serialises clipboard operations process-wide (S15).
+static CLIPBOARD_OP: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn clipboard_op() -> std::sync::MutexGuard<'static, ()> {
+    CLIPBOARD_OP
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 struct ClipGuard;
 
@@ -112,26 +126,22 @@ unsafe fn set_text_excluded_from_history(text: &str) -> bool {
     if !set_bytes(CF_UNICODETEXT, &unicode_text_bytes(text)) {
         return false;
     }
-    // Keep dictated text out of Win+V history, cloud clipboard and clipboard
-    // monitors (same opt-outs Wispr's helper sets, 02 §3).
-    let zero = 0u32.to_le_bytes();
-    let f = RegisterClipboardFormatW(w!("ExcludeClipboardContentFromMonitorProcessing"));
-    if f != 0 {
-        set_bytes(f, &zero);
-    }
-    let f = RegisterClipboardFormatW(w!("CanIncludeInClipboardHistory"));
-    if f != 0 {
-        set_bytes(f, &zero);
-    }
-    let f = RegisterClipboardFormatW(w!("CanUploadToCloudClipboard"));
-    if f != 0 {
-        set_bytes(f, &zero);
-    }
-    let f = RegisterClipboardFormatW(w!("Clipboard Viewer Ignore"));
-    if f != 0 {
-        set_bytes(f, &zero);
-    }
+    set_privacy_formats();
     true
+}
+
+/// Keep dictated text out of Win+V history, the cloud clipboard and
+/// clipboard monitors (the opt-outs Wispr's helper sets, 02 §3; S14).
+/// Call with the clipboard open, after `EmptyClipboard`.
+unsafe fn set_privacy_formats() {
+    let zero = 0u32.to_le_bytes();
+    for name in super::PRIVACY_FORMATS {
+        let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+        let f = RegisterClipboardFormatW(windows::core::PCWSTR(wide.as_ptr()));
+        if f != 0 {
+            set_bytes(f, &zero);
+        }
+    }
 }
 
 unsafe fn restore(snap: &Snapshot) {
@@ -140,6 +150,24 @@ unsafe fn restore(snap: &Snapshot) {
     }
     for (fmt, bytes) in snap {
         set_bytes(*fmt, bytes);
+    }
+}
+
+fn physically_down(vk: u16) -> bool {
+    unsafe { (GetAsyncKeyState(vk as i32) as u16) & 0x8000 != 0 }
+}
+
+fn ctrl_held() -> bool {
+    physically_down(0xA2) || physically_down(0xA3)
+}
+
+/// Wait (bounded) until the user has let go of every chord modifier, so a
+/// shortcut-triggered paste (paste-last: Shift+Alt+Z) is not read as
+/// Ctrl+Shift+V (review C13).
+pub fn wait_modifiers_released(timeout: Duration) {
+    let t0 = std::time::Instant::now();
+    while t0.elapsed() < timeout && input::CHORD_MODIFIER_VKS.into_iter().any(physically_down) {
+        std::thread::sleep(Duration::from_millis(15));
     }
 }
 
@@ -164,7 +192,7 @@ fn send_all(strokes: &[Stroke]) -> Result<(), String> {
 }
 
 fn type_text(text: &str) -> Result<(), String> {
-    let mut s = input::release_before_paste(&held_alt_win_vks());
+    let mut s = input::release_before_paste(&held_alt_win_vks(), ctrl_held());
     s.extend(input::unicode_text(text));
     send_all(&s)
 }
@@ -194,21 +222,66 @@ fn send_chord(shift_insert: bool) -> Result<(), String> {
     sent
 }
 
-/// Insert `text` into the focused control. Blocking (sleeps for the restore
-/// delay) — call from a worker thread.
-/// "Copy last transcript": an ordinary clipboard copy (unlike a paste it
-/// is meant to stay, so it is not excluded from Win+V history).
+/// "Copy last transcript" / History → Copy: the text stays on the
+/// clipboard for the user's own Ctrl+V, but like a paste it is kept out of
+/// Win+V history, the cloud clipboard and clipboard monitors (S14): a
+/// transcript must not sync to Microsoft or linger in history.
 pub fn copy_text(text: &str) -> Result<(), String> {
+    let _op = clipboard_op();
     let _g = ClipGuard::open().ok_or("clipboard is busy")?;
     unsafe {
-        if EmptyClipboard().is_err() || !set_bytes(CF_UNICODETEXT, &unicode_text_bytes(text)) {
+        if !set_text_excluded_from_history(text) {
             return Err("could not set the clipboard".into());
         }
     }
     Ok(())
 }
 
+/// Read CF_UNICODETEXT (tests and diagnostics).
+pub fn read_text() -> Option<String> {
+    let _g = ClipGuard::open()?;
+    unsafe {
+        let h = GetClipboardData(CF_UNICODETEXT).ok()?;
+        let g = HGLOBAL(h.0);
+        let p = GlobalLock(g) as *const u16;
+        if p.is_null() {
+            return None;
+        }
+        let n = GlobalSize(g) / 2;
+        let units = std::slice::from_raw_parts(p, n);
+        let end = units.iter().position(|u| *u == 0).unwrap_or(n);
+        let s = String::from_utf16_lossy(&units[..end]);
+        let _ = GlobalUnlock(g);
+        Some(s)
+    }
+}
+
+/// Whether the clipboard currently carries the registered format `name`.
+pub fn has_format(name: &str) -> bool {
+    let Some(_g) = ClipGuard::open() else {
+        return false;
+    };
+    let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+    unsafe {
+        let f = RegisterClipboardFormatW(windows::core::PCWSTR(wide.as_ptr()));
+        let mut fmt = 0u32;
+        loop {
+            fmt = EnumClipboardFormats(fmt);
+            if fmt == 0 {
+                return false;
+            }
+            if fmt == f {
+                return true;
+            }
+        }
+    }
+}
+
+/// Insert `text` into the focused control. Blocking (sleeps for the restore
+/// delay) — call from a worker thread. Serialised with every other
+/// clipboard operation of this process (S15).
 pub fn paste(text: &str, opts: &PasteOptions) -> Result<(), String> {
+    let _op = clipboard_op();
     // UIPI drops our input silently (SendInput still "succeeds"), so check
     // first and leave the text on the clipboard for a manual Ctrl+V.
     if uipi_blocks(integrity::own(), integrity::foreground()) {
@@ -224,7 +297,7 @@ pub fn paste(text: &str, opts: &PasteOptions) -> Result<(), String> {
         Strategy::Type => return type_text(text),
         Strategy::Clipboard { shift_insert } => shift_insert,
     };
-    let (snap, our_seq) = {
+    let snap = {
         let Some(_g) = ClipGuard::open() else {
             return match fallback_after_clipboard_failure(text, opts.type_fallback_max_chars) {
                 Some(_) => type_text(text),
@@ -236,14 +309,17 @@ pub fn paste(text: &str, opts: &PasteOptions) -> Result<(), String> {
             if !set_text_excluded_from_history(text) {
                 return Err("failed to write clipboard".into());
             }
-            (snap, GetClipboardSequenceNumber())
+            snap
         }
     };
+    // Read after CloseClipboard (review C14): the number our own write
+    // ends at, so any later change is someone else's.
+    let our_seq = unsafe { GetClipboardSequenceNumber() };
     let delay = opts.restore_delay_ms.unwrap_or_else(|| {
         let (_, exe, _) = crate::context::uia::foreground_app();
         restore_delay_ms(&crate::context::exe_name(&exe))
     });
-    let release = input::release_before_paste(&held_alt_win_vks());
+    let release = input::release_before_paste(&held_alt_win_vks(), ctrl_held());
     let mut sent = send_all(&release);
     let chord = send_chord(shift_insert);
     if sent.is_ok() {
@@ -255,8 +331,93 @@ pub fn paste(text: &str, opts: &PasteOptions) -> Result<(), String> {
     let now_seq = unsafe { GetClipboardSequenceNumber() };
     if should_restore(opts.restore_clipboard, our_seq, now_seq) {
         if let Some(_g) = ClipGuard::open() {
-            unsafe { restore(&snap) };
+            // Re-check with the clipboard held: a copy that landed while
+            // we waited for OpenClipboard is the user's and stays (C14).
+            if should_restore(true, our_seq, unsafe { GetClipboardSequenceNumber() }) {
+                unsafe { restore(&snap) };
+            }
         }
     }
     sent
+}
+
+/// Real-clipboard tests (Windows CI). They skip when the session has no
+/// usable clipboard (service desktops).
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::prefs::PasteMethod;
+
+    /// The clipboard is process-global: one test at a time.
+    static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn usable() -> bool {
+        if copy_text("probe").is_err() || read_text().as_deref() != Some("probe") {
+            eprintln!("no usable clipboard in this session; skipping");
+            return false;
+        }
+        true
+    }
+
+    fn set_plain(text: &str) {
+        let _g = ClipGuard::open().expect("clipboard");
+        unsafe {
+            assert!(EmptyClipboard().is_ok());
+            assert!(set_bytes(CF_UNICODETEXT, &unicode_text_bytes(text)));
+        }
+    }
+
+    fn opts() -> PasteOptions {
+        PasteOptions {
+            method: PasteMethod::CtrlV,
+            restore_clipboard: true,
+            restore_delay_ms: Some(80),
+            type_fallback_max_chars: 0,
+        }
+    }
+
+    #[test]
+    fn copy_is_kept_out_of_history_and_cloud_clipboard() {
+        let _s = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        if !usable() {
+            return;
+        }
+        copy_text("secret transcript").unwrap();
+        assert_eq!(read_text().as_deref(), Some("secret transcript"));
+        for f in crate::paste::PRIVACY_FORMATS {
+            assert!(has_format(f), "{f} missing on a copy (S14)");
+        }
+    }
+
+    #[test]
+    fn a_paste_restores_the_users_clipboard() {
+        let _s = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        if !usable() {
+            return;
+        }
+        set_plain("the user's clipboard");
+        let _ = paste("dictated", &opts());
+        assert_eq!(read_text().as_deref(), Some("the user's clipboard"));
+    }
+
+    #[test]
+    fn overlapping_pastes_never_lose_the_users_clipboard() {
+        let _s = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+        if !usable() {
+            return;
+        }
+        set_plain("the user's clipboard");
+        let threads: Vec<_> = ["first", "second", "third"]
+            .into_iter()
+            .map(|t| std::thread::spawn(move || paste(t, &opts())))
+            .collect();
+        for t in threads {
+            let _ = t.join();
+        }
+        assert_eq!(
+            read_text().as_deref(),
+            Some("the user's clipboard"),
+            "S15: a paste must not snapshot another paste's text"
+        );
+    }
 }
