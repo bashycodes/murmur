@@ -348,3 +348,75 @@ fn route_info_cloud_fields_round_trip_and_are_omitted_when_none() {
         assert!(local.get(k).is_none(), "{k} must be omitted: {local}");
     }
 }
+
+// ---- hands-free endpointing (D19) -------------------------------------------
+
+fn hands_free(ms: u32) -> SessionConfig {
+    SessionConfig {
+        endpoint_silence_ms: Some(ms),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn endpoint_off_by_default() {
+    let core = FlowCore::from_engines(Arc::new(MockAsr::new("hello")), None);
+    core.start_session(SessionConfig::default()).unwrap();
+    core.push_audio(&speech(800));
+    core.push_audio(&vec![0; 16 * 5000]);
+    let p = core.poll();
+    assert!(!p.endpoint_reached);
+    assert_eq!(core.endpoint(), None);
+    assert_eq!((p.speech_ms, p.trailing_silence_ms), (0, 0));
+}
+
+#[test]
+fn endpoint_reached_after_trailing_silence_then_commit_keeps_the_words() {
+    let core = FlowCore::from_engines(Arc::new(MockAsr::new("hello there")), None);
+    core.start_session(hands_free(1000)).unwrap();
+    for c in speech(1200).chunks(640) {
+        core.push_audio(c);
+    }
+    assert!(!core.endpoint_reached());
+    for c in vec![0i16; 16 * 600].chunks(640) {
+        core.push_audio(c);
+    }
+    assert!(!core.poll().endpoint_reached, "600 ms < 1000 ms");
+    for c in vec![0i16; 16 * 500].chunks(640) {
+        core.push_audio(c);
+    }
+    let p = core.poll();
+    assert!(p.endpoint_reached, "{p:?}");
+    assert!(
+        p.speech_ms >= 1000 && p.trailing_silence_ms >= 1000,
+        "{p:?}"
+    );
+    let r = core.commit();
+    assert_eq!(r.final_text.trim(), "hello there");
+    // Commit ends the session: nothing to report any more.
+    assert_eq!(core.poll(), flow_core::SessionPoll::default());
+}
+
+#[test]
+fn endpoint_resets_per_session() {
+    let core = FlowCore::from_engines(Arc::new(MockAsr::new("x")), None);
+    core.start_session(hands_free(300)).unwrap();
+    core.push_audio(&speech(500));
+    core.push_audio(&vec![0; 16 * 400]);
+    assert!(core.endpoint_reached());
+    core.cancel();
+    core.start_session(hands_free(300)).unwrap();
+    assert!(!core.endpoint_reached());
+    assert_eq!(core.endpoint().map(|e| e.speech_ms), Some(0));
+}
+
+#[test]
+fn session_poll_json_defaults() {
+    let p: flow_core::SessionPoll = serde_json::from_str("{}").unwrap();
+    assert_eq!(p, flow_core::SessionPoll::default());
+    let v = serde_json::to_value(flow_core::SessionPoll::default()).unwrap();
+    assert_eq!(
+        v,
+        serde_json::json!({"partial":null,"endpoint_reached":false,"speech_ms":0,"trailing_silence_ms":0})
+    );
+}

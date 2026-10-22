@@ -88,6 +88,8 @@ impl Router {
     pub fn push_audio(&self, pcm: &[i16]) -> bool;
     pub fn set_context(&self, ctx: FieldContext);
     pub fn partial(&self) -> Option<String>;
+    pub fn poll(&self) -> SessionPoll;                          // partial + hands-free endpoint (D19)
+    pub fn endpoint_reached(&self) -> bool;                     // computed in the router, every route
     pub fn commit(&self) -> CommitResult;                       // never fails; `route` filled
     pub fn cancel(&self);
     pub fn learn_edit(&self, pasted: &str, edited: &str) -> Vec<Candidate>;
@@ -134,6 +136,7 @@ Server with an empty `host` counts as `server_not_configured`: treated as remote
 2. Every `push_audio`: append to the router's session PCM buffer (`Vec<i16>`, capped at `max_samples`; only allocated when a fallback exists) and `try_send` to the WS writer task (bounded 64 frames ≈ 6.4 s). Never blocks.
 3. `set_context`: store the latest context in the router; forward.
 4. `partial`: last `partial` message from the server (or local backend after a switch).
+4b. `poll` / `endpoint_reached` (D19): the router runs `flow_core::endpoint::Endpointer` on the audio it is pushed, so the hands-free endpoint is the same on every route, needs no protocol message, and survives a fallback replay. `SessionConfig.endpoint_silence_ms` still reaches the server unchanged (its own detector is simply not read).
 5. `commit`: send `commit`, wait until `deadline = now + commit_timeout_base_ms + 0.3 × audio_ms + llm_timeout_ms`.
 
 **Failure handling (fallback = local allowed and ready)**
