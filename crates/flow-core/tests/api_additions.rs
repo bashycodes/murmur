@@ -420,3 +420,58 @@ fn session_poll_json_defaults() {
         serde_json::json!({"partial":null,"endpoint_reached":false,"speech_ms":0,"trailing_silence_ms":0})
     );
 }
+
+// ---- spoken layout without the LLM -------------------------------------------
+
+fn in_app(app_id: &str, cat: flow_core::config::AppCategory) -> FieldContext {
+    FieldContext {
+        app_id: app_id.into(),
+        app_category: cat,
+        ..Default::default()
+    }
+}
+
+#[test]
+fn numbered_list_survives_the_whole_pipeline() {
+    use flow_core::config::AppCategory;
+    let r = run_text(
+        "The steps are, first, clone the repo. Second, run the install script. And third, start the dev server.",
+        SessionConfig::default(),
+        in_app("notepad", AppCategory::Document),
+    );
+    // (Windows context rules add the trailing space.)
+    assert_eq!(
+        r.plain_text.trim_end(),
+        "The steps are:\n\n1. Clone the repo.\n2. Run the install script.\n3. Start the dev server."
+    );
+    assert_eq!(r.segments, vec![text(&r.plain_text)]);
+}
+
+#[test]
+fn email_layout_survives_the_whole_pipeline() {
+    use flow_core::config::AppCategory;
+    let asr = "Hello team, the meeting is moved to Tuesday, no wait, Wednesday at 10. Please update your calendars. Thanks, Raj.";
+    let r = run_text(
+        asr,
+        SessionConfig::default(),
+        in_app("outlook", AppCategory::Email),
+    );
+    assert_eq!(
+        r.plain_text.trim_end(),
+        "Hello team,\n\nThe meeting is moved to Wednesday at 10. Please update your calendars.\n\nThanks,\nRaj"
+    );
+    // Not an email app: one paragraph.
+    let r = run_text(
+        asr,
+        SessionConfig::default(),
+        in_app("notepad", AppCategory::Document),
+    );
+    assert!(!r.plain_text.contains('\n'), "{:?}", r.plain_text);
+    // Layout is part of spoken cleanup: off with it.
+    let off = SessionConfig {
+        spoken_cleanup: false,
+        ..Default::default()
+    };
+    let r = run_text(asr, off, in_app("outlook", AppCategory::Email));
+    assert!(!r.plain_text.contains('\n'), "{:?}", r.plain_text);
+}

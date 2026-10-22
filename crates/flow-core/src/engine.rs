@@ -772,6 +772,9 @@ impl Worker {
         let snippet = s.matcher.whole_snippet(&r.asr_text).is_some();
         if s.cfg.spoken_cleanup && s.cfg.cleanup_level != CleanupLevel::None && !snippet {
             text = postprocess::spoken::spoken_cleanup(&text);
+            // Numbered lists and email structure without the LLM (the
+            // LLM, when it runs, starts from this layout).
+            text = postprocess::spoken::layout(&text, ctx.app_category);
             if text.trim().is_empty() {
                 r.empty_reason = Some("only_filler".into());
                 return r;
