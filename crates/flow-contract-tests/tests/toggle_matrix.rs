@@ -516,7 +516,18 @@ fn matrix_cloud_server_down_then_cloud() {
     k.server.kill();
     k.router.reset_circuit();
     let (_, r) = dictate(&k.router);
-    assert_eq!(engine(&r), ("cloud".into(), Some("connect_failed".into())));
+    // The first dictation left a warm connection. If the client has already
+    // read the server's close, the next start connects afresh and fails
+    // (`connect_failed`); on a loaded box its reader may not have run yet,
+    // so the start goes out on the dead warm connection and the session
+    // fails as `disconnected`. Both are "server down" and both must replay
+    // to the cloud, never to local.
+    let (eng, why) = engine(&r);
+    assert_eq!(eng, "cloud", "{r:?}");
+    assert!(
+        matches!(why.as_deref(), Some("connect_failed" | "disconnected")),
+        "{why:?}"
+    );
     assert_eq!(r.asr_text, "cloud words");
     assert_eq!(k.asr.calls(), 0);
 }
