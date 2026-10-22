@@ -3,7 +3,7 @@
 The Kotlin side is `app/src/main/java/dev/flowclone/core/NativeFlowCore.kt`.
 The Rust side must export exactly these symbols from `libflow_ffi.so`
 (`crate-type = cdylib`, feature `jni`, built for `arm64-v8a` by `tools/build-native.sh --flavor local|hybrid|remote`,
-which wraps `cargo ndk -t arm64-v8a --platform 33 --link-libcxx-shared … --features jni,whisper` and adds
+which wraps `cargo ndk -t arm64-v8a --platform 33 --link-libcxx-shared … --features jni,whisper[,remote,cloud]` and adds
 the NDK CMake toolchain and 16 KB page-size link flags). `libc++_shared.so` (needed by whisper.cpp)
 ships next to it. Implemented in `crates/flow-ffi/src/jni_api.rs`; `tools/probes/check_native_so.sh`
 checks the exported set against this table.
@@ -77,6 +77,33 @@ JSON shapes are pinned by `crates/flow-router/fixtures/*.json` (Kotlin: `RouterJ
 Libraries: `--features jni,remote` adds the WebSocket client (`flow-remote`, rustls for
 `wss://`); the `local` flavour's library is built without it (no network code, I3).
 
+## Cloud STT (D18, docs/cloud-stt.md) — additive
+
+Third-party speech-to-text, opt-in from Developer settings. The `hybrid` / `remote` libraries are
+built with feature `cloud` (`flow-cloud`: reqwest + rustls, webpki roots); the `local` library
+is not (C2: `tools/check-build-matrix.sh`, `verifyLocal<BT>NoNetworkCode`). **Every flavour
+exports these symbols**; without `cloud` they answer "not in this build". API keys enter native
+code only through `nativeSetCloudKey` / `nativeProbeCloud` (never in router JSON); Rust keeps them
+in a wiped-on-drop `SecretString` and never logs or returns them (C3).
+
+| Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | C ABI | Semantics |
+|---|---|---|---|---|
+| `nativeSetCloudKey(h: Long, providerId: String, key: String?): Boolean` | `(JLjava/lang/String;Ljava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudKey` | `flow_set_cloud_key` | `Router::set_cloud_key`; `null` / `""` forgets it. Call after `nativeOpenRouter` for every stored provider and on Save / Delete. `false` + kind `error` for a core handle |
+| `nativeProbeCloud(h: Long, providerJson: String, key: String?): String` | `(JLjava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeProbeCloud` | `flow_probe_cloud` | Blocking "Test provider": `HealthReport` (`engine:"cloud"`, `provider`, `model`, `transcript`, `latency_ms`, `cost_usd`) for an unsaved `CloudProviderConfig`; uploads the bundled 3 s JFK clip. `key` null = the stored key; `h = 0` = temporary router (key required). Without `cloud`: `ok:false, error:"cloud_not_configured"` |
+| `nativeCloudUsage(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCloudUsage` | `flow_cloud_usage` | `CloudUsage` JSON `{month:"YYYY-MM", providers:[{provider_id, requests, billed_audio_ms, cost_usd, cost_estimated}]}`; Kotlin persists it after each commit |
+| `nativeSetCloudUsage(h: Long, usageJson: String): Boolean` | `(JLjava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudUsage` | `flow_set_cloud_usage` | Restore persisted counters after `nativeOpenRouter` (another month's are dropped). `false` + `bad_config` on bad JSON |
+| `nativeResetCloudUsage(h: Long)` | `(J)V` | `Java_dev_flowclone_core_NativeFlowCore_nativeResetCloudUsage` | `flow_reset_cloud_usage` | Developer "Reset counters" |
+| `nativeCloudCapabilities(): String` | `()Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCloudCapabilities` | `flow_cloud_capabilities` | `{cloud, adapters}` of this build; must match `BuildConfig.CAP_CLOUD` (Developer page warns otherwise) |
+| `nativeCloudPresets(): String` | `()Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCloudPresets` | `flow_cloud_presets` | `flow_cloud::presets()` (`CloudProviderConfig[]` without id / consent; `[]` without `cloud`) |
+
+Existing natives are unchanged: `nativeOpenRouter` / `nativeUpdateRouter` accept `allow_cloud`,
+`order` and `cloud` (a cloud-only config counts as an engine in a `cloud` build);
+`nativeRouteStatus` adds `cloud_circuit`; `nativeCommit`'s `route` may be `engine:"cloud"` with
+`provider`, `model`, `billed_audio_ms`, `cost_usd`, `cost_estimated`. New `route.fallback` values:
+`cloud_not_configured`, `budget_exceeded`, `quota_exceeded`, `provider_error`. Host test:
+`cargo test -p flow-ffi --features jni,cloud --test jni_cloud` (real JVM, real router, flow-cloud's
+mock provider: no key → device, key → cloud, 401 → `auth_failed` + full replay, key never echoed).
+
 ## JSON payloads Kotlin sends (see `CoreJson.kt`, pinned by `CoreJsonTest`)
 
 ```jsonc
@@ -126,8 +153,8 @@ Android-specific notes for the Rust side:
   `dlopen("libflow_llm.so")` resolves to the already-loaded library (jniLibs aren't
   extracted to disk, so there is no path to pass). A missing plugin fails `load_models`;
   the shell then reloads ASR-only.
-- Network (D17): only the `hybrid` / `remote` flavours have `INTERNET`, and only their
-  library is built with `remote`. The `local` APK has no network permission
+- Network (D17/D18): only the `hybrid` / `remote` flavours have `INTERNET`, and only their
+  library is built with `remote` and `cloud`. The `local` APK has no network permission
   (`verifyLocal<BT>NoNetworkPermissions`) and no WebSocket/TLS code in `libflow_ffi.so`
   (`verifyLocal<BT>NoNetworkCode`).
 - Parakeet (`asr_backend:"parakeet"`): Kotlin sets `TMPDIR` to `cacheDir` before

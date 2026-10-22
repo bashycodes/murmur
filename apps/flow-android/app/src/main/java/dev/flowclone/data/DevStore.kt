@@ -4,8 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import android.util.Base64
 import java.security.KeyStore
+import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -46,23 +46,31 @@ class PrefsKeyValue(private val sp: SharedPreferences) : KeyValue {
     }
 }
 
-/** Encrypts secrets at rest (the server token today; any future per-provider API key goes through the same box). */
+/** Encrypts secrets at rest (the server token, and per provider the cloud STT API keys). */
 interface SecretBox {
     fun seal(plain: String): String
     /** Null when the ciphertext can't be opened (key lost after a restore, tampering). */
     fun open(sealed: String): String?
+    /** Forget the wrapping key (provider deleted); default: nothing to forget. */
+    fun destroy() = Unit
 }
 
-/** §2.5: Android Keystore AES-GCM key `flow_dev_token`; only ciphertext ("iv:ct", base64) is stored. */
-object TokenVault : SecretBox {
-    private const val ALIAS = "flow_dev_token"
+/** Where a [SecretVault]'s AES key lives: the Android Keystore on a device, a JVM fake in tests. */
+interface VaultKeys {
+    /** The AES-256 key for [alias], created on first use. */
+    fun key(alias: String): SecretKey
+    fun delete(alias: String)
+}
 
-    private fun key(): SecretKey {
-        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        (ks.getKey(ALIAS, null) as? SecretKey)?.let { return it }
+/** Non-exportable Android Keystore AES-GCM keys (§2.5 / D18 §8.1). */
+object AndroidKeystoreKeys : VaultKeys {
+    private fun store() = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+
+    override fun key(alias: String): SecretKey {
+        (store().getKey(alias, null) as? SecretKey)?.let { return it }
         return KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore").apply {
             init(
-                KeyGenParameterSpec.Builder(ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
                     .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                     .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                     .setKeySize(256)
@@ -71,17 +79,80 @@ object TokenVault : SecretBox {
         }.generateKey()
     }
 
+    override fun delete(alias: String) {
+        runCatching { store().deleteEntry(alias) }
+    }
+}
+
+/**
+ * AES-GCM under the Keystore key [alias]; only ciphertext ("iv:ct", base64) is stored.
+ * `flow_dev_token` seals the server token (D17 §2.5); `flow_cloud_<id>` one cloud STT API key
+ * per provider (D18 §8.1), so deleting a provider can destroy its key alone.
+ */
+class SecretVault(val alias: String, private val keys: VaultKeys = AndroidKeystoreKeys) : SecretBox {
     override fun seal(plain: String): String {
-        val c = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
+        val c = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, keys.key(alias)) }
         val ct = c.doFinal(plain.toByteArray(Charsets.UTF_8))
-        return Base64.encodeToString(c.iv, Base64.NO_WRAP) + ":" + Base64.encodeToString(ct, Base64.NO_WRAP)
+        val b = Base64.getEncoder()
+        return b.encodeToString(c.iv) + ":" + b.encodeToString(ct)
     }
 
     override fun open(sealed: String): String? = runCatching {
-        val (iv, ct) = sealed.split(':', limit = 2).map { Base64.decode(it, Base64.NO_WRAP) }
-        val c = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, iv)) }
+        val (iv, ct) = sealed.split(':', limit = 2).map { Base64.getDecoder().decode(it) }
+        val c = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.DECRYPT_MODE, keys.key(alias), GCMParameterSpec(128, iv)) }
         String(c.doFinal(ct), Charsets.UTF_8)
     }.getOrNull()
+
+    override fun destroy() = keys.delete(alias)
+
+    override fun toString() = "SecretVault($alias)"
+
+    companion object {
+        fun cloudAlias(providerId: String) = "flow_cloud_$providerId"
+    }
+}
+
+/** §2.5: the server token's vault (same format as before the generalisation). */
+val TokenVault: SecretBox = SecretVault("flow_dev_token")
+
+/**
+ * D18 C3: cloud STT API keys at rest. One [SecretVault] (`flow_cloud_<id>`) per provider; only the
+ * ciphertext is in the `dev` prefs (`cloud.key_sealed.<id>`, backup disabled app-wide). Keys never
+ * enter [DevSettings], router JSON, logs or exports; they reach native code only through
+ * `NativeFlowCore.setCloudKey` / `probeCloud`.
+ */
+class CloudKeyStore(private val kv: KeyValue, private val vaultFor: (String) -> SecretBox) {
+    constructor(context: Context) : this(
+        PrefsKeyValue(context.getSharedPreferences(DevStore.FILE, Context.MODE_PRIVATE)),
+        { id -> SecretVault(SecretVault.cloudAlias(id)) },
+    )
+
+    private fun k(id: String) = "$PREFIX$id"
+
+    fun get(id: String): String? = kv.getString(k(id))?.let { vaultFor(id).open(it) }?.takeIf { it.isNotEmpty() }
+
+    fun has(id: String) = kv.contains(k(id))
+
+    /** Blank clears. */
+    fun set(id: String, key: String?) {
+        val v = key?.trim().orEmpty()
+        if (v.isEmpty()) { remove(id); return }
+        val sealed = vaultFor(id).seal(v)
+        kv.edit { putString(k(id), sealed) }
+    }
+
+    /** Provider deleted: drop the ciphertext and its Keystore key. */
+    fun remove(id: String) {
+        kv.edit { remove(k(id)) }
+        runCatching { vaultFor(id).destroy() }
+    }
+
+    /** UI: `••••abcd` or "no key". */
+    fun masked(id: String) = CloudText.mask(get(id))
+
+    companion object {
+        const val PREFIX = "cloud.key_sealed."
+    }
 }
 
 /**
@@ -109,9 +180,14 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
             healthTtlS = kv.getLong("server.health_ttl_s", d.healthTtlS),
             keepLocalWarm = kv.getBoolean("keep_local_warm", d.keepLocalWarm),
             showEngineBadge = kv.getBoolean("show_engine_badge", d.showEngineBadge),
+            allowCloud = kv.getBoolean("allow_cloud", false),
+            cloud = kv.getString("cloud")?.let { runCatching { CloudSettings.fromJson(org.json.JSONObject(it)) }.getOrNull() } ?: CloudSettings(),
         )
         // A toggle this build can't honour reads as off (e.g. prefs kept across a flavour switch).
-        return stored.copy(allowServer = stored.allowServer && caps.remote, allowClient = stored.allowClient && caps.local)
+        return stored.copy(
+            allowServer = stored.allowServer && caps.remote, allowClient = stored.allowClient && caps.local,
+            allowCloud = stored.allowCloud && caps.cloud,
+        )
     }
 
     fun save(s: DevSettings) = kv.edit {
@@ -128,13 +204,31 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         putLong("server.health_ttl_s", s.healthTtlS)
         putBoolean("keep_local_warm", s.keepLocalWarm)
         putBoolean("show_engine_badge", s.showEngineBadge)
+        putBoolean("allow_cloud", s.allowCloud)
+        putString("cloud", if (s.cloud.isDefault) null else s.cloud.toJson().toString())
     }
 
-    /** "Reset to defaults": everything except the unlock flag. */
+    /** Only the cloud part (provider page saves, consent dialog), leaving unsaved form fields alone. */
+    fun saveCloud(allowCloud: Boolean? = null, cloud: CloudSettings, routeOrder: List<DevSettings.Route>? = null) = kv.edit {
+        allowCloud?.let { putBoolean("allow_cloud", it) }
+        putString("cloud", if (cloud.isDefault) null else cloud.toJson().toString())
+        routeOrder?.let { o -> putString("route_order", o.joinToString(",") { it.wire }) }
+    }
+
+    /**
+     * "Reset to defaults": everything except the unlock flag and this month's cloud usage
+     * (sealed cloud keys go too; their Keystore keys are destroyed by [CloudKeyStore.remove]).
+     */
     fun reset() {
         val unlocked = devUnlocked
-        kv.edit { clear(); putBoolean("dev_unlocked", unlocked) }
+        val usage = cloudUsageJson
+        kv.edit { clear(); putBoolean("dev_unlocked", unlocked); putString(USAGE, usage) }
     }
+
+    /** D18: this month's `CloudUsage` JSON (router counters, persisted after each cloud commit). */
+    var cloudUsageJson: String?
+        get() = kv.getString(USAGE)
+        set(v) = kv.edit { putString(USAGE, v) }
 
     var devUnlocked: Boolean
         get() = kv.getBoolean("dev_unlocked", false)
@@ -144,5 +238,6 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
 
     companion object {
         const val FILE = "dev"
+        const val USAGE = "cloud_usage"
     }
 }

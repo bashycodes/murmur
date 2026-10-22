@@ -3,8 +3,10 @@
 # D17 §1.4:
 #   --flavor local   libflow_ffi.so (jni,whisper,llm,parakeet) + libflow_llm.so + libc++_shared.so
 #                    + libsherpa-onnx-c-api.so + libonnxruntime.so          (no network code)
-#   --flavor hybrid  as local, flow-ffi additionally with `remote`
-#   --flavor remote  libflow_ffi.so (jni,remote) only: no ASR/LLM, no C++ runtime
+#   --flavor hybrid  as local, flow-ffi additionally with `remote,cloud`
+#   --flavor remote  libflow_ffi.so (jni,remote,cloud) only: no ASR/LLM, no C++ runtime
+#   `cloud` (D18, docs/cloud-stt.md §9) = opt-in third-party STT over HTTPS (reqwest + rustls,
+#   webpki roots; no OpenSSL). Never in `local` (C2; tools/check-build-matrix.sh + the APK gate).
 #   libflow_llm.so   crates/flow-llm (llama.cpp cleanup plugin). It must stay a separate .so:
 #                    llama.cpp and whisper.cpp bundle different ggml builds (core-architecture.md).
 # Options: --no-llm, --no-parakeet (smaller/faster local or hybrid builds).
@@ -20,7 +22,7 @@ app="$(cd "$(dirname "$0")/.." && pwd)"
 repo="$(cd "$app/../.." && pwd)"
 export ANDROID_NDK_HOME="${ANDROID_NDK_HOME:-$HOME/Android/Sdk/ndk/27.2.12479018}"
 export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
-flavor=""; whisper=0; llm=0; parakeet=0; remote=0; no_llm=0; no_parakeet=0
+flavor=""; whisper=0; llm=0; parakeet=0; remote=0; cloud=0; no_llm=0; no_parakeet=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --flavor) flavor="$2"; shift ;;
@@ -35,8 +37,8 @@ while [[ $# -gt 0 ]]; do
 done
 case "$flavor" in
   local) whisper=1; llm=1; parakeet=1 ;;
-  hybrid) whisper=1; llm=1; parakeet=1; remote=1 ;;
-  remote) remote=1 ;;
+  hybrid) whisper=1; llm=1; parakeet=1; remote=1; cloud=1 ;;
+  remote) remote=1; cloud=1 ;;
   "") flavor=local ;;  # legacy flags
   *) echo "--flavor must be local, hybrid or remote" >&2; exit 2 ;;
 esac
@@ -47,6 +49,7 @@ features="jni"
 [[ $llm == 1 ]] && features="$features,llm"
 [[ $parakeet == 1 ]] && features="$features,parakeet"
 [[ $remote == 1 ]] && features="$features,remote"
+[[ $cloud == 1 ]] && features="$features,cloud"
 out="$app/app/src/$flavor/jniLibs"
 rm -rf "$out/arm64-v8a"; mkdir -p "$out/arm64-v8a"
 echo "flavor=$flavor features=$features -> $out/arm64-v8a"

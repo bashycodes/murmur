@@ -20,11 +20,16 @@ parakeet = ["flow-core/parakeet"]
 # leave it off: flow-router is always linked, flow-remote (the only network
 # code) is not (I3; tools/check-build-matrix.sh).
 remote = ["dep:flow-remote"]
+# D18: third-party cloud STT (flow-cloud: reqwest + rustls). Only the Android
+# `hybrid` / `remote` flavours enable it; the `local` flavour's library must
+# not link it (C2; tools/check-build-matrix.sh, verifyLocal*NoNetworkCode).
+cloud = ["dep:flow-cloud"]
 
 [dependencies]
 flow-core = { path = "../flow-core" }
 flow-router = { path = "../flow-router" }
 flow-remote = { path = "../flow-remote", optional = true, features = ["tls"] }
+flow-cloud = { path = "../flow-cloud", optional = true }
 serde_json.workspace = true
 jni = { version = "0.21", optional = true }
 
@@ -32,3 +37,5 @@ jni = { version = "0.21", optional = true }
 # jni_smoke routes a JVM session to an in-process flow-server (mock ASR) with `--features jni,remote`.
 flow-server = { path = "../flow-server", default-features = false, features = ["tls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net"] }
+# jni_cloud routes a JVM session to flow-cloud's in-process mock provider with `--features jni,cloud`.
+flow-cloud = { path = "../flow-cloud", features = ["mock-server"] }

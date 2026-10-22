@@ -38,6 +38,17 @@ char *flow_probe_router(FlowHandle *h);                              /* probe sa
 char *flow_route_status(FlowHandle *h);                              /* RouteStatus JSON */
 void flow_reset_circuit(FlowHandle *h);
 
+/* D18 cloud STT (docs/cloud-stt.md). Libraries built without feature `cloud`
+ * keep these symbols: they report "not in this build". Keys only ever enter
+ * here (never in router JSON); the library never logs or returns them. */
+int flow_set_cloud_key(FlowHandle *h, const char *provider_id, const char *key_or_null); /* NULL/"" = forget; -1 for a core handle */
+char *flow_probe_cloud(FlowHandle *h, const char *provider_json, const char *key_or_null); /* HealthReport JSON; blocks; h may be NULL (key required) */
+char *flow_cloud_usage(FlowHandle *h);                               /* CloudUsage JSON */
+int flow_set_cloud_usage(FlowHandle *h, const char *usage_json);     /* restore persisted counters */
+void flow_reset_cloud_usage(FlowHandle *h);
+char *flow_cloud_capabilities(void);                                 /* CloudCapabilities JSON */
+char *flow_cloud_presets(void);                                      /* CloudProviderConfig[] JSON ([] without cloud) */
+
 #ifdef __cplusplus
 }
 #endif

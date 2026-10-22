@@ -146,3 +146,86 @@ fn successful_load_clears_error_kind() {
         flow_unload(h);
     }
 }
+
+/// D18 over the C ABI: without `cloud` every symbol says "not in this build";
+/// with it, a router + key reaches the (mock) provider. The key is never echoed.
+#[test]
+fn cloud_symbols_over_c_abi() {
+    unsafe {
+        let caps = take(flow_cloud_capabilities());
+        let presets = take(flow_cloud_presets());
+        assert_eq!(
+            caps.contains(r#""cloud":true"#),
+            cfg!(feature = "cloud"),
+            "{caps}"
+        );
+        assert_eq!(presets == "[]", !cfg!(feature = "cloud"), "{presets}");
+        let key = c("sk-LEAKCHECK-cabi-0123456789");
+        #[cfg(feature = "cloud")]
+        let srv = flow_cloud::testing::MockServer::fixed(flow_cloud::testing::Reply::json(
+            200,
+            serde_json::json!({"text": "and so my fellow americans"}),
+        ));
+        #[cfg(feature = "cloud")]
+        let base = srv.url("/v1");
+        #[cfg(not(feature = "cloud"))]
+        let base = "https://api.groq.com/openai/v1".to_string();
+        let p = c(&format!(
+            r#"{{"id":"groq-1","adapter":"openai_compat","base_url":"{base}","model":"whisper-large-v3-turbo"}}"#
+        ));
+        let probe = take(flow_probe_cloud(ptr::null_mut(), p.as_ptr(), key.as_ptr()));
+        assert!(!probe.contains("LEAKCHECK"), "{probe}");
+        let v: serde_json::Value = serde_json::from_str(&probe).unwrap();
+        if cfg!(feature = "cloud") {
+            assert_eq!(v["ok"], true, "{probe}");
+            assert_eq!(v["transcript"], "and so my fellow americans");
+        } else {
+            assert_eq!(v["error"], "cloud_not_configured", "{probe}");
+        }
+        let bad = take(flow_probe_cloud(
+            ptr::null_mut(),
+            c("{").as_ptr(),
+            ptr::null(),
+        ));
+        assert!(bad.contains("cloud_not_configured"), "{bad}");
+
+        let core = flow_load_models(c(r#"{"asr_backend":{"mock":{"text":"x"}}}"#).as_ptr());
+        assert_eq!(
+            flow_set_cloud_key(core, c("groq-1").as_ptr(), key.as_ptr()),
+            -1
+        );
+        let rt = flow_open_router(
+            c(r#"{"allow_server":false,"allow_client":true}"#).as_ptr(),
+            core,
+        );
+        assert!(!rt.is_null());
+        assert_eq!(
+            flow_set_cloud_key(rt, c("groq-1").as_ptr(), key.as_ptr()),
+            0
+        );
+        // Stored key used by the probe (key NULL).
+        let stored = take(flow_probe_cloud(rt, p.as_ptr(), ptr::null()));
+        assert_eq!(
+            stored.contains(r#""ok":true"#),
+            cfg!(feature = "cloud"),
+            "{stored}"
+        );
+        assert_eq!(flow_set_cloud_usage(rt, c("not json").as_ptr()), -1);
+        assert_eq!(
+            CStr::from_ptr(flow_last_error_kind()).to_str(),
+            Ok("bad_config")
+        );
+        flow_reset_cloud_usage(rt);
+        let u: serde_json::Value = serde_json::from_str(&take(flow_cloud_usage(rt))).unwrap();
+        assert_eq!(u["providers"], serde_json::json!([]));
+        assert!(flow_cloud_usage(ptr::null_mut()).is_null());
+        flow_unload(rt);
+        // Cloud-only: an engine only in a cloud build.
+        let only = c(
+            r#"{"allow_server":false,"allow_client":false,"allow_cloud":true,"order":["cloud"]}"#,
+        );
+        let h = flow_open_router(only.as_ptr(), ptr::null_mut());
+        assert_eq!(!h.is_null(), cfg!(feature = "cloud"));
+        flow_unload(h);
+    }
+}
