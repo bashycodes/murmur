@@ -113,6 +113,8 @@ class FlowService : Service() {
             scope = scope, audio = MicRecorder(), host = Host(),
             core = { app.engine.current() }, commitDispatcher = Dispatchers.Default,
             cap = app.settings.load().sessionCap(), now = SystemClock::elapsedRealtime,
+            // Review C2: start_session can connect to the server (TCP + TLS + hello): never on Main.
+            startDispatcher = Dispatchers.IO,
         )
         presence = BubblePresence(scope) { app.settings.load().shrinkBubble }
         overlay = BubbleOverlay(this, app.settings.bubblePosition, BubbleListener(), ::snoozeDrop)
@@ -125,10 +127,12 @@ class FlowService : Service() {
             }.collect { if (::overlay.isInitialized) overlay.render(it) }
         }
         scope.launch {
-            combine(controller.state, controller.partial, controller.hint, presence.presence) { s, p, h, _ ->
+            combine(controller.state, controller.partial, controller.hint, presence.presence, controller.route) { s, p, h, _, r ->
                 // D18 C7: "C" whenever the last dictation went to a cloud provider, even with the badge off.
                 val badge = dev.flowclone.core.DevText.bubbleBadge(app.lastRoute.value?.result?.route, app.dev.load().showEngineBadge)
-                PreviewContent.line(s, p, h, app.settings.load().livePreview, badge)
+                // Live route ("via phone | server | provider"), relabelled on failover.
+                val route = dev.flowclone.bubble.RouteLabel.of(r) { id -> app.dev.load().cloud.provider(id)?.displayName }
+                PreviewContent.line(s, p, h, app.settings.load().livePreview, badge, route)
             }.collect { overlay.renderPreview(it) }
         }
         scope.launch {
@@ -370,6 +374,9 @@ class FlowService : Service() {
                 }
                 FeedbackEvent.PasteRetryFailed -> toast(R.string.toast_paste_failed)
                 FeedbackEvent.NoSpeech -> Unit
+                FeedbackEvent.TargetChanged -> toast(getString(R.string.toast_target_changed))
+                FeedbackEvent.TargetProtected -> toast(getString(R.string.toast_target_protected))
+                FeedbackEvent.MicLost -> toast(R.string.toast_mic_lost)
             }
         }
 
@@ -411,6 +418,8 @@ class FlowService : Service() {
         override fun captureContext(): FieldContext? = app.accessibility?.captureFieldContext()
 
         override fun sessionConfig() = app.settings.load().toSessionConfig(app.dictionary.all())
+
+        override fun endpointSilenceMs(): Int? = app.settings.load().handsFreeEndpointMs()
 
         override fun onRecordingActive(active: Boolean) {
             if (active && !micPromoted) promote(withMic = true)

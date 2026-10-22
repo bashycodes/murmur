@@ -35,6 +35,8 @@ object CoreJson {
         put("hallucination_guard", c.hallucinationGuard)
         put("spoken_cleanup", c.spokenCleanup)
         put("llm_prefill", c.llmPrefill)
+        // Omitted (not null) when unset, like the core's serde: old servers see the same config.
+        c.endpointSilenceMs?.let { put("endpoint_silence_ms", it) }
     }.toString()
 
     fun encode(c: FieldContext): String = JSONObject().apply {

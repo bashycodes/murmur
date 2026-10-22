@@ -89,4 +89,15 @@ class FieldContextBuilderTest {
         assertEquals("llo", c.selected)
         assertEquals("", c.after)
     }
+
+    @Test fun handsFreeEndpointPref() {
+        assertEquals(2000, Settings().handsFreeEndpointMs())
+        assertEquals(null, Settings(endpointSilenceMs = 0).handsFreeEndpointMs())
+        assertEquals(300, Settings(endpointSilenceMs = 10).handsFreeEndpointMs())
+        assertEquals(0, Settings.parseEndpointMs(""))
+        assertEquals(0, Settings.parseEndpointMs("0"))
+        assertEquals(10_000, Settings.parseEndpointMs("99999"))
+        assertEquals(1500, Settings.parseEndpointMs(" 1500 "))
+        assertEquals("toSessionConfig leaves it for the controller (hands-free only)", null, Settings().toSessionConfig(emptyList()).endpointSilenceMs)
+    }
 }

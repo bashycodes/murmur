@@ -23,6 +23,19 @@ interface FlowCore {
     /** `partial(h)` live preview, or null. */
     fun partial(): String?
 
+    /**
+     * `start_session_info` (2026-10-22): [startSession] that also says which route the session
+     * starts on. Blocking on the server route: never call it on Main (review C2).
+     * @throws CoreException
+     */
+    fun startSessionInfo(cfg: SessionConfig): StartInfo { startSession(cfg); return StartInfo() }
+
+    /**
+     * `poll(h)` (2026-10-22): one non-blocking read per preview tick: partial, hands-free
+     * endpoint (D19) and the live route. Engines without it report just the partial.
+     */
+    fun poll(): CorePoll = CorePoll(partial = partial())
+
     /** `commit(h)`: blocks until ASR (+cleanup) finishes. Never throws; errors are [CommitStatus.ERROR]. */
     fun commit(): CommitResult
 
@@ -119,6 +132,34 @@ data class Styles(
 /** Shared dictionary/snippet export row `{word, replacement, isSnippet}` (§9). */
 data class DictEntry(val word: String, val replacement: String? = null, val isSnippet: Boolean = false)
 
+/**
+ * flow_router `SessionRoute`: the route a live session is on (`nativeStartSessionInfo` /
+ * `nativePoll`). [provider]/[model] only for `cloud`, [server] only for `remote`; [fallback] =
+ * why the first route is not the one in use.
+ */
+data class SessionRoute(
+    /** "local" | "remote" | "cloud" */
+    val engine: String,
+    val provider: String? = null,
+    val model: String? = null,
+    val server: String? = null,
+    val fallback: String? = null,
+)
+
+/** `StartInfo` JSON: `queued` = the server accepted but has no free worker yet. */
+data class StartInfo(val queued: Boolean = false, val route: SessionRoute? = null)
+
+/** `RouterPoll` JSON (`SessionPoll` + live `route`). */
+data class CorePoll(
+    val partial: String? = null,
+    /** D19, latched: the hands-free endpoint fired; finish the dictation. Always false without `endpoint_silence_ms`. */
+    val endpointReached: Boolean = false,
+    val speechMs: Long = 0,
+    val trailingSilenceMs: Long = 0,
+    /** Absent with no session, or mid-recording when every route failed (keep the last label). */
+    val route: SessionRoute? = null,
+)
+
 data class SessionConfig(
     val languages: List<String> = emptyList(),
     val dictionary: List<DictEntry> = emptyList(),
@@ -135,6 +176,11 @@ data class SessionConfig(
     /** Deterministic spoken cleanup (punctuation words, fillers, backtracking, ITN). User pref. */
     val spokenCleanup: Boolean = true,
     val llmPrefill: Boolean = true,
+    /**
+     * D19 hands-free endpointing: trailing silence (ms, 300-10000) after which `poll()` reports
+     * `endpoint_reached`. Hands-free sessions only; null (omitted from the JSON) for push-to-talk.
+     */
+    val endpointSilenceMs: Int? = null,
 )
 
 /** crates/flow-core `FieldContext`; [before]/[after] ≤ 500 chars (shell truncates). */

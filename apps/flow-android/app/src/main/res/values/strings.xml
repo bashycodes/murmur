@@ -17,7 +17,10 @@
     <string name="notif_limit_text">Flow Clone supports up to %d minutes per session</string>
     <string name="toast_cap_warning">1 minute left before you reach the session limit.</string>
     <string name="toast_cap_reached">Session ended, limit reached</string>
-    <string name="toast_paste_failed">Failed to paste text. It is still on your clipboard.</string>
+    <string name="toast_paste_failed">Failed to paste text. It is on your clipboard for 1 minute.</string>
+    <string name="toast_target_changed">You switched fields while dictating, so nothing was inserted. Tap Paste to insert it here.</string>
+    <string name="toast_target_protected">Not inserted: this field or app is protected (password, banking or excluded).</string>
+    <string name="toast_mic_lost">The microphone stopped. Transcribing what was heard.</string>
     <string name="toast_copied">Copied to clipboard</string>
     <string name="toast_transcribe_failed">Failed to transcribe. Saved in the app.</string>
     <string name="toast_need_mic">Microphone permission is needed. Open Flow Clone to grant it.</string>

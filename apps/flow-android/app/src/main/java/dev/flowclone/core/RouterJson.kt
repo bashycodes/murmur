@@ -71,6 +71,29 @@ object RouterJson {
     private fun JSONObject.optIntOrNull(k: String): Int? = if (!has(k) || isNull(k)) null else optInt(k)
     private fun JSONObject.optBoolOrNull(k: String): Boolean? = if (!has(k) || isNull(k)) null else optBoolean(k)
 
+    private fun JSONObject.optStr(k: String): String? = if (!has(k) || isNull(k)) null else optString(k)
+
+    fun decodeSessionRoute(o: JSONObject?): SessionRoute? {
+        val e = o?.optStr("engine") ?: return null
+        return SessionRoute(e, o.optStr("provider"), o.optStr("model"), o.optStr("server"), o.optStr("fallback"))
+    }
+
+    /** `nativeStartSessionInfo`; a malformed answer still means "started" (route unknown). */
+    fun decodeStartInfo(json: String): StartInfo = try {
+        val o = JSONObject(json)
+        StartInfo(o.optBoolean("queued"), decodeSessionRoute(o.optJSONObject("route")))
+    } catch (e: org.json.JSONException) { StartInfo() }
+
+    /** `nativePoll`; malformed = idle. */
+    fun decodePoll(json: String?): CorePoll = try {
+        val o = JSONObject(json ?: "{}")
+        CorePoll(
+            partial = o.optStr("partial"), endpointReached = o.optBoolean("endpoint_reached"),
+            speechMs = o.optLong("speech_ms"), trailingSilenceMs = o.optLong("trailing_silence_ms"),
+            route = decodeSessionRoute(o.optJSONObject("route")),
+        )
+    } catch (e: org.json.JSONException) { CorePoll() }
+
     fun decodeCapabilities(json: String): Capabilities = try {
         val o = JSONObject(json)
         val a = o.optJSONArray("asr_engines")

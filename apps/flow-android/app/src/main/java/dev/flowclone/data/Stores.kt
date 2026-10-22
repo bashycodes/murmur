@@ -27,6 +27,7 @@ class SettingsStore(context: Context) {
         shrinkBubble = sp.getBoolean("shrink_bubble", true),
         spokenCleanup = sp.getBoolean("spoken_cleanup", true),
         asrEngine = dev.flowclone.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.flowclone.core.AsrEngine.WHISPER,
+        endpointSilenceMs = sp.getInt("endpoint_silence_ms", Settings.DEFAULT_ENDPOINT_SILENCE_MS),
     )
 
     fun save(s: Settings) {
@@ -43,6 +44,7 @@ class SettingsStore(context: Context) {
             .putBoolean("shrink_bubble", s.shrinkBubble)
             .putBoolean("spoken_cleanup", s.spokenCleanup)
             .putString("asr_engine", s.asrEngine.wire)
+            .putInt("endpoint_silence_ms", s.endpointSilenceMs)
             .apply()
     }
 

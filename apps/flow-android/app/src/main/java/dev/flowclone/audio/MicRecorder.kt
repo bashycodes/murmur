@@ -26,8 +26,11 @@ class MicRecorder : AudioSource {
     private var thread: Thread? = null
     private var record: AudioRecord? = null
 
+    override fun start(onFrame: (ShortArray, Int) -> Unit): Boolean = start(onFrame) {}
+
+    /** [onError]: a read error ended the capture (review C15); the controller then stops + submits. */
     @SuppressLint("MissingPermission") // caller checks RECORD_AUDIO
-    override fun start(onFrame: (ShortArray, Int) -> Unit): Boolean {
+    override fun start(onFrame: (ShortArray, Int) -> Unit, onError: () -> Unit): Boolean {
         if (recording) return true
         val minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         if (minBuf <= 0) return false
@@ -49,13 +52,19 @@ class MicRecorder : AudioSource {
         val buf = ShortArray(minBuf / 2)
         thread = Thread({
             var zeroReads = 0
+            var failed = false
             while (recording) {
                 val n = r.read(buf, 0, buf.size)
                 when {
                     n > 0 -> { zeroReads = 0; batcher.feed(buf, n) }
                     n == 0 -> if (++zeroReads == ZERO_READ_LOG_THRESHOLD) Log.w(TAG, "$zeroReads consecutive empty reads")
-                    else -> { Log.w(TAG, "read error $n"); break }
+                    else -> { Log.w(TAG, "read error $n"); failed = true; break }
                 }
+            }
+            if (failed) {
+                batcher.flush()
+                onError()
+                return@Thread
             }
             // Tail drain: whatever is already buffered, non-blocking, ≤ 120 ms.
             val until = SystemClock.elapsedRealtime() + TAIL_DRAIN_MS

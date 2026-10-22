@@ -1,7 +1,40 @@
 package dev.flowclone.bubble
 
+import dev.flowclone.core.SessionRoute
 import dev.flowclone.session.DictationHint
 import dev.flowclone.session.DictationState
+
+/** "via phone | server | provider" for the live route (2026-10-22 shell changelog), + why it is not the first route. */
+object RouteLabel {
+    fun of(route: SessionRoute?, providerLabel: (String) -> String? = { null }): String? {
+        val r = route ?: return null
+        val base = when (r.engine) {
+            "local" -> "via phone"
+            "remote" -> "via server"
+            "cloud" -> {
+                val name = r.provider?.let { providerLabel(it) ?: it } ?: "cloud"
+                "via $name" + (r.model?.let { " ($it)" } ?: "")
+            }
+            else -> "via ${r.engine}"
+        }
+        return base + (r.fallback?.let { " · ${reason(it)}" } ?: "")
+    }
+
+    fun reason(fallback: String): String = when (fallback) {
+        "connect_failed", "disconnected", "timeout" -> "server unreachable"
+        "busy" -> "server busy"
+        "auth_failed" -> "token or key rejected"
+        "proto_mismatch" -> "server version differs"
+        "circuit_open" -> "paused after failures"
+        "server_not_configured" -> "no server set"
+        "local_not_ready" -> "phone model not ready"
+        "cloud_not_configured" -> "cloud not set up"
+        "budget_exceeded" -> "cloud budget reached"
+        "quota_exceeded" -> "cloud out of credits"
+        "provider_error" -> "cloud error"
+        else -> fallback.replace('_', ' ')
+    }
+}
 
 /** The live-preview line next to the bubble: partial transcript, or a silence hint. */
 object PreviewContent {
@@ -12,10 +45,20 @@ object PreviewContent {
 
     data class Line(val text: String, val dim: Boolean)
 
-    /** [badge]: D17 `show_engine_badge` — the last dictation's engine (S / L / L•), prefixed while recording. */
-    fun line(state: DictationState, partial: String?, hint: DictationHint?, enabled: Boolean, badge: String? = null): Line? =
-        lineNoBadge(state, partial, hint, enabled)?.let { l -> if (badge == null) l else l.copy(text = "[$badge] ${l.text}") }
+    /**
+     * [badge]: D17 `show_engine_badge` — the last dictation's engine (S / L / L•), prefixed while recording.
+     * [route]: the live session's [RouteLabel] ("via server"); shown instead of the badge while
+     * recording / processing, so the user sees where the audio goes before the commit.
+     */
+    fun line(state: DictationState, partial: String?, hint: DictationHint?, enabled: Boolean, badge: String? = null, route: String? = null): Line? {
+        val live = state is DictationState.Recording || state is DictationState.Processing
+        if (route != null && live) {
+            val l = lineNoBadge(state, partial, hint, enabled)
+            return if (l == null) Line(route, dim = true) else l.copy(text = "$route · ${l.text}")
+        }
+        return lineNoBadge(state, partial, hint, enabled)?.let { l -> if (badge == null) l else l.copy(text = "[$badge] ${l.text}") }
             ?: if (badge != null && state is DictationState.Recording) Line("[$badge]", dim = true) else null
+    }
 
     private fun lineNoBadge(state: DictationState, partial: String?, hint: DictationHint?, enabled: Boolean): Line? {
         when (hint) {
