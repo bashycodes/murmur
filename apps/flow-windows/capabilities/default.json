@@ -1,7 +1,44 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Overlay + settings: event listening and the app's own commands only.",
-  "windows": ["overlay", "settings"],
-  "permissions": ["core:event:default", "core:app:default"]
+  "description": "Settings window: event listening and every app command.",
+  "windows": [
+    "settings"
+  ],
+  "permissions": [
+    "core:event:default",
+    "core:app:default",
+    "allow-get-prefs",
+    "allow-set-prefs",
+    "allow-list-microphones",
+    "allow-get-model-status",
+    "allow-history-list",
+    "allow-history-delete",
+    "allow-history-clear",
+    "allow-history-copy",
+    "allow-history-repaste",
+    "allow-clipboard-copy",
+    "allow-suggestions-list",
+    "allow-suggestion-accept",
+    "allow-suggestion-dismiss",
+    "allow-dictionary-import",
+    "allow-dictionary-export",
+    "allow-dictionary-export-text",
+    "allow-dev-get",
+    "allow-dev-validate",
+    "allow-dev-set",
+    "allow-dev-test-connection",
+    "allow-dev-test-session",
+    "allow-dev-route-status",
+    "allow-dev-reset-circuit",
+    "allow-dev-reset-defaults",
+    "allow-dev-unlock",
+    "allow-dev-cloud-set-key",
+    "allow-dev-cloud-clear-key",
+    "allow-dev-cloud-test",
+    "allow-dev-cloud-usage",
+    "allow-dev-cloud-reset-usage",
+    "allow-dev-cloud-presets",
+    "allow-dev-cloud-new-id"
+  ]
 }

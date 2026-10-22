@@ -48,6 +48,29 @@ pub fn snapshot(timeout: Duration, use_text: bool) -> Option<RawSnapshot> {
     rx.recv_timeout(timeout).ok()
 }
 
+/// Is the focused control a password field? `None` = UIA did not answer
+/// within `timeout` (paste-time guard, review S13).
+pub fn focused_is_password(timeout: Duration) -> Option<bool> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("flow-uia-pw".into())
+        .spawn(move || unsafe {
+            let inited = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
+            let r =
+                CoCreateInstance::<_, IUIAutomation>(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
+                    .ok()
+                    .and_then(|uia| uia.GetFocusedElement().ok())
+                    .and_then(|el| el.CurrentIsPassword().ok())
+                    .map(|b| b.as_bool());
+            let _ = tx.send(r);
+            if inited {
+                CoUninitialize();
+            }
+        })
+        .ok()?;
+    rx.recv_timeout(timeout).ok().flatten()
+}
+
 /// Foreground window → (exe path, title). Cheap; no COM.
 pub fn foreground_app() -> (HWND, String, String) {
     unsafe {

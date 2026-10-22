@@ -762,6 +762,18 @@ impl CoreApi for FlowCoreAdapter {
         self.core_partial()
     }
 
+    fn poll(&self) -> crate::core_api::Poll {
+        let Some(core) = self.active() else {
+            return crate::core_api::Poll::default();
+        };
+        let p = core.poll();
+        crate::core_api::Poll {
+            partial: p.partial.filter(|s| !s.trim().is_empty()),
+            endpoint_reached: p.endpoint_reached,
+            route: None,
+        }
+    }
+
     fn commit(&self) -> CommitResult {
         match self.core_commit() {
             Some(r) => from_core_result(r),
@@ -862,6 +874,7 @@ pub fn to_core_session(c: &SessionConfig) -> fc::SessionConfig {
         hallucination_guard: c.hallucination_guard,
         spoken_cleanup: c.spoken_cleanup,
         llm_prefill: c.llm_prefill,
+        endpoint_silence_ms: c.endpoint_silence_ms,
         ..fc::SessionConfig::default()
     }
 }

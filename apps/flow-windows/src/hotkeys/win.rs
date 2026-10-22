@@ -46,6 +46,14 @@ struct HookState {
 
 static STATE: Mutex<Option<HookState>> = Mutex::new(None);
 
+/// Never panics on a poisoned lock: a panic inside the `extern "system"`
+/// hook callback would abort the whole process (review C8).
+fn state() -> std::sync::MutexGuard<'static, Option<HookState>> {
+    STATE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 pub struct HookHandle {
     thread_id: u32,
     join: Option<JoinHandle<()>>,
@@ -53,7 +61,7 @@ pub struct HookHandle {
 
 impl HookHandle {
     pub fn set_bindings(&self, b: Bindings) {
-        if let Some(s) = STATE.lock().unwrap().as_mut() {
+        if let Some(s) = state().as_mut() {
             s.matcher.set_bindings(b);
         }
     }
@@ -69,7 +77,7 @@ impl HookHandle {
         if let Some(j) = self.join.take() {
             let _ = j.join();
         }
-        *STATE.lock().unwrap() = None;
+        *state() = None;
     }
 }
 
@@ -88,7 +96,7 @@ pub fn install(
     dictating: Arc<AtomicBool>,
     tx: Sender<HotkeyAction>,
 ) -> Result<HookHandle, String> {
-    *STATE.lock().unwrap() = Some(HookState {
+    *state() = Some(HookState {
         matcher: ChordMatcher::new(bindings),
         tx,
         dictating,
@@ -147,6 +155,12 @@ unsafe fn hook_thread(ready: Sender<Result<u32, String>>) {
     let _ = UnhookWindowsHookEx(hook);
 }
 
+/// Our own integrity level (constant for the process).
+fn own_integrity() -> Option<u32> {
+    static OWN: std::sync::OnceLock<Option<u32>> = std::sync::OnceLock::new();
+    *OWN.get_or_init(crate::paste::integrity::own)
+}
+
 fn last_input_tick() -> u32 {
     let mut li = LASTINPUTINFO {
         cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
@@ -186,7 +200,7 @@ unsafe fn reinstall(hook: &mut HHOOK, hmod: HINSTANCE) {
         Ok(h) => *hook = h,
         Err(e) => eprintln!("[hotkeys] re-install failed: {e}"),
     }
-    let mut guard = STATE.lock().unwrap();
+    let mut guard = state();
     if let Some(s) = guard.as_mut() {
         let held: Vec<Key> = s.matcher.pressed().collect();
         for k in held {
@@ -205,7 +219,7 @@ fn is_physically_down(key: Key) -> bool {
 }
 
 fn check_stale_keys() {
-    let mut guard = STATE.lock().unwrap();
+    let mut guard = state();
     let Some(s) = guard.as_mut() else { return };
     let held: Vec<Key> = s.matcher.pressed().collect();
     for k in held {
@@ -235,7 +249,7 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                 down,
             };
             let decision = {
-                let mut guard = STATE.lock().unwrap();
+                let mut guard = state();
                 match guard.as_mut() {
                     Some(s) => {
                         let d = s.matcher.handle(ev, s.dictating.load(Ordering::Relaxed));
@@ -248,12 +262,32 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                 }
             };
             if let Some(d) = decision {
+                let mut suppress = d.suppress;
                 if d.mask_release {
+                    // C11: swallow the physical Win/Alt key-up only if our
+                    // masked release really landed; otherwise let it
+                    // through so the key is never left logically down.
+                    let blocked = crate::paste::uipi_blocks(
+                        own_integrity(),
+                        crate::paste::integrity::foreground(),
+                    );
                     let lctrl_held =
                         (GetAsyncKeyState(input::vk::LCONTROL as i32) as u16) & 0x8000 != 0;
-                    input::win::send(&input::masked_release(kb.vkCode as u16, lctrl_held));
+                    let strokes = input::masked_release(kb.vkCode as u16, lctrl_held);
+                    let sent = if blocked {
+                        0
+                    } else {
+                        input::win::send(&strokes)
+                    };
+                    if !input::suppress_physical_release(blocked, sent, strokes.len()) {
+                        suppress = false;
+                        if sent > 0 && !lctrl_held {
+                            // A partial batch may have left our LCtrl down.
+                            input::win::send(&[input::Stroke::up(input::vk::LCONTROL)]);
+                        }
+                    }
                 }
-                if d.suppress {
+                if suppress {
                     return LRESULT(1);
                 }
             }

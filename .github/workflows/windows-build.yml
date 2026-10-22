@@ -1,0 +1,122 @@
+# Windows shell (apps/flow-windows): the real MSVC build, tests and the
+# Tauri installers (MSI + NSIS) for two flavours:
+#   * hybrid  = default features (this PC + your flow-server + opt-in cloud
+#               STT) + Parakeet, i.e. `--features app,parakeet`;
+#   * client  = client-only, no network code linked
+#               (`--no-default-features --features local,app,parakeet`).
+# Both bundle whisper.cpp and Parakeet (sherpa-onnx + onnxruntime DLLs next
+# to the exe). No secrets, no signing: the installers are unsigned, so
+# SmartScreen warns on first run (README "Live test on Windows").
+name: windows-build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [integration, win-final]
+    paths:
+      - "apps/flow-windows/**"
+      - "crates/**"
+      - ".github/workflows/windows-build.yml"
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  # whisper-rs-sys runs bindgen; windows-latest ships LLVM here.
+  LIBCLANG_PATH: C:\Program Files\LLVM\bin
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+        working-directory: apps/flow-windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup default stable
+          rustc --version
+          cmake --version
+          "$LIBCLANG_PATH/clang.exe" --version || true
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/flow-windows -> target
+          cache-on-failure: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # sherpa-onnx-sys would download this itself into target/, but the
+      # rust-cache restore keeps its build-script output and drops that
+      # folder (link error "cannot open sherpa-onnx-c-api.lib"), so fetch it
+      # to a stable place and point SHERPA_ONNX_LIB_DIR at it.
+      - name: sherpa-onnx prebuilt (Parakeet)
+        run: |
+          v=1.13.8
+          name=sherpa-onnx-v$v-win-x64-shared-MT-Release-lib
+          dir="$(cygpath -u "$RUNNER_TEMP")/sherpa"
+          mkdir -p "$dir"
+          curl -fsSL -o "$dir/a.tar.bz2" \
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$v/$name.tar.bz2"
+          (cd "$dir" && tar -xjf a.tar.bz2)  # a "D:" path would read as a remote host
+          lib="$dir/$name/lib"
+          # Keep every DLL next to the import libraries.
+          find "$dir/$name" -name '*.dll' -exec cp -n {} "$lib/" \;
+          ls -la "$lib"
+          echo "SHERPA_ONNX_LIB_DIR=$(cygpath -w "$lib")" >> "$GITHUB_ENV"
+
+      - name: Front-end (ui/dist)
+        run: npm --prefix ui ci && npm --prefix ui run build
+
+      - name: cargo test (default features = hybrid + cloud, whisper)
+        run: cargo test --locked
+
+      - name: cargo test (client only)
+        run: cargo test --locked --no-default-features --features local
+
+      - name: clippy (app, hybrid + Parakeet)
+        run: cargo clippy --locked --all-targets --features app,parakeet -- -D warnings
+
+      - name: Release build (hybrid + Parakeet) and the DLL bundle overlay
+        run: |
+          cargo build --locked --release --features app,parakeet
+          ls target/release/*.dll || true
+          tools/ci/parakeet-conf.sh target/release
+
+      - name: Installers (hybrid + cloud, whisper + Parakeet)
+        run: |
+          npx --yes @tauri-apps/cli@2 build --ci --bundles msi,nsis \
+            --features app,parakeet --config tauri.parakeet.conf.json
+          tools/ci/collect-bundle.sh hybrid
+
+      - name: Installers (client only, whisper + Parakeet)
+        run: |
+          npx --yes @tauri-apps/cli@2 build --ci --bundles msi,nsis \
+            --features local,app,parakeet --config tauri.parakeet.conf.json \
+            -- --no-default-features
+          tools/ci/collect-bundle.sh client
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flow-clone-windows-hybrid
+          path: apps/flow-windows/dist-ci/hybrid/
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flow-clone-windows-client
+          path: apps/flow-windows/dist-ci/client/
+          if-no-files-found: error
