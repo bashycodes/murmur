@@ -302,3 +302,61 @@ fn start_frame_has_no_cloud_fields() {
     assert!(start.contains("Kubernetes"), "{start}");
     assert_clean("raw ws bytes", &String::from_utf8_lossy(&raw));
 }
+
+// ---- P4: every adapter, not only openai_compat --------------------------------
+
+#[test]
+fn every_adapter_sends_the_key_only_in_its_own_auth_header() {
+    for (preset, header) in [
+        ("openrouter", "authorization"),
+        ("elevenlabs", "xi-api-key"),
+        ("deepgram", "authorization"),
+        ("assemblyai", "authorization"),
+    ] {
+        // A provider that rejects the key and echoes it back.
+        let provider = MockServer::fixed(Reply::json(
+            401,
+            serde_json::json!({"error": {"message": format!("bad key {CLOUD_KEY}")}}),
+        ));
+        let mut p = flow_cloud::presets()
+            .into_iter()
+            .find(|p| p.preset == preset)
+            .unwrap();
+        p.id = format!("{preset}-1");
+        p.base_url = provider.url("/v1");
+        p.consent_host = "127.0.0.1".into();
+        p.consent_at_ms = 1_792_540_800_000;
+        let cfg = with_cloud(
+            RouterConfig {
+                allow_server: false,
+                ..Default::default()
+            },
+            p,
+            &[Route::Cloud],
+        );
+        let r = cloud_router(cfg, None);
+        let res = dictate(&r);
+        assert_eq!(res.status, flow_core::CommitStatus::Error, "{preset}");
+        assert_clean(preset, &serde_json::to_string(&res).unwrap());
+        for (w, s) in router_outputs(&r) {
+            assert_clean(&format!("{preset} {w}"), &s);
+        }
+        let reqs = provider.requests();
+        assert!(!reqs.is_empty(), "{preset}: provider reached");
+        for req in reqs {
+            let mut seen = false;
+            for (k, v) in &req.headers {
+                if v.contains(CLOUD_KEY) {
+                    assert_eq!(k.to_ascii_lowercase(), header, "{preset}");
+                    seen = true;
+                }
+            }
+            assert!(seen, "{preset}: key in {header}");
+            assert!(!req.target.contains(CLOUD_KEY), "{preset}: key in URL");
+            assert!(
+                !String::from_utf8_lossy(&req.body).contains(CLOUD_KEY),
+                "{preset}: key in body"
+            );
+        }
+    }
+}
