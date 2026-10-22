@@ -416,8 +416,14 @@ object CloudText {
 
     fun banner(p: CloudProvider?): String {
         val who = if (p == null) "the provider you choose" else "${p.displayName} (${p.host.ifEmpty { "?" }})"
-        return "Off by default. When on, the audio of your dictations leaves this device and is sent to $who, " +
-            "along with your dictionary words. It is processed under that provider's terms, not by your server."
+        // Review P3: name exactly what goes along, per the provider's toggles.
+        val extras = listOfNotNull(
+            "your dictionary words".takeIf { p == null || p.sendDictionary },
+            "words on your screen".takeIf { p != null && p.sendScreenWords },
+        )
+        val along = if (extras.isEmpty()) "" else ", along with ${extras.joinToString(" and ")}"
+        return "Off by default. When on, the audio of your dictations leaves this device and is sent to $who$along. " +
+            "It is processed under that provider's terms, not by your server."
     }
 
     fun consentTitle(p: CloudProvider) = "Send audio to ${p.displayName}?"

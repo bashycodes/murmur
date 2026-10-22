@@ -113,7 +113,8 @@ class SettingsActivity : Activity() {
                     asrEngine = if (parakeet?.isChecked == true) dev.flowclone.core.AsrEngine.PARAKEET else dev.flowclone.core.AsrEngine.WHISPER,
                 )
                 app.settings.save(n)
-                if (n.retention != s.retention) app.history.purge(n.retention)
+                // Review P3: database work off the main thread (the engine reload is non-blocking since C1).
+                if (n.retention != s.retention) kotlin.concurrent.thread(name = "history-purge") { runCatching { app.history.purge(n.retention) } }
                 if (n.mockEngine != s.mockEngine || n.llmEnabled != s.llmEnabled || n.asrEngine != s.asrEngine) app.engine.reload()
                 if (n.llmEnabled && app.settings.llmModelPath == null) {
                     Toast.makeText(this@SettingsActivity, "AI cleanup needs a GGUF model: import one first.", Toast.LENGTH_LONG).show()
