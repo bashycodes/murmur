@@ -167,6 +167,7 @@ object RouterJson {
 object DevText {
     fun probe(h: HealthReport): String {
         if (h.engine == "cloud") return cloudProbe(h)
+        if (!h.ok && RouterErrors.plaintextRefused(h.message)) return "${h.error ?: "connect_failed"}: ${RouterErrors.NEEDS_TLS}"
         if (h.ok) {
             val rtt = h.rttMs?.let { "median ${it.median} ms (${it.min}-${it.max})" } ?: "no RTT"
             return listOfNotNull("OK", rtt, h.serverVersion, h.asrBackend).joinToString(" · ")
@@ -191,6 +192,7 @@ object DevText {
                 h.costUsd?.let { dev.flowclone.data.CloudText.usd(it) }, h.model,
             ).joinToString(" · ")
         }
+        if (RouterErrors.plaintextRefused(h.message)) return "${h.error ?: "connect_failed"}: ${RouterErrors.CLOUD_NEEDS_TLS}"
         val hint = dev.flowclone.data.CloudText.hint(h.error)
         return listOfNotNull("${h.error ?: "error"}${hint?.let { ": $it" } ?: ""}", h.message).joinToString(" — ")
     }
@@ -233,7 +235,7 @@ object DevText {
         route?.rttMs?.let { parts += "rtt $it ms" }
         route?.queueMs?.let { parts += "queue $it ms" }
         parts += "asr ${r.timings.asrMs} ms / total ${r.timings.totalMs} ms"
-        parts += r.status.name + (r.emptyReason?.let { " ($it)" } ?: "") + (r.error?.let { ": $it" } ?: "")
+        parts += r.status.name + (r.emptyReason?.let { " ($it)" } ?: "") + (r.error?.let { ": " + if (RouterErrors.plaintextRefused(it)) RouterErrors.NEEDS_TLS else it } ?: "")
         return parts.joinToString(" · ")
     }
 

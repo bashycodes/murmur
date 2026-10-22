@@ -147,6 +147,7 @@ class DictationController(
 
         /** A commit ERROR caused by the router (both engines off, server-only and unreachable). */
         fun routerFailure(r: CommitResult): String? {
+            if (RouterErrors.plaintextRefused(r.error)) return RouterErrors.NEEDS_TLS
             val kind = CoreException.kindOf(r.error) ?: return null
             if (kind !in RouterErrors.KINDS) return null
             return RouterErrors.userMessage(kind, r.error ?: kind)

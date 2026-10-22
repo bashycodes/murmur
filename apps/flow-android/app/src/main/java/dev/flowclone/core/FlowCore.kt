@@ -92,8 +92,15 @@ object RouterErrors {
     const val BAD_CONFIG = "bad_config"
     val KINDS = listOf(NO_ENGINE_ENABLED, LOCAL_NOT_READY, SERVER_NOT_CONFIGURED, SERVER_UNAVAILABLE, BAD_CONFIG)
 
+    /** User-facing wording for review S6's "plaintext refused" (ws:// / http:// to a non-private address). */
+    const val NEEDS_TLS = "Server needs TLS — turn on Use TLS for this server in Developer settings"
+    const val CLOUD_NEEDS_TLS = "Provider needs TLS — use an https:// base URL"
+
+    /** flow-remote / flow-cloud refused cleartext to an address that is not private or tailnet. */
+    fun plaintextRefused(message: String?) = message?.contains("plaintext refused", ignoreCase = true) == true
+
     /** User-facing text for the bubble / main screen (§5 "Errors in normal UI"). */
-    fun userMessage(kind: String?, message: String): String = when (kind) {
+    fun userMessage(kind: String?, message: String): String = if (plaintextRefused(message)) NEEDS_TLS else when (kind) {
         NO_ENGINE_ENABLED -> "Dictation disabled — enable server or client in Developer settings"
         SERVER_UNAVAILABLE -> "Server unreachable (${message.substringAfter(':', message).trim()})"
         SERVER_NOT_CONFIGURED -> "No server configured — set the host in Developer settings"
