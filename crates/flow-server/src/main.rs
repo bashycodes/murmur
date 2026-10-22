@@ -95,13 +95,7 @@ fn serve(a: &Args) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&cfg.log.level));
-    tracing_subscriber::fmt()
-        .with_env_filter(filter)
-        .with_writer(std::io::stderr)
-        .with_ansi(false)
-        .init();
+    flow_server::logging::init(&cfg.log.level);
 
     // Models load before any listener binds.
     let t0 = Instant::now();

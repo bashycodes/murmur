@@ -23,5 +23,5 @@ threads = 4            # 4 on the i7-6700: oversubscribing hyperthreads is far s
 # key = "/etc/flow-server/key.pem"
 
 [log]
-level = "info"
+level = "info"         # RUST_LOG overrides; dependencies are capped at info either way
 log_text = false       # true prints transcripts at debug level (startup warns)
