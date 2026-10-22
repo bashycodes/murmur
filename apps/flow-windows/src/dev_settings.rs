@@ -11,20 +11,29 @@
 //! * [`DevSettings::router_config_json`] produces flow-router's
 //!   `RouterConfig` JSON (§1.2) — the router fixtures are the spec.
 //!
-//! Routes are an ordered list (`route_order`), not a two-way switch, so a
-//! later route kind (e.g. an opt-in cloud provider) is one more variant and
-//! one more list entry. The router's `prefer` is derived from the order.
+//! Routes are an ordered list (`route_order`), not a two-way switch; the
+//! opt-in cloud provider (D18, `docs/cloud-stt.md`) is the third entry. The
+//! router's `prefer` is derived from the order; with the cloud allowed the
+//! full list goes to the router as `order`.
+//!
+//! Cloud providers (`cloud`) are flow-router's `CloudConfig` as is: no API
+//! keys (those live in Credential Manager, [`crate::credentials`]); consent
+//! is recorded per provider for the host it was given for, and
+//! [`reconcile_consent`] voids it when the host or the adapter changes.
 
+use flow_router::{CloudConfig, CloudProviderConfig};
 use serde::{Deserialize, Serialize};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 pub const DEFAULT_PORT: u16 = 7313;
 
-/// What this build can do (Cargo features `local*` / `remote`).
+/// What this build can do (Cargo features `local*` / `remote` / `cloud`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BuildCaps {
     pub local: bool,
     pub remote: bool,
+    /// Third-party cloud STT compiled in (feature `cloud`, D18 C2).
+    pub cloud: bool,
 }
 
 impl BuildCaps {
@@ -32,6 +41,7 @@ impl BuildCaps {
         BuildCaps {
             local: cfg!(feature = "local-engine"),
             remote: cfg!(feature = "remote"),
+            cloud: cfg!(feature = "cloud"),
         }
     }
 }
@@ -44,6 +54,20 @@ pub enum Route {
     Server,
     /// On-device flow-core (router `Local`).
     Client,
+    /// Opt-in third-party provider (router `Cloud`, D18).
+    Cloud,
+}
+
+impl Route {
+    pub const ALL: [Route; 3] = [Route::Server, Route::Client, Route::Cloud];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Route::Server => "server",
+            Route::Client => "client",
+            Route::Cloud => "cloud",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,8 +112,13 @@ pub struct DevSettings {
     pub token_dpapi: String,
     /// Client-only builds: the tab was unlocked (7 taps on the version).
     pub dev_unlocked: bool,
-    /// Overlay pill shows S/L (+ red dot on fallback). UI only.
+    /// Overlay pill shows S/L (+ red dot on fallback). UI only. The cloud
+    /// badge `C` shows regardless (C7).
     pub show_engine_badge: bool,
+    /// Opt-in third-party cloud STT (D18 C1). Off by default.
+    pub allow_cloud: bool,
+    /// Cloud providers, without keys (router `RouterConfig.cloud`).
+    pub cloud: CloudConfig,
 }
 
 impl Default for DevSettings {
@@ -110,17 +139,15 @@ impl DevSettings {
             token_dpapi: String::new(),
             dev_unlocked: false,
             show_engine_badge: false,
+            allow_cloud: false,
+            cloud: CloudConfig::default(),
         }
     }
 
     /// Full preference order: the stored list, then any route it misses.
     pub fn order(&self) -> Vec<Route> {
         let mut v: Vec<Route> = Vec::new();
-        for r in self
-            .route_order
-            .iter()
-            .chain([Route::Server, Route::Client].iter())
-        {
+        for r in self.route_order.iter().chain(Route::ALL.iter()) {
             if !v.contains(r) {
                 v.push(*r);
             }
@@ -144,6 +171,17 @@ impl DevSettings {
         )
     }
 
+    /// The cloud route may be tried (build AND toggle); consent, key and
+    /// budget are checked by the router.
+    pub fn cloud_effective(&self, caps: BuildCaps) -> bool {
+        caps.cloud && self.allow_cloud
+    }
+
+    /// The provider the cloud route uses, if any.
+    pub fn active_provider(&self) -> Option<&CloudProviderConfig> {
+        self.cloud.active_provider()
+    }
+
     /// Developer tab visibility (§5 "Access").
     pub fn tab_visible(&self, caps: BuildCaps) -> bool {
         caps.remote || self.dev_unlocked
@@ -159,10 +197,10 @@ impl DevSettings {
     pub fn router_config_json(&self, caps: BuildCaps, token: &str) -> serde_json::Value {
         let (srv, cli) = self.effective(caps);
         let s = &self.server;
-        serde_json::json!({
+        let mut j = serde_json::json!({
             "allow_server": srv,
             "allow_client": cli,
-            "prefer": match self.prefer() { Route::Server => "server", Route::Client => "client" },
+            "prefer": match self.prefer() { Route::Client => "client", _ => "server" },
             "server": {
                 "host": s.host,
                 "port": s.port,
@@ -178,7 +216,24 @@ impl DevSettings {
                 "health_ttl_s": s.health_ttl_s,
             },
             "keep_local_warm": self.keep_local_warm,
-        })
+        });
+        // D18: cloud fields only in builds with the cloud client, and (like
+        // the router's own serialisation) only while not default, so the
+        // D17 fixtures stay byte-identical.
+        if caps.cloud {
+            if self.allow_cloud {
+                j["allow_cloud"] = true.into();
+                j["order"] = self
+                    .order()
+                    .iter()
+                    .map(|r| serde_json::Value::from(r.as_str()))
+                    .collect();
+            }
+            if !self.cloud.is_default() {
+                j["cloud"] = serde_json::to_value(&self.cloud).expect("CloudConfig serialises");
+            }
+        }
+        j
     }
 
     /// Warnings shown on the Developer page (valid but probably not meant).
@@ -207,6 +262,112 @@ impl DevSettings {
         }
         w
     }
+
+    /// Cloud warnings (§3.1 / §8.3): where audio may go, and what is still
+    /// missing before the cloud route can run. `has_key(id)` asks the
+    /// credential store.
+    pub fn cloud_warnings(&self, caps: BuildCaps, has_key: &dyn Fn(&str) -> bool) -> Vec<String> {
+        let mut w = Vec::new();
+        if !self.cloud_effective(caps) {
+            return w;
+        }
+        let Some(p) = self.active_provider() else {
+            w.push("Allow cloud is on but no provider is active: add one below.".into());
+            return w;
+        };
+        let name = format!("{} ({})", p.display_name(), p.host());
+        if !p.consent_ok() {
+            w.push(format!(
+                "Cloud is not used until you accept sending audio to {name}."
+            ));
+        }
+        if !has_key(&p.id) {
+            w.push(format!(
+                "Cloud is not used until an API key for {} is saved.",
+                p.display_name()
+            ));
+        }
+        let (srv, cli) = self.effective(caps);
+        let allowed = |r: &Route| match r {
+            Route::Server => srv,
+            Route::Client => cli,
+            Route::Cloud => true,
+        };
+        let order: Vec<Route> = self.order().into_iter().filter(allowed).collect();
+        if let Some(i) = order.iter().position(|r| *r == Route::Cloud) {
+            match order[..i].last() {
+                Some(Route::Server) => w.push(format!(
+                    "When your server is unreachable, audio goes to {name}."
+                )),
+                Some(Route::Client) => w.push(format!(
+                    "When no local model is loaded, audio goes to {name}."
+                )),
+                _ => {}
+            }
+        }
+        w
+    }
+}
+
+/// Trim the free-text fields of every provider (validation runs after).
+pub fn normalize_cloud(c: &CloudConfig) -> CloudConfig {
+    let mut c = c.clone();
+    for p in &mut c.providers {
+        for f in [
+            &mut p.id,
+            &mut p.label,
+            &mut p.base_url,
+            &mut p.model,
+            &mut p.language,
+            &mut p.consent_host,
+        ] {
+            *f = f.trim().to_string();
+        }
+        p.base_url = p.base_url.trim_end_matches('/').to_string();
+    }
+    c
+}
+
+/// Consent rules on Save (§8.1, §8.3). `saved` is what is on disk, `new`
+/// the form being saved:
+///
+/// * a consent newer than the saved one (the dialog was just accepted) is
+///   kept only if it names the provider's current host;
+/// * otherwise the saved consent carries over (the form cannot forge one),
+///   unless the provider's host or adapter changed: then it is cleared and
+///   the dialog asks again.
+pub fn reconcile_consent(saved: &CloudConfig, new: &mut CloudConfig) {
+    for p in &mut new.providers {
+        let old = saved.providers.iter().find(|o| o.id == p.id);
+        let fresh = p.consent_at_ms > old.map_or(0, |o| o.consent_at_ms);
+        let keep = if fresh {
+            !p.consent_host.is_empty() && p.consent_host.eq_ignore_ascii_case(&p.host())
+        } else {
+            match old {
+                Some(o) if o.adapter == p.adapter && o.host() == p.host() => {
+                    p.consent_host = o.consent_host.clone();
+                    p.consent_at_ms = o.consent_at_ms;
+                    o.consent_ok()
+                }
+                _ => false,
+            }
+        };
+        if !keep {
+            p.consent_host.clear();
+            p.consent_at_ms = 0;
+        }
+    }
+}
+
+/// Providers present in `saved` but gone from `new` (their keys are
+/// deleted from Credential Manager).
+pub fn removed_providers(saved: &CloudConfig, new: &CloudConfig) -> Vec<String> {
+    saved
+        .providers
+        .iter()
+        .filter(|o| !new.providers.iter().any(|p| p.id == o.id))
+        .map(|o| o.id.clone())
+        .collect()
 }
 
 /// Normal-UI error when both engines are off (§5).
@@ -232,6 +393,10 @@ pub struct DevForm {
     pub keep_local_warm: bool,
     pub show_engine_badge: bool,
     pub dev_unlocked: bool,
+    pub allow_cloud: bool,
+    /// Providers as edited; consent fields are written by the consent
+    /// dialog and checked by [`reconcile_consent`] on save. No keys.
+    pub cloud: CloudConfig,
 }
 
 impl Default for DevForm {
@@ -271,6 +436,8 @@ impl DevForm {
             keep_local_warm: s.keep_local_warm,
             show_engine_badge: s.show_engine_badge,
             dev_unlocked: s.dev_unlocked,
+            allow_cloud: s.allow_cloud,
+            cloud: s.cloud.clone(),
         }
     }
 
@@ -344,6 +511,10 @@ impl DevForm {
             600,
             "Health cache (s)",
         );
+        let cloud = normalize_cloud(&self.cloud);
+        if let Err(m) = cloud.validate() {
+            errs.push(err("cloud", m));
+        }
         if !errs.is_empty() {
             return Err(errs);
         }
@@ -372,6 +543,8 @@ impl DevForm {
             token_dpapi: String::new(),
             dev_unlocked: self.dev_unlocked,
             show_engine_badge: self.show_engine_badge,
+            allow_cloud: self.allow_cloud && caps.cloud,
+            cloud,
         };
         let order = s.order();
         Ok((
@@ -499,6 +672,7 @@ mod tests {
     const BOTH: BuildCaps = BuildCaps {
         local: true,
         remote: true,
+        cloud: true,
     };
 
     fn form() -> DevForm {
@@ -513,20 +687,24 @@ mod tests {
         let local = DevSettings::for_build(BuildCaps {
             local: true,
             remote: false,
+            cloud: false,
         });
         assert!(!local.allow_server && local.allow_client);
         let remote = DevSettings::for_build(BuildCaps {
             local: false,
             remote: true,
+            cloud: false,
         });
         assert!(remote.allow_server && !remote.allow_client);
         assert!(remote.tab_visible(BuildCaps {
             local: false,
-            remote: true
+            remote: true,
+            cloud: false
         }));
         assert!(!local.tab_visible(BuildCaps {
             local: true,
-            remote: false
+            remote: false,
+            cloud: false
         }));
         assert!(DevSettings {
             dev_unlocked: true,
@@ -534,7 +712,8 @@ mod tests {
         }
         .tab_visible(BuildCaps {
             local: true,
-            remote: false
+            remote: false,
+            cloud: false
         }));
     }
 
@@ -675,6 +854,7 @@ mod tests {
             .validate(BuildCaps {
                 local: true,
                 remote: false,
+                cloud: false,
             })
             .unwrap();
         assert!(!s.allow_server && s.allow_client);
@@ -685,10 +865,16 @@ mod tests {
         let mut f = form();
         f.route_order = vec![Route::Client, Route::Client];
         let (s, _) = f.validate(BOTH).unwrap();
-        assert_eq!(s.route_order, vec![Route::Client, Route::Server]);
+        assert_eq!(
+            s.route_order,
+            vec![Route::Client, Route::Server, Route::Cloud]
+        );
         assert_eq!(s.prefer(), Route::Client);
         let d: DevSettings = serde_json::from_str(r#"{"route_order":[]}"#).unwrap();
-        assert_eq!(d.order(), vec![Route::Server, Route::Client]);
+        assert_eq!(d.order(), vec![Route::Server, Route::Client, Route::Cloud]);
+        let d: DevSettings = serde_json::from_str(r#"{"route_order":["cloud"]}"#).unwrap();
+        assert_eq!(d.order(), vec![Route::Cloud, Route::Server, Route::Client]);
+        assert_eq!(d.prefer(), Route::Server, "prefer ignores the cloud");
     }
 
     #[test]
@@ -716,6 +902,7 @@ mod tests {
             BuildCaps {
                 local: true,
                 remote: false,
+                cloud: false,
             },
             "",
         );
@@ -745,5 +932,190 @@ mod tests {
         assert_eq!(s.warnings(BOTH), vec![NO_ENGINE_MSG.to_string()]);
         let s = DevSettings::for_build(BOTH);
         assert!(s.warnings(BOTH)[0].contains("host is empty"));
+    }
+
+    fn groq(consent_at_ms: u64) -> CloudProviderConfig {
+        CloudProviderConfig {
+            id: "groq-1".into(),
+            preset: "groq".into(),
+            adapter: "openai_compat".into(),
+            label: "Groq".into(),
+            base_url: "https://api.groq.com/openai/v1".into(),
+            model: "whisper-large-v3-turbo".into(),
+            consent_host: if consent_at_ms > 0 {
+                "api.groq.com".into()
+            } else {
+                String::new()
+            },
+            consent_at_ms,
+            ..CloudProviderConfig::default()
+        }
+    }
+
+    fn cfg(p: CloudProviderConfig) -> CloudConfig {
+        CloudConfig {
+            active: p.id.clone(),
+            providers: vec![p],
+            monthly_budget_usd: None,
+        }
+    }
+
+    #[test]
+    fn consent_survives_unrelated_edits() {
+        let saved = cfg(groq(1000));
+        let mut new = saved.clone();
+        new.providers[0].model = "whisper-large-v3".into();
+        new.providers[0].label = "Groq fast".into();
+        reconcile_consent(&saved, &mut new);
+        assert!(new.providers[0].consent_ok());
+        assert_eq!(new.providers[0].consent_at_ms, 1000);
+    }
+
+    #[test]
+    fn consent_is_void_after_a_host_change() {
+        let saved = cfg(groq(1000));
+        let mut new = saved.clone();
+        new.providers[0].base_url = "https://api.example-stt.com/v1".into();
+        reconcile_consent(&saved, &mut new);
+        assert!(!new.providers[0].consent_ok());
+        assert_eq!(new.providers[0].consent_host, "");
+        assert_eq!(new.providers[0].consent_at_ms, 0);
+    }
+
+    #[test]
+    fn consent_is_void_after_an_adapter_change() {
+        let saved = cfg(groq(1000));
+        let mut new = saved.clone();
+        new.providers[0].adapter = "openrouter".into();
+        reconcile_consent(&saved, &mut new);
+        assert!(
+            !new.providers[0].consent_ok(),
+            "same host, other wire format: ask again"
+        );
+    }
+
+    #[test]
+    fn a_fresh_consent_for_the_new_host_is_kept() {
+        let saved = cfg(groq(1000));
+        let mut new = saved.clone();
+        new.providers[0].base_url = "https://api.example-stt.com/v1".into();
+        new.providers[0].consent_host = "api.example-stt.com".into();
+        new.providers[0].consent_at_ms = 2000;
+        reconcile_consent(&saved, &mut new);
+        assert!(new.providers[0].consent_ok());
+        // ...but a "fresh" consent naming another host is not.
+        let mut forged = saved.clone();
+        forged.providers[0].base_url = "https://api.example-stt.com/v1".into();
+        forged.providers[0].consent_at_ms = 3000; // consent_host still api.groq.com
+        reconcile_consent(&saved, &mut forged);
+        assert!(!forged.providers[0].consent_ok());
+    }
+
+    #[test]
+    fn the_form_cannot_backdate_a_consent() {
+        let saved = cfg(groq(0));
+        let mut new = saved.clone();
+        new.providers[0].consent_host = "api.groq.com".into();
+        new.providers[0].consent_at_ms = 0;
+        reconcile_consent(&saved, &mut new);
+        assert!(!new.providers[0].consent_ok());
+    }
+
+    #[test]
+    fn removed_providers_are_reported_for_key_deletion() {
+        let saved = cfg(groq(1000));
+        assert_eq!(
+            removed_providers(&saved, &CloudConfig::default()),
+            vec!["groq-1"]
+        );
+        assert!(removed_providers(&saved, &saved).is_empty());
+    }
+
+    #[test]
+    fn cloud_is_off_by_default_and_not_in_the_router_json() {
+        let d = DevSettings::for_build(BOTH);
+        assert!(!d.allow_cloud && d.cloud.is_default());
+        let j = d.router_config_json(BOTH, "");
+        for k in ["allow_cloud", "order", "cloud"] {
+            assert!(j.get(k).is_none(), "{k}");
+        }
+        // A build without the cloud client never emits cloud fields.
+        let on = DevSettings {
+            allow_cloud: true,
+            cloud: cfg(groq(1000)),
+            ..d
+        };
+        let no_cloud = BuildCaps {
+            cloud: false,
+            ..BOTH
+        };
+        let j = on.router_config_json(no_cloud, "");
+        for k in ["allow_cloud", "order", "cloud"] {
+            assert!(j.get(k).is_none(), "{k}");
+        }
+        assert_eq!(
+            on.router_config_json(BOTH, "")["order"],
+            serde_json::json!(["server", "client", "cloud"])
+        );
+    }
+
+    #[test]
+    fn cloud_form_validation_and_build_gate() {
+        let mut f = form();
+        f.allow_cloud = true;
+        f.cloud = cfg(groq(0));
+        f.cloud.providers[0].base_url = " https://api.groq.com/openai/v1/ ".into();
+        let (s, _) = f.validate(BOTH).unwrap();
+        assert!(s.allow_cloud);
+        assert_eq!(
+            s.cloud.providers[0].base_url,
+            "https://api.groq.com/openai/v1"
+        );
+        let (s, _) = f
+            .validate(BuildCaps {
+                cloud: false,
+                ..BOTH
+            })
+            .unwrap();
+        assert!(!s.allow_cloud, "the build cannot serve it");
+        f.cloud.providers[0].base_url = "http://api.groq.com/openai/v1".into();
+        assert_eq!(
+            f.validate(BOTH).unwrap_err()[0].field,
+            "cloud",
+            "public http refused"
+        );
+        f.cloud.providers[0].base_url = "https://api.groq.com/openai/v1".into();
+        f.cloud.active = "nope".into();
+        assert_eq!(f.validate(BOTH).unwrap_err()[0].field, "cloud");
+    }
+
+    #[test]
+    fn cloud_warnings_name_the_host_and_what_is_missing() {
+        let d = DevSettings {
+            allow_cloud: true,
+            cloud: cfg(groq(0)),
+            route_order: vec![Route::Server, Route::Cloud, Route::Client],
+            ..DevSettings::for_build(BOTH)
+        };
+        let w = d.cloud_warnings(BOTH, &|_| false);
+        assert!(
+            w.iter()
+                .any(|x| x.contains("accept sending audio to Groq (api.groq.com)")),
+            "{w:?}"
+        );
+        assert!(w.iter().any(|x| x.contains("API key")), "{w:?}");
+        assert!(
+            w.iter().any(|x| x.contains("server is unreachable")),
+            "{w:?}"
+        );
+        let ok = DevSettings {
+            cloud: cfg(groq(5)),
+            route_order: vec![Route::Cloud, Route::Client],
+            ..d
+        };
+        assert!(ok.cloud_warnings(BOTH, &|_| true).is_empty());
+        assert!(DevSettings::for_build(BOTH)
+            .cloud_warnings(BOTH, &|_| false)
+            .is_empty());
     }
 }
