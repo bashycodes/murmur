@@ -2,12 +2,12 @@
 
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
-use flow_core::CommitResult;
+use flow_core::{CommitResult, FlowCore};
 use flow_protocol::{
     code, decode_pcm, negotiate, samples_to_ms, ClientMsg, FrameError, ServerMsg, ServerTimings,
     CLOSE_PROTO_MISMATCH, PROTO_MAX, PROTO_MIN,
@@ -20,6 +20,9 @@ use crate::AppState;
 
 const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
 const PARTIAL_POLL: Duration = Duration::from_millis(100);
+/// Outbound messages waiting for the socket (C17). A client that stops
+/// reading fills it and is disconnected instead of growing server memory.
+const OUT_QUEUE: usize = 256;
 
 enum Event {
     Leased(u64, Result<Lease, LeaseError>),
@@ -41,6 +44,25 @@ struct Sess {
     last_partial: Option<String>,
     /// The task waiting for a worker while queued (aborted with the session).
     waiter: Option<tokio::task::AbortHandle>,
+    /// The core running this session's commit, reachable until the job
+    /// ends so a cancel or disconnect can abort it (C4).
+    inflight: Arc<Mutex<Option<Arc<FlowCore>>>>,
+}
+
+impl Sess {
+    /// Ask the core to abort a running commit. The lock is what the commit
+    /// task takes before returning the worker, so this can never reach a
+    /// core that has been leased to another session.
+    fn abort_commit(&self) {
+        if let Some(core) = self
+            .inflight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .as_ref()
+        {
+            core.cancel();
+        }
+    }
 }
 
 impl Drop for Sess {
@@ -48,22 +70,30 @@ impl Drop for Sess {
         if let Some(w) = self.waiter.take() {
             w.abort();
         }
+        // Cancel, a replacing start, a wall-clock cap or a disconnect while
+        // committing: the result is no longer wanted.
+        self.abort_commit();
     }
 }
 
 struct Conn {
     state: Arc<AppState>,
     peer: SocketAddr,
-    out: mpsc::UnboundedSender<Message>,
+    out: mpsc::Sender<Message>,
+    /// Set when `out` was full: the client is not reading.
+    overflow: std::cell::Cell<bool>,
     ev: mpsc::UnboundedSender<Event>,
     sess: Option<Sess>,
     dropped_audio: u64,
+    /// Last client message other than ping/pong (idle close).
     last_activity: Instant,
+    /// Last frame of any kind, pongs included (dead-peer detection).
+    last_rx: Instant,
 }
 
 pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAddr) {
     let (mut sink, mut stream) = socket.split();
-    let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Message>();
+    let (out_tx, mut out_rx) = mpsc::channel::<Message>(OUT_QUEUE);
     let writer = tokio::spawn(async move {
         while let Some(m) = out_rx.recv().await {
             let close = matches!(m, Message::Close(_));
@@ -75,7 +105,7 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
     });
     let mut kill = state.kill.clone();
     let send = |m: &ServerMsg| {
-        let _ = out_tx.send(Message::Text(m.to_json().into()));
+        let _ = out_tx.try_send(Message::Text(m.to_json().into()));
     };
 
     // ---- hello ----
@@ -94,7 +124,7 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
             "expected hello",
             true,
         ));
-        let _ = out_tx.send(Message::Close(None));
+        let _ = out_tx.try_send(Message::Close(None));
         let _ = writer.await;
         return;
     };
@@ -104,7 +134,7 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
             h.proto_min, h.proto_max
         );
         send(&ServerMsg::error(None, code::PROTO_MISMATCH, msg, true));
-        let _ = out_tx.send(Message::Close(Some(CloseFrame {
+        let _ = out_tx.try_send(Message::Close(Some(CloseFrame {
             code: CLOSE_PROTO_MISMATCH,
             reason: "proto_mismatch".into(),
         })));
@@ -119,30 +149,58 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
         state: state.clone(),
         peer,
         out: out_tx.clone(),
+        overflow: Default::default(),
         ev: ev_tx,
         sess: None,
         dropped_audio: 0,
         last_activity: Instant::now(),
+        last_rx: Instant::now(),
     };
     let mut tick = tokio::time::interval(PARTIAL_POLL);
     let idle = Duration::from_secs(state.cfg.idle_timeout_s.max(1));
+    let ping_every = Duration::from_millis(state.cfg.ws_ping_ms.max(10));
+    let dead = Duration::from_millis(state.cfg.ws_dead_ms.max(1));
+    let max_wall = Duration::from_secs(state.cfg.max_session_s);
+    let mut ping = tokio::time::interval_at(tokio::time::Instant::now() + ping_every, ping_every);
     loop {
+        if c.overflow.get() {
+            tracing::info!(%peer, "client is not reading its messages; closing");
+            break;
+        }
         tokio::select! {
             _ = kill.changed() => break,
             m = stream.next() => {
-                c.last_activity = Instant::now();
+                c.last_rx = Instant::now();
                 match m {
-                    Some(Ok(Message::Text(t))) => c.on_text(&t),
-                    Some(Ok(Message::Binary(b))) => c.on_audio(&b),
+                    Some(Ok(Message::Text(t))) => {
+                        c.last_activity = c.last_rx;
+                        c.on_text(&t)
+                    }
+                    Some(Ok(Message::Binary(b))) => {
+                        c.last_activity = c.last_rx;
+                        c.on_audio(&b)
+                    }
                     Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
                     Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
                 }
             }
             Some(ev) = ev_rx.recv() => c.on_event(ev),
+            _ = ping.tick() => {
+                c.push(Message::Ping(Default::default()));
+            }
             _ = tick.tick() => {
+                // C5: a peer that has sent nothing, not even a pong, for the
+                // dead interval is gone (half-open, NAT drop, app killed).
+                // Dropping `c` drops the session and frees its worker.
+                if c.last_rx.elapsed() > dead {
+                    tracing::info!(%peer, "no frame within the dead interval; closing");
+                    c.push(Message::Close(None));
+                    break;
+                }
+                c.enforce_wall_clock(max_wall);
                 c.poll_partial();
                 if c.sess.is_none() && c.last_activity.elapsed() > idle {
-                    let _ = out_tx.send(Message::Close(None));
+                    c.push(Message::Close(None));
                     break;
                 }
             }
@@ -154,7 +212,7 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
     if c.dropped_audio > 0 {
         tracing::debug!(%peer, frames = c.dropped_audio, "audio frames without a session");
     }
-    if *kill.borrow() {
+    if *kill.borrow() || c.overflow.get() {
         writer.abort();
     } else {
         drop(c);
@@ -165,7 +223,13 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
 
 impl Conn {
     fn send(&self, m: &ServerMsg) {
-        let _ = self.out.send(Message::Text(m.to_json().into()));
+        self.push(Message::Text(m.to_json().into()));
+    }
+
+    fn push(&self, m: Message) {
+        if let Err(mpsc::error::TrySendError::Full(_)) = self.out.try_send(m) {
+            self.overflow.set(true);
+        }
     }
 
     fn err(&self, sid: Option<u64>, c: &str, msg: impl Into<String>) {
@@ -197,6 +261,9 @@ impl Conn {
             ClientMsg::Hello(_) => self.err(None, code::BAD_REQUEST, "hello already done"),
             ClientMsg::Start { sid, config } => self.start(sid, config),
             ClientMsg::Context { sid, ctx } => {
+                if let Err(e) = crate::limits::context(&ctx) {
+                    return self.err(Some(sid), code::TOO_LARGE, e);
+                }
                 if self.check_sid(sid) {
                     let s = self.sess.as_mut().unwrap();
                     if let Some(l) = &s.lease {
@@ -233,6 +300,10 @@ impl Conn {
     fn start(&mut self, sid: u64, cfg: SessionConfig) {
         // A start while a session is active cancels it (FlowCore semantics).
         self.sess = None;
+        let cfg = match crate::limits::session(cfg, self.state.cfg.max_session_samples()) {
+            Ok(c) => c,
+            Err(e) => return self.err(Some(sid), code::TOO_LARGE, e),
+        };
         self.state.sessions.fetch_add(1, Ordering::SeqCst);
         let mut s = Sess {
             sid,
@@ -247,9 +318,12 @@ impl Conn {
             committing: false,
             last_partial: None,
             waiter: None,
+            inflight: Arc::default(),
         };
         if let Some(l) = self.state.pool.try_lease() {
-            let _ = l.core.start_session(s.cfg.clone());
+            if let Err(e) = l.core.start_session(s.cfg.clone()) {
+                return self.worker_failed(sid, e);
+            }
             s.lease = Some(l);
             self.send(&ServerMsg::Started { sid, queued: false });
         } else if self.state.pool.enqueue() {
@@ -273,6 +347,18 @@ impl Conn {
         self.sess = Some(s);
     }
 
+    /// `start_session` failed (the core's worker thread is gone): report
+    /// it instead of a `started` that would never produce a result.
+    fn worker_failed(&self, sid: u64, e: flow_core::CoreError) {
+        tracing::error!(sid, peer = %self.peer, kind = e.kind(), "start_session failed: {e}");
+        self.send(&ServerMsg::error(
+            Some(sid),
+            code::SERVER_ERROR,
+            format!("worker failed: {}", e.kind()),
+            false,
+        ));
+    }
+
     fn on_audio(&mut self, b: &[u8]) {
         let pcm = match decode_pcm(b) {
             Ok(p) => p,
@@ -291,7 +377,7 @@ impl Conn {
                 )
             }
         };
-        let max_session = self.state.cfg.max_session_s * SAMPLE_RATE as u64;
+        let max_session = self.state.cfg.max_session_samples() as u64;
         let Some(s) = self
             .sess
             .as_mut()
@@ -330,8 +416,12 @@ impl Conn {
         }
         let lease = s.lease.take().expect("leased");
         let (sid, ev) = (s.sid, self.ev.clone());
+        *s.inflight.lock().unwrap_or_else(|e| e.into_inner()) = Some(lease.core.clone());
+        let inflight = s.inflight.clone();
         tokio::task::spawn_blocking(move || {
             let r = lease.core.commit();
+            // Unpublish the core before the worker goes back to the pool.
+            *inflight.lock().unwrap_or_else(|e| e.into_inner()) = None;
             drop(lease); // the worker is free only after its commit finished
             let _ = ev.send(Event::Result(sid, Box::new(r)));
         });
@@ -354,7 +444,10 @@ impl Conn {
                         cfg.ring_capacity_samples = cfg
                             .ring_capacity_samples
                             .max(s.queued_audio.len() + SAMPLE_RATE * 30);
-                        let _ = l.core.start_session(cfg);
+                        if let Err(e) = l.core.start_session(cfg) {
+                            self.sess = None;
+                            return self.worker_failed(sid, e);
+                        }
                         l.core.push_audio(&std::mem::take(&mut s.queued_audio));
                         if let Some(ctx) = &s.ctx {
                             l.core.set_context(ctx.clone());
@@ -409,6 +502,24 @@ impl Conn {
         }
     }
 
+    /// End a session that has been open longer than `max_session_s` of
+    /// wall-clock time without committing (C5: pongs alone must not hold a
+    /// worker forever). A running commit is left to finish.
+    fn enforce_wall_clock(&mut self, max: Duration) {
+        let Some(s) = &self.sess else { return };
+        if s.committing || s.created.elapsed() <= max {
+            return;
+        }
+        let sid = s.sid;
+        self.sess = None;
+        tracing::info!(sid, peer = %self.peer, "session over max_session_s wall-clock");
+        self.err(
+            Some(sid),
+            code::TOO_LARGE,
+            "session longer than max_session_s",
+        );
+    }
+
     fn poll_partial(&mut self) {
         let Some(s) = self.sess.as_mut() else { return };
         if s.committing || s.cfg.partial_interval_ms.is_none() {
@@ -419,7 +530,7 @@ impl Conn {
         if let Some(text) = p.clone().filter(|_| p != s.last_partial) {
             s.last_partial = p;
             let m = ServerMsg::Partial { sid: s.sid, text };
-            let _ = self.out.send(Message::Text(m.to_json().into()));
+            self.push(Message::Text(m.to_json().into()));
         }
     }
 }
