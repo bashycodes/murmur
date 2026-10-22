@@ -32,4 +32,16 @@ class CloudKeyPolicyTest {
         assertEquals(CloudKeyPolicy.SaveKeys(deleteStored = false, set = null, askAgain = false), CloudKeyPolicy.onSave(groq, groq.copy(model = "m"), "  ", hadStored = true))
         assertEquals(CloudKeyPolicy.SaveKeys(deleteStored = false, set = "k", askAgain = false), CloudKeyPolicy.onSave(null, groq, "k", hadStored = false))
     }
+
+    /** crates-final P3: keyless self-hosted custom servers on LAN / tailnet. */
+    @Test fun keylessOnlyForCustomOnPrivateHosts() {
+        val lan = CloudProvider(id = "custom-1", preset = "custom", baseUrl = "http://192.168.1.5:8000/v1", model = "whisper-1")
+        assertTrue(CloudKeyPolicy.keylessOk(lan))
+        assertFalse("public host", CloudKeyPolicy.keylessOk(lan.copy(baseUrl = "https://stt.example.com/v1")))
+        assertFalse("named preset", CloudKeyPolicy.keylessOk(lan.copy(preset = "groq")))
+        assertFalse("other adapter", CloudKeyPolicy.keylessOk(lan.copy(adapter = "deepgram")))
+        assertEquals(CloudKeyPolicy.TestKey.Keyless, CloudKeyPolicy.testKey(null, lan, "", null))
+        assertEquals(CloudKeyPolicy.TestKey.Use("k"), CloudKeyPolicy.testKey(lan, lan, "", "k"))
+        assertTrue("stored key bound elsewhere: ask", CloudKeyPolicy.testKey(lan.copy(baseUrl = "http://10.0.0.2/v1"), lan, "", "k") is CloudKeyPolicy.TestKey.Missing)
+    }
 }
