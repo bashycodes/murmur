@@ -62,6 +62,19 @@ additive core fields need no protocol change. The server never sets
   per-user state.
 * `ModelConfig` (model paths, threads) is server configuration only.
 
+### 3.1 Server limits
+
+The server bounds every client-controlled size (`crates/flow-server/src/limits.rs`):
+
+| Item | Limit |
+|---|---|
+| WebSocket message / frame | 128 KiB (larger → the connection closes) |
+| `max_samples` | clamped to the server's `max_session_s` × 16 000 (advertised as `hello_ok.max_samples`) |
+| `ring_capacity_samples` | ≤ that cap + 30 s replay headroom, else `too_large` |
+| `llm_timeout_ms` | ≤ 30 000, else `too_large` |
+| `partial_interval_ms` | raised to at least 100 |
+| `context` | `before`/`selected`/`after`/`app_id`/`url_host` ≤ 8 KiB each; `screen_words` + `file_names` ≤ 1 000 entries, else `too_large` |
+
 ## 4. Error codes
 
 | Code | When | Fatal |
@@ -72,7 +85,7 @@ additive core fields need no protocol change. The server never sets
 | `bad_request` | unparsable JSON, unknown `t`, odd-length audio, anything before `hello` (fatal then) | no / yes |
 | `stale_sid` | control message for a session that is not current | no |
 | `no_session` | `commit`/`context` with no active session | no |
-| `too_large` | audio frame > 64 KiB, or session longer than the server's `max_session_s` (the session is cancelled). Audio over the session's `max_samples` is not an error: the core sets `truncated` | no |
+| `too_large` | audio frame > 64 KiB, or session longer than the server's `max_session_s` (the session is cancelled), or a `start`/`context` over the server limits (§3.1; the message is ignored). Audio over the session's `max_samples` is not an error: the core sets `truncated` | no |
 | `server_error` | anything else | no |
 
 ## 5. Version negotiation

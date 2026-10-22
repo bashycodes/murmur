@@ -19,7 +19,7 @@ pub(crate) fn hello_ok(state: &AppState, proto: u32) -> flow_protocol::HelloOk {
         llm: state.pool.llm,
         workers: state.pool.workers(),
         busy: state.pool.busy(),
-        max_samples: flow_core::config::SessionConfig::default().max_samples as u64,
+        max_samples: state.cfg.max_session_samples() as u64,
     }
 }
 
