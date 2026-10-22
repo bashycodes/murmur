@@ -49,6 +49,19 @@ JNIEXPORT void JNICALL FN(nativeSetContext)(JNIEnv *env, jclass c, jlong h, jstr
 
 JNIEXPORT jstring JNICALL FN(nativePartial)(JNIEnv *env, jclass c, jlong h) { return NULL; }
 
+/* 2026-10-22: live route + hands-free endpointing. */
+JNIEXPORT jstring JNICALL FN(nativeStartSessionInfo)(JNIEnv *env, jclass c, jlong h, jstring cfg) {
+    Core *k = (Core *)(intptr_t)h; k->active = 1; k->samples = 0; k->signal = 0;
+    return (*env)->NewStringUTF(env, "{\"queued\":false,\"route\":{\"engine\":\"local\"}}");
+}
+
+JNIEXPORT jstring JNICALL FN(nativePoll)(JNIEnv *env, jclass c, jlong h) {
+    Core *k = (Core *)(intptr_t)h;
+    return (*env)->NewStringUTF(env, k && k->active
+        ? "{\"partial\":null,\"endpoint_reached\":false,\"speech_ms\":0,\"trailing_silence_ms\":0,\"route\":{\"engine\":\"local\"}}"
+        : "{\"partial\":null,\"endpoint_reached\":false,\"speech_ms\":0,\"trailing_silence_ms\":0}");
+}
+
 JNIEXPORT jstring JNICALL FN(nativeCommit)(JNIEnv *env, jclass c, jlong h) {
     Core *k = (Core *)(intptr_t)h; char out[1024];
     k->active = 0;

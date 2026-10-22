@@ -21,6 +21,7 @@ import dev.flowclone.core.NativeFlowCore
 import dev.flowclone.data.CloudPresets
 import dev.flowclone.data.CloudProvider
 import dev.flowclone.data.CloudProviderForm
+import dev.flowclone.data.CloudKeyPolicy
 import dev.flowclone.data.CloudRules
 import dev.flowclone.data.CloudText
 import java.text.DateFormat
@@ -168,13 +169,27 @@ class CloudProviderActivity : Activity() {
     private fun onSave() {
         val r = validate()
         val p = r.provider ?: return
-        val k = key.text.toString().trim()
-        if (k.isNotEmpty()) {
+        val saved = if (isNew) null else app.dev.load().cloud.provider(base.id)
+        // S4: a key is bound to the saved host + adapter; a changed one deletes it (never re-sent to the new host).
+        val keys = CloudKeyPolicy.onSave(saved, p, key.text.toString(), app.cloudKeys.has(p.id))
+        if (keys.deleteStored) {
+            app.cloudKeys.remove(p.id)
+            app.engine.setCloudKey(p.id, null)
+        }
+        persist(
+            p,
+            when {
+                keys.askAgain -> "Saved. Host or adapter changed: the old key was deleted, enter the key for ${p.host}."
+                r.consentVoided -> "Saved. Host changed: give consent again before it is used."
+                else -> "Saved: applies to the next dictation"
+            },
+        )
+        keys.set?.let { k ->
             app.cloudKeys.set(p.id, k)
-            app.engine.setCloudKey(p.id, k)
+            // After persist: the router now has this provider, so the key binds to its host + adapter.
+            app.engine.setCloudKeyFor(base, k)
             key.setText("")
         }
-        persist(p, if (r.consentVoided) "Saved. Host changed: give consent again before it is used." else "Saved: applies to the next dictation")
         title = base.displayName
         refresh()
     }
@@ -189,16 +204,20 @@ class CloudProviderActivity : Activity() {
 
     private fun onTest() {
         val p = validate().provider ?: run { testLine.text = "Fix the highlighted field first."; return }
-        val formKey = key.text.toString().trim().ifEmpty { null }
-        val stored = if (formKey == null) app.cloudKeys.get(p.id) else null
-        if (formKey == null && stored == null) { testLine.text = "Paste an API key first."; return }
+        val saved = if (isNew) null else app.dev.load().cloud.provider(base.id)
+        // S1: the stored key only goes to the saved host + adapter; an edited form needs the typed key.
+        val k = when (val t = CloudKeyPolicy.testKey(saved, p, key.text.toString(), app.cloudKeys.get(p.id))) {
+            is CloudKeyPolicy.TestKey.Missing -> { testLine.text = t.message; return }
+            is CloudKeyPolicy.TestKey.Use -> t.key
+            CloudKeyPolicy.TestKey.Keyless -> null // the router sends no Authorization header
+        }
         testLine.text = "Testing ${p.displayName} (${p.host})…"
         testLine.setTextColor(currentTextColor())
         val json = p.toJson().toString()
         thread(name = "cloud-probe") {
             // Through the live router when there is one (a success for the active provider closes its
             // cloud circuit), else a temporary native router. The key goes in explicitly either way.
-            val h = app.engine.router()?.probeCloud(json, formKey ?: stored) ?: NativeFlowCore.probeCloud(json, formKey ?: stored)
+            val h = app.engine.router()?.probeCloud(json, k) ?: NativeFlowCore.probeCloud(json, k)
             runOnUiThread {
                 testLine.text = DevText.cloudProbe(h)
                 testLine.setTextColor(if (h.ok) OK_COLOR else BAD_COLOR)

@@ -3,14 +3,15 @@ package dev.flowclone.insert
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** Terminal fallback: `ClipData` with `ClipDescription.EXTRA_IS_SENSITIVE = true` (07 §3.4). */
+/** Terminal fallback: `ClipData` with `ClipDescription.EXTRA_IS_SENSITIVE = true` (07 §3.4), removed again by [ClipboardGuard] (S16). */
 interface ClipboardPort {
     fun copySensitive(text: String)
 }
 
 /**
  * `insertTextAndVerify` (07 §3.1): one insertion at a time; the 3500 ms budget starts
- * BEFORE the mutex so queueing eats budget; failure → sensitive clipboard copy.
+ * BEFORE the mutex so queueing eats budget; failure → sensitive clipboard copy (not for an
+ * excluded field, S16).
  */
 class InsertionCoordinator(
     private val inserter: V3Inserter,
@@ -34,7 +35,8 @@ class InsertionCoordinator(
             } finally {
                 pendingInsertions--
             }
-            if (!r.succeeded) clipboard.copySensitive(text)
+            // S16: never copy text meant for a password / sensitive / banking field.
+            if (!r.succeeded && r.reason != InsertResult.FailureReason.EXCLUDED_FIELD) clipboard.copySensitive(text)
             r
         }
     }

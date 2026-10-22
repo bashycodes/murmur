@@ -19,6 +19,102 @@ Requirements: Android 13 or newer (minSdk 33), an arm64 phone, and about 200 MB 
 and roughly as much free RAM. Android 15 phones with 16 KB pages are supported: every
 `.so` is 16 KB aligned (checked by `tools/probes/check_native_so.sh`).
 
+## Live test on phone (Tailscale, ~10 minutes)
+
+The fastest end-to-end test of the whole system: phone → your `flow-server` over Tailscale, with
+the phone's own model as the fallback.
+
+**Which APK.** Install **`hybrid`** (`dist/flow-clone-hybrid-debug.apk`): it talks to your server
+and falls back to the on-device engine (the mock engine works without any model), and it is the
+only flavour that can exercise both routes and the live "via …" label. Use `remote` only to test
+the server path alone (no models, smaller), `local` to prove the no-network build.
+
+APKs built on this PC (`tools/dist.sh`, after `tools/build-native.sh --flavor local|hybrid|remote`;
+`dist/` is git-ignored; debug-signed with this PC's debug key):
+
+| APK | Size | SHA-256 |
+|---|---|---|
+| `flow-clone-hybrid-debug.apk` | 46.3 MB (46274225 bytes) | `090afb6cd51c51432bef471463674eb25d246f656154cca76eaa94e304c8d46b` |
+| `flow-clone-hybrid-release-unsigned.apk` | 45.4 MB (45417457 bytes) | `162404689e4025825b010cb9ef900da7de17f20cae0d7c15a91e7ffe1c9d3944` |
+| `flow-clone-local-debug.apk` | 42.1 MB (42129049 bytes) | `ddf6f992aaa1c96785f086464ba1c61e1c2adbd7748df62b07db2978a5106d56` |
+| `flow-clone-local-release-unsigned.apk` | 41.3 MB (41272269 bytes) | `105833d373382d1553c38feb6ce7ea49bc36585f1b7e859a7bdfd6c90a3c4be8` |
+| `flow-clone-remote-debug.apk` | 12.6 MB (12582027 bytes) | `c71ee2291cbc0d07d93abfc57ae59ef6d9fbbff3e8589e3c47e018e58979eae0` |
+| `flow-clone-remote-release-unsigned.apk` | 11.7 MB (11725259 bytes) | `687114ecd3cfdfe2beec40389ac9fa9bc79fb6920fa21a2a80f580fa2be5d00a` |
+
+Built 2026-10-22 from branch `android-final` (commit 403b7ff) (natives rebuilt from the same tree; `*-release-unsigned.apk` are not installable until signed, see "Release build" below).
+
+Check a copy with `sha256sum flow-clone-hybrid-debug.apk` before installing it. An APK from
+another machine or from the CI artifact (`.github/workflows/android-build.yml`) has a different
+debug key: Android refuses it as an update, so uninstall the old app first (this deletes its
+settings, dictionary and history).
+
+**1. Server (on the PC).** Install Tailscale on the PC and the phone and log both into the same
+tailnet. Then on the PC:
+
+```sh
+flow-server gen-token --out ~/.config/flow-server/token        # writes a new token (mode 0600), never overwrites
+# config.toml: bind = ["127.0.0.1:7313", "<the PC's 100.x Tailscale IP>:7313"], token_file = that path
+flow-server --config config.toml                                # crates/flow-server/dist/config.example.toml
+```
+
+`tailscale ip -4` prints the 100.x address; the token is the content of that file. Copy it to the phone over a channel you trust
+(e.g. a Taildrop file or typing it); never paste it into a chat.
+
+**2. Install + permissions (phone).** Copy the APK to the phone and open it in Files ("Install
+unknown apps" for Files), or use the platform-tools install command over USB. Open Flow Clone
+and grant, in this order: *Microphone* → *Display over other apps* → *Accessibility service*
+(Settings → Accessibility → Flow Clone → on; if the switch is greyed out: Settings → Apps →
+Flow Clone → ⋮ → *Allow restricted settings*, then retry) → *Notifications* → *Battery: allow
+background*. The main screen must show `Native engine: flow-ffi 0.1.0`.
+
+**3. Point it at the server.** Main screen → *Developer settings*: host = the PC's `100.x.y.z`
+(or its MagicDNS name), port `7313`, paste the token, *Use TLS* off, *Allow server* + *Allow
+client* on, *Save*, then *Test connection* → `OK · median N ms … · parakeet`. Plain `ws://` is
+only allowed when the address is private or tailnet **and** the phone reaches it through its
+Tailscale interface: "Server needs TLS — turn on Use TLS …" means Tailscale is off on the phone
+or the host is a public address. For on-device fallback, either import a model (§2, §5) or tick
+*Settings → Mock engine*.
+
+**4. Smoke checklist (10 minutes).** Note the phone model, Android version and pass/fail per line.
+- [ ] Notes app, **tap** the bubble, say a sentence, stop talking: the preview says
+      `via server`, and after ~2 s of silence the dictation ends by itself and the text is
+      inserted (hands-free endpointing; *Settings → Hands-free: stop after silence*).
+- [ ] **Hold** the bubble, speak, release: inserted; holding never stops by itself.
+- [ ] *Active engine (last dictation)* on the Developer page says `Server 100.x…:7313`.
+- [ ] Start a long tap dictation, stop `flow-server` (Ctrl+C) mid-sentence: the preview relabels to
+      `via phone · server unreachable` while you are still talking, and the inserted text is
+      complete (buffered audio replayed on the phone).
+- [ ] Start the server again; the next dictation goes `via server` (after the 5 s circuit backoff,
+      or tap *Reset circuit*).
+- [ ] Start dictating in Notes, tap ✓, and switch to another app's text field before the text
+      appears: nothing is inserted there; a toast says you switched fields and the bubble offers
+      *Paste* (S12). In a banking app or a password field the bubble stays hidden and Paste refuses.
+- [ ] Force a paste failure (e.g. dictate, then close the keyboard and leave the app): the toast
+      says the text is on the clipboard **for 1 minute**; after a minute the clipboard holds your
+      previous clip again, or is empty (S16; note the result, Android may refuse background
+      clipboard access).
+- [ ] Tap ✕ while "Transcribing…": nothing is inserted, no history row is added.
+- [ ] Airplane mode on (Tailscale down): dictation still inserts from the phone engine, label
+      `via phone · server unreachable`.
+- [ ] logcat (`FlowService`, `FlowEngine`, `FlowA11y`): no `blocking native call on the main
+      thread`, no crash; the token never appears.
+
+Record the results (and the stop → text latency for server vs phone) in `PROJECT_CONTEXT.md`.
+
+### Release build
+
+`tools/dist.sh` also builds `assemble<Flavour>Release`. Signing comes only from outside git:
+Gradle properties `flow.release.storeFile`, `flow.release.storePassword`, `flow.release.keyAlias`,
+`flow.release.keyPassword` (e.g. in `~/.gradle/gradle.properties`) or the environment variables
+`FLOW_RELEASE_STORE_FILE`, `FLOW_RELEASE_STORE_PASSWORD`, `FLOW_RELEASE_KEY_ALIAS`,
+`FLOW_RELEASE_KEY_PASSWORD`. Without them the release APKs come out as
+`*-release-unsigned.apk`, which Android will not install. To sign: create a key once with
+`keytool -genkeypair -v -keystore <outside the repo>/flow-release.jks -alias flow -keyalg RSA
+-keysize 4096 -validity 10000`, set the four properties and rerun `tools/dist.sh` (or sign an
+unsigned APK with the SDK's `apksigner sign --ks …`). A release-signed APK and a debug one cannot
+update each other: switching between them means uninstalling (and losing app data). The CI
+workflow never signs release builds (no secrets in the repo or in Actions).
+
 ## 1. Build the APK (on the PC)
 
 ```sh

@@ -2,11 +2,7 @@ package dev.flowclone.ui
 
 import android.app.Activity
 import android.app.AlertDialog
-import android.content.ClipData
-import android.content.ClipDescription
-import android.content.ClipboardManager
 import android.os.Bundle
-import android.os.PersistableBundle
 import android.text.Editable
 import android.text.TextWatcher
 import android.text.format.DateFormat
@@ -107,12 +103,10 @@ class HistoryActivity : Activity() {
         }
     }
 
+    /** S16: sensitive clip, removed again after a minute. */
     private fun copy(text: String) {
-        val clip = ClipData.newPlainText("Flow Clone", text).apply {
-            description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
-        }
-        getSystemService(ClipboardManager::class.java)?.setPrimaryClip(clip)
-        Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
+        app.clipboard.copy(text)
+        Toast.makeText(this, "Copied (cleared after 1 minute)", Toast.LENGTH_SHORT).show()
     }
 
     private fun delete(r: HistoryRow) {

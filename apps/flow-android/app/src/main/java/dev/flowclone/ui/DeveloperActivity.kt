@@ -19,6 +19,7 @@ import dev.flowclone.core.DevText
 import dev.flowclone.core.HealthReport
 import dev.flowclone.core.NativeFlowCore
 import dev.flowclone.core.SessionConfig
+import dev.flowclone.data.CloudKeyPolicy
 import dev.flowclone.data.CloudPresets
 import dev.flowclone.data.CloudSettings
 import dev.flowclone.data.CloudText
@@ -288,7 +289,8 @@ class DeveloperActivity : Activity() {
     private fun onTestCloud() {
         val line = cloudProbeLine ?: return
         val p = cloudState.activeProvider ?: run { line.text = "No active provider."; return }
-        val key = app.cloudKeys.get(p.id) ?: run { line.text = "${p.displayName}: no API key stored."; return }
+        val key = app.cloudKeys.get(p.id)
+            ?: if (CloudKeyPolicy.keylessOk(p)) null else run { line.text = "${p.displayName}: no API key stored."; return }
         line.text = "Testing ${p.displayName} (${p.host})…"
         val json = p.toJson().toString()
         thread(name = "dev-cloud-probe") {

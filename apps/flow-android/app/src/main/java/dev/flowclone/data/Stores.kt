@@ -27,6 +27,7 @@ class SettingsStore(context: Context) {
         shrinkBubble = sp.getBoolean("shrink_bubble", true),
         spokenCleanup = sp.getBoolean("spoken_cleanup", true),
         asrEngine = dev.flowclone.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.flowclone.core.AsrEngine.WHISPER,
+        endpointSilenceMs = sp.getInt("endpoint_silence_ms", Settings.DEFAULT_ENDPOINT_SILENCE_MS),
     )
 
     fun save(s: Settings) {
@@ -43,6 +44,7 @@ class SettingsStore(context: Context) {
             .putBoolean("shrink_bubble", s.shrinkBubble)
             .putBoolean("spoken_cleanup", s.spokenCleanup)
             .putString("asr_engine", s.asrEngine.wire)
+            .putInt("endpoint_silence_ms", s.endpointSilenceMs)
             .apply()
     }
 
@@ -119,7 +121,32 @@ data class HistoryRow(
 )
 
 /** Local-only history (plain SQLite; no audio stored). */
+/**
+ * Review S17: deleted transcripts must not stay readable in free pages or the WAL file.
+ * `secure_delete` zeroes freed content on every connection; after a delete / purge / clear the
+ * WAL is checkpointed and truncated, and a full clear also VACUUMs the file.
+ */
+object HistoryHygiene {
+    const val ON_OPEN = "PRAGMA secure_delete=ON"
+    const val AFTER_DELETE = "PRAGMA wal_checkpoint(TRUNCATE)"
+    const val AFTER_CLEAR = "VACUUM"
+}
+
 class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", null, 2) {
+    override fun onConfigure(db: SQLiteDatabase) {
+        super.onConfigure(db)
+        db.rawQuery(HistoryHygiene.ON_OPEN, null).use { it.moveToFirst() }
+    }
+
+    /** S17: flush deletions out of the WAL (no-op without WAL). */
+    private fun scrub(vacuum: Boolean = false) {
+        runCatching {
+            val db = writableDatabase
+            db.rawQuery(HistoryHygiene.AFTER_DELETE, null).use { it.moveToFirst() }
+            if (vacuum) db.execSQL(HistoryHygiene.AFTER_CLEAR)
+        }
+    }
+
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
             """CREATE TABLE history(id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL,
@@ -153,10 +180,10 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
 
     fun purge(retention: Retention, now: Long = System.currentTimeMillis()) {
         val cutoff = retention.cutoff(now) ?: return
-        writableDatabase.delete("history", "created_at < ?", arrayOf(cutoff.toString()))
+        if (writableDatabase.delete("history", "created_at < ?", arrayOf(cutoff.toString())) > 0) scrub(vacuum = retention == Retention.NEVER)
     }
 
-    fun delete(id: Long) { writableDatabase.delete("history", "id = ?", arrayOf(id.toString())) }
+    fun delete(id: Long) { writableDatabase.delete("history", "id = ?", arrayOf(id.toString())); scrub() }
 
     fun recent(limit: Int = 500): List<HistoryRow> =
         readableDatabase.query("history", null, null, null, null, null, "created_at DESC", limit.toString()).use { c ->
@@ -180,5 +207,5 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
             }
         }
 
-    fun clear() { writableDatabase.delete("history", null, null) }
+    fun clear() { writableDatabase.delete("history", null, null); scrub(vacuum = true) }
 }

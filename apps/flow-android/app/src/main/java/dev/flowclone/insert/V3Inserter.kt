@@ -47,7 +47,8 @@ class V3Inserter(private val env: InsertionEnvironment, private val now: () -> L
             InsertResult(false, status, reason, VerifySource.NONE, steps.toList())
 
         fun anchorPkg() = env.dictationStartPackage() ?: env.currentPackage()
-        fun isOurPackage(p: String?) = p != null && (p == env.dictationStartPackage() || p == env.currentPackage())
+        /** S12: only the app focused when the dictation started (the current one only when no start was pinned). */
+        fun isOurPackage(p: String?) = p != null && p == (env.dictationStartPackage() ?: env.currentPackage())
         fun isExcludedInputType() = env.editorInputType()?.let(EditorInputType::isSensitive) ?: false
         fun connection() = if (env.isInputSessionActive()) env.currentInputConnection() else null
 
@@ -131,6 +132,9 @@ class V3Inserter(private val env: InsertionEnvironment, private val now: () -> L
             if (text.isEmpty()) return ok(Status.SUCCESS_TEXT_FOUND, VerifySource.NONE).also { step("empty_text") }
             if (now() >= deadline) return fail(FailureReason.DEADLINE_EXHAUSTED, Status.INCONCLUSIVE_FAILURE)
             if (isExcludedInputType()) return fail(FailureReason.EXCLUDED_FIELD).also { step("excluded_input_type") }
+            // S12: a banking app took focus since the start: never type into it.
+            if (BubbleVisibilityPolicy.isBanking(env.currentPackage()) || BubbleVisibilityPolicy.isBanking(env.focusedInputPackage()))
+                return fail(FailureReason.EXCLUDED_FIELD).also { step("excluded_banking") }
             if (env.isInNotificationReplyContext()) {
                 step("reply_node_path")
                 return nodeTier(sessionReason())

@@ -6,9 +6,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.ClipData
-import android.content.ClipDescription
-import android.content.ClipboardManager
 import android.app.KeyguardManager
 import android.content.BroadcastReceiver
 import android.content.ComponentCallbacks2
@@ -25,7 +22,6 @@ import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.Build
 import android.os.IBinder
-import android.os.PersistableBundle
 import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -113,6 +109,8 @@ class FlowService : Service() {
             scope = scope, audio = MicRecorder(), host = Host(),
             core = { app.engine.current() }, commitDispatcher = Dispatchers.Default,
             cap = app.settings.load().sessionCap(), now = SystemClock::elapsedRealtime,
+            // Review C2: start_session can connect to the server (TCP + TLS + hello): never on Main.
+            startDispatcher = Dispatchers.IO,
         )
         presence = BubblePresence(scope) { app.settings.load().shrinkBubble }
         overlay = BubbleOverlay(this, app.settings.bubblePosition, BubbleListener(), ::snoozeDrop)
@@ -125,10 +123,12 @@ class FlowService : Service() {
             }.collect { if (::overlay.isInitialized) overlay.render(it) }
         }
         scope.launch {
-            combine(controller.state, controller.partial, controller.hint, presence.presence) { s, p, h, _ ->
+            combine(controller.state, controller.partial, controller.hint, presence.presence, controller.route) { s, p, h, _, r ->
                 // D18 C7: "C" whenever the last dictation went to a cloud provider, even with the badge off.
                 val badge = dev.flowclone.core.DevText.bubbleBadge(app.lastRoute.value?.result?.route, app.dev.load().showEngineBadge)
-                PreviewContent.line(s, p, h, app.settings.load().livePreview, badge)
+                // Live route ("via phone | server | provider"), relabelled on failover.
+                val route = dev.flowclone.bubble.RouteLabel.of(r) { id -> app.dev.load().cloud.provider(id)?.displayName }
+                PreviewContent.line(s, p, h, app.settings.load().livePreview, badge, route)
             }.collect { overlay.renderPreview(it) }
         }
         scope.launch {
@@ -348,13 +348,8 @@ class FlowService : Service() {
         runCatching { getSystemService(Vibrator::class.java)?.vibrate(VibrationEffect.createPredefined(effect)) }
     }
 
-    private fun copySensitive(text: String) {
-        val cm = getSystemService(ClipboardManager::class.java) ?: return
-        val clip = ClipData.newPlainText("Flow Clone", text).apply {
-            description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
-        }
-        cm.setPrimaryClip(clip)
-    }
+    /** S16: sensitive clip, taken off the clipboard again after a minute (or once the text is inserted). */
+    private fun copySensitive(text: String) = app.clipboard.copy(text)
 
     private inner class Host : DictationController.Host {
         override fun feedback(e: FeedbackEvent) {
@@ -370,6 +365,9 @@ class FlowService : Service() {
                 }
                 FeedbackEvent.PasteRetryFailed -> toast(R.string.toast_paste_failed)
                 FeedbackEvent.NoSpeech -> Unit
+                FeedbackEvent.TargetChanged -> toast(getString(R.string.toast_target_changed))
+                FeedbackEvent.TargetProtected -> toast(getString(R.string.toast_target_protected))
+                FeedbackEvent.MicLost -> toast(R.string.toast_mic_lost)
             }
         }
 
@@ -379,6 +377,7 @@ class FlowService : Service() {
             copyJob = scope.launch { delay(COPY_DELAY_MS); showCopy.value = true }
             val bridge = app.accessibility
             val ok = if (bridge != null) bridge.insertTextAndVerify(text) else { copySensitive(text); false }
+            if (ok) app.clipboard.onInserted() // S16: a failed earlier text leaves the clipboard now
             copyJob?.cancel()
             if (showCopy.value || !ok) {
                 showCopy.value = true
@@ -411,6 +410,11 @@ class FlowService : Service() {
         override fun captureContext(): FieldContext? = app.accessibility?.captureFieldContext()
 
         override fun sessionConfig() = app.settings.load().toSessionConfig(app.dictionary.all())
+
+        override fun endpointSilenceMs(): Int? = app.settings.load().handsFreeEndpointMs()
+
+        override fun insertTarget(explicit: Boolean) =
+            app.accessibility?.insertTarget(explicit) ?: dev.flowclone.session.InsertTarget.OK
 
         override fun onRecordingActive(active: Boolean) {
             if (active && !micPromoted) promote(withMic = true)
