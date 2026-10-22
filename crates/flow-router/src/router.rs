@@ -672,7 +672,13 @@ impl Router {
             engine: None,
             wake: tx.clone(),
         });
-        let r = self.commit_active(&mut a, &rx, &tx, &cancelled);
+        let mut r = self.commit_active(&mut a, &rx, &tx, &cancelled);
+        // The replay buffer holds at most `max_samples`: a result from a
+        // fallback replay lost the rest even if its engine saw no overflow
+        // (review C18).
+        if r.status != CommitStatus::Error && a.samples > a.cfg.max_samples as u64 {
+            r.truncated = true;
+        }
         {
             // Only our own slot: a later session's commit may have replaced it.
             let mut g = self.committing.lock().unwrap();

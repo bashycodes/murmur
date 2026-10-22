@@ -627,8 +627,13 @@ impl Session {
         if n > room {
             self.truncated = true;
         }
+        let (x, y) = chunk.as_slices();
         self.buf
-            .extend(chunk.into_iter().take(room).map(|s| s as f32 / 32768.0));
+            .extend(x.iter().chain(y).take(room).map(|&s| s as f32 / 32768.0));
+        // Free the whole chunk, the samples past `max_samples` too: left in
+        // the ring they would fill it and count every later push as
+        // dropped (review C18).
+        chunk.commit_all();
     }
 }
 
