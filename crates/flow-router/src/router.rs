@@ -205,10 +205,32 @@ impl State {
     }
 }
 
+/// Which configured endpoint a backend talks to: re-checked against the
+/// current config before every hop and replay (review S5).
+#[derive(Clone)]
+struct Ident {
+    route: Route,
+    /// Cloud: the provider it was built for.
+    cloud: Option<CloudProviderConfig>,
+    /// Server: the server config it was built for.
+    server: Option<ServerConfig>,
+}
+
+impl Ident {
+    fn local() -> Self {
+        Self {
+            route: Route::Client,
+            cloud: None,
+            server: None,
+        }
+    }
+}
+
 /// One step of the route list, resolved to a backend.
 struct Hop {
     kind: EngineKind,
     backend: Arc<dyn Backend>,
+    ident: Ident,
 }
 
 struct Active {
@@ -216,6 +238,8 @@ struct Active {
     /// Backend currently fed with audio; `None` = the session is dead.
     engine: Option<Arc<dyn Backend>>,
     kind: EngineKind,
+    /// What `engine` talks to (S5 re-checks).
+    ident: Ident,
     /// Backends to switch to, in order, if the current one fails.
     fallbacks: VecDeque<Hop>,
     /// Session PCM (only while a fallback exists), capped at `max_samples`.
@@ -325,7 +349,10 @@ impl Router {
         self
     }
 
-    /// Takes effect at the next `start_session`. A changed server config
+    /// Takes effect at the next `start_session`, except (review S5): the
+    /// live session's fallback hops that the new config no longer allows
+    /// are dropped, and a live cloud session that is no longer allowed
+    /// switches to the next allowed route at once. A changed server config
     /// drops the cached remote backend and resets the circuit; a changed
     /// active cloud provider does the same for the cloud route.
     pub fn update_config(&self, cfg: RouterConfig) {
@@ -341,6 +368,8 @@ impl Router {
         }
         st.cfg = cfg;
         st.rebind_keys();
+        drop(st);
+        self.recheck_active();
     }
 
     /// Set (or with `None` forget) the API key of a cloud provider. Keys
@@ -393,6 +422,8 @@ impl Router {
             st.cloud = None;
             st.cloud_circuit = Circuit::new(true);
         }
+        drop(st);
+        self.recheck_active();
     }
 
     /// Whether a key is set for `provider_id` (Developer page). Additive.
@@ -802,12 +833,15 @@ impl Router {
 
     /// Resolve route `r` to a backend for the fallback chain (no network).
     fn hop(&self, st: &mut State, r: Route) -> Option<Hop> {
+        let mut ident = Ident::local();
+        ident.route = r;
         let (kind, backend) = match r {
             Route::Client => (EngineKind::Local, st.local.clone()?),
             Route::Server => {
                 if !st.cfg.server.is_configured() || st.circuit.sticky {
                     return None;
                 }
+                ident.server = Some(st.cfg.server.clone());
                 (EngineKind::Remote, self.remote_for(st))
             }
             Route::Cloud => {
@@ -815,10 +849,65 @@ impl Router {
                     return None;
                 }
                 let (p, key) = st.cloud_gate().ok()?;
+                ident.cloud = Some(p.clone());
                 (EngineKind::Cloud, self.cloud_for(st, p, key))
             }
         };
-        Some(Hop { kind, backend })
+        Some(Hop {
+            kind,
+            backend,
+            ident,
+        })
+    }
+
+    /// Is the endpoint `id` still allowed by the *current* config, toggles,
+    /// consent and key? Checked before every fallback hop / replay and when
+    /// the config or a key changes mid-session (review S5).
+    fn ident_allowed(&self, st: &mut State, id: &Ident) -> bool {
+        if !self.routes(st).contains(&id.route) {
+            return false;
+        }
+        match id.route {
+            Route::Client => true,
+            Route::Server => id.server.as_ref() == Some(&st.cfg.server) && !st.circuit.sticky,
+            Route::Cloud => {
+                !st.cloud_circuit.sticky
+                    && match (st.cloud_gate(), id.cloud.as_ref()) {
+                        (Ok((p, _)), Some(c)) => {
+                            p.id == c.id && BoundKey::binding(&p) == BoundKey::binding(c)
+                        }
+                        _ => false,
+                    }
+            }
+        }
+    }
+
+    /// The config or a key changed: drop fallback hops that are no longer
+    /// allowed and leave a server/cloud engine that is no longer allowed
+    /// right away (its audio is replayed to the next allowed route).
+    fn recheck_active(&self) {
+        let mut g = self.session.lock().unwrap();
+        let Some(a) = g.as_mut() else { return };
+        let current_ok = {
+            let mut st = self.state.lock().unwrap();
+            a.fallbacks
+                .retain(|h| self.ident_allowed(&mut st, &h.ident));
+            // A running server session keeps going (the user's own
+            // machine; the config applies from the next session), but a
+            // third-party cloud upload stops now.
+            a.engine.is_none()
+                || a.kind != EngineKind::Cloud
+                || self.ident_allowed(&mut st, &a.ident)
+        };
+        if !current_ok {
+            self.switch_next(
+                a,
+                BackendError::new(Failure::CloudNotConfigured, "cloud turned off mid-session"),
+            );
+        }
+        if a.fallbacks.is_empty() {
+            a.buffer = None;
+        }
     }
 
     fn start_routes(
@@ -877,7 +966,7 @@ impl Router {
                         route.provider = None;
                         route.model = None;
                     }
-                    let mut fallbacks = VecDeque::new();
+                    let mut fallbacks: VecDeque<Hop> = VecDeque::new();
                     if kind != EngineKind::Local {
                         for r in &routes[i + 1..] {
                             if let Some(h) = self.hop(st, *r) {
@@ -885,7 +974,15 @@ impl Router {
                             }
                         }
                     }
+                    let ident = Ident {
+                        route: r,
+                        cloud: (r == Route::Cloud)
+                            .then(|| st.cloud.as_ref().map(|(p, _)| p.clone()))
+                            .flatten(),
+                        server: (r == Route::Server).then(|| st.cfg.server.clone()),
+                    };
                     let mut a = Active::live(cfg, backend, kind, route);
+                    a.ident = ident;
                     if !fallbacks.is_empty() {
                         a.buffer = Some(Vec::new());
                     }
@@ -1106,6 +1203,11 @@ impl Router {
                 a.dead = Some(format!("server_unavailable: {e}"));
                 return;
             };
+            // S5: the toggles, consent and key may have changed since the
+            // session started; never replay to a route that is now off.
+            if !self.ident_allowed(&mut self.state.lock().unwrap(), &hop.ident) {
+                continue;
+            }
             if hop.kind == EngineKind::Local && !hop.backend.ready() {
                 if a.fallbacks.is_empty() {
                     a.dead = Some(format!("server_unavailable: {e}; local model not ready"));
@@ -1151,6 +1253,7 @@ impl Router {
             }
             a.engine = Some(hop.backend);
             a.kind = hop.kind;
+            a.ident = hop.ident;
             a.route.engine = hop.kind.as_str().into();
             return;
         }
@@ -1189,6 +1292,7 @@ impl Active {
             cfg,
             engine: Some(engine),
             kind,
+            ident: Ident::local(),
             fallbacks: VecDeque::new(),
             buffer: None,
             samples: 0,
@@ -1205,6 +1309,7 @@ impl Active {
             cfg,
             engine: None,
             kind: EngineKind::Local,
+            ident: Ident::local(),
             fallbacks: VecDeque::new(),
             buffer: None,
             samples: 0,
