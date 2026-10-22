@@ -5,6 +5,7 @@ use crate::audio::capture::{self, Capture};
 use crate::context::{uia, RawSnapshot};
 use crate::controller::{AudioSink, Controller, Platform};
 use crate::core_adapter::{self, FlowCoreAdapter, LlmSpec, LlmStatus, ModelSpec, ModelStatus};
+use crate::credentials::{self, CredentialStore, KeyState};
 use crate::dev_settings::{BuildCaps, DevForm, DevSettings, FieldError};
 use crate::dictation::{Input, OverlayState, Sound};
 use crate::ducking::win::Ducker;
@@ -48,6 +49,10 @@ struct AppState {
     suggestions: Arc<Mutex<SuggestionStore>>,
     /// Tray line "Dictionary suggestions (n)…".
     suggest_item: OnceLock<MenuItem<tauri::Wry>>,
+    /// Cloud STT API keys (D18 C3): Credential Manager.
+    creds: Arc<dyn CredentialStore>,
+    /// `cloud_usage.json` (this month's counters; never sent anywhere).
+    usage_path: PathBuf,
 }
 
 fn hwnd_of(w: &WebviewWindow) -> Option<HWND> {
@@ -248,6 +253,12 @@ fn apply_llm_status(app: &AppHandle, item: &MenuItem<tauri::Wry>, st: &LlmStatus
     };
     let _ = item.set_text(line);
     let _ = app.emit_to(SETTINGS, "llm:status", st);
+    // The cloud backend shares the LLM cleaner: rebuild it on a change.
+    if matches!(st, LlmStatus::Ready { .. } | LlmStatus::Off) {
+        if let Some(r) = app.state::<AppState>().router.get() {
+            r.refresh_local();
+        }
+    }
     if let Some(problem) = st.problem() {
         eprintln!("[llm] {problem}");
     }
@@ -587,7 +598,7 @@ struct DevCheck {
     tls_forced: bool,
 }
 
-fn dev_check(form: &DevForm) -> DevCheck {
+fn dev_check(form: &DevForm, creds: &dyn CredentialStore) -> DevCheck {
     let caps = BuildCaps::current();
     match form.validate(caps) {
         Ok((s, token)) => {
@@ -605,9 +616,12 @@ fn dev_check(form: &DevForm) -> DevCheck {
                     message: m,
                 }],
             };
+            let mut warnings = s2.warnings(caps);
+            warnings
+                .extend(s2.cloud_warnings(caps, &|id: &str| credentials::key_state(creds, id).set));
             DevCheck {
                 errors,
-                warnings: s2.warnings(caps),
+                warnings,
                 tls_forced: !s.server.host.is_empty()
                     && crate::dev_settings::host_is_public(&s.server.host),
             }
@@ -622,6 +636,16 @@ fn dev_check(form: &DevForm) -> DevCheck {
     }
 }
 
+/// Developer "Cloud providers" data besides the form (D18 §8.3). Keys
+/// appear only as [`KeyState`] (set + `••••` last 4), never in clear.
+#[derive(serde::Serialize)]
+struct CloudView {
+    capabilities: flow_router::CloudCapabilities,
+    keys: std::collections::BTreeMap<String, KeyState>,
+    usage: crate::cloud::UsageView,
+    presets: Vec<flow_router::CloudProviderConfig>,
+}
+
 #[derive(serde::Serialize)]
 struct DevView {
     form: DevForm,
@@ -631,6 +655,27 @@ struct DevView {
     version: &'static str,
     check: DevCheck,
     route: Option<RouteView>,
+    cloud: CloudView,
+}
+
+fn cloud_view(state: &AppState, dev: &DevSettings) -> CloudView {
+    let router = state.router.get();
+    let usage = router.map(|r| r.cloud_usage()).unwrap_or_default();
+    CloudView {
+        capabilities: router.map(|r| r.cloud_capabilities()).unwrap_or_default(),
+        keys: dev
+            .cloud
+            .providers
+            .iter()
+            .map(|p| (p.id.clone(), credentials::key_state(&*state.creds, &p.id)))
+            .collect(),
+        usage: crate::cloud::usage_view(
+            &usage,
+            &dev.cloud.providers,
+            dev.cloud.monthly_budget_usd.map(|b| b.0),
+        ),
+        presets: crate::cloud::presets(),
+    }
 }
 
 fn dev_view(state: &AppState) -> DevView {
@@ -639,7 +684,8 @@ fn dev_view(state: &AppState) -> DevView {
     let form = DevForm::from_settings(&dev, &dev.token());
     let router = state.router.get();
     DevView {
-        check: dev_check(&form),
+        cloud: cloud_view(state, &dev),
+        check: dev_check(&form, &*state.creds),
         form,
         caps,
         capabilities: router
@@ -660,13 +706,26 @@ fn dev_view(state: &AppState) -> DevView {
 
 /// Save developer settings: validate → DPAPI the token → prefs.json →
 /// `router.update_config` (next session) → probe in the background.
-fn save_dev(app: &AppHandle, state: &AppState, dev: DevSettings) -> Result<(), String> {
+/// Cloud: consent is reconciled against the saved settings (a new host or
+/// adapter asks again), and a deleted provider's key leaves Credential
+/// Manager and the router.
+fn save_dev(app: &AppHandle, state: &AppState, mut dev: DevSettings) -> Result<(), String> {
     let mut prefs = state.prefs.read().unwrap().clone();
+    crate::dev_settings::reconcile_consent(&prefs.developer.cloud, &mut dev.cloud);
+    let removed = crate::dev_settings::removed_providers(&prefs.developer.cloud, &dev.cloud);
     prefs.developer = dev;
     if let Some(r) = state.router.get() {
         r.apply(&prefs.developer)?;
     }
     prefs.save(&state.path).map_err(|e| e.to_string())?;
+    for id in removed {
+        if let Err(e) = state.creds.delete(&id) {
+            eprintln!("[cloud] could not delete the key of {id}: {e}");
+        }
+        if let Some(r) = state.router.get() {
+            r.router().set_cloud_key(&id, None);
+        }
+    }
     ensure_local(state, &prefs);
     *state.prefs.write().unwrap() = prefs;
     probe_in_background(app);
@@ -700,8 +759,8 @@ fn dev_get(state: tauri::State<'_, AppState>) -> DevView {
 }
 
 #[tauri::command]
-fn dev_validate(form: DevForm) -> DevCheck {
-    dev_check(&form)
+fn dev_validate(state: tauri::State<'_, AppState>, form: DevForm) -> DevCheck {
+    dev_check(&form, &*state.creds)
 }
 
 #[tauri::command]
@@ -806,6 +865,135 @@ fn dev_unlock(
     dev.dev_unlocked = unlocked;
     save_dev(&app, &state, dev)?;
     Ok(dev_view(&state))
+}
+
+// ------------------------------------------- cloud providers (D18 §8.3)
+
+fn valid_provider_id(id: &str) -> Result<(), String> {
+    let ok = (1..=32).contains(&id.len())
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+    if ok {
+        Ok(())
+    } else {
+        Err("invalid provider id".into())
+    }
+}
+
+/// Store a key: Credential Manager, then the router. The key is never
+/// echoed back; the page gets `KeyState` only.
+#[tauri::command]
+fn dev_cloud_set_key(
+    state: tauri::State<'_, AppState>,
+    provider_id: String,
+    key: String,
+) -> Result<KeyState, String> {
+    valid_provider_id(&provider_id)?;
+    let key = credentials::normalize_key(&key)?;
+    state.creds.set(&provider_id, &key)?;
+    if let Some(r) = state.router.get() {
+        r.router()
+            .set_cloud_key(&provider_id, Some(flow_router::SecretString::new(key)));
+    }
+    Ok(credentials::key_state(&*state.creds, &provider_id))
+}
+
+#[tauri::command]
+fn dev_cloud_clear_key(
+    state: tauri::State<'_, AppState>,
+    provider_id: String,
+) -> Result<KeyState, String> {
+    valid_provider_id(&provider_id)?;
+    state.creds.delete(&provider_id)?;
+    if let Some(r) = state.router.get() {
+        r.router().set_cloud_key(&provider_id, None);
+    }
+    Ok(credentials::key_state(&*state.creds, &provider_id))
+}
+
+/// "Test provider": the bundled 3 s public-domain clip through the unsaved
+/// provider form; `key` = a key typed but not saved yet ("" = the stored
+/// one). Blocking network call, so async (off the UI thread).
+#[tauri::command]
+async fn dev_cloud_test(
+    app: AppHandle,
+    provider: flow_router::CloudProviderConfig,
+    key: Option<String>,
+) -> Result<flow_router::HealthReport, String> {
+    let state = app.state::<AppState>();
+    let router = state.router.get().cloned().ok_or("router not ready")?;
+    let mut cloud = flow_router::CloudConfig {
+        active: String::new(),
+        providers: vec![provider],
+        monthly_budget_usd: None,
+    };
+    cloud = crate::dev_settings::normalize_cloud(&cloud);
+    let provider = cloud.providers.remove(0);
+    let key = match key.as_deref().map(str::trim) {
+        Some(k) if !k.is_empty() => Some(flow_router::SecretString::new(
+            credentials::normalize_key(k)?,
+        )),
+        _ => None,
+    };
+    tauri::async_runtime::spawn_blocking(move || router.router().probe_cloud(&provider, key))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn dev_cloud_usage(state: tauri::State<'_, AppState>) -> crate::cloud::UsageView {
+    let dev = state.prefs.read().unwrap().developer.clone();
+    cloud_view(&state, &dev).usage
+}
+
+#[tauri::command]
+fn dev_cloud_reset_usage(state: tauri::State<'_, AppState>) -> crate::cloud::UsageView {
+    if let Some(r) = state.router.get() {
+        r.router().reset_cloud_usage();
+        persist_usage(&state, r);
+    }
+    dev_cloud_usage(state)
+}
+
+#[tauri::command]
+fn dev_cloud_presets() -> Vec<flow_router::CloudProviderConfig> {
+    crate::cloud::presets()
+}
+
+/// A fresh id for a provider added from `preset`.
+#[tauri::command]
+fn dev_cloud_new_id(
+    state: tauri::State<'_, AppState>,
+    preset: String,
+    taken: Vec<String>,
+) -> String {
+    let mut providers = state
+        .prefs
+        .read()
+        .unwrap()
+        .developer
+        .cloud
+        .providers
+        .clone();
+    providers.extend(
+        taken
+            .into_iter()
+            .map(|id| flow_router::CloudProviderConfig {
+                id,
+                ..Default::default()
+            }),
+    );
+    crate::cloud::next_id(&preset, &providers)
+}
+
+fn persist_usage(state: &AppState, r: &RouterAdapter) {
+    if !r.cloud_capabilities().cloud {
+        return;
+    }
+    if let Err(e) = crate::cloud::save_usage(&state.usage_path, &r.cloud_usage()) {
+        eprintln!("[cloud] could not save usage: {e}");
+    }
 }
 
 // ---------------------------------------------------------------- windows
@@ -971,6 +1159,8 @@ pub fn run() {
             history: history.clone(),
             suggestions: suggestions.clone(),
             suggest_item: OnceLock::new(),
+            creds: credentials::system_store(),
+            usage_path: crate::cloud::usage_path(appdata.as_deref()),
         })
         .invoke_handler(tauri::generate_handler![
             get_prefs,
@@ -998,7 +1188,14 @@ pub fn run() {
             dev_route_status,
             dev_reset_circuit,
             dev_reset_defaults,
-            dev_unlock
+            dev_unlock,
+            dev_cloud_set_key,
+            dev_cloud_clear_key,
+            dev_cloud_test,
+            dev_cloud_usage,
+            dev_cloud_reset_usage,
+            dev_cloud_presets,
+            dev_cloud_new_id
         ])
         .on_window_event(|window, event| {
             if window.label() == SETTINGS {
@@ -1118,15 +1315,29 @@ pub fn run() {
                     .expect("default router config")
             });
             let router = RouterAdapter::new(cfg, local, router_adapter::remote_factory());
+            // D18: keys from Credential Manager, last counters from disk.
+            {
+                let st = app.state::<AppState>();
+                router.load_cloud_keys(&dev, &*st.creds);
+                if router.cloud_capabilities().cloud {
+                    if let Some(u) = crate::cloud::load_usage(&st.usage_path) {
+                        router.router().set_cloud_usage(u);
+                    }
+                }
+            }
             {
                 let h = handle.clone();
                 let p = prefs.clone();
                 let r = Arc::downgrade(&router);
                 router.on_route(move |last| {
-                    if p.read().unwrap().developer.show_engine_badge {
+                    // S/L only when asked for; C and cloud failures always (C7).
+                    if p.read().unwrap().developer.show_engine_badge || last.always_badge() {
                         let _ = h.emit_to(OVERLAY, "dictation:route", last.badge());
                     }
                     if let Some(r) = r.upgrade() {
+                        if last.engine.as_deref() == Some("cloud") {
+                            persist_usage(&h.state::<AppState>(), &r);
+                        }
                         let _ = h.emit_to(SETTINGS, "dev:route", r.route_view());
                     }
                 });
@@ -1179,12 +1390,17 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("failed to build Tauri app")
-        .run(|_app, event| {
+        .run(|app, event| match event {
             // Closing the settings window must not quit the tray app.
-            if let RunEvent::ExitRequested { api, code, .. } = event {
-                if code.is_none() {
-                    api.prevent_exit();
+            RunEvent::ExitRequested {
+                api, code: None, ..
+            } => api.prevent_exit(),
+            RunEvent::Exit => {
+                let st = app.state::<AppState>();
+                if let Some(r) = st.router.get() {
+                    persist_usage(&st, r);
                 }
             }
+            _ => {}
         });
 }

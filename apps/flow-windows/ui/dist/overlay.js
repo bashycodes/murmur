@@ -28,6 +28,9 @@ for (let i = 0; i < 8; i++) {
     spinner.appendChild(s);
 }
 let pillState = "resting";
+// Cloud failure notice (see `showCloudNotice`); declared before the first apply().
+let noticeText = "";
+let noticeUntil = 0;
 let target = 0;
 let v = 0;
 function isActive() {
@@ -60,6 +63,7 @@ function apply(s) {
     }
     else {
         delete preview.dataset.kind;
+        showCloudNotice();
     }
     if (isActive() && !wasActive) {
         pill.dataset.mic = "inactive"; // dim, still bars until real audio arrives
@@ -93,8 +97,10 @@ void listen("audio:level", (e) => {
     if (target > 0)
         pill.dataset.mic = "active";
 });
-// Developer setting "show engine badge": which engine served the last
-// dictation (S = your server, L = this PC); red dot = it fell back.
+// Which engine served the last dictation: S = your server, L = this PC
+// (Developer setting "show engine badge"), C = a cloud provider (always,
+// D18 C7); red dot = it fell back. A cloud failure ("Cloud STT failed
+// (key rejected); used this PC") shows in the bubble above the pill.
 const badge = document.getElementById("engine-badge");
 let badgeTimer = 0;
 void listen("dictation:route", (e) => {
@@ -105,7 +111,30 @@ void listen("dictation:route", (e) => {
     }
     badge.textContent = e.payload.letter;
     badge.classList.toggle("fallback", e.payload.fallback);
-    badge.title = e.payload.fallback ? "fell back" : "";
+    badge.title = e.payload.title ?? (e.payload.fallback ? "fell back" : "");
     badge.hidden = false;
     badgeTimer = setTimeout(() => (badge.hidden = true), 4000);
+    if (e.payload.message) {
+        noticeText = e.payload.message;
+        noticeUntil = Date.now() + 4000;
+        showCloudNotice();
+        setTimeout(showCloudNotice, 4050);
+    }
 });
+// The route event arrives while the pill is still "processing"; the
+// notice survives the switch to resting/pasted and expires after 4 s.
+function showCloudNotice() {
+    if (!noticeText || isActive())
+        return;
+    if (Date.now() >= noticeUntil) {
+        if (preview.textContent === noticeText) {
+            preview.classList.remove("visible");
+            delete preview.dataset.kind;
+        }
+        noticeText = "";
+        return;
+    }
+    preview.textContent = noticeText;
+    preview.dataset.kind = "notice";
+    preview.classList.add("visible");
+}
