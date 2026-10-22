@@ -143,3 +143,48 @@ async fn cancel_during_commit_frees_the_worker_promptly() {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 }
+
+struct PanickingAsr;
+impl flow_core::asr::AsrEngine for PanickingAsr {
+    fn transcribe(
+        &self,
+        _: &[f32],
+        _: &flow_core::asr::AsrRequest,
+    ) -> Result<flow_core::asr::AsrOutput, flow_core::asr::AsrError> {
+        panic!("engine crashed (test)")
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_start_on_a_dead_worker_is_an_error_not_started() {
+    let cfg = mock_cfg("x");
+    let core = FlowCore::from_engines(Arc::new(PanickingAsr), None);
+    let pool = Pool::from_cores(vec![Arc::new(core)], &cfg.model, cfg.max_queue);
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let s = flow_server::serve_with_pool(cfg, Arc::new(pool), vec![l])
+        .await
+        .unwrap();
+    let mut ws = session(s.addr()).await;
+    // The first commit kills the core's worker thread.
+    start_and_commit(&mut ws, 1).await;
+    assert!(matches!(
+        recv_final(&mut ws).await,
+        Some(ServerMsg::Result { sid: 1, .. })
+    ));
+    send(
+        &mut ws,
+        &ClientMsg::Start {
+            sid: 2,
+            config: SessionConfig::default(),
+        },
+    )
+    .await;
+    match recv(&mut ws).await {
+        Some(ServerMsg::Error(e)) => {
+            assert_eq!(e.code, flow_protocol::code::SERVER_ERROR, "{e:?}");
+            assert_eq!(e.sid, Some(2));
+        }
+        other => panic!("expected server_error, got {other:?}"),
+    }
+    assert_eq!(s.pool().busy(), 0, "the lease went back");
+}
