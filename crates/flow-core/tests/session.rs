@@ -834,3 +834,52 @@ fn cancel_and_commit_clear_the_partial() {
         assert_eq!(core.partial(), None, "commit={commit}");
     }
 }
+
+// ---- C4: cancel() during commit aborts the running pipeline -----------------
+
+/// Final decodes run until aborted (or 5 s).
+struct AbortableAsr;
+impl AsrEngine for AbortableAsr {
+    fn transcribe(&self, _pcm: &[f32], req: &AsrRequest) -> Result<AsrOutput, AsrError> {
+        let t0 = Instant::now();
+        while !req.abort.is_set() && t0.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        if req.abort.is_set() {
+            return Err(AsrError::Transcribe("aborted".into()));
+        }
+        Ok(AsrOutput {
+            text: "too late".into(),
+            ..Default::default()
+        })
+    }
+}
+
+#[test]
+fn cancel_during_commit_aborts_it_and_frees_the_worker() {
+    let core = FlowCore::from_engines(Arc::new(AbortableAsr), None);
+    let cfg = SessionConfig {
+        vad: false,
+        ..Default::default()
+    };
+    core.start_session(cfg.clone()).unwrap();
+    push_all(&core, &speech(500));
+    let (r, took) = std::thread::scope(|sc| {
+        let h = sc.spawn(|| {
+            let t = Instant::now();
+            (core.commit(), t.elapsed())
+        });
+        std::thread::sleep(Duration::from_millis(100));
+        core.cancel();
+        h.join().unwrap()
+    });
+    assert!(took < Duration::from_secs(2), "{took:?}");
+    assert_eq!(r.status, CommitStatus::Error);
+    assert!(r.error.as_deref().unwrap().contains("cancelled"), "{r:?}");
+    // The worker is free: the next session commits normally (and its own
+    // commit is not affected by the earlier cancel).
+    core.start_session(cfg).unwrap();
+    push_all(&core, &speech(200));
+    core.cancel();
+    assert_eq!(core.commit().status, CommitStatus::Error, "no session");
+}

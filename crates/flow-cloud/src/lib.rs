@@ -285,6 +285,10 @@ impl AsrEngine for CloudAsr {
         if req.purpose == AsrPurpose::Partial {
             return Err(AsrError::Transcribe("partials unsupported".into()));
         }
+        // Cancelled before the upload: no audio leaves the device (C4).
+        if req.abort.is_set() {
+            return Err(AsrError::Transcribe("cancelled".into()));
+        }
         let audio_ms = (pcm.len() * 1000 / SAMPLE_RATE) as u64;
         let deadline = self
             .slot
