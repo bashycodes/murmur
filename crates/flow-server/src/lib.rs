@@ -14,9 +14,10 @@ pub mod net;
 pub mod pool;
 mod ws;
 
-use std::net::SocketAddr;
+use std::collections::HashMap;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::extract::{ConnectInfo, State, WebSocketUpgrade};
@@ -24,10 +25,10 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Extension, Router};
-use hyper_util::rt::{TokioExecutor, TokioIo};
+use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
 use hyper_util::service::TowerToHyperService;
 use tokio::net::TcpListener;
-use tokio::sync::watch;
+use tokio::sync::{watch, OwnedSemaphorePermit, Semaphore};
 
 pub use config::Config;
 pub use pool::Pool;
@@ -48,6 +49,46 @@ pub(crate) struct AppState {
     pub connections: AtomicU64,
     pub sessions: AtomicU64,
     pub cancels: AtomicU64,
+    /// S7: open-connection caps (global permits, per-IP counts).
+    conn_slots: Arc<Semaphore>,
+    per_ip: Mutex<HashMap<IpAddr, usize>>,
+}
+
+/// One open connection's share of the caps; released when the HTTP
+/// connection and (after an upgrade) the WebSocket task both drop it.
+pub(crate) struct ConnSlot {
+    state: Arc<AppState>,
+    ip: IpAddr,
+    _permit: OwnedSemaphorePermit,
+}
+
+impl Drop for ConnSlot {
+    fn drop(&mut self) {
+        let mut m = self.state.per_ip.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(n) = m.get_mut(&self.ip) {
+            *n -= 1;
+            if *n == 0 {
+                m.remove(&self.ip);
+            }
+        }
+    }
+}
+
+impl AppState {
+    fn take_slot(self: &Arc<Self>, ip: IpAddr) -> Option<ConnSlot> {
+        let permit = self.conn_slots.clone().try_acquire_owned().ok()?;
+        let mut m = self.per_ip.lock().unwrap_or_else(|e| e.into_inner());
+        let n = m.entry(ip).or_insert(0);
+        if *n >= self.cfg.max_connections_per_ip {
+            return None;
+        }
+        *n += 1;
+        Some(ConnSlot {
+            state: self.clone(),
+            ip,
+            _permit: permit,
+        })
+    }
 }
 
 /// A running server. Dropping it does not stop it; call [`ServerHandle::kill`].
@@ -145,6 +186,7 @@ pub async fn serve_with_pool(
         tracing::warn!("log_text = true: transcripts will be written to the log at debug level");
     }
     let (kill_tx, kill_rx) = watch::channel(false);
+    let cfg_max_conns = cfg.max_connections.max(1);
     let state = Arc::new(AppState {
         pool,
         token,
@@ -154,6 +196,8 @@ pub async fn serve_with_pool(
         connections: AtomicU64::new(0),
         sessions: AtomicU64::new(0),
         cancels: AtomicU64::new(0),
+        conn_slots: Arc::new(Semaphore::new(cfg_max_conns)),
+        per_ip: Mutex::new(HashMap::new()),
     });
     let app = Router::new()
         .route(flow_protocol::PATH_STREAM, get(stream_handler))
@@ -200,22 +244,56 @@ async fn accept_loop(l: TcpListener, app: Router, state: Arc<AppState>, tls: Acc
             tracing::info!(%peer, "rejected: peer outside loopback/LAN/Tailscale");
             continue;
         }
+        let Some(slot) = state.take_slot(peer.ip()) else {
+            tracing::debug!(%peer, "rejected: connection limit");
+            continue;
+        };
         let _ = tcp.set_nodelay(true);
         state.connections.fetch_add(1, Ordering::SeqCst);
-        let svc = TowerToHyperService::new(app.clone().layer(Extension(ConnectInfo(peer))));
+        let slot = Arc::new(slot);
+        let svc = TowerToHyperService::new(
+            app.clone()
+                .layer(Extension(slot.clone()))
+                .layer(Extension(ConnectInfo(peer))),
+        );
         let mut kill = state.kill.clone();
         let tls = tls.clone();
+        let handshake = Duration::from_millis(state.cfg.handshake_timeout_ms.max(1));
         tokio::spawn(async move {
-            let builder = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new());
+            let _slot = slot;
+            let mut builder = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new());
+            // S7: every request head (the first, and any later one on an
+            // idle keep-alive socket) must arrive within the handshake
+            // timeout.
+            builder
+                .http1()
+                .timer(TokioTimer::new())
+                .header_read_timeout(handshake);
             #[cfg(feature = "tls")]
             if let Some(acc) = tls {
-                let Ok(s) = acc.accept(tcp).await else { return };
+                let s = tokio::select! {
+                    r = tokio::time::timeout(handshake, acc.accept(tcp)) => match r {
+                        Ok(Ok(s)) => s,
+                        _ => return,
+                    },
+                    _ = kill.changed() => return,
+                };
                 let conn = builder.serve_connection_with_upgrades(TokioIo::new(s), svc);
                 tokio::select! { _ = conn => {}, _ = kill.changed() => {} }
                 return;
             }
             #[cfg(not(feature = "tls"))]
             let _ = tls;
+            // hyper arms header_read_timeout only once the first byte is in;
+            // a peer that sends nothing at all is dropped here.
+            let mut byte = [0u8; 1];
+            let first = tokio::select! {
+                r = tokio::time::timeout(handshake, tcp.peek(&mut byte)) => r,
+                _ = kill.changed() => return,
+            };
+            if !matches!(first, Ok(Ok(n)) if n > 0) {
+                return;
+            }
             let conn = builder.serve_connection_with_upgrades(TokioIo::new(tcp), svc);
             tokio::select! { _ = conn => {}, _ = kill.changed() => {} }
         });
@@ -243,6 +321,7 @@ pub(crate) fn authorized(state: &AppState, headers: &HeaderMap) -> bool {
 async fn stream_handler(
     State(state): State<Arc<AppState>>,
     Extension(ConnectInfo(peer)): Extension<ConnectInfo<SocketAddr>>,
+    Extension(slot): Extension<Arc<ConnSlot>>,
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
@@ -253,5 +332,8 @@ async fn stream_handler(
     ws.protocols([flow_protocol::SUBPROTOCOL])
         .max_message_size(limits::MAX_WS_MESSAGE_BYTES)
         .max_frame_size(limits::MAX_WS_MESSAGE_BYTES)
-        .on_upgrade(move |socket| ws::run(socket, state, peer))
+        .on_upgrade(move |socket| async move {
+            let _slot = slot; // the WebSocket keeps its connection slot
+            ws::run(socket, state, peer).await
+        })
 }
