@@ -691,3 +691,37 @@ can adapt. Server-side items (S7-S10, C5, the server half of C4) are on branch `
   running commit (only the open session). W: Esc during processing (and the 35 s timeout) should call
   `cancel()` and treat an ERROR `cancelled` result as "dropped, nothing to paste". A: same for the
   20 s UI timeout, which already calls `nativeCancel`.
+
+**2026-10-22 — remaining review fixes (branch `crates-final`; C6-C10, C18, S19, P3/P4)**
+
+No API change; behaviour the shells can see:
+
+* `Router::start_session[_info]` calls are serialised (C7). Two overlapping starts used to
+  orphan the first session (and its server lease). Now the second one cancels the first, as a
+  sequential start always did.
+* A panic inside a backend while the router held a lock no longer wedges the router (C8). The
+  session that was open is cancelled and dropped, and the next `start_session` works. The panic
+  itself still reaches the caller (the FFI already catches it).
+* Routing (C10): with `order` `[server, cloud]` and an open server circuit, a cloud route with
+  no provider, consent, key or budget left no longer counts as a fallback, so the server is
+  retried (half-open) instead of failing the dictation.
+* `CommitResult.truncated` is now also `true` when a fallback replay lost audio past
+  `max_samples` (C18). flow-core no longer counts samples past `max_samples` as
+  `dropped_samples`, and `audio::resample_to_16k(_, 0)` returns no audio instead of panicking.
+* flow-core (C6): a `start_session` that overlaps the previous `commit` (hands-free back to
+  back) no longer changes that commit's context (app category, screen words) or its
+  `dropped_samples`.
+* Cloud, keyless self-hosted servers (P3): a `custom`-preset `openai_compat` provider whose base
+  URL host is loopback, LAN or Tailscale is usable **without a key**. The request then carries no
+  `Authorization` header, and **Test provider** works with an empty key field. Consent is still
+  required. `has_cloud_key()` stays `false` for it. Shells may drop a "key required" check on
+  Save for that case (W/A Developer forms). Named presets (Groq, OpenAI, …), public hosts and the other adapters still need a key, as does
+  a provider whose id has a stored key bound to another host.
+* AssemblyAI (S19): upload and create are not retried on a 504, so a timed-out create is never
+  billed twice. A transcript still processing at the commit deadline is deleted in the
+  background once it finishes (zero-retention). An upload whose create failed can't be deleted
+  through the API and expires under AssemblyAI's retention policy.
+* `tools/check-build-matrix.sh` also checks the Android (`aarch64-linux-android`) and Windows
+  (`x86_64-pc-windows-msvc`) flavours with `--target` (P4).
+* Self-hosting: `tools/server/install.sh` and `docs/server-setup.md`. The latter maps the
+  Developer settings to the server's address, token and TLS pin.
