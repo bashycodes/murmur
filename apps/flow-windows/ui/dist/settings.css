@@ -349,3 +349,37 @@ input.invalid {
   cursor: default;
   user-select: none;
 }
+.banner {
+  border-left: 3px solid #b9770e;
+  padding: 6px 8px;
+  background: color-mix(in srgb, #b9770e 10%, transparent);
+}
+.providers {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+}
+.providers li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--line);
+}
+.providers li .grow {
+  flex: 1;
+  word-break: break-word;
+}
+.providers li.selected {
+  font-weight: 600;
+}
+dialog {
+  max-width: 460px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--fg);
+}
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.4);
+}

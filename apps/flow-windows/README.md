@@ -6,14 +6,16 @@ transcript again, **Shift+Alt+X** to copy it. Text is pasted into the focused ap
 Speech-to-text runs either on this PC (the real `crates/flow-core`: whisper.cpp
 or Parakeet) or on **your own** `flow-server` over LAN/Tailscale (hybrid mode,
 `docs/hybrid-architecture.md`, D17). Every dictation goes through
-`flow_router::Router` (`src/router_adapter.rs`); nothing reaches a third party,
-and a client-only build contains no network code at all.
+`flow_router::Router` (`src/router_adapter.rs`). Nothing reaches a third party
+unless you opt in to a cloud speech-to-text provider in Developer settings
+(D18, `docs/cloud-stt.md`; off by default). A client-only build contains no
+network code at all.
 
 ## Build flavours (Cargo features)
 
 | Build | Command | Engines |
 |---|---|---|
-| Hybrid (default) | `cargo build --features app` | this PC + your server, fallback between them |
+| Hybrid (default) | `cargo build --features app` | this PC + your server, fallback between them, plus the opt-in cloud provider (feature `cloud`) |
 | Client only | `cargo build --no-default-features --features local,app` | this PC only; no network code linked |
 | Server only | `cargo build --no-default-features --features remote,app` | your server only; no whisper / `flow_llm.dll` / models needed |
 
@@ -45,6 +47,36 @@ hides it again):
   engine ran. Status rows: build capabilities, last dictation's engine /
   fallback / timings, server info (pipeline-version match), circuit breaker.
 * Saving applies to the next dictation (no restart, no model reload).
+
+### Cloud providers (sends audio to a third party)
+
+Default build only (feature `cloud`; never in `local,app`, enforced by
+`tools/check-build-matrix.sh`). Off by default.
+
+* **Allow cloud** puts *Cloud provider* first in the route order (reorder as
+  you like) and asks for consent: "Send audio to <provider>?" names the
+  provider's host. Consent is stored per provider for that host; changing
+  the base URL host or the adapter clears it and the dialog asks again.
+* **Add provider** from a preset: OpenRouter, ElevenLabs Scribe, Groq,
+  OpenAI, Deepgram, AssemblyAI, or Custom (any OpenAI-compatible
+  `/audio/transcriptions` base URL). Per provider: name, model, language,
+  send dictionary / screen words, zero retention where supported.
+* **API key**: Save key / Clear key. Keys go to Windows Credential Manager
+  as `flow-clone/cloud/<id>` (generic credential, this user on this PC) and
+  into the router via `set_cloud_key`. They are never in `prefs.json`, never
+  logged, and never sent back to the page (it shows `••••` + last 4).
+  Deleting a provider deletes its credential.
+* **Test provider** sends a bundled 3 s public-domain clip with the unsaved
+  form (and a typed, unsaved key): transcript, latency, cost or the error
+  with a hint.
+* **Usage** this month per provider (dictations, minutes, cost, `≈` when
+  estimated) is kept in `%APPDATA%\FlowClone\cloud_usage.json` (restored
+  at startup, never sent anywhere); **Reset counters**; optional **monthly
+  budget** (cloud pauses with "monthly budget reached").
+* Active engine row: `cloud · <provider> · <model> · $0.0012`. The Flow bar
+  shows **C** after every cloud dictation (regardless of the S/L setting).
+  A cloud failure that fell back shows "Cloud STT failed (key rejected);
+  used this PC" above the pill; cloud-only failures are an error pill.
 
 ## Speech model (never downloaded automatically)
 
@@ -99,6 +131,10 @@ state (off / loading / ready / model missing / engine missing / failed).
 | `src/hotkeys/watchdog.rs` | Hook-liveness watchdog (probe + re-install after a `LowLevelHooksTimeout` removal) |
 | `src/router_adapter.rs` | D17: `CoreApi` on `flow_router::Router` (every build), `LocalBackend` over the `FlowCoreAdapter` slot, remote = `flow_remote::factory` (feature `remote`), router errors → pill text, last-route record (Developer page, S/L badge) |
 | `src/dev_settings.rs` | Developer settings: `prefs.json` `"developer"` section, form validation (host/port/pin/token/timeouts, public host ⇒ TLS), mapping to the router's `RouterConfig` JSON (pinned by `crates/flow-router/fixtures`) |
+| `src/credentials.rs` | D18 `CredentialStore`: Credential Manager (`flow-clone/cloud/<id>`, `CredWriteW`/`CredReadW`/`CredDeleteW`) on Windows, `MemoryStore` stand-in elsewhere; masking, key validation |
+| `src/cloud.rs` | D18 pure helpers: failure texts, engine row, `cloud_usage.json` load/save, usage view, presets, provider ids |
+| `tests/cloud_settings.rs` | Developer form JSON → prefs (no keys) → router JSON == `router_config_cloud.json`; consent cleared on host/adapter change |
+| `tests/cloud_integration.rs` | Controller → router → flow-cloud (Groq preset) → flow-cloud's mock HTTP provider: cloud paste, usage restore, 500/401 → local fallback with all audio, no key/consent → no request, cloud-only error pills, Test provider; key never shown |
 | `src/secrets.rs` | DPAPI (`CryptProtectData`) blobs for secrets in prefs (server token; reusable for later API keys) |
 | `tests/router_integration.rs` | Controller → router → flow-remote → in-process flow-server (MockAsr) vs local MockAsr: all four toggle combos, server down / killed mid-dictation (no lost audio), error pills, Test connection / Test session |
 | `tests/core_integration.rs` | Controller + real flow-core (MockAsr, and whisper tiny.en on `jfk.wav` when present): audio → commit → paste plan → history |
@@ -120,8 +156,9 @@ rustup target add x86_64-pc-windows-msvc
 # default `whisper` feature off; the Rust side of whisper is covered by the
 # host build.
 # Each flavour without whisper/sherpa (they can't cross-build): hybrid
-# (with and without TLS), client-only and server-only.
-for f in app,local-engine,remote,tls app,local-engine,remote app,local-engine app,remote; do
+# with cloud STT (reqwest + rustls/ring), hybrid with and without TLS,
+# client-only and server-only.
+for f in app,local-engine,remote,cloud app,local-engine,remote,tls app,local-engine,remote app,local-engine app,remote; do
   RC=$PWD/tools/check-shims/fake-windres AR_x86_64_pc_windows_msvc=$PWD/tools/check-shims/fake-lib \
     cargo clippy --all-targets --target x86_64-pc-windows-msvc --no-default-features --features $f -- -D warnings
 done
@@ -231,7 +268,21 @@ Linking a Windows binary on Linux is not supported (no MSVC linker or SDK).
 - [ ] Client-only build (`--no-default-features --features local,app`): Developer tab hidden; 7 taps on the version line unlock it ("not in this build" next to Allow server); Lock hides it; `flow-windows.exe` has no ws/tls code (`cargo tree -e normal --no-default-features --features local,app | findstr tungstenite` prints nothing).
 - [ ] Server-only build (`--no-default-features --features remote,app`): starts without any model file or `flow_llm.dll`, tray says "Speech: your flow-server"; dictation works through the server; Allow client is disabled ("not in this build").
 
+#### Cloud providers (needs internet and a real provider key)
+
+- [ ] Default build: Developer tab shows "Cloud providers (sends audio to a third party)"; the client-only build does not, and its exe has no reqwest/rustls (`cargo tree … --features local,app | findstr reqwest` prints nothing).
+- [ ] Add OpenRouter, paste a key, Save key: Credential Manager (Control Panel → Credential Manager → Windows Credentials) lists `flow-clone/cloud/openrouter-1`; `prefs.json` contains no key text; reopening Settings shows `Key set: ••••abcd` only.
+- [ ] Test provider with the key: `OK · "And so, my fellow Americans" · N ms · $…`; with a wrong key: `auth_failed — key rejected`; with the network off: `connect_failed — no internet / base URL wrong`.
+- [ ] Allow cloud → consent dialog "Send audio to OpenRouter?"; Cancel unticks Allow cloud; accept, Save, dictate in Notepad → text pastes, pill shows **C** (tooltip "Sent to OpenRouter"), Active engine row `cloud · OpenRouter · openai/gpt-transcribe · $0.000…`, usage row +1.
+- [ ] Change the custom base URL host and Save → the dialog asks again; Cancel → no request leaves the PC (Resource Monitor / proxy).
+- [ ] Clear key (or revoke it at the provider) → next dictation still pastes (local), bubble "Cloud STT failed (key rejected); used this PC"; the following dictation does not contact the provider until a new key is saved.
+- [ ] Monthly budget below this month's cost → "Cloud STT failed (monthly budget reached); used this PC".
+- [ ] Quit and restart: usage counters are unchanged (`%APPDATA%\FlowClone\cloud_usage.json`); keys still set.
+- [ ] Repeat a dictation with Groq, ElevenLabs, Deepgram, AssemblyAI and a custom OpenAI-compatible server (speaches/LocalAI on the LAN over `http://`).
+
 ## Known gaps / v1 limitations
+
+- Cloud (D18): the **C** badge appears after the commit (like S/L), not while recording, and the pill does not say "Transcribing via <provider>…" (the router does not expose the active route before the result). Cloud keys stored before a provider is saved stay in Credential Manager until "Clear key" or the provider is deleted. HTTPS uses webpki roots, so a corporate TLS-inspection CA in the Windows store is not trusted.
 
 - Hands-free ✕/✓ use a 30 ms cursor poll that toggles click-through over the pill (not `setShape`). A click in the first ~30 ms after the cursor arrives can fall through.
 - There is no delayed clipboard rendering (`WM_RENDERFORMAT`). The immediate path is used with a sequence-number guard, as the RE checklist recommends.

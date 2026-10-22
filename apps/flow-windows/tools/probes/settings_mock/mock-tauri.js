@@ -23,7 +23,29 @@
     allow_server: true, allow_client: true, route_order: ["server", "client"], host: "100.64.0.10", port: 7313,
     tls: false, tls_pin_sha256: "", token: "dev-token-0123456789abcdef", connect_timeout_ms: 800,
     commit_timeout_base_ms: 3000, health_ttl_s: 30, keep_local_warm: true, show_engine_badge: true, dev_unlocked: false,
+    allow_cloud: false, cloud: { active: "", providers: [], monthly_budget_usd: null },
   };
+  // D18 cloud: presets as flow_cloud::presets() returns them (no keys anywhere).
+  const preset = (preset, adapter, label, base_url, model, zero_retention, dialect = "") => ({
+    id: "", preset, adapter, dialect, label, base_url, model, language: "", send_dictionary: true,
+    send_screen_words: false, zero_retention, format_override: "", timeout_base_ms: 6000,
+    price_per_hour_usd: null, consent_host: "", consent_at_ms: 0,
+  });
+  const presets = [
+    preset("openrouter", "openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "openai/gpt-transcribe", true),
+    preset("elevenlabs", "elevenlabs", "ElevenLabs Scribe", "https://api.elevenlabs.io", "scribe_v2", false),
+    preset("groq", "openai_compat", "Groq", "https://api.groq.com/openai/v1", "whisper-large-v3-turbo", false),
+    preset("openai", "openai_compat", "OpenAI", "https://api.openai.com/v1", "gpt-transcribe", false, "gpt_transcribe"),
+    preset("deepgram", "deepgram", "Deepgram", "https://api.deepgram.com", "nova-3", true),
+    preset("assemblyai", "assemblyai", "AssemblyAI", "https://api.assemblyai.com", "universal", true),
+    preset("custom", "openai_compat", "Custom", "", "", false),
+  ];
+  const keys = {};
+  const keyState = (id) => (keys[id] ? { set: true, masked: "••••" + keys[id].slice(-4) } : { set: false, masked: "" });
+  const usage = () => ({
+    month: "2026-10", rows: [{ provider_id: "openrouter-1", label: "OpenRouter", requests: 42, minutes: 5.2, cost: "$0.0234" }],
+    total: "$0.0234", budget: dev.cloud.monthly_budget_usd, budget_reached: false,
+  });
   // Rough stand-in for the backend's DevForm::validate (the real rules are Rust).
   const devCheck = (f) => {
     const errors = [];
@@ -47,11 +69,17 @@
             server_core: null, asr_ms: 812, total_ms: 1630, status: "FORMATTED", empty_reason: null, error: null, at_ms: Date.now() - 5000 },
     circuit: { open: true, reason: "connect_failed", retry_in_ms: 4200, until_config_change: false },
     health,
+    cloud_circuit: { open: false, reason: null, retry_in_ms: null, until_config_change: false },
   });
   const devView = () => ({
-    form: structuredClone(dev), caps: { local: true, remote: true },
+    form: structuredClone(dev), caps: { local: true, remote: true, cloud: true },
     capabilities: { local: true, remote: true, asr_engines: ["whisper", "parakeet"], llm: true, proto: 1, core_version: "0.1.0" },
     visible: true, version: "0.1.0", check: devCheck(dev), route: route(),
+    cloud: {
+      capabilities: { cloud: true, adapters: ["openai_compat", "openrouter", "elevenlabs", "deepgram", "assemblyai"] },
+      keys: Object.fromEntries(dev.cloud.providers.map((p) => [p.id, keyState(p.id)])),
+      usage: usage(), presets,
+    },
   });
   let history = [
     { id: 3, ts: now - 60e3, app: "outlook.exe", url: null, raw: "um so i think we should uh meet tomorrow at three",
@@ -98,6 +126,15 @@
     dev_reset_circuit: route,
     dev_reset_defaults: devView,
     dev_unlock: devView,
+    dev_cloud_presets: () => presets,
+    dev_cloud_new_id: ({ preset, taken }) => { let n = 1; while (taken.includes(`${preset}-${n}`)) n++; return `${preset}-${n}`; },
+    dev_cloud_set_key: ({ providerId, key }) => { keys[providerId] = key.trim(); return keyState(providerId); },
+    dev_cloud_clear_key: ({ providerId }) => { delete keys[providerId]; return keyState(providerId); },
+    dev_cloud_test: ({ provider, key }) => (key || keys[provider.id])
+      ? { ok: true, engine: "cloud", provider: provider.id, model: provider.model, transcript: "And so, my fellow Americans", latency_ms: 640, cost_usd: 0.00006 }
+      : { ok: false, engine: "cloud", error: "cloud_not_configured", message: "no API key" },
+    dev_cloud_usage: usage,
+    dev_cloud_reset_usage: usage,
   };
   window.__mockCalls = [];
   window.__TAURI__ = {
@@ -123,3 +160,53 @@ window.addEventListener("load", () => {
 });
 window.addEventListener("error", (e) => console.error("PAGE ERROR", e.message));
 window.addEventListener("unhandledrejection", (e) => console.error("UNHANDLED", String(e.reason)));
+// ?drive=cloud: click through the Developer cloud section (add OpenRouter,
+// save a key, accept the consent, test, save) and log what the page shows.
+window.addEventListener("load", () => {
+  if (new URLSearchParams(location.search).get("drive") !== "cloud") return;
+  const $ = (id) => document.getElementById(id);
+  // Results go into <pre id="__drive"> so `--dump-dom` shows them.
+  const out = document.createElement("pre");
+  out.id = "__drive";
+  document.body.append(out);
+  const log = (...a) => { console.log(...a); out.textContent += a.join(" ") + "\n"; };
+  window.addEventListener("error", (e) => log("PAGE ERROR", e.message));
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  (async () => {
+    await wait(200);
+    document.querySelector('nav.tabs [data-tab="developer"]').click();
+    await wait(100);
+    $("dev_cloud_preset").value = "openrouter";
+    $("dev_cloud_add").click();
+    await wait(100);
+    $("dev_cloud_key").value = "sk-or-v1-PROBE-0123456789abcd";
+    $("dev_cloud_key_save").click();
+    await wait(100);
+    log("KEYSTATE", $("dev_cloud_key_state").textContent, "| field now:", JSON.stringify($("dev_cloud_key").value));
+    $("dev_allow_cloud").click();
+    await wait(100);
+    log("DIALOG open:", $("dev_consent").open, "|", $("dev_consent_title").textContent, "|", $("dev_consent_ok").textContent);
+    $("dev_consent_ok").click();
+    await wait(300);
+    log("ROUTES", [...$("dev_routes").children].map((li) => li.firstChild.textContent.trim()).join(" > "));
+    log("LIST", $("dev_cloud_list").textContent);
+    log("BANNER", $("dev_cloud_banner").textContent);
+    $("dev_cloud_test").click();
+    await wait(200);
+    log("TEST", $("dev_cloud_test_out").textContent);
+    $("dev_cloud_base_url").readOnly = false;
+    $("dev_cloud_base_url").value = "https://evil.example.com/api/v1";
+    $("dev_cloud_base_url").dispatchEvent(new Event("input"));
+    await wait(100);
+    log("AFTER HOST CHANGE", $("dev_cloud_consent_line").textContent);
+    $("dev_save").click();
+    await wait(200);
+    log("DIALOG on save:", $("dev_consent").open, "|", $("dev_consent_title").textContent);
+    $("dev_consent_cancel").click();
+    await wait(200);
+    log("SAVED form calls:", JSON.stringify(window.__mockCalls.filter((c) => c[0] === "dev_set").length));
+    log("LEAK", JSON.stringify(window.__mockCalls.filter((c) => c[0] !== "dev_cloud_set_key")).includes("PROBE"));
+    log("USAGE", $("dev_cloud_total").textContent, "|", $("dev_cloud_usage").textContent);
+    log("DRIVE DONE");
+  })().catch((e) => log("DRIVE FAILED", String(e)));
+});
