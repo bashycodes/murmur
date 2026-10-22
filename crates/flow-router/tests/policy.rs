@@ -1124,3 +1124,41 @@ fn a_backend_panic_does_not_wedge_the_router() {
     assert_eq!(dictate(&k.router).final_text, "local 16000 com.slack");
     assert!(k.router.poll().route.is_none(), "no session left open");
 }
+
+#[test]
+fn endpoint_survives_a_mid_session_failover() {
+    // P4: the endpointer lives in the router, so a server death between the
+    // speech and the trailing silence neither resets nor re-triggers it.
+    let k = rig_with(
+        cfg(true, true),
+        Fake::new(EngineKind::Local),
+        Fake::new(EngineKind::Remote).dying_after(16 * 1000),
+    );
+    k.router
+        .start_session(SessionConfig {
+            endpoint_silence_ms: Some(1000),
+            ..Default::default()
+        })
+        .unwrap();
+    let speech: Vec<i16> = (0..16 * 1200)
+        .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)
+        .collect();
+    for c in speech.chunks(640) {
+        k.router.push_audio(c);
+    }
+    assert!(!k.router.endpoint_reached());
+    for c in vec![0i16; 16 * 1100].chunks(640) {
+        k.router.push_audio(c);
+    }
+    let p = k.router.poll();
+    assert_eq!(
+        p.route.as_ref().map(|r| r.engine),
+        Some(EngineKind::Local),
+        "switched"
+    );
+    assert!(p.session.endpoint_reached, "{p:?}");
+    assert!(p.session.speech_ms >= 1000, "{p:?}");
+    let r = k.router.commit();
+    assert_eq!(route(&r).engine, "local");
+    assert_eq!(k.local.received(), 16 * 2300, "replay + live, nothing lost");
+}
