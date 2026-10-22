@@ -765,3 +765,66 @@ fn set_local_rebuilds_the_cloud_backend() {
         "rebuilt with the new cleaner"
     );
 }
+
+// ---- live session route (start info + poll) ---------------------------------
+
+#[test]
+fn start_info_and_poll_report_the_cloud_provider() {
+    let k = rig(cloud_cfg(&[Route::Cloud, Route::Client]));
+    let start = k
+        .router
+        .start_session_info(SessionConfig::default())
+        .unwrap()
+        .route
+        .expect("start route");
+    assert_eq!(start.engine, EngineKind::Cloud);
+    assert_eq!(start.provider.as_deref(), Some("or-1"));
+    assert_eq!(start.model.as_deref(), Some("openai/gpt-transcribe"));
+    assert_eq!((start.server.clone(), start.fallback.clone()), (None, None));
+    assert_eq!(k.router.poll().route.as_ref(), Some(&start));
+    let json = serde_json::to_value(&start).unwrap();
+    assert_eq!(
+        json,
+        serde_json::json!({"engine":"cloud","provider":"or-1","model":"openai/gpt-transcribe"})
+    );
+    let r = dictate(&k.router);
+    assert_eq!(SessionRoute::from_route_info(&route(&r)), start);
+}
+
+#[test]
+fn cloud_skipped_at_start_names_the_next_route_and_why() {
+    let k = rig_opts(cloud_cfg(&[Route::Cloud, Route::Client]), true, false);
+    let start = k
+        .router
+        .start_session_info(SessionConfig::default())
+        .unwrap()
+        .route
+        .unwrap();
+    assert_eq!(start.engine, EngineKind::Local);
+    assert_eq!(start.fallback.as_deref(), Some("cloud_not_configured"));
+    assert_eq!((start.provider.clone(), start.model.clone()), (None, None));
+    assert_eq!(
+        SessionRoute::from_route_info(&route(&dictate(&k.router))),
+        start
+    );
+}
+
+#[test]
+fn poll_follows_a_cloud_to_server_switch() {
+    let k = rig(cloud_cfg(&[Route::Cloud, Route::Server, Route::Client]));
+    *k.cloud.die_after.lock().unwrap() = Some(8000);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(k.router.poll().route.unwrap().engine, EngineKind::Cloud);
+    for _ in 0..2 {
+        assert!(k.router.push_audio(&[100i16; 4000]));
+    }
+    let now = k.router.poll().route.unwrap();
+    assert_eq!(now.engine, EngineKind::Remote);
+    assert_eq!(now.server.as_deref(), Some("100.64.0.10:7313"));
+    assert_eq!((now.provider.clone(), now.model.clone()), (None, None));
+    assert_eq!(now.fallback.as_deref(), Some("disconnected"));
+    assert_eq!(
+        SessionRoute::from_route_info(&route(&dictate(&k.router))),
+        now
+    );
+}

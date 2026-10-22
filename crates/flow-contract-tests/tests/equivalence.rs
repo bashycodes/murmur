@@ -408,7 +408,7 @@ fn equivalence_hands_free_endpoint() {
             &|c| {
                 r.push_audio(c);
             },
-            &|| r.poll(),
+            &|| r.poll().session,
             &|| r.commit(),
             &pcm,
         );
