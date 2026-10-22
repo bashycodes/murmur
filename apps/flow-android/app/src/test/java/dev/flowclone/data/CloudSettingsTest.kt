@@ -200,6 +200,16 @@ class CloudSettingsTest {
         assertTrue(CloudText.banner(null).startsWith("Off by default."))
     }
 
+    /** Review P3: the banner names what is actually sent with the audio. */
+    @Test fun consentBannerFollowsTheProvidersToggles() {
+        assertTrue(CloudText.banner(groq.copy(sendDictionary = true, sendScreenWords = false)).contains("along with your dictionary words."))
+        assertTrue(CloudText.banner(groq.copy(sendDictionary = true, sendScreenWords = true)).contains("your dictionary words and words on your screen"))
+        assertTrue(CloudText.banner(groq.copy(sendDictionary = false, sendScreenWords = true)).contains("along with words on your screen."))
+        val bare = CloudText.banner(groq.copy(sendDictionary = false, sendScreenWords = false))
+        assertTrue(bare, bare.contains("Groq (api.groq.com). It is processed"))
+        assertFalse(bare.contains("dictionary"))
+    }
+
     @Test fun fallbackMessagesAndUsage() {
         val authLocal = RouteInfo(engine = "local", fallback = "auth_failed")
         assertEquals("Cloud STT failed (key rejected); used on-device", CloudText.fallbackMessage(authLocal, cloudWasPrimary = true))

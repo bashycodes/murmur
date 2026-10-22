@@ -56,6 +56,10 @@ object TextMatching {
         val noEditorHint = editorHint.isNullOrBlank()
         if (!noEditorHint && fuzzy(s, editorHint)) return true
         if (noEditorHint && matchesKnown(s, known)) return true
-        return s.length <= 48 && fuzzy(s, node.contentDescription)
+        // Review P3: Wispr also read text equal to the contentDescription (≤ 48 chars) as a
+        // placeholder, but apps that mirror the field's text into its description then had
+        // ACTION_SET_TEXT overwrite real user text. Not a placeholder: the node tier refuses and
+        // the text goes to the (sensitive, self-clearing) clipboard instead.
+        return false
     }
 }

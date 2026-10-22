@@ -117,7 +117,11 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLoadModels(
             return 0;
         };
         match json_api::load_models_kind(&j) {
-            Ok(c) => Box::into_raw(Box::new(FlowHandle::Core(c))) as jlong,
+            Ok(c) => {
+                // Like the C ABI: a success leaves no stale error from an earlier failed load.
+                clear_error();
+                Box::into_raw(Box::new(FlowHandle::Core(c))) as jlong
+            }
             // The message keeps a stable prefix per kind ("model not found:
             // <path>", "llm plugin not found (…)") for nativeLastError.
             Err((kind, e)) => {
@@ -215,7 +219,14 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativePushAudio(
         }
         // Clamp to the array so a bad `length` cannot raise
         // ArrayIndexOutOfBoundsException inside the AudioRecord thread.
-        let cap = env.get_array_length(&pcm).unwrap_or(0).max(0);
+        // A failed length query leaves a Java exception pending: clear it, push nothing.
+        let cap = match env.get_array_length(&pcm) {
+            Ok(n) => n.max(0),
+            Err(_) => {
+                clear(&mut env);
+                return JNI_FALSE;
+            }
+        };
         let n = len.clamp(0, cap) as usize;
         PCM.with(|b| {
             let mut b = b.borrow_mut();
