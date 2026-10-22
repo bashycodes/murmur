@@ -1,2 +1,4 @@
 ui/node_modules/
 gen/
+dist-ci/
+tauri.parakeet.conf.json
