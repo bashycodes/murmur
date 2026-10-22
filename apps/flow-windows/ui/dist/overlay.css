@@ -248,7 +248,7 @@ body {
   filter: brightness(1.2);
 }
 
-/* ---- Developer "show engine badge": S = server, L = this PC ---- */
+/* ---- Engine badge: S = server, L = this PC (Developer setting), C = cloud (always) ---- */
 .engine-badge {
   position: absolute;
   left: calc(50% + 52px);

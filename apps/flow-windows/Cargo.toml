@@ -27,7 +27,7 @@ required-features = ["app"]
 # Hybrid build (D17): on-device engine + self-hosted server.
 #   client-only: --no-default-features --features local,app
 #   server-only: --no-default-features --features remote,app
-default = ["local", "remote", "tls"]
+default = ["local", "remote", "tls", "cloud"]
 # On-device ASR ("client"): the FlowCoreAdapter local backend + whisper.
 local = ["whisper"]
 # The local backend without a native ASR engine: what the MSVC cross-check
@@ -45,6 +45,10 @@ remote = ["dep:flow-remote"]
 # wss:// to a server outside LAN/Tailscale (rustls + ring). In the default
 # build; separate so the Linux MSVC cross-check can leave ring's C out.
 tls = ["remote", "flow-remote/tls"]
+# Opt-in third-party cloud speech-to-text (D18, docs/cloud-stt.md): HTTPS
+# (reqwest + rustls) to the provider the user configured. In the default
+# (hybrid) build only; never in `local,app` (tools/check-build-matrix.sh).
+cloud = ["dep:flow-cloud"]
 # The Tauri shell (tray, overlay window, event loop). Off by default so the
 # platform-independent logic can be built/tested on any host without webkit.
 app = ["dep:tauri", "dep:tauri-build"]
@@ -62,6 +66,7 @@ flow-core = { path = "../../crates/flow-core", features = ["llm"] }
 # the remote backend is injected by `remote`).
 flow-router = { path = "../../crates/flow-router" }
 flow-remote = { path = "../../crates/flow-remote", optional = true }
+flow-cloud = { path = "../../crates/flow-cloud", optional = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
 tauri = { version = "2", optional = true, features = ["tray-icon", "image-png"] }
 
@@ -80,6 +85,7 @@ windows = { version = "0.58", features = [
   "Win32_System_SystemInformation",
   "Win32_Security",
   "Win32_Security_Cryptography",
+  "Win32_Security_Credentials",
   "Win32_System_LibraryLoader",
   "Win32_System_Variant",
   "Win32_System_Registry",
@@ -97,3 +103,5 @@ hound = "3"
 # tests/router_integration.rs: an in-process flow-server (MockAsr).
 flow-server = { path = "../../crates/flow-server", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros"] }
+# tests/cloud_integration.rs: flow-cloud's in-process mock provider.
+flow-cloud = { path = "../../crates/flow-cloud", features = ["mock-server"] }
