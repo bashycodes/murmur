@@ -1,4 +1,4 @@
-//! `flow-server [--config PATH] [--token-file PATH]`
+//! `flow-server [--config PATH] [--token-file PATH] [--insecure-bind-any]`
 //! `flow-server gen-token --out PATH`
 //! `flow-server check-config [--config PATH]`
 
@@ -13,7 +13,7 @@ const DEFAULT_CONFIG: &str = "/etc/flow-server/config.toml";
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage:\n  flow-server [--config PATH] [--token-file PATH]\n  flow-server gen-token --out PATH\n  flow-server check-config [--config PATH] [--token-file PATH]"
+        "usage:\n  flow-server [--config PATH] [--token-file PATH] [--insecure-bind-any]\n  flow-server gen-token --out PATH\n  flow-server check-config [--config PATH] [--token-file PATH]"
     );
     ExitCode::from(2)
 }
@@ -23,6 +23,7 @@ struct Args {
     config: PathBuf,
     token_file: Option<PathBuf>,
     out: Option<PathBuf>,
+    insecure_bind_any: bool,
 }
 
 fn parse() -> Option<Args> {
@@ -31,6 +32,7 @@ fn parse() -> Option<Args> {
         config: DEFAULT_CONFIG.into(),
         token_file: None,
         out: None,
+        insecure_bind_any: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(x) = it.next() {
@@ -38,6 +40,7 @@ fn parse() -> Option<Args> {
             "--config" => a.config = it.next()?.into(),
             "--token-file" => a.token_file = Some(it.next()?.into()),
             "--out" => a.out = Some(it.next()?.into()),
+            "--insecure-bind-any" => a.insecure_bind_any = true,
             "gen-token" | "check-config" | "serve" => a.cmd = x,
             _ => return None,
         }
@@ -50,6 +53,7 @@ fn load(a: &Args) -> Result<Config, String> {
     if a.token_file.is_some() {
         c.token_file = a.token_file.clone();
     }
+    c.insecure_bind_any = a.insecure_bind_any;
     c.validate()?;
     Ok(c)
 }

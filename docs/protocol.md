@@ -116,6 +116,10 @@ Developer page warns.
 * Runs an unmodified `FlowCore` session per `start`, fed the client's
   `SessionConfig` / `FieldContext`: VAD → ASR → hallucination guard → spoken
   cleanup → optional LLM → guard → post-processing → segments.
+* Bind policy (S10): loopback, RFC 1918, 100.64/10, link-local and IPv6 ULA
+  binds are always allowed; `0.0.0.0`, `::` or a public address only with
+  `[tls]` or `--insecure-bind-any` (which logs a WARNING). Peers outside those
+  private classes are dropped at accept unless `--insecure-bind-any`.
 * A session leases a worker at `start` and returns it at `result`,
   `cancelled` or disconnect.
 * Never written to disk: audio, transcripts, contexts, dictionaries. Logs

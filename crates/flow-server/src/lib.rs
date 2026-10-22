@@ -10,6 +10,7 @@ pub mod config;
 mod health;
 pub mod limits;
 pub mod logging;
+pub mod net;
 pub mod pool;
 mod ws;
 
@@ -129,6 +130,16 @@ pub async fn serve_with_pool(
     listeners: Vec<TcpListener>,
 ) -> Result<ServerHandle, String> {
     let token = cfg.resolve_token()?;
+    let wide = cfg.check_bind()?;
+    if cfg.insecure_bind_any {
+        let list: Vec<String> = wide.iter().map(|a| a.to_string()).collect();
+        tracing::warn!(
+            "WARNING: --insecure-bind-any: accepting peers from any address{}{}. Audio, transcripts and the bearer token may cross untrusted networks{}",
+            if list.is_empty() { "" } else { " on " },
+            list.join(", "),
+            if cfg.tls.is_some() { "" } else { " in cleartext (no [tls])" },
+        );
+    }
     let tls = acceptor(&cfg)?;
     if cfg.log.log_text {
         tracing::warn!("log_text = true: transcripts will be written to the log at debug level");
@@ -185,6 +196,10 @@ async fn accept_loop(l: TcpListener, app: Router, state: Arc<AppState>, tls: Acc
             },
             _ = kill.changed() => return,
         };
+        if !state.cfg.insecure_bind_any && !net::classify(peer.ip()).is_local() {
+            tracing::info!(%peer, "rejected: peer outside loopback/LAN/Tailscale");
+            continue;
+        }
         let _ = tcp.set_nodelay(true);
         state.connections.fetch_add(1, Ordering::SeqCst);
         let svc = TowerToHyperService::new(app.clone().layer(Extension(ConnectInfo(peer))));
