@@ -695,6 +695,12 @@ impl FlowCoreAdapter {
         self.slot.lock().unwrap().core.is_some()
     }
 
+    /// The loaded LLM cleaner (if any): the cloud backend (D18) shares it,
+    /// so cloud text gets the same local cleanup as local ASR.
+    pub fn cleaner(&self) -> Option<Arc<dyn Cleaner>> {
+        self.slot.lock().unwrap().cleaner.clone()
+    }
+
     /// Wait up to `wait` for a load in progress; `Err` = why it can't run.
     pub fn wait_ready(&self, wait: Duration) -> Result<(), String> {
         self.ready_core(wait).map(|_| ())

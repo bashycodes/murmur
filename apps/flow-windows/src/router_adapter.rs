@@ -12,6 +12,12 @@
 //!   `SessionConfig`/`FieldContext`, I2), turns router errors into pill
 //!   text, and remembers the last dictation's route for the Developer page
 //!   and the optional S/L badge.
+//! * Cloud STT (D18, feature `cloud`): `flow_cloud::attach_with` adds the
+//!   opt-in third-party route; it shares the local LLM cleaner (rebuilt via
+//!   [`RouterAdapter::refresh_local`] after the two-phase load). Keys come
+//!   from Credential Manager through `Router::set_cloud_key` only. Cloud
+//!   results carry provider/model/cost into [`LastDictation`] and the `C`
+//!   badge, and cloud failures get user-facing text (`crate::cloud`).
 
 use crate::core_adapter::{
     from_core_result, to_core_context, to_core_session, FlowCoreAdapter, LOAD_WAIT,
@@ -21,8 +27,8 @@ use crate::core_api::{
 };
 use crate::dev_settings::{BuildCaps, DevSettings, NO_ENGINE_MSG};
 use flow_router::{
-    Backend, BackendError, EngineKind, Failure, HealthReport, RemoteFactory, RouteStatus, Router,
-    RouterConfig, RouterError, ServerConfig, StartInfo,
+    Backend, BackendError, CloudCapabilities, CloudUsage, EngineKind, Failure, HealthReport,
+    RemoteFactory, RouteStatus, Router, RouterConfig, RouterError, ServerConfig, StartInfo,
 };
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
@@ -108,7 +114,7 @@ impl Backend for LocalBackend {
 /// "Active engine (last dictation)" row: route + timings, in memory only.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LastDictation {
-    /// "local" | "remote"; `None` when no engine ran (both toggles off).
+    /// "local" | "remote" | "cloud"; `None` when no engine ran.
     pub engine: Option<String>,
     pub fallback: Option<String>,
     pub server: Option<String>,
@@ -123,12 +129,53 @@ pub struct LastDictation {
     pub empty_reason: Option<String>,
     pub error: Option<String>,
     pub at_ms: u64,
+    /// Cloud (D18): provider id and its label, model, billed audio, cost.
+    pub provider: Option<String>,
+    pub provider_label: Option<String>,
+    pub model: Option<String>,
+    pub billed_audio_ms: Option<u32>,
+    pub cost_usd: Option<f64>,
+    pub cost_estimated: bool,
+    /// `cloud · <provider> · <model> · $cost` for a cloud result.
+    pub row: Option<String>,
+    /// User-facing cloud failure ("Cloud STT failed (key rejected); used
+    /// this PC") when the cloud was meant to run but did not.
+    pub notice: Option<String>,
 }
 
 impl LastDictation {
-    fn of(r: &CommitResult) -> Self {
+    fn of(r: &CommitResult, cfg: &RouterConfig) -> Self {
         let route = r.route.as_ref();
+        let provider = route.and_then(|x| x.provider.clone());
+        let provider_label = provider.as_ref().map(|id| {
+            cfg.cloud
+                .providers
+                .iter()
+                .find(|p| &p.id == id)
+                .map(|p| p.display_name().to_string())
+                .unwrap_or_else(|| id.clone())
+        });
+        let model = route.and_then(|x| x.model.clone());
+        let cost_usd = route.and_then(|x| x.cost_usd).map(|c| c.0);
+        let cost_estimated = route.and_then(|x| x.cost_estimated).unwrap_or(false);
+        let is_cloud = route.is_some_and(|x| x.engine == "cloud");
+        let row = is_cloud.then(|| {
+            crate::cloud::engine_row(
+                provider_label.as_deref().unwrap_or("?"),
+                model.as_deref().unwrap_or(""),
+                cost_usd,
+                cost_estimated,
+            )
+        });
         LastDictation {
+            provider,
+            provider_label,
+            model,
+            billed_audio_ms: route.and_then(|x| x.billed_audio_ms),
+            cost_usd,
+            cost_estimated,
+            row,
+            notice: cloud_notice(r, cfg),
             engine: route.map(|x| x.engine.clone()),
             fallback: route.and_then(|x| x.fallback.clone()),
             server: route.and_then(|x| x.server.clone()),
@@ -146,23 +193,64 @@ impl LastDictation {
         }
     }
 
-    /// Overlay badge: `S` / `L`, fallback = red dot.
+    /// Overlay badge: `S` / `L` / `C`, fallback = red dot. A cloud failure
+    /// notice rides along (shown above the pill).
     pub fn badge(&self) -> Option<Badge> {
         let letter = match self.engine.as_deref()? {
             "remote" => "S",
+            "cloud" => "C",
             _ => "L",
         };
         Some(Badge {
             letter,
             fallback: self.fallback.is_some(),
+            title: self
+                .provider_label
+                .as_ref()
+                .filter(|_| letter == "C")
+                .map(|p| format!("Sent to {p}")),
+            message: self.notice.clone(),
         })
+    }
+
+    /// The badge must show even without "show engine badge": every cloud
+    /// dictation, and every cloud failure, is visible (C7).
+    pub fn always_badge(&self) -> bool {
+        self.engine.as_deref() == Some("cloud") || self.notice.is_some()
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Badge {
     pub letter: &'static str,
     pub fallback: bool,
+    /// Tooltip ("Sent to OpenRouter").
+    pub title: Option<String>,
+    /// Cloud failure text for the bubble above the pill.
+    pub message: Option<String>,
+}
+
+/// The failure code of a cloud attempt that did not produce the result.
+fn cloud_failure_code(r: &CommitResult, cfg: &RouterConfig) -> Option<String> {
+    let route = r.route.as_ref()?;
+    let fb = route.fallback.clone()?;
+    let cloud_only_code = matches!(
+        fb.as_str(),
+        "cloud_not_configured" | "budget_exceeded" | "quota_exceeded" | "provider_error"
+    );
+    // The cloud was the first route the toggles allow (a skipped cloud
+    // route reports e.g. `auth_failed` like a server would).
+    let cloud_was_first =
+        cfg.order.iter().find(|r| cfg.route_allowed(**r)) == Some(&flow_router::Route::Cloud);
+    (route.engine != "cloud" && (cloud_only_code || cloud_was_first)).then_some(fb)
+}
+
+fn cloud_notice(r: &CommitResult, cfg: &RouterConfig) -> Option<String> {
+    let code = cloud_failure_code(r, cfg)?;
+    let used = (r.status != CommitStatus::Error)
+        .then(|| r.route.as_ref().map(|x| x.engine.as_str()))
+        .flatten();
+    Some(crate::cloud::failure_message(&code, used))
 }
 
 /// `dev_route_status`: the router's view plus the shell's last dictation.
@@ -171,6 +259,8 @@ pub struct RouteView {
     pub last: Option<LastDictation>,
     pub circuit: flow_router::CircuitStatus,
     pub health: Option<HealthReport>,
+    /// Cloud route circuit (builds with the cloud client only).
+    pub cloud_circuit: Option<flow_router::CircuitStatus>,
 }
 
 /// Result of the Developer page's "Test session" (1 s of silence).
@@ -247,6 +337,13 @@ impl RouterAdapter {
                 if local.is_some() { engines } else { Vec::new() },
                 local.is_some(),
             );
+        // D18: the cloud route, sharing the local LLM cleaner (looked up per
+        // backend build; `refresh_local` drops the cached backend).
+        #[cfg(feature = "cloud")]
+        let router = {
+            let slot = local.clone();
+            flow_cloud::attach_with(router, move || slot.as_ref().and_then(|a| a.cleaner()))
+        };
         Arc::new(RouterAdapter {
             router,
             local,
@@ -263,6 +360,39 @@ impl RouterAdapter {
         self.local.as_ref()
     }
 
+    /// The local models (or LLM cleaner) changed: hand the router its local
+    /// backend again, which also rebuilds the cloud backend with the
+    /// current cleaner (changelog "What W needs").
+    pub fn refresh_local(&self) {
+        self.router.set_local(
+            self.local
+                .clone()
+                .map(|a| LocalBackend::new(a) as Arc<dyn Backend>),
+        );
+    }
+
+    pub fn cloud_capabilities(&self) -> CloudCapabilities {
+        self.router.cloud_capabilities()
+    }
+
+    pub fn cloud_usage(&self) -> CloudUsage {
+        self.router.cloud_usage()
+    }
+
+    /// Load every provider's key from the credential store into the router
+    /// (startup, and after a Save that added providers).
+    pub fn load_cloud_keys(
+        &self,
+        dev: &DevSettings,
+        store: &dyn crate::credentials::CredentialStore,
+    ) {
+        for p in &dev.cloud.providers {
+            let key = store.get(&p.id).ok().flatten();
+            self.router
+                .set_cloud_key(&p.id, key.map(flow_router::SecretString::new));
+        }
+    }
+
     /// Called after every commit (overlay badge, Developer page refresh).
     pub fn on_route(&self, f: impl Fn(&LastDictation) + Send + Sync + 'static) {
         *self.listener.lock().unwrap() = Some(Box::new(f));
@@ -274,6 +404,7 @@ impl RouterAdapter {
         BuildCaps {
             local: c.local,
             remote: c.remote,
+            cloud: self.router.cloud_capabilities().cloud,
         }
     }
 
@@ -289,12 +420,16 @@ impl RouterAdapter {
 
     pub fn route_view(&self) -> RouteView {
         let RouteStatus {
-            circuit, health, ..
+            circuit,
+            health,
+            cloud_circuit,
+            ..
         } = self.router.route_status();
         RouteView {
             last: self.last(),
             circuit,
             health,
+            cloud_circuit,
         }
     }
 
@@ -326,13 +461,59 @@ impl RouterAdapter {
     fn local_first(&self) -> bool {
         let cfg = self.router.config();
         let caps = self.router.capabilities();
-        let srv = caps.remote && cfg.allow_server;
-        let cli = caps.local && cfg.allow_client;
-        cli && (!srv || cfg.prefer == flow_router::Prefer::Client)
+        let cloud = self.cloud_ready(&cfg);
+        cfg.route_order().into_iter().find(|k| match k {
+            EngineKind::Local => caps.local,
+            EngineKind::Remote => caps.remote,
+            EngineKind::Cloud => cloud,
+            _ => false,
+        }) == Some(EngineKind::Local)
+    }
+
+    /// The cloud route would start now (no network: config, consent, key).
+    fn cloud_ready(&self, cfg: &RouterConfig) -> bool {
+        self.router.cloud_capabilities().cloud
+            && cfg.allow_cloud
+            && cfg
+                .cloud
+                .active_provider()
+                .is_some_and(|p| p.consent_ok() && self.router.has_cloud_key(&p.id))
+    }
+
+    /// Only the cloud route is allowed (start errors then name the cloud).
+    fn cloud_only(&self, cfg: &RouterConfig) -> bool {
+        let caps = self.router.capabilities();
+        self.router.cloud_capabilities().cloud
+            && cfg.allow_cloud
+            && cfg.order.contains(&flow_router::Route::Cloud)
+            && !(caps.remote && cfg.allow_server && cfg.order.contains(&flow_router::Route::Server))
+            && !(caps.local && cfg.allow_client && cfg.order.contains(&flow_router::Route::Client))
+    }
+
+    /// Why the cloud route cannot start (budget, else setup).
+    fn cloud_skip_reason(&self, cfg: &RouterConfig) -> &'static str {
+        let spent = self.router.cloud_usage().total_cost();
+        if cfg.cloud.monthly_budget_usd.is_some_and(|b| spent >= b.0) {
+            "budget_exceeded"
+        } else {
+            "cloud_not_configured"
+        }
     }
 
     fn start_error(&self, e: RouterError) -> String {
+        let cfg = self.router.config();
         match e {
+            RouterError::NoEngineEnabled if self.cloud_only(&cfg) => {
+                crate::cloud::failure_message(self.cloud_skip_reason(&cfg), None)
+            }
+            RouterError::ServerUnavailable(why) if self.cloud_only(&cfg) => {
+                let code = why.split(':').next().unwrap_or("").trim().to_string();
+                if crate::cloud::failure_text(&code).is_some() {
+                    crate::cloud::failure_message(&code, None)
+                } else {
+                    format!("Cloud STT failed ({why})")
+                }
+            }
             RouterError::NoEngineEnabled => NO_ENGINE_MSG.into(),
             RouterError::LocalNotReady => self
                 .local
@@ -388,13 +569,26 @@ impl CoreApi for RouterAdapter {
 
     fn commit(&self) -> CommitResult {
         let mut r = from_core_result(self.router.commit());
+        let cfg = self.router.config();
         // Server-only failure: say so in the pill (§5 "Errors in normal UI").
         if r.status == CommitStatus::Error {
             // A session that never started reports the start error again;
             // give it the same pill text as `start_session` would.
             let detail = r.error.clone().unwrap_or_default();
-            if detail.starts_with("no_engine_enabled") {
-                r.error = Some(NO_ENGINE_MSG.into());
+            let cloud_failed = cloud_failure_code(&r, &cfg).or_else(|| {
+                r.route
+                    .as_ref()
+                    .filter(|x| x.engine == "cloud")
+                    .and_then(|x| x.fallback.clone())
+            });
+            if let Some(code) = cloud_failed.filter(|_| self.cloud_only(&cfg)) {
+                r.error = Some(crate::cloud::failure_message(&code, None));
+            } else if detail.starts_with("no_engine_enabled") {
+                r.error = Some(if self.cloud_only(&cfg) {
+                    crate::cloud::failure_message(self.cloud_skip_reason(&cfg), None)
+                } else {
+                    NO_ENGINE_MSG.into()
+                });
             } else if detail.starts_with("local_not_ready") {
                 r.error = Some(self.start_error(RouterError::LocalNotReady));
             } else if let Some(fb) = r.route.as_ref().and_then(|x| x.fallback.clone()) {
@@ -407,7 +601,7 @@ impl CoreApi for RouterAdapter {
             }
         }
         if r.route.is_some() || r.error.as_deref() != Some("no active session") {
-            let last = LastDictation::of(&r);
+            let last = LastDictation::of(&r, &cfg);
             *self.last.lock().unwrap() = Some(last.clone());
             if let Some(f) = self.listener.lock().unwrap().as_ref() {
                 f(&last);
@@ -443,6 +637,7 @@ mod tests {
     const BOTH: BuildCaps = BuildCaps {
         local: true,
         remote: true,
+        cloud: true,
     };
 
     /// A "server": a real FlowCore with MockAsr behind `kind() == Remote`,
@@ -596,12 +791,11 @@ mod tests {
         let route = out.route.clone().unwrap();
         assert_eq!(route.engine, "local");
         assert_eq!(route.fallback.as_deref(), Some("connect_failed"));
+        let badge = r.router.last().unwrap().badge().unwrap();
+        assert_eq!((badge.letter, badge.fallback), ("L", true));
         assert_eq!(
-            r.router.last().unwrap().badge(),
-            Some(Badge {
-                letter: "L",
-                fallback: true
-            })
+            badge.message, None,
+            "a server fallback is not a cloud notice"
         );
     }
 
@@ -732,6 +926,7 @@ mod tests {
         let local_caps = BuildCaps {
             local: true,
             remote: false,
+            cloud: false,
         };
         let local_only = DevSettings {
             route_order: vec![Route::Client, Route::Server],
@@ -744,6 +939,7 @@ mod tests {
         let remote_caps = BuildCaps {
             local: false,
             remote: true,
+            cloud: false,
         };
         let remote_only = DevSettings {
             keep_local_warm: false,
@@ -768,6 +964,7 @@ mod tests {
             "router_config_hybrid.json",
             "router_config_local_only.json",
             "router_config_remote_only.json",
+            "router_config_cloud.json",
         ] {
             let c: RouterConfig = serde_json::from_value(fixture(f)).unwrap();
             c.validate().unwrap();

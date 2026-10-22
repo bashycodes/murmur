@@ -29,6 +29,7 @@ const LOCAL_SAYS: &str = "spoken on this pc";
 const BOTH: BuildCaps = BuildCaps {
     local: true,
     remote: true,
+    cloud: false,
 };
 
 #[derive(Default)]
