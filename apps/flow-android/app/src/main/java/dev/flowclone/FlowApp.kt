@@ -110,6 +110,11 @@ class EngineHolder(
     private val loader: FlowCoreLoader = NativeFlowCore,
     private val opener: RouterOpener = NativeFlowCore.routerOpener,
 ) {
+    companion object {
+        /** Longest a reload waits for the previous engine's running commit (20 s UI timeout + slack). */
+        const val UNLOAD_WAIT_MS = 30_000L
+    }
+
     sealed interface State {
         data object NotLoaded : State
         data object Loading : State
@@ -145,10 +150,20 @@ class EngineHolder(
         ensureLoaded()
     }
 
+    /** The engine [unload] let go of; [load] waits until its native memory is really freed. */
+    @Volatile private var unloading: NativeFlowCore? = null
+
+    /**
+     * Never blocks (review C1): a push/commit/poll still running keeps the native engine alive,
+     * and it is freed off Main when that call returns. The next [load] waits for the free, so
+     * two models are never resident at once.
+     */
     @Synchronized
     fun unload() {
         runCatching { persistCloudUsage() }
-        (_state.value as? State.Ready)?.core?.unload()
+        val core = (_state.value as? State.Ready)?.core
+        core?.unload()
+        (core as? NativeFlowCore)?.let { unloading = it }
         _state.value = State.NotLoaded
         loadedWithLocal = null
     }
@@ -204,6 +219,8 @@ class EngineHolder(
     }
 
     private fun load(): State {
+        unloading?.let { if (!it.awaitFreed(UNLOAD_WAIT_MS)) Log.w("FlowEngine", "previous engine still busy after ${UNLOAD_WAIT_MS} ms; loading anyway") }
+        unloading = null
         val threads = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
         val s = app.settings.load()
         // Parakeet derives bpe.vocab for hotwords into TMPDIR (core-architecture "Android: Parakeet" 4).

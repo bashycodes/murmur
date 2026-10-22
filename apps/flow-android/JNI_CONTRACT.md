@@ -19,8 +19,11 @@ still runs and shows an in-app message (`NativeFlowCore.loadLibrary()` returns
 - The **handle** is an opaque `jlong`: `Box::into_raw(Box<FlowHandle>) as jlong`, where
   `FlowHandle` is a bare `FlowCore` (`nativeLoadModels`) or a `flow_router::Router`
   (`nativeOpenRouter`, D17). Every session function works on both kinds. `0` means
-  "no handle / failure". After `nativeUnload(h)` Kotlin never uses `h` again. It
-  serialises `unload` against itself. Other calls may come from several threads:
+  "no handle / failure". After `nativeUnload(h)` Kotlin never uses `h` again, and
+  `nativeUnload(h)` never runs while another call on `h` is in flight: every call holds a
+  `HandleLease` (review C1), `unload()` only marks the handle dead, and the native free runs
+  on a background thread once the last running call (push, poll, commit…) has returned.
+  Other calls may come from several threads:
   `pushAudio` comes from the AudioRecord thread, `commit` from a worker coroutine,
   `setContext` from main. `FlowCore`'s methods are `&self` and internally synchronised.
 - **Strings** are UTF-8 JSON. The schemas are the serde types in `flow-core::config`

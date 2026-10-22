@@ -7,86 +7,98 @@ package dev.flowclone.core
  * The library is optional at build time: [loadLibrary] reports a missing/broken .so as
  * [LibraryState.Unavailable] instead of throwing, and the UI shows that message.
  */
-class NativeFlowCore private constructor(private var handle: Long, val isRouter: Boolean = false) : FlowCore {
+class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = false) : FlowCore {
     sealed interface LibraryState {
         data class Loaded(val version: String) : LibraryState
         data class Unavailable(val message: String) : LibraryState
     }
 
-    private fun h(): Long = handle.also { check(it != 0L) { "NativeFlowCore used after unload" } }
+    /**
+     * Review C1: every native call holds the lease, so [unload] (Settings save → reload,
+     * ACTION_RELOAD_ENGINE, onTrimMemory) can't free the box under a running push/commit/poll;
+     * the free is deferred to the last caller and runs on a background thread.
+     */
+    private val lease = HandleLease(handle, { nativeUnload(it) })
 
-    override fun startSession(cfg: SessionConfig) {
-        if (!nativeStartSession(h(), CoreJson.encode(cfg))) throw lastError("start_session failed")
+    /** Engine unloaded: a [CoreException] (review C16: the controller catches only those). */
+    private fun gone(): Nothing = throw CoreException("Speech engine was unloaded, try again in a moment.", "local_not_ready")
+
+    override fun startSession(cfg: SessionConfig) = lease.use(::gone) { h ->
+        if (!nativeStartSession(h, CoreJson.encode(cfg))) throw lastError("start_session failed")
     }
 
     /**
      * Gives the handle away (to `nativeOpenRouter`, which takes ownership). This instance is
      * unusable afterwards and its [unload] is a no-op.
      */
-    @Synchronized
-    fun release(): Long { val x = handle; handle = 0; return x }
+    fun release(): Long = lease.release()
+
+    /** True until [unload] / [release]. */
+    val isLoaded: Boolean get() = lease.isOpen
+
+    /** Wait (off Main) until a previous [unload] really freed the native engine. */
+    fun awaitFreed(timeoutMs: Long): Boolean = lease.awaitFreed(timeoutMs)
 
     /** Router handles only: `update_config` (applies from the next session; models are not reloaded). */
     fun updateRouter(routerConfigJson: String) {
         check(isRouter) { "not a router handle" }
-        if (!guardLink { nativeUpdateRouter(h(), routerConfigJson) }) throw lastError("update_config failed")
+        lease.use(::gone) { h -> if (!guardLink { nativeUpdateRouter(h, routerConfigJson) }) throw lastError("update_config failed") }
     }
 
     /** Router handles only: close the circuit breaker (Developer "Reset circuit"). */
-    fun resetCircuit() { if (isRouter && handle != 0L) guardLink { nativeResetCircuit(handle) } }
+    fun resetCircuit() { if (isRouter) lease.use({}) { h -> guardLink { nativeResetCircuit(h) } } }
 
     /** Router handles only: blocking probe of the saved server config; updates the circuit + "Server info". */
-    fun probeSaved(): HealthReport =
-        if (!isRouter || handle == 0L) HealthReport(ok = false, error = "error", message = "no router") else RouterJson.decodeHealth(guardLink { nativeProbeRouter(handle) })
+    fun probeSaved(): HealthReport {
+        val none = { HealthReport(ok = false, error = "error", message = "no router") }
+        return if (!isRouter) none() else lease.use(none) { h -> RouterJson.decodeHealth(guardLink { nativeProbeRouter(h) }) }
+    }
 
     /** Router handles only: last route + circuit + last probe. */
     fun routeStatus(): RouteStatus =
-        if (!isRouter || handle == 0L) RouteStatus() else RouterJson.decodeRouteStatus(guardLink { nativeRouteStatus(handle) })
+        if (!isRouter) RouteStatus() else lease.use({ RouteStatus() }) { h -> RouterJson.decodeRouteStatus(guardLink { nativeRouteStatus(h) }) }
 
     // ---- D18 cloud STT (router handles; JNI_CONTRACT.md "Cloud STT") ----
 
     /** Hand the router a provider's API key (`null` / "" forgets it). Never logged. */
     fun setCloudKey(providerId: String, key: String?) {
-        if (!isRouter || handle == 0L) return
-        if (!guardLink { nativeSetCloudKey(handle, providerId, key) }) throw lastError("set_cloud_key failed")
+        if (!isRouter) return
+        lease.use({}) { h -> if (!guardLink { nativeSetCloudKey(h, providerId, key) }) throw lastError("set_cloud_key failed") }
     }
 
     /** Blocking "Test provider" with an unsaved provider; `key` null = the router's stored key. */
     fun probeCloud(providerJson: String, key: String?): HealthReport =
-        if (!isRouter || handle == 0L) Companion.probeCloud(providerJson, key)
-        else cloudCall { RouterJson.decodeHealth(nativeProbeCloud(handle, providerJson, key)) }
+        if (!isRouter) Companion.probeCloud(providerJson, key)
+        else lease.use({ Companion.probeCloud(providerJson, key) }) { h -> cloudCall { RouterJson.decodeHealth(nativeProbeCloud(h, providerJson, key)) } }
 
     /** This month's counters (`CloudUsage` JSON), or null without a router / symbol. */
     fun cloudUsageJson(): String? =
-        if (!isRouter || handle == 0L) null else runCatching { nativeCloudUsage(handle) }.getOrNull()
+        if (!isRouter) null else lease.use({ null }) { h -> runCatching { nativeCloudUsage(h) }.getOrNull() }
 
     /** Restore persisted counters (after open). False on bad JSON or an old library. */
     fun setCloudUsage(json: String): Boolean =
-        isRouter && handle != 0L && runCatching { nativeSetCloudUsage(handle, json) }.getOrDefault(false)
+        isRouter && lease.use({ false }) { h -> runCatching { nativeSetCloudUsage(h, json) }.getOrDefault(false) }
 
-    fun resetCloudUsage() { if (isRouter && handle != 0L) runCatching { nativeResetCloudUsage(handle) } }
+    fun resetCloudUsage() { if (isRouter) lease.use({}) { h -> runCatching { nativeResetCloudUsage(h) } } }
 
     override fun pushAudio(pcm: ShortArray, length: Int): Boolean =
-        handle != 0L && nativePushAudio(handle, pcm, length)
+        lease.use({ false }) { h -> nativePushAudio(h, pcm, length) }
 
-    override fun setContext(ctx: FieldContext) = nativeSetContext(h(), CoreJson.encode(ctx))
+    override fun setContext(ctx: FieldContext) = lease.use({}) { h -> nativeSetContext(h, CoreJson.encode(ctx)) }
 
-    override fun partial(): String? = if (handle == 0L) null else nativePartial(handle)
+    override fun partial(): String? = lease.use({ null }) { h -> nativePartial(h) }
+
 
     override fun commit(): CommitResult =
-        if (handle == 0L) CommitResult(CommitStatus.ERROR, error = "unloaded") else CoreJson.decodeCommit(nativeCommit(handle))
+        lease.use({ CommitResult(CommitStatus.ERROR, error = "unloaded") }) { h -> CoreJson.decodeCommit(nativeCommit(h)) }
 
-    override fun cancel() { if (handle != 0L) nativeCancel(handle) }
+    override fun cancel() = lease.use({}) { h -> nativeCancel(h) }
 
     override fun learnEdit(pasted: String, edited: String): List<LearnCandidate> =
-        CoreJson.decodeCandidates(nativeLearnEdit(h(), pasted, edited))
+        lease.use({ emptyList() }) { h -> CoreJson.decodeCandidates(nativeLearnEdit(h, pasted, edited)) }
 
-    @Synchronized
-    override fun unload() {
-        val x = handle
-        handle = 0
-        if (x != 0L) nativeUnload(x)
-    }
+    /** Never blocks: the native free waits for running calls and happens on a background thread. */
+    override fun unload() = lease.close()
 
     companion object : FlowCoreLoader {
         const val LIBRARY = "flow_ffi"
@@ -226,6 +238,7 @@ class NativeFlowCore private constructor(private var handle: Long, val isRouter:
         @JvmStatic external fun nativeCommit(handle: Long): String
         @JvmStatic external fun nativeCancel(handle: Long)
         @JvmStatic external fun nativeLearnEdit(handle: Long, pasted: String, edited: String): String
+
 
         // ---- D17 router additions (JNI_CONTRACT.md "Router"); every symbol above works on router handles too ----
         @JvmStatic external fun nativeLastErrorKind(): String?

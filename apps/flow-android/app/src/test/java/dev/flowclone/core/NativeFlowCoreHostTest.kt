@@ -236,6 +236,49 @@ class NativeFlowCoreHostTest {
         }
     }
 
+    /**
+     * Review C1 on the real library: pushAudio (AudioRecord thread), poll/partial (timer), commit
+     * (worker) and unload (Settings save / onTrimMemory) race on the same handle. Before the lease,
+     * unload freed the box under a running call (use-after-free → SIGSEGV / garbage); now every call
+     * either runs on a live handle or sees "unloaded", and the native free happens exactly once.
+     */
+    @Test fun unloadRacingPushPollCommitNeverFreesUnderACall() {
+        requireLib()
+        repeat(40) { round ->
+            val core = NativeFlowCore.loadModels(ModelConfig(asrPath = "", mockText = "hello btw", threads = 2)) as NativeFlowCore
+            core.startSession(SessionConfig(languages = listOf("en")))
+            val stop = java.util.concurrent.atomic.AtomicBoolean(false)
+            val errors = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
+            fun loop(body: () -> Unit) = kotlin.concurrent.thread {
+                try { while (!stop.get()) body() } catch (t: Throwable) { errors += t }
+            }
+            val frame = sine(1600)
+            val threads = listOf(
+                loop { core.pushAudio(frame, frame.size) },
+                loop { core.partial() },
+                loop {
+                    runCatching { core.startSession(SessionConfig(languages = listOf("en"))) }
+                        .onFailure { if (it !is CoreException) throw it }
+                    core.pushAudio(frame, frame.size)
+                    val r = core.commit()
+                    check(r.status != CommitStatus.ERROR || r.error in setOf("unloaded", "cancelled") || r.error!!.contains("session")) { r.toString() }
+                },
+                loop { core.cancel() },
+            )
+            Thread.sleep(5L + round % 7)
+            core.unload()
+            Thread.sleep(5)
+            stop.set(true)
+            threads.forEach { it.join(10_000) }
+            assertTrue(errors.joinToString { it.toString() }, errors.isEmpty())
+            assertTrue("native engine freed", core.awaitFreed(10_000))
+            assertFalse(core.isLoaded)
+            assertEquals(CommitStatus.ERROR, core.commit().status)
+            assertFalse(core.pushAudio(frame, frame.size))
+            assertEquals(null, core.partial())
+        }
+    }
+
     private fun sine(n: Int) = ShortArray(n) { (Math.sin(it * 0.05) * 8000).toInt().toShort() }
 
     /** Minimal RIFF reader: PCM16, 16 kHz, mono only (what MicRecorder produces). */
