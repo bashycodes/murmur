@@ -387,6 +387,9 @@ pub struct DevForm {
     pub tls: bool,
     pub tls_pin_sha256: String,
     pub token: String,
+    /// A token is saved but not sent to the page (review S18): an empty
+    /// `token` with this set means "keep the saved one".
+    pub token_saved: bool,
     pub connect_timeout_ms: i64,
     pub commit_timeout_base_ms: i64,
     pub health_ttl_s: i64,
@@ -430,6 +433,7 @@ impl DevForm {
             tls: s.server.tls,
             tls_pin_sha256: s.server.tls_pin_sha256.clone(),
             token: token.to_string(),
+            token_saved: false,
             connect_timeout_ms: s.server.connect_timeout_ms as i64,
             commit_timeout_base_ms: s.server.commit_timeout_base_ms as i64,
             health_ttl_s: s.server.health_ttl_s as i64,
@@ -439,6 +443,26 @@ impl DevForm {
             allow_cloud: s.allow_cloud,
             cloud: s.cloud.clone(),
         }
+    }
+
+    /// What the page gets: the saved settings with the token withheld
+    /// (only "a token is saved"); the webview never sees it (S18).
+    pub fn for_page(s: &DevSettings) -> Self {
+        DevForm {
+            token_saved: !s.token_dpapi.is_empty(),
+            ..DevForm::from_settings(s, "")
+        }
+    }
+
+    /// The form with the token resolved: an empty field with
+    /// `token_saved` keeps `saved`'s token; anything typed replaces it.
+    pub fn with_token(&self, saved: &DevSettings) -> DevForm {
+        let mut f = self.clone();
+        if f.token.trim().is_empty() && f.token_saved {
+            f.token = saved.token();
+        }
+        f.token_saved = false;
+        f
     }
 
     /// Validate and normalise (§5 table). `Ok` = settings to store (token
@@ -633,36 +657,17 @@ fn parse_ipv4_strict(s: &str) -> Option<Ipv4Addr> {
     Some(Ipv4Addr::from(o))
 }
 
-/// §2.6: is plaintext `ws://` refused for this (normalised) host? Private
-/// = loopback, RFC 1918, 100.64.0.0/10 (Tailscale/CGNAT), fc00::/7 (incl.
-/// Tailscale fd7a:115c:a1e0::/48), link-local, `*.ts.net`, `*.local`,
-/// `localhost` and single-label names. Everything else is public.
+/// §2.6: is plaintext `ws://` refused for this (normalised) host at
+/// config time? The router's classifier decides (`flow_router::net`, the
+/// same one `ServerConfig::validate` uses), so the form can never disagree
+/// with the gate. Private = loopback, RFC 1918, link-local, ULA, tailnet
+/// (100.64/10, fd7a:115c:a1e0::/48), `*.ts.net`, `*.local`, `localhost`
+/// and single-label names. That is only the form rule: at connect time
+/// flow-remote resolves a name and requires every address to be private
+/// (review S6), so a `*.ts.net` or LAN name that resolves publicly is
+/// refused then ("server needs TLS").
 pub fn host_is_public(host: &str) -> bool {
-    if let Ok(ip) = host.parse::<Ipv4Addr>() {
-        let [a, b, ..] = ip.octets();
-        let private = ip.is_loopback()
-            || ip.is_private()
-            || ip.is_link_local()
-            || (a == 100 && (64..128).contains(&b));
-        return !private;
-    }
-    if let Ok(ip) = host.parse::<Ipv6Addr>() {
-        let seg0 = ip.segments()[0];
-        let private = ip.is_loopback()
-            || (seg0 & 0xfe00) == 0xfc00
-            || (seg0 & 0xffc0) == 0xfe80
-            || ip
-                .to_ipv4_mapped()
-                .is_some_and(|v4| !host_is_public(&v4.to_string()));
-        return !private;
-    }
-    let h = host.trim_end_matches('.').to_ascii_lowercase();
-    let private = !h.contains('.')
-        || h == "localhost"
-        || h.ends_with(".ts.net")
-        || h.ends_with(".local")
-        || h.ends_with(".localhost");
-    !private
+    !flow_router::net::classify(host).plaintext_ok()
 }
 
 #[cfg(test)]
@@ -796,6 +801,28 @@ mod tests {
     }
 
     #[test]
+    fn cloud_base_urls_are_parsed_by_the_router() {
+        // review S2: the `url`-crate parser, not a hand-rolled split.
+        for bad in [
+            "http://evil.com\\.local/v1",
+            "https://user@api.groq.com/openai/v1",
+            "https://api.groq.com /v1",
+            "ftp://api.groq.com/v1",
+            "https://",
+        ] {
+            let mut f = form();
+            f.cloud.providers = vec![groq(0)];
+            f.cloud.providers[0].base_url = bad.into();
+            assert!(f.validate(BOTH).is_err(), "{bad:?} must be refused");
+        }
+        let mut f = form();
+        f.cloud.providers = vec![groq(0)];
+        f.cloud.providers[0].base_url = "https://API.Groq.com/openai/v1".into();
+        let (s, _) = f.validate(BOTH).unwrap();
+        assert_eq!(s.cloud.providers[0].host(), "api.groq.com");
+    }
+
+    #[test]
     fn numeric_fields_validated() {
         let mut f = form();
         f.port = 0;
@@ -907,6 +934,25 @@ mod tests {
             "",
         );
         assert_eq!(j["allow_server"], false, "capability AND toggle");
+    }
+
+    #[test]
+    fn the_page_never_gets_the_token_back() {
+        let mut s = DevSettings::for_build(BOTH);
+        s.token_dpapi = "blob".into();
+        let f = DevForm::for_page(&s);
+        assert_eq!(f.token, "");
+        assert!(f.token_saved);
+        let json = serde_json::to_string(&f).unwrap();
+        assert!(!json.contains("blob"));
+        // Unsaved form with the field left empty keeps the saved token;
+        // a typed token replaces it; "Clear" (token_saved false) drops it.
+        let mut typed = f.clone();
+        typed.token = "x".repeat(20);
+        assert_eq!(typed.with_token(&s).token, "x".repeat(20));
+        let mut cleared = f.clone();
+        cleared.token_saved = false;
+        assert_eq!(cleared.with_token(&s).token, "");
     }
 
     #[test]
