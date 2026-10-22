@@ -142,6 +142,8 @@ function fillForm(prefs) {
     $("paste_method").value = prefs.paste_method;
     $("languages").value = prefs.languages.join(", ");
     $("max_dictation_minutes").value = String(prefs.max_dictation_minutes);
+    $("hands_free_silence_s").value =
+        prefs.hands_free_silence_ms > 0 ? String(prefs.hands_free_silence_ms / 1000) : "0";
     $("llm_model_path").value = prefs.llm_model_path ?? "";
     $("llm_lib_path").value = prefs.llm_lib_path ?? "";
     $("llm_timeout_ms").value = String(prefs.llm_timeout_ms);
@@ -173,6 +175,10 @@ function readForm(base) {
         .map((s) => s.trim())
         .filter(Boolean);
     next.max_dictation_minutes = Math.max(1, parseInt($("max_dictation_minutes").value, 10) || 20);
+    // Hands-free auto-stop (D19): 0 = off, else 0.3-10 s of silence.
+    const hf = parseFloat($("hands_free_silence_s").value);
+    next.hands_free_silence_ms =
+        !Number.isFinite(hf) || hf <= 0 ? 0 : Math.round(Math.min(10, Math.max(0.3, hf)) * 1000);
     next.llm_model_path = $("llm_model_path").value.trim() || null;
     next.llm_lib_path = $("llm_lib_path").value.trim() || null;
     next.llm_timeout_ms = Math.min(30000, Math.max(200, parseInt($("llm_timeout_ms").value, 10) || 1500));
@@ -519,6 +525,7 @@ function fillDev(f) {
         $(`dev_${k}`).value = f[k];
     for (const k of DEV_NUM)
         $(`dev_${k}`).value = String(f[k]);
+    showTokenSaved(!!f.token_saved);
     devOrder = [...f.route_order];
     $("dev_allow_cloud").checked = f.allow_cloud;
     cloudCfg = structuredClone(f.cloud);
@@ -528,6 +535,13 @@ function fillDev(f) {
         cloudSel = cloudCfg.active || null;
     renderRoutes();
     renderCloud();
+}
+// The saved token never comes back to the page (S18): an empty field
+// keeps it; typing replaces it; Clear removes it on Save.
+function showTokenSaved(saved) {
+    $("dev_token").placeholder = saved
+        ? "saved (hidden) — leave empty to keep it"
+        : "from flow-server gen-token";
 }
 function renderRoutes() {
     const srv = $("dev_allow_server").checked;
@@ -585,6 +599,10 @@ function scheduleCheck() {
 function healthText(h) {
     if (!h.ok) {
         const code = h.error ?? "error";
+        // flow-remote refuses ws:// to an address that is not private/tailnet (S6).
+        if (/plaintext (refused|to public address)/.test(h.message ?? "")) {
+            return "Server needs TLS — its address is not private (or resolves to a public one); turn on TLS and set a certificate pin";
+        }
         const why = hint(code);
         return `${code}${h.message ? `: ${h.message}` : ""}${why ? ` — ${why}` : ""}`;
     }
@@ -724,8 +742,17 @@ async function devSave() {
             return;
     }
     const v = await devCall("dev_set", { form: readDev() }, "Saved — applies to the next dictation");
-    if (v)
+    if (v) {
         showDev(v);
+        const cleared = v.keys_cleared ?? [];
+        if (cleared.length > 0) {
+            // A key is bound to the host + adapter it was saved for (S4).
+            const names = cleared
+                .map((id) => v.form.cloud.providers.find((p) => p.id === id)?.label || id)
+                .join(", ");
+            setStatus("dev_status", `Saved. The API key of ${names} was removed because its host or adapter changed — enter the key again.`, false);
+        }
+    }
 }
 async function devTestConnection() {
     if (!devValid)
@@ -956,7 +983,8 @@ async function saveKey() {
     if (!p || input.value.trim() === "")
         return;
     try {
-        cloudKeys[p.id] = await invoke("dev_cloud_set_key", { providerId: p.id, key: input.value });
+        // Bound to this form's host + adapter: the key is only sent there.
+        cloudKeys[p.id] = await invoke("dev_cloud_set_key", { providerId: p.id, key: input.value, provider: p });
         input.value = "";
         setStatus("dev_status", "Key saved in Credential Manager", true);
     }
@@ -1092,6 +1120,9 @@ $("dev_token_paste").addEventListener("click", () => {
 });
 $("dev_token_clear").addEventListener("click", () => {
     $("dev_token").value = "";
+    if (devView)
+        devView.form.token_saved = false;
+    showTokenSaved(false);
     scheduleCheck();
 });
 $("version_row").addEventListener("click", versionTapped);

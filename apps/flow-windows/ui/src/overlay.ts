@@ -160,3 +160,22 @@ function showCloudNotice(): void {
   preview.dataset.kind = "notice";
   preview.classList.add("visible");
 }
+
+// Live route while recording/processing (router `poll().route`):
+// "Transcribing via this PC… / server… / Groq (model)…", relabelled when a
+// failover switches route mid-dictation. `null` = hide.
+const routeLabel = document.getElementById("route-label") as HTMLDivElement;
+interface LiveRoute {
+  text: string;
+  engine: string;
+  title?: string | null;
+}
+void listen<LiveRoute | null>("dictation:live-route", (e) => {
+  const r = e.payload;
+  routeLabel.hidden = !r;
+  document.body.classList.toggle("has-route", !!r);
+  routeLabel.textContent = r ? r.text : "";
+  routeLabel.title = r?.title ?? "";
+  if (r) routeLabel.dataset.engine = r.engine;
+  else delete routeLabel.dataset.engine;
+});

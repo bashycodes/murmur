@@ -97,6 +97,10 @@ pub struct SessionConfig {
     pub spoken_cleanup: bool,
     /// LLM KV prefill while the user speaks.
     pub llm_prefill: bool,
+    /// Hands-free endpointing (D19): trailing silence after speech that
+    /// ends the dictation. Set only for hands-free sessions; push-to-talk
+    /// leaves it `None`.
+    pub endpoint_silence_ms: Option<u32>,
 }
 
 impl Default for SessionConfig {
@@ -114,6 +118,7 @@ impl Default for SessionConfig {
             hallucination_guard: true,
             spoken_cleanup: true,
             llm_prefill: true,
+            endpoint_silence_ms: None,
         }
     }
 }
@@ -247,8 +252,106 @@ pub struct LearnCandidate {
     pub replacement: Option<String>,
 }
 
+/// Where the live session runs (router `poll().route` /
+/// `start_session_info().route`): `local` / `remote` / `cloud` + details.
+pub use flow_router::SessionRoute;
+
+/// One tick of the partial timer: preview text, hands-free endpoint (D19)
+/// and the route in use right now.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Poll {
+    pub partial: Option<String>,
+    /// Latched: the hands-free session heard speech followed by
+    /// `endpoint_silence_ms` of silence; run the normal finish path.
+    pub endpoint_reached: bool,
+    /// `None` with no live session (or a bare core, which has no route).
+    pub route: Option<SessionRoute>,
+}
+
+/// Recording-pill line for the live route: "Transcribing via this PC…",
+/// "… via server…", "… via Groq (whisper-large-v3-turbo)…", plus a short
+/// reason when the first route was skipped or failed over.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct LiveRouteLabel {
+    pub text: String,
+    /// `local` / `remote` / `cloud` (styling).
+    pub engine: String,
+    /// Tooltip: server address, cloud provider host.
+    pub title: Option<String>,
+}
+
+/// Short reason for a `SessionRoute.fallback` code (pill suffix).
+pub fn fallback_reason(code: &str) -> &'static str {
+    match code {
+        "connect_failed" | "disconnected" | "timeout" => "server unreachable",
+        "busy" => "server busy",
+        "auth_failed" => "access rejected",
+        "proto_mismatch" => "server version mismatch",
+        "circuit_open" => "paused after recent failures",
+        "server_not_configured" => "server not set up",
+        "local_not_ready" => "local model not loaded",
+        "cloud_not_configured" => "cloud not set up",
+        "budget_exceeded" => "monthly budget reached",
+        "quota_exceeded" => "out of credits",
+        "provider_error" => "provider error",
+        _ => "fell back",
+    }
+}
+
+/// `provider_name(id)` = the provider's display name and host (cloud).
+pub fn live_route_label(
+    r: &SessionRoute,
+    provider_name: &dyn Fn(&str) -> Option<(String, String)>,
+) -> LiveRouteLabel {
+    let engine = r.engine.as_str().to_string();
+    let (via, title) = match engine.as_str() {
+        "remote" => (
+            "server".to_string(),
+            r.server.as_ref().map(|s| format!("Your flow-server {s}")),
+        ),
+        "cloud" => {
+            let id = r.provider.clone().unwrap_or_default();
+            let (name, host) = provider_name(&id).unwrap_or((id.clone(), String::new()));
+            let via = match r.model.as_deref().filter(|m| !m.is_empty()) {
+                Some(m) => format!("{name} ({m})"),
+                None => name,
+            };
+            (
+                via,
+                (!host.is_empty()).then(|| format!("Audio is sent to {host}")),
+            )
+        }
+        _ => ("this PC".to_string(), None),
+    };
+    let mut text = format!("Transcribing via {via}…");
+    if let Some(code) = r.fallback.as_deref() {
+        text.push_str(&format!(" ({})", fallback_reason(code)));
+    }
+    LiveRouteLabel {
+        text,
+        engine,
+        title,
+    }
+}
+
 pub trait CoreApi: Send + Sync {
     fn start_session(&self, cfg: SessionConfig) -> Result<(), String>;
+    /// `start_session` that also reports the start route (router). Blocks
+    /// (model-load wait, server connect): never call it on the UI thread.
+    fn start_session_info(&self, cfg: SessionConfig) -> Result<Option<SessionRoute>, String> {
+        self.start_session(cfg).map(|()| None)
+    }
+    /// Pill text for a live route (the router names cloud providers).
+    fn describe_route(&self, r: &SessionRoute) -> LiveRouteLabel {
+        live_route_label(r, &|_| None)
+    }
+    /// Partial + endpoint + live route in one call (the partial timer).
+    fn poll(&self) -> Poll {
+        Poll {
+            partial: self.partial(),
+            ..Poll::default()
+        }
+    }
     /// Non-blocking: copies into the core's ring buffer.
     fn push_audio(&self, pcm16_16k_mono: &[i16]);
     fn set_context(&self, ctx: FieldContext);
@@ -271,6 +374,12 @@ struct StubState {
     active: bool,
     samples: u64,
     context: Option<FieldContext>,
+    config: Option<SessionConfig>,
+    /// What `poll()` answers while a session is active (tests).
+    poll: Poll,
+    start_route: Option<SessionRoute>,
+    cancels: usize,
+    starts: usize,
 }
 
 impl StubCore {
@@ -281,16 +390,58 @@ impl StubCore {
     pub fn last_context(&self) -> Option<FieldContext> {
         self.inner.lock().unwrap().context.clone()
     }
+
+    /// Config of the last `start_session`.
+    pub fn last_config(&self) -> Option<SessionConfig> {
+        self.inner.lock().unwrap().config.clone()
+    }
+
+    /// Script `poll()` (and the start route) for tests.
+    pub fn set_poll(&self, poll: Poll) {
+        self.inner.lock().unwrap().poll = poll;
+    }
+
+    pub fn set_start_route(&self, route: Option<SessionRoute>) {
+        self.inner.lock().unwrap().start_route = route;
+    }
+
+    pub fn cancels(&self) -> usize {
+        self.inner.lock().unwrap().cancels
+    }
+
+    pub fn starts(&self) -> usize {
+        self.inner.lock().unwrap().starts
+    }
 }
 
 impl CoreApi for StubCore {
-    fn start_session(&self, _cfg: SessionConfig) -> Result<(), String> {
+    fn start_session(&self, cfg: SessionConfig) -> Result<(), String> {
         let mut s = self.inner.lock().unwrap();
+        let old = std::mem::take(&mut *s);
         *s = StubState {
             active: true,
+            config: Some(cfg),
+            poll: old.poll,
+            start_route: old.start_route,
+            cancels: old.cancels,
+            starts: old.starts + 1,
             ..StubState::default()
         };
         Ok(())
+    }
+
+    fn start_session_info(&self, cfg: SessionConfig) -> Result<Option<SessionRoute>, String> {
+        self.start_session(cfg)?;
+        Ok(self.inner.lock().unwrap().start_route.clone())
+    }
+
+    fn poll(&self) -> Poll {
+        let s = self.inner.lock().unwrap();
+        if s.active {
+            s.poll.clone()
+        } else {
+            Poll::default()
+        }
     }
 
     fn push_audio(&self, pcm: &[i16]) {
@@ -326,12 +477,16 @@ impl CoreApi for StubCore {
         let mut s = self.inner.lock().unwrap();
         s.active = false;
         s.samples = 0;
+        s.cancels += 1;
     }
 
     fn learn_edit(&self, _pasted: &str, _edited: &str) -> Vec<LearnCandidate> {
         Vec::new()
     }
 }
+
+/// `CommitResult.error` of a commit aborted by `cancel()` (router C4).
+pub const CANCELLED: &str = "cancelled";
 
 /// Map a core result onto the dictation machine's outcome.
 pub fn to_outcome(r: &CommitResult) -> crate::dictation::CommitOutcome {
@@ -340,6 +495,9 @@ pub fn to_outcome(r: &CommitResult) -> crate::dictation::CommitOutcome {
         CommitStatus::Formatted | CommitStatus::RawTranscript if !r.final_text.is_empty() => {
             CommitOutcome::Text(r.final_text.clone())
         }
+        // Esc / the processing timeout aborted the commit (router C4):
+        // dropped, nothing to paste, no error pill.
+        CommitStatus::Error if r.error.as_deref() == Some(CANCELLED) => CommitOutcome::Empty,
         CommitStatus::Error => {
             CommitOutcome::Failed(r.error.clone().unwrap_or_else(|| "core error".into()))
         }
@@ -394,6 +552,12 @@ mod tests {
     }
 
     #[test]
+    fn a_cancelled_commit_is_nothing_to_paste() {
+        let r = CommitResult::failed("cancelled");
+        assert_eq!(to_outcome(&r), CommitOutcome::Empty);
+    }
+
+    #[test]
     fn no_speech_is_a_notice_other_empties_are_silent() {
         let mut r = CommitResult::with_status(CommitStatus::Empty);
         assert_eq!(to_outcome(&r), CommitOutcome::Empty);
@@ -439,5 +603,50 @@ mod tests {
             serde_json::to_string(&CommitStatus::RawTranscript).unwrap(),
             "\"RAW_TRANSCRIPT\""
         );
+    }
+
+    #[test]
+    fn live_route_labels() {
+        use flow_router::EngineKind;
+        let none = |_: &str| None;
+        let local = SessionRoute::default();
+        assert_eq!(
+            live_route_label(&local, &none).text,
+            "Transcribing via this PC…"
+        );
+        let remote = SessionRoute {
+            engine: EngineKind::Remote,
+            server: Some("100.64.0.2:7313".into()),
+            ..Default::default()
+        };
+        let l = live_route_label(&remote, &none);
+        assert_eq!(l.text, "Transcribing via server…");
+        assert_eq!(l.engine, "remote");
+        assert!(l.title.unwrap().contains("100.64.0.2:7313"));
+        let cloud = SessionRoute {
+            engine: EngineKind::Cloud,
+            provider: Some("groq".into()),
+            model: Some("whisper-large-v3-turbo".into()),
+            ..Default::default()
+        };
+        let named = |id: &str| (id == "groq").then(|| ("Groq".into(), "api.groq.com".into()));
+        let l = live_route_label(&cloud, &named);
+        assert_eq!(l.text, "Transcribing via Groq (whisper-large-v3-turbo)…");
+        assert_eq!(l.title.as_deref(), Some("Audio is sent to api.groq.com"));
+        let failed_over = SessionRoute {
+            fallback: Some("disconnected".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            live_route_label(&failed_over, &none).text,
+            "Transcribing via this PC… (server unreachable)"
+        );
+        let skipped = SessionRoute {
+            fallback: Some("cloud_not_configured".into()),
+            ..Default::default()
+        };
+        assert!(live_route_label(&skipped, &none)
+            .text
+            .ends_with("(cloud not set up)"));
     }
 }

@@ -38,12 +38,20 @@ fn pick_device(name: Option<&str>) -> Result<cpal::Device, String> {
         .ok_or_else(|| "no input device".to_string())
 }
 
-fn build(device: &cpal::Device, mut sink: Sink) -> Result<cpal::Stream, String> {
+/// Called (from the audio thread) when the stream fails mid-capture, e.g.
+/// the mic was unplugged (review P3: a hands-free session must not keep
+/// "listening" to nothing).
+pub type OnError = std::sync::Arc<dyn Fn(String) + Send + Sync>;
+
+fn build(device: &cpal::Device, mut sink: Sink, on_error: OnError) -> Result<cpal::Stream, String> {
     let supported = device.default_input_config().map_err(|e| e.to_string())?;
     let format = supported.sample_format();
     let config: StreamConfig = supported.into();
     let mut rs = Resampler::new(config.sample_rate.0, config.channels);
-    let err_fn = |e| eprintln!("[audio] stream error: {e}");
+    let err_fn = move |e: cpal::StreamError| {
+        eprintln!("[audio] stream error: {e}");
+        on_error(format!("Microphone stopped working ({e})"));
+    };
     let stream = match format {
         SampleFormat::F32 => device.build_input_stream(
             &config,
@@ -84,13 +92,13 @@ fn build(device: &cpal::Device, mut sink: Sink) -> Result<cpal::Stream, String> 
 
 impl Capture {
     /// Start capturing from `device` (by name; `None` = system default).
-    pub fn start(device: Option<String>, sink: Sink) -> Result<Capture, String> {
+    pub fn start(device: Option<String>, sink: Sink, on_error: OnError) -> Result<Capture, String> {
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
         let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
         let join = std::thread::Builder::new()
             .name("flow-audio".into())
             .spawn(move || {
-                let res = pick_device(device.as_deref()).and_then(|d| build(&d, sink));
+                let res = pick_device(device.as_deref()).and_then(|d| build(&d, sink, on_error));
                 match res {
                     Ok(stream) => {
                         if let Err(e) = stream.play() {

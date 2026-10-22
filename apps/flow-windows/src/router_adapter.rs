@@ -28,7 +28,8 @@ use crate::core_api::{
 use crate::dev_settings::{BuildCaps, DevSettings, NO_ENGINE_MSG};
 use flow_router::{
     Backend, BackendError, CloudCapabilities, CloudUsage, EngineKind, Failure, HealthReport,
-    RemoteFactory, RouteStatus, Router, RouterConfig, RouterError, ServerConfig, StartInfo,
+    RemoteFactory, RouteStatus, Router, RouterConfig, RouterError, ServerConfig, SessionRoute,
+    StartInfo,
 };
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
@@ -379,17 +380,19 @@ impl RouterAdapter {
         self.router.cloud_usage()
     }
 
-    /// Load every provider's key from the credential store into the router
-    /// (startup, and after a Save that added providers).
+    /// Hand every saved provider's key to the router, bound to that
+    /// provider's host + adapter (`set_cloud_key_for`, review S4). Keys
+    /// stored for another host/adapter are deleted, not re-sent. Startup
+    /// and every Save.
     pub fn load_cloud_keys(
         &self,
         dev: &DevSettings,
         store: &dyn crate::credentials::CredentialStore,
     ) {
         for p in &dev.cloud.providers {
-            let key = store.get(&p.id).ok().flatten();
+            let key = crate::credentials::key_for(store, p);
             self.router
-                .set_cloud_key(&p.id, key.map(flow_router::SecretString::new));
+                .set_cloud_key_for(p, key.map(flow_router::SecretString::new));
         }
     }
 
@@ -523,10 +526,21 @@ impl RouterAdapter {
             RouterError::ServerNotConfigured => {
                 "Server unreachable (no server host set in Developer settings)".into()
             }
+            RouterError::ServerUnavailable(why) if needs_tls(&why) => SERVER_NEEDS_TLS.into(),
             RouterError::ServerUnavailable(why) => format!("Server unreachable ({why})"),
             RouterError::BadConfig(m) => format!("Developer settings are invalid: {m}"),
         }
     }
+}
+
+/// Pill text for flow-remote's `connect_failed … plaintext refused …`:
+/// `ws://` to an address that is not private/tailnet (review S6).
+pub const SERVER_NEEDS_TLS: &str =
+    "Server needs TLS — its address is not private; turn on TLS in Developer settings";
+
+/// A router/remote error that means "plaintext refused".
+pub fn needs_tls(detail: &str) -> bool {
+    detail.contains("plaintext refused") || detail.contains("plaintext to public address")
 }
 
 /// ASR engines compiled into this build (Capabilities row).
@@ -543,6 +557,10 @@ fn local_engines() -> Vec<String> {
 
 impl CoreApi for RouterAdapter {
     fn start_session(&self, cfg: SessionConfig) -> Result<(), String> {
+        self.start_session_info(cfg).map(|_| ())
+    }
+
+    fn start_session_info(&self, cfg: SessionConfig) -> Result<Option<SessionRoute>, String> {
         // Keep the old "dictation during model load waits a moment" rule
         // when the local engine is the one that will run.
         if let Some(l) = &self.local {
@@ -551,7 +569,8 @@ impl CoreApi for RouterAdapter {
             }
         }
         self.router
-            .start_session(to_core_session(&cfg))
+            .start_session_info(to_core_session(&cfg))
+            .map(|info| info.route)
             .map_err(|e| self.start_error(e))
     }
 
@@ -567,8 +586,33 @@ impl CoreApi for RouterAdapter {
         self.router.partial().filter(|p| !p.trim().is_empty())
     }
 
+    fn describe_route(&self, r: &SessionRoute) -> crate::core_api::LiveRouteLabel {
+        let cfg = self.router.config();
+        crate::core_api::live_route_label(r, &|id| {
+            cfg.cloud
+                .providers
+                .iter()
+                .find(|p| p.id == id)
+                .map(|p| (p.display_name().to_string(), p.host()))
+        })
+    }
+
+    fn poll(&self) -> crate::core_api::Poll {
+        let p = self.router.poll();
+        crate::core_api::Poll {
+            partial: p.partial.clone().filter(|s| !s.trim().is_empty()),
+            endpoint_reached: p.endpoint_reached,
+            route: p.route,
+        }
+    }
+
     fn commit(&self) -> CommitResult {
         let mut r = from_core_result(self.router.commit());
+        // Esc / timeout during the commit (C4): dropped, not a failure.
+        if r.status == CommitStatus::Error && r.error.as_deref() == Some(crate::core_api::CANCELLED)
+        {
+            return r;
+        }
         let cfg = self.router.config();
         // Server-only failure: say so in the pill (§5 "Errors in normal UI").
         if r.status == CommitStatus::Error {
@@ -591,6 +635,8 @@ impl CoreApi for RouterAdapter {
                 });
             } else if detail.starts_with("local_not_ready") {
                 r.error = Some(self.start_error(RouterError::LocalNotReady));
+            } else if needs_tls(&detail) {
+                r.error = Some(SERVER_NEEDS_TLS.into());
             } else if let Some(fb) = r.route.as_ref().and_then(|x| x.fallback.clone()) {
                 let detail = r.error.clone().unwrap_or_default();
                 r.error = Some(if detail.is_empty() {
