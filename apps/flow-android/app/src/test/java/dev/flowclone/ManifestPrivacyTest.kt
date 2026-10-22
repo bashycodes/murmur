@@ -43,6 +43,21 @@ class ManifestPrivacyTest {
     @Test fun flavourCapabilitiesMatchTheFlavourName() {
         assertEquals(flavor != "remote", BuildConfig.CAP_LOCAL)
         assertEquals(flavor != "local", BuildConfig.CAP_REMOTE)
+        // Review P4: cloud STT exists exactly in the networked flavours (D18 C2).
+        assertEquals(flavor != "local", BuildConfig.CAP_CLOUD)
+    }
+
+    /** Review P4: no backup / device-transfer copy of settings, history or sealed keys. */
+    @Test fun backupAndDataExtractionAreOff() {
+        val main = File("src/main/AndroidManifest.xml").readText()
+        assertTrue(Regex("""android:allowBackup="false"""").containsMatchIn(main))
+        val rules = Regex("""android:dataExtractionRules="@xml/([a-z_]+)"""").find(main)?.groupValues?.get(1)
+        assertTrue("dataExtractionRules missing", rules != null)
+        val xml = File("src/main/res/xml/$rules.xml").readText()
+        for (section in listOf("cloud-backup", "device-transfer")) assertTrue("$section in $rules.xml", xml.contains("<$section"))
+        for (domain in listOf("root", "file", "database", "sharedpref")) {
+            assertEquals("$domain excluded in both sections", 2, Regex("""<exclude\s+domain="$domain"\s+path="\."""").findAll(xml).count())
+        }
     }
 
     @Test fun flavourManifestsStripOrAddExactlyTheRightPermissions() {

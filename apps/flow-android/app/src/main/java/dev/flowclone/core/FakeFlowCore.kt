@@ -13,8 +13,17 @@ class FakeFlowCore(@Volatile var transcript: String = "") : FlowCore {
     @Volatile var lastContext: FieldContext? = null; private set
     @Volatile var unloaded = false; private set
 
+    /** Live route reported by [startSessionInfo] / [poll] while a session is active (tests). */
+    @Volatile var route: SessionRoute? = null
+    /** Hands-free sessions only: [poll] reports `endpoint_reached` once this many samples arrived (tests). */
+    @Volatile var endpointAfterSamples: Int? = null
+    /** Runs inside [startSession] (tests: block it, or record the calling thread). */
+    @Volatile var onStart: (() -> Unit)? = null
+
     override fun startSession(cfg: SessionConfig) {
         if (unloaded) throw CoreException("unloaded")
+        BlockingCalls.check("startSession")
+        onStart?.invoke()
         lastConfig = cfg; active = true; heardSignal = false; samplesPushed = 0; lastContext = null
     }
 
@@ -32,7 +41,16 @@ class FakeFlowCore(@Volatile var transcript: String = "") : FlowCore {
 
     override fun partial(): String? = if (active) partialText else null
 
+    override fun startSessionInfo(cfg: SessionConfig): StartInfo { startSession(cfg); return StartInfo(route = route) }
+
+    override fun poll(): CorePoll {
+        if (!active) return CorePoll()
+        val end = lastConfig?.endpointSilenceMs != null && endpointAfterSamples?.let { samplesPushed >= it } == true
+        return CorePoll(partial = partialText, endpointReached = end, route = route)
+    }
+
     override fun commit(): CommitResult {
+        BlockingCalls.check("commit")
         if (!active) return CommitResult(CommitStatus.ERROR, error = "no active session")
         active = false
         val audioMs = samplesPushed / 16L

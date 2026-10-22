@@ -55,12 +55,25 @@ data class Settings(
     val spokenCleanup: Boolean = true,
     /** On-device ASR engine; Parakeet is English-only (D4/D12). */
     val asrEngine: dev.flowclone.core.AsrEngine = dev.flowclone.core.AsrEngine.WHISPER,
+    /** D19: a hands-free (tap) dictation ends after this much trailing silence; 0 = only when tapped again. */
+    val endpointSilenceMs: Int = DEFAULT_ENDPOINT_SILENCE_MS,
 ) {
     companion object {
         /** Phones decode slower than the desktop default budget of 1.5 s. */
         const val ANDROID_LLM_TIMEOUT_MS = 3_000L
         const val PARTIAL_INTERVAL_MS = 1_500
+        const val DEFAULT_ENDPOINT_SILENCE_MS = 2_000
+        val ENDPOINT_RANGE_MS = 300..10_000
+
+        /** The Settings field: blank / 0 = off; anything else is clamped to [ENDPOINT_RANGE_MS]. */
+        fun parseEndpointMs(text: String): Int {
+            val v = text.trim().toIntOrNull() ?: return 0
+            return if (v <= 0) 0 else v.coerceIn(ENDPOINT_RANGE_MS)
+        }
     }
+
+    /** `SessionConfig.endpoint_silence_ms` for a hands-free session; null = off. */
+    fun handsFreeEndpointMs(): Int? = endpointSilenceMs.takeIf { it > 0 }?.coerceIn(ENDPOINT_RANGE_MS)
 
     /** The effective cleanup level: LLM off → NONE; on with NONE selected → LIGHT. */
     val effectiveCleanup: CleanupLevel

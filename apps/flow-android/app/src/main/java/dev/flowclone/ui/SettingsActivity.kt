@@ -31,6 +31,7 @@ class SettingsActivity : Activity() {
         lateinit var cleanup: Spinner
         lateinit var retention: Spinner
         lateinit var cap: EditText
+        lateinit var endpoint: EditText
         lateinit var mock: CheckBox
         lateinit var deny: EditText
         lateinit var llmOn: CheckBox
@@ -79,6 +80,9 @@ class SettingsActivity : Activity() {
             shrink = CheckBox(context).apply { text = "Shrink the bubble to a dot after 5 s"; isChecked = s.shrinkBubble }.also(::addView)
             shake = CheckBox(context).apply { text = "Shake the phone to bring a snoozed or hidden bubble back"; isChecked = s.shakeToReveal }.also(::addView)
             body("Drag the bubble onto the target at the bottom of the screen to snooze it for 10 minutes.")
+            heading("Hands-free: stop after silence (ms, 300–10000; 0 = only when you tap)")
+            body("Tap-to-talk ends by itself after this much silence and inserts the text. Hold-to-talk is not affected.")
+            endpoint = EditText(context).apply { inputType = InputType.TYPE_CLASS_NUMBER; setText(s.endpointSilenceMs.toString()) }.also(::addView)
             heading("Session limit (minutes, 1–20)")
             cap = EditText(context).apply { inputType = InputType.TYPE_CLASS_NUMBER; setText(s.capMinutes.toString()) }.also(::addView)
             heading("History retention")
@@ -101,6 +105,7 @@ class SettingsActivity : Activity() {
                     shrinkBubble = shrink.isChecked,
                     shakeToReveal = shake.isChecked,
                     capMinutes = cap.text.toString().toIntOrNull()?.coerceIn(1, 20) ?: 5,
+                    endpointSilenceMs = dev.flowclone.data.Settings.parseEndpointMs(endpoint.text.toString()),
                     retention = retentions[retention.selectedItemPosition].first,
                     userDenylist = deny.text.lines().map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
                     mockEngine = mock.isChecked,
@@ -108,7 +113,8 @@ class SettingsActivity : Activity() {
                     asrEngine = if (parakeet?.isChecked == true) dev.flowclone.core.AsrEngine.PARAKEET else dev.flowclone.core.AsrEngine.WHISPER,
                 )
                 app.settings.save(n)
-                if (n.retention != s.retention) app.history.purge(n.retention)
+                // Review P3: database work off the main thread (the engine reload is non-blocking since C1).
+                if (n.retention != s.retention) kotlin.concurrent.thread(name = "history-purge") { runCatching { app.history.purge(n.retention) } }
                 if (n.mockEngine != s.mockEngine || n.llmEnabled != s.llmEnabled || n.asrEngine != s.asrEngine) app.engine.reload()
                 if (n.llmEnabled && app.settings.llmModelPath == null) {
                     Toast.makeText(this@SettingsActivity, "AI cleanup needs a GGUF model: import one first.", Toast.LENGTH_LONG).show()

@@ -16,6 +16,7 @@ public class JniSmoke {
         long h = NativeFlowCore.nativeLoadModels(
             "{\"asr_backend\":{\"mock\":{\"text\":\"hello btw\"}},\"asr_path\":\"\",\"llm_path\":null,\"threads\":2}");
         check(h != 0, "load failed: " + NativeFlowCore.nativeLastError());
+        check(NativeFlowCore.nativeLastError() == null, "a successful load clears the previous load's error");
         boolean ok = NativeFlowCore.nativeStartSession(h,
             "{\"languages\":[\"en\"],\"dictionary\":[{\"word\":\"btw\",\"replacement\":\"by the way\",\"isSnippet\":false}],"
             + "\"styles\":{\"personal\":\"formal\",\"work\":\"formal\",\"email\":\"formal\",\"other\":\"formal\"},"

@@ -1,6 +1,9 @@
 package dev.flowclone
 
 import dev.flowclone.core.RouterErrors
+import dev.flowclone.core.BlockingCalls
+import dev.flowclone.insert.ClipboardGuard
+import dev.flowclone.service.AndroidClipPort
 import dev.flowclone.data.LastDictation
 import dev.flowclone.data.CloudKeyStore
 import dev.flowclone.data.RouterOpener
@@ -45,6 +48,11 @@ class FlowApp : Application() {
     lateinit var cloudKeys: CloudKeyStore; private set
     val caps: BuildCaps = BuildCaps.current()
 
+    /** S16: every transcript the app puts on the clipboard is removed again after a minute. */
+    val clipboard: ClipboardGuard by lazy {
+        ClipboardGuard(AndroidClipPort(this), CoroutineScope(SupervisorJob() + Dispatchers.Main))
+    }
+
     /** Latest keyboard/field decision from the accessibility service (null = no allowed field). */
     val fieldFocus = MutableStateFlow<BubbleVisibilityPolicy.Decision?>(null)
 
@@ -77,6 +85,9 @@ class FlowApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Review C2: a blocking native call on Main is a bug (ANR on the server route); say so loudly.
+        BlockingCalls.isMainThread = { android.os.Looper.myLooper() == android.os.Looper.getMainLooper() }
+        BlockingCalls.onViolation = { Log.e("FlowEngine", "blocking native call on the main thread: $it", Throwable("C2")) }
         settings = SettingsStore(this)
         dictionary = DictionaryStore(this)
         history = HistoryStore(this)
@@ -97,6 +108,8 @@ interface AccessibilityBridge {
     suspend fun sendKey(key: PasteKey): Boolean
     fun captureFieldContext(): FieldContext?
     fun onDictationActive(active: Boolean)
+    /** S12: may the transcript go into the field focused now (see [dev.flowclone.policy.InsertGuard])? */
+    fun insertTarget(explicit: Boolean): dev.flowclone.session.InsertTarget = dev.flowclone.session.InsertTarget.OK
 }
 
 /**
@@ -110,6 +123,11 @@ class EngineHolder(
     private val loader: FlowCoreLoader = NativeFlowCore,
     private val opener: RouterOpener = NativeFlowCore.routerOpener,
 ) {
+    companion object {
+        /** Longest a reload waits for the previous engine's running commit (20 s UI timeout + slack). */
+        const val UNLOAD_WAIT_MS = 30_000L
+    }
+
     sealed interface State {
         data object NotLoaded : State
         data object Loading : State
@@ -145,10 +163,20 @@ class EngineHolder(
         ensureLoaded()
     }
 
+    /** The engine [unload] let go of; [load] waits until its native memory is really freed. */
+    @Volatile private var unloading: NativeFlowCore? = null
+
+    /**
+     * Never blocks (review C1): a push/commit/poll still running keeps the native engine alive,
+     * and it is freed off Main when that call returns. The next [load] waits for the free, so
+     * two models are never resident at once.
+     */
     @Synchronized
     fun unload() {
         runCatching { persistCloudUsage() }
-        (_state.value as? State.Ready)?.core?.unload()
+        val core = (_state.value as? State.Ready)?.core
+        core?.unload()
+        (core as? NativeFlowCore)?.let { unloading = it }
         _state.value = State.NotLoaded
         loadedWithLocal = null
     }
@@ -188,7 +216,8 @@ class EngineHolder(
         if (!app.caps.cloud) return
         for (p in app.dev.load().cloud.providers) {
             val key = app.cloudKeys.get(p.id) ?: continue
-            runCatching { r.setCloudKey(p.id, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key ${p.id}: ${it.message}") }
+            // S4: bound to the saved provider's host + adapter.
+            runCatching { r.setCloudKeyFor(p.toJson().toString(), p.id, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key ${p.id}: ${it.message}") }
         }
         app.dev.cloudUsageJson?.let { r.setCloudUsage(it) }
     }
@@ -198,12 +227,19 @@ class EngineHolder(
         runCatching { router()?.setCloudKey(providerId, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key $providerId: ${it.message}") }
     }
 
+    /** Save on the provider page (S4): the key is bound to [p]'s host + adapter in the live router. */
+    fun setCloudKeyFor(p: dev.flowclone.data.CloudProvider, key: String?) {
+        runCatching { router()?.setCloudKeyFor(p.toJson().toString(), p.id, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key_for ${p.id}: ${it.message}") }
+    }
+
     /** Persist the router's cloud counters (after a cloud dictation, and on Reset counters). */
     fun persistCloudUsage() {
         router()?.cloudUsageJson()?.let { app.dev.cloudUsageJson = it }
     }
 
     private fun load(): State {
+        unloading?.let { if (!it.awaitFreed(UNLOAD_WAIT_MS)) Log.w("FlowEngine", "previous engine still busy after ${UNLOAD_WAIT_MS} ms; loading anyway") }
+        unloading = null
         val threads = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
         val s = app.settings.load()
         // Parakeet derives bpe.vocab for hotwords into TMPDIR (core-architecture "Android: Parakeet" 4).

@@ -68,7 +68,7 @@ case "$flavor" in
     else echo "$flavor: libflow_ffi.so lacks the cloud client (build-native.sh --flavor $flavor adds feature cloud)"; fail=1; fi ;;
 esac
 if [[ -n "${1:-}" ]]; then
-  za=$(ls -d "$HOME"/Android/Sdk/build-tools/* | sort -V | tail -1)/zipalign
+  za=$(ls -d "${ANDROID_HOME:-$HOME/Android/Sdk}"/build-tools/* | sort -V | tail -1)/zipalign
   if "$za" -c -P 16 -v 4 "$1" | grep -E 'lib/.*\.so' | grep -v '(OK' ; then echo "APK: .so not 16 KB aligned"; fail=1
   else echo "APK: lib/*.so entries 16 KB aligned (zipalign -P 16)"; fi
   unzip -lv "$1" | awk '/lib\/.*\.so/{print "  " $8, $1, "bytes", $2}'

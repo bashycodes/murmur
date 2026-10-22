@@ -1,0 +1,103 @@
+# Android shell (apps/flow-android): arm64 native libs for the three flavours
+# (tools/build-native.sh), JVM unit tests, debug APKs, and the native .so/APK
+# gates. No secrets, no release signing: the artifacts are debug-signed with
+# this runner's throwaway debug key, so they install fresh but cannot update
+# an APK built on another machine (INSTALL.md "Live test on phone").
+name: android-build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [android-final]
+    paths:
+      - "apps/flow-android/**"
+      - "crates/**"
+      - "Cargo.lock"
+      - ".github/workflows/android-build.yml"
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  NDK_VERSION: 27.2.12479018
+  SHERPA_VERSION: 1.13.8
+
+jobs:
+  apks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Rust toolchain + cargo-ndk
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add aarch64-linux-android
+          cargo install cargo-ndk --locked
+          rustc --version; cmake --version
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Android NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+          echo "sdk.dir=$ANDROID_HOME" > apps/flow-android/local.properties
+
+      # Parakeet runtime for local/hybrid (the same prebuilts INSTALL.md §1 names).
+      - name: sherpa-onnx Android prebuilt
+        run: |
+          dir="$RUNNER_TEMP/sherpa"
+          mkdir -p "$dir"
+          curl -fsSL -o "$dir/a.tar.bz2" \
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$SHERPA_VERSION/sherpa-onnx-v$SHERPA_VERSION-android.tar.bz2"
+          tar -xjf "$dir/a.tar.bz2" -C "$dir"
+          lib="$(dirname "$(find "$dir" -path '*arm64-v8a/libsherpa-onnx-c-api.so' | head -1)")"
+          ls -la "$lib"
+          echo "SHERPA_ANDROID_LIBS=$lib" >> "$GITHUB_ENV"
+
+      - name: Native libs (local, hybrid, remote)
+        working-directory: apps/flow-android
+        run: |
+          for f in local hybrid remote; do tools/build-native.sh --flavor "$f"; done
+
+      - name: Unit tests (3 flavours)
+        working-directory: apps/flow-android
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: APKs + native gates
+        working-directory: apps/flow-android
+        env:
+          GRADLE_FLAGS: --no-daemon
+        run: |
+          tools/dist.sh --debug-only
+          cat dist/sizes.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flow-clone-android-debug-apks
+          path: |
+            apps/flow-android/dist/*.apk
+            apps/flow-android/dist/SHA256SUMS
+            apps/flow-android/dist/sizes.txt
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: android-test-reports
+          path: apps/flow-android/app/build/reports/

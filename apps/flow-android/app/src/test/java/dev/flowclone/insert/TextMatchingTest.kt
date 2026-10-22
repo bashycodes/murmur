@@ -54,8 +54,10 @@ class TextMatchingTest {
         assertEquals("Message", TextMatching.readNodeText(NodeSnapshot(text = "Message"), "Other hint", known))
     }
 
-    @Test fun contentDescriptionPlaceholderOnlyWhenShort() {
-        assertEquals("", TextMatching.readNodeText(NodeSnapshot(text = "Comment", contentDescription = "comment"), null, emptySet()))
+    /** Review P3: text equal to the contentDescription is user text, never overwritten. */
+    @Test fun contentDescriptionNeverMakesTextAPlaceholder() {
+        assertEquals("Comment", TextMatching.readNodeText(NodeSnapshot(text = "Comment", contentDescription = "comment"), null, emptySet()))
+        assertEquals(TextMatching.Compose.RefusedNonEmpty, TextMatching.compose("hi", TextMatching.readNodeText(NodeSnapshot(text = "ok thanks", contentDescription = "ok thanks"), null, emptySet())))
         val long = "x".repeat(49)
         assertEquals(long, TextMatching.readNodeText(NodeSnapshot(text = long, contentDescription = long), null, emptySet()))
     }

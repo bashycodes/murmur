@@ -2,13 +2,9 @@ package dev.flowclone.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.InputMethod
-import android.content.ClipData
-import android.content.ClipDescription
-import android.content.ClipboardManager
 import android.content.Intent
 import android.graphics.Rect
 import android.os.Build
-import android.os.PersistableBundle
 import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -31,6 +27,7 @@ import dev.flowclone.insert.InsertionEnvironment
 import dev.flowclone.insert.V3Inserter
 import dev.flowclone.policy.BubbleVisibilityPolicy
 import dev.flowclone.policy.EditorInputType
+import dev.flowclone.policy.InsertGuard
 import dev.flowclone.policy.PolicyLists
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -236,6 +233,30 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         ok
     }
 
+    override fun insertTarget(explicit: Boolean): dev.flowclone.session.InsertTarget {
+        runCatching { evaluateCurrentState() }
+        val pkg = currentPackageName
+        val node = focusedNode()
+        val editor = inputMethod?.focusedEditor ?: FocusedEditor.EMPTY
+        // The keyboard may have closed during processing (the node tier still inserts): judge the field, not the IME.
+        val allowed = BubbleVisibilityPolicy.evaluate(
+            BubbleVisibilityPolicy.Input(
+                inputType = editor.inputType.takeIf { editor.packageName != null } ?: node?.inputType ?: 0,
+                imeOptions = editor.imeOptions,
+                packageName = if (pkg == packageName) null else pkg,
+                nodePassword = node?.isPassword, imeVisible = true,
+                notificationReplyContext = replyContext,
+                accessibilityDataSensitive = Build.VERSION.SDK_INT >= 34 && node?.isAccessibilityDataSensitive == true,
+            ),
+            app.settings.load().userDenylist,
+        ).show && pkg != packageName
+        val start = startSnapshot?.let { InsertGuard.Field(it.pkg, it.looseHash) }
+        val now = InsertGuard.Field(pkg ?: node?.packageName?.toString(), node?.let { FocusedNodeFinder.identityHash(it, false) })
+        val r = InsertGuard.check(start, now, allowed, explicit)
+        if (r != dev.flowclone.session.InsertTarget.OK) Log.i(TAG, "insert target $r (explicit=$explicit)")
+        return r
+    }
+
     override fun onDictationActive(active: Boolean) {
         scope.launch {
             if (active) keepAlive.arm(scope) else { keepAlive.disarm(); }
@@ -311,15 +332,11 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         override fun onStaleTick() = staleProbeSurface(anchorPkg()) && env.reacquireStaleSession()
     }
 
-    /** 07 §3.4: ClipData with EXTRA_IS_SENSITIVE so the system clip preview stays masked. */
+    /** 07 §3.4: ClipData with EXTRA_IS_SENSITIVE so the system clip preview stays masked; S16: removed after 60 s. */
     private inner class Clipboard : ClipboardPort {
         override fun copySensitive(text: String) {
-            val cm = getSystemService(ClipboardManager::class.java) ?: return
-            val clip = ClipData.newPlainText("Flow Clone", text).apply {
-                description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
-            }
-            cm.setPrimaryClip(clip)
-            Toast.makeText(this@FlowAccessibilityService, R.string.toast_copied, Toast.LENGTH_SHORT).show()
+            app.clipboard.copy(text)
+            Toast.makeText(this@FlowAccessibilityService, R.string.toast_copied_for_a_minute, Toast.LENGTH_SHORT).show()
         }
     }
 

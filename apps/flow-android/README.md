@@ -19,6 +19,7 @@ tools/unit.sh                                  # same tests, compact summary
 tools/probes/jni_stub/run.sh                   # link-test NativeFlowCore against a host C stub of the JNI contract
 tools/build-native.sh --flavor local|hybrid|remote   # arm64 native libs into app/src/<flavour>/jniLibs/ (see INSTALL.md)
 tools/probes/check_native_so.sh --flavor F [apk]  # contract symbols, 16 KB alignment, NEEDED libs, plugin exports, flavour rules (+ APK zipalign -P 16)
+tools/dist.sh [--debug-only]                   # clean debug (+ release) APKs of all flavours into dist/ + SHA256SUMS, native gates
 tools/probes/host_native/run.sh [model.bin]    # real host flow-ffi under the real NativeFlowCore: whisper on jfk.wav, + LLM cleanup if a GGUF is in models/
 tools/probes/host_cloud/run.sh                 # D18: real host flow-ffi (jni,cloud) under the shipped Kotlin cloud path vs a JVM mock provider
 ```

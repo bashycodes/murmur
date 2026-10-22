@@ -41,10 +41,30 @@ class PreviewLogicTest {
     }
 
     @Test fun engineBadgePrefixesTheLineWhileRecording() {
-        val rec = DictationState.Recording(false, 0)
         assertEquals("[S] hello", PreviewContent.line(rec, "hello", null, true, "S")!!.text)
         assertEquals("[L•]", PreviewContent.line(rec, null, null, true, "L•")!!.text)
         assertEquals(null, PreviewContent.line(DictationState.Ready, null, null, true, "S"))
         assertEquals("hello", PreviewContent.line(rec, "hello", null, true, null)!!.text)
+    }
+
+    @Test fun liveRouteLabels() {
+        assertEquals("via phone", RouteLabel.of(dev.flowclone.core.SessionRoute("local")))
+        assertEquals("via server", RouteLabel.of(dev.flowclone.core.SessionRoute("remote", server = "100.64.0.10:7313")))
+        assertEquals(
+            "via OpenRouter (openai/gpt-transcribe)",
+            RouteLabel.of(dev.flowclone.core.SessionRoute("cloud", provider = "openrouter-1", model = "openai/gpt-transcribe")) { if (it == "openrouter-1") "OpenRouter" else null },
+        )
+        assertEquals("via phone · server unreachable", RouteLabel.of(dev.flowclone.core.SessionRoute("local", fallback = "disconnected")))
+        assertEquals(null, RouteLabel.of(null))
+    }
+
+    @Test fun routeLabelLeadsTheLineWhileRecordingAndProcessing() {
+        assertEquals(PreviewContent.Line("via server", dim = true), PreviewContent.line(rec, null, null, true, badge = "S", route = "via server"))
+        assertEquals(PreviewContent.Line("via server · ask not", dim = false), PreviewContent.line(rec, "ask not", null, true, route = "via server"))
+        assertEquals(
+            PreviewContent.Line("via phone · ask not", dim = true),
+            PreviewContent.line(DictationState.Processing(false, 0), "ask not", null, true, route = "via phone"),
+        )
+        assertEquals("idle: no route", null, PreviewContent.line(DictationState.Ready, null, null, true, route = "via phone"))
     }
 }

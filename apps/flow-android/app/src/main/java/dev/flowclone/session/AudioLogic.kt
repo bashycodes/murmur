@@ -84,3 +84,36 @@ class SilenceTracker {
         leadingSilenceMs = leadingSamples * 1000 / SAMPLE_RATE
     }
 }
+
+/**
+ * Review C2: the session start runs off Main and can block (server route: TCP + TLS + hello).
+ * The mic starts at once; frames captured meanwhile are held here and replayed in order when
+ * the session is up, so the first words are not lost. Thread-safe (AudioRecord thread + start).
+ */
+class StartGate(private val maxHeldSamples: Int = SAMPLE_RATE * 30) {
+    private val lock = Any()
+    private var sink: ((ShortArray, Int) -> Unit)? = null
+    private val held = ArrayDeque<ShortArray>()
+    private var heldSamples = 0
+
+    /** Frames that did not fit while waiting (more than [maxHeldSamples]). */
+    var droppedSamples = 0; private set
+
+    val isOpen: Boolean get() = synchronized(lock) { sink != null }
+
+    fun push(pcm: ShortArray, length: Int) = synchronized(lock) {
+        val s = sink
+        when {
+            s != null -> s(pcm, length)
+            heldSamples + length > maxHeldSamples -> droppedSamples += length
+            else -> { held.addLast(pcm.copyOf(length)); heldSamples += length }
+        }
+    }
+
+    /** Replay the held frames into [to], then pass every later frame straight through. */
+    fun open(to: (ShortArray, Int) -> Unit) = synchronized(lock) {
+        while (held.isNotEmpty()) held.removeFirst().let { to(it, it.size) }
+        heldSamples = 0
+        sink = to
+    }
+}
