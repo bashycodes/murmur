@@ -947,3 +947,88 @@ fn set_cloud_key_for_binds_to_the_given_provider() {
     k.router.start_session(SessionConfig::default()).unwrap();
     assert_eq!(route(&dictate(&k.router)).engine, "cloud");
 }
+
+// ---- S5: toggles, consent and keys are re-checked at every hop -----------------
+
+/// Server primary that dies after 0.5 s, with cloud then local as fallbacks;
+/// `change` runs mid-session, before the death.
+fn server_dies_after(change: impl Fn(&Rig)) -> (Rig, CommitResult) {
+    let k = rig(cloud_cfg(&[Route::Server, Route::Cloud, Route::Client]));
+    *k.remote.die_after.lock().unwrap() = Some(8000);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert!(k.router.push_audio(&[100i16; 4000]));
+    change(&k);
+    let r = dictate(&k.router);
+    (k, r)
+}
+
+fn assert_went_local(k: &Rig, r: &CommitResult) {
+    assert_eq!(route(r).engine, "local", "{r:?}");
+    assert_eq!(r.final_text, "local 20000", "full replay into local");
+    assert_eq!(k.cloud.starts(), 0, "buffered audio replayed to the cloud");
+}
+
+#[test]
+fn allow_cloud_off_mid_session_skips_the_cloud_hop() {
+    let (k, r) = server_dies_after(|k| {
+        let mut c = cloud_cfg(&[Route::Server, Route::Cloud, Route::Client]);
+        c.allow_cloud = false;
+        k.router.update_config(c);
+    });
+    assert_went_local(&k, &r);
+}
+
+#[test]
+fn cloud_removed_from_order_mid_session_skips_the_cloud_hop() {
+    let (k, r) = server_dies_after(|k| {
+        k.router
+            .update_config(cloud_cfg(&[Route::Server, Route::Client]));
+    });
+    assert_went_local(&k, &r);
+}
+
+#[test]
+fn key_deleted_mid_session_skips_the_cloud_hop() {
+    let (k, r) = server_dies_after(|k| k.router.set_cloud_key("or-1", None));
+    assert_went_local(&k, &r);
+}
+
+#[test]
+fn consent_revoked_mid_session_skips_the_cloud_hop() {
+    let (k, r) = server_dies_after(|k| {
+        let mut c = cloud_cfg(&[Route::Server, Route::Cloud, Route::Client]);
+        c.cloud.providers[0].consent_at_ms = 0;
+        k.router.update_config(c);
+    });
+    assert_went_local(&k, &r);
+}
+
+#[test]
+fn allow_server_off_mid_session_skips_the_server_hop() {
+    let k = rig(cloud_cfg(&[Route::Cloud, Route::Server, Route::Client]));
+    *k.cloud.die_after.lock().unwrap() = Some(8000);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert!(k.router.push_audio(&[100i16; 4000]));
+    let mut c = cloud_cfg(&[Route::Cloud, Route::Server, Route::Client]);
+    c.allow_server = false;
+    k.router.update_config(c);
+    let r = dictate(&k.router);
+    assert_eq!(route(&r).engine, "local");
+    assert_eq!(k.remote.starts(), 0);
+}
+
+#[test]
+fn turning_cloud_off_mid_session_stops_the_cloud_engine_now() {
+    let k = rig(cloud_cfg(&[Route::Cloud, Route::Client]));
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert!(k.router.push_audio(&[100i16; 4000]));
+    let mut c = cloud_cfg(&[Route::Cloud, Route::Client]);
+    c.allow_cloud = false;
+    k.router.update_config(c);
+    let live = k.router.poll().route.expect("still live");
+    assert_eq!(live.engine, EngineKind::Local, "pill switches right away");
+    let r = dictate(&k.router);
+    assert_eq!(route(&r).engine, "local");
+    assert_eq!(r.final_text, "local 20000", "nothing lost");
+    assert_eq!(k.cloud.commits.load(Ordering::SeqCst), 0, "no upload");
+}
