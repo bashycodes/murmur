@@ -199,6 +199,24 @@ pub fn json(resp: Response) -> Result<serde_json::Value, CloudError> {
 /// `Retry-After` ≤ 2 s, or for a 502/503/504, if the deadline allows.
 pub fn with_retry<T>(
     deadline: Instant,
+    f: impl FnMut() -> Result<T, CloudError>,
+) -> Result<T, CloudError> {
+    retry(deadline, true, f)
+}
+
+/// [`with_retry`] for a request that is not safe to repeat blindly (it
+/// stores audio or starts a billed job): a 504 may mean the first attempt
+/// went through, so only a 429 and a 502/503 are retried (review S19).
+pub fn with_retry_non_idempotent<T>(
+    deadline: Instant,
+    f: impl FnMut() -> Result<T, CloudError>,
+) -> Result<T, CloudError> {
+    retry(deadline, false, f)
+}
+
+fn retry<T>(
+    deadline: Instant,
+    retry_504: bool,
     mut f: impl FnMut() -> Result<T, CloudError>,
 ) -> Result<T, CloudError> {
     match f() {
@@ -210,8 +228,9 @@ pub fn with_retry<T>(
             std::thread::sleep(Duration::from_millis(ms));
             f()
         }
-        Err(CloudError::Server(502..=504))
-            if Instant::now() + Duration::from_millis(1000) < deadline =>
+        Err(CloudError::Server(s @ 502..=504))
+            if (s != 504 || retry_504)
+                && Instant::now() + Duration::from_millis(1000) < deadline =>
         {
             std::thread::sleep(Duration::from_millis(200));
             f()
