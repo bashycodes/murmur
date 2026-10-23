@@ -1,0 +1,41 @@
+{
+ "about": "clips 5-10 of the extended set, for a ~60 s concatenation",
+ "utterances": [
+  {
+   "source": "librispeech-test-clean",
+   "id": "7729-102255-0045",
+   "dur_s": 6.8,
+   "ref": "CAPTAIN MARTIN SAID I SHALL GIVE YOU A PISTOL TO HELP PROTECT YOURSELF IF WORSE COMES TO WORST"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "2094-142345-0059",
+   "dur_s": 10.01,
+   "ref": "THIS MISSUS POYSER SAID BLUSHING AND BELIEVING THAT THE CAPTAIN WAS REALLY INTERESTED IN HER MILK PANS AND WOULD ADJUST HIS OPINION OF HER TO THE APPEARANCE OF HER DAIRY"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "3575-170457-0023",
+   "dur_s": 9.1,
+   "ref": "I CAREFULLY AVOID ANY APPEARANCE OF PREOCCUPATION AND ECCENTRICITY WHICH MIGHT LEAD THOSE I LIVE AMONGST TO SUSPECT THE NATURE OF MY PURSUITS"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "7127-75947-0040",
+   "dur_s": 13.79,
+   "ref": "IN THIS WAY THE FETE OF THE WHOLE COURT WAS A FETE ALSO FOR THE MYSTERIOUS INHABITANTS OF THE FOREST FOR CERTAINLY THE DEER IN THE BRAKE THE PHEASANT ON THE BRANCH THE FOX IN ITS HOLE WERE ALL LISTENING"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "2961-960-0012",
+   "dur_s": 6.89,
+   "ref": "MANY IF NOT ALL THE ELEMENTS OF THE PRE SOCRATIC PHILOSOPHY ARE INCLUDED IN THE TIMAEUS"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "8463-287645-0003",
+   "dur_s": 7.91,
+   "ref": "OF THIS PARTY EDWARD A BOY OF SEVENTEEN CALLED FORTH MUCH SYMPATHY HE TOO WAS CLAIMED BY HOLLAN"
+  }
+ ]
+}
