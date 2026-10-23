@@ -78,6 +78,16 @@ impl SilentServer {
         Self { port, got, _rt: rt }
     }
 
+    fn count(&self, kind: &str) -> usize {
+        let tag = format!("\"t\":\"{kind}\"");
+        self.got
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|m| m.contains(&tag))
+            .count()
+    }
+
     fn got(&self, kind: &str) -> bool {
         let tag = format!("\"t\":\"{kind}\"");
         self.got.lock().unwrap().iter().any(|m| m.contains(&tag))
@@ -89,8 +99,8 @@ fn server_cfg(host: &str, port: u16) -> ServerConfig {
         host: host.into(),
         port,
         token: "client-test-token-0123456789".into(),
-        // The harness's handshake deadline, not the product default (800 ms):
-        // a loaded box running the workspace tests in parallel misses 800 ms
+        // The harness's handshake deadline, not the product default (2500 ms):
+        // a loaded box running the workspace tests in parallel misses short ones
         // on a loopback handshake. These tests are about cancel and the
         // address rule, not connect latency.
         connect_timeout_ms: 10_000,
@@ -149,4 +159,28 @@ fn cleartext_to_a_name_is_decided_by_its_resolved_addresses() {
         "{}",
         e.message
     );
+}
+
+#[test]
+fn warm_opens_the_connection_the_next_session_reuses() {
+    let srv = SilentServer::start();
+    let b = RemoteBackend::new(server_cfg("127.0.0.1", srv.port), "test");
+    b.warm().expect("warm connects");
+    b.warm().expect("second warm reuses");
+    b.start_session(&SessionConfig::default()).unwrap();
+    let t0 = Instant::now();
+    while !srv.got("start") && t0.elapsed() < Duration::from_secs(2) {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(
+        srv.count("hello"),
+        1,
+        "one handshake for warm + warm + start"
+    );
+    b.cancel();
+    // Unreachable server: warm fails with connect_failed within the timeout.
+    let mut c = server_cfg("127.0.0.1", 9);
+    c.connect_timeout_ms = 300;
+    let e = RemoteBackend::new(c, "test").warm().unwrap_err();
+    assert_eq!(e.kind, Failure::ConnectFailed);
 }

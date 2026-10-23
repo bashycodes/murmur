@@ -459,6 +459,42 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeResetCircuit
     }
 }
 
+// ---- D24 never-fail fallback (JNI_CONTRACT.md "On-demand local engine") --
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetLocalLoader(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    configs: JString,
+) -> jboolean {
+    guard(JNI_FALSE, || {
+        let Some(h) = handle(h) else {
+            set_error("null handle");
+            return JNI_FALSE;
+        };
+        let Some(j) = jstr(&mut env, &configs, "bad_config: model configs") else {
+            return JNI_FALSE;
+        };
+        jbool(
+            json_api::set_local_loader(h, &j)
+                .map_err(|(kind, e)| set_error_kind(kind, e))
+                .is_ok(),
+        )
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativePrewarm(
+    _env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+) -> jboolean {
+    guard(JNI_FALSE, || {
+        jbool(handle(h).is_some_and(json_api::prewarm))
+    })
+}
+
 // ---- D18 cloud STT (JNI_CONTRACT.md "Cloud") -----------------------------
 // Keys arrive only through nativeSetCloudKey / nativeProbeCloud and are moved
 // into the router's SecretString; nothing here logs or returns them.

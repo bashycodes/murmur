@@ -21,7 +21,32 @@ pub use cloud::{
 pub use flow_core::config::{FieldContext, SessionConfig};
 pub use flow_core::learn::Candidate;
 pub use flow_core::{CommitResult, CommitStatus, RouteInfo, SessionPoll};
+pub use local::LocalLoader;
 pub use router::Router;
+
+/// Default `ServerConfig::connect_timeout_ms` (D24). Was 800 ms, too tight
+/// for a phone reaching the server through a Tailscale DERP relay (TCP +
+/// WS upgrade + hello = 3+ round trips at 150-300 ms each).
+pub const DEFAULT_CONNECT_TIMEOUT_MS: u64 = 2500;
+/// The pre-D24 default; shells migrate a stored value equal to it.
+pub const LEGACY_CONNECT_TIMEOUT_MS: u64 = 800;
+/// Adaptive connect timeout: `max(configured, clamp(rtt_median × K, MIN, MAX))`
+/// once a probe has measured the round trip (D24).
+pub const ADAPTIVE_RTT_FACTOR: u64 = 6;
+pub const ADAPTIVE_MIN_MS: u64 = 1500;
+pub const ADAPTIVE_MAX_MS: u64 = 10_000;
+
+/// The connect timeout the router gives the remote backend: the configured
+/// one, raised to `rtt_median × 6` (1.5-10 s) when the last probe measured a
+/// slow path. Never lowers the configured value. Additive (D24).
+pub fn effective_connect_timeout_ms(configured: u64, rtt_median_ms: Option<u32>) -> u64 {
+    match rtt_median_ms {
+        Some(m) => {
+            configured.max((m as u64 * ADAPTIVE_RTT_FACTOR).clamp(ADAPTIVE_MIN_MS, ADAPTIVE_MAX_MS))
+        }
+        None => configured,
+    }
+}
 
 /// Which engine ran (or would run) a session. Non-exhaustive: match with a
 /// `_` arm. `Cloud` = opt-in third-party STT (D18; `RouteInfo::provider`
@@ -126,7 +151,7 @@ impl Default for ServerConfig {
             tls: false,
             tls_pin_sha256: None,
             token: String::new(),
-            connect_timeout_ms: 800,
+            connect_timeout_ms: DEFAULT_CONNECT_TIMEOUT_MS,
             commit_timeout_base_ms: 3000,
             health_ttl_s: 30,
         }
@@ -358,6 +383,31 @@ pub struct StartInfo {
     /// from JSON while `None`. Added 2026-10-22 (additive).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub route: Option<SessionRoute>,
+    /// The session fell back to the on-device engine, which is being loaded
+    /// now (D24): show "Loading phone model…". Audio is buffered meanwhile.
+    /// Omitted while false. Additive.
+    #[serde(skip_serializing_if = "is_false")]
+    pub loading: bool,
+}
+
+/// How the last session was routed, for the debug log (D21/D24). JSON:
+/// every field omitted while unset/false. Additive.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RouteDiag {
+    /// Wall time `start_session` spent trying the server (connect + hello
+    /// + start); `None` when the server was not tried (off, circuit open).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connect_ms: Option<u32>,
+    /// The on-device engine was loaded on demand for this session.
+    #[serde(skip_serializing_if = "is_false")]
+    pub local_cold: bool,
+    /// How long that load took.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_load_ms: Option<u32>,
+    /// Why that load failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_load_error: Option<String>,
 }
 
 /// The route a live session is using right now: what a shell shows as
@@ -422,6 +472,10 @@ pub struct RouterPoll {
     /// an ERROR).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub route: Option<SessionRoute>,
+    /// The on-device engine is being loaded for this session (D24).
+    /// Omitted while false. Additive.
+    #[serde(skip_serializing_if = "is_false")]
+    pub loading: bool,
 }
 
 impl std::ops::Deref for RouterPoll {
@@ -525,6 +579,9 @@ pub struct RouteStatus {
     /// provider config changes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cloud_circuit: Option<CircuitStatus>,
+    /// Routing details of the last committed session (D24). Additive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_diag: Option<RouteDiag>,
 }
 
 /// Errors from `Router::start_session` (stable snake_case kinds).
@@ -575,6 +632,12 @@ pub trait Backend: Send + Sync {
     /// by the router on every push. Added to §1.2 (additive, default `None`).
     fn session_failure(&self) -> Option<BackendError> {
         None
+    }
+    /// Open (or keep) a warm connection without a session, so the next
+    /// `start_session` skips the handshake (remote; D24 pre-warm). Blocking;
+    /// the router calls it on a helper thread. Default: nothing to warm.
+    fn warm(&self) -> Result<(), BackendError> {
+        Ok(())
     }
 }
 
