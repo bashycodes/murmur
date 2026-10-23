@@ -135,6 +135,7 @@ class ModelImportActivity : Activity() {
             runOnUiThread {
                 busy = false
                 result.onSuccess { activate(dest) }.onFailure {
+                    app.debugLog.event("model_import", "whisper: ${it.message}", it)
                     tmp.delete()
                     render("Import failed: ${it.message}")
                 }
@@ -223,7 +224,7 @@ class ModelImportActivity : Activity() {
             }
             runOnUiThread {
                 busy = false
-                result.onSuccess { activateParakeet(dest) }.onFailure { tmp.deleteRecursively(); render("Import failed: ${it.message}") }
+                result.onSuccess { activateParakeet(dest) }.onFailure { app.debugLog.event("model_import", "parakeet: ${it.message}", it); tmp.deleteRecursively(); render("Import failed: ${it.message}") }
             }
         }
     }
