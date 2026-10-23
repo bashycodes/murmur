@@ -89,6 +89,11 @@ fn server_cfg(host: &str, port: u16) -> ServerConfig {
         host: host.into(),
         port,
         token: "client-test-token-0123456789".into(),
+        // The harness's handshake deadline, not the product default (800 ms):
+        // a loaded box running the workspace tests in parallel misses 800 ms
+        // on a loopback handshake. These tests are about cancel and the
+        // address rule, not connect latency.
+        connect_timeout_ms: 10_000,
         ..Default::default()
     }
 }
