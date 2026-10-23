@@ -1,6 +1,9 @@
 # Proposal: release→text that does not grow with dictation length (D22 candidate)
 
-Status: research + design, 2026-10-23. Nothing implemented. Probe:
+Status: **implemented** on branch `feat/streaming-asr` (2026-10-23): Phase 0,
+Phase 1 and Phase 2 in the crates; shells (Phase 3) work from
+`docs/proposals/streaming-asr-shell-api.md`. Measured before/after: §8.
+Differences from the design below are listed in §9. Originally: research + design, 2026-10-23. Probe:
 `tools/probes/prototypes/segmented_asr_2026_10_23.py` (dated). Raw rows:
 `~/Claude/research/wispr/.cache/segmented-2026-10-23/20261023-152738/rows.jsonl`
 (A+B+C) and `.../20261023-155524/rows.jsonl` (A+C rerun; `20261023-152113` is a void first run that overflowed the CLI's ring).
@@ -317,6 +320,17 @@ tests in §5.
   the field, `prefs.rs` default 800 / endpoint 1500, overlay unchanged.
   Tests in `core_adapter.rs`.
 
+**Phase 4 (later; not built): a streaming engine.** The STT survey
+(`docs/proposals/stt-model-survey.md`) measured Nemotron-speech-streaming-en
+0.6b (sherpa-onnx `OnlineRecognizer`, 560 ms chunks) at 150-330 ms
+release→text for any length, with WER 2.2% (Parakeet v2: 1.15%). It would
+slot in as an engine that is fed from `push_audio` while the user speaks.
+Such an engine returns `false` from `AsrEngine::segmentable()`, so the D22
+cuts never apply to it. It needs a new trait method (or a sibling trait)
+for incremental accept/finish; the session config, protocol and shells
+stay as they are. Its cost is a continuous ~40% of 4 threads while
+speaking.
+
 ## 5. Tests
 
 Core (S):
@@ -365,6 +379,69 @@ needs a pause right before a very short final phrase, and is still
 better than today's typical case. These are forecasts until a device run
 records `segments` / `pre_asr_ms` / `wait_ms`.
 
-## 7. Proposed DECISIONS row (not applied)
+## 7. DECISIONS row (applied as D22 in docs/DECISIONS.md)
 
 | D22 | Release→text latency for long dictations (2026-10-23) | Opt-in `SessionConfig.segment_pause_ms` (recommended 800; `segment_min_ms` 4000, `segment_soft_max_ms` 20000). The core's worker cuts the buffer at pauses with a streaming D16 VAD (cuts a pure function of the audio), decodes each closed segment while the user keeps talking (priority over partials, which shrink to the open segment), and at commit decodes only the tail, joins, then runs guard / spoken cleanup / LLM / post-processing on the joined text. whisper gets the previous segment's last words as prompt; engines that must not pre-upload (cloud, D18) opt out. Runs inside FlowCore, so flow-server, router fallback replay and the equivalence suite need no protocol change. Hands-free endpoint default 2000 → 1500 ms. Phase 0 also caps the partial window at 12 s and adds a Parakeet empty-on-speech fallback | Field (S25+): `total − asr` up to 0.9 s is the commit queued behind an unabortable live-preview decode (whisper encoder, any sherpa decode); ASR is linear-to-superlinear in length (3.5-3.8 s at 24-28 s). Probe `tools/probes/prototypes/segmented_asr_2026_10_23.py`: on 8 clips of 19-62 s, pause-segmented WER equals the whole clip (Parakeet 1.38%, whisper base 4.05% at P = 800 ms), and Parakeet beam search returns EMPTY on a 41.7 s clip that segmenting fixes. Forecast: release→text ≈ 0.4-0.9 s at any length, hands-free ≈ endpoint + 50 ms |
+
+## 8. Measured on this box (2026-10-23, after implementation)
+
+`tools/probes/prototypes/streaming_latency_2026_10_23.sh`: the
+`hybrid_latency` example pushes each clip in 100 ms frames at real-time
+pace, with the Android shell's preview setting (`partial_interval_ms`
+1500), then times `commit` (release → text). It runs both in-process
+(local Parakeet v2 int8, 4 threads) and through Router → flow-remote → a
+test flow-server on 127.0.0.1 (one worker, same model). Clips are the
+probe's LibriSpeech joins (700 ms gaps). "before" = base commit `0d61885`;
+"P0" = this branch without segmentation; "D22" = this branch with
+`segment_pause_ms: 800`. Raw TSVs and server logs:
+`~/Claude/research/wispr/.cache/streaming-latency-2026-10-23/20261023-173931/`.
+The box was shared with other agents (load varied during the run), so read the ratios.
+
+| audio | before local / server | P0 local / server | **D22 local / server** | D22 server log: pieces, wait, tail asr, pre-asr |
+|---|---|---|---|---|
+| 24.4 s | 2755 / 3042 ms | 2464 / 2400 | **1736 / 1642** | 2, 427 ms, 1206 ms, 448 ms |
+| 29.9 s | 5245 / 5101 | 2938 / 2458 | **1300 / 1154** | 3, 0, 1149, 1082 |
+| 33.9 s | 3989 / 3987 | 3420 / 3306 | **893 / 838** | 4, 75, 758, 1885 |
+| 41.7 s | 4685 / 4636, **text EMPTY** | 3211 / 3376 | **687 / 1482** | 4, 700, 775, 2526 |
+| 44.5 s | 5632 / 5868 | 3461 / 3434 | **1398 / 1370** | 5, 284, 1076, 2327 |
+| 62.0 s | 7567 / 7769, lowercase, no punctuation | 5279 / 5190 | **609 / 521** | 8, 0, 518, 4505 |
+| mean | 4978 / 5067 | 3462 / 3360 | **1103 / 1167** | |
+
+* The text is the same local and remote in every row (`same_text` true).
+  Before, the 41.7 s clip came back EMPTY on both routes (beam search), and
+  the 62 s one lost its casing and punctuation. P0 and D22 fix both.
+* With D22, release→text no longer grows with length. What remains is the
+  **tail**: the speech after the last pause of ≥ 800 ms, plus at most one
+  piece in flight (`wait_ms` ≤ 700 ms here). These LibriSpeech joins have a
+  pause only every 6-17 s, so the tail is one whole utterance. Real
+  dictation pauses more often. The 24.4 s clip's last utterance is 17 s
+  long, so it gains least.
+* P0 alone (12 s preview window, no preview re-decode in silence, Parakeet
+  pieces past 20 s) takes 30% off before any segmentation.
+* `route.client_ms` is the "remote" number above. The server's own
+  `total_ms` (log) is 0-70 ms lower: loopback network plus the client side.
+* WER, `tests/segment_bench.rs` (same clips, 743 words, our normaliser):
+  Parakeet whole 2.02% → segmented 1.48%; whisper base q5_1 5.92% → 5.38%.
+  The gate (segmented ≤ whole + 0.3 pt) passes for both engines.
+
+## 9. Implementation notes (differences from §3-§4)
+
+* `segment_min_ms` / `segment_soft_max_ms` are `Option<u32>` (`None` = 4000
+  / 20000), so a config without them serialises exactly as before.
+* Parakeet, independent of D22 (the survey's root cause): decodes without
+  hotwords run greedy; an empty or < 0.5 words/s beam result is retried
+  greedy; and clips over 20 s are always decoded in ≤ 20 s pieces at their
+  longest pauses, because one-shot greedy also dropped whole sentences (the
+  17 s third utterance of a 30 s clip). This roughly doubles Parakeet RSS
+  (two recognizers). `ModelConfig.parakeet_decoding = "greedy"` keeps one.
+* A segment decoded while recording is reused at commit only if its
+  request (prompt, prior text, language, terms) still matches. A late
+  `set_context` that changes the prompt makes commit re-decode that piece,
+  so the result never depends on when the context arrived.
+* The "lowercase the next segment" join rule (§3.4) is not implemented:
+  whisper gets `prior_text`, and Parakeet's pieces end at real pauses. A
+  spoken command split by a pause ("new. Line") is covered by a
+  spoken-cleanup test.
+* No reuse of an in-flight preview as the tail: a commit still waits for
+  one decode (`wait_ms`), bounded by the 12 s preview window or one piece.
+
