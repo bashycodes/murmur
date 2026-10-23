@@ -491,3 +491,42 @@ decoded at commit on a loaded box. Still flat in length.
   duplicated "the man who told"). Cost: one extra decode of ≤ 8 s per
   cut, almost always while recording.
 
+* **Join polish (fix, 2026-10-23, after the cliptest on Parakeet-unified
+  int8 + whisper base, D24).** Four defects at 800 ms: a lower-case
+  sentence start after a cut ("capacity. the Englishman", both engines:
+  the bridge started at "Capacity," and its edge word "the" was copied;
+  "figures. that is": the splice was refused because the bridge said
+  "ill-drawn"), a sentence end lost at a cut ("tender flowers the pain":
+  the 4 s left side of the bridge was too short for Parakeet-unified to
+  hear the sentence end; 6 s and 8 s hear it), and no closing period
+  (Parakeet-unified often ends even whole clips open). Fixes: the 2
+  words at each bridge edge keep the pieces' case and punctuation; every
+  join (and every spliced span) capitalises the word after `.`/`?`/`!`;
+  the bridge covers 6 s before the cut (4 s after, so it is still
+  decoded 4 s after the cut while recording); the engine closes an open
+  dictation of ≥ 4 words before the client post-processing (`postprocess::terminal`). The
+  trailing space in `final_text` is the cursor-context rule and stays.
+  Bridge left side, `segment_bench::segmented_punctuation_matches_whole_clip`
+  (punctuated-token error vs the whole clip, `bridge` mode; Parakeet-unified
+  int8, so the absolute numbers differ from the table above):
+
+  | engine | set | left 4 s | **6 s** | 8 s |
+  |---|---|---|---|---|
+  | Parakeet-unified | utterances 300 ms / 2 s | 5.26% | **4.81%** | 4.81% |
+  | Parakeet-unified | 8 long clips @ 800 ms | 3.49% | **2.42%** | 3.09% |
+  | whisper base | utterances | 9.40% | 13.23% | 13.23% |
+  | whisper base | 8 long clips | 4.51% | **4.37%** | 4.92% |
+
+  whisper's `plain` (no bridge) baseline on the utterances also moved
+  14.04% → 17.40% between the 4 s and 6 s runs, so that row is run-to-run
+  noise under load (bridge vs plain: −4.6 and −4.2 points). Cliptest
+  (12 clips, 513 words, `tools/probes/prototypes/seg_join_2026_10_23/`),
+  before → after: Parakeet seg WER 1.56 → 1.36% (whole 1.75%),
+  seg-vs-whole punctuation agreement 97.7 → 99.0%, lower-case after a
+  sentence end 2 → 0, open endings seg/whole 8/6 → 0/0 of 12; whisper
+  WER 2.34% (unchanged), agreement 97.4 → 98.0%, lower-case 1 → 0, open
+  endings 0/1 → 0/0 (paced run, same text as an unpaced one). Cost: each
+  bridge decodes up to 2 s more audio while recording; release→text was
+  not re-measured (load average 13-46 during the run, vs 4-11 for the
+  original cliptest). Regression test:
+  `parakeet_e2e::parakeet_segmented_joins_keep_sentence_case_and_close`.

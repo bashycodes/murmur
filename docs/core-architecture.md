@@ -179,7 +179,7 @@ Not yet verified: loading on bionic (first device run), and whether whisper's li
   | Qwen2.5-1.5B-Instruct | 8/8 | 1.1-1.8 s at load 6, 2.6-5.3 s at load 12 | 23-38 s |
 
   Decode runs at 15-35 tok/s for 0.5B and 7-13 tok/s for 1.5B on this contended box. The first call after an app or style switch also prefills the user-message prefix (~100 tokens, +0.3-0.8 s).
-3. **Deterministic post-processing** (`postprocess`). The dictionary matcher (look-around regex) is compiled once per distinct dictionary and shared by later sessions, instead of twice per commit (`FlowCore::dict_matcher_builds`, `postprocess::process_with`/`apply_with`). This is the client fallback path. The clone has no server, so it always runs the steps, in this order:
+3. **Deterministic post-processing** (`postprocess`). The dictionary matcher (look-around regex) is compiled once per distinct dictionary and shared by later sessions, instead of twice per commit (`FlowCore::dict_matcher_builds`, `postprocess::process_with`/`apply_with`). This is the client fallback path. The clone has no server, so it always runs the steps (before them, outside the port, the engine closes an open dictation of ≥ 4 words with a period, as Wispr's server formatting would: `postprocess::terminal`, D24), in this order:
    1. all-lowercase mode;
    2. dictionary regex. Uses `fancy-regex` look-around, JS first-alternative order, longest key first, Unicode boundaries and the `'t` guard. Personal entries override team entries;
    3. cursor context: mid-sentence lowercasing, leading and trailing spaces, stripping `.!?` before a continuation, CJK handling, the selection path, the style-dependent trailing-period drop, and the Notion and Flow-app skips;
@@ -188,6 +188,8 @@ Not yet verified: loading on bionic (first device run), and whether whisper's li
    6. email signature (off unless `email_signature` is set);
    7. "press enter" (sets `press_enter`; the shell sends the key);
    8. Cursor/Windsurf `@file` tagging. Emits `{{BREAK}}`/`{{TAB}}` markers for the paste layer.
+
+   **The trailing space is intended.** the cursor-context step appends one space when nothing follows the cursor, or when a letter, a digit, or a closing mark plus a space follows it (and the text does not end in CJK punctuation), so the next dictation does not run into this one. Wispr's own ground-truth vectors expect it (38 of the 108 Windows vectors end in a space), so `final_text` normally ends with `" "` and shells insert it as is. It is left out when `context_known == false` (see below), with a selection (the selection's own edge spaces are kept instead) and on the Notion and Flow-app skips. `plain_text` keeps it (only the paste markers are removed); `asr_text` (raw ASR) has none.
 
    `postprocess::apps::classify` maps an app id or URL to its type, messaging flag, style bucket and category. It uses Wispr's Windows process-name lists and Android's package/host lists (both in `crates/flow-core/data/`). A shell-supplied `app_category` takes precedence.
 
