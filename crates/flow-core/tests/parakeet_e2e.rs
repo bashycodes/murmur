@@ -10,6 +10,9 @@ use flow_core::config::{AsrBackend, ModelConfig, SessionConfig};
 use flow_core::dictionary::{DictEntry, Dictionary};
 use flow_core::{audio, CommitStatus, FlowCore};
 
+mod common;
+use common::long_clips;
+
 fn models() -> PathBuf {
     std::env::var_os("FLOW_MODELS_DIR")
         .map(PathBuf::from)
@@ -133,5 +136,50 @@ fn parakeet_bad_dir_fails_load() {
         }
         Err(e) => panic!("wrong error: {e:?}"),
         Ok(_) => panic!("loaded a missing model dir"),
+    }
+}
+
+/// Regression (data loss, docs/proposals/streaming-asr-latency.md §1.3):
+/// beam search returned "" for the 41.7 s probe clip 3/3 runs, an EMPTY
+/// `blank_asr` dictation. The engine now re-decodes in pieces cut at
+/// pauses. Needs FLOW_AUDIO_DIR with the LibriSpeech manifest clips.
+#[test]
+fn parakeet_long_clip_is_not_empty() {
+    let Some(core) = load() else { return };
+    let Some(clips) = long_clips::audio_dir().and_then(|d| long_clips::build(&d)) else {
+        eprintln!("SKIP: FLOW_AUDIO_DIR with the manifest clips not set");
+        return;
+    };
+    for clip in clips.iter().filter(|c| c.target_s >= 32) {
+        core.start_session(SessionConfig {
+            // Pushed at once: the ring must hold the whole clip.
+            ring_capacity_samples: clip.pcm.len() + 16_000,
+            ..Default::default()
+        })
+        .unwrap();
+        for c in clip.pcm.chunks(640) {
+            assert!(core.push_audio(c));
+        }
+        let r = core.commit();
+        let (e, n) = long_clips::wer_counts(&clip.reference, &r.asr_text);
+        eprintln!(
+            "{:.1} s: {:?} asr {} ms, WER {:.1}%",
+            clip.secs(),
+            r.status,
+            r.timings.asr_ms,
+            100.0 * e as f32 / n as f32
+        );
+        assert_eq!(
+            r.status,
+            CommitStatus::RawTranscript,
+            "{:.1} s: {r:?}",
+            clip.secs()
+        );
+        assert!(
+            e * 10 < n,
+            "{:.1} s: WER {e}/{n}: {}",
+            clip.secs(),
+            r.asr_text
+        );
     }
 }

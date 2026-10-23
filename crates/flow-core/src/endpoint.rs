@@ -19,12 +19,10 @@
 //! `flow_router::Router` (every route: local, own server, cloud) compute
 //! the same answer from the same pushes, with no protocol change.
 
-use std::collections::VecDeque;
-
 use serde::{Deserialize, Serialize};
 
 use crate::config::SAMPLE_RATE;
-use crate::vad::{frame_stats, Thresholds, FRAME, MIN_RUN};
+use crate::vad::{StreamVad, FRAME};
 
 /// Recommended `endpoint_silence_ms` for a shell's hands-free mode: long
 /// enough for a pause to think mid-sentence, short enough that waiting for
@@ -35,8 +33,6 @@ pub const MIN_SILENCE_MS: u32 = 300;
 /// Speech needed before the endpoint can fire, so a cough, a click or the
 /// start chime does not end a dictation that has not begun.
 pub const MIN_SPEECH_MS: u32 = 300;
-/// Noise-floor window: the last 30 s of frames.
-const FLOOR_FRAMES: usize = 30 * 50;
 const FRAME_MS: u64 = (FRAME * 1000 / SAMPLE_RATE) as u64;
 
 /// Endpoint state of the current session.
@@ -58,15 +54,7 @@ pub struct EndpointState {
 pub struct Endpointer {
     silence_frames: u64,
     min_speech_frames: u64,
-    /// Samples of the current, incomplete frame.
-    pending: Vec<f32>,
-    /// (RMS, ZCR) of the last `FLOOR_FRAMES` frames.
-    window: VecDeque<(f32, f32)>,
-    frames: u64,
-    run: usize,
-    speech_frames: u64,
-    /// Frame index just after the last speech run.
-    speech_end: u64,
+    vad: StreamVad,
     reached: bool,
 }
 
@@ -77,12 +65,7 @@ impl Endpointer {
         Self {
             silence_frames: frames(silence_ms.max(MIN_SILENCE_MS)),
             min_speech_frames: frames(MIN_SPEECH_MS),
-            pending: Vec::with_capacity(FRAME),
-            window: VecDeque::with_capacity(FLOOR_FRAMES),
-            frames: 0,
-            run: 0,
-            speech_frames: 0,
-            speech_end: 0,
+            vad: StreamVad::new(),
             reached: false,
         }
     }
@@ -107,37 +90,10 @@ impl Endpointer {
     }
 
     fn sample(&mut self, s: f32) {
-        self.pending.push(s);
-        if self.pending.len() == FRAME {
-            let st = frame_stats(&self.pending);
-            self.pending.clear();
-            self.frame(st);
-        }
-    }
-
-    fn frame(&mut self, st: (f32, f32)) {
-        if self.window.len() == FLOOR_FRAMES {
-            self.window.pop_front();
-        }
-        self.window.push_back(st);
-        self.frames += 1;
-        let speech = Thresholds::from_stats(self.window.make_contiguous()).is_speech(st);
-        if speech {
-            self.run += 1;
-            if self.run == MIN_RUN {
-                self.speech_frames += MIN_RUN as u64;
-            } else if self.run > MIN_RUN {
-                self.speech_frames += 1;
-            }
-            if self.run >= MIN_RUN {
-                self.speech_end = self.frames;
-            }
-        } else {
-            self.run = 0;
-        }
-        if !self.reached
-            && self.speech_frames >= self.min_speech_frames
-            && self.frames - self.speech_end >= self.silence_frames
+        if self.vad.sample(s)
+            && !self.reached
+            && self.vad.speech_frames() >= self.min_speech_frames
+            && self.vad.trailing_frames() >= self.silence_frames
         {
             self.reached = true;
         }
@@ -150,8 +106,8 @@ impl Endpointer {
     pub fn state(&self) -> EndpointState {
         EndpointState {
             reached: self.reached,
-            speech_ms: self.speech_frames * FRAME_MS,
-            trailing_silence_ms: (self.frames - self.speech_end) * FRAME_MS,
+            speech_ms: self.vad.speech_frames() * FRAME_MS,
+            trailing_silence_ms: self.vad.trailing_frames() * FRAME_MS,
         }
     }
 }

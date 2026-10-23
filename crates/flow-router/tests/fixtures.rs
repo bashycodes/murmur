@@ -204,6 +204,7 @@ fn result(route: RouteInfo) -> CommitResult {
         total_ms: 330,
         dropped_samples: 0,
         asr_audio_ms: 1000,
+        ..Default::default()
     };
     r.route = Some(route);
     r
