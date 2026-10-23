@@ -428,7 +428,7 @@ class FlowService : Service() {
 
         override fun captureContext(): FieldContext? = app.accessibility?.captureFieldContext()
 
-        override fun sessionConfig() = app.settings.load().toSessionConfig(app.dictionary.all())
+        override fun sessionConfig() = app.settings.load().let { it.toSessionConfig(app.dictionary.all(), language = app.effectiveLanguage(it)) }
 
         override fun endpointSilenceMs(): Int? = app.settings.load().handsFreeEndpointMs()
 

@@ -97,6 +97,9 @@ class MainActivity : Activity() {
                 },
                 if (st is EngineHolder.State.Ready) OK_COLOR else null,
             )
+            // 2026-10-23: the language the next dictation really uses (unset follows the phone).
+            val langSetting = app.settings.load().language
+            body("Language: ${dev.flowclone.data.LanguageDefault.label(langSetting, app.effectiveLanguage())}")
             if (st is EngineHolder.State.Ready) when (val l = st.llm) {
                 EnginePlan.LlmStatus.Off -> body("AI cleanup: off")
                 EnginePlan.LlmStatus.NoModel -> body("AI cleanup: on, but no GGUF model imported", BAD_COLOR)

@@ -84,6 +84,7 @@ class EngineRouteTest {
         assertSame(o.router, r.core)
         assertSame(loaded, o.local)
         assertEquals("server: 100.64.0.10:7313 → client: base.bin", r.description)
+        assertEquals(LoadedAsr(AsrEngine.WHISPER, "base.bin"), r.asr)
         assertTrue(JSONObject(o.json!!).getJSONObject("server").getString("token").isNotEmpty())
     }
 
@@ -136,6 +137,17 @@ class EngineRouteTest {
         assertTrue(r.core != null)
         assertEquals(listOf(AsrEngine.PARAKEET, AsrEngine.WHISPER), tried.map { it.asrEngine })
         assertTrue(r.description, r.description.contains("Parakeet failed"))
+        assertEquals("what actually loaded", LoadedAsr(AsrEngine.WHISPER, "base.bin"), r.asr)
+    }
+
+    @Test fun loadedAsrNamesTheParakeetFolder() {
+        val p = EnginePlan.plan(Settings(asrEngine = AsrEngine.PARAKEET), "/m/base.bin", null, exists, 4, parakeetPath = "/m/pk-int8/", isModelDir = { true }) as EnginePlan.Plan.Native
+        assertEquals(LoadedAsr(AsrEngine.PARAKEET, "pk-int8"), EnginePlan.load(p) { FakeFlowCore() }.asr)
+    }
+
+    @Test fun loadedAsrIsNullWhenNothingLoaded() {
+        val p = local() as EnginePlan.Plan.Native
+        assertNull(EnginePlan.load(p) { throw CoreException("bad") }.asr)
     }
 
     @Test fun parakeetFolderSelection() {
