@@ -741,6 +741,11 @@ interface LastDictation {
   queue_ms: number | null;
   asr_ms: number;
   total_ms: number;
+  /** D22: release -> result on this PC (network included); null = not measured. */
+  client_ms: number | null;
+  wait_ms: number;
+  segments: number;
+  pre_asr_ms: number;
   status: string;
   empty_reason: string | null;
   at_ms: number;
@@ -952,6 +957,16 @@ function showServerInfo(h: Health | null): void {
   e.className = h.postprocess_match === false ? "err" : "ok";
 }
 
+/** Shared with Android (D22): `total {client_ms ?: total_ms} ms · asr {asr_ms} (+{pre_asr_ms} early) · wait {wait_ms} · {segments} seg`. */
+function timingLine(l: LastDictation): string {
+  const parts = [`total ${l.client_ms ?? l.total_ms} ms`];
+  parts.push(l.pre_asr_ms > 0 ? `asr ${l.asr_ms} (+${l.pre_asr_ms} early)` : `asr ${l.asr_ms}`);
+  if (l.wait_ms > 0) parts.push(`wait ${l.wait_ms}`);
+  if (l.segments > 0) parts.push(`${l.segments} seg`);
+  if (l.client_ms != null && l.client_ms !== l.total_ms) parts.push(`engine ${l.total_ms}`);
+  return parts.join(" · ");
+}
+
 function showRoute(r: RouteView): void {
   const last = r.last;
   const e = $<HTMLElement>("dev_last");
@@ -967,7 +982,7 @@ function showRoute(r: RouteView): void {
       last.server ? `server ${last.server}` : "",
       last.rtt_ms != null ? `rtt ${last.rtt_ms} ms` : "",
       last.queue_ms != null ? `queue ${last.queue_ms} ms` : "",
-      `asr ${last.asr_ms} ms / total ${last.total_ms} ms`,
+      timingLine(last),
       last.status,
       last.empty_reason ?? "",
       new Date(last.at_ms).toLocaleTimeString(),

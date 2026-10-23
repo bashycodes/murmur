@@ -126,6 +126,12 @@ pub struct LastDictation {
     pub total_ms: u64,
     pub audio_ms: u64,
     pub dropped_samples: u64,
+    /// D22: release → result on this PC (network included for a server
+    /// result); the latency to show. `None` = not measured by the router.
+    pub client_ms: Option<u32>,
+    pub wait_ms: u64,
+    pub segments: u64,
+    pub pre_asr_ms: u64,
     pub status: CommitStatus,
     pub empty_reason: Option<String>,
     pub error: Option<String>,
@@ -187,6 +193,10 @@ impl LastDictation {
             total_ms: r.timings.total_ms,
             audio_ms: r.timings.audio_ms,
             dropped_samples: r.timings.dropped_samples,
+            client_ms: route.and_then(|x| x.client_ms),
+            wait_ms: r.timings.wait_ms,
+            segments: r.timings.segments,
+            pre_asr_ms: r.timings.pre_asr_ms,
             status: r.status,
             empty_reason: r.empty_reason.clone(),
             error: r.error.clone(),
@@ -822,6 +832,40 @@ mod tests {
             r.push_audio(&[3000; 1600]);
         }
         Ok(r.commit())
+    }
+
+    #[test]
+    fn last_dictation_carries_the_d22_timings_and_client_ms() {
+        let cfg = router_config(&dev(true, true), BOTH).unwrap();
+        let mut r = CommitResult::text(CommitStatus::RawTranscript, "hi", false);
+        r.timings.total_ms = 400;
+        r.timings.wait_ms = 50;
+        r.timings.segments = 4;
+        r.timings.pre_asr_ms = 2100;
+        r.route = Some(crate::core_api::RouteInfo {
+            engine: "remote".into(),
+            client_ms: Some(620),
+            ..Default::default()
+        });
+        let l = LastDictation::of(&r, &cfg);
+        assert_eq!(
+            (l.client_ms, l.wait_ms, l.segments, l.pre_asr_ms),
+            (Some(620), 50, 4, 2100)
+        );
+        let j = serde_json::to_value(&l).unwrap();
+        assert_eq!(j["client_ms"], 620);
+        r.route = None;
+        assert_eq!(LastDictation::of(&r, &cfg).client_ms, None);
+    }
+
+    #[test]
+    fn a_real_router_commit_reports_client_ms() {
+        let d = dev(false, true);
+        let rig = rig(&d);
+        let out = dictate(&rig.router).unwrap();
+        let ms = out.route.as_ref().and_then(|x| x.client_ms);
+        assert!(ms.is_some(), "{:?}", out.route);
+        assert_eq!(rig.router.last().unwrap().client_ms, ms);
     }
 
     #[test]

@@ -931,6 +931,9 @@ pub fn from_core_result(r: flow_core::CommitResult) -> CommitResult {
             total_ms: r.timings.total_ms,
             audio_ms: r.timings.audio_ms,
             dropped_samples: r.timings.dropped_samples,
+            wait_ms: r.timings.wait_ms,
+            segments: r.timings.segments,
+            pre_asr_ms: r.timings.pre_asr_ms,
         },
         press_enter: r.press_enter,
         fallback_reason: r.fallback_reason,
@@ -1320,6 +1323,36 @@ mod tests {
         assert_eq!(off.segment_pause_ms, None);
         let j = serde_json::to_value(&off).unwrap();
         assert!(j.get("segment_pause_ms").is_none(), "{j}");
+    }
+
+    #[test]
+    fn d22_result_fields_map_and_default_to_zero() {
+        let mut r: flow_core::CommitResult = serde_json::from_value(serde_json::json!({
+            "status": "FORMATTED", "asr_text": "a", "final_text": "a", "language": null,
+            "press_enter": false, "fallback_reason": null, "truncated": false, "error": null,
+            "timings": {"audio_ms": 1, "asr_ms": 2, "llm_ms": 0, "postprocess_ms": 0,
+                        "total_ms": 3, "dropped_samples": 0},
+            "route": {"engine": "local"}
+        }))
+        .unwrap();
+        let s = from_core_result(r.clone());
+        assert_eq!(
+            (s.timings.wait_ms, s.timings.segments, s.timings.pre_asr_ms),
+            (0, 0, 0)
+        );
+        assert_eq!(s.route.unwrap().client_ms, None);
+        r.timings.wait_ms = 7;
+        r.timings.segments = 2;
+        r.timings.pre_asr_ms = 900;
+        r.route.as_mut().unwrap().client_ms = Some(450);
+        let j = serde_json::to_value(&r).unwrap();
+        let back: flow_core::CommitResult = serde_json::from_value(j).unwrap();
+        let s = from_core_result(back);
+        assert_eq!(
+            (s.timings.wait_ms, s.timings.segments, s.timings.pre_asr_ms),
+            (7, 2, 900)
+        );
+        assert_eq!(s.route.unwrap().client_ms, Some(450));
     }
 
     #[test]

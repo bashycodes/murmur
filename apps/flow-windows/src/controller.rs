@@ -964,6 +964,10 @@ fn debug_entry(i: &SessionInfo, insert: &str, error: Option<String>) -> Entry {
         ),
         endpoint_wait_ms: i.endpoint_wait_ms,
         asr_ms: r.map(|r| r.timings.asr_ms),
+        wait_ms: r.map(|r| r.timings.wait_ms),
+        segments: r.map(|r| r.timings.segments),
+        pre_asr_ms: r.map(|r| r.timings.pre_asr_ms),
+        client_ms: route.and_then(|x| x.client_ms),
         post_ms: r.map(|r| r.timings.total_ms.saturating_sub(r.timings.asr_ms)),
         total_ms: r.map(|r| r.timings.total_ms),
         perceived_ms: i.released.map(|t| t.elapsed().as_millis() as u64),
@@ -1874,11 +1878,15 @@ mod tests {
             engine: "local".into(),
             fallback: Some("disconnected".into()),
             rtt_ms: Some(12),
+            client_ms: Some(1350),
             ..Default::default()
         });
         ok.timings.asr_ms = 300;
         ok.timings.total_ms = 340;
         ok.timings.audio_ms = 1000;
+        ok.timings.wait_ms = 120;
+        ok.timings.segments = 3;
+        ok.timings.pre_asr_ms = 900;
         let mem2 = MemSink::default();
         let (mut r2, log2) = logged_with(
             Prefs::default(),
@@ -1907,6 +1915,16 @@ mod tests {
         assert_eq!(b[0]["post_ms"], 40);
         assert_eq!(b[0]["audio_ms"], 1000);
         assert_eq!(b[0]["text"], "hi there");
+        // D22 (names shared with Android).
+        assert_eq!(b[0]["wait_ms"], 120);
+        assert_eq!(b[0]["segments"], 3);
+        assert_eq!(b[0]["pre_asr_ms"], 900);
+        assert_eq!(b[0]["client_ms"], 1350);
+        // A result that did not come through the router: client_ms null,
+        // the timings 0 (segmentation off).
+        assert_eq!(a[0]["client_ms"], serde_json::Value::Null);
+        assert_eq!(a[0]["segments"], 0);
+        assert_eq!(a[0]["wait_ms"], 0);
     }
 
     #[test]
@@ -1990,6 +2008,10 @@ mod tests {
         assert_eq!(b.len(), 1, "{b:?}");
         assert_eq!(b[0]["insert"]["outcome"], "start_failed");
         assert_eq!(b[0]["error"], "no mic");
+        // No result: the D22 timing fields are null, not 0.
+        for k in ["wait_ms", "segments", "pre_asr_ms", "client_ms"] {
+            assert_eq!(b[0][k], serde_json::Value::Null, "{k}");
+        }
     }
 
     #[test]
