@@ -1570,4 +1570,14 @@ mod tests {
         let s = "Hi Tom, the build is green. Thanks, Anna.";
         assert_eq!(layout(s, AppCategory::WorkChat), s);
     }
+
+    #[test]
+    fn spoken_command_split_by_a_segment_join_still_works() {
+        // D22: a pause between "new" and "line" can end a whisper segment
+        // with a period and start the next with a capital.
+        assert_eq!(
+            spoken_cleanup("Buy milk new. Line eggs too."),
+            spoken_cleanup("Buy milk new line eggs too.")
+        );
+    }
 }

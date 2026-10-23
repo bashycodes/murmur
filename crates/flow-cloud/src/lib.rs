@@ -365,6 +365,11 @@ impl AsrEngine for CloudAsr {
             }
         }
     }
+    /// No audio leaves the device before commit, and one billed call per
+    /// dictation (C5): the core ignores `segment_pause_ms` (D22).
+    fn segmentable(&self) -> bool {
+        false
+    }
 }
 
 /// The router's `cloud` backend: a local `FlowCore` around [`CloudAsr`].
@@ -419,6 +424,8 @@ impl Backend for CloudBackend {
     fn start_session(&self, cfg: &SessionConfig) -> Result<StartInfo, BackendError> {
         let mut cfg = cfg.clone();
         cfg.partial_interval_ms = None;
+        // Belt and braces next to `CloudAsr::segmentable` (D22, C5).
+        cfg.segment_pause_ms = None;
         *self.llm_timeout_ms.lock().unwrap() = cfg.llm_timeout_ms;
         self.asr.set_deadline(None);
         self.core
