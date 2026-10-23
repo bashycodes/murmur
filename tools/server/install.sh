@@ -101,6 +101,24 @@ BIN="$BIN_DIR/flow-server"
 for l in libsherpa-onnx-c-api.so libonnxruntime.so; do
     [ -e "$SHERPA_LIB/$l" ] || die "$SHERPA_LIB/$l not found"
 done
+# --user: `systemctl --user` needs a running user manager and XDG_RUNTIME_DIR
+# pointing at its runtime dir. Shells without a login session (ssh without
+# pam_systemd, cron, agents) or with XDG_RUNTIME_DIR redirected elsewhere
+# (e.g. rootless docker) get "Failed to connect to bus" only at daemon-reload,
+# after everything is built and copied. Check here, fall back to the standard
+# runtime dir, else stop with the fix. FLOW_INSTALL_RUN_USER: tests only.
+if [ "$MODE" = user ] && ! systemctl --user show-environment >/dev/null 2>&1; then
+    RUN_DIR="${FLOW_INSTALL_RUN_USER:-/run/user}/$(id -u)"
+    if [ -S "$RUN_DIR/bus" ] && XDG_RUNTIME_DIR="$RUN_DIR" DBUS_SESSION_BUS_ADDRESS="unix:path=$RUN_DIR/bus" \
+        systemctl --user show-environment >/dev/null 2>&1; then
+        echo "note: no user bus at XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-<unset>}; using $RUN_DIR" >&2
+        export XDG_RUNTIME_DIR="$RUN_DIR" DBUS_SESSION_BUS_ADDRESS="unix:path=$RUN_DIR/bus"
+        JOURNAL="XDG_RUNTIME_DIR=$RUN_DIR $JOURNAL"
+    else
+        msg="no systemd user manager for ${USER:-$(id -un)} (systemctl --user cannot connect). Run 'loginctl enable-linger ${USER:-$(id -un)}' (no sudo needed for yourself on most distros) or log in on a console/desktop session, then run this again"
+        if [ "$DRY" = 1 ]; then echo "warning: $msg" >&2; else die "$msg"; fi
+    fi
+fi
 if [ ${#BINDS[@]} -eq 0 ]; then
     BINDS=("127.0.0.1:$PORT")
     TS_IP=""
