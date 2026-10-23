@@ -7,6 +7,7 @@ import dev.flowclone.core.CoreException
 import dev.flowclone.core.FlowCore
 import dev.flowclone.core.FlowCoreLoader
 import dev.flowclone.core.ModelConfig
+import dev.flowclone.core.ParakeetDecoding
 
 /** Model-file sniffing for the SAF import screens (reject the wrong kind before copying 1 GB). */
 object ModelFiles {
@@ -98,6 +99,8 @@ object EnginePlan {
     fun plan(
         s: Settings, asrPath: String?, llmPath: String?, exists: (String) -> Boolean, threads: Int, llmLib: String? = null,
         parakeetPath: String? = null, isModelDir: (String) -> Boolean = { false },
+        /** D22: greedy on the phone (one recognizer, ≈ 0.6 GB less RAM) unless Developer settings override it. */
+        parakeetDecoding: ParakeetDecoding = ParakeetDecoding.GREEDY,
     ): Plan {
         if (s.mockEngine) return Plan.Mock
         val whisperOk = asrPath != null && exists(asrPath)
@@ -116,7 +119,7 @@ object EnginePlan {
         val llmUsed = llmPath.takeIf { llm is LlmStatus.Loaded }
         val whisper = if (whisperOk) ModelConfig(asrPath = asrPath!!, llmPath = llmUsed, threads = threads, llmLib = llmLib) else null
         if (parakeetOk) {
-            val cfg = ModelConfig(asrPath = parakeetPath!!, llmPath = llmUsed, threads = threads, llmLib = llmLib, asrEngine = AsrEngine.PARAKEET)
+            val cfg = ModelConfig(asrPath = parakeetPath!!, llmPath = llmUsed, threads = threads, llmLib = llmLib, asrEngine = AsrEngine.PARAKEET, parakeetDecoding = parakeetDecoding)
             return Plan.Native(cfg, llm, whisperFallback = whisper)
         }
         return Plan.Native(whisper!!, llm)

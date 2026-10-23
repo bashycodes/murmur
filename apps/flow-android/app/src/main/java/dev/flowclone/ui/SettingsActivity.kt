@@ -39,6 +39,7 @@ class SettingsActivity : Activity() {
         lateinit var shake: CheckBox
         lateinit var shrink: CheckBox
         lateinit var spoken: CheckBox
+        lateinit var decodeEarly: CheckBox
         var parakeet: CheckBox? = null
         val local = app.caps.local
         page {
@@ -83,6 +84,11 @@ class SettingsActivity : Activity() {
             heading("Hands-free: stop after silence (ms, 300–10000; 0 = only when you tap)")
             body("Tap-to-talk ends by itself after this much silence and inserts the text. Hold-to-talk is not affected.")
             endpoint = EditText(context).apply { inputType = InputType.TYPE_CLASS_NUMBER; setText(s.endpointSilenceMs.toString()) }.also(::addView)
+            heading("Speed")
+            decodeEarly = CheckBox(context).apply {
+                text = "Decode while speaking (long dictations appear sooner after you stop; on-device and own server, not cloud)"
+                isChecked = s.decodeWhileSpeaking
+            }.also(::addView)
             heading("Session limit (minutes, 1–20)")
             cap = EditText(context).apply { inputType = InputType.TYPE_CLASS_NUMBER; setText(s.capMinutes.toString()) }.also(::addView)
             heading("History retention")
@@ -110,6 +116,7 @@ class SettingsActivity : Activity() {
                     userDenylist = deny.text.lines().map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
                     mockEngine = mock.isChecked,
                     spokenCleanup = spoken.isChecked,
+                    decodeWhileSpeaking = decodeEarly.isChecked,
                     asrEngine = if (parakeet?.isChecked == true) dev.flowclone.core.AsrEngine.PARAKEET else dev.flowclone.core.AsrEngine.WHISPER,
                 )
                 app.settings.save(n)

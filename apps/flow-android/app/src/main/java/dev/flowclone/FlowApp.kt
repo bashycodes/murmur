@@ -287,6 +287,7 @@ class EngineHolder(
         else EnginePlan.plan(
             s, app.settings.modelPath, app.settings.llmModelPath, { File(it).isFile }, threads,
             parakeetPath = app.settings.parakeetPath, isModelDir = { ParakeetFiles.isModelDir(File(it)) },
+            parakeetDecoding = app.dev.parakeetDecoding,
         )
         return when (val plan = EngineRoute.plan(local, app.dev.load(), app.caps)) {
             EngineRoute.Plan.Mock -> State.Ready(FakeFlowCore("This is a test of on-device dictation."), "mock engine")

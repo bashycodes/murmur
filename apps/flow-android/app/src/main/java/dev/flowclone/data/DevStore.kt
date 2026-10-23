@@ -241,7 +241,16 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         get() = kv.getBoolean(DEBUG_LOG, false)
         set(v) = kv.edit { putBoolean(DEBUG_LOG, v) }
 
+    /**
+     * D22: Parakeet search mode for the on-device engine. Default greedy: one recognizer, ≈ 0.6 GB
+     * less RAM than `auto` (which adds a beam recognizer for dictionary hotwords).
+     */
+    var parakeetDecoding: dev.flowclone.core.ParakeetDecoding
+        get() = dev.flowclone.core.ParakeetDecoding.fromWire(kv.getString(PARAKEET_DECODING)) ?: dev.flowclone.core.ParakeetDecoding.GREEDY
+        set(v) = kv.edit { putString(PARAKEET_DECODING, v.wire) }
+
     companion object {
+        const val PARAKEET_DECODING = "parakeet_decoding"
         const val FILE = "dev"
         const val USAGE = "cloud_usage"
         const val DEBUG_LOG = "debug_log"

@@ -15,8 +15,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * tag [DebugLogger.TAG] and to `files/debug/dictations.jsonl` (last [DebugLogFile.MAX_ENTRIES]).
  *
  * Field names are shared with apps/flow-windows: ts, mode, route, fallback, rtt_ms, audio_ms,
- * endpoint_wait_ms, asr_ms, post_ms, total_ms, perceived_ms, target, insert, raw, text, error
- * (+ `kind` on every line, `stack` when there is an exception, `event` on non-dictation lines).
+ * endpoint_wait_ms, asr_ms, post_ms, total_ms, perceived_ms, target, insert, raw, text, error,
+ * and since D22 wait_ms, segments, pre_asr_ms, client_ms (+ `kind` on every line, `stack` when there is an exception, `event` on non-dictation lines).
  *
  * Logging must never affect dictation: entries are queued (bounded, drop-oldest) and written
  * on one background thread; every failure is swallowed and counted.
@@ -42,6 +42,14 @@ data class DictationTrace(
     val totalMs: Long? = null,
     /** Stop / release → final outcome (text inserted, or the error shown): what the user waited. */
     val perceivedMs: Long? = null,
+    /** D22 `timings.wait_ms`: commit waited for a decode in flight. Null without a result. */
+    val waitMs: Long? = null,
+    /** D22 `timings.segments`: pieces sent to ASR (0 = segmentation off). */
+    val segments: Long? = null,
+    /** D22 `timings.pre_asr_ms`: ASR done while recording. */
+    val preAsrMs: Long? = null,
+    /** D22 `route.client_ms`: release → result on the phone, network included (router only). */
+    val clientMs: Long? = null,
     /** Package of the field the dictation started in; redacted by [DebugRedact]. */
     val target: String? = null,
     val insert: InsertOutcome,
@@ -137,6 +145,10 @@ object DebugFormat {
         "post_ms" to t.postMs,
         "total_ms" to t.totalMs,
         "perceived_ms" to t.perceivedMs,
+        "wait_ms" to t.waitMs,
+        "segments" to t.segments,
+        "pre_asr_ms" to t.preAsrMs,
+        "client_ms" to t.clientMs,
         "target" to t.target,
         "insert" to Raw(obj("outcome" to t.insert.outcome, "steps" to t.insert.steps)),
         "raw" to t.raw,
@@ -162,7 +174,8 @@ object DebugFormat {
         val outcome = o.optJSONObject("insert")?.optString("outcome") ?: "?"
         val route = listOfNotNull(s("route") ?: "-", s("fallback")?.let { "($it)" }).joinToString(" ")
         val ms = listOfNotNull(
-            s("perceived_ms")?.let { "wait $it ms" }, s("asr_ms")?.let { "asr $it" }, s("post_ms")?.let { "post $it" },
+            s("perceived_ms")?.let { "wait $it ms" }, s("client_ms")?.let { "client $it" }, s("asr_ms")?.let { "asr $it" },
+            s("pre_asr_ms")?.takeIf { it != "0" }?.let { "(+$it early, ${s("segments")} seg)" }, s("post_ms")?.let { "post $it" },
             s("endpoint_wait_ms")?.let { "endpoint $it" }, s("rtt_ms")?.let { "rtt $it" },
         ).joinToString(" · ")
         val text = s("text") ?: s("raw") ?: ""
@@ -312,6 +325,7 @@ object CommitLine {
     fun of(r: dev.flowclone.core.CommitResult): String {
         val t = r.timings
         return "commit ${r.status} audio=${t.audioMs}ms asr=${t.asrMs}ms llm=${t.llmMs}ms total=${t.totalMs}ms dropped=${t.droppedSamples} " +
+            "wait=${t.waitMs}ms segments=${t.segments} pre_asr=${t.preAsrMs}ms client=${r.route?.clientMs?.let { "${it}ms" } ?: "-"} " +
             "${r.fallbackReason ?: ""} ${r.emptyReason ?: ""} route=${r.route?.engine ?: "-"}/${r.route?.fallback ?: "-"}"
     }
 }

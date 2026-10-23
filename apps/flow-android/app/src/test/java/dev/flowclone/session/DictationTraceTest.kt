@@ -173,4 +173,15 @@ class DictationTraceTest {
         c.toggle(false); audio.speak(300); c.cancel(); settle()
         assertEquals(InsertOutcome.CANCELLED, traces.single().insert.outcome)
     }
+
+    @Test fun streamingTimingsReachTheTrace() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        core.shapeResult = { it.copy(timings = it.timings.copy(waitMs = 90, segments = 2, preAsrMs = 1300), route = dev.flowclone.core.RouteInfo("local", clientMs = 450)) }
+        dictate(controller(Host { traces += it }))
+        val t = traces.single()
+        assertEquals(90L, t.waitMs)
+        assertEquals(2L, t.segments)
+        assertEquals(1300L, t.preAsrMs)
+        assertEquals(450L, t.clientMs)
+    }
 }

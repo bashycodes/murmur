@@ -57,13 +57,35 @@ data class Settings(
     val asrEngine: dev.flowclone.core.AsrEngine = dev.flowclone.core.AsrEngine.WHISPER,
     /** D19: a hands-free (tap) dictation ends after this much trailing silence; 0 = only when tapped again. */
     val endpointSilenceMs: Int = DEFAULT_ENDPOINT_SILENCE_MS,
+    /**
+     * D22 "Decode while speaking": decode finished phrases during recording so release → text
+     * only waits for the tail. Per device (not in the synced dictionary). Local and server routes;
+     * the core opts the cloud route out by itself.
+     */
+    val decodeWhileSpeaking: Boolean = true,
 ) {
     companion object {
         /** Phones decode slower than the desktop default budget of 1.5 s. */
         const val ANDROID_LLM_TIMEOUT_MS = 3_000L
         const val PARTIAL_INTERVAL_MS = 1_500
-        const val DEFAULT_ENDPOINT_SILENCE_MS = 2_000
+        /** D22: `flow_core::endpoint::RECOMMENDED_SILENCE_MS` (was 2000 until 2026-10-23). */
+        const val DEFAULT_ENDPOINT_SILENCE_MS = 1_500
+        const val OLD_DEFAULT_ENDPOINT_SILENCE_MS = 2_000
         val ENDPOINT_RANGE_MS = 300..10_000
+        /** D22: `flow_core::segment::RECOMMENDED_PAUSE_MS`. */
+        const val SEGMENT_PAUSE_MS = 800
+
+        /**
+         * The stored hands-free endpoint after the D22 default change. Settings are saved as a
+         * whole, so a stored 2000 from before the change is almost always the untouched old
+         * default: it becomes the new default once ([migrated] false). Any other value, and
+         * anything saved after the migration ran, is the user's and is kept.
+         */
+        fun migrateEndpointMs(stored: Int?, migrated: Boolean): Int = when {
+            stored == null -> DEFAULT_ENDPOINT_SILENCE_MS
+            !migrated && stored == OLD_DEFAULT_ENDPOINT_SILENCE_MS -> DEFAULT_ENDPOINT_SILENCE_MS
+            else -> stored
+        }
 
         /** The Settings field: blank / 0 = off; anything else is clamped to [ENDPOINT_RANGE_MS]. */
         fun parseEndpointMs(text: String): Int {
@@ -88,6 +110,7 @@ data class Settings(
         partialIntervalMs = if (livePreview) PARTIAL_INTERVAL_MS else null,
         llmTimeoutMs = ANDROID_LLM_TIMEOUT_MS,
         spokenCleanup = spokenCleanup,
+        segmentPauseMs = if (decodeWhileSpeaking) SEGMENT_PAUSE_MS else null,
     )
 
     fun sessionCap() = SessionCap(capMinutes.coerceIn(1, 20) * 60_000L)

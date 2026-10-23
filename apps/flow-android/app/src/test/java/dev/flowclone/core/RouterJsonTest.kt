@@ -167,4 +167,11 @@ class RouterJsonTest {
         assertEquals(CorePoll(), RouterJson.decodePoll("not json"))
         assertEquals(StartInfo(), RouterJson.decodeStartInfo("{}"))
     }
+
+    @Test fun lastDictationShowsClientMs() {
+        val r = CommitResult(CommitStatus.RAW_TRANSCRIPT, timings = Timings(asrMs = 400, totalMs = 520), route = RouteInfo("remote", server = "h:1", clientMs = 610))
+        val s = DevText.lastDictation(r)
+        assertTrue(s, s.contains("client 610 ms"))
+        assertFalse(DevText.lastDictation(r.copy(route = r.route!!.copy(clientMs = null))).contains("client"))
+    }
 }

@@ -150,4 +150,29 @@ class DebugLogTest {
         assertEquals("garbage", DebugFormat.summary("garbage"))
         assertTrue(DebugFormat.summary(DebugFormat.event(DebugEvent(0, "a11y_health", "GHOST"))).contains("a11y_health: GHOST"))
     }
+
+    // ---- D22 fields (same names as apps/flow-windows) ----
+
+    @Test fun dictationLineCarriesStreamingFields() {
+        val o = JSONObject(DebugFormat.dictation(trace.copy(waitMs = 120, segments = 3, preAsrMs = 2400, clientMs = 610)))
+        assertEquals(120, o.getInt("wait_ms"))
+        assertEquals(3, o.getInt("segments"))
+        assertEquals(2400, o.getInt("pre_asr_ms"))
+        assertEquals(610, o.getInt("client_ms"))
+        val none = JSONObject(DebugFormat.dictation(trace))
+        for (k in listOf("wait_ms", "segments", "pre_asr_ms", "client_ms")) assertTrue("missing $k", none.has(k) && none.isNull(k))
+    }
+
+    @Test fun commitLineHasStreamingTimingsAndNoText() {
+        val r = dev.flowclone.core.CommitResult(
+            dev.flowclone.core.CommitStatus.RAW_TRANSCRIPT, asrText = "secret words", finalText = "secret words",
+            timings = dev.flowclone.core.Timings(audioMs = 30_000, asrMs = 400, totalMs = 520, waitMs = 120, segments = 4, preAsrMs = 2400),
+            route = dev.flowclone.core.RouteInfo("remote", clientMs = 610),
+        )
+        val line = CommitLine.of(r)
+        for (part in listOf("wait=120ms", "segments=4", "pre_asr=2400ms", "client=610ms")) assertTrue(line, line.contains(part))
+        assertFalse(line.contains("secret"))
+        val local = CommitLine.of(r.copy(route = null))
+        assertTrue(local, local.contains("client=-"))
+    }
 }
