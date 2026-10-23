@@ -284,13 +284,31 @@ fn later_pieces_get_the_previous_words_as_prior_text() {
     let (pcm, _) = dictation(&[(3, 4500, 1000), (5, 4500, 1000), (7, 1000, 300)]);
     let r = dictate(&core, seg_cfg(), &pcm, pcm.len());
     assert_eq!(r.asr_text, "w3 w5 w7");
-    let priors: Vec<Option<String>> = asr
+    let priors: Vec<String> = asr
         .requests()
         .iter()
         .filter(|(_, q)| q.purpose != AsrPurpose::Partial)
-        .map(|(_, q)| q.prior_text.clone())
+        .filter_map(|(_, q)| q.prior_text.clone())
         .collect();
-    assert_eq!(priors, [None, Some("w3".into()), Some("w3 w5".into())]);
+    // (The first piece and the boundary bridges have none.)
+    assert_eq!(priors, ["w3", "w3 w5"]);
+}
+
+#[test]
+fn bridges_decode_the_audio_around_each_cut() {
+    let asr = Arc::new(BurstEchoAsr::new());
+    let core = core_with(asr.clone());
+    let (pcm, words) = dictation(&[(3, 4500, 1000), (5, 4500, 1000), (7, 4500, 300)]);
+    core.start_session(seg_cfg()).unwrap();
+    push_chunks(&core, &pcm, 640);
+    // Both bridges (4 s each side of a cut) are decoded while recording.
+    assert!(wait_until(5, || asr.calls() >= 4), "{}", asr.calls());
+    let before = asr.calls();
+    let r = core.commit();
+    assert_eq!(r.asr_text, words);
+    assert_eq!(r.timings.segments, 3);
+    // Commit decoded the tail only (pieces and bridges reused).
+    assert_eq!(asr.calls(), before + 1, "{:?}", asr.requests());
 }
 
 #[test]

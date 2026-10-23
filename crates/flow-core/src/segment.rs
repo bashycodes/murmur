@@ -191,6 +191,149 @@ impl Segmenter {
     }
 }
 
+/// Audio on each side of a cut that a boundary "bridge" decode covers.
+pub const BRIDGE_SAMPLES: usize = SAMPLE_RATE * 4;
+/// Words of each piece next to a cut that the bridge may rewrite.
+const SPLICE_WORDS: usize = 6;
+/// Of those, the words right at the cut that may also change (not just
+/// their punctuation and case): the ones a piece decoded without context.
+const SPLICE_FREE_WORDS: usize = 2;
+
+/// The bridge window around `cut`, within the two pieces `lo..hi`.
+pub fn bridge_range(cut: usize, lo: usize, hi: usize) -> Range<usize> {
+    cut.saturating_sub(BRIDGE_SAMPLES).max(lo)..(cut + BRIDGE_SAMPLES).min(hi)
+}
+
+fn key(w: &str) -> String {
+    w.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// Rewrite the words on both sides of a cut with a decode of the audio
+/// around it (`bridge`), so punctuation, case and words near a cut are
+/// decided with context on both sides: pieces decoded alone end every
+/// pause with a sentence break ("ask not. What your country").
+///
+/// The last [`SPLICE_WORDS`] of `left` and the first of `right` are
+/// aligned with the bridge (normalised words, free end gaps). The span
+/// between the first exact match on the left and the last exact match on
+/// the right is replaced with the bridge's words, and split back at the
+/// bridge's first word aligned to `right`. Needs an exact match on each
+/// side of the cut, and the rewrite must keep every word except the two
+/// next to the cut on each side (only punctuation and case change
+/// there); otherwise (or with nothing to change) `None`. The
+/// bridge's first and last words, decoded without context on one side,
+/// are never anchors.
+pub fn splice(left: &str, right: &str, bridge: &str) -> Option<(String, String)> {
+    let lw: Vec<&str> = left.split_whitespace().collect();
+    let rw: Vec<&str> = right.split_whitespace().collect();
+    let bw: Vec<&str> = bridge.split_whitespace().collect();
+    let t0 = lw.len().saturating_sub(SPLICE_WORDS);
+    let s: Vec<&str> = lw[t0..]
+        .iter()
+        .chain(rw.iter().take(SPLICE_WORDS))
+        .copied()
+        .collect();
+    let nt = lw.len() - t0;
+    let (sk, bk): (Vec<String>, Vec<String>) = (
+        s.iter().map(|w| key(w)).collect(),
+        bw.iter().map(|w| key(w)).collect(),
+    );
+    let (n, m) = (sk.len(), bk.len());
+    if nt == 0 || n == nt || m == 0 {
+        return None;
+    }
+    // Longest common subsequence of the normalised words: the exact
+    // matches are the anchors; words between anchors are substitutions.
+    let mut dp = vec![vec![0usize; m + 1]; n + 1];
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            dp[i][j] = if sk[i] == bk[j] {
+                dp[i + 1][j + 1] + 1
+            } else {
+                dp[i + 1][j].max(dp[i][j + 1])
+            };
+        }
+    }
+    let mut pairs = Vec::new();
+    let (mut i, mut j) = (0, 0);
+    while i < n && j < m {
+        if sk[i] == bk[j] && dp[i][j] == dp[i + 1][j + 1] + 1 {
+            pairs.push((i, j));
+            i += 1;
+            j += 1;
+        } else if dp[i + 1][j] >= dp[i][j + 1] {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    // The bridge's first and last words were decoded without context on
+    // one side (and may be cut mid-word): never anchor on them.
+    pairs.retain(|p| p.1 >= 1 && p.1 + 2 <= m);
+    let &(ta, ba) = pairs.iter().find(|p| p.0 < nt)?;
+    let &(hz, bz) = pairs.iter().rev().find(|p| p.0 >= nt)?;
+    let &(sl, bl) = pairs.iter().rev().find(|p| p.0 < nt)?;
+    let &(sr, br) = pairs.iter().find(|p| p.0 >= nt)?;
+    // Bridge words between the last left anchor and the first right one
+    // go left as far as there were left words there.
+    let bj = (bl + 1 + (nt - 1 - sl)).min(br);
+    debug_assert!(sr >= nt && ba <= bl && bl < bj && bj <= br && br <= bz);
+    // Accept only a like-for-like rewrite: the same number of words on
+    // each side, the same words (normalised) except at most the two next
+    // to the cut. Punctuation and case may change anywhere in the span.
+    // Anything else means the alignment slipped on a common word (it
+    // duplicated "the man who told") or the bridge, with less context,
+    // heard a different word: keep the pieces.
+    let (old_l, new_l) = (&lw[t0 + ta..], &bw[ba..bj]);
+    let (old_r, new_r) = (&rw[..=hz - nt], &bw[bj..=bz]);
+    if old_l.len() != new_l.len() || old_r.len() != new_r.len() {
+        return None;
+    }
+    let near = |from_cut: usize| from_cut < SPLICE_FREE_WORDS;
+    let n_l = old_l.len();
+    let same_l = old_l
+        .iter()
+        .zip(new_l)
+        .enumerate()
+        .all(|(i, (a, b))| key(a) == key(b) || near(n_l - 1 - i));
+    let same_r = old_r
+        .iter()
+        .zip(new_r)
+        .enumerate()
+        .all(|(i, (a, b))| key(a) == key(b) || near(i));
+    if !same_l || !same_r {
+        return None;
+    }
+    let mut nl: Vec<&str> = lw[..t0 + ta].to_vec();
+    nl.extend_from_slice(new_l);
+    let mut nr: Vec<&str> = bw[bj..=bz].to_vec();
+    nr.extend_from_slice(&rw[hz - nt + 1..]);
+    let (nl, nr) = (nl.join(" "), nr.join(" "));
+    (nl != left || nr != right).then_some((nl, nr))
+}
+
+/// Text-only join heuristic (candidate (a), kept for the bench): when
+/// `left` ends with a period and `right` starts with a capitalised word
+/// other than "I", drop the period and lowercase the word.
+#[doc(hidden)]
+pub fn smooth_join(left: &str, right: &str) -> Option<(String, String)> {
+    let l = left.trim_end().strip_suffix('.')?;
+    let first = right.split_whitespace().next()?;
+    let mut ch = first.chars();
+    let c = ch.next()?;
+    if !c.is_uppercase() || first.trim_matches(|c: char| !c.is_alphanumeric()) == "I" {
+        return None;
+    }
+    let lowered: String = c.to_lowercase().chain(ch).collect();
+    Some((
+        l.to_string(),
+        format!("{lowered}{}", &right.trim_start()[first.len()..]),
+    ))
+}
+
 /// Offline split of `pcm` into pieces of at most `max_len` samples, cut in
 /// the middle of the longest pause (whole-clip D16 frame flags), else at
 /// the quietest frame, recursively. Pieces never get shorter than 1 s on
@@ -412,6 +555,86 @@ mod tests {
             (p.min_ms, p.soft_max_ms),
             (DEFAULT_MIN_MS, DEFAULT_SOFT_MAX_MS)
         );
+    }
+
+    #[test]
+    fn splice_takes_the_bridge_words_around_the_cut() {
+        // Parakeet: a sentence break the whole decode does not have.
+        let (l, r) = splice(
+            "And so, my fellow Americans, ask not.",
+            "What your country can do for you.",
+            "fellow Americans, ask not what your country can",
+        )
+        .unwrap();
+        assert_eq!(l, "And so, my fellow Americans, ask not");
+        assert_eq!(r, "what your country can do for you.");
+        // whisper tiny: a word the left piece got wrong without context.
+        let (l, r) = splice(
+            "And so my fellow Americans asked not",
+            "what your country can do for you",
+            "my fellow Americans ask not what your country",
+        )
+        .unwrap();
+        assert_eq!(l, "And so my fellow Americans ask not");
+        assert_eq!(r, "what your country can do for you");
+        // The bridge agrees there is a sentence break: unchanged.
+        assert_eq!(
+            splice("We shipped it.", "Then we slept.", "shipped it. Then we"),
+            None
+        );
+        // Mangled bridge edges are never used.
+        let (l, r) = splice("one two three four", "five six seven", "ree four, five si").unwrap();
+        assert_eq!(
+            (l.as_str(), r.as_str()),
+            ("one two three four,", "five six seven")
+        );
+        // No anchor on one side: unchanged.
+        assert_eq!(
+            splice("alpha beta.", "Gamma delta", "a beta gamma d"),
+            Some(("alpha beta".into(), "gamma delta".into()))
+        );
+        assert_eq!(splice("alpha beta.", "Gamma delta", "alpha beta"), None);
+        // An alignment that slips on common words is refused (it once
+        // duplicated "the man who told").
+        assert_eq!(
+            splice(
+                "because the man who told",
+                "the story was so good",
+                "x because the man who told the story was so good y",
+            ),
+            None
+        );
+        // A word the bridge hears differently outside the anchors is
+        // never taken; only the span between anchors is rewritten.
+        assert_eq!(
+            splice(
+                "Mr. Meadowcroft the elder spoke.",
+                "Then he",
+                "x Mettercroft the elder spoke then he y"
+            ),
+            Some(("Mr. Meadowcroft the elder spoke".into(), "then he".into()))
+        );
+        // Inside the span, a different word away from the cut is refused.
+        assert_eq!(
+            splice(
+                "one two three four five.",
+                "Six seven",
+                "x one tree three four five six seven y"
+            ),
+            None
+        );
+        // Edge words are not anchors.
+        assert_eq!(splice("alpha beta.", "Gamma delta", "beta gamma"), None);
+        assert_eq!(splice("", "x", "x"), None);
+    }
+
+    #[test]
+    fn bridge_range_is_clipped_to_the_pieces() {
+        assert_eq!(
+            bridge_range(10 * S, 0, 30 * S),
+            10 * S - BRIDGE_SAMPLES..10 * S + BRIDGE_SAMPLES
+        );
+        assert_eq!(bridge_range(S, 0, 2 * S), 0..2 * S);
     }
 
     #[test]
