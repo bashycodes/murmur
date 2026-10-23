@@ -169,6 +169,26 @@ object EnginePlan {
     }
 }
 
+/** D21 event when the on-device engine that loaded is not the one selected in Settings. */
+object EngineMismatch {
+    private val PARAKEET_FAILED = Regex("""\(Parakeet failed: (.*?)\)(?: → |$)""")
+    private val CLIENT_UNAVAILABLE = Regex("""client unavailable: (.*?)(?: → |$)""")
+
+    /**
+     * [local]: the local plan (null = no local engine needed: server / cloud only, mock);
+     * [loaded]: what loaded; [description]: the load description (carries the failure reason).
+     * Null when the selected engine is the one that loaded.
+     */
+    fun message(selected: AsrEngine, local: EnginePlan.Plan.Native?, loaded: LoadedAsr?, description: String): String? {
+        if (local == null || loaded?.engine == selected) return null
+        val reason = PARAKEET_FAILED.find(description)?.groupValues?.get(1)
+            ?: CLIENT_UNAVAILABLE.find(description)?.groupValues?.get(1)
+            ?: if (selected == AsrEngine.PARAKEET && local.config.asrEngine != AsrEngine.PARAKEET) "no Parakeet model folder imported" else null
+        val what = loaded?.let { "${it.engine.wire} ${it.model}" } ?: "none"
+        return "selected ${selected.wire}, loaded $what" + (reason?.let { ": $it" } ?: "")
+    }
+}
+
 /** Parakeet (sherpa-onnx) model directory import: which picked files to keep (D12; ~661 MB int8). */
 object ParakeetFiles {
     /** Files the core needs, by role; `*.int8.onnx` preferred over full precision. */

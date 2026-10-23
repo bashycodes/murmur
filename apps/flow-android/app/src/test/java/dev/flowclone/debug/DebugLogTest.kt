@@ -175,4 +175,36 @@ class DebugLogTest {
         val local = CommitLine.of(r.copy(route = null))
         assertTrue(local, local.contains("client=-"))
     }
+
+    // ---- 2026-10-23: which engine / model produced the line ----
+
+    @Test fun dictationLineCarriesEngineModelAndLanguage() {
+        val o = JSONObject(DebugFormat.dictation(trace.copy(engine = "whisper", model = "ggml-base-q5_1.bin", language = "en")))
+        assertEquals("whisper", o.getString("engine"))
+        assertEquals("ggml-base-q5_1.bin", o.getString("model"))
+        assertEquals("en", o.getString("language"))
+        val none = JSONObject(DebugFormat.dictation(trace))
+        for (k in listOf("engine", "model", "language")) assertTrue("missing $k", none.has(k) && none.isNull(k))
+        val line = DebugFormat.dictation(trace)
+        assertTrue(line, line.contains("\"fallback\":\"connect_failed\",\"engine\":null,\"model\":null,\"language\":null,\"rtt_ms\""))
+    }
+
+    @Test fun engineAndModelPerRoute() {
+        val whisper = dev.flowclone.data.LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-base-q5_1.bin")
+        val parakeet = dev.flowclone.data.LoadedAsr(dev.flowclone.core.AsrEngine.PARAKEET, "parakeet-int8")
+        assertEquals("whisper" to "ggml-base-q5_1.bin", DebugEngine.of("local", mock = false, asr = whisper, serverModel = "x", routeModel = null))
+        assertEquals("parakeet" to "parakeet-int8", DebugEngine.of("local", false, parakeet, null, null))
+        assertEquals("server" to "parakeet-tdt-0.6b-v2", DebugEngine.of("remote", false, whisper, "parakeet-tdt-0.6b-v2", null))
+        assertEquals("server, model not probed yet", "server" to null, DebugEngine.of("remote", false, whisper, null, null))
+        assertEquals("cloud" to "whisper-1", DebugEngine.of("cloud", false, whisper, null, "whisper-1"))
+        assertEquals("mock" to null, DebugEngine.of("local", true, null, null, null))
+        assertEquals("mock" to null, DebugEngine.of(null, true, null, null, null))
+        assertEquals("no engine ran", null to null, DebugEngine.of(null, false, whisper, null, null))
+    }
+
+    @Test fun viewerSummaryShowsEngineAndModel() {
+        val s = DebugFormat.summary(DebugFormat.dictation(trace.copy(engine = "whisper", model = "ggml-base-q5_1.bin", language = "auto")))
+        assertTrue(s, s.contains("local (connect_failed) whisper ggml-base-q5_1.bin"))
+        assertTrue(s, s.contains("lang auto"))
+    }
 }

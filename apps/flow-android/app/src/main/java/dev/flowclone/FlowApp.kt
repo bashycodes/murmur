@@ -6,6 +6,7 @@ import dev.flowclone.debug.DebugLogger
 import dev.flowclone.core.BlockingCalls
 import dev.flowclone.insert.ClipboardGuard
 import dev.flowclone.service.AndroidClipPort
+import dev.flowclone.data.EngineMismatch
 import dev.flowclone.data.LanguageDefault
 import dev.flowclone.data.Settings
 import dev.flowclone.data.LastDictation
@@ -319,6 +320,10 @@ class EngineHolder(
                     app.debugLog.event("engine_load", "${r.errorKind ?: "error"}: ${r.error}")
                     State.Failed(RouterErrors.userMessage(r.errorKind, r.error ?: "Speech engine failed to load"), r.errorKind)
                 } else {
+                    EngineMismatch.message(s.asrEngine, plan.local, r.asr, r.description)?.let {
+                        Log.w("FlowEngine", "engine mismatch: $it")
+                        app.debugLog.event("engine_mismatch", it)
+                    }
                     loadedWithLocal = plan.local != null
                     (r.core as? NativeFlowCore)?.takeIf { it.isRouter }?.let(::syncCloud)
                     State.Ready(r.core, r.description, r.llm, asr = r.asr)
