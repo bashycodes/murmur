@@ -1058,6 +1058,57 @@ function versionTapped() {
         });
     }
 }
+function showDebugLog(v) {
+    $("dev_debug_log").checked = v.enabled;
+    $("dev_debug_path").textContent = v.path;
+    const n = v.count;
+    let line = n === null ? "Log file not readable" : n === 0 ? "No entries" : n === 1 ? "1 entry" : `${n} entries`;
+    if (v.stats.write_errors > 0)
+        line += ` · ${v.stats.write_errors} write errors (ignored)`;
+    if (v.stats.dropped > 0)
+        line += ` · ${v.stats.dropped} dropped`;
+    $("dev_debug_count").textContent = line;
+}
+async function loadDebugLog() {
+    try {
+        showDebugLog(await invoke("debug_log_status"));
+    }
+    catch (e) {
+        setStatus("dev_status", String(e), false);
+    }
+}
+/** Turning the log off offers to delete what it already holds. */
+function askClearDebugLog(count) {
+    const d = $("dev_debug_off");
+    $("dev_debug_off_body").textContent =
+        `The log still holds ${count === 1 ? "1 entry" : `${count} entries`} with transcripts of earlier dictations. Delete it now?`;
+    return new Promise((resolve) => {
+        const done = (ok) => {
+            $("dev_debug_delete").onclick = null;
+            $("dev_debug_keep").onclick = null;
+            d.close();
+            resolve(ok);
+        };
+        $("dev_debug_delete").onclick = () => done(true);
+        $("dev_debug_keep").onclick = () => done(false);
+        d.oncancel = () => done(false);
+        d.showModal();
+    });
+}
+async function debugLogToggled() {
+    const on = $("dev_debug_log").checked;
+    const v = await devCall("debug_log_set", { enabled: on }, on ? "Debug log on: transcripts are being written" : "Debug log off");
+    if (!v) {
+        $("dev_debug_log").checked = !on;
+        return;
+    }
+    showDebugLog(v);
+    if (!on && (v.count ?? 0) > 0 && (await askClearDebugLog(v.count ?? 0))) {
+        const c = await devCall("debug_log_clear", {}, "Debug log off and deleted");
+        if (c)
+            showDebugLog(c);
+    }
+}
 // ------------------------------------------------------------------ boot
 async function load() {
     const [prefs, mics, model] = await Promise.all([
@@ -1083,6 +1134,7 @@ async function load() {
     renderDict();
     await loadSuggestions();
     await loadDev();
+    await loadDebugLog();
 }
 for (const b of document.querySelectorAll("nav.tabs button")) {
     b.addEventListener("click", () => showTab(b.dataset.tab ?? "general"));
@@ -1094,6 +1146,9 @@ for (const i of document.querySelectorAll("[data-panel=developer] input")) {
     i.addEventListener("change", scheduleCheck);
 }
 $("dev_save").addEventListener("click", () => void devSave());
+$("dev_debug_log").addEventListener("change", () => void debugLogToggled());
+$("dev_debug_open").addEventListener("click", () => void devCall("debug_log_open_folder", {}, "Opened the log folder"));
+$("dev_debug_clear").addEventListener("click", () => void devCall("debug_log_clear", {}, "Debug log deleted").then((v) => v && showDebugLog(v)));
 $("dev_test_conn").addEventListener("click", () => void devTestConnection());
 $("dev_test_session").addEventListener("click", () => void devTestSession());
 $("dev_reset_circuit").addEventListener("click", () => void devCall("dev_reset_circuit", {}, "Circuit reset").then((r) => r && showRoute(r)));
@@ -1191,6 +1246,8 @@ void onEvent("dev:route", (e) => {
         void invoke("dev_cloud_usage").then(showUsage);
 });
 void onEvent("history:changed", () => {
+    if ($("dev_debug_log").checked)
+        void loadDebugLog();
     if (!$("hist_list").closest("[hidden]"))
         void loadHistory();
 });

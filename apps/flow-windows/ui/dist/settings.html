@@ -296,6 +296,27 @@
       <p id="dev_status" class="hint"></p>
       <p id="dev_test" class="hint"></p>
 
+      <!-- Opt-in debug log (README "Debug log"): off by default, saved at once. -->
+      <fieldset id="dev_debug_box">
+        <legend>Debug log</legend>
+        <label class="row"><input type="checkbox" id="dev_debug_log" /> Debug log (includes transcripts)</label>
+        <p class="hint warn">When on, each dictation's raw and final text, timings, engine and target app are written to <code id="dev_debug_path"></code> (last 500) and printed to the console. It stays on this PC and never contains your server token, API keys or clipboard. Turn it off when you are done.</p>
+        <p class="hint" id="dev_debug_count">No entries</p>
+        <div class="toolbar">
+          <button type="button" class="small secondary" id="dev_debug_open">Open log folder</button>
+          <button type="button" class="small secondary danger" id="dev_debug_clear">Clear</button>
+        </div>
+      </fieldset>
+
+      <dialog id="dev_debug_off">
+        <h3>Debug log turned off</h3>
+        <p id="dev_debug_off_body">The log still holds transcripts of earlier dictations. Delete it now?</p>
+        <div class="toolbar">
+          <button type="button" class="secondary" id="dev_debug_keep">Keep the file</button>
+          <button type="button" class="danger" id="dev_debug_delete">Delete the log</button>
+        </div>
+      </dialog>
+
       <fieldset>
         <legend>Status</legend>
         <dl class="kv">

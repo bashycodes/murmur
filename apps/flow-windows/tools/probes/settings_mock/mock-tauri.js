@@ -93,6 +93,8 @@
   ];
   let suggestions = [{ word: "Wispr Flow", heard: "whisper flow", app: "slack.exe", ts: now, count: 2 }];
   const listeners = {};
+  const debugLog = { enabled: false, count: 12 };
+  const debugView = () => ({ enabled: debugLog.enabled, count: debugLog.count, path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\debug\\dictations.jsonl", stats: { written: 0, dropped: 0, write_errors: 0 } });
   const cmds = {
     get_prefs: () => structuredClone(prefs),
     set_prefs: ({ prefs: p }) => { prefs = structuredClone(p); },
@@ -135,6 +137,10 @@
       : { ok: false, engine: "cloud", error: "cloud_not_configured", message: "no API key" },
     dev_cloud_usage: usage,
     dev_cloud_reset_usage: usage,
+    debug_log_status: debugView,
+    debug_log_set: ({ enabled }) => { debugLog.enabled = enabled; return debugView(); },
+    debug_log_clear: () => { debugLog.count = 0; return debugView(); },
+    debug_log_open_folder: () => null,
   };
   window.__mockCalls = [];
   window.__TAURI__ = {

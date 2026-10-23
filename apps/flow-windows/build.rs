@@ -39,6 +39,10 @@ fn main() {
             "dev_cloud_reset_usage",
             "dev_cloud_presets",
             "dev_cloud_new_id",
+            "debug_log_status",
+            "debug_log_set",
+            "debug_log_clear",
+            "debug_log_open_folder",
         ];
         tauri_build::try_build(
             tauri_build::Attributes::new()
