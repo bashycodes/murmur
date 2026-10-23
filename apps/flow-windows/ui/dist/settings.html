@@ -198,6 +198,11 @@
         <label class="row"><input type="checkbox" id="dev_show_engine_badge" /> Show S / L on the Flow bar after each dictation (red dot = fell back)</label>
         <ul id="dev_warnings" class="warnings"></ul>
       </fieldset>
+      <fieldset>
+        <legend>Speech decoding</legend>
+        <label class="row"><input type="checkbox" id="dev_decode_while_speaking" /> Decode while speaking</label>
+        <p class="hint">Transcribes each finished phrase while you keep talking, so a long dictation is ready about as fast as a short one (cuts go in pauses of 0.8 s or more). Off = the whole recording is transcribed after you stop. Cloud providers always get the whole recording at the end.</p>
+      </fieldset>
 
       <fieldset id="dev_server_box">
         <legend>Server</legend>

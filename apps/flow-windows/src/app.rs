@@ -322,6 +322,8 @@ fn set_prefs(
     // The Developer tab saves its own section (dev_set); a General/AI save
     // from a page loaded earlier must not roll it back.
     prefs.developer = state.prefs.read().unwrap().developer.clone();
+    // Whatever the page sent, what is saved now is the current schema.
+    prefs.prefs_rev = crate::prefs::PREFS_REV;
     prefs.dictionary = crate::dictionary::normalize(prefs.dictionary);
     prefs.validate()?;
     prefs.save(&state.path).map_err(|e| e.to_string())?;

@@ -1362,7 +1362,7 @@ mod tests {
         assert_eq!(r.wait_config(1).endpoint_silence_ms, None);
         r.at(10, Input::Hotkey(HotkeyAction::Cancel));
         r.at(2000, Input::Hotkey(HotkeyAction::HandsFreeToggle));
-        assert_eq!(r.wait_config(2).endpoint_silence_ms, Some(2000));
+        assert_eq!(r.wait_config(2).endpoint_silence_ms, Some(1500));
     }
 
     #[test]

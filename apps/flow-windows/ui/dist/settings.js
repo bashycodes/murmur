@@ -486,7 +486,14 @@ const ROUTE_LABEL = {
 };
 const DEV_NUM = ["port", "connect_timeout_ms", "commit_timeout_base_ms", "health_ttl_s"];
 const DEV_TEXT = ["host", "tls_pin_sha256", "token"];
-const DEV_BOOL = ["allow_server", "allow_client", "tls", "keep_local_warm", "show_engine_badge"];
+const DEV_BOOL = [
+    "allow_server",
+    "allow_client",
+    "tls",
+    "keep_local_warm",
+    "show_engine_badge",
+    "decode_while_speaking",
+];
 let devView = null;
 let devOrder = ["server", "client", "cloud"];
 let devValid = true;

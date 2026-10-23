@@ -101,6 +101,10 @@ pub struct SessionConfig {
     /// ends the dictation. Set only for hands-free sessions; push-to-talk
     /// leaves it `None`.
     pub endpoint_silence_ms: Option<u32>,
+    /// D22: decode each finished phrase while the user keeps talking; cuts
+    /// at pauses at least this long (shell value 800). `None` = off.
+    /// `segment_min_ms` / `segment_soft_max_ms` stay at the core defaults.
+    pub segment_pause_ms: Option<u32>,
 }
 
 impl Default for SessionConfig {
@@ -119,6 +123,7 @@ impl Default for SessionConfig {
             spoken_cleanup: true,
             llm_prefill: true,
             endpoint_silence_ms: None,
+            segment_pause_ms: None,
         }
     }
 }
