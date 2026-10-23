@@ -34,14 +34,14 @@ APKs built on this PC (`tools/dist.sh`, after `tools/build-native.sh --flavor lo
 
 | APK | Size | SHA-256 |
 |---|---|---|
-| `flow-clone-hybrid-debug.apk` | 46.3 MB (46274225 bytes) | `728851be82285d6add655d0b7c8ee76d5a78213ce60a234ed82a4abce4a51e62` |
+| `flow-clone-hybrid-debug.apk` | 46.4 MB (46372680 bytes) | `553612b78fbd1d08f6893c1e7539eb2e1a6e93f898e897f63f3f8e81eb51b662` |
 | `flow-clone-hybrid-release-unsigned.apk` | 45.4 MB (45417457 bytes) | `f97ef20073ad254ae7cf7c9e144e73bc41fd5b779706581bee8049c2a1da6a83` |
-| `flow-clone-local-debug.apk` | 42.1 MB (42129049 bytes) | `eca38e4364ef36be8f0b24af7f4bc60533d82d0f1681da7d9d85ffd322c43f82` |
+| `flow-clone-local-debug.apk` | 42.2 MB (42227504 bytes) | `1fd04e916b01b36e3d896e97790707e886bde9af5d900aef8a98484d3b1c1491` |
 | `flow-clone-local-release-unsigned.apk` | 41.3 MB (41272269 bytes) | `22e4a8d2c472262cf6ba5bca4da5cbbbfae57913f0d2308ad1fb98c20e509299` |
-| `flow-clone-remote-debug.apk` | 12.6 MB (12581827 bytes) | `2d62a4c7fbebf7ff845f464ed8731c2919e47a4fc7eceb53dbe62c6d940f6e54` |
+| `flow-clone-remote-debug.apk` | 12.7 MB (12680282 bytes) | `8fd9496a50b82cb086ac2fd42524b70d9f593ec711a823adc4a3c974dbfa3ae2` |
 | `flow-clone-remote-release-unsigned.apk` | 11.7 MB (11725059 bytes) | `a4cf625d33e07058e2a67eb3e93e50dd7fa96d9bd03d1202263a713ec18d5694` |
 
-Built 2026-10-22 from `integration` (merge commit b9942f1 of crates-final, android-final and win-final; natives rebuilt from the same tree). `*-release-unsigned.apk` are not installable until signed, see "Release build" below.
+Debug APKs built 2026-10-23 from branch `feat/android-debuglog` (ee156b7, adds the D21 debug log; merged into `integration`). The `*-release-unsigned.apk` rows are still the 2026-10-22 build from `integration` (merge commit b9942f1 of crates-final, android-final and win-final; natives rebuilt from the same tree) and are not installable until signed, see "Release build" below.
 
 Check a copy with `sha256sum flow-clone-hybrid-debug.apk` before installing it. An APK from
 another machine or from the CI artifact (`.github/workflows/android-build.yml`) has a different
