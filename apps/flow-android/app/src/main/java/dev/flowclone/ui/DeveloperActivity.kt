@@ -1,226 +1,601 @@
 package dev.flowclone.ui
 
 import android.app.Activity
+import android.app.AlertDialog
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
-import android.text.Editable
 import android.text.InputType
-import android.text.TextWatcher
+import android.view.Gravity
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
-import android.widget.Button
-import android.widget.CheckBox
-import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
+import android.window.OnBackInvokedCallback
+import android.window.OnBackInvokedDispatcher
 import dev.flowclone.FlowApp
+import dev.flowclone.R
 import dev.flowclone.core.CommitStatus
 import dev.flowclone.core.CoreException
 import dev.flowclone.core.DevText
 import dev.flowclone.core.HealthReport
 import dev.flowclone.core.NativeFlowCore
+import dev.flowclone.core.ParakeetDecoding
 import dev.flowclone.core.SessionConfig
 import dev.flowclone.data.CloudKeyPolicy
 import dev.flowclone.data.CloudPresets
 import dev.flowclone.data.CloudSettings
 import dev.flowclone.data.CloudText
 import dev.flowclone.data.CloudUsage
+import dev.flowclone.data.DevDraft
+import dev.flowclone.data.DevPages
+import dev.flowclone.data.DevPages.Page
 import dev.flowclone.data.DevSettings
 import dev.flowclone.data.DevSettingsForm
 import dev.flowclone.data.DevSettingsForm.Field
+import dev.flowclone.data.DevSummary
 import java.text.DateFormat
 import java.util.Date
 import kotlin.concurrent.thread
 
 /**
- * Developer settings (docs/hybrid-architecture.md §5): engine routes (server / client),
- * server address + token, timeouts, Test connection / Test session, last-engine and circuit
- * rows. Saved settings apply from the next dictation; models are never reloaded unless the
- * client route's need for them changed. Sections are independent blocks so further routes
- * (network flavours only) can be added as their own section.
+ * Developer settings (docs/hybrid-architecture.md §5) as a hub + focused sub-pages, one
+ * activity instance per page ([EXTRA_PAGE]):
+ *   hub      status card (route in use, last dictation engine + client_ms, circuit) and one
+ *            row per page showing its current value; build info, reset, lock
+ *   routing  engines, route order, keep warm, engine badge, Parakeet decoding; Test session
+ *   server   host, port, TLS, pin, token (secret), timeouts; Test connection
+ *   cloud    allow cloud (consent), providers, budget, usage; Test active provider
+ *   debug    debug log, keep last dictation audio (both apply at once, as before)
+ *   status   active engine, circuits, server info, native capabilities; Reset circuit
+ * Pages with form fields have Save in the top bar, enabled once something changed and the
+ * whole form validates. Save writes the whole [DevSettings] like the old single page
+ * ([DevDraft], [DevSettingsForm]); settings apply from the next dictation.
  */
 class DeveloperActivity : Activity() {
     private val app get() = FlowApp.of(this)
     private val caps get() = app.caps
-
-    private lateinit var allowServer: CheckBox
-    private lateinit var allowClient: CheckBox
-    private lateinit var orderBox: LinearLayout
-    private lateinit var host: EditText
-    private lateinit var port: EditText
-    private lateinit var tls: CheckBox
-    private lateinit var pin: EditText
-    private lateinit var token: EditText
-    private lateinit var connectTimeout: EditText
-    private lateinit var commitTimeout: EditText
-    private lateinit var healthTtl: EditText
-    private lateinit var keepWarm: CheckBox
-    private lateinit var badge: CheckBox
-    private lateinit var save: Button
-    private lateinit var status: TextView
-    private lateinit var probeLine: TextView
-    private lateinit var serverInfo: TextView
-    private lateinit var lastLine: TextView
-    private lateinit var circuitLine: TextView
-    private lateinit var debugToggle: CheckBox
-    private lateinit var debugCount: TextView
-    private val errorViews = HashMap<Field, TextView>()
-    private var lastProbe: HealthReport? = null
+    private lateinit var ui: DevUi
+    private lateinit var page: Page
+    private lateinit var draft: DevDraft
+    private var saveItem: MenuItem? = null
     private var routeOrder = DevSettings.DEFAULT_ORDER
-    // D18 cloud section (only built when the flavour has the cloud client)
-    private var allowCloud: CheckBox? = null
-    private var cloudBanner: TextView? = null
-    private var providerBox: LinearLayout? = null
-    private var budget: EditText? = null
-    private var usageLine: TextView? = null
-    private var cloudProbeLine: TextView? = null
-    private lateinit var cloudCircuitLine: TextView
     /** Providers + active id as stored (the provider page and consent dialog save them directly). */
     private var cloudState = CloudSettings()
+    private val refreshers = ArrayList<() -> Unit>()
+    private var backCallback: OnBackInvokedCallback? = null
+    private var banner: DevUi.Result? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = "Developer settings"
-        render(app.dev.load())
+        page = intent.getStringExtra(EXTRA_PAGE)?.let { n -> Page.entries.firstOrNull { it.name == n } } ?: Page.HUB
+        ui = DevUi(this)
+        title = TITLES.getValue(page)
+        if (page != Page.HUB) actionBar?.setDisplayHomeAsUpEnabled(true)
+        load()
+        when (page) {
+            Page.HUB -> renderHub()
+            Page.ROUTING -> renderRouting()
+            Page.SERVER -> renderServer()
+            Page.CLOUD -> renderCloud()
+            Page.DEBUG -> renderDebug()
+            Page.STATUS -> renderStatus()
+        }
+        if (hasForm) {
+            backCallback = OnBackInvokedCallback { confirmLeave() }.also {
+                onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, it)
+            }
+            validate()
+        }
+    }
+
+    override fun onDestroy() {
+        backCallback?.let { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it) }
+        super.onDestroy()
     }
 
     override fun onResume() {
         super.onResume()
-        if (::lastLine.isInitialized) {
-            cloudState = app.dev.load().cloud
-            renderProviders()
-            validate()
-            refreshRows()
-        }
+        // The provider page / consent dialog / another sub-page may have saved meanwhile.
+        val stored = app.dev.load()
+        draft = draft.rebase(stored)
+        cloudState = stored.cloud
+        if (hasForm) validate()
+        refresh()
     }
 
-    private fun render(s: DevSettings) {
+    private fun load() {
+        val s = app.dev.load()
+        draft = DevDraft.of(s, page)
         routeOrder = s.routeOrder
         cloudState = s.cloud
-        page {
-            body("Build: ${caps.flavor} · ${capabilitiesLine()}")
-            status = body("")
-
-            heading("Engines")
-            allowServer = check("Allow server (your flow-server over LAN / Tailscale)", s.allowServer, enabled = caps.remote, disabledNote = "not in this build")
-            allowClient = check("Allow client (on-device speech model)", s.allowClient, enabled = caps.local, disabledNote = "not in this build")
-            body("Route order (the first available route is used; the next ones are fallbacks)")
-            orderBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }.also(::addView)
-            keepWarm = check("Keep the on-device model loaded while the server is preferred (instant fallback)", s.keepLocalWarm, enabled = caps.local)
-            badge = check("Show the engine on the preview line (S / L, • = fallback)", s.showEngineBadge)
-
-            heading("Server")
-            host = field("Host or IP (no scheme, no port), e.g. 100.64.0.10 or desktop.tail1234.ts.net", s.host, Field.HOST, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI)
-            port = field("Port", s.port.toString(), Field.PORT, InputType.TYPE_CLASS_NUMBER)
-            tls = check("Use TLS (wss)", s.tls)
-            pin = field("Certificate pin (SHA-256 of the leaf cert, 64 hex; optional)", s.tlsPinSha256, Field.PIN, InputType.TYPE_CLASS_TEXT)
-            token = field("Token (from `flow-server gen-token`, ≥ 16 chars)", s.token, Field.TOKEN, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
-            SecretField.protect(token)
-            row(
-                Button(context).apply { text = "Show"; isAllCaps = false; setOnClickListener { toggleTokenVisible(this) } },
-                Button(context).apply { text = "Paste"; isAllCaps = false; setOnClickListener { pasteToken() } },
-                Button(context).apply { text = "Clear"; isAllCaps = false; setOnClickListener { token.setText("") } },
-            )
-            connectTimeout = field("Connect timeout (ms, 100-10000)", s.connectTimeoutMs.toString(), Field.CONNECT_TIMEOUT, InputType.TYPE_CLASS_NUMBER)
-            commitTimeout = field("Commit timeout base (ms, 500-60000)", s.commitTimeoutBaseMs.toString(), Field.COMMIT_TIMEOUT, InputType.TYPE_CLASS_NUMBER)
-            healthTtl = field("Health cache (s, 5-600)", s.healthTtlS.toString(), Field.HEALTH_TTL, InputType.TYPE_CLASS_NUMBER)
-
-            cloudSection(s)
-
-            save = button("Save") { onSave() }
-            button("Test connection") { onTestConnection() }
-            probeLine = body("")
-            button("Test session (1 s of silence through the saved routes)") { onTestSession() }
-
-            heading("Status")
-            body("Active engine (last dictation)")
-            lastLine = body("")
-            body("Circuit")
-            circuitLine = body("")
-            cloudCircuitLine = body("")
-            body("Server info (last probe)")
-            serverInfo = body("")
-            row(
-                Button(context).apply { text = "Reset circuit"; isAllCaps = false; setOnClickListener { onResetCircuit() } },
-                Button(context).apply { text = "Reset to defaults"; isAllCaps = false; setOnClickListener { onResetDefaults() } },
-            )
-            if (caps.local) parakeetSection()
-            debugSection()
-
-            if (!caps.remote) button("Lock (hide Developer settings)") {
-                app.dev.devUnlocked = false
-                Toast.makeText(this@DeveloperActivity, "Developer settings hidden", Toast.LENGTH_SHORT).show()
-                finish()
-            }
-        }
-        for (v in listOf(allowServer, allowClient, tls, keepWarm, badge)) v.setOnCheckedChangeListener { _, _ -> validate() }
-        allowCloud?.setOnCheckedChangeListener { b, on -> onAllowCloud(b as CheckBox, on) }
-        renderProviders()
-        validate()
-        refreshRows()
     }
 
-    // ---- D22 Parakeet decoding (on-device engine) ----
+    private val hasForm get() = page == Page.ROUTING || page == Page.SERVER || (page == Page.CLOUD && caps.cloud)
 
-    private fun LinearLayout.parakeetSection() {
-        heading("Parakeet decoding (on-device)")
-        body("Greedy (default) loads one recognizer. Auto adds a beam-search recognizer for dictionary words (≈ +0.6 GB RAM). Beam is the old behaviour. Reloads the engine.")
-        val modes = dev.flowclone.core.ParakeetDecoding.entries
-        val labels = listOf("Auto (beam with dictionary words, +0.6 GB)", "Greedy (default, less RAM)", "Beam only")
-        val sp = android.widget.Spinner(context).apply {
-            adapter = android.widget.ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, labels)
-            setSelection(modes.indexOf(app.dev.parakeetDecoding))
-        }.also(::addView)
-        sp.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p: android.widget.AdapterView<*>?, v: View?, pos: Int, id: Long) {
-                val m = modes[pos]
-                if (m == app.dev.parakeetDecoding) return
+    private fun refresh() { for (r in refreshers) r() }
+
+    // ---- top bar Save ----
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        if (!hasForm) return false
+        saveItem = menu.add(Menu.NONE, MENU_SAVE, Menu.NONE, "Save").apply {
+            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS or MenuItem.SHOW_AS_ACTION_WITH_TEXT)
+            isEnabled = draft.canSave(caps)
+            contentDescription = "Save ${TITLES.getValue(page)}"
+        }
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
+        MENU_SAVE -> { onSave(); true }
+        android.R.id.home -> { if (hasForm) confirmLeave() else finish(); true }
+        else -> super.onOptionsItemSelected(item)
+    }
+
+    /** Unsaved edits: ask before dropping them. */
+    private fun confirmLeave() {
+        if (!draft.dirty) { finish(); return }
+        AlertDialog.Builder(this)
+            .setTitle("Discard changes?")
+            .setMessage("Your changes on this page are not saved.")
+            .setNegativeButton("Keep editing", null)
+            .setPositiveButton("Discard") { _, _ -> finish() }
+            .show()
+    }
+
+    // =====================================================================================
+    // Hub
+    // =====================================================================================
+
+    private fun renderHub() = with(ui) {
+        screen {
+            sectionLabel("STATUS")
+            card {
+                val route = infoRow("Route in use")
+                val last = infoRow("Last dictation")
+                val circuit = infoRow("Circuit")
+                val warn = note("", p.danger, 14f).apply { visibility = View.GONE; accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }
+                navRow(R.drawable.ic_dev_status, "Status & server info", "Engines, circuits, last probe") { open(Page.STATUS) }
+                refreshers += {
+                    val s = app.dev.load()
+                    route.text = DevSummary.routing(s, caps)
+                    val l = app.lastRoute.value
+                    last.text = l?.let { d ->
+                        DevSummary.lastShort(d.result) { id -> s.cloud.provider(id)?.displayName } + " · " +
+                            DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(d.atMs))
+                    } ?: "No dictation yet"
+                    circuit.text = circuitText()
+                    val w = DevPages.warningsFor(Page.HUB, DevSettingsForm.validate(DevSettingsForm.Input.of(s), caps).warnings)
+                    warn.text = w.joinToString("\n"); warn.visibility = if (w.isEmpty()) View.GONE else View.VISIBLE
+                }
+            }
+
+            sectionLabel("DICTATION")
+            card {
+                val routing = navRow(R.drawable.ic_dev_route, "Routing & engines") { open(Page.ROUTING) }
+                refreshers += {
+                    routing.setSubtitle(DevSummary.routing(app.dev.load(), caps) + if (caps.local) " · Parakeet ${app.dev.parakeetDecoding.wire}" else "")
+                }
+            }
+
+            sectionLabel("CONNECTION")
+            card {
+                val server = navRow(R.drawable.ic_dev_server, "Server") { open(Page.SERVER) }
+                val cloud = navRow(R.drawable.ic_dev_cloud, "Cloud providers") { open(Page.CLOUD) }
+                refreshers += {
+                    val s = app.dev.load()
+                    server.setSubtitle(DevSummary.server(s, caps) + if (caps.remote && s.serverConfigured) "\n" + DevSummary.timeouts(s) else "")
+                    cloud.setSubtitle(DevSummary.cloud(s, caps))
+                }
+            }
+
+            sectionLabel("DIAGNOSTICS")
+            card {
+                val debug = navRow(R.drawable.ic_dev_debug, "Debug log & audio") { open(Page.DEBUG) }
+                refreshers += { debug.setSubtitle(DevSummary.debug(app.dev.debugLog, app.dev.keepDebugAudio)) }
+            }
+
+            sectionLabel("BUILD")
+            card {
+                infoRow("Flavour · native library", "${caps.flavor} · ${capabilitiesLine()}")
+                navRow(R.drawable.ic_dev_reset, "Reset to defaults", "Developer settings and every cloud key", danger = true, chevron = false) { confirmResetDefaults() }
+                if (!caps.remote) navRow(R.drawable.ic_dev_lock, "Lock", "Hide Developer settings again", chevron = false) {
+                    app.dev.devUnlocked = false
+                    Toast.makeText(this@DeveloperActivity, "Developer settings hidden", Toast.LENGTH_SHORT).show()
+                    finish()
+                }
+            }
+        }
+    }
+
+    private fun open(p: Page) = open(this, p)
+
+    // =====================================================================================
+    // Routing & engines
+    // =====================================================================================
+
+    private lateinit var allowServer: DevUi.ToggleRow
+    private lateinit var allowClient: DevUi.ToggleRow
+    private lateinit var keepWarm: DevUi.ToggleRow
+    private lateinit var badge: DevUi.ToggleRow
+    private var orderBox: LinearLayout? = null
+    private var orderCount: TextView? = null
+    private var sessionResult: DevUi.Result? = null
+
+    private fun renderRouting() = with(ui) {
+        val s = app.dev.load()
+        screen {
+            banner = banner()
+            sectionLabel("ENGINES")
+            card {
+                allowServer = toggleRow("Allow server", if (caps.remote) "Your flow-server over LAN / Tailscale" else CloudText.NOT_IN_BUILD.cap(), s.allowServer && caps.remote, enabled = caps.remote)
+                allowClient = toggleRow("Allow on-device", if (caps.local) "The speech model on this phone" else CloudText.NOT_IN_BUILD.cap(), s.allowClient && caps.local, enabled = caps.local)
+            }
+            sectionLabel("ROUTE ORDER")
+            card {
+                orderCount = cardHeader("Try in this order", "")
+                note("The first available route is used; the next ones are fallbacks.")
+                orderBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }.also(::addView)
+            }
+            sectionLabel("OPTIONS")
+            card {
+                keepWarm = toggleRow("Keep on-device model warm", "Stays loaded while the server is preferred: instant fallback", s.keepLocalWarm && caps.local, enabled = caps.local)
+                badge = toggleRow("Engine badge", "Show S / L on the preview line (• = fallback)", s.showEngineBadge)
+            }
+            if (caps.local) parakeetCard()
+            action("Test session") { onTestSession() }
+            sessionResult = result()
+            note("Sends 1 s of silence through the saved routes; expect EMPTY (no_speech).")
+        }
+        for (t in listOf(allowServer, allowClient, keepWarm, badge)) t.onChange { validate() }
+    }
+
+    /** D22 Parakeet decoding: applies at once (not part of Save), as before. */
+    private fun LinearLayout.parakeetCard() = with(ui) {
+        sectionLabel("ON-DEVICE DECODING (PARAKEET)")
+        card {
+            note("Applies immediately and reloads the engine.")
+            val labels = mapOf(
+                ParakeetDecoding.AUTO to "Auto\nBeam search for dictionary words (≈ +0.6 GB RAM)",
+                ParakeetDecoding.GREEDY to "Greedy (default)\nOne recognizer, less RAM",
+                ParakeetDecoding.BEAM to "Beam only\nThe old behaviour",
+            )
+            val group = RadioGroup(context).apply { orientation = RadioGroup.VERTICAL; setPadding(dp(8), 0, dp(16), dp(8)) }
+            for (m in ParakeetDecoding.entries) {
+                group.addView(RadioButton(context).apply {
+                    id = View.generateViewId(); tag = m
+                    text = labels.getValue(m); textSize = 15f; setTextColor(p.text)
+                    buttonTintList = android.content.res.ColorStateList.valueOf(p.accent)
+                    minHeight = dp(56)
+                    isChecked = m == app.dev.parakeetDecoding
+                })
+            }
+            group.setOnCheckedChangeListener { g, id ->
+                val m = g.findViewById<View>(id)?.tag as? ParakeetDecoding ?: return@setOnCheckedChangeListener
+                if (m == app.dev.parakeetDecoding) return@setOnCheckedChangeListener
                 app.dev.parakeetDecoding = m
                 if (app.settings.load().asrEngine == dev.flowclone.core.AsrEngine.PARAKEET) app.engine.reload()
                 Toast.makeText(this@DeveloperActivity, "Parakeet decoding: ${m.wire}", Toast.LENGTH_SHORT).show()
             }
-            override fun onNothingSelected(p: android.widget.AdapterView<*>?) = Unit
+            addView(group)
         }
     }
 
-    // ---- D21 debug log (device-local; includes transcripts) ----
-
-    private fun LinearLayout.debugSection() {
-        heading("Debug log")
-        debugToggle = check("Debug log (includes transcripts)", app.dev.debugLog)
-        body("Writes what you dictate, the app it went to and the timings to this phone's log (logcat tag FlowDebug) and to a file in the app's storage. Nothing is sent anywhere unless you tap Share.")
-        debugCount = body("")
-        row(
-            Button(context).apply { text = "View"; isAllCaps = false; setOnClickListener { onViewDebugLog() } },
-            Button(context).apply { text = "Share / Export"; isAllCaps = false; setOnClickListener { onShareDebugLog() } },
-            Button(context).apply { text = "Clear"; isAllCaps = false; setOnClickListener { clearDebugLog() } },
-        )
-        debugToggle.setOnCheckedChangeListener { _, on -> onDebugToggle(on) }
-        audioSection()
+    private fun routeShown(r: DevSettings.Route) = when (r) {
+        DevSettings.Route.SERVER -> if (page == Page.ROUTING) allowServer.isChecked else draft.draft.allowServer && caps.remote
+        DevSettings.Route.CLIENT -> if (page == Page.ROUTING) allowClient.isChecked else draft.draft.allowClient && caps.local
+        DevSettings.Route.CLOUD -> draft.draft.allowCloud && caps.cloud
     }
 
-    // ---- "Keep last dictation audio (debug)" ----
+    /** Route order rows with ↑ / ↓ for the routes this build and the toggles allow. */
+    private fun renderOrder() = with(ui) {
+        val box = orderBox ?: return
+        box.removeAllViews()
+        val shown = routeOrder.filter { routeShown(it) }
+        orderCount?.text = "${shown.size} on"
+        if (shown.isEmpty()) box.note("No route is on: turn on an engine above.", p.danger)
+        shown.forEachIndexed { i, r ->
+            val name = when (r) {
+                DevSettings.Route.SERVER -> "Server (your flow-server)"
+                DevSettings.Route.CLIENT -> "On-device"
+                DevSettings.Route.CLOUD -> "Cloud: " + (cloudState.activeProvider?.let { "${it.displayName} (${it.host})" } ?: "no provider")
+            }
+            box.addView(LinearLayout(this@DeveloperActivity).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(4), dp(8), dp(4)); minimumHeight = dp(56)
+                addView(TextView(context).apply { text = "${i + 1}.  $name"; textSize = 16f; setTextColor(p.text) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+                addView(iconButton(R.drawable.ic_dev_up, "Move $name up") { move(r, -1) }.apply { isEnabled = i > 0; alpha = if (i > 0) 1f else 0.3f })
+                addView(iconButton(R.drawable.ic_dev_down, "Move $name down") { move(r, +1) }.apply { isEnabled = i < shown.lastIndex; alpha = if (i < shown.lastIndex) 1f else 0.3f })
+            })
+        }
+    }
 
-    private lateinit var audioCount: TextView
+    private fun move(r: DevSettings.Route, dir: Int) {
+        routeOrder = DevPages.move(routeOrder, r, dir, ::routeShown)
+        validate()
+    }
 
-    private fun LinearLayout.audioSection() {
-        val keep = check("Keep last dictation audio (debug)", app.dev.keepDebugAudio)
-        body(
-            "Saves what the microphone heard for the last ${dev.flowclone.debug.DebugAudioStore.MAX_FILES} dictations as WAV files " +
-                "in the app's private storage (files/debug/audio/), named like the debug log's ts and linked from its \"audio\" field. " +
-                "Never for password fields, banking or excluded apps. Deleted after 24 hours. Nothing is sent anywhere.",
+    /** 1 s of silence through the full router path with the saved toggles: expect EMPTY no_speech. */
+    private fun onTestSession() {
+        val line = sessionResult ?: return
+        line.show("Test session…")
+        thread(name = "dev-test-session") {
+            val (text, ok) = try {
+                val core = app.engine.current()
+                core.startSession(SessionConfig(maxSamples = 16_000L * 10))
+                core.pushAudio(ShortArray(16_000))
+                val r = core.commit()
+                val ok = r.status == CommitStatus.EMPTY
+                ((if (ok) "OK: " else "Unexpected: ") + DevText.lastDictation(r)) to ok
+            } catch (e: CoreException) {
+                app.debugLog.event("test_session", e.message, e)
+                "Failed: ${dev.flowclone.core.RouterErrors.userMessage(e.kind, e.message ?: "error")}" to false
+            }
+            runOnUiThread { line.show(text, if (ok) Tone.OK else Tone.BAD); refresh() }
+        }
+    }
+
+    // =====================================================================================
+    // Server
+    // =====================================================================================
+
+    private lateinit var host: DevUi.FieldRow
+    private lateinit var port: DevUi.FieldRow
+    private lateinit var tls: DevUi.ToggleRow
+    private lateinit var pin: DevUi.FieldRow
+    private lateinit var token: DevUi.FieldRow
+    private lateinit var connectTimeout: DevUi.FieldRow
+    private lateinit var commitTimeout: DevUi.FieldRow
+    private lateinit var healthTtl: DevUi.FieldRow
+    private var probeResult: DevUi.Result? = null
+    private val fieldRows = HashMap<Field, DevUi.FieldRow>()
+
+    private fun renderServer() = with(ui) {
+        val s = app.dev.load()
+        val edit = { if (::draft.isInitialized && fieldRows.isNotEmpty()) validate(); Unit }
+        screen {
+            banner = banner()
+            if (!caps.remote) note("This build has no network code: the server route is not available.", p.danger, 14f)
+            sectionLabel("ADDRESS")
+            card {
+                host = fieldRow("Host or IP", s.host, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI,
+                    help = "No scheme, no port", hint = "100.64.0.10 or desktop.tail1234.ts.net", onEdit = edit)
+                port = fieldRow("Port", s.port.toString(), InputType.TYPE_CLASS_NUMBER, onEdit = edit)
+                tls = toggleRow("Use TLS (wss)", "Encrypt the connection", s.tls)
+                pin = fieldRow("Certificate pin (optional)", s.tlsPinSha256, InputType.TYPE_CLASS_TEXT,
+                    help = "SHA-256 of the leaf certificate, 64 hex", onEdit = edit)
+            }
+            sectionLabel("AUTHENTICATION")
+            card {
+                token = secretRow("Token", s.token, "From `flow-server gen-token`, at least ${DevSettings.MIN_TOKEN_LEN} characters", "token", onEdit = edit)
+            }
+            sectionLabel("TIMEOUTS")
+            card {
+                connectTimeout = fieldRow("Connect timeout (ms)", s.connectTimeoutMs.toString(), InputType.TYPE_CLASS_NUMBER, help = "100-10000", onEdit = edit)
+                commitTimeout = fieldRow("Commit timeout base (ms)", s.commitTimeoutBaseMs.toString(), InputType.TYPE_CLASS_NUMBER, help = "500-60000", onEdit = edit)
+                healthTtl = fieldRow("Health cache (s)", s.healthTtlS.toString(), InputType.TYPE_CLASS_NUMBER, help = "5-600", onEdit = edit)
+            }
+            action("Test connection") { onTestConnection() }
+            probeResult = result()
+            note("Uses the values on this page, saved or not.")
+        }
+        fieldRows += mapOf(
+            Field.HOST to host, Field.PORT to port, Field.PIN to pin, Field.TOKEN to token,
+            Field.CONNECT_TIMEOUT to connectTimeout, Field.COMMIT_TIMEOUT to commitTimeout, Field.HEALTH_TTL to healthTtl,
         )
-        audioCount = body("")
-        row(Button(context).apply { text = "Clear audio"; isAllCaps = false; setOnClickListener { clearDebugAudio() } })
-        keep.setOnCheckedChangeListener { _, on -> app.dev.keepDebugAudio = on; refreshAudioCount() }
-        refreshAudioCount()
+        tls.onChange { validate() }
+    }
+
+    private fun onTestConnection() {
+        val line = probeResult ?: return
+        val s = validate().settings ?: run { line.show("Fix the highlighted fields first.", Tone.BAD); return }
+        if (!caps.remote) { line.show("This build has no network code.", Tone.BAD); return }
+        probe(s)
+    }
+
+    /** `probe_server()` with the form's (unsaved) values, off the UI thread. */
+    private fun probe(s: DevSettings) {
+        probeResult?.show("Testing ${s.host}:${s.port}…")
+        val json = s.effective(caps).toServerConfigJson().toString()
+        thread(name = "dev-probe") {
+            val h = NativeFlowCore.probeServer(json)
+            if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
+            runOnUiThread { lastProbe = h; probeResult?.show(DevText.probe(h), if (h.ok) Tone.OK else Tone.BAD); refresh() }
+        }
+    }
+
+    /** The debug log's `model` for server dictations: what the server says it runs. */
+    private fun rememberServerModel(h: HealthReport) {
+        (h.asrModel ?: h.asrBackend)?.let { app.dev.serverAsrModel = it }
+    }
+
+    // =====================================================================================
+    // Cloud providers (D18, docs/cloud-stt.md §8.3)
+    // =====================================================================================
+
+    private var allowCloud: DevUi.ToggleRow? = null
+    private var cloudBanner: TextView? = null
+    private var providerBox: LinearLayout? = null
+    private var providerCount: TextView? = null
+    private var budget: DevUi.FieldRow? = null
+    private var usageLine: TextView? = null
+    private var cloudProbe: DevUi.Result? = null
+
+    private fun renderCloud() = with(ui) {
+        val s = app.dev.load()
+        screen {
+            banner = banner()
+            if (!caps.cloud) {
+                card {
+                    toggleRow("Allow cloud", CloudText.NOT_IN_BUILD.cap(), checked = false, enabled = false)
+                    note("This build has no cloud client: audio never leaves the device except to your own server.")
+                }
+                return@screen
+            }
+            card {
+                cloudBanner = note(CloudText.banner(s.cloud.activeProvider)).apply { setPadding(dp(16), dp(14), dp(16), dp(4)) }
+                allowCloud = toggleRow("Allow cloud", "Third-party speech-to-text; off by default", s.allowCloud)
+            }
+            sectionLabel("PROVIDERS")
+            card {
+                providerCount = cardHeader("Providers", "")
+                providerBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }.also(::addView)
+                navRow(R.drawable.ic_dev_add, "Add provider…", chevron = false) { pickPreset() }
+            }
+            sectionLabel("BUDGET & USAGE")
+            card {
+                budget = fieldRow("Monthly budget (USD)", s.cloud.monthlyBudgetUsd?.let { DevSettingsForm.Input.budgetText(it) }.orEmpty(),
+                    InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL,
+                    help = "Empty = none; the cloud pauses once it is reached", hint = "5", onEdit = { if (fieldRows.isNotEmpty()) validate() })
+                usageLine = infoRow("Usage this month (this device only, never sent anywhere)")
+                chipRow(chip("Reset counters") { onResetUsage() }.apply { contentDescription = "Reset cloud usage counters" })
+            }
+            action("Test active provider") { onTestCloud() }
+            cloudProbe = result()
+            note("Uploads a 3 s public-domain clip to the active provider.")
+        }
+        budget?.let { fieldRows[Field.CLOUD_BUDGET] = it }
+        allowCloud?.onChange { on -> onAllowCloud(on) }
+        refreshers += { renderProviders(); refreshUsage() }
+    }
+
+    private fun renderProviders() = with(ui) {
+        val box = providerBox ?: return
+        box.removeAllViews()
+        cloudBanner?.text = CloudText.banner(cloudState.activeProvider)
+        providerCount?.text = if (cloudState.providers.isEmpty()) "" else "● = used by the cloud route"
+        if (cloudState.providers.isEmpty()) box.note("No provider yet.")
+        for (pr in cloudState.providers) {
+            val active = pr.id == cloudState.active
+            val sub = "${pr.host.ifEmpty { "?" }} · ${pr.model} · key ${app.cloudKeys.masked(pr.id)} · consent ${if (pr.consentOk) "✓" else "✗"}"
+            val row = box.navRow(null, "${if (active) "●" else "○"}  ${pr.displayName}", sub) { CloudProviderActivity.edit(this@DeveloperActivity, pr.id) }
+            row.view.contentDescription = "${pr.displayName}${if (active) ", in use" else ""}, ${pr.host}, ${pr.model}, " +
+                "key ${if (app.cloudKeys.has(pr.id)) "stored" else "none"}, consent ${if (pr.consentOk) "given" else "not given"}. Edit"
+            if (!active) box.chipRow(chip("Use ${pr.displayName}") { useProvider(pr.id) })
+        }
+        renderOrder()
+    }
+
+    private fun refreshUsage() {
+        usageLine?.text = CloudText.usageLines(
+            CloudUsage.decode(app.engine.router()?.cloudUsageJson() ?: app.dev.cloudUsageJson), cloudState,
+        ).joinToString("\n")
+    }
+
+    private fun pickPreset() {
+        val presets = CloudPresets.ALL
+        AlertDialog.Builder(this)
+            .setTitle("Add a cloud provider")
+            .setItems(presets.map { "${it.label} — ${it.model.ifEmpty { "your model" }}" }.toTypedArray()) { _, i -> CloudProviderActivity.add(this, presets[i].id) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun useProvider(id: String) {
+        cloudState = cloudState.copy(active = id)
+        app.dev.saveCloud(cloud = cloudState.copy(monthlyBudgetUsd = app.dev.load().cloud.monthlyBudgetUsd))
+        app.engine.applyDevSettings(app.dev.load())
+        draft = draft.rebase(app.dev.load())
+        renderProviders(); validate()
+    }
+
+    /**
+     * First enable: the consent dialog for the active provider (§8.3); accepting records the
+     * consent (host + time) and puts the cloud first in the route order (§3.1 step 4).
+     */
+    private fun onAllowCloud(on: Boolean) {
+        val b = allowCloud ?: return
+        if (!on) { validate(); return }
+        val pr = cloudState.activeProvider
+        if (pr == null) {
+            b.isChecked = false
+            Toast.makeText(this, "Add a provider first", Toast.LENGTH_LONG).show()
+            pickPreset()
+            return
+        }
+        val enable = {
+            if (DevSettings.Route.CLOUD !in routeOrder) routeOrder = DevSettings.withCloudFirst(routeOrder)
+            validate()
+        }
+        if (pr.consentOk) { enable(); return }
+        CloudProviderActivity.consentDialog(this, pr, onCancel = { b.isChecked = false; validate() }) {
+            cloudState = cloudState.replace(pr.withConsent(System.currentTimeMillis()))
+            app.dev.saveCloud(cloud = cloudState.copy(monthlyBudgetUsd = app.dev.load().cloud.monthlyBudgetUsd))
+            draft = draft.rebase(app.dev.load())
+            renderProviders()
+            enable()
+        }
+    }
+
+    private fun onTestCloud() {
+        val line = cloudProbe ?: return
+        val pr = cloudState.activeProvider ?: run { line.show("No active provider.", Tone.BAD); return }
+        val key = app.cloudKeys.get(pr.id)
+            ?: if (CloudKeyPolicy.keylessOk(pr)) null else run { line.show("${pr.displayName}: no API key stored.", Tone.BAD); return }
+        line.show("Testing ${pr.displayName} (${pr.host})…")
+        val json = pr.toJson().toString()
+        thread(name = "dev-cloud-probe") {
+            val h = app.engine.router()?.probeCloud(json, key) ?: NativeFlowCore.probeCloud(json, key)
+            if (!h.ok) app.debugLog.event("cloud_probe", DevText.cloudProbe(h))
+            runOnUiThread { line.show(DevText.cloudProbe(h), if (h.ok) Tone.OK else Tone.BAD); refresh() }
+        }
+    }
+
+    private fun onResetUsage() {
+        val r = app.engine.router()
+        if (r != null) { r.resetCloudUsage(); app.engine.persistCloudUsage() } else app.dev.cloudUsageJson = null
+        refresh()
+    }
+
+    // =====================================================================================
+    // Debug log + audio (D21; device-local, includes transcripts). Apply at once, as before.
+    // =====================================================================================
+
+    private var debugCount: TextView? = null
+    private var audioCount: TextView? = null
+
+    private fun renderDebug() = with(ui) {
+        var debugToggle: DevUi.ToggleRow? = null
+        screen {
+            sectionLabel("DEBUG LOG")
+            card {
+                debugToggle = toggleRow("Debug log", "Includes transcripts", app.dev.debugLog)
+                note("Writes what you dictate, the app it went to and the timings to this phone's log (logcat tag FlowDebug) and to a file in the app's storage. Nothing is sent anywhere unless you tap Share.")
+                debugCount = infoRow("Entries")
+                chipRow(
+                    chip("View") { onViewDebugLog() }.apply { contentDescription = "View the debug log" },
+                    chip("Share") { onShareDebugLog() }.apply { contentDescription = "Share or export the debug log" },
+                    chip("Clear") { clearDebugLog() }.apply { contentDescription = "Clear the debug log" },
+                )
+            }
+            sectionLabel("DICTATION AUDIO")
+            card {
+                val keep = toggleRow("Keep last dictation audio", "Debug: WAVs of the last ${dev.flowclone.debug.DebugAudioStore.MAX_FILES} dictations", app.dev.keepDebugAudio)
+                note(
+                    "Saved in the app's private storage (files/debug/audio/), named like the debug log's ts and linked from its \"audio\" field. " +
+                        "Never for password fields, banking or excluded apps. Deleted after 24 hours. Nothing is sent anywhere.",
+                )
+                audioCount = infoRow("Files")
+                chipRow(chip("Clear audio") { clearDebugAudio() }.apply { contentDescription = "Clear kept dictation audio" })
+                keep.onChange { on -> app.dev.keepDebugAudio = on; refreshAudioCount() }
+            }
+            note("These switches apply immediately.")
+        }
+        debugToggle?.onChange { on -> onDebugToggle(on) }
+        refreshers += { refreshDebugCount(); refreshAudioCount() }
     }
 
     private fun refreshAudioCount() {
-        if (!::audioCount.isInitialized) return
+        val v = audioCount ?: return
         thread(name = "dev-audio-count") {
             val n = runCatching { app.debugAudio.prune(); app.debugAudio.list().size }.getOrDefault(0)
             val line = "$n file${if (n == 1) "" else "s"} kept" + if (app.dev.keepDebugAudio) "" else " · off"
-            runOnUiThread { audioCount.text = line }
+            runOnUiThread { v.text = line }
         }
     }
 
@@ -238,7 +613,7 @@ class DeveloperActivity : Activity() {
             val n = runCatching { app.debugFile.size() }.getOrDefault(0)
             runOnUiThread {
                 if (n == 0 || isFinishing) { refreshDebugCount(); return@runOnUiThread }
-                android.app.AlertDialog.Builder(this)
+                AlertDialog.Builder(this)
                     .setTitle("Clear the debug log?")
                     .setMessage("Logging is off. The file still holds $n entries with your transcripts.")
                     .setPositiveButton("Clear") { _, _ -> clearDebugLog() }
@@ -249,14 +624,14 @@ class DeveloperActivity : Activity() {
     }
 
     private fun refreshDebugCount() {
-        if (!::debugCount.isInitialized) return
+        val v = debugCount ?: return
         thread(name = "dev-debug-count") {
             val n = runCatching { app.debugFile.size() }.getOrDefault(0)
             val errs = app.debugLog.errors.get(); val dropped = app.debugLog.dropped.get()
             val extra = listOfNotNull(errs.takeIf { it > 0 }?.let { "$it write errors" }, dropped.takeIf { it > 0 }?.let { "$it dropped" })
             val line = "$n entries (newest ${dev.flowclone.debug.DebugLogFile.MAX_ENTRIES} kept)" + extra.joinToString("") { " · $it" } +
                 if (app.dev.debugLog) "" else " · logging off"
-            runOnUiThread { debugCount.text = line }
+            runOnUiThread { v.text = line }
         }
     }
 
@@ -269,7 +644,7 @@ class DeveloperActivity : Activity() {
                     text = if (rows.isEmpty()) "No entries yet." else rows.joinToString("\n\n")
                     textSize = 12f; setTextIsSelectable(true); setPadding(dp(16), dp(8), dp(16), dp(8))
                 }
-                android.app.AlertDialog.Builder(this)
+                AlertDialog.Builder(this)
                     .setTitle("Debug log (newest first)")
                     .setView(android.widget.ScrollView(this).apply { addView(tv) })
                     .setPositiveButton("Close", null)
@@ -296,6 +671,55 @@ class DeveloperActivity : Activity() {
         }
     }
 
+    // =====================================================================================
+    // Status
+    // =====================================================================================
+
+    private fun renderStatus() = with(ui) {
+        screen {
+            sectionLabel("LAST DICTATION")
+            lateinit var last: TextView
+            card { last = infoRow("Active engine") }
+            sectionLabel("CIRCUITS")
+            lateinit var circuit: TextView
+            var cloudCircuit: TextView? = null
+            card {
+                circuit = infoRow("Server / on-device circuit")
+                if (caps.cloud) cloudCircuit = infoRow("Cloud circuit")
+            }
+            chipRow(chip("Reset circuit") { onResetCircuit() })
+            sectionLabel("SERVER INFO (LAST PROBE)")
+            lateinit var info: TextView
+            card { info = infoRow("Server") }
+            sectionLabel("BUILD")
+            card { infoRow("Flavour · native library", "${caps.flavor} · ${capabilitiesLine()}") }
+            refreshers += {
+                val l = app.lastRoute.value
+                last.text = DevText.lastDictation(l?.result) { id -> cloudState.provider(id)?.displayName } +
+                    (l?.let { " · " + DateFormat.getTimeInstance().format(Date(it.atMs)) } ?: "")
+                circuit.text = circuitText()
+                val rs = routeStatus()
+                val cc = rs?.cloudCircuit
+                cloudCircuit?.text = if (cc == null) "Not loaded" else DevText.circuit(cc, System.currentTimeMillis(), "the key or provider changes") { DateFormat.getTimeInstance().format(Date(it)) }
+                info.text = DevText.serverInfo(lastProbe ?: rs?.health)
+            }
+        }
+    }
+
+    private fun routeStatus() = app.engine.router()?.let { runCatching { it.routeStatus() }.getOrNull() }
+
+    private fun circuitText(): String {
+        val rs = routeStatus() ?: return "router not loaded (${app.engine.state.value::class.simpleName})"
+        return DevText.circuit(rs.circuit, System.currentTimeMillis()) { DateFormat.getTimeInstance().format(Date(it)) }
+    }
+
+    private fun onResetCircuit() {
+        val r = app.engine.router()
+        if (r == null) { Toast.makeText(this, "No router loaded", Toast.LENGTH_SHORT).show(); return }
+        runCatching { r.resetCircuit() }
+        refresh()
+    }
+
     private fun capabilitiesLine(): String {
         val c = NativeFlowCore.capabilities() ?: return "native library not loaded"
         val cc = NativeFlowCore.cloudCapabilities()
@@ -303,308 +727,101 @@ class DeveloperActivity : Activity() {
         return "native: local=${c.local} remote=${c.remote} cloud=${cc.cloud} asr=${c.asrEngines.joinToString("/").ifEmpty { "-" }} llm=${c.llm} proto=${c.proto} core ${c.coreVersion}$mismatch"
     }
 
-    // ---- D18 cloud STT section (docs/cloud-stt.md §8.3) ----
+    // =====================================================================================
+    // Form: validate / save (the whole DevSettings, as before) / reset
+    // =====================================================================================
 
-    private fun LinearLayout.cloudSection(s: DevSettings) {
-        heading(CloudText.SECTION)
-        if (!caps.cloud) {
-            check("Allow cloud", false, enabled = false, disabledNote = CloudText.NOT_IN_BUILD)
-            body("This build has no cloud client: audio never leaves the device except to your own server.")
-            return
-        }
-        cloudBanner = body(CloudText.banner(s.cloud.activeProvider))
-        allowCloud = check("Allow cloud (third-party speech-to-text; off by default)", s.allowCloud)
-        body("Providers (● = used by the cloud route)")
-        providerBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }.also(::addView)
-        button("Add provider…") { pickPreset() }
-        budget = field("Monthly budget in USD (empty = none; the cloud pauses once it is reached)", s.cloud.monthlyBudgetUsd?.let { DevSettingsForm.Input.budgetText(it) }.orEmpty(), Field.CLOUD_BUDGET, InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL)
-        body("Usage this month (this device only, never sent anywhere)")
-        usageLine = body("")
-        row(
-            Button(context).apply { text = "Test active provider"; isAllCaps = false; setOnClickListener { onTestCloud() } },
-            Button(context).apply { text = "Reset counters"; isAllCaps = false; setOnClickListener { onResetUsage() } },
+    /** This page's views → the draft (other pages' values stay as stored). */
+    private fun readViews(i: DevSettingsForm.Input): DevSettingsForm.Input = when (page) {
+        Page.ROUTING -> i.copy(
+            allowServer = allowServer.isChecked, allowClient = allowClient.isChecked, routeOrder = routeOrder,
+            keepLocalWarm = keepWarm.isChecked, showEngineBadge = badge.isChecked,
         )
-        cloudProbeLine = body("")
+        Page.SERVER -> i.copy(
+            host = host.text, port = port.text, tls = tls.isChecked, pin = pin.text, token = token.text,
+            connectTimeoutMs = connectTimeout.text, commitTimeoutBaseMs = commitTimeout.text, healthTtlS = healthTtl.text,
+        )
+        Page.CLOUD -> i.copy(allowCloud = allowCloud?.isChecked == true, cloudBudget = budget?.text.orEmpty(), routeOrder = routeOrder)
+        else -> i
     }
-
-    /** Route order rows with ↑ / ↓ for the routes this build and the toggles allow. */
-    private fun renderOrder() {
-        if (!::orderBox.isInitialized) return
-        orderBox.removeAllViews()
-        val shown = routeOrder.filter { routeShown(it) }
-        shown.forEachIndexed { i, r ->
-            val name = when (r) {
-                DevSettings.Route.SERVER -> "Server (your flow-server)"
-                DevSettings.Route.CLIENT -> "On-device"
-                DevSettings.Route.CLOUD -> "Cloud: " + (cloudState.activeProvider?.let { "${it.displayName} (${it.host})" } ?: "no provider")
-            }
-            val label = TextView(this).apply { text = "${i + 1}. $name"; textSize = 14f }
-            val up = Button(this).apply { text = "↑"; isEnabled = i > 0; setOnClickListener { move(r, -1) } }
-            val down = Button(this).apply { text = "↓"; isEnabled = i < shown.lastIndex; setOnClickListener { move(r, +1) } }
-            orderBox.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                addView(label, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 3f))
-                addView(up, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                addView(down, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-            })
-        }
-        orderBox.visibility = if (shown.size >= 2) View.VISIBLE else View.GONE
-    }
-
-    private fun routeShown(r: DevSettings.Route) = when (r) {
-        DevSettings.Route.SERVER -> allowServer.isChecked
-        DevSettings.Route.CLIENT -> allowClient.isChecked
-        DevSettings.Route.CLOUD -> allowCloud?.isChecked == true
-    }
-
-    /** Swap [r] with its visible neighbour; hidden routes keep their place in the stored order. */
-    private fun move(r: DevSettings.Route, dir: Int) {
-        val shown = routeOrder.filter { routeShown(it) }
-        val i = shown.indexOf(r); val j = i + dir
-        if (i < 0 || j !in shown.indices) return
-        val other = shown[j]
-        routeOrder = routeOrder.map { when (it) { r -> other; other -> r; else -> it } }
-        validate()
-    }
-
-    private fun renderProviders() {
-        val box = providerBox ?: return
-        box.removeAllViews()
-        cloudBanner?.text = CloudText.banner(cloudState.activeProvider)
-        if (cloudState.providers.isEmpty()) {
-            box.addView(TextView(this).apply { text = "No provider yet."; textSize = 14f })
-        }
-        for (p in cloudState.providers) {
-            val active = p.id == cloudState.active
-            val line = "${if (active) "●" else "○"} ${p.displayName} (${p.host.ifEmpty { "?" }}) · ${p.model} · key ${app.cloudKeys.masked(p.id)} · consent ${if (p.consentOk) "✓" else "✗"}"
-            box.addView(TextView(this).apply { text = line; textSize = 14f })
-            box.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                if (!active) addView(Button(context).apply { text = "Use"; isAllCaps = false; setOnClickListener { useProvider(p.id) } }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                addView(Button(context).apply { text = "Edit / key / test"; isAllCaps = false; setOnClickListener { CloudProviderActivity.edit(this@DeveloperActivity, p.id) } }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2f))
-            })
-        }
-        renderOrder()
-    }
-
-    private fun pickPreset() {
-        val presets = CloudPresets.ALL
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Add a cloud provider")
-            .setItems(presets.map { "${it.label} — ${it.model.ifEmpty { "your model" }}" }.toTypedArray()) { _, i -> CloudProviderActivity.add(this, presets[i].id) }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun useProvider(id: String) {
-        cloudState = cloudState.copy(active = id)
-        app.dev.saveCloud(cloud = cloudState.copy(monthlyBudgetUsd = app.dev.load().cloud.monthlyBudgetUsd))
-        app.engine.applyDevSettings(app.dev.load())
-        renderProviders(); validate()
-    }
-
-    /**
-     * First enable: the consent dialog for the active provider (§8.3); accepting records the
-     * consent (host + time) and puts the cloud first in the route order (§3.1 step 4).
-     */
-    private fun onAllowCloud(b: CheckBox, on: Boolean) {
-        if (!on) { validate(); return }
-        val p = cloudState.activeProvider
-        if (p == null) {
-            b.isChecked = false
-            Toast.makeText(this, "Add a provider first", Toast.LENGTH_LONG).show()
-            pickPreset()
-            return
-        }
-        val enable = {
-            if (DevSettings.Route.CLOUD !in routeOrder) routeOrder = DevSettings.withCloudFirst(routeOrder)
-            validate()
-        }
-        if (p.consentOk) { enable(); return }
-        CloudProviderActivity.consentDialog(this, p, onCancel = { b.isChecked = false; validate() }) {
-            cloudState = cloudState.replace(p.withConsent(System.currentTimeMillis()))
-            app.dev.saveCloud(cloud = cloudState.copy(monthlyBudgetUsd = app.dev.load().cloud.monthlyBudgetUsd))
-            renderProviders()
-            enable()
-        }
-    }
-
-    private fun onTestCloud() {
-        val line = cloudProbeLine ?: return
-        val p = cloudState.activeProvider ?: run { line.text = "No active provider."; return }
-        val key = app.cloudKeys.get(p.id)
-            ?: if (CloudKeyPolicy.keylessOk(p)) null else run { line.text = "${p.displayName}: no API key stored."; return }
-        line.text = "Testing ${p.displayName} (${p.host})…"
-        val json = p.toJson().toString()
-        thread(name = "dev-cloud-probe") {
-            val h = app.engine.router()?.probeCloud(json, key) ?: NativeFlowCore.probeCloud(json, key)
-            if (!h.ok) app.debugLog.event("cloud_probe", DevText.cloudProbe(h))
-            runOnUiThread {
-                line.text = DevText.cloudProbe(h)
-                line.setTextColor(if (h.ok) OK_COLOR else BAD_COLOR)
-                refreshRows()
-            }
-        }
-    }
-
-    private fun onResetUsage() {
-        val r = app.engine.router()
-        if (r != null) { r.resetCloudUsage(); app.engine.persistCloudUsage() } else app.dev.cloudUsageJson = null
-        refreshRows()
-    }
-
-    private fun LinearLayout.check(text: String, checked: Boolean, enabled: Boolean = true, disabledNote: String? = null) =
-        CheckBox(context).apply {
-            this.text = if (!enabled && disabledNote != null) "$text — $disabledNote" else text
-            isChecked = checked && enabled; isEnabled = enabled
-        }.also(::addView)
-
-    private fun LinearLayout.field(label: String, value: String, f: Field, type: Int): EditText {
-        body(label)
-        val e = EditText(context).apply {
-            inputType = type; setText(value); isSingleLine = true
-            addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
-                override fun afterTextChanged(s: Editable?) { if (::save.isInitialized) validate() }
-            })
-        }.also(::addView)
-        errorViews[f] = body("", BAD_COLOR).apply { visibility = View.GONE }
-        return e
-    }
-
-    private fun input() = DevSettingsForm.Input(
-        allowServer = allowServer.isChecked, allowClient = allowClient.isChecked, routeOrder = routeOrder,
-        host = host.text.toString(), port = port.text.toString(), tls = tls.isChecked, pin = pin.text.toString(),
-        token = token.text.toString(), connectTimeoutMs = connectTimeout.text.toString(),
-        commitTimeoutBaseMs = commitTimeout.text.toString(), healthTtlS = healthTtl.text.toString(),
-        keepLocalWarm = keepWarm.isChecked, showEngineBadge = badge.isChecked,
-        allowCloud = allowCloud?.isChecked == true, cloud = cloudState, cloudBudget = budget?.text?.toString().orEmpty(),
-    )
 
     private fun validate(): DevSettingsForm.Result {
-        val r = DevSettingsForm.validate(input(), caps)
-        for ((f, v) in errorViews) {
-            val e = r.errors[f]
-            v.text = e ?: ""; v.visibility = if (e == null) View.GONE else View.VISIBLE
+        if (!hasForm) return draft.result(caps)
+        draft = draft.edit { readViews(this) }
+        val r = draft.result(caps)
+        for ((f, row) in fieldRows) row.setError(r.errors[f])
+        if (page == Page.SERVER) {
+            if (r.tlsLocked && !tls.isChecked) { tls.isChecked = true; draft = draft.edit { readViews(this) } }
+            tls.isEnabled = !r.tlsLocked
+            tls.setDescription(if (r.tlsLocked) "Required for a public address" else "Encrypt the connection")
+            pin.edit.isEnabled = tls.isChecked
+            pin.edit.alpha = if (tls.isChecked) 1f else 0.5f
         }
-        if (r.tlsLocked && !tls.isChecked) tls.isChecked = true
-        tls.isEnabled = !r.tlsLocked
-        tls.text = if (r.tlsLocked) "Use TLS (wss) — required for a public address" else "Use TLS (wss)"
-        pin.isEnabled = tls.isChecked
         renderOrder()
-        save.isEnabled = r.canSave
-        status.text = r.warnings.joinToString("\n")
-        status.setTextColor(if (DevSettingsForm.BOTH_OFF in r.warnings) BAD_COLOR else status.currentTextColor)
+        val off = DevPages.offPageErrors(r, page)
+        val lines = DevPages.warningsFor(page, r.warnings) + off.map { (f, e) -> "$e (on the ${TITLES.getValue(DevPages.pageOf(f))} page)" }
+        banner?.show(lines.joinToString("\n"), if (off.isNotEmpty() || DevSettingsForm.BOTH_OFF in lines) Tone.BAD else Tone.WARN)
+        val can = draft.canSave(caps)
+        saveItem?.let { if (it.isEnabled != can) it.isEnabled = can }
         return r
     }
 
     private fun onSave() {
         val r = validate()
         val s = r.settings ?: return
+        if (!draft.dirty) return
         app.dev.save(s)
         app.engine.applyDevSettings(s)
         Toast.makeText(this, if (s.effective(caps).bothOff) DevSettingsForm.BOTH_OFF else "Saved: applies to the next dictation", Toast.LENGTH_LONG).show()
+        draft = DevDraft.of(app.dev.load(), page)
+        validate()
         // §5: a probe runs after each save; its result fills "Server info".
         if (s.effective(caps).allowServer && s.serverConfigured) {
-            val r = app.engine.router()
-            if (r == null) probe(s) else {
-                probeLine.text = "Probing ${s.host}:${s.port}…"
+            val router = app.engine.router()
+            if (router == null) probe(s) else {
+                probeResult?.show("Probing ${s.host}:${s.port}…")
                 thread(name = "dev-probe-saved") {
-                    val h = runCatching { r.probeSaved() }.getOrElse { HealthReport(ok = false, error = "error", message = it.message) }
+                    val h = runCatching { router.probeSaved() }.getOrElse { HealthReport(ok = false, error = "error", message = it.message) }
                     if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
-                    runOnUiThread { lastProbe = h; probeLine.text = DevText.probe(h); refreshRows() }
+                    runOnUiThread { lastProbe = h; probeResult?.show(DevText.probe(h), if (h.ok) Tone.OK else Tone.BAD); refresh() }
                 }
             }
         }
+        refresh()
     }
 
-    /** The debug log's `model` for server dictations: what the server says it runs. */
-    private fun rememberServerModel(h: HealthReport) {
-        (h.asrModel ?: h.asrBackend)?.let { app.dev.serverAsrModel = it }
-    }
-
-    private fun onTestConnection() {
-        val s = validate().settings ?: run { probeLine.text = "Fix the highlighted fields first."; return }
-        if (!caps.remote) { probeLine.text = "This build has no network code."; return }
-        probe(s)
-    }
-
-    /** `probe_server()` with the form's (unsaved) values, off the UI thread. */
-    private fun probe(s: DevSettings) {
-        probeLine.text = "Testing ${s.host}:${s.port}…"
-        val json = s.effective(caps).toServerConfigJson().toString()
-        thread(name = "dev-probe") {
-            val h = NativeFlowCore.probeServer(json)
-            if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
-            runOnUiThread {
-                lastProbe = h
-                probeLine.text = DevText.probe(h)
-                probeLine.setTextColor(if (h.ok) OK_COLOR else BAD_COLOR)
-                refreshRows()
-            }
-        }
-    }
-
-    /** 1 s of silence through the full router path with the saved toggles: expect EMPTY no_speech. */
-    private fun onTestSession() {
-        probeLine.text = "Test session…"
-        thread(name = "dev-test-session") {
-            val line = try {
-                val core = app.engine.current()
-                core.startSession(SessionConfig(maxSamples = 16_000L * 10))
-                core.pushAudio(ShortArray(16_000))
-                val r = core.commit()
-                val ok = r.status == CommitStatus.EMPTY
-                (if (ok) "OK: " else "Unexpected: ") + DevText.lastDictation(r)
-            } catch (e: CoreException) {
-                app.debugLog.event("test_session", e.message, e)
-                "Failed: ${dev.flowclone.core.RouterErrors.userMessage(e.kind, e.message ?: "error")}"
-            }
-            runOnUiThread { probeLine.text = line; refreshRows() }
-        }
+    private fun confirmResetDefaults() {
+        AlertDialog.Builder(this)
+            .setTitle("Reset Developer settings?")
+            .setMessage("Restores the default engines, server and timeouts, and deletes every cloud provider and its API key from this device.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Reset") { _, _ -> onResetDefaults() }
+            .show()
     }
 
     /** Also forgets every cloud key (sealed copies and their Keystore keys), like deleting each provider. */
     private fun onResetDefaults() {
-        for (p in app.dev.load().cloud.providers) { app.cloudKeys.remove(p.id); app.engine.setCloudKey(p.id, null) }
+        for (pr in app.dev.load().cloud.providers) { app.cloudKeys.remove(pr.id); app.engine.setCloudKey(pr.id, null) }
         app.dev.reset()
         app.engine.applyDevSettings(app.dev.load())
+        lastProbe = null
         recreate()
     }
 
-    private fun onResetCircuit() {
-        val r = app.engine.router()
-        if (r == null) { Toast.makeText(this, "No router loaded", Toast.LENGTH_SHORT).show(); return }
-        runCatching { r.resetCircuit() }
-        refreshRows()
-    }
+    companion object {
+        const val EXTRA_PAGE = "page"
+        private const val MENU_SAVE = 1
 
-    private fun refreshRows() {
-        val last = app.lastRoute.value
-        lastLine.text = DevText.lastDictation(last?.result) { id -> cloudState.provider(id)?.displayName } + (last?.let { " · " + DateFormat.getTimeInstance().format(Date(it.atMs)) } ?: "")
-        val rs = app.engine.router()?.let { runCatching { it.routeStatus() }.getOrNull() }
-        circuitLine.text = if (rs == null) "router not loaded (${app.engine.state.value::class.simpleName})"
-        else DevText.circuit(rs.circuit, System.currentTimeMillis()) { DateFormat.getTimeInstance().format(Date(it)) }
-        val cc = rs?.cloudCircuit
-        cloudCircuitLine.text = if (cc == null) "" else "Cloud circuit: " + DevText.circuit(cc, System.currentTimeMillis(), "the key or provider changes") { DateFormat.getTimeInstance().format(Date(it)) }
-        cloudCircuitLine.visibility = if (cc == null) View.GONE else View.VISIBLE
-        usageLine?.text = CloudText.usageLines(
-            CloudUsage.decode(app.engine.router()?.cloudUsageJson() ?: app.dev.cloudUsageJson), cloudState,
-        ).joinToString("\n")
-        serverInfo.text = DevText.serverInfo(lastProbe ?: rs?.health)
-        refreshDebugCount()
-    }
+        val TITLES = mapOf(
+            Page.HUB to "Developer settings", Page.ROUTING to "Routing & engines", Page.SERVER to "Server",
+            Page.CLOUD to "Cloud providers", Page.DEBUG to "Debug log & audio", Page.STATUS to "Status",
+        )
 
-    private fun toggleTokenVisible(b: Button) {
-        val hidden = !SecretField.isShown(token)
-        SecretField.setShown(token, hidden)
-        b.text = if (hidden) "Hide" else "Show"
-    }
+        /** Last server probe of this process (Status page "Server info"); else the router's cached health. */
+        @Volatile private var lastProbe: HealthReport? = null
 
-    private fun pasteToken() {
-        val cm = getSystemService(android.content.ClipboardManager::class.java)
-        val t = cm?.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this)?.toString()?.trim()
-        if (t.isNullOrEmpty()) Toast.makeText(this, "Clipboard is empty", Toast.LENGTH_SHORT).show() else token.setText(t)
+        fun open(ctx: Context, p: Page) = ctx.startActivity(Intent(ctx, DeveloperActivity::class.java).putExtra(EXTRA_PAGE, p.name))
+
+        private fun String.cap() = replaceFirstChar { it.uppercase() }
     }
 }
