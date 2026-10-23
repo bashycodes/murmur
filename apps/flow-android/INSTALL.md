@@ -34,14 +34,14 @@ APKs built on this PC (`tools/dist.sh`, after `tools/build-native.sh --flavor lo
 
 | APK | Size | SHA-256 |
 |---|---|---|
-| `flow-clone-hybrid-debug.apk` | 46.4 MB (46372680 bytes) | `553612b78fbd1d08f6893c1e7539eb2e1a6e93f898e897f63f3f8e81eb51b662` |
+| `flow-clone-hybrid-debug.apk` | 46.5 MB (46454600 bytes) | `0b7e5a74a5a4ad8b0bc695ac95019e30f5cfb0cd173e331e2674b0d56dc64bcf` |
 | `flow-clone-hybrid-release-unsigned.apk` | 45.4 MB (45417457 bytes) | `f97ef20073ad254ae7cf7c9e144e73bc41fd5b779706581bee8049c2a1da6a83` |
-| `flow-clone-local-debug.apk` | 42.2 MB (42227504 bytes) | `1fd04e916b01b36e3d896e97790707e886bde9af5d900aef8a98484d3b1c1491` |
+| `flow-clone-local-debug.apk` | 42.3 MB (42293040 bytes) | `1e97a6f00ce0515cc66cfa3cfaa6ded0bb13b673a1a836586dd72378cd616218` |
 | `flow-clone-local-release-unsigned.apk` | 41.3 MB (41272269 bytes) | `22e4a8d2c472262cf6ba5bca4da5cbbbfae57913f0d2308ad1fb98c20e509299` |
-| `flow-clone-remote-debug.apk` | 12.7 MB (12680282 bytes) | `8fd9496a50b82cb086ac2fd42524b70d9f593ec711a823adc4a3c974dbfa3ae2` |
+| `flow-clone-remote-debug.apk` | 12.7 MB (12735026 bytes) | `b2cf8bc2a619d97bc394251f9c0d07d34704a8dbf7edfd142d034c7507368256` |
 | `flow-clone-remote-release-unsigned.apk` | 11.7 MB (11725059 bytes) | `a4cf625d33e07058e2a67eb3e93e50dd7fa96d9bd03d1202263a713ec18d5694` |
 
-Debug APKs built 2026-10-23 from branch `feat/android-debuglog` (ee156b7, adds the D21 debug log; merged into `integration`). The `*-release-unsigned.apk` rows are still the 2026-10-22 build from `integration` (merge commit b9942f1 of crates-final, android-final and win-final; natives rebuilt from the same tree) and are not installable until signed, see "Release build" below.
+Debug APKs built 2026-10-23 from branch `feat/android-streaming` (b2dc7e3, D22 streaming ASR on top of `feat/streaming-asr`; natives rebuilt from the same tree; same debug key as before, so they install over the previous build). The `*-release-unsigned.apk` rows are still the 2026-10-22 build from `integration` (merge commit b9942f1 of crates-final, android-final and win-final; natives rebuilt from the same tree) and are not installable until signed, see "Release build" below.
 
 Check a copy with `sha256sum flow-clone-hybrid-debug.apk` before installing it. An APK from
 another machine or from the CI artifact (`.github/workflows/android-build.yml`) has a different
@@ -77,8 +77,12 @@ or the host is a public address. For on-device fallback, either import a model (
 
 **4. Smoke checklist (10 minutes).** Note the phone model, Android version and pass/fail per line.
 - [ ] Notes app, **tap** the bubble, say a sentence, stop talking: the preview says
-      `via server`, and after ~2 s of silence the dictation ends by itself and the text is
-      inserted (hands-free endpointing; *Settings → Hands-free: stop after silence*).
+      `via server`, and after ~1.5 s of silence the dictation ends by itself and the text is
+      inserted (hands-free endpointing; *Settings → Hands-free: stop after silence*, default
+      1500 ms since D22; a value you set yourself is kept, an untouched old 2000 becomes 1500).
+- [ ] Long dictation (30 s+, with pauses), *Settings → Decode while speaking* on (default): the
+      text appears well under a second after you stop; the debug line shows `segments` ≥ 2 and
+      `pre_asr_ms` > 0. Toggle it off: `segments` 0 and the wait grows with the length.
 - [ ] **Hold** the bubble, speak, release: inserted; holding never stops by itself.
 - [ ] *Active engine (last dictation)* on the Developer page says `Server 100.x…:7313`.
 - [ ] Start a long tap dictation, stop `flow-server` (Ctrl+C) mid-sentence: the preview relabels to
@@ -127,13 +131,25 @@ One line per dictation; the fields are the same in the Windows app:
 | `endpoint_wait_ms` | from your last word to the stop (hands-free: the silence wait) |
 | `asr_ms` / `post_ms` / `total_ms` | speech recognition / cleanup (rules + AI) / whole commit |
 | `perceived_ms` | stop or release → text inserted: what you waited |
+| `client_ms` | release → result on the phone, network included (router; `null` without a result). The latency to compare between routes: a server's `total_ms` is only its own commit |
+| `wait_ms` | how long the commit waited for a decode already running (live preview or a segment); part of `total_ms` |
+| `segments` | pieces sent to speech recognition (*Decode while speaking*: finished phrases + the tail); `0` = off, or the cloud route |
+| `pre_asr_ms` | recognition time spent while you were still speaking; not part of `asr_ms`, which is now only the tail |
 | `target` | app package; `<redacted>` in password fields, banking and denylisted apps (text too) |
 | `insert` | `{"outcome": inserted / paste_failed / target_changed / target_protected / empty / error / timeout / start_failed / cancelled, "steps": [insertion trail]}` |
 | `raw` / `text` | recogniser output / text inserted |
 | `error` (+ `stack`) | what went wrong |
 
 The server token and cloud keys are scrubbed from every line, and the clipboard is never read.
-With the toggle off nothing is written; `FlowService commit …` (timings only) stays as before.
+With the toggle off nothing is written; `FlowService commit …` (timings only, never text) is
+always logged and since D22 also carries `wait=…ms segments=… pre_asr=…ms client=…ms`
+(`client=-` when the result did not come through the router).
+
+**Decode while speaking** (*Settings → Speed*, default on, stored on this phone only): the
+engine decodes each finished phrase (cut in the middle of pauses ≥ 0.8 s) while you keep
+talking, so after you stop it only decodes the last phrase. Same text, less waiting on long
+dictations. Used on the phone engine and your own server; the cloud route never gets audio
+before you stop, so it is off there. Live preview and ✕ behave as before.
 
 ### Release build
 
@@ -263,6 +279,10 @@ folder to the phone. *Settings → Parakeet model folder… → Import model fol
 folder; the app copies the four files into `files/parakeet/<name>/` and switches the engine.
 *Settings → Use Parakeet* toggles back to whisper. If Parakeet fails to load (RAM, files), the
 app loads the whisper model instead and the main screen says "Parakeet failed: …".
+On the phone Parakeet decodes **greedy** (one recognizer; saves ≈ 0.6 GB RAM, dictionary words
+are not used as hotwords). *Developer settings → Parakeet decoding* switches to *Auto* (beam
+search with dictionary hotwords, plus a greedy recognizer) or *Beam only*; changing it reloads
+the engine.
 
 ## 5b. Server mode (hybrid / remote)
 
