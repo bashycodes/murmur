@@ -697,6 +697,7 @@ interface DevForm {
   dev_unlocked: boolean;
   allow_cloud: boolean;
   cloud: CloudConfig;
+  decode_while_speaking: boolean;
 }
 
 interface FieldError {
@@ -789,7 +790,14 @@ const ROUTE_LABEL: Record<Route, string> = {
 };
 const DEV_NUM = ["port", "connect_timeout_ms", "commit_timeout_base_ms", "health_ttl_s"] as const;
 const DEV_TEXT = ["host", "tls_pin_sha256", "token"] as const;
-const DEV_BOOL = ["allow_server", "allow_client", "tls", "keep_local_warm", "show_engine_badge"] as const;
+const DEV_BOOL = [
+  "allow_server",
+  "allow_client",
+  "tls",
+  "keep_local_warm",
+  "show_engine_badge",
+  "decode_while_speaking",
+] as const;
 
 let devView: DevView | null = null;
 let devOrder: Route[] = ["server", "client", "cloud"];

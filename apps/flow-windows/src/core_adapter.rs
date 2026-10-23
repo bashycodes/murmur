@@ -875,6 +875,7 @@ pub fn to_core_session(c: &SessionConfig) -> fc::SessionConfig {
         spoken_cleanup: c.spoken_cleanup,
         llm_prefill: c.llm_prefill,
         endpoint_silence_ms: c.endpoint_silence_ms,
+        segment_pause_ms: c.segment_pause_ms,
         ..fc::SessionConfig::default()
     }
 }
@@ -1303,6 +1304,22 @@ mod tests {
         let r = a.commit();
         assert_eq!(r.status, CommitStatus::Empty);
         assert_eq!(r.empty_reason.as_deref(), Some("no_speech"), "{r:?}");
+    }
+
+    #[test]
+    fn segment_pause_reaches_the_core_config_and_is_absent_when_off() {
+        let mut p = crate::prefs::Prefs::default();
+        let on = to_core_session(&p.session_config());
+        assert_eq!(on.segment_pause_ms, Some(800));
+        assert_eq!(on.segment_min_ms, None, "core default");
+        assert_eq!(on.segment_soft_max_ms, None, "core default");
+        let j = serde_json::to_value(&on).unwrap();
+        assert_eq!(j["segment_pause_ms"], 800);
+        p.developer.decode_while_speaking = false;
+        let off = to_core_session(&p.session_config());
+        assert_eq!(off.segment_pause_ms, None);
+        let j = serde_json::to_value(&off).unwrap();
+        assert!(j.get("segment_pause_ms").is_none(), "{j}");
     }
 
     #[test]
