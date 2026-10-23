@@ -185,6 +185,20 @@ class DevSettingsTest {
         assertTrue(remote.allowServer); assertFalse(remote.allowClient)
     }
 
+    @Test fun debugLogDefaultsOffInEveryFlavourAndPersists() {
+        for (caps in listOf(BuildCaps.LOCAL, BuildCaps.ALL, BuildCaps.REMOTE)) {
+            val kv = MemKV()
+            val store = DevStore(kv, caps, RotBox)
+            assertFalse(store.debugLog)
+            store.debugLog = true
+            assertTrue(DevStore(kv, caps, RotBox).debugLog)
+            store.save(DevSettings.defaults(caps))
+            assertTrue("a settings save leaves the toggle alone", store.debugLog)
+            store.reset()
+            assertFalse("reset to defaults turns it off", store.debugLog)
+        }
+    }
+
     @Test fun unreadableTokenLoadsAsEmpty() {
         val kv = MemKV().apply { m["server.token_sealed"] = "garbage" }
         assertEquals("", DevStore(kv, BuildCaps.ALL, RotBox).load().token)
