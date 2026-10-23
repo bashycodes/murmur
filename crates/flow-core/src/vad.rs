@@ -92,6 +92,101 @@ impl Thresholds {
     }
 }
 
+/// Noise-floor window of the streaming classifier: the last 30 s of frames.
+pub(crate) const STREAM_FLOOR_FRAMES: usize = 30 * 50;
+
+/// The commit-time classifier run as a stream (shared by the hands-free
+/// endpointer, D19, and the pause segmenter, D22): the same 20 ms frames,
+/// speech bars and `MIN_RUN`, with the noise floor taken from the last
+/// 30 s of frames seen so far. Fed sample by sample, so its answers depend
+/// only on the audio, never on how it was chunked.
+#[derive(Debug, Clone)]
+pub struct StreamVad {
+    /// Samples of the current, incomplete frame.
+    pending: Vec<f32>,
+    /// (RMS, ZCR) of the last `STREAM_FLOOR_FRAMES` frames.
+    window: std::collections::VecDeque<(f32, f32)>,
+    frames: u64,
+    run: usize,
+    speech_frames: u64,
+    /// Frame index just after the last speech run (0 = no speech yet).
+    speech_end: u64,
+}
+
+impl Default for StreamVad {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StreamVad {
+    pub fn new() -> Self {
+        Self {
+            pending: Vec::with_capacity(FRAME),
+            window: std::collections::VecDeque::with_capacity(STREAM_FLOOR_FRAMES),
+            frames: 0,
+            run: 0,
+            speech_frames: 0,
+            speech_end: 0,
+        }
+    }
+
+    /// Feed one normalised sample; true when it completed a frame.
+    #[inline]
+    pub fn sample(&mut self, s: f32) -> bool {
+        self.pending.push(s);
+        if self.pending.len() < FRAME {
+            return false;
+        }
+        let st = frame_stats(&self.pending);
+        self.pending.clear();
+        if self.window.len() == STREAM_FLOOR_FRAMES {
+            self.window.pop_front();
+        }
+        self.window.push_back(st);
+        self.frames += 1;
+        if Thresholds::from_stats(self.window.make_contiguous()).is_speech(st) {
+            self.run += 1;
+            if self.run == MIN_RUN {
+                self.speech_frames += MIN_RUN as u64;
+            } else if self.run > MIN_RUN {
+                self.speech_frames += 1;
+            }
+            if self.run >= MIN_RUN {
+                self.speech_end = self.frames;
+            }
+        } else {
+            self.run = 0;
+        }
+        true
+    }
+
+    /// Complete frames seen.
+    pub fn frames(&self) -> u64 {
+        self.frames
+    }
+
+    /// Frames in speech runs of at least `MIN_RUN`.
+    pub fn speech_frames(&self) -> u64 {
+        self.speech_frames
+    }
+
+    /// Frame index just after the last speech run (0 = none yet).
+    pub fn speech_end(&self) -> u64 {
+        self.speech_end
+    }
+
+    /// Length of the current speech-frame run (any length).
+    pub fn run(&self) -> usize {
+        self.run
+    }
+
+    /// Frames since the last speech run (since the start without speech).
+    pub fn trailing_frames(&self) -> u64 {
+        self.frames - self.speech_end
+    }
+}
+
 /// The span of `pcm` that holds speech, or `None` when there is none.
 pub fn detect(pcm: &[f32]) -> Option<Speech> {
     let flags = frame_flags(pcm);

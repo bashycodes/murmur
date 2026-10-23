@@ -196,8 +196,10 @@ impl WhisperEngine {
         if audio_ctx > 0 {
             p.set_audio_ctx(audio_ctx);
         }
-        if !req.initial_prompt.is_empty() {
-            p.set_initial_prompt(&req.initial_prompt);
+        // D22: the previous segments' last words follow the dictionary.
+        let prompt = crate::asr::compose_prompt(&req.initial_prompt, req.prior_text.as_deref());
+        if !prompt.is_empty() {
+            p.set_initial_prompt(&prompt);
         }
         if let Some(v) = &self.silero {
             p.set_vad_model_path(Some(v));

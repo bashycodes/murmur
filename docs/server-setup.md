@@ -12,6 +12,27 @@ Tailscale addresses.
 
 * The Parakeet model: `tools/fetch-models.sh --parakeet` (explicit, one-time
   download into `models/`), or an existing copy passed with `--model DIR`.
+* Supported model folders (any sherpa-onnx NeMo transducer directory with
+  `encoder*.onnx`, `decoder*.onnx`, `joiner*.onnx` and `tokens.txt`; int8
+  files are preferred):
+  * `sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8` (the default `install.sh`
+    and `fetch-models.sh` use);
+  * `sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming`
+    (2026-10-23 survey, `docs/proposals/stt-model-survey.md`: same WER and
+    speed as v2 on our set, no utterance drops on 43-56 s one-shot
+    decodes; NVIDIA Open Model License). Point `[model] asr_path` (or
+    `--model DIR`) at the folder; nothing else changes. Load-tested by
+    `flow-asr-sherpa/tests/model.rs` with `FLOW_PARAKEET_UNIFIED_DIR`.
+* Decoding (2026-10-23): greedy search when the session has no
+  dictionary hotwords, beam search with them; an empty or implausibly short
+  beam result is re-decoded greedy, and clips over 20 s are decoded in
+  ≤ 20 s pieces cut at pauses (fixes the v2 beam-4 empty results and the
+  long-decode sentence drops). This loads two recognizers (≈ +0.6 GB RSS);
+  `ModelConfig.parakeet_decoding = "greedy"` keeps one. The earlier
+  workaround, `Environment=FLOW_PARAKEET_HOTWORDS_SCORE=0` in a systemd
+  drop-in (e.g. `~/.config/systemd/user/flow-server.service.d/greedy.conf`),
+  can be removed once a server with this fix is installed: it still forces
+  greedy-only and turns hotwords off.
 * The sherpa-onnx shared libraries (`libsherpa-onnx-c-api.so`,
   `libonnxruntime.so`), passed with `SHERPA_ONNX_LIB_DIR=<dir>` or
   `--sherpa-lib <dir>`.

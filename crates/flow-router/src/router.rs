@@ -734,6 +734,7 @@ impl Router {
     /// while this blocks returns at once with ERROR `cancelled` (the engine
     /// is told to abort; no fallback is tried; review C4).
     pub fn commit(&self) -> CommitResult {
+        let t0 = Instant::now();
         let Some(mut a) = self.session().take() else {
             return error_result("no active session", None);
         };
@@ -764,6 +765,11 @@ impl Router {
             if let Some(sw) = a.switching.take() {
                 sw.cancel.store(true, Ordering::SeqCst);
             }
+        }
+        // Release → result as the shell sees it (a server's `total_ms` is
+        // its own commit time and misses the network).
+        if let Some(rt) = r.route.as_mut() {
+            rt.client_ms = Some(t0.elapsed().as_millis().min(u32::MAX as u128) as u32);
         }
         self.state.lk().last_route = r.route.clone();
         r

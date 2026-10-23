@@ -60,6 +60,13 @@ pub struct ParakeetConfig {
     pub hotwords_score: f32,
     /// Beam width for modified beam search.
     pub max_active_paths: usize,
+    /// With `hotwords`, also create a greedy-search recognizer: used for
+    /// decodes without hotwords and to retry a beam decode that came back
+    /// empty. Parakeet v2 int8 with beam 4 returns "" on some long clips
+    /// (25.1 s 6/6, 42.8 s; beam 8 too) where greedy is fine
+    /// (docs/proposals/stt-model-survey.md). Costs a second set of
+    /// onnxruntime sessions (≈ +0.6 GB RSS). Default true.
+    pub greedy_fallback: bool,
     /// Where to write the derived `bpe.vocab` when the model directory has
     /// none. `None` = `std::env::temp_dir()`. The file is deleted once the
     /// recognizer has read it. Android: pass the app's cache dir.
@@ -74,6 +81,7 @@ impl ParakeetConfig {
             hotwords: true,
             hotwords_score: DEFAULT_HOTWORDS_SCORE,
             max_active_paths: DEFAULT_BEAM,
+            greedy_fallback: true,
             scratch_dir: None,
         }
     }
@@ -186,9 +194,19 @@ pub fn is_silent(pcm: &[f32]) -> bool {
     rms < SILENCE_RMS
 }
 
+/// Decoding method of one decode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Search {
+    /// Modified beam search (hotwords honoured).
+    Beam,
+    Greedy,
+}
+
 pub struct ParakeetEngine {
-    rec: Mutex<OfflineRecognizer>,
-    hotwords: bool,
+    /// Modified beam search with hotwords (when enabled and the vocab loaded).
+    beam: Option<Mutex<OfflineRecognizer>>,
+    /// Greedy search (always when `beam` is `None`).
+    greedy: Option<Mutex<OfflineRecognizer>>,
 }
 
 impl ParakeetEngine {
@@ -198,6 +216,14 @@ impl ParakeetEngine {
         let files = ModelFiles::find(&cfg.model_dir)?;
         let s = |p: &Path| Some(p.to_string_lossy().into_owned());
         let mut c = OfflineRecognizerConfig::default();
+        let created = |c: &OfflineRecognizerConfig| {
+            OfflineRecognizer::create(c).map(Mutex::new).ok_or_else(|| {
+                SherpaError::Load(format!(
+                    "{}: sherpa-onnx could not create the recognizer (see stderr)",
+                    cfg.model_dir.display()
+                ))
+            })
+        };
         c.model_config.transducer = OfflineTransducerModelConfig {
             encoder: s(&files.encoder),
             decoder: s(&files.decoder),
@@ -227,36 +253,68 @@ impl ParakeetEngine {
                 Err(e) => eprintln!("flow-asr-sherpa: hotwords disabled: {e}"),
             }
         }
-        if !hotwords {
-            c.decoding_method = Some("greedy_search".into());
-        }
-        let rec = OfflineRecognizer::create(&c);
-        if let Some(p) = temp_vocab {
-            let _ = std::fs::remove_file(p);
-        }
-        let rec = rec.ok_or_else(|| {
-            SherpaError::Load(format!(
-                "{}: sherpa-onnx could not create the recognizer (see stderr)",
-                cfg.model_dir.display()
-            ))
-        })?;
-        Ok(Self {
-            rec: Mutex::new(rec),
-            hotwords,
-        })
+        let beam = if hotwords {
+            let r = created(&c);
+            if let Some(p) = temp_vocab {
+                let _ = std::fs::remove_file(p);
+            }
+            Some(r?)
+        } else {
+            None
+        };
+        let greedy = if beam.is_none() || cfg.greedy_fallback {
+            let mut g = c.clone();
+            g.decoding_method = Some("greedy_search".into());
+            let d = OfflineRecognizerConfig::default();
+            g.max_active_paths = d.max_active_paths;
+            g.hotwords_score = d.hotwords_score;
+            g.model_config.modeling_unit = None;
+            g.model_config.bpe_vocab = None;
+            Some(created(&g)?)
+        } else {
+            None
+        };
+        Ok(Self { beam, greedy })
     }
 
     /// Whether per-decode hotwords are honoured (beam search + vocab loaded).
     pub fn supports_hotwords(&self) -> bool {
-        self.hotwords
+        self.beam.is_some()
+    }
+
+    /// Whether a greedy recognizer is loaded (see `greedy_fallback`).
+    pub fn has_greedy(&self) -> bool {
+        self.greedy.is_some()
+    }
+
+    /// The search [`ParakeetEngine::transcribe`] uses for these hotwords:
+    /// beam with hotwords, otherwise greedy when loaded.
+    pub fn default_search<S: AsRef<str>>(&self, hotwords: &[S]) -> Search {
+        if self.beam.is_some() && (self.greedy.is_none() || !hotwords_arg(hotwords).is_empty()) {
+            Search::Beam
+        } else {
+            Search::Greedy
+        }
     }
 
     /// Decode a whole utterance (16 kHz mono f32). `hotwords` biases the
-    /// decode toward those phrases (ignored when unsupported).
+    /// decode toward those phrases (ignored when unsupported). Beam search
+    /// only with hotwords; greedy otherwise (when loaded).
     pub fn transcribe<S: AsRef<str>>(
         &self,
         pcm: &[f32],
         hotwords: &[S],
+    ) -> Result<String, SherpaError> {
+        self.transcribe_with(pcm, hotwords, self.default_search(hotwords))
+    }
+
+    /// Decode with an explicit search; falls back to the loaded one when
+    /// the requested recognizer is not loaded. Hotwords only reach beam.
+    pub fn transcribe_with<S: AsRef<str>>(
+        &self,
+        pcm: &[f32],
+        hotwords: &[S],
+        search: Search,
     ) -> Result<String, SherpaError> {
         if is_silent(pcm) {
             return Ok(String::new());
@@ -269,8 +327,13 @@ impl ParakeetEngine {
         } else {
             pcm
         };
-        let rec = self.rec.lock().unwrap_or_else(|p| p.into_inner());
-        let hw = if self.hotwords {
+        let (rec, is_beam) = match (search, &self.beam, &self.greedy) {
+            (Search::Beam, Some(b), _) | (Search::Greedy, Some(b), None) => (b, true),
+            (_, _, Some(g)) => (g, false),
+            (_, None, None) => unreachable!("load creates at least one recognizer"),
+        };
+        let rec = rec.lock().unwrap_or_else(|p| p.into_inner());
+        let hw = if is_beam {
             hotwords_arg(hotwords)
         } else {
             String::new()

@@ -7,6 +7,8 @@
 //!
 //! Audio is pushed in 100 ms frames at real-time pace (like a shell), so
 //! the number that matters is commit → result ("release → text").
+//! `--session '{"partial_interval_ms":1500,"segment_pause_ms":800}'` sets
+//! the SessionConfig of both routes (default `{}`).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -94,7 +96,11 @@ fn main() {
         h.ok, h.rtt_ms, h.server_version, h.asr_model
     );
     assert!(h.ok, "{h:?}");
-    let cfg = SessionConfig::default();
+    // `--session JSON`: the SessionConfig both routes use (e.g. the
+    // Android shell's `{"partial_interval_ms":1500}`, plus
+    // `"segment_pause_ms":800` for D22). Default `{}`.
+    let cfg: SessionConfig =
+        serde_json::from_str(&arg("--session").unwrap_or_else(|| "{}".into())).unwrap();
     println!("file\taudio_ms\tlocal_commit_ms\tremote_commit_ms\tlocal_asr_ms\tserver_asr_ms\tsame_text\ttext");
     let (mut sl, mut sr, mut n) = (0u128, 0u128, 0u128);
     for f in files() {
