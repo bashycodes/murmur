@@ -899,10 +899,16 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(5));
         CoreApi::cancel(&*r.router);
         let res = t.join().unwrap();
-        // Either the commit finished first or it was cancelled; a cancel is
-        // never rewritten into a "Server unreachable" pill.
+        // Either the commit finished first, or it was cancelled, or (slow
+        // runner: the commit thread had not started within 5 ms) the cancel
+        // ended the session before commit ran. A cancel is never rewritten
+        // into a "Server unreachable" pill.
         if res.status == CommitStatus::Error {
-            assert_eq!(res.error.as_deref(), Some(crate::core_api::CANCELLED));
+            let err = res.error.as_deref();
+            assert!(
+                err == Some(crate::core_api::CANCELLED) || err == Some("no active session"),
+                "{res:?}"
+            );
         }
     }
 

@@ -967,7 +967,7 @@ fn debug_entry(i: &SessionInfo, insert: &str, error: Option<String>) -> Entry {
         post_ms: r.map(|r| r.timings.total_ms.saturating_sub(r.timings.asr_ms)),
         total_ms: r.map(|r| r.timings.total_ms),
         perceived_ms: i.released.map(|t| t.elapsed().as_millis() as u64),
-        target: target.map(&redact),
+        target: target.map(redact),
         insert: Insert {
             outcome: insert.to_string(),
             steps: if password {
