@@ -143,6 +143,16 @@ class DictationController(
          * once (the app enqueues it). Whatever it does or throws never changes the dictation.
          */
         fun onDictationTrace(trace: DictationTrace) = Unit
+
+        /** Developer "Keep last dictation audio (debug)": copy this dictation's PCM (read at record start). */
+        fun keepDictationAudio(): Boolean = false
+
+        /**
+         * Called with the dictation's 16 kHz mono PCM just before [onDictationTrace] when
+         * [keepDictationAudio] was on (never for a cancelled dictation). Returns the saved file's
+         * name for the trace's `audio` field, or null (not kept). Must return at once (enqueue).
+         */
+        fun onDictationAudio(trace: DictationTrace, pcm: ShortArray): String? = null
     }
 
     /** What the debug trace needs from the dictation's start. */
@@ -201,18 +211,19 @@ class DictationController(
     @Volatile private var liveFrames = 0L
     private val meter = LevelMeter()
     private var traceStart: TraceStart? = null
+    /** "Keep last dictation audio (debug)": this dictation's PCM; null when the option is off. */
+    private var capture: PcmCapture? = null
 
     /** D21: build + hand off the trace; never throws, never suspends. */
     private fun trace(
         start: TraceStart?, outcome: String, result: CommitResult? = null, stoppedAt: Long? = null,
         endpointWaitMs: Long? = null, liveRoute: SessionRoute? = null, error: String? = null,
-        fallback: String? = null, cause: Throwable? = null, text: String? = null,
+        fallback: String? = null, cause: Throwable? = null, text: String? = null, pcm: ShortArray? = null,
     ) {
         try {
             val s = start ?: return
             val t = result?.timings
-            host.onDictationTrace(
-                DictationTrace(
+            val trace = DictationTrace(
                     tsMs = s.wallMs, mode = if (s.hold) "hold" else "tap",
                     route = result?.route?.engine ?: liveRoute?.engine,
                     fallback = result?.route?.fallback ?: liveRoute?.fallback ?: fallback,
@@ -225,8 +236,9 @@ class DictationController(
                     target = s.appId?.ifEmpty { null }, insert = InsertOutcome(outcome),
                     raw = result?.asrText?.ifEmpty { null }, text = text ?: result?.historyText?.ifEmpty { null },
                     error = error ?: result?.error, stack = DebugLogger.stackOf(cause),
-                ),
-            )
+                )
+            val audioName = if (pcm == null || pcm.isEmpty()) null else try { host.onDictationAudio(trace, pcm) } catch (_: Throwable) { null }
+            host.onDictationTrace(if (audioName != null) trace.copy(audio = audioName) else trace)
         } catch (_: Throwable) {
             // D21: logging never affects dictation.
         }
@@ -275,6 +287,7 @@ class DictationController(
         }
         if (_state.value !is DictationState.Recording) return
         trace(traceStart, InsertOutcome.CANCELLED, liveRoute = _route.value)
+        capture = null
         generation++
         endAudio()
         _partial.value = null
@@ -333,6 +346,8 @@ class DictationController(
         session = c
         meter.reset()
         silence.reset()
+        val pcmCapture = if (runCatching { host.keepDictationAudio() }.getOrDefault(false)) PcmCapture(cap.maxSamples.toInt()) else null
+        capture = pcmCapture
         hintJob?.cancel(); _hint.value = null; _partial.value = null; _route.value = null
         val gate = StartGate()
         host.onRecordingActive(true)
@@ -340,6 +355,7 @@ class DictationController(
         val ok = audio.start({ pcm, n ->
             if (liveFrames != gen) return@start // C15: a late tail of a stopped or older dictation
             gate.push(pcm, n)
+            pcmCapture?.append(pcm, n)
             _level.value = meter.update(pcm, n)
             silence.update(pcm, n)
             val h = _hint.value
@@ -357,6 +373,7 @@ class DictationController(
             generation++
             liveFrames = 0
             session = null
+            capture = null
             host.onRecordingActive(false)
             trace(traceStart, InsertOutcome.START_FAILED, error = "microphone unavailable")
             _state.value = DictationState.Error(DictationState.ErrorKind.MicUnavailable)
@@ -409,6 +426,7 @@ class DictationController(
         trace(traceStart, InsertOutcome.START_FAILED, error = msg, fallback = e.kind, cause = e)
         if (_state.value is DictationState.Recording) endAudio()
         session = null
+        capture = null
         _route.value = null
         _partial.value = null
         // e.g. router `no_engine_enabled`: "Dictation disabled — enable server or client …"
@@ -433,8 +451,11 @@ class DictationController(
         val ts = traceStart
         val endpointWait = if (silence.heardSpeech) silence.trailingSilenceMs else null
         val live = _route.value
+        val pcm = capture?.take()
+        capture = null
         fun done(outcome: String, r: CommitResult? = null, error: String? = null, text: String? = null) =
-            trace(ts, outcome, r, stoppedAt, endpointWait, live, error = error, text = text)
+            trace(ts, outcome, r, stoppedAt, endpointWait, live, error = error, text = text,
+                pcm = pcm?.takeIf { outcome != InsertOutcome.CANCELLED })
         host.feedback(FeedbackEvent.StopSound)
         val c = session ?: return
         session = null
