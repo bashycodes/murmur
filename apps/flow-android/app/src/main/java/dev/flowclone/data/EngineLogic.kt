@@ -47,6 +47,27 @@ object ModelFiles {
         expected == Kind.LLM_GGUF -> "Not a GGUF file. AI cleanup needs a llama.cpp .gguf model, e.g. qwen2.5-0.5b-instruct-q4_k_m.gguf."
         else -> "Not a whisper.cpp ggml model. Speech models are ggml-*.bin files."
     }
+
+    const val UNREADABLE = "Could not read the file."
+
+    /**
+     * The import screen's accept/reject decision: null = import it, else the message to show.
+     * [header] null = the file could not be opened or read at all.
+     */
+    fun rejection(expected: Kind, header: ByteArray?): String? =
+        if (header == null) UNREADABLE else mismatch(expected, kindOf(header))
+
+    /** Up to [n] leading bytes; loops because one `read()` may return fewer bytes than asked. */
+    fun readHeader(input: java.io.InputStream, n: Int = 4): ByteArray {
+        val buf = ByteArray(n)
+        var got = 0
+        while (got < n) {
+            val r = input.read(buf, got, n - got)
+            if (r < 0) break
+            got += r
+        }
+        return if (got == n) buf else buf.copyOf(got)
+    }
 }
 
 /**
