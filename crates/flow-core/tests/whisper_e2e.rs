@@ -165,3 +165,35 @@ fn fit_ctx_matches_the_full_window() {
         assert_eq!(words(&text), words(&full));
     }
 }
+
+/// Regression (agent W): segmented pieces must not add sentence breaks at
+/// mid-sentence pauses; jfk segmented == whole clip, punctuation included.
+#[test]
+fn segmented_jfk_equals_whole_clip() {
+    let Some((model, wav)) = fixture() else {
+        return;
+    };
+    let core = FlowCore::load_models(&ModelConfig {
+        asr_backend: AsrBackend::Whisper,
+        asr_path: model.to_string_lossy().into(),
+        threads: 4,
+        ..Default::default()
+    })
+    .unwrap();
+    let pcm = audio::read_wav_16k_mono(&wav).unwrap();
+    let run = |cfg: SessionConfig| {
+        core.start_session(cfg).unwrap();
+        for c in pcm.chunks(640) {
+            core.push_audio(c);
+        }
+        core.commit()
+    };
+    let whole = run(SessionConfig::default());
+    let seg = run(SessionConfig {
+        segment_pause_ms: Some(800),
+        ..Default::default()
+    });
+    eprintln!("whole: {}\nseg:   {}", whole.asr_text, seg.asr_text);
+    assert!(seg.timings.segments >= 2, "no cut: {:?}", seg.timings);
+    assert_eq!(seg.final_text, whole.final_text);
+}
