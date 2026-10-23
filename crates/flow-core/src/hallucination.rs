@@ -109,3 +109,54 @@ pub fn is_hallucination(text: &str, ev: Evidence) -> bool {
     let whisper_says_none = ev.no_speech_prob.is_some_and(|p| p >= NO_SPEECH_THOLD);
     little_speech || whisper_says_none
 }
+
+/// Stock phrases whisper appends to a segment that ends in silence.
+const TRAILING: &[&str] = &[
+    "thank you",
+    "thanks",
+    "thank you very much",
+    "thank you so much",
+    "thanks for watching",
+    "thank you for watching",
+    "thanks for listening",
+    "thank you for listening",
+];
+
+/// `text` without a trailing stock sentence ("…, and that's it. Thank
+/// you."), when there is other text before it; `None` when there is
+/// nothing to strip. For pieces of a segmented dictation that are not the
+/// last one (D22), where a "Thank you." with a high no-speech probability
+/// is whisper filling the pause, not the user.
+pub fn strip_trailing_stock(text: &str) -> Option<&str> {
+    let t = text.trim_end();
+    let body = t.trim_end_matches(['.', '!', '?', ' ']);
+    let cut = body.rfind(['.', '!', '?'])?;
+    let (head, tail) = (&t[..=cut], &t[cut + 1..]);
+    TRAILING
+        .contains(&normalise(tail).as_str())
+        .then(|| head.trim_end())
+        .filter(|h| !normalise(h).is_empty())
+}
+
+#[cfg(test)]
+mod strip_tests {
+    use super::*;
+
+    #[test]
+    fn strips_only_a_trailing_stock_sentence() {
+        assert_eq!(
+            strip_trailing_stock("We shipped it. Thank you."),
+            Some("We shipped it.")
+        );
+        assert_eq!(
+            strip_trailing_stock("Is it done? Thanks for watching!"),
+            Some("Is it done?")
+        );
+        assert_eq!(strip_trailing_stock("Thank you."), None);
+        assert_eq!(strip_trailing_stock("We said thank you."), None);
+        assert_eq!(
+            strip_trailing_stock("Done. Thank you all for coming."),
+            None
+        );
+    }
+}

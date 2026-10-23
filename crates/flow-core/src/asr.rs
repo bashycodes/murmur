@@ -42,6 +42,10 @@ pub enum AsrPurpose {
     Final,
     /// A best-effort live preview while recording.
     Partial,
+    /// A finished piece of a pause-segmented dictation (D22), decoded while
+    /// the user keeps talking or at commit. Its text is part of the result,
+    /// so engines treat it like `Final`.
+    Segment,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -59,6 +63,38 @@ pub struct AsrRequest {
     /// opted in.
     pub screen_terms: Vec<String>,
     pub purpose: AsrPurpose,
+    /// D22: the last words of the pieces before this one. Whisper appends
+    /// it to the prompt after the dictionary terms (see [`compose_prompt`])
+    /// so casing and punctuation carry across segments; other engines
+    /// ignore it. `None` for the first piece and outside segmentation.
+    pub prior_text: Option<String>,
+}
+
+/// Words of earlier pieces passed as `prior_text`.
+pub const PRIOR_WORDS: usize = 30;
+/// No `prior_text` when the dictionary/screen prompt already has this many
+/// words (whisper keeps only the last ~224 prompt tokens, so the
+/// dictionary terms, which come first, would be lost).
+pub const PRIOR_MAX_PROMPT_WORDS: usize = 120;
+
+/// The whisper prompt for a request: `initial_prompt`, then `prior_text`
+/// when there is room for it.
+pub fn compose_prompt(initial_prompt: &str, prior_text: Option<&str>) -> String {
+    let prior = prior_text.map(str::trim).unwrap_or("");
+    if prior.is_empty() || initial_prompt.split_whitespace().count() > PRIOR_MAX_PROMPT_WORDS {
+        return initial_prompt.to_string();
+    }
+    if initial_prompt.is_empty() {
+        prior.to_string()
+    } else {
+        format!("{initial_prompt} {prior}")
+    }
+}
+
+/// The last [`PRIOR_WORDS`] words of `text` (`None` when empty).
+pub fn prior_words(text: &str) -> Option<String> {
+    let w: Vec<&str> = text.split_whitespace().collect();
+    (!w.is_empty()).then(|| w[w.len().saturating_sub(PRIOR_WORDS)..].join(" "))
 }
 
 /// Trimmed, non-empty, case-insensitively deduplicated terms in order;
@@ -99,6 +135,99 @@ pub enum AsrError {
 
 pub trait AsrEngine: Send + Sync {
     fn transcribe(&self, pcm: &[f32], req: &AsrRequest) -> Result<AsrOutput, AsrError>;
+
+    /// Whether the core may decode pieces of a dictation before commit
+    /// (D22 `segment_pause_ms`). Engines that must not see audio before
+    /// commit (cloud STT, D18: no upload before release, one billed call)
+    /// return false and the core ignores segmentation. A future streaming
+    /// engine (proposal Phase 4) would also return false: it decodes as
+    /// audio arrives and needs no pause cuts.
+    fn segmentable(&self) -> bool {
+        true
+    }
+}
+
+/// Test engine whose text is a function of the audio: one word `w<k>` per
+/// burst of sound (20 ms frames with RMS ≥ 0.01; bursts closer than 300 ms
+/// merge), `k` = the burst's peak amplitude in units of 1000/32768
+/// (rounded). Any split of the audio at a quiet point gives the same words
+/// in the same order, so segmented and whole decodes can be compared.
+/// `with_rtf` simulates decode cost proportional to the audio length.
+#[derive(Default)]
+pub struct BurstEchoAsr {
+    rtf: f32,
+    calls: std::sync::atomic::AtomicUsize,
+    requests: Mutex<Vec<(usize, AsrRequest)>>,
+}
+
+impl BurstEchoAsr {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    /// Sleep `rtf × audio length` per decode (abortable).
+    pub fn with_rtf(mut self, rtf: f32) -> Self {
+        self.rtf = rtf;
+        self
+    }
+    pub fn calls(&self) -> usize {
+        self.calls.load(Ordering::SeqCst)
+    }
+    /// `(samples, request)` of every decode, in order.
+    pub fn requests(&self) -> Vec<(usize, AsrRequest)> {
+        self.requests.lock().unwrap().clone()
+    }
+    /// The words for `pcm` (no delay, not recorded).
+    pub fn words(pcm: &[f32]) -> String {
+        const F: usize = 320;
+        let mut words = Vec::new();
+        let (mut peak, mut gap, mut in_burst) = (0f32, 0usize, false);
+        let flush = |peak: f32, words: &mut Vec<String>| {
+            let k = (peak * 32768.0 / 1000.0).round() as u32;
+            if k > 0 {
+                words.push(format!("w{k}"));
+            }
+        };
+        for f in pcm.chunks(F) {
+            let rms = (f.iter().map(|s| s * s).sum::<f32>() / f.len() as f32).sqrt();
+            if rms >= 0.01 {
+                in_burst = true;
+                gap = 0;
+                peak = f.iter().fold(peak, |m, s| m.max(s.abs()));
+            } else if in_burst {
+                gap += 1;
+                if gap * F >= 4800 {
+                    flush(peak, &mut words);
+                    (peak, in_burst) = (0.0, false);
+                }
+            }
+        }
+        if in_burst {
+            flush(peak, &mut words);
+        }
+        words.join(" ")
+    }
+}
+
+impl AsrEngine for BurstEchoAsr {
+    fn transcribe(&self, pcm: &[f32], req: &AsrRequest) -> Result<AsrOutput, AsrError> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.requests.lock().unwrap().push((pcm.len(), req.clone()));
+        let d = std::time::Duration::from_secs_f32(
+            self.rtf * pcm.len() as f32 / crate::config::SAMPLE_RATE as f32,
+        );
+        let end = std::time::Instant::now() + d;
+        while std::time::Instant::now() < end {
+            if req.abort.is_set() {
+                return Err(AsrError::Transcribe("aborted".into()));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        Ok(AsrOutput {
+            text: Self::words(pcm),
+            language: Some("en".into()),
+            no_speech_prob: None,
+        })
+    }
 }
 
 /// Comma-separated vocabulary: dictionary first (user intent), then screen
@@ -239,6 +368,41 @@ mod tests {
         assert_eq!(d, ["Kubernetes", "wispr"]);
         let s = dedupe_terms(["Alice", "WISPR"], &mut seen);
         assert_eq!(s, ["Alice"]);
+    }
+
+    #[test]
+    fn prompt_carries_prior_words_after_the_dictionary() {
+        assert_eq!(compose_prompt("Wispr.", None), "Wispr.");
+        assert_eq!(compose_prompt("Wispr.", Some(" ")), "Wispr.");
+        assert_eq!(compose_prompt("", Some("and then")), "and then");
+        assert_eq!(
+            compose_prompt("Wispr.", Some("and then")),
+            "Wispr. and then"
+        );
+        let big: String = (0..150).map(|i| format!("w{i}, ")).collect();
+        assert_eq!(compose_prompt(&big, Some("x")), big);
+        let long: String = (0..40).map(|i| format!("t{i} ")).collect();
+        let p = prior_words(&long).unwrap();
+        assert_eq!(p.split(' ').count(), PRIOR_WORDS);
+        assert!(p.starts_with("t10 ") && p.ends_with("t39"));
+        assert_eq!(prior_words("  "), None);
+    }
+
+    #[test]
+    fn burst_echo_words_survive_any_quiet_split() {
+        let tone = |amp: f32, n: usize| -> Vec<f32> {
+            (0..n).map(|i| amp * (i as f32 * 0.05).sin()).collect()
+        };
+        let mut pcm = Vec::new();
+        for k in [3.0, 7.0, 12.0] {
+            pcm.extend(tone(k * 1000.0 / 32768.0, 16_000));
+            pcm.extend(vec![0.0; 16_000]);
+        }
+        assert_eq!(BurstEchoAsr::words(&pcm), "w3 w7 w12");
+        let (a, b) = pcm.split_at(16_000 * 3 + 8000);
+        assert_eq!(BurstEchoAsr::words(a), "w3 w7");
+        assert_eq!(BurstEchoAsr::words(b), "w12");
+        assert_eq!(BurstEchoAsr::words(&[0.0; 1000]), "");
     }
 
     #[test]

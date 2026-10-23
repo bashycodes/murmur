@@ -10,7 +10,8 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 
 use crate::asr::{
-    build_initial_prompt, dedupe_terms, AbortFlag, AsrEngine, AsrPurpose, AsrRequest,
+    build_initial_prompt, dedupe_terms, prior_words, AbortFlag, AsrEngine, AsrError, AsrOutput,
+    AsrPurpose, AsrRequest,
 };
 use crate::cleanup::{self, CleanOutcome, Cleaner};
 use crate::config::{CleanupLevel, FieldContext, ModelConfig, SessionConfig, SAMPLE_RATE};
@@ -19,6 +20,7 @@ use crate::endpoint::{EndpointState, Endpointer};
 use crate::learn::{self, Candidate};
 use crate::paste::{self, PasteSegment};
 use crate::postprocess::{self, DictMatcher};
+use crate::segment::{SegmentParams, Segmenter};
 use crate::{hallucination, vad};
 
 /// Partials decode at most this much trailing audio. 30 s (Whisper's
@@ -283,6 +285,9 @@ enum Ctrl {
         id: u64,
         cfg: Box<SessionConfig>,
         consumer: rtrb::Consumer<i16>,
+        /// Set by `cancel()` / a newer `start_session`: stops this
+        /// session's segment decodes (D22).
+        abort: Arc<AtomicBool>,
     },
     Commit {
         id: u64,
@@ -330,6 +335,10 @@ struct Shared {
     current: AtomicU64,
     /// The commit in progress: its session id and abort flag.
     inflight: Mutex<Option<(u64, Arc<AtomicBool>)>>,
+    /// Abort flag of the latest session's segment decodes (D22). Not set by
+    /// `commit`: a segment decode in flight at release is work the commit
+    /// needs anyway.
+    session_abort: Mutex<Arc<AtomicBool>>,
 }
 
 impl Shared {
@@ -441,6 +450,7 @@ impl FlowCore {
             stop_partial: Arc::new(AtomicBool::new(false)),
             current: AtomicU64::new(0),
             inflight: Mutex::new(None),
+            session_abort: Mutex::new(Arc::new(AtomicBool::new(false))),
         });
         let (tx, rx) = mpsc::channel();
         let ws = shared.clone();
@@ -484,6 +494,12 @@ impl FlowCore {
         *self.shared.dictionary.lock().unwrap() = cfg.dictionary.clone();
         self.shared.dropped.store(0, Ordering::Relaxed);
         self.shared.stop_partial.store(false, Ordering::Relaxed);
+        let abort = Arc::new(AtomicBool::new(false));
+        std::mem::replace(
+            &mut *self.shared.session_abort.lock().unwrap(),
+            abort.clone(),
+        )
+        .store(true, Ordering::SeqCst);
         let mut slot = self.shared.producer.lock().unwrap();
         *slot = Some(Producer {
             id,
@@ -495,6 +511,7 @@ impl FlowCore {
                 id,
                 cfg: Box::new(cfg),
                 consumer,
+                abort,
             })
             .map_err(|_| CoreError::WorkerGone)
     }
@@ -611,6 +628,13 @@ impl FlowCore {
     /// flag, the LLM step is skipped, and that `commit` returns ERROR
     /// `cancelled` (review C4).
     pub fn cancel(&self) {
+        // Stops a segment decode in flight (an open session's, or the one
+        // a running commit is queued behind).
+        self.shared
+            .session_abort
+            .lock()
+            .unwrap()
+            .store(true, Ordering::SeqCst);
         if let Some(Producer { id, .. }) = self.shared.producer.lock().unwrap().take() {
             self.shared.stop_partial.store(true, Ordering::Relaxed);
             self.shared.clear_partial(id);
@@ -652,8 +676,17 @@ struct Session {
     /// End (buffer length) of the audio the last preview decode covered.
     partial_upto: usize,
     /// Streaming VAD over `buf` while previews are on (skip previews in
-    /// trailing silence); fed up to `buf.len()`.
+    /// trailing silence); fed up to `buf.len()`. `None` with `seg`, which
+    /// has its own.
     track: Option<vad::StreamVad>,
+    /// D22 pause segmenter, fed up to `buf.len()` (`None` = off).
+    seg: Option<Segmenter>,
+    /// Pieces decoded while recording, in order (`done[k]` ends at cut k).
+    done: Vec<SegOut>,
+    /// A segment decode failed: leave the rest to commit.
+    seg_failed: bool,
+    /// Cancel flag of this session's segment decodes.
+    abort: Arc<AtomicBool>,
     /// Compiled dictionary for this session (shared with later sessions
     /// that use the same dictionary).
     matcher: Arc<DictMatcher>,
@@ -687,17 +720,134 @@ impl Session {
                 t.sample(v);
             }
         }
+        if let Some(sg) = self.seg.as_mut() {
+            sg.push(&self.buf[from..]);
+        }
+    }
+
+    /// First sample not covered by a decoded piece.
+    fn next(&self) -> usize {
+        self.done.last().map_or(0, |d| d.range.end)
     }
 
     /// True when the preview should not be re-decoded now: speech was
     /// followed by at least `PARTIAL_SKIP_SILENCE_MS` of silence, and the
     /// last preview already covered that speech.
     fn preview_is_current(&self) -> bool {
-        let Some(t) = &self.track else { return false };
-        let speech_end = t.speech_end() as usize * vad::FRAME;
-        t.trailing_frames() * (vad::FRAME * 1000 / SAMPLE_RATE) as u64 >= PARTIAL_SKIP_SILENCE_MS
-            && self.partial_upto >= speech_end
+        let (speech_end, trailing_ms) = match (&self.seg, &self.track) {
+            (Some(sg), _) => (sg.speech_end_sample(), sg.trailing_silence_ms()),
+            (None, Some(t)) => (
+                t.speech_end() as usize * vad::FRAME,
+                t.trailing_frames() * (vad::FRAME * 1000 / SAMPLE_RATE) as u64,
+            ),
+            (None, None) => return false,
+        };
+        trailing_ms >= PARTIAL_SKIP_SILENCE_MS && self.partial_upto >= speech_end
     }
+}
+
+/// One piece of a segmented dictation (D22).
+#[derive(Clone)]
+struct SegOut {
+    /// Sample range in the session buffer (before VAD trimming).
+    range: std::ops::Range<usize>,
+    /// The request it was decoded with (abort and purpose cleared), so
+    /// commit can tell whether a late context or prompt change needs a
+    /// re-decode.
+    key: AsrRequest,
+    /// `None` = no speech in the piece (ASR skipped).
+    out: Option<AsrOutput>,
+    /// VAD speech in the piece (`None` with the VAD off).
+    speech_ms: Option<u64>,
+    /// Samples given to ASR.
+    asr_samples: usize,
+    asr_ms: u64,
+}
+
+impl SegOut {
+    /// The piece's text after the per-segment hallucination guard: a piece
+    /// that is only a stock phrase on its own evidence is dropped, and a
+    /// non-final piece loses a trailing "Thank you." whisper put into the
+    /// pause.
+    fn kept_text(&self, last: bool, guard: bool) -> &str {
+        let Some(o) = &self.out else { return "" };
+        let t = o.text.trim();
+        if !guard {
+            return t;
+        }
+        let ev = hallucination::Evidence {
+            speech_ms: self.speech_ms,
+            no_speech_prob: o.no_speech_prob,
+        };
+        if hallucination::is_hallucination(t, ev) {
+            return "";
+        }
+        if !last
+            && o.no_speech_prob
+                .is_some_and(|p| p >= hallucination::NO_SPEECH_THOLD)
+        {
+            if let Some(h) = hallucination::strip_trailing_stock(t) {
+                return h;
+            }
+        }
+        t
+    }
+}
+
+/// Join piece texts with one space, skipping empty ones.
+fn join_pieces<'a>(texts: impl IntoIterator<Item = &'a str>) -> String {
+    texts
+        .into_iter()
+        .filter(|t| !t.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The `prior_text` for the piece after `done`.
+fn prior_for(done: &[SegOut], guard: bool) -> Option<String> {
+    prior_words(&join_pieces(done.iter().map(|d| d.kept_text(false, guard))))
+}
+
+/// Decode `buf[range]` (VAD-trimmed when `vad`). `key` is stored; `req`
+/// is what the engine gets (with its abort flag and purpose).
+fn decode_piece(
+    asr: &dyn AsrEngine,
+    buf: &[f32],
+    range: std::ops::Range<usize>,
+    use_vad: bool,
+    key: AsrRequest,
+    req: &AsrRequest,
+) -> Result<SegOut, AsrError> {
+    let mut pcm = &buf[range.clone()];
+    let mut speech_ms = None;
+    if use_vad {
+        match vad::detect(pcm) {
+            Some(sp) => {
+                pcm = &pcm[sp.start..sp.end];
+                speech_ms = Some(sp.speech_ms());
+            }
+            None => {
+                return Ok(SegOut {
+                    range,
+                    key,
+                    out: None,
+                    speech_ms: Some(0),
+                    asr_samples: 0,
+                    asr_ms: 0,
+                })
+            }
+        }
+    }
+    let t = Instant::now();
+    let out = asr.transcribe(pcm, req)?;
+    Ok(SegOut {
+        range,
+        key,
+        out: Some(out),
+        speech_ms,
+        asr_samples: pcm.len(),
+        asr_ms: t.elapsed().as_millis() as u64,
+    })
 }
 
 struct Worker {
@@ -712,9 +862,20 @@ impl Worker {
     fn run(mut self, rx: mpsc::Receiver<Ctrl>) {
         loop {
             match rx.recv_timeout(WORKER_TICK) {
-                Ok(Ctrl::Start { id, cfg, consumer }) => {
+                Ok(Ctrl::Start {
+                    id,
+                    cfg,
+                    consumer,
+                    abort,
+                }) => {
                     let matcher = self.matcher_for(&cfg.dictionary);
-                    let track = cfg.partial_interval_ms.map(|_| vad::StreamVad::new());
+                    let seg = SegmentParams::for_session(&cfg)
+                        .filter(|_| self.asr.segmentable())
+                        .map(Segmenter::new);
+                    let track = cfg
+                        .partial_interval_ms
+                        .filter(|_| seg.is_none())
+                        .map(|_| vad::StreamVad::new());
                     self.session = Some(Session {
                         id,
                         cfg: *cfg,
@@ -724,6 +885,10 @@ impl Worker {
                         last_partial_len: 0,
                         partial_upto: 0,
                         track,
+                        seg,
+                        done: Vec::new(),
+                        seg_failed: false,
+                        abort,
                         matcher,
                         prefilled: None,
                     });
@@ -829,7 +994,57 @@ impl Worker {
             dictionary_terms,
             screen_terms,
             purpose,
+            prior_text: None,
         }
+    }
+
+    /// Publish `text` as the preview while session `id` is the shown one.
+    fn publish_partial(&self, id: u64, text: String) {
+        let mut p = self.shared.partial.lock().unwrap();
+        // Only while this session is still the shown one (S11).
+        if self.shared.current.load(Ordering::SeqCst) == id {
+            *p = Some(text);
+        }
+    }
+
+    /// D22: decode the oldest closed segment not decoded yet. True when it
+    /// did (one decode per tick, so a commit waits for at most one).
+    fn decode_closed_segment(&mut self) -> bool {
+        let Some(s) = self.session.as_mut() else {
+            return false;
+        };
+        if s.seg_failed {
+            return false;
+        }
+        let Some(&cut) = s.seg.as_ref().and_then(|sg| sg.cuts().get(s.done.len())) else {
+            return false;
+        };
+        let ctx = self.shared.context.lock().unwrap().clone();
+        let mut key = Self::asr_request(&s.cfg, &ctx, AsrPurpose::Segment);
+        key.prior_text = prior_for(&s.done, s.cfg.hallucination_guard);
+        let mut req = key.clone();
+        req.abort = AbortFlag(Some(s.abort.clone()));
+        let range = s.next()..cut;
+        match decode_piece(&*self.asr, &s.buf, range, s.cfg.vad, key, &req) {
+            Ok(o) => s.done.push(o),
+            Err(_) => {
+                s.seg_failed = true;
+                return true;
+            }
+        }
+        let (id, text) = (s.id, Self::done_text(s));
+        if !text.is_empty() && !self.shared.stop_partial.load(Ordering::Relaxed) {
+            self.publish_partial(id, text);
+        }
+        true
+    }
+
+    fn done_text(s: &Session) -> String {
+        join_pieces(
+            s.done
+                .iter()
+                .map(|d| d.kept_text(false, s.cfg.hallucination_guard)),
+        )
     }
 
     fn tick(&mut self) {
@@ -837,6 +1052,12 @@ impl Worker {
             return;
         };
         s.drain();
+        // D22: closed segments first (their text is part of the result);
+        // previews only cover the open one.
+        if self.decode_closed_segment() {
+            return;
+        }
+        let s = self.session.as_mut().unwrap();
         let Some(ms) = s.cfg.partial_interval_ms else {
             return;
         };
@@ -845,7 +1066,8 @@ impl Worker {
             return;
         }
         s.last_partial_len = s.buf.len();
-        let start = s.buf.len().saturating_sub(PARTIAL_WINDOW);
+        let open = s.next();
+        let start = s.buf.len().saturating_sub(PARTIAL_WINDOW).max(open);
         if self.shared.stop_partial.load(Ordering::Relaxed) || s.preview_is_current() {
             return;
         }
@@ -862,19 +1084,24 @@ impl Worker {
         let ctx = self.shared.context.lock().unwrap().clone();
         let mut req = Self::asr_request(&s.cfg, &ctx, AsrPurpose::Partial);
         req.abort = AbortFlag(Some(self.shared.stop_partial.clone()));
+        if s.seg.is_some() {
+            req.prior_text = prior_for(&s.done, s.cfg.hallucination_guard);
+        }
         if let Ok(out) = self.asr.transcribe(window, &req) {
             let t = out.text.trim();
             if !t.is_empty() {
-                let t = if start > 0 {
+                let t = if start > open {
                     format!("{PARTIAL_ELLIPSIS}{t}")
                 } else {
                     t.to_string()
                 };
-                let mut p = self.shared.partial.lock().unwrap();
-                // Only while this session is still the shown one (S11).
-                if self.shared.current.load(Ordering::SeqCst) == s.id {
-                    *p = Some(t);
-                }
+                let done = Self::done_text(s);
+                let t = if done.is_empty() {
+                    t
+                } else {
+                    format!("{done} {t}")
+                };
+                self.publish_partial(s.id, t);
             }
         }
     }
@@ -887,6 +1114,9 @@ impl Worker {
         if s.buf.is_empty() {
             r.empty_reason = Some("no_audio".into());
             return r;
+        }
+        if s.seg.is_some() {
+            return self.finalize_segmented(s, ctx, abort, r);
         }
         let (pcm, speech_ms) = if s.cfg.vad {
             match vad::detect(&s.buf) {
@@ -922,6 +1152,112 @@ impl Worker {
             speech_ms,
             no_speech_prob: out.no_speech_prob,
         };
+        self.finish(s, ctx, abort, r, evidence)
+    }
+
+    /// D22 commit: decode the closed segments still pending (or whose
+    /// request changed since, e.g. a late context), then the tail, join,
+    /// and run the rest of the pipeline on the joined text.
+    fn finalize_segmented(
+        &self,
+        mut s: Session,
+        ctx: &FieldContext,
+        abort: &Arc<AtomicBool>,
+        mut r: CommitResult,
+    ) -> CommitResult {
+        let guard = s.cfg.hallucination_guard;
+        let mut bounds = vec![0];
+        bounds.extend_from_slice(s.seg.as_ref().map_or(&[][..], |sg| sg.cuts()));
+        if *bounds.last().unwrap() < s.buf.len() {
+            bounds.push(s.buf.len());
+        }
+        let n = bounds.len() - 1;
+        let base = Self::asr_request(&s.cfg, ctx, AsrPurpose::Segment);
+        let mut pieces: Vec<SegOut> = Vec::with_capacity(n);
+        let done = std::mem::take(&mut s.done);
+        let t = Instant::now();
+        for k in 0..n {
+            let range = bounds[k]..bounds[k + 1];
+            let mut key = base.clone();
+            key.prior_text = prior_for(&pieces, guard);
+            if let Some(d) = done.get(k).filter(|d| d.range == range && d.key == key) {
+                r.timings.pre_asr_ms += d.asr_ms;
+                pieces.push(d.clone());
+                continue;
+            }
+            if abort.load(Ordering::SeqCst) {
+                return CommitResult::error("cancelled");
+            }
+            let mut req = key.clone();
+            req.abort = AbortFlag(Some(abort.clone()));
+            if k + 1 == n {
+                req.purpose = AsrPurpose::Final;
+            }
+            match decode_piece(&*self.asr, &s.buf, range, s.cfg.vad, key, &req) {
+                Ok(o) => pieces.push(o),
+                Err(e) => {
+                    let mut e = CommitResult::error(e.to_string());
+                    e.timings = r.timings;
+                    return e;
+                }
+            }
+        }
+        r.timings.asr_ms = t.elapsed().as_millis() as u64;
+        let spoken: Vec<&SegOut> = pieces.iter().filter(|p| p.out.is_some()).collect();
+        r.timings.segments = spoken.len() as u64;
+        r.timings.asr_audio_ms =
+            (pieces.iter().map(|p| p.asr_samples).sum::<usize>() * 1000 / SAMPLE_RATE) as u64;
+        if spoken.is_empty() {
+            r.empty_reason = Some("no_speech".into());
+            return r;
+        }
+        // The language of the piece with the most audio.
+        r.language = spoken
+            .iter()
+            .max_by_key(|p| p.asr_samples)
+            .and_then(|p| p.out.as_ref()?.language.clone());
+        let raw = join_pieces(
+            spoken
+                .iter()
+                .map(|p| p.out.as_ref().map_or("", |o| o.text.trim())),
+        );
+        r.asr_text = join_pieces(
+            pieces
+                .iter()
+                .enumerate()
+                .map(|(k, p)| p.kept_text(k + 1 == n, guard)),
+        );
+        if r.asr_text.is_empty() {
+            if raw.is_empty() {
+                r.empty_reason = Some("blank_asr".into());
+            } else {
+                r.empty_reason = Some("hallucination".into());
+                r.asr_text = raw;
+            }
+            return r;
+        }
+        let evidence = hallucination::Evidence {
+            speech_ms: s
+                .cfg
+                .vad
+                .then(|| pieces.iter().filter_map(|p| p.speech_ms).sum()),
+            no_speech_prob: spoken
+                .iter()
+                .filter_map(|p| p.out.as_ref()?.no_speech_prob)
+                .reduce(f32::max),
+        };
+        self.finish(s, ctx, abort, r, evidence)
+    }
+
+    /// Guard, spoken cleanup, LLM and post-processing on `r.asr_text`.
+    fn finish(
+        &self,
+        s: Session,
+        ctx: &FieldContext,
+        abort: &Arc<AtomicBool>,
+        mut r: CommitResult,
+        evidence: hallucination::Evidence,
+    ) -> CommitResult {
         if s.cfg.hallucination_guard && hallucination::is_hallucination(&r.asr_text, evidence) {
             r.empty_reason = Some("hallucination".into());
             return r;
