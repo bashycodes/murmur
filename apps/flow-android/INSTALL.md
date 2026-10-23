@@ -126,9 +126,12 @@ One line per dictation; the fields are the same in the Windows app:
 | `ts` | dictation start, UTC (`2026-10-23T10:15:02.123Z`) |
 | `mode` | `tap` (hands-free) or `hold` |
 | `route` / `fallback` | `local` / `remote` / `cloud`; why the first route was not used (`connect_failed`, `disconnected`, `circuit_open`, …) or why the start failed (`server_unavailable`, …) |
+| `engine` | Android: what produced the text: `whisper` / `parakeet` (phone), `server`, `cloud`, `mock`; `null` when no engine ran |
+| `model` | Android: the whisper file or Parakeet folder name, the server's ASR model from the last successful *Test connection* / save probe (`null` before one), or the cloud model |
+| `language` | Android: the language sent to the engine (`auto` = whisper detects it) |
 | `rtt_ms` | server round trip (server route only) |
 | `audio_ms` | audio length |
-| `endpoint_wait_ms` | from your last word to the stop (hands-free: the silence wait) |
+| `endpoint_wait_ms` | from your last word to the stop (hands-free: the silence wait). Silence is measured against the room's noise floor (as the core's VAD), so it is no longer always 0 on a phone; a very loud room still reads 0 |
 | `asr_ms` / `post_ms` / `total_ms` | speech recognition / cleanup (rules + AI) / whole commit |
 | `perceived_ms` | stop or release → text inserted: what you waited |
 | `client_ms` | release → result on the phone, network included (router; `null` without a result). The latency to compare between routes: a server's `total_ms` is only its own commit |
@@ -139,6 +142,22 @@ One line per dictation; the fields are the same in the Windows app:
 | `insert` | `{"outcome": inserted / paste_failed / target_changed / target_protected / empty / error / timeout / start_failed / cancelled, "steps": [insertion trail]}` |
 | `raw` / `text` | recogniser output / text inserted |
 | `error` (+ `stack`) | what went wrong |
+| `audio` | Android: file name of the kept WAV in `files/debug/audio/` (*Keep last dictation audio*), else `null` |
+
+Android also writes an `engine_mismatch` event when the phone engine that loaded is not the
+one selected, e.g. `selected parakeet, loaded whisper ggml-base-q5_1.bin: model load failed: …`
+or `… no Parakeet model folder imported`, or `selected whisper, loaded none: …` when the phone
+engine failed behind the server. (D21 schema additions on Android, 2026-10-23: `engine`,
+`model`, `language`, `audio`, event `engine_mismatch`.)
+
+**Keep last dictation audio (debug)** (*Developer settings → Debug log*, off by default): saves
+what the microphone heard for the last 10 dictations as 16 kHz mono WAV files in the app's
+private storage, `files/debug/audio/<ts with - for :>.wav` (e.g. `2026-10-23T10-15-02.123Z.wav`
+for `"ts":"2026-10-23T10:15:02.123Z"`), linked from the line's `audio` field. Never for password
+fields, banking or excluded apps, nor for cancelled dictations; files older than 24 hours are
+deleted; *Clear audio* deletes them all. Nothing is uploaded. To replay one on the PC: copy it
+out with the platform tools' `exec-out run-as dev.flowclone cat files/debug/audio/<name>.wav >
+<name>.wav` (debug builds), then run it through `flow-cli` with the same model and language.
 
 The server token and cloud keys are scrubbed from every line, and the clipboard is never read.
 With the toggle off nothing is written; `FlowService commit …` (timings only, never text) is
@@ -210,11 +229,17 @@ Face, `https://huggingface.co/ggerganov/whisper.cpp/tree/main`:
 |---|---|---|
 | `ggml-base.en-q5_1.bin` | ~57 MB | **Recommended.** English only, good accuracy |
 | `ggml-tiny.en-q5_1.bin` | ~31 MB | English only, fastest. Try this first on slow phones |
-| `ggml-base-q5_1.bin` | ~57 MB | Multilingual. Set the language in Settings, or "auto" |
+| `ggml-base-q5_1.bin` | ~57 MB | Multilingual. Language defaults to the phone's (see below) |
 | `ggml-tiny.en.bin` / `ggml-base.en.bin` | 75 / 142 MB | Unquantised. The host tests use these, so they are the proven builds |
 
 The `.en` models are English only. The multilingual ones (no `.en`) also auto-detect the
-language. A direct link looks like
+language, but detection is unreliable on short phone clips (a 2 s English dictation came out
+as Bulgarian on `base-q5_1` + auto). So *Settings → Language* now defaults to **Phone
+language**: with a multilingual whisper model loaded, the phone's language is used (if whisper
+supports it); with an English-only file, Parakeet, or no phone engine it stays auto. Pick
+*Auto-detect* or a language to override; an explicit choice is kept. A stored *Auto-detect*
+from before this change is treated as the default once. The main screen shows the language the
+next dictation uses ("Language: English (phone language)"). A direct link looks like
 `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin`.
 
 Copy the file to the phone's `Download/` folder, over USB file transfer or any way you like.
