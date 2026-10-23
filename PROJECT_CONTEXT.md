@@ -1,6 +1,6 @@
 # PROJECT_CONTEXT — flow-clone (local-only Wispr Flow clone)
 
-Research inputs: `research/windows/findings/by-topic/10-clone-spec.md` (§9 = core API), `research/android/findings/by-topic/10-clone-spec-android.md`. Decisions: `docs/DECISIONS.md` (D1-D23). Core architecture + "Changelog for shells": `docs/core-architecture.md`. Core requests from the shells: `docs/core-change-requests.md`. Model choices: `docs/model-benchmarks.md`.
+Research inputs: `research/windows/findings/by-topic/10-clone-spec.md` (§9 = core API), `research/android/findings/by-topic/10-clone-spec-android.md`. Decisions: `docs/DECISIONS.md` (D1-D23; D24 never-fail fallback pending its row, see `docs/hybrid-architecture.md` changelog 2026-10-23). Core architecture + "Changelog for shells": `docs/core-architecture.md`. Core requests from the shells: `docs/core-change-requests.md`. Model choices: `docs/model-benchmarks.md`.
 
 Branch `integration` holds everything: `core`, `core-p1`, `parakeet`, `win-p1`, `android-int`, `android-p1`, the hybrid branches, `cloud-core`, `core-endpoint`, `win-cloud`, `android-cloud`, `router-route` and `server-fixes` (review fixes), and `crates-final`, `android-final`, `win-final` (the rest of the review) are merged into it.
 
@@ -91,6 +91,23 @@ Spec `docs/hybrid-architecture.md`, protocol `docs/protocol.md`. Both shells use
 | Hybrid Developer settings in both apps (server host/port/TLS/pin/token, allow server/client, prefer, Test connection, active-engine row); token in OS secure storage (Windows Credential Manager, Android Keystore) | Windows `cargo test` (229), Android unit tests (297/flavour) |
 | Merged tree green (2026-10-22): root `cargo test --workspace` 274 passed (285 with `--all-features` + models), clippy `-D warnings`; Windows 229 tests + clippy + MSVC cross-clippy for 4 flavours; Android `testLocal/Hybrid/RemoteDebugUnitTest` 297 each (10 gated skips) + `assembleDebug`. APKs with natives: local 41.4 MB, hybrid 43.6 MB, remote 9.9 MB | see How to verify |
 | Real server on this box (release, Parakeet, 127.0.0.1, token): 10 LibriSpeech clips, text identical to local 10/10, commit→result mean 1666 ms via server vs 1687 ms local on the same CPU; overhead beyond ASR median 3 ms | `tools/probes/hybrid_smoke/run.sh`, `docs/model-benchmarks.md` "Hybrid" |
+
+### Never-fail fallback (D24, 2026-10-23; branch `fix/never-fail`)
+Live bug: hybrid on the S25+, *Keep … loaded* off, server via a Tailscale DERP relay → `start_failed` "Server unreachable (connect_failed: no handshake within 800 ms)". Root cause: with keep-warm off the router had no local backend, so a server failure at start was final; 800 ms was also too short for the relay. Spec: `docs/hybrid-architecture.md` changelog 2026-10-23 D24.
+
+| Capability | Proof (test) |
+|---|---|
+| Server down + phone model cold ⇒ session starts at once (`loading`), audio buffered, model loaded on demand on the failover thread, buffer replayed, text returned; next session goes straight local (`circuit_open`, loaded once) | `flow-router/tests/policy.rs::server_down_and_client_cold_loads_on_demand_and_inserts` (+ slow handshake, mid-session death, commit timeout, client-first, open circuit after a failed pre-warm) |
+| Cancel during the on-demand load inserts nothing; the model stays loaded | `policy.rs::cancel_during_on_demand_load_inserts_nothing`, Android `session/NeverFailFallbackTest.kt` |
+| Only fails when no route is possible, and says why ("… phone model failed to load: …", "— phone fallback unavailable: No speech model imported…") | `policy.rs::{load_failure_with_no_other_route_says_why,no_route_possible_still_fails_at_start}`, `NeverFailFallbackTest.kt` |
+| Connect timeout 2500 ms default (stored 800 migrates once, both shells); adaptive `max(cfg, clamp(rtt × 6, 1.5-10 s))` after a probe | `policy.rs::connect_timeout_adapts_to_the_measured_rtt`, `DevSettingsTest`, Windows `prefs.rs::old_connect_timeout_default_migrates_once` |
+| Pre-warm on field focus (Android, ≤ 1/20 s) reuses the warm WS; a failed pre-warm opens the circuit | `flow-remote/tests/client.rs::warm_opens_the_connection_the_next_session_reuses`, `policy.rs::prewarm_warms_only_an_allowed_closed_server` |
+| D21 debug line: `connect_ms`, `local_cold`, `local_load_ms` (from `RouteStatus.last_diag`) | `NeverFailFallbackTest.kt`, `RouterJsonTest` (`route_status_diag.json`) |
+| flow-ffi `nativeSetLocalLoader` tries the model configs in order | `flow-ffi/tests/lazy_local.rs` |
+| Windows: same cold-slot bug fixed (`RouterAdapter::set_on_demand`) | `router_adapter.rs::server_down_with_a_cold_local_slot_loads_on_demand` |
+| Security: server token / cloud API key never in the accessibility tree or a11y events (the old field dropped its mask via `setSingleLine`) | Robolectric `ui/SecretFieldTest.kt` |
+
+Not yet verified on the phone (INSTALL.md "Never-fail fallback (D24)").
 
 ### Opt-in cloud STT (D18; branches `cloud-core` + `win-cloud` + `android-cloud`, merged into `integration`)
 Spec `docs/cloud-stt.md` (shell API: its "Changelog for shells"). Core/router and both shells are done; no live provider has been called (no keys on this box), so DoD 2-4 (live smoke, on-device) are open.
