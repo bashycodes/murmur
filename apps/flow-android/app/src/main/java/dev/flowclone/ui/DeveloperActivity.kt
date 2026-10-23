@@ -61,6 +61,8 @@ class DeveloperActivity : Activity() {
     private lateinit var serverInfo: TextView
     private lateinit var lastLine: TextView
     private lateinit var circuitLine: TextView
+    private lateinit var debugToggle: CheckBox
+    private lateinit var debugCount: TextView
     private val errorViews = HashMap<Field, TextView>()
     private var lastProbe: HealthReport? = null
     private var routeOrder = DevSettings.DEFAULT_ORDER
@@ -140,6 +142,8 @@ class DeveloperActivity : Activity() {
                 Button(context).apply { text = "Reset circuit"; isAllCaps = false; setOnClickListener { onResetCircuit() } },
                 Button(context).apply { text = "Reset to defaults"; isAllCaps = false; setOnClickListener { onResetDefaults() } },
             )
+            debugSection()
+
             if (!caps.remote) button("Lock (hide Developer settings)") {
                 app.dev.devUnlocked = false
                 Toast.makeText(this@DeveloperActivity, "Developer settings hidden", Toast.LENGTH_SHORT).show()
@@ -151,6 +155,86 @@ class DeveloperActivity : Activity() {
         renderProviders()
         validate()
         refreshRows()
+    }
+
+    // ---- D21 debug log (device-local; includes transcripts) ----
+
+    private fun LinearLayout.debugSection() {
+        heading("Debug log")
+        debugToggle = check("Debug log (includes transcripts)", app.dev.debugLog)
+        body("Writes what you dictate, the app it went to and the timings to this phone's log (logcat tag FlowDebug) and to a file in the app's storage. Nothing is sent anywhere unless you tap Share.")
+        debugCount = body("")
+        row(
+            Button(context).apply { text = "View"; isAllCaps = false; setOnClickListener { onViewDebugLog() } },
+            Button(context).apply { text = "Share / Export"; isAllCaps = false; setOnClickListener { onShareDebugLog() } },
+            Button(context).apply { text = "Clear"; isAllCaps = false; setOnClickListener { clearDebugLog() } },
+        )
+        debugToggle.setOnCheckedChangeListener { _, on -> onDebugToggle(on) }
+    }
+
+    private fun onDebugToggle(on: Boolean) {
+        app.dev.debugLog = on
+        if (on) { refreshDebugCount(); return }
+        thread(name = "dev-debug-count") {
+            val n = runCatching { app.debugFile.size() }.getOrDefault(0)
+            runOnUiThread {
+                if (n == 0 || isFinishing) { refreshDebugCount(); return@runOnUiThread }
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Clear the debug log?")
+                    .setMessage("Logging is off. The file still holds $n entries with your transcripts.")
+                    .setPositiveButton("Clear") { _, _ -> clearDebugLog() }
+                    .setNegativeButton("Keep") { _, _ -> refreshDebugCount() }
+                    .show()
+            }
+        }
+    }
+
+    private fun refreshDebugCount() {
+        if (!::debugCount.isInitialized) return
+        thread(name = "dev-debug-count") {
+            val n = runCatching { app.debugFile.size() }.getOrDefault(0)
+            val errs = app.debugLog.errors.get(); val dropped = app.debugLog.dropped.get()
+            val extra = listOfNotNull(errs.takeIf { it > 0 }?.let { "$it write errors" }, dropped.takeIf { it > 0 }?.let { "$it dropped" })
+            val line = "$n entries (newest ${dev.flowclone.debug.DebugLogFile.MAX_ENTRIES} kept)" + extra.joinToString("") { " · $it" } +
+                if (app.dev.debugLog) "" else " · logging off"
+            runOnUiThread { debugCount.text = line }
+        }
+    }
+
+    private fun onViewDebugLog() {
+        thread(name = "dev-debug-view") {
+            val rows = runCatching { app.debugFile.newestFirst().map(dev.flowclone.debug.DebugFormat::summary) }.getOrElse { listOf("Could not read the log: ${it.message}") }
+            runOnUiThread {
+                if (isFinishing) return@runOnUiThread
+                val tv = TextView(this).apply {
+                    text = if (rows.isEmpty()) "No entries yet." else rows.joinToString("\n\n")
+                    textSize = 12f; setTextIsSelectable(true); setPadding(dp(16), dp(8), dp(16), dp(8))
+                }
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Debug log (newest first)")
+                    .setView(android.widget.ScrollView(this).apply { addView(tv) })
+                    .setPositiveButton("Close", null)
+                    .show()
+            }
+        }
+    }
+
+    private fun onShareDebugLog() {
+        thread(name = "dev-debug-share") {
+            val n = runCatching { app.debugFile.size() }.getOrDefault(0)
+            runOnUiThread {
+                if (n == 0) Toast.makeText(this, "The debug log is empty", Toast.LENGTH_SHORT).show()
+                else runCatching { startActivity(DebugLogProvider.shareIntent(this)) }
+                    .onFailure { Toast.makeText(this, "No app to share with", Toast.LENGTH_SHORT).show() }
+            }
+        }
+    }
+
+    private fun clearDebugLog() {
+        thread(name = "dev-debug-clear") {
+            runCatching { app.debugFile.clear() }
+            runOnUiThread { Toast.makeText(this, "Debug log cleared", Toast.LENGTH_SHORT).show(); refreshDebugCount() }
+        }
     }
 
     private fun capabilitiesLine(): String {
@@ -295,6 +379,7 @@ class DeveloperActivity : Activity() {
         val json = p.toJson().toString()
         thread(name = "dev-cloud-probe") {
             val h = app.engine.router()?.probeCloud(json, key) ?: NativeFlowCore.probeCloud(json, key)
+            if (!h.ok) app.debugLog.event("cloud_probe", DevText.cloudProbe(h))
             runOnUiThread {
                 line.text = DevText.cloudProbe(h)
                 line.setTextColor(if (h.ok) OK_COLOR else BAD_COLOR)
@@ -368,6 +453,7 @@ class DeveloperActivity : Activity() {
                 probeLine.text = "Probing ${s.host}:${s.port}…"
                 thread(name = "dev-probe-saved") {
                     val h = runCatching { r.probeSaved() }.getOrElse { HealthReport(ok = false, error = "error", message = it.message) }
+                    if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h))
                     runOnUiThread { lastProbe = h; probeLine.text = DevText.probe(h); refreshRows() }
                 }
             }
@@ -386,6 +472,7 @@ class DeveloperActivity : Activity() {
         val json = s.effective(caps).toServerConfigJson().toString()
         thread(name = "dev-probe") {
             val h = NativeFlowCore.probeServer(json)
+            if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h))
             runOnUiThread {
                 lastProbe = h
                 probeLine.text = DevText.probe(h)
@@ -407,6 +494,7 @@ class DeveloperActivity : Activity() {
                 val ok = r.status == CommitStatus.EMPTY
                 (if (ok) "OK: " else "Unexpected: ") + DevText.lastDictation(r)
             } catch (e: CoreException) {
+                app.debugLog.event("test_session", e.message, e)
                 "Failed: ${dev.flowclone.core.RouterErrors.userMessage(e.kind, e.message ?: "error")}"
             }
             runOnUiThread { probeLine.text = line; refreshRows() }
@@ -441,6 +529,7 @@ class DeveloperActivity : Activity() {
             CloudUsage.decode(app.engine.router()?.cloudUsageJson() ?: app.dev.cloudUsageJson), cloudState,
         ).joinToString("\n")
         serverInfo.text = DevText.serverInfo(lastProbe ?: rs?.health)
+        refreshDebugCount()
     }
 
     private fun toggleTokenVisible(b: Button) {

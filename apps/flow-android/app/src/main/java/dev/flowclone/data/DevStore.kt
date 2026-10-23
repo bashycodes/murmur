@@ -236,8 +236,14 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
 
     val visible: Boolean get() = DevUnlock.visible(caps, devUnlocked)
 
+    /** D21: "Debug log (includes transcripts)", default off; every flavour (it never leaves the device). */
+    var debugLog: Boolean
+        get() = kv.getBoolean(DEBUG_LOG, false)
+        set(v) = kv.edit { putBoolean(DEBUG_LOG, v) }
+
     companion object {
         const val FILE = "dev"
         const val USAGE = "cloud_usage"
+        const val DEBUG_LOG = "debug_log"
     }
 }

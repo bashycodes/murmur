@@ -1,6 +1,8 @@
 package dev.flowclone
 
 import dev.flowclone.core.RouterErrors
+import dev.flowclone.debug.DebugLogFile
+import dev.flowclone.debug.DebugLogger
 import dev.flowclone.core.BlockingCalls
 import dev.flowclone.insert.ClipboardGuard
 import dev.flowclone.service.AndroidClipPort
@@ -46,6 +48,9 @@ class FlowApp : Application() {
     lateinit var dev: DevStore; private set
     /** D18: cloud STT API keys (Keystore-sealed, one vault per provider). */
     lateinit var cloudKeys: CloudKeyStore; private set
+    /** D21: opt-in device-local debug log (Developer settings; default off). */
+    lateinit var debugFile: DebugLogFile; private set
+    lateinit var debugLog: DebugLogger; private set
     val caps: BuildCaps = BuildCaps.current()
 
     /** S16: every transcript the app puts on the clipboard is removed again after a minute. */
@@ -100,7 +105,25 @@ class FlowApp : Application() {
         history = HistoryStore(this)
         dev = DevStore(this, caps)
         cloudKeys = CloudKeyStore(this)
+        debugFile = DebugLogFile.inFilesDir(filesDir)
+        debugLog = DebugLogger(
+            enabled = { dev.debugLog },
+            sink = debugFile,
+            logcat = { Log.i(DebugLogger.TAG, it) },
+            // Scrubbed from every line, whatever path a secret took (never the clipboard: nothing reads it).
+            secrets = { debugSecrets() },
+        )
         engine = EngineHolder(this)
+    }
+
+    /** Server token + every stored cloud key (runs on the debug-log thread, never throws). */
+    private fun debugSecrets(): List<String> {
+        val out = ArrayList<String>()
+        runCatching { dev.load() }.getOrNull()?.let { d ->
+            d.token.takeIf { it.isNotEmpty() }?.let(out::add)
+            for (p in d.cloud.providers) runCatching { cloudKeys.get(p.id) }.getOrNull()?.let(out::add)
+        }
+        return out
     }
 
     companion object {
@@ -119,6 +142,10 @@ interface AccessibilityBridge {
     fun insertTarget(explicit: Boolean): dev.flowclone.session.InsertTarget = dev.flowclone.session.InsertTarget.OK
     /** Health probe: does the system still answer this service (window query)? False or throwing = dead binding. */
     fun probeAlive(): Boolean = true
+    /** D21 debug log: status + step trail of the last [insertTextAndVerify]. */
+    val lastInsertSteps: List<String> get() = emptyList()
+    /** D21 debug log: the field captured by [captureFieldContext] is a password / sensitive field. */
+    val startFieldProtected: Boolean get() = false
 }
 
 /**
@@ -210,7 +237,10 @@ class EngineHolder(
         val r = router()
         val wantLocal = EngineRoute.needsLocal(dev.effective(app.caps), app.caps)
         if (r != null && loadedWithLocal == wantLocal && !dev.effective(app.caps).bothOff) {
-            try { r.updateRouter(dev.routerConfigFor(app.caps)); return } catch (e: CoreException) { Log.w("FlowEngine", "update_config: ${e.message}") }
+            try { r.updateRouter(dev.routerConfigFor(app.caps)); return } catch (e: CoreException) {
+                Log.w("FlowEngine", "update_config: ${e.message}")
+                app.debugLog.event("router_config", e.message, e)
+            }
         }
         reload()
     }
@@ -260,12 +290,19 @@ class EngineHolder(
         )
         return when (val plan = EngineRoute.plan(local, app.dev.load(), app.caps)) {
             EngineRoute.Plan.Mock -> State.Ready(FakeFlowCore("This is a test of on-device dictation."), "mock engine")
-            is EngineRoute.Plan.Unavailable -> State.Failed(plan.message, plan.kind)
+            is EngineRoute.Plan.Unavailable -> {
+                app.debugLog.event("engine_load", "${plan.kind ?: "unavailable"}: ${plan.message}")
+                State.Failed(plan.message, plan.kind)
+            }
             is EngineRoute.Plan.Routed -> {
                 val r = EngineRoute.assemble(plan, loader, opener)
-                if (r.llm is EnginePlan.LlmStatus.Failed) Log.w("FlowEngine", "LLM disabled: ${(r.llm as EnginePlan.LlmStatus.Failed).message}")
+                if (r.llm is EnginePlan.LlmStatus.Failed) {
+                    Log.w("FlowEngine", "LLM disabled: ${(r.llm as EnginePlan.LlmStatus.Failed).message}")
+                    app.debugLog.event("llm_load", (r.llm as EnginePlan.LlmStatus.Failed).message)
+                }
                 if (r.core == null) {
                     Log.w("FlowEngine", "load failed: ${r.error}")
+                    app.debugLog.event("engine_load", "${r.errorKind ?: "error"}: ${r.error}")
                     State.Failed(RouterErrors.userMessage(r.errorKind, r.error ?: "Speech engine failed to load"), r.errorKind)
                 } else {
                     loadedWithLocal = plan.local != null

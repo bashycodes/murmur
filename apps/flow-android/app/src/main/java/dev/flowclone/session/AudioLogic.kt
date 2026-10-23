@@ -71,15 +71,27 @@ class SilenceTracker {
 
     @Volatile var heardSpeech = false; private set
     @Volatile var leadingSilenceMs = 0L; private set
+    /** Silence since the last speech frame (D21 debug log `endpoint_wait_ms`); 0 before any speech. */
+    @Volatile var trailingSilenceMs = 0L; private set
     private var leadingSamples = 0L
+    private var trailingSamples = 0L
 
-    fun reset() { heardSpeech = false; leadingSilenceMs = 0; leadingSamples = 0 }
+    fun reset() { heardSpeech = false; leadingSilenceMs = 0; leadingSamples = 0; trailingSilenceMs = 0; trailingSamples = 0 }
 
     fun update(pcm: ShortArray, length: Int) {
-        if (heardSpeech || length <= 0) return
+        if (length <= 0) return
         var sum = 0.0
         for (i in 0 until length) { val v = pcm[i].toDouble(); sum += v * v }
-        if (sum / length > SIGNAL_MEAN_SQUARE) { heardSpeech = true; return }
+        if (sum / length > SIGNAL_MEAN_SQUARE) {
+            heardSpeech = true
+            trailingSamples = 0; trailingSilenceMs = 0
+            return
+        }
+        if (heardSpeech) {
+            trailingSamples += length
+            trailingSilenceMs = trailingSamples * 1000 / SAMPLE_RATE
+            return
+        }
         leadingSamples += length
         leadingSilenceMs = leadingSamples * 1000 / SAMPLE_RATE
     }
