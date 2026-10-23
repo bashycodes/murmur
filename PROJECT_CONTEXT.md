@@ -1,6 +1,6 @@
 # PROJECT_CONTEXT — flow-clone (local-only Wispr Flow clone)
 
-Research inputs: `research/windows/findings/by-topic/10-clone-spec.md` (§9 = core API), `research/android/findings/by-topic/10-clone-spec-android.md`. Decisions: `docs/DECISIONS.md` (D1-D16). Core architecture + "Changelog for shells": `docs/core-architecture.md`. Core requests from the shells: `docs/core-change-requests.md`. Model choices: `docs/model-benchmarks.md`.
+Research inputs: `research/windows/findings/by-topic/10-clone-spec.md` (§9 = core API), `research/android/findings/by-topic/10-clone-spec-android.md`. Decisions: `docs/DECISIONS.md` (D1-D21). Core architecture + "Changelog for shells": `docs/core-architecture.md`. Core requests from the shells: `docs/core-change-requests.md`. Model choices: `docs/model-benchmarks.md`.
 
 Branch `integration` holds everything: `core`, `core-p1`, `parakeet`, `win-p1`, `android-int`, `android-p1`, the hybrid branches, `cloud-core`, `core-endpoint`, `win-cloud`, `android-cloud`, `router-route` and `server-fixes` (review fixes), and `crates-final`, `android-final`, `win-final` (the rest of the review) are merged into it.
 
@@ -34,7 +34,7 @@ tools/              fetch-models.sh, build-android-parakeet.sh, probes/
 * Hybrid (D17): `cargo test -p flow-contract-tests` (+ `--all-features` with `FLOW_MODELS_DIR`/`FLOW_PARAKEET_DIR` for real-model equivalence); `tools/check-build-matrix.sh`; end-to-end smoke with a real server: `tools/probes/hybrid_smoke/run.sh` (PARAKEET_DIR, AUDIO_DIR).
 * Cloud STT (D18): `cargo test -p flow-cloud -p flow-router -p flow-contract-tests` (mock HTTP; no keys needed). Live provider smoke: `FLOW_CLOUD_LIVE_<OPENROUTER|ELEVENLABS|GROQ|OPENAI|DEEPGRAM|ASSEMBLYAI>_KEY=… cargo test -p flow-cloud --test live_smoke -- --nocapture` (skips without keys; costs money).
 * Windows shell: `cd apps/flow-windows && cargo test` (293), plus the MSVC clippy cross-check in its README.
-* Android shell: `cd apps/flow-android && ANDROID_HOME=~/Android/Sdk ./gradlew testDebugUnitTest assembleDebug` (Gradle daemon on JDK 21): 317 JVM tests per flavour, 11 gated skips; native libs `tools/build-native.sh --flavor F` + `tools/probes/check_native_so.sh --flavor F <apk>`.
+* Android shell: `cd apps/flow-android && ANDROID_HOME=~/Android/Sdk ./gradlew testDebugUnitTest assembleDebug` (Gradle daemon on JDK 21): 405 JVM tests per flavour, 12 gated skips; native libs `tools/build-native.sh --flavor F` + `tools/probes/check_native_so.sh --flavor F <apk>`.
 
 ## What works
 
@@ -139,11 +139,12 @@ Wired to the real core (from branch `win-p1`) and the hybrid router (`hybrid-win
 Not yet run on real Windows. The manual checklist is in `apps/flow-windows/README.md`.
 
 ### Android shell (`apps/flow-android`)
-From branches `android-int` + `android-p1` + `hybrid-android` (flavours `local`/`hybrid`/`remote`; only `local` is network-free). `./gradlew testLocalDebugUnitTest testHybridDebugUnitTest testRemoteDebugUnitTest assembleDebug` is green (317 JVM tests per flavour, 11 gated skips) and the no-network gate passes for `local`: its merged manifest has no network permission, which a Gradle gate and a unit test enforce. Debug APK with all three .so (flow_ffi, flow_llm, libc++_shared): 14.2 MB; with flow_ffi only: 9.3 MB (.so 3.9 MB stripped + libc++ 1.3 MB). Install guide: `apps/flow-android/INSTALL.md`.
+From branches `android-int` + `android-p1` + `hybrid-android` (flavours `local`/`hybrid`/`remote`; only `local` is network-free). `./gradlew testLocalDebugUnitTest testHybridDebugUnitTest testRemoteDebugUnitTest assembleDebug` is green (405 JVM tests per flavour, 12 gated skips) and the no-network gate passes for `local`: its merged manifest has no network permission, which a Gradle gate and a unit test enforce. Debug APK with all three .so (flow_ffi, flow_llm, libc++_shared): 14.2 MB; with flow_ffi only: 9.3 MB (.so 3.9 MB stripped + libc++ 1.3 MB). Install guide: `apps/flow-android/INSTALL.md`.
 
 | Capability | Proof (test) |
 |---|---|
 | V3 insertion state machine (07 §3), keep-alive, bubble/visibility policy, dictation controller (cap, timeout, debounce), gesture/position/waveform logic | JVM unit tests with virtual time |
+| D21 opt-in debug log (Developer settings, default off, all flavours): one JSON line per dictation (shared schema with Windows: ts, mode, route, fallback, rtt_ms, audio_ms, endpoint_wait_ms, asr_ms, post_ms, total_ms, perceived_ms, target, insert, raw, text, error) to logcat `FlowDebug` + `files/debug/dictations.jsonl` (newest 500); start failures / router fallbacks / engine load / import / probe / a11y health too; redacts protected targets, scrubs token + cloud keys; off = nothing written; a throwing sink never changes a dictation; View / Share / Clear on the Developer page | `debug/DebugLogTest.kt`, `session/DictationTraceTest.kt` (branch `feat/android-debuglog`; not yet run on the device) |
 | Kotlin↔JNI contract (`JNI_CONTRACT.md`) link-tested against a host C stub | `tools/probes/jni_stub/run.sh` |
 | Real flow-ffi under the shipped Kotlin binding (no device): x86_64 host `libflow_ffi.so` (jni,whisper) loaded by `NativeFlowCore` + `CoreJson`: start → push (jfk.wav in 100 ms frames) → commit returns the correct transcript with 0 dropped samples; mock round trip and missing-model path pass. Host timings (i7-6700, load 12-20 from other jobs, 4 threads, 11 s audio): tiny.en ASR 5.5-9.5 s, load 0.2-1.1 s; base.en ASR 12.6-17.6 s; worst push_audio 4-19 ms under that load (not phone numbers) | `apps/flow-android/tools/probes/host_native/run.sh [model]` |
 | arm64-v8a `libflow_ffi.so` with whisper cross-built (`tools/build-native.sh --whisper`; NDK toolchain wrapper, ggml armv8.2-a+dotprod+fp16), packaged with `libc++_shared.so`: all 11 contract symbols exported, every LOAD segment 16 KB aligned, NEEDED satisfied, APK `.so` entries stored and 16 KB zip-aligned | `tools/probes/check_native_so.sh app-debug.apk` |
