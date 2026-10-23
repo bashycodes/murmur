@@ -94,6 +94,7 @@ class FlowService : Service() {
     private lateinit var presence: BubblePresence
     private val repair = MutableStateFlow(false)
     private var health = AccessibilityHealth.Status.OK
+    private val healthGate = AccessibilityHealth.ChangeGate(health)
     private val shake = ShakeDetector()
     private var shakeRegistered = false
 
@@ -256,15 +257,13 @@ class FlowService : Service() {
     /** 15 s tick: ghost / disabled accessibility → Repair bubble + notification text. */
     private fun checkHealth() {
         val h = app.accessibilityHealth()
-        val changed = h != health
+        if (!healthGate.changed(h)) return // unchanged: no notification re-post, no bubble relayout
         health = h
         val needsRepair = h == AccessibilityHealth.Status.GHOST || h == AccessibilityHealth.Status.DISABLED
         presence.repair = needsRepair
         repair.value = needsRepair
-        if (changed) {
-            Log.i(TAG, "accessibility health: $h")
-            runCatching { getSystemService(NotificationManager::class.java).notify(NOTIF_ID, serviceNotification()) }
-        }
+        Log.i(TAG, "accessibility health: $h")
+        runCatching { getSystemService(NotificationManager::class.java).notify(NOTIF_ID, serviceNotification()) }
     }
 
     private fun snoozeDrop(): Boolean {

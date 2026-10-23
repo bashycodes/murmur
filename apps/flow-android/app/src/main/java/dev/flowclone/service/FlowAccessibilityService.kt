@@ -99,8 +99,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
     private fun startHealthTick() {
         scope.launch {
             while (true) {
-                val alive = runCatching { windows.isNotEmpty() }.getOrDefault(false)
-                if (alive) app.a11yHeartbeatAt = SystemClock.elapsedRealtime()
+                if (probeAlive()) app.a11yHeartbeatAt = SystemClock.elapsedRealtime()
                 val wanted = android.provider.Settings.canDrawOverlays(this@FlowAccessibilityService) && !app.settings.serviceStoppedByUser
                 if (watchdog.shouldRestart(wanted, FlowService.running, SystemClock.elapsedRealtime())) {
                     Log.w(TAG, "FlowService not running; restarting")
@@ -121,6 +120,9 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         }
         wake.trySend(Unit)
     }
+
+    override fun probeAlive(): Boolean =
+        runCatching { windows.isNotEmpty() || rootInActiveWindow != null }.getOrDefault(false)
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { wake.trySend(Unit) }
 

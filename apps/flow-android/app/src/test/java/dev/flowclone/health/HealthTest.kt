@@ -53,6 +53,86 @@ class AccessibilityHealthTest {
 
     @Test fun connectedButSettingOffIsDisabled() =
         assertEquals(AccessibilityHealth.Status.DISABLED, h(enabled = false, connected = true, beat = 99_000))
+
+    private fun hp(beat: Long?, probe: (() -> Boolean)?, now: Long = 100_000): AccessibilityHealth.Status =
+        AccessibilityHealth.evaluate(
+            AccessibilityHealth.Input(
+                enabledInSettings = true, connected = true, processStartAt = 0, connectedAt = 0,
+                lastHeartbeatAt = beat, screenOn = true, now = now, liveProbe = probe,
+            ),
+        )
+
+    /**
+     * Device bug (S25+): the heartbeat is stamped by a 15 s uptime timer, so after the CPU
+     * sleeps the first check sees a > 60 s old beat although the service is bound and idle.
+     * A live probe that answers means OK.
+     */
+    @Test fun staleHeartbeatButLiveProbeAnswersIsOk() =
+        assertEquals(AccessibilityHealth.Status.OK, hp(beat = 10_000, probe = { true }))
+
+    @Test fun staleHeartbeatAndFailedProbeIsGhost() =
+        assertEquals(AccessibilityHealth.Status.GHOST, hp(beat = 10_000, probe = { false }))
+
+    @Test fun probeThatThrowsCountsAsFailed() =
+        assertEquals(AccessibilityHealth.Status.GHOST, hp(beat = 10_000, probe = { error("DeadObjectException") }))
+
+    @Test fun freshHeartbeatDoesNotProbe() {
+        var probed = false
+        assertEquals(AccessibilityHealth.Status.OK, hp(beat = 95_000, probe = { probed = true; false }))
+        assertFalse(probed)
+    }
+}
+
+class AccessibilityHealthMonitorTest {
+    private val G = AccessibilityHealth.Status.GHOST
+    private val OK = AccessibilityHealth.Status.OK
+
+    @Test fun singleGhostReadingIsNotReported() {
+        val m = AccessibilityHealth.Monitor()
+        assertEquals(OK, m.update(OK, 0))
+        assertEquals(OK, m.update(G, 15_000))
+        assertEquals(OK, m.update(OK, 15_500)) // the S25+ flap: GHOST then OK 0.5 s later never surfaces
+    }
+
+    @Test fun ghostNeedsTwoConsecutiveReadingsSpanningConfirmWindow() {
+        val m = AccessibilityHealth.Monitor()
+        assertEquals(OK, m.update(OK, 0))
+        assertEquals(OK, m.update(G, 15_000))
+        assertEquals(OK, m.update(G, 17_000)) // 2 readings, but only 2 s apart (MainActivity's 2 s refresh)
+        assertEquals(G, m.update(G, 15_000 + AccessibilityHealth.GHOST_CONFIRM_MS))
+        assertEquals(G, m.update(G, 40_000))
+        assertEquals(OK, m.update(OK, 41_000)) // recovery is immediate
+    }
+
+    @Test fun okResetsTheGhostStreak() {
+        val m = AccessibilityHealth.Monitor()
+        m.update(G, 0)
+        m.update(OK, 5_000)
+        assertEquals(OK, m.update(G, 30_000))
+    }
+
+    @Test fun nonGhostStatusesPassThroughImmediately() {
+        val m = AccessibilityHealth.Monitor()
+        assertEquals(AccessibilityHealth.Status.DISABLED, m.update(AccessibilityHealth.Status.DISABLED, 0))
+        assertEquals(AccessibilityHealth.Status.STARTING, m.update(AccessibilityHealth.Status.STARTING, 1))
+    }
+
+    @Test fun unconfirmedGhostAtStartupReadsAsStarting() {
+        val m = AccessibilityHealth.Monitor()
+        assertEquals(AccessibilityHealth.Status.STARTING, m.update(G, 20_000))
+        assertEquals(G, m.update(G, 20_000 + AccessibilityHealth.GHOST_CONFIRM_MS))
+    }
+}
+
+class HealthChangeTest {
+    @Test fun onlyAChangeRepostsTheNotification() {
+        val c = AccessibilityHealth.ChangeGate()
+        assertFalse(c.changed(AccessibilityHealth.Status.OK)) // initial OK == default
+        assertTrue(c.changed(AccessibilityHealth.Status.GHOST))
+        assertFalse(c.changed(AccessibilityHealth.Status.GHOST))
+        assertTrue(c.changed(AccessibilityHealth.Status.OK))
+        assertFalse(c.changed(AccessibilityHealth.Status.OK))
+    }
 }
 
 class ServiceWatchdogTest {

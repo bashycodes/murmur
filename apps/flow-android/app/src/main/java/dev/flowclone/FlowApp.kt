@@ -67,20 +67,27 @@ class FlowApp : Application() {
     @Volatile var a11yConnectedAt: Long? = null
     @Volatile var a11yHeartbeatAt: Long? = null
 
-    /** Ghost-service check (Wispr AccessibilityHealthMonitor), see [AccessibilityHealth]. */
+    private val healthMonitor = AccessibilityHealth.Monitor()
+
+    /** Ghost-service check (Wispr AccessibilityHealthMonitor), see [AccessibilityHealth]; debounced, shared by all callers. */
     fun accessibilityHealth(): AccessibilityHealth.Status {
         val enabled = A11ySetting.isEnabled(
             android.provider.Settings.Secure.getString(contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),
             packageName, FlowAccessibilityService::class.java.name,
         )
         val screenOn = getSystemService(android.os.PowerManager::class.java)?.isInteractive ?: true
-        return AccessibilityHealth.evaluate(
+        val now = android.os.SystemClock.elapsedRealtime()
+        val a = accessibility
+        // A live answer from the bound service also counts as a heartbeat.
+        val probe = a?.let { svc -> { svc.probeAlive().also { if (it) a11yHeartbeatAt = now } } }
+        val raw = AccessibilityHealth.evaluate(
             AccessibilityHealth.Input(
                 enabledInSettings = enabled, connected = accessibility != null, processStartAt = processStartAt,
                 connectedAt = a11yConnectedAt, lastHeartbeatAt = a11yHeartbeatAt, screenOn = screenOn,
-                now = android.os.SystemClock.elapsedRealtime(),
+                now = now, liveProbe = probe,
             ),
         )
+        return healthMonitor.update(raw, now)
     }
 
     override fun onCreate() {
@@ -110,6 +117,8 @@ interface AccessibilityBridge {
     fun onDictationActive(active: Boolean)
     /** S12: may the transcript go into the field focused now (see [dev.flowclone.policy.InsertGuard])? */
     fun insertTarget(explicit: Boolean): dev.flowclone.session.InsertTarget = dev.flowclone.session.InsertTarget.OK
+    /** Health probe: does the system still answer this service (window query)? False or throwing = dead binding. */
+    fun probeAlive(): Boolean = true
 }
 
 /**
