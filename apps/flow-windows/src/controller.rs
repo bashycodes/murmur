@@ -9,7 +9,7 @@
 use crate::audio::LevelMeter;
 use crate::context::{build_field_context, RawSnapshot};
 use crate::core_api::{to_outcome, CommitResult, CommitStatus, CoreApi, FieldContext, PasteKey};
-use crate::debug_log::{DebugLog, Entry};
+use crate::debug_log::{outcome, DebugLog, Entry, Insert, SilenceTracker};
 use crate::dictation::{Dictation, Effect, Input, OverlayState, Phase, SessionId, Sound};
 use crate::history::{self, History};
 use crate::hotkeys::HotkeyAction;
@@ -134,12 +134,15 @@ struct SessionInfo {
     /// The focused control was a password field at start (UIA snapshot).
     password_at_start: Option<bool>,
     /// Debug log only (all unset while it is off): `hold` / `tap` /
-    /// `handsfree`, the stop time, ended by the hands-free endpoint, the
-    /// live route last shown, and the line was already written.
+    /// `handsfree`, the stop time, speech/silence tracker fed by the mic
+    /// and its last-speech → stop value, the live route last shown, the
+    /// paste plan steps, and the line was already written.
     mode: &'static str,
     released: Option<std::time::Instant>,
-    endpoint: bool,
+    silence: Option<Arc<SilenceTracker>>,
+    endpoint_wait_ms: Option<u64>,
     route_seen: Option<crate::core_api::SessionRoute>,
+    steps: Vec<String>,
     logged: bool,
 }
 
@@ -175,6 +178,8 @@ pub struct Controller {
     route_shown: Option<crate::core_api::SessionRoute>,
     /// Opt-in debug log; written off this thread, never awaited.
     debug: Option<Arc<DebugLog>>,
+    /// Debug `insert.outcome` of a `CancelSession` (Esc vs timeout).
+    cancel_outcome: &'static str,
 }
 
 impl Controller {
@@ -202,6 +207,7 @@ impl Controller {
             endpoint_finished: None,
             route_shown: None,
             debug: None,
+            cancel_outcome: outcome::CANCELLED,
         }
     }
 
@@ -222,7 +228,6 @@ impl Controller {
         let Some(log) = self.debug.as_ref().filter(|l| l.is_enabled()) else {
             return;
         };
-        let silence = self.prefs.read().unwrap().hands_free_silence_ms;
         let entry = {
             let mut g = self.shared.sessions.lock().unwrap();
             let Some(i) = g.get_mut(&session) else { return };
@@ -230,7 +235,7 @@ impl Controller {
                 return;
             }
             i.logged = true;
-            debug_entry(i, insert, error, silence)
+            debug_entry(i, insert, error)
         };
         log.log(entry);
     }
@@ -285,16 +290,16 @@ impl Controller {
                 match outcome {
                     CommitOutcome::Text(_) => {}
                     CommitOutcome::Empty | CommitOutcome::Notice(_) => {
-                        self.debug_emit(*session, "empty", None)
+                        self.debug_emit(*session, outcome::EMPTY, None)
                     }
-                    CommitOutcome::Failed(_) => self.debug_emit(*session, "none", None),
+                    CommitOutcome::Failed(_) => self.debug_emit(*session, outcome::ERROR, None),
                 }
             }
             Input::StartFailed { session, message }
                 if self.debug_on()
                     && matches!(self.machine.phase(), Phase::Listening(l) if l.session == *session) =>
             {
-                self.debug_emit(*session, "none", Some(message.clone()));
+                self.debug_emit(*session, outcome::START_FAILED, Some(message.clone()));
             }
             Input::Started { session, route } => {
                 if self.current_session() == Some(*session) {
@@ -306,7 +311,15 @@ impl Controller {
         }
         let tick = input == Input::Tick;
         let ptt_down = input == Input::Hotkey(HotkeyAction::PttDown);
+        let was_processing = matches!(self.machine.phase(), Phase::Processing { .. });
         let effects = self.machine.handle(input, now);
+        // A Tick that ends processing with an error = the processing timeout.
+        self.cancel_outcome =
+            if tick && was_processing && matches!(self.machine.phase(), Phase::Error { .. }) {
+                outcome::TIMEOUT
+            } else {
+                outcome::CANCELLED
+            };
         self.dictating
             .store(self.machine.is_active(), Ordering::Relaxed);
         for e in effects {
@@ -393,11 +406,6 @@ impl Controller {
             && self.endpoint_finished != Some(session)
         {
             self.endpoint_finished = Some(session);
-            if self.debug_on() {
-                if let Some(i) = self.shared.sessions.lock().unwrap().get_mut(&session) {
-                    i.endpoint = true;
-                }
-            }
             let _ = self.tx.send(Input::Finish);
         }
     }
@@ -549,9 +557,13 @@ impl Controller {
         let Some(text) = self.last_text() else { return };
         let prefs = self.prefs.read().unwrap().clone();
         let platform = self.platform.clone();
+        let debug = self.debug.clone();
         std::thread::spawn(move || {
             platform.wait_shortcut_released();
             if let Err(e) = platform.paste(&text, &prefs) {
+                if let Some(d) = &debug {
+                    d.event("paste", &format!("paste last: {e}"));
+                }
                 platform.overlay(&OverlayState::Error { message: e });
             }
         });
@@ -562,9 +574,13 @@ impl Controller {
         let Some(text) = self.last_text() else { return };
         let text = crate::paste::plain_text(&text);
         let platform = self.platform.clone();
+        let debug = self.debug.clone();
         std::thread::spawn(move || {
             if let Err(e) = platform.copy_text(&text) {
                 eprintln!("[copy-last] {e}");
+                if let Some(d) = &debug {
+                    d.event("paste", &format!("copy last: {e}"));
+                }
             }
         });
     }
@@ -609,6 +625,7 @@ impl Controller {
                 // is already open; audio is buffered until it returns, so
                 // no first word is lost (review P3, changelog C2).
                 let samples = Arc::new(AtomicU64::new(0));
+                let silence = self.debug_on().then(|| Arc::new(SilenceTracker::default()));
                 let gate = Arc::new(StartGate::default());
                 let pending: Arc<Mutex<Option<Vec<i16>>>> = Arc::new(Mutex::new(Some(Vec::new())));
                 self.shared.sessions.lock().unwrap().insert(
@@ -617,6 +634,7 @@ impl Controller {
                         samples: samples.clone(),
                         gate: gate.clone(),
                         target: self.platform.focus_target(),
+                        silence: silence.clone(),
                         ..SessionInfo::default()
                     },
                 );
@@ -700,6 +718,9 @@ impl Controller {
                 let cap = prefs.policy().max_samples() as usize;
                 let sink: AudioSink = Box::new(move |pcm: &[i16]| {
                     samples.fetch_add(pcm.len() as u64, Ordering::Relaxed);
+                    if let Some(t) = &silence {
+                        t.update(pcm);
+                    }
                     let buffered = {
                         let mut g = pending.lock().unwrap();
                         match g.as_mut() {
@@ -741,6 +762,8 @@ impl Controller {
                 if self.debug_on() {
                     if let Some(i) = self.shared.sessions.lock().unwrap().get_mut(&session) {
                         i.released = Some(std::time::Instant::now());
+                        i.endpoint_wait_ms =
+                            i.silence.as_ref().and_then(|t| t.trailing_silence_ms());
                     }
                 }
                 let core = self.core.clone();
@@ -777,7 +800,7 @@ impl Controller {
                 };
                 // A paste in flight reports its own outcome.
                 if !pasting {
-                    self.debug_emit(session, "cancelled", None);
+                    self.debug_emit(session, self.cancel_outcome, None);
                 }
                 // A start still in flight sees this and cancels itself.
                 let _ = self.shared.live.compare_exchange(
@@ -802,6 +825,12 @@ impl Controller {
                     .map(|r| r.paste_segments())
                     .unwrap_or_else(|| flow_core::paste::segments(&text, false));
                 let steps = crate::paste::plan(&segs);
+                if self.debug_on() {
+                    let names = step_names(&steps, prefs.paste_method);
+                    if let Some(i) = self.shared.sessions.lock().unwrap().get_mut(&session) {
+                        i.steps = names;
+                    }
+                }
                 let platform = self.platform.clone();
                 let tx = self.tx.clone();
                 let (cancelled, target, password_at_start) = {
@@ -865,26 +894,50 @@ impl Controller {
 /// anything was inserted.
 pub const PASTE_CANCELLED: &str = "cancelled";
 
-/// Debug-log `insert` (and error) of a paste outcome.
+/// Debug-log `insert.outcome` (and error) of a paste outcome.
 fn paste_insert(r: &Result<(), String>) -> (&'static str, Option<String>) {
     use crate::paste::GuardFailure;
     match r {
-        Ok(()) => ("pasted", None),
-        Err(m) if m == PASTE_CANCELLED => ("cancelled", None),
-        Err(m) if m == GuardFailure::Moved.message() => ("copied", Some(m.clone())),
-        Err(m) if m == GuardFailure::Guarded.message() => ("blocked", Some(m.clone())),
-        Err(m) => ("failed", Some(m.clone())),
+        Ok(()) => (outcome::INSERTED, None),
+        Err(m) if m == PASTE_CANCELLED => (outcome::CANCELLED, None),
+        Err(m) if m == GuardFailure::Moved.message() => (outcome::TARGET_CHANGED, Some(m.clone())),
+        Err(m) if m == GuardFailure::Guarded.message() => {
+            (outcome::TARGET_PROTECTED, Some(m.clone()))
+        }
+        Err(m) => (outcome::PASTE_FAILED, Some(m.clone())),
     }
 }
 
+/// Debug-log `insert.steps`: the paste plan (`ctrl_v`, `type`, `key Enter`).
+fn step_names(steps: &[crate::paste::Step], method: crate::prefs::PasteMethod) -> Vec<String> {
+    use crate::paste::Step;
+    use crate::prefs::PasteMethod;
+    steps
+        .iter()
+        .filter_map(|s| match s {
+            Step::Insert { typed: true, .. } => Some("type".to_string()),
+            Step::Insert { .. } => Some(
+                match method {
+                    PasteMethod::CtrlV => "ctrl_v",
+                    PasteMethod::ShiftInsert => "shift_insert",
+                    PasteMethod::Type => "type",
+                }
+                .to_string(),
+            ),
+            Step::Key(k) => Some(format!("key {k:?}")),
+            Step::Pause(_) => None,
+        })
+        .collect()
+}
+
 /// The debug line of a session (schema: [`crate::debug_log::Entry`]).
-fn debug_entry(i: &SessionInfo, insert: &str, error: Option<String>, silence_ms: u32) -> Entry {
+fn debug_entry(i: &SessionInfo, insert: &str, error: Option<String>) -> Entry {
     use crate::debug_log::{failure_code, REDACTED};
     let r = i.result.as_ref();
     let route = r.and_then(|r| r.route.as_ref());
     let seen = i.route_seen.as_ref();
     let error = error.or_else(|| r.and_then(|r| r.error.clone()));
-    let password = i.password_at_start == Some(true) || insert == "blocked";
+    let password = i.password_at_start == Some(true) || insert == outcome::TARGET_PROTECTED;
     let redact = |s: String| if password { REDACTED.to_string() } else { s };
     let nonempty = |s: &String| (!s.is_empty()).then(|| redact(s.clone()));
     let target = i
@@ -909,16 +962,24 @@ fn debug_entry(i: &SessionInfo, insert: &str, error: Option<String>, silence_ms:
                 .filter(|ms| *ms > 0)
                 .unwrap_or(i.samples.load(Ordering::Relaxed) / 16),
         ),
-        endpoint_wait_ms: i.endpoint.then_some(u64::from(silence_ms)),
+        endpoint_wait_ms: i.endpoint_wait_ms,
         asr_ms: r.map(|r| r.timings.asr_ms),
         post_ms: r.map(|r| r.timings.total_ms.saturating_sub(r.timings.asr_ms)),
         total_ms: r.map(|r| r.timings.total_ms),
         perceived_ms: i.released.map(|t| t.elapsed().as_millis() as u64),
         target: target.map(&redact),
-        insert: Some(insert.to_string()),
+        insert: Insert {
+            outcome: insert.to_string(),
+            steps: if password {
+                Vec::new()
+            } else {
+                i.steps.clone()
+            },
+        },
         raw: r.and_then(|r| nonempty(&r.asr_text)),
         text: r.and_then(|r| nonempty(&r.plain_text)),
         error,
+        stack: None,
     }
 }
 
@@ -1698,13 +1759,17 @@ mod tests {
         let l = lines(&mem, &log);
         assert_eq!(l.len(), 1, "{l:?}");
         let e = &l[0];
+        assert_eq!(e["kind"], "dictation");
         assert_eq!(e["mode"], "hold");
-        assert_eq!(e["insert"], "pasted");
+        assert_eq!(e["insert"]["outcome"], "inserted");
+        assert_eq!(e["insert"]["steps"], serde_json::json!(["ctrl_v"]));
+        assert_eq!(e["stack"], serde_json::Value::Null);
         assert_eq!(e["target"], "chat.exe");
         assert_eq!(e["raw"], "[stub: 1.0 s of audio]");
         assert_eq!(e["text"], "[stub: 1.0 s of audio]");
         assert_eq!(e["error"], serde_json::Value::Null);
-        assert_eq!(e["endpoint_wait_ms"], serde_json::Value::Null);
+        // 1 s of loud audio up to the release: no trailing silence.
+        assert_eq!(e["endpoint_wait_ms"], 0);
         assert!(e["perceived_ms"].is_u64(), "{e}");
         assert!(e["total_ms"].is_u64(), "{e}");
         assert!(e["ts"].as_str().unwrap().ends_with('Z'));
@@ -1754,6 +1819,7 @@ mod tests {
         r.at(0, Input::Hotkey(HotkeyAction::HandsFreeToggle));
         r.wait_config(1);
         r.fake.feed_audio(&[1000; 16_000]);
+        r.fake.feed_audio(&[0; 32_000]); // 2 s of silence after the speech
         r.core.set_poll(crate::core_api::Poll {
             endpoint_reached: true,
             ..Default::default()
@@ -1769,7 +1835,7 @@ mod tests {
         r.at(20_100, Input::Hotkey(HotkeyAction::PttUp));
         r.at(20_200, Input::Hotkey(HotkeyAction::PttDown));
         r.wait_config(2);
-        r.fake.feed_audio(&[1000; 16_000]);
+        r.fake.feed_audio(&[0; 16_000]); // silence only: no speech heard
         r.at(22_000, Input::Hotkey(HotkeyAction::PttDown)); // stop
         r.pump();
         r.pump();
@@ -1830,7 +1896,7 @@ mod tests {
 
         let a = lines(&mem, &log);
         assert_eq!(a.len(), 1, "{a:?}");
-        assert_eq!(a[0]["insert"], "none");
+        assert_eq!(a[0]["insert"]["outcome"], "error");
         assert_eq!(a[0]["fallback"], "circuit_open");
         assert_eq!(a[0]["error"], "Server unreachable (circuit_open)");
         let b = lines(&mem2, &log2);
@@ -1893,7 +1959,8 @@ mod tests {
         assert_eq!(l[0]["target"], crate::debug_log::REDACTED);
         assert_eq!(l[0]["raw"], crate::debug_log::REDACTED);
         assert_eq!(l[0]["text"], crate::debug_log::REDACTED);
-        assert_eq!(l[0]["insert"], "blocked");
+        assert_eq!(l[0]["insert"]["outcome"], "target_protected");
+        assert_eq!(l[0]["insert"]["steps"], serde_json::json!([]));
     }
 
     #[test]
@@ -1918,10 +1985,53 @@ mod tests {
         r2.pump(); // StartFailed
         let a = lines(&mem, &log);
         assert_eq!(a.len(), 1, "{a:?}");
-        assert_eq!(a[0]["insert"], "cancelled");
+        assert_eq!(a[0]["insert"]["outcome"], "cancelled");
         let b = lines(&mem2, &log2);
         assert_eq!(b.len(), 1, "{b:?}");
-        assert_eq!(b[0]["insert"], "none");
+        assert_eq!(b[0]["insert"]["outcome"], "start_failed");
         assert_eq!(b[0]["error"], "no mic");
+    }
+
+    #[test]
+    fn debug_log_records_a_processing_timeout() {
+        struct Hang(Arc<StubCore>);
+        impl CoreApi for Hang {
+            fn start_session(&self, c: crate::core_api::SessionConfig) -> Result<(), String> {
+                self.0.start_session(c)
+            }
+            fn push_audio(&self, p: &[i16]) {
+                self.0.push_audio(p)
+            }
+            fn set_context(&self, c: FieldContext) {
+                self.0.set_context(c)
+            }
+            fn partial(&self) -> Option<String> {
+                None
+            }
+            fn commit(&self) -> CommitResult {
+                std::thread::sleep(Duration::from_millis(300));
+                CommitResult::failed(crate::core_api::CANCELLED)
+            }
+            fn cancel(&self) {}
+            fn learn_edit(&self, _: &str, _: &str) -> Vec<crate::core_api::LearnCandidate> {
+                Vec::new()
+            }
+        }
+        let mem = MemSink::default();
+        let (mut r, log) = logged_with(
+            Prefs::default(),
+            Fake::default(),
+            Box::new(mem.clone()),
+            true,
+            |c| Arc::new(Hang(c)),
+        );
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.at(100_000, Input::Tick); // past the processing timeout
+        r.pump(); // the late Committed: ignored
+        let l = lines(&mem, &log);
+        assert_eq!(l.len(), 1, "{l:?}");
+        assert_eq!(l[0]["insert"]["outcome"], "timeout");
     }
 }
