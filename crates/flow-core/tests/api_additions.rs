@@ -146,7 +146,9 @@ fn press_enter_is_a_trailing_enter_segment() {
         FieldContext::default(),
     );
     assert!(r.press_enter);
-    assert_eq!(r.segments, vec![text("Send it"), key(PasteKey::Enter)]);
+    // The open dictation gets its period ("…press enter."), which the
+    // press-enter rule moves onto the text, as for Wispr's server output.
+    assert_eq!(r.segments, vec![text("Send it."), key(PasteKey::Enter)]);
 }
 
 #[test]
@@ -167,7 +169,7 @@ fn segments_serialize_as_text_or_key_objects() {
     let j = serde_json::to_value(&r).unwrap();
     assert_eq!(
         j["segments"],
-        serde_json::json!([{"text": "Send it"}, {"key": "Enter"}])
+        serde_json::json!([{"text": "Send it."}, {"key": "Enter"}])
     );
     // Old JSON without the new fields still parses (shells built earlier).
     let mut old = j.clone();

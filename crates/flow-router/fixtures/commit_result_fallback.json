@@ -3,9 +3,9 @@
   "empty_reason": null,
   "error": null,
   "fallback_reason": null,
-  "final_text": "ask not what your country can do ",
+  "final_text": "ask not what your country can do. ",
   "language": "en",
-  "plain_text": "ask not what your country can do ",
+  "plain_text": "ask not what your country can do. ",
   "press_enter": false,
   "route": {
     "engine": "local",
@@ -17,7 +17,7 @@
   },
   "segments": [
     {
-      "text": "ask not what your country can do "
+      "text": "ask not what your country can do. "
     }
   ],
   "status": "RAW_TRANSCRIPT",

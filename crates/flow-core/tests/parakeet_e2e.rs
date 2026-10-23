@@ -288,3 +288,81 @@ fn parakeet_segmented_jfk_equals_whole_clip() {
     assert_eq!(seg.asr_text, whole.asr_text);
     assert_eq!(seg.final_text, whole.final_text);
 }
+
+/// Words after a sentence end that start lower case (abbreviations and
+/// ellipses aside).
+fn lowercase_after_stop(t: &str) -> Vec<String> {
+    let w: Vec<&str> = t.split_whitespace().collect();
+    w.windows(2)
+        .filter(|p| {
+            let a = p[0].to_lowercase();
+            a.ends_with(['.', '?', '!'])
+                && !a.ends_with("..")
+                && !["mr.", "mrs.", "dr.", "st.", "e.g.", "i.e."].contains(&a.as_str())
+                && p[1].starts_with(char::is_lowercase)
+        })
+        .map(|p| p.join(" "))
+        .collect()
+}
+
+/// Regression (cliptest 2026-10-23, Parakeet-unified int8 at 800 ms):
+/// "capacity. the Englishman" (long_028s; a bridge's edge word),
+/// "figures. that is" (ls_1188_M; the splice was refused), the dropped
+/// period in "tender flowers the pain" (long_040s; a 4 s left bridge
+/// heard no sentence end), and dictations ending with no period. Every
+/// sentence end in the segmented output is followed by a capital, and
+/// `final_text` is closed. With the unified model the long_040s break
+/// must survive the cut.
+#[test]
+fn parakeet_segmented_joins_keep_sentence_case_and_close() {
+    let Some(core) = load() else { return };
+    let Some(audio) = long_clips::audio_dir() else {
+        eprintln!("SKIP: FLOW_AUDIO_DIR not set");
+        return;
+    };
+    let Some(clips) = long_clips::build(&audio) else {
+        return;
+    };
+    let mut set: Vec<(String, Vec<i16>)> = clips
+        .into_iter()
+        .filter(|c| [10, 28, 40].contains(&c.target_s))
+        .map(|c| (format!("long_{}s", c.target_s), c.pcm))
+        .collect();
+    if let Ok(p) = audio::read_wav_16k_mono(&audio.join("1188-133604-0019.wav")) {
+        set.push(("ls_1188_M".into(), p));
+    }
+    let unified = std::env::var("FLOW_PARAKEET_DIR").is_ok_and(|d| d.contains("unified"));
+    for (name, pcm) in &set {
+        core.start_session(SessionConfig {
+            ring_capacity_samples: pcm.len() + 16_000,
+            segment_pause_ms: Some(800),
+            ..Default::default()
+        })
+        .unwrap();
+        for c in pcm.chunks(640) {
+            assert!(core.push_audio(c));
+        }
+        let r = core.commit();
+        eprintln!("{name}: {} pieces: {:?}", r.timings.segments, r.final_text);
+        assert_eq!(r.status, CommitStatus::RawTranscript, "{r:?}");
+        assert!(r.timings.segments >= 2, "{name}: no cut: {:?}", r.timings);
+        assert!(
+            lowercase_after_stop(&r.final_text).is_empty(),
+            "{name}: {:?} in {:?}",
+            lowercase_after_stop(&r.final_text),
+            r.final_text
+        );
+        assert!(
+            r.final_text.trim_end().ends_with(['.', '?', '!']),
+            "{name}: open ending: {:?}",
+            r.final_text
+        );
+        if unified && name == "long_40s" {
+            assert!(
+                r.final_text.contains("flowers. The pain"),
+                "{:?}",
+                r.final_text
+            );
+        }
+    }
+}

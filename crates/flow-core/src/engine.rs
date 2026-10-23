@@ -1383,6 +1383,11 @@ impl Worker {
                 return r;
             }
         }
+        if s.cfg.cleanup_level != CleanupLevel::None && !snippet {
+            // Parakeet-unified often ends without a period, whisper on a
+            // comma; Wispr's server would close the sentence (D24).
+            text = postprocess::terminal::close_sentence(&text);
+        }
         r.status = CommitStatus::RawTranscript;
         if abort.load(Ordering::SeqCst) {
             return CommitResult::error("cancelled");
