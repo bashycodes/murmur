@@ -8,7 +8,13 @@ name: android-build
 on:
   workflow_dispatch:
   push:
-    branches: [android-final]
+    branches: [integration, android-final]
+    paths:
+      - "apps/flow-android/**"
+      - "crates/**"
+      - "Cargo.lock"
+      - ".github/workflows/android-build.yml"
+  pull_request:
     paths:
       - "apps/flow-android/**"
       - "crates/**"
