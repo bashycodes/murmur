@@ -159,6 +159,17 @@ pub struct Timings {
     pub audio_ms: u64,
     /// Samples lost because a buffer was full (0 = nothing lost).
     pub dropped_samples: u64,
+    /// D22: `commit` waited this long for a decode already in flight.
+    /// Included in `total_ms`.
+    #[serde(default)]
+    pub wait_ms: u64,
+    /// D22: pieces that went to ASR (closed segments + tail); 0 = off.
+    #[serde(default)]
+    pub segments: u64,
+    /// D22: ASR time while recording on pieces whose text was used (not
+    /// part of `asr_ms`, which is now the tail decoded inside `commit`).
+    #[serde(default)]
+    pub pre_asr_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
