@@ -78,6 +78,43 @@ Default build only (feature `cloud`; never in `local,app`, enforced by
   A cloud failure that fell back shows "Cloud STT failed (key rejected);
   used this PC" above the pill; cloud-only failures are an error pill.
 
+## Debug log (opt-in, includes transcripts)
+
+Settings → Developer → **Debug log (includes transcripts)**, off by default
+(`prefs.json` → `developer.debug_log`; saved as soon as it is toggled). When
+on, each dictation appends one JSON line to
+`%APPDATA%\FlowClone\debug\dictations.jsonl` (the last 500 are kept) and
+prints it to stdout as `[debug] {json}`. Non-dictation events (engine/LLM
+load, server probe, hotkey hook, audio stream, paste-last, settings) get a
+`"kind":"event"` line with `ts, event, error, stack`. The tab shows the line
+count, **Open log folder** and **Clear**; turning it off offers to delete
+the file. Off = no file, no line, no text anywhere (tested).
+
+Schema and value conventions are shared with the Android app (decision D21
+in `docs/DECISIONS.md`; every key always present, `null` when unknown):
+`kind` (`dictation`), `ts` (UTC ISO 8601), `mode` (`hold` push-to-talk /
+`tap` double-tap lock / `handsfree`), `route` (`local` / `remote` /
+`cloud`), `fallback` (router failure code: `connect_failed`,
+`disconnected`, `circuit_open`, … — from the route, else the live route
+the pill showed, else the error text, so a server-only failure still names
+it), `rtt_ms`, `audio_ms`, `endpoint_wait_ms` (last speech → stop; same
+−45 dBFS rule as Android, `null` when no speech), `asr_ms`, `post_ms`
+(LLM + post-processing = `total_ms - asr_ms`), `total_ms` (engine),
+`perceived_ms` (stop → outcome), `target` (foreground exe), `insert`
+(`{"outcome", "steps"}`; outcome `inserted` / `paste_failed` /
+`target_changed` / `target_protected` / `empty` / `error` / `timeout` /
+`start_failed` / `cancelled`, steps = the paste plan such as
+`["ctrl_v", "key Enter"]`), `raw`, `text`, `error`, `stack` (always `null`
+here).
+
+It can never affect a dictation: `DebugLog::log` only pushes onto a
+bounded queue (oldest dropped when full) and a writer thread does the
+serialising and I/O; every failure there is swallowed and counted (shown
+next to the count). Never logged: the server token and cloud API keys
+(scrubbed from every line), clipboard contents; a password field gives
+`target`, `raw` and `text` = `"<redacted>"` and no steps. Nothing is uploaded anywhere.
+Code: `src/debug_log.rs`, lines built in `src/controller.rs`.
+
 ## Speech model (never downloaded automatically)
 
 Put a whisper.cpp ggml model at `%APPDATA%\FlowClone\models\ggml-base.bin`
@@ -132,6 +169,7 @@ state (off / loading / ready / model missing / engine missing / failed).
 | `src/router_adapter.rs` | D17: `CoreApi` on `flow_router::Router` (every build), `LocalBackend` over the `FlowCoreAdapter` slot, remote = `flow_remote::factory` (feature `remote`), router errors → pill text, last-route record (Developer page, S/L badge) |
 | `src/dev_settings.rs` | Developer settings: `prefs.json` `"developer"` section, form validation (host/port/pin/token/timeouts, public host ⇒ TLS), mapping to the router's `RouterConfig` JSON (pinned by `crates/flow-router/fixtures`) |
 | `src/credentials.rs` | D18 `CredentialStore`: Credential Manager (`flow-clone/cloud/<id>`, `CredWriteW`/`CredReadW`/`CredDeleteW`) on Windows, `MemoryStore` stand-in elsewhere; masking, key validation |
+| `src/debug_log.rs` | Opt-in debug log: bounded queue + writer thread, JSONL file sink (last 500), schema, secret scrubbing |
 | `src/cloud.rs` | D18 pure helpers: failure texts, engine row, `cloud_usage.json` load/save, usage view, presets, provider ids |
 | `tests/cloud_settings.rs` | Developer form JSON → prefs (no keys) → router JSON == `router_config_cloud.json`; consent cleared on host/adapter change |
 | `tests/cloud_integration.rs` | Controller → router → flow-cloud (Groq preset) → flow-cloud's mock HTTP provider: cloud paste, usage restore, 500/401 → local fallback with all audio, no key/consent → no request, cloud-only error pills, Test provider; key never shown |
@@ -306,6 +344,8 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Dictionary editor: add/edit/delete rows, snippet with a multi-line body, Save; export writes `Downloads\flow-dictionary.json`; importing that file (merge) changes nothing; importing the Android app's export works.
 - [ ] Dictating into silence shows "No speech heard" above the pill for ~1.5 s, with no error sound.
 - [ ] Settings → General: "Auto-format punctuation, fillers and corrections" off → "comma" stays a word; Engine = Parakeet with the model folder in `models\` (parakeet build) → tray shows the folder name and jfk-style speech pastes.
+
+- [ ] Debug log: Developer → tick "Debug log (includes transcripts)", dictate into Notepad → the count says 1 entry, Open log folder shows `dictations.jsonl` with `"mode":"hold"`, `"insert":{"outcome":"inserted",…}`, `"target":"notepad.exe"`; stop the server and dictate (server-first) → `"fallback":"connect_failed"`; untick → the delete prompt appears, Delete → the file is gone; dictate again → no file.
 
 #### Developer settings / hybrid mode (needs a `flow-server` on the LAN or Tailscale)
 

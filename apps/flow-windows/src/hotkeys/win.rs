@@ -195,10 +195,17 @@ fn send_probe() -> bool {
 /// are force-released first so an in-progress PTT ends instead of sticking.
 unsafe fn reinstall(hook: &mut HHOOK, hmod: HINSTANCE) {
     eprintln!("[hotkeys] keyboard hook stopped receiving events; re-installing");
+    crate::debug_log::event(
+        "hotkeys",
+        "keyboard hook stopped receiving events; re-installing",
+    );
     let _ = UnhookWindowsHookEx(*hook);
     match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), hmod, 0) {
         Ok(h) => *hook = h,
-        Err(e) => eprintln!("[hotkeys] re-install failed: {e}"),
+        Err(e) => {
+            eprintln!("[hotkeys] re-install failed: {e}");
+            crate::debug_log::event("hotkeys", &format!("re-install failed: {e}"));
+        }
     }
     let mut guard = state();
     if let Some(s) = guard.as_mut() {

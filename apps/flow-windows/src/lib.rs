@@ -14,6 +14,7 @@ pub mod controller;
 pub mod core_adapter;
 pub mod core_api;
 pub mod credentials;
+pub mod debug_log;
 pub mod dev_settings;
 pub mod dictation;
 pub mod dictionary;

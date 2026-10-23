@@ -50,6 +50,7 @@ fn build(device: &cpal::Device, mut sink: Sink, on_error: OnError) -> Result<cpa
     let mut rs = Resampler::new(config.sample_rate.0, config.channels);
     let err_fn = move |e: cpal::StreamError| {
         eprintln!("[audio] stream error: {e}");
+        crate::debug_log::event("audio", &format!("stream error: {e}"));
         on_error(format!("Microphone stopped working ({e})"));
     };
     let stream = match format {
