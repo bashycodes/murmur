@@ -725,3 +725,23 @@ No API change; behaviour the shells can see:
   (`x86_64-pc-windows-msvc`) flavours with `--target` (P4).
 * Self-hosting: `tools/server/install.sh` and `docs/server-setup.md`. The latter maps the
   Developer settings to the server's address, token and TLS pin.
+
+**2026-10-23 — D22 pause-segmented decoding + latency fields (branch `feat/streaming-asr`)**
+
+Shell steps: `docs/proposals/streaming-asr-shell-api.md`. All additive; no message, C or JNI
+symbol changes.
+
+* `SessionConfig.segment_pause_ms` (recommended 800) / `segment_min_ms` / `segment_soft_max_ms`
+  travel in `start.config` like every other field. The server runs the unmodified core, so a
+  server dictation is segmented exactly like a local one, and router fallback replay finds
+  the same cuts (`flow-contract-tests/tests/segmented.rs`). A pre-D22 server ignores the field
+  and returns the full text. The cloud backend never segments (`CloudAsr::segmentable` false;
+  one upload at commit, C5).
+* `HelloOk.features` (`["segments"]` from this server on; omitted = none). Router-internal; old
+  clients ignore it (`fixtures/server_hello_ok_features.json`).
+* `CommitResult.timings` gains `wait_ms`, `segments`, `pre_asr_ms` (omitted when 0;
+  `fixtures/server_result_segmented.json`). The server's `result` log line now has
+  `asr_audio_ms`, `wait_ms`, `segments`, `pre_asr_ms`.
+* `RouteInfo.client_ms`: the router's own release → result wall time. For server results it
+  includes the network and the server's queue, which the server's `total_ms` does not.
+* Hands-free: `endpoint::RECOMMENDED_SILENCE_MS` is now 1500.
