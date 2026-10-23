@@ -225,3 +225,45 @@ fn parakeet_survey_long_clips_are_not_empty_with_or_without_hotwords() {
         }
     }
 }
+
+/// D22 with the real engine: the probe's 32-62 s clips dictated with
+/// `segment_pause_ms` (pushed at once; the closed pieces decode at
+/// commit, which gives the same text as decoding them while recording).
+/// No sentence may go missing (survey: one-shot decodes dropped 22-29
+/// words at 43-56 s).
+#[test]
+fn parakeet_segmented_long_clips_lose_no_sentence() {
+    let Some(core) = load() else { return };
+    let Some(clips) = long_clips::audio_dir().and_then(|d| long_clips::build(&d)) else {
+        eprintln!("SKIP: FLOW_AUDIO_DIR with the manifest clips not set");
+        return;
+    };
+    for clip in clips.iter().filter(|c| c.target_s >= 32) {
+        core.start_session(SessionConfig {
+            ring_capacity_samples: clip.pcm.len() + 16_000,
+            segment_pause_ms: Some(800),
+            ..Default::default()
+        })
+        .unwrap();
+        for c in clip.pcm.chunks(640) {
+            assert!(core.push_audio(c));
+        }
+        let r = core.commit();
+        let (e, n) = long_clips::wer_counts(&clip.reference, &r.asr_text);
+        eprintln!(
+            "{:.1} s segmented: {} pieces, asr {} ms, WER {:.1}%",
+            clip.secs(),
+            r.timings.segments,
+            r.timings.asr_ms,
+            100.0 * e as f32 / n as f32
+        );
+        assert_eq!(r.status, CommitStatus::RawTranscript, "{r:?}");
+        assert!(r.timings.segments >= 2, "{:?}", r.timings);
+        assert!(
+            e * 20 < n,
+            "{:.1} s: WER {e}/{n}: {}",
+            clip.secs(),
+            r.asr_text
+        );
+    }
+}

@@ -93,7 +93,16 @@ pub struct HelloOk {
     pub workers: u32,
     pub busy: u32,
     pub max_samples: u64,
+    /// Optional server capabilities (additive, 2026-10-23). `"segments"`:
+    /// the server's core honours `SessionConfig.segment_pause_ms` (D22).
+    /// An older server omits the field and simply ignores the session
+    /// field, which still gives the full text.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub features: Vec<String>,
 }
+
+/// [`HelloOk::features`] value for pause-segmented decoding (D22).
+pub const FEATURE_SEGMENTS: &str = "segments";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
