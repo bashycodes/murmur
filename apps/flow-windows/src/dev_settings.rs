@@ -92,7 +92,7 @@ impl Default for ServerSettings {
             port: DEFAULT_PORT,
             tls: false,
             tls_pin_sha256: String::new(),
-            connect_timeout_ms: 800,
+            connect_timeout_ms: flow_router::DEFAULT_CONNECT_TIMEOUT_MS,
             commit_timeout_base_ms: 3000,
             health_ttl_s: 30,
         }
@@ -1014,7 +1014,7 @@ mod tests {
                 "allow_server": true, "allow_client": true, "prefer": "client",
                 "server": {"host": "100.64.0.10", "port": 7313, "tls": false,
                            "tls_pin_sha256": null, "token": "0123456789abcdef0123",
-                           "connect_timeout_ms": 800, "commit_timeout_base_ms": 3000,
+                           "connect_timeout_ms": 2500, "commit_timeout_base_ms": 3000,
                            "health_ttl_s": 30},
                 "keep_local_warm": true
             })
