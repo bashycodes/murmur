@@ -10,6 +10,9 @@ import dev.flowclone.core.PasteSegment
 import dev.flowclone.core.RouterErrors
 import dev.flowclone.core.SessionConfig
 import dev.flowclone.core.SessionRoute
+import dev.flowclone.debug.DebugLogger
+import dev.flowclone.debug.DictationTrace
+import dev.flowclone.debug.InsertOutcome
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -106,6 +109,8 @@ class DictationController(
      * connects there). Unconfined = inline, for tests that need no thread hop.
      */
     private val startDispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
+    /** Epoch ms for the D21 debug trace's `ts` (the state machine itself runs on [now]). */
+    private val wallClock: () -> Long = System::currentTimeMillis,
 ) {
     constructor(
         scope: CoroutineScope, audio: AudioSource, host: Host, core: () -> FlowCore,
@@ -133,7 +138,15 @@ class DictationController(
          * [captureContext], and it must still pass the banking / password / denylist guard.
          */
         fun insertTarget(explicit: Boolean): InsertTarget = InsertTarget.OK
+        /**
+         * D21: one trace per dictation outcome. Called on the controller's thread; must return at
+         * once (the app enqueues it). Whatever it does or throws never changes the dictation.
+         */
+        fun onDictationTrace(trace: DictationTrace) = Unit
     }
+
+    /** What the debug trace needs from the dictation's start. */
+    private data class TraceStart(val wallMs: Long, val hold: Boolean, val appId: String?)
 
     companion object {
         const val TOGGLE_DEBOUNCE_MS = 500L
@@ -187,6 +200,35 @@ class DictationController(
     /** Generation whose mic frames are accepted; 0 once its audio stopped (C15: no stale tail). */
     @Volatile private var liveFrames = 0L
     private val meter = LevelMeter()
+    private var traceStart: TraceStart? = null
+
+    /** D21: build + hand off the trace; never throws, never suspends. */
+    private fun trace(
+        start: TraceStart?, outcome: String, result: CommitResult? = null, stoppedAt: Long? = null,
+        endpointWaitMs: Long? = null, liveRoute: SessionRoute? = null, error: String? = null,
+        fallback: String? = null, cause: Throwable? = null, text: String? = null,
+    ) {
+        try {
+            val s = start ?: return
+            val t = result?.timings
+            host.onDictationTrace(
+                DictationTrace(
+                    tsMs = s.wallMs, mode = if (s.hold) "hold" else "tap",
+                    route = result?.route?.engine ?: liveRoute?.engine,
+                    fallback = result?.route?.fallback ?: liveRoute?.fallback ?: fallback,
+                    rttMs = result?.route?.rttMs,
+                    audioMs = t?.audioMs, endpointWaitMs = endpointWaitMs, asrMs = t?.asrMs,
+                    postMs = t?.let { it.llmMs + it.postprocessMs }, totalMs = t?.totalMs,
+                    perceivedMs = stoppedAt?.let { now() - it },
+                    target = s.appId?.ifEmpty { null }, insert = InsertOutcome(outcome),
+                    raw = result?.asrText?.ifEmpty { null }, text = text ?: result?.historyText?.ifEmpty { null },
+                    error = error ?: result?.error, stack = DebugLogger.stackOf(cause),
+                ),
+            )
+        } catch (_: Throwable) {
+            // D21: logging never affects dictation.
+        }
+    }
 
     private fun restingState(): DictationState = if (fieldFocused) DictationState.Ready else DictationState.Idle
 
@@ -219,6 +261,7 @@ class DictationController(
     /** X button: discards a recording, or abandons processing (C4: the core aborts the commit; late result dropped). */
     fun cancel() {
         if (_state.value is DictationState.Processing) {
+            trace(traceStart, InsertOutcome.CANCELLED, liveRoute = _route.value)
             generation++
             processingJob?.cancel(); processingJob = null
             processingCore?.cancel(); processingCore = null
@@ -229,6 +272,7 @@ class DictationController(
             return
         }
         if (_state.value !is DictationState.Recording) return
+        trace(traceStart, InsertOutcome.CANCELLED, liveRoute = _route.value)
         generation++
         endAudio()
         _partial.value = null
@@ -269,7 +313,9 @@ class DictationController(
         val c = try {
             core()
         } catch (e: CoreException) {
-            _state.value = DictationState.Error(DictationState.ErrorKind.EngineUnavailable(RouterErrors.userMessage(e.kind, e.message ?: "engine unavailable")))
+            val msg = RouterErrors.userMessage(e.kind, e.message ?: "engine unavailable")
+            trace(TraceStart(wallClock(), hold, null), InsertOutcome.START_FAILED, error = msg, fallback = e.kind, cause = e)
+            _state.value = DictationState.Error(DictationState.ErrorKind.EngineUnavailable(msg))
             return
         }
         val handsFree = !hold
@@ -281,6 +327,7 @@ class DictationController(
         val gen = ++generation
         val ctx = host.captureContext()
         sessionAppId = ctx?.appId
+        traceStart = TraceStart(wallClock(), hold, ctx?.appId)
         session = c
         meter.reset()
         silence.reset()
@@ -309,6 +356,7 @@ class DictationController(
             liveFrames = 0
             session = null
             host.onRecordingActive(false)
+            trace(traceStart, InsertOutcome.START_FAILED, error = "microphone unavailable")
             _state.value = DictationState.Error(DictationState.ErrorKind.MicUnavailable)
             return
         }
@@ -356,6 +404,7 @@ class DictationController(
     /** The session could not start (router: no engine, server-only and unreachable, …). */
     private fun failStart(e: CoreException) {
         val msg = RouterErrors.userMessage(e.kind, e.message ?: "start failed")
+        trace(traceStart, InsertOutcome.START_FAILED, error = msg, fallback = e.kind, cause = e)
         if (_state.value is DictationState.Recording) endAudio()
         session = null
         _route.value = null
@@ -376,7 +425,14 @@ class DictationController(
 
     private fun stopAndSubmit() {
         val rec = _state.value as? DictationState.Recording ?: return
+        val stoppedAt = now()
         endAudio()
+        // D21 trace inputs, captured before the next dictation can reset them.
+        val ts = traceStart
+        val endpointWait = if (silence.heardSpeech) silence.trailingSilenceMs else null
+        val live = _route.value
+        fun done(outcome: String, r: CommitResult? = null, error: String? = null, text: String? = null) =
+            trace(ts, outcome, r, stoppedAt, endpointWait, live, error = error, text = text)
         host.feedback(FeedbackEvent.StopSound)
         val c = session ?: return
         session = null
@@ -397,11 +453,13 @@ class DictationController(
                 c.cancel() // C4: the core aborts the running commit
                 _route.value = null
                 _state.value = DictationState.Error(DictationState.ErrorKind.FailedToTranscribe)
+                done(InsertOutcome.TIMEOUT, error = "no result after $PROCESSING_TIMEOUT_MS ms")
                 return@launch
             }
             _route.value = null
             if (isCancelled(result)) {
                 _state.value = restingState()
+                done(InsertOutcome.CANCELLED, result)
                 return@launch
             }
             if (result.status == CommitStatus.ERROR) {
@@ -410,6 +468,7 @@ class DictationController(
                 _state.value = DictationState.Error(
                     if (routed != null) DictationState.ErrorKind.EngineUnavailable(routed) else DictationState.ErrorKind.FailedToTranscribe,
                 )
+                done(InsertOutcome.ERROR, result)
                 return@launch
             }
             // core-p1: paste `segments` (text runs + Break/Tab/Enter) instead of final_text + press_enter.
@@ -421,6 +480,7 @@ class DictationController(
                 _hint.value = h
                 hintJob = scope.launch { delay(HINT_MS); if (_hint.value == h) _hint.value = null }
                 _state.value = restingState()
+                done(InsertOutcome.EMPTY, result, error = result.emptyReason?.let { "empty_reason=$it" })
                 return@launch
             }
             // S12: only into the field focused at dictation start, and only while it is still allowed.
@@ -432,6 +492,7 @@ class DictationController(
                     host.recordHistory(result, false, appId)
                     val text = plan.filterIsInstance<PasteSegment.Text>().joinToString("") { it.text }
                     _state.value = DictationState.Error(DictationState.ErrorKind.FailedToPaste(text))
+                    done(if (protected) InsertOutcome.TARGET_PROTECTED else InsertOutcome.TARGET_CHANGED, result)
                     return@launch
                 }
             }
@@ -440,6 +501,7 @@ class DictationController(
             host.recordHistory(result, inserted, appId)
             _state.value = if (inserted) restingState()
             else DictationState.Error(DictationState.ErrorKind.FailedToPaste(unpasted!!))
+            done(if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED, result)
         }
     }
 

@@ -47,6 +47,13 @@
         <activity android:name=".ui.DeveloperActivity" android:exported="false" android:label="@string/title_developer" />
         <activity android:name=".ui.CloudProviderActivity" android:exported="false" android:label="Cloud provider" />
 
+        <!-- D21: the debug log file, shared only through a user-initiated share sheet (read grant). -->
+        <provider
+            android:name=".ui.DebugLogProvider"
+            android:authorities="${applicationId}.debuglog"
+            android:exported="false"
+            android:grantUriPermissions="true" />
+
         <service
             android:name=".service.FlowService"
             android:enabled="true"

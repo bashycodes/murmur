@@ -101,6 +101,40 @@ or the host is a public address. For on-device fallback, either import a model (
 
 Record the results (and the stop → text latency for server vs phone) in `PROJECT_CONTEXT.md`.
 
+### Debug log (what you said and how long it took)
+
+*Developer settings → Debug log → "Debug log (includes transcripts)"* (off by default; in the
+`local` flavour unlock Developer settings first, see below). While it is on, every dictation
+writes **one JSON line** to logcat tag **`FlowDebug`** and to the app-private file
+`files/debug/dictations.jsonl` (newest 500 entries). Engine load failures, model import
+failures, failed server / cloud probes and accessibility health changes are logged there too.
+Nothing is uploaded: the file leaves the phone only when you tap *Share / Export*.
+
+Read it on the PC (USB or wireless debugging, platform tools): `logcat -s FlowDebug:I` (run it
+through the platform tools' shell). On the phone: *View* lists the entries newest first;
+*Share / Export* sends the `.jsonl` to an app you choose; *Clear* empties it. Turning the
+toggle off asks whether to clear the file.
+
+One line per dictation; the fields are the same in the Windows app:
+
+| Field | Meaning |
+|---|---|
+| `ts` | dictation start, UTC (`2026-10-23T10:15:02.123Z`) |
+| `mode` | `tap` (hands-free) or `hold` |
+| `route` / `fallback` | `local` / `remote` / `cloud`; why the first route was not used (`connect_failed`, `disconnected`, `circuit_open`, …) or why the start failed (`server_unavailable`, …) |
+| `rtt_ms` | server round trip (server route only) |
+| `audio_ms` | audio length |
+| `endpoint_wait_ms` | from your last word to the stop (hands-free: the silence wait) |
+| `asr_ms` / `post_ms` / `total_ms` | speech recognition / cleanup (rules + AI) / whole commit |
+| `perceived_ms` | stop or release → text inserted: what you waited |
+| `target` | app package; `<redacted>` in password fields, banking and denylisted apps (text too) |
+| `insert` | `{"outcome": inserted / paste_failed / target_changed / target_protected / empty / error / timeout / start_failed / cancelled, "steps": [insertion trail]}` |
+| `raw` / `text` | recogniser output / text inserted |
+| `error` (+ `stack`) | what went wrong |
+
+The server token and cloud keys are scrubbed from every line, and the clipboard is never read.
+With the toggle off nothing is written; `FlowService commit …` (timings only) stays as before.
+
 ### Release build
 
 `tools/dist.sh` also builds `assemble<Flavour>Release`. Signing comes only from outside git:

@@ -201,8 +201,14 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
     override suspend fun insertTextAndVerify(text: String): Boolean = withContext(Dispatchers.Main) {
         val r = coordinator.insertTextAndVerify(text)
         Log.i(TAG, "insert ${r.status} ${r.reason ?: ""} steps=${r.steps}")
+        lastInsertSteps = listOfNotNull(r.status.name, r.reason?.name) + r.steps
         r.succeeded
     }
+
+    /** D21: the last insertion's status + step trail, for the debug log. */
+    @Volatile override var lastInsertSteps: List<String> = emptyList(); private set
+    /** D21: the field pinned at dictation start is a password / sensitive field (debug log redacts it). */
+    @Volatile override var startFieldProtected: Boolean = false; private set
 
     override fun captureFieldContext(): FieldContext? {
         val pkg = currentPackageName
@@ -214,6 +220,9 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         )
         val editor = inputMethod?.focusedEditor ?: FocusedEditor.EMPTY
         val type = editor.inputType.takeIf { editor.packageName != null } ?: node?.inputType ?: 0
+        startFieldProtected = dev.flowclone.debug.DebugRedact.isProtectedField(
+            type, node?.isPassword == true, Build.VERSION.SDK_INT >= 34 && node?.isAccessibilityDataSensitive == true,
+        )
         if (node?.isPassword == true) return FieldContextBuilder.build(pkg, 0x81, null, 0, 0)
         val s = inputMethod?.readSurrounding(500, 500)
         if (s != null) return FieldContextBuilder.build(pkg, type, s.first, s.second, s.third)
