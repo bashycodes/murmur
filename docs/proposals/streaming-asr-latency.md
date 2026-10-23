@@ -407,6 +407,13 @@ The box was shared with other agents (load varied during the run), so read the r
 | 62.0 s | 7567 / 7769, lowercase, no punctuation | 5279 / 5190 | **609 / 521** | 8, 0, 518, 4505 |
 | mean | 4978 / 5067 | 3462 / 3360 | **1103 / 1167** | |
 
+With the bridge fix (§9, last bullet; re-run on the same clips, raw TSV in
+`…/streaming-latency-2026-10-23/20261023-201014-bridge/`): local / server
+2253 / 1693, 1044 / 1136, 1272 / 3542, 1646 / 1165, 699 / 1097,
+497 / 582 ms; mean **1235 / 1535 ms**. That is about +0.1-0.4 s of bridge
+work. The one outlier (29.9 s via the server, 3.5 s) is a tail bridge
+decoded at commit on a loaded box. Still flat in length.
+
 * The text is the same local and remote in every row (`same_text` true).
   Before, the 41.7 s clip came back EMPTY on both routes (beam search), and
   the 62 s one lost its casing and punctuation. P0 and D22 fix both.
