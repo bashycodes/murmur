@@ -102,9 +102,8 @@ class ModelImportActivity : Activity() {
     private fun importFrom(uri: Uri) {
         val (rawName, size) = meta(uri)
         val name = rawName.replace(Regex("[^A-Za-z0-9._-]"), "_")
-        val header = runCatching { contentResolver.openInputStream(uri)!!.use { s -> ByteArray(4).also { s.read(it) } } }.getOrNull()
-        val mismatch = header?.let { ModelFiles.mismatch(kind, ModelFiles.kindOf(it)) } ?: "Could not read the file."
-        if (mismatch != null) { render(mismatch); return }
+        val header = runCatching { contentResolver.openInputStream(uri)!!.use { ModelFiles.readHeader(it) } }.getOrNull()
+        ModelFiles.rejection(kind, header)?.let { render(it); return }
         val dest = File(dir(), name)
         val tmp = File(dest.parentFile, "$name.part")
         if (size > 0 && dir().usableSpace < size + 50_000_000) {

@@ -19,13 +19,20 @@ object A11ySetting {
  * - enabled in Settings, but `onServiceConnected` never ran within [CONNECT_GRACE_MS] of
  *   process start;
  * - connected, but the service's own 15 s health tick (a `getWindows()` probe) has not
- *   succeeded for [HEARTBEAT_STALE_MS] while the screen is on.
+ *   succeeded for [HEARTBEAT_STALE_MS] while the screen is on, **and** a live probe made
+ *   now ([Input.liveProbe]) fails too.
+ * The heartbeat alone is not proof: its timer runs on `uptimeMillis` (stops while the CPU
+ * sleeps) but is compared with `elapsedRealtime`, so right after a wake the beat looks
+ * minutes old although the service is bound and idle (seen on a Galaxy S25+: GHOST, then OK
+ * 0.2-1 s later when the overdue tick fired). [Monitor] then debounces what is left.
  * The fix offered to the user is Wispr's: turn the service off and on again.
  */
 object AccessibilityHealth {
     const val CONNECT_GRACE_MS = 15_000L
     const val HEARTBEAT_STALE_MS = 60_000L
     const val HEARTBEAT_INTERVAL_MS = 15_000L
+    /** A ghost is reported only after two consecutive ghost readings at least this far apart. */
+    const val GHOST_CONFIRM_MS = 10_000L
 
     enum class Status { OK, DISABLED, STARTING, GHOST }
 
@@ -37,6 +44,8 @@ object AccessibilityHealth {
         val lastHeartbeatAt: Long?,
         val screenOn: Boolean,
         val now: Long,
+        /** Asks the bound service directly (binder round trip); called only when the heartbeat is stale. Throwing = failed. */
+        val liveProbe: (() -> Boolean)? = null,
     )
 
     fun evaluate(i: Input): Status {
@@ -44,7 +53,38 @@ object AccessibilityHealth {
         if (!i.connected) return if (i.now - i.processStartAt < CONNECT_GRACE_MS) Status.STARTING else Status.GHOST
         if (!i.screenOn) return Status.OK
         val last = i.lastHeartbeatAt ?: i.connectedAt ?: i.processStartAt
-        return if (i.now - last > HEARTBEAT_STALE_MS) Status.GHOST else Status.OK
+        if (i.now - last <= HEARTBEAT_STALE_MS) return Status.OK
+        val alive = i.liveProbe?.let { p -> runCatching(p).getOrDefault(false) } ?: false
+        return if (alive) Status.OK else Status.GHOST
+    }
+
+    /**
+     * Debounce over [evaluate]: a single GHOST reading is never surfaced (no "not responding"
+     * flash, no notification re-post, no Repair bubble). GHOST is reported once two
+     * consecutive readings, the first and the last at least [confirmMs] apart, both say so;
+     * anything else is reported at once. An unconfirmed ghost reads as the last reported status
+     * ([Status.STARTING] before any).
+     */
+    class Monitor(private val confirmMs: Long = GHOST_CONFIRM_MS) {
+        private var reported: Status? = null
+        private var ghostSince: Long? = null
+        private var ghostReadings = 0
+
+        @Synchronized fun update(raw: Status, now: Long): Status {
+            if (raw != Status.GHOST) {
+                ghostSince = null; ghostReadings = 0; reported = raw
+                return raw
+            }
+            val since = ghostSince ?: now.also { ghostSince = it }
+            ghostReadings++
+            if (ghostReadings >= 2 && now - since >= confirmMs) reported = Status.GHOST
+            return reported ?: Status.STARTING
+        }
+    }
+
+    /** FlowService: re-post the notification / Repair state only when the status changed. */
+    class ChangeGate(private var last: Status = Status.OK) {
+        fun changed(s: Status): Boolean = (s != last).also { last = s }
     }
 }
 
