@@ -1,0 +1,37 @@
+{
+  "t": "result",
+  "sid": 8,
+  "result": {
+    "status": "RAW_TRANSCRIPT",
+    "asr_text": "um ask not what wispr can do",
+    "final_text": "ask not what Wispr can do ",
+    "language": "en",
+    "timings": {
+      "audio_ms": 1000,
+      "asr_ms": 812,
+      "llm_ms": 0,
+      "postprocess_ms": 1,
+      "total_ms": 830,
+      "dropped_samples": 0,
+      "asr_audio_ms": 1000,
+      "wait_ms": 120,
+      "segments": 3,
+      "pre_asr_ms": 2400
+    },
+    "press_enter": false,
+    "fallback_reason": null,
+    "truncated": false,
+    "error": null,
+    "segments": [
+      {
+        "text": "ask not what Wispr can do "
+      }
+    ],
+    "plain_text": "ask not what Wispr can do ",
+    "empty_reason": null
+  },
+  "server_timings": {
+    "queue_ms": 0,
+    "recv_audio_ms": 1000
+  }
+}

@@ -80,6 +80,7 @@ fn hello_ok() -> HelloOk {
         workers: 1,
         busy: 0,
         max_samples: 19_200_000,
+        features: vec![],
     }
 }
 
@@ -109,6 +110,17 @@ fn client_cases() -> Vec<(&'static str, ClientMsg)> {
                 ctx: context(),
             },
         ),
+        (
+            "client_start_segmented",
+            ClientMsg::Start {
+                sid: 8,
+                config: SessionConfig {
+                    segment_pause_ms: Some(800),
+                    endpoint_silence_ms: Some(1500),
+                    ..session_config()
+                },
+            },
+        ),
         ("client_commit", ClientMsg::Commit { sid: 7 }),
         ("client_cancel", ClientMsg::Cancel { sid: 7 }),
         ("client_ping", ClientMsg::Ping { n: 3 }),
@@ -118,6 +130,30 @@ fn client_cases() -> Vec<(&'static str, ClientMsg)> {
 fn server_cases() -> Vec<(&'static str, ServerMsg)> {
     vec![
         ("server_hello_ok", ServerMsg::HelloOk(hello_ok())),
+        (
+            "server_hello_ok_features",
+            ServerMsg::HelloOk(HelloOk {
+                features: vec![FEATURE_SEGMENTS.into()],
+                ..hello_ok()
+            }),
+        ),
+        (
+            "server_result_segmented",
+            ServerMsg::Result {
+                sid: 8,
+                result: Box::new({
+                    let mut r = commit_result();
+                    r.timings.wait_ms = 120;
+                    r.timings.segments = 3;
+                    r.timings.pre_asr_ms = 2400;
+                    r
+                }),
+                server_timings: ServerTimings {
+                    queue_ms: 0,
+                    recv_audio_ms: 1000,
+                },
+            },
+        ),
         (
             "server_started",
             ServerMsg::Started {
@@ -283,4 +319,53 @@ fn proto_negotiation_table() {
         negotiate(PROTO_MIN, PROTO_MAX, PROTO_MIN, PROTO_MAX),
         Some(1)
     );
+}
+
+/// D22 compatibility, both directions. A new client's `start` with the
+/// segment fields still parses where the receiver does not know them (no
+/// `deny_unknown_fields` anywhere: shown with a field nobody knows), and
+/// the pre-D22 fixtures (no `features`, no new timings) parse into the new
+/// types with the defaults that mean "off".
+#[test]
+fn d22_fields_are_additive_both_ways() {
+    let start = std::fs::read_to_string(dir().join("client_start_segmented.json")).unwrap();
+    let mut v: Value = serde_json::from_str(&start).unwrap();
+    v["config"]["some_future_field"] = serde_json::json!(1);
+    let m: ClientMsg = serde_json::from_value(v).unwrap();
+    let ClientMsg::Start { config, .. } = m else {
+        panic!()
+    };
+    assert_eq!(config.segment_pause_ms, Some(800));
+    // An old client's start: segmentation off.
+    let old: ClientMsg =
+        serde_json::from_str(&std::fs::read_to_string(dir().join("client_start.json")).unwrap())
+            .unwrap();
+    let ClientMsg::Start { config, .. } = old else {
+        panic!()
+    };
+    assert_eq!(config.segment_pause_ms, None);
+    // An old server's hello and result.
+    let hello: ServerMsg =
+        serde_json::from_str(&std::fs::read_to_string(dir().join("server_hello_ok.json")).unwrap())
+            .unwrap();
+    let ServerMsg::HelloOk(h) = hello else {
+        panic!()
+    };
+    assert!(h.features.is_empty());
+    let res: ServerMsg =
+        serde_json::from_str(&std::fs::read_to_string(dir().join("server_result.json")).unwrap())
+            .unwrap();
+    let ServerMsg::Result { result, .. } = res else {
+        panic!()
+    };
+    assert_eq!(
+        (
+            result.timings.wait_ms,
+            result.timings.segments,
+            result.timings.pre_asr_ms
+        ),
+        (0, 0, 0)
+    );
+    let old_json = std::fs::read_to_string(dir().join("server_result.json")).unwrap();
+    assert!(!old_json.contains("wait_ms") && !old_json.contains("segments\": 3"));
 }
