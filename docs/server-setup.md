@@ -42,6 +42,16 @@ printed as `[sudo] …` and confirmed once before anything runs (`--yes` skips
 the question). Other options: `--prefix`, `--bind ADDR` (repeatable),
 `--port`, `--threads`, `--no-build`.
 
+`--user` needs a running systemd user manager. Without a login session
+(ssh without `pam_systemd`, cron, an agent shell) the installer stops before
+building and asks for `loginctl enable-linger $USER` (no sudo needed for your
+own user on most distros; it also keeps the server running after logout). If
+only `XDG_RUNTIME_DIR` points elsewhere (e.g. rootless Docker sets it), the
+installer falls back to `/run/user/$UID`; for later `systemctl --user` /
+`journalctl --user` calls in that shell, run them with
+`XDG_RUNTIME_DIR=/run/user/$(id -u)`. Test the preflight with
+`tools/server/test-install.sh`.
+
 A healthy start logs `ready workers=1 asr=parakeet load_ms=… listening=…`.
 Check a config without starting: `flow-server check-config --config <path>`.
 

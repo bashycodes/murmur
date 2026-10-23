@@ -29,8 +29,10 @@ Full guide: [`docs/server-setup.md`](server-setup.md).
    journalctl --user -u flow-server -f      # expect "ready workers=1 asr=parakeet … listening=…"
    ```
    Port = `7313`. Use TLS = off (Tailscale already encrypts the traffic).
-   Optional: `sudo loginctl enable-linger $USER` keeps the server running
-   after you log out.
+   `loginctl enable-linger $USER` (no sudo for yourself) keeps the server
+   running after you log out; the installer asks for it when no systemd user
+   manager is reachable (e.g. over ssh). If `systemctl --user` says "Failed to
+   connect to bus", prefix it with `XDG_RUNTIME_DIR=/run/user/$(id -u)`.
 
 ## (b) Windows (~15 min)
 
