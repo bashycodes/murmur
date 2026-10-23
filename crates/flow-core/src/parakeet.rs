@@ -127,6 +127,7 @@ impl ParakeetAsr {
                 parts[k + 1] = r;
             }
         }
+        segment::capitalize_joins(&mut parts);
         Ok(parts
             .into_iter()
             .filter(|t| !t.is_empty())
