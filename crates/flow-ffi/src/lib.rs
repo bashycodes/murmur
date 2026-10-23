@@ -58,6 +58,7 @@ impl FlowHandle {
             FlowHandle::Core(c) => RouterPoll {
                 session: c.poll(),
                 route: None,
+                loading: false,
             },
             FlowHandle::Router(r) => r.poll(),
         }
@@ -307,6 +308,38 @@ pub mod json_api {
             .ok_or(("bad_config", "not a router handle".to_string()))?;
         r.update_config(router_config(json)?);
         Ok(())
+    }
+
+    /// D24 never-fail fallback: give the router a way to load the local
+    /// engine on demand (`keep_local_warm = false`). `json` = an array of
+    /// `ModelConfig`s tried in order (e.g. Parakeet + LLM, Parakeet, whisper);
+    /// the first that loads is used. `[]` removes the loader.
+    pub fn set_local_loader(h: &FlowHandle, json: &str) -> Result<(), (&'static str, String)> {
+        let r = h
+            .router()
+            .ok_or(("bad_config", "not a router handle".to_string()))?;
+        let attempts: Vec<ModelConfig> = serde_json::from_str(json)
+            .map_err(|e| ("bad_config", format!("bad_config: bad model configs: {e}")))?;
+        if attempts.is_empty() {
+            r.set_local_loader(None);
+            return Ok(());
+        }
+        r.set_local_loader(Some(Arc::new(move || {
+            let mut errors = Vec::new();
+            for c in &attempts {
+                match FlowCore::load_models(c) {
+                    Ok(core) => return Ok(Arc::new(core) as Arc<dyn Backend>),
+                    Err(e) => errors.push(e.to_string()),
+                }
+            }
+            Err(errors.join("; "))
+        })));
+        Ok(())
+    }
+
+    /// D24 pre-warm (blocking up to the connect timeout): `Router::prewarm`.
+    pub fn prewarm(h: &FlowHandle) -> bool {
+        h.router().is_some_and(Router::prewarm)
     }
 
     /// Blocking probe of an unsaved server config (Developer "Test connection").

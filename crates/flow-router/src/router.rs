@@ -18,10 +18,12 @@ use flow_core::learn::Candidate;
 use flow_core::{CommitResult, CommitStatus, RouteInfo, SessionPoll};
 
 use crate::cloud::{month_of, CloudProviderConfig, CloudUsage, Route, SecretString};
+use crate::local::{LazyLocal, LoadNote, LocalLoader};
 use crate::{
-    now_unix_ms, Backend, BackendError, Capabilities, CircuitStatus, CloudCapabilities,
-    CloudFactory, EngineKind, Failure, HealthReport, Prefer, RemoteFactory, RouteStatus,
-    RouterConfig, RouterError, RouterPoll, ServerConfig, SessionRoute, StartInfo,
+    effective_connect_timeout_ms, now_unix_ms, Backend, BackendError, Capabilities, CircuitStatus,
+    CloudCapabilities, CloudFactory, EngineKind, Failure, HealthReport, Prefer, RemoteFactory,
+    RouteDiag, RouteStatus, RouterConfig, RouterError, RouterPoll, ServerConfig, SessionRoute,
+    StartInfo,
 };
 
 const BACKOFF_MIN: Duration = Duration::from_secs(5);
@@ -110,8 +112,13 @@ struct State {
     local_capable: bool,
     asr_engines: Vec<String>,
     llm: bool,
-    /// Remote backend built for this server config (keeps its warm WS).
-    remote: Option<(ServerConfig, Arc<dyn Backend>)>,
+    /// Remote backend built for this server config and effective connect
+    /// timeout (keeps its warm WS).
+    remote: Option<(ServerConfig, u64, Arc<dyn Backend>)>,
+    /// On-demand local engine (D24): used when `local` is not ready.
+    lazy: Option<Arc<LazyLocal>>,
+    /// Routing details of the last committed session (D24).
+    last_diag: Option<RouteDiag>,
     circuit: Circuit,
     last_route: Option<RouteInfo>,
     health: Option<HealthReport>,
@@ -125,9 +132,28 @@ struct State {
     cloud_circuit: Circuit,
     cloud_usage: CloudUsage,
     cloud_adapters: Vec<String>,
+    /// A `prewarm` is connecting.
+    warming: bool,
 }
 
 impl State {
+    /// A local engine that can start a session now: the shell's warm one,
+    /// or the on-demand one once it is loaded.
+    fn warm_local(&self) -> Option<Arc<dyn Backend>> {
+        if let Some(l) = self.local.as_ref().filter(|l| l.ready()) {
+            return Some(l.clone());
+        }
+        self.lazy.as_ref().and_then(|z| z.loaded())
+    }
+
+    /// No warm local engine, but one can be loaded on demand (D24).
+    fn cold_local(&self) -> Option<Arc<LazyLocal>> {
+        if self.warm_local().is_some() {
+            return None;
+        }
+        self.lazy.clone()
+    }
+
     /// The active cloud provider and its key, or why the cloud route must
     /// be skipped (C1: consent + key + budget; `allow_cloud` and `order`
     /// are checked by the caller).
@@ -261,6 +287,8 @@ struct Hop {
     kind: EngineKind,
     backend: Arc<dyn Backend>,
     ident: Ident,
+    /// A local engine that is loaded on demand (D24); `backend` is it.
+    lazy: Option<Arc<LazyLocal>>,
 }
 
 struct Active {
@@ -288,6 +316,8 @@ struct Active {
     /// A failover in progress on a helper thread (review C3): audio keeps
     /// going into `buffer` until it is installed.
     switching: Option<Switch>,
+    /// Debug-log routing details (D24).
+    diag: RouteDiag,
 }
 
 /// A failover running off the caller's thread.
@@ -301,6 +331,8 @@ struct Switch {
     next: Option<(EngineKind, Ident)>,
     /// The failure that started it (for the dead-session message).
     cause: BackendError,
+    /// The first candidate is a local engine loaded on demand (D24).
+    lazy: Option<Arc<LazyLocal>>,
 }
 
 /// What the helper thread hands back.
@@ -309,6 +341,8 @@ struct SwitchDone {
     rest: VecDeque<Hop>,
     failures: Vec<(EngineKind, Failure)>,
     dead: Option<String>,
+    /// An on-demand local load that ran (D24).
+    load: Option<LoadNote>,
 }
 
 /// Messages to a blocked `commit` (review C4).
@@ -386,6 +420,8 @@ impl Router {
                 asr_engines: Vec::new(),
                 llm: false,
                 remote: None,
+                lazy: None,
+                last_diag: None,
                 circuit: Circuit::new(false),
                 last_route: None,
                 health: None,
@@ -398,6 +434,7 @@ impl Router {
                     providers: Vec::new(),
                 },
                 cloud_adapters: Vec::new(),
+                warming: false,
             }),
             session: Mutex::new(None),
             committing: Mutex::new(None),
@@ -423,6 +460,77 @@ impl Router {
             st.llm = llm;
         }
         self
+    }
+
+    /// Load the local engine on demand (D24, "never-fail fallback"): when
+    /// the client route is allowed but no warm local engine was given
+    /// (`keep_local_warm = false`), a server that cannot be reached (at
+    /// start, mid-session or at commit) or an open circuit makes the router
+    /// call `loader` on a helper thread while the session's audio is
+    /// buffered, then replay the buffer into it. Additive.
+    pub fn with_local_loader(self, loader: LocalLoader) -> Self {
+        self.set_local_loader(Some(loader));
+        self
+    }
+
+    /// `with_local_loader` at runtime; `None` removes it (and unloads an
+    /// engine it loaded once no session uses it). Additive (D24).
+    pub fn set_local_loader(&self, loader: Option<LocalLoader>) {
+        let mut st = self.state.lk();
+        if loader.is_some() {
+            st.local_capable = true;
+        }
+        st.lazy = loader.map(|l| Arc::new(LazyLocal::new(l)));
+    }
+
+    /// The on-device engine is being loaded on demand right now. Additive.
+    pub fn local_loading(&self) -> bool {
+        self.state
+            .lk()
+            .lazy
+            .as_ref()
+            .is_some_and(|z| z.is_loading())
+    }
+
+    /// Open the server connection ahead of a dictation (bubble shown, text
+    /// field focused) so the handshake is off the critical path (D24).
+    /// **Blocking** (up to the connect timeout): call it off the UI thread.
+    /// Does nothing when the server route is off, not configured, its
+    /// circuit is open, a session is live, or another pre-warm is running.
+    /// A failure opens the circuit like a failed start, so the next
+    /// dictation goes straight to the local route. Returns whether a warm
+    /// connection exists afterwards. Additive.
+    pub fn prewarm(&self) -> bool {
+        if self.session().is_some() {
+            return false;
+        }
+        let (backend, server) = {
+            let mut st = self.state.lk();
+            if !self.routes(&st).contains(&Route::Server)
+                || !st.cfg.server.is_configured()
+                || st.circuit.is_open(Instant::now())
+            {
+                return false;
+            }
+            if st.warming {
+                return false;
+            }
+            st.warming = true;
+            (self.remote_for(&mut st), st.cfg.server.clone())
+        };
+        let r = backend.warm();
+        let mut st = self.state.lk();
+        st.warming = false;
+        if st.cfg.server != server {
+            return false;
+        }
+        match r {
+            Ok(()) => true,
+            Err(e) => {
+                st.circuit.record_failure(e.kind, Instant::now());
+                false
+            }
+        }
     }
 
     /// Enable the cloud route (D18): `f` builds a provider backend
@@ -608,11 +716,15 @@ impl Router {
         self.cancel_session();
         let mut st = self.state.lk();
         st.last_dictionary = cfg.dictionary.clone();
-        let (active, res) = self.start_routes(&mut st, cfg);
+        let mut diag = RouteDiag::default();
+        let (mut active, res) = self.start_routes(&mut st, cfg, &mut diag);
         drop(st);
+        diag.local_cold |= active.diag.local_cold;
+        active.diag = diag;
         let res = res.map(|queued| StartInfo {
             queued,
             route: active.live_route(),
+            loading: active.loading(),
         });
         *self.session() = Some(active);
         res
@@ -726,6 +838,7 @@ impl Router {
         RouterPoll {
             session: SessionPoll::new(partial, a.endpointer.as_ref().map(Endpointer::state)),
             route: a.live_route(),
+            loading: a.loading(),
         }
     }
 
@@ -771,7 +884,9 @@ impl Router {
         if let Some(rt) = r.route.as_mut() {
             rt.client_ms = Some(t0.elapsed().as_millis().min(u32::MAX as u128) as u32);
         }
-        self.state.lk().last_route = r.route.clone();
+        let mut st = self.state.lk();
+        st.last_route = r.route.clone();
+        st.last_diag = Some(a.diag.clone());
         r
     }
 
@@ -926,6 +1041,7 @@ impl Router {
             last: st.last_route.clone(),
             circuit: st.circuit.status(now),
             health: st.health.clone(),
+            last_diag: st.last_diag.clone(),
             cloud_circuit: self
                 .cloud_factory
                 .is_some()
@@ -942,15 +1058,27 @@ impl Router {
 
     // ---- internals --------------------------------------------------------
 
+    /// The remote backend for the current server config, built with the
+    /// adaptive connect timeout (D24): the configured value, raised to
+    /// `rtt × 6` (1.5-10 s) after a probe of this server measured its RTT.
     fn remote_for(&self, st: &mut State) -> Arc<dyn Backend> {
-        if let Some((c, b)) = &st.remote {
-            if *c == st.cfg.server {
+        let rtt = st
+            .health
+            .as_ref()
+            .filter(|h| h.ok && h.server.as_deref() == Some(st.cfg.server.addr().as_str()))
+            .and_then(|h| h.rtt_ms)
+            .map(|r| r.median);
+        let timeout = effective_connect_timeout_ms(st.cfg.server.connect_timeout_ms, rtt);
+        if let Some((c, t, b)) = &st.remote {
+            if *c == st.cfg.server && *t == timeout {
                 return b.clone();
             }
         }
         let f = self.remote_factory.as_ref().expect("remote factory");
-        let b = f(&st.cfg.server);
-        st.remote = Some((st.cfg.server.clone(), b.clone()));
+        let mut eff = st.cfg.server.clone();
+        eff.connect_timeout_ms = timeout;
+        let b = f(&eff);
+        st.remote = Some((st.cfg.server.clone(), timeout, b.clone()));
         b
     }
 
@@ -1009,9 +1137,16 @@ impl Router {
     /// a provider, consent, key and budget)? Open circuits are only
     /// honoured when it is (an unusable cloud is no fallback, review C10).
     fn viable_after(&self, st: &State, routes: &[Route], i: usize) -> bool {
+        self.viable_after_with(st, routes, i, true)
+    }
+
+    /// `cold`: whether a local engine that must first be loaded on demand
+    /// counts (D24: yes for an unreachable server; no for a merely busy
+    /// one, where waiting for a worker beats loading a model).
+    fn viable_after_with(&self, st: &State, routes: &[Route], i: usize, cold: bool) -> bool {
         let now = Instant::now();
         routes[i + 1..].iter().any(|r| match r {
-            Route::Client => st.local.as_ref().is_some_and(|l| l.ready()),
+            Route::Client => st.warm_local().is_some() || (cold && st.lazy.is_some()),
             Route::Server => st.cfg.server.is_configured() && !st.circuit.is_open(now),
             Route::Cloud => !st.cloud_circuit.is_open(now) && st.cloud_check().is_ok(),
         })
@@ -1021,8 +1156,16 @@ impl Router {
     fn hop(&self, st: &mut State, r: Route) -> Option<Hop> {
         let mut ident = Ident::local();
         ident.route = r;
+        let mut lazy = None;
         let (kind, backend) = match r {
-            Route::Client => (EngineKind::Local, st.local.clone()?),
+            Route::Client => match (st.warm_local(), st.cold_local()) {
+                (Some(l), _) => (EngineKind::Local, l),
+                (None, Some(z)) => {
+                    lazy = Some(z.clone());
+                    (EngineKind::Local, z as Arc<dyn Backend>)
+                }
+                (None, None) => (EngineKind::Local, st.local.clone()?),
+            },
             Route::Server => {
                 if !st.cfg.server.is_configured() || st.circuit.sticky {
                     return None;
@@ -1043,6 +1186,7 @@ impl Router {
             kind,
             backend,
             ident,
+            lazy,
         })
     }
 
@@ -1100,6 +1244,7 @@ impl Router {
         &self,
         st: &mut State,
         cfg: SessionConfig,
+        diag: &mut RouteDiag,
     ) -> (Active, Result<bool, RouterError>) {
         if let Err(e) = st.cfg.validate_order() {
             return (Active::dead(cfg, e.to_string(), None), Err(e));
@@ -1115,10 +1260,30 @@ impl Router {
         // Last non-local failure (engine, error, index) for the error path.
         let mut last_fail: Option<(EngineKind, BackendError, usize)> = None;
         let mut local_not_ready = false;
+        // The client route is first but cold: the later routes are tried
+        // before loading it (client-first semantics, D17); if none starts,
+        // it is loaded on demand (D24).
+        let mut cold_pending = false;
         for (i, r) in routes.iter().copied().enumerate() {
             let kind = r.engine();
+            if r == Route::Client {
+                if let Some(z) = st.cold_local() {
+                    if i == 0 && routes.len() > 1 {
+                        cold_pending = true;
+                        route
+                            .fallback
+                            .get_or_insert_with(|| Failure::LocalNotReady.as_str().into());
+                        continue;
+                    }
+                    let cause = last_fail.map(|(_, e, _)| e).unwrap_or_else(|| {
+                        BackendError::new(Failure::LocalNotReady, "local model not loaded")
+                    });
+                    let a = self.start_cold(st, cfg, route, z, &routes[i + 1..], cause);
+                    return (a, Ok(false));
+                }
+            }
             let tried = match r {
-                Route::Client => match st.local.clone().filter(|l| l.ready()) {
+                Route::Client => match st.warm_local() {
                     Some(l) => match l.start_session(&cfg) {
                         Ok(i) => Try::Started(l, i.queued),
                         Err(e) => {
@@ -1141,7 +1306,7 @@ impl Router {
                 },
                 Route::Server => {
                     route.server = Some(st.cfg.server.addr());
-                    self.try_server(st, &cfg, &routes, i)
+                    self.try_server(st, &cfg, &routes, i, &mut diag.connect_ms)
                 }
                 Route::Cloud => self.try_cloud(st, &cfg, &routes, i, &mut route),
             };
@@ -1184,6 +1349,14 @@ impl Router {
             }
         }
         // Nothing started.
+        if cold_pending {
+            if let Some(z) = st.cold_local() {
+                let cause = last_fail.map(|(_, e, _)| e).unwrap_or_else(|| {
+                    BackendError::new(Failure::LocalNotReady, "local model not loaded")
+                });
+                return (self.start_cold(st, cfg, route, z, &[], cause), Ok(false));
+            }
+        }
         let Some((kind, e, i)) = last_fail else {
             // Only local routes, none ready.
             return (
@@ -1217,7 +1390,56 @@ impl Router {
         (Active::dead(cfg, msg, Some(route)), Err(err))
     }
 
-    fn try_server(&self, st: &mut State, cfg: &SessionConfig, routes: &[Route], i: usize) -> Try {
+    /// D24: no warm local engine, and the routes before the client did not
+    /// start. The session goes live at once on the client route: audio is
+    /// buffered while a helper thread loads the on-device engine, then it
+    /// is replayed (the same machinery as a mid-session failover). The
+    /// routes after the client stay fallbacks if the load fails.
+    fn start_cold(
+        &self,
+        st: &mut State,
+        cfg: SessionConfig,
+        mut route: RouteInfo,
+        z: Arc<LazyLocal>,
+        later: &[Route],
+        cause: BackendError,
+    ) -> Active {
+        route.engine = EngineKind::Local.as_str().into();
+        route
+            .fallback
+            .get_or_insert_with(|| cause.kind.as_str().into());
+        route.provider = None;
+        route.model = None;
+        let mut hops = VecDeque::from([Hop {
+            kind: EngineKind::Local,
+            backend: z.clone() as Arc<dyn Backend>,
+            ident: Ident::local(),
+            lazy: Some(z),
+        }]);
+        for r in later {
+            if let Some(h) = self.hop(st, *r) {
+                hops.push_back(h);
+            }
+        }
+        let mut a = Active::dead(cfg, String::new(), Some(route));
+        a.dead = None;
+        a.switched = true;
+        a.diag.local_cold = true;
+        a.buffer = Some(Vec::new());
+        self.spawn_switch(&mut a, hops, cause);
+        a
+    }
+
+    /// `connect_ms`: set to the time spent connecting + starting, when the
+    /// server was actually tried.
+    fn try_server(
+        &self,
+        st: &mut State,
+        cfg: &SessionConfig,
+        routes: &[Route],
+        i: usize,
+        connect_ms: &mut Option<u32>,
+    ) -> Try {
         if !st.cfg.server.is_configured() {
             return Try::Skip(BackendError::new(
                 Failure::ServerNotConfigured,
@@ -1238,8 +1460,11 @@ impl Router {
             ));
         }
         let remote = self.remote_for(st);
-        match remote.start_session(cfg) {
-            Ok(info) if info.queued && viable => {
+        let t0 = Instant::now();
+        let started = remote.start_session(cfg);
+        *connect_ms = Some(t0.elapsed().as_millis().min(u32::MAX as u128) as u32);
+        match started {
+            Ok(info) if info.queued && self.viable_after_with(st, routes, i, false) => {
                 remote.cancel();
                 Try::Skip(BackendError::new(
                     Failure::Busy,
@@ -1444,12 +1669,18 @@ impl Router {
             a.buffer = None;
             return;
         }
+        self.spawn_switch(a, hops, e);
+    }
+
+    /// Start the failover to `hops` on a helper thread.
+    fn spawn_switch(&self, a: &mut Active, hops: VecDeque<Hop>, e: BackendError) {
         let snapshot = a.buffer.clone().unwrap_or_default();
         if a.buffer.is_none() {
             a.buffer = Some(Vec::new());
         }
         let cancel = Arc::new(AtomicBool::new(false));
         let next = hops.front().map(|h| (h.kind, h.ident.clone()));
+        let lazy = hops.front().and_then(|h| h.lazy.clone());
         let (tx, rx) = mpsc::channel();
         let (cfg, ctx, c2, cause) = (a.cfg.clone(), a.last_ctx.clone(), cancel.clone(), e.clone());
         std::thread::Builder::new()
@@ -1470,6 +1701,7 @@ impl Router {
             cancel,
             next,
             cause: e,
+            lazy,
         });
     }
 
@@ -1518,6 +1750,11 @@ impl Router {
     }
 
     fn install_switch(&self, a: &mut Active, sw: Switch, done: SwitchDone) {
+        if let Some(n) = &done.load {
+            a.diag.local_cold = true;
+            a.diag.local_load_ms = Some(n.ms);
+            a.diag.local_load_error = n.error.clone();
+        }
         for (k, f) in &done.failures {
             self.note_failure(*k, *f);
         }
@@ -1584,15 +1821,38 @@ fn run_switch(
     e: &BackendError,
 ) -> SwitchDone {
     let mut failures = Vec::new();
-    let dead = |m: String, failures, hops| SwitchDone {
+    let mut load: Option<LoadNote> = None;
+    let dead = |m: String, failures, hops, load| SwitchDone {
         started: None,
         rest: hops,
         failures,
         dead: Some(m),
+        load,
     };
     while let Some(hop) = hops.pop_front() {
         if cancel.load(Ordering::SeqCst) {
-            return dead("cancelled".into(), failures, hops);
+            return dead("cancelled".into(), failures, hops, load);
+        }
+        if let Some(z) = hop.lazy.as_ref().filter(|z| !z.ready()) {
+            // D24: load the on-device engine now (the audio waits in the buffer).
+            let (r, note) = z.ensure();
+            if note.is_some() {
+                load = note;
+            }
+            if let Err(err) = r {
+                if hops.is_empty() {
+                    return dead(
+                        format!("server_unavailable: {e}; phone model failed to load: {err}"),
+                        failures,
+                        hops,
+                        load,
+                    );
+                }
+                continue;
+            }
+            if cancel.load(Ordering::SeqCst) {
+                return dead("cancelled".into(), failures, hops, load);
+            }
         }
         if hop.kind == EngineKind::Local && !hop.backend.ready() {
             if hops.is_empty() {
@@ -1600,6 +1860,7 @@ fn run_switch(
                     format!("server_unavailable: {e}; local model not ready"),
                     failures,
                     hops,
+                    load,
                 );
             }
             continue;
@@ -1613,6 +1874,7 @@ fn run_switch(
                     format!("server_unavailable: {e}; local engine: {}", le.message),
                     failures,
                     hops,
+                    load,
                 );
             }
             Err(le) => {
@@ -1637,19 +1899,28 @@ fn run_switch(
         }
         if cancel.load(Ordering::SeqCst) {
             hop.backend.cancel();
-            return dead("cancelled".into(), failures, hops);
+            return dead("cancelled".into(), failures, hops, load);
         }
         return SwitchDone {
             started: Some(hop),
             rest: hops,
             failures,
             dead: None,
+            load,
         };
     }
-    dead(format!("server_unavailable: {e}"), failures, hops)
+    dead(format!("server_unavailable: {e}"), failures, hops, load)
 }
 
 impl Active {
+    /// A failover to a cold on-demand local engine is loading it (D24).
+    fn loading(&self) -> bool {
+        self.switching
+            .as_ref()
+            .and_then(|s| s.lazy.as_ref())
+            .is_some_and(|z| !z.ready())
+    }
+
     /// The route in use, or `None` when no backend is live (dead session).
     fn live_route(&self) -> Option<SessionRoute> {
         if let Some((kind, id)) = self.switching.as_ref().and_then(|s| s.next.as_ref()) {
@@ -1708,6 +1979,7 @@ impl Active {
             dead: None,
             switched: false,
             switching: None,
+            diag: RouteDiag::default(),
         }
     }
 
@@ -1726,6 +1998,7 @@ impl Active {
             dead: Some(msg),
             switched: false,
             switching: None,
+            diag: RouteDiag::default(),
         }
     }
 }
