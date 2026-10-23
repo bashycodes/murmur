@@ -1,6 +1,6 @@
 # STT model survey and CPU benchmark (2026-10-23)
 
-Status: proposal. No code or config changed. The DECISIONS row at the end is draft text for D23; DECISIONS.md was not edited.
+Status: applied as D23 in docs/DECISIONS.md (server default switched to the unified model 2026-10-23; the greedy/retry change landed with D22 on `feat/streaming-asr`).
 
 The question: can the server (i7-6700, 4C/8T, AVX2, no AVX-512, 19 GB RAM, no GPU; today Parakeet-TDT-0.6B-v2 int8 on sherpa-onnx) move to a bigger, more accurate or faster model? And what should the phone (Galaxy S25+, Snapdragon 8 Elite; today whisper base q5_1) run?
 
@@ -188,7 +188,7 @@ There is no device measurement in this survey. Estimates scale this box's number
 
 Moonshine-base v2 through sherpa (135 MB, RTF ~0.05 single-thread here) would be the size winner, but it is unusable until the > 9.4 s failure is fixed upstream.
 
-## Proposed DECISIONS row (draft; not applied)
+## DECISIONS row (applied as D23 in docs/DECISIONS.md)
 
 | D23 | ASR model refresh (2026-10-23, `docs/proposals/stt-model-survey.md`) | Server + Android English default: **Parakeet-unified-en-0.6b int8** (sherpa-onnx non-streaming package; drop-in for the v2 dir, same `nemo_transducer` engine and hotwords). `flow-asr-sherpa`: greedy search when the session has no hotwords; an empty or < 0.5 words/s beam result on VAD-confirmed speech is re-decoded greedy. Parakeet v2 stays the fallback model. Next: a streaming engine (sherpa `OnlineRecognizer`) with Nemotron-speech-streaming-en-0.6b 560 ms for the long-dictation latency (streaming proposal). Multilingual stays whisper (D4); Parakeet v3 is the opt-in European model; Cohere Transcribe only as an opt-in "max accuracy (slow)" server model. `threads = 4` unchanged | On the 40-clip set unified = v2 (1.15% WER, same A/B latency 1.17 s / 2.87 s for 11 / 29 s audio) but it decoded 43 s and 56 s recordings without loss, where v2 greedy dropped an utterance (17.5% WER), v3 and Cohere dropped 23% / 22%, and v2 with the server's beam 4 returned **empty** text on 25 s and 43 s clips. No open model is more accurate *and* interactive on a 4-core AVX2 CPU (Cohere 0.84% WER at RTF 0.52; Qwen3-ASR-0.6B 1.57% at 0.47). Streaming Nemotron gives 0.15–0.33 s release→text at any length for 2.2% WER |
 
