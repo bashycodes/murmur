@@ -4,7 +4,7 @@
   "result": {
     "status": "RAW_TRANSCRIPT",
     "asr_text": "um ask not what wispr can do",
-    "final_text": "ask not what Wispr can do ",
+    "final_text": "ask not what Wispr can do. ",
     "language": "en",
     "timings": {
       "audio_ms": 1000,
@@ -21,10 +21,10 @@
     "error": null,
     "segments": [
       {
-        "text": "ask not what Wispr can do "
+        "text": "ask not what Wispr can do. "
       }
     ],
-    "plain_text": "ask not what Wispr can do ",
+    "plain_text": "ask not what Wispr can do. ",
     "empty_reason": null
   },
   "server_timings": {

@@ -146,15 +146,18 @@ fn identical_result_under_any_push_chunking() {
 
 #[test]
 fn commit_latency_is_flat_in_dictation_length() {
-    // RTF 0.05 mock, audio pushed at 8× real time: a 60 s whole-clip
-    // decode costs 3 s; with segmentation only the tail is left.
+    // RTF 0.05 mock, audio pushed at 6× real time: a 60 s whole-clip
+    // decode costs 3 s; with segmentation only the tail is left. Each
+    // 5.5 s piece also costs a bridge of up to 6 s + 4 s, so at 8× the
+    // worker (pieces, bridges, previews) needs more than real time and
+    // its queue grows; that says nothing about a 1× dictation.
     let asr = Arc::new(BurstEchoAsr::new().with_rtf(0.05));
     let core = core_with(asr.clone());
     let mut seg_ms = Vec::new();
     for secs in [10, 60] {
         let (pcm, words) = long_dictation(secs);
         core.start_session(seg_cfg()).unwrap();
-        push_paced(&core, &pcm, 8.0);
+        push_paced(&core, &pcm, 6.0);
         let r = core.commit();
         assert_eq!(r.asr_text, words, "{secs} s");
         eprintln!("{secs} s: total {} ms, {:?}", r.timings.total_ms, r.timings);
@@ -167,7 +170,7 @@ fn commit_latency_is_flat_in_dictation_length() {
         ..Default::default()
     })
     .unwrap();
-    push_paced(&core, &pcm, 8.0);
+    push_paced(&core, &pcm, 6.0);
     let whole = core.commit();
     eprintln!("60 s whole: {:?}", whole.timings);
     // Tail ≈ one 5.5 s piece at RTF 0.05 ≈ 0.3 s, plus at most one segment
@@ -349,7 +352,8 @@ fn per_segment_hallucination_guard() {
         (7, 1000, 300),
     ]);
     let r = dictate(&core, seg_cfg(), &pcm, 640);
-    assert_eq!(r.asr_text, "w3 w6. w7", "{r:?}");
+    // "w7" follows a sentence end at a join: capitalised.
+    assert_eq!(r.asr_text, "w3 w6. W7", "{r:?}");
     // Guard off: everything stays.
     let r = dictate(
         &core,
@@ -360,7 +364,7 @@ fn per_segment_hallucination_guard() {
         &pcm,
         640,
     );
-    assert_eq!(r.asr_text, "w3 Thank you. w6. Thank you. w7");
+    assert_eq!(r.asr_text, "w3 Thank you. W6. Thank you. W7");
 }
 
 /// An engine that must not see audio before commit (cloud, D18).

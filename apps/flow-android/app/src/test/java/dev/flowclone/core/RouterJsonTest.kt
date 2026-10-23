@@ -140,7 +140,7 @@ class RouterJsonTest {
         val remote = CoreJson.decodeCommit(fixture("commit_result_remote.json"))
         assertEquals(CommitStatus.RAW_TRANSCRIPT, remote.status)
         assertEquals("remote", remote.route!!.engine); assertEquals(4L, remote.route!!.rttMs); assertEquals("0.1.0", remote.route!!.serverCore)
-        assertEquals(listOf(PasteSegment.Text("ask not what your country can do ")), remote.pastePlan())
+        assertEquals(listOf(PasteSegment.Text("ask not what your country can do. ")), remote.pastePlan())
         assertEquals("S", DevText.badge(remote.route))
         val fb = CoreJson.decodeCommit(fixture("commit_result_fallback.json"))
         assertEquals("connect_failed", fb.route!!.fallback)

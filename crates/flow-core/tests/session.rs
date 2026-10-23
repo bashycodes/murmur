@@ -375,7 +375,9 @@ fn press_enter_is_reported_on_windows_only() {
         FieldContext::default(),
     );
     assert!(r.press_enter);
-    assert_eq!(r.final_text, "Send it"); // Wispr trims before the phrase
+    // Wispr trims before the phrase; the closing period (D25) moves onto
+    // the text, as with server-punctuated "Send it press enter."
+    assert_eq!(r.final_text, "Send it.");
     let android = SessionConfig {
         platform: flow_core::config::Platform::Android,
         ..Default::default()

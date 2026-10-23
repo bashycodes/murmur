@@ -1327,6 +1327,9 @@ impl Worker {
                 texts[k + 1] = rt;
             }
         }
+        if join != JoinMode::Plain {
+            segment::capitalize_joins(&mut texts);
+        }
         r.timings.asr_ms = t.elapsed().as_millis() as u64;
         r.asr_text = join_pieces(texts.iter().map(String::as_str));
         if r.asr_text.is_empty() {
@@ -1379,6 +1382,11 @@ impl Worker {
                 r.empty_reason = Some("only_filler".into());
                 return r;
             }
+        }
+        if s.cfg.cleanup_level != CleanupLevel::None && !snippet {
+            // Parakeet-unified often ends without a period, whisper on a
+            // comma; Wispr's server would close the sentence (D25).
+            text = postprocess::terminal::close_sentence(&text);
         }
         r.status = CommitStatus::RawTranscript;
         if abort.load(Ordering::SeqCst) {
