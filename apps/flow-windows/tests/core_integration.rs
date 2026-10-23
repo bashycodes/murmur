@@ -465,17 +465,12 @@ fn real_parakeet_on_jfk_pastes_the_speech() {
     r.dictate(&pcm, Duration::from_secs(120));
     let pastes = r.os.pastes();
     assert_eq!(pastes.len(), 1, "{:?}", r.os.log.lock().unwrap());
-    // Decode while speaking (D22, default on) cuts JFK at the pause after
-    // "ask not", and Parakeet punctuates each piece: "ask not. What your
-    // country …". Words are what the probe measured (WER), so compare
-    // without punctuation.
-    let words: String = pastes[0]
-        .to_lowercase()
-        .chars()
-        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
-        .collect();
+    // Exact, punctuation-sensitive: with decode-while-speaking on (D22,
+    // default) the cut after "ask not" must not become a sentence break.
     assert!(
-        words.contains("ask not what your country can do for you"),
+        pastes[0]
+            .to_lowercase()
+            .contains("ask not what your country can do for you"),
         "{pastes:?}"
     );
 }
