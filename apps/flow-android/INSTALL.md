@@ -67,9 +67,10 @@ and grant, in this order: *Microphone* → *Display over other apps* → *Access
 Flow Clone → ⋮ → *Allow restricted settings*, then retry) → *Notifications* → *Battery: allow
 background*. The main screen must show `Native engine: flow-ffi 0.1.0`.
 
-**3. Point it at the server.** Main screen → *Developer settings*: host = the PC's `100.x.y.z`
-(or its MagicDNS name), port `7313`, paste the token, *Use TLS* off, *Allow server* + *Allow
-client* on, *Save*, then *Test connection* → `OK · median N ms … · parakeet`. Plain `ws://` is
+**3. Point it at the server.** Main screen → *Developer settings* → *Server*: host = the PC's
+`100.x.y.z` (or its MagicDNS name), port `7313`, *Paste* the token, *Use TLS* off, *Save* (top
+bar), then *Test connection* (bottom) → `OK · median N ms … · parakeet`. *Routing & engines*:
+*Allow server* + *Allow on-device* on (the defaults in hybrid), *Save*. Plain `ws://` is
 only allowed when the address is private or tailnet **and** the phone reaches it through its
 Tailscale interface: "Server needs TLS — turn on Use TLS …" means Tailscale is off on the phone
 or the host is a public address. For on-device fallback, either import a model (§2, §5) or tick
@@ -84,12 +85,13 @@ or the host is a public address. For on-device fallback, either import a model (
       text appears well under a second after you stop; the debug line shows `segments` ≥ 2 and
       `pre_asr_ms` > 0. Toggle it off: `segments` 0 and the wait grows with the length.
 - [ ] **Hold** the bubble, speak, release: inserted; holding never stops by itself.
-- [ ] *Active engine (last dictation)* on the Developer page says `Server 100.x…:7313`.
+- [ ] The *Developer settings* status card says *Last dictation* `Server · client N ms`
+      (*Status & server info* → *Active engine* has the full `Server 100.x…:7313 · …` line).
 - [ ] Start a long tap dictation, stop `flow-server` (Ctrl+C) mid-sentence: the preview relabels to
       `via phone · server unreachable` while you are still talking, and the inserted text is
       complete (buffered audio replayed on the phone).
 - [ ] Start the server again; the next dictation goes `via server` (after the 5 s circuit backoff,
-      or tap *Reset circuit*).
+      or *Developer settings → Status & server info → Reset circuit*).
 - [ ] Start dictating in Notes, tap ✓, and switch to another app's text field before the text
       appears: nothing is inserted there; a toast says you switched fields and the bubble offers
       *Paste* (S12). In a banking app or a password field the bubble stays hidden and Paste refuses.
@@ -116,7 +118,7 @@ Record the results (and the stop → text latency for server vs phone) in `PROJE
 
 ### Debug log (what you said and how long it took)
 
-*Developer settings → Debug log → "Debug log (includes transcripts)"* (off by default; in the
+*Developer settings → Debug log & audio → Debug log* (includes transcripts) (off by default; in the
 `local` flavour unlock Developer settings first, see below). While it is on, every dictation
 writes **one JSON line** to logcat tag **`FlowDebug`** and to the app-private file
 `files/debug/dictations.jsonl` (newest 500 entries). Engine load failures, model import
@@ -159,7 +161,7 @@ or `… no Parakeet model folder imported`, or `selected whisper, loaded none: �
 engine failed behind the server. (D21 schema additions on Android, 2026-10-23: `engine`,
 `model`, `language`, `audio`, event `engine_mismatch`.)
 
-**Keep last dictation audio (debug)** (*Developer settings → Debug log*, off by default): saves
+**Keep last dictation audio (debug)** (*Developer settings → Debug log & audio*, off by default): saves
 what the microphone heard for the last 10 dictations as 16 kHz mono WAV files in the app's
 private storage, `files/debug/audio/<ts with - for :>.wav` (e.g. `2026-10-23T10-15-02.123Z.wav`
 for `"ts":"2026-10-23T10:15:02.123Z"`), linked from the line's `audio` field. Never for password
@@ -314,7 +316,7 @@ folder; the app copies the four files into `files/parakeet/<name>/` and switches
 *Settings → Use Parakeet* toggles back to whisper. If Parakeet fails to load (RAM, files), the
 app loads the whisper model instead and the main screen says "Parakeet failed: …".
 On the phone Parakeet decodes **greedy** (one recognizer; saves ≈ 0.6 GB RAM, dictionary words
-are not used as hotwords). *Developer settings → Parakeet decoding* switches to *Auto* (beam
+are not used as hotwords). *Developer settings → Routing & engines → On-device decoding (Parakeet)* switches to *Auto* (beam
 search with dictionary hotwords, plus a greedy recognizer) or *Beam only*; changing it reloads
 the engine.
 
@@ -323,18 +325,19 @@ the engine.
 1. On the server box: run `flow-server` (see `docs/protocol.md` / `crates/flow-server`), bound
    to its Tailscale `100.x` address or the LAN; `flow-server gen-token` prints the token.
 2. Phone: install Tailscale (or be on the same LAN). No extra permission is needed.
-3. Main screen → **Developer settings** (visible by default in hybrid/remote): host = the
-   server's `100.x.y.z` or `name.tailnet.ts.net`, port `7313`, paste the token, *Save*,
-   then *Test connection* → "OK · median N ms (…) · flow-server … · parakeet".
-4. Dictate: *Active engine (last dictation)* shows `Server 100.x.y.z:7313`.
-5. **Connect timeout** (default **2500 ms** since D24; a stored 800, the old default, becomes 2500
+3. Main screen → **Developer settings** (visible by default in hybrid/remote) → **Server**:
+   host = the server's `100.x.y.z` or `name.tailnet.ts.net`, port `7313`, *Paste* the token,
+   *Save* (top bar), then *Test connection* → "OK · median N ms (…) · flow-server … · parakeet".
+4. Dictate: the hub's status card shows *Last dictation* `Server · client N ms`; *Status &
+   server info → Active engine* shows `Server 100.x.y.z:7313 · …`.
+5. **Server → Timeouts → Connect timeout** (default **2500 ms** since D24; a stored 800, the old default, becomes 2500
    once). Over a Tailscale DERP relay the handshake is 3+ round trips of 150-300 ms, which 800 ms
    could not fit. After a successful *Test connection* the router raises it further to
    `RTT × 6` (1.5-10 s) on slow paths; it never lowers what you set.
-6. **The server being down never fails a dictation** while *Allow client* is on (D24): the phone
+6. **The server being down never fails a dictation** while *Routing & engines → Allow on-device* is on (D24): the phone
    records at once and the audio is kept; if the server can't be reached (or its circuit is open,
-   e.g. a failed pre-warm when you focused the field) the phone model takes over. With *Keep the
-   on-device model loaded* off it is loaded on demand ("Loading phone model…") and then stays
+   e.g. a failed pre-warm when you focused the field) the phone model takes over. With *Keep
+   on-device model warm* off it is loaded on demand ("Loading phone model…") and then stays
    loaded. Dictation fails only when no route is possible (both toggles off, or no phone model),
    and the error says which.
 
@@ -344,21 +347,39 @@ Off by default. When on, the audio of each dictation (after on-device silence tr
 uploaded to the provider you pick, under that provider's terms; everything else (cleanup,
 dictionary, AI cleanup) still runs on the phone. No extra permission: it uses `INTERNET`.
 
-1. Developer settings → **Cloud providers (sends audio to a third party)** → *Add provider…* →
+1. Developer settings → **Cloud providers** → *Add provider…* →
    OpenRouter, ElevenLabs, Groq, OpenAI, Deepgram, AssemblyAI or Custom (OpenAI-compatible).
 2. On the provider page paste the API key (stored only Keystore-encrypted; the page shows
    `••••` + the last 4 characters), adjust model / language, *Add provider*, then
    *Test provider* → "OK · heard "And so, my fellow Americans" · N ms · $…".
-3. Back on Developer settings tick **Allow cloud**: the consent dialog names the provider and
-   its host; *Send audio to <provider>* records consent and puts *Cloud* first in the route
-   order (reorder with ↑ / ↓). *Save*.
-4. Dictate: the preview line shows `[C]` and *Active engine* shows
-   `cloud · <provider> · <model> · $…`; *Usage this month* counts it.
+3. Back on *Cloud providers* switch on **Allow cloud**: the consent dialog names the provider
+   and its host; *Send audio to <provider>* records consent and puts *Cloud* first in the route
+   order. *Save* (top bar). Reorder under *Routing & engines → Route order* (↑ / ↓), *Save*.
+4. Dictate: the preview line shows `[C]` and *Status & server info → Active engine* shows
+   `cloud · <provider> · <model> · $…`; *Cloud providers → Usage this month* counts it.
+
+## Developer settings layout
+
+A hub with grouped cards; each row shows its current value and opens a focused page:
+
+| Hub row | Page contents | Save |
+|---|---|---|
+| *Status* card | route in use, last dictation engine + `client_ms`, circuit; *Status & server info* → active engine, circuits, server info (last probe), native library; *Reset circuit* | – |
+| *Routing & engines* | Allow server / on-device, route order (↑ / ↓), keep model warm, engine badge, Parakeet decoding (applies at once); *Test session* | top bar |
+| *Server* | host, port, Use TLS, certificate pin, token (masked; Show / Paste / Clear), timeouts; *Test connection* | top bar |
+| *Cloud providers* | Allow cloud (consent), providers (tap to edit, *Use*), *Add provider…*, monthly budget, usage, *Reset counters*; *Test active provider* | top bar |
+| *Debug log & audio* | Debug log, Keep last dictation audio (apply at once); View / Share / Clear | – |
+| *Build* | flavour + native library, *Reset to defaults* (asks first), *Lock* (local) | – |
+
+*Save* stays grey until something on the page changed and every field is valid (errors show
+under the field; a bad stored value on another page is named in the page's banner). Leaving a
+page with unsaved changes asks *Discard changes?*. Secrets never appear in the accessibility
+tree (other accessibility services only see "set (hidden)").
 
 ## Local flavour: Developer settings
 
 In the `local` flavour Developer settings are hidden: tap the version row at the bottom of
-Settings 7 times to show them (only the client toggle and timeouts apply there).
+Settings 7 times to show them (only the on-device toggle and timeouts apply there).
 
 ## 6. AI cleanup (optional)
 
@@ -403,12 +424,12 @@ inserted. History (search, copy, delete, raw vs cleaned) is on the main screen.
 **Flavours / developer settings (D17)** — one APK of each flavour, same phone, installed over each other
 - [ ] `local`: App info → Permissions shows no network; main screen text says "no internet
       permission"; Developer settings hidden until 7 taps on Settings' version row ("Developer
-      settings unlocked"); *Allow server* shows "not in this build"; *Lock* hides it again.
+      settings unlocked"); *Routing & engines → Allow server* shows "Not in this build"; *Lock* hides it again.
 - [ ] `local`: dictation works exactly as before (main screen `Loaded: client: …`); *Test
-      session* says `OK: Client (on-device) · … EMPTY (no_speech)`.
+      session* (*Routing & engines*) says `OK: Client (on-device) · … EMPTY (no_speech)`.
 - [ ] `hybrid` over `local`: dictionary/history kept. Developer settings visible; host
-      validation: `http://x`, `10.0.0.1:7313`, `256.1.1.1`, `a_b.com` show inline errors and
-      Save greys out; `8.8.8.8` / `example.com` lock *Use TLS* on.
+      validation (*Server* page): `http://x`, `10.0.0.1:7313`, `256.1.1.1`, `a_b.com` show inline
+      errors and the top-bar *Save* greys out; `8.8.8.8` / `example.com` lock *Use TLS* on.
 - [ ] `hybrid`, server up (Tailscale): *Test connection* shows median RTT + server version;
       dictation → last engine `Server …`, optional badge `[S]` on the preview line; Server info
       shows "pipeline ✓".
@@ -419,13 +440,14 @@ inserted. History (search, copy, delete, raw vs cleaned) is on the main screen.
       to the client and the circuit stays open until the server settings change.
 - [ ] `hybrid`, kill the server mid-dictation (long hands-free session): the text is complete
       (fallback `disconnected`, buffered audio replayed).
-- [ ] Both toggles off → Save shows the red "Dictation disabled" warning; tapping the bubble
+- [ ] Both toggles off (*Routing & engines*) → the red "Dictation disabled" banner (also on the hub's status card); tapping the bubble
       toasts "Dictation disabled — enable server or client in Developer settings".
 - [ ] `remote` over `hybrid`: APK ~10x smaller; no Speech model / AI cleanup entries; Allow
       client "not in this build"; server down → bubble error "Server unreachable (connect_failed)".
 - [ ] Settings changes apply to the next dictation without reloading the model (main screen
-      keeps `Loaded:`; logcat `FlowEngine` shows no reload) unless *Keep … loaded* changed.
-- [ ] Token survives an app restart (Keystore); *Clear* + Save removes it.
+      keeps `Loaded:`; logcat `FlowEngine` shows no reload) unless *Keep on-device model warm* changed.
+- [ ] Token survives an app restart (Keystore); *Clear* + *Save* removes it. With TalkBack (or a
+      UI dump) the token field reads "set (hidden)", also after *Show*.
 - [ ] Parakeet (local/hybrid, 6-8 GB phone): folder import, `Loaded: client: Parakeet …`, jfk-style
       dictation accuracy and latency; hotwords work (`TMPDIR` = cache dir); low-RAM phone falls back to whisper.
 - [ ] core-p1: "comma"/"period" spoken → punctuation (Settings *Auto-format* on), off → literal
@@ -438,17 +460,17 @@ Logcat tags: `FlowA11y` (insertion step trail), `FlowService`, `FlowMic`, `FlowE
 
 **Cloud STT (D18)** — `hybrid` (and `remote`) APK, a real key for at least one provider; record
 provider, model, latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CONTEXT.md`
-- [ ] `local`: Developer settings → Cloud providers shows *Allow cloud — not in this build* (disabled);
+- [ ] `local`: Developer settings → Cloud providers shows *Allow cloud* "Not in this build" (disabled);
       App info shows no network permission (unchanged).
-- [ ] `hybrid`: *Allow cloud* is off on a fresh install; ticking it without a provider says "Add a
+- [ ] `hybrid`: *Allow cloud* is off on a fresh install; switching it on without a provider says "Add a
       provider first" and opens the preset list.
 - [ ] Add Groq (or OpenRouter / ElevenLabs): the key field is masked, *Show* reveals it, after *Add
       provider* the field is empty and the page shows `Stored key: ••••abcd`; *Test provider* →
       "OK · heard "And so, my fellow Americans…" · N ms"; with a wrong key → "auth_failed: key rejected".
-- [ ] Tick *Allow cloud*: the dialog title is "Send audio to Groq?" and the body names
+- [ ] Switch on *Allow cloud*: the dialog title is "Send audio to Groq?" and the body names
       `api.groq.com`; *Cancel* unticks; *Send audio to Groq* records consent (provider row
-      `consent ✓`) and the route order becomes `1. Cloud · 2. … · 3. …`; *Save*.
-- [ ] Dictate 10 s in Notes: text inserted, preview badge `[C]` even with *Show the engine* off,
+      `consent ✓`) and *Routing & engines* shows the order `1. Cloud · 2. … · 3. …` after *Save*.
+- [ ] Dictate 10 s in Notes: text inserted, preview badge `[C]` even with *Engine badge* off,
       *Active engine* `cloud · Groq · whisper-large-v3-turbo · ≈$0.000…`, usage `1 dictation`.
       Note stop → text latency vs on-device.
 - [ ] Silence-only dictation ("No speech heard"): usage count unchanged (silence is never uploaded).
