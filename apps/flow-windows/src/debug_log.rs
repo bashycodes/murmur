@@ -10,13 +10,13 @@
 //! failure there (serialisation, I/O, disk full, a panicking sink) is
 //! swallowed and counted ([`Stats`]), never reported to the caller.
 //!
-//! Never logged: the server token, cloud API keys (errors go through
+//! Never logged: the server token, cloud API keys (every line goes through
 //! [`scrub`]), clipboard contents. Password fields: the target is
 //! `"<redacted>"` and so are the transcripts.
 //!
-//! The line schema is shared with the Android app's debug log: every key
-//! is always present (`null` when unknown). A non-dictation error has
-//! `mode: null` and `error: "<source>: <message>"`.
+//! The line schema is shared with the Android app (docs/DECISIONS.md D21):
+//! every key is always present (`null` when unknown); `kind` is
+//! `dictation` or `event` (non-dictation: `ts, event, error, stack`).
 
 use serde::Serialize;
 use std::collections::VecDeque;
@@ -35,14 +35,40 @@ pub const QUEUE_CAP: usize = 256;
 /// Target / transcript of a password field.
 pub const REDACTED: &str = "<redacted>";
 
-/// One line of `dictations.jsonl`. Field names are the cross-platform
-/// schema; do not rename.
+/// What happened to the text (`insert.outcome`; shared with Android).
+pub mod outcome {
+    pub const INSERTED: &str = "inserted";
+    /// Paste/typing failed.
+    pub const PASTE_FAILED: &str = "paste_failed";
+    /// The focus moved to another window: copied to the clipboard instead.
+    pub const TARGET_CHANGED: &str = "target_changed";
+    /// A password field got the focus: nothing inserted.
+    pub const TARGET_PROTECTED: &str = "target_protected";
+    pub const EMPTY: &str = "empty";
+    /// The commit failed (every route).
+    pub const ERROR: &str = "error";
+    /// No result within the processing timeout.
+    pub const TIMEOUT: &str = "timeout";
+    /// Mic or session start failed.
+    pub const START_FAILED: &str = "start_failed";
+    pub const CANCELLED: &str = "cancelled";
+}
+
+/// `insert`: `{"outcome": …, "steps": […]}`. Steps = the paste plan that
+/// ran (`ctrl_v`, `shift_insert`, `type`, `key Enter`, …).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Insert {
+    pub outcome: String,
+    pub steps: Vec<String>,
+}
+
+/// A dictation line (`"kind": "dictation"`). Field names are the
+/// cross-platform schema (docs/DECISIONS.md D21); do not rename.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Entry {
     /// UTC, ISO 8601 with milliseconds (`2026-10-23T12:34:56.789Z`).
     pub ts: String,
-    /// `tap` (double-tap lock) / `hold` (push-to-talk) / `handsfree`;
-    /// `null` for a non-dictation error.
+    /// `hold` (push-to-talk) / `tap` (double-tap lock) / `handsfree`.
     pub mode: Option<String>,
     /// Engine that ran: `local` / `remote` (own server) / `cloud`.
     pub route: Option<String>,
@@ -51,32 +77,84 @@ pub struct Entry {
     pub fallback: Option<String>,
     pub rtt_ms: Option<u32>,
     pub audio_ms: Option<u64>,
-    /// Hands-free only: the silence waited before the endpoint stopped it.
+    /// Last speech → stop (shell-side [`SilenceTracker`]); `null` when no
+    /// speech was heard.
     pub endpoint_wait_ms: Option<u64>,
     pub asr_ms: Option<u64>,
-    /// Post-processing after ASR (cleanup, LLM): `total_ms - asr_ms`.
+    /// LLM + post-processing after ASR: `total_ms - asr_ms`.
     pub post_ms: Option<u64>,
     /// Engine wall time of the commit.
     pub total_ms: Option<u64>,
-    /// Release (stop) → text inserted (or the outcome known).
+    /// Stop / release → outcome (text inserted, or the error shown).
     pub perceived_ms: Option<u64>,
     /// Foreground exe name; `<redacted>` for a password field.
     pub target: Option<String>,
-    /// `pasted` / `copied` / `blocked` / `cancelled` / `failed` / `empty` /
-    /// `none`.
-    pub insert: Option<String>,
+    pub insert: Insert,
     pub raw: Option<String>,
     pub text: Option<String>,
     pub error: Option<String>,
+    /// Always `null` here (Rust errors carry no stack); kept for the schema.
+    pub stack: Option<String>,
 }
 
-impl Entry {
-    /// A non-dictation error line (engine load, server, hotkeys, paste).
-    pub fn error(source: &str, message: &str) -> Self {
-        Entry {
-            error: Some(format!("{source}: {message}")),
-            ..Entry::default()
+/// A non-dictation line (`"kind": "event"`): engine load, server probe,
+/// hotkey hook, audio stream, paste-last.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Event {
+    pub ts: String,
+    pub event: String,
+    pub error: Option<String>,
+    pub stack: Option<String>,
+}
+
+/// One JSONL line; `kind` comes first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum Line {
+    Dictation(Box<Entry>),
+    Event(Event),
+}
+
+impl Line {
+    fn ts_mut(&mut self) -> &mut String {
+        match self {
+            Line::Dictation(e) => &mut e.ts,
+            Line::Event(e) => &mut e.ts,
         }
+    }
+}
+
+/// Wispr's head-silence rule (shared with Android): a chunk is speech when
+/// mean(s²) > 33856 (RMS ≈ 184, ≈ −45 dBFS). Tracks the silence since the
+/// last speech for `endpoint_wait_ms`. Lock-free; fed from the mic thread.
+#[derive(Debug, Default)]
+pub struct SilenceTracker {
+    heard: AtomicBool,
+    trailing_samples: AtomicU64,
+}
+
+impl SilenceTracker {
+    pub const SIGNAL_MEAN_SQUARE: f64 = 33_856.0;
+
+    pub fn update(&self, pcm: &[i16]) {
+        if pcm.is_empty() {
+            return;
+        }
+        let sum: f64 = pcm.iter().map(|&v| f64::from(v) * f64::from(v)).sum();
+        if sum / pcm.len() as f64 > Self::SIGNAL_MEAN_SQUARE {
+            self.heard.store(true, Ordering::Relaxed);
+            self.trailing_samples.store(0, Ordering::Relaxed);
+        } else if self.heard.load(Ordering::Relaxed) {
+            self.trailing_samples
+                .fetch_add(pcm.len() as u64, Ordering::Relaxed);
+        }
+    }
+
+    /// Silence since the last speech (16 kHz), `None` before any speech.
+    pub fn trailing_silence_ms(&self) -> Option<u64> {
+        self.heard
+            .load(Ordering::Relaxed)
+            .then(|| self.trailing_samples.load(Ordering::Relaxed) / 16)
     }
 }
 
@@ -197,7 +275,7 @@ pub struct Stats {
 }
 
 struct Inner {
-    queue: Mutex<VecDeque<Entry>>,
+    queue: Mutex<VecDeque<Line>>,
     cv: Condvar,
     sink: Mutex<Box<dyn Sink>>,
     /// Queued + being written (flush waits for 0).
@@ -260,19 +338,34 @@ impl DebugLog {
     }
 
     /// Secrets that must never appear in a line (server token, cloud keys):
-    /// replaced in `error` by [`scrub`]. Kept in memory only.
+    /// [`scrub`] replaces them in every line. Kept in memory only.
     pub fn set_secrets(&self, secrets: Vec<String>) {
         *lock(&self.inner.secrets) = secrets;
     }
 
-    /// Queue an entry; never blocks on I/O, never fails. `ts` is filled in
-    /// when empty. Ignored while the log is off.
-    pub fn log(&self, mut e: Entry) {
+    /// Queue a dictation line; never blocks on I/O, never fails. `ts` is
+    /// filled in when empty. Ignored while the log is off.
+    pub fn log(&self, e: Entry) {
+        self.push(Line::Dictation(Box::new(e)));
+    }
+
+    /// A non-dictation event (no-op while off).
+    pub fn event(&self, event: &str, message: &str) {
+        if self.is_enabled() {
+            self.push(Line::Event(Event {
+                event: event.to_string(),
+                error: Some(message.to_string()),
+                ..Event::default()
+            }));
+        }
+    }
+
+    fn push(&self, mut e: Line) {
         if !self.is_enabled() {
             return;
         }
-        if e.ts.is_empty() {
-            e.ts = iso8601_ms(now_unix_ms());
+        if e.ts_mut().is_empty() {
+            *e.ts_mut() = iso8601_ms(now_unix_ms());
         }
         let mut q = lock(&self.inner.queue);
         if q.len() >= QUEUE_CAP {
@@ -284,13 +377,6 @@ impl DebugLog {
         self.inner.pending.fetch_add(1, Ordering::SeqCst);
         drop(q);
         self.inner.cv.notify_one();
-    }
-
-    /// A non-dictation error (no-op while off).
-    pub fn error(&self, source: &str, message: &str) {
-        if self.is_enabled() {
-            self.log(Entry::error(source, message));
-        }
     }
 
     /// Lines in the file (`None` when it can't be read).
@@ -366,31 +452,30 @@ fn writer(inner: Arc<Inner>) {
     }
 }
 
-fn write_one(inner: &Inner, mut e: Entry) -> bool {
-    if let Some(err) = e.error.take() {
-        e.error = Some(scrub(&err, &lock(&inner.secrets)));
-    }
+fn write_one(inner: &Inner, e: Line) -> bool {
     let Ok(line) = serde_json::to_string(&e) else {
         return false;
     };
+    let line = scrub(&line, &lock(&inner.secrets));
     if inner.echo {
         let _ = writeln!(io::stdout().lock(), "[debug] {line}");
     }
     lock(&inner.sink).append(&line).is_ok()
 }
 
-/// Remove credentials from an error text: the given secrets, anything
-/// after `Bearer `, and provider-style keys (`sk-…`, `gsk_…`).
+/// Remove credentials from a line: the given secrets, anything after
+/// `Bearer `, and provider-style keys (`sk-…`, `gsk_…`) become
+/// [`REDACTED`].
 pub fn scrub(text: &str, secrets: &[String]) -> String {
     let mut s = text.to_string();
     for secret in secrets.iter().filter(|x| x.len() >= 6) {
-        s = s.replace(secret.as_str(), "<secret>");
+        s = s.replace(secret.as_str(), REDACTED);
     }
     let mut out = String::with_capacity(s.len());
     let mut rest = s.as_str();
     while let Some(i) = rest.find("Bearer ") {
         out.push_str(&rest[..i + "Bearer ".len()]);
-        out.push_str("<secret>");
+        out.push_str(REDACTED);
         let tail = &rest[i + "Bearer ".len()..];
         let end = tail
             .find(|c: char| c.is_whitespace() || c == '"' || c == '\'')
@@ -408,7 +493,7 @@ pub fn scrub(text: &str, secrets: &[String]) -> String {
             };
             let keyish = (word.starts_with("sk-") || word.starts_with("gsk_")) && word.len() >= 16;
             if keyish {
-                format!("<secret>{sep}")
+                format!("{REDACTED}{sep}")
             } else {
                 w.to_string()
             }
@@ -487,10 +572,10 @@ pub fn global() -> Option<&'static Arc<DebugLog>> {
     GLOBAL.get()
 }
 
-/// Log a non-dictation error to the installed log (no-op when off/none).
-pub fn error(source: &str, message: &str) {
+/// Log a non-dictation event to the installed log (no-op when off/none).
+pub fn event(event: &str, message: &str) {
     if let Some(l) = GLOBAL.get() {
-        l.error(source, message);
+        l.event(event, message);
     }
 }
 
@@ -567,11 +652,40 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn event_lines_have_kind_event_error_and_stack() {
+        let v = serde_json::to_value(Line::Event(Event::default())).unwrap();
+        let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(|k| k.as_str()).collect();
+        keys.sort();
+        assert_eq!(keys, vec!["error", "event", "kind", "stack", "ts"]);
+        assert_eq!(v["kind"], "event");
+        let line = serde_json::to_string(&Line::Event(Event::default())).unwrap();
+        assert!(line.starts_with("{\"kind\":\"event\""), "{line}");
+    }
+
+    #[test]
+    fn silence_tracker_measures_last_speech_to_stop() {
+        let t = SilenceTracker::default();
+        t.update(&[0; 1600]);
+        assert_eq!(t.trailing_silence_ms(), None, "no speech yet");
+        t.update(&[1000; 1600]);
+        assert_eq!(t.trailing_silence_ms(), Some(0));
+        t.update(&[10; 8000]);
+        t.update(&[0; 1600]);
+        assert_eq!(t.trailing_silence_ms(), Some(600));
+        t.update(&[-2000; 160]);
+        assert_eq!(t.trailing_silence_ms(), Some(0));
+    }
+
+    #[test]
     fn every_schema_key_is_always_present() {
-        let v = serde_json::to_value(Entry::default()).unwrap();
+        let v = serde_json::to_value(Line::Dictation(Box::default())).unwrap();
+        assert_eq!(v["kind"], "dictation");
+        assert_eq!(v["insert"], serde_json::json!({"outcome": "", "steps": []}));
         let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(|k| k.as_str()).collect();
         keys.sort();
         let mut want = vec![
+            "kind",
+            "stack",
             "ts",
             "mode",
             "route",
@@ -598,7 +712,7 @@ pub(crate) mod tests {
         let mem = MemSink::default();
         let log = DebugLog::new(Box::new(mem.clone()), false, false);
         log.log(Entry::default());
-        log.error("model", "failed");
+        log.event("engine_load", "failed");
         assert!(log.flush(Duration::from_secs(2)));
         assert!(mem.0.lock().unwrap().is_empty());
         assert_eq!(log.stats(), Stats::default());
@@ -613,7 +727,7 @@ pub(crate) mod tests {
             text: Some("hello".into()),
             ..Entry::default()
         });
-        log.error("hotkeys", "hook failed");
+        log.event("hotkeys", "hook failed");
         assert!(log.flush(Duration::from_secs(2)));
         let lines = mem.0.lock().unwrap().clone();
         assert_eq!(lines.len(), 2);
@@ -621,9 +735,12 @@ pub(crate) mod tests {
         assert_eq!(a["mode"], "hold");
         assert_eq!(a["text"], "hello");
         assert!(a["ts"].as_str().unwrap().ends_with('Z'));
+        assert_eq!(a["kind"], "dictation");
         let b: serde_json::Value = serde_json::from_str(&lines[1]).unwrap();
-        assert_eq!(b["mode"], serde_json::Value::Null);
-        assert_eq!(b["error"], "hotkeys: hook failed");
+        assert_eq!(b["kind"], "event");
+        assert_eq!(b["event"], "hotkeys");
+        assert_eq!(b["error"], "hook failed");
+        assert!(b["ts"].as_str().unwrap().ends_with('Z'));
         assert_eq!(log.stats().written, 2);
     }
 
@@ -680,8 +797,11 @@ pub(crate) mod tests {
         {
             let q = lock(&log.inner.queue);
             assert!(q.len() <= QUEUE_CAP);
+            let Some(Line::Dictation(last)) = q.back() else {
+                panic!("not a dictation line")
+            };
             assert_eq!(
-                q.back().unwrap().raw.as_deref(),
+                last.raw.as_deref(),
                 Some((QUEUE_CAP + 49).to_string().as_str())
             );
         }
@@ -753,8 +873,8 @@ pub(crate) mod tests {
         assert!(!s.contains("abc.def"), "{s}");
         assert!(!s.contains("sk-abcdefghijklmnop1234"), "{s}");
         assert!(!s.contains("gsk_ABCDEFGHIJKLMNOPQR"), "{s}");
-        assert!(s.starts_with("auth_failed: token <secret>;"), "{s}");
-        assert!(s.ends_with("<secret>."), "{s}");
+        assert!(s.starts_with("auth_failed: token <redacted>;"), "{s}");
+        assert!(s.ends_with("<redacted>."), "{s}");
         // Ordinary text is untouched.
         assert_eq!(
             scrub("connect_failed: refused", &[]),
@@ -763,13 +883,19 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn errors_are_scrubbed_before_writing() {
+    fn secrets_are_scrubbed_from_every_line() {
         let mem = MemSink::default();
         let log = DebugLog::new(Box::new(mem.clone()), true, false);
         log.set_secrets(vec!["my-server-token-123".into()]);
-        log.error("server", "rejected my-server-token-123");
+        log.event("server", "rejected my-server-token-123");
+        log.log(Entry {
+            text: Some("my token is my-server-token-123".into()),
+            ..Entry::default()
+        });
         assert!(log.flush(Duration::from_secs(2)));
-        let line = mem.0.lock().unwrap()[0].clone();
-        assert!(!line.contains("my-server-token-123"), "{line}");
+        for line in mem.0.lock().unwrap().iter() {
+            assert!(!line.contains("my-server-token-123"), "{line}");
+            assert!(line.contains(REDACTED), "{line}");
+        }
     }
 }
