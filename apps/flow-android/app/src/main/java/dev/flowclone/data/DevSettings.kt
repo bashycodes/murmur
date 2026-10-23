@@ -366,6 +366,7 @@ object DevSettingsForm {
     const val CLOUD_NO_PROVIDER = "Cloud allowed but no provider is active: add one under Cloud providers."
     const val CLOUD_NO_CONSENT = "The active cloud provider has no consent for its current host: it will be skipped."
     const val CLOUD_NOT_IN_ORDER = "Cloud allowed but not in the route order: it will not be used."
+    const val NO_TOKEN = "No token: a server with auth (the default) will reject the connection."
 
     fun validate(i: Input, caps: BuildCaps): Result {
         val errors = LinkedHashMap<Field, String>()
@@ -412,7 +413,7 @@ object DevSettingsForm {
         }
         if (allowServer && host.isEmpty() && Field.HOST !in errors) warnings += NO_HOST
         if (allowServer && host.isNotEmpty() && !tls) warnings += PLAINTEXT
-        if (allowServer && host.isNotEmpty() && token.isEmpty()) warnings += "No token: a server with auth (the default) will reject the connection."
+        if (allowServer && host.isNotEmpty() && token.isEmpty()) warnings += NO_TOKEN
         val settings = if (errors.isEmpty()) DevSettings(
             allowServer = allowServer, allowClient = allowClient, host = host, port = port!!.toInt(),
             tls = tls, tlsPinSha256 = if (tls) pin else "", token = token, connectTimeoutMs = ct!!, commitTimeoutBaseMs = cb!!,
