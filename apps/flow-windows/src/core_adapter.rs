@@ -183,9 +183,12 @@ pub enum ModelSpec {
         threads: Option<usize>,
     },
     /// Parakeet-TDT (D12, feature `parakeet`); `dir` = the model directory.
+    /// `decoding`: `Auto` (default; a second, greedy recognizer, ≈ +0.6 GB
+    /// RSS, fine on a desktop) or `Greedy` (one recognizer, no hotwords).
     Parakeet {
         dir: PathBuf,
         threads: Option<usize>,
+        decoding: fc::ParakeetDecoding,
     },
     /// flow-core's `MockAsr` (fixed transcript): tests and model-free dev.
     Mock { text: String },
@@ -201,6 +204,7 @@ impl ModelSpec {
             crate::prefs::AsrEngineChoice::Parakeet => ModelSpec::Parakeet {
                 dir: prefs.resolved_parakeet_dir(appdata),
                 threads: prefs.asr_threads,
+                decoding: prefs.developer.parakeet_decoding,
             },
         }
     }
@@ -233,10 +237,15 @@ impl ModelSpec {
                 threads: threads.unwrap_or_else(fc::default_threads).max(1),
                 ..fc::ModelConfig::default()
             },
-            ModelSpec::Parakeet { dir, threads } => fc::ModelConfig {
+            ModelSpec::Parakeet {
+                dir,
+                threads,
+                decoding,
+            } => fc::ModelConfig {
                 asr_backend: fc::AsrBackend::Parakeet,
                 asr_path: dir.display().to_string(),
                 threads: threads.unwrap_or_else(fc::default_threads).max(1),
+                parakeet_decoding: *decoding,
                 ..fc::ModelConfig::default()
             },
             ModelSpec::Mock { text } => fc::ModelConfig {
@@ -600,7 +609,11 @@ fn load_asr(spec: &ModelSpec) -> (ModelStatus, Option<Arc<dyn AsrEngine>>) {
             path: p,
             threads: t,
         } => whisper_engine(p, threads(t)),
-        ModelSpec::Parakeet { dir, threads: t } => parakeet_engine(dir, threads(t)),
+        ModelSpec::Parakeet {
+            dir,
+            threads: t,
+            decoding,
+        } => parakeet_engine(dir, threads(t), *decoding),
     };
     match engine {
         Ok(e) => (
@@ -668,9 +681,10 @@ fn whisper_engine(
 fn parakeet_engine(
     dir: &std::path::Path,
     threads: usize,
+    decoding: fc::ParakeetDecoding,
 ) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
     let path = require(dir, true)?;
-    flow_core::parakeet::ParakeetAsr::load(&path, threads)
+    flow_core::parakeet::ParakeetAsr::load_with(&path, threads, decoding)
         .map(|e| Arc::new(e) as Arc<dyn AsrEngine>)
         .map_err(|e| flow_core::CoreError::Load(e.to_string()))
 }
@@ -679,6 +693,7 @@ fn parakeet_engine(
 fn parakeet_engine(
     dir: &std::path::Path,
     _threads: usize,
+    _decoding: fc::ParakeetDecoding,
 ) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
     require(dir, true)?;
     Err(flow_core::CoreError::Load(
@@ -1269,12 +1284,34 @@ mod tests {
         let st = a.load_now(&ModelSpec::Parakeet {
             dir: PathBuf::from("/nonexistent/parakeet"),
             threads: None,
+            decoding: fc::ParakeetDecoding::Auto,
         });
         assert!(
             matches!(&st, ModelStatus::Missing { engine, .. } if engine == "parakeet"),
             "{st:?}"
         );
         assert!(st.problem().unwrap().contains("Parakeet model folder"));
+    }
+
+    #[test]
+    fn parakeet_decoding_pref_reaches_the_model_config_and_reloads() {
+        let mut p = crate::prefs::Prefs {
+            asr_engine: crate::prefs::AsrEngineChoice::Parakeet,
+            ..Default::default()
+        };
+        // Desktop default: auto (omitted from the core's JSON).
+        let cfg = ModelSpec::from_prefs(&p, None).model_config();
+        assert_eq!(cfg.parakeet_decoding, fc::ParakeetDecoding::Auto);
+        let old = p.clone();
+        p.developer.parakeet_decoding = fc::ParakeetDecoding::Greedy;
+        let cfg = ModelSpec::from_prefs(&p, None).model_config();
+        assert_eq!(cfg.parakeet_decoding, fc::ParakeetDecoding::Greedy);
+        assert!(needs_reload(&old, &p), "recognizer set changes");
+        // Whisper ignores it: no reload.
+        let mut w = crate::prefs::Prefs::default();
+        let w0 = w.clone();
+        w.developer.parakeet_decoding = fc::ParakeetDecoding::Greedy;
+        assert!(!needs_reload(&w0, &w));
     }
 
     #[test]

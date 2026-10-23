@@ -698,6 +698,7 @@ interface DevForm {
   allow_cloud: boolean;
   cloud: CloudConfig;
   decode_while_speaking: boolean;
+  parakeet_decoding: string;
 }
 
 interface FieldError {
@@ -831,6 +832,7 @@ function readDev(): DevForm {
     f[k] = v === "" ? -1 : Number(v);
   }
   f.route_order = [...devOrder];
+  f.parakeet_decoding = $<HTMLSelectElement>("dev_parakeet_decoding").value || f.parakeet_decoding || "auto";
   f.allow_cloud = $<HTMLInputElement>("dev_allow_cloud").checked;
   const budget = $<HTMLInputElement>("dev_cloud_budget").value.trim();
   f.cloud = { ...cloudCfg, monthly_budget_usd: budget === "" ? null : Number(budget) };
@@ -843,6 +845,7 @@ function fillDev(f: DevForm): void {
   for (const k of DEV_NUM) $<HTMLInputElement>(`dev_${k}`).value = String(f[k]);
   showTokenSaved(!!f.token_saved);
   devOrder = [...f.route_order];
+  $<HTMLSelectElement>("dev_parakeet_decoding").value = f.parakeet_decoding ?? "auto";
   $<HTMLInputElement>("dev_allow_cloud").checked = f.allow_cloud;
   cloudCfg = structuredClone(f.cloud);
   $<HTMLInputElement>("dev_cloud_budget").value =

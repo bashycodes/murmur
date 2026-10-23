@@ -454,6 +454,7 @@ fn real_parakeet_on_jfk_pastes_the_speech() {
     let st = a.load_now(&ModelSpec::Parakeet {
         dir,
         threads: Some(4),
+        decoding: flow_core::config::ParakeetDecoding::Auto,
     });
     assert!(st.is_ready(), "{st:?}");
     let prefs = Prefs {
@@ -464,10 +465,17 @@ fn real_parakeet_on_jfk_pastes_the_speech() {
     r.dictate(&pcm, Duration::from_secs(120));
     let pastes = r.os.pastes();
     assert_eq!(pastes.len(), 1, "{:?}", r.os.log.lock().unwrap());
+    // Decode while speaking (D22, default on) cuts JFK at the pause after
+    // "ask not", and Parakeet punctuates each piece: "ask not. What your
+    // country …". Words are what the probe measured (WER), so compare
+    // without punctuation.
+    let words: String = pastes[0]
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect();
     assert!(
-        pastes[0]
-            .to_lowercase()
-            .contains("ask not what your country"),
+        words.contains("ask not what your country can do for you"),
         "{pastes:?}"
     );
 }
