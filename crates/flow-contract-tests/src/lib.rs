@@ -106,6 +106,13 @@ pub fn spawn_slow_mock_server(text: &str, delay: Duration) -> TestServer {
     spawn_server_with(cfg, Some(Arc::new(pool)))
 }
 
+/// A one-worker server around a caller-built core (custom test engines).
+pub fn spawn_core_server(core: FlowCore) -> TestServer {
+    let cfg = server_cfg(mock_model("unused"));
+    let pool = flow_server::Pool::from_cores(vec![Arc::new(core)], &cfg.model, cfg.max_queue);
+    spawn_server_with(cfg, Some(Arc::new(pool)))
+}
+
 fn spawn_server_with(cfg: ServerFileConfig, pool: Option<Arc<flow_server::Pool>>) -> TestServer {
     let rt = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)

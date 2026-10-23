@@ -39,5 +39,9 @@ name = "vad_bench"
 required-features = ["whisper", "wav"]
 
 [[test]]
+name = "segment_bench"
+required-features = ["wav"]
+
+[[test]]
 name = "audio_ctx_bench"
 required-features = ["whisper", "wav"]
