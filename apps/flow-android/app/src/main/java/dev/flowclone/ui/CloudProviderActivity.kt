@@ -88,6 +88,7 @@ class CloudProviderActivity : Activity() {
             heading("API key")
             keyLine = body("")
             key = field("Paste a new key to replace the stored one (${preset.keyHint})", "", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
+            SecretField.protect(key)
             row(
                 Button(context).apply { text = "Show"; isAllCaps = false; setOnClickListener { toggleKeyVisible(this) } },
                 Button(context).apply { text = "Paste"; isAllCaps = false; setOnClickListener { pasteKey() } },
@@ -258,8 +259,8 @@ class CloudProviderActivity : Activity() {
     }
 
     private fun toggleKeyVisible(b: Button) {
-        val hidden = key.inputType and InputType.TYPE_TEXT_VARIATION_PASSWORD == InputType.TYPE_TEXT_VARIATION_PASSWORD
-        key.inputType = InputType.TYPE_CLASS_TEXT or if (hidden) InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD else InputType.TYPE_TEXT_VARIATION_PASSWORD
+        val hidden = !SecretField.isShown(key)
+        SecretField.setShown(key, hidden)
         b.text = if (hidden) "Hide" else "Show"
     }
 

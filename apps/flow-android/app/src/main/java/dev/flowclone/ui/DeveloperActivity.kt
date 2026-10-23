@@ -114,6 +114,7 @@ class DeveloperActivity : Activity() {
             tls = check("Use TLS (wss)", s.tls)
             pin = field("Certificate pin (SHA-256 of the leaf cert, 64 hex; optional)", s.tlsPinSha256, Field.PIN, InputType.TYPE_CLASS_TEXT)
             token = field("Token (from `flow-server gen-token`, ≥ 16 chars)", s.token, Field.TOKEN, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD)
+            SecretField.protect(token)
             row(
                 Button(context).apply { text = "Show"; isAllCaps = false; setOnClickListener { toggleTokenVisible(this) } },
                 Button(context).apply { text = "Paste"; isAllCaps = false; setOnClickListener { pasteToken() } },
@@ -596,8 +597,8 @@ class DeveloperActivity : Activity() {
     }
 
     private fun toggleTokenVisible(b: Button) {
-        val hidden = token.inputType and InputType.TYPE_TEXT_VARIATION_PASSWORD == InputType.TYPE_TEXT_VARIATION_PASSWORD
-        token.inputType = InputType.TYPE_CLASS_TEXT or if (hidden) InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD else InputType.TYPE_TEXT_VARIATION_PASSWORD
+        val hidden = !SecretField.isShown(token)
+        SecretField.setShown(token, hidden)
         b.text = if (hidden) "Hide" else "Show"
     }
 
