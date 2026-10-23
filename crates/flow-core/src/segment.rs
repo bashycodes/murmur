@@ -191,8 +191,15 @@ impl Segmenter {
     }
 }
 
-/// Audio on each side of a cut that a boundary "bridge" decode covers.
+/// Audio after a cut that a boundary "bridge" decode covers (the worker
+/// decodes the bridge while recording once this much follows the cut).
 pub const BRIDGE_SAMPLES: usize = SAMPLE_RATE * 4;
+/// Audio before a cut that a bridge covers. Longer than the right side:
+/// with 4 s, Parakeet-unified dropped real sentence ends at cuts
+/// ("flowers the pain"); with 6 s it kept them (cliptest 2026-10-23,
+/// `tools/probes/prototypes/seg_join_2026_10_23`). The left audio is
+/// already there, so this costs decode time only, not waiting.
+pub const BRIDGE_LEFT_SAMPLES: usize = SAMPLE_RATE * 6;
 /// Words of each piece next to a cut that the bridge may rewrite.
 const SPLICE_WORDS: usize = 6;
 /// Of those, the words right at the cut that may also change (not just
@@ -200,8 +207,14 @@ const SPLICE_WORDS: usize = 6;
 const SPLICE_FREE_WORDS: usize = 2;
 
 /// The bridge window around `cut`, within the two pieces `lo..hi`.
+/// `FLOW_BRIDGE_LEFT_MS` overrides the left side (bench knob, like
+/// `FLOW_SEGMENT_JOIN`; `tests/segment_bench.rs`).
 pub fn bridge_range(cut: usize, lo: usize, hi: usize) -> Range<usize> {
-    cut.saturating_sub(BRIDGE_SAMPLES).max(lo)..(cut + BRIDGE_SAMPLES).min(hi)
+    let left = std::env::var("FLOW_BRIDGE_LEFT_MS")
+        .ok()
+        .and_then(|v| v.parse::<usize>().ok())
+        .map_or(BRIDGE_LEFT_SAMPLES, |ms| ms * SAMPLE_RATE / 1000);
+    cut.saturating_sub(left).max(lo)..(cut + BRIDGE_SAMPLES).min(hi)
 }
 
 fn key(w: &str) -> String {
@@ -226,7 +239,7 @@ fn key(w: &str) -> String {
 /// there); otherwise (or with nothing to change) `None`. The
 /// bridge's first and last words, decoded without context on one side,
 /// are never anchors.
-pub fn splice(left: &str, right: &str, bridge: &str) -> Option<(String, String)> {
+pub fn splice<'a>(left: &'a str, right: &'a str, bridge: &'a str) -> Option<(String, String)> {
     let lw: Vec<&str> = left.split_whitespace().collect();
     let rw: Vec<&str> = right.split_whitespace().collect();
     let bw: Vec<&str> = bridge.split_whitespace().collect();
@@ -307,12 +320,113 @@ pub fn splice(left: &str, right: &str, bridge: &str) -> Option<(String, String)>
     if !same_l || !same_r {
         return None;
     }
-    let mut nl: Vec<&str> = lw[..t0 + ta].to_vec();
-    nl.extend_from_slice(new_l);
-    let mut nr: Vec<&str> = bw[bj..=bz].to_vec();
-    nr.extend_from_slice(&rw[hz - nt + 1..]);
-    let (nl, nr) = (nl.join(" "), nr.join(" "));
+    // Next to its edges the bridge lacks context too ("Capacity, the
+    // Englishman" for "capacity. The Englishman"): there the pieces' own
+    // spelling stands.
+    let pick = |j: usize, old: &'a str| -> &'a str {
+        if j < BRIDGE_EDGE_WORDS || j + BRIDGE_EDGE_WORDS >= m {
+            old
+        } else {
+            bw[j]
+        }
+    };
+    let mut words: Vec<String> = lw[..t0 + ta].iter().map(|w| w.to_string()).collect();
+    words.extend(
+        old_l
+            .iter()
+            .enumerate()
+            .map(|(i, &o)| pick(ba + i, o).to_string()),
+    );
+    let split = words.len();
+    words.extend(
+        old_r
+            .iter()
+            .enumerate()
+            .map(|(i, &o)| pick(bj + i, o).to_string()),
+    );
+    let span_end = words.len();
+    words.extend(rw[hz - nt + 1..].iter().map(|w| w.to_string()));
+    // Mixed sources can leave "him. the": a rewritten word (or the one
+    // after the span) that follows a sentence end starts upper case.
+    for i in (t0 + ta).max(1)..=span_end.min(words.len() - 1) {
+        if ends_sentence(&words[i - 1]) {
+            if let Some(c) = capitalized(&words[i]) {
+                words[i] = c;
+            }
+        }
+    }
+    let (nl, nr) = (words[..split].join(" "), words[split..].join(" "));
     (nl != left || nr != right).then_some((nl, nr))
+}
+
+/// Words at each end of a bridge whose case and punctuation are not
+/// taken (the bridge heard them without context on one side).
+const BRIDGE_EDGE_WORDS: usize = 2;
+
+/// Lower-case words that end with a period without ending a sentence.
+const ABBREVIATIONS: &[&str] = &[
+    "mr", "mrs", "ms", "dr", "st", "jr", "sr", "prof", "vs", "etc", "e.g", "i.e", "eg", "ie",
+    "approx", "a.m", "p.m", "fig",
+];
+
+/// Whether `w` ends a sentence: `.`, `?` or `!` (before closing quotes or
+/// brackets), not an ellipsis or a known abbreviation.
+fn ends_sentence(w: &str) -> bool {
+    let w = w.trim_end_matches(['"', '\'', ')', ']', '\u{201D}', '\u{2019}']);
+    if w.ends_with("..") || w.ends_with('\u{2026}') {
+        return false;
+    }
+    if w.ends_with(['?', '!']) {
+        return true;
+    }
+    let Some(stem) = w.strip_suffix('.') else {
+        return false;
+    };
+    let stem = stem.trim_start_matches(['"', '\'', '(', '[', '\u{201C}', '\u{2018}']);
+    !stem.is_empty() && !ABBREVIATIONS.contains(&stem.to_lowercase().as_str())
+}
+
+/// `w` with its first letter upper-cased, when it starts with a lower-case
+/// letter and has no other capitals ("iPhone" and "eBay" stay).
+fn capitalized(w: &str) -> Option<String> {
+    let mut ch = w.chars();
+    let c = ch.next()?;
+    if !c.is_lowercase() || ch.clone().any(char::is_uppercase) {
+        return None;
+    }
+    Some(c.to_uppercase().chain(ch).collect())
+}
+
+/// `right` with its first word capitalised when `left` ends a sentence
+/// and `right` starts lower case: a piece decoded alone (or with
+/// whisper's `prior_text`) may start "the" after a cut that ends a
+/// sentence ("figures. that is"). `None` when nothing changes.
+pub fn capitalize_after_stop(left: &str, right: &str) -> Option<String> {
+    let last = left.split_whitespace().next_back()?;
+    if !ends_sentence(last) {
+        return None;
+    }
+    let r = right.trim_start();
+    let first = r.split_whitespace().next()?;
+    let c = capitalized(first)?;
+    Some(format!("{c}{}", &r[first.len()..]))
+}
+
+/// [`capitalize_after_stop`] at every join of `texts` (empty pieces are
+/// skipped, as when they are joined).
+pub fn capitalize_joins(texts: &mut [String]) {
+    let mut prev: Option<usize> = None;
+    for k in 0..texts.len() {
+        if texts[k].trim().is_empty() {
+            continue;
+        }
+        if let Some(p) = prev {
+            if let Some(r) = capitalize_after_stop(&texts[p], &texts[k]) {
+                texts[k] = r;
+            }
+        }
+        prev = Some(k);
+    }
 }
 
 /// Text-only join heuristic (candidate (a), kept for the bench): when
@@ -583,16 +697,27 @@ mod tests {
             None
         );
         // Mangled bridge edges are never used.
-        let (l, r) = splice("one two three four", "five six seven", "ree four, five si").unwrap();
+        let (l, r) = splice(
+            "one two three four",
+            "five six seven",
+            "ree two three four, five six se",
+        )
+        .unwrap();
         assert_eq!(
             (l.as_str(), r.as_str()),
             ("one two three four,", "five six seven")
         );
-        // No anchor on one side: unchanged.
         assert_eq!(
-            splice("alpha beta.", "Gamma delta", "a beta gamma d"),
+            splice(
+                "alpha beta.",
+                "Gamma delta",
+                "x y alpha beta gamma delta z w"
+            ),
             Some(("alpha beta".into(), "gamma delta".into()))
         );
+        // The two words at each bridge edge keep the pieces' case and
+        // punctuation: they were all the bridge had no context for.
+        assert_eq!(splice("alpha beta.", "Gamma delta", "a beta gamma d"), None);
         assert_eq!(splice("alpha beta.", "Gamma delta", "alpha beta"), None);
         // An alignment that slips on common words is refused (it once
         // duplicated "the man who told").
@@ -629,10 +754,67 @@ mod tests {
     }
 
     #[test]
+    fn splice_keeps_case_next_to_the_bridge_edges() {
+        // cliptest 2026-10-23, Parakeet long_028s: the bridge started at
+        // "Capacity," and so heard "the Englishman" mid-sentence; the
+        // splice copied "the" into the left piece ("capacity. the").
+        assert_eq!(
+            splice(
+                "I believe in the training of people to their highest capacity. \
+                 The Englishman here heartily seconded him.",
+                "I think that will do, she continued, for the other qualities",
+                "Capacity, the Englishman here heartily seconded him. I think that \
+                 will do, she continued, for the",
+            ),
+            None
+        );
+        // A rewritten word after a kept sentence end starts upper case.
+        assert_eq!(
+            splice(
+                "a b c d. Then we went",
+                "home after that",
+                "q d, then we went home after that z",
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn capitalize_after_a_sentence_end_at_joins() {
+        // cliptest 2026-10-23: "figures. that is" (Parakeet ls_1188_M).
+        let c = |l: &str, r: &str| capitalize_after_stop(l, r);
+        assert_eq!(
+            c("ill drawn figures.", "that is merely"),
+            Some("That is merely".into())
+        );
+        assert_eq!(c("Is it?", "yes"), Some("Yes".into()));
+        assert_eq!(c("he said \"stop.\"", "then"), Some("Then".into()));
+        assert_eq!(c("you said no.", "then"), Some("Then".into()));
+        // Not a sentence end, already capitalised, or a mixed-case word.
+        assert_eq!(c("capacity,", "the Englishman"), None);
+        assert_eq!(c("figures", "that is"), None);
+        assert_eq!(c("figures.", "That is"), None);
+        assert_eq!(c("figures.", "iPhone sales"), None);
+        assert_eq!(c("and so...", "then"), None);
+        assert_eq!(c("and so\u{2026}", "then"), None);
+        assert_eq!(c("e.g.", "this"), None);
+        assert_eq!(c("ask Mr.", "smith"), None);
+        assert_eq!(c("", "x"), None);
+        let mut t = vec![
+            "One.".to_string(),
+            String::new(),
+            "two".into(),
+            "three".into(),
+        ];
+        capitalize_joins(&mut t);
+        assert_eq!(t, ["One.", "", "Two", "three"]);
+    }
+
+    #[test]
     fn bridge_range_is_clipped_to_the_pieces() {
         assert_eq!(
             bridge_range(10 * S, 0, 30 * S),
-            10 * S - BRIDGE_SAMPLES..10 * S + BRIDGE_SAMPLES
+            10 * S - BRIDGE_LEFT_SAMPLES..10 * S + BRIDGE_SAMPLES
         );
         assert_eq!(bridge_range(S, 0, 2 * S), 0..2 * S);
     }
