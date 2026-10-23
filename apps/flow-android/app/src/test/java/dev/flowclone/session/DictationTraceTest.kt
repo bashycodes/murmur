@@ -62,7 +62,7 @@ class DictationTraceTest {
     private val core = FakeFlowCore(transcript = "my secret phrase")
     private fun TestScope.settle() { advanceTimeBy(1_000); runCurrent() }
 
-    private fun TestScope.controller(host: Host) = DictationController(
+    private fun TestScope.controller(host: DictationController.Host) = DictationController(
         scope = backgroundScope, audio = audio, host = host, core = { core },
         commitDispatcher = StandardTestDispatcher(testScheduler), now = { currentTime }, wallClock = { 1_000_000L },
     ).also { it.onFieldFocusChanged(true) }
@@ -207,5 +207,23 @@ class DictationTraceTest {
         c.toggle(false); settle()
         val wait = traces.single().endpointWaitMs!!
         assertTrue("endpoint_wait_ms=$wait", wait in 200L..400L)
+    }
+
+    @Test fun cloudModelAndSessionLanguageReachTheTrace() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        core.shapeResult = { it.copy(route = dev.flowclone.core.RouteInfo("cloud", provider = "openai", model = "whisper-1")) }
+        val host = object : DictationController.Host by Host({ traces += it }) {
+            override fun sessionConfig() = SessionConfig(languages = listOf("en"))
+            override fun onDictationTrace(trace: DictationTrace) { traces += trace }
+        }
+        dictate(controller(host))
+        assertEquals("whisper-1", traces.single().model)
+        assertEquals("en", traces.single().language)
+    }
+
+    @Test fun autoLanguageIsRecordedAsAuto() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        dictate(controller(Host { traces += it }))
+        assertEquals("auto", traces.single().language)
     }
 }

@@ -17,6 +17,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * Field names are shared with apps/flow-windows: ts, mode, route, fallback, rtt_ms, audio_ms,
  * endpoint_wait_ms, asr_ms, post_ms, total_ms, perceived_ms, target, insert, raw, text, error,
  * and since D22 wait_ms, segments, pre_asr_ms, client_ms (+ `kind` on every line, `stack` when there is an exception, `event` on non-dictation lines).
+ * Android since 2026-10-23: engine (whisper|parakeet|server|cloud|mock), model (file / folder
+ * name, server-reported or cloud model), language (sent to the engine; "auto" = detect).
  *
  * Logging must never affect dictation: entries are queued (bounded, drop-oldest) and written
  * on one background thread; every failure is swallowed and counted.
@@ -32,6 +34,12 @@ data class DictationTrace(
     val route: String? = null,
     /** Router fallback reason (connect_failed, disconnected, circuit_open, …) or the start error kind. */
     val fallback: String? = null,
+    /** whisper | parakeet | server | cloud | mock ([DebugEngine]); null when no engine ran. */
+    val engine: String? = null,
+    /** whisper file / Parakeet folder name, the server-reported ASR model, or the cloud model. */
+    val model: String? = null,
+    /** Language sent to the engine ("auto" = detect). */
+    val language: String? = null,
     val rttMs: Long? = null,
     val audioMs: Long? = null,
     /** Last speech → stop (shell-side energy tracker); null when no speech was heard. */
@@ -71,6 +79,21 @@ data class InsertOutcome(val outcome: String, val steps: List<String> = emptyLis
         const val TIMEOUT = "timeout"
         const val START_FAILED = "start_failed"
         const val CANCELLED = "cancelled"
+    }
+}
+
+/** The `engine` / `model` fields of a dictation line, from the route that served it. */
+object DebugEngine {
+    /**
+     * [asr]: the on-device ASR that loaded; [serverModel]: the ASR model the server reported in
+     * its last health probe; [routeModel]: the model in the commit's route (cloud).
+     */
+    fun of(route: String?, mock: Boolean, asr: dev.flowclone.data.LoadedAsr?, serverModel: String?, routeModel: String?): Pair<String?, String?> = when {
+        mock -> "mock" to null
+        route == "local" -> asr?.engine?.wire to asr?.model
+        route == "remote" -> "server" to serverModel
+        route == "cloud" -> "cloud" to routeModel
+        else -> null to null
     }
 }
 
@@ -138,6 +161,9 @@ object DebugFormat {
         "mode" to t.mode,
         "route" to t.route,
         "fallback" to t.fallback,
+        "engine" to t.engine,
+        "model" to t.model,
+        "language" to t.language,
         "rtt_ms" to t.rttMs,
         "audio_ms" to t.audioMs,
         "endpoint_wait_ms" to t.endpointWaitMs,
@@ -172,7 +198,8 @@ object DebugFormat {
         val time = s("ts")?.substringAfter('T')?.removeSuffix("Z") ?: "?"
         if (o.optString("kind") == "event") return@runCatching "$time  ${s("event")}: ${s("error") ?: ""}"
         val outcome = o.optJSONObject("insert")?.optString("outcome") ?: "?"
-        val route = listOfNotNull(s("route") ?: "-", s("fallback")?.let { "($it)" }).joinToString(" ")
+        val route = listOfNotNull(s("route") ?: "-", s("fallback")?.let { "($it)" }, s("engine"), s("model")).joinToString(" ") +
+            (s("language")?.let { " · lang $it" } ?: "")
         val ms = listOfNotNull(
             s("perceived_ms")?.let { "wait $it ms" }, s("client_ms")?.let { "client $it" }, s("asr_ms")?.let { "asr $it" },
             s("pre_asr_ms")?.takeIf { it != "0" }?.let { "(+$it early, ${s("segments")} seg)" }, s("post_ms")?.let { "post $it" },

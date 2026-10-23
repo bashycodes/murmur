@@ -477,11 +477,16 @@ class DeveloperActivity : Activity() {
                 probeLine.text = "Probing ${s.host}:${s.port}…"
                 thread(name = "dev-probe-saved") {
                     val h = runCatching { r.probeSaved() }.getOrElse { HealthReport(ok = false, error = "error", message = it.message) }
-                    if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h))
+                    if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
                     runOnUiThread { lastProbe = h; probeLine.text = DevText.probe(h); refreshRows() }
                 }
             }
         }
+    }
+
+    /** The debug log's `model` for server dictations: what the server says it runs. */
+    private fun rememberServerModel(h: HealthReport) {
+        (h.asrModel ?: h.asrBackend)?.let { app.dev.serverAsrModel = it }
     }
 
     private fun onTestConnection() {
@@ -496,7 +501,7 @@ class DeveloperActivity : Activity() {
         val json = s.effective(caps).toServerConfigJson().toString()
         thread(name = "dev-probe") {
             val h = NativeFlowCore.probeServer(json)
-            if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h))
+            if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
             runOnUiThread {
                 lastProbe = h
                 probeLine.text = DevText.probe(h)

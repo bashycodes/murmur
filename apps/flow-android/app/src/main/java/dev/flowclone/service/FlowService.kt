@@ -415,8 +415,12 @@ class FlowService : Service() {
             try {
                 if (!app.debugLog.isEnabled()) return
                 val steps = synchronized(insertSteps) { insertSteps.toList() }
+                val ready = app.engine.state.value as? dev.flowclone.EngineHolder.State.Ready
+                val (engine, model) = dev.flowclone.debug.DebugEngine.of(
+                    trace.route, ready?.mock == true, ready?.asr, app.dev.serverAsrModel, trace.model,
+                )
                 val t = dev.flowclone.debug.DebugRedact.apply(
-                    trace.copy(insert = trace.insert.copy(steps = steps)),
+                    trace.copy(insert = trace.insert.copy(steps = steps), engine = engine, model = model),
                     protectedField = app.accessibility?.startFieldProtected == true,
                     protectedApp = dev.flowclone.debug.DebugRedact.isProtectedApp(trace.target, app.settings.load().userDenylist),
                 )

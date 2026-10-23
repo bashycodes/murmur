@@ -146,7 +146,7 @@ class DictationController(
     }
 
     /** What the debug trace needs from the dictation's start. */
-    private data class TraceStart(val wallMs: Long, val hold: Boolean, val appId: String?)
+    private data class TraceStart(val wallMs: Long, val hold: Boolean, val appId: String?, val language: String? = null)
 
     companion object {
         const val TOGGLE_DEBOUNCE_MS = 500L
@@ -216,6 +216,7 @@ class DictationController(
                     tsMs = s.wallMs, mode = if (s.hold) "hold" else "tap",
                     route = result?.route?.engine ?: liveRoute?.engine,
                     fallback = result?.route?.fallback ?: liveRoute?.fallback ?: fallback,
+                    model = result?.route?.model ?: liveRoute?.model, language = s.language,
                     rttMs = result?.route?.rttMs,
                     audioMs = t?.audioMs, endpointWaitMs = endpointWaitMs, asrMs = t?.asrMs,
                     postMs = t?.let { it.llmMs + it.postprocessMs }, totalMs = t?.totalMs,
@@ -328,7 +329,7 @@ class DictationController(
         val gen = ++generation
         val ctx = host.captureContext()
         sessionAppId = ctx?.appId
-        traceStart = TraceStart(wallClock(), hold, ctx?.appId)
+        traceStart = TraceStart(wallClock(), hold, ctx?.appId, cfg.languages.firstOrNull() ?: "auto")
         session = c
         meter.reset()
         silence.reset()

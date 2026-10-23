@@ -242,6 +242,19 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         set(v) = kv.edit { putBoolean(DEBUG_LOG, v) }
 
     /**
+     * "Keep last dictation audio (debug)", default off: the last few dictations' 16 kHz PCM as WAV
+     * in app-private `files/debug/audio/` (never for protected targets), deleted after 24 h.
+     */
+    var keepDebugAudio: Boolean
+        get() = kv.getBoolean(KEEP_DEBUG_AUDIO, false)
+        set(v) = kv.edit { putBoolean(KEEP_DEBUG_AUDIO, v) }
+
+    /** The ASR model the server reported in its last successful health probe (debug log `model`). */
+    var serverAsrModel: String?
+        get() = kv.getString(SERVER_ASR_MODEL)
+        set(v) = kv.edit { putString(SERVER_ASR_MODEL, v) }
+
+    /**
      * D22: Parakeet search mode for the on-device engine. Default greedy: one recognizer, ≈ 0.6 GB
      * less RAM than `auto` (which adds a beam recognizer for dictionary hotwords).
      */
@@ -254,5 +267,7 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         const val FILE = "dev"
         const val USAGE = "cloud_usage"
         const val DEBUG_LOG = "debug_log"
+        const val KEEP_DEBUG_AUDIO = "debug_keep_audio"
+        const val SERVER_ASR_MODEL = "server.last_asr_model"
     }
 }
