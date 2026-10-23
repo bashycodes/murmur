@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * Field names are shared with apps/flow-windows: ts, mode, route, fallback, rtt_ms, audio_ms,
  * endpoint_wait_ms, asr_ms, post_ms, total_ms, perceived_ms, target, insert, raw, text, error,
- * and since D22 wait_ms, segments, pre_asr_ms, client_ms (+ `kind` on every line, `stack` when there is an exception, `event` on non-dictation lines).
+ * and since D22 wait_ms, segments, pre_asr_ms, client_ms, since D24 connect_ms, local_cold, local_load_ms (+ `kind` on every line, `stack` when there is an exception, `event` on non-dictation lines).
  * Android since 2026-10-23: engine (whisper|parakeet|server|cloud|mock), model (file / folder
  * name, server-reported or cloud model), language (sent to the engine; "auto" = detect), audio
  * (kept WAV file name, Developer "Keep last dictation audio (debug)"; else null).
@@ -59,6 +59,12 @@ data class DictationTrace(
     val preAsrMs: Long? = null,
     /** D22 `route.client_ms`: release → result on the phone, network included (router only). */
     val clientMs: Long? = null,
+    /** D24: time the start spent connecting to the server (null = not tried: off, circuit open). */
+    val connectMs: Long? = null,
+    /** D24: the phone model was loaded on demand for this dictation (server unreachable, keep warm off). */
+    val localCold: Boolean? = null,
+    /** D24: how long that load took. */
+    val localLoadMs: Long? = null,
     /** Package of the field the dictation started in; redacted by [DebugRedact]. */
     val target: String? = null,
     val insert: InsertOutcome,
@@ -183,6 +189,9 @@ object DebugFormat {
         "segments" to t.segments,
         "pre_asr_ms" to t.preAsrMs,
         "client_ms" to t.clientMs,
+        "connect_ms" to t.connectMs,
+        "local_cold" to t.localCold,
+        "local_load_ms" to t.localLoadMs,
         "target" to t.target,
         "insert" to Raw(obj("outcome" to t.insert.outcome, "steps" to t.insert.steps)),
         "raw" to t.raw,
@@ -213,6 +222,7 @@ object DebugFormat {
             s("perceived_ms")?.let { "wait $it ms" }, s("client_ms")?.let { "client $it" }, s("asr_ms")?.let { "asr $it" },
             s("pre_asr_ms")?.takeIf { it != "0" }?.let { "(+$it early, ${s("segments")} seg)" }, s("post_ms")?.let { "post $it" },
             s("endpoint_wait_ms")?.let { "endpoint $it" }, s("rtt_ms")?.let { "rtt $it" },
+            s("connect_ms")?.let { "connect $it" }, s("local_load_ms")?.let { "phone model loaded in $it" },
         ).joinToString(" · ")
         val text = s("text") ?: s("raw") ?: ""
         val err = s("error")?.let { "\n  error: $it" } ?: ""

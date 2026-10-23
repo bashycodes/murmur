@@ -70,6 +70,8 @@ frees the router and the local engine it owns.
 | `nativeProbeRouter(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeProbeRouter` | Blocking probe of the router's saved server; updates its circuit and `RouteStatus.health` (run after Save) |
 | `nativeRouteStatus(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeRouteStatus` | `RouteStatus` JSON `{last: RouteInfo?, circuit: {open, reason, retry_in_ms, until_config_change}, health: HealthReport?}`; `{}` for a core handle |
 | `nativeResetCircuit(h: Long)` | `(J)V` | `Java_dev_flowclone_core_NativeFlowCore_nativeResetCircuit` | Close the circuit breaker (Developer "Reset circuit"); no-op for a core handle |
+| `nativeSetLocalLoader(h: Long, modelConfigsJson: String): Boolean` | `(JLjava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetLocalLoader` | D24 on-demand local engine: a JSON array of `ModelConfig`s tried in order (`EnginePlan.attempts`); the router loads the first that works on its failover thread when a session needs the client route and none is warm (`keep_local_warm` off, server unreachable / circuit open). `[]` removes it. `false` + `bad_config` for bad JSON or a core handle. No network |
+| `nativePrewarm(h: Long): Boolean` | `(J)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativePrewarm` | D24: open the server connection ahead of a dictation (**blocking** up to the connect timeout: off Main). Does nothing with the server route off / unconfigured / circuit open / a live session; a failure opens the circuit. `false` for a core handle |
 
 Router errors: `nativeStartSession(router)` returns `false` with kind `no_engine_enabled` /
 `local_not_ready` / `server_not_configured` / `server_unavailable` (server-only and
@@ -144,8 +146,8 @@ Kotlin must never call a **blocking** native on the main thread.
 | `nativeLoadModels` (model load) | `nativePushAudio` (never waits; a mid-session failover connects on a native helper thread) |
 | `nativeStartSession`, `nativeStartSessionInfo` (server route: TCP + TLS + WebSocket hello, up to `connect_timeout_ms`; local: may wait for the previous commit's worker) | `nativePoll`, `nativePartial`, `nativeSetContext` |
 | `nativeCommit` (ASR + LLM; server/cloud round trip) | `nativeCancel` (also aborts a commit running on another thread, see below) |
-| `nativeProbeServer`, `nativeProbeRouter`, `nativeProbeCloud` | `nativeRouteStatus`, `nativeCapabilities`, `nativeCloudCapabilities`, `nativeCloudPresets`, `nativeLastError*` |
-| `nativeUnload` (joins the engine worker; waits for a running commit) | `nativeOpenRouter`, `nativeUpdateRouter`, `nativeResetCircuit` (no network) |
+| `nativeProbeServer`, `nativeProbeRouter`, `nativeProbeCloud`, `nativePrewarm` (D24) | `nativeRouteStatus`, `nativeCapabilities`, `nativeCloudCapabilities`, `nativeCloudPresets`, `nativeLastError*` |
+| `nativeUnload` (joins the engine worker; waits for a running commit) | `nativeOpenRouter`, `nativeUpdateRouter`, `nativeResetCircuit`, `nativeSetLocalLoader` (no network; the load itself runs later on a router thread) |
 | | `nativeSetCloudKey`, `nativeSetCloudKeyFor`, `nativeCloudUsage`, `nativeSetCloudUsage`, `nativeResetCloudUsage` |
 
 Session semantics (2026-10-22, review fixes):

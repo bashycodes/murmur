@@ -42,6 +42,10 @@ struct Fake {
     /// The next push_audio / start_session panics (C8).
     panic_push: AtomicBool,
     panic_start: AtomicBool,
+    /// D24: `warm()` calls, its outcome, and the probe's RTT.
+    warms: AtomicUsize,
+    warm_fail: Mutex<Option<Failure>>,
+    probe_rtt: Mutex<Option<u32>>,
 }
 
 impl Fake {
@@ -63,6 +67,9 @@ impl Fake {
             block_commit: AtomicBool::new(false),
             panic_push: AtomicBool::new(false),
             panic_start: AtomicBool::new(false),
+            warms: AtomicUsize::new(0),
+            warm_fail: Mutex::new(None),
+            probe_rtt: Mutex::new(None),
         })
     }
     fn slow_start(self: Arc<Self>, ms: u64) -> Arc<Self> {
@@ -206,7 +213,20 @@ impl Backend for Fake {
         HealthReport {
             ok: true,
             engine: self.kind,
+            rtt_ms: self.probe_rtt.lock().unwrap().map(|m| Rtt {
+                min: m,
+                median: m,
+                max: m,
+            }),
             ..Default::default()
+        }
+    }
+    fn warm(&self) -> Result<(), BackendError> {
+        self.warms.fetch_add(1, Ordering::SeqCst);
+        std::thread::sleep(*self.start_delay.lock().unwrap());
+        match *self.warm_fail.lock().unwrap() {
+            Some(f) => Err(BackendError::new(f, "fake warm failure")),
+            None => Ok(()),
         }
     }
     fn session_failure(&self) -> Option<BackendError> {
@@ -1161,4 +1181,323 @@ fn endpoint_survives_a_mid_session_failover() {
     let r = k.router.commit();
     assert_eq!(route(&r).engine, "local");
     assert_eq!(k.local.received(), 16 * 2300, "replay + live, nothing lost");
+}
+
+// ---- D24 never-fail fallback: the local engine is loaded on demand -------
+
+/// Loader for an on-demand local engine: counts loads, takes `delay_ms`,
+/// fails when `fail` is set.
+struct Loader {
+    local: Arc<Fake>,
+    loads: Arc<AtomicUsize>,
+    delay_ms: u64,
+    fail: Option<&'static str>,
+}
+
+impl Loader {
+    fn new(delay_ms: u64) -> Self {
+        Self {
+            local: Fake::new(EngineKind::Local),
+            loads: Arc::new(AtomicUsize::new(0)),
+            delay_ms,
+            fail: None,
+        }
+    }
+    fn loader(&self) -> LocalLoader {
+        let (l, n, d, f) = (
+            self.local.clone(),
+            self.loads.clone(),
+            self.delay_ms,
+            self.fail,
+        );
+        Arc::new(move || {
+            n.fetch_add(1, Ordering::SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(d));
+            match f {
+                Some(e) => Err(e.to_string()),
+                None => Ok(l.clone() as Arc<dyn Backend>),
+            }
+        })
+    }
+    fn loads(&self) -> usize {
+        self.loads.load(Ordering::SeqCst)
+    }
+}
+
+/// Router with no warm local engine (keep_local_warm = false) but a loader.
+fn cold_rig(
+    c: RouterConfig,
+    remote: Arc<Fake>,
+    l: &Loader,
+) -> (Router, Arc<Mutex<Vec<ServerConfig>>>) {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let (r2, s2) = (remote.clone(), seen.clone());
+    let factory: RemoteFactory = Box::new(move |s: &ServerConfig| {
+        s2.lock().unwrap().push(s.clone());
+        r2.clone() as Arc<dyn Backend>
+    });
+    let mut c = c;
+    c.keep_local_warm = false;
+    let router = Router::new(c, None, Some(factory)).with_local_loader(l.loader());
+    (router, seen)
+}
+
+#[test]
+fn server_down_and_client_cold_loads_on_demand_and_inserts() {
+    let l = Loader::new(150);
+    let remote = Fake::new(EngineKind::Remote).with_start(StartMode::Fail(Failure::ConnectFailed));
+    let (r, _) = cold_rig(cfg(true, true), remote.clone(), &l);
+    let t0 = Instant::now();
+    let info = r
+        .start_session_info(SessionConfig::default())
+        .expect("never fails while client is allowed");
+    assert!(
+        t0.elapsed() < std::time::Duration::from_millis(100),
+        "start does not wait for the load"
+    );
+    assert!(info.loading, "the shell shows Loading phone model…");
+    let rt = info.route.clone().unwrap();
+    assert_eq!(rt.engine, EngineKind::Local);
+    assert_eq!(rt.fallback.as_deref(), Some("connect_failed"));
+    assert!(r.poll().loading);
+    // Audio pushed while the model loads is buffered, then replayed.
+    let res = dictate(&r);
+    assert_eq!(res.final_text, "local 16000 com.slack");
+    assert_eq!(route(&res).engine, "local");
+    assert_eq!(route(&res).fallback.as_deref(), Some("connect_failed"));
+    assert_start_matches_commit(&rt, &res);
+    assert_eq!(l.loads(), 1);
+    let d = r.route_status().last_diag.unwrap();
+    assert!(d.local_cold);
+    assert!(d.local_load_ms.unwrap() >= 150, "{d:?}");
+    assert!(d.connect_ms.is_some());
+    assert_eq!(d.local_load_error, None);
+    // Next dictation: circuit open → straight to the (now warm) local engine.
+    let info = r.start_session_info(SessionConfig::default()).unwrap();
+    assert!(!info.loading);
+    let res = dictate(&r);
+    assert_eq!(res.final_text, "local 16000 com.slack");
+    assert_eq!(route(&res).fallback.as_deref(), Some("circuit_open"));
+    assert_eq!(remote.starts(), 1, "open circuit: no second connect wait");
+    assert_eq!(l.loads(), 1, "loaded once, kept");
+    let d = r.route_status().last_diag.unwrap();
+    assert!(
+        !d.local_cold && d.local_load_ms.is_none() && d.connect_ms.is_none(),
+        "{d:?}"
+    );
+}
+
+#[test]
+fn slow_server_handshake_falls_back_to_cold_local() {
+    let l = Loader::new(20);
+    // The connect gives up after its timeout (simulated: 300 ms, then connect_failed).
+    let remote = Fake::new(EngineKind::Remote)
+        .slow_start(300)
+        .with_start(StartMode::Fail(Failure::ConnectFailed));
+    let (r, _) = cold_rig(cfg(true, true), remote, &l);
+    r.start_session(SessionConfig::default()).unwrap();
+    let res = dictate(&r);
+    assert_eq!(res.final_text, "local 16000 com.slack");
+    let d = r.route_status().last_diag.unwrap();
+    assert!(d.connect_ms.unwrap() >= 300, "{d:?}");
+    assert!(d.local_cold);
+}
+
+#[test]
+fn cancel_during_on_demand_load_inserts_nothing() {
+    let l = Loader::new(300);
+    let remote = Fake::new(EngineKind::Remote).with_start(StartMode::Fail(Failure::ConnectFailed));
+    let (r, _) = cold_rig(cfg(true, true), remote, &l);
+    r.start_session(SessionConfig::default()).unwrap();
+    assert!(r.push_audio(&[100i16; 1600]));
+    assert!(r.local_loading() || l.loads() == 0 || r.poll().loading);
+    r.cancel();
+    assert_eq!(
+        r.poll(),
+        RouterPoll::default(),
+        "no live session after cancel"
+    );
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    assert_eq!(
+        l.local.commits.load(Ordering::SeqCst),
+        0,
+        "nothing transcribed"
+    );
+    let res = r.commit();
+    assert_eq!(res.status, CommitStatus::Error);
+    assert_eq!(res.route, None, "no session to commit: nothing inserted");
+    // The model stays loaded for the next dictation.
+    r.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(dictate(&r).final_text, "local 16000 com.slack");
+    assert_eq!(l.loads(), 1);
+}
+
+#[test]
+fn mid_session_server_death_replays_into_cold_local() {
+    let l = Loader::new(50);
+    let remote = Fake::new(EngineKind::Remote).dying_after(8000);
+    let (r, _) = cold_rig(cfg(true, true), remote, &l);
+    let info = r.start_session_info(SessionConfig::default()).unwrap();
+    assert_eq!(info.route.unwrap().engine, EngineKind::Remote);
+    assert!(!info.loading);
+    let res = dictate(&r);
+    assert_eq!(
+        res.final_text, "local 16000 com.slack",
+        "whole buffer replayed (I5)"
+    );
+    assert_eq!(route(&res).fallback.as_deref(), Some("disconnected"));
+    let d = r.route_status().last_diag.unwrap();
+    assert!(d.local_cold && d.local_load_ms.is_some(), "{d:?}");
+}
+
+#[test]
+fn commit_timeout_replays_into_cold_local() {
+    let l = Loader::new(30);
+    let remote = Fake::new(EngineKind::Remote).with_commit(CommitMode::Fail(Failure::Timeout));
+    let (r, _) = cold_rig(cfg(true, true), remote, &l);
+    r.start_session(SessionConfig::default()).unwrap();
+    let res = dictate(&r);
+    assert_eq!(res.final_text, "local 16000 com.slack");
+    assert_eq!(route(&res).fallback.as_deref(), Some("timeout"));
+}
+
+#[test]
+fn open_circuit_goes_straight_to_cold_local_without_connecting() {
+    let l = Loader::new(10);
+    let remote = Fake::new(EngineKind::Remote).with_start(StartMode::Fail(Failure::ConnectFailed));
+    let (r, _) = cold_rig(cfg(true, true), remote.clone(), &l);
+    // A failed pre-warm (bubble shown) opens the circuit…
+    *remote.warm_fail.lock().unwrap() = Some(Failure::ConnectFailed);
+    assert!(!r.prewarm());
+    assert!(r.route_status().circuit.open);
+    // …so the dictation does not wait for the server at all.
+    let info = r.start_session_info(SessionConfig::default()).unwrap();
+    assert_eq!(
+        info.route.unwrap().fallback.as_deref(),
+        Some("circuit_open")
+    );
+    assert_eq!(remote.starts(), 0);
+    assert_eq!(dictate(&r).final_text, "local 16000 com.slack");
+}
+
+#[test]
+fn load_failure_with_no_other_route_says_why() {
+    let mut l = Loader::new(10);
+    l.fail = Some("no Parakeet model folder imported");
+    let remote = Fake::new(EngineKind::Remote).with_start(StartMode::Fail(Failure::ConnectFailed));
+    let (r, _) = cold_rig(cfg(true, true), remote, &l);
+    r.start_session(SessionConfig::default()).unwrap();
+    let res = dictate(&r);
+    assert_eq!(res.status, CommitStatus::Error);
+    let e = res.error.unwrap();
+    assert!(e.starts_with("server_unavailable: connect_failed"), "{e}");
+    assert!(
+        e.contains("phone model failed to load: no Parakeet model folder imported"),
+        "{e}"
+    );
+    let d = r.route_status().last_diag.unwrap();
+    assert_eq!(
+        d.local_load_error.as_deref(),
+        Some("no Parakeet model folder imported")
+    );
+}
+
+#[test]
+fn no_route_possible_still_fails_at_start() {
+    // Client off: the loader is never used; server-only + down = start error.
+    let l = Loader::new(0);
+    let remote = Fake::new(EngineKind::Remote).with_start(StartMode::Fail(Failure::ConnectFailed));
+    let (r, _) = cold_rig(cfg(true, false), remote, &l);
+    let e = r.start_session(SessionConfig::default()).unwrap_err();
+    assert_eq!(e.kind(), "server_unavailable");
+    assert_eq!(l.loads(), 0);
+    let (r, _) = cold_rig(cfg(false, false), Fake::new(EngineKind::Remote), &l);
+    assert_eq!(
+        r.start_session(SessionConfig::default()).unwrap_err(),
+        RouterError::NoEngineEnabled
+    );
+}
+
+#[test]
+fn client_first_with_cold_local_uses_server_then_loads_if_server_down() {
+    let l = Loader::new(10);
+    let mut c = cfg(true, true);
+    c.prefer = Prefer::Client;
+    let (r, _) = cold_rig(c.clone(), Fake::new(EngineKind::Remote), &l);
+    let res = {
+        r.start_session(SessionConfig::default()).unwrap();
+        dictate(&r)
+    };
+    assert_eq!(route(&res).engine, "remote");
+    assert_eq!(route(&res).fallback.as_deref(), Some("local_not_ready"));
+    assert_eq!(l.loads(), 0, "a healthy server spares the load");
+    let down = Fake::new(EngineKind::Remote).with_start(StartMode::Fail(Failure::ConnectFailed));
+    let (r, _) = cold_rig(c, down, &l);
+    r.start_session(SessionConfig::default()).unwrap();
+    let res = dictate(&r);
+    assert_eq!(res.final_text, "local 16000 com.slack");
+    assert_eq!(route(&res).fallback.as_deref(), Some("local_not_ready"));
+}
+
+#[test]
+fn connect_timeout_adapts_to_the_measured_rtt() {
+    assert_eq!(effective_connect_timeout_ms(2500, None), 2500);
+    assert_eq!(effective_connect_timeout_ms(2500, Some(150)), 2500);
+    assert_eq!(
+        effective_connect_timeout_ms(800, Some(5)),
+        1500,
+        "min 1.5 s once measured"
+    );
+    assert_eq!(effective_connect_timeout_ms(2500, Some(600)), 3600);
+    assert_eq!(effective_connect_timeout_ms(2500, Some(5000)), 10_000);
+    assert_eq!(
+        effective_connect_timeout_ms(9000, Some(10)),
+        9000,
+        "never lowers"
+    );
+    let l = Loader::new(0);
+    let remote = Fake::new(EngineKind::Remote);
+    *remote.probe_rtt.lock().unwrap() = Some(700);
+    let (r, seen) = cold_rig(cfg(true, true), remote, &l);
+    assert!(r.probe_server().ok);
+    r.start_session(SessionConfig::default()).unwrap();
+    dictate(&r);
+    let seen = seen.lock().unwrap();
+    assert_eq!(
+        seen.first().unwrap().connect_timeout_ms,
+        2500,
+        "before the probe"
+    );
+    assert_eq!(
+        seen.last().unwrap().connect_timeout_ms,
+        4200,
+        "700 ms RTT × 6"
+    );
+}
+
+#[test]
+fn prewarm_warms_only_an_allowed_closed_server() {
+    let l = Loader::new(0);
+    let remote = Fake::new(EngineKind::Remote);
+    let (r, _) = cold_rig(cfg(true, true), remote.clone(), &l);
+    assert!(r.prewarm());
+    assert_eq!(remote.warms.load(Ordering::SeqCst), 1);
+    r.start_session(SessionConfig::default()).unwrap();
+    assert!(!r.prewarm(), "never during a session");
+    r.cancel();
+    let (r, _) = cold_rig(cfg(false, true), remote.clone(), &l);
+    assert!(!r.prewarm(), "server route off: no socket");
+    assert_eq!(remote.warms.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn busy_server_with_a_cold_local_waits_instead_of_loading() {
+    let l = Loader::new(0);
+    let remote = Fake::new(EngineKind::Remote).with_start(StartMode::Queued);
+    let (r, _) = cold_rig(cfg(true, true), remote, &l);
+    let info = r.start_session_info(SessionConfig::default()).unwrap();
+    assert!(info.queued, "waits for a server worker");
+    assert_eq!(info.route.unwrap().engine, EngineKind::Remote);
+    assert_eq!(dictate(&r).final_text, "remote 16000 com.slack");
+    assert_eq!(l.loads(), 0, "busy is not down: no 1 GB load");
 }

@@ -249,4 +249,20 @@ class DevSettingsTest {
         repeat(6) { assertFalse(u.tap()); t += 300 }
         assertTrue(u.tap())
     }
+
+    // ---- D24 connect timeout ----
+
+    @Test fun connectTimeoutDefaultIs2500AndAStored800Migrates() {
+        assertEquals(2500L, DevSettings(allowServer = true, allowClient = true).connectTimeoutMs)
+        assertEquals(2500L, DevSettings.migrateConnectTimeout(null, migrated = false))
+        assertEquals("old default", 2500L, DevSettings.migrateConnectTimeout(800, migrated = false))
+        assertEquals("user value", 1200L, DevSettings.migrateConnectTimeout(1200, migrated = false))
+        assertEquals("800 chosen after the migration", 800L, DevSettings.migrateConnectTimeout(800, migrated = true))
+        val kv = MemKV().apply { m["server.connect_timeout_ms"] = 800L }
+        val store = DevStore(kv, BuildCaps.ALL, RotBox)
+        assertEquals(2500L, store.load().connectTimeoutMs)
+        assertEquals("written back once", 2500L, kv.m["server.connect_timeout_ms"])
+        store.save(store.load().copy(connectTimeoutMs = 800))
+        assertEquals("a deliberate 800 survives", 800L, store.load().connectTimeoutMs)
+    }
 }

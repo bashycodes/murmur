@@ -367,6 +367,11 @@ impl Backend for RemoteBackend {
         }
     }
 
+    /// D24 pre-warm: open (or keep) the warm connection, no session.
+    fn warm(&self) -> Result<(), BackendError> {
+        self.connection().map(|_| ())
+    }
+
     fn session_failure(&self) -> Option<BackendError> {
         let g = self.inner.session.lock().unwrap();
         let s = g.as_ref()?;

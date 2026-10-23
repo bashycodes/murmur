@@ -99,6 +99,8 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("org.json:json:20240303")
+    // SecretFieldTest: real View / AccessibilityNodeInfo behaviour (the a11y tree must never hold a secret).
+    testImplementation("org.robolectric:robolectric:4.14.1")
 }
 
 // tools/probes/jni_stub/run.sh: link-test NativeFlowCore against a host stub .so.

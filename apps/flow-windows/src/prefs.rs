@@ -15,7 +15,8 @@ pub const FILE_NAME: &str = "prefs.json";
 /// `prefs.json` schema revision ([`Prefs::migrate`]). A file without
 /// `prefs_rev` is 0.
 /// * 1 (D22): the hands-free auto-stop default went 2000 → 1500 ms.
-pub const PREFS_REV: u32 = 1;
+/// * 2 (D24): the server connect timeout default went 800 → 2500 ms.
+pub const PREFS_REV: u32 = 2;
 
 /// The hands-free auto-stop default before D22 (rev 0).
 const OLD_HANDS_FREE_SILENCE_MS: u32 = 2000;
@@ -215,6 +216,12 @@ impl Prefs {
     pub fn migrate(&mut self) {
         if self.prefs_rev < 1 && self.hands_free_silence_ms == OLD_HANDS_FREE_SILENCE_MS {
             self.hands_free_silence_ms = flow_core::endpoint::RECOMMENDED_SILENCE_MS;
+        }
+        // D24: 800 ms was the default and is too tight over a Tailscale relay.
+        if self.prefs_rev < 2
+            && self.developer.server.connect_timeout_ms == flow_router::LEGACY_CONNECT_TIMEOUT_MS
+        {
+            self.developer.server.connect_timeout_ms = flow_router::DEFAULT_CONNECT_TIMEOUT_MS;
         }
         self.prefs_rev = PREFS_REV;
     }
@@ -549,6 +556,31 @@ mod tests {
         let path = d.join(FILE_NAME);
         std::fs::write(&path, json).unwrap();
         Prefs::load(&path)
+    }
+
+    #[test]
+    fn old_connect_timeout_default_migrates_once() {
+        let (p, _) = load_str(
+            "mig-ct-old",
+            r#"{"prefs_rev":1,"developer":{"server":{"connect_timeout_ms":800}}}"#,
+        );
+        assert_eq!(p.developer.server.connect_timeout_ms, 2500);
+        let (p, _) = load_str(
+            "mig-ct-user",
+            r#"{"prefs_rev":1,"developer":{"server":{"connect_timeout_ms":1200}}}"#,
+        );
+        assert_eq!(p.developer.server.connect_timeout_ms, 1200);
+        let (p, _) = load_str(
+            "mig-ct-new",
+            &format!(
+                r#"{{"prefs_rev":{PREFS_REV},"developer":{{"server":{{"connect_timeout_ms":800}}}}}}"#
+            ),
+        );
+        assert_eq!(
+            p.developer.server.connect_timeout_ms, 800,
+            "chosen after D24"
+        );
+        assert_eq!(Prefs::default().developer.server.connect_timeout_ms, 2500);
     }
 
     #[test]
