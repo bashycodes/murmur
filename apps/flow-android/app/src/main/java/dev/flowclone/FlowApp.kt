@@ -6,6 +6,8 @@ import dev.flowclone.debug.DebugLogger
 import dev.flowclone.core.BlockingCalls
 import dev.flowclone.insert.ClipboardGuard
 import dev.flowclone.service.AndroidClipPort
+import dev.flowclone.data.LanguageDefault
+import dev.flowclone.data.Settings
 import dev.flowclone.data.LastDictation
 import dev.flowclone.data.CloudKeyStore
 import dev.flowclone.data.RouterOpener
@@ -116,6 +118,10 @@ class FlowApp : Application() {
         engine = EngineHolder(this)
     }
 
+    /** The language the next dictation uses ([dev.flowclone.data.LanguageDefault]). */
+    fun effectiveLanguage(s: Settings = settings.load()): String =
+        LanguageDefault.effective(s.language, java.util.Locale.getDefault().language, engine.loadedAsr())
+
     /** Server token + every stored cloud key (runs on the debug-log thread, never throws). */
     private fun debugSecrets(): List<String> {
         val out = ArrayList<String>()
@@ -167,7 +173,11 @@ class EngineHolder(
     sealed interface State {
         data object NotLoaded : State
         data object Loading : State
-        data class Ready(val core: FlowCore, val description: String, val llm: EnginePlan.LlmStatus = EnginePlan.LlmStatus.Off) : State
+        /** [asr]: the on-device ASR the router got (null: none, e.g. server / cloud only); [mock]: the mock engine. */
+        data class Ready(
+            val core: FlowCore, val description: String, val llm: EnginePlan.LlmStatus = EnginePlan.LlmStatus.Off,
+            val asr: dev.flowclone.data.LoadedAsr? = null, val mock: Boolean = false,
+        ) : State
         data class Failed(val message: String, val kind: String? = null) : State
     }
 
@@ -224,6 +234,9 @@ class EngineHolder(
         is State.Failed -> throw CoreException(s.message, s.kind)
         State.NotLoaded -> { ensureLoaded(); throw CoreException("Speech model is loading, try again in a moment.") }
     }
+
+    /** The on-device ASR that loaded, or null (not loaded, mock, server / cloud only). */
+    fun loadedAsr(): dev.flowclone.data.LoadedAsr? = (_state.value as? State.Ready)?.asr
 
     /** The router handle, when the native router is the active engine. */
     fun router(): NativeFlowCore? = ((_state.value as? State.Ready)?.core as? NativeFlowCore)?.takeIf { it.isRouter }
@@ -290,7 +303,7 @@ class EngineHolder(
             parakeetDecoding = app.dev.parakeetDecoding,
         )
         return when (val plan = EngineRoute.plan(local, app.dev.load(), app.caps)) {
-            EngineRoute.Plan.Mock -> State.Ready(FakeFlowCore("This is a test of on-device dictation."), "mock engine")
+            EngineRoute.Plan.Mock -> State.Ready(FakeFlowCore("This is a test of on-device dictation."), "mock engine", mock = true)
             is EngineRoute.Plan.Unavailable -> {
                 app.debugLog.event("engine_load", "${plan.kind ?: "unavailable"}: ${plan.message}")
                 State.Failed(plan.message, plan.kind)
@@ -308,7 +321,7 @@ class EngineHolder(
                 } else {
                     loadedWithLocal = plan.local != null
                     (r.core as? NativeFlowCore)?.takeIf { it.isRouter }?.let(::syncCloud)
-                    State.Ready(r.core, r.description, r.llm)
+                    State.Ready(r.core, r.description, r.llm, asr = r.asr)
                 }
             }
         }

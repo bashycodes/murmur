@@ -127,3 +127,74 @@ class FieldContextBuilderTest {
         assertEquals("2000 chosen after the migration is kept", 2000, Settings.migrateEndpointMs(stored = 2000, migrated = true))
     }
 }
+
+/** 2026-10-23: English dictations came out as Bulgarian with `auto` on 2 s clips (findings). */
+class LanguageDefaultTest {
+    private val multi = LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-base-q5_1.bin")
+    private val english = LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-base.en-q5_1.bin")
+    private val parakeet = LoadedAsr(dev.flowclone.core.AsrEngine.PARAKEET, "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8")
+
+    @Test fun unsetFollowsThePhoneLanguageOnAMultilingualWhisper() {
+        assertEquals("en", LanguageDefault.effective(Settings.LANGUAGE_UNSET, "en", multi))
+        assertEquals("de", LanguageDefault.effective(Settings.LANGUAGE_UNSET, "de", multi))
+    }
+
+    @Test fun unsetIsAutoWithoutAMultilingualWhisper() {
+        assertEquals("English-only whisper", "auto", LanguageDefault.effective(Settings.LANGUAGE_UNSET, "en", english))
+        assertEquals("Parakeet", "auto", LanguageDefault.effective(Settings.LANGUAGE_UNSET, "en", parakeet))
+        assertEquals("no local engine (server / cloud only)", "auto", LanguageDefault.effective(Settings.LANGUAGE_UNSET, "en", null))
+    }
+
+    @Test fun unsetIsAutoWhenWhisperDoesNotKnowThePhoneLanguage() {
+        assertEquals("auto", LanguageDefault.effective(Settings.LANGUAGE_UNSET, "fil", multi))
+        assertEquals("auto", LanguageDefault.effective(Settings.LANGUAGE_UNSET, null, multi))
+        assertEquals("auto", LanguageDefault.effective(Settings.LANGUAGE_UNSET, "", multi))
+    }
+
+    @Test fun legacyJavaCodesAreNormalised() {
+        assertEquals("he", LanguageDefault.effective(Settings.LANGUAGE_UNSET, "iw", multi))
+        assertEquals("id", LanguageDefault.effective(Settings.LANGUAGE_UNSET, "in", multi))
+        assertEquals("yi", LanguageDefault.effective(Settings.LANGUAGE_UNSET, "ji", multi))
+        assertEquals("whisper's Javanese code", "jw", LanguageDefault.effective(Settings.LANGUAGE_UNSET, "jv", multi))
+    }
+
+    @Test fun explicitChoicesAreKept() {
+        assertEquals("auto", LanguageDefault.effective("auto", "en", multi))
+        assertEquals("fr", LanguageDefault.effective("fr", "en", multi))
+        assertEquals("fr", LanguageDefault.effective("fr", "en", english))
+    }
+
+    @Test fun multilingualDetectionFromTheFileName() {
+        assertTrue(LanguageDefault.isMultilingual(multi))
+        assertTrue(LanguageDefault.isMultilingual(LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-large-v3-turbo-q5_0.bin")))
+        assertTrue(LanguageDefault.isMultilingual(LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-small.bin")))
+        assertTrue(!LanguageDefault.isMultilingual(english))
+        assertTrue(!LanguageDefault.isMultilingual(LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-small.en.bin")))
+        assertTrue(!LanguageDefault.isMultilingual(LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-tiny.en-q8_0.bin")))
+        assertTrue("distil-whisper is English-only", !LanguageDefault.isMultilingual(LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-distil-large-v3.bin")))
+        assertTrue(!LanguageDefault.isMultilingual(parakeet))
+    }
+
+    @Test fun storedAutoFromBeforeTheChangeBecomesUnsetOnce() {
+        // Settings are saved as a whole and "auto" was the first, default entry: a stored "auto"
+        // from before is almost always the untouched default (as the D22 endpoint migration).
+        assertEquals(Settings.LANGUAGE_UNSET, Settings.migrateLanguage(stored = "auto", migrated = false))
+        assertEquals(Settings.LANGUAGE_UNSET, Settings.migrateLanguage(stored = null, migrated = false))
+        assertEquals(Settings.LANGUAGE_UNSET, Settings.migrateLanguage(stored = null, migrated = true))
+        assertEquals("auto chosen after the change is kept", "auto", Settings.migrateLanguage(stored = "auto", migrated = true))
+        assertEquals("en", Settings.migrateLanguage(stored = "en", migrated = false))
+    }
+
+    @Test fun sessionConfigUsesTheEffectiveLanguage() {
+        assertEquals(listOf("de"), Settings().toSessionConfig(emptyList(), language = "de").languages)
+        assertTrue("unset, unresolved → auto", Settings().toSessionConfig(emptyList()).languages.isEmpty())
+        assertEquals(listOf("fr"), Settings(language = "fr").toSessionConfig(emptyList()).languages)
+    }
+
+    @Test fun label() {
+        assertEquals("English (phone language)", LanguageDefault.label(Settings.LANGUAGE_UNSET, "en"))
+        assertEquals("Auto-detect (phone language not used: model is English-only or unknown)", LanguageDefault.label(Settings.LANGUAGE_UNSET, "auto"))
+        assertEquals("Auto-detect", LanguageDefault.label("auto", "auto"))
+        assertEquals("German", LanguageDefault.label("de", "de"))
+    }
+}
