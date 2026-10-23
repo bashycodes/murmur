@@ -56,6 +56,47 @@ class ModelFilesTest {
         assertNotNull(ModelFiles.mismatch(ModelFiles.Kind.LLM_GGUF, ModelFiles.Kind.UNKNOWN))
     }
 
+    /** Device bug (S25+, ggml-base-q5_1.bin): a valid header made `mismatch` null and the elvis said "Could not read". */
+    @Test fun importDecisionAcceptsValidHeader() {
+        val ggml = byteArrayOf(0x6c, 0x6d, 0x67, 0x67)
+        assertNull(ModelFiles.rejection(ModelFiles.Kind.ASR_GGML, ggml))
+        assertNull(ModelFiles.rejection(ModelFiles.Kind.LLM_GGUF, "GGUF".toByteArray()))
+    }
+
+    @Test fun importDecisionExplainsWrongKind() {
+        assertEquals(
+            ModelFiles.mismatch(ModelFiles.Kind.ASR_GGML, ModelFiles.Kind.LLM_GGUF),
+            ModelFiles.rejection(ModelFiles.Kind.ASR_GGML, "GGUF".toByteArray()),
+        )
+        assertTrue(ModelFiles.rejection(ModelFiles.Kind.ASR_GGML, "PK\u0003\u0004".toByteArray())!!.contains("ggml"))
+    }
+
+    @Test fun importDecisionUnreadableFile() =
+        assertEquals("Could not read the file.", ModelFiles.rejection(ModelFiles.Kind.ASR_GGML, null))
+
+    /** A content provider stream may return fewer bytes per read() than asked (pipes, cloud providers). */
+    @Test fun readHeaderLoopsOverShortReads() {
+        val oneByteAtATime = object : java.io.InputStream() {
+            private val data = byteArrayOf(0x6c, 0x6d, 0x67, 0x67, 1, 2)
+            private var i = 0
+            override fun read(): Int = if (i < data.size) data[i++].toInt() and 0xff else -1
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                if (len == 0) return 0
+                val c = read(); if (c < 0) return -1
+                b[off] = c.toByte(); return 1
+            }
+        }
+        val h = ModelFiles.readHeader(oneByteAtATime)
+        assertEquals(4, h.size)
+        assertEquals(ModelFiles.Kind.ASR_GGML, ModelFiles.kindOf(h))
+    }
+
+    @Test fun readHeaderOfTinyFileIsShortAndRejected() {
+        val h = ModelFiles.readHeader(java.io.ByteArrayInputStream(byteArrayOf(0x6c, 0x6d)))
+        assertEquals(2, h.size)
+        assertNotNull(ModelFiles.rejection(ModelFiles.Kind.ASR_GGML, h))
+    }
+
     @Test fun recommendationsAreSmallQwenQ4KM() {
         val r = ModelFiles.LLM_RECOMMENDATIONS
         assertTrue(r.first().file.startsWith("qwen2.5-0.5b-instruct-q4_k_m"))
