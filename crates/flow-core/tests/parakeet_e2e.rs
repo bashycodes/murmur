@@ -183,3 +183,45 @@ fn parakeet_long_clip_is_not_empty() {
         );
     }
 }
+
+/// Survey regression: beam 4 returned "" on long clips (6/6), and one-shot
+/// greedy decodes dropped whole utterances (here: the 17 s third sentence
+/// of the 30 s clip, WER 58%). Clips over 20 s are now decoded in pieces
+/// cut at pauses, greedy without hotwords, beam (+ greedy retry) with: no
+/// sentence may go missing, with or without a dictionary.
+#[test]
+fn parakeet_survey_long_clips_are_not_empty_with_or_without_hotwords() {
+    let Some(core) = load() else { return };
+    let Some(audio) = long_clips::audio_dir() else {
+        eprintln!("SKIP: FLOW_AUDIO_DIR not set");
+        return;
+    };
+    for n in [3, 4] {
+        let Some(clip) = long_clips::survey(&audio, n) else {
+            return;
+        };
+        for dict in [vec![], vec![DictEntry::word("Meadowcroft")]] {
+            let biased = !dict.is_empty();
+            core.start_session(SessionConfig {
+                ring_capacity_samples: clip.pcm.len() + 16_000,
+                dictionary: Dictionary { entries: dict },
+                ..Default::default()
+            })
+            .unwrap();
+            for c in clip.pcm.chunks(640) {
+                assert!(core.push_audio(c));
+            }
+            let r = core.commit();
+            let (e, w) = long_clips::wer_counts(&clip.reference, &r.asr_text);
+            eprintln!(
+                "{:.1} s hotwords={biased}: {:?} asr {} ms WER {:.1}%",
+                clip.secs(),
+                r.status,
+                r.timings.asr_ms,
+                100.0 * e as f32 / w as f32
+            );
+            assert_eq!(r.status, CommitStatus::RawTranscript, "{r:?}");
+            assert!(e * 10 < w, "WER {e}/{w}: {}", r.asr_text);
+        }
+    }
+}

@@ -383,8 +383,12 @@ impl FlowCore {
             AsrBackend::Parakeet => {
                 require_dir(&cfg.asr_path)?;
                 Arc::new(
-                    crate::parakeet::ParakeetAsr::load(&cfg.asr_path, cfg.threads)
-                        .map_err(|e| CoreError::Load(e.to_string()))?,
+                    crate::parakeet::ParakeetAsr::load_with(
+                        &cfg.asr_path,
+                        cfg.threads,
+                        cfg.parakeet_decoding,
+                    )
+                    .map_err(|e| CoreError::Load(e.to_string()))?,
                 )
             }
             #[cfg(not(feature = "parakeet"))]

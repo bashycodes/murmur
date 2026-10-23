@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::time::Instant;
 
-use flow_asr_sherpa::{ParakeetConfig, ParakeetEngine};
+use flow_asr_sherpa::{ParakeetConfig, ParakeetEngine, Search};
 
 fn models() -> PathBuf {
     std::env::var_os("FLOW_MODELS_DIR")
@@ -59,4 +59,37 @@ fn jfk_and_silence() {
 fn bad_dir_is_a_load_error() {
     let e = ParakeetEngine::load(&ParakeetConfig::new("/nonexistent/parakeet", 1));
     assert!(e.is_err());
+}
+
+/// Default load (hotwords on): beam + greedy recognizers; no hotwords →
+/// greedy, hotwords → beam. The unified-en model dir (survey D23
+/// candidate) loads the same way when FLOW_PARAKEET_UNIFIED_DIR is set.
+#[test]
+fn greedy_without_hotwords_beam_with() {
+    let Some(dir) = model_dir() else { return };
+    let eng = ParakeetEngine::load(&ParakeetConfig::new(&dir, 4)).expect("load");
+    assert!(eng.supports_hotwords() && eng.has_greedy());
+    assert_eq!(eng.default_search::<&str>(&[]), Search::Greedy);
+    assert_eq!(eng.default_search(&["Kubernetes"]), Search::Beam);
+    let pcm = read_wav(&models().join("jfk.wav"));
+    for s in [Search::Greedy, Search::Beam] {
+        let t = eng.transcribe_with::<&str>(&pcm, &[], s).unwrap();
+        assert!(
+            t.contains("ask not what your country can do for you"),
+            "{s:?}: {t}"
+        );
+    }
+    let mut cfg = ParakeetConfig::new(&dir, 4);
+    cfg.greedy_fallback = false;
+    let beam_only = ParakeetEngine::load(&cfg).unwrap();
+    assert!(!beam_only.has_greedy());
+    assert_eq!(beam_only.default_search::<&str>(&[]), Search::Beam);
+    if let Some(u) = std::env::var_os("FLOW_PARAKEET_UNIFIED_DIR") {
+        let eng = ParakeetEngine::load(&ParakeetConfig::new(PathBuf::from(u), 4)).expect("unified");
+        let t = eng.transcribe::<&str>(&pcm, &[]).unwrap();
+        assert!(
+            t.contains("ask not what your country can do for you"),
+            "{t}"
+        );
+    }
 }
