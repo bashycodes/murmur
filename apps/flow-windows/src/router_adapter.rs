@@ -371,6 +371,37 @@ impl RouterAdapter {
         self.local.as_ref()
     }
 
+    /// D24 never-fail fallback: with `keep_local_warm` off the model slot is
+    /// never loaded at startup, so a server that can't be reached used to
+    /// fail the dictation ("local model not ready"). With `Some(spec)` the
+    /// router loads it on demand (on its failover thread, while the audio is
+    /// buffered) and replays the audio into it. `None` = no on-demand load
+    /// (the slot is warm, or the client route is off). Re-call on every
+    /// prefs save.
+    pub fn set_on_demand(&self, spec: Option<crate::core_adapter::ModelSpec>) {
+        let (Some(adapter), Some(spec)) = (self.local.clone(), spec) else {
+            self.router.set_local_loader(None);
+            return;
+        };
+        self.router.set_local_loader(Some(Arc::new(move || {
+            if !adapter.is_ready() {
+                let st = adapter.load_now(&spec);
+                if !st.is_ready() {
+                    return Err(st
+                        .problem()
+                        .unwrap_or_else(|| "speech model failed to load".into()));
+                }
+            }
+            Ok(LocalBackend::new(adapter.clone()) as Arc<dyn Backend>)
+        })));
+    }
+
+    /// D24: open the server connection ahead of a dictation (blocking up to
+    /// the connect timeout; call off the UI / hook thread).
+    pub fn prewarm(&self) -> bool {
+        self.router.prewarm()
+    }
+
     /// The local models (or LLM cleaner) changed: hand the router its local
     /// backend again, which also rebuilds the cloud backend with the
     /// current cleaner (changelog "What W needs").
@@ -879,6 +910,77 @@ mod tests {
         let last = r.router.last().unwrap();
         assert_eq!(last.badge().unwrap().letter, "S");
         assert!(!last.badge().unwrap().fallback);
+    }
+
+    /// D24: keep_local_warm off, server down: the slot is loaded on demand
+    /// and the dictation still produces text (it used to fail with
+    /// "server_unavailable: …; local model not ready").
+    #[test]
+    fn server_down_with_a_cold_local_slot_loads_on_demand() {
+        let mut d = dev(true, true);
+        d.keep_local_warm = false;
+        let server = FakeServer::new("from the server");
+        server.up.store(false, Ordering::SeqCst);
+        let s2 = server.clone();
+        let factory: RemoteFactory = Box::new(move |_cfg: &ServerConfig| {
+            Arc::new(FakeRemote(s2.clone())) as Arc<dyn Backend>
+        });
+        let local = FlowCoreAdapter::new();
+        assert!(!local.is_ready(), "cold: never loaded at startup");
+        let r = RouterAdapter::new(
+            router_config(&d, BOTH).unwrap(),
+            Some(local.clone()),
+            Some(factory),
+        );
+        // Without the on-demand loader: the old failure.
+        let e = dictate(&r).unwrap_err();
+        assert!(
+            e.contains("Server unreachable") || e.contains("server"),
+            "{e}"
+        );
+        r.router().reset_circuit();
+        r.set_on_demand(Some(ModelSpec::Mock {
+            text: "loaded on demand".into(),
+        }));
+        let out = dictate(&r).unwrap();
+        assert_eq!(out.final_text.trim(), "loaded on demand", "{out:?}");
+        let route = out.route.unwrap();
+        assert_eq!(route.engine, "local");
+        assert_eq!(route.fallback.as_deref(), Some("connect_failed"));
+        assert!(local.is_ready(), "stays loaded for the next dictation");
+        let diag = r.router().route_status().last_diag.unwrap();
+        assert!(diag.local_cold && diag.local_load_ms.is_some(), "{diag:?}");
+        // Next one: circuit open → straight to the now-warm slot.
+        let out = dictate(&r).unwrap();
+        assert_eq!(out.route.unwrap().fallback.as_deref(), Some("circuit_open"));
+    }
+
+    #[test]
+    fn on_demand_load_failure_says_why() {
+        let mut d = dev(true, true);
+        d.keep_local_warm = false;
+        let server = FakeServer::new("x");
+        server.up.store(false, Ordering::SeqCst);
+        let s2 = server.clone();
+        let factory: RemoteFactory = Box::new(move |_cfg: &ServerConfig| {
+            Arc::new(FakeRemote(s2.clone())) as Arc<dyn Backend>
+        });
+        let r = RouterAdapter::new(
+            router_config(&d, BOTH).unwrap(),
+            Some(FlowCoreAdapter::new()),
+            Some(factory),
+        );
+        r.set_on_demand(Some(ModelSpec::Whisper {
+            path: "/nonexistent/ggml-base.bin".into(),
+            threads: None,
+        }));
+        let out = dictate(&r).unwrap();
+        assert_eq!(out.status, CommitStatus::Error);
+        let e = out.error.unwrap();
+        assert!(
+            e.contains("phone model failed to load") || e.contains("failed to load"),
+            "{e}"
+        );
     }
 
     #[test]
