@@ -97,6 +97,8 @@ class FlowService : Service() {
     private val healthGate = AccessibilityHealth.ChangeGate(health)
     private val shake = ShakeDetector()
     private var shakeRegistered = false
+    /** D21: insertion status + steps of the current dictation (all its text runs), for the debug log. */
+    private val insertSteps = java.util.Collections.synchronizedList(ArrayList<String>())
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -263,6 +265,7 @@ class FlowService : Service() {
         presence.repair = needsRepair
         repair.value = needsRepair
         Log.i(TAG, "accessibility health: $h")
+        app.debugLog.event("a11y_health", h.name)
         runCatching { getSystemService(NotificationManager::class.java).notify(NOTIF_ID, serviceNotification()) }
     }
 
@@ -376,6 +379,7 @@ class FlowService : Service() {
             copyJob = scope.launch { delay(COPY_DELAY_MS); showCopy.value = true }
             val bridge = app.accessibility
             val ok = if (bridge != null) bridge.insertTextAndVerify(text) else { copySensitive(text); false }
+            runCatching { insertSteps += if (bridge != null) bridge.lastInsertSteps else listOf("NO_ACCESSIBILITY_SERVICE") }
             if (ok) app.clipboard.onInserted() // S16: a failed earlier text leaves the clipboard now
             copyJob?.cancel()
             if (showCopy.value || !ok) {
@@ -400,11 +404,27 @@ class FlowService : Service() {
                 0, System.currentTimeMillis(), appId, result.status.name, result.asrText, result.historyText, inserted, t.audioMs,
                 fallbackReason = result.fallbackReason, asrMs = t.asrMs, llmMs = t.llmMs, totalMs = t.totalMs,
             )
-            Log.i(TAG, "commit ${result.status} audio=${t.audioMs}ms asr=${t.asrMs}ms llm=${t.llmMs}ms total=${t.totalMs}ms dropped=${t.droppedSamples} ${result.fallbackReason ?: ""} ${result.emptyReason ?: ""} route=${result.route?.engine ?: "-"}/${result.route?.fallback ?: "-"}")
+            Log.i(TAG, dev.flowclone.debug.CommitLine.of(result))
             scope.launch(Dispatchers.IO) { runCatching { app.history.add(row, retention) } }
         }
 
         override fun hasMicPermission() = hasMic()
+
+        /** D21: redact protected targets, attach the insert steps, enqueue. Never blocks, never throws. */
+        override fun onDictationTrace(trace: dev.flowclone.debug.DictationTrace) {
+            try {
+                if (!app.debugLog.isEnabled()) return
+                val steps = synchronized(insertSteps) { insertSteps.toList() }
+                val t = dev.flowclone.debug.DebugRedact.apply(
+                    trace.copy(insert = trace.insert.copy(steps = steps)),
+                    protectedField = app.accessibility?.startFieldProtected == true,
+                    protectedApp = dev.flowclone.debug.DebugRedact.isProtectedApp(trace.target, app.settings.load().userDenylist),
+                )
+                app.debugLog.dictation(t)
+            } catch (_: Throwable) {
+                // logging never affects dictation
+            }
+        }
 
         override fun captureContext(): FieldContext? = app.accessibility?.captureFieldContext()
 
@@ -416,6 +436,7 @@ class FlowService : Service() {
             app.accessibility?.insertTarget(explicit) ?: dev.flowclone.session.InsertTarget.OK
 
         override fun onRecordingActive(active: Boolean) {
+            if (active) insertSteps.clear()
             if (active && !micPromoted) promote(withMic = true)
             app.accessibility?.onDictationActive(active)
         }

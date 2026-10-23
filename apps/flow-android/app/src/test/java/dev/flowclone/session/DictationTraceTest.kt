@@ -1,0 +1,176 @@
+package dev.flowclone.session
+
+import dev.flowclone.core.CommitResult
+import dev.flowclone.core.CoreException
+import dev.flowclone.core.FakeFlowCore
+import dev.flowclone.core.FieldContext
+import dev.flowclone.core.SessionConfig
+import dev.flowclone.core.SessionRoute
+import dev.flowclone.debug.CommitLine
+import dev.flowclone.debug.DebugLogFile
+import dev.flowclone.debug.DebugLogger
+import dev.flowclone.debug.DictationTrace
+import dev.flowclone.debug.InsertOutcome
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.io.File
+import java.nio.file.Files
+
+/** D21: the debug trace per dictation, and that logging can never change a dictation. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class DictationTraceTest {
+    private class Audio : AudioSource {
+        var sink: ((ShortArray, Int) -> Unit)? = null
+        override fun start(onFrame: (ShortArray, Int) -> Unit): Boolean { sink = onFrame; return true }
+        override fun stop() { sink = null }
+        fun speak(ms: Int) = repeat(ms / 100) { sink?.invoke(ShortArray(1600) { 3000 }, 1600) }
+        fun quiet(ms: Int) = repeat(ms / 100) { sink?.invoke(ShortArray(1600), 1600) }
+    }
+
+    /** Mirrors FlowService.Host: history = the `commit …` logcat line; traces go to [onTrace]. */
+    private class Host(val onTrace: (DictationTrace) -> Unit) : DictationController.Host {
+        val inserted = mutableListOf<String>()
+        val commitLines = mutableListOf<String>()
+        override fun feedback(e: FeedbackEvent) = Unit
+        override suspend fun insert(text: String): Boolean { inserted += text; return true }
+        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?) { commitLines += CommitLine.of(result) }
+        override fun hasMicPermission() = true
+        override fun captureContext() = FieldContext(appId = "com.example.notes")
+        override fun sessionConfig() = SessionConfig()
+        override fun onRecordingActive(active: Boolean) = Unit
+        override fun onDictationTrace(trace: DictationTrace) = onTrace(trace)
+    }
+
+    private val audio = Audio()
+    private val core = FakeFlowCore(transcript = "my secret phrase")
+    private fun TestScope.settle() { advanceTimeBy(1_000); runCurrent() }
+
+    private fun TestScope.controller(host: Host) = DictationController(
+        scope = backgroundScope, audio = audio, host = host, core = { core },
+        commitDispatcher = StandardTestDispatcher(testScheduler), now = { currentTime }, wallClock = { 1_000_000L },
+    ).also { it.onFieldFocusChanged(true) }
+
+    private fun TestScope.dictate(c: DictationController, hold: Boolean = false) {
+        c.toggle(hold)
+        audio.speak(800)
+        audio.quiet(300)
+        advanceTimeBy(600)
+        if (hold) c.release() else c.toggle(false)
+        settle()
+    }
+
+    @Test fun insertedDictationProducesOneFullTrace() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        val host = Host { traces += it }
+        dictate(controller(host))
+        val t = traces.single()
+        assertEquals("tap", t.mode)
+        assertEquals(1_000_000L, t.tsMs)
+        assertEquals("com.example.notes", t.target)
+        assertEquals(InsertOutcome.INSERTED, t.insert.outcome)
+        assertEquals("my secret phrase", t.raw)
+        assertEquals("my secret phrase", t.text)
+        assertEquals(300L, t.endpointWaitMs)
+        assertEquals(1_100L, t.audioMs)
+        assertNotNull(t.perceivedMs)
+        assertTrue(t.perceivedMs!! >= 0)
+        assertNull(t.error)
+    }
+
+    @Test fun holdModeIsRecorded() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        dictate(controller(Host { traces += it }), hold = true)
+        assertEquals("hold", traces.single().mode)
+    }
+
+    @Test fun offlineFallbackRouteIsRecorded() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        core.route = SessionRoute(engine = "local", fallback = "connect_failed")
+        dictate(controller(Host { traces += it }))
+        assertEquals("local", traces.single().route)
+        assertEquals("connect_failed", traces.single().fallback)
+    }
+
+    @Test fun serverUnreachableStartIsRecorded() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        core.onStart = { throw CoreException("server_unavailable: connect refused", "server_unavailable") }
+        val c = controller(Host { traces += it })
+        c.toggle(false); settle()
+        val t = traces.single()
+        assertEquals(InsertOutcome.START_FAILED, t.insert.outcome)
+        assertEquals("server_unavailable", t.fallback)
+        assertTrue(t.error!!.contains("unreachable"))
+        assertNotNull(t.stack)
+    }
+
+    @Test fun aThrowingTraceHookNeverChangesTheDictation() = runTest {
+        val host = Host { throw IllegalStateException("log broke") }
+        val c = controller(host)
+        dictate(c)
+        assertEquals(listOf("my secret phrase"), host.inserted)
+        assertEquals(1, host.commitLines.size)
+        assertEquals(DictationState.Ready, c.state.value)
+    }
+
+    @Test fun aSinkThatThrowsOnEveryWriteStillInsertsAndLogsTheCommitLine() = runTest {
+        val logcat = mutableListOf<String>()
+        val log = DebugLogger({ true }, { throw java.io.IOException("No space left on device") }, { logcat += it }, runner = { it.run() })
+        val host = Host(log::dictation)
+        val c = controller(host)
+        dictate(c)
+        dictate(c)
+        assertEquals(listOf("my secret phrase", "my secret phrase"), host.inserted)
+        assertEquals(2, host.commitLines.size)
+        assertTrue(host.commitLines.all { it.startsWith("commit RAW_TRANSCRIPT") })
+        assertEquals(2, log.errors.get())
+        assertEquals(DictationState.Ready, c.state.value)
+    }
+
+    @Test fun offNoTranscriptReachesLogcatOrFile() = runTest {
+        val dir = Files.createTempDirectory("flowdebug-off").toFile()
+        val file = DebugLogFile.inFilesDir(dir)
+        val logcat = mutableListOf<String>()
+        val log = DebugLogger({ false }, file, { logcat += it }, runner = { it.run() })
+        val host = Host(log::dictation)
+        dictate(controller(host))
+        assertEquals(listOf("my secret phrase"), host.inserted)
+        assertTrue("FlowDebug got $logcat", logcat.isEmpty())
+        assertFalse(file.file.exists())
+        assertFalse(File(dir, "debug").exists())
+        // The always-on FlowService line carries timings only.
+        val line = host.commitLines.single()
+        assertFalse(line, line.contains("secret"))
+        assertTrue(line, line.contains("audio=1100ms"))
+    }
+
+    @Test fun onTheLineReachesLogcatAndFile() = runTest {
+        val dir = Files.createTempDirectory("flowdebug-on").toFile()
+        val file = DebugLogFile.inFilesDir(dir)
+        val logcat = mutableListOf<String>()
+        val log = DebugLogger({ true }, file, { logcat += it }, runner = { it.run() })
+        dictate(controller(Host(log::dictation)))
+        val o = JSONObject(file.readLines().single())
+        assertEquals("my secret phrase", o.getString("text"))
+        assertEquals(logcat.single(), file.readLines().single())
+        assertEquals("inserted", o.getJSONObject("insert").getString("outcome"))
+    }
+
+    @Test fun cancelIsTraced() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        val c = controller(Host { traces += it })
+        c.toggle(false); audio.speak(300); c.cancel(); settle()
+        assertEquals(InsertOutcome.CANCELLED, traces.single().insert.outcome)
+    }
+}
