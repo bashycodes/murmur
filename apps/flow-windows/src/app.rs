@@ -322,6 +322,8 @@ fn set_prefs(
     // The Developer tab saves its own section (dev_set); a General/AI save
     // from a page loaded earlier must not roll it back.
     prefs.developer = state.prefs.read().unwrap().developer.clone();
+    // Whatever the page sent, what is saved now is the current schema.
+    prefs.prefs_rev = crate::prefs::PREFS_REV;
     prefs.dictionary = crate::dictionary::normalize(prefs.dictionary);
     prefs.validate()?;
     prefs.save(&state.path).map_err(|e| e.to_string())?;
@@ -768,6 +770,7 @@ fn save_dev(
     crate::dev_settings::reconcile_consent(&prefs.developer.cloud, &mut dev.cloud);
     let removed = crate::dev_settings::removed_providers(&prefs.developer.cloud, &dev.cloud);
     let old_cloud = prefs.developer.cloud.clone();
+    let before = prefs.clone();
     prefs.developer = dev;
     if let Some(r) = state.router.get() {
         r.apply(&prefs.developer)?;
@@ -788,6 +791,12 @@ fn save_dev(
     let cleared = credentials::reconcile_keys(&*state.creds, &old_cloud, &prefs.developer.cloud);
     if let Some(r) = state.router.get() {
         r.load_cloud_keys(&prefs.developer, &*state.creds);
+    }
+    // Parakeet decoding lives here and changes the recognizer set.
+    if core_adapter::needs_reload(&before, &prefs) && want_local(&prefs) {
+        if let Some(core) = state.core.get() {
+            core.load(ModelSpec::from_prefs(&prefs, state.appdata.as_deref()));
+        }
     }
     ensure_local(state, &prefs);
     refresh_debug_secrets(state, &prefs.developer);

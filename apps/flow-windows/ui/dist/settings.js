@@ -486,7 +486,14 @@ const ROUTE_LABEL = {
 };
 const DEV_NUM = ["port", "connect_timeout_ms", "commit_timeout_base_ms", "health_ttl_s"];
 const DEV_TEXT = ["host", "tls_pin_sha256", "token"];
-const DEV_BOOL = ["allow_server", "allow_client", "tls", "keep_local_warm", "show_engine_badge"];
+const DEV_BOOL = [
+    "allow_server",
+    "allow_client",
+    "tls",
+    "keep_local_warm",
+    "show_engine_badge",
+    "decode_while_speaking",
+];
 let devView = null;
 let devOrder = ["server", "client", "cloud"];
 let devValid = true;
@@ -513,6 +520,7 @@ function readDev() {
         f[k] = v === "" ? -1 : Number(v);
     }
     f.route_order = [...devOrder];
+    f.parakeet_decoding = $("dev_parakeet_decoding").value || f.parakeet_decoding || "auto";
     f.allow_cloud = $("dev_allow_cloud").checked;
     const budget = $("dev_cloud_budget").value.trim();
     f.cloud = { ...cloudCfg, monthly_budget_usd: budget === "" ? null : Number(budget) };
@@ -527,6 +535,7 @@ function fillDev(f) {
         $(`dev_${k}`).value = String(f[k]);
     showTokenSaved(!!f.token_saved);
     devOrder = [...f.route_order];
+    $("dev_parakeet_decoding").value = f.parakeet_decoding ?? "auto";
     $("dev_allow_cloud").checked = f.allow_cloud;
     cloudCfg = structuredClone(f.cloud);
     $("dev_cloud_budget").value =
@@ -633,6 +642,18 @@ function showServerInfo(h) {
             ` · workers ${h.workers ?? "?"} (busy ${h.busy ?? "?"})${pp}`;
     e.className = h.postprocess_match === false ? "err" : "ok";
 }
+/** Shared with Android (D22): `total {client_ms ?: total_ms} ms · asr {asr_ms} (+{pre_asr_ms} early) · wait {wait_ms} · {segments} seg`. */
+function timingLine(l) {
+    const parts = [`total ${l.client_ms ?? l.total_ms} ms`];
+    parts.push(l.pre_asr_ms > 0 ? `asr ${l.asr_ms} (+${l.pre_asr_ms} early)` : `asr ${l.asr_ms}`);
+    if (l.wait_ms > 0)
+        parts.push(`wait ${l.wait_ms}`);
+    if (l.segments > 0)
+        parts.push(`${l.segments} seg`);
+    if (l.client_ms != null && l.client_ms !== l.total_ms)
+        parts.push(`engine ${l.total_ms}`);
+    return parts.join(" · ");
+}
 function showRoute(r) {
     const last = r.last;
     const e = $("dev_last");
@@ -648,7 +669,7 @@ function showRoute(r) {
             last.server ? `server ${last.server}` : "",
             last.rtt_ms != null ? `rtt ${last.rtt_ms} ms` : "",
             last.queue_ms != null ? `queue ${last.queue_ms} ms` : "",
-            `asr ${last.asr_ms} ms / total ${last.total_ms} ms`,
+            timingLine(last),
             last.status,
             last.empty_reason ?? "",
             new Date(last.at_ms).toLocaleTimeString(),

@@ -183,9 +183,12 @@ pub enum ModelSpec {
         threads: Option<usize>,
     },
     /// Parakeet-TDT (D12, feature `parakeet`); `dir` = the model directory.
+    /// `decoding`: `Auto` (default; a second, greedy recognizer, ≈ +0.6 GB
+    /// RSS, fine on a desktop) or `Greedy` (one recognizer, no hotwords).
     Parakeet {
         dir: PathBuf,
         threads: Option<usize>,
+        decoding: fc::ParakeetDecoding,
     },
     /// flow-core's `MockAsr` (fixed transcript): tests and model-free dev.
     Mock { text: String },
@@ -201,6 +204,7 @@ impl ModelSpec {
             crate::prefs::AsrEngineChoice::Parakeet => ModelSpec::Parakeet {
                 dir: prefs.resolved_parakeet_dir(appdata),
                 threads: prefs.asr_threads,
+                decoding: prefs.developer.parakeet_decoding,
             },
         }
     }
@@ -233,10 +237,15 @@ impl ModelSpec {
                 threads: threads.unwrap_or_else(fc::default_threads).max(1),
                 ..fc::ModelConfig::default()
             },
-            ModelSpec::Parakeet { dir, threads } => fc::ModelConfig {
+            ModelSpec::Parakeet {
+                dir,
+                threads,
+                decoding,
+            } => fc::ModelConfig {
                 asr_backend: fc::AsrBackend::Parakeet,
                 asr_path: dir.display().to_string(),
                 threads: threads.unwrap_or_else(fc::default_threads).max(1),
+                parakeet_decoding: *decoding,
                 ..fc::ModelConfig::default()
             },
             ModelSpec::Mock { text } => fc::ModelConfig {
@@ -600,7 +609,11 @@ fn load_asr(spec: &ModelSpec) -> (ModelStatus, Option<Arc<dyn AsrEngine>>) {
             path: p,
             threads: t,
         } => whisper_engine(p, threads(t)),
-        ModelSpec::Parakeet { dir, threads: t } => parakeet_engine(dir, threads(t)),
+        ModelSpec::Parakeet {
+            dir,
+            threads: t,
+            decoding,
+        } => parakeet_engine(dir, threads(t), *decoding),
     };
     match engine {
         Ok(e) => (
@@ -668,9 +681,10 @@ fn whisper_engine(
 fn parakeet_engine(
     dir: &std::path::Path,
     threads: usize,
+    decoding: fc::ParakeetDecoding,
 ) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
     let path = require(dir, true)?;
-    flow_core::parakeet::ParakeetAsr::load(&path, threads)
+    flow_core::parakeet::ParakeetAsr::load_with(&path, threads, decoding)
         .map(|e| Arc::new(e) as Arc<dyn AsrEngine>)
         .map_err(|e| flow_core::CoreError::Load(e.to_string()))
 }
@@ -679,6 +693,7 @@ fn parakeet_engine(
 fn parakeet_engine(
     dir: &std::path::Path,
     _threads: usize,
+    _decoding: fc::ParakeetDecoding,
 ) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
     require(dir, true)?;
     Err(flow_core::CoreError::Load(
@@ -875,6 +890,7 @@ pub fn to_core_session(c: &SessionConfig) -> fc::SessionConfig {
         spoken_cleanup: c.spoken_cleanup,
         llm_prefill: c.llm_prefill,
         endpoint_silence_ms: c.endpoint_silence_ms,
+        segment_pause_ms: c.segment_pause_ms,
         ..fc::SessionConfig::default()
     }
 }
@@ -930,6 +946,9 @@ pub fn from_core_result(r: flow_core::CommitResult) -> CommitResult {
             total_ms: r.timings.total_ms,
             audio_ms: r.timings.audio_ms,
             dropped_samples: r.timings.dropped_samples,
+            wait_ms: r.timings.wait_ms,
+            segments: r.timings.segments,
+            pre_asr_ms: r.timings.pre_asr_ms,
         },
         press_enter: r.press_enter,
         fallback_reason: r.fallback_reason,
@@ -1265,12 +1284,34 @@ mod tests {
         let st = a.load_now(&ModelSpec::Parakeet {
             dir: PathBuf::from("/nonexistent/parakeet"),
             threads: None,
+            decoding: fc::ParakeetDecoding::Auto,
         });
         assert!(
             matches!(&st, ModelStatus::Missing { engine, .. } if engine == "parakeet"),
             "{st:?}"
         );
         assert!(st.problem().unwrap().contains("Parakeet model folder"));
+    }
+
+    #[test]
+    fn parakeet_decoding_pref_reaches_the_model_config_and_reloads() {
+        let mut p = crate::prefs::Prefs {
+            asr_engine: crate::prefs::AsrEngineChoice::Parakeet,
+            ..Default::default()
+        };
+        // Desktop default: auto (omitted from the core's JSON).
+        let cfg = ModelSpec::from_prefs(&p, None).model_config();
+        assert_eq!(cfg.parakeet_decoding, fc::ParakeetDecoding::Auto);
+        let old = p.clone();
+        p.developer.parakeet_decoding = fc::ParakeetDecoding::Greedy;
+        let cfg = ModelSpec::from_prefs(&p, None).model_config();
+        assert_eq!(cfg.parakeet_decoding, fc::ParakeetDecoding::Greedy);
+        assert!(needs_reload(&old, &p), "recognizer set changes");
+        // Whisper ignores it: no reload.
+        let mut w = crate::prefs::Prefs::default();
+        let w0 = w.clone();
+        w.developer.parakeet_decoding = fc::ParakeetDecoding::Greedy;
+        assert!(!needs_reload(&w0, &w));
     }
 
     #[test]
@@ -1303,6 +1344,52 @@ mod tests {
         let r = a.commit();
         assert_eq!(r.status, CommitStatus::Empty);
         assert_eq!(r.empty_reason.as_deref(), Some("no_speech"), "{r:?}");
+    }
+
+    #[test]
+    fn segment_pause_reaches_the_core_config_and_is_absent_when_off() {
+        let mut p = crate::prefs::Prefs::default();
+        let on = to_core_session(&p.session_config());
+        assert_eq!(on.segment_pause_ms, Some(800));
+        assert_eq!(on.segment_min_ms, None, "core default");
+        assert_eq!(on.segment_soft_max_ms, None, "core default");
+        let j = serde_json::to_value(&on).unwrap();
+        assert_eq!(j["segment_pause_ms"], 800);
+        p.developer.decode_while_speaking = false;
+        let off = to_core_session(&p.session_config());
+        assert_eq!(off.segment_pause_ms, None);
+        let j = serde_json::to_value(&off).unwrap();
+        assert!(j.get("segment_pause_ms").is_none(), "{j}");
+    }
+
+    #[test]
+    fn d22_result_fields_map_and_default_to_zero() {
+        let mut r: flow_core::CommitResult = serde_json::from_value(serde_json::json!({
+            "status": "FORMATTED", "asr_text": "a", "final_text": "a", "language": null,
+            "press_enter": false, "fallback_reason": null, "truncated": false, "error": null,
+            "timings": {"audio_ms": 1, "asr_ms": 2, "llm_ms": 0, "postprocess_ms": 0,
+                        "total_ms": 3, "dropped_samples": 0},
+            "route": {"engine": "local"}
+        }))
+        .unwrap();
+        let s = from_core_result(r.clone());
+        assert_eq!(
+            (s.timings.wait_ms, s.timings.segments, s.timings.pre_asr_ms),
+            (0, 0, 0)
+        );
+        assert_eq!(s.route.unwrap().client_ms, None);
+        r.timings.wait_ms = 7;
+        r.timings.segments = 2;
+        r.timings.pre_asr_ms = 900;
+        r.route.as_mut().unwrap().client_ms = Some(450);
+        let j = serde_json::to_value(&r).unwrap();
+        let back: flow_core::CommitResult = serde_json::from_value(j).unwrap();
+        let s = from_core_result(back);
+        assert_eq!(
+            (s.timings.wait_ms, s.timings.segments, s.timings.pre_asr_ms),
+            (7, 2, 900)
+        );
+        assert_eq!(s.route.unwrap().client_ms, Some(450));
     }
 
     #[test]

@@ -46,7 +46,22 @@ hides it again):
   the saved settings and should answer `EMPTY (no_speech)` and say which
   engine ran. Status rows: build capabilities, last dictation's engine /
   fallback / timings, server info (pipeline-version match), circuit breaker.
-* Saving applies to the next dictation (no restart, no model reload).
+* Saving applies to the next dictation (no restart; the model reloads
+  only when the Parakeet decoding below changed).
+* **Speech decoding** (D22, `docs/proposals/streaming-asr-shell-api.md`):
+  **Decode while speaking** (default on; `developer.decode_while_speaking`)
+  sends `segment_pause_ms: 800` with every session, push-to-talk and
+  hands-free, so each finished phrase is transcribed while you keep
+  talking and only the tail is left at release; off omits the field (one
+  decode after you stop, as before). The core turns it off by itself for
+  cloud providers. **Parakeet decoding** (`developer.parakeet_decoding`):
+  `auto` (default: beam with dictionary words, greedy otherwise; keeps a
+  second recognizer, ≈ +0.6 GB RAM) or `greedy` (one recognizer, no
+  dictionary biasing). Whisper ignores it.
+* Active engine row leads with the D22 history line `total {client_ms or
+  total_ms} ms · asr {asr_ms} (+{pre_asr_ms} early) · wait {wait_ms} ·
+  {segments} seg`; `client_ms` is release → result on this PC (network
+  included), `engine` is the engine's own `total_ms` when it differs.
 
 ### Cloud providers (sends audio to a third party)
 
@@ -98,7 +113,13 @@ in `docs/DECISIONS.md`; every key always present, `null` when unknown):
 `disconnected`, `circuit_open`, … — from the route, else the live route
 the pill showed, else the error text, so a server-only failure still names
 it), `rtt_ms`, `audio_ms`, `endpoint_wait_ms` (last speech → stop; same
-−45 dBFS rule as Android, `null` when no speech), `asr_ms`, `post_ms`
+−45 dBFS rule as Android, `null` when no speech), `asr_ms` (with
+decode-while-speaking: only the tail decoded at release), `wait_ms`
+(commit waited for a decode already in flight), `segments` (pieces sent
+to ASR, 0 = off), `pre_asr_ms` (ASR done while you were still talking),
+`client_ms` (router release → result incl. network; `null` when the
+router did not measure it) — these four are `null` without a result, like
+Android (D22) —, `post_ms`
 (LLM + post-processing = `total_ms - asr_ms`), `total_ms` (engine),
 `perceived_ms` (stop → outcome), `target` (foreground exe), `insert`
 (`{"outcome", "steps"}`; outcome `inserted` / `paste_failed` /
@@ -157,7 +178,7 @@ state (off / loading / ready / model missing / engine missing / failed).
 | `src/context/` | Truncation, password suppression, app kind and style bucket from `data/app-lists.json` (pure); `uia.rs` = UI Automation snapshot with a 300 ms timeout, and `UiaFieldReader` (re-reads the pasted-into control, `CompareElements` for focus) |
 | `src/ducking/` | Mute plan and restore rule (pure); `win.rs` = WASAPI sessions on an MTA thread |
 | `src/sounds.rs` | Synthesised cue WAVs (pure) played with `PlaySoundW(SND_MEMORY)` |
-| `src/prefs.rs` | `%APPDATA%\FlowClone\prefs.json`: tolerant load, atomic save, validation |
+| `src/prefs.rs` | `%APPDATA%\FlowClone\prefs.json`: tolerant load, atomic save, validation, `prefs_rev` migration (rev 1, D22: a stored hands-free auto-stop of exactly 2000 ms, the old default, becomes 1500 once; later saves keep any value) |
 | `src/core_api.rs` | §9 API seam (shell types) plus `StubCore` for tests |
 | `src/core_adapter.rs` | `CoreApi` on `flow_core::FlowCore`: two-phase background load (whisper engine, then the optional `flow_llm` cleaner, composed with `FlowCore::from_engines`), `ModelStatus` / `LlmStatus`, shell→core type mapping |
 | `src/history.rs` | Local SQLite history (`history.sqlite`, 10-clone-spec §2 columns, no audio), keep / 24 h / never retention; list/search/get/delete/clear/set_edited for the History tab |
@@ -259,7 +280,7 @@ More info → Run anyway.
 - [ ] (1 min) Hold Ctrl+Win in Notepad, say "testing one two three", release → the text is pasted; the line above the pill said "Transcribing via server…" (hybrid, server up) or "Transcribing via this PC…".
 - [ ] (1 min) Stop the server (or quit Tailscale), dictate again → still pasted; the line says "Transcribing via this PC… (server unreachable)"; Developer → Active engine row = client, fallback `connect_failed`.
 - [ ] (1 min) Start the server again; hold Ctrl+Win, stop the server while speaking, keep talking, release → the whole sentence pastes and the line switched to "this PC" mid-dictation.
-- [ ] (1 min) Hands-free: Ctrl+Win+Space, speak, then stay silent → it stops and pastes by itself after ~2 s (Settings → General → "Hands-free: stop after … s of silence"; 0 = never). Push-to-talk never stops on silence.
+- [ ] (1 min) Hands-free: Ctrl+Win+Space, speak, then stay silent → it stops and pastes by itself after ~1.5 s (Settings → General → "Hands-free: stop after … s of silence"; 0 = never). Push-to-talk never stops on silence.
 - [ ] (1 min) Esc while the pill is processing → nothing is pasted, no error pill; the next dictation works at once (the server is not left busy).
 - [ ] (1 min) Dictate, and while it is processing Alt+Tab to another window → nothing is typed there; the pill says "the focus moved…", Ctrl+V pastes the text. Dictate into a normal field and tab into a password box before it finishes → nothing is pasted or copied.
 - [ ] (1 min) Copy something, dictate → afterwards Ctrl+V gives your original clipboard. Press Shift+Alt+Z twice quickly → still your original clipboard afterwards. Shift+Alt+X then Win+V → the transcript is **not** in clipboard history.
@@ -343,6 +364,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Learn from edits ignores password fields, and a chat message sent with "press enter".
 - [ ] Dictionary editor: add/edit/delete rows, snippet with a multi-line body, Save; export writes `Downloads\flow-dictionary.json`; importing that file (merge) changes nothing; importing the Android app's export works.
 - [ ] Dictating into silence shows "No speech heard" above the pill for ~1.5 s, with no error sound.
+- [ ] (2 min) Decode while speaking (D22): with the Developer toggle on, dictate ~30 s with pauses → text appears ≈ 0.5-1 s after release; the debug line shows `segments` ≥ 2 and `pre_asr_ms` > 0. Toggle off → `segments` 0 and release → text grows with length again.
 - [ ] Settings → General: "Auto-format punctuation, fillers and corrections" off → "comma" stays a word; Engine = Parakeet with the model folder in `models\` (parakeet build) → tray shows the folder name and jfk-style speech pastes.
 
 - [ ] Debug log: Developer → tick "Debug log (includes transcripts)", dictate into Notepad → the count says 1 entry, Open log folder shows `dictations.jsonl` with `"mode":"hold"`, `"insert":{"outcome":"inserted",…}`, `"target":"notepad.exe"`; stop the server and dictate (server-first) → `"fallback":"connect_failed"`; untick → the delete prompt appears, Delete → the file is gone; dictate again → no file.
