@@ -6,10 +6,13 @@ import dev.flowclone.session.DictationState
 
 /** "via phone | server | provider" for the live route (2026-10-22 shell changelog), + why it is not the first route. */
 object RouteLabel {
+    /** D24: the server is unreachable and the phone model is loading on demand (audio is kept). */
+    const val LOADING_PHONE_MODEL = "Loading phone model…"
+
     fun of(route: SessionRoute?, providerLabel: (String) -> String? = { null }): String? {
         val r = route ?: return null
         val base = when (r.engine) {
-            "local" -> "via phone"
+            "local" -> if (r.loading) LOADING_PHONE_MODEL else "via phone"
             "remote" -> "via server"
             "cloud" -> {
                 val name = r.provider?.let { providerLabel(it) ?: it } ?: "cloud"

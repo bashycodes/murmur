@@ -105,7 +105,7 @@ class DeveloperActivity : Activity() {
             allowClient = check("Allow client (on-device speech model)", s.allowClient, enabled = caps.local, disabledNote = "not in this build")
             body("Route order (the first available route is used; the next ones are fallbacks)")
             orderBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }.also(::addView)
-            keepWarm = check("Keep the on-device model loaded while the server is preferred (instant fallback)", s.keepLocalWarm, enabled = caps.local)
+            keepWarm = check("Keep the on-device model loaded while the server is preferred (instant fallback; off: loaded on demand when the server is unreachable)", s.keepLocalWarm, enabled = caps.local)
             badge = check("Show the engine on the preview line (S / L, • = fallback)", s.showEngineBadge)
 
             heading("Server")

@@ -207,4 +207,41 @@ class EngineRouteTest {
         assertNull(EngineMismatch.message(AsrEngine.WHISPER, p, EnginePlan.load(p) { FakeFlowCore() }.asr, "base.bin"))
         assertNull("no local engine needed (server only)", EngineMismatch.message(AsrEngine.PARAKEET, null, null, "server: h:1"))
     }
+
+    // ---- D24 never-fail fallback ----
+
+    private class LoaderRouter(val inner: FakeFlowCore = FakeFlowCore("routed")) : FlowCore by inner {
+        var configs: List<ModelConfig>? = null
+        override fun setLocalLoader(configs: List<ModelConfig>): Boolean { this.configs = configs; return true }
+    }
+
+    @Test fun keepWarmOffHandsTheRouterAnOnDemandLoader() {
+        val router = LoaderRouter()
+        val p = routed(EngineRoute.plan(local(), server.copy(keepLocalWarm = false), BuildCaps.ALL))
+        assertNull("nothing loaded at startup", p.local)
+        assertTrue(p.onDemand != null)
+        var loads = 0
+        val r = EngineRoute.assemble(p, { loads++; FakeFlowCore() }, { _, _ -> router })
+        assertEquals(0, loads)
+        assertEquals(listOf("/m/base.bin"), router.configs!!.map { it.asrPath })
+        assertNull("the phone can take over", r.clientNote)
+        assertEquals(LoadedAsr(AsrEngine.WHISPER, "base.bin"), r.onDemandAsr)
+        assertTrue(r.description, r.description.contains("client: loaded on demand"))
+    }
+
+    @Test fun onDemandNeedsTheClientRouteAndAModel() {
+        assertNull("client off", routed(EngineRoute.plan(local(), server.copy(keepLocalWarm = false, allowClient = false), BuildCaps.ALL)).onDemand)
+        assertNull("remote build", routed(EngineRoute.plan(local(), DevSettings.defaults(BuildCaps.REMOTE).copy(host = "10.0.0.2", keepLocalWarm = false), BuildCaps.REMOTE)).onDemand)
+        val noModel = routed(EngineRoute.plan(local(asr = null), server.copy(keepLocalWarm = false), BuildCaps.ALL))
+        assertNull(noModel.onDemand)
+        val r = EngineRoute.assemble(noModel, { FakeFlowCore() }, { _, _ -> LoaderRouter() })
+        assertTrue("error toast can say why: ${r.clientNote}", r.clientNote!!.contains("No speech model"))
+    }
+
+    @Test fun onDemandAttemptsMirrorTheStartupFallbacks() {
+        val p = EnginePlan.plan(Settings(asrEngine = AsrEngine.PARAKEET, llmEnabled = true), "/m/base.bin", "/m/q.gguf", exists, 4, parakeetPath = "/m/pk", isModelDir = { true }) as EnginePlan.Plan.Native
+        val a = EnginePlan.attempts(p)
+        assertEquals(listOf("/m/pk" to "/m/q.gguf", "/m/pk" to null, "/m/base.bin" to "/m/q.gguf", "/m/base.bin" to null), a.map { it.asrPath to it.llmPath })
+        assertEquals(listOf(AsrEngine.PARAKEET, AsrEngine.PARAKEET, AsrEngine.WHISPER, AsrEngine.WHISPER), a.map { it.asrEngine })
+    }
 }
