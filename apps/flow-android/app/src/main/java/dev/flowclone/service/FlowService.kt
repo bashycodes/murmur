@@ -430,6 +430,21 @@ class FlowService : Service() {
             }
         }
 
+        override fun keepDictationAudio(): Boolean = app.dev.keepDebugAudio
+
+        /** Never for protected targets; the WAV is written on the debug-audio thread. Never throws. */
+        override fun onDictationAudio(trace: dev.flowclone.debug.DictationTrace, pcm: ShortArray): String? = try {
+            val keep = app.dev.keepDebugAudio && dev.flowclone.debug.DebugRedact.keepsAudio(
+                trace,
+                protectedField = app.accessibility?.startFieldProtected == true,
+                protectedApp = dev.flowclone.debug.DebugRedact.isProtectedApp(trace.target, app.settings.load().userDenylist),
+            )
+            if (!keep) null else {
+                app.debugAudioWriter.execute { runCatching { app.debugAudio.save(trace.tsMs, pcm) }.onFailure { Log.w(TAG, "debug audio: ${it.message}") } }
+                dev.flowclone.debug.DebugAudioStore.nameFor(trace.tsMs)
+            }
+        } catch (_: Throwable) { null }
+
         override fun captureContext(): FieldContext? = app.accessibility?.captureFieldContext()
 
         override fun sessionConfig() = app.settings.load().let { it.toSessionConfig(app.dictionary.all(), language = app.effectiveLanguage(it)) }

@@ -133,6 +133,25 @@ class SilenceTracker {
 }
 
 /**
+ * "Keep last dictation audio (debug)": a copy of every mic frame of one dictation, up to
+ * [maxSamples] (the session cap). Frames arrive on the capture thread; [take] runs after stop.
+ */
+class PcmCapture(private val maxSamples: Int) {
+    private var buf = ShortArray(SAMPLE_RATE * 10)
+    private var size = 0
+
+    @Synchronized fun append(pcm: ShortArray, length: Int) {
+        val n = minOf(length, maxSamples - size)
+        if (n <= 0) return
+        if (size + n > buf.size) buf = buf.copyOf(minOf(maxSamples, maxOf(buf.size * 2, size + n)))
+        System.arraycopy(pcm, 0, buf, size, n)
+        size += n
+    }
+
+    @Synchronized fun take(): ShortArray = buf.copyOf(size)
+}
+
+/**
  * Review C2: the session start runs off Main and can block (server route: TCP + TLS + hello).
  * The mic starts at once; frames captured meanwhile are held here and replayed in order when
  * the session is up, so the first words are not lost. Thread-safe (AudioRecord thread + start).

@@ -1,6 +1,7 @@
 package dev.flowclone
 
 import dev.flowclone.core.RouterErrors
+import dev.flowclone.debug.DebugAudioStore
 import dev.flowclone.debug.DebugLogFile
 import dev.flowclone.debug.DebugLogger
 import dev.flowclone.core.BlockingCalls
@@ -54,6 +55,12 @@ class FlowApp : Application() {
     /** D21: opt-in device-local debug log (Developer settings; default off). */
     lateinit var debugFile: DebugLogFile; private set
     lateinit var debugLog: DebugLogger; private set
+    /** Developer "Keep last dictation audio (debug)" (default off): WAVs in files/debug/audio/. */
+    lateinit var debugAudio: DebugAudioStore; private set
+    /** One low-priority writer for [debugAudio]; dictation never waits on it. */
+    val debugAudioWriter: java.util.concurrent.ExecutorService by lazy {
+        java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "flow-debug-audio").apply { isDaemon = true; priority = Thread.MIN_PRIORITY } }
+    }
     val caps: BuildCaps = BuildCaps.current()
 
     /** S16: every transcript the app puts on the clipboard is removed again after a minute. */
@@ -117,6 +124,9 @@ class FlowApp : Application() {
             secrets = { debugSecrets() },
         )
         engine = EngineHolder(this)
+        debugAudio = DebugAudioStore.inFilesDir(filesDir)
+        // 24 h limit also when the option was turned off meanwhile.
+        runCatching { debugAudioWriter.execute { runCatching { debugAudio.prune() } } }
     }
 
     /** The language the next dictation uses ([dev.flowclone.data.LanguageDefault]). */

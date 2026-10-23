@@ -194,6 +194,40 @@ class DeveloperActivity : Activity() {
             Button(context).apply { text = "Clear"; isAllCaps = false; setOnClickListener { clearDebugLog() } },
         )
         debugToggle.setOnCheckedChangeListener { _, on -> onDebugToggle(on) }
+        audioSection()
+    }
+
+    // ---- "Keep last dictation audio (debug)" ----
+
+    private lateinit var audioCount: TextView
+
+    private fun LinearLayout.audioSection() {
+        val keep = check("Keep last dictation audio (debug)", app.dev.keepDebugAudio)
+        body(
+            "Saves what the microphone heard for the last ${dev.flowclone.debug.DebugAudioStore.MAX_FILES} dictations as WAV files " +
+                "in the app's private storage (files/debug/audio/), named like the debug log's ts and linked from its \"audio\" field. " +
+                "Never for password fields, banking or excluded apps. Deleted after 24 hours. Nothing is sent anywhere.",
+        )
+        audioCount = body("")
+        row(Button(context).apply { text = "Clear audio"; isAllCaps = false; setOnClickListener { clearDebugAudio() } })
+        keep.setOnCheckedChangeListener { _, on -> app.dev.keepDebugAudio = on; refreshAudioCount() }
+        refreshAudioCount()
+    }
+
+    private fun refreshAudioCount() {
+        if (!::audioCount.isInitialized) return
+        thread(name = "dev-audio-count") {
+            val n = runCatching { app.debugAudio.prune(); app.debugAudio.list().size }.getOrDefault(0)
+            val line = "$n file${if (n == 1) "" else "s"} kept" + if (app.dev.keepDebugAudio) "" else " · off"
+            runOnUiThread { audioCount.text = line }
+        }
+    }
+
+    private fun clearDebugAudio() {
+        thread(name = "dev-audio-clear") {
+            runCatching { app.debugAudio.clear() }
+            runOnUiThread { Toast.makeText(this, "Debug audio cleared", Toast.LENGTH_SHORT).show(); refreshAudioCount() }
+        }
     }
 
     private fun onDebugToggle(on: Boolean) {

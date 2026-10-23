@@ -226,4 +226,51 @@ class DictationTraceTest {
         dictate(controller(Host { traces += it }))
         assertEquals("auto", traces.single().language)
     }
+
+    // ---- "Keep last dictation audio (debug)" ----
+
+    private class AudioHost(val keep: Boolean, val traces: MutableList<DictationTrace>, val throwOnAudio: Boolean = false) :
+        DictationController.Host by Host({ traces += it }) {
+        val saved = mutableListOf<Pair<Long, Int>>()
+        override fun keepDictationAudio() = keep
+        override fun onDictationAudio(trace: DictationTrace, pcm: ShortArray): String? {
+            if (throwOnAudio) throw IllegalStateException("disk full")
+            saved += trace.tsMs to pcm.size
+            return "a.wav"
+        }
+        override fun onDictationTrace(trace: DictationTrace) { traces += trace }
+    }
+
+    @Test fun keptAudioIsTheWholeRecordingAndLinkedFromTheTrace() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        val host = AudioHost(keep = true, traces)
+        dictate(controller(host))
+        assertEquals(listOf(1_000_000L to 1_100 * 16), host.saved)
+        assertEquals("a.wav", traces.single().audio)
+    }
+
+    @Test fun audioIsNotKeptWhenOff() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        val host = AudioHost(keep = false, traces)
+        dictate(controller(host))
+        assertTrue(host.saved.isEmpty())
+        assertNull(traces.single().audio)
+    }
+
+    @Test fun cancelledDictationKeepsNoAudio() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        val host = AudioHost(keep = true, traces)
+        val c = controller(host)
+        c.toggle(false); audio.speak(300); c.cancel(); settle()
+        assertTrue(host.saved.isEmpty())
+    }
+
+    @Test fun aThrowingAudioHookNeverChangesTheDictation() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        val c = controller(AudioHost(keep = true, traces, throwOnAudio = true))
+        dictate(c)
+        assertEquals(InsertOutcome.INSERTED, traces.single().insert.outcome)
+        assertNull(traces.single().audio)
+        assertEquals(DictationState.Ready, c.state.value)
+    }
 }

@@ -18,7 +18,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * endpoint_wait_ms, asr_ms, post_ms, total_ms, perceived_ms, target, insert, raw, text, error,
  * and since D22 wait_ms, segments, pre_asr_ms, client_ms (+ `kind` on every line, `stack` when there is an exception, `event` on non-dictation lines).
  * Android since 2026-10-23: engine (whisper|parakeet|server|cloud|mock), model (file / folder
- * name, server-reported or cloud model), language (sent to the engine; "auto" = detect).
+ * name, server-reported or cloud model), language (sent to the engine; "auto" = detect), audio
+ * (kept WAV file name, Developer "Keep last dictation audio (debug)"; else null).
  *
  * Logging must never affect dictation: entries are queued (bounded, drop-oldest) and written
  * on one background thread; every failure is swallowed and counted.
@@ -65,6 +66,8 @@ data class DictationTrace(
     val text: String? = null,
     val error: String? = null,
     val stack: String? = null,
+    /** "Keep last dictation audio (debug)": the WAV in `files/debug/audio/` ([DebugAudioStore]); null = none kept. */
+    val audio: String? = null,
 )
 
 /** `insert` field: {"outcome": …, "steps": […]}. */
@@ -115,8 +118,13 @@ object DebugRedact {
             raw = t.raw?.let { REDACTED },
             text = t.text?.let { REDACTED },
             insert = t.insert.copy(steps = emptyList()),
+            audio = null,
         )
     }
+
+    /** "Keep last dictation audio": never for the targets whose text is redacted. */
+    fun keepsAudio(t: DictationTrace, protectedField: Boolean, protectedApp: Boolean) =
+        !(protectedField || protectedApp || t.insert.outcome == InsertOutcome.TARGET_PROTECTED)
 
     /** Password-type input, a password node, or (API 34+) an accessibility-data-sensitive field. */
     fun isProtectedField(inputType: Int, nodePassword: Boolean, dataSensitive: Boolean) =
@@ -179,6 +187,7 @@ object DebugFormat {
         "insert" to Raw(obj("outcome" to t.insert.outcome, "steps" to t.insert.steps)),
         "raw" to t.raw,
         "text" to t.text,
+        "audio" to t.audio,
         "error" to t.error,
         "stack" to t.stack,
     )
