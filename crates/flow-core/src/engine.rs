@@ -21,8 +21,19 @@ use crate::paste::{self, PasteSegment};
 use crate::postprocess::{self, DictMatcher};
 use crate::{hallucination, vad};
 
-/// Partials decode at most this much trailing audio (Whisper's window).
-const PARTIAL_WINDOW: usize = SAMPLE_RATE * 30;
+/// Partials decode at most this much trailing audio. 30 s (Whisper's
+/// window) made every preview cost about as much as the final decode, and
+/// `commit` waits for the one in flight (neither whisper's encoder nor a
+/// sherpa decode can be interrupted): field data showed up to 0.9 s of
+/// `total − asr`. 12 s bounds that wait (proposal Phase 0). Older audio is
+/// shown as a leading "… ".
+const PARTIAL_WINDOW: usize = SAMPLE_RATE * 12;
+/// Preview prefix when the window does not reach back to the start.
+const PARTIAL_ELLIPSIS: &str = "… ";
+/// No new preview once this much trailing silence follows speech that the
+/// last preview already covered: the user is probably about to release,
+/// and the decode would only delay the commit.
+const PARTIAL_SKIP_SILENCE_MS: u64 = 400;
 const WORKER_TICK: Duration = Duration::from_millis(10);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,6 +61,24 @@ pub struct Timings {
     /// Audio actually given to ASR after VAD trimming (0 = ASR skipped).
     #[serde(default)]
     pub asr_audio_ms: u64,
+    /// Time `commit` waited for the worker to finish what it was doing (a
+    /// live-preview or segment decode in flight) before its own work began.
+    /// Included in `total_ms`, not in `asr_ms`. Omitted when 0. 2026-10-23.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub wait_ms: u64,
+    /// Pause-segmented decoding (D22): pieces that went to ASR (closed
+    /// segments + tail). 0 = segmentation off. Omitted when 0.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub segments: u64,
+    /// D22: ASR time spent while recording on pieces whose text was used
+    /// (not part of `asr_ms`, which is ASR time inside `commit`). Omitted
+    /// when 0.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub pre_asr_ms: u64,
+}
+
+fn is_zero(v: &u64) -> bool {
+    *v == 0
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,6 +159,12 @@ pub struct RouteInfo {
     pub queue_ms: Option<u32>,
     /// The server's flow-core version (pipeline skew detection).
     pub server_core: Option<String>,
+    /// Wall time of `Router::commit` on the client (release → result, so
+    /// for a server result it includes the upload tail, the network and
+    /// the server's queue). Set by `flow_router::Router`; `FlowCore` never
+    /// sets it. 2026-10-23.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_ms: Option<u32>,
     /// Engine provider id for engines with several providers (opt-in cloud
     /// STT: the configured provider id, e.g. `"openrouter-1"`; `None` for
     /// local / own server).
@@ -258,6 +293,8 @@ enum Ctrl {
         reply: mpsc::Sender<CommitResult>,
         /// Set by `cancel()` while this commit runs (review C4).
         abort: Arc<AtomicBool>,
+        /// When `commit()` sent it (`timings.wait_ms`).
+        sent: Instant,
     },
     Cancel {
         id: u64,
@@ -545,6 +582,7 @@ impl FlowCore {
                 ctx,
                 reply: tx,
                 abort,
+                sent: Instant::now(),
             })
             .is_err()
         {
@@ -607,6 +645,11 @@ struct Session {
     buf: Vec<f32>,
     truncated: bool,
     last_partial_len: usize,
+    /// End (buffer length) of the audio the last preview decode covered.
+    partial_upto: usize,
+    /// Streaming VAD over `buf` while previews are on (skip previews in
+    /// trailing silence); fed up to `buf.len()`.
+    track: Option<vad::StreamVad>,
     /// Compiled dictionary for this session (shared with later sessions
     /// that use the same dictionary).
     matcher: Arc<DictMatcher>,
@@ -628,12 +671,28 @@ impl Session {
             self.truncated = true;
         }
         let (x, y) = chunk.as_slices();
+        let from = self.buf.len();
         self.buf
             .extend(x.iter().chain(y).take(room).map(|&s| s as f32 / 32768.0));
         // Free the whole chunk, the samples past `max_samples` too: left in
         // the ring they would fill it and count every later push as
         // dropped (review C18).
         chunk.commit_all();
+        if let Some(t) = self.track.as_mut() {
+            for &v in &self.buf[from..] {
+                t.sample(v);
+            }
+        }
+    }
+
+    /// True when the preview should not be re-decoded now: speech was
+    /// followed by at least `PARTIAL_SKIP_SILENCE_MS` of silence, and the
+    /// last preview already covered that speech.
+    fn preview_is_current(&self) -> bool {
+        let Some(t) = &self.track else { return false };
+        let speech_end = t.speech_end() as usize * vad::FRAME;
+        t.trailing_frames() * (vad::FRAME * 1000 / SAMPLE_RATE) as u64 >= PARTIAL_SKIP_SILENCE_MS
+            && self.partial_upto >= speech_end
     }
 }
 
@@ -651,6 +710,7 @@ impl Worker {
             match rx.recv_timeout(WORKER_TICK) {
                 Ok(Ctrl::Start { id, cfg, consumer }) => {
                     let matcher = self.matcher_for(&cfg.dictionary);
+                    let track = cfg.partial_interval_ms.map(|_| vad::StreamVad::new());
                     self.session = Some(Session {
                         id,
                         cfg: *cfg,
@@ -658,6 +718,8 @@ impl Worker {
                         buf: Vec::new(),
                         truncated: false,
                         last_partial_len: 0,
+                        partial_upto: 0,
+                        track,
                         matcher,
                         prefilled: None,
                     });
@@ -668,8 +730,10 @@ impl Worker {
                     ctx,
                     reply,
                     abort,
+                    sent,
                 }) => {
-                    let r = match self.session.take() {
+                    let wait_ms = sent.elapsed().as_millis() as u64;
+                    let mut r = match self.session.take() {
                         Some(mut s) if s.id == id => {
                             if let Some(cl) = &self.cleaner {
                                 cl.cancel_prefill();
@@ -687,6 +751,7 @@ impl Worker {
                             CommitResult::error("session superseded")
                         }
                     };
+                    r.timings.wait_ms = wait_ms;
                     let _ = reply.send(r);
                 }
                 Ok(Ctrl::Cancel { id }) => {
@@ -777,9 +842,10 @@ impl Worker {
         }
         s.last_partial_len = s.buf.len();
         let start = s.buf.len().saturating_sub(PARTIAL_WINDOW);
-        if self.shared.stop_partial.load(Ordering::Relaxed) {
+        if self.shared.stop_partial.load(Ordering::Relaxed) || s.preview_is_current() {
             return;
         }
+        s.partial_upto = s.buf.len();
         let s = self.session.as_ref().unwrap();
         let mut window = &s.buf[start..];
         if s.cfg.vad {
@@ -795,10 +861,15 @@ impl Worker {
         if let Ok(out) = self.asr.transcribe(window, &req) {
             let t = out.text.trim();
             if !t.is_empty() {
+                let t = if start > 0 {
+                    format!("{PARTIAL_ELLIPSIS}{t}")
+                } else {
+                    t.to_string()
+                };
                 let mut p = self.shared.partial.lock().unwrap();
                 // Only while this session is still the shown one (S11).
                 if self.shared.current.load(Ordering::SeqCst) == s.id {
-                    *p = Some(t.to_string());
+                    *p = Some(t);
                 }
             }
         }

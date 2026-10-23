@@ -136,6 +136,25 @@ pub struct SessionConfig {
     /// are raised to 300; `endpoint::RECOMMENDED_SILENCE_MS` = 2000.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub endpoint_silence_ms: Option<u32>,
+    /// Pause-segmented incremental decoding (D22): cut the dictation at
+    /// pauses of at least this many ms (min 200; recommended
+    /// `segment::RECOMMENDED_PAUSE_MS` = 800) and decode each finished
+    /// piece while the user keeps talking, so `commit` decodes only the
+    /// tail. Cuts depend only on the audio, so the text is the same on
+    /// every route. Ignored by engines that must not see audio before
+    /// commit (cloud STT, D18). `None` (default) = off: today's single
+    /// decode at commit, byte-identical. Omitted from JSON when unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub segment_pause_ms: Option<u32>,
+    /// D22: a piece shorter than this keeps growing past a pause. `None` =
+    /// 4000.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub segment_min_ms: Option<u32>,
+    /// D22: a piece this long without a qualifying pause is cut at its
+    /// longest gap of at least 200 ms in the last 5 s, if any. `None` =
+    /// 20000.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub segment_soft_max_ms: Option<u32>,
 }
 
 impl Default for SessionConfig {
@@ -161,6 +180,9 @@ impl Default for SessionConfig {
             llm_prefill: true,
             spoken_cleanup: true,
             endpoint_silence_ms: None,
+            segment_pause_ms: None,
+            segment_min_ms: None,
+            segment_soft_max_ms: None,
         }
     }
 }
@@ -292,6 +314,24 @@ mod tests {
         assert!(off.get("endpoint_silence_ms").is_none());
         let c: SessionConfig = serde_json::from_str(r#"{"endpoint_silence_ms":1500}"#).unwrap();
         assert_eq!(c.endpoint_silence_ms, Some(1500));
+        let back: SessionConfig =
+            serde_json::from_value(serde_json::to_value(&c).unwrap()).unwrap();
+        assert_eq!(back, c);
+    }
+
+    #[test]
+    fn segmentation_is_opt_in_and_round_trips() {
+        let off = serde_json::to_value(SessionConfig::default()).unwrap();
+        for k in ["segment_pause_ms", "segment_min_ms", "segment_soft_max_ms"] {
+            assert!(off.get(k).is_none(), "{k}");
+        }
+        let c: SessionConfig = serde_json::from_str(
+            r#"{"segment_pause_ms":800,"segment_min_ms":3000,"segment_soft_max_ms":15000}"#,
+        )
+        .unwrap();
+        assert_eq!(c.segment_pause_ms, Some(800));
+        assert_eq!(c.segment_min_ms, Some(3000));
+        assert_eq!(c.segment_soft_max_ms, Some(15000));
         let back: SessionConfig =
             serde_json::from_value(serde_json::to_value(&c).unwrap()).unwrap();
         assert_eq!(back, c);

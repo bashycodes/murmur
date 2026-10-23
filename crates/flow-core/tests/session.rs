@@ -974,3 +974,119 @@ fn audio_past_max_samples_is_not_counted_as_dropped() {
     assert_eq!(r.timings.audio_ms, 500);
     assert_eq!(r.timings.dropped_samples, 0, "{r:?}");
 }
+
+// ---- Phase 0 of docs/proposals/streaming-asr-latency.md ----------------
+
+#[test]
+fn partial_window_is_capped_at_12_s_with_an_ellipsis() {
+    let (core, asr) = mock_core("tail words");
+    core.start_session(SessionConfig {
+        partial_interval_ms: Some(500),
+        vad: false,
+        ring_capacity_samples: 16_000 * 40,
+        ..Default::default()
+    })
+    .unwrap();
+    push_all(&core, &speech(20_000));
+    // The worker may preview a shorter buffer while the push is running;
+    // wait for the one over the capped window.
+    assert!(
+        wait_until(|| core.partial().as_deref() == Some("… tail words")),
+        "{:?}",
+        core.partial()
+    );
+    assert_eq!(asr.last_len(), 12 * 16_000);
+    // The final decode still sees everything.
+    let r = core.commit();
+    assert_eq!(asr.last_len(), 20 * 16_000);
+    assert_eq!(r.asr_text, "tail words");
+}
+
+#[test]
+fn short_dictation_preview_has_no_ellipsis() {
+    let (core, _) = mock_core("hello");
+    core.start_session(SessionConfig {
+        partial_interval_ms: Some(100),
+        ..Default::default()
+    })
+    .unwrap();
+    push_all(&core, &speech(2000));
+    assert!(wait_until(|| core.partial().is_some()));
+    assert_eq!(core.partial().as_deref(), Some("hello"));
+}
+
+#[test]
+fn no_preview_redecode_in_trailing_silence() {
+    let (core, asr) = mock_core("hello");
+    core.start_session(SessionConfig {
+        partial_interval_ms: Some(100),
+        ..Default::default()
+    })
+    .unwrap();
+    push_all(&core, &speech(1500));
+    push_all(&core, &noise(200, 30, 1));
+    assert!(wait_until(|| core.partial().is_some()));
+    // Let the worker drain and preview what was pushed so far.
+    std::thread::sleep(Duration::from_millis(300));
+    let before = asr.calls();
+    // 2 s of silence in 100 ms steps: every step is due for a preview, but
+    // the last one already covered all the speech.
+    for i in 0..20 {
+        push_all(&core, &noise(100, 30, 10 + i));
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    std::thread::sleep(Duration::from_millis(200));
+    // At most the previews due in the first 400 ms of silence.
+    assert!(asr.calls() <= before + 4, "{} -> {}", before, asr.calls());
+    // New speech previews again.
+    let mid = asr.calls();
+    push_all(&core, &speech(500));
+    assert!(wait_until(|| asr.calls() > mid));
+    assert_eq!(core.commit().status, CommitStatus::RawTranscript);
+}
+
+#[test]
+fn wait_ms_reports_a_commit_queued_behind_the_worker() {
+    // Partials are aborted at commit, so an uninterruptible engine is what
+    // makes the commit wait: model one that ignores the abort flag.
+    struct Stubborn(std::sync::atomic::AtomicUsize);
+    impl AsrEngine for Stubborn {
+        fn transcribe(&self, _pcm: &[f32], req: &AsrRequest) -> Result<AsrOutput, AsrError> {
+            if req.purpose == flow_core::asr::AsrPurpose::Partial {
+                self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(400));
+            }
+            Ok(AsrOutput {
+                text: "ok".into(),
+                ..Default::default()
+            })
+        }
+    }
+    let asr = Arc::new(Stubborn(Default::default()));
+    let core = FlowCore::from_engines(asr.clone(), None);
+    core.start_session(SessionConfig {
+        partial_interval_ms: Some(40),
+        ..Default::default()
+    })
+    .unwrap();
+    push_all(&core, &speech(1000));
+    assert!(wait_until(|| asr
+        .0
+        .load(std::sync::atomic::Ordering::SeqCst)
+        > 0));
+    let r = core.commit();
+    assert_eq!(r.status, CommitStatus::RawTranscript, "{r:?}");
+    assert!(r.timings.wait_ms > 0, "{:?}", r.timings);
+    assert!(r.timings.wait_ms <= r.timings.total_ms, "{:?}", r.timings);
+    // Off the JSON when 0, present otherwise.
+    let j = serde_json::to_value(&r).unwrap();
+    assert!(j["timings"]["wait_ms"].as_u64().unwrap() > 0);
+    let (core, _) = mock_core("x");
+    core.start_session(SessionConfig::default()).unwrap();
+    push_all(&core, &speech(500));
+    let r = core.commit();
+    let j = serde_json::to_value(&r).unwrap();
+    for k in ["segments", "pre_asr_ms"] {
+        assert!(j["timings"].get(k).is_none(), "{k}: {j}");
+    }
+}

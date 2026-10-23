@@ -63,6 +63,7 @@ fn commit_result() -> CommitResult {
         total_ms: 830,
         dropped_samples: 0,
         asr_audio_ms: 1000,
+        ..Default::default()
     };
     r
 }
