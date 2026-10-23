@@ -444,4 +444,43 @@ The box was shared with other agents (load varied during the run), so read the r
   spoken-cleanup test.
 * No reuse of an in-flight preview as the tail: a commit still waits for
   one decode (`wait_ms`), bounded by the 12 s preview window or one piece.
+* **Punctuation across cuts (fix, 2026-10-23, after agent W's report).**
+  Each piece was punctuated on its own, so a mid-sentence pause became a
+  sentence break (Parakeet on jfk: "ask not. What your country"). The WER
+  bench missed it because it ignores punctuation. Now every cut also gets
+  a **bridge** decode of the audio 4 s either side of it. It is decoded
+  while recording once 4 s follow the cut (after the closed pieces, before
+  previews), and at commit only when the tail is shorter. `segment::splice`
+  aligns the bridge with the last/first 6 words of the two pieces. Anchors
+  are exact matches, never the bridge's edge words. The span between the
+  anchors takes the bridge's punctuation and case. Words may change only
+  at the 2 positions next to the cut ("asked not" → "ask not" for whisper
+  tiny), and any other mismatch keeps the pieces unchanged. The same
+  splice joins Parakeet's ≤ 20 s internal pieces. Measured with
+  `tests/segment_bench.rs::segmented_punctuation_matches_whole_clip`:
+  punctuated-token error against the whole-clip output, with exact case
+  and punctuation, for three joins. "plain" = before the fix; "smooth" =
+  a text-only heuristic (drop the period and lowercase the next word);
+  "bridge" = shipped.
+
+  | engine | set | plain | smooth | **bridge** |
+  |---|---|---|---|---|
+  | Parakeet | jfk @ 800 ms | 4.55% (0/1 exact) | 4.55% | **0.00% (1/1)** |
+  | Parakeet | 35 utterances cut at 300 ms / 2 s (59 mid-sentence cuts) | 7.32% (10/35) | 8.35% | **5.15% (14/35)** |
+  | Parakeet | 8 long clips @ 800 ms (cuts at real sentence ends) | 3.23%, 34/36 ends | 6.99%, 20/36 ends | **2.69%, 36/36 ends** |
+  | whisper base | jfk | 4.55% | 4.55% | **0.00%** |
+  | whisper base | 35 utterances, 300 ms / 2 s | 14.04%, 93 ends vs 52 | 12.18% | **9.16%, 66 ends** |
+  | whisper base | 8 long clips | 4.10% | 8.61% | 4.92% |
+
+  Smoothing destroys real sentence ends (20/36). Bridging wins everywhere
+  except whisper on the long clips (+0.8 pt). There the "whole" reference
+  is itself a > 30 s whisper decode with its own seek boundaries. Word WER
+  gate after the fix: Parakeet whole 2.15% / segmented 1.62%, whisper
+  5.92% / 5.38% (the Parakeet whole number moved from 2.02% because
+  > 20 s whole decodes now splice too). Regression tests:
+  `parakeet_e2e::parakeet_segmented_jfk_equals_whole_clip`,
+  `whisper_e2e::segmented_jfk_equals_whole_clip` (exact equality),
+  `segment.rs` splice units (including a slipped alignment that once
+  duplicated "the man who told"). Cost: one extra decode of ≤ 8 s per
+  cut, almost always while recording.
 

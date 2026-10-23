@@ -267,3 +267,24 @@ fn parakeet_segmented_long_clips_lose_no_sentence() {
         );
     }
 }
+
+/// Regression (agent W, feat/win-streaming 64d8e6b): pieces were
+/// punctuated on their own, so jfk's mid-sentence pause became "ask not.
+/// What your country". Segmented output must equal the whole-clip one,
+/// punctuation and case included.
+#[test]
+fn parakeet_segmented_jfk_equals_whole_clip() {
+    let Some(core) = load() else { return };
+    let whole = dictate(&core, &models().join("jfk.wav"), SessionConfig::default());
+    let seg = dictate(
+        &core,
+        &models().join("jfk.wav"),
+        SessionConfig {
+            segment_pause_ms: Some(800),
+            ..Default::default()
+        },
+    );
+    assert!(seg.timings.segments >= 2, "no cut: {:?}", seg.timings);
+    assert_eq!(seg.asr_text, whole.asr_text);
+    assert_eq!(seg.final_text, whole.final_text);
+}

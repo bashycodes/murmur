@@ -94,6 +94,12 @@ fn segmented_wer_matches_whole_clip() {
             let segm = dictate(&core, &clip.pcm, seg.clone(), 0.0);
             let (a, w) = long_clips::wer_counts(&clip.reference, &whole.asr_text);
             let (b, _) = long_clips::wer_counts(&clip.reference, &segm.asr_text);
+            if std::env::var_os("FLOW_BENCH_DUMP").is_some() && a != b {
+                eprintln!(
+                    "REF   {}\nWHOLE {}\nSEG   {}",
+                    clip.reference, whole.asr_text, segm.asr_text
+                );
+            }
             ew += a;
             es += b;
             n += w;
@@ -126,5 +132,123 @@ fn segmented_wer_matches_whole_clip() {
             ps <= pw + 0.3,
             "{name}: segmented {ps:.2}% vs whole {pw:.2}%"
         );
+    }
+}
+
+/// Punctuated-token error of `hyp` against `reference` (exact tokens:
+/// case and punctuation count), and the sentence ends ([.?!]) each has.
+fn punct_counts(reference: &str, hyp: &str) -> (usize, usize, usize, usize) {
+    let (r, h): (Vec<&str>, Vec<&str>) = (
+        reference.split_whitespace().collect(),
+        hyp.split_whitespace().collect(),
+    );
+    let mut prev: Vec<usize> = (0..=h.len()).collect();
+    for (i, rw) in r.iter().enumerate() {
+        let mut cur = vec![i + 1; h.len() + 1];
+        for (j, hw) in h.iter().enumerate() {
+            cur[j + 1] = (prev[j] + usize::from(rw != hw))
+                .min(prev[j + 1] + 1)
+                .min(cur[j] + 1);
+        }
+        prev = cur;
+    }
+    let ends = |v: &[&str]| v.iter().filter(|w| w.ends_with(['.', '?', '!'])).count();
+    (prev[h.len()], r.len(), ends(&r), ends(&h))
+}
+
+/// Agent W's regression: pieces punctuated alone turn every mid-sentence
+/// pause into a sentence break. Compares the segmented output with the
+/// whole-clip output (punctuation and case included) for three join
+/// strategies (`FLOW_SEGMENT_JOIN`): plain (no fix), smooth (text-only
+/// heuristic) and bridge (decode around each cut; the product). Sets:
+/// jfk at 800 ms; every manifest utterance >= 6 s cut at 300 ms pauses
+/// with 2 s minimum pieces (forces mid-sentence cuts); the long probe
+/// clips at 800 ms (cuts at real sentence ends, which must survive).
+#[test]
+#[ignore]
+fn segmented_punctuation_matches_whole_clip() {
+    let Some(audio) = long_clips::audio_dir() else {
+        eprintln!("SKIP: FLOW_AUDIO_DIR not set");
+        return;
+    };
+    let m: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(long_clips::manifest()).unwrap()).unwrap();
+    let mut short: Vec<Vec<i16>> = m["utterances"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|u| u["dur_s"].as_f64().unwrap_or(0.0) >= 6.0)
+        .filter_map(|u| {
+            flow_core::audio::read_wav_16k_mono(&audio.join(format!("{}.wav", u["id"].as_str()?)))
+                .ok()
+        })
+        .collect();
+    let jfk = std::env::var_os("FLOW_MODELS_DIR")
+        .map(|d| PathBuf::from(d).join("jfk.wav"))
+        .and_then(|p| flow_core::audio::read_wav_16k_mono(&p).ok());
+    let long: Vec<Vec<i16>> = long_clips::build(&audio)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|c| c.secs() >= 15.0)
+        .map(|c| c.pcm)
+        .collect();
+    let sets: Vec<(&str, Vec<Vec<i16>>, SessionConfig)> = vec![
+        (
+            "jfk@800",
+            jfk.into_iter().collect(),
+            SessionConfig {
+                segment_pause_ms: Some(800),
+                ..Default::default()
+            },
+        ),
+        (
+            "utterances@300/2s",
+            std::mem::take(&mut short),
+            SessionConfig {
+                segment_pause_ms: Some(300),
+                segment_min_ms: Some(2000),
+                ..Default::default()
+            },
+        ),
+        (
+            "long@800",
+            long,
+            SessionConfig {
+                segment_pause_ms: Some(800),
+                ..Default::default()
+            },
+        ),
+    ];
+    for (name, model) in engines() {
+        let core = FlowCore::load_models(&model).expect("load");
+        for (set, clips, cfg) in &sets {
+            let wholes: Vec<String> = clips
+                .iter()
+                .map(|p| dictate(&core, p, SessionConfig::default(), 0.0).asr_text)
+                .collect();
+            for mode in ["plain", "smooth", "bridge"] {
+                // SAFETY: this ignored bench is the only test in its binary
+                // that reads the variable, and it runs alone.
+                unsafe { std::env::set_var("FLOW_SEGMENT_JOIN", mode) };
+                let (mut e, mut n, mut exact, mut cuts) = (0, 0, 0, 0);
+                let (mut ends_w, mut ends_s) = (0, 0);
+                for (p, w) in clips.iter().zip(&wholes) {
+                    let s = dictate(&core, p, cfg.clone(), 0.0);
+                    cuts += s.timings.segments.saturating_sub(1);
+                    let (a, b, c, d) = punct_counts(w, &s.asr_text);
+                    e += a;
+                    n += b;
+                    ends_w += c;
+                    ends_s += d;
+                    exact += usize::from(*w == s.asr_text);
+                }
+                eprintln!(
+                    "{name} {set:18} {mode:6}: punct-token err vs whole {:5.2}% | exact {exact}/{} | sentence ends whole {ends_w} seg {ends_s} | {cuts} cuts",
+                    100.0 * e as f32 / n.max(1) as f32,
+                    clips.len()
+                );
+            }
+            unsafe { std::env::remove_var("FLOW_SEGMENT_JOIN") };
+        }
     }
 }
