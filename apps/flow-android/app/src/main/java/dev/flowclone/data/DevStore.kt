@@ -175,7 +175,7 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
             tls = kv.getBoolean("server.tls", d.tls),
             tlsPinSha256 = kv.getString("server.tls_pin_sha256") ?: "",
             token = kv.getString("server.token_sealed")?.let(box::open) ?: "",
-            connectTimeoutMs = kv.getLong("server.connect_timeout_ms", d.connectTimeoutMs),
+            connectTimeoutMs = loadConnectTimeout(),
             commitTimeoutBaseMs = kv.getLong("server.commit_timeout_base_ms", d.commitTimeoutBaseMs),
             healthTtlS = kv.getLong("server.health_ttl_s", d.healthTtlS),
             keepLocalWarm = kv.getBoolean("keep_local_warm", d.keepLocalWarm),
@@ -190,7 +190,20 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         )
     }
 
+    /** D24: an untouched stored 800 ms (the pre-D24 default) becomes 2500 ms, once. */
+    private fun loadConnectTimeout(): Long {
+        val stored = if (kv.contains(CONNECT_TIMEOUT)) kv.getLong(CONNECT_TIMEOUT, DevSettings.DEFAULT_CONNECT_TIMEOUT_MS) else null
+        val migrated = kv.getBoolean(CONNECT_TIMEOUT_MIGRATED, false)
+        val v = DevSettings.migrateConnectTimeout(stored, migrated)
+        if (!migrated) kv.edit {
+            putBoolean(CONNECT_TIMEOUT_MIGRATED, true)
+            if (stored != null && v != stored) putLong(CONNECT_TIMEOUT, v)
+        }
+        return v
+    }
+
     fun save(s: DevSettings) = kv.edit {
+        putBoolean(CONNECT_TIMEOUT_MIGRATED, true)
         putBoolean("allow_server", s.allowServer)
         putBoolean("allow_client", s.allowClient)
         putString("route_order", s.routeOrder.joinToString(",") { it.wire })
@@ -265,6 +278,9 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
     companion object {
         const val PARAKEET_DECODING = "parakeet_decoding"
         const val FILE = "dev"
+        private const val CONNECT_TIMEOUT = "server.connect_timeout_ms"
+        /** D24: set once the 800 → 2500 ms connect-timeout migration ran (or on any save). */
+        private const val CONNECT_TIMEOUT_MIGRATED = "connect_timeout_default_2500"
         const val USAGE = "cloud_usage"
         const val DEBUG_LOG = "debug_log"
         const val KEEP_DEBUG_AUDIO = "debug_keep_audio"

@@ -242,6 +242,7 @@ fn route_status() -> RouteStatus {
         },
         health: Some(health_ok()),
         cloud_circuit: None,
+        last_diag: None,
     }
 }
 
@@ -369,6 +370,7 @@ fn live_route_fixtures() -> Vec<(String, Value)> {
             serde_json::to_value(StartInfo {
                 queued: false,
                 route: Some(remote),
+                ..Default::default()
             })
             .unwrap(),
         ),
@@ -382,6 +384,7 @@ fn live_route_fixtures() -> Vec<(String, Value)> {
                     trailing_silence_ms: 300,
                 },
                 route: Some(cloud),
+                ..Default::default()
             })
             .unwrap(),
         ),
@@ -399,12 +402,53 @@ fn live_route_fixtures() -> Vec<(String, Value)> {
                     fallback: Some("disconnected".into()),
                     ..Default::default()
                 }),
+                ..Default::default()
             })
             .unwrap(),
         ),
         (
             "poll_idle".into(),
             serde_json::to_value(RouterPoll::default()).unwrap(),
+        ),
+        // D24: server unreachable, phone model loading on demand.
+        (
+            "poll_loading".into(),
+            serde_json::to_value(RouterPoll {
+                session: SessionPoll::default(),
+                route: Some(SessionRoute {
+                    engine: EngineKind::Local,
+                    fallback: Some("connect_failed".into()),
+                    ..Default::default()
+                }),
+                loading: true,
+            })
+            .unwrap(),
+        ),
+        (
+            "start_info_loading".into(),
+            serde_json::to_value(StartInfo {
+                queued: false,
+                route: Some(SessionRoute {
+                    engine: EngineKind::Local,
+                    fallback: Some("connect_failed".into()),
+                    ..Default::default()
+                }),
+                loading: true,
+            })
+            .unwrap(),
+        ),
+        (
+            "route_status_diag".into(),
+            serde_json::to_value(RouteStatus {
+                last_diag: Some(RouteDiag {
+                    connect_ms: Some(2503),
+                    local_cold: true,
+                    local_load_ms: Some(1840),
+                    local_load_error: None,
+                }),
+                ..route_status()
+            })
+            .unwrap(),
         ),
     ]
 }
@@ -453,7 +497,7 @@ fn every_fixture_parses_and_round_trips() {
         assert_eq!(back, v, "{name}");
         n += 1;
     }
-    assert_eq!(n, 22);
+    assert_eq!(n, 25);
 }
 
 #[test]
@@ -466,7 +510,8 @@ fn configs_validate_and_partial_json_gets_defaults() {
     assert!(c.allow_server && c.allow_client && c.keep_local_warm);
     assert_eq!(c.prefer, Prefer::Server);
     assert_eq!(c.server.port, 7313);
-    assert_eq!(c.server.connect_timeout_ms, 800);
+    assert_eq!(c.server.connect_timeout_ms, DEFAULT_CONNECT_TIMEOUT_MS);
+    assert_eq!(DEFAULT_CONNECT_TIMEOUT_MS, 2500);
     assert_eq!(c.server.commit_timeout_base_ms, 3000);
     assert_eq!(c.server.health_ttl_s, 30);
     let c: RouterConfig = serde_json::from_str(r#"{"prefer":"client","unknown":1}"#).unwrap();

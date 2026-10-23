@@ -347,8 +347,14 @@ fn set_prefs(
             if reload_llm {
                 core.load_llm(LlmSpec::from_prefs(&prefs, ad));
             }
+        } else if core.is_ready()
+            && core_adapter::needs_reload(&state.prefs.read().unwrap(), &prefs)
+        {
+            // D24: a model loaded on demand follows the new model choice.
+            core.load(ModelSpec::from_prefs(&prefs, ad));
         }
     }
+    sync_on_demand(&state, &prefs);
     if let Some(h) = &state.history {
         let _ = h.lock().unwrap().prune(prefs.retention, history::now_ms());
     }
@@ -621,6 +627,21 @@ fn want_local(prefs: &Prefs) -> bool {
     cli && (d.keep_local_warm || !srv || d.prefer() == crate::dev_settings::Route::Client)
 }
 
+/// D24 never-fail fallback: the model the router loads on demand when the
+/// client route is allowed but not kept warm (`keep_local_warm` off), so an
+/// unreachable server never fails a dictation. `None` when the slot is
+/// loaded at startup anyway, or the client route is off.
+fn on_demand_spec(prefs: &Prefs, appdata: Option<&str>) -> Option<ModelSpec> {
+    let (_, cli) = prefs.developer.effective(BuildCaps::current());
+    (cli && !want_local(prefs)).then(|| ModelSpec::from_prefs(prefs, appdata))
+}
+
+fn sync_on_demand(state: &AppState, prefs: &Prefs) {
+    if let Some(r) = state.router.get() {
+        r.set_on_demand(on_demand_spec(prefs, state.appdata.as_deref()));
+    }
+}
+
 /// Load local models now if the settings want them and nothing is loaded
 /// (e.g. Allow client was just turned on). Never reloads a loaded model.
 fn ensure_local(state: &AppState, prefs: &Prefs) {
@@ -799,6 +820,7 @@ fn save_dev(
         }
     }
     ensure_local(state, &prefs);
+    sync_on_demand(state, &prefs);
     refresh_debug_secrets(state, &prefs.developer);
     *state.prefs.write().unwrap() = prefs;
     probe_in_background(app);
@@ -1508,7 +1530,8 @@ pub fn run() {
                     core.load(ModelSpec::from_prefs(&p, appdata.as_deref()));
                     core.load_llm(LlmSpec::from_prefs(&p, appdata.as_deref()));
                 } else {
-                    let _ = model_item.set_text("Speech model: not loaded (server first)");
+                    let _ = model_item
+                        .set_text("Speech model: loads on demand if the server is unreachable");
                 }
                 let _ = app.state::<AppState>().core.set(core.clone());
             } else {
@@ -1524,6 +1547,10 @@ pub fn run() {
                     .expect("default router config")
             });
             let router = RouterAdapter::new(cfg, local, router_adapter::remote_factory());
+            {
+                let p = prefs.read().unwrap();
+                router.set_on_demand(on_demand_spec(&p, appdata.as_deref()));
+            }
             // D18: keys from Credential Manager, last counters from disk.
             {
                 let st = app.state::<AppState>();

@@ -56,6 +56,24 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
         return if (!isRouter) none() else lease.use(none) { h -> RouterJson.decodeHealth(guardLink { nativeProbeRouter(h) }) }
     }
 
+    /** D24: `nativeSetLocalLoader` with the model configs as a JSON array; false on an old library. */
+    override fun setLocalLoader(configs: List<ModelConfig>): Boolean = isRouter && lease.use({ false }) { h ->
+        val json = org.json.JSONArray().apply { configs.forEach { put(org.json.JSONObject(CoreJson.encode(it))) } }.toString()
+        try {
+            nativeSetLocalLoader(h, json)
+        } catch (e: UnsatisfiedLinkError) {
+            false
+        }
+    }
+
+    /** D24 pre-warm (blocking up to the connect timeout). */
+    override fun prewarm(): Boolean = isRouter && lease.use({ false }) { h ->
+        BlockingCalls.check("nativePrewarm")
+        try { nativePrewarm(h) } catch (e: UnsatisfiedLinkError) { false }
+    }
+
+    override fun lastRouteDiag(): RouteDiag? = if (!isRouter) null else routeStatus().lastDiag
+
     /** Router handles only: last route + circuit + last probe. */
     fun routeStatus(): RouteStatus =
         if (!isRouter) RouteStatus() else lease.use({ RouteStatus() }) { h -> RouterJson.decodeRouteStatus(guardLink { nativeRouteStatus(h) }) }
@@ -300,6 +318,10 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
         @JvmStatic external fun nativeRouteStatus(handle: Long): String
         @JvmStatic external fun nativeResetCircuit(handle: Long)
         @JvmStatic external fun nativeProbeRouter(handle: Long): String
+
+        // ---- D24 never-fail fallback (JNI_CONTRACT.md "On-demand local engine") ----
+        @JvmStatic external fun nativeSetLocalLoader(handle: Long, modelConfigsJson: String): Boolean
+        @JvmStatic external fun nativePrewarm(handle: Long): Boolean
 
         // ---- D18 cloud STT (JNI_CONTRACT.md "Cloud STT"); present in every flavour's library ----
         @JvmStatic external fun nativeSetCloudKey(handle: Long, providerId: String, key: String?): Boolean

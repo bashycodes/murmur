@@ -59,7 +59,7 @@ pub enum Prefer { Server, Client }               // serde: "server" | "client"
 }
 #[serde(default)] pub struct ServerConfig {
     pub host: String, pub port: u16 /*7313*/, pub tls: bool, pub tls_pin_sha256: Option<String>,
-    pub token: String, pub connect_timeout_ms: u64 /*800*/, pub commit_timeout_base_ms: u64 /*3000*/,
+    pub token: String, pub connect_timeout_ms: u64 /*2500 (D24; was 800)*/, pub commit_timeout_base_ms: u64 /*3000*/,
     pub health_ttl_s: u64 /*30*/,
 }
 pub struct Capabilities { pub local: bool, pub remote: bool, pub asr_engines: Vec<String>,
@@ -154,6 +154,11 @@ Server with an empty `host` counts as `server_not_configured`: treated as remote
 Local not ready at fallback time → ERROR `server_unavailable: … ; local model not ready`.
 `keep_local_warm=true` (default) means the shell loads local models at app start even
 when the server is preferred, so a fallback costs only local ASR time.
+**D24:** with `keep_local_warm=false` the shell gives the router an on-demand loader
+(`Router::with_local_loader` / `set_local_loader`), so "local not ready" no longer fails a
+dictation: the session goes live on the client route at once, audio is buffered while the
+loader runs on the failover thread ("Loading phone model…"), then it is replayed (see the
+2026-10-23 D24 changelog entry).
 
 **Client-first** (`prefer=client`, both allowed): local is primary; remote is used only when
 `local.ready()` is false at `start_session` (`fallback=local_not_ready`). Mid-session
@@ -413,7 +418,7 @@ are marked (ui).
 | `server.tls` | toggle "Use TLS (wss)" | off | forced on (and locked) when host classifies public (§2.6) |
 | `server.tls_pin_sha256` | text (shown when TLS on) | "" | empty or 64 hex (colons stripped) |
 | `server.token` | password field + show/paste/clear | "" | empty or ≥ 16 chars; never logged, never in exported settings |
-| `server.connect_timeout_ms` | number | 800 | 100-10000 |
+| `server.connect_timeout_ms` | number | 2500 (D24; a stored 800 migrates once) | 100-10000; the router raises it to `rtt × 6` (1.5-10 s) after a probe measured a slow path |
 | `server.commit_timeout_base_ms` | number | 3000 | 500-60000 |
 | `server.health_ttl_s` | number | 30 | 5-600 |
 | `keep_local_warm` | toggle | on | — |
@@ -745,3 +750,56 @@ symbol changes.
 * `RouteInfo.client_ms`: the router's own release → result wall time. For server results it
   includes the network and the server's queue, which the server's `total_ms` does not.
 * Hands-free: `endpoint::RECOMMENDED_SILENCE_MS` is now 1500.
+
+**2026-10-23 — D24 never-fail fallback (branch `fix/never-fail`)**
+
+Live bug (S25+, hybrid, `keep_local_warm=false`, Parakeet imported, Tailscale DERP relay):
+`start_failed`, "Server unreachable (connect_failed: no handshake within 800 ms)". Root cause:
+with keep-warm off the shell opened the router with no local backend, so after the server's
+connect timeout `start_routes` found no ready local engine and returned
+`Err(server_unavailable)`, although the client route was allowed and a model was imported.
+800 ms was also too short for the relay (3+ round trips of 150-300 ms), so the server was
+"down" while flow-server saw the connection arrive.
+
+* **On-demand local engine** (`flow-router`): `LocalLoader = Arc<dyn Fn() -> Result<Arc<dyn
+  Backend>, String>>`; `Router::with_local_loader(l)` / `set_local_loader(Option<l>)`. When the
+  client route comes up with no warm engine (server down at start, open circuit, mid-session
+  death, commit timeout), the session goes live on the client route immediately: audio is
+  buffered (the C3 failover machinery), the loader runs on the failover thread, then the buffer
+  is replayed. Client-first + cold: the server is tried first (`local_not_ready`), the load only
+  happens if it fails. Load failure with no later route = ERROR `server_unavailable: <server
+  error>; phone model failed to load: <why>`. A cancel during the load drops the session (no
+  commit); the loaded engine stays for the next session. A cold loader counts as a viable
+  fallback, so an open circuit skips the server without waiting (`circuit_open`).
+* **Loading flag**: `StartInfo.loading`, `RouterPoll.loading` (omitted while false; fixtures
+  `start_info_loading.json`, `poll_loading.json`), `Router::local_loading()`. Shells show
+  "Loading phone model…" while it is true.
+* **Debug fields**: `RouteDiag { connect_ms, local_cold, local_load_ms, local_load_error }` in
+  `RouteStatus.last_diag` (fixture `route_status_diag.json`), recorded at commit. Android's D21
+  line gains `connect_ms`, `local_cold`, `local_load_ms`.
+* **Connect timeout**: default 800 → **2500 ms** (`flow_router::DEFAULT_CONNECT_TIMEOUT_MS`;
+  `LEGACY_CONNECT_TIMEOUT_MS` = 800 for the shells' one-time migration; fixtures
+  `router_config_{default,hybrid,local_only,cloud}.json` changed accordingly). Adaptive:
+  `effective_connect_timeout_ms(cfg, rtt_median)` = `max(cfg, clamp(rtt × 6, 1500, 10000))`
+  once a successful probe of this server measured its RTT; the remote backend is rebuilt when
+  the effective value changes. Never lowers the configured value.
+* **Pre-warm**: `Backend::warm()` (default `Ok(())`; flow-remote opens/keeps the warm WS) and
+  `Router::prewarm() -> bool` (**blocking**: off the UI thread). Skipped with the server route
+  off / unconfigured / circuit open / a live session; a failure opens the circuit, so the next
+  dictation goes straight to local. Android calls it when a text field gets focus (≤ once per
+  20 s); Windows does not yet (no focus signal; startup and Save already probe).
+* **API note**: `StartInfo`, `RouterPoll`, `RouteStatus` gained fields; struct literals outside
+  the crate need `..Default::default()` (the shells build none except flow-ffi's poll).
+* **flow-ffi**: `json_api::set_local_loader(h, "[ModelConfig, …]")` (tried in order) and
+  `json_api::prewarm(h)`; JNI `nativeSetLocalLoader(h, json): Boolean`, `nativePrewarm(h): Boolean`
+  (JNI_CONTRACT.md). No C symbols added.
+* **Android**: `EngineRoute.plan` keeps the Native plan as `onDemand` when keep-warm is off;
+  `assemble` hands `EnginePlan.attempts(plan)` (selected engine ± LLM, then the whisper
+  fallback ± LLM) to `nativeSetLocalLoader`. Errors name the missing piece ("— phone fallback
+  unavailable: No speech model imported…", "… and the phone model failed to load (…)").
+  Stored 800 ms migrates to 2500 once (`connect_timeout_default_2500`).
+* **Windows**: same bug (`want_local` false → slot never loaded → "local model not ready").
+  `RouterAdapter::set_on_demand(Some(ModelSpec))` installs a loader that `load_now`s the slot;
+  `app.rs` re-syncs it at startup and on every prefs / Developer save. `prefs_rev` 2 migrates a
+  stored 800 ms.
+

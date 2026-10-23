@@ -67,4 +67,9 @@ class PreviewLogicTest {
         )
         assertEquals("idle: no route", null, PreviewContent.line(DictationState.Ready, null, null, true, route = "via phone"))
     }
+
+    @Test fun loadingPhoneModelLabel() {
+        assertEquals("Loading phone model… · server unreachable", RouteLabel.of(dev.flowclone.core.SessionRoute("local", fallback = "connect_failed", loading = true)))
+        assertEquals("Loading phone model… · paused after failures", RouteLabel.of(dev.flowclone.core.SessionRoute("local", fallback = "circuit_open", loading = true)))
+    }
 }

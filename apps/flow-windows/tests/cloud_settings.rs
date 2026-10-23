@@ -38,7 +38,7 @@ fn ui_form() -> DevForm {
         "tls": false,
         "tls_pin_sha256": "",
         "token": "dev-token-0123456789abcdef",
-        "connect_timeout_ms": 800,
+        "connect_timeout_ms": 2500,
         "commit_timeout_base_ms": 3000,
         "health_ttl_s": 30,
         "keep_local_warm": true,

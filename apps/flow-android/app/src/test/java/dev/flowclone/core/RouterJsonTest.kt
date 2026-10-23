@@ -174,4 +174,17 @@ class RouterJsonTest {
         assertTrue(s, s.contains("client 610 ms"))
         assertFalse(DevText.lastDictation(r.copy(route = r.route!!.copy(clientMs = null))).contains("client"))
     }
+
+    @Test fun d24LoadingAndRouteDiagFixtures() {
+        val p = RouterJson.decodePoll(fixture("poll_loading.json"))
+        assertTrue(p.loading)
+        assertEquals("connect_failed", p.route!!.fallback)
+        val i = RouterJson.decodeStartInfo(fixture("start_info_loading.json"))
+        assertTrue(i.loading)
+        assertEquals("local", i.route!!.engine)
+        assertFalse(RouterJson.decodeStartInfo(fixture("start_info_remote.json")).loading)
+        val d = RouterJson.decodeRouteStatus(fixture("route_status_diag.json")).lastDiag!!
+        assertEquals(RouteDiag(connectMs = 2503, localCold = true, localLoadMs = 1840), d)
+        assertNull(RouterJson.decodeRouteStatus(fixture("route_status.json")).lastDiag)
+    }
 }

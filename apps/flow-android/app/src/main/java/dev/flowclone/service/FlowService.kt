@@ -410,6 +410,8 @@ class FlowService : Service() {
 
         override fun hasMicPermission() = hasMic()
 
+        override fun clientFallbackNote(): String? = app.engine.clientNote()
+
         /** D21: redact protected targets, attach the insert steps, enqueue. Never blocks, never throws. */
         override fun onDictationTrace(trace: dev.flowclone.debug.DictationTrace) {
             try {
@@ -417,7 +419,7 @@ class FlowService : Service() {
                 val steps = synchronized(insertSteps) { insertSteps.toList() }
                 val ready = app.engine.state.value as? dev.flowclone.EngineHolder.State.Ready
                 val (engine, model) = dev.flowclone.debug.DebugEngine.of(
-                    trace.route, ready?.mock == true, ready?.asr, app.dev.serverAsrModel, trace.model,
+                    trace.route, ready?.mock == true, ready?.asr ?: ready?.onDemandAsr, app.dev.serverAsrModel, trace.model,
                 )
                 val t = dev.flowclone.debug.DebugRedact.apply(
                     trace.copy(insert = trace.insert.copy(steps = steps), engine = engine, model = model),
