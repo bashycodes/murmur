@@ -81,6 +81,18 @@ pub struct Entry {
     /// speech was heard.
     pub endpoint_wait_ms: Option<u64>,
     pub asr_ms: Option<u64>,
+    /// D22: commit waited this long for a decode already in flight
+    /// (preview or segment); part of `total_ms`. `null` without a result.
+    pub wait_ms: Option<u64>,
+    /// D22: pieces that went to ASR (0 = segmentation off).
+    pub segments: Option<u64>,
+    /// D22: ASR time spent while recording on pieces whose text was used
+    /// (not part of `asr_ms`, which is the tail decoded in `commit`).
+    pub pre_asr_ms: Option<u64>,
+    /// Router wall time of the commit (release → result, network
+    /// included for a server result); `null` when the result did not come
+    /// through the router.
+    pub client_ms: Option<u32>,
     /// LLM + post-processing after ASR: `total_ms - asr_ms`.
     pub post_ms: Option<u64>,
     /// Engine wall time of the commit.
@@ -694,6 +706,10 @@ pub(crate) mod tests {
             "audio_ms",
             "endpoint_wait_ms",
             "asr_ms",
+            "wait_ms",
+            "segments",
+            "pre_asr_ms",
+            "client_ms",
             "post_ms",
             "total_ms",
             "perceived_ms",

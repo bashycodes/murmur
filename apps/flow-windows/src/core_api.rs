@@ -101,6 +101,10 @@ pub struct SessionConfig {
     /// ends the dictation. Set only for hands-free sessions; push-to-talk
     /// leaves it `None`.
     pub endpoint_silence_ms: Option<u32>,
+    /// D22: decode each finished phrase while the user keeps talking; cuts
+    /// at pauses at least this long (shell value 800). `None` = off.
+    /// `segment_min_ms` / `segment_soft_max_ms` stay at the core defaults.
+    pub segment_pause_ms: Option<u32>,
 }
 
 impl Default for SessionConfig {
@@ -119,6 +123,7 @@ impl Default for SessionConfig {
             spoken_cleanup: true,
             llm_prefill: true,
             endpoint_silence_ms: None,
+            segment_pause_ms: None,
         }
     }
 }
@@ -154,6 +159,17 @@ pub struct Timings {
     pub audio_ms: u64,
     /// Samples lost because a buffer was full (0 = nothing lost).
     pub dropped_samples: u64,
+    /// D22: `commit` waited this long for a decode already in flight.
+    /// Included in `total_ms`.
+    #[serde(default)]
+    pub wait_ms: u64,
+    /// D22: pieces that went to ASR (closed segments + tail); 0 = off.
+    #[serde(default)]
+    pub segments: u64,
+    /// D22: ASR time while recording on pieces whose text was used (not
+    /// part of `asr_ms`, which is now the tail decoded inside `commit`).
+    #[serde(default)]
+    pub pre_asr_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

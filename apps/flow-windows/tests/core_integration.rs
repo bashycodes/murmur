@@ -454,6 +454,7 @@ fn real_parakeet_on_jfk_pastes_the_speech() {
     let st = a.load_now(&ModelSpec::Parakeet {
         dir,
         threads: Some(4),
+        decoding: flow_core::config::ParakeetDecoding::Auto,
     });
     assert!(st.is_ready(), "{st:?}");
     let prefs = Prefs {
@@ -464,10 +465,12 @@ fn real_parakeet_on_jfk_pastes_the_speech() {
     r.dictate(&pcm, Duration::from_secs(120));
     let pastes = r.os.pastes();
     assert_eq!(pastes.len(), 1, "{:?}", r.os.log.lock().unwrap());
+    // Exact, punctuation-sensitive: with decode-while-speaking on (D22,
+    // default) the cut after "ask not" must not become a sentence break.
     assert!(
         pastes[0]
             .to_lowercase()
-            .contains("ask not what your country"),
+            .contains("ask not what your country can do for you"),
         "{pastes:?}"
     );
 }

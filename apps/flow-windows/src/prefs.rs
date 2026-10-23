@@ -12,6 +12,18 @@ use std::path::{Path, PathBuf};
 pub const APP_DIR: &str = "FlowClone";
 pub const FILE_NAME: &str = "prefs.json";
 
+/// `prefs.json` schema revision ([`Prefs::migrate`]). A file without
+/// `prefs_rev` is 0.
+/// * 1 (D22): the hands-free auto-stop default went 2000 → 1500 ms.
+pub const PREFS_REV: u32 = 1;
+
+/// The hands-free auto-stop default before D22 (rev 0).
+const OLD_HANDS_FREE_SILENCE_MS: u32 = 2000;
+
+fn rev_zero() -> u32 {
+    0
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PasteMethod {
@@ -109,6 +121,9 @@ pub struct Prefs {
     pub learn_poll_ms: u64,
     /// Developer settings: engine routing (local / self-hosted server).
     pub developer: crate::dev_settings::DevSettings,
+    /// Schema revision ([`PREFS_REV`]); missing = 0 (a pre-D22 file).
+    #[serde(default = "rev_zero")]
+    pub prefs_rev: u32,
 }
 
 impl Default for Prefs {
@@ -145,7 +160,7 @@ impl Default for Prefs {
             spoken_cleanup: true,
             live_preview: true,
             live_preview_interval_ms: 1500,
-            hands_free_silence_ms: 2000,
+            hands_free_silence_ms: flow_core::endpoint::RECOMMENDED_SILENCE_MS,
             llm_enabled: false,
             llm_model_path: None,
             llm_lib_path: None,
@@ -154,6 +169,7 @@ impl Default for Prefs {
             learn_window_ms: 45_000,
             learn_poll_ms: 1_000,
             developer: crate::dev_settings::DevSettings::default(),
+            prefs_rev: PREFS_REV,
         }
     }
 }
@@ -179,13 +195,28 @@ impl Prefs {
             Err(_) => return (Prefs::default(), LoadOutcome::Missing),
         };
         match serde_json::from_str::<Prefs>(&text) {
-            Ok(p) => (p, LoadOutcome::Loaded),
+            Ok(mut p) => {
+                p.migrate();
+                (p, LoadOutcome::Loaded)
+            }
             Err(_) => {
                 let bak = path.with_extension("json.corrupt");
                 let _ = std::fs::rename(path, &bak);
                 (Prefs::default(), LoadOutcome::Corrupt(bak))
             }
         }
+    }
+
+    /// Bring a file of an older [`PREFS_REV`] up to date. The shell saves
+    /// every field, so a pre-D22 file always holds the hands-free value:
+    /// exactly the old default (2000) is taken as "never changed" and moves
+    /// to the new one; any other value is the user's and stays. From rev 1
+    /// on, 2000 is an explicit choice and is kept.
+    pub fn migrate(&mut self) {
+        if self.prefs_rev < 1 && self.hands_free_silence_ms == OLD_HANDS_FREE_SILENCE_MS {
+            self.hands_free_silence_ms = flow_core::endpoint::RECOMMENDED_SILENCE_MS;
+        }
+        self.prefs_rev = PREFS_REV;
     }
 
     /// Atomic write (tmp + rename) so a crash never leaves half a file.
@@ -274,6 +305,11 @@ impl Prefs {
                 .then_some(self.live_preview_interval_ms.max(250)),
             llm_timeout_ms: self.llm_timeout_ms.clamp(200, 30_000),
             spoken_cleanup: self.spoken_cleanup,
+            // D22 "Decode while speaking": both modes; absent when off.
+            segment_pause_ms: self
+                .developer
+                .decode_while_speaking
+                .then_some(flow_core::segment::RECOMMENDED_PAUSE_MS),
             ..SessionConfig::default()
         }
     }
@@ -484,11 +520,16 @@ mod tests {
     fn hands_free_endpoint_only_for_locked_sessions() {
         use crate::dictation::Mode;
         let mut p = Prefs::default();
-        assert_eq!(p.hands_free_silence_ms, 2000);
+        // D22: flow_core::endpoint::RECOMMENDED_SILENCE_MS.
+        assert_eq!(p.hands_free_silence_ms, 1500);
+        assert_eq!(
+            p.hands_free_silence_ms,
+            flow_core::endpoint::RECOMMENDED_SILENCE_MS
+        );
         assert_eq!(p.session_config_for(Mode::Ptt).endpoint_silence_ms, None);
         assert_eq!(
             p.session_config_for(Mode::Locked).endpoint_silence_ms,
-            Some(2000)
+            Some(1500)
         );
         p.hands_free_silence_ms = 0;
         assert_eq!(p.session_config_for(Mode::Locked).endpoint_silence_ms, None);
@@ -497,9 +538,66 @@ mod tests {
         assert!(p.validate().is_err());
         p.hands_free_silence_ms = 10_001;
         assert!(p.validate().is_err());
-        // Old prefs.json without the field: default 2 s.
-        let old: Prefs = serde_json::from_str("{}").unwrap();
-        assert_eq!(old.hands_free_silence_ms, 2000);
+        // Old prefs.json without the field: the new default.
+        let (old, _) = load_str("nofield", "{}");
+        assert_eq!(old.hands_free_silence_ms, 1500);
+    }
+
+    fn load_str(tag: &str, json: &str) -> (Prefs, LoadOutcome) {
+        let d = tmpdir(tag);
+        std::fs::create_dir_all(&d).unwrap();
+        let path = d.join(FILE_NAME);
+        std::fs::write(&path, json).unwrap();
+        Prefs::load(&path)
+    }
+
+    #[test]
+    fn old_hands_free_default_migrates_once_explicit_values_stay() {
+        // A file from before D22 always holds 2000 (every field is saved),
+        // so 2000 there is the old default: move it to 1500.
+        let (p, o) = load_str("mig-old", r#"{"hands_free_silence_ms":2000}"#);
+        assert_eq!(o, LoadOutcome::Loaded);
+        assert_eq!(p.hands_free_silence_ms, 1500);
+        assert_eq!(p.prefs_rev, PREFS_REV);
+        // Any other pre-D22 value was chosen by the user.
+        let (p, _) = load_str("mig-3000", r#"{"hands_free_silence_ms":3000}"#);
+        assert_eq!(p.hands_free_silence_ms, 3000);
+        let (p, _) = load_str("mig-off", r#"{"hands_free_silence_ms":0}"#);
+        assert_eq!(p.hands_free_silence_ms, 0);
+        // 2000 saved after the migration is an explicit choice: kept.
+        let (p, _) = load_str(
+            "mig-new",
+            &format!(r#"{{"hands_free_silence_ms":2000,"prefs_rev":{PREFS_REV}}}"#),
+        );
+        assert_eq!(p.hands_free_silence_ms, 2000);
+        // And it survives a save/load round trip.
+        let d = tmpdir("mig-rt");
+        let path = d.join(FILE_NAME);
+        p.save(&path).unwrap();
+        let (q, _) = Prefs::load(&path);
+        assert_eq!(q.hands_free_silence_ms, 2000);
+        assert_eq!(Prefs::default().prefs_rev, PREFS_REV);
+    }
+
+    #[test]
+    fn decode_while_speaking_sets_segment_pause_in_every_mode() {
+        use crate::dictation::Mode;
+        let mut p = Prefs::default();
+        assert!(p.developer.decode_while_speaking, "default on (D22)");
+        for m in [Mode::Ptt, Mode::Locked] {
+            assert_eq!(
+                p.session_config_for(m).segment_pause_ms,
+                Some(flow_core::segment::RECOMMENDED_PAUSE_MS)
+            );
+        }
+        assert_eq!(p.session_config().segment_pause_ms, Some(800));
+        p.developer.decode_while_speaking = false;
+        for m in [Mode::Ptt, Mode::Locked] {
+            assert_eq!(p.session_config_for(m).segment_pause_ms, None);
+        }
+        // Old prefs.json without the field: on.
+        let old: Prefs = serde_json::from_str(r#"{"developer":{}}"#).unwrap();
+        assert!(old.developer.decode_while_speaking);
     }
 
     #[test]
