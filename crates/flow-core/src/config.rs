@@ -246,6 +246,22 @@ pub enum AsrBackend {
     },
 }
 
+/// Parakeet search mode (`ModelConfig.parakeet_decoding`, 2026-10-23).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ParakeetDecoding {
+    /// Beam search (hotwords) only when the session has dictionary
+    /// hotwords, greedy otherwise; an empty or implausibly short beam
+    /// result is re-decoded greedy. Loads two recognizers (≈ +0.6 GB RSS).
+    #[default]
+    Auto,
+    /// Greedy only: one recognizer, no hotword biasing.
+    Greedy,
+    /// Beam only (the pre-2026-10-23 behaviour, one recognizer); an empty
+    /// result on speech is still re-decoded in pieces.
+    Beam,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ModelConfig {
@@ -269,6 +285,14 @@ pub struct ModelConfig {
     /// words). Default on (D20: 40 LibriSpeech clips, tiny.en 2.7× / base.en
     /// 1.8× / small 3.4× faster, WER −0.4 / +0.3 / +0.1 points).
     pub whisper_fit_ctx: bool,
+    /// Parakeet search mode (`auto` default; `greedy` saves the second
+    /// recognizer's RAM on a phone). Omitted from JSON when `auto`.
+    #[serde(skip_serializing_if = "is_auto")]
+    pub parakeet_decoding: ParakeetDecoding,
+}
+
+fn is_auto(d: &ParakeetDecoding) -> bool {
+    *d == ParakeetDecoding::Auto
 }
 
 /// Half the logical CPUs (≈ physical cores), capped at 8: ggml's spinning
@@ -288,6 +312,7 @@ impl Default for ModelConfig {
             threads: default_threads(),
             vad_model_path: None,
             whisper_fit_ctx: true,
+            parakeet_decoding: ParakeetDecoding::Auto,
         }
     }
 }

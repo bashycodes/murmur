@@ -110,3 +110,31 @@ pub fn wer_counts(reference: &str, hyp: &str) -> (usize, usize) {
     }
     (prev[h.len()], r.len())
 }
+
+/// The STT survey's long clips (docs/proposals/stt-model-survey.md): the
+/// first `n` manifest utterances joined with 300 ms of silence. n = 3 is
+/// the 25.1 s clip and n = 4 the 42.8 s clip on which Parakeet v2 beam 4
+/// returned "" (and greedy dropped a 22-word utterance at 42.8 s).
+pub fn survey(audio: &Path, n: usize) -> Option<Clip> {
+    let m: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(manifest()).ok()?).ok()?;
+    let mut pcm = Vec::new();
+    let mut refs = Vec::new();
+    for u in m["utterances"].as_array()?.iter().take(n) {
+        let p = audio.join(format!("{}.wav", u["id"].as_str()?));
+        if !p.is_file() {
+            eprintln!("SKIP: {} missing", p.display());
+            return None;
+        }
+        if !pcm.is_empty() {
+            pcm.extend(std::iter::repeat_n(0i16, 16 * 300));
+        }
+        pcm.extend(read_wav_i16(&p));
+        refs.push(u["ref"].as_str().unwrap_or("").to_string());
+    }
+    Some(Clip {
+        target_s: pcm.len() / 16_000,
+        pcm,
+        reference: refs.join(" "),
+    })
+}
