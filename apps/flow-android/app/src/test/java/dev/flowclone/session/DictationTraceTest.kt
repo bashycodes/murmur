@@ -24,7 +24,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
@@ -195,10 +194,9 @@ class DictationTraceTest {
      * 2026-10-23 phone diag (docs/findings/2026-10-23-phone-quality-regression.md): every device
      * line had endpoint_wait_ms=0. SilenceTracker's fixed bar (mean s^2 > 33856, RMS 184 ~ -45 dBFS,
      * Wispr's "can't hear you" threshold) is below a real mic's room-noise floor, so trailing
-     * silence after the last word still counts as signal. Expected: ~300 ms. Un-ignore with the fix
-     * (relative / noise-floor-adaptive bar for the trailing measure only).
+     * silence after the last word still counts as signal. Expected: ~300 ms. Fixed by the noise-floor-adaptive
+     * bar for the trailing measure (SilenceTracker).
      */
-    @Ignore("known defect: endpoint_wait_ms is 0 whenever room noise > -45 dBFS; see findings 2026-10-23")
     @Test fun endpointWaitCountsRoomNoiseAfterSpeechAsSilence() = runTest {
         val traces = mutableListOf<DictationTrace>()
         val c = controller(Host { traces += it })

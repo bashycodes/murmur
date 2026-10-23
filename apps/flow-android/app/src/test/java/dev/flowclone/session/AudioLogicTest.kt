@@ -69,3 +69,50 @@ class SessionCapTest {
         assertEquals(119_000L, c.stopAtMs)
     }
 }
+
+/** D21 `endpoint_wait_ms`: trailing silence is measured against the adaptive noise floor (as core vad.rs). */
+class SilenceTrackerTest {
+    private fun SilenceTracker.feed(ms: Int, sample: (Int) -> Int) =
+        repeat(ms / 100) { update(ShortArray(1600) { i -> sample(i).toShort().toInt().toShort() }, 1600) }
+    private fun noise(amp: Int, seed: Long = 3): (Int) -> Int { val r = java.util.Random(seed); return { (r.nextGaussian() * amp).toInt() } }
+
+    @Test fun roomNoiseAfterSpeechIsTrailingSilence() {
+        val t = SilenceTracker()
+        t.feed(300, noise(300)) // phone room noise ≈ −41 dBFS, above Wispr's fixed −45 dBFS bar
+        t.feed(1000) { 3000 }
+        t.feed(500, noise(300))
+        assertEquals(500L, t.trailingSilenceMs)
+    }
+
+    @Test fun digitalSilenceAfterSpeechIsTrailingSilence() {
+        val t = SilenceTracker()
+        t.feed(800) { 3000 }
+        t.feed(400) { 0 }
+        assertEquals(400L, t.trailingSilenceMs)
+    }
+
+    @Test fun speechWithoutLeadingSilenceIsNotTrailingSilence() {
+        // Floor estimate = speech itself; the −36 dBFS cap keeps clear speech as speech (vad.rs ABS_CAP).
+        val t = SilenceTracker()
+        t.feed(2000) { 3000 }
+        assertEquals(0L, t.trailingSilenceMs)
+    }
+
+    @Test fun speechResetsTrailingSilence() {
+        val t = SilenceTracker()
+        t.feed(500) { 3000 }
+        t.feed(600, noise(300))
+        t.feed(200) { 3000 }
+        t.feed(300, noise(300, seed = 9))
+        assertEquals(300L, t.trailingSilenceMs)
+    }
+
+    @Test fun noSpeechYetHintKeepsTheFixedBar() {
+        val t = SilenceTracker()
+        t.feed(3000) { 100 } // RMS 100 < 184: "can't hear you"
+        assertEquals(false, t.heardSpeech)
+        assertEquals(3000L, t.leadingSilenceMs)
+        t.feed(100) { 300 }  // RMS 300 > 184: signal for the hint, whatever the floor says
+        assertEquals(true, t.heardSpeech)
+    }
+}
