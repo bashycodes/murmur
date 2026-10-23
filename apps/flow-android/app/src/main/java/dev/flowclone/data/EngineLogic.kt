@@ -7,6 +7,7 @@ import dev.flowclone.core.CoreException
 import dev.flowclone.core.FlowCore
 import dev.flowclone.core.FlowCoreLoader
 import dev.flowclone.core.ModelConfig
+import dev.flowclone.core.ParakeetDecoding
 
 /** Model-file sniffing for the SAF import screens (reject the wrong kind before copying 1 GB). */
 object ModelFiles {
@@ -71,6 +72,12 @@ object ModelFiles {
 }
 
 /**
+ * The on-device ASR that actually loaded (may differ from the selected one: Parakeet failed →
+ * whisper). [model] = the whisper file name or the Parakeet folder name.
+ */
+data class LoadedAsr(val engine: AsrEngine, val model: String)
+
+/**
  * What to load for the current settings, and loading it with an LLM fallback: if the GGUF or
  * the flow-llm plugin fails, dictation still works with ASR only and the UI says why.
  */
@@ -89,7 +96,8 @@ object EnginePlan {
         data class Native(val config: ModelConfig, val llm: LlmStatus, val whisperFallback: ModelConfig? = null) : Plan
     }
 
-    data class Loaded(val core: FlowCore?, val description: String, val llm: LlmStatus, val error: String? = null)
+    /** [asr]: what loaded (null when [core] is null). */
+    data class Loaded(val core: FlowCore?, val description: String, val llm: LlmStatus, val error: String? = null, val asr: LoadedAsr? = null)
 
     /**
      * [parakeetPath]: imported sherpa-onnx model directory (`isModelDir` checks it). Parakeet is
@@ -98,6 +106,8 @@ object EnginePlan {
     fun plan(
         s: Settings, asrPath: String?, llmPath: String?, exists: (String) -> Boolean, threads: Int, llmLib: String? = null,
         parakeetPath: String? = null, isModelDir: (String) -> Boolean = { false },
+        /** D22: greedy on the phone (one recognizer, ≈ 0.6 GB less RAM) unless Developer settings override it. */
+        parakeetDecoding: ParakeetDecoding = ParakeetDecoding.GREEDY,
     ): Plan {
         if (s.mockEngine) return Plan.Mock
         val whisperOk = asrPath != null && exists(asrPath)
@@ -116,7 +126,7 @@ object EnginePlan {
         val llmUsed = llmPath.takeIf { llm is LlmStatus.Loaded }
         val whisper = if (whisperOk) ModelConfig(asrPath = asrPath!!, llmPath = llmUsed, threads = threads, llmLib = llmLib) else null
         if (parakeetOk) {
-            val cfg = ModelConfig(asrPath = parakeetPath!!, llmPath = llmUsed, threads = threads, llmLib = llmLib, asrEngine = AsrEngine.PARAKEET)
+            val cfg = ModelConfig(asrPath = parakeetPath!!, llmPath = llmUsed, threads = threads, llmLib = llmLib, asrEngine = AsrEngine.PARAKEET, parakeetDecoding = parakeetDecoding)
             return Plan.Native(cfg, llm, whisperFallback = whisper)
         }
         return Plan.Native(whisper!!, llm)
@@ -132,7 +142,13 @@ object EnginePlan {
     }
 
     private fun loadOne(p: Plan.Native, loader: FlowCoreLoader): Loaded {
-        val name = (if (p.config.asrEngine == AsrEngine.PARAKEET) "Parakeet " else "") + p.config.asrPath.trimEnd('/').substringAfterLast('/')
+        val asr = LoadedAsr(p.config.asrEngine, p.config.asrPath.trimEnd('/').substringAfterLast('/'))
+        val name = (if (p.config.asrEngine == AsrEngine.PARAKEET) "Parakeet " else "") + asr.model
+        val r = loadOneCore(p, loader, name)
+        return if (r.core != null) r.copy(asr = asr) else r
+    }
+
+    private fun loadOneCore(p: Plan.Native, loader: FlowCoreLoader, name: String): Loaded {
         if (p.config.llmPath != null) {
             try {
                 return Loaded(loader.loadModels(p.config), name, p.llm)
@@ -150,6 +166,26 @@ object EnginePlan {
         } catch (e: CoreException) {
             Loaded(null, name, p.llm, e.message ?: "Speech engine failed to load")
         }
+    }
+}
+
+/** D21 event when the on-device engine that loaded is not the one selected in Settings. */
+object EngineMismatch {
+    private val PARAKEET_FAILED = Regex("""\(Parakeet failed: (.*?)\)(?: → |$)""")
+    private val CLIENT_UNAVAILABLE = Regex("""client unavailable: (.*?)(?: → |$)""")
+
+    /**
+     * [local]: the local plan (null = no local engine needed: server / cloud only, mock);
+     * [loaded]: what loaded; [description]: the load description (carries the failure reason).
+     * Null when the selected engine is the one that loaded.
+     */
+    fun message(selected: AsrEngine, local: EnginePlan.Plan.Native?, loaded: LoadedAsr?, description: String): String? {
+        if (local == null || loaded?.engine == selected) return null
+        val reason = PARAKEET_FAILED.find(description)?.groupValues?.get(1)
+            ?: CLIENT_UNAVAILABLE.find(description)?.groupValues?.get(1)
+            ?: if (selected == AsrEngine.PARAKEET && local.config.asrEngine != AsrEngine.PARAKEET) "no Parakeet model folder imported" else null
+        val what = loaded?.let { "${it.engine.wire} ${it.model}" } ?: "none"
+        return "selected ${selected.wire}, loaded $what" + (reason?.let { ": $it" } ?: "")
     }
 }
 
@@ -206,6 +242,8 @@ object EngineRoute {
         val llm: EnginePlan.LlmStatus,
         val error: String? = null,
         val errorKind: String? = null,
+        /** The local ASR handed to the router (null: none loaded / not needed). */
+        val asr: LoadedAsr? = null,
     )
 
     /** Load local models at startup? (§1.3 `keep_local_warm`: also when the server is preferred.) */
@@ -234,10 +272,12 @@ object EngineRoute {
         val desc = mutableListOf<String>()
         var llm: EnginePlan.LlmStatus = EnginePlan.LlmStatus.Off
         var localErr: String? = p.localNote
+        var asr: LoadedAsr? = null
         if (p.local != null) {
             val r = EnginePlan.load(p.local, loader)
             llm = r.llm
             localCore = r.core
+            asr = r.asr
             if (r.core == null) localErr = r.error ?: "Speech engine failed to load"
             else desc += "client: ${r.description}"
         }
@@ -251,7 +291,7 @@ object EngineRoute {
         }
         if (localErr != null) desc += "client unavailable: $localErr"
         return try {
-            Assembled(opener.open(p.routerConfigJson, localCore), desc.joinToString(" → "), llm)
+            Assembled(opener.open(p.routerConfigJson, localCore), desc.joinToString(" → "), llm, asr = asr)
         } catch (e: CoreException) {
             // The router took ownership of localCore either way.
             Assembled(null, desc.joinToString(" → "), llm, e.message ?: "router failed", e.kind)

@@ -123,7 +123,22 @@ data class ModelConfig(
     /** flow-llm plugin path; null = the core's lookup (on Android: the packaged libflow_llm.so). */
     val llmLib: String? = null,
     val asrEngine: AsrEngine = AsrEngine.WHISPER,
+    /** D22: Parakeet search mode; [ParakeetDecoding.AUTO] is omitted from the JSON. Whisper ignores it. */
+    val parakeetDecoding: ParakeetDecoding = ParakeetDecoding.AUTO,
 )
+
+/**
+ * crates/flow-core `ParakeetDecoding` (2026-10-23). AUTO loads a second recognizer (≈ +0.6 GB RSS)
+ * so hotword-free decodes run greedy and an empty beam result is retried greedy; GREEDY keeps one
+ * recognizer without hotword biasing; BEAM is the pre-D22 behaviour.
+ */
+enum class ParakeetDecoding(val wire: String) {
+    AUTO("auto"), GREEDY("greedy"), BEAM("beam");
+
+    companion object {
+        fun fromWire(w: String?): ParakeetDecoding? = entries.firstOrNull { it.wire == w }
+    }
+}
 
 enum class CleanupLevel(val wire: String) { NONE("none"), LIGHT("light"), MEDIUM("medium"), HIGH("high") }
 
@@ -188,6 +203,12 @@ data class SessionConfig(
      * `endpoint_reached`. Hands-free sessions only; null (omitted from the JSON) for push-to-talk.
      */
     val endpointSilenceMs: Int? = null,
+    /**
+     * D22 "Decode while speaking": decode each finished phrase while the user keeps talking,
+     * cutting in pauses of at least this long (shell sends 800). Null (omitted) = off. The core
+     * turns it off by itself for engines that must not see audio before commit (cloud, D18).
+     */
+    val segmentPauseMs: Int? = null,
 )
 
 /** crates/flow-core `FieldContext`; [before]/[after] ≤ 500 chars (shell truncates). */
@@ -211,6 +232,12 @@ data class Timings(
     val postprocessMs: Long = 0,
     val totalMs: Long = 0,
     val droppedSamples: Long = 0,
+    /** D22: commit waited this long for a decode already in flight (preview / segment); part of [totalMs]. */
+    val waitMs: Long = 0,
+    /** D22: pieces that went to ASR (closed segments + tail); 0 = segmentation off. */
+    val segments: Long = 0,
+    /** D22: ASR time spent while recording on pieces whose text was used (not part of [asrMs]). */
+    val preAsrMs: Long = 0,
 )
 
 /** A key the shell sends between text runs (crates/flow-core `paste::PasteKey`). */
@@ -251,6 +278,11 @@ data class RouteInfo(
     val billedAudioMs: Long? = null,
     val costUsd: Double? = null,
     val costEstimated: Boolean? = null,
+    /**
+     * D22, router only: wall time of `Router::commit` on the phone = release → result including
+     * the network for server results (a server's own `total_ms` excludes it). The latency to show.
+     */
+    val clientMs: Long? = null,
 )
 
 data class CommitResult(

@@ -97,6 +97,9 @@ class MainActivity : Activity() {
                 },
                 if (st is EngineHolder.State.Ready) OK_COLOR else null,
             )
+            // 2026-10-23: the language the next dictation really uses (unset follows the phone).
+            val langSetting = app.settings.load().language
+            body("Language: ${dev.flowclone.data.LanguageDefault.label(langSetting, app.effectiveLanguage())}")
             if (st is EngineHolder.State.Ready) when (val l = st.llm) {
                 EnginePlan.LlmStatus.Off -> body("AI cleanup: off")
                 EnginePlan.LlmStatus.NoModel -> body("AI cleanup: on, but no GGUF model imported", BAD_COLOR)
@@ -108,7 +111,8 @@ class MainActivity : Activity() {
 
             heading("1. Microphone")
             val mic = granted(Manifest.permission.RECORD_AUDIO)
-            body(if (mic) "Granted" else "Needed to hear you. Audio is processed on the phone and never stored.", if (mic) OK_COLOR else BAD_COLOR)
+            body(if (mic) "Granted" else "Needed to hear you. Audio is processed on the phone and never stored" +
+                if (app.dev.keepDebugAudio) " (except: Developer → Keep last dictation audio is on)." else ".", if (mic) OK_COLOR else BAD_COLOR)
             if (!mic) button("Grant microphone") { requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1) }
 
             heading("2. Display over other apps")

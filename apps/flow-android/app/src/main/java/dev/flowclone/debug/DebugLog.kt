@@ -15,8 +15,11 @@ import java.util.concurrent.atomic.AtomicInteger
  * tag [DebugLogger.TAG] and to `files/debug/dictations.jsonl` (last [DebugLogFile.MAX_ENTRIES]).
  *
  * Field names are shared with apps/flow-windows: ts, mode, route, fallback, rtt_ms, audio_ms,
- * endpoint_wait_ms, asr_ms, post_ms, total_ms, perceived_ms, target, insert, raw, text, error
- * (+ `kind` on every line, `stack` when there is an exception, `event` on non-dictation lines).
+ * endpoint_wait_ms, asr_ms, post_ms, total_ms, perceived_ms, target, insert, raw, text, error,
+ * and since D22 wait_ms, segments, pre_asr_ms, client_ms (+ `kind` on every line, `stack` when there is an exception, `event` on non-dictation lines).
+ * Android since 2026-10-23: engine (whisper|parakeet|server|cloud|mock), model (file / folder
+ * name, server-reported or cloud model), language (sent to the engine; "auto" = detect), audio
+ * (kept WAV file name, Developer "Keep last dictation audio (debug)"; else null).
  *
  * Logging must never affect dictation: entries are queued (bounded, drop-oldest) and written
  * on one background thread; every failure is swallowed and counted.
@@ -32,6 +35,12 @@ data class DictationTrace(
     val route: String? = null,
     /** Router fallback reason (connect_failed, disconnected, circuit_open, …) or the start error kind. */
     val fallback: String? = null,
+    /** whisper | parakeet | server | cloud | mock ([DebugEngine]); null when no engine ran. */
+    val engine: String? = null,
+    /** whisper file / Parakeet folder name, the server-reported ASR model, or the cloud model. */
+    val model: String? = null,
+    /** Language sent to the engine ("auto" = detect). */
+    val language: String? = null,
     val rttMs: Long? = null,
     val audioMs: Long? = null,
     /** Last speech → stop (shell-side energy tracker); null when no speech was heard. */
@@ -42,6 +51,14 @@ data class DictationTrace(
     val totalMs: Long? = null,
     /** Stop / release → final outcome (text inserted, or the error shown): what the user waited. */
     val perceivedMs: Long? = null,
+    /** D22 `timings.wait_ms`: commit waited for a decode in flight. Null without a result. */
+    val waitMs: Long? = null,
+    /** D22 `timings.segments`: pieces sent to ASR (0 = segmentation off). */
+    val segments: Long? = null,
+    /** D22 `timings.pre_asr_ms`: ASR done while recording. */
+    val preAsrMs: Long? = null,
+    /** D22 `route.client_ms`: release → result on the phone, network included (router only). */
+    val clientMs: Long? = null,
     /** Package of the field the dictation started in; redacted by [DebugRedact]. */
     val target: String? = null,
     val insert: InsertOutcome,
@@ -49,6 +66,8 @@ data class DictationTrace(
     val text: String? = null,
     val error: String? = null,
     val stack: String? = null,
+    /** "Keep last dictation audio (debug)": the WAV in `files/debug/audio/` ([DebugAudioStore]); null = none kept. */
+    val audio: String? = null,
 )
 
 /** `insert` field: {"outcome": …, "steps": […]}. */
@@ -63,6 +82,21 @@ data class InsertOutcome(val outcome: String, val steps: List<String> = emptyLis
         const val TIMEOUT = "timeout"
         const val START_FAILED = "start_failed"
         const val CANCELLED = "cancelled"
+    }
+}
+
+/** The `engine` / `model` fields of a dictation line, from the route that served it. */
+object DebugEngine {
+    /**
+     * [asr]: the on-device ASR that loaded; [serverModel]: the ASR model the server reported in
+     * its last health probe; [routeModel]: the model in the commit's route (cloud).
+     */
+    fun of(route: String?, mock: Boolean, asr: dev.flowclone.data.LoadedAsr?, serverModel: String?, routeModel: String?): Pair<String?, String?> = when {
+        mock -> "mock" to null
+        route == "local" -> asr?.engine?.wire to asr?.model
+        route == "remote" -> "server" to serverModel
+        route == "cloud" -> "cloud" to routeModel
+        else -> null to null
     }
 }
 
@@ -84,8 +118,13 @@ object DebugRedact {
             raw = t.raw?.let { REDACTED },
             text = t.text?.let { REDACTED },
             insert = t.insert.copy(steps = emptyList()),
+            audio = null,
         )
     }
+
+    /** "Keep last dictation audio": never for the targets whose text is redacted. */
+    fun keepsAudio(t: DictationTrace, protectedField: Boolean, protectedApp: Boolean) =
+        !(protectedField || protectedApp || t.insert.outcome == InsertOutcome.TARGET_PROTECTED)
 
     /** Password-type input, a password node, or (API 34+) an accessibility-data-sensitive field. */
     fun isProtectedField(inputType: Int, nodePassword: Boolean, dataSensitive: Boolean) =
@@ -130,6 +169,9 @@ object DebugFormat {
         "mode" to t.mode,
         "route" to t.route,
         "fallback" to t.fallback,
+        "engine" to t.engine,
+        "model" to t.model,
+        "language" to t.language,
         "rtt_ms" to t.rttMs,
         "audio_ms" to t.audioMs,
         "endpoint_wait_ms" to t.endpointWaitMs,
@@ -137,10 +179,15 @@ object DebugFormat {
         "post_ms" to t.postMs,
         "total_ms" to t.totalMs,
         "perceived_ms" to t.perceivedMs,
+        "wait_ms" to t.waitMs,
+        "segments" to t.segments,
+        "pre_asr_ms" to t.preAsrMs,
+        "client_ms" to t.clientMs,
         "target" to t.target,
         "insert" to Raw(obj("outcome" to t.insert.outcome, "steps" to t.insert.steps)),
         "raw" to t.raw,
         "text" to t.text,
+        "audio" to t.audio,
         "error" to t.error,
         "stack" to t.stack,
     )
@@ -160,9 +207,11 @@ object DebugFormat {
         val time = s("ts")?.substringAfter('T')?.removeSuffix("Z") ?: "?"
         if (o.optString("kind") == "event") return@runCatching "$time  ${s("event")}: ${s("error") ?: ""}"
         val outcome = o.optJSONObject("insert")?.optString("outcome") ?: "?"
-        val route = listOfNotNull(s("route") ?: "-", s("fallback")?.let { "($it)" }).joinToString(" ")
+        val route = listOfNotNull(s("route") ?: "-", s("fallback")?.let { "($it)" }, s("engine"), s("model")).joinToString(" ") +
+            (s("language")?.let { " · lang $it" } ?: "")
         val ms = listOfNotNull(
-            s("perceived_ms")?.let { "wait $it ms" }, s("asr_ms")?.let { "asr $it" }, s("post_ms")?.let { "post $it" },
+            s("perceived_ms")?.let { "wait $it ms" }, s("client_ms")?.let { "client $it" }, s("asr_ms")?.let { "asr $it" },
+            s("pre_asr_ms")?.takeIf { it != "0" }?.let { "(+$it early, ${s("segments")} seg)" }, s("post_ms")?.let { "post $it" },
             s("endpoint_wait_ms")?.let { "endpoint $it" }, s("rtt_ms")?.let { "rtt $it" },
         ).joinToString(" · ")
         val text = s("text") ?: s("raw") ?: ""
@@ -312,6 +361,7 @@ object CommitLine {
     fun of(r: dev.flowclone.core.CommitResult): String {
         val t = r.timings
         return "commit ${r.status} audio=${t.audioMs}ms asr=${t.asrMs}ms llm=${t.llmMs}ms total=${t.totalMs}ms dropped=${t.droppedSamples} " +
+            "wait=${t.waitMs}ms segments=${t.segments} pre_asr=${t.preAsrMs}ms client=${r.route?.clientMs?.let { "${it}ms" } ?: "-"} " +
             "${r.fallbackReason ?: ""} ${r.emptyReason ?: ""} route=${r.route?.engine ?: "-"}/${r.route?.fallback ?: "-"}"
     }
 }

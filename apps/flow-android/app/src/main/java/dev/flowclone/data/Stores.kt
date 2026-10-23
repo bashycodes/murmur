@@ -14,8 +14,15 @@ import java.io.File
 class SettingsStore(context: Context) {
     private val sp = context.getSharedPreferences("flow_settings", Context.MODE_PRIVATE)
 
+    private companion object {
+        /** D22: the hands-free endpoint default moved 2000 → 1500 ms; set once that ran (or on any save). */
+        const val ENDPOINT_MIGRATED = "endpoint_default_1500"
+        /** 2026-10-23: the language default moved auto → phone language; set once that ran (or on any save). */
+        const val LANGUAGE_MIGRATED = "language_default_device"
+    }
+
     fun load() = Settings(
-        language = sp.getString("language", "auto") ?: "auto",
+        language = loadLanguage(),
         cleanup = CleanupLevel.entries.firstOrNull { it.wire == sp.getString("cleanup", null) } ?: CleanupLevel.NONE,
         retention = Retention.fromKey(sp.getString("retention", null)),
         capMinutes = sp.getInt("cap_minutes", 5),
@@ -27,8 +34,31 @@ class SettingsStore(context: Context) {
         shrinkBubble = sp.getBoolean("shrink_bubble", true),
         spokenCleanup = sp.getBoolean("spoken_cleanup", true),
         asrEngine = dev.flowclone.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.flowclone.core.AsrEngine.WHISPER,
-        endpointSilenceMs = sp.getInt("endpoint_silence_ms", Settings.DEFAULT_ENDPOINT_SILENCE_MS),
+        endpointSilenceMs = loadEndpointMs(),
+        decodeWhileSpeaking = sp.getBoolean("decode_while_speaking", true),
     )
+
+    /** One-time move of an untouched stored "auto" to unset ([Settings.migrateLanguage]). */
+    private fun loadLanguage(): String {
+        val stored = sp.getString("language", null)
+        val migrated = sp.getBoolean(LANGUAGE_MIGRATED, false)
+        val v = Settings.migrateLanguage(stored, migrated)
+        if (!migrated) sp.edit().putBoolean(LANGUAGE_MIGRATED, true).putString("language", v).apply()
+        return v
+    }
+
+    /** D22: one-time move of an untouched 2000 ms endpoint to the new 1500 default ([Settings.migrateEndpointMs]). */
+    private fun loadEndpointMs(): Int {
+        val stored = if (sp.contains("endpoint_silence_ms")) sp.getInt("endpoint_silence_ms", Settings.DEFAULT_ENDPOINT_SILENCE_MS) else null
+        val migrated = sp.getBoolean(ENDPOINT_MIGRATED, false)
+        val v = Settings.migrateEndpointMs(stored, migrated)
+        if (!migrated) {
+            val e = sp.edit().putBoolean(ENDPOINT_MIGRATED, true)
+            if (stored != null && v != stored) e.putInt("endpoint_silence_ms", v)
+            e.apply()
+        }
+        return v
+    }
 
     fun save(s: Settings) {
         sp.edit()
@@ -45,6 +75,9 @@ class SettingsStore(context: Context) {
             .putBoolean("spoken_cleanup", s.spokenCleanup)
             .putString("asr_engine", s.asrEngine.wire)
             .putInt("endpoint_silence_ms", s.endpointSilenceMs)
+            .putBoolean(ENDPOINT_MIGRATED, true)
+            .putBoolean(LANGUAGE_MIGRATED, true)
+            .putBoolean("decode_while_speaking", s.decodeWhileSpeaking)
             .apply()
     }
 

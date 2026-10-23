@@ -37,7 +37,11 @@ object DictionaryMerge {
 }
 
 data class Settings(
-    val language: String = "auto",
+    /**
+     * Dictation language: a whisper code, "auto", or [LANGUAGE_UNSET] = the phone's language when
+     * the loaded whisper model is multilingual and knows it, else auto ([LanguageDefault]).
+     */
+    val language: String = LANGUAGE_UNSET,
     val cleanup: CleanupLevel = CleanupLevel.NONE,
     val retention: Retention = Retention.KEEP,
     val capMinutes: Int = 5,
@@ -57,13 +61,50 @@ data class Settings(
     val asrEngine: dev.flowclone.core.AsrEngine = dev.flowclone.core.AsrEngine.WHISPER,
     /** D19: a hands-free (tap) dictation ends after this much trailing silence; 0 = only when tapped again. */
     val endpointSilenceMs: Int = DEFAULT_ENDPOINT_SILENCE_MS,
+    /**
+     * D22 "Decode while speaking": decode finished phrases during recording so release → text
+     * only waits for the tail. Per device (not in the synced dictionary). Local and server routes;
+     * the core opts the cloud route out by itself.
+     */
+    val decodeWhileSpeaking: Boolean = true,
 ) {
     companion object {
+        /** [language] not chosen: follow the phone ([LanguageDefault.effective]). */
+        const val LANGUAGE_UNSET = ""
+
+        /**
+         * The stored language after the 2026-10-23 default change (auto → phone language).
+         * Settings are saved as a whole and "auto" was the first, default entry, so a stored
+         * "auto" from before the change is almost always untouched: it becomes unset once
+         * ([migrated] false). Anything else, and "auto" saved after the change, is kept.
+         */
+        fun migrateLanguage(stored: String?, migrated: Boolean): String = when {
+            stored == null -> LANGUAGE_UNSET
+            !migrated && stored == "auto" -> LANGUAGE_UNSET
+            else -> stored
+        }
+
         /** Phones decode slower than the desktop default budget of 1.5 s. */
         const val ANDROID_LLM_TIMEOUT_MS = 3_000L
         const val PARTIAL_INTERVAL_MS = 1_500
-        const val DEFAULT_ENDPOINT_SILENCE_MS = 2_000
+        /** D22: `flow_core::endpoint::RECOMMENDED_SILENCE_MS` (was 2000 until 2026-10-23). */
+        const val DEFAULT_ENDPOINT_SILENCE_MS = 1_500
+        const val OLD_DEFAULT_ENDPOINT_SILENCE_MS = 2_000
         val ENDPOINT_RANGE_MS = 300..10_000
+        /** D22: `flow_core::segment::RECOMMENDED_PAUSE_MS`. */
+        const val SEGMENT_PAUSE_MS = 800
+
+        /**
+         * The stored hands-free endpoint after the D22 default change. Settings are saved as a
+         * whole, so a stored 2000 from before the change is almost always the untouched old
+         * default: it becomes the new default once ([migrated] false). Any other value, and
+         * anything saved after the migration ran, is the user's and is kept.
+         */
+        fun migrateEndpointMs(stored: Int?, migrated: Boolean): Int = when {
+            stored == null -> DEFAULT_ENDPOINT_SILENCE_MS
+            !migrated && stored == OLD_DEFAULT_ENDPOINT_SILENCE_MS -> DEFAULT_ENDPOINT_SILENCE_MS
+            else -> stored
+        }
 
         /** The Settings field: blank / 0 = off; anything else is clamped to [ENDPOINT_RANGE_MS]. */
         fun parseEndpointMs(text: String): Int {
@@ -79,7 +120,8 @@ data class Settings(
     val effectiveCleanup: CleanupLevel
         get() = if (!llmEnabled) CleanupLevel.NONE else cleanup.takeIf { it != CleanupLevel.NONE } ?: CleanupLevel.LIGHT
 
-    fun toSessionConfig(dictionary: List<DictEntry>) = SessionConfig(
+    /** [language]: the effective one ([LanguageDefault.effective]); unset / "auto" = detect. */
+    fun toSessionConfig(dictionary: List<DictEntry>, language: String = this.language) = SessionConfig(
         languages = if (language == "auto" || language.isBlank()) emptyList() else listOf(language),
         dictionary = dictionary,
         cleanupLevel = effectiveCleanup,
@@ -88,9 +130,56 @@ data class Settings(
         partialIntervalMs = if (livePreview) PARTIAL_INTERVAL_MS else null,
         llmTimeoutMs = ANDROID_LLM_TIMEOUT_MS,
         spokenCleanup = spokenCleanup,
+        segmentPauseMs = if (decodeWhileSpeaking) SEGMENT_PAUSE_MS else null,
     )
 
     fun sessionCap() = SessionCap(capMinutes.coerceIn(1, 20) * 60_000L)
+}
+
+/**
+ * The dictation language when the user has not chosen one (2026-10-23: with `auto`, a 2 s English
+ * clip on multilingual base came out as Bulgarian; whisper's language ID is unreliable on short,
+ * accented phone speech). Unset = the phone's language if the loaded whisper model is
+ * multilingual and whisper knows that language, else "auto". Explicit choices are kept.
+ */
+object LanguageDefault {
+    /** whisper.cpp's language codes (g_lang). */
+    val WHISPER_LANGUAGES: Set<String> = (
+        "en zh de es ru ko fr ja pt tr pl ca nl ar sv it id hi fi vi he uk el ms cs ro da hu ta no th ur hr bg lt la " +
+            "mi ml cy sk te fa lv bn sr az sl kn et mk br eu is hy ne mn bs kk sq sw gl mr pa si km sn yo so af oc ka be " +
+            "tg sd gu am yi lo uz fo ht ps tk nn mt sa lb my bo tl mg as tt haw ln ha ba jw su yue"
+        ).split(' ').toSet()
+
+    /** java.util.Locale's legacy codes and whisper's own Javanese code. */
+    private val ALIASES = mapOf("iw" to "he", "in" to "id", "ji" to "yi", "jv" to "jw", "nb" to "no")
+
+    /** English-only whisper files: `*.en.bin`, `*.en-q5_1.bin`, distil-whisper. Parakeet: English only. */
+    fun isMultilingual(asr: LoadedAsr): Boolean {
+        if (asr.engine != dev.flowclone.core.AsrEngine.WHISPER) return false
+        val n = asr.model.lowercase()
+        return !Regex("""\.en([._-]|$)""").containsMatchIn(n) && "distil" !in n
+    }
+
+    /** [deviceLanguage] = `Locale.getDefault().language`; [asr] = the loaded local ASR (null: none). */
+    fun effective(setting: String, deviceLanguage: String?, asr: LoadedAsr?): String {
+        if (setting != Settings.LANGUAGE_UNSET) return setting
+        val lang = deviceLanguage?.lowercase()?.let { ALIASES[it] ?: it }
+        return if (asr != null && isMultilingual(asr) && lang != null && lang in WHISPER_LANGUAGES) lang else "auto"
+    }
+
+    fun name(code: String): String = when (code) {
+        "auto" -> "Auto-detect"
+        "jw" -> "Javanese"
+        "yue" -> "Cantonese"
+        else -> java.util.Locale(code).getDisplayLanguage(java.util.Locale.ENGLISH).ifEmpty { code }
+    }
+
+    /** Main screen: what the next dictation uses, and why. */
+    fun label(setting: String, effective: String): String = when {
+        setting != Settings.LANGUAGE_UNSET -> name(effective)
+        effective == "auto" -> "Auto-detect (phone language not used: model is English-only or unknown)"
+        else -> "${name(effective)} (phone language)"
+    }
 }
 
 /**

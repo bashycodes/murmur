@@ -5,6 +5,7 @@ import dev.flowclone.core.CoreException
 import dev.flowclone.core.FakeFlowCore
 import dev.flowclone.core.FlowCore
 import dev.flowclone.core.ModelConfig
+import dev.flowclone.core.ParakeetDecoding
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -83,6 +84,7 @@ class EngineRouteTest {
         assertSame(o.router, r.core)
         assertSame(loaded, o.local)
         assertEquals("server: 100.64.0.10:7313 → client: base.bin", r.description)
+        assertEquals(LoadedAsr(AsrEngine.WHISPER, "base.bin"), r.asr)
         assertTrue(JSONObject(o.json!!).getJSONObject("server").getString("token").isNotEmpty())
     }
 
@@ -135,6 +137,17 @@ class EngineRouteTest {
         assertTrue(r.core != null)
         assertEquals(listOf(AsrEngine.PARAKEET, AsrEngine.WHISPER), tried.map { it.asrEngine })
         assertTrue(r.description, r.description.contains("Parakeet failed"))
+        assertEquals("what actually loaded", LoadedAsr(AsrEngine.WHISPER, "base.bin"), r.asr)
+    }
+
+    @Test fun loadedAsrNamesTheParakeetFolder() {
+        val p = EnginePlan.plan(Settings(asrEngine = AsrEngine.PARAKEET), "/m/base.bin", null, exists, 4, parakeetPath = "/m/pk-int8/", isModelDir = { true }) as EnginePlan.Plan.Native
+        assertEquals(LoadedAsr(AsrEngine.PARAKEET, "pk-int8"), EnginePlan.load(p) { FakeFlowCore() }.asr)
+    }
+
+    @Test fun loadedAsrIsNullWhenNothingLoaded() {
+        val p = local() as EnginePlan.Plan.Native
+        assertNull(EnginePlan.load(p) { throw CoreException("bad") }.asr)
     }
 
     @Test fun parakeetFolderSelection() {
@@ -151,5 +164,47 @@ class EngineRouteTest {
     @Test fun spokenCleanupPrefReachesTheSessionConfig() {
         assertTrue(Settings().toSessionConfig(emptyList()).spokenCleanup)
         assertFalse(Settings(spokenCleanup = false).toSessionConfig(emptyList()).spokenCleanup)
+    }
+
+    // ---- D22: one Parakeet recognizer on the phone (saves ~0.6 GB RSS) ----
+
+    @Test fun parakeetDecodesGreedyOnDeviceByDefault() {
+        val p = EnginePlan.plan(Settings(asrEngine = AsrEngine.PARAKEET), "/m/base.bin", null, exists, 4, parakeetPath = "/m/pk", isModelDir = { true }) as EnginePlan.Plan.Native
+        assertEquals(ParakeetDecoding.GREEDY, p.config.parakeetDecoding)
+        assertEquals("whisper ignores it; keep its JSON unchanged", ParakeetDecoding.AUTO, p.whisperFallback!!.parakeetDecoding)
+    }
+
+    @Test fun parakeetDecodingDevOverride() {
+        val p = EnginePlan.plan(
+            Settings(asrEngine = AsrEngine.PARAKEET), null, null, exists, 4, parakeetPath = "/m/pk", isModelDir = { true },
+            parakeetDecoding = ParakeetDecoding.AUTO,
+        ) as EnginePlan.Plan.Native
+        assertEquals(ParakeetDecoding.AUTO, p.config.parakeetDecoding)
+    }
+
+    // ---- 2026-10-23: debug-log event when the loaded engine is not the selected one ----
+
+    @Test fun mismatchWhenParakeetFailedAndWhisperLoaded() {
+        val p = EnginePlan.plan(Settings(asrEngine = AsrEngine.PARAKEET), "/m/base.bin", null, exists, 4, parakeetPath = "/m/pk", isModelDir = { true }) as EnginePlan.Plan.Native
+        val r = EnginePlan.load(p) { cfg -> if (cfg.asrEngine == AsrEngine.PARAKEET) throw CoreException("model load failed: oom") else FakeFlowCore() }
+        assertEquals("selected parakeet, loaded whisper base.bin: model load failed: oom", EngineMismatch.message(AsrEngine.PARAKEET, p, r.asr, r.description))
+    }
+
+    @Test fun mismatchWhenParakeetSelectedButNotImported() {
+        val p = EnginePlan.plan(Settings(asrEngine = AsrEngine.PARAKEET), "/m/base.bin", null, exists, 4, parakeetPath = null) as EnginePlan.Plan.Native
+        val r = EnginePlan.load(p) { FakeFlowCore() }
+        assertEquals("selected parakeet, loaded whisper base.bin: no Parakeet model folder imported", EngineMismatch.message(AsrEngine.PARAKEET, p, r.asr, r.description))
+    }
+
+    @Test fun mismatchWhenTheLocalEngineFailedBehindTheServer() {
+        val r = EngineRoute.assemble(routed(EngineRoute.plan(local(), server, BuildCaps.ALL)), { throw CoreException("model not found: /m/base.bin") }, Opener())
+        val m = EngineMismatch.message(AsrEngine.WHISPER, local() as EnginePlan.Plan.Native, r.asr, r.description)
+        assertEquals("selected whisper, loaded none: model not found: /m/base.bin", m)
+    }
+
+    @Test fun noMismatchWhenTheSelectedEngineLoaded() {
+        val p = local() as EnginePlan.Plan.Native
+        assertNull(EngineMismatch.message(AsrEngine.WHISPER, p, EnginePlan.load(p) { FakeFlowCore() }.asr, "base.bin"))
+        assertNull("no local engine needed (server only)", EngineMismatch.message(AsrEngine.PARAKEET, null, null, "server: h:1"))
     }
 }

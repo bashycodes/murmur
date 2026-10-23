@@ -1,11 +1,15 @@
 package dev.flowclone
 
 import dev.flowclone.core.RouterErrors
+import dev.flowclone.debug.DebugAudioStore
 import dev.flowclone.debug.DebugLogFile
 import dev.flowclone.debug.DebugLogger
 import dev.flowclone.core.BlockingCalls
 import dev.flowclone.insert.ClipboardGuard
 import dev.flowclone.service.AndroidClipPort
+import dev.flowclone.data.EngineMismatch
+import dev.flowclone.data.LanguageDefault
+import dev.flowclone.data.Settings
 import dev.flowclone.data.LastDictation
 import dev.flowclone.data.CloudKeyStore
 import dev.flowclone.data.RouterOpener
@@ -51,6 +55,12 @@ class FlowApp : Application() {
     /** D21: opt-in device-local debug log (Developer settings; default off). */
     lateinit var debugFile: DebugLogFile; private set
     lateinit var debugLog: DebugLogger; private set
+    /** Developer "Keep last dictation audio (debug)" (default off): WAVs in files/debug/audio/. */
+    lateinit var debugAudio: DebugAudioStore; private set
+    /** One low-priority writer for [debugAudio]; dictation never waits on it. */
+    val debugAudioWriter: java.util.concurrent.ExecutorService by lazy {
+        java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "flow-debug-audio").apply { isDaemon = true; priority = Thread.MIN_PRIORITY } }
+    }
     val caps: BuildCaps = BuildCaps.current()
 
     /** S16: every transcript the app puts on the clipboard is removed again after a minute. */
@@ -114,7 +124,14 @@ class FlowApp : Application() {
             secrets = { debugSecrets() },
         )
         engine = EngineHolder(this)
+        debugAudio = DebugAudioStore.inFilesDir(filesDir)
+        // 24 h limit also when the option was turned off meanwhile.
+        runCatching { debugAudioWriter.execute { runCatching { debugAudio.prune() } } }
     }
+
+    /** The language the next dictation uses ([dev.flowclone.data.LanguageDefault]). */
+    fun effectiveLanguage(s: Settings = settings.load()): String =
+        LanguageDefault.effective(s.language, java.util.Locale.getDefault().language, engine.loadedAsr())
 
     /** Server token + every stored cloud key (runs on the debug-log thread, never throws). */
     private fun debugSecrets(): List<String> {
@@ -167,7 +184,11 @@ class EngineHolder(
     sealed interface State {
         data object NotLoaded : State
         data object Loading : State
-        data class Ready(val core: FlowCore, val description: String, val llm: EnginePlan.LlmStatus = EnginePlan.LlmStatus.Off) : State
+        /** [asr]: the on-device ASR the router got (null: none, e.g. server / cloud only); [mock]: the mock engine. */
+        data class Ready(
+            val core: FlowCore, val description: String, val llm: EnginePlan.LlmStatus = EnginePlan.LlmStatus.Off,
+            val asr: dev.flowclone.data.LoadedAsr? = null, val mock: Boolean = false,
+        ) : State
         data class Failed(val message: String, val kind: String? = null) : State
     }
 
@@ -224,6 +245,9 @@ class EngineHolder(
         is State.Failed -> throw CoreException(s.message, s.kind)
         State.NotLoaded -> { ensureLoaded(); throw CoreException("Speech model is loading, try again in a moment.") }
     }
+
+    /** The on-device ASR that loaded, or null (not loaded, mock, server / cloud only). */
+    fun loadedAsr(): dev.flowclone.data.LoadedAsr? = (_state.value as? State.Ready)?.asr
 
     /** The router handle, when the native router is the active engine. */
     fun router(): NativeFlowCore? = ((_state.value as? State.Ready)?.core as? NativeFlowCore)?.takeIf { it.isRouter }
@@ -287,9 +311,10 @@ class EngineHolder(
         else EnginePlan.plan(
             s, app.settings.modelPath, app.settings.llmModelPath, { File(it).isFile }, threads,
             parakeetPath = app.settings.parakeetPath, isModelDir = { ParakeetFiles.isModelDir(File(it)) },
+            parakeetDecoding = app.dev.parakeetDecoding,
         )
         return when (val plan = EngineRoute.plan(local, app.dev.load(), app.caps)) {
-            EngineRoute.Plan.Mock -> State.Ready(FakeFlowCore("This is a test of on-device dictation."), "mock engine")
+            EngineRoute.Plan.Mock -> State.Ready(FakeFlowCore("This is a test of on-device dictation."), "mock engine", mock = true)
             is EngineRoute.Plan.Unavailable -> {
                 app.debugLog.event("engine_load", "${plan.kind ?: "unavailable"}: ${plan.message}")
                 State.Failed(plan.message, plan.kind)
@@ -305,9 +330,13 @@ class EngineHolder(
                     app.debugLog.event("engine_load", "${r.errorKind ?: "error"}: ${r.error}")
                     State.Failed(RouterErrors.userMessage(r.errorKind, r.error ?: "Speech engine failed to load"), r.errorKind)
                 } else {
+                    EngineMismatch.message(s.asrEngine, plan.local, r.asr, r.description)?.let {
+                        Log.w("FlowEngine", "engine mismatch: $it")
+                        app.debugLog.event("engine_mismatch", it)
+                    }
                     loadedWithLocal = plan.local != null
                     (r.core as? NativeFlowCore)?.takeIf { it.isRouter }?.let(::syncCloud)
-                    State.Ready(r.core, r.description, r.llm)
+                    State.Ready(r.core, r.description, r.llm, asr = r.asr)
                 }
             }
         }
