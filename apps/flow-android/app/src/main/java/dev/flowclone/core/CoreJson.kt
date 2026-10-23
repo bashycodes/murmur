@@ -16,6 +16,8 @@ object CoreJson {
         put("llm_path", c.llmPath ?: JSONObject.NULL)
         put("llm_lib", c.llmLib ?: JSONObject.NULL)
         put("threads", c.threads)
+        // Omitted when auto, like the core's serde (`skip_serializing_if = is_auto`).
+        if (c.parakeetDecoding != ParakeetDecoding.AUTO) put("parakeet_decoding", c.parakeetDecoding.wire)
     }.toString()
 
     fun encode(c: SessionConfig): String = JSONObject().apply {
@@ -37,6 +39,8 @@ object CoreJson {
         put("llm_prefill", c.llmPrefill)
         // Omitted (not null) when unset, like the core's serde: old servers see the same config.
         c.endpointSilenceMs?.let { put("endpoint_silence_ms", it) }
+        // D22: omitted when off; segment_min_ms / segment_soft_max_ms stay at the core defaults.
+        c.segmentPauseMs?.let { put("segment_pause_ms", it) }
     }.toString()
 
     fun encode(c: FieldContext): String = JSONObject().apply {
@@ -78,6 +82,7 @@ object CoreJson {
         billedAudioMs = o.optLongOrNull("billed_audio_ms"),
         costUsd = o.optDoubleOrNull("cost_usd"),
         costEstimated = if (o.isNull("cost_estimated")) null else o.optBoolean("cost_estimated"),
+        clientMs = o.optLongOrNull("client_ms"),
     )
 
     fun decodeCommit(json: String): CommitResult = try {
@@ -92,6 +97,8 @@ object CoreJson {
                 audioMs = t.optLong("audio_ms"), asrMs = t.optLong("asr_ms"), llmMs = t.optLong("llm_ms"),
                 postprocessMs = t.optLong("postprocess_ms"), totalMs = t.optLong("total_ms"),
                 droppedSamples = t.optLong("dropped_samples"),
+                // D22: omitted by the core when 0.
+                waitMs = t.optLong("wait_ms"), segments = t.optLong("segments"), preAsrMs = t.optLong("pre_asr_ms"),
             ),
             pressEnter = o.optBoolean("press_enter"),
             fallbackReason = o.optStringOrNull("fallback_reason"),

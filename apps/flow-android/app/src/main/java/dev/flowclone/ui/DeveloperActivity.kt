@@ -142,6 +142,7 @@ class DeveloperActivity : Activity() {
                 Button(context).apply { text = "Reset circuit"; isAllCaps = false; setOnClickListener { onResetCircuit() } },
                 Button(context).apply { text = "Reset to defaults"; isAllCaps = false; setOnClickListener { onResetDefaults() } },
             )
+            if (caps.local) parakeetSection()
             debugSection()
 
             if (!caps.remote) button("Lock (hide Developer settings)") {
@@ -155,6 +156,29 @@ class DeveloperActivity : Activity() {
         renderProviders()
         validate()
         refreshRows()
+    }
+
+    // ---- D22 Parakeet decoding (on-device engine) ----
+
+    private fun LinearLayout.parakeetSection() {
+        heading("Parakeet decoding (on-device)")
+        body("Greedy (default) loads one recognizer. Auto adds a beam-search recognizer for dictionary words (≈ +0.6 GB RAM). Beam is the old behaviour. Reloads the engine.")
+        val modes = dev.flowclone.core.ParakeetDecoding.entries
+        val labels = listOf("Auto (beam with dictionary words, +0.6 GB)", "Greedy (default, less RAM)", "Beam only")
+        val sp = android.widget.Spinner(context).apply {
+            adapter = android.widget.ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, labels)
+            setSelection(modes.indexOf(app.dev.parakeetDecoding))
+        }.also(::addView)
+        sp.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: android.widget.AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                val m = modes[pos]
+                if (m == app.dev.parakeetDecoding) return
+                app.dev.parakeetDecoding = m
+                if (app.settings.load().asrEngine == dev.flowclone.core.AsrEngine.PARAKEET) app.engine.reload()
+                Toast.makeText(this@DeveloperActivity, "Parakeet decoding: ${m.wire}", Toast.LENGTH_SHORT).show()
+            }
+            override fun onNothingSelected(p: android.widget.AdapterView<*>?) = Unit
+        }
     }
 
     // ---- D21 debug log (device-local; includes transcripts) ----

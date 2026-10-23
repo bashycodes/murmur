@@ -5,6 +5,7 @@ import dev.flowclone.core.CoreException
 import dev.flowclone.core.FakeFlowCore
 import dev.flowclone.core.FlowCore
 import dev.flowclone.core.ModelConfig
+import dev.flowclone.core.ParakeetDecoding
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -151,5 +152,21 @@ class EngineRouteTest {
     @Test fun spokenCleanupPrefReachesTheSessionConfig() {
         assertTrue(Settings().toSessionConfig(emptyList()).spokenCleanup)
         assertFalse(Settings(spokenCleanup = false).toSessionConfig(emptyList()).spokenCleanup)
+    }
+
+    // ---- D22: one Parakeet recognizer on the phone (saves ~0.6 GB RSS) ----
+
+    @Test fun parakeetDecodesGreedyOnDeviceByDefault() {
+        val p = EnginePlan.plan(Settings(asrEngine = AsrEngine.PARAKEET), "/m/base.bin", null, exists, 4, parakeetPath = "/m/pk", isModelDir = { true }) as EnginePlan.Plan.Native
+        assertEquals(ParakeetDecoding.GREEDY, p.config.parakeetDecoding)
+        assertEquals("whisper ignores it; keep its JSON unchanged", ParakeetDecoding.AUTO, p.whisperFallback!!.parakeetDecoding)
+    }
+
+    @Test fun parakeetDecodingDevOverride() {
+        val p = EnginePlan.plan(
+            Settings(asrEngine = AsrEngine.PARAKEET), null, null, exists, 4, parakeetPath = "/m/pk", isModelDir = { true },
+            parakeetDecoding = ParakeetDecoding.AUTO,
+        ) as EnginePlan.Plan.Native
+        assertEquals(ParakeetDecoding.AUTO, p.config.parakeetDecoding)
     }
 }

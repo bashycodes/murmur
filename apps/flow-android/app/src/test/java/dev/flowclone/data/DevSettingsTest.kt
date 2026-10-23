@@ -185,6 +185,14 @@ class DevSettingsTest {
         assertTrue(remote.allowServer); assertFalse(remote.allowClient)
     }
 
+    @Test fun parakeetDecodingDefaultsGreedyAndPersists() {
+        val kv = MemKV()
+        val store = DevStore(kv, BuildCaps.LOCAL, RotBox)
+        assertEquals(dev.flowclone.core.ParakeetDecoding.GREEDY, store.parakeetDecoding)
+        store.parakeetDecoding = dev.flowclone.core.ParakeetDecoding.AUTO
+        assertEquals(dev.flowclone.core.ParakeetDecoding.AUTO, DevStore(kv, BuildCaps.LOCAL, RotBox).parakeetDecoding)
+    }
+
     @Test fun debugLogDefaultsOffInEveryFlavourAndPersists() {
         for (caps in listOf(BuildCaps.LOCAL, BuildCaps.ALL, BuildCaps.REMOTE)) {
             val kv = MemKV()

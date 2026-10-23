@@ -17,6 +17,8 @@ class FakeFlowCore(@Volatile var transcript: String = "") : FlowCore {
     @Volatile var route: SessionRoute? = null
     /** Hands-free sessions only: [poll] reports `endpoint_reached` once this many samples arrived (tests). */
     @Volatile var endpointAfterSamples: Int? = null
+    /** Tests: reshape the commit result (e.g. add D22 timings or a route). */
+    @Volatile var shapeResult: ((CommitResult) -> CommitResult)? = null
     /** Runs inside [startSession] (tests: block it, or record the calling thread). */
     @Volatile var onStart: (() -> Unit)? = null
 
@@ -55,7 +57,7 @@ class FakeFlowCore(@Volatile var transcript: String = "") : FlowCore {
         active = false
         val audioMs = samplesPushed / 16L
         // Same shape as core-p1: EMPTY carries empty_reason; text results carry segments + plain_text.
-        return if (!heardSignal || transcript.isBlank()) {
+        val r = if (!heardSignal || transcript.isBlank()) {
             CommitResult(CommitStatus.EMPTY, timings = Timings(audioMs = audioMs), emptyReason = if (samplesPushed == 0) "no_audio" else "no_speech")
         } else {
             CommitResult(
@@ -63,6 +65,7 @@ class FakeFlowCore(@Volatile var transcript: String = "") : FlowCore {
                 segments = listOf(PasteSegment.Text(transcript)), plainText = transcript,
             )
         }
+        return shapeResult?.invoke(r) ?: r
     }
 
     override fun cancel() { active = false }

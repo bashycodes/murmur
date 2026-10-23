@@ -91,7 +91,7 @@ class FieldContextBuilderTest {
     }
 
     @Test fun handsFreeEndpointPref() {
-        assertEquals(2000, Settings().handsFreeEndpointMs())
+        assertEquals("D22: 2000 -> 1500", 1500, Settings().handsFreeEndpointMs())
         assertEquals(null, Settings(endpointSilenceMs = 0).handsFreeEndpointMs())
         assertEquals(300, Settings(endpointSilenceMs = 10).handsFreeEndpointMs())
         assertEquals(0, Settings.parseEndpointMs(""))
@@ -109,5 +109,21 @@ class FieldContextBuilderTest {
         val src = java.io.File("src/main/java/dev/flowclone/data/Stores.kt").readText()
         assertTrue("every delete path scrubs", Regex("""fun (delete|clear)\(.*scrub\(""").findAll(src).count() == 2)
         assertTrue(src.contains("override fun onConfigure"))
+    }
+
+    // ---- D22 (docs/proposals/streaming-asr-shell-api.md §1-2, §5) ----
+
+    @Test fun decodeWhileSpeakingDefaultsOnAndSends800() {
+        assertTrue(Settings().decodeWhileSpeaking)
+        assertEquals(800, Settings().toSessionConfig(emptyList()).segmentPauseMs)
+        assertEquals("off = field omitted (today's behaviour)", null, Settings(decodeWhileSpeaking = false).toSessionConfig(emptyList()).segmentPauseMs)
+    }
+
+    @Test fun endpointDefaultMigratesOnlyTheOldDefault() {
+        assertEquals("never saved", 1500, Settings.migrateEndpointMs(stored = null, migrated = false))
+        assertEquals("still at the old default", 1500, Settings.migrateEndpointMs(stored = 2000, migrated = false))
+        assertEquals("user value kept", 3000, Settings.migrateEndpointMs(stored = 3000, migrated = false))
+        assertEquals("user turned it off", 0, Settings.migrateEndpointMs(stored = 0, migrated = false))
+        assertEquals("2000 chosen after the migration is kept", 2000, Settings.migrateEndpointMs(stored = 2000, migrated = true))
     }
 }

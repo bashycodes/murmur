@@ -220,6 +220,7 @@ class DictationController(
                     audioMs = t?.audioMs, endpointWaitMs = endpointWaitMs, asrMs = t?.asrMs,
                     postMs = t?.let { it.llmMs + it.postprocessMs }, totalMs = t?.totalMs,
                     perceivedMs = stoppedAt?.let { now() - it },
+                    waitMs = t?.waitMs, segments = t?.segments, preAsrMs = t?.preAsrMs, clientMs = result?.route?.clientMs,
                     target = s.appId?.ifEmpty { null }, insert = InsertOutcome(outcome),
                     raw = result?.asrText?.ifEmpty { null }, text = text ?: result?.historyText?.ifEmpty { null },
                     error = error ?: result?.error, stack = DebugLogger.stackOf(cause),
