@@ -119,6 +119,10 @@ pub struct DevSettings {
     pub allow_cloud: bool,
     /// Cloud providers, without keys (router `RouterConfig.cloud`).
     pub cloud: CloudConfig,
+    /// Opt-in debug log with transcripts ([`crate::debug_log`]). Off by
+    /// default. Not part of [`DevForm`]: its own toggle saves it at once,
+    /// and a form save keeps the stored value.
+    pub debug_log: bool,
 }
 
 impl Default for DevSettings {
@@ -141,6 +145,7 @@ impl DevSettings {
             show_engine_badge: false,
             allow_cloud: false,
             cloud: CloudConfig::default(),
+            debug_log: false,
         }
     }
 
@@ -580,6 +585,7 @@ impl DevForm {
             show_engine_badge: self.show_engine_badge,
             allow_cloud: self.allow_cloud && caps.cloud,
             cloud,
+            debug_log: false,
         };
         let order = s.order();
         Ok((
@@ -693,6 +699,19 @@ mod tests {
 
     fn form() -> DevForm {
         DevForm::from_settings(&DevSettings::for_build(BOTH), "")
+    }
+
+    #[test]
+    fn debug_log_is_off_by_default_and_in_old_files() {
+        assert!(!DevSettings::for_build(BOTH).debug_log);
+        let old: DevSettings = serde_json::from_str(r#"{"allow_server":true}"#).unwrap();
+        assert!(!old.debug_log);
+        let on: DevSettings = serde_json::from_str(r#"{"debug_log":true}"#).unwrap();
+        assert!(on.debug_log);
+        // The Developer form does not carry it (it has its own command):
+        // the app keeps the stored value on a form save.
+        let (s, _) = form().validate(BOTH).unwrap();
+        assert!(!s.debug_log);
     }
 
     #[test]

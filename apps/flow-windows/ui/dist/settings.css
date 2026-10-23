@@ -383,3 +383,6 @@ dialog {
 dialog::backdrop {
   background: rgba(0, 0, 0, 0.4);
 }
+.hint.warn {
+  color: #b9770e;
+}

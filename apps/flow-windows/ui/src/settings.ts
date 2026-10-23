@@ -1390,6 +1390,70 @@ function versionTapped(): void {
   }
 }
 
+// ------------------------------------------------------------- debug log
+
+interface DebugLogView {
+  enabled: boolean;
+  count: number | null;
+  path: string;
+  stats: { written: number; dropped: number; write_errors: number };
+}
+
+function showDebugLog(v: DebugLogView): void {
+  $<HTMLInputElement>("dev_debug_log").checked = v.enabled;
+  $<HTMLElement>("dev_debug_path").textContent = v.path;
+  const n = v.count;
+  let line = n === null ? "Log file not readable" : n === 0 ? "No entries" : n === 1 ? "1 entry" : `${n} entries`;
+  if (v.stats.write_errors > 0) line += ` · ${v.stats.write_errors} write errors (ignored)`;
+  if (v.stats.dropped > 0) line += ` · ${v.stats.dropped} dropped`;
+  $<HTMLElement>("dev_debug_count").textContent = line;
+}
+
+async function loadDebugLog(): Promise<void> {
+  try {
+    showDebugLog(await invoke<DebugLogView>("debug_log_status"));
+  } catch (e) {
+    setStatus("dev_status", String(e), false);
+  }
+}
+
+/** Turning the log off offers to delete what it already holds. */
+function askClearDebugLog(count: number): Promise<boolean> {
+  const d = $<HTMLDialogElement>("dev_debug_off");
+  $<HTMLElement>("dev_debug_off_body").textContent =
+    `The log still holds ${count === 1 ? "1 entry" : `${count} entries`} with transcripts of earlier dictations. Delete it now?`;
+  return new Promise((resolve) => {
+    const done = (ok: boolean): void => {
+      $<HTMLButtonElement>("dev_debug_delete").onclick = null;
+      $<HTMLButtonElement>("dev_debug_keep").onclick = null;
+      d.close();
+      resolve(ok);
+    };
+    $<HTMLButtonElement>("dev_debug_delete").onclick = () => done(true);
+    $<HTMLButtonElement>("dev_debug_keep").onclick = () => done(false);
+    d.oncancel = () => done(false);
+    d.showModal();
+  });
+}
+
+async function debugLogToggled(): Promise<void> {
+  const on = $<HTMLInputElement>("dev_debug_log").checked;
+  const v = await devCall<DebugLogView>(
+    "debug_log_set",
+    { enabled: on },
+    on ? "Debug log on: transcripts are being written" : "Debug log off",
+  );
+  if (!v) {
+    $<HTMLInputElement>("dev_debug_log").checked = !on;
+    return;
+  }
+  showDebugLog(v);
+  if (!on && (v.count ?? 0) > 0 && (await askClearDebugLog(v.count ?? 0))) {
+    const c = await devCall<DebugLogView>("debug_log_clear", {}, "Debug log off and deleted");
+    if (c) showDebugLog(c);
+  }
+}
+
 // ------------------------------------------------------------------ boot
 
 async function load(): Promise<void> {
@@ -1418,6 +1482,7 @@ async function load(): Promise<void> {
   renderDict();
   await loadSuggestions();
   await loadDev();
+  await loadDebugLog();
 }
 
 for (const b of document.querySelectorAll<HTMLButtonElement>("nav.tabs button")) {
@@ -1430,6 +1495,13 @@ for (const i of document.querySelectorAll<HTMLInputElement>("[data-panel=develop
   i.addEventListener("change", scheduleCheck);
 }
 $<HTMLButtonElement>("dev_save").addEventListener("click", () => void devSave());
+$<HTMLInputElement>("dev_debug_log").addEventListener("change", () => void debugLogToggled());
+$<HTMLButtonElement>("dev_debug_open").addEventListener("click", () =>
+  void devCall<null>("debug_log_open_folder", {}, "Opened the log folder"),
+);
+$<HTMLButtonElement>("dev_debug_clear").addEventListener("click", () =>
+  void devCall<DebugLogView>("debug_log_clear", {}, "Debug log deleted").then((v) => v && showDebugLog(v)),
+);
 $<HTMLButtonElement>("dev_test_conn").addEventListener("click", () => void devTestConnection());
 $<HTMLButtonElement>("dev_test_session").addEventListener("click", () => void devTestSession());
 $<HTMLButtonElement>("dev_reset_circuit").addEventListener("click", () =>
@@ -1532,6 +1604,7 @@ void onEvent<RouteView>("dev:route", (e) => {
   if (devView?.caps.cloud) void invoke<UsageView>("dev_cloud_usage").then(showUsage);
 });
 void onEvent<null>("history:changed", () => {
+  if ($<HTMLInputElement>("dev_debug_log").checked) void loadDebugLog();
   if (!$<HTMLElement>("hist_list").closest("[hidden]")) void loadHistory();
 });
 

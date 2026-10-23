@@ -39,6 +39,10 @@
     "allow-dev-cloud-usage",
     "allow-dev-cloud-reset-usage",
     "allow-dev-cloud-presets",
-    "allow-dev-cloud-new-id"
+    "allow-dev-cloud-new-id",
+    "allow-debug-log-status",
+    "allow-debug-log-set",
+    "allow-debug-log-clear",
+    "allow-debug-log-open-folder"
   ]
 }

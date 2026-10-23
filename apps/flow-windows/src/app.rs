@@ -6,6 +6,7 @@ use crate::context::{uia, RawSnapshot};
 use crate::controller::{AudioSink, Controller, Platform};
 use crate::core_adapter::{self, FlowCoreAdapter, LlmSpec, LlmStatus, ModelSpec, ModelStatus};
 use crate::credentials::{self, CredentialStore, KeyState};
+use crate::debug_log::{self, DebugLog};
 use crate::dev_settings::{BuildCaps, DevForm, DevSettings, FieldError};
 use crate::dictation::{Input, OverlayState, Sound};
 use crate::ducking::win::Ducker;
@@ -53,6 +54,9 @@ struct AppState {
     creds: Arc<dyn CredentialStore>,
     /// `cloud_usage.json` (this month's counters; never sent anywhere).
     usage_path: PathBuf,
+    /// Opt-in debug log (Developer → Debug log; off by default).
+    debug: Arc<DebugLog>,
+    debug_path: PathBuf,
 }
 
 fn hwnd_of(w: &WebviewWindow) -> Option<HWND> {
@@ -260,6 +264,7 @@ fn apply_model_status(app: &AppHandle, item: &MenuItem<tauri::Wry>, st: &ModelSt
     if let Some(problem) = st.problem() {
         if !matches!(st, ModelStatus::Loading { .. }) {
             eprintln!("[model] {problem}");
+            debug_log::event("engine_load", &problem);
             show_settings(app);
         }
     }
@@ -297,6 +302,7 @@ fn apply_llm_status(app: &AppHandle, item: &MenuItem<tauri::Wry>, st: &LlmStatus
     }
     if let Some(problem) = st.problem() {
         eprintln!("[llm] {problem}");
+        debug_log::event("llm_load", &problem);
     }
 }
 
@@ -447,6 +453,7 @@ fn history_repaste(
         std::thread::sleep(Duration::from_millis(100));
         if let Err(e) = paste::win::paste(&text, &PasteOptions::from_prefs(&prefs)) {
             eprintln!("[history] re-paste: {e}");
+            debug_log::event("paste", &format!("history re-paste: {e}"));
         }
     });
     Ok(())
@@ -756,6 +763,8 @@ fn save_dev(
     mut dev: DevSettings,
 ) -> Result<Vec<String>, String> {
     let mut prefs = state.prefs.read().unwrap().clone();
+    // Its own toggle (debug_log_set) owns it; a form save keeps it.
+    dev.debug_log = prefs.developer.debug_log;
     crate::dev_settings::reconcile_consent(&prefs.developer.cloud, &mut dev.cloud);
     let removed = crate::dev_settings::removed_providers(&prefs.developer.cloud, &dev.cloud);
     let old_cloud = prefs.developer.cloud.clone();
@@ -767,6 +776,7 @@ fn save_dev(
     for id in removed {
         if let Err(e) = state.creds.delete(&id) {
             eprintln!("[cloud] could not delete the key of {id}: {e}");
+            debug_log::event("cloud", &format!("could not delete the key of {id}: {e}"));
         }
         if let Some(r) = state.router.get() {
             r.router().set_cloud_key(&id, None);
@@ -780,9 +790,80 @@ fn save_dev(
         r.load_cloud_keys(&prefs.developer, &*state.creds);
     }
     ensure_local(state, &prefs);
+    refresh_debug_secrets(state, &prefs.developer);
     *state.prefs.write().unwrap() = prefs;
     probe_in_background(app);
     Ok(cleared)
+}
+
+/// The server token and cloud keys, so the debug log can scrub them out
+/// of any error text (memory only).
+fn refresh_debug_secrets(state: &AppState, dev: &DevSettings) {
+    let mut secrets = vec![dev.token()];
+    for p in &dev.cloud.providers {
+        if let Ok(Some(k)) = state.creds.get(&p.id) {
+            secrets.push(k);
+        }
+    }
+    secrets.retain(|s| !s.is_empty());
+    state.debug.set_secrets(secrets);
+}
+
+// ------------------------------------------------------------ debug log
+
+#[derive(serde::Serialize)]
+struct DebugLogView {
+    enabled: bool,
+    /// Lines in `dictations.jsonl` (`None` = unreadable).
+    count: Option<usize>,
+    path: String,
+    stats: debug_log::Stats,
+}
+
+fn debug_view(state: &AppState) -> DebugLogView {
+    DebugLogView {
+        enabled: state.debug.is_enabled(),
+        count: state.debug.count(),
+        path: state.debug_path.display().to_string(),
+        stats: state.debug.stats(),
+    }
+}
+
+#[tauri::command]
+fn debug_log_status(state: tauri::State<'_, AppState>) -> DebugLogView {
+    debug_view(&state)
+}
+
+/// The Developer toggle: saved at once (prefs.json `developer.debug_log`).
+#[tauri::command]
+fn debug_log_set(state: tauri::State<'_, AppState>, enabled: bool) -> Result<DebugLogView, String> {
+    let mut prefs = state.prefs.read().unwrap().clone();
+    prefs.developer.debug_log = enabled;
+    prefs.save(&state.path).map_err(|e| e.to_string())?;
+    *state.prefs.write().unwrap() = prefs;
+    state.debug.set_enabled(enabled);
+    Ok(debug_view(&state))
+}
+
+#[tauri::command]
+fn debug_log_clear(state: tauri::State<'_, AppState>) -> Result<DebugLogView, String> {
+    state.debug.clear()?;
+    Ok(debug_view(&state))
+}
+
+#[tauri::command]
+fn debug_log_open_folder(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let dir = state
+        .debug_path
+        .parent()
+        .ok_or("no log folder")?
+        .to_path_buf();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::process::Command::new("explorer.exe")
+        .arg(&dir)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// Refresh "Server info" off the UI thread when a server is configured.
@@ -801,7 +882,18 @@ fn probe_in_background(app: &AppHandle) {
     let _ = std::thread::Builder::new()
         .name("flow-probe".into())
         .spawn(move || {
-            let _ = r.router().probe_server();
+            let report = r.router().probe_server();
+            if !report.ok {
+                debug_log::event(
+                    "server",
+                    &format!(
+                        "probe {}: {} {}",
+                        report.server.as_deref().unwrap_or("?"),
+                        report.error.as_deref().unwrap_or("failed"),
+                        report.message.as_deref().unwrap_or("")
+                    ),
+                );
+            }
             let _ = app.emit_to(SETTINGS, "dev:route", r.route_view());
         });
 }
@@ -1087,6 +1179,7 @@ fn persist_usage(state: &AppState, r: &RouterAdapter) {
     }
     if let Err(e) = crate::cloud::save_usage(&state.usage_path, &r.cloud_usage()) {
         eprintln!("[cloud] could not save usage: {e}");
+        debug_log::event("cloud", &format!("could not save usage: {e}"));
     }
 }
 
@@ -1239,6 +1332,12 @@ pub fn run() {
     let suggestions = Arc::new(Mutex::new(SuggestionStore::open(&sugg::default_path(
         appdata.as_deref(),
     ))));
+    let debug_path = debug_log::default_path(appdata.as_deref());
+    let debug = Arc::new(DebugLog::file(
+        debug_path.clone(),
+        prefs.read().unwrap().developer.debug_log,
+    ));
+    debug_log::install(debug.clone());
 
     tauri::Builder::default()
         .manage(AppState {
@@ -1255,6 +1354,8 @@ pub fn run() {
             suggest_item: OnceLock::new(),
             creds: credentials::system_store(),
             usage_path: crate::cloud::usage_path(appdata.as_deref()),
+            debug: debug.clone(),
+            debug_path,
         })
         .invoke_handler(tauri::generate_handler![
             get_prefs,
@@ -1289,7 +1390,11 @@ pub fn run() {
             dev_cloud_usage,
             dev_cloud_reset_usage,
             dev_cloud_presets,
-            dev_cloud_new_id
+            dev_cloud_new_id,
+            debug_log_status,
+            debug_log_set,
+            debug_log_clear,
+            debug_log_open_folder
         ])
         .on_window_event(|window, event| {
             if window.label() == SETTINGS {
@@ -1405,6 +1510,7 @@ pub fn run() {
             let dev = prefs.read().unwrap().developer.clone();
             let cfg = router_adapter::router_config(&dev, caps).unwrap_or_else(|e| {
                 eprintln!("[developer] invalid settings, using defaults: {e}");
+                debug_log::event("settings", &format!("invalid developer settings: {e}"));
                 router_adapter::router_config(&DevSettings::default(), caps)
                     .expect("default router config")
             });
@@ -1413,6 +1519,7 @@ pub fn run() {
             {
                 let st = app.state::<AppState>();
                 router.load_cloud_keys(&dev, &*st.creds);
+                refresh_debug_secrets(&st, &dev);
                 if router.cloud_capabilities().cloud {
                     if let Some(u) = crate::cloud::load_usage(&st.usage_path) {
                         router.router().set_cloud_usage(u);
@@ -1449,7 +1556,9 @@ pub fn run() {
             if let Some(h) = history.clone() {
                 controller = controller.with_history(h);
             }
-            controller = controller.with_suggestions(suggestions.clone());
+            controller = controller
+                .with_suggestions(suggestions.clone())
+                .with_debug_log(debug.clone());
             let pending = suggestions.lock().unwrap().data.pending.len();
             show_suggestion_count(&handle, pending);
             let dictating = controller.dictating_flag();
@@ -1464,7 +1573,10 @@ pub fn run() {
                 Ok(h) => {
                     *app.state::<AppState>().hook.lock().unwrap() = Some(h);
                 }
-                Err(e) => eprintln!("[hotkeys] {e}"),
+                Err(e) => {
+                    eprintln!("[hotkeys] {e}");
+                    debug_log::event("hotkeys", &e.to_string());
+                }
             }
             std::thread::Builder::new()
                 .name("flow-hotkey-fwd".into())
