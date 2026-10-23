@@ -103,17 +103,35 @@ impl ParakeetAsr {
         hotwords: &[String],
         req: &AsrRequest,
     ) -> Result<String, AsrError> {
-        let mut parts = Vec::new();
-        for r in fallback_pieces(pcm) {
+        let pieces = fallback_pieces(pcm);
+        let mut parts = Vec::with_capacity(pieces.len());
+        for r in &pieces {
             if req.abort.is_set() {
                 return Err(AsrError::Transcribe("aborted".into()));
             }
-            let t = self.decode_robust(&pcm[r], hotwords)?;
-            if !t.is_empty() {
-                parts.push(t);
+            parts.push(self.decode_robust(&pcm[r.clone()], hotwords)?);
+        }
+        // Punctuate across each cut with a decode of the audio around it
+        // (see `segment::splice`).
+        for k in 0..pieces.len().saturating_sub(1) {
+            if parts[k].is_empty() || parts[k + 1].is_empty() {
+                continue;
+            }
+            if req.abort.is_set() {
+                return Err(AsrError::Transcribe("aborted".into()));
+            }
+            let b = segment::bridge_range(pieces[k].end, pieces[k].start, pieces[k + 1].end);
+            let bt = self.decode_robust(&pcm[b], hotwords)?;
+            if let Some((l, r)) = segment::splice(&parts[k], &parts[k + 1], &bt) {
+                parts[k] = l;
+                parts[k + 1] = r;
             }
         }
-        Ok(parts.join(" "))
+        Ok(parts
+            .into_iter()
+            .filter(|t| !t.is_empty())
+            .collect::<Vec<_>>()
+            .join(" "))
     }
 }
 

@@ -20,7 +20,7 @@ use crate::endpoint::{EndpointState, Endpointer};
 use crate::learn::{self, Candidate};
 use crate::paste::{self, PasteSegment};
 use crate::postprocess::{self, DictMatcher};
-use crate::segment::{SegmentParams, Segmenter};
+use crate::segment::{self, SegmentParams, Segmenter};
 use crate::{hallucination, vad};
 
 /// Partials decode at most this much trailing audio. 30 s (Whisper's
@@ -683,6 +683,9 @@ struct Session {
     seg: Option<Segmenter>,
     /// Pieces decoded while recording, in order (`done[k]` ends at cut k).
     done: Vec<SegOut>,
+    /// Boundary decodes, in order (`bridges[k]` spans cut k): the audio
+    /// around a cut, so commit can punctuate across it.
+    bridges: Vec<SegOut>,
     /// A segment decode failed: leave the rest to commit.
     seg_failed: bool,
     /// Cancel flag of this session's segment decodes.
@@ -743,6 +746,26 @@ impl Session {
             (None, None) => return false,
         };
         trailing_ms >= PARTIAL_SKIP_SILENCE_MS && self.partial_upto >= speech_end
+    }
+}
+
+/// How pieces are joined at commit. `Bridge` (the product); the others
+/// exist only so `tests/segment_bench.rs` can compare candidates
+/// (`FLOW_SEGMENT_JOIN=plain|smooth`, undocumented, bench use only).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum JoinMode {
+    Bridge,
+    Plain,
+    Smooth,
+}
+
+impl JoinMode {
+    fn from_env() -> Self {
+        match std::env::var("FLOW_SEGMENT_JOIN").as_deref() {
+            Ok("plain") => Self::Plain,
+            Ok("smooth") => Self::Smooth,
+            _ => Self::Bridge,
+        }
     }
 }
 
@@ -887,6 +910,7 @@ impl Worker {
                         track,
                         seg,
                         done: Vec::new(),
+                        bridges: Vec::new(),
                         seg_failed: false,
                         abort,
                         matcher,
@@ -1039,6 +1063,39 @@ impl Worker {
         true
     }
 
+    /// D22: decode the audio around the oldest cut without a bridge once
+    /// `BRIDGE_SAMPLES` follow it. True when it did.
+    fn decode_bridge(&mut self) -> bool {
+        let Some(s) = self.session.as_mut() else {
+            return false;
+        };
+        if s.seg_failed {
+            return false;
+        }
+        let k = s.bridges.len();
+        let Some(cuts) = s.seg.as_ref().map(|sg| sg.cuts()) else {
+            return false;
+        };
+        let Some(&cut) = cuts.get(k) else {
+            return false;
+        };
+        if s.buf.len() < cut + segment::BRIDGE_SAMPLES && cuts.get(k + 1).is_none() {
+            return false;
+        }
+        let lo = if k == 0 { 0 } else { cuts[k - 1] };
+        let hi = cuts.get(k + 1).copied().unwrap_or(s.buf.len());
+        let range = segment::bridge_range(cut, lo, hi);
+        let ctx = self.shared.context.lock().unwrap().clone();
+        let key = Self::asr_request(&s.cfg, &ctx, AsrPurpose::Segment);
+        let mut req = key.clone();
+        req.abort = AbortFlag(Some(s.abort.clone()));
+        match decode_piece(&*self.asr, &s.buf, range, s.cfg.vad, key, &req) {
+            Ok(o) => s.bridges.push(o),
+            Err(_) => s.seg_failed = true,
+        }
+        true
+    }
+
     fn done_text(s: &Session) -> String {
         join_pieces(
             s.done
@@ -1054,7 +1111,7 @@ impl Worker {
         s.drain();
         // D22: closed segments first (their text is part of the result);
         // previews only cover the open one.
-        if self.decode_closed_segment() {
+        if self.decode_closed_segment() || self.decode_bridge() {
             return;
         }
         let s = self.session.as_mut().unwrap();
@@ -1202,7 +1259,6 @@ impl Worker {
                 }
             }
         }
-        r.timings.asr_ms = t.elapsed().as_millis() as u64;
         let spoken: Vec<&SegOut> = pieces.iter().filter(|p| p.out.is_some()).collect();
         r.timings.segments = spoken.len() as u64;
         r.timings.asr_audio_ms =
@@ -1221,12 +1277,58 @@ impl Worker {
                 .iter()
                 .map(|p| p.out.as_ref().map_or("", |o| o.text.trim())),
         );
-        r.asr_text = join_pieces(
-            pieces
-                .iter()
-                .enumerate()
-                .map(|(k, p)| p.kept_text(k + 1 == n, guard)),
-        );
+        let mut texts: Vec<String> = pieces
+            .iter()
+            .enumerate()
+            .map(|(k, p)| p.kept_text(k + 1 == n, guard).to_string())
+            .collect();
+        // Punctuate across each cut: a piece decoded alone ends every pause
+        // with a sentence break ("ask not. What your country"). A decode of
+        // the audio around the cut decides the words next to it.
+        let bridges = std::mem::take(&mut s.bridges);
+        let join = JoinMode::from_env();
+        for k in 0..n.saturating_sub(1) {
+            if texts[k].is_empty() || texts[k + 1].is_empty() || join == JoinMode::Plain {
+                continue;
+            }
+            if join == JoinMode::Smooth {
+                if let Some((l, rt)) = segment::smooth_join(&texts[k], &texts[k + 1]) {
+                    texts[k] = l;
+                    texts[k + 1] = rt;
+                }
+                continue;
+            }
+            let range = segment::bridge_range(bounds[k + 1], bounds[k], bounds[k + 2]);
+            let key = base.clone();
+            let b = match bridges.get(k).filter(|b| b.range == range && b.key == key) {
+                Some(b) => {
+                    r.timings.pre_asr_ms += b.asr_ms;
+                    b.clone()
+                }
+                None => {
+                    if abort.load(Ordering::SeqCst) {
+                        return CommitResult::error("cancelled");
+                    }
+                    let mut req = key.clone();
+                    req.abort = AbortFlag(Some(abort.clone()));
+                    match decode_piece(&*self.asr, &s.buf, range, s.cfg.vad, key, &req) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            let mut e = CommitResult::error(e.to_string());
+                            e.timings = r.timings;
+                            return e;
+                        }
+                    }
+                }
+            };
+            let bt = b.out.as_ref().map_or("", |o| o.text.trim());
+            if let Some((l, rt)) = segment::splice(&texts[k], &texts[k + 1], bt) {
+                texts[k] = l;
+                texts[k + 1] = rt;
+            }
+        }
+        r.timings.asr_ms = t.elapsed().as_millis() as u64;
+        r.asr_text = join_pieces(texts.iter().map(String::as_str));
         if r.asr_text.is_empty() {
             if raw.is_empty() {
                 r.empty_reason = Some("blank_asr".into());
