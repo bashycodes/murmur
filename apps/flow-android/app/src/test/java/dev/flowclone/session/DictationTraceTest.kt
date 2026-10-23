@@ -37,6 +37,11 @@ class DictationTraceTest {
         override fun stop() { sink = null }
         fun speak(ms: Int) = repeat(ms / 100) { sink?.invoke(ShortArray(1600) { 3000 }, 1600) }
         fun quiet(ms: Int) = repeat(ms / 100) { sink?.invoke(ShortArray(1600), 1600) }
+        /** Real phone "silence": room noise / mic self-noise, never digital zero. */
+        fun roomNoise(ms: Int, amp: Int, seed: Int = 7) {
+            val r = java.util.Random(seed.toLong())
+            repeat(ms / 100) { sink?.invoke(ShortArray(1600) { (r.nextGaussian() * amp).toInt().toShort() }, 1600) }
+        }
     }
 
     /** Mirrors FlowService.Host: history = the `commit …` logcat line; traces go to [onTrace]. */
@@ -57,7 +62,7 @@ class DictationTraceTest {
     private val core = FakeFlowCore(transcript = "my secret phrase")
     private fun TestScope.settle() { advanceTimeBy(1_000); runCurrent() }
 
-    private fun TestScope.controller(host: Host) = DictationController(
+    private fun TestScope.controller(host: DictationController.Host) = DictationController(
         scope = backgroundScope, audio = audio, host = host, core = { core },
         commitDispatcher = StandardTestDispatcher(testScheduler), now = { currentTime }, wallClock = { 1_000_000L },
     ).also { it.onFieldFocusChanged(true) }
@@ -172,5 +177,100 @@ class DictationTraceTest {
         val c = controller(Host { traces += it })
         c.toggle(false); audio.speak(300); c.cancel(); settle()
         assertEquals(InsertOutcome.CANCELLED, traces.single().insert.outcome)
+    }
+
+    @Test fun streamingTimingsReachTheTrace() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        core.shapeResult = { it.copy(timings = it.timings.copy(waitMs = 90, segments = 2, preAsrMs = 1300), route = dev.flowclone.core.RouteInfo("local", clientMs = 450)) }
+        dictate(controller(Host { traces += it }))
+        val t = traces.single()
+        assertEquals(90L, t.waitMs)
+        assertEquals(2L, t.segments)
+        assertEquals(1300L, t.preAsrMs)
+        assertEquals(450L, t.clientMs)
+    }
+
+    /**
+     * 2026-10-23 phone diag (docs/findings/2026-10-23-phone-quality-regression.md): every device
+     * line had endpoint_wait_ms=0. SilenceTracker's fixed bar (mean s^2 > 33856, RMS 184 ~ -45 dBFS,
+     * Wispr's "can't hear you" threshold) is below a real mic's room-noise floor, so trailing
+     * silence after the last word still counts as signal. Expected: ~300 ms. Fixed by the noise-floor-adaptive
+     * bar for the trailing measure (SilenceTracker).
+     */
+    @Test fun endpointWaitCountsRoomNoiseAfterSpeechAsSilence() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        val c = controller(Host { traces += it })
+        c.toggle(false)
+        audio.speak(800)            // RMS 3000 ~ -21 dBFS
+        audio.roomNoise(300, 400)   // RMS ~400 ~ -38 dBFS: a quiet room on a phone mic
+        advanceTimeBy(600)
+        c.toggle(false); settle()
+        val wait = traces.single().endpointWaitMs!!
+        assertTrue("endpoint_wait_ms=$wait", wait in 200L..400L)
+    }
+
+    @Test fun cloudModelAndSessionLanguageReachTheTrace() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        core.shapeResult = { it.copy(route = dev.flowclone.core.RouteInfo("cloud", provider = "openai", model = "whisper-1")) }
+        val host = object : DictationController.Host by Host({ traces += it }) {
+            override fun sessionConfig() = SessionConfig(languages = listOf("en"))
+            override fun onDictationTrace(trace: DictationTrace) { traces += trace }
+        }
+        dictate(controller(host))
+        assertEquals("whisper-1", traces.single().model)
+        assertEquals("en", traces.single().language)
+    }
+
+    @Test fun autoLanguageIsRecordedAsAuto() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        dictate(controller(Host { traces += it }))
+        assertEquals("auto", traces.single().language)
+    }
+
+    // ---- "Keep last dictation audio (debug)" ----
+
+    private class AudioHost(val keep: Boolean, val traces: MutableList<DictationTrace>, val throwOnAudio: Boolean = false) :
+        DictationController.Host by Host({ traces += it }) {
+        val saved = mutableListOf<Pair<Long, Int>>()
+        override fun keepDictationAudio() = keep
+        override fun onDictationAudio(trace: DictationTrace, pcm: ShortArray): String? {
+            if (throwOnAudio) throw IllegalStateException("disk full")
+            saved += trace.tsMs to pcm.size
+            return "a.wav"
+        }
+        override fun onDictationTrace(trace: DictationTrace) { traces += trace }
+    }
+
+    @Test fun keptAudioIsTheWholeRecordingAndLinkedFromTheTrace() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        val host = AudioHost(keep = true, traces)
+        dictate(controller(host))
+        assertEquals(listOf(1_000_000L to 1_100 * 16), host.saved)
+        assertEquals("a.wav", traces.single().audio)
+    }
+
+    @Test fun audioIsNotKeptWhenOff() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        val host = AudioHost(keep = false, traces)
+        dictate(controller(host))
+        assertTrue(host.saved.isEmpty())
+        assertNull(traces.single().audio)
+    }
+
+    @Test fun cancelledDictationKeepsNoAudio() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        val host = AudioHost(keep = true, traces)
+        val c = controller(host)
+        c.toggle(false); audio.speak(300); c.cancel(); settle()
+        assertTrue(host.saved.isEmpty())
+    }
+
+    @Test fun aThrowingAudioHookNeverChangesTheDictation() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        val c = controller(AudioHost(keep = true, traces, throwOnAudio = true))
+        dictate(c)
+        assertEquals(InsertOutcome.INSERTED, traces.single().insert.outcome)
+        assertNull(traces.single().audio)
+        assertEquals(DictationState.Ready, c.state.value)
     }
 }

@@ -234,7 +234,10 @@ object DevText {
         route?.fallback?.let { parts += "fallback: $it" }
         route?.rttMs?.let { parts += "rtt $it ms" }
         route?.queueMs?.let { parts += "queue $it ms" }
+        route?.clientMs?.let { parts += "client $it ms" }
         parts += "asr ${r.timings.asrMs} ms / total ${r.timings.totalMs} ms"
+        if (r.timings.segments > 0) parts += "${r.timings.segments} seg (+${r.timings.preAsrMs} ms early)"
+        if (r.timings.waitMs > 0) parts += "wait ${r.timings.waitMs} ms"
         parts += r.status.name + (r.emptyReason?.let { " ($it)" } ?: "") + (r.error?.let { ": " + if (RouterErrors.plaintextRefused(it)) RouterErrors.NEEDS_TLS else it } ?: "")
         return parts.joinToString(" · ")
     }

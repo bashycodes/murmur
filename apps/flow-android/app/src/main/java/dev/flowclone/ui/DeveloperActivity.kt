@@ -142,6 +142,7 @@ class DeveloperActivity : Activity() {
                 Button(context).apply { text = "Reset circuit"; isAllCaps = false; setOnClickListener { onResetCircuit() } },
                 Button(context).apply { text = "Reset to defaults"; isAllCaps = false; setOnClickListener { onResetDefaults() } },
             )
+            if (caps.local) parakeetSection()
             debugSection()
 
             if (!caps.remote) button("Lock (hide Developer settings)") {
@@ -157,6 +158,29 @@ class DeveloperActivity : Activity() {
         refreshRows()
     }
 
+    // ---- D22 Parakeet decoding (on-device engine) ----
+
+    private fun LinearLayout.parakeetSection() {
+        heading("Parakeet decoding (on-device)")
+        body("Greedy (default) loads one recognizer. Auto adds a beam-search recognizer for dictionary words (≈ +0.6 GB RAM). Beam is the old behaviour. Reloads the engine.")
+        val modes = dev.flowclone.core.ParakeetDecoding.entries
+        val labels = listOf("Auto (beam with dictionary words, +0.6 GB)", "Greedy (default, less RAM)", "Beam only")
+        val sp = android.widget.Spinner(context).apply {
+            adapter = android.widget.ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, labels)
+            setSelection(modes.indexOf(app.dev.parakeetDecoding))
+        }.also(::addView)
+        sp.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: android.widget.AdapterView<*>?, v: View?, pos: Int, id: Long) {
+                val m = modes[pos]
+                if (m == app.dev.parakeetDecoding) return
+                app.dev.parakeetDecoding = m
+                if (app.settings.load().asrEngine == dev.flowclone.core.AsrEngine.PARAKEET) app.engine.reload()
+                Toast.makeText(this@DeveloperActivity, "Parakeet decoding: ${m.wire}", Toast.LENGTH_SHORT).show()
+            }
+            override fun onNothingSelected(p: android.widget.AdapterView<*>?) = Unit
+        }
+    }
+
     // ---- D21 debug log (device-local; includes transcripts) ----
 
     private fun LinearLayout.debugSection() {
@@ -170,6 +194,40 @@ class DeveloperActivity : Activity() {
             Button(context).apply { text = "Clear"; isAllCaps = false; setOnClickListener { clearDebugLog() } },
         )
         debugToggle.setOnCheckedChangeListener { _, on -> onDebugToggle(on) }
+        audioSection()
+    }
+
+    // ---- "Keep last dictation audio (debug)" ----
+
+    private lateinit var audioCount: TextView
+
+    private fun LinearLayout.audioSection() {
+        val keep = check("Keep last dictation audio (debug)", app.dev.keepDebugAudio)
+        body(
+            "Saves what the microphone heard for the last ${dev.flowclone.debug.DebugAudioStore.MAX_FILES} dictations as WAV files " +
+                "in the app's private storage (files/debug/audio/), named like the debug log's ts and linked from its \"audio\" field. " +
+                "Never for password fields, banking or excluded apps. Deleted after 24 hours. Nothing is sent anywhere.",
+        )
+        audioCount = body("")
+        row(Button(context).apply { text = "Clear audio"; isAllCaps = false; setOnClickListener { clearDebugAudio() } })
+        keep.setOnCheckedChangeListener { _, on -> app.dev.keepDebugAudio = on; refreshAudioCount() }
+        refreshAudioCount()
+    }
+
+    private fun refreshAudioCount() {
+        if (!::audioCount.isInitialized) return
+        thread(name = "dev-audio-count") {
+            val n = runCatching { app.debugAudio.prune(); app.debugAudio.list().size }.getOrDefault(0)
+            val line = "$n file${if (n == 1) "" else "s"} kept" + if (app.dev.keepDebugAudio) "" else " · off"
+            runOnUiThread { audioCount.text = line }
+        }
+    }
+
+    private fun clearDebugAudio() {
+        thread(name = "dev-audio-clear") {
+            runCatching { app.debugAudio.clear() }
+            runOnUiThread { Toast.makeText(this, "Debug audio cleared", Toast.LENGTH_SHORT).show(); refreshAudioCount() }
+        }
     }
 
     private fun onDebugToggle(on: Boolean) {
@@ -453,11 +511,16 @@ class DeveloperActivity : Activity() {
                 probeLine.text = "Probing ${s.host}:${s.port}…"
                 thread(name = "dev-probe-saved") {
                     val h = runCatching { r.probeSaved() }.getOrElse { HealthReport(ok = false, error = "error", message = it.message) }
-                    if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h))
+                    if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
                     runOnUiThread { lastProbe = h; probeLine.text = DevText.probe(h); refreshRows() }
                 }
             }
         }
+    }
+
+    /** The debug log's `model` for server dictations: what the server says it runs. */
+    private fun rememberServerModel(h: HealthReport) {
+        (h.asrModel ?: h.asrBackend)?.let { app.dev.serverAsrModel = it }
     }
 
     private fun onTestConnection() {
@@ -472,7 +535,7 @@ class DeveloperActivity : Activity() {
         val json = s.effective(caps).toServerConfigJson().toString()
         thread(name = "dev-probe") {
             val h = NativeFlowCore.probeServer(json)
-            if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h))
+            if (!h.ok) app.debugLog.event("server_probe", DevText.probe(h)) else rememberServerModel(h)
             runOnUiThread {
                 lastProbe = h
                 probeLine.text = DevText.probe(h)

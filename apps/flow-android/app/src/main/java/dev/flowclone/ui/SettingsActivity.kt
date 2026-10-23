@@ -16,6 +16,7 @@ class SettingsActivity : Activity() {
     private val app get() = FlowApp.of(this)
 
     private val languages = listOf(
+        dev.flowclone.data.Settings.LANGUAGE_UNSET to "Phone language (${java.util.Locale.getDefault().getDisplayLanguage(java.util.Locale.ENGLISH)}) if the model supports it",
         "auto" to "Auto-detect", "en" to "English", "es" to "Spanish", "fr" to "French", "de" to "German",
         "it" to "Italian", "pt" to "Portuguese", "nl" to "Dutch", "he" to "Hebrew", "ar" to "Arabic",
         "ru" to "Russian", "uk" to "Ukrainian", "pl" to "Polish", "tr" to "Turkish", "hi" to "Hindi",
@@ -28,6 +29,7 @@ class SettingsActivity : Activity() {
         super.onCreate(savedInstanceState)
         val s = app.settings.load()
         lateinit var lang: Spinner
+        var langChoices = languages
         lateinit var cleanup: Spinner
         lateinit var retention: Spinner
         lateinit var cap: EditText
@@ -39,11 +41,16 @@ class SettingsActivity : Activity() {
         lateinit var shake: CheckBox
         lateinit var shrink: CheckBox
         lateinit var spoken: CheckBox
+        lateinit var decodeEarly: CheckBox
         var parakeet: CheckBox? = null
         val local = app.caps.local
         page {
             heading("Language")
-            lang = spinner(languages.map { it.second }, languages.indexOfFirst { it.first == s.language }.coerceAtLeast(0))
+            // A stored code not in the short list (set elsewhere) is shown as an extra entry and kept.
+            val langs = if (languages.any { it.first == s.language }) languages
+            else languages + (s.language to dev.flowclone.data.LanguageDefault.name(s.language))
+            lang = spinner(langs.map { it.second }, langs.indexOfFirst { it.first == s.language }.coerceAtLeast(0))
+            langChoices = langs
             spoken = CheckBox(context).apply {
                 text = "Auto-format punctuation, fillers and corrections (\"comma\", \"um\", \"scratch that\", \"five dollars\")"
                 isChecked = s.spokenCleanup
@@ -83,6 +90,11 @@ class SettingsActivity : Activity() {
             heading("Hands-free: stop after silence (ms, 300–10000; 0 = only when you tap)")
             body("Tap-to-talk ends by itself after this much silence and inserts the text. Hold-to-talk is not affected.")
             endpoint = EditText(context).apply { inputType = InputType.TYPE_CLASS_NUMBER; setText(s.endpointSilenceMs.toString()) }.also(::addView)
+            heading("Speed")
+            decodeEarly = CheckBox(context).apply {
+                text = "Decode while speaking (long dictations appear sooner after you stop; on-device and own server, not cloud)"
+                isChecked = s.decodeWhileSpeaking
+            }.also(::addView)
             heading("Session limit (minutes, 1–20)")
             cap = EditText(context).apply { inputType = InputType.TYPE_CLASS_NUMBER; setText(s.capMinutes.toString()) }.also(::addView)
             heading("History retention")
@@ -98,7 +110,7 @@ class SettingsActivity : Activity() {
             mock = CheckBox(context).apply { text = "Mock engine (inserts a fixed sentence; for testing without a model)"; isChecked = s.mockEngine }.also(::addView)
             button("Save") {
                 val n = s.copy(
-                    language = languages[lang.selectedItemPosition].first,
+                    language = langChoices[lang.selectedItemPosition].first,
                     cleanup = levels[cleanup.selectedItemPosition].first,
                     llmEnabled = llmOn.isChecked,
                     livePreview = preview.isChecked,
@@ -110,6 +122,7 @@ class SettingsActivity : Activity() {
                     userDenylist = deny.text.lines().map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
                     mockEngine = mock.isChecked,
                     spokenCleanup = spoken.isChecked,
+                    decodeWhileSpeaking = decodeEarly.isChecked,
                     asrEngine = if (parakeet?.isChecked == true) dev.flowclone.core.AsrEngine.PARAKEET else dev.flowclone.core.AsrEngine.WHISPER,
                 )
                 app.settings.save(n)

@@ -188,4 +188,42 @@ class NativeFlowCoreTest {
         assertFalse("omitted, not null, for push-to-talk", org.json.JSONObject(CoreJson.encode(SessionConfig())).has("endpoint_silence_ms"))
         assertEquals(2000, org.json.JSONObject(CoreJson.encode(SessionConfig(endpointSilenceMs = 2000))).getInt("endpoint_silence_ms"))
     }
+
+    // ---- D22 streaming ASR (docs/proposals/streaming-asr-shell-api.md) ----
+
+    @Test fun segmentPauseOmittedWhenOffAndSentWhenOn() {
+        assertFalse("omitted, not null: old cores/servers see today's config", JSONObject(CoreJson.encode(SessionConfig())).has("segment_pause_ms"))
+        val j = JSONObject(CoreJson.encode(SessionConfig(segmentPauseMs = 800)))
+        assertEquals(800, j.getInt("segment_pause_ms"))
+        assertFalse("core default", j.has("segment_min_ms"))
+        assertFalse("core default", j.has("segment_soft_max_ms"))
+    }
+
+    @Test fun parakeetDecodingOmittedForAutoAndSentOtherwise() {
+        assertFalse(JSONObject(CoreJson.encode(ModelConfig(asrPath = "/m/pk", asrEngine = AsrEngine.PARAKEET))).has("parakeet_decoding"))
+        assertEquals("greedy", JSONObject(CoreJson.encode(ModelConfig(asrPath = "/m/pk", asrEngine = AsrEngine.PARAKEET, parakeetDecoding = ParakeetDecoding.GREEDY))).getString("parakeet_decoding"))
+        assertEquals("beam", JSONObject(CoreJson.encode(ModelConfig(asrPath = "/m/pk", asrEngine = AsrEngine.PARAKEET, parakeetDecoding = ParakeetDecoding.BEAM))).getString("parakeet_decoding"))
+        assertEquals(ParakeetDecoding.GREEDY, ParakeetDecoding.fromWire("greedy"))
+        assertEquals(null, ParakeetDecoding.fromWire("nonsense"))
+    }
+
+    @Test fun decodesSegmentedTimingsAndClientMs() {
+        val json = """{"status":"RAW_TRANSCRIPT","asr_text":"a","final_text":"a",
+            "timings":{"audio_ms":30000,"asr_ms":400,"llm_ms":0,"postprocess_ms":1,"total_ms":520,"dropped_samples":0,
+            "asr_audio_ms":29000,"wait_ms":120,"segments":4,"pre_asr_ms":2400},
+            "route":{"engine":"remote","rtt_ms":4,"client_ms":610}}"""
+        val r = CoreJson.decodeCommit(json)
+        assertEquals(120L, r.timings.waitMs)
+        assertEquals(4L, r.timings.segments)
+        assertEquals(2400L, r.timings.preAsrMs)
+        assertEquals(610L, r.route!!.clientMs)
+    }
+
+    @Test fun segmentedTimingsDefaultToZeroWhenAbsent() {
+        val r = CoreJson.decodeCommit("""{"status":"RAW_TRANSCRIPT","timings":{"total_ms":5},"route":{"engine":"local"}}""")
+        assertEquals(0L, r.timings.waitMs)
+        assertEquals(0L, r.timings.segments)
+        assertEquals(0L, r.timings.preAsrMs)
+        assertNull(r.route!!.clientMs)
+    }
 }

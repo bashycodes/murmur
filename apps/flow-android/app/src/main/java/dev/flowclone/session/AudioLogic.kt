@@ -65,9 +65,24 @@ data class SessionCap(val capMs: Long = 300_000) {
 /**
  * Wispr `HeadSilenceTracker` (07 §7): a frame is signal when mean(s²) > 33856 (RMS ≈ 184,
  * ≈ −45 dBFS). Tracks the leading silence so the shell can say "can't hear you".
+ *
+ * The trailing silence (D21 `endpoint_wait_ms`) uses a different, adaptive bar: a phone mic's
+ * room noise sits above −45 dBFS, so the fixed bar never saw the silence after the last word
+ * (findings 2026-10-23: 0 ms on every device line). As in core vad.rs, the noise floor is the
+ * 10th-percentile frame RMS (last 30 s) and a frame is speech when its RMS is at least
+ * clamp(3 × floor, −48 dBFS, −36 dBFS); the cap keeps clear speech as speech when there is no
+ * quiet frame to learn the floor from (fail open: a loud room reads 0, as before).
  */
 class SilenceTracker {
-    companion object { const val SIGNAL_MEAN_SQUARE = 33_856.0 }
+    companion object {
+        const val SIGNAL_MEAN_SQUARE = 33_856.0
+        /** vad.rs ABS_MIN / ABS_CAP (0.004 / 0.015 full scale) in PCM16 units. */
+        const val SPEECH_RMS_MIN = 0.004 * 32768
+        const val SPEECH_RMS_CAP = 0.015 * 32768
+        const val FLOOR_FACTOR = 3.0
+        /** Noise-floor window in frames (100 ms each: 30 s). */
+        const val FLOOR_FRAMES = 300
+    }
 
     @Volatile var heardSpeech = false; private set
     @Volatile var leadingSilenceMs = 0L; private set
@@ -75,26 +90,65 @@ class SilenceTracker {
     @Volatile var trailingSilenceMs = 0L; private set
     private var leadingSamples = 0L
     private var trailingSamples = 0L
+    private var heardRelativeSpeech = false
+    private val levels = DoubleArray(FLOOR_FRAMES)
+    private var levelCount = 0
+    private var levelNext = 0
 
-    fun reset() { heardSpeech = false; leadingSilenceMs = 0; leadingSamples = 0; trailingSilenceMs = 0; trailingSamples = 0 }
+    fun reset() {
+        heardSpeech = false; leadingSilenceMs = 0; leadingSamples = 0; trailingSilenceMs = 0; trailingSamples = 0
+        heardRelativeSpeech = false; levelCount = 0; levelNext = 0
+    }
+
+    /** Current speech bar (RMS, PCM16 units) from the frames seen so far. */
+    private fun speechBar(): Double {
+        val sorted = levels.copyOf(levelCount).also { it.sort() }
+        val floor = sorted[levelCount / 10]
+        return (floor * FLOOR_FACTOR).coerceIn(SPEECH_RMS_MIN, SPEECH_RMS_CAP)
+    }
 
     fun update(pcm: ShortArray, length: Int) {
         if (length <= 0) return
         var sum = 0.0
         for (i in 0 until length) { val v = pcm[i].toDouble(); sum += v * v }
-        if (sum / length > SIGNAL_MEAN_SQUARE) {
-            heardSpeech = true
-            trailingSamples = 0; trailingSilenceMs = 0
-            return
+        val meanSquare = sum / length
+        val rms = kotlin.math.sqrt(meanSquare)
+        levels[levelNext] = rms
+        levelNext = (levelNext + 1) % FLOOR_FRAMES
+        if (levelCount < FLOOR_FRAMES) levelCount++
+
+        val signal = meanSquare > SIGNAL_MEAN_SQUARE
+        if (signal) heardSpeech = true else if (!heardSpeech) {
+            leadingSamples += length
+            leadingSilenceMs = leadingSamples * 1000 / SAMPLE_RATE
         }
-        if (heardSpeech) {
+        if (signal && rms >= speechBar()) {
+            heardRelativeSpeech = true
+            trailingSamples = 0; trailingSilenceMs = 0
+        } else if (heardRelativeSpeech) {
             trailingSamples += length
             trailingSilenceMs = trailingSamples * 1000 / SAMPLE_RATE
-            return
         }
-        leadingSamples += length
-        leadingSilenceMs = leadingSamples * 1000 / SAMPLE_RATE
     }
+}
+
+/**
+ * "Keep last dictation audio (debug)": a copy of every mic frame of one dictation, up to
+ * [maxSamples] (the session cap). Frames arrive on the capture thread; [take] runs after stop.
+ */
+class PcmCapture(private val maxSamples: Int) {
+    private var buf = ShortArray(SAMPLE_RATE * 10)
+    private var size = 0
+
+    @Synchronized fun append(pcm: ShortArray, length: Int) {
+        val n = minOf(length, maxSamples - size)
+        if (n <= 0) return
+        if (size + n > buf.size) buf = buf.copyOf(minOf(maxSamples, maxOf(buf.size * 2, size + n)))
+        System.arraycopy(pcm, 0, buf, size, n)
+        size += n
+    }
+
+    @Synchronized fun take(): ShortArray = buf.copyOf(size)
 }
 
 /**
