@@ -21,6 +21,7 @@
 //! is recorded per provider for the host it was given for, and
 //! [`reconcile_consent`] voids it when the host or the adapter changes.
 
+use flow_core::config::ParakeetDecoding;
 use flow_router::{CloudConfig, CloudProviderConfig};
 use serde::{Deserialize, Serialize};
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -127,6 +128,11 @@ pub struct DevSettings {
     /// (finished phrases are decoded while the user keeps talking). On by
     /// default; per device (prefs.json), never synced.
     pub decode_while_speaking: bool,
+    /// Parakeet search (`ModelConfig.parakeet_decoding`): `auto` (default:
+    /// beam with hotwords + a greedy recognizer, ≈ +0.6 GB RSS, which a
+    /// desktop can spare) or `greedy` (one recognizer, no hotwords).
+    /// Whisper ignores it. Changing it reloads the model.
+    pub parakeet_decoding: ParakeetDecoding,
 }
 
 impl Default for DevSettings {
@@ -151,6 +157,7 @@ impl DevSettings {
             cloud: CloudConfig::default(),
             debug_log: false,
             decode_while_speaking: true,
+            parakeet_decoding: ParakeetDecoding::Auto,
         }
     }
 
@@ -422,6 +429,7 @@ pub struct DevForm {
     /// dialog and checked by [`reconcile_consent`] on save. No keys.
     pub cloud: CloudConfig,
     pub decode_while_speaking: bool,
+    pub parakeet_decoding: ParakeetDecoding,
 }
 
 impl Default for DevForm {
@@ -465,6 +473,7 @@ impl DevForm {
             allow_cloud: s.allow_cloud,
             cloud: s.cloud.clone(),
             decode_while_speaking: s.decode_while_speaking,
+            parakeet_decoding: s.parakeet_decoding,
         }
     }
 
@@ -594,6 +603,7 @@ impl DevForm {
             cloud,
             debug_log: false,
             decode_while_speaking: self.decode_while_speaking,
+            parakeet_decoding: self.parakeet_decoding,
         };
         let order = s.order();
         Ok((
@@ -736,6 +746,21 @@ mod tests {
         // A page from before D22 posts no field: on.
         let f: DevForm = serde_json::from_str(r#"{"allow_client":true}"#).unwrap();
         assert!(f.decode_while_speaking);
+    }
+
+    #[test]
+    fn parakeet_decoding_defaults_to_auto_and_is_saved_by_the_form() {
+        assert_eq!(
+            DevSettings::for_build(BOTH).parakeet_decoding,
+            ParakeetDecoding::Auto
+        );
+        let old: DevSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(old.parakeet_decoding, ParakeetDecoding::Auto);
+        let f: DevForm = serde_json::from_str(r#"{"parakeet_decoding":"greedy"}"#).unwrap();
+        let (s, _) = f.validate(BOTH).unwrap();
+        assert_eq!(s.parakeet_decoding, ParakeetDecoding::Greedy);
+        let j = serde_json::to_value(DevForm::for_page(&s)).unwrap();
+        assert_eq!(j["parakeet_decoding"], "greedy");
     }
 
     #[test]

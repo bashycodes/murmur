@@ -520,6 +520,7 @@ function readDev() {
         f[k] = v === "" ? -1 : Number(v);
     }
     f.route_order = [...devOrder];
+    f.parakeet_decoding = $("dev_parakeet_decoding").value || f.parakeet_decoding || "auto";
     f.allow_cloud = $("dev_allow_cloud").checked;
     const budget = $("dev_cloud_budget").value.trim();
     f.cloud = { ...cloudCfg, monthly_budget_usd: budget === "" ? null : Number(budget) };
@@ -534,6 +535,7 @@ function fillDev(f) {
         $(`dev_${k}`).value = String(f[k]);
     showTokenSaved(!!f.token_saved);
     devOrder = [...f.route_order];
+    $("dev_parakeet_decoding").value = f.parakeet_decoding ?? "auto";
     $("dev_allow_cloud").checked = f.allow_cloud;
     cloudCfg = structuredClone(f.cloud);
     $("dev_cloud_budget").value =

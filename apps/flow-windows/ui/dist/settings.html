@@ -202,6 +202,13 @@
         <legend>Speech decoding</legend>
         <label class="row"><input type="checkbox" id="dev_decode_while_speaking" /> Decode while speaking</label>
         <p class="hint">Transcribes each finished phrase while you keep talking, so a long dictation is ready about as fast as a short one (cuts go in pauses of 0.8 s or more). Off = the whole recording is transcribed after you stop. Cloud providers always get the whole recording at the end.</p>
+        <label>Parakeet decoding
+          <select id="dev_parakeet_decoding">
+            <option value="auto">Auto (default): beam search with dictionary words, greedy otherwise</option>
+            <option value="greedy">Greedy: one recognizer, ~0.6 GB less memory, no dictionary biasing</option>
+          </select>
+        </label>
+        <p class="hint">Parakeet only (whisper ignores it). Changing it reloads the model.</p>
       </fieldset>
 
       <fieldset id="dev_server_box">
