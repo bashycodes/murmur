@@ -34,14 +34,14 @@ APKs built on this PC (`tools/dist.sh`, after `tools/build-native.sh --flavor lo
 
 | APK | Size | SHA-256 |
 |---|---|---|
-| `flow-clone-hybrid-debug.apk` | 46.5 MB (46454600 bytes) | `0b7e5a74a5a4ad8b0bc695ac95019e30f5cfb0cd173e331e2674b0d56dc64bcf` |
+| `flow-clone-hybrid-debug.apk` | 46.5 MB (46487368 bytes) | `f2cea77a320463caddd32391731c63f92661be0746e176cb1e7d83a8dce9b841` |
 | `flow-clone-hybrid-release-unsigned.apk` | 45.4 MB (45417457 bytes) | `f97ef20073ad254ae7cf7c9e144e73bc41fd5b779706581bee8049c2a1da6a83` |
-| `flow-clone-local-debug.apk` | 42.3 MB (42293040 bytes) | `1e97a6f00ce0515cc66cfa3cfaa6ded0bb13b673a1a836586dd72378cd616218` |
+| `flow-clone-local-debug.apk` | 42.3 MB (42325808 bytes) | `133812c27091e167dda7a8c3c83e29fd5c65be015fc2036d85bb5a5ee02b3c43` |
 | `flow-clone-local-release-unsigned.apk` | 41.3 MB (41272269 bytes) | `22e4a8d2c472262cf6ba5bca4da5cbbbfae57913f0d2308ad1fb98c20e509299` |
-| `flow-clone-remote-debug.apk` | 12.7 MB (12735026 bytes) | `b2cf8bc2a619d97bc394251f9c0d07d34704a8dbf7edfd142d034c7507368256` |
+| `flow-clone-remote-debug.apk` | 12.8 MB (12774514 bytes) | `8c130cacfdbdc20b317aac193f0f818123f3285f034144d67bcc80d95ae06553` |
 | `flow-clone-remote-release-unsigned.apk` | 11.7 MB (11725059 bytes) | `a4cf625d33e07058e2a67eb3e93e50dd7fa96d9bd03d1202263a713ec18d5694` |
 
-Debug APKs built 2026-10-23 from branch `feat/android-streaming` (b2dc7e3, D22 streaming ASR on top of `feat/streaming-asr`; natives rebuilt from the same tree; same debug key as before, so they install over the previous build). The `*-release-unsigned.apk` rows are still the 2026-10-22 build from `integration` (merge commit b9942f1 of crates-final, android-final and win-final; natives rebuilt from the same tree) and are not installable until signed, see "Release build" below.
+Debug APKs built 2026-10-23 from `integration` (7a52f5a: merges of `feat/streaming-asr` with the D22 bridge decode, `feat/win-streaming` and `feat/android-quality`; natives rebuilt from the same tree; same debug key as before, so they install over the previous build). The `*-release-unsigned.apk` rows are still the 2026-10-22 build from `integration` (merge commit b9942f1 of crates-final, android-final and win-final; natives rebuilt from the same tree) and are not installable until signed, see "Release build" below.
 
 Check a copy with `sha256sum flow-clone-hybrid-debug.apk` before installing it. An APK from
 another machine or from the CI artifact (`.github/workflows/android-build.yml`) has a different
