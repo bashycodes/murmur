@@ -1,0 +1,29 @@
+{
+ "about": "first 4 extended clips: concatenated (42.8 s) Parakeet v2 int8 dropped a whole utterance",
+ "utterances": [
+  {
+   "source": "librispeech-test-clean",
+   "id": "6930-75918-0006",
+   "dur_s": 5.85,
+   "ref": "THIS HAS INDEED BEEN A HARASSING DAY CONTINUED THE YOUNG MAN HIS EYES FIXED UPON HIS FRIEND"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "1320-122617-0003",
+   "dur_s": 6.29,
+   "ref": "THERE WAS SOMETHING IN HIS AIR AND MANNER THAT BETRAYED TO THE SCOUT THE UTTER CONFUSION OF THE STATE OF HIS MIND"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "5639-40744-0032",
+   "dur_s": 17.43,
+   "ref": "FOR GOD'S SAKE MY LADY MOTHER GIVE ME A WIFE WHO WOULD BE AN AGREEABLE COMPANION NOT ONE WHO WILL DISGUST ME SO THAT WE MAY BOTH BEAR EVENLY AND WITH MUTUAL GOOD WILL THE YOKE IMPOSED ON US BY HEAVEN INSTEAD OF PULLING THIS WAY AND THAT WAY AND FRETTING EACH OTHER TO DEATH"
+  },
+  {
+   "source": "librispeech-test-clean",
+   "id": "260-123440-0004",
+   "dur_s": 12.02,
+   "ref": "ALICE TOOK UP THE FAN AND GLOVES AND AS THE HALL WAS VERY HOT SHE KEPT FANNING HERSELF ALL THE TIME SHE WENT ON TALKING DEAR DEAR HOW QUEER EVERYTHING IS TO DAY"
+  }
+ ]
+}

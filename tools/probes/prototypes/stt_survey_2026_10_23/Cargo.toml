@@ -1,0 +1,16 @@
+# Dated probe (2026-10-23) for docs/proposals/stt-model-survey.md: one warm
+# sherpa-onnx recognizer per run, WER clips + long-clip latency scaling + CPU
+# use. Standalone crate (own [workspace]) so it never joins the main build.
+[package]
+name = "stt_survey_2026_10_23"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+sherpa-onnx = { version = "=1.13.8", default-features = false, features = ["shared"] }
+hound = "3"
+serde_json = "1"
+libc = "0.2"
