@@ -133,7 +133,8 @@ pub struct SessionConfig {
     /// much trailing silence sets `SessionPoll.endpoint_reached` (see
     /// `FlowCore::poll`). The core never stops by itself; the shell commits
     /// when it sees the signal. `None` (default) = off. Values below 300
-    /// are raised to 300; `endpoint::RECOMMENDED_SILENCE_MS` = 2000.
+    /// are raised to 300; `endpoint::RECOMMENDED_SILENCE_MS` = 1500 (was 2000
+    /// before D22).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub endpoint_silence_ms: Option<u32>,
     /// Pause-segmented incremental decoding (D22): cut the dictation at
