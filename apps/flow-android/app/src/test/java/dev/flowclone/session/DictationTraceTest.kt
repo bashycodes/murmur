@@ -24,6 +24,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Ignore
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
@@ -37,6 +38,11 @@ class DictationTraceTest {
         override fun stop() { sink = null }
         fun speak(ms: Int) = repeat(ms / 100) { sink?.invoke(ShortArray(1600) { 3000 }, 1600) }
         fun quiet(ms: Int) = repeat(ms / 100) { sink?.invoke(ShortArray(1600), 1600) }
+        /** Real phone "silence": room noise / mic self-noise, never digital zero. */
+        fun roomNoise(ms: Int, amp: Int, seed: Int = 7) {
+            val r = java.util.Random(seed.toLong())
+            repeat(ms / 100) { sink?.invoke(ShortArray(1600) { (r.nextGaussian() * amp).toInt().toShort() }, 1600) }
+        }
     }
 
     /** Mirrors FlowService.Host: history = the `commit …` logcat line; traces go to [onTrace]. */
@@ -183,5 +189,25 @@ class DictationTraceTest {
         assertEquals(2L, t.segments)
         assertEquals(1300L, t.preAsrMs)
         assertEquals(450L, t.clientMs)
+    }
+
+    /**
+     * 2026-10-23 phone diag (docs/findings/2026-10-23-phone-quality-regression.md): every device
+     * line had endpoint_wait_ms=0. SilenceTracker's fixed bar (mean s^2 > 33856, RMS 184 ~ -45 dBFS,
+     * Wispr's "can't hear you" threshold) is below a real mic's room-noise floor, so trailing
+     * silence after the last word still counts as signal. Expected: ~300 ms. Un-ignore with the fix
+     * (relative / noise-floor-adaptive bar for the trailing measure only).
+     */
+    @Ignore("known defect: endpoint_wait_ms is 0 whenever room noise > -45 dBFS; see findings 2026-10-23")
+    @Test fun endpointWaitCountsRoomNoiseAfterSpeechAsSilence() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        val c = controller(Host { traces += it })
+        c.toggle(false)
+        audio.speak(800)            // RMS 3000 ~ -21 dBFS
+        audio.roomNoise(300, 400)   // RMS ~400 ~ -38 dBFS: a quiet room on a phone mic
+        advanceTimeBy(600)
+        c.toggle(false); settle()
+        val wait = traces.single().endpointWaitMs!!
+        assertTrue("endpoint_wait_ms=$wait", wait in 200L..400L)
     }
 }
