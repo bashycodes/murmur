@@ -57,9 +57,9 @@ Full guide: [`apps/flow-windows/README.md` "Live test on Windows"](../apps/flow-
 Full guide: [`apps/flow-android/INSTALL.md` "Live test on phone"](../apps/flow-android/INSTALL.md#live-test-on-phone-tailscale-10-minutes).
 
 1. APK: **hybrid**. Either `flow-clone-hybrid-debug.apk` from the artifact
-   **`flow-clone-android-debug-apks`** of <https://github.com/bashycodes/murmur/actions/runs/39837428823> (commit b9942f1; the Android tree is unchanged since), or
+   **`flow-clone-android-debug-apks`** of <https://github.com/bashycodes/murmur/actions/runs/39837428823> (commit b9942f1; predates the 2026-10-23 model-import and a11y-health fixes from `fix/android-live`), or
    `apps/flow-android/dist/flow-clone-hybrid-debug.apk` built on this box
-   (SHA-256 in INSTALL.md). Check it with `sha256sum` before installing.
+   (rebuild with `tools/dist.sh` from current `integration` to get those fixes; the SHA-256 values in INSTALL.md are for the earlier build). Check it with `sha256sum` before installing.
 2. **Uninstall first** if Flow Clone is already on the phone and was built
    elsewhere: the CI APK and the local one are signed with different debug
    keys, and Android refuses one as an update of the other. Uninstalling

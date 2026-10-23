@@ -156,8 +156,23 @@ From branches `android-int` + `android-p1` + `hybrid-android` (flavours `local`/
 
 Wired on Android, unverified on a device: snooze target + notification undo, shake listener (screen-on only), 36dp minimised dot, Repair bubble + ghost notification text, a11y 15 s heartbeat + FlowService respawn, `BootReceiver` (BOOT_COMPLETED / MY_PACKAGE_REPLACED / USER_UNLOCKED), USER_PRESENT re-attach, battery-exemption + OEM steps in onboarding, preview window, GGUF import, dictionary editor, history screen, history DB v2 (fallback reason + per-stage timings).
 
+### Live test 2026-10-23 (phone)
+Samsung Galaxy S25+ (SM-S936B, Android 16), **hybrid** debug APK; server on this box as a user service (`tools/server/install.sh --user`, linger enabled).
+
+* Permissions (mic, overlay, a11y, notifications, battery) granted OK. Developer settings: **Test connection** OK, median 156 ms, parakeet; **Test session** OK.
+* Two bugs found and fixed (`fix/android-live`, merged): (1) model import rejected every valid file ("Could not read the file.") because one elvis conflated two different nulls; (2) a11y health flapped GHOST/OK because the heartbeat was stamped with `uptimeMillis` (stops in CPU sleep) but compared with `elapsedRealtime`. A server-side install bug (`systemctl --user` bus unreachable without a login session) was fixed on `fix/server-live` (merged, `tools/server/test-install.sh`).
+* Dictation works on both the server and the local route: 13/13 inserts `SUCCESS_TEXT_FOUND`; 1 `blank_asr` on a 7.3 s utterance.
+* Latency (audio length → time from release to text):
+
+| Route | Audio → latency |
+|---|---|
+| remote (server, parakeet) | 3.0 s → 154 ms; 11.6 s → 158 ms; 27.2 s → 3239 ms |
+| local (on phone) | 2.7 s → 192 ms; 12.0 s → 607 ms; 15.0 s → 1145 ms; 23.8 s → 3541 ms; 28.1 s → 3844 ms |
+
+* User perceives long dictations as slow (both routes cross 3 s past ~25 s of audio). Streaming-ASR proposal in progress: `docs/proposals/streaming-asr-latency.md`.
+
 ## Outstanding work — priority order
-**Next: live testing** (user action). Everything is merged into `integration` and green locally and on CI; the remaining step is one pass on real devices, in order: server on this box (`tools/server/install.sh --user`), Windows installer from the green CI run, hybrid APK on the phone, optional cloud keys. Guide: `docs/LIVE-TESTING.md` (it links the detailed checklists). Covers hybrid D17 §6.4 DoD 2-4, the cloud D18 live smoke (keys from the user) and the device-only review confirmations (S16, S17). Record results here and fix whatever the reports show.
+**Next: live testing** (user action). Everything is merged into `integration` and green locally and on CI; the remaining step is one pass on real devices, in order: server on this box (`tools/server/install.sh --user`), Windows installer from the green CI run, hybrid APK on the phone, optional cloud keys. Guide: `docs/LIVE-TESTING.md` (it links the detailed checklists). Covers hybrid D17 §6.4 DoD 2-4, the cloud D18 live smoke (keys from the user) and the device-only review confirmations (S16, S17). Record results here and fix whatever the reports show. Server + phone pass done 2026-10-23 (see "Live test 2026-10-23 (phone)"); Windows and the optional cloud keys remain.
 1. **Core gaps** (the core itself is done; see What works):
    * Shells adopt the core-p1 API per core-architecture "Changelog for shells": paste `segments` instead of acting on `press_enter`, `plain_text` in history, `empty_reason` ("no speech heard"), typed load errors (Windows can drop its `is_file()` pre-check), optional `spoken_cleanup` pref. Both shells build and pass against the merged core (Windows needed only a `..Default` and a test fix); adoption itself is not done.
    * LLM latency on CPU: prefill-ahead is in; generation (≈ 25 tokens at 5-16 tok/s here) now dominates, so 1.5B misses the 1.5 s budget about half the time. Levers left: a LoRA on (raw → formatted) pairs for 0.5B (03 §7.5); Parakeet (D12) as the faster English engine. Shells must ship `libflow_llm` next to the exe (Windows) / in jniLibs (Android: packaged, host-JVM-proven, not yet loaded on bionic).
