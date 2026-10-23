@@ -64,6 +64,8 @@ data class RouteStatus(
     val health: HealthReport? = null,
     /** D18: the cloud route's own breaker; null in builds without the cloud. */
     val cloudCircuit: CircuitStatus? = null,
+    /** D24: routing details of the last committed session. */
+    val lastDiag: RouteDiag? = null,
 )
 
 /** Router JSON (D17 §1.2) ↔ Kotlin. Pinned by RouterJsonTest against crates/flow-router/fixtures. */
@@ -81,7 +83,7 @@ object RouterJson {
     /** `nativeStartSessionInfo`; a malformed answer still means "started" (route unknown). */
     fun decodeStartInfo(json: String): StartInfo = try {
         val o = JSONObject(json)
-        StartInfo(o.optBoolean("queued"), decodeSessionRoute(o.optJSONObject("route")))
+        StartInfo(o.optBoolean("queued"), decodeSessionRoute(o.optJSONObject("route")), o.optBoolean("loading"))
     } catch (e: org.json.JSONException) { StartInfo() }
 
     /** `nativePoll`; malformed = idle. */
@@ -91,8 +93,16 @@ object RouterJson {
             partial = o.optStr("partial"), endpointReached = o.optBoolean("endpoint_reached"),
             speechMs = o.optLong("speech_ms"), trailingSilenceMs = o.optLong("trailing_silence_ms"),
             route = decodeSessionRoute(o.optJSONObject("route")),
+            loading = o.optBoolean("loading"),
         )
     } catch (e: org.json.JSONException) { CorePoll() }
+
+    fun decodeRouteDiag(o: JSONObject?): RouteDiag? = o?.let {
+        RouteDiag(
+            connectMs = it.optLongOrNull("connect_ms"), localCold = it.optBoolean("local_cold"),
+            localLoadMs = it.optLongOrNull("local_load_ms"), localLoadError = it.optStringOrNull("local_load_error"),
+        )
+    }
 
     fun decodeCapabilities(json: String): Capabilities = try {
         val o = JSONObject(json)
@@ -157,6 +167,7 @@ object RouterJson {
             circuit = circuit(o.optJSONObject("circuit") ?: JSONObject()),
             health = o.optJSONObject("health")?.let(::decodeHealth),
             cloudCircuit = o.optJSONObject("cloud_circuit")?.let(::circuit),
+            lastDiag = decodeRouteDiag(o.optJSONObject("last_diag")),
         )
     } catch (e: JSONException) {
         RouteStatus()

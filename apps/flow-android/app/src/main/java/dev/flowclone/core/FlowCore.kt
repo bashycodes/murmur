@@ -47,6 +47,19 @@ interface FlowCore {
 
     /** `unload(h)`: frees models. The instance is unusable afterwards. */
     fun unload()
+
+    /**
+     * D24 never-fail fallback (router handles): load the on-device engine on demand from
+     * [configs] (tried in order) when a session needs the client route and none is warm.
+     * False when this engine can't (bare core, old library).
+     */
+    fun setLocalLoader(configs: List<ModelConfig>): Boolean = false
+
+    /** D24: open the server connection ahead of a dictation. **Blocking**: never on Main. */
+    fun prewarm(): Boolean = false
+
+    /** D24: routing details of the last committed session (router handles), else null. */
+    fun lastRouteDiag(): RouteDiag? = null
 }
 
 /** `load_models(ModelConfig) -> Handle`. */
@@ -99,10 +112,22 @@ object RouterErrors {
     /** flow-remote / flow-cloud refused cleartext to an address that is not private or tailnet. */
     fun plaintextRefused(message: String?) = message?.contains("plaintext refused", ignoreCase = true) == true
 
+    /** D24: the router names the phone-model failure after the server's (`…; phone model failed to load: why`). */
+    private const val PHONE_MODEL_FAILED = "phone model failed to load:"
+
+    private fun serverUnavailable(message: String): String {
+        val detail = message.substringAfter(':', message).trim()
+        val i = detail.indexOf(PHONE_MODEL_FAILED)
+        if (i < 0) return "Server unreachable ($detail)"
+        val server = detail.substring(0, i).trim().trimEnd(';').trim()
+        val phone = detail.substring(i + PHONE_MODEL_FAILED.length).trim()
+        return "Server unreachable ($server) and the phone model failed to load ($phone)"
+    }
+
     /** User-facing text for the bubble / main screen (§5 "Errors in normal UI"). */
     fun userMessage(kind: String?, message: String): String = if (plaintextRefused(message)) NEEDS_TLS else when (kind) {
         NO_ENGINE_ENABLED -> "Dictation disabled — enable server or client in Developer settings"
-        SERVER_UNAVAILABLE -> "Server unreachable (${message.substringAfter(':', message).trim()})"
+        SERVER_UNAVAILABLE -> serverUnavailable(message)
         SERVER_NOT_CONFIGURED -> "No server configured — set the host in Developer settings"
         LOCAL_NOT_READY -> "On-device speech model is not ready"
         "model_not_found" -> "Speech model file is missing (${message.substringAfter(':').trim()}). Re-import it."
@@ -166,10 +191,17 @@ data class SessionRoute(
     val model: String? = null,
     val server: String? = null,
     val fallback: String? = null,
+    /** Shell-side (not in the route JSON): StartInfo / RouterPoll `loading` (D24 on-demand phone model). */
+    val loading: Boolean = false,
 )
 
 /** `StartInfo` JSON: `queued` = the server accepted but has no free worker yet. */
-data class StartInfo(val queued: Boolean = false, val route: SessionRoute? = null)
+data class StartInfo(
+    val queued: Boolean = false,
+    val route: SessionRoute? = null,
+    /** D24: the server is unreachable and the phone model is loading on demand ("Loading phone model…"). */
+    val loading: Boolean = false,
+)
 
 /** `RouterPoll` JSON (`SessionPoll` + live `route`). */
 data class CorePoll(
@@ -180,6 +212,18 @@ data class CorePoll(
     val trailingSilenceMs: Long = 0,
     /** Absent with no session, or mid-recording when every route failed (keep the last label). */
     val route: SessionRoute? = null,
+    /** D24: the phone model is being loaded for this session (audio is buffered). */
+    val loading: Boolean = false,
+)
+
+/** flow_router `RouteDiag` (D24): how the last committed session was routed, for the D21 debug log. */
+data class RouteDiag(
+    /** Time the start spent on the server (connect + hello + start); null = not tried. */
+    val connectMs: Long? = null,
+    /** The phone model was loaded on demand for this session. */
+    val localCold: Boolean = false,
+    val localLoadMs: Long? = null,
+    val localLoadError: String? = null,
 )
 
 data class SessionConfig(

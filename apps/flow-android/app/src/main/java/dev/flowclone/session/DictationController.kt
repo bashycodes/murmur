@@ -7,6 +7,7 @@ import dev.flowclone.core.FieldContext
 import dev.flowclone.core.FlowCore
 import dev.flowclone.core.PasteKey
 import dev.flowclone.core.PasteSegment
+import dev.flowclone.core.RouteDiag
 import dev.flowclone.core.RouterErrors
 import dev.flowclone.core.SessionConfig
 import dev.flowclone.core.SessionRoute
@@ -153,6 +154,12 @@ class DictationController(
          * name for the trace's `audio` field, or null (not kept). Must return at once (enqueue).
          */
         fun onDictationAudio(trace: DictationTrace, pcm: ShortArray): String? = null
+
+        /**
+         * D24: why the phone can't take over when the server is unreachable (no model imported,
+         * …), or null when it can. Appended to a "Server unreachable" error so it says exactly why.
+         */
+        fun clientFallbackNote(): String? = null
     }
 
     /** What the debug trace needs from the dictation's start. */
@@ -167,6 +174,13 @@ class DictationController(
         const val HINT_MS = 2_500L
         /** `Break` segment: let the app react (e.g. open an @-mention popup) before the next run. */
         const val BREAK_PAUSE_MS = 150L
+        /** D24: at most one server pre-warm per this interval (field focus can flap). */
+        const val PREWARM_MIN_INTERVAL_MS = 20_000L
+
+        /** D24: "Server unreachable (…)" + why the phone could not take over. */
+        fun withClientNote(msg: String, kind: String?, note: String?): String =
+            if (note.isNullOrBlank() || kind != RouterErrors.SERVER_UNAVAILABLE || msg.contains("phone model")) msg
+            else "$msg — phone fallback unavailable: $note"
 
         /** A commit ERROR caused by the router (both engines off, server-only and unreachable). */
         fun routerFailure(r: CommitResult): String? {
@@ -219,6 +233,7 @@ class DictationController(
         start: TraceStart?, outcome: String, result: CommitResult? = null, stoppedAt: Long? = null,
         endpointWaitMs: Long? = null, liveRoute: SessionRoute? = null, error: String? = null,
         fallback: String? = null, cause: Throwable? = null, text: String? = null, pcm: ShortArray? = null,
+        diag: RouteDiag? = null,
     ) {
         try {
             val s = start ?: return
@@ -233,6 +248,7 @@ class DictationController(
                     postMs = t?.let { it.llmMs + it.postprocessMs }, totalMs = t?.totalMs,
                     perceivedMs = stoppedAt?.let { now() - it },
                     waitMs = t?.waitMs, segments = t?.segments, preAsrMs = t?.preAsrMs, clientMs = result?.route?.clientMs,
+                    connectMs = diag?.connectMs, localCold = diag?.localCold?.takeIf { it }, localLoadMs = diag?.localLoadMs,
                     target = s.appId?.ifEmpty { null }, insert = InsertOutcome(outcome),
                     raw = result?.asrText?.ifEmpty { null }, text = text ?: result?.historyText?.ifEmpty { null },
                     error = error ?: result?.error, stack = DebugLogger.stackOf(cause),
@@ -249,8 +265,27 @@ class DictationController(
     fun onFieldFocusChanged(focused: Boolean) {
         fieldFocused = focused
         when (_state.value) {
-            DictationState.Idle, DictationState.Ready -> _state.value = restingState()
+            DictationState.Idle, DictationState.Ready -> {
+                _state.value = restingState()
+                if (focused) prewarm()
+            }
             else -> Unit // recording / processing / error survive focus changes
+        }
+    }
+
+    private var lastPrewarmAt = Long.MIN_VALUE / 2
+
+    /**
+     * D24: the bubble is about to be used: open the server connection now so the handshake is
+     * off the dictation's critical path (and a dead server opens the circuit, so the dictation
+     * goes straight to the phone). Off the caller's thread; never affects dictation.
+     */
+    private fun prewarm() {
+        val t = now()
+        if (t - lastPrewarmAt < PREWARM_MIN_INTERVAL_MS) return
+        lastPrewarmAt = t
+        scope.launch(startDispatcher) {
+            try { core().prewarm() } catch (_: Throwable) { }
         }
     }
 
@@ -392,7 +427,8 @@ class DictationController(
             if (generation != gen) { c.cancel(); return@async false } // cancelled while connecting
             ctx?.let(c::setContext)
             gate.open { pcm, n -> c.pushAudio(pcm, n) }
-            if (_route.value == null) _route.value = info.route
+            // D24: "Loading phone model…" while the router loads the on-device engine on demand.
+            if (_route.value == null) _route.value = info.route?.copy(loading = info.loading)
             true
         }
         val preview = cfg.partialIntervalMs != null
@@ -404,7 +440,7 @@ class DictationController(
                 val p = c.poll()
                 if (preview) p.partial?.takeIf { it.isNotBlank() }?.let { _partial.value = it.trim() }
                 // Absent route mid-recording = the session is dead: keep the last label (the commit reports it).
-                p.route?.let { if (it != _route.value) _route.value = it }
+                p.route?.copy(loading = p.loading)?.let { if (it != _route.value) _route.value = it }
                 if (handsFree && p.endpointReached) {
                     stopAndSubmit() // D19: exactly as if the user tapped stop
                     break
@@ -422,7 +458,7 @@ class DictationController(
 
     /** The session could not start (router: no engine, server-only and unreachable, …). */
     private fun failStart(e: CoreException) {
-        val msg = RouterErrors.userMessage(e.kind, e.message ?: "start failed")
+        val msg = withClientNote(RouterErrors.userMessage(e.kind, e.message ?: "start failed"), e.kind, runCatching { host.clientFallbackNote() }.getOrNull())
         trace(traceStart, InsertOutcome.START_FAILED, error = msg, fallback = e.kind, cause = e)
         if (_state.value is DictationState.Recording) endAudio()
         session = null
@@ -453,9 +489,13 @@ class DictationController(
         val live = _route.value
         val pcm = capture?.take()
         capture = null
+        // D24 routing details for the trace, read on the commit thread right after the commit
+        // (never on the caller's thread: logging must not block dictation).
+        var diag: RouteDiag? = null
         fun done(outcome: String, r: CommitResult? = null, error: String? = null, text: String? = null) =
             trace(ts, outcome, r, stoppedAt, endpointWait, live, error = error, text = text,
-                pcm = pcm?.takeIf { outcome != InsertOutcome.CANCELLED })
+                pcm = pcm?.takeIf { outcome != InsertOutcome.CANCELLED },
+                diag = diag.takeIf { r != null })
         host.feedback(FeedbackEvent.StopSound)
         val c = session ?: return
         session = null
@@ -468,7 +508,9 @@ class DictationController(
             // The start may still be connecting; a failed start already showed its error.
             if (start != null && !start.await()) return@launch
             // Not a child: a hung native commit must be abandonable.
-            val pending = CoroutineScope(commitDispatcher).async { c.commit() }
+            val pending = CoroutineScope(commitDispatcher).async {
+                c.commit().also { diag = try { c.lastRouteDiag() } catch (_: Throwable) { null } }
+            }
             val result = withTimeoutOrNull(PROCESSING_TIMEOUT_MS) { pending.await() }
             _partial.value = null
             if (generation != gen) return@launch
@@ -487,7 +529,9 @@ class DictationController(
             }
             if (result.status == CommitStatus.ERROR) {
                 host.recordHistory(result, false, appId)
-                val routed = routerFailure(result)
+                val routed = routerFailure(result)?.let {
+                    withClientNote(it, CoreException.kindOf(result.error), runCatching { host.clientFallbackNote() }.getOrNull())
+                }
                 _state.value = DictationState.Error(
                     if (routed != null) DictationState.ErrorKind.EngineUnavailable(routed) else DictationState.ErrorKind.FailedToTranscribe,
                 )

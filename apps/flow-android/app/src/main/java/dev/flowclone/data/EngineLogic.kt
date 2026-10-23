@@ -132,6 +132,17 @@ object EnginePlan {
         return Plan.Native(whisper!!, llm)
     }
 
+    /**
+     * D24: the configs [load] would try, in the same order (selected engine with its LLM, then
+     * without the LLM, then the whisper fallback likewise), for the router's on-demand loader.
+     */
+    fun attempts(p: Plan.Native): List<ModelConfig> = buildList {
+        for (c in listOfNotNull(p.config, p.whisperFallback)) {
+            add(c)
+            if (c.llmPath != null) add(c.copy(llmPath = null, llmLib = null))
+        }
+    }.distinct()
+
     fun load(p: Plan.Native, loader: FlowCoreLoader): Loaded {
         val first = loadOne(p, loader)
         val fb = p.whisperFallback
@@ -233,6 +244,11 @@ object EngineRoute {
             val localNote: String?,
             val routerConfigJson: String,
             val dev: DevSettings,
+            /**
+             * D24: the client route is allowed but not loaded at startup (`keep_local_warm` off):
+             * the router loads this on demand when the server can't be reached.
+             */
+            val onDemand: EnginePlan.Plan.Native? = null,
         ) : Plan
     }
 
@@ -244,6 +260,10 @@ object EngineRoute {
         val errorKind: String? = null,
         /** The local ASR handed to the router (null: none loaded / not needed). */
         val asr: LoadedAsr? = null,
+        /** D24: why the client route can't serve a fallback (no model imported, load failed); null = it can. */
+        val clientNote: String? = null,
+        /** D24: what the on-demand loader loads first (debug log `engine`/`model`). */
+        val onDemandAsr: LoadedAsr? = null,
     )
 
     /** Load local models at startup? (§1.3 `keep_local_warm`: also when the server is preferred.) */
@@ -257,7 +277,12 @@ object EngineRoute {
             return Plan.Unavailable(RouterErrors.userMessage("no_engine_enabled", ""), "no_engine_enabled")
         }
         val json = eff.toRouterConfigJson().toString()
-        if (!needsLocal(eff, caps)) return Plan.Routed(null, null, json, eff)
+        if (!needsLocal(eff, caps)) {
+            val client = caps.local && eff.allowClient
+            val onDemand = (local as? EnginePlan.Plan.Native)?.takeIf { client }
+            val note = (local as? EnginePlan.Plan.Missing)?.message?.takeIf { client }
+            return Plan.Routed(null, note, json, eff, onDemand)
+        }
         return when (local) {
             is EnginePlan.Plan.Native -> Plan.Routed(local, null, json, eff)
             is EnginePlan.Plan.Missing ->
@@ -290,8 +315,13 @@ object EngineRoute {
             desc.add(if (p.dev.cloudFirst) 0 else desc.size, "cloud: $name")
         }
         if (localErr != null) desc += "client unavailable: $localErr"
+        if (localCore == null && p.onDemand != null) desc += "client: loaded on demand"
         return try {
-            Assembled(opener.open(p.routerConfigJson, localCore), desc.joinToString(" → "), llm, asr = asr)
+            val core = opener.open(p.routerConfigJson, localCore)
+            // D24: never fail just because the server is down; a failed install is only logged.
+            if (localCore == null && p.onDemand != null) runCatching { core.setLocalLoader(EnginePlan.attempts(p.onDemand)) }
+            Assembled(core, desc.joinToString(" → "), llm, asr = asr, clientNote = if (localCore == null && p.onDemand == null) localErr else null,
+                onDemandAsr = p.onDemand?.takeIf { localCore == null }?.let { LoadedAsr(it.config.asrEngine, it.config.asrPath.trimEnd('/').substringAfterLast('/')) })
         } catch (e: CoreException) {
             // The router took ownership of localCore either way.
             Assembled(null, desc.joinToString(" → "), llm, e.message ?: "router failed", e.kind)

@@ -100,6 +100,15 @@ or the host is a public address. For on-device fallback, either import a model (
 - [ ] Tap ✕ while "Transcribing…": nothing is inserted, no history row is added.
 - [ ] Airplane mode on (Tailscale down): dictation still inserts from the phone engine, label
       `via phone · server unreachable`.
+- [ ] **Never-fail fallback (D24)**: *Developer settings → Keep the on-device model loaded* **off**,
+      Save, stop `flow-server` (or airplane mode). Tap the bubble and talk right away: the preview
+      shows `Loading phone model… · server unreachable` for a few seconds (Parakeet ≈ 1 GB), then
+      `via phone · …`; nothing you said is lost and the text is inserted. The debug line has
+      `connect_ms` (≈ the connect timeout), `local_cold: true` and `local_load_ms`. The next
+      dictation starts on the phone at once (`circuit_open`, model already loaded). Tap ✕ while
+      it is still loading: nothing is inserted.
+- [ ] Same with no model imported: the error says "Server unreachable (…) — phone fallback
+      unavailable: No speech model imported…".
 - [ ] logcat (`FlowService`, `FlowEngine`, `FlowA11y`): no `blocking native call on the main
       thread`, no crash; the token never appears.
 
@@ -318,6 +327,16 @@ the engine.
    server's `100.x.y.z` or `name.tailnet.ts.net`, port `7313`, paste the token, *Save*,
    then *Test connection* → "OK · median N ms (…) · flow-server … · parakeet".
 4. Dictate: *Active engine (last dictation)* shows `Server 100.x.y.z:7313`.
+5. **Connect timeout** (default **2500 ms** since D24; a stored 800, the old default, becomes 2500
+   once). Over a Tailscale DERP relay the handshake is 3+ round trips of 150-300 ms, which 800 ms
+   could not fit. After a successful *Test connection* the router raises it further to
+   `RTT × 6` (1.5-10 s) on slow paths; it never lowers what you set.
+6. **The server being down never fails a dictation** while *Allow client* is on (D24): the phone
+   records at once and the audio is kept; if the server can't be reached (or its circuit is open,
+   e.g. a failed pre-warm when you focused the field) the phone model takes over. With *Keep the
+   on-device model loaded* off it is loaded on demand ("Loading phone model…") and then stays
+   loaded. Dictation fails only when no route is possible (both toggles off, or no phone model),
+   and the error says which.
 
 ## 5c. Cloud speech-to-text (hybrid / remote, opt-in, third party)
 

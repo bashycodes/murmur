@@ -23,7 +23,7 @@ data class DevSettings(
     val tlsPinSha256: String = "",
     /** Bearer token; never logged, never exported (lives in [TokenVault] at rest). */
     val token: String = "",
-    val connectTimeoutMs: Long = 800,
+    val connectTimeoutMs: Long = DEFAULT_CONNECT_TIMEOUT_MS,
     val commitTimeoutBaseMs: Long = 3_000,
     val healthTtlS: Long = 30,
     val keepLocalWarm: Boolean = true,
@@ -111,6 +111,17 @@ data class DevSettings(
             "cloud=$allowCloud order=${routeOrder.joinToString(",") { it.wire }} providers=${cloud.providers.size})"
 
     companion object {
+        /** D24: was 800 ms, too tight through a Tailscale DERP relay (3+ round trips of 150-300 ms). */
+        const val DEFAULT_CONNECT_TIMEOUT_MS = 2500L
+        const val OLD_DEFAULT_CONNECT_TIMEOUT_MS = 800L
+
+        /** D24: one-time move of an untouched stored 800 ms (the old default) to [DEFAULT_CONNECT_TIMEOUT_MS]. */
+        fun migrateConnectTimeout(stored: Long?, migrated: Boolean): Long = when {
+            stored == null -> DEFAULT_CONNECT_TIMEOUT_MS
+            !migrated && stored == OLD_DEFAULT_CONNECT_TIMEOUT_MS -> DEFAULT_CONNECT_TIMEOUT_MS
+            else -> stored
+        }
+
         const val DEFAULT_PORT = 7313
         const val MIN_TOKEN_LEN = 16
         val DEFAULT_ORDER = listOf(Route.SERVER, Route.CLIENT)
@@ -149,7 +160,7 @@ data class DevSettings(
                 tls = s.optBoolean("tls", false),
                 tlsPinSha256 = if (s.isNull("tls_pin_sha256")) "" else s.optString("tls_pin_sha256"),
                 token = s.optString("token", ""),
-                connectTimeoutMs = s.optLong("connect_timeout_ms", 800),
+                connectTimeoutMs = s.optLong("connect_timeout_ms", DEFAULT_CONNECT_TIMEOUT_MS),
                 commitTimeoutBaseMs = s.optLong("commit_timeout_base_ms", 3_000),
                 healthTtlS = s.optLong("health_ttl_s", 30),
                 keepLocalWarm = o.optBoolean("keep_local_warm", true),

@@ -188,6 +188,10 @@ class EngineHolder(
         data class Ready(
             val core: FlowCore, val description: String, val llm: EnginePlan.LlmStatus = EnginePlan.LlmStatus.Off,
             val asr: dev.flowclone.data.LoadedAsr? = null, val mock: Boolean = false,
+            /** D24: why the phone can't take over when the server is unreachable (null = it can). */
+            val clientNote: String? = null,
+            /** D24: the on-device ASR the router loads on demand (keep warm off), for the debug log. */
+            val onDemandAsr: dev.flowclone.data.LoadedAsr? = null,
         ) : State
         data class Failed(val message: String, val kind: String? = null) : State
     }
@@ -245,6 +249,9 @@ class EngineHolder(
         is State.Failed -> throw CoreException(s.message, s.kind)
         State.NotLoaded -> { ensureLoaded(); throw CoreException("Speech model is loading, try again in a moment.") }
     }
+
+    /** D24: why the phone route can't serve a fallback right now, or null. */
+    fun clientNote(): String? = (_state.value as? State.Ready)?.clientNote
 
     /** The on-device ASR that loaded, or null (not loaded, mock, server / cloud only). */
     fun loadedAsr(): dev.flowclone.data.LoadedAsr? = (_state.value as? State.Ready)?.asr
@@ -336,7 +343,7 @@ class EngineHolder(
                     }
                     loadedWithLocal = plan.local != null
                     (r.core as? NativeFlowCore)?.takeIf { it.isRouter }?.let(::syncCloud)
-                    State.Ready(r.core, r.description, r.llm, asr = r.asr)
+                    State.Ready(r.core, r.description, r.llm, asr = r.asr, clientNote = r.clientNote, onDemandAsr = r.onDemandAsr)
                 }
             }
         }
