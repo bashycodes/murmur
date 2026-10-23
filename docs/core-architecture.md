@@ -258,6 +258,13 @@ Prefill-ahead removes 75-90 % of the commit's prefill (≈ 0.7-1.4 s here). Gene
 
 All additions are backward compatible: new JSON fields have serde defaults (old JSON still parses, extra fields are ignored by org.json/serde), new `SessionConfig` fields default to the recommended behaviour, and new C/plugin symbols are optional.
 
+2026-10-23 (branch `feat/streaming-asr`, D22; shell steps in `docs/proposals/streaming-asr-shell-api.md`):
+* `SessionConfig.segment_pause_ms` / `segment_min_ms` / `segment_soft_max_ms` (all `Option<u32>`, omitted when unset): pause-segmented incremental decoding. Adopt: send `segment_pause_ms: 800` behind a "Decode while speaking" toggle (default on); leave the other two unset.
+* `endpoint::RECOMMENDED_SILENCE_MS` 2000 → **1500**. Adopt: hands-free default 1500 (explicit user values kept).
+* `Timings.wait_ms`, `segments`, `pre_asr_ms` (omitted when 0); `asr_ms` = ASR time inside commit. `RouteInfo.client_ms` = router-side release → result wall time (includes the network). Adopt: show/log them in history.
+* `ModelConfig.parakeet_decoding` (`auto` default | `greedy` | `beam`). Parakeet decodes greedy without dictionary hotwords, retries an empty beam result greedy, and decodes clips over 20 s in pieces at pauses (fixes EMPTY results and sentence drops on long dictations). `greedy` saves the second recognizer's RAM.
+* Behaviour: the live-preview window is 12 s (leading `"… "` when it does not reach back), and previews pause once ≥ 400 ms of silence follows speech already previewed. No shell change.
+
 2026-10-22 (branch `core-endpoint`):
 * Hands-free endpointing (D19). `SessionConfig.endpoint_silence_ms: Option<u32>` (omitted from JSON when unset, so old servers see the same config). New `FlowCore::poll() -> SessionPoll` / `Router::poll()`: JSON `{"partial": str|null, "endpoint_reached": bool, "speech_ms": u64, "trailing_silence_ms": u64}`; plus `endpoint()`, `endpoint_reached()`. Adopt (shells; flow-ffi owner): export `flow_poll(h) -> json` (C) / `poll(h): String` (JNI) wrapping `Router::poll`; in hands-free mode start sessions with `endpoint_silence_ms: 2000` (a user pref, 300-10000), poll it on the existing partial timer, and on `endpoint_reached` run the normal finish path (stop sound + `commit` + paste), exactly as if the user had pressed the hands-free key. Push-to-talk should leave it unset.
   * Update (branch `router-route`): done — C `flow_poll` / `flow_start_session_info`, JNI `nativePoll` / `nativeStartSessionInfo`; `Router::poll()` now returns `RouterPoll` (`SessionPoll` + live `route`, derefs to `SessionPoll`). Step-by-step adoption for W and A: `docs/hybrid-architecture.md` "Changelog for shells", entry "live route + hands-free endpointing".

@@ -26,8 +26,10 @@ use crate::vad::{StreamVad, FRAME};
 
 /// Recommended `endpoint_silence_ms` for a shell's hands-free mode: long
 /// enough for a pause to think mid-sentence, short enough that waiting for
-/// the paste does not feel stuck (D19).
-pub const RECOMMENDED_SILENCE_MS: u32 = 2000;
+/// the paste does not feel stuck (D19). 2000 → 1500 with D22: with
+/// pause-segmented decoding the endpoint wait is nearly all of hands-free
+/// release→text, and 1200 starts to end dictations on thinking pauses.
+pub const RECOMMENDED_SILENCE_MS: u32 = 1500;
 /// Smaller configured values are raised to this.
 pub const MIN_SILENCE_MS: u32 = 300;
 /// Speech needed before the endpoint can fire, so a cough, a click or the
