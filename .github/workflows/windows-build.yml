@@ -122,7 +122,11 @@ jobs:
       - name: Release build (hybrid + Parakeet) and the DLL bundle overlay
         run: |
           cargo build --locked --release --features app,parakeet
-          ls target/release/*.dll || true
+          # sherpa-onnx-sys copies its DLLs into target/release only when its
+          # build script runs; after a rust-cache restore it does not, and the
+          # cache drops top-level files. Copy them from the prebuilt dir.
+          cp -n "$(cygpath -u "$SHERPA_ONNX_LIB_DIR")"/*.dll target/release/
+          ls target/release/*.dll
           tools/ci/parakeet-conf.sh target/release
 
       - name: Installers (hybrid + cloud, whisper + Parakeet)
