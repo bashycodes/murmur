@@ -57,9 +57,8 @@
         <fieldset>
           <legend>Transcription</legend>
           <label>Languages (comma-separated, empty = auto) <input id="languages" placeholder="en, de" /></label>
-          <label class="row"><input type="checkbox" id="spoken_cleanup" /> Auto-format punctuation, fillers and corrections</label>
-          <p class="hint">"comma", "new line", "um", "scratch that", "$5", "3pm" — handled on this PC without the AI model.</p>
-          <label class="row"><input type="checkbox" id="raw_mode" /> Raw mode (no formatting at all)</label>
+          <label class="row"><input type="checkbox" id="spoken_cleanup" /> Auto-format punctuation, quotes, fillers and corrections</label>
+          <p class="hint">"comma", "new line", "quote … unquote", "in parentheses", "um", "scratch that", "$5", "3pm" — handled on this PC with or without the AI model. Off = exactly what you said (same as cleanup level Verbatim).</p>
           <label class="row"><input type="checkbox" id="use_ax_context" /> Use text around the cursor as context (stays local)</label>
           <label class="row"><input type="checkbox" id="live_preview" /> Show live transcript while dictating</label>
           <label class="row"><input type="checkbox" id="learn_from_edits" /> Suggest dictionary words from my corrections</label>
@@ -91,14 +90,15 @@
           <legend>AI cleanup (local LLM)</legend>
           <label class="row"><input type="checkbox" id="llm_enabled" /> Clean up dictations with a local language model</label>
           <p id="llm_status" class="hint">Off.</p>
-          <p class="hint">Removes fillers, applies "scratch that" and spoken lists, and adapts tone per app. Runs llama.cpp on this PC (<code id="llm_plugin"></code> next to the app). Off: deterministic formatting only. If the model is slow, the plain transcript is pasted instead.</p>
+          <p class="hint">Polishes what the formatting rules leave: run-on sentences, leftover fillers, corrections, tone per app. Runs llama.cpp on this PC (<code id="llm_plugin"></code> next to the app). Off: the formatting rules still run. Skipped when the text is already clean; if the model is slow or changes too much, the formatted transcript is pasted instead. Loading takes a little longer than before (the instructions are prepared at load).</p>
           <label>Model file (GGUF, empty = default) <input id="llm_model_path" spellcheck="false" /></label>
           <p class="hint">Qwen2.5-0.5B-Instruct Q4_K_M is the fast default; Qwen2.5-1.5B-Instruct is more accurate and about twice as slow. Never downloaded automatically.</p>
           <label>Engine library (empty = next to the app) <input id="llm_lib_path" spellcheck="false" /></label>
-          <label>Time budget per dictation (ms) <input id="llm_timeout_ms" type="number" min="200" max="30000" step="100" /></label>
+          <label>Time budget per dictation (ms, default 3000) <input id="llm_timeout_ms" type="number" min="200" max="30000" step="100" /></label>
           <label>Cleanup level
             <select id="cleanup_level">
-              <option value="none">None — exactly what you said</option>
+              <option value="none">No AI — formatting rules only</option>
+              <option value="verbatim">Verbatim — exactly what you said (no formatting)</option>
               <option value="light">Light — fillers and grammar</option>
               <option value="medium">Medium — clarity</option>
               <option value="high">High — rewrite for polish</option>
@@ -107,14 +107,18 @@
         </fieldset>
 
         <fieldset>
-          <legend>Style per app</legend>
-          <p class="hint">Which style applies depends on the app you dictate into.</p>
+          <legend>Writing style</legend>
+          <p class="hint">Which style applies depends on the app you dictate into. Chats default to casual, email and everything else to formal.</p>
           <div class="styles">
-            <label>Personal messages <small>WhatsApp, Messenger, Telegram</small> <select id="style_personal" class="style"></select></label>
-            <label>Work messages <small>Slack, Teams</small> <select id="style_work" class="style"></select></label>
-            <label>Email <small>Outlook, Gmail</small> <select id="style_email" class="style"></select></label>
-            <label>Everything else <select id="style_other" class="style"></select></label>
+            <label>Personal messages <small>WhatsApp, Telegram, Signal, Messenger, Discord, Instagram</small> <select id="style_personal" class="style"></select> <small class="preview" id="style_personal_preview"></small></label>
+            <label>Work messages <small>Slack, Teams</small> <select id="style_work" class="style"></select> <small class="preview" id="style_work_preview"></small></label>
+            <label>Email <small>Outlook, Gmail</small> <select id="style_email" class="style"></select> <small class="preview" id="style_email_preview"></small></label>
+            <label>Everything else <select id="style_other" class="style"></select> <small class="preview" id="style_other_preview"></small></label>
           </div>
+          <label>Style per app (one per line: <code>app = personal</code>, <code>work</code>, <code>email</code> or <code>other</code>)
+            <textarea id="app_buckets" rows="3" spellcheck="false" placeholder="mychat.exe = work&#10;mail.example.com = email"></textarea>
+          </label>
+          <p class="hint">An exe name (<code>slack.exe</code>) or a web host (<code>mail.example.com</code>); overrides the built-in list.</p>
         </fieldset>
       </section>
 

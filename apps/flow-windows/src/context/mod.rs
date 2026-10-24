@@ -4,7 +4,7 @@
 #[cfg(windows)]
 pub mod uia;
 
-use crate::core_api::{AppKind, FieldContext, StyleBucket};
+use crate::core_api::{AppKind, FieldContext, StyleBucket, Styles};
 
 pub const MAX_FIELD_CHARS: usize = 500;
 
@@ -140,6 +140,73 @@ pub fn bucket_of(kind: AppKind) -> StyleBucket {
     }
 }
 
+/// The bucket flow-core picks the style by for `ctx` (mirrors
+/// `core_adapter::to_core_category`: the app kind wins, AI apps, terminals
+/// and documents use "other"). Debug log `style`.
+pub fn effective_bucket(ctx: &FieldContext) -> StyleBucket {
+    match ctx.app_kind {
+        AppKind::Email => StyleBucket::Email,
+        AppKind::WorkMessaging => StyleBucket::Work,
+        AppKind::Messaging => StyleBucket::Personal,
+        AppKind::Ai | AppKind::Document | AppKind::Terminal => StyleBucket::Other,
+        AppKind::Other => ctx.app_category,
+    }
+}
+
+/// The style sent for `ctx`'s bucket; no context (UIA off / not read yet)
+/// = the core's default category, "other".
+pub fn style_for<'a>(styles: &'a Styles, ctx: Option<&FieldContext>) -> &'a str {
+    match ctx.map_or(StyleBucket::Other, effective_bucket) {
+        StyleBucket::Personal => &styles.personal,
+        StyleBucket::Work => &styles.work,
+        StyleBucket::Email => &styles.email,
+        StyleBucket::Other => &styles.other,
+    }
+}
+
+/// `prefs.app_buckets` key for an exe (`Slack.exe` → `slack`) or a host
+/// (`www.Mail.Example.com` → `mail.example.com`).
+pub fn bucket_key(s: &str) -> String {
+    let l = s.trim().to_ascii_lowercase();
+    let l = l.strip_suffix(".exe").unwrap_or(&l);
+    l.strip_prefix("www.").unwrap_or(l).to_string()
+}
+
+/// "Style per app": the user's bucket for this exe or web host replaces the
+/// built-in one. The app kind follows it (the core prefers the kind), except
+/// that a move to "other" keeps an AI / terminal / document kind, whose
+/// formatting rules still apply.
+pub fn apply_bucket_override(
+    ctx: &mut FieldContext,
+    map: &std::collections::BTreeMap<String, StyleBucket>,
+) {
+    if map.is_empty() {
+        return;
+    }
+    let find = |k: &str| {
+        let k = bucket_key(k);
+        map.iter()
+            .find(|(m, _)| bucket_key(m) == k)
+            .map(|(_, b)| *b)
+    };
+    let hit = ctx
+        .url_host
+        .as_deref()
+        .and_then(find)
+        .or_else(|| find(&ctx.app_id));
+    let Some(b) = hit else { return };
+    ctx.app_category = b;
+    ctx.app_kind = match b {
+        StyleBucket::Personal => AppKind::Messaging,
+        StyleBucket::Work => AppKind::WorkMessaging,
+        StyleBucket::Email => AppKind::Email,
+        StyleBucket::Other => match ctx.app_kind {
+            k @ (AppKind::Ai | AppKind::Terminal | AppKind::Document) => k,
+            _ => AppKind::Other,
+        },
+    };
+}
+
 /// App → style bucket, with a tab-title fallback for browsers whose address
 /// bar couldn't be read.
 pub fn classify(exe: &str, host: Option<&str>, title: &str) -> StyleBucket {
@@ -208,6 +275,87 @@ pub fn build_field_context(raw: &RawSnapshot) -> FieldContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ctx(exe: &str, host: Option<&str>) -> FieldContext {
+        build_field_context(&RawSnapshot {
+            exe_path: format!(r"C:\Apps\{exe}"),
+            url: host.map(|h| format!("https://{h}/x")),
+            ..RawSnapshot::default()
+        })
+    }
+
+    #[test]
+    fn built_in_buckets_for_the_common_apps() {
+        for (exe, want) in [
+            ("WhatsApp.exe", StyleBucket::Personal),
+            ("Telegram.exe", StyleBucket::Personal),
+            ("Signal.exe", StyleBucket::Personal),
+            ("Discord.exe", StyleBucket::Personal),
+            ("Messenger.exe", StyleBucket::Personal),
+            ("slack.exe", StyleBucket::Work),
+            ("ms-teams.exe", StyleBucket::Work),
+            ("OUTLOOK.EXE", StyleBucket::Email),
+            ("olk.exe", StyleBucket::Email),
+            ("notepad.exe", StyleBucket::Other),
+        ] {
+            assert_eq!(effective_bucket(&ctx(exe, None)), want, "{exe}");
+        }
+        for (host, want) in [
+            ("web.whatsapp.com", StyleBucket::Personal),
+            ("instagram.com", StyleBucket::Personal),
+            ("messages.google.com", StyleBucket::Personal),
+            ("app.slack.com", StyleBucket::Work),
+            ("mail.google.com", StyleBucket::Email),
+            ("docs.google.com", StyleBucket::Other),
+        ] {
+            assert_eq!(
+                effective_bucket(&ctx("chrome.exe", Some(host))),
+                want,
+                "{host}"
+            );
+        }
+    }
+
+    #[test]
+    fn style_follows_the_bucket_and_the_d27_defaults() {
+        let s = crate::prefs::default_styles();
+        assert_eq!(style_for(&s, Some(&ctx("WhatsApp.exe", None))), "casual");
+        assert_eq!(style_for(&s, Some(&ctx("slack.exe", None))), "casual");
+        assert_eq!(style_for(&s, Some(&ctx("outlook.exe", None))), "formal");
+        assert_eq!(
+            style_for(&s, Some(&ctx("code.exe", None))),
+            "formal",
+            "AI app = other"
+        );
+        assert_eq!(style_for(&s, None), "formal", "no context = other");
+    }
+
+    #[test]
+    fn user_bucket_overrides_exe_and_host() {
+        let mut m = std::collections::BTreeMap::new();
+        m.insert("MyChat.exe".to_string(), StyleBucket::Work);
+        m.insert("www.mail.example.com".to_string(), StyleBucket::Email);
+        m.insert("slack".to_string(), StyleBucket::Personal);
+        m.insert("code".to_string(), StyleBucket::Other);
+        let mut c = ctx("mychat.exe", None);
+        apply_bucket_override(&mut c, &m);
+        assert_eq!(effective_bucket(&c), StyleBucket::Work);
+        assert_eq!(c.app_kind, AppKind::WorkMessaging);
+        let mut c = ctx("Slack.exe", None);
+        apply_bucket_override(&mut c, &m);
+        assert_eq!(effective_bucket(&c), StyleBucket::Personal);
+        let mut c = ctx("chrome.exe", Some("mail.example.com"));
+        apply_bucket_override(&mut c, &m);
+        assert_eq!(effective_bucket(&c), StyleBucket::Email);
+        let mut c = ctx("code.exe", None);
+        apply_bucket_override(&mut c, &m);
+        assert_eq!(c.app_kind, AppKind::Ai, "AI formatting kept");
+        let mut c = ctx("notepad.exe", None);
+        let before = c.clone();
+        apply_bucket_override(&mut c, &m);
+        assert_eq!(c, before);
+        assert_eq!(bucket_key(" WWW.Foo.com "), "foo.com");
+    }
 
     #[test]
     fn tail_and_head_are_char_based() {

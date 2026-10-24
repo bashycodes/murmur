@@ -26,6 +26,8 @@ interface Prefs {
   cleanup_level: string;
   raw_mode: boolean;
   styles: { personal: string; work: string; email: string; other: string };
+  /** "Style per app": exe stem or web host -> bucket (D27). */
+  app_buckets: Record<string, string>;
   dictionary: DictEntry[];
   paste_method: string;
   restore_clipboard: boolean;
@@ -135,7 +137,6 @@ const BOOL_FIELDS = [
   "launch_at_login",
   "show_flow_bar_always",
   "use_ax_context",
-  "raw_mode",
   "restore_clipboard",
   "live_preview",
   "llm_enabled",
@@ -144,12 +145,54 @@ const BOOL_FIELDS = [
 ] as const;
 
 const STYLES: [string, string][] = [
-  ["formal", "Formal — capitals, full punctuation"],
-  ["casual", "Casual — capitals, lighter punctuation"],
-  ["very_casual", "Very casual — no caps, less punctuation"],
-  ["excited", "Excited — more exclamations!"],
+  ["formal", "Formal — capitals and full punctuation"],
+  ["casual", "Casual — capitals, no final period"],
+  ["very_casual", "Very casual — no final period; lowercase with AI cleanup"],
+  ["excited", "Excited — more exclamation marks (AI cleanup)"],
 ];
+/** Example line per style (shared with Android's Writing style page). */
+const STYLE_PREVIEW: Record<string, string> = {
+  formal: "“Sounds good. See you at 7:30.”",
+  casual: "“Sounds good. See you at 7:30”",
+  very_casual: "“sounds good. see you at 7:30”",
+  excited: "“Sounds good! See you at 7:30!”",
+};
 const BUCKETS = ["personal", "work", "email", "other"] as const;
+const BUCKET_NAMES = ["personal", "work", "email", "other"];
+
+function showStylePreview(b: string): void {
+  const v = $<HTMLSelectElement>(`style_${b}`).value;
+  $<HTMLElement>(`style_${b}_preview`).textContent = STYLE_PREVIEW[v] ?? "";
+}
+
+/** `app = bucket` lines -> map; throws on a bad line (shown next to Save). */
+function parseAppBuckets(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const i = line.indexOf("=");
+    const app = i > 0 ? line.slice(0, i).trim() : "";
+    const bucket = i > 0 ? line.slice(i + 1).trim().toLowerCase() : "";
+    if (!app || !BUCKET_NAMES.includes(bucket)) {
+      throw new Error(`Style per app: "${line}" — write app = personal, work, email or other`);
+    }
+    out[app] = bucket;
+  }
+  return out;
+}
+
+function formatAppBuckets(m: Record<string, string> | undefined): string {
+  return Object.entries(m ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k} = ${v}`)
+    .join("\n");
+}
+
+/** D27: cleanup "None" = No AI (formatting still runs); Verbatim = Auto-format off too. */
+function cleanupChoice(p: Prefs): string {
+  return p.cleanup_level === "none" && !p.spoken_cleanup ? "verbatim" : p.cleanup_level;
+}
 
 let current: Prefs | null = null;
 
@@ -243,7 +286,7 @@ function fillForm(prefs: Prefs): void {
   $<HTMLInputElement>("copy_last").value = prefs.shortcuts.copy_last;
   $<HTMLSelectElement>("microphone").value = prefs.microphone ?? "";
   for (const f of BOOL_FIELDS) $<HTMLInputElement>(f).checked = Boolean(prefs[f]);
-  $<HTMLSelectElement>("cleanup_level").value = prefs.cleanup_level;
+  $<HTMLSelectElement>("cleanup_level").value = cleanupChoice(prefs);
   $<HTMLSelectElement>("paste_method").value = prefs.paste_method;
   $<HTMLInputElement>("languages").value = prefs.languages.join(", ");
   $<HTMLInputElement>("max_dictation_minutes").value = String(prefs.max_dictation_minutes);
@@ -255,7 +298,9 @@ function fillForm(prefs: Prefs): void {
   for (const b of BUCKETS) {
     const v = prefs.styles[b].toLowerCase().replace(/[ -]/g, "_");
     $<HTMLSelectElement>(`style_${b}`).value = STYLES.some(([k]) => k === v) ? v : "formal";
+    showStylePreview(b);
   }
+  $<HTMLTextAreaElement>("app_buckets").value = formatAppBuckets(prefs.app_buckets);
   $<HTMLSelectElement>("retention").value = prefs.retention;
 }
 
@@ -273,7 +318,11 @@ function readForm(base: Prefs): Prefs {
   next.parakeet_model_dir = $<HTMLInputElement>("parakeet_model_dir").value.trim() || null;
   next.microphone = $<HTMLSelectElement>("microphone").value || null;
   for (const f of BOOL_FIELDS) next[f] = $<HTMLInputElement>(f).checked;
-  next.cleanup_level = $<HTMLSelectElement>("cleanup_level").value;
+  const level = $<HTMLSelectElement>("cleanup_level").value;
+  next.cleanup_level = level === "verbatim" ? "none" : level;
+  if (level === "verbatim") next.spoken_cleanup = false;
+  // Raw mode only ever skipped the LLM; "No AI" says that now (D27).
+  next.raw_mode = false;
   next.paste_method = $<HTMLSelectElement>("paste_method").value;
   next.languages = $<HTMLInputElement>("languages")
     .value.split(",")
@@ -291,7 +340,7 @@ function readForm(base: Prefs): Prefs {
   next.llm_lib_path = $<HTMLInputElement>("llm_lib_path").value.trim() || null;
   next.llm_timeout_ms = Math.min(
     30000,
-    Math.max(200, parseInt($<HTMLInputElement>("llm_timeout_ms").value, 10) || 1500),
+    Math.max(200, parseInt($<HTMLInputElement>("llm_timeout_ms").value, 10) || 3000),
   );
   next.styles = {
     personal: $<HTMLSelectElement>("style_personal").value,
@@ -299,6 +348,7 @@ function readForm(base: Prefs): Prefs {
     email: $<HTMLSelectElement>("style_email").value,
     other: $<HTMLSelectElement>("style_other").value,
   };
+  next.app_buckets = parseAppBuckets($<HTMLTextAreaElement>("app_buckets").value);
   return next;
 }
 
@@ -749,6 +799,8 @@ interface LastDictation {
   pre_asr_ms: number;
   status: string;
   empty_reason: string | null;
+  /** D27: "AI cleaned" / "AI not needed (already clean)" / …; null = LLM off. */
+  llm: string | null;
   at_ms: number;
   row: string | null;
   notice: string | null;
@@ -991,6 +1043,7 @@ function showRoute(r: RouteView): void {
       timingLine(last),
       last.status,
       last.empty_reason ?? "",
+      last.llm ?? "",
       new Date(last.at_ms).toLocaleTimeString(),
     ].filter(Boolean);
     e.textContent = bits.join(" · ");
@@ -1520,6 +1573,22 @@ for (const b of document.querySelectorAll<HTMLButtonElement>("nav.tabs button"))
 }
 $<HTMLFormElement>("form").addEventListener("submit", (e) => void saveForm(e));
 $<HTMLSelectElement>("asr_engine").addEventListener("change", showEngineFields);
+for (const b of BUCKETS) {
+  $<HTMLSelectElement>(`style_${b}`).addEventListener("change", () => showStylePreview(b));
+}
+// Verbatim and the Auto-format box are the same switch (D27): keep them in step.
+$<HTMLSelectElement>("cleanup_level").addEventListener("change", () => {
+  const sel = $<HTMLSelectElement>("cleanup_level");
+  const fmt = $<HTMLInputElement>("spoken_cleanup");
+  if (sel.value === "verbatim") fmt.checked = false;
+  else if (!fmt.checked && sel.value === "none") fmt.checked = true;
+});
+$<HTMLInputElement>("spoken_cleanup").addEventListener("change", () => {
+  const sel = $<HTMLSelectElement>("cleanup_level");
+  const fmt = $<HTMLInputElement>("spoken_cleanup");
+  if (!fmt.checked && sel.value === "none") sel.value = "verbatim";
+  else if (fmt.checked && sel.value === "verbatim") sel.value = "none";
+});
 for (const i of document.querySelectorAll<HTMLInputElement>("[data-panel=developer] input")) {
   i.addEventListener("input", scheduleCheck);
   i.addEventListener("change", scheduleCheck);
