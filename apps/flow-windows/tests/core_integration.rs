@@ -543,7 +543,10 @@ fn llm_prefs() -> Prefs {
 #[test]
 fn real_llm_plugin_formats_through_the_shell() {
     let Some(spec) = real_llm() else { return };
-    let messy = "um so i think we should uh meet tomorrow at three to go over the budget";
+    // Repeated words: the deterministic layer alone leaves them, so the LLM
+    // runs (a filler-only input is now finished by the rules and skips the
+    // LLM, D27 `llm_skip_clean`, leaving `formatted` unset).
+    let messy = "i i think we should uh meet tomorrow at three to go over the the budget";
     let a = mock_core(messy);
     let st = a.load_llm_now(Some(spec));
     assert!(st.is_ready(), "{st:?}");
