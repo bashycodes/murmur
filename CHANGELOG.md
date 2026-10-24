@@ -16,6 +16,35 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- Cloud speech-to-text uses **OpenRouter only** (D28). ElevenLabs, Deepgram,
+  AssemblyAI, Groq/OpenAI direct and custom servers are removed from the
+  product (not just hidden): the cloud builds contain no other provider
+  address, and the build check fails if one appears. The OpenRouter address
+  is fixed and redirects are never followed.
+- Cloud STT default model is now `openai/whisper-large-v3-turbo` (served by
+  zero-retention providers; about $0.012-0.04 per hour of audio). The old
+  default `openai/gpt-transcribe` has no zero-retention provider.
+
+### Added
+
+- Every OpenRouter model that can transcribe is usable: the 28 dedicated
+  transcription models, and audio-input chat models as an opt-in second
+  path (with a check that rejects answers or paraphrases instead of a
+  transcript). The model list comes from OpenRouter (cached 24 h, offline
+  fallback built in, any model id can be typed).
+- Opt-in cloud text cleanup through OpenRouter (core part, `flow-cloud`):
+  streamed, cancelled on timeout so it stops billing, routed to
+  zero-retention providers by default (default model
+  `meta-llama/llama-3.3-70b-instruct`, fastest provider first, price
+  ceiling per request). Settings and consent arrive with the app updates.
+- Exact per-dictation cost from OpenRouter, with a later lookup when a
+  request ended before reporting it; OpenRouter key credits and monthly
+  usage (`/key`).
+- Clear error when a model has no zero-retention provider
+  ("model has no zero-retention provider").
+
 ## [0.3.0] - 2026-10-24
 
 ### Added
