@@ -13,6 +13,7 @@ llm = ["flow-core/llm"]
 tls = ["dep:tokio-rustls", "dep:rustls", "dep:rustls-pemfile"]
 
 [dependencies]
+flow-build-info = { path = "../flow-build-info" }
 flow-core = { path = "../flow-core" }
 flow-protocol = { path = "../flow-protocol" }
 serde.workspace = true

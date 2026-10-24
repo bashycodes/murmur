@@ -35,8 +35,17 @@ async fn hello_ok_describes_the_server() {
     let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
     let h = hello(&mut ws).await;
     assert_eq!(h.proto, 1);
-    assert!(h.server.starts_with("flow-server "));
+    // D26: product version + commit (`flow-server 0.2.0+abc1234[.dirty]`); `core`
+    // stays the plain version (informational; compatibility is `proto`).
+    assert_eq!(h.server, format!("flow-server {}", flow_build_info::FULL));
+    assert!(
+        h.server
+            .starts_with(&format!("flow-server {}+", flow_core::VERSION)),
+        "{}",
+        h.server
+    );
     assert_eq!(h.core, flow_core::VERSION);
+    assert_eq!(flow_build_info::VERSION, flow_core::VERSION);
     assert_eq!(h.postprocess_rev, flow_core::POSTPROCESS_REV);
     assert_eq!(h.asr_backend, "mock");
     assert_eq!(h.workers, 1);

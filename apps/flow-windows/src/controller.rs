@@ -948,6 +948,8 @@ fn debug_entry(i: &SessionInfo, insert: &str, error: Option<String>) -> Entry {
         .filter(|t| !t.is_empty());
     Entry {
         ts: String::new(),
+        app_version: String::new(),
+        build: String::new(),
         mode: (!i.mode.is_empty()).then(|| i.mode.to_string()),
         route: route
             .map(|x| x.engine.clone())

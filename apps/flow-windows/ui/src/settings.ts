@@ -773,7 +773,10 @@ interface DevView {
   caps: { local: boolean; remote: boolean; cloud: boolean };
   capabilities: { local: boolean; remote: boolean; asr_engines: string[]; llm: boolean; proto: number; core_version: string };
   visible: boolean;
+  /** D26: `0.2.0`, `abc1234` / `abc1234-dirty` / `unknown`, `0.2.0+abc1234`. */
   version: string;
+  build: string;
+  full: string;
   check: DevCheck;
   route: RouteView;
   cloud: CloudView;
@@ -1014,7 +1017,7 @@ function showRoute(r: RouteView): void {
 function showDev(v: DevView): void {
   devView = v;
   $<HTMLElement>("tab_developer").hidden = !v.visible;
-  $<HTMLElement>("version_row").textContent = `Flow Clone ${v.version}`;
+  $<HTMLElement>("version_row").textContent = `Flow Clone ${v.version} · ${v.build}`;
   $<HTMLElement>("privacy_line").textContent = v.caps.remote
     ? "Speech is processed on this PC or on your own server. Nothing goes to a third party."
     : "Everything runs on this PC. Nothing is sent over the network.";
@@ -1039,6 +1042,7 @@ function showDev(v: DevView): void {
   showUsage(v.cloud.usage);
   const c = v.capabilities;
   $<HTMLElement>("dev_build").textContent =
+    `Flow Clone ${v.full} · ` +
     `${[c.local ? "client" : "", c.remote ? "server" : ""].filter(Boolean).join(" + ") || "no engine"}` +
     ` · ASR ${c.asr_engines.join(", ") || "none"} · LLM ${c.llm ? "yes" : "no"} · proto ${c.proto} · core ${c.core_version}`;
   showCheck(v.check);

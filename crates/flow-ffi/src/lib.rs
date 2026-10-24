@@ -122,9 +122,9 @@ fn build_local_engines() -> Vec<String> {
 fn remote_factory() -> Option<flow_router::RemoteFactory> {
     #[cfg(feature = "remote")]
     {
-        Some(flow_remote::factory(concat!(
-            "flow-ffi ",
-            env!("CARGO_PKG_VERSION")
+        Some(flow_remote::factory(&format!(
+            "flow-ffi {}",
+            flow_build_info::FULL
         )))
     }
     #[cfg(not(feature = "remote"))]
