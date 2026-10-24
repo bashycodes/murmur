@@ -367,6 +367,8 @@ model is imported"), then grouped rows that each show their current value and op
 | Section · row | Page contents | Applies |
 |---|---|---|
 | Dictation · *Language* | Auto-format; dictation language (Phone language first) | at once |
+| Dictation · *Writing style* | Formal / Casual / Very casual for Personal messages, Work messages, Email, Other, each with an example line (default: chats casual, email + other formal); *Style per app* | at once |
+| Writing style · *Style per app* | `package = personal`, `work`, `email` or `other`, one per line (checked); overrides the built-in app list | *Save* |
 | Dictation · *Speech engine* (local / hybrid) | Whisper or Parakeet; *Speech model (whisper)*, *Parakeet model folder* imports | at once (reloads) |
 | Dictation · *AI cleanup* (local / hybrid) | Clean up with local AI; *AI cleanup model* import; strength | at once (reloads) |
 | Dictation · *Timing & limits* | Stop after silence (ms, 0 or 300–10000), Decode while speaking, session limit (1–20 min) | *Save* |
@@ -406,8 +408,11 @@ In the `local` flavour Developer settings are hidden: tap the version row (*Sett
 
 ## 6. AI cleanup (optional)
 
-A small local language model can rewrite each transcript: punctuation, filler words,
-"scratch that" corrections, lists. It is **off by default** and never uses the network.
+Formatting runs without it: while *Settings → Language → Auto-format* is on, the phone already
+handles spoken punctuation, "quote … unquote", "in parentheses", "dash", fillers, "scratch that",
+numbers, lists and your *Writing style* (chats casual: no final period). A small local language
+model can additionally polish each transcript: run-on sentences, leftover fillers, corrections.
+It is **off by default** and never uses the network.
 
 1. On the PC, download one GGUF file in a browser:
 
@@ -422,10 +427,13 @@ A small local language model can rewrite each transcript: punctuation, filler wo
 3. *Settings → AI cleanup → AI cleanup model → Import model file…*. The import refuses non-GGUF files
    and checks free space; a 1 GB copy takes a minute.
 4. *Settings → AI cleanup → Clean up with local AI* → on, pick the strength (both apply at once). The main screen
-   shows `AI cleanup: qwen2.5-…gguf` once it has loaded (10–60 s).
+   shows `AI cleanup: qwen2.5-…gguf` once it has loaded (10–60 s; a little longer than in 0.2,
+   because the model's instructions are prepared at load).
 
-If cleanup takes longer than 3 s, or changes the text too much, the plain transcript is
-inserted instead (History shows `llm_timeout` / `llm_diverged`).
+When the formatted text leaves nothing for the model to do, it is skipped: History and
+Developer → *Active engine* show *AI not needed (already clean)*, a normal result. If cleanup
+takes longer than 3 s, or changes the text too much, the formatted transcript is inserted
+instead (History shows *AI too slow, formatted text used* / *AI result not used (llm_dropped)*).
 
 ## 7. Use it
 
@@ -546,6 +554,16 @@ provider, model, latency (stop → text) and the cost shown, in `docs/cloud-stt.
       plugin its own).
 - [ ] No `SIGILL` in the LLM (same dotprod/fp16 arch flags as whisper).
 - [ ] AI cleanup off → History shows *Transcript* and no `llm` time.
+- [ ] AI cleanup off, Auto-format on: "she said quote hello unquote" comes out with `"hello"` in quotation marks
+  (formatting rules run without the model, D27).
+
+**Writing style** (D27)
+- [ ] *Settings* hub row *Writing style* reads `Chats casual · Email formal` on a fresh install.
+- [ ] WhatsApp / Messages: "sounds good see you there" ends without a final period; Gmail: the same words keep it.
+- [ ] *Writing style → Work messages → Formal* applies at once: the next Slack dictation keeps the period.
+- [ ] *Style per app*: `com.google.android.keep = personal` → *Save*; a Keep dictation now drops the final period.
+- [ ] Developer debug log line shows `style` (`casual` in a chat app) and `llm` (`llm_skipped_clean` reads
+  *AI not needed (already clean)* in the viewer).
 
 **Robustness (P1)**
 - [ ] Drag the Ready bubble: the zZ target appears at the bottom after ~¼ s and grows when
