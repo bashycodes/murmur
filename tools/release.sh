@@ -74,8 +74,8 @@ if [[ $apply == 0 ]]; then
   py stamp "$new" --root "$tmp/b"
   py changelog-release "$new" "$date" --root "$tmp/b" "${cl_args[@]}"
   py check --root "$tmp/b" --tag "$tag" >/dev/null || { py check --root "$tmp/b" --tag "$tag"; die "the stamped tree would fail the version check"; }
-  (cd "$tmp" && git --no-pager diff --no-index --stat a b || true)
-  (cd "$tmp" && git --no-pager diff --no-index -U1 a b || true) | sed -n '1,200p'
+  (cd "$tmp" && git --no-pager diff --no-index --no-prefix --stat a b || true)
+  (cd "$tmp" && git --no-pager diff --no-index --no-prefix -U1 a b || true) | sed -n '1,200p'
   echo
   echo "release notes for $tag:"
   py section "$new" --root "$tmp/b" | sed 's/^/  /'
