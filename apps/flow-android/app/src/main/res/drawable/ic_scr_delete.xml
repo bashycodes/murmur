@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- Screen icon (delete): 24dp stroke glyph, tinted at runtime (ui/DevUi.kt). -->
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
-    <path android:pathData="M4,7 L20,7 M10,11 L10,17 M14,11 L14,17 M6,7 L7,20 L17,20 L18,7 M9,7 L9,4 L15,4 L15,7" android:strokeColor="#FFFFFFFF" android:strokeWidth="2"
-        android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="#00000000" />
-</vector>
