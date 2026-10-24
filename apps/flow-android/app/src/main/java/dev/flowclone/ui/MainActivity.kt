@@ -16,6 +16,7 @@ import dev.flowclone.EngineHolder
 import dev.flowclone.FlowApp
 import dev.flowclone.core.NativeFlowCore
 import dev.flowclone.data.EnginePlan
+import dev.flowclone.data.SettingsPages
 import dev.flowclone.health.AccessibilityHealth
 import dev.flowclone.health.OemGuidance
 import dev.flowclone.service.FlowService
@@ -100,13 +101,13 @@ class MainActivity : Activity() {
             )
             // 2026-10-23: the language the next dictation really uses (unset follows the phone).
             val langSetting = app.settings.load().language
-            body("Language: ${dev.flowclone.data.LanguageDefault.label(langSetting, app.effectiveLanguage())}")
+            body("Language: ${dev.flowclone.data.LanguageDefault.label(langSetting, app.effectiveLanguage())}").linkTo(SettingsPages.Page.LANGUAGE)
             if (st is EngineHolder.State.Ready) when (val l = st.llm) {
                 EnginePlan.LlmStatus.Off -> body("AI cleanup: off")
                 EnginePlan.LlmStatus.NoModel -> body("AI cleanup: on, but no GGUF model imported", BAD_COLOR)
                 is EnginePlan.LlmStatus.Loaded -> body("AI cleanup: ${l.name}", OK_COLOR)
                 is EnginePlan.LlmStatus.Failed -> body("AI cleanup failed to load, using plain transcripts: ${l.message}", BAD_COLOR)
-            }
+            }.linkTo(SettingsPages.Page.CLEANUP)
             if (app.caps.local) button("Speech model…") { startActivity(Intent(this@MainActivity, ModelImportActivity::class.java)) }
             if (app.dev.visible) button("Developer settings (engines, server)") { startActivity(Intent(this@MainActivity, DeveloperActivity::class.java)) }
 
@@ -181,6 +182,18 @@ class MainActivity : Activity() {
             button("Dictionary & snippets") { startActivity(Intent(this@MainActivity, DictionaryActivity::class.java)) }
             button("History") { startActivity(Intent(this@MainActivity, HistoryActivity::class.java)) }
         }
+    }
+
+    /** Status line → its Settings page (only pages this build has); one 48 dp target for TalkBack. */
+    private fun android.widget.TextView.linkTo(p: SettingsPages.Page) {
+        if (!SettingsPages.visible(p, app.caps)) return
+        val label = text.toString()
+        text = "$label  ›"
+        contentDescription = "$label. Opens ${SettingsPages.TITLES.getValue(p)} settings"
+        minHeight = dp(48)
+        gravity = android.view.Gravity.CENTER_VERTICAL
+        isClickable = true; isFocusable = true
+        setOnClickListener { SettingsActivity.open(this@MainActivity, p) }
     }
 
     private fun requestBatteryExemption() {

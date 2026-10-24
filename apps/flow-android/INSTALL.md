@@ -79,9 +79,9 @@ or the host is a public address. For on-device fallback, either import a model (
 **4. Smoke checklist (10 minutes).** Note the phone model, Android version and pass/fail per line.
 - [ ] Notes app, **tap** the bubble, say a sentence, stop talking: the preview says
       `via server`, and after ~1.5 s of silence the dictation ends by itself and the text is
-      inserted (hands-free endpointing; *Settings → Hands-free: stop after silence*, default
+      inserted (hands-free endpointing; *Settings → Timing & limits → Stop after silence*, default
       1500 ms since D22; a value you set yourself is kept, an untouched old 2000 becomes 1500).
-- [ ] Long dictation (30 s+, with pauses), *Settings → Decode while speaking* on (default): the
+- [ ] Long dictation (30 s+, with pauses), *Settings → Timing & limits → Decode while speaking* on (default): the
       text appears well under a second after you stop; the debug line shows `segments` ≥ 2 and
       `pre_asr_ms` > 0. Toggle it off: `segments` 0 and the wait grows with the length.
 - [ ] **Hold** the bubble, speak, release: inserted; holding never stops by itself.
@@ -175,7 +175,7 @@ With the toggle off nothing is written; `FlowService commit …` (timings only, 
 always logged and since D22 also carries `wait=…ms segments=… pre_asr=…ms client=…ms`
 (`client=-` when the result did not come through the router).
 
-**Decode while speaking** (*Settings → Speed*, default on, stored on this phone only): the
+**Decode while speaking** (*Settings → Timing & limits*, default on, stored on this phone only): the
 engine decodes each finished phrase (cut in the middle of pauses ≥ 0.8 s) while you keep
 talking, so after you stop it only decodes the last phrase. Same text, less waiting on long
 dictations. Used on the phone engine and your own server; the cloud route never gets audio
@@ -311,9 +311,9 @@ use *Use* on another imported file. *Delete* frees the space.
 English-only, more accurate engine (D12). On the PC, get the folder
 `sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8` (`tools/fetch-models.sh --parakeet`; ~661 MB:
 `encoder.int8.onnx`, `decoder.int8.onnx`, `joiner.int8.onnx`, `tokens.txt`) and copy the whole
-folder to the phone. *Settings → Parakeet model folder… → Import model folder…* and pick the
+folder to the phone. *Settings → Speech engine → Parakeet model folder → Import model folder…* and pick the
 folder; the app copies the four files into `files/parakeet/<name>/` and switches the engine.
-*Settings → Use Parakeet* toggles back to whisper. If Parakeet fails to load (RAM, files), the
+*Settings → Speech engine → Whisper* switches back. If Parakeet fails to load (RAM, files), the
 app loads the whisper model instead and the main screen says "Parakeet failed: …".
 On the phone Parakeet decodes **greedy** (one recognizer; saves ≈ 0.6 GB RAM, dictionary words
 are not used as hotwords). *Developer settings → Routing & engines → On-device decoding (Parakeet)* switches to *Auto* (beam
@@ -358,6 +358,29 @@ dictionary, AI cleanup) still runs on the phone. No extra permission: it uses `I
 4. Dictate: the preview line shows `[C]` and *Status & server info → Active engine* shows
    `cloud · <provider> · <model> · $…`; *Cloud providers → Usage this month* counts it.
 
+## Settings layout
+
+Main screen → *Settings*: the same look as Developer settings. A *Status* card on top (engine
+state, the language the next dictation uses, warnings such as "AI cleanup is on but no GGUF
+model is imported"), then grouped rows that each show their current value and open a page:
+
+| Section · row | Page contents | Applies |
+|---|---|---|
+| Dictation · *Language* | Auto-format; dictation language (Phone language first) | at once |
+| Dictation · *Speech engine* (local / hybrid) | Whisper or Parakeet; *Speech model (whisper)*, *Parakeet model folder* imports | at once (reloads) |
+| Dictation · *AI cleanup* (local / hybrid) | Clean up with local AI; *AI cleanup model* import; strength | at once (reloads) |
+| Dictation · *Timing & limits* | Stop after silence (ms, 0 or 300–10000), Decode while speaking, session limit (1–20 min) | *Save* |
+| Bubble & apps · *Bubble* | Live preview, Shrink to a dot, Shake to restore | at once |
+| Bubble & apps · *Excluded apps* | package names, one per line (checked) | *Save* |
+| Privacy · *History* | Keep / 24 hours / Never save (asks before deleting) | at once |
+| Advanced | *Developer settings* (when visible), *Mock engine* switch | at once |
+| About | version + flavour; 7 taps unlock Developer settings (local) | – |
+
+The rule: a page with typed fields has *Save* in the top bar (grey until something changed and
+every field is valid; errors under the field; leaving with unsaved changes asks *Discard
+changes?*); switches and choices apply at once, like Developer → *Debug log & audio*. The main
+screen's *Language* and *AI cleanup* lines open their pages.
+
 ## Developer settings layout
 
 A hub with grouped cards; each row shows its current value and opens a focused page:
@@ -378,8 +401,8 @@ tree (other accessibility services only see "set (hidden)").
 
 ## Local flavour: Developer settings
 
-In the `local` flavour Developer settings are hidden: tap the version row at the bottom of
-Settings 7 times to show them (only the on-device toggle and timeouts apply there).
+In the `local` flavour Developer settings are hidden: tap the version row (*Settings → About*)
+7 times to show them (only the on-device toggle and timeouts apply there).
 
 ## 6. AI cleanup (optional)
 
@@ -396,9 +419,9 @@ A small local language model can rewrite each transcript: punctuation, filler wo
    From `https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF` (or `…1.5B…`), file
    *Files and versions* → the `q4_k_m` file.
 2. Copy it to the phone's `Download/`.
-3. *Settings → AI cleanup model… → Import model file…*. The import refuses non-GGUF files
+3. *Settings → AI cleanup → AI cleanup model → Import model file…*. The import refuses non-GGUF files
    and checks free space; a 1 GB copy takes a minute.
-4. *Settings → Clean up with local AI* → on, pick the strength, *Save*. The main screen
+4. *Settings → AI cleanup → Clean up with local AI* → on, pick the strength (both apply at once). The main screen
    shows `AI cleanup: qwen2.5-…gguf` once it has loaded (10–60 s).
 
 If cleanup takes longer than 3 s, or changes the text too much, the plain transcript is
@@ -415,15 +438,15 @@ keyboard:
   10 minutes; **shake** the phone to bring it back (or tap the notification);
 - after 5 s of no use it shrinks to a dot; a tap restores it.
 
-While you speak, the line above the bubble shows the live transcript (Settings → Live
-preview). "Can't hear you" means 3 s of silence; "No speech detected" means nothing was
+While you speak, the line above the bubble shows the live transcript (*Settings → Bubble → Live
+preview*). "Can't hear you" means 3 s of silence; "No speech detected" means nothing was
 inserted. History (search, copy, delete, raw vs cleaned) is on the main screen.
 
 ## Device test checklist
 
 **Flavours / developer settings (D17)** — one APK of each flavour, same phone, installed over each other
 - [ ] `local`: App info → Permissions shows no network; main screen text says "no internet
-      permission"; Developer settings hidden until 7 taps on Settings' version row ("Developer
+      permission"; Developer settings hidden until 7 taps on the version row in *Settings → About* ("Developer
       settings unlocked"); *Routing & engines → Allow server* shows "Not in this build"; *Lock* hides it again.
 - [ ] `local`: dictation works exactly as before (main screen `Loaded: client: …`); *Test
       session* (*Routing & engines*) says `OK: Client (on-device) · … EMPTY (no_speech)`.
@@ -444,13 +467,17 @@ inserted. History (search, copy, delete, raw vs cleaned) is on the main screen.
       toasts "Dictation disabled — enable server or client in Developer settings".
 - [ ] `remote` over `hybrid`: APK ~10x smaller; no Speech model / AI cleanup entries; Allow
       client "not in this build"; server down → bubble error "Server unreachable (connect_failed)".
+- [ ] *Settings* hub: every row's grey line matches its page; toggling *Bubble → Live preview*
+      changes the hub row on Back without *Save*; *Timing & limits* *Save* stays grey for 25 min
+      (red "Enter 1–20 minutes") and Back after an edit asks *Discard changes?*; TalkBack reads
+      each switch row as one switch and each choice as a radio button; dark mode follows the phone.
 - [ ] Settings changes apply to the next dictation without reloading the model (main screen
       keeps `Loaded:`; logcat `FlowEngine` shows no reload) unless *Keep on-device model warm* changed.
 - [ ] Token survives an app restart (Keystore); *Clear* + *Save* removes it. With TalkBack (or a
       UI dump) the token field reads "set (hidden)", also after *Show*.
 - [ ] Parakeet (local/hybrid, 6-8 GB phone): folder import, `Loaded: client: Parakeet …`, jfk-style
       dictation accuracy and latency; hotwords work (`TMPDIR` = cache dir); low-RAM phone falls back to whisper.
-- [ ] core-p1: "comma"/"period" spoken → punctuation (Settings *Auto-format* on), off → literal
+- [ ] core-p1: "comma"/"period" spoken → punctuation (*Settings → Language → Auto-format* on), off → literal
       words; "um uh" only → "Only filler words heard"; "… press enter" sends Enter once in a chat.
 
 None of this can be checked on the build machine. Record the results in
@@ -510,7 +537,7 @@ provider, model, latency (stop → text) and the cost shown, in `docs/cloud-stt.
 **AI cleanup** (`tools/build-native.sh --whisper --llm`; host-proven with Qwen2.5 0.5B/1.5B)
 - [ ] Main screen shows `AI cleanup: qwen2.5-0.5b-instruct-q4_k_m.gguf`, not "failed to
       load". This is the first `System.loadLibrary("flow_llm")` plus the core's
-      `dlopen("libflow_llm.so")` on bionic. Note the load time (Settings save → line appears).
+      `dlopen("libflow_llm.so")` on bionic. Note the load time (switch on → line appears).
 - [ ] Dictate "um so I think we should meet tomorrow at noon". History shows *AI cleaned*
       and `llm … ms`. Note `asr`/`llm` ms, phone and SoC. Over 3 s → `llm_timeout` and the raw
       text (expected on slow phones; then try 0.5B or turn it off).
