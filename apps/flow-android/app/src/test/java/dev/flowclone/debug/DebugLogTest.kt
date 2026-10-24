@@ -35,6 +35,26 @@ class DebugLogTest {
         assertEquals("dictation", o.getString("kind"))
     }
 
+    /** D26: each line pins the exact APK (version + commit), so a log excerpt identifies the build. */
+    @Test fun everyLineNamesTheBuild() {
+        val cur = dev.flowclone.data.AppVersion.current
+        for (line in listOf(DebugFormat.dictation(trace), DebugFormat.event(DebugEvent(0, "engine_load", null)))) {
+            val o = JSONObject(line)
+            assertEquals(line, cur.version, o.getString("app_version"))
+            assertEquals(line, cur.build, o.getString("build"))
+        }
+        val keep = DebugFormat.build
+        try {
+            DebugFormat.build = dev.flowclone.data.AppBuild("0.2.0", 200, "abc1234-dirty", "0.2.0+abc1234.dirty")
+            val o = JSONObject(DebugFormat.dictation(trace))
+            assertEquals("0.2.0", o.getString("app_version"))
+            assertEquals("abc1234-dirty", o.getString("build"))
+            assertTrue(DebugFormat.dictation(trace).startsWith("{\"kind\":\"dictation\",\"ts\":\"2025-10-23T10:15:02.123Z\",\"app_version\":\"0.2.0\",\"build\":"))
+        } finally {
+            DebugFormat.build = keep
+        }
+    }
+
     @Test fun quotesAndNewlinesStayOneLine() {
         val line = DebugFormat.dictation(trace.copy(text = "a \"quote\"\nnext line"))
         assertFalse(line.contains('\n'))

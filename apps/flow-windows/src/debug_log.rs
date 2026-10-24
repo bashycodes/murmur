@@ -68,6 +68,10 @@ pub struct Insert {
 pub struct Entry {
     /// UTC, ISO 8601 with milliseconds (`2026-10-23T12:34:56.789Z`).
     pub ts: String,
+    /// D26: product version (`0.2.0`); filled in when empty.
+    pub app_version: String,
+    /// D26: commit of this build (`abc1234` / `abc1234-dirty`); filled in when empty.
+    pub build: String,
     /// `hold` (push-to-talk) / `tap` (double-tap lock) / `handsfree`.
     pub mode: Option<String>,
     /// Engine that ran: `local` / `remote` (own server) / `cloud`.
@@ -114,6 +118,8 @@ pub struct Entry {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Event {
     pub ts: String,
+    pub app_version: String,
+    pub build: String,
     pub event: String,
     pub error: Option<String>,
     pub stack: Option<String>,
@@ -132,6 +138,14 @@ impl Line {
         match self {
             Line::Dictation(e) => &mut e.ts,
             Line::Event(e) => &mut e.ts,
+        }
+    }
+
+    /// `(app_version, build)`: every line names the exe that wrote it (D26).
+    fn build_mut(&mut self) -> (&mut String, &mut String) {
+        match self {
+            Line::Dictation(e) => (&mut e.app_version, &mut e.build),
+            Line::Event(e) => (&mut e.app_version, &mut e.build),
         }
     }
 }
@@ -378,6 +392,13 @@ impl DebugLog {
         }
         if e.ts_mut().is_empty() {
             *e.ts_mut() = iso8601_ms(now_unix_ms());
+        }
+        let (version, build) = e.build_mut();
+        if version.is_empty() {
+            *version = flow_build_info::VERSION.to_string();
+        }
+        if build.is_empty() {
+            *build = flow_build_info::BUILD.to_string();
         }
         let mut q = lock(&self.inner.queue);
         if q.len() >= QUEUE_CAP {
@@ -668,7 +689,18 @@ pub(crate) mod tests {
         let v = serde_json::to_value(Line::Event(Event::default())).unwrap();
         let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(|k| k.as_str()).collect();
         keys.sort();
-        assert_eq!(keys, vec!["error", "event", "kind", "stack", "ts"]);
+        assert_eq!(
+            keys,
+            vec![
+                "app_version",
+                "build",
+                "error",
+                "event",
+                "kind",
+                "stack",
+                "ts"
+            ]
+        );
         assert_eq!(v["kind"], "event");
         let line = serde_json::to_string(&Line::Event(Event::default())).unwrap();
         assert!(line.starts_with("{\"kind\":\"event\""), "{line}");
@@ -699,6 +731,8 @@ pub(crate) mod tests {
             "kind",
             "stack",
             "ts",
+            "app_version",
+            "build",
             "mode",
             "route",
             "fallback",
@@ -757,6 +791,20 @@ pub(crate) mod tests {
         assert_eq!(b["event"], "hotkeys");
         assert_eq!(b["error"], "hook failed");
         assert!(b["ts"].as_str().unwrap().ends_with('Z'));
+        // D26: both lines pin the build, right after `ts`.
+        for v in [&a, &b] {
+            assert_eq!(v["app_version"], flow_build_info::VERSION);
+            assert_eq!(v["build"], flow_build_info::BUILD);
+        }
+        assert!(
+            lines[1].starts_with(&format!(
+                "{{\"kind\":\"event\",\"ts\":{},\"app_version\":\"{}\",\"build\":",
+                b["ts"],
+                flow_build_info::VERSION
+            )),
+            "{}",
+            lines[1]
+        );
         assert_eq!(log.stats().written, 2);
     }
 

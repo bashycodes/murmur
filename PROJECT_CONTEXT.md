@@ -1,6 +1,6 @@
 # PROJECT_CONTEXT — flow-clone (local-only Wispr Flow clone)
 
-Research inputs: `research/windows/findings/by-topic/10-clone-spec.md` (§9 = core API), `research/android/findings/by-topic/10-clone-spec-android.md`. Decisions: `docs/DECISIONS.md` (D1-D25). Core architecture + "Changelog for shells": `docs/core-architecture.md`. Core requests from the shells: `docs/core-change-requests.md`. Model choices: `docs/model-benchmarks.md`.
+Research inputs: `research/windows/findings/by-topic/10-clone-spec.md` (§9 = core API), `research/android/findings/by-topic/10-clone-spec-android.md`. Decisions: `docs/DECISIONS.md` (D1-D26). Versioning + releases: `docs/versioning.md`, `CHANGELOG.md`. Core architecture + "Changelog for shells": `docs/core-architecture.md`. Core requests from the shells: `docs/core-change-requests.md`. Model choices: `docs/model-benchmarks.md`.
 
 Branch `integration` holds everything: `core`, `core-p1`, `parakeet`, `win-p1`, `android-int`, `android-p1`, the hybrid branches, `cloud-core`, `core-endpoint`, `win-cloud`, `android-cloud`, `router-route` and `server-fixes` (review fixes), and `crates-final`, `android-final`, `win-final` (the rest of the review) are merged into it.
 
@@ -20,12 +20,14 @@ crates/
   flow-remote/      RemoteBackend: WebSocket client of flow-server (the only client-side network code; feature `tls`)
   flow-cloud/       opt-in third-party cloud STT (D18): CloudAsr/CloudBackend + 5 provider adapters over HTTPS (reqwest/rustls); linked only into cloud flavours
   flow-server/      self-hosted server: unmodified FlowCore per session, bearer auth, worker pool, systemd unit in dist/
+  flow-build-info/  product version + git commit baked at build time (D26; no deps)
   flow-contract-tests/  equivalence (local vs server / mock cloud), toggle matrix, build matrix, TLS, key-leak
 apps/
   flow-windows/     Tauri 2 shell (own cargo workspace; MSVC cross-check shims in tools/check-shims)
   flow-android/     Kotlin shell (Gradle; JNI contract JNI_CONTRACT.md, install guide INSTALL.md)
 docs/               DECISIONS, core-architecture, core-change-requests, model-benchmarks, bench/
-tools/              fetch-models.sh, build-android-parakeet.sh, probes/
+tools/              fetch-models.sh, build-android-parakeet.sh, check-version.sh + release.sh + versioning/ (D26), probes/
+VERSION             the product version (single source, D26); CHANGELOG.md = release notes
 ```
 
 ## How to verify
@@ -33,6 +35,7 @@ tools/              fetch-models.sh, build-android-parakeet.sh, probes/
 * Core: `cargo test --workspace`. Full: `BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include" SHERPA_ONNX_LIB_DIR=<sherpa-onnx lib dir> cargo test --workspace --all-features` and `cargo clippy --workspace --all-targets --all-features -- -D warnings` (llama-cpp-sys-2 needs the BINDGEN flag even for the default build on this box). Real-model tests skip without `models/` (`tools/fetch-models.sh [--llm] [--parakeet]`).
 * Hybrid (D17): `cargo test -p flow-contract-tests` (+ `--all-features` with `FLOW_MODELS_DIR`/`FLOW_PARAKEET_DIR` for real-model equivalence); `tools/check-build-matrix.sh`; end-to-end smoke with a real server: `tools/probes/hybrid_smoke/run.sh` (PARAKEET_DIR, AUDIO_DIR).
 * Cloud STT (D18): `cargo test -p flow-cloud -p flow-router -p flow-contract-tests` (mock HTTP; no keys needed). Live provider smoke: `FLOW_CLOUD_LIVE_<OPENROUTER|ELEVENLABS|GROQ|OPENAI|DEEPGRAM|ASSEMBLYAI>_KEY=… cargo test -p flow-cloud --test live_smoke -- --nocapture` (skips without keys; costs money).
+* Versioning (D26): `tools/check-version.sh` (also run by `tools/check-build-matrix.sh` and CI); `tools/release.sh X.Y.Z` = dry run.
 * Windows shell: `cd apps/flow-windows && cargo test` (293), plus the MSVC clippy cross-check in its README.
 * Android shell: `cd apps/flow-android && ANDROID_HOME=~/Android/Sdk ./gradlew testDebugUnitTest assembleDebug` (Gradle daemon on JDK 21): 405 JVM tests per flavour, 12 gated skips; native libs `tools/build-native.sh --flavor F` + `tools/probes/check_native_so.sh --flavor F <apk>`.
 
@@ -199,6 +202,18 @@ Samsung Galaxy S25+ (SM-S936B, Android 16), **hybrid** debug APK; server on this
 * User reported local-route quality "gone down" after the debug-log APK: **no code regression** (native libs bit-identical to the good build; `docs/findings/2026-10-23-phone-quality-regression.md`). Causes are input/config (multilingual whisper on `auto` mislabels short clips); follow-ups merged with `feat/android-quality` (language default = phone language, engine/model/language fields, `endpoint_wait_ms` fix, optional kept audio).
 * Server now runs **Parakeet-unified-en-0.6b int8** (D23, `config.toml` `asr_path`), rebuilt from `integration` with the greedy/retry core; the temporary `greedy.conf` systemd drop-in is removed.
 
+### Versioning (D26, 2026-10-24; branch `feat/versioning`)
+Spec `docs/versioning.md`. Not yet tagged: the first release is `tools/release.sh 0.2.0 --apply` + push (user).
+
+| Capability | Proof (test) |
+|---|---|
+| One product version in `VERSION`; every copy (2 Cargo manifests, 2 lockfiles' `flow-*` entries, UI package/lock) checked, pinned Tauri/Gradle literals rejected, `--tag` checks tag = `v`+VERSION + CHANGELOG section | `tools/versioning/test_versioning.py` (via `tools/check-version.sh`); Rust/Gradle build guards (`flow-build-info/build.rs`, `apps/flow-windows/build.rs`, `AppVersionTest`) |
+| Android versionName/versionCode derived from VERSION (`MAJOR·10000 + MINOR·100 + PATCH`), BuildConfig GIT_SHA/GIT_DIRTY/BUILD; main screen + Developer → Build show them | `AppVersionTest` (shared vectors + BuildConfig = VERSION) |
+| Build metadata in Rust: `flow-server 0.1.0+sha` in hello_ok / health, `version=` on the ready line, `flow-ffi …+sha` nativeVersion + hello client, Windows About/Developer rows | `flow-build-info` unit tests, `flow-server/tests/ws_protocol.rs::hello_ok_describes_the_server`, `flow-ffi/tests/jni_smoke.rs` |
+| D21 debug log `app_version` + `build` on every line, both platforms | Android `DebugLogTest.everyLineNamesTheBuild`; Windows `debug_log` schema tests |
+| `tools/release.sh`: dry run shows the full stamp diff; `--apply` commits "Release X.Y.Z" + annotated tag, refuses older/existing/empty-notes/dirty/wrong-branch, verifies lockfiles `--locked` | dry run on this branch; `--apply` 0.1.0 → 0.2.0 in a scratch clone (commit + tag v0.2.0 + `check-version --tag v0.2.0` ok; 0.2.0 again / 0.1.9 / 0.3 / empty notes refused) |
+| CI: version check in both workflows, `v*` tags build, versioned artifact names, tag-only release job attaches APKs / installers + SHA256SUMS | not yet run on GitHub (first run = the first pushed tag) |
+
 ## Outstanding work — priority order
 **Next: live testing** (user action). Everything is merged into `integration` and green locally and on CI; the remaining step is one pass on real devices, in order: server on this box (`tools/server/install.sh --user`), Windows installer from the green CI run, hybrid APK on the phone, optional cloud keys. Guide: `docs/LIVE-TESTING.md` (it links the detailed checklists). Covers hybrid D17 §6.4 DoD 2-4, the cloud D18 live smoke (keys from the user) and the device-only review confirmations (S16, S17). Record results here and fix whatever the reports show. Server + phone pass done 2026-10-23 (see "Live test 2026-10-23 (phone)"); Windows and the optional cloud keys remain.
 0. **D22 streaming ASR: merged** (core, server, protocol, Windows + Android shells; server redeployed with the unified model, greedy drop-in removed). Left: a phone run with the new hybrid APK that records `segments` / `pre_asr_ms` / `client_ms` and the new `engine`/`model`/`language` fields; Windows D21 `engine`/`model`/`language` fields (Android has them). Phase 4 (streaming Nemotron engine, D23 "Next") is noted in the proposal, not started.
@@ -214,7 +229,7 @@ Samsung Galaxy S25+ (SM-S936B, Android 16), **hybrid** debug APK; server on this
    * the P1 items (LLM cleanup + flow_llm.dll packaging, history tab, learn-from-edits via UIA, dictionary editor) are only cross-checked for MSVC: the README checklist covers them on real Windows;
    * learn-from-edits: UIA TextChanged events instead of 1 s polling; optional local-LLM vetting of candidates (03 §6).
 3. **Android shell.** Code is done. Remaining:
-   a. JNI + arm64 packaging is done, but the .so has never been loaded on bionic. The first device run must confirm `Native engine: flow-ffi 0.1.0`.
+   a. JNI + arm64 packaging is done, but the .so has never been loaded on bionic. The first device run must confirm `Native engine: flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26).
    b. Parakeet on Android: arm64-v8a `libflow_ffi.so` (jni,whisper,parakeet) + sherpa/onnxruntime prebuilts cross-built and 16 KB aligned (`tools/build-android-parakeet.sh`, `tools/probes/check_parakeet_so.sh`); packaging steps in `docs/core-architecture.md` "Android: Parakeet". Not yet in `apps/` and never loaded on a device.
    c. **Device verification (needs the user's phone).** Full checklist: `apps/flow-android/INSTALL.md` §"Device test checklist". In order:
       - grant mic, overlay, a11y and notifications;

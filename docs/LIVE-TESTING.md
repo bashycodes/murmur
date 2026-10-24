@@ -41,7 +41,7 @@ Full guide: [`apps/flow-windows/README.md` "Live test on Windows"](../apps/flow-
 1. Download the installer from the green integration run:
    <https://github.com/bashycodes/murmur/actions/runs/39839507123> (commit 30972dd). Artifact **`flow-clone-windows-hybrid`**
    (`gh run download 39839507123 -n flow-clone-windows-hybrid`). Unzip it.
-2. Run `Flow-Clone_0.1.0_x64-setup_hybrid.exe` (per user, no admin) or the
+2. Run `Flow-Clone_<version>_x64-setup_hybrid.exe` (e.g. `Flow-Clone_0.2.0_x64-setup_hybrid.exe`) (per user, no admin) or the
    `.msi`. SmartScreen: More info → Run anyway (the installer is unsigned).
    Install only one flavour at a time.
 3. Optional local model, for the fallback: copy `ggml-base.bin` (or the
@@ -68,7 +68,7 @@ Full guide: [`apps/flow-android/INSTALL.md` "Live test on phone"](../apps/flow-a
    grant in this order: *Microphone* → *Display over other apps* →
    *Accessibility service* (greyed out: App info → ⋮ → *Allow restricted
    settings*) → *Notifications* → *Battery: allow background*. The main
-   screen must show `Native engine: flow-ffi 0.1.0`.
+   screen must show `Native engine: flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26).
 4. *Developer settings*: host = `100.x.y.z`, port `7313`, paste the token,
    *Use TLS* off, *Allow server* + *Allow client* on, *Save*, *Test
    connection* → `OK · median N ms … · parakeet`. For the phone fallback,

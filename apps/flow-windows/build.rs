@@ -1,4 +1,16 @@
 fn main() {
+    // D26: the installer version is this package's (Tauri reads Cargo.toml);
+    // it must equal the repo's VERSION (tools/release.sh stamps both).
+    println!("cargo:rerun-if-changed=../../VERSION");
+    if let Ok(v) = std::fs::read_to_string("../../VERSION") {
+        let pkg = std::env::var("CARGO_PKG_VERSION").unwrap();
+        if v.trim() != pkg {
+            panic!(
+                "VERSION says {} but apps/flow-windows/Cargo.toml says {pkg}: run tools/release.sh",
+                v.trim()
+            );
+        }
+    }
     #[cfg(feature = "app")]
     {
         // Every app command gets an `allow-<command>` permission, so each

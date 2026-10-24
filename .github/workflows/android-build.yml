@@ -3,22 +3,32 @@
 # gates. No secrets, no release signing: the artifacts are debug-signed with
 # this runner's throwaway debug key, so they install fresh but cannot update
 # an APK built on another machine (INSTALL.md "Live test on phone").
+# A pushed tag vX.Y.Z (tools/release.sh, D26) also checks the tag against
+# VERSION/CHANGELOG and attaches the APKs to the GitHub release vX.Y.Z.
 name: android-build
 
 on:
   workflow_dispatch:
   push:
     branches: [integration, android-final]
+    # Path filters are not evaluated for tag pushes: every release tag builds.
+    tags: ["v*"]
     paths:
       - "apps/flow-android/**"
       - "crates/**"
       - "Cargo.lock"
+      - "VERSION"
+      - "tools/versioning/**"
+      - "tools/check-version.sh"
       - ".github/workflows/android-build.yml"
   pull_request:
     paths:
       - "apps/flow-android/**"
       - "crates/**"
       - "Cargo.lock"
+      - "VERSION"
+      - "tools/versioning/**"
+      - "tools/check-version.sh"
       - ".github/workflows/android-build.yml"
 
 concurrency:
@@ -40,6 +50,21 @@ jobs:
     timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
+
+      # D26: every copy of the product version agrees with VERSION; on a tag,
+      # the tag is v<VERSION> and CHANGELOG.md has its section.
+      - name: Version check
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tools/check-version.sh --tag "$GITHUB_REF_NAME"
+          else
+            tools/check-version.sh
+          fi
+          v=$(cat VERSION)
+          label="$v+$(git rev-parse --short=7 HEAD)"
+          [ "$GITHUB_REF_TYPE" = tag ] && label="$GITHUB_REF_NAME"
+          echo "FLOW_VERSION=$v" >> "$GITHUB_ENV"
+          echo "FLOW_LABEL=$label" >> "$GITHUB_ENV"
 
       - uses: actions/setup-java@v4
         with:
@@ -85,6 +110,13 @@ jobs:
         working-directory: apps/flow-android
         run: ./gradlew --no-daemon testDebugUnitTest
 
+      # A release build must say exactly which commit it is: no "-dirty".
+      - name: Clean tree (tags)
+        if: github.ref_type == 'tag'
+        run: |
+          git status --porcelain --untracked-files=no
+          test -z "$(git status --porcelain --untracked-files=no)"
+
       - name: APKs + native gates
         working-directory: apps/flow-android
         env:
@@ -95,7 +127,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: flow-clone-android-debug-apks
+          name: flow-clone-android-debug-apks-${{ env.FLOW_LABEL }}
           path: |
             apps/flow-android/dist/*.apk
             apps/flow-android/dist/SHA256SUMS
@@ -107,3 +139,36 @@ jobs:
         with:
           name: android-test-reports
           path: apps/flow-android/app/build/reports/
+
+  # Tag pushes only: attach the APKs to the GitHub release (created here or
+  # by windows-build, whichever finishes first). Debug-signed, as above.
+  release:
+    if: github.ref_type == 'tag'
+    needs: apks
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: flow-clone-android-debug-apks-*
+          path: dl
+          merge-multiple: true
+      - name: Versioned file names + release upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$GITHUB_REF_NAME"; v="${tag#v}"
+          mkdir -p assets
+          for f in dl/flow-clone-*-debug.apk; do
+            fl=$(basename "$f" | sed -E 's/^flow-clone-(.*)-debug\.apk$/\1/')
+            cp "$f" "assets/flow-clone-android-$fl-$v-debug.apk"
+          done
+          (cd assets && sha256sum ./*.apk | sed 's| \./| |' > "SHA256SUMS-android-$v.txt")
+          ls -la assets
+          python3 tools/versioning/versioning.py section "$v" > notes.md
+          gh release view "$tag" >/dev/null 2>&1 \
+            || gh release create "$tag" --verify-tag --title "Flow Clone $v" --notes-file notes.md \
+            || gh release view "$tag" >/dev/null   # lost the race to windows-build: fine
+          gh release upload "$tag" assets/* --clobber

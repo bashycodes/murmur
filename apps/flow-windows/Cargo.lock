@@ -1209,6 +1209,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow-build-info"
+version = "0.1.0"
+
+[[package]]
 name = "flow-cloud"
 version = "0.1.0"
 dependencies = [
@@ -1281,6 +1285,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
+ "flow-build-info",
  "flow-core",
  "flow-protocol",
  "futures-util",
@@ -1301,6 +1306,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "cpal",
+ "flow-build-info",
  "flow-cloud",
  "flow-core",
  "flow-remote",

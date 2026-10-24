@@ -74,7 +74,7 @@
   const devView = () => ({
     form: structuredClone(dev), caps: { local: true, remote: true, cloud: true },
     capabilities: { local: true, remote: true, asr_engines: ["whisper", "parakeet"], llm: true, proto: 1, core_version: "0.1.0" },
-    visible: true, version: "0.1.0", check: devCheck(dev), route: route(),
+    visible: true, version: "0.1.0", build: "abc1234-dirty", full: "0.1.0+abc1234.dirty", check: devCheck(dev), route: route(),
     cloud: {
       capabilities: { cloud: true, adapters: ["openai_compat", "openrouter", "elevenlabs", "deepgram", "assemblyai"] },
       keys: Object.fromEntries(dev.cloud.providers.map((p) => [p.id, keyState(p.id)])),

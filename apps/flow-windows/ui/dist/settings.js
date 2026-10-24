@@ -697,7 +697,7 @@ function showRoute(r) {
 function showDev(v) {
     devView = v;
     $("tab_developer").hidden = !v.visible;
-    $("version_row").textContent = `Flow Clone ${v.version}`;
+    $("version_row").textContent = `Flow Clone ${v.version} · ${v.build}`;
     $("privacy_line").textContent = v.caps.remote
         ? "Speech is processed on this PC or on your own server. Nothing goes to a third party."
         : "Everything runs on this PC. Nothing is sent over the network.";
@@ -721,7 +721,8 @@ function showDev(v) {
     showUsage(v.cloud.usage);
     const c = v.capabilities;
     $("dev_build").textContent =
-        `${[c.local ? "client" : "", c.remote ? "server" : ""].filter(Boolean).join(" + ") || "no engine"}` +
+        `Flow Clone ${v.full} · ` +
+            `${[c.local ? "client" : "", c.remote ? "server" : ""].filter(Boolean).join(" + ") || "no engine"}` +
             ` · ASR ${c.asr_engines.join(", ") || "none"} · LLM ${c.llm ? "yes" : "no"} · proto ${c.proto} · core ${c.core_version}`;
     showCheck(v.check);
     showRoute(v.route);

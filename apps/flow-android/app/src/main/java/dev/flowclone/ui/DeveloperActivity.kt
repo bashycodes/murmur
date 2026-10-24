@@ -202,6 +202,7 @@ class DeveloperActivity : Activity() {
 
             sectionLabel("BUILD")
             card {
+                infoRow("Version", dev.flowclone.data.AppVersion.current.detail())
                 infoRow("Flavour · native library", "${caps.flavor} · ${capabilitiesLine()}")
                 navRow(R.drawable.ic_dev_reset, "Reset to defaults", "Developer settings and every cloud key", danger = true, chevron = false) { confirmResetDefaults() }
                 if (!caps.remote) navRow(R.drawable.ic_dev_lock, "Lock", "Hide Developer settings again", chevron = false) {
@@ -692,7 +693,10 @@ class DeveloperActivity : Activity() {
             lateinit var info: TextView
             card { info = infoRow("Server") }
             sectionLabel("BUILD")
-            card { infoRow("Flavour · native library", "${caps.flavor} · ${capabilitiesLine()}") }
+            card {
+                infoRow("Version", dev.flowclone.data.AppVersion.current.detail())
+                infoRow("Flavour · native library", "${caps.flavor} · ${capabilitiesLine()}")
+            }
             refreshers += {
                 val l = app.lastRoute.value
                 last.text = DevText.lastDictation(l?.result) { id -> cloudState.provider(id)?.displayName } +

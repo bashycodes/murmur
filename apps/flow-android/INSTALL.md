@@ -65,7 +65,7 @@ unknown apps" for Files), or use the platform-tools install command over USB. Op
 and grant, in this order: *Microphone* → *Display over other apps* → *Accessibility service*
 (Settings → Accessibility → Flow Clone → on; if the switch is greyed out: Settings → Apps →
 Flow Clone → ⋮ → *Allow restricted settings*, then retry) → *Notifications* → *Battery: allow
-background*. The main screen must show `Native engine: flow-ffi 0.1.0`.
+background*. The main screen must show `Native engine: flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26).
 
 **3. Point it at the server.** Main screen → *Developer settings* → *Server*: host = the PC's
 `100.x.y.z` (or its MagicDNS name), port `7313`, *Paste* the token, *Use TLS* off, *Save* (top
@@ -303,7 +303,7 @@ Choose `Download/ggml-base.en-q5_1.bin`, or the model you copied.
 
 The app copies the file into its private storage (`files/models/`) and loads it. The
 original in `Download/` can be deleted afterwards. The main screen should then show
-`Native engine: flow-ffi 0.1.0` and `Loaded: ggml-base.en-q5_1.bin`. To switch models,
+`Native engine: flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26) and `Loaded: ggml-base.en-q5_1.bin`. To switch models,
 use *Use* on another imported file. *Delete* frees the space.
 
 ### Parakeet (optional, local / hybrid)
@@ -491,7 +491,7 @@ provider, model, latency (stop → text) and the cost shown, in `docs/cloud-stt.
 - [ ] logcat (`FlowEngine`, `FlowService`) never shows the key (`grep` for its last 8 characters).
 
 **Native engine / packaging**
-- [ ] The main screen shows `Native engine: flow-ffi 0.1.0`, not "unavailable". This is
+- [ ] The main screen shows `Native engine: flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26), not "unavailable". This is
       the first time `System.loadLibrary` runs on bionic: `libc++_shared.so` is resolved,
       and there is no `dlopen` error under `FlowEngine`.
 - [ ] Android 15 / 16 KB-page device (e.g. Pixel 8+ with the 16 KB developer option): the
