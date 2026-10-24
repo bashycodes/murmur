@@ -16,6 +16,24 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- Android: a dictation that could not go into the field (you switched
+  fields while it was transcribing, the field is protected, or typing it
+  failed) is never lost any more. The bubble now offers ✓ insert here,
+  ⧉ copy and ✕ dismiss, and a "Dictation not inserted" notification stays
+  until you tap it to copy the text (it never shows the text itself). The
+  text was already saved in History; before this, dismissing the bubble or
+  starting the next dictation left History as the only copy.
+- Android Developer settings: the Routing row and "Route in use" spell out
+  the order, e.g. "Phone first → Server" or "Server only".
+- Debug log (Android): `route_order` (the engines tried, in order),
+  `speech_ms` (speech the engine's VAD heard) and `peak_dbfs` (peak level),
+  so an empty "blank_asr" result can be diagnosed from the log alone.
+- flow-core: `timings.speech_ms` and `timings.peak_dbfs` in every commit
+  result (additive). flow-server logs them, plus `start_to_commit_ms`, on
+  each result line.
+
 ## [0.3.0] - 2026-10-24
 
 ### Added
