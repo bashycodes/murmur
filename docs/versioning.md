@@ -66,7 +66,7 @@ Where it is shown:
 |---|---|
 | Android main screen | `Version 0.2.0 (hybrid) · 1a2b3c4` + `Native engine: flow-ffi 0.2.0+1a2b3c4` |
 | Android Developer → Build (hub and Status page) | `Version: 0.2.0 (200) · build 1a2b3c4` |
-| Android Settings footer | today `Version 0.2.0 (hybrid)`; switches to `AppVersion.current.label()` when feat/settings-ui lands |
+| Android Settings → About row (7 taps unlock Developer settings) | `Version 0.2.0 (hybrid) · 1a2b3c4` (`AppVersion.current.label()`, same as the main screen) |
 | Windows Settings About row (`version_row`) | `Flow Clone 0.2.0 · 1a2b3c4` |
 | Windows Developer build line | `Flow Clone 0.2.0+1a2b3c4 · client + server · ASR … · proto 1 · core 0.2.0` |
 | flow-server | `ready` log line `version=0.2.0+1a2b3c4`; `hello_ok.server` / `/v1/health` `flow-server 0.2.0+1a2b3c4` (shown by every client's Test connection) |

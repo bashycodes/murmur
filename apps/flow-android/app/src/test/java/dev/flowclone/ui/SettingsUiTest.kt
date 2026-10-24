@@ -8,6 +8,8 @@ import android.widget.Switch
 import android.widget.TextView
 import dev.flowclone.BuildConfig
 import dev.flowclone.FlowApp
+import dev.flowclone.data.AppVersion
+import dev.flowclone.data.DevUnlock
 import dev.flowclone.data.SettingsPages.Page
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -59,6 +61,23 @@ class SettingsUiTest {
         assertTrue(t.any { it.startsWith("Version ") && "(${FlowApp.of(a).caps.flavor})" in it })
         // remote always shows Developer settings; local / hybrid only once unlocked.
         assertEquals(FlowApp.of(a).dev.visible, "Developer settings" in t)
+    }
+
+    @Test fun aboutRowShowsTheAppVersionLabelAndSevenTapsStillUnlock() {
+        val a = launch()
+        val app = FlowApp.of(a)
+        val label = AppVersion.current.label(app.caps.flavor)
+        // D26: the About row names the commit, like the main screen.
+        assertTrue(label, label in texts(a))
+        assertTrue(label, label.endsWith(" · ${AppVersion.current.build}"))
+        if (app.caps.remote) return // remote always shows Developer settings; nothing to unlock
+        app.dev.devUnlocked = false
+        val row = rowTitled(a, label)
+        repeat(DevUnlock.TAPS - 1) { row.performClick() }
+        assertFalse(app.dev.devUnlocked)
+        row.performClick()
+        assertTrue(app.dev.devUnlocked)
+        app.dev.devUnlocked = false
     }
 
     @Test fun hubRowsShowTheirCurrentValue() {
