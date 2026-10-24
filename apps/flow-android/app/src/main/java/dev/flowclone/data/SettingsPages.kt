@@ -145,7 +145,7 @@ object SettingsSummary {
     const val WARN_MOCK = "Mock engine is on: every dictation inserts a fixed test sentence."
     const val WARN_NO_WHISPER = "No speech model imported: import one under Speech engine."
     const val WARN_NO_PARAKEET = "Parakeet is selected but no model folder is imported: whisper is used."
-    const val WARN_NO_LLM = "AI cleanup is on but no GGUF model is imported: plain transcripts are inserted."
+    const val WARN_NO_LLM = "AI cleanup is on but no GGUF model is imported: formatted transcripts are inserted without it."
 
     private val PREFIXES = listOf("sherpa-onnx-", "nemo-", "parakeet-tdt-", "parakeet-", "ggml-")
     private val SUFFIX = Regex("""(-instruct)?([-.](q\d\w*|int8|fp16|f16|f32))?$""", RegexOption.IGNORE_CASE)
