@@ -417,7 +417,7 @@ fn warm_connection_is_reused_across_sessions() {
 
 // ---- cloud route (D18, docs/cloud-stt.md §3.2) ------------------------------
 
-use flow_cloud::testing::{MockServer, Reply};
+use flow_cloud::testing::Reply;
 use flow_router::Route;
 use std::sync::atomic::{AtomicU16, Ordering};
 
@@ -425,7 +425,7 @@ struct CloudRig {
     server: TestServer,
     asr: Arc<MockAsr>,
     router: Router,
-    provider: MockServer,
+    provider: MockCloud,
     status: Arc<AtomicU16>,
 }
 
@@ -436,7 +436,7 @@ fn cloud_rig(order: &[Route]) -> CloudRig {
     let (asr, core) = local();
     let status = Arc::new(AtomicU16::new(200));
     let s2 = status.clone();
-    let provider = MockServer::start(move |_, _| match s2.load(Ordering::SeqCst) {
+    let provider = mock_cloud(move |_, _| match s2.load(Ordering::SeqCst) {
         200 => Reply::json(
             200,
             serde_json::json!({"text": "cloud words", "language": "en"}),
@@ -445,7 +445,7 @@ fn cloud_rig(order: &[Route]) -> CloudRig {
     });
     let mut cfg = router_config(server.addr(), true, true);
     cfg.server.commit_timeout_base_ms = 500;
-    let cfg = with_cloud(cfg, cloud_provider(&provider.url("/openai/v1")), order);
+    let cfg = with_cloud(cfg, cloud_provider(), order);
     let router = cloud_router(cfg, Some(core));
     CloudRig {
         server,
@@ -491,7 +491,7 @@ fn matrix_cloud_401_is_auth_failed_sticky_and_local_gets_everything() {
     assert_eq!(engine(&r), ("local".into(), Some("circuit_open".into())));
     assert_eq!(k.provider.count(), 1);
     k.router.set_cloud_key(
-        "groq-1",
+        CLOUD_ID,
         Some(flow_router::SecretString::new("sk-another-key-000")),
     );
     let (_, r) = dictate(&k.router);
@@ -538,10 +538,8 @@ fn matrix_cloud_server_dies_mid_session_replays_to_cloud() {
     let (_, r) = dictate_with(&k.router, || k.server.kill());
     assert_eq!(engine(&r).0, "cloud", "{r:?}");
     assert_eq!(r.asr_text, "cloud words");
-    let up = &k.provider.requests()[0];
-    let file = up.parts().into_iter().find(|p| p.name == "file").unwrap();
     // FLAC of the whole replayed buffer: decode its sample count.
-    let n = claxon::FlacReader::new(std::io::Cursor::new(file.data))
+    let n = claxon::FlacReader::new(std::io::Cursor::new(k.provider.uploaded_audio(0)))
         .unwrap()
         .streaminfo()
         .samples
@@ -560,9 +558,8 @@ fn matrix_cloud_airplane_mode_goes_local() {
     let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = dead.local_addr().unwrap().port();
     drop(dead);
-    let mut cfg = k.router.config();
-    cfg.cloud.providers[0].base_url = format!("http://127.0.0.1:{port}/openai/v1");
-    k.router.update_config(cfg);
+    k.provider
+        .point_at(&format!("http://127.0.0.1:{port}/api/v1"));
     let (_, r) = dictate(&k.router);
     assert_eq!(engine(&r), ("local".into(), Some("connect_failed".into())));
     cloud_full_audio_reached_local(&k, &r);

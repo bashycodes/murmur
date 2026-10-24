@@ -8,7 +8,7 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use flow_cloud::testing::{MockServer, Reply};
+use flow_cloud::testing::Reply;
 use flow_contract_tests::*;
 use flow_core::config::{FieldContext, SessionConfig};
 use flow_core::dictionary::{DictEntry, Dictionary};
@@ -79,13 +79,13 @@ fn router_outputs(r: &Router) -> Vec<(String, String)> {
     ]
 }
 
-fn cloud_only(provider: &MockServer) -> Router {
+fn cloud_only(_provider: &MockCloud) -> Router {
     let cfg = with_cloud(
         RouterConfig {
             allow_server: false,
             ..Default::default()
         },
-        cloud_provider(&provider.url("/openai/v1")),
+        cloud_provider(),
         &[Route::Cloud],
     );
     cloud_router(cfg, None)
@@ -93,7 +93,7 @@ fn cloud_only(provider: &MockServer) -> Router {
 
 #[test]
 fn key_absent_from_every_output_on_success() {
-    let provider = MockServer::fixed(Reply::json(200, serde_json::json!({"text": "hi"})));
+    let provider = mock_cloud_fixed(Reply::json(200, serde_json::json!({"text": "hi"})));
     let r = cloud_only(&provider);
     let res = dictate(&r);
     assert_eq!(res.route.as_ref().unwrap().engine, "cloud");
@@ -134,12 +134,12 @@ fn key_absent_from_every_failure_path() {
     ];
     for reply in replies {
         let status = reply.status;
-        let provider = MockServer::fixed(reply);
+        let provider = mock_cloud_fixed(reply);
         let r = cloud_only(&provider);
         let mut cfg = r.config();
         cfg.cloud.providers[0].timeout_base_ms = 1000;
         r.update_config(cfg);
-        r.set_cloud_key("groq-1", Some(flow_router::SecretString::new(CLOUD_KEY)));
+        r.set_cloud_key(CLOUD_ID, Some(flow_router::SecretString::new(CLOUD_KEY)));
         let res = dictate(&r);
         assert_eq!(res.status, flow_core::CommitStatus::Error, "HTTP {status}");
         let what = format!("HTTP {status}");
@@ -156,11 +156,9 @@ fn key_absent_from_every_failure_path() {
     let dead = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = dead.local_addr().unwrap().port();
     drop(dead);
-    let provider = MockServer::fixed(Reply::raw(200, ""));
+    let provider = mock_cloud_fixed(Reply::raw(200, ""));
     let r = cloud_only(&provider);
-    let mut cfg = r.config();
-    cfg.cloud.providers[0].base_url = format!("http://127.0.0.1:{port}/v1");
-    r.update_config(cfg);
+    provider.point_at(&format!("http://127.0.0.1:{port}/api/v1"));
     let res = dictate(&r);
     assert_eq!(
         res.route.unwrap().fallback.as_deref(),
@@ -171,9 +169,10 @@ fn key_absent_from_every_failure_path() {
 
 #[test]
 fn provider_call_metadata_has_no_key_or_text() {
-    let provider = MockServer::fixed(Reply::json(401, serde_json::json!({})));
+    let provider = mock_cloud_fixed(Reply::json(401, serde_json::json!({})));
+    let _ = &provider;
     let b = flow_cloud::CloudBackend::new(
-        cloud_provider(&provider.url("/openai/v1")),
+        flow_cloud::SttSettings::default(),
         flow_router::SecretString::new(CLOUD_KEY),
         None,
     );
@@ -272,11 +271,11 @@ fn ws_texts(raw: &[u8]) -> (String, Vec<String>) {
 fn start_frame_has_no_cloud_fields() {
     let server = spawn_mock_server("hello");
     let (proxy, log) = recording_proxy(server.addr());
-    let provider = MockServer::fixed(Reply::json(200, serde_json::json!({"text": "cloud"})));
+    let provider = mock_cloud_fixed(Reply::json(200, serde_json::json!({"text": "cloud"})));
     // Server first, cloud configured and allowed as the fallback.
     let cfg = with_cloud(
         router_config(proxy, true, false),
-        cloud_provider(&provider.url("/openai/v1")),
+        cloud_provider(),
         &[Route::Server, Route::Cloud],
     );
     let r = cloud_router(cfg, None);
@@ -303,60 +302,108 @@ fn start_frame_has_no_cloud_fields() {
     assert_clean("raw ws bytes", &String::from_utf8_lossy(&raw));
 }
 
-// ---- P4: every adapter, not only openai_compat --------------------------------
+// ---- D28: the one adapter, both STT paths, cleanup, catalogue, key info ------
 
 #[test]
-fn every_adapter_sends_the_key_only_in_its_own_auth_header() {
-    for (preset, header) in [
-        ("openrouter", "authorization"),
-        ("elevenlabs", "xi-api-key"),
-        ("deepgram", "authorization"),
-        ("assemblyai", "authorization"),
-    ] {
-        // A provider that rejects the key and echoes it back.
-        let provider = MockServer::fixed(Reply::json(
-            401,
-            serde_json::json!({"error": {"message": format!("bad key {CLOUD_KEY}")}}),
-        ));
-        let mut p = flow_cloud::presets()
-            .into_iter()
-            .find(|p| p.preset == preset)
-            .unwrap();
-        p.id = format!("{preset}-1");
-        p.base_url = provider.url("/v1");
-        p.consent_host = "127.0.0.1".into();
-        p.consent_at_ms = 1_792_540_800_000;
-        let cfg = with_cloud(
-            RouterConfig {
-                allow_server: false,
-                ..Default::default()
-            },
-            p,
-            &[Route::Cloud],
-        );
-        let r = cloud_router(cfg, None);
-        let res = dictate(&r);
-        assert_eq!(res.status, flow_core::CommitStatus::Error, "{preset}");
-        assert_clean(preset, &serde_json::to_string(&res).unwrap());
-        for (w, s) in router_outputs(&r) {
-            assert_clean(&format!("{preset} {w}"), &s);
-        }
-        let reqs = provider.requests();
-        assert!(!reqs.is_empty(), "{preset}: provider reached");
-        for req in reqs {
-            let mut seen = false;
-            for (k, v) in &req.headers {
-                if v.contains(CLOUD_KEY) {
-                    assert_eq!(k.to_ascii_lowercase(), header, "{preset}");
-                    seen = true;
-                }
-            }
-            assert!(seen, "{preset}: key in {header}");
-            assert!(!req.target.contains(CLOUD_KEY), "{preset}: key in URL");
-            assert!(
-                !String::from_utf8_lossy(&req.body).contains(CLOUD_KEY),
-                "{preset}: key in body"
-            );
+fn openrouter_sends_the_key_only_in_authorization() {
+    // A provider that rejects the key and echoes it back.
+    let provider = mock_cloud_fixed(Reply::json(
+        401,
+        serde_json::json!({"error": {"code": 401, "message": format!("bad key {CLOUD_KEY}")}}),
+    ));
+    let cfg = with_cloud(
+        RouterConfig {
+            allow_server: false,
+            ..Default::default()
+        },
+        cloud_provider(),
+        &[Route::Cloud],
+    );
+    let r = cloud_router(cfg, None);
+    let res = dictate(&r);
+    assert_eq!(res.status, flow_core::CommitStatus::Error);
+    assert_clean("openrouter", &serde_json::to_string(&res).unwrap());
+    for (w, s) in router_outputs(&r) {
+        assert_clean(&format!("openrouter {w}"), &s);
+    }
+    let reqs = provider.requests();
+    assert!(!reqs.is_empty(), "provider reached");
+    for req in reqs {
+        assert_key_only_in_auth(&req);
+    }
+}
+
+fn assert_key_only_in_auth(req: &flow_cloud::testing::Recorded) {
+    let mut seen = false;
+    for (k, v) in &req.headers {
+        if v.contains(CLOUD_KEY) {
+            assert_eq!(k.to_ascii_lowercase(), "authorization", "{}", req.target);
+            seen = true;
         }
     }
+    assert!(seen, "key in authorization: {}", req.target);
+    assert!(!req.target.contains(CLOUD_KEY), "key in URL");
+    assert!(
+        !String::from_utf8_lossy(&req.body).contains(CLOUD_KEY),
+        "key in body"
+    );
+}
+
+#[test]
+fn cleaner_catalogue_and_key_info_never_leak_the_key() {
+    use std::time::Instant;
+    let echo = format!("bad key {CLOUD_KEY}");
+    let provider = mock_cloud(move |r, _| match r.path() {
+        "/api/v1/key" => Reply::json(
+            200,
+            serde_json::json!({"data": {"label": "x", "limit": null}}),
+        ),
+        "/api/v1/models/user" => Reply::json(
+            401,
+            serde_json::json!({"error": {"code": 401, "message": echo}}),
+        ),
+        p if p.starts_with("/api/v1/models") || p == "/api/v1/endpoints/zdr" => {
+            Reply::json(200, serde_json::json!({"data": []}))
+        }
+        _ => Reply::json(
+            503,
+            serde_json::json!({"error": {"code": 503, "message": format!("routing requirements {CLOUD_KEY}")}}),
+        ),
+    });
+    let key = flow_router::SecretString::new(CLOUD_KEY);
+    // Cleaner: error path + info + last call.
+    let c = flow_cloud::OpenRouterCleaner::new(flow_cloud::CleanupSettings::default(), key.clone());
+    let p = flow_core::cleanup::warm_prompt();
+    let e = flow_core::cleanup::Cleaner::clean(&c, &p, Instant::now() + Duration::from_secs(3))
+        .unwrap_err();
+    assert_clean("cleanup error", &e.to_string());
+    assert_eq!(e.to_string(), "no_private_route");
+    assert_clean(
+        "cleaner info",
+        &flow_core::cleanup::Cleaner::info_json(&c).unwrap(),
+    );
+    assert_clean("cleaner last_call", &format!("{:?}", c.last_call()));
+    assert_clean("cleaner debug", &format!("{c:?}"));
+    // Catalogue with a key (the account list fails and echoes the key).
+    let cat = flow_cloud::catalog::refresh(&flow_cloud::Api::new(), Some(&key)).unwrap();
+    assert_clean("catalogue", &cat.to_json());
+    // Key info.
+    let k = flow_cloud::keyinfo::fetch(&key).unwrap();
+    assert_clean("key info", &serde_json::to_string(&k).unwrap());
+    assert_clean("key info debug", &format!("{k:?}"));
+    for req in provider.requests() {
+        if req.header("authorization").is_some() {
+            assert_key_only_in_auth(&req);
+        } else {
+            assert!(!String::from_utf8_lossy(&req.body).contains(CLOUD_KEY));
+            assert!(!req.target.contains(CLOUD_KEY));
+        }
+    }
+    assert!(
+        provider
+            .requests()
+            .iter()
+            .any(|r| r.path() == "/api/v1/chat/completions"),
+        "cleaner reached the mock"
+    );
 }

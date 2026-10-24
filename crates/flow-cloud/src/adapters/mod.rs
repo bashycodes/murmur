@@ -1,16 +1,15 @@
-//! One adapter per wire format (docs/cloud-stt.md §2, §6.2, §7).
+//! The STT adapter seam (docs/cloud-stt.md). D28: OpenRouter is the only
+//! provider, so [`openrouter::OpenRouterStt`] is the only implementation;
+//! the trait stays so the chunking / encoding driver in `lib.rs` is
+//! testable on its own.
 
 use std::time::Instant;
 
-use flow_router::{CloudProviderConfig, SecretString};
+use flow_router::SecretString;
 
 use crate::encode::{AudioFormat, EncodedAudio};
-use crate::http::{Client, CloudError};
+use crate::http::CloudError;
 
-pub mod assemblyai;
-pub mod deepgram;
-pub mod elevenlabs;
-pub mod openai_compat;
 pub mod openrouter;
 
 /// One upload.
@@ -32,6 +31,7 @@ pub struct CloudTranscript {
     pub billed_audio_ms: Option<u32>,
     /// Provider-reported cost (OpenRouter `usage.cost`).
     pub cost_usd: Option<f64>,
+    /// `X-Generation-Id` (or the body's `id`), for the deferred cost lookup.
     pub request_id: Option<String>,
 }
 
@@ -88,7 +88,7 @@ impl TermBudget {
 }
 
 pub trait CloudAdapter: Send + Sync {
-    /// `"openai_compat"`, `"openrouter"`, …
+    /// `"openrouter"`.
     fn id(&self) -> &'static str;
     fn preferred_format(&self) -> AudioFormat;
     /// Chunk above this many encoded bytes.
@@ -98,20 +98,13 @@ pub trait CloudAdapter: Send + Sync {
     fn term_budget(&self) -> TermBudget;
     fn transcribe(
         &self,
-        http: &Client,
         key: &SecretString,
         req: &CloudRequest,
     ) -> Result<CloudTranscript, CloudError>;
-}
-
-/// The adapter for a provider config (validated by the router).
-pub fn for_provider(p: &CloudProviderConfig) -> Box<dyn CloudAdapter> {
-    match p.adapter.as_str() {
-        "openrouter" => Box::new(openrouter::OpenRouter::new(p)),
-        "elevenlabs" => Box::new(elevenlabs::ElevenLabs::new(p)),
-        "deepgram" => Box::new(deepgram::Deepgram::new(p)),
-        "assemblyai" => Box::new(assemblyai::AssemblyAi::new(p)),
-        _ => Box::new(openai_compat::OpenAiCompat::new(p)),
+    /// A format-400 was answered for `format`: use WAV from now on.
+    /// Returns whether a retry with WAV makes sense.
+    fn format_rejected(&self, _format: AudioFormat) -> bool {
+        false
     }
 }
 
@@ -120,13 +113,6 @@ pub(crate) fn secs_to_ms(v: Option<&serde_json::Value>) -> Option<u32> {
     v.and_then(|v| v.as_f64())
         .filter(|s| s.is_finite() && *s >= 0.0)
         .map(|s| (s * 1000.0).round() as u32)
-}
-
-pub(crate) fn text_of(v: &serde_json::Value, ptr: &str) -> Result<String, CloudError> {
-    v.pointer(ptr)
-        .and_then(|t| t.as_str())
-        .map(|s| s.trim().to_string())
-        .ok_or(CloudError::Malformed)
 }
 
 #[cfg(test)]

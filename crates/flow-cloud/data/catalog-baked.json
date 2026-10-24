@@ -1,0 +1,3469 @@
+{
+ "models": {
+  "data": [
+   {
+    "architecture": {
+     "input_modalities": [
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 128000,
+    "id": "amazon/nova-micro-v1",
+    "name": "Amazon: Nova Micro 1.0",
+    "pricing": {
+     "completion": "0.00000014",
+     "prompt": "0.000000035"
+    },
+    "supported_parameters": [
+     "max_tokens",
+     "stop",
+     "temperature",
+     "tools",
+     "top_k",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 5120
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "assemblyai/universal-3-5-pro",
+    "name": "AssemblyAI: Universal-3.5 Pro",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000833333"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "assemblyai/universal-3-6-pro",
+    "name": "AssemblyAI: Universal-3.6 Pro",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000833333"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "deepgram/nova-3",
+    "name": "Deepgram: Nova-3",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000716666666667"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1048576,
+    "id": "deepseek/deepseek-v4-flash-0731",
+    "name": "DeepSeek: DeepSeek V4 Flash 0731",
+    "pricing": {
+     "completion": "0.00000013332",
+     "prompt": "0.00000004444"
+    },
+    "reasoning": {
+     "mandatory": false,
+     "supported_efforts": [
+      "max",
+      "high",
+      "low",
+      "none"
+     ]
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "include_reasoning",
+     "logit_bias",
+     "logprobs",
+     "max_tokens",
+     "min_p",
+     "parallel_tool_calls",
+     "presence_penalty",
+     "reasoning",
+     "reasoning_effort",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_a",
+     "top_k",
+     "top_logprobs",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 131072
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "elevenlabs/scribe-v2",
+    "name": "ElevenLabs: Scribe v2",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000611111111111"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "elevenlabs/scribe-v2-medical",
+    "name": "ElevenLabs: Scribe v2 Medical",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000611111111111"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "fish-audio/transcribe-1",
+    "name": "Fish Audio: Transcribe 1",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0001"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "fish-audio/transcribe-1-pro",
+    "name": "Fish Audio: Transcribe 1 Pro",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0001"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "google/chirp-3",
+    "name": "Google: Chirp 3",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.000266666666667"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "file",
+      "image",
+      "text",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1048576,
+    "id": "google/gemini-2.5-pro-preview",
+    "name": "Google: Gemini 2.5 Pro Preview 06-05",
+    "pricing": {
+     "audio": "0.00000125",
+     "completion": "0.00001",
+     "prompt": "0.00000125"
+    },
+    "reasoning": {
+     "mandatory": true
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 65536
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "file",
+      "audio",
+      "video"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1048576,
+    "id": "google/gemini-3-flash-preview",
+    "name": "Google: Gemini 3 Flash Preview",
+    "pricing": {
+     "audio": "0.000001",
+     "completion": "0.000003",
+     "prompt": "0.0000005"
+    },
+    "reasoning": {
+     "mandatory": false,
+     "supported_efforts": [
+      "high",
+      "medium",
+      "low",
+      "minimal",
+      "none"
+     ]
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 65536
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "video",
+      "file",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1048576,
+    "id": "google/gemini-3.1-flash-lite",
+    "name": "Google: Gemini 3.1 Flash Lite",
+    "pricing": {
+     "audio": "0.0000005",
+     "completion": "0.0000015",
+     "prompt": "0.00000025"
+    },
+    "reasoning": {
+     "mandatory": false,
+     "supported_efforts": [
+      "high",
+      "medium",
+      "low",
+      "minimal",
+      "none"
+     ]
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 65536
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio",
+      "file",
+      "image",
+      "text",
+      "video"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1048576,
+    "id": "google/gemini-3.1-pro-preview",
+    "name": "Google: Gemini 3.1 Pro Preview",
+    "pricing": {
+     "audio": "0.000002",
+     "completion": "0.000012",
+     "prompt": "0.000002"
+    },
+    "reasoning": {
+     "mandatory": true,
+     "supported_efforts": [
+      "high",
+      "medium",
+      "low"
+     ]
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 65536
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "video",
+      "file",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1048576,
+    "id": "google/gemini-3.5-flash",
+    "name": "Google: Gemini 3.5 Flash",
+    "pricing": {
+     "audio": "0.000003",
+     "completion": "0.000009",
+     "prompt": "0.0000015"
+    },
+    "reasoning": {
+     "mandatory": true,
+     "supported_efforts": [
+      "high",
+      "medium",
+      "low",
+      "minimal"
+     ]
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 65536
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "video",
+      "file",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1048576,
+    "id": "google/gemini-3.5-flash-lite",
+    "name": "Google: Gemini 3.5 Flash Lite",
+    "pricing": {
+     "audio": "0.0000003",
+     "completion": "0.0000025",
+     "prompt": "0.0000003"
+    },
+    "reasoning": {
+     "mandatory": true,
+     "supported_efforts": [
+      "high",
+      "medium",
+      "low",
+      "minimal"
+     ]
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 65536
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 98304,
+    "id": "google/gemini-3.5-transcribe",
+    "name": "Google: Gemini 3.5 Transcribe",
+    "pricing": {
+     "completion": "0.000012",
+     "prompt": "0.000002"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 32768
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "video",
+      "file",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1048576,
+    "id": "google/gemini-3.6-flash",
+    "name": "Google: Gemini 3.6 Flash",
+    "pricing": {
+     "audio": "0.00000075",
+     "completion": "0.00000375",
+     "prompt": "0.00000075"
+    },
+    "reasoning": {
+     "mandatory": true,
+     "supported_efforts": [
+      "high",
+      "medium",
+      "low",
+      "minimal"
+     ]
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 65536
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "video",
+      "file",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1048576,
+    "id": "google/gemini-3.7-flash",
+    "name": "Google: Gemini 3.7 Flash",
+    "pricing": {
+     "audio": "0.00000075",
+     "completion": "0.00000375",
+     "prompt": "0.00000075"
+    },
+    "reasoning": {
+     "mandatory": true,
+     "supported_efforts": [
+      "high",
+      "medium",
+      "low"
+     ]
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 65536
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "video",
+      "file",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1048576,
+    "id": "google/gemini-3.8-flash",
+    "name": "Google: Gemini 3.8 Flash",
+    "pricing": {
+     "audio": "0.000000825",
+     "completion": "0.000004125",
+     "prompt": "0.000000825"
+    },
+    "reasoning": {
+     "mandatory": true,
+     "supported_efforts": [
+      "high",
+      "medium",
+      "low"
+     ]
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 65536
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio",
+      "file",
+      "image",
+      "text",
+      "video"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1048576,
+    "id": "google/gemini-4-argon",
+    "name": "Google: Gemini 4 Argon",
+    "pricing": {
+     "audio": "0.000002",
+     "completion": "0.00001",
+     "prompt": "0.000002"
+    },
+    "reasoning": {
+     "mandatory": true,
+     "supported_efforts": [
+      "high",
+      "medium",
+      "low"
+     ]
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 943718
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 131072,
+    "id": "google/gemma-3-4b-it",
+    "name": "Google: Gemma 3 4B",
+    "pricing": {
+     "completion": "0.00000005",
+     "prompt": "0.00000004"
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "logit_bias",
+     "logprobs",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "top_k",
+     "top_logprobs",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 117964
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 8192,
+    "id": "gryphe/mythomax-l2-13b",
+    "name": "MythoMax 13B",
+    "pricing": {
+     "completion": "0.00000011",
+     "prompt": "0.00000008"
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "logit_bias",
+     "logprobs",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "top_a",
+     "top_k",
+     "top_logprobs",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 3686
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 131000,
+    "id": "ibm-granite/granite-4.0-h-micro",
+    "name": "IBM: Granite 4.0 Micro",
+    "pricing": {
+     "completion": "0.000000112",
+     "prompt": "0.000000017"
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "logit_bias",
+     "logprobs",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "temperature",
+     "top_k",
+     "top_logprobs",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 117900
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 260000,
+    "id": "inception/mercury-2.5",
+    "name": "Inception: Mercury 2.5",
+    "pricing": {
+     "completion": "0.00000015",
+     "prompt": "0.00000004"
+    },
+    "reasoning": {
+     "mandatory": false,
+     "supported_efforts": [
+      "high",
+      "medium",
+      "low",
+      "none"
+     ]
+    },
+    "supported_parameters": [
+     "include_reasoning",
+     "max_tokens",
+     "reasoning",
+     "reasoning_effort",
+     "response_format",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 65536
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 262144,
+    "id": "inclusionai/ling-3.0-flash",
+    "name": "inclusionAI: Ling 3.0 Flash",
+    "pricing": {
+     "completion": "0.000000063",
+     "prompt": "0.000000021"
+    },
+    "reasoning": {
+     "mandatory": false
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "include_reasoning",
+     "logit_bias",
+     "logprobs",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "reasoning",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_logprobs",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 32768
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 128000,
+    "id": "inference-net/schematron-v2-turbo",
+    "name": "Inference.net: Schematron V2 Turbo",
+    "pricing": {
+     "completion": "0.00000015",
+     "prompt": "0.00000003"
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "logit_bias",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "top_k",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 8192
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 131072,
+    "id": "meta-llama/llama-3.1-8b-instruct",
+    "name": "Meta: Llama 3.1 8B Instruct",
+    "pricing": {
+     "completion": "0.00000008",
+     "prompt": "0.00000005"
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "logit_bias",
+     "logprobs",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_logprobs",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 117964
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 131072,
+    "id": "meta-llama/llama-3.3-70b-instruct",
+    "name": "Meta: Llama 3.3 70B Instruct",
+    "pricing": {
+     "completion": "0.00000032",
+     "prompt": "0.0000001"
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "logit_bias",
+     "logprobs",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_logprobs",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 16384
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "video",
+      "file",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1048576,
+    "id": "meta/muse-spark-open",
+    "name": "Meta: Muse Spark Open",
+    "pricing": {
+     "completion": "0.00000425",
+     "prompt": "0.00000125"
+    },
+    "reasoning": {
+     "mandatory": true,
+     "supported_efforts": [
+      "xhigh",
+      "high",
+      "medium",
+      "low"
+     ]
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "include_reasoning",
+     "logit_bias",
+     "logprobs",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "reasoning",
+     "reasoning_effort",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_logprobs",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 943718
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "meta/muse-voice-transcribe-1.0",
+    "name": "Meta: Muse Voice Transcribe 1.0",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.00005"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "microsoft/mai-transcribe-1.5",
+    "name": "Microsoft AI: MAI-Transcribe 1.5",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.36"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "microsoft/mai-transcribe-2",
+    "name": "Microsoft AI: MAI-Transcribe 2",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.1"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 131072,
+    "id": "mistralai/ministral-3b-2512",
+    "name": "Mistral: Ministral 3 3B 2512",
+    "pricing": {
+     "completion": "0.0000001",
+     "prompt": "0.0000001"
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "max_tokens",
+     "presence_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 104857
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 131072,
+    "id": "mistralai/mistral-nemo",
+    "name": "Mistral: Mistral Nemo",
+    "pricing": {
+     "completion": "0.00000003",
+     "prompt": "0.000000029"
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "logit_bias",
+     "logprobs",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_logprobs",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 16384
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 32768,
+    "id": "mistralai/mistral-small-24b-instruct-2501",
+    "name": "Mistral: Mistral Small 3",
+    "pricing": {
+     "completion": "0.00000008",
+     "prompt": "0.00000005"
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "logit_bias",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "top_k",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 16384
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "image",
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 256000,
+    "id": "mistralai/mistral-small-3.2-24b-instruct",
+    "name": "Mistral: Mistral Small 3.2 24B",
+    "pricing": {
+     "completion": "0.0000002",
+     "prompt": "0.000000075"
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "logit_bias",
+     "logprobs",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_logprobs",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 16384
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "mistralai/voxtral-mini-3b-2507",
+    "name": "Mistral: Voxtral Mini 3B 2507",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000166667"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 16384,
+    "id": "mistralai/voxtral-mini-transcribe",
+    "name": "Mistral: Voxtral Mini Transcribe",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.00005"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 13107
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 65536,
+    "id": "mistralai/voxtral-mini-transcribe-3-0",
+    "name": "Mistral: Voxtral Mini Transcribe 3",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000583333"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 52428
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "audio",
+      "file"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 32768,
+    "id": "mistralai/voxtral-small-24b-2507",
+    "name": "Mistral: Voxtral Small 24B 2507",
+    "pricing": {
+     "audio": "0.0001",
+     "completion": "0.0000003",
+     "prompt": "0.0000001"
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "max_tokens",
+     "presence_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 26214
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "mistralai/voxtral-small-24b-2507-stt",
+    "name": "Mistral: Voxtral Small 24B 2507 STT",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.00005"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 65536,
+    "id": "mistralai/voxtral-small-transcribe-3-0",
+    "name": "Mistral: Voxtral Small Transcribe 3",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000666667"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 52428
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "nvidia/nemotron-3.5-asr-streaming-multilingual-0.6b",
+    "name": "NVIDIA: Nemotron 3.5 ASR Streaming Multilingual 0.6B",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.00000333"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "nvidia/parakeet-tdt-0.6b-v3",
+    "name": "NVIDIA: Parakeet TDT 0.6B v3",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.000025"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 128000,
+    "id": "openai/gpt-4o-mini-transcribe",
+    "name": "OpenAI: GPT-4o Mini Transcribe",
+    "pricing": {
+     "completion": "0.000005",
+     "prompt": "0.00000125"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 115200
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 128000,
+    "id": "openai/gpt-4o-transcribe",
+    "name": "OpenAI: GPT-4o Transcribe",
+    "pricing": {
+     "completion": "0.00001",
+     "prompt": "0.0000025"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 115200
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 131072,
+    "id": "openai/gpt-oss-20b",
+    "name": "OpenAI: gpt-oss-20b",
+    "pricing": {
+     "completion": "0.00000009",
+     "prompt": "0.000000018"
+    },
+    "reasoning": {
+     "mandatory": true,
+     "supported_efforts": [
+      "high",
+      "medium",
+      "low"
+     ]
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "include_reasoning",
+     "logit_bias",
+     "logprobs",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "reasoning",
+     "reasoning_effort",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_logprobs",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 32768
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "openai/gpt-transcribe",
+    "name": "OpenAI: GPT Transcribe",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.000075"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "openai/whisper-1",
+    "name": "OpenAI: Whisper 1",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0001"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "openai/whisper-large-v3",
+    "name": "OpenAI: Whisper Large V3",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000075"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "openai/whisper-large-v3-turbo",
+    "name": "OpenAI: Whisper Large V3 Turbo",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.00000333"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "video",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 36864,
+    "id": "perceptron/perceptron-mk1.5",
+    "name": "Perceptron: Perceptron Mk1.5",
+    "pricing": {
+     "completion": "0.0000015",
+     "prompt": "0.00000015"
+    },
+    "reasoning": {
+     "mandatory": false,
+     "supported_efforts": [
+      "high",
+      "medium",
+      "low",
+      "minimal",
+      "none"
+     ]
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "include_reasoning",
+     "max_tokens",
+     "presence_penalty",
+     "reasoning",
+     "reasoning_effort",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 8192
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "qwen/qwen3-asr-0.6b",
+    "name": "Qwen: Qwen3 ASR 0.6B",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.00000333"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "qwen/qwen3-asr-1.7b",
+    "name": "Qwen: Qwen3 ASR 1.7B",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000075"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "image",
+      "text",
+      "video"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 16384,
+    "id": "rekaai/reka-edge",
+    "name": "Reka Edge",
+    "pricing": {
+     "completion": "0.0000001",
+     "prompt": "0.0000001"
+    },
+    "reasoning": {
+     "mandatory": false
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "logprobs",
+     "max_tokens",
+     "presence_penalty",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_logprobs",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 14745
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 8192,
+    "id": "sao10k/l3-lunaris-8b",
+    "name": "Sao10K: Llama 3 8B Lunaris",
+    "pricing": {
+     "completion": "0.00000005",
+     "prompt": "0.00000004"
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "logit_bias",
+     "logprobs",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "top_k",
+     "top_logprobs",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 7372
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "file"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1000000,
+    "id": "scaledown/extract",
+    "name": "ScaleDown: Extract",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.00000004"
+    },
+    "supported_parameters": [
+     "max_tokens"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 900000
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "file"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1000000,
+    "id": "scaledown/summarize",
+    "name": "ScaleDown: Summarize",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.00000004"
+    },
+    "supported_parameters": [
+     "max_tokens"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 4000
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 524288,
+    "id": "thinkingmachines/inkling",
+    "name": "Thinking Machines: Inkling",
+    "pricing": {
+     "completion": "0.00000405",
+     "prompt": "0.000001"
+    },
+    "reasoning": {
+     "mandatory": false,
+     "supported_efforts": [
+      "max",
+      "high",
+      "medium",
+      "low",
+      "minimal",
+      "none"
+     ]
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "include_reasoning",
+     "logit_bias",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "reasoning",
+     "reasoning_effort",
+     "repetition_penalty",
+     "stop",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 471859
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 524288,
+    "id": "thinkingmachines/inkling-small",
+    "name": "Thinking Machines: Inkling Small",
+    "pricing": {
+     "completion": "0.0000012",
+     "prompt": "0.00000045"
+    },
+    "reasoning": {
+     "mandatory": false,
+     "supported_efforts": [
+      "max",
+      "high",
+      "medium",
+      "low",
+      "minimal",
+      "none"
+     ]
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "include_reasoning",
+     "logit_bias",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "reasoning",
+     "reasoning_effort",
+     "repetition_penalty",
+     "seed",
+     "stop",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 262144
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "audio"
+     ],
+     "output_modalities": [
+      "transcription"
+     ]
+    },
+    "context_length": 0,
+    "id": "x-ai/grok-stt-1.0",
+    "name": "SpaceXAI: Grok STT 1.0",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000277777777778"
+    },
+    "supported_parameters": [],
+    "top_provider": {
+     "max_completion_tokens": 0
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "audio",
+      "image",
+      "video"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1050000,
+    "id": "xiaomi/mimo-v2.5",
+    "name": "Xiaomi: MiMo-V2.5",
+    "pricing": {
+     "completion": "0.000000238",
+     "prompt": "0.000000119"
+    },
+    "reasoning": {
+     "mandatory": false
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "include_reasoning",
+     "max_tokens",
+     "presence_penalty",
+     "reasoning",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 945000
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "video",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1050000,
+    "id": "xiaomi/mimo-v2.6-flash",
+    "name": "Xiaomi: MiMo-V2.6-Flash",
+    "pricing": {
+     "completion": "0.00000028",
+     "prompt": "0.00000014"
+    },
+    "reasoning": {
+     "mandatory": false
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "include_reasoning",
+     "logit_bias",
+     "logprobs",
+     "max_tokens",
+     "min_p",
+     "parallel_tool_calls",
+     "presence_penalty",
+     "reasoning",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_logprobs",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 131072
+    }
+   },
+   {
+    "architecture": {
+     "input_modalities": [
+      "text",
+      "image",
+      "video",
+      "audio"
+     ],
+     "output_modalities": [
+      "text"
+     ]
+    },
+    "context_length": 1050000,
+    "id": "xiaomi/mimo-v2.6-pro",
+    "name": "Xiaomi: MiMo-V2.6-Pro",
+    "pricing": {
+     "completion": "0.00000087",
+     "prompt": "0.000000435"
+    },
+    "reasoning": {
+     "mandatory": false
+    },
+    "supported_parameters": [
+     "frequency_penalty",
+     "include_reasoning",
+     "logit_bias",
+     "max_tokens",
+     "min_p",
+     "presence_penalty",
+     "reasoning",
+     "repetition_penalty",
+     "response_format",
+     "seed",
+     "stop",
+     "structured_outputs",
+     "temperature",
+     "tool_choice",
+     "tools",
+     "top_k",
+     "top_p"
+    ],
+    "top_provider": {
+     "max_completion_tokens": 131072
+    }
+   }
+  ]
+ },
+ "snapshot_date": "2026-10-24",
+ "source_note": "trimmed from docs/proposals/data/*-2026-10-24.json by tools/gen-openrouter-catalog.py",
+ "zdr": {
+  "data": [
+   {
+    "model_id": "amazon/nova-micro-v1",
+    "pricing": {
+     "completion": "0.00000014",
+     "prompt": "0.000000035"
+    },
+    "tag": "amazon-bedrock"
+   },
+   {
+    "model_id": "amazon/nova-micro-v1",
+    "pricing": {
+     "completion": "0.00000014",
+     "prompt": "0.000000035"
+    },
+    "tag": "amazon-bedrock/eu-west-1"
+   },
+   {
+    "model_id": "assemblyai/universal-3-5-pro",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000833333"
+    },
+    "tag": "assemblyai"
+   },
+   {
+    "model_id": "assemblyai/universal-3-6-pro",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000833333"
+    },
+    "tag": "assemblyai"
+   },
+   {
+    "model_id": "deepgram/nova-3",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000716666666667"
+    },
+    "tag": "deepgram"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.00000026",
+     "prompt": "0.00000013"
+    },
+    "tag": "baseten/fp32"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.00000026",
+     "prompt": "0.00000013"
+    },
+    "tag": "baseten/fp8"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.00000132",
+     "prompt": "0.00000044"
+    },
+    "tag": "cloudflare"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.00000028",
+     "prompt": "0.00000014"
+    },
+    "tag": "cohere"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.00000028",
+     "prompt": "0.00000013"
+    },
+    "tag": "coreweave/fp8"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.00000018",
+     "prompt": "0.00000006"
+    },
+    "tag": "deepinfra/fp8"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.000000238",
+     "prompt": "0.000000119"
+    },
+    "tag": "digitalocean"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.0000003666",
+     "prompt": "0.00000011"
+    },
+    "tag": "inceptron/fp4"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.0000006",
+     "prompt": "0.0000002"
+    },
+    "tag": "mancer/fp8"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.0000012276",
+     "prompt": "0.0000004092"
+    },
+    "tag": "novita/fp8"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.00000028",
+     "prompt": "0.00000014"
+    },
+    "tag": "parasail/fp8"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.000000924",
+     "prompt": "0.000000308"
+    },
+    "tag": "phala"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.000000528",
+     "prompt": "0.00000005"
+    },
+    "tag": "reka"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.0000001694",
+     "prompt": "0.0000000422"
+    },
+    "tag": "relace/fp4"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.00000015",
+     "prompt": "0.00000015"
+    },
+    "tag": "sail-research/fp4"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.00000015",
+     "prompt": "0.00000015"
+    },
+    "tag": "sail-research/us"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.00000066",
+     "prompt": "0.00000022"
+    },
+    "tag": "siliconflow/fp8"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.00000026",
+     "prompt": "0.00000013"
+    },
+    "tag": "venice"
+   },
+   {
+    "model_id": "deepseek/deepseek-v4-flash-0731",
+    "pricing": {
+     "completion": "0.00000023",
+     "prompt": "0.00000013"
+    },
+    "tag": "wafer/fast"
+   },
+   {
+    "model_id": "elevenlabs/scribe-v2",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000611111111111"
+    },
+    "tag": "elevenlabs"
+   },
+   {
+    "model_id": "elevenlabs/scribe-v2-medical",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000611111111111"
+    },
+    "tag": "elevenlabs"
+   },
+   {
+    "model_id": "fish-audio/transcribe-1",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0001"
+    },
+    "tag": "fish-audio"
+   },
+   {
+    "model_id": "fish-audio/transcribe-1-pro",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0001"
+    },
+    "tag": "fish-audio"
+   },
+   {
+    "model_id": "google/chirp-3",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.000266666666667"
+    },
+    "tag": "google-vertex"
+   },
+   {
+    "model_id": "google/gemini-2.5-pro-preview",
+    "pricing": {
+     "audio": "0.00000125",
+     "completion": "0.00001",
+     "prompt": "0.00000125"
+    },
+    "tag": "google-vertex/global"
+   },
+   {
+    "model_id": "google/gemini-3-flash-preview",
+    "pricing": {
+     "audio": "0.000001",
+     "completion": "0.000003",
+     "prompt": "0.0000005"
+    },
+    "tag": "google-vertex/global"
+   },
+   {
+    "model_id": "google/gemini-3-flash-preview",
+    "pricing": {
+     "audio": "0.0000005",
+     "completion": "0.0000015",
+     "prompt": "0.00000025"
+    },
+    "tag": "google-vertex/global/flex"
+   },
+   {
+    "model_id": "google/gemini-3-flash-preview",
+    "pricing": {
+     "audio": "0.0000018",
+     "completion": "0.0000054",
+     "prompt": "0.0000009"
+    },
+    "tag": "google-vertex/global/priority"
+   },
+   {
+    "model_id": "google/gemini-3.1-flash-lite",
+    "pricing": {
+     "audio": "0.00000055",
+     "completion": "0.00000165",
+     "prompt": "0.000000275"
+    },
+    "tag": "google-vertex/eu"
+   },
+   {
+    "model_id": "google/gemini-3.1-flash-lite",
+    "pricing": {
+     "audio": "0.0000005",
+     "completion": "0.0000015",
+     "prompt": "0.00000025"
+    },
+    "tag": "google-vertex/global"
+   },
+   {
+    "model_id": "google/gemini-3.1-flash-lite",
+    "pricing": {
+     "audio": "0.00000025",
+     "completion": "0.00000075",
+     "prompt": "0.000000125"
+    },
+    "tag": "google-vertex/global/flex"
+   },
+   {
+    "model_id": "google/gemini-3.1-flash-lite",
+    "pricing": {
+     "audio": "0.0000009",
+     "completion": "0.0000027",
+     "prompt": "0.00000045"
+    },
+    "tag": "google-vertex/global/priority"
+   },
+   {
+    "model_id": "google/gemini-3.1-flash-lite",
+    "pricing": {
+     "audio": "0.00000055",
+     "completion": "0.00000165",
+     "prompt": "0.000000275"
+    },
+    "tag": "google-vertex/us"
+   },
+   {
+    "model_id": "google/gemini-3.1-pro-preview",
+    "pricing": {
+     "audio": "0.000002",
+     "completion": "0.000012",
+     "prompt": "0.000002"
+    },
+    "tag": "google-vertex/global"
+   },
+   {
+    "model_id": "google/gemini-3.1-pro-preview",
+    "pricing": {
+     "audio": "0.000001",
+     "completion": "0.000006",
+     "prompt": "0.000001"
+    },
+    "tag": "google-vertex/global/flex"
+   },
+   {
+    "model_id": "google/gemini-3.1-pro-preview",
+    "pricing": {
+     "audio": "0.0000036",
+     "completion": "0.0000216",
+     "prompt": "0.0000036"
+    },
+    "tag": "google-vertex/global/priority"
+   },
+   {
+    "model_id": "google/gemini-3.5-flash",
+    "pricing": {
+     "audio": "0.000003",
+     "completion": "0.000009",
+     "prompt": "0.0000015"
+    },
+    "tag": "google-vertex/global"
+   },
+   {
+    "model_id": "google/gemini-3.5-flash",
+    "pricing": {
+     "audio": "0.0000015",
+     "completion": "0.0000045",
+     "prompt": "0.00000075"
+    },
+    "tag": "google-vertex/global/flex"
+   },
+   {
+    "model_id": "google/gemini-3.5-flash",
+    "pricing": {
+     "audio": "0.0000054",
+     "completion": "0.0000162",
+     "prompt": "0.0000027"
+    },
+    "tag": "google-vertex/global/priority"
+   },
+   {
+    "model_id": "google/gemini-3.5-flash",
+    "pricing": {
+     "audio": "0.0000033",
+     "completion": "0.0000099",
+     "prompt": "0.00000165"
+    },
+    "tag": "google-vertex/us"
+   },
+   {
+    "model_id": "google/gemini-3.5-flash-lite",
+    "pricing": {
+     "audio": "0.00000033",
+     "completion": "0.00000275",
+     "prompt": "0.00000033"
+    },
+    "tag": "google-vertex/eu"
+   },
+   {
+    "model_id": "google/gemini-3.5-flash-lite",
+    "pricing": {
+     "audio": "0.0000003",
+     "completion": "0.0000025",
+     "prompt": "0.0000003"
+    },
+    "tag": "google-vertex/global"
+   },
+   {
+    "model_id": "google/gemini-3.5-flash-lite",
+    "pricing": {
+     "audio": "0.00000015",
+     "completion": "0.00000125",
+     "prompt": "0.00000015"
+    },
+    "tag": "google-vertex/global/flex"
+   },
+   {
+    "model_id": "google/gemini-3.5-flash-lite",
+    "pricing": {
+     "audio": "0.00000054",
+     "completion": "0.0000045",
+     "prompt": "0.00000054"
+    },
+    "tag": "google-vertex/global/priority"
+   },
+   {
+    "model_id": "google/gemini-3.5-flash-lite",
+    "pricing": {
+     "audio": "0.00000033",
+     "completion": "0.00000275",
+     "prompt": "0.00000033"
+    },
+    "tag": "google-vertex/us"
+   },
+   {
+    "model_id": "google/gemini-3.6-flash",
+    "pricing": {
+     "audio": "0.00000075",
+     "completion": "0.00000375",
+     "prompt": "0.00000075"
+    },
+    "tag": "google-vertex/global"
+   },
+   {
+    "model_id": "google/gemini-3.6-flash",
+    "pricing": {
+     "audio": "0.000000375",
+     "completion": "0.000001875",
+     "prompt": "0.000000375"
+    },
+    "tag": "google-vertex/global/flex"
+   },
+   {
+    "model_id": "google/gemini-3.6-flash",
+    "pricing": {
+     "audio": "0.00000135",
+     "completion": "0.00000675",
+     "prompt": "0.00000135"
+    },
+    "tag": "google-vertex/global/priority"
+   },
+   {
+    "model_id": "google/gemini-3.6-flash",
+    "pricing": {
+     "audio": "0.000000825",
+     "completion": "0.000004125",
+     "prompt": "0.000000825"
+    },
+    "tag": "google-vertex/us"
+   },
+   {
+    "model_id": "google/gemini-3.7-flash",
+    "pricing": {
+     "audio": "0.00000075",
+     "completion": "0.00000375",
+     "prompt": "0.00000075"
+    },
+    "tag": "google-vertex/global"
+   },
+   {
+    "model_id": "google/gemini-3.7-flash",
+    "pricing": {
+     "audio": "0.000000375",
+     "completion": "0.000001875",
+     "prompt": "0.000000375"
+    },
+    "tag": "google-vertex/global/flex"
+   },
+   {
+    "model_id": "google/gemini-3.7-flash",
+    "pricing": {
+     "audio": "0.00000135",
+     "completion": "0.00000675",
+     "prompt": "0.00000135"
+    },
+    "tag": "google-vertex/global/priority"
+   },
+   {
+    "model_id": "google/gemini-3.7-flash",
+    "pricing": {
+     "audio": "0.000000825",
+     "completion": "0.000004125",
+     "prompt": "0.000000825"
+    },
+    "tag": "google-vertex/us"
+   },
+   {
+    "model_id": "google/gemini-3.8-flash",
+    "pricing": {
+     "audio": "0.00000075",
+     "completion": "0.00000375",
+     "prompt": "0.00000075"
+    },
+    "tag": "google-vertex/global"
+   },
+   {
+    "model_id": "google/gemini-3.8-flash",
+    "pricing": {
+     "audio": "0.000000375",
+     "completion": "0.000001875",
+     "prompt": "0.000000375"
+    },
+    "tag": "google-vertex/global/flex"
+   },
+   {
+    "model_id": "google/gemini-3.8-flash",
+    "pricing": {
+     "audio": "0.00000135",
+     "completion": "0.00000675",
+     "prompt": "0.00000135"
+    },
+    "tag": "google-vertex/global/priority"
+   },
+   {
+    "model_id": "google/gemini-3.8-flash",
+    "pricing": {
+     "audio": "0.000000825",
+     "completion": "0.000004125",
+     "prompt": "0.000000825"
+    },
+    "tag": "google-vertex/us"
+   },
+   {
+    "model_id": "google/gemini-4-argon",
+    "pricing": {
+     "audio": "0.000002",
+     "completion": "0.00001",
+     "prompt": "0.000002"
+    },
+    "tag": "google-vertex/global"
+   },
+   {
+    "model_id": "google/gemini-4-argon",
+    "pricing": {
+     "audio": "0.0000036",
+     "completion": "0.000018",
+     "prompt": "0.0000036"
+    },
+    "tag": "google-vertex/global/priority"
+   },
+   {
+    "model_id": "google/gemini-4-argon",
+    "pricing": {
+     "audio": "0.0000022",
+     "completion": "0.000011",
+     "prompt": "0.0000022"
+    },
+    "tag": "google-vertex/us"
+   },
+   {
+    "model_id": "google/gemma-3-4b-it",
+    "pricing": {
+     "completion": "0.0000001",
+     "prompt": "0.00000005"
+    },
+    "tag": "deepinfra/bf16"
+   },
+   {
+    "model_id": "google/gemma-3-4b-it",
+    "pricing": {
+     "completion": "0.00000005",
+     "prompt": "0.00000004"
+    },
+    "tag": "parasail/bf16"
+   },
+   {
+    "model_id": "gryphe/mythomax-l2-13b",
+    "pricing": {
+     "completion": "0.0000004",
+     "prompt": "0.0000004"
+    },
+    "tag": "deepinfra/fp16"
+   },
+   {
+    "model_id": "gryphe/mythomax-l2-13b",
+    "pricing": {
+     "completion": "0.0000006",
+     "prompt": "0.00000035"
+    },
+    "tag": "mancer/fp8"
+   },
+   {
+    "model_id": "gryphe/mythomax-l2-13b",
+    "pricing": {
+     "completion": "0.00000011",
+     "prompt": "0.00000008"
+    },
+    "tag": "parasail/fp16"
+   },
+   {
+    "model_id": "ibm-granite/granite-4.0-h-micro",
+    "pricing": {
+     "completion": "0.000000112",
+     "prompt": "0.000000017"
+    },
+    "tag": "cloudflare"
+   },
+   {
+    "model_id": "inception/mercury-2.5",
+    "pricing": {
+     "completion": "0.00000015",
+     "prompt": "0.00000004"
+    },
+    "tag": "inception"
+   },
+   {
+    "model_id": "inclusionai/ling-3.0-flash",
+    "pricing": {
+     "completion": "0.00000018",
+     "prompt": "0.00000006"
+    },
+    "tag": "deepinfra/bf16"
+   },
+   {
+    "model_id": "inclusionai/ling-3.0-flash",
+    "pricing": {
+     "completion": "0.000000063",
+     "prompt": "0.000000021"
+    },
+    "tag": "novita"
+   },
+   {
+    "model_id": "inference-net/schematron-v2-turbo",
+    "pricing": {
+     "completion": "0.00000015",
+     "prompt": "0.00000003"
+    },
+    "tag": "inference-net/bf16"
+   },
+   {
+    "model_id": "inference-net/schematron-v2-turbo",
+    "pricing": {
+     "completion": "0.00000015",
+     "prompt": "0.00000003"
+    },
+    "tag": "inference-net/us"
+   },
+   {
+    "model_id": "meta-llama/llama-3.1-8b-instruct",
+    "pricing": {
+     "completion": "0.000000287",
+     "prompt": "0.000000152"
+    },
+    "tag": "cloudflare/fp8"
+   },
+   {
+    "model_id": "meta-llama/llama-3.1-8b-instruct",
+    "pricing": {
+     "completion": "0.00000022",
+     "prompt": "0.00000022"
+    },
+    "tag": "coreweave/bf16"
+   },
+   {
+    "model_id": "meta-llama/llama-3.1-8b-instruct",
+    "pricing": {
+     "completion": "0.00000004",
+     "prompt": "0.00000002"
+    },
+    "tag": "deepinfra/fp8"
+   },
+   {
+    "model_id": "meta-llama/llama-3.1-8b-instruct",
+    "pricing": {
+     "completion": "0.00000008",
+     "prompt": "0.00000005"
+    },
+    "tag": "groq"
+   },
+   {
+    "model_id": "meta-llama/llama-3.1-8b-instruct",
+    "pricing": {
+     "completion": "0.00000005",
+     "prompt": "0.00000002"
+    },
+    "tag": "novita/fp8"
+   },
+   {
+    "model_id": "meta-llama/llama-3.3-70b-instruct",
+    "pricing": {
+     "completion": "0.00000052",
+     "prompt": "0.0000002"
+    },
+    "tag": "akashml/fp8"
+   },
+   {
+    "model_id": "meta-llama/llama-3.3-70b-instruct",
+    "pricing": {
+     "completion": "0.000002253",
+     "prompt": "0.000000293"
+    },
+    "tag": "cloudflare/fp8"
+   },
+   {
+    "model_id": "meta-llama/llama-3.3-70b-instruct",
+    "pricing": {
+     "completion": "0.00000071",
+     "prompt": "0.00000071"
+    },
+    "tag": "coreweave/fp16"
+   },
+   {
+    "model_id": "meta-llama/llama-3.3-70b-instruct",
+    "pricing": {
+     "completion": "0.00000032",
+     "prompt": "0.0000001"
+    },
+    "tag": "deepinfra/turbo"
+   },
+   {
+    "model_id": "meta-llama/llama-3.3-70b-instruct",
+    "pricing": {
+     "completion": "0.00000072",
+     "prompt": "0.00000072"
+    },
+    "tag": "google-vertex"
+   },
+   {
+    "model_id": "meta-llama/llama-3.3-70b-instruct",
+    "pricing": {
+     "completion": "0.00000072",
+     "prompt": "0.00000072"
+    },
+    "tag": "google-vertex/us-central1"
+   },
+   {
+    "model_id": "meta-llama/llama-3.3-70b-instruct",
+    "pricing": {
+     "completion": "0.00000079",
+     "prompt": "0.00000059"
+    },
+    "tag": "groq"
+   },
+   {
+    "model_id": "meta-llama/llama-3.3-70b-instruct",
+    "pricing": {
+     "completion": "0.0000004",
+     "prompt": "0.000000135"
+    },
+    "tag": "novita/bf16"
+   },
+   {
+    "model_id": "meta-llama/llama-3.3-70b-instruct",
+    "pricing": {
+     "completion": "0.0000005",
+     "prompt": "0.00000022"
+    },
+    "tag": "parasail/fp8"
+   },
+   {
+    "model_id": "meta-llama/llama-3.3-70b-instruct",
+    "pricing": {
+     "completion": "0.0000009",
+     "prompt": "0.00000045"
+    },
+    "tag": "sambanova-turbo"
+   },
+   {
+    "model_id": "meta/muse-spark-open",
+    "pricing": {
+     "completion": "0.00000425",
+     "prompt": "0.00000125"
+    },
+    "tag": "baseten/fp4"
+   },
+   {
+    "model_id": "meta/muse-spark-open",
+    "pricing": {
+     "completion": "0.00000425",
+     "prompt": "0.00000125"
+    },
+    "tag": "fireworks"
+   },
+   {
+    "model_id": "meta/muse-spark-open",
+    "pricing": {
+     "completion": "0.00000425",
+     "prompt": "0.00000125"
+    },
+    "tag": "makora/fp4"
+   },
+   {
+    "model_id": "meta/muse-spark-open",
+    "pricing": {
+     "completion": "0.00000425",
+     "prompt": "0.00000125"
+    },
+    "tag": "modal"
+   },
+   {
+    "model_id": "meta/muse-spark-open",
+    "pricing": {
+     "completion": "0.00000425",
+     "prompt": "0.00000125"
+    },
+    "tag": "nebius/fp4"
+   },
+   {
+    "model_id": "meta/muse-spark-open",
+    "pricing": {
+     "completion": "0.00000425",
+     "prompt": "0.00000125"
+    },
+    "tag": "together"
+   },
+   {
+    "model_id": "microsoft/mai-transcribe-1.5",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.36"
+    },
+    "tag": "azure"
+   },
+   {
+    "model_id": "microsoft/mai-transcribe-2",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.1"
+    },
+    "tag": "azure"
+   },
+   {
+    "model_id": "mistralai/ministral-3b-2512",
+    "pricing": {
+     "completion": "0.00000011",
+     "prompt": "0.00000011"
+    },
+    "tag": "mistral/eu"
+   },
+   {
+    "model_id": "mistralai/ministral-3b-2512",
+    "pricing": {
+     "completion": "0.0000001",
+     "prompt": "0.0000001"
+    },
+    "tag": "mistral/zdr"
+   },
+   {
+    "model_id": "mistralai/mistral-nemo",
+    "pricing": {
+     "completion": "0.00000003",
+     "prompt": "0.000000029"
+    },
+    "tag": "deepinfra/fp8"
+   },
+   {
+    "model_id": "mistralai/mistral-nemo",
+    "pricing": {
+     "completion": "0.00000003",
+     "prompt": "0.000000018"
+    },
+    "tag": "dekallm/fp8"
+   },
+   {
+    "model_id": "mistralai/mistral-nemo",
+    "pricing": {
+     "completion": "0.0000000216",
+     "prompt": "0.00000001656"
+    },
+    "tag": "io-net/fp16"
+   },
+   {
+    "model_id": "mistralai/mistral-nemo",
+    "pricing": {
+     "completion": "0.00000015",
+     "prompt": "0.00000015"
+    },
+    "tag": "mistral/eu"
+   },
+   {
+    "model_id": "mistralai/mistral-nemo",
+    "pricing": {
+     "completion": "0.00000003",
+     "prompt": "0.00000003"
+    },
+    "tag": "parasail/fp8"
+   },
+   {
+    "model_id": "mistralai/mistral-small-24b-instruct-2501",
+    "pricing": {
+     "completion": "0.00000008",
+     "prompt": "0.00000005"
+    },
+    "tag": "deepinfra/fp8"
+   },
+   {
+    "model_id": "mistralai/mistral-small-3.2-24b-instruct",
+    "pricing": {
+     "completion": "0.0000002",
+     "prompt": "0.000000075"
+    },
+    "tag": "deepinfra/fp8"
+   },
+   {
+    "model_id": "mistralai/mistral-small-3.2-24b-instruct",
+    "pricing": {
+     "completion": "0.0000003",
+     "prompt": "0.0000001"
+    },
+    "tag": "mistral/eu"
+   },
+   {
+    "model_id": "mistralai/mistral-small-3.2-24b-instruct",
+    "pricing": {
+     "completion": "0.0000003",
+     "prompt": "0.00000009"
+    },
+    "tag": "parasail/bf16"
+   },
+   {
+    "model_id": "mistralai/mistral-small-3.2-24b-instruct",
+    "pricing": {
+     "completion": "0.00000025",
+     "prompt": "0.00000009375"
+    },
+    "tag": "venice/fp8"
+   },
+   {
+    "model_id": "mistralai/voxtral-mini-3b-2507",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000166667"
+    },
+    "tag": "deepinfra/bf16"
+   },
+   {
+    "model_id": "mistralai/voxtral-mini-transcribe",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.000055"
+    },
+    "tag": "mistral/eu"
+   },
+   {
+    "model_id": "mistralai/voxtral-mini-transcribe-3-0",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000641667"
+    },
+    "tag": "mistral/eu"
+   },
+   {
+    "model_id": "mistralai/voxtral-mini-transcribe-3-0",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000641667"
+    },
+    "tag": "mistral/us"
+   },
+   {
+    "model_id": "mistralai/voxtral-mini-transcribe-3-0",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000583333"
+    },
+    "tag": "mistral/zdr"
+   },
+   {
+    "model_id": "mistralai/voxtral-small-24b-2507",
+    "pricing": {
+     "audio": "0.00011",
+     "completion": "0.00000033",
+     "prompt": "0.00000011"
+    },
+    "tag": "mistral/eu"
+   },
+   {
+    "model_id": "mistralai/voxtral-small-24b-2507",
+    "pricing": {
+     "audio": "0.0001",
+     "completion": "0.0000003",
+     "prompt": "0.0000001"
+    },
+    "tag": "mistral/zdr"
+   },
+   {
+    "model_id": "mistralai/voxtral-small-24b-2507-stt",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.00005"
+    },
+    "tag": "deepinfra/bf16"
+   },
+   {
+    "model_id": "mistralai/voxtral-small-transcribe-3-0",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000733333"
+    },
+    "tag": "mistral/eu"
+   },
+   {
+    "model_id": "mistralai/voxtral-small-transcribe-3-0",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000733333"
+    },
+    "tag": "mistral/us"
+   },
+   {
+    "model_id": "mistralai/voxtral-small-transcribe-3-0",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000666667"
+    },
+    "tag": "mistral/zdr"
+   },
+   {
+    "model_id": "nvidia/nemotron-3.5-asr-streaming-multilingual-0.6b",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.00000333"
+    },
+    "tag": "deepinfra/us"
+   },
+   {
+    "model_id": "nvidia/parakeet-tdt-0.6b-v3",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.000025"
+    },
+    "tag": "together"
+   },
+   {
+    "model_id": "openai/gpt-oss-20b",
+    "pricing": {
+     "completion": "0.0000001",
+     "prompt": "0.00000002"
+    },
+    "tag": "akashml/fp4"
+   },
+   {
+    "model_id": "openai/gpt-oss-20b",
+    "pricing": {
+     "completion": "0.00000015",
+     "prompt": "0.00000007"
+    },
+    "tag": "amazon-bedrock"
+   },
+   {
+    "model_id": "openai/gpt-oss-20b",
+    "pricing": {
+     "completion": "0.00000015",
+     "prompt": "0.00000007"
+    },
+    "tag": "amazon-bedrock/eu-west-1"
+   },
+   {
+    "model_id": "openai/gpt-oss-20b",
+    "pricing": {
+     "completion": "0.00000013",
+     "prompt": "0.00000003"
+    },
+    "tag": "coreweave/fp4"
+   },
+   {
+    "model_id": "openai/gpt-oss-20b",
+    "pricing": {
+     "completion": "0.00000014",
+     "prompt": "0.00000003"
+    },
+    "tag": "deepinfra/bf16"
+   },
+   {
+    "model_id": "openai/gpt-oss-20b",
+    "pricing": {
+     "completion": "0.00000014",
+     "prompt": "0.000000029"
+    },
+    "tag": "dekallm/bf16"
+   },
+   {
+    "model_id": "openai/gpt-oss-20b",
+    "pricing": {
+     "completion": "0.00000025",
+     "prompt": "0.00000007"
+    },
+    "tag": "google-vertex/us-central1"
+   },
+   {
+    "model_id": "openai/gpt-oss-20b",
+    "pricing": {
+     "completion": "0.0000003",
+     "prompt": "0.000000075"
+    },
+    "tag": "groq"
+   },
+   {
+    "model_id": "openai/gpt-oss-20b",
+    "pricing": {
+     "completion": "0.00000015",
+     "prompt": "0.00000003"
+    },
+    "tag": "parasail/fp4"
+   },
+   {
+    "model_id": "openai/gpt-oss-20b",
+    "pricing": {
+     "completion": "0.00000018",
+     "prompt": "0.00000004"
+    },
+    "tag": "siliconflow/fp8"
+   },
+   {
+    "model_id": "openai/whisper-large-v3",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000075"
+    },
+    "tag": "deepinfra/us"
+   },
+   {
+    "model_id": "openai/whisper-large-v3",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000308333333333"
+    },
+    "tag": "groq"
+   },
+   {
+    "model_id": "openai/whisper-large-v3",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.000025"
+    },
+    "tag": "together"
+   },
+   {
+    "model_id": "openai/whisper-large-v3-turbo",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.00000333"
+    },
+    "tag": "deepinfra/us"
+   },
+   {
+    "model_id": "openai/whisper-large-v3-turbo",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000111111111111"
+    },
+    "tag": "groq"
+   },
+   {
+    "model_id": "perceptron/perceptron-mk1.5",
+    "pricing": {
+     "completion": "0.0000015",
+     "prompt": "0.00000015"
+    },
+    "tag": "perceptron"
+   },
+   {
+    "model_id": "qwen/qwen3-asr-0.6b",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.00000333"
+    },
+    "tag": "deepinfra/us"
+   },
+   {
+    "model_id": "qwen/qwen3-asr-1.7b",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.0000075"
+    },
+    "tag": "deepinfra/us"
+   },
+   {
+    "model_id": "rekaai/reka-edge",
+    "pricing": {
+     "completion": "0.0000001",
+     "prompt": "0.0000001"
+    },
+    "tag": "reka"
+   },
+   {
+    "model_id": "sao10k/l3-lunaris-8b",
+    "pricing": {
+     "completion": "0.00000005",
+     "prompt": "0.00000004"
+    },
+    "tag": "deepinfra/turbo"
+   },
+   {
+    "model_id": "sao10k/l3-lunaris-8b",
+    "pricing": {
+     "completion": "0.00000005",
+     "prompt": "0.00000004"
+    },
+    "tag": "parasail/bf16"
+   },
+   {
+    "model_id": "scaledown/extract",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.00000004"
+    },
+    "tag": "scaledown"
+   },
+   {
+    "model_id": "scaledown/summarize",
+    "pricing": {
+     "completion": "0",
+     "prompt": "0.00000004"
+    },
+    "tag": "scaledown"
+   },
+   {
+    "model_id": "thinkingmachines/inkling",
+    "pricing": {
+     "completion": "0.00000405",
+     "prompt": "0.000001"
+    },
+    "tag": "together"
+   },
+   {
+    "model_id": "thinkingmachines/inkling-small",
+    "pricing": {
+     "completion": "0.0000012",
+     "prompt": "0.00000045"
+    },
+    "tag": "deepinfra/fp8"
+   },
+   {
+    "model_id": "xiaomi/mimo-v2.5",
+    "pricing": {
+     "completion": "0.000002",
+     "prompt": "0.0000004"
+    },
+    "tag": "venice/fp8"
+   },
+   {
+    "model_id": "xiaomi/mimo-v2.6-flash",
+    "pricing": {
+     "completion": "0.00000028",
+     "prompt": "0.00000014"
+    },
+    "tag": "cohere"
+   },
+   {
+    "model_id": "xiaomi/mimo-v2.6-flash",
+    "pricing": {
+     "completion": "0.000000182",
+     "prompt": "0.000000091"
+    },
+    "tag": "deepinfra/fp8"
+   },
+   {
+    "model_id": "xiaomi/mimo-v2.6-flash",
+    "pricing": {
+     "completion": "0.00000028",
+     "prompt": "0.0000001"
+    },
+    "tag": "io-net/fp8"
+   },
+   {
+    "model_id": "xiaomi/mimo-v2.6-flash",
+    "pricing": {
+     "completion": "0.00000028",
+     "prompt": "0.00000013"
+    },
+    "tag": "makora/fp8"
+   },
+   {
+    "model_id": "xiaomi/mimo-v2.6-flash",
+    "pricing": {
+     "completion": "0.00000028",
+     "prompt": "0.00000014"
+    },
+    "tag": "novita/fp8"
+   },
+   {
+    "model_id": "xiaomi/mimo-v2.6-flash",
+    "pricing": {
+     "completion": "0.00000028",
+     "prompt": "0.00000013"
+    },
+    "tag": "relace/mxfp4"
+   },
+   {
+    "model_id": "xiaomi/mimo-v2.6-flash",
+    "pricing": {
+     "completion": "0.00000035",
+     "prompt": "0.000000175"
+    },
+    "tag": "venice/fp8"
+   },
+   {
+    "model_id": "xiaomi/mimo-v2.6-pro",
+    "pricing": {
+     "completion": "0.000000783",
+     "prompt": "0.000000387"
+    },
+    "tag": "deepinfra/fp8"
+   },
+   {
+    "model_id": "xiaomi/mimo-v2.6-pro",
+    "pricing": {
+     "completion": "0.00000087",
+     "prompt": "0.000000435"
+    },
+    "tag": "novita/fp8"
+   }
+  ]
+ }
+}
