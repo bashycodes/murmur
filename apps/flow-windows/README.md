@@ -258,7 +258,7 @@ The installers are unsigned: SmartScreen says "Windows protected your PC" →
 More info → Run anyway.
 
 1. **Download**: `gh run download <run-id> -n flow-clone-windows-hybrid`
-   (or the run page → Artifacts), unzip, run `Flow-Clone_0.1.0_x64-setup_hybrid.exe`
+   (or the run page → Artifacts), unzip, run `Flow-Clone_<version>_x64-setup_hybrid.exe` (e.g. `Flow-Clone_0.2.0_x64-setup_hybrid.exe`)
    (per-user, no admin) or the `.msi`. Install only one flavour at a time
    (same app id). The tray icon appears; Settings opens on first start.
 2. **Model** (only for "this PC"): copy `ggml-base.bin` (or `ggml-tiny.en.bin`
@@ -375,7 +375,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Host field: `ws://1.2.3.4`, `1.2.3.4:7313`, `256.1.1.1`, `my box` each show an inline error and disable Save / Test connection; `100.64.0.10`, `[fd7a:115c:a1e0::1]`, `box.tailnet.ts.net` are accepted (brackets dropped on save). Port 0 / 70000 rejected.
 - [ ] Host `example.com` ticks and locks "Use TLS"; a 100.x / 192.168.x host shows "Unencrypted: OK on Tailscale…".
 - [ ] Token: Show / Paste / Clear work; a 10-char token is rejected; after Save, `prefs.json` contains `token_dpapi` and **not** the token text; copying `prefs.json` to another Windows account leaves the token empty there.
-- [ ] Test connection with the server up: "OK · median N ms (a-b) · flow-server 0.1.0 · parakeet"; with a wrong token: "auth_failed … token rejected"; with the server stopped: "connect_failed … is flow-server running / Tailscale up?".
+- [ ] Test connection with the server up: "OK · median N ms (a-b) · flow-server 0.2.0+1a2b3c4 · parakeet" (version + commit, D26); with a wrong token: "auth_failed … token rejected"; with the server stopped: "connect_failed … is flow-server running / Tailscale up?".
 - [ ] Test session: "EMPTY (no_speech) via server"; with the server stopped: "via client (fallback: connect_failed)".
 - [ ] Both toggles on, server up: dictate in Notepad → Active engine row = server, rtt shown; with the S/L badge on, the pill shows **S**.
 - [ ] `systemctl stop flow-server` (or quit Tailscale), dictate again → text still pastes (local), row = client, fallback `connect_failed`, badge **L** with a red dot; the next dictation within 5 s shows `circuit_open` and does not wait for the connect timeout; "Reset circuit" clears it.
