@@ -63,6 +63,10 @@ class DictationControllerTest {
         var target = InsertTarget.OK
         var explicitTarget = InsertTarget.OK
         override fun insertTarget(explicit: Boolean) = if (explicit) explicitTarget else target
+        val notInserted = mutableListOf<Pair<String, String>>()
+        override fun onNotInserted(text: String, outcome: String) { notInserted += text to outcome }
+        val traces = mutableListOf<dev.flowclone.debug.DictationTrace>()
+        override fun onDictationTrace(trace: dev.flowclone.debug.DictationTrace) { traces += trace }
     }
 
     /** advanceUntilIdle ignores backgroundScope work, where the controller lives. */
@@ -555,6 +559,52 @@ class DictationControllerTest {
         assertFalse(host.history.single().second)
         c.pasteRetry(); settle()
         assertEquals("explicit Paste goes into the field focused now", listOf("hello world"), host.inserted)
+    }
+
+    /** 2026-10-24 (41-word dictation lost on target_changed): the text always stays recoverable. */
+    @Test fun targetChangedKeepsTheTextRecoverable() = runTest {
+        host.target = InsertTarget.CHANGED
+        val c = controller()
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        assertEquals(listOf("hello world" to "target_changed"), host.notInserted)
+        assertEquals("history keeps the text", "hello world", host.history.single().first.historyText)
+        // Dismissing the bubble or starting the next dictation must not be the only copy.
+        c.dismissError()
+        assertEquals(DictationState.Ready, c.state.value)
+        assertEquals(1, host.notInserted.size)
+    }
+
+    @Test fun failedPasteAndProtectedTargetAlsoKeepTheTextRecoverable() = runTest {
+        host.insertOk = false
+        val c = controller()
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        assertEquals(listOf("hello world" to "paste_failed"), host.notInserted)
+        host.notInserted.clear(); host.insertOk = true
+        host.target = InsertTarget.PROTECTED; host.explicitTarget = InsertTarget.PROTECTED
+        advanceTimeBy(600); c.dismissError()
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        assertEquals(listOf("hello world" to "target_protected"), host.notInserted)
+    }
+
+    @Test fun insertedOrEmptyDictationsAreNotOffered() = runTest {
+        val c = controller()
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        advanceTimeBy(600)
+        c.toggle(false); advanceTimeBy(600); c.toggle(false); settle() // silence → EMPTY
+        assertTrue(host.notInserted.isEmpty())
+    }
+
+    /** blank_asr diagnostics: the core's VAD speech + peak level reach the D21 trace. */
+    @Test fun traceCarriesSpeechAndPeakFromTheResult() = runTest {
+        val r = CommitResult(
+            dev.flowclone.core.CommitStatus.EMPTY, emptyReason = "blank_asr",
+            timings = dev.flowclone.core.Timings(audioMs = 3800, speechMs = 1200, peakDbfs = -31),
+        )
+        val c = controller(ScriptedCore(core, r))
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        val t = host.traces.single()
+        assertEquals(1200L, t.speechMs)
+        assertEquals(-31, t.peakDbfs)
     }
 
     @Test fun protectedFieldIsNeverInsertedEvenOnPaste() = runTest {

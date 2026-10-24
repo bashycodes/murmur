@@ -160,6 +160,14 @@ class DictationController(
          * …), or null when it can. Appended to a "Server unreachable" error so it says exactly why.
          */
         fun clientFallbackNote(): String? = null
+
+        /**
+         * A transcript that did not go into the target ([outcome] = target_changed |
+         * target_protected | paste_failed). D24 spirit (never lose a dictation): the app keeps it
+         * recoverable beyond the bubble (tap-to-copy notification), because dismissing the bubble
+         * or starting the next dictation drops the bubble's Paste. Must return at once.
+         */
+        fun onNotInserted(text: String, outcome: String) = Unit
     }
 
     /** What the debug trace needs from the dictation's start. */
@@ -257,6 +265,7 @@ class DictationController(
                     raw = result?.asrText?.ifEmpty { null }, text = text ?: result?.historyText?.ifEmpty { null },
                     error = error ?: result?.error, stack = DebugLogger.stackOf(cause),
                     style = s.style, llm = dev.flowclone.data.LlmOutcome.code(result),
+                    speechMs = t?.speechMs, peakDbfs = t?.peakDbfs,
                 )
             val audioName = if (pcm == null || pcm.isEmpty()) null else try { host.onDictationAudio(trace, pcm) } catch (_: Throwable) { null }
             host.onDictationTrace(if (audioName != null) trace.copy(audio = audioName) else trace)
@@ -566,18 +575,26 @@ class DictationController(
                     host.feedback(if (protected) FeedbackEvent.TargetProtected else FeedbackEvent.TargetChanged)
                     host.recordHistory(result, false, appId)
                     val text = plan.filterIsInstance<PasteSegment.Text>().joinToString("") { it.text }
+                    val outcome = if (protected) InsertOutcome.TARGET_PROTECTED else InsertOutcome.TARGET_CHANGED
+                    notInserted(text, outcome)
                     _state.value = DictationState.Error(DictationState.ErrorKind.FailedToPaste(text))
-                    done(if (protected) InsertOutcome.TARGET_PROTECTED else InsertOutcome.TARGET_CHANGED, result)
+                    done(outcome, result)
                     return@launch
                 }
             }
             val unpasted = paste(plan)
             val inserted = unpasted == null
             host.recordHistory(result, inserted, appId)
+            if (!inserted) notInserted(unpasted!!, InsertOutcome.PASTE_FAILED)
             _state.value = if (inserted) restingState()
             else DictationState.Error(DictationState.ErrorKind.FailedToPaste(unpasted!!))
             done(if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED, result)
         }
+    }
+
+    private fun notInserted(text: String, outcome: String) {
+        if (text.isBlank()) return
+        try { host.onNotInserted(text, outcome) } catch (_: Throwable) { }
     }
 
     /** Runs the paste plan. Returns null when every text run went in, else the text not inserted. */
@@ -593,5 +610,27 @@ class DictationController(
             }
         }
         return null
+    }
+}
+
+/**
+ * 2026-10-24 (docs/findings/2026-10-24-phone-local-only.md): the notification that keeps a
+ * dictation which did not go in recoverable (tap = copy). Says why and how long, never the text
+ * itself (it shows on the lock screen).
+ */
+object NotInsertedNotice {
+    const val TITLE = "Dictation not inserted"
+
+    fun words(text: String): Int = text.split(Regex("\\s+")).count { it.isNotEmpty() }
+
+    fun text(outcome: String, transcript: String): String {
+        val n = words(transcript)
+        val size = if (n == 1) "1 word" else "$n words"
+        val why = when (outcome) {
+            dev.flowclone.debug.InsertOutcome.TARGET_CHANGED -> "You switched fields while dictating"
+            dev.flowclone.debug.InsertOutcome.TARGET_PROTECTED -> "The field is protected"
+            else -> "It could not be typed into the field"
+        }
+        return "$why ($size). Tap to copy it."
     }
 }

@@ -35,7 +35,7 @@ enum class BubbleButton { MAIN, CANCEL, DONE, COPY, PASTE, DISMISS }
 
 /**
  * Canvas-drawn bubble: circle (Ready), recording row X·waveform·✓ (tap mode),
- * mic+waveform (hold mode), paste/dismiss (FailedToPaste), alert (other errors).
+ * mic+waveform (hold mode), paste/copy/dismiss (FailedToPaste), alert (other errors).
  * Gestures go through [BubbleGesture]; the host decides what each action means.
  */
 @SuppressLint("ViewConstructor")
@@ -82,13 +82,13 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
         invalidate()
     }
 
-    /** Widths from 07 §5.4 (56 circle, 120 with copy, 230 tap row, 160 hold row). */
+    /** Widths from 07 §5.4 (56 circle, 120 with copy, 230 tap row, 160 hold row; 176 paste/copy/dismiss). */
     fun widthDpFor(u: BubbleUi): Float = if (u.resting && u.repair) 56f else if (u.resting && u.minimized && !u.showCopy) 36f else when (val s = u.state) {
         DictationState.Idle -> 56f
         DictationState.Ready -> if (u.showCopy) 120f else 56f
         is DictationState.Recording -> if (s.hold) 160f else 230f
         is DictationState.Processing -> if (s.hold) 160f else 230f
-        is DictationState.Error -> if (s.kind is ErrorKind.FailedToPaste) 120f else 56f
+        is DictationState.Error -> if (s.kind is ErrorKind.FailedToPaste) 176f else 56f
     }
 
     fun heightDpFor(u: BubbleUi): Float = if (u.resting && u.minimized && !u.repair && !u.showCopy) 36f else 56f
@@ -139,8 +139,10 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
             }
             is DictationState.Error -> when (s.kind) {
                 is ErrorKind.FailedToPaste -> {
+                    // Paste here · Copy (2026-10-24: never lose a dictation) · Dismiss.
                     circleButton(canvas, 0f, accent, BubbleButton.PASTE) { cx, cy -> drawGlyph(canvas, "✓", cx, cy) }
-                    circleButton(canvas, dp(64f), danger, BubbleButton.DISMISS) { cx, cy -> drawGlyph(canvas, "✕", cx, cy) }
+                    circleButton(canvas, dp(60f), bg, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }
+                    circleButton(canvas, dp(120f), danger, BubbleButton.DISMISS) { cx, cy -> drawGlyph(canvas, "✕", cx, cy) }
                 }
                 else -> circleButton(canvas, 0f, danger, BubbleButton.DISMISS) { cx, cy -> drawGlyph(canvas, "!", cx, cy) }
             }
