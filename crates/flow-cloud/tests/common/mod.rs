@@ -1,42 +1,82 @@
-//! Shared helpers for the flow-cloud contract tests.
+//! Shared helpers for the flow-cloud contract tests: a mock OpenRouter
+//! (`testing::MockServer` + the base-URL override) and its fixtures.
 #![allow(dead_code)]
 
 use std::time::Duration;
 
-use flow_cloud::testing::{MockServer, Recorded, Reply};
-use flow_cloud::{CloudAsr, CloudError};
+use flow_cloud::catalog::ModelInfo;
+use flow_cloud::testing::{override_base_url, BaseOverride, MockServer, Recorded, Reply};
+use flow_cloud::{CloudAsr, CloudError, SttPath, SttSettings};
 use flow_core::asr::{AsrEngine, AsrRequest};
-use flow_router::{BackendError, CloudProviderConfig, Failure, SecretString};
+use flow_router::{BackendError, Failure, SecretString};
 
-pub const KEY: &str = "sk-LEAKCHECK-contract-0123456789";
+pub const KEY: &str = "sk-or-LEAKCHECK-contract-0123456789";
+
+pub fn fixture_path(path: &str) -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures/openrouter")
+        .join(path)
+}
+
+pub fn fixture_text(path: &str) -> String {
+    std::fs::read_to_string(fixture_path(path)).unwrap()
+}
 
 pub fn fixture(path: &str) -> serde_json::Value {
-    let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("fixtures")
-        .join(path);
-    serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap()
+    serde_json::from_str(&fixture_text(path)).unwrap()
 }
 
-/// A preset pointed at the mock server (`base` = what follows the host in
-/// the real base URL, e.g. `/api/v1`).
-pub fn provider(preset: &str, srv: &MockServer, base: &str) -> CloudProviderConfig {
-    let mut p = flow_cloud::presets()
-        .into_iter()
-        .find(|p| p.preset == preset)
-        .unwrap();
-    p.id = format!("{preset}-1");
-    p.base_url = srv.url(base);
-    p.consent_host = "127.0.0.1".into();
-    p.consent_at_ms = 1;
-    if p.model.is_empty() {
-        p.model = "whisper-1".into();
+/// A mock OpenRouter; every `Api` made while it lives talks to it.
+pub struct Mock {
+    pub srv: MockServer,
+    _base: BaseOverride,
+}
+
+impl std::ops::Deref for Mock {
+    type Target = MockServer;
+    fn deref(&self) -> &MockServer {
+        &self.srv
     }
-    assert_eq!(p.validate(), Ok(()));
-    p
 }
 
-pub fn asr(p: CloudProviderConfig) -> CloudAsr {
-    CloudAsr::new(p, SecretString::new(KEY))
+pub fn mock(handler: impl Fn(&Recorded, usize) -> Reply + Send + Sync + 'static) -> Mock {
+    let srv = MockServer::start(handler);
+    let base = override_base_url(&srv.url("/api/v1"));
+    Mock { srv, _base: base }
+}
+
+pub fn mock_fixed(reply: Reply) -> Mock {
+    mock(move |_, _| reply.clone())
+}
+
+pub fn mock_seq(replies: Vec<Reply>) -> Mock {
+    mock(move |_, i| replies[i.min(replies.len() - 1)].clone())
+}
+
+pub fn settings(model: &str) -> SttSettings {
+    SttSettings {
+        model: model.into(),
+        ..Default::default()
+    }
+}
+
+/// A catalogue entry for a path-A or path-B model.
+pub fn info(id: &str, path: SttPath) -> ModelInfo {
+    ModelInfo {
+        id: id.into(),
+        stt_path: Some(path),
+        price_unit_ok: true,
+        ..Default::default()
+    }
+}
+
+pub fn asr(s: SttSettings) -> CloudAsr {
+    CloudAsr::new(s, SecretString::new(KEY))
+}
+
+/// The default model (whisper turbo, path A) on the mock.
+pub fn whisper() -> CloudAsr {
+    asr(settings(flow_cloud::DEFAULT_STT_MODEL))
 }
 
 /// `ms` of a loud-ish tone (speech stand-in).
@@ -64,154 +104,46 @@ pub fn run(asr: &CloudAsr, r: &AsrRequest) -> Result<String, BackendError> {
 }
 
 /// The typed error of the last failed call (what `CloudBackend::commit`
-/// hands the router).
+/// hands the router). `no_private_route` maps to `provider_error` until
+/// flow-router has the variant.
 pub fn last_error(asr: &CloudAsr) -> BackendError {
     let info = asr.last_call().expect("a call was made");
-    let kind: Failure =
-        serde_json::from_value(serde_json::Value::String(info.error.clone().unwrap())).unwrap();
+    let code = info.error.clone().unwrap();
+    let kind: Failure = serde_json::from_value(serde_json::Value::String(code.clone()))
+        .unwrap_or(Failure::ProviderError);
     BackendError::new(kind, info.message.unwrap())
 }
 
-/// The §3.2 status table, checked for one adapter. `ok_body` answers the
-/// non-failing requests of multi-request adapters (AssemblyAI).
-pub fn check_error_mapping(preset: &str, base: &str, fail_path: &'static str) {
-    let cases: Vec<(Reply, Failure, usize)> = vec![
-        (
-            Reply::json(401, serde_json::json!({})),
-            Failure::AuthFailed,
-            1,
-        ),
-        (
-            Reply::json(403, serde_json::json!({})),
-            Failure::AuthFailed,
-            1,
-        ),
-        (
-            Reply::json(402, serde_json::json!({})),
-            Failure::QuotaExceeded,
-            1,
-        ),
-        (
-            Reply::json(
-                429,
-                serde_json::json!({"error":{"code":"insufficient_quota"}}),
-            ),
-            Failure::QuotaExceeded,
-            1,
-        ),
-        (
-            Reply::json(413, serde_json::json!({})),
-            Failure::ProviderError,
-            1,
-        ),
-        (
-            Reply::json(422, serde_json::json!({})),
-            Failure::ProviderError,
-            1,
-        ),
-        (
-            Reply::json(400, serde_json::json!({})),
-            Failure::ProviderError,
-            1,
-        ),
-        (
-            Reply::json(500, serde_json::json!({})),
-            Failure::ProviderError,
-            1,
-        ),
-        // 502/503/504: one retry.
-        (
-            Reply::json(503, serde_json::json!({})),
-            Failure::ProviderError,
-            2,
-        ),
-        // 429 without Retry-After / with a long one: no retry.
-        (Reply::json(429, serde_json::json!({})), Failure::Busy, 1),
-        (
-            Reply::json(429, serde_json::json!({})).header("Retry-After", "30"),
-            Failure::Busy,
-            1,
-        ),
-        // 429 with a short Retry-After: one retry.
-        (
-            Reply::json(429, serde_json::json!({})).header("Retry-After", "0.1"),
-            Failure::Busy,
-            2,
-        ),
-        // 2xx with garbage.
-        (
-            Reply::raw(200, "<html>oops</html>"),
-            Failure::ProviderError,
-            1,
-        ),
-    ];
-    for (reply, want, tries) in cases {
-        let status = reply.status;
-        let srv = fail_on(fail_path, reply);
-        let a = asr(provider(preset, &srv, base));
-        let e = run(&a, &req(&[], &[], None)).unwrap_err();
-        assert_eq!(e.kind, want, "{preset}: HTTP {status}: {e}");
-        let n = srv
-            .requests()
-            .iter()
-            .filter(|r| r.path().ends_with(fail_path))
-            .count();
-        assert_eq!(n, tries, "{preset}: HTTP {status}: attempts");
-        assert!(!e.message.contains(KEY) && !e.message.contains("oops"));
-    }
-}
-
-/// Mock that fails on paths ending in `fail_path` and answers the rest
-/// like a healthy AssemblyAI (upload / create) so multi-step adapters reach
-/// the failing step.
-pub fn fail_on(fail_path: &'static str, reply: Reply) -> MockServer {
-    MockServer::start(move |r: &Recorded, _| {
-        if r.path().ends_with(fail_path) {
-            return reply.clone();
-        }
-        if r.path().ends_with("/v2/upload") {
-            return Reply::json(200, fixture("assemblyai/upload.json"));
-        }
-        Reply::json(200, fixture("assemblyai/queued.json"))
-    })
+pub fn last_code(asr: &CloudAsr) -> String {
+    asr.last_call().unwrap().error.unwrap()
 }
 
 /// Connection refused → connect_failed; a slow server → timeout.
-pub fn check_transport_errors(preset: &str, base: &str) {
-    // Nothing listens on the port of a dropped server.
-    let srv = MockServer::fixed(Reply::raw(200, ""));
-    let mut p = provider(preset, &srv, base);
-    drop(srv);
-    std::thread::sleep(Duration::from_millis(20));
-    let port = p
-        .base_url
-        .split(':')
-        .nth(2)
-        .unwrap()
-        .split('/')
-        .next()
-        .unwrap()
-        .to_string();
-    let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let free = dead.local_addr().unwrap().port();
-    drop(dead);
-    p.base_url = p.base_url.replace(&port, &free.to_string());
-    let e = run(&asr(p), &req(&[], &[], None)).unwrap_err();
-    assert_eq!(e.kind, Failure::ConnectFailed, "{preset}: {e}");
-
-    let slow = MockServer::fixed(Reply::raw(200, "{}").delayed(Duration::from_secs(3)));
-    let mut p = provider(preset, &slow, base);
-    p.timeout_base_ms = 1000;
-    let a = asr(p);
+pub fn check_transport_errors() {
+    {
+        // Nothing listens on the port of a dropped server.
+        let dead = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let free = dead.local_addr().unwrap().port();
+        drop(dead);
+        let _g = override_base_url(&format!("http://127.0.0.1:{free}/api/v1"));
+        let e = run(&whisper(), &req(&[], &[], None)).unwrap_err();
+        assert_eq!(e.kind, Failure::ConnectFailed, "{e}");
+    }
+    let _slow = mock_fixed(Reply::raw(200, "{}").delayed(Duration::from_secs(3)));
+    let mut s = settings(flow_cloud::DEFAULT_STT_MODEL);
+    s.timeout_base_ms = 1000;
+    let a = asr(s);
     let t = std::time::Instant::now();
     let e = run(&a, &req(&[], &[], None)).unwrap_err();
-    assert_eq!(e.kind, Failure::Timeout, "{preset}: {e}");
+    assert_eq!(e.kind, Failure::Timeout, "{e}");
     assert!(
         t.elapsed() < Duration::from_millis(2900),
         "deadline honoured"
     );
 }
 
+/// The key only in `Authorization`, never in URL/body/other headers, and
+/// no attribution headers.
 pub fn assert_no_key_in(r: &Recorded, allowed_header: &str) {
     for (k, v) in &r.headers {
         if v.contains(KEY) {
@@ -223,6 +155,9 @@ pub fn assert_no_key_in(r: &Recorded, allowed_header: &str) {
         !String::from_utf8_lossy(&r.body).contains(KEY),
         "key in body"
     );
+    for h in ["http-referer", "referer", "x-openrouter-title", "x-title"] {
+        assert!(r.header(h).is_none(), "{h} sent");
+    }
 }
 
 pub fn err_kind(e: &CloudError) -> Failure {

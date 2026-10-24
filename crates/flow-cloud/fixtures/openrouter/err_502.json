@@ -1,0 +1,6 @@
+{
+ "error": {
+  "code": 502,
+  "message": "Provider returned error"
+ }
+}

@@ -1,0 +1,13 @@
+{
+ "error": {
+  "code": 403,
+  "message": "Input was flagged by moderation",
+  "metadata": {
+   "reasons": [
+    "harassment"
+   ],
+   "flagged_input": "\u2026",
+   "provider_name": "X"
+  }
+ }
+}
