@@ -113,11 +113,17 @@ jobs:
         run: cargo clippy --locked --all-targets --features app,parakeet -- -D warnings
 
       # A release build must say exactly which commit it is: no "-dirty".
-      - name: Clean tree (tags)
-        if: github.ref_type == 'tag'
+      # Runs on every push so a tree the build dirties shows up before a
+      # tag does; only a tag fails on it.
+      - name: Clean tree (fails on tags)
         run: |
           git status --porcelain --untracked-files=no
-          test -z "$(git status --porcelain --untracked-files=no)"
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            git --no-pager diff --stat
+            git --no-pager diff | head -c 4000 | cat -A | head -60
+            if [ "$GITHUB_REF_TYPE" = tag ]; then exit 1; fi
+            echo "::warning::the build modified tracked files; a tag build would fail here"
+          fi
 
       - name: Release build (hybrid + Parakeet) and the DLL bundle overlay
         run: |
