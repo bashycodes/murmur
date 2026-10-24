@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-24
+
 ### Fixed
 
 - Windows installers are attached to the release again: the v0.2.0 tag
