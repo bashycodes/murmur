@@ -15,6 +15,7 @@
         <button type="button" role="tab" data-tab="ai">AI cleanup</button>
         <button type="button" role="tab" data-tab="history">History</button>
         <button type="button" role="tab" data-tab="dictionary">Dictionary <span id="sugg_badge" class="badge" hidden></span></button>
+        <button type="button" role="tab" data-tab="openrouter" id="tab_openrouter" hidden>OpenRouter <span id="or_badge" class="badge" hidden>!</span></button>
         <button type="button" role="tab" data-tab="developer" id="tab_developer" hidden>Developer</button>
       </nav>
     </header>
@@ -106,6 +107,16 @@
           </label>
         </fieldset>
 
+        <!-- D28: which engine cleans the text; hidden in builds without OpenRouter. -->
+        <fieldset id="ai_engine_box" hidden>
+          <legend>Cleanup engine</legend>
+          <div class="toolbar">
+            <span id="ai_engine_line" class="grow">Engine: On-device</span>
+            <button type="button" class="small secondary" id="ai_or_link">OpenRouter settings…</button>
+          </div>
+          <p class="hint">On-device = the local model above. OpenRouter = text cleanup in the cloud, off until you turn it on and agree in the OpenRouter tab.</p>
+        </fieldset>
+
         <fieldset>
           <legend>Writing style</legend>
           <p class="hint">Which style applies depends on the app you dictate into. Chats default to casual, email and everything else to formal.</p>
@@ -188,10 +199,189 @@
     </section>
 
 
+    <!-- D28 (docs/proposals/openrouter-only-cloud.md §2): the only place audio or
+         text can reach a third party. The tab is hidden in builds without it. -->
+    <section class="panel" data-panel="openrouter">
+      <ul id="or_warnings" class="warnings"></ul>
+
+      <fieldset id="or_notice_box" hidden>
+        <legend>Cloud settings changed</legend>
+        <p id="or_notice" class="banner"></p>
+        <div class="toolbar"><button type="button" class="small" id="or_notice_ok">OK</button></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>OpenRouter account</legend>
+        <label>API key
+          <span class="token-row">
+            <input id="or_key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-…" />
+            <button type="button" class="small secondary" id="or_key_paste">Paste</button>
+            <button type="button" class="small" id="or_key_save">Save key</button>
+            <button type="button" class="small secondary" id="or_key_clear">Clear</button>
+          </span>
+        </label>
+        <p id="or_key_state" class="hint">No key saved</p>
+        <p class="hint">Stored in Windows Credential Manager (flow-clone/cloud/openrouter), never in prefs.json, never logged. Only ever sent to openrouter.ai.</p>
+        <div class="toolbar"><button type="button" class="small secondary" id="or_key_check">Check key</button></div>
+        <dl id="or_key_info" class="kv" hidden></dl>
+        <p id="or_key_warn" class="hint warn" hidden>This key has no credit limit; OpenRouter recommends setting one.</p>
+        <p id="or_key_status" class="hint"></p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Privacy</legend>
+        <label class="row"><input type="checkbox" id="or_zdr" /> Zero-retention providers only (recommended)</label>
+        <label class="row"><input type="checkbox" id="or_dc_deny" /> Only providers that don't collect data</label>
+        <p class="hint">Applies to speech and text cleanup. OpenRouter routes each request only to providers that meet both.</p>
+        <p id="or_privacy_status" class="hint"></p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Speech-to-text (sends audio)</legend>
+        <label class="row"><input type="checkbox" id="or_stt_allow" /> Transcribe with OpenRouter</label>
+        <p id="or_stt_consent" class="hint"></p>
+        <div class="or-model">
+          <span class="grow">
+            <span id="or_stt_model_name"></span>
+            <code id="or_stt_model_id" class="model-id"></code>
+            <span id="or_stt_model_badges" class="pills"></span>
+          </span>
+          <button type="button" class="small secondary" id="or_stt_change">Change model…</button>
+        </div>
+        <div class="grid2">
+          <label>Language (empty = auto) <input id="or_stt_language" spellcheck="false" placeholder="auto" /></label>
+          <span></span>
+        </div>
+        <label>Speech path
+          <select id="or_stt_path">
+            <option value="auto">Auto (from the catalogue)</option>
+            <option value="transcriptions">Transcription endpoint</option>
+            <option value="chat_audio">Chat model with audio input (may paraphrase)</option>
+          </select>
+        </label>
+        <label class="row"><input type="checkbox" id="or_stt_send_dictionary" /> Send dictionary words (improves spelling of names)</label>
+        <div class="toolbar"><button type="button" class="secondary" id="or_stt_test">Test</button></div>
+        <p id="or_stt_test_out" class="hint"></p>
+        <p id="or_stt_status" class="hint"></p>
+        <p class="hint">The order of the engines (server, this PC, OpenRouter) is under Developer → Engines.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Text cleanup (sends text)</legend>
+        <label class="row"><input type="checkbox" id="or_cleanup_allow" /> Clean up text with OpenRouter</label>
+        <p id="or_cleanup_consent" class="hint"></p>
+        <p class="hint">Sent: the transcript, the app category and writing style, your dictionary words. Not sent unless you turn it on below: text around the cursor, words on screen, the app name.</p>
+        <label>Order
+          <select id="or_cleanup_order">
+            <option value="cloud,local">OpenRouter first, then this PC's model</option>
+            <option value="local,cloud">This PC's model first, OpenRouter only when none is loaded</option>
+          </select>
+        </label>
+        <div class="or-model">
+          <span class="grow">
+            <span id="or_cleanup_model_name"></span>
+            <code id="or_cleanup_model_id" class="model-id"></code>
+            <span id="or_cleanup_model_badges" class="pills"></span>
+          </span>
+          <button type="button" class="small secondary" id="or_cleanup_change">Change model…</button>
+        </div>
+        <div class="grid2">
+          <label>Provider choice
+            <select id="or_cleanup_sort">
+              <option value="latency">Lowest latency</option>
+              <option value="throughput">Highest throughput</option>
+              <option value="price">Lowest price</option>
+              <option value="">OpenRouter default</option>
+            </select>
+          </label>
+          <label>Timeout (ms) <input id="or_cleanup_timeout_ms" type="number" min="800" max="8000" step="100" placeholder="2500" /></label>
+        </div>
+        <label class="row"><input type="checkbox" id="or_cleanup_send_surrounding_text" /> Send text around the cursor</label>
+        <label class="row"><input type="checkbox" id="or_cleanup_send_screen_words" /> Send words on screen</label>
+        <label class="row"><input type="checkbox" id="or_cleanup_send_app_name" /> Send app name</label>
+        <div class="toolbar"><button type="button" class="secondary" id="or_cleanup_test">Test</button></div>
+        <p id="or_cleanup_test_out" class="hint"></p>
+        <p id="or_cleanup_state" class="hint"></p>
+        <p id="or_cleanup_msg" class="hint"></p>
+        <p class="hint">Cloud cleanup is used for on-device and cloud dictations. Your server uses its own AI.</p>
+      </fieldset>
+
+      <fieldset>
+        <legend>Usage this month</legend>
+        <p id="or_usage_total"></p>
+        <ul id="or_usage_rows" class="routes"></ul>
+        <div class="grid2">
+          <label>Monthly budget (USD, optional) <input id="or_budget" type="number" min="0" step="0.5" placeholder="no limit" /></label>
+          <span></span>
+        </div>
+        <p class="hint">Shared by speech and cleanup. When the next request could pass it, OpenRouter is skipped until next month.</p>
+        <div class="toolbar"><button type="button" class="small secondary" id="or_reset_usage">Reset counters</button></div>
+        <p id="or_usage_status" class="hint"></p>
+      </fieldset>
+
+      <dialog id="or_stt_consent_dlg">
+        <h3>Send audio to OpenRouter?</h3>
+        <p>When on, the audio of your dictations leaves this PC and is sent to OpenRouter (openrouter.ai) and the model provider it routes to, along with your dictionary words. Routed only to zero-retention providers by default.</p>
+        <p class="hint">You can turn this off at any time.</p>
+        <div class="toolbar">
+          <button type="button" class="secondary" id="or_stt_consent_cancel">Cancel</button>
+          <button type="button" id="or_stt_consent_ok">Send audio to OpenRouter</button>
+        </div>
+      </dialog>
+
+      <dialog id="or_cleanup_consent_dlg">
+        <h3>Send dictated text to OpenRouter?</h3>
+        <p>After each dictation, the text (and your dictionary words) is sent to OpenRouter (openrouter.ai) and to the model provider it routes to. Your voice is not sent unless Cloud speech-to-text is also on. Routed only to zero-retention providers by default.</p>
+        <p class="hint">You can turn this off at any time.</p>
+        <div class="toolbar">
+          <button type="button" class="secondary" id="or_cleanup_consent_cancel">Cancel</button>
+          <button type="button" id="or_cleanup_consent_ok">Send text to OpenRouter</button>
+        </div>
+      </dialog>
+
+      <dialog id="or_confirm">
+        <h3 id="or_confirm_title"></h3>
+        <p id="or_confirm_body"></p>
+        <div class="toolbar">
+          <button type="button" class="secondary" id="or_confirm_cancel">Cancel</button>
+          <button type="button" id="or_confirm_ok">OK</button>
+        </div>
+      </dialog>
+
+      <dialog id="or_picker" class="picker">
+        <h3 id="or_picker_title">Model</h3>
+        <div class="toolbar">
+          <span id="or_cat_status" class="hint grow"></span>
+          <button type="button" class="small secondary" id="or_cat_refresh">Refresh models</button>
+        </div>
+        <div class="toolbar">
+          <input id="or_picker_query" type="search" placeholder="Search by name or id" spellcheck="false" />
+        </div>
+        <div class="chips">
+          <span id="or_chip_text" class="chip">Text</span>
+          <button type="button" class="toggle" id="or_chip_transcriptions" aria-pressed="false">Transcription</button>
+          <button type="button" class="toggle" id="or_chip_chat_audio" aria-pressed="false">Chat audio</button>
+          <button type="button" class="toggle" id="or_chip_zdr" aria-pressed="true">ZDR only</button>
+          <button type="button" class="toggle" id="or_chip_fast" aria-pressed="false">Fast providers</button>
+          <button type="button" class="toggle" id="or_chip_free" aria-pressed="false">Free</button>
+        </div>
+        <ul id="or_picker_list" class="models"></ul>
+        <p id="or_picker_empty" class="hint" hidden>No models match. Turn off a filter or type a custom model id.</p>
+        <label>Custom model id
+          <span class="token-row">
+            <input id="or_picker_custom" spellcheck="false" placeholder="author/model or author/model:nitro" />
+            <button type="button" class="small" id="or_picker_use">Use</button>
+          </span>
+        </label>
+        <p id="or_picker_status" class="hint"></p>
+        <div class="toolbar"><button type="button" class="secondary" id="or_picker_close">Close</button></div>
+      </dialog>
+    </section>
+
     <section class="panel" data-panel="developer">
       <fieldset>
         <legend>Engines</legend>
-        <p class="hint">Where speech is turned into text. <strong>Client</strong> = this PC. <strong>Server</strong> = your own flow-server (LAN or Tailscale); audio goes only there, never to a third party.</p>
+        <p class="hint">Where speech is turned into text. <strong>Client</strong> = this PC. <strong>Server</strong> = your own flow-server (LAN or Tailscale); audio goes only there, never to a third party.<span id="dev_or_hint" hidden> <strong>OpenRouter</strong> = cloud speech-to-text, turned on and set up in the OpenRouter tab; only its place in the order is set here.</span></p>
         <label class="row"><input type="checkbox" id="dev_allow_server" /> Allow server <small id="dev_server_na" class="hint" hidden>(not in this build)</small></label>
         <label class="row"><input type="checkbox" id="dev_allow_client" /> Allow client (this PC) <small id="dev_client_na" class="hint" hidden>(not in this build)</small></label>
         <div id="dev_order_box">
@@ -205,7 +395,7 @@
       <fieldset>
         <legend>Speech decoding</legend>
         <label class="row"><input type="checkbox" id="dev_decode_while_speaking" /> Decode while speaking</label>
-        <p class="hint">Transcribes each finished phrase while you keep talking, so a long dictation is ready about as fast as a short one (cuts go in pauses of 0.8 s or more). Off = the whole recording is transcribed after you stop. Cloud providers always get the whole recording at the end.</p>
+        <p class="hint">Transcribes each finished phrase while you keep talking, so a long dictation is ready about as fast as a short one (cuts go in pauses of 0.8 s or more). Off = the whole recording is transcribed after you stop. OpenRouter always gets the whole recording at the end.</p>
         <label>Parakeet decoding
           <select id="dev_parakeet_decoding">
             <option value="auto">Auto (default): beam search with dictionary words, greedy otherwise</option>
@@ -239,67 +429,6 @@
           <label>Health cache (s) <input id="dev_health_ttl_s" type="number" min="5" max="600" /><small class="field-err" data-err="health_ttl_s"></small></label>
         </div>
       </fieldset>
-
-      <!-- D18 (docs/cloud-stt.md §8.3): the only place audio can reach a
-           third party. Hidden in builds without the cloud client. -->
-      <fieldset id="dev_cloud_box" hidden>
-        <legend>Cloud providers (sends audio to a third party)</legend>
-        <p id="dev_cloud_banner" class="banner"></p>
-        <label class="row"><input type="checkbox" id="dev_allow_cloud" /> Allow cloud</label>
-        <ul id="dev_cloud_list" class="providers"></ul>
-        <div class="token-row">
-          <select id="dev_cloud_preset" aria-label="Provider preset"></select>
-          <button type="button" class="small secondary" id="dev_cloud_add">Add provider</button>
-        </div>
-        <small class="field-err" data-err="cloud"></small>
-
-        <div id="dev_cloud_edit" hidden>
-          <h4 id="dev_cloud_edit_title"></h4>
-          <div class="grid2">
-            <label>Name <input id="dev_cloud_label" spellcheck="false" /></label>
-            <label>Language <input id="dev_cloud_language" spellcheck="false" placeholder="auto" /></label>
-          </div>
-          <label>Base URL <input id="dev_cloud_base_url" spellcheck="false" placeholder="https://host/v1" /></label>
-          <label>Model <input id="dev_cloud_model" spellcheck="false" /></label>
-          <p id="dev_cloud_consent_line" class="hint"></p>
-          <label>API key
-            <span class="token-row">
-              <input id="dev_cloud_key" type="password" autocomplete="off" spellcheck="false" placeholder="paste the provider's API key" />
-              <button type="button" class="small secondary" id="dev_cloud_key_paste">Paste</button>
-              <button type="button" class="small" id="dev_cloud_key_save">Save key</button>
-              <button type="button" class="small secondary" id="dev_cloud_key_clear">Clear key</button>
-            </span>
-          </label>
-          <p id="dev_cloud_key_state" class="hint"></p>
-          <p class="hint">Keys are stored in Windows Credential Manager (flow-clone/cloud/&lt;id&gt;), never in prefs.json, and never logged.</p>
-          <label class="row"><input type="checkbox" id="dev_cloud_send_dictionary" /> Send dictionary words (improves spelling of names)</label>
-          <label class="row"><input type="checkbox" id="dev_cloud_send_screen_words" /> Send words from the screen (off: on-screen text stays on this PC)</label>
-          <label class="row" id="dev_cloud_zdr_row"><input type="checkbox" id="dev_cloud_zero_retention" /> <span id="dev_cloud_zdr_text">Zero retention</span></label>
-          <div class="toolbar">
-            <button type="button" class="secondary" id="dev_cloud_test">Test provider</button>
-          </div>
-          <p id="dev_cloud_test_out" class="hint"></p>
-        </div>
-
-        <div class="grid2">
-          <label>Monthly budget (USD, optional) <input id="dev_cloud_budget" type="number" min="0" step="0.5" placeholder="no limit" /></label>
-          <span></span>
-        </div>
-        <p class="hint">Usage this month (<span id="dev_cloud_month"></span>): <span id="dev_cloud_total"></span></p>
-        <ul id="dev_cloud_usage" class="routes"></ul>
-        <button type="button" class="small secondary" id="dev_cloud_reset_usage">Reset counters</button>
-      </fieldset>
-
-      <dialog id="dev_consent">
-        <h3 id="dev_consent_title"></h3>
-        <p id="dev_consent_body"></p>
-        <p id="dev_consent_retention" class="hint"></p>
-        <p class="hint">You can turn this off at any time.</p>
-        <div class="toolbar">
-          <button type="button" class="secondary" id="dev_consent_cancel">Cancel</button>
-          <button type="button" id="dev_consent_ok"></button>
-        </div>
-      </dialog>
 
       <div class="toolbar">
         <button type="button" id="dev_save">Save</button>

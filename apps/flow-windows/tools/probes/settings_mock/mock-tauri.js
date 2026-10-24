@@ -20,32 +20,62 @@
     asr_engine: "whisper", parakeet_model_dir: null, spoken_cleanup: true,
   };
   let dev = {
-    allow_server: true, allow_client: true, route_order: ["server", "client"], host: "100.64.0.10", port: 7313,
+    allow_server: true, allow_client: true, route_order: ["server", "client", "cloud"], host: "100.64.0.10", port: 7313,
     tls: false, tls_pin_sha256: "", token: "dev-token-0123456789abcdef", connect_timeout_ms: 800,
     commit_timeout_base_ms: 3000, health_ttl_s: 30, keep_local_warm: true, show_engine_badge: true, dev_unlocked: false,
-    allow_cloud: false, cloud: { active: "", providers: [], monthly_budget_usd: null },
+    decode_while_speaking: true, parakeet_decoding: "auto",
   };
-  // D18 cloud: presets as flow_cloud::presets() returns them (no keys anywhere).
-  const preset = (preset, adapter, label, base_url, model, zero_retention, dialect = "") => ({
-    id: "", preset, adapter, dialect, label, base_url, model, language: "", send_dictionary: true,
-    send_screen_words: false, zero_retention, format_override: "", timeout_base_ms: 6000,
-    price_per_hour_usd: null, consent_host: "", consent_at_ms: 0,
+  // D28 OpenRouter: one key (never returned), two consented uses, a catalogue.
+  let orKey = "";
+  const keyState = () => (orKey ? { set: true, masked: "••••" + orKey.slice(-4) } : { set: false, masked: "" });
+  const row = (id, name, o) => ({
+    id, name, context_length: 0, input: ["text"], output: ["text"], stt_path: null, price: {}, zdr: true,
+    zdr_providers: ["groq"], fast_zdr_providers: [], reasoning_mandatory: false, free: false, allowed_by_account: null,
+    recommended: false, price_label: "", badges: ["ZDR"], ...o,
   });
-  const presets = [
-    preset("openrouter", "openrouter", "OpenRouter", "https://openrouter.ai/api/v1", "openai/gpt-transcribe", true),
-    preset("elevenlabs", "elevenlabs", "ElevenLabs Scribe", "https://api.elevenlabs.io", "scribe_v2", false),
-    preset("groq", "openai_compat", "Groq", "https://api.groq.com/openai/v1", "whisper-large-v3-turbo", false),
-    preset("openai", "openai_compat", "OpenAI", "https://api.openai.com/v1", "gpt-transcribe", false, "gpt_transcribe"),
-    preset("deepgram", "deepgram", "Deepgram", "https://api.deepgram.com", "nova-3", true),
-    preset("assemblyai", "assemblyai", "AssemblyAI", "https://api.assemblyai.com", "universal", true),
-    preset("custom", "openai_compat", "Custom", "", "", false),
+  const catalog = [
+    row("openai/whisper-large-v3-turbo", "Whisper Large v3 Turbo", { input: ["audio"], stt_path: "transcriptions", recommended: true, price_label: "$0.04/h audio", badges: ["ZDR", "fast"] }),
+    row("elevenlabs/scribe-v2", "ElevenLabs Scribe v2", { input: ["audio"], stt_path: "transcriptions", recommended: true, price_label: "$0.22/h audio" }),
+    row("nvidia/parakeet-tdt-0.6b-v3", "Parakeet TDT 0.6B v3", { input: ["audio"], stt_path: "transcriptions", price_label: "$0.09/h audio" }),
+    row("google/gemini-3.1-flash-lite", "Gemini 3.1 Flash Lite", { input: ["text", "audio"], stt_path: "chat_audio", context_length: 1048576, price_label: "≈ $0.035/h + output", badges: ["ZDR", "chat model, may paraphrase"] }),
+    row("mistralai/voxtral-small", "Voxtral Small (logs)", { input: ["audio"], stt_path: "chat_audio", zdr: false, price_label: "≈ $0.1/h + output", badges: ["chat model, may paraphrase"] }),
+    row("meta-llama/llama-3.3-70b-instruct", "Llama 3.3 70B Instruct", { context_length: 131072, recommended: true, price_label: "≈ $0.0007 per dictation", badges: ["ZDR", "fast"] }),
+    row("meta-llama/llama-3.1-8b-instruct", "Llama 3.1 8B Instruct", { context_length: 131072, recommended: true, price_label: "≈ $0.00006 per dictation", badges: ["ZDR", "fast"] }),
+    row("openai/gpt-oss-20b", "gpt-oss-20b", { context_length: 131072, reasoning_mandatory: true, price_label: "≈ $0.0001 per dictation", badges: ["ZDR", "fast", "reasoning"] }),
+    row("meta-llama/llama-3.3-8b-instruct:free", "Llama 3.3 8B (free)", { context_length: 128000, free: true, zdr: false, price_label: "free", badges: ["free (20/min, may log)"], allowed_by_account: false }),
   ];
-  const keys = {};
-  const keyState = (id) => (keys[id] ? { set: true, masked: "••••" + keys[id].slice(-4) } : { set: false, masked: "" });
+  let catStatus = { source: "Baked", fetched_at_ms: 0, snapshot_date: "2026-10-24", models: catalog.length, stt: 5, cleanup: 4 };
+  let or = {
+    privacy: { zdr: true, data_collection: "deny" },
+    stt: { allow: false, consent: false, consent_at_ms: 0, model: "openai/whisper-large-v3-turbo", stt_path: "auto", language: "", send_dictionary: true },
+    cleanup: { allow: false, consent: false, consent_at_ms: 0, order: ["cloud", "local"], model: "meta-llama/llama-3.3-70b-instruct", sort: "latency", timeout_ms: 2500, send_surrounding_text: false, send_screen_words: false, send_app_name: false },
+    budget: null,
+    notice: "Cloud speech now runs only through OpenRouter. Your Groq provider was removed; your OpenRouter key was kept. Cloud speech was turned off: turn it on again in this tab.",
+  };
   const usage = () => ({
-    month: "2026-10", rows: [{ provider_id: "openrouter-1", label: "OpenRouter", requests: 42, minutes: 5.2, cost: "$0.0234" }],
-    total: "$0.0234", budget: dev.cloud.monthly_budget_usd, budget_reached: false,
+    month: "2026-10", speech: "$0.0234", cleanup: "$0.0140", total: "$0.0374", budget: or.budget, budget_reached: false,
+    rows: [
+      { purpose: "stt", label: "Speech (openai/whisper-large-v3-turbo)", requests: 42, minutes: 5.2, cost: "$0.0234" },
+      { purpose: "cleanup", label: "Cleanup (meta-llama/llama-3.3-70b-instruct)", requests: 20, minutes: 0, cost: "$0.0140" },
+    ],
   });
+  const cleanupStatus = () => ({
+    supported: true, enabled: or.cleanup.allow && or.cleanup.consent && !!orKey, consent: or.cleanup.consent,
+    blocked: or.cleanup.allow && !orKey ? "cloud_cleanup_not_configured" : null,
+    order: or.cleanup.order, circuit: { open: false, reason: null, retry_in_ms: null, until_config_change: false },
+    model: or.cleanup.model, timeout_ms: or.cleanup.timeout_ms,
+    last: { engine: "cloud", model: or.cleanup.model, cost_usd: 0.0007, ttft_ms: 310, latency_ms: 640, generation_id: "gen-mock" },
+    month_cost_usd: 0.014,
+  });
+  const info = (id) => catalog.find((r) => r.id === id) ?? null;
+  const orView = () => ({
+    supported: true, key: keyState(), privacy: { ...or.privacy }, stt: { ...or.stt },
+    cleanup: { ...or.cleanup, status: cleanupStatus() }, budget: or.budget, usage: usage(), catalog: { ...catStatus },
+    notice: or.notice,
+    warnings: [!orKey && (or.stt.allow || or.cleanup.allow) ? "OpenRouter is on but no key is saved." : "", or.privacy.zdr ? "" : "Zero retention is off: providers may keep your audio/text."].filter(Boolean),
+    stt_model_info: info(or.stt.model), cleanup_model_info: info(or.cleanup.model),
+  });
+  const validId = (m) => /^[a-z0-9._~/-]+(:[a-z]+)*$/.test(m) && m.length <= 128 && m.includes("/");
   // Rough stand-in for the backend's DevForm::validate (the real rules are Rust).
   const devCheck = (f) => {
     const errors = [];
@@ -66,7 +96,10 @@
   };
   const route = () => ({
     last: { engine: "local", fallback: "connect_failed", server: "100.64.0.10:7313", rtt_ms: null, queue_ms: null,
-            server_core: null, asr_ms: 812, total_ms: 1630, status: "FORMATTED", empty_reason: null, error: null, at_ms: Date.now() - 5000 },
+            server_core: null, asr_ms: 812, total_ms: 1630, status: "FORMATTED", empty_reason: null, error: null, at_ms: Date.now() - 5000,
+            client_ms: 1650, wait_ms: 0, segments: 2, pre_asr_ms: 300, llm: "AI cleaned", llm_engine: "cloud",
+            llm_model: "meta-llama/llama-3.3-70b-instruct", llm_cost_usd: 0.0007,
+            llm_row: "AI cleaned · OpenRouter · meta-llama/llama-3.3-70b-instruct · $0.0007", row: null, notice: null },
     circuit: { open: true, reason: "connect_failed", retry_in_ms: 4200, until_config_change: false },
     health,
     cloud_circuit: { open: false, reason: null, retry_in_ms: null, until_config_change: false },
@@ -75,11 +108,6 @@
     form: structuredClone(dev), caps: { local: true, remote: true, cloud: true },
     capabilities: { local: true, remote: true, asr_engines: ["whisper", "parakeet"], llm: true, proto: 1, core_version: "0.1.0" },
     visible: true, version: "0.1.0", build: "abc1234-dirty", full: "0.1.0+abc1234.dirty", check: devCheck(dev), route: route(),
-    cloud: {
-      capabilities: { cloud: true, adapters: ["openai_compat", "openrouter", "elevenlabs", "deepgram", "assemblyai"] },
-      keys: Object.fromEntries(dev.cloud.providers.map((p) => [p.id, keyState(p.id)])),
-      usage: usage(), presets,
-    },
   });
   let history = [
     { id: 3, ts: now - 60e3, app: "outlook.exe", url: null, raw: "um so i think we should uh meet tomorrow at three",
@@ -128,15 +156,54 @@
     dev_reset_circuit: route,
     dev_reset_defaults: devView,
     dev_unlock: devView,
-    dev_cloud_presets: () => presets,
-    dev_cloud_new_id: ({ preset, taken }) => { let n = 1; while (taken.includes(`${preset}-${n}`)) n++; return `${preset}-${n}`; },
-    dev_cloud_set_key: ({ providerId, key }) => { keys[providerId] = key.trim(); return keyState(providerId); },
-    dev_cloud_clear_key: ({ providerId }) => { delete keys[providerId]; return keyState(providerId); },
-    dev_cloud_test: ({ provider, key }) => (key || keys[provider.id])
-      ? { ok: true, engine: "cloud", provider: provider.id, model: provider.model, transcript: "And so, my fellow Americans", latency_ms: 640, cost_usd: 0.00006 }
-      : { ok: false, engine: "cloud", error: "cloud_not_configured", message: "no API key" },
+    dev_cloud_set_key: ({ key }) => { orKey = key.trim(); return keyState(); },
+    dev_cloud_clear_key: () => { orKey = ""; return keyState(); },
     dev_cloud_usage: usage,
     dev_cloud_reset_usage: usage,
+    dev_or_get: orView,
+    dev_or_ack_notice: () => { or.notice = null; return orView(); },
+    dev_or_key_info: () => orKey
+      ? { label: "flow-clone", limit: null, limit_remaining: null, limit_reset: null, usage: 1.23, usage_daily: 0.02, usage_weekly: 0.2, usage_monthly: 0.84, is_free_tier: false, free_requests_remaining: null, checked_at_ms: Date.now(), warn_no_limit: true }
+      : { error: "cloud_not_configured" },
+    dev_or_set_privacy: ({ zdr, dataCollection }) => { or.privacy = { zdr, data_collection: dataCollection }; return orView(); },
+    dev_or_set_stt: ({ form }) => {
+      if (form.allow && !or.stt.consent && !form.consent) throw "consent required before turning on cloud speech";
+      if (form.consent) { or.stt.consent = true; or.stt.consent_at_ms = Date.now(); }
+      or.stt = { ...or.stt, allow: form.allow, language: form.language, send_dictionary: form.send_dictionary, stt_path: form.stt_path };
+      return orView();
+    },
+    dev_or_set_cleanup: ({ form }) => {
+      if (form.allow && !or.cleanup.consent && !form.consent) throw "consent required before turning on cloud cleanup";
+      if (form.consent) { or.cleanup.consent = true; or.cleanup.consent_at_ms = Date.now(); }
+      const { consent, ...rest } = form;
+      or.cleanup = { ...or.cleanup, ...rest, timeout_ms: Math.min(8000, Math.max(800, form.timeout_ms)) };
+      return orView();
+    },
+    dev_or_set_budget: ({ budget }) => { or.budget = budget; return orView(); },
+    dev_or_set_model: ({ purpose, model }) => {
+      if (!validId(model)) throw `bad_config: "${model}" is not an OpenRouter model id`;
+      or[purpose].model = model;
+      return orView();
+    },
+    dev_or_catalog: ({ purpose, query, filters }) => catalog.filter((r) =>
+      (purpose === "stt" ? r.stt_path !== null : r.input.includes("text") && r.stt_path === null) &&
+      (!query || (r.id + r.name).toLowerCase().includes(query.toLowerCase())) &&
+      (!filters.zdr_only || r.zdr) && (!filters.fast_only || r.badges.includes("fast")) &&
+      (!filters.free_only || r.free) && (!filters.stt_path || r.stt_path === filters.stt_path)),
+    dev_or_catalog_status: () => ({ ...catStatus }),
+    dev_or_refresh_catalog: async ({ force }) => {
+      await new Promise((r) => setTimeout(r, 150));
+      catStatus = { ...catStatus, source: "Live", fetched_at_ms: Date.now(), snapshot_date: null };
+      window.__refreshes = (window.__refreshes || 0) + 1;
+      return force && window.__failRefresh ? { ...catStatus, source: "Cache", error: "connect_failed" } : { ...catStatus };
+    },
+    dev_or_test_stt: ({ key }) => (key || orKey)
+      ? { ok: true, engine: "cloud", provider: "openrouter", model: or.stt.model, transcript: "And so, my fellow Americans", latency_ms: 640, cost_usd: 0.00006 }
+      : { ok: false, engine: "cloud", error: "cloud_not_configured", message: "no API key" },
+    dev_or_test_cleanup: () => orKey
+      ? { ok: true, text: "Let's meet tomorrow at 3 pm.", error: null, message: null, latency_ms: 580, cost_usd: 0.0007, model: or.cleanup.model }
+      : { ok: false, text: null, error: "cloud_cleanup_not_configured", message: "no API key", model: or.cleanup.model },
+    dev_or_cleanup_status: cleanupStatus,
     debug_log_status: debugView,
     debug_log_set: ({ enabled }) => { debugLog.enabled = enabled; return debugView(); },
     debug_log_clear: () => { debugLog.count = 0; return debugView(); },
@@ -166,10 +233,10 @@ window.addEventListener("load", () => {
 });
 window.addEventListener("error", (e) => console.error("PAGE ERROR", e.message));
 window.addEventListener("unhandledrejection", (e) => console.error("UNHANDLED", String(e.reason)));
-// ?drive=cloud: click through the Developer cloud section (add OpenRouter,
-// save a key, accept the consent, test, save) and log what the page shows.
+// ?drive=or: click through the OpenRouter tab (notice, key, consents, tests,
+// picker, privacy, budget) and log what the page shows.
 window.addEventListener("load", () => {
-  if (new URLSearchParams(location.search).get("drive") !== "cloud") return;
+  if (new URLSearchParams(location.search).get("drive") !== "or") return;
   const $ = (id) => document.getElementById(id);
   // Results go into <pre id="__drive"> so `--dump-dom` shows them.
   const out = document.createElement("pre");
@@ -178,41 +245,102 @@ window.addEventListener("load", () => {
   const log = (...a) => { console.log(...a); out.textContent += a.join(" ") + "\n"; };
   window.addEventListener("error", (e) => log("PAGE ERROR", e.message));
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const calls = (c) => window.__mockCalls.filter((x) => x[0] === c);
   (async () => {
-    await wait(200);
-    document.querySelector('nav.tabs [data-tab="developer"]').click();
-    await wait(100);
-    $("dev_cloud_preset").value = "openrouter";
-    $("dev_cloud_add").click();
-    await wait(100);
-    $("dev_cloud_key").value = "sk-or-v1-PROBE-0123456789abcd";
-    $("dev_cloud_key_save").click();
-    await wait(100);
-    log("KEYSTATE", $("dev_cloud_key_state").textContent, "| field now:", JSON.stringify($("dev_cloud_key").value));
-    $("dev_allow_cloud").click();
-    await wait(100);
-    log("DIALOG open:", $("dev_consent").open, "|", $("dev_consent_title").textContent, "|", $("dev_consent_ok").textContent);
-    $("dev_consent_ok").click();
     await wait(300);
-    log("ROUTES", [...$("dev_routes").children].map((li) => li.firstChild.textContent.trim()).join(" > "));
-    log("LIST", $("dev_cloud_list").textContent);
-    log("BANNER", $("dev_cloud_banner").textContent);
-    $("dev_cloud_test").click();
-    await wait(200);
-    log("TEST", $("dev_cloud_test_out").textContent);
-    $("dev_cloud_base_url").readOnly = false;
-    $("dev_cloud_base_url").value = "https://evil.example.com/api/v1";
-    $("dev_cloud_base_url").dispatchEvent(new Event("input"));
+    log("BOOT tab hidden:", $("tab_openrouter").hidden, "| badge hidden:", $("or_badge").hidden, "| refreshes:", window.__refreshes || 0);
+    log("PRIVACY LINE", $("privacy_line").textContent);
+    document.querySelector('nav.tabs [data-tab="openrouter"]').click();
+    await wait(300);
+    log("OPEN refreshes:", window.__refreshes || 0, "| notice:", $("or_notice").textContent.slice(0, 40));
+    $("or_notice_ok").click();
     await wait(100);
-    log("AFTER HOST CHANGE", $("dev_cloud_consent_line").textContent);
+    log("NOTICE hidden:", $("or_notice_box").hidden, "| badge hidden:", $("or_badge").hidden);
+    $("or_key").value = "sk-or-v1-PROBE-0123456789abcd";
+    $("or_key_save").click();
+    await wait(150);
+    log("KEY", $("or_key_state").textContent, "| field now:", JSON.stringify($("or_key").value));
+    $("or_key_check").click();
+    await wait(100);
+    log("KEYINFO", $("or_key_info").textContent, "| warn shown:", !$("or_key_warn").hidden);
+    $("or_stt_allow").click();
+    await wait(100);
+    log("STT DIALOG open:", $("or_stt_consent_dlg").open);
+    $("or_stt_consent_cancel").click();
+    await wait(100);
+    log("STT after cancel checked:", $("or_stt_allow").checked, "| set_stt calls:", calls("dev_or_set_stt").length);
+    $("or_stt_allow").click();
+    await wait(100);
+    $("or_stt_consent_ok").click();
+    await wait(400);
+    log("STT on:", $("or_stt_allow").checked, "| consent:", $("or_stt_consent").textContent, "| form:", JSON.stringify(calls("dev_or_set_stt").at(-1)[1]));
+    log("REFRESH after enable:", JSON.stringify(calls("dev_or_refresh_catalog").map((c) => c[1])));
+    log("MODEL", $("or_stt_model_name").textContent, "|", $("or_stt_model_badges").textContent);
+    $("or_stt_test").click();
+    await wait(100);
+    log("STT TEST", $("or_stt_test_out").textContent);
+    $("or_cleanup_allow").click();
+    await wait(100);
+    log("CLEANUP DIALOG open:", $("or_cleanup_consent_dlg").open);
+    $("or_cleanup_consent_ok").click();
+    await wait(400);
+    log("CLEANUP form:", JSON.stringify(calls("dev_or_set_cleanup").at(-1)[1]));
+    log("CLEANUP STATE", $("or_cleanup_state").textContent);
+    $("or_cleanup_test").click();
+    await wait(100);
+    log("CLEANUP TEST", $("or_cleanup_test_out").textContent);
+    $("or_stt_change").click();
+    await wait(200);
+    log("PICKER open:", $("or_picker").open, "|", $("or_cat_status").textContent, "| rows:", $("or_picker_list").children.length);
+    $("or_chip_zdr").click();
+    await wait(100);
+    log("ZDR off rows:", $("or_picker_list").children.length);
+    $("or_chip_chat_audio").click();
+    await wait(100);
+    log("chat audio rows:", [...$("or_picker_list").querySelectorAll("code")].map((c) => c.textContent).join(","));
+    $("or_picker_list").querySelector("button").click();
+    await wait(100);
+    log("PARAPHRASE confirm open:", $("or_confirm").open, "|", $("or_confirm_body").textContent.slice(0, 40));
+    $("or_confirm_ok").click();
+    await wait(200);
+    log("PICKED", $("or_stt_model_id").textContent, "| picker open:", $("or_picker").open);
+    $("or_cleanup_change").click();
+    await wait(200);
+    $("or_picker_query").value = "8b";
+    $("or_picker_query").dispatchEvent(new Event("input"));
+    await wait(350);
+    log("SEARCH 8b rows:", $("or_picker_list").textContent);
+    $("or_picker_custom").value = "Not A Model";
+    $("or_picker_use").click();
+    await wait(100);
+    log("CUSTOM BAD", $("or_picker_status").textContent);
+    $("or_cat_refresh").click();
+    log("REFRESHING", $("or_cat_status").textContent);
+    await wait(300);
+    log("REFRESHED", $("or_cat_status").textContent);
+    $("or_picker_close").click();
+    $("or_zdr").click();
+    await wait(100);
+    log("ZDR CONFIRM open:", $("or_confirm").open, "|", $("or_confirm_body").textContent);
+    $("or_confirm_cancel").click();
+    await wait(100);
+    log("ZDR still:", $("or_zdr").checked, "| privacy calls:", calls("dev_or_set_privacy").length);
+    $("or_budget").value = "5";
+    $("or_budget").dispatchEvent(new Event("change"));
+    await wait(100);
+    log("USAGE", $("or_usage_total").textContent, "|", $("or_usage_rows").textContent);
+    document.querySelector('nav.tabs [data-tab="ai"]').click();
+    await wait(100);
+    log("AI ENGINE", $("ai_engine_line").textContent);
+    document.querySelector('nav.tabs [data-tab="developer"]').click();
+    await wait(200);
+    log("ROUTES", [...$("dev_routes").children].map((li) => li.firstChild.textContent.trim()).join(" > "));
+    log("LAST", $("dev_last").textContent);
     $("dev_save").click();
     await wait(200);
-    log("DIALOG on save:", $("dev_consent").open, "|", $("dev_consent_title").textContent);
-    $("dev_consent_cancel").click();
-    await wait(200);
-    log("SAVED form calls:", JSON.stringify(window.__mockCalls.filter((c) => c[0] === "dev_set").length));
+    log("DEV_SET keys:", Object.keys(calls("dev_set").at(-1)?.[1].form ?? {}).join(","));
     log("LEAK", JSON.stringify(window.__mockCalls.filter((c) => c[0] !== "dev_cloud_set_key")).includes("PROBE"));
-    log("USAGE", $("dev_cloud_total").textContent, "|", $("dev_cloud_usage").textContent);
+    log("TOTAL refreshes:", window.__refreshes);
     log("DRIVE DONE");
   })().catch((e) => log("DRIVE FAILED", String(e)));
 });

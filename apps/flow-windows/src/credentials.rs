@@ -1,9 +1,11 @@
-//! Cloud STT API keys at rest (D18 §8.1, invariant C3).
+//! The OpenRouter API key at rest (D18 §8.1 / D28, invariant C3).
 //!
 //! Keys live only in the OS secure store and in Rust memory: never in
 //! `prefs.json`, Tauri events, logs or crash text. On Windows the store is
-//! Credential Manager, one generic credential per provider named
-//! `flow-clone/cloud/<provider id>` (`CRED_PERSIST_LOCAL_MACHINE`: this
+//! Credential Manager, one generic credential named
+//! `flow-clone/cloud/openrouter` (D28: OpenRouter is the only cloud
+//! provider; [`apply_migration`] moves / deletes the D18 per-provider
+//! entries `flow-clone/cloud/<id>` once) (`CRED_PERSIST_LOCAL_MACHINE`: this
 //! user on this PC, not roamed). Other hosts (the Linux test/CI build) use
 //! [`MemoryStore`], the keyring stand-in the tests run against.
 //!
@@ -133,10 +135,13 @@ pub fn normalize_key(raw: &str) -> Result<String, String> {
 
 // ------------------------------------------------ host + adapter binding
 
-/// A stored key and the endpoint it was saved for (review S4): the
-/// provider's base-URL host and adapter. A key is only ever handed to the
-/// router for a provider with exactly that binding; a host or adapter
-/// change deletes it and the page asks for the key again.
+/// The id of the one OpenRouter key (D28): Credential Manager
+/// `flow-clone/cloud/openrouter`.
+pub const OPENROUTER: &str = flow_router::cloud::OPENROUTER_ID;
+
+/// A stored key and the endpoint it was saved for (review S4): the host
+/// and adapter. D28: the only binding is `(openrouter.ai, openrouter)`;
+/// a key bound to anything else is never handed out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredKey {
     pub key: String,
@@ -146,9 +151,12 @@ pub struct StoredKey {
 
 const BOUND_V1: &str = "flow-bound-v1\n";
 
-/// `(host, adapter)` of a provider config.
-pub fn binding(p: &flow_router::CloudProviderConfig) -> (String, String) {
-    (p.host(), p.adapter.clone())
+/// The binding of the OpenRouter key.
+pub fn openrouter_binding() -> (String, String) {
+    (
+        flow_router::cloud::OPENROUTER_HOST.to_string(),
+        "openrouter".to_string(),
+    )
 }
 
 /// Credential blob: `flow-bound-v1\n<host>\n<adapter>\n<key>`.
@@ -172,75 +180,92 @@ pub fn decode(raw: &str) -> StoredKey {
     }
 }
 
-/// Store `key` bound to `p`'s host + adapter.
-pub fn store_bound(
-    store: &dyn CredentialStore,
-    p: &flow_router::CloudProviderConfig,
-    key: &str,
-) -> Result<(), String> {
-    let b = binding(p);
-    if b.0.is_empty() {
-        return Err("Enter a valid base URL before saving the key".into());
-    }
-    store.set(&p.id, &encode(key, &b))
+/// Save the OpenRouter key (bound to openrouter.ai + the openrouter adapter).
+pub fn store_openrouter_key(store: &dyn CredentialStore, key: &str) -> Result<(), String> {
+    store.set(OPENROUTER, &encode(key, &openrouter_binding()))
 }
 
-/// The key to hand the router for the saved provider `p`, or `None`.
-/// A legacy (unbound) key is bound to `p` on the way; a key bound to
-/// another host/adapter is deleted (never re-sent to the new endpoint).
-pub fn key_for(
-    store: &dyn CredentialStore,
-    p: &flow_router::CloudProviderConfig,
-) -> Option<String> {
-    let raw = store.get(&p.id).ok().flatten()?;
+/// The OpenRouter key to hand the router, or `None`. A legacy (unbound)
+/// key under `openrouter` is bound on the way; a key bound to any other
+/// host or adapter is deleted (never sent to openrouter.ai).
+pub fn openrouter_key(store: &dyn CredentialStore) -> Option<String> {
+    let raw = store.get(OPENROUTER).ok().flatten()?;
     let sk = decode(&raw);
     if sk.key.is_empty() {
         return None;
     }
     match &sk.bound {
-        Some(b) if *b == binding(p) => Some(sk.key),
+        Some(b) if *b == openrouter_binding() => Some(sk.key),
         Some(_) => {
-            let _ = store.delete(&p.id);
+            let _ = store.delete(OPENROUTER);
             None
         }
         None => {
-            let _ = store_bound(store, p, &sk.key);
+            let _ = store_openrouter_key(store, &sk.key);
             Some(sk.key)
         }
     }
 }
 
-/// On Save: drop every stored key whose provider changed host or adapter
-/// (bound keys: against their binding; legacy keys: against the saved
-/// config). Returns the ids whose key was removed (the page asks again).
-pub fn reconcile_keys(
+/// What a D28 migration did to the key store.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct KeyMigration {
+    /// The kept OpenRouter key moved from this id to `openrouter`.
+    pub moved_from: Option<String>,
+    /// Ids whose key was deleted (other providers; a kept entry's key that
+    /// was bound to another host).
+    pub deleted: Vec<String>,
+    /// Store errors (ids only, never a key).
+    pub errors: Vec<String>,
+}
+
+/// Apply `RouterConfig::migrate_d28`'s report to Credential Manager: move
+/// `flow-clone/cloud/<key_from>` to `flow-clone/cloud/openrouter` (only if
+/// that key was saved for openrouter.ai: bound to it, or a legacy unbound
+/// key of an entry whose base URL was openrouter.ai, `legacy_host`), and
+/// delete every `delete_keys` entry. Idempotent.
+pub fn apply_migration(
     store: &dyn CredentialStore,
-    saved: &flow_router::CloudConfig,
-    new: &flow_router::CloudConfig,
-) -> Vec<String> {
-    let mut dropped = Vec::new();
-    for p in &new.providers {
-        let Some(raw) = store.get(&p.id).ok().flatten() else {
-            continue;
-        };
-        let sk = decode(&raw);
-        let ok = match &sk.bound {
-            Some(b) => *b == binding(p),
-            None => saved
-                .providers
-                .iter()
-                .find(|o| o.id == p.id)
-                .is_none_or(|o| binding(o) == binding(p)),
-        };
-        if ok {
-            if sk.bound.is_none() {
-                let _ = store_bound(store, p, &sk.key);
+    report: &flow_router::MigrationReport,
+    legacy_host: &dyn Fn(&str) -> Option<String>,
+) -> KeyMigration {
+    let mut out = KeyMigration::default();
+    let del = |id: &str, out: &mut KeyMigration| match store.delete(id) {
+        Ok(()) => out.deleted.push(id.to_string()),
+        Err(_) => out.errors.push(id.to_string()),
+    };
+    if let Some(from) = report.key_from.as_deref().filter(|f| *f != OPENROUTER) {
+        match store.get(from) {
+            Ok(Some(raw)) => {
+                let sk = decode(&raw);
+                let for_openrouter = match &sk.bound {
+                    Some(b) => *b == openrouter_binding(),
+                    None => {
+                        legacy_host(from).as_deref() == Some(flow_router::cloud::OPENROUTER_HOST)
+                    }
+                };
+                if for_openrouter && !sk.key.is_empty() {
+                    if store_openrouter_key(store, &sk.key).is_ok() {
+                        out.moved_from = Some(from.to_string());
+                        del(from, &mut out);
+                        out.deleted.retain(|d| d != from);
+                    } else {
+                        out.errors.push(from.to_string());
+                    }
+                } else {
+                    del(from, &mut out);
+                }
             }
-        } else if store.delete(&p.id).is_ok() {
-            dropped.push(p.id.clone());
+            Ok(None) => {}
+            Err(_) => out.errors.push(from.to_string()),
         }
     }
-    dropped
+    for id in &report.delete_keys {
+        if id != OPENROUTER {
+            del(id, &mut out);
+        }
+    }
+    out
 }
 
 #[cfg(windows)]
@@ -325,21 +350,21 @@ mod tests {
     #[test]
     fn memory_store_is_a_keyring_stand_in() {
         let s = MemoryStore::new();
-        assert_eq!(s.get("groq-1").unwrap(), None);
-        s.set("groq-1", "gsk_0123456789abcdef").unwrap();
+        assert_eq!(s.get("legacy-1").unwrap(), None);
+        s.set("legacy-1", "sk-0123456789abcdef").unwrap();
         assert_eq!(
-            s.get("groq-1").unwrap().as_deref(),
-            Some("gsk_0123456789abcdef")
+            s.get("legacy-1").unwrap().as_deref(),
+            Some("sk-0123456789abcdef")
         );
-        assert_eq!(s.targets(), vec!["flow-clone/cloud/groq-1".to_string()]);
-        s.set("groq-1", "gsk_other-key-000000").unwrap();
+        assert_eq!(s.targets(), vec!["flow-clone/cloud/legacy-1".to_string()]);
+        s.set("legacy-1", "sk-other-key-000000").unwrap();
         assert_eq!(
-            s.get("groq-1").unwrap().as_deref(),
-            Some("gsk_other-key-000000")
+            s.get("legacy-1").unwrap().as_deref(),
+            Some("sk-other-key-000000")
         );
-        s.delete("groq-1").unwrap();
-        s.delete("groq-1").unwrap(); // idempotent
-        assert_eq!(s.get("groq-1").unwrap(), None);
+        s.delete("legacy-1").unwrap();
+        s.delete("legacy-1").unwrap(); // idempotent
+        assert_eq!(s.get("legacy-1").unwrap(), None);
         assert!(s.targets().is_empty());
     }
 
@@ -365,90 +390,120 @@ mod tests {
         assert!(normalize_key("ключ").is_err());
     }
 
-    fn groq(host: &str, adapter: &str) -> flow_router::CloudProviderConfig {
-        flow_router::CloudProviderConfig {
-            id: "groq-1".into(),
-            adapter: adapter.into(),
-            base_url: format!("https://{host}/openai/v1"),
+    #[test]
+    fn the_openrouter_key_is_bound_to_openrouter_ai() {
+        let s = MemoryStore::new();
+        store_openrouter_key(&*s, "sk-or-v1-abcdefgh1234").unwrap();
+        let raw = s.get(OPENROUTER).unwrap().unwrap();
+        assert_eq!(
+            decode(&raw),
+            StoredKey {
+                key: "sk-or-v1-abcdefgh1234".into(),
+                bound: Some(("openrouter.ai".into(), "openrouter".into()))
+            }
+        );
+        assert_eq!(s.targets(), vec!["flow-clone/cloud/openrouter".to_string()]);
+        assert_eq!(key_state(&*s, OPENROUTER).masked, "••••1234");
+        assert_eq!(
+            openrouter_key(&*s).as_deref(),
+            Some("sk-or-v1-abcdefgh1234")
+        );
+    }
+
+    #[test]
+    fn a_key_bound_elsewhere_is_never_handed_out() {
+        let s = MemoryStore::new();
+        s.set(
+            OPENROUTER,
+            &encode(
+                "sk-abcdefgh1234",
+                &("stt.example.net".into(), "openai_compat".into()),
+            ),
+        )
+        .unwrap();
+        assert_eq!(openrouter_key(&*s), None);
+        assert_eq!(s.get(OPENROUTER).unwrap(), None, "and deleted");
+    }
+
+    #[test]
+    fn a_legacy_unbound_key_is_bound_on_first_use() {
+        let s = MemoryStore::new();
+        s.set(OPENROUTER, "sk-or-legacy12345").unwrap();
+        assert_eq!(openrouter_key(&*s).as_deref(), Some("sk-or-legacy12345"));
+        assert!(decode(&s.get(OPENROUTER).unwrap().unwrap()).bound.is_some());
+    }
+
+    fn report(from: Option<&str>, delete: &[&str]) -> flow_router::MigrationReport {
+        flow_router::MigrationReport {
+            migrated: true,
+            key_from: from.map(str::to_string),
+            key_to: from.map(|_| OPENROUTER.to_string()),
+            delete_keys: delete.iter().map(|s| s.to_string()).collect(),
             ..Default::default()
         }
     }
 
     #[test]
-    fn keys_are_stored_with_their_host_and_adapter() {
+    fn migration_moves_the_openrouter_key_and_deletes_the_rest() {
         let s = MemoryStore::new();
-        let p = groq("api.groq.com", "openai_compat");
-        store_bound(&*s, &p, "gsk_abcdefgh1234").unwrap();
-        let raw = s.get("groq-1").unwrap().unwrap();
+        s.set(
+            "openrouter-1",
+            &encode(
+                "sk-or-v1-LEAKCHECK-0001",
+                &("openrouter.ai".into(), "openrouter".into()),
+            ),
+        )
+        .unwrap();
+        s.set(
+            "legacy-1",
+            &encode(
+                "sk-LEAKCHECK-0002",
+                &("stt.example.net".into(), "openai_compat".into()),
+            ),
+        )
+        .unwrap();
+        let m = apply_migration(&*s, &report(Some("openrouter-1"), &["legacy-1"]), &|_| None);
+        assert_eq!(m.moved_from.as_deref(), Some("openrouter-1"));
+        assert_eq!(m.deleted, vec!["legacy-1".to_string()]);
+        assert_eq!(s.targets(), vec!["flow-clone/cloud/openrouter".to_string()]);
         assert_eq!(
-            decode(&raw),
-            StoredKey {
-                key: "gsk_abcdefgh1234".into(),
-                bound: Some(("api.groq.com".into(), "openai_compat".into()))
-            }
+            openrouter_key(&*s).as_deref(),
+            Some("sk-or-v1-LEAKCHECK-0001")
         );
-        assert_eq!(key_state(&*s, "groq-1").masked, "••••1234");
-        assert_eq!(key_for(&*s, &p).as_deref(), Some("gsk_abcdefgh1234"));
+        // Idempotent: a second run changes nothing.
+        let again = apply_migration(&*s, &report(Some("openrouter-1"), &["legacy-1"]), &|_| None);
+        assert_eq!(again.moved_from, None);
+        assert_eq!(
+            openrouter_key(&*s).as_deref(),
+            Some("sk-or-v1-LEAKCHECK-0001")
+        );
     }
 
     #[test]
-    fn a_key_never_follows_a_host_or_adapter_change() {
+    fn migration_never_moves_a_key_saved_for_another_host() {
+        // An openrouter-adapter entry whose base URL was edited to another
+        // host: its key belongs to that host, not to openrouter.ai.
         let s = MemoryStore::new();
-        let p = groq("api.groq.com", "openai_compat");
-        store_bound(&*s, &p, "gsk_abcdefgh1234").unwrap();
-        // prefs.json edited behind our back: the key is not handed out.
-        assert_eq!(key_for(&*s, &groq("evil.example", "openai_compat")), None);
-        assert_eq!(s.get("groq-1").unwrap(), None, "and deleted");
-        store_bound(&*s, &p, "gsk_abcdefgh1234").unwrap();
-        let saved = flow_router::CloudConfig {
-            providers: vec![p.clone()],
-            ..Default::default()
-        };
-        let moved = flow_router::CloudConfig {
-            providers: vec![groq("api.groq.com", "elevenlabs")],
-            ..Default::default()
-        };
-        assert_eq!(reconcile_keys(&*s, &saved, &saved), Vec::<String>::new());
-        assert_eq!(reconcile_keys(&*s, &saved, &moved), vec!["groq-1"]);
-        assert!(!key_state(&*s, "groq-1").set);
-    }
-
-    #[test]
-    fn a_key_saved_for_the_edited_form_survives_its_save() {
-        // Host edited, key typed and saved for the new host, then Save.
-        let s = MemoryStore::new();
-        let old = groq("api.groq.com", "openai_compat");
-        let new = groq("stt.example.org", "openai_compat");
-        store_bound(&*s, &new, "sk-new-key-0000").unwrap();
-        let saved = flow_router::CloudConfig {
-            providers: vec![old],
-            ..Default::default()
-        };
-        let next = flow_router::CloudConfig {
-            providers: vec![new.clone()],
-            ..Default::default()
-        };
-        assert!(reconcile_keys(&*s, &saved, &next).is_empty());
-        assert_eq!(key_for(&*s, &new).as_deref(), Some("sk-new-key-0000"));
-    }
-
-    #[test]
-    fn legacy_unbound_keys_bind_to_the_saved_provider() {
-        let s = MemoryStore::new();
-        s.set("groq-1", "gsk_legacy12345").unwrap();
-        let p = groq("api.groq.com", "openai_compat");
-        assert_eq!(key_for(&*s, &p).as_deref(), Some("gsk_legacy12345"));
-        assert!(decode(&s.get("groq-1").unwrap().unwrap()).bound.is_some());
-        // A legacy key whose provider changes host on Save is dropped.
-        s.set("groq-1", "gsk_legacy12345").unwrap();
-        let saved = flow_router::CloudConfig {
-            providers: vec![p],
-            ..Default::default()
-        };
-        let moved = flow_router::CloudConfig {
-            providers: vec![groq("evil.example", "openai_compat")],
-            ..Default::default()
-        };
-        assert_eq!(reconcile_keys(&*s, &saved, &moved), vec!["groq-1"]);
+        s.set(
+            "openrouter-1",
+            &encode(
+                "sk-LEAKCHECK-other",
+                &("or.example.net".into(), "openrouter".into()),
+            ),
+        )
+        .unwrap();
+        let m = apply_migration(&*s, &report(Some("openrouter-1"), &[]), &|_| None);
+        assert_eq!(m.moved_from, None);
+        assert!(s.targets().is_empty(), "{:?}", s.targets());
+        // A legacy unbound key moves only if its entry pointed at openrouter.ai.
+        s.set("openrouter-2", "sk-or-legacy-0003").unwrap();
+        let host = |id: &str| (id == "openrouter-2").then(|| "openrouter.ai".to_string());
+        let m = apply_migration(&*s, &report(Some("openrouter-2"), &[]), &host);
+        assert_eq!(m.moved_from.as_deref(), Some("openrouter-2"));
+        assert_eq!(openrouter_key(&*s).as_deref(), Some("sk-or-legacy-0003"));
+        s.set("openrouter-3", "sk-legacy-elsewhere").unwrap();
+        let m = apply_migration(&*s, &report(Some("openrouter-3"), &[]), &|_| None);
+        assert_eq!(m.moved_from, None);
+        assert_eq!(s.get("openrouter-3").unwrap(), None);
     }
 }

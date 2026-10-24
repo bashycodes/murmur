@@ -958,6 +958,7 @@ pub fn from_core_result(r: flow_core::CommitResult) -> CommitResult {
         empty_reason: r.empty_reason,
         truncated: r.truncated,
         route: r.route,
+        llm: r.llm,
     }
 }
 
