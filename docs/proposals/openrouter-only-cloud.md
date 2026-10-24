@@ -728,15 +728,18 @@ Agreed with or-route (it owns these; flow-cloud adopts them when they land):
   `OpenRouterConfig { privacy: Privacy, stt: SttConfig, cleanup: CleanupConfig }` with the field names above
   (+ `consent_host`/`consent_at_ms`); `CloudFactory = Box<dyn Fn(&OpenRouterConfig, SecretString) -> Arc<dyn Backend>>`;
   `CleanupFactory = Box<dyn Fn(&OpenRouterConfig, SecretString) -> Arc<dyn Cleaner>>` + `Router::with_cleanup_factory`;
-  `Backend::set_cleaner(&self, Option<Arc<dyn Cleaner>>)` (default no-op; `CloudBackend` forwards to `FlowCore::set_cleaner`).
+  `Backend::install_cleanup(&self, Option<CleanupPlan>)` with `CleanupPlan = Arc<dyn Fn(Option<Arc<dyn Cleaner>>) -> Option<Arc<dyn Cleaner>>>`
+  (default no-op; `CloudBackend` does `core.set_cleaner(plan.and_then(|p| p(core.cleaner())))`).
 * flow-core `Cleaner` additions (all defaulted): `prompt_scope()`, `engine() -> &'static str` ("cloud"), `model()`,
-  `estimate_cost_usd(&CleanPrompt)`, `clean_metered(..) -> (Result<String, CleanError>, CleanUsage)`;
-  `CleanUsage { cost_usd, cost_estimated, generation_id, ttft_ms, latency_ms }`; `CleanError::Unavailable(code)` for
-  fast failures (`CloudError::is_fast_unavailable`: connect / auth / quota / no_private_route / busy), else `Backend(code)`.
+  `timeout_ms()`, `estimate_cost_usd(&CleanPrompt)`, `clean_metered(..) -> (Result<String, CleanError>, CleanUsage)`;
+  `CleanUsage { engine, model, cost_usd: Option<Usd>, cost_estimated, generation_id, ttft_ms, latency_ms }`;
+  `CleanError::Unavailable(code)` for fast failures (`CloudError::is_fast_unavailable`: connect / auth / quota /
+  no_private_route / busy), else `Backend(code)`. `Failure::NoPrivateRoute`, `Failure::CloudCleanupNotConfigured`.
+* flow-cloud glue: `impl From<&OpenRouterConfig> for SttSettings / CleanupSettings`, `factory_with`,
+  `cleanup_factory()`, `attach_with` installs both. `Router::with_cloud_key(|Option<&SecretString>| ..)` lends the key to
+  the FFI for `CatalogStore::refresh` / `keyinfo::fetch`; the FFI calls `catalog::set_default_store`.
 
-Until or-route lands, flow-cloud's factory glue converts today's `CloudProviderConfig` (`stt_settings_from_provider`;
-a non-OpenRouter entry or any other host builds a refusing backend), and `CloudError::NoPrivateRoute.failure()` is
-`ProviderError` (its `code()` is already `no_private_route`).
+Status: merged on `feat/or-cloud` with `feat/or-route` @ d01c684.
 
 ---
 

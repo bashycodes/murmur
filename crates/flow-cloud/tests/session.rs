@@ -193,18 +193,16 @@ fn router_with_cloud_attached_end_to_end() {
     let _srv = mock_fixed(reply("hello from the cloud"));
     // A production-shaped entry: the mock is reached only through the
     // test base-URL override, never through config.
-    let mut p = flow_cloud::presets().remove(0);
-    p.id = "openrouter".into();
-    p.consent_host = "openrouter.ai".into();
-    p.consent_at_ms = 1;
+    let mut o = flow_router::OpenRouterConfig::default();
+    o.stt.consent_host = "openrouter.ai".into();
+    o.stt.consent_at_ms = 1;
     let cfg = RouterConfig {
         allow_cloud: true,
         allow_server: false,
         order: vec![Route::Cloud, Route::Client],
         cloud: flow_router::CloudConfig {
-            active: p.id.clone(),
-            providers: vec![p],
-            monthly_budget_usd: None,
+            openrouter: o,
+            ..Default::default()
         },
         ..Default::default()
     };

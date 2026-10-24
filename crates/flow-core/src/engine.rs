@@ -113,6 +113,11 @@ pub struct CommitResult {
     /// never sets it; `flow_router::Router` always does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub route: Option<RouteInfo>,
+    /// The LLM step of this commit, when it ran (engine `local`/`cloud`,
+    /// model, cost, generation id, TTFT; D28 debug-log fields). Omitted
+    /// while `None` (LLM off or skipped). Additive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub llm: Option<cleanup::CleanUsage>,
 }
 
 /// One poll of the live session (`FlowCore::poll`, `Router::poll`): the
@@ -184,6 +189,15 @@ pub struct RouteInfo {
     pub cost_usd: Option<Usd>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cost_estimated: Option<bool>,
+    /// D28: engine of the LLM step (`"local"`, `"cloud"`; `"server"` for a
+    /// server-cleaned result), its model and cloud cost. Set by the router
+    /// from `CommitResult::llm`. Omitted while `None`. Additive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_engine: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_cost_usd: Option<Usd>,
 }
 
 /// An amount in US dollars. A plain JSON number; a newtype only so the
@@ -222,6 +236,7 @@ impl CommitResult {
             plain_text: String::new(),
             empty_reason: None,
             route: None,
+            llm: None,
         }
     }
     fn error(msg: impl Into<String>) -> Self {
@@ -304,6 +319,8 @@ enum Ctrl {
     Cancel {
         id: u64,
     },
+    /// Replace the cleaner from the next commit on (D28 `set_cleaner`).
+    SetCleaner(Option<Arc<dyn Cleaner>>),
     Shutdown,
 }
 
@@ -359,7 +376,10 @@ impl Shared {
 /// Opaque core handle (§9 `Handle`). One active session at a time.
 pub struct FlowCore {
     shared: Arc<Shared>,
+    /// The cleaner the core was built with (the on-device LLM).
     cleaner_info: Option<Arc<dyn Cleaner>>,
+    /// The cleaner commits use: `cleaner_info` unless `set_cleaner` replaced it.
+    active_cleaner: Mutex<Option<Arc<dyn Cleaner>>>,
     ctrl: mpsc::Sender<Ctrl>,
     worker: Option<JoinHandle<()>>,
 }
@@ -470,6 +490,7 @@ impl FlowCore {
             .expect("spawn worker");
         Self {
             shared,
+            active_cleaner: Mutex::new(cleaner_info.clone()),
             cleaner_info,
             ctrl: tx,
             worker: Some(worker),
@@ -545,7 +566,23 @@ impl FlowCore {
 
     /// Cleanup backend counters (JSON), when the backend reports them.
     pub fn llm_info(&self) -> Option<String> {
-        self.cleaner_info.as_ref().and_then(|c| c.info_json())
+        self.active_cleaner().and_then(|c| c.info_json())
+    }
+
+    /// Replace the cleaner used by commits (D28: the router installs a
+    /// `RoutedCleaner` of cloud + on-device LLM). `None` restores the one
+    /// the core was built with. Applies from the next commit; a commit in
+    /// progress keeps its cleaner. Additive.
+    pub fn set_cleaner(&self, cleaner: Option<Arc<dyn Cleaner>>) {
+        let eff = cleaner.or_else(|| self.cleaner_info.clone());
+        *self.active_cleaner.lock().unwrap() = eff.clone();
+        let _ = self.ctrl.send(Ctrl::SetCleaner(eff));
+    }
+
+    /// The cleaner commits use now ([`FlowCore::set_cleaner`], else the
+    /// built-in one). Additive (D28).
+    pub fn active_cleaner(&self) -> Option<Arc<dyn Cleaner>> {
+        self.active_cleaner.lock().unwrap().clone()
     }
 
     /// The LLM cleaner this core was built with, if any. Lets a second
@@ -947,6 +984,7 @@ impl Worker {
                     r.timings.wait_ms = wait_ms;
                     let _ = reply.send(r);
                 }
+                Ok(Ctrl::SetCleaner(c)) => self.cleaner = c,
                 Ok(Ctrl::Cancel { id }) => {
                     if self.session.as_ref().is_some_and(|s| s.id == id) {
                         self.session = None;
@@ -985,12 +1023,13 @@ impl Worker {
             return;
         }
         let style = s.cfg.styles.for_category(ctx.app_category);
-        cl.prefill(&cleanup::build_prompt(
+        cl.prefill(&cleanup::build_prompt_scoped(
             &transcript,
             s.cfg.cleanup_level,
             style,
             &ctx,
             &s.cfg.dictionary,
+            cl.prompt_scope(),
         ));
     }
 
@@ -1408,19 +1447,29 @@ impl Worker {
         }
         if let (true, Some(cl)) = (run_llm, &self.cleaner) {
             let style = s.cfg.styles.for_category(ctx.app_category);
-            let prompt =
-                cleanup::build_prompt(&text, s.cfg.cleanup_level, style, &ctx, &s.cfg.dictionary);
+            // D28: a cloud backend narrows what the prompt may carry.
+            let prompt = cleanup::build_prompt_scoped(
+                &text,
+                s.cfg.cleanup_level,
+                style,
+                &ctx,
+                &s.cfg.dictionary,
+                cl.prompt_scope(),
+            );
+            let timeout_ms = cl.timeout_ms().unwrap_or(s.cfg.llm_timeout_ms);
             // The edit-distance guard only runs when a shell asks for it;
             // the default guard is `guard::check` (support + coverage).
             let max_div = s.cfg.divergence_threshold.unwrap_or(f64::INFINITY);
             let t = Instant::now();
-            match cleanup::run_cleanup(
+            let (outcome, usage) = cleanup::run_cleanup_metered(
                 cl.clone(),
                 prompt,
                 &text,
-                Duration::from_millis(s.cfg.llm_timeout_ms),
+                Duration::from_millis(timeout_ms),
                 max_div,
-            ) {
+            );
+            r.llm = Some(usage);
+            match outcome {
                 CleanOutcome::Formatted(f) => {
                     text = f;
                     r.status = CommitStatus::Formatted;

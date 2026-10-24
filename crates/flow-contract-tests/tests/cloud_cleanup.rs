@@ -57,11 +57,28 @@ fn sse(text: &str) -> Reply {
     Reply::sse(&[&a, &b, "data: [DONE]\n\n"], Duration::from_millis(2))
 }
 
-fn cloud_cleaner() -> Arc<dyn Cleaner> {
+/// The cloud cleaner; its own `cleanup.timeout_ms` bounds the call (D28),
+/// replacing the session's `llm_timeout_ms`.
+fn cloud_cleaner_ms(timeout_ms: u64) -> Arc<dyn Cleaner> {
     Arc::new(OpenRouterCleaner::new(
-        CleanupSettings::default(),
+        CleanupSettings {
+            timeout_ms,
+            ..Default::default()
+        },
         SecretString::new(CLOUD_KEY),
     ))
+}
+
+fn cloud_cleaner() -> Arc<dyn Cleaner> {
+    cloud_cleaner_ms(2500)
+}
+
+/// [`normalize`] without the per-engine metering (`llm`: engine, model,
+/// cost, generation id, latency), which is expected to differ.
+fn same_result(r: &CommitResult) -> serde_json::Value {
+    let mut v = normalize(r);
+    v.as_object_mut().unwrap().remove("llm");
+    v
 }
 
 const CASES: [(&str, &str); 4] = [
@@ -90,7 +107,9 @@ fn cloud_cleanup_equals_a_local_cleaner_with_the_same_output() {
         let srv = mock_cloud_fixed(sse(llm));
         let cloud = FlowCore::from_engines(Arc::new(MockAsr::new(asr)), Some(cloud_cleaner()));
         let got = commit(&cloud, cfg(3000));
-        assert_eq!(normalize(&want), normalize(&got), "case {asr:?}");
+        assert_eq!(same_result(&want), same_result(&got), "case {asr:?}");
+        let llm = serde_json::to_value(&got).unwrap()["llm"].clone();
+        assert_eq!(llm["engine"], "cloud", "{llm}");
         if got.fallback_reason.is_none() {
             formatted += 1;
         }
@@ -138,7 +157,7 @@ fn cleanup_provider_down_gives_the_deterministic_text_in_time() {
     ];
     for (what, reply) in cases {
         let _srv = mock_cloud_fixed(reply);
-        let core = FlowCore::from_engines(Arc::new(MockAsr::new(asr)), Some(cloud_cleaner()));
+        let core = FlowCore::from_engines(Arc::new(MockAsr::new(asr)), Some(cloud_cleaner_ms(800)));
         core.start_session(cfg(800)).unwrap();
         for c in speech(1500).chunks(1600) {
             core.push_audio(c);
@@ -156,7 +175,7 @@ fn cleanup_provider_down_gives_the_deterministic_text_in_time() {
     let port = dead.local_addr().unwrap().port();
     drop(dead);
     srv.point_at(&format!("http://127.0.0.1:{port}/api/v1"));
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new(asr)), Some(cloud_cleaner()));
+    let core = FlowCore::from_engines(Arc::new(MockAsr::new(asr)), Some(cloud_cleaner_ms(800)));
     let r = commit(&core, cfg(800));
     assert_eq!(r.final_text, det.final_text);
     assert!(srv

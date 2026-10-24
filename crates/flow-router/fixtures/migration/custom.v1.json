@@ -1,0 +1,30 @@
+{
+  "allow_cloud": true,
+  "cloud": {
+    "active": "custom-1",
+    "monthly_budget_usd": 5.0,
+    "providers": [
+      {
+        "adapter": "openai_compat",
+        "base_url": "http://100.64.0.20:8000/v1",
+        "consent_at_ms": 1792540800000,
+        "consent_host": "100.64.0.20",
+        "id": "custom-1",
+        "label": "Speaches",
+        "model": "Systran/faster-whisper-small",
+        "preset": "custom",
+        "send_dictionary": true,
+        "zero_retention": false
+      }
+    ]
+  },
+  "order": [
+    "cloud",
+    "server",
+    "client"
+  ],
+  "server": {
+    "host": "100.64.0.10",
+    "token": "dev-token-0123456789abcdef"
+  }
+}

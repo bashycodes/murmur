@@ -1,0 +1,30 @@
+{
+  "allow_cloud": true,
+  "cloud": {
+    "active": "openai-1",
+    "monthly_budget_usd": 5.0,
+    "providers": [
+      {
+        "adapter": "openai_compat",
+        "base_url": "https://api.openai.com/v1",
+        "consent_at_ms": 1792540800000,
+        "consent_host": "api.openai.com",
+        "id": "openai-1",
+        "label": "OpenAI",
+        "model": "gpt-transcribe",
+        "preset": "openai",
+        "send_dictionary": true,
+        "zero_retention": false
+      }
+    ]
+  },
+  "order": [
+    "cloud",
+    "server",
+    "client"
+  ],
+  "server": {
+    "host": "100.64.0.10",
+    "token": "dev-token-0123456789abcdef"
+  }
+}

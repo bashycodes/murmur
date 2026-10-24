@@ -18,7 +18,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 
 use flow_core::asr::AbortFlag;
-use flow_core::cleanup::{CleanError, CleanPrompt, Cleaner};
+use flow_core::cleanup::{CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope};
 use flow_router::SecretString;
 
 use crate::api::Api;
@@ -414,9 +414,29 @@ impl SseState {
     }
 }
 
-/// `CleanError` for a failed call: the `Failure` code only.
+/// `CleanError` for a failed call: the `Failure` code only. A fast failure
+/// before any output (connect, auth, quota, no private route, busy) is
+/// `Unavailable`, so a `RoutedCleaner` may try the local model.
 pub fn clean_error(e: &CloudError) -> CleanError {
-    CleanError::Backend(e.code().to_string())
+    if e.is_fast_unavailable() {
+        CleanError::Unavailable(e.code().to_string())
+    } else {
+        CleanError::Backend(e.code().to_string())
+    }
+}
+
+impl CleanupCall {
+    pub fn usage(&self) -> CleanUsage {
+        CleanUsage {
+            engine: Some("cloud".into()),
+            model: Some(self.model.clone()),
+            cost_usd: self.cost_usd.map(flow_core::Usd),
+            cost_estimated: self.cost_estimated,
+            generation_id: self.generation_id.clone(),
+            ttft_ms: self.ttft_ms,
+            latency_ms: self.latency_ms,
+        }
+    }
 }
 
 impl Cleaner for OpenRouterCleaner {
@@ -452,6 +472,41 @@ impl Cleaner for OpenRouterCleaner {
                 *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(k);
             }
         });
+    }
+
+    fn prompt_scope(&self) -> PromptScope {
+        let s = self.scope();
+        PromptScope {
+            surrounding_text: s.surrounding_text,
+            screen_words: s.screen_words,
+            app_id: s.app_id,
+        }
+    }
+
+    fn engine(&self) -> &'static str {
+        "cloud"
+    }
+
+    fn model(&self) -> Option<String> {
+        Some(self.settings.model.trim().to_string())
+    }
+
+    fn timeout_ms(&self) -> Option<u64> {
+        Some(self.settings.timeout_ms)
+    }
+
+    fn estimate_cost_usd(&self, prompt: &CleanPrompt) -> Option<f64> {
+        OpenRouterCleaner::estimate_cost_usd(self, prompt)
+    }
+
+    fn clean_metered(
+        &self,
+        prompt: &CleanPrompt,
+        deadline: Instant,
+        cancel: &AbortFlag,
+    ) -> (Result<String, CleanError>, CleanUsage) {
+        let (r, call) = self.run(prompt, deadline, cancel);
+        (r.map_err(|e| clean_error(&e)), call.usage())
     }
 
     fn info_json(&self) -> Option<String> {
