@@ -11,7 +11,8 @@ import dev.flowclone.data.DevSettingsForm.Input
  * [DevSettings] exactly as the old single page did, so prefs keys and validation are unchanged.
  */
 object DevPages {
-    enum class Page { HUB, ROUTING, SERVER, CLOUD, DEBUG, STATUS }
+    /** D28: the cloud has its own page (ui/OpenRouterActivity), not a sub-page of this form. */
+    enum class Page { HUB, ROUTING, SERVER, DEBUG, STATUS }
 
     private val SERVER_FIELDS = setOf(
         Field.HOST, Field.PORT, Field.PIN, Field.TOKEN, Field.CONNECT_TIMEOUT, Field.COMMIT_TIMEOUT, Field.HEALTH_TTL,
@@ -20,34 +21,30 @@ object DevPages {
     /** Form fields (with inline errors) shown on [p]. */
     fun fields(p: Page): Set<Field> = when (p) {
         Page.SERVER -> SERVER_FIELDS
-        Page.CLOUD -> setOf(Field.CLOUD_BUDGET)
         else -> emptySet()
     }
 
-    fun pageOf(f: Field): Page = if (f in SERVER_FIELDS) Page.SERVER else Page.CLOUD
+    fun pageOf(@Suppress("UNUSED_PARAMETER") f: Field): Page = Page.SERVER
 
     /** Errors this page cannot show inline (e.g. an out-of-range stored value on another page). */
     fun offPageErrors(r: DevSettingsForm.Result, p: Page): Map<Field, String> = r.errors.filterKeys { it !in fields(p) }
 
     private val SERVER_WARNINGS = setOf(DevSettingsForm.NO_HOST, DevSettingsForm.PLAINTEXT, DevSettingsForm.NO_TOKEN)
-    private val CLOUD_WARNINGS = setOf(DevSettingsForm.CLOUD_NO_PROVIDER, DevSettingsForm.CLOUD_NO_CONSENT, DevSettingsForm.CLOUD_NOT_IN_ORDER)
-
     /**
      * The form's warnings that belong on [p]. "Dictation disabled" is on the hub and Routing;
-     * route-order notes (the cloud's fallback position) on Routing and Cloud.
+     * the cloud's (no consent, not in the order, fallback position) on Routing, where its order is.
      */
     fun warningsFor(p: Page, warnings: List<String>): List<String> = warnings.filter { w ->
-        val server = w in SERVER_WARNINGS; val cloud = w in CLOUD_WARNINGS; val off = w == DevSettingsForm.BOTH_OFF
+        val server = w in SERVER_WARNINGS; val off = w == DevSettingsForm.BOTH_OFF
         when (p) {
             Page.HUB -> off
-            Page.ROUTING -> off || (!server && !cloud)
+            Page.ROUTING -> !server
             Page.SERVER -> server
-            Page.CLOUD -> cloud || (!server && !off)
             else -> false
         }
     }
 
-    /** [base] with the inputs [p] edits taken from [edits]. Provider list / active id are never page-owned. */
+    /** [base] with the inputs [p] edits taken from [edits]. The cloud part is never page-owned (OpenRouter page). */
     fun merge(base: Input, edits: Input, p: Page): Input = when (p) {
         Page.ROUTING -> base.copy(
             allowServer = edits.allowServer, allowClient = edits.allowClient, routeOrder = edits.routeOrder,
@@ -57,8 +54,6 @@ object DevPages {
             host = edits.host, port = edits.port, tls = edits.tls, pin = edits.pin, token = edits.token,
             connectTimeoutMs = edits.connectTimeoutMs, commitTimeoutBaseMs = edits.commitTimeoutBaseMs, healthTtlS = edits.healthTtlS,
         )
-        // Enabling the cloud also puts it first in the order (§3.1 step 4), so the order is the cloud page's too.
-        Page.CLOUD -> base.copy(allowCloud = edits.allowCloud, cloudBudget = edits.cloudBudget, routeOrder = edits.routeOrder)
         else -> base
     }
 
@@ -83,10 +78,13 @@ data class DevDraft(val saved: Input, val draft: Input, val page: DevPages.Page)
     /** The top-bar Save: something changed and the whole form is valid. */
     fun canSave(caps: BuildCaps) = dirty && result(caps).canSave
 
-    /** The store changed under the page (provider page, consent, Use): keep this page's edits. */
+    /** The store changed under the page (OpenRouter page, consent): keep this page's edits. */
     fun rebase(stored: DevSettings): DevDraft {
         val s = Input.of(stored)
-        return DevDraft(s, DevPages.merge(s, draft, page), page)
+        if (!dirty) return DevDraft(s, s, page)
+        // An order this page did not change follows the store (the OpenRouter page puts the cloud first).
+        val edits = if (draft.routeOrder == saved.routeOrder) draft.copy(routeOrder = s.routeOrder) else draft
+        return DevDraft(s, DevPages.merge(s, edits, page), page)
     }
 
     companion object {
@@ -99,7 +97,7 @@ object DevSummary {
     fun routeName(r: Route, s: DevSettings): String = when (r) {
         Route.SERVER -> "Server"
         Route.CLIENT -> "Phone"
-        Route.CLOUD -> s.cloud.activeProvider?.let { "Cloud (${it.displayName})" } ?: "Cloud"
+        Route.CLOUD -> "Cloud (${OpenRouter.NAME})"
     }
 
     fun routing(s: DevSettings, caps: BuildCaps): String {
@@ -131,13 +129,14 @@ object DevSummary {
 
     fun timeouts(s: DevSettings) = "connect ${s.connectTimeoutMs} ms · commit ${s.commitTimeoutBaseMs} ms · health ${s.healthTtlS} s"
 
-    fun cloud(s: DevSettings, caps: BuildCaps): String {
+    /** OpenRouter row: "Speech on · Cleanup off · budget $5.00" (+ "no key"). */
+    fun cloud(s: DevSettings, caps: BuildCaps, hasKey: Boolean): String {
         if (!caps.cloud) return CloudText.NOT_IN_BUILD.replaceFirstChar { it.uppercase() }
-        val n = s.cloud.providers.size
-        if (!s.allowCloud) return "Off · " + when (n) { 0 -> "no providers"; 1 -> "1 provider"; else -> "$n providers" }
-        val p = s.cloud.activeProvider ?: return "On · no active provider"
+        fun use(on: Boolean, consent: Boolean) = when { !on -> "off"; !consent -> "on, no consent"; else -> "on" }
         return listOfNotNull(
-            "On", p.displayName, if (!p.consentOk) "no consent" else null,
+            "Speech ${use(s.cloudRouted, s.cloud.stt.consentOk)}",
+            "Cleanup ${use(s.cloudCleanupRouted, s.cloud.cleanup.consentOk)}",
+            if (!hasKey) "no key" else null,
             s.cloud.monthlyBudgetUsd?.let { "budget ${CloudText.usd(it)}" },
         ).joinToString(" · ")
     }
@@ -145,13 +144,13 @@ object DevSummary {
     fun debug(log: Boolean, audio: Boolean) = "Log ${if (log) "on" else "off"} · audio ${if (audio) "kept" else "off"}"
 
     /** Status card: engine of the last dictation + the phone-side latency (client_ms), else total. */
-    fun lastShort(r: CommitResult?, providerLabel: (String) -> String? = { null }): String? {
+    fun lastShort(r: CommitResult?): String? {
         if (r == null) return null
         val route = r.route
         val engine = when (route?.engine) {
             "remote" -> "Server"
             "local", null -> "On-device"
-            "cloud" -> "Cloud" + (route.provider?.let { id -> " (${providerLabel(id) ?: id})" } ?: "")
+            "cloud" -> "Cloud (${OpenRouter.NAME})"
             else -> route.engine
         } + (route?.fallback?.let { " (fallback: $it)" } ?: "")
         val ms = route?.clientMs?.let { "client $it ms" } ?: "total ${r.timings.totalMs} ms"

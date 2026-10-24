@@ -1,0 +1,15 @@
+[
+  {"id":"openai/whisper-large-v3-turbo","name":"OpenAI: Whisper Large V3 Turbo","context_length":0,"input":["audio"],"output":["transcription"],
+   "stt_path":"transcriptions","price":{"per_audio_second":3.33e-6,"per_audio_token":null,"prompt":3.33e-6,"completion":null,"request":null},
+   "zdr_price_max":{"per_audio_second":1.11e-5,"per_audio_token":null,"prompt":1.11e-5,"completion":null,"request":null},
+   "price_unit_ok":true,"zdr":true,"zdr_providers":["deepinfra/us","groq"],"fast_zdr_providers":["groq"],"reasoning_mandatory":false,
+   "reasoning_efforts":[],"supports":{"temperature":true,"max_tokens":false,"reasoning":false,"include_reasoning":false,"stop":false,"seed":false,"response_format":true},
+   "max_completion_tokens":null,"free":false,"batch_only":false,"router":false,"allowed_by_account":null,
+   "recommended":true,"price_label":"$0.012/h audio","badges":["ZDR","fast"]},
+  {"id":"google/gemini-3.5-flash-lite","name":"Google: Gemini 3.5 Flash Lite","context_length":1048576,"input":["text","audio","image"],"output":["text"],
+   "stt_path":"chat_audio","price":{"per_audio_second":null,"per_audio_token":3e-7,"prompt":1e-7,"completion":4e-7,"request":null},
+   "zdr_price_max":null,"price_unit_ok":true,"zdr":true,"zdr_providers":["google-vertex"],"fast_zdr_providers":[],"reasoning_mandatory":false,
+   "reasoning_efforts":["none","low"],"supports":{"temperature":true,"max_tokens":true,"reasoning":true,"include_reasoning":true,"stop":true,"seed":false,"response_format":true},
+   "max_completion_tokens":65536,"free":false,"batch_only":false,"router":false,"allowed_by_account":false,
+   "recommended":false,"price_label":"≈ $0.035/h + output","badges":["ZDR","chat model, may paraphrase","not allowed by your OpenRouter privacy settings"]}
+]

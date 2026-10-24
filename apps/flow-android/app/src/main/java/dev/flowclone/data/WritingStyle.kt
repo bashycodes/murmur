@@ -107,7 +107,10 @@ object LlmOutcome {
         FORMATTED -> "AI cleaned"
         SKIPPED_CLEAN -> "AI not needed (already clean)"
         "llm_timeout" -> "AI too slow, formatted text used"
-        else -> "AI result not used ($code), formatted text used"
+        // D28: refused up front (cloud cleanup: no consent / key / budget, open circuit, no private route).
+        else -> if (code.startsWith("llm_error:")) code.removePrefix("llm_error:").trim().let { c ->
+            "AI unavailable (${CloudText.hint(c) ?: c}), formatted text used"
+        } else "AI result not used ($code), formatted text used"
     }
 
     fun isNormal(code: String?): Boolean = code == null || code == FORMATTED || code == SKIPPED_CLEAN

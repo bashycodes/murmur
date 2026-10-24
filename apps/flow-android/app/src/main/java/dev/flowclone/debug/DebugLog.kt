@@ -24,6 +24,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * core fallback_reason such as llm_skipped_clean, a normal result | null = LLM off).
  * Since 2026-10-24 (phone-local-only finding): route_order (routes tried, in order), speech_ms
  * (core VAD speech) and peak_dbfs (peak level), so a blank_asr line is diagnosable.
+ * D28 (OpenRouter): llm_engine (local | cloud | server; who ran the AI cleanup), llm_model,
+ * llm_cost_usd, llm_ttft_ms, llm_generation_id, and stt_cost_usd (cloud speech-to-text cost).
+ * `llm: llm_skipped_clean` stays a normal result; a cloud refusal shows as `llm_error: <code>`.
  *
  * Logging must never affect dictation: entries are queued (bounded, drop-oldest) and written
  * on one background thread; every failure is swallowed and counted.
@@ -88,6 +91,15 @@ data class DictationTrace(
     val speechMs: Long? = null,
     /** 2026-10-24: peak level of the dictation audio in dBFS (`timings.peak_dbfs`). */
     val peakDbfs: Int? = null,
+    /** D28 `route.llm_engine`: local | cloud (OpenRouter) | server; null = no LLM step. */
+    val llmEngine: String? = null,
+    val llmModel: String? = null,
+    val llmCostUsd: Double? = null,
+    /** D28 `llm.ttft_ms` / `llm.generation_id` (OpenRouter's id, for a later cost lookup). */
+    val llmTtftMs: Long? = null,
+    val llmGenerationId: String? = null,
+    /** D28: what the cloud speech-to-text of this dictation cost (`route.cost_usd`). */
+    val sttCostUsd: Double? = null,
 )
 
 /** `insert` field: {"outcome": …, "steps": […]}. */
@@ -216,6 +228,12 @@ object DebugFormat {
         "route_order" to t.routeOrder,
         "speech_ms" to t.speechMs,
         "peak_dbfs" to t.peakDbfs,
+        "llm_engine" to t.llmEngine,
+        "llm_model" to t.llmModel,
+        "llm_cost_usd" to t.llmCostUsd,
+        "llm_ttft_ms" to t.llmTtftMs,
+        "llm_generation_id" to t.llmGenerationId,
+        "stt_cost_usd" to t.sttCostUsd,
         "target" to t.target,
         "insert" to Raw(obj("outcome" to t.insert.outcome, "steps" to t.insert.steps)),
         "raw" to t.raw,
@@ -244,7 +262,9 @@ object DebugFormat {
         val outcome = o.optJSONObject("insert")?.optString("outcome") ?: "?"
         val route = listOfNotNull(s("route") ?: "-", s("fallback")?.let { "($it)" }, s("engine"), s("model")).joinToString(" ") +
             (s("language")?.let { " · lang $it" } ?: "") + (s("style")?.let { " · $it" } ?: "") +
-            (dev.flowclone.data.LlmOutcome.label(s("llm"))?.let { " · $it" } ?: "")
+            (dev.flowclone.data.LlmOutcome.label(s("llm"))?.let { " · $it" } ?: "") +
+            (s("llm_engine")?.let { e -> " · AI " + (if (e == "cloud") "OpenRouter" else e) + (s("llm_model")?.let { " ${it.substringAfter('/')}" } ?: "") } ?: "") +
+            (listOfNotNull(s("stt_cost_usd"), s("llm_cost_usd")).takeIf { it.isNotEmpty() }?.let { " · $" + it.sumOf { c -> c.toDoubleOrNull() ?: 0.0 }.let { v -> String.format(java.util.Locale.US, "%.4f", v) } } ?: "")
         val ms = listOfNotNull(
             s("perceived_ms")?.let { "wait $it ms" }, s("client_ms")?.let { "client $it" }, s("asr_ms")?.let { "asr $it" },
             s("pre_asr_ms")?.takeIf { it != "0" }?.let { "(+$it early, ${s("segments")} seg)" }, s("post_ms")?.let { "post $it" },
