@@ -16,6 +16,18 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows installers are attached to the release again: the v0.2.0 tag
+  build stopped at the clean-tree check (the Windows checkout turned the UI
+  files into CRLF, so the front-end build showed `ui/dist` as modified) and
+  its release build lost the sherpa-onnx / onnxruntime DLLs after a warm CI
+  cache. The UI files are now LF on every checkout, the DLLs are copied from
+  the prebuilt package, and the clean-tree check runs on every push. The
+  v0.2.0 release has the Android APKs only; 0.2.1 is the same app code with
+  both platforms' artifacts.
+- `tools/release.sh` dry run prints `a/FILE` instead of `a/a/FILE`.
+
 ## [0.2.0] - 2026-10-24
 
 ### Added
