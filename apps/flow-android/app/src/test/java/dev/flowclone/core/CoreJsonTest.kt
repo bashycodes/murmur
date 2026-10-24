@@ -66,6 +66,16 @@ class CoreJsonTest {
         assertNull(r.error)
     }
 
+    /** 2026-10-24: blank_asr diagnostics; absent in older cores / servers → null. */
+    @Test fun decodesSpeechAndPeakDiagnostics() {
+        val r = CoreJson.decodeCommit("""{"status":"EMPTY","empty_reason":"blank_asr","timings":{"audio_ms":3800,"speech_ms":1200,"peak_dbfs":-31}}""")
+        assertEquals(1200L, r.timings.speechMs)
+        assertEquals(-31, r.timings.peakDbfs)
+        val old = CoreJson.decodeCommit("""{"status":"EMPTY","timings":{"audio_ms":3800}}""")
+        assertNull(old.timings.speechMs)
+        assertNull(old.timings.peakDbfs)
+    }
+
     @Test fun modelConfigSelectsParakeet() {
         val j = JSONObject(CoreJson.encode(ModelConfig(asrPath = "/m/parakeet", asrEngine = AsrEngine.PARAKEET)))
         assertEquals("parakeet", j.getString("asr_backend"))

@@ -18,7 +18,7 @@
     <string name="toast_cap_warning">1 minute left before you reach the session limit.</string>
     <string name="toast_cap_reached">Session ended, limit reached</string>
     <string name="toast_paste_failed">Failed to paste text. It is on your clipboard for 1 minute.</string>
-    <string name="toast_target_changed">You switched fields while dictating, so nothing was inserted. Tap Paste to insert it here.</string>
+    <string name="toast_target_changed">You switched fields while dictating, so nothing was inserted. Tap ✓ to insert it here or ⧉ to copy it.</string>
     <string name="toast_target_protected">Not inserted: this field or app is protected (password, banking or excluded).</string>
     <string name="toast_mic_lost">The microphone stopped. Transcribing what was heard.</string>
     <string name="toast_copied">Copied to clipboard (cleared after 1 minute)</string>
