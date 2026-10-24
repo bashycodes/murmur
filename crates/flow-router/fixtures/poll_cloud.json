@@ -3,8 +3,8 @@
   "partial": "ask not what",
   "route": {
     "engine": "cloud",
-    "model": "openai/gpt-transcribe",
-    "provider": "openrouter-1"
+    "model": "openai/whisper-large-v3-turbo",
+    "provider": "openrouter"
   },
   "speech_ms": 1200,
   "trailing_silence_ms": 300

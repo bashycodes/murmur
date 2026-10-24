@@ -660,3 +660,111 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudPresets
     let r = guard("[]".to_owned(), json_api::cloud_presets);
     guard(std::ptr::null_mut(), || out(&mut env, &r))
 }
+
+// ---- D28 OpenRouter-only cloud (JNI_CONTRACT.md "OpenRouter") -------------
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMigrateCloud(
+    mut env: JNIEnv,
+    _c: JClass,
+    dev_json: JString,
+) -> jstring {
+    let j = guard(None, || {
+        jstr(&mut env, &dev_json, "bad_config: router config")
+    });
+    let r = guard(None, || {
+        let j = j?;
+        json_api::migrate_cloud(&j)
+            .map_err(|(kind, e)| set_error_kind(kind, e))
+            .ok()
+    });
+    match r {
+        Some(s) => guard(std::ptr::null_mut(), || out(&mut env, &s)),
+        None => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCleanup(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    cleanup_json: JString,
+) -> jboolean {
+    guard(JNI_FALSE, || {
+        let Some(h) = handle(h) else {
+            set_error("null handle");
+            return JNI_FALSE;
+        };
+        let Some(j) = jstr(&mut env, &cleanup_json, "bad_config: cleanup config") else {
+            return JNI_FALSE;
+        };
+        jbool(
+            json_api::set_cleanup(h, &j)
+                .map_err(|(kind, e)| set_error_kind(kind, e))
+                .is_ok(),
+        )
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCleanupStatus(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+) -> jstring {
+    let r = guard("{}".to_owned(), || {
+        handle(h).map_or_else(|| "{}".to_owned(), json_api::cleanup_status)
+    });
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudNotice(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+) -> jstring {
+    match guard(None, || handle(h).and_then(json_api::cloud_notice)) {
+        Some(n) => guard(std::ptr::null_mut(), || out(&mut env, &n)),
+        None => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeAckCloudNotice(
+    _env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+) {
+    if let Some(h) = handle(h) {
+        guard((), || json_api::ack_cloud_notice(h));
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudModel(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    use_: JString,
+    model: JString,
+) -> jboolean {
+    guard(JNI_FALSE, || {
+        let Some(h) = handle(h) else {
+            set_error("null handle");
+            return JNI_FALSE;
+        };
+        let (Some(u), Some(m)) = (
+            jstr(&mut env, &use_, "bad_config: use"),
+            jstr(&mut env, &model, "bad_config: model"),
+        ) else {
+            return JNI_FALSE;
+        };
+        jbool(
+            json_api::set_cloud_model(h, &u, &m)
+                .map_err(|(kind, e)| set_error_kind(kind, e))
+                .is_ok(),
+        )
+    })
+}

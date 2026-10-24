@@ -45,7 +45,28 @@ pub use http::CloudError;
 pub use presets::{presets, price_per_hour};
 
 /// Adapters compiled into this crate (`Router::cloud_capabilities`).
-pub const ADAPTERS: [&str; 5] = flow_router::cloud::ADAPTERS;
+pub const ADAPTERS: [&str; 1] = flow_router::cloud::ADAPTERS;
+
+/// Interim D28 shim (feat/or-route; flow-cloud's own conversion replaces
+/// it): the schema-2 OpenRouter STT settings as the adapter's provider view.
+pub fn provider_view(o: &flow_router::OpenRouterConfig) -> CloudProviderConfig {
+    CloudProviderConfig {
+        id: flow_router::cloud::OPENROUTER_ID.into(),
+        preset: "openrouter".into(),
+        adapter: "openrouter".into(),
+        label: "OpenRouter".into(),
+        base_url: flow_router::cloud::OPENROUTER_BASE_URL.into(),
+        model: o.stt.model.clone(),
+        language: o.stt.language.clone(),
+        send_dictionary: o.stt.send_dictionary,
+        zero_retention: o.privacy.zdr,
+        format_override: o.stt.format_override.clone(),
+        timeout_base_ms: o.stt.timeout_base_ms,
+        consent_host: o.stt.consent_host.clone(),
+        consent_at_ms: o.stt.consent_at_ms,
+        ..Default::default()
+    }
+}
 
 /// The Developer page's "Test provider" clip: the first 3 s of the
 /// public-domain JFK inaugural address sample ("And so, my fellow
@@ -71,9 +92,11 @@ pub fn factory(cleaner: Option<Arc<dyn Cleaner>>) -> CloudFactory {
 pub fn factory_with(
     cleaner: impl Fn() -> Option<Arc<dyn Cleaner>> + Send + Sync + 'static,
 ) -> CloudFactory {
-    Box::new(move |p: &CloudProviderConfig, key: SecretString| {
-        Arc::new(CloudBackend::new(p.clone(), key, cleaner())) as Arc<dyn Backend>
-    })
+    Box::new(
+        move |o: &flow_router::OpenRouterConfig, key: SecretString| {
+            Arc::new(CloudBackend::new(provider_view(o), key, cleaner())) as Arc<dyn Backend>
+        },
+    )
 }
 
 /// [`attach`] with a cleaner looked up per backend build ([`factory_with`]).
@@ -414,6 +437,12 @@ impl CloudBackend {
 impl Backend for CloudBackend {
     fn kind(&self) -> EngineKind {
         EngineKind::Cloud
+    }
+
+    /// D28: cloud-STT dictations clean with the router's plan too.
+    fn install_cleanup(&self, plan: Option<flow_router::CleanupPlan>) {
+        self.core
+            .set_cleaner(plan.and_then(|p| p(self.core.cleaner())));
     }
 
     fn ready(&self) -> bool {

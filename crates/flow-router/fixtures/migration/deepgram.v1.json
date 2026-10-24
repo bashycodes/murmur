@@ -1,0 +1,30 @@
+{
+  "allow_cloud": true,
+  "cloud": {
+    "active": "deepgram-1",
+    "monthly_budget_usd": 5.0,
+    "providers": [
+      {
+        "adapter": "deepgram",
+        "base_url": "https://api.deepgram.com",
+        "consent_at_ms": 1792540800000,
+        "consent_host": "api.deepgram.com",
+        "id": "deepgram-1",
+        "label": "Deepgram",
+        "model": "nova-3",
+        "preset": "deepgram",
+        "send_dictionary": true,
+        "zero_retention": true
+      }
+    ]
+  },
+  "order": [
+    "cloud",
+    "server",
+    "client"
+  ],
+  "server": {
+    "host": "100.64.0.10",
+    "token": "dev-token-0123456789abcdef"
+  }
+}

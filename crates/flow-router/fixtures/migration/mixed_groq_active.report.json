@@ -1,0 +1,20 @@
+{
+  "cloud_disabled": true,
+  "delete_keys": [
+    "groq-1"
+  ],
+  "key_from": "openrouter-1",
+  "key_to": "openrouter",
+  "migrated": true,
+  "model_from": "openai/gpt-transcribe",
+  "model_to": "openai/whisper-large-v3-turbo",
+  "notice": "Cloud speech-to-text now uses OpenRouter only. Groq was removed and its key deleted. Set up OpenRouter to keep using cloud STT. The model openai/gpt-transcribe has no zero-retention provider on OpenRouter, so speech-to-text now uses openai/whisper-large-v3-turbo.",
+  "removed": [
+    {
+      "adapter": "openai_compat",
+      "id": "groq-1",
+      "name": "Groq",
+      "preset": "groq"
+    }
+  ]
+}
