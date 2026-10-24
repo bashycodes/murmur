@@ -530,6 +530,11 @@ fn real_llm() -> Option<LlmSpec> {
     }
 }
 
+/// The real-LLM tests share the process-wide llama.cpp plugin; run in
+/// parallel, one load can cut the other's generation short (the dictation
+/// then falls back to the rules and `formatted` stays unset).
+static REAL_LLM: Mutex<()> = Mutex::new(());
+
 /// Generous: this shared CPU box runs 0.5B at 0.75-2.7 s per call.
 fn llm_prefs() -> Prefs {
     Prefs {
@@ -542,6 +547,7 @@ fn llm_prefs() -> Prefs {
 
 #[test]
 fn real_llm_plugin_formats_through_the_shell() {
+    let _serial = REAL_LLM.lock().unwrap_or_else(|e| e.into_inner());
     let Some(spec) = real_llm() else { return };
     // Repeated words: the deterministic layer alone leaves them, so the LLM
     // runs (a filler-only input is now finished by the rules and skips the
@@ -575,6 +581,7 @@ fn real_llm_plugin_formats_through_the_shell() {
 #[cfg(feature = "whisper")]
 #[test]
 fn real_whisper_then_real_llm_in_the_shell_process() {
+    let _serial = REAL_LLM.lock().unwrap_or_else(|e| e.into_inner());
     let Some(spec) = real_llm() else { return };
     let model = find(
         "FLOW_MODEL",
