@@ -26,7 +26,6 @@ class DevPagesTest {
             assertEquals("$f", listOf(DevPages.pageOf(f)), owners)
         }
         assertEquals(Page.SERVER, DevPages.pageOf(Field.TOKEN))
-        assertEquals(Page.CLOUD, DevPages.pageOf(Field.CLOUD_BUDGET))
     }
 
     // ---- drafts ----
@@ -60,15 +59,19 @@ class DevPagesTest {
     }
 
     @Test fun rebaseKeepsThisPagesEditsAndTakesTheRestFromTheStore() {
-        val d = DevDraft.of(saved, Page.CLOUD).edit { copy(cloudBudget = "5") }
-        val p = CloudProvider(id = "p1", baseUrl = "https://api.example.com/v1", label = "Ex")
-        val stored = saved.copy(cloud = CloudSettings(active = "p1", providers = listOf(p)), host = "10.0.0.9")
+        // The OpenRouter page saved the cloud part meanwhile; Routing keeps its own edit.
+        val d = DevDraft.of(saved, Page.ROUTING).edit { copy(keepLocalWarm = false) }
+        val stored = OpenRouterPage.enableCleanup(OpenRouterPage.enableStt(saved, 1), 1, caps).copy(host = "10.0.0.9")
         val r = d.rebase(stored)
-        assertEquals("5", r.draft.cloudBudget)
-        assertEquals(listOf(p), r.draft.cloud.providers)
+        assertFalse(r.draft.keepLocalWarm)
+        assertTrue(r.draft.allowCloud); assertTrue(r.draft.allowCloudCleanup)
+        assertEquals(stored.cloud, r.draft.cloud)
         assertEquals("10.0.0.9", r.draft.host)
         assertTrue(r.dirty)
-        assertFalse(DevDraft.of(saved, Page.CLOUD).rebase(stored).dirty)
+        assertFalse(DevDraft.of(saved, Page.ROUTING).rebase(stored).dirty)
+        // Saving Routing writes the cloud part back unchanged (never wipes the OpenRouter page's choices).
+        val out = r.result(caps).settings!!
+        assertEquals(stored.cloud, out.cloud); assertEquals(stored.cleanupOrder, out.cleanupOrder); assertTrue(out.allowCloudCleanup)
     }
 
     @Test fun errorsOnOtherPagesAreReportedSeparately() {
@@ -82,12 +85,11 @@ class DevPagesTest {
     }
 
     @Test fun warningsGoToTheirPage() {
-        val order = "When your server is unreachable, audio goes to Groq."
+        val order = "When your server is unreachable, audio goes to OpenRouter."
         val all = listOf(DevSettingsForm.BOTH_OFF, DevSettingsForm.NO_HOST, DevSettingsForm.PLAINTEXT, DevSettingsForm.NO_TOKEN, DevSettingsForm.CLOUD_NO_CONSENT, order)
         assertEquals(listOf(DevSettingsForm.BOTH_OFF), DevPages.warningsFor(Page.HUB, all))
-        assertEquals(listOf(DevSettingsForm.BOTH_OFF, order), DevPages.warningsFor(Page.ROUTING, all))
+        assertEquals(listOf(DevSettingsForm.BOTH_OFF, DevSettingsForm.CLOUD_NO_CONSENT, order), DevPages.warningsFor(Page.ROUTING, all))
         assertEquals(listOf(DevSettingsForm.NO_HOST, DevSettingsForm.PLAINTEXT, DevSettingsForm.NO_TOKEN), DevPages.warningsFor(Page.SERVER, all))
-        assertEquals(listOf(DevSettingsForm.CLOUD_NO_CONSENT, order), DevPages.warningsFor(Page.CLOUD, all))
         // every warning is shown somewhere
         for (w in all) assertTrue(w, Page.entries.any { w in DevPages.warningsFor(it, all) })
     }
@@ -113,9 +115,8 @@ class DevPagesTest {
         assertEquals("Server only", DevSummary.routing(saved.copy(allowClient = false), caps))
         assertEquals("Dictation disabled", DevSummary.routing(saved.copy(allowServer = false, allowClient = false), caps))
         assertEquals("Phone only", DevSummary.routing(DevSettings.defaults(BuildCaps.LOCAL), BuildCaps.LOCAL))
-        val p = CloudProvider(id = "p1", label = "Groq", baseUrl = "https://api.groq.com/openai/v1")
-        val c = saved.copy(allowCloud = true, routeOrder = listOf(Route.CLOUD, Route.SERVER, Route.CLIENT), cloud = CloudSettings("p1", listOf(p)))
-        assertEquals("Cloud (Groq) first → Server → Phone", DevSummary.routing(c, caps))
+        val c = saved.copy(allowCloud = true, routeOrder = listOf(Route.CLOUD, Route.SERVER, Route.CLIENT))
+        assertEquals("Cloud (OpenRouter) first → Server → Phone", DevSummary.routing(c, caps))
     }
 
     @Test fun routingSummaryFollowsTheStoredOrder() {
@@ -138,15 +139,12 @@ class DevPagesTest {
     @Test fun timeoutsSummary() = assertEquals("connect 2500 ms · commit 3000 ms · health 30 s", DevSummary.timeouts(saved.copy(connectTimeoutMs = 2500, commitTimeoutBaseMs = 3000, healthTtlS = 30)))
 
     @Test fun cloudSummary() {
-        assertEquals("Not in this build", DevSummary.cloud(saved, BuildCaps.LOCAL))
-        assertEquals("Off · no providers", DevSummary.cloud(saved, caps))
-        val p = CloudProvider(id = "p1", label = "Groq", baseUrl = "https://api.groq.com/openai/v1")
-        val two = saved.copy(cloud = CloudSettings("p1", listOf(p, p.copy(id = "p2"))))
-        assertEquals("Off · 2 providers", DevSummary.cloud(two, caps))
-        assertEquals("On · Groq · no consent", DevSummary.cloud(two.copy(allowCloud = true), caps))
-        val ok = two.copy(allowCloud = true, cloud = two.cloud.replace(p.withConsent(1)).copy(monthlyBudgetUsd = 5.0))
-        assertEquals("On · Groq · budget \$5.00", DevSummary.cloud(ok, caps))
-        assertEquals("On · no active provider", DevSummary.cloud(saved.copy(allowCloud = true), caps))
+        assertEquals("Not in this build", DevSummary.cloud(saved, BuildCaps.LOCAL, hasKey = true))
+        assertEquals("Speech off · Cleanup off", DevSummary.cloud(saved, caps, hasKey = true))
+        val noConsent = saved.copy(allowCloud = true, routeOrder = DevSettings.withCloudFirst(saved.routeOrder))
+        assertEquals("Speech on, no consent · Cleanup off · no key", DevSummary.cloud(noConsent, caps, hasKey = false))
+        val ok = OpenRouterPage.enableStt(saved, 1).let { it.copy(cloud = it.cloud.copy(monthlyBudgetUsd = 5.0)) }
+        assertEquals("Speech on · Cleanup off · budget \$5.00", DevSummary.cloud(ok, caps, hasKey = true))
     }
 
     @Test fun debugSummary() {

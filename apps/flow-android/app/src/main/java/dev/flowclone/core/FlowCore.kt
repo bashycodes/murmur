@@ -349,6 +349,22 @@ data class RouteInfo(
      * the network for server results (a server's own `total_ms` excludes it). The latency to show.
      */
     val clientMs: Long? = null,
+    /** D28: who ran the AI cleanup: "local" | "cloud" (OpenRouter) | "server"; null = no LLM step. */
+    val llmEngine: String? = null,
+    val llmModel: String? = null,
+    /** D28: what the cloud cleanup cost (exact `usage.cost`, else an estimate). */
+    val llmCostUsd: Double? = null,
+)
+
+/** D28 `CommitResult.llm` (`flow_core::CleanUsage`): the LLM step's usage; null when it did not run. */
+data class CleanUsage(
+    val engine: String = "local",
+    val model: String? = null,
+    val costUsd: Double? = null,
+    val costEstimated: Boolean = false,
+    val generationId: String? = null,
+    val ttftMs: Long? = null,
+    val latencyMs: Long? = null,
 )
 
 data class CommitResult(
@@ -368,6 +384,8 @@ data class CommitResult(
     /** EMPTY only: no_audio | no_speech | blank_asr | hallucination | only_filler. */
     val emptyReason: String? = null,
     val route: RouteInfo? = null,
+    /** D28: the LLM step's usage (engine, model, cost, ttft); null = LLM off, skipped or refused up front. */
+    val llm: CleanUsage? = null,
 ) {
     /** What to paste: [segments] when the core sent them, else the pre-core-p1 fields. */
     fun pastePlan(): List<PasteSegment> = segments.ifEmpty {

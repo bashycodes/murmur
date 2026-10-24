@@ -83,7 +83,19 @@ object CoreJson {
         costUsd = o.optDoubleOrNull("cost_usd"),
         costEstimated = if (o.isNull("cost_estimated")) null else o.optBoolean("cost_estimated"),
         clientMs = o.optLongOrNull("client_ms"),
+        llmEngine = o.optStringOrNull("llm_engine"),
+        llmModel = o.optStringOrNull("llm_model"),
+        llmCostUsd = o.optDoubleOrNull("llm_cost_usd"),
     )
+
+    fun decodeCleanUsage(o: JSONObject?): CleanUsage? = o?.let {
+        CleanUsage(
+            engine = it.optString("engine", "local").ifEmpty { "local" }, model = it.optStringOrNull("model"),
+            costUsd = it.optDoubleOrNull("cost_usd"), costEstimated = it.optBoolean("cost_estimated"),
+            generationId = it.optStringOrNull("generation_id"), ttftMs = it.optLongOrNull("ttft_ms"),
+            latencyMs = it.optLongOrNull("latency_ms"),
+        )
+    }
 
     fun decodeCommit(json: String): CommitResult = try {
         val o = JSONObject(json)
@@ -110,6 +122,7 @@ object CoreJson {
             plainText = o.optString("plain_text"),
             emptyReason = o.optStringOrNull("empty_reason"),
             route = o.optJSONObject("route")?.let(::decodeRoute),
+            llm = decodeCleanUsage(o.optJSONObject("llm")),
         )
     } catch (e: JSONException) {
         CommitResult(CommitStatus.ERROR, error = "bad commit json: ${e.message}")

@@ -267,6 +267,10 @@ class DictationController(
                     error = error ?: result?.error, stack = DebugLogger.stackOf(cause),
                     style = s.style, llm = dev.flowclone.data.LlmOutcome.code(result),
                     speechMs = t?.speechMs, peakDbfs = t?.peakDbfs,
+                    llmEngine = result?.route?.llmEngine ?: result?.llm?.engine, llmModel = result?.route?.llmModel ?: result?.llm?.model,
+                    llmCostUsd = result?.route?.llmCostUsd ?: result?.llm?.costUsd, llmTtftMs = result?.llm?.ttftMs,
+                    llmGenerationId = result?.llm?.generationId,
+                    sttCostUsd = result?.route?.takeIf { it.engine == "cloud" }?.costUsd,
                 )
             val audioName = if (pcm == null || pcm.isEmpty()) null else try { host.onDictationAudio(trace, pcm) } catch (_: Throwable) { null }
             host.onDictationTrace(if (audioName != null) trace.copy(audio = audioName) else trace)

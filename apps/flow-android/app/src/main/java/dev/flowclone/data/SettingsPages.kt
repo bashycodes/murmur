@@ -177,7 +177,9 @@ object SettingsSummary {
 
     fun levelName(l: CleanupLevel) = SettingsPages.LEVELS.firstOrNull { it.first == l }?.second ?: "Off"
 
-    fun cleanup(s: Settings, llm: String?): String {
+    /** [cloud]: D28 cloud cleanup line ("OpenRouter (llama-3.3-70b-instruct), then on-device"), null when off. */
+    fun cleanup(s: Settings, llm: String?, cloud: String? = null): String {
+        if (cloud != null) return "$cloud · ${levelName(s.cleanupFor(true))}"
         // D27: the LLM switch no longer gates the deterministic formatting ("Auto-format" does).
         if (!s.llmEnabled) return if (s.spokenCleanup) "Off · auto-format still runs" else "Off · no formatting (auto-format off)"
         return "On · ${shortModel(llm) ?: "no model imported"} · ${levelName(s.effectiveCleanup)}"

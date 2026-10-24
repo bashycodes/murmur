@@ -12,6 +12,8 @@ import dev.flowclone.data.LanguageDefault
 import dev.flowclone.data.Settings
 import dev.flowclone.data.LastDictation
 import dev.flowclone.data.CloudKeyStore
+import dev.flowclone.data.CloudMigration
+import dev.flowclone.data.OpenRouter
 import dev.flowclone.data.RouterOpener
 import dev.flowclone.data.ParakeetFiles
 import dev.flowclone.data.EngineRoute
@@ -50,7 +52,7 @@ class FlowApp : Application() {
     lateinit var history: HistoryStore; private set
     lateinit var engine: EngineHolder; private set
     lateinit var dev: DevStore; private set
-    /** D18: cloud STT API keys (Keystore-sealed, one vault per provider). */
+    /** D28: the OpenRouter API key (Keystore-sealed, id [OpenRouter.ID]). */
     lateinit var cloudKeys: CloudKeyStore; private set
     /** D21: opt-in device-local debug log (Developer settings; default off). */
     lateinit var debugFile: DebugLogFile; private set
@@ -123,6 +125,7 @@ class FlowApp : Application() {
             // Scrubbed from every line, whatever path a secret took (never the clipboard: nothing reads it).
             secrets = { debugSecrets() },
         )
+        migrateCloud()
         engine = EngineHolder(this)
         debugAudio = DebugAudioStore.inFilesDir(filesDir)
         // 24 h limit also when the option was turned off meanwhile.
@@ -133,13 +136,26 @@ class FlowApp : Application() {
     fun effectiveLanguage(s: Settings = settings.load()): String =
         LanguageDefault.effective(s.language, java.util.Locale.getDefault().language, engine.loadedAsr())
 
-    /** Server token + every stored cloud key (runs on the debug-log thread, never throws). */
+    /**
+     * D28, once: stored D18 cloud settings (schema 1) become the one OpenRouter config. The rules
+     * are the router's (`nativeMigrateCloud`, pure and fast); only runs (and only loads the native
+     * library this early) while a schema-1 config is stored. A failure leaves it for the next start.
+     */
+    @Synchronized
+    fun migrateCloud() {
+        if (dev.legacyCloudJson() == null) return
+        val r = runCatching {
+            CloudMigration.run(dev, cloudKeys) { NativeFlowCore.migrateCloud(it) }
+        }.onFailure { Log.w("FlowEngine", "cloud migration: ${it.message}") }.getOrNull() ?: return
+        // Ids and names only; never a key.
+        debugLog.event("cloud_migration", "migrated=${r.migrated} removed=${r.removedNames.size} key_moved=${r.keyFrom != null} cloud_disabled=${r.cloudDisabled}")
+    }
+
+    /** Server token + the stored OpenRouter key (runs on the debug-log thread, never throws). */
     private fun debugSecrets(): List<String> {
         val out = ArrayList<String>()
-        runCatching { dev.load() }.getOrNull()?.let { d ->
-            d.token.takeIf { it.isNotEmpty() }?.let(out::add)
-            for (p in d.cloud.providers) runCatching { cloudKeys.get(p.id) }.getOrNull()?.let(out::add)
-        }
+        runCatching { dev.load() }.getOrNull()?.token?.takeIf { it.isNotEmpty() }?.let(out::add)
+        runCatching { cloudKeys.get(OpenRouter.ID) }.getOrNull()?.let(out::add)
         return out
     }
 
@@ -279,27 +295,22 @@ class EngineHolder(
     fun llmDir() = File(app.filesDir, "llm").apply { mkdirs() }
 
     /**
-     * D18: a freshly opened router gets every stored provider key (keys never travel in the
-     * config JSON) and this month's persisted usage counters.
+     * A freshly opened router gets the stored OpenRouter key (keys never travel in the config
+     * JSON) and this month's persisted usage counters. A notice from a legacy config the router
+     * migrated itself (should the shell's migration not have run) is kept for the banner.
      */
     private fun syncCloud(r: NativeFlowCore) {
         if (!app.caps.cloud) return
-        for (p in app.dev.load().cloud.providers) {
-            val key = app.cloudKeys.get(p.id) ?: continue
-            // S4: bound to the saved provider's host + adapter.
-            runCatching { r.setCloudKeyFor(p.toJson().toString(), p.id, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key ${p.id}: ${it.message}") }
+        app.cloudKeys.get(OpenRouter.ID)?.let { key ->
+            runCatching { r.setCloudKey(OpenRouter.ID, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key: ${it.message}") }
         }
         app.dev.cloudUsageJson?.let { r.setCloudUsage(it) }
+        r.cloudNotice()?.let { app.dev.cloudNotice = it; r.ackCloudNotice() }
     }
 
-    /** A provider's key was saved / cleared on the Developer page: tell the live router. */
-    fun setCloudKey(providerId: String, key: String?) {
-        runCatching { router()?.setCloudKey(providerId, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key $providerId: ${it.message}") }
-    }
-
-    /** Save on the provider page (S4): the key is bound to [p]'s host + adapter in the live router. */
-    fun setCloudKeyFor(p: dev.flowclone.data.CloudProvider, key: String?) {
-        runCatching { router()?.setCloudKeyFor(p.toJson().toString(), p.id, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key_for ${p.id}: ${it.message}") }
+    /** The OpenRouter key was saved / cleared: tell the live router (D28: id `openrouter`). */
+    fun setCloudKey(key: String?) {
+        runCatching { router()?.setCloudKey(OpenRouter.ID, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key: ${it.message}") }
     }
 
     /** Persist the router's cloud counters (after a cloud dictation, and on Reset counters). */
@@ -314,6 +325,9 @@ class EngineHolder(
         val s = app.settings.load()
         // Parakeet derives bpe.vocab for hotwords into TMPDIR (core-architecture "Android: Parakeet" 4).
         runCatching { android.system.Os.setenv("TMPDIR", app.cacheDir.path, true) }
+        // D28: the catalogue cache (no network here; the router's STT / cleanup resolve models from it).
+        if (app.caps.cloud) runCatching { NativeFlowCore.setCloudCacheDir(app.cacheDir.path) }
+        app.migrateCloud()
         val local = if (!app.caps.local && !s.mockEngine) EnginePlan.Plan.Missing("This build has no on-device engine.")
         else EnginePlan.plan(
             s, app.settings.modelPath, app.settings.llmModelPath, { File(it).isFile }, threads,
