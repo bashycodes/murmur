@@ -112,6 +112,14 @@ Existing natives are unchanged: `nativeOpenRouter` / `nativeUpdateRouter` accept
 
 ## OpenRouter (D28, docs/proposals/openrouter-only-cloud.md) — additive symbols
 
+Kotlin uses all of them since branch `feat/or-android` (`NativeFlowCore`: `migrateCloud` at
+startup via `FlowApp.migrateCloud` / `CloudMigration`, `setCloudCacheDir` before the router opens
+and on the OpenRouter / picker pages, `cloudCatalog` + `refreshCloudCatalog` in
+`ui/ModelPickerActivity`, `cloudKeyInfo` / `cleanupStatus` / `cloudNotice` / `ackCloudNotice` /
+`setCloudModel` on the OpenRouter page and Developer status). Settings changes still go through
+`nativeUpdateRouter` with the whole schema-2 config (the shell's prefs stay the source of truth),
+so `nativeSetCleanup` is used only by the host test.
+
 OpenRouter is the only cloud provider, for STT and for the opt-in text cleanup. The router
 config's `cloud` is schema 2 (`cloud.openrouter.{privacy,stt,cleanup}`, plus `allow_cloud_cleanup`
 and `cleanup_order` at the top level; `crates/flow-router/fixtures/router_config_cloud.json`). A

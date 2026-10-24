@@ -26,8 +26,36 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 - Cloud STT default model is now `openai/whisper-large-v3-turbo` (served by
   zero-retention providers; about $0.012-0.04 per hour of audio). The old
   default `openai/gpt-transcribe` has no zero-retention provider.
+- Android: *Developer settings → Cloud providers* (the provider list, presets
+  and "Add provider") is replaced by one **OpenRouter** page, also reachable
+  from *Settings → Dictation → Cloud (OpenRouter)*: the API key (Check key
+  shows the credit left and this month's usage), privacy (zero-retention
+  providers only and deny data collection, both on; turning one off asks
+  first), speech-to-text and text cleanup as two opt-ins with their own
+  consent dialogs, and usage split speech / cleanup with one monthly budget.
+- Android: on the first start after the update the old cloud settings are
+  converted once. An OpenRouter entry keeps its key, model and consent; every
+  other provider and its stored key is deleted; if another provider was
+  active, cloud speech-to-text is switched off. A banner says what changed
+  until dismissed.
 
 ### Added
+
+- Android: a model picker for both uses with every OpenRouter model that can
+  do the job (offline list built in, refreshed when the page opens, cached
+  24 h): search, filters (transcription / chat audio, zero-retention only,
+  fast providers, free), the price per hour of audio or per dictation,
+  context length, badges (ZDR, fast, "may paraphrase" for chat models used
+  for speech) and any model id typed by hand.
+- Android: opt-in cloud text cleanup through OpenRouter. Its consent dialog
+  lists what is sent (the dictated words, the kind of app, your style and
+  dictionary; text around the cursor, on-screen words and the app name each
+  have their own switch, off by default). Order "OpenRouter first, phone AI as
+  backup" or "Phone AI first"; provider choice; a time limit (2.5 s) after
+  which the formatted text is pasted. It also works with the local AI off.
+- Android debug log: `llm_engine`, `llm_model`, `llm_cost_usd`,
+  `llm_ttft_ms`, `llm_generation_id`, `stt_cost_usd`; *Status* shows the
+  cloud cleanup circuit and status.
 
 - Every OpenRouter model that can transcribe is usable: the 28 dedicated
   transcription models, and audio-input chat models as an opt-in second
