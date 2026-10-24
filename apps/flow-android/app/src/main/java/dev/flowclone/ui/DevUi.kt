@@ -553,9 +553,9 @@ internal class DevUi(val activity: Activity) {
             setHintTextColor((p.muted and 0x00FFFFFF) or 0x99000000.toInt())
             textSize = 16f; setTextColor(p.text)
             background = rounded(p.surface, 24)
-            setCompoundDrawablesRelativeWithIntrinsicBounds(
-                ctx.getDrawable(dev.flowclone.R.drawable.ic_scr_search)?.mutate()?.apply { setTint(p.muted) }, null, null, null,
-            )
+            // runCatching: JVM unit tests run without packaged resources.
+            val glass = runCatching { ctx.getDrawable(dev.flowclone.R.drawable.ic_scr_search)?.mutate()?.apply { setTint(p.muted) } }.getOrNull()
+            setCompoundDrawablesRelativeWithIntrinsicBounds(glass, null, null, null)
             compoundDrawablePadding = dp(12)
             setPadding(dp(16), dp(12), dp(16), dp(12))
             minHeight = dp(48)
