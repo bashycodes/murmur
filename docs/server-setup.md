@@ -37,7 +37,11 @@ Tailscale addresses.
   `libonnxruntime.so`), passed with `SHERPA_ONNX_LIB_DIR=<dir>` or
   `--sherpa-lib <dir>`.
 * A Rust toolchain. The build is `cargo build --release --offline -p flow-server
-  --no-default-features --features parakeet,tls`.
+  --no-default-features --features parakeet,tls` (`parakeet,tls,llm` plus
+  `-p flow-llm` with `--llm`, see "LLM cleanup" below).
+* Optional, for LLM cleanup: a GGUF (`tools/fetch-models.sh --llm 1.5b` puts
+  `qwen2.5-1.5b-instruct-q4_k_m.gguf` in `models/`), libclang and cmake for
+  the llama.cpp build.
 * Recommended: Tailscale on the server and on every client device.
 
 ## 2. Install
@@ -61,7 +65,47 @@ tools/server/install.sh --start            # ... and enable + start the service
 The script never overwrites an existing config or token. Every root command is
 printed as `[sudo] …` and confirmed once before anything runs (`--yes` skips
 the question). Other options: `--prefix`, `--bind ADDR` (repeatable),
-`--port`, `--threads`, `--no-build`.
+`--port`, `--threads`, `--no-build`, `--llm`, `--llm-model FILE`. `--model`
+may name the installed model folder itself (re-install in place); it is then
+not copied.
+
+### LLM cleanup (optional)
+
+```sh
+tools/server/install.sh --user --llm-model models/qwen2.5-1.5b-instruct-q4_k_m.gguf
+tools/server/install.sh --user --llm       # build + install the plugin only
+```
+
+`--llm` builds flow-server with the `llm` feature (it only adds the plugin
+loader) and the llama.cpp plugin `libflow_llm.so` (`-p flow-llm`, a separate
+library because llama.cpp's ggml clashes with whisper.cpp's), and installs
+the plugin into the libraries dir. `--llm-model FILE` implies `--llm`,
+copies the GGUF next to the ASR model and writes `llm_path` and `llm_lib`
+into a **new** config; an existing config is never edited, so add them to
+`[model]` yourself:
+
+```toml
+llm_path = "<models dir>/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+llm_lib = "<libraries dir>/libflow_llm.so"
+```
+
+If the existing config already sets `llm_path`, the installer turns `--llm`
+on by itself: a flow-server built without the feature refuses to start with
+`llm_path` set, so a plain re-install would otherwise take the server down.
+It warns when the config's `llm_lib` is not the path it installs to.
+
+bindgen (llama-cpp-sys-2) can miss the compiler's own headers (`stdbool.h`
+not found, e.g. Ubuntu with gcc 13). The installer then passes
+`BINDGEN_EXTRA_CLANG_ARGS=-I$(gcc -print-file-name=include)` unless you set
+that variable yourself. On a memory-tight box, `CARGO_BUILD_JOBS=4` keeps the
+llama.cpp build from swapping.
+
+The `ready` log line does not show LLM state. Check
+`curl -H "Authorization: Bearer $(cat <token file>)" http://127.0.0.1:7313/v1/health`
+for `"llm":true`. Cleanup runs only for sessions that ask for it
+(`cleanup_level` not `none`, `raw_mode` off), within the session's
+`llm_timeout_ms`. It adds about 1.8 GB RSS and roughly 2-7 s per dictation on
+a CPU-only i7-6700 (`docs/findings/2026-10-23-server-llm-cleanup-cost.md`).
 
 `--user` needs a running systemd user manager. Without a login session
 (ssh without `pam_systemd`, cron, an agent shell) the installer stops before
@@ -177,7 +221,10 @@ Keystore. Neither puts it in exported settings.
 ## 8. Update or remove
 
 * Update: pull, then run `tools/server/install.sh` again. Config and token are
-  kept. Then `sudo systemctl restart flow-server`.
+  kept, and a config with `llm_path` keeps its LLM build (see "LLM cleanup").
+  Then `sudo systemctl restart flow-server` (`systemctl --user restart
+  flow-server` for `--user`). The installer replaces the binary while the old
+  one keeps running, so the downtime is only the restart and model load.
 * Remove (system): `sudo systemctl disable --now flow-server`, then
   `sudo rm -r /opt/flow-server /etc/flow-server /etc/systemd/system/flow-server.service`,
   then `sudo systemctl daemon-reload`.
