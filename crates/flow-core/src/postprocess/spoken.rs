@@ -11,7 +11,9 @@
 //! 5. inverse text normalisation for money, percentages, clock times and
 //!    dates: "forty dollars" → "$40", "three thirty pm" → "3:30 PM",
 //!    "March fifth" → "March 5th"
-//! 6. sentence capitalisation and spacing around punctuation
+//! 6. spoken formatting commands: "quote … unquote", "in parentheses",
+//!    "open bracket … close bracket", "dash" (`spoken_commands.rs`)
+//! 7. sentence capitalisation and spacing around punctuation
 //!
 //! Everything is conservative: a phrase that is probably literal ("the
 //! period of", "don't forget that", "there's no wait") is left alone, and
@@ -22,6 +24,9 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::config::AppCategory;
+
+#[path = "spoken_commands.rs"]
+mod commands;
 
 const FILLERS: &[&str] = &[
     "um", "umm", "uh", "uhh", "uhm", "erm", "er", "hmm", "hm", "mm", "mhm",
@@ -755,7 +760,7 @@ fn itn(toks: Vec<Tok>) -> Vec<Tok> {
             .or_else(|| decimal(&c, &toks, i))
             .or_else(|| cardinal(&c, &toks, i))
         {
-            // An opening quote or bracket stays: "(forty dollars".
+            // An opening mark from a spoken command stays: "(forty dollars".
             let mut t = Tok::new(&format!("{}{t}", lead_marks(&toks[i].text)));
             t.cap = toks[i].cap;
             out.push(t);
@@ -1173,6 +1178,7 @@ pub fn spoken_cleanup(text: &str) -> String {
     let toks = fillers(toks);
     let toks = stutters(toks);
     let toks = backtrack(toks);
+    let toks = commands::spoken_commands(toks);
     let toks = itn(toks);
     let toks = tidy(toks);
     if toks == original {
