@@ -1,21 +1,23 @@
-//! D18 end to end through the shell: controller → RouterAdapter → the
-//! real flow-cloud backend (openai_compat adapter, Groq preset) → flow-cloud's
-//! in-process mock provider over HTTP; the local FlowCoreAdapter (MockAsr)
-//! is the fallback. Only the OS side and the provider are faked.
+//! D18/D28 end to end through the shell: controller → RouterAdapter → the
+//! real flow-cloud OpenRouter backend → flow-cloud's in-process mock
+//! OpenRouter over HTTP; the local FlowCoreAdapter (MockAsr) is the
+//! fallback. Only the OS side and OpenRouter are faked.
 //!
+//! The mock is reached only through `flow_cloud::testing::override_base_url`
+//! (feature `mock-server`, a dev-dependency): every config here is
+//! production-shaped (the base URL is a constant, never configurable).
 //! The key goes only through the credential store stand-in and
 //! `Router::set_cloud_key`; every test checks that nothing the shell shows
 //! (last dictation, route view, badge) contains it.
 
 #![cfg(feature = "cloud")]
 
-use flow_cloud::testing::{MockServer, Reply};
-use flow_router::CloudProviderConfig;
+use flow_cloud::testing::{override_base_url, BaseOverride, MockServer, Reply};
 use flow_windows::context::RawSnapshot;
 use flow_windows::controller::{AudioSink, Controller, Platform};
 use flow_windows::core_adapter::{FlowCoreAdapter, ModelSpec};
 use flow_windows::core_api::PasteKey;
-use flow_windows::credentials::{CredentialStore, MemoryStore};
+use flow_windows::credentials::{self, CredentialStore, MemoryStore};
 use flow_windows::dev_settings::{BuildCaps, DevSettings, Route};
 use flow_windows::dictation::{Input, OverlayState};
 use flow_windows::hotkeys::HotkeyAction;
@@ -26,7 +28,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
-const KEY: &str = "gsk_LEAKCHECK-windows-0123456789";
+const KEY: &str = "sk-or-v1-LEAKCHECK-windows-0123456789";
 const CLOUD_SAYS: &str = "spoken in the cloud";
 const LOCAL_SAYS: &str = "spoken on this pc";
 const CAPS: BuildCaps = BuildCaps {
@@ -96,28 +98,24 @@ impl Platform for FakeOs {
     fn max_duration_warning(&self, _r: u64) {}
 }
 
-/// The Groq preset pointed at the mock, with consent for its host.
-fn groq(srv: &MockServer, consent: bool) -> CloudProviderConfig {
-    let mut p = flow_windows::cloud::presets()
-        .into_iter()
-        .find(|p| p.preset == "groq")
-        .unwrap();
-    p.id = "groq-1".into();
-    p.base_url = srv.url("/openai/v1");
-    if consent {
-        p.consent_host = "127.0.0.1".into();
-        p.consent_at_ms = 1;
-    }
-    p
+/// Point flow-cloud at the mock (held for the test; serialised).
+fn mock(reply: Reply) -> (MockServer, BaseOverride) {
+    let srv = MockServer::fixed(reply);
+    let guard = override_base_url(&srv.url("/api/v1"));
+    (srv, guard)
 }
 
-fn dev(p: CloudProviderConfig, allow_cloud: bool, order: Vec<Route>, client: bool) -> DevSettings {
+/// OpenRouter speech-to-text on (or off), with or without the audio
+/// consent, in the given route order.
+fn dev(consent: bool, allow_cloud: bool, order: Vec<Route>, client: bool) -> DevSettings {
     let mut d = DevSettings::for_build(CAPS);
     d.allow_client = client;
     d.allow_cloud = allow_cloud;
     d.route_order = order;
-    d.cloud.active = p.id.clone();
-    d.cloud.providers = vec![p];
+    if consent {
+        d.cloud.openrouter.stt.consent_host = "openrouter.ai".into();
+        d.cloud.openrouter.stt.consent_at_ms = 1;
+    }
     d
 }
 
@@ -138,7 +136,7 @@ fn rig(d: &DevSettings, store: &dyn CredentialStore) -> Rig {
         .is_ready());
     let router = RouterAdapter::new(router_config(d, CAPS).unwrap(), Some(local), None);
     assert!(router.cloud_capabilities().cloud);
-    router.load_cloud_keys(d, store);
+    router.load_cloud_keys(store);
     let os = Arc::new(FakeOs::default());
     let (tx, rx) = mpsc::channel();
     let t = Arc::new(AtomicU64::new(0));
@@ -166,7 +164,7 @@ fn rig(d: &DevSettings, store: &dyn CredentialStore) -> Rig {
 
 fn keyed() -> Arc<MemoryStore> {
     let s = MemoryStore::new();
-    s.set("groq-1", KEY).unwrap();
+    credentials::store_openrouter_key(&*s, KEY).unwrap();
     s
 }
 
@@ -211,49 +209,54 @@ fn said(pastes: &[String], what: &str) -> bool {
     pastes.len() == 1 && pastes[0].to_lowercase().contains(what)
 }
 
+/// OpenRouter's `/audio/transcriptions` answer (`usage.cost` in USD).
 fn ok_reply() -> Reply {
-    Reply::json(200, serde_json::json!({ "text": CLOUD_SAYS }))
+    Reply::json(
+        200,
+        serde_json::json!({ "text": CLOUD_SAYS, "usage": {"seconds": 1.5, "cost": 0.0000125} }),
+    )
+    .header("X-Generation-Id", "gen-win-1")
 }
 
 #[test]
 fn cloud_first_dictates_through_the_provider() {
-    let srv = MockServer::fixed(ok_reply());
-    let d = dev(
-        groq(&srv, true),
-        true,
-        vec![Route::Cloud, Route::Client],
-        true,
-    );
+    let (srv, _g) = mock(ok_reply());
+    let d = dev(true, true, vec![Route::Cloud, Route::Client], true);
     let mut r = rig(&d, &*keyed());
     r.dictate();
     assert!(said(&r.os.pastes(), CLOUD_SAYS), "{:?}", r.os.pastes());
     assert_eq!(srv.count(), 1);
     let req = &srv.requests()[0];
-    assert!(
-        req.path().ends_with("/openai/v1/audio/transcriptions"),
-        "{}",
-        req.target
-    );
+    assert_eq!(req.path(), "/api/v1/audio/transcriptions", "{}", req.target);
     assert_eq!(
         req.header("authorization"),
         Some(format!("Bearer {KEY}").as_str())
     );
+    // D28 defaults: the default model, most private routing, no
+    // attribution headers.
+    let body = req.json();
+    assert_eq!(body["model"], "openai/whisper-large-v3-turbo");
+    assert_eq!(body["provider"]["zdr"], true);
+    assert_eq!(body["provider"]["data_collection"], "deny");
+    assert!(body["input_audio"]["data"]
+        .as_str()
+        .is_some_and(|d| !d.is_empty()));
+    assert_eq!(req.header("http-referer"), None);
+    assert_eq!(req.header("x-openrouter-title"), None);
     let last = r.last();
     assert_eq!(last.engine.as_deref(), Some("cloud"));
     assert_eq!(last.fallback, None);
     assert_eq!(last.notice, None);
     let row = last.row.clone().unwrap();
-    assert!(
-        row.starts_with("cloud · Groq · whisper-large-v3-turbo · "),
-        "{row}"
+    assert_eq!(
+        row, "cloud · OpenRouter · openai/whisper-large-v3-turbo · $0.0000",
+        "exact usage.cost, not an estimate"
     );
-    assert!(
-        row.contains("≈ $"),
-        "Groq reports no cost: estimated ({row})"
-    );
+    assert_eq!(last.cost_usd, Some(0.0000125));
+    assert!(!last.cost_estimated);
     let badge = last.badge().unwrap();
     assert_eq!(badge.letter, "C");
-    assert_eq!(badge.title.as_deref(), Some("Sent to Groq"));
+    assert_eq!(badge.title.as_deref(), Some("Sent to OpenRouter"));
     assert!(last.always_badge(), "C shows without the S/L setting");
     let usage = r.router.cloud_usage();
     assert_eq!(usage.providers.len(), 1);
@@ -264,13 +267,8 @@ fn cloud_first_dictates_through_the_provider() {
 
 #[test]
 fn usage_survives_a_restart() {
-    let srv = MockServer::fixed(ok_reply());
-    let d = dev(
-        groq(&srv, true),
-        true,
-        vec![Route::Cloud, Route::Client],
-        true,
-    );
+    let (_srv, _g) = mock(ok_reply());
+    let d = dev(true, true, vec![Route::Cloud, Route::Client], true);
     let store = keyed();
     let mut r = rig(&d, &*store);
     r.dictate();
@@ -294,16 +292,11 @@ fn usage_survives_a_restart() {
 
 #[test]
 fn provider_error_falls_back_to_local_with_all_audio() {
-    let srv = MockServer::fixed(Reply::json(
+    let (srv, _g) = mock(Reply::json(
         500,
         serde_json::json!({"error": {"message": "upstream exploded"}}),
     ));
-    let d = dev(
-        groq(&srv, true),
-        true,
-        vec![Route::Cloud, Route::Client],
-        true,
-    );
+    let d = dev(true, true, vec![Route::Cloud, Route::Client], true);
     let mut r = rig(&d, &*keyed());
     r.dictate();
     assert!(said(&r.os.pastes(), LOCAL_SAYS), "{:?}", r.os.pastes());
@@ -326,13 +319,8 @@ fn provider_error_falls_back_to_local_with_all_audio() {
 
 #[test]
 fn rejected_key_falls_back_and_stays_off_until_the_key_changes() {
-    let srv = MockServer::fixed(Reply::json(401, serde_json::json!({"error": "bad key"})));
-    let d = dev(
-        groq(&srv, true),
-        true,
-        vec![Route::Cloud, Route::Client],
-        true,
-    );
+    let (srv, _g) = mock(Reply::json(401, serde_json::json!({"error": "bad key"})));
+    let d = dev(true, true, vec![Route::Cloud, Route::Client], true);
     let store = keyed();
     let mut r = rig(&d, &*store);
     r.dictate();
@@ -347,10 +335,8 @@ fn rejected_key_falls_back_and_stays_off_until_the_key_changes() {
     assert_eq!(srv.count(), 1, "sticky auth_failed");
     assert_eq!(r.last().engine.as_deref(), Some("local"));
     // A new key (Save in the Developer tab) re-enables it.
-    store
-        .set("groq-1", "gsk_LEAKCHECK-another-key-000")
-        .unwrap();
-    r.router.load_cloud_keys(&d, &*store);
+    credentials::store_openrouter_key(&*store, "sk-or-v1-LEAKCHECK-another-key-000").unwrap();
+    r.router.load_cloud_keys(&*store);
     r.dictate();
     assert_eq!(srv.count(), 2);
     r.assert_no_key();
@@ -358,14 +344,9 @@ fn rejected_key_falls_back_and_stays_off_until_the_key_changes() {
 
 #[test]
 fn no_key_or_no_consent_never_contacts_the_provider() {
-    let srv = MockServer::fixed(ok_reply());
+    let (srv, _g) = mock(ok_reply());
     for (consent, store) in [(true, MemoryStore::new()), (false, keyed())] {
-        let d = dev(
-            groq(&srv, consent),
-            true,
-            vec![Route::Cloud, Route::Client],
-            true,
-        );
+        let d = dev(consent, true, vec![Route::Cloud, Route::Client], true);
         let mut r = rig(&d, &*store);
         r.dictate();
         assert!(said(&r.os.pastes(), LOCAL_SAYS), "{:?}", r.os.pastes());
@@ -380,13 +361,8 @@ fn no_key_or_no_consent_never_contacts_the_provider() {
 
 #[test]
 fn allow_cloud_off_is_silent_and_local() {
-    let srv = MockServer::fixed(ok_reply());
-    let d = dev(
-        groq(&srv, true),
-        false,
-        vec![Route::Cloud, Route::Client],
-        true,
-    );
+    let (srv, _g) = mock(ok_reply());
+    let d = dev(true, false, vec![Route::Cloud, Route::Client], true);
     let mut r = rig(&d, &*keyed());
     r.dictate();
     assert!(said(&r.os.pastes(), LOCAL_SAYS));
@@ -397,8 +373,8 @@ fn allow_cloud_off_is_silent_and_local() {
 
 #[test]
 fn cloud_only_failure_is_an_error_pill_naming_the_cloud() {
-    let srv = MockServer::fixed(Reply::json(401, serde_json::json!({"error": "bad key"})));
-    let d = dev(groq(&srv, true), true, vec![Route::Cloud], false);
+    let (_srv, _g) = mock(Reply::json(401, serde_json::json!({"error": "bad key"})));
+    let d = dev(true, true, vec![Route::Cloud], false);
     let mut r = rig(&d, &*keyed());
     r.dictate();
     assert!(r.os.pastes().is_empty());
@@ -409,7 +385,7 @@ fn cloud_only_failure_is_an_error_pill_naming_the_cloud() {
         "{errs:?}"
     );
     // Without a key it never starts; the pill says what is missing.
-    let d = dev(groq(&srv, true), true, vec![Route::Cloud], false);
+    let d = dev(true, true, vec![Route::Cloud], false);
     let mut r = rig(&d, &*MemoryStore::new());
     r.dictate();
     let errs = r.os.errors();
@@ -421,20 +397,57 @@ fn cloud_only_failure_is_an_error_pill_naming_the_cloud() {
 }
 
 #[test]
-fn test_provider_uses_the_unsaved_form_and_typed_key() {
-    let srv = MockServer::fixed(ok_reply());
-    let d = dev(groq(&srv, false), false, vec![], true);
+fn test_uses_the_saved_settings_and_the_typed_key() {
+    let (srv, _g) = mock(ok_reply());
+    let d = dev(false, false, vec![], true);
     let r = rig(&d, &*MemoryStore::new());
-    let h = r.router.router().probe_cloud(
-        &groq(&srv, false),
-        Some(flow_router::SecretString::new(KEY)),
-    );
+    let cfg = d.cloud.openrouter.clone();
+    let h = r
+        .router
+        .router()
+        .probe_cloud(&cfg, Some(flow_router::SecretString::new(KEY)));
     assert!(h.ok, "{h:?}");
     assert_eq!(h.transcript.as_deref(), Some(CLOUD_SAYS));
+    assert_eq!(h.provider.as_deref(), Some("openrouter"));
     assert!(!serde_json::to_string(&h).unwrap().contains("LEAKCHECK"));
     // No typed key and none stored: a clear error, no request.
     let n = srv.count();
-    let h = r.router.router().probe_cloud(&groq(&srv, false), None);
+    let h = r.router.router().probe_cloud(&cfg, None);
     assert_eq!(h.error.as_deref(), Some("cloud_not_configured"));
     assert_eq!(srv.count(), n);
+}
+
+#[test]
+fn no_zero_retention_route_falls_back_and_names_the_reason() {
+    // OpenRouter's 503 when no endpoint meets `zdr` / `data_collection`.
+    let (srv, _g) = mock(Reply::json(
+        503,
+        serde_json::json!({"error": {"code": 503, "message": "No endpoints found that meet your routing requirements (zdr)"}}),
+    ));
+    let d = dev(true, true, vec![Route::Cloud, Route::Client], true);
+    let mut r = rig(&d, &*keyed());
+    r.dictate();
+    assert!(said(&r.os.pastes(), LOCAL_SAYS), "{:?}", r.os.pastes());
+    let last = r.last();
+    assert_eq!(last.fallback.as_deref(), Some("no_private_route"));
+    assert_eq!(
+        last.notice.as_deref(),
+        Some("Cloud STT failed (no zero-retention provider serves this model); used this PC")
+    );
+    // Sticky until the model or privacy changes: not asked again.
+    let n = srv.count();
+    r.dictate();
+    assert_eq!(srv.count(), n);
+    r.assert_no_key();
+}
+
+#[test]
+fn the_production_config_never_names_a_base_url() {
+    // C8: the shell's router JSON carries no URL at all; the host is
+    // flow-cloud's constant.
+    let d = dev(true, true, vec![Route::Cloud, Route::Client], true);
+    let j = d.router_config_json(CAPS, "").to_string();
+    assert!(!j.contains("http"), "{j}");
+    assert!(!j.contains("base_url"), "{j}");
+    assert_eq!(flow_cloud::BASE_URL, "https://openrouter.ai/api/v1");
 }

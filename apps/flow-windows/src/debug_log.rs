@@ -118,6 +118,18 @@ pub struct Entry {
     /// (`llm_skipped_clean` = nothing for the LLM to do, a normal result;
     /// `llm_timeout`, `llm_dropped`, …), or `null` = LLM off / no result.
     pub llm: Option<String>,
+    /// D28: engine of the LLM step (`local` / `cloud` / `server`), its
+    /// model, cloud cost (USD), time to first token and OpenRouter
+    /// generation id. `null` when the LLM did not run.
+    pub llm_engine: Option<String>,
+    pub llm_model: Option<String>,
+    pub llm_cost_usd: Option<flow_core::Usd>,
+    pub llm_ttft_ms: Option<u32>,
+    pub llm_generation_id: Option<String>,
+    /// D28: OpenRouter speech-to-text model and cost of this dictation
+    /// (`null` unless `route` is `cloud`).
+    pub stt_model: Option<String>,
+    pub stt_cost_usd: Option<flow_core::Usd>,
 }
 
 /// A non-dictation line (`"kind": "event"`): engine load, server probe,
@@ -588,6 +600,8 @@ pub const FAILURE_CODES: &[&str] = &[
     "budget_exceeded",
     "quota_exceeded",
     "provider_error",
+    "no_private_route",
+    "cloud_cleanup_not_configured",
 ];
 
 /// The first failure code named in `text`.
@@ -761,6 +775,13 @@ pub(crate) mod tests {
             "error",
             "style",
             "llm",
+            "llm_engine",
+            "llm_model",
+            "llm_cost_usd",
+            "llm_ttft_ms",
+            "llm_generation_id",
+            "stt_model",
+            "stt_cost_usd",
         ];
         want.sort();
         assert_eq!(keys, want);

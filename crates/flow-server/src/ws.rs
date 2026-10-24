@@ -480,27 +480,7 @@ impl Conn {
                     self.sess = Some(s);
                     return;
                 }
-                let t = &r.timings;
-                tracing::info!(
-                    sid,
-                    peer = %self.peer,
-                    audio_ms = t.audio_ms,
-                    asr_ms = t.asr_ms,
-                    asr_audio_ms = t.asr_audio_ms,
-                    wait_ms = t.wait_ms,
-                    segments = t.segments,
-                    pre_asr_ms = t.pre_asr_ms,
-                    llm_ms = t.llm_ms,
-                    total_ms = t.total_ms,
-                    queue_ms = s.queue_ms,
-                    start_to_commit_ms = s.start_to_commit_ms.unwrap_or(0),
-                    speech_ms = ?t.speech_ms,
-                    peak_dbfs = ?t.peak_dbfs,
-                    status = ?r.status,
-                    empty_reason = r.empty_reason.as_deref().unwrap_or(""),
-                    fallback_reason = r.fallback_reason.as_deref().unwrap_or(""),
-                    "result"
-                );
+                log_result(sid, self.peer, &r, s.queue_ms, s.start_to_commit_ms);
                 if self.state.cfg.log.log_text {
                     tracing::debug!(sid, text = %r.final_text, "result text");
                 }
@@ -546,5 +526,100 @@ impl Conn {
             let m = ServerMsg::Partial { sid: s.sid, text };
             self.push(Message::Text(m.to_json().into()));
         }
+    }
+}
+
+/// The per-dictation `result` log line (timings only, never text). Optional
+/// values print as bare numbers and are omitted when unknown (tracing
+/// records `Option<T>` only when `Some`), not as `Some(7200)`.
+fn log_result(
+    sid: u64,
+    peer: SocketAddr,
+    r: &CommitResult,
+    queue_ms: u64,
+    start_to_commit_ms: Option<u64>,
+) {
+    let t = &r.timings;
+    tracing::info!(
+        sid,
+        peer = %peer,
+        audio_ms = t.audio_ms,
+        asr_ms = t.asr_ms,
+        asr_audio_ms = t.asr_audio_ms,
+        wait_ms = t.wait_ms,
+        segments = t.segments,
+        pre_asr_ms = t.pre_asr_ms,
+        llm_ms = t.llm_ms,
+        total_ms = t.total_ms,
+        queue_ms,
+        start_to_commit_ms,
+        speech_ms = t.speech_ms,
+        peak_dbfs = t.peak_dbfs,
+        status = ?r.status,
+        empty_reason = r.empty_reason.as_deref().unwrap_or(""),
+        fallback_reason = r.fallback_reason.as_deref().unwrap_or(""),
+        "result"
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn result() -> CommitResult {
+        serde_json::from_value(serde_json::json!({
+            "status": "EMPTY", "asr_text": "", "final_text": "", "language": null,
+            "timings": serde_json::to_value(flow_core::Timings::default()).unwrap(),
+            "press_enter": false, "fallback_reason": null,
+            "truncated": false, "error": null
+        }))
+        .unwrap()
+    }
+
+    /// Captures what `log_result` prints with the server's fmt layer.
+    fn captured(r: &CommitResult) -> String {
+        #[derive(Clone, Default)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf::default();
+        let out = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(move || out.clone())
+            .finish();
+        tracing::subscriber::with_default(sub, || {
+            log_result(7, "100.64.0.2:5000".parse().unwrap(), r, 12, Some(7400));
+        });
+        let v = buf.0.lock().unwrap().clone();
+        String::from_utf8(v).unwrap()
+    }
+
+    #[test]
+    fn result_line_prints_bare_numbers_not_option_debug() {
+        let mut r = result();
+        r.timings.speech_ms = Some(7200);
+        r.timings.peak_dbfs = Some(-2);
+        let line = captured(&r);
+        assert!(line.contains("speech_ms=7200"), "{line}");
+        assert!(line.contains("peak_dbfs=-2"), "{line}");
+        assert!(line.contains("start_to_commit_ms=7400"), "{line}");
+        assert!(!line.contains("Some("), "{line}");
+    }
+
+    #[test]
+    fn result_line_omits_unknown_values() {
+        let line = captured(&result());
+        assert!(line.contains(" result"), "{line}");
+        assert!(!line.contains("speech_ms"), "{line}");
+        assert!(!line.contains("peak_dbfs"), "{line}");
+        assert!(!line.contains("None"), "{line}");
     }
 }

@@ -139,6 +139,12 @@ pub struct LastDictation {
     /// clean)" for `llm_skipped_clean`, …); `None` = LLM off.
     pub llm: Option<String>,
     pub at_ms: u64,
+    /// D28: the LLM step's engine (`local` / `cloud` / `server`), model
+    /// and cloud cost; `llm_row` = "AI cleaned · OpenRouter · <model> · $x".
+    pub llm_engine: Option<String>,
+    pub llm_model: Option<String>,
+    pub llm_cost_usd: Option<f64>,
+    pub llm_row: Option<String>,
     /// Cloud (D18): provider id and its label, model, billed audio, cost.
     pub provider: Option<String>,
     pub provider_label: Option<String>,
@@ -157,27 +163,41 @@ impl LastDictation {
     fn of(r: &CommitResult, cfg: &RouterConfig) -> Self {
         let route = r.route.as_ref();
         let provider = route.and_then(|x| x.provider.clone());
-        let provider_label = provider.as_ref().map(|id| {
-            cfg.cloud
-                .providers
-                .iter()
-                .find(|p| &p.id == id)
-                .map(|p| p.display_name().to_string())
-                .unwrap_or_else(|| id.clone())
-        });
+        // D28: OpenRouter is the only cloud provider.
+        let provider_label = provider
+            .as_ref()
+            .map(|_| crate::cloud::PROVIDER_NAME.to_string());
         let model = route.and_then(|x| x.model.clone());
         let cost_usd = route.and_then(|x| x.cost_usd).map(|c| c.0);
         let cost_estimated = route.and_then(|x| x.cost_estimated).unwrap_or(false);
         let is_cloud = route.is_some_and(|x| x.engine == "cloud");
         let row = is_cloud.then(|| {
-            crate::cloud::engine_row(
-                provider_label.as_deref().unwrap_or("?"),
-                model.as_deref().unwrap_or(""),
-                cost_usd,
-                cost_estimated,
-            )
+            crate::cloud::engine_row(model.as_deref().unwrap_or(""), cost_usd, cost_estimated)
         });
+        let llm =
+            crate::core_api::llm_outcome_label(crate::core_api::llm_outcome(Some(r)).as_deref());
+        let llm_engine = route
+            .and_then(|x| x.llm_engine.clone())
+            .or_else(|| r.llm.as_ref().and_then(|u| u.engine.clone()));
+        let llm_model = route
+            .and_then(|x| x.llm_model.clone())
+            .or_else(|| r.llm.as_ref().and_then(|u| u.model.clone()));
+        let llm_cost_usd = route
+            .and_then(|x| x.llm_cost_usd)
+            .or_else(|| r.llm.as_ref().and_then(|u| u.cost_usd))
+            .map(|c| c.0);
+        let llm_row = crate::cloud::llm_row(
+            llm.as_deref(),
+            llm_engine.as_deref(),
+            llm_model.as_deref(),
+            llm_cost_usd,
+            r.llm.as_ref().is_some_and(|u| u.cost_estimated),
+        );
         LastDictation {
+            llm_engine,
+            llm_model,
+            llm_cost_usd,
+            llm_row,
             provider,
             provider_label,
             model,
@@ -203,9 +223,7 @@ impl LastDictation {
             status: r.status,
             empty_reason: r.empty_reason.clone(),
             error: r.error.clone(),
-            llm: crate::core_api::llm_outcome_label(
-                crate::core_api::llm_outcome(Some(r)).as_deref(),
-            ),
+            llm,
             at_ms: now_ms(),
         }
     }
@@ -253,7 +271,11 @@ fn cloud_failure_code(r: &CommitResult, cfg: &RouterConfig) -> Option<String> {
     let fb = route.fallback.clone()?;
     let cloud_only_code = matches!(
         fb.as_str(),
-        "cloud_not_configured" | "budget_exceeded" | "quota_exceeded" | "provider_error"
+        "cloud_not_configured"
+            | "budget_exceeded"
+            | "quota_exceeded"
+            | "provider_error"
+            | "no_private_route"
     );
     // The cloud was the first route the toggles allow (a skipped cloud
     // route reports e.g. `auth_failed` like a server would).
@@ -427,20 +449,16 @@ impl RouterAdapter {
         self.router.cloud_usage()
     }
 
-    /// Hand every saved provider's key to the router, bound to that
-    /// provider's host + adapter (`set_cloud_key_for`, review S4). Keys
-    /// stored for another host/adapter are deleted, not re-sent. Startup
-    /// and every Save.
-    pub fn load_cloud_keys(
-        &self,
-        dev: &DevSettings,
-        store: &dyn crate::credentials::CredentialStore,
-    ) {
-        for p in &dev.cloud.providers {
-            let key = crate::credentials::key_for(store, p);
-            self.router
-                .set_cloud_key_for(p, key.map(flow_router::SecretString::new));
-        }
+    /// Hand the OpenRouter key (Credential Manager
+    /// `flow-clone/cloud/openrouter`, bound to openrouter.ai) to the router,
+    /// or forget it. A key stored for another host is deleted, not sent.
+    /// Startup and after every key change.
+    pub fn load_cloud_keys(&self, store: &dyn crate::credentials::CredentialStore) {
+        let key = crate::credentials::openrouter_key(store);
+        self.router.set_cloud_key(
+            crate::credentials::OPENROUTER,
+            key.map(flow_router::SecretString::new),
+        );
     }
 
     /// Called after every commit (overlay badge, Developer page refresh).
@@ -524,10 +542,8 @@ impl RouterAdapter {
     fn cloud_ready(&self, cfg: &RouterConfig) -> bool {
         self.router.cloud_capabilities().cloud
             && cfg.allow_cloud
-            && cfg.cloud.active_provider().is_some_and(|p| {
-                p.consent_ok()
-                    && (self.router.has_cloud_key(&p.id) || crate::dev_settings::keyless_ok(p))
-            })
+            && cfg.cloud.openrouter.stt.consent_ok()
+            && self.router.has_cloud_key(crate::credentials::OPENROUTER)
     }
 
     /// Only the cloud route is allowed (start errors then name the cloud).
@@ -634,13 +650,11 @@ impl CoreApi for RouterAdapter {
     }
 
     fn describe_route(&self, r: &SessionRoute) -> crate::core_api::LiveRouteLabel {
-        let cfg = self.router.config();
-        crate::core_api::live_route_label(r, &|id| {
-            cfg.cloud
-                .providers
-                .iter()
-                .find(|p| p.id == id)
-                .map(|p| (p.display_name().to_string(), p.host()))
+        crate::core_api::live_route_label(r, &|_| {
+            Some((
+                crate::cloud::PROVIDER_NAME.to_string(),
+                crate::cloud::PROVIDER_HOST.to_string(),
+            ))
         })
     }
 

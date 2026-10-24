@@ -1,20 +1,35 @@
-//! Cloud STT (D18) shell helpers that need no Win32 or network: user-facing
-//! failure text, the Developer "Active engine" row, the usage file
-//! (`%APPDATA%\FlowClone\cloud_usage.json`, never sent anywhere) and the
-//! provider presets for "Add provider".
+//! OpenRouter (D18 / D28) shell helpers that need no Win32 or network:
+//! user-facing failure text, the Developer "Active engine" rows, the usage
+//! file (`%APPDATA%\FlowClone\cloud_usage.json`, never sent anywhere), the
+//! model-catalogue cache path and the one-time D28 settings migration.
+//!
+//! OpenRouter is the only cloud provider (D28): no presets, no base URLs,
+//! no other host. `flow_cloud` (feature `cloud`) talks to it; this module
+//! only formats and persists.
 
-use flow_router::{CloudProviderConfig, CloudUsage};
+use crate::credentials::{self, CredentialStore};
+use crate::dev_settings::DevSettings;
+use flow_router::cloud::{PURPOSE_CLEANUP, PURPOSE_STT, REMOVED_PROVIDERS_ID};
+use flow_router::{CloudUsage, MigrationReport};
 use std::path::{Path, PathBuf};
 
-/// `route.fallback` code → what the user is told (§8.3 / changelog "What W
-/// needs"). `None` for codes that are not about the cloud provider.
+/// How the shell names the provider (pill, badge, rows).
+pub const PROVIDER_NAME: &str = "OpenRouter";
+/// The one host audio or text can go to.
+pub const PROVIDER_HOST: &str = flow_router::cloud::OPENROUTER_HOST;
+
+/// `route.fallback` / `CleanupStatus.blocked` code → what the user is told
+/// (changelog "What W needs" + D28). `None` for codes that are not about
+/// OpenRouter.
 pub fn failure_text(code: &str) -> Option<&'static str> {
     Some(match code {
         "auth_failed" => "key rejected",
         "quota_exceeded" => "out of credits",
-        "connect_failed" => "no internet / base URL wrong",
+        "connect_failed" => "can't reach openrouter.ai",
         "budget_exceeded" => "monthly budget reached",
         "cloud_not_configured" => "set a key and accept the consent",
+        "cloud_cleanup_not_configured" => "turn on cleanup, accept its consent and save a key",
+        "no_private_route" => "no zero-retention provider serves this model",
         "provider_error" => "the provider returned an error",
         "timeout" => "the provider took too long",
         "busy" => "rate limited by the provider",
@@ -37,6 +52,8 @@ pub fn failure_message(code: &str, used: Option<&str>) -> String {
 
 /// `$0.0012`, `≈ $0.0012` when estimated. Small amounts keep 4 decimals.
 pub fn format_cost(usd: f64, estimated: bool) -> String {
+    // An empty f64 sum is -0.0: never show "$-0.0000".
+    let usd = usd + 0.0;
     let n = if usd >= 1.0 {
         format!("${usd:.2}")
     } else {
@@ -49,9 +66,9 @@ pub fn format_cost(usd: f64, estimated: bool) -> String {
     }
 }
 
-/// Engine row for a cloud dictation: `cloud · <provider> · <model> · $cost`.
-pub fn engine_row(provider: &str, model: &str, cost_usd: Option<f64>, estimated: bool) -> String {
-    let mut parts = vec!["cloud".to_string(), provider.to_string()];
+/// Engine row for a cloud dictation: `cloud · OpenRouter · <model> · $cost`.
+pub fn engine_row(model: &str, cost_usd: Option<f64>, estimated: bool) -> String {
+    let mut parts = vec!["cloud".to_string(), PROVIDER_NAME.to_string()];
     if !model.is_empty() {
         parts.push(model.to_string());
     }
@@ -61,10 +78,47 @@ pub fn engine_row(provider: &str, model: &str, cost_usd: Option<f64>, estimated:
     parts.join(" · ")
 }
 
+/// The LLM step's row: `<outcome> · OpenRouter · <model> · $cost` for a
+/// cloud cleanup, `<outcome> · this PC` / `· your server` otherwise.
+/// `None` when the LLM did not run (no outcome).
+pub fn llm_row(
+    outcome: Option<&str>,
+    engine: Option<&str>,
+    model: Option<&str>,
+    cost_usd: Option<f64>,
+    estimated: bool,
+) -> Option<String> {
+    let outcome = outcome?;
+    let mut parts = vec![outcome.to_string()];
+    match engine {
+        Some("cloud") => {
+            parts.push(PROVIDER_NAME.to_string());
+            if let Some(m) = model.filter(|m| !m.is_empty()) {
+                parts.push(m.to_string());
+            }
+            if let Some(c) = cost_usd {
+                parts.push(format_cost(c, estimated));
+            }
+        }
+        Some("local") => parts.push("this PC".into()),
+        Some("server") => parts.push("your server".into()),
+        _ => {}
+    }
+    Some(parts.join(" · "))
+}
+
 // ------------------------------------------------------------------ usage
 
 pub fn usage_path(appdata: Option<&str>) -> PathBuf {
     crate::prefs::Prefs::default_path(appdata).with_file_name("cloud_usage.json")
+}
+
+/// `%APPDATA%\FlowClone\cache\openrouter-catalog.json`: the trimmed model
+/// catalogue (`flow_cloud::CatalogStore`, 24 h TTL). Public data only.
+pub fn catalog_cache_path(appdata: Option<&str>) -> PathBuf {
+    crate::prefs::Prefs::default_path(appdata)
+        .with_file_name("cache")
+        .join("openrouter-catalog.json")
 }
 
 /// Persisted counters; `None` when missing or unreadable (start at zero).
@@ -84,85 +138,140 @@ pub fn save_usage(path: &Path, usage: &CloudUsage) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
-/// Developer page usage row per provider.
+/// One usage row: speech-to-text, cleanup, or providers removed by the
+/// D28 migration (their cost still counts toward the budget).
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct UsageRow {
-    pub provider_id: String,
+    /// `stt` / `cleanup` / `removed`.
+    pub purpose: String,
     pub label: String,
     pub requests: u64,
     pub minutes: f64,
     pub cost: String,
 }
 
+/// OpenRouter page "Usage this month": `Speech $x · Cleanup $y`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct UsageView {
     pub month: String,
+    pub speech: String,
+    pub cleanup: String,
     pub rows: Vec<UsageRow>,
-    /// Sum this month, formatted.
+    /// Sum this month (both uses + removed providers), formatted.
     pub total: String,
     pub budget: Option<f64>,
     pub budget_reached: bool,
 }
 
-pub fn usage_view(
-    u: &CloudUsage,
-    providers: &[CloudProviderConfig],
-    budget: Option<f64>,
-) -> UsageView {
-    let estimated = u.providers.iter().any(|p| p.cost_estimated);
+fn purpose_of(p: &flow_router::ProviderUsage) -> &'static str {
+    if p.provider_id == REMOVED_PROVIDERS_ID {
+        "removed"
+    } else if p.purpose == PURPOSE_CLEANUP {
+        PURPOSE_CLEANUP
+    } else {
+        PURPOSE_STT
+    }
+}
+
+pub fn usage_view(u: &CloudUsage, budget: Option<f64>) -> UsageView {
+    let est = |purpose: &str| {
+        u.providers
+            .iter()
+            .any(|p| purpose_of(p) == purpose && p.cost_estimated)
+    };
+    let sum = |purpose: &str| -> f64 {
+        u.providers
+            .iter()
+            .filter(|p| purpose_of(p) == purpose)
+            .map(|p| p.cost_usd.0)
+            .sum()
+    };
+    let mut rows: Vec<UsageRow> = Vec::new();
+    for purpose in [PURPOSE_STT, PURPOSE_CLEANUP, "removed"] {
+        let of: Vec<&flow_router::ProviderUsage> = u
+            .providers
+            .iter()
+            .filter(|p| purpose_of(p) == purpose)
+            .collect();
+        if of.is_empty() {
+            continue;
+        }
+        let cost: f64 = of.iter().map(|p| p.cost_usd.0).sum();
+        let ms: u64 = of.iter().map(|p| p.billed_audio_ms).sum();
+        rows.push(UsageRow {
+            purpose: purpose.into(),
+            label: match purpose {
+                PURPOSE_STT => "Speech-to-text",
+                PURPOSE_CLEANUP => "Text cleanup",
+                _ => "Removed providers (before OpenRouter only)",
+            }
+            .into(),
+            requests: of.iter().map(|p| p.requests).sum(),
+            minutes: (ms as f64 / 60_000.0 * 100.0).round() / 100.0,
+            cost: format_cost(cost, est(purpose)),
+        });
+    }
     let total = u.total_cost();
     UsageView {
         month: u.month.clone(),
-        rows: u
-            .providers
-            .iter()
-            .map(|p| UsageRow {
-                provider_id: p.provider_id.clone(),
-                label: providers
-                    .iter()
-                    .find(|c| c.id == p.provider_id)
-                    .map(|c| c.display_name().to_string())
-                    .unwrap_or_else(|| p.provider_id.clone()),
-                requests: p.requests,
-                minutes: (p.billed_audio_ms as f64 / 60_000.0 * 100.0).round() / 100.0,
-                cost: format_cost(p.cost_usd.0, p.cost_estimated),
-            })
-            .collect(),
-        total: format_cost(total, estimated),
+        // Not `CloudUsage::cost_for`: that counts the `removed` counter
+        // (no purpose) as speech; here it has its own row.
+        speech: format_cost(sum(PURPOSE_STT), est(PURPOSE_STT)),
+        cleanup: format_cost(sum(PURPOSE_CLEANUP), est(PURPOSE_CLEANUP)),
+        rows,
+        total: format_cost(total, u.providers.iter().any(|p| p.cost_estimated)),
         budget,
         budget_reached: budget.is_some_and(|b| total >= b),
     }
 }
 
-/// "Add provider" presets (§8.2). Empty in builds without the cloud client.
-pub fn presets() -> Vec<CloudProviderConfig> {
-    #[cfg(feature = "cloud")]
-    {
-        flow_cloud::presets()
-    }
-    #[cfg(not(feature = "cloud"))]
-    {
-        Vec::new()
-    }
+// -------------------------------------------------------------- migration
+
+/// What the startup migration did (for the debug log; never a key).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Migrated {
+    pub report: MigrationReport,
+    pub keys: credentials::KeyMigration,
+    pub usage_rewritten: bool,
 }
 
-/// A free provider id for `preset` (`groq-1`, `groq-2`, …).
-pub fn next_id(preset: &str, taken: &[CloudProviderConfig]) -> String {
-    let base: String = preset
-        .chars()
-        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
-        .take(28)
-        .collect::<String>()
-        .to_ascii_lowercase();
-    let base = if base.is_empty() {
-        "custom".into()
-    } else {
-        base
-    };
-    (1..)
-        .map(|n| format!("{base}-{n}"))
-        .find(|id| !taken.iter().any(|p| &p.id == id))
-        .unwrap()
+/// One-time D28 migration at startup (spec §2.1, changelog W5 step 1), on
+/// the stored settings before the router is built:
+/// 1. `DevSettings::migrate_d28` (schema 1 → 2; the notice is kept in
+///    `cloud_notice` until the user dismisses it);
+/// 2. Credential Manager: the kept OpenRouter key moves to
+///    `flow-clone/cloud/openrouter`, every other provider's key is deleted;
+/// 3. `cloud_usage.json`: the kept entry's counters become `openrouter`,
+///    removed providers collapse into one `removed` counter (the month's
+///    total and so the budget are unchanged).
+///
+/// `None` when the settings were already schema 2 (nothing touched). The
+/// caller persists `dev` (prefs.json).
+pub fn migrate_d28(
+    dev: &mut DevSettings,
+    store: &dyn CredentialStore,
+    usage_path: &Path,
+) -> Option<Migrated> {
+    if !dev.cloud.is_legacy() {
+        return None;
+    }
+    let legacy = dev.cloud.providers.clone();
+    let report = dev.migrate_d28();
+    let host = |id: &str| legacy.iter().find(|p| p.id == id).map(|p| p.host());
+    let keys = credentials::apply_migration(store, &report, &host);
+    let mut usage_rewritten = false;
+    if let Some(mut u) = load_usage(usage_path) {
+        let before = u.clone();
+        u.migrate_d28(&report);
+        if u != before && save_usage(usage_path, &u).is_ok() {
+            usage_rewritten = true;
+        }
+    }
+    Some(Migrated {
+        report,
+        keys,
+        usage_rewritten,
+    })
 }
 
 #[cfg(test)]
@@ -176,7 +285,7 @@ mod tests {
         assert_eq!(failure_text("quota_exceeded"), Some("out of credits"));
         assert_eq!(
             failure_text("connect_failed"),
-            Some("no internet / base URL wrong")
+            Some("can't reach openrouter.ai")
         );
         assert_eq!(
             failure_text("budget_exceeded"),
@@ -185,6 +294,10 @@ mod tests {
         assert_eq!(
             failure_text("cloud_not_configured"),
             Some("set a key and accept the consent")
+        );
+        assert_eq!(
+            failure_text("no_private_route"),
+            Some("no zero-retention provider serves this model")
         );
         assert_eq!(failure_text("proto_mismatch"), None);
         assert_eq!(
@@ -200,14 +313,46 @@ mod tests {
     #[test]
     fn engine_row_shape() {
         assert_eq!(
-            engine_row("OpenRouter", "openai/gpt-transcribe", Some(0.0012), false),
-            "cloud · OpenRouter · openai/gpt-transcribe · $0.0012"
+            engine_row("openai/whisper-large-v3-turbo", Some(0.0012), false),
+            "cloud · OpenRouter · openai/whisper-large-v3-turbo · $0.0012"
         );
         assert_eq!(
-            engine_row("Groq", "whisper-large-v3-turbo", Some(0.00011), true),
-            "cloud · Groq · whisper-large-v3-turbo · ≈ $0.0001"
+            engine_row("openai/whisper-large-v3-turbo", Some(0.00011), true),
+            "cloud · OpenRouter · openai/whisper-large-v3-turbo · ≈ $0.0001"
         );
-        assert_eq!(engine_row("Groq", "", None, false), "cloud · Groq");
+        assert_eq!(engine_row("", None, false), "cloud · OpenRouter");
+    }
+
+    #[test]
+    fn llm_row_names_the_cleanup_engine() {
+        assert_eq!(
+            llm_row(
+                Some("AI cleaned"),
+                Some("cloud"),
+                Some("meta-llama/llama-3.3-70b-instruct"),
+                Some(0.0007),
+                false
+            )
+            .as_deref(),
+            Some("AI cleaned · OpenRouter · meta-llama/llama-3.3-70b-instruct · $0.0007")
+        );
+        assert_eq!(
+            llm_row(Some("AI cleaned"), Some("local"), None, None, false).as_deref(),
+            Some("AI cleaned · this PC")
+        );
+        assert_eq!(
+            llm_row(
+                Some("AI not needed (already clean)"),
+                None,
+                None,
+                None,
+                false
+            )
+            .as_deref(),
+            Some("AI not needed (already clean)"),
+            "llm_skipped_clean is a normal result"
+        );
+        assert_eq!(llm_row(None, Some("cloud"), None, None, false), None);
     }
 
     #[test]
@@ -215,20 +360,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("flow-cloud-usage-{}", std::process::id()));
         let path = dir.join("cloud_usage.json");
         assert_eq!(load_usage(&path), None);
-        let u = CloudUsage {
-            month: "2026-10".into(),
-            providers: vec![ProviderUsage {
-                provider_id: "openrouter-1".into(),
-                requests: 42,
-                billed_audio_ms: 312_000,
-                cost_usd: Usd(0.0234),
-                cost_estimated: false,
-            }],
-        };
-        save_usage(&path, &u).unwrap();
-        assert_eq!(load_usage(&path), Some(u.clone()));
-        // Same shape as the router fixture.
-        let fixture: serde_json::Value = serde_json::from_str(
+        let fixture: CloudUsage = serde_json::from_str(
             &std::fs::read_to_string(
                 Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../../crates/flow-router/fixtures/cloud_usage.json"),
@@ -236,46 +368,63 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(serde_json::to_value(&u).unwrap(), fixture);
+        save_usage(&path, &fixture).unwrap();
+        assert_eq!(load_usage(&path), Some(fixture));
         std::fs::write(&path, "{not json").unwrap();
         assert_eq!(load_usage(&path), None, "corrupt file = start at zero");
         let _ = std::fs::remove_dir_all(&dir);
         assert!(usage_path(Some("C:/AppData")).ends_with("cloud_usage.json"));
+        let c = catalog_cache_path(Some("C:/AppData"));
+        assert!(
+            c.ends_with("FlowClone/cache/openrouter-catalog.json"),
+            "{c:?}"
+        );
     }
 
     #[test]
-    fn usage_view_and_budget() {
+    fn usage_view_splits_speech_and_cleanup() {
         let u = CloudUsage {
             month: "2026-10".into(),
-            providers: vec![ProviderUsage {
-                provider_id: "groq-1".into(),
-                requests: 3,
-                billed_audio_ms: 90_000,
-                cost_usd: Usd(1.5),
-                cost_estimated: true,
-            }],
+            providers: vec![
+                ProviderUsage {
+                    provider_id: "openrouter".into(),
+                    purpose: "stt".into(),
+                    requests: 3,
+                    billed_audio_ms: 90_000,
+                    cost_usd: Usd(1.5),
+                    cost_estimated: false,
+                },
+                ProviderUsage {
+                    provider_id: "openrouter".into(),
+                    purpose: "cleanup".into(),
+                    requests: 2,
+                    billed_audio_ms: 0,
+                    cost_usd: Usd(0.0014),
+                    cost_estimated: true,
+                },
+                ProviderUsage {
+                    provider_id: REMOVED_PROVIDERS_ID.into(),
+                    requests: 1,
+                    billed_audio_ms: 60_000,
+                    cost_usd: Usd(0.01),
+                    ..Default::default()
+                },
+            ],
         };
-        let p = CloudProviderConfig {
-            id: "groq-1".into(),
-            label: "Groq".into(),
-            ..Default::default()
-        };
-        let v = usage_view(&u, &[p], Some(1.0));
-        assert_eq!(v.rows[0].label, "Groq");
+        let v = usage_view(&u, Some(1.0));
+        assert_eq!(v.speech, "$1.50");
+        assert_eq!(v.cleanup, "≈ $0.0014");
+        assert_eq!(v.rows.len(), 3);
+        assert_eq!(v.rows[0].purpose, "stt");
         assert_eq!(v.rows[0].minutes, 1.5);
-        assert_eq!(v.total, "≈ $1.50");
+        assert_eq!(v.rows[2].purpose, "removed");
+        assert_eq!(v.total, "≈ $1.51");
         assert!(v.budget_reached);
-        assert!(!usage_view(&u, &[], None).budget_reached);
-    }
-
-    #[test]
-    fn ids_are_unique_and_valid() {
-        let taken = vec![CloudProviderConfig {
-            id: "groq-1".into(),
-            ..Default::default()
-        }];
-        assert_eq!(next_id("groq", &taken), "groq-2");
-        assert_eq!(next_id("OpenRouter", &[]), "openrouter-1");
-        assert_eq!(next_id("", &[]), "custom-1");
+        assert!(!usage_view(&u, None).budget_reached);
+        let empty = usage_view(&CloudUsage::default(), None);
+        assert_eq!(
+            (empty.speech.as_str(), empty.cleanup.as_str()),
+            ("$0.0000", "$0.0000")
+        );
     }
 }

@@ -1,5 +1,5 @@
 "use strict";
-// Settings window: four tabs over the backend commands in `src/app.rs`.
+// Settings window: tabs over the backend commands in `src/app.rs`.
 // * General + AI cleanup edit prefs.json (`get_prefs` / `set_prefs`);
 //   field names mirror `src/prefs.rs` (snake_case).
 // * History lists the local SQLite transcripts (copy, re-paste, delete,
@@ -7,6 +7,8 @@
 // * Dictionary edits the [{word, replacement, isSnippet}] list, shows
 //   learn-from-edits suggestions (added only on an explicit click) and
 //   imports/exports the shared JSON.
+// * OpenRouter (D28) is the only cloud: key, privacy, speech-to-text,
+//   text cleanup, model picker and usage (`dev_or_*` commands).
 // All user text is inserted with textContent, never innerHTML.
 const { invoke } = window.__TAURI__.core;
 const onEvent = (name, cb) => window.__TAURI__.event.listen(name, cb);
@@ -90,7 +92,10 @@ function cleanupChoice(p) {
 }
 let current = null;
 // ------------------------------------------------------------------ tabs
+let activeTab = "";
 function showTab(name) {
+    const opened = name !== activeTab;
+    activeTab = name;
     for (const b of document.querySelectorAll("nav.tabs button")) {
         b.setAttribute("aria-selected", String(b.dataset.tab === name));
     }
@@ -104,6 +109,11 @@ function showTab(name) {
         void loadDev();
     if (name === "dictionary")
         void loadSuggestions();
+    // D28 fetch policy: the catalogue is refreshed (network) once per opening of this tab.
+    if (name === "openrouter" && opened)
+        void openOrTab();
+    if (name === "ai")
+        showAiEngine();
 }
 // ------------------------------------------------------------------ status lines
 function showModel(st) {
@@ -528,7 +538,7 @@ async function loadSuggestions() {
 const ROUTE_LABEL = {
     server: "Server",
     client: "This PC (client)",
-    cloud: "Cloud provider (third party)",
+    cloud: "OpenRouter speech-to-text (cloud)",
 };
 const DEV_NUM = ["port", "connect_timeout_ms", "commit_timeout_base_ms", "health_ttl_s"];
 const DEV_TEXT = ["host", "tls_pin_sha256", "token"];
@@ -567,9 +577,9 @@ function readDev() {
     }
     f.route_order = [...devOrder];
     f.parakeet_decoding = $("dev_parakeet_decoding").value || f.parakeet_decoding || "auto";
-    f.allow_cloud = $("dev_allow_cloud").checked;
-    const budget = $("dev_cloud_budget").value.trim();
-    f.cloud = { ...cloudCfg, monthly_budget_usd: budget === "" ? null : Number(budget) };
+    // D28: the cloud settings live on the OpenRouter tab; never sent from here.
+    delete f.cloud;
+    delete f.allow_cloud;
     return f;
 }
 function fillDev(f) {
@@ -582,14 +592,7 @@ function fillDev(f) {
     showTokenSaved(!!f.token_saved);
     devOrder = [...f.route_order];
     $("dev_parakeet_decoding").value = f.parakeet_decoding ?? "auto";
-    $("dev_allow_cloud").checked = f.allow_cloud;
-    cloudCfg = structuredClone(f.cloud);
-    $("dev_cloud_budget").value =
-        f.cloud.monthly_budget_usd == null ? "" : String(f.cloud.monthly_budget_usd);
-    if (!cloudCfg.providers.some((p) => p.id === cloudSel))
-        cloudSel = cloudCfg.active || null;
     renderRoutes();
-    renderCloud();
 }
 // The saved token never comes back to the page (S18): an empty field
 // keeps it; typing replaces it; Clear removes it on Save.
@@ -601,7 +604,8 @@ function showTokenSaved(saved) {
 function renderRoutes() {
     const srv = $("dev_allow_server").checked;
     const cli = $("dev_allow_client").checked;
-    const cloud = $("dev_allow_cloud").checked && !!devView?.caps.cloud;
+    // Cloud STT is switched on in the OpenRouter tab; only its place in the order is set here.
+    const cloud = !!orView?.stt.allow && !!devView?.caps.cloud;
     const on = (r) => (r === "server" ? srv : r === "client" ? cli : cloud);
     // Cloud is listed only in builds that have it.
     const shown = devOrder.filter((r) => r !== "cloud" || !!devView?.caps.cloud);
@@ -718,7 +722,7 @@ function showRoute(r) {
             timingLine(last),
             last.status,
             last.empty_reason ?? "",
-            last.llm ?? "",
+            last.llm_row ?? last.llm ?? "",
             new Date(last.at_ms).toLocaleTimeString(),
         ].filter(Boolean);
         e.textContent = bits.join(" · ");
@@ -737,7 +741,7 @@ function showRoute(r) {
         $("dev_cloud_circuit").textContent = !cc.open
             ? "closed"
             : cc.until_config_change
-                ? `open until the key or provider changes (${cloudHint(cc.reason)})`
+                ? `open until the key, model or privacy settings change (${cloudHint(cc.reason)})`
                 : `open until ${new Date(Date.now() + (cc.retry_in_ms ?? 0)).toLocaleTimeString()} (${cloudHint(cc.reason)})`;
     }
 }
@@ -745,9 +749,7 @@ function showDev(v) {
     devView = v;
     $("tab_developer").hidden = !v.visible;
     $("version_row").textContent = `Flow Clone ${v.version} · ${v.build}`;
-    $("privacy_line").textContent = v.caps.remote
-        ? "Speech is processed on this PC or on your own server. Nothing goes to a third party."
-        : "Everything runs on this PC. Nothing is sent over the network.";
+    showPrivacyLine();
     fillDev(v.form);
     // Server-only builds have no local model: no model paths or LLM files.
     for (const f of document.querySelectorAll("[data-needs=local]"))
@@ -757,15 +759,7 @@ function showDev(v) {
     $("dev_server_na").hidden = v.caps.remote;
     $("dev_client_na").hidden = v.caps.local;
     $("dev_lock").hidden = v.caps.remote;
-    $("dev_cloud_box").hidden = !v.caps.cloud;
-    if (v.caps.cloud) {
-        $("privacy_line").textContent =
-            "Speech is processed on this PC or on your own server, and by a cloud provider only if you turn it on in Developer settings.";
-    }
-    cloudKeys = { ...v.cloud.keys };
-    cloudPresets = v.cloud.presets;
-    $("dev_cloud_preset").replaceChildren(...v.cloud.presets.map((p) => new Option(p.preset === "custom" ? "Custom (OpenAI-compatible URL)" : p.label, p.preset)));
-    showUsage(v.cloud.usage);
+    $("dev_or_hint").hidden = !v.caps.cloud;
     const c = v.capabilities;
     $("dev_build").textContent =
         `Flow Clone ${v.full} · ` +
@@ -803,25 +797,9 @@ async function devCall(cmd, args, okText) {
 async function devSave() {
     if (!devValid)
         return;
-    // Allowing the cloud with an active provider that has no consent for its
-    // current host asks first (a changed host or adapter cleared it).
-    const active = activeProvider();
-    if ($("dev_allow_cloud").checked && active && !consentOk(active)) {
-        if (!(await askConsent(active)))
-            return;
-    }
     const v = await devCall("dev_set", { form: readDev() }, "Saved — applies to the next dictation");
-    if (v) {
+    if (v)
         showDev(v);
-        const cleared = v.keys_cleared ?? [];
-        if (cleared.length > 0) {
-            // A key is bound to the host + adapter it was saved for (S4).
-            const names = cleared
-                .map((id) => v.form.cloud.providers.find((p) => p.id === id)?.label || id)
-                .join(", ");
-            setStatus("dev_status", `Saved. The API key of ${names} was removed because its host or adapter changed — enter the key again.`, false);
-        }
-    }
 }
 async function devTestConnection() {
     if (!devValid)
@@ -867,234 +845,439 @@ async function refreshRoute() {
         /* tab not loaded yet */
     }
 }
-// ------------------------------------------------- cloud providers (D18)
-// Provider edits live in `cloudCfg` until Save (`dev_set`). Keys never
-// come back from the backend: only set / ••••last4 (KeyState).
-let cloudCfg = { active: "", providers: [], monthly_budget_usd: null };
-let cloudSel = null;
-let cloudKeys = {};
-let cloudPresets = [];
+let orView = null;
 const CLOUD_HINTS = {
     auth_failed: "key rejected",
     quota_exceeded: "out of credits",
-    connect_failed: "no internet / base URL wrong",
+    connect_failed: "can't reach openrouter.ai",
     budget_exceeded: "monthly budget reached",
-    cloud_not_configured: "set a key and accept the consent",
+    cloud_not_configured: "save a key and accept the consent",
+    cloud_cleanup_not_configured: "turn on cleanup, accept its consent and save a key",
+    no_private_route: "no zero-retention provider serves this model: pick a model marked ZDR, or allow other providers",
     provider_error: "the provider returned an error",
-    timeout: "the provider took too long",
-    busy: "rate limited by the provider",
+    timeout: "took too long",
+    busy: "rate limited",
+    circuit_open: "paused after recent failures",
 };
-// What each provider keeps (docs/cloud-stt.md §2), for the consent dialog.
-const RETENTION = {
-    openrouter: "OpenRouter keeps no audio unless your account opts into logging; with zero retention on, only zero-data-retention upstreams are used.",
-    elevenlabs: "ElevenLabs keeps logs/history by default; zero retention needs an enterprise plan.",
-    openai_compat: "Retention follows the provider's API terms (Groq: up to 30 days unless ZDR is on in Data Controls; OpenAI: no training by default).",
-    deepgram: "Deepgram may use audio for model improvement unless opted out (zero retention on sends mip_opt_out).",
-    assemblyai: "AssemblyAI deletes audio in 24-48 h and transcripts after 30 days; zero retention deletes the transcript right after use.",
-};
-const ZDR_TEXT = {
-    openrouter: "Zero data retention: route only to providers that keep nothing (provider.zdr)",
-    elevenlabs: "Zero retention (enable_logging=false; needs an ElevenLabs enterprise plan)",
-    deepgram: "Opt out of Deepgram's model-improvement programme (mip_opt_out)",
-    assemblyai: "Delete the transcript at AssemblyAI right after it is fetched",
-};
+const PARAPHRASE_BADGE = "chat model, may paraphrase";
 function cloudHint(code) {
     return code ? (CLOUD_HINTS[code] ?? code) : "?";
 }
-function hostOf(url) {
-    const m = /^https?:\/\/(\[[^\]]*\]|[^/:?#]*)/i.exec(url.trim());
-    return m ? m[1].replace(/^\[|\]$/g, "").toLowerCase() : "";
+/** `code — hint` (+ the backend's message) for a failed OpenRouter call. */
+function failText(code, message) {
+    const c = code ?? "error";
+    const h = CLOUD_HINTS[c];
+    return `${c}${h ? ` — ${h}` : ""}${message ? ` (${message})` : ""}`;
 }
-function consentOk(p) {
-    const h = hostOf(p.base_url);
-    return p.consent_at_ms > 0 && h !== "" && p.consent_host.toLowerCase() === h;
+/** Money from the backend: preformatted "$0.0234" strings pass through. */
+function money(v) {
+    if (v == null || v === "")
+        return "$0";
+    if (typeof v === "string")
+        return v.startsWith("$") ? v : `$${v}`;
+    return `$${v < 1 && v > 0 ? v.toFixed(4) : v.toFixed(2)}`;
 }
-function activeProvider() {
-    return cloudCfg.providers.find((p) => p.id === cloudCfg.active) ?? null;
+function usd(v) {
+    return v == null ? "" : ` · $${v.toFixed(v < 0.01 ? 5 : 4)}`;
 }
-function selectedProvider() {
-    return cloudCfg.providers.find((p) => p.id === cloudSel) ?? null;
+function showPrivacyLine() {
+    const line = $("privacy_line");
+    if (orView?.supported) {
+        line.textContent =
+            "Speech is processed on this PC or on your own server, and by OpenRouter only if you turn it on (OpenRouter tab).";
+    }
+    else if (devView?.caps.remote) {
+        line.textContent = "Speech is processed on this PC or on your own server. Nothing goes to a third party.";
+    }
+    else {
+        line.textContent = "Everything runs on this PC. Nothing is sent over the network.";
+    }
 }
-function providerName(p) {
-    return `${p.label || p.id} (${hostOf(p.base_url) || "no host"})`;
+/** Run an OpenRouter command; errors are plain strings shown in `statusId`. */
+async function orCall(cmd, args, statusId, okText) {
+    try {
+        const r = await invoke(cmd, args);
+        if (okText)
+            setStatus(statusId, okText, true);
+        else
+            $(statusId).textContent = "";
+        return r;
+    }
+    catch (e) {
+        setStatus(statusId, String(e), false);
+        return null;
+    }
 }
-/** "Send audio to <provider>?" Records consent for the current host. */
-function askConsent(p) {
-    const d = $("dev_consent");
-    const name = p.label || p.id;
-    $("dev_consent_title").textContent = `Send audio to ${name}?`;
-    $("dev_consent_body").textContent = cloudBanner(p);
-    $("dev_consent_retention").textContent = RETENTION[p.adapter] ?? "";
-    $("dev_consent_ok").textContent = `Send audio to ${name}`;
+async function loadOr() {
+    try {
+        showOr(await invoke("dev_or_get"));
+    }
+    catch {
+        // A build without the OpenRouter commands: no tab.
+        orView = null;
+        $("tab_openrouter").hidden = true;
+        $("ai_engine_box").hidden = true;
+    }
+}
+/** Set a field unless the user is typing in it. */
+function setValue(id, v) {
+    const i = $(id);
+    if (document.activeElement !== i)
+        i.value = v;
+}
+function consentLine(at, given, what) {
+    return given && at > 0
+        ? `You agreed to send ${what} to openrouter.ai on ${new Date(at).toLocaleDateString()}.`
+        : "Not yet agreed: turning this on asks first.";
+}
+function modelLine(id, info) {
+    if (!info)
+        return `${id} (not in the model list)`;
+    return `${info.name} · ${info.price_label}`;
+}
+function showModelRow(prefix, id, info) {
+    $(`${prefix}_model_name`).textContent = modelLine(id, info);
+    $(`${prefix}_model_id`).textContent = id;
+    $(`${prefix}_model_badges`).replaceChildren(...pills(info));
+}
+function pills(r) {
+    if (!r)
+        return [];
+    const out = [];
+    if (r.recommended)
+        out.push(el("span", "pill rec", "Recommended"));
+    for (const b of r.badges)
+        out.push(el("span", b === PARAPHRASE_BADGE ? "pill warn" : "pill", b));
+    if (r.allowed_by_account === false)
+        out.push(el("span", "pill err", "blocked by your OpenRouter privacy settings"));
+    return out;
+}
+function showOr(v) {
+    // Turning STT on put `cloud` first in the saved route order (backend):
+    // show that order under Developer → Engines too.
+    if (v.stt.allow && orView && !orView.stt.allow && v.route_order)
+        devOrder = [...v.route_order];
+    orView = v;
+    const tab = $("tab_openrouter");
+    tab.hidden = !v.supported && !v.notice;
+    $("or_badge").hidden = !v.notice;
+    $("ai_engine_box").hidden = !v.supported;
+    showPrivacyLine();
+    $("or_warnings").replaceChildren(...v.warnings.map((w) => el("li", "", w)));
+    $("or_notice_box").hidden = !v.notice;
+    $("or_notice").textContent = v.notice ?? "";
+    $("or_key_state").textContent = v.key.set ? `Key set: ${v.key.masked}` : "No key saved";
+    $("or_zdr").checked = v.privacy.zdr;
+    $("or_dc_deny").checked = v.privacy.data_collection === "deny";
+    const s = v.stt;
+    $("or_stt_allow").checked = s.allow;
+    $("or_stt_consent").textContent = consentLine(s.consent_at_ms, s.consent, "audio");
+    showModelRow("or_stt", s.model, v.stt_model_info);
+    setValue("or_stt_language", s.language);
+    $("or_stt_send_dictionary").checked = s.send_dictionary;
+    $("or_stt_path").value = s.stt_path;
+    const c = v.cleanup;
+    $("or_cleanup_allow").checked = c.allow;
+    $("or_cleanup_consent").textContent = consentLine(c.consent_at_ms, c.consent, "dictated text");
+    $("or_cleanup_order").value = c.order[0] === "local" ? "local,cloud" : "cloud,local";
+    showModelRow("or_cleanup", c.model, v.cleanup_model_info);
+    $("or_cleanup_sort").value = c.sort;
+    setValue("or_cleanup_timeout_ms", String(c.timeout_ms));
+    $("or_cleanup_send_surrounding_text").checked = c.send_surrounding_text;
+    $("or_cleanup_send_screen_words").checked = c.send_screen_words;
+    $("or_cleanup_send_app_name").checked = c.send_app_name;
+    showCleanupStatus(c.status);
+    setValue("or_budget", v.budget == null ? "" : String(v.budget));
+    showOrUsage(v.usage);
+    showCatalogStatus(v.catalog);
+    showAiEngine();
+    renderRoutes();
+}
+function showOrUsage(u) {
+    if (orView)
+        orView.usage = u;
+    const budget = u.budget != null ? ` of $${u.budget.toFixed(2)}${u.budget_reached ? " — budget reached, OpenRouter paused" : ""}` : "";
+    const e = $("or_usage_total");
+    e.textContent = `${u.month}: Speech ${money(u.speech)} · Cleanup ${money(u.cleanup)} · total ${money(u.total)}${budget}`;
+    e.className = u.budget_reached ? "err" : "";
+    $("or_usage_rows").replaceChildren(...u.rows.map((r) => {
+        const what = r.purpose === "cleanup" ? "cleanups" : "dictations";
+        const mins = r.purpose === "cleanup" ? "" : ` · ${r.minutes} min`;
+        return el("li", "", `${r.label}: ${r.requests} ${what}${mins} · ${money(r.cost)}`);
+    }));
+}
+function showCleanupStatus(st) {
+    if (orView)
+        orView.cleanup.status = st;
+    const e = $("or_cleanup_state");
+    let text;
+    let cls = "hint";
+    if (!st.supported) {
+        text = "Not in this build.";
+    }
+    else if (st.blocked) {
+        text = `Not used: ${failText(st.blocked)}`;
+        cls = "hint err";
+    }
+    else if (st.circuit?.open) {
+        const until = st.circuit.until_config_change
+            ? "until the key or cleanup settings change"
+            : `until ${new Date(Date.now() + (st.circuit.retry_in_ms ?? 0)).toLocaleTimeString()}`;
+        text = `Paused ${until} (${cloudHint(st.circuit.reason)})`;
+        cls = "hint err";
+    }
+    else if (st.enabled) {
+        text = `On · ${st.model} · up to ${st.timeout_ms} ms`;
+        cls = "hint ok";
+    }
+    else {
+        text = "Off: OpenRouter gets no text.";
+    }
+    const l = st.last;
+    if (l && l.engine) {
+        const t = l.latency_ms != null ? ` ${l.latency_ms} ms` : "";
+        const ft = l.ttft_ms != null ? ` (first token ${l.ttft_ms} ms)` : "";
+        const who = l.engine === "cloud" ? "OpenRouter" : l.engine === "local" ? "this PC" : l.engine;
+        text += ` · last: ${who}${l.model ? ` ${l.model}` : ""}${t}${ft}${usd(l.cost_usd)}`;
+    }
+    if (st.month_cost_usd != null && st.month_cost_usd > 0)
+        text += ` · ${money(st.month_cost_usd)} this month`;
+    e.textContent = text;
+    e.className = cls;
+}
+/** AI cleanup tab: which engine cleans the text (local LLM toggle + OrView). */
+function showAiEngine() {
+    const v = orView;
+    if (!v?.supported)
+        return;
+    const level = $("cleanup_level").value;
+    const local = $("llm_enabled").checked && !!devView?.caps.local;
+    const cloud = v.cleanup.allow && v.cleanup.order.includes("cloud");
+    const or = `OpenRouter (${v.cleanup.model})`;
+    let text;
+    if (level === "none" || level === "verbatim")
+        text = "Engine: Off (cleanup level: no AI)";
+    else if (cloud && local)
+        text =
+            v.cleanup.order[0] === "local"
+                ? `Engine: On-device · ${or} only when no local model is loaded`
+                : `Engine: ${or}, then On-device`;
+    else if (cloud)
+        text = `Engine: ${or}`;
+    else if (local)
+        text = "Engine: On-device";
+    else
+        text = "Engine: Off (formatting rules only)";
+    $("ai_engine_line").textContent = text;
+}
+// ---- catalogue
+let catalogInFlight = null;
+function showCatalogStatus(c, loading = false) {
+    const e = $("or_cat_status");
+    if (loading) {
+        e.textContent = "Loading…";
+        e.className = "hint";
+        return;
+    }
+    if (!c)
+        return;
+    if (orView)
+        orView.catalog = c;
+    const t = c.fetched_at_ms > 0 ? when(c.fetched_at_ms) : "?";
+    const head = c.source === "Live"
+        ? `Updated ${t}`
+        : c.source === "Cache"
+            ? `Cached ${t} (offline copy)`
+            : `Offline list from ${c.snapshot_date ?? "?"}`;
+    const err = c.error ? ` · refresh failed: ${failText(c.error)}` : "";
+    e.textContent = `${head} · ${c.stt} speech, ${c.cleanup} text models${err}`;
+    e.className = c.error ? "hint err" : "hint";
+}
+/** The only network fetch of the model list (§2.2 "When"). */
+function refreshCatalog(force) {
+    if (catalogInFlight)
+        return catalogInFlight;
+    showCatalogStatus(null, true);
+    $("or_cat_refresh").disabled = true;
+    catalogInFlight = (async () => {
+        try {
+            showCatalogStatus(await invoke("dev_or_refresh_catalog", { force }));
+        }
+        catch (e) {
+            const s = $("or_cat_status");
+            s.textContent = String(e);
+            s.className = "hint err";
+        }
+        finally {
+            catalogInFlight = null;
+            $("or_cat_refresh").disabled = false;
+        }
+        if ($("or_picker").open)
+            await loadPicker();
+        // Model names / prices of the current picks may be known now.
+        try {
+            showOr(await invoke("dev_or_get"));
+        }
+        catch {
+            /* keep the old view */
+        }
+    })();
+    return catalogInFlight;
+}
+async function openOrTab() {
+    if (!orView?.supported)
+        return;
+    await refreshCatalog(false);
+}
+// ---- consent + confirm dialogs
+function askDialog(id, okId, cancelId) {
+    const d = $(id);
     return new Promise((resolve) => {
         const done = (ok) => {
-            $("dev_consent_ok").onclick = null;
-            $("dev_consent_cancel").onclick = null;
+            $(okId).onclick = null;
+            $(cancelId).onclick = null;
+            d.oncancel = null;
             d.close();
-            if (ok) {
-                p.consent_host = hostOf(p.base_url);
-                p.consent_at_ms = Date.now();
-                renderCloud();
-                scheduleCheck();
-            }
             resolve(ok);
         };
-        $("dev_consent_ok").onclick = () => done(true);
-        $("dev_consent_cancel").onclick = () => done(false);
-        d.oncancel = () => done(false);
+        $(okId).onclick = () => done(true);
+        $(cancelId).onclick = () => done(false);
+        d.oncancel = (e) => {
+            e.preventDefault();
+            done(false);
+        };
         d.showModal();
     });
 }
-function cloudBanner(p) {
-    const who = p ? providerName(p) : "the provider you choose";
-    return (`Off by default. When on, the audio of your dictations leaves this device and is sent to ${who}, ` +
-        "along with your dictionary words. It is processed under that provider's terms, not by your server.");
+function confirmOr(title, body, ok) {
+    $("or_confirm_title").textContent = title;
+    $("or_confirm_body").textContent = body;
+    $("or_confirm_ok").textContent = ok;
+    return askDialog("or_confirm", "or_confirm_ok", "or_confirm_cancel");
 }
-function renderCloud() {
-    $("dev_cloud_banner").textContent = cloudBanner(activeProvider());
-    $("dev_cloud_list").replaceChildren(...cloudCfg.providers.map((p) => {
-        const li = el("li", p.id === cloudSel ? "selected" : "");
-        const radio = document.createElement("input");
-        radio.type = "radio";
-        radio.name = "dev_cloud_active";
-        radio.title = "Use this provider for the cloud route";
-        radio.checked = p.id === cloudCfg.active;
-        radio.addEventListener("change", () => {
-            cloudCfg.active = p.id;
-            renderCloud();
-            scheduleCheck();
-        });
-        const k = cloudKeys[p.id];
-        const status = [
-            p.model,
-            k?.set ? `key ${k.masked}` : "no key",
-            consentOk(p) ? "consent ✓" : "no consent",
-        ].join(" · ");
-        li.append(radio, el("span", "grow", `${providerName(p)} — ${status}`), button("Edit", () => {
-            cloudSel = p.id;
-            renderCloud();
-        }, "small secondary"), button("Delete", () => void deleteProvider(p.id), "small secondary danger"));
-        return li;
-    }));
-    const p = selectedProvider();
-    $("dev_cloud_edit").hidden = !p;
-    if (!p)
+// ---- account
+async function orSaveKey() {
+    const input = $("or_key");
+    if (input.value.trim() === "") {
+        setStatus("or_key_status", "Paste the key first", false);
         return;
-    $("dev_cloud_edit_title").textContent = `${p.label || p.id} (${p.preset}, ${p.adapter})`;
-    for (const f of ["label", "language", "base_url", "model"]) {
-        const i = $(`dev_cloud_${f}`);
-        if (document.activeElement !== i)
-            i.value = p[f];
     }
-    // Fixed endpoints for the dedicated adapters; editable for OpenAI-compatible ones.
-    $("dev_cloud_base_url").readOnly = p.adapter !== "openai_compat";
-    for (const f of ["send_dictionary", "send_screen_words", "zero_retention"]) {
-        $(`dev_cloud_${f}`).checked = p[f];
-    }
-    const zdr = ZDR_TEXT[p.adapter];
-    $("dev_cloud_zdr_row").hidden = !zdr;
-    $("dev_cloud_zdr_text").textContent = zdr ?? "";
-    $("dev_cloud_consent_line").textContent = consentOk(p)
-        ? `You agreed to send audio to ${p.consent_host} on ${new Date(p.consent_at_ms).toLocaleDateString()}.`
-        : `Not yet agreed: the first use asks before any audio goes to ${hostOf(p.base_url) || "this provider"}.`;
-    const k = cloudKeys[p.id];
-    $("dev_cloud_key_state").textContent = k?.set ? `Key set: ${k.masked}` : "No key saved";
+    const k = await orCall("dev_cloud_set_key", { key: input.value }, "or_key_status", "Key saved in Credential Manager");
+    input.value = "";
+    if (k)
+        await loadOr();
 }
-/** Text field edits on the selected provider. A new host or adapter voids consent. */
-function cloudFieldChanged(f) {
-    const p = selectedProvider();
-    if (!p)
-        return;
-    const v = $(`dev_cloud_${f}`).value;
-    if (f === "base_url" && hostOf(v) !== hostOf(p.base_url)) {
-        p.consent_host = "";
-        p.consent_at_ms = 0;
-    }
-    p[f] = v;
-    renderCloud();
+async function orClearKey() {
+    const k = await orCall("dev_cloud_clear_key", {}, "or_key_status", "Key removed");
+    if (k)
+        await loadOr();
 }
-async function addProvider() {
-    const preset = $("dev_cloud_preset").value;
-    const base = cloudPresets.find((p) => p.preset === preset);
-    if (!base)
-        return;
-    const id = await invoke("dev_cloud_new_id", {
-        preset,
-        taken: cloudCfg.providers.map((p) => p.id),
-    });
-    const p = { ...structuredClone(base), id, consent_host: "", consent_at_ms: 0 };
-    cloudCfg.providers.push(p);
-    if (!cloudCfg.active)
-        cloudCfg.active = id;
-    cloudSel = id;
-    renderCloud();
-    scheduleCheck();
+function kvRow(dl, k, v) {
+    dl.append(el("dt", undefined, k), el("dd", undefined, v));
 }
-async function deleteProvider(id) {
-    cloudCfg.providers = cloudCfg.providers.filter((p) => p.id !== id);
-    if (cloudCfg.active === id)
-        cloudCfg.active = cloudCfg.providers[0]?.id ?? "";
-    if (cloudSel === id)
-        cloudSel = null;
-    // The key leaves Credential Manager now; Save drops the provider.
+async function orCheckKey() {
+    const dl = $("or_key_info");
+    const out = $("or_key_status");
+    out.textContent = "Checking the key with openrouter.ai…";
+    out.className = "hint";
+    dl.hidden = true;
+    $("or_key_warn").hidden = true;
     try {
-        cloudKeys[id] = await invoke("dev_cloud_clear_key", { providerId: id });
+        const r = await invoke("dev_or_key_info");
+        if ("error" in r) {
+            setStatus("or_key_status", failText(r.error), false);
+            return;
+        }
+        dl.replaceChildren();
+        kvRow(dl, "Label", r.label || "—");
+        kvRow(dl, "Credit limit", r.limit == null
+            ? "none"
+            : `${money(r.limit)}${r.limit_remaining != null ? ` · ${money(r.limit_remaining)} left` : ""}${r.limit_reset ? ` (resets ${r.limit_reset})` : ""}`);
+        kvRow(dl, "Used this month", money(r.usage_monthly ?? 0));
+        kvRow(dl, "Free tier", r.is_free_tier
+            ? `yes${r.free_requests_remaining != null ? ` · ${r.free_requests_remaining} free requests left` : ""}`
+            : "no");
+        dl.hidden = false;
+        $("or_key_warn").hidden = !r.warn_no_limit;
+        setStatus("or_key_status", `Key OK (checked ${when(r.checked_at_ms || Date.now())})`, true);
     }
     catch (e) {
-        setStatus("dev_status", String(e), false);
+        setStatus("or_key_status", String(e), false);
     }
-    renderCloud();
-    scheduleCheck();
 }
-async function saveKey() {
-    const p = selectedProvider();
-    const input = $("dev_cloud_key");
-    if (!p || input.value.trim() === "")
+// ---- privacy
+async function orPrivacyChanged() {
+    const v = orView;
+    if (!v)
         return;
-    try {
-        // Bound to this form's host + adapter: the key is only sent there.
-        cloudKeys[p.id] = await invoke("dev_cloud_set_key", { providerId: p.id, key: input.value, provider: p });
-        input.value = "";
-        setStatus("dev_status", "Key saved in Credential Manager", true);
+    const zdrBox = $("or_zdr");
+    const dcBox = $("or_dc_deny");
+    if (!zdrBox.checked && v.privacy.zdr) {
+        const ok = await confirmOr("Allow providers that keep data?", "Some providers may keep or train on your audio/text.", "Allow other providers");
+        if (!ok) {
+            zdrBox.checked = true;
+            return;
+        }
     }
-    catch (e) {
-        setStatus("dev_status", String(e), false);
+    if (!dcBox.checked && v.privacy.data_collection === "deny") {
+        const ok = await confirmOr("Allow providers that collect data?", "Some providers may keep or train on your audio/text.", "Allow data collection");
+        if (!ok) {
+            dcBox.checked = true;
+            return;
+        }
     }
-    renderCloud();
-    scheduleCheck();
+    const r = await orCall("dev_or_set_privacy", { zdr: zdrBox.checked, dataCollection: dcBox.checked ? "deny" : "allow" }, "or_privacy_status", "Saved");
+    if (r)
+        showOr(r);
+    else if (orView)
+        showOr(orView);
 }
-async function clearKey() {
-    const p = selectedProvider();
-    if (!p)
-        return;
-    try {
-        cloudKeys[p.id] = await invoke("dev_cloud_clear_key", { providerId: p.id });
-        setStatus("dev_status", "Key removed", true);
-    }
-    catch (e) {
-        setStatus("dev_status", String(e), false);
-    }
-    renderCloud();
-    scheduleCheck();
+// ---- speech-to-text
+async function orApplyStt(consent) {
+    const form = {
+        allow: $("or_stt_allow").checked,
+        consent,
+        language: $("or_stt_language").value.trim(),
+        send_dictionary: $("or_stt_send_dictionary").checked,
+        stt_path: $("or_stt_path").value,
+    };
+    const r = await orCall("dev_or_set_stt", { form }, "or_stt_status", "Saved — applies to the next dictation");
+    if (r)
+        showOr(r);
+    else if (orView)
+        showOr(orView);
+    return r !== null;
 }
-async function testProvider() {
-    const p = selectedProvider();
-    if (!p)
+async function orSttToggled() {
+    const box = $("or_stt_allow");
+    if (!box.checked) {
+        await orApplyStt(false);
         return;
-    const out = $("dev_cloud_test_out");
-    out.textContent = `Sending a 3 s public-domain clip to ${hostOf(p.base_url)}…`;
+    }
+    let consent = false;
+    if (!orView?.stt.consent) {
+        consent = await askDialog("or_stt_consent_dlg", "or_stt_consent_ok", "or_stt_consent_cancel");
+        if (!consent) {
+            box.checked = false;
+            return;
+        }
+    }
+    if (await orApplyStt(consent))
+        void refreshCatalog(false);
+}
+async function orTestStt() {
+    const out = $("or_stt_test_out");
+    out.textContent = "Sending a 3 s public-domain clip to openrouter.ai…";
     out.className = "hint";
     try {
-        const key = $("dev_cloud_key").value;
-        const h = await invoke("dev_cloud_test", { provider: p, key: key.trim() === "" ? null : key });
+        const typed = $("or_key").value.trim();
+        const h = await invoke("dev_or_test_stt", { key: typed === "" ? null : typed });
         if (h.ok) {
-            const cost = h.cost_usd != null ? ` · $${h.cost_usd.toFixed(5)}` : "";
-            out.textContent = `OK · "${h.transcript ?? ""}" · ${h.latency_ms ?? "?"} ms${cost}`;
+            out.textContent = `OK · "${h.transcript ?? ""}" · ${h.latency_ms ?? "?"} ms${usd(h.cost_usd)}`;
             out.className = "hint ok";
         }
         else {
-            const code = h.error ?? "error";
-            out.textContent = `${code} — ${cloudHint(code)}${h.message ? ` (${h.message})` : ""}`;
+            out.textContent = failText(h.error, h.message);
             out.className = "hint err";
         }
     }
@@ -1103,11 +1286,247 @@ async function testProvider() {
         out.className = "hint err";
     }
 }
-function showUsage(u) {
-    $("dev_cloud_month").textContent = u.month;
-    $("dev_cloud_total").textContent =
-        u.total + (u.budget != null ? ` of $${u.budget.toFixed(2)}${u.budget_reached ? " — budget reached, cloud paused" : ""}` : "");
-    $("dev_cloud_usage").replaceChildren(...u.rows.map((r) => el("li", "", `${r.label}: ${r.requests} dictations · ${r.minutes} min · ${r.cost}`)));
+// ---- text cleanup
+async function orApplyCleanup(consent) {
+    const t = parseInt($("or_cleanup_timeout_ms").value, 10);
+    const form = {
+        allow: $("or_cleanup_allow").checked,
+        consent,
+        order: $("or_cleanup_order").value.split(","),
+        sort: $("or_cleanup_sort").value,
+        timeout_ms: Number.isFinite(t) ? Math.min(8000, Math.max(800, t)) : 2500,
+        send_surrounding_text: $("or_cleanup_send_surrounding_text").checked,
+        send_screen_words: $("or_cleanup_send_screen_words").checked,
+        send_app_name: $("or_cleanup_send_app_name").checked,
+    };
+    const r = await orCall("dev_or_set_cleanup", { form }, "or_cleanup_msg", "Saved — applies to the next dictation");
+    if (r) {
+        $("or_cleanup_timeout_ms").value = String(r.cleanup.timeout_ms);
+        showOr(r);
+    }
+    else if (orView)
+        showOr(orView);
+    return r !== null;
+}
+async function orCleanupToggled() {
+    const box = $("or_cleanup_allow");
+    if (!box.checked) {
+        await orApplyCleanup(false);
+        return;
+    }
+    let consent = false;
+    if (!orView?.cleanup.consent) {
+        consent = await askDialog("or_cleanup_consent_dlg", "or_cleanup_consent_ok", "or_cleanup_consent_cancel");
+        if (!consent) {
+            box.checked = false;
+            return;
+        }
+    }
+    if (await orApplyCleanup(consent))
+        void refreshCatalog(false);
+}
+async function orTestCleanup() {
+    const out = $("or_cleanup_test_out");
+    out.textContent = "Sending a fixed sample sentence (not your text) to openrouter.ai…";
+    out.className = "hint";
+    try {
+        const r = await invoke("dev_or_test_cleanup");
+        if (r.ok) {
+            out.textContent = `OK · "${r.text ?? ""}" · ${r.latency_ms ?? "?"} ms${usd(r.cost_usd)}${r.model ? ` · ${r.model}` : ""}`;
+            out.className = "hint ok";
+        }
+        else {
+            out.textContent = failText(r.error, r.message);
+            out.className = "hint err";
+        }
+    }
+    catch (e) {
+        out.textContent = String(e);
+        out.className = "hint err";
+    }
+    void refreshCleanupStatus();
+}
+async function refreshCleanupStatus() {
+    try {
+        showCleanupStatus(await invoke("dev_or_cleanup_status"));
+    }
+    catch {
+        /* older backend */
+    }
+}
+// ---- usage + budget
+async function orBudgetChanged() {
+    const raw = $("or_budget").value.trim();
+    const n = Number(raw);
+    if (raw !== "" && (!Number.isFinite(n) || n < 0)) {
+        setStatus("or_usage_status", "Budget: a number of dollars, or empty for no limit", false);
+        return;
+    }
+    const r = await orCall("dev_or_set_budget", { budget: raw === "" ? null : n }, "or_usage_status", "Budget saved");
+    if (r)
+        showOr(r);
+}
+async function refreshOrAfterDictation() {
+    try {
+        showOrUsage(await invoke("dev_cloud_usage"));
+    }
+    catch {
+        /* tab not loaded yet */
+    }
+    await refreshCleanupStatus();
+}
+// ---- model picker
+let pickerPurpose = "stt";
+let pickerFilters = { zdr_only: true, fast_only: false, free_only: false, stt_path: null };
+let pickerSeq = 0;
+let pickerTimer = 0;
+const paraphraseOk = new Set();
+const CHIPS = [
+    ["or_chip_transcriptions", () => pickerFilters.stt_path === "transcriptions", () => (pickerFilters.stt_path = pickerFilters.stt_path === "transcriptions" ? null : "transcriptions")],
+    ["or_chip_chat_audio", () => pickerFilters.stt_path === "chat_audio", () => (pickerFilters.stt_path = pickerFilters.stt_path === "chat_audio" ? null : "chat_audio")],
+    ["or_chip_zdr", () => pickerFilters.zdr_only, () => (pickerFilters.zdr_only = !pickerFilters.zdr_only)],
+    ["or_chip_fast", () => pickerFilters.fast_only, () => (pickerFilters.fast_only = !pickerFilters.fast_only)],
+    ["or_chip_free", () => pickerFilters.free_only, () => (pickerFilters.free_only = !pickerFilters.free_only)],
+];
+function showChips() {
+    for (const [id, on] of CHIPS)
+        $(id).setAttribute("aria-pressed", String(on()));
+    const stt = pickerPurpose === "stt";
+    $("or_chip_transcriptions").hidden = !stt;
+    $("or_chip_chat_audio").hidden = !stt;
+    $("or_chip_text").hidden = stt;
+}
+function currentModel() {
+    return pickerPurpose === "stt" ? (orView?.stt.model ?? "") : (orView?.cleanup.model ?? "");
+}
+function pickerRow(r) {
+    const li = el("li");
+    const b = el("button", r.id === currentModel() ? "model current" : "model");
+    b.type = "button";
+    const head = el("span", "model-head");
+    head.append(el("strong", undefined, r.name || r.id), ...pills(r));
+    const meta = el("span", "model-meta");
+    meta.append(el("code", undefined, r.id), el("span", undefined, r.price_label));
+    if (pickerPurpose === "cleanup" && r.context_length > 0) {
+        meta.append(el("span", undefined, `${Math.round(r.context_length / 1000)}k ctx`));
+    }
+    if (r.id === currentModel())
+        meta.append(el("span", "ok", "current"));
+    b.append(head, meta);
+    b.addEventListener("click", () => void pickModel(r.id, r.badges.includes(PARAPHRASE_BADGE)));
+    li.append(b);
+    return li;
+}
+async function loadPicker() {
+    const seq = ++pickerSeq;
+    try {
+        const rows = await invoke("dev_or_catalog", {
+            purpose: pickerPurpose,
+            query: $("or_picker_query").value.trim(),
+            filters: { ...pickerFilters, stt_path: pickerPurpose === "stt" ? pickerFilters.stt_path : null },
+        });
+        if (seq !== pickerSeq)
+            return; // a newer search is in flight
+        // Recommended first; otherwise the backend's order (price).
+        const sorted = [...rows.filter((r) => r.recommended), ...rows.filter((r) => !r.recommended)];
+        $("or_picker_list").replaceChildren(...sorted.map(pickerRow));
+        $("or_picker_empty").hidden = rows.length > 0;
+    }
+    catch (e) {
+        setStatus("or_picker_status", String(e), false);
+    }
+}
+async function openPicker(purpose) {
+    pickerPurpose = purpose;
+    pickerFilters = { zdr_only: true, fast_only: false, free_only: false, stt_path: null };
+    $("or_picker_title").textContent =
+        purpose === "stt" ? "Speech-to-text model" : "Text cleanup model";
+    $("or_picker_query").value = "";
+    $("or_picker_custom").value = "";
+    $("or_picker_status").textContent = "";
+    showChips();
+    if (catalogInFlight)
+        showCatalogStatus(null, true);
+    else if (orView)
+        showCatalogStatus(orView.catalog);
+    $("or_picker").showModal();
+    if (!catalogInFlight) {
+        try {
+            showCatalogStatus(await invoke("dev_or_catalog_status"));
+        }
+        catch {
+            /* keep the OrView copy */
+        }
+    }
+    await loadPicker();
+}
+async function pickModel(id, paraphrase) {
+    if (id.trim() === "")
+        return;
+    if (paraphrase && !paraphraseOk.has(id)) {
+        const ok = await confirmOr("Use a chat model for speech?", "This is a chat model with audio input: it may paraphrase or answer what you said instead of writing it down word for word.", "Use it anyway");
+        if (!ok)
+            return;
+        paraphraseOk.add(id);
+    }
+    const r = await orCall("dev_or_set_model", { purpose: pickerPurpose, model: id.trim() }, "or_picker_status", "");
+    if (!r)
+        return;
+    showOr(r);
+    $("or_picker").close();
+    setStatus(pickerPurpose === "stt" ? "or_stt_status" : "or_cleanup_msg", `Model set: ${id.trim()}`, true);
+}
+function wireOpenRouter() {
+    $("or_notice_ok").addEventListener("click", () => void orCall("dev_or_ack_notice", {}, "or_key_status", "").then((v) => v && showOr(v)));
+    $("or_key_paste").addEventListener("click", () => {
+        void navigator.clipboard
+            .readText()
+            .then((t) => ($("or_key").value = t.trim()))
+            .catch(() => setStatus("or_key_status", "Clipboard not readable: paste with Ctrl+V", false));
+    });
+    $("or_key_save").addEventListener("click", () => void orSaveKey());
+    $("or_key_clear").addEventListener("click", () => void orClearKey());
+    $("or_key_check").addEventListener("click", () => void orCheckKey());
+    $("or_zdr").addEventListener("change", () => void orPrivacyChanged());
+    $("or_dc_deny").addEventListener("change", () => void orPrivacyChanged());
+    $("or_stt_allow").addEventListener("change", () => void orSttToggled());
+    for (const id of ["or_stt_language", "or_stt_send_dictionary", "or_stt_path"]) {
+        $(id).addEventListener("change", () => void orApplyStt(false));
+    }
+    $("or_stt_change").addEventListener("click", () => void openPicker("stt"));
+    $("or_stt_test").addEventListener("click", () => void orTestStt());
+    $("or_cleanup_allow").addEventListener("change", () => void orCleanupToggled());
+    for (const id of [
+        "or_cleanup_order",
+        "or_cleanup_sort",
+        "or_cleanup_timeout_ms",
+        "or_cleanup_send_surrounding_text",
+        "or_cleanup_send_screen_words",
+        "or_cleanup_send_app_name",
+    ]) {
+        $(id).addEventListener("change", () => void orApplyCleanup(false));
+    }
+    $("or_cleanup_change").addEventListener("click", () => void openPicker("cleanup"));
+    $("or_cleanup_test").addEventListener("click", () => void orTestCleanup());
+    $("or_budget").addEventListener("change", () => void orBudgetChanged());
+    $("or_reset_usage").addEventListener("click", () => void orCall("dev_cloud_reset_usage", {}, "or_usage_status", "Usage counters reset").then((u) => u && showOrUsage(u)));
+    $("or_picker_query").addEventListener("input", () => {
+        clearTimeout(pickerTimer);
+        pickerTimer = setTimeout(() => void loadPicker(), 200);
+    });
+    for (const [id, , toggle] of CHIPS) {
+        $(id).addEventListener("click", () => {
+            toggle();
+            showChips();
+            void loadPicker();
+        });
+    }
+    $("or_cat_refresh").addEventListener("click", () => void refreshCatalog(true));
+    $("or_picker_use").addEventListener("click", () => void pickModel($("or_picker_custom").value, false));
+    $("or_picker_close").addEventListener("click", () => $("or_picker").close());
+    $("ai_or_link").addEventListener("click", () => showTab("openrouter"));
+    $("llm_enabled").addEventListener("change", showAiEngine);
+    $("cleanup_level").addEventListener("change", showAiEngine);
 }
 let versionTaps = 0;
 let versionTimer = 0;
@@ -1203,6 +1622,7 @@ async function load() {
     renderDict();
     await loadSuggestions();
     await loadDev();
+    await loadOr();
     await loadDebugLog();
 }
 for (const b of document.querySelectorAll("nav.tabs button")) {
@@ -1270,43 +1690,7 @@ $("dev_token_clear").addEventListener("click", () => {
     scheduleCheck();
 });
 $("version_row").addEventListener("click", versionTapped);
-$("dev_allow_cloud").addEventListener("change", () => {
-    const box = $("dev_allow_cloud");
-    const p = activeProvider();
-    // Turning cloud on puts it first in the route order (§3.1); the user can reorder.
-    if (box.checked) {
-        devOrder = ["cloud", ...devOrder.filter((r) => r !== "cloud")];
-        if (p && !consentOk(p)) {
-            void askConsent(p).then((ok) => {
-                if (!ok)
-                    box.checked = false;
-                scheduleCheck();
-            });
-        }
-    }
-    renderCloud();
-});
-for (const f of ["label", "language", "base_url", "model"]) {
-    $(`dev_cloud_${f}`).addEventListener("input", () => cloudFieldChanged(f));
-}
-for (const f of ["send_dictionary", "send_screen_words", "zero_retention"]) {
-    $(`dev_cloud_${f}`).addEventListener("change", () => {
-        const p = selectedProvider();
-        if (p)
-            p[f] = $(`dev_cloud_${f}`).checked;
-    });
-}
-$("dev_cloud_add").addEventListener("click", () => void addProvider());
-$("dev_cloud_key_save").addEventListener("click", () => void saveKey());
-$("dev_cloud_key_clear").addEventListener("click", () => void clearKey());
-$("dev_cloud_key_paste").addEventListener("click", () => {
-    void navigator.clipboard
-        .readText()
-        .then((t) => ($("dev_cloud_key").value = t.trim()))
-        .catch(() => setStatus("dev_status", "Clipboard not readable: paste with Ctrl+V", false));
-});
-$("dev_cloud_test").addEventListener("click", () => void testProvider());
-$("dev_cloud_reset_usage").addEventListener("click", () => void devCall("dev_cloud_reset_usage", {}, "Usage counters reset").then((u) => u && showUsage(u)));
+wireOpenRouter();
 let searchTimer = 0;
 $("hist_query").addEventListener("input", () => {
     clearTimeout(searchTimer);
@@ -1331,8 +1715,8 @@ void onEvent("suggestions:changed", () => void loadSuggestions());
 void onEvent("settings:tab", (e) => showTab(e.payload));
 void onEvent("dev:route", (e) => {
     showRoute(e.payload);
-    if (devView?.caps.cloud)
-        void invoke("dev_cloud_usage").then(showUsage);
+    if (orView?.supported)
+        void refreshOrAfterDictation();
 });
 void onEvent("history:changed", () => {
     if ($("dev_debug_log").checked)
