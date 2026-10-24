@@ -116,6 +116,126 @@ pub fn should_run(cfg: &SessionConfig, cat: AppCategory) -> bool {
     !cfg.raw_mode && cfg.cleanup_level != CleanupLevel::None && cat != AppCategory::Terminal
 }
 
+/// Words that mean the LLM may still have work after the deterministic
+/// pass: leftover fillers, correction cues, spoken commands the rules left
+/// as words, and number words (bare cardinals are not ITN'd).
+const HELP_WORDS: &[&str] = &[
+    "um",
+    "uh",
+    "er",
+    "erm",
+    "hmm",
+    "like",
+    "know",
+    "so",
+    "okay",
+    "ok",
+    "well",
+    "actually",
+    "mean",
+    "sorry",
+    "wait",
+    "scratch",
+    "mind",
+    "rather",
+    "oops",
+    "quote",
+    "unquote",
+    "paren",
+    "parens",
+    "parenthesis",
+    "parentheses",
+    "bracket",
+    "brackets",
+    "dash",
+    "hyphen",
+    "comma",
+    "period",
+    "colon",
+    "semicolon",
+    "question",
+    "exclamation",
+    "line",
+    "paragraph",
+    "zero",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+    "twenty",
+    "thirty",
+    "forty",
+    "fifty",
+    "sixty",
+    "seventy",
+    "eighty",
+    "ninety",
+    "hundred",
+    "thousand",
+    "first",
+    "second",
+    "third",
+    "dot",
+    "point",
+];
+
+/// Could the LLM still improve `text` (the deterministic pass's output)?
+/// `false` only for a short, single-line, capitalised, punctuated
+/// dictation with no word from [`HELP_WORDS`] and no repeated word: on the
+/// formatting-gap eval the LLM changed nothing useful on those, and it
+/// costs ~1.3 s p50 on a 4-core CPU. Email always runs (layout).
+pub fn llm_can_help(text: &str, cat: AppCategory) -> bool {
+    let t = text.trim();
+    if cat == AppCategory::Email {
+        return true;
+    }
+    // Lines are the deterministic layout (or spoken "new line"); the 1.5B
+    // turned them into bullet lists.
+    if t.contains('\n') {
+        return false;
+    }
+    let words: Vec<String> = t
+        .split_whitespace()
+        .map(|w| {
+            w.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'')
+                .to_lowercase()
+        })
+        .filter(|w| !w.is_empty())
+        .collect();
+    if words.len() > 20 {
+        return true;
+    }
+    let lower_start = t
+        .chars()
+        .find(|c| c.is_alphabetic())
+        .is_some_and(char::is_lowercase);
+    let unpunctuated = !t.ends_with(['.', '?', '!', '"', ')', '\u{201d}']);
+    let help = words.iter().any(|w| HELP_WORDS.contains(&w.as_str()));
+    let repeat = words.windows(2).any(|p| p[0] == p[1]);
+    // One long sentence without a comma reads as a run-on.
+    let run_on = t
+        .split(['.', '?', '!'])
+        .any(|s| !s.contains(',') && s.split_whitespace().count() > 14);
+    // An enumeration ("eggs, milk, bread, and butter") may become a list
+    // or take an intro colon.
+    let enumeration = t.matches(',').count() >= 3;
+    lower_start || unpunctuated || help || repeat || run_on || enumeration
+}
+
 /// Max word-level divergence (edit distance / words) before the LLM output
 /// is distrusted. Higher levels are allowed to rewrite more.
 pub fn default_divergence(level: CleanupLevel) -> f64 {
@@ -818,6 +938,40 @@ mod tests {
                 assert_eq!(m.len(), wm.len());
                 assert_eq!(m[..m.len() - 1], wm[..wm.len() - 1], "{cat:?} {style:?}");
             }
+        }
+    }
+
+    #[test]
+    fn llm_skipped_only_when_it_cannot_help() {
+        use AppCategory::*;
+        for (t, cat) in [
+            ("Sounds good, see you at 8.", PersonalChat),
+            ("Can you send me the slides?", WorkChat),
+            ("She called it \"cozy\" and left.", PersonalChat),
+            ("Pick up the cake (the chocolate one) before noon.", Other),
+            ("Buy milk.\nCall Ben.", Other),
+        ] {
+            assert!(!llm_can_help(t, cat), "{t:?}");
+        }
+        for (t, cat) in [
+            // Email layout, fillers, corrections, leftover commands.
+            ("Hi Tom, see you at 8.", Email),
+            ("So, like, I was thinking we go.", PersonalChat),
+            ("Meet at three, sorry, four.", WorkChat),
+            ("He said quote hi.", Other),
+            ("The demo went well dash mostly.", WorkChat),
+            // Number words the rules did not convert.
+            ("We expect two hundred people.", Other),
+            // Run-on and unpunctuated / lowercase ASR output.
+            ("ok the train was late and I missed the connection.", PersonalChat),
+            ("The train was late and I missed the connection and I will be home around nine thirty tonight.", PersonalChat),
+            ("Sounds good see you then", PersonalChat),
+            ("I I think so.", WorkChat),
+            ("Grocery list, eggs, milk, bread, and butter.", Other),
+            // Long dictations always run.
+            ("Thanks for the notes. The plan looks fine to me, and I will review the budget tomorrow morning before our call with the vendor team.", WorkChat),
+        ] {
+            assert!(llm_can_help(t, cat), "{t:?}");
         }
     }
 

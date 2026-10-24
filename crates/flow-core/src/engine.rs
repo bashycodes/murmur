@@ -1397,7 +1397,15 @@ impl Worker {
         if abort.load(Ordering::SeqCst) {
             return CommitResult::error("cancelled");
         }
-        let run_llm = cleanup::should_run(&s.cfg, ctx.app_category) && !snippet;
+        let mut run_llm = cleanup::should_run(&s.cfg, ctx.app_category) && !snippet;
+        if run_llm
+            && self.cleaner.is_some()
+            && s.cfg.llm_skip_clean
+            && !cleanup::llm_can_help(&text, ctx.app_category)
+        {
+            run_llm = false;
+            r.fallback_reason = Some("llm_skipped_clean".into());
+        }
         if let (true, Some(cl)) = (run_llm, &self.cleaner) {
             let style = s.cfg.styles.for_category(ctx.app_category);
             let prompt =
