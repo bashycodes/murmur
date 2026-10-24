@@ -57,9 +57,25 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   gates (D7, D17), on-device whisper / Parakeet, Developer settings hub,
   model import, debug APKs built in CI.
 - Opt-in local transcript debug log on both platforms (D21).
+- `tools/server/install.sh --llm` / `--llm-model FILE`: builds flow-server
+  with the `llm` feature, installs the `libflow_llm.so` plugin and (for a new
+  config) writes `llm_path` / `llm_lib`; an existing config with `llm_path`
+  turns `--llm` on by itself (before, re-running the installer on such a box
+  installed a server that refused to start).
+- Server-side LLM cleanup cost measured (`docs/findings/2026-10-23-server-llm-cleanup-cost.md`;
+  `hybrid_latency --remote-only / --reps / --jsonl`): Qwen2.5-1.5B on the
+  home box adds about +3.1 s median release→text and 1.8 GB RSS. The user
+  keeps LLM cleanup on, on the server and the phone (2026-10-24).
 
 ### Changed
 
+- Android main Settings is now a hub with focused sub-pages, in the Developer
+  settings look: status card, Dictation (Language, Speech engine, AI cleanup,
+  Timing & limits), Bubble & apps, Privacy, Advanced, About (version + build,
+  7-tap Developer unlock). Each row shows its current value; switches and
+  choices apply at once, typed fields save from the top bar with a discard
+  prompt. The main screen's Language / AI cleanup lines open their pages.
+  Same prefs keys.
 - ASR model defaults refreshed from the benchmarks (D4, D23): Parakeet-unified
   English on the server, greedy decoding without hotwords, long clips decoded
   in ≤ 20 s pieces.
