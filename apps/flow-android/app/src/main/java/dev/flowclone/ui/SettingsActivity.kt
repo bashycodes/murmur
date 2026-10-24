@@ -285,8 +285,8 @@ class SettingsActivity : Activity() {
         }
     }
 
-    /** The About row (feat/versioning swaps this one expression for AppVersion's label). */
-    private fun versionLabel() = "Version ${dev.flowclone.BuildConfig.VERSION_NAME} (${caps.flavor})"
+    /** The About row: the same build label as the main screen (D26), e.g. `Version 0.2.0 (hybrid) · 1a2b3c4`. */
+    private fun versionLabel() = dev.flowclone.data.AppVersion.current.label(app.caps.flavor)
 
     private fun engineStatus(): String {
         val st = app.engine.state.value
