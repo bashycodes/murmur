@@ -262,6 +262,11 @@ Prefill-ahead removes 75-90 % of the commit's prefill (≈ 0.7-1.4 s here). Gene
 
 All additions are backward compatible: new JSON fields have serde defaults (old JSON still parses, extra fields are ignored by org.json/serde), new `SessionConfig` fields default to the recommended behaviour, and new C/plugin symbols are optional.
 
+2026-10-24 (branch `fix/route-order`; `docs/findings/2026-10-24-phone-local-only.md`):
+* `Timings.speech_ms: Option<u64>` (VAD speech in the dictation, summed over pieces when segmented; `Some(0)` = VAD found none, `None` = VAD off) and `Timings.peak_dbfs: Option<i32>` (peak sample level, whole dBFS, `PEAK_DBFS_FLOOR` = -120 for digital silence; `None` = no audio). Both omitted from JSON when `None`. With `empty_reason: blank_asr` they separate "ASR heard speech and returned nothing" from "the VAD failed open on noise / a quiet mic". No behaviour change, no threshold change.
+  * Android: decoded into `Timings.speechMs` / `peakDbfs`; debug log fields `speech_ms` / `peak_dbfs` (additive). Windows: optional, same field names in its debug log.
+  * flow-server: the `result` log line also carries `speech_ms`, `peak_dbfs` and `start_to_commit_ms` (`start` → `commit` arrival; against the client's recording length it shows an upload backlog). Log only, no wire change.
+
 2026-10-24 (branch `feat/fmt-llm`, draft D27 layers 4-6; `docs/findings/2026-10-24-formatting-gap.md`):
 * **Behaviour (gate, D27):** the deterministic layer (spoken cleanup, spoken commands, layout, closing period) follows `SessionConfig.spoken_cleanup` alone. `cleanup_level: none` and `raw_mode` now only mean "no LLM". Verbatim = `spoken_cleanup: false` + `cleanup_level: none` (the Wispr client port still runs, as before).
   * Android: no change needed. With "Clean up with local AI" off it sends `none` + `raw_mode: true` and now gets the full deterministic layer (eval 17 % → 70 %). Optional: send `light` + `raw_mode: true` instead, which is equivalent. Keep the "Auto-format" switch as the only way to get raw text.

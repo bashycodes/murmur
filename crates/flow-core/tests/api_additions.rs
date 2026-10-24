@@ -477,3 +477,63 @@ fn email_layout_survives_the_whole_pipeline() {
     let r = run_text(asr, off, in_app("outlook", AppCategory::Email));
     assert!(!r.plain_text.contains('\n'), "{:?}", r.plain_text);
 }
+
+// ---- 2026-10-24: blank_asr diagnostics (docs/findings/2026-10-24-phone-local-only.md) ----
+
+fn commit_pcm(asr_text: &str, cfg: SessionConfig, pcm: &[i16]) -> flow_core::CommitResult {
+    let core = FlowCore::from_engines(Arc::new(MockAsr::new(asr_text)), None);
+    core.start_session(cfg).unwrap();
+    core.push_audio(pcm);
+    core.commit()
+}
+
+#[test]
+fn blank_asr_reports_vad_speech_and_peak_level() {
+    // 8000 / 32768 ≈ -12.25 dBFS.
+    let r = commit_pcm("", SessionConfig::default(), &speech(1000));
+    assert_eq!(r.empty_reason.as_deref(), Some("blank_asr"));
+    assert_eq!(r.timings.peak_dbfs, Some(-12), "{:?}", r.timings);
+    let sp = r.timings.speech_ms.expect("VAD on: speech_ms set");
+    assert!((900..=1000).contains(&sp), "{:?}", r.timings);
+}
+
+#[test]
+fn speech_ms_is_zero_on_no_speech_and_absent_with_vad_off() {
+    let quiet: Vec<i16> = vec![0; 16_000];
+    let r = commit_pcm("x", SessionConfig::default(), &quiet);
+    assert_eq!(r.empty_reason.as_deref(), Some("no_speech"));
+    assert_eq!(r.timings.speech_ms, Some(0));
+    assert_eq!(r.timings.peak_dbfs, Some(flow_core::PEAK_DBFS_FLOOR));
+    let off = SessionConfig {
+        vad: false,
+        ..Default::default()
+    };
+    let r = commit_pcm("hello", off, &speech(500));
+    assert_eq!(r.timings.speech_ms, None);
+    assert_eq!(r.timings.peak_dbfs, Some(-12));
+}
+
+#[test]
+fn segmented_commit_sums_piece_speech() {
+    let mut pcm = speech(2000);
+    pcm.extend(std::iter::repeat_n(0i16, 16 * 1200));
+    pcm.extend(speech(2000));
+    let cfg = SessionConfig {
+        segment_pause_ms: Some(800),
+        ..Default::default()
+    };
+    let r = commit_pcm("", cfg, &pcm);
+    assert_eq!(r.empty_reason.as_deref(), Some("blank_asr"));
+    let sp = r.timings.speech_ms.expect("VAD on: speech_ms set");
+    assert!((3600..=4100).contains(&sp), "{:?}", r.timings);
+    assert_eq!(r.timings.peak_dbfs, Some(-12));
+}
+
+#[test]
+fn diagnostics_are_omitted_from_json_when_unset() {
+    let j = serde_json::to_value(flow_core::Timings::default()).unwrap();
+    assert!(
+        j.get("speech_ms").is_none() && j.get("peak_dbfs").is_none(),
+        "{j}"
+    );
+}

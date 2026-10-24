@@ -77,10 +77,33 @@ pub struct Timings {
     /// when 0.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub pre_asr_ms: u64,
+    /// VAD speech heard in the whole dictation (sum over pieces when
+    /// segmented); `Some(0)` = VAD found none, `None` = VAD off. With
+    /// `empty_reason: blank_asr` it tells "the ASR heard speech and
+    /// returned nothing" from "the VAD failed open on noise". 2026-10-24.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speech_ms: Option<u64>,
+    /// Peak sample level of the session audio in dBFS, rounded
+    /// ([`PEAK_DBFS_FLOOR`] for digital silence); `None` = no audio.
+    /// 2026-10-24.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub peak_dbfs: Option<i32>,
 }
 
 fn is_zero(v: &u64) -> bool {
     *v == 0
+}
+
+/// `Timings::peak_dbfs` of all-zero audio.
+pub const PEAK_DBFS_FLOOR: i32 = -120;
+
+/// Peak level of `pcm` (samples in -1..1) in whole dBFS.
+fn peak_dbfs(pcm: &[f32]) -> i32 {
+    let peak = pcm.iter().fold(0f32, |m, s| m.max(s.abs()));
+    if peak <= 0.0 {
+        return PEAK_DBFS_FLOOR;
+    }
+    ((20.0 * peak.log10()).round() as i32).clamp(PEAK_DBFS_FLOOR, 0)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1172,6 +1195,7 @@ impl Worker {
             r.empty_reason = Some("no_audio".into());
             return r;
         }
+        r.timings.peak_dbfs = Some(peak_dbfs(&s.buf));
         if s.seg.is_some() {
             return self.finalize_segmented(s, ctx, abort, r);
         }
@@ -1179,6 +1203,7 @@ impl Worker {
             match vad::detect(&s.buf) {
                 Some(sp) => (&s.buf[sp.start..sp.end], Some(sp.speech_ms())),
                 None => {
+                    r.timings.speech_ms = Some(0);
                     r.empty_reason = Some("no_speech".into());
                     return r;
                 }
@@ -1186,6 +1211,7 @@ impl Worker {
         } else {
             (&s.buf[..], None)
         };
+        r.timings.speech_ms = speech_ms;
         r.timings.asr_audio_ms = (pcm.len() * 1000 / SAMPLE_RATE) as u64;
         let mut req = Self::asr_request(&s.cfg, ctx, AsrPurpose::Final);
         req.abort = AbortFlag(Some(abort.clone()));
@@ -1261,6 +1287,10 @@ impl Worker {
         }
         let spoken: Vec<&SegOut> = pieces.iter().filter(|p| p.out.is_some()).collect();
         r.timings.segments = spoken.len() as u64;
+        r.timings.speech_ms = s
+            .cfg
+            .vad
+            .then(|| pieces.iter().filter_map(|p| p.speech_ms).sum());
         r.timings.asr_audio_ms =
             (pieces.iter().map(|p| p.asr_samples).sum::<usize>() * 1000 / SAMPLE_RATE) as u64;
         if spoken.is_empty() {
