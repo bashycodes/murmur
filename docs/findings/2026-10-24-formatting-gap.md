@@ -509,3 +509,42 @@ $B --cases cases.jsonl --session sessions/shipped.json > results/det_shipped.jso
 MODELS=<gguf dir> FLOW_LLM_LIB=<libflow_llm.so> ./run_all_llm.sh > results/run_all.log
 python3 score.py cases.jsonl det=results/det_shipped.jsonl llm=results/llm15_current_shipped.jsonl --fails llm
 ```
+
+## 9. Update (branch `feat/fmt-rules`): layers 2 + 3 in flow-core
+
+The spoken-command rules (§7 layer 2) and the deterministic bug fixes (layer 3) are now in
+`crates/flow-core/src/postprocess/spoken.rs` and its child module `spoken_commands.rs`, inside
+`spoken_cleanup` (same `spoken_cleanup` / `cleanup_level` gate as before). `run_det.sh` scores
+the real pipeline on the raw cases (no `rules_proto.py` pre-pass) and fails below the D27 floor
+(72 %, 16/16 negatives):
+
+| category | n | det | det+styles | proto+styles (§4) | **core rules** | **core rules+styles** |
+|---|---|---|---|---|---|---|
+| quote | 8 | 0/8 | 0/8 | 6/8 | 7/8 | **8/8** |
+| paren | 6 | 0/6 | 0/6 | 4/6 | 6/6 | **6/6** |
+| spoken_punct | 9 | 8/9 | 8/9 | 9/9 | 9/9 | **9/9** |
+| newline | 5 | 5/5 | 5/5 | 5/5 | 5/5 | **5/5** |
+| correction | 7 | 3/7 | 5/7 | 5/7 | 3/7 | **5/7** |
+| itn | 8 | 3/8 | 3/8 | 3/8 | 7/8 | **8/8** |
+| list | 5 | 2/5 | 2/5 | 2/5 | 3/5 | **3/5** |
+| casual | 7 | 1/7 | 7/7 | 7/7 | 1/7 | **7/7** |
+| email | 5 | 3/5 | 3/5 | 3/5 | 5/5 | **5/5** |
+| filler | 6 | 1/6 | 3/6 | 3/6 | 3/6 | **6/6** |
+| runon | 6 | 0/6 | 0/6 | 0/6 | 0/6 | **0/6** |
+| negative | 16 | 13/16 | 16/16 | 16/16 | 13/16 | **16/16** |
+| **pass** | 88 | 44% | 59% | 72% | 70% | **89%** |
+| **exact** | 88 | 41% | 50% | 60% | 58% | **74%** |
+
+* *core rules* = shipped styles (all formal); its 3 negative misses are the formal period on
+  chat cases, fixed by the casual styles (layer 1), not by rules.
+* Decisions taken while implementing:
+  * Spoken "dash" → spaced em dash `" — "`.
+  * "quote unquote X" quotes one word, or up to the next pause when one follows.
+  * The pause comma before an opening mark is dropped, except before a 2+-word quotation
+    after a speech verb ("She said, "I'll be there soon," and …"). That form capitalises the
+    quotation and keeps its closing comma.
+  * Pause-less p1 ("the charger in parentheses the USB-C one to the meeting") is handled by
+    one narrow shape: a determiner-led aside of 2-6 words after a plain noun, closed by a
+    preposition. Everything else without pause commas or a closer stays as spoken.
+* Remaining misses are the LLM's share: run-ons (6), unmarked lists l4/l5, and corrections
+  without a listed trigger (c4 "three, sorry, four", c7 "main, I mean to").

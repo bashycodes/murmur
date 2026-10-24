@@ -261,6 +261,20 @@ Prefill-ahead removes 75-90 % of the commit's prefill (≈ 0.7-1.4 s here). Gene
 
 All additions are backward compatible: new JSON fields have serde defaults (old JSON still parses, extra fields are ignored by org.json/serde), new `SessionConfig` fields default to the recommended behaviour, and new C/plugin symbols are optional.
 
+2026-10-24 (branch `feat/fmt-rules`, draft D27 layers 2-3; `docs/findings/2026-10-24-formatting-gap.md` §9):
+* Behaviour: spoken cleanup now formats spoken commands. Quotes: "quote … unquote", "open/close/end quote", "quote unquote X", ", in quotes, X," → `"…"`. Parentheses: "open/close paren(thesis)", ", in parentheses, X," → `(…)`. Brackets → `[…]`. "dash" → ` — `. A command without a closer converts only between pause commas; literal uses ("a quote for", "in parentheses on the board") stay words.
+* Behaviour: fixes found by the eval:
+  * repeated number words are no longer stutters, and phone digit strings → `555-123-4567`;
+  * "seven thirty tonight" → `7:30 tonight`;
+  * cardinals ≥ 10 before a word → digits ("250 users", "10 minutes"); below ten stay words;
+  * "two point three" → `2.3`;
+  * "the twenty first of October" → `October 21st`;
+  * no dangling comma after a removed filler;
+  * "So, like," at the start is removed;
+  * "Dear Mr. Patel," stays whole, and a bare "Thanks." gets its own line in an email that has a greeting;
+  * "are one, X, two, Y, three, Z" → numbered list.
+* `POSTPROCESS_REV` → `2026-10-24.1`. No shell change. Same gate as before (`spoken_cleanup` on and `cleanup_level` not none); the "Auto-format" pref turns it off. A hybrid client and a server on different revisions now differ on these inputs (D17 skew check).
+
 2026-10-23 (branch `feat/streaming-asr`, D22; shell steps in `docs/proposals/streaming-asr-shell-api.md`):
 * `SessionConfig.segment_pause_ms` / `segment_min_ms` / `segment_soft_max_ms` (all `Option<u32>`, omitted when unset): pause-segmented incremental decoding. Adopt: send `segment_pause_ms: 800` behind a "Decode while speaking" toggle (default on); leave the other two unset.
 * `endpoint::RECOMMENDED_SILENCE_MS` 2000 → **1500**. Adopt: hands-free default 1500 (explicit user values kept).
