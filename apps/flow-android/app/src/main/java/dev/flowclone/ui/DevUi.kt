@@ -27,7 +27,8 @@ import android.widget.Switch
 import android.widget.TextView
 
 /**
- * Developer settings look (platform views only, no UI deps): grouped rounded cards on a plain
+ * Settings look shared by main Settings (SettingsActivity) and Developer settings
+ * (DeveloperActivity); platform views only, no UI deps: grouped rounded cards on a plain
  * background, rows with a title + grey value subtitle, switch rows with a one-line description,
  * labelled fields with inline errors, full-width actions with their result right under them.
  * Follows the app's DayNight theme (dark on a dark system), 48 dp+ touch targets, system insets.
@@ -55,7 +56,7 @@ internal class DevPalette(
 
 internal enum class Tone { NEUTRAL, OK, BAD, WARN }
 
-/** Builder for one Developer settings screen. */
+/** Builder for one Settings / Developer settings screen. */
 internal class DevUi(val activity: Activity) {
     val ctx: Context get() = activity
     val p = DevPalette.of(activity)
@@ -233,6 +234,67 @@ internal class DevUi(val activity: Activity) {
         return ToggleRow(row, sw, ts.first, ts.second).also { it.setDescription(description); it.isEnabled = enabled }
     }
 
+    // ---- single choice ----
+
+    class Choice<T>(val value: T, val title: String, val description: String = "")
+
+    /** Radio rows; each row is one touch target and reads to TalkBack as one radio button. */
+    class ChoiceGroup<T>(private val rows: List<Pair<T, Pair<View, android.widget.RadioButton>>>) {
+        var selected: T? = null; private set
+        var onPick: ((T) -> Unit)? = null
+
+        /** Shows [v] as selected without calling [onPick] (initial value, a cancelled change). */
+        fun select(v: T) {
+            selected = v
+            for ((value, r) in rows) r.second.isChecked = value == v
+        }
+
+        internal fun pick(v: T) {
+            if (!isEnabled || v == selected) return
+            select(v); onPick?.invoke(v)
+        }
+
+        var isEnabled: Boolean = true
+            set(on) { field = on; for ((_, r) in rows) { r.first.isEnabled = on; r.second.isEnabled = on; r.first.alpha = if (on) 1f else 0.5f } }
+    }
+
+    fun <T> LinearLayout.choiceRows(choices: List<Choice<T>>, selected: T, onPick: (T) -> Unit): ChoiceGroup<T> {
+        val built = ArrayList<Pair<T, Pair<View, android.widget.RadioButton>>>()
+        lateinit var group: ChoiceGroup<T>
+        for (c in choices) {
+            val (texts, ts) = titleSub(c.title, c.description)
+            val rb = android.widget.RadioButton(ctx).apply {
+                isClickable = false; isFocusable = false
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                buttonTintList = ColorStateList(arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()), intArrayOf(p.accent, p.muted))
+            }
+            val row = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                minimumHeight = dp(56)
+                setPadding(dp(8), dp(8), dp(16), dp(8))
+                background = ripple(null)
+                isClickable = true; isFocusable = true
+                setOnClickListener { group.pick(c.value) }
+                addView(rb, LinearLayout.LayoutParams(dp(48), dp(48)))
+                addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(4) })
+                accessibilityDelegate = object : View.AccessibilityDelegate() {
+                    override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+                        super.onInitializeAccessibilityNodeInfo(host, info)
+                        info.className = android.widget.RadioButton::class.java.name
+                        info.isCheckable = true; info.isChecked = rb.isChecked; info.isEnabled = host.isEnabled
+                        info.text = listOf(ts.first.text, ts.second.text).filter { it.isNotEmpty() }.joinToString(". ")
+                    }
+                }
+            }
+            addView(row)
+            built += c.value to (row to rb)
+        }
+        group = ChoiceGroup(built)
+        group.select(selected)
+        group.onPick = onPick
+        return group
+    }
+
     // ---- fields ----
 
     class FieldRow(val edit: EditText, val error: TextView, val help: TextView) {
@@ -241,12 +303,13 @@ internal class DevUi(val activity: Activity) {
     }
 
     /** Label above a borderless input; grey help and a red inline error below it. */
-    fun LinearLayout.fieldRow(label: String, value: String, inputType: Int, help: String = "", hint: String = "", onEdit: () -> Unit): FieldRow {
+    fun LinearLayout.fieldRow(label: String, value: String, inputType: Int, help: String = "", hint: String = "", minLines: Int = 1, onEdit: () -> Unit): FieldRow {
         val box = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(10)) }
         val l = TextView(ctx).apply { text = label; textSize = 13f; setTextColor(p.muted) }
         val e = EditText(ctx).apply {
             id = View.generateViewId()
-            this.inputType = inputType; setText(value); isSingleLine = true
+            this.inputType = inputType; setText(value)
+            if (minLines > 1) { isSingleLine = false; this.minLines = minLines; gravity = Gravity.TOP or Gravity.START } else isSingleLine = true
             this.hint = hint; setHintTextColor((p.muted and 0x00FFFFFF) or 0x99000000.toInt())
             textSize = 16f; setTextColor(p.text)
             background = rounded(p.field, 12)
