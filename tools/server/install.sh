@@ -23,6 +23,14 @@
 #                       this machine's Tailscale IPv4 on the same port, if any)
 #   --port N            port for the default bind addresses (default 7313)
 #   --threads N         ASR threads (default 4)
+#   --llm               also build LLM cleanup: flow-server with the `llm`
+#                       feature plus the llama.cpp plugin libflow_llm.so,
+#                       installed next to the sherpa libs. Turned on by
+#                       itself when the existing config sets llm_path (a
+#                       build without the feature refuses to start then)
+#   --llm-model FILE    GGUF for LLM cleanup (implies --llm): copied next to
+#                       the ASR model and written as llm_path into a *new*
+#                       config (an existing config is never edited)
 #   --no-build          install the already built target/release/flow-server
 #   --start             enable and start the service at the end (otherwise
 #                       the commands are printed)
@@ -43,12 +51,14 @@ BINDS=()
 PORT=7313
 THREADS=4
 BUILD=1
+LLM=0
+LLM_MODEL=""
 START=0
 DRY=0
 YES=0
 
 die() { echo "install.sh: $*" >&2; exit 1; }
-usage() { sed -n '2,34p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,42p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -60,6 +70,8 @@ while [ $# -gt 0 ]; do
         --bind) BINDS+=("${2:?--bind ADDR}"); shift ;;
         --port) PORT="${2:?--port N}"; shift ;;
         --threads) THREADS="${2:?--threads N}"; shift ;;
+        --llm) LLM=1 ;;
+        --llm-model) LLM_MODEL="${2:?--llm-model FILE}"; LLM=1; shift ;;
         --no-build) BUILD=0 ;;
         --start) START=1 ;;
         --dry-run) DRY=1 ;;
@@ -94,6 +106,7 @@ MODEL_DST="$MODEL_ROOT/$MODEL_NAME"
 CONF="$CONF_DIR/config.toml"
 TOKEN="$CONF_DIR/token"
 BIN="$BIN_DIR/flow-server"
+PLUGIN="$LIB_DIR/libflow_llm.so"
 
 # ---- preflight (read-only) ---------------------------------------------------
 [ -f "$MODEL/tokens.txt" ] || die "no Parakeet model in $MODEL (tools/fetch-models.sh --parakeet, or --model DIR)"
@@ -101,6 +114,35 @@ BIN="$BIN_DIR/flow-server"
 for l in libsherpa-onnx-c-api.so libonnxruntime.so; do
     [ -e "$SHERPA_LIB/$l" ] || die "$SHERPA_LIB/$l not found"
 done
+# LLM cleanup. An existing config with llm_path needs an llm build: without
+# the feature flow-server stops at startup ("llm_path set but built without
+# the `llm` feature"), so a plain re-install would take the server down.
+CONF_LLM_PATH=""
+CONF_LLM_LIB=""
+if [ -r "$CONF" ]; then
+    toml_str() { sed -n -E "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$CONF" | head -n 1; }
+    CONF_LLM_PATH="$(toml_str llm_path)"
+    CONF_LLM_LIB="$(toml_str llm_lib)"
+fi
+if [ -n "$CONF_LLM_PATH" ] && [ "$LLM" = 0 ]; then
+    echo "note: $CONF sets llm_path; building with LLM cleanup (as --llm)" >&2
+    LLM=1
+fi
+if [ -n "$LLM_MODEL" ]; then
+    [ -f "$LLM_MODEL" ] || die "--llm-model $LLM_MODEL: no such file"
+    LLM_MODEL_DST="$MODEL_ROOT/$(basename "$LLM_MODEL")"
+fi
+if [ -n "$CONF_LLM_LIB" ] && [ "$CONF_LLM_LIB" != "$PLUGIN" ]; then
+    echo "warning: $CONF has llm_lib = \"$CONF_LLM_LIB\"; this install puts the plugin at $PLUGIN, which that config does not load" >&2
+fi
+# bindgen (llama-cpp-sys-2) runs libclang, which does not find the compiler's
+# own headers (stdbool.h) on some distros (Ubuntu with gcc 13). Point it at
+# gcc's include dir unless the caller set BINDGEN_EXTRA_CLANG_ARGS already.
+BINDGEN_ARGS="${BINDGEN_EXTRA_CLANG_ARGS:-}"
+if [ "$LLM" = 1 ] && [ -z "$BINDGEN_ARGS" ] && command -v gcc >/dev/null 2>&1; then
+    GCC_INC="$(gcc -print-file-name=include 2>/dev/null || true)"
+    [ -f "$GCC_INC/stdbool.h" ] && BINDGEN_ARGS="-I$GCC_INC"
+fi
 # --user: `systemctl --user` needs a running user manager and XDG_RUNTIME_DIR
 # pointing at its runtime dir. Shells without a login session (ssh without
 # pam_systemd, cron, agents) or with XDG_RUNTIME_DIR redirected elsewhere
@@ -176,6 +218,7 @@ flow-server install ($MODE mode)$( [ "$DRY" = 1 ] && echo ", DRY RUN: nothing is
   token    $TOKEN
   unit     $UNIT_PATH
   bind     ${BINDS[*]}
+  llm      $( if [ "$LLM" = 1 ]; then echo "on: plugin $PLUGIN${LLM_MODEL:+, model ${LLM_MODEL_DST:-}}"; else echo "off (--llm to build cleanup)"; fi )
 EOF
 
 if [ "$MODE" = system ] && [ "$DRY" = 0 ] && [ "$YES" = 0 ]; then
@@ -190,15 +233,25 @@ EOF
 fi
 
 # ---- 1. build ------------------------------------------------------------------
-step "1. build flow-server (release, Parakeet + TLS)"
+FEATURES=parakeet,tls
+[ "$LLM" = 1 ] && FEATURES=parakeet,tls,llm
+step "1. build flow-server (release, features $FEATURES)"
 if [ "$BUILD" = 1 ]; then
     # Never downloads: SHERPA_ONNX_LIB_DIR points sherpa-onnx-sys at the local libs.
     run env SHERPA_ONNX_LIB_DIR="$SHERPA_LIB" cargo build --release --offline \
-        --manifest-path "$ROOT/Cargo.toml" -p flow-server --no-default-features --features parakeet,tls
+        --manifest-path "$ROOT/Cargo.toml" -p flow-server --no-default-features --features "$FEATURES"
+    # The `llm` feature only adds the loader; llama.cpp is the separate
+    # flow-llm cdylib (its ggml clashes with whisper.cpp's in one binary).
+    if [ "$LLM" = 1 ]; then
+        run env BINDGEN_EXTRA_CLANG_ARGS="$BINDGEN_ARGS" cargo build --release --offline \
+            --manifest-path "$ROOT/Cargo.toml" -p flow-llm
+    fi
 fi
 TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT/target}"
 BUILT="$TARGET_DIR/release/flow-server"
+BUILT_PLUGIN="$TARGET_DIR/release/libflow_llm.so"
 [ "$DRY" = 1 ] || [ -x "$BUILT" ] || die "$BUILT not built"
+[ "$DRY" = 1 ] || [ "$LLM" = 0 ] || [ -f "$BUILT_PLUGIN" ] || die "$BUILT_PLUGIN not built"
 
 # ---- 2. files ------------------------------------------------------------------
 step "2. install binary, libraries and model"
@@ -207,7 +260,20 @@ priv install -m 0755 "$BUILT" "$BIN"
 for l in libsherpa-onnx-c-api.so libonnxruntime.so; do
     priv install -m 0644 "$(readlink -f "$SHERPA_LIB/$l")" "$LIB_DIR/$l"
 done
-priv cp -rT "$MODEL" "$MODEL_DST"
+[ "$LLM" = 1 ] && priv install -m 0644 "$BUILT_PLUGIN" "$PLUGIN"
+# --model may name the installed copy itself (re-install in place).
+if [ "$(readlink -f "$MODEL")" = "$(readlink -f "$MODEL_DST" 2>/dev/null || true)" ]; then
+    echo "    $MODEL_DST is the source model, kept"
+else
+    priv cp -rT "$MODEL" "$MODEL_DST"
+fi
+if [ -n "$LLM_MODEL" ]; then
+    if [ "$(readlink -f "$LLM_MODEL")" = "$(readlink -f "$LLM_MODEL_DST" 2>/dev/null || true)" ]; then
+        echo "    $LLM_MODEL_DST is the source GGUF, kept"
+    else
+        priv install -m 0644 "$LLM_MODEL" "$LLM_MODEL_DST"
+    fi
+fi
 [ "$MODE" = system ] && priv chmod -R a+rX "$PREFIX"
 [ "$MODE" = system ] && priv chmod 0755 "$CONF_DIR"
 [ "$MODE" = user ] && run chmod 0700 "$CONF_DIR"
@@ -239,6 +305,11 @@ max_queue = 2
 asr_engine = "parakeet"
 asr_path = "$MODEL_DST"
 threads = $THREADS
+$( if [ -n "$LLM_MODEL" ]; then
+    printf 'llm_path = "%s"\nllm_lib = "%s"\n' "$LLM_MODEL_DST" "$PLUGIN"
+else
+    printf '# llm_path = "%s/<model>.gguf"   # LLM cleanup, needs --llm\n# llm_lib = "%s"\n' "$MODEL_ROOT" "$PLUGIN"
+fi )
 
 # [tls]                # optional wss:// (docs/server-setup.md "TLS")
 # cert = "$CONF_DIR/cert.pem"
@@ -307,6 +378,7 @@ cat <<EOF
 
 Next steps (docs/server-setup.md):
   * logs (expect "ready workers=1 asr=parakeet"):  ${SUDO}$JOURNAL
+  * LLM cleanup loaded: GET /v1/health with the token shows "llm":true
   * the token for the apps:                        ${SUDO}cat $TOKEN
   * apps, Developer settings: Allow server on, Server host = one of
     ${BINDS[*]} (host part; the Tailscale 100.x address from other devices),
