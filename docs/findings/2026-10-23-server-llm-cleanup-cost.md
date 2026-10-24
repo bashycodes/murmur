@@ -6,6 +6,14 @@ on the home `flow-server` (i7-6700, 8 threads, no GPU, Parakeet unified 0.6B int
 
 **Answer.** It is not worth it on this box today. **The server is back on the pre-LLM config.**
 
+> **Update 2026-10-24: the user chose to keep LLM cleanup ON on both devices**
+> (home server and phone), accepting the latency and RAM cost above. The server
+> runs with `llm_path` set again; `tools/server/install.sh` now builds the `llm`
+> feature and installs `libflow_llm.so` (`--llm`, and automatically when the
+> config sets `llm_path`; `docs/server-setup.md` "LLM cleanup"), so a re-install
+> no longer drops cleanup. The verdict below is the 2026-10-23 measurement, kept
+> for reference.
+
 * With the Android budget (`llm_timeout_ms = 3000`), cleanup only finished on the two
   shortest clips (5.8 s, 11 s). Every clip of 19 s or more ran to the 3 s deadline and
   fell back to the raw transcript, so it paid +2–5 s and got nothing back.
