@@ -1,0 +1,20 @@
+{
+  "cloud_disabled": true,
+  "delete_keys": [
+    "openai-1"
+  ],
+  "key_from": null,
+  "key_to": null,
+  "migrated": true,
+  "model_from": null,
+  "model_to": null,
+  "notice": "Cloud speech-to-text now uses OpenRouter only. OpenAI was removed and its key deleted. Set up OpenRouter to keep using cloud STT.",
+  "removed": [
+    {
+      "adapter": "openai_compat",
+      "id": "openai-1",
+      "name": "OpenAI",
+      "preset": "openai"
+    }
+  ]
+}

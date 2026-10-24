@@ -12,32 +12,46 @@ use flow_router::{BackendError, Failure};
 
 pub use reqwest::blocking::{Client, RequestBuilder, Response};
 
+/// Cap on any JSON body we read (catalogue pages are ~1 MB).
+pub const MAX_BODY: usize = 8 * 1024 * 1024;
+
 /// TCP + TLS connect budget (§3.3).
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 /// Retry a 429 only when the provider asks for at most this long.
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(2);
 
-/// Provider call failure (§6.2). `Display` is safe to show and log.
+/// Provider call failure (§6.2, D28 §2.7). `Display` is safe to show and
+/// log: it never holds a key, URL, header, body or provider free text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CloudError {
     /// DNS / TCP / TLS failure (the kind, never the URL).
     Connect(String),
-    /// HTTP 401/403: key rejected.
+    /// HTTP 401 / 403 (not a limit or moderation): key rejected.
     Auth,
-    /// HTTP 402 or a quota/credit error code: out of credits.
+    /// HTTP 402 or a 403 key/workspace limit: out of credits or budget.
     Quota,
-    /// HTTP 429.
+    /// HTTP 429, or 402 `in_flight_budget_exhausted` (transient).
     RateLimited {
         retry_after_ms: Option<u64>,
     },
     /// HTTP 413.
     TooLarge,
+    /// HTTP 503 "no provider meets your routing requirements": with
+    /// `zdr: true` this model has no zero-retention endpoint.
+    NoPrivateRoute,
+    /// HTTP 403 from a moderation / guardrail check (not sticky).
+    Moderation,
+    /// A 400 that names the audio format (path A retries once with WAV).
+    UnsupportedFormat,
+    /// Path B: the chat model's answer did not look like a verbatim
+    /// transcript (§2.4 sanity check).
+    Unverbatim,
     /// Other 4xx: status + sanitised provider error code.
     BadRequest {
         status: u16,
         code: Option<String>,
     },
-    /// 5xx.
+    /// 5xx, or an SSE stream that ended in `finish_reason: "error"`.
     Server(u16),
     Timeout,
     /// 2xx with a body we cannot read.
@@ -52,11 +66,43 @@ impl CloudError {
             CloudError::Quota => Failure::QuotaExceeded,
             CloudError::RateLimited { .. } => Failure::Busy,
             CloudError::Timeout => Failure::Timeout,
+            CloudError::NoPrivateRoute => Failure::NoPrivateRoute,
             CloudError::TooLarge
+            | CloudError::Moderation
+            | CloudError::UnsupportedFormat
+            | CloudError::Unverbatim
             | CloudError::BadRequest { .. }
             | CloudError::Server(_)
             | CloudError::Malformed => Failure::ProviderError,
         }
+    }
+
+    /// The `Failure` code string (`no_private_route`, `auth_failed`, …).
+    pub fn code(&self) -> &'static str {
+        self.failure().as_str()
+    }
+
+    /// Sub-code for `provider_error`s (`moderation`, `chat_audio_unverbatim`).
+    pub fn detail(&self) -> Option<&'static str> {
+        match self {
+            CloudError::Moderation => Some("moderation"),
+            CloudError::Unverbatim => Some("chat_audio_unverbatim"),
+            CloudError::UnsupportedFormat => Some("unsupported_format"),
+            _ => None,
+        }
+    }
+
+    /// Failed before any output and is likely to fail again right away:
+    /// another backend may be tried (cleanup's `CleanError::Unavailable`).
+    pub fn is_fast_unavailable(&self) -> bool {
+        matches!(
+            self,
+            CloudError::Connect(_)
+                | CloudError::Auth
+                | CloudError::Quota
+                | CloudError::NoPrivateRoute
+                | CloudError::RateLimited { .. }
+        )
     }
 
     pub fn to_backend(&self) -> BackendError {
@@ -67,14 +113,27 @@ impl CloudError {
 impl std::fmt::Display for CloudError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CloudError::Connect(k) => write!(f, "cannot reach the provider ({k})"),
-            CloudError::Auth => f.write_str("provider rejected the API key"),
-            CloudError::Quota => f.write_str("provider account is out of credits or quota"),
-            CloudError::RateLimited { .. } => f.write_str("provider rate limit (HTTP 429)"),
-            CloudError::TooLarge => f.write_str("audio too large for the provider (HTTP 413)"),
+            CloudError::Connect(k) => write!(f, "cannot reach OpenRouter ({k})"),
+            CloudError::Auth => f.write_str("OpenRouter rejected the API key"),
+            CloudError::Quota => {
+                f.write_str("OpenRouter account or key is out of credits or over its limit")
+            }
+            CloudError::RateLimited { .. } => f.write_str("OpenRouter rate limit or busy"),
+            CloudError::TooLarge => f.write_str("audio too large for OpenRouter (HTTP 413)"),
+            CloudError::NoPrivateRoute => f.write_str(
+                "model has no zero-retention provider (pick a model marked ZDR, \
+                 or allow non-ZDR providers)",
+            ),
+            CloudError::Moderation => f.write_str("blocked by a moderation or guardrail check"),
+            CloudError::UnsupportedFormat => {
+                f.write_str("the provider does not accept this audio format")
+            }
+            CloudError::Unverbatim => {
+                f.write_str("chat model did not return a verbatim transcript")
+            }
             CloudError::BadRequest { status, code } => match code {
-                Some(c) => write!(f, "provider rejected the request (HTTP {status}, {c})"),
-                None => write!(f, "provider rejected the request (HTTP {status})"),
+                Some(c) => write!(f, "OpenRouter rejected the request (HTTP {status}, {c})"),
+                None => write!(f, "OpenRouter rejected the request (HTTP {status})"),
             },
             CloudError::Server(s) => write!(f, "provider error (HTTP {s})"),
             CloudError::Timeout => f.write_str("provider did not answer in time"),
@@ -86,19 +145,18 @@ impl std::fmt::Display for CloudError {
 impl std::error::Error for CloudError {}
 
 /// One client per backend, kept across sessions (pooled TLS connection).
-/// Never follows a redirect (review S3): reqwest would forward custom key
-/// headers (`xi-api-key`, `token` auth) and re-post the audio to a host
-/// the user never consented to; a 3xx is a `provider_error` instead. No
-/// `Referer` either (query strings can hold dictionary terms).
+/// Never follows a redirect (review S3): reqwest would re-post the key and
+/// audio to a host the user never consented to; a 3xx is a
+/// `provider_error` instead. No `Referer` either.
 pub fn client() -> Client {
-    client_for(false)
+    client_with(true, CONNECT_TIMEOUT)
 }
 
-/// [`client`], refusing any non-https request when `https_only` (a base
-/// URL that is https never downgrades).
-pub fn client_for(https_only: bool) -> Client {
+/// [`client`] with a connect budget, refusing any non-https request when
+/// `https_only` (always, except against the test mock server).
+pub fn client_with(https_only: bool, connect: Duration) -> Client {
     Client::builder()
-        .connect_timeout(CONNECT_TIMEOUT)
+        .connect_timeout(connect)
         .pool_idle_timeout(Duration::from_secs(90))
         .user_agent(concat!("flow-clone/", env!("CARGO_PKG_VERSION")))
         .redirect(reqwest::redirect::Policy::none())
@@ -106,19 +164,6 @@ pub fn client_for(https_only: bool) -> Client {
         .https_only(https_only)
         .build()
         // Never fall back to a default client: it would follow redirects.
-        .expect("reqwest client without redirects")
-}
-
-/// A plain-http client that connects only to `addrs` for `host` (the
-/// addresses already checked as private): no second DNS lookup.
-pub fn pinned_client(host: &str, addrs: &[std::net::SocketAddr]) -> Client {
-    Client::builder()
-        .connect_timeout(CONNECT_TIMEOUT)
-        .user_agent(concat!("flow-clone/", env!("CARGO_PKG_VERSION")))
-        .redirect(reqwest::redirect::Policy::none())
-        .referer(false)
-        .resolve_to_addrs(host, addrs)
-        .build()
         .expect("reqwest client without redirects")
 }
 
@@ -158,40 +203,112 @@ pub fn send(rb: RequestBuilder, deadline: Instant) -> Result<Response, CloudErro
         .and_then(|v| v.trim().parse::<f64>().ok())
         .map(|s| (s * 1000.0) as u64);
     let body = resp.bytes().map(|b| b.to_vec()).unwrap_or_default();
-    let code = error_code(&body);
-    let quota_code = code.as_deref().is_some_and(|c| {
-        let c = c.to_ascii_lowercase();
-        ["quota", "credit", "insufficient", "payment", "billing"]
-            .iter()
-            .any(|w| c.contains(w))
-    });
-    Err(match status {
-        401 | 403 if !quota_code => CloudError::Auth,
+    Err(map_status(status, retry_after_ms, &body))
+}
+
+/// OpenRouter's error table (D28 §1.5, §2.7) → [`CloudError`]. The body is
+/// inspected here and dropped: only a sanitised code survives.
+pub fn map_status(status: u16, retry_after_ms: Option<u64>, body: &[u8]) -> CloudError {
+    let v: serde_json::Value = serde_json::from_slice(body).unwrap_or_default();
+    let code = error_code(body);
+    let lc = |p: &str| {
+        v.pointer(p)
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .to_ascii_lowercase()
+    };
+    let message = lc("/error/message");
+    let code_lc = code.as_deref().unwrap_or("").to_ascii_lowercase();
+    let has_meta = |k: &str| v.pointer(&format!("/error/metadata/{k}")).is_some();
+    let quota_word = |s: &str| {
+        [
+            "quota",
+            "credit",
+            "insufficient",
+            "payment",
+            "billing",
+            "budget",
+        ]
+        .iter()
+        .any(|w| s.contains(w))
+    };
+    match status {
+        401 => CloudError::Auth,
+        402 if code_lc.contains("in_flight") || message.contains("in_flight") => {
+            CloudError::RateLimited { retry_after_ms }
+        }
         402 => CloudError::Quota,
-        _ if quota_code && status < 500 => CloudError::Quota,
-        401 | 403 => CloudError::Auth,
+        403 if has_meta("limit_source") || quota_word(&code_lc) || message.contains("limit") => {
+            CloudError::Quota
+        }
+        403 if has_meta("reasons")
+            || has_meta("flagged_input")
+            || message.contains("moderat")
+            || message.contains("guardrail")
+            || message.contains("flagged") =>
+        {
+            CloudError::Moderation
+        }
+        403 => CloudError::Auth,
+        408 => CloudError::Timeout,
         413 => CloudError::TooLarge,
+        429 if quota_word(&code_lc) => CloudError::Quota,
         429 => CloudError::RateLimited { retry_after_ms },
-        // Redirects are never followed (S3): the provider moved, or
-        // something tries to send the key/audio elsewhere.
+        400 | 415 | 422
+            if ["format", "codec", "unsupported audio", "decode"]
+                .iter()
+                .any(|w| message.contains(w) || code_lc.contains(w)) =>
+        {
+            CloudError::UnsupportedFormat
+        }
+        // Redirects are never followed (S3).
         300..=399 => CloudError::BadRequest {
             status,
             code: Some("redirect".into()),
         },
+        503 if [
+            "routing requirement",
+            "no endpoints",
+            "no allowed providers",
+            "data policy",
+            "zero data retention",
+            "zdr",
+        ]
+        .iter()
+        .any(|w| message.contains(w)) =>
+        {
+            CloudError::NoPrivateRoute
+        }
         500..=599 => CloudError::Server(status),
+        _ if quota_word(&code_lc) => CloudError::Quota,
         _ => CloudError::BadRequest { status, code },
-    })
+    }
 }
 
-/// Read a 2xx JSON body.
+/// Read a 2xx JSON body (at most [`MAX_BODY`] bytes).
 pub fn json(resp: Response) -> Result<serde_json::Value, CloudError> {
-    let b = resp.bytes().map_err(|e| {
-        if e.is_timeout() {
+    json_capped(resp, MAX_BODY)
+}
+
+/// Read a 2xx JSON body of at most `cap` bytes; larger is `Malformed`.
+pub fn json_capped(resp: Response, cap: usize) -> Result<serde_json::Value, CloudError> {
+    use std::io::Read;
+    if resp.content_length().is_some_and(|n| n as usize > cap) {
+        return Err(CloudError::Malformed);
+    }
+    let mut b = Vec::new();
+    resp.take(cap as u64 + 1).read_to_end(&mut b).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::TimedOut
+            || e.to_string().to_ascii_lowercase().contains("timed out")
+        {
             CloudError::Timeout
         } else {
             CloudError::Malformed
         }
     })?;
+    if b.len() > cap {
+        return Err(CloudError::Malformed);
+    }
     serde_json::from_slice(&b).map_err(|_| CloudError::Malformed)
 }
 
@@ -265,11 +382,6 @@ pub fn error_code(body: &[u8]) -> Option<String> {
         ok.then_some(s)
     });
     code
-}
-
-/// `base_url` without a trailing slash, plus `path`.
-pub fn url(base: &str, path: &str) -> String {
-    format!("{}{}", base.trim().trim_end_matches('/'), path)
 }
 
 #[cfg(test)]

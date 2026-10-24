@@ -1,0 +1,14 @@
+: OPENROUTER PROCESSING
+
+data: {"id": "gen-stream-1", "choices": [{"index": 0, "delta": {"role": "assistant", "content": "Let's meet"}}]}
+
+: OPENROUTER PROCESSING
+
+data: {"id": "gen-stream-1", "choices": [{"index": 0, "delta": {"content": " at noon."}, "finish_reason": null}]}
+
+data: {"id": "gen-stream-1", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: {"id": "gen-stream-1", "choices": [], "usage": {"prompt_tokens": 980, "completion_tokens": 5, "cost": 6.1e-06}}
+
+data: [DONE]
+

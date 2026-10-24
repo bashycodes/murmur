@@ -1,0 +1,51 @@
+{
+  "allow_client": true,
+  "allow_server": true,
+  "cloud": {
+    "monthly_budget_usd": 5.0,
+    "openrouter": {
+      "cleanup": {
+        "connect_timeout_ms": 1500,
+        "consent_at_ms": 0,
+        "consent_host": "",
+        "model": "meta-llama/llama-3.3-70b-instruct",
+        "send_app_name": false,
+        "send_screen_words": false,
+        "send_surrounding_text": false,
+        "sort": "latency",
+        "timeout_ms": 2500
+      },
+      "privacy": {
+        "data_collection": "deny",
+        "zdr": true
+      },
+      "stt": {
+        "consent_at_ms": 0,
+        "consent_host": "",
+        "format_override": "",
+        "language": "",
+        "model": "openai/whisper-large-v3-turbo",
+        "send_dictionary": true,
+        "stt_path": "auto",
+        "timeout_base_ms": 6000
+      }
+    },
+    "schema": 2
+  },
+  "keep_local_warm": true,
+  "order": [
+    "server",
+    "client"
+  ],
+  "prefer": "server",
+  "server": {
+    "commit_timeout_base_ms": 3000,
+    "connect_timeout_ms": 2500,
+    "health_ttl_s": 30,
+    "host": "100.64.0.10",
+    "port": 7313,
+    "tls": false,
+    "tls_pin_sha256": null,
+    "token": "dev-token-0123456789abcdef"
+  }
+}

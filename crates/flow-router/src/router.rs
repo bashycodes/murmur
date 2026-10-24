@@ -6,7 +6,7 @@
 //! routes form the fallback chain. With `RouterConfig::order` empty the
 //! list is the legacy D17 `prefer` order, which never contains the cloud.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -17,14 +17,29 @@ use flow_core::endpoint::{EndpointState, Endpointer};
 use flow_core::learn::Candidate;
 use flow_core::{CommitResult, CommitStatus, RouteInfo, SessionPoll};
 
-use crate::cloud::{month_of, CloudProviderConfig, CloudUsage, Route, SecretString};
+use flow_core::cleanup::{Cleaner, RoutedCleaner};
+
+use crate::cloud::{
+    month_of, CleanupRoute, CloudUsage, OpenRouterConfig, Privacy, Route, SecretString, SttConfig,
+    OPENROUTER_ID,
+};
+use crate::gate::Gate;
 use crate::local::{LazyLocal, LoadNote, LocalLoader};
+use crate::migrate::MigrationReport;
 use crate::{
     effective_connect_timeout_ms, now_unix_ms, Backend, BackendError, Capabilities, CircuitStatus,
-    CloudCapabilities, CloudFactory, EngineKind, Failure, HealthReport, Prefer, RemoteFactory,
-    RouteDiag, RouteStatus, RouterConfig, RouterError, RouterPoll, ServerConfig, SessionRoute,
-    StartInfo,
+    CleanupFactory, CleanupPlan, CleanupStatus, CloudCapabilities, CloudFactory, EngineKind,
+    Failure, HealthReport, Prefer, RemoteFactory, RouteDiag, RouteStatus, RouterConfig,
+    RouterError, RouterPoll, ServerConfig, SessionRoute, StartInfo,
 };
+
+/// What the cloud STT backend is built for: the privacy + STT settings
+/// (the cleanup settings do not rebuild it).
+type SttView = (Privacy, SttConfig);
+
+fn stt_view(o: &OpenRouterConfig) -> SttView {
+    (o.privacy.clone(), o.stt.clone())
+}
 
 const BACKOFF_MIN: Duration = Duration::from_secs(5);
 const BACKOFF_MAX: Duration = Duration::from_secs(60);
@@ -34,20 +49,20 @@ const REPLAY_HEADROOM: usize = SAMPLE_RATE * 30;
 /// Cloud commit deadline cap (cloud-stt §3.3).
 const CLOUD_DEADLINE_MAX: Duration = Duration::from_secs(90);
 
-struct Circuit {
+pub(crate) struct Circuit {
     open_until: Option<Instant>,
     backoff: Duration,
-    reason: Option<Failure>,
+    pub(crate) reason: Option<Failure>,
     /// Auth/proto (server) or auth/quota (cloud) failures: open until the
     /// config (or key) changes.
-    sticky: bool,
+    pub(crate) sticky: bool,
     /// Cloud rules: quota is sticky, provider errors back off, 429 opens
     /// for 5 s.
     cloud: bool,
 }
 
 impl Circuit {
-    fn new(cloud: bool) -> Self {
+    pub(crate) fn new(cloud: bool) -> Self {
         Self {
             open_until: None,
             backoff: BACKOFF_MIN,
@@ -57,17 +72,19 @@ impl Circuit {
         }
     }
 
-    fn is_open(&self, now: Instant) -> bool {
+    pub(crate) fn is_open(&self, now: Instant) -> bool {
         self.sticky || self.open_until.is_some_and(|t| t > now)
     }
 
-    fn record_failure(&mut self, kind: Failure, now: Instant) {
+    pub(crate) fn record_failure(&mut self, kind: Failure, now: Instant) {
         match kind {
             Failure::AuthFailed | Failure::ProtoMismatch => {
                 self.sticky = true;
                 self.reason = Some(kind);
             }
-            Failure::QuotaExceeded if self.cloud => {
+            // D28: no zero-retention provider for this model: retrying
+            // cannot help until the model or privacy settings change.
+            Failure::QuotaExceeded | Failure::NoPrivateRoute if self.cloud => {
                 self.sticky = true;
                 self.reason = Some(kind);
             }
@@ -90,7 +107,7 @@ impl Circuit {
         self.reason = Some(kind);
     }
 
-    fn status(&self, now: Instant) -> CircuitStatus {
+    pub(crate) fn status(&self, now: Instant) -> CircuitStatus {
         let open = self.is_open(now);
         CircuitStatus {
             open,
@@ -124,14 +141,27 @@ struct State {
     health: Option<HealthReport>,
     /// Dictionary of the last session (`learn_edit`).
     last_dictionary: Dictionary,
-    /// Cloud keys by provider id (memory only; never serialised), each
-    /// bound to the host + adapter it was saved for (review S1/S4).
-    cloud_keys: HashMap<String, BoundKey>,
-    /// Cloud backend built for this provider config + key.
-    cloud: Option<(CloudProviderConfig, Arc<dyn Backend>)>,
+    /// The OpenRouter key (memory only; never serialised). D28: one key,
+    /// bound to the constant host, for both uses.
+    cloud_key: Option<SecretString>,
+    /// Legacy provider ids whose key now belongs to `openrouter`
+    /// (`set_cloud_key("<old id>")` from a not-yet-migrated shell).
+    key_aliases: Vec<String>,
+    /// One-time migration notice not yet acknowledged by the shell.
+    notice: Option<String>,
+    /// The last migration this router applied: restored usage counters
+    /// (`set_cloud_usage`) are migrated with it too.
+    migration: Option<MigrationReport>,
+    /// Cloud backend built for this STT view + key.
+    cloud: Option<(SttView, Arc<dyn Backend>)>,
     cloud_circuit: Circuit,
-    cloud_usage: CloudUsage,
+    /// Shared with the cleanup gate (one budget for both uses).
+    cloud_usage: Arc<Mutex<CloudUsage>>,
     cloud_adapters: Vec<String>,
+    /// The cleanup plan installed on in-process engines (D28).
+    cleanup_plan: Option<CleanupPlan>,
+    /// (privacy, cleanup config, key) the gate's cleaner was built for.
+    cleanup_built: Option<(Privacy, crate::cloud::CleanupConfig, SecretString)>,
     /// A `prewarm` is connecting.
     warming: bool,
 }
@@ -154,36 +184,33 @@ impl State {
         self.lazy.clone()
     }
 
-    /// The active cloud provider and its key, or why the cloud route must
+    /// The OpenRouter STT config and the key, or why the cloud route must
     /// be skipped (C1: consent + key + budget; `allow_cloud` and `order`
     /// are checked by the caller).
-    fn cloud_gate(&mut self) -> Result<(CloudProviderConfig, SecretString), BackendError> {
-        if self.cfg.cloud.monthly_budget_usd.is_some() {
-            self.cloud_usage.roll(&month_of(now_unix_ms()));
-        }
+    fn cloud_gate(&mut self) -> Result<(OpenRouterConfig, SecretString), BackendError> {
         self.cloud_check()
     }
 
-    /// [`State::cloud_gate`] without side effects (counters of a past month
-    /// count as zero instead of being rolled).
-    fn cloud_check(&self) -> Result<(CloudProviderConfig, SecretString), BackendError> {
+    /// [`State::cloud_gate`] (counters of a past month count as zero).
+    fn cloud_check(&self) -> Result<(OpenRouterConfig, SecretString), BackendError> {
         let not_cfg = |m: &str| BackendError::new(Failure::CloudNotConfigured, m);
-        let p = self
-            .cfg
-            .cloud
-            .active_provider()
-            .cloned()
-            .ok_or_else(|| not_cfg("no active cloud provider"))?;
-        p.validate().map_err(|e| not_cfg(&e))?;
-        if !p.consent_ok() {
-            return Err(not_cfg("no consent recorded for this provider's host"));
+        if self.cfg.cloud.is_legacy() {
+            return Err(not_cfg("cloud settings not migrated"));
+        }
+        let o = self.cfg.cloud.openrouter.clone();
+        o.validate().map_err(|e| not_cfg(&e))?;
+        if !o.stt.consent_ok() {
+            return Err(not_cfg("no consent recorded for openrouter.ai"));
         }
         let key = self
-            .key_for(&p)
-            .ok_or_else(|| not_cfg("no API key set for the cloud provider"))?;
+            .cloud_key
+            .clone()
+            .filter(|k| !k.is_empty())
+            .ok_or_else(|| not_cfg("no OpenRouter API key set"))?;
         if let Some(b) = self.cfg.cloud.monthly_budget_usd {
-            let spent = if self.cloud_usage.month == month_of(now_unix_ms()) {
-                self.cloud_usage.total_cost()
+            let u = self.cloud_usage.lk();
+            let spent = if u.month == month_of(now_unix_ms()) {
+                u.total_cost()
             } else {
                 0.0
             };
@@ -194,71 +221,8 @@ impl State {
                 ));
             }
         }
-        Ok((p, key))
+        Ok((o, key))
     }
-}
-
-/// A stored cloud key and the provider identity it may be sent to.
-struct BoundKey {
-    key: SecretString,
-    /// `(host, adapter)` it was saved for; `None` until the provider id
-    /// first appears in the config (a key set before its provider).
-    bound: Option<(String, String)>,
-}
-
-impl BoundKey {
-    fn binding(p: &CloudProviderConfig) -> (String, String) {
-        (p.host(), p.adapter.clone())
-    }
-
-    fn matches(&self, p: &CloudProviderConfig) -> bool {
-        self.bound.as_ref() == Some(&Self::binding(p))
-    }
-}
-
-impl State {
-    /// Bind unbound keys to the saved provider of the same id, and drop a
-    /// key whose provider changed host or adapter, or was removed: a key
-    /// is never sent to anything but the endpoint it was saved for (S4).
-    fn rebind_keys(&mut self) {
-        let providers = &self.cfg.cloud.providers;
-        self.cloud_keys
-            .retain(|id, k| match providers.iter().find(|p| &p.id == id) {
-                None => k.bound.is_none(),
-                Some(p) => match &k.bound {
-                    None => {
-                        k.bound = Some(BoundKey::binding(p));
-                        !p.host().is_empty()
-                    }
-                    Some(_) => k.matches(p),
-                },
-            });
-    }
-
-    /// The stored key for `p`, only when it was saved for `p`'s host and
-    /// adapter; an empty key for a keyless self-hosted server.
-    /// A key stored for the id but bound elsewhere disables the keyless
-    /// path too: the form must then be given the key (S1).
-    fn key_for(&self, p: &CloudProviderConfig) -> Option<SecretString> {
-        match self.cloud_keys.get(&p.id).filter(|k| !k.key.is_empty()) {
-            Some(k) => (!p.host().is_empty() && k.matches(p)).then(|| k.key.clone()),
-            None => keyless_ok(p).then(SecretString::default),
-        }
-    }
-}
-
-/// A self-hosted OpenAI-compatible server (speaches, LocalAI, …) on a
-/// loopback / LAN / Tailscale host may run without an API key: the
-/// openai_compat adapter then sends no `Authorization` header (review P3).
-/// Only the `custom` preset: a named service (Groq, OpenAI, …) always
-/// needs a key, wherever its base URL points; so do public hosts and the
-/// other adapters.
-fn keyless_ok(p: &CloudProviderConfig) -> bool {
-    let host = p.host();
-    p.preset == "custom"
-        && p.adapter == "openai_compat"
-        && !host.is_empty()
-        && crate::net::classify(&host).plaintext_ok()
 }
 
 /// Which configured endpoint a backend talks to: re-checked against the
@@ -266,8 +230,8 @@ fn keyless_ok(p: &CloudProviderConfig) -> bool {
 #[derive(Clone)]
 struct Ident {
     route: Route,
-    /// Cloud: the provider it was built for.
-    cloud: Option<CloudProviderConfig>,
+    /// Cloud: the STT settings it was built for.
+    cloud: Option<SttView>,
     /// Server: the server config it was built for.
     server: Option<ServerConfig>,
 }
@@ -370,12 +334,16 @@ pub struct Router {
     starting: Mutex<()>,
     remote_factory: Option<RemoteFactory>,
     cloud_factory: Option<CloudFactory>,
+    cleanup_factory: Option<CleanupFactory>,
+    /// Cloud cleanup checks (D28); its own lock, never taken while it
+    /// waits on `state`.
+    gate: Arc<Gate>,
 }
 
 /// `lock()` that survives a panic in a backend or factory called under
 /// the lock (review C8): without it one panic poisons the mutex and every
 /// later call panics too (the FFI turns that into a dead router).
-trait LockExt<T> {
+pub(crate) trait LockExt<T> {
     fn lk(&self) -> MutexGuard<'_, T>;
 }
 
@@ -412,7 +380,15 @@ impl Router {
         local: Option<Arc<dyn Backend>>,
         remote: Option<RemoteFactory>,
     ) -> Self {
+        let usage = Arc::new(Mutex::new(CloudUsage {
+            month: month_of(now_unix_ms()),
+            providers: Vec::new(),
+        }));
+        let mut cfg = cfg;
+        let rep = cfg.migrate_d28();
         Self {
+            gate: Arc::new(Gate::new(usage.clone())),
+            cleanup_factory: None,
             state: Mutex::new(State {
                 cfg,
                 local_capable: local.is_some(),
@@ -426,14 +402,16 @@ impl Router {
                 last_route: None,
                 health: None,
                 last_dictionary: Dictionary::default(),
-                cloud_keys: HashMap::new(),
+                cloud_key: None,
+                key_aliases: rep.key_from.clone().into_iter().collect(),
+                notice: rep.notice.clone(),
+                migration: rep.migrated.then(|| rep.clone()),
                 cloud: None,
                 cloud_circuit: Circuit::new(true),
-                cloud_usage: CloudUsage {
-                    month: month_of(now_unix_ms()),
-                    providers: Vec::new(),
-                },
+                cloud_usage: usage,
                 cloud_adapters: Vec::new(),
+                cleanup_plan: None,
+                cleanup_built: None,
                 warming: false,
             }),
             session: Mutex::new(None),
@@ -481,6 +459,7 @@ impl Router {
             st.local_capable = true;
         }
         st.lazy = loader.map(|l| Arc::new(LazyLocal::new(l)));
+        self.refresh_cleanup(&mut st);
     }
 
     /// The on-device engine is being loaded on demand right now. Additive.
@@ -547,109 +526,270 @@ impl Router {
         self
     }
 
+    /// Enable opt-in cloud text cleanup (D28): `f` builds the OpenRouter
+    /// cleaner (`flow_cloud::cleanup_factory`). Without it cloud cleanup is
+    /// never used, whatever the config says. Additive.
+    pub fn with_cleanup_factory(mut self, f: CleanupFactory) -> Self {
+        self.cleanup_factory = Some(f);
+        let mut st = self.state.lk();
+        self.refresh_cleanup(&mut st);
+        drop(st);
+        self
+    }
+
+    /// Change only the cleanup part of the config (D28): `allow_cloud_cleanup`,
+    /// `cleanup_order` and `cloud.openrouter.cleanup`. Errors as
+    /// `RouterConfig::validate`. Additive.
+    pub fn set_cleanup(
+        &self,
+        allow: bool,
+        order: Vec<CleanupRoute>,
+        cleanup: crate::cloud::CleanupConfig,
+    ) -> Result<(), RouterError> {
+        let mut cfg = self.config();
+        cfg.allow_cloud_cleanup = allow;
+        cfg.cleanup_order = order;
+        cfg.cloud.openrouter.cleanup = cleanup;
+        cfg.validate()?;
+        self.update_config(cfg);
+        Ok(())
+    }
+
+    /// Cloud cleanup state for the settings page (D28): whether it is on,
+    /// why a call would be refused now, the circuit, model, timeout, the
+    /// last call's usage and this month's cleanup cost. Additive.
+    pub fn cleanup_status(&self) -> CleanupStatus {
+        let (cfg, spent) = {
+            let st = self.state.lk();
+            let mut u = st.cloud_usage.lk();
+            u.roll(&month_of(now_unix_ms()));
+            (st.cfg.clone(), u.cost_for(crate::cloud::PURPOSE_CLEANUP))
+        };
+        let supported = self.cleanup_factory.is_some();
+        CleanupStatus {
+            supported,
+            enabled: supported && cfg.cloud_cleanup_wanted(),
+            order: cfg.cleanup_order.clone(),
+            consent: cfg.cloud.openrouter.cleanup.consent_ok(),
+            blocked: supported
+                .then(|| self.gate.not_ready().map(|f| f.as_str().to_string()))
+                .flatten(),
+            circuit: supported.then(|| self.gate.circuit_status()),
+            model: cfg.cloud.openrouter.cleanup.model.clone(),
+            timeout_ms: cfg.cloud.openrouter.cleanup.timeout_ms,
+            last: self.gate.last(),
+            month_cost_usd: crate::Usd(spent),
+        }
+    }
+
+    /// The pending one-time migration notice (D28 §2.1 rule 3), if any.
+    pub fn cloud_notice(&self) -> Option<String> {
+        self.state.lk().notice.clone()
+    }
+
+    /// The shell showed the notice; it is not returned again. Additive.
+    pub fn ack_cloud_notice(&self) {
+        self.state.lk().notice = None;
+    }
+
+    /// Bring the cleanup gate in line with the config, key and factory,
+    /// and (re)install the cleanup plan on every in-process engine (local,
+    /// on-demand local, cloud STT). Never on the server route.
+    fn refresh_cleanup(&self, st: &mut State) {
+        let wanted = self.cleanup_factory.is_some() && st.cfg.cloud_cleanup_wanted();
+        let o = st.cfg.cloud.openrouter.clone();
+        let key = st.cloud_key.clone().filter(|k| !k.is_empty());
+        {
+            let mut g = self.gate.st.lk();
+            let view_changed = g.cfg.privacy != o.privacy || g.cfg.cleanup != o.cleanup;
+            let key_changed = g.key != key;
+            if view_changed || key_changed {
+                g.circuit = Circuit::new(true);
+                g.epoch += 1;
+            }
+            g.wanted = wanted;
+            g.cfg = o.clone();
+            g.budget = st.cfg.cloud.monthly_budget_usd;
+            g.key = key.clone();
+            let built = key
+                .as_ref()
+                .map(|k| (o.privacy.clone(), o.cleanup.clone(), k.clone()));
+            if !wanted || built.is_none() {
+                g.inner = None;
+                st.cleanup_built = None;
+            } else if st.cleanup_built != built || g.inner.is_none() {
+                let f = self.cleanup_factory.as_ref().expect("cleanup factory");
+                g.inner = Some(f(&o, key.clone().expect("key")));
+                st.cleanup_built = built;
+            }
+        }
+        st.cleanup_plan = wanted.then(|| self.plan(&st.cfg.cleanup_order));
+        let plan = st.cleanup_plan.clone();
+        for b in [
+            st.local.clone(),
+            st.lazy.clone().map(|z| z as Arc<dyn Backend>),
+            st.cloud.as_ref().map(|(_, b)| b.clone()),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if b.kind() != EngineKind::Remote {
+                b.install_cleanup(plan.clone());
+            }
+        }
+    }
+
+    /// The cleaner an engine with built-in cleaner `base` should use for
+    /// `order` (D28 §2.5). `[cloud, …]`: cloud first, `base` on a fast
+    /// failure when `local` is listed. `[local, cloud]`: `base` when
+    /// loaded (full on-device prompt), else the cloud.
+    fn plan(&self, order: &[CleanupRoute]) -> CleanupPlan {
+        let gate: Arc<dyn Cleaner> = self.gate.clone();
+        let order = order.to_vec();
+        Arc::new(move |base: Option<Arc<dyn Cleaner>>| {
+            let local_ok = order.contains(&CleanupRoute::Local);
+            match order.first() {
+                Some(CleanupRoute::Cloud) => {
+                    let fb = base.filter(|_| local_ok);
+                    Some(match fb {
+                        Some(fb) => {
+                            Arc::new(RoutedCleaner::new(gate.clone(), Some(fb))) as Arc<dyn Cleaner>
+                        }
+                        None => gate.clone(),
+                    })
+                }
+                Some(CleanupRoute::Local) if base.is_some() => None,
+                Some(CleanupRoute::Local) => {
+                    order.contains(&CleanupRoute::Cloud).then(|| gate.clone())
+                }
+                _ => None,
+            }
+        })
+    }
+
     /// Takes effect at the next `start_session`, except (review S5): the
     /// live session's fallback hops that the new config no longer allows
     /// are dropped, and a live cloud session that is no longer allowed
     /// switches to the next allowed route at once. A changed server config
-    /// drops the cached remote backend and resets the circuit; a changed
-    /// active cloud provider does the same for the cloud route.
+    /// drops the cached remote backend and resets the circuit; changed STT
+    /// settings do the same for the cloud route, changed cleanup settings
+    /// for the cleanup circuit.
+    ///
+    /// D28: a schema-1 cloud config is migrated in memory first
+    /// (`RouterConfig::migrate_d28`; the shell should persist its own
+    /// migrated copy and move/delete keys, see `nativeMigrateCloud`), so a
+    /// removed provider is never used.
     pub fn update_config(&self, cfg: RouterConfig) {
+        let mut cfg = cfg;
+        let rep = cfg.migrate_d28();
         let mut st = self.state.lk();
+        self.note_migration(&mut st, &rep);
         if st.cfg.server != cfg.server {
             st.remote = None;
             st.circuit = Circuit::new(false);
             st.health = None;
         }
-        if st.cfg.cloud.active_provider() != cfg.cloud.active_provider() {
+        if stt_view(&st.cfg.cloud.openrouter) != stt_view(&cfg.cloud.openrouter) {
             st.cloud = None;
             st.cloud_circuit = Circuit::new(true);
         }
         st.cfg = cfg;
-        st.rebind_keys();
+        self.refresh_cleanup(&mut st);
         drop(st);
         self.recheck_active();
     }
 
-    /// Set (or with `None` forget) the API key of a cloud provider. Keys
-    /// only ever enter the router here: never through config JSON, and
-    /// nothing the router returns contains them. A changed key resets the
-    /// cloud circuit (auth/quota failures are retried). Additive (D18).
-    ///
-    /// The key is bound to the saved provider of that id (its base-URL host
-    /// and adapter); a later config that changes either drops it, and it
-    /// is never sent anywhere else (review S1/S4). Set before the provider
-    /// is in the config, it binds to the first saved one.
-    pub fn set_cloud_key(&self, provider_id: &str, key: Option<SecretString>) {
-        let bound = {
-            let st = self.state.lk();
-            st.cfg
-                .cloud
-                .providers
-                .iter()
-                .find(|p| p.id == provider_id)
-                .map(BoundKey::binding)
-        };
-        self.store_key(provider_id, key, bound);
-    }
-
-    /// `set_cloud_key` bound to exactly this provider config (host +
-    /// adapter), e.g. the form being saved. Additive (review S4).
-    pub fn set_cloud_key_for(&self, p: &CloudProviderConfig, key: Option<SecretString>) {
-        self.store_key(&p.id, key, Some(BoundKey::binding(p)));
-    }
-
-    fn store_key(
-        &self,
-        provider_id: &str,
-        key: Option<SecretString>,
-        bound: Option<(String, String)>,
-    ) {
-        let mut st = self.state.lk();
-        match key.filter(|k| !k.is_empty()) {
-            Some(key) => {
-                st.cloud_keys
-                    .insert(provider_id.to_string(), BoundKey { key, bound });
-            }
-            None => {
-                st.cloud_keys.remove(provider_id);
+    fn note_migration(&self, st: &mut State, rep: &MigrationReport) {
+        if !rep.migrated {
+            return;
+        }
+        if let Some(from) = &rep.key_from {
+            if !st.key_aliases.contains(from) {
+                st.key_aliases.push(from.clone());
             }
         }
-        if st.cloud.as_ref().is_some_and(|(p, _)| p.id == provider_id)
-            || st.cfg.cloud.active == provider_id
-        {
+        if rep.notice.is_some() {
+            st.notice = rep.notice.clone();
+        }
+        st.cloud_usage.lk().migrate_d28(rep);
+        st.migration = Some(rep.clone());
+    }
+
+    /// Set (or with `None` forget) the OpenRouter API key. Keys only ever
+    /// enter the router here: never through config JSON, and nothing the
+    /// router returns contains them. A changed key resets both cloud
+    /// circuits (auth/quota failures are retried). D28: `provider_id` must
+    /// be `"openrouter"` (or the legacy id of the migrated OpenRouter
+    /// entry); any other id is ignored, so a removed provider's key never
+    /// enters the router. The key is only ever sent to openrouter.ai.
+    pub fn set_cloud_key(&self, provider_id: &str, key: Option<SecretString>) {
+        let mut st = self.state.lk();
+        if provider_id != OPENROUTER_ID && !st.key_aliases.iter().any(|a| a == provider_id) {
+            return;
+        }
+        let key = key.filter(|k| !k.is_empty());
+        if st.cloud_key != key {
+            st.cloud_key = key;
             st.cloud = None;
             st.cloud_circuit = Circuit::new(true);
         }
+        self.refresh_cleanup(&mut st);
         drop(st);
         self.recheck_active();
     }
 
-    /// Whether a key is set for `provider_id` (Developer page). Additive.
+    /// Legacy (D18) form: the key of a schema-1 provider entry. D28: only an
+    /// `adapter == "openrouter"` entry pointing at openrouter.ai sets the
+    /// OpenRouter key; any other entry's key is ignored. Kept so shells
+    /// migrate at their own pace; new code calls `set_cloud_key("openrouter", …)`.
+    pub fn set_cloud_key_for(&self, p: &crate::CloudProviderConfig, key: Option<SecretString>) {
+        let host = p.host();
+        if p.adapter == "openrouter" && (host.is_empty() || host == crate::cloud::OPENROUTER_HOST) {
+            self.set_cloud_key(OPENROUTER_ID, key);
+        }
+    }
+
+    /// Run `f` with the OpenRouter key (or `None`), for flow-cloud calls
+    /// to openrouter.ai that are not dictations: the model catalogue's
+    /// account filter and the key-info page (`nativeCloudKeyInfo`). The
+    /// key is lent, never returned. Additive (D28).
+    pub fn with_cloud_key<R>(&self, f: impl FnOnce(Option<&SecretString>) -> R) -> R {
+        let key = self.state.lk().cloud_key.clone();
+        f(key.as_ref().filter(|k| !k.is_empty()))
+    }
+
+    /// Whether a key is set for `provider_id` (`"openrouter"` or its
+    /// migrated legacy id). Additive.
     pub fn has_cloud_key(&self, provider_id: &str) -> bool {
-        self.state
-            .lk()
-            .cloud_keys
-            .get(provider_id)
-            .is_some_and(|k| !k.key.is_empty())
+        let st = self.state.lk();
+        (provider_id == OPENROUTER_ID || st.key_aliases.iter().any(|a| a == provider_id))
+            && st.cloud_key.as_ref().is_some_and(|k| !k.is_empty())
     }
 
     /// This month's cloud counters (the shell persists them). Additive.
     pub fn cloud_usage(&self) -> CloudUsage {
-        let mut st = self.state.lk();
-        st.cloud_usage.roll(&month_of(now_unix_ms()));
-        st.cloud_usage.clone()
+        let st = self.state.lk();
+        let mut u = st.cloud_usage.lk();
+        u.roll(&month_of(now_unix_ms()));
+        u.clone()
     }
 
     /// Restore persisted counters at startup; counters of another month are
     /// dropped. Additive.
     pub fn set_cloud_usage(&self, mut usage: CloudUsage) {
         usage.roll(&month_of(now_unix_ms()));
-        self.state.lk().cloud_usage = usage;
+        let st = self.state.lk();
+        // Counters persisted before D28 carry the old provider ids.
+        if let Some(rep) = &st.migration {
+            usage.migrate_d28(rep);
+        }
+        *st.cloud_usage.lk() = usage;
     }
 
     /// Developer "Reset counters". Additive.
     pub fn reset_cloud_usage(&self) {
-        self.state.lk().cloud_usage = CloudUsage {
+        let st = self.state.lk();
+        *st.cloud_usage.lk() = CloudUsage {
             month: month_of(now_unix_ms()),
             providers: Vec::new(),
         };
@@ -665,6 +805,7 @@ impl Router {
             st.local_capable = true;
         }
         st.local = local;
+        self.refresh_cleanup(&mut st);
     }
 
     pub fn config(&self) -> RouterConfig {
@@ -985,18 +1126,16 @@ impl Router {
         }
     }
 
-    /// Developer "Test provider" (D18): transcribe the bundled test clip
-    /// with an (unsaved) provider config. `key: None` = the stored key for
-    /// `p.id`, **only** when `p` has the host and adapter that key was
-    /// saved for; for a changed / new form the key must be passed (else
-    /// `cloud_not_configured`, review S1). Blocking; never panics. Does not
-    /// need consent (the clip is public-domain audio, not the user's). A
-    /// success for the active provider closes the cloud circuit.
-    pub fn probe_cloud(&self, p: &CloudProviderConfig, key: Option<SecretString>) -> HealthReport {
+    /// Developer "Test" (D18/D28): transcribe the bundled test clip with
+    /// an (unsaved) OpenRouter config. `key: None` = the stored key.
+    /// Blocking; never panics. Does not need consent (the clip is
+    /// public-domain audio, not the user's). A success with the saved STT
+    /// settings closes the cloud circuit.
+    pub fn probe_cloud(&self, o: &OpenRouterConfig, key: Option<SecretString>) -> HealthReport {
         let fail = |k: Failure, m: &str| {
             let mut h = HealthReport::failed(EngineKind::Cloud, &BackendError::new(k, m));
-            h.provider = Some(p.id.clone());
-            h.model = Some(p.model.clone());
+            h.provider = Some(OPENROUTER_ID.into());
+            h.model = Some(o.stt.model.clone());
             h
         };
         let Some(f) = &self.cloud_factory else {
@@ -1005,26 +1144,20 @@ impl Router {
                 "this build has no cloud support",
             );
         };
-        if let Err(e) = p.validate() {
+        if let Err(e) = o.validate() {
             return fail(Failure::CloudNotConfigured, &e);
         }
         let typed = key.filter(|k| !k.is_empty());
-        let key = typed.or_else(|| self.state.lk().key_for(p));
-        let Some(key) = key.filter(|k| !k.is_empty() || keyless_ok(p)) else {
-            let stored = self.has_cloud_key(&p.id);
-            let msg = if stored {
-                "enter the API key: the stored key is only sent to the saved host"
-            } else {
-                "no API key"
-            };
-            return fail(Failure::CloudNotConfigured, msg);
+        let key = typed.or_else(|| self.state.lk().cloud_key.clone());
+        let Some(key) = key.filter(|k| !k.is_empty()) else {
+            return fail(Failure::CloudNotConfigured, "no API key");
         };
-        let mut h = f(p, key).probe();
+        let mut h = f(o, key).probe();
         h.engine = EngineKind::Cloud;
-        h.provider.get_or_insert_with(|| p.id.clone());
-        h.model.get_or_insert_with(|| p.model.clone());
+        h.provider.get_or_insert_with(|| OPENROUTER_ID.into());
+        h.model.get_or_insert_with(|| o.stt.model.clone());
         let mut st = self.state.lk();
-        if st.cfg.cloud.active_provider() == Some(p) {
+        if stt_view(&st.cfg.cloud.openrouter) == stt_view(o) {
             if h.ok {
                 st.cloud_circuit = Circuit::new(true);
             } else if let Some(k) = h.error.as_deref().and_then(failure_from_str) {
@@ -1046,6 +1179,10 @@ impl Router {
                 .cloud_factory
                 .is_some()
                 .then(|| st.cloud_circuit.status(now)),
+            cleanup_circuit: self
+                .cleanup_factory
+                .is_some()
+                .then(|| self.gate.circuit_status()),
         }
     }
 
@@ -1054,6 +1191,7 @@ impl Router {
         let mut st = self.state.lk();
         st.circuit = Circuit::new(false);
         st.cloud_circuit = Circuit::new(true);
+        self.gate.reset_circuit();
     }
 
     // ---- internals --------------------------------------------------------
@@ -1085,17 +1223,21 @@ impl Router {
     fn cloud_for(
         &self,
         st: &mut State,
-        p: CloudProviderConfig,
+        o: OpenRouterConfig,
         key: SecretString,
     ) -> Arc<dyn Backend> {
+        let view = stt_view(&o);
         if let Some((c, b)) = &st.cloud {
-            if *c == p {
+            if *c == view {
                 return b.clone();
             }
         }
         let f = self.cloud_factory.as_ref().expect("cloud factory");
-        let b = f(&p, key);
-        st.cloud = Some((p, b.clone()));
+        let b = f(&o, key);
+        // The cloud STT backend runs a client-side pipeline: it cleans with
+        // the same plan as the local engine (D28 §2.5 table).
+        b.install_cleanup(st.cleanup_plan.clone());
+        st.cloud = Some((view, b.clone()));
         b
     }
 
@@ -1177,9 +1319,9 @@ impl Router {
                 if st.cloud_circuit.sticky {
                     return None;
                 }
-                let (p, key) = st.cloud_gate().ok()?;
-                ident.cloud = Some(p.clone());
-                (EngineKind::Cloud, self.cloud_for(st, p, key))
+                let (o, key) = st.cloud_gate().ok()?;
+                ident.cloud = Some(stt_view(&o));
+                (EngineKind::Cloud, self.cloud_for(st, o, key))
             }
         };
         Some(Hop {
@@ -1203,9 +1345,7 @@ impl Router {
             Route::Cloud => {
                 !st.cloud_circuit.sticky
                     && match (st.cloud_gate(), id.cloud.as_ref()) {
-                        (Ok((p, _)), Some(c)) => {
-                            p.id == c.id && BoundKey::binding(&p) == BoundKey::binding(c)
-                        }
+                        (Ok((o, _)), Some(c)) => stt_view(&o) == *c,
                         _ => false,
                     }
             }
@@ -1487,12 +1627,12 @@ impl Router {
         i: usize,
         route: &mut RouteInfo,
     ) -> Try {
-        let (p, key) = match st.cloud_gate() {
+        let (o, key) = match st.cloud_gate() {
             Ok(x) => x,
             Err(e) => return Try::Skip(e),
         };
-        route.provider = Some(p.id.clone());
-        route.model = Some(p.model.clone());
+        route.provider = Some(OPENROUTER_ID.into());
+        route.model = Some(o.stt.model.clone());
         if st.cloud_circuit.is_open(Instant::now()) && self.viable_after(st, routes, i) {
             return Try::Skip(BackendError::new(
                 Failure::CircuitOpen,
@@ -1506,7 +1646,7 @@ impl Router {
                 "not retried until the cloud key or provider changes",
             ));
         }
-        let cloud = self.cloud_for(st, p, key);
+        let cloud = self.cloud_for(st, o, key);
         match cloud.start_session(cfg) {
             Ok(i) => Try::Started(cloud, i.queued),
             Err(e) => Try::Skip(e),
@@ -1590,8 +1730,15 @@ impl Router {
         let st = self.state.lk();
         let ms = match kind {
             EngineKind::Cloud => {
-                let base = st.cloud.as_ref().map_or(6000, |(p, _)| p.timeout_base_ms);
-                let d = Duration::from_millis(base + audio_ms / 2 + cfg.llm_timeout_ms);
+                let base = st.cloud.as_ref().map_or(6000, |(v, _)| v.1.timeout_base_ms);
+                // D28: the cloud cleanup has its own timeout.
+                let llm = if st.cleanup_plan.is_some() {
+                    cfg.llm_timeout_ms
+                        .max(st.cfg.cloud.openrouter.cleanup.timeout_ms)
+                } else {
+                    cfg.llm_timeout_ms
+                };
+                let d = Duration::from_millis(base + audio_ms / 2 + llm);
                 return Instant::now() + d.min(CLOUD_DEADLINE_MAX);
             }
             _ => st.cfg.server.commit_timeout_base_ms + audio_ms * 3 / 10 + cfg.llm_timeout_ms,
@@ -1618,8 +1765,9 @@ impl Router {
                     route.cost_estimated = rr.cost_estimated;
                 }
                 if let (Some(id), Some(ms)) = (route.provider.clone(), route.billed_audio_ms) {
-                    st.cloud_usage.roll(&month_of(now_unix_ms()));
-                    st.cloud_usage.record(
+                    let mut u = st.cloud_usage.lk();
+                    u.roll(&month_of(now_unix_ms()));
+                    u.record(
                         &id,
                         ms,
                         route.cost_usd,
@@ -1639,6 +1787,12 @@ impl Router {
                 }
             }
         }
+        let engine = if a.kind == EngineKind::Remote {
+            "server"
+        } else {
+            "local"
+        };
+        llm_into_route(&r, &mut route, engine);
         r.route = Some(route);
         r
     }
@@ -1789,9 +1943,9 @@ impl Router {
         if hop.kind != EngineKind::Cloud {
             a.route.provider = None;
             a.route.model = None;
-        } else if let Some(p) = &hop.ident.cloud {
-            a.route.provider = Some(p.id.clone());
-            a.route.model = Some(p.model.clone());
+        } else if let Some(v) = &hop.ident.cloud {
+            a.route.provider = Some(OPENROUTER_ID.into());
+            a.route.model = Some(v.1.model.clone());
         }
         a.route.engine = hop.kind.as_str().into();
         // Local never fails over: no buffer to keep (review C9).
@@ -1927,8 +2081,8 @@ impl Active {
             // Failover in progress: name the route being switched to.
             return Some(SessionRoute {
                 engine: *kind,
-                provider: id.cloud.as_ref().map(|p| p.id.clone()),
-                model: id.cloud.as_ref().map(|p| p.model.clone()),
+                provider: id.cloud.as_ref().map(|_| OPENROUTER_ID.to_string()),
+                model: id.cloud.as_ref().map(|v| v.1.model.clone()),
                 server: id.server.as_ref().map(ServerConfig::addr),
                 fallback: self.route.fallback.clone(),
             });
@@ -2006,7 +2160,9 @@ impl Active {
 fn finish(r: Result<CommitResult, BackendError>, route: &RouteInfo) -> CommitResult {
     match r {
         Ok(mut r) => {
-            r.route = Some(route.clone());
+            let mut route = route.clone();
+            llm_into_route(&r, &mut route, "local");
+            r.route = Some(route);
             r
         }
         Err(e) => error_result(e.to_string(), Some(route.clone())),
@@ -2025,7 +2181,21 @@ fn far_deadline() -> Instant {
     Instant::now() + Duration::from_secs(24 * 3600)
 }
 
-fn failure_from_str(s: &str) -> Option<Failure> {
+/// Copy the LLM step's engine / model / cost into the route (D28 D21
+/// fields). A server-cleaned result is reported as `"server"`.
+fn llm_into_route(r: &CommitResult, route: &mut RouteInfo, default_engine: &str) {
+    if let Some(l) = r.llm.as_ref().filter(|l| l.engine.is_some()) {
+        route.llm_engine = Some(if default_engine == "server" {
+            "server".into()
+        } else {
+            l.engine.clone().unwrap_or_default()
+        });
+        route.llm_model = l.model.clone();
+        route.llm_cost_usd = l.cost_usd;
+    }
+}
+
+pub(crate) fn failure_from_str(s: &str) -> Option<Failure> {
     serde_json::from_value(serde_json::Value::String(s.into())).ok()
 }
 

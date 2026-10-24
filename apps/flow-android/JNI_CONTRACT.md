@@ -93,22 +93,64 @@ in a wiped-on-drop `SecretString` and never logs or returns them (C3).
 
 | Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | C ABI | Semantics |
 |---|---|---|---|---|
-| `nativeSetCloudKey(h: Long, providerId: String, key: String?): Boolean` | `(JLjava/lang/String;Ljava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudKey` | `flow_set_cloud_key` | `Router::set_cloud_key`; `null` / `""` forgets it. Call after `nativeOpenRouter` for every stored provider and on Save / Delete. `false` + kind `error` for a core handle |
-| `nativeSetCloudKeyFor(h: Long, providerJson: String, key: String?): Boolean` | `(JLjava/lang/String;Ljava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudKeyFor` | `flow_set_cloud_key_for` | 2026-10-22, review S4: like `nativeSetCloudKey`, bound to exactly this `CloudProviderConfig` (base-URL host + adapter). Use it on Save with the provider being saved. `false` + `bad_config` (bad JSON) / `error` (core handle) |
-| `nativeProbeCloud(h: Long, providerJson: String, key: String?): String` | `(JLjava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeProbeCloud` | `flow_probe_cloud` | Blocking "Test provider": `HealthReport` (`engine:"cloud"`, `provider`, `model`, `transcript`, `latency_ms`, `cost_usd`) for an unsaved `CloudProviderConfig`; uploads the bundled 3 s JFK clip. `key` null = the stored key, **only** if `providerJson` has the host + adapter that key was saved for (review S1); a new or edited form must pass the typed key (else `ok:false, error:"cloud_not_configured"`, message "enter the API key…"). `h = 0` = temporary router (key required). Without `cloud`: `ok:false, error:"cloud_not_configured"` |
-| `nativeCloudUsage(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCloudUsage` | `flow_cloud_usage` | `CloudUsage` JSON `{month:"YYYY-MM", providers:[{provider_id, requests, billed_audio_ms, cost_usd, cost_estimated}]}`; Kotlin persists it after each commit |
+| `nativeSetCloudKey(h: Long, providerId: String, key: String?): Boolean` | `(JLjava/lang/String;Ljava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudKey` | `flow_set_cloud_key` | `Router::set_cloud_key`; `null` / `""` forgets it. D28: `providerId` = `"openrouter"` (the migrated legacy OpenRouter id is accepted as an alias; any other id is ignored and returns `true`). Call after `nativeOpenRouter` and on Save / Delete. `false` + kind `error` for a core handle |
+| `nativeSetCloudKeyFor(h: Long, providerJson: String, key: String?): Boolean` | `(JLjava/lang/String;Ljava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudKeyFor` | `flow_set_cloud_key_for` | D28 (kept for ABI): `providerJson` = an `OpenRouterConfig` (or a legacy OpenRouter `CloudProviderConfig`) → sets the OpenRouter key; a legacy entry of another adapter is ignored (`true`). Prefer `nativeSetCloudKey(h,"openrouter",key)`. `false` + `bad_config` (bad JSON) / `error` (core handle) |
+| `nativeProbeCloud(h: Long, providerJson: String, key: String?): String` | `(JLjava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeProbeCloud` | `flow_probe_cloud` | Blocking "Test provider": `HealthReport` (`engine:"cloud"`, `provider`, `model`, `transcript`, `latency_ms`, `cost_usd`) for an unsaved `OpenRouterConfig` (D28; the STT part is used; a legacy OpenRouter `CloudProviderConfig` is converted, any other adapter → `cloud_not_configured`, nothing sent); uploads the bundled 3 s JFK clip to openrouter.ai. `key` null = the stored key. `h = 0` = temporary router (key required). Without `cloud`: `ok:false, error:"cloud_not_configured"` |
+| `nativeCloudUsage(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCloudUsage` | `flow_cloud_usage` | `CloudUsage` JSON `{month:"YYYY-MM", providers:[{provider_id, purpose?, requests, billed_audio_ms, cost_usd, cost_estimated}]}` (D28: `purpose` `"stt"` (also absent) / `"cleanup"`; one budget covers both); Kotlin persists it after each commit |
 | `nativeSetCloudUsage(h: Long, usageJson: String): Boolean` | `(JLjava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudUsage` | `flow_set_cloud_usage` | Restore persisted counters after `nativeOpenRouter` (another month's are dropped). `false` + `bad_config` on bad JSON |
 | `nativeResetCloudUsage(h: Long)` | `(J)V` | `Java_dev_flowclone_core_NativeFlowCore_nativeResetCloudUsage` | `flow_reset_cloud_usage` | Developer "Reset counters" |
 | `nativeCloudCapabilities(): String` | `()Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCloudCapabilities` | `flow_cloud_capabilities` | `{cloud, adapters}` of this build; must match `BuildConfig.CAP_CLOUD` (Developer page warns otherwise) |
-| `nativeCloudPresets(): String` | `()Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCloudPresets` | `flow_cloud_presets` | `flow_cloud::presets()` (`CloudProviderConfig[]` without id / consent; `[]` without `cloud`) |
+| `nativeCloudPresets(): String` | `()Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCloudPresets` | `flow_cloud_presets` | D28: exactly one entry (OpenRouter, id `openrouter`, default model); `[]` without `cloud`. Kept for ABI; the model list comes from `nativeCloudCatalog` |
 
 Existing natives are unchanged: `nativeOpenRouter` / `nativeUpdateRouter` accept `allow_cloud`,
 `order` and `cloud` (a cloud-only config counts as an engine in a `cloud` build);
 `nativeRouteStatus` adds `cloud_circuit`; `nativeCommit`'s `route` may be `engine:"cloud"` with
 `provider`, `model`, `billed_audio_ms`, `cost_usd`, `cost_estimated`. New `route.fallback` values:
 `cloud_not_configured`, `budget_exceeded`, `quota_exceeded`, `provider_error`. Host test:
-`cargo test -p flow-ffi --features jni,cloud --test jni_cloud` (real JVM, real router, flow-cloud's
-mock provider: no key → device, key → cloud, 401 → `auth_failed` + full replay, key never echoed).
+`cargo test -p flow-ffi --features jni,cloud --test jni_cloud` (real JVM, real router; D28: offline, see
+"OpenRouter" below).
+
+## OpenRouter (D28, docs/proposals/openrouter-only-cloud.md) — additive symbols
+
+OpenRouter is the only cloud provider, for STT and for the opt-in text cleanup. The router
+config's `cloud` is schema 2 (`cloud.openrouter.{privacy,stt,cleanup}`, plus `allow_cloud_cleanup`
+and `cleanup_order` at the top level; `crates/flow-router/fixtures/router_config_cloud.json`). A
+schema-1 config given to `nativeOpenRouter` / `nativeUpdateRouter` is migrated in memory, so a
+removed provider is never used. The shell still runs `nativeMigrateCloud` once to persist the
+result and fix its key store. Every flavour exports these symbols. Without `cloud`, catalogue /
+key info answer `[]` / `{"error":"cloud_not_configured"}` and `nativeCleanupStatus` says
+`supported:false`.
+
+| Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | C ABI | Semantics |
+|---|---|---|---|---|
+| `nativeMigrateCloud(devJson: String): String?` | `(Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeMigrateCloud` | `flow_migrate_cloud` | Pure, no handle. `{"config": RouterConfig, "report": {migrated, key_from, key_to, delete_keys[], removed[{id,name,preset,adapter}], cloud_disabled, model_from, model_to, notice}}`. Persist `config`, move `flow_cloud_<key_from>` → `flow_cloud_<key_to>`, delete `flow_cloud_<id>` for each `delete_keys`, show `notice` once. Idempotent (`migrated:false` for schema 2). `null` + `bad_config` on bad JSON. Fixtures: `crates/flow-router/fixtures/migration/` |
+| `nativeSetCleanup(h: Long, cleanupJson: String): Boolean` | `(JLjava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetCleanup` | `flow_set_cleanup` | Merge `{"allow_cloud_cleanup"?: bool, "cleanup_order"?: ["cloud","local"], "cleanup"?: CleanupConfig}` (missing = unchanged) and apply like `nativeUpdateRouter`. The consent dialog writes `cleanup.consent_host:"openrouter.ai"` + `consent_at_ms`. It is separate from STT consent. `false` + `bad_config` (bad JSON, timeout outside 800-8000, invalid model id, …) / `error` (core handle) |
+| `nativeCleanupStatus(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCleanupStatus` | `flow_cleanup_status` | `CleanupStatus` `{supported, enabled, order, consent, blocked?, circuit?, model, timeout_ms, last?: {engine, model, cost_usd, cost_estimated, generation_id, ttft_ms, latency_ms}, month_cost_usd}` (`fixtures/cleanup_status.json`). `blocked` = why a call now would be refused (`cloud_cleanup_not_configured`, `circuit_open`, `auth_failed`, `quota_exceeded`, `no_private_route`). The budget is checked per call, not here |
+| `nativeCloudNotice(h: Long): String?` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCloudNotice` | `flow_cloud_notice` | The one-time migration notice of a legacy config this router migrated, else `null` |
+| `nativeAckCloudNotice(h: Long)` | `(J)V` | `Java_dev_flowclone_core_NativeFlowCore_nativeAckCloudNotice` | `flow_ack_cloud_notice` | The notice was shown; `nativeCloudNotice` returns `null` afterwards |
+| `nativeSetCloudModel(h: Long, use: String, model: String): Boolean` | `(JLjava/lang/String;Ljava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudModel` | `flow_set_cloud_model` | `use` = `"stt"` / `"cleanup"`. Any id matching `^[a-z0-9._~/-]+(:[a-z]+)*$`, ≤ 128 chars (free text allowed, e.g. `:nitro`). Changing the model resets that use's sticky circuit. `false` + `bad_config` on an invalid id / use |
+| `nativeSetCloudCacheDir(dir: String)` | `(Ljava/lang/String;)V` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudCacheDir` | `flow_set_cloud_cache_dir` | Call once at start with `cacheDir`. The catalogue cache is `<dir>/openrouter-catalog.json` (24 h TTL). No network |
+| `nativeCloudCatalog(h: Long, use: String, query: String, filtersJson: String): String` | `(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCloudCatalog` | `flow_cloud_catalog` (no `h`) | Picker rows (JSON array: id, name, price label, badges, …; flow-cloud `PickerRow`) for `use`, searched by id/name. `filtersJson` `{zdr_only (default true), fast_only, free_only, stt_path}`. Served from memory, the cache or the baked snapshot; **no network**. `h` is unused (0 ok). `[]` for an unknown use / without `cloud` |
+| `nativeRefreshCloudCatalog(h: Long, force: Boolean): String` | `(JZ)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeRefreshCloudCatalog` | `flow_refresh_cloud_catalog` | **Blocking** (≤ 10 s, off Main). Fetches `/models` + `/endpoints/zdr` (+ `/models/user` with the stored key) unless the cache is fresh or `force`. Returns `{source, fetched_at_ms, snapshot_date, models, stt, cleanup, error?}`; on `error` the previous catalogue stays. Sends no user data. Call it only from the OpenRouter page or while a cloud use is on |
+| `nativeCloudKeyInfo(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCloudKeyInfo` | `flow_cloud_key_info` | **Blocking** "Check key": `GET /api/v1/key` with the stored key → `{label, limit, limit_remaining, limit_reset, usage, usage_daily, usage_weekly, usage_monthly, is_free_tier, free_requests_remaining, checked_at_ms, warn_no_limit}` (never the key), or `{"error": code}` (`cloud_not_configured` without a key / cloud, `auth_failed`, …) |
+
+Behaviour (router, all flavours with `cloud`):
+* Cloud cleanup runs only when the build supports it, `allow_cloud_cleanup` is on, `cloud` is
+  in `cleanup_order`, cleanup consent and a key exist, its circuit is closed, and the budget
+  allows the catalogue estimate. This is re-checked on **every** call, so revoking consent
+  mid-dictation sends nothing. A refusal falls back to the on-device LLM (`["cloud","local"]`)
+  or to the deterministic text; `fallback_reason` is then `llm_error: <code>`.
+* Hard timeout `cleanup.timeout_ms` (default 2500): the commit returns the deterministic text
+  (`llm_timeout`) and the stream is cancelled. The **server route never uses cloud cleanup**.
+* By default only the transcript, the app category, the style and the dictionary leave the
+  device. `send_surrounding_text` / `send_screen_words` / `send_app_name` add their item.
+* `nativeCommit`'s `route` gains `llm_engine` (`local`/`cloud`/`server`), `llm_model`,
+  `llm_cost_usd`. The result gains `llm` (`CleanUsage`). `nativeRouteStatus` gains
+  `cleanup_circuit`. New `route.fallback` / `blocked` values: `no_private_route`,
+  `cloud_cleanup_not_configured`.
+* Host test: `cargo test -p flow-ffi --features jni,cloud --test jni_cloud` (real JVM, offline:
+  migration, aliasing, catalogue, cleanup gate). The network paths are tested in
+  `flow-contract-tests` against the OpenRouter mock.
 
 ## Live route + hands-free endpointing (2026-10-22) — additive
 
@@ -148,7 +190,7 @@ Kotlin must never call a **blocking** native on the main thread.
 | `nativeCommit` (ASR + LLM; server/cloud round trip) | `nativeCancel` (also aborts a commit running on another thread, see below) |
 | `nativeProbeServer`, `nativeProbeRouter`, `nativeProbeCloud`, `nativePrewarm` (D24) | `nativeRouteStatus`, `nativeCapabilities`, `nativeCloudCapabilities`, `nativeCloudPresets`, `nativeLastError*` |
 | `nativeUnload` (joins the engine worker; waits for a running commit) | `nativeOpenRouter`, `nativeUpdateRouter`, `nativeResetCircuit`, `nativeSetLocalLoader` (no network; the load itself runs later on a router thread) |
-| | `nativeSetCloudKey`, `nativeSetCloudKeyFor`, `nativeCloudUsage`, `nativeSetCloudUsage`, `nativeResetCloudUsage` |
+| `nativeRefreshCloudCatalog`, `nativeCloudKeyInfo` (D28, network) | `nativeSetCloudKey`, `nativeSetCloudKeyFor`, `nativeCloudUsage`, `nativeSetCloudUsage`, `nativeResetCloudUsage`, `nativeMigrateCloud`, `nativeSetCleanup`, `nativeCleanupStatus`, `nativeCloudNotice`, `nativeAckCloudNotice`, `nativeSetCloudModel`, `nativeSetCloudCacheDir`, `nativeCloudCatalog` |
 
 Session semantics (2026-10-22, review fixes):
 

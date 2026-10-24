@@ -1,0 +1,242 @@
+{
+ "_fixture": "trimmed from docs/proposals/data snapshots 2026-10-24",
+ "data": [
+  {
+   "name": "Azure | microsoft/mai-transcribe-2-20260903",
+   "model_id": "microsoft/mai-transcribe-2",
+   "tag": "azure",
+   "pricing": {
+    "prompt": "0.1",
+    "completion": "0",
+    "discount": 0
+   },
+   "provider_name": "Azure"
+  },
+  {
+   "name": "Google | google/gemini-3.5-flash-lite-20260721",
+   "model_id": "google/gemini-3.5-flash-lite",
+   "tag": "google-vertex/global/priority",
+   "pricing": {
+    "prompt": "0.00000054",
+    "completion": "0.0000045",
+    "image": "0.00000054",
+    "audio": "0.00000054",
+    "input_audio_cache": "0.000000054",
+    "web_search": "0.014",
+    "internal_reasoning": "0.0000045",
+    "input_cache_read": "0.000000054",
+    "input_cache_write": "0.00000015",
+    "discount": 0
+   },
+   "provider_name": "Google"
+  },
+  {
+   "name": "Google | google/gemini-3.5-flash-lite-20260721",
+   "model_id": "google/gemini-3.5-flash-lite",
+   "tag": "google-vertex/global/flex",
+   "pricing": {
+    "prompt": "0.00000015",
+    "completion": "0.00000125",
+    "image": "0.00000015",
+    "audio": "0.00000015",
+    "input_audio_cache": "0.000000015",
+    "web_search": "0.014",
+    "internal_reasoning": "0.00000125",
+    "input_cache_read": "0.000000015",
+    "input_cache_write": "0.0000000416666666666667",
+    "discount": 0
+   },
+   "provider_name": "Google"
+  },
+  {
+   "name": "Google | google/gemini-3.5-flash-lite-20260721",
+   "model_id": "google/gemini-3.5-flash-lite",
+   "tag": "google-vertex/eu",
+   "pricing": {
+    "prompt": "0.00000033",
+    "completion": "0.00000275",
+    "image": "0.00000033",
+    "audio": "0.00000033",
+    "input_audio_cache": "0.000000033",
+    "web_search": "0.014",
+    "internal_reasoning": "0.00000275",
+    "input_cache_read": "0.000000033",
+    "input_cache_write": "0.0000000833333333333333",
+    "discount": 0
+   },
+   "provider_name": "Google"
+  },
+  {
+   "name": "DeepInfra | openai/whisper-large-v3-turbo",
+   "model_id": "openai/whisper-large-v3-turbo",
+   "tag": "deepinfra/us",
+   "pricing": {
+    "prompt": "0.00000333",
+    "completion": "0",
+    "discount": 0
+   },
+   "provider_name": "DeepInfra"
+  },
+  {
+   "name": "Google | google/gemini-3.5-flash-lite-20260721",
+   "model_id": "google/gemini-3.5-flash-lite",
+   "tag": "google-vertex/us",
+   "pricing": {
+    "prompt": "0.00000033",
+    "completion": "0.00000275",
+    "image": "0.00000033",
+    "audio": "0.00000033",
+    "input_audio_cache": "0.000000033",
+    "web_search": "0.014",
+    "internal_reasoning": "0.00000275",
+    "input_cache_read": "0.000000033",
+    "input_cache_write": "0.0000000833333333333333",
+    "discount": 0
+   },
+   "provider_name": "Google"
+  },
+  {
+   "name": "CoreWeave | meta-llama/llama-3.3-70b-instruct",
+   "model_id": "meta-llama/llama-3.3-70b-instruct",
+   "tag": "coreweave/fp16",
+   "pricing": {
+    "prompt": "0.00000071",
+    "completion": "0.00000071",
+    "input_cache_read": "0.00000071",
+    "discount": 0
+   },
+   "provider_name": "CoreWeave"
+  },
+  {
+   "name": "Google | google/gemini-3.5-flash-lite-20260721",
+   "model_id": "google/gemini-3.5-flash-lite",
+   "tag": "google-vertex/global",
+   "pricing": {
+    "prompt": "0.0000003",
+    "completion": "0.0000025",
+    "image": "0.0000003",
+    "audio": "0.0000003",
+    "input_audio_cache": "0.00000003",
+    "web_search": "0.014",
+    "internal_reasoning": "0.0000025",
+    "input_cache_read": "0.00000003",
+    "input_cache_write": "0.0000000833333333333333",
+    "discount": 0
+   },
+   "provider_name": "Google"
+  },
+  {
+   "name": "Groq | openai/whisper-large-v3-turbo",
+   "model_id": "openai/whisper-large-v3-turbo",
+   "tag": "groq",
+   "pricing": {
+    "prompt": "0.0000111111111111",
+    "completion": "0",
+    "discount": 0
+   },
+   "provider_name": "Groq"
+  },
+  {
+   "name": "AkashML | meta-llama/llama-3.3-70b-instruct",
+   "model_id": "meta-llama/llama-3.3-70b-instruct",
+   "tag": "akashml/fp8",
+   "pricing": {
+    "prompt": "0.0000002",
+    "completion": "0.00000052",
+    "input_cache_read": "0.0000001",
+    "discount": 0
+   },
+   "provider_name": "AkashML"
+  },
+  {
+   "name": "SambaNova | meta-llama/llama-3.3-70b-instruct",
+   "model_id": "meta-llama/llama-3.3-70b-instruct",
+   "tag": "sambanova-turbo",
+   "pricing": {
+    "prompt": "0.00000045",
+    "completion": "0.0000009",
+    "discount": 0.25
+   },
+   "provider_name": "SambaNova"
+  },
+  {
+   "name": "Google | meta-llama/llama-3.3-70b-instruct",
+   "model_id": "meta-llama/llama-3.3-70b-instruct",
+   "tag": "google-vertex/us-central1",
+   "pricing": {
+    "prompt": "0.00000072",
+    "completion": "0.00000072",
+    "discount": 0
+   },
+   "provider_name": "Google"
+  },
+  {
+   "name": "Google | meta-llama/llama-3.3-70b-instruct",
+   "model_id": "meta-llama/llama-3.3-70b-instruct",
+   "tag": "google-vertex",
+   "pricing": {
+    "prompt": "0.00000072",
+    "completion": "0.00000072",
+    "discount": 0
+   },
+   "provider_name": "Google"
+  },
+  {
+   "name": "Parasail | meta-llama/llama-3.3-70b-instruct",
+   "model_id": "meta-llama/llama-3.3-70b-instruct",
+   "tag": "parasail/fp8",
+   "pricing": {
+    "prompt": "0.00000022",
+    "completion": "0.0000005",
+    "input_cache_read": "0.00000011",
+    "discount": 0
+   },
+   "provider_name": "Parasail"
+  },
+  {
+   "name": "Groq | meta-llama/llama-3.3-70b-instruct",
+   "model_id": "meta-llama/llama-3.3-70b-instruct",
+   "tag": "groq",
+   "pricing": {
+    "prompt": "0.00000059",
+    "completion": "0.00000079",
+    "input_cache_read": "0.000000295",
+    "discount": 0
+   },
+   "provider_name": "Groq"
+  },
+  {
+   "name": "Cloudflare | meta-llama/llama-3.3-70b-instruct",
+   "model_id": "meta-llama/llama-3.3-70b-instruct",
+   "tag": "cloudflare/fp8",
+   "pricing": {
+    "prompt": "0.000000293",
+    "completion": "0.000002253",
+    "discount": 0
+   },
+   "provider_name": "Cloudflare"
+  },
+  {
+   "name": "Novita | meta-llama/llama-3.3-70b-instruct",
+   "model_id": "meta-llama/llama-3.3-70b-instruct",
+   "tag": "novita/bf16",
+   "pricing": {
+    "prompt": "0.000000135",
+    "completion": "0.0000004",
+    "discount": 0
+   },
+   "provider_name": "Novita"
+  },
+  {
+   "name": "DeepInfra | meta-llama/llama-3.3-70b-instruct",
+   "model_id": "meta-llama/llama-3.3-70b-instruct",
+   "tag": "deepinfra/turbo",
+   "pricing": {
+    "prompt": "0.0000001",
+    "completion": "0.00000032",
+    "discount": 0
+   },
+   "provider_name": "DeepInfra"
+  }
+ ]
+}

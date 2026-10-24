@@ -14,6 +14,8 @@ use crate::align::divergence_ratio;
 use crate::asr::AbortFlag;
 use crate::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig, Style};
 use crate::dictionary::Dictionary;
+use crate::Usd;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CleanPrompt {
@@ -41,8 +43,87 @@ impl CleanPrompt {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CleanError {
+    /// The backend failed: its output (if any) must not be used, and the
+    /// failure is final for this commit (deterministic text).
     #[error("{0}")]
     Backend(String),
+    /// The backend failed *fast*, before producing anything: connect/DNS
+    /// error, open circuit, rejected key, no credit, no consent or budget,
+    /// no private route. A [`RoutedCleaner`] may try its fallback. The
+    /// string is a stable code (`flow_router::Failure` names, e.g.
+    /// `"auth_failed"`, `"cloud_cleanup_not_configured"`). Additive (D28).
+    #[error("{0}")]
+    Unavailable(String),
+}
+
+impl CleanError {
+    /// The code / message, whatever the variant.
+    pub fn code(&self) -> &str {
+        match self {
+            CleanError::Backend(s) | CleanError::Unavailable(s) => s,
+        }
+    }
+}
+
+/// What may go into a cleanup prompt besides the transcript, the app
+/// category, the style and the dictionary (D28 §2.5). A backend that sends
+/// the prompt off the device (cloud cleanup) narrows it; the on-device LLM
+/// uses [`PromptScope::FULL`]. `Default` = nothing extra (the cloud
+/// default).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct PromptScope {
+    /// Field text before / after the cursor and the selection.
+    pub surrounding_text: bool,
+    /// On-screen words (`FieldContext::screen_words`).
+    pub screen_words: bool,
+    /// The focused app's id / package name.
+    pub app_id: bool,
+}
+
+impl PromptScope {
+    pub const FULL: Self = Self {
+        surrounding_text: true,
+        screen_words: true,
+        app_id: true,
+    };
+    /// Nothing beyond the transcript, category, style and dictionary.
+    pub const MINIMAL: Self = Self {
+        surrounding_text: false,
+        screen_words: false,
+        app_id: false,
+    };
+
+    /// Items both scopes allow (one prompt valid for both backends).
+    pub fn intersect(self, o: Self) -> Self {
+        Self {
+            surrounding_text: self.surrounding_text && o.surrounding_text,
+            screen_words: self.screen_words && o.screen_words,
+            app_id: self.app_id && o.app_id,
+        }
+    }
+}
+
+/// Metering of one cleanup call (D28): which engine ran, its cost and ids.
+/// Every field is optional; local backends report only `engine`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CleanUsage {
+    /// `"local"` / `"cloud"`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub engine: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// USD: provider-reported, or an estimate when `cost_estimated`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_usd: Option<Usd>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub cost_estimated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttft_ms: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u32>,
 }
 
 pub trait Cleaner: Send + Sync {
@@ -76,6 +157,161 @@ pub trait Cleaner: Send + Sync {
     /// Backend counters as JSON, for tools and benchmarks.
     fn info_json(&self) -> Option<String> {
         None
+    }
+
+    /// What the prompt may contain besides the transcript (D28). The core
+    /// builds the prompt with [`build_prompt_scoped`] and this scope.
+    /// Default: everything (on-device backends).
+    fn prompt_scope(&self) -> PromptScope {
+        PromptScope::FULL
+    }
+
+    /// `"local"` or `"cloud"` (debug log `llm_engine`). Default `"local"`.
+    fn engine(&self) -> &'static str {
+        "local"
+    }
+
+    /// Model id for the debug log, when the backend knows it.
+    fn model(&self) -> Option<String> {
+        None
+    }
+
+    /// This backend's own hard timeout, replacing the session's
+    /// `llm_timeout_ms` (cloud cleanup: `cleanup.timeout_ms`, D28).
+    /// Default: the session value.
+    fn timeout_ms(&self) -> Option<u64> {
+        None
+    }
+
+    /// Pre-flight cost estimate in USD for `prompt` (budget check, D28
+    /// §2.6 rule 1), with headroom. `None` = free / unknown.
+    fn estimate_cost_usd(&self, _prompt: &CleanPrompt) -> Option<f64> {
+        None
+    }
+
+    /// [`Cleaner::clean_cancellable`] plus metering. Backends with a cost
+    /// override it and report usage even on error / cancel. Default: the
+    /// plain call, usage = engine + model.
+    fn clean_metered(
+        &self,
+        prompt: &CleanPrompt,
+        deadline: Instant,
+        cancel: &AbortFlag,
+    ) -> (Result<String, CleanError>, CleanUsage) {
+        let r = self.clean_cancellable(prompt, deadline, cancel);
+        (
+            r,
+            CleanUsage {
+                engine: Some(self.engine().into()),
+                model: self.model(),
+                ..Default::default()
+            },
+        )
+    }
+}
+
+/// Minimum time left before the deadline for [`RoutedCleaner`] to try its
+/// fallback after a fast failure of the primary (D28 §2.5).
+pub const MIN_FALLBACK_MS: u64 = 800;
+
+/// Primary + optional fallback cleaner (D28 §2.5; no network code). The
+/// fallback runs only when the primary fails *fast*
+/// ([`CleanError::Unavailable`]) and at least `min_fallback_ms` remain. A
+/// timeout, a backend error or a guard rejection is final: the core then
+/// uses the deterministic text, as with a single cleaner.
+pub struct RoutedCleaner {
+    pub primary: Arc<dyn Cleaner>,
+    pub fallback: Option<Arc<dyn Cleaner>>,
+    pub min_fallback_ms: u64,
+}
+
+impl RoutedCleaner {
+    pub fn new(primary: Arc<dyn Cleaner>, fallback: Option<Arc<dyn Cleaner>>) -> Self {
+        Self {
+            primary,
+            fallback,
+            min_fallback_ms: MIN_FALLBACK_MS,
+        }
+    }
+}
+
+impl Cleaner for RoutedCleaner {
+    fn clean(&self, prompt: &CleanPrompt, deadline: Instant) -> Result<String, CleanError> {
+        self.clean_metered(prompt, deadline, &AbortFlag::default())
+            .0
+    }
+
+    fn clean_cancellable(
+        &self,
+        prompt: &CleanPrompt,
+        deadline: Instant,
+        cancel: &AbortFlag,
+    ) -> Result<String, CleanError> {
+        self.clean_metered(prompt, deadline, cancel).0
+    }
+
+    fn clean_metered(
+        &self,
+        prompt: &CleanPrompt,
+        deadline: Instant,
+        cancel: &AbortFlag,
+    ) -> (Result<String, CleanError>, CleanUsage) {
+        let (r, u) = self.primary.clean_metered(prompt, deadline, cancel);
+        let Err(CleanError::Unavailable(_)) = &r else {
+            return (r, u);
+        };
+        let Some(fb) = &self.fallback else {
+            return (r, u);
+        };
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left < Duration::from_millis(self.min_fallback_ms) || cancel.is_set() {
+            return (r, u);
+        }
+        fb.clean_metered(prompt, deadline, cancel)
+    }
+
+    fn prefill(&self, prompt: &CleanPrompt) {
+        self.primary.prefill(prompt);
+        if let Some(f) = &self.fallback {
+            f.prefill(prompt);
+        }
+    }
+
+    fn cancel_prefill(&self) {
+        self.primary.cancel_prefill();
+        if let Some(f) = &self.fallback {
+            f.cancel_prefill();
+        }
+    }
+
+    fn info_json(&self) -> Option<String> {
+        self.primary
+            .info_json()
+            .or_else(|| self.fallback.as_ref().and_then(|f| f.info_json()))
+    }
+
+    fn prompt_scope(&self) -> PromptScope {
+        let p = self.primary.prompt_scope();
+        match &self.fallback {
+            Some(f) => p.intersect(f.prompt_scope()),
+            None => p,
+        }
+    }
+
+    fn engine(&self) -> &'static str {
+        self.primary.engine()
+    }
+
+    fn model(&self) -> Option<String> {
+        self.primary.model()
+    }
+
+    fn timeout_ms(&self) -> Option<u64> {
+        self.primary.timeout_ms()
+    }
+
+    fn estimate_cost_usd(&self, prompt: &CleanPrompt) -> Option<f64> {
+        self.primary.estimate_cost_usd(prompt)
     }
 }
 
@@ -470,6 +706,21 @@ pub fn build_prompt(
     ctx: &FieldContext,
     dict: &Dictionary,
 ) -> CleanPrompt {
+    build_prompt_scoped(asr_text, level, style, ctx, dict, PromptScope::FULL)
+}
+
+/// [`build_prompt`] limited to `scope` (D28 §2.5): with a scope item off,
+/// the matching context never enters the prompt (surrounding text and the
+/// selection, screen words, the app id; the app *category* and the style
+/// always do). `PromptScope::FULL` gives exactly [`build_prompt`].
+pub fn build_prompt_scoped(
+    asr_text: &str,
+    level: CleanupLevel,
+    style: Style,
+    ctx: &FieldContext,
+    dict: &Dictionary,
+    scope: PromptScope,
+) -> CleanPrompt {
     let system = format!("{SYSTEM}\n{}", level_rule(level));
     let examples = EXAMPLES
         .iter()
@@ -488,13 +739,22 @@ pub fn build_prompt(
         })
         .collect();
     let mut terms: Vec<&str> = dict.vocabulary();
-    terms.extend(ctx.screen_words.iter().map(String::as_str));
+    if scope.screen_words {
+        terms.extend(ctx.screen_words.iter().map(String::as_str));
+    }
     terms.truncate(200);
     let terms = terms.join(", ");
-    let before = last_chars(&ctx.before, 300);
-    let after: String = ctx.after.chars().take(150).collect();
+    let (before, selected, after) = if scope.surrounding_text {
+        (
+            last_chars(&ctx.before, 300),
+            ctx.selected.clone(),
+            ctx.after.chars().take(150).collect(),
+        )
+    } else {
+        (String::new(), String::new(), String::new())
+    };
     let user = UserMsg {
-        app: if ctx.app_id.is_empty() {
+        app: if ctx.app_id.is_empty() || !scope.app_id {
             "the focused app"
         } else {
             ctx.app_id.as_str()
@@ -503,7 +763,7 @@ pub fn build_prompt(
         style,
         terms: &terms,
         before: &before,
-        selected: &ctx.selected,
+        selected: &selected,
         after: &after,
         transcript: asr_text,
     }
@@ -593,21 +853,57 @@ pub fn run_cleanup(
     timeout: Duration,
     max_divergence: f64,
 ) -> CleanOutcome {
+    run_cleanup_metered(cleaner, prompt, asr_text, timeout, max_divergence).0
+}
+
+/// [`run_cleanup`] plus the call's [`CleanUsage`]. On a timeout the usage
+/// is not known yet (the backend records it itself when it returns): the
+/// result then carries only the engine and model. Additive (D28).
+pub fn run_cleanup_metered(
+    cleaner: Arc<dyn Cleaner>,
+    prompt: CleanPrompt,
+    asr_text: &str,
+    timeout: Duration,
+    max_divergence: f64,
+) -> (CleanOutcome, CleanUsage) {
     let deadline = Instant::now() + timeout;
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = AbortFlag(Some(cancel.clone()));
+    let pending = CleanUsage {
+        engine: Some(cleaner.engine().into()),
+        model: cleaner.model(),
+        ..Default::default()
+    };
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
-        let _ = tx.send(cleaner.clean_cancellable(&prompt, deadline, &flag));
+        let _ = tx.send(cleaner.clean_metered(&prompt, deadline, &flag));
     });
-    let out = match rx.recv_timeout(timeout) {
-        Ok(Ok(s)) => lists_to_plain(&unwrap_output(&s)),
-        Ok(Err(CleanError::Backend(e))) => return CleanOutcome::Fallback(FallbackReason::Error(e)),
+    let (res, usage) = match rx.recv_timeout(timeout) {
+        Ok(v) => v,
         Err(_) => {
             cancel.store(true, Ordering::Relaxed);
-            return CleanOutcome::Fallback(FallbackReason::Timeout);
+            return (CleanOutcome::Fallback(FallbackReason::Timeout), pending);
         }
     };
+    let out = match res {
+        Ok(s) => lists_to_plain(&unwrap_output(&s)),
+        Err(e) => {
+            // Refused before anything ran (no consent, open circuit, …):
+            // no LLM step to report, only the reason.
+            let usage = match e {
+                CleanError::Unavailable(_) => CleanUsage::default(),
+                CleanError::Backend(_) => usage,
+            };
+            return (
+                CleanOutcome::Fallback(FallbackReason::Error(e.code().to_string())),
+                usage,
+            );
+        }
+    };
+    (judge(asr_text, out, max_divergence), usage)
+}
+
+fn judge(asr_text: &str, out: String, max_divergence: f64) -> CleanOutcome {
     if out.is_empty() {
         return CleanOutcome::Fallback(FallbackReason::Empty);
     }

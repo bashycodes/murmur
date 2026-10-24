@@ -1,0 +1,10 @@
+{
+ "error": {
+  "code": 403,
+  "message": "Key limit exceeded",
+  "metadata": {
+   "limit_source": "openrouter_key_limit",
+   "resets_at": "2026-11-01T00:00:00Z"
+  }
+ }
+}

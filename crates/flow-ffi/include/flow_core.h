@@ -60,7 +60,19 @@ char *flow_cloud_usage(FlowHandle *h);                               /* CloudUsa
 int flow_set_cloud_usage(FlowHandle *h, const char *usage_json);     /* restore persisted counters */
 void flow_reset_cloud_usage(FlowHandle *h);
 char *flow_cloud_capabilities(void);                                 /* CloudCapabilities JSON */
-char *flow_cloud_presets(void);                                      /* CloudProviderConfig[] JSON ([] without cloud) */
+char *flow_cloud_presets(void);                                      /* D28: the single OpenRouter CloudProviderConfig ([] without cloud) */
+
+/* D28 OpenRouter-only cloud (docs/proposals/openrouter-only-cloud.md). */
+char *flow_migrate_cloud(const char *router_config_json);  /* {"config","report"}; NULL + bad_config */
+int flow_set_cleanup(FlowHandle *h, const char *cleanup_json); /* {"allow_cloud_cleanup"?,"cleanup_order"?,"cleanup"?} */
+char *flow_cleanup_status(FlowHandle *h);                   /* CleanupStatus JSON */
+char *flow_cloud_notice(FlowHandle *h);                     /* one-time migration notice or NULL */
+void flow_ack_cloud_notice(FlowHandle *h);
+int flow_set_cloud_model(FlowHandle *h, const char *use_, const char *model); /* use_ "stt"|"cleanup" */
+void flow_set_cloud_cache_dir(const char *dir);             /* <dir>/openrouter-catalog.json; no network */
+char *flow_cloud_catalog(const char *use_, const char *query, const char *filters_json); /* picker rows JSON; no network */
+char *flow_refresh_cloud_catalog(FlowHandle *h, int force); /* BLOCKS <= 10 s; status JSON (+ "error") */
+char *flow_cloud_key_info(FlowHandle *h);                   /* BLOCKS; KeyInfo JSON or {"error":code} */
 
 /* Live route + hands-free endpointing (2026-10-22, additive). Both work on core and router
  * handles; only a router reports "route" ({"engine":"local"|"remote"|"cloud","provider"?,

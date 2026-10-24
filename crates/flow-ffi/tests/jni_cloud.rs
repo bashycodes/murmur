@@ -1,15 +1,15 @@
-//! D18 host test: a real JVM drives the real cdylib (feature `cloud`) through
-//! the JNI exports the Android shell uses, against flow-cloud's in-process mock
-//! provider: no key → device; key → cloud (local pipeline applied, usage
-//! counted); provider 401 → `auth_failed` + full replay into the device engine;
-//! Test provider with and without a router; the key never appears in any
-//! output. Skips when no `java` is on PATH.
+//! D28 host test: a real JVM drives the real cdylib (feature `cloud`) through
+//! the JNI exports the Android shell uses, offline: capabilities + the single
+//! preset, the schema-1 → 2 migration (report + notice), key aliasing (a
+//! removed provider's key is ignored), catalogue search from the baked
+//! snapshot, cleanup toggle / consent gate / model selection, and that the
+//! key never appears in any output. The network paths (OpenRouter mock via
+//! `flow_cloud::testing::override_base_url`, which a separate JVM process
+//! cannot use) are in flow-contract-tests. Skips when no `java` is on PATH.
 #![cfg(all(feature = "jni", feature = "cloud"))]
 
 use std::path::PathBuf;
 use std::process::Command;
-
-use flow_cloud::testing::{MockServer, Reply};
 
 const KEY: &str = "sk-LEAKCHECK-jni-0123456789abcdef";
 
@@ -26,7 +26,7 @@ fn json(line: &str) -> serde_json::Value {
 }
 
 #[test]
-fn jvm_cloud_route_through_native_router() {
+fn jvm_openrouter_flow_through_native_router() {
     if Command::new("java").arg("-version").output().is_err() {
         eprintln!("SKIP: no java on PATH");
         return;
@@ -39,24 +39,16 @@ fn jvm_cloud_route_through_native_router() {
     assert!(st.success());
     let exe = std::env::current_exe().unwrap();
     let lib_dir = exe.parent().unwrap().parent().unwrap().to_path_buf();
-
-    let ok = MockServer::fixed(Reply::json(
-        200,
-        serde_json::json!({ "text": "cloud words btw" }),
-    ));
-    let bad = MockServer::fixed(Reply::json(
-        401,
-        serde_json::json!({ "error": { "message": "invalid key", "code": "invalid_api_key" } }),
-    ));
+    let cache = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("jni_cloud_cache");
+    std::fs::create_dir_all(&cache).unwrap();
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/java/dev/flowclone/core/JniCloud.java");
     let out = Command::new("java")
         .arg(format!("-Djava.library.path={}", lib_dir.display()))
         .arg("--enable-native-access=ALL-UNNAMED")
         .arg(&src)
-        .arg(ok.url("/openai/v1"))
-        .arg(bad.url("/openai/v1"))
         .arg(KEY)
+        .arg(&cache)
         .output()
         .unwrap();
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
@@ -69,135 +61,77 @@ fn jvm_cloud_route_through_native_router() {
     let mut l = stdout.lines();
 
     let caps = json(l.next().unwrap());
-    assert_eq!(caps["cloud"], true, "{caps}");
-    assert_eq!(caps["adapters"].as_array().unwrap().len(), 5, "{caps}");
+    assert_eq!(
+        caps,
+        serde_json::json!({"cloud": true, "adapters": ["openrouter"]})
+    );
     let presets = json(l.next().unwrap());
-    let ids: Vec<&str> = presets
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|p| p["preset"].as_str().unwrap())
-        .collect();
-    for want in [
-        "openrouter",
-        "elevenlabs",
-        "groq",
-        "openai",
-        "deepgram",
-        "assemblyai",
-    ] {
-        assert!(ids.contains(&want), "{ids:?}");
-    }
+    let presets = presets.as_array().unwrap();
+    assert_eq!(presets.len(), 1);
+    assert_eq!(presets[0]["id"], "openrouter");
+    assert_eq!(presets[0]["base_url"], "https://openrouter.ai/api/v1");
 
-    let probe = json(l.next().unwrap());
-    assert_eq!(probe["ok"], true, "{probe}");
-    assert_eq!(probe["engine"], "cloud");
-    assert_eq!(probe["provider"], "groq-1");
-    assert_eq!(probe["transcript"], "cloud words btw");
-    let nokey = json(l.next().unwrap());
-    assert_eq!(nokey["ok"], false);
-    assert_eq!(nokey["error"], "cloud_not_configured", "{nokey}");
+    let mig = json(l.next().unwrap());
+    let rep = &mig["report"];
+    assert_eq!(rep["migrated"], true, "{mig}");
+    assert_eq!(rep["key_from"], "openrouter-1");
+    assert_eq!(rep["key_to"], "openrouter");
+    assert_eq!(rep["delete_keys"], serde_json::json!(["groq-1"]));
+    assert_eq!(rep["cloud_disabled"], true);
+    assert_eq!(rep["model_to"], "openai/whisper-large-v3-turbo");
+    assert!(rep["notice"].as_str().unwrap().contains("Groq was removed"));
+    assert_eq!(mig["config"]["cloud"]["schema"], 2);
+    assert_eq!(
+        mig["config"]["cloud"]["openrouter"]["stt"]["consent_host"],
+        "openrouter.ai"
+    );
+    assert!(mig["config"]["cloud"].get("providers").is_none());
+    assert_eq!(l.next().unwrap(), "KIND bad_config");
 
-    assert_eq!(l.next().unwrap(), "KIND error", "core handle refuses a key");
+    let stt = json(l.next().unwrap());
+    assert!(!stt.as_array().unwrap().is_empty(), "baked STT rows: {stt}");
+    assert!(stt.to_string().contains("whisper"), "{stt}");
+    let cl = json(l.next().unwrap());
+    assert!(cl.to_string().contains("llama"), "{cl}");
+    assert_eq!(l.next().unwrap(), "[]");
+
+    let notice = l.next().unwrap();
+    assert!(
+        notice.starts_with("Cloud speech-to-text now uses OpenRouter only."),
+        "{notice}"
+    );
+    assert_eq!(l.next().unwrap(), "NOTICE null");
+    let ki = json(l.next().unwrap());
+    assert_eq!(
+        ki["error"], "cloud_not_configured",
+        "removed provider's key ignored: {ki}"
+    );
 
     let first = json(l.next().unwrap());
     assert_eq!(first["route"]["engine"], "local", "{first}");
-    assert_eq!(
-        first["route"]["fallback"], "cloud_not_configured",
-        "{first}"
-    );
     assert_eq!(first["final_text"], "local words by the way ");
 
-    let cloud = json(l.next().unwrap());
-    assert_eq!(cloud["status"], "RAW_TRANSCRIPT", "{cloud}");
-    assert_eq!(cloud["route"]["engine"], "cloud", "{cloud}");
-    assert_eq!(cloud["route"]["provider"], "groq-1");
-    assert_eq!(cloud["route"]["model"], "whisper-large-v3-turbo");
+    let st = json(l.next().unwrap());
+    assert_eq!(st["supported"], true, "{st}");
+    assert_eq!(st["enabled"], true);
+    assert_eq!(st["consent"], false);
+    assert_eq!(st["blocked"], "cloud_cleanup_not_configured");
+    assert_eq!(st["timeout_ms"], 2500);
+    assert_eq!(l.next().unwrap(), "KIND bad_config", "timeout out of range");
+    assert_eq!(l.next().unwrap(), "KIND bad_config", "bad model id");
+    let st = json(l.next().unwrap());
+    assert_eq!(st["model"], "meta-llama/llama-3.1-8b-instruct");
+    let d = json(l.next().unwrap());
+    assert_eq!(d["route"]["engine"], "local", "{d}");
     assert!(
-        cloud["route"]["billed_audio_ms"].as_u64().unwrap() > 0,
-        "{cloud}"
+        d["route"].get("llm_engine").is_none(),
+        "no consent, no cloud cleanup: {d}"
     );
-    assert!(cloud["route"]["cost_usd"].is_number(), "{cloud}");
+    assert!(d.get("llm").is_none(), "{d}");
     assert_eq!(
-        cloud["route"]["cost_estimated"], true,
-        "groq reports no cost"
+        d["fallback_reason"],
+        "llm_error: cloud_cleanup_not_configured"
     );
-    assert_eq!(cloud["asr_text"], "cloud words btw");
-    assert_eq!(
-        cloud["final_text"], "cloud words by the way ",
-        "C5: the dictionary ran locally on the provider's text"
-    );
-
-    let usage = json(l.next().unwrap());
-    assert_eq!(usage["providers"][0]["provider_id"], "groq-1", "{usage}");
-    assert_eq!(
-        usage["providers"][0]["requests"], 1,
-        "another month's counters were dropped: {usage}"
-    );
-    let status = json(l.next().unwrap());
-    assert_eq!(status["last"]["engine"], "cloud", "{status}");
-    assert_eq!(status["cloud_circuit"]["open"], false, "{status}");
-    let stored = json(l.next().unwrap());
-    assert_eq!(stored["ok"], true, "stored key used: {stored}");
-
-    let fb = json(l.next().unwrap());
-    assert_eq!(fb["route"]["engine"], "local", "{fb}");
-    assert_eq!(fb["route"]["fallback"], "auth_failed", "{fb}");
-    assert_eq!(fb["final_text"], "local words by the way ", "{fb}");
-    assert_eq!(
-        fb["timings"]["audio_ms"], cloud["timings"]["audio_ms"],
-        "100 % of the audio replayed"
-    );
-    let open = json(l.next().unwrap());
-    assert_eq!(open["cloud_circuit"]["open"], true, "{open}");
-    assert_eq!(open["cloud_circuit"]["reason"], "auth_failed");
-    assert_eq!(open["cloud_circuit"]["until_config_change"], true);
-    let probe_bad = json(l.next().unwrap());
-    assert_eq!(probe_bad["error"], "auth_failed", "{probe_bad}");
-
-    let forgot = json(l.next().unwrap());
-    assert_eq!(forgot["route"]["engine"], "local", "{forgot}");
-    assert_eq!(forgot["route"]["fallback"], "cloud_not_configured");
-    let reset = json(l.next().unwrap());
-    assert_eq!(reset["providers"], serde_json::json!([]), "{reset}");
-    assert_eq!(l.next().unwrap(), "KIND bad_config");
-
-    let only = json(l.next().unwrap());
-    assert_eq!(only["route"]["engine"], "cloud", "{only}");
-    assert_eq!(only["final_text"], "cloud words by the way ");
-
-    let want =
-        serde_json::json!({"engine":"cloud","provider":"groq-1","model":"whisper-large-v3-turbo"});
-    let info = json(l.next().unwrap());
-    assert_eq!(info["route"], want, "{info}");
-    let poll = json(l.next().unwrap());
-    assert_eq!(
-        poll["route"], want,
-        "pill shows the provider while recording: {poll}"
-    );
-    let idle = json(l.next().unwrap());
-    assert!(idle.get("route").is_none(), "{idle}");
-
-    // What the provider saw: Bearer auth with the key, multipart audio, the
-    // dictionary term as the Whisper prompt — and nothing else of ours.
-    let reqs = ok.requests();
-    assert!(reqs.len() >= 4, "{}", reqs.len());
-    let r = reqs
-        .iter()
-        .find(|r| r.path().ends_with("/audio/transcriptions"))
-        .unwrap();
-    assert_eq!(
-        r.header("authorization"),
-        Some(format!("Bearer {KEY}").as_str())
-    );
-    assert_eq!(r.field("model").as_deref(), Some("whisper-large-v3-turbo"));
-    assert!(r
-        .parts()
-        .iter()
-        .any(|p| p.name == "file" && !p.data.is_empty()));
-    assert_eq!(
-        bad.requests().len(),
-        2,
-        "one dictation + one probe hit the 401 provider"
-    );
+    let rs = json(l.next().unwrap());
+    assert_eq!(rs["cleanup_circuit"]["open"], false, "{rs}");
 }
