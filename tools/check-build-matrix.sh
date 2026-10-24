@@ -25,6 +25,15 @@ fail=0
 skip=0
 cloud_skip=0
 
+# D26: the product version copies agree with VERSION (tools/check-version.sh).
+if vout=$(tools/check-version.sh 2>&1 >/dev/null); then
+    echo "ok    product version $(cat VERSION) is consistent"
+else
+    echo "FAIL  product version copies disagree (tools/check-version.sh):"
+    sed 's/^/      /' <<<"$vout"
+    fail=1
+fi
+
 # check <label> <forbidden-regex> <cargo tree args...>
 check() {
     local label="$1" re="$2"

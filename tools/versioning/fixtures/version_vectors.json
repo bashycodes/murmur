@@ -1,0 +1,24 @@
+{
+  "_comment": "Shared vectors for the product version rules (docs/versioning.md). Checked by tools/versioning/test_versioning.py and the Android AppVersionTest; a change here must keep both green.",
+  "valid": [
+    {"version": "0.1.0", "code": 100},
+    {"version": "0.2.0", "code": 200},
+    {"version": "0.2.13", "code": 213},
+    {"version": "0.10.0", "code": 1000},
+    {"version": "0.99.99", "code": 9999},
+    {"version": "1.0.0", "code": 10000},
+    {"version": "1.2.3", "code": 10203},
+    {"version": "12.0.1", "code": 120001},
+    {"version": "209999.99.99", "code": 2099999999}
+  ],
+  "invalid": [
+    "", "0.2", "0.2.0.1", "v0.2.0", "0.2.0-rc.1", "0.2.0+abc", "01.2.0", "0.02.0", "0.2.00",
+    "0.100.0", "0.1.100", "210000.0.0", " 0.2.0", "0.2.0\n", "a.b.c", "-1.0.0"
+  ],
+  "describe": [
+    {"version": "0.2.0", "sha": "abc1234", "dirty": false, "build": "abc1234", "full": "0.2.0+abc1234"},
+    {"version": "0.2.0", "sha": "abc1234", "dirty": true, "build": "abc1234-dirty", "full": "0.2.0+abc1234.dirty"},
+    {"version": "1.0.0", "sha": "", "dirty": false, "build": "unknown", "full": "1.0.0+unknown"},
+    {"version": "1.0.0", "sha": "", "dirty": true, "build": "unknown", "full": "1.0.0+unknown"}
+  ]
+}
