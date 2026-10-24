@@ -1373,7 +1373,12 @@ impl Worker {
         // A whole-utterance snippet trigger is pasted as its expansion; the
         // LLM must not see (or reword) it (03 §7.1).
         let snippet = s.matcher.whole_snippet(&r.asr_text).is_some();
-        if s.cfg.spoken_cleanup && s.cfg.cleanup_level != CleanupLevel::None && !snippet {
+        // D27: the deterministic layer follows `spoken_cleanup` alone.
+        // `cleanup_level: none` and `raw_mode` only switch the LLM off
+        // (Android sends both when "Clean up with local AI" is off, which
+        // used to mean no cleanup at all: 17 % vs 44 % on the
+        // formatting-gap eval). Verbatim = `spoken_cleanup: false` + none.
+        if s.cfg.spoken_cleanup && !snippet {
             text = postprocess::spoken::spoken_cleanup(&text);
             // Numbered lists and email structure without the LLM (the
             // LLM, when it runs, starts from this layout).
@@ -1383,7 +1388,7 @@ impl Worker {
                 return r;
             }
         }
-        if s.cfg.cleanup_level != CleanupLevel::None && !snippet {
+        if (s.cfg.spoken_cleanup || s.cfg.cleanup_level != CleanupLevel::None) && !snippet {
             // Parakeet-unified often ends without a period, whisper on a
             // comma; Wispr's server would close the sentence (D25).
             text = postprocess::terminal::close_sentence(&text);

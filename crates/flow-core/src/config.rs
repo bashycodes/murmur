@@ -22,7 +22,8 @@ pub enum Platform {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CleanupLevel {
-    /// Verbatim: no LLM pass.
+    /// No LLM pass. Deterministic cleanup still follows
+    /// `SessionConfig::spoken_cleanup` (D27).
     None,
     #[default]
     Light,
@@ -91,7 +92,8 @@ pub struct SessionConfig {
     pub dictionary: Dictionary,
     pub styles: Styles,
     pub cleanup_level: CleanupLevel,
-    /// Skip the LLM entirely (Wispr "No AI formatting").
+    /// Skip the LLM entirely (Wispr "No AI formatting"). The deterministic
+    /// layer still runs unless `spoken_cleanup` is off (D27).
     pub raw_mode: bool,
     /// Hard safety bound; the shell owns the real session cap policy.
     pub max_samples: usize,
@@ -126,8 +128,11 @@ pub struct SessionConfig {
     pub llm_prefill: bool,
     /// Deterministic spoken cleanup before the LLM and post-processing:
     /// spoken punctuation, fillers, stutters, "scratch that"/"no wait"
-    /// backtracking, money/time/date formatting (`postprocess::spoken`).
-    /// Off at cleanup level `none`. Default on.
+    /// backtracking, money/time/date formatting (`postprocess::spoken`),
+    /// layout and the closing period. Independent of `cleanup_level` and
+    /// `raw_mode`, which only gate the LLM (D27; before 2026-10-24 level
+    /// `none` switched this off too). Off + level `none` = verbatim (the
+    /// Wispr client port still runs). Default on.
     pub spoken_cleanup: bool,
     /// Hands-free endpointing (D19): after at least 300 ms of speech, this
     /// much trailing silence sets `SessionPoll.endpoint_reached` (see
