@@ -99,6 +99,8 @@ object CoreJson {
                 droppedSamples = t.optLong("dropped_samples"),
                 // D22: omitted by the core when 0.
                 waitMs = t.optLong("wait_ms"), segments = t.optLong("segments"), preAsrMs = t.optLong("pre_asr_ms"),
+                // 2026-10-24: blank_asr diagnostics; omitted when unknown.
+                speechMs = t.optLongOrNull("speech_ms"), peakDbfs = t.optLongOrNull("peak_dbfs")?.toInt(),
             ),
             pressEnter = o.optBoolean("press_enter"),
             fallbackReason = o.optStringOrNull("fallback_reason"),

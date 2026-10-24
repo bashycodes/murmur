@@ -300,6 +300,10 @@ data class Timings(
     val segments: Long = 0,
     /** D22: ASR time spent while recording on pieces whose text was used (not part of [asrMs]). */
     val preAsrMs: Long = 0,
+    /** 2026-10-24: core VAD speech in the dictation (0 = none found); null = VAD off / older core. */
+    val speechMs: Long? = null,
+    /** 2026-10-24: peak sample level in dBFS (-120 = digital silence); null = older core / no audio. */
+    val peakDbfs: Int? = null,
 )
 
 /** A key the shell sends between text runs (crates/flow-core `paste::PasteKey`). */

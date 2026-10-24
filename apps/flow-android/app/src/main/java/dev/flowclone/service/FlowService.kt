@@ -67,12 +67,15 @@ class FlowService : Service() {
         const val ACTION_RELOAD_ENGINE = "dev.flowclone.action.RELOAD_ENGINE"
         const val ACTION_UNSNOOZE = "dev.flowclone.action.UNSNOOZE"
         const val ACTION_STOP = "dev.flowclone.action.STOP"
+        /** Tap on the "Dictation not inserted" notification: copy that text (2026-10-24). */
+        const val ACTION_COPY_UNSENT = "dev.flowclone.action.COPY_UNSENT"
         private const val CHANNEL_SERVICE = "flow_service"
         private const val CHANNEL_LIMIT = "flow_session_limit"
         const val CHANNEL_STATUS = "flow_status"
         private const val NOTIF_ID = 1001
         private const val NOTIF_LIMIT_ID = 3001
         private const val NOTIF_SNOOZE_ID = 789
+        private const val NOTIF_UNSENT_ID = 3002
         private const val HEALTH_TICK_MS = 15_000L
 
         /** For the a11y-side watchdog (same process). */
@@ -88,6 +91,8 @@ class FlowService : Service() {
     private lateinit var overlay: BubbleOverlay
     private val showCopy = MutableStateFlow(false)
     @Volatile private var lastText: String? = null
+    /** The newest dictation that did not go in, until copied (2026-10-24: never lose a dictation). */
+    @Volatile private var unsentText: String? = null
     private var copyJob: Job? = null
     private var tone: ToneGenerator? = null
     private var micPromoted = false
@@ -165,6 +170,12 @@ class FlowService : Service() {
             }
             ACTION_RELOAD_ENGINE -> { controller.cap = app.settings.load().sessionCap(); app.engine.reload(); updateShakeListener() }
             ACTION_UNSNOOZE -> { presence.unsnooze(); cancelSnoozeNotification() }
+            ACTION_COPY_UNSENT -> {
+                unsentText?.let { copySensitive(it); toast(R.string.toast_copied) }
+                unsentText = null
+                runCatching { getSystemService(NotificationManager::class.java).cancel(NOTIF_UNSENT_ID) }
+                return START_STICKY
+            }
             else -> app.settings.serviceStoppedByUser = false
         }
         overlay.attach()
@@ -252,6 +263,24 @@ class FlowService : Service() {
             .setContentIntent(openAppIntent())
             .build()
         runCatching { getSystemService(NotificationManager::class.java).notify(NOTIF_LIMIT_ID, n) }
+    }
+
+    /** Tap-to-copy notification for a dictation that did not go in; text only on tap (lock screen). */
+    private fun unsentNotification(text: String, outcome: String) {
+        unsentText = text
+        val n = Notification.Builder(this, CHANNEL_STATUS)
+            .setContentTitle(dev.flowclone.session.NotInsertedNotice.TITLE)
+            .setContentText(dev.flowclone.session.NotInsertedNotice.text(outcome, text))
+            .setSmallIcon(R.drawable.ic_flow)
+            .setAutoCancel(true)
+            .setContentIntent(
+                PendingIntent.getService(
+                    this, 2, Intent(this, FlowService::class.java).setAction(ACTION_COPY_UNSENT),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                ),
+            )
+            .build()
+        runCatching { getSystemService(NotificationManager::class.java).notify(NOTIF_UNSENT_ID, n) }
     }
 
     // ---- health, snooze, shake ----
@@ -412,6 +441,10 @@ class FlowService : Service() {
 
         override fun clientFallbackNote(): String? = app.engine.clientNote()
 
+        override fun onNotInserted(text: String, outcome: String) {
+            scope.launch(Dispatchers.Main) { unsentNotification(text, outcome) }
+        }
+
         /** D21: redact protected targets, attach the insert steps, enqueue. Never blocks, never throws. */
         override fun onDictationTrace(trace: dev.flowclone.debug.DictationTrace) {
             try {
@@ -422,7 +455,10 @@ class FlowService : Service() {
                     trace.route, ready?.mock == true, ready?.asr ?: ready?.onDemandAsr, app.dev.serverAsrModel, trace.model,
                 )
                 val t = dev.flowclone.debug.DebugRedact.apply(
-                    trace.copy(insert = trace.insert.copy(steps = steps), engine = engine, model = model),
+                    trace.copy(
+                        insert = trace.insert.copy(steps = steps), engine = engine, model = model,
+                        routeOrder = runCatching { app.dev.load().routeOrderWire(app.caps) }.getOrNull(),
+                    ),
                     protectedField = app.accessibility?.startFieldProtected == true,
                     protectedApp = dev.flowclone.debug.DebugRedact.isProtectedApp(trace.target, app.settings.load().userDenylist),
                 )
@@ -478,7 +514,11 @@ class FlowService : Service() {
                 BubbleButton.CANCEL -> controller.cancel()
                 BubbleButton.DONE -> { haptic(VibrationEffect.EFFECT_CLICK); controller.release() }
                 BubbleButton.PASTE -> controller.pasteRetry()
-                BubbleButton.COPY -> lastText?.let { copySensitive(it); toast(R.string.toast_copied); showCopy.value = false }
+                BubbleButton.COPY -> {
+                    // FailedToPaste (target changed / paste failed): copy that text, not the previous one.
+                    val failed = (s as? DictationState.Error)?.kind as? DictationState.ErrorKind.FailedToPaste
+                    (failed?.text ?: lastText)?.let { copySensitive(it); toast(R.string.toast_copied); showCopy.value = false }
+                }
                 BubbleButton.DISMISS -> {
                     if (s is DictationState.Error && s.kind is DictationState.ErrorKind.EngineUnavailable)
                         startActivity(Intent(this@FlowService, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

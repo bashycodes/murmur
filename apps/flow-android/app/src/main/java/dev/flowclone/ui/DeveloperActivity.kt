@@ -303,7 +303,7 @@ class DeveloperActivity : Activity() {
         shown.forEachIndexed { i, r ->
             val name = when (r) {
                 DevSettings.Route.SERVER -> "Server (your flow-server)"
-                DevSettings.Route.CLIENT -> "On-device"
+                DevSettings.Route.CLIENT -> "Phone (on-device)"
                 DevSettings.Route.CLOUD -> "Cloud: " + (cloudState.activeProvider?.let { "${it.displayName} (${it.host})" } ?: "no provider")
             }
             box.addView(LinearLayout(this@DeveloperActivity).apply {
