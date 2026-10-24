@@ -198,6 +198,10 @@ pub struct CommitResult {
     pub truncated: bool,
     /// Engine that served the dictation and any fallback (router only).
     pub route: Option<RouteInfo>,
+    /// D28: what the LLM step cost / which engine ran it (`None`: LLM off,
+    /// skipped, or every cleaner refused up front).
+    #[serde(default)]
+    pub llm: Option<flow_core::cleanup::CleanUsage>,
 }
 
 impl CommitResult {
@@ -216,6 +220,7 @@ impl CommitResult {
             empty_reason: None,
             truncated: false,
             route: None,
+            llm: None,
         }
     }
 
@@ -285,7 +290,7 @@ pub struct Poll {
 }
 
 /// Recording-pill line for the live route: "Transcribing via this PC…",
-/// "… via server…", "… via Groq (whisper-large-v3-turbo)…", plus a short
+/// "… via server…", "… via OpenRouter (openai/whisper-large-v3-turbo)…", plus a short
 /// reason when the first route was skipped or failed over.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LiveRouteLabel {
@@ -310,6 +315,7 @@ pub fn fallback_reason(code: &str) -> &'static str {
         "budget_exceeded" => "monthly budget reached",
         "quota_exceeded" => "out of credits",
         "provider_error" => "provider error",
+        "no_private_route" => "no zero-retention provider",
         _ => "fell back",
     }
 }
@@ -664,14 +670,18 @@ mod tests {
         assert!(l.title.unwrap().contains("100.64.0.2:7313"));
         let cloud = SessionRoute {
             engine: EngineKind::Cloud,
-            provider: Some("groq".into()),
-            model: Some("whisper-large-v3-turbo".into()),
+            provider: Some("openrouter".into()),
+            model: Some("openai/whisper-large-v3-turbo".into()),
             ..Default::default()
         };
-        let named = |id: &str| (id == "groq").then(|| ("Groq".into(), "api.groq.com".into()));
+        let named =
+            |id: &str| (id == "openrouter").then(|| ("OpenRouter".into(), "openrouter.ai".into()));
         let l = live_route_label(&cloud, &named);
-        assert_eq!(l.text, "Transcribing via Groq (whisper-large-v3-turbo)…");
-        assert_eq!(l.title.as_deref(), Some("Audio is sent to api.groq.com"));
+        assert_eq!(
+            l.text,
+            "Transcribing via OpenRouter (openai/whisper-large-v3-turbo)…"
+        );
+        assert_eq!(l.title.as_deref(), Some("Audio is sent to openrouter.ai"));
         let failed_over = SessionRoute {
             fallback: Some("disconnected".into()),
             ..Default::default()

@@ -7,15 +7,16 @@ Speech-to-text runs either on this PC (the real `crates/flow-core`: whisper.cpp
 or Parakeet) or on **your own** `flow-server` over LAN/Tailscale (hybrid mode,
 `docs/hybrid-architecture.md`, D17). Every dictation goes through
 `flow_router::Router` (`src/router_adapter.rs`). Nothing reaches a third party
-unless you opt in to a cloud speech-to-text provider in Developer settings
-(D18, `docs/cloud-stt.md`; off by default). A client-only build contains no
+unless you opt in to **OpenRouter** (the only cloud provider, D28) on the
+OpenRouter tab: speech-to-text and text cleanup are two separate opt-ins
+(`docs/cloud-stt.md`; both off by default). A client-only build contains no
 network code at all.
 
 ## Build flavours (Cargo features)
 
 | Build | Command | Engines |
 |---|---|---|
-| Hybrid (default) | `cargo build --features app` | this PC + your server, fallback between them, plus the opt-in cloud provider (feature `cloud`) |
+| Hybrid (default) | `cargo build --features app` | this PC + your server, fallback between them, plus opt-in OpenRouter STT / text cleanup (feature `cloud`) |
 | Client only | `cargo build --no-default-features --features local,app` | this PC only; no network code linked |
 | Server only | `cargo build --no-default-features --features remote,app` | your server only; no whisper / `flow_llm.dll` / models needed |
 
@@ -63,35 +64,68 @@ hides it again):
   {segments} seg`; `client_ms` is release → result on this PC (network
   included), `engine` is the engine's own `total_ms` when it differs.
 
-### Cloud providers (sends audio to a third party)
+### OpenRouter (cloud speech-to-text and text cleanup)
 
 Default build only (feature `cloud`; never in `local,app`, enforced by
-`tools/check-build-matrix.sh`). Off by default.
+`tools/check-build-matrix.sh`). OpenRouter (`https://openrouter.ai/api/v1`, a
+constant: no base URL field, no presets, no other provider compiled in) is
+the only third party the app can reach (D28). Settings → **OpenRouter** tab
+(shown only in cloud builds), applied at once:
 
-* **Allow cloud** puts *Cloud provider* first in the route order (reorder as
-  you like) and asks for consent: "Send audio to <provider>?" names the
-  provider's host. Consent is stored per provider for that host; changing
-  the base URL host or the adapter clears it and the dialog asks again.
-* **Add provider** from a preset: OpenRouter, ElevenLabs Scribe, Groq,
-  OpenAI, Deepgram, AssemblyAI, or Custom (any OpenAI-compatible
-  `/audio/transcriptions` base URL). Per provider: name, model, language,
-  send dictionary / screen words, zero retention where supported.
-* **API key**: Save key / Clear key. Keys go to Windows Credential Manager
-  as `flow-clone/cloud/<id>` (generic credential, this user on this PC) and
-  into the router via `set_cloud_key`. They are never in `prefs.json`, never
-  logged, and never sent back to the page (it shows `••••` + last 4).
-  Deleting a provider deletes its credential.
-* **Test provider** sends a bundled 3 s public-domain clip with the unsaved
-  form (and a typed, unsaved key): transcript, latency, cost or the error
-  with a hint.
-* **Usage** this month per provider (dictations, minutes, cost, `≈` when
-  estimated) is kept in `%APPDATA%\FlowClone\cloud_usage.json` (restored
-  at startup, never sent anywhere); **Reset counters**; optional **monthly
-  budget** (cloud pauses with "monthly budget reached").
-* Active engine row: `cloud · <provider> · <model> · $0.0012`. The Flow bar
-  shows **C** after every cloud dictation (regardless of the S/L setting).
-  A cloud failure that fell back shows "Cloud STT failed (key rejected);
-  used this PC" above the pill; cloud-only failures are an error pill.
+* **Account**: one API key (password field, Paste, Save key, Clear) in
+  Windows Credential Manager as `flow-clone/cloud/openrouter` (bound to
+  openrouter.ai + the openrouter adapter), handed to the router with
+  `set_cloud_key("openrouter", …)`. Never in `prefs.json`, never logged,
+  never sent back to the page (it shows `••••` + last 4). **Check key**
+  (`GET /api/v1/key`): label, credit limit / remaining, usage this month,
+  free tier, and a warning when the key has no credit limit.
+* **Privacy** (both uses): "Zero-retention providers only" (default on,
+  confirm before turning off) and "Only providers that don't collect data"
+  (default on): every request carries `provider: {zdr, data_collection}`.
+* **Speech-to-text (sends audio)**: opt-in with its own consent dialog
+  ("Send audio to OpenRouter?"); model picker; language; send dictionary
+  words; path (auto / transcription endpoint / chat model with audio);
+  **Test** (bundled 3 s public-domain clip, typed key allowed). Turning it on
+  puts *OpenRouter* first in Developer → Engines (reorder there).
+* **Text cleanup (sends text)**: opt-in with a separate consent ("Send
+  dictated text to OpenRouter?"; audio consent does not count, nor the
+  reverse); what is sent (transcript, app category + style, dictionary;
+  text around the cursor / on-screen words / app name each off by default);
+  order *OpenRouter first, then this PC's model* or the reverse; provider
+  sort; time limit (800-8000 ms, default 2500); **Test** with a fixed sample
+  sentence; status (blocked reason, circuit, last call). Your own server
+  keeps using its own AI (no cloud cleanup on the server route).
+* **Model picker**: every OpenRouter model that can do the job (live
+  catalogue, `flow_cloud::CatalogStore`): search, filter chips
+  (Transcription / Chat audio for STT, Text for cleanup; ZDR only (default),
+  Fast providers, Free), price, context length, badges (`ZDR`, `fast`,
+  `chat model, may paraphrase`, `reasoning`, …), recommended first, and a
+  custom model id field. Fetched only when the tab opens, a use is switched
+  on, or a use is on at startup (24 h cache in
+  `%APPDATA%\FlowClone\cache\openrouter-catalog.json`, baked offline list
+  otherwise; the header says Live / Cached / Offline list).
+* **Usage this month**: `Speech $x · Cleanup $y · total`, from
+  `%APPDATA%\FlowClone\cloud_usage.json` (exact `usage.cost`, `≈` when
+  estimated; restored at startup, never sent anywhere); optional monthly
+  budget for both uses; **Reset counters**.
+* Active engine row: `cloud · OpenRouter · <model> · $0.0012`, and for the
+  LLM step `AI cleaned · OpenRouter · <model> · $0.0007` (`AI not needed
+  (already clean)` for `llm_skipped_clean`, a normal result). The Flow bar
+  shows **C** after every cloud STT dictation. A cloud failure that fell
+  back shows "Cloud STT failed (key rejected); used this PC" above the pill
+  (`no_private_route`: "no zero-retention provider serves this model").
+* **One-time migration** (first start of a D28 build): a D18 provider list
+  in `prefs.json` becomes the single OpenRouter config
+  (`RouterConfig::migrate_d28`). An OpenRouter entry keeps its model,
+  language, dictionary setting and audio consent, and its key moves from
+  `flow-clone/cloud/<old id>` to `flow-clone/cloud/openrouter` (only if it
+  was saved for openrouter.ai). Every other provider and its stored key is
+  deleted; their cost this month stays in a `removed` counter so the budget
+  is unchanged. If another provider was active, cloud STT is switched off
+  (never moved to OpenRouter silently). A model without a zero-retention
+  provider (`openai/gpt-transcribe`) becomes the default. The notice ("Cloud
+  speech-to-text now uses OpenRouter only. …") shows on the OpenRouter tab
+  until you press OK.
 
 ## Debug log (opt-in, includes transcripts)
 
@@ -222,11 +256,12 @@ Settings → AI cleanup:
 | `src/hotkeys/watchdog.rs` | Hook-liveness watchdog (probe + re-install after a `LowLevelHooksTimeout` removal) |
 | `src/router_adapter.rs` | D17: `CoreApi` on `flow_router::Router` (every build), `LocalBackend` over the `FlowCoreAdapter` slot, remote = `flow_remote::factory` (feature `remote`), router errors → pill text, last-route record (Developer page, S/L badge) |
 | `src/dev_settings.rs` | Developer settings: `prefs.json` `"developer"` section, form validation (host/port/pin/token/timeouts, public host ⇒ TLS), mapping to the router's `RouterConfig` JSON (pinned by `crates/flow-router/fixtures`) |
-| `src/credentials.rs` | D18 `CredentialStore`: Credential Manager (`flow-clone/cloud/<id>`, `CredWriteW`/`CredReadW`/`CredDeleteW`) on Windows, `MemoryStore` stand-in elsewhere; masking, key validation |
+| `src/credentials.rs` | `CredentialStore`: Credential Manager (`flow-clone/cloud/openrouter`, `CredWriteW`/`CredReadW`/`CredDeleteW`) on Windows, `MemoryStore` stand-in elsewhere; masking, key validation, host binding, D28 key migration |
 | `src/debug_log.rs` | Opt-in debug log: bounded queue + writer thread, JSONL file sink (last 500), schema, secret scrubbing |
-| `src/cloud.rs` | D18 pure helpers: failure texts, engine row, `cloud_usage.json` load/save, usage view, presets, provider ids |
-| `tests/cloud_settings.rs` | Developer form JSON → prefs (no keys) → router JSON == `router_config_cloud.json`; consent cleared on host/adapter change |
-| `tests/cloud_integration.rs` | Controller → router → flow-cloud (Groq preset) → flow-cloud's mock HTTP provider: cloud paste, usage restore, 500/401 → local fallback with all audio, no key/consent → no request, cloud-only error pills, Test provider; key never shown |
+| `src/cloud.rs` | Pure OpenRouter helpers: failure texts, engine / LLM rows, `cloud_usage.json` load/save, usage split view, catalogue cache path, the startup D28 migration (settings + keys + usage) |
+| `src/openrouter.rs` | The OpenRouter page: `OrView`, validated edits (STT / cleanup with separate consents, privacy, budget, model) |
+| `tests/cloud_settings.rs` | Page edits + Developer form → prefs (no key) → router JSON == `router_config_cloud.json`; separate consents; the D28 migration of every old preset fixture (settings, Credential Manager, usage) |
+| `tests/cloud_integration.rs` | Controller → router → flow-cloud → flow-cloud's mock OpenRouter (via `flow_cloud::testing::override_base_url`, never a config URL): cloud paste with exact cost, ZDR body, usage restore, 500/401/503-routing → local fallback with all audio, no key/consent → no request, cloud-only error pills, Test; key never shown |
 | `src/secrets.rs` | DPAPI (`CryptProtectData`) blobs for secrets in prefs (server token; reusable for later API keys) |
 | `tests/router_integration.rs` | Controller → router → flow-remote → in-process flow-server (MockAsr) vs local MockAsr: all four toggle combos, server down / killed mid-dictation (no lost audio), error pills, Test connection / Test session |
 | `tests/core_integration.rs` | Controller + real flow-core (MockAsr, and whisper tiny.en on `jfk.wav` when present): audio → commit → paste plan → history |
@@ -318,7 +353,7 @@ More info → Run anyway.
 - [ ] (1 min) Dictate, and while it is processing Alt+Tab to another window → nothing is typed there; the pill says "the focus moved…", Ctrl+V pastes the text. Dictate into a normal field and tab into a password box before it finishes → nothing is pasted or copied.
 - [ ] (1 min) Copy something, dictate → afterwards Ctrl+V gives your original clipboard. Press Shift+Alt+Z twice quickly → still your original clipboard afterwards. Shift+Alt+X then Win+V → the transcript is **not** in clipboard history.
 - [ ] (1 min) Run `cmd` as administrator, hold Ctrl+Win over it and release → the "runs as administrator" pill; then type `dle` in Notepad: plain letters appear (a stuck Win key would show the desktop / lock the PC), and Start did not open.
-- [ ] (1 min) Cloud (optional, costs cents): Developer → Add provider (Groq) → paste key → Save key → Test provider `OK · "And so, my fellow Americans"…`; Allow cloud → accept consent → Save; dictate → the line says "Transcribing via Groq (whisper-large-v3-turbo)…", the pill shows **C**. Change the base URL host, Save → "the API key of Groq was removed … enter the key again".
+- [ ] (1 min) OpenRouter (optional, costs cents): OpenRouter tab → paste key → Save key → Check key (credit shown) → Speech-to-text Test `OK · "And so, my fellow Americans"…`; tick "Transcribe with OpenRouter" → accept the audio consent; dictate → the line says "Transcribing via OpenRouter (openai/whisper-large-v3-turbo)…", the pill shows **C**. Tick "Clean up text with OpenRouter" → a *second* consent (text) appears.
 - [ ] (1 min) Client-only build: Developer tab hidden; dictation works with the model; `netstat -ano | findstr <pid>` shows no outbound connection.
 
 Report failures with `%APPDATA%\FlowClone\prefs.json` (no secrets in it) and the
@@ -422,21 +457,23 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Client-only build (`--no-default-features --features local,app`): Developer tab hidden; 7 taps on the version line unlock it ("not in this build" next to Allow server); Lock hides it; `flow-windows.exe` has no ws/tls code (`cargo tree -e normal --no-default-features --features local,app | findstr tungstenite` prints nothing).
 - [ ] Server-only build (`--no-default-features --features remote,app`): starts without any model file or `flow_llm.dll`, tray says "Speech: your flow-server"; dictation works through the server; Allow client is disabled ("not in this build").
 
-#### Cloud providers (needs internet and a real provider key)
+#### OpenRouter (needs internet and a real OpenRouter key)
 
-- [ ] Default build: Developer tab shows "Cloud providers (sends audio to a third party)"; the client-only build does not, and its exe has no reqwest/rustls (`cargo tree … --features local,app | findstr reqwest` prints nothing).
-- [ ] Add OpenRouter, paste a key, Save key: Credential Manager (Control Panel → Credential Manager → Windows Credentials) lists `flow-clone/cloud/openrouter-1`; `prefs.json` contains no key text; reopening Settings shows `Key set: ••••abcd` only.
-- [ ] Test provider with the key: `OK · "And so, my fellow Americans" · N ms · $…`; with a wrong key: `auth_failed — key rejected`; with the network off: `connect_failed — no internet / base URL wrong`.
-- [ ] Allow cloud → consent dialog "Send audio to OpenRouter?"; Cancel unticks Allow cloud; accept, Save, dictate in Notepad → text pastes, pill shows **C** (tooltip "Sent to OpenRouter"), Active engine row `cloud · OpenRouter · openai/gpt-transcribe · $0.000…`, usage row +1.
-- [ ] Change the custom base URL host and Save → the dialog asks again; Cancel → no request leaves the PC (Resource Monitor / proxy).
-- [ ] Clear key (or revoke it at the provider) → next dictation still pastes (local), bubble "Cloud STT failed (key rejected); used this PC"; the following dictation does not contact the provider until a new key is saved.
-- [ ] Monthly budget below this month's cost → "Cloud STT failed (monthly budget reached); used this PC".
-- [ ] Quit and restart: usage counters are unchanged (`%APPDATA%\FlowClone\cloud_usage.json`); keys still set.
-- [ ] Repeat a dictation with Groq, ElevenLabs, Deepgram, AssemblyAI and a custom OpenAI-compatible server (speaches/LocalAI on the LAN over `http://`).
+- [ ] Default build: the OpenRouter tab is shown; the client-only build has none, and its exe has no reqwest/rustls (`cargo tree … --features local,app | findstr reqwest` prints nothing).
+- [ ] Upgrade from a D18 build with a Groq provider active: the OpenRouter tab has a badge and the notice "Cloud speech-to-text now uses OpenRouter only. Groq was removed and its key deleted. …"; Credential Manager no longer lists `flow-clone/cloud/groq-1`; cloud STT is off. OK hides the notice for good.
+- [ ] Paste a key, Save key: Credential Manager lists `flow-clone/cloud/openrouter`; `prefs.json` contains no key text; reopening Settings shows `Key set: ••••abcd` only. Check key shows the credit limit (or the "no credit limit" warning).
+- [ ] Opening the tab fetches the model list once (header "Updated …"); with the network off it says "Cached …" or "Offline list from 2026-10-24". Search "whisper", toggle ZDR only / Fast / Chat audio; pick a chat-audio model → the paraphrase warning; type a custom id `elevenlabs/scribe-v2` → Use.
+- [ ] Speech-to-text Test: `OK · "And so, my fellow Americans" · N ms · $…`; with a wrong key `auth_failed — key rejected`; with the network off `connect_failed — can't reach openrouter.ai`.
+- [ ] Tick "Transcribe with OpenRouter" → consent dialog "Send audio to OpenRouter?"; Cancel unticks it; accept, dictate in Notepad → text pastes, pill shows **C** (tooltip "Sent to OpenRouter"), Active engine row `cloud · OpenRouter · openai/whisper-large-v3-turbo · $0.000…`, Usage "Speech $…".
+- [ ] Tick "Clean up text with OpenRouter" → its own consent dialog (text, not voice); Test cleans the sample sentence; dictate a messy sentence → Active engine row `AI cleaned · OpenRouter · meta-llama/llama-3.3-70b-instruct · $…`, Usage "Cleanup $…"; a clean sentence gives "AI not needed (already clean)".
+- [ ] Turn "Zero-retention providers only" off → confirm dialog; pick a model without ZDR with it on → "Cloud STT failed (no zero-retention provider serves this model); used this PC".
+- [ ] Clear key → next dictation still pastes (local), bubble "Cloud STT failed (set a key and accept the consent); used this PC".
+- [ ] Monthly budget below this month's cost → "Cloud STT failed (monthly budget reached); used this PC"; cleanup falls back to this PC / the formatted text.
+- [ ] Quit and restart: usage counters and the key are unchanged.
 
 ## Known gaps / v1 limitations
 
-- Cloud (D18): the **C** badge appears after the commit (like S/L); while recording the line above the pill names the provider. A key saved for a provider that is never saved stays in Credential Manager (bound to the host it was typed for) until "Clear key" or the provider is deleted. HTTPS uses webpki roots, so a corporate TLS-inspection CA in the Windows store is not trusted.
+- OpenRouter (D28): the **C** badge appears after the commit (like S/L); while recording the line above the pill names OpenRouter and the model. Cloud cleanup never runs on dictations served by your own server (it keeps its own AI). No "Connect with OpenRouter" (OAuth) yet: the key is pasted. HTTPS uses webpki roots, so a corporate TLS-inspection CA in the Windows store is not trusted.
 - Hands-free auto-stop (D19) applies to dictations *started* hands-free (Ctrl+Win+Space). A push-to-talk dictation locked later (double tap, or Space added to the chord) has no endpoint, because the router fixes `endpoint_silence_ms` at session start; stop it with the key or ✓.
 - Paste target (S13): the guard compares the foreground window (HWND + process) with the one at dictation start; switching tabs *inside* the same window (browser tabs) is not detected. The password-field re-check needs UI Automation to answer within 300 ms; otherwise only the window check applies.
 - Clipboard privacy formats (S14) are honoured by Windows' own history/cloud sync; third-party clipboard managers that ignore `ExcludeClipboardContentFromMonitorProcessing` still see the text.

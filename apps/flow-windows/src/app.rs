@@ -50,7 +50,7 @@ struct AppState {
     suggestions: Arc<Mutex<SuggestionStore>>,
     /// Tray line "Dictionary suggestions (n)…".
     suggest_item: OnceLock<MenuItem<tauri::Wry>>,
-    /// Cloud STT API keys (D18 C3): Credential Manager.
+    /// The OpenRouter API key (D18 C3 / D28): Credential Manager.
     creds: Arc<dyn CredentialStore>,
     /// `cloud_usage.json` (this month's counters; never sent anywhere).
     usage_path: PathBuf,
@@ -664,11 +664,12 @@ struct DevCheck {
     tls_forced: bool,
 }
 
-fn dev_check(form: &DevForm, creds: &dyn CredentialStore) -> DevCheck {
+fn dev_check(form: &DevForm, saved: &DevSettings, creds: &dyn CredentialStore) -> DevCheck {
     let caps = BuildCaps::current();
     match form.validate(caps) {
         Ok((s, token)) => {
             let mut s2 = s.clone();
+            s2.keep_cloud(saved);
             s2.token_dpapi = if token.is_empty() {
                 String::new()
             } else {
@@ -683,8 +684,10 @@ fn dev_check(form: &DevForm, creds: &dyn CredentialStore) -> DevCheck {
                 }],
             };
             let mut warnings = s2.warnings(caps);
-            warnings
-                .extend(s2.cloud_warnings(caps, &|id: &str| credentials::key_state(creds, id).set));
+            warnings.extend(s2.cloud_warnings(
+                caps,
+                credentials::key_state(creds, credentials::OPENROUTER).set,
+            ));
             DevCheck {
                 errors,
                 warnings,
@@ -702,16 +705,6 @@ fn dev_check(form: &DevForm, creds: &dyn CredentialStore) -> DevCheck {
     }
 }
 
-/// Developer "Cloud providers" data besides the form (D18 §8.3). Keys
-/// appear only as [`KeyState`] (set + `••••` last 4), never in clear.
-#[derive(serde::Serialize)]
-struct CloudView {
-    capabilities: flow_router::CloudCapabilities,
-    keys: std::collections::BTreeMap<String, KeyState>,
-    usage: crate::cloud::UsageView,
-    presets: Vec<flow_router::CloudProviderConfig>,
-}
-
 #[derive(serde::Serialize)]
 struct DevView {
     form: DevForm,
@@ -724,30 +717,6 @@ struct DevView {
     full: &'static str,
     check: DevCheck,
     route: Option<RouteView>,
-    cloud: CloudView,
-    /// Providers whose key was just removed because their host or adapter
-    /// changed (the page asks for the key again).
-    keys_cleared: Vec<String>,
-}
-
-fn cloud_view(state: &AppState, dev: &DevSettings) -> CloudView {
-    let router = state.router.get();
-    let usage = router.map(|r| r.cloud_usage()).unwrap_or_default();
-    CloudView {
-        capabilities: router.map(|r| r.cloud_capabilities()).unwrap_or_default(),
-        keys: dev
-            .cloud
-            .providers
-            .iter()
-            .map(|p| (p.id.clone(), credentials::key_state(&*state.creds, &p.id)))
-            .collect(),
-        usage: crate::cloud::usage_view(
-            &usage,
-            &dev.cloud.providers,
-            dev.cloud.monthly_budget_usd.map(|b| b.0),
-        ),
-        presets: crate::cloud::presets(),
-    }
 }
 
 fn dev_view(state: &AppState) -> DevView {
@@ -757,8 +726,7 @@ fn dev_view(state: &AppState) -> DevView {
     let form = DevForm::for_page(&dev);
     let router = state.router.get();
     DevView {
-        cloud: cloud_view(state, &dev),
-        check: dev_check(&form.with_token(&dev), &*state.creds),
+        check: dev_check(&form.with_token(&dev), &dev, &*state.creds),
         form,
         caps,
         capabilities: router
@@ -776,48 +744,24 @@ fn dev_view(state: &AppState) -> DevView {
         build: flow_build_info::BUILD,
         full: flow_build_info::FULL,
         route: router.map(|r| r.route_view()),
-        keys_cleared: Vec::new(),
     }
 }
 
 /// Save developer settings: validate → DPAPI the token → prefs.json →
 /// `router.update_config` (next session) → probe in the background.
-/// Cloud: consent is reconciled against the saved settings (a new host or
-/// adapter asks again), and a deleted provider's key leaves Credential
-/// Manager and the router.
-fn save_dev(
-    app: &AppHandle,
-    state: &AppState,
-    mut dev: DevSettings,
-) -> Result<Vec<String>, String> {
+/// The OpenRouter settings are not part of the form: they are kept as
+/// stored (the OpenRouter page saves them with [`save_cloud`]).
+fn save_dev(app: &AppHandle, state: &AppState, mut dev: DevSettings) -> Result<(), String> {
     let mut prefs = state.prefs.read().unwrap().clone();
     // Its own toggle (debug_log_set) owns it; a form save keeps it.
     dev.debug_log = prefs.developer.debug_log;
-    crate::dev_settings::reconcile_consent(&prefs.developer.cloud, &mut dev.cloud);
-    let removed = crate::dev_settings::removed_providers(&prefs.developer.cloud, &dev.cloud);
-    let old_cloud = prefs.developer.cloud.clone();
+    dev.keep_cloud(&prefs.developer);
     let before = prefs.clone();
     prefs.developer = dev;
     if let Some(r) = state.router.get() {
         r.apply(&prefs.developer)?;
     }
     prefs.save(&state.path).map_err(|e| e.to_string())?;
-    for id in removed {
-        if let Err(e) = state.creds.delete(&id) {
-            eprintln!("[cloud] could not delete the key of {id}: {e}");
-            debug_log::event("cloud", &format!("could not delete the key of {id}: {e}"));
-        }
-        if let Some(r) = state.router.get() {
-            r.router().set_cloud_key(&id, None);
-        }
-    }
-    // S4: a provider whose host or adapter changed loses its key (never
-    // re-sent to the new endpoint); the rest are re-bound to the saved
-    // providers with `set_cloud_key_for`.
-    let cleared = credentials::reconcile_keys(&*state.creds, &old_cloud, &prefs.developer.cloud);
-    if let Some(r) = state.router.get() {
-        r.load_cloud_keys(&prefs.developer, &*state.creds);
-    }
     // Parakeet decoding lives here and changes the recognizer set.
     if core_adapter::needs_reload(&before, &prefs) && want_local(&prefs) {
         if let Some(core) = state.core.get() {
@@ -829,17 +773,15 @@ fn save_dev(
     refresh_debug_secrets(state, &prefs.developer);
     *state.prefs.write().unwrap() = prefs;
     probe_in_background(app);
-    Ok(cleared)
+    Ok(())
 }
 
-/// The server token and cloud keys, so the debug log can scrub them out
-/// of any error text (memory only).
+/// The server token and the OpenRouter key, so the debug log can scrub
+/// them out of any error text (memory only).
 fn refresh_debug_secrets(state: &AppState, dev: &DevSettings) {
     let mut secrets = vec![dev.token()];
-    for p in &dev.cloud.providers {
-        if let Ok(Some(k)) = state.creds.get(&p.id) {
-            secrets.push(k);
-        }
+    if let Some(k) = credentials::openrouter_key(&*state.creds) {
+        secrets.push(k);
     }
     secrets.retain(|s| !s.is_empty());
     state.debug.set_secrets(secrets);
@@ -942,7 +884,7 @@ fn dev_get(state: tauri::State<'_, AppState>) -> DevView {
 #[tauri::command]
 fn dev_validate(state: tauri::State<'_, AppState>, form: DevForm) -> DevCheck {
     let saved = state.prefs.read().unwrap().developer.clone();
-    dev_check(&form.with_token(&saved), &*state.creds)
+    dev_check(&form.with_token(&saved), &saved, &*state.creds)
 }
 
 #[tauri::command]
@@ -966,11 +908,8 @@ fn dev_set(
             message: m,
         }]
     })?;
-    let cleared = save_dev(&app, &state, dev).map_err(as_error)?;
-    Ok(DevView {
-        keys_cleared: cleared,
-        ..dev_view(&state)
-    })
+    save_dev(&app, &state, dev).map_err(as_error)?;
+    Ok(dev_view(&state))
 }
 
 /// Probe the form's (unsaved) server; blocking, so async = off the UI thread.
@@ -1063,110 +1002,463 @@ fn dev_unlock(
     Ok(dev_view(&state))
 }
 
-// ------------------------------------------- cloud providers (D18 §8.3)
+// ---------------------------------------------- OpenRouter (D18 / D28)
+//
+// One page (`crate::openrouter`): key, privacy, speech-to-text, text
+// cleanup, usage. Every edit is validated in `crate::openrouter`, saved to
+// prefs.json and handed to the router at once. The key is only ever in
+// Credential Manager and the router (never returned to the page).
 
-fn valid_provider_id(id: &str) -> Result<(), String> {
-    let ok = (1..=32).contains(&id.len())
-        && id
-            .bytes()
-            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
-    if ok {
-        Ok(())
-    } else {
-        Err("invalid provider id".into())
+fn now_unix_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
+}
+
+/// Save the OpenRouter part of the settings and apply it. A use that was
+/// just switched on refreshes the model catalogue (spec §2.2 "When").
+fn save_cloud(app: &AppHandle, state: &AppState, dev: DevSettings) -> Result<(), String> {
+    let caps = BuildCaps::current();
+    let mut prefs = state.prefs.read().unwrap().clone();
+    let was = (
+        prefs.developer.cloud_effective(caps),
+        prefs.developer.cleanup_effective(caps),
+    );
+    prefs.developer = dev;
+    if let Some(r) = state.router.get() {
+        r.apply(&prefs.developer)?;
+    }
+    prefs.save(&state.path).map_err(|e| e.to_string())?;
+    let now = (
+        prefs.developer.cloud_effective(caps),
+        prefs.developer.cleanup_effective(caps),
+    );
+    *state.prefs.write().unwrap() = prefs;
+    if (now.0 && !was.0) || (now.1 && !was.1) {
+        refresh_catalog_in_background(app, false);
+    }
+    Ok(())
+}
+
+fn edit_cloud(
+    app: &AppHandle,
+    state: &AppState,
+    f: impl FnOnce(&mut DevSettings) -> Result<(), String>,
+) -> Result<crate::openrouter::OrView, String> {
+    let mut dev = state.prefs.read().unwrap().developer.clone();
+    f(&mut dev)?;
+    save_cloud(app, state, dev)?;
+    Ok(or_view(state))
+}
+
+/// `{source, fetched_at_ms, snapshot_date, models, stt, cleanup}`.
+fn catalog_status() -> serde_json::Value {
+    #[cfg(feature = "cloud")]
+    if let Some(s) = flow_cloud::catalog::default_store() {
+        return serde_json::from_str(&s.status_json()).unwrap_or_default();
+    }
+    serde_json::Value::Null
+}
+
+/// The picker row of one model (`None` = not in the catalogue).
+fn model_row(purpose: &str, id: &str) -> Option<serde_json::Value> {
+    #[cfg(feature = "cloud")]
+    {
+        let store = flow_cloud::catalog::default_store()?;
+        let rows: Vec<serde_json::Value> =
+            serde_json::from_str(&store.search_json(purpose, id, r#"{"zdr_only":false}"#)).ok()?;
+        rows.into_iter().find(|r| r["id"] == id)
+    }
+    #[cfg(not(feature = "cloud"))]
+    {
+        let _ = (purpose, id);
+        None
     }
 }
 
-/// Store a key: Credential Manager, then the router. The key is bound to
-/// the provider as shown in the form (`provider`; its host + adapter), so
-/// it is only ever sent there (`set_cloud_key_for`, review S4). It is never
-/// echoed back; the page gets `KeyState` only.
+fn or_view(state: &AppState) -> crate::openrouter::OrView {
+    let dev = state.prefs.read().unwrap().developer.clone();
+    let router = state.router.get();
+    let or = &dev.cloud.openrouter;
+    crate::openrouter::view(
+        &dev,
+        crate::openrouter::ViewInputs {
+            caps: BuildCaps::current(),
+            key: credentials::key_state(&*state.creds, credentials::OPENROUTER),
+            usage: router.map(|r| r.cloud_usage()).unwrap_or_default(),
+            cleanup_status: router
+                .map(|r| r.router().cleanup_status())
+                .unwrap_or_default(),
+            catalog: catalog_status(),
+            stt_model_info: model_row("stt", &or.stt.model),
+            cleanup_model_info: model_row("cleanup", &or.cleanup.model),
+        },
+    )
+}
+
+/// Blocking (≤ 10 s): refresh the catalogue unless the cache is fresh (or
+/// `force`); with a stored key the account's privacy filter applies. Sends
+/// no user data. Returns the status, plus `error` (a code) on failure.
+fn refresh_catalog(router: &RouterAdapter, force: bool) -> serde_json::Value {
+    #[cfg(feature = "cloud")]
+    {
+        let Some(store) = flow_cloud::catalog::default_store() else {
+            return serde_json::json!({"error": "cloud_not_configured"});
+        };
+        let t0 = Instant::now();
+        let err = router
+            .router()
+            .with_cloud_key(|k| store.refresh(k, force).err());
+        let mut v: serde_json::Value =
+            serde_json::from_str(&store.status_json()).unwrap_or_default();
+        let ms = t0.elapsed().as_millis();
+        debug_log::event(
+            "cloud_catalog_refresh",
+            &format!(
+                "source={} models={} ms={ms}{}",
+                v["source"].as_str().unwrap_or("?"),
+                v["models"],
+                err.as_ref()
+                    .map(|e| format!(" error={}", e.code()))
+                    .unwrap_or_default()
+            ),
+        );
+        if let (Some(e), Some(o)) = (err, v.as_object_mut()) {
+            o.insert("error".into(), e.code().into());
+        }
+        v
+    }
+    #[cfg(not(feature = "cloud"))]
+    {
+        let _ = (router, force);
+        serde_json::json!({"error": "cloud_not_configured"})
+    }
+}
+
+fn refresh_catalog_in_background(app: &AppHandle, force: bool) {
+    let Some(r) = app.state::<AppState>().router.get().cloned() else {
+        return;
+    };
+    let _ = std::thread::Builder::new()
+        .name("flow-or-catalog".into())
+        .spawn(move || {
+            let _ = refresh_catalog(&r, force);
+        });
+}
+
 #[tauri::command]
-fn dev_cloud_set_key(
+fn dev_or_get(state: tauri::State<'_, AppState>) -> crate::openrouter::OrView {
+    or_view(&state)
+}
+
+/// Picker rows from memory / cache / the baked list (never the network).
+/// `filters` = `{zdr_only, fast_only, free_only, stt_path}`.
+#[tauri::command]
+fn dev_or_catalog(purpose: String, query: String, filters: serde_json::Value) -> serde_json::Value {
+    #[cfg(feature = "cloud")]
+    if let Some(s) = flow_cloud::catalog::default_store() {
+        return serde_json::from_str(&s.search_json(&purpose, &query, &filters.to_string()))
+            .unwrap_or_else(|_| serde_json::json!([]));
+    }
+    let _ = (purpose, query, filters);
+    serde_json::json!([])
+}
+
+#[tauri::command]
+fn dev_or_catalog_status() -> serde_json::Value {
+    catalog_status()
+}
+
+/// "Refresh models" / the page opening (blocking: off the UI thread).
+#[tauri::command]
+async fn dev_or_refresh_catalog(app: AppHandle, force: bool) -> Result<serde_json::Value, String> {
+    let router = app
+        .state::<AppState>()
+        .router
+        .get()
+        .cloned()
+        .ok_or("router not ready")?;
+    tauri::async_runtime::spawn_blocking(move || refresh_catalog(&router, force))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// "Check key": `GET /api/v1/key` with the stored key → credit limit,
+/// remaining, monthly usage (never the key), or `{error: code}`.
+#[tauri::command]
+async fn dev_or_key_info(app: AppHandle) -> Result<serde_json::Value, String> {
+    let router = app
+        .state::<AppState>()
+        .router
+        .get()
+        .cloned()
+        .ok_or("router not ready")?;
+    tauri::async_runtime::spawn_blocking(move || key_info(&router))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn key_info(router: &RouterAdapter) -> serde_json::Value {
+    #[cfg(feature = "cloud")]
+    {
+        router.router().with_cloud_key(|k| match k {
+            None => serde_json::json!({"error": "cloud_not_configured"}),
+            Some(k) => match flow_cloud::keyinfo::fetch(k) {
+                Ok(i) => {
+                    debug_log::event(
+                        "cloud_key_info",
+                        &format!(
+                            "limit_remaining={:?} usage_monthly={:?}",
+                            i.limit_remaining, i.usage_monthly
+                        ),
+                    );
+                    let mut v = serde_json::to_value(&i).unwrap_or_default();
+                    if let Some(o) = v.as_object_mut() {
+                        o.insert("warn_no_limit".into(), i.warn_no_limit().into());
+                    }
+                    v
+                }
+                Err(e) => {
+                    debug_log::event("cloud_key_info", &format!("error={}", e.code()));
+                    serde_json::json!({"error": e.code()})
+                }
+            },
+        })
+    }
+    #[cfg(not(feature = "cloud"))]
+    {
+        let _ = router;
+        serde_json::json!({"error": "cloud_not_configured"})
+    }
+}
+
+#[tauri::command]
+fn dev_or_set_model(
+    app: AppHandle,
     state: tauri::State<'_, AppState>,
-    provider_id: String,
-    key: String,
-    provider: Option<flow_router::CloudProviderConfig>,
-) -> Result<KeyState, String> {
-    valid_provider_id(&provider_id)?;
-    let key = credentials::normalize_key(&key)?;
-    let saved = state
+    purpose: String,
+    model: String,
+) -> Result<crate::openrouter::OrView, String> {
+    edit_cloud(&app, &state, |d| {
+        crate::openrouter::apply_model(d, &purpose, &model)
+    })
+}
+
+#[tauri::command]
+fn dev_or_set_stt(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    form: crate::openrouter::SttForm,
+) -> Result<crate::openrouter::OrView, String> {
+    edit_cloud(&app, &state, |d| {
+        crate::openrouter::apply_stt(d, &form, now_unix_ms())
+    })
+}
+
+#[tauri::command]
+fn dev_or_set_cleanup(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    form: crate::openrouter::CleanupForm,
+) -> Result<crate::openrouter::OrView, String> {
+    edit_cloud(&app, &state, |d| {
+        crate::openrouter::apply_cleanup(d, &form, now_unix_ms())
+    })
+}
+
+#[tauri::command]
+fn dev_or_set_privacy(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    zdr: bool,
+    data_collection: String,
+) -> Result<crate::openrouter::OrView, String> {
+    edit_cloud(&app, &state, |d| {
+        crate::openrouter::apply_privacy(d, zdr, &data_collection)
+    })
+}
+
+#[tauri::command]
+fn dev_or_set_budget(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    budget: Option<f64>,
+) -> Result<crate::openrouter::OrView, String> {
+    edit_cloud(&app, &state, |d| crate::openrouter::apply_budget(d, budget))
+}
+
+/// The one-time migration notice was read.
+#[tauri::command]
+fn dev_or_ack_notice(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::openrouter::OrView, String> {
+    if let Some(r) = state.router.get() {
+        r.router().ack_cloud_notice();
+    }
+    edit_cloud(&app, &state, |d| {
+        crate::openrouter::ack_notice(d);
+        Ok(())
+    })
+}
+
+/// STT "Test": the bundled 3 s public-domain clip through the saved
+/// speech-to-text settings; `key` = typed but not saved yet (`None` = the
+/// stored one). Needs no consent (not the user's audio).
+#[tauri::command]
+async fn dev_or_test_stt(
+    app: AppHandle,
+    key: Option<String>,
+) -> Result<flow_router::HealthReport, String> {
+    let state = app.state::<AppState>();
+    let router = state.router.get().cloned().ok_or("router not ready")?;
+    let cfg = state
         .prefs
         .read()
         .unwrap()
         .developer
         .cloud
-        .providers
-        .iter()
-        .find(|p| p.id == provider_id)
-        .cloned();
-    let target = match provider {
-        Some(p) => {
-            let cloud = crate::dev_settings::normalize_cloud(&flow_router::CloudConfig {
-                providers: vec![p],
-                ..Default::default()
-            });
-            let mut p = cloud.providers.into_iter().next().ok_or("no provider")?;
-            p.id = provider_id.clone();
-            p
-        }
-        None => saved.ok_or("Add the provider before saving its key")?,
-    };
-    flow_router::cloud::parse_base_url(&target.base_url)?;
-    credentials::store_bound(&*state.creds, &target, &key)?;
-    if let Some(r) = state.router.get() {
-        r.router()
-            .set_cloud_key_for(&target, Some(flow_router::SecretString::new(key)));
-    }
-    Ok(credentials::key_state(&*state.creds, &provider_id))
-}
-
-#[tauri::command]
-fn dev_cloud_clear_key(
-    state: tauri::State<'_, AppState>,
-    provider_id: String,
-) -> Result<KeyState, String> {
-    valid_provider_id(&provider_id)?;
-    state.creds.delete(&provider_id)?;
-    if let Some(r) = state.router.get() {
-        r.router().set_cloud_key(&provider_id, None);
-    }
-    Ok(credentials::key_state(&*state.creds, &provider_id))
-}
-
-/// "Test provider": the bundled 3 s public-domain clip through the unsaved
-/// provider form; `key` = a key typed but not saved yet ("" = the stored
-/// one). Blocking network call, so async (off the UI thread).
-#[tauri::command]
-async fn dev_cloud_test(
-    app: AppHandle,
-    provider: flow_router::CloudProviderConfig,
-    key: Option<String>,
-) -> Result<flow_router::HealthReport, String> {
-    let state = app.state::<AppState>();
-    let router = state.router.get().cloned().ok_or("router not ready")?;
-    let mut cloud = flow_router::CloudConfig {
-        active: String::new(),
-        providers: vec![provider],
-        monthly_budget_usd: None,
-    };
-    cloud = crate::dev_settings::normalize_cloud(&cloud);
-    let provider = cloud.providers.remove(0);
+        .openrouter
+        .clone();
     let key = match key.as_deref().map(str::trim) {
         Some(k) if !k.is_empty() => Some(flow_router::SecretString::new(
             credentials::normalize_key(k)?,
         )),
         _ => None,
     };
-    tauri::async_runtime::spawn_blocking(move || router.router().probe_cloud(&provider, key))
+    tauri::async_runtime::spawn_blocking(move || router.router().probe_cloud(&cfg, key))
         .await
         .map_err(|e| e.to_string())
 }
 
+/// Cleanup "Test" result (a fixed sample sentence, never user text).
+#[derive(serde::Serialize, Default)]
+struct CleanupTest {
+    ok: bool,
+    text: Option<String>,
+    error: Option<String>,
+    message: Option<String>,
+    latency_ms: Option<u32>,
+    cost_usd: Option<f64>,
+    model: String,
+}
+
+#[tauri::command]
+async fn dev_or_test_cleanup(app: AppHandle) -> Result<CleanupTest, String> {
+    let state = app.state::<AppState>();
+    let router = state.router.get().cloned().ok_or("router not ready")?;
+    let cfg = state
+        .prefs
+        .read()
+        .unwrap()
+        .developer
+        .cloud
+        .openrouter
+        .clone();
+    tauri::async_runtime::spawn_blocking(move || test_cleanup(&router, &cfg))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn test_cleanup(router: &RouterAdapter, cfg: &flow_router::OpenRouterConfig) -> CleanupTest {
+    let model = cfg.cleanup.model.clone();
+    #[cfg(feature = "cloud")]
+    {
+        use flow_core::cleanup::Cleaner;
+        let Some(key) = router.router().with_cloud_key(|k| k.cloned()) else {
+            return CleanupTest {
+                error: Some("cloud_not_configured".into()),
+                message: Some("save an OpenRouter key first".into()),
+                model,
+                ..Default::default()
+            };
+        };
+        let c = flow_cloud::OpenRouterCleaner::new(cfg.into(), key);
+        let prompt = flow_core::cleanup::build_prompt(
+            crate::openrouter::CLEANUP_SAMPLE,
+            flow_core::config::CleanupLevel::Light,
+            flow_core::config::Style::default(),
+            &flow_core::config::FieldContext::default(),
+            &flow_core::dictionary::Dictionary::default(),
+        );
+        let t0 = Instant::now();
+        let deadline = t0 + Duration::from_millis(cfg.cleanup.timeout_ms.max(800) * 2);
+        let r = c.clean(&prompt, deadline);
+        let call = c.last_call().unwrap_or_default();
+        let latency_ms = Some(t0.elapsed().as_millis() as u32);
+        match r {
+            Ok(text) => CleanupTest {
+                ok: true,
+                text: Some(text),
+                latency_ms,
+                cost_usd: call.cost_usd,
+                model,
+                ..Default::default()
+            },
+            Err(e) => CleanupTest {
+                error: Some(
+                    call.error
+                        .map(str::to_string)
+                        .unwrap_or_else(|| e.code().to_string()),
+                ),
+                latency_ms,
+                model,
+                ..Default::default()
+            },
+        }
+    }
+    #[cfg(not(feature = "cloud"))]
+    {
+        let _ = router;
+        CleanupTest {
+            error: Some("cloud_not_configured".into()),
+            model,
+            ..Default::default()
+        }
+    }
+}
+
+#[tauri::command]
+fn dev_or_cleanup_status(state: tauri::State<'_, AppState>) -> flow_router::CleanupStatus {
+    state
+        .router
+        .get()
+        .map(|r| r.router().cleanup_status())
+        .unwrap_or_default()
+}
+
+/// Save the OpenRouter key: Credential Manager (bound to openrouter.ai),
+/// then the router. Never echoed back; the page gets `KeyState` only.
+#[tauri::command]
+fn dev_cloud_set_key(state: tauri::State<'_, AppState>, key: String) -> Result<KeyState, String> {
+    let key = credentials::normalize_key(&key)?;
+    credentials::store_openrouter_key(&*state.creds, &key)?;
+    if let Some(r) = state.router.get() {
+        r.load_cloud_keys(&*state.creds);
+    }
+    let dev = state.prefs.read().unwrap().developer.clone();
+    refresh_debug_secrets(&state, &dev);
+    Ok(credentials::key_state(
+        &*state.creds,
+        credentials::OPENROUTER,
+    ))
+}
+
+#[tauri::command]
+fn dev_cloud_clear_key(state: tauri::State<'_, AppState>) -> Result<KeyState, String> {
+    state.creds.delete(credentials::OPENROUTER)?;
+    if let Some(r) = state.router.get() {
+        r.router().set_cloud_key(credentials::OPENROUTER, None);
+    }
+    Ok(credentials::key_state(
+        &*state.creds,
+        credentials::OPENROUTER,
+    ))
+}
+
 #[tauri::command]
 fn dev_cloud_usage(state: tauri::State<'_, AppState>) -> crate::cloud::UsageView {
-    let dev = state.prefs.read().unwrap().developer.clone();
-    cloud_view(&state, &dev).usage
+    or_view(&state).usage
 }
 
 #[tauri::command]
@@ -1176,37 +1468,6 @@ fn dev_cloud_reset_usage(state: tauri::State<'_, AppState>) -> crate::cloud::Usa
         persist_usage(&state, r);
     }
     dev_cloud_usage(state)
-}
-
-#[tauri::command]
-fn dev_cloud_presets() -> Vec<flow_router::CloudProviderConfig> {
-    crate::cloud::presets()
-}
-
-/// A fresh id for a provider added from `preset`.
-#[tauri::command]
-fn dev_cloud_new_id(
-    state: tauri::State<'_, AppState>,
-    preset: String,
-    taken: Vec<String>,
-) -> String {
-    let mut providers = state
-        .prefs
-        .read()
-        .unwrap()
-        .developer
-        .cloud
-        .providers
-        .clone();
-    providers.extend(
-        taken
-            .into_iter()
-            .map(|id| flow_router::CloudProviderConfig {
-                id,
-                ..Default::default()
-            }),
-    );
-    crate::cloud::next_id(&preset, &providers)
 }
 
 fn persist_usage(state: &AppState, r: &RouterAdapter) {
@@ -1352,9 +1613,20 @@ mod autostart {
 pub fn run() {
     let appdata = std::env::var("APPDATA").ok();
     let path = Prefs::default_path(appdata.as_deref());
-    let (prefs, outcome) = Prefs::load(&path);
+    let (mut prefs, outcome) = Prefs::load(&path);
     if let LoadOutcome::Corrupt(bak) = &outcome {
         eprintln!("[prefs] corrupt prefs moved to {}", bak.display());
+    }
+    let creds = credentials::system_store();
+    let usage_path = crate::cloud::usage_path(appdata.as_deref());
+    // D28, once: a D18 provider list becomes the single OpenRouter config,
+    // other providers' keys leave Credential Manager (before any router or
+    // key load sees them).
+    let migrated = crate::cloud::migrate_d28(&mut prefs.developer, &*creds, &usage_path);
+    if migrated.is_some() {
+        if let Err(e) = prefs.save(&path) {
+            eprintln!("[cloud] could not save the migrated settings: {e}");
+        }
     }
     let prefs = Arc::new(RwLock::new(prefs));
     let history =
@@ -1374,6 +1646,27 @@ pub fn run() {
         prefs.read().unwrap().developer.debug_log,
     ));
     debug_log::install(debug.clone());
+    if let Some(m) = &migrated {
+        // Ids and counts only (never a key).
+        debug_log::event(
+            "cloud_migrate_d28",
+            &format!(
+                "removed={} moved_key={} deleted_keys={} key_errors={} cloud_disabled={} model_changed={}",
+                m.report.removed.len(),
+                m.keys.moved_from.is_some(),
+                m.keys.deleted.len(),
+                m.keys.errors.len(),
+                m.report.cloud_disabled,
+                m.report.model_to.is_some()
+            ),
+        );
+    }
+    // The model catalogue's cache (public data; fetched only when the
+    // OpenRouter page opens or a cloud use is on).
+    #[cfg(feature = "cloud")]
+    flow_cloud::catalog::set_default_store(Some(Arc::new(flow_cloud::CatalogStore::new(
+        crate::cloud::catalog_cache_path(appdata.as_deref()),
+    ))));
 
     tauri::Builder::default()
         .manage(AppState {
@@ -1388,8 +1681,8 @@ pub fn run() {
             history: history.clone(),
             suggestions: suggestions.clone(),
             suggest_item: OnceLock::new(),
-            creds: credentials::system_store(),
-            usage_path: crate::cloud::usage_path(appdata.as_deref()),
+            creds,
+            usage_path,
             debug: debug.clone(),
             debug_path,
         })
@@ -1422,11 +1715,22 @@ pub fn run() {
             dev_unlock,
             dev_cloud_set_key,
             dev_cloud_clear_key,
-            dev_cloud_test,
             dev_cloud_usage,
             dev_cloud_reset_usage,
-            dev_cloud_presets,
-            dev_cloud_new_id,
+            dev_or_get,
+            dev_or_catalog,
+            dev_or_catalog_status,
+            dev_or_refresh_catalog,
+            dev_or_key_info,
+            dev_or_set_model,
+            dev_or_set_stt,
+            dev_or_set_cleanup,
+            dev_or_set_privacy,
+            dev_or_set_budget,
+            dev_or_ack_notice,
+            dev_or_test_stt,
+            dev_or_test_cleanup,
+            dev_or_cleanup_status,
             debug_log_status,
             debug_log_set,
             debug_log_clear,
@@ -1556,10 +1860,10 @@ pub fn run() {
                 let p = prefs.read().unwrap();
                 router.set_on_demand(on_demand_spec(&p, appdata.as_deref()));
             }
-            // D18: keys from Credential Manager, last counters from disk.
+            // D18: the key from Credential Manager, last counters from disk.
             {
                 let st = app.state::<AppState>();
-                router.load_cloud_keys(&dev, &*st.creds);
+                router.load_cloud_keys(&*st.creds);
                 refresh_debug_secrets(&st, &dev);
                 if router.cloud_capabilities().cloud {
                     if let Some(u) = crate::cloud::load_usage(&st.usage_path) {
@@ -1577,7 +1881,9 @@ pub fn run() {
                         let _ = h.emit_to(OVERLAY, "dictation:route", last.badge());
                     }
                     if let Some(r) = r.upgrade() {
-                        if last.engine.as_deref() == Some("cloud") {
+                        if last.engine.as_deref() == Some("cloud")
+                            || last.llm_engine.as_deref() == Some("cloud")
+                        {
                             persist_usage(&h.state::<AppState>(), &r);
                         }
                         let _ = h.emit_to(SETTINGS, "dev:route", r.route_view());
@@ -1586,6 +1892,11 @@ pub fn run() {
             }
             let _ = app.state::<AppState>().router.set(router.clone());
             probe_in_background(&handle);
+            // A cloud use is on: keep the catalogue (model paths, prices)
+            // current. Never while both uses are off.
+            if caps.cloud && (dev.cloud_effective(caps) || dev.cleanup_effective(caps)) {
+                refresh_catalog_in_background(&handle, false);
+            }
             let start = Instant::now();
             let mut controller = Controller::new(
                 platform.clone(),
