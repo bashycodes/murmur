@@ -738,6 +738,17 @@ impl Router {
         self.recheck_active();
     }
 
+    /// Legacy (D18) form: the key of a schema-1 provider entry. D28: only an
+    /// `adapter == "openrouter"` entry pointing at openrouter.ai sets the
+    /// OpenRouter key; any other entry's key is ignored. Kept so shells
+    /// migrate at their own pace; new code calls `set_cloud_key("openrouter", …)`.
+    pub fn set_cloud_key_for(&self, p: &crate::CloudProviderConfig, key: Option<SecretString>) {
+        let host = p.host();
+        if p.adapter == "openrouter" && (host.is_empty() || host == crate::cloud::OPENROUTER_HOST) {
+            self.set_cloud_key(OPENROUTER_ID, key);
+        }
+    }
+
     /// Run `f` with the OpenRouter key (or `None`), for flow-cloud calls
     /// to openrouter.ai that are not dictations: the model catalogue's
     /// account filter and the key-info page (`nativeCloudKeyInfo`). The
@@ -2173,12 +2184,11 @@ fn far_deadline() -> Instant {
 /// Copy the LLM step's engine / model / cost into the route (D28 D21
 /// fields). A server-cleaned result is reported as `"server"`.
 fn llm_into_route(r: &CommitResult, route: &mut RouteInfo, default_engine: &str) {
-    if let Some(l) = &r.llm {
-        let e = l.engine.clone().unwrap_or_else(|| default_engine.into());
+    if let Some(l) = r.llm.as_ref().filter(|l| l.engine.is_some()) {
         route.llm_engine = Some(if default_engine == "server" {
             "server".into()
         } else {
-            e
+            l.engine.clone().unwrap_or_default()
         });
         route.llm_model = l.model.clone();
         route.llm_cost_usd = l.cost_usd;

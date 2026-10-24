@@ -1,0 +1,4 @@
+data: {"id": "gen-stream-2", "choices": [{"index": 0, "delta": {"content": "Let's"}}]}
+
+data: {"id": "gen-stream-2", "object": "chat.completion.chunk", "error": {"code": "server_error", "message": "Provider disconnected"}, "choices": [{"index": 0, "delta": {"content": ""}, "finish_reason": "error"}]}
+

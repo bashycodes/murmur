@@ -1468,7 +1468,8 @@ impl Worker {
                 Duration::from_millis(timeout_ms),
                 max_div,
             );
-            r.llm = Some(usage);
+            // `None` when every backend refused up front (nothing ran).
+            r.llm = usage.engine.is_some().then_some(usage);
             match outcome {
                 CleanOutcome::Formatted(f) => {
                     text = f;

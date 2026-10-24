@@ -174,7 +174,7 @@ fn cloud_route_with_segmentation_uploads_once_at_commit() {
             allow_client: false,
             ..Default::default()
         },
-        cloud_provider(&provider.url("/openai/v1")),
+        cloud_provider(),
         &[flow_router::Route::Cloud],
     );
     let router = cloud_router(cfg, None);

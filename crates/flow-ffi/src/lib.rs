@@ -468,6 +468,97 @@ pub mod json_api {
 
     // ---- D28 OpenRouter-only cloud (JNI_CONTRACT.md "OpenRouter") --------
 
+    /// Where the OpenRouter model catalogue is cached
+    /// (`<dir>/openrouter-catalog.json`; Android `cacheDir`, Windows
+    /// `%LOCALAPPDATA%\\FlowClone\\cache`). Registers the store flow-cloud's
+    /// STT adapter and cleaner resolve models from. No network. Without
+    /// `cloud`: no-op.
+    pub fn set_cloud_cache_dir(dir: &str) {
+        #[cfg(feature = "cloud")]
+        flow_cloud::catalog::set_default_store(Some(Arc::new(flow_cloud::CatalogStore::new(
+            std::path::Path::new(dir).join("openrouter-catalog.json"),
+        ))));
+        #[cfg(not(feature = "cloud"))]
+        let _ = dir;
+    }
+
+    #[cfg(feature = "cloud")]
+    fn catalog_store() -> Arc<flow_cloud::CatalogStore> {
+        flow_cloud::catalog::default_store().unwrap_or_else(|| {
+            let s = Arc::new(flow_cloud::CatalogStore::in_memory());
+            flow_cloud::catalog::set_default_store(Some(s.clone()));
+            s
+        })
+    }
+
+    /// Picker rows (JSON array) for `use_` (`"stt"` / `"cleanup"`),
+    /// searched by id/name, filtered by `filters_json` (`{zdr_only,
+    /// fast, free, stt_path}`; missing = defaults). From memory / cache /
+    /// the baked snapshot: no network. `[]` without `cloud`.
+    pub fn cloud_catalog(use_: &str, query: &str, filters_json: &str) -> String {
+        #[cfg(feature = "cloud")]
+        return catalog_store().search_json(use_, query, filters_json);
+        #[cfg(not(feature = "cloud"))]
+        {
+            let _ = (use_, query, filters_json);
+            "[]".into()
+        }
+    }
+
+    /// Blocking (≤ 10 s, call off the UI thread): refresh the catalogue
+    /// from openrouter.ai unless the cache is fresh or `force`. With a
+    /// stored key the account's privacy filter (`/models/user`) applies.
+    /// Returns the status `{source, fetched_at_ms, snapshot_date, models,
+    /// stt, cleanup}` plus `"error"` (a `Failure` code) when the refresh
+    /// failed (the previous catalogue stays). Sends no user data.
+    pub fn refresh_cloud_catalog(h: Option<&FlowHandle>, force: bool) -> String {
+        #[cfg(feature = "cloud")]
+        {
+            let store = catalog_store();
+            let run = |k: Option<&SecretString>| store.refresh(k, force).err();
+            let err = match h.and_then(FlowHandle::router) {
+                Some(r) => r.with_cloud_key(run),
+                None => run(None),
+            };
+            let mut v: serde_json::Value =
+                serde_json::from_str(&store.status_json()).unwrap_or_default();
+            if let (Some(e), Some(o)) = (err, v.as_object_mut()) {
+                o.insert("error".into(), e.code().into());
+            }
+            v.to_string()
+        }
+        #[cfg(not(feature = "cloud"))]
+        {
+            let _ = (h, force);
+            r#"{"error":"cloud_not_configured"}"#.into()
+        }
+    }
+
+    /// Blocking "Check key": `GET /api/v1/key` with the stored key →
+    /// `KeyInfo` JSON (`label, limit, limit_remaining, usage_monthly,
+    /// is_free_tier, …`; never the key), or `{"error": code}`
+    /// (`cloud_not_configured` without a key / cloud support).
+    pub fn cloud_key_info(h: &FlowHandle) -> String {
+        #[cfg(feature = "cloud")]
+        if let Some(r) = h.router() {
+            return r.with_cloud_key(|k| match k {
+                None => r#"{"error":"cloud_not_configured"}"#.to_string(),
+                Some(k) => match flow_cloud::keyinfo::fetch(k) {
+                    Ok(i) => {
+                        let mut v = serde_json::to_value(&i).unwrap_or_default();
+                        if let Some(o) = v.as_object_mut() {
+                            o.insert("warn_no_limit".into(), i.warn_no_limit().into());
+                        }
+                        v.to_string()
+                    }
+                    Err(e) => serde_json::json!({"error": e.code()}).to_string(),
+                },
+            });
+        }
+        let _ = h;
+        r#"{"error":"cloud_not_configured"}"#.into()
+    }
+
     /// One-time schema-1 → 2 migration of a router config JSON:
     /// `{"config": RouterConfig, "report": MigrationReport}`. The shell
     /// persists `config`, moves `report.key_from` → `key_to` and deletes
@@ -1164,6 +1255,62 @@ pub unsafe extern "C" fn flow_set_cloud_model(
             return -1;
         };
         int_result(json_api::set_cloud_model(h, u, m))
+    })
+}
+
+/// Catalogue cache directory (`<dir>/openrouter-catalog.json`). No network.
+///
+/// # Safety
+/// `dir` valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_set_cloud_cache_dir(dir: *const c_char) {
+    if let Some(d) = str_arg(dir) {
+        guard((), || json_api::set_cloud_cache_dir(d));
+    }
+}
+
+/// Picker rows JSON for `use_` ("stt"/"cleanup"); no network.
+///
+/// # Safety
+/// Strings valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_cloud_catalog(
+    use_: *const c_char,
+    query: *const c_char,
+    filters_json: *const c_char,
+) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        out_string(json_api::cloud_catalog(
+            str_arg(use_).unwrap_or(""),
+            str_arg(query).unwrap_or(""),
+            str_arg(filters_json).unwrap_or("{}"),
+        ))
+    })
+}
+
+/// Blocking catalogue refresh; status JSON (+ `error`).
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_refresh_cloud_catalog(
+    h: *mut FlowHandle,
+    force: c_int,
+) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        out_string(json_api::refresh_cloud_catalog(h.as_ref(), force != 0))
+    })
+}
+
+/// Blocking "Check key": `KeyInfo` JSON or `{"error":code}`.
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_cloud_key_info(h: *mut FlowHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || match h.as_ref() {
+        Some(h) => out_string(json_api::cloud_key_info(h)),
+        None => out_string(r#"{"error":"cloud_not_configured"}"#.into()),
     })
 }
 
