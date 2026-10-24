@@ -48,6 +48,18 @@ class DebugLogTest {
         assertTrue(sum, sum.contains("· casual") && sum.contains("AI not needed (already clean)"))
     }
 
+    /** 2026-10-24: route order + blank_asr diagnostics, additive (null when unknown). */
+    @Test fun routeOrderAndSpeechDiagnosticsAreAdditive() {
+        val o = JSONObject(DebugFormat.dictation(trace))
+        for (k in listOf("route_order", "speech_ms", "peak_dbfs")) assertTrue(k, o.has(k) && o.isNull(k))
+        val p = JSONObject(DebugFormat.dictation(trace.copy(routeOrder = "client,server", speechMs = 1200, peakDbfs = -31)))
+        assertEquals("client,server", p.getString("route_order"))
+        assertEquals(1200, p.getInt("speech_ms"))
+        assertEquals(-31, p.getInt("peak_dbfs"))
+        val sum = DebugFormat.summary(DebugFormat.dictation(trace.copy(speechMs = 1200, peakDbfs = -31)))
+        assertTrue(sum, sum.contains("speech 1200 ms") && sum.contains("peak -31 dBFS"))
+    }
+
     /** D26: each line pins the exact APK (version + commit), so a log excerpt identifies the build. */
     @Test fun everyLineNamesTheBuild() {
         val cur = dev.flowclone.data.AppVersion.current
