@@ -39,6 +39,10 @@ struct Sess {
     samples: u64,
     created: Instant,
     queue_ms: u64,
+    /// `start` → `commit` arrival on this connection. Against the client's
+    /// recording length it shows an upload backlog (commit queued behind
+    /// audio on a slow / fresh link). 2026-10-24.
+    start_to_commit_ms: Option<u64>,
     commit_requested: bool,
     committing: bool,
     last_partial: Option<String>,
@@ -275,6 +279,8 @@ impl Conn {
             ClientMsg::Commit { sid } => {
                 if self.check_sid(sid) {
                     let s = self.sess.as_mut().unwrap();
+                    s.start_to_commit_ms
+                        .get_or_insert(s.created.elapsed().as_millis() as u64);
                     if s.lease.is_some() {
                         self.commit();
                     } else {
@@ -314,6 +320,7 @@ impl Conn {
             samples: 0,
             created: Instant::now(),
             queue_ms: 0,
+            start_to_commit_ms: None,
             commit_requested: false,
             committing: false,
             last_partial: None,
@@ -486,6 +493,9 @@ impl Conn {
                     llm_ms = t.llm_ms,
                     total_ms = t.total_ms,
                     queue_ms = s.queue_ms,
+                    start_to_commit_ms = s.start_to_commit_ms.unwrap_or(0),
+                    speech_ms = ?t.speech_ms,
+                    peak_dbfs = ?t.peak_dbfs,
                     status = ?r.status,
                     empty_reason = r.empty_reason.as_deref().unwrap_or(""),
                     fallback_reason = r.fallback_reason.as_deref().unwrap_or(""),
