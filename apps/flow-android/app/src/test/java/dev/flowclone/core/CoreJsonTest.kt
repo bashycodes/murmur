@@ -41,7 +41,8 @@ class CoreJsonTest {
         assertEquals("Wispr", d.getJSONObject(0).getString("replacement"))
         assertTrue(d.getJSONObject(1).getBoolean("isSnippet"))
         assertFalse("pure vocabulary word omits replacement", d.getJSONObject(2).has("replacement"))
-        assertEquals("formal", j.getJSONObject("styles").getString("personal"))
+        assertEquals("D27: chat buckets default to casual", "casual", j.getJSONObject("styles").getString("personal"))
+        assertEquals("formal", j.getJSONObject("styles").getString("email"))
     }
 
     @Test fun fieldContextShape() {

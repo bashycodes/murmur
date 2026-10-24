@@ -35,6 +35,19 @@ class DebugLogTest {
         assertEquals("dictation", o.getString("kind"))
     }
 
+    /** D27: the style sent and what the LLM did; llm_skipped_clean is a normal result in the viewer. */
+    @Test fun styleAndLlmFieldsAreAdditive() {
+        val o = JSONObject(DebugFormat.dictation(trace))
+        assertTrue(o.has("style") && o.isNull("style"))
+        assertTrue(o.has("llm") && o.isNull("llm"))
+        val t = trace.copy(style = "casual", llm = "llm_skipped_clean")
+        val p = JSONObject(DebugFormat.dictation(t))
+        assertEquals("casual", p.getString("style"))
+        assertEquals("llm_skipped_clean", p.getString("llm"))
+        val sum = DebugFormat.summary(DebugFormat.dictation(t))
+        assertTrue(sum, sum.contains("· casual") && sum.contains("AI not needed (already clean)"))
+    }
+
     /** D26: each line pins the exact APK (version + commit), so a log excerpt identifies the build. */
     @Test fun everyLineNamesTheBuild() {
         val cur = dev.flowclone.data.AppVersion.current

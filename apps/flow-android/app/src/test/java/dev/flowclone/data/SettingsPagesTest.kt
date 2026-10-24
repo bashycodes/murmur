@@ -20,7 +20,7 @@ class SettingsPagesTest {
         val remote = SettingsPages.visiblePages(BuildCaps.REMOTE)
         assertFalse(Page.ENGINE in remote)
         assertFalse(Page.CLEANUP in remote)
-        for (p in listOf(Page.LANGUAGE, Page.TIMING, Page.BUBBLE, Page.APPS, Page.HISTORY)) assertTrue("$p", p in remote)
+        for (p in listOf(Page.LANGUAGE, Page.STYLE, Page.APP_STYLES, Page.TIMING, Page.BUBBLE, Page.APPS, Page.HISTORY)) assertTrue("$p", p in remote)
     }
 
     @Test fun localAndHybridShowEveryPage() {
@@ -31,7 +31,7 @@ class SettingsPagesTest {
 
     @Test fun onlyPagesWithTypedFieldsHaveSave() {
         // The rule: typed fields → Save (+ discard prompt); switches / choices → apply at once.
-        assertEquals(setOf(Page.TIMING, Page.APPS), Page.entries.filter { SettingsPages.hasForm(it) }.toSet())
+        assertEquals(setOf(Page.TIMING, Page.APPS, Page.APP_STYLES), Page.entries.filter { SettingsPages.hasForm(it) }.toSet())
         for (f in Field.entries) assertTrue("$f", SettingsPages.hasForm(SettingsPages.pageOf(f)))
     }
 
@@ -87,6 +87,23 @@ class SettingsPagesTest {
         val e = bad.errors.getValue(Field.DENYLIST)
         assertTrue(e, "not a package" in e && "single" in e)
         assertTrue(draft(Page.APPS).edit { copy(denylist = "") }.result().settings!!.userDenylist.isEmpty())
+    }
+
+    @Test fun appStyleOverridesAreValidatedAndSaved() {
+        val d = draft(Page.APP_STYLES).edit { copy(appStyles = "com.example.chat = personal\ncom.x.mail=email") }
+        assertTrue(d.dirty)
+        assertEquals(
+            mapOf("com.example.chat" to dev.flowclone.policy.AppCategorizer.Category.PERSONAL, "com.x.mail" to dev.flowclone.policy.AppCategorizer.Category.EMAIL),
+            d.result().settings!!.appBuckets,
+        )
+        val bad = draft(Page.APP_STYLES).edit { copy(appStyles = "com.ok.app = work\ncom.x.y = loud") }.result()
+        assertNull(bad.settings)
+        val e = bad.errors.getValue(Field.APP_STYLES)
+        assertTrue(e, "com.x.y = loud" in e && "personal, work, email or other" in e)
+        val stored = draft(Page.APP_STYLES, s.copy(appBuckets = mapOf("com.z.y" to dev.flowclone.policy.AppCategorizer.Category.WORK)))
+        assertEquals("com.z.y = work", stored.draft.appStyles)
+        assertFalse(stored.dirty)
+        assertFalse("other pages ignore this field", draft(Page.TIMING).edit { copy(appStyles = "x") }.dirty)
     }
 
     @Test fun storedDenylistShowsSortedAndIsClean() {
@@ -168,7 +185,8 @@ class SettingsPagesTest {
     }
 
     @Test fun cleanupSubtitle() {
-        assertEquals("Off", SettingsSummary.cleanup(s, "qwen2.5-1.5b-instruct-q4_k_m.gguf"))
+        assertEquals("Off · auto-format still runs", SettingsSummary.cleanup(s, "qwen2.5-1.5b-instruct-q4_k_m.gguf"))
+        assertEquals("Off · no formatting (auto-format off)", SettingsSummary.cleanup(s.copy(spokenCleanup = false), null))
         // Stored NONE with the switch on runs LIGHT (Settings.effectiveCleanup): show what runs.
         assertEquals("On · qwen2.5-1.5b · Light", SettingsSummary.cleanup(s.copy(llmEnabled = true), "qwen2.5-1.5b-instruct-q4_k_m.gguf"))
         assertEquals("On · no model imported · High", SettingsSummary.cleanup(s.copy(llmEnabled = true, cleanup = CleanupLevel.HIGH), null))
