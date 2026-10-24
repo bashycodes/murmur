@@ -38,6 +38,7 @@
     "vad": true,
     "hallucination_guard": true,
     "llm_prefill": true,
+    "llm_skip_clean": true,
     "spoken_cleanup": true,
     "endpoint_silence_ms": 1500,
     "segment_pause_ms": 800
