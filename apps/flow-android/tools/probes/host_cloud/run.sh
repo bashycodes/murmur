@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# D18 host test: build crates/flow-ffi for the HOST with features jni,cloud and run
-# NativeFlowCoreCloudHostTest: the shipped Kotlin cloud path (DevSettings → EngineRoute →
-# nativeOpenRouter → nativeSetCloudKey / nativeProbeCloud / nativeCloudUsage) against the real
-# router + flow-cloud, talking to a JVM mock of an OpenAI-compatible provider. No keys, no network.
+# D28 host test: build crates/flow-ffi for the HOST with features jni,cloud and run
+# NativeFlowCoreCloudHostTest: the shipped Kotlin OpenRouter path (DevSettings → EngineRoute →
+# nativeOpenRouter, nativeMigrateCloud, nativeCloudCatalog, nativeCleanupStatus,
+# nativeSetCloudModel / nativeSetCleanup, nativeCloudKeyInfo) against the real router +
+# flow-cloud. The OpenRouter address is fixed, so the test never sets a key: every cloud call is
+# refused up front. No keys, no network.
 # Usage: tools/probes/host_cloud/run.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"

@@ -80,29 +80,13 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
 
     // ---- D18 cloud STT (router handles; JNI_CONTRACT.md "Cloud STT") ----
 
-    /** Hand the router a provider's API key (`null` / "" forgets it). Never logged. */
+    /** Hand the router the API key (D28: id `openrouter`; `null` / "" forgets it). Never logged. */
     fun setCloudKey(providerId: String, key: String?) {
         if (!isRouter) return
         lease.use({}) { h -> if (!guardLink { nativeSetCloudKey(h, providerId, key) }) throw lastError("set_cloud_key failed") }
     }
 
-    /**
-     * Review S4: like [setCloudKey], bound to exactly [providerJson]'s base-URL host + adapter
-     * (`nativeSetCloudKeyFor`); an older library falls back to the id-only call.
-     */
-    fun setCloudKeyFor(providerJson: String, providerId: String, key: String?) {
-        if (!isRouter) return
-        lease.use({}) { h ->
-            val ok = try {
-                nativeSetCloudKeyFor(h, providerJson, key)
-            } catch (e: UnsatisfiedLinkError) {
-                guardLink { nativeSetCloudKey(h, providerId, key) }
-            }
-            if (!ok) throw lastError("set_cloud_key_for failed")
-        }
-    }
-
-    /** Blocking "Test provider" with an unsaved provider; `key` null = the router's stored key. */
+    /** Blocking "Test speech-to-text" with an `OpenRouterConfig` JSON; `key` null = the router's stored key. */
     fun probeCloud(providerJson: String, key: String?): HealthReport =
         if (!isRouter) Companion.probeCloud(providerJson, key)
         else lease.use({ Companion.probeCloud(providerJson, key) }) { h ->
@@ -119,6 +103,45 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
         isRouter && lease.use({ false }) { h -> runCatching { nativeSetCloudUsage(h, json) }.getOrDefault(false) }
 
     fun resetCloudUsage() { if (isRouter) lease.use({}) { h -> runCatching { nativeResetCloudUsage(h) } } }
+
+    // ---- D28 OpenRouter (JNI_CONTRACT.md "OpenRouter"); a library without them reads as "no cloud" ----
+
+    /** `nativeCleanupStatus`; `supported:false` without a router / the symbol. Non-blocking. */
+    fun cleanupStatus(): CleanupStatus =
+        if (!isRouter) CleanupStatus() else lease.use({ CleanupStatus() }) { h ->
+            runCatching { RouterJson.decodeCleanupStatus(nativeCleanupStatus(h)) }.getOrDefault(CleanupStatus())
+        }
+
+    /** `nativeSetCleanup` (merge `{allow_cloud_cleanup?, cleanup_order?, cleanup?}`); false + kind `bad_config` on refusal. */
+    fun setCleanup(json: String): Boolean = isRouter && lease.use({ false }) { h -> runCatching { nativeSetCleanup(h, json) }.getOrDefault(false) }
+
+    /** The one-time notice of a legacy config this router migrated in memory, else null. */
+    fun cloudNotice(): String? = if (!isRouter) null else lease.use({ null }) { h -> runCatching { nativeCloudNotice(h) }.getOrNull() }
+
+    fun ackCloudNotice() { if (isRouter) lease.use({}) { h -> runCatching { nativeAckCloudNotice(h) } } }
+
+    /** `nativeSetCloudModel(use, model)`: false + `bad_config` for an invalid id. Null = no symbol. */
+    fun setCloudModel(use: String, model: String): Boolean? =
+        if (!isRouter) null else lease.use({ null }) { h ->
+            try { nativeSetCloudModel(h, use, model) } catch (e: UnsatisfiedLinkError) { null }
+        }
+
+    /** Blocking (≤ 10 s): refresh the catalogue (with the stored key's account filter). Status JSON. */
+    fun refreshCloudCatalog(force: Boolean): String {
+        BlockingCalls.check("nativeRefreshCloudCatalog")
+        return if (!isRouter) Companion.refreshCloudCatalog(force)
+        else lease.use({ Companion.refreshCloudCatalog(force) }) { h ->
+            try { nativeRefreshCloudCatalog(h, force) } catch (e: UnsatisfiedLinkError) { NO_CLOUD }
+        }
+    }
+
+    /** Blocking "Check key" (`GET /api/v1/key` with the stored key). */
+    fun cloudKeyInfo(): CloudKeyInfo {
+        BlockingCalls.check("nativeCloudKeyInfo")
+        return if (!isRouter) CloudKeyInfo(error = "cloud_not_configured") else lease.use({ CloudKeyInfo(error = "cloud_not_configured") }) { h ->
+            try { RouterJson.decodeKeyInfo(nativeCloudKeyInfo(h)) } catch (e: UnsatisfiedLinkError) { CloudKeyInfo(error = "cloud_not_configured") }
+        }
+    }
 
     override fun pushAudio(pcm: ShortArray, length: Int): Boolean =
         lease.use({ false }) { h -> nativePushAudio(h, pcm, length) }
@@ -284,6 +307,36 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
             return runCatching { nativeCloudPresets() }.getOrNull()
         }
 
+        private const val NO_CLOUD = """{"error":"cloud_not_configured"}"""
+
+        /** D28 one-time migration (`nativeMigrateCloud`, pure, no handle); null without the library / symbol or on bad JSON. */
+        fun migrateCloud(devJson: String): String? {
+            if (loadLibrary() !is LibraryState.Loaded) return null
+            return try { nativeMigrateCloud(devJson) } catch (e: UnsatisfiedLinkError) { null }
+        }
+
+        @Volatile private var cacheDirSet: String? = null
+
+        /** Where the catalogue is cached (`<dir>/openrouter-catalog.json`); once per process. No network. */
+        @Synchronized
+        fun setCloudCacheDir(dir: String) {
+            if (cacheDirSet == dir || loadLibrary() !is LibraryState.Loaded) return
+            try { nativeSetCloudCacheDir(dir); cacheDirSet = dir } catch (_: UnsatisfiedLinkError) { }
+        }
+
+        /** Picker rows JSON for `use` (`stt` / `cleanup`): memory, cache or the baked list. Never the network. */
+        fun cloudCatalog(use: String, query: String, filtersJson: String): String {
+            if (loadLibrary() !is LibraryState.Loaded) return "[]"
+            return try { nativeCloudCatalog(0, use, query, filtersJson) } catch (e: UnsatisfiedLinkError) { "[]" }
+        }
+
+        /** Blocking refresh without a router (no account filter). */
+        fun refreshCloudCatalog(force: Boolean): String {
+            BlockingCalls.check("nativeRefreshCloudCatalog")
+            if (loadLibrary() !is LibraryState.Loaded) return NO_CLOUD
+            return try { nativeRefreshCloudCatalog(0, force) } catch (e: UnsatisfiedLinkError) { NO_CLOUD }
+        }
+
         /** Test provider before a router exists (temporary native router: [key] is required). Blocking. */
         fun probeCloud(providerJson: String, key: String?): HealthReport {
             BlockingCalls.check("nativeProbeCloud")
@@ -332,5 +385,17 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
         @JvmStatic external fun nativeResetCloudUsage(handle: Long)
         @JvmStatic external fun nativeCloudCapabilities(): String
         @JvmStatic external fun nativeCloudPresets(): String
+
+        // ---- D28 OpenRouter (JNI_CONTRACT.md "OpenRouter"); present in every flavour's library ----
+        @JvmStatic external fun nativeMigrateCloud(devJson: String): String?
+        @JvmStatic external fun nativeSetCleanup(handle: Long, cleanupJson: String): Boolean
+        @JvmStatic external fun nativeCleanupStatus(handle: Long): String
+        @JvmStatic external fun nativeCloudNotice(handle: Long): String?
+        @JvmStatic external fun nativeAckCloudNotice(handle: Long)
+        @JvmStatic external fun nativeSetCloudModel(handle: Long, use: String, model: String): Boolean
+        @JvmStatic external fun nativeSetCloudCacheDir(dir: String)
+        @JvmStatic external fun nativeCloudCatalog(handle: Long, use: String, query: String, filtersJson: String): String
+        @JvmStatic external fun nativeRefreshCloudCatalog(handle: Long, force: Boolean): String
+        @JvmStatic external fun nativeCloudKeyInfo(handle: Long): String
     }
 }

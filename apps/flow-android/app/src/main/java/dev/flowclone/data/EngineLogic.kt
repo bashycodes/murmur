@@ -311,8 +311,7 @@ object EngineRoute {
         }
         if (p.dev.allowServer) desc.add(if (p.dev.prefer == DevSettings.Prefer.SERVER) 0 else desc.size, "server: ${p.dev.host.ifEmpty { "(not set)" }}:${p.dev.port}")
         if (p.dev.cloudRouted) {
-            val name = p.dev.cloud.activeProvider?.displayName ?: "(no provider)"
-            desc.add(if (p.dev.cloudFirst) 0 else desc.size, "cloud: $name")
+            desc.add(if (p.dev.cloudFirst) 0 else desc.size, "cloud: ${CloudText.routeName(p.dev.cloud)}")
         }
         if (localErr != null) desc += "client unavailable: $localErr"
         if (localCore == null && p.onDemand != null) desc += "client: loaded on demand"

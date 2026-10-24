@@ -628,6 +628,7 @@ dependencies = [
 name = "flow-contract-tests"
 version = "0.4.0"
 dependencies = [
+ "base64 0.22.1",
  "claxon",
  "flow-cloud",
  "flow-core",

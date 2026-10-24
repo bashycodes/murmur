@@ -1,0 +1,30 @@
+{
+  "allow_cloud": true,
+  "cloud": {
+    "active": "elevenlabs-1",
+    "monthly_budget_usd": 5.0,
+    "providers": [
+      {
+        "adapter": "elevenlabs",
+        "base_url": "https://api.elevenlabs.io",
+        "consent_at_ms": 1792540800000,
+        "consent_host": "api.elevenlabs.io",
+        "id": "elevenlabs-1",
+        "label": "ElevenLabs Scribe",
+        "model": "scribe_v2",
+        "preset": "elevenlabs",
+        "send_dictionary": true,
+        "zero_retention": false
+      }
+    ]
+  },
+  "order": [
+    "cloud",
+    "server",
+    "client"
+  ],
+  "server": {
+    "host": "100.64.0.10",
+    "token": "dev-token-0123456789abcdef"
+  }
+}

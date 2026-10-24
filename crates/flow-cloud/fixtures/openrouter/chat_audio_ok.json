@@ -1,0 +1,20 @@
+{
+ "id": "gen-chat-audio-1",
+ "object": "chat.completion",
+ "model": "google/gemini-3.5-flash-lite",
+ "choices": [
+  {
+   "index": 0,
+   "finish_reason": "stop",
+   "message": {
+    "role": "assistant",
+    "content": "And so, my fellow Americans."
+   }
+  }
+ ],
+ "usage": {
+  "prompt_tokens": 120,
+  "completion_tokens": 8,
+  "cost": 4.1e-05
+ }
+}

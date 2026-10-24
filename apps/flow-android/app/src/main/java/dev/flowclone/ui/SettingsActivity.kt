@@ -236,13 +236,17 @@ class SettingsActivity : Activity() {
                 val style = navRow(R.drawable.ic_set_style, "Writing style") { open(Page.STYLE) }
                 val engine = if (SettingsPages.visible(Page.ENGINE, caps)) navRow(R.drawable.ic_set_mic, "Speech engine") { open(Page.ENGINE) } else null
                 val cleanup = if (SettingsPages.visible(Page.CLEANUP, caps)) navRow(R.drawable.ic_set_sparkle, "AI cleanup") { open(Page.CLEANUP) } else null
+                // D28: the user-facing door to OpenRouter (speech-to-text and text cleanup), cloud builds only.
+                val cloud = if (caps.cloud) navRow(R.drawable.ic_dev_cloud, "Cloud (OpenRouter)") { OpenRouterActivity.open(this@SettingsActivity) } else null
                 val timing = navRow(R.drawable.ic_set_timer, "Timing & limits") { open(Page.TIMING) }
                 refreshers += {
+                    val d = app.dev.load()
+                    cloud?.setSubtitle(dev.flowclone.data.OpenRouterPage.settingsSummary(d, app.cloudKeys.has(dev.flowclone.data.OpenRouter.ID)))
                     val s = app.settings.load()
                     language.setSubtitle(SettingsSummary.language(s, app.effectiveLanguage(s)))
                     style.setSubtitle(dev.flowclone.data.WritingStyle.summary(s))
                     engine?.setSubtitle(SettingsSummary.engine(s, fileName(app.settings.modelPath), fileName(app.settings.parakeetPath)))
-                    cleanup?.setSubtitle(SettingsSummary.cleanup(s, fileName(app.settings.llmModelPath)))
+                    cleanup?.setSubtitle(SettingsSummary.cleanup(s, fileName(app.settings.llmModelPath), dev.flowclone.data.OpenRouterPage.cleanupEngineLine(d.effective(caps))))
                     timing.setSubtitle(SettingsSummary.timing(s))
                 }
             }
@@ -438,9 +442,18 @@ class SettingsActivity : Activity() {
                     "at load). Dictionary replacements and snippets apply either way.",
             )
             lateinit var strength: DevUi.ChoiceGroup<dev.flowclone.core.CleanupLevel>
+            val cloudOn = { dev.flowclone.data.OpenRouterPage.cleanupEngineLine(app.dev.load().effective(caps)) != null }
             card {
                 toggleRow("Clean up with local AI", "Off: formatting rules still run. Applies at once and reloads the engine", s.llmEnabled)
-                    .onChange { on -> strength.isEnabled = on; applyNow { copy(llmEnabled = on) } }
+                    .onChange { on -> strength.isEnabled = on || cloudOn(); applyNow { copy(llmEnabled = on) } }
+                // D28: cloud cleanup is its own opt-in (and consent) on the OpenRouter page.
+                if (caps.cloud) {
+                    val cloud = navRow(R.drawable.ic_dev_cloud, "Clean up with OpenRouter") { OpenRouterActivity.open(this@SettingsActivity) }
+                    refreshers += {
+                        cloud.setSubtitle(dev.flowclone.data.OpenRouterPage.cleanupEngineLine(app.dev.load().effective(caps)) ?: "Off · sends the text, not your voice, when on")
+                        strength.isEnabled = app.settings.load().llmEnabled || cloudOn()
+                    }
+                }
             }
             sectionLabel("MODEL")
             card {
@@ -457,7 +470,7 @@ class SettingsActivity : Activity() {
                     ),
                     SettingsPages.shownStrength(s.cleanup),
                 ) { l -> applyNow { copy(cleanup = l) } }
-                strength.isEnabled = s.llmEnabled
+                strength.isEnabled = s.llmEnabled || cloudOn()
             }
         }
     }

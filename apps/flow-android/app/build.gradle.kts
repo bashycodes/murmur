@@ -90,8 +90,6 @@ android {
     sourceSets {
         // RouterJsonTest parses the router's own fixtures (no copies).
         getByName("test").resources.directories.add("../../../crates/flow-router/fixtures")
-        // UrlParseFixtureTest: the URL vectors the Rust parser is checked against (crates/flow-ffi/tests/url_parse_fixture.rs).
-        getByName("test").resources.directories.add("../../../crates/flow-ffi/tests/fixtures")
         // AppVersionTest: the version-rule vectors tools/versioning/test_versioning.py also checks.
         getByName("test").resources.directories.add("../../../tools/versioning/fixtures")
     }

@@ -66,6 +66,37 @@ data class RouteStatus(
     val cloudCircuit: CircuitStatus? = null,
     /** D24: routing details of the last committed session. */
     val lastDiag: RouteDiag? = null,
+    /** D28: the cloud cleanup's own breaker; null in builds without the cloud. */
+    val cleanupCircuit: CircuitStatus? = null,
+)
+
+/** D28 `nativeCleanupStatus` (`flow_router::CleanupStatus`, fixture `cleanup_status.json`). */
+data class CleanupStatus(
+    val supported: Boolean = false,
+    val enabled: Boolean = false,
+    val order: List<String> = emptyList(),
+    val consent: Boolean = false,
+    /** Why a call now would be refused: cloud_cleanup_not_configured, circuit_open, auth_failed, quota_exceeded, no_private_route. */
+    val blocked: String? = null,
+    val circuit: CircuitStatus? = null,
+    val model: String? = null,
+    val timeoutMs: Long? = null,
+    val last: CleanUsage? = null,
+    val monthCostUsd: Double = 0.0,
+)
+
+/** D28 `nativeCloudKeyInfo` (`GET /api/v1/key`; never the key itself), or [error]. */
+data class CloudKeyInfo(
+    val error: String? = null,
+    val label: String? = null,
+    val limit: Double? = null,
+    val limitRemaining: Double? = null,
+    val limitReset: String? = null,
+    val usage: Double? = null,
+    val usageMonthly: Double? = null,
+    val isFreeTier: Boolean = false,
+    val warnNoLimit: Boolean = false,
+    val checkedAtMs: Long? = null,
 )
 
 /** Router JSON (D17 §1.2) ↔ Kotlin. Pinned by RouterJsonTest against crates/flow-router/fixtures. */
@@ -168,9 +199,44 @@ object RouterJson {
             health = o.optJSONObject("health")?.let(::decodeHealth),
             cloudCircuit = o.optJSONObject("cloud_circuit")?.let(::circuit),
             lastDiag = decodeRouteDiag(o.optJSONObject("last_diag")),
+            cleanupCircuit = o.optJSONObject("cleanup_circuit")?.let(::circuit),
         )
     } catch (e: JSONException) {
         RouteStatus()
+    }
+
+    private fun circuitOf(c: JSONObject) = CircuitStatus(
+        open = c.optBoolean("open"), reason = c.optStringOrNull("reason"),
+        retryInMs = c.optLongOrNull("retry_in_ms"), untilConfigChange = c.optBoolean("until_config_change"),
+    )
+
+    fun decodeCleanupStatus(json: String?): CleanupStatus = try {
+        val o = JSONObject(json ?: "{}")
+        val order = o.optJSONArray("order")
+        CleanupStatus(
+            supported = o.optBoolean("supported"), enabled = o.optBoolean("enabled"),
+            order = if (order == null) emptyList() else (0 until order.length()).map { order.optString(it) },
+            consent = o.optBoolean("consent"), blocked = o.optStringOrNull("blocked"),
+            circuit = o.optJSONObject("circuit")?.let(::circuitOf),
+            model = o.optStringOrNull("model"), timeoutMs = o.optLongOrNull("timeout_ms"),
+            last = CoreJson.decodeCleanUsage(o.optJSONObject("last")),
+            monthCostUsd = o.optDoubleOrNull("month_cost_usd") ?: 0.0,
+        )
+    } catch (e: JSONException) {
+        CleanupStatus()
+    }
+
+    fun decodeKeyInfo(json: String?): CloudKeyInfo = try {
+        val o = JSONObject(json ?: "{}")
+        CloudKeyInfo(
+            error = o.optStringOrNull("error"), label = o.optStringOrNull("label"),
+            limit = o.optDoubleOrNull("limit"), limitRemaining = o.optDoubleOrNull("limit_remaining"),
+            limitReset = o.optStringOrNull("limit_reset"), usage = o.optDoubleOrNull("usage"),
+            usageMonthly = o.optDoubleOrNull("usage_monthly"), isFreeTier = o.optBoolean("is_free_tier"),
+            warnNoLimit = o.optBoolean("warn_no_limit"), checkedAtMs = o.optLongOrNull("checked_at_ms"),
+        )
+    } catch (e: JSONException) {
+        CloudKeyInfo(error = "error")
     }
 }
 
@@ -193,6 +259,31 @@ object DevText {
             else -> null
         }
         return listOfNotNull("${h.error ?: "error"}${hint?.let { ": $it" } ?: ""}", h.message).joinToString(" — ")
+    }
+
+    /** D28 "Check key": label, credit left, this month's usage; a warning for a key without a limit. */
+    fun keyInfo(k: CloudKeyInfo): String {
+        k.error?.let { e -> return "$e" + (dev.flowclone.data.CloudText.hint(e)?.let { ": $it" } ?: "") }
+        val u = dev.flowclone.data.CloudText::usd
+        val credit = when {
+            k.limitRemaining != null && k.limit != null -> "credit left ${u(k.limitRemaining)} of ${u(k.limit)}"
+            k.limitRemaining != null -> "credit left ${u(k.limitRemaining)}"
+            else -> "no credit limit"
+        }
+        return listOfNotNull(
+            "Key OK", k.label, credit, k.usageMonthly?.let { "this month ${u(it)}" }, if (k.isFreeTier) "free tier" else null,
+        ).joinToString(" · ") + if (k.warnNoLimit) "\nThis key has no credit limit; OpenRouter recommends setting one." else ""
+    }
+
+    /** D28 cleanup status line: "On · llama-3.3-70b-instruct · last 640 ms $0.0007", or why it is skipped. */
+    fun cleanupStatus(c: CleanupStatus): String {
+        if (!c.supported) return "Not in this build"
+        if (!c.enabled) return "Off"
+        val why = c.blocked?.let { b -> "skipped: " + (dev.flowclone.data.CloudText.hint(b) ?: b) }
+        val last = c.last?.let { l ->
+            listOfNotNull("last", l.latencyMs?.let { "$it ms" }, l.ttftMs?.let { "first token $it ms" }, l.costUsd?.let { (if (l.costEstimated) "≈" else "") + dev.flowclone.data.CloudText.usd(it) }).joinToString(" ")
+        }
+        return listOfNotNull("On", c.model, why, last, "this month ${dev.flowclone.data.CloudText.usd(c.monthCostUsd)}").joinToString(" · ")
     }
 
     /** D18 "Test provider" result line. */
@@ -231,11 +322,11 @@ object DevText {
     }
 
     /** "Active engine (last dictation)" row. */
-    fun lastDictation(r: CommitResult?, providerLabel: (String) -> String? = { null }): String {
+    fun lastDictation(r: CommitResult?): String {
         if (r == null) return "No dictation yet in this process."
         val route = r.route
         val engine = when (route?.engine) {
-            "cloud" -> dev.flowclone.data.CloudText.engineRow(route, route.provider?.let(providerLabel))
+            "cloud" -> dev.flowclone.data.CloudText.engineRow(route)
             "remote" -> "Server${route.server?.let { " $it" } ?: ""}"
             "local" -> "Client (on-device)"
             null -> "Client (no router info)"
@@ -252,6 +343,8 @@ object DevText {
         parts += r.status.name + (r.emptyReason?.let { " ($it)" } ?: "") + (r.error?.let { ": " + if (RouterErrors.plaintextRefused(it)) RouterErrors.NEEDS_TLS else it } ?: "")
         // D27: llm_skipped_clean reads as a normal result ("AI not needed"), not a failure.
         dev.flowclone.data.LlmOutcome.label(dev.flowclone.data.LlmOutcome.code(r))?.let { parts += it }
+        // D28: who cleaned it (on-device / OpenRouter) and what it cost.
+        dev.flowclone.data.CloudText.cleanupRow(route)?.let { parts += it }
         return parts.joinToString(" · ")
     }
 

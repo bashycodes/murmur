@@ -92,26 +92,89 @@ impl fmt::Display for SecretString {
     }
 }
 
-/// Adapters a provider entry may name (`flow-cloud` implements them).
-pub const ADAPTERS: [&str; 5] = [
-    "openai_compat",
-    "openrouter",
-    "elevenlabs",
-    "deepgram",
-    "assemblyai",
-];
+/// Adapters compiled in (D28: OpenRouter is the only cloud provider).
+pub const ADAPTERS: [&str; 1] = ["openrouter"];
 
+/// Legacy (schema 1) limit on provider entries; read only by the migration.
 pub const MAX_PROVIDERS: usize = 8;
 
-/// `RouterConfig.cloud` (§8.1). Keys are never in it.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// `CloudConfig::schema` of a D28 config.
+pub const CLOUD_SCHEMA: u32 = 2;
+/// The single provider id (secure-storage key name).
+pub const OPENROUTER_ID: &str = "openrouter";
+/// Constant, not user-editable (D28 §3 host pinning).
+pub const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
+/// The host every key and consent is bound to.
+pub const OPENROUTER_HOST: &str = "openrouter.ai";
+/// D28 §2.3 recommended defaults.
+pub const DEFAULT_STT_MODEL: &str = "openai/whisper-large-v3-turbo";
+pub const DEFAULT_CLEANUP_MODEL: &str = "meta-llama/llama-3.3-70b-instruct";
+/// Cloud cleanup timeout default / range (ms, D28 §2.5).
+pub const DEFAULT_CLEANUP_TIMEOUT_MS: u64 = 2500;
+pub const CLEANUP_TIMEOUT_RANGE_MS: (u64, u64) = (800, 8000);
+/// Transcription models with no Zero-Data-Retention endpoint in OpenRouter's
+/// `/api/v1/endpoints/zdr` on 2026-10-24 (spec §1.1). Used once, by the
+/// migration: a migrated model from this list is replaced by the default
+/// while ZDR is on. Runtime checks use the live catalogue (flow-cloud).
+pub const NO_ZDR_STT_MODELS_2026_10_24: [&str; 7] = [
+    "openai/gpt-transcribe",
+    "openai/gpt-4o-transcribe",
+    "openai/gpt-4o-mini-transcribe",
+    "openai/whisper-1",
+    "google/gemini-3.5-transcribe",
+    "x-ai/grok-stt-1.0",
+    "meta/muse-voice-transcribe-1.0",
+];
+
+/// One step of `RouterConfig::cleanup_order` (D28).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CleanupRoute {
+    /// On-device LLM (when loaded).
+    Local,
+    /// OpenRouter chat completions.
+    Cloud,
+}
+
+/// `RouterConfig.cloud` (schema 2, D28 §2.6). Keys are never in it.
+///
+/// A config without `schema` (written before D28) deserialises with
+/// `schema = 1` and its `active` / `providers`; `RouterConfig::migrate_d28`
+/// turns it into schema 2 (`crate::migrate`). Those two legacy fields are
+/// never written once empty.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CloudConfig {
-    /// Provider id used by the `cloud` route; `""` = none.
-    pub active: String,
-    pub providers: Vec<CloudProviderConfig>,
-    /// Stop using cloud for the month once this much was spent.
+    /// 2 = D28. Missing in JSON = 1 (legacy).
+    #[serde(default = "legacy_schema")]
+    pub schema: u32,
+    pub openrouter: OpenRouterConfig,
+    /// Stop using the cloud (STT and cleanup) for the month once this much
+    /// was spent.
     pub monthly_budget_usd: Option<Usd>,
+    /// Legacy (schema 1): active provider id. Read by the migration only.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub active: String,
+    /// Legacy (schema 1): provider entries. Read by the migration only.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub providers: Vec<CloudProviderConfig>,
+}
+
+fn legacy_schema() -> u32 {
+    1
+}
+
+impl Default for CloudConfig {
+    fn default() -> Self {
+        Self {
+            schema: CLOUD_SCHEMA,
+            openrouter: OpenRouterConfig::default(),
+            monthly_budget_usd: None,
+            active: String::new(),
+            providers: Vec::new(),
+        }
+    }
 }
 
 impl CloudConfig {
@@ -119,28 +182,20 @@ impl CloudConfig {
         *self == Self::default()
     }
 
-    pub fn active_provider(&self) -> Option<&CloudProviderConfig> {
-        (!self.active.is_empty())
-            .then(|| self.providers.iter().find(|p| p.id == self.active))
-            .flatten()
+    /// Needs `migrate_d28` (schema < 2 or legacy fields present).
+    pub fn is_legacy(&self) -> bool {
+        self.schema < CLOUD_SCHEMA || !self.active.is_empty() || !self.providers.is_empty()
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        if self.providers.len() > MAX_PROVIDERS {
-            return Err(format!("at most {MAX_PROVIDERS} cloud providers"));
+        if self.is_legacy() {
+            // Migrated (in memory) before use; nothing here is routed.
+            return Ok(());
         }
-        for (i, p) in self.providers.iter().enumerate() {
-            p.validate()?;
-            if self.providers[..i].iter().any(|q| q.id == p.id) {
-                return Err(format!("duplicate cloud provider id {:?}", p.id));
-            }
+        if self.schema != CLOUD_SCHEMA {
+            return Err(format!("unknown cloud schema {}", self.schema));
         }
-        if !self.active.is_empty() && self.active_provider().is_none() {
-            return Err(format!(
-                "active cloud provider {:?} does not exist",
-                self.active
-            ));
-        }
+        self.openrouter.validate()?;
         if let Some(b) = self.monthly_budget_usd {
             if !(b.0.is_finite() && b.0 >= 0.0) {
                 return Err("monthly budget must be a non-negative amount".into());
@@ -150,8 +205,201 @@ impl CloudConfig {
     }
 }
 
-/// One configured provider (§8.1). `preset` is informational (UI);
-/// `adapter` picks the wire format.
+/// Request privacy, shared by both uses (D28 §2.6).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Privacy {
+    /// `provider.zdr` (zero-retention endpoints only). Default on.
+    pub zdr: bool,
+    /// `provider.data_collection`: `"deny"` (default) or `"allow"`.
+    pub data_collection: String,
+}
+
+impl Default for Privacy {
+    fn default() -> Self {
+        Self {
+            zdr: true,
+            data_collection: "deny".into(),
+        }
+    }
+}
+
+impl Privacy {
+    pub fn data_collection_deny(&self) -> bool {
+        self.data_collection != "allow"
+    }
+}
+
+/// Cloud speech-to-text use (D28 §2.4).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SttConfig {
+    pub model: String,
+    /// `"auto"` (from the catalogue), `"transcriptions"`, `"chat_audio"`.
+    pub stt_path: String,
+    /// `""` = follow `SessionConfig.languages`.
+    pub language: String,
+    pub send_dictionary: bool,
+    /// `""` = adapter default, `"wav"`, `"flac"`.
+    pub format_override: String,
+    pub timeout_base_ms: u64,
+    /// Host the user consented to send audio to (consent dialog).
+    pub consent_host: String,
+    pub consent_at_ms: u64,
+}
+
+impl Default for SttConfig {
+    fn default() -> Self {
+        Self {
+            model: DEFAULT_STT_MODEL.into(),
+            stt_path: "auto".into(),
+            language: String::new(),
+            send_dictionary: true,
+            format_override: String::new(),
+            timeout_base_ms: 6000,
+            consent_host: String::new(),
+            consent_at_ms: 0,
+        }
+    }
+}
+
+/// Cloud text cleanup use (D28 §2.5). Its consent is separate from STT's.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CleanupConfig {
+    pub model: String,
+    /// `provider.sort`: `latency` | `throughput` | `price` | `""` (load balancing).
+    pub sort: String,
+    /// Hard cleanup timeout (800-8000 ms); the commit then uses the
+    /// deterministic text.
+    pub timeout_ms: u64,
+    pub connect_timeout_ms: u64,
+    /// Prompt scope toggles (all off by default: only the transcript,
+    /// category/style and dictionary leave the device).
+    pub send_surrounding_text: bool,
+    pub send_screen_words: bool,
+    pub send_app_name: bool,
+    /// Host the user consented to send dictated text to.
+    pub consent_host: String,
+    pub consent_at_ms: u64,
+}
+
+impl Default for CleanupConfig {
+    fn default() -> Self {
+        Self {
+            model: DEFAULT_CLEANUP_MODEL.into(),
+            sort: "latency".into(),
+            timeout_ms: DEFAULT_CLEANUP_TIMEOUT_MS,
+            connect_timeout_ms: 1500,
+            send_surrounding_text: false,
+            send_screen_words: false,
+            send_app_name: false,
+            consent_host: String::new(),
+            consent_at_ms: 0,
+        }
+    }
+}
+
+fn consent_ok(host: &str, at_ms: u64) -> bool {
+    at_ms > 0 && host.eq_ignore_ascii_case(OPENROUTER_HOST)
+}
+
+/// `^[a-z0-9._~/-]+(:[a-z]+)*$`, at most 128 chars (spec §2.2).
+pub fn valid_model_id(id: &str) -> bool {
+    if id.is_empty() || id.len() > 128 {
+        return false;
+    }
+    let mut parts = id.split(':');
+    let head = parts.next().unwrap_or("");
+    !head.is_empty()
+        && head
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"._~/-".contains(&b))
+        && parts.all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_lowercase()))
+}
+
+impl SttConfig {
+    /// The user consented to send audio to openrouter.ai.
+    pub fn consent_ok(&self) -> bool {
+        consent_ok(&self.consent_host, self.consent_at_ms)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if !valid_model_id(&self.model) {
+            return Err(format!("invalid STT model id {:?}", self.model));
+        }
+        if !["auto", "transcriptions", "chat_audio"].contains(&self.stt_path.as_str()) {
+            return Err(format!("unknown stt_path {:?}", self.stt_path));
+        }
+        if !["", "wav", "flac"].contains(&self.format_override.as_str()) {
+            return Err(format!(
+                "unknown format_override {:?}",
+                self.format_override
+            ));
+        }
+        if !(1000..=60_000).contains(&self.timeout_base_ms) {
+            return Err("timeout_base_ms must be 1000-60000".into());
+        }
+        Ok(())
+    }
+}
+
+impl CleanupConfig {
+    /// The user consented to send dictated text to openrouter.ai.
+    pub fn consent_ok(&self) -> bool {
+        consent_ok(&self.consent_host, self.consent_at_ms)
+    }
+
+    pub fn scope(&self) -> flow_core::cleanup::PromptScope {
+        flow_core::cleanup::PromptScope {
+            surrounding_text: self.send_surrounding_text,
+            screen_words: self.send_screen_words,
+            app_id: self.send_app_name,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if !valid_model_id(&self.model) {
+            return Err(format!("invalid cleanup model id {:?}", self.model));
+        }
+        if !["", "latency", "throughput", "price"].contains(&self.sort.as_str()) {
+            return Err(format!("unknown sort {:?}", self.sort));
+        }
+        let (lo, hi) = CLEANUP_TIMEOUT_RANGE_MS;
+        if !(lo..=hi).contains(&self.timeout_ms) {
+            return Err(format!("cleanup timeout_ms must be {lo}-{hi}"));
+        }
+        if !(200..=10_000).contains(&self.connect_timeout_ms) {
+            return Err("cleanup connect_timeout_ms must be 200-10000".into());
+        }
+        Ok(())
+    }
+}
+
+/// The single OpenRouter account entry with its two uses (D28 §2.6).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OpenRouterConfig {
+    pub privacy: Privacy,
+    pub stt: SttConfig,
+    pub cleanup: CleanupConfig,
+}
+
+impl OpenRouterConfig {
+    pub fn validate(&self) -> Result<(), String> {
+        if !["deny", "allow"].contains(&self.privacy.data_collection.as_str()) {
+            return Err(format!(
+                "data_collection must be deny or allow, not {:?}",
+                self.privacy.data_collection
+            ));
+        }
+        self.stt.validate()?;
+        self.cleanup.validate()
+    }
+}
+
+/// Legacy (schema 1, D18) provider entry: read only by `migrate_d28`.
+/// `preset` was informational (UI); `adapter` picked the wire format.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CloudProviderConfig {
@@ -242,7 +490,7 @@ impl CloudProviderConfig {
                 self.id
             ));
         }
-        if !ADAPTERS.contains(&self.adapter.as_str()) {
+        if !LEGACY_ADAPTERS.contains(&self.adapter.as_str()) {
             return Err(format!("unknown cloud adapter {:?}", self.adapter));
         }
         if !["", "whisper", "gpt_transcribe"].contains(&self.dialect.as_str()) {
@@ -275,6 +523,15 @@ impl CloudProviderConfig {
         Ok(())
     }
 }
+
+/// Adapters a schema-1 provider entry may name (migration input only).
+pub const LEGACY_ADAPTERS: [&str; 5] = [
+    "openai_compat",
+    "openrouter",
+    "elevenlabs",
+    "deepgram",
+    "assemblyai",
+];
 
 /// A provider base URL as the HTTP client will see it (review S2).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -349,6 +606,9 @@ pub struct CloudUsage {
 #[serde(default)]
 pub struct ProviderUsage {
     pub provider_id: String,
+    /// D28: `"stt"` (also `""`, older counters) or `"cleanup"`.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub purpose: String,
     /// Dictations that reached the provider (silence never does).
     pub requests: u64,
     pub billed_audio_ms: u64,
@@ -357,9 +617,26 @@ pub struct ProviderUsage {
     pub cost_estimated: bool,
 }
 
+/// `ProviderUsage::purpose` values (D28 usage split).
+pub const PURPOSE_STT: &str = "stt";
+pub const PURPOSE_CLEANUP: &str = "cleanup";
+/// Counter id that keeps the cost of providers removed by `migrate_d28`
+/// (the month's budget stays honest).
+pub const REMOVED_PROVIDERS_ID: &str = "removed";
+
 impl CloudUsage {
+    /// Both uses, every provider (the budget counts all of it).
     pub fn total_cost(&self) -> f64 {
         self.providers.iter().map(|p| p.cost_usd.0).sum()
+    }
+
+    /// Cost of one use ("Speech $x · Cleanup $y").
+    pub fn cost_for(&self, purpose: &str) -> f64 {
+        self.providers
+            .iter()
+            .filter(|p| p.purpose == purpose || (purpose == PURPOSE_STT && p.purpose.is_empty()))
+            .map(|p| p.cost_usd.0)
+            .sum()
     }
 
     /// Start a new month when `month` differs (counters reset).
@@ -377,15 +654,27 @@ impl CloudUsage {
         cost: Option<Usd>,
         estimated: bool,
     ) {
-        let i = match self
-            .providers
-            .iter()
-            .position(|p| p.provider_id == provider_id)
-        {
+        self.record_for(provider_id, PURPOSE_STT, billed_audio_ms, cost, estimated)
+    }
+
+    pub(crate) fn record_for(
+        &mut self,
+        provider_id: &str,
+        purpose: &str,
+        billed_audio_ms: u32,
+        cost: Option<Usd>,
+        estimated: bool,
+    ) {
+        let same = |p: &ProviderUsage| {
+            p.provider_id == provider_id
+                && (p.purpose == purpose || (purpose == PURPOSE_STT && p.purpose.is_empty()))
+        };
+        let i = match self.providers.iter().position(same) {
             Some(i) => i,
             None => {
                 self.providers.push(ProviderUsage {
                     provider_id: provider_id.into(),
+                    purpose: purpose.into(),
                     ..Default::default()
                 });
                 self.providers.len() - 1
@@ -449,6 +738,12 @@ mod tests {
         assert!(bad(&|c| c.id = "Bad_Id".into()).contains("id"));
         assert!(bad(&|c| c.id = "x".repeat(33)).contains("id"));
         assert!(bad(&|c| c.adapter = "chat".into()).contains("adapter"));
+        // Legacy entries of every old adapter still parse for the migration.
+        for a in LEGACY_ADAPTERS {
+            let mut c = p();
+            c.adapter = a.into();
+            assert_eq!(c.validate(), Ok(()), "{a}");
+        }
         assert!(bad(&|c| c.base_url = "http://api.example.com/v1".into()).contains("https"));
         assert!(bad(&|c| c.base_url = "ftp://x".into()).contains("base URL"));
         assert!(bad(&|c| c.base_url = "https://u:p@x.com".into()).contains("base URL"));
@@ -475,25 +770,79 @@ mod tests {
     }
 
     #[test]
-    fn config_validation() {
-        let mut c = CloudConfig {
-            active: "openrouter-1".into(),
-            providers: vec![p()],
-            monthly_budget_usd: None,
-        };
+    fn only_openrouter_is_compiled_in() {
+        assert_eq!(ADAPTERS, ["openrouter"]);
+        assert_eq!(OPENROUTER_BASE_URL, "https://openrouter.ai/api/v1");
+        assert_eq!(
+            parse_base_url(OPENROUTER_BASE_URL).unwrap().host,
+            OPENROUTER_HOST
+        );
+    }
+
+    #[test]
+    fn schema2_defaults_match_the_spec() {
+        let c = CloudConfig::default();
+        assert_eq!(c.schema, 2);
+        assert!(!c.is_legacy());
         assert_eq!(c.validate(), Ok(()));
-        c.active = "nope".into();
-        assert!(c.validate().unwrap_err().contains("active"));
-        c.active.clear();
-        c.providers.push(p());
-        assert!(c.validate().unwrap_err().contains("duplicate"));
-        c.providers = (0..9)
-            .map(|i| CloudProviderConfig {
-                id: format!("p{i}"),
-                ..p()
-            })
-            .collect();
-        assert!(c.validate().unwrap_err().contains("at most"));
+        let o = &c.openrouter;
+        assert!(o.privacy.zdr && o.privacy.data_collection_deny());
+        assert_eq!(o.stt.model, DEFAULT_STT_MODEL);
+        assert_eq!(o.cleanup.model, DEFAULT_CLEANUP_MODEL);
+        assert_eq!(o.cleanup.timeout_ms, 2500);
+        assert_eq!(o.cleanup.scope(), flow_core::cleanup::PromptScope::MINIMAL);
+        assert!(!o.stt.consent_ok() && !o.cleanup.consent_ok());
+        // Spec §2.6 JSON shape.
+        let j = serde_json::to_value(&c).unwrap();
+        assert_eq!(j["schema"], 2);
+        assert_eq!(j["openrouter"]["privacy"]["data_collection"], "deny");
+        assert_eq!(j["openrouter"]["stt"]["stt_path"], "auto");
+        assert_eq!(j["openrouter"]["cleanup"]["sort"], "latency");
+        assert!(j.get("providers").is_none() && j.get("active").is_none());
+    }
+
+    #[test]
+    fn json_without_schema_is_legacy() {
+        let c: CloudConfig = serde_json::from_str(r#"{"active":"x","providers":[]}"#).unwrap();
+        assert_eq!(c.schema, 1);
+        assert!(c.is_legacy());
+        let c: CloudConfig = serde_json::from_str(r#"{"schema":2}"#).unwrap();
+        assert!(!c.is_legacy());
+    }
+
+    #[test]
+    fn schema2_validation() {
+        let bad = |f: &dyn Fn(&mut OpenRouterConfig)| {
+            let mut c = CloudConfig::default();
+            f(&mut c.openrouter);
+            c.validate().unwrap_err()
+        };
+        assert!(bad(&|o| o.stt.model = "Bad Model".into()).contains("model"));
+        assert!(bad(&|o| o.cleanup.model = String::new()).contains("model"));
+        assert!(bad(&|o| o.stt.stt_path = "x".into()).contains("stt_path"));
+        assert!(bad(&|o| o.cleanup.timeout_ms = 700).contains("timeout"));
+        assert!(bad(&|o| o.cleanup.timeout_ms = 9000).contains("timeout"));
+        assert!(bad(&|o| o.cleanup.sort = "random".into()).contains("sort"));
+        assert!(bad(&|o| o.privacy.data_collection = "maybe".into()).contains("data_collection"));
+        assert!(valid_model_id("openai/whisper-large-v3-turbo"));
+        assert!(valid_model_id("meta-llama/llama-3.1-8b-instruct:nitro"));
+        assert!(!valid_model_id("x:"));
+        assert!(!valid_model_id(&"a".repeat(129)));
+    }
+
+    #[test]
+    fn consent_is_per_use_and_bound_to_openrouter() {
+        let mut o = OpenRouterConfig::default();
+        o.stt.consent_host = "OpenRouter.ai".into();
+        o.stt.consent_at_ms = 1;
+        assert!(o.stt.consent_ok());
+        assert!(
+            !o.cleanup.consent_ok(),
+            "STT consent must not grant cleanup"
+        );
+        o.cleanup.consent_host = "api.example.com".into();
+        o.cleanup.consent_at_ms = 1;
+        assert!(!o.cleanup.consent_ok());
     }
 
     #[test]
@@ -511,6 +860,10 @@ mod tests {
         u.record("a", 3000, Some(Usd(0.001)), false);
         u.record("a", 1000, None, false);
         u.record("b", 500, Some(Usd(0.002)), true);
+        u.record_for("a", PURPOSE_CLEANUP, 0, Some(Usd(0.01)), false);
+        assert!((u.cost_for(PURPOSE_CLEANUP) - 0.01).abs() < 1e-12);
+        assert!((u.cost_for(PURPOSE_STT) - 0.003).abs() < 1e-12);
+        u.providers.pop();
         assert_eq!(u.providers[0].requests, 2);
         assert_eq!(u.providers[0].billed_audio_ms, 4000);
         assert!(u.providers[0].cost_estimated);

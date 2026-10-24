@@ -128,12 +128,20 @@ data class Settings(
     val effectiveCleanup: CleanupLevel
         get() = if (!llmEnabled) CleanupLevel.NONE else cleanup.takeIf { it != CleanupLevel.NONE } ?: CleanupLevel.LIGHT
 
-    /** [language]: the effective one ([LanguageDefault.effective]); unset / "auto" = detect. */
-    fun toSessionConfig(dictionary: List<DictEntry>, language: String = this.language) = SessionConfig(
+    /**
+     * D28: with cloud cleanup on (OpenRouter, consent given) the LLM step runs even when the
+     * on-device AI is off, at the chosen strength (LIGHT when none was picked).
+     */
+    fun cleanupFor(cloudCleanup: Boolean): CleanupLevel =
+        if (cloudCleanup && effectiveCleanup == CleanupLevel.NONE) cleanup.takeIf { it != CleanupLevel.NONE } ?: CleanupLevel.LIGHT
+        else effectiveCleanup
+
+    /** [language]: the effective one ([LanguageDefault.effective]); unset / "auto" = detect. [cloudCleanup]: see [cleanupFor]. */
+    fun toSessionConfig(dictionary: List<DictEntry>, language: String = this.language, cloudCleanup: Boolean = false) = SessionConfig(
         languages = if (language == "auto" || language.isBlank()) emptyList() else listOf(language),
         dictionary = dictionary,
-        cleanupLevel = effectiveCleanup,
-        rawMode = effectiveCleanup == CleanupLevel.NONE,
+        cleanupLevel = cleanupFor(cloudCleanup),
+        rawMode = cleanupFor(cloudCleanup) == CleanupLevel.NONE,
         maxSamples = sessionCap().maxSamples,
         partialIntervalMs = if (livePreview) PARTIAL_INTERVAL_MS else null,
         llmTimeoutMs = ANDROID_LLM_TIMEOUT_MS,
