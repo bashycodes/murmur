@@ -98,20 +98,22 @@ data class DevDraft(val saved: Input, val draft: Input, val page: DevPages.Page)
 object DevSummary {
     fun routeName(r: Route, s: DevSettings): String = when (r) {
         Route.SERVER -> "Server"
-        Route.CLIENT -> "On-device"
+        Route.CLIENT -> "Phone"
         Route.CLOUD -> s.cloud.activeProvider?.let { "Cloud (${it.displayName})" } ?: "Cloud"
     }
 
     fun routing(s: DevSettings, caps: BuildCaps): String {
         val e = s.effective(caps)
         if (e.bothOff) return "Dictation disabled"
-        return e.routeOrder.filter {
+        val names = e.routeOrder.filter {
             when (it) {
                 Route.SERVER -> e.allowServer
                 Route.CLIENT -> e.allowClient
                 Route.CLOUD -> e.cloudRouted
             }
-        }.joinToString(" → ") { routeName(it, e) }
+        }.map { routeName(it, e) }
+        // The stored order, made obvious: "Phone first → Server" / "Server only".
+        return if (names.size == 1) "${names[0]} only" else names.mapIndexed { i, n -> if (i == 0) "$n first" else n }.joinToString(" → ")
     }
 
     private fun hostPort(s: DevSettings) = (if (s.host.contains(':')) "[${s.host}]" else s.host) + ":" + s.port

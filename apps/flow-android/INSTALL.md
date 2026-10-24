@@ -65,7 +65,8 @@ unknown apps" for Files), or use the platform-tools install command over USB. Op
 and grant, in this order: *Microphone* → *Display over other apps* → *Accessibility service*
 (Settings → Accessibility → Flow Clone → on; if the switch is greyed out: Settings → Apps →
 Flow Clone → ⋮ → *Allow restricted settings*, then retry) → *Notifications* → *Battery: allow
-background*. The main screen must show `Native engine: flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26).
+background* (each is a row in the main screen's *Setup* card: tap it). The main screen's *Status* card must show
+*Native engine* `flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26).
 
 **3. Point it at the server.** Main screen → *Developer settings* → *Server*: host = the PC's
 `100.x.y.z` (or its MagicDNS name), port `7313`, *Paste* the token, *Use TLS* off, *Save* (top
@@ -217,10 +218,10 @@ whisper/sherpa/onnxruntime/flow_llm/libc++ in the APK, no `whisper_`/`llama_` ex
 `…NoNetworkCode` also rejects the cloud STT client (`reqwest` / `webpki` / `flow-cloud`) in the
 local library (D18 C2); `check_native_so.sh --flavor hybrid|remote` requires it there.
 
-If you skip `build-native.sh`, the APK still installs, but the main screen says "Native engine
-unavailable". Only the mock engine works in that build. Without the LLM plugin
-(`--no-llm`) dictation works, and turning on AI cleanup shows "AI cleanup failed to load …
-plugin missing" on the main screen. If the main screen says **"Native library flavour
+If you skip `build-native.sh`, the APK still installs, but the main screen's *Native engine* row
+says "Unavailable". Only the mock engine works in that build. Without the LLM plugin
+(`--no-llm`) dictation works, and turning on AI cleanup makes the main screen's *AI cleanup* row
+say "Failed to load … plugin missing". If the main screen says **"Native library flavour
 mismatch"**, the APK was packaged with another flavour's `libflow_ffi.so`: rebuild with the
 matching `--flavor`.
 
@@ -273,38 +274,42 @@ history.
 
 ## 4. Grant permissions (in order)
 
-Open **Flow Clone**. The main screen lists each permission and its button:
+Open **Flow Clone**. The main screen's **Setup** card lists each permission with its state on
+the right (*Granted*, *Allowed*, *On*) or the action that fixes it (*Grant*, *Allow*, *Turn on*);
+tap the row. While a required one is missing, a red banner at the top names it and *Setup* sits
+above *Status*.
 
-1. **Microphone**: tap *Grant microphone*, then *While using the app*.
-2. **Display over other apps**: tap *Allow display over other apps* and switch it on. The
-   bubble needs it.
-3. **Accessibility service**: tap *Open Accessibility settings* → *Flow Clone* → on.
+1. **Microphone**: tap the row (*Grant*), then *While using the app*.
+2. **Display over other apps**: tap the row (*Allow*) and switch it on. The bubble needs it.
+3. **Accessibility service**: tap the row (*Turn on*) → *Flow Clone* → on.
    - If you installed from Files or a browser (step 3, second option), Android 13+ greys
      the switch out as a **restricted setting**. Fix it in *Settings → Apps → Flow Clone →
      ⋮ (top right) → Allow restricted settings*, then try again. USB installs aren't
      restricted.
-4. **Battery optimisation**: tap *Allow running in the background* → *Allow*. Without it
-   Android may stop the service and the bubble disappears.
+4. **Battery optimisation**: tap the row (*Allow*) → *Allow*. Without it Android may stop the
+   service and the bubble disappears.
 5. **Notifications** (optional) show the status, the session-limit warning and the
    "Accessibility needs fixing" alert.
-6. **Keep it running** (Xiaomi, Samsung, Huawei/Honor, OPPO/realme/OnePlus, vivo): the main
-   screen shows the phone-specific steps (Autostart, Never sleeping apps, App launch…) and
-   an *Open phone settings* button.
+6. **Keep it running: <phone maker>** (Xiaomi, Samsung, Huawei/Honor, OPPO/realme/OnePlus, vivo):
+   the last row of *Setup*; tap it to expand the phone-specific steps (Autostart, Never sleeping
+   apps, App launch…) and the *Open phone settings* button.
 
-If the main screen later says the accessibility service is **"switched on but not
-responding"**, the phone killed it without turning the switch off. Turn Flow Clone off and
-on again in Accessibility settings, then redo steps 4 and 6. The bubble shows a red **!**
-in that state; tapping it opens the main screen.
+If the *Accessibility service* row later says **Not responding** (banner: "the Accessibility
+service stopped responding"), the phone killed it without turning the switch off. Tap *Fix*,
+turn Flow Clone off and on again in Accessibility settings, then redo steps 4 and 6. The bubble
+shows a red **!** in that state; tapping it opens the main screen.
 
 ## 5. Import the model (SAF)
 
-Main screen → **Speech model…** → **Import model file…**. The system file picker opens.
-Choose `Download/ggml-base.en-q5_1.bin`, or the model you copied.
+Main screen → *More* → **Speech model** → **Import model file…**. The system file picker opens.
+Choose `Download/ggml-base.en-q5_1.bin`, or the model you copied. The *Recommended* rows list
+whisper files with size / speed / quality; tapping one copies its download link (for the PC).
 
 The app copies the file into its private storage (`files/models/`) and loads it. The
-original in `Download/` can be deleted afterwards. The main screen should then show
-`Native engine: flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26) and `Loaded: ggml-base.en-q5_1.bin`. To switch models,
-use *Use* on another imported file. *Delete* frees the space.
+original in `Download/` can be deleted afterwards. The import page's *Status* card shows it as
+*Active model*; the main screen's *Status* card shows *Native engine* `flow-ffi <version>+<commit>`
+(e.g. `flow-ffi 0.2.0+1a2b3c4`; D26) and *Speech engine* `Loaded: ggml-base.en-q5_1.bin`. To switch
+models, tap *Use* under another imported file. *Delete* (asks first) frees the space.
 
 ### Parakeet (optional, local / hybrid)
 
@@ -426,8 +431,8 @@ It is **off by default** and never uses the network.
 2. Copy it to the phone's `Download/`.
 3. *Settings → AI cleanup → AI cleanup model → Import model file…*. The import refuses non-GGUF files
    and checks free space; a 1 GB copy takes a minute.
-4. *Settings → AI cleanup → Clean up with local AI* → on, pick the strength (both apply at once). The main screen
-   shows `AI cleanup: qwen2.5-…gguf` once it has loaded (10–60 s; a little longer than in 0.2,
+4. *Settings → AI cleanup → Clean up with local AI* → on, pick the strength (both apply at once). The main screen's
+   *AI cleanup* row shows `qwen2.5-…gguf` once it has loaded (10–60 s; a little longer than in 0.2,
    because the model's instructions are prepared at load).
 
 When the formatted text leaves nothing for the model to do, it is skipped: History and
@@ -448,7 +453,24 @@ keyboard:
 
 While you speak, the line above the bubble shows the live transcript (*Settings → Bubble → Live
 preview*). "Can't hear you" means 3 s of silence; "No speech detected" means nothing was
-inserted. History (search, copy, delete, raw vs cleaned) is on the main screen.
+inserted. Main screen → *More* → *History* lists dictations by day; tap one for the full text,
+the raw transcript and per-stage timings. A dictation that never reached its field (you switched
+fields, a protected field) says **Not inserted — tap to copy**: tap the row to copy it. Its detail
+page says why (*You switched apps*, *Protected field*, *Couldn't paste*) and offers *Insert with
+the bubble*: go back to the app, tap the field, then ✓ on the bubble. The badge names where it was
+transcribed (*Phone*, *Server*, *Cloud*) for dictations saved from 0.4.0 on.
+
+## Screens
+
+Every screen uses the Settings look (grouped cards, rows with their current value):
+
+| Screen | Contents |
+|---|---|
+| Main | banner while a required permission is missing; *Status* (Native engine, Speech engine, Language → Settings · Language, AI cleanup → Settings · AI cleanup, Version); *Setup* (5 permissions + *Keep it running*); *Run* (Start / show bubble, Stop bubble); *More* (Settings, Dictionary & snippets, History, Speech model (local / hybrid), Developer settings (when visible)) |
+| Dictionary & snippets | *Dictionary* and *Snippets* rows with counts; *Import JSON*, *Export JSON*. Each list: *Add* in the top bar, search from 8 entries, tap to edit, TalkBack action / long-press to delete. Edit page: *Save* in the top bar when changed + valid, Discard prompt, *Snippet* switch, *Delete* |
+| History | *Keep dictations* (→ Settings · History), *Show the raw transcript*, search from 8 entries, rows grouped by day (first line, time · app, result badge); *Clear all* in the top bar. Detail: text, raw transcript, when / app / result / inserted / timings, *Copy*, *Delete dictation* |
+| Speech model / Parakeet model / AI cleanup model | *Status* (Active model, Size, Engine), *Import model file…* / *Import model folder…* with progress and errors under it, *Recommended* (tap = copy download link), *Imported* (*Use*, *Delete* asks first) |
+| Cloud provider (Developer settings → Cloud providers) | Provider fields, API key (masked; Show / Paste / Clear stored key), What is sent, Consent, *Add provider* / *Save*, *Test provider*, *Use this provider…*, *Delete provider* |
 
 ## Device test checklist
 
@@ -526,12 +548,12 @@ provider, model, latency (stop → text) and the cost shown, in `docs/cloud-stt.
 - [ ] logcat (`FlowEngine`, `FlowService`) never shows the key (`grep` for its last 8 characters).
 
 **Native engine / packaging**
-- [ ] The main screen shows `Native engine: flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26), not "unavailable". This is
+- [ ] The main screen's *Native engine* row shows `flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26), not "Unavailable". This is
       the first time `System.loadLibrary` runs on bionic: `libc++_shared.so` is resolved,
       and there is no `dlopen` error under `FlowEngine`.
 - [ ] Android 15 / 16 KB-page device (e.g. Pixel 8+ with the 16 KB developer option): the
       app installs and no "page size compatibility" dialog appears.
-- [ ] Model import: progress, then *Active: …*. Note the model load time ("Loading
+- [ ] Model import: progress under *Import model file…*, then *Active model* in the page's *Status* card. Note the model load time ("Loading
       model…" → "Loaded").
 - [ ] Real ASR latency. Dictate about 10 s, then measure the time from stop to text
       appearing. Note the model, the phone and the SoC. On the host (x86, loaded) tiny.en
@@ -543,11 +565,11 @@ provider, model, latency (stop → text) and the cost shown, in `docs/cloud-stt.
       `dropped_samples` yet.
 
 **AI cleanup** (`tools/build-native.sh --whisper --llm`; host-proven with Qwen2.5 0.5B/1.5B)
-- [ ] Main screen shows `AI cleanup: qwen2.5-0.5b-instruct-q4_k_m.gguf`, not "failed to
+- [ ] The main screen's *AI cleanup* row shows `qwen2.5-0.5b-instruct-q4_k_m.gguf`, not "Failed to
       load". This is the first `System.loadLibrary("flow_llm")` plus the core's
       `dlopen("libflow_llm.so")` on bionic. Note the load time (switch on → line appears).
 - [ ] Dictate "um so I think we should meet tomorrow at noon". History shows *AI cleaned*
-      and `llm … ms`. Note `asr`/`llm` ms, phone and SoC. Over 3 s → `llm_timeout` and the raw
+      and its detail page `llm … ms`. Note `asr`/`llm` ms, phone and SoC. Over 3 s → `llm_timeout` and the raw
       text (expected on slow phones; then try 0.5B or turn it off).
 - [ ] Whisper and the LLM loaded together: no crash, no low-memory kill of the service
       while switching apps (both ggml copies coexist: `libflow_ffi.so` keeps whisper's, the
@@ -593,10 +615,17 @@ provider, model, latency (stop → text) and the cost shown, in `docs/cloud-stt.
       "No speech detected. Nothing was inserted." and nothing is typed.
 
 **Dictionary & history**
-- [ ] Add "wisper" → "Wispr", dictate "wisper flow" → "Wispr flow". Edit it, delete it.
-- [ ] Add snippet "my address" → multi-line text; say only "my address" → the text.
-- [ ] History: search finds the row; *Show the raw transcript* shows the pre-cleanup text;
-      Copy and Delete work.
+- [ ] *Dictionary & snippets → Dictionary → Add*: "wisper" → "Wispr" (*Save* enables only once valid;
+      a duplicate word shows its error under the field), dictate "wisper flow" → "Wispr flow". Edit it, delete it.
+- [ ] *Snippets → Add*: "my address" → multi-line text; say only "my address" → the text.
+- [ ] History: rows grouped under *Today*; search finds the row; *Show the raw transcript* shows the
+      pre-cleanup text; a row's detail page has *Copy* and *Delete dictation* (asks first).
+- [ ] Switch fields while a dictation is processing: its History row says *Not inserted — tap to copy*;
+      tapping it copies the text (toast "Copied"). Its detail page says *You switched apps*; *Insert with
+      the bubble* → open another app's field → ✓ on the bubble types it there. The notification's copy
+      and History's copy give the same text (a list keeps its line breaks).
+- [ ] TalkBack: main screen rows read as one item each ("Microphone, Granted…"); *Keep it running*
+      announces expanded / collapsed; Dictionary rows offer *Delete* in the actions menu.
 
 **Shell** (mock engine: *Settings → Mock engine*, then the real engine)
 - [ ] Tap and hold dictation into Notes, WhatsApp, the Chrome URL bar and a notification

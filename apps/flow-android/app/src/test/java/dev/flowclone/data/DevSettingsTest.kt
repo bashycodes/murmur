@@ -14,6 +14,16 @@ class DevSettingsTest {
 
     // ---- host / port (twin of flow_router::net::validate_host's table) ----
 
+    /** 2026-10-24: debug-log `route_order` = the engines the router tries, in order. */
+    @Test fun routeOrderWireListsTheEnabledRoutesInOrder() {
+        val d = DevSettings.defaults(BuildCaps.ALL).copy(allowServer = true, allowClient = true, host = "100.64.0.10")
+        assertEquals("server,client", d.routeOrderWire(BuildCaps.ALL))
+        assertEquals("client,server", d.copy(routeOrder = listOf(DevSettings.Route.CLIENT, DevSettings.Route.SERVER)).routeOrderWire(BuildCaps.ALL))
+        assertEquals("client", d.copy(allowServer = false).routeOrderWire(BuildCaps.ALL))
+        assertEquals("", d.copy(allowServer = false, allowClient = false).routeOrderWire(BuildCaps.ALL))
+        assertEquals("client", d.routeOrderWire(BuildCaps.LOCAL))
+    }
+
     @Test fun validHosts() {
         for (h in listOf("192.168.1.2", "0.0.0.0", "desktop", "box.tail1.ts.net", "::1", "[fd7a:115c:a1e0::1]", "a-b.example.com", "fe80::1", "::ffff:192.168.1.1", "1::", "2001:db8:0:0:0:0:2:1")) {
             assertTrue(h, HostRules.validate(h).isSuccess)
