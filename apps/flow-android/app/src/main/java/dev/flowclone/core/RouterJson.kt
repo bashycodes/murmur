@@ -250,6 +250,8 @@ object DevText {
         if (r.timings.segments > 0) parts += "${r.timings.segments} seg (+${r.timings.preAsrMs} ms early)"
         if (r.timings.waitMs > 0) parts += "wait ${r.timings.waitMs} ms"
         parts += r.status.name + (r.emptyReason?.let { " ($it)" } ?: "") + (r.error?.let { ": " + if (RouterErrors.plaintextRefused(it)) RouterErrors.NEEDS_TLS else it } ?: "")
+        // D27: llm_skipped_clean reads as a normal result ("AI not needed"), not a failure.
+        dev.flowclone.data.LlmOutcome.label(dev.flowclone.data.LlmOutcome.code(r))?.let { parts += it }
         return parts.joinToString(" · ")
     }
 

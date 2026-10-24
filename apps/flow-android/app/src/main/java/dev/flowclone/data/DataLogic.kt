@@ -67,6 +67,10 @@ data class Settings(
      * the core opts the cloud route out by itself.
      */
     val decodeWhileSpeaking: Boolean = true,
+    /** D27 "Writing style": per-bucket style; chats casual, email + other formal ([Styles] defaults). */
+    val styles: dev.flowclone.core.Styles = dev.flowclone.core.Styles(),
+    /** "Writing style → Apps": package → bucket, over the built-in [AppCategorizer] lists. */
+    val appBuckets: Map<String, AppCategorizer.Category> = emptyMap(),
 ) {
     companion object {
         /** [language] not chosen: follow the phone ([LanguageDefault.effective]). */
@@ -116,7 +120,11 @@ data class Settings(
     /** `SessionConfig.endpoint_silence_ms` for a hands-free session; null = off. */
     fun handsFreeEndpointMs(): Int? = endpointSilenceMs.takeIf { it > 0 }?.coerceIn(ENDPOINT_RANGE_MS)
 
-    /** The effective cleanup level: LLM off → NONE; on with NONE selected → LIGHT. */
+    /**
+     * The effective cleanup level: LLM off → NONE; on with NONE selected → LIGHT. Since D27 NONE
+     * (and `raw_mode`) only switch the LLM off: the deterministic formatting still runs whenever
+     * [spokenCleanup] ("Auto-format") is on.
+     */
     val effectiveCleanup: CleanupLevel
         get() = if (!llmEnabled) CleanupLevel.NONE else cleanup.takeIf { it != CleanupLevel.NONE } ?: CleanupLevel.LIGHT
 
@@ -131,7 +139,12 @@ data class Settings(
         llmTimeoutMs = ANDROID_LLM_TIMEOUT_MS,
         spokenCleanup = spokenCleanup,
         segmentPauseMs = if (decodeWhileSpeaking) SEGMENT_PAUSE_MS else null,
+        styles = styles,
     )
+
+    /** [ctx] with the user's bucket for its app ([appBuckets]); unchanged when there is none. */
+    fun withAppBucket(ctx: FieldContext): FieldContext =
+        appBuckets[ctx.appId]?.let { ctx.copy(appCategory = it.coreName) } ?: ctx
 
     fun sessionCap() = SessionCap(capMinutes.coerceIn(1, 20) * 60_000L)
 }

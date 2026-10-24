@@ -86,7 +86,7 @@ class HistoryActivity : Activity() {
                 if (r.audioMs > 0) append(" · ${r.audioMs / 100 / 10.0}s audio")
                 if (r.asrMs > 0) append(" · asr ${r.asrMs} ms")
                 if (r.llmMs > 0) append(" · llm ${r.llmMs} ms")
-                r.fallbackReason?.let { append(" · $it") }
+                dev.flowclone.data.LlmOutcome.label(r.fallbackReason)?.let { append(" · $it") }
             }
             val variant = if (raw && HistoryView.hasRawVariant(r)) " · raw" else ""
             list.addView(TextView(this).apply {

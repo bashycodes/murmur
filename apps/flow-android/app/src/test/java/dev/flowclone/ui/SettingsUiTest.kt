@@ -52,7 +52,7 @@ class SettingsUiTest {
     @Test fun hubShowsEverySectionAndTheFlavourGates() {
         val a = launch()
         val t = texts(a)
-        for (want in listOf("STATUS", "DICTATION", "BUBBLE & APPS", "PRIVACY", "ADVANCED", "ABOUT", "Language", "Timing & limits", "Bubble", "Excluded apps", "History", "Mock engine")) {
+        for (want in listOf("STATUS", "DICTATION", "BUBBLE & APPS", "PRIVACY", "ADVANCED", "ABOUT", "Language", "Writing style", "Chats casual · Email formal", "Timing & limits", "Bubble", "Excluded apps", "History", "Mock engine")) {
             assertTrue(want, want in t)
         }
         // docs/hybrid-architecture.md §1.4: `remote` has no on-device engine, model import or LLM.
@@ -92,7 +92,7 @@ class SettingsUiTest {
     }
 
     @Test fun everyTouchTargetIsAtLeast48dp() {
-        for (p in listOf(Page.HUB, Page.LANGUAGE, Page.TIMING, Page.BUBBLE, Page.APPS, Page.HISTORY) + if (BuildConfig.CAP_LOCAL) listOf(Page.ENGINE, Page.CLEANUP) else emptyList()) {
+        for (p in listOf(Page.HUB, Page.LANGUAGE, Page.STYLE, Page.APP_STYLES, Page.TIMING, Page.BUBBLE, Page.APPS, Page.HISTORY) + if (BuildConfig.CAP_LOCAL) listOf(Page.ENGINE, Page.CLEANUP) else emptyList()) {
             val a = launch(p)
             for (v in walk(a.window.decorView).filter { it.isClickable && it.visibility == View.VISIBLE && !(it is TextView && it.isTextSelectable && it !is EditText) }) {
                 val h = maxOf(v.minimumHeight, v.height)
@@ -164,6 +164,40 @@ class SettingsUiTest {
         assertFalse("clean after Save", save.isEnabled)
         a.onOptionsItemSelected(home)
         assertTrue("clean page leaves without asking", a.isFinishing)
+    }
+
+    /** D27: one choice group per bucket, apply at once, with an example line per choice. */
+    @Test fun writingStylePageAppliesAtOnce() {
+        val a = launch(Page.STYLE)
+        val t = texts(a)
+        for (want in listOf("PERSONAL MESSAGES", "WORK MESSAGES", "EMAIL", "OTHER", "Style per app", "Built-in list only")) assertTrue(want, want in t)
+        assertTrue(t.toString(), t.any { it.startsWith("“Sounds good. See you at 7:30”") })
+        val app = FlowApp.of(a)
+        // Second "Very casual" row = Work messages (bucket order: personal, work, email, other).
+        val rows = walk(a.window.decorView).filter { v -> v.isClickable && v is ViewGroup && walk(v).any { it is TextView && it.text.toString() == "Very casual" } }
+        assertEquals(4, rows.size)
+        rows[1].performClick()
+        assertEquals(dev.flowclone.core.Style.VERY_CASUAL, app.settings.load().styles.work)
+        assertEquals(dev.flowclone.core.Style.CASUAL, app.settings.load().styles.personal)
+        assertTrue(rows[1].createAccessibilityNodeInfo().isChecked)
+        app.settings.save(app.settings.load().copy(styles = dev.flowclone.core.Styles()))
+    }
+
+    @Test fun stylePerAppSavesValidOverrides() {
+        val a = Robolectric.buildActivity(SettingsActivity::class.java, SettingsActivity.intent(androidx_ctx(), Page.APP_STYLES)).setup().visible().get()
+        val menu = org.robolectric.fakes.RoboMenu(a)
+        a.onCreateOptionsMenu(menu)
+        val save = menu.findItem(1)
+        val field = walk(a.window.decorView).filterIsInstance<EditText>().single()
+        field.setText("com.example.chat = loud")
+        assertFalse(save.isEnabled)
+        field.setText("com.example.chat = work")
+        assertTrue(save.isEnabled)
+        a.onOptionsItemSelected(save)
+        val app = FlowApp.of(a)
+        assertEquals(mapOf("com.example.chat" to dev.flowclone.policy.AppCategorizer.Category.WORK), app.settings.load().appBuckets)
+        assertEquals("work_chat", app.settings.load().withAppBucket(dev.flowclone.core.FieldContext(appId = "com.example.chat")).appCategory)
+        app.settings.save(app.settings.load().copy(appBuckets = emptyMap()))
     }
 
     @Test fun pageMissingFromThisBuildOpensTheHub() {
