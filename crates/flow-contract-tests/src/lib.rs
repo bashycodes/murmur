@@ -262,7 +262,7 @@ pub fn mock_provider(text: &str) -> MockCloud {
     })
 }
 
-/// The OpenRouter config (schema 2, D28), STT consented for openrouter.ai.
+/// The OpenRouter config (schema 2), STT consented for openrouter.ai.
 pub fn cloud_provider() -> OpenRouterConfig {
     let mut o = OpenRouterConfig::default();
     o.stt.consent_host = flow_cloud::HOST.into();
@@ -270,7 +270,7 @@ pub fn cloud_provider() -> OpenRouterConfig {
     o
 }
 
-/// `cfg` with the cloud enabled for `provider` and routes `order`.
+/// `cfg` with cloud STT enabled for `provider` and routes `order`.
 pub fn with_cloud(
     mut cfg: RouterConfig,
     provider: OpenRouterConfig,

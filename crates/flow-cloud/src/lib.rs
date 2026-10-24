@@ -47,8 +47,8 @@ use flow_core::cleanup::Cleaner;
 use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
 use flow_core::{CommitResult, CommitStatus, FlowCore, RouteInfo};
 use flow_router::{
-    Backend, BackendError, CloudFactory, CloudProviderConfig, EngineKind, Failure, HealthReport,
-    Router, SecretString, StartInfo, Usd,
+    Backend, BackendError, CleanupFactory, CleanupPlan, CloudFactory, EngineKind, Failure,
+    HealthReport, OpenRouterConfig, Router, SecretString, StartInfo, Usd,
 };
 
 pub use adapters::openrouter::{OpenRouterStt, TRANSCRIBE_PROMPT};
@@ -67,21 +67,20 @@ pub use settings::{
 };
 
 /// Adapters compiled into this crate (`Router::cloud_capabilities`): one.
-pub const ADAPTERS: [&str; 1] = flow_router::cloud::ADAPTERS;
+pub const ADAPTERS: [&str; 1] = ["openrouter"];
 /// The provider id of the one OpenRouter entry.
-pub const PROVIDER_ID: &str = flow_router::cloud::OPENROUTER_ID;
+pub const PROVIDER_ID: &str = "openrouter";
 
 /// The Developer page's "Test provider" clip: the first 3 s of the
 /// public-domain JFK inaugural address sample ("And so, my fellow
 /// Americans"), 16 kHz mono s16le.
 pub const TEST_CLIP: &[u8] = include_bytes!("../assets/test_clip_3s.s16le");
 
-/// Plug the cloud route into a router: `cleaner` is the shell's local LLM
-/// cleaner (`FlowCore::cleaner()`), shared so the model is loaded once.
+/// Plug the cloud route and the cloud cleanup factory into a router:
+/// `cleaner` is the shell's local LLM cleaner (`FlowCore::cleaner()`),
+/// shared so the model is loaded once.
 pub fn attach(router: Router, cleaner: Option<Arc<dyn Cleaner>>) -> Router {
-    router
-        .with_cloud(factory(cleaner))
-        .with_cloud_adapters(ADAPTERS.iter().map(|s| s.to_string()).collect())
+    attach_with(router, move || cleaner.clone())
 }
 
 /// `flow_router::CloudFactory` building a [`CloudBackend`].
@@ -95,105 +94,30 @@ pub fn factory(cleaner: Option<Arc<dyn Cleaner>>) -> CloudFactory {
 pub fn factory_with(
     cleaner: impl Fn() -> Option<Arc<dyn Cleaner>> + Send + Sync + 'static,
 ) -> CloudFactory {
-    Box::new(
-        move |o: &flow_router::OpenRouterConfig, key: SecretString| {
-            Arc::new(CloudBackend::new(stt_settings(o), key, cleaner())) as Arc<dyn Backend>
-        },
-    )
+    Box::new(move |o: &OpenRouterConfig, key: SecretString| {
+        Arc::new(CloudBackend::new(o.into(), key, cleaner())) as Arc<dyn Backend>
+    })
+}
+
+/// `flow_router::CleanupFactory` building an [`OpenRouterCleaner`].
+pub fn cleanup_factory() -> CleanupFactory {
+    Box::new(|o: &OpenRouterConfig, key: SecretString| {
+        Arc::new(OpenRouterCleaner::new(o.into(), key)) as Arc<dyn Cleaner>
+    })
 }
 
 /// [`attach`] with a cleaner looked up per backend build ([`factory_with`]).
-/// Also installs the cloud cleanup factory (D28): it is used only when the
-/// user turned cloud cleanup on (the router gates every call).
 pub fn attach_with(
     router: Router,
     cleaner: impl Fn() -> Option<Arc<dyn Cleaner>> + Send + Sync + 'static,
 ) -> Router {
     router
         .with_cloud(factory_with(cleaner))
-        .with_cloud_adapters(ADAPTERS.iter().map(|s| s.to_string()).collect())
         .with_cleanup_factory(cleanup_factory())
+        .with_cloud_adapters(ADAPTERS.iter().map(|s| s.to_string()).collect())
 }
 
-/// `flow_router::CleanupFactory` building an [`OpenRouterCleaner`] (D28).
-pub fn cleanup_factory() -> flow_router::CleanupFactory {
-    Box::new(|o: &flow_router::OpenRouterConfig, key: SecretString| {
-        cleaner_for(cleanup_settings(o), key)
-    })
-}
-
-/// The router's schema-2 privacy as flow-cloud's.
-pub fn privacy(o: &flow_router::OpenRouterConfig) -> Privacy {
-    Privacy {
-        zdr: o.privacy.zdr,
-        data_collection: o.privacy.data_collection.clone(),
-    }
-}
-
-/// The router's schema-2 STT config as [`SttSettings`].
-pub fn stt_settings(o: &flow_router::OpenRouterConfig) -> SttSettings {
-    let s = &o.stt;
-    SttSettings {
-        model: if s.model.trim().is_empty() {
-            DEFAULT_STT_MODEL.into()
-        } else {
-            s.model.trim().to_string()
-        },
-        stt_path: SttPathChoice::parse(&s.stt_path),
-        language: s.language.clone(),
-        send_dictionary: s.send_dictionary,
-        format_override: s.format_override.clone(),
-        timeout_base_ms: s.timeout_base_ms,
-        privacy: privacy(o),
-    }
-}
-
-/// The router's schema-2 cleanup config as [`CleanupSettings`].
-pub fn cleanup_settings(o: &flow_router::OpenRouterConfig) -> CleanupSettings {
-    let c = &o.cleanup;
-    CleanupSettings {
-        model: c.model.trim().to_string(),
-        sort: c.sort.clone(),
-        timeout_ms: c.timeout_ms,
-        connect_timeout_ms: c.connect_timeout_ms,
-        send_surrounding_text: c.send_surrounding_text,
-        send_screen_words: c.send_screen_words,
-        send_app_name: c.send_app_name,
-        privacy: privacy(o),
-        ..Default::default()
-    }
-}
-
-/// Today's (schema 1) provider entry → [`SttSettings`]. `None` for any
-/// entry that is not OpenRouter or names another host: its key and
-/// consent belong to someone else, so nothing is sent (D28 §2.1).
-pub fn stt_settings_from_provider(p: &CloudProviderConfig) -> Option<SttSettings> {
-    if p.adapter != "openrouter" {
-        return None;
-    }
-    let b = p.base_url.trim();
-    if !b.is_empty() && flow_router::cloud::parse_base_url(b).ok()?.host != HOST {
-        return None;
-    }
-    Some(SttSettings {
-        model: if p.model.trim().is_empty() {
-            DEFAULT_STT_MODEL.into()
-        } else {
-            p.model.trim().to_string()
-        },
-        stt_path: SttPathChoice::Auto,
-        language: p.language.clone(),
-        send_dictionary: p.send_dictionary,
-        format_override: p.format_override.clone(),
-        timeout_base_ms: p.timeout_base_ms,
-        privacy: Privacy {
-            zdr: p.zero_retention,
-            data_collection: "deny".into(),
-        },
-    })
-}
-
-/// A cleanup backend for the router's cleanup factory.
+/// A cleanup backend for the given settings.
 pub fn cleaner_for(settings: CleanupSettings, key: SecretString) -> Arc<dyn Cleaner> {
     Arc::new(OpenRouterCleaner::new(settings, key))
 }
@@ -563,15 +487,16 @@ impl Backend for CloudBackend {
         EngineKind::Cloud
     }
 
-    /// D28: cloud-STT dictations clean with the router's plan too.
-    fn install_cleanup(&self, plan: Option<flow_router::CleanupPlan>) {
+    fn ready(&self) -> bool {
+        self.inner.is_some()
+    }
+
+    /// D28: cloud-STT dictations clean with the router's plan too (takes
+    /// effect at the next session).
+    fn install_cleanup(&self, plan: Option<CleanupPlan>) {
         if let Some((core, _)) = &self.inner {
             core.set_cleaner(plan.and_then(|p| p(core.cleaner())));
         }
-    }
-
-    fn ready(&self) -> bool {
-        self.inner.is_some()
     }
 
     /// No network: key and consent were checked by the router.
@@ -693,21 +618,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_openrouter_entries_build_a_sending_backend() {
-        let mut p = presets().remove(0);
-        p.id = "openrouter".into();
-        assert!(stt_settings_from_provider(&p).is_some());
-        for (adapter, base) in [
-            ("openai_compat", "https://openrouter.ai/api/v1"),
-            ("openrouter", "https://api.example.com/v1"),
-            ("elevenlabs", ""),
-        ] {
-            let mut q = p.clone();
-            q.adapter = adapter.into();
-            q.base_url = base.into();
-            assert!(stt_settings_from_provider(&q).is_none(), "{adapter} {base}");
-        }
-        assert!(!CloudBackend::refusing().ready());
+    fn one_adapter_and_a_refusing_backend() {
         assert_eq!(ADAPTERS, ["openrouter"]);
+        assert_eq!(ADAPTERS, flow_router::cloud::ADAPTERS);
+        assert_eq!(BASE_URL, flow_router::cloud::OPENROUTER_BASE_URL);
+        assert_eq!(HOST, flow_router::cloud::OPENROUTER_HOST);
+        assert_eq!(PROVIDER_ID, flow_router::cloud::OPENROUTER_ID);
+        assert!(!CloudBackend::refusing().ready());
     }
 }
