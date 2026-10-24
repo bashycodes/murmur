@@ -52,7 +52,8 @@ class DictationControllerTest {
         override suspend fun insert(text: String): Boolean { insertGate?.await(); inserted += text; return insertOk }
         val keys = mutableListOf<dev.flowclone.core.PasteKey>()
         override suspend fun sendKey(key: dev.flowclone.core.PasteKey): Boolean { keys += key; inserted += "<${key.wire}>"; return true }
-        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?) { history += result to inserted }
+        val outcomes = mutableListOf<String?>()
+        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?) { history += result to inserted; outcomes += outcome }
         override fun hasMicPermission() = micGranted
         override fun captureContext() = context
         var config = SessionConfig(languages = listOf("en"))
@@ -605,6 +606,61 @@ class DictationControllerTest {
         val t = host.traces.single()
         assertEquals(1200L, t.speechMs)
         assertEquals(-31, t.peakDbfs)
+    }
+
+    /** History stores why a dictation did not go in (HistoryPages.reason reads it). */
+    @Test fun historyGetsTheInsertOutcome() = runTest {
+        val c = controller()
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        host.target = InsertTarget.CHANGED
+        advanceTimeBy(600); c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        c.dismissError(); host.target = InsertTarget.OK; host.insertOk = false
+        advanceTimeBy(600); c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        c.dismissError(); host.insertOk = true
+        advanceTimeBy(600); c.toggle(false); advanceTimeBy(600); c.toggle(false); settle() // silence
+        assertEquals(listOf("inserted", "target_changed", "paste_failed", "empty"), host.outcomes)
+        assertEquals(listOf(true, false, false, false), host.history.map { it.second })
+    }
+
+    /** The notification copies exactly what History saved (line breaks included), not the bare text runs. */
+    @Test fun notInsertedTextIsTheHistoryText() = runTest {
+        host.target = InsertTarget.CHANGED
+        val r = CommitResult(
+            dev.flowclone.core.CommitStatus.FORMATTED, finalText = "1. eggs{{BREAK}}2. milk", plainText = "1. eggs\n2. milk",
+            segments = listOf(dev.flowclone.core.PasteSegment.Text("1. eggs"), dev.flowclone.core.PasteSegment.Key(dev.flowclone.core.PasteKey.BREAK), dev.flowclone.core.PasteSegment.Text("2. milk")),
+        )
+        dictate(r)
+        assertEquals(listOf("1. eggs\n2. milk" to "target_changed"), host.notInserted)
+        assertEquals(host.history.single().first.historyText, host.notInserted.single().first)
+    }
+
+    /** History → "Insert with the bubble": arms the bubble's ✓ insert with a saved text. */
+    @Test fun offerInsertArmsTheBubblePasteIntoTheFieldFocusedNow() = runTest {
+        val c = controller()
+        assertTrue(c.offerInsert("saved text"))
+        assertEquals(DictationState.Error(ErrorKind.FailedToPaste("saved text")), c.state.value)
+        assertTrue("nothing typed until ✓", host.inserted.isEmpty())
+        host.target = InsertTarget.CHANGED // explicit paste goes where the user is now
+        c.pasteRetry(); settle()
+        assertEquals(listOf("saved text"), host.inserted)
+        assertEquals(DictationState.Ready, c.state.value)
+    }
+
+    @Test fun offerInsertNeverInterruptsADictationOrTakesBlankText() = runTest {
+        val c = controller()
+        assertFalse(c.offerInsert("   "))
+        c.toggle(false)
+        assertFalse(c.offerInsert("saved text"))
+        assertTrue(c.state.value is DictationState.Recording)
+    }
+
+    @Test fun offerInsertNeverTypesIntoAProtectedField() = runTest {
+        host.explicitTarget = InsertTarget.PROTECTED
+        val c = controller()
+        assertTrue(c.offerInsert("saved text"))
+        c.pasteRetry(); settle()
+        assertTrue(host.inserted.isEmpty())
+        assertTrue(FeedbackEvent.TargetProtected in host.events)
     }
 
     @Test fun protectedFieldIsNeverInsertedEvenOnPaste() = runTest {

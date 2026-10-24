@@ -55,6 +55,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Foreground service hosting the bubble, recorder and warm engine (07 §6).
@@ -69,6 +70,12 @@ class FlowService : Service() {
         const val ACTION_STOP = "dev.flowclone.action.STOP"
         /** Tap on the "Dictation not inserted" notification: copy that text (2026-10-24). */
         const val ACTION_COPY_UNSENT = "dev.flowclone.action.COPY_UNSENT"
+        /**
+         * History → "Insert with the bubble": arm the bubble's ✓ insert with history row
+         * [EXTRA_HISTORY_ID] (the text is read here from the store, never carried in the intent).
+         */
+        const val ACTION_OFFER_INSERT = "dev.flowclone.action.OFFER_INSERT"
+        const val EXTRA_HISTORY_ID = "history_id"
         private const val CHANNEL_SERVICE = "flow_service"
         private const val CHANNEL_LIMIT = "flow_session_limit"
         const val CHANNEL_STATUS = "flow_status"
@@ -174,6 +181,17 @@ class FlowService : Service() {
                 unsentText?.let { copySensitive(it); toast(R.string.toast_copied) }
                 unsentText = null
                 runCatching { getSystemService(NotificationManager::class.java).cancel(NOTIF_UNSENT_ID) }
+                return START_STICKY
+            }
+            ACTION_OFFER_INSERT -> {
+                val id = intent?.getLongExtra(EXTRA_HISTORY_ID, -1) ?: -1
+                scope.launch {
+                    val text = withContext(Dispatchers.IO) {
+                        runCatching { app.history.recent().firstOrNull { it.id == id } }.getOrNull()
+                    }?.let(dev.flowclone.data.HistoryPages::copyText)
+                    val armed = text != null && controller.offerInsert(text)
+                    toast(if (armed) R.string.toast_offer_insert else R.string.toast_offer_insert_busy)
+                }
                 return START_STICKY
             }
             else -> app.settings.serviceStoppedByUser = false
@@ -420,7 +438,7 @@ class FlowService : Service() {
 
         override suspend fun sendKey(key: dev.flowclone.core.PasteKey): Boolean = app.accessibility?.sendKey(key) ?: false
 
-        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?) {
+        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?) {
             app.lastRoute.value = dev.flowclone.data.LastDictation.of(result, System.currentTimeMillis())
             // D18: persist this month's cloud counters; say so when the cloud failed and another engine took over.
             if (result.route?.engine == "cloud") scope.launch(Dispatchers.IO) { runCatching { app.engine.persistCloudUsage() } }
@@ -432,6 +450,7 @@ class FlowService : Service() {
             val row = HistoryRow(
                 0, System.currentTimeMillis(), appId, result.status.name, result.asrText, result.historyText, inserted, t.audioMs,
                 fallbackReason = result.fallbackReason, asrMs = t.asrMs, llmMs = t.llmMs, totalMs = t.totalMs,
+                insertOutcome = outcome, route = result.route?.engine,
             )
             Log.i(TAG, dev.flowclone.debug.CommitLine.of(result))
             scope.launch(Dispatchers.IO) { runCatching { app.history.add(row, retention) } }

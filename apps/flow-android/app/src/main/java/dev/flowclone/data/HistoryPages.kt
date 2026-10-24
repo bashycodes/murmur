@@ -50,18 +50,29 @@ object HistoryPages {
     /** [time] = the row's time as the phone formats it (12 / 24 h). */
     fun meta(r: HistoryRow, time: String) = "$time · ${app(r)}"
 
+    /** Where it was transcribed, from [HistoryRow.route] (router engine); null when unknown. */
+    fun routeLabel(r: HistoryRow): String? = when (r.route) {
+        "local" -> "Phone"
+        "remote" -> "Server"
+        "cloud" -> "Cloud"
+        else -> null
+    }
+
+    /** The engine outcome badge, prefixed with the route when the row has it: "Server · AI cleaned". */
+    fun badge(r: HistoryRow): String = listOfNotNull(routeLabel(r), HistoryView.label(r)).joinToString(" · ")
+
     /**
-     * The engine outcome badge. HOOK(route): [HistoryRow] has no route / engine column yet; when
-     * one lands (e.g. `route` = local / server / cloud) prefix it here: "Server · AI cleaned".
+     * What Copy puts on the clipboard: the saved text ([CommitResult.historyText] at save time,
+     * line breaks included). The "Dictation not inserted" notification copies the same text.
      */
-    fun badge(r: HistoryRow): String = HistoryView.label(r)
+    fun copyText(r: HistoryRow): String = HistoryView.text(r, raw = false)
 
     private fun hasText(r: HistoryRow) = r.finalText.isNotBlank() || r.asrText.isNotBlank()
 
     /**
      * Dictated but never reached the field (switched fields, protected target, paste failed):
-     * worth recovering. HOOK(fix/route-order): [HistoryRow.inserted] is the only signal today;
-     * an insert-outcome column (e.g. `target_changed`) can refine [flag] / [reason].
+     * worth recovering. [HistoryRow.inserted] decides (rows saved before v3 have no outcome);
+     * [reason] says why from [HistoryRow.insertOutcome].
      */
     fun notInserted(r: HistoryRow) = !r.inserted && hasText(r) &&
         runCatching { dev.flowclone.core.CommitStatus.valueOf(r.status) }.getOrNull().let {
@@ -70,9 +81,13 @@ object HistoryPages {
 
     fun flag(r: HistoryRow): String? = if (notInserted(r)) "Not inserted — tap to copy" else null
 
-    /** HOOK(fix/route-order): why it was not inserted, once the row carries the insert outcome. */
-    @Suppress("UNUSED_PARAMETER")
-    fun reason(r: HistoryRow): String? = null
+    /** Why it was not inserted ([HistoryRow.insertOutcome]); null when inserted or unknown. */
+    fun reason(r: HistoryRow): String? = if (r.inserted) null else when (r.insertOutcome) {
+        dev.flowclone.debug.InsertOutcome.TARGET_CHANGED -> "You switched apps"
+        dev.flowclone.debug.InsertOutcome.TARGET_PROTECTED -> "Protected field"
+        dev.flowclone.debug.InsertOutcome.PASTE_FAILED -> "Couldn't paste"
+        else -> null
+    }
 
     /** Per-stage timings (INSTALL.md device latency checklist reads them on the detail page). */
     fun timings(r: HistoryRow): String = buildList {

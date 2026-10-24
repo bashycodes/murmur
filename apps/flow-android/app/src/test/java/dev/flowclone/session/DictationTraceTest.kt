@@ -50,7 +50,7 @@ class DictationTraceTest {
         val commitLines = mutableListOf<String>()
         override fun feedback(e: FeedbackEvent) = Unit
         override suspend fun insert(text: String): Boolean { inserted += text; return true }
-        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?) { commitLines += CommitLine.of(result) }
+        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?) { commitLines += CommitLine.of(result) }
         override fun hasMicPermission() = true
         override fun captureContext() = FieldContext(appId = "com.example.notes")
         override fun sessionConfig() = SessionConfig()
