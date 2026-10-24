@@ -41,7 +41,7 @@ additive core fields need no protocol change. The server never sets
 | Direction | Message | Meaning |
 |---|---|---|
 | C→S | `{"t":"hello","proto_min":1,"proto_max":1,"client":"flow-android 0.2.0","core":"0.1.0","postprocess_rev":"…"}` | First message on a connection |
-| S→C | `{"t":"hello_ok","proto":1,"server":"flow-server 0.1.0","core":"0.1.0","postprocess_rev":"…","asr_backend":"parakeet","asr_model":"…","llm":false,"workers":1,"busy":0,"max_samples":19200000}` | Handshake accepted |
+| S→C | `{"t":"hello_ok","proto":1,"server":"flow-server 0.2.0+1a2b3c4","core":"0.1.0","postprocess_rev":"…","asr_backend":"parakeet","asr_model":"…","llm":false,"workers":1,"busy":0,"max_samples":19200000}` | Handshake accepted |
 | C→S | `{"t":"start","sid":7,"config":<SessionConfig>}` | `start_session`. A `start` while a session is active cancels that session |
 | S→C | `{"t":"started","sid":7,"queued":false}` | `queued:true` = no free worker; audio is buffered server-side until one frees |
 | C→S | binary PCM | `push_audio` |
@@ -97,7 +97,9 @@ optional fields, new message types the peer may ignore, new error codes) do
 not bump `proto`; bump it when a peer must understand something new; bump the
 path to `/v2/` only for a breaking change. `core` / `postprocess_rev`
 differences are not fatal; the client records `route.server_core` and the
-Developer page warns.
+Developer page warns. `proto` is deliberately independent of the product
+version (D26, `docs/versioning.md`): `server` = `flow-server <version>+<commit>`
+and `core` = the plain product version are informational only.
 
 ## 6. Client behaviour (flow-remote)
 
