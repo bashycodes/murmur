@@ -137,7 +137,14 @@ fn serve(a: &Args) -> ExitCode {
             }
         };
         let addrs: Vec<String> = h.addrs.iter().map(|a| a.to_string()).collect();
-        tracing::info!(workers, asr = %asr, load_ms, listening = %addrs.join(","), "ready");
+        tracing::info!(
+            version = flow_build_info::FULL,
+            workers,
+            asr = %asr,
+            load_ms,
+            listening = %addrs.join(","),
+            "ready"
+        );
         let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
             .expect("SIGTERM handler");
         tokio::select! {

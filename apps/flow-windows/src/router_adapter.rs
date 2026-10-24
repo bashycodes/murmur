@@ -308,9 +308,9 @@ pub fn server_config(dev: &DevSettings, token: &str) -> Result<ServerConfig, Str
 pub fn remote_factory() -> Option<RemoteFactory> {
     #[cfg(feature = "remote")]
     {
-        Some(flow_remote::factory(concat!(
-            "flow-windows ",
-            env!("CARGO_PKG_VERSION")
+        Some(flow_remote::factory(&format!(
+            "flow-windows {}",
+            flow_build_info::FULL
         )))
     }
     #[cfg(not(feature = "remote"))]

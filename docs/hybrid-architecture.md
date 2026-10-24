@@ -229,7 +229,7 @@ Spec file: `docs/protocol.md` (normative; this section is its outline). Types:
 
 | Client → server | Server → client | Session API |
 |---|---|---|
-| `{"t":"hello","proto_min":1,"proto_max":1,"client":"flow-android 0.2.0","core":"0.1.0","postprocess_rev":"…"}` | `{"t":"hello_ok","proto":1,"server":"flow-server 0.1.0","core":"0.1.0","postprocess_rev":"…","asr_backend":"parakeet","asr_model":"sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8","llm":false,"workers":1,"busy":0,"max_samples":19200000}` | (handshake) |
+| `{"t":"hello","proto_min":1,"proto_max":1,"client":"flow-android 0.2.0","core":"0.1.0","postprocess_rev":"…"}` | `{"t":"hello_ok","proto":1,"server":"flow-server 0.2.0+1a2b3c4","core":"0.1.0","postprocess_rev":"…","asr_backend":"parakeet","asr_model":"sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8","llm":false,"workers":1,"busy":0,"max_samples":19200000}` | (handshake) |
 | `{"t":"start","sid":7,"config":<SessionConfig>}` | `{"t":"started","sid":7,"queued":false}` | `start_session` |
 | *binary PCM* | — | `push_audio` |
 | `{"t":"context","sid":7,"ctx":<FieldContext>}` | — | `set_context` |
@@ -431,7 +431,7 @@ Read-only rows:
 * **Circuit:** closed / open until hh:mm:ss (reason).
 
 Buttons:
-* **Test connection** → `probe_server()` with the form's unsaved values, off the UI thread. Shows "OK · median 4 ms (3-6) · flow-server 0.1.0 · parakeet" or the error code with a hint (`auth_failed` → "token rejected", `connect_failed` → "is flow-server running / Tailscale up?", `proto_mismatch` → versions).
+* **Test connection** → `probe_server()` with the form's unsaved values, off the UI thread. Shows "OK · median 4 ms (3-6) · flow-server 0.2.0+1a2b3c4 · parakeet" or the error code with a hint (`auth_failed` → "token rejected", `connect_failed` → "is flow-server running / Tailscale up?", `proto_mismatch` → versions).
 * **Test session** → 1 s silence through the full router path with the current toggles; expects EMPTY `no_speech`; shows the route used.
 * **Reset circuit**, **Reset to defaults**.
 

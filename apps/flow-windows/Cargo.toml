@@ -60,6 +60,7 @@ base64 = "0.22"
 # `llm` = only a libloading loader for the flow_llm plugin (llama.cpp lives
 # in that separate DLL, docs/DECISIONS.md D10), so it is always on and
 # cross-checks for MSVC like any pure-Rust crate.
+flow-build-info = { path = "../../crates/flow-build-info" }
 flow-core = { path = "../../crates/flow-core", features = ["llm"] }
 # Local history (audio is never stored). `bundled` = no system sqlite needed.
 # D17: every dictation goes through the router (no network code in it;

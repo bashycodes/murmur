@@ -26,6 +26,7 @@ remote = ["dep:flow-remote"]
 cloud = ["dep:flow-cloud"]
 
 [dependencies]
+flow-build-info = { path = "../flow-build-info" }
 flow-core = { path = "../flow-core" }
 flow-router = { path = "../flow-router" }
 flow-remote = { path = "../flow-remote", optional = true, features = ["tls"] }

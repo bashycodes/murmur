@@ -87,8 +87,10 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeVersion(
     mut env: JNIEnv,
     _c: JClass,
 ) -> jstring {
-    let v = concat!("flow-ffi ", env!("CARGO_PKG_VERSION"));
-    guard(std::ptr::null_mut(), || out(&mut env, v))
+    // D26: product version + commit (`flow-ffi 0.2.0+abc1234`); the .so is built
+    // separately from the APK, so its own build is what pins it.
+    let v = format!("flow-ffi {}", flow_build_info::FULL);
+    guard(std::ptr::null_mut(), || out(&mut env, &v))
 }
 
 #[no_mangle]

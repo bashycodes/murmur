@@ -41,7 +41,7 @@ still runs and shows an in-app message (`NativeFlowCore.loadLibrary()` returns
 
 | Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | Rust (jni 0.21) | Semantics |
 |---|---|---|---|---|
-| `nativeVersion(): String` | `()Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeVersion` | `(env: JNIEnv, _: JClass) -> jstring` | crate version, e.g. `"flow-ffi 0.1.0"`. Called once right after `loadLibrary` as a link check |
+| `nativeVersion(): String` | `()Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeVersion` | `(env: JNIEnv, _: JClass) -> jstring` | product version + commit (D26, `flow_build_info::FULL`), e.g. `"flow-ffi 0.2.0+1a2b3c4"` (`.dirty` suffix for a build from uncommitted changes). Called once right after `loadLibrary` as a link check |
 | `nativeLastError(): String?` | `()Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeLastError` | `(env, _: JClass) -> jstring` | Last error on this thread, or `null` |
 | `nativeLoadModels(modelConfigJson: String): Long` | `(Ljava/lang/String;)J` | `Java_dev_flowclone_core_NativeFlowCore_nativeLoadModels` | `(env, _: JClass, cfg: JString) -> jlong` | `FlowCore::load_models(&ModelConfig)`. Returns the handle, or `0` with the last error set. Slow (model load) and called off the main thread |
 | `nativeUnload(handle: Long)` | `(J)V` | `Java_dev_flowclone_core_NativeFlowCore_nativeUnload` | `(env, _: JClass, h: jlong)` | Drop the box. `h == 0` is a no-op |
