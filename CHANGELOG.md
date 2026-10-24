@@ -18,6 +18,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- Spoken formatting commands work reliably (D27): say "quote … end quote",
+  "open paren … close paren", "open bracket … close bracket" or "dash" and
+  you get `"…"`, `(…)`, `[…]` and `—`, with or without the AI model. A
+  command said on its own ("in parentheses the USB-C one") is converted only
+  where the pauses make it an aside, and literal uses ("a quote from the
+  CEO") stay words. In our 88-case test set, correctly formatted dictations
+  go from 44 % to 92 %, and none of the 16 must-not-change cases regress.
 - Writing style per app bucket (D27 layer 1), both apps: Personal messages /
   Work messages / Email / Other, each Formal, Casual or Very casual with an
   example line (Windows also offers Excited). Chats now default to **casual**
@@ -45,6 +52,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   result in the Developer *Active engine* row and Android history, not as a
   failure; other fallbacks read "AI too slow / result not used, formatted text
   used".
+- The AI cleanup (prompt v2) keeps formatting you already dictated, makes
+  lists only when you actually enumerate, and is skipped when the text is
+  already clean, so most short dictations commit with no AI wait (48 of 88
+  test cases; commit p50 0 ms, p90 2.1 s with the 1.5B model). Its output
+  is rejected when it invents a number you did not say.
+- flow-server and the apps take ~15 s longer to load the AI model (its
+  instructions are prepared at load so the first dictation is not slower).
 - AI cleanup notes mention the slightly longer model load (prompt v2
   instructions are prepared at load).
 
