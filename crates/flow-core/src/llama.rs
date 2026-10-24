@@ -23,8 +23,6 @@ use libloading::{Library, Symbol};
 
 use crate::asr::AbortFlag;
 use crate::cleanup::{self, CleanError, CleanPrompt, Cleaner};
-use crate::config::{CleanupLevel, FieldContext, Style};
-use crate::dictionary::Dictionary;
 
 const ABI_VERSION: u32 = 1;
 
@@ -149,8 +147,8 @@ unsafe impl Send for LlamaCleaner {}
 unsafe impl Sync for LlamaCleaner {}
 
 impl LlamaCleaner {
-    /// Load the plugin and the GGUF model, then prefill the default prompt
-    /// (light, default style) so the first commit is already warm.
+    /// Load the plugin and the GGUF model, then prefill the static prompt
+    /// prefix ([`cleanup::warm_prompt`]) so the first commit is already warm.
     pub fn load(model: &str, threads: usize, plugin: Option<&str>) -> Result<Self, LlamaLoadError> {
         let mut errs = Vec::new();
         let mut found = None;
@@ -189,13 +187,9 @@ impl LlamaCleaner {
                 .ok()
                 .map(|f| *f);
 
-            let warm = cleanup::build_prompt(
-                "",
-                CleanupLevel::Light,
-                Style::Default,
-                &FieldContext::default(),
-                &Dictionary::default(),
-            );
+            // The static prompt prefix (system + example turns) of every
+            // light-level commit; see `cleanup::warm_prompt`.
+            let warm = cleanup::warm_prompt();
             let (m, wm) = (cstr(model), cstr(&messages_json(&warm)));
             let mut err: *mut c_char = std::ptr::null_mut();
             let threads = i32::try_from(threads.max(1)).unwrap_or(4);
