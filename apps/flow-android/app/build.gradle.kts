@@ -8,6 +8,37 @@ plugins {
     id("com.android.application")
 }
 
+// ---- Product version (D26, docs/versioning.md) ----
+// The repo's VERSION file is the only source; versionName/versionCode are derived here and
+// tools/check-version.sh fails on a literal. The formula is duplicated in
+// dev.flowclone.data.AppVersion (app code cannot be called from here); AppVersionTest pins the two.
+val flowVersionFile: File = rootProject.file("../../VERSION")
+val flowVersion: String = providers.fileContents(rootProject.layout.projectDirectory.file("../../VERSION")).asText.get().trim()
+fun flowVersionCode(v: String): Int {
+    val m = Regex("""(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)""").matchEntire(v)
+        ?: throw GradleException("VERSION '$v' is not MAJOR.MINOR.PATCH (docs/versioning.md)")
+    val (major, minor, patch) = m.groupValues.drop(1).map { it.toInt() }
+    if (major > 209_999 || minor > 99 || patch > 99) throw GradleException("VERSION '$v' does not fit a versionCode")
+    return major * 10_000 + minor * 100 + patch
+}
+// Build metadata: the commit and whether the tree had uncommitted changes (tracked files only).
+// FLOW_GIT_SHA / FLOW_GIT_DIRTY override (a build from a tarball without .git shows "unknown").
+fun flowGit(vararg args: String): String? = runCatching {
+    providers.exec {
+        commandLine("git", *args)
+        workingDir = rootDir
+        isIgnoreExitValue = true
+    }.standardOutput.asText.get().trim()
+}.getOrNull()?.takeIf { it.isNotEmpty() }
+val flowGitSha: String = System.getenv("FLOW_GIT_SHA") ?: flowGit("rev-parse", "--short=7", "HEAD") ?: ""
+val flowGitDirty: Boolean = System.getenv("FLOW_GIT_DIRTY")?.let { it == "1" || it == "true" }
+    ?: (flowGit("status", "--porcelain", "--untracked-files=no") != null)
+val flowBuild: String = when {
+    flowGitSha.isEmpty() -> "unknown"
+    flowGitDirty -> "$flowGitSha-dirty"
+    else -> flowGitSha
+}
+
 android {
     namespace = "dev.flowclone"
     compileSdk = 35
@@ -18,8 +49,11 @@ android {
         applicationId = "dev.flowclone"
         minSdk = 33
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = flowVersionCode(flowVersion)
+        versionName = flowVersion
+        buildConfigField("String", "GIT_SHA", "\"$flowGitSha\"")
+        buildConfigField("boolean", "GIT_DIRTY", "$flowGitDirty")
+        buildConfigField("String", "BUILD", "\"$flowBuild\"")
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
@@ -58,6 +92,8 @@ android {
         getByName("test").resources.directories.add("../../../crates/flow-router/fixtures")
         // UrlParseFixtureTest: the URL vectors the Rust parser is checked against (crates/flow-ffi/tests/url_parse_fixture.rs).
         getByName("test").resources.directories.add("../../../crates/flow-ffi/tests/fixtures")
+        // AppVersionTest: the version-rule vectors tools/versioning/test_versioning.py also checks.
+        getByName("test").resources.directories.add("../../../tools/versioning/fixtures")
     }
 
     // Release signing without secrets in git: the keystore and its passwords come from Gradle
@@ -108,6 +144,7 @@ dependencies {
 val jniStubDir = providers.gradleProperty("flow.jniStubDir").orNull
 val jniLibDir = providers.gradleProperty("flow.jniLibDir").orNull
 tasks.withType<Test>().configureEach {
+    systemProperty("flow.versionFile", flowVersionFile.absolutePath)
     if (jniStubDir != null) {
         systemProperty("java.library.path", jniStubDir)
         systemProperty("flow.jniStub", "1")

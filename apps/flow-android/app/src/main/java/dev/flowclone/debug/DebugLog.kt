@@ -156,6 +156,9 @@ object DebugFormat {
 
     fun ts(ms: Long): String = iso.get()!!.format(Date(ms))
 
+    /** D26: every line names the APK that wrote it (`app_version` 0.2.0, `build` abc1234 / abc1234-dirty). */
+    @Volatile var build: dev.flowclone.data.AppBuild = dev.flowclone.data.AppVersion.current
+
     private fun v(x: Any?): String = when (x) {
         null -> "null"
         is String -> JSONObject.quote(x)
@@ -172,6 +175,8 @@ object DebugFormat {
     fun dictation(t: DictationTrace): String = obj(
         "kind" to "dictation",
         "ts" to ts(t.tsMs),
+        "app_version" to build.version,
+        "build" to build.build,
         "mode" to t.mode,
         "route" to t.route,
         "fallback" to t.fallback,
@@ -204,6 +209,8 @@ object DebugFormat {
     fun event(e: DebugEvent): String = obj(
         "kind" to "event",
         "ts" to ts(e.tsMs),
+        "app_version" to build.version,
+        "build" to build.build,
         "event" to e.event,
         "error" to e.message,
         "stack" to e.stack,
