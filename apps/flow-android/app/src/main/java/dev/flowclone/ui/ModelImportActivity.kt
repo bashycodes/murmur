@@ -6,14 +6,18 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
-import android.widget.Button
 import android.widget.Toast
 import dev.flowclone.FlowApp
+import dev.flowclone.R
 import dev.flowclone.data.ModelFiles
+import dev.flowclone.data.ModelPages
 import java.io.File
 import kotlin.concurrent.thread
 
 /**
+ * Model import in the Settings look (ui/DevUi, [ModelPages]): status card (active model, size,
+ * engine), Import as the primary action with its result / rejection right under it, recommended
+ * files with copyable download links, and the imported list with Use / Delete (asks first).
  * Model import via the Storage Access Framework (no download, no INTERNET): the user picks
  * a file they copied to the phone; we sniff its magic (ggml vs GGUF), copy it into
  * app-private storage and point the engine at it. Two kinds share this screen:
@@ -31,51 +35,100 @@ class ModelImportActivity : Activity() {
         set(v) { if (llm) app.settings.llmModelPath = v else app.settings.modelPath = v }
 
     private val parakeet get() = intent.getStringExtra(EXTRA_KIND) == KIND_PARAKEET
+    private lateinit var ui: DevUi
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         title = if (llm) "AI cleanup model" else if (parakeet) "Parakeet model" else "Speech model"
+        ui = DevUi(this)
+        actionBar?.setDisplayHomeAsUpEnabled(true)
         render()
     }
 
-    private fun render(status: String? = null) {
-        if (parakeet) return renderParakeet(status)
-        page {
-            if (llm) {
-                heading("AI cleanup model (GGUF)")
-                body(
-                    "Optional. A small local language model rewrites the transcript: punctuation, filler words, " +
-                        "\"scratch that\" corrections and lists. It runs only on this phone and is off until you turn it on in Settings. " +
-                        "Copy one of these files to the phone (download it on a computer; this app can't), then import it:",
-                )
-                for (r in ModelFiles.LLM_RECOMMENDATIONS) body("• ${r.file} (~${r.sizeMb} MB): ${r.note}\n  ${r.url}")
-                body("Expect 1–3 s extra per dictation on a recent phone; if cleanup takes longer than 3 s the plain transcript is inserted instead.")
-            } else {
-                heading("Speech model")
-                body("Copy a whisper.cpp model file (ggml-*.bin, e.g. ggml-base.en-q5_1.bin, ~60 MB) to this phone, then import it here. Flow Clone never downloads anything.")
+    private val screen get() = if (llm) ModelPages.Screen.LLM else if (parakeet) ModelPages.Screen.PARAKEET else ModelPages.Screen.WHISPER
+    private var statusLine: DevUi.Result? = null
+    private var importButton: android.widget.Button? = null
+
+    /** Rebuilds the page (keeps the scroll position); [status] = the line under Import. */
+    private fun render(status: String? = null, tone: Tone = Tone.NEUTRAL): Unit = with(ui) {
+        val current = if (parakeet) app.settings.parakeetPath else activePath
+        val items = if (parakeet) {
+            app.engine.parakeetDir().listFiles()?.filter { !it.name.endsWith(".part") && dev.flowclone.data.ParakeetFiles.isModelDir(it) }?.sortedBy { it.name }.orEmpty()
+        } else dir().listFiles()?.filter { it.isFile && !it.name.endsWith(".part") }?.sortedBy { it.name }.orEmpty()
+        fun bytes(f: File) = if (f.isDirectory) f.walk().filter { it.isFile }.sumOf { it.length() } else f.length()
+        rebuild {
+            note(ModelPages.intro(screen))
+            sectionLabel("STATUS")
+            card {
+                val active = current?.let(::File)
+                infoRow("Active model", ModelPages.active(active?.name)).setTextColor(if (active != null) p.ok else p.danger)
+                if (active != null && active.exists()) infoRow("Size", ModelPages.size(bytes(active)))
+                infoRow("Engine", ModelPages.engine(screen))
             }
-            status?.let { body(it) }
-            val current = activePath
-            body("Active: ${current?.let { File(it).name } ?: "none"}", if (current != null) OK_COLOR else BAD_COLOR)
-            button(if (busy) "Importing…" else "Import model file…") { if (!busy) pick() }
-            heading("Imported")
-            val files = dir().listFiles()?.filter { it.isFile && !it.name.endsWith(".part") }?.sortedBy { it.name }.orEmpty()
-            if (files.isEmpty()) body("None yet.")
-            for (f in files) {
-                val active = f.absolutePath == current
-                body("${f.name} — ${f.length() / 1_000_000} MB${if (active) " (active)" else ""}")
-                row(
-                    Button(context).apply { text = "Use"; isAllCaps = false; isEnabled = !active; setOnClickListener { activate(f) } },
-                    Button(context).apply {
-                        text = "Delete"; isAllCaps = false
-                        setOnClickListener {
-                            if (active) { activePath = null; reloadEngine() }
-                            f.delete(); render()
-                        }
-                    },
-                )
+            importButton = action(ModelPages.importLabel(screen, busy), DevUi.Style.PRIMARY) {
+                @Suppress("DEPRECATION")
+                if (busy) Unit else if (parakeet) startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQ_TREE) else pick()
+            }
+            statusLine = result().also { r -> status?.let { r.show(it, tone) } }
+
+            sectionLabel("RECOMMENDED")
+            card {
+                for (m in ModelPages.recommended(screen)) {
+                    val copyLink = { copyLink(m.file, m.url) }
+                    listRow(
+                        m.file, ModelPages.subtitle(m),
+                        trailing = iconButton(R.drawable.ic_scr_copy, "Copy download link for ${m.file}") { copyLink() },
+                        actions = listOf("Copy download link" to copyLink),
+                    ) { copyLink() }
+                    selectableText(m.url, 12f, p.muted)
+                }
+            }
+            note("Download on a computer (this app can't), copy the ${if (parakeet) "folder" else "file"} to the phone, then import it.")
+
+            sectionLabel("IMPORTED")
+            card {
+                if (items.isEmpty()) emptyState("None imported yet", "Imported models are copied into the app's private storage.")
+                for (f in items) {
+                    val active = f.absolutePath == current
+                    stateRow(if (parakeet) R.drawable.ic_scr_folder else R.drawable.ic_scr_file, f.name, ModelPages.imported(bytes(f), active), if (active) "In use" else "", if (active) Tone.OK else Tone.NEUTRAL)
+                    chipRow(
+                        chip("Use") { if (parakeet) activateParakeet(f) else activate(f) }.apply { isEnabled = !active; alpha = if (active) 0.5f else 1f; contentDescription = "Use ${f.name}" },
+                        chip("Delete") { confirmDelete(f, active) }.apply { setTextColor(p.danger); contentDescription = "Delete ${f.name}" },
+                    )
+                }
             }
         }
+    }
+
+    /** Progress while copying: only the status line and the button change. */
+    private fun progress(text: String) {
+        statusLine?.show(text) ?: render(text)
+        importButton?.text = ModelPages.importLabel(screen, busy)
+    }
+
+    private fun copyLink(file: String, url: String) {
+        getSystemService(android.content.ClipboardManager::class.java)?.setPrimaryClip(android.content.ClipData.newPlainText("Download link for $file", url))
+        Toast.makeText(this, "Download link copied", Toast.LENGTH_SHORT).show()
+        ui.announce("Download link copied")
+    }
+
+    private fun confirmDelete(f: File, active: Boolean) {
+        ui.confirm(
+            "Delete ${f.name}?",
+            "It is removed from the app's storage" + if (active) " and the engine reloads without it." else ".",
+            "Delete",
+            onYes = {
+                if (parakeet) {
+                    if (active) { app.settings.parakeetPath = null; reloadEngine() }
+                    f.deleteRecursively()
+                } else {
+                    if (active) { activePath = null; reloadEngine() }
+                    f.delete()
+                }
+                ui.announce("Deleted ${f.name}")
+                render()
+            },
+        )
     }
 
     private fun pick() {
@@ -103,11 +156,11 @@ class ModelImportActivity : Activity() {
         val (rawName, size) = meta(uri)
         val name = rawName.replace(Regex("[^A-Za-z0-9._-]"), "_")
         val header = runCatching { contentResolver.openInputStream(uri)!!.use { ModelFiles.readHeader(it) } }.getOrNull()
-        ModelFiles.rejection(kind, header)?.let { render(it); return }
+        ModelFiles.rejection(kind, header)?.let { render(it, Tone.BAD); return }
         val dest = File(dir(), name)
         val tmp = File(dest.parentFile, "$name.part")
         if (size > 0 && dir().usableSpace < size + 50_000_000) {
-            render("Not enough free space: the file is ${size / 1_000_000} MB, ${dir().usableSpace / 1_000_000} MB free.")
+            render("Not enough free space: the file is ${size / 1_000_000} MB, ${dir().usableSpace / 1_000_000} MB free.", Tone.BAD)
             return
         }
         busy = true
@@ -124,7 +177,7 @@ class ModelImportActivity : Activity() {
                             if (total - lastShown >= 32_000_000) {
                                 lastShown = total
                                 val pct = if (size > 0) " (${total * 100 / size}%)" else ""
-                                runOnUiThread { render("Copying $name… ${total / 1_000_000} MB$pct") }
+                                runOnUiThread { progress("Copying $name… ${total / 1_000_000} MB$pct") }
                             }
                         }
                     }
@@ -137,48 +190,13 @@ class ModelImportActivity : Activity() {
                 result.onSuccess { activate(dest) }.onFailure {
                     app.debugLog.event("model_import", "whisper: ${it.message}", it)
                     tmp.delete()
-                    render("Import failed: ${it.message}")
+                    render("Import failed: ${it.message}", Tone.BAD)
                 }
             }
         }
     }
 
     // ---- Parakeet: a sherpa-onnx model *folder* (encoder/decoder/joiner *.onnx + tokens.txt) ----
-
-    private fun renderParakeet(status: String?) {
-        page {
-            heading("Parakeet-TDT 0.6B v2 (int8)")
-            body(
-                "English only, more accurate than whisper base (WER 1.2% vs 3.7% on the desktop bench). Copy the folder " +
-                    "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8 (~661 MB: encoder.int8.onnx, decoder.int8.onnx, joiner.int8.onnx, tokens.txt) " +
-                    "to the phone, then pick that folder here. Needs ~1 GB free RAM; recommended on phones with 6-8 GB.",
-            )
-            status?.let { body(it) }
-            val current = app.settings.parakeetPath
-            body("Active: ${current?.let { File(it).name } ?: "none"}", if (current != null) OK_COLOR else BAD_COLOR)
-            button(if (busy) "Importing…" else "Import model folder…") {
-                @Suppress("DEPRECATION")
-                if (!busy) startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQ_TREE)
-            }
-            heading("Imported")
-            val dirs = app.engine.parakeetDir().listFiles()?.filter { !it.name.endsWith(".part") && dev.flowclone.data.ParakeetFiles.isModelDir(it) }?.sortedBy { it.name }.orEmpty()
-            if (dirs.isEmpty()) body("None yet.")
-            for (d in dirs) {
-                val active = d.absolutePath == current
-                body("${d.name} — ${d.walk().filter { it.isFile }.sumOf { it.length() } / 1_000_000} MB${if (active) " (active)" else ""}")
-                row(
-                    Button(context).apply { text = "Use"; isAllCaps = false; isEnabled = !active; setOnClickListener { activateParakeet(d) } },
-                    Button(context).apply {
-                        text = "Delete"; isAllCaps = false
-                        setOnClickListener {
-                            if (active) { app.settings.parakeetPath = null; reloadEngine() }
-                            d.deleteRecursively(); render()
-                        }
-                    },
-                )
-            }
-        }
-    }
 
     private fun importTree(tree: Uri) {
         val docId = android.provider.DocumentsContract.getTreeDocumentId(tree)
@@ -195,12 +213,12 @@ class ModelImportActivity : Activity() {
             }
         }
         val pick = dev.flowclone.data.ParakeetFiles.select(entries.keys)
-            ?: return render("Not a Parakeet model folder; missing ${dev.flowclone.data.ParakeetFiles.missing(entries.keys).joinToString()}.")
+            ?: return render("Not a Parakeet model folder; missing ${dev.flowclone.data.ParakeetFiles.missing(entries.keys).joinToString()}.", Tone.BAD)
         val folder = (docId.substringAfterLast('/').substringAfterLast(':').ifEmpty { "parakeet" }).replace(Regex("[^A-Za-z0-9._-]"), "_")
         val dest = File(app.engine.parakeetDir(), folder)
         val tmp = File(app.engine.parakeetDir(), "$folder.part")
         val total = pick.values.sumOf { entries.getValue(it).second.coerceAtLeast(0) }
-        if (app.engine.parakeetDir().usableSpace < total + 100_000_000) return render("Not enough free space: needs ${total / 1_000_000} MB.")
+        if (app.engine.parakeetDir().usableSpace < total + 100_000_000) return render("Not enough free space: needs ${total / 1_000_000} MB.", Tone.BAD)
         busy = true
         render("Copying ${pick.size} files (${total / 1_000_000} MB)…")
         thread(name = "parakeet-import") {
@@ -214,7 +232,7 @@ class ModelImportActivity : Activity() {
                             while (true) {
                                 val n = input.read(buf); if (n < 0) break
                                 out.write(buf, 0, n); done += n
-                                if (done % 64_000_000 < n) runOnUiThread { render("Copying… ${done / 1_000_000} / ${total / 1_000_000} MB") }
+                                if (done % 64_000_000 < n) runOnUiThread { progress("Copying… ${done / 1_000_000} / ${total / 1_000_000} MB") }
                             }
                         }
                     }
@@ -224,7 +242,7 @@ class ModelImportActivity : Activity() {
             }
             runOnUiThread {
                 busy = false
-                result.onSuccess { activateParakeet(dest) }.onFailure { app.debugLog.event("model_import", "parakeet: ${it.message}", it); tmp.deleteRecursively(); render("Import failed: ${it.message}") }
+                result.onSuccess { activateParakeet(dest) }.onFailure { app.debugLog.event("model_import", "parakeet: ${it.message}", it); tmp.deleteRecursively(); render("Import failed: ${it.message}", Tone.BAD) }
             }
         }
     }
@@ -247,6 +265,9 @@ class ModelImportActivity : Activity() {
     }
 
     private fun reloadEngine() = app.engine.reload()
+
+    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean =
+        if (item.itemId == android.R.id.home) { finish(); true } else super.onOptionsItemSelected(item)
 
     companion object {
         private const val REQ_PICK = 10

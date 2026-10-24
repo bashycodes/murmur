@@ -434,4 +434,220 @@ internal class DevUi(val activity: Activity) {
 
     /** Warning / error banner at the top of a page; hidden while empty. */
     fun LinearLayout.banner(): Result = result()
+
+    // =====================================================================================
+    // Screens beyond Settings (main screen, Dictionary & snippets, History, model import)
+    // =====================================================================================
+
+    /**
+     * [screen] for a page that is rebuilt while open (main screen polling, model import progress):
+     * keeps the scroll position of the page it replaces.
+     */
+    fun rebuild(build: LinearLayout.() -> Unit): LinearLayout {
+        val old = (activity.findViewById<ViewGroup>(android.R.id.content)?.getChildAt(0) as? ScrollView)?.scrollY ?: 0
+        val col = screen(build)
+        if (old > 0) (col.parent as ScrollView).let { s -> s.post { s.scrollTo(0, old) } }
+        return col
+    }
+
+    /** TalkBack announcement for a change made elsewhere (a permission granted, an item deleted). */
+    fun announce(text: CharSequence) {
+        if (text.isNotEmpty()) activity.window.decorView.announceForAccessibility(text)
+    }
+
+    /** Cancel / [positive] prompt; [onNo] also runs when the dialog is dismissed. */
+    fun confirm(title: String, message: String, positive: String, onYes: () -> Unit, onNo: (() -> Unit)? = null) =
+        android.app.AlertDialog.Builder(activity)
+            .setTitle(title).setMessage(message)
+            .setNegativeButton("Cancel") { _, _ -> onNo?.invoke() }
+            .setOnCancelListener { onNo?.invoke() }
+            .setPositiveButton(positive) { _, _ -> onYes() }
+            .show()
+
+    /** Status row: icon + title + explanation, and on the right its state ("Granted") or the fixing action ("Grant"). */
+    class StateRow(val view: LinearLayout, val title: TextView, val subtitle: TextView, val state: TextView)
+
+    fun LinearLayout.stateRow(iconRes: Int?, title: String, subtitle: String, state: String, tone: Tone, action: String? = null, onClick: (() -> Unit)? = null): StateRow {
+        val (texts, ts) = titleSub(title, subtitle)
+        val actionable = action != null && onClick != null
+        val st = TextView(ctx).apply {
+            text = if (actionable) action else state
+            textSize = 14f; setTypeface(typeface, Typeface.BOLD); gravity = Gravity.CENTER
+            setTextColor(if (actionable) p.accent else when (tone) { Tone.OK -> p.ok; Tone.BAD -> p.danger; else -> p.muted })
+            if (actionable) { background = rounded(p.tonal, 16); setPadding(dp(14), dp(8), dp(14), dp(8)) }
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(64)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            if (iconRes != null) addView(icon(iconRes, when (tone) { Tone.OK -> p.ok; Tone.BAD -> p.danger; else -> p.accent }).apply {
+                (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(16)
+            })
+            addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(12) })
+            addView(st)
+            texts.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            // One TalkBack stop: "Microphone, Not granted. Needed to hear you…, Grant".
+            contentDescription = listOf("$title, $state", subtitle, if (actionable) "double-tap to $action" else "").filter { it.isNotEmpty() }.joinToString(". ")
+            isFocusable = true
+            if (actionable) {
+                background = ripple(null)
+                isClickable = true
+                setOnClickListener { onClick!!() }
+            }
+        }
+        addView(row)
+        return StateRow(row, ts.first, ts.second, st)
+    }
+
+    /** Collapsible row (e.g. phone-specific "Keep it running" steps); reads as expandable to TalkBack. */
+    class Expander(val header: View, val body: LinearLayout, private val arrow: ImageView) {
+        var expanded: Boolean = false
+            set(v) {
+                field = v
+                body.visibility = if (v) View.VISIBLE else View.GONE
+                arrow.setImageResource(if (v) dev.flowclone.R.drawable.ic_dev_up else dev.flowclone.R.drawable.ic_dev_down)
+                header.stateDescription = if (v) "Expanded" else "Collapsed"
+            }
+    }
+
+    fun LinearLayout.expandRow(iconRes: Int?, title: String, subtitle: String, expanded: Boolean = false, build: LinearLayout.() -> Unit): Expander {
+        val (texts, _) = titleSub(title, subtitle)
+        val arrow = icon(dev.flowclone.R.drawable.ic_dev_down, p.muted, 20)
+        lateinit var ex: Expander
+        val header = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(64)
+            setPadding(dp(16), dp(12), dp(12), dp(12))
+            background = ripple(null)
+            isClickable = true; isFocusable = true
+            if (iconRes != null) addView(icon(iconRes, p.accent).apply { (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(16) })
+            addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(arrow)
+            contentDescription = listOf(title, subtitle).filter { it.isNotEmpty() }.joinToString(", ")
+            setOnClickListener { ex.expanded = !ex.expanded }
+            accessibilityDelegate = object : View.AccessibilityDelegate() {
+                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.addAction(if (ex.expanded) AccessibilityNodeInfo.AccessibilityAction.ACTION_COLLAPSE else AccessibilityNodeInfo.AccessibilityAction.ACTION_EXPAND)
+                }
+                override fun performAccessibilityAction(host: View, action: Int, args: android.os.Bundle?): Boolean = when (action) {
+                    AccessibilityNodeInfo.ACTION_EXPAND -> { ex.expanded = true; true }
+                    AccessibilityNodeInfo.ACTION_COLLAPSE -> { ex.expanded = false; true }
+                    else -> super.performAccessibilityAction(host, action, args)
+                }
+            }
+        }
+        val body = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, 0, dp(8)); build() }
+        addView(header); addView(body)
+        ex = Expander(header, body, arrow)
+        ex.expanded = expanded
+        return ex
+    }
+
+    /** Search box above a long list; [onQuery] runs on every change. */
+    fun LinearLayout.searchField(hint: String, query: String = "", onQuery: (String) -> Unit): EditText {
+        val e = EditText(ctx).apply {
+            this.hint = hint; setText(query); isSingleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_FILTER
+            setHintTextColor((p.muted and 0x00FFFFFF) or 0x99000000.toInt())
+            textSize = 16f; setTextColor(p.text)
+            background = rounded(p.surface, 24)
+            // runCatching: JVM unit tests run without packaged resources.
+            val glass = runCatching { ctx.getDrawable(dev.flowclone.R.drawable.ic_scr_search)?.mutate()?.apply { setTint(p.muted) } }.getOrNull()
+            setCompoundDrawablesRelativeWithIntrinsicBounds(glass, null, null, null)
+            compoundDrawablePadding = dp(12)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            minHeight = dp(48)
+            contentDescription = hint
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
+                override fun afterTextChanged(s: Editable?) = onQuery(s?.toString().orEmpty())
+            })
+        }
+        addView(e, lp(top = 4, bottom = 8))
+        return e
+    }
+
+    /** Empty list placeholder inside a card: a title and a one-line hint. */
+    fun LinearLayout.emptyState(title: String, hint: String): View = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+        setPadding(dp(24), dp(28), dp(24), dp(28))
+        addView(TextView(ctx).apply { text = title; textSize = 16f; setTextColor(p.text); gravity = Gravity.CENTER; setTypeface(typeface, Typeface.BOLD) })
+        addView(TextView(ctx).apply { text = hint; textSize = 13f; setTextColor(p.muted); gravity = Gravity.CENTER; setPadding(0, dp(6), 0, 0) })
+        isFocusable = true
+        contentDescription = "$title. $hint"
+    }.also(::addView)
+
+    /**
+     * List entry (dictionary word, dictation): title (2 lines max), grey meta line, an optional
+     * small badge, an optional coloured flag line, an optional trailing button. The row is one
+     * touch target; [actions] are offered to TalkBack as custom actions (and long-press runs the first).
+     */
+    class ListRow(val view: LinearLayout, val title: TextView, val meta: TextView, val badge: TextView, val flag: TextView)
+
+    fun LinearLayout.listRow(
+        title: String, meta: String, badge: String = "", flag: String? = null, flagTone: Tone = Tone.WARN,
+        trailing: View? = null, actions: List<Pair<String, () -> Unit>> = emptyList(), onClick: () -> Unit,
+    ): ListRow {
+        val t = TextView(ctx).apply {
+            text = title; textSize = 16f; setTextColor(p.text); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        val m = TextView(ctx).apply { text = meta; textSize = 13f; setTextColor(p.muted); maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
+        val b = TextView(ctx).apply {
+            text = badge; textSize = 12f; setTextColor(p.accent); background = rounded(p.tonal, 10)
+            setPadding(dp(8), dp(2), dp(8), dp(2)); visibility = if (badge.isEmpty()) View.GONE else View.VISIBLE
+        }
+        val metaLine = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(m, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(8) })
+            addView(b)
+        }
+        val f = TextView(ctx).apply {
+            text = flag.orEmpty(); textSize = 13f; setTypeface(typeface, Typeface.BOLD)
+            setTextColor(if (flagTone == Tone.BAD) p.danger else if (flagTone == Tone.OK) p.ok else p.accent)
+            visibility = if (flag.isNullOrEmpty()) View.GONE else View.VISIBLE
+            setPadding(0, dp(2), 0, 0)
+        }
+        val col = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(t); addView(metaLine, lp(top = 2)); addView(f)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        }
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(64)
+            setPadding(dp(16), dp(10), dp(if (trailing != null) 4 else 16), dp(10))
+            background = ripple(null)
+            isClickable = true; isFocusable = true
+            setOnClickListener { onClick() }
+            addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            if (trailing != null) addView(trailing)
+            contentDescription = listOf(title, meta, badge, flag.orEmpty()).filter { it.isNotEmpty() }.joinToString(", ")
+            if (actions.isNotEmpty()) {
+                setOnLongClickListener { actions.first().second(); true }
+                val ids = actions.map { View.generateViewId() }
+                accessibilityDelegate = object : View.AccessibilityDelegate() {
+                    override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+                        super.onInitializeAccessibilityNodeInfo(host, info)
+                        actions.forEachIndexed { i, a -> info.addAction(AccessibilityNodeInfo.AccessibilityAction(ids[i], a.first)) }
+                    }
+                    override fun performAccessibilityAction(host: View, action: Int, args: android.os.Bundle?): Boolean {
+                        val i = ids.indexOf(action)
+                        if (i >= 0) { actions[i].second(); return true }
+                        return super.performAccessibilityAction(host, action, args)
+                    }
+                }
+            }
+        }
+        addView(row)
+        return ListRow(row, t, m, b, f)
+    }
+
+    /** Selectable body text inside a card (full transcript, a download link). */
+    fun LinearLayout.selectableText(text: CharSequence, sizeSp: Float = 16f, color: Int = p.text): TextView = TextView(ctx).apply {
+        this.text = text; textSize = sizeSp; setTextColor(color); setTextIsSelectable(true)
+        setPadding(dp(16), dp(12), dp(16), dp(14))
+    }.also(::addView)
 }
