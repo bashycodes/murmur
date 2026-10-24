@@ -155,6 +155,10 @@ One line per dictation; the fields are the same in the Windows app:
 | `raw` / `text` | recogniser output / text inserted |
 | `error` (+ `stack`) | what went wrong |
 | `audio` | Android: file name of the kept WAV in `files/debug/audio/` (*Keep last dictation audio*), else `null` |
+| `llm` | `formatted` (AI text used), `llm_skipped_clean` (nothing for the AI to do: a normal result), `llm_timeout`, `llm_error: <code>` (cloud cleanup refused up front: no consent / key / budget, open circuit, `no_private_route`), `null` = AI off |
+| `llm_engine` / `llm_model` / `llm_cost_usd` | who ran the AI cleanup (`local`, `cloud` = OpenRouter, `server`), its model, and the OpenRouter cost |
+| `llm_ttft_ms` / `llm_generation_id` | cloud cleanup: time to the first token, OpenRouter's generation id |
+| `stt_cost_usd` | what cloud speech-to-text cost for this dictation |
 
 Android also writes an `engine_mismatch` event when the phone engine that loaded is not the
 one selected, e.g. `selected parakeet, loaded whisper ggml-base-q5_1.bin: model load failed: …`
@@ -203,8 +207,8 @@ cd apps/flow-android
 export SHERPA_ANDROID_LIBS=<sherpa-onnx-v1.13.8-android>/jniLibs/arm64-v8a   # Parakeet runtime (local/hybrid)
 export BINDGEN_EXTRA_CLANG_ARGS="-I/usr/lib/gcc/x86_64-linux-gnu/13/include"  # this box's libclang
 tools/build-native.sh --flavor local     # -> app/src/local/jniLibs/arm64-v8a/
-tools/build-native.sh --flavor hybrid    # -> app/src/hybrid/jniLibs/arm64-v8a/ (+ cloud STT client)
-tools/build-native.sh --flavor remote    # -> app/src/remote/jniLibs/arm64-v8a/ (libflow_ffi.so only, + cloud STT client)
+tools/build-native.sh --flavor hybrid    # -> app/src/hybrid/jniLibs/arm64-v8a/ (+ OpenRouter client)
+tools/build-native.sh --flavor remote    # -> app/src/remote/jniLibs/arm64-v8a/ (libflow_ffi.so only, + OpenRouter client)
 ./gradlew testDebugUnitTest assembleDebug          # all three flavours + their gates
 tools/probes/check_native_so.sh --flavor local app/build/outputs/apk/local/debug/app-local-debug.apk
 ```
@@ -346,22 +350,51 @@ the engine.
    loaded. Dictation fails only when no route is possible (both toggles off, or no phone model),
    and the error says which.
 
-## 5c. Cloud speech-to-text (hybrid / remote, opt-in, third party)
+## 5c. Cloud → OpenRouter (hybrid / remote, opt-in, third party)
 
-Off by default. When on, the audio of each dictation (after on-device silence trimming) is
-uploaded to the provider you pick, under that provider's terms; everything else (cleanup,
-dictionary, AI cleanup) still runs on the phone. No extra permission: it uses `INTERNET`.
+OpenRouter (openrouter.ai) is the **only** cloud service the app can use (D28), for two separate
+opt-ins: **cloud speech-to-text** (your audio) and **text cleanup** (the dictated text, not your
+voice). Both are off by default and each has its own consent; turning one on never turns the
+other on. No other provider is in the app any more, and no extra permission: it uses `INTERNET`.
+The `local` flavour has no cloud at all.
 
-1. Developer settings → **Cloud providers** → *Add provider…* →
-   OpenRouter, ElevenLabs, Groq, OpenAI, Deepgram, AssemblyAI or Custom (OpenAI-compatible).
-2. On the provider page paste the API key (stored only Keystore-encrypted; the page shows
-   `••••` + the last 4 characters), adjust model / language, *Add provider*, then
-   *Test provider* → "OK · heard "And so, my fellow Americans" · N ms · $…".
-3. Back on *Cloud providers* switch on **Allow cloud**: the consent dialog names the provider
-   and its host; *Send audio to <provider>* records consent and puts *Cloud* first in the route
-   order. *Save* (top bar). Reorder under *Routing & engines → Route order* (↑ / ↓), *Save*.
-4. Dictate: the preview line shows `[C]` and *Status & server info → Active engine* shows
-   `cloud · <provider> · <model> · $…`; *Cloud providers → Usage this month* counts it.
+Open it from *Settings → Dictation → Cloud (OpenRouter)* or *Developer settings → OpenRouter (cloud)*:
+
+1. **API key**: paste a key from openrouter.ai/keys (*Paste*), *Save key*. It is stored only
+   Keystore-encrypted; the page shows `••••` + the last 4 characters and other accessibility
+   services only see "set (hidden)". *Check key* → "Key OK · <label> · credit left $x of $y ·
+   this month $z" (and a warning if the key has no credit limit). One key serves both uses.
+2. **Privacy**: *Zero-retention providers only* and *Deny data collection* are on; turning
+   either off asks first ("Some providers may keep or train on your audio and text").
+3. **Speech-to-text**: switch on *Cloud speech-to-text*. The dialog "Send your voice to
+   OpenRouter?" says the audio leaves the phone; *Send audio to OpenRouter* records consent and
+   puts *Cloud* first in the route order (reorder under *Developer settings → Routing & engines*).
+   *Model* opens the model picker (default `openai/whisper-large-v3-turbo`, about $0.012-0.04
+   per hour of audio). *Test speech-to-text* uploads a 3 s public-domain clip → "OK · heard "And
+   so, my fellow Americans" · N ms · $… · <model>".
+4. **Text cleanup**: switch on *Clean up text with OpenRouter*. Its own dialog ("Send dictated
+   text to OpenRouter?") lists exactly what is sent: the dictated words, the kind of app, your
+   style and your dictionary words; *What cleanup sends* adds text around the cursor, on-screen
+   words or the app name, each off by default. *OpenRouter first* (phone AI as backup) or *Phone AI
+   first*; *Provider choice* (fastest by default); *Time limit* (2500 ms, 800-8000: after it the
+   formatted text is pasted and the request is cancelled). It runs on phone and cloud dictations,
+   never on your own server's. With it on, the cleanup step runs even when the local AI is off.
+5. **Model picker**: every OpenRouter model that can do the job, from the list OpenRouter
+   publishes (cached 24 h; an offline list is built in; refreshed only when the OpenRouter page
+   or the picker opens, or a use is switched on). Search by name or id; chips *Transcription* /
+   *Chat audio* (speech) or *Text* (cleanup), *Zero-retention only* (on), *Fast providers*,
+   *Free*. Each row: name (★ = recommended), id, price (per hour of audio, or ≈ per dictation),
+   context length, badges (`ZDR`, `fast`, `may paraphrase` for chat models used as speech-to-text,
+   `blocked by account`). *Use custom model id…* takes any id (e.g. a `:nitro` variant), checked
+   as you type.
+6. **Usage**: "Speech $x · Cleanup $y · this month", one *Monthly budget* for both (they pause
+   once it is reached), *Reset counters*.
+
+Upgrading from 0.4.0 or older: on the first start the old provider list is converted once. An
+OpenRouter entry keeps its key, model and consent; every other provider and its stored key is
+deleted. If another provider was the active one, cloud speech-to-text is switched off (not moved
+to OpenRouter). A banner on *Developer settings* and on the OpenRouter page says what changed
+until you tap *Dismiss*.
 
 ## Settings layout
 
@@ -375,7 +408,8 @@ model is imported"), then grouped rows that each show their current value and op
 | Dictation · *Writing style* | Formal / Casual / Very casual for Personal messages, Work messages, Email, Other, each with an example line (default: chats casual, email + other formal); *Style per app* | at once |
 | Writing style · *Style per app* | `package = personal`, `work`, `email` or `other`, one per line (checked); overrides the built-in app list | *Save* |
 | Dictation · *Speech engine* (local / hybrid) | Whisper or Parakeet; *Speech model (whisper)*, *Parakeet model folder* imports | at once (reloads) |
-| Dictation · *AI cleanup* (local / hybrid) | Clean up with local AI; *AI cleanup model* import; strength | at once (reloads) |
+| Dictation · *AI cleanup* (local / hybrid) | Clean up with local AI; *Clean up with OpenRouter* (hybrid, → the OpenRouter page); *AI cleanup model* import; strength. The row says "OpenRouter (<model>), then on-device" while cloud cleanup is on | at once (reloads) |
+| Dictation · *Cloud (OpenRouter)* (hybrid / remote) | The OpenRouter page (§5c): key, privacy, speech-to-text, text cleanup, usage | at once |
 | Dictation · *Timing & limits* | Stop after silence (ms, 0 or 300–10000), Decode while speaking, session limit (1–20 min) | *Save* |
 | Bubble & apps · *Bubble* | Live preview, Shrink to a dot, Shake to restore | at once |
 | Bubble & apps · *Excluded apps* | package names, one per line (checked) | *Save* |
@@ -397,7 +431,7 @@ A hub with grouped cards; each row shows its current value and opens a focused p
 | *Status* card | route in use, last dictation engine + `client_ms`, circuit; *Status & server info* → active engine, circuits, server info (last probe), native library; *Reset circuit* | – |
 | *Routing & engines* | Allow server / on-device, route order (↑ / ↓), keep model warm, engine badge, Parakeet decoding (applies at once); *Test session* | top bar |
 | *Server* | host, port, Use TLS, certificate pin, token (masked; Show / Paste / Clear), timeouts; *Test connection* | top bar |
-| *Cloud providers* | Allow cloud (consent), providers (tap to edit, *Use*), *Add provider…*, monthly budget, usage, *Reset counters*; *Test active provider* | top bar |
+| *OpenRouter (cloud)* | The OpenRouter page (§5c); the row says "Speech on/off · Cleanup on/off" (+ "no key", budget). A one-time migration notice sits on top of the hub until dismissed | at once |
 | *Debug log & audio* | Debug log, Keep last dictation audio (apply at once); View / Share / Clear | – |
 | *Build* | flavour + native library, *Reset to defaults* (asks first), *Lock* (local) | – |
 
@@ -470,7 +504,8 @@ Every screen uses the Settings look (grouped cards, rows with their current valu
 | Dictionary & snippets | *Dictionary* and *Snippets* rows with counts; *Import JSON*, *Export JSON*. Each list: *Add* in the top bar, search from 8 entries, tap to edit, TalkBack action / long-press to delete. Edit page: *Save* in the top bar when changed + valid, Discard prompt, *Snippet* switch, *Delete* |
 | History | *Keep dictations* (→ Settings · History), *Show the raw transcript*, search from 8 entries, rows grouped by day (first line, time · app, result badge); *Clear all* in the top bar. Detail: text, raw transcript, when / app / result / inserted / timings, *Copy*, *Delete dictation* |
 | Speech model / Parakeet model / AI cleanup model | *Status* (Active model, Size, Engine), *Import model file…* / *Import model folder…* with progress and errors under it, *Recommended* (tap = copy download link), *Imported* (*Use*, *Delete* asks first) |
-| Cloud provider (Developer settings → Cloud providers) | Provider fields, API key (masked; Show / Paste / Clear stored key), What is sent, Consent, *Add provider* / *Save*, *Test provider*, *Use this provider…*, *Delete provider* |
+| OpenRouter (Settings → Cloud (OpenRouter), Developer settings) | *API key* (masked; Show / Paste / Clear, *Save key*, *Check key*), *Privacy*, *Speech-to-text* (opt-in + consent, Model, Language, Send dictionary words, *Test*), *Text cleanup* (opt-in + its own consent, Model, order, Provider choice, Time limit, Status), *What cleanup sends*, *Usage* (budget, Reset counters) |
+| Model picker (OpenRouter → Model) | *In use*, list source + *Refresh*, search, filter chips, rows (name, id, price, context, badges), *Use custom model id…* |
 
 ## Device test checklist
 
@@ -515,37 +550,35 @@ None of this can be checked on the build machine. Record the results in
 
 Logcat tags: `FlowA11y` (insertion step trail), `FlowService`, `FlowMic`, `FlowEngine`.
 
-**Cloud STT (D18)** — `hybrid` (and `remote`) APK, a real key for at least one provider; record
-provider, model, latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CONTEXT.md`
-- [ ] `local`: Developer settings → Cloud providers shows *Allow cloud* "Not in this build" (disabled);
+**OpenRouter (D28)** — `hybrid` (and `remote`) APK and a real OpenRouter key; record model,
+latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CONTEXT.md`
+- [ ] `local`: no *Cloud (OpenRouter)* row in Settings; Developer settings → OpenRouter says "Not in this build";
       App info shows no network permission (unchanged).
-- [ ] `hybrid`: *Allow cloud* is off on a fresh install; switching it on without a provider says "Add a
-      provider first" and opens the preset list.
-- [ ] Add Groq (or OpenRouter / ElevenLabs): the key field is masked, *Show* reveals it, after *Add
-      provider* the field is empty and the page shows `Stored key: ••••abcd`; *Test provider* →
-      "OK · heard "And so, my fellow Americans…" · N ms"; with a wrong key → "auth_failed: key rejected".
-- [ ] Switch on *Allow cloud*: the dialog title is "Send audio to Groq?" and the body names
-      `api.groq.com`; *Cancel* unticks; *Send audio to Groq* records consent (provider row
-      `consent ✓`) and *Routing & engines* shows the order `1. Cloud · 2. … · 3. …` after *Save*.
-- [ ] Dictate 10 s in Notes: text inserted, preview badge `[C]` even with *Engine badge* off,
-      *Active engine* `cloud · Groq · whisper-large-v3-turbo · ≈$0.000…`, usage `1 dictation`.
-      Note stop → text latency vs on-device.
-- [ ] Silence-only dictation ("No speech heard"): usage count unchanged (silence is never uploaded).
-- [ ] Airplane mode with cloud first and on-device second: text still inserted from the phone model,
-      toast "Cloud STT failed (no internet / base URL wrong); used on-device", no words lost.
-- [ ] Revoke / rotate the key at the provider: next dictation toasts "Cloud STT failed (key
-      rejected); used on-device"; *Cloud circuit* row shows "open until the key or provider changes
-      (auth_failed)"; saving a new key on the provider page closes it.
-- [ ] Edit the provider's base URL to another host (Custom preset): saving says consent was
-      cleared; the next dictation goes on-device with `cloud_not_configured` until consent is given again.
-- [ ] Monthly budget lower than this month's cost → toast "monthly budget reached"; Usage says
-      "reached"; *Reset counters* resumes the cloud.
-- [ ] Usage survives an app restart and *Reset to defaults*; keys do not survive *Reset to
-      defaults* or *Delete provider* (row shows `no key`).
-- [ ] Order `Server, Cloud, On-device` with the server up: last engine `Server …`; stop the
-      server → cloud is used; the form showed "When your server is unreachable, audio goes to …".
-- [ ] `remote` flavour: cloud-only (*Allow server* off, *Allow cloud* on) dictates through the provider.
-- [ ] logcat (`FlowEngine`, `FlowService`) never shows the key (`grep` for its last 8 characters).
+- [ ] Upgrade over a 0.4.0 install that had a Groq provider active: the hub shows "Cloud speech-to-text now
+      uses OpenRouter only. Groq was removed and its key deleted…"; cloud speech-to-text is off; *Dismiss* hides it.
+- [ ] Fresh install: both opt-ins off, both privacy switches on. *Paste* + *Save key*: the field empties and
+      `Stored key: ••••abcd`; *Check key* → "Key OK · … · credit left …"; a wrong key → "auth_failed: key rejected".
+- [ ] *Cloud speech-to-text* on: "Send your voice to OpenRouter?"; *Cancel* leaves it off; accept → *Routing &
+      engines* shows `1. Cloud: OpenRouter (whisper-large-v3-turbo)`. Text cleanup stays off.
+- [ ] *Test speech-to-text* → "OK · heard "And so, my fellow Americans…" · N ms · $…".
+- [ ] Dictate 10 s in Notes: preview badge `[C]` even with *Engine badge* off; *Active engine* `cloud ·
+      OpenRouter · openai/whisper-large-v3-turbo · $…`; Usage "Speech $… · Cleanup $0".
+- [ ] *Clean up text with OpenRouter* on: its own dialog lists what is sent; turn *Send app name* on and
+      reopen the dialog (off → on): it now names the app's name. Dictate a messy sentence ("um so like
+      send it tomorrow comma ok"): History shows *AI cleaned*; the debug line has `llm_engine: cloud`,
+      `llm_cost_usd`; Usage "Cleanup $…". A clean sentence logs `llm: llm_skipped_clean` and costs nothing.
+- [ ] Model picker: list shows *Offline list (snapshot 2026-10-24)* until refreshed, then *Live list ·
+      refreshed hh:mm*; *Chat audio* chip lists chat models with "may paraphrase" (picking one warns first);
+      *Zero-retention only* off shows more; *Use custom model id…* rejects `Bad Id`, accepts
+      `meta-llama/llama-3.1-8b-instruct:nitro`.
+- [ ] Airplane mode, cloud speech first and on-device second: text from the phone model, toast "Cloud STT
+      failed (no internet); used on-device"; cleanup falls back to the phone AI (or formatted text) within
+      the time limit, no words lost.
+- [ ] Pick a model without a zero-retention provider with ZDR on (custom id `openai/gpt-transcribe`): toast /
+      status "no zero-retention provider serves this model".
+- [ ] Monthly budget lower than this month's cost → "monthly budget reached"; *Reset counters* resumes.
+- [ ] *Reset to defaults* (Developer) deletes the key (`no key`) and turns both uses off; usage survives.
+- [ ] logcat (`FlowEngine`, `FlowService`, `FlowDebug`) never shows the key (search for its last 8 characters).
 
 **Native engine / packaging**
 - [ ] The main screen's *Native engine* row shows `flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26), not "Unavailable". This is

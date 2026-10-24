@@ -26,11 +26,8 @@ import dev.flowclone.core.HealthReport
 import dev.flowclone.core.NativeFlowCore
 import dev.flowclone.core.ParakeetDecoding
 import dev.flowclone.core.SessionConfig
-import dev.flowclone.data.CloudKeyPolicy
-import dev.flowclone.data.CloudPresets
-import dev.flowclone.data.CloudSettings
 import dev.flowclone.data.CloudText
-import dev.flowclone.data.CloudUsage
+import dev.flowclone.data.OpenRouter
 import dev.flowclone.data.DevDraft
 import dev.flowclone.data.DevPages
 import dev.flowclone.data.DevPages.Page
@@ -49,7 +46,8 @@ import kotlin.concurrent.thread
  *            row per page showing its current value; build info, reset, lock
  *   routing  engines, route order, keep warm, engine badge, Parakeet decoding; Test session
  *   server   host, port, TLS, pin, token (secret), timeouts; Test connection
- *   cloud    allow cloud (consent), providers, budget, usage; Test active provider
+ * The cloud (D28: OpenRouter only, speech-to-text and text cleanup) has its own page,
+ * [OpenRouterActivity], opened from the hub's CONNECTION card.
  *   debug    debug log, keep last dictation audio (both apply at once, as before)
  *   status   active engine, circuits, server info, native capabilities; Reset circuit
  * Pages with form fields have Save in the top bar, enabled once something changed and the
@@ -64,8 +62,6 @@ class DeveloperActivity : Activity() {
     private lateinit var draft: DevDraft
     private var saveItem: MenuItem? = null
     private var routeOrder = DevSettings.DEFAULT_ORDER
-    /** Providers + active id as stored (the provider page and consent dialog save them directly). */
-    private var cloudState = CloudSettings()
     private val refreshers = ArrayList<() -> Unit>()
     private var backCallback: OnBackInvokedCallback? = null
     private var banner: DevUi.Result? = null
@@ -81,7 +77,6 @@ class DeveloperActivity : Activity() {
             Page.HUB -> renderHub()
             Page.ROUTING -> renderRouting()
             Page.SERVER -> renderServer()
-            Page.CLOUD -> renderCloud()
             Page.DEBUG -> renderDebug()
             Page.STATUS -> renderStatus()
         }
@@ -100,10 +95,10 @@ class DeveloperActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        // The provider page / consent dialog / another sub-page may have saved meanwhile.
+        // The OpenRouter page / another sub-page may have saved meanwhile.
         val stored = app.dev.load()
         draft = draft.rebase(stored)
-        cloudState = stored.cloud
+        routeOrder = draft.draft.routeOrder
         if (hasForm) validate()
         refresh()
     }
@@ -112,10 +107,9 @@ class DeveloperActivity : Activity() {
         val s = app.dev.load()
         draft = DevDraft.of(s, page)
         routeOrder = s.routeOrder
-        cloudState = s.cloud
     }
 
-    private val hasForm get() = page == Page.ROUTING || page == Page.SERVER || (page == Page.CLOUD && caps.cloud)
+    private val hasForm get() = page == Page.ROUTING || page == Page.SERVER
 
     private fun refresh() { for (r in refreshers) r() }
 
@@ -153,7 +147,9 @@ class DeveloperActivity : Activity() {
     // =====================================================================================
 
     private fun renderHub() = with(ui) {
+        app.migrateCloud()
         screen {
+            cloudNotice()
             sectionLabel("STATUS")
             card {
                 val route = infoRow("Route in use")
@@ -166,7 +162,7 @@ class DeveloperActivity : Activity() {
                     route.text = DevSummary.routing(s, caps)
                     val l = app.lastRoute.value
                     last.text = l?.let { d ->
-                        DevSummary.lastShort(d.result) { id -> s.cloud.provider(id)?.displayName } + " · " +
+                        DevSummary.lastShort(d.result) + " · " +
                             DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(d.atMs))
                     } ?: "No dictation yet"
                     circuit.text = circuitText()
@@ -186,11 +182,11 @@ class DeveloperActivity : Activity() {
             sectionLabel("CONNECTION")
             card {
                 val server = navRow(R.drawable.ic_dev_server, "Server") { open(Page.SERVER) }
-                val cloud = navRow(R.drawable.ic_dev_cloud, "Cloud providers") { open(Page.CLOUD) }
+                val cloud = navRow(R.drawable.ic_dev_cloud, OpenRouterActivity.TITLE) { OpenRouterActivity.open(this@DeveloperActivity) }
                 refreshers += {
                     val s = app.dev.load()
                     server.setSubtitle(DevSummary.server(s, caps) + if (caps.remote && s.serverConfigured) "\n" + DevSummary.timeouts(s) else "")
-                    cloud.setSubtitle(DevSummary.cloud(s, caps))
+                    cloud.setSubtitle(DevSummary.cloud(s, caps, app.cloudKeys.has(OpenRouter.ID)))
                 }
             }
 
@@ -204,7 +200,7 @@ class DeveloperActivity : Activity() {
             card {
                 infoRow("Version", dev.flowclone.data.AppVersion.current.detail())
                 infoRow("Flavour · native library", "${caps.flavor} · ${capabilitiesLine()}")
-                navRow(R.drawable.ic_dev_reset, "Reset to defaults", "Developer settings and every cloud key", danger = true, chevron = false) { confirmResetDefaults() }
+                navRow(R.drawable.ic_dev_reset, "Reset to defaults", "Developer settings and the OpenRouter key", danger = true, chevron = false) { confirmResetDefaults() }
                 if (!caps.remote) navRow(R.drawable.ic_dev_lock, "Lock", "Hide Developer settings again", chevron = false) {
                     app.dev.devUnlocked = false
                     Toast.makeText(this@DeveloperActivity, "Developer settings hidden", Toast.LENGTH_SHORT).show()
@@ -215,6 +211,21 @@ class DeveloperActivity : Activity() {
     }
 
     private fun open(p: Page) = open(this, p)
+
+    /**
+     * D28 one-time notice (another provider was removed / the model changed) until dismissed.
+     * A router that migrated a legacy config itself hands its notice over here too.
+     */
+    private fun LinearLayout.cloudNotice() = with(ui) {
+        app.engine.router()?.let { r -> r.cloudNotice()?.let { n -> app.dev.cloudNotice = n; r.ackCloudNotice() } }
+        val text = app.dev.cloudNotice ?: return@with
+        val b = banner()
+        b.show(text, Tone.WARN)
+        chipRow(
+            chip("Open OpenRouter") { OpenRouterActivity.open(this@DeveloperActivity) },
+            chip("Dismiss") { app.dev.cloudNotice = null; b.show(""); (it.parent as? View)?.visibility = View.GONE }.apply { contentDescription = "Dismiss the cloud notice" },
+        )
+    }
 
     // =====================================================================================
     // Routing & engines
@@ -304,7 +315,7 @@ class DeveloperActivity : Activity() {
             val name = when (r) {
                 DevSettings.Route.SERVER -> "Server (your flow-server)"
                 DevSettings.Route.CLIENT -> "Phone (on-device)"
-                DevSettings.Route.CLOUD -> "Cloud: " + (cloudState.activeProvider?.let { "${it.displayName} (${it.host})" } ?: "no provider")
+                DevSettings.Route.CLOUD -> "Cloud: " + CloudText.routeName(app.dev.load().cloud)
             }
             box.addView(LinearLayout(this@DeveloperActivity).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -413,144 +424,6 @@ class DeveloperActivity : Activity() {
     /** The debug log's `model` for server dictations: what the server says it runs. */
     private fun rememberServerModel(h: HealthReport) {
         (h.asrModel ?: h.asrBackend)?.let { app.dev.serverAsrModel = it }
-    }
-
-    // =====================================================================================
-    // Cloud providers (D18, docs/cloud-stt.md §8.3)
-    // =====================================================================================
-
-    private var allowCloud: DevUi.ToggleRow? = null
-    private var cloudBanner: TextView? = null
-    private var providerBox: LinearLayout? = null
-    private var providerCount: TextView? = null
-    private var budget: DevUi.FieldRow? = null
-    private var usageLine: TextView? = null
-    private var cloudProbe: DevUi.Result? = null
-
-    private fun renderCloud() = with(ui) {
-        val s = app.dev.load()
-        screen {
-            banner = banner()
-            if (!caps.cloud) {
-                card {
-                    toggleRow("Allow cloud", CloudText.NOT_IN_BUILD.cap(), checked = false, enabled = false)
-                    note("This build has no cloud client: audio never leaves the device except to your own server.")
-                }
-                return@screen
-            }
-            card {
-                cloudBanner = note(CloudText.banner(s.cloud.activeProvider)).apply { setPadding(dp(16), dp(14), dp(16), dp(4)) }
-                allowCloud = toggleRow("Allow cloud", "Third-party speech-to-text; off by default", s.allowCloud)
-            }
-            sectionLabel("PROVIDERS")
-            card {
-                providerCount = cardHeader("Providers", "")
-                providerBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }.also(::addView)
-                navRow(R.drawable.ic_dev_add, "Add provider…", chevron = false) { pickPreset() }
-            }
-            sectionLabel("BUDGET & USAGE")
-            card {
-                budget = fieldRow("Monthly budget (USD)", s.cloud.monthlyBudgetUsd?.let { DevSettingsForm.Input.budgetText(it) }.orEmpty(),
-                    InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL,
-                    help = "Empty = none; the cloud pauses once it is reached", hint = "5", onEdit = { if (fieldRows.isNotEmpty()) validate() })
-                usageLine = infoRow("Usage this month (this device only, never sent anywhere)")
-                chipRow(chip("Reset counters") { onResetUsage() }.apply { contentDescription = "Reset cloud usage counters" })
-            }
-            action("Test active provider") { onTestCloud() }
-            cloudProbe = result()
-            note("Uploads a 3 s public-domain clip to the active provider.")
-        }
-        budget?.let { fieldRows[Field.CLOUD_BUDGET] = it }
-        allowCloud?.onChange { on -> onAllowCloud(on) }
-        refreshers += { renderProviders(); refreshUsage() }
-    }
-
-    private fun renderProviders() = with(ui) {
-        val box = providerBox ?: return
-        box.removeAllViews()
-        cloudBanner?.text = CloudText.banner(cloudState.activeProvider)
-        providerCount?.text = if (cloudState.providers.isEmpty()) "" else "● = used by the cloud route"
-        if (cloudState.providers.isEmpty()) box.note("No provider yet.")
-        for (pr in cloudState.providers) {
-            val active = pr.id == cloudState.active
-            val sub = "${pr.host.ifEmpty { "?" }} · ${pr.model} · key ${app.cloudKeys.masked(pr.id)} · consent ${if (pr.consentOk) "✓" else "✗"}"
-            val row = box.navRow(null, "${if (active) "●" else "○"}  ${pr.displayName}", sub) { CloudProviderActivity.edit(this@DeveloperActivity, pr.id) }
-            row.view.contentDescription = "${pr.displayName}${if (active) ", in use" else ""}, ${pr.host}, ${pr.model}, " +
-                "key ${if (app.cloudKeys.has(pr.id)) "stored" else "none"}, consent ${if (pr.consentOk) "given" else "not given"}. Edit"
-            if (!active) box.chipRow(chip("Use ${pr.displayName}") { useProvider(pr.id) })
-        }
-        renderOrder()
-    }
-
-    private fun refreshUsage() {
-        usageLine?.text = CloudText.usageLines(
-            CloudUsage.decode(app.engine.router()?.cloudUsageJson() ?: app.dev.cloudUsageJson), cloudState,
-        ).joinToString("\n")
-    }
-
-    private fun pickPreset() {
-        val presets = CloudPresets.ALL
-        AlertDialog.Builder(this)
-            .setTitle("Add a cloud provider")
-            .setItems(presets.map { "${it.label} — ${it.model.ifEmpty { "your model" }}" }.toTypedArray()) { _, i -> CloudProviderActivity.add(this, presets[i].id) }
-            .setNegativeButton("Cancel", null)
-            .show()
-    }
-
-    private fun useProvider(id: String) {
-        cloudState = cloudState.copy(active = id)
-        app.dev.saveCloud(cloud = cloudState.copy(monthlyBudgetUsd = app.dev.load().cloud.monthlyBudgetUsd))
-        app.engine.applyDevSettings(app.dev.load())
-        draft = draft.rebase(app.dev.load())
-        renderProviders(); validate()
-    }
-
-    /**
-     * First enable: the consent dialog for the active provider (§8.3); accepting records the
-     * consent (host + time) and puts the cloud first in the route order (§3.1 step 4).
-     */
-    private fun onAllowCloud(on: Boolean) {
-        val b = allowCloud ?: return
-        if (!on) { validate(); return }
-        val pr = cloudState.activeProvider
-        if (pr == null) {
-            b.isChecked = false
-            Toast.makeText(this, "Add a provider first", Toast.LENGTH_LONG).show()
-            pickPreset()
-            return
-        }
-        val enable = {
-            if (DevSettings.Route.CLOUD !in routeOrder) routeOrder = DevSettings.withCloudFirst(routeOrder)
-            validate()
-        }
-        if (pr.consentOk) { enable(); return }
-        CloudProviderActivity.consentDialog(this, pr, onCancel = { b.isChecked = false; validate() }) {
-            cloudState = cloudState.replace(pr.withConsent(System.currentTimeMillis()))
-            app.dev.saveCloud(cloud = cloudState.copy(monthlyBudgetUsd = app.dev.load().cloud.monthlyBudgetUsd))
-            draft = draft.rebase(app.dev.load())
-            renderProviders()
-            enable()
-        }
-    }
-
-    private fun onTestCloud() {
-        val line = cloudProbe ?: return
-        val pr = cloudState.activeProvider ?: run { line.show("No active provider.", Tone.BAD); return }
-        val key = app.cloudKeys.get(pr.id)
-            ?: if (CloudKeyPolicy.keylessOk(pr)) null else run { line.show("${pr.displayName}: no API key stored.", Tone.BAD); return }
-        line.show("Testing ${pr.displayName} (${pr.host})…")
-        val json = pr.toJson().toString()
-        thread(name = "dev-cloud-probe") {
-            val h = app.engine.router()?.probeCloud(json, key) ?: NativeFlowCore.probeCloud(json, key)
-            if (!h.ok) app.debugLog.event("cloud_probe", DevText.cloudProbe(h))
-            runOnUiThread { line.show(DevText.cloudProbe(h), if (h.ok) Tone.OK else Tone.BAD); refresh() }
-        }
-    }
-
-    private fun onResetUsage() {
-        val r = app.engine.router()
-        if (r != null) { r.resetCloudUsage(); app.engine.persistCloudUsage() } else app.dev.cloudUsageJson = null
-        refresh()
     }
 
     // =====================================================================================
@@ -684,9 +557,16 @@ class DeveloperActivity : Activity() {
             sectionLabel("CIRCUITS")
             lateinit var circuit: TextView
             var cloudCircuit: TextView? = null
+            var cleanupCircuit: TextView? = null
+            var cleanup: TextView? = null
             card {
                 circuit = infoRow("Server / on-device circuit")
-                if (caps.cloud) cloudCircuit = infoRow("Cloud circuit")
+                if (caps.cloud) cloudCircuit = infoRow("Cloud speech-to-text circuit")
+                if (caps.cloud) cleanupCircuit = infoRow("Cloud cleanup circuit")
+            }
+            if (caps.cloud) {
+                sectionLabel("CLOUD CLEANUP (OPENROUTER)")
+                card { cleanup = infoRow("Status") }
             }
             chipRow(chip("Reset circuit") { onResetCircuit() })
             sectionLabel("SERVER INFO (LAST PROBE)")
@@ -699,12 +579,15 @@ class DeveloperActivity : Activity() {
             }
             refreshers += {
                 val l = app.lastRoute.value
-                last.text = DevText.lastDictation(l?.result) { id -> cloudState.provider(id)?.displayName } +
+                last.text = DevText.lastDictation(l?.result) +
                     (l?.let { " · " + DateFormat.getTimeInstance().format(Date(it.atMs)) } ?: "")
                 circuit.text = circuitText()
                 val rs = routeStatus()
                 val cc = rs?.cloudCircuit
-                cloudCircuit?.text = if (cc == null) "Not loaded" else DevText.circuit(cc, System.currentTimeMillis(), "the key or provider changes") { DateFormat.getTimeInstance().format(Date(it)) }
+                cloudCircuit?.text = if (cc == null) "Not loaded" else DevText.circuit(cc, System.currentTimeMillis(), "the key or model changes") { DateFormat.getTimeInstance().format(Date(it)) }
+                val lc = rs?.cleanupCircuit
+                cleanupCircuit?.text = if (lc == null) "Not loaded" else DevText.circuit(lc, System.currentTimeMillis(), "the key or cleanup settings change") { DateFormat.getTimeInstance().format(Date(it)) }
+                cleanup?.text = app.engine.router()?.let { DevText.cleanupStatus(it.cleanupStatus()) } ?: "Not loaded"
                 info.text = DevText.serverInfo(lastProbe ?: rs?.health)
             }
         }
@@ -745,7 +628,6 @@ class DeveloperActivity : Activity() {
             host = host.text, port = port.text, tls = tls.isChecked, pin = pin.text, token = token.text,
             connectTimeoutMs = connectTimeout.text, commitTimeoutBaseMs = commitTimeout.text, healthTtlS = healthTtl.text,
         )
-        Page.CLOUD -> i.copy(allowCloud = allowCloud?.isChecked == true, cloudBudget = budget?.text.orEmpty(), routeOrder = routeOrder)
         else -> i
     }
 
@@ -797,15 +679,15 @@ class DeveloperActivity : Activity() {
     private fun confirmResetDefaults() {
         AlertDialog.Builder(this)
             .setTitle("Reset Developer settings?")
-            .setMessage("Restores the default engines, server and timeouts, and deletes every cloud provider and its API key from this device.")
+            .setMessage("Restores the default engines, server and timeouts, turns cloud speech-to-text and cleanup off, and deletes the OpenRouter API key from this device.")
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Reset") { _, _ -> onResetDefaults() }
             .show()
     }
 
-    /** Also forgets every cloud key (sealed copies and their Keystore keys), like deleting each provider. */
+    /** Also forgets the OpenRouter key (sealed copy and its Keystore key). */
     private fun onResetDefaults() {
-        for (pr in app.dev.load().cloud.providers) { app.cloudKeys.remove(pr.id); app.engine.setCloudKey(pr.id, null) }
+        app.cloudKeys.remove(OpenRouter.ID); app.engine.setCloudKey(null)
         app.dev.reset()
         app.engine.applyDevSettings(app.dev.load())
         lastProbe = null
@@ -818,7 +700,7 @@ class DeveloperActivity : Activity() {
 
         val TITLES = mapOf(
             Page.HUB to "Developer settings", Page.ROUTING to "Routing & engines", Page.SERVER to "Server",
-            Page.CLOUD to "Cloud providers", Page.DEBUG to "Debug log & audio", Page.STATUS to "Status",
+            Page.DEBUG to "Debug log & audio", Page.STATUS to "Status",
         )
 
         /** Last server probe of this process (Status page "Server info"); else the router's cached health. */

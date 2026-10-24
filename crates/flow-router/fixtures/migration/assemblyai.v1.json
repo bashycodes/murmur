@@ -1,0 +1,30 @@
+{
+  "allow_cloud": true,
+  "cloud": {
+    "active": "assemblyai-1",
+    "monthly_budget_usd": 5.0,
+    "providers": [
+      {
+        "adapter": "assemblyai",
+        "base_url": "https://api.assemblyai.com",
+        "consent_at_ms": 1792540800000,
+        "consent_host": "api.assemblyai.com",
+        "id": "assemblyai-1",
+        "label": "AssemblyAI",
+        "model": "universal",
+        "preset": "assemblyai",
+        "send_dictionary": true,
+        "zero_retention": true
+      }
+    ]
+  },
+  "order": [
+    "cloud",
+    "server",
+    "client"
+  ],
+  "server": {
+    "host": "100.64.0.10",
+    "token": "dev-token-0123456789abcdef"
+  }
+}

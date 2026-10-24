@@ -7,7 +7,9 @@ use std::time::Instant;
 use flow_core::config::{FieldContext, SessionConfig};
 use flow_core::{CommitResult, FlowCore};
 
-use crate::{now_unix_ms, Backend, BackendError, EngineKind, Failure, HealthReport, StartInfo};
+use crate::{
+    now_unix_ms, Backend, BackendError, CleanupPlan, EngineKind, Failure, HealthReport, StartInfo,
+};
 
 impl Backend for FlowCore {
     fn kind(&self) -> EngineKind {
@@ -47,6 +49,11 @@ impl Backend for FlowCore {
         FlowCore::cancel(self)
     }
 
+    /// D28: `plan(built-in LLM)` becomes the cleaner for later commits.
+    fn install_cleanup(&self, plan: Option<CleanupPlan>) {
+        self.set_cleaner(plan.and_then(|p| p(self.cleaner())));
+    }
+
     fn probe(&self) -> HealthReport {
         HealthReport {
             ok: true,
@@ -74,6 +81,8 @@ pub(crate) struct LazyLocal {
     /// One load at a time (a second caller waits and reuses it).
     loading: Mutex<()>,
     busy: AtomicBool,
+    /// D28 cleanup plan, applied to the engine once it is loaded.
+    plan: Mutex<Option<CleanupPlan>>,
 }
 
 /// What one on-demand load did.
@@ -90,6 +99,7 @@ impl LazyLocal {
             core: Mutex::new(None),
             loading: Mutex::new(()),
             busy: AtomicBool::new(false),
+            plan: Mutex::new(None),
         }
     }
 
@@ -121,6 +131,8 @@ impl LazyLocal {
         self.busy.store(false, Ordering::SeqCst);
         match r {
             Ok(c) => {
+                let plan = self.plan.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                c.install_cleanup(plan);
                 *self.core.lock().unwrap_or_else(|e| e.into_inner()) = Some(c.clone());
                 (Ok(c), Some(LoadNote { ms, error: None }))
             }
@@ -177,6 +189,13 @@ impl Backend for LazyLocal {
     fn cancel(&self) {
         if let Some(c) = self.loaded() {
             c.cancel()
+        }
+    }
+
+    fn install_cleanup(&self, plan: Option<CleanupPlan>) {
+        *self.plan.lock().unwrap_or_else(|e| e.into_inner()) = plan.clone();
+        if let Some(c) = self.loaded() {
+            c.install_cleanup(plan);
         }
     }
 

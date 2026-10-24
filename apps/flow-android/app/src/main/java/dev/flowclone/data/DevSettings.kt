@@ -34,9 +34,16 @@ data class DevSettings(
      * AND [Route.CLOUD] is in [routeOrder] AND the active provider has consent and a key.
      */
     val allowCloud: Boolean = false,
-    /** Providers (no keys: those live in [CloudKeyStore]). */
+    /** D28: the one OpenRouter config (no key: that lives in [CloudKeyStore] under [OpenRouter.ID]). */
     val cloud: CloudSettings = CloudSettings(),
+    /** D28: opt-in cloud text cleanup (its own consent in [CleanupSettings]). Off by default. */
+    val allowCloudCleanup: Boolean = false,
+    /** D28 `cleanup_order`: empty = on-device LLM only (as before); the enable flow sets cloud, local. */
+    val cleanupOrder: List<CleanupRoute> = emptyList(),
 ) {
+    /** `flow_router::CleanupRoute`. */
+    enum class CleanupRoute(val wire: String) { CLOUD("cloud"), LOCAL("local") }
+
     enum class Prefer(val wire: String) { SERVER("server"), CLIENT("client") }
 
     /** A dictation route. [needsNetwork] routes exist only in flavours with `remote` capability. */
@@ -62,7 +69,12 @@ data class DevSettings(
         allowCloud = allowCloud && caps.cloud,
         routeOrder = if (caps.cloud) routeOrder else routeOrder - Route.CLOUD,
         cloud = if (caps.cloud) cloud else CloudSettings(),
+        allowCloudCleanup = allowCloudCleanup && caps.cloud,
+        cleanupOrder = if (caps.cloud) cleanupOrder else emptyList(),
     )
+
+    /** Cloud cleanup is on and in the order (the router still checks consent, key, circuit and budget per call). */
+    val cloudCleanupRouted: Boolean get() = allowCloudCleanup && CleanupRoute.CLOUD in cleanupOrder
 
     /** The cloud is a route the router may take (it still checks consent, key and budget). */
     val cloudRouted: Boolean get() = allowCloud && Route.CLOUD in routeOrder
@@ -106,10 +118,12 @@ data class DevSettings(
         put("prefer", prefer.wire)
         put("server", toServerConfigJson())
         put("keep_local_warm", keepLocalWarm)
-        // D18 fields only once the cloud is touched: pre-cloud fixtures stay byte-identical,
+        // Cloud fields only once the cloud is touched: pre-cloud fixtures stay byte-identical,
         // like the router's `skip_serializing_if = default`. `order` (when set) replaces `prefer`.
-        if (allowCloud || !cloud.isDefault || Route.CLOUD in routeOrder) {
+        if (allowCloud || allowCloudCleanup || !cloud.isDefault || Route.CLOUD in routeOrder || cleanupOrder.isNotEmpty()) {
             put("allow_cloud", allowCloud)
+            put("allow_cloud_cleanup", allowCloudCleanup)
+            put("cleanup_order", org.json.JSONArray(cleanupOrder.map { it.wire }))
             put("cloud", cloud.toJson())
         }
         if (Route.CLOUD in routeOrder) put("order", org.json.JSONArray(routeOrder.map { it.wire }))
@@ -122,7 +136,7 @@ data class DevSettings(
     override fun toString(): String =
         "DevSettings(server=$allowServer client=$allowClient prefer=${prefer.wire} host=$host:$port tls=$tls " +
             "pin=${tlsPinSha256.isNotEmpty()} token=${if (token.isEmpty()) "none" else "set"} timeouts=$connectTimeoutMs/$commitTimeoutBaseMs/$healthTtlS warm=$keepLocalWarm " +
-            "cloud=$allowCloud order=${routeOrder.joinToString(",") { it.wire }} providers=${cloud.providers.size})"
+            "cloud=$allowCloud cleanup=$allowCloudCleanup/${cleanupOrder.joinToString(",") { it.wire }} order=${routeOrder.joinToString(",") { it.wire }})"
 
     companion object {
         /** D24: was 800 ms, too tight through a Tailscale DERP relay (3+ round trips of 150-300 ms). */
@@ -152,6 +166,13 @@ data class DevSettings(
             return named + Route.entries.filter { it !in named && it != Route.CLOUD }
         }
 
+        /** Stored `cleanup_order` (`cloud,local`); unknown names skipped. */
+        fun parseCleanupOrder(csv: String?): List<CleanupRoute> =
+            csv.orEmpty().split(',').mapNotNull { n -> CleanupRoute.entries.firstOrNull { it.wire == n.trim() } }.distinct()
+
+        /** The cleanup enable flow: cloud first, the on-device LLM as the fallback. */
+        val CLEANUP_CLOUD_FIRST = listOf(CleanupRoute.CLOUD, CleanupRoute.LOCAL)
+
         /** §3.1 step 4: enabling the cloud puts it first, keeping the previous server / client order. */
         fun withCloudFirst(order: List<Route>) = listOf(Route.CLOUD) + (order - Route.CLOUD)
 
@@ -180,6 +201,8 @@ data class DevSettings(
                 keepLocalWarm = o.optBoolean("keep_local_warm", true),
                 allowCloud = o.optBoolean("allow_cloud", false),
                 cloud = CloudSettings.fromJson(o.optJSONObject("cloud")),
+                allowCloudCleanup = o.optBoolean("allow_cloud_cleanup", false),
+                cleanupOrder = o.optJSONArray("cleanup_order")?.let { a -> parseCleanupOrder((0 until a.length()).joinToString(",") { a.optString(it) }) }.orEmpty(),
             )
         }
     }
@@ -331,7 +354,7 @@ object HostRules {
  * disabled while [Result.errors] is non-empty; [Result.warnings] never block saving.
  */
 object DevSettingsForm {
-    enum class Field { HOST, PORT, PIN, TOKEN, CONNECT_TIMEOUT, COMMIT_TIMEOUT, HEALTH_TTL, CLOUD_BUDGET }
+    enum class Field { HOST, PORT, PIN, TOKEN, CONNECT_TIMEOUT, COMMIT_TIMEOUT, HEALTH_TTL }
 
     data class Input(
         val allowServer: Boolean,
@@ -347,20 +370,18 @@ object DevSettingsForm {
         val healthTtlS: String,
         val keepLocalWarm: Boolean,
         val showEngineBadge: Boolean,
+        /** The cloud part is edited on the OpenRouter page (applies at once); the form passes it through. */
         val allowCloud: Boolean = false,
-        /** Providers + active id as stored (edited on the provider page); budget comes from [cloudBudget]. */
         val cloud: CloudSettings = CloudSettings(),
-        /** Monthly budget in USD; blank = none. */
-        val cloudBudget: String = "",
+        val allowCloudCleanup: Boolean = false,
+        val cleanupOrder: List<DevSettings.CleanupRoute> = emptyList(),
     ) {
         companion object {
             fun of(s: DevSettings) = Input(
                 s.allowServer, s.allowClient, s.routeOrder, s.host, s.port.toString(), s.tls, s.tlsPinSha256, s.token,
                 s.connectTimeoutMs.toString(), s.commitTimeoutBaseMs.toString(), s.healthTtlS.toString(), s.keepLocalWarm, s.showEngineBadge,
-                s.allowCloud, s.cloud, s.cloud.monthlyBudgetUsd?.let { budgetText(it) }.orEmpty(),
+                s.allowCloud, s.cloud, s.allowCloudCleanup, s.cleanupOrder,
             )
-
-            fun budgetText(v: Double): String = if (v == Math.floor(v)) v.toLong().toString() else v.toString()
         }
     }
 
@@ -377,8 +398,7 @@ object DevSettingsForm {
     const val BOTH_OFF = "Dictation disabled: turn on Allow server or Allow client."
     const val NO_HOST = "Server enabled but no host set: dictation will use the client (or fail if the client is off)."
     const val PLAINTEXT = "Unencrypted (ws://): OK on Tailscale (WireGuard), LAN only otherwise."
-    const val CLOUD_NO_PROVIDER = "Cloud allowed but no provider is active: add one under Cloud providers."
-    const val CLOUD_NO_CONSENT = "The active cloud provider has no consent for its current host: it will be skipped."
+    const val CLOUD_NO_CONSENT = "Cloud speech-to-text is on but has no consent: it will be skipped (OpenRouter page)."
     const val CLOUD_NOT_IN_ORDER = "Cloud allowed but not in the route order: it will not be used."
     const val NO_TOKEN = "No token: a server with auth (the default) will reject the connection."
 
@@ -410,20 +430,13 @@ object DevSettingsForm {
         val allowServer = i.allowServer && caps.remote
         val allowClient = i.allowClient && caps.local
         val allowCloud = i.allowCloud && caps.cloud
-        val budgetRaw = i.cloudBudget.trim().removePrefix("$").trim()
-        val budget = if (budgetRaw.isEmpty()) null else budgetRaw.toDoubleOrNull()?.takeIf { it >= 0.0 && it.isFinite() }
-        if (budgetRaw.isNotEmpty() && budget == null) errors[Field.CLOUD_BUDGET] = "Budget must be an amount in USD (e.g. 5 or 2.50), or empty for none"
         val order = if (caps.cloud) i.routeOrder else i.routeOrder - DevSettings.Route.CLOUD
         val cloudRouted = allowCloud && DevSettings.Route.CLOUD in order
         if (!allowServer && !allowClient && !cloudRouted) warnings += BOTH_OFF
         if (allowCloud) {
-            val p = i.cloud.activeProvider
-            when {
-                p == null -> warnings += CLOUD_NO_PROVIDER
-                !p.consentOk -> warnings += CLOUD_NO_CONSENT
-            }
+            if (!i.cloud.stt.consentOk) warnings += CLOUD_NO_CONSENT
             if (DevSettings.Route.CLOUD !in order) warnings += CLOUD_NOT_IN_ORDER
-            CloudText.orderWarning(order, p)?.let { warnings += it }
+            CloudText.orderWarning(order)?.let { warnings += it }
         }
         if (allowServer && host.isEmpty() && Field.HOST !in errors) warnings += NO_HOST
         if (allowServer && host.isNotEmpty() && !tls) warnings += PLAINTEXT
@@ -435,7 +448,7 @@ object DevSettingsForm {
             // A build without the cloud keeps the stored providers / order untouched (prefs survive a
             // flavour switch); effective() strips them from what the router sees.
             allowCloud = allowCloud, routeOrder = i.routeOrder,
-            cloud = if (caps.cloud) i.cloud.copy(monthlyBudgetUsd = budget) else i.cloud,
+            cloud = i.cloud, allowCloudCleanup = i.allowCloudCleanup, cleanupOrder = i.cleanupOrder,
         ) else null
         return Result(settings, errors, warnings, tlsLocked)
     }

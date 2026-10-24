@@ -46,7 +46,7 @@ class PrefsKeyValue(private val sp: SharedPreferences) : KeyValue {
     }
 }
 
-/** Encrypts secrets at rest (the server token, and per provider the cloud STT API keys). */
+/** Encrypts secrets at rest (the server token and the OpenRouter API key). */
 interface SecretBox {
     fun seal(plain: String): String
     /** Null when the ciphertext can't be opened (key lost after a restore, tampering). */
@@ -86,8 +86,9 @@ object AndroidKeystoreKeys : VaultKeys {
 
 /**
  * AES-GCM under the Keystore key [alias]; only ciphertext ("iv:ct", base64) is stored.
- * `flow_dev_token` seals the server token (D17 §2.5); `flow_cloud_<id>` one cloud STT API key
- * per provider (D18 §8.1), so deleting a provider can destroy its key alone.
+ * `flow_dev_token` seals the server token (D17 §2.5); `flow_cloud_<id>` a cloud API key (D18
+ * §8.1). D28: the only id is `openrouter`; the one-time migration moves a legacy OpenRouter
+ * entry's key there and destroys every other provider's vault.
  */
 class SecretVault(val alias: String, private val keys: VaultKeys = AndroidKeystoreKeys) : SecretBox {
     override fun seal(plain: String): String {
@@ -116,10 +117,10 @@ class SecretVault(val alias: String, private val keys: VaultKeys = AndroidKeysto
 val TokenVault: SecretBox = SecretVault("flow_dev_token")
 
 /**
- * D18 C3: cloud STT API keys at rest. One [SecretVault] (`flow_cloud_<id>`) per provider; only the
+ * D18 C3: cloud API keys at rest. One [SecretVault] (`flow_cloud_<id>`) per id; only the
  * ciphertext is in the `dev` prefs (`cloud.key_sealed.<id>`, backup disabled app-wide). Keys never
  * enter [DevSettings], router JSON, logs or exports; they reach native code only through
- * `NativeFlowCore.setCloudKey` / `probeCloud`.
+ * `NativeFlowCore.setCloudKey`. D28: one key, id [OpenRouter.ID].
  */
 class CloudKeyStore(private val kv: KeyValue, private val vaultFor: (String) -> SecretBox) {
     constructor(context: Context) : this(
@@ -149,6 +150,19 @@ class CloudKeyStore(private val kv: KeyValue, private val vaultFor: (String) -> 
 
     /** UI: `••••abcd` or "no key". */
     fun masked(id: String) = CloudText.mask(get(id))
+
+    /**
+     * D28 migration: re-seal [from]'s key under [to] (its own vault) and destroy [from]. A key
+     * that can no longer be opened is dropped. Idempotent: nothing stored under [from] = no-op.
+     */
+    fun move(from: String, to: String) {
+        if (from == to) return
+        if (has(from)) {
+            val k = get(from)
+            if (k != null && !has(to)) set(to, k)
+        }
+        remove(from)
+    }
 
     companion object {
         const val PREFIX = "cloud.key_sealed."
@@ -182,12 +196,19 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
             showEngineBadge = kv.getBoolean("show_engine_badge", d.showEngineBadge),
             allowCloud = kv.getBoolean("allow_cloud", false),
             cloud = kv.getString("cloud")?.let { runCatching { CloudSettings.fromJson(org.json.JSONObject(it)) }.getOrNull() } ?: CloudSettings(),
+            allowCloudCleanup = kv.getBoolean(ALLOW_CLOUD_CLEANUP, false),
+            cleanupOrder = DevSettings.parseCleanupOrder(kv.getString(CLEANUP_ORDER)),
         )
         // A toggle this build can't honour reads as off (e.g. prefs kept across a flavour switch).
         return stored.copy(
             allowServer = stored.allowServer && caps.remote, allowClient = stored.allowClient && caps.local,
-            allowCloud = stored.allowCloud && caps.cloud,
+            allowCloud = stored.allowCloud && caps.cloud, allowCloudCleanup = stored.allowCloudCleanup && caps.cloud,
         )
+    }
+
+    /** The stored `cloud` JSON when it is still D18 schema 1 (one-time [CloudMigration] input), else null. */
+    fun legacyCloudJson(): org.json.JSONObject? = kv.getString("cloud")?.let { raw ->
+        runCatching { org.json.JSONObject(raw) }.getOrNull()?.takeIf(CloudSettings::isLegacy)
     }
 
     /** D24: an untouched stored 800 ms (the pre-D24 default) becomes 2500 ms, once. */
@@ -219,14 +240,27 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         putBoolean("show_engine_badge", s.showEngineBadge)
         putBoolean("allow_cloud", s.allowCloud)
         putString("cloud", if (s.cloud.isDefault) null else s.cloud.toJson().toString())
+        putBoolean(ALLOW_CLOUD_CLEANUP, s.allowCloudCleanup)
+        putString(CLEANUP_ORDER, s.cleanupOrder.joinToString(",") { it.wire })
     }
 
-    /** Only the cloud part (provider page saves, consent dialog), leaving unsaved form fields alone. */
-    fun saveCloud(allowCloud: Boolean? = null, cloud: CloudSettings, routeOrder: List<DevSettings.Route>? = null) = kv.edit {
+    /** Only the cloud part (OpenRouter page, consent dialogs, migration), leaving unsaved form fields alone. */
+    fun saveCloud(
+        allowCloud: Boolean? = null, cloud: CloudSettings, routeOrder: List<DevSettings.Route>? = null,
+        allowCloudCleanup: Boolean? = null, cleanupOrder: List<DevSettings.CleanupRoute>? = null,
+    ) = kv.edit {
         allowCloud?.let { putBoolean("allow_cloud", it) }
-        putString("cloud", if (cloud.isDefault) null else cloud.toJson().toString())
+        // Always written once touched: a schema-2 value marks the D28 migration as done.
+        putString("cloud", cloud.toJson().toString())
         routeOrder?.let { o -> putString("route_order", o.joinToString(",") { it.wire }) }
+        allowCloudCleanup?.let { putBoolean(ALLOW_CLOUD_CLEANUP, it) }
+        cleanupOrder?.let { o -> putString(CLEANUP_ORDER, o.joinToString(",") { it.wire }) }
     }
+
+    /** D28: the one-time migration notice, shown as a banner until dismissed. */
+    var cloudNotice: String?
+        get() = kv.getString(CLOUD_NOTICE)
+        set(v) = kv.edit { putString(CLOUD_NOTICE, v) }
 
     /**
      * "Reset to defaults": everything except the unlock flag and this month's cloud usage
@@ -282,6 +316,9 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         /** D24: set once the 800 → 2500 ms connect-timeout migration ran (or on any save). */
         private const val CONNECT_TIMEOUT_MIGRATED = "connect_timeout_default_2500"
         const val USAGE = "cloud_usage"
+        const val ALLOW_CLOUD_CLEANUP = "allow_cloud_cleanup"
+        const val CLEANUP_ORDER = "cleanup_order"
+        const val CLOUD_NOTICE = "cloud_notice"
         const val DEBUG_LOG = "debug_log"
         const val KEEP_DEBUG_AUDIO = "debug_keep_audio"
         const val SERVER_ASR_MODEL = "server.last_asr_model"

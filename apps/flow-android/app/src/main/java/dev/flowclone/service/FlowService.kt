@@ -142,7 +142,7 @@ class FlowService : Service() {
                 // D18 C7: "C" whenever the last dictation went to a cloud provider, even with the badge off.
                 val badge = dev.flowclone.core.DevText.bubbleBadge(app.lastRoute.value?.result?.route, app.dev.load().showEngineBadge)
                 // Live route ("via phone | server | provider"), relabelled on failover.
-                val route = dev.flowclone.bubble.RouteLabel.of(r) { id -> app.dev.load().cloud.provider(id)?.displayName }
+                val route = dev.flowclone.bubble.RouteLabel.of(r) { id -> if (id == dev.flowclone.data.OpenRouter.ID) dev.flowclone.data.OpenRouter.NAME else null }
                 PreviewContent.line(s, p, h, app.settings.load().livePreview, badge, route)
             }.collect { overlay.renderPreview(it) }
         }
@@ -440,8 +440,8 @@ class FlowService : Service() {
 
         override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?) {
             app.lastRoute.value = dev.flowclone.data.LastDictation.of(result, System.currentTimeMillis())
-            // D18: persist this month's cloud counters; say so when the cloud failed and another engine took over.
-            if (result.route?.engine == "cloud") scope.launch(Dispatchers.IO) { runCatching { app.engine.persistCloudUsage() } }
+            // D18 / D28: persist this month's cloud counters (speech or cleanup); say so when the cloud failed and another engine took over.
+            if (result.route?.engine == "cloud" || result.route?.llmEngine == "cloud") scope.launch(Dispatchers.IO) { runCatching { app.engine.persistCloudUsage() } }
             dev.flowclone.data.CloudText.fallbackMessage(result.route, app.dev.load().effective(app.caps).cloudFirst)?.let { m ->
                 scope.launch(Dispatchers.Main) { toast(m) }
             }
@@ -506,7 +506,11 @@ class FlowService : Service() {
         override fun captureContext(): FieldContext? =
             app.accessibility?.captureFieldContext()?.let { app.settings.load().withAppBucket(it) }
 
-        override fun sessionConfig() = app.settings.load().let { it.toSessionConfig(app.dictionary.all(), language = app.effectiveLanguage(it)) }
+        override fun sessionConfig() = app.settings.load().let {
+            // D28: the router re-checks consent, key, circuit and budget on every cleanup call.
+            val cloudCleanup = app.dev.load().effective(app.caps).let { d -> d.cloudCleanupRouted && d.cloud.cleanup.consentOk }
+            it.toSessionConfig(app.dictionary.all(), language = app.effectiveLanguage(it), cloudCleanup = cloudCleanup)
+        }
 
         override fun endpointSilenceMs(): Int? = app.settings.load().handsFreeEndpointMs()
 

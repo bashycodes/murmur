@@ -1,0 +1,20 @@
+{
+  "cloud_disabled": true,
+  "delete_keys": [
+    "assemblyai-1"
+  ],
+  "key_from": null,
+  "key_to": null,
+  "migrated": true,
+  "model_from": null,
+  "model_to": null,
+  "notice": "Cloud speech-to-text now uses OpenRouter only. AssemblyAI was removed and its key deleted. Set up OpenRouter to keep using cloud STT.",
+  "removed": [
+    {
+      "adapter": "assemblyai",
+      "id": "assemblyai-1",
+      "name": "AssemblyAI",
+      "preset": "assemblyai"
+    }
+  ]
+}

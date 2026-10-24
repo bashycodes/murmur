@@ -1,1 +1,0 @@
-{"metadata": {"transaction_key": "deprecated", "request_id": "5d8e3a1c-0000-4000-8000-123456789abc", "sha256": "00", "created": "2026-10-22T10:00:00.000Z", "duration": 3.0, "channels": 1, "models": ["nova-3"]}, "results": {"channels": [{"detected_language": "en", "alternatives": [{"transcript": "Ask not what your country can do for you.", "confidence": 0.99, "words": []}]}]}}

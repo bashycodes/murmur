@@ -45,7 +45,8 @@
         <activity android:name=".ui.DictionaryActivity" android:exported="false" android:label="@string/title_dictionary" />
         <activity android:name=".ui.HistoryActivity" android:exported="false" android:label="@string/title_history" />
         <activity android:name=".ui.DeveloperActivity" android:exported="false" android:label="@string/title_developer" />
-        <activity android:name=".ui.CloudProviderActivity" android:exported="false" android:label="Cloud provider" />
+        <activity android:name=".ui.OpenRouterActivity" android:exported="false" android:label="OpenRouter (cloud)" />
+        <activity android:name=".ui.ModelPickerActivity" android:exported="false" android:label="Model" />
 
         <!-- D21: the debug log file, shared only through a user-initiated share sheet (read grant). -->
         <provider

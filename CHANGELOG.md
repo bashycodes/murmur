@@ -16,6 +16,82 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- Cloud speech-to-text uses **OpenRouter only** (D28). ElevenLabs, Deepgram,
+  AssemblyAI, Groq/OpenAI direct and custom servers are removed from the
+  product (not just hidden): the cloud builds contain no other provider
+  address, and the build check fails if one appears. The OpenRouter address
+  is fixed and redirects are never followed.
+- Cloud STT default model is now `openai/whisper-large-v3-turbo` (served by
+  zero-retention providers; about $0.012-0.04 per hour of audio). The old
+  default `openai/gpt-transcribe` has no zero-retention provider.
+- Android: *Developer settings → Cloud providers* (the provider list, presets
+  and "Add provider") is replaced by one **OpenRouter** page, also reachable
+  from *Settings → Dictation → Cloud (OpenRouter)*: the API key (Check key
+  shows the credit left and this month's usage), privacy (zero-retention
+  providers only and deny data collection, both on; turning one off asks
+  first), speech-to-text and text cleanup as two opt-ins with their own
+  consent dialogs, and usage split speech / cleanup with one monthly budget.
+- Android: on the first start after the update the old cloud settings are
+  converted once. An OpenRouter entry keeps its key, model and consent; every
+  other provider and its stored key is deleted; if another provider was
+  active, cloud speech-to-text is switched off. A banner says what changed
+  until dismissed.
+
+### Added
+
+- Android: a model picker for both uses with every OpenRouter model that can
+  do the job (offline list built in, refreshed when the page opens, cached
+  24 h): search, filters (transcription / chat audio, zero-retention only,
+  fast providers, free), the price per hour of audio or per dictation,
+  context length, badges (ZDR, fast, "may paraphrase" for chat models used
+  for speech) and any model id typed by hand.
+- Android: opt-in cloud text cleanup through OpenRouter. Its consent dialog
+  lists what is sent (the dictated words, the kind of app, your style and
+  dictionary; text around the cursor, on-screen words and the app name each
+  have their own switch, off by default). Order "OpenRouter first, phone AI as
+  backup" or "Phone AI first"; provider choice; a time limit (2.5 s) after
+  which the formatted text is pasted. It also works with the local AI off.
+- Android debug log: `llm_engine`, `llm_model`, `llm_cost_usd`,
+  `llm_ttft_ms`, `llm_generation_id`, `stt_cost_usd`; *Status* shows the
+  cloud cleanup circuit and status.
+
+- Every OpenRouter model that can transcribe is usable: the 28 dedicated
+  transcription models, and audio-input chat models as an opt-in second
+  path (with a check that rejects answers or paraphrases instead of a
+  transcript). The model list comes from OpenRouter (cached 24 h, offline
+  fallback built in, any model id can be typed).
+- Opt-in cloud text cleanup through OpenRouter (core part, `flow-cloud`):
+  streamed, cancelled on timeout so it stops billing, routed to
+  zero-retention providers by default (default model
+  `meta-llama/llama-3.3-70b-instruct`, fastest provider first, price
+  ceiling per request). Settings and consent arrive with the app updates.
+- Exact per-dictation cost from OpenRouter, with a later lookup when a
+  request ended before reporting it; OpenRouter key credits and monthly
+  usage (`/key`).
+- Clear error when a model has no zero-retention provider
+  ("model has no zero-retention provider").
+- Cloud text cleanup routing (core/router; settings arrive with the app
+  updates): cleanup is a separate opt-in with its own consent (turning on
+  cloud speech-to-text never turns it on, nor the reverse). It is used on
+  phone/PC and cloud-STT dictations, never on your own server. Each call is
+  re-checked (switch, consent, key, budget), so revoking consent mid-dictation
+  sends nothing. If OpenRouter is unreachable, the on-device AI or the
+  rule-based text is used. After 2.5 s the dictation is pasted without
+  waiting. By default only the dictated words, the app type, the style and
+  your dictionary are sent; text around the cursor, on-screen words and the
+  app name each have their own switch, off by default.
+- One monthly budget for both uses, checked before each cleanup call with the
+  model's price, then charged with the exact cost. Usage is shown split:
+  speech / cleanup.
+- One-time settings migration: an OpenRouter entry keeps its key, model and
+  consent. Every other provider and its stored key is deleted, with a notice.
+  If another provider was active, cloud speech-to-text is switched off rather
+  than silently moved to OpenRouter.
+- Debug log fields `llm_engine`, `llm_model`, `llm_cost_usd` (and
+  `llm_generation_id`, `llm_ttft_ms`).
+
 ## [0.4.0] - 2026-10-24
 
 ### Added

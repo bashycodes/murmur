@@ -84,3 +84,58 @@ fn gate_detects_the_cloud_client_and_checks_client_only_builds() {
         assert!(gate.contains(line), "missing {line:?}:\n{gate}");
     }
 }
+
+fn gate() -> String {
+    let out = Command::new("bash")
+        .arg(root().join("tools/check-build-matrix.sh"))
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout).into_owned()
+}
+
+/// D28: the cloud build talks to OpenRouter only. The host-string checks
+/// ran and passed.
+#[test]
+fn gate_checks_provider_host_strings() {
+    let g = gate();
+    for line in [
+        "ok    cloud-build Rust sources name no provider host but openrouter.ai",
+        "ok    flow-cloud/src URL literals are https://openrouter.ai only",
+        "ok    flow-cloud artefact contains no provider host but openrouter.ai",
+        "ok    -p flow-ffi --features jni,remote,cloud does not enable flow-cloud/mock-server",
+    ] {
+        assert!(g.contains(line), "missing {line:?}:\n{g}");
+    }
+}
+
+/// The host scan would fail on a planted provider host in a shipped
+/// artefact (FLOW_CLOUD_ARTIFACTS), and pass on a clean one.
+#[test]
+fn gate_detects_a_provider_host_in_an_artefact() {
+    let dir = std::env::temp_dir().join(format!("flow-hostscan-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let bad = dir.join("libbad.so");
+    let good = dir.join("libgood.so");
+    std::fs::write(&bad, b"\x7fELF....https://api.deepgram.com/v1/listen\0").unwrap();
+    std::fs::write(&good, b"\x7fELF....https://openrouter.ai/api/v1\0").unwrap();
+    let run = |p: &std::path::Path| {
+        Command::new("bash")
+            .arg(root().join("tools/check-build-matrix.sh"))
+            .env("FLOW_CLOUD_ARTIFACTS", p)
+            .env("CHECK_BUILD_MATRIX_NO_BUILD", "1")
+            .output()
+            .unwrap()
+    };
+    let b = run(&bad);
+    let bt = String::from_utf8_lossy(&b.stdout);
+    assert!(!b.status.success(), "{bt}");
+    assert!(
+        bt.contains("FAIL  libbad.so contains a non-OpenRouter provider host"),
+        "{bt}"
+    );
+    let g = run(&good);
+    let gt = String::from_utf8_lossy(&g.stdout);
+    assert!(g.status.success(), "{gt}");
+    assert!(gt.contains("ok    libgood.so contains no provider host but openrouter.ai"));
+    let _ = std::fs::remove_dir_all(&dir);
+}

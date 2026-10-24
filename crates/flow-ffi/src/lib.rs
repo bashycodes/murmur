@@ -25,8 +25,8 @@ use std::sync::Arc;
 use flow_core::config::{FieldContext, ModelConfig, SessionConfig};
 use flow_core::{CommitResult, FlowCore};
 use flow_router::{
-    Backend, CloudProviderConfig, CloudUsage, Route, Router, RouterConfig, RouterPoll,
-    SecretString, ServerConfig, StartInfo,
+    Backend, CloudProviderConfig, CloudUsage, OpenRouterConfig, Route, Router, RouterConfig,
+    RouterPoll, SecretString, ServerConfig, StartInfo,
 };
 
 #[cfg(feature = "jni")]
@@ -290,8 +290,11 @@ pub mod json_api {
         local: Option<FlowCore>,
     ) -> Result<FlowHandle, (&'static str, String)> {
         let cfg = router_config(json)?;
-        // A cloud-only config (D18) is an engine too, in builds that have it.
-        let cloud = cfg!(feature = "cloud") && cfg.allow_cloud && cfg.order.contains(&Route::Cloud);
+        // A cloud-only config (D18) is an engine too, in builds that have it
+        // (judged after the D28 migration the router will apply).
+        let mut m = cfg.clone();
+        m.migrate_d28();
+        let cloud = cfg!(feature = "cloud") && m.allow_cloud && m.order.contains(&Route::Cloud);
         if !cfg.allow_server && !cfg.allow_client && !cloud {
             let e = flow_router::RouterError::NoEngineEnabled;
             return Err((e.kind(), e.to_string()));
@@ -389,8 +392,10 @@ pub mod json_api {
         Ok(())
     }
 
-    /// `Router::set_cloud_key_for`: the key is bound to this provider's
-    /// base-URL host + adapter (review S4).
+    /// D28: kept for ABI. The key is for OpenRouter (the only provider):
+    /// `provider_json` may be an `OpenRouterConfig` or a legacy
+    /// `CloudProviderConfig`; a legacy entry of another adapter is ignored
+    /// (its key never enters the router).
     pub fn set_cloud_key_for(
         h: &FlowHandle,
         provider_json: &str,
@@ -399,37 +404,248 @@ pub mod json_api {
         let r = h
             .router()
             .ok_or(("error", "not a router handle".to_string()))?;
-        let p: CloudProviderConfig = serde_json::from_str(provider_json).map_err(|e| {
-            (
+        match openrouter_from_json(provider_json) {
+            Ok(Some(_)) => {
+                r.set_cloud_key(
+                    flow_router::cloud::OPENROUTER_ID,
+                    key.map(SecretString::new),
+                );
+                Ok(())
+            }
+            Ok(None) => Ok(()),
+            Err(e) => Err((
                 "bad_config",
                 format!("bad_config: bad provider config: {e}"),
-            )
-        })?;
-        r.set_cloud_key_for(&p, key.map(SecretString::new));
-        Ok(())
+            )),
+        }
     }
 
-    /// Blocking "Test provider" `HealthReport` for an unsaved provider
-    /// config. Without a router handle a temporary router is used (then the
-    /// key must be passed).
+    /// An `OpenRouterConfig` JSON, or a legacy `CloudProviderConfig` JSON
+    /// (converted as the D28 migration would); `Ok(None)` for a legacy
+    /// entry of a removed adapter.
+    fn openrouter_from_json(json: &str) -> Result<Option<OpenRouterConfig>, String> {
+        let v: serde_json::Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
+        if v.get("adapter").is_some() || v.get("base_url").is_some() {
+            let p: CloudProviderConfig = serde_json::from_value(v).map_err(|e| e.to_string())?;
+            if p.adapter != "openrouter" {
+                return Ok(None);
+            }
+            let mut c = RouterConfig::default();
+            c.cloud.schema = 1;
+            c.cloud.active = p.id.clone();
+            c.cloud.providers = vec![p];
+            c.migrate_d28();
+            return Ok(Some(c.cloud.openrouter));
+        }
+        serde_json::from_value(v)
+            .map(Some)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Blocking "Test" `HealthReport` for an unsaved `OpenRouterConfig`
+    /// (or a legacy OpenRouter `CloudProviderConfig`). Without a router
+    /// handle a temporary router is used (then the key must be passed).
     pub fn probe_cloud(h: Option<&FlowHandle>, provider_json: &str, key: Option<String>) -> String {
-        let report = match serde_json::from_str::<CloudProviderConfig>(provider_json) {
-            Ok(p) => {
+        let fail = |m: String| {
+            flow_router::HealthReport::failed(
+                flow_router::EngineKind::Cloud,
+                &flow_router::BackendError::new(flow_router::Failure::CloudNotConfigured, m),
+            )
+        };
+        let report = match openrouter_from_json(provider_json) {
+            Ok(Some(o)) => {
                 let key = key.map(SecretString::new);
                 match h.and_then(FlowHandle::router) {
-                    Some(r) => r.probe_cloud(&p, key),
-                    None => new_router(RouterConfig::default(), None).probe_cloud(&p, key),
+                    Some(r) => r.probe_cloud(&o, key),
+                    None => new_router(RouterConfig::default(), None).probe_cloud(&o, key),
                 }
             }
-            Err(e) => flow_router::HealthReport::failed(
-                flow_router::EngineKind::Cloud,
-                &flow_router::BackendError::new(
-                    flow_router::Failure::CloudNotConfigured,
-                    format!("bad provider config: {e}"),
-                ),
-            ),
+            Ok(None) => fail("only OpenRouter is supported (D28)".into()),
+            Err(e) => fail(format!("bad provider config: {e}")),
         };
         serde_json::to_string(&report).unwrap_or_else(|_| "{\"ok\":false}".into())
+    }
+
+    // ---- D28 OpenRouter-only cloud (JNI_CONTRACT.md "OpenRouter") --------
+
+    /// Where the OpenRouter model catalogue is cached
+    /// (`<dir>/openrouter-catalog.json`; Android `cacheDir`, Windows
+    /// `%LOCALAPPDATA%\\FlowClone\\cache`). Registers the store flow-cloud's
+    /// STT adapter and cleaner resolve models from. No network. Without
+    /// `cloud`: no-op.
+    pub fn set_cloud_cache_dir(dir: &str) {
+        #[cfg(feature = "cloud")]
+        flow_cloud::catalog::set_default_store(Some(Arc::new(flow_cloud::CatalogStore::new(
+            std::path::Path::new(dir).join("openrouter-catalog.json"),
+        ))));
+        #[cfg(not(feature = "cloud"))]
+        let _ = dir;
+    }
+
+    #[cfg(feature = "cloud")]
+    fn catalog_store() -> Arc<flow_cloud::CatalogStore> {
+        flow_cloud::catalog::default_store().unwrap_or_else(|| {
+            let s = Arc::new(flow_cloud::CatalogStore::in_memory());
+            flow_cloud::catalog::set_default_store(Some(s.clone()));
+            s
+        })
+    }
+
+    /// Picker rows (JSON array) for `use_` (`"stt"` / `"cleanup"`),
+    /// searched by id/name, filtered by `filters_json` (`{zdr_only,
+    /// fast, free, stt_path}`; missing = defaults). From memory / cache /
+    /// the baked snapshot: no network. `[]` without `cloud`.
+    pub fn cloud_catalog(use_: &str, query: &str, filters_json: &str) -> String {
+        #[cfg(feature = "cloud")]
+        return catalog_store().search_json(use_, query, filters_json);
+        #[cfg(not(feature = "cloud"))]
+        {
+            let _ = (use_, query, filters_json);
+            "[]".into()
+        }
+    }
+
+    /// Blocking (≤ 10 s, call off the UI thread): refresh the catalogue
+    /// from openrouter.ai unless the cache is fresh or `force`. With a
+    /// stored key the account's privacy filter (`/models/user`) applies.
+    /// Returns the status `{source, fetched_at_ms, snapshot_date, models,
+    /// stt, cleanup}` plus `"error"` (a `Failure` code) when the refresh
+    /// failed (the previous catalogue stays). Sends no user data.
+    pub fn refresh_cloud_catalog(h: Option<&FlowHandle>, force: bool) -> String {
+        #[cfg(feature = "cloud")]
+        {
+            let store = catalog_store();
+            let run = |k: Option<&SecretString>| store.refresh(k, force).err();
+            let err = match h.and_then(FlowHandle::router) {
+                Some(r) => r.with_cloud_key(run),
+                None => run(None),
+            };
+            let mut v: serde_json::Value =
+                serde_json::from_str(&store.status_json()).unwrap_or_default();
+            if let (Some(e), Some(o)) = (err, v.as_object_mut()) {
+                o.insert("error".into(), e.code().into());
+            }
+            v.to_string()
+        }
+        #[cfg(not(feature = "cloud"))]
+        {
+            let _ = (h, force);
+            r#"{"error":"cloud_not_configured"}"#.into()
+        }
+    }
+
+    /// Blocking "Check key": `GET /api/v1/key` with the stored key →
+    /// `KeyInfo` JSON (`label, limit, limit_remaining, usage_monthly,
+    /// is_free_tier, …`; never the key), or `{"error": code}`
+    /// (`cloud_not_configured` without a key / cloud support).
+    pub fn cloud_key_info(h: &FlowHandle) -> String {
+        #[cfg(feature = "cloud")]
+        if let Some(r) = h.router() {
+            return r.with_cloud_key(|k| match k {
+                None => r#"{"error":"cloud_not_configured"}"#.to_string(),
+                Some(k) => match flow_cloud::keyinfo::fetch(k) {
+                    Ok(i) => {
+                        let mut v = serde_json::to_value(&i).unwrap_or_default();
+                        if let Some(o) = v.as_object_mut() {
+                            o.insert("warn_no_limit".into(), i.warn_no_limit().into());
+                        }
+                        v.to_string()
+                    }
+                    Err(e) => serde_json::json!({"error": e.code()}).to_string(),
+                },
+            });
+        }
+        let _ = h;
+        r#"{"error":"cloud_not_configured"}"#.into()
+    }
+
+    /// One-time schema-1 → 2 migration of a router config JSON:
+    /// `{"config": RouterConfig, "report": MigrationReport}`. The shell
+    /// persists `config`, moves `report.key_from` → `key_to` and deletes
+    /// `report.delete_keys` in its key store, and shows `report.notice`
+    /// once. Idempotent (a schema-2 config comes back unchanged with
+    /// `migrated:false`). Pure: no handle, no network.
+    pub fn migrate_cloud(json: &str) -> Result<String, (&'static str, String)> {
+        let mut cfg: RouterConfig = serde_json::from_str(json)
+            .map_err(|e| ("bad_config", format!("bad_config: bad router config: {e}")))?;
+        let report = cfg.migrate_d28();
+        Ok(serde_json::json!({"config": cfg, "report": report}).to_string())
+    }
+
+    /// Merge the cleanup part of the config: `{"allow_cloud_cleanup"?,
+    /// "cleanup_order"?, "cleanup"?}` (missing keys keep their value).
+    pub fn set_cleanup(h: &FlowHandle, json: &str) -> Result<(), (&'static str, String)> {
+        let r = h
+            .router()
+            .ok_or(("error", "not a router handle".to_string()))?;
+        let bad = |e: String| ("bad_config", format!("bad_config: bad cleanup config: {e}"));
+        let v: serde_json::Value = serde_json::from_str(json).map_err(|e| bad(e.to_string()))?;
+        if !v.is_object() {
+            return Err(bad("not an object".into()));
+        }
+        let cur = r.config();
+        let field = |k: &str| v.get(k).cloned().filter(|x| !x.is_null());
+        let allow = match field("allow_cloud_cleanup") {
+            Some(x) => x
+                .as_bool()
+                .ok_or_else(|| bad("allow_cloud_cleanup".into()))?,
+            None => cur.allow_cloud_cleanup,
+        };
+        let order = match field("cleanup_order") {
+            Some(x) => serde_json::from_value(x).map_err(|e| bad(e.to_string()))?,
+            None => cur.cleanup_order,
+        };
+        let cleanup = match field("cleanup") {
+            Some(x) => serde_json::from_value(x).map_err(|e| bad(e.to_string()))?,
+            None => cur.cloud.openrouter.cleanup,
+        };
+        r.set_cleanup(allow, order, cleanup)
+            .map_err(|e| (e.kind(), e.to_string()))
+    }
+
+    /// `CleanupStatus` JSON (`supported:false` for a core handle).
+    pub fn cleanup_status(h: &FlowHandle) -> String {
+        let s = h.router().map(Router::cleanup_status).unwrap_or_default();
+        serde_json::to_string(&s).unwrap_or_else(|_| "{}".into())
+    }
+
+    /// Pending one-time migration notice, if any.
+    pub fn cloud_notice(h: &FlowHandle) -> Option<String> {
+        h.router().and_then(Router::cloud_notice)
+    }
+
+    pub fn ack_cloud_notice(h: &FlowHandle) {
+        if let Some(r) = h.router() {
+            r.ack_cloud_notice();
+        }
+    }
+
+    /// Select the model of one use (`"stt"` / `"cleanup"`). Free-text ids
+    /// are allowed (`^[a-z0-9._~/-]+(:[a-z]+)*$`, ≤ 128). A changed model
+    /// resets that use's circuit. Applies like `update_router`.
+    pub fn set_cloud_model(
+        h: &FlowHandle,
+        use_: &str,
+        model: &str,
+    ) -> Result<(), (&'static str, String)> {
+        let r = h
+            .router()
+            .ok_or(("error", "not a router handle".to_string()))?;
+        if !flow_router::cloud::valid_model_id(model) {
+            return Err((
+                "bad_config",
+                format!("bad_config: invalid model id {model:?}"),
+            ));
+        }
+        let mut c = r.config();
+        match use_ {
+            "stt" => c.cloud.openrouter.stt.model = model.into(),
+            "cleanup" => c.cloud.openrouter.cleanup.model = model.into(),
+            u => return Err(("bad_config", format!("bad_config: unknown use {u:?}"))),
+        }
+        c.validate().map_err(|e| (e.kind(), e.to_string()))?;
+        r.update_config(c);
+        Ok(())
     }
 
     /// `CloudUsage` JSON (an empty month for a core handle).
@@ -460,10 +676,19 @@ pub mod json_api {
             .unwrap_or_else(|_| "{\"cloud\":false,\"adapters\":[]}".into())
     }
 
-    /// Provider presets (`flow_cloud::presets()`), `[]` without `cloud`.
+    /// Provider presets: D28 = the single OpenRouter entry (kept for ABI),
+    /// `[]` without `cloud`.
     pub fn cloud_presets() -> String {
         #[cfg(feature = "cloud")]
-        let presets = flow_cloud::presets();
+        let presets: Vec<CloudProviderConfig> = flow_cloud::presets()
+            .into_iter()
+            .filter(|p| p.adapter == "openrouter")
+            .map(|mut p| {
+                p.id = flow_router::cloud::OPENROUTER_ID.into();
+                p.model = flow_router::cloud::DEFAULT_STT_MODEL.into();
+                p
+            })
+            .collect();
         #[cfg(not(feature = "cloud"))]
         let presets: Vec<CloudProviderConfig> = Vec::new();
         serde_json::to_string(&presets).unwrap_or_else(|_| "[]".into())
@@ -923,6 +1148,169 @@ pub extern "C" fn flow_cloud_capabilities() -> *mut c_char {
 pub extern "C" fn flow_cloud_presets() -> *mut c_char {
     guard(std::ptr::null_mut(), || {
         out_string(json_api::cloud_presets())
+    })
+}
+
+// ---- D28 OpenRouter-only cloud ----------------------------------------------
+
+fn int_result(r: Result<(), (&'static str, String)>) -> c_int {
+    r.map_or_else(
+        |(kind, e)| {
+            set_error_kind(kind, e);
+            -1
+        },
+        |_| 0,
+    )
+}
+
+/// One-time schema-1 → 2 migration of a router config JSON:
+/// `{"config":RouterConfig,"report":MigrationReport}`; NULL + `bad_config`
+/// on bad JSON. Pure (no handle, no network).
+///
+/// # Safety
+/// `json` valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_migrate_cloud(json: *const c_char) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        let Some(j) = str_arg(json) else {
+            set_error_kind("bad_config", "bad_config: null router config");
+            return std::ptr::null_mut();
+        };
+        match json_api::migrate_cloud(j) {
+            Ok(s) => out_string(s),
+            Err((kind, e)) => {
+                set_error_kind(kind, e);
+                std::ptr::null_mut()
+            }
+        }
+    })
+}
+
+/// Merge `{"allow_cloud_cleanup"?,"cleanup_order"?,"cleanup"?}` into the
+/// router config. 0 ok, -1 (`bad_config`, `error` for a core handle).
+///
+/// # Safety
+/// `h` a handle or NULL; `json` valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_set_cleanup(h: *mut FlowHandle, json: *const c_char) -> c_int {
+    guard(-1, || {
+        let (Some(h), Some(j)) = (h.as_ref(), str_arg(json)) else {
+            set_error("null handle or cleanup config");
+            return -1;
+        };
+        int_result(json_api::set_cleanup(h, j))
+    })
+}
+
+/// `CleanupStatus` JSON.
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_cleanup_status(h: *mut FlowHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || match h.as_ref() {
+        Some(h) => out_string(json_api::cleanup_status(h)),
+        None => std::ptr::null_mut(),
+    })
+}
+
+/// The pending one-time migration notice, or NULL.
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_cloud_notice(h: *mut FlowHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        match h.as_ref().and_then(json_api::cloud_notice) {
+            Some(n) => out_string(n),
+            None => std::ptr::null_mut(),
+        }
+    })
+}
+
+/// The notice was shown; it is not returned again.
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_ack_cloud_notice(h: *mut FlowHandle) {
+    if let Some(h) = h.as_ref() {
+        guard((), || json_api::ack_cloud_notice(h));
+    }
+}
+
+/// Select the model of `use_` (`"stt"` / `"cleanup"`). 0 ok, -1 `bad_config`.
+///
+/// # Safety
+/// `h` a handle or NULL; strings valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_set_cloud_model(
+    h: *mut FlowHandle,
+    use_: *const c_char,
+    model: *const c_char,
+) -> c_int {
+    guard(-1, || {
+        let (Some(h), Some(u), Some(m)) = (h.as_ref(), str_arg(use_), str_arg(model)) else {
+            set_error("null handle, use or model");
+            return -1;
+        };
+        int_result(json_api::set_cloud_model(h, u, m))
+    })
+}
+
+/// Catalogue cache directory (`<dir>/openrouter-catalog.json`). No network.
+///
+/// # Safety
+/// `dir` valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_set_cloud_cache_dir(dir: *const c_char) {
+    if let Some(d) = str_arg(dir) {
+        guard((), || json_api::set_cloud_cache_dir(d));
+    }
+}
+
+/// Picker rows JSON for `use_` ("stt"/"cleanup"); no network.
+///
+/// # Safety
+/// Strings valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_cloud_catalog(
+    use_: *const c_char,
+    query: *const c_char,
+    filters_json: *const c_char,
+) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        out_string(json_api::cloud_catalog(
+            str_arg(use_).unwrap_or(""),
+            str_arg(query).unwrap_or(""),
+            str_arg(filters_json).unwrap_or("{}"),
+        ))
+    })
+}
+
+/// Blocking catalogue refresh; status JSON (+ `error`).
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_refresh_cloud_catalog(
+    h: *mut FlowHandle,
+    force: c_int,
+) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        out_string(json_api::refresh_cloud_catalog(h.as_ref(), force != 0))
+    })
+}
+
+/// Blocking "Check key": `KeyInfo` JSON or `{"error":code}`.
+///
+/// # Safety
+/// `h` a handle or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_cloud_key_info(h: *mut FlowHandle) -> *mut c_char {
+    guard(std::ptr::null_mut(), || match h.as_ref() {
+        Some(h) => out_string(json_api::cloud_key_info(h)),
+        None => out_string(r#"{"error":"cloud_not_configured"}"#.into()),
     })
 }
 

@@ -12,8 +12,7 @@ use std::time::Duration;
 use flow_core::config::{AsrBackend, FieldContext, ModelConfig, SessionConfig};
 use flow_core::{CommitResult, FlowCore};
 use flow_router::{
-    Backend, CloudConfig, CloudProviderConfig, Route, Router, RouterConfig, SecretString,
-    ServerConfig,
+    Backend, CloudConfig, OpenRouterConfig, Route, Router, RouterConfig, SecretString, ServerConfig,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -197,41 +196,91 @@ pub fn hybrid_router(cfg: RouterConfig, local: Option<Arc<FlowCore>>) -> Router 
 /// Sentinel API key: must never appear in any output (C3).
 pub const CLOUD_KEY: &str = "sk-LEAKCHECK-7f3a9c0b1e2d4f6a8b5c";
 
-/// A mock provider (OpenAI-compatible wire format) answering `text`; the
+/// The one cloud provider entry id (D28).
+pub const CLOUD_ID: &str = "openrouter";
+
+/// A mock OpenRouter. While it lives every flow-cloud `Api` talks to it
+/// (`flow_cloud::testing::override_base_url`; serialised process-wide):
+/// configs stay production-shaped, the mock is never reachable via config.
+pub struct MockCloud {
+    pub srv: flow_cloud::testing::MockServer,
+    _base: flow_cloud::testing::BaseOverride,
+}
+
+impl std::ops::Deref for MockCloud {
+    type Target = flow_cloud::testing::MockServer;
+    fn deref(&self) -> &Self::Target {
+        &self.srv
+    }
+}
+
+impl MockCloud {
+    /// Send flow-cloud's requests elsewhere (e.g. a closed port).
+    pub fn point_at(&self, base: &str) {
+        self._base.set(base);
+    }
+
+    /// The decoded `input_audio` of transcription request `i`.
+    pub fn uploaded_audio(&self, i: usize) -> Vec<u8> {
+        use base64::Engine;
+        let j: Value = serde_json::from_slice(&self.srv.requests()[i].body).unwrap();
+        base64::engine::general_purpose::STANDARD
+            .decode(j["input_audio"]["data"].as_str().unwrap())
+            .unwrap()
+    }
+}
+
+pub fn mock_cloud(
+    handler: impl Fn(&flow_cloud::testing::Recorded, usize) -> flow_cloud::testing::Reply
+        + Send
+        + Sync
+        + 'static,
+) -> MockCloud {
+    let srv = flow_cloud::testing::MockServer::start(handler);
+    let base = flow_cloud::testing::override_base_url(&srv.url("/api/v1"));
+    MockCloud { srv, _base: base }
+}
+
+pub fn mock_cloud_fixed(reply: flow_cloud::testing::Reply) -> MockCloud {
+    mock_cloud(move |_, _| reply.clone())
+}
+
+/// A mock OpenRouter transcription endpoint answering `text`; the
 /// language echoes the request's, else `en` (what `MockAsr` reports).
-pub fn mock_provider(text: &str) -> flow_cloud::testing::MockServer {
+pub fn mock_provider(text: &str) -> MockCloud {
     let text = text.to_string();
-    flow_cloud::testing::MockServer::start(move |r, _| {
-        let lang = r.field("language").unwrap_or_else(|| "en".into());
+    mock_cloud(move |r, _| {
+        let lang = serde_json::from_slice::<Value>(&r.body)
+            .ok()
+            .and_then(|j| {
+                j.get("language")
+                    .and_then(|l| l.as_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| "en".into());
         flow_cloud::testing::Reply::json(200, serde_json::json!({"text": text, "language": lang}))
     })
 }
 
-/// The Groq preset pointed at `base_url` (a mock), consented.
-pub fn cloud_provider(base_url: &str) -> CloudProviderConfig {
-    let mut p = flow_cloud::presets()
-        .into_iter()
-        .find(|p| p.preset == "groq")
-        .unwrap();
-    p.id = "groq-1".into();
-    p.base_url = base_url.into();
-    p.consent_host = "127.0.0.1".into();
-    p.consent_at_ms = 1_792_540_800_000;
-    p
+/// The OpenRouter config (schema 2), STT consented for openrouter.ai.
+pub fn cloud_provider() -> OpenRouterConfig {
+    let mut o = OpenRouterConfig::default();
+    o.stt.consent_host = flow_cloud::HOST.into();
+    o.stt.consent_at_ms = 1_792_540_800_000;
+    o
 }
 
-/// `cfg` with the cloud enabled for `provider` and routes `order`.
+/// `cfg` with cloud STT enabled for `provider` and routes `order`.
 pub fn with_cloud(
     mut cfg: RouterConfig,
-    provider: CloudProviderConfig,
+    provider: OpenRouterConfig,
     order: &[Route],
 ) -> RouterConfig {
     cfg.allow_cloud = true;
     cfg.order = order.to_vec();
     cfg.cloud = CloudConfig {
-        active: provider.id.clone(),
-        providers: vec![provider],
-        monthly_budget_usd: None,
+        openrouter: provider,
+        ..Default::default()
     };
     cfg
 }
@@ -239,9 +288,8 @@ pub fn with_cloud(
 /// Hybrid router (flow-remote) + flow-cloud attached + the sentinel key.
 pub fn cloud_router(cfg: RouterConfig, local: Option<Arc<FlowCore>>) -> Router {
     cfg.validate().expect("valid cloud config");
-    let id = cfg.cloud.active.clone();
     let r = flow_cloud::attach(hybrid_router(cfg, local), None);
-    r.set_cloud_key(&id, Some(SecretString::new(CLOUD_KEY)));
+    r.set_cloud_key(CLOUD_ID, Some(SecretString::new(CLOUD_KEY)));
     r
 }
 
