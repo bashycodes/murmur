@@ -24,6 +24,7 @@ on:
       - "VERSION"
       - "tools/versioning/**"
       - "tools/check-version.sh"
+      - "tools/check-build-matrix.sh"
       - ".github/workflows/windows-build.yml"
 
 concurrency:
@@ -134,6 +135,17 @@ jobs:
           cp -n "$(cygpath -u "$SHERPA_ONNX_LIB_DIR")"/*.dll target/release/
           ls target/release/*.dll
           tools/ci/parakeet-conf.sh target/release
+
+      # I3/I4 + C2 + D28 gate, strict and cloud-strict (the defaults): the
+      # flavour checks (cargo tree, nothing compiled) and the host scan of
+      # the shipped hybrid exe (no provider host but openrouter.ai).
+      - name: Build matrix (strict + cloud) incl. the exe
+        working-directory: .
+        env:
+          CHECK_BUILD_MATRIX_NO_BUILD: "1"
+        run: |
+          FLOW_CLOUD_ARTIFACTS=apps/flow-windows/target/release/flow-windows.exe \
+            tools/check-build-matrix.sh
 
       - name: Installers (hybrid + cloud, whisper + Parakeet)
         run: |

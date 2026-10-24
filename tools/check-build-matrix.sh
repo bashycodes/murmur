@@ -4,18 +4,18 @@
 #   * client-only builds contain no network code (and no cloud STT client);
 #   * server-only builds contain no ASR/LLM native libraries.
 # Checked on the dependency graph (`cargo tree -e normal`), so nothing is
-# compiled. Checks whose cargo feature does not exist yet (the shells add
-# `remote` / `local` on their own branches) print SKIP; set
-# CHECK_BUILD_MATRIX_STRICT=1 to make a SKIP fail (use after the merges).
-# Checks of the shells' `cloud` feature (D18) are SKIP until W/A add it and
-# count for strict mode only with CHECK_BUILD_MATRIX_STRICT_CLOUD=1.
+# compiled. A check whose cargo feature does not exist prints SKIP, and a
+# SKIP fails the gate: strict mode (CHECK_BUILD_MATRIX_STRICT) and
+# cloud-strict mode (CHECK_BUILD_MATRIX_STRICT_CLOUD) are on by default now
+# that every flavour and both shells' D28 work are merged. Set either to 0
+# only on a feature branch that has not caught up yet.
 #
 # D28: cloud builds talk to OpenRouter only. The host-string checks below
 # fail on any other speech/LLM provider host in (a) the Rust sources linked
 # into cloud builds, (b) flow-cloud's compiled artefact (built here, dev
 # profile, usually cached) and (c) any shipped artefact listed in
-# FLOW_CLOUD_ARTIFACTS (space-separated .so/.exe/.apk paths); the shells'
-# sources count with CHECK_BUILD_MATRIX_STRICT_CLOUD=1 (until W4/W5 land).
+# FLOW_CLOUD_ARTIFACTS (space-separated .so/.exe/.apk paths), plus the
+# shells' main sources.
 # CHECK_BUILD_MATRIX_NO_BUILD=1 skips (b).
 #
 # Usage: tools/check-build-matrix.sh   (from anywhere; exit 1 on a violation)
@@ -140,11 +140,11 @@ fi
 shell_hits=$(grep -rnE "$PROVIDER_HOSTS" apps/flow-windows/src apps/flow-windows/ui/src \
     apps/flow-android/app/src/main 2>/dev/null)
 if [ -n "$shell_hits" ]; then
-    if [ "${CHECK_BUILD_MATRIX_STRICT_CLOUD:-0}" = "1" ]; then
+    if [ "${CHECK_BUILD_MATRIX_STRICT_CLOUD:-1}" = "1" ]; then
         echo "FAIL  shell sources name a non-OpenRouter provider host:"
         fail=1
     else
-        echo "SKIP  shell sources still name non-OpenRouter provider hosts (pending D28 W4/W5):"
+        echo "SKIP  shell sources still name non-OpenRouter provider hosts (cloud-strict off):"
         cloud_skip=$((cloud_skip + 1))
     fi
     echo "$shell_hits" | awk -F: '{print $1}' | sort | uniq -c | sed 's/^/      /'
@@ -221,11 +221,11 @@ if [ "$fail" -ne 0 ]; then
     echo "build matrix: FAILED"
     exit 1
 fi
-if [ "$skip" -ne 0 ] && [ "${CHECK_BUILD_MATRIX_STRICT:-0}" = "1" ]; then
+if [ "$skip" -ne 0 ] && [ "${CHECK_BUILD_MATRIX_STRICT:-1}" = "1" ]; then
     echo "build matrix: $skip check(s) skipped in strict mode"
     exit 1
 fi
-if [ "$cloud_skip" -ne 0 ] && [ "${CHECK_BUILD_MATRIX_STRICT_CLOUD:-0}" = "1" ]; then
+if [ "$cloud_skip" -ne 0 ] && [ "${CHECK_BUILD_MATRIX_STRICT_CLOUD:-1}" = "1" ]; then
     echo "build matrix: $cloud_skip cloud check(s) skipped in cloud-strict mode"
     exit 1
 fi

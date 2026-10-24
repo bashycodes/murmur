@@ -20,6 +20,7 @@ on:
       - "VERSION"
       - "tools/versioning/**"
       - "tools/check-version.sh"
+      - "tools/check-build-matrix.sh"
       - ".github/workflows/android-build.yml"
   pull_request:
     paths:
@@ -29,6 +30,7 @@ on:
       - "VERSION"
       - "tools/versioning/**"
       - "tools/check-version.sh"
+      - "tools/check-build-matrix.sh"
       - ".github/workflows/android-build.yml"
 
 concurrency:
@@ -124,6 +126,14 @@ jobs:
         run: |
           tools/dist.sh --debug-only
           cat dist/sizes.txt
+
+      # I3/I4 + C2 + D28 gate, strict and cloud-strict (the defaults): every
+      # flavour check runs, and neither the sources nor the shipped APKs'
+      # native libs name a provider host other than openrouter.ai.
+      - name: Build matrix (strict + cloud) incl. the APKs
+        run: |
+          FLOW_CLOUD_ARTIFACTS="$(ls apps/flow-android/dist/*.apk | tr '\n' ' ')" \
+            tools/check-build-matrix.sh
 
       - uses: actions/upload-artifact@v4
         with:

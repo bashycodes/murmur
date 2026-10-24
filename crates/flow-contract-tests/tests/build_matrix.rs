@@ -1,6 +1,6 @@
 //! I3/I4 build-flavour gate: runs `tools/check-build-matrix.sh` (cargo tree
-//! only, nothing is compiled). Checks for shell features that do not exist
-//! yet are reported as SKIP; `CHECK_BUILD_MATRIX_STRICT=1` fails them.
+//! plus the D28 host scan). Strict and cloud-strict mode are the script's
+//! defaults, so a SKIP fails the gate.
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -103,6 +103,8 @@ fn gate_checks_provider_host_strings() {
         "ok    flow-cloud/src URL literals are https://openrouter.ai only",
         "ok    flow-cloud artefact contains no provider host but openrouter.ai",
         "ok    -p flow-ffi --features jni,remote,cloud does not enable flow-cloud/mock-server",
+        "ok    shell sources name no provider host but openrouter.ai",
+        "build matrix: ok (0 skipped, 0 cloud pending)",
     ] {
         assert!(g.contains(line), "missing {line:?}:\n{g}");
     }
