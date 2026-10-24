@@ -888,10 +888,16 @@ pub fn run_cleanup_metered(
     let out = match res {
         Ok(s) => lists_to_plain(&unwrap_output(&s)),
         Err(e) => {
+            // Refused before anything ran (no consent, open circuit, …):
+            // no LLM step to report, only the reason.
+            let usage = match e {
+                CleanError::Unavailable(_) => CleanUsage::default(),
+                CleanError::Backend(_) => usage,
+            };
             return (
                 CleanOutcome::Fallback(FallbackReason::Error(e.code().to_string())),
                 usage,
-            )
+            );
         }
     };
     (judge(asr_text, out, max_divergence), usage)

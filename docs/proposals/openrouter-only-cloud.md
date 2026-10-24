@@ -658,6 +658,92 @@ build against.
 * Removed: `dev_cloud_presets`, `dev_cloud_new_id`, base-URL editing, the dialect field,
   `price_per_hour_usd`.
 
+### 4.1 API (frozen, agreed between W1 `feat/or-cloud` and W0/W2/W3 `feat/or-route`, 2026-10-24)
+
+flow-cloud (W1) public surface. Router/core types are named as or-route
+defines them; flow-cloud keeps its own settings types and converts.
+
+```rust
+// crates/flow-cloud/src/api.rs — the only host
+pub const BASE_URL: &str = "https://openrouter.ai/api/v1";   // never configurable
+pub const HOST: &str = "openrouter.ai";
+pub struct Api;  impl Api { fn new(); fn with_connect_timeout(Duration); fn url(&self, path) -> String; fn client(&self) -> &Client }
+// test seam, feature `mock-server` only (shells never enable it; build matrix checks):
+flow_cloud::testing::override_base_url(base) -> BaseOverride   // process-global, serialised; BaseOverride::set(base)
+
+// settings.rs — field names = §2.6 JSON
+pub struct Privacy { zdr: bool, data_collection: String /* "deny" | "allow" */ }   // Default = most private
+pub enum SttPath { Transcriptions, ChatAudio }        pub enum SttPathChoice { Auto, Transcriptions, ChatAudio }
+pub struct SttSettings { model, stt_path: SttPathChoice, language, send_dictionary, format_override, timeout_base_ms, privacy }
+pub struct CleanupSettings { model, sort, timeout_ms, connect_timeout_ms, send_surrounding_text, send_screen_words, send_app_name, allow_fallbacks, privacy }
+pub struct CleanupScope { surrounding_text, screen_words, app_id }   // mirrors flow_core::cleanup::PromptScope
+pub const DEFAULT_STT_MODEL = "openai/whisper-large-v3-turbo"; DEFAULT_CLEANUP_MODEL = "meta-llama/llama-3.3-70b-instruct";
+pub fn valid_model_id(&str) -> bool;
+
+// catalog.rs
+pub struct ModelInfo { id, name, context_length, input/output: Modalities, stt_path: Option<SttPath>, price: Price,
+    zdr_price_max: Option<Price>, price_unit_ok, zdr, zdr_providers, fast_zdr_providers, reasoning_mandatory,
+    reasoning_efforts, supports: ParamSet, max_completion_tokens, free, batch_only, router, allowed_by_account: Option<bool> }
+pub struct Price { per_audio_second, per_audio_token, prompt, completion, request: Option<f64> }
+pub struct Catalog { fetched_at_ms, source: CatalogSource /*Live|Cache|Baked*/, snapshot_date, account_filtered, models }
+impl Catalog { fn baked(); fn get(id); fn stt_models(); fn cleanup_models(); fn search(q, Use, Filters); fn picker(q, Use, Filters) -> Vec<PickerRow>; fn from_api(..); fn to_json/from_json }
+pub struct Filters { zdr_only /*default true*/, fast_only, free_only, stt_path: Option<SttPath> }   pub enum Use { Stt, Cleanup }
+pub fn refresh(api: &Api, key: Option<&SecretString>) -> Result<Catalog, CloudError>;   // spec's `http: &Client` → `&Api`
+pub fn lookup_model(api: &Api, id: &str) -> Result<ModelInfo, CloudError>;               // GET /models/{author}/{slug}/endpoints
+pub struct CatalogStore;  impl CatalogStore { fn new(cache_file); fn in_memory(); fn current() -> Catalog /*no network*/;
+    fn refresh(key: Option<&SecretString>, force: bool) -> Result<Catalog, CloudError>; fn search_json(use_: &str, query, filters_json) -> String;
+    fn status_json() -> String; fn model(id) -> Option<ModelInfo> }
+pub fn set_default_store(Option<Arc<CatalogStore>>);  pub fn resolve(id) -> Option<ModelInfo>  // store, else baked
+
+// STT
+pub struct CloudAsr;     CloudAsr::new(SttSettings, SecretString) .with_model_info(..) .with_cost_sink(CostSink) .with_cost_lookup_delay(..)
+pub struct CloudBackend; CloudBackend::new(SttSettings, SecretString, Option<Arc<dyn Cleaner>>) | ::refusing();  impl flow_router::Backend
+pub const ADAPTERS: [&str; 1] = ["openrouter"];  pub const PROVIDER_ID = "openrouter";  pub const TRANSCRIBE_PROMPT
+pub fn attach / attach_with / factory / factory_with   // flow_router::CloudFactory
+pub fn presets() -> Vec<CloudProviderConfig>          // exactly one OpenRouter entry (ABI of nativeCloudPresets)
+
+// cleanup
+pub struct OpenRouterCleaner;  ::new(CleanupSettings, SecretString) .with_model_info .with_cost_sink .with_cost_lookup_delay
+impl flow_core::cleanup::Cleaner for OpenRouterCleaner   // + or-route's additive methods once W0 lands (below)
+impl OpenRouterCleaner { fn scope() -> CleanupScope; fn last_call() -> Option<CleanupCall>; fn estimate_cost_usd(&CleanPrompt) -> Option<f64>;
+    fn key_info() -> Option<KeyInfo>; fn request_body(&CleanPrompt) -> Value }
+pub struct CleanupCall { model, cost_usd, cost_estimated, generation_id, ttft_ms, latency_ms, finish_reason, error: Option<&'static str> }
+pub fn cleaner_for(CleanupSettings, SecretString) -> Arc<dyn Cleaner>;
+
+// key / cost / budget
+pub mod keyinfo { pub struct KeyInfo { label, limit, limit_remaining, limit_reset, usage, usage_daily, usage_weekly, usage_monthly, is_free_tier, free_requests_remaining, checked_at_ms };
+                  pub fn fetch(&SecretString) -> Result<KeyInfo, CloudError>; pub fn fetch_with(&Api, &SecretString, Instant) }
+pub mod generation { pub fn fetch(&Api, &SecretString, id, Instant) -> Result<GenerationInfo, CloudError>;
+                     pub fn schedule(Api, SecretString, CostUse, id, estimated, delay, CostSink); pub type CostSink = Arc<dyn Fn(DeferredCost)+Send+Sync> }
+pub mod budget { estimate_stt(&ModelInfo, audio_s); estimate_cleanup(&ModelInfo, prompt_tokens, max_tokens); max_price(&ModelInfo) -> Option<MaxPrice>; cleanup_max_tokens; chat_audio_max_tokens }
+
+// errors
+pub enum CloudError { Connect, Auth, Quota, RateLimited{..}, TooLarge, NoPrivateRoute, Moderation, UnsupportedFormat, Unverbatim, BadRequest{..}, Server(u16), Timeout, Malformed }
+impl CloudError { fn failure() -> Failure; fn code() -> &'static str /* "no_private_route" etc. */; fn detail(); fn is_fast_unavailable() }
+```
+
+Agreed with or-route (it owns these; flow-cloud adopts them when they land):
+
+* flow-router: `Failure::NoPrivateRoute` (`"no_private_route"`); `cloud::ADAPTERS` length 1; schema-2 types
+  `OpenRouterConfig { privacy: Privacy, stt: SttConfig, cleanup: CleanupConfig }` with the field names above
+  (+ `consent_host`/`consent_at_ms`); `CloudFactory = Box<dyn Fn(&OpenRouterConfig, SecretString) -> Arc<dyn Backend>>`;
+  `CleanupFactory = Box<dyn Fn(&OpenRouterConfig, SecretString) -> Arc<dyn Cleaner>>` + `Router::with_cleanup_factory`;
+  `Backend::install_cleanup(&self, Option<CleanupPlan>)` (default no-op; `CleanupPlan = Arc<dyn Fn(Option<Arc<dyn Cleaner>>)
+  -> Option<Arc<dyn Cleaner>>>`, called with the engine's built-in cleaner; `CloudBackend` does
+  `core.set_cleaner(plan.and_then(|p| p(core.cleaner())))`). Final (or-route d01c684); an earlier draft said `set_cleaner`.
+  Also: `Failure::CloudCleanupNotConfigured`, `Router::{set_cleanup, cleanup_status, cloud_notice, ack_cloud_notice,
+  with_cloud_key}`, `RouterConfig::migrate_d28() -> MigrationReport`, `CloudUsage::migrate_d28`.
+* flow-core `Cleaner` additions (all defaulted): `prompt_scope()`, `engine() -> &'static str` ("cloud"), `model()`,
+  `timeout_ms() -> Option<u64>` (replaces the session `llm_timeout_ms`), `estimate_cost_usd(&CleanPrompt)`,
+  `clean_metered(..) -> (Result<String, CleanError>, CleanUsage)`;
+  `CleanUsage { engine, model, cost_usd: Option<Usd>, cost_estimated, generation_id, ttft_ms, latency_ms }` (`Usd`, so
+  `CommitResult` keeps `Eq`); `RoutedCleaner`, `PromptScope`, `build_prompt_scoped`, `FlowCore::{set_cleaner, active_cleaner}`; `CleanError::Unavailable(code)` for
+  fast failures (`CloudError::is_fast_unavailable`: connect / auth / quota / no_private_route / busy), else `Backend(code)`.
+
+Until or-route lands, flow-cloud's factory glue converts today's `CloudProviderConfig` (`stt_settings_from_provider`;
+a non-OpenRouter entry or any other host builds a refusing backend), and `CloudError::NoPrivateRoute.failure()` is
+`ProviderError` (its `code()` is already `no_private_route`).
+
 ---
 
 ## 5. Tests

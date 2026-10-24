@@ -768,3 +768,67 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudMode
         )
     })
 }
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeSetCloudCacheDir(
+    mut env: JNIEnv,
+    _c: JClass,
+    dir: JString,
+) {
+    guard((), || {
+        if let Some(d) = jstr(&mut env, &dir, "cache dir") {
+            json_api::set_cloud_cache_dir(&d);
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudCatalog(
+    mut env: JNIEnv,
+    _c: JClass,
+    _h: jlong,
+    use_: JString,
+    query: JString,
+    filters_json: JString,
+) -> jstring {
+    let args = guard(None, || {
+        Some((
+            opt_jstr(&mut env, &use_).unwrap_or_default(),
+            opt_jstr(&mut env, &query).unwrap_or_default(),
+            opt_jstr(&mut env, &filters_json).unwrap_or_else(|| "{}".into()),
+        ))
+    });
+    let r = guard("[]".to_owned(), || {
+        let (u, q, f) = args.unwrap_or_default();
+        json_api::cloud_catalog(&u, &q, &f)
+    });
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeRefreshCloudCatalog(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    force: jboolean,
+) -> jstring {
+    let r = guard(r#"{"error":"error"}"#.to_owned(), || {
+        json_api::refresh_cloud_catalog(handle(h), force != JNI_FALSE)
+    });
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudKeyInfo(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+) -> jstring {
+    let r = guard(r#"{"error":"error"}"#.to_owned(), || {
+        handle(h).map_or_else(
+            || r#"{"error":"cloud_not_configured"}"#.to_owned(),
+            json_api::cloud_key_info,
+        )
+    });
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}

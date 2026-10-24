@@ -1,4 +1,4 @@
-//! CloudBackend (+ Router) against a mock provider: the pipeline runs
+//! CloudBackend (+ Router) against a mock OpenRouter: the pipeline runs
 //! locally, silence is never uploaded, failures are typed for fallback.
 
 mod common;
@@ -7,8 +7,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::*;
-use flow_cloud::testing::{MockServer, Reply};
+use flow_cloud::testing::Reply;
 use flow_cloud::CloudBackend;
+
+type Srv = Mock;
 use flow_core::config::SessionConfig;
 use flow_core::dictionary::{DictEntry, Dictionary};
 use flow_core::CommitStatus;
@@ -20,9 +22,9 @@ fn speech_i16(ms: usize) -> Vec<i16> {
         .collect()
 }
 
-fn backend(srv: &MockServer) -> CloudBackend {
+fn backend(_srv: &Srv) -> CloudBackend {
     CloudBackend::new(
-        provider("groq", srv, "/openai/v1"),
+        settings(flow_cloud::DEFAULT_STT_MODEL),
         SecretString::new(KEY),
         None,
     )
@@ -40,7 +42,7 @@ fn reply(text: &str) -> Reply {
 
 #[test]
 fn silence_makes_no_request() {
-    let srv = MockServer::fixed(reply("thank you"));
+    let srv = mock_fixed(reply("thank you"));
     let b = backend(&srv);
     b.start_session(&SessionConfig::default()).unwrap();
     say(&b, &vec![0i16; 16_000 * 2]);
@@ -55,7 +57,7 @@ fn silence_makes_no_request() {
 
 #[test]
 fn provider_text_goes_through_the_local_pipeline() {
-    let srv = MockServer::fixed(reply("um so i use wispr every day"));
+    let srv = mock_fixed(reply("um so i use wispr every day"));
     let b = backend(&srv);
     let cfg = SessionConfig {
         dictionary: Dictionary {
@@ -81,20 +83,25 @@ fn provider_text_goes_through_the_local_pipeline() {
     assert_eq!(r.final_text, want.final_text);
     assert!(r.final_text.contains("Wispr"), "{}", r.final_text);
     let route = r.route.unwrap();
-    assert_eq!(route.provider.as_deref(), Some("groq-1"));
-    assert_eq!(route.model.as_deref(), Some("whisper-large-v3-turbo"));
-    assert!(route.billed_audio_ms.unwrap() > 0);
-    assert_eq!(route.cost_estimated, Some(true));
-    // The dictionary went to the provider as vocabulary.
+    assert_eq!(route.provider.as_deref(), Some("openrouter"));
     assert_eq!(
-        srv.requests()[0].field("prompt").as_deref(),
-        Some("Vocabulary: Wispr.")
+        route.model.as_deref(),
+        Some("openai/whisper-large-v3-turbo")
+    );
+    assert!(route.billed_audio_ms.unwrap() > 0);
+    // No usage.cost: the catalogue estimate.
+    assert_eq!(route.cost_estimated, Some(true));
+    assert!(route.cost_usd.is_some());
+    // The dictionary went to Groq whisper as vocabulary.
+    assert_eq!(
+        srv.requests()[0].json()["provider"]["options"]["groq"]["prompt"],
+        "Vocabulary: Wispr."
     );
 }
 
 #[test]
 fn no_partials_and_no_upload_before_commit() {
-    let srv = MockServer::fixed(reply("hello"));
+    let srv = mock_fixed(reply("hello"));
     let b = backend(&srv);
     b.start_session(&SessionConfig {
         partial_interval_ms: Some(50),
@@ -111,7 +118,7 @@ fn no_partials_and_no_upload_before_commit() {
 
 #[test]
 fn transport_error_is_a_typed_err_for_the_router() {
-    let srv = MockServer::fixed(Reply::json(401, serde_json::json!({})));
+    let srv = mock_fixed(Reply::json(401, serde_json::json!({})));
     let b = backend(&srv);
     b.start_session(&SessionConfig::default()).unwrap();
     say(&b, &speech_i16(1000));
@@ -126,7 +133,7 @@ fn transport_error_is_a_typed_err_for_the_router() {
 
 #[test]
 fn commit_deadline_is_honoured() {
-    let srv = MockServer::fixed(reply("late").delayed(Duration::from_secs(4)));
+    let srv = mock_fixed(reply("late").delayed(Duration::from_secs(4)));
     let b = backend(&srv);
     b.start_session(&SessionConfig {
         llm_timeout_ms: 0,
@@ -148,7 +155,7 @@ fn commit_deadline_is_honoured() {
 
 #[test]
 fn empty_provider_answer_is_final_blank_asr() {
-    let srv = MockServer::fixed(reply(""));
+    let srv = mock_fixed(reply(""));
     let b = backend(&srv);
     b.start_session(&SessionConfig::default()).unwrap();
     say(&b, &speech_i16(1000));
@@ -159,7 +166,7 @@ fn empty_provider_answer_is_final_blank_asr() {
 
 #[test]
 fn probe_transcribes_the_test_clip() {
-    let srv = MockServer::fixed(reply("And so, my fellow Americans,"));
+    let srv = mock_fixed(reply("And so, my fellow Americans,"));
     let b = backend(&srv);
     let h = b.probe();
     assert!(h.ok, "{h:?}");
@@ -167,11 +174,15 @@ fn probe_transcribes_the_test_clip() {
         h.transcript.as_deref(),
         Some("And so, my fellow Americans,")
     );
-    assert_eq!(h.provider.as_deref(), Some("groq-1"));
+    assert_eq!(h.provider.as_deref(), Some("openrouter"));
     assert!(h.latency_ms.is_some() && h.cost_usd.is_some());
     let r = &srv.requests()[0];
-    assert!(r.field("prompt").is_none(), "no dictionary in a test call");
-    let bad = MockServer::fixed(Reply::json(401, serde_json::json!({})));
+    assert!(
+        r.json()["provider"].get("options").is_none(),
+        "no dictionary in a test call"
+    );
+    drop(srv);
+    let bad = mock_fixed(Reply::json(401, serde_json::json!({})));
     let h = backend(&bad).probe();
     assert!(!h.ok);
     assert_eq!(h.error.as_deref(), Some("auth_failed"));
@@ -179,25 +190,27 @@ fn probe_transcribes_the_test_clip() {
 
 #[test]
 fn router_with_cloud_attached_end_to_end() {
-    let srv = MockServer::fixed(reply("hello from the cloud"));
-    let mut p = provider("groq", &srv, "/openai/v1");
-    p.consent_host = "127.0.0.1".into();
+    let _srv = mock_fixed(reply("hello from the cloud"));
+    // A production-shaped entry: the mock is reached only through the
+    // test base-URL override, never through config.
+    let mut o = flow_router::OpenRouterConfig::default();
+    o.stt.consent_host = "openrouter.ai".into();
+    o.stt.consent_at_ms = 1;
     let cfg = RouterConfig {
         allow_cloud: true,
         allow_server: false,
         order: vec![Route::Cloud, Route::Client],
         cloud: flow_router::CloudConfig {
-            active: p.id.clone(),
-            providers: vec![p],
-            monthly_budget_usd: None,
+            openrouter: o,
+            ..Default::default()
         },
         ..Default::default()
     };
     cfg.validate().unwrap();
     let router = flow_cloud::attach(Router::new(cfg, None, None), None);
     assert!(router.cloud_capabilities().cloud);
-    assert_eq!(router.cloud_capabilities().adapters.len(), 5);
-    router.set_cloud_key("groq-1", Some(SecretString::new(KEY)));
+    assert_eq!(router.cloud_capabilities().adapters, ["openrouter"]);
+    router.set_cloud_key("openrouter", Some(SecretString::new(KEY)));
     router.start_session(SessionConfig::default()).unwrap();
     for c in speech_i16(1000).chunks(1600) {
         router.push_audio(c);
@@ -206,7 +219,7 @@ fn router_with_cloud_attached_end_to_end() {
     assert_eq!(r.asr_text, "hello from the cloud");
     let route = r.route.unwrap();
     assert_eq!(route.engine, "cloud");
-    assert_eq!(route.provider.as_deref(), Some("groq-1"));
+    assert_eq!(route.provider.as_deref(), Some("openrouter"));
     let u = router.cloud_usage();
     assert_eq!(u.providers[0].requests, 1);
     assert!(u.providers[0].cost_estimated);

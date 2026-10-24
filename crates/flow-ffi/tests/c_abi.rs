@@ -161,27 +161,36 @@ fn cloud_symbols_over_c_abi() {
         );
         assert_eq!(presets == "[]", !cfg!(feature = "cloud"), "{presets}");
         let key = c("sk-LEAKCHECK-cabi-0123456789");
+        // D28: OpenRouter only; the mock is reached through the test base
+        // URL override, never through config.
         #[cfg(feature = "cloud")]
         let srv = flow_cloud::testing::MockServer::fixed(flow_cloud::testing::Reply::json(
             200,
-            serde_json::json!({"text": "and so my fellow americans"}),
+            serde_json::json!({"text": "and so my fellow americans", "usage": {"seconds": 3, "cost": 0.00001}}),
         ));
         #[cfg(feature = "cloud")]
-        let base = srv.url("/v1");
-        #[cfg(not(feature = "cloud"))]
-        let base = "https://api.groq.com/openai/v1".to_string();
-        let p = c(&format!(
-            r#"{{"id":"groq-1","adapter":"openai_compat","base_url":"{base}","model":"whisper-large-v3-turbo"}}"#
-        ));
+        let _base = flow_cloud::testing::override_base_url(&srv.url("/api/v1"));
+        let p = c(r#"{"stt":{"model":"openai/whisper-large-v3-turbo"}}"#);
         let probe = take(flow_probe_cloud(ptr::null_mut(), p.as_ptr(), key.as_ptr()));
         assert!(!probe.contains("LEAKCHECK"), "{probe}");
         let v: serde_json::Value = serde_json::from_str(&probe).unwrap();
         if cfg!(feature = "cloud") {
             assert_eq!(v["ok"], true, "{probe}");
             assert_eq!(v["transcript"], "and so my fellow americans");
+            assert_eq!(v["provider"], "openrouter");
         } else {
             assert_eq!(v["error"], "cloud_not_configured", "{probe}");
         }
+        // A legacy entry of a removed adapter is refused without a request.
+        let groq = c(
+            r#"{"id":"groq-1","adapter":"openai_compat","base_url":"https://api.groq.com/openai/v1","model":"m"}"#,
+        );
+        let refused = take(flow_probe_cloud(
+            ptr::null_mut(),
+            groq.as_ptr(),
+            key.as_ptr(),
+        ));
+        assert!(refused.contains("cloud_not_configured"), "{refused}");
         let bad = take(flow_probe_cloud(
             ptr::null_mut(),
             c("{").as_ptr(),
@@ -191,7 +200,7 @@ fn cloud_symbols_over_c_abi() {
 
         let core = flow_load_models(c(r#"{"asr_backend":{"mock":{"text":"x"}}}"#).as_ptr());
         assert_eq!(
-            flow_set_cloud_key(core, c("groq-1").as_ptr(), key.as_ptr()),
+            flow_set_cloud_key(core, c("openrouter").as_ptr(), key.as_ptr()),
             -1
         );
         let rt = flow_open_router(
@@ -199,22 +208,23 @@ fn cloud_symbols_over_c_abi() {
             core,
         );
         assert!(!rt.is_null());
+        // A removed provider's key never enters the router.
+        assert_eq!(flow_set_cloud_key_for(rt, groq.as_ptr(), key.as_ptr()), 0);
+        let none = take(flow_probe_cloud(rt, p.as_ptr(), ptr::null()));
+        assert!(none.contains("cloud_not_configured"), "{none}");
+        // The OpenRouter key: the probe may use it (key NULL).
         assert_eq!(
-            flow_set_cloud_key(rt, c("groq-1").as_ptr(), key.as_ptr()),
+            flow_set_cloud_key(rt, c("openrouter").as_ptr(), key.as_ptr()),
             0
         );
-        // S1: a key set by id only, for a provider not in the saved
-        // config, is never sent to the form's host.
-        let unsaved = take(flow_probe_cloud(rt, p.as_ptr(), ptr::null()));
-        assert!(unsaved.contains("cloud_not_configured"), "{unsaved}");
-        // Bound to exactly this provider: the probe may use it (key NULL).
-        assert_eq!(flow_set_cloud_key_for(rt, p.as_ptr(), key.as_ptr()), 0);
         let stored = take(flow_probe_cloud(rt, p.as_ptr(), ptr::null()));
         assert_eq!(
             stored.contains(r#""ok":true"#),
             cfg!(feature = "cloud"),
             "{stored}"
         );
+        let ki = take(flow_cloud_key_info(ptr::null_mut()));
+        assert!(ki.contains("cloud_not_configured"), "{ki}");
         assert_eq!(flow_set_cloud_usage(rt, c("not json").as_ptr()), -1);
         assert_eq!(
             CStr::from_ptr(flow_last_error_kind()).to_str(),

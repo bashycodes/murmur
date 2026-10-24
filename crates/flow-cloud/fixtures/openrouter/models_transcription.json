@@ -1,0 +1,116 @@
+{
+ "_fixture": "trimmed from docs/proposals/data snapshots 2026-10-24",
+ "data": [
+  {
+   "id": "openai/whisper-large-v3-turbo",
+   "canonical_slug": "openai/whisper-large-v3-turbo",
+   "hugging_face_id": "openai/whisper-large-v3-turbo",
+   "name": "OpenAI: Whisper Large V3 Turbo",
+   "created": 1777642266,
+   "context_length": 0,
+   "architecture": {
+    "modality": "audio->transcription",
+    "input_modalities": [
+     "audio"
+    ],
+    "output_modalities": [
+     "transcription"
+    ],
+    "tokenizer": "GPT",
+    "instruct_type": null
+   },
+   "pricing": {
+    "prompt": "0.00000333",
+    "completion": "0"
+   },
+   "top_provider": {
+    "context_length": 0,
+    "max_completion_tokens": 0,
+    "is_moderated": false
+   },
+   "per_request_limits": null,
+   "supported_parameters": [],
+   "default_parameters": {},
+   "supported_voices": null,
+   "knowledge_cutoff": null,
+   "expiration_date": null,
+   "links": {
+    "details": "/api/v1/models/openai/whisper-large-v3-turbo/endpoints"
+   }
+  },
+  {
+   "id": "openai/gpt-transcribe",
+   "canonical_slug": "openai/gpt-transcribe-20260805",
+   "hugging_face_id": null,
+   "name": "OpenAI: GPT Transcribe",
+   "created": 1785973897,
+   "context_length": 0,
+   "architecture": {
+    "modality": "audio->transcription",
+    "input_modalities": [
+     "audio"
+    ],
+    "output_modalities": [
+     "transcription"
+    ],
+    "tokenizer": "GPT",
+    "instruct_type": null
+   },
+   "pricing": {
+    "prompt": "0.000075",
+    "completion": "0"
+   },
+   "top_provider": {
+    "context_length": 0,
+    "max_completion_tokens": 0,
+    "is_moderated": true
+   },
+   "per_request_limits": null,
+   "supported_parameters": [],
+   "default_parameters": {},
+   "supported_voices": null,
+   "knowledge_cutoff": null,
+   "expiration_date": null,
+   "links": {
+    "details": "/api/v1/models/openai/gpt-transcribe-20260805/endpoints"
+   }
+  },
+  {
+   "id": "microsoft/mai-transcribe-2",
+   "canonical_slug": "microsoft/mai-transcribe-2-20260903",
+   "hugging_face_id": null,
+   "name": "Microsoft AI: MAI-Transcribe 2",
+   "created": 1788396586,
+   "context_length": 0,
+   "architecture": {
+    "modality": "audio->transcription",
+    "input_modalities": [
+     "audio"
+    ],
+    "output_modalities": [
+     "transcription"
+    ],
+    "tokenizer": "Other",
+    "instruct_type": null
+   },
+   "pricing": {
+    "prompt": "0.1",
+    "completion": "0"
+   },
+   "top_provider": {
+    "context_length": 0,
+    "max_completion_tokens": 0,
+    "is_moderated": false
+   },
+   "per_request_limits": null,
+   "supported_parameters": [],
+   "default_parameters": {},
+   "supported_voices": null,
+   "knowledge_cutoff": null,
+   "expiration_date": null,
+   "links": {
+    "details": "/api/v1/models/microsoft/mai-transcribe-2-20260903/endpoints"
+   }
+  }
+ ]
+}
