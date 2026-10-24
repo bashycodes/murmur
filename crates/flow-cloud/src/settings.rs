@@ -180,6 +180,61 @@ impl CleanupSettings {
     }
 }
 
+// ---- schema-2 router config → flow-cloud settings --------------------------
+
+impl From<&flow_router::cloud::Privacy> for Privacy {
+    fn from(p: &flow_router::cloud::Privacy) -> Self {
+        Privacy {
+            zdr: p.zdr,
+            data_collection: if p.data_collection_deny() {
+                "deny".into()
+            } else {
+                "allow".into()
+            },
+        }
+    }
+}
+
+impl From<&flow_router::OpenRouterConfig> for SttSettings {
+    fn from(o: &flow_router::OpenRouterConfig) -> Self {
+        let s = &o.stt;
+        SttSettings {
+            model: if s.model.trim().is_empty() {
+                DEFAULT_STT_MODEL.into()
+            } else {
+                s.model.trim().to_string()
+            },
+            stt_path: SttPathChoice::parse(&s.stt_path),
+            language: s.language.clone(),
+            send_dictionary: s.send_dictionary,
+            format_override: s.format_override.clone(),
+            timeout_base_ms: s.timeout_base_ms,
+            privacy: (&o.privacy).into(),
+        }
+    }
+}
+
+impl From<&flow_router::OpenRouterConfig> for CleanupSettings {
+    fn from(o: &flow_router::OpenRouterConfig) -> Self {
+        let c = &o.cleanup;
+        CleanupSettings {
+            model: if c.model.trim().is_empty() {
+                DEFAULT_CLEANUP_MODEL.into()
+            } else {
+                c.model.trim().to_string()
+            },
+            sort: c.sort.clone(),
+            timeout_ms: c.timeout_ms,
+            connect_timeout_ms: c.connect_timeout_ms,
+            send_surrounding_text: c.send_surrounding_text,
+            send_screen_words: c.send_screen_words,
+            send_app_name: c.send_app_name,
+            allow_fallbacks: true,
+            privacy: (&o.privacy).into(),
+        }
+    }
+}
+
 /// Free-text model id check (§2.2): `^[a-z0-9._~/-]+(:[a-z]+)*$`, ≤ 128.
 pub fn valid_model_id(id: &str) -> bool {
     if id.is_empty() || id.len() > 128 {
@@ -260,5 +315,23 @@ mod tests {
         assert_eq!(c.scope(), CleanupScope::default());
         assert_eq!((c.timeout_ms, c.connect_timeout_ms), (2500, 1500));
         assert_eq!(SttPathChoice::parse("bogus"), SttPathChoice::Auto);
+    }
+
+    #[test]
+    fn router_config_converts() {
+        let mut o = flow_router::OpenRouterConfig::default();
+        assert_eq!(SttSettings::from(&o), SttSettings::default());
+        assert_eq!(CleanupSettings::from(&o), CleanupSettings::default());
+        assert_eq!(DEFAULT_STT_MODEL, flow_router::cloud::DEFAULT_STT_MODEL);
+        assert_eq!(
+            DEFAULT_CLEANUP_MODEL,
+            flow_router::cloud::DEFAULT_CLEANUP_MODEL
+        );
+        o.stt.stt_path = "chat_audio".into();
+        o.privacy.zdr = false;
+        o.cleanup.send_app_name = true;
+        assert_eq!(SttSettings::from(&o).stt_path, SttPathChoice::ChatAudio);
+        assert!(!SttSettings::from(&o).privacy.zdr);
+        assert!(CleanupSettings::from(&o).scope().app_id);
     }
 }
