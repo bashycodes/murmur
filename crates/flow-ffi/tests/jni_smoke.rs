@@ -68,7 +68,7 @@ fn jvm_round_trip() {
     let mut lines = stdout.lines();
     assert_eq!(
         lines.next().unwrap(),
-        concat!("flow-ffi ", env!("CARGO_PKG_VERSION"))
+        format!("flow-ffi {}", flow_build_info::FULL)
     );
     assert_eq!(lines.next().unwrap(), "null", "no partials configured");
     let commit: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();

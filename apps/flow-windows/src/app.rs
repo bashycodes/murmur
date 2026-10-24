@@ -718,7 +718,10 @@ struct DevView {
     caps: BuildCaps,
     capabilities: flow_router::Capabilities,
     visible: bool,
+    /// D26: product version (`0.2.0`), commit (`abc1234[-dirty]`), both (`0.2.0+abc1234`).
     version: &'static str,
+    build: &'static str,
+    full: &'static str,
     check: DevCheck,
     route: Option<RouteView>,
     cloud: CloudView,
@@ -769,7 +772,9 @@ fn dev_view(state: &AppState) -> DevView {
                 core_version: String::new(),
             }),
         visible: dev.tab_visible(caps),
-        version: env!("CARGO_PKG_VERSION"),
+        version: flow_build_info::VERSION,
+        build: flow_build_info::BUILD,
+        full: flow_build_info::FULL,
         route: router.map(|r| r.route_view()),
         keys_cleared: Vec::new(),
     }

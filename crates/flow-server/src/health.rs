@@ -11,7 +11,8 @@ use crate::AppState;
 pub(crate) fn hello_ok(state: &AppState, proto: u32) -> flow_protocol::HelloOk {
     flow_protocol::HelloOk {
         proto,
-        server: format!("flow-server {}", env!("CARGO_PKG_VERSION")),
+        // D26: product version + commit, so a client's probe pins the build.
+        server: format!("flow-server {}", flow_build_info::FULL),
         core: flow_core::VERSION.into(),
         postprocess_rev: flow_core::POSTPROCESS_REV.into(),
         asr_backend: state.pool.asr_backend.clone(),

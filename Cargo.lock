@@ -592,6 +592,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "flow-build-info"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "flow-cli"
 version = "0.1.0"
 dependencies = [
@@ -657,6 +664,7 @@ dependencies = [
 name = "flow-ffi"
 version = "0.1.0"
 dependencies = [
+ "flow-build-info",
  "flow-cloud",
  "flow-core",
  "flow-remote",
@@ -719,6 +727,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
+ "flow-build-info",
  "flow-core",
  "flow-protocol",
  "futures-util",
