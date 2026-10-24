@@ -996,6 +996,23 @@ fn debug_entry(i: &SessionInfo, insert: &str, error: Option<String>) -> Entry {
             .is_some()
             .then(|| crate::context::style_for(&i.styles, i.context.as_ref()).to_string()),
         llm: crate::core_api::llm_outcome(r),
+        llm_engine: route
+            .and_then(|x| x.llm_engine.clone())
+            .or_else(|| r.and_then(|r| r.llm.as_ref()?.engine.clone())),
+        llm_model: route
+            .and_then(|x| x.llm_model.clone())
+            .or_else(|| r.and_then(|r| r.llm.as_ref()?.model.clone())),
+        llm_cost_usd: route
+            .and_then(|x| x.llm_cost_usd)
+            .or_else(|| r.and_then(|r| r.llm.as_ref()?.cost_usd)),
+        llm_ttft_ms: r.and_then(|r| r.llm.as_ref()?.ttft_ms),
+        llm_generation_id: r.and_then(|r| r.llm.as_ref()?.generation_id.clone()),
+        stt_model: route
+            .filter(|x| x.engine == "cloud")
+            .and_then(|x| x.model.clone()),
+        stt_cost_usd: route
+            .filter(|x| x.engine == "cloud")
+            .and_then(|x| x.cost_usd),
     }
 }
 
@@ -1956,6 +1973,70 @@ mod tests {
         assert_eq!(a[0]["client_ms"], serde_json::Value::Null);
         assert_eq!(a[0]["segments"], 0);
         assert_eq!(a[0]["wait_ms"], 0);
+    }
+
+    #[test]
+    fn debug_log_records_the_openrouter_fields() {
+        // D28: cloud STT + cloud cleanup; and a skipped-clean result is a
+        // normal line (llm = llm_skipped_clean, no llm_engine).
+        let mut ok = CommitResult::text(CommitStatus::Formatted, "Meet on Wednesday.", false);
+        ok.route = Some(crate::core_api::RouteInfo {
+            engine: "cloud".into(),
+            provider: Some("openrouter".into()),
+            model: Some("openai/whisper-large-v3-turbo".into()),
+            cost_usd: Some(flow_core::Usd(0.0001)),
+            llm_engine: Some("cloud".into()),
+            llm_model: Some("meta-llama/llama-3.3-70b-instruct".into()),
+            llm_cost_usd: Some(flow_core::Usd(0.0007)),
+            ..Default::default()
+        });
+        ok.llm = Some(flow_core::cleanup::CleanUsage {
+            engine: Some("cloud".into()),
+            model: Some("meta-llama/llama-3.3-70b-instruct".into()),
+            cost_usd: Some(flow_core::Usd(0.0007)),
+            generation_id: Some("gen-1".into()),
+            ttft_ms: Some(310),
+            ..Default::default()
+        });
+        let mut skipped = CommitResult::text(CommitStatus::RawTranscript, "Hi there.", false);
+        skipped.fallback_reason = Some("llm_skipped_clean".into());
+        skipped.route = Some(crate::core_api::RouteInfo {
+            engine: "local".into(),
+            ..Default::default()
+        });
+        let mut out = Vec::new();
+        for result in [ok, skipped] {
+            let mem = MemSink::default();
+            let (mut r, log) = logged_with(
+                Prefs::default(),
+                Fake::default(),
+                Box::new(mem.clone()),
+                true,
+                |core| {
+                    Arc::new(Scripted {
+                        inner: core,
+                        result,
+                    })
+                },
+            );
+            dictate_then(&mut r, |_| {});
+            out.push(lines(&mem, &log).remove(0));
+        }
+        let (c, s) = (&out[0], &out[1]);
+        assert_eq!(c["route"], "cloud");
+        assert_eq!(c["stt_model"], "openai/whisper-large-v3-turbo");
+        assert_eq!(c["stt_cost_usd"], 0.0001);
+        assert_eq!(c["llm"], "formatted");
+        assert_eq!(c["llm_engine"], "cloud");
+        assert_eq!(c["llm_model"], "meta-llama/llama-3.3-70b-instruct");
+        assert_eq!(c["llm_cost_usd"], 0.0007);
+        assert_eq!(c["llm_ttft_ms"], 310);
+        assert_eq!(c["llm_generation_id"], "gen-1");
+        assert_eq!(s["llm"], "llm_skipped_clean");
+        assert_eq!(s["insert"]["outcome"], "inserted", "a normal result");
+        for k in ["llm_engine", "llm_cost_usd", "stt_model", "stt_cost_usd"] {
+            assert_eq!(s[k], serde_json::Value::Null, "{k}");
+        }
     }
 
     #[test]

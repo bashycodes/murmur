@@ -358,24 +358,128 @@ input.invalid {
   padding: 6px 8px;
   background: color-mix(in srgb, #b9770e 10%, transparent);
 }
-.providers {
+.grow {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+/* ---- OpenRouter tab (D28) ---- */
+.or-model {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+code.model-id,
+.model-meta code {
+  display: block;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  word-break: break-all;
+}
+.pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.pill {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.pill.rec {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.pill.warn {
+  border-color: #b9770e;
+  color: #b9770e;
+}
+.pill.err {
+  border-color: var(--err);
+  color: var(--err);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+  align-items: center;
+}
+.chips .chip {
+  font-size: 12px;
+  padding: 3px 10px;
+}
+button.toggle {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 3px 10px;
+  font-size: 12px;
+}
+button.toggle[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+dialog.picker {
+  width: min(560px, 92vw);
+  max-width: 560px;
+}
+ul.models {
   list-style: none;
   margin: 6px 0;
   padding: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
 }
-.providers li {
+ul.models li + li {
+  border-top: 1px solid var(--line);
+}
+button.model {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: var(--fg);
+  border-radius: 0;
+  padding: 6px 10px;
+}
+button.model:hover,
+button.model:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+button.model.current {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.model-head {
   display: flex;
-  align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
-  padding: 3px 0;
-  border-bottom: 1px solid var(--line);
+  align-items: center;
 }
-.providers li .grow {
-  flex: 1;
-  word-break: break-word;
+.model-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--muted);
 }
-.providers li.selected {
-  font-weight: 600;
+.model-meta code {
+  display: inline;
 }
 dialog {
   max-width: 460px;

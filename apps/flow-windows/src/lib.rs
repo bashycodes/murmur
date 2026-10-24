@@ -23,6 +23,7 @@ pub mod history;
 pub mod hotkeys;
 pub mod input;
 pub mod learn;
+pub mod openrouter;
 pub mod overlay;
 pub mod paste;
 pub mod prefs;
