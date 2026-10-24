@@ -1,0 +1,4 @@
+# Windows runners check out with core.autocrlf=true; the committed UI
+# sources and tsc output are LF (tsconfig newLine), so keep them LF on
+# every checkout or the tag build sees ui/dist as modified (D26 clean tree).
+apps/flow-windows/ui/** text eol=lf
