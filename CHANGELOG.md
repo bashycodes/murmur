@@ -34,6 +34,32 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   result (additive). flow-server logs them, plus `start_to_commit_ms`, on
   each result line.
 
+### Changed
+
+- Android: every screen now has the Settings look (grouped cards, rows that
+  show their current value, TalkBack-friendly rows, 48 dp targets, light /
+  dark with the system).
+  - Main screen: a *Setup* card lists the five permissions, each with its
+    state ("Granted") or the action that fixes it ("Grant"). While one that
+    dictation needs is missing, a banner at the top names it and *Setup*
+    moves above *Status*. The phone-specific "Keep it running" steps fold
+    open and closed.
+  - Dictionary & snippets: separate *Dictionary* and *Snippets* lists, *Add*
+    in the top bar, search once a list reaches 8 entries, an edit page whose
+    *Save* turns on only when something changed and is valid (errors appear
+    under the field, not as toasts), a prompt before discarding edits, and
+    a confirmation before deleting.
+  - History: dictations grouped by day (Today, Yesterday, …), one line each
+    with the time, app and result. A detail page has the full text, the raw
+    transcript and the timings. A dictation that was not inserted says "Not
+    inserted — tap to copy" and copies when tapped.
+  - Model import (speech, Parakeet, AI cleanup): a status card shows the
+    active model, its size and the engine. Recommended models list size,
+    speed and quality, and tapping one copies its download link. Deleting
+    an imported model now asks first.
+  - Cloud provider page: the same layout. The API key field is still never
+    exposed to accessibility services.
+
 ## [0.3.0] - 2026-10-24
 
 ### Added
