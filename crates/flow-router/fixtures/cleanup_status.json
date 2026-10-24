@@ -1,0 +1,26 @@
+{
+  "circuit": {
+    "open": false,
+    "reason": null,
+    "retry_in_ms": null,
+    "until_config_change": false
+  },
+  "consent": true,
+  "enabled": true,
+  "last": {
+    "cost_usd": 0.0007,
+    "engine": "cloud",
+    "generation_id": "gen-0000000000-fixture",
+    "latency_ms": 640,
+    "model": "meta-llama/llama-3.3-70b-instruct",
+    "ttft_ms": 310
+  },
+  "model": "meta-llama/llama-3.3-70b-instruct",
+  "month_cost_usd": 0.014,
+  "order": [
+    "cloud",
+    "local"
+  ],
+  "supported": true,
+  "timeout_ms": 2500
+}

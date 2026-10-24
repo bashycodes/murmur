@@ -12,8 +12,7 @@ use std::time::Duration;
 use flow_core::config::{AsrBackend, FieldContext, ModelConfig, SessionConfig};
 use flow_core::{CommitResult, FlowCore};
 use flow_router::{
-    Backend, CloudConfig, CloudProviderConfig, Route, Router, RouterConfig, SecretString,
-    ServerConfig,
+    Backend, CloudConfig, OpenRouterConfig, Route, Router, RouterConfig, SecretString, ServerConfig,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -263,27 +262,25 @@ pub fn mock_provider(text: &str) -> MockCloud {
     })
 }
 
-/// The OpenRouter entry, consented for openrouter.ai.
-pub fn cloud_provider() -> CloudProviderConfig {
-    let mut p = flow_cloud::presets().remove(0);
-    p.id = CLOUD_ID.into();
-    p.consent_host = flow_cloud::HOST.into();
-    p.consent_at_ms = 1_792_540_800_000;
-    p
+/// The OpenRouter config (schema 2), STT consented for openrouter.ai.
+pub fn cloud_provider() -> OpenRouterConfig {
+    let mut o = OpenRouterConfig::default();
+    o.stt.consent_host = flow_cloud::HOST.into();
+    o.stt.consent_at_ms = 1_792_540_800_000;
+    o
 }
 
-/// `cfg` with the cloud enabled for `provider` and routes `order`.
+/// `cfg` with cloud STT enabled for `provider` and routes `order`.
 pub fn with_cloud(
     mut cfg: RouterConfig,
-    provider: CloudProviderConfig,
+    provider: OpenRouterConfig,
     order: &[Route],
 ) -> RouterConfig {
     cfg.allow_cloud = true;
     cfg.order = order.to_vec();
     cfg.cloud = CloudConfig {
-        active: provider.id.clone(),
-        providers: vec![provider],
-        monthly_budget_usd: None,
+        openrouter: provider,
+        ..Default::default()
     };
     cfg
 }
@@ -291,9 +288,8 @@ pub fn with_cloud(
 /// Hybrid router (flow-remote) + flow-cloud attached + the sentinel key.
 pub fn cloud_router(cfg: RouterConfig, local: Option<Arc<FlowCore>>) -> Router {
     cfg.validate().expect("valid cloud config");
-    let id = cfg.cloud.active.clone();
     let r = flow_cloud::attach(hybrid_router(cfg, local), None);
-    r.set_cloud_key(&id, Some(SecretString::new(CLOUD_KEY)));
+    r.set_cloud_key(CLOUD_ID, Some(SecretString::new(CLOUD_KEY)));
     r
 }
 

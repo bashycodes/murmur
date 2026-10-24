@@ -328,3 +328,45 @@ fn deferred_cost_after_abandoned_stream() {
     assert_eq!(d.actual_usd, Some(0.0000058));
     assert_eq!(d.generation_id, "gen-stream-1");
 }
+
+#[test]
+fn metered_usage_and_fast_failures_for_the_router() {
+    let _srv = mock_fixed(sse_ok());
+    let c = cleaner();
+    assert_eq!(c.engine(), "cloud");
+    assert_eq!(c.model().as_deref(), Some(DEFAULT_CLEANUP_MODEL));
+    assert_eq!(c.timeout_ms(), Some(2500));
+    assert_eq!(c.prompt_scope(), flow_core::cleanup::PromptScope::default());
+    let (r, u) = c.clean_metered(
+        &prompt(),
+        Instant::now() + Duration::from_secs(3),
+        &AbortFlag::default(),
+    );
+    assert_eq!(r.unwrap(), "Let's meet at noon.");
+    assert_eq!(u.engine.as_deref(), Some("cloud"));
+    assert_eq!(u.cost_usd, Some(flow_core::Usd(0.0000061)));
+    assert_eq!(u.generation_id.as_deref(), Some("gen-stream-1"));
+    assert!(u.latency_ms.is_some() && u.ttft_ms.is_some());
+    drop(_srv);
+    for (reply, fast) in [
+        (Reply::json(401, fixture("err_401.json")), true),
+        (Reply::json(402, fixture("err_402_credits.json")), true),
+        (Reply::json(503, fixture("err_503_routing.json")), true),
+        (Reply::json(429, fixture("err_429.json")), true),
+        (Reply::json(502, fixture("err_502.json")), false),
+        (Reply::raw(200, "garbage"), false),
+    ] {
+        let _srv = mock_fixed(reply);
+        let (r, _) = cleaner().clean_metered(
+            &prompt(),
+            Instant::now() + Duration::from_secs(3),
+            &AbortFlag::default(),
+        );
+        let e = r.unwrap_err();
+        assert_eq!(
+            matches!(e, flow_core::cleanup::CleanError::Unavailable(_)),
+            fast,
+            "{e:?}"
+        );
+    }
+}

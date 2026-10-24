@@ -1,48 +1,42 @@
 {
   "allow_client": true,
   "allow_cloud": true,
+  "allow_cloud_cleanup": true,
   "allow_server": true,
+  "cleanup_order": [
+    "cloud",
+    "local"
+  ],
   "cloud": {
-    "active": "openrouter-1",
     "monthly_budget_usd": 5.0,
-    "providers": [
-      {
-        "adapter": "openrouter",
-        "base_url": "https://openrouter.ai/api/v1",
+    "openrouter": {
+      "cleanup": {
+        "connect_timeout_ms": 1500,
+        "consent_at_ms": 1792540900000,
+        "consent_host": "openrouter.ai",
+        "model": "meta-llama/llama-3.3-70b-instruct",
+        "send_app_name": false,
+        "send_screen_words": false,
+        "send_surrounding_text": false,
+        "sort": "latency",
+        "timeout_ms": 2500
+      },
+      "privacy": {
+        "data_collection": "deny",
+        "zdr": true
+      },
+      "stt": {
         "consent_at_ms": 1792540800000,
         "consent_host": "openrouter.ai",
-        "dialect": "",
         "format_override": "",
-        "id": "openrouter-1",
-        "label": "OpenRouter",
         "language": "",
-        "model": "openai/gpt-transcribe",
-        "preset": "openrouter",
-        "price_per_hour_usd": null,
+        "model": "openai/whisper-large-v3-turbo",
         "send_dictionary": true,
-        "send_screen_words": false,
-        "timeout_base_ms": 6000,
-        "zero_retention": true
-      },
-      {
-        "adapter": "openai_compat",
-        "base_url": "https://api.groq.com/openai/v1",
-        "consent_at_ms": 0,
-        "consent_host": "",
-        "dialect": "",
-        "format_override": "",
-        "id": "groq-1",
-        "label": "Groq",
-        "language": "",
-        "model": "whisper-large-v3-turbo",
-        "preset": "groq",
-        "price_per_hour_usd": null,
-        "send_dictionary": true,
-        "send_screen_words": false,
-        "timeout_base_ms": 6000,
-        "zero_retention": false
+        "stt_path": "auto",
+        "timeout_base_ms": 6000
       }
-    ]
+    },
+    "schema": 2
   },
   "keep_local_warm": true,
   "order": [

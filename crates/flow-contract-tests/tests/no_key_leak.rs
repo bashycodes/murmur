@@ -48,7 +48,7 @@ fn dictate(r: &Router) -> flow_core::CommitResult {
 /// Everything a shell can read from the router, serialised.
 fn router_outputs(r: &Router) -> Vec<(String, String)> {
     let cfg = r.config();
-    let p = cfg.cloud.providers[0].clone();
+    let p = cfg.cloud.openrouter.clone();
     vec![
         ("config json".into(), serde_json::to_string(&cfg).unwrap()),
         ("config debug".into(), format!("{cfg:?}")),
@@ -137,7 +137,7 @@ fn key_absent_from_every_failure_path() {
         let provider = mock_cloud_fixed(reply);
         let r = cloud_only(&provider);
         let mut cfg = r.config();
-        cfg.cloud.providers[0].timeout_base_ms = 1000;
+        cfg.cloud.openrouter.stt.timeout_base_ms = 1000;
         r.update_config(cfg);
         r.set_cloud_key(CLOUD_ID, Some(flow_router::SecretString::new(CLOUD_KEY)));
         let res = dictate(&r);

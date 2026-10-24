@@ -101,8 +101,7 @@ buffer for replay. Mapping (`flow_cloud::http::map_status`, codes = `CloudError:
 Error strings carry the status and a sanitised code only (never provider free text, the
 key or a URL); a code that contains the key is dropped (`scrub`).
 
-Until or-route adds `Failure::NoPrivateRoute`, `CloudError::NoPrivateRoute.failure()` is
-`ProviderError`; its `code()` is already `no_private_route`.
+`CloudError::NoPrivateRoute.failure()` is `Failure::NoPrivateRoute`.
 
 ### 3.3 Deadline
 
@@ -142,7 +141,7 @@ billed call per dictation). OpenRouter's STT endpoint has no streaming. Cleanup 
 | `settings.rs` | `Privacy`, `SttSettings`, `CleanupSettings`, `CleanupScope`, `SttPath(Choice)`, defaults, `valid_model_id` |
 | `catalog.rs` | `ModelInfo`, `Catalog`, `CatalogStore` (memory → cache file → baked), `refresh`, `lookup_model`, picker search/rows/badges/price labels |
 | `adapters/openrouter.rs` | `OpenRouterStt`: paths A and B, Groq prompt, WAV retry, `verbatim_check`, `TRANSCRIBE_PROMPT` |
-| `lib.rs` | `CloudAsr` (chunking, cost), `CloudBackend` (`flow_router::Backend`), router glue (`attach*`, `factory*`, `stt_settings_from_provider`) |
+| `lib.rs` | `CloudAsr` (chunking, cost), `CloudBackend` (`flow_router::Backend`, incl. `install_cleanup`), router glue (`attach*` = cloud factory + cleanup factory, `factory*`, `cleanup_factory`; `From<&OpenRouterConfig>` for the settings) |
 | `cleaner.rs` | `OpenRouterCleaner: flow_core::Cleaner` (SSE, cancel, usage, prefill = `GET /key`) |
 | `keyinfo.rs`, `generation.rs`, `budget.rs` | `/key`, deferred `/generation` cost, estimates + `max_price` |
 | `encode.rs` | FLAC / WAV / PCM16, VAD-quiet chunking |
@@ -186,8 +185,14 @@ with `messages = prompt.messages()`, `temperature: 0`, `seed: 0`,
 when the model lists reasoning), `include_reasoning: false` where supported, `provider:
 {zdr, data_collection: "deny", sort, max_price (4 × the highest ZDR endpoint price per
 million tokens), allow_fallbacks}`. The SSE reader runs on a helper thread; cancel or
-deadline returns within a few ms and drops the connection. Errors are `CleanError::Backend(<code>)`
-(or-route adds `Unavailable` for fast failures, `CloudError::is_fast_unavailable`).
+deadline returns within a few ms and drops the connection. Errors carry the `Failure`
+code: `CleanError::Unavailable(code)` for fast failures before any output
+(`CloudError::is_fast_unavailable`: connect, auth, quota, no private route, busy; a
+`RoutedCleaner` may then try the local model), else `CleanError::Backend(code)` (final:
+deterministic text). `clean_metered` returns `CleanUsage` (engine `cloud`, model, exact or
+estimated cost, generation id, TTFT, latency) even on error or cancel; `engine()`,
+`model()`, `timeout_ms()` (= `cleanup.timeout_ms`), `prompt_scope()` and
+`estimate_cost_usd()` implement the D28 `Cleaner` additions.
 `last_call()` / `info_json()` carry cost, generation id, TTFT, latency, error code; never
 text or key. `prefill` only warms the TLS connection with `GET /key` (≤ once per 60 s).
 Default scope sends nothing beyond transcript, category/style and dictionary
@@ -270,9 +275,9 @@ Tests reach the mock only through `flow_cloud::testing::override_base_url` (feat
   all presets but one, custom base URLs (and the plain-http LAN path), the dialect and the
   static `price_per_hour` table (`flow_cloud::price_per_hour` is gone). `flow_cloud::presets()`
   returns exactly one OpenRouter entry; `flow_cloud::ADAPTERS == ["openrouter"]`.
-* **Base URL is constant.** flow-cloud never reads `base_url` from config. A provider entry
-  that is not `adapter: "openrouter"` on `openrouter.ai` builds a refusing backend
-  (`cloud_not_configured`, nothing sent). Tests that pointed `base_url` at a mock must use
+* **Base URL is constant.** flow-cloud never reads a base URL from config (schema 2 has
+  none; `CloudFactory` / `CleanupFactory` take `&OpenRouterConfig`). `attach` /
+  `attach_with` now also install the cleanup factory. Tests that pointed `base_url` at a mock must use
   `flow_cloud::testing::override_base_url(srv.url("/api/v1"))` (guard; serialised;
   `BaseOverride::set` to re-point, e.g. at a closed port). Affects `flow-ffi/tests/{jni_cloud,c_abi}.rs`
   (or-route) and `apps/flow-windows/tests/cloud_integration.rs` (W5).

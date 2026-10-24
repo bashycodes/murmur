@@ -66,8 +66,7 @@ impl CloudError {
             CloudError::Quota => Failure::QuotaExceeded,
             CloudError::RateLimited { .. } => Failure::Busy,
             CloudError::Timeout => Failure::Timeout,
-            // TODO(or-route): Failure::NoPrivateRoute once flow-router has it.
-            CloudError::NoPrivateRoute => Failure::ProviderError,
+            CloudError::NoPrivateRoute => Failure::NoPrivateRoute,
             CloudError::TooLarge
             | CloudError::Moderation
             | CloudError::UnsupportedFormat
@@ -78,13 +77,9 @@ impl CloudError {
         }
     }
 
-    /// The `Failure` code string, with the D28 code for a missing private
-    /// route (`no_private_route`) even before the router enum has it.
+    /// The `Failure` code string (`no_private_route`, `auth_failed`, …).
     pub fn code(&self) -> &'static str {
-        match self {
-            CloudError::NoPrivateRoute => "no_private_route",
-            e => e.failure().as_str(),
-        }
+        self.failure().as_str()
     }
 
     /// Sub-code for `provider_error`s (`moderation`, `chat_audio_unverbatim`).
