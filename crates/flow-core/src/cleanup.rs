@@ -117,8 +117,10 @@ pub fn should_run(cfg: &SessionConfig, cat: AppCategory) -> bool {
 }
 
 /// Words that mean the LLM may still have work after the deterministic
-/// pass: leftover fillers, correction cues, spoken commands the rules left
-/// as words, and number words (bare cardinals are not ITN'd).
+/// pass: leftover fillers, correction cues and spoken commands the rules
+/// left as words. Number words are not listed: the rules write numbers
+/// (itn 8/8 on the eval) and the LLM's own conversions dropped words
+/// ("Don't forget that we have dinner at eight" lost "that").
 const HELP_WORDS: &[&str] = &[
     "um",
     "uh",
@@ -126,17 +128,14 @@ const HELP_WORDS: &[&str] = &[
     "erm",
     "hmm",
     "like",
-    "know",
     "so",
     "okay",
     "ok",
     "well",
     "actually",
-    "mean",
     "sorry",
     "wait",
     "scratch",
-    "mind",
     "rather",
     "oops",
     "quote",
@@ -153,49 +152,26 @@ const HELP_WORDS: &[&str] = &[
     "period",
     "colon",
     "semicolon",
-    "question",
-    "exclamation",
-    "line",
-    "paragraph",
-    "zero",
-    "two",
-    "three",
-    "four",
-    "five",
-    "six",
-    "seven",
-    "eight",
-    "nine",
-    "ten",
-    "eleven",
-    "twelve",
-    "thirteen",
-    "fourteen",
-    "fifteen",
-    "sixteen",
-    "seventeen",
-    "eighteen",
-    "nineteen",
-    "twenty",
-    "thirty",
-    "forty",
-    "fifty",
-    "sixty",
-    "seventy",
-    "eighty",
-    "ninety",
-    "hundred",
-    "thousand",
-    "first",
-    "second",
-    "third",
     "dot",
-    "point",
+];
+/// Two-word cues; single "question" / "line" / "mean" are ordinary words
+/// (the LLM turned "Quick question, do we…" into "Quick question: do we…").
+const HELP_PHRASES: &[&str] = &[
+    "you know",
+    "i mean",
+    "never mind",
+    "question mark",
+    "exclamation point",
+    "exclamation mark",
+    "new line",
+    "new paragraph",
+    "full stop",
 ];
 
 /// Could the LLM still improve `text` (the deterministic pass's output)?
 /// `false` only for a short, single-line, capitalised, punctuated
-/// dictation with no word from [`HELP_WORDS`] and no repeated word: on the
+/// dictation with no cue from [`HELP_WORDS`] / [`HELP_PHRASES`] and no
+/// repeated word: on the
 /// formatting-gap eval the LLM changed nothing useful on those, and it
 /// costs ~1.3 s p50 on a 4-core CPU. Email always runs (layout).
 pub fn llm_can_help(text: &str, cat: AppCategory) -> bool {
@@ -224,7 +200,10 @@ pub fn llm_can_help(text: &str, cat: AppCategory) -> bool {
         .find(|c| c.is_alphabetic())
         .is_some_and(char::is_lowercase);
     let unpunctuated = !t.ends_with(['.', '?', '!', '"', ')', '\u{201d}']);
-    let help = words.iter().any(|w| HELP_WORDS.contains(&w.as_str()));
+    let help = words.iter().any(|w| HELP_WORDS.contains(&w.as_str()))
+        || words
+            .windows(2)
+            .any(|p| HELP_PHRASES.contains(&format!("{} {}", p[0], p[1]).as_str()));
     let repeat = words.windows(2).any(|p| p[0] == p[1]);
     // One long sentence without a comma reads as a run-on.
     let run_on = t
@@ -950,6 +929,8 @@ mod tests {
             ("She called it \"cozy\" and left.", PersonalChat),
             ("Pick up the cake (the chocolate one) before noon.", Other),
             ("Buy milk.\nCall Ben.", Other),
+            ("Quick question, do we have a staging server?", WorkChat),
+            ("Don't forget that we have dinner at eight.", PersonalChat),
         ] {
             assert!(!llm_can_help(t, cat), "{t:?}");
         }
@@ -960,8 +941,8 @@ mod tests {
             ("Meet at three, sorry, four.", WorkChat),
             ("He said quote hi.", Other),
             ("The demo went well dash mostly.", WorkChat),
-            // Number words the rules did not convert.
-            ("We expect two hundred people.", Other),
+            ("Push it to main, I mean the release branch.", WorkChat),
+            ("Is it ready question mark", WorkChat),
             // Run-on and unpunctuated / lowercase ASR output.
             ("ok the train was late and I missed the connection.", PersonalChat),
             ("The train was late and I missed the connection and I will be home around nine thirty tonight.", PersonalChat),
