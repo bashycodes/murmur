@@ -653,6 +653,15 @@ accept an `OpenRouterConfig` JSON. A legacy entry of another adapter is refused 
    `flow_cloud::testing::override_base_url` (the `mock-server` feature, dev-dependency only),
    never through a base URL in config.
 
+   *Done on `feat/or-windows` (W5):* the catalogue cache is
+   `%APPDATA%\FlowClone\cache\openrouter-catalog.json` (next to prefs.json; user
+   decision, not `%LOCALAPPDATA%`). Commands as listed plus `dev_or_get` (the page view),
+   `dev_or_catalog_status`, `dev_or_set_model`, `dev_or_set_stt`, `dev_or_set_privacy`,
+   `dev_or_set_budget`, `dev_or_ack_notice`; `dev_cloud_set_key(key)` /
+   `dev_cloud_clear_key()` take no provider id; `dev_cloud_test` is `dev_or_test_stt`.
+   Consent is recorded by the backend (host fixed to openrouter.ai, time of the call); the
+   page only says the dialog was accepted. The Developer form carries no cloud fields.
+
 **2026-10-21 — flow-protocol + flow-router landed**
 
 * Types §1.2 left open, now concrete (`crates/flow-router/src/lib.rs`):

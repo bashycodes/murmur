@@ -63,6 +63,31 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   than silently moved to OpenRouter.
 - Debug log fields `llm_engine`, `llm_model`, `llm_cost_usd` (and
   `llm_generation_id`, `llm_ttft_ms`).
+- Windows: a new **OpenRouter** settings tab replaces Developer → Cloud
+  providers. One API key (Windows Credential Manager, never shown again
+  after saving; *Check key* shows credit and this month's usage), privacy
+  switches (zero-retention providers only, no data collection; both on),
+  speech-to-text and text cleanup as two switches with two separate consent
+  dialogs (audio / text), a searchable model list with every OpenRouter
+  model that can do the job (filters Transcription / Chat audio / Text, ZDR
+  only, fast providers, free; price, context, badges; works offline from a
+  cached or built-in list; any model id can be typed), the cleanup order
+  (OpenRouter first or this PC's model first), what text is sent, time limit,
+  *Test* buttons, and usage split into speech / cleanup with a monthly
+  budget. The model list is only downloaded when the tab opens or a cloud
+  use is switched on.
+- Windows: on first start the old provider list is migrated once: an
+  OpenRouter entry keeps its key and consent, other providers and their
+  stored keys are deleted, and a notice says what changed.
+- Windows debug log: `llm_engine`, `llm_model`, `llm_cost_usd`,
+  `llm_ttft_ms`, `llm_generation_id`, `stt_model`, `stt_cost_usd`; the
+  Developer "Active engine" row names the AI cleanup engine and its cost.
+
+### Fixed
+
+- flow-server's result log line printed `speech_ms=Some(7200)
+  peak_dbfs=Some(-2)`; it now prints plain numbers and leaves out values
+  that are unknown.
 
 ## [0.4.0] - 2026-10-24
 
