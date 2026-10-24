@@ -1,6 +1,6 @@
 # PROJECT_CONTEXT — flow-clone (local-only Wispr Flow clone)
 
-Research inputs: `research/windows/findings/by-topic/10-clone-spec.md` (§9 = core API), `research/android/findings/by-topic/10-clone-spec-android.md`. Decisions: `docs/DECISIONS.md` (D1-D26). Versioning + releases: `docs/versioning.md`, `CHANGELOG.md`. Core architecture + "Changelog for shells": `docs/core-architecture.md`. Core requests from the shells: `docs/core-change-requests.md`. Model choices: `docs/model-benchmarks.md`.
+Research inputs: `research/windows/findings/by-topic/10-clone-spec.md` (§9 = core API), `research/android/findings/by-topic/10-clone-spec-android.md`. Decisions: `docs/DECISIONS.md` (D1-D27). Versioning + releases: `docs/versioning.md`, `CHANGELOG.md`. Core architecture + "Changelog for shells": `docs/core-architecture.md`. Core requests from the shells: `docs/core-change-requests.md`. Model choices: `docs/model-benchmarks.md`.
 
 Branch `integration` holds everything: `core`, `core-p1`, `parakeet`, `win-p1`, `android-int`, `android-p1`, the hybrid branches, `cloud-core`, `core-endpoint`, `win-cloud`, `android-cloud`, `router-route` and `server-fixes` (review fixes), and `crates-final`, `android-final`, `win-final` (the rest of the review) are merged into it.
 
