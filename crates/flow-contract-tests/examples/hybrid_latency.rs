@@ -9,6 +9,11 @@
 //! the number that matters is commit → result ("release → text").
 //! `--session '{"partial_interval_ms":1500,"segment_pause_ms":800}'` sets
 //! the SessionConfig of both routes (default `{}`).
+//!
+//! Server-only mode (2026-10-23, docs/findings/2026-10-23-server-llm-cleanup-cost.md):
+//! `--remote-only` skips the local core (`--model` not needed), `--reps N`
+//! dictates each file N times, `--jsonl PATH` appends one JSON row per run
+//! (timings, status, fallback_reason, asr_text, final_text).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -29,7 +34,9 @@ fn files() -> Vec<String> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < a.len() {
-        if a[i].starts_with("--") {
+        if a[i] == "--remote-only" {
+            i += 1;
+        } else if a[i].starts_with("--") {
             i += 2;
         } else {
             out.push(a[i].clone());
@@ -71,11 +78,26 @@ fn main() {
     let token = arg("--token-file")
         .map(|p| std::fs::read_to_string(p).unwrap().trim().to_string())
         .unwrap_or_default();
-    let model: ModelConfig = serde_json::from_str(&arg("--model").expect("--model JSON")).unwrap();
+    let remote_only = std::env::args().any(|a| a == "--remote-only");
+    let reps: usize = arg("--reps").map_or(1, |r| r.parse().expect("--reps N"));
+    let mut jsonl = arg("--jsonl").map(|p| {
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(p)
+            .expect("--jsonl PATH")
+    });
     let pace = arg("--no-pace").is_none();
-    let t = Instant::now();
-    let core = Arc::new(FlowCore::load_models(&model).expect("local model"));
-    eprintln!("local load: {} ms", t.elapsed().as_millis());
+    let core = if remote_only {
+        None
+    } else {
+        let model: ModelConfig =
+            serde_json::from_str(&arg("--model").expect("--model JSON")).unwrap();
+        let t = Instant::now();
+        let c = Arc::new(FlowCore::load_models(&model).expect("local model"));
+        eprintln!("local load: {} ms", t.elapsed().as_millis());
+        Some(c)
+    };
     let router = Router::new(
         RouterConfig {
             allow_client: false,
@@ -105,45 +127,61 @@ fn main() {
     let (mut sl, mut sr, mut n) = (0u128, 0u128, 0u128);
     for f in files() {
         let pcm = flow_core::audio::read_wav_16k_mono(std::path::Path::new(&f)).unwrap();
-        let c2 = core.clone();
-        let (l, lt) = dictate(
-            &|| c2.start_session(cfg.clone()).unwrap(),
-            &|p| {
-                core.push_audio(p);
-            },
-            &|| core.commit(),
-            &pcm,
-            pace,
-        );
-        let (r, rt) = dictate(
-            &|| router.start_session(cfg.clone()).unwrap(),
-            &|p| {
-                router.push_audio(p);
-            },
-            &|| router.commit(),
-            &pcm,
-            pace,
-        );
-        let route = r.route.clone().unwrap();
-        assert_eq!(route.engine, "remote", "{route:?} {:?}", r.error);
-        let name = std::path::Path::new(&f)
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
-        println!(
-            "{name}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            l.timings.audio_ms,
-            lt.as_millis(),
-            rt.as_millis(),
-            l.timings.asr_ms,
-            r.timings.asr_ms,
-            l.final_text == r.final_text,
-            r.final_text
-        );
-        sl += lt.as_millis();
-        sr += rt.as_millis();
-        n += 1;
+        for rep in 0..reps {
+            let local = core.as_ref().map(|core| {
+                dictate(
+                    &|| core.start_session(cfg.clone()).unwrap(),
+                    &|p| {
+                        core.push_audio(p);
+                    },
+                    &|| core.commit(),
+                    &pcm,
+                    pace,
+                )
+            });
+            let lt = local.as_ref().map_or(Duration::ZERO, |l| l.1);
+            let (r, rt) = dictate(
+                &|| router.start_session(cfg.clone()).unwrap(),
+                &|p| {
+                    router.push_audio(p);
+                },
+                &|| router.commit(),
+                &pcm,
+                pace,
+            );
+            let route = r.route.clone().unwrap();
+            assert_eq!(route.engine, "remote", "{route:?} {:?}", r.error);
+            let name = std::path::Path::new(&f)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+            println!(
+                "{name}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                r.timings.audio_ms,
+                lt.as_millis(),
+                rt.as_millis(),
+                local.as_ref().map_or(0, |l| l.0.timings.asr_ms),
+                r.timings.asr_ms,
+                local
+                    .as_ref()
+                    .is_some_and(|l| l.0.final_text == r.final_text),
+                r.final_text
+            );
+            if let Some(out) = jsonl.as_mut() {
+                use std::io::Write;
+                let row = serde_json::json!({
+                    "file": name, "rep": rep, "remote_commit_ms": rt.as_millis() as u64,
+                    "status": r.status, "fallback_reason": r.fallback_reason,
+                    "empty_reason": r.empty_reason, "timings": r.timings,
+                    "asr_text": r.asr_text, "final_text": r.final_text,
+                });
+                writeln!(out, "{row}").unwrap();
+            }
+            sl += lt.as_millis();
+            sr += rt.as_millis();
+            n += 1;
+        }
     }
     if let (Some(ml), Some(mr)) = (sl.checked_div(n), sr.checked_div(n)) {
         println!("MEAN\t-\t{ml}\t{mr}\t-\t-\t-\t-");
