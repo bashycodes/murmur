@@ -1,0 +1,88 @@
+{"commit_ms":1148,"empty_reason":null,"fallback":"llm_dropped","id":"q1","llm_ms":1140,"output":"He called it, quote, unquote, innovative. ","status":"RawTranscript"}
+{"commit_ms":1676,"empty_reason":null,"fallback":"llm_dropped","id":"q2","llm_ms":1675,"output":"She said, quote, I'll be there soon, unquote, and then never showed up ","status":"RawTranscript"}
+{"commit_ms":1629,"empty_reason":null,"fallback":"llm_dropped","id":"q3","llm_ms":1613,"output":"The client wrote, open quote, we need this by Friday, close quote, so let's prioritize it. ","status":"RawTranscript"}
+{"commit_ms":1353,"empty_reason":null,"fallback":"llm_dropped","id":"q4","llm_ms":1353,"output":"Can you change the button text to, quote, Get started, end quote? ","status":"RawTranscript"}
+{"commit_ms":1309,"empty_reason":null,"fallback":"llm_dropped","id":"q5","llm_ms":1309,"output":"Quote, the only way out is through, unquote. Robert Frost. ","status":"RawTranscript"}
+{"commit_ms":1154,"empty_reason":null,"fallback":null,"id":"q6","llm_ms":1154,"output":"It was, quote unquote, fine ","status":"Formatted"}
+{"commit_ms":1111,"empty_reason":null,"fallback":"llm_dropped","id":"q7","llm_ms":1111,"output":"The error message says, quote, file not found, unquote. ","status":"RawTranscript"}
+{"commit_ms":1073,"empty_reason":null,"fallback":"llm_dropped","id":"q8","llm_ms":1073,"output":"He literally just said, quote, whatever ","status":"RawTranscript"}
+{"commit_ms":1513,"empty_reason":null,"fallback":null,"id":"p1","llm_ms":1513,"output":"I'll bring the charger, in parentheses, the USB-C one to the meeting. ","status":"Formatted"}
+{"commit_ms":1425,"empty_reason":null,"fallback":null,"id":"p2","llm_ms":1425,"output":"I'll bring the charger, in parentheses, the USB-C one, to the meeting. ","status":"Formatted"}
+{"commit_ms":907,"empty_reason":null,"fallback":"llm_dropped","id":"p3","llm_ms":907,"output":"The deadline, open paren, which is flexible, close paren, is Friday. ","status":"RawTranscript"}
+{"commit_ms":1153,"empty_reason":null,"fallback":null,"id":"p4","llm_ms":1153,"output":"Add the new field, in brackets, optional, to the form. ","status":"Formatted"}
+{"commit_ms":1236,"empty_reason":null,"fallback":"llm_dropped","id":"p5","llm_ms":1235,"output":"Grab the blue folder, in parentheses, the one on my desk ","status":"RawTranscript"}
+{"commit_ms":1537,"empty_reason":null,"fallback":"llm_dropped","id":"p6","llm_ms":1537,"output":"The new build, open parenthesis, version two point three, close parenthesis, is live ","status":"RawTranscript"}
+{"commit_ms":897,"empty_reason":null,"fallback":null,"id":"s1","llm_ms":897,"output":"Buy milk, eggs, and bread. ","status":"Formatted"}
+{"commit_ms":786,"empty_reason":null,"fallback":null,"id":"s2","llm_ms":785,"output":"Are you coming tonight? ","status":"Formatted"}
+{"commit_ms":500,"empty_reason":null,"fallback":null,"id":"s3","llm_ms":500,"output":"That's amazing! ","status":"Formatted"}
+{"commit_ms":1060,"empty_reason":null,"fallback":null,"id":"s4","llm_ms":1059,"output":"Agenda: budget, hiring, and launch. ","status":"Formatted"}
+{"commit_ms":496,"empty_reason":null,"fallback":"llm_dropped","id":"s5","llm_ms":496,"output":"The deadline dash which nobody likes dash is Friday. ","status":"RawTranscript"}
+{"commit_ms":1229,"empty_reason":null,"fallback":null,"id":"s6","llm_ms":1229,"output":"Thanks for the update. I'll review it tomorrow. ","status":"Formatted"}
+{"commit_ms":1215,"empty_reason":null,"fallback":null,"id":"s7","llm_ms":1215,"output":"Quick question: do we have a staging server? ","status":"Formatted"}
+{"commit_ms":1009,"empty_reason":null,"fallback":null,"id":"s8","llm_ms":1009,"output":"We tested it twice; both runs failed. ","status":"Formatted"}
+{"commit_ms":1315,"empty_reason":null,"fallback":null,"id":"s9","llm_ms":1315,"output":"Did you see the game last night? It was insane! ","status":"Formatted"}
+{"commit_ms":2007,"empty_reason":null,"fallback":null,"id":"n1","llm_ms":2006,"output":"Shopping list:\n\n- Apples\n- Bananas\n- Coffee ","status":"Formatted"}
+{"commit_ms":1359,"empty_reason":null,"fallback":null,"id":"n2","llm_ms":1359,"output":"Hi team,\n\nThe release is moving to Thursday.\n\nThanks,\nDana ","status":"Formatted"}
+{"commit_ms":1094,"empty_reason":null,"fallback":null,"id":"n3","llm_ms":1094,"output":"First point is done.\nSecond point is pending. ","status":"Formatted"}
+{"commit_ms":1143,"empty_reason":null,"fallback":null,"id":"n4","llm_ms":1143,"output":"Ideas for the weekend:\n\n- Hiking\n- Movie ","status":"Formatted"}
+{"commit_ms":1138,"empty_reason":null,"fallback":null,"id":"n5","llm_ms":1138,"output":"Hey,\n\nAre we still on for lunch? ","status":"Formatted"}
+{"commit_ms":824,"empty_reason":null,"fallback":null,"id":"c1","llm_ms":824,"output":"Let's meet at the cafe at four ","status":"Formatted"}
+{"commit_ms":605,"empty_reason":null,"fallback":null,"id":"c2","llm_ms":605,"output":"Send it to Sarah. ","status":"Formatted"}
+{"commit_ms":943,"empty_reason":null,"fallback":null,"id":"c3","llm_ms":943,"output":"The meeting is on Wednesday ","status":"Formatted"}
+{"commit_ms":827,"empty_reason":null,"fallback":"llm_dropped","id":"c4","llm_ms":826,"output":"We need three, sorry, four more chairs. ","status":"RawTranscript"}
+{"commit_ms":882,"empty_reason":null,"fallback":null,"id":"c5","llm_ms":882,"output":"I already bought some ","status":"Formatted"}
+{"commit_ms":985,"empty_reason":null,"fallback":null,"id":"c6","llm_ms":985,"output":"Book flights for June 12th. ","status":"Formatted"}
+{"commit_ms":1016,"empty_reason":null,"fallback":"llm_dropped","id":"c7","llm_ms":1016,"output":"Push the fix to main, I mean to the release branch ","status":"RawTranscript"}
+{"commit_ms":1019,"empty_reason":null,"fallback":"llm_unsupported","id":"i1","llm_ms":1019,"output":"The total is $42.50. ","status":"RawTranscript"}
+{"commit_ms":1168,"empty_reason":null,"fallback":null,"id":"i2","llm_ms":1168,"output":"Meet me at 7:30 tonight ","status":"Formatted"}
+{"commit_ms":1080,"empty_reason":null,"fallback":null,"id":"i3","llm_ms":1080,"output":"The invoice is due on March 5th. ","status":"Formatted"}
+{"commit_ms":957,"empty_reason":null,"fallback":null,"id":"i4","llm_ms":956,"output":"Revenue grew by 12%. ","status":"Formatted"}
+{"commit_ms":1519,"empty_reason":null,"fallback":"llm_dropped","id":"i5","llm_ms":1519,"output":"We have about two hundred and fifty users on the beta ","status":"RawTranscript"}
+{"commit_ms":1266,"empty_reason":null,"fallback":"llm_unsupported","id":"i6","llm_ms":1266,"output":"My number is five, one two three, four five six seven. ","status":"RawTranscript"}
+{"commit_ms":1110,"empty_reason":null,"fallback":null,"id":"i7","llm_ms":1110,"output":"I'll be there in like ten minutes ","status":"Formatted"}
+{"commit_ms":1686,"empty_reason":null,"fallback":"llm_unsupported","id":"i8","llm_ms":1686,"output":"The meeting is on the twenty first of October at 2 PM. ","status":"RawTranscript"}
+{"commit_ms":2564,"empty_reason":null,"fallback":"llm_dropped","id":"l1","llm_ms":2564,"output":"For the trip I need to pack:\n\n1. My passport\n2. Chargers\n3. A rain jacket ","status":"RawTranscript"}
+{"commit_ms":2267,"empty_reason":null,"fallback":null,"id":"l2","llm_ms":2267,"output":"Our priorities are:\n\n1. Hiring\n2. Onboarding\n3. Retention ","status":"Formatted"}
+{"commit_ms":2348,"empty_reason":null,"fallback":null,"id":"l3","llm_ms":2348,"output":"Hi Sam,\n\nA few things for tomorrow:\n\n1. Book the room.\n2. Print the slides.\n3. Order lunch.\n\nThanks,\nAlex ","status":"Formatted"}
+{"commit_ms":1168,"empty_reason":null,"fallback":null,"id":"l4","llm_ms":1168,"output":"Grocery list: eggs, milk, bread, and butter. ","status":"Formatted"}
+{"commit_ms":1980,"empty_reason":null,"fallback":null,"id":"l5","llm_ms":1980,"output":"Three things for the release: update the docs, fix the login bug, and tag the build ","status":"Formatted"}
+{"commit_ms":1024,"empty_reason":null,"fallback":null,"id":"k1","llm_ms":1024,"output":"Hey, are you free tonight? ","status":"Formatted"}
+{"commit_ms":1069,"empty_reason":null,"fallback":null,"id":"k2","llm_ms":1069,"output":"I'm running a bit late. I'll be there soon ","status":"Formatted"}
+{"commit_ms":1094,"empty_reason":null,"fallback":null,"id":"k3","llm_ms":1093,"output":"Sounds good. Let's do it ","status":"Formatted"}
+{"commit_ms":1605,"empty_reason":null,"fallback":null,"id":"k4","llm_ms":1605,"output":"Haha, that's hilarious. I can't believe he did that ","status":"Formatted"}
+{"commit_ms":925,"empty_reason":null,"fallback":null,"id":"k5","llm_ms":925,"output":"Okay, I'll call you when I get home ","status":"Formatted"}
+{"commit_ms":1339,"empty_reason":null,"fallback":null,"id":"k6","llm_ms":1339,"output":"Yeah, I don't think that's going to work ","status":"Formatted"}
+{"commit_ms":1120,"empty_reason":null,"fallback":null,"id":"k7","llm_ms":1120,"output":"Thank you so much. See you tomorrow ","status":"Formatted"}
+{"commit_ms":2257,"empty_reason":null,"fallback":null,"id":"e1","llm_ms":2257,"output":"Hi Maria,\n\nI wanted to follow up on the proposal. Could you send me the final numbers by Friday?\n\nBest regards,\nTom ","status":"Formatted"}
+{"commit_ms":1841,"empty_reason":null,"fallback":null,"id":"e2","llm_ms":1841,"output":"Dear Patel,\n\nThank you for your time yesterday. I've attached the contract for your review.\n\nSincerely,\nLaura Chen ","status":"Formatted"}
+{"commit_ms":1660,"empty_reason":null,"fallback":null,"id":"e3","llm_ms":1660,"output":"Hey John,\n\nJust a quick note: the meeting has been moved to 3 PM. Thanks. ","status":"Formatted"}
+{"commit_ms":1210,"empty_reason":null,"fallback":null,"id":"e4","llm_ms":1210,"output":"Please find the report attached. Let me know if you have any questions. ","status":"Formatted"}
+{"commit_ms":1564,"empty_reason":null,"fallback":null,"id":"e5","llm_ms":1564,"output":"Hi everyone,\n\nJust a reminder that the office is closed on Monday.\n\nThanks,\nPriya ","status":"Formatted"}
+{"commit_ms":1264,"empty_reason":null,"fallback":null,"id":"f1","llm_ms":1263,"output":"I was thinking, we could go to the beach ","status":"Formatted"}
+{"commit_ms":1199,"empty_reason":null,"fallback":null,"id":"f2","llm_ms":1199,"output":"The build is kind of broken right now ","status":"Formatted"}
+{"commit_ms":1048,"empty_reason":null,"fallback":null,"id":"f3","llm_ms":1048,"output":"I just wanted to check in about the invoice. ","status":"Formatted"}
+{"commit_ms":1088,"empty_reason":null,"fallback":null,"id":"f4","llm_ms":1088,"output":"The results were basically the same as last quarter. ","status":"Formatted"}
+{"commit_ms":1229,"empty_reason":null,"fallback":null,"id":"f5","llm_ms":1229,"output":"I think the problem is with the router ","status":"Formatted"}
+{"commit_ms":0,"empty_reason":"only_filler","fallback":null,"id":"f6","llm_ms":0,"output":"","status":"Empty"}
+{"commit_ms":2388,"empty_reason":null,"fallback":null,"id":"r1","llm_ms":2387,"output":"I talked to the landlord and he said the repair guy is coming tomorrow morning, but he doesn't know what time. I might work from home. ","status":"Formatted"}
+{"commit_ms":1435,"empty_reason":null,"fallback":null,"id":"r2","llm_ms":1435,"output":"Yeah, that works for me. What time should I come over? ","status":"Formatted"}
+{"commit_ms":1596,"empty_reason":null,"fallback":null,"id":"r3","llm_ms":1594,"output":"I reviewed the draft. It looks good overall, but the second section needs more detail. ","status":"Formatted"}
+{"commit_ms":1315,"empty_reason":null,"fallback":null,"id":"r4","llm_ms":1315,"output":"Before we start, however, we need to agree on the scope. ","status":"Formatted"}
+{"commit_ms":1684,"empty_reason":null,"fallback":null,"id":"r5","llm_ms":1684,"output":"Can you take a look at the PR when you get a chance, thanks? ","status":"Formatted"}
+{"commit_ms":1101,"empty_reason":null,"fallback":null,"id":"r6","llm_ms":1100,"output":"Ok cool, see you at 8 ","status":"Formatted"}
+{"commit_ms":897,"empty_reason":null,"fallback":null,"id":"x1","llm_ms":897,"output":"The word quote comes from Latin. ","status":"Formatted"}
+{"commit_ms":1063,"empty_reason":null,"fallback":null,"id":"x2","llm_ms":1063,"output":"Can you send me a quote for the new roof? ","status":"Formatted"}
+{"commit_ms":868,"empty_reason":null,"fallback":null,"id":"x3","llm_ms":868,"output":"The trial period ends next week. ","status":"Formatted"}
+{"commit_ms":983,"empty_reason":null,"fallback":null,"id":"x4","llm_ms":982,"output":"In British English, a period is called a full stop. ","status":"Formatted"}
+{"commit_ms":783,"empty_reason":null,"fallback":null,"id":"x5","llm_ms":783,"output":"Always use the Oxford comma in lists. ","status":"Formatted"}
+{"commit_ms":1205,"empty_reason":null,"fallback":null,"id":"x6","llm_ms":1205,"output":"Don't forget we have dinner at 8 ","status":"Formatted"}
+{"commit_ms":886,"empty_reason":null,"fallback":null,"id":"x7","llm_ms":886,"output":"Put a comma after the greeting. ","status":"Formatted"}
+{"commit_ms":1462,"empty_reason":null,"fallback":null,"id":"x8","llm_ms":1462,"output":"There's no wait at the new place, let's go there ","status":"Formatted"}
+{"commit_ms":956,"empty_reason":null,"fallback":null,"id":"x9","llm_ms":956,"output":"They launched a new line of sneakers. ","status":"Formatted"}
+{"commit_ms":809,"empty_reason":null,"fallback":null,"id":"x10","llm_ms":808,"output":"The question mark at the end looks wrong. ","status":"Formatted"}
+{"commit_ms":1050,"empty_reason":null,"fallback":null,"id":"x11","llm_ms":1049,"output":"I mean it when I say this is our best quarter. ","status":"Formatted"}
+{"commit_ms":951,"empty_reason":null,"fallback":null,"id":"x12","llm_ms":951,"output":"Quote me on that ","status":"Formatted"}
+{"commit_ms":1015,"empty_reason":null,"fallback":null,"id":"x13","llm_ms":1015,"output":"The formula is in parentheses on the board. ","status":"Formatted"}
+{"commit_ms":694,"empty_reason":null,"fallback":null,"id":"x14","llm_ms":694,"output":"Put the area code in parentheses. ","status":"Formatted"}
+{"commit_ms":1116,"empty_reason":null,"fallback":null,"id":"x15","llm_ms":1116,"output":"The answer is in brackets at the bottom of the page. ","status":"Formatted"}
+{"commit_ms":1264,"empty_reason":null,"fallback":null,"id":"x16","llm_ms":1264,"output":"Can you get me a quote by end of day? ","status":"Formatted"}

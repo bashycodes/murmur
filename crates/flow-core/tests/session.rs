@@ -704,13 +704,118 @@ fn spoken_cleanup_runs_by_default_and_can_be_disabled() {
 }
 
 #[test]
-fn spoken_cleanup_is_off_at_level_none() {
+fn spoken_cleanup_runs_with_the_llm_switched_off() {
+    // D27: Android with local AI off sends level none + raw_mode; it must
+    // still get the deterministic layer (it used to get none of it).
+    use flow_core::config::{CleanupLevel, Platform};
+    for (level, raw) in [
+        (CleanupLevel::None, true),
+        (CleanupLevel::None, false),
+        (CleanupLevel::Light, true),
+    ] {
+        let cfg = SessionConfig {
+            cleanup_level: level,
+            raw_mode: raw,
+            platform: Platform::Android,
+            ..Default::default()
+        };
+        let r = run_text(
+            "um so send it to Sarah no wait to Tom period",
+            cfg,
+            FieldContext::default(),
+        );
+        assert_eq!(
+            r.final_text, "Send it to Tom. ",
+            "{level:?} raw={raw} {r:?}"
+        );
+        // The closing period (D25) is part of the deterministic layer.
+        let cfg = SessionConfig {
+            cleanup_level: level,
+            raw_mode: raw,
+            ..Default::default()
+        };
+        let r = run_text("send the deck to Tom", cfg, FieldContext::default());
+        assert_eq!(
+            r.final_text, "send the deck to Tom. ",
+            "{level:?} raw={raw} {r:?}"
+        );
+    }
+}
+
+#[test]
+fn llm_never_runs_at_level_none_or_raw_mode() {
+    struct Shout;
+    impl Cleaner for Shout {
+        fn clean(&self, _p: &CleanPrompt, _d: Instant) -> Result<String, CleanError> {
+            Ok("LLM WAS HERE".into())
+        }
+    }
+    use flow_core::config::CleanupLevel;
+    for (level, raw) in [
+        (CleanupLevel::None, true),
+        (CleanupLevel::None, false),
+        (CleanupLevel::Light, true),
+    ] {
+        let core = FlowCore::from_engines(
+            Arc::new(MockAsr::new("send it period")),
+            Some(Arc::new(Shout)),
+        );
+        let cfg = SessionConfig {
+            cleanup_level: level,
+            raw_mode: raw,
+            ..Default::default()
+        };
+        core.start_session(cfg).unwrap();
+        push_all(&core, &speech(300));
+        let r = core.commit();
+        assert_eq!(r.final_text, "Send it. ", "{level:?} raw={raw} {r:?}");
+        assert_eq!(r.status, CommitStatus::RawTranscript);
+    }
+}
+
+#[test]
+fn llm_is_skipped_when_it_cannot_help() {
+    struct Shout;
+    impl Cleaner for Shout {
+        fn clean(&self, _p: &CleanPrompt, _d: Instant) -> Result<String, CleanError> {
+            Ok("Can you send me the slides?".into())
+        }
+    }
+    let run = |skip: bool| {
+        let core = FlowCore::from_engines(
+            Arc::new(MockAsr::new("Can you send me the slides?")),
+            Some(Arc::new(Shout)),
+        );
+        core.start_session(SessionConfig {
+            llm_skip_clean: skip,
+            ..Default::default()
+        })
+        .unwrap();
+        push_all(&core, &speech(300));
+        core.commit()
+    };
+    let r = run(true);
+    assert_eq!(r.final_text, "Can you send me the slides? ", "{r:?}");
+    assert_eq!(r.fallback_reason.as_deref(), Some("llm_skipped_clean"));
+    assert_eq!(r.timings.llm_ms, 0);
+    let r = run(false);
+    assert_eq!(r.status, CommitStatus::Formatted, "{r:?}");
+    assert!(r.fallback_reason.is_none());
+}
+
+#[test]
+fn verbatim_is_spoken_cleanup_off_at_level_none() {
     let cfg = SessionConfig {
         cleanup_level: flow_core::config::CleanupLevel::None,
+        spoken_cleanup: false,
         ..Default::default()
     };
     let r = run_text("um send it period", cfg, FieldContext::default());
     assert!(r.final_text.contains("um send it period"), "{r:?}");
+    assert!(
+        !r.final_text.contains("period."),
+        "no closing period: {r:?}"
+    );
 }
 
 #[test]
@@ -738,7 +843,12 @@ fn llm_sees_the_spoken_cleanup_output() {
         Arc::new(MockAsr::new("um I I think it works period")),
         Some(echo.clone()),
     );
-    core.start_session(SessionConfig::default()).unwrap();
+    // The cleaned text is short and clean: without this the LLM is skipped.
+    core.start_session(SessionConfig {
+        llm_skip_clean: false,
+        ..Default::default()
+    })
+    .unwrap();
     push_all(&core, &speech(500));
     let r = core.commit();
     assert_eq!(*echo.0.lock().unwrap(), "I think it works.");

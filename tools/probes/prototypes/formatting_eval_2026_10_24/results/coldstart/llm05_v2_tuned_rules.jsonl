@@ -1,0 +1,6 @@
+{"commit_ms":3050,"fallback":"llm_timeout","id":"q1","llm_ms":3050,"llm_raw":null,"output":"He called it \"innovative.\" "}
+{"commit_ms":3051,"fallback":"llm_timeout","id":"q2","llm_ms":3051,"llm_raw":null,"output":"She said \"I'll be there soon,\" and then never showed up "}
+{"commit_ms":1248,"fallback":null,"id":"q3","llm_ms":1223,"llm_raw":"The client wrote, \"we need this by Friday,\" so let's prioritize it.","output":"The client wrote, \"we need this by Friday,\" so let's prioritize it. "}
+{"commit_ms":692,"fallback":null,"id":"q4","llm_ms":692,"llm_raw":"Can you change the button text to \"Get started\"?","output":"Can you change the button text to \"Get started\"? "}
+{"commit_ms":593,"fallback":"llm_dropped","id":"q5","llm_ms":593,"llm_raw":"The only way out is through.","output":"\"The only way out is through.\" Robert Frost. "}
+{"commit_ms":478,"fallback":null,"id":"q6","llm_ms":478,"llm_raw":"It was \"fine.\"","output":"It was \"fine.\" "}
