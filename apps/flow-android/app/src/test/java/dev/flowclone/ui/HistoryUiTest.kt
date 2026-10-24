@@ -109,6 +109,31 @@ class HistoryUiTest {
         assertTrue(app.history.recent().isEmpty())
     }
 
+    /** The insert outcome and route that fix/route-order records show on the detail page. */
+    @Test fun detailSaysWhyItWasNotInsertedAndOffersTheBubble() {
+        app.history.add(
+            HistoryRow(0, System.currentTimeMillis(), "com.example.chat", "RAW_TRANSCRIPT", "moved on", "moved on", false, 2_100, insertOutcome = "target_changed", route = "remote"),
+            Retention.KEEP,
+        )
+        val id = app.history.recent().first().id
+        val a = settle(Robolectric.buildActivity(HistoryActivity::class.java, HistoryActivity.detailIntent(ctx, id)).setup().visible().get()) { "DETAILS" in texts(it) }
+        val t = texts(a)
+        assertTrue(t.toString(), t.any { it.startsWith("Not inserted") && it.endsWith("You switched apps") })
+        assertTrue(t.toString(), "Server · Transcript" in t)
+        val insert = walk(a.window.decorView).first { it is android.widget.Button && it.text == HistoryActivity.REINSERT }
+        UiTestKit.assertTouchTargets(a, "history detail with re-insert")
+        // The service is not running in a unit test: say so instead of starting it.
+        insert.performClick()
+        assertEquals(HistoryActivity.REINSERT_NEEDS_SERVICE, ShadowToast.getTextOfLatestToast())
+    }
+
+    @Test fun insertedDetailHasNoReinsert() {
+        add("went in")
+        val id = app.history.recent().first().id
+        val a = settle(Robolectric.buildActivity(HistoryActivity::class.java, HistoryActivity.detailIntent(ctx, id)).setup().visible().get()) { "DETAILS" in texts(it) }
+        assertFalse(walk(a.window.decorView).any { it is android.widget.Button && it.text == HistoryActivity.REINSERT })
+    }
+
     @Test fun clearAllAsksFirst() {
         add("one")
         val a = settle(launchList()) { "one" in texts(it) }

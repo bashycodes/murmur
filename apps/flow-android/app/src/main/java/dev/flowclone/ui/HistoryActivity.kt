@@ -130,7 +130,7 @@ class HistoryActivity : Activity() {
                             if (recover) "Open details" to details else "Copy" to { copy(text) },
                             "Delete" to { delete(r) { fillGroups(retention) } },
                         ),
-                    ) { if (recover) copy(text) else details() }
+                    ) { if (recover) copy(HistoryPages.copyText(r)) else details() }
                 }
             }
         }
@@ -154,8 +154,8 @@ class HistoryActivity : Activity() {
                 sectionLabel("RAW TRANSCRIPT")
                 card { selectableText(HistoryView.text(r, raw = true), 14f, p.muted) }
             }
-            action("Copy", DevUi.Style.PRIMARY) { copy(HistoryView.text(r, raw = false)) }
-            // HOOK(fix/route-order): a "Re-insert" action goes here once the service can insert a history entry.
+            action("Copy", DevUi.Style.PRIMARY) { copy(HistoryPages.copyText(r)) }
+            if (HistoryPages.notInserted(r)) action(REINSERT) { offerInsert(r) }
             sectionLabel("DETAILS")
             card {
                 infoRow("When", DateFormat.getLongDateFormat(this@HistoryActivity).format(Date(r.createdAt)) + ", " + time(r))
@@ -166,6 +166,24 @@ class HistoryActivity : Activity() {
             }
             action("Delete dictation", DevUi.Style.DANGER) { delete(r) { finish() } }
         }
+    }
+
+    /**
+     * "Insert with the bubble": this page has no field to type into, so the text cannot go in
+     * from here. It arms the bubble's ✓ insert instead (same path as a not-inserted dictation:
+     * the field focused when ✓ is tapped, never a protected one); the user goes back to the app,
+     * taps the field and then ✓. Needs the running service (the bubble lives there).
+     */
+    private fun offerInsert(r: HistoryRow) {
+        if (!dev.flowclone.service.FlowService.running) {
+            Toast.makeText(this, REINSERT_NEEDS_SERVICE, Toast.LENGTH_LONG).show()
+            return
+        }
+        startService(
+            Intent(this, dev.flowclone.service.FlowService::class.java)
+                .setAction(dev.flowclone.service.FlowService.ACTION_OFFER_INSERT)
+                .putExtra(dev.flowclone.service.FlowService.EXTRA_HISTORY_ID, r.id),
+        )
     }
 
     // ---- top bar ----
@@ -193,6 +211,8 @@ class HistoryActivity : Activity() {
 
     companion object {
         const val EXTRA_ID = "id"
+        const val REINSERT = "Insert with the bubble"
+        const val REINSERT_NEEDS_SERVICE = "Turn on the bubble first (main screen), then try again"
         private const val MENU_CLEAR = 1
 
         fun detailIntent(c: Context, id: Long): Intent = Intent(c, HistoryActivity::class.java).putExtra(EXTRA_ID, id)

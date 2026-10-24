@@ -168,6 +168,13 @@ data class HistoryRow(
     val asrMs: Long = 0,
     val llmMs: Long = 0,
     val totalMs: Long = 0,
+    /**
+     * v3: how the insert ended ([dev.flowclone.debug.InsertOutcome] wire values: inserted,
+     * target_changed, target_protected, paste_failed, empty, error); null = saved before v3.
+     */
+    val insertOutcome: String? = null,
+    /** v3: [dev.flowclone.core.RouteInfo.engine] (local / remote / cloud); null = unknown. */
+    val route: String? = null,
 )
 
 /** Local-only history (plain SQLite; no audio stored). */
@@ -182,7 +189,7 @@ object HistoryHygiene {
     const val AFTER_CLEAR = "VACUUM"
 }
 
-class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", null, 2) {
+class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", null, 3) {
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
         db.rawQuery(HistoryHygiene.ON_OPEN, null).use { it.moveToFirst() }
@@ -205,6 +212,12 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
         )
         db.execSQL("CREATE INDEX history_created ON history(created_at)")
         addV2Columns(db)
+        addV3Columns(db)
+    }
+
+    /** v3: the insert outcome and route (fix/route-order); NULL for older rows = unknown. */
+    private fun addV3Columns(db: SQLiteDatabase) {
+        for (c in listOf("insert_outcome", "route")) db.execSQL("ALTER TABLE history ADD COLUMN $c TEXT")
     }
 
     /** v2: why the LLM fell back, and per-stage timings (the device latency checklist reads them). */
@@ -215,6 +228,7 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) addV2Columns(db)
+        if (oldVersion < 3) addV3Columns(db)
     }
 
     fun add(row: HistoryRow, retention: Retention) {
@@ -224,6 +238,7 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
             put("asr_text", row.asrText); put("final_text", row.finalText)
             put("inserted", if (row.inserted) 1 else 0); put("audio_ms", row.audioMs)
             put("fallback_reason", row.fallbackReason); put("asr_ms", row.asrMs); put("llm_ms", row.llmMs); put("total_ms", row.totalMs)
+            put("insert_outcome", row.insertOutcome); put("route", row.route)
         })
         purge(retention, row.createdAt)
     }
@@ -252,6 +267,8 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
                         asrMs = c.getLong(c.getColumnIndexOrThrow("asr_ms")),
                         llmMs = c.getLong(c.getColumnIndexOrThrow("llm_ms")),
                         totalMs = c.getLong(c.getColumnIndexOrThrow("total_ms")),
+                        insertOutcome = c.getString(c.getColumnIndexOrThrow("insert_outcome")),
+                        route = c.getString(c.getColumnIndexOrThrow("route")),
                     ),
                 )
             }

@@ -24,12 +24,19 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   ⧉ copy and ✕ dismiss, and a "Dictation not inserted" notification stays
   until you tap it to copy the text (it never shows the text itself). The
   text was already saved in History; before this, dismissing the bubble or
-  starting the next dictation left History as the only copy.
+  starting the next dictation left History as the only copy. The
+  notification copies the same text as History (a list keeps its line
+  breaks).
 - Android Developer settings: the Routing row and "Route in use" spell out
   the order, e.g. "Phone first → Server" or "Server only".
 - Debug log (Android): `route_order` (the engines tried, in order),
   `speech_ms` (speech the engine's VAD heard) and `peak_dbfs` (peak level),
   so an empty "blank_asr" result can be diagnosed from the log alone.
+- Android History: a dictation that was not inserted says why on its detail
+  page ("You switched apps", "Protected field", "Couldn't paste") and has
+  *Insert with the bubble*: go back to the app, tap the field and press ✓ on
+  the bubble. Each row also names where it was transcribed ("Server · AI
+  cleaned"). Shown for dictations saved from this version on.
 - flow-core: `timings.speech_ms` and `timings.peak_dbfs` in every commit
   result (additive). flow-server logs them, plus `start_to_commit_ms`, on
   each result line.

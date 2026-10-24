@@ -455,7 +455,10 @@ While you speak, the line above the bubble shows the live transcript (*Settings 
 preview*). "Can't hear you" means 3 s of silence; "No speech detected" means nothing was
 inserted. Main screen → *More* → *History* lists dictations by day; tap one for the full text,
 the raw transcript and per-stage timings. A dictation that never reached its field (you switched
-fields, a protected field) says **Not inserted — tap to copy**: tap the row to copy it.
+fields, a protected field) says **Not inserted — tap to copy**: tap the row to copy it. Its detail
+page says why (*You switched apps*, *Protected field*, *Couldn't paste*) and offers *Insert with
+the bubble*: go back to the app, tap the field, then ✓ on the bubble. The badge names where it was
+transcribed (*Phone*, *Server*, *Cloud*) for dictations saved from 0.4.0 on.
 
 ## Screens
 
@@ -618,7 +621,9 @@ provider, model, latency (stop → text) and the cost shown, in `docs/cloud-stt.
 - [ ] History: rows grouped under *Today*; search finds the row; *Show the raw transcript* shows the
       pre-cleanup text; a row's detail page has *Copy* and *Delete dictation* (asks first).
 - [ ] Switch fields while a dictation is processing: its History row says *Not inserted — tap to copy*;
-      tapping it copies the text (toast "Copied").
+      tapping it copies the text (toast "Copied"). Its detail page says *You switched apps*; *Insert with
+      the bubble* → open another app's field → ✓ on the bubble types it there. The notification's copy
+      and History's copy give the same text (a list keeps its line breaks).
 - [ ] TalkBack: main screen rows read as one item each ("Microphone, Granted…"); *Keep it running*
       announces expanded / collapsed; Dictionary rows offer *Delete* in the actions menu.
 
