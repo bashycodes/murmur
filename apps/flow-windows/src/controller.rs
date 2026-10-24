@@ -144,6 +144,8 @@ struct SessionInfo {
     route_seen: Option<crate::core_api::SessionRoute>,
     steps: Vec<String>,
     logged: bool,
+    /// D27: the session's styles (debug log `style`, with `context`).
+    styles: crate::core_api::Styles,
 }
 
 #[derive(Default)]
@@ -635,6 +637,7 @@ impl Controller {
                         gate: gate.clone(),
                         target: self.platform.focus_target(),
                         silence: silence.clone(),
+                        styles: prefs.styles.clone(),
                         ..SessionInfo::default()
                     },
                 );
@@ -697,9 +700,12 @@ impl Controller {
                     let core = self.core.clone();
                     let shared = self.shared.clone();
                     let gate = gate.clone();
+                    let buckets = prefs.app_buckets.clone();
                     std::thread::spawn(move || {
                         if let Some(raw) = platform.snapshot_context() {
-                            let ctx = build_field_context(&raw);
+                            let mut ctx = build_field_context(&raw);
+                            // "Style per app" (D27) over the built-in lists.
+                            crate::context::apply_bucket_override(&mut ctx, &buckets);
                             if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
                                 i.context = Some(ctx.clone());
                                 i.password_at_start = Some(raw.is_password);
@@ -986,6 +992,10 @@ fn debug_entry(i: &SessionInfo, insert: &str, error: Option<String>) -> Entry {
         text: r.and_then(|r| nonempty(&r.plain_text)),
         error,
         stack: None,
+        style: r
+            .is_some()
+            .then(|| crate::context::style_for(&i.styles, i.context.as_ref()).to_string()),
+        llm: crate::core_api::llm_outcome(r),
     }
 }
 
@@ -1774,11 +1784,30 @@ mod tests {
         assert_eq!(e["raw"], "[stub: 1.0 s of audio]");
         assert_eq!(e["text"], "[stub: 1.0 s of audio]");
         assert_eq!(e["error"], serde_json::Value::Null);
+        // D27: slack.exe = work bucket = casual by default; the stub has no LLM.
+        assert_eq!(e["style"], "casual");
+        assert_eq!(e["llm"], serde_json::Value::Null);
         // 1 s of loud audio up to the release: no trailing silence.
         assert_eq!(e["endpoint_wait_ms"], 0);
         assert!(e["perceived_ms"].is_u64(), "{e}");
         assert!(e["total_ms"].is_u64(), "{e}");
         assert!(e["ts"].as_str().unwrap().ends_with('Z'));
+    }
+
+    #[test]
+    fn style_per_app_override_reaches_the_core_and_the_log() {
+        let mut prefs = Prefs::default();
+        prefs
+            .app_buckets
+            .insert("slack".into(), crate::core_api::StyleBucket::Email);
+        let mem = MemSink::default();
+        let (mut r, log) = logged(prefs, Fake::default(), Box::new(mem.clone()), true);
+        dictate_then(&mut r, |_| {});
+        let l = lines(&mem, &log);
+        assert_eq!(l[0]["style"], "formal", "email bucket");
+        let ctx = r.core.last_context().expect("set_context called");
+        assert_eq!(ctx.app_category, crate::core_api::StyleBucket::Email);
+        assert_eq!(ctx.app_kind, crate::core_api::AppKind::Email);
     }
 
     #[test]

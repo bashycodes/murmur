@@ -167,14 +167,32 @@ enum class ParakeetDecoding(val wire: String) {
 
 enum class CleanupLevel(val wire: String) { NONE("none"), LIGHT("light"), MEDIUM("medium"), HIGH("high") }
 
-enum class Style(val wire: String) { FORMAL("formal"), CASUAL("casual"), VERY_CASUAL("very_casual"), EXCITED("excited") }
+enum class Style(val wire: String) {
+    FORMAL("formal"), CASUAL("casual"), VERY_CASUAL("very_casual"), EXCITED("excited");
 
+    companion object {
+        fun fromWire(w: String?): Style? = entries.firstOrNull { it.wire == w }
+    }
+}
+
+/**
+ * Per-bucket style (flow-core `Styles`). D27 layer 1: chat buckets default to CASUAL (Wispr
+ * Android's own personal default; no final period in chats), email and everything else FORMAL.
+ */
 data class Styles(
-    val personal: Style = Style.FORMAL,
-    val work: Style = Style.FORMAL,
+    val personal: Style = Style.CASUAL,
+    val work: Style = Style.CASUAL,
     val email: Style = Style.FORMAL,
     val other: Style = Style.FORMAL,
-)
+) {
+    /** flow-core `Styles::for_category` on the [FieldContext.appCategory] wire name. */
+    fun forCategory(category: String): Style = when (category) {
+        "personal_chat" -> personal
+        "work_chat" -> work
+        "email" -> email
+        else -> other
+    }
+}
 
 /** Shared dictionary/snippet export row `{word, replacement, isSnippet}` (§9). */
 data class DictEntry(val word: String, val replacement: String? = null, val isSnippet: Boolean = false)

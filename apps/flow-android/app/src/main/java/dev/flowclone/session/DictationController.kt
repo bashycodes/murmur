@@ -163,7 +163,11 @@ class DictationController(
     }
 
     /** What the debug trace needs from the dictation's start. */
-    private data class TraceStart(val wallMs: Long, val hold: Boolean, val appId: String?, val language: String? = null)
+    private data class TraceStart(
+        val wallMs: Long, val hold: Boolean, val appId: String?, val language: String? = null,
+        /** D27: the style sent for the target's bucket (debug log `style`). */
+        val style: String? = null,
+    )
 
     companion object {
         const val TOGGLE_DEBOUNCE_MS = 500L
@@ -252,6 +256,7 @@ class DictationController(
                     target = s.appId?.ifEmpty { null }, insert = InsertOutcome(outcome),
                     raw = result?.asrText?.ifEmpty { null }, text = text ?: result?.historyText?.ifEmpty { null },
                     error = error ?: result?.error, stack = DebugLogger.stackOf(cause),
+                    style = s.style, llm = dev.flowclone.data.LlmOutcome.code(result),
                 )
             val audioName = if (pcm == null || pcm.isEmpty()) null else try { host.onDictationAudio(trace, pcm) } catch (_: Throwable) { null }
             host.onDictationTrace(if (audioName != null) trace.copy(audio = audioName) else trace)
@@ -377,7 +382,10 @@ class DictationController(
         val gen = ++generation
         val ctx = host.captureContext()
         sessionAppId = ctx?.appId
-        traceStart = TraceStart(wallClock(), hold, ctx?.appId, cfg.languages.firstOrNull() ?: "auto")
+        traceStart = TraceStart(
+            wallClock(), hold, ctx?.appId, cfg.languages.firstOrNull() ?: "auto",
+            style = cfg.styles.forCategory(ctx?.appCategory ?: "other").wire,
+        )
         session = c
         meter.reset()
         silence.reset()

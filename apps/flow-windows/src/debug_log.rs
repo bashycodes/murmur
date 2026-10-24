@@ -111,6 +111,13 @@ pub struct Entry {
     pub error: Option<String>,
     /// Always `null` here (Rust errors carry no stack); kept for the schema.
     pub stack: Option<String>,
+    /// D27: style sent for the target's bucket (`formal` / `casual` /
+    /// `very_casual` / `excited`); `null` without a result.
+    pub style: Option<String>,
+    /// D27: `formatted` (LLM text used), the core `fallback_reason`
+    /// (`llm_skipped_clean` = nothing for the LLM to do, a normal result;
+    /// `llm_timeout`, `llm_dropped`, …), or `null` = LLM off / no result.
+    pub llm: Option<String>,
 }
 
 /// A non-dictation line (`"kind": "event"`): engine load, server probe,
@@ -752,6 +759,8 @@ pub(crate) mod tests {
             "raw",
             "text",
             "error",
+            "style",
+            "llm",
         ];
         want.sort();
         assert_eq!(keys, want);

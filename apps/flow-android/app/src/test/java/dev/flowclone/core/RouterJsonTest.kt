@@ -175,6 +175,13 @@ class RouterJsonTest {
         assertFalse(DevText.lastDictation(r.copy(route = r.route!!.copy(clientMs = null))).contains("client"))
     }
 
+    @Test fun lastDictationShowsTheLlmOutcomeAsANormalResult() {
+        val skipped = CommitResult(CommitStatus.RAW_TRANSCRIPT, fallbackReason = "llm_skipped_clean", route = RouteInfo("local"))
+        assertTrue(DevText.lastDictation(skipped).endsWith("RAW_TRANSCRIPT · AI not needed (already clean)"))
+        assertTrue(DevText.lastDictation(skipped.copy(status = CommitStatus.FORMATTED, fallbackReason = null)).endsWith("FORMATTED · AI cleaned"))
+        assertTrue(DevText.lastDictation(skipped.copy(fallbackReason = null)).endsWith("RAW_TRANSCRIPT"))
+    }
+
     @Test fun d24LoadingAndRouteDiagFixtures() {
         val p = RouterJson.decodePoll(fixture("poll_loading.json"))
         assertTrue(p.loading)

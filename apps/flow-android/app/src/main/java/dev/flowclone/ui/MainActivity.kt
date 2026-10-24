@@ -103,10 +103,10 @@ class MainActivity : Activity() {
             val langSetting = app.settings.load().language
             body("Language: ${dev.flowclone.data.LanguageDefault.label(langSetting, app.effectiveLanguage())}").linkTo(SettingsPages.Page.LANGUAGE)
             if (st is EngineHolder.State.Ready) when (val l = st.llm) {
-                EnginePlan.LlmStatus.Off -> body("AI cleanup: off")
+                EnginePlan.LlmStatus.Off -> body(if (app.settings.load().spokenCleanup) "AI cleanup: off (formatting rules still run)" else "AI cleanup: off")
                 EnginePlan.LlmStatus.NoModel -> body("AI cleanup: on, but no GGUF model imported", BAD_COLOR)
                 is EnginePlan.LlmStatus.Loaded -> body("AI cleanup: ${l.name}", OK_COLOR)
-                is EnginePlan.LlmStatus.Failed -> body("AI cleanup failed to load, using plain transcripts: ${l.message}", BAD_COLOR)
+                is EnginePlan.LlmStatus.Failed -> body("AI cleanup failed to load, using formatted transcripts: ${l.message}", BAD_COLOR)
             }.linkTo(SettingsPages.Page.CLEANUP)
             if (app.caps.local) button("Speech model…") { startActivity(Intent(this@MainActivity, ModelImportActivity::class.java)) }
             if (app.dev.visible) button("Developer settings (engines, server)") { startActivity(Intent(this@MainActivity, DeveloperActivity::class.java)) }

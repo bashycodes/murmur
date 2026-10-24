@@ -36,7 +36,19 @@ class SettingsStore(context: Context) {
         asrEngine = dev.flowclone.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.flowclone.core.AsrEngine.WHISPER,
         endpointSilenceMs = loadEndpointMs(),
         decodeWhileSpeaking = sp.getBoolean("decode_while_speaking", true),
+        styles = loadStyles(),
+        appBuckets = WritingStyle.parseOverrides(sp.getString("app_buckets", null).orEmpty()).map,
     )
+
+    /** D27: nothing stored (every install before 0.3) = the [dev.flowclone.core.Styles] defaults. */
+    private fun loadStyles(): dev.flowclone.core.Styles {
+        val d = dev.flowclone.core.Styles()
+        fun st(k: String, def: dev.flowclone.core.Style) = dev.flowclone.core.Style.fromWire(sp.getString(k, null)) ?: def
+        return dev.flowclone.core.Styles(
+            personal = st("style_personal", d.personal), work = st("style_work", d.work),
+            email = st("style_email", d.email), other = st("style_other", d.other),
+        )
+    }
 
     /** One-time move of an untouched stored "auto" to unset ([Settings.migrateLanguage]). */
     private fun loadLanguage(): String {
@@ -78,6 +90,11 @@ class SettingsStore(context: Context) {
             .putBoolean(ENDPOINT_MIGRATED, true)
             .putBoolean(LANGUAGE_MIGRATED, true)
             .putBoolean("decode_while_speaking", s.decodeWhileSpeaking)
+            .putString("style_personal", s.styles.personal.wire)
+            .putString("style_work", s.styles.work.wire)
+            .putString("style_email", s.styles.email.wire)
+            .putString("style_other", s.styles.other.wire)
+            .putString("app_buckets", WritingStyle.formatOverrides(s.appBuckets))
             .apply()
     }
 

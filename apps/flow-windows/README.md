@@ -126,7 +126,11 @@ Android (D22) —, `post_ms`
 `target_changed` / `target_protected` / `empty` / `error` / `timeout` /
 `start_failed` / `cancelled`, steps = the paste plan such as
 `["ctrl_v", "key Enter"]`), `raw`, `text`, `error`, `stack` (always `null`
-here).
+here); D27 adds `style` (the style sent for the target's bucket: `formal` /
+`casual` / `very_casual` / `excited`) and `llm` (`formatted` = the model's text
+was used, the core `fallback_reason` such as `llm_skipped_clean` — nothing for
+the model to do, a normal result — or `llm_timeout`, or `null` = LLM off),
+same names as Android.
 
 It can never affect a dictation: `DebugLog::log` only pushes onto a
 bounded queue (oldest dropped when full) and a writer thread does the
@@ -149,8 +153,12 @@ in an error pill that names the path.
 
 ## AI cleanup (optional, off by default)
 
-Settings → AI cleanup turns on llama.cpp cleanup (fillers, "scratch that",
-spoken lists, per-app style; DECISIONS D5/D10/D11). It needs two files, and
+The formatting rules run without it (D27): while "Auto-format punctuation,
+quotes, fillers and corrections" is on, spoken punctuation, quote / unquote,
+parentheses, brackets, dash, fillers, "scratch that", numbers, lists, email
+layout and the writing style are applied on this PC. Settings → AI cleanup
+turns on llama.cpp cleanup on top (run-on sentences, leftover fillers,
+corrections, tone per app; DECISIONS D5/D10/D11). It needs two files, and
 neither is downloaded automatically:
 
 * the GGUF model, default `%APPDATA%\FlowClone\models\qwen2.5-0.5b-instruct-q4_k_m.gguf`
@@ -160,10 +168,35 @@ neither is downloaded automatically:
   path in "Engine library"). llama.cpp cannot be linked into the exe:
   whisper.cpp and llama.cpp each bundle a different ggml (D10).
 
-Speech recognition is ready long before the LLM (10-50 s load on CPU);
-until then, and whenever cleanup fails or exceeds its budget, the plain
-transcript is pasted. The tray line "AI cleanup: …" and Settings show the
-state (off / loading / ready / model missing / engine missing / failed).
+Speech recognition is ready long before the LLM (10-50 s load on CPU,
+a few seconds more since prompt v2, whose instructions are prefilled at
+load); until then, and whenever cleanup fails or exceeds its budget, the
+formatted transcript is pasted. The tray line "AI cleanup: …" and Settings
+show the state (off / loading / ready / model missing / engine missing /
+failed). When the formatted text leaves nothing to fix the model is skipped
+(`llm_skipped_clean`; Developer → Active engine shows "AI not needed
+(already clean)", not a failure).
+
+Settings → AI cleanup:
+
+* **Time budget** default 3000 ms (was 1500, which timed out on nearly every
+  dictation; a stored 1500 moves to 3000 once, `prefs_rev` 3).
+* **Cleanup level** *No AI — formatting rules only* (was "None — exactly
+  what you said"; since D27 the core still formats at `none`), Light /
+  Medium / High, or *Verbatim — exactly what you said* = `cleanup_level:
+  none` + Auto-format off (the two controls stay in step). Migration
+  (`prefs_rev` 3): a stored None becomes Verbatim (what it did before); the
+  old "Raw mode" box, which only ever skipped the LLM, becomes No AI and is
+  gone from the UI.
+* **Writing style** per bucket (Personal messages / Work messages / Email /
+  Everything else: Formal, Casual, Very casual, Excited, each with an example
+  line). Defaults: chats casual (no final period), email and everything else
+  formal; an untouched all-formal set moves to these once. **Style per app**:
+  `app = personal|work|email|other` lines, `app` = exe name (`mychat.exe`)
+  or web host (`mail.example.com`), over the built-in lists
+  (`data/app-lists.json`: WhatsApp, Telegram, Signal, Messenger, Discord,
+  Instagram, Google Messages → personal; Slack, Teams → work; Outlook,
+  Gmail → email).
 
 ## Layout
 
@@ -178,7 +211,7 @@ state (off / loading / ready / model missing / engine missing / failed).
 | `src/context/` | Truncation, password suppression, app kind and style bucket from `data/app-lists.json` (pure); `uia.rs` = UI Automation snapshot with a 300 ms timeout, and `UiaFieldReader` (re-reads the pasted-into control, `CompareElements` for focus) |
 | `src/ducking/` | Mute plan and restore rule (pure); `win.rs` = WASAPI sessions on an MTA thread |
 | `src/sounds.rs` | Synthesised cue WAVs (pure) played with `PlaySoundW(SND_MEMORY)` |
-| `src/prefs.rs` | `%APPDATA%\FlowClone\prefs.json`: tolerant load, atomic save, validation, `prefs_rev` migration (rev 1, D22: a stored hands-free auto-stop of exactly 2000 ms, the old default, becomes 1500 once; later saves keep any value) |
+| `src/prefs.rs` | `%APPDATA%\FlowClone\prefs.json`: tolerant load, atomic save, validation, `prefs_rev` migration (rev 1, D22: a stored hands-free auto-stop of exactly 2000 ms, the old default, becomes 1500 once; rev 3, D27: LLM budget 1500 → 3000, all-formal styles → chats casual, None → Verbatim, raw mode → No AI; later saves keep any value) |
 | `src/core_api.rs` | §9 API seam (shell types) plus `StubCore` for tests |
 | `src/core_adapter.rs` | `CoreApi` on `flow_core::FlowCore`: two-phase background load (whisper engine, then the optional `flow_llm` cleaner, composed with `FlowCore::from_engines`), `ModelStatus` / `LlmStatus`, shell→core type mapping |
 | `src/history.rs` | Local SQLite history (`history.sqlite`, 10-clone-spec §2 columns, no audio), keep / 24 h / never retention; list/search/get/delete/clear/set_edited for the History tab |
@@ -357,7 +390,10 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] AI cleanup on without `flow_llm.dll`: tray "⚠ AI cleanup engine (flow_llm.dll) missing", dictation still pastes.
 - [ ] AI cleanup on with the DLL + Qwen 0.5B GGUF: tray goes "loading…" → "AI cleanup: qwen2.5-0.5b…"; dictation works during the load; afterwards "um so i think we should uh meet tomorrow" pastes cleaned up, and History shows "AI edited".
 - [ ] The NSIS installer built with `--config tauri.llm.conf.json` puts `flow_llm.dll` beside `Flow Clone.exe`, and AI cleanup loads on a PC without Rust/VS (only the VC++ redistributable).
-- [ ] Per-app styles: with Personal = Very casual, dictating into WhatsApp gives lowercase without a final period; Email stays formal.
+- [ ] Per-app styles: defaults → a WhatsApp / Slack dictation ends without a final period, Outlook keeps it; with Personal = Very casual and AI cleanup on, WhatsApp gives lowercase without a final period; Email stays formal.
+- [ ] Style per app: `notepad.exe = personal` → Save → a Notepad dictation ends without a final period; a bad line (`notepad.exe = loud`) shows an error next to Save.
+- [ ] Cleanup level: an old prefs.json with `"cleanup_level":"none"` opens as *Verbatim* with Auto-format unticked; choosing *No AI* ticks Auto-format again; "comma" then becomes ",".
+- [ ] Debug log line has `"style":"casual"` for WhatsApp and `"llm"` (`llm_skipped_clean` with AI on and an already clean dictation).
 - [ ] History tab: search filters, Copy, Re-paste (Settings hides, text lands in the previously focused app), Delete, Delete all (second click), retention change prunes.
 - [ ] Undo AI edit: the diff shows removed/added words; "Re-paste original" inserts the raw ASR text.
 - [ ] Learn from edits: dictate "I use whisper flow daily" into Notepad, fix it to "Wispr Flow" within ~45 s, click elsewhere → tray "1 dictionary suggestion…"; Dictionary tab lists it; nothing was added until "Add word". Same in Chrome (textarea), Word and Slack.
