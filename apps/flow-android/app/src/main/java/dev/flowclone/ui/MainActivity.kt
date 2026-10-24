@@ -67,6 +67,7 @@ class MainActivity : Activity() {
                     else -> "Voice dictation through your own flow-server (LAN / Tailscale; Developer settings). Voice never goes to a third party; history stays on the phone."
                 },
             )
+            body(dev.flowclone.data.AppVersion.current.label(app.caps.flavor))
 
             heading("Speech engine")
             when (val lib = app.engine.libraryState()) {
