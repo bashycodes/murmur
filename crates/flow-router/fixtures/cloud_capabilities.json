@@ -1,10 +1,6 @@
 {
   "adapters": [
-    "openai_compat",
-    "openrouter",
-    "elevenlabs",
-    "deepgram",
-    "assemblyai"
+    "openrouter"
   ],
   "cloud": true
 }

@@ -62,39 +62,24 @@ fn configs() -> Vec<(&'static str, RouterConfig)> {
     ]
 }
 
-/// D18: a hybrid config with OpenRouter enabled and consented (no key:
-/// keys never appear in config JSON).
+/// D18/D28: a hybrid config with OpenRouter STT and cloud cleanup enabled
+/// and consented (no key: keys never appear in config JSON). Schema 2.
 fn cloud_config() -> RouterConfig {
+    let mut o = OpenRouterConfig::default();
+    o.stt.consent_host = "openrouter.ai".into();
+    o.stt.consent_at_ms = 1_792_540_800_000;
+    o.cleanup.consent_host = "openrouter.ai".into();
+    o.cleanup.consent_at_ms = 1_792_540_900_000;
     RouterConfig {
         server: server(),
         allow_cloud: true,
         order: vec![Route::Cloud, Route::Server, Route::Client],
+        allow_cloud_cleanup: true,
+        cleanup_order: vec![CleanupRoute::Cloud, CleanupRoute::Local],
         cloud: CloudConfig {
-            active: "openrouter-1".into(),
-            providers: vec![
-                CloudProviderConfig {
-                    id: "openrouter-1".into(),
-                    preset: "openrouter".into(),
-                    adapter: "openrouter".into(),
-                    label: "OpenRouter".into(),
-                    base_url: "https://openrouter.ai/api/v1".into(),
-                    model: "openai/gpt-transcribe".into(),
-                    consent_host: "openrouter.ai".into(),
-                    consent_at_ms: 1_792_540_800_000,
-                    ..Default::default()
-                },
-                CloudProviderConfig {
-                    id: "groq-1".into(),
-                    preset: "groq".into(),
-                    adapter: "openai_compat".into(),
-                    label: "Groq".into(),
-                    base_url: "https://api.groq.com/openai/v1".into(),
-                    model: "whisper-large-v3-turbo".into(),
-                    zero_retention: false,
-                    ..Default::default()
-                },
-            ],
+            openrouter: o,
             monthly_budget_usd: Some(Usd(5.0)),
+            ..Default::default()
         },
         ..Default::default()
     }
@@ -103,11 +88,14 @@ fn cloud_config() -> RouterConfig {
 fn cloud_route() -> RouteInfo {
     RouteInfo {
         engine: "cloud".into(),
-        provider: Some("openrouter-1".into()),
-        model: Some("openai/gpt-transcribe".into()),
+        provider: Some("openrouter".into()),
+        model: Some("openai/whisper-large-v3-turbo".into()),
         billed_audio_ms: Some(1000),
-        cost_usd: Some(Usd(0.000075)),
+        cost_usd: Some(Usd(0.000011)),
         cost_estimated: Some(false),
+        llm_engine: Some("cloud".into()),
+        llm_model: Some("meta-llama/llama-3.3-70b-instruct".into()),
+        llm_cost_usd: Some(Usd(0.0007)),
         ..Default::default()
     }
 }
@@ -243,6 +231,7 @@ fn route_status() -> RouteStatus {
         health: Some(health_ok()),
         cloud_circuit: None,
         last_diag: None,
+        cleanup_circuit: None,
     }
 }
 
@@ -280,8 +269,8 @@ fn cloud_fixtures() -> Vec<(String, Value)> {
         serde_json::to_value(HealthReport {
             ok: true,
             engine: EngineKind::Cloud,
-            provider: Some("openrouter-1".into()),
-            model: Some("openai/gpt-transcribe".into()),
+            provider: Some("openrouter".into()),
+            model: Some("openai/whisper-large-v3-turbo".into()),
             transcript: Some("And so, my fellow Americans,".into()),
             latency_ms: Some(820),
             cost_usd: Some(Usd(0.000225)),
@@ -305,13 +294,48 @@ fn cloud_fixtures() -> Vec<(String, Value)> {
         "cloud_usage".into(),
         serde_json::to_value(CloudUsage {
             month: "2026-10".into(),
-            providers: vec![ProviderUsage {
-                provider_id: "openrouter-1".into(),
-                requests: 42,
-                billed_audio_ms: 312_000,
-                cost_usd: Usd(0.0234),
+            providers: vec![
+                ProviderUsage {
+                    provider_id: "openrouter".into(),
+                    purpose: "stt".into(),
+                    requests: 42,
+                    billed_audio_ms: 312_000,
+                    cost_usd: Usd(0.0234),
+                    cost_estimated: false,
+                },
+                ProviderUsage {
+                    provider_id: "openrouter".into(),
+                    purpose: "cleanup".into(),
+                    requests: 20,
+                    billed_audio_ms: 0,
+                    cost_usd: Usd(0.014),
+                    cost_estimated: true,
+                },
+            ],
+        })
+        .unwrap(),
+    ));
+    v.push((
+        "cleanup_status".into(),
+        serde_json::to_value(CleanupStatus {
+            supported: true,
+            enabled: true,
+            order: vec![CleanupRoute::Cloud, CleanupRoute::Local],
+            consent: true,
+            blocked: None,
+            circuit: Some(CircuitStatus::default()),
+            model: "meta-llama/llama-3.3-70b-instruct".into(),
+            timeout_ms: 2500,
+            last: Some(CleanUsage {
+                engine: Some("cloud".into()),
+                model: Some("meta-llama/llama-3.3-70b-instruct".into()),
+                cost_usd: Some(Usd(0.0007)),
                 cost_estimated: false,
-            }],
+                generation_id: Some("gen-0000000000-fixture".into()),
+                ttft_ms: Some(310),
+                latency_ms: Some(640),
+            }),
+            month_cost_usd: Usd(0.014),
         })
         .unwrap(),
     ));
@@ -355,8 +379,8 @@ fn all() -> Vec<(String, Value)> {
 fn live_route_fixtures() -> Vec<(String, Value)> {
     let cloud = SessionRoute {
         engine: EngineKind::Cloud,
-        provider: Some("openrouter-1".into()),
-        model: Some("openai/gpt-transcribe".into()),
+        provider: Some("openrouter".into()),
+        model: Some("openai/whisper-large-v3-turbo".into()),
         ..Default::default()
     };
     let remote = SessionRoute {
@@ -478,11 +502,15 @@ fn every_fixture_parses_and_round_trips() {
     let mut n = 0;
     for e in std::fs::read_dir(dir()).unwrap() {
         let p = e.unwrap().path();
+        if p.is_dir() {
+            continue; // migration/ (tests/migration.rs)
+        }
         let name = p.file_stem().unwrap().to_str().unwrap().to_string();
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&p).unwrap()).unwrap();
         let back = match name.as_str() {
             "cloud_capabilities" => round_trip::<CloudCapabilities>(&v),
             "cloud_usage" => round_trip::<CloudUsage>(&v),
+            "cleanup_status" => round_trip::<CleanupStatus>(&v),
             _ => match name.split('_').next().unwrap() {
                 "router" => round_trip::<RouterConfig>(&v),
                 "capabilities" => round_trip::<Capabilities>(&v),
@@ -497,7 +525,7 @@ fn every_fixture_parses_and_round_trips() {
         assert_eq!(back, v, "{name}");
         n += 1;
     }
-    assert_eq!(n, 25);
+    assert_eq!(n, 26);
 }
 
 #[test]

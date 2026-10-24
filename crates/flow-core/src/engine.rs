@@ -189,6 +189,15 @@ pub struct RouteInfo {
     pub cost_usd: Option<Usd>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cost_estimated: Option<bool>,
+    /// D28: engine of the LLM step (`"local"`, `"cloud"`; `"server"` for a
+    /// server-cleaned result), its model and cloud cost. Set by the router
+    /// from `CommitResult::llm`. Omitted while `None`. Additive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_engine: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_cost_usd: Option<Usd>,
 }
 
 /// An amount in US dollars. A plain JSON number; a newtype only so the
