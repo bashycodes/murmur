@@ -381,7 +381,7 @@ fn bare_aside(toks: &[Tok], c: &[String], out: &[Tok], from: usize) -> Option<us
         return None;
     }
     // The aside: unpunctuated words up to a preposition.
-    for k in from + 1..toks.len().min(from + 6) {
+    for k in from + 1..toks.len().min(from + 7) {
         if toks[k].is_break() || !toks[k - 1].suffix().is_empty() {
             return None;
         }
