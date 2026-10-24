@@ -245,8 +245,9 @@ SambaNova, Google speech/generative, Speechmatics, Rev, Gladia, xAI, Azure speec
 Cohere, Perplexity) in (a) the Rust sources linked into cloud builds, (b) flow-cloud's
 compiled artefact, (c) `FLOW_CLOUD_ARTIFACTS` (APK / .so / .exe paths); flow-cloud's
 non-test URL literals must all be `https://openrouter.ai`; the shipped flavours must not
-enable flow-cloud's `mock-server` feature. Shell sources are scanned too and count in
-`CHECK_BUILD_MATRIX_STRICT_CLOUD=1` (they still hold D18 preset hosts until W4/W5 land).
+enable flow-cloud's `mock-server` feature. Shell sources are scanned too. Strict and
+cloud-strict mode are the default since the D28 merge (2026-10-24); both CI workflows run
+the gate and scan their shipped APKs / hybrid exe.
 
 ---
 
