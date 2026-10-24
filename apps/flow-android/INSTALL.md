@@ -34,14 +34,14 @@ APKs built on this PC (`tools/dist.sh`, after `tools/build-native.sh --flavor lo
 
 | APK | Size | SHA-256 |
 |---|---|---|
-| `flow-clone-hybrid-debug.apk` | 46.8 MB (46844756 bytes) | `3fa39b85df5c237ee5cfc38784f1abbf6a643240fb28add957be2ec6f1943a6b` |
-| `flow-clone-hybrid-release-unsigned.apk` | 45.9 MB (45888361 bytes) | `ff5bc572baff930f2f23b358c0bcefb896895faa2e0179ac43b67519d3bae71f` |
-| `flow-clone-local-debug.apk` | 42.7 MB (42683196 bytes) | `9b2523b46ffe7c62c44e7ba190d831dab97c911ba2431034556a88ee1f20373b` |
-| `flow-clone-local-release-unsigned.apk` | 41.7 MB (41726793 bytes) | `5b66061915ca97334ac89ee986a3f41f55437ba9c3d1dfc8119ba57df5494efc` |
-| `flow-clone-remote-debug.apk` | 13.1 MB (13132262 bytes) | `888da50762123d9eeab68117db473bbb43d2b56fd5d92004b0e2e545131e29e7` |
-| `flow-clone-remote-release-unsigned.apk` | 12.2 MB (12175867 bytes) | `364fa3ef3ce331d785c75935aedc2b1212f559cc7c6ce86ceb6ad5eeced27bac` |
+| `flow-clone-hybrid-debug.apk` | 47.6 MB (47591933 bytes) | `9becffa7e5d2fcbc702c43551e902904eb4c40f9d9df7a03743775aedf5cc794` |
+| `flow-clone-hybrid-release-unsigned.apk` | 46.6 MB (46569077 bytes) | `cdcf4e7dfaba8832ad318f55eb549d9b76ae6ba0b7858be20d6b8f36f0595962` |
+| `flow-clone-local-debug.apk` | 43.2 MB (43151837 bytes) | `b4caaf0ac0c45de57869358884d3546688204f2f2c9483a42ac531dee2afa0b1` |
+| `flow-clone-local-release-unsigned.apk` | 42.1 MB (42128985 bytes) | `a94b827b8f4587e063189409804b41116a8f0dfe83f6c1c6250c28ed9b1ebf9e` |
+| `flow-clone-remote-debug.apk` | 13.9 MB (13886807 bytes) | `acf571ce97f8337fbadc6290ab00ef7c54b491cc39eb0a746e0805a71ae4f990` |
+| `flow-clone-remote-release-unsigned.apk` | 12.9 MB (12863951 bytes) | `53f236a1f3c13a946649e85f8d289629eb277eaf46f0cd6ceba53fb848a40c17` |
 
-All six built 2026-10-24 from tag `v0.3.0` (0b404f6; D27 formatting parity: writing style, formatting rules without the AI model, prompt v2; versionName 0.3.0, versionCode 300, native engine `flow-ffi 0.3.0+0b404f6`; natives rebuilt from the same tree for all three flavours; native gate: 31/31 JNI symbols, 8 `flow_llm_*`; same debug key as before, so the debug APKs install over the previous build). The `*-release-unsigned.apk` files are not installable until signed, see "Release build" below.
+All six built 2026-10-24 from tag `v0.5.0` (914fb5e; D28 OpenRouter-only cloud: one OpenRouter page, opt-in cloud text cleanup, one-time migration of old provider settings; versionName 0.5.0, versionCode 500, native engine `flow-ffi 0.5.0+914fb5e`; natives rebuilt from the same tree for all three flavours; native gate: 41/41 JNI symbols, 8 `flow_llm_*`; D28 host scan clean for all six; same debug key as before (cert SHA-256 `63f0719b…`), so the debug APKs install over the previous build). The `*-release-unsigned.apk` files are not installable until signed, see "Release build" below.
 
 Check a copy with `sha256sum flow-clone-hybrid-debug.apk` before installing it. An APK from
 another machine or from the CI artifact (`.github/workflows/android-build.yml`) has a different
