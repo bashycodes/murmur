@@ -3,10 +3,11 @@
 //! keep loading; a corrupt file is moved aside rather than silently lost.
 
 pub use crate::core_api::DictEntry;
-use crate::core_api::{CleanupLevel, SessionConfig, Styles};
+use crate::core_api::{CleanupLevel, SessionConfig, StyleBucket, Styles};
 use crate::dictation::Policy;
 use crate::hotkeys::{Bindings, Chord};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 pub const APP_DIR: &str = "FlowClone";
@@ -16,7 +17,34 @@ pub const FILE_NAME: &str = "prefs.json";
 /// `prefs_rev` is 0.
 /// * 1 (D22): the hands-free auto-stop default went 2000 → 1500 ms.
 /// * 2 (D24): the server connect timeout default went 800 → 2500 ms.
-pub const PREFS_REV: u32 = 2;
+/// * 3 (D27): chat styles default to casual, the LLM budget 1500 → 3000 ms,
+///   and cleanup "None" became "No AI" (formatting rules still run): a
+///   stored None moves to Verbatim, `raw_mode` to No AI ([`Prefs::migrate`]).
+pub const PREFS_REV: u32 = 3;
+
+/// The LLM budget default before D27 (rev ≤ 2): it timed out on nearly
+/// every dictation (docs/findings/2026-10-23-server-llm-cleanup-cost.md).
+const OLD_LLM_TIMEOUT_MS: u64 = 1500;
+/// D27: Android's budget; prompt v2 + Qwen2.5-1.5B p50 ≈ 1.3 s.
+pub const DEFAULT_LLM_TIMEOUT_MS: u64 = 3000;
+
+/// D27 layer 1: chats casual (no stiff final period; Wispr Android's own
+/// personal default), email and everything else formal.
+pub fn default_styles() -> Styles {
+    Styles {
+        personal: "casual".into(),
+        work: "casual".into(),
+        email: "formal".into(),
+        other: "formal".into(),
+    }
+}
+
+/// The pre-D27 default: every bucket formal (03 §1.3, Wispr Windows).
+fn all_formal(s: &Styles) -> bool {
+    [&s.personal, &s.work, &s.email, &s.other]
+        .iter()
+        .all(|x| x.as_str() == "formal")
+}
 
 /// The hands-free auto-stop default before D22 (rev 0).
 const OLD_HANDS_FREE_SILENCE_MS: u32 = 2000;
@@ -72,6 +100,9 @@ pub struct Prefs {
     pub cleanup_level: CleanupLevel,
     pub raw_mode: bool,
     pub styles: Styles,
+    /// "Style per app": exe stem (`slack`, lowercase, no `.exe`) or web
+    /// host (`mail.example.com`) → bucket, over the built-in lists.
+    pub app_buckets: BTreeMap<String, StyleBucket>,
     pub dictionary: Vec<DictEntry>,
     pub paste_method: PasteMethod,
     pub restore_clipboard: bool,
@@ -140,13 +171,8 @@ impl Default for Prefs {
             use_ax_context: true,
             cleanup_level: CleanupLevel::Light,
             raw_mode: false,
-            // 03 §1.3: every Wispr bucket defaults to formal + light.
-            styles: Styles {
-                personal: "formal".into(),
-                work: "formal".into(),
-                email: "formal".into(),
-                other: "formal".into(),
-            },
+            styles: default_styles(),
+            app_buckets: BTreeMap::new(),
             dictionary: Vec::new(),
             paste_method: PasteMethod::CtrlV,
             restore_clipboard: true,
@@ -165,7 +191,7 @@ impl Default for Prefs {
             llm_enabled: false,
             llm_model_path: None,
             llm_lib_path: None,
-            llm_timeout_ms: 1500,
+            llm_timeout_ms: DEFAULT_LLM_TIMEOUT_MS,
             learn_from_edits: true,
             learn_window_ms: 45_000,
             learn_poll_ms: 1_000,
@@ -223,6 +249,24 @@ impl Prefs {
         {
             self.developer.server.connect_timeout_ms = flow_router::DEFAULT_CONNECT_TIMEOUT_MS;
         }
+        if self.prefs_rev < 3 {
+            // D27. Untouched old defaults move to the new ones; anything the
+            // user chose stays. Behaviour the user had is kept: "None —
+            // exactly what you said" was verbatim (now `spoken_cleanup`
+            // off), `raw_mode` only ever skipped the LLM (now "No AI").
+            if self.llm_timeout_ms == OLD_LLM_TIMEOUT_MS {
+                self.llm_timeout_ms = DEFAULT_LLM_TIMEOUT_MS;
+            }
+            if all_formal(&self.styles) {
+                self.styles = default_styles();
+            }
+            if self.cleanup_level == CleanupLevel::None {
+                self.spoken_cleanup = false;
+            } else if self.raw_mode {
+                self.cleanup_level = CleanupLevel::None;
+            }
+            self.raw_mode = false;
+        }
         self.prefs_rev = PREFS_REV;
     }
 
@@ -261,6 +305,15 @@ impl Prefs {
             if all[i + 1..].contains(a) {
                 return Err("shortcuts must differ from each other".into());
             }
+        }
+        if let Some(k) = self
+            .app_buckets
+            .keys()
+            .find(|k| k.trim().is_empty() || k.contains('='))
+        {
+            return Err(format!(
+                "style per app: \"{k}\" is not an app (exe name like slack.exe, or a web host like mail.example.com)"
+            ));
         }
         let hf = self.hands_free_silence_ms;
         if hf != 0 && !(300..=10_000).contains(&hf) {
@@ -630,6 +683,94 @@ mod tests {
         // Old prefs.json without the field: on.
         let old: Prefs = serde_json::from_str(r#"{"developer":{}}"#).unwrap();
         assert!(old.developer.decode_while_speaking);
+    }
+
+    #[test]
+    fn d27_defaults_chats_casual_and_a_3_s_budget() {
+        let p = Prefs::default();
+        assert_eq!(p.styles.personal, "casual");
+        assert_eq!(p.styles.work, "casual");
+        assert_eq!(p.styles.email, "formal");
+        assert_eq!(p.styles.other, "formal");
+        assert_eq!(p.llm_timeout_ms, 3000);
+        let c = p.session_config();
+        assert_eq!(c.styles, default_styles());
+        assert_eq!(c.llm_timeout_ms, 3000);
+        assert!(p.app_buckets.is_empty());
+    }
+
+    #[test]
+    fn d27_migration_moves_untouched_defaults_once() {
+        let formal =
+            r#""styles":{"personal":"formal","work":"formal","email":"formal","other":"formal"}"#;
+        let (p, _) = load_str(
+            "mig27-old",
+            &format!(r#"{{"prefs_rev":2,"llm_timeout_ms":1500,{formal}}}"#),
+        );
+        assert_eq!(p.llm_timeout_ms, 3000);
+        assert_eq!(p.styles, default_styles());
+        assert_eq!(p.prefs_rev, PREFS_REV);
+        // Chosen values stay.
+        let (p, _) = load_str(
+            "mig27-user",
+            r#"{"prefs_rev":2,"llm_timeout_ms":2000,"styles":{"personal":"very_casual","work":"formal","email":"formal","other":"formal"}}"#,
+        );
+        assert_eq!(p.llm_timeout_ms, 2000);
+        assert_eq!(p.styles.personal, "very_casual");
+        assert_eq!(p.styles.work, "formal");
+        // After the migration, 1500 and all-formal are explicit choices.
+        let (p, _) = load_str(
+            "mig27-new",
+            &format!(r#"{{"prefs_rev":{PREFS_REV},"llm_timeout_ms":1500,{formal}}}"#),
+        );
+        assert_eq!(p.llm_timeout_ms, 1500);
+        assert!(all_formal(&p.styles));
+    }
+
+    #[test]
+    fn d27_migration_keeps_what_none_and_raw_mode_did() {
+        // "None — exactly what you said" was verbatim: now spoken_cleanup off.
+        let (p, _) = load_str("mig27-none", r#"{"prefs_rev":2,"cleanup_level":"none"}"#);
+        assert_eq!(p.cleanup_level, CleanupLevel::None);
+        assert!(!p.spoken_cleanup);
+        assert!(!p.session_config().spoken_cleanup);
+        // raw_mode only ever skipped the LLM: now "No AI", formatting on.
+        let (p, _) = load_str(
+            "mig27-raw",
+            r#"{"prefs_rev":2,"cleanup_level":"light","raw_mode":true}"#,
+        );
+        assert_eq!(p.cleanup_level, CleanupLevel::None);
+        assert!(!p.raw_mode);
+        assert!(p.spoken_cleanup);
+        // A rev-3 "No AI" keeps formatting.
+        let (p, _) = load_str(
+            "mig27-noai",
+            &format!(r#"{{"prefs_rev":{PREFS_REV},"cleanup_level":"none"}}"#),
+        );
+        assert!(p.spoken_cleanup);
+    }
+
+    #[test]
+    fn app_buckets_round_trip_and_reject_bad_keys() {
+        let d = tmpdir("buckets");
+        let path = d.join(FILE_NAME);
+        let mut p = Prefs::default();
+        p.app_buckets.insert("mychat".into(), StyleBucket::Personal);
+        p.app_buckets
+            .insert("mail.example.com".into(), StyleBucket::Email);
+        p.save(&path).unwrap();
+        let (q, _) = Prefs::load(&path);
+        assert_eq!(q.app_buckets, p.app_buckets);
+        assert_eq!(q.validate(), Ok(()));
+        p.app_buckets
+            .insert("rakuten viber".into(), StyleBucket::Personal);
+        assert_eq!(p.validate(), Ok(()), "exe names may contain spaces");
+        p.app_buckets.insert("a=b".into(), StyleBucket::Work);
+        assert!(p.validate().unwrap_err().contains("a=b"));
+        p.app_buckets.clear();
+        p.app_buckets.insert(" ".into(), StyleBucket::Work);
+        assert!(p.validate().is_err());
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

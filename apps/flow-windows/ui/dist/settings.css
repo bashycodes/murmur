@@ -183,6 +183,10 @@ button.danger {
   color: var(--muted);
   font-size: 11px;
 }
+.styles small.preview {
+  display: block;
+  font-style: italic;
+}
 
 /* history */
 ol.hist {
