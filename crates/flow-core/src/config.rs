@@ -126,6 +126,11 @@ pub struct SessionConfig {
     /// transcript) while the user is still speaking, so commit only decodes
     /// the difference. Only when the LLM would run. Default on.
     pub llm_prefill: bool,
+    /// Skip the LLM when the deterministic result leaves it nothing to do
+    /// (`cleanup::llm_can_help`: short, punctuated, capitalised, no fillers,
+    /// command or number words left). `fallback_reason` is then
+    /// `llm_skipped_clean`. Default on (D27).
+    pub llm_skip_clean: bool,
     /// Deterministic spoken cleanup before the LLM and post-processing:
     /// spoken punctuation, fillers, stutters, "scratch that"/"no wait"
     /// backtracking, money/time/date formatting (`postprocess::spoken`),
@@ -184,6 +189,7 @@ impl Default for SessionConfig {
             vad: true,
             hallucination_guard: true,
             llm_prefill: true,
+            llm_skip_clean: true,
             spoken_cleanup: true,
             endpoint_silence_ms: None,
             segment_pause_ms: None,
