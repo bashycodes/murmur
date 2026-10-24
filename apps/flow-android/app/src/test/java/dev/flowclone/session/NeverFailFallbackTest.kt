@@ -47,7 +47,7 @@ class NeverFailFallbackTest {
         var note: String? = null
         override fun feedback(e: FeedbackEvent) = Unit
         override suspend fun insert(text: String): Boolean { inserted += text; return true }
-        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?) = Unit
+        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?) = Unit
         override fun hasMicPermission() = true
         override fun captureContext() = FieldContext(appId = "com.android.chrome")
         override fun sessionConfig() = SessionConfig()

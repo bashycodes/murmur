@@ -22,6 +22,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * (kept WAV file name, Developer "Keep last dictation audio (debug)"; else null).
  * Both since D27 (2026-10-24): style (style sent for the target's bucket), llm ("formatted" |
  * core fallback_reason such as llm_skipped_clean, a normal result | null = LLM off).
+ * Since 2026-10-24 (phone-local-only finding): route_order (routes tried, in order), speech_ms
+ * (core VAD speech) and peak_dbfs (peak level), so a blank_asr line is diagnosable.
  *
  * Logging must never affect dictation: entries are queued (bounded, drop-oldest) and written
  * on one background thread; every failure is swallowed and counted.
@@ -80,6 +82,12 @@ data class DictationTrace(
     val style: String? = null,
     /** D27: "formatted" (LLM text used), the core `fallback_reason` (llm_skipped_clean = nothing to do, llm_timeout, …), or null = LLM off. */
     val llm: String? = null,
+    /** 2026-10-24: routes the router may take, in try order ("client,server" = phone first); set by the app. */
+    val routeOrder: String? = null,
+    /** 2026-10-24: core VAD speech in the dictation (`timings.speech_ms`); null = VAD off / no result. */
+    val speechMs: Long? = null,
+    /** 2026-10-24: peak level of the dictation audio in dBFS (`timings.peak_dbfs`). */
+    val peakDbfs: Int? = null,
 )
 
 /** `insert` field: {"outcome": …, "steps": […]}. */
@@ -205,6 +213,9 @@ object DebugFormat {
         "local_load_ms" to t.localLoadMs,
         "style" to t.style,
         "llm" to t.llm,
+        "route_order" to t.routeOrder,
+        "speech_ms" to t.speechMs,
+        "peak_dbfs" to t.peakDbfs,
         "target" to t.target,
         "insert" to Raw(obj("outcome" to t.insert.outcome, "steps" to t.insert.steps)),
         "raw" to t.raw,
@@ -239,6 +250,7 @@ object DebugFormat {
             s("pre_asr_ms")?.takeIf { it != "0" }?.let { "(+$it early, ${s("segments")} seg)" }, s("post_ms")?.let { "post $it" },
             s("endpoint_wait_ms")?.let { "endpoint $it" }, s("rtt_ms")?.let { "rtt $it" },
             s("connect_ms")?.let { "connect $it" }, s("local_load_ms")?.let { "phone model loaded in $it" },
+            s("speech_ms")?.let { "speech $it ms" }, s("peak_dbfs")?.let { "peak $it dBFS" },
         ).joinToString(" · ")
         val text = s("text") ?: s("raw") ?: ""
         val err = s("error")?.let { "\n  error: $it" } ?: ""

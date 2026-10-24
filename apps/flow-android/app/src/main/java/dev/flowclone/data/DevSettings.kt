@@ -71,6 +71,20 @@ data class DevSettings(
     val cloudFirst: Boolean
         get() = cloudRouted && routeOrder.firstOrNull { it == Route.CLOUD || (it == Route.SERVER && allowServer) || (it == Route.CLIENT && allowClient) } == Route.CLOUD
 
+    /**
+     * Debug log `route_order` (2026-10-24): the routes the router may take for this build, in
+     * try order (`client,server` = phone first). "" = none on.
+     */
+    fun routeOrderWire(caps: BuildCaps): String = effective(caps).let { e ->
+        e.routeOrder.filter {
+            when (it) {
+                Route.SERVER -> e.allowServer
+                Route.CLIENT -> e.allowClient
+                Route.CLOUD -> e.cloudRouted
+            }
+        }.joinToString(",") { it.wire }
+    }
+
     /** No route can dictate ("both off" predates the cloud route; a cloud-only setup is not off). */
     val bothOff: Boolean get() = !allowServer && !allowClient && !cloudRouted
     val serverConfigured: Boolean get() = host.isNotBlank()

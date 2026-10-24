@@ -106,14 +106,23 @@ class DevPagesTest {
     // ---- hub subtitles ----
 
     @Test fun routingSummary() {
-        assertEquals("Server → On-device", DevSummary.routing(saved, caps))
-        assertEquals("On-device → Server", DevSummary.routing(saved.copy(routeOrder = listOf(Route.CLIENT, Route.SERVER)), caps))
-        assertEquals("On-device", DevSummary.routing(saved.copy(allowServer = false), caps))
+        // 2026-10-24 phone-local-only: the order must be obvious at a glance ("X first → Y").
+        assertEquals("Server first → Phone", DevSummary.routing(saved, caps))
+        assertEquals("Phone first → Server", DevSummary.routing(saved.copy(routeOrder = listOf(Route.CLIENT, Route.SERVER)), caps))
+        assertEquals("Phone only", DevSummary.routing(saved.copy(allowServer = false), caps))
+        assertEquals("Server only", DevSummary.routing(saved.copy(allowClient = false), caps))
         assertEquals("Dictation disabled", DevSummary.routing(saved.copy(allowServer = false, allowClient = false), caps))
-        assertEquals("On-device", DevSummary.routing(DevSettings.defaults(BuildCaps.LOCAL), BuildCaps.LOCAL))
+        assertEquals("Phone only", DevSummary.routing(DevSettings.defaults(BuildCaps.LOCAL), BuildCaps.LOCAL))
         val p = CloudProvider(id = "p1", label = "Groq", baseUrl = "https://api.groq.com/openai/v1")
         val c = saved.copy(allowCloud = true, routeOrder = listOf(Route.CLOUD, Route.SERVER, Route.CLIENT), cloud = CloudSettings("p1", listOf(p)))
-        assertEquals("Cloud (Groq) → Server → On-device", DevSummary.routing(c, caps))
+        assertEquals("Cloud (Groq) first → Server → Phone", DevSummary.routing(c, caps))
+    }
+
+    @Test fun routingSummaryFollowsTheStoredOrder() {
+        for (order in listOf(listOf(Route.SERVER, Route.CLIENT), listOf(Route.CLIENT, Route.SERVER))) {
+            val shown = DevSummary.routing(saved.copy(routeOrder = order), caps).split(" → ").map { it.removeSuffix(" first") }
+            assertEquals(order.map { DevSummary.routeName(it, saved) }, shown)
+        }
     }
 
     @Test fun serverSummaryNeverShowsTheToken() {
