@@ -16,9 +16,10 @@ import dev.flowclone.core.CleanupLevel
  * starting from what is stored now, so a page only ever changes its own fields.
  */
 object SettingsPages {
-    enum class Page { HUB, LANGUAGE, ENGINE, CLEANUP, TIMING, BUBBLE, APPS, HISTORY }
+    /** [STYLE] = Writing style (D27); [APP_STYLES] = its per-app bucket list, opened from [STYLE] (not a hub row). */
+    enum class Page { HUB, LANGUAGE, STYLE, APP_STYLES, ENGINE, CLEANUP, TIMING, BUBBLE, APPS, HISTORY }
 
-    enum class Field { ENDPOINT, CAP, DENYLIST }
+    enum class Field { ENDPOINT, CAP, DENYLIST, APP_STYLES }
 
     /** `remote` builds have no on-device engine: no model import, no local LLM (hybrid-architecture §1.4). */
     fun visible(p: Page, caps: BuildCaps): Boolean = when (p) {
@@ -28,12 +29,12 @@ object SettingsPages {
 
     fun visiblePages(caps: BuildCaps): List<Page> = Page.entries.filter { it != Page.HUB && visible(it, caps) }
 
-    fun hasForm(p: Page) = p == Page.TIMING || p == Page.APPS
+    fun hasForm(p: Page) = p == Page.TIMING || p == Page.APPS || p == Page.APP_STYLES
 
-    fun pageOf(f: Field): Page = if (f == Field.DENYLIST) Page.APPS else Page.TIMING
+    fun pageOf(f: Field): Page = when (f) { Field.DENYLIST -> Page.APPS; Field.APP_STYLES -> Page.APP_STYLES; else -> Page.TIMING }
 
     val TITLES = mapOf(
-        Page.HUB to "Settings", Page.LANGUAGE to "Language", Page.ENGINE to "Speech engine", Page.CLEANUP to "AI cleanup",
+        Page.HUB to "Settings", Page.LANGUAGE to "Language", Page.STYLE to "Writing style", Page.APP_STYLES to "Style per app", Page.ENGINE to "Speech engine", Page.CLEANUP to "AI cleanup",
         Page.TIMING to "Timing & limits", Page.BUBBLE to "Bubble", Page.APPS to "Excluded apps", Page.HISTORY to "History",
     )
 
@@ -74,11 +75,12 @@ object SettingsPages {
     private val PACKAGE = Regex("""[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+""")
 
     /** The form pages' inputs as typed. */
-    data class Input(val endpointMs: String, val capMinutes: String, val decodeWhileSpeaking: Boolean, val denylist: String) {
+    data class Input(val endpointMs: String, val capMinutes: String, val decodeWhileSpeaking: Boolean, val denylist: String, val appStyles: String = "") {
         companion object {
             fun of(s: Settings) = Input(
                 endpointMs = s.endpointSilenceMs.toString(), capMinutes = s.capMinutes.toString(),
                 decodeWhileSpeaking = s.decodeWhileSpeaking, denylist = s.userDenylist.sorted().joinToString("\n"),
+                appStyles = WritingStyle.formatOverrides(s.appBuckets),
             )
         }
     }
@@ -104,6 +106,12 @@ object SettingsPages {
             if (bad.isNotEmpty()) errors[Field.DENYLIST] = "Not a package name: " + bad.distinct().joinToString(", ") + " (e.g. com.example.app)"
             else out = out.copy(userDenylist = lines.toSet())
         }
+        if (p == Page.APP_STYLES) {
+            val parsed = WritingStyle.parseOverrides(i.appStyles)
+            if (parsed.errors.isNotEmpty()) {
+                errors[Field.APP_STYLES] = "Write package = personal, work, email or other: " + parsed.errors.distinct().joinToString(", ")
+            } else out = out.copy(appBuckets = parsed.map)
+        }
         return Result(errors, if (errors.isEmpty()) out else null)
     }
 }
@@ -111,8 +119,9 @@ object SettingsPages {
 /** One form page's edit state: what is stored ([saved]) and what the page shows ([draft]). */
 data class SettingsDraft(val base: Settings, val saved: SettingsPages.Input, val draft: SettingsPages.Input, val page: SettingsPages.Page) {
     val dirty: Boolean get() = when (page) {
-        SettingsPages.Page.TIMING -> draft.copy(denylist = "") != saved.copy(denylist = "")
+        SettingsPages.Page.TIMING -> draft.copy(denylist = "", appStyles = "") != saved.copy(denylist = "", appStyles = "")
         SettingsPages.Page.APPS -> draft.denylist != saved.denylist
+        SettingsPages.Page.APP_STYLES -> draft.appStyles != saved.appStyles
         else -> false
     }
 
@@ -136,7 +145,7 @@ object SettingsSummary {
     const val WARN_MOCK = "Mock engine is on: every dictation inserts a fixed test sentence."
     const val WARN_NO_WHISPER = "No speech model imported: import one under Speech engine."
     const val WARN_NO_PARAKEET = "Parakeet is selected but no model folder is imported: whisper is used."
-    const val WARN_NO_LLM = "AI cleanup is on but no GGUF model is imported: plain transcripts are inserted."
+    const val WARN_NO_LLM = "AI cleanup is on but no GGUF model is imported: formatted transcripts are inserted without it."
 
     private val PREFIXES = listOf("sherpa-onnx-", "nemo-", "parakeet-tdt-", "parakeet-", "ggml-")
     private val SUFFIX = Regex("""(-instruct)?([-.](q\d\w*|int8|fp16|f16|f32))?$""", RegexOption.IGNORE_CASE)
@@ -169,7 +178,8 @@ object SettingsSummary {
     fun levelName(l: CleanupLevel) = SettingsPages.LEVELS.firstOrNull { it.first == l }?.second ?: "Off"
 
     fun cleanup(s: Settings, llm: String?): String {
-        if (!s.llmEnabled) return "Off"
+        // D27: the LLM switch no longer gates the deterministic formatting ("Auto-format" does).
+        if (!s.llmEnabled) return if (s.spokenCleanup) "Off · auto-format still runs" else "Off · no formatting (auto-format off)"
         return "On · ${shortModel(llm) ?: "no model imported"} · ${levelName(s.effectiveCleanup)}"
     }
 

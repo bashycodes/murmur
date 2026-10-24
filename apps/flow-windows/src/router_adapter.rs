@@ -135,6 +135,9 @@ pub struct LastDictation {
     pub status: CommitStatus,
     pub empty_reason: Option<String>,
     pub error: Option<String>,
+    /// D27: what the LLM did ("AI cleaned", "AI not needed (already
+    /// clean)" for `llm_skipped_clean`, …); `None` = LLM off.
+    pub llm: Option<String>,
     pub at_ms: u64,
     /// Cloud (D18): provider id and its label, model, billed audio, cost.
     pub provider: Option<String>,
@@ -200,6 +203,9 @@ impl LastDictation {
             status: r.status,
             empty_reason: r.empty_reason.clone(),
             error: r.error.clone(),
+            llm: crate::core_api::llm_outcome_label(
+                crate::core_api::llm_outcome(Some(r)).as_deref(),
+            ),
             at_ms: now_ms(),
         }
     }
@@ -887,6 +893,29 @@ mod tests {
         assert_eq!(j["client_ms"], 620);
         r.route = None;
         assert_eq!(LastDictation::of(&r, &cfg).client_ms, None);
+    }
+
+    #[test]
+    fn last_dictation_shows_llm_skipped_clean_as_a_normal_result() {
+        let cfg = router_config(&dev(true, true), BOTH).unwrap();
+        let mut r = CommitResult::text(CommitStatus::RawTranscript, "hi", false);
+        assert_eq!(LastDictation::of(&r, &cfg).llm, None, "LLM off");
+        r.fallback_reason = Some("llm_skipped_clean".into());
+        assert_eq!(
+            LastDictation::of(&r, &cfg).llm.as_deref(),
+            Some("AI not needed (already clean)")
+        );
+        r.fallback_reason = Some("llm_timeout".into());
+        assert_eq!(
+            LastDictation::of(&r, &cfg).llm.as_deref(),
+            Some("AI too slow, formatted text used")
+        );
+        r.fallback_reason = None;
+        r.status = CommitStatus::Formatted;
+        assert_eq!(
+            LastDictation::of(&r, &cfg).llm.as_deref(),
+            Some("AI cleaned")
+        );
     }
 
     #[test]

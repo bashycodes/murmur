@@ -11,7 +11,9 @@
 //! 5. inverse text normalisation for money, percentages, clock times and
 //!    dates: "forty dollars" → "$40", "three thirty pm" → "3:30 PM",
 //!    "March fifth" → "March 5th"
-//! 6. sentence capitalisation and spacing around punctuation
+//! 6. spoken formatting commands: "quote … unquote", "in parentheses",
+//!    "open bracket … close bracket", "dash" (`spoken_commands.rs`)
+//! 7. sentence capitalisation and spacing around punctuation
 //!
 //! Everything is conservative: a phrase that is probably literal ("the
 //! period of", "don't forget that", "there's no wait") is left alone, and
@@ -22,6 +24,9 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use crate::config::AppCategory;
+
+#[path = "spoken_commands.rs"]
+mod commands;
 
 const FILLERS: &[&str] = &[
     "um", "umm", "uh", "uhh", "uhm", "erm", "er", "hmm", "hm", "mm", "mhm",
@@ -354,6 +359,23 @@ fn fillers(toks: Vec<Tok>) -> Vec<Tok> {
                     p.text.push_str(&suf);
                 }
             }
+            // "wanted to, uh, check in": the pause comma before the filler
+            // goes with it when the word before cannot end a clause.
+            // Another comma-wrapped filler next ("to, um, you know, say")
+            // takes the comma instead.
+            let more = c.get(i + 1).is_some_and(|n| {
+                FILLERS.contains(&n.as_str())
+                    || n == "like"
+                    || (n == "you" && c.get(i + 2).is_some_and(|k| k == "know"))
+            });
+            if t.suffix() == "," && !more {
+                if let Some(p) = out
+                    .last_mut()
+                    .filter(|p| p.suffix() == "," && NO_COMMA_AFTER.contains(&p.core().as_str()))
+                {
+                    p.strip_suffix();
+                }
+            }
             if at_start {
                 removed_at_start = true;
             }
@@ -374,8 +396,11 @@ fn fillers(toks: Vec<Tok>) -> Vec<Tok> {
                 continue;
             }
         }
-        if c[i] == "like" && between(1) {
-            out.last_mut().unwrap().strip_suffix();
+        // "So, like, the build …": a leading "like," after a removed "so".
+        if c[i] == "like" && (between(1) || (at_start && removed_at_start && t.suffix() == ",")) {
+            if let Some(p) = out.last_mut().filter(|p| !p.is_break()) {
+                p.strip_suffix();
+            }
             i += 1;
             continue;
         }
@@ -411,6 +436,15 @@ fn fillers(toks: Vec<Tok>) -> Vec<Tok> {
     out
 }
 
+/// Words a comma cannot follow inside a clause ("to,", "were,"): a pause
+/// comma left after one of them by a removed filler is dropped.
+const NO_COMMA_AFTER: &[&str] = &[
+    "a", "an", "the", "to", "of", "for", "with", "at", "in", "on", "by", "from", "into", "is",
+    "are", "was", "were", "be", "been", "am", "my", "your", "his", "her", "our", "their", "and",
+    "or", "but", "will", "would", "could", "should", "can", "have", "has", "had", "do", "does",
+    "did", "just", "really", "very", "about", "like", "i", "we", "you", "they", "he", "she",
+];
+
 fn is_number_start(w: &str) -> bool {
     w.chars()
         .next()
@@ -430,6 +464,9 @@ fn stutters(toks: Vec<Tok>) -> Vec<Tok> {
                 && p.suffix().is_empty()
                 && a.chars().all(char::is_alphabetic)
                 && !KEEP_DOUBLE.contains(&a.as_str())
+                // "five five five" is a phone number, not a stutter.
+                && number_word(&a).is_none()
+                && a != "oh"
             {
                 out.pop();
             }
@@ -714,12 +751,17 @@ fn itn(toks: Vec<Tok>) -> Vec<Tok> {
     let mut out: Vec<Tok> = Vec::with_capacity(toks.len());
     let mut i = 0;
     while i < toks.len() {
-        if let Some((t, used)) = money(&c, &toks, i)
+        if let Some((t, used)) = phone(&c, &toks, i)
+            .or_else(|| money(&c, &toks, i))
             .or_else(|| percent(&c, &toks, i))
             .or_else(|| clock(&c, &toks, i))
             .or_else(|| date(&c, &toks, i))
+            .or_else(|| date_of(&c, &toks, i))
+            .or_else(|| decimal(&c, &toks, i))
+            .or_else(|| cardinal(&c, &toks, i))
         {
-            let mut t = Tok::new(&t);
+            // An opening mark from a spoken command stays: "(forty dollars".
+            let mut t = Tok::new(&format!("{}{t}", lead_marks(&toks[i].text)));
             t.cap = toks[i].cap;
             out.push(t);
             i += used;
@@ -729,6 +771,134 @@ fn itn(toks: Vec<Tok>) -> Vec<Tok> {
         i += 1;
     }
     out
+}
+
+/// Opening quotes/brackets at the start of a token.
+fn lead_marks(s: &str) -> &str {
+    let n = s
+        .find(|c: char| !matches!(c, '"' | '\'' | '(' | '[' | '{' | '\u{201c}' | '\u{2018}'))
+        .unwrap_or(s.len());
+    &s[..n]
+}
+
+/// Single digit word: "zero".."nine", and "oh" inside a digit string.
+fn digit_word(w: &str, inside: bool) -> Option<u64> {
+    if inside && w == "oh" {
+        return Some(0);
+    }
+    unit(w).filter(|&d| d < 10)
+}
+
+/// "five five five, one two three, four five six seven" → "555-123-4567";
+/// seven digits → "123-4567". Pause commas (or a spoken "dash") between
+/// groups must split them 3-3-4 / 3-4.
+fn phone(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
+    digit_word(&c[i], false)?;
+    let mut groups: Vec<String> = vec![String::new()];
+    let mut j = i;
+    let mut last = i;
+    while j < toks.len() && !toks[j].is_break() {
+        let inside = groups.iter().any(|g| !g.is_empty());
+        if c[j] == "dash" && inside && toks[j - 1].suffix().is_empty() {
+            groups.push(String::new());
+            j += 1;
+            continue;
+        }
+        let Some(d) = digit_word(&c[j], inside) else {
+            break;
+        };
+        groups.last_mut().unwrap().push(char::from(b'0' + d as u8));
+        last = j;
+        j += 1;
+        match toks[last].suffix() {
+            "" => {}
+            "," => groups.push(String::new()),
+            _ => break,
+        }
+    }
+    groups.retain(|g| !g.is_empty());
+    let digits: String = groups.concat();
+    let sizes: Vec<usize> = groups.iter().map(String::len).collect();
+    let body = match (digits.len(), sizes.len()) {
+        (10, 1) => format!("{}-{}-{}", &digits[..3], &digits[3..6], &digits[6..]),
+        (7, 1) => format!("{}-{}", &digits[..3], &digits[3..]),
+        _ if sizes == [3, 3, 4] || sizes == [3, 4] => groups.join("-"),
+        _ => return None,
+    };
+    Some((format!("{body}{}", toks[last].suffix()), last + 1 - i))
+}
+
+/// "two point three" → "2.3" (not "at one point").
+fn decimal(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
+    if !toks[i].text.chars().any(char::is_alphabetic) {
+        return None;
+    }
+    let (v, n) = parse_number(c, toks, i)?;
+    if !toks[i + n - 1].suffix().is_empty() || c.get(i + n)? != "point" {
+        return None;
+    }
+    if v == 1
+        && i > 0
+        && matches!(
+            c[i - 1].as_str(),
+            "at" | "one" | "some" | "the" | "a" | "that" | "this" | "any" | "each"
+        )
+    {
+        return None;
+    }
+    let mut j = i + n + 1;
+    let mut frac = String::new();
+    while j < toks.len() && toks[j - 1].suffix().is_empty() {
+        let Some(d) = digit_word(&c[j], !frac.is_empty()) else {
+            break;
+        };
+        frac.push(char::from(b'0' + d as u8));
+        j += 1;
+    }
+    if frac.is_empty() || !toks[i + n].suffix().is_empty() {
+        return None;
+    }
+    Some((format!("{v}.{frac}{}", toks[j - 1].suffix()), j - i))
+}
+
+/// Words a bare cardinal does not turn into digits before: they make it
+/// part of a larger phrase ("ten and", "twenty or so").
+const CARDINAL_BLOCK_AFTER: &[&str] = &["and", "or", "o'clock", "am", "pm", "point", "percent"];
+
+/// A spelled cardinal ≥ 10 before a word: "two hundred and fifty users"
+/// → "250 users", "ten minutes" → "10 minutes". Numbers below ten stay
+/// words ("five apples", AP style), and so does any number next to another
+/// number word ("eight thirty", "nineteen eighty four") or at the end of a
+/// phrase.
+fn cardinal(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
+    if !toks[i].text.chars().any(char::is_alphabetic) {
+        return None;
+    }
+    // "a hundred" stays a phrase.
+    if c[i] == "a" || (i > 0 && (number_word(&c[i - 1]).is_some() || c[i - 1] == "point")) {
+        return None;
+    }
+    // "ten and twelve", "five to fifteen": both stay words.
+    if i > 1 && matches!(c[i - 1].as_str(), "and" | "or" | "to") && number_word(&c[i - 2]).is_some()
+    {
+        return None;
+    }
+    let (v, n) = parse_number(c, toks, i)?;
+    if v < 10 || !toks[i + n - 1].suffix().is_empty() || toks[i + n - 1].is_break() {
+        return None;
+    }
+    let next = c.get(i + n)?;
+    let word = next.chars().next().is_some_and(char::is_alphabetic);
+    if !word
+        || toks[i + n].is_break()
+        || number_word(next).is_some()
+        || ordinal_word(next).is_some()
+        || matches!(next.as_str(), "hundred" | "thousand")
+        || CARDINAL_BLOCK_AFTER.contains(&next.as_str())
+    {
+        return None;
+    }
+    Some((v.to_string(), n))
 }
 
 fn money(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
@@ -833,7 +1003,14 @@ fn clock(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
             j += n;
         }
     }
-    let (mer, n) = meridiem(c, toks, j)?;
+    let Some((mer, n)) = meridiem(c, toks, j) else {
+        // "seven thirty tonight" → "7:30 tonight": minutes and a day part.
+        let m = minutes?;
+        if !toks[j - 1].suffix().is_empty() || !day_part(c, j) {
+            return None;
+        }
+        return Some((format!("{h}:{m:02}"), j - i));
+    };
     let used = j + n - i;
     let suffix = clock_suffix(toks, i + used - 1);
     let t = match minutes {
@@ -841,6 +1018,20 @@ fn clock(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
         None => format!("{h} {mer}"),
     };
     Some((format!("{t}{suffix}"), used))
+}
+
+/// "tonight", "tomorrow", "this morning", "in the evening" at `j`.
+fn day_part(c: &[String], j: usize) -> bool {
+    const PARTS: &[&str] = &["morning", "afternoon", "evening", "night"];
+    match c.get(j).map(String::as_str) {
+        Some("tonight" | "today" | "tomorrow") => true,
+        Some("this") => c.get(j + 1).is_some_and(|w| PARTS.contains(&w.as_str())),
+        Some("in") => {
+            c.get(j + 1).is_some_and(|w| w == "the")
+                && c.get(j + 2).is_some_and(|w| PARTS.contains(&w.as_str()))
+        }
+        _ => false,
+    }
 }
 
 /// The punctuation after a meridiem token. The dots of "p.m." are not
@@ -901,6 +1092,42 @@ fn date(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
     ))
 }
 
+/// "the twenty first of October" → "October 21st" (the "Month Nth"
+/// convention of [`date`]).
+fn date_of(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
+    let mut j = i;
+    if c[j] == "the" {
+        if !toks[j].suffix().is_empty() {
+            return None;
+        }
+        j += 1;
+    }
+    let w = c.get(j)?;
+    let (day, n) = if let Some(d) = ordinal_word(w) {
+        (d, 1)
+    } else {
+        let t = tens(w)?;
+        let d = ordinal_word(c.get(j + 1)?).filter(|&d| d < 10)?;
+        if !toks[j].suffix().is_empty() {
+            return None;
+        }
+        (t + d, 2)
+    };
+    j += n;
+    if !(1..=31).contains(&day) || !toks[j - 1].suffix().is_empty() || c.get(j)? != "of" {
+        return None;
+    }
+    if !toks[j].suffix().is_empty() || !MONTHS.contains(&c.get(j + 1)?.as_str()) {
+        return None;
+    }
+    let month = capitalise(&c[j + 1]);
+    let suffix = toks[j + 1].suffix();
+    Some((
+        format!("{month} {day}{}{suffix}", ordinal_suffix(day)),
+        j + 2 - i,
+    ))
+}
+
 // ---- driver --------------------------------------------------------------
 
 /// Tidy what the token passes leave: no empty tokens, no punctuation-only
@@ -951,6 +1178,7 @@ pub fn spoken_cleanup(text: &str) -> String {
     let toks = fillers(toks);
     let toks = stutters(toks);
     let toks = backtrack(toks);
+    let toks = commands::spoken_commands(toks);
     let toks = itn(toks);
     let toks = tidy(toks);
     if toks == original {
@@ -973,6 +1201,8 @@ const ORDINAL_BLOCK: &[&str] = &[
     "came", "come", "comes", "is", "was", "were", "are", "be",
 ];
 /// Closes an ordinal list after "first … second …": "and finally …".
+/// Verbs a cardinal list can follow without a pause ("the goals are one, …").
+const LIST_INTRO: &[&str] = &["are", "were", "include", "includes", "including"];
 const FINAL_MARKERS: &[&str] = &["finally", "lastly"];
 const JOINERS: &[&str] = &["and", "then"];
 /// Longest item, in tokens: a longer "item" means the ordinals were prose.
@@ -1061,7 +1291,13 @@ fn marker_at(toks: &[Tok], c: &[String], i: usize) -> Option<Marker> {
     // A bare number only at a clause start and followed by punctuation:
     // "One, clone the repo." / "1. Clone the repo."
     let punct = matches!(toks[i].suffix(), "," | "." | ":" | ")" | ".)");
-    (punct && at_boundary(toks, joiner_start(toks, c, i))).then_some(Marker {
+    // "Our priorities are one, hiring, two, …": the first marker may follow
+    // the verb that introduces the list.
+    let intro = n == 1
+        && i > 0
+        && toks[i - 1].suffix().is_empty()
+        && LIST_INTRO.contains(&c[i - 1].as_str());
+    (punct && (intro || at_boundary(toks, joiner_start(toks, c, i)))).then_some(Marker {
         start: i,
         end: i + 1,
         n,
@@ -1218,7 +1454,8 @@ fn lists(toks: Vec<Tok>) -> Vec<Tok> {
 
 static GREETING: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?i)^(hi|hello|hey|dear|good (?:morning|afternoon|evening)|greetings)\b([^,.!?:;\n]*?)\s*(?:[,.!:]\s*|\n+\s*)(\S[\s\S]*)$",
+        // The name may hold a title abbreviation: "Dear Mr. Patel,".
+        r"(?i)^(hi|hello|hey|dear|good (?:morning|afternoon|evening)|greetings)\b((?:\s(?:mr|mrs|ms|mx|dr|prof|st)\.|[^,.!?:;\n])*?)\s*(?:[,.!:]\s*|\n+\s*)(\S[\s\S]*)$",
     )
     .unwrap()
 });
@@ -1277,7 +1514,10 @@ pub fn email_layout(text: &str) -> String {
                 let first = n.split_whitespace().next().unwrap_or("").to_lowercase();
                 !NOT_A_NAME.contains(&first.as_str())
             });
-            if named || (name.is_none() && SIGN_OFF_ALONE.contains(&phrase.as_str())) {
+            // A bare "Thanks." closes the email only after a spoken
+            // greeting ("Hey John, … Thanks."); without one it is prose.
+            let alone = SIGN_OFF_ALONE.contains(&phrase.as_str()) || greeting.is_some();
+            if named || (name.is_none() && alone) {
                 let line = capitalise(&s[2]) + ",";
                 let block = match name.filter(|_| named) {
                     Some(n) => format!("{line}\n{n}"),
@@ -1569,6 +1809,177 @@ mod tests {
         // Not an email app: no email layout.
         let s = "Hi Tom, the build is green. Thanks, Anna.";
         assert_eq!(layout(s, AppCategory::WorkChat), s);
+    }
+
+    /// The 16 literal-use negatives of the 2026-10-24 formatting eval
+    /// (`tools/probes/prototypes/formatting_eval_2026_10_24/cases.jsonl`).
+    #[test]
+    fn eval_negatives_are_unchanged() {
+        for s in [
+            "The word quote comes from Latin.",
+            "Can you send me a quote for the new roof?",
+            "The trial period ends next week.",
+            "In British English, a period is called a full stop.",
+            "Always use the Oxford comma in lists.",
+            "Don't forget that we have dinner at eight.",
+            "Put a comma after the greeting.",
+            "There's no wait at the new place, let's go there.",
+            "They launched a new line of sneakers.",
+            "The question mark at the end looks wrong.",
+            "I mean it when I say this is our best quarter.",
+            "Quote me on that.",
+            "The formula is in parentheses on the board.",
+            "Put the area code in parentheses.",
+            "The answer is in brackets at the bottom of the page.",
+            "Can you get me a quote by end of day?",
+        ] {
+            assert_eq!(t(s), s, "{s}");
+        }
+    }
+
+    #[test]
+    fn repeated_numbers_are_not_stutters() {
+        assert_eq!(
+            t("My number is five five five, one two three, four five six seven."),
+            "My number is 555-123-4567."
+        );
+        assert_eq!(t("call five five five one two one two"), "Call 555-1212");
+        assert_eq!(t("The code is two two."), "The code is two two.");
+        assert_eq!(t("it was a long long day"), "It was a long day");
+    }
+
+    #[test]
+    fn digit_strings_need_a_phone_shape() {
+        for s in [
+            "Count one two three four five.",
+            "Give me five five, one two three four five, six.",
+            "It's one two three.",
+        ] {
+            assert_eq!(t(s), s, "{s}");
+        }
+    }
+
+    #[test]
+    fn filler_takes_its_pause_comma_along() {
+        assert_eq!(
+            t("Um, I just wanted to, uh, check in about the invoice."),
+            "I just wanted to check in about the invoice."
+        );
+        assert_eq!(
+            t("The results were, um, basically the same as last quarter."),
+            "The results were basically the same as last quarter."
+        );
+        // A real clause boundary keeps its comma.
+        assert_eq!(
+            t("Hi everyone, um, just a reminder."),
+            "Hi everyone, just a reminder."
+        );
+        assert_eq!(
+            t("I wanted to, um, you know, say thanks."),
+            "I wanted to say thanks."
+        );
+        assert_eq!(
+            t("I was thinking, uh, we could go."),
+            "I was thinking, we could go."
+        );
+    }
+
+    #[test]
+    fn leading_so_like_goes() {
+        assert_eq!(
+            t("So, like, the build is, you know, kind of broken right now."),
+            "The build is kind of broken right now."
+        );
+        // "like" with meaning stays.
+        assert_eq!(t("Like I said, it's fine."), "Like I said, it's fine.");
+    }
+
+    #[test]
+    fn itn_times_cardinals_decimals_and_dates() {
+        assert_eq!(
+            t("Meet me at seven thirty tonight."),
+            "Meet me at 7:30 tonight."
+        );
+        assert_eq!(
+            t("call at eight fifteen in the morning"),
+            "Call at 8:15 in the morning"
+        );
+        assert_eq!(
+            t("We have about two hundred and fifty users on the beta."),
+            "We have about 250 users on the beta."
+        );
+        assert_eq!(
+            t("I'll be there in ten minutes."),
+            "I'll be there in 10 minutes."
+        );
+        assert_eq!(
+            t("Version two point three is live."),
+            "Version 2.3 is live."
+        );
+        assert_eq!(
+            t("It weighs zero point five kilos."),
+            "It weighs 0.5 kilos."
+        );
+        assert_eq!(
+            t("The meeting is on the twenty first of October at two PM."),
+            "The meeting is on October 21st at 2 PM."
+        );
+        assert_eq!(t("Due the fifth of May."), "Due May 5th.");
+        // Left as words.
+        for s in [
+            "At one point three people left.",
+            "I'll pick you up at eight thirty.",
+            "I'd like five apples.",
+            "We counted to twenty.",
+            "A hundred people came.",
+            "In nineteen eighty four it rained.",
+            "Ten and twelve are even.",
+            "The first of many.",
+            "Seven thirty works.",
+        ] {
+            assert_eq!(t(s), s, "{s}");
+        }
+    }
+
+    #[test]
+    fn email_greeting_keeps_a_title_abbreviation() {
+        assert_eq!(
+            lay("Dear Mr. Patel, thank you for your time yesterday. I've attached the contract for your review. Sincerely, Laura Chen.", AppCategory::Email),
+            "Dear Mr. Patel,\n\nThank you for your time yesterday. I've attached the contract for your review.\n\nSincerely,\nLaura Chen"
+        );
+        assert_eq!(
+            email_layout("Hi Dr. Lee, see you soon."),
+            "Hi Dr. Lee,\n\nSee you soon."
+        );
+    }
+
+    #[test]
+    fn bare_thanks_closes_an_email_with_a_greeting() {
+        assert_eq!(
+            lay(
+                "Hey John, just a quick note. The meeting moved to three PM. Thanks.",
+                AppCategory::Email
+            ),
+            "Hey John,\n\nJust a quick note. The meeting moved to 3 PM.\n\nThanks,"
+        );
+        // No greeting: prose (email_layout_never_invents_structure).
+        assert_eq!(
+            email_layout("Please review it. Thanks."),
+            "Please review it. Thanks."
+        );
+    }
+
+    #[test]
+    fn cardinal_list_after_an_intro_verb() {
+        assert_eq!(
+            lay(
+                "Our priorities are one, hiring, two, onboarding, three, retention.",
+                AppCategory::Other
+            ),
+            "Our priorities are:\n\n1. Hiring\n2. Onboarding\n3. Retention"
+        );
+        let s = "My answers are one, maybe two.";
+        assert_eq!(lay(s, AppCategory::Other), s);
     }
 
     #[test]

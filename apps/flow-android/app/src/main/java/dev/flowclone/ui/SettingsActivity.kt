@@ -38,6 +38,8 @@ import kotlin.concurrent.thread
  *   hub       status (engine, next dictation language, warnings); one row per page with its
  *             current value; Developer settings + Mock engine; About (version, 7-tap unlock)
  *   language  dictation language, auto-format
+ *   style     writing style per bucket (personal / work / email / other), D27
+ *   app_styles  per-app bucket overrides (package = bucket), from the style page        [Save]
  *   engine    whisper / Parakeet, model imports                       (not in `remote`)
  *   cleanup   local AI cleanup on/off, GGUF model, strength            (not in `remote`)
  *   timing    hands-free stop after silence, decode while speaking, session limit   [Save]
@@ -77,6 +79,8 @@ class SettingsActivity : Activity() {
         when (page) {
             Page.HUB -> renderHub()
             Page.LANGUAGE -> renderLanguage()
+            Page.STYLE -> renderStyle()
+            Page.APP_STYLES -> renderAppStyles()
             Page.ENGINE -> renderEngine()
             Page.CLEANUP -> renderCleanup()
             Page.TIMING -> renderTiming()
@@ -173,6 +177,7 @@ class SettingsActivity : Activity() {
         capMinutes = fieldRows[Field.CAP]?.text ?: i.capMinutes,
         decodeWhileSpeaking = decodeToggle?.isChecked ?: i.decodeWhileSpeaking,
         denylist = fieldRows[Field.DENYLIST]?.text ?: i.denylist,
+        appStyles = fieldRows[Field.APP_STYLES]?.text ?: i.appStyles,
     )
 
     private fun validate(): SettingsPages.Result? {
@@ -228,12 +233,14 @@ class SettingsActivity : Activity() {
             sectionLabel("DICTATION")
             card {
                 val language = navRow(R.drawable.ic_set_language, "Language") { open(Page.LANGUAGE) }
+                val style = navRow(R.drawable.ic_set_style, "Writing style") { open(Page.STYLE) }
                 val engine = if (SettingsPages.visible(Page.ENGINE, caps)) navRow(R.drawable.ic_set_mic, "Speech engine") { open(Page.ENGINE) } else null
                 val cleanup = if (SettingsPages.visible(Page.CLEANUP, caps)) navRow(R.drawable.ic_set_sparkle, "AI cleanup") { open(Page.CLEANUP) } else null
                 val timing = navRow(R.drawable.ic_set_timer, "Timing & limits") { open(Page.TIMING) }
                 refreshers += {
                     val s = app.settings.load()
                     language.setSubtitle(SettingsSummary.language(s, app.effectiveLanguage(s)))
+                    style.setSubtitle(dev.flowclone.data.WritingStyle.summary(s))
                     engine?.setSubtitle(SettingsSummary.engine(s, fileName(app.settings.modelPath), fileName(app.settings.parakeetPath)))
                     cleanup?.setSubtitle(SettingsSummary.cleanup(s, fileName(app.settings.llmModelPath)))
                     timing.setSubtitle(SettingsSummary.timing(s))
@@ -317,7 +324,7 @@ class SettingsActivity : Activity() {
         screen {
             sectionLabel("FORMATTING")
             card {
-                toggleRow("Auto-format", "Punctuation, fillers and corrections (\"comma\", \"um\", \"scratch that\", \"five dollars\")", s.spokenCleanup)
+                toggleRow("Auto-format", "Punctuation, quotes, fillers and corrections (\"comma\", \"quote … unquote\", \"um\", \"scratch that\", \"five dollars\"); runs with or without AI cleanup. Off = exactly what you said", s.spokenCleanup)
                     .onChange { on -> applyNow { copy(spokenCleanup = on) } }
             }
             sectionLabel("DICTATION LANGUAGE")
@@ -335,6 +342,53 @@ class SettingsActivity : Activity() {
             }
         }
         refresh()
+    }
+
+    // =====================================================================================
+    // Writing style (D27)
+    // =====================================================================================
+
+    private fun renderStyle() = with(ui) {
+        val s = app.settings.load()
+        screen {
+            note("The style depends on the app you dictate into. Changes apply at once.")
+            for (b in dev.flowclone.data.WritingStyle.BUCKETS) {
+                sectionLabel(b.title.uppercase())
+                card {
+                    val current = b.get(s.styles)
+                    choiceRows(
+                        dev.flowclone.data.WritingStyle.choicesFor(current).map { DevUi.Choice(it.style, it.name, it.description) },
+                        current,
+                    ) { st -> applyNow { copy(styles = b.set(styles, st)) } }
+                }
+                note(b.examples)
+            }
+            sectionLabel("APPS")
+            card {
+                val apps = navRow(R.drawable.ic_set_style, "Style per app") { open(Page.APP_STYLES) }
+                refreshers += {
+                    val n = app.settings.load().appBuckets.size
+                    apps.setSubtitle(if (n == 0) "Built-in list only" else if (n == 1) "1 app moved to another group" else "$n apps moved to another group")
+                }
+            }
+        }
+        refresh()
+    }
+
+    private fun renderAppStyles() = with(ui) {
+        val i = draft!!.draft
+        screen {
+            note("Put an app in another group than the built-in list does (for example a work chat app the list calls personal).")
+            card {
+                fieldRows[Field.APP_STYLES] = fieldRow(
+                    "One app per line: package = personal, work, email or other", i.appStyles,
+                    InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
+                    help = "Find an app's package name in Android Settings → Apps → the app → App details, or its Play Store link (id=…).",
+                    hint = "com.example.app = work", minLines = 4,
+                ) { validate() }
+            }
+            note("Save is in the top bar.")
+        }
     }
 
     // =====================================================================================
@@ -375,14 +429,17 @@ class SettingsActivity : Activity() {
         val s = app.settings.load()
         screen {
             note(
-                "Off by default. When on, a small language model on this phone rewrites each transcript " +
-                    "(punctuation, filler words, \"scratch that\", lists). Needs an imported GGUF model and adds 1–3 s; " +
-                    "if it takes longer than 3 s, or changes too much, the plain transcript is inserted. " +
-                    "Dictionary replacements and snippets apply either way.",
+                "Off by default. Formatting rules always run while Auto-format (Language page) is on: spoken punctuation, " +
+                    "quotes and brackets, fillers, \"scratch that\", numbers, lists and your writing style. " +
+                    "When on, a small language model on this phone also polishes each transcript (run-on sentences, " +
+                    "leftover fillers, corrections). It needs an imported GGUF model and adds 1–3 s; it is skipped when the " +
+                    "text is already clean, and if it takes longer than 3 s, or changes too much, the formatted transcript " +
+                    "is inserted instead. Loading the model takes a little longer than before (its instructions are prepared " +
+                    "at load). Dictionary replacements and snippets apply either way.",
             )
             lateinit var strength: DevUi.ChoiceGroup<dev.flowclone.core.CleanupLevel>
             card {
-                toggleRow("Clean up with local AI", "Applies at once and reloads the engine", s.llmEnabled)
+                toggleRow("Clean up with local AI", "Off: formatting rules still run. Applies at once and reloads the engine", s.llmEnabled)
                     .onChange { on -> strength.isEnabled = on; applyNow { copy(llmEnabled = on) } }
             }
             sectionLabel("MODEL")

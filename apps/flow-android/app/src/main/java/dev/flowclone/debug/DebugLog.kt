@@ -20,6 +20,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * Android since 2026-10-23: engine (whisper|parakeet|server|cloud|mock), model (file / folder
  * name, server-reported or cloud model), language (sent to the engine; "auto" = detect), audio
  * (kept WAV file name, Developer "Keep last dictation audio (debug)"; else null).
+ * Both since D27 (2026-10-24): style (style sent for the target's bucket), llm ("formatted" |
+ * core fallback_reason such as llm_skipped_clean, a normal result | null = LLM off).
  *
  * Logging must never affect dictation: entries are queued (bounded, drop-oldest) and written
  * on one background thread; every failure is swallowed and counted.
@@ -74,6 +76,10 @@ data class DictationTrace(
     val stack: String? = null,
     /** "Keep last dictation audio (debug)": the WAV in `files/debug/audio/` ([DebugAudioStore]); null = none kept. */
     val audio: String? = null,
+    /** D27: style sent for the target's bucket (formal | casual | very_casual | excited); null before a session. */
+    val style: String? = null,
+    /** D27: "formatted" (LLM text used), the core `fallback_reason` (llm_skipped_clean = nothing to do, llm_timeout, …), or null = LLM off. */
+    val llm: String? = null,
 )
 
 /** `insert` field: {"outcome": …, "steps": […]}. */
@@ -197,6 +203,8 @@ object DebugFormat {
         "connect_ms" to t.connectMs,
         "local_cold" to t.localCold,
         "local_load_ms" to t.localLoadMs,
+        "style" to t.style,
+        "llm" to t.llm,
         "target" to t.target,
         "insert" to Raw(obj("outcome" to t.insert.outcome, "steps" to t.insert.steps)),
         "raw" to t.raw,
@@ -224,7 +232,8 @@ object DebugFormat {
         if (o.optString("kind") == "event") return@runCatching "$time  ${s("event")}: ${s("error") ?: ""}"
         val outcome = o.optJSONObject("insert")?.optString("outcome") ?: "?"
         val route = listOfNotNull(s("route") ?: "-", s("fallback")?.let { "($it)" }, s("engine"), s("model")).joinToString(" ") +
-            (s("language")?.let { " · lang $it" } ?: "")
+            (s("language")?.let { " · lang $it" } ?: "") + (s("style")?.let { " · $it" } ?: "") +
+            (dev.flowclone.data.LlmOutcome.label(s("llm"))?.let { " · $it" } ?: "")
         val ms = listOfNotNull(
             s("perceived_ms")?.let { "wait $it ms" }, s("client_ms")?.let { "client $it" }, s("asr_ms")?.let { "asr $it" },
             s("pre_asr_ms")?.takeIf { it != "0" }?.let { "(+$it early, ${s("segments")} seg)" }, s("post_ms")?.let { "post $it" },

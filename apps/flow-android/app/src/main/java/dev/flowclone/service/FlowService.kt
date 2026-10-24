@@ -447,7 +447,9 @@ class FlowService : Service() {
             }
         } catch (_: Throwable) { null }
 
-        override fun captureContext(): FieldContext? = app.accessibility?.captureFieldContext()
+        // "Writing style → Apps" overrides the built-in bucket of the target app (D27).
+        override fun captureContext(): FieldContext? =
+            app.accessibility?.captureFieldContext()?.let { app.settings.load().withAppBucket(it) }
 
         override fun sessionConfig() = app.settings.load().let { it.toSessionConfig(app.dictionary.all(), language = app.effectiveLanguage(it)) }
 

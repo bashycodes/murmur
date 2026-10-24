@@ -314,6 +314,29 @@ pub fn fallback_reason(code: &str) -> &'static str {
     }
 }
 
+/// D27: what the LLM did for a result: `formatted` (its text was used), the
+/// core `fallback_reason` (`llm_skipped_clean`, `llm_timeout`, …), or `None`
+/// (LLM off, or no result). Debug log `llm`, Developer "Active engine".
+pub fn llm_outcome(r: Option<&CommitResult>) -> Option<String> {
+    let r = r?;
+    if r.status == CommitStatus::Formatted {
+        Some("formatted".into())
+    } else {
+        r.fallback_reason.clone()
+    }
+}
+
+/// User-facing text for [`llm_outcome`]: `llm_skipped_clean` reads as a
+/// normal result, not a failure (shared wording with Android).
+pub fn llm_outcome_label(code: Option<&str>) -> Option<String> {
+    Some(match code? {
+        "formatted" => "AI cleaned".into(),
+        "llm_skipped_clean" => "AI not needed (already clean)".into(),
+        "llm_timeout" => "AI too slow, formatted text used".into(),
+        other => format!("AI result not used ({other}), formatted text used"),
+    })
+}
+
 /// `provider_name(id)` = the provider's display name and host (cloud).
 pub fn live_route_label(
     r: &SessionRoute,

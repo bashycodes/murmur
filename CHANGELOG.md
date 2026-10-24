@@ -16,6 +16,38 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- Writing style per app bucket (D27 layer 1), both apps: Personal messages /
+  Work messages / Email / Other, each Formal, Casual or Very casual with an
+  example line (Windows also offers Excited). Chats now default to **casual**
+  (no stiff final period), email and everything else stay formal. Android
+  sends the styles at all for the first time (Settings → Dictation → *Writing
+  style*, applies at once; hub reads "Chats casual · Email formal"); Windows
+  moves an untouched all-formal set to the new defaults once.
+- *Style per app*: put an app into another bucket than the built-in list
+  (Android `package = work`, Windows `exe-or-host = work`).
+- Debug log fields `style` (style sent for the target) and `llm`
+  (`formatted`, the core `fallback_reason`, or null), both platforms
+  (additive to the D21 schema).
+
+### Changed
+
+- The formatting rules run without the AI model (D27): with "Clean up with
+  local AI" off, Android now gets spoken punctuation, quotes / parentheses /
+  dashes, fillers, numbers, lists and the style; the texts say so.
+- Windows: LLM budget default 1500 → 3000 ms (a stored 1500 moves once);
+  cleanup level "None — exactly what you said" is now **No AI** (formatting
+  rules only), plus a separate **Verbatim** (= Auto-format off); a stored None
+  opens as Verbatim, the old "Raw mode" box (it only ever skipped the LLM)
+  becomes No AI and is removed (`prefs_rev` 3).
+- "AI not needed (already clean)" (`llm_skipped_clean`) shows as a normal
+  result in the Developer *Active engine* row and Android history, not as a
+  failure; other fallbacks read "AI too slow / result not used, formatted text
+  used".
+- AI cleanup notes mention the slightly longer model load (prompt v2
+  instructions are prepared at load).
+
 ## [0.2.1] - 2026-10-24
 
 ### Fixed

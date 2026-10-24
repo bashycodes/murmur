@@ -36,7 +36,6 @@ const BOOL_FIELDS = [
     "launch_at_login",
     "show_flow_bar_always",
     "use_ax_context",
-    "raw_mode",
     "restore_clipboard",
     "live_preview",
     "llm_enabled",
@@ -44,12 +43,51 @@ const BOOL_FIELDS = [
     "spoken_cleanup",
 ];
 const STYLES = [
-    ["formal", "Formal — capitals, full punctuation"],
-    ["casual", "Casual — capitals, lighter punctuation"],
-    ["very_casual", "Very casual — no caps, less punctuation"],
-    ["excited", "Excited — more exclamations!"],
+    ["formal", "Formal — capitals and full punctuation"],
+    ["casual", "Casual — capitals, no final period"],
+    ["very_casual", "Very casual — no final period; lowercase with AI cleanup"],
+    ["excited", "Excited — more exclamation marks (AI cleanup)"],
 ];
+/** Example line per style (shared with Android's Writing style page). */
+const STYLE_PREVIEW = {
+    formal: "“Sounds good. See you at 7:30.”",
+    casual: "“Sounds good. See you at 7:30”",
+    very_casual: "“sounds good. see you at 7:30”",
+    excited: "“Sounds good! See you at 7:30!”",
+};
 const BUCKETS = ["personal", "work", "email", "other"];
+const BUCKET_NAMES = ["personal", "work", "email", "other"];
+function showStylePreview(b) {
+    const v = $(`style_${b}`).value;
+    $(`style_${b}_preview`).textContent = STYLE_PREVIEW[v] ?? "";
+}
+/** `app = bucket` lines -> map; throws on a bad line (shown next to Save). */
+function parseAppBuckets(text) {
+    const out = {};
+    for (const raw of text.split("\n")) {
+        const line = raw.trim();
+        if (!line)
+            continue;
+        const i = line.indexOf("=");
+        const app = i > 0 ? line.slice(0, i).trim() : "";
+        const bucket = i > 0 ? line.slice(i + 1).trim().toLowerCase() : "";
+        if (!app || !BUCKET_NAMES.includes(bucket)) {
+            throw new Error(`Style per app: "${line}" — write app = personal, work, email or other`);
+        }
+        out[app] = bucket;
+    }
+    return out;
+}
+function formatAppBuckets(m) {
+    return Object.entries(m ?? {})
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => `${k} = ${v}`)
+        .join("\n");
+}
+/** D27: cleanup "None" = No AI (formatting still runs); Verbatim = Auto-format off too. */
+function cleanupChoice(p) {
+    return p.cleanup_level === "none" && !p.spoken_cleanup ? "verbatim" : p.cleanup_level;
+}
 let current = null;
 // ------------------------------------------------------------------ tabs
 function showTab(name) {
@@ -138,7 +176,7 @@ function fillForm(prefs) {
     $("microphone").value = prefs.microphone ?? "";
     for (const f of BOOL_FIELDS)
         $(f).checked = Boolean(prefs[f]);
-    $("cleanup_level").value = prefs.cleanup_level;
+    $("cleanup_level").value = cleanupChoice(prefs);
     $("paste_method").value = prefs.paste_method;
     $("languages").value = prefs.languages.join(", ");
     $("max_dictation_minutes").value = String(prefs.max_dictation_minutes);
@@ -150,7 +188,9 @@ function fillForm(prefs) {
     for (const b of BUCKETS) {
         const v = prefs.styles[b].toLowerCase().replace(/[ -]/g, "_");
         $(`style_${b}`).value = STYLES.some(([k]) => k === v) ? v : "formal";
+        showStylePreview(b);
     }
+    $("app_buckets").value = formatAppBuckets(prefs.app_buckets);
     $("retention").value = prefs.retention;
 }
 function readForm(base) {
@@ -168,7 +208,12 @@ function readForm(base) {
     next.microphone = $("microphone").value || null;
     for (const f of BOOL_FIELDS)
         next[f] = $(f).checked;
-    next.cleanup_level = $("cleanup_level").value;
+    const level = $("cleanup_level").value;
+    next.cleanup_level = level === "verbatim" ? "none" : level;
+    if (level === "verbatim")
+        next.spoken_cleanup = false;
+    // Raw mode only ever skipped the LLM; "No AI" says that now (D27).
+    next.raw_mode = false;
     next.paste_method = $("paste_method").value;
     next.languages = $("languages")
         .value.split(",")
@@ -181,13 +226,14 @@ function readForm(base) {
         !Number.isFinite(hf) || hf <= 0 ? 0 : Math.round(Math.min(10, Math.max(0.3, hf)) * 1000);
     next.llm_model_path = $("llm_model_path").value.trim() || null;
     next.llm_lib_path = $("llm_lib_path").value.trim() || null;
-    next.llm_timeout_ms = Math.min(30000, Math.max(200, parseInt($("llm_timeout_ms").value, 10) || 1500));
+    next.llm_timeout_ms = Math.min(30000, Math.max(200, parseInt($("llm_timeout_ms").value, 10) || 3000));
     next.styles = {
         personal: $("style_personal").value,
         work: $("style_work").value,
         email: $("style_email").value,
         other: $("style_other").value,
     };
+    next.app_buckets = parseAppBuckets($("app_buckets").value);
     return next;
 }
 /** Save `next` and make it the base for every tab. */
@@ -672,6 +718,7 @@ function showRoute(r) {
             timingLine(last),
             last.status,
             last.empty_reason ?? "",
+            last.llm ?? "",
             new Date(last.at_ms).toLocaleTimeString(),
         ].filter(Boolean);
         e.textContent = bits.join(" · ");
@@ -1163,6 +1210,26 @@ for (const b of document.querySelectorAll("nav.tabs button")) {
 }
 $("form").addEventListener("submit", (e) => void saveForm(e));
 $("asr_engine").addEventListener("change", showEngineFields);
+for (const b of BUCKETS) {
+    $(`style_${b}`).addEventListener("change", () => showStylePreview(b));
+}
+// Verbatim and the Auto-format box are the same switch (D27): keep them in step.
+$("cleanup_level").addEventListener("change", () => {
+    const sel = $("cleanup_level");
+    const fmt = $("spoken_cleanup");
+    if (sel.value === "verbatim")
+        fmt.checked = false;
+    else if (!fmt.checked && sel.value === "none")
+        fmt.checked = true;
+});
+$("spoken_cleanup").addEventListener("change", () => {
+    const sel = $("cleanup_level");
+    const fmt = $("spoken_cleanup");
+    if (!fmt.checked && sel.value === "none")
+        sel.value = "verbatim";
+    else if (fmt.checked && sel.value === "verbatim")
+        sel.value = "none";
+});
 for (const i of document.querySelectorAll("[data-panel=developer] input")) {
     i.addEventListener("input", scheduleCheck);
     i.addEventListener("change", scheduleCheck);
