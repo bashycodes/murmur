@@ -1,0 +1,88 @@
+{"commit_ms":7,"empty_reason":null,"fallback":null,"id":"q1","llm_ms":0,"output":"He called it \"innovative.\" ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"q2","llm_ms":0,"output":"She said, \"I'll be there soon,\" and then never showed up. ","status":"RawTranscript"}
+{"commit_ms":348,"empty_reason":null,"fallback":null,"id":"q3","llm_ms":0,"output":"The client wrote, \"We need this by Friday,\" so let's prioritize it. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"q4","llm_ms":0,"output":"Can you change the button text to \"Get started\"? ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"q5","llm_ms":0,"output":"\"The only way out is through.\" Robert Frost. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"q6","llm_ms":0,"output":"It was \"fine.\" ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"q7","llm_ms":0,"output":"The error message says, \"File not found.\" ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"q8","llm_ms":0,"output":"He literally just said \"whatever.\" ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"p1","llm_ms":0,"output":"I'll bring the charger (the USB-C one) to the meeting. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"p2","llm_ms":0,"output":"I'll bring the charger (the USB-C one) to the meeting. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"p3","llm_ms":0,"output":"The deadline (which is flexible) is Friday. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"p4","llm_ms":0,"output":"Add the new field [optional] to the form. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"p5","llm_ms":0,"output":"Grab the blue folder (the one on my desk). ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"p6","llm_ms":0,"output":"The new build (version 2.3) is live. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"s1","llm_ms":0,"output":"Buy milk, eggs, and bread. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"s2","llm_ms":0,"output":"Are you coming tonight? ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"s3","llm_ms":0,"output":"That's amazing! ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"s4","llm_ms":0,"output":"Agenda: budget, hiring, and launch. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"s5","llm_ms":0,"output":"The deadline — which nobody likes — is Friday. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"s6","llm_ms":0,"output":"Thanks for the update. I'll review it tomorrow. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"s7","llm_ms":0,"output":"Quick question, do we have a staging server? ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"s8","llm_ms":0,"output":"We tested it twice; both runs failed. ","status":"RawTranscript"}
+{"commit_ms":0,"empty_reason":null,"fallback":null,"id":"s9","llm_ms":0,"output":"Did you see the game last night? It was insane! ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"n1","llm_ms":0,"output":"Shopping list\nApples\nBananas\nCoffee ","status":"RawTranscript"}
+{"commit_ms":2,"empty_reason":null,"fallback":null,"id":"n2","llm_ms":0,"output":"Hi team,\n\nThe release is moving to Thursday.\n\nThanks,\nDana ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"n3","llm_ms":0,"output":"First point is done.\nSecond point is pending. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"n4","llm_ms":0,"output":"Ideas for the weekend.\n\nHiking or a movie. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"n5","llm_ms":0,"output":"Hey,\nAre we still on for lunch? ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"c1","llm_ms":0,"output":"Let's meet at the cafe at four. ","status":"RawTranscript"}
+{"commit_ms":0,"empty_reason":null,"fallback":null,"id":"c2","llm_ms":0,"output":"Send it to Sarah. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"c3","llm_ms":0,"output":"The meeting is on Wednesday. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"c4","llm_ms":0,"output":"We need three, sorry, four more chairs. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"c5","llm_ms":0,"output":"I already bought some. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"c6","llm_ms":0,"output":"Book flights for June 12th. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"c7","llm_ms":0,"output":"Push the fix to main, I mean to the release branch. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"i1","llm_ms":0,"output":"The total is $42.50. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"i2","llm_ms":0,"output":"Meet me at 7:30 tonight. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"i3","llm_ms":0,"output":"The invoice is due on March 5th. ","status":"RawTranscript"}
+{"commit_ms":0,"empty_reason":null,"fallback":null,"id":"i4","llm_ms":0,"output":"Revenue grew by 12%. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"i5","llm_ms":0,"output":"We have about 250 users on the beta. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"i6","llm_ms":0,"output":"My number is 555-123-4567. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"i7","llm_ms":0,"output":"I'll be there in like 10 minutes. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"i8","llm_ms":0,"output":"The meeting is on October 21st at 2 PM. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"l1","llm_ms":0,"output":"For the trip I need to pack:\n\n1. My passport\n2. Chargers\n3. A rain jacket ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"l2","llm_ms":0,"output":"Our priorities are:\n\n1. Hiring\n2. Onboarding\n3. Retention ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"l3","llm_ms":0,"output":"Hi Sam,\n\nA few things for tomorrow.\n\n1. Book the room.\n2. Print the slides.\n3. Order lunch.\n\nThanks,\nAlex ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"l4","llm_ms":0,"output":"Grocery list, eggs, milk, bread, and butter. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"l5","llm_ms":0,"output":"Three things for the release, update the docs, fix the login bug, and tag the build. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"k1","llm_ms":0,"output":"Hey, are you free tonight? ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"k2","llm_ms":0,"output":"I'm running a bit late. I'll be there soon. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"k3","llm_ms":0,"output":"Sounds good. Let's do it. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"k4","llm_ms":0,"output":"Haha, that's hilarious. I can't believe he did that. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"k5","llm_ms":0,"output":"Okay, I will call you when I get home. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"k6","llm_ms":0,"output":"Yeah, I do not think that is going to work. ","status":"RawTranscript"}
+{"commit_ms":0,"empty_reason":null,"fallback":null,"id":"k7","llm_ms":0,"output":"Thank you so much. See you tomorrow. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"e1","llm_ms":0,"output":"Hi Maria,\n\nI wanted to follow up on the proposal. Could you send me the final numbers by Friday?\n\nBest regards,\nTom ","status":"RawTranscript"}
+{"commit_ms":2,"empty_reason":null,"fallback":null,"id":"e2","llm_ms":0,"output":"Dear Mr. Patel,\n\nThank you for your time yesterday. I've attached the contract for your review.\n\nSincerely,\nLaura Chen ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"e3","llm_ms":0,"output":"Hey John,\n\nJust a quick note. The meeting moved to 3 PM.\n\nThanks, ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"e4","llm_ms":0,"output":"Please find the report attached. Let me know if you have any questions. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"e5","llm_ms":0,"output":"Hi everyone,\n\nJust a reminder that the office is closed on Monday.\n\nThanks,\nPriya ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"f1","llm_ms":0,"output":"I was thinking, we could go to the beach. ","status":"RawTranscript"}
+{"commit_ms":0,"empty_reason":null,"fallback":null,"id":"f2","llm_ms":0,"output":"The build is kind of broken right now. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"f3","llm_ms":0,"output":"I just wanted to check in about the invoice. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"f4","llm_ms":0,"output":"The results were basically the same as last quarter. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"f5","llm_ms":0,"output":"I think the problem is with the router. ","status":"RawTranscript"}
+{"commit_ms":0,"empty_reason":"only_filler","fallback":null,"id":"f6","llm_ms":0,"output":"","status":"Empty"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"r1","llm_ms":0,"output":"so I talked to the landlord and he said the repair guy is coming tomorrow morning but he doesn't know what time so I might work from home. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"r2","llm_ms":0,"output":"yeah that works for me what time should I come over. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"r3","llm_ms":0,"output":"I reviewed the draft it looks good overall but the second section needs more detail. ","status":"RawTranscript"}
+{"commit_ms":0,"empty_reason":null,"fallback":null,"id":"r4","llm_ms":0,"output":"Before we start, however we need to agree on the scope. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"r5","llm_ms":0,"output":"can you take a look at the PR when you get a chance thanks. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"r6","llm_ms":0,"output":"ok cool see you at eight. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x1","llm_ms":0,"output":"The word quote comes from Latin. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x2","llm_ms":0,"output":"Can you send me a quote for the new roof? ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x3","llm_ms":0,"output":"The trial period ends next week. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x4","llm_ms":0,"output":"In British English, a period is called a full stop. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x5","llm_ms":0,"output":"Always use the Oxford comma in lists. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x6","llm_ms":0,"output":"Don't forget that we have dinner at eight. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x7","llm_ms":0,"output":"Put a comma after the greeting. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x8","llm_ms":0,"output":"There's no wait at the new place, let's go there. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x9","llm_ms":0,"output":"They launched a new line of sneakers. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x10","llm_ms":0,"output":"The question mark at the end looks wrong. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x11","llm_ms":0,"output":"I mean it when I say this is our best quarter. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x12","llm_ms":0,"output":"Quote me on that. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x13","llm_ms":0,"output":"The formula is in parentheses on the board. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x14","llm_ms":0,"output":"Put the area code in parentheses. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x15","llm_ms":0,"output":"The answer is in brackets at the bottom of the page. ","status":"RawTranscript"}
+{"commit_ms":1,"empty_reason":null,"fallback":null,"id":"x16","llm_ms":0,"output":"Can you get me a quote by end of day? ","status":"RawTranscript"}
