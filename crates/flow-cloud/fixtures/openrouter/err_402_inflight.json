@@ -1,0 +1,9 @@
+{
+ "error": {
+  "code": 402,
+  "message": "Request rejected: in_flight_budget_exhausted",
+  "metadata": {
+   "reason": "in_flight_budget_exhausted"
+  }
+ }
+}

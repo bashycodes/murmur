@@ -168,6 +168,15 @@ local failures do not exist in practice (in-process), so there is no mid-session
 Cached for `health_ttl_s`; refreshed on `update_config`, at app start, and after any
 failure. Sessions do not wait for a probe; the circuit breaker uses the last outcome.
 
+**Cloud text cleanup (D28).** A second, separate decision runs at commit time inside the
+engine that produced the transcript. On the client and cloud-STT routes, the router installs
+`RoutedCleaner(OpenRouter gate, on-device LLM)` per `cleanup_order`. The server route keeps
+its own pipeline and never calls cloud cleanup (no egress, D17 I6). The gate re-checks C1 for
+cleanup on every call (toggle, order, cleanup consent, key, circuit, budget). It refuses fast,
+so the on-device LLM or the deterministic text is used. The cloud call has a hard
+`cleanup.timeout_ms` (2500 ms) and its stream is cancelled at the deadline. Details: "Changelog
+for shells", D28 entry.
+
 ### 1.4 Build variants
 
 **Windows** (`apps/flow-windows/Cargo.toml` features):
@@ -513,6 +522,136 @@ exactly as in §1.2; any change needs this doc updated first.
 
 Implementation notes for W and A against the §1.2 API (branch `hybrid-server`).
 Every item is additive: code written against §1.2 compiles unchanged.
+
+**2026-10-24 — D28: OpenRouter-only cloud, opt-in cloud cleanup (branch `feat/or-route` +
+`feat/or-cloud`; spec `docs/proposals/openrouter-only-cloud.md`, flow-cloud API §4.1)**
+
+Not additive for the cloud settings: the D18 provider list is replaced by one OpenRouter
+config. Everything else (server/local routing, fixtures other than the cloud ones) is
+unchanged.
+
+*Rust API (flow-router / flow-core):*
+* `RouterConfig.cloud` = `CloudConfig { schema: 2, openrouter: OpenRouterConfig { privacy:
+  Privacy { zdr, data_collection }, stt: SttConfig { model, stt_path, language,
+  send_dictionary, format_override, timeout_base_ms, consent_host, consent_at_ms }, cleanup:
+  CleanupConfig { model, sort, timeout_ms (800-8000, default 2500), connect_timeout_ms,
+  send_surrounding_text, send_screen_words, send_app_name, consent_host, consent_at_ms } },
+  monthly_budget_usd }` (`fixtures/router_config_cloud.json`). `cloud.active` /
+  `cloud.providers` are read only by the migration and never written.
+* `RouterConfig.allow_cloud_cleanup: bool` and `cleanup_order: [CleanupRoute]`
+  (`"cloud"`/`"local"`; empty = local LLM only, as before). Enable flow sets
+  `["cloud","local"]`; `["local","cloud"]` = cloud only when no local LLM is loaded.
+* `RouterConfig::migrate_d28() -> MigrationReport { migrated, key_from, key_to, delete_keys,
+  removed, cloud_disabled, model_from, model_to, notice }`, idempotent; rules in
+  `crates/flow-router/src/migrate.rs` (fixtures `fixtures/migration/<preset>.{v1,v2,report}.json`,
+  all 7 old presets + a mixed case). `CloudUsage::migrate_d28(&report)` keeps the month's
+  total (removed providers → one `removed` counter). The router also migrates any legacy
+  config it is given (`new` / `update_config`) and then remembers the report
+  (`cloud_notice()`, `ack_cloud_notice()`; restored usage is migrated too).
+* Keys: one key, id `"openrouter"`, bound to `openrouter.ai`. `set_cloud_key(id, key)` ignores
+  every other id except the migrated legacy OpenRouter id (alias). `set_cloud_key_for(&CloudProviderConfig)`
+  is kept only for that legacy case. `with_cloud_key(|k| …)` lends the key to flow-cloud calls
+  that are not dictations (catalogue account filter, key info).
+* `probe_cloud(&OpenRouterConfig, key)` (was `&CloudProviderConfig`). `CloudFactory` takes
+  `&OpenRouterConfig`. New `CleanupFactory` + `Router::with_cleanup_factory` (flow-cloud's
+  `attach_with` installs both), `Router::set_cleanup(allow, order, cleanup)`,
+  `Router::cleanup_status() -> CleanupStatus { supported, enabled, order, consent, blocked,
+  circuit, model, timeout_ms, last: CleanUsage, month_cost_usd }` (`fixtures/cleanup_status.json`).
+* `RouteStatus.cleanup_circuit`, `Failure::NoPrivateRoute` (`no_private_route`: no
+  zero-retention provider serves the model; sticky until the model or privacy changes) and
+  `Failure::CloudCleanupNotConfigured` (`cloud_cleanup_not_configured`). `ProviderUsage.purpose`
+  `"stt"`/`"cleanup"`; `CloudUsage::cost_for(purpose)` for "Speech $x · Cleanup $y".
+* `RouteInfo.llm_engine` (`local`/`cloud`/`server`), `llm_model`, `llm_cost_usd`;
+  `CommitResult.llm` (`CleanUsage`: + `generation_id`, `ttft_ms`, `latency_ms`).
+* `Backend::install_cleanup(Option<CleanupPlan>)` (default no-op): how the router puts
+  `RoutedCleaner(cloud, local LLM)` into the local engine, the on-demand local engine and the
+  cloud-STT backend. The server route never gets it.
+
+*Routing rules (`crates/flow-router/src/gate.rs`, tests `tests/cleanup_policy.rs`):* C1 for
+cleanup = build has the cleanup factory ∧ `allow_cloud_cleanup` ∧ `cloud` ∈ `cleanup_order` ∧
+cleanup consent for openrouter.ai (STT consent does not count) ∧ key ∧ cleanup circuit closed ∧
+`month_cost + estimate ≤ budget` (catalogue estimate with headroom; an unpriced model with a
+budget waits for one real cost, then uses it × 2). Checked **per call**, so a consent revoked
+or a toggle turned off mid-session never sends text. A refusal is a fast failure: with
+`["cloud","local"]` the local LLM runs (≥ 800 ms left), else the deterministic text. Timeout
+(`cleanup.timeout_ms`, 2500 ms) and guard rejection are final. Cost: exact `usage.cost`;
+an estimate (flagged) when a generation exists without cost; nothing when no generation.
+Circuit: auth / quota / `no_private_route` sticky until key or cleanup config change; others
+back off 5 s doubling to 60 s. By default the prompt carries only the transcript, app
+category, style and dictionary (`PromptScope::MINIMAL`); each `send_*` toggle adds its item.
+
+*FFI (`apps/flow-android/JNI_CONTRACT.md` "OpenRouter (D28)", C `flow_core.h`):*
+`nativeMigrateCloud(devJson)`, `nativeSetCleanup(h, json)`, `nativeCleanupStatus(h)`,
+`nativeCloudNotice(h)` / `nativeAckCloudNotice(h)`, `nativeSetCloudModel(h, use, model)`,
+`nativeSetCloudCacheDir(dir)`, `nativeCloudCatalog(h, use, query, filtersJson)`,
+`nativeRefreshCloudCatalog(h, force)` (blocking), `nativeCloudKeyInfo(h)` (blocking).
+`nativeCloudPresets` returns one OpenRouter entry. `nativeProbeCloud` / `nativeSetCloudKeyFor`
+accept an `OpenRouterConfig` JSON. A legacy entry of another adapter is refused / ignored.
+
+*Android shell work (W4, `apps/flow-android`):*
+1. Startup, once: if the stored dev JSON has no `cloud.schema`, call `nativeMigrateCloud(devJson)`.
+   Persist `config`. In `SecretVault`, move `flow_cloud_<report.key_from>` → `flow_cloud_openrouter`
+   and delete `flow_cloud_<id>` for every `report.delete_keys`. Rewrite the persisted
+   `cloud_usage` with the router's after `nativeSetCloudUsage`, then show `report.notice` once
+   (or `nativeCloudNotice` + `nativeAckCloudNotice`). Test it with a Robolectric fixture from
+   `crates/flow-router/fixtures/migration/`.
+2. `data/CloudSettings.kt`: replace the provider list / `CloudPresets.ALL` / add-provider picker
+   with the schema-2 data class (`cloud.openrouter.{privacy,stt,cleanup}`, `allow_cloud_cleanup`,
+   `cleanup_order`). Keep `RouterJsonTest` in sync with `router_config_cloud.json` and
+   `cleanup_status.json`.
+3. `ui/CloudProviderActivity.kt` → `ui/OpenRouterActivity.kt`, one page with these parts:
+   * Key: a `SecretField`, `nativeSetCloudKey(h,"openrouter",key)`, and "Check key", which calls
+     `nativeCloudKeyInfo` off Main and shows label, limit / remaining, `usage_monthly`, and the
+     `warn_no_limit` warning.
+   * "Zero-retention providers only", with a confirm before turning it off.
+   * A **Speech-to-text** card: opt-in plus the STT consent dialog, which records
+     `stt.consent_*`; the model picker; language; send dictionary; and Test (`nativeProbeCloud`).
+   * A **Text cleanup** card: opt-in plus its *own* consent dialog (spec §2.5 wording), which
+     records `cleanup.consent_*`; the model picker; sort; timeout (800-8000); the three "Send …"
+     toggles (off by default); and the order. Apply with `nativeSetCleanup`. Show the status
+     from `nativeCleanupStatus`, with `blocked` as a hint.
+   * Usage split: `cost_for("stt")` / `("cleanup")` from `nativeCloudUsage`, and the budget.
+4. `ui/ModelPickerActivity.kt` (new): call `nativeSetCloudCacheDir(cacheDir)` once at app start.
+   The list comes from `nativeCloudCatalog(h, use, query, filtersJson)` (filters `zdr_only`
+   default on, `fast_only`, `free_only`, `stt_path`). "Refresh models" calls
+   `nativeRefreshCloudCatalog` off Main. Never refresh in the background while both uses are
+   off. Free-text ids go through `nativeSetCloudModel` (false + `bad_config` = invalid id).
+5. Settings → AI cleanup row: "On-device / OpenRouter (<model>) / Off" plus the order.
+6. Debug log (D21): add `llm_engine`, `llm_model`, `llm_cost_usd` (route) and `llm_ttft_ms`,
+   `llm_generation_id` (`llm`). The `local` flavour exports the same symbols, which answer "not
+   in this build". Rebuild the natives and run `tools/probes/check_native_so.sh` per flavour
+   (the contract lists the new symbols).
+
+*Windows shell work (W5, `apps/flow-windows`):*
+1. `dev_settings.rs` / `prefs.rs`: on load, a legacy `cloud` runs
+   `RouterConfig::migrate_d28()`. Persist the result. In `credentials.rs`, move
+   `flow-clone/cloud/<key_from>` → `flow-clone/cloud/openrouter`, delete every
+   `delete_keys` entry and keep the host binding `openrouter.ai`. Show `notice` once.
+   `normalize_cloud` / `reconcile_consent` / `removed_providers` go: consent is per use, and
+   the host is constant.
+2. `app.rs` / `router_adapter.rs`: replace `set_cloud_key_for(&provider)` with
+   `set_cloud_key("openrouter", key)` and `probe_cloud(&provider, key)` with
+   `probe_cloud(&cfg.cloud.openrouter, key)`. `flow_cloud::attach_with` now also installs the
+   cleanup factory. Remove `dev_cloud_presets` and `dev_cloud_new_id`; keep
+   `dev_cloud_set_key/clear_key/usage/reset_usage`.
+3. New Tauri commands:
+   * `dev_or_catalog(use, query, filters)` → `flow_cloud::CatalogStore::search_json`. The store
+     lives in `%LOCALAPPDATA%\FlowClone\cache\openrouter-catalog.json`; register it with
+     `flow_cloud::catalog::set_default_store`.
+   * `dev_or_refresh_catalog(force)` → `refresh`, inside `router.with_cloud_key`, on a blocking
+     task.
+   * `dev_or_key_info` → `flow_cloud::keyinfo::fetch`.
+   * `dev_or_test_stt` → `probe_cloud`.
+   * `dev_or_test_cleanup` → a sample sentence through `flow_cloud::cleaner_for`.
+   * `dev_or_set_cleanup` → `Router::set_cleanup`.
+   * `dev_or_cleanup_status` → `cleanup_status()`.
+4. `ui/src/settings.ts` (+ committed `ui/dist`): the same page and semantics as Android step 3.
+   The AI cleanup panel gains the engine choice (On-device / OpenRouter) and the order. The key
+   field stays `type=password`.
+5. Tests: `cloud_settings` (schema 2 round trip, separate consents), credential migration,
+   and `cloud_integration`. For the last one, the mock is reached only through
+   `flow_cloud::testing::override_base_url` (the `mock-server` feature, dev-dependency only),
+   never through a base URL in config.
 
 **2026-10-21 — flow-protocol + flow-router landed**
 

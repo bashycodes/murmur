@@ -1,27 +1,22 @@
 package dev.flowclone.core;
 
 // Single-file source launch (crates/flow-ffi/tests/jni_cloud.rs):
-//   java -Djava.library.path=DIR JniCloud.java <okBaseUrl> <authFailBaseUrl> <key>
-// The shell's D18 cloud flow through the real JNI exports + native router, against
-// flow-cloud's in-process mock provider (OpenAI-compatible wire format, Groq preset).
+//   java -Djava.library.path=DIR JniCloud.java <key> <cacheDir>
+// The shell's D28 OpenRouter flow through the real JNI exports + native router,
+// offline (no request reaches openrouter.ai: no consent / catalogue from the baked
+// snapshot; the network paths are covered by flow-contract-tests with the mock).
 // Every line printed is checked by jni_cloud.rs (which also asserts the key never appears).
 public class JniCloud {
     static void check(boolean ok, String what) { if (!ok) throw new RuntimeException(what); }
 
-    static String provider(String base) {
-        return "{\"id\":\"groq-1\",\"preset\":\"groq\",\"adapter\":\"openai_compat\",\"dialect\":\"\",\"label\":\"Groq\","
-            + "\"base_url\":\"" + base + "\",\"model\":\"whisper-large-v3-turbo\",\"language\":\"\","
-            + "\"send_dictionary\":true,\"send_screen_words\":false,\"zero_retention\":false,\"format_override\":\"\","
-            + "\"timeout_base_ms\":6000,\"price_per_hour_usd\":null,\"consent_host\":\"127.0.0.1\",\"consent_at_ms\":1}";
-    }
+    // A D18 (schema 1) config: OpenRouter kept, Groq active and removed.
+    static final String LEGACY = "{\"allow_server\":false,\"allow_client\":true,\"allow_cloud\":true,"
+        + "\"order\":[\"cloud\",\"client\"],\"cloud\":{\"active\":\"groq-1\",\"providers\":["
+        + "{\"id\":\"openrouter-1\",\"preset\":\"openrouter\",\"adapter\":\"openrouter\",\"base_url\":\"https://openrouter.ai/api/v1\","
+        + "\"model\":\"openai/gpt-transcribe\",\"zero_retention\":true,\"consent_host\":\"openrouter.ai\",\"consent_at_ms\":1},"
+        + "{\"id\":\"groq-1\",\"preset\":\"groq\",\"adapter\":\"openai_compat\",\"label\":\"Groq\",\"base_url\":\"https://api.groq.com/openai/v1\",\"model\":\"m\"}]}}";
 
-    static String routerConfig(String base) {
-        return "{\"allow_server\":false,\"allow_client\":true,\"prefer\":\"server\",\"keep_local_warm\":true,"
-            + "\"allow_cloud\":true,\"order\":[\"cloud\",\"client\"],"
-            + "\"cloud\":{\"active\":\"groq-1\",\"providers\":[" + provider(base) + "],\"monthly_budget_usd\":null}}";
-    }
-
-    static final String SESSION = "{\"languages\":[\"en\"],\"platform\":\"android\","
+    static final String SESSION = "{\"languages\":[\"en\"],\"platform\":\"android\",\"llm_skip_clean\":false,"
         + "\"dictionary\":[{\"word\":\"btw\",\"replacement\":\"by the way\",\"isSnippet\":false}]}";
 
     static String dictate(long r) {
@@ -35,59 +30,43 @@ public class JniCloud {
     }
 
     public static void main(String[] args) {
-        String ok = args[0], bad = args[1], key = args[2];
+        String key = args[0], cache = args[1];
         System.loadLibrary("flow_ffi");
-        System.out.println(NativeFlowCore.nativeCloudCapabilities());                   // 1 caps
-        System.out.println(NativeFlowCore.nativeCloudPresets());                        // 2 presets
-        // Test provider before any router exists: h = 0, key passed; then without a key.
-        System.out.println(NativeFlowCore.nativeProbeCloud(0, provider(ok), key));     // 3 probe ok
-        System.out.println(NativeFlowCore.nativeProbeCloud(0, provider(ok), null));    // 4 no key
+        System.out.println(NativeFlowCore.nativeCloudCapabilities());                       // 1 caps
+        System.out.println(NativeFlowCore.nativeCloudPresets());                            // 2 one preset
+        System.out.println(NativeFlowCore.nativeMigrateCloud(LEGACY));                      // 3 migration
+        check(NativeFlowCore.nativeMigrateCloud("[") == null, "bad json");
+        System.out.println("KIND " + NativeFlowCore.nativeLastErrorKind());                 // 4
+
+        NativeFlowCore.nativeSetCloudCacheDir(cache);
+        System.out.println(NativeFlowCore.nativeCloudCatalog(0, "stt", "whisper", "{}"));    // 5 picker rows
+        System.out.println(NativeFlowCore.nativeCloudCatalog(0, "cleanup", "llama", "{}")); // 6
+        System.out.println(NativeFlowCore.nativeCloudCatalog(0, "bogus", "", "{}"));        // 7 []
 
         long local = NativeFlowCore.nativeLoadModels("{\"asr_backend\":{\"mock\":{\"text\":\"local words btw\"}},\"asr_path\":\"\",\"threads\":1}");
-        check(!NativeFlowCore.nativeSetCloudKey(local, "groq-1", key), "core handle must refuse a key");
-        System.out.println("KIND " + NativeFlowCore.nativeLastErrorKind());             // 5
-        long r = NativeFlowCore.nativeOpenRouter(routerConfig(ok), local);
+        long r = NativeFlowCore.nativeOpenRouter(LEGACY, local);
         check(r != 0, "open_router: " + NativeFlowCore.nativeLastError());
-        check(NativeFlowCore.nativeSetCloudUsage(r, "{\"month\":\"1999-01\",\"providers\":[{\"provider_id\":\"groq-1\",\"requests\":9}]}"), "set usage");
+        System.out.println(NativeFlowCore.nativeCloudNotice(r));                            // 8 notice
+        NativeFlowCore.nativeAckCloudNotice(r);
+        System.out.println(NativeFlowCore.nativeCloudNotice(r) == null ? "NOTICE null" : "NOTICE again"); // 9
+        // The removed provider's key is ignored; the legacy OpenRouter id maps to "openrouter".
+        check(NativeFlowCore.nativeSetCloudKey(r, "groq-1", key), "ignored key ok");
+        System.out.println(NativeFlowCore.nativeCloudKeyInfo(r));                           // 10 no key
+        check(NativeFlowCore.nativeSetCloudKey(r, "openrouter-1", key), "alias key");
+        System.out.println(dictate(r));                                                     // 11 cloud off after migration -> local
 
-        System.out.println(dictate(r));                                                 // 6 no key -> local
-        check(NativeFlowCore.nativeSetCloudKey(r, "groq-1", key), "set key: " + NativeFlowCore.nativeLastError());
-        System.out.println(dictate(r));                                                 // 7 cloud
-        System.out.println(NativeFlowCore.nativeCloudUsage(r));                         // 8 usage
-        System.out.println(NativeFlowCore.nativeRouteStatus(r));                        // 9 status
-        // Saved key + unsaved form (key null = stored key).
-        System.out.println(NativeFlowCore.nativeProbeCloud(r, provider(ok), null));    // 10 probe stored key
-
-        // Provider now rejects the key: auth_failed, the same audio replays into the device engine.
-        check(NativeFlowCore.nativeUpdateRouter(r, routerConfig(bad)), "update: " + NativeFlowCore.nativeLastError());
-        System.out.println(dictate(r));                                                 // 11 fallback
-        System.out.println(NativeFlowCore.nativeRouteStatus(r));                        // 12 cloud circuit open
-        System.out.println(NativeFlowCore.nativeProbeCloud(r, provider(bad), null));   // 13 probe auth_failed
-
-        // Forget the key: cloud skipped with cloud_not_configured.
-        check(NativeFlowCore.nativeUpdateRouter(r, routerConfig(ok)), "update back");
-        check(NativeFlowCore.nativeSetCloudKey(r, "groq-1", null), "forget key");
-        System.out.println(dictate(r));                                                 // 14 no key again
-        NativeFlowCore.nativeResetCloudUsage(r);
-        System.out.println(NativeFlowCore.nativeCloudUsage(r));                         // 15 reset
-        check(!NativeFlowCore.nativeSetCloudUsage(r, "not json"), "bad usage json must fail");
-        System.out.println("KIND " + NativeFlowCore.nativeLastErrorKind());             // 16
+        // Cleanup: consent missing -> blocked, dictation cleaned on-device/deterministic.
+        check(NativeFlowCore.nativeSetCleanup(r, "{\"allow_cloud_cleanup\":true,\"cleanup_order\":[\"cloud\",\"local\"]}"), "set cleanup: " + NativeFlowCore.nativeLastError());
+        System.out.println(NativeFlowCore.nativeCleanupStatus(r));                          // 12 blocked
+        check(!NativeFlowCore.nativeSetCleanup(r, "{\"cleanup\":{\"timeout_ms\":100}}"), "timeout range");
+        System.out.println("KIND " + NativeFlowCore.nativeLastErrorKind());                 // 13
+        check(NativeFlowCore.nativeSetCloudModel(r, "cleanup", "meta-llama/llama-3.1-8b-instruct"), "model");
+        check(!NativeFlowCore.nativeSetCloudModel(r, "cleanup", "Not A Model"), "bad model");
+        System.out.println("KIND " + NativeFlowCore.nativeLastErrorKind());                 // 14
+        System.out.println(NativeFlowCore.nativeCleanupStatus(r));                          // 15 model
+        System.out.println(dictate(r));                                                     // 16 no cloud request
+        System.out.println(NativeFlowCore.nativeRouteStatus(r));                            // 17 cleanup_circuit
         NativeFlowCore.nativeUnload(r);
-
-        // Cloud-only config is an engine in a cloud build.
-        String cloudOnly = routerConfig(ok).replace("\"allow_client\":true", "\"allow_client\":false").replace("[\"cloud\",\"client\"]", "[\"cloud\"]");
-        long c = NativeFlowCore.nativeOpenRouter(cloudOnly, 0);
-        check(c != 0, "cloud-only open: " + NativeFlowCore.nativeLastError());
-        // Bound to the provider config being saved (host + adapter).
-        check(NativeFlowCore.nativeSetCloudKeyFor(c, provider(ok), key), "set key for: " + NativeFlowCore.nativeLastError());
-        System.out.println(dictate(c));                                                 // 17 cloud only
-        // Live route while recording: provider + model before commit.
-        System.out.println(NativeFlowCore.nativeStartSessionInfo(c, SESSION));          // 18 start info
-        NativeFlowCore.nativePushAudio(c, new short[1600], 1600);
-        System.out.println(NativeFlowCore.nativePoll(c));                               // 19 poll
-        NativeFlowCore.nativeCancel(c);
-        System.out.println(NativeFlowCore.nativePoll(c));                               // 20 idle poll
-        NativeFlowCore.nativeUnload(c);
     }
 }
 
@@ -99,18 +78,19 @@ class NativeFlowCore {
     static native boolean nativeStartSession(long h, String cfg);
     static native boolean nativePushAudio(long h, short[] pcm, int len);
     static native String nativeCommit(long h);
-    static native void nativeCancel(long h);
-    static native String nativeStartSessionInfo(long h, String cfg);
-    static native String nativePoll(long h);
     static native long nativeOpenRouter(String cfg, long local);
-    static native boolean nativeUpdateRouter(long h, String cfg);
     static native String nativeRouteStatus(long h);
     static native boolean nativeSetCloudKey(long h, String providerId, String key);
-    static native boolean nativeSetCloudKeyFor(long h, String providerJson, String key);
-    static native String nativeProbeCloud(long h, String providerJson, String key);
-    static native String nativeCloudUsage(long h);
-    static native boolean nativeSetCloudUsage(long h, String usageJson);
-    static native void nativeResetCloudUsage(long h);
     static native String nativeCloudCapabilities();
     static native String nativeCloudPresets();
+    static native String nativeMigrateCloud(String devJson);
+    static native boolean nativeSetCleanup(long h, String cleanupJson);
+    static native String nativeCleanupStatus(long h);
+    static native String nativeCloudNotice(long h);
+    static native void nativeAckCloudNotice(long h);
+    static native boolean nativeSetCloudModel(long h, String use, String model);
+    static native void nativeSetCloudCacheDir(String dir);
+    static native String nativeCloudCatalog(long h, String use, String query, String filtersJson);
+    static native String nativeRefreshCloudCatalog(long h, boolean force);
+    static native String nativeCloudKeyInfo(long h);
 }

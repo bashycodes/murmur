@@ -10,6 +10,14 @@
 # Checks of the shells' `cloud` feature (D18) are SKIP until W/A add it and
 # count for strict mode only with CHECK_BUILD_MATRIX_STRICT_CLOUD=1.
 #
+# D28: cloud builds talk to OpenRouter only. The host-string checks below
+# fail on any other speech/LLM provider host in (a) the Rust sources linked
+# into cloud builds, (b) flow-cloud's compiled artefact (built here, dev
+# profile, usually cached) and (c) any shipped artefact listed in
+# FLOW_CLOUD_ARTIFACTS (space-separated .so/.exe/.apk paths); the shells'
+# sources count with CHECK_BUILD_MATRIX_STRICT_CLOUD=1 (until W4/W5 land).
+# CHECK_BUILD_MATRIX_NO_BUILD=1 skips (b).
+#
 # Usage: tools/check-build-matrix.sh   (from anywhere; exit 1 on a violation)
 set -u
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -100,6 +108,114 @@ check "flow-ffi jni,remote,cloud (remote+cloud flavour, android) has no ASR/LLM 
 check "flow-windows local,app (windows) has no WS client" "$WIN_NET" "${WIN[@]}" --features local,app "${WINT[@]}"
 check "flow-windows local,app (windows) has no cloud client" "$CLOUD" "${WIN[@]}" --features local,app "${WINT[@]}"
 check "flow-windows remote,cloud,app (windows) has no ASR/LLM libs" "$ASR" "${WIN[@]}" --features remote,cloud,app "${WINT[@]}"
+
+# ---- D28: no non-OpenRouter provider host in cloud builds ------------------
+# Known third-party speech / LLM API hosts (the D18 presets and the
+# providers OpenRouter routes to). A hit means a direct provider path
+# exists next to OpenRouter.
+PROVIDER_HOSTS='(api\.elevenlabs\.io|api\.deepgram\.com|api\.assemblyai\.com|api\.groq\.com|api\.openai\.com|api\.anthropic\.com|api\.mistral\.ai|api\.together\.(ai|xyz)|api\.fireworks\.ai|api\.deepinfra\.com|api\.cerebras\.ai|api\.sambanova\.ai|generativelanguage\.googleapis\.com|speech\.googleapis\.com|api\.speechmatics\.com|api\.rev\.ai|api\.gladia\.io|api\.x\.ai|stt\.speech\.microsoft\.com|cognitiveservices\.azure\.com|api\.cohere\.(ai|com)|api\.perplexity\.ai)'
+# (a) Rust sources linked into cloud builds (not tests / fixtures).
+hits=$(grep -rnE "$PROVIDER_HOSTS" crates/flow-cloud/src crates/flow-router/src crates/flow-core/src \
+    crates/flow-ffi/src crates/flow-remote/src crates/flow-protocol/src 2>/dev/null)
+if [ -n "$hits" ]; then
+    echo "FAIL  cloud-build Rust sources name a non-OpenRouter provider host:"
+    echo "$hits" | head -20 | sed 's/^/      /'
+    fail=1
+else
+    echo "ok    cloud-build Rust sources name no provider host but openrouter.ai"
+fi
+# flow-cloud's own URL literals: openrouter.ai only.
+# Non-test code only: testing.rs and `#[cfg(test)]` modules (at the end of
+# each file) are excluded.
+urls=$(find crates/flow-cloud/src -name '*.rs' ! -name testing.rs -exec awk '/^#\[cfg\(test\)\]/{exit} {print}' {} \; |
+    grep -oE 'https?://[A-Za-z0-9.-]+' | sort -u | grep -vE '^https://openrouter\.ai$')
+if [ -n "$urls" ]; then
+    echo "FAIL  flow-cloud/src has URL literals other than https://openrouter.ai:"
+    echo "$urls" | sed 's/^/      /'
+    fail=1
+else
+    echo "ok    flow-cloud/src URL literals are https://openrouter.ai only"
+fi
+# Shell sources (main code only).
+shell_hits=$(grep -rnE "$PROVIDER_HOSTS" apps/flow-windows/src apps/flow-windows/ui/src \
+    apps/flow-android/app/src/main 2>/dev/null)
+if [ -n "$shell_hits" ]; then
+    if [ "${CHECK_BUILD_MATRIX_STRICT_CLOUD:-0}" = "1" ]; then
+        echo "FAIL  shell sources name a non-OpenRouter provider host:"
+        fail=1
+    else
+        echo "SKIP  shell sources still name non-OpenRouter provider hosts (pending D28 W4/W5):"
+        cloud_skip=$((cloud_skip + 1))
+    fi
+    echo "$shell_hits" | awk -F: '{print $1}' | sort | uniq -c | sed 's/^/      /'
+else
+    echo "ok    shell sources name no provider host but openrouter.ai"
+fi
+# (b) flow-cloud's compiled artefact, as a cloud build links it (no
+# mock-server feature).
+if [ "${CHECK_BUILD_MATRIX_NO_BUILD:-0}" != "1" ]; then
+    if arts=$(cargo build -p flow-cloud --lib --message-format=json 2>/dev/null |
+        grep -o '"filenames":\[[^]]*\]' | grep 'flow_cloud' | grep -oE '"[^"]+\.(rlib|rmeta|so|a)"' | tr -d '"'); then
+        bad=""
+        for a in $arts; do
+            [ -f "$a" ] || continue
+            if grep -aqE "$PROVIDER_HOSTS" "$a"; then bad="$bad $a"; fi
+        done
+        if [ -z "$arts" ]; then
+            echo "ERROR flow-cloud artefact: no build output found"
+            fail=1
+        elif [ -n "$bad" ]; then
+            echo "FAIL  flow-cloud artefact contains a non-OpenRouter provider host:$bad"
+            fail=1
+        else
+            echo "ok    flow-cloud artefact contains no provider host but openrouter.ai"
+        fi
+    else
+        echo "ERROR flow-cloud artefact: cargo build failed"
+        fail=1
+    fi
+else
+    echo "SKIP  flow-cloud artefact host scan (CHECK_BUILD_MATRIX_NO_BUILD=1)"
+fi
+# (c) Shipped artefacts (APK .so, Windows .exe), when given.
+for a in ${FLOW_CLOUD_ARTIFACTS:-}; do
+    if [ ! -f "$a" ]; then
+        echo "ERROR $a: not found"
+        fail=1
+    elif [[ "$a" == *.apk ]]; then
+        if unzip -p "$a" 'lib/*/libflow_ffi*.so' 2>/dev/null | grep -aqE "$PROVIDER_HOSTS"; then
+            echo "FAIL  $(basename "$a") native lib contains a non-OpenRouter provider host"
+            fail=1
+        else
+            echo "ok    $(basename "$a") native lib contains no provider host but openrouter.ai"
+        fi
+    elif grep -aqE "$PROVIDER_HOSTS" "$a"; then
+        echo "FAIL  $(basename "$a") contains a non-OpenRouter provider host"
+        fail=1
+    else
+        echo "ok    $(basename "$a") contains no provider host but openrouter.ai"
+    fi
+done
+# The test-only mock seam (`mock-server`: plain-http base-URL override)
+# must never be enabled in a shipped cloud flavour.
+for spec in "-p flow-ffi --features jni,remote,cloud" \
+    "--manifest-path apps/flow-windows/Cargo.toml --locked --no-default-features --features remote,cloud,app"; do
+    # shellcheck disable=SC2086
+    if out=$(cargo tree -e features,normal --prefix none -i flow-cloud $spec 2>&1); then
+        if grep -q 'flow-cloud feature "mock-server"' <<<"$out"; then
+            echo "FAIL  $spec enables flow-cloud/mock-server"
+            fail=1
+        else
+            echo "ok    $spec does not enable flow-cloud/mock-server"
+        fi
+    elif grep -qiE "does not (have|contain)|not (defined|found)|did not match" <<<"$out"; then
+        echo "SKIP  $spec mock-server check (feature not defined yet)"
+        cloud_skip=$((cloud_skip + 1))
+    else
+        echo "ERROR $spec: cargo tree failed"
+        fail=1
+    fi
+done
 
 if [ "$fail" -ne 0 ]; then
     echo "build matrix: FAILED"

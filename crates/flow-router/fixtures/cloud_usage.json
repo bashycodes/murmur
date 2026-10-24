@@ -5,8 +5,17 @@
       "billed_audio_ms": 312000,
       "cost_estimated": false,
       "cost_usd": 0.0234,
-      "provider_id": "openrouter-1",
+      "provider_id": "openrouter",
+      "purpose": "stt",
       "requests": 42
+    },
+    {
+      "billed_audio_ms": 0,
+      "cost_estimated": true,
+      "cost_usd": 0.014,
+      "provider_id": "openrouter",
+      "purpose": "cleanup",
+      "requests": 20
     }
   ]
 }

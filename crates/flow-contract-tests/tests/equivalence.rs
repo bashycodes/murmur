@@ -332,7 +332,7 @@ fn equivalence_cloud_mock_http() {
                 allow_client: false,
                 ..Default::default()
             },
-            cloud_provider(&provider.url("/openai/v1")),
+            cloud_provider(),
             &[flow_router::Route::Cloud],
         );
         let router = cloud_router(cfg, None);

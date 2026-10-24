@@ -1,0 +1,11 @@
+{
+  "cloud_disabled": false,
+  "delete_keys": [],
+  "key_from": "openrouter-1",
+  "key_to": "openrouter",
+  "migrated": true,
+  "model_from": "openai/gpt-transcribe",
+  "model_to": "openai/whisper-large-v3-turbo",
+  "notice": "The model openai/gpt-transcribe has no zero-retention provider on OpenRouter, so speech-to-text now uses openai/whisper-large-v3-turbo.",
+  "removed": []
+}

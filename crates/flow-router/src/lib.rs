@@ -7,7 +7,9 @@
 //! links this crate without any network code.
 
 pub mod cloud;
+mod gate;
 mod local;
+pub mod migrate;
 pub mod net;
 mod router;
 
@@ -16,12 +18,15 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 pub use cloud::{
-    month_of, CloudConfig, CloudProviderConfig, CloudUsage, ProviderUsage, Route, SecretString, Usd,
+    month_of, CleanupConfig, CleanupRoute, CloudConfig, CloudProviderConfig, CloudUsage,
+    OpenRouterConfig, Privacy, ProviderUsage, Route, SecretString, SttConfig, Usd,
 };
+pub use flow_core::cleanup::{CleanUsage, PromptScope};
 pub use flow_core::config::{FieldContext, SessionConfig};
 pub use flow_core::learn::Candidate;
 pub use flow_core::{CommitResult, CommitStatus, RouteInfo, SessionPoll};
 pub use local::LocalLoader;
+pub use migrate::{MigrationReport, RemovedProvider};
 pub use router::Router;
 
 /// Default `ServerConfig::connect_timeout_ms` (D24). Was 800 ms, too tight
@@ -105,6 +110,16 @@ pub struct RouterConfig {
     /// Cloud providers (no keys). Omitted while default.
     #[serde(skip_serializing_if = "CloudConfig::is_default")]
     pub cloud: CloudConfig,
+    /// Opt-in OpenRouter text cleanup (D28), separate from `allow_cloud`
+    /// and with its own consent (`cloud.openrouter.cleanup.consent_*`).
+    /// Used only when `cleanup_order` lists `cloud`. Omitted while false.
+    #[serde(skip_serializing_if = "is_false")]
+    pub allow_cloud_cleanup: bool,
+    /// Cleanup engines in order (D28): `[cloud, local]` = cloud first, the
+    /// on-device LLM when the cloud fails fast; `[local, cloud]` = cloud
+    /// only when no local LLM is loaded. Empty = local LLM only (pre-D28).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub cleanup_order: Vec<CleanupRoute>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -122,6 +137,8 @@ impl Default for RouterConfig {
             allow_cloud: false,
             order: Vec::new(),
             cloud: CloudConfig::default(),
+            allow_cloud_cleanup: false,
+            cleanup_order: Vec::new(),
         }
     }
 }
@@ -273,7 +290,21 @@ impl RouterConfig {
                 )));
             }
         }
+        for (i, r) in self.cleanup_order.iter().enumerate() {
+            if self.cleanup_order[..i].contains(r) {
+                return Err(RouterError::BadConfig(format!(
+                    "cleanup order lists {:?} twice",
+                    r
+                )));
+            }
+        }
         Ok(())
+    }
+
+    /// Cloud cleanup is switched on by the user (toggle + order). Build
+    /// capability, consent, key, budget and circuit are checked per call.
+    pub fn cloud_cleanup_wanted(&self) -> bool {
+        self.allow_cloud_cleanup && self.cleanup_order.contains(&CleanupRoute::Cloud)
     }
 }
 
@@ -326,6 +357,13 @@ pub enum Failure {
     /// Provider answered with an error (5xx, 4xx other than auth/quota/
     /// rate limit) or an unparseable body.
     ProviderError,
+    /// D28: OpenRouter found no provider meeting the privacy settings
+    /// (HTTP 503 with `zdr`/`data_collection`). Sticky until the model or
+    /// privacy settings change.
+    NoPrivateRoute,
+    /// D28: cloud cleanup skipped (no build support, toggle off, no
+    /// cleanup consent, or no key).
+    CloudCleanupNotConfigured,
 }
 
 impl Failure {
@@ -345,6 +383,8 @@ impl Failure {
             Failure::BudgetExceeded => "budget_exceeded",
             Failure::QuotaExceeded => "quota_exceeded",
             Failure::ProviderError => "provider_error",
+            Failure::NoPrivateRoute => "no_private_route",
+            Failure::CloudCleanupNotConfigured => "cloud_cleanup_not_configured",
         }
     }
 }
@@ -582,6 +622,35 @@ pub struct RouteStatus {
     /// Routing details of the last committed session (D24). Additive.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_diag: Option<RouteDiag>,
+    /// Cloud cleanup circuit (D28); present only in builds with cloud
+    /// cleanup support. Additive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cleanup_circuit: Option<CircuitStatus>,
+}
+
+/// `Router::cleanup_status` (D28 settings page "Text cleanup" card).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CleanupStatus {
+    /// This build can clean up text with OpenRouter.
+    pub supported: bool,
+    /// Toggle on and `cloud` in `cleanup_order`.
+    pub enabled: bool,
+    pub order: Vec<CleanupRoute>,
+    /// Cleanup consent recorded for openrouter.ai.
+    pub consent: bool,
+    /// Why a call now would be refused (`Failure` string), `None` = ready.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blocked: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub circuit: Option<CircuitStatus>,
+    pub model: String,
+    pub timeout_ms: u64,
+    /// The last cloud cleanup call (engine, model, cost, ids, TTFT).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last: Option<flow_core::cleanup::CleanUsage>,
+    /// This month's cleanup cost (USD).
+    pub month_cost_usd: Usd,
 }
 
 /// Errors from `Router::start_session` (stable snake_case kinds).
@@ -639,14 +708,39 @@ pub trait Backend: Send + Sync {
     fn warm(&self) -> Result<(), BackendError> {
         Ok(())
     }
+    /// Install (or with `None` remove) the router's cleanup plan (D28):
+    /// an in-process engine calls `plan(its built-in cleaner)` and uses
+    /// the returned cleaner for its next commits
+    /// (`FlowCore::set_cleaner`). Default: ignored, which is what the
+    /// server route does (its own pipeline cleans; never cloud cleanup).
+    fn install_cleanup(&self, _plan: Option<CleanupPlan>) {}
 }
+
+/// Builds the cleaner an in-process engine should use from its built-in
+/// one (the on-device LLM, if loaded): `RoutedCleaner(cloud, local)` etc.
+pub type CleanupPlan = Arc<
+    dyn Fn(
+            Option<Arc<dyn flow_core::cleanup::Cleaner>>,
+        ) -> Option<Arc<dyn flow_core::cleanup::Cleaner>>
+        + Send
+        + Sync,
+>;
 
 pub type RemoteFactory = Box<dyn Fn(&ServerConfig) -> Arc<dyn Backend> + Send + Sync>;
 
-/// Builds the cloud backend for a provider + its key (`flow-cloud`).
-/// Called at most once per (provider config, key) and cached.
+/// Builds the cloud STT backend for the OpenRouter config + key
+/// (`flow-cloud`). Called at most once per (privacy, stt config, key) and
+/// cached. D28: was `&CloudProviderConfig`.
 pub type CloudFactory =
-    Box<dyn Fn(&CloudProviderConfig, SecretString) -> Arc<dyn Backend> + Send + Sync>;
+    Box<dyn Fn(&OpenRouterConfig, SecretString) -> Arc<dyn Backend> + Send + Sync>;
+
+/// Builds the OpenRouter cleaner for the config + key (`flow-cloud`'s
+/// `OpenRouterCleaner`, D28). Called once per (privacy, cleanup config,
+/// key) and cached. The router wraps it with consent / circuit / budget
+/// checks; it never sees a call the gate refused.
+pub type CleanupFactory = Box<
+    dyn Fn(&OpenRouterConfig, SecretString) -> Arc<dyn flow_core::cleanup::Cleaner> + Send + Sync,
+>;
 
 pub(crate) fn now_unix_ms() -> u64 {
     std::time::SystemTime::now()

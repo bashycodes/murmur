@@ -1,0 +1,42 @@
+{
+  "allow_cloud": true,
+  "cloud": {
+    "active": "groq-1",
+    "monthly_budget_usd": 5.0,
+    "providers": [
+      {
+        "adapter": "openrouter",
+        "base_url": "https://openrouter.ai/api/v1",
+        "consent_at_ms": 1792540800000,
+        "consent_host": "openrouter.ai",
+        "id": "openrouter-1",
+        "label": "OpenRouter",
+        "model": "openai/gpt-transcribe",
+        "preset": "openrouter",
+        "send_dictionary": true,
+        "zero_retention": true
+      },
+      {
+        "adapter": "openai_compat",
+        "base_url": "https://api.groq.com/openai/v1",
+        "consent_at_ms": 1792540800000,
+        "consent_host": "api.groq.com",
+        "id": "groq-1",
+        "label": "Groq",
+        "model": "whisper-large-v3-turbo",
+        "preset": "groq",
+        "send_dictionary": true,
+        "zero_retention": false
+      }
+    ]
+  },
+  "order": [
+    "cloud",
+    "server",
+    "client"
+  ],
+  "server": {
+    "host": "100.64.0.10",
+    "token": "dev-token-0123456789abcdef"
+  }
+}

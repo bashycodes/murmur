@@ -1,13 +1,51 @@
 //! In-process mock HTTP server for contract tests (feature `mock-server`).
 //! std only: a thread on `127.0.0.1:0` that records every request and
 //! answers from a handler. One request per connection (`Connection:
-//! close`), plain HTTP (loopback is allowed by the base-URL rules).
+//! close`), plain HTTP. Point the crate at it with [`override_base_url`]
+//! (the production base URL is a constant; this seam exists only with the
+//! `mock-server` feature).
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
+
+static OVERRIDE: Mutex<Option<String>> = Mutex::new(None);
+static SERIAL: Mutex<()> = Mutex::new(());
+
+/// While the guard lives, every [`crate::api::Api`] request goes to `base`
+/// (e.g. `srv.url("/api/v1")`) instead of `https://openrouter.ai/api/v1`.
+/// Guards are serialised process-wide, so tests using it run one at a time.
+pub fn override_base_url(base: &str) -> BaseOverride {
+    let serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    *OVERRIDE.lock().unwrap_or_else(|e| e.into_inner()) =
+        Some(base.trim_end_matches('/').to_string());
+    BaseOverride { _serial: serial }
+}
+
+/// See [`override_base_url`].
+pub struct BaseOverride {
+    _serial: MutexGuard<'static, ()>,
+}
+
+impl BaseOverride {
+    /// Point the override elsewhere (e.g. a closed port) while holding it.
+    pub fn set(&self, base: &str) {
+        *OVERRIDE.lock().unwrap_or_else(|e| e.into_inner()) =
+            Some(base.trim_end_matches('/').to_string());
+    }
+}
+
+impl Drop for BaseOverride {
+    fn drop(&mut self) {
+        *OVERRIDE.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+}
+
+pub(crate) fn current_override() -> Option<String> {
+    OVERRIDE.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
 
 /// A request as the server saw it.
 #[derive(Debug, Clone, Default)]
@@ -169,6 +207,9 @@ pub struct Reply {
     pub body: Vec<u8>,
     /// Sleep before answering (timeouts).
     pub delay: Duration,
+    /// Streamed body: (pause before, bytes) pieces sent after `body`, with
+    /// no Content-Length (the connection close ends the body).
+    pub chunks: Vec<(Duration, Vec<u8>)>,
 }
 
 impl Reply {
@@ -178,6 +219,7 @@ impl Reply {
             headers: vec![("Content-Type".into(), "application/json".into())],
             body: v.to_string().into_bytes(),
             delay: Duration::ZERO,
+            chunks: Vec::new(),
         }
     }
     pub fn raw(status: u16, body: &str) -> Self {
@@ -186,6 +228,21 @@ impl Reply {
             headers: vec![("Content-Type".into(), "text/plain".into())],
             body: body.as_bytes().to_vec(),
             delay: Duration::ZERO,
+            chunks: Vec::new(),
+        }
+    }
+    /// A `text/event-stream` answer: `events` are sent one by one, `gap`
+    /// apart (each is written as is; include the trailing blank line).
+    pub fn sse(events: &[&str], gap: Duration) -> Self {
+        Self {
+            status: 200,
+            headers: vec![("Content-Type".into(), "text/event-stream".into())],
+            body: Vec::new(),
+            delay: Duration::ZERO,
+            chunks: events
+                .iter()
+                .map(|e| (gap, e.as_bytes().to_vec()))
+                .collect(),
         }
     }
     pub fn header(mut self, k: &str, v: &str) -> Self {
@@ -205,6 +262,7 @@ pub struct MockServer {
     pub addr: std::net::SocketAddr,
     requests: Arc<Mutex<Vec<Recorded>>>,
     stop: Arc<AtomicBool>,
+    aborted: Arc<AtomicUsize>,
 }
 
 impl MockServer {
@@ -215,14 +273,15 @@ impl MockServer {
         listener.set_nonblocking(true).unwrap();
         let requests = Arc::new(Mutex::new(Vec::new()));
         let stop = Arc::new(AtomicBool::new(false));
-        let (r2, s2) = (requests.clone(), stop.clone());
+        let aborted = Arc::new(AtomicUsize::new(0));
+        let (r2, s2, a2) = (requests.clone(), stop.clone(), aborted.clone());
         let handler: Arc<Handler> = Arc::new(handler);
         std::thread::spawn(move || {
             while !s2.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((stream, _)) => {
-                        let (r3, h) = (r2.clone(), handler.clone());
-                        std::thread::spawn(move || serve(stream, &r3, &*h));
+                        let (r3, h, a3) = (r2.clone(), handler.clone(), a2.clone());
+                        std::thread::spawn(move || serve(stream, &r3, &*h, &a3));
                     }
                     Err(_) => std::thread::sleep(Duration::from_millis(2)),
                 }
@@ -232,7 +291,13 @@ impl MockServer {
             addr,
             requests,
             stop,
+            aborted,
         }
+    }
+
+    /// Streamed replies whose client went away before the last piece.
+    pub fn aborted_streams(&self) -> usize {
+        self.aborted.load(Ordering::SeqCst)
     }
 
     /// Always the same reply.
@@ -265,7 +330,7 @@ impl Drop for MockServer {
     }
 }
 
-fn serve(stream: TcpStream, log: &Mutex<Vec<Recorded>>, handler: &Handler) {
+fn serve(stream: TcpStream, log: &Mutex<Vec<Recorded>>, handler: &Handler, aborted: &AtomicUsize) {
     let _ = stream.set_nonblocking(false);
     let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
     let mut w = match stream.try_clone() {
@@ -336,11 +401,15 @@ fn serve(stream: TcpStream, log: &Mutex<Vec<Recorded>>, handler: &Handler) {
     };
     let reply = handler(&rec, idx);
     std::thread::sleep(reply.delay);
-    let mut out = format!(
-        "HTTP/1.1 {} X\r\nContent-Length: {}\r\nConnection: close\r\n",
-        reply.status,
-        reply.body.len()
-    );
+    let mut out = if reply.chunks.is_empty() {
+        format!(
+            "HTTP/1.1 {} X\r\nContent-Length: {}\r\nConnection: close\r\n",
+            reply.status,
+            reply.body.len()
+        )
+    } else {
+        format!("HTTP/1.1 {} X\r\nConnection: close\r\n", reply.status)
+    };
     for (k, v) in &reply.headers {
         out.push_str(&format!("{k}: {v}\r\n"));
     }
@@ -348,4 +417,13 @@ fn serve(stream: TcpStream, log: &Mutex<Vec<Recorded>>, handler: &Handler) {
     let _ = w.write_all(out.as_bytes());
     let _ = w.write_all(&reply.body);
     let _ = w.flush();
+    for (gap, piece) in &reply.chunks {
+        std::thread::sleep(*gap);
+        // A closed peer shows up as a write error (maybe one write late).
+        if w.write_all(piece).and_then(|_| w.flush()).is_err() {
+            aborted.fetch_add(1, Ordering::SeqCst);
+            return;
+        }
+    }
+    let _ = w.shutdown(std::net::Shutdown::Write);
 }
