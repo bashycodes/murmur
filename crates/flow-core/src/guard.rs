@@ -300,6 +300,11 @@ fn num_word(w: &str) -> Option<(NumKind, u64, bool)> {
         "eightieth",
         "ninetieth",
     ];
+    // The deterministic pass may have converted part of a run already
+    // ("a hundred and 20"): small digit tokens join a run like a teen.
+    if let Ok(v) = w.parse::<u64>() {
+        return (v < 100 && !w.starts_with('0')).then_some((NumKind::Teen, v, false));
+    }
     let pos = |l: &[&str]| l.iter().position(|x| *x == w).map(|i| i as u64);
     if let Some(i) = pos(UNITS) {
         return Some((NumKind::Unit, i, false));
