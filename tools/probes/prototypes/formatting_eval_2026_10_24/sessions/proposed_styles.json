@@ -1,0 +1,1 @@
+{"cleanup_level":"light","raw_mode":false,"platform":"android","spoken_cleanup":true,"vad":false,"hallucination_guard":false,"llm_timeout_ms":3000,"styles":{"personal":"casual","work":"casual","email":"formal","other":"formal"}}
