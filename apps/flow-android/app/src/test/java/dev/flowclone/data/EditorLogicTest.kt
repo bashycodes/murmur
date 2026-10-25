@@ -32,7 +32,7 @@ class LlmSettingsTest {
     @Test fun defaultsAreLlmOffPreviewOnShakeOnMinimiseOn() {
         val s = Settings()
         assertFalse(s.llmEnabled)
-        assertTrue(s.livePreview && s.shakeToReveal && s.shrinkBubble)
+        assertTrue(s.livePreview && s.shakeToReveal && s.shrinkBubble && s.shrinkToDot)
     }
 
     @Test fun livePreviewSetsPartialInterval() {
