@@ -60,21 +60,16 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
 
     fun update(newUi: BubbleUi) {
         if (newUi.state is DictationState.Processing && ui.state !is DictationState.Processing) processingSince = SystemClock.uptimeMillis()
-        val resize = widthDpFor(newUi) != widthDpFor(ui) || heightDpFor(newUi) != heightDpFor(ui)
+        val resize = BubbleGeometry.widthDp(newUi) != BubbleGeometry.widthDp(ui) || BubbleGeometry.heightDp(newUi) != BubbleGeometry.heightDp(ui)
         ui = newUi
         glyph.textSize = dp(22f)
         if (resize) requestLayout()
         invalidate()
     }
 
-    /** Width in dp (07 §5.4 × [BubbleUi.scale]). */
-    fun widthDpFor(u: BubbleUi): Float = BubbleGeometry.widthDp(u)
-
-    fun heightDpFor(u: BubbleUi): Float = BubbleGeometry.heightDp(u)
-
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        // widthDpFor / heightDpFor are already scaled: density only (same px as the overlay's window maths).
-        setMeasuredDimension((widthDpFor(ui) * d).toInt(), (heightDpFor(ui) * d).toInt())
+        // The geometry sizes are already scaled: density only (same px as the overlay's window maths).
+        setMeasuredDimension((BubbleGeometry.widthDp(ui) * d).toInt(), (BubbleGeometry.heightDp(ui) * d).toInt())
     }
 
     override fun onDraw(canvas: Canvas) {
