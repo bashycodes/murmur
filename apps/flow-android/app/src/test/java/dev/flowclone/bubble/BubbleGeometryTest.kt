@@ -46,6 +46,37 @@ class BubbleGeometryTest {
         }
     }
 
+    // ---- "Shrink to a dot": the minimised look is drawn 16dp, the window (touch target) stays 36dp ----
+
+    private fun drawn(u: BubbleUi) = BubbleGeometry.drawnSizeDp(u)
+
+    @Test fun minimisedIsDrawnAsA16dpDotWhenShrinkToDotIsOn() {
+        assertEquals(16f, drawn(minimised))
+        assertEquals(24f, drawn(minimised.copy(scale = 1.5f)))
+        assertEquals(12f, drawn(minimised.copy(scale = 0.75f)))
+    }
+
+    @Test fun minimisedIsDrawnAsTodays36dpCircleWhenShrinkToDotIsOff() {
+        val circle = minimised.copy(dot = false)
+        assertEquals(36f, drawn(circle))
+        assertEquals(54f, drawn(circle.copy(scale = 1.5f)))
+        assertEquals(27f, drawn(circle.copy(scale = 0.75f)))
+    }
+
+    @Test fun theDotKeepsThe36dpMinimisedTouchTarget() {
+        for (scale in listOf(0.75f, 1f, 1.5f)) {
+            val dot = minimised.copy(scale = scale)
+            assertEquals("$scale", 36f * scale to 36f * scale, size(dot))
+            assertEquals("$scale: same window as the circle", size(dot.copy(dot = false)), size(dot))
+        }
+    }
+
+    @Test fun onlyTheMinimisedLookBecomesADot() {
+        for (u in listOf(ready, readyCopy, repair, recTap, failedPaste, readyCopy.copy(minimized = true))) {
+            assertEquals(u.toString(), BubbleGeometry.heightDp(u), drawn(u))
+        }
+    }
+
     // ---- hit-testing: density 1 so px == dp × scale ----
 
     private fun hit(u: BubbleUi, x: Float, y: Float = BubbleGeometry.heightDp(u) / 2, processingCancel: Boolean = true): BubbleButton {
