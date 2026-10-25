@@ -138,6 +138,34 @@ class SettingsUiTest {
         app.settings.save(app.settings.load().copy(bubbleScale = 1f))
     }
 
+    @Test fun shrinkToADotSitsUnderShrinkBubbleAndNeedsIt() {
+        val a = launch(Page.BUBBLE)
+        val app = FlowApp.of(a)
+        val t = texts(a)
+        assertTrue(t.toString(), t.indexOf("Shrink bubble") in 0 until t.indexOf("Shrink to a dot"))
+        val dot = rowTitled(a, "Shrink to a dot")
+        val shrink = rowTitled(a, "Shrink bubble")
+        assertTrue("default on", dot.createAccessibilityNodeInfo().isChecked)
+        assertTrue(dot.isEnabled)
+        dot.performClick()
+        assertFalse("applies without Save", app.settings.load().shrinkToDot)
+        assertFalse("the running bubble sees it", app.settings.shrinkToDot.value)
+        assertFalse("persisted", dev.flowclone.data.SettingsStore(a).load().shrinkToDot)
+        dot.performClick()
+        assertTrue(app.settings.load().shrinkToDot)
+        // Only active while "Shrink bubble" is on.
+        shrink.performClick()
+        assertFalse(app.settings.load().shrinkBubble)
+        assertFalse(dot.isEnabled)
+        dot.performClick()
+        assertTrue("a disabled row ignores taps", app.settings.load().shrinkToDot)
+        shrink.performClick()
+        assertTrue(dot.isEnabled)
+        app.settings.save(app.settings.load().copy(shrinkBubble = false))
+        assertFalse("a page opened with Shrink bubble off starts it disabled", rowTitled(launch(Page.BUBBLE), "Shrink to a dot").isEnabled)
+        app.settings.save(app.settings.load().copy(shrinkBubble = true, shrinkToDot = true))
+    }
+
     @Test fun choiceRowsReadAsRadioButtons() {
         val a = launch(Page.HISTORY)
         val keep = rowTitled(a, "Keep").createAccessibilityNodeInfo()
