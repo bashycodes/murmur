@@ -72,8 +72,8 @@ class BubbleOverlay(
         return BubblePositioner(m.widthPixels, m.heightPixels, m.density, positionStore, view.ui.scale)
     }
 
-    private fun bubbleW() = (view.widthDpFor(view.ui) * density).toInt()
-    private fun bubbleH() = (view.heightDpFor(view.ui) * density).toInt()
+    private fun bubbleW() = (BubbleGeometry.widthDp(view.ui) * density).toInt()
+    private fun bubbleH() = (BubbleGeometry.heightDp(view.ui) * density).toInt()
 
     fun attach() {
         if (attached) return
