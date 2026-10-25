@@ -33,8 +33,11 @@ object BubbleGeometry {
     /** One round button: the h×h square starting at [left] px (the bubble's full height). */
     data class Slot(val left: Float, val right: Float, val button: BubbleButton)
 
+    /** The 36dp minimised look applies: resting, shrunk, and neither repair nor the copy button showing. */
+    fun isMinimisedLook(u: BubbleUi): Boolean = u.resting && u.minimized && !u.repair && !u.showCopy
+
     /** Widths from 07 §5.4 (56 circle, 120 with copy, 230 tap row, 160 hold row; 176 paste/copy/dismiss), unscaled. */
-    fun baseWidthDp(u: BubbleUi): Float = if (u.resting && u.repair) 56f else if (u.resting && u.minimized && !u.showCopy) 36f else when (val s = u.state) {
+    fun baseWidthDp(u: BubbleUi): Float = if (u.resting && u.repair) 56f else if (isMinimisedLook(u)) 36f else when (val s = u.state) {
         DictationState.Idle -> 56f
         DictationState.Ready -> if (u.showCopy) 120f else 56f
         is DictationState.Recording -> if (s.hold) 160f else 230f
@@ -42,7 +45,7 @@ object BubbleGeometry {
         is DictationState.Error -> if (s.kind is ErrorKind.FailedToPaste) 176f else 56f
     }
 
-    fun baseHeightDp(u: BubbleUi): Float = if (u.resting && u.minimized && !u.repair && !u.showCopy) 36f else 56f
+    fun baseHeightDp(u: BubbleUi): Float = if (isMinimisedLook(u)) 36f else 56f
 
     fun widthDp(u: BubbleUi): Float = baseWidthDp(u) * u.scale
     fun heightDp(u: BubbleUi): Float = baseHeightDp(u) * u.scale
@@ -50,8 +53,8 @@ object BubbleGeometry {
     /** Diameter of the plain minimised dot, unscaled ("Shrink to a dot", like Wispr's). */
     const val DOT_DP = 16f
 
-    /** [u] is drawn as the plain dot: minimised (36dp look) with "Shrink to a dot" on. */
-    fun isDot(u: BubbleUi): Boolean = u.dot && baseHeightDp(u) == 36f
+    /** [u] is drawn as the plain dot: the minimised look with "Shrink to a dot" on. */
+    fun isDot(u: BubbleUi): Boolean = u.dot && isMinimisedLook(u)
 
     /**
      * Height of what is drawn, in scaled dp. Only the dot differs from [heightDp]: it is drawn
@@ -69,7 +72,7 @@ object BubbleGeometry {
         fun at(left: Float, b: BubbleButton) = Slot(left, left + heightPx, b)
         return when (val s = u.state) {
             DictationState.Idle, DictationState.Ready -> when {
-                u.repair || u.minimized && !u.showCopy -> listOf(at(0f, BubbleButton.MAIN))
+                u.repair || isMinimisedLook(u) -> listOf(at(0f, BubbleButton.MAIN))
                 u.showCopy -> listOf(at(0f, BubbleButton.MAIN), at(px(64f), BubbleButton.COPY))
                 else -> listOf(at(0f, BubbleButton.MAIN))
             }

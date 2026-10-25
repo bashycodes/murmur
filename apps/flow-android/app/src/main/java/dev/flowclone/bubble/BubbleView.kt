@@ -92,7 +92,7 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
                 circleButton(canvas, danger, BubbleButton.MAIN) { cx, cy -> drawGlyph(canvas, "!", cx, cy) }
                 danger.alpha = 255
                 postInvalidateOnAnimation()
-            } else if (ui.minimized && !ui.showCopy) {
+            } else if (BubbleGeometry.isMinimisedLook(ui)) {
                 circleButton(canvas, accent, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy, 9f) }
             } else {
                 circleButton(canvas, accent, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy) }
