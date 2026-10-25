@@ -513,8 +513,11 @@ class SettingsActivity : Activity() {
             card {
                 toggleRow("Live preview", "Shows the transcript while you speak (uses more battery)", s.livePreview)
                     .onChange { on -> applyNow { copy(livePreview = on) } }
-                toggleRow("Shrink to a dot", "After 5 s without use", s.shrinkBubble)
-                    .onChange { on -> applyNow { copy(shrinkBubble = on) } }
+                lateinit var dot: DevUi.ToggleRow
+                toggleRow("Shrink bubble", "After 5 s without use", s.shrinkBubble)
+                    .onChange { on -> dot.isEnabled = on; applyNow { copy(shrinkBubble = on) } }
+                dot = toggleRow("Shrink to a dot", "Shrinks to a small dot instead of a smaller bubble; still easy to tap", s.shrinkToDot, enabled = s.shrinkBubble)
+                    .also { it.onChange { on -> applyNow { copy(shrinkToDot = on) } } }
                 toggleRow("Shake to restore", "Shake the phone to bring a snoozed or hidden bubble back", s.shakeToReveal)
                     .onChange { on -> applyNow { copy(shakeToReveal = on) } }
             }

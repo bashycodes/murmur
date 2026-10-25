@@ -16,7 +16,7 @@ import dev.flowclone.session.DictationState
 import dev.flowclone.session.DictationState.ErrorKind
 
 /**
- * Canvas-drawn bubble: circle (Ready), recording row X·waveform·✓ (tap mode),
+ * Canvas-drawn bubble: circle (Ready), minimised dot or small circle, recording row X·waveform·✓ (tap mode),
  * mic+waveform (hold mode), paste/copy/dismiss (FailedToPaste), alert (other errors).
  * Gestures go through [BubbleGesture]; the host decides what each action means.
  */
@@ -78,6 +78,11 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
         val showCancel = s !is DictationState.Processing || !s.hold || SystemClock.uptimeMillis() - processingSince > 3000
         // Button positions come from the geometry, so drawing and hit-testing never disagree.
         slots = BubbleGeometry.slots(ui, width.toFloat(), h, ::dp, processingCancel = showCancel)
+        if (BubbleGeometry.isDot(ui)) {
+            // "Shrink to a dot": a plain filled dot centred in the 36dp window, which stays the touch target.
+            canvas.drawCircle(width / 2f, h / 2, BubbleGeometry.drawnSizeDp(ui) * d / 2, accent)
+            return
+        }
         val pill = RectF(0f, 0f, width.toFloat(), h)
         canvas.drawRoundRect(pill, r, r, bg)
         when (s) {
@@ -87,7 +92,7 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
                 circleButton(canvas, danger, BubbleButton.MAIN) { cx, cy -> drawGlyph(canvas, "!", cx, cy) }
                 danger.alpha = 255
                 postInvalidateOnAnimation()
-            } else if (ui.minimized && !ui.showCopy) {
+            } else if (BubbleGeometry.isMinimisedLook(ui)) {
                 circleButton(canvas, accent, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy, 9f) }
             } else {
                 circleButton(canvas, accent, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy) }

@@ -32,6 +32,7 @@ class SettingsStore(context: Context) {
         livePreview = sp.getBoolean("live_preview", true),
         shakeToReveal = sp.getBoolean("shake_to_reveal", true),
         shrinkBubble = sp.getBoolean("shrink_bubble", true),
+        shrinkToDot = loadShrinkToDot(),
         bubbleScale = loadBubbleScale(),
         spokenCleanup = sp.getBoolean("spoken_cleanup", true),
         asrEngine = dev.flowclone.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.flowclone.core.AsrEngine.WHISPER,
@@ -85,6 +86,7 @@ class SettingsStore(context: Context) {
             .putBoolean("live_preview", s.livePreview)
             .putBoolean("shake_to_reveal", s.shakeToReveal)
             .putBoolean("shrink_bubble", s.shrinkBubble)
+            .putBoolean("shrink_to_dot", s.shrinkToDot)
             .putFloat("bubble_scale", s.bubbleScale)
             .putBoolean("spoken_cleanup", s.spokenCleanup)
             .putString("asr_engine", s.asrEngine.wire)
@@ -99,12 +101,18 @@ class SettingsStore(context: Context) {
             .putString("app_buckets", WritingStyle.formatOverrides(s.appBuckets))
             .apply()
         _bubbleScale.value = s.bubbleScale
+        _shrinkToDot.value = s.shrinkToDot
     }
 
     private fun loadBubbleScale() = Settings.bubbleScaleOf(sp.getFloat("bubble_scale", 1f))
     private val _bubbleScale = kotlinx.coroutines.flow.MutableStateFlow(loadBubbleScale())
     /** The saved "Bubble size", so the running bubble resizes the moment it changes. */
     val bubbleScale: kotlinx.coroutines.flow.StateFlow<Float> = _bubbleScale
+
+    private fun loadShrinkToDot() = sp.getBoolean("shrink_to_dot", true)
+    private val _shrinkToDot = kotlinx.coroutines.flow.MutableStateFlow(loadShrinkToDot())
+    /** The saved "Shrink to a dot", so a minimised bubble redraws the moment it changes. */
+    val shrinkToDot: kotlinx.coroutines.flow.StateFlow<Boolean> = _shrinkToDot
 
     var modelPath: String?
         get() = sp.getString("model_path", null)

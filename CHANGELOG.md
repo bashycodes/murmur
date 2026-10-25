@@ -18,6 +18,11 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Android: Shrink to a dot.** Settings → Bubble has a "Shrink to a dot"
+  switch (default on) under "Shrink bubble" (the old switch, renamed). When
+  on, the bubble shrinks to a small 16 dp dot after 5 s idle instead of the
+  smaller mic bubble; it scales with Bubble size and is as easy to tap and
+  drag as before. The switch is greyed out while "Shrink bubble" is off.
 - **Android: Bubble size.** Settings → Bubble has a "Bubble size" slider
   from 75 % to 150 % (steps of 5 %, default 100 %). Every bubble look
   scales with it, including its buttons, waveform and the space it keeps
