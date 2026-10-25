@@ -69,7 +69,7 @@ class BubbleOverlay(
 
     private fun positioner(): BubblePositioner {
         val m = context.resources.displayMetrics
-        return BubblePositioner(m.widthPixels, m.heightPixels, m.density, positionStore)
+        return BubblePositioner(m.widthPixels, m.heightPixels, m.density, positionStore, view.ui.scale)
     }
 
     private fun bubbleW() = (view.widthDpFor(view.ui) * density).toInt()
@@ -102,15 +102,25 @@ class BubbleOverlay(
     fun render(ui: BubbleUi) {
         val oldW = bubbleW()
         val oldH = bubbleH()
+        val rescaled = ui.scale != view.ui.scale
         view.update(ui)
         val dictating = ui.state is DictationState.Recording || ui.state is DictationState.Processing
         val keepOn = if (dictating) WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON else 0
         params.flags = (params.flags and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON.inv()) or keepOn
-        // Docked right, the bubble grows leftwards; keep it vertically centred on its anchor.
-        val newW = bubbleW()
-        if (newW != oldW && params.x + oldW / 2 > context.resources.displayMetrics.widthPixels / 2) params.x -= newW - oldW
-        val newH = bubbleH()
-        if (newH != oldH) params.y -= (newH - oldH) / 2
+        if (rescaled) {
+            // "Bubble size" changed: back to the saved anchor with the margins at the new size.
+            snapAnim?.cancel()
+            val p = positioner().position(bubbleW(), bubbleH())
+            params.x = p.x; params.y = p.y
+        } else {
+            // Docked right, the bubble grows leftwards; keep it vertically centred on its anchor.
+            val newW = bubbleW()
+            if (newW != oldW && params.x + oldW / 2 > context.resources.displayMetrics.widthPixels / 2) params.x -= newW - oldW
+            val newH = bubbleH()
+            if (newH != oldH) params.y -= (newH - oldH) / 2
+            // A wide row at a large size can be wider than the gap to the far edge.
+            if (newW != oldW || newH != oldH) positioner().clampDrag(params.x, params.y, newW, newH).let { params.x = it.x; params.y = it.y }
+        }
         applyVisibility(ui.visible)
         if (!ui.visible) preview.hide()
     }
