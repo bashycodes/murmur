@@ -43,7 +43,7 @@ import kotlin.concurrent.thread
  *   engine    whisper / Parakeet, model imports                       (not in `remote`)
  *   cleanup   local AI cleanup on/off, GGUF model, strength            (not in `remote`)
  *   timing    hands-free stop after silence, decode while speaking, session limit   [Save]
- *   bubble    live preview, shrink to a dot, shake to restore
+ *   bubble    live preview, shrink to a dot, shake to restore, bubble size
  *   apps      excluded apps (package names)                                          [Save]
  *   history   retention (asks before deleting)
  * Save rule ([SettingsPages]): pages with typed fields have Save in the top bar (changed + valid,
@@ -517,6 +517,14 @@ class SettingsActivity : Activity() {
                     .onChange { on -> applyNow { copy(shrinkBubble = on) } }
                 toggleRow("Shake to restore", "Shake the phone to bring a snoozed or hidden bubble back", s.shakeToReveal)
                     .onChange { on -> applyNow { copy(shakeToReveal = on) } }
+            }
+            card {
+                sliderRow(
+                    "Bubble size", "Buttons and the waveform grow with it",
+                    min = Settings.BUBBLE_SIZE_PERCENT.first, max = Settings.BUBBLE_SIZE_PERCENT.last,
+                    step = Settings.BUBBLE_SIZE_STEP_PERCENT,
+                    value = SettingsSummary.bubbleSizePercent(s.bubbleScale),
+                ) { "$it%" }.onChange { pct -> applyNow { copy(bubbleScale = Settings.bubbleScaleOf(pct / 100f)) } }
             }
             note("Drag the bubble onto the target at the bottom of the screen to snooze it for 10 minutes. Changes apply at once.")
         }

@@ -32,6 +32,7 @@ class SettingsStore(context: Context) {
         livePreview = sp.getBoolean("live_preview", true),
         shakeToReveal = sp.getBoolean("shake_to_reveal", true),
         shrinkBubble = sp.getBoolean("shrink_bubble", true),
+        bubbleScale = loadBubbleScale(),
         spokenCleanup = sp.getBoolean("spoken_cleanup", true),
         asrEngine = dev.flowclone.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.flowclone.core.AsrEngine.WHISPER,
         endpointSilenceMs = loadEndpointMs(),
@@ -84,6 +85,7 @@ class SettingsStore(context: Context) {
             .putBoolean("live_preview", s.livePreview)
             .putBoolean("shake_to_reveal", s.shakeToReveal)
             .putBoolean("shrink_bubble", s.shrinkBubble)
+            .putFloat("bubble_scale", s.bubbleScale)
             .putBoolean("spoken_cleanup", s.spokenCleanup)
             .putString("asr_engine", s.asrEngine.wire)
             .putInt("endpoint_silence_ms", s.endpointSilenceMs)
@@ -96,7 +98,13 @@ class SettingsStore(context: Context) {
             .putString("style_other", s.styles.other.wire)
             .putString("app_buckets", WritingStyle.formatOverrides(s.appBuckets))
             .apply()
+        _bubbleScale.value = s.bubbleScale
     }
+
+    private fun loadBubbleScale() = Settings.bubbleScaleOf(sp.getFloat("bubble_scale", 1f))
+    private val _bubbleScale = kotlinx.coroutines.flow.MutableStateFlow(loadBubbleScale())
+    /** The saved "Bubble size", so the running bubble resizes the moment it changes. */
+    val bubbleScale: kotlinx.coroutines.flow.StateFlow<Float> = _bubbleScale
 
     var modelPath: String?
         get() = sp.getString("model_path", null)
