@@ -74,9 +74,13 @@ class BubbleGesture(private val touchSlopPx: Float, private val blocked: () -> B
 /**
  * Bubble anchors (07 §5.3): X snaps to Left (20dp) or Right (screenW − w − 20dp); Y snaps
  * to one of 100 evenly spaced anchors between 56dp margins, default index 35. Clone
- * deviation 5.6: the snapped anchor is persisted via [Store].
+ * deviation 5.6: the snapped anchor is persisted via [Store]. The margins scale with the
+ * "Bubble size" [scale] like the bubble itself; the saved anchor (side + index) is
+ * size-independent, so it stays valid when the size changes.
  */
-class BubblePositioner(val screenW: Int, val screenH: Int, val density: Float, private val store: Store) {
+class BubblePositioner(
+    val screenW: Int, val screenH: Int, val density: Float, private val store: Store, val scale: Float = 1f,
+) {
     enum class Side { LEFT, RIGHT }
     data class Saved(val side: Side, val yIndex: Int)
     data class Pos(val x: Int, val y: Int)
@@ -93,13 +97,14 @@ class BubblePositioner(val screenW: Int, val screenH: Int, val density: Float, p
         const val Y_MARGIN_DP = 56
     }
 
-    private fun dp(v: Int) = (v * density).toInt()
+    private fun dp(v: Int) = (v * density * scale).toInt()
     private var saved: Saved = store.load() ?: Saved(Side.RIGHT, DEFAULT_Y_INDEX)
 
+    /** Never off-screen: a bubble wider than the screen minus its margin is pulled back in. */
     fun xFor(side: Side, bubbleW: Int) = when (side) {
         Side.LEFT -> dp(EDGE_DP)
         Side.RIGHT -> screenW - bubbleW - dp(EDGE_DP)
-    }
+    }.coerceIn(0, maxOf(0, screenW - bubbleW))
 
     fun yForIndex(i: Int, bubbleH: Int): Int {
         val top = dp(Y_MARGIN_DP)

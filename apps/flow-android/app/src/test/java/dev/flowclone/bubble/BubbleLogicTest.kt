@@ -101,6 +101,41 @@ class BubblePositionerTest {
         assertEquals(small.x + w - 230 * 3, wide.x)
     }
 
+    @Test fun marginsScaleWithBubbleSize() {
+        val big = BubblePositioner(1080, 2400, 2.75f, store, scale = 1.5f)
+        val bw = (84 * 2.75f).toInt()
+        assertEquals((30 * 2.75f).toInt(), big.xFor(BubblePositioner.Side.LEFT, bw))
+        assertEquals(1080 - bw - (30 * 2.75f).toInt(), big.xFor(BubblePositioner.Side.RIGHT, bw))
+        assertEquals((84 * 2.75f).toInt(), big.yForIndex(0, bw))
+        assertEquals(2400 - (84 * 2.75f).toInt() - bw, big.yForIndex(99, bw))
+        val small = BubblePositioner(1080, 2400, 2.75f, store, scale = 0.75f)
+        assertEquals((15 * 2.75f).toInt(), small.xFor(BubblePositioner.Side.LEFT, bw))
+    }
+
+    @Test fun snappedBubbleAt150PercentIsFullyOnScreenInEveryState() {
+        // A small 360dp phone at density 3: the 345dp recording row is wider than screen − 30dp.
+        val sw = 1080; val sh = 1920; val d = 3f
+        val big = BubblePositioner(sw, sh, d, store, scale = 1.5f)
+        for (wDp in listOf(36f, 56f, 120f, 160f, 176f, 230f)) for (hDp in listOf(36f, 56f)) {
+            val bw = (wDp * 1.5f * d).toInt(); val bh = (hDp * 1.5f * d).toInt()
+            for ((x, y) in listOf(-500 to -500, 99_999 to 99_999, 10 to 900, 900 to 10)) {
+                val pos = big.snap(x, y, bw, bh)
+                assertTrue("$wDp×$hDp from $x,$y → $pos", pos.x >= 0 && pos.x + bw <= sw && pos.y >= 0 && pos.y + bh <= sh)
+            }
+        }
+    }
+
+    @Test fun savedAnchorSurvivesASizeChange() {
+        p.snap(x = 10, y = 1200, bubbleW = w, bubbleH = w)
+        val saved = store.saved!!
+        val big = BubblePositioner(1080, 2400, 2.75f, store, scale = 1.5f)
+        val bw = (84 * 2.75f).toInt()
+        val pos = big.position(bw, bw)
+        assertEquals(big.xFor(BubblePositioner.Side.LEFT, bw), pos.x)
+        assertEquals(big.yForIndex(saved.yIndex, bw), pos.y)
+        assertEquals(saved, store.saved)
+    }
+
     @Test fun clampKeepsDragOnScreen() {
         val c = p.clampDrag(x = -50, y = 5000, bubbleW = w, bubbleH = w)
         assertEquals(0, c.x)
