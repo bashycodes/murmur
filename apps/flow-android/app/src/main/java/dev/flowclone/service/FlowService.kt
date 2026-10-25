@@ -319,7 +319,6 @@ class FlowService : Service() {
     private fun snoozeDrop(): Boolean {
         if (!presence.snooze()) return false
         haptic(VibrationEffect.EFFECT_CLICK)
-        toast(R.string.toast_snoozed)
         val n = Notification.Builder(this, CHANNEL_STATUS)
             .setContentTitle(getString(R.string.notif_snooze_title))
             .setContentText(getString(R.string.notif_snooze_text))
@@ -345,7 +344,7 @@ class FlowService : Service() {
             val locked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
             when (presence.onShake(locked)) {
                 BubblePresence.ShakeOutcome.UNSNOOZED -> {
-                    haptic(VibrationEffect.EFFECT_CLICK); toast(R.string.toast_back); cancelSnoozeNotification()
+                    haptic(VibrationEffect.EFFECT_CLICK); cancelSnoozeNotification()
                 }
                 BubblePresence.ShakeOutcome.REVEALED -> haptic(VibrationEffect.EFFECT_TICK)
                 BubblePresence.ShakeOutcome.IGNORED -> Unit
@@ -402,21 +401,17 @@ class FlowService : Service() {
 
     private inner class Host : DictationController.Host {
         override fun feedback(e: FeedbackEvent) {
+            FeedbackToast.of(e)?.let { t -> if (t.long) toast(getString(t.res)) else toast(t.res) }
             when (e) {
                 FeedbackEvent.StartSound -> tone?.startTone(ToneGenerator.TONE_PROP_BEEP, 80)
                 FeedbackEvent.StopSound -> tone?.startTone(ToneGenerator.TONE_PROP_ACK, 80)
                 FeedbackEvent.CancelHaptic -> haptic(VibrationEffect.EFFECT_DOUBLE_CLICK)
-                FeedbackEvent.CapWarning -> { haptic(VibrationEffect.EFFECT_HEAVY_CLICK); toast(R.string.toast_cap_warning) }
-                FeedbackEvent.CapReached -> { toast(R.string.toast_cap_reached); limitNotification() }
-                FeedbackEvent.NeedMicPermission -> {
-                    toast(R.string.toast_need_mic)
+                FeedbackEvent.CapWarning -> haptic(VibrationEffect.EFFECT_HEAVY_CLICK)
+                FeedbackEvent.CapReached -> limitNotification()
+                FeedbackEvent.NeedMicPermission ->
                     startActivity(Intent(this@FlowService, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }
-                FeedbackEvent.PasteRetryFailed -> toast(R.string.toast_paste_failed)
-                FeedbackEvent.NoSpeech -> Unit
-                FeedbackEvent.TargetChanged -> toast(getString(R.string.toast_target_changed))
-                FeedbackEvent.TargetProtected -> toast(getString(R.string.toast_target_protected))
-                FeedbackEvent.MicLost -> toast(R.string.toast_mic_lost)
+                FeedbackEvent.PasteRetryFailed, FeedbackEvent.NoSpeech, FeedbackEvent.TargetChanged,
+                FeedbackEvent.TargetProtected, FeedbackEvent.MicLost -> Unit
             }
         }
 
@@ -440,11 +435,8 @@ class FlowService : Service() {
 
         override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?) {
             app.lastRoute.value = dev.flowclone.data.LastDictation.of(result, System.currentTimeMillis())
-            // D18 / D28: persist this month's cloud counters (speech or cleanup); say so when the cloud failed and another engine took over.
+            // D18 / D28: persist this month's cloud counters (speech or cleanup). A cloud failover shows in the live route label.
             if (result.route?.engine == "cloud" || result.route?.llmEngine == "cloud") scope.launch(Dispatchers.IO) { runCatching { app.engine.persistCloudUsage() } }
-            dev.flowclone.data.CloudText.fallbackMessage(result.route, app.dev.load().effective(app.caps).cloudFirst)?.let { m ->
-                scope.launch(Dispatchers.Main) { toast(m) }
-            }
             val retention = app.settings.load().retention
             val t = result.timings
             val row = HistoryRow(
@@ -540,7 +532,7 @@ class FlowService : Service() {
                 BubbleButton.COPY -> {
                     // FailedToPaste (target changed / paste failed): copy that text, not the previous one.
                     val failed = (s as? DictationState.Error)?.kind as? DictationState.ErrorKind.FailedToPaste
-                    (failed?.text ?: lastText)?.let { copySensitive(it); toast(R.string.toast_copied); showCopy.value = false }
+                    (failed?.text ?: lastText)?.let { copySensitive(it); showCopy.value = false }
                 }
                 BubbleButton.DISMISS -> {
                     if (s is DictationState.Error && s.kind is DictationState.ErrorKind.EngineUnavailable)

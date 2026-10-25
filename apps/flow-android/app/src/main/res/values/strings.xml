@@ -18,9 +18,7 @@
     <string name="toast_cap_warning">1 minute left before you reach the session limit.</string>
     <string name="toast_cap_reached">Session ended, limit reached</string>
     <string name="toast_paste_failed">Failed to paste text. It is on your clipboard for 1 minute.</string>
-    <string name="toast_target_changed">You switched fields while dictating, so nothing was inserted. Tap ✓ to insert it here or ⧉ to copy it.</string>
     <string name="toast_target_protected">Not inserted: this field or app is protected (password, banking or excluded).</string>
-    <string name="toast_mic_lost">The microphone stopped. Transcribing what was heard.</string>
     <string name="toast_copied">Copied to clipboard (cleared after 1 minute)</string>
     <string name="toast_offer_insert">Tap the field you want, then ✓ on the bubble</string>
     <string name="toast_offer_insert_busy">The bubble is busy: finish or dismiss it, then try again</string>
@@ -36,6 +34,4 @@
     <string name="notif_snooze_text">Tap to bring it back, or shake your phone.</string>
     <string name="notif_boot_title">Turn Flow Clone back on</string>
     <string name="notif_boot_text">Accessibility for Flow Clone is off, so the dictation bubble can\'t appear. Tap to fix.</string>
-    <string name="toast_snoozed">Snoozed for 10 min. Shake your phone to bring it back.</string>
-    <string name="toast_back">Flow Clone is back!</string>
 </resources>

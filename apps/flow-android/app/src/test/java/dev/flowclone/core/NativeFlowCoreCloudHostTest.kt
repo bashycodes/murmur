@@ -5,7 +5,6 @@ import dev.flowclone.data.CloudCatalog
 import dev.flowclone.data.CloudKeyStore
 import dev.flowclone.data.CloudMigration
 import dev.flowclone.data.CloudSettings
-import dev.flowclone.data.CloudText
 import dev.flowclone.data.DevSettings
 import dev.flowclone.data.DevStore
 import dev.flowclone.data.EnginePlan
@@ -91,7 +90,6 @@ class NativeFlowCoreCloudHostTest {
         r.pushAudio(ShortArray(24_000) { i -> (Math.sin(i * 0.05) * 8000).toInt().toShort() }, 24_000)
         val res = r.commit()
         assertEquals("local", res.route!!.engine); assertEquals("cloud_not_configured", res.route!!.fallback)
-        assertEquals("Cloud STT failed (add a key and accept the consent); used on-device", CloudText.fallbackMessage(res.route, dev.cloudFirst))
 
         val st = r.cleanupStatus()
         assertTrue(st.supported); assertTrue(st.enabled); assertTrue(st.consent)

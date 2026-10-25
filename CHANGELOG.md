@@ -16,6 +16,18 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Removed
+
+- **Android: six toasts that repeated what the app already shows.** No
+  more toast when you snooze the bubble (the "bubble hidden" notification
+  stays), when a shake brings it back (you still feel the buzz), when you
+  copy from the bubble's ⧉ button, when you switched fields while
+  dictating (the bubble's ✓ / ⧉ / dismiss buttons stay), when the cloud
+  failed and another engine took over (the live preview's route label
+  shows it), or when the microphone stopped (what was heard is still
+  transcribed). Error toasts and copy toasts from History and the
+  notification are unchanged.
+
 ## [0.5.0] - 2026-10-24
 
 ### Changed
