@@ -55,6 +55,8 @@ data class Settings(
     val shakeToReveal: Boolean = true,
     /** Shrink the Ready bubble to 36dp after 5 s (07 §5.3 `shrinkBubbleEnabled`). */
     val shrinkBubble: Boolean = true,
+    /** "Shrink to a dot": the shrunk bubble is drawn as a plain 16dp dot (touch target stays 36dp); only used while [shrinkBubble]. */
+    val shrinkToDot: Boolean = true,
     /** "Bubble size": multiplies every bubble dimension; 0.75..1.5 on a 5 % grid ([bubbleScaleOf]). */
     val bubbleScale: Float = 1f,
     /** core-p1 deterministic spoken cleanup ("Auto-format punctuation, fillers and corrections"). */

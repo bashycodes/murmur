@@ -203,6 +203,8 @@ class SettingsPagesTest {
         assertEquals("Stops after 0.3 s of silence · 1 min limit", SettingsSummary.timing(s.copy(endpointSilenceMs = 300, decodeWhileSpeaking = false, capMinutes = 1)))
         assertEquals("Live preview · shrinks to a dot · shake to restore", SettingsSummary.bubble(s))
         assertEquals("Shake to restore", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false)))
+        assertEquals("Live preview · shrinks when idle · shake to restore", SettingsSummary.bubble(s.copy(shrinkToDot = false)))
+        assertEquals("Shake to restore", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false, shrinkToDot = true)))
         assertEquals("Preview, dot and shake off", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false, shakeToReveal = false)))
         assertEquals("Live preview · shrinks to a dot · shake to restore · 125% size", SettingsSummary.bubble(s.copy(bubbleScale = 1.25f)))
         assertEquals("Preview, dot and shake off · 75% size", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false, shakeToReveal = false, bubbleScale = 0.75f)))

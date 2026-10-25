@@ -199,7 +199,7 @@ object SettingsSummary {
     fun bubble(s: Settings): String {
         val on = listOfNotNull(
             if (s.livePreview) "live preview" else null,
-            if (s.shrinkBubble) "shrinks to a dot" else null,
+            if (!s.shrinkBubble) null else if (s.shrinkToDot) "shrinks to a dot" else "shrinks when idle",
             if (s.shakeToReveal) "shake to restore" else null,
         )
         val text = if (on.isEmpty()) "Preview, dot and shake off" else on.joinToString(" · ").replaceFirstChar { it.uppercase() }

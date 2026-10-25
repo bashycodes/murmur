@@ -133,10 +133,10 @@ class FlowService : Service() {
         scope.launch { app.fieldFocus.collect { controller.onFieldFocusChanged(it != null) } }
         scope.launch { controller.state.collect { presence.onState(it) } }
         scope.launch {
-            // "Bubble size" rides along with repair, so a slider move resizes the live bubble at once.
-            val repairAndScale = combine(repair, app.settings.bubbleScale, ::Pair)
-            combine(controller.state, controller.level, showCopy, presence.presence, repairAndScale) { s, l, c, p, (r, scale) ->
-                BubbleUi(s, c && s == DictationState.Ready, l, minimized = p.minimized, repair = r, visible = presence.visible(s), scale = scale)
+            // "Bubble size" and "Shrink to a dot" ride along with repair, so either applies to the live bubble at once.
+            val repairAndLook = combine(repair, app.settings.bubbleScale, app.settings.shrinkToDot, ::Triple)
+            combine(controller.state, controller.level, showCopy, presence.presence, repairAndLook) { s, l, c, p, (r, scale, dot) ->
+                BubbleUi(s, c && s == DictationState.Ready, l, minimized = p.minimized, repair = r, visible = presence.visible(s), scale = scale, dot = dot)
             }.collect { if (::overlay.isInitialized) overlay.render(it) }
         }
         scope.launch {
