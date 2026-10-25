@@ -15,24 +15,6 @@ import dev.flowclone.R
 import dev.flowclone.session.DictationState
 import dev.flowclone.session.DictationState.ErrorKind
 
-/** What the bubble shows (07 §5.4). */
-data class BubbleUi(
-    val state: DictationState = DictationState.Idle,
-    val showCopy: Boolean = false,
-    val level: Float = 0f,
-    /** Shrunk to a 36dp dot after 5 s in Ready (07 §5.3). */
-    val minimized: Boolean = false,
-    /** Accessibility service off or dead: alert icon, tap opens the repair screen (07 §5.4 Repair). */
-    val repair: Boolean = false,
-    /** Window shown at all (presence policy: snooze, shake reveal, repair). */
-    val visible: Boolean = state != DictationState.Idle,
-) {
-    /** Resting (no dictation in flight), so the repair / minimised looks apply. */
-    val resting: Boolean get() = state == DictationState.Idle || state == DictationState.Ready
-}
-
-enum class BubbleButton { MAIN, CANCEL, DONE, COPY, PASTE, DISMISS }
-
 /**
  * Canvas-drawn bubble: circle (Ready), recording row X·waveform·✓ (tap mode),
  * mic+waveform (hold mode), paste/copy/dismiss (FailedToPaste), alert (other errors).
@@ -50,12 +32,14 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
     }
 
     private val d = resources.displayMetrics.density
-    private fun dp(v: Float) = v * d
+    /** Spec dp → px at the current "Bubble size" (07 §5.4 values × [BubbleUi.scale]). */
+    private fun dp(v: Float) = v * d * ui.scale
 
     var ui = BubbleUi(); private set
     private var processingSince = 0L
     private val smoother = Waveform.Smoother()
-    private val buttons = mutableListOf<Pair<RectF, BubbleButton>>()
+    /** The buttons as last drawn, for hit-testing a touch. */
+    private var slots = emptyList<BubbleGeometry.Slot>()
     private val mic: Drawable = context.getDrawable(R.drawable.ic_flow)!!
 
     private val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#FF1C1B1F") }
@@ -63,7 +47,7 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
     private val danger = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#FFB3261E") }
     private val bar = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
     private val glyph = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE; textAlign = Paint.Align.CENTER; textSize = dp(22f); isFakeBoldText = true
+        color = Color.WHITE; textAlign = Paint.Align.CENTER; textSize = 22f * d; isFakeBoldText = true
     }
 
     private val gesture = BubbleGesture(ViewConfiguration.get(context).scaledTouchSlop.toFloat()) {
@@ -78,84 +62,82 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
         if (newUi.state is DictationState.Processing && ui.state !is DictationState.Processing) processingSince = SystemClock.uptimeMillis()
         val resize = widthDpFor(newUi) != widthDpFor(ui) || heightDpFor(newUi) != heightDpFor(ui)
         ui = newUi
+        glyph.textSize = dp(22f)
         if (resize) requestLayout()
         invalidate()
     }
 
-    /** Widths from 07 §5.4 (56 circle, 120 with copy, 230 tap row, 160 hold row; 176 paste/copy/dismiss). */
-    fun widthDpFor(u: BubbleUi): Float = if (u.resting && u.repair) 56f else if (u.resting && u.minimized && !u.showCopy) 36f else when (val s = u.state) {
-        DictationState.Idle -> 56f
-        DictationState.Ready -> if (u.showCopy) 120f else 56f
-        is DictationState.Recording -> if (s.hold) 160f else 230f
-        is DictationState.Processing -> if (s.hold) 160f else 230f
-        is DictationState.Error -> if (s.kind is ErrorKind.FailedToPaste) 176f else 56f
-    }
+    /** Width in dp (07 §5.4 × [BubbleUi.scale]). */
+    fun widthDpFor(u: BubbleUi): Float = BubbleGeometry.widthDp(u)
 
-    fun heightDpFor(u: BubbleUi): Float = if (u.resting && u.minimized && !u.repair && !u.showCopy) 36f else 56f
+    fun heightDpFor(u: BubbleUi): Float = BubbleGeometry.heightDp(u)
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        setMeasuredDimension(dp(widthDpFor(ui)).toInt(), dp(heightDpFor(ui)).toInt())
+        // widthDpFor / heightDpFor are already scaled: density only (same px as the overlay's window maths).
+        setMeasuredDimension((widthDpFor(ui) * d).toInt(), (heightDpFor(ui) * d).toInt())
     }
 
     override fun onDraw(canvas: Canvas) {
-        buttons.clear()
         val h = height.toFloat(); val r = h / 2
         val s = ui.state
+        val showCancel = s !is DictationState.Processing || !s.hold || SystemClock.uptimeMillis() - processingSince > 3000
+        // Button positions come from the geometry, so drawing and hit-testing never disagree.
+        slots = BubbleGeometry.slots(ui, width.toFloat(), h, ::dp, processingCancel = showCancel)
         val pill = RectF(0f, 0f, width.toFloat(), h)
         canvas.drawRoundRect(pill, r, r, bg)
         when (s) {
             DictationState.Idle, DictationState.Ready -> if (ui.repair) {
                 val pulse = 0.6f + 0.4f * kotlin.math.abs(((SystemClock.uptimeMillis() % 2000) / 1000f) - 1f)
                 danger.alpha = (255 * pulse).toInt()
-                circleButton(canvas, 0f, danger, BubbleButton.MAIN) { cx, cy -> drawGlyph(canvas, "!", cx, cy) }
+                circleButton(canvas, danger, BubbleButton.MAIN) { cx, cy -> drawGlyph(canvas, "!", cx, cy) }
                 danger.alpha = 255
                 postInvalidateOnAnimation()
             } else if (ui.minimized && !ui.showCopy) {
-                circleButton(canvas, 0f, accent, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy, 9f) }
+                circleButton(canvas, accent, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy, 9f) }
             } else {
-                circleButton(canvas, 0f, accent, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy) }
-                if (ui.showCopy) circleButton(canvas, dp(64f), bg, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }
+                circleButton(canvas, accent, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy) }
+                if (ui.showCopy) circleButton(canvas, bg, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }
             }
             is DictationState.Recording -> {
                 val level = smoother.step(ui.level)
                 if (s.hold) {
                     val pulse = 0.6f + 0.4f * kotlin.math.abs(((SystemClock.uptimeMillis() % 2000) / 1000f) - 1f)
                     accent.alpha = (255 * pulse).toInt()
-                    circleButton(canvas, 0f, accent, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy) }
+                    circleButton(canvas, accent, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy) }
                     accent.alpha = 255
                     drawWave(canvas, dp(56f), width - dp(56f), level, 1f)
                 } else {
-                    circleButton(canvas, 0f, danger, BubbleButton.CANCEL) { cx, cy -> drawGlyph(canvas, "✕", cx, cy) }
+                    circleButton(canvas, danger, BubbleButton.CANCEL) { cx, cy -> drawGlyph(canvas, "✕", cx, cy) }
                     drawWave(canvas, dp(62f), width - dp(62f), level, 1f)
-                    circleButton(canvas, width - dp(56f), accent, BubbleButton.DONE) { cx, cy -> drawGlyph(canvas, "✓", cx, cy) }
+                    circleButton(canvas, accent, BubbleButton.DONE) { cx, cy -> drawGlyph(canvas, "✓", cx, cy) }
                 }
                 postInvalidateOnAnimation()
             }
             is DictationState.Processing -> {
-                val showCancel = !s.hold || SystemClock.uptimeMillis() - processingSince > 3000
-                if (showCancel) circleButton(canvas, 0f, danger, BubbleButton.CANCEL) { cx, cy -> drawGlyph(canvas, "✕", cx, cy) }
+                if (showCancel) circleButton(canvas, danger, BubbleButton.CANCEL) { cx, cy -> drawGlyph(canvas, "✕", cx, cy) }
                 drawWave(canvas, dp(62f), width - dp(62f), 0.6f, 0.33f)
                 postInvalidateOnAnimation()
             }
             is DictationState.Error -> when (s.kind) {
                 is ErrorKind.FailedToPaste -> {
                     // Paste here · Copy (2026-10-24: never lose a dictation) · Dismiss.
-                    circleButton(canvas, 0f, accent, BubbleButton.PASTE) { cx, cy -> drawGlyph(canvas, "✓", cx, cy) }
-                    circleButton(canvas, dp(60f), bg, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }
-                    circleButton(canvas, dp(120f), danger, BubbleButton.DISMISS) { cx, cy -> drawGlyph(canvas, "✕", cx, cy) }
+                    circleButton(canvas, accent, BubbleButton.PASTE) { cx, cy -> drawGlyph(canvas, "✓", cx, cy) }
+                    circleButton(canvas, bg, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }
+                    circleButton(canvas, danger, BubbleButton.DISMISS) { cx, cy -> drawGlyph(canvas, "✕", cx, cy) }
                 }
-                else -> circleButton(canvas, 0f, danger, BubbleButton.DISMISS) { cx, cy -> drawGlyph(canvas, "!", cx, cy) }
+                else -> circleButton(canvas, danger, BubbleButton.DISMISS) { cx, cy -> drawGlyph(canvas, "!", cx, cy) }
             }
         }
     }
 
-    private inline fun circleButton(c: Canvas, left: Float, paint: Paint, b: BubbleButton, content: (Float, Float) -> Unit) {
+    /** Draws [b] in its [slots] square (absent = not shown in this state). */
+    private inline fun circleButton(c: Canvas, paint: Paint, b: BubbleButton, content: (Float, Float) -> Unit) {
+        val slot = slots.firstOrNull { it.button == b } ?: return
         val h = height.toFloat()
         val inset = if (h < dp(40f)) dp(2f) else dp(4f)
-        val rect = RectF(left, 0f, left + h, h)
+        val rect = RectF(slot.left, 0f, slot.right, h)
         c.drawCircle(rect.centerX(), rect.centerY(), h / 2 - inset, paint)
         content(rect.centerX(), rect.centerY())
-        buttons += rect to b
     }
 
     private fun drawMic(c: Canvas, cx: Float, cy: Float, halfDp: Float = 14f) {
@@ -181,7 +163,7 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
         }
     }
 
-    private fun hit(x: Float, y: Float): BubbleButton = buttons.firstOrNull { it.first.contains(x, y) }?.second ?: BubbleButton.MAIN
+    private fun hit(x: Float, y: Float): BubbleButton = BubbleGeometry.hit(slots, height.toFloat(), x, y)
 
     private var lastDownX = 0f; private var lastDownY = 0f
 
