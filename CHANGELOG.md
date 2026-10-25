@@ -24,6 +24,18 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   from the screen edges, and the bubble resizes as you move the slider. It
   stays where you left it, and a large bubble never ends up off-screen.
 
+### Removed
+
+- **Android: six toasts that repeated what the app already shows.** No
+  more toast when you snooze the bubble (the "bubble hidden" notification
+  stays), when a shake brings it back (you still feel the buzz), when you
+  copy from the bubble's ⧉ button, when you switched fields while
+  dictating (the bubble's ✓ / ⧉ / dismiss buttons stay), when the cloud
+  failed and another engine took over (the live preview's route label
+  shows it), or when the microphone stopped (what was heard is still
+  transcribed). Error toasts and copy toasts from History and the
+  notification are unchanged.
+
 ## [0.5.0] - 2026-10-24
 
 ### Changed
