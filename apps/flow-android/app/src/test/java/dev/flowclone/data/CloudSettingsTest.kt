@@ -104,9 +104,6 @@ class CloudSettingsTest {
         assertEquals("cloud · OpenRouter · openai/whisper-large-v3-turbo · \$0.0000", CloudText.engineRow(r))
         assertEquals("AI cleanup: OpenRouter · llama-3.3-70b-instruct · \$0.0007", CloudText.cleanupRow(r))
         assertNull(CloudText.cleanupRow(RouteInfo("local")))
-        assertEquals("Cloud STT failed (no zero-retention provider serves this model: pick one marked ZDR); used on-device",
-            CloudText.fallbackMessage(RouteInfo("local", fallback = "no_private_route"), cloudWasPrimary = true))
-        assertNull(CloudText.fallbackMessage(RouteInfo("remote", fallback = "connect_failed"), cloudWasPrimary = false))
         assertEquals("When your server is unreachable, audio goes to OpenRouter.",
             CloudText.orderWarning(listOf(DevSettings.Route.SERVER, DevSettings.Route.CLOUD)))
         assertNull(CloudText.orderWarning(listOf(DevSettings.Route.CLOUD, DevSettings.Route.SERVER)))

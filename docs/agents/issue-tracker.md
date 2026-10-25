@@ -17,6 +17,7 @@ TickTick holds only the work items.
 | Spec | A parent task tagged `spec`; its `content` is the spec. |
 | Tickets of a spec | Subtasks of the spec task (`parentId` = spec task id). Title prefix `NN ` (`01 `, `02 `, ...) gives the order. |
 | Blocking edges | A `Blocked by: <task id>, <task id>` line at the top of the ticket's `content`. TickTick has no native links. |
+| Claimed by an implementer | Swap the `ready-for-agent` tag for `in-progress` with `update_task`, passing the task's current `etag` so a concurrent change makes the claim fail instead of double-claiming. Only the orchestrator claims; at most 3 tasks are `in-progress` at once. |
 | Close as done | `complete_task`, after a comment linking the commit or PR. |
 | Close as wontfix | `update_task` with `status: -1` (abandoned), after the explaining comment. |
 
