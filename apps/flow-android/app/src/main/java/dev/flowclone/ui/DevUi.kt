@@ -23,6 +23,7 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
 
@@ -232,6 +233,64 @@ internal class DevUi(val activity: Activity) {
         sw.setOnCheckedChangeListener(null)
         addView(row)
         return ToggleRow(row, sw, ts.first, ts.second).also { it.setDescription(description); it.isEnabled = enabled }
+    }
+
+    // ---- slider ----
+
+    /** Slider row: title with the current value on the right, a full-width SeekBar below. */
+    class SliderRow(val row: LinearLayout, val bar: SeekBar, val value: TextView, private val step: Int, private val label: (Int) -> String) {
+        /** In the row's units (a multiple of the step). */
+        val current: Int get() = bar.progress * step
+        private var listener: ((Int) -> Unit)? = null
+
+        init {
+            bar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(b: SeekBar, progress: Int, fromUser: Boolean) {
+                    show(progress * step)
+                    if (fromUser) listener?.invoke(progress * step)
+                }
+                override fun onStartTrackingTouch(b: SeekBar) = Unit
+                override fun onStopTrackingTouch(b: SeekBar) = Unit
+            })
+            show(current)
+        }
+
+        private fun show(v: Int) { value.text = label(v); bar.stateDescription = label(v) }
+
+        /** [f] gets each value the user picks, while dragging too. */
+        fun onChange(f: (Int) -> Unit) { listener = f }
+    }
+
+    /**
+     * [min]..[max] in [step]s, showing [label] of the current value; TalkBack reads the title
+     * and that label (state description) and steps it with its scroll actions.
+     */
+    fun LinearLayout.sliderRow(title: String, description: String, min: Int, max: Int, step: Int, value: Int, label: (Int) -> String): SliderRow {
+        val (texts, _) = titleSub(title, description)
+        val v = TextView(ctx).apply {
+            textSize = 16f; setTextColor(p.accent); setTypeface(typeface, Typeface.BOLD)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        val bar = SeekBar(ctx).apply {
+            this.max = max / step; this.min = min / step; progress = value / step
+            thumbTintList = ColorStateList.valueOf(p.accent)
+            progressTintList = ColorStateList.valueOf(p.accent)
+            progressBackgroundTintList = ColorStateList.valueOf(p.muted)
+            minimumHeight = dp(48)
+            contentDescription = title
+        }
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(12), dp(16), dp(8))
+            addView(LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(texts, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(12) })
+                addView(v)
+            })
+            addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(4) })
+        }
+        addView(row)
+        return SliderRow(row, bar, v, step, label)
     }
 
     // ---- single choice ----

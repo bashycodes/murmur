@@ -16,6 +16,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Android: Bubble size.** Settings → Bubble has a "Bubble size" slider
+  from 75 % to 150 % (steps of 5 %, default 100 %). Every bubble look
+  scales with it, including its buttons, waveform and the space it keeps
+  from the screen edges, and the bubble resizes as you move the slider. It
+  stays where you left it, and a large bubble never ends up off-screen.
+
 ### Removed
 
 - **Android: six toasts that repeated what the app already shows.** No

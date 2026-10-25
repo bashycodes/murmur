@@ -118,6 +118,26 @@ class SettingsUiTest {
         assertFalse(app.settings.load().mockEngine)
     }
 
+    @Test fun bubbleSizeSliderShowsThePercentAndAppliesAtOnce() {
+        val a = launch(Page.BUBBLE)
+        val app = FlowApp.of(a)
+        val bar = walk(a.window.decorView).filterIsInstance<android.widget.SeekBar>().single()
+        assertEquals("Bubble size", bar.contentDescription)
+        assertTrue(texts(a).toString(), "100%" in texts(a))
+        assertEquals("100%", bar.stateDescription)
+        // 75..150 in 5 % steps: 16 positions.
+        assertEquals(15, bar.max - bar.min)
+        shadowOf(bar).onSeekBarChangeListener.onProgressChanged(bar, bar.max, true)
+        assertEquals(1.5f, app.settings.load().bubbleScale)
+        assertEquals("the running bubble sees it", 1.5f, app.settings.bubbleScale.value)
+        assertTrue("150%" in texts(a))
+        shadowOf(bar).onSeekBarChangeListener.onProgressChanged(bar, bar.min, true)
+        assertEquals(0.75f, app.settings.load().bubbleScale)
+        // Persisted: a fresh store over the same prefs reads it back.
+        assertEquals(0.75f, dev.flowclone.data.SettingsStore(a).load().bubbleScale)
+        app.settings.save(app.settings.load().copy(bubbleScale = 1f))
+    }
+
     @Test fun choiceRowsReadAsRadioButtons() {
         val a = launch(Page.HISTORY)
         val keep = rowTitled(a, "Keep").createAccessibilityNodeInfo()

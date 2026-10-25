@@ -55,6 +55,8 @@ data class Settings(
     val shakeToReveal: Boolean = true,
     /** Shrink the Ready bubble to 36dp after 5 s (07 §5.3 `shrinkBubbleEnabled`). */
     val shrinkBubble: Boolean = true,
+    /** "Bubble size": multiplies every bubble dimension; 0.75..1.5 on a 5 % grid ([bubbleScaleOf]). */
+    val bubbleScale: Float = 1f,
     /** core-p1 deterministic spoken cleanup ("Auto-format punctuation, fillers and corrections"). */
     val spokenCleanup: Boolean = true,
     /** On-device ASR engine; Parakeet is English-only (D4/D12). */
@@ -86,6 +88,17 @@ data class Settings(
             stored == null -> LANGUAGE_UNSET
             !migrated && stored == "auto" -> LANGUAGE_UNSET
             else -> stored
+        }
+
+        /** "Bubble size" slider: 75 %..150 % in 5 % steps, 100 % = the spec sizes. */
+        val BUBBLE_SIZE_PERCENT = 75..150
+        const val BUBBLE_SIZE_STEP_PERCENT = 5
+
+        /** A stored or picked size, on the 5 % grid and inside the range (bad input = 100 %). */
+        fun bubbleScaleOf(v: Float): Float {
+            if (!v.isFinite()) return 1f
+            val pct = kotlin.math.round(v * 100f / BUBBLE_SIZE_STEP_PERCENT).toInt() * BUBBLE_SIZE_STEP_PERCENT
+            return pct.coerceIn(BUBBLE_SIZE_PERCENT) / 100f
         }
 
         /** Phones decode slower than the desktop default budget of 1.5 s. */

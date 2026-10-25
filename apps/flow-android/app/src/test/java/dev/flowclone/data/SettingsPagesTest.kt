@@ -204,12 +204,27 @@ class SettingsPagesTest {
         assertEquals("Live preview · shrinks to a dot · shake to restore", SettingsSummary.bubble(s))
         assertEquals("Shake to restore", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false)))
         assertEquals("Preview, dot and shake off", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false, shakeToReveal = false)))
+        assertEquals("Live preview · shrinks to a dot · shake to restore · 125% size", SettingsSummary.bubble(s.copy(bubbleScale = 1.25f)))
+        assertEquals("Preview, dot and shake off · 75% size", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false, shakeToReveal = false, bubbleScale = 0.75f)))
         assertEquals("None (banking apps are always excluded)", SettingsSummary.apps(s))
         assertEquals("1 app", SettingsSummary.apps(s.copy(userDenylist = setOf("a.b"))))
         assertEquals("2 apps", SettingsSummary.apps(s.copy(userDenylist = setOf("a.b", "c.d"))))
         assertEquals("Keep everything", SettingsSummary.history(Retention.KEEP))
         assertEquals("Last 24 hours", SettingsSummary.history(Retention.DAY))
         assertEquals("Never saved", SettingsSummary.history(Retention.NEVER))
+    }
+
+    @Test fun bubbleSizeDefaultsTo100PercentAndStaysOnTheSliderGrid() {
+        assertEquals(1f, Settings().bubbleScale)
+        assertEquals(100, SettingsSummary.bubbleSizePercent(Settings().bubbleScale))
+        assertEquals(0.75f, Settings.bubbleScaleOf(0.1f))
+        assertEquals(1.5f, Settings.bubbleScaleOf(9f))
+        assertEquals(1f, Settings.bubbleScaleOf(Float.NaN))
+        assertEquals(1.05f, Settings.bubbleScaleOf(1.04f))
+        assertEquals(0.95f, Settings.bubbleScaleOf(95 / 100f))
+        assertEquals(150, SettingsSummary.bubbleSizePercent(1.5f))
+        assertEquals(75, SettingsSummary.bubbleSizePercent(0.75f))
+        assertEquals(85, SettingsSummary.bubbleSizePercent(0.85f))
     }
 
     @Test fun hubWarnings() {
