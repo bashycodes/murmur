@@ -307,9 +307,6 @@ object CloudText {
         else -> null
     }
 
-    /** Route-failure values that can only come from the cloud route. */
-    val CLOUD_ONLY_FAILURES = setOf("cloud_not_configured", "budget_exceeded", "quota_exceeded", "provider_error", "no_private_route")
-
     fun usd(v: Double): String = when {
         v == 0.0 -> "$0"
         v < 0.01 -> "$" + String.format(java.util.Locale.US, "%.4f", v)
@@ -329,18 +326,6 @@ object CloudText {
         val e = route?.llmEngine ?: return null
         val who = when (e) { "cloud" -> OpenRouter.NAME; "local" -> "on-device"; "server" -> "server"; else -> e }
         return listOfNotNull("AI cleanup: $who", route.llmModel?.substringAfter('/'), route.llmCostUsd?.let(::usd)).joinToString(" · ")
-    }
-
-    /**
-     * User message when the cloud route failed and another engine took over (bubble toast):
-     * "Cloud STT failed (key rejected); used on-device". Null when the cloud was not involved.
-     */
-    fun fallbackMessage(route: dev.flowclone.core.RouteInfo?, cloudWasPrimary: Boolean): String? {
-        val f = route?.fallback ?: return null
-        if (route.engine == "cloud") return null
-        if (f !in CLOUD_ONLY_FAILURES && !cloudWasPrimary) return null
-        val used = when (route.engine) { "local" -> "on-device"; "remote" -> "your server"; else -> route.engine }
-        return "Cloud STT failed (${hint(f) ?: f}); used $used"
     }
 
     /** USAGE card: "Speech $x · Cleanup $y" + the budget line. */
