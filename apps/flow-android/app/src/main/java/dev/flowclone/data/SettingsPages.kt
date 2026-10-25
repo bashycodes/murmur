@@ -202,8 +202,12 @@ object SettingsSummary {
             if (s.shrinkBubble) "shrinks to a dot" else null,
             if (s.shakeToReveal) "shake to restore" else null,
         )
-        return if (on.isEmpty()) "Preview, dot and shake off" else on.joinToString(" · ").replaceFirstChar { it.uppercase() }
+        val text = if (on.isEmpty()) "Preview, dot and shake off" else on.joinToString(" · ").replaceFirstChar { it.uppercase() }
+        return if (bubbleSizePercent(s.bubbleScale) == 100) text else "$text · ${bubbleSizePercent(s.bubbleScale)}% size"
     }
+
+    /** The "Bubble size" slider's value: 75..150 in steps of 5. */
+    fun bubbleSizePercent(scale: Float): Int = kotlin.math.round(Settings.bubbleScaleOf(scale) * 100f).toInt()
 
     fun apps(s: Settings): String = when (val n = s.userDenylist.size) {
         0 -> "None (banking apps are always excluded)"
