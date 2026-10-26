@@ -88,19 +88,11 @@ struct Case {
     input: String,
 }
 
-static CMD: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new(
-        r"(?i)\b(?:(?:open|close|end|begin)\s+(?:quote|quotes|paren|parens|parenthesis|parentheses|bracket|brackets)|unquote|end\s+of\s+quote|in\s+(?:parentheses|parenthesis|brackets)|quote|paren|dash)\b",
-    )
-    .unwrap()
-});
-
-fn strip_cmds(s: &str) -> String {
-    CMD.replace_all(s, " ").into_owned()
-}
-
 /// `Engine::finish` (engine.rs) minus hallucination guard, snippets and
-/// timings, with the guard fed command-stripped text.
+/// timings. The guard gets the texts as the engine passes them: it strips
+/// command words itself and first checks that no literal command word
+/// became a mark (`guard::literal_command_marks`), which a pre-stripped
+/// input would hide.
 fn replica(
     cl: Option<&Arc<dyn Cleaner>>,
     cfg: &SessionConfig,
@@ -144,7 +136,7 @@ fn replica(
                 if out.is_empty() {
                     fb = Some("llm_empty".to_string());
                 } else {
-                    match flow_core::guard::check(&strip_cmds(&text), &strip_cmds(&out)) {
+                    match flow_core::guard::check(&text, &out) {
                         flow_core::guard::Verdict::Ok => text = out,
                         flow_core::guard::Verdict::Unsupported(_) => fb = Some("llm_unsupported".into()),
                         flow_core::guard::Verdict::Dropped(_) => fb = Some("llm_dropped".into()),

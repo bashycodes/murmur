@@ -49,6 +49,11 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   told me, "…,"` without the stray "and I"; amounts keep their space
   ("about $250", not "about$250"); and "a hundred and seventy six" is
   `176`, not "a hundred and 76".
+- **AI cleanup no longer turns a literal "in parentheses" or "quote" into
+  marks.** When the words are used as words ("The formula is in parentheses
+  on the board", "Can you send me a quote"), an AI result that adds `( )`,
+  `[ ]` or quotation marks is rejected and the fallback rules' text is used.
+  Spoken commands (paired, or between pauses) still convert.
 
 ## [0.5.0] - 2026-10-24
 
