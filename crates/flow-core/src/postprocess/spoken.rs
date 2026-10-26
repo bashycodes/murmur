@@ -2017,6 +2017,25 @@ mod tests {
     }
 
     #[test]
+    fn and_i_quote_wraps_only_the_quotation() {
+        assert_eq!(
+            t("he told me and I quote I'm never doing that again unquote and then he did it the next day"),
+            "He told me, \"I'm never doing that again,\" and then he did it the next day"
+        );
+        assert_eq!(
+            t("He told me, and I quote, I'm never doing that again, unquote, and then he left."),
+            "He told me, \"I'm never doing that again,\" and then he left."
+        );
+        // Literal "I quote" stays words.
+        for s in [
+            "I quote that price to every customer.",
+            "When I quote him I use his exact words.",
+        ] {
+            assert_eq!(t(s), s, "{s}");
+        }
+    }
+
+    #[test]
     fn spoken_command_split_by_a_segment_join_still_works() {
         // D22: a pause between "new" and "line" can end a whisper segment
         // with a period and start the next with a capital.

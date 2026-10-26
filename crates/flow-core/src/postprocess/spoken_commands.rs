@@ -296,6 +296,9 @@ struct Wrap {
     /// Punctuation said after the construct (the closer's, or the span
     /// end's).
     after: String,
+    /// The quotation was introduced by "(and) I quote", which stands in
+    /// for a speech verb: punctuate it as `He told me, "…," and …`.
+    quoted_intro: bool,
 }
 
 /// Emit `content` wrapped in `w.mark` onto `out`, fixing the punctuation
@@ -308,10 +311,11 @@ fn emit(out: &mut Vec<Tok>, mut content: Vec<Tok>, w: Wrap, next: Option<&str>) 
         .is_some_and(|p| !p.is_break() && p.suffix() == ",");
     let speech = w.mark == Mark::Quote
         && lead_comma
-        && words >= 2
-        && out
-            .last()
-            .is_some_and(|p| SPEECH_VERBS.contains(&p.core().as_str()));
+        && (w.quoted_intro
+            || words >= 2
+                && out
+                    .last()
+                    .is_some_and(|p| SPEECH_VERBS.contains(&p.core().as_str())));
     if lead_comma && !speech {
         out.last_mut().unwrap().strip_suffix();
     }
@@ -326,6 +330,10 @@ fn emit(out: &mut Vec<Tok>, mut content: Vec<Tok>, w: Wrap, next: Option<&str>) 
         .take(1)
         .collect();
     let mut after = punct_of(&w.after);
+    if w.quoted_intro && after.is_empty() && next.is_some() {
+        // The comma a speech verb's quotation closes with.
+        after.push(',');
+    }
     let keep_comma = speech || next.is_some_and(|n| matches!(n, "but" | "so" | "yet"));
     if after.contains(',') && !keep_comma {
         after.retain(|c| c != ',');
@@ -456,6 +464,7 @@ fn try_command(toks: &[Tok], c: &[String], i: usize, out: &mut Vec<Tok>) -> Opti
             Wrap {
                 mark: Mark::Quote,
                 after: tail,
+                quoted_intro: false,
             },
             next_word(end + 1),
         );
@@ -496,7 +505,13 @@ fn try_command(toks: &[Tok], c: &[String], i: usize, out: &mut Vec<Tok>) -> Opti
                     return None;
                 }
                 let after = toks[k + cn - 1].suffix().to_string();
-                emit(out, content, Wrap { mark, after }, next_word(k + cn));
+                let quoted_intro = c[i] == "quote" && quote_intro(out);
+                let w = Wrap {
+                    mark,
+                    after,
+                    quoted_intro,
+                };
+                emit(out, content, w, next_word(k + cn));
                 return Some(k + cn - i);
             }
         }
@@ -512,8 +527,41 @@ fn try_command(toks: &[Tok], c: &[String], i: usize, out: &mut Vec<Tok>) -> Opti
     };
     let (_, tail) = split_tail(&toks[end]);
     let content = toks[from..=end].to_vec();
-    emit(out, content, Wrap { mark, after: tail }, next_word(end + 1));
+    let w = Wrap {
+        mark,
+        after: tail,
+        quoted_intro: false,
+    };
+    emit(out, content, w, next_word(end + 1));
     Some(end + 1 - i)
+}
+
+/// "(and) I quote" right before a closed quotation ("he told me and I
+/// quote … unquote"): drop the intro words from `out` and leave a pause
+/// comma in their place, as after a speech verb. True when it did. Only
+/// called once a closer was found, so a literal "I quote that price"
+/// never gets here.
+fn quote_intro(out: &mut Vec<Tok>) -> bool {
+    if !out
+        .last()
+        .is_some_and(|p| !p.is_break() && p.core() == "i" && !p.ends_sentence())
+    {
+        return false;
+    }
+    out.pop();
+    if out
+        .last()
+        .is_some_and(|p| !p.is_break() && p.core() == "and" && p.suffix().is_empty())
+    {
+        out.pop();
+    }
+    if let Some(p) = out
+        .last_mut()
+        .filter(|p| !p.is_break() && p.suffix().is_empty())
+    {
+        p.text.push(',');
+    }
+    true
 }
 
 /// A bare "quote" that can open a quotation: not a noun ("a quote") or a
