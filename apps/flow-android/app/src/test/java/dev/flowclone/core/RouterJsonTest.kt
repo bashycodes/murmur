@@ -91,6 +91,8 @@ class RouterJsonTest {
         assertEquals(1000L, r.billedAudioMs); assertEquals(0.000011, r.costUsd!!, 1e-12); assertEquals(false, r.costEstimated)
         // D28: who cleaned it.
         assertEquals("cloud", r.llmEngine); assertEquals("meta-llama/llama-3.3-70b-instruct", r.llmModel); assertEquals(0.0007, r.llmCostUsd!!, 1e-12)
+        // D30: what produced the text.
+        assertEquals("cloud", r.cleanupRoute); assertNull(r.cloudFallback)
         assertEquals("C", DevText.badge(r))
         assertEquals("C", DevText.bubbleBadge(r, showEngineBadge = false))
         assertNull(DevText.bubbleBadge(CoreJson.decodeCommit(fixture("commit_result_remote.json")).route, showEngineBadge = false))

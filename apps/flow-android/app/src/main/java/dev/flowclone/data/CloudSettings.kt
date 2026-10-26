@@ -321,9 +321,21 @@ object CloudText {
         return parts.joinToString(" · ")
     }
 
-    /** "AI cleanup: OpenRouter · llama-3.3-70b-instruct · $0.0007" (null when no LLM engine is reported). */
+    /**
+     * "AI cleanup: OpenRouter · llama-3.3-70b-instruct · $0.0007" (null when no LLM engine is reported).
+     * D30: when the cloud answer was not used, the route actually used and why:
+     * "AI cleanup: on-device · qwen · OpenRouter not used (llm_timeout)" / "AI cleanup: fixed rules · … ".
+     */
     fun cleanupRow(route: dev.flowclone.core.RouteInfo?): String? {
-        val e = route?.llmEngine ?: return null
+        route ?: return null
+        val fellBack = route.cleanupRoute != null && route.cleanupRoute != "cloud"
+        if (fellBack) {
+            val who = if (route.cleanupRoute == "local") "on-device" else "fixed rules"
+            val model = route.llmModel?.takeIf { route.llmEngine == "local" }?.substringAfter('/')
+            return listOfNotNull("AI cleanup: $who", model, "${OpenRouter.NAME} not used (${route.cloudFallback ?: "?"})",
+                route.llmCostUsd?.takeIf { route.llmEngine == "cloud" }?.let(::usd)).joinToString(" · ")
+        }
+        val e = route.llmEngine ?: return null
         val who = when (e) { "cloud" -> OpenRouter.NAME; "local" -> "on-device"; "server" -> "server"; else -> e }
         return listOfNotNull("AI cleanup: $who", route.llmModel?.substringAfter('/'), route.llmCostUsd?.let(::usd)).joinToString(" · ")
     }

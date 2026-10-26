@@ -12,8 +12,8 @@
 //!   period + post-processing), no LLM.
 //! * `ai`: the owner's 2026-10-26 design. The LLM gets the RAW transcript
 //!   (no fallback rules before it, no skip); its answer is checked by the
-//!   product guard (`strict`) and by the loosened prototype
-//!   (`loose_guard.rs`); on a reject the fallback rules produce the text.
+//!   product guard (`strict`) and by the loosened guard
+//!   (`flow_core::guard::check_loose`, D30); on a reject the fallback rules produce the text.
 //!   Post-processing (dictionary, cursor context) runs after, as in the
 //!   product. One LLM call per case gives all three columns: `out_none`
 //!   (no guard), `out_strict`, `out_loose`.
@@ -25,7 +25,6 @@
 //! output] or [app, category, transcript, output, style], ...]}; examples are
 //! rendered in the product's user-message format (STYLE line for casual).
 
-mod loose_guard;
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -139,7 +138,7 @@ fn judge(
     let (vs, vl) = match &out {
         Some(o) if o.is_empty() && fallback_text.is_empty() => (Verdict::Ok, Verdict::Ok),
         Some(o) if o.is_empty() => (Verdict::Dropped("empty".into()), Verdict::Dropped("empty".into())),
-        Some(o) => (flow_core::guard::check(&c.input, o), loose_guard::check(&c.input, o)),
+        Some(o) => (flow_core::guard::check(&c.input, o), flow_core::guard::check_loose(&c.input, o)),
         None => (Verdict::Dropped("no answer".into()), Verdict::Dropped("no answer".into())),
     };
     let pick = |v: &Verdict| match (v, &out) {

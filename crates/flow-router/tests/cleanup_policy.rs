@@ -404,23 +404,35 @@ fn auth_failure_falls_back_now_and_is_sticky_until_the_key_changes() {
 }
 
 #[test]
-fn provider_error_backs_off_and_the_result_is_deterministic() {
+fn provider_error_backs_off_and_falls_back_to_the_local_pipeline() {
     let k = rig(cfg());
     k.cloud
         .fail(Some(CleanError::Backend("provider_error".into())));
     let r = dictate(&k.router);
-    // A backend error is final: no second LLM.
-    assert_eq!(local_calls(&k), 0);
-    assert_eq!(r.status, CommitStatus::RawTranscript);
+    // D30: any AI cleanup failure runs today's pipeline (rules + local LLM).
+    assert_eq!(local_calls(&k), 1);
+    assert!(r.final_text.contains(LOCAL_OUT), "{r:?}");
+    let rt = r.route.unwrap();
+    assert_eq!(rt.cleanup_route.as_deref(), Some("local"));
+    assert_eq!(
+        rt.cloud_fallback.as_deref(),
+        Some("llm_error: provider_error")
+    );
+    assert_eq!(rt.llm_engine.as_deref(), Some("local"));
     let cc = k.router.cleanup_status().circuit.unwrap();
     assert!(cc.open && !cc.until_config_change);
-    dictate(&k.router);
+    let r = dictate(&k.router);
     assert_eq!(k.cloud.calls(), 1, "open circuit skips the cloud");
-    assert_eq!(local_calls(&k), 1, "…to the local LLM");
+    assert_eq!(local_calls(&k), 2, "…to the local LLM");
+    assert_eq!(
+        r.route.unwrap().cloud_fallback.as_deref(),
+        Some("llm_error: circuit_open")
+    );
     k.router.reset_circuit();
     k.cloud.fail(None);
-    dictate(&k.router);
+    let r = dictate(&k.router);
     assert_eq!(k.cloud.calls(), 2);
+    assert_eq!(r.route.unwrap().cleanup_route.as_deref(), Some("cloud"));
 }
 
 #[test]
@@ -506,7 +518,7 @@ fn unpriced_model_with_a_budget_waits_for_a_real_cost() {
 // ---- never blocks dictation ---------------------------------------------------
 
 #[test]
-fn slow_cloud_hits_the_deadline_and_gives_deterministic_text() {
+fn slow_cloud_hits_the_deadline_and_falls_back_to_the_local_pipeline() {
     let mut c = cfg();
     c.cloud.openrouter.cleanup.timeout_ms = 800;
     let k = rig(c);
@@ -516,10 +528,12 @@ fn slow_cloud_hits_the_deadline_and_gives_deterministic_text() {
     let t = Instant::now();
     let r = k.router.commit();
     let took = t.elapsed();
-    assert_eq!(r.status, CommitStatus::RawTranscript, "{r:?}");
-    assert_eq!(r.fallback_reason.as_deref(), Some("llm_timeout"));
+    // D30: the timeout runs today's pipeline; the local LLM answers.
+    assert!(r.final_text.contains(LOCAL_OUT), "{r:?}");
+    assert_eq!(r.cloud_fallback.as_deref(), Some("llm_timeout"));
+    assert_eq!(r.cleanup_route.as_deref(), Some("local"));
     assert!(took < Duration::from_millis(800 + 600), "{took:?}");
-    assert_eq!(local_calls(&k), 0, "a timeout is final");
+    assert_eq!(local_calls(&k), 1);
 }
 
 #[test]
