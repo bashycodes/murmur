@@ -18,7 +18,8 @@ usage: score.py LABEL=out.jsonl[:field] [...] [--fails LABEL] [--overlap]
 * Guard reject rate (ai runs): share of cases whose verdict_strict /
   verdict_loose is a reject, and the share where the rejected answer was
   itself a pass (a "good answer rejected").
-* llm_ms p50/p90 and how many exceed 1500 ms.
+* llm_ms p50/p90 and how many exceed 1500 ms (OpenRouter rows: end-to-end
+  from this box, request to last token). Cloud rows: mean and total usage.cost.
 * --overlap: check that no prompt_v4* few-shot shares a 5-word run with a case.
 """
 import difflib
@@ -76,7 +77,10 @@ def pct(xs, q):
 
 
 def cases():
-    return load(FMT) + load(WISPR)
+    # The suite stays the 88 cases of phase 1: the 4 "regression" cases
+    # integration added on 2026-10-26 (5d0747b) reuse the A/B ids ab5/ab7/ab8
+    # and would collide with the Wispr cases.
+    return [c for c in load(FMT) if c["category"] != "regression"] + load(WISPR)
 
 
 def passes(c, got):
@@ -90,7 +94,7 @@ def score(cs, outs, field):
     rej = {"strict": 0, "loose": 0}
     good_rej = {"strict": 0, "loose": 0}
     n_fmt = n_pass_fmt = 0
-    fallbacks, verdicts = defaultdict(int), []
+    fallbacks, verdicts, costs = defaultdict(int), [], []
     for c in cs:
         o = by.get(c["id"], {})
         got = o.get(field, "")
@@ -115,7 +119,9 @@ def score(cs, outs, field):
             verdicts.append((c["id"], o.get("verdict_strict"), o.get("verdict_loose")))
         if not p:
             fails.append((c, got, o))
-    return {"fallbacks": dict(fallbacks), "verdicts": verdicts,"tot": tot, "ok": ok, "fmt": (n_pass_fmt, n_fmt), "close": sum(close) / len(close),
+    # Spend counts every call the run made (also cases outside the suite).
+    costs = [o["cloud"].get("cost_usd") or 0.0 for o in outs if o.get("cloud")]
+    return {"fallbacks": dict(fallbacks), "verdicts": verdicts, "costs": costs,"tot": tot, "ok": ok, "fmt": (n_pass_fmt, n_fmt), "close": sum(close) / len(close),
             "ratio": sum(ratio) / len(ratio), "wexact": ok["wispr_ab"] + ok["owner"], "rej": rej,
             "good_rej": good_rej, "n": len(cs), "llm": llm, "fails": fails}
 
@@ -177,6 +183,9 @@ def main():
         f"{pct(res[l]['llm'], .5)}/{pct(res[l]['llm'], .9)}" if res[l]["llm"] else "-" for l in labels) + " |")
     print("| LLM calls > 1500 ms | | " + " | ".join(
         f"{sum(x > 1500 for x in res[l]['llm'])}/{len(res[l]['llm'])}" if res[l]["llm"] else "-" for l in labels) + " |")
+    print("| cloud $/call mean (total) | | " + " | ".join(
+        f"{sum(res[l]['costs']) / len(res[l]['costs']):.5f} ({sum(res[l]['costs']):.4f})" if res[l]["costs"] else "-"
+        for l in labels) + " |")
     print("| prod fallbacks | | " + " | ".join(
         ", ".join(f"{k} {v}" for k, v in sorted(res[l]["fallbacks"].items())) or "-" for l in labels) + " |")
     if "--verdicts" in sys.argv:
