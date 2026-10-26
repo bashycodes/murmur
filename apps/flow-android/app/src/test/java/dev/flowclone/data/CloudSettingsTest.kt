@@ -104,6 +104,14 @@ class CloudSettingsTest {
         assertEquals("cloud · OpenRouter · openai/whisper-large-v3-turbo · \$0.0000", CloudText.engineRow(r))
         assertEquals("AI cleanup: OpenRouter · llama-3.3-70b-instruct · \$0.0007", CloudText.cleanupRow(r))
         assertNull(CloudText.cleanupRow(RouteInfo("local")))
+        // D30: AI cleanup tried, the fallback pipeline produced the text.
+        assertEquals("AI cleanup: on-device · qwen2.5-1.5b · OpenRouter not used (llm_timeout)",
+            CloudText.cleanupRow(RouteInfo("local", llmEngine = "local", llmModel = "qwen2.5-1.5b", cleanupRoute = "local", cloudFallback = "llm_timeout")))
+        assertEquals("AI cleanup: fixed rules · OpenRouter not used (llm_unsupported) · \$0.0016",
+            CloudText.cleanupRow(RouteInfo("local", llmEngine = "cloud", llmModel = "meta-llama/llama-3.3-70b-instruct", llmCostUsd = 0.0016,
+                cleanupRoute = "rules", cloudFallback = "llm_unsupported")))
+        assertEquals("AI cleanup: OpenRouter · llama-3.3-70b-instruct · \$0.0016",
+            CloudText.cleanupRow(RouteInfo("local", llmEngine = "cloud", llmModel = "meta-llama/llama-3.3-70b-instruct", llmCostUsd = 0.0016, cleanupRoute = "cloud")))
         assertEquals("When your server is unreachable, audio goes to OpenRouter.",
             CloudText.orderWarning(listOf(DevSettings.Route.SERVER, DevSettings.Route.CLOUD)))
         assertNull(CloudText.orderWarning(listOf(DevSettings.Route.CLOUD, DevSettings.Route.SERVER)))

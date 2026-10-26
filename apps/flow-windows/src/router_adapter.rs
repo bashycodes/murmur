@@ -145,6 +145,10 @@ pub struct LastDictation {
     pub llm_model: Option<String>,
     pub llm_cost_usd: Option<f64>,
     pub llm_row: Option<String>,
+    /// D30: `cloud` / `local` / `rules` when AI cleanup was tried, and why
+    /// its answer was not used.
+    pub cleanup_route: Option<String>,
+    pub cloud_fallback: Option<String>,
     /// Cloud (D18): provider id and its label, model, billed audio, cost.
     pub provider: Option<String>,
     pub provider_label: Option<String>,
@@ -193,11 +197,21 @@ impl LastDictation {
             llm_cost_usd,
             r.llm.as_ref().is_some_and(|u| u.cost_estimated),
         );
+        // D30: the route actually used when AI cleanup's answer was not.
+        let cleanup_route = route.and_then(|x| x.cleanup_route.clone());
+        let cloud_fallback = route.and_then(|x| x.cloud_fallback.clone());
+        let llm_row = crate::cloud::with_cleanup_route(
+            llm_row,
+            cleanup_route.as_deref(),
+            cloud_fallback.as_deref(),
+        );
         LastDictation {
             llm_engine,
             llm_model,
             llm_cost_usd,
             llm_row,
+            cleanup_route,
+            cloud_fallback,
             provider,
             provider_label,
             model,

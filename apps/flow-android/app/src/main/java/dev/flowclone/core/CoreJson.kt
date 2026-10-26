@@ -86,6 +86,8 @@ object CoreJson {
         llmEngine = o.optStringOrNull("llm_engine"),
         llmModel = o.optStringOrNull("llm_model"),
         llmCostUsd = o.optDoubleOrNull("llm_cost_usd"),
+        cleanupRoute = o.optStringOrNull("cleanup_route"),
+        cloudFallback = o.optStringOrNull("cloud_fallback"),
     )
 
     fun decodeCleanUsage(o: JSONObject?): CleanUsage? = o?.let {

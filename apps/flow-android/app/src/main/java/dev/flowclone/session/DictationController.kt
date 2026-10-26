@@ -270,6 +270,7 @@ class DictationController(
                     llmEngine = result?.route?.llmEngine ?: result?.llm?.engine, llmModel = result?.route?.llmModel ?: result?.llm?.model,
                     llmCostUsd = result?.route?.llmCostUsd ?: result?.llm?.costUsd, llmTtftMs = result?.llm?.ttftMs,
                     llmGenerationId = result?.llm?.generationId,
+                    cleanupRoute = result?.route?.cleanupRoute, cloudFallback = result?.route?.cloudFallback,
                     sttCostUsd = result?.route?.takeIf { it.engine == "cloud" }?.costUsd,
                 )
             val audioName = if (pcm == null || pcm.isEmpty()) null else try { host.onDictationAudio(trace, pcm) } catch (_: Throwable) { null }

@@ -768,6 +768,9 @@ interface LastDictation {
   llm_cost_usd?: number | null;
   /** D28: e.g. "AI cleaned · OpenRouter · meta-llama/… · $0.0007"; shown instead of `llm`. */
   llm_row?: string | null;
+  /** D30: what produced the text when AI cleanup was tried (`cloud` / `local` / `rules`) and why the cloud answer was not used. */
+  cleanup_route?: string | null;
+  cloud_fallback?: string | null;
   at_ms: number;
   row: string | null;
   notice: string | null;
