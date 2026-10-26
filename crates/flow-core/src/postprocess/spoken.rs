@@ -1167,6 +1167,27 @@ fn tidy(toks: Vec<Tok>) -> Vec<Tok> {
     out
 }
 
+/// "about$250" → "about" "$250": ASR (Parakeet on Android, Wispr A/B ab7)
+/// can write an amount with no space before the currency sign. Only a
+/// lowercase word before the sign splits, so "US$250" stays.
+fn unglue_currency(toks: Vec<Tok>) -> Vec<Tok> {
+    static GLUED: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^(\p{Ll}+)([$€£¥]\d.*)$").unwrap());
+    let mut out = Vec::with_capacity(toks.len());
+    for t in toks {
+        match GLUED.captures(&t.text) {
+            Some(m) => {
+                let mut word = Tok::new(&m[1]);
+                word.cap = t.cap;
+                out.push(word);
+                out.push(Tok::new(&m[2]));
+            }
+            None => out.push(t),
+        }
+    }
+    out
+}
+
 /// Run the whole pass. Returns `text` unchanged when nothing applies.
 pub fn spoken_cleanup(text: &str) -> String {
     let toks = tokenize(text);
@@ -1174,6 +1195,7 @@ pub fn spoken_cleanup(text: &str) -> String {
         return String::new();
     }
     let original = toks.clone();
+    let toks = unglue_currency(toks);
     let toks = spoken_punctuation(toks);
     let toks = fillers(toks);
     let toks = stutters(toks);
@@ -2031,6 +2053,34 @@ mod tests {
             "I quote that price to every customer.",
             "When I quote him I use his exact words.",
         ] {
+            assert_eq!(t(s), s, "{s}");
+        }
+    }
+
+    #[test]
+    fn currency_keeps_the_space_before_it() {
+        assert_eq!(
+            t("we spent about two hundred and fifty dollars on the trip in parentheses not counting gas which was another sixty dollars"),
+            "We spent about $250 on the trip in parentheses not counting gas which was another $60"
+        );
+        assert_eq!(t("it was about forty dollars"), "It was about $40");
+        // ASR that already wrote the amounts (Parakeet often does).
+        for s in [
+            "We spent about $250 on the trip in parentheses not counting gas which was another $60",
+            "We spent about $250 on the trip, in parentheses, not counting gas, which was another $60.",
+            "we spent about $250 on the trip which was another $60",
+        ] {
+            let out = lay(s, AppCategory::Other);
+            assert!(out.contains("about $250"), "{s} -> {out}");
+            assert!(out.contains("another $60"), "{s} -> {out}");
+        }
+        // ASR that glued the amount to the word before (ab7 on Android).
+        assert_eq!(
+            t("We spent about$250 on the trip, which was another$60."),
+            "We spent about $250 on the trip, which was another $60."
+        );
+        assert_eq!(t("It costs about€40 now."), "It costs about €40 now.");
+        for s in ["It costs US$250.", "Price: $250."] {
             assert_eq!(t(s), s, "{s}");
         }
     }
