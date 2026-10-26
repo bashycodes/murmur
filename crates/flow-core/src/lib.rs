@@ -36,4 +36,4 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// spoken cleanup, Wispr post-processing, paste segments). Bump it whenever
 /// any of them changes output for the same input, so a hybrid client and
 /// its server can detect pipeline skew (D17).
-pub const POSTPROCESS_REV: &str = "2026-10-24.1";
+pub const POSTPROCESS_REV: &str = "2026-10-26.1";

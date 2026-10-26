@@ -1202,3 +1202,43 @@ fn wait_ms_reports_a_commit_queued_behind_the_worker() {
         assert!(j["timings"].get(k).is_none(), "{k}: {j}");
     }
 }
+
+/// Ticket 6aded21e: four dictation shapes the fallback rules mangled (a quote, money and a height), with AI cleanup off as Android sends it.
+#[test]
+fn fallback_rules_fix_the_four_ab_shapes_without_ai() {
+    use flow_core::config::{CleanupLevel, Platform};
+    let run = |s: &str| {
+        let cfg = SessionConfig {
+            cleanup_level: CleanupLevel::None,
+            raw_mode: true,
+            platform: Platform::Android,
+            ..Default::default()
+        };
+        let ctx = FieldContext {
+            app_id: "com.google.android.keep".into(),
+            ..Default::default()
+        };
+        run_text(s, cfg, ctx).final_text.trim_end().to_string()
+    };
+    assert_eq!(
+        run("okay first thing send the invoice second thing call the landlord and third thing please remind me about the dentist"),
+        "Okay:\n\n1. Send the invoice\n2. Call the landlord\n3. Please remind me about the dentist"
+    );
+    assert_eq!(
+        run("he told me and I quote I'm never doing that again unquote and then he did it the next day"),
+        "He told me, \"I'm never doing that again,\" and then he did it the next day."
+    );
+    for s in [
+        "we spent about two hundred and fifty dollars on the trip in parentheses not counting gas which was another sixty dollars",
+        // As Parakeet wrote it on the phone: amounts glued to the word.
+        "We spent about$250 on the trip, in parentheses, not counting gas, which was another$60.",
+    ] {
+        let money = run(s);
+        assert!(money.contains("about $250 on the trip"), "{money}");
+        assert!(money.contains("another $60"), "{money}");
+    }
+    assert_eq!(
+        run("he is about a hundred and fifty eight cm tall"),
+        "He is about 158 cm tall."
+    );
+}
