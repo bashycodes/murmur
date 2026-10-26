@@ -1,0 +1,16 @@
+# Probe binary for the 2026-10-26 AI-cleanup benchmark. Own workspace (like
+# formatting_eval_2026_10_24/runner) so it does not touch the product
+# workspace; uses flow-core unmodified.
+[package]
+name = "ai-cleanup-bench"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+flow-core = { path = "../../../../../crates/flow-core", features = ["llm"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"
