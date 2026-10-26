@@ -516,6 +516,10 @@ fn present(w: &str, set: &[String]) -> bool {
 
 /// Check `output` against `input` (the text the LLM was given).
 pub fn check(input: &str, output: &str) -> Verdict {
+    // Product guard (shared, not copied): a literal command word made a mark.
+    if let Some(kind) = flow_core::guard::literal_command_marks(input, output) {
+        return Verdict::Unsupported(format!("literal {kind} made a mark: {output}"));
+    }
     let (input, output) = (&strip_commands(input), &strip_commands(output));
     let cleaned = flow_core::postprocess::spoken::spoken_cleanup(input);
     // The input as spoken and as the deterministic pass writes it (digits,
