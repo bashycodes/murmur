@@ -10,7 +10,8 @@
 //!    "actually I mean", … keep the correction, drop what it replaced
 //! 5. inverse text normalisation for money, percentages, clock times and
 //!    dates: "forty dollars" → "$40", "three thirty pm" → "3:30 PM",
-//!    "March fifth" → "March 5th"
+//!    "March fifth" → "March 5th"; an amount the ASR glued to the word
+//!    before gets its space back ("about$250" → "about $250")
 //! 6. spoken formatting commands: "quote … unquote", "in parentheses",
 //!    "open bracket … close bracket", "dash" (`spoken_commands.rs`)
 //! 7. sentence capitalisation and spacing around punctuation
@@ -728,9 +729,9 @@ fn parse_number(c: &[String], toks: &[Tok], i: usize) -> Option<(u64, usize)> {
         } else if w == "and"
             && any
             && c.get(j + 1).is_some_and(|n| number_word(n).is_some())
-            && cur >= 100
+            && (cur >= 100 || (cur == 0 && total > 0 && !thousand_follows(c, j + 1)))
         {
-            // "one hundred and twenty"
+            // "one hundred and twenty", "a thousand and twenty"
         } else {
             break;
         }
@@ -740,6 +741,15 @@ fn parse_number(c: &[String], toks: &[Tok], i: usize) -> Option<(u64, usize)> {
         }
     }
     any.then_some((total + cur, j - i))
+}
+
+/// The number words from `k` on reach another "thousand": "one thousand
+/// and two thousand" is two numbers, not 3000.
+fn thousand_follows(c: &[String], k: usize) -> bool {
+    c[k..]
+        .iter()
+        .take_while(|w| number_word(w).is_some() || matches!(w.as_str(), "hundred" | "thousand"))
+        .any(|w| w == "thousand")
 }
 
 fn last_suffix(toks: &[Tok], i: usize, n: usize) -> String {
@@ -874,8 +884,7 @@ fn cardinal(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
     if !toks[i].text.chars().any(char::is_alphabetic) {
         return None;
     }
-    // "a hundred" stays a phrase.
-    if c[i] == "a" || (i > 0 && (number_word(&c[i - 1]).is_some() || c[i - 1] == "point")) {
+    if i > 0 && (number_word(&c[i - 1]).is_some() || c[i - 1] == "point") {
         return None;
     }
     // "ten and twelve", "five to fifteen": both stay words.
@@ -884,6 +893,11 @@ fn cardinal(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
         return None;
     }
     let (v, n) = parse_number(c, toks, i)?;
+    // A bare "a hundred" / "a thousand" stays a phrase; a compound ("a
+    // hundred and seventy six") is a number like any other.
+    if c[i] == "a" && !c[i + 1..i + n].iter().any(|w| number_word(w).is_some()) {
+        return None;
+    }
     if v < 10 || !toks[i + n - 1].suffix().is_empty() || toks[i + n - 1].is_break() {
         return None;
     }
@@ -1167,6 +1181,28 @@ fn tidy(toks: Vec<Tok>) -> Vec<Tok> {
     out
 }
 
+/// "about$250" → "about" "$250": ASR (Parakeet on Android, Wispr A/B ab7)
+/// can write an amount with no space before the currency sign. Only a
+/// lowercase word before the sign splits, so "US$250" (and "us$250")
+/// stays.
+fn unglue_currency(toks: Vec<Tok>) -> Vec<Tok> {
+    static GLUED: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^(\p{Ll}+)([$€£¥]\d.*)$").unwrap());
+    let mut out = Vec::with_capacity(toks.len());
+    for t in toks {
+        match GLUED.captures(&t.text).filter(|m| &m[1] != "us") {
+            Some(m) => {
+                let mut word = Tok::new(&m[1]);
+                word.cap = t.cap;
+                out.push(word);
+                out.push(Tok::new(&m[2]));
+            }
+            None => out.push(t),
+        }
+    }
+    out
+}
+
 /// Run the whole pass. Returns `text` unchanged when nothing applies.
 pub fn spoken_cleanup(text: &str) -> String {
     let toks = tokenize(text);
@@ -1174,6 +1210,7 @@ pub fn spoken_cleanup(text: &str) -> String {
         return String::new();
     }
     let original = toks.clone();
+    let toks = unglue_currency(toks);
     let toks = spoken_punctuation(toks);
     let toks = fillers(toks);
     let toks = stutters(toks);
@@ -1205,6 +1242,9 @@ const ORDINAL_BLOCK: &[&str] = &[
 const LIST_INTRO: &[&str] = &["are", "were", "include", "includes", "including"];
 const FINAL_MARKERS: &[&str] = &["finally", "lastly"];
 const JOINERS: &[&str] = &["and", "then"];
+/// Nouns an ordinal marker may carry ("first thing", "second item"). Not
+/// "step": "first step is X" reads as prose.
+const MARKER_NOUNS: &[&str] = &["thing", "item"];
 /// Longest item, in tokens: a longer "item" means the ordinals were prose.
 const MAX_ITEM_TOKENS: usize = 60;
 
@@ -1256,8 +1296,16 @@ fn marker_at(toks: &[Tok], c: &[String], i: usize) -> Option<Marker> {
         if blocked {
             return None;
         }
-        let end = if n == 1 && toks[i].suffix().is_empty() && matches_at(c, i + 1, &["of", "all"]) {
+        let bare = toks[i].suffix().is_empty();
+        let end = if n == 1 && bare && matches_at(c, i + 1, &["of", "all"]) {
             i + 3
+        } else if bare
+            && c.get(i + 1)
+                .is_some_and(|w| MARKER_NOUNS.contains(&w.as_str()))
+        {
+            // "first thing …, second thing …": the noun is part of the
+            // marker, not the item.
+            i + 2
         } else {
             i + 1
         };
@@ -1980,6 +2028,99 @@ mod tests {
         );
         let s = "My answers are one, maybe two.";
         assert_eq!(lay(s, AppCategory::Other), s);
+    }
+
+    // ---- fallback-rule fixes (ticket 6aded21e, Wispr A/B ab5/ab7/ab8) ----
+
+    #[test]
+    fn ordinal_marker_phrases_leave_no_marker_words() {
+        assert_eq!(
+            lay("okay first thing send the invoice second thing call the landlord and third thing please remind me about the dentist", AppCategory::Other),
+            "Okay:\n\n1. Send the invoice\n2. Call the landlord\n3. Please remind me about the dentist"
+        );
+        assert_eq!(
+            lay(
+                "first send the invoice second call the landlord third book the dentist",
+                AppCategory::Other
+            ),
+            "1. Send the invoice\n2. Call the landlord\n3. Book the dentist"
+        );
+        assert_eq!(
+            lay("number one send the invoice number two call the landlord number three book the dentist", AppCategory::Other),
+            "1. Send the invoice\n2. Call the landlord\n3. Book the dentist"
+        );
+        let s = "The first step is easy, the second step is hard, the third step is fun.";
+        assert_eq!(lay(s, AppCategory::Other), s);
+        // "first thing" as prose is not a marker phrase.
+        let s = "I'll do it first thing tomorrow.";
+        assert_eq!(lay(s, AppCategory::Other), s);
+    }
+
+    #[test]
+    fn and_i_quote_wraps_only_the_quotation() {
+        assert_eq!(
+            t("he told me and I quote I'm never doing that again unquote and then he did it the next day"),
+            "He told me, \"I'm never doing that again,\" and then he did it the next day"
+        );
+        assert_eq!(
+            t("He told me, and I quote, I'm never doing that again, unquote, and then he left."),
+            "He told me, \"I'm never doing that again,\" and then he left."
+        );
+        assert_eq!(
+            t("then I quote we are done here unquote and he left"),
+            "Then, \"We are done here,\" and he left"
+        );
+        // Literal "I quote" stays words.
+        for s in [
+            "I quote that price to every customer.",
+            "When I quote him I use his exact words.",
+        ] {
+            assert_eq!(t(s), s, "{s}");
+        }
+    }
+
+    #[test]
+    fn currency_keeps_the_space_before_it() {
+        assert_eq!(
+            t("we spent about two hundred and fifty dollars on the trip in parentheses not counting gas which was another sixty dollars"),
+            "We spent about $250 on the trip in parentheses not counting gas which was another $60"
+        );
+        assert_eq!(t("it was about forty dollars"), "It was about $40");
+        // ASR that already wrote the amounts (Parakeet often does).
+        for s in [
+            "We spent about $250 on the trip in parentheses not counting gas which was another $60",
+            "We spent about $250 on the trip, in parentheses, not counting gas, which was another $60.",
+            "we spent about $250 on the trip which was another $60",
+        ] {
+            let out = lay(s, AppCategory::Other);
+            assert!(out.contains("about $250"), "{s} -> {out}");
+            assert!(out.contains("another $60"), "{s} -> {out}");
+        }
+        // ASR that glued the amount to the word before (ab7 on Android).
+        assert_eq!(
+            t("We spent about$250 on the trip, which was another$60."),
+            "We spent about $250 on the trip, which was another $60."
+        );
+        assert_eq!(t("It costs about€40 now."), "It costs about €40 now.");
+        for s in ["It costs US$250.", "It costs us$250.", "Price: $250."] {
+            assert_eq!(t(s), s, "{s}");
+        }
+    }
+
+    #[test]
+    fn a_hundred_and_compounds_become_digits() {
+        assert_eq!(
+            t("he is about a hundred and fifty eight cm tall"),
+            "He is about 158 cm tall"
+        );
+        assert_eq!(t("a thousand and twenty people came"), "1020 people came");
+        assert_eq!(t("two thousand and five people came"), "2005 people came");
+        // Two numbers joined by "and" are not summed.
+        let out = t("between one thousand and two thousand people");
+        assert!(!out.contains("3000"), "{out}");
+        // A bare "a hundred" stays a phrase.
+        let s = "There were a hundred people.";
+        assert_eq!(t(s), s);
     }
 
     #[test]

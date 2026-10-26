@@ -41,6 +41,15 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   transcribed). Error toasts and copy toasts from History and the
   notification are unchanged.
 
+### Fixed
+
+- **Auto-format without AI: four common dictation shapes.** "First thing
+  …, second thing …, third thing …" makes a list without a leftover
+  "Thing" on each item; "he told me and I quote … unquote" becomes `He
+  told me, "…,"` without the stray "and I"; amounts keep their space
+  ("about $250", not "about$250"); and "a hundred and seventy six" is
+  `176`, not "a hundred and 76".
+
 ## [0.5.0] - 2026-10-24
 
 ### Changed
