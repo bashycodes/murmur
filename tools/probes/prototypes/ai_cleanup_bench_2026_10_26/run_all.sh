@@ -13,6 +13,8 @@ run v4_q15 ai $Q15 prompt_v4.json
 run v2raw_q15 ai $Q15
 run prod_q3 prod $Q3
 run v4_q3 ai $Q3 prompt_v4.json
+run v4b_q15 ai $Q15 prompt_v4b.json
+run v4b_q3 ai $Q3 prompt_v4b.json
 # Guard changes after a run: re-judge the stored answers (no model).
 for l in v4_q15 v2raw_q15 v4_q3; do
   [[ -s results/$l.jsonl ]] && ./run.sh ${l}_rejudged regard - - results/$l.jsonl

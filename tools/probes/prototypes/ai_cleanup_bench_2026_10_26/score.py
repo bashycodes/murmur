@@ -19,7 +19,7 @@ usage: score.py LABEL=out.jsonl[:field] [...] [--fails LABEL] [--overlap]
   verdict_loose is a reject, and the share where the rejected answer was
   itself a pass (a "good answer rejected").
 * llm_ms p50/p90 and how many exceed 1500 ms.
-* --overlap: check that no prompt_v4 few-shot shares a 5-word run with a case.
+* --overlap: check that no prompt_v4* few-shot shares a 5-word run with a case.
 """
 import difflib
 import json
@@ -90,6 +90,7 @@ def score(cs, outs, field):
     rej = {"strict": 0, "loose": 0}
     good_rej = {"strict": 0, "loose": 0}
     n_fmt = n_pass_fmt = 0
+    fallbacks, verdicts = defaultdict(int), []
     for c in cs:
         o = by.get(c["id"], {})
         got = o.get(field, "")
@@ -108,15 +109,20 @@ def score(cs, outs, field):
             if o.get(f"verdict_{g}"):
                 rej[g] += 1
                 good_rej[g] += passes(c, o.get("out_none", ""))
+        if o.get("fallback"):
+            fallbacks[o["fallback"]] += 1
+        if o.get("verdict_strict") or o.get("verdict_loose"):
+            verdicts.append((c["id"], o.get("verdict_strict"), o.get("verdict_loose")))
         if not p:
             fails.append((c, got, o))
-    return {"tot": tot, "ok": ok, "fmt": (n_pass_fmt, n_fmt), "close": sum(close) / len(close),
+    return {"fallbacks": dict(fallbacks), "verdicts": verdicts,"tot": tot, "ok": ok, "fmt": (n_pass_fmt, n_fmt), "close": sum(close) / len(close),
             "ratio": sum(ratio) / len(ratio), "wexact": ok["wispr_ab"] + ok["owner"], "rej": rej,
             "good_rej": good_rej, "n": len(cs), "llm": llm, "fails": fails}
 
 
 def overlap():
-    ex = json.load(open(os.path.join(here, "prompt_v4.json")))["examples"]
+    ex = [e for p in sorted(os.listdir(here)) if p.startswith("prompt_v4")
+          for e in json.load(open(os.path.join(here, p)))["examples"]]
 
     def grams(s, n=5):
         w = re.findall(r"[a-z0-9']+", s.lower())
@@ -137,6 +143,8 @@ def main():
     if "--overlap" in args:
         overlap()
         args.remove("--overlap")
+    if "--verdicts" in args:
+        args.remove("--verdicts")
     fails_for = None
     if "--fails" in args:
         i = args.index("--fails")
@@ -169,6 +177,12 @@ def main():
         f"{pct(res[l]['llm'], .5)}/{pct(res[l]['llm'], .9)}" if res[l]["llm"] else "-" for l in labels) + " |")
     print("| LLM calls > 1500 ms | | " + " | ".join(
         f"{sum(x > 1500 for x in res[l]['llm'])}/{len(res[l]['llm'])}" if res[l]["llm"] else "-" for l in labels) + " |")
+    print("| prod fallbacks | | " + " | ".join(
+        ", ".join(f"{k} {v}" for k, v in sorted(res[l]["fallbacks"].items())) or "-" for l in labels) + " |")
+    if "--verdicts" in sys.argv:
+        for l in labels:
+            for cid, s, lo in res[l]["verdicts"]:
+                print(f"- {l} {cid}: strict={s!r} loose={lo!r}")
     if fails_for:
         print(f"\n### fails: {fails_for}")
         for c, got, o in res[fails_for]["fails"]:
