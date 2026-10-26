@@ -354,6 +354,10 @@ data class RouteInfo(
     val llmModel: String? = null,
     /** D28: what the cloud cleanup cost (exact `usage.cost`, else an estimate). */
     val llmCostUsd: Double? = null,
+    /** D30, only when AI cleanup (cloud) was tried: what produced the text, "cloud" | "local" | "rules". */
+    val cleanupRoute: String? = null,
+    /** D30: why AI cleanup's answer was not used (llm_timeout, llm_unsupported, llm_error: <code>, …). */
+    val cloudFallback: String? = null,
 )
 
 /** D28 `CommitResult.llm` (`flow_core::CleanUsage`): the LLM step's usage; null when it did not run. */

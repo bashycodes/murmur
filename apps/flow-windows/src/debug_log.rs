@@ -126,6 +126,12 @@ pub struct Entry {
     pub llm_cost_usd: Option<flow_core::Usd>,
     pub llm_ttft_ms: Option<u32>,
     pub llm_generation_id: Option<String>,
+    /// D30: what produced the text when AI cleanup (cloud) was tried
+    /// (`cloud` / `local` / `rules`) and why the cloud answer was not used
+    /// (`llm_timeout`, `llm_unsupported`, `llm_error: <code>`, …). `null`
+    /// when no cloud cleanup is on.
+    pub cleanup_route: Option<String>,
+    pub cloud_fallback: Option<String>,
     /// D28: OpenRouter speech-to-text model and cost of this dictation
     /// (`null` unless `route` is `cloud`).
     pub stt_model: Option<String>,
@@ -780,6 +786,8 @@ pub(crate) mod tests {
             "llm_cost_usd",
             "llm_ttft_ms",
             "llm_generation_id",
+            "cleanup_route",
+            "cloud_fallback",
             "stt_model",
             "stt_cost_usd",
         ];

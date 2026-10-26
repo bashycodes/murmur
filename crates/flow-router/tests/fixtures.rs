@@ -96,6 +96,8 @@ fn cloud_route() -> RouteInfo {
         llm_engine: Some("cloud".into()),
         llm_model: Some("meta-llama/llama-3.3-70b-instruct".into()),
         llm_cost_usd: Some(Usd(0.0007)),
+        // D30: AI cleanup's answer was used.
+        cleanup_route: Some("cloud".into()),
         ..Default::default()
     }
 }
