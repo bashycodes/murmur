@@ -18,6 +18,12 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **AI cleanup prompt v4c (not used yet).** flow-core has a second
+  cleanup prompt, v4c, for the planned AI cleanup that formats the raw
+  transcript in one pass. In chat apps it keeps capitals and words like
+  "Okay," and only relaxes punctuation, and it puts a blank line before a
+  list. On Llama-3.3-70B through OpenRouter it passes 90 % of the
+  formatting suite (v4b: 76 %). Dictation still uses prompt v2.
 - **Android: Shrink to a dot.** Settings → Bubble has a "Shrink to a dot"
   switch (default on) under "Shrink bubble" (the old switch, renamed). When
   on, the bubble shrinks to a small 16 dp dot after 5 s idle instead of the
