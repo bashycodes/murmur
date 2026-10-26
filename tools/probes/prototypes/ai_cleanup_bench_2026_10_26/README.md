@@ -15,6 +15,7 @@ rejected.
 |---|---|
 | `prompt_v4.json` | All-in-one AI-cleanup prompt, our own wording; 17 few-shots, none sharing a 5-word run with a test case (`score.py --overlap`) |
 | `prompt_v4b.json` | v4 + one line about pre-punctuated input + 4 few-shots in Parakeet's punctuated form (commands between commas); the better of the two |
+| `prompt_v4c.json` | Generated, do not edit: flow-core's prompt v4c (`crates/flow-core/src/cleanup/prompt_v4c.rs`), dumped by `ai-cleanup-bench --prompt-version v4c --dump-prompt prompt_v4c.json` so `score.py --overlap` covers it. Runs use the flow-core definition (`run_or.sh` with `PROMPT_VERSION=v4c`) |
 | `gen_wispr_cases.py` → `wispr_cases.jsonl` | 14 Wispr-target cases: the 10 A/B pairs of `../wispr_ab_2026_10_25/` (input `spoken`, target `wispr`) + the owner's 4 examples (Wispr outputs; raw inputs synthesised, see the script) |
 | `runner/` | Probe binary (own workspace, flow-core unmodified), derived from `../formatting_eval_2026_10_24/runner`. Modes `prod` (shipped pipeline: rules + prompt v2 + guard + `llm_skip_clean`), `rules` (fallback rules only), `ai` (raw → LLM → strict and loosened guard → fallback rules on reject) |
 | `runner/src/loose_guard.rs` | Loosened guard prototype: a copy of `flow_core::guard` with each change marked `LOOSE:` (fillers, unit abbreviations, 2-word trims allowed; names and a 20 % total-deletion cap enforced; number rules unchanged) |
@@ -33,6 +34,14 @@ CARGO_TARGET_DIR=target/ai-bench cargo build --release --manifest-path $B/runner
 MODELS=<gguf dir> FLOW_LLM_LIB=<libflow_llm.so> $B/run_all.sh
 python3 $B/score.py rules=$B/results/rules.jsonl prod=$B/results/prod_q15.jsonl \
   v4=$B/results/v4_q15.jsonl:out_loose --fails v4
+```
+
+Prompt v4c on OpenRouter (102 cases = `all_cases.jsonl` without the 4 `regression` rows):
+
+```sh
+PROMPT_VERSION=v4c SPENT_GLOB='or_v4c*' CAP=0.50 CASES=$B/results/v4c_cases.jsonl \
+  $B/run_or.sh or_v4c_l70_r2 meta-llama/llama-3.3-70b-instruct
+python3 $B/score.py v4c=$B/results/or_v4c_l70_r2.jsonl:out_strict --fails v4c
 ```
 
 `libflow_llm.so` = the release `flow-llm` cdylib of the same commit (no

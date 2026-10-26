@@ -17,6 +17,8 @@ use crate::dictionary::Dictionary;
 use crate::Usd;
 use serde::{Deserialize, Serialize};
 
+mod prompt_v4c;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CleanPrompt {
     pub system: String,
@@ -506,9 +508,10 @@ output nothing.";
 
 /// Style hint for the user message; the default/formal style says nothing
 /// (the examples already show it).
-fn style_rule(s: Style) -> Option<&'static str> {
+fn style_rule_for(s: Style, v: PromptVersion) -> Option<&'static str> {
     match s {
         Style::Default | Style::Formal => None,
+        Style::Casual if v == PromptVersion::V4c => Some(prompt_v4c::CASUAL),
         Style::Casual => Some("casual: sentence case, drop optional commas, final period optional"),
         Style::VeryCasual => Some("very casual: all lowercase, keep \"?\", no final period"),
         Style::Excited => Some("excited: turn enthusiastic statements and greetings into \"!\""),
@@ -651,6 +654,7 @@ struct UserMsg<'a> {
     app: &'a str,
     cat: AppCategory,
     style: Style,
+    version: PromptVersion,
     terms: &'a str,
     before: &'a str,
     selected: &'a str,
@@ -668,7 +672,7 @@ impl UserMsg<'_> {
             self.app,
             category_name(self.cat)
         );
-        if let Some(r) = style_rule(self.style) {
+        if let Some(r) = style_rule_for(self.style, self.version) {
             s.push_str(&format!("STYLE: {r}\n"));
         }
         for (label, v) in [
@@ -721,14 +725,54 @@ pub fn build_prompt_scoped(
     dict: &Dictionary,
     scope: PromptScope,
 ) -> CleanPrompt {
-    let system = format!("{SYSTEM}\n{}", level_rule(level));
-    let examples = EXAMPLES
+    build_prompt_versioned(asr_text, level, style, ctx, dict, scope, PromptVersion::V2)
+}
+
+/// Which system prompt + few-shots a [`CleanPrompt`] carries. Production
+/// (`Engine`, the cloud and local cleaners) builds [`PromptVersion::V2`];
+/// v4c is the all-in-one AI-cleanup prompt of the 2026-10-26 benchmark,
+/// selectable for the bench and the AI-cleanup work but not wired in.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum PromptVersion {
+    /// D27 prompt v2: formats text the fallback rules already processed.
+    #[default]
+    V2,
+    /// AI cleanup prompt v4c (`cleanup/prompt_v4c.rs`): one pass on the raw
+    /// transcript, light Wispr-style edits.
+    V4c,
+}
+
+/// [`build_prompt_scoped`] with an explicit prompt version. Only the system
+/// prompt, the few-shots and the wording of the casual STYLE line differ;
+/// the per-dictation user message (and so the scope) is built the same way.
+pub fn build_prompt_versioned(
+    asr_text: &str,
+    level: CleanupLevel,
+    style: Style,
+    ctx: &FieldContext,
+    dict: &Dictionary,
+    scope: PromptScope,
+    version: PromptVersion,
+) -> CleanPrompt {
+    let (system, shots) = match (version, level) {
+        (PromptVersion::V2, l) => (format!("{SYSTEM}\n{}", level_rule(l)), EXAMPLES),
+        // v4c's own rules are the light level; other levels add their line.
+        (PromptVersion::V4c, CleanupLevel::Light) => {
+            (prompt_v4c::SYSTEM.to_string(), prompt_v4c::EXAMPLES)
+        }
+        (PromptVersion::V4c, l) => (
+            format!("{}\n{}", prompt_v4c::SYSTEM, level_rule(l)),
+            prompt_v4c::EXAMPLES,
+        ),
+    };
+    let examples = shots
         .iter()
         .map(|&(app, cat, style, input, output)| {
             let u = UserMsg {
                 app,
                 cat,
                 style,
+                version,
                 terms: "",
                 before: "",
                 selected: "",
@@ -761,6 +805,7 @@ pub fn build_prompt_scoped(
         },
         cat: ctx.app_category,
         style,
+        version,
         terms: &terms,
         before: &before,
         selected: &selected,
@@ -1175,7 +1220,9 @@ mod tests {
             .iter()
             .find(|(u, _)| u.contains("STYLE:"))
             .unwrap();
-        assert!(casual.0.contains(style_rule(Style::Casual).unwrap()));
+        assert!(casual
+            .0
+            .contains(style_rule_for(Style::Casual, PromptVersion::V2).unwrap()));
         assert!(p.user.contains("STYLE: casual"));
     }
 
@@ -1401,6 +1448,122 @@ mod tests {
             500,
         );
         assert_eq!(o, CleanOutcome::Formatted("- milk\n- eggs\n- bread".into()));
+    }
+
+    fn versioned(style: Style, v: PromptVersion) -> CleanPrompt {
+        build_prompt_versioned(
+            "ok so the thing is done",
+            CleanupLevel::Light,
+            style,
+            &ctx(AppCategory::PersonalChat),
+            &Dictionary::default(),
+            PromptScope::MINIMAL,
+            v,
+        )
+    }
+
+    #[test]
+    fn production_prompt_is_still_v2_and_v4c_is_selectable() {
+        assert_eq!(PromptVersion::default(), PromptVersion::V2);
+        let v2 = build_prompt_scoped(
+            "ok so the thing is done",
+            CleanupLevel::Light,
+            Style::Casual,
+            &ctx(AppCategory::PersonalChat),
+            &Dictionary::default(),
+            PromptScope::MINIMAL,
+        );
+        assert_eq!(versioned(Style::Casual, PromptVersion::V2), v2);
+        let v4c = versioned(Style::Casual, PromptVersion::V4c);
+        assert!(
+            v4c.system
+                .starts_with("You turn a raw speech-to-text TRANSCRIPT"),
+            "{}",
+            v4c.system
+        );
+        assert_ne!(v4c.examples, v2.examples);
+        // The per-dictation message keeps its shape (and the D28 scope).
+        assert!(v4c
+            .user
+            .starts_with("APP: the focused app | CATEGORY: personal chat\nSTYLE: casual"));
+        assert!(v4c.user.ends_with("TRANSCRIPT: «ok so the thing is done»"));
+        assert!(
+            !v4c.user.contains("Dear Bob"),
+            "minimal scope leaks context"
+        );
+    }
+
+    #[test]
+    fn v4c_casual_relaxes_punctuation_but_never_lowercases_or_drops_openers() {
+        let p = versioned(Style::Casual, PromptVersion::V4c);
+        let style = p.user.lines().find(|l| l.starts_with("STYLE:")).unwrap();
+        // v4b's casual line ("sentence case, drop optional commas") made
+        // Llama-3.3-70B lowercase sentence starts and drop "Okay," / "Yeah,".
+        assert!(!style.contains("sentence case"), "{style}");
+        assert!(!style.contains("drop optional commas"), "{style}");
+        assert!(style.contains("no final period"), "{style}");
+        assert!(style.contains("capital"), "{style}");
+        assert!(p.system.contains("never means lowercase"), "{}", p.system);
+        assert!(p.system.contains("\"Okay,\""), "{}", p.system);
+        // Casual few-shots carry the same STYLE line a casual session sends,
+        // and none of their answers starts lowercase.
+        let casual: Vec<_> = p
+            .examples
+            .iter()
+            .filter(|(u, _)| u.contains(style))
+            .collect();
+        assert!(casual.len() >= 5, "{}", casual.len());
+        for (u, a) in &casual {
+            assert!(!a.starts_with(|c: char| c.is_lowercase()), "{u} -> {a}");
+        }
+        assert!(casual.iter().any(|(_, a)| a.starts_with("Yeah, ")));
+        assert!(casual.iter().any(|(_, a)| a.starts_with("Okay, ")));
+        // Very casual keeps its explicit all-lowercase rule.
+        let vc = versioned(Style::VeryCasual, PromptVersion::V4c);
+        assert!(
+            vc.user.contains("STYLE: very casual: all lowercase"),
+            "{}",
+            vc.user
+        );
+    }
+
+    #[test]
+    fn v4c_puts_a_blank_line_between_list_intro_and_list() {
+        let p = versioned(Style::Default, PromptVersion::V4c);
+        assert!(
+            p.system.contains("blank line, then the list"),
+            "{}",
+            p.system
+        );
+        let lists: Vec<_> = p
+            .examples
+            .iter()
+            .filter(|(_, a)| a.contains("<ol>"))
+            .collect();
+        assert!(lists.len() >= 2);
+        for (_, a) in lists {
+            assert!(a.contains(":\n\n<ol><li>"), "{a}");
+            // Items start with a capital, also in a casual chat.
+            for item in a.split("<li>").skip(1) {
+                assert!(item.starts_with(|c: char| c.is_uppercase()), "{a}");
+            }
+        }
+    }
+
+    #[test]
+    fn v4c_light_has_no_level_line_and_other_levels_add_theirs() {
+        let light = versioned(Style::Default, PromptVersion::V4c);
+        assert!(!light.system.contains("Level "), "{}", light.system);
+        let medium = build_prompt_versioned(
+            "x",
+            CleanupLevel::Medium,
+            Style::Default,
+            &FieldContext::default(),
+            &Dictionary::default(),
+            PromptScope::FULL,
+            PromptVersion::V4c,
+        );
+        assert!(medium.system.ends_with(level_rule(CleanupLevel::Medium)));
     }
 
     #[test]
