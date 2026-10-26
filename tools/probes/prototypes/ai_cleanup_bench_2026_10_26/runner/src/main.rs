@@ -31,7 +31,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use flow_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
-use flow_core::cleanup::{build_prompt, lists_to_plain, unwrap_output, CleanError, CleanPrompt, Cleaner};
+use flow_core::cleanup::{
+    build_prompt, lists_to_plain, unwrap_output, CleanError, CleanPrompt, Cleaner, PromptVersion,
+};
 use flow_core::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig};
 use flow_core::guard::Verdict;
 use flow_core::postprocess;
@@ -151,9 +153,51 @@ fn judge(
         "error": err, "llm_raw": llm_raw, "llm_ms": llm_ms})
 }
 
+/// `--dump-prompt PATH`: write a flow-core prompt version in the
+/// prompt.json shape, so `score.py --overlap` checks its few-shots.
+fn dump_prompt(version: PromptVersion, path: &str) {
+    let p = flow_core::cleanup::build_prompt_versioned(
+        "",
+        CleanupLevel::Light,
+        flow_core::config::Style::Default,
+        &FieldContext::default(),
+        &flow_core::dictionary::Dictionary::default(),
+        flow_core::cleanup::PromptScope::FULL,
+        version,
+    );
+    let examples: Vec<serde_json::Value> = p
+        .examples
+        .iter()
+        .map(|(u, a)| {
+            let head = u.lines().next().unwrap();
+            let (app, cat) = head.trim_start_matches("APP: ").split_once(" | CATEGORY: ").unwrap();
+            let t = u.split_once("TRANSCRIPT: \u{ab}").unwrap().1.trim_end_matches('\u{bb}');
+            let mut e = vec![app, cat, t, a.as_str()];
+            if u.contains("\nSTYLE: casual") {
+                e.push("casual");
+            }
+            serde_json::json!(e)
+        })
+        .collect();
+    let v = serde_json::json!({
+        "_note": format!("{version:?}: generated from flow-core by `ai-cleanup-bench --dump-prompt` (do not edit; the source is crates/flow-core/src/cleanup)."),
+        "system": p.system, "examples": examples});
+    std::fs::write(path, serde_json::to_string_pretty(&v).unwrap() + "\n").unwrap();
+}
+
 fn main() {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let get = |k: &str| argv.iter().position(|a| a == k).and_then(|i| argv.get(i + 1).cloned());
+    // `--prompt-version v4c`: flow-core's built-in prompt v4c (system,
+    // few-shots and its own casual STYLE line) instead of a --prompt file.
+    let version = match get("--prompt-version").as_deref() {
+        None | Some("v2") => PromptVersion::V2,
+        Some("v4c") => PromptVersion::V4c,
+        Some(v) => panic!("unknown --prompt-version {v}"),
+    };
+    if let Some(p) = get("--dump-prompt") {
+        return dump_prompt(version, &p);
+    }
     let mode = get("--mode").expect("--mode prod|ai|rules");
     let cases = std::fs::read_to_string(get("--cases").expect("--cases")).unwrap();
     let session: SessionConfig =
@@ -269,16 +313,25 @@ fn main() {
             "ai" => {
                 let cl = cleaner.as_ref().expect("--mode ai needs --llm");
                 let style = session.styles.for_category(c.app_category);
-                cl.prefill(&build_prompt("", session.cleanup_level, style, &ctx, &session.dictionary));
+                cl.prefill(&flow_core::cleanup::build_prompt_versioned(
+                    "",
+                    session.cleanup_level,
+                    style,
+                    &ctx,
+                    &session.dictionary,
+                    flow_core::cleanup::PromptScope::FULL,
+                    version,
+                ));
                 // A cloud backend narrows the prompt (D28 minimal scope:
                 // no app id), as the engine does.
-                let prompt = flow_core::cleanup::build_prompt_scoped(
+                let prompt = flow_core::cleanup::build_prompt_versioned(
                     &c.input,
                     CleanupLevel::Light,
                     style,
                     &ctx,
                     &session.dictionary,
                     cl.prompt_scope(),
+                    version,
                 );
                 let t = Instant::now();
                 let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
