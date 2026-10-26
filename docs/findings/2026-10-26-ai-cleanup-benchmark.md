@@ -1,4 +1,12 @@
-# AI cleanup benchmark, phase 1: local ≤3B models on the home server CPU (2026-10-26, draft)
+# AI cleanup benchmark, phase 1: local ≤3B models and OpenRouter (2026-10-26, draft)
+
+**Phase 1d update (OpenRouter, same day).** Through OpenRouter (product `OpenRouterCleaner`,
+`zdr: true`, `data_collection: deny`, prompt v4b, raw input), **Llama-3.3-70B is the only
+configuration that meets the ≤ 1.5 s median budget *and* beats every local model on Wispr
+closeness**: end-to-end p50 **0.75 s** / p90 1.34 s from this box, target-closeness **0.909**
+(char ratio 0.98), 88-suite 76 %, $0.0013 per call. Two 8B-class ZDR models are as fast
+(0.54–0.77 s) and cheaper but weaker. Total spent: **$0.18** of the $1.50 cap.
+Recommendation: [§ Recommendation](#recommendation-against-the-15-s-budget).
 
 **Question.** The owner decided (2026-10-26) that *AI cleanup* (GLOSSARY) does all
 formatting in one pass on the **raw** transcript, with the
@@ -73,29 +81,29 @@ Prototype: `tools/probes/prototypes/ai_cleanup_bench_2026_10_26/` (README there)
 
 ## Results
 
-| category | n | rules | prod 1.5B | prod 3B | v2 raw 1.5B | v4 1.5B | **v4b 1.5B** | v4 3B | v4b 3B | 7B | 8B | 70B (OpenRouter) |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| quote | 8 | 8/8 | 8/8 | 8/8 | 7/8 | 6/8 | 6/8 | 4/8 | 4/8 | pending | pending | skipped |
-| paren | 6 | 6/6 | 6/6 | 6/6 | 4/6 | 1/6 | 2/6 | 2/6 | 4/6 | | | |
-| spoken_punct | 9 | 9/9 | 9/9 | 9/9 | 8/9 | 7/9 | 7/9 | 6/9 | 8/9 | | | |
-| newline | 5 | 5/5 | 5/5 | 5/5 | 0/5 | 0/5 | 1/5 | 2/5 | 2/5 | | | |
-| correction | 7 | 5/7 | 5/7 | 6/7 | 1/7 | 4/7 | 4/7 | 1/7 | 3/7 | | | |
-| itn | 8 | 8/8 | 8/8 | 8/8 | 6/8 | 7/8 | 6/8 | 7/8 | 5/8 | | | |
-| list | 5 | 3/5 | 3/5 | 4/5 | 3/5 | 3/5 | 3/5 | 3/5 | 3/5 | | | |
-| casual | 7 | 7/7 | 7/7 | 6/7 | 7/7 | 7/7 | 7/7 | 6/7 | 6/7 | | | |
-| email | 5 | 5/5 | 5/5 | 5/5 | 4/5 | 2/5 | 5/5 | 5/5 | 5/5 | | | |
-| filler | 6 | 6/6 | 6/6 | 6/6 | 4/6 | 3/6 | 3/6 | 1/6 | 2/6 | | | |
-| runon | 6 | 0/6 | 3/6 | 1/6 | 4/6 | 4/6 | 4/6 | 3/6 | 3/6 | | | |
-| negative | 16 | 16/16 | 16/16 | 12/16 | 15/16 | 12/16 | 13/16 | 13/16 | 12/16 | | | |
-| **88-suite pass** | 88 | 89 % | **92 %** | 86 % | 72 % | 64 % | 69 % | 60 % | 65 % | | | |
-| Wispr A/B exact | 10 | 1 | 2 | 0 | 3 | 4 | 3 | 1 | 2 | | | |
-| owner examples exact | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | | | |
-| **target-closeness (14)** | 14 | 0.757 | 0.826 | 0.750 | 0.855 | **0.871** | 0.866 | 0.838 | 0.833 | | | |
-| strict guard rejects | 102 | – | 2 | 0 | 7 | 4 | 6 | 5 | 5 | | | |
-| loosened guard rejects | 102 | – | – | – | 7 | 4 | 6 | 5 | 5 | | | |
-| LLM ms p50 / p90 | | – | 1374 / 2746 ¹ | 2783 / 3000 ¹ | 1448 / 2579 | 1503 / 2675 | 1529 / 2597 | 2893 / 4630 | 2831 / 4681 | | | |
-| LLM calls > 1500 ms | | – | 24 / 50 | 48 / 50 | 47 / 102 | 52 / 102 | 55 / 102 | 99 / 102 | 99 / 102 | | | |
-| peak RSS (bench process) | | 7 MB | 1.90 GB | 3.58 GB | 1.90 GB | 1.90 GB | 1.90 GB | 3.58 GB | 3.58 GB | | | |
+| category | n | rules | prod 1.5B | prod 3B | v2 raw 1.5B | v4 1.5B | **v4b 1.5B** | v4 3B | v4b 3B | 7B | 8B |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| quote | 8 | 8/8 | 8/8 | 8/8 | 7/8 | 6/8 | 6/8 | 4/8 | 4/8 | pending | pending |
+| paren | 6 | 6/6 | 6/6 | 6/6 | 4/6 | 1/6 | 2/6 | 2/6 | 4/6 | | |
+| spoken_punct | 9 | 9/9 | 9/9 | 9/9 | 8/9 | 7/9 | 7/9 | 6/9 | 8/9 | | |
+| newline | 5 | 5/5 | 5/5 | 5/5 | 0/5 | 0/5 | 1/5 | 2/5 | 2/5 | | |
+| correction | 7 | 5/7 | 5/7 | 6/7 | 1/7 | 4/7 | 4/7 | 1/7 | 3/7 | | |
+| itn | 8 | 8/8 | 8/8 | 8/8 | 6/8 | 7/8 | 6/8 | 7/8 | 5/8 | | |
+| list | 5 | 3/5 | 3/5 | 4/5 | 3/5 | 3/5 | 3/5 | 3/5 | 3/5 | | |
+| casual | 7 | 7/7 | 7/7 | 6/7 | 7/7 | 7/7 | 7/7 | 6/7 | 6/7 | | |
+| email | 5 | 5/5 | 5/5 | 5/5 | 4/5 | 2/5 | 5/5 | 5/5 | 5/5 | | |
+| filler | 6 | 6/6 | 6/6 | 6/6 | 4/6 | 3/6 | 3/6 | 1/6 | 2/6 | | |
+| runon | 6 | 0/6 | 3/6 | 1/6 | 4/6 | 4/6 | 4/6 | 3/6 | 3/6 | | |
+| negative | 16 | 16/16 | 16/16 | 12/16 | 15/16 | 12/16 | 13/16 | 13/16 | 12/16 | | |
+| **88-suite pass** | 88 | 89 % | **92 %** | 86 % | 72 % | 64 % | 69 % | 60 % | 65 % | | |
+| Wispr A/B exact | 10 | 1 | 2 | 0 | 3 | 4 | 3 | 1 | 2 | | |
+| owner examples exact | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | | |
+| **target-closeness (14)** | 14 | 0.757 | 0.826 | 0.750 | 0.855 | **0.871** | 0.866 | 0.838 | 0.833 | | |
+| strict guard rejects | 102 | – | 2 | 0 | 7 | 4 | 6 | 5 | 5 | | |
+| loosened guard rejects | 102 | – | – | – | 7 | 4 | 6 | 5 | 5 | | |
+| LLM ms p50 / p90 | | – | 1374 / 2746 ¹ | 2783 / 3000 ¹ | 1448 / 2579 | 1503 / 2675 | 1529 / 2597 | 2893 / 4630 | 2831 / 4681 | | |
+| LLM calls > 1500 ms | | – | 24 / 50 | 48 / 50 | 47 / 102 | 52 / 102 | 55 / 102 | 99 / 102 | 99 / 102 | | |
+| peak RSS (bench process) | | 7 MB | 1.90 GB | 3.58 GB | 1.90 GB | 1.90 GB | 1.90 GB | 3.58 GB | 3.58 GB | | |
 
 AI columns: strict-guard column shown (the loosened one is identical on every AI row).
 ¹ prod skips the LLM on 51/102 cases (`llm_skipped_clean`) and cuts it at 3 s: prod 1.5B
@@ -144,6 +152,95 @@ AI-cleanup latency by dictation length (median LLM ms; n = 52 / 41 / 5 / 4):
   produced here. The loosened guard is ready for when a model does those edits; on these
   models it changes nothing measurable.
 
+## Phase 1d: OpenRouter
+
+* **Setup.** `run_or.sh` → the runner's `--openrouter MODEL` uses the product's
+  `flow_cloud::OpenRouterCleaner` unmodified: streamed chat completion, `temperature 0`,
+  `provider {zdr: true, data_collection: "deny", sort: "latency", allow_fallbacks: true}`,
+  minimal prompt scope (no app id, as D28), prompt v4b, both guards, fallback rules on a
+  reject, 8 s budget. The key is read from the key file into the process env only. Latency
+  = request start to last token, measured on this box (home connection), so it is the
+  client's real added latency, not the model's speed alone. Cost = each call's
+  `usage.cost`; a cap on the summed cost over all runs ($1.50) stops a run.
+* **Model picks** (live ZDR endpoint list, `GET /api/v1/endpoints/zdr`, 2026-10-26):
+  * `meta-llama/llama-3.3-70b-instruct`: the D28 cleanup default (asked for).
+  * `meta-llama/llama-3.1-8b-instruct`: the base of Wispr's own fallback formatter (a
+    fine-tuned Llama-3.1-8B, research 03), the same model as our pending local 8B row, and
+    5 ZDR providers including Groq (LPU, low latency) at $0.02–0.22 / M tokens.
+  * `mistralai/ministral-8b-2512`: a second, non-reasoning 8B family with a first-party
+    ZDR endpoint (Mistral), $0.15 / M. Skipped: Qwen3 / Qwen3.5 (reasoning models, extra
+    latency), Gemma-3-4B/12B (fewer ZDR providers with uptime data).
+* **Suite note.** Integration (5d0747b) added 4 "regression" cases to the formatting suite;
+  three reuse the A/B ids ab5/ab7/ab8. `score.py` keeps the original 88 + 14 so all rows
+  compare; the cloud runs made 106 calls (cost below counts all of them). The fallback
+  rules after 5d0747b: 88-suite 89 % (unchanged), target-closeness 0.784 (was 0.757).
+
+| | rules (5d0747b) | prod 1.5B | v4b 1.5B (local) | **Llama-3.3-70B** | Llama-3.1-8B | Ministral-8B |
+|---|---|---|---|---|---|---|
+| quote / paren / spoken_punct | 8/8 · 6/6 · 9/9 | 8/8 · 6/6 · 9/9 | 6/8 · 2/6 · 7/9 | 6/8 · 5/6 · 8/9 | 6/8 · 6/6 · 8/9 | 5/8 · 5/6 · 7/9 |
+| newline / correction / itn | 5/5 · 5/7 · 8/8 | 5/5 · 5/7 · 8/8 | 1/5 · 4/7 · 6/8 | 5/5 · 6/7 · 8/8 | 3/5 · 5/7 · 8/8 | 1/5 · 6/7 · 6/8 |
+| list / casual / email | 3/5 · 7/7 · 5/5 | 3/5 · 7/7 · 5/5 | 3/5 · 7/7 · 5/5 | 1/5 · 2/7 · 5/5 | 2/5 · 4/7 · 5/5 | 3/5 · 7/7 · 5/5 |
+| filler / runon / negative | 6/6 · 0/6 · 16/16 | 6/6 · 3/6 · 16/16 | 3/6 · 4/6 · 13/16 | 5/6 · 3/6 · 13/16 | 6/6 · 4/6 · 10/16 | 6/6 · 1/6 · 12/16 |
+| **88-suite pass** | 89 % | **92 %** | 69 % | 76 % | 76 % | 73 % |
+| Wispr exact (10 A/B + 4 owner) | 2 + 0 | 2 + 0 | 3 + 0 | **4 + 1** | 3 + 0 | 2 + 0 |
+| **target-closeness (14)** | 0.784 | 0.826 | 0.866 | **0.909** | 0.886 | 0.843 |
+| Wispr char ratio (14) | 0.856 | 0.867 | 0.875 | **0.979** | 0.906 | 0.885 |
+| strict / loosened rejects (of 102) | – | 2 / – | 6 / 6 | 1 / 1 | 2 / 2 | 9 / 9 |
+| good answers rejected | – | 0 | 0 | 0 | 0 | 0 |
+| LLM ms p50 / p90 (end-to-end) | – | 1374 / 2746 | 1529 / 2597 | **746 / 1336** | 772 / 1208 | 539 / 1074 |
+| calls > 1500 ms | – | 24 / 50 | 55 / 102 | 3 / 102 | 1 / 102 | 5 / 102 |
+| time to first token p50 | – | – | – | 571 ms | 686 ms | 350 ms |
+| cost per call (mean) | – | – | – | $0.00127 | $0.00036 | $0.00005 |
+| run total (106 calls) | – | – | – | $0.1346 | $0.0383 | $0.0055 |
+
+Spend: summed `usage.cost` $0.181 including a 2-call smoke test ($0.0025); the key's own
+usage counter read $0.178 after the last run (it lags by seconds). No call errored, timed
+out or needed an estimated cost.
+
+What the cloud models do:
+
+* **Llama-3.3-70B** writes what Wispr writes on the owner's dictations: o2 is exact
+  ("… run it on the server (for instance, if that would give me even more accurate, better,
+  and faster transcriptions)."); o1 differs only in "hiking boots; some of them say 32 by 32".
+  Its 88-suite misses are mostly conventions, not damage:
+  * the casual STYLE line ("sentence case, drop optional commas") made it lowercase or drop
+    "Okay," / "Yeah," (k4 "haha that's hilarious I cant believe he did that"; k5, k6) —
+    the style wording needs a rewrite for big models;
+  * numbered lists without the blank line after the intro (l1–l3, l5);
+  * but also two real errors: literal "in parentheses" / "in brackets" turned into marks
+    (x13 "The formula is (on the board).", x15). **The guard cannot catch this**: it strips
+    command words from both sides before comparing, so a wrongly applied command looks the
+    same as a correct one.
+* **Llama-3.1-8B**: good on parens/fillers/ITN, but 10/16 negatives (applies commands to
+  literal uses) and answered the all-filler f6 with "Nothing to format" (rejected by the
+  guard, correctly).
+* **Ministral-8B**: fastest and cheapest, but replies with meta-text on filler-only or odd
+  inputs ("(no reply)*", "(No reply—transcript contained only filler…)" on x7/x9, which are
+  real sentences) and rewrites (o3 "I can speak super fast, whisper very low, or …"). The
+  guard caught 9 of these; the fallback rules then produced the text.
+* **Guards on cloud output:** strict and loosened agree on all 306 cloud answers.
+
+## Recommendation against the 1.5 s budget
+
+1. **On the home server CPU, no local model meets the budget at useful quality.** The 1.5B
+   sits at p50 1.5 s on mostly short dictations (3–6 s on the owner's 30–50-word ones) and
+   is worse than the fallback rules on the suite; 3B is 2.9 s; 7B/8B (pending) will be
+   slower still.
+2. **If the owner accepts cloud text cleanup (D28 opt-in, consent per call), use OpenRouter
+   Llama-3.3-70B as the AI cleanup engine**, with the fallback rules on a guard reject or
+   the 2.5 s cloud timeout. It is the only measured configuration under budget at the median
+   (0.75 s, p90 1.34 s) and the closest to Wispr. Cost ≈ $1.30 per 1 000 dictations at the
+   v4b prompt size (~2 k prompt tokens; most of it is the static prefix, so prompt caching
+   would cut it). D28 keeps cloud cleanup off the server route, so this is a client-side
+   call; the budget then applies to the client's release→text.
+3. Before that ships: fix the casual STYLE wording (big models over-apply it), add the
+   blank line after a list intro to the prompt, and close the guard gap for literal command
+   words (compare command words, not only strip them: a command word the input has as
+   plain text must not become a mark).
+4. **Without cloud: keep today's production pipeline** (rules → v2 → guard → skip, 92 %)
+   and use the local 1.5B only where its p50 fits; the all-in-one raw-in design is not
+   reachable locally on this CPU.
+
 ## Budget read (i7-6700, 4 LLM threads, server shared)
 
 * The fixed cost of one call is ~1 s (user-message prefill + the first tokens): the 1.5B
@@ -167,8 +264,7 @@ AI-cleanup latency by dictation length (median LLM ms; n = 52 / 41 / 5 / 4):
   (bartowski/Meta-Llama-3.1-8B-Instruct-GGUF, 4 920 739 232 bytes, sha256
   `7b064f58…3033557c` = the repo's LFS hash). flow-llm uses the GGUF's own chat template;
   the 8B has not been loaded yet, so that is untested.
-* **OpenRouter** (Llama-3.3-70B + two small ZDR models): **skipped**, no
-  `~/.config/flow-clone/openrouter.key` on this box.
+* ~~OpenRouter~~: done in phase 1d (above).
 
 ## Uncertain
 
