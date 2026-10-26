@@ -110,6 +110,15 @@ C = [
     ("r4", "runon", DOCS, "Before we start, however we need to agree on the scope.", "Before we start, however, we need to agree on the scope.", []),
     ("r5", "runon", SLACK, "can you take a look at the PR when you get a chance thanks", "Can you take a look at the PR when you get a chance? Thanks", ["Can you take a look at the PR when you get a chance? Thanks!"]),
     ("r6", "runon", WA, "ok cool see you at eight", "Ok cool, see you at 8", ["Okay cool, see you at 8", "Ok cool see you at 8", "OK cool, see you at 8"]),
+    # --- fallback-rule regressions (2026-10-26, ticket 6aded21e) -----------
+    # Inputs: the owner's Wispr A/B script (../wispr_ab_2026_10_25/pairs.jsonl
+    # ab5, ab7, ab8) and the 158 cm height from the AI-cleanup benchmark.
+    ("ab8", "regression", KEEP, "okay first thing send the invoice second thing call the landlord and third thing please remind me about the dentist", "Okay:\n\n1. Send the invoice\n2. Call the landlord\n3. Please remind me about the dentist", ["1. Send the invoice\n2. Call the landlord\n3. Please remind me about the dentist", "- Send the invoice.\n- Call the landlord.\n- Please remind me about the dentist."]),
+    ("ab5", "regression", KEEP, "he told me and I quote I'm never doing that again unquote and then he did it the next day", 'He told me, "I\'m never doing that again," and then he did it the next day.', []),
+    # ab7 pins the currency spacing only: the bare "in parentheses not …"
+    # aside and the implied "$60" are AI-cleanup work (out of the ticket).
+    ("ab7", "regression", KEEP, "we spent about two hundred and fifty dollars on the trip in parentheses not counting gas which was another sixty", "We spent about $250 on the trip (not counting gas, which was another $60).", ["We spent about $250 on the trip in parentheses not counting gas which was another sixty."]),
+    ("h1", "regression", KEEP, "he is about a hundred and fifty eight cm tall", "He is about 158 cm tall.", []),
     # --- negatives: command words used literally ---------------------------
     ("x1", "negative", DOCS, "The word quote comes from Latin.", "The word quote comes from Latin.", ['The word "quote" comes from Latin.']),
     ("x2", "negative", GMAIL, "Can you send me a quote for the new roof?", "Can you send me a quote for the new roof?", []),
