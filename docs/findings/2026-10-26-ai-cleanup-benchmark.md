@@ -64,7 +64,8 @@ Prototype: `tools/probes/prototypes/ai_cleanup_bench_2026_10_26/` (README there)
   ("the speech model may already have punctuated, with commas around commands") and 4
   few-shots in that form. `score.py --overlap`: no few-shot shares a 5-word run with any
   of the 102 cases.
-* **Loosened guard** (`runner/src/loose_guard.rs`): a copy of `flow_core::guard`, each
+* **Loosened guard** (`runner/src/loose_guard.rs`, since promoted to
+  `flow_core::guard::check_loose`, D30): a copy of `flow_core::guard`, each
   change marked. Allows: more hedge fillers dropped ("actually", "basically", …), unit
   abbreviations ("lbs" = pound, "cm", "kg", "x" = by). Adds limits: a name the input
   capitalises must survive; at most 20 % of the input's content words may go. Unchanged:

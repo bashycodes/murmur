@@ -18,12 +18,12 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
-- **AI cleanup prompt v4c (not used yet).** flow-core has a second
-  cleanup prompt, v4c, for the planned AI cleanup that formats the raw
-  transcript in one pass. In chat apps it keeps capitals and words like
+- **AI cleanup prompt v4c.** flow-core has a second cleanup prompt, v4c,
+  for AI cleanup, which formats the raw transcript in one pass. In chat apps it keeps capitals and words like
   "Okay," and only relaxes punctuation, and it puts a blank line before a
   list. On Llama-3.3-70B through OpenRouter it passes 90 % of the
-  formatting suite (v4b: 76 %). Dictation still uses prompt v2.
+  formatting suite (v4b: 76 %). The cloud path uses it (D30); the
+  on-device model keeps prompt v2.
 - **Android: Shrink to a dot.** Settings → Bubble has a "Shrink to a dot"
   switch (default on) under "Shrink bubble" (the old switch, renamed). When
   on, the bubble shrinks to a small 16 dp dot after 5 s idle instead of the
@@ -65,6 +65,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
+- **AI cleanup is the main path** (D30). With cloud text cleanup on, the
+  raw transcript goes straight to Llama-3.3-70B on OpenRouter with prompt
+  v4c, which does all the formatting and light edits in one pass; a
+  loosened guard checks it and a blank line is always put before a list.
+  If the cloud is off, slow (2.5 s), fails or its answer is rejected, the
+  on-device pipeline runs as before; with no local model, the fixed
+  rules. The debug log and the route label show which one was used and
+  why the cloud was not. Cloud off: unchanged.
 - **OpenRouter is now the only cloud service** (D28), for cloud
   speech-to-text and for the new cloud text cleanup. ElevenLabs, Deepgram,
   AssemblyAI, direct OpenAI/Groq and custom server addresses are removed

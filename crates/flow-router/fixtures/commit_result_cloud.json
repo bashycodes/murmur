@@ -9,6 +9,7 @@
   "press_enter": false,
   "route": {
     "billed_audio_ms": 1000,
+    "cleanup_route": "cloud",
     "cost_estimated": false,
     "cost_usd": 0.000011,
     "engine": "cloud",

@@ -107,6 +107,29 @@ pub fn llm_row(
     Some(parts.join(" · "))
 }
 
+/// D30: [`llm_row`] plus what produced the text when AI cleanup (cloud)
+/// was tried and its answer was not used: "… · OpenRouter not used
+/// (llm_timeout) → this PC" / "→ fixed rules". Unchanged otherwise.
+pub fn with_cleanup_route(
+    row: Option<String>,
+    cleanup_route: Option<&str>,
+    cloud_fallback: Option<&str>,
+) -> Option<String> {
+    let used = match cleanup_route {
+        Some("local") => "this PC",
+        Some("rules") => "fixed rules",
+        _ => return row,
+    };
+    let note = format!(
+        "{PROVIDER_NAME} not used ({}) → {used}",
+        cloud_fallback.unwrap_or("?")
+    );
+    Some(match row {
+        Some(r) => format!("{r} · {note}"),
+        None => note,
+    })
+}
+
 // ------------------------------------------------------------------ usage
 
 pub fn usage_path(appdata: Option<&str>) -> PathBuf {
@@ -353,6 +376,21 @@ mod tests {
             "llm_skipped_clean is a normal result"
         );
         assert_eq!(llm_row(None, Some("cloud"), None, None, false), None);
+    }
+
+    #[test]
+    fn cleanup_route_names_the_fallback_when_ai_cleanup_was_not_used() {
+        let row = || Some("AI cleaned · this PC".to_string());
+        assert_eq!(
+            with_cleanup_route(row(), Some("local"), Some("llm_timeout")).as_deref(),
+            Some("AI cleaned · this PC · OpenRouter not used (llm_timeout) → this PC")
+        );
+        assert_eq!(
+            with_cleanup_route(None, Some("rules"), Some("llm_unsupported")).as_deref(),
+            Some("OpenRouter not used (llm_unsupported) → fixed rules")
+        );
+        assert_eq!(with_cleanup_route(row(), Some("cloud"), None), row());
+        assert_eq!(with_cleanup_route(row(), None, None), row());
     }
 
     #[test]

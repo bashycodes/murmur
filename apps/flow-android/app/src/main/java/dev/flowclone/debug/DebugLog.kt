@@ -27,6 +27,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * D28 (OpenRouter): llm_engine (local | cloud | server; who ran the AI cleanup), llm_model,
  * llm_cost_usd, llm_ttft_ms, llm_generation_id, and stt_cost_usd (cloud speech-to-text cost).
  * `llm: llm_skipped_clean` stays a normal result; a cloud refusal shows as `llm_error: <code>`.
+ * D30 (AI cleanup first): cleanup_route (cloud | local | rules: what produced the text) and
+ * cloud_fallback (why the cloud answer was not used), only when cloud cleanup was tried.
  *
  * Logging must never affect dictation: entries are queued (bounded, drop-oldest) and written
  * on one background thread; every failure is swallowed and counted.
@@ -95,6 +97,9 @@ data class DictationTrace(
     val llmEngine: String? = null,
     val llmModel: String? = null,
     val llmCostUsd: Double? = null,
+    /** D30 `route.cleanup_route` (cloud | local | rules) and `route.cloud_fallback`; null = AI cleanup not tried. */
+    val cleanupRoute: String? = null,
+    val cloudFallback: String? = null,
     /** D28 `llm.ttft_ms` / `llm.generation_id` (OpenRouter's id, for a later cost lookup). */
     val llmTtftMs: Long? = null,
     val llmGenerationId: String? = null,
@@ -231,6 +236,8 @@ object DebugFormat {
         "llm_engine" to t.llmEngine,
         "llm_model" to t.llmModel,
         "llm_cost_usd" to t.llmCostUsd,
+        "cleanup_route" to t.cleanupRoute,
+        "cloud_fallback" to t.cloudFallback,
         "llm_ttft_ms" to t.llmTtftMs,
         "llm_generation_id" to t.llmGenerationId,
         "stt_cost_usd" to t.sttCostUsd,
@@ -264,6 +271,7 @@ object DebugFormat {
             (s("language")?.let { " · lang $it" } ?: "") + (s("style")?.let { " · $it" } ?: "") +
             (dev.flowclone.data.LlmOutcome.label(s("llm"))?.let { " · $it" } ?: "") +
             (s("llm_engine")?.let { e -> " · AI " + (if (e == "cloud") "OpenRouter" else e) + (s("llm_model")?.let { " ${it.substringAfter('/')}" } ?: "") } ?: "") +
+            (s("cleanup_route")?.let { c -> " · text by $c" + (s("cloud_fallback")?.let { " (cloud: $it)" } ?: "") } ?: "") +
             (listOfNotNull(s("stt_cost_usd"), s("llm_cost_usd")).takeIf { it.isNotEmpty() }?.let { " · $" + it.sumOf { c -> c.toDoubleOrNull() ?: 0.0 }.let { v -> String.format(java.util.Locale.US, "%.4f", v) } } ?: "")
         val ms = listOfNotNull(
             s("perceived_ms")?.let { "wait $it ms" }, s("client_ms")?.let { "client $it" }, s("asr_ms")?.let { "asr $it" },

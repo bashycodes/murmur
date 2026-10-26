@@ -1007,6 +1007,8 @@ fn debug_entry(i: &SessionInfo, insert: &str, error: Option<String>) -> Entry {
             .or_else(|| r.and_then(|r| r.llm.as_ref()?.cost_usd)),
         llm_ttft_ms: r.and_then(|r| r.llm.as_ref()?.ttft_ms),
         llm_generation_id: r.and_then(|r| r.llm.as_ref()?.generation_id.clone()),
+        cleanup_route: route.and_then(|x| x.cleanup_route.clone()),
+        cloud_fallback: route.and_then(|x| x.cloud_fallback.clone()),
         stt_model: route
             .filter(|x| x.engine == "cloud")
             .and_then(|x| x.model.clone()),
