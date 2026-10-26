@@ -728,9 +728,9 @@ fn parse_number(c: &[String], toks: &[Tok], i: usize) -> Option<(u64, usize)> {
         } else if w == "and"
             && any
             && c.get(j + 1).is_some_and(|n| number_word(n).is_some())
-            && cur >= 100
+            && (cur >= 100 || (cur == 0 && total > 0))
         {
-            // "one hundred and twenty"
+            // "one hundred and twenty", "a thousand and twenty"
         } else {
             break;
         }
@@ -874,8 +874,7 @@ fn cardinal(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
     if !toks[i].text.chars().any(char::is_alphabetic) {
         return None;
     }
-    // "a hundred" stays a phrase.
-    if c[i] == "a" || (i > 0 && (number_word(&c[i - 1]).is_some() || c[i - 1] == "point")) {
+    if i > 0 && (number_word(&c[i - 1]).is_some() || c[i - 1] == "point") {
         return None;
     }
     // "ten and twelve", "five to fifteen": both stay words.
@@ -884,6 +883,11 @@ fn cardinal(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
         return None;
     }
     let (v, n) = parse_number(c, toks, i)?;
+    // A bare "a hundred" / "a thousand" stays a phrase; a compound ("a
+    // hundred and seventy six") is a number like any other.
+    if c[i] == "a" && !c[i + 1..i + n].iter().any(|w| number_word(w).is_some()) {
+        return None;
+    }
     if v < 10 || !toks[i + n - 1].suffix().is_empty() || toks[i + n - 1].is_break() {
         return None;
     }
@@ -2083,6 +2087,18 @@ mod tests {
         for s in ["It costs US$250.", "Price: $250."] {
             assert_eq!(t(s), s, "{s}");
         }
+    }
+
+    #[test]
+    fn a_hundred_and_compounds_become_digits() {
+        assert_eq!(
+            t("he is about a hundred and fifty eight cm tall"),
+            "He is about 158 cm tall"
+        );
+        assert_eq!(t("a thousand and twenty people came"), "1020 people came");
+        // A bare "a hundred" stays a phrase.
+        let s = "There were a hundred people.";
+        assert_eq!(t(s), s);
     }
 
     #[test]
