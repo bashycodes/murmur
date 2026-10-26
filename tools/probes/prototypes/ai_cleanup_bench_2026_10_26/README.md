@@ -20,6 +20,7 @@ rejected.
 | `runner/src/loose_guard.rs` | Loosened guard prototype: a copy of `flow_core::guard` with each change marked `LOOSE:` (fillers, unit abbreviations, 2-word trims allowed; names and a 20 % total-deletion cap enforced; number rules unchanged) |
 | `score.py` | Per-category pass (final period ignored), target-closeness on the 14, guard reject rates, LLM p50/p90 |
 | `run.sh` / `run_all.sh` | One run / all phase-1 local runs. Memory gate: model size + 2000 MB available; `flock` + `choom 1000` + `nice` |
+| `run_or.sh` | Phase 1d: one OpenRouter model through the product's `OpenRouterCleaner` (zdr + data_collection deny), prompt v4b; key from `~/.config/flow-clone/openrouter.key` into the env only; summed `usage.cost` over all `results/or_*` capped at `$CAP` (1.50) |
 | `run_big.sh` | Qwen2.5-7B / Llama-3.1-8B rows; only after the home flow-server is stopped (not run in phase 1) |
 | `fetch_llama8b.sh` | Llama-3.1-8B-Instruct Q4_K_M download with sha256 check |
 | `results/` | Raw rows (`*.jsonl`) and `/usr/bin/time -v` output (`*.time`, peak RSS). `v4_q15` was judged by an earlier loose guard (a reverted 2-word-run rule and a "USB-C" name bug); score `*_rejudged`, which re-judges the same LLM answers with the final guards (for the other runs it is identical) |
