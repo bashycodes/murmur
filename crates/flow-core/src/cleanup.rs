@@ -191,6 +191,14 @@ pub trait Cleaner: Send + Sync {
         None
     }
 
+    /// D30: a cloud-first composite cleaner's parts, (cloud AI cleanup,
+    /// on-device fallback), so the core can run AI cleanup on the raw
+    /// transcript and today's pipeline only when it fails. `None` (the
+    /// default) for a single backend; see [`ai_split`].
+    fn ai_parts(&self) -> Option<AiParts> {
+        None
+    }
+
     /// [`Cleaner::clean_cancellable`] plus metering. Backends with a cost
     /// override it and report usage even on error / cancel. Default: the
     /// plain call, usage = engine + model.
@@ -211,6 +219,9 @@ pub trait Cleaner: Send + Sync {
         )
     }
 }
+
+/// D30: (cloud AI cleanup, on-device LLM for the fallback pipeline).
+pub type AiParts = (Arc<dyn Cleaner>, Option<Arc<dyn Cleaner>>);
 
 /// Minimum time left before the deadline for [`RoutedCleaner`] to try its
 /// fallback after a fast failure of the primary (D28 §2.5).
@@ -315,6 +326,22 @@ impl Cleaner for RoutedCleaner {
     fn estimate_cost_usd(&self, prompt: &CleanPrompt) -> Option<f64> {
         self.primary.estimate_cost_usd(prompt)
     }
+
+    fn ai_parts(&self) -> Option<AiParts> {
+        (self.primary.engine() == "cloud").then(|| (self.primary.clone(), self.fallback.clone()))
+    }
+}
+
+/// D30: split the active cleaner into (cloud AI cleanup, on-device LLM for
+/// the fallback pipeline). `None` when no cloud backend is involved: the
+/// core then runs today's pipeline (fallback rules, local LLM) unchanged.
+/// A bare cloud cleaner gives (itself, `None`): on failure the fallback
+/// rules alone.
+pub fn ai_split(cl: &Arc<dyn Cleaner>) -> Option<AiParts> {
+    if let Some(p) = cl.ai_parts() {
+        return Some(p);
+    }
+    (cl.engine() == "cloud").then(|| (cl.clone(), None))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -911,6 +938,31 @@ pub fn run_cleanup_metered(
     timeout: Duration,
     max_divergence: f64,
 ) -> (CleanOutcome, CleanUsage) {
+    run_metered(cleaner, prompt, asr_text, timeout, max_divergence, false)
+}
+
+/// D30 AI cleanup: [`run_cleanup_metered`] on the **raw** transcript
+/// `raw`, judged by the loosened guard ([`crate::guard::check_loose`]), with
+/// [`blank_line_before_lists`] applied to the answer. The caller builds the
+/// prompt with [`PromptVersion::V4c`].
+pub fn run_ai_cleanup(
+    cleaner: Arc<dyn Cleaner>,
+    prompt: CleanPrompt,
+    raw: &str,
+    timeout: Duration,
+    max_divergence: f64,
+) -> (CleanOutcome, CleanUsage) {
+    run_metered(cleaner, prompt, raw, timeout, max_divergence, true)
+}
+
+fn run_metered(
+    cleaner: Arc<dyn Cleaner>,
+    prompt: CleanPrompt,
+    asr_text: &str,
+    timeout: Duration,
+    max_divergence: f64,
+    ai: bool,
+) -> (CleanOutcome, CleanUsage) {
     let deadline = Instant::now() + timeout;
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = AbortFlag(Some(cancel.clone()));
@@ -931,6 +983,9 @@ pub fn run_cleanup_metered(
         }
     };
     let out = match res {
+        Ok(s) if ai => blank_line_before_lists(&lists_to_plain(&blank_line_before_html_lists(
+            &unwrap_output(&s),
+        ))),
         Ok(s) => lists_to_plain(&unwrap_output(&s)),
         Err(e) => {
             // Refused before anything ran (no consent, open circuit, …):
@@ -945,17 +1000,58 @@ pub fn run_cleanup_metered(
             );
         }
     };
-    (judge(asr_text, out, max_divergence), usage)
+    let strictness = if ai {
+        crate::guard::Strictness::Loose
+    } else {
+        crate::guard::Strictness::Strict
+    };
+    (judge(asr_text, out, max_divergence, strictness), usage)
 }
 
-fn judge(asr_text: &str, out: String, max_divergence: f64) -> CleanOutcome {
+static HTML_LIST_AFTER_TEXT: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"([^\s])[ \t]*(?:\r?\n[ \t]*)*(<(?:ol|ul)>)").unwrap());
+static LIST_ITEM: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r"^\s*(?:\d+[.)]|[-*\u{2022}])\s").unwrap());
+
+/// D30: an HTML list after text always starts after one blank line
+/// ("intro:\n \n<ol>", "intro: <ol>" → "intro:\n\n<ol>"), before
+/// [`lists_to_plain`]. Prompt v4c asks for the blank line; Llama-3.3-70B
+/// still wrote it on 3 lists out of 5 (benchmark § Prompt v4c).
+pub fn blank_line_before_html_lists(s: &str) -> String {
+    HTML_LIST_AFTER_TEXT.replace_all(s, "$1\n\n$2").into_owned()
+}
+
+/// D30: a plain list (`1.` / `-` items) right under an intro line ending in
+/// ":" gets one blank line in between; whitespace-only lines become empty.
+/// Other lines are untouched.
+pub fn blank_line_before_lists(s: &str) -> String {
+    let lines: Vec<&str> = s
+        .split('\n')
+        .map(|l| if l.trim().is_empty() { "" } else { l })
+        .collect();
+    let mut out: Vec<&str> = Vec::with_capacity(lines.len() + 1);
+    for (i, l) in lines.iter().enumerate() {
+        if i > 0 && LIST_ITEM.is_match(l) && lines[i - 1].trim_end().ends_with(':') {
+            out.push("");
+        }
+        out.push(l);
+    }
+    out.join("\n")
+}
+
+fn judge(
+    asr_text: &str,
+    out: String,
+    max_divergence: f64,
+    strictness: crate::guard::Strictness,
+) -> CleanOutcome {
     if out.is_empty() {
         return CleanOutcome::Fallback(FallbackReason::Empty);
     }
     if divergence_ratio(asr_text, &out) > max_divergence {
         return CleanOutcome::Fallback(FallbackReason::Diverged);
     }
-    match crate::guard::check(asr_text, &out) {
+    match crate::guard::check_with(asr_text, &out, strictness) {
         crate::guard::Verdict::Ok => CleanOutcome::Formatted(out),
         crate::guard::Verdict::Unsupported(_) => {
             CleanOutcome::Fallback(FallbackReason::Unsupported)
@@ -1576,5 +1672,76 @@ mod tests {
     #[test]
     fn default_thresholds_grow_with_level() {
         assert!(default_divergence(CleanupLevel::Light) < default_divergence(CleanupLevel::High));
+    }
+
+    #[test]
+    fn html_lists_get_one_blank_line_after_text() {
+        for (i, o) in [
+            (
+                "Intro:\n<ol><li>A</li></ol>",
+                "Intro:\n\n<ol><li>A</li></ol>",
+            ),
+            (
+                "Intro: \n \n<ol><li>A</li></ol>",
+                "Intro:\n\n<ol><li>A</li></ol>",
+            ),
+            (
+                "Intro: <ul><li>A</li></ul>",
+                "Intro:\n\n<ul><li>A</li></ul>",
+            ),
+            (
+                "Intro:\n\n<ol><li>A</li></ol>",
+                "Intro:\n\n<ol><li>A</li></ol>",
+            ),
+            ("<ol><li>A</li></ol>", "<ol><li>A</li></ol>"),
+        ] {
+            assert_eq!(blank_line_before_html_lists(i), o, "{i:?}");
+        }
+    }
+
+    #[test]
+    fn plain_lists_get_one_blank_line_after_a_colon_intro() {
+        for (i, o) in [
+            (
+                "We need:\n1. Tickets\n2. A hotel",
+                "We need:\n\n1. Tickets\n2. A hotel",
+            ),
+            (
+                "We need: \n \n- Tickets\n- A hotel",
+                "We need: \n\n- Tickets\n- A hotel",
+            ),
+            ("We need:\n\n1. Tickets", "We need:\n\n1. Tickets"),
+            // Not after a colon: untouched.
+            ("Notes\n1. Tickets", "Notes\n1. Tickets"),
+            ("One line.", "One line."),
+            ("Hi Maria,\n\nThanks.\n\nDan", "Hi Maria,\n\nThanks.\n\nDan"),
+        ] {
+            assert_eq!(blank_line_before_lists(i), o, "{i:?}");
+        }
+    }
+
+    #[test]
+    fn ai_split_finds_the_cloud_part() {
+        struct Cloud;
+        impl Cleaner for Cloud {
+            fn clean(&self, _p: &CleanPrompt, _d: Instant) -> Result<String, CleanError> {
+                Ok(String::new())
+            }
+            fn engine(&self) -> &'static str {
+                "cloud"
+            }
+        }
+        let local: Arc<dyn Cleaner> = Arc::new(Fixed("x", Duration::ZERO));
+        let cloud: Arc<dyn Cleaner> = Arc::new(Cloud);
+        assert!(ai_split(&local).is_none());
+        let (c, l) = ai_split(&cloud).unwrap();
+        assert!(Arc::ptr_eq(&c, &cloud) && l.is_none());
+        let routed: Arc<dyn Cleaner> =
+            Arc::new(RoutedCleaner::new(cloud.clone(), Some(local.clone())));
+        let (c, l) = ai_split(&routed).unwrap();
+        assert!(Arc::ptr_eq(&c, &cloud) && Arc::ptr_eq(&l.unwrap(), &local));
+        // Local first ([local, cloud] with the phone model loaded): no AI.
+        let local_first: Arc<dyn Cleaner> = Arc::new(RoutedCleaner::new(local, Some(cloud)));
+        assert!(ai_split(&local_first).is_none());
     }
 }
