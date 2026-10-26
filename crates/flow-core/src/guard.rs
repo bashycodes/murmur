@@ -93,6 +93,51 @@ pub fn strip_commands(s: &str) -> String {
     COMMANDS.replace_all(s, " ").into_owned()
 }
 
+/// Mark kinds a spoken command can produce: (name, its command words, its
+/// characters).
+const MARKS: &[(&str, &[&str], &[char])] = &[
+    (
+        "quote",
+        &["quote", "quotes", "unquote", "quote-unquote"],
+        &['"', '\u{201c}', '\u{201d}'],
+    ),
+    (
+        "paren",
+        &["paren", "parens", "parenthesis", "parentheses"],
+        &['(', ')'],
+    ),
+    ("bracket", &["bracket", "brackets"], &['[', ']']),
+];
+
+/// A literal command word the model turned into marks (D27 point 2 vs 3).
+///
+/// [`strip_commands`] hides command words from both sides, so on its own a
+/// wrongly applied command ("The formula is in parentheses on the board" ->
+/// "The formula is (on the board).") looks like a correct one. The fallback
+/// rules ([`spoken_cleanup`](crate::postprocess::spoken::spoken_cleanup))
+/// already decide which uses are commands: they turn real ones (paired, or
+/// between pause commas) into marks and leave literal ones as words. So for
+/// each kind, if a command word survives the rules, the output may hold no
+/// more of that kind's marks than the input (as given or as the rules write
+/// it). Returns the kind when it does. Shared with the loosened-guard
+/// prototype (tools/probes/prototypes/ai_cleanup_bench_2026_10_26).
+pub fn literal_command_marks(input: &str, output: &str) -> Option<&'static str> {
+    let cleaned = crate::postprocess::spoken::spoken_cleanup(input);
+    let words: Vec<String> = cleaned
+        .split_whitespace()
+        .map(|w| {
+            w.trim_matches(|c: char| !c.is_alphanumeric() && c != '-')
+                .to_lowercase()
+        })
+        .collect();
+    let count = |s: &str, chars: &[char]| s.chars().filter(|c| chars.contains(c)).count();
+    MARKS.iter().find_map(|&(name, cmd, chars)| {
+        let literal = words.iter().any(|w| cmd.contains(&w.as_str()));
+        let allowed = count(input, chars).max(count(&cleaned, chars));
+        (literal && count(output, chars) > allowed).then_some(name)
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verdict {
     Ok,
@@ -514,6 +559,9 @@ fn present(w: &str, set: &[String]) -> bool {
 
 /// Check `output` against `input` (the text the LLM was given).
 pub fn check(input: &str, output: &str) -> Verdict {
+    if let Some(kind) = literal_command_marks(input, output) {
+        return Verdict::Unsupported(format!("literal {kind} made a mark: {output}"));
+    }
     let (input, output) = (&strip_commands(input), &strip_commands(output));
     let cleaned = crate::postprocess::spoken::spoken_cleanup(input);
     // The input as spoken and as the deterministic pass writes it (digits,
@@ -741,6 +789,104 @@ mod tests {
         ));
         assert_eq!(strip_commands("open the file"), "open the file");
         assert_eq!(strip_commands("end of the day"), "end of the day");
+    }
+
+    /// The formatting eval's literal-use negatives (x1-x16 in
+    /// tools/probes/prototypes/formatting_eval_2026_10_24/cases.jsonl).
+    const NEGATIVES: &[&str] = &[
+        "The word quote comes from Latin.",
+        "Can you send me a quote for the new roof?",
+        "The trial period ends next week.",
+        "In British English, a period is called a full stop.",
+        "Always use the Oxford comma in lists.",
+        "Don't forget that we have dinner at eight.",
+        "Put a comma after the greeting.",
+        "There's no wait at the new place, let's go there.",
+        "They launched a new line of sneakers.",
+        "The question mark at the end looks wrong.",
+        "I mean it when I say this is our best quarter.",
+        "Quote me on that.",
+        "The formula is in parentheses on the board.",
+        "Put the area code in parentheses.",
+        "The answer is in brackets at the bottom of the page.",
+        "Can you get me a quote by end of day?",
+    ];
+
+    #[test]
+    fn literal_command_words_turned_into_marks_are_rejected() {
+        // D27 point 3 strips command words from both sides, so these looked
+        // like correct edits (2026-10-26 benchmark, Llama-3.3-70B x13/x15).
+        for (i, o) in [
+            (
+                "The formula is in parentheses on the board.",
+                "The formula is (on the board).",
+            ),
+            (
+                "The answer is in brackets at the bottom of the page.",
+                "The answer is [at the bottom of the page].",
+            ),
+            (
+                "The note was written in parentheses.",
+                "The note was written (in parentheses).",
+            ),
+            ("Put it in brackets.", "Put it []."),
+            ("Put the area code in parentheses.", "Put the (area code)."),
+            ("Quote me on that.", "\"Me on that.\""),
+            (
+                "Can you send me a quote for the new roof?",
+                "Can you send me a \u{201c}quote\u{201d} for the new roof?",
+            ),
+            // Unpunctuated ASR: still literal per the fallback rules.
+            (
+                "the formula is in parentheses on the board",
+                "The formula is (on the board)",
+            ),
+        ] {
+            assert!(
+                matches!(check(i, o), Verdict::Unsupported(_)),
+                "{i:?} -> {o:?}: {:?}",
+                check(i, o)
+            );
+        }
+    }
+
+    #[test]
+    fn literal_negatives_kept_as_spoken_pass() {
+        for s in NEGATIVES {
+            assert_eq!(check(s, s), Verdict::Ok, "{s:?}");
+            assert_eq!(check(s, s.trim_end_matches('.')), Verdict::Ok, "{s:?}");
+        }
+    }
+
+    #[test]
+    fn real_commands_still_pass_beside_literal_words() {
+        for (i, o) in [
+            // The engine hands the guard the rules output: marks already in.
+            (
+                "The budget (still a draft) goes out Monday.",
+                "The budget (still a draft) goes out Monday.",
+            ),
+            // A paired command next to a literal use: one pair each side.
+            (
+                "Put the area code in parentheses, open paren, the 415 one, close paren.",
+                "Put the area code in parentheses (the 415 one).",
+            ),
+            // Marks the input already had, no command words at all.
+            (
+                "He said \"hi\" and [laughs] left.",
+                "He said \"hi\" and [laughs] left.",
+            ),
+        ] {
+            assert_eq!(check(i, o), Verdict::Ok, "{i:?} -> {o:?}");
+        }
+        // A second pair beyond what the paired command explains is not.
+        assert!(matches!(
+            check(
+                "Put the area code in parentheses, open paren, the 415 one, close paren.",
+                "Put the (area code) (the 415 one).",
+            ),
+            Verdict::Unsupported(_)
+        ));
     }
 
     #[test]
