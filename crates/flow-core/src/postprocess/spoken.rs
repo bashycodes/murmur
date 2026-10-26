@@ -1205,6 +1205,8 @@ const ORDINAL_BLOCK: &[&str] = &[
 const LIST_INTRO: &[&str] = &["are", "were", "include", "includes", "including"];
 const FINAL_MARKERS: &[&str] = &["finally", "lastly"];
 const JOINERS: &[&str] = &["and", "then"];
+/// Nouns an ordinal marker may carry ("first thing", "second item").
+const MARKER_NOUNS: &[&str] = &["thing", "item", "step"];
 /// Longest item, in tokens: a longer "item" means the ordinals were prose.
 const MAX_ITEM_TOKENS: usize = 60;
 
@@ -1256,8 +1258,16 @@ fn marker_at(toks: &[Tok], c: &[String], i: usize) -> Option<Marker> {
         if blocked {
             return None;
         }
-        let end = if n == 1 && toks[i].suffix().is_empty() && matches_at(c, i + 1, &["of", "all"]) {
+        let bare = toks[i].suffix().is_empty();
+        let end = if n == 1 && bare && matches_at(c, i + 1, &["of", "all"]) {
             i + 3
+        } else if bare
+            && c.get(i + 1)
+                .is_some_and(|w| MARKER_NOUNS.contains(&w.as_str()))
+        {
+            // "first thing …, second thing …": the noun is part of the
+            // marker, not the item.
+            i + 2
         } else {
             i + 1
         };
@@ -1979,6 +1989,30 @@ mod tests {
             "Our priorities are:\n\n1. Hiring\n2. Onboarding\n3. Retention"
         );
         let s = "My answers are one, maybe two.";
+        assert_eq!(lay(s, AppCategory::Other), s);
+    }
+
+    // ---- fallback-rule fixes (ticket 6aded21e, Wispr A/B ab5/ab7/ab8) ----
+
+    #[test]
+    fn ordinal_marker_phrases_leave_no_marker_words() {
+        assert_eq!(
+            lay("okay first thing send the invoice second thing call the landlord and third thing please remind me about the dentist", AppCategory::Other),
+            "Okay:\n\n1. Send the invoice\n2. Call the landlord\n3. Please remind me about the dentist"
+        );
+        assert_eq!(
+            lay(
+                "first send the invoice second call the landlord third book the dentist",
+                AppCategory::Other
+            ),
+            "1. Send the invoice\n2. Call the landlord\n3. Book the dentist"
+        );
+        assert_eq!(
+            lay("number one send the invoice number two call the landlord number three book the dentist", AppCategory::Other),
+            "1. Send the invoice\n2. Call the landlord\n3. Book the dentist"
+        );
+        // "first thing" as prose is not a marker phrase.
+        let s = "I'll do it first thing tomorrow.";
         assert_eq!(lay(s, AppCategory::Other), s);
     }
 
