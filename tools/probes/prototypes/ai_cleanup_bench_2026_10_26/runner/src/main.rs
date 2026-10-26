@@ -88,6 +88,9 @@ impl Cleaner for Swapped {
     fn cancel_prefill(&self) {
         self.inner.cancel_prefill()
     }
+    fn prompt_scope(&self) -> flow_core::cleanup::PromptScope {
+        self.inner.prompt_scope()
+    }
 }
 
 #[derive(Deserialize)]
@@ -157,11 +160,37 @@ fn main() {
         serde_json::from_str(&std::fs::read_to_string(get("--session").expect("--session")).unwrap()).unwrap();
     let threads: usize = get("--threads").map(|t| t.parse().unwrap()).unwrap_or(4);
     let timeout = Duration::from_millis(get("--timeout-ms").map(|t| t.parse().unwrap()).unwrap_or(8000));
-    let cleaner: Option<Arc<dyn Cleaner>> = get("--llm").map(|m| {
-        let t = Instant::now();
-        let base: Arc<dyn Cleaner> =
-            Arc::new(flow_core::llama::LlamaCleaner::load(&m, threads, get("--llm-lib").as_deref()).expect("llm load"));
-        eprintln!("llm load {} ms", t.elapsed().as_millis());
+    // Phase 1d: `--openrouter MODEL` uses the product's OpenRouterCleaner
+    // (D28 privacy defaults zdr:true + data_collection deny, sort latency).
+    // The key comes only from the env (OPENROUTER_KEY) and is never printed.
+    let key = flow_router::SecretString::new(std::env::var("OPENROUTER_KEY").unwrap_or_default());
+    let max_spend: f64 = get("--max-spend").map(|t| t.parse().unwrap()).unwrap_or(0.0);
+    let or_cleaner: Option<Arc<flow_cloud::OpenRouterCleaner>> = get("--openrouter").map(|m| {
+        assert!(!key.is_empty(), "--openrouter needs OPENROUTER_KEY in the env");
+        let settings = flow_cloud::settings::CleanupSettings {
+            model: m,
+            timeout_ms: timeout.as_millis() as u64,
+            ..Default::default()
+        };
+        Arc::new(flow_cloud::OpenRouterCleaner::new(settings, key.clone()))
+    });
+    let key_usage = || flow_cloud::keyinfo::fetch(&key).ok().and_then(|k| k.usage);
+    let usage_start = or_cleaner.as_ref().and_then(|_| key_usage());
+    if let Some(u) = usage_start {
+        eprintln!("openrouter key usage at start: ${u:.4}");
+    }
+    let base_cleaner: Option<Arc<dyn Cleaner>> = match &or_cleaner {
+        Some(o) => Some(o.clone() as Arc<dyn Cleaner>),
+        None => get("--llm").map(|m| {
+            let t = Instant::now();
+            let b: Arc<dyn Cleaner> = Arc::new(
+                flow_core::llama::LlamaCleaner::load(&m, threads, get("--llm-lib").as_deref()).expect("llm load"),
+            );
+            eprintln!("llm load {} ms", t.elapsed().as_millis());
+            b
+        }),
+    };
+    let cleaner: Option<Arc<dyn Cleaner>> = base_cleaner.map(|base| {
         match get("--prompt") {
             None => base,
             Some(p) => {
@@ -183,7 +212,9 @@ fn main() {
     });
     // Warm-up: the product prefills the static prefix at model load and
     // while the user speaks; one untimed clean does the same here.
-    if let Some(cl) = &cleaner {
+    // (Not for OpenRouter: there is no local cache to warm, and the
+    // per-case `prefill` warms the connection as in the product.)
+    if let (Some(cl), None) = (&cleaner, &or_cleaner) {
         let t = Instant::now();
         let p = build_prompt(
             "Warm up the cache.",
@@ -210,6 +241,7 @@ fn main() {
         .unwrap_or_default();
     let text = Arc::new(Mutex::new(String::new()));
     let core = FlowCore::from_engines(Arc::new(TextAsr(text.clone())), cleaner.clone());
+    let mut spent = 0.0f64;
     let tone: Vec<i16> = (0..16_000).map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16).collect();
     for line in cases.lines().filter(|l| !l.trim().is_empty()) {
         let c: Case = serde_json::from_str(line).unwrap();
@@ -238,7 +270,16 @@ fn main() {
                 let cl = cleaner.as_ref().expect("--mode ai needs --llm");
                 let style = session.styles.for_category(c.app_category);
                 cl.prefill(&build_prompt("", session.cleanup_level, style, &ctx, &session.dictionary));
-                let prompt = build_prompt(&c.input, CleanupLevel::Light, style, &ctx, &session.dictionary);
+                // A cloud backend narrows the prompt (D28 minimal scope:
+                // no app id), as the engine does.
+                let prompt = flow_core::cleanup::build_prompt_scoped(
+                    &c.input,
+                    CleanupLevel::Light,
+                    style,
+                    &ctx,
+                    &session.dictionary,
+                    cl.prompt_scope(),
+                );
                 let t = Instant::now();
                 let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
                 let flag = flow_core::asr::AbortFlag(Some(cancel.clone()));
@@ -255,11 +296,26 @@ fn main() {
                     Ok(Err(e)) => (None, Some(format!("llm_error: {e}"))),
                     Err(_) => {
                         cancel.store(true, std::sync::atomic::Ordering::Relaxed);
-                        std::thread::sleep(Duration::from_millis(50));
+                        // Let the abandoned call stop (and record its cost).
+                        let _ = rx.recv_timeout(Duration::from_secs(3));
                         (None, Some("llm_timeout".to_string()))
                     }
                 };
-                println!("{}", judge(&c, &ctx, &session, llm_raw, err, llm_ms));
+                let mut row = judge(&c, &ctx, &session, llm_raw, err, llm_ms);
+                if let Some(o) = &or_cleaner {
+                    // Model, usage.cost, ttft, latency, finish reason; no text, no key.
+                    let call = o.last_call();
+                    let cost = call.as_ref().and_then(|k| k.cost_usd).unwrap_or(0.0);
+                    spent += cost;
+                    row["cloud"] = serde_json::to_value(&call).unwrap();
+                    row["spent_usd"] = serde_json::json!(spent);
+                    if max_spend > 0.0 && spent >= max_spend {
+                        println!("{row}");
+                        eprintln!("spend cap reached: ${spent:.4} >= ${max_spend:.4}; stopping");
+                        break;
+                    }
+                }
+                println!("{row}");
             }
             "regard" => {
                 // Re-judge a previous `ai` run's answers with the current
@@ -270,6 +326,14 @@ fn main() {
                 println!("{}", judge(&c, &ctx, &session, llm_raw, err, o["llm_ms"].as_u64().unwrap_or(0)));
             }
             m => panic!("unknown mode {m}"),
+        }
+    }
+    if or_cleaner.is_some() {
+        eprintln!("openrouter: summed usage.cost ${spent:.4}");
+        // The key's own usage counter lags a little behind the calls.
+        std::thread::sleep(Duration::from_secs(5));
+        if let (Some(a), Some(b)) = (usage_start, key_usage()) {
+            eprintln!("openrouter key usage at end: ${b:.4} (this run ${:.4})", b - a);
         }
     }
 }

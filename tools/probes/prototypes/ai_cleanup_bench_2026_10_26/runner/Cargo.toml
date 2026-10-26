@@ -14,3 +14,6 @@ flow-core = { path = "../../../../../crates/flow-core", features = ["llm"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "1"
+# Phase 1d: the product's OpenRouter cleaner (D28), used unmodified.
+flow-cloud = { path = "../../../../../crates/flow-cloud" }
+flow-router = { path = "../../../../../crates/flow-router" }
