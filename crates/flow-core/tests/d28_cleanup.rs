@@ -396,7 +396,10 @@ fn set_cleaner_installs_and_none_restores_the_built_in() {
 }
 
 #[test]
-fn llm_skip_clean_still_skips_with_a_routed_cleaner() {
+fn llm_skip_clean_still_skips_the_local_llm_after_ai_cleanup() {
+    // D30: AI cleanup (cloud) always runs on the raw transcript; when the
+    // guard rejects its answer ("right" is not in the input), the fallback
+    // pipeline still skips the on-device LLM on a clean dictation.
     let local = Arc::new(Fake::ok(OUT));
     let cloud = Arc::new(Fake::ok(OUT).cloud());
     let core = FlowCore::from_engines(Arc::new(MockAsr::new("The demo is on Thursday.")), None);
@@ -407,8 +410,9 @@ fn llm_skip_clean_still_skips_with_a_routed_cleaner() {
         Some("llm_skipped_clean"),
         "{r:?}"
     );
-    assert_eq!(cloud.calls() + local.calls(), 0);
-    assert!(r.llm.is_none());
+    assert_eq!((cloud.calls(), local.calls()), (1, 0));
+    assert_eq!(r.cleanup_route.as_deref(), Some("rules"));
+    assert_eq!(r.llm.unwrap().engine.as_deref(), Some("cloud"));
 }
 
 #[test]

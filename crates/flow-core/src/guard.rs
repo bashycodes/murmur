@@ -46,6 +46,63 @@ const STOP: &[&str] = &[
 const FILLER: &[&str] = &[
     "um", "umm", "uh", "uhh", "uhm", "erm", "er", "hmm", "hm", "mm", "mhm",
 ];
+/// Hedge fillers AI cleanup's light edits may drop ([`Strictness::Loose`]).
+const LOOSE_FILLER: &[&str] = &[
+    "actually",
+    "basically",
+    "literally",
+    "totally",
+    "kinda",
+    "sorta",
+    "honestly",
+];
+/// Unit abbreviations that count as their word under [`Strictness::Loose`]
+/// ("4 lbs" for "four pounds"), after plural trimming.
+const LOOSE_UNITS: &[(&str, &str)] = &[
+    ("lb", "pound"),
+    ("lbs", "pound"),
+    ("cm", "centimeter"),
+    ("mm", "millimeter"),
+    ("km", "kilometer"),
+    ("kg", "kilogram"),
+    ("ft", "foot"),
+    ("feet", "foot"),
+    ("oz", "ounce"),
+    ("hr", "hour"),
+    ("hrs", "hour"),
+    ("min", "minute"),
+    ("mins", "minute"),
+    ("sec", "second"),
+    ("secs", "second"),
+    ("x", "by"),
+    ("centimetre", "centimeter"),
+    ("kilometre", "kilometer"),
+    ("metre", "meter"),
+];
+
+/// Which guard: [`Strictness::Strict`] judges the local LLM's edit of text
+/// the fallback rules already formatted (D13/D27); [`Strictness::Loose`]
+/// judges AI cleanup of the raw transcript (D30), which may make light
+/// Wispr-style edits.
+///
+/// Loose differs from strict in exactly four ways (promoted from the
+/// 2026-10-26 benchmark prototype, `tools/probes/prototypes/ai_cleanup_bench_2026_10_26/`):
+/// * hedge fillers ("actually", "basically", "literally", …) are free to drop;
+/// * unit abbreviations count as their word ("lbs" = pound, "cm", "kg", "x" = by);
+/// * a word the input capitalises mid-sentence (a name) must survive;
+/// * over the whole input at most 20 % of the non-deletable content words
+///   (and at least 2) may be gone, so many small trims cannot add up to a
+///   summary.
+///
+/// Everything else is shared: the literal-command check stays as strict,
+/// every output number must be backed by the input, a lost amount or time
+/// rejects, and two content words gone in a row is still a dropped phrase.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Strictness {
+    #[default]
+    Strict,
+    Loose,
+}
 const SPOKEN: &[&str] = &[
     "comma",
     "period",
@@ -149,7 +206,7 @@ pub enum Verdict {
 
 /// Normalised word: lowercase, punctuation trimmed, "’" → "'", "$40" → "40",
 /// "5th" → "5", trailing plural "s" / "'s" removed.
-fn norm(w: &str) -> String {
+fn norm(w: &str, m: Strictness) -> String {
     let w = w.replace('\u{2019}', "'").to_lowercase();
     let w = w.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'');
     let w = w.trim_matches('\'');
@@ -172,12 +229,17 @@ fn norm(w: &str) -> String {
     } else if w.len() > 3 && w.ends_with('s') && !w.ends_with("ss") {
         w.pop();
     }
+    if m == Strictness::Loose {
+        if let Some((_, full)) = LOOSE_UNITS.iter().find(|(a, _)| *a == w) {
+            return full.to_string();
+        }
+    }
     w
 }
 
 /// Words of `s`, split also at ':' '/' '-' and between digits and letters,
 /// so "3:30pm" → 3, 30, pm. All-zero numbers ("4:00") carry nothing.
-fn words(s: &str) -> Vec<String> {
+fn words(s: &str, m: Strictness) -> Vec<String> {
     let mut out = Vec::new();
     for w in s.split(|c: char| c.is_whitespace() || matches!(c, ':' | '/' | '-' | '\u{2014}')) {
         let mut piece = String::new();
@@ -185,25 +247,31 @@ fn words(s: &str) -> Vec<String> {
         for ch in w.chars() {
             let d = ch.is_ascii_digit();
             if ch.is_alphanumeric() && prev_digit.is_some_and(|p| p != d) {
-                out.push(norm(&std::mem::take(&mut piece)));
+                out.push(norm(&std::mem::take(&mut piece), m));
             }
             if ch.is_alphanumeric() {
                 prev_digit = Some(d);
             }
             piece.push(ch);
         }
-        out.push(norm(&piece));
+        out.push(norm(&piece, m));
     }
     out.retain(|w| !w.is_empty() && !w.chars().all(|c| c == '0'));
     out
 }
 
-fn is_content(w: &str) -> bool {
-    !STOP.contains(&w) && !FILLER.contains(&w) && !SPOKEN.contains(&w)
+fn is_content(w: &str, m: Strictness) -> bool {
+    !STOP.contains(&w)
+        && !FILLER.contains(&w)
+        && !SPOKEN.contains(&w)
+        && (m != Strictness::Loose || !LOOSE_FILLER.contains(&w))
 }
 
-fn content(s: &str) -> Vec<String> {
-    words(s).into_iter().filter(|w| is_content(w)).collect()
+fn content(s: &str, m: Strictness) -> Vec<String> {
+    words(s, m)
+        .into_iter()
+        .filter(|w| is_content(w, m))
+        .collect()
 }
 
 /// Split at sentence ends, line breaks and list items (markers dropped).
@@ -468,7 +536,7 @@ fn number_forms(ws: &[String]) -> Vec<(usize, usize, String)> {
 
 /// Input clauses (one content word is enough to count), each flagged `true` when it may be deleted (the clause
 /// just before a backtracking phrase, or the phrase itself).
-fn clauses(s: &str) -> Vec<(String, bool)> {
+fn clauses(s: &str, m: Strictness) -> Vec<(String, bool)> {
     // Tokenise keeping clause punctuation as separators; each part
     // remembers whether a comma closed it.
     let mut parts: Vec<(Vec<String>, bool)> = vec![(Vec::new(), false)];
@@ -476,8 +544,8 @@ fn clauses(s: &str) -> Vec<(String, bool)> {
     let mut i = 0;
     while i < raws.len() {
         let raw = raws[i];
-        let w = norm(raw);
-        let next = raws.get(i + 1).map(|n| norm(n)).unwrap_or_default();
+        let w = norm(raw, m);
+        let next = raws.get(i + 1).map(|n| norm(n, m)).unwrap_or_default();
         // Spoken punctuation words are clause boundaries too.
         let spoken = match w.as_str() {
             "comma" | "period" | "semicolon" | "colon" => 1,
@@ -557,8 +625,20 @@ fn present(w: &str, set: &[String]) -> bool {
     set.iter().any(|x| x == w)
 }
 
-/// Check `output` against `input` (the text the LLM was given).
+/// Check `output` against `input` (the text the LLM was given) with the
+/// strict guard (local LLM after the fallback rules, D13/D27).
 pub fn check(input: &str, output: &str) -> Verdict {
+    check_with(input, output, Strictness::Strict)
+}
+
+/// Check AI cleanup's `output` against the raw transcript `input` with the
+/// loosened guard (D30, [`Strictness::Loose`]).
+pub fn check_loose(input: &str, output: &str) -> Verdict {
+    check_with(input, output, Strictness::Loose)
+}
+
+/// [`check`] or [`check_loose`].
+pub fn check_with(input: &str, output: &str, m: Strictness) -> Verdict {
     if let Some(kind) = literal_command_marks(input, output) {
         return Verdict::Unsupported(format!("literal {kind} made a mark: {output}"));
     }
@@ -566,8 +646,8 @@ pub fn check(input: &str, output: &str) -> Verdict {
     let cleaned = crate::postprocess::spoken::spoken_cleanup(input);
     // The input as spoken and as the deterministic pass writes it (digits,
     // "$40", "3:30 PM"), plus digit forms of number words.
-    let mut input_words = words(input);
-    let cleaned_words = words(&cleaned);
+    let mut input_words = words(input, m);
+    let cleaned_words = words(&cleaned, m);
     let forms: Vec<String> = number_forms(&input_words)
         .into_iter()
         .chain(number_forms(&cleaned_words))
@@ -576,7 +656,7 @@ pub fn check(input: &str, output: &str) -> Verdict {
     input_words.extend(cleaned_words);
     input_words.extend(number_aliases(&input_words.clone()));
     input_words.extend(forms);
-    let output_words = words(output);
+    let output_words = words(output, m);
     let output_words: Vec<String> = output_words
         .iter()
         .cloned()
@@ -585,12 +665,12 @@ pub fn check(input: &str, output: &str) -> Verdict {
         .collect();
     let mut seen: Vec<String> = Vec::new();
     for s in sentences(output) {
-        let key = words(&s).join(" ");
-        if seen.contains(&key) && !words(input).join(" ").contains(&format!("{key} {key}")) {
+        let key = words(&s, m).join(" ");
+        if seen.contains(&key) && !words(input, m).join(" ").contains(&format!("{key} {key}")) {
             return Verdict::Unsupported(format!("repeated: {s}"));
         }
         seen.push(key);
-        let c = content(&s);
+        let c = content(&s, m);
         if c.is_empty() {
             continue;
         }
@@ -610,8 +690,11 @@ pub fn check(input: &str, output: &str) -> Verdict {
     }
     // Coverage is measured on the input as the deterministic pass writes it
     // (numbers as digits; its own backtracking already applied).
-    for (clause, deletable) in clauses(&cleaned) {
+    let (mut total_content, mut total_lost) = (0usize, 0usize);
+    let mut retracted: Vec<String> = Vec::new();
+    for (clause, deletable) in clauses(&cleaned, m) {
         if deletable {
+            retracted.extend(clause.split(' ').map(str::to_string));
             continue;
         }
         let all: Vec<String> = clause.split(' ').map(str::to_string).collect();
@@ -626,14 +709,14 @@ pub fn check(input: &str, output: &str) -> Verdict {
         let kept: Vec<bool> = all
             .iter()
             .zip(&as_digits)
-            .filter(|(w, _)| is_content(w))
+            .filter(|(w, _)| is_content(w, m))
             .map(|(w, &d)| {
                 let digits = number_aliases(std::slice::from_ref(w));
                 let k = d
                     || present(w, &output_words)
                     // "3:30" as the output's "3", "30".
                     || (w.contains([':', '/', '-'])
-                        && words(w).iter().all(|p| present(p, &output_words)))
+                        && words(w, m).iter().all(|p| present(p, &output_words)))
                     || digits.iter().any(|a| present(a, &output_words))
                     // A collapsed digit run ("two two two" -> "two") the
                     // output wrote in full ("222"), itself backed by the input.
@@ -656,11 +739,49 @@ pub fn check(input: &str, output: &str) -> Verdict {
         let n_kept = kept.iter().filter(|&&k| k).count();
         // Two content words in a row gone is a dropped phrase, not an edit.
         let run = kept.windows(2).any(|w| !w[0] && !w[1]);
+        total_content += kept.len();
+        total_lost += kept.iter().filter(|&&k| !k).count();
         if (n_kept as f64 / kept.len() as f64) < MIN_COVERAGE || run || lost_number {
             return Verdict::Dropped(clause);
         }
     }
+    if m == Strictness::Loose {
+        // A cap on the whole deletion: many small trims must not add up
+        // to a summary.
+        if total_lost > 2usize.max(total_content / 5) {
+            return Verdict::Dropped(format!(
+                "{total_lost} of {total_content} content words gone"
+            ));
+        }
+        // Names survive (unless retracted by a self-correction).
+        for name in names(&cleaned, m) {
+            if !present(&name, &output_words) && !present(&name, &retracted) {
+                return Verdict::Dropped(format!("name {name}"));
+            }
+        }
+    }
     Verdict::Ok
+}
+
+/// Content words the input capitalises other than at a sentence start or
+/// as "I" (normalised): names, for [`Strictness::Loose`].
+fn names(s: &str, m: Strictness) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut start = true;
+    for raw in s.split_whitespace() {
+        let t = raw.trim_start_matches(|c: char| !c.is_alphanumeric());
+        let cap = t.chars().next().is_some_and(char::is_uppercase);
+        if cap && !start {
+            // "USB-C" -> "usb", "c", as `words` splits the output.
+            for w in words(raw, m) {
+                if !w.starts_with("i'") && w != "i" && is_content(&w, m) {
+                    out.push(w);
+                }
+            }
+        }
+        start = raw.ends_with(['.', '?', '!', '\n']);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -980,5 +1101,82 @@ mod tests {
             ),
             Verdict::Dropped(_)
         ));
+    }
+
+    // ---- D30 loosened guard (AI cleanup on the raw transcript) ----------
+
+    #[test]
+    fn loose_lets_hedge_fillers_go() {
+        let (i, o) = ("so I actually literally finished it", "I finished it.");
+        assert!(matches!(check(i, o), Verdict::Dropped(_)));
+        assert_eq!(check_loose(i, o), Verdict::Ok);
+    }
+
+    #[test]
+    fn loose_reads_unit_abbreviations_as_their_word() {
+        let (i, o) = (
+            "it weighs four pounds and is forty centimeters long",
+            "It weighs 4 lbs and is 40 cm long.",
+        );
+        assert!(matches!(check(i, o), Verdict::Unsupported(_)));
+        assert_eq!(check_loose(i, o), Verdict::Ok);
+        assert_eq!(
+            check_loose("a ten by twelve rug", "A 10x12 rug."),
+            Verdict::Ok
+        );
+    }
+
+    #[test]
+    fn loose_keeps_names() {
+        let (i, o) = (
+            "tell Maria the invoice is ready and the report is late",
+            "Tell her the invoice is ready and the report is late.",
+        );
+        assert_eq!(check(i, o), Verdict::Ok);
+        assert!(matches!(check_loose(i, o), Verdict::Dropped(_)));
+        // A corrected-away name may go.
+        assert_eq!(
+            check_loose("send it to Maria, no wait, to Ben", "Send it to Ben."),
+            Verdict::Ok
+        );
+    }
+
+    #[test]
+    fn loose_caps_the_total_deletion() {
+        let (i, o) = (
+            "the red car is fast, the blue boat is slow, the green plane is high, the old train is late.",
+            "The car is fast, the boat is slow, the plane is high, the train is late.",
+        );
+        assert_eq!(check(i, o), Verdict::Ok);
+        assert!(matches!(check_loose(i, o), Verdict::Dropped(_)));
+    }
+
+    #[test]
+    fn loose_keeps_the_strict_rules_for_numbers_and_literal_commands() {
+        for (i, o) in [
+            ("pay him forty dollars", "Pay him $50."),
+            (
+                "The formula is in parentheses on the board.",
+                "The formula is (on the board).",
+            ),
+            ("Dinner is at seven thirty with Ana", "Dinner is with Ana."),
+            (
+                "Can you tell me what the capital of France is?",
+                "The capital of France is Paris.",
+            ),
+        ] {
+            assert_ne!(check_loose(i, o), Verdict::Ok, "{i} -> {o}");
+        }
+    }
+
+    #[test]
+    fn strict_ignores_the_loose_extras() {
+        // Unit words are not abbreviations under the strict guard:
+        // unchanged D13/D27 behaviour.
+        assert!(matches!(
+            check("four pounds of apples", "4 lbs of apples."),
+            Verdict::Unsupported(_)
+        ));
+        assert_eq!(Strictness::default(), Strictness::Strict);
     }
 }
