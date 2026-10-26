@@ -10,7 +10,8 @@
 //!    "actually I mean", … keep the correction, drop what it replaced
 //! 5. inverse text normalisation for money, percentages, clock times and
 //!    dates: "forty dollars" → "$40", "three thirty pm" → "3:30 PM",
-//!    "March fifth" → "March 5th"
+//!    "March fifth" → "March 5th"; an amount the ASR glued to the word
+//!    before gets its space back ("about$250" → "about $250")
 //! 6. spoken formatting commands: "quote … unquote", "in parentheses",
 //!    "open bracket … close bracket", "dash" (`spoken_commands.rs`)
 //! 7. sentence capitalisation and spacing around punctuation
@@ -728,7 +729,7 @@ fn parse_number(c: &[String], toks: &[Tok], i: usize) -> Option<(u64, usize)> {
         } else if w == "and"
             && any
             && c.get(j + 1).is_some_and(|n| number_word(n).is_some())
-            && (cur >= 100 || (cur == 0 && total > 0))
+            && (cur >= 100 || (cur == 0 && total > 0 && !thousand_follows(c, j + 1)))
         {
             // "one hundred and twenty", "a thousand and twenty"
         } else {
@@ -740,6 +741,15 @@ fn parse_number(c: &[String], toks: &[Tok], i: usize) -> Option<(u64, usize)> {
         }
     }
     any.then_some((total + cur, j - i))
+}
+
+/// The number words from `k` on reach another "thousand": "one thousand
+/// and two thousand" is two numbers, not 3000.
+fn thousand_follows(c: &[String], k: usize) -> bool {
+    c[k..]
+        .iter()
+        .take_while(|w| number_word(w).is_some() || matches!(w.as_str(), "hundred" | "thousand"))
+        .any(|w| w == "thousand")
 }
 
 fn last_suffix(toks: &[Tok], i: usize, n: usize) -> String {
@@ -1173,13 +1183,14 @@ fn tidy(toks: Vec<Tok>) -> Vec<Tok> {
 
 /// "about$250" → "about" "$250": ASR (Parakeet on Android, Wispr A/B ab7)
 /// can write an amount with no space before the currency sign. Only a
-/// lowercase word before the sign splits, so "US$250" stays.
+/// lowercase word before the sign splits, so "US$250" (and "us$250")
+/// stays.
 fn unglue_currency(toks: Vec<Tok>) -> Vec<Tok> {
     static GLUED: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^(\p{Ll}+)([$€£¥]\d.*)$").unwrap());
     let mut out = Vec::with_capacity(toks.len());
     for t in toks {
-        match GLUED.captures(&t.text) {
+        match GLUED.captures(&t.text).filter(|m| &m[1] != "us") {
             Some(m) => {
                 let mut word = Tok::new(&m[1]);
                 word.cap = t.cap;
@@ -1231,8 +1242,9 @@ const ORDINAL_BLOCK: &[&str] = &[
 const LIST_INTRO: &[&str] = &["are", "were", "include", "includes", "including"];
 const FINAL_MARKERS: &[&str] = &["finally", "lastly"];
 const JOINERS: &[&str] = &["and", "then"];
-/// Nouns an ordinal marker may carry ("first thing", "second item").
-const MARKER_NOUNS: &[&str] = &["thing", "item", "step"];
+/// Nouns an ordinal marker may carry ("first thing", "second item"). Not
+/// "step": "first step is X" reads as prose.
+const MARKER_NOUNS: &[&str] = &["thing", "item"];
 /// Longest item, in tokens: a longer "item" means the ordinals were prose.
 const MAX_ITEM_TOKENS: usize = 60;
 
@@ -2037,6 +2049,8 @@ mod tests {
             lay("number one send the invoice number two call the landlord number three book the dentist", AppCategory::Other),
             "1. Send the invoice\n2. Call the landlord\n3. Book the dentist"
         );
+        let s = "The first step is easy, the second step is hard, the third step is fun.";
+        assert_eq!(lay(s, AppCategory::Other), s);
         // "first thing" as prose is not a marker phrase.
         let s = "I'll do it first thing tomorrow.";
         assert_eq!(lay(s, AppCategory::Other), s);
@@ -2051,6 +2065,10 @@ mod tests {
         assert_eq!(
             t("He told me, and I quote, I'm never doing that again, unquote, and then he left."),
             "He told me, \"I'm never doing that again,\" and then he left."
+        );
+        assert_eq!(
+            t("then I quote we are done here unquote and he left"),
+            "Then, \"We are done here,\" and he left"
         );
         // Literal "I quote" stays words.
         for s in [
@@ -2084,7 +2102,7 @@ mod tests {
             "We spent about $250 on the trip, which was another $60."
         );
         assert_eq!(t("It costs about€40 now."), "It costs about €40 now.");
-        for s in ["It costs US$250.", "Price: $250."] {
+        for s in ["It costs US$250.", "It costs us$250.", "Price: $250."] {
             assert_eq!(t(s), s, "{s}");
         }
     }
@@ -2096,6 +2114,10 @@ mod tests {
             "He is about 158 cm tall"
         );
         assert_eq!(t("a thousand and twenty people came"), "1020 people came");
+        assert_eq!(t("two thousand and five people came"), "2005 people came");
+        // Two numbers joined by "and" are not summed.
+        let out = t("between one thousand and two thousand people");
+        assert!(!out.contains("3000"), "{out}");
         // A bare "a hundred" stays a phrase.
         let s = "There were a hundred people.";
         assert_eq!(t(s), s);

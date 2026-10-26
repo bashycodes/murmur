@@ -9,6 +9,7 @@
 //! | quote … unquote / close quote / end quote / end of quote | `"…"` |
 //! | open quote / begin quote … (same closers) | `"…"` |
 //! | quote unquote X | `"X"` |
+//! | (and) I quote … unquote (any closer) | `, "…,"` (intro dropped) |
 //! | ", quote, X," / ", in quotes, X," (no closer) | `"X"` |
 //! | open paren(s/thesis/theses) … close / end paren… | `(…)` |
 //! | ", in parentheses, X," / ", open paren, X," (no closer) | `(X)` |
@@ -30,7 +31,9 @@
 //! Parentheses take nothing inside. The pause comma before an opening mark
 //! is dropped, except before a quotation of two or more words after a
 //! speech verb ("She said, "I'll be there soon," and left."), whose first
-//! word is then capitalised; that form keeps its closing comma too.
+//! word is then capitalised; that form keeps its closing comma too. A
+//! closed quotation after "(and) I quote" takes the same form, whatever
+//! its length ("He told me, "…," and then …"); the intro words go.
 //!
 //! **Dash.** Spoken "dash" is an em dash with a space on each side
 //! (" — "), the dictation convention (and AP's): it reads the same in
@@ -505,7 +508,7 @@ fn try_command(toks: &[Tok], c: &[String], i: usize, out: &mut Vec<Tok>) -> Opti
                     return None;
                 }
                 let after = toks[k + cn - 1].suffix().to_string();
-                let quoted_intro = c[i] == "quote" && quote_intro(out);
+                let quoted_intro = c[i] == "quote" && take_quote_intro(out);
                 let w = Wrap {
                     mark,
                     after,
@@ -541,7 +544,7 @@ fn try_command(toks: &[Tok], c: &[String], i: usize, out: &mut Vec<Tok>) -> Opti
 /// comma in their place, as after a speech verb. True when it did. Only
 /// called once a closer was found, so a literal "I quote that price"
 /// never gets here.
-fn quote_intro(out: &mut Vec<Tok>) -> bool {
+fn take_quote_intro(out: &mut Vec<Tok>) -> bool {
     if !out
         .last()
         .is_some_and(|p| !p.is_break() && p.core() == "i" && !p.ends_sentence())
