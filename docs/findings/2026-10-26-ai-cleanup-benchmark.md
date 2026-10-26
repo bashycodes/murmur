@@ -8,6 +8,10 @@ closeness**: end-to-end p50 **0.75 s** / p90 1.34 s from this box, target-closen
 (0.54–0.77 s) and cheaper but weaker. Total spent: **$0.18** of the $1.50 cap.
 Recommendation: [§ Recommendation](#recommendation-against-the-15-s-budget).
 
+**Prompt v4c update.** With prompt v4c (casual = punctuation only, blank line before
+lists; in flow-core, not wired into production) the same 70B passes **90 %** of the
+88-suite at target-closeness **0.910**, $0.0016 per call: [§ Prompt v4c](#prompt-v4c-openrouter-llama-33-70b).
+
 **Question.** The owner decided (2026-10-26) that *AI cleanup* (GLOSSARY) does all
 formatting in one pass on the **raw** transcript, with the
 *fallback rules* only when the AI cannot run or its answer is rejected, under a
@@ -220,6 +224,59 @@ What the cloud models do:
   guard caught 9 of these; the fallback rules then produced the text.
 * **Guards on cloud output:** strict and loosened agree on all 306 cloud answers.
 
+## Prompt v4c (OpenRouter Llama-3.3-70B)
+
+Fixes the two prompt-level misses of v4b on the 70B (§ Phase 1d): the casual STYLE line
+was over-applied, and lists had no blank line after the intro. v4c is our own wording,
+defined in flow-core (`crates/flow-core/src/cleanup/prompt_v4c.rs`, `PromptVersion::V4c`
+via `build_prompt_versioned`; production still builds v2). The bench dumps it to
+`prompt_v4c.json` (`--dump-prompt`) and runs it with `run_or.sh` + `PROMPT_VERSION=v4c`.
+
+* **Casual** (user-message STYLE line, v4c only): "casual: relaxed chat punctuation, no
+  final period (keep "?" and "!"); keep sentence capitals and every word except fillers".
+  The system prompt adds: casual is punctuation only, never lowercase, never drops words;
+  an opener like "Okay," "Yeah," "Hey," "Haha" is not a filler. v2's casual line is
+  unchanged.
+* **Lists:** intro line ending in a colon, a blank line, then the list; items capitalised.
+* Also: "never mind" joins the correction words; "in parentheses / in brackets" saying where
+  something is written stays words. Light edits (fillers, short trims, unit abbreviations)
+  unchanged. 24 few-shots (v4b's 21 + an opener kept, "Okay," kept, a counted list in a
+  chat). `score.py --overlap`: 0 shared 5-word runs with the 102 cases (system text too).
+* Runs: 102 cases (the 4 later "regression" cases left out), strict guard column, final
+  period ignored. r1 = first v4c wording (`results/or_v4c_l70_r1.prompt.json`); r2 = the
+  committed v4c (+ "keep ? and !" in the casual line, "the blank line is always there").
+
+| | v4b (Phase 1d) | v4c r1 | **v4c r2 (committed)** |
+|---|---|---|---|
+| quote / paren / spoken_punct | 6/8 · 5/6 · 8/9 | 7/8 · 6/6 · 9/9 | 8/8 · 6/6 · 9/9 |
+| newline / correction / itn | 5/5 · 6/7 · 8/8 | 5/5 · 6/7 · 8/8 | 5/5 · 6/7 · 8/8 |
+| list / casual / email | 1/5 · 2/7 · 5/5 | 2/5 · 6/7 · 5/5 | 2/5 · 6/7 · 5/5 |
+| filler / runon / negative | 5/6 · 3/6 · 13/16 | 4/6 · 3/6 · 16/16 | 4/6 · 4/6 · 16/16 |
+| **88-suite pass** | 76 % | 88 % | **90 %** |
+| Wispr exact (14) | 5 | 4 | 4 |
+| **target-closeness (14)** | 0.909 | 0.913 | **0.910** |
+| Wispr char ratio (14) | 0.979 | 0.972 | 0.972 |
+| strict / loosened rejects (good rejected) | 1 / 1 (0) | 0 / 1 (0) | 1 / 2 (0) |
+| LLM ms p50 / p90 (end-to-end) | 746 / 1336 | 418 / 787 | 421 / 728 |
+| cost per call (run total) | $0.00127 ($0.135) | $0.00153 ($0.156) | $0.00159 ($0.163) |
+
+Acceptance (≥ 85 % suite, ≥ 0.90 closeness): met by both reruns. Spend for the two v4c
+reruns: **$0.319** summed `usage.cost` (cap $0.50). The key's usage counter moved more
+between the runs than these calls cost (something else used the key meanwhile), so the
+per-call sum is the figure to trust.
+
+What is left (r2):
+
+* **Lists 2/5.** The blank line now comes on 3 of the 5 list answers, but the model often
+  writes it as `":\n \n<ol>"` or `": \n<ol>"` (a space, then one line break): l5 / l4 miss
+  it, l1 has it but adds "For the trip, I …". Wording alone does not make it reliable; a
+  deterministic "blank line before a list" in `lists_to_plain` would.
+* **Fillers 4/6:** a leading "So" survives when it is followed by a comma (f1, f2).
+* **Casual:** k7 joins two sentences with a comma; r5 "…chance, thanks".
+* c5 "Never mind, I already bought some" still keeps the cancelled sentence.
+* The latency drop (p50 746 → 421 ms) is a different hour and provider routing, not the
+  prompt (it is ~4 % longer).
+
 ## Local Llama-3.1-8B (v4b)
 
 Run by the orchestrator with flow-server stopped (`run.sh v4b_l8 ai
@@ -267,8 +324,9 @@ fillers and ITN), but at 7.5 s p50 it is 5× the budget on this CPU.
    v4b prompt size (~2 k prompt tokens; most of it is the static prefix, so prompt caching
    would cut it). D28 keeps cloud cleanup off the server route, so this is a client-side
    call; the budget then applies to the client's release→text.
-3. Before that ships: fix the casual STYLE wording (big models over-apply it), add the
-   blank line after a list intro to the prompt, and close the guard gap for literal command
+3. Before that ships: ~~fix the casual STYLE wording, add the blank line after a list
+   intro~~ (done in prompt v4c, 90 %; the list blank line is still unreliable and wants a
+   deterministic fix), and close the guard gap for literal command
    words (compare command words, not only strip them: a command word the input has as
    plain text must not become a mark).
 4. **Without cloud: keep today's production pipeline** (rules → v2 → guard → skip, 92 %)
