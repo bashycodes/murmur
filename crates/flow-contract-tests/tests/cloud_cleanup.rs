@@ -2,8 +2,9 @@
 //!
 //! * Equivalence: a `FlowCore` whose cleaner is `OpenRouterCleaner` (mock
 //!   streaming text X) commits the same `CommitResult` as one whose cleaner
-//!   is a fake local backend returning X — prompt v2, guard, unwrapping and
-//!   post-processing are shared by construction.
+//!   is a fake local backend returning X — unwrapping and post-processing
+//!   are shared by construction (D30: the cloud gets the raw transcript
+//!   with prompt v4c and the loosened guard; the text must match anyway).
 //! * Toggle matrix: OpenRouter down or slow → the deterministic text, within
 //!   the cleanup timeout + 50 ms.
 
@@ -74,10 +75,18 @@ fn cloud_cleaner() -> Arc<dyn Cleaner> {
 }
 
 /// [`normalize`] without the per-engine metering (`llm`: engine, model,
-/// cost, generation id, latency), which is expected to differ.
+/// cost, generation id, latency), which is expected to differ, and
+/// without D30's route fields (`cleanup_route`, `cloud_fallback`, set only
+/// on the cloud side). D30: the cloud gets the raw transcript and the
+/// loosened guard, the local LLM the rules' text and the strict guard, so
+/// a reject may name a different reason (`fallback_reason`); the text
+/// must still be the same.
 fn same_result(r: &CommitResult) -> serde_json::Value {
     let mut v = normalize(r);
-    v.as_object_mut().unwrap().remove("llm");
+    let o = v.as_object_mut().unwrap();
+    for k in ["llm", "cleanup_route", "cloud_fallback", "fallback_reason"] {
+        o.remove(k);
+    }
     v
 }
 
@@ -112,6 +121,10 @@ fn cloud_cleanup_equals_a_local_cleaner_with_the_same_output() {
         assert_eq!(llm["engine"], "cloud", "{llm}");
         if got.fallback_reason.is_none() {
             formatted += 1;
+            assert_eq!(got.cleanup_route.as_deref(), Some("cloud"));
+        } else {
+            // D30: no local LLM here, so a rejected answer leaves the rules.
+            assert_eq!(got.cleanup_route.as_deref(), Some("rules"));
         }
         let reqs = srv.requests();
         let chats = reqs

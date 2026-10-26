@@ -233,6 +233,14 @@ pub struct RouteInfo {
     pub llm_model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_cost_usd: Option<Usd>,
+    /// D30: `CommitResult::cleanup_route` / `cloud_fallback` (which
+    /// cleanup produced the text, and why AI cleanup's answer was not
+    /// used), for the live route label and the debug log. Omitted while
+    /// `None` (no cloud cleanup). Additive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cleanup_route: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cloud_fallback: Option<String>,
 }
 
 /// An amount in US dollars. A plain JSON number; a newtype only so the
