@@ -14,7 +14,7 @@ formatting in one pass on the **raw** transcript, with the
 loosened guard and a budget of ≤ ~1.5 s added at the median on the server route.
 Can a local model on the home server (i7-6700, 4C/8T, no GPU) do that?
 
-**Answer so far (Qwen2.5-1.5B / 3B; 7B / 8B pending).**
+**Answer (local Qwen2.5-1.5B / 3B; Llama-3.1-8B in § Local Llama-3.1-8B; Qwen 7B skipped by the owner).**
 
 * **Not with ≤3B models.** Raw-in AI cleanup scores **64–69 %** on the 88-case
   formatting suite, against **89 %** for the fallback rules alone and **92 %** for today's
@@ -83,7 +83,7 @@ Prototype: `tools/probes/prototypes/ai_cleanup_bench_2026_10_26/` (README there)
 
 | category | n | rules | prod 1.5B | prod 3B | v2 raw 1.5B | v4 1.5B | **v4b 1.5B** | v4 3B | v4b 3B | 7B | 8B |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| quote | 8 | 8/8 | 8/8 | 8/8 | 7/8 | 6/8 | 6/8 | 4/8 | 4/8 | pending | pending |
+| quote | 8 | 8/8 | 8/8 | 8/8 | 7/8 | 6/8 | 6/8 | 4/8 | 4/8 | skipped (owner) | see § Local Llama-3.1-8B |
 | paren | 6 | 6/6 | 6/6 | 6/6 | 4/6 | 1/6 | 2/6 | 2/6 | 4/6 | | |
 | spoken_punct | 9 | 9/9 | 9/9 | 9/9 | 8/9 | 7/9 | 7/9 | 6/9 | 8/9 | | |
 | newline | 5 | 5/5 | 5/5 | 5/5 | 0/5 | 0/5 | 1/5 | 2/5 | 2/5 | | |
@@ -165,7 +165,7 @@ AI-cleanup latency by dictation length (median LLM ms; n = 52 / 41 / 5 / 4):
 * **Model picks** (live ZDR endpoint list, `GET /api/v1/endpoints/zdr`, 2026-10-26):
   * `meta-llama/llama-3.3-70b-instruct`: the D28 cleanup default (asked for).
   * `meta-llama/llama-3.1-8b-instruct`: the base of Wispr's own fallback formatter (a
-    fine-tuned Llama-3.1-8B, research 03), the same model as our pending local 8B row, and
+    fine-tuned Llama-3.1-8B, research 03), the same model as our local 8B row, and
     5 ZDR providers including Groq (LPU, low latency) at $0.02–0.22 / M tokens.
   * `mistralai/ministral-8b-2512`: a second, non-reasoning 8B family with a first-party
     ZDR endpoint (Mistral), $0.15 / M. Skipped: Qwen3 / Qwen3.5 (reasoning models, extra
@@ -220,12 +220,46 @@ What the cloud models do:
   guard caught 9 of these; the fallback rules then produced the text.
 * **Guards on cloud output:** strict and loosened agree on all 306 cloud answers.
 
+## Local Llama-3.1-8B (v4b)
+
+Run by the orchestrator with flow-server stopped (`run.sh v4b_l8 ai
+Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf prompt_v4b.json`, 8 s cap, 4 threads): wall 16 min 34 s,
+**peak RSS 8.4 GB**, model load 135 s, warm-up prefill of the v4b prefix 107 s.
+
+| | rules (5d0747b) | v4b 1.5B | v4b 3B | **v4b 8B local** | Llama-3.1-8B OpenRouter | Llama-3.3-70B OpenRouter |
+|---|---|---|---|---|---|---|
+| quote / paren / spoken_punct | 8/8 · 6/6 · 9/9 | 6/8 · 2/6 · 7/9 | 4/8 · 4/6 · 8/9 | 7/8 · 6/6 · 9/9 | 6/8 · 6/6 · 8/9 | 6/8 · 5/6 · 8/9 |
+| newline / correction / itn | 5/5 · 5/7 · 8/8 | 1/5 · 4/7 · 6/8 | 2/5 · 3/7 · 5/8 | 4/5 · 6/7 · 8/8 | 3/5 · 5/7 · 8/8 | 5/5 · 6/7 · 8/8 |
+| list / casual / email | 3/5 · 7/7 · 5/5 | 3/5 · 7/7 · 5/5 | 3/5 · 6/7 · 5/5 | 3/5 · 5/7 · 5/5 | 2/5 · 4/7 · 5/5 | 1/5 · 2/7 · 5/5 |
+| filler / runon / negative | 6/6 · 0/6 · 16/16 | 3/6 · 4/6 · 13/16 | 2/6 · 3/6 · 12/16 | 6/6 · 2/6 · 12/16 | 6/6 · 4/6 · 10/16 | 5/6 · 3/6 · 13/16 |
+| **88-suite pass** | 89 % | 69 % | 65 % | **83 %** ¹ | 76 % | 76 % |
+| Wispr exact (14) | 2 | 3 | 2 | 1 | 3 | 5 |
+| **target-closeness (14)** | 0.784 | 0.866 | 0.833 | **0.773** ¹ | 0.886 | 0.909 |
+| strict / loosened rejects (of 102) | – | 6 / 6 | 5 / 5 | 42 / 42 ² | 2 / 2 | 1 / 1 |
+| LLM ms p50 / p90 | – | 1529 / 2597 | 2831 / 4681 | **7462 / 8000** | 772 / 1208 | 746 / 1336 |
+| calls > 1500 ms | – | 55 / 102 | 99 / 102 | 102 / 102 | 1 / 102 | 3 / 102 |
+| peak RSS | – | 1.9 GB | 3.6 GB | 8.4 GB | – | – |
+
+¹ 41 of the 102 calls hit the 8 s cap and fell back to the rules. The 88-suite score is
+therefore mostly the rules' score. 12 of the 14 Wispr cases timed out (only ab3 and ab6
+finished), so its closeness is the rules' (0.784) and says nothing about the 8B itself. On the 61 calls that
+finished, the 8B's own answers pass 48 (79 %), median 6.5 s.
+² 41 of the 42 rejects are those timeouts ("no answer"); one real reject (s7, "Quick
+question" dropped). Of the 42, 25 are counted "good rejected" only because, after a
+timeout, the no-guard column also falls back to the rules, which pass. No answered case was
+wrongly rejected. Strict and loosened agree on every answer.
+
+The 8B's quality is between the 3B and the cloud models (best local on parens, quotes,
+fillers and ITN), but at 7.5 s p50 it is 5× the budget on this CPU.
+
 ## Recommendation against the 1.5 s budget
 
 1. **On the home server CPU, no local model meets the budget at useful quality.** The 1.5B
    sits at p50 1.5 s on mostly short dictations (3–6 s on the owner's 30–50-word ones) and
-   is worse than the fallback rules on the suite; 3B is 2.9 s; 7B/8B (pending) will be
-   slower still.
+   is worse than the fallback rules on the suite; 3B is 2.9 s; the 8B is 7.5 s, needs 8.4 GB
+   RAM (only with flow-server stopped) and timed out on 40 % of the cases. Its answers are
+   good when they arrive (79 % pass on those), but it is 5× over the budget. Local AI
+   cleanup on this box is closed for now; a GPU would reopen it.
 2. **If the owner accepts cloud text cleanup (D28 opt-in, consent per call), use OpenRouter
    Llama-3.3-70B as the AI cleanup engine**, with the fallback rules on a guard reject or
    the 2.5 s cloud timeout. It is the only measured configuration under budget at the median
@@ -248,22 +282,23 @@ What the cloud models do:
 * **1.5B:** median 1.5 s on this suite (mostly short dictations) is *at* the budget; the
   owner's real dictations (30–50 words) take 3–6 s.
 * **3B:** 2.9 s median, 5–8 s on long dictations: twice the budget.
-* **7B / 8B:** not run (they need the server stopped). From the 1.5B → 3B ratio and model
-  size, expect ~2–2.5× the 3B, i.e. **~6–7 s median**, over 10 s on long dictations. Wispr's
-  own fallback formatter is a fine-tuned Llama-3.1-8B
+* **8B (measured, server stopped):** p50 **7.5 s**; 41 of 102 calls hit the 8 s cap; the
+  calls that finished had a median of 6.5 s. That is in line with the ~6–7 s the
+  1.5B → 3B ratio predicted. Wispr's own fallback formatter is a fine-tuned Llama-3.1-8B
   (`research/windows/findings/by-topic/03-ai-formatting-and-features.md`), served on GPUs.
+  Qwen 7B skipped (owner).
 * So on this CPU the budget is reachable only with ≤ 1.5B models and short dictations.
-  An 8B-class AI cleanup in ≤ 1.5 s needs a GPU or the OpenRouter route (D28; the 70B
-  default there has not been measured: no key on this box).
+  An 8B-class AI cleanup in ≤ 1.5 s needs a GPU or the OpenRouter route, where the same
+  Llama-3.1-8B answers in 0.77 s p50 and the 70B in 0.75 s (§ Phase 1d).
 
-## Pending
+## Status of the remaining rows
 
-* **7B / 8B rows** (Qwen2.5-7B-Instruct Q4_K_M, Llama-3.1-8B-Instruct Q4_K_M): pending the
-  server stop. `run_big.sh` runs prod + v4b for both; run.sh refuses to start below model
-  size + 2000 MB available. Llama-3.1-8B GGUF downloaded to the models cache
-  (bartowski/Meta-Llama-3.1-8B-Instruct-GGUF, 4 920 739 232 bytes, sha256
-  `7b064f58…3033557c` = the repo's LFS hash). flow-llm uses the GGUF's own chat template;
-  the 8B has not been loaded yet, so that is untested.
+* **Qwen2.5-7B (local): skipped (owner).** Also skipped: the production-pipeline row with
+  the 8B (`prod_l8`).
+* **Llama-3.1-8B (local, v4b): done**, run by the orchestrator with the server stopped
+  (§ Local Llama-3.1-8B). GGUF: bartowski/Meta-Llama-3.1-8B-Instruct-GGUF Q4_K_M,
+  4 920 739 232 bytes, sha256 `7b064f58…3033557c` = the repo's LFS hash; the GGUF's own chat
+  template works through flow-llm.
 * ~~OpenRouter~~: done in phase 1d (above).
 
 ## Uncertain
