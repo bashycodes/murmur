@@ -18,6 +18,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Windows: push-to-talk on Right Alt alone.** Shortcuts can name one side
+  of a modifier: `Right Alt` / `Left Alt` (also `RAlt`, `AltGr`), `Left Ctrl`
+  / `Right Ctrl`, `Left Shift` / `Right Shift`. Plain `Ctrl`, `Alt` and
+  `Shift` still match either side, so existing shortcuts are unchanged. With
+  push-to-talk = `Right Alt`, Left Alt and Alt+Tab don't start dictation,
+  the release doesn't focus the menu bar, and on AltGr keyboard layouts the
+  fake Left Ctrl Windows sends with Right Alt is ignored (it also no longer
+  makes AltGr fire a Ctrl+Alt shortcut) and is never left stuck.
 - **Debug: replay harness.** `tools/replay/run.sh --in DIR` re-runs the
   phone's saved dictation recordings on the PC through each speech model
   (Parakeet, whisper, OpenRouter cloud STT), cleanup model (fallback rules,
