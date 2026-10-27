@@ -3,7 +3,7 @@ name = "flow-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Self-hosted flow-core server for hybrid dictation (LAN/Tailscale only; stores no audio or text)"
+description = "Self-hosted flow-core server for hybrid dictation (LAN/Tailscale only; stores no audio or text unless [debug] capture is on)"
 
 [features]
 default = ["whisper", "tls"]

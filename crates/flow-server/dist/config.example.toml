@@ -31,3 +31,10 @@ threads = 4            # 4 on the i7-6700: oversubscribing hyperthreads is far s
 [log]
 level = "info"         # RUST_LOG overrides; dependencies are capped at info either way
 log_text = false       # true prints transcripts at debug level (startup warns)
+
+# [debug]              # beta replay tool; off unless capture = true (startup warns)
+# capture = false      # true: save each session's received audio (WAV) + one JSON line
+#                      # (transcript, cleaned text, timings, route); never the token
+# max_files = 30       # newest WAVs kept
+# max_age_h = 72       # older ones deleted (on every save and at start)
+# dir = "/var/lib/flow-server/debug"  # default: <state dir>/debug
