@@ -87,6 +87,28 @@ pub trait Platform: Send + Sync + 'static {
     fn history_changed(&self) {}
     /// New dictionary suggestions are waiting (`pending` in total).
     fn suggestions_changed(&self, _pending: usize) {}
+    /// Command Mode: the text selected in the focused control right now.
+    /// `Ok(None)` = nothing selected (speak-to-generate), `Err` = it could
+    /// not be read (the command then fails and touches nothing). Windows:
+    /// UI Automation, else a Ctrl+C with the clipboard saved and
+    /// restored. Blocking (bounded); worker thread, after the chord is up.
+    fn capture_selection(&self) -> Result<Option<String>, String> {
+        Ok(None)
+    }
+}
+
+/// Longest wait for the selection capture (UIA timeout + Ctrl+C wait).
+const SELECTION_WAIT: Duration = Duration::from_secs(3);
+
+/// Command Mode facts of a session (history row: instruction, original,
+/// result).
+#[derive(Default)]
+struct CommandInfo {
+    /// The selection read after the chord was released (one value).
+    selection: Option<Receiver<Result<Option<String>, String>>>,
+    instruction: String,
+    original: Option<String>,
+    result: Option<String>,
 }
 
 /// Longest wait for a session start (model load + server connect are
@@ -147,6 +169,8 @@ struct SessionInfo {
     logged: bool,
     /// D27: the session's styles (debug log `style`, with `context`).
     styles: crate::core_api::Styles,
+    /// Command Mode session (`None` = a dictation).
+    command: Option<CommandInfo>,
 }
 
 #[derive(Default)]
@@ -320,6 +344,12 @@ impl Controller {
                 }
                 return;
             }
+            Input::CommandFinished {
+                session,
+                result: Err(message),
+            } if self.debug_on() && self.current_session() == Some(*session) => {
+                self.debug_emit(*session, outcome::ERROR, Some(message.clone()));
+            }
             _ => {}
         }
         let tick = input == Input::Tick;
@@ -370,6 +400,7 @@ impl Controller {
                     "tap"
                 }
                 crate::dictation::Mode::Locked => "handsfree",
+                crate::dictation::Mode::Command => "command",
             };
         }
     }
@@ -448,6 +479,10 @@ impl Controller {
         if paste.as_ref().err().map(String::as_str) == Some(PASTE_CANCELLED) {
             return;
         }
+        if let Some(cmd) = info.command {
+            self.record_command(cmd, info.context, &info.samples, &r, paste);
+            return;
+        }
         let plain = r.plain();
         *self.shared.last_text.lock().unwrap() = Some(plain.clone());
         let mut row = None;
@@ -465,6 +500,8 @@ impl Controller {
                 duration_ms: (info.samples.load(Ordering::Relaxed) / 16) as i64,
                 words: history::word_count(&plain),
                 lang: r.language.clone(),
+                command: false,
+                original: None,
             };
             let retention = self.prefs.read().unwrap().retention;
             match h.lock().unwrap().record(&entry, retention, entry.ts) {
@@ -476,6 +513,45 @@ impl Controller {
         if paste.is_ok() {
             self.watch_for_edits(info.context, &r, row);
         }
+    }
+
+    /// History row of a Command Mode session: `raw` = the instruction,
+    /// `original` = the selection it rewrote (none = generated text),
+    /// `formatted` / `pasted` = the AI result. No learn-from-edits: the
+    /// result is the LLM's wording, not a transcript to correct.
+    fn record_command(
+        &self,
+        cmd: CommandInfo,
+        ctx: Option<FieldContext>,
+        samples: &AtomicU64,
+        r: &CommitResult,
+        paste: &Result<(), String>,
+    ) {
+        let Some(result) = cmd.result else { return };
+        let plain = crate::paste::plain_text(&result);
+        *self.shared.last_text.lock().unwrap() = Some(plain.clone());
+        let Some(h) = &self.history else { return };
+        let ctx = ctx.unwrap_or_default();
+        let entry = history::Entry {
+            id: 0,
+            ts: history::now_ms(),
+            app: ctx.app_id,
+            url: ctx.url_host,
+            raw: cmd.instruction,
+            formatted: Some(plain.clone()),
+            pasted: paste.is_ok().then(|| plain.clone()),
+            edited: None,
+            duration_ms: (samples.load(Ordering::Relaxed) / 16) as i64,
+            words: history::word_count(&plain),
+            lang: r.language.clone(),
+            command: true,
+            original: cmd.original,
+        };
+        let retention = self.prefs.read().unwrap().retention;
+        if let Err(e) = h.lock().unwrap().record(&entry, retention, entry.ts) {
+            eprintln!("[history] {e}");
+        }
+        self.platform.history_changed();
     }
 
     /// Learn from edits (03 §3): re-read the field for a while after the
@@ -638,6 +714,7 @@ impl Controller {
                 // is already open; audio is buffered until it returns, so
                 // no first word is lost (review P3, changelog C2).
                 let samples = Arc::new(AtomicU64::new(0));
+                let command = mode == crate::dictation::Mode::Command;
                 let silence = self.debug_on().then(|| Arc::new(SilenceTracker::default()));
                 let gate = Arc::new(StartGate::default());
                 let pending: Arc<Mutex<Option<Vec<i16>>>> = Arc::new(Mutex::new(Some(Vec::new())));
@@ -649,6 +726,7 @@ impl Controller {
                         target: self.platform.focus_target(),
                         silence: silence.clone(),
                         styles: prefs.styles.clone(),
+                        command: command.then(CommandInfo::default),
                         ..SessionInfo::default()
                     },
                 );
@@ -788,6 +866,12 @@ impl Controller {
                             i.silence.as_ref().and_then(|t| t.trailing_silence_ms());
                     }
                 }
+                if matches!(
+                    self.machine.phase(),
+                    Phase::Processing { command: true, .. }
+                ) {
+                    self.begin_selection_capture(session);
+                }
                 let core = self.core.clone();
                 let tx = self.tx.clone();
                 let shared = self.shared.clone();
@@ -833,16 +917,22 @@ impl Controller {
                 );
                 self.core.cancel();
             }
+            Effect::Command {
+                session,
+                instruction,
+            } => self.run_command(session, instruction),
             Effect::Paste { session, text } => {
                 // The core's paste plan (core-p1): text runs, Tab/Break and
                 // a trailing Enter. `text` is only the fallback for a result
-                // without one.
+                // without one, and all there is for a command (its result
+                // is the AI answer, not the transcript).
                 let segs = self
                     .shared
                     .sessions
                     .lock()
                     .unwrap()
                     .get(&session)
+                    .filter(|i| i.command.is_none())
                     .and_then(|i| i.result.as_ref())
                     .map(|r| r.paste_segments())
                     .unwrap_or_else(|| flow_core::paste::segments(&text, false));
@@ -911,6 +1001,92 @@ impl Controller {
         }
     }
 }
+
+impl Controller {
+    /// Command Mode: read the selection once the chord is up (so a Ctrl+C
+    /// fallback is not read as Ctrl+Win+Alt+C), in parallel with the ASR
+    /// commit. The result waits in the session for [`Self::run_command`].
+    fn begin_selection_capture(&self, session: SessionId) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        // A push-to-talk turned into a command (Ctrl+Win, then Alt) began
+        // as a dictation: it becomes a command session here.
+        if let Some(i) = self.shared.sessions.lock().unwrap().get_mut(&session) {
+            i.command.get_or_insert_with(CommandInfo::default).selection = Some(rx);
+        }
+        let platform = self.platform.clone();
+        let spawned = std::thread::Builder::new()
+            .name("flow-selection".into())
+            .spawn(move || {
+                platform.wait_shortcut_released();
+                let _ = tx.send(platform.capture_selection());
+            });
+        if let Err(e) = spawned {
+            eprintln!("[command] {e}");
+        }
+    }
+
+    /// Run the spoken instruction on the captured selection (off-thread);
+    /// the answer comes back as `CommandFinished`. Cancelled (Esc, the
+    /// processing timeout) = nothing is sent back and nothing is pasted.
+    fn run_command(&self, session: SessionId, instruction: String) {
+        let (selection, cancelled) = {
+            let mut g = self.shared.sessions.lock().unwrap();
+            let Some(i) = g.get_mut(&session) else { return };
+            let cancelled = i.cancelled.clone();
+            let Some(cmd) = i.command.as_mut() else {
+                return;
+            };
+            cmd.instruction = instruction.clone();
+            (cmd.selection.take(), cancelled)
+        };
+        let core = self.core.clone();
+        let shared = self.shared.clone();
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let selected = match selection {
+                Some(rx) => rx
+                    .recv_timeout(SELECTION_WAIT)
+                    .unwrap_or_else(|_| Err(SELECTION_FAILED.to_string())),
+                None => Ok(None),
+            };
+            let result = selected.and_then(|sel| {
+                if cancelled.load(Ordering::SeqCst) {
+                    return Err(PASTE_CANCELLED.to_string());
+                }
+                if let Some(cmd) = shared
+                    .sessions
+                    .lock()
+                    .unwrap()
+                    .get_mut(&session)
+                    .and_then(|i| i.command.as_mut())
+                {
+                    cmd.original = sel.clone();
+                }
+                let r = core.command(
+                    &instruction,
+                    sel.as_deref(),
+                    flow_core::command::DEFAULT_TIMEOUT,
+                );
+                if let (Ok(text), Some(cmd)) = (
+                    &r,
+                    shared
+                        .sessions
+                        .lock()
+                        .unwrap()
+                        .get_mut(&session)
+                        .and_then(|i| i.command.as_mut()),
+                ) {
+                    cmd.result = Some(text.clone());
+                }
+                r
+            });
+            let _ = tx.send(Input::CommandFinished { session, result });
+        });
+    }
+}
+
+/// Command Mode: the selection could not be read in time.
+pub const SELECTION_FAILED: &str = "Couldn't read the selected text";
 
 /// `PasteFinished` error of a paste dropped by Esc / the timeout before
 /// anything was inserted.
@@ -1112,6 +1288,9 @@ mod tests {
         focus: Mutex<Option<crate::paste::FocusTarget>>,
         password: Mutex<Option<bool>>,
         on_error: Mutex<Option<CaptureError>>,
+        /// Command Mode: what `capture_selection` answers (`None` = no
+        /// selection).
+        selection: Mutex<Option<Result<Option<String>, String>>>,
     }
 
     impl Fake {
@@ -1196,6 +1375,10 @@ mod tests {
                 "route {}",
                 l.map(|l| l.text.as_str()).unwrap_or("-")
             ));
+        }
+        fn capture_selection(&self) -> Result<Option<String>, String> {
+            self.push("capture selection");
+            self.selection.lock().unwrap().clone().unwrap_or(Ok(None))
         }
     }
 
@@ -1348,6 +1531,127 @@ mod tests {
             6 + 1,
             "1 s = 6 x 160 ms + reset"
         );
+    }
+
+    /// Command Mode with `selection` selected: chord, 1 s of speech,
+    /// release; returns the rig after the commit (instruction known).
+    fn command_rig(selection: Result<Option<String>, String>) -> Rig {
+        let fake = Fake::default();
+        *fake.selection.lock().unwrap() = Some(selection);
+        let mut r = rig(fake, Prefs::default());
+        r.c =
+            r.c.with_history(Arc::new(Mutex::new(History::open_in_memory().unwrap())));
+        r.at(0, Input::Hotkey(HotkeyAction::CommandDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::CommandUp));
+        r.pump(); // Committed -> Effect::Command
+        r
+    }
+
+    fn history_latest(r: &Rig) -> Option<history::Entry> {
+        r.c.history
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .latest(crate::prefs::Retention::Keep, history::now_ms())
+            .unwrap()
+    }
+
+    #[test]
+    fn command_mode_rewrites_the_selection_and_records_it() {
+        let mut r = command_rig(Ok(Some("cant come tmrw".into())));
+        r.core
+            .set_command_reply(Ok("I won't be able to come tomorrow.".into()));
+        // (the reply is read when the command runs, after the commit)
+        r.pump(); // CommandFinished -> Paste
+        r.pump(); // PasteFinished
+        let log = r.fake.log();
+        assert!(
+            log.contains(&"overlay ActiveCommand".to_string()),
+            "{log:?}"
+        );
+        assert!(
+            log.contains(&"overlay CommandProcessing".to_string()),
+            "{log:?}"
+        );
+        assert!(log.contains(&"capture selection".to_string()));
+        let pastes: Vec<_> = log.iter().filter(|l| l.starts_with("paste")).collect();
+        assert_eq!(pastes, ["paste I won't be able to come tomorrow."]);
+        assert_eq!(
+            r.core.commands(),
+            [(
+                "[stub: 1.0 s of audio]".to_string(),
+                Some("cant come tmrw".to_string())
+            )]
+        );
+        let e = history_latest(&r).expect("history row");
+        assert!(e.command);
+        assert_eq!(e.raw, "[stub: 1.0 s of audio]", "the instruction");
+        assert_eq!(e.original.as_deref(), Some("cant come tmrw"));
+        assert_eq!(e.best_text(), "I won't be able to come tomorrow.");
+        assert_eq!(
+            r.c.shared.last_text.lock().unwrap().as_deref(),
+            Some("I won't be able to come tomorrow."),
+            "Paste last repeats the result"
+        );
+    }
+
+    #[test]
+    fn command_mode_without_a_selection_generates_at_the_cursor() {
+        let mut r = command_rig(Ok(None));
+        r.core.set_command_reply(Ok("Dear team,".into()));
+        r.pump();
+        r.pump();
+        assert_eq!(r.core.commands()[0].1, None);
+        assert!(r.fake.log().contains(&"paste Dear team,".to_string()));
+        assert_eq!(history_latest(&r).unwrap().original, None);
+    }
+
+    #[test]
+    fn command_mode_without_an_llm_pastes_nothing_and_errors() {
+        let mut r = command_rig(Ok(Some("keep me".into())));
+        r.pump(); // CommandFinished(Err)
+        assert!(matches!(r.c.machine().phase(), Phase::Error { .. }));
+        let log = r.fake.log();
+        assert!(!log.iter().any(|l| l.starts_with("paste")), "{log:?}");
+        assert!(log.contains(&"play Error".to_string()));
+        assert!(
+            log.iter().any(|l| l.contains("Command Mode needs AI")),
+            "{log:?}"
+        );
+        assert!(history_latest(&r).is_none(), "nothing happened");
+    }
+
+    #[test]
+    fn command_mode_selection_failure_touches_nothing() {
+        let mut r = command_rig(Err("no access".into()));
+        r.core.set_command_reply(Ok("never".into()));
+        r.pump();
+        assert!(matches!(r.c.machine().phase(), Phase::Error { .. }));
+        assert!(!r.fake.log().iter().any(|l| l.starts_with("paste")));
+        assert!(
+            r.core.commands().is_empty(),
+            "no LLM call without a selection read"
+        );
+    }
+
+    #[test]
+    fn esc_while_a_command_runs_pastes_nothing() {
+        let fake = Fake::default();
+        *fake.selection.lock().unwrap() = Some(Ok(Some("x".into())));
+        let mut r = rig(fake, Prefs::default());
+        r.core.set_command_reply(Ok("rewritten".into()));
+        r.at(0, Input::Hotkey(HotkeyAction::CommandDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::CommandUp));
+        r.pump(); // Committed -> the command starts
+        r.at(1100, Input::Hotkey(HotkeyAction::Cancel));
+        while let Ok(i) = r.rx.recv_timeout(Duration::from_millis(300)) {
+            r.c.handle(i);
+        }
+        assert_eq!(r.c.machine().phase(), &Phase::Idle);
+        assert!(!r.fake.log().iter().any(|l| l.starts_with("paste")));
     }
 
     #[test]

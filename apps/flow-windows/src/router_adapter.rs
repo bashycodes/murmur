@@ -746,7 +746,34 @@ impl CoreApi for RouterAdapter {
             })
             .collect()
     }
+
+    /// Command Mode on the dictation cleanup route: the on-device LLM,
+    /// and/or OpenRouter when cloud cleanup is allowed (the router's gate
+    /// re-checks consent and budget per call). The server route never
+    /// runs commands.
+    fn command(
+        &self,
+        instruction: &str,
+        selected: Option<&str>,
+        timeout: std::time::Duration,
+    ) -> Result<String, String> {
+        let base = self.local.as_ref().and_then(|a| a.cleaner());
+        let cleaner = self.router.command_cleaner(base);
+        let loading = self.local.as_ref().is_some_and(|a| {
+            matches!(
+                a.llm_status(),
+                crate::core_adapter::LlmStatus::Loading { .. }
+            )
+        });
+        if cleaner.is_none() && loading && !instruction.trim().is_empty() {
+            return Err(LLM_LOADING_MSG.into());
+        }
+        flow_core::command::run(cleaner, instruction, selected, timeout).map_err(|e| e.to_string())
+    }
 }
+
+/// Command Mode pill while the on-device LLM is still loading.
+pub const LLM_LOADING_MSG: &str = "AI model is still loading, try again in a moment";
 
 #[cfg(test)]
 mod tests {
@@ -897,6 +924,70 @@ mod tests {
             r.push_audio(&[3000; 1600]);
         }
         Ok(r.commit())
+    }
+
+    /// Echoes the command prompt's user message (proves the selection and
+    /// instruction reached the LLM).
+    struct EchoLlm;
+    impl flow_core::cleanup::Cleaner for EchoLlm {
+        fn clean(
+            &self,
+            p: &flow_core::cleanup::CleanPrompt,
+            _deadline: Instant,
+        ) -> Result<String, flow_core::cleanup::CleanError> {
+            Ok(format!(
+                "Here's the result:\n\"{}\"",
+                p.transcript.to_uppercase()
+            ))
+        }
+    }
+
+    fn command_rig(llm: bool) -> Arc<RouterAdapter> {
+        use crate::core_adapter::LlmSpec;
+        let local = FlowCoreAdapter::with_llm_loader(Arc::new(|_s: &LlmSpec| {
+            Ok((
+                Arc::new(EchoLlm) as Arc<dyn flow_core::cleanup::Cleaner>,
+                "fake-plugin".into(),
+            ))
+        }));
+        assert!(local
+            .load_now(&ModelSpec::Mock { text: "x".into() })
+            .is_ready());
+        if llm {
+            local.load_llm_now(Some(LlmSpec {
+                model_path: "/m/qwen.gguf".into(),
+                lib_path: None,
+                threads: Some(1),
+            }));
+        }
+        RouterAdapter::new(
+            router_config(&dev(false, true), BOTH).unwrap(),
+            Some(local),
+            None,
+        )
+    }
+
+    #[test]
+    fn command_runs_on_the_local_llm_and_sanitises_the_answer() {
+        let r = command_rig(true);
+        let t = std::time::Duration::from_secs(5);
+        assert_eq!(
+            r.command("shout it", Some("hello there"), t).as_deref(),
+            Ok("HELLO THERE")
+        );
+    }
+
+    #[test]
+    fn command_without_any_llm_is_a_clear_error() {
+        let r = command_rig(false);
+        let e = r
+            .command(
+                "make it formal",
+                Some("hey"),
+                std::time::Duration::from_secs(5),
+            )
+            .unwrap_err();
+        assert_eq!(e, flow_core::command::CommandError::NoLlm.to_string());
     }
 
     #[test]

@@ -1,5 +1,10 @@
 //! Dictation state machine (spec 10 §3):
-//! `idle → listening(ptt|locked) → processing → pasted|error → idle`.
+//! `idle → listening(ptt|locked|command) → processing → pasted|error → idle`.
+//!
+//! Command Mode (10-clone-spec P1): a `command` session's transcript is an
+//! instruction, not text to paste. Processing then asks the controller to
+//! run it on the selection (`Effect::Command`) and pastes the answer that
+//! comes back (`Input::CommandFinished`); a failure pastes nothing.
 //!
 //! Pure: inputs are hotkey actions, core/paste completions and clock ticks
 //! (`now_ms` is passed in); outputs are `Effect`s the shell executes. Session
@@ -14,6 +19,8 @@ pub type SessionId = u64;
 pub enum Mode {
     Ptt,
     Locked,
+    /// Command chord held: release = run the spoken instruction.
+    Command,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,6 +43,8 @@ pub enum Phase {
     Processing {
         session: SessionId,
         since_ms: u64,
+        /// A Command Mode session (the transcript is an instruction).
+        command: bool,
     },
     Pasted {
         since_ms: u64,
@@ -54,7 +63,11 @@ pub enum OverlayState {
     Resting,
     ActivePtt,
     ActiveLocked,
+    /// Command chord held (listening to an instruction).
+    ActiveCommand,
     Processing,
+    /// Transcribing / running a Command Mode instruction.
+    CommandProcessing,
     Error {
         message: String,
     },
@@ -108,6 +121,12 @@ pub enum Input {
         session: SessionId,
         message: String,
     },
+    /// A Command Mode instruction ran: the text to paste over the
+    /// selection, or why there is none (pill text).
+    CommandFinished {
+        session: SessionId,
+        result: Result<String, String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,6 +145,12 @@ pub enum Effect {
     Paste {
         session: SessionId,
         text: String,
+    },
+    /// Run a Command Mode `instruction` on the selection (off-thread;
+    /// reply = `CommandFinished`).
+    Command {
+        session: SessionId,
+        instruction: String,
     },
     /// Max-duration about to be reached (overlay hint).
     MaxDurationWarning {
@@ -210,9 +235,11 @@ impl Dictation {
                 self.handle_resting(input, now_ms)
             }
             Phase::Listening(l) => self.handle_listening(l, input, now_ms),
-            Phase::Processing { session, since_ms } => {
-                self.handle_processing(session, since_ms, input, now_ms)
-            }
+            Phase::Processing {
+                session,
+                since_ms,
+                command,
+            } => self.handle_processing(session, since_ms, command, input, now_ms),
         }
     }
 
@@ -221,6 +248,7 @@ impl Dictation {
         match (&self.phase, input) {
             (_, Input::Hotkey(HotkeyAction::PttDown)) => self.begin(Mode::Ptt, now_ms),
             (_, Input::Hotkey(HotkeyAction::HandsFreeToggle)) => self.begin(Mode::Locked, now_ms),
+            (_, Input::Hotkey(HotkeyAction::CommandDown)) => self.begin(Mode::Command, now_ms),
             (Phase::Pasted { since_ms }, Input::Tick)
                 if now_ms.saturating_sub(*since_ms) >= p.pasted_linger_ms =>
             {
@@ -247,7 +275,7 @@ impl Dictation {
         let elapsed = now_ms.saturating_sub(l.since_ms);
         match (l.mode, input) {
             (_, Input::Hotkey(Cancel)) => self.cancel_listening(l.session),
-            (_, Input::Finish) => self.stop(l.session, now_ms),
+            (_, Input::Finish) => self.stop(l.session, l.mode == Mode::Command, now_ms),
             (_, Input::StartFailed { session, message }) if session == l.session => {
                 let mut fx = self.cancel_listening(l.session);
                 fx.pop(); // replace the "resting" overlay with the error
@@ -269,11 +297,28 @@ impl Dictation {
                     self.phase = Phase::Listening(l);
                     Vec::new()
                 } else {
-                    self.stop(l.session, now_ms)
+                    self.stop(l.session, false, now_ms)
                 }
             }
             (Mode::Ptt, Input::Hotkey(PttAborted)) => self.cancel_listening(l.session),
             (Mode::Ptt, Input::Hotkey(HandsFreeToggle)) => self.lock(l, now_ms),
+            // Ctrl+Win, then Alt: the push-to-talk becomes a command.
+            (Mode::Ptt, Input::Hotkey(CommandDown)) => {
+                l.mode = Mode::Command;
+                l.early_release = false;
+                self.phase = Phase::Listening(l);
+                vec![Effect::Overlay(OverlayState::ActiveCommand)]
+            }
+
+            // ---- command (held like push-to-talk) ----
+            (Mode::Command, Input::Hotkey(CommandUp)) => {
+                if elapsed < p.debounce_ms {
+                    self.cancel_listening(l.session) // a tap: nothing said
+                } else {
+                    self.stop(l.session, true, now_ms)
+                }
+            }
+            (Mode::Command, Input::Hotkey(PttAborted)) => self.cancel_listening(l.session),
 
             // ---- locked (hands-free) ----
             (Mode::Locked, Input::Hotkey(PttDown)) => {
@@ -281,14 +326,14 @@ impl Dictation {
                 if since_lock < p.debounce_ms {
                     self.cancel_listening(l.session) // triple press
                 } else {
-                    self.stop(l.session, now_ms)
+                    self.stop(l.session, false, now_ms)
                 }
             }
             (Mode::Locked, Input::Hotkey(HandsFreeToggle)) => {
                 if elapsed < p.debounce_ms {
                     self.cancel_listening(l.session) // quick double
                 } else {
-                    self.stop(l.session, now_ms)
+                    self.stop(l.session, false, now_ms)
                 }
             }
 
@@ -297,7 +342,7 @@ impl Dictation {
                 if l.early_release && elapsed >= p.debounce_ms {
                     self.cancel_listening(l.session)
                 } else if elapsed >= p.max_ms {
-                    self.stop(l.session, now_ms)
+                    self.stop(l.session, l.mode == Mode::Command, now_ms)
                 } else if elapsed >= p.warn_ms && !l.warned {
                     l.warned = true;
                     self.phase = Phase::Listening(l);
@@ -316,6 +361,7 @@ impl Dictation {
         &mut self,
         session: SessionId,
         since_ms: u64,
+        command: bool,
         input: Input,
         now_ms: u64,
     ) -> Vec<Effect> {
@@ -330,19 +376,31 @@ impl Dictation {
             Input::Committed {
                 session: s,
                 outcome,
+            } if s == session && command => match outcome {
+                CommitOutcome::Text(instruction) => vec![Effect::Command {
+                    session,
+                    instruction,
+                }],
+                CommitOutcome::Empty => self.notice("No instruction heard".into(), now_ms),
+                CommitOutcome::Notice(message) => self.notice(message, now_ms),
+                CommitOutcome::Failed(message) => self.fail(message, now_ms),
+            },
+            Input::CommandFinished { session: s, result } if s == session && command => {
+                match result {
+                    Ok(text) => vec![Effect::Paste { session, text }],
+                    Err(message) => self.fail(message, now_ms),
+                }
+            }
+            Input::Committed {
+                session: s,
+                outcome,
             } if s == session => match outcome {
                 CommitOutcome::Text(text) => vec![Effect::Paste { session, text }],
                 CommitOutcome::Empty => {
                     self.phase = Phase::Idle;
                     vec![Effect::Overlay(OverlayState::Resting)]
                 }
-                CommitOutcome::Notice(message) => {
-                    self.phase = Phase::Error {
-                        since_ms: now_ms,
-                        linger_ms: self.policy.notice_linger_ms,
-                    };
-                    vec![Effect::Overlay(OverlayState::Notice { message })]
-                }
+                CommitOutcome::Notice(message) => self.notice(message, now_ms),
                 CommitOutcome::Failed(message) => self.fail(message, now_ms),
             },
             Input::PasteFinished { session: s, result } if s == session => match result {
@@ -358,7 +416,12 @@ impl Dictation {
             },
             Input::Tick if now_ms.saturating_sub(since_ms) >= self.policy.processing_timeout_ms => {
                 let mut fx = vec![Effect::CancelSession(session)];
-                fx.extend(self.fail("Transcription timed out".into(), now_ms));
+                let why = if command {
+                    "Command timed out"
+                } else {
+                    "Transcription timed out"
+                };
+                fx.extend(self.fail(why.into(), now_ms));
                 fx
             }
             _ => Vec::new(),
@@ -379,6 +442,7 @@ impl Dictation {
         let (sound, overlay) = match mode {
             Mode::Ptt => (Sound::Start, OverlayState::ActivePtt),
             Mode::Locked => (Sound::Lock, OverlayState::ActiveLocked),
+            Mode::Command => (Sound::Start, OverlayState::ActiveCommand),
         };
         vec![
             Effect::Sound(sound),
@@ -399,18 +463,32 @@ impl Dictation {
         ]
     }
 
-    fn stop(&mut self, session: SessionId, now_ms: u64) -> Vec<Effect> {
+    fn stop(&mut self, session: SessionId, command: bool, now_ms: u64) -> Vec<Effect> {
         self.phase = Phase::Processing {
             session,
             since_ms: now_ms,
+            command,
         };
         vec![
             Effect::EndCapture,
             Effect::Unduck,
             Effect::Sound(Sound::Stop),
             Effect::Commit(session),
-            Effect::Overlay(OverlayState::Processing),
+            Effect::Overlay(if command {
+                OverlayState::CommandProcessing
+            } else {
+                OverlayState::Processing
+            }),
         ]
+    }
+
+    /// Informational pill (no error sound) for `notice_linger_ms`.
+    fn notice(&mut self, message: String, now_ms: u64) -> Vec<Effect> {
+        self.phase = Phase::Error {
+            since_ms: now_ms,
+            linger_ms: self.policy.notice_linger_ms,
+        };
+        vec![Effect::Overlay(OverlayState::Notice { message })]
     }
 
     fn cancel_listening(&mut self, session: SessionId) -> Vec<Effect> {
@@ -524,7 +602,8 @@ mod tests {
             d.phase(),
             &Phase::Processing {
                 session: s,
-                since_ms: 500
+                since_ms: 500,
+                command: false,
             }
         );
     }
@@ -960,6 +1039,218 @@ mod tests {
         let s = session_of(&hk(&mut d, PttDown, 10));
         assert!(hk(&mut d, PasteLast, 20).is_empty());
         assert_eq!(listening(&d).session, s);
+    }
+
+    // ---- Command Mode ----
+
+    fn command_session(d: &mut Dictation) -> SessionId {
+        let fx = hk(d, CommandDown, 0);
+        let s = session_of(&fx);
+        assert_eq!(
+            fx,
+            vec![
+                Effect::Sound(Sound::Start),
+                Effect::Duck,
+                Effect::BeginSession(s),
+                Effect::Overlay(OverlayState::ActiveCommand),
+            ]
+        );
+        assert_eq!(listening(d).mode, Mode::Command);
+        s
+    }
+
+    #[test]
+    fn command_release_commits_and_the_instruction_runs_instead_of_pasting() {
+        let mut d = d();
+        let s = command_session(&mut d);
+        let fx = hk(&mut d, CommandUp, 1200);
+        assert!(fx.contains(&Effect::Commit(s)));
+        assert!(fx.contains(&Effect::Overlay(OverlayState::CommandProcessing)));
+        assert_eq!(
+            d.phase(),
+            &Phase::Processing {
+                session: s,
+                since_ms: 1200,
+                command: true
+            }
+        );
+        let fx = d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("make it formal".into()),
+            },
+            1500,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Command {
+                session: s,
+                instruction: "make it formal".into()
+            }],
+            "the instruction is never pasted"
+        );
+        let fx = d.handle(
+            Input::CommandFinished {
+                session: s,
+                result: Ok("Formal text.".into()),
+            },
+            3000,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Paste {
+                session: s,
+                text: "Formal text.".into()
+            }]
+        );
+        let fx = d.handle(
+            Input::PasteFinished {
+                session: s,
+                result: Ok(()),
+            },
+            3100,
+        );
+        assert!(fx.contains(&Effect::Sound(Sound::Paste)));
+        assert!(matches!(d.phase(), Phase::Pasted { .. }));
+    }
+
+    #[test]
+    fn command_failure_pastes_nothing_and_plays_the_error_sound() {
+        let mut d = d();
+        let s = command_session(&mut d);
+        hk(&mut d, CommandUp, 1000);
+        d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("translate".into()),
+            },
+            1100,
+        );
+        let fx = d.handle(
+            Input::CommandFinished {
+                session: s,
+                result: Err("no LLM".into()),
+            },
+            1200,
+        );
+        assert_eq!(
+            fx,
+            vec![
+                Effect::Sound(Sound::Error),
+                Effect::Overlay(OverlayState::Error {
+                    message: "no LLM".into()
+                }),
+            ]
+        );
+        assert!(matches!(d.phase(), Phase::Error { .. }));
+    }
+
+    #[test]
+    fn command_without_an_instruction_is_a_notice() {
+        let mut d = d();
+        let s = command_session(&mut d);
+        hk(&mut d, CommandUp, 1000);
+        let fx = d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Empty,
+            },
+            1100,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Overlay(OverlayState::Notice {
+                message: "No instruction heard".into()
+            })]
+        );
+    }
+
+    #[test]
+    fn command_tap_esc_abort_and_timeout_never_paste() {
+        let mut d = d();
+        let s = command_session(&mut d);
+        assert_eq!(hk(&mut d, CommandUp, 200), cancel_fx(s), "tap");
+        let s = session_of(&hk(&mut d, CommandDown, 1000));
+        assert_eq!(hk(&mut d, Cancel, 1500), cancel_fx(s), "Esc");
+        let s = session_of(&hk(&mut d, CommandDown, 2000));
+        assert_eq!(hk(&mut d, PttAborted, 2600), cancel_fx(s), "foreign key");
+        let s = session_of(&hk(&mut d, CommandDown, 3000));
+        hk(&mut d, CommandUp, 4000);
+        let fx = d.handle(Input::Tick, 4000 + 35_000);
+        assert_eq!(fx[0], Effect::CancelSession(s));
+        assert!(fx.contains(&Effect::Overlay(OverlayState::Error {
+            message: "Command timed out".into()
+        })));
+        // A late answer of the timed-out command is dropped.
+        let late = d.handle(
+            Input::CommandFinished {
+                session: s,
+                result: Ok("late".into()),
+            },
+            40_000,
+        );
+        assert!(late.is_empty());
+    }
+
+    #[test]
+    fn esc_while_a_command_runs_cancels_it() {
+        let mut d = d();
+        let s = command_session(&mut d);
+        hk(&mut d, CommandUp, 1000);
+        assert_eq!(
+            hk(&mut d, Cancel, 1100),
+            vec![
+                Effect::CancelSession(s),
+                Effect::Overlay(OverlayState::Resting)
+            ]
+        );
+    }
+
+    #[test]
+    fn alt_during_push_to_talk_turns_it_into_a_command() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        assert_eq!(
+            hk(&mut d, CommandDown, 100),
+            vec![Effect::Overlay(OverlayState::ActiveCommand)]
+        );
+        assert_eq!(listening(&d).session, s, "same session, same audio");
+        assert_eq!(listening(&d).mode, Mode::Command);
+        let fx = hk(&mut d, CommandUp, 900);
+        assert!(fx.contains(&Effect::Commit(s)));
+        assert!(matches!(d.phase(), Phase::Processing { command: true, .. }));
+    }
+
+    #[test]
+    fn dictation_commits_still_paste_directly() {
+        let mut d = d();
+        let s = session_of(&hk(&mut d, PttDown, 0));
+        hk(&mut d, PttUp, 1000);
+        let fx = d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("hello".into()),
+            },
+            1100,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Paste {
+                session: s,
+                text: "hello".into()
+            }]
+        );
+        assert!(
+            d.handle(
+                Input::CommandFinished {
+                    session: s,
+                    result: Ok("x".into())
+                },
+                1200
+            )
+            .is_empty(),
+            "a dictation ignores command results"
+        );
     }
 
     #[test]
