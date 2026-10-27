@@ -132,6 +132,13 @@ pub struct Entry {
     /// when no cloud cleanup is on.
     pub cleanup_route: Option<String>,
     pub cloud_fallback: Option<String>,
+    /// 2026-10-27, with `cloud_fallback`: AI cleanup's answer that was not
+    /// used (`null` on a timeout / error / empty answer) and the guard's
+    /// detail (unsupported sentence or literal mark kind, dropped clause
+    /// or count, timeout, error). Dictated text: `<redacted>` for a
+    /// password field, like `text`.
+    pub rejected_text: Option<String>,
+    pub guard_detail: Option<String>,
     /// D28: OpenRouter speech-to-text model and cost of this dictation
     /// (`null` unless `route` is `cloud`).
     pub stt_model: Option<String>,
@@ -788,6 +795,8 @@ pub(crate) mod tests {
             "llm_generation_id",
             "cleanup_route",
             "cloud_fallback",
+            "rejected_text",
+            "guard_detail",
             "stt_model",
             "stt_cost_usd",
         ];
