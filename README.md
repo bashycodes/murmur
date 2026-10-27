@@ -60,6 +60,10 @@ The apps themselves never download anything.
 * The optional hybrid mode (`docs/hybrid-architecture.md`) streams to a
   `flow-server` that the user hosts on their own machine. The server stores no
   audio or text.
+* The Windows *Insights* tab (words dictated, speaking speed, streaks,
+  estimated time saved, top apps) is computed on the PC from a local
+  per-day count file (`%APPDATA%\FlowClone\insights.json`, no text). It is
+  never sent anywhere and survives deleting History.
 * The research notes describe the original app's network use for comparison.
   Vendor credentials found during that research are redacted and never
   recorded.
