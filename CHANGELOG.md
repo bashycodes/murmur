@@ -84,6 +84,18 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
+- **Android: Style per app is an app list.** Settings → Writing style →
+  Style per app no longer asks for typed `package = group` lines. Each
+  override is a row with the app's icon and name, a group dropdown
+  (Personal / Work / Email / Other) and a remove button; "Add app" opens a
+  searchable list of the apps on the phone that have a launcher icon, with
+  the ones you dictated into recently first, and then asks for the group
+  (the app's built-in one preselected). Changes apply at once, no Save.
+  Overrides typed before load as rows (same stored format); an app that is
+  no longer installed shows its package name and can still be removed. The
+  app now declares a launcher-intent `<queries>` entry to see that list (not
+  `QUERY_ALL_PACKAGES`), so an override for an app without a launcher icon
+  also shows as its package name.
 - **Android: more debug audio kept.** Developer settings → "Keep last
   dictation audio" now keeps the last 30 dictations (was 10), each for
   72 hours (was 24), so a replay session's early recordings are not pushed

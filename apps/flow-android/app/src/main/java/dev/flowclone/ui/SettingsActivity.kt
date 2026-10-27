@@ -39,7 +39,7 @@ import kotlin.concurrent.thread
  *             current value; Developer settings + Mock engine; About (version, 7-tap unlock)
  *   language  dictation language, auto-format
  *   style     writing style per bucket (personal / work / email / other), D27
- *   app_styles  per-app bucket overrides (package = bucket), from the style page        [Save]
+ *   app_styles  per-app bucket overrides: app list + "Add app" picker, from the style page
  *   engine    whisper / Parakeet, model imports                       (not in `remote`)
  *   cleanup   local AI cleanup on/off, GGUF model, strength            (not in `remote`)
  *   timing    hands-free stop after silence, decode while speaking, session limit   [Save]
@@ -177,7 +177,6 @@ class SettingsActivity : Activity() {
         capMinutes = fieldRows[Field.CAP]?.text ?: i.capMinutes,
         decodeWhileSpeaking = decodeToggle?.isChecked ?: i.decodeWhileSpeaking,
         denylist = fieldRows[Field.DENYLIST]?.text ?: i.denylist,
-        appStyles = fieldRows[Field.APP_STYLES]?.text ?: i.appStyles,
     )
 
     private fun validate(): SettingsPages.Result? {
@@ -384,20 +383,11 @@ class SettingsActivity : Activity() {
         refresh()
     }
 
-    private fun renderAppStyles() = with(ui) {
-        val i = draft!!.draft
-        screen {
-            note("Put an app in another group than the built-in list does (for example a work chat app the list calls personal).")
-            card {
-                fieldRows[Field.APP_STYLES] = fieldRow(
-                    "One app per line: package = personal, work, email or other", i.appStyles,
-                    InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
-                    help = "Find an app's package name in Android Settings → Apps → the app → App details, or its Play Store link (id=…).",
-                    hint = "com.example.app = work", minLines = 4,
-                ) { validate() }
-            }
-            note("Save is in the top bar.")
-        }
+    /** Per-app overrides as an app list ([AppStylesPage]); changes apply at once. */
+    private fun renderAppStyles() {
+        val list = AppStylesPage(this, ui) { f -> applyNow(f) }
+        list.render()
+        refreshers += list::refresh
     }
 
     // =====================================================================================

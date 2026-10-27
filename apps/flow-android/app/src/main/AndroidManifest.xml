@@ -17,6 +17,15 @@
     <!-- Network permissions are per flavour (D17): src/local strips them all,
          src/hybrid and src/remote add INTERNET and nothing else. -->
 
+    <!-- Settings → Writing style → Style per app lists launchable apps (package visibility,
+         API 30+): the launcher intent only, not QUERY_ALL_PACKAGES. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
     <!-- Shake to un-snooze / reveal. Wispr requires it; the clone works without it. -->
     <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
