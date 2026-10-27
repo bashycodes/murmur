@@ -70,6 +70,8 @@ class DictationControllerTest {
         override fun onNotInserted(text: String, outcome: String) { notInserted += text to outcome }
         val traces = mutableListOf<dev.flowclone.debug.DictationTrace>()
         override fun onDictationTrace(trace: dev.flowclone.debug.DictationTrace) { traces += trace }
+        val insertedFor = mutableListOf<Triple<String, FieldContext?, Boolean>>()
+        override fun onInserted(pasted: String, context: FieldContext?, sentKey: Boolean) { insertedFor += Triple(pasted, context, sentKey) }
     }
 
     /** advanceUntilIdle ignores backgroundScope work, where the controller lives. */
@@ -119,6 +121,27 @@ class DictationControllerTest {
         assertEquals(1, audio.stops)
         assertEquals(listOf(true, false), host.recordingActive)
         assertTrue(host.history.single().second)
+    }
+
+    @Test fun aSuccessfulInsertStartsTheEditWatchWithTheStartContext() = runTest {
+        val c = controller()
+        c.toggle(hold = false)
+        audio.speak()
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals(listOf(Triple("hello world", host.context, false)), host.insertedFor)
+    }
+
+    @Test fun aFailedInsertStartsNoEditWatch() = runTest {
+        host.insertOk = false
+        val c = controller()
+        c.toggle(hold = false)
+        audio.speak()
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertTrue(host.insertedFor.isEmpty())
     }
 
     @Test fun holdStartsAndReleaseSubmitsWithoutDebounce() = runTest {
@@ -369,6 +392,7 @@ class DictationControllerTest {
         )
         val c = dictate(r)
         assertEquals("press_enter is not acted on twice", listOf("@foo", "<Tab>", " bar", "<Enter>"), host.inserted)
+        assertEquals("the edit watch knows Enter was sent", listOf(Triple("@foo bar", host.context, true)), host.insertedFor)
         assertEquals(DictationState.Ready, c.state.value)
         assertTrue(host.history.single().second)
     }

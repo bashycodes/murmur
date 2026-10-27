@@ -39,6 +39,10 @@ class DictionaryActivity : Activity() {
     private var kind = Kind.WORDS
     private val refreshers = ArrayList<() -> Unit>()
 
+    // hub: learn-from-edits suggestions
+    private var suggestionsLabel: TextView? = null
+    private var suggestionsCard: LinearLayout? = null
+
     // list page
     private var query = ""
     private var listCard: LinearLayout? = null
@@ -81,6 +85,10 @@ class DictionaryActivity : Activity() {
     private fun renderHub(): Unit = with(ui) {
         screen {
             note("Words: the speech engine is primed with them, and \"wisper\" → \"Wispr\" style fixes are applied. Snippets: say just the trigger and its text is inserted.")
+            // Learn from my edits: shown only while something waits for Add / Dismiss.
+            suggestionsLabel = sectionLabel("SUGGESTIONS")
+            suggestionsCard = card { }
+            refreshers += { fillSuggestions() }
             sectionLabel("LISTS")
             card {
                 val words = navRow(R.drawable.ic_scr_book, "Dictionary") { open(this@DictionaryActivity, PAGE_LIST, Kind.WORDS) }
@@ -97,6 +105,57 @@ class DictionaryActivity : Activity() {
                 navRow(R.drawable.ic_scr_share, "Export JSON", "Saves flow-dictionary.json (the Windows app reads the same file)") { export() }
             }
         }
+    }
+
+    /** Words corrected after a dictation (Learn from my edits). Nothing is added without Add. */
+    private fun fillSuggestions(): Unit = with(ui) {
+        val card = suggestionsCard ?: return@with
+        val pending = app.suggestions.update { it.pruneKnown(app.dictionary.all()) }.pending
+        card.removeAllViews()
+        val vis = if (pending.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
+        card.visibility = vis
+        suggestionsLabel?.visibility = vis
+        for (s in pending) {
+            val add = chip("Add") { addSuggestion(s.word, false) }
+            val dismiss = chip("Dismiss") { dismissSuggestion(s.word) }
+            val buttons = LinearLayout(this@DictionaryActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                addView(add)
+                addView(dismiss, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    marginStart = (8 * resources.displayMetrics.density).toInt()
+                })
+            }
+            card.listRow(
+                s.word, dev.flowclone.learn.Suggestions.subtitle(s), trailing = buttons,
+                actions = listOf("Add" to { addSuggestion(s.word, false) }, "Dismiss" to { dismissSuggestion(s.word) }),
+            ) { suggestionDialog(s) }
+        }
+    }
+
+    private fun suggestionDialog(s: dev.flowclone.learn.Suggestion) {
+        AlertDialog.Builder(this)
+            .setTitle("Add \u201c${s.word}\u201d?")
+            .setMessage(
+                "You changed \u201c${s.heard}\u201d to \u201c${s.word}\u201d after a dictation. Add the word to teach its spelling, " +
+                    "or add it as a fix so \u201c${s.heard}\u201d is always replaced. Dismiss = never suggested again.",
+            )
+            .setPositiveButton("Add word") { _, _ -> addSuggestion(s.word, false) }
+            .setNeutralButton("Add as fix") { _, _ -> addSuggestion(s.word, true) }
+            .setNegativeButton("Dismiss") { _, _ -> dismissSuggestion(s.word) }
+            .show()
+    }
+
+    private fun addSuggestion(word: String, asFix: Boolean) {
+        var entry: DictEntry? = null
+        app.suggestions.update { cur -> cur.accept(word, asFix).let { (next, e) -> entry = e; next } }
+        entry?.let { app.dictionary.upsert(it); ui.announce("Added ${it.replacement ?: it.word}") }
+        for (r in refreshers) r()
+    }
+
+    private fun dismissSuggestion(word: String) {
+        app.suggestions.update { it.dismiss(word) }
+        ui.announce("Dismissed $word")
+        for (r in refreshers) r()
     }
 
     // =====================================================================================

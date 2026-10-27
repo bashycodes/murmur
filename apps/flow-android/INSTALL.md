@@ -694,6 +694,12 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
 - [ ] *Dictionary & snippets → Dictionary → Add*: "wisper" → "Wispr" (*Save* enables only once valid;
       a duplicate word shows its error under the field), dictate "wisper flow" → "Wispr flow". Edit it, delete it.
 - [ ] *Snippets → Add*: "my address" → multi-line text; say only "my address" → the text.
+- [ ] Learn from my edits (real engine; the mock engine suggests nothing): dictate "flo clone" into
+      Notes, change it to "Flow Clone" within 45 s and leave it → toast "Dictionary suggestion: Flow
+      Clone"; *Dictionary → Suggestions* lists it. *Add* puts it in the dictionary; a second suggestion
+      *Dismiss*ed and the same edit repeated is not suggested again. Switch the field or app mid-watch:
+      nothing more is read (debug log `learn_edit end=focus_changed`). *Settings → Learn from my edits*
+      off → no `learn_edit` event after a dictation. Never in a password field (no bubble there anyway).
 - [ ] History: rows grouped under *Today*; search finds the row; *Show the raw transcript* shows the
       pre-cleanup text; a row's detail page has *Copy* and *Delete dictation* (asks first).
 - [ ] Switch fields while a dictation is processing: its History row says *Not inserted — tap to copy*;

@@ -40,6 +40,7 @@ class SettingsStore(context: Context) {
         decodeWhileSpeaking = sp.getBoolean("decode_while_speaking", true),
         styles = loadStyles(),
         appBuckets = WritingStyle.parseOverrides(sp.getString("app_buckets", null).orEmpty()).map,
+        learnFromEdits = sp.getBoolean("learn_from_edits", true),
     )
 
     /** D27: nothing stored (every install before 0.3) = the [dev.flowclone.core.Styles] defaults. */
@@ -99,6 +100,7 @@ class SettingsStore(context: Context) {
             .putString("style_email", s.styles.email.wire)
             .putString("style_other", s.styles.other.wire)
             .putString("app_buckets", WritingStyle.formatOverrides(s.appBuckets))
+            .putBoolean("learn_from_edits", s.learnFromEdits)
             .apply()
         _bubbleScale.value = s.bubbleScale
         _shrinkToDot.value = s.shrinkToDot
@@ -169,6 +171,30 @@ class DictionaryStore(context: Context) {
     fun remove(word: String) = replaceAll(all().filterNot { it.word.equals(word, ignoreCase = true) })
     fun importJson(json: String): Int { val inc = CoreJson.decodeDictionary(json); replaceAll(DictionaryMerge.merge(all(), inc)); return inc.size }
     fun exportJson(): String = CoreJson.encodeDictionary(all())
+}
+
+/** Learn-from-edits suggestions ([dev.flowclone.learn.Suggestions]): words only, `learn_suggestions.json`. */
+class SuggestionStore(context: Context) {
+    private val file = File(context.filesDir, "learn_suggestions.json")
+    @Volatile private var cache: dev.flowclone.learn.Suggestions? = null
+
+    @Synchronized
+    fun load(): dev.flowclone.learn.Suggestions = cache
+        ?: dev.flowclone.learn.Suggestions.decode(runCatching { file.takeIf { it.exists() }?.readText() }.getOrNull()).also { cache = it }
+
+    /** Read-modify-write under the store lock; [f] returns the new value (same = no write). */
+    @Synchronized
+    fun update(f: (dev.flowclone.learn.Suggestions) -> dev.flowclone.learn.Suggestions): dev.flowclone.learn.Suggestions {
+        val old = load()
+        val new = f(old)
+        if (new != old) {
+            val tmp = File(file.parentFile, "learn_suggestions.json.tmp")
+            tmp.writeText(dev.flowclone.learn.Suggestions.encode(new))
+            tmp.renameTo(file)
+            cache = new
+        }
+        return new
+    }
 }
 
 data class HistoryRow(
