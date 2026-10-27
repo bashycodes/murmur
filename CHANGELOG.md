@@ -16,6 +16,15 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Android debug: one-command pull.** `tools/phone/pull-debug.sh` copies
+  the phone's debug log, the kept dictation WAVs (only new ones,
+  sha256-checked) and the two settings files with every token, key,
+  secret, password and auth value removed into a temp directory on the PC,
+  and prints how many lines, WAVs and bytes came over. Read-only on the
+  phone; needs a debug build. See INSTALL.md, "Keep last dictation audio".
+
 ## [0.6.0] - 2026-10-27
 
 ### Added
