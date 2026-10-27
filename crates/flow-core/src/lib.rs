@@ -5,6 +5,7 @@ pub mod align;
 pub mod asr;
 pub mod audio;
 pub mod cleanup;
+pub mod command;
 pub mod config;
 pub mod dictionary;
 pub mod endpoint;
