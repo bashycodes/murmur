@@ -11,6 +11,7 @@ pub mod endpoint;
 mod engine;
 pub mod guard;
 pub mod hallucination;
+pub mod insights;
 pub mod learn;
 #[cfg(feature = "llm")]
 pub mod llama;

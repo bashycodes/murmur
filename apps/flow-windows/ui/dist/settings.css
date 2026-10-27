@@ -561,3 +561,43 @@ dialog::backdrop {
 .hint.warn {
   color: #b9770e;
 }
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  margin: 4px 0;
+}
+.stat {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.stat b {
+  display: block;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+.stat small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.chart .bar {
+  fill: var(--accent);
+}
+.chart .bar.today {
+  fill: var(--fg);
+}
+.chart .base {
+  stroke: var(--line);
+}
+.chart text {
+  fill: var(--muted);
+  font-size: 11px;
+  text-anchor: middle;
+  font-variant-numeric: tabular-nums;
+}

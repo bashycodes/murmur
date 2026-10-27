@@ -26,6 +26,18 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   again after the app is closed or the phone restarts; it stays on the phone.
   *Copy all* (removed from the clipboard after a minute, like every copied
   transcript), *Share*, *Clear* (asks first) and a word count.
+- **Windows: Insights tab.** *Settings → Insights* shows total words
+  dictated, words in the last 7 days, average speaking speed (words per
+  minute of recording), current and longest daily streak, an estimate of
+  time saved versus typing (assumes 40 wpm, shown on the page), the number
+  of dictations, your top apps by words, and a 7-day words-per-day chart.
+  Everything is counted on the PC in `%APPDATA%\FlowClone\insights.json`
+  (words, recording length and app per local day; no text) and never leaves
+  it. The counts are kept apart from History, so deleting History or a
+  short retention setting doesn't reset them; on first start they are
+  filled in once from the History you already have. *Reset stats* (with a
+  confirmation) clears them. The stats math lives in `flow-core` so Android
+  can reuse it.
 - **Android: learn dictionary words from your edits.** After a dictation is
   typed in, the app re-reads that same field (about once a second, for up
   to 45 s, or until your edit has stopped changing for 8 s). If you corrected

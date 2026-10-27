@@ -288,6 +288,7 @@ Settings → AI cleanup:
 | `src/core_api.rs` | §9 API seam (shell types) plus `StubCore` for tests |
 | `src/core_adapter.rs` | `CoreApi` on `flow_core::FlowCore`: two-phase background load (whisper engine, then the optional `flow_llm` cleaner, composed with `FlowCore::from_engines`), `ModelStatus` / `LlmStatus`, shell→core type mapping |
 | `src/history.rs` | Local SQLite history (`history.sqlite`, 10-clone-spec §2 columns, no audio), keep / 24 h / never retention; list/search/get/delete/clear/set_edited for the History tab |
+| `src/insights.rs` | Insights tab store (`insights.json`: per-local-day words / audio ms / dictations / words per app, no text), separate from History so deleting it keeps the stats; one-time backfill from History; the math is `flow_core::insights` |
 | `src/learn.rs` | Learn-from-edits (03 §3), pure: anchor-bounded region, Wispr end reasons, watch state machine in injected time, semi-global trim of text typed after the dictation |
 | `src/recent_apps.rs` | Exe names recently dictated into (`recent_apps.json`, names only) and the picker's built-in exe → group rows |
 | `src/suggestions.rs` | Learned words waiting for an explicit accept (`suggestions.json`); dismissed words are never re-suggested |
@@ -308,7 +309,7 @@ Settings → AI cleanup:
 | `src/app.rs` | Tauri: tray, overlay window (512x614, click-through, `WS_EX_NOACTIVATE`), settings window, commands, autostart |
 | `build.rs`, `capabilities/` | Every command is declared in the app manifest; the settings window gets all of them, the overlay only `overlay_action` (`tests/capabilities.rs`) |
 | `tools/ci/` | CI helpers: Parakeet DLL bundle overlay, installer collection (`.github/workflows/windows-build.yml`) |
-| `ui/` | Plain TypeScript → `ui/dist/*.js` (committed). No bundler, no CDN, no web fonts; the CSP is `'self'` only. Settings tabs: General, AI cleanup, History, Dictionary, Developer |
+| `ui/` | Plain TypeScript → `ui/dist/*.js` (committed). No bundler, no CDN, no web fonts; the CSP is `'self'` only. Settings tabs: General, AI cleanup, History, Insights, Dictionary, Developer |
 | `tauri.llm.conf.json` | Config overlay that bundles `flow_llm.dll` next to the exe (`cargo tauri build --config tauri.llm.conf.json`) |
 | `tools/probes/settings_mock/` | Serves `ui/dist` with a fake `__TAURI__` for checking the settings page in a plain/headless browser |
 
@@ -470,6 +471,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Style per app: dictate into Notepad, open AI cleanup → *Add* lists Notepad; add it as Personal → Save → a Notepad dictation ends without a final period. An old prefs.json with `app_buckets` opens as rows and saves back with the same keys; adding the same app twice says "Already in the list".
 - [ ] Cleanup level: an old prefs.json with `"cleanup_level":"none"` opens as *Verbatim* with Auto-format unticked; choosing *No AI* ticks Auto-format again; "comma" then becomes ",".
 - [ ] Debug log line has `"style":"casual"` for WhatsApp and `"llm"` (`llm_skipped_clean` with AI on and an already clean dictation).
+- [ ] Insights tab: after a dictation the numbers and today's bar update without reopening; Delete all in History leaves them; Reset stats (confirm) zeroes them; a first start with existing History shows its totals.
 - [ ] History tab: search filters, Copy, Re-paste (Settings hides, text lands in the previously focused app), Delete, Delete all (second click), retention change prunes.
 - [ ] Undo AI edit: the diff shows removed/added words; "Re-paste original" inserts the raw ASR text.
 - [ ] Learn from edits: dictate "I use whisper flow daily" into Notepad, fix it to "Wispr Flow" within ~45 s, click elsewhere → tray "1 dictionary suggestion…"; Dictionary tab lists it; nothing was added until "Add word". Same in Chrome (textarea), Word and Slack.
