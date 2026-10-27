@@ -35,6 +35,17 @@ lets it through untouched, so it never stops Right Alt from matching, never
 makes AltGr look like Ctrl+Alt, and is released normally. A shortcut that
 needs Ctrl therefore no longer fires on AltGr alone.
 
+## Scratchpad
+
+Tray → **Scratchpad…** (or the optional *Open Scratchpad* shortcut, unset by
+default, Settings → General → Shortcuts) opens one plain-text note. Dictate
+into it like any app: the transcript is pasted at the caret, style bucket
+*Other*. Learn-from-edits never watches our own windows and they are not
+recorded as recent apps. The text is written to
+`%APPDATA%\FlowClone\scratchpad.txt` 750 ms after the last change, when the
+window closes and on Quit (`src/notes.rs`: `NoteStore` load/save by id,
+`AutoSave` debounce). *Copy all*, *Clear* / *Undo clear*, word count.
+
 ## Build flavours (Cargo features)
 
 | Build | Command | Engines |
@@ -291,6 +302,7 @@ Settings → AI cleanup:
 | `src/learn.rs` | Learn-from-edits (03 §3), pure: anchor-bounded region, Wispr end reasons, watch state machine in injected time, semi-global trim of text typed after the dictation |
 | `src/recent_apps.rs` | Exe names recently dictated into (`recent_apps.json`, names only) and the picker's built-in exe → group rows |
 | `src/suggestions.rs` | Learned words waiting for an explicit accept (`suggestions.json`); dismissed words are never re-suggested |
+| `src/notes.rs` | Plain-text notes by id (`<id>.txt`; the Scratchpad = `%APPDATA%\FlowClone\scratchpad.txt`), atomic save, debounced `AutoSave` with injected time, flush on close/quit |
 | `src/dictionary.rs` | Import/export of the shared `[{word, replacement, isSnippet}]` JSON: tolerant parse, validation, case-insensitive merge |
 | `src/overlay.rs` | Pill hit-testing so the hands-free ✕/✓ are clickable while the canvas stays click-through |
 | `src/hotkeys/watchdog.rs` | Hook-liveness watchdog (probe + re-install after a `LowLevelHooksTimeout` removal) |
@@ -305,12 +317,12 @@ Settings → AI cleanup:
 | `src/secrets.rs` | DPAPI (`CryptProtectData`) blobs for secrets in prefs (server token; reusable for later API keys) |
 | `tests/router_integration.rs` | Controller → router → flow-remote → in-process flow-server (MockAsr) vs local MockAsr: all four toggle combos, server down / killed mid-dictation (no lost audio), error pills, Test connection / Test session |
 | `tests/core_integration.rs` | Controller + real flow-core (MockAsr, and whisper tiny.en on `jfk.wav` when present): audio → commit → paste plan → history |
-| `src/app.rs` | Tauri: tray, overlay window (512x614, click-through, `WS_EX_NOACTIVATE`), settings window, commands, autostart |
-| `build.rs`, `capabilities/` | Every command is declared in the app manifest; the settings window gets all of them, the overlay only `overlay_action` (`tests/capabilities.rs`) |
+| `src/app.rs` | Tauri: tray, overlay window (512x614, click-through, `WS_EX_NOACTIVATE`), settings window, Scratchpad window (created on demand), commands, autostart |
+| `build.rs`, `capabilities/` | Every command is declared in the app manifest; the settings window gets all of them except the note commands, the overlay only `overlay_action`, the Scratchpad only `note_*` + `clipboard_copy` (`tests/capabilities.rs`) |
 | `tools/ci/` | CI helpers: Parakeet DLL bundle overlay, installer collection (`.github/workflows/windows-build.yml`) |
-| `ui/` | Plain TypeScript → `ui/dist/*.js` (committed). No bundler, no CDN, no web fonts; the CSP is `'self'` only. Settings tabs: General, AI cleanup, History, Dictionary, Developer |
+| `ui/` | Plain TypeScript → `ui/dist/*.js` (committed). No bundler, no CDN, no web fonts; the CSP is `'self'` only. Settings tabs: General, AI cleanup, History, Dictionary, Developer; `scratchpad.html` (`?note=<id>`, default `scratchpad`) |
 | `tauri.llm.conf.json` | Config overlay that bundles `flow_llm.dll` next to the exe (`cargo tauri build --config tauri.llm.conf.json`) |
-| `tools/probes/settings_mock/` | Serves `ui/dist` with a fake `__TAURI__` for checking the settings page in a plain/headless browser |
+| `tools/probes/settings_mock/` | Serves `ui/dist` with a fake `__TAURI__` for checking the settings page (and `scratchpad.html`, `check_scratchpad.py`) in a plain/headless browser |
 
 ## Develop on Linux (what CI/agents can run)
 
@@ -473,6 +485,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] History tab: search filters, Copy, Re-paste (Settings hides, text lands in the previously focused app), Delete, Delete all (second click), retention change prunes.
 - [ ] Undo AI edit: the diff shows removed/added words; "Re-paste original" inserts the raw ASR text.
 - [ ] Learn from edits: dictate "I use whisper flow daily" into Notepad, fix it to "Wispr Flow" within ~45 s, click elsewhere → tray "1 dictionary suggestion…"; Dictionary tab lists it; nothing was added until "Add word". Same in Chrome (textarea), Word and Slack.
+- [ ] Scratchpad: tray → Scratchpad… (and a set *Open Scratchpad* shortcut) opens it focused; Ctrl+Win dictation lands at the caret; editing it adds no dictionary suggestion and Settings → AI cleanup → *Add* doesn't list Flow Clone; Quit, start again, reopen → text is there (`%APPDATA%\FlowClone\scratchpad.txt`); Copy all → Ctrl+V in Notepad gives the full text; Clear → Undo clear restores it.
 - [ ] Learn from edits ignores password fields, and a chat message sent with "press enter".
 - [ ] Dictionary editor: add/edit/delete rows, snippet with a multi-line body, Save; export writes `Downloads\flow-dictionary.json`; importing that file (merge) changes nothing; importing the Android app's export works.
 - [ ] Dictating into silence shows "No speech heard" above the pill for ~1.5 s, with no error sound.
