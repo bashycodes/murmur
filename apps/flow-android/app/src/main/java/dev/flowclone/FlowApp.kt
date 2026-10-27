@@ -31,6 +31,7 @@ import dev.flowclone.core.FlowCore
 import dev.flowclone.core.FlowCoreLoader
 import dev.flowclone.core.NativeFlowCore
 import dev.flowclone.data.DictionaryStore
+import dev.flowclone.data.SuggestionStore
 import dev.flowclone.data.HistoryStore
 import dev.flowclone.data.EnginePlan
 import dev.flowclone.data.SettingsStore
@@ -49,6 +50,8 @@ import java.io.File
 class FlowApp : Application() {
     lateinit var settings: SettingsStore; private set
     lateinit var dictionary: DictionaryStore; private set
+    /** Learn-from-edits suggestions waiting for Add / Dismiss (Dictionary screen). */
+    lateinit var suggestions: SuggestionStore; private set
     lateinit var history: HistoryStore; private set
     lateinit var engine: EngineHolder; private set
     lateinit var dev: DevStore; private set
@@ -114,6 +117,7 @@ class FlowApp : Application() {
         BlockingCalls.onViolation = { Log.e("FlowEngine", "blocking native call on the main thread: $it", Throwable("C2")) }
         settings = SettingsStore(this)
         dictionary = DictionaryStore(this)
+        suggestions = SuggestionStore(this)
         history = HistoryStore(this)
         dev = DevStore(this, caps)
         cloudKeys = CloudKeyStore(this)
@@ -179,6 +183,11 @@ interface AccessibilityBridge {
     val lastInsertSteps: List<String> get() = emptyList()
     /** D21 debug log: the field captured by [captureFieldContext] is a password / sensitive field. */
     val startFieldProtected: Boolean get() = false
+    /**
+     * Learn from my edits: a reader of the field pinned by [captureFieldContext], or null when
+     * that field must not be re-read (password / sensitive / banking / no field).
+     */
+    fun editReader(): dev.flowclone.learn.FieldReader? = null
 }
 
 /**
