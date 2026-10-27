@@ -24,6 +24,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   secret, password and auth value removed into a temp directory on the PC,
   and prints how many lines, WAVs and bytes came over. Read-only on the
   phone; needs a debug build. See INSTALL.md, "Keep last dictation audio".
+- **flow-server debug capture (beta, off by default).** A new `[debug]`
+  config section (`capture = true`, `max_files = 30`, `max_age_h = 72`)
+  makes the server keep each session's received audio as a WAV plus one
+  JSON line (transcript, cleaned text, timings, route) in its state
+  directory, laid out like the phone's debug folder so server-route
+  dictations can be replayed too. Mode 0600, pruned on every save and at
+  start, never the token or any key, nothing uploaded. `check-config`
+  validates it. See docs/server-setup.md §9.
 
 ### Changed
 

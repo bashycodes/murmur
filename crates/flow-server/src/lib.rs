@@ -3,9 +3,12 @@
 //!
 //! Privacy: audio, transcripts, contexts and dictionaries live only in memory
 //! for the duration of a session. Nothing is written to disk; logs carry
-//! sizes and timings only (unless `log_text = true`). The server only
+//! sizes and timings only (unless `log_text = true`). The one opt-in
+//! exception is `[debug] capture` (`capture.rs`): received audio and the
+//! result, local, mode 0600, pruned to 30 files / 72 h. The server only
 //! listens; it never opens an outbound connection.
 
+pub mod capture;
 pub mod config;
 mod health;
 pub mod limits;
@@ -45,6 +48,8 @@ pub(crate) struct AppState {
     pub token: Option<String>,
     pub cfg: Config,
     pub hooks: Arc<Hooks>,
+    /// `[debug] capture`: where finished sessions are saved (None = off).
+    pub capture: Option<Arc<capture::CaptureStore>>,
     pub kill: watch::Receiver<bool>,
     pub connections: AtomicU64,
     pub sessions: AtomicU64,
@@ -189,6 +194,26 @@ pub async fn serve_with_pool(
     if cfg.log.log_text {
         tracing::warn!("log_text = true: transcripts will be written to the log at debug level");
     }
+    let capture = if cfg.debug.capture {
+        let store = capture::CaptureStore::from_config(&cfg.debug, token.as_deref())?;
+        tracing::warn!(
+            dir = %store.dir().display(),
+            max_files = cfg.debug.max_files,
+            max_age_h = cfg.debug.max_age_h,
+            "[debug] capture = true: received audio and transcripts are saved to disk"
+        );
+        let s = Arc::new(store);
+        let p = s.clone();
+        // Prune at start (off the async threads).
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = p.prune(std::time::SystemTime::now()) {
+                tracing::warn!("debug capture prune: {e}");
+            }
+        });
+        Some(s)
+    } else {
+        None
+    };
     let (kill_tx, kill_rx) = watch::channel(false);
     let cfg_max_conns = cfg.max_connections.max(1);
     let state = Arc::new(AppState {
@@ -196,6 +221,7 @@ pub async fn serve_with_pool(
         token,
         cfg,
         hooks: Arc::new(Hooks::default()),
+        capture,
         kill: kill_rx,
         connections: AtomicU64::new(0),
         sessions: AtomicU64::new(0),
