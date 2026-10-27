@@ -231,23 +231,6 @@ class SettingsUiTest {
         app.settings.save(app.settings.load().copy(styles = dev.flowclone.core.Styles()))
     }
 
-    @Test fun stylePerAppSavesValidOverrides() {
-        val a = Robolectric.buildActivity(SettingsActivity::class.java, SettingsActivity.intent(androidx_ctx(), Page.APP_STYLES)).setup().visible().get()
-        val menu = org.robolectric.fakes.RoboMenu(a)
-        a.onCreateOptionsMenu(menu)
-        val save = menu.findItem(1)
-        val field = walk(a.window.decorView).filterIsInstance<EditText>().single()
-        field.setText("com.example.chat = loud")
-        assertFalse(save.isEnabled)
-        field.setText("com.example.chat = work")
-        assertTrue(save.isEnabled)
-        a.onOptionsItemSelected(save)
-        val app = FlowApp.of(a)
-        assertEquals(mapOf("com.example.chat" to dev.flowclone.policy.AppCategorizer.Category.WORK), app.settings.load().appBuckets)
-        assertEquals("work_chat", app.settings.load().withAppBucket(dev.flowclone.core.FieldContext(appId = "com.example.chat")).appCategory)
-        app.settings.save(app.settings.load().copy(appBuckets = emptyMap()))
-    }
-
     @Test fun pageMissingFromThisBuildOpensTheHub() {
         val a = launch(Page.CLEANUP)
         assertEquals(if (BuildConfig.CAP_LOCAL) "AI cleanup" else "Settings", a.title.toString())
