@@ -18,6 +18,17 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Android: learn dictionary words from your edits.** After a dictation is
+  typed in, the app re-reads that same field (about once a second, for up
+  to 45 s, or until your edit has stopped changing for 8 s). If you corrected
+  a word, say "flo clone" → "Flow Clone", it shows up under *Dictionary →
+  Suggestions* with *Add* (or *Add as fix*, which replaces "flo clone" from
+  then on) and *Dismiss*; a dismissed word is never suggested again, and
+  nothing is added without your tap. Watching stops when you move to another
+  field or app, start a new dictation, or press Enter in the dictation.
+  Password and other sensitive fields and banking apps are never re-read.
+  *Settings → Privacy → Learn from my edits* (on by default, like Windows)
+  turns it off; then the field is not read again after inserting.
 - **Windows: custom cue sounds.** Put `start.wav`, `stop.wav`, `lock.wav`,
   `paste.wav` or `error.wav` in `%APPDATA%\FlowClone\sounds\` to replace
   that cue's built-in tone (read at the first cue, so restart after changing
