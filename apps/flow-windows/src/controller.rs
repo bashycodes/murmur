@@ -15,6 +15,7 @@ use crate::history::{self, History};
 use crate::hotkeys::HotkeyAction;
 use crate::learn::{self, Anchors, EditWatch, FieldReader, Read};
 use crate::prefs::Prefs;
+use crate::recent_apps::RecentAppStore;
 use crate::suggestions::SuggestionStore;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -171,6 +172,8 @@ pub struct Controller {
     shared: Arc<Shared>,
     history: Option<Arc<Mutex<History>>>,
     suggestions: Option<Arc<Mutex<SuggestionStore>>>,
+    /// Exe names dictated into ("Style per app" picker).
+    recent_apps: Option<Arc<Mutex<RecentAppStore>>>,
     /// Bumped per dictation: a running edit watch stops when it changes.
     watch_gen: Arc<AtomicU64>,
     preview_shown: String,
@@ -204,6 +207,7 @@ impl Controller {
             shared: Arc::default(),
             history: None,
             suggestions: None,
+            recent_apps: None,
             watch_gen: Arc::default(),
             preview_shown: String::new(),
             endpoint_finished: None,
@@ -246,6 +250,13 @@ impl Controller {
     /// `learn_from_edits` in prefs and a readable field).
     pub fn with_suggestions(mut self, store: Arc<Mutex<SuggestionStore>>) -> Self {
         self.suggestions = Some(store);
+        self
+    }
+
+    /// Remember the exe of each app dictated into (the "Style per app"
+    /// picker offers them); needs `use_ax_context`, like the bucketing.
+    pub fn with_recent_apps(mut self, store: Arc<Mutex<RecentAppStore>>) -> Self {
+        self.recent_apps = Some(store);
         self
     }
 
@@ -701,9 +712,14 @@ impl Controller {
                     let shared = self.shared.clone();
                     let gate = gate.clone();
                     let buckets = prefs.app_buckets.clone();
+                    let recent = self.recent_apps.clone();
+                    let persist_recent = prefs.retention != crate::prefs::Retention::Never;
                     std::thread::spawn(move || {
                         if let Some(raw) = platform.snapshot_context() {
                             let mut ctx = build_field_context(&raw);
+                            if let Some(r) = &recent {
+                                r.lock().unwrap().record(&ctx.app_id, persist_recent);
+                            }
                             // "Style per app" (D27) over the built-in lists.
                             crate::context::apply_bucket_override(&mut ctx, &buckets);
                             if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
@@ -1346,6 +1362,21 @@ mod tests {
         }
         let ctx = r.core.last_context().expect("set_context called");
         assert_eq!(ctx.app_id, "slack.exe");
+    }
+
+    #[test]
+    fn dictating_records_the_target_exe_in_recent_apps() {
+        let store = Arc::new(Mutex::new(RecentAppStore::in_memory()));
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.c = r.c.with_recent_apps(store.clone());
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        for _ in 0..200 {
+            if !store.lock().unwrap().data.apps.is_empty() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(store.lock().unwrap().data.apps, ["slack.exe"]);
     }
 
     #[test]

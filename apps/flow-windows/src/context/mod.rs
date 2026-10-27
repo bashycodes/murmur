@@ -125,6 +125,38 @@ pub fn app_kind(exe: &str, host: Option<&str>) -> AppKind {
     }
 }
 
+/// Built-in exe stems that land in a style bucket other than "other"
+/// (work chat, email, personal chat), sorted by stem. Shown read-only in
+/// the "Style per app" table so the user sees why an app is in a group.
+/// Host and macOS bundle-id entries are left out (anything with a dot).
+pub fn built_in_exe_buckets() -> Vec<(String, StyleBucket)> {
+    let l = lists();
+    let mut stems: Vec<String> = l
+        .work_messaging_apps
+        .iter()
+        .chain(&l.windows_email_process_names)
+        .chain(&l.windows_messaging_process_names)
+        .map(|s| s.to_ascii_lowercase())
+        .chain(
+            EXTRA_EMAIL_PROCS
+                .iter()
+                .chain(EXTRA_WORK_PROCS)
+                .map(|s| s.to_string()),
+        )
+        .filter(|s| !s.is_empty() && !s.contains('.'))
+        .collect();
+    stems.sort();
+    stems.dedup();
+    stems
+        .into_iter()
+        .map(|s| {
+            let b = bucket_of(app_kind(&s, None));
+            (s, b)
+        })
+        .filter(|(_, b)| *b != StyleBucket::Other)
+        .collect()
+}
+
 const WORK_TITLES: &[&str] = &["slack", "microsoft teams"];
 const EMAIL_TITLES: &[&str] = &["gmail", "outlook", "proton mail"];
 const PERSONAL_TITLES: &[&str] = &["whatsapp", "messenger", "telegram"];
@@ -282,6 +314,30 @@ mod tests {
             url: host.map(|h| format!("https://{h}/x")),
             ..RawSnapshot::default()
         })
+    }
+
+    #[test]
+    fn built_in_exe_list_matches_the_classifier() {
+        let all = built_in_exe_buckets();
+        let get = |s: &str| all.iter().find(|(k, _)| k == s).map(|(_, b)| *b);
+        assert_eq!(
+            get("slack"),
+            Some(StyleBucket::Work),
+            "work beats messaging"
+        );
+        assert_eq!(get("ms-teams"), Some(StyleBucket::Work));
+        assert_eq!(get("outlook"), Some(StyleBucket::Email));
+        assert_eq!(get("olk"), Some(StyleBucket::Email));
+        assert_eq!(get("whatsapp"), Some(StyleBucket::Personal));
+        assert_eq!(get("cursor"), None, "AI apps are 'other'");
+        assert!(all.iter().all(|(k, _)| !k.contains('.')), "no hosts");
+        let mut keys: Vec<&String> = all.iter().map(|(k, _)| k).collect();
+        let n = keys.len();
+        keys.dedup();
+        assert_eq!(keys.len(), n, "unique and sorted");
+        for (k, b) in &all {
+            assert_eq!(effective_bucket(&ctx(&format!("{k}.exe"), None)), *b, "{k}");
+        }
     }
 
     #[test]
