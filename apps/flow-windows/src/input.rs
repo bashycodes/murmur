@@ -102,13 +102,27 @@ pub const CHORD_MODIFIER_VKS: [u16; 8] = [0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, vk
 pub fn vks_for(key: Key) -> Vec<u16> {
     match key {
         Key::Ctrl => vec![0xA2, 0xA3],
+        Key::LCtrl => vec![0xA2],
+        Key::RCtrl => vec![0xA3],
         Key::Win => vec![vk::LWIN, vk::RWIN],
         Key::Alt => vec![0xA4, 0xA5],
+        Key::LAlt => vec![0xA4],
+        Key::RAlt => vec![0xA5],
         Key::Shift => vec![0xA0, 0xA1],
+        Key::LShift => vec![0xA0],
+        Key::RShift => vec![0xA1],
         Key::Space => vec![0x20],
         Key::Esc => vec![0x1B],
         Key::Vk(v) => vec![v],
     }
+}
+
+/// VKs that `SendInput` must flag `KEYEVENTF_EXTENDEDKEY`: Right Ctrl and
+/// Right Alt (without it an injected VK_RMENU/VK_RCONTROL can be read as
+/// the left key, and a masked Right Alt release would not release Right
+/// Alt), and Insert (the navigation-block key of Shift+Insert).
+pub fn is_extended_vk(v: u16) -> bool {
+    matches!(v, 0xA3 | 0xA5 | vk::INSERT)
 }
 
 /// The paste chord as (down batch, up batch): `[Ctrl↓, V↓]` … 50 ms …
@@ -150,7 +164,7 @@ pub const EXTRA_INFO_TAG: usize = 0x464C_4F57; // "FLOW"
 
 #[cfg(windows)]
 pub mod win {
-    use super::{vk, Stroke, EXTRA_INFO_TAG};
+    use super::{is_extended_vk, Stroke, EXTRA_INFO_TAG};
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
         KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, VIRTUAL_KEY,
@@ -164,7 +178,7 @@ pub mod win {
                 } else {
                     KEYBD_EVENT_FLAGS(0)
                 };
-                if v == vk::INSERT {
+                if is_extended_vk(v) {
                     f |= KEYEVENTF_EXTENDEDKEY;
                 }
                 (v, 0u16, f)
@@ -274,6 +288,35 @@ mod tests {
         assert_eq!(d, vec![Stroke::down(0x10), Stroke::down(0x2D)]);
         assert_eq!(u, vec![Stroke::up(0x2D), Stroke::up(0x10)]);
         assert_eq!(PASTE_HOLD_MS, 50);
+    }
+
+    #[test]
+    fn right_side_modifiers_are_sent_as_extended_keys() {
+        // Without KEYEVENTF_EXTENDEDKEY an injected VK_RMENU can be taken
+        // for Left Alt, so a masked Right Alt release could leave it down.
+        for v in [0xA3, 0xA5, vk::INSERT] {
+            assert!(is_extended_vk(v), "{v:#x}");
+        }
+        for v in [0xA2, 0xA4, 0xA0, 0xA1, vk::V, vk::CONTROL] {
+            assert!(!is_extended_vk(v), "{v:#x}");
+        }
+    }
+
+    #[test]
+    fn side_keys_probe_only_their_own_vk() {
+        assert_eq!(vks_for(Key::RAlt), vec![0xA5]);
+        assert_eq!(vks_for(Key::LAlt), vec![0xA4]);
+        assert_eq!(vks_for(Key::RCtrl), vec![0xA3]);
+        assert_eq!(vks_for(Key::LShift), vec![0xA0]);
+        assert_eq!(vks_for(Key::Alt), vec![0xA4, 0xA5]);
+    }
+
+    #[test]
+    fn masked_right_alt_release() {
+        assert_eq!(
+            masked_release(0xA5, false),
+            vec![Stroke::down(0xA2), Stroke::up(0xA5), Stroke::up(0xA2)]
+        );
     }
 
     #[test]
