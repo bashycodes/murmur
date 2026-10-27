@@ -28,13 +28,28 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   fields, banking and denylisted apps. flow-core's `CommitResult` and
   `RouteInfo` carry them as additive optional fields, set only next to
   `cloud_fallback`, so results without cloud cleanup are unchanged.
-
 - **Android debug: one-command pull.** `tools/phone/pull-debug.sh` copies
   the phone's debug log, the kept dictation WAVs (only new ones,
   sha256-checked) and the two settings files with every token, key,
   secret, password and auth value removed into a temp directory on the PC,
   and prints how many lines, WAVs and bytes came over. Read-only on the
   phone; needs a debug build. See INSTALL.md, "Keep last dictation audio".
+- **Android debug: a WAV file as the microphone.** `tools/phone/play-wav.sh
+  hello.wav` pushes a 16 kHz mono WAV to a debug build and runs one normal
+  dictation on it instead of the mic (route order, AI cleanup, insert guard,
+  insertion into the focused field), in real time or with `--fast`, so a
+  dictation can be tested on the phone without anyone speaking. The debug
+  log line says `"source":"wav"` (`"mic"` otherwise). Protected fields are
+  refused; only the platform tools' shell can trigger it, and release builds
+  do not contain it. See INSTALL.md, "Feed a WAV file as the microphone".
+- **flow-server debug capture (beta, off by default).** A new `[debug]`
+  config section (`capture = true`, `max_files = 30`, `max_age_h = 72`)
+  makes the server keep each session's received audio as a WAV plus one
+  JSON line (transcript, cleaned text, timings, route) in its state
+  directory, laid out like the phone's debug folder so server-route
+  dictations can be replayed too. Mode 0600, pruned on every save and at
+  start, never the token or any key, nothing uploaded. `check-config`
+  validates it. See docs/server-setup.md §9.
 
 ### Changed
 

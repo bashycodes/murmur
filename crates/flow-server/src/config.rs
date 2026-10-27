@@ -67,6 +67,8 @@ pub struct Config {
     pub model: ModelConfig,
     pub tls: Option<TlsConfig>,
     pub log: LogConfig,
+    /// `[debug]`: opt-in capture of received audio + results (beta).
+    pub debug: crate::capture::DebugConfig,
     /// `--insecure-bind-any`: allow a wildcard or public bind without TLS
     /// and accept peers outside loopback/LAN/Tailscale. Command line only.
     #[serde(skip)]
@@ -93,6 +95,7 @@ impl Default for Config {
             model: ModelConfig::default(),
             tls: None,
             log: LogConfig::default(),
+            debug: Default::default(),
             insecure_bind_any: false,
         }
     }
@@ -185,6 +188,7 @@ impl Config {
         if self.max_connections == 0 || self.max_connections_per_ip == 0 {
             return Err("max_connections and max_connections_per_ip must be >= 1".into());
         }
+        self.debug.validate()?;
         if let Some(t) = &self.tls {
             if !cfg!(feature = "tls") {
                 return Err("[tls] set but built without the `tls` feature".into());
@@ -235,6 +239,23 @@ mod tests {
         assert_eq!(c.workers, 1);
         assert_eq!(c.model.threads, 4);
         assert!(!c.log.log_text);
+        assert!(!c.debug.capture, "capture is off unless asked for");
+        assert_eq!((c.debug.max_files, c.debug.max_age_h), (30, 72));
+    }
+
+    #[test]
+    fn debug_section_parses_and_validates() {
+        let ok = "auth = \"none\"\n[debug]\ncapture = true\nmax_files = 5\nmax_age_h = 24\ndir = \"/var/lib/flow-server/debug\"\n";
+        let c = Config::from_toml(ok).unwrap();
+        assert!(c.debug.capture);
+        assert_eq!((c.debug.max_files, c.debug.max_age_h), (5, 24));
+        assert!(c.validate().is_ok());
+        let c = Config::from_toml("auth = \"none\"\n[debug]\nmax_files = 0\n").unwrap();
+        assert!(c.validate().unwrap_err().contains("max_files"));
+        assert!(
+            Config::from_toml("[debug]\ncaptur = true\n").is_err(),
+            "a misspelt key is an error, not a silent no-op"
+        );
     }
 
     #[test]

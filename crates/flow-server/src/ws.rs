@@ -3,7 +3,7 @@
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
@@ -38,6 +38,10 @@ struct Sess {
     ctx: Option<FieldContext>,
     samples: u64,
     created: Instant,
+    /// Wall clock at `start` (the capture's `ts` / WAV name).
+    started: SystemTime,
+    /// `[debug] capture`: every sample received, for the WAV.
+    captured: Option<Vec<i16>>,
     queue_ms: u64,
     /// `start` → `commit` arrival on this connection. Against the client's
     /// recording length it shows an upload backlog (commit queued behind
@@ -319,6 +323,8 @@ impl Conn {
             ctx: None,
             samples: 0,
             created: Instant::now(),
+            started: SystemTime::now(),
+            captured: self.state.capture.as_ref().map(|_| Vec::new()),
             queue_ms: 0,
             start_to_commit_ms: None,
             commit_requested: false,
@@ -403,6 +409,9 @@ impl Conn {
                 "session longer than max_session_s",
             );
         }
+        if let Some(c) = &mut s.captured {
+            c.extend_from_slice(&pcm);
+        }
         match &s.lease {
             Some(l) => {
                 l.core.push_audio(&pcm);
@@ -475,7 +484,9 @@ impl Conn {
                 }
             }
             Event::Result(sid, r) => {
-                let Some(s) = self.sess.take() else { return };
+                let Some(mut s) = self.sess.take() else {
+                    return;
+                };
                 if s.sid != sid {
                     self.sess = Some(s);
                     return;
@@ -484,6 +495,7 @@ impl Conn {
                 if self.state.cfg.log.log_text {
                     tracing::debug!(sid, text = %r.final_text, "result text");
                 }
+                self.capture(&mut s, &r);
                 self.send(&ServerMsg::Result {
                     sid,
                     result: r,
@@ -494,6 +506,34 @@ impl Conn {
                 });
             }
         }
+    }
+
+    /// `[debug] capture`: save the session's audio and result off the
+    /// async threads. Failures are logged, never sent to the client.
+    fn capture(&self, s: &mut Sess, r: &CommitResult) {
+        let (Some(store), Some(pcm)) = (self.state.capture.clone(), s.captured.take()) else {
+            return;
+        };
+        let (sid, peer, started) = (s.sid, self.peer, s.started);
+        let (queue_ms, start_to_commit_ms) = (s.queue_ms, s.start_to_commit_ms);
+        let asr = self.state.pool.asr_backend.clone();
+        let model = self.state.pool.asr_model.clone();
+        let r = r.clone();
+        tokio::task::spawn_blocking(move || {
+            let rec = crate::capture::Record {
+                sid,
+                peer,
+                result: &r,
+                asr: &asr,
+                model: &model,
+                queue_ms,
+                start_to_commit_ms,
+            };
+            match store.save(started, &pcm, &rec) {
+                Ok(name) => tracing::debug!(sid, audio = %name, "debug capture saved"),
+                Err(e) => tracing::warn!(sid, "debug capture failed: {e}"),
+            }
+        });
     }
 
     /// End a session that has been open longer than `max_session_s` of

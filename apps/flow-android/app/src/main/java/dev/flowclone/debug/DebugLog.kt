@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * timeout / error / empty answer) and guard_detail (why: the guard's unsupported sentence or
  * literal mark kind, the dropped clause or count, the timeout or error). Both are dictated text:
  * "<redacted>" for protected targets, like `text`.
+ * Since 2026-10-27: source (mic | wav: debug builds can feed a WAV file as the microphone).
  *
  * Logging must never affect dictation: entries are queued (bounded, drop-oldest) and written
  * on one background thread; every failure is swallowed and counted.
@@ -112,6 +113,8 @@ data class DictationTrace(
     val llmGenerationId: String? = null,
     /** D28: what the cloud speech-to-text of this dictation cost (`route.cost_usd`). */
     val sttCostUsd: Double? = null,
+    /** Where the audio came from: "mic", or "wav" (debug builds: "WAV as microphone", tools/phone/play-wav.sh). */
+    val source: String? = null,
 )
 
 /** `insert` field: {"outcome": …, "steps": […]}. */
@@ -252,6 +255,7 @@ object DebugFormat {
         "llm_ttft_ms" to t.llmTtftMs,
         "llm_generation_id" to t.llmGenerationId,
         "stt_cost_usd" to t.sttCostUsd,
+        "source" to t.source,
         "target" to t.target,
         "insert" to Raw(obj("outcome" to t.insert.outcome, "steps" to t.insert.steps)),
         "raw" to t.raw,
@@ -295,7 +299,8 @@ object DebugFormat {
         val err = s("error")?.let { "\n  error: $it" } ?: ""
         val rejected = listOfNotNull(s("guard_detail"), s("rejected_text")?.let { "“$it”" })
             .takeIf { it.isNotEmpty() }?.joinToString(" · ", "\n  AI answer not used: ") ?: ""
-        "$time  ${s("mode")} · $route · $outcome · $ms · ${s("target") ?: "-"}\n  “$text”$err$rejected"
+        val src = s("source")?.takeIf { it != "mic" }?.let { " · source=$it" } ?: ""
+        "$time  ${s("mode")}$src · $route · $outcome · $ms · ${s("target") ?: "-"}\n  “$text”$err$rejected"
     }.getOrElse { line }
 }
 
