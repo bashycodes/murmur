@@ -29,6 +29,21 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   `RouteInfo` carry them as additive optional fields, set only next to
   `cloud_fallback`, so results without cloud cleanup are unchanged.
 
+- **Android debug: one-command pull.** `tools/phone/pull-debug.sh` copies
+  the phone's debug log, the kept dictation WAVs (only new ones,
+  sha256-checked) and the two settings files with every token, key,
+  secret, password and auth value removed into a temp directory on the PC,
+  and prints how many lines, WAVs and bytes came over. Read-only on the
+  phone; needs a debug build. See INSTALL.md, "Keep last dictation audio".
+
+### Changed
+
+- **Android: more debug audio kept.** Developer settings → "Keep last
+  dictation audio" now keeps the last 30 dictations (was 10), each for
+  72 hours (was 24), so a replay session's early recordings are not pushed
+  out by later dictations. Protected targets, cancelled dictations and
+  *Clear audio* are unchanged.
+
 ## [0.6.0] - 2026-10-27
 
 ### Added

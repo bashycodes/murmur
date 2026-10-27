@@ -35,27 +35,38 @@ class DebugAudioTest {
         assertEquals("2025-10-23T10:15:02.123Z", DebugFormat.ts(1_761_214_502_123))
     }
 
-    @Test fun keepsTheNewestTen() {
+    @Test fun defaultsAreThirtyFilesFor72Hours() {
+        assertEquals(30, DebugAudioStore.MAX_FILES)
+        assertEquals(72 * hour, DebugAudioStore.MAX_AGE_MS)
+    }
+
+    @Test fun keepsTheNewestThirty() {
         var now = 1_761_214_502_123
         val store = DebugAudioStore(tmpDir(), clock = { now })
-        repeat(13) { i -> store.save(now, ShortArray(160) { i.toShort() }, 160); now += 1_000 }
+        repeat(33) { i -> store.save(now, ShortArray(160) { i.toShort() }, 160); now += 1_000 }
         val names = store.list()
-        assertEquals(10, names.size)
+        assertEquals(30, names.size)
         assertEquals(DebugAudioStore.nameFor(now - 1_000), names.first())
-        assertEquals(DebugAudioStore.nameFor(now - 10_000), names.last())
+        assertEquals(DebugAudioStore.nameFor(now - 30_000), names.last())
+        assertFalse("the 31st newest is gone", DebugAudioStore.nameFor(now - 31_000) in names)
         assertEquals(44 + 320L, File(store.dir, names.first()).length())
     }
 
-    @Test fun filesOlderThan24hAreDeleted() {
+    @Test fun filesOlderThan72hAreDeleted() {
         var now = 1_761_214_502_123
         val store = DebugAudioStore(tmpDir(), clock = { now })
         store.save(now, ShortArray(16), 16)
-        now += 23 * hour
+        now += 71 * hour
         store.save(now, ShortArray(16), 16)
+        store.prune()
+        assertEquals("both inside 72 h", 2, store.list().size)
         now += 2 * hour
         store.prune()
         assertEquals(listOf(DebugAudioStore.nameFor(now - 2 * hour)), store.list())
-        now += 25 * hour
+        now += 70 * hour
+        store.prune()
+        assertEquals("72 h old exactly: still kept", 1, store.list().size)
+        now += 1
         store.prune()
         assertTrue(store.list().isEmpty())
     }

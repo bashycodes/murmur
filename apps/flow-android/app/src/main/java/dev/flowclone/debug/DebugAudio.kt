@@ -33,8 +33,8 @@ class DebugAudioStore(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     companion object {
-        const val MAX_FILES = 10
-        const val MAX_AGE_MS = 24 * 3_600_000L
+        const val MAX_FILES = 30
+        const val MAX_AGE_MS = 72 * 3_600_000L
         fun inFilesDir(filesDir: File) = DebugAudioStore(File(File(filesDir, "debug"), "audio"))
         fun nameFor(tsMs: Long): String = DebugFormat.ts(tsMs).replace(':', '-') + ".wav"
     }
