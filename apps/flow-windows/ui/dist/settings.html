@@ -126,10 +126,29 @@
             <label>Email <small>Outlook, Gmail</small> <select id="style_email" class="style"></select> <small class="preview" id="style_email_preview"></small></label>
             <label>Everything else <select id="style_other" class="style"></select> <small class="preview" id="style_other_preview"></small></label>
           </div>
-          <label>Style per app (one per line: <code>app = personal</code>, <code>work</code>, <code>email</code> or <code>other</code>)
-            <textarea id="app_buckets" rows="3" spellcheck="false" placeholder="mychat.exe = work&#10;mail.example.com = email"></textarea>
-          </label>
-          <p class="hint">An exe name (<code>slack.exe</code>) or a web host (<code>mail.example.com</code>); overrides the built-in list.</p>
+          <h4 class="apps-title">Style per app</h4>
+          <table class="apps">
+            <thead><tr><th>App</th><th>Group</th><th></th></tr></thead>
+            <tbody id="app_rows"></tbody>
+          </table>
+          <p id="app_rows_empty" class="hint">No apps of your own yet. The built-in groups below apply.</p>
+          <div class="toolbar">
+            <select id="app_recent" aria-label="Recently used app"></select>
+            <button type="button" class="small" id="app_add_recent">Add</button>
+          </div>
+          <div class="toolbar">
+            <input id="app_manual" type="text" spellcheck="false" placeholder="Other app: mychat.exe or mail.example.com" aria-label="Exe name or web host" />
+            <button type="button" class="small secondary" id="app_add_manual">Add</button>
+            <span id="app_add_status"></span>
+          </div>
+          <p class="hint">Your groups override the built-in ones. Recent apps are the exe names you dictated into (names only, kept on this PC). <button type="button" class="link" id="app_recent_clear">Forget recent apps</button></p>
+          <details class="defaults">
+            <summary>Built-in groups (<span id="app_defaults_count">0</span> apps)</summary>
+            <table class="apps">
+              <tbody id="app_default_rows"></tbody>
+            </table>
+            <p class="hint">Web hosts (<code>mail.google.com</code>, <code>app.slack.com</code>…) are grouped the same way in a browser.</p>
+          </details>
         </fieldset>
       </section>
 

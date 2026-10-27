@@ -27,6 +27,7 @@ pub mod openrouter;
 pub mod overlay;
 pub mod paste;
 pub mod prefs;
+pub mod recent_apps;
 pub mod router_adapter;
 pub mod secrets;
 pub mod sounds;
