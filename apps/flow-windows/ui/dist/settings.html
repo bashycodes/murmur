@@ -14,6 +14,7 @@
         <button type="button" role="tab" data-tab="general">General</button>
         <button type="button" role="tab" data-tab="ai">AI cleanup</button>
         <button type="button" role="tab" data-tab="history">History</button>
+        <button type="button" role="tab" data-tab="insights">Insights</button>
         <button type="button" role="tab" data-tab="dictionary">Dictionary <span id="sugg_badge" class="badge" hidden></span></button>
         <button type="button" role="tab" data-tab="openrouter" id="tab_openrouter" hidden>OpenRouter <span id="or_badge" class="badge" hidden>!</span></button>
         <button type="button" role="tab" data-tab="developer" id="tab_developer" hidden>Developer</button>
@@ -173,6 +174,42 @@
       </fieldset>
       <ol id="hist_list" class="hist"></ol>
       <p id="hist_empty" class="hint" hidden>No transcripts.</p>
+    </section>
+
+    <section class="panel" data-panel="insights">
+      <fieldset>
+        <legend>Your dictation</legend>
+        <div class="stats">
+          <div class="stat"><b id="ins_total">0</b><small>words dictated</small></div>
+          <div class="stat"><b id="ins_week">0</b><small>words, last 7 days</small></div>
+          <div class="stat"><b id="ins_wpm">–</b><small>speaking speed (wpm)</small></div>
+          <div class="stat"><b id="ins_saved">0 min</b><small>time saved vs typing</small></div>
+          <div class="stat"><b id="ins_streak">0</b><small>day streak</small></div>
+          <div class="stat"><b id="ins_longest">0</b><small>longest streak</small></div>
+          <div class="stat"><b id="ins_count">0</b><small>dictations</small></div>
+        </div>
+        <p class="hint" id="ins_assume"></p>
+      </fieldset>
+      <fieldset>
+        <legend>Words per day</legend>
+        <svg id="ins_chart" class="chart" viewBox="0 0 350 140" role="img" aria-label="Words per day, last 7 days"></svg>
+      </fieldset>
+      <fieldset>
+        <legend>Top apps</legend>
+        <ol id="ins_apps" class="routes"></ol>
+        <p id="ins_apps_empty" class="hint">No dictations yet.</p>
+      </fieldset>
+      <p class="hint">Counted on this PC only (words, recording length and app name per day; no text). Nothing is sent anywhere. Deleting History keeps these numbers. <span id="ins_status"></span></p>
+      <div class="toolbar"><button type="button" id="ins_reset" class="small danger">Reset stats</button></div>
+
+      <dialog id="ins_reset_dlg">
+        <h3>Reset all stats?</h3>
+        <p>Words, streaks and app counts go back to zero. History is not affected and won't be counted again.</p>
+        <div class="toolbar">
+          <button type="button" class="secondary" id="ins_reset_cancel">Cancel</button>
+          <button type="button" class="danger" id="ins_reset_ok">Reset stats</button>
+        </div>
+      </dialog>
     </section>
 
     <section class="panel" data-panel="dictionary">
