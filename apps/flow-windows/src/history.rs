@@ -40,6 +40,15 @@ pub struct Entry {
     pub lang: Option<String>,
 }
 
+/// A row's counts only (Insights backfill).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StatsRow {
+    pub ts: i64,
+    pub app: String,
+    pub duration_ms: i64,
+    pub words: i64,
+}
+
 /// What the settings History tab shows for one row.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Item {
@@ -289,6 +298,22 @@ impl History {
             "UPDATE history SET edited = ?2 WHERE id = ?1",
             params![id, edited],
         )? > 0)
+    }
+
+    /// Every row's counts (no text): the Insights backfill.
+    pub fn stats_rows(&self) -> rusqlite::Result<Vec<StatsRow>> {
+        let mut st = self
+            .conn
+            .prepare("SELECT ts, app, duration, words FROM history ORDER BY ts")?;
+        let rows = st.query_map([], |r| {
+            Ok(StatsRow {
+                ts: r.get(0)?,
+                app: r.get(1)?,
+                duration_ms: r.get(2)?,
+                words: r.get(3)?,
+            })
+        })?;
+        rows.collect()
     }
 
     pub fn count(&self) -> rusqlite::Result<i64> {

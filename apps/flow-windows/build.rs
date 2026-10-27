@@ -28,6 +28,8 @@ fn main() {
             "history_clear",
             "history_copy",
             "history_repaste",
+            "insights_get",
+            "insights_reset",
             "clipboard_copy",
             "suggestions_list",
             "suggestion_accept",

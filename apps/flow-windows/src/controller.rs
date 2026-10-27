@@ -13,6 +13,7 @@ use crate::debug_log::{outcome, DebugLog, Entry, Insert, SilenceTracker};
 use crate::dictation::{Dictation, Effect, Input, OverlayState, Phase, SessionId, Sound};
 use crate::history::{self, History};
 use crate::hotkeys::HotkeyAction;
+use crate::insights::InsightsStore;
 use crate::learn::{self, Anchors, EditWatch, FieldReader, Read};
 use crate::prefs::Prefs;
 use crate::recent_apps::RecentAppStore;
@@ -85,6 +86,8 @@ pub trait Platform: Send + Sync + 'static {
     fn wait_shortcut_released(&self) {}
     /// A history row was added or changed (the History tab refreshes).
     fn history_changed(&self) {}
+    /// The Insights counts changed (the Insights tab refreshes).
+    fn insights_changed(&self) {}
     /// New dictionary suggestions are waiting (`pending` in total).
     fn suggestions_changed(&self, _pending: usize) {}
 }
@@ -171,6 +174,7 @@ pub struct Controller {
     clock: Box<dyn Fn() -> u64 + Send>,
     shared: Arc<Shared>,
     history: Option<Arc<Mutex<History>>>,
+    insights: Option<Arc<Mutex<InsightsStore>>>,
     suggestions: Option<Arc<Mutex<SuggestionStore>>>,
     /// Exe names dictated into ("Style per app" picker).
     recent_apps: Option<Arc<Mutex<RecentAppStore>>>,
@@ -206,6 +210,7 @@ impl Controller {
             clock,
             shared: Arc::default(),
             history: None,
+            insights: None,
             suggestions: None,
             recent_apps: None,
             watch_gen: Arc::default(),
@@ -266,6 +271,13 @@ impl Controller {
             let _ = g.prune(self.prefs.read().unwrap().retention, history::now_ms());
         }
         self.history = Some(h);
+        self
+    }
+
+    /// Count committed dictations for the Insights page (survives History
+    /// deletion and retention).
+    pub fn with_insights(mut self, s: Arc<Mutex<InsightsStore>>) -> Self {
+        self.insights = Some(s);
         self
     }
 
@@ -450,6 +462,20 @@ impl Controller {
         }
         let plain = r.plain();
         *self.shared.last_text.lock().unwrap() = Some(plain.clone());
+        let duration_ms = (info.samples.load(Ordering::Relaxed) / 16) as i64;
+        let words = history::word_count(&plain);
+        if let (Some(store), true) = (&self.insights, words > 0) {
+            // Independent of History retention: counts only, kept local.
+            let app = info.context.as_ref().map_or("", |c| c.app_id.as_str());
+            let now = history::now_ms();
+            let mut s = store.lock().unwrap();
+            s.record(crate::insights::local_date(now), words, duration_ms, app);
+            if let Err(e) = s.save() {
+                eprintln!("[insights] {e}");
+            }
+            drop(s);
+            self.platform.insights_changed();
+        }
         let mut row = None;
         if let Some(h) = &self.history {
             let ctx = info.context.clone().unwrap_or_default();
@@ -462,8 +488,8 @@ impl Controller {
                 formatted: (r.status == CommitStatus::Formatted).then(|| plain.clone()),
                 pasted: paste.is_ok().then(|| plain.clone()),
                 edited: None,
-                duration_ms: (info.samples.load(Ordering::Relaxed) / 16) as i64,
-                words: history::word_count(&plain),
+                duration_ms,
+                words,
                 lang: r.language.clone(),
             };
             let retention = self.prefs.read().unwrap().retention;

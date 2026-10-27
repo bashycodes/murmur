@@ -22,6 +22,7 @@ pub mod ducking;
 pub mod history;
 pub mod hotkeys;
 pub mod input;
+pub mod insights;
 pub mod learn;
 pub mod openrouter;
 pub mod overlay;
