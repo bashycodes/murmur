@@ -707,6 +707,102 @@ fn the_key_never_appears_in_router_output() {
     assert_eq!(k.factory_calls.load(Ordering::SeqCst), 1);
 }
 
+// ---- Command Mode: one-off LLM requests take the cleanup route ------------
+
+fn command(
+    r: &Router,
+    base: Option<Arc<dyn Cleaner>>,
+    selected: Option<&str>,
+) -> Result<String, flow_core::command::CommandError> {
+    flow_core::command::run(
+        r.command_cleaner(base),
+        "make it formal",
+        selected,
+        Duration::from_secs(5),
+    )
+}
+
+#[test]
+fn command_cleaner_follows_the_cleanup_route() {
+    // Cloud first with consent + key: the gate, metered like cleanup.
+    let k = rig(cfg());
+    let local = k.local_llm.clone() as Arc<dyn Cleaner>;
+    assert_eq!(
+        command(&k.router, Some(local), None).as_deref(),
+        Ok(CLOUD_OUT)
+    );
+    assert_eq!((k.cloud.calls(), local_calls(&k)), (1, 0));
+    assert!(k.router.cloud_usage().cost_for("cleanup") > 0.0);
+
+    // Cloud cleanup not allowed: the on-device LLM only, never the cloud.
+    let k = rig(RouterConfig {
+        allow_cloud_cleanup: false,
+        ..cfg()
+    });
+    let local = k.local_llm.clone() as Arc<dyn Cleaner>;
+    assert_eq!(
+        command(&k.router, Some(local), None).as_deref(),
+        Ok(LOCAL_OUT)
+    );
+    assert_eq!(k.cloud.calls(), 0);
+    assert!(k.router.command_cleaner(None).is_none(), "no LLM at all");
+    assert_eq!(
+        command(&k.router, None, None),
+        Err(flow_core::command::CommandError::NoLlm)
+    );
+
+    // Local first: the loaded LLM wins; without one, the cloud.
+    let k = rig(RouterConfig {
+        cleanup_order: vec![CleanupRoute::Local, CleanupRoute::Cloud],
+        ..cfg()
+    });
+    let local = k.local_llm.clone() as Arc<dyn Cleaner>;
+    assert_eq!(
+        command(&k.router, Some(local), None).as_deref(),
+        Ok(LOCAL_OUT)
+    );
+    assert_eq!(command(&k.router, None, None).as_deref(), Ok(CLOUD_OUT));
+}
+
+#[test]
+fn command_selection_stays_on_device_unless_surrounding_text_is_allowed() {
+    use flow_core::command::CommandError;
+    let k = rig(cfg());
+    let local = k.local_llm.clone() as Arc<dyn Cleaner>;
+    assert_eq!(
+        command(&k.router, Some(local), Some("SELECTEDSECRET")).as_deref(),
+        Ok(LOCAL_OUT),
+        "cloud first, but the selection goes to the on-device part"
+    );
+    assert_eq!(
+        command(&k.router, None, Some("SELECTEDSECRET")),
+        Err(CommandError::SelectionNotAllowed)
+    );
+    assert_eq!(k.cloud.calls(), 0, "the selection never reached OpenRouter");
+
+    let mut c = cfg();
+    c.cloud.openrouter.cleanup.send_surrounding_text = true;
+    let k = rig(c);
+    assert_eq!(
+        command(&k.router, None, Some("SELECTEDSECRET")).as_deref(),
+        Ok(CLOUD_OUT)
+    );
+    assert!(sent(&k).contains("SELECTEDSECRET"));
+}
+
+#[test]
+fn command_cleaner_rechecks_consent_per_call() {
+    let k = rig(cfg());
+    let cl = k.router.command_cleaner(None);
+    assert!(cl.is_some());
+    let mut c = cfg();
+    c.cloud.openrouter.cleanup.consent_at_ms = 0;
+    k.router.update_config(c);
+    let r = flow_core::command::run(cl, "write hello", None, Duration::from_secs(5));
+    assert!(r.is_err(), "{r:?}");
+    assert_eq!(k.cloud.calls(), 0, "consent revoked: nothing sent");
+}
+
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
