@@ -155,6 +155,7 @@ One line per dictation; the fields are the same in the Windows app:
 | `raw` / `text` | recogniser output / text inserted |
 | `error` (+ `stack`) | what went wrong |
 | `audio` | Android: file name of the kept WAV in `files/debug/audio/` (*Keep last dictation audio*), else `null` |
+| `source` | Android: where the audio came from: `mic`, or `wav` for a dictation fed from a WAV file (debug builds, *Feed a WAV file as the microphone* below); the viewer shows `source=wav` |
 | `llm` | `formatted` (AI text used), `llm_skipped_clean` (nothing for the AI to do: a normal result), `llm_timeout`, `llm_error: <code>` (cloud cleanup refused up front: no consent / key / budget, open circuit, `no_private_route`), `null` = AI off |
 | `llm_engine` / `llm_model` / `llm_cost_usd` | who ran the AI cleanup (`local`, `cloud` = OpenRouter, `server`), its model, and the OpenRouter cost |
 | `llm_ttft_ms` / `llm_generation_id` | cloud cleanup: time to the first token, OpenRouter's generation id |
@@ -191,6 +192,31 @@ way, and anything shaped like an API key (`sk-…`) or bearer token is replaced 
 Pick the phone with `FLOW_PHONE`: a serial (`FLOW_PHONE=100.64.0.5:5555`) or transport options
 (`FLOW_PHONE="-t 60"`); `FLOW_PKG` changes the package. Test: `tools/phone/test-pull-debug.sh`
 (fake platform tool, no phone).
+
+**Feed a WAV file as the microphone** (debug builds only): run one real dictation from a
+recording, without speaking. Focus a text field on the phone (the bubble shows), then on the PC:
+
+```sh
+tools/phone/play-wav.sh hello.wav            # real time, push-to-talk; the end of the WAV is the release
+tools/phone/play-wav.sh --fast --tap hello.wav
+tools/phone/play-wav.sh --on-phone files/debug/audio/2026-10-27T10-15-02.123Z.wav   # replay a kept dictation
+```
+
+The WAV must be 16 kHz mono 16-bit PCM (`ffmpeg -i in.m4a -ar 16000 -ac 1 -c:a pcm_s16le
+hello.wav`); anything else is refused before it is sent. The script pushes it into the app's
+private `files/debug/wav-in/` (run-as, sha256-checked), sends the broadcast
+`dev.flowclone.debug.PLAY_WAV` to `.debug.WavMicReceiver` with `--es path files/debug/wav-in/hello.wav`
+(`--ez fast true`, `--ez tap true`) and prints the app's answer (`ok: hello.wav queued`, or the
+reason it refused; exit 1). The app then runs the normal pipeline on that audio instead of the
+mic: same 100 ms frames, route order, AI cleanup, insert guard, insertion into the focused field,
+History, and a debug log line with `"source":"wav"` (`pull-debug.sh` fetches it). `--fast` feeds the
+audio as fast as the engine takes it (keep such WAVs under 30 s: the start of a slow server
+session holds at most 30 s). Refused while a dictation is running and in protected fields
+(password fields, banking and excluded apps): nothing is inserted there. The receiver only
+exists in debug builds and only the platform tools' shell can trigger it (it requires
+`android.permission.DUMP`, which no app can hold); release builds have no receiver (checked by
+`verify<Variant>NoDebugWavReceiver` and the release unit tests). Same `FLOW_PHONE` / `FLOW_PKG`
+as above. Test: `tools/phone/test-play-wav.sh` (fake platform tool, no phone).
 
 The server token and cloud keys are scrubbed from every line, and the clipboard is never read.
 With the toggle off nothing is written; `FlowService commit …` (timings only, never text) is
