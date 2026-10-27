@@ -16,6 +16,19 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Debug log: why an AI cleanup answer was not used.** When AI cleanup's
+  answer is rejected, dropped, times out or fails, the Android and Windows
+  debug-log line now has `rejected_text` (the model's answer, if any) and
+  `guard_detail` (the guard's reason: the unsupported sentence or literal
+  mark kind, the dropped clause or word count, the timeout or the error).
+  The Android log viewer shows them as "AI answer not used". Both follow the
+  `text` rules: only with the debug log on, and `<redacted>` for password
+  fields, banking and denylisted apps. flow-core's `CommitResult` and
+  `RouteInfo` carry them as additive optional fields, set only next to
+  `cloud_fallback`, so results without cloud cleanup are unchanged.
+
 ## [0.6.0] - 2026-10-27
 
 ### Added

@@ -1009,6 +1009,9 @@ fn debug_entry(i: &SessionInfo, insert: &str, error: Option<String>) -> Entry {
         llm_generation_id: r.and_then(|r| r.llm.as_ref()?.generation_id.clone()),
         cleanup_route: route.and_then(|x| x.cleanup_route.clone()),
         cloud_fallback: route.and_then(|x| x.cloud_fallback.clone()),
+        // Dictated text: redacted with `text`.
+        rejected_text: route.and_then(|x| x.rejected_text.clone()).map(redact),
+        guard_detail: route.and_then(|x| x.guard_detail.clone()).map(redact),
         stt_model: route
             .filter(|x| x.engine == "cloud")
             .and_then(|x| x.model.clone()),
@@ -2039,6 +2042,73 @@ mod tests {
         for k in ["llm_engine", "llm_cost_usd", "stt_model", "stt_cost_usd"] {
             assert_eq!(s[k], serde_json::Value::Null, "{k}");
         }
+    }
+
+    /// One dictation whose commit returns `result`, `password` set before
+    /// the paste; the debug line.
+    fn logged_line(result: CommitResult, password: bool) -> serde_json::Value {
+        let mem = MemSink::default();
+        let (mut r, log) = logged_with(
+            Prefs::default(),
+            Fake {
+                focus: Mutex::new(window(1)),
+                ..Fake::default()
+            },
+            Box::new(mem.clone()),
+            true,
+            |core| {
+                Arc::new(Scripted {
+                    inner: core,
+                    result,
+                })
+            },
+        );
+        dictate_then(&mut r, |f| {
+            if password {
+                *f.password.lock().unwrap() = Some(true)
+            }
+        });
+        lines(&mem, &log).remove(0)
+    }
+
+    fn rejected_cloud_cleanup() -> CommitResult {
+        let mut r = CommitResult::text(
+            CommitStatus::Formatted,
+            "The demo is on Thursday at 3.",
+            false,
+        );
+        r.route = Some(crate::core_api::RouteInfo {
+            engine: "local".into(),
+            cleanup_route: Some("local".into()),
+            cloud_fallback: Some("llm_dropped".into()),
+            rejected_text: Some("The demo is on Thursday.".into()),
+            guard_detail: Some("dropped: the demo is on thursday at 3".into()),
+            ..Default::default()
+        });
+        r
+    }
+
+    #[test]
+    fn debug_log_records_the_rejected_ai_answer_and_why() {
+        // 2026-10-27: the answer AI cleanup gave and the guard's detail.
+        let l = logged_line(rejected_cloud_cleanup(), false);
+        assert_eq!(l["cloud_fallback"], "llm_dropped");
+        assert_eq!(l["rejected_text"], "The demo is on Thursday.");
+        assert_eq!(l["guard_detail"], "dropped: the demo is on thursday at 3");
+        // Accepted / no cloud cleanup: null.
+        let ok = CommitResult::text(CommitStatus::Formatted, "Hi there.", false);
+        let l = logged_line(ok, false);
+        assert_eq!(l["rejected_text"], serde_json::Value::Null);
+        assert_eq!(l["guard_detail"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn debug_log_never_records_the_rejected_answer_for_password_fields() {
+        let l = logged_line(rejected_cloud_cleanup(), true);
+        assert_eq!(l["insert"]["outcome"], "target_protected");
+        assert_eq!(l["rejected_text"], crate::debug_log::REDACTED);
+        assert_eq!(l["guard_detail"], crate::debug_log::REDACTED);
+        assert!(!l.to_string().contains("Thursday"), "{l}");
     }
 
     #[test]
