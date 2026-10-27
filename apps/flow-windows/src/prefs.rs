@@ -774,6 +774,26 @@ mod tests {
     }
 
     #[test]
+    fn right_alt_ptt_roundtrips_and_validates() {
+        let d = tmpdir("ralt");
+        let path = d.join(FILE_NAME);
+        let mut p = Prefs::default();
+        p.shortcuts.ptt = "RAlt".parse().unwrap();
+        assert_eq!(p.validate(), Ok(()));
+        p.save(&path).unwrap();
+        let json = std::fs::read_to_string(&path).unwrap();
+        assert!(json.contains(r#""ptt": "Right Alt""#), "{json}");
+        let (q, o) = Prefs::load(&path);
+        assert_eq!(o, LoadOutcome::Loaded);
+        assert_eq!(
+            q.shortcuts.ptt,
+            crate::hotkeys::Chord::new([crate::hotkeys::Key::RAlt])
+        );
+        assert_eq!(q, p);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn validate_accepts_defaults() {
         assert_eq!(Prefs::default().validate(), Ok(()));
     }

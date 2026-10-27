@@ -11,40 +11,96 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::str::FromStr;
 
-/// Normalised key (left/right variants collapse).
+/// A key as the matcher sees it.
+///
+/// Ctrl, Alt and Shift come in three forms: the side-specific `L*`/`R*`
+/// keys the hook reports (VK 0xA0–0xA5), and the either-side `Ctrl`/`Alt`/
+/// `Shift` that a shortcut names when it doesn't care which side. In a
+/// [`Chord`], `Alt` accepts a held `LAlt` or `RAlt`, while `RAlt` accepts
+/// only `RAlt` (see [`Key::accepts`]). Win always folds to one key.
+///
+/// The variant order is the display order of a chord ("Ctrl+Win+Space"),
+/// and is part of the saved format: don't reorder the existing variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Key {
     Ctrl,
+    LCtrl,
+    RCtrl,
     Win,
     Alt,
+    LAlt,
+    RAlt,
     Shift,
+    LShift,
+    RShift,
     Space,
     Esc,
     /// Any other virtual-key code.
     Vk(u16),
 }
 
+/// Win32 `VK_LCONTROL`.
+const VK_LCONTROL: u16 = 0xA2;
+
+/// Scan code (`KBDLLHOOKSTRUCT::scanCode`) of the fake Left Ctrl that
+/// Windows sends right before Right Alt on keyboard layouts with AltGr
+/// (a real Left Ctrl is 0x1D). AutoHotkey calls it `sc21D`.
+pub const ALTGR_FAKE_LCTRL_SCAN: u32 = 0x21D;
+
+/// Is this hook event the fake Left Ctrl of an AltGr press?
+pub fn is_altgr_fake_ctrl(vk: u16, scan: u32) -> bool {
+    vk == VK_LCONTROL && scan == ALTGR_FAKE_LCTRL_SCAN
+}
+
 impl Key {
-    /// Map a Win32 virtual-key code to a normalised key.
+    /// Map a Win32 virtual-key code to a key. The L/R Ctrl/Alt/Shift codes
+    /// keep their side; the sideless codes (VK_CONTROL/MENU/SHIFT, seen only
+    /// from some injected input) become the either-side key.
     pub fn from_vk(vk: u16) -> Key {
         match vk {
-            0x11 | 0xA2 | 0xA3 => Key::Ctrl,
+            0x11 => Key::Ctrl,
+            0xA2 => Key::LCtrl,
+            0xA3 => Key::RCtrl,
             0x5B | 0x5C => Key::Win,
-            0x12 | 0xA4 | 0xA5 => Key::Alt,
-            0x10 | 0xA0 | 0xA1 => Key::Shift,
+            0x12 => Key::Alt,
+            0xA4 => Key::LAlt,
+            0xA5 => Key::RAlt,
+            0x10 => Key::Shift,
+            0xA0 => Key::LShift,
+            0xA1 => Key::RShift,
             0x20 => Key::Space,
             0x1B => Key::Esc,
             other => Key::Vk(other),
         }
     }
 
+    /// The either-side key of a side-specific one (`RAlt` → `Alt`); every
+    /// other key is its own.
+    pub fn either_side(self) -> Key {
+        match self {
+            Key::LCtrl | Key::RCtrl => Key::Ctrl,
+            Key::LAlt | Key::RAlt => Key::Alt,
+            Key::LShift | Key::RShift => Key::Shift,
+            k => k,
+        }
+    }
+
+    /// Does this chord key accept `held` being down? `Alt` accepts either
+    /// Alt; `RAlt` only Right Alt.
+    pub fn accepts(self, held: Key) -> bool {
+        self == held || self == held.either_side()
+    }
+
     pub fn is_modifier(self) -> bool {
-        matches!(self, Key::Ctrl | Key::Win | Key::Alt | Key::Shift)
+        matches!(
+            self.either_side(),
+            Key::Ctrl | Key::Win | Key::Alt | Key::Shift
+        )
     }
 
     /// Keys whose lone release triggers a shell action (Start menu / menu bar).
     pub fn needs_release_mask(self) -> bool {
-        matches!(self, Key::Win | Key::Alt)
+        matches!(self.either_side(), Key::Win | Key::Alt)
     }
 }
 
@@ -92,6 +148,20 @@ impl Chord {
         self.keys.contains(&k)
     }
 
+    /// Is the held key `held` part of this chord (accepted by one of its keys)?
+    pub fn covers(&self, held: Key) -> bool {
+        self.keys.iter().any(|k| k.accepts(held))
+    }
+
+    /// Exactly this chord is held: every chord key has a held key it
+    /// accepts, and every held key belongs to the chord.
+    pub fn matches(&self, pressed: &BTreeSet<Key>) -> bool {
+        self.keys
+            .iter()
+            .all(|k| pressed.iter().any(|p| k.accepts(*p)))
+            && pressed.iter().all(|p| self.covers(*p))
+    }
+
     /// Validation used for user-configured chords (mirrors Wispr's rule:
     /// at most 3 keys, at least one modifier). `allow_single` permits a lone
     /// non-modifier key (used for the cancel key, Esc).
@@ -111,6 +181,23 @@ impl Chord {
 
 fn parse_key(tok: &str) -> Option<Key> {
     let t = tok.trim().to_ascii_lowercase();
+    // "Right Alt", "right-alt", "Right_Alt" and "RAlt" are one key.
+    let squashed: String = t
+        .chars()
+        .filter(|c| !matches!(c, ' ' | '-' | '_'))
+        .collect();
+    let side = match squashed.as_str() {
+        "lctrl" | "leftctrl" | "lcontrol" | "leftcontrol" => Some(Key::LCtrl),
+        "rctrl" | "rightctrl" | "rcontrol" | "rightcontrol" => Some(Key::RCtrl),
+        "lalt" | "leftalt" => Some(Key::LAlt),
+        "ralt" | "rightalt" | "altgr" => Some(Key::RAlt),
+        "lshift" | "leftshift" => Some(Key::LShift),
+        "rshift" | "rightshift" => Some(Key::RShift),
+        _ => None,
+    };
+    if side.is_some() {
+        return side;
+    }
     Some(match t.as_str() {
         "ctrl" | "control" => Key::Ctrl,
         "win" | "super" | "meta" | "windows" => Key::Win,
@@ -147,9 +234,15 @@ fn parse_key(tok: &str) -> Option<Key> {
 fn key_name(k: Key) -> String {
     match k {
         Key::Ctrl => "Ctrl".into(),
+        Key::LCtrl => "Left Ctrl".into(),
+        Key::RCtrl => "Right Ctrl".into(),
         Key::Win => "Win".into(),
         Key::Alt => "Alt".into(),
+        Key::LAlt => "Left Alt".into(),
+        Key::RAlt => "Right Alt".into(),
         Key::Shift => "Shift".into(),
+        Key::LShift => "Left Shift".into(),
+        Key::RShift => "Right Shift".into(),
         Key::Space => "Space".into(),
         Key::Esc => "Esc".into(),
         Key::Vk(0x0D) => "Enter".into(),
@@ -169,9 +262,11 @@ impl FromStr for Chord {
                 continue;
             }
             let k = parse_key(tok).ok_or_else(|| ChordError::UnknownKey(tok.trim().into()))?;
-            if !keys.insert(k) {
+            // "Alt+Right Alt" names Right Alt twice.
+            if keys.iter().any(|o: &Key| o.accepts(k) || k.accepts(*o)) {
                 return Err(ChordError::Duplicate(tok.trim().into()));
             }
+            keys.insert(k);
         }
         if keys.is_empty() {
             return Err(ChordError::Empty);
@@ -284,6 +379,8 @@ pub struct ChordMatcher {
     swallowed: BTreeSet<Key>,
     /// Mask-needing keys (Win/Alt) held while some chord fired.
     needs_mask: BTreeSet<Key>,
+    /// The fake Left Ctrl of an AltGr press is logically down.
+    altgr_ctrl: bool,
 }
 
 impl ChordMatcher {
@@ -294,7 +391,45 @@ impl ChordMatcher {
             ptt_active: false,
             swallowed: BTreeSet::new(),
             needs_mask: BTreeSet::new(),
+            altgr_ctrl: false,
         }
+    }
+
+    /// Process one hook event as Windows reports it. The fake Left Ctrl of
+    /// an AltGr press ([`is_altgr_fake_ctrl`]) is not a key the user
+    /// pressed: it never takes part in a chord and always passes through
+    /// untouched (so its key-up releases it and no Ctrl is left stuck).
+    pub fn handle_raw(&mut self, vk: u16, scan: u32, down: bool, dictating: bool) -> Decision {
+        if is_altgr_fake_ctrl(vk, scan) {
+            self.altgr_ctrl = down;
+            return Decision::default();
+        }
+        self.handle(
+            KeyEvent {
+                key: Key::from_vk(vk),
+                down,
+            },
+            dictating,
+        )
+    }
+
+    /// The AltGr fake Left Ctrl is down (we saw its key-down, not its key-up).
+    pub fn altgr_ctrl_down(&self) -> bool {
+        self.altgr_ctrl
+    }
+
+    /// The OS says Left Ctrl is up, so a fake-Ctrl key-up we never saw
+    /// can't matter any more.
+    pub fn forget_altgr_ctrl(&mut self) {
+        self.altgr_ctrl = false;
+    }
+
+    /// Is the *user's own* Left Ctrl down? `async_down` = GetAsyncKeyState
+    /// says VK_LCONTROL is down, which on an AltGr layout is also true for
+    /// the fake Ctrl. A masked release must keep a real Left Ctrl down but
+    /// may (and should) release the fake one.
+    pub fn real_lctrl_held(&self, async_down: bool) -> bool {
+        self.pressed.contains(&Key::LCtrl) || (async_down && !self.altgr_ctrl)
     }
 
     pub fn bindings(&self) -> &Bindings {
@@ -313,6 +448,7 @@ impl ChordMatcher {
         self.ptt_active = false;
         self.swallowed.clear();
         self.needs_mask.clear();
+        self.altgr_ctrl = false;
     }
 
     pub fn pressed(&self) -> impl Iterator<Item = Key> + '_ {
@@ -339,7 +475,7 @@ impl ChordMatcher {
                 d.suppress = self.swallowed.contains(&ev.key);
                 return d;
             }
-            if self.pressed == *self.bindings.hands_free.keys() {
+            if self.newly_matches(&self.bindings.hands_free, ev.key) {
                 // Hands-free chord supersedes a PTT that started on the way.
                 self.ptt_active = false;
                 d.actions.push(HotkeyAction::HandsFreeToggle);
@@ -347,20 +483,20 @@ impl ChordMatcher {
                 if !ev.key.is_modifier() {
                     d.suppress = true;
                 }
-            } else if self.pressed == *self.bindings.ptt.keys() {
+            } else if self.newly_matches(&self.bindings.ptt, ev.key) {
                 self.ptt_active = true;
                 d.actions.push(HotkeyAction::PttDown);
                 self.chord_fired();
                 if !ev.key.is_modifier() {
                     d.suppress = true;
                 }
-            } else if self.pressed == *self.bindings.paste_last.keys() {
+            } else if self.newly_matches(&self.bindings.paste_last, ev.key) {
                 d.actions.push(HotkeyAction::PasteLast);
                 self.chord_fired();
                 if !ev.key.is_modifier() {
                     d.suppress = true;
                 }
-            } else if self.pressed == *self.bindings.copy_last.keys() {
+            } else if self.newly_matches(&self.bindings.copy_last, ev.key) {
                 d.actions.push(HotkeyAction::CopyLast);
                 self.chord_fired();
                 if !ev.key.is_modifier() {
@@ -372,8 +508,8 @@ impl ChordMatcher {
                     d.suppress = true;
                 }
             } else if self.ptt_active
-                && !self.bindings.ptt.contains(ev.key)
-                && !self.bindings.hands_free.contains(ev.key)
+                && !self.bindings.ptt.covers(ev.key)
+                && !self.bindings.hands_free.covers(ev.key)
             {
                 self.ptt_active = false;
                 d.actions.push(HotkeyAction::PttAborted);
@@ -387,7 +523,7 @@ impl ChordMatcher {
                 // held): pass it through untouched.
                 return d;
             }
-            if self.ptt_active && self.bindings.ptt.contains(ev.key) {
+            if self.ptt_active && self.bindings.ptt.covers(ev.key) {
                 self.ptt_active = false;
                 d.actions.push(HotkeyAction::PttUp);
             }
@@ -405,10 +541,23 @@ impl ChordMatcher {
     fn is_cancel(&self, key: Key) -> bool {
         let c = &self.bindings.cancel;
         if c.keys().len() == 1 {
-            c.contains(key)
+            c.covers(key)
         } else {
-            self.pressed == *c.keys()
+            self.newly_matches(c, key)
         }
+    }
+
+    /// `key` just went down (it is in `pressed`) and completes chord `c`:
+    /// it matches now and did not match a moment ago. Pressing the other
+    /// Alt while an "Alt" chord is held keeps it matching but doesn't
+    /// fire it again.
+    fn newly_matches(&self, c: &Chord, key: Key) -> bool {
+        if !c.matches(&self.pressed) {
+            return false;
+        }
+        let mut before = self.pressed.clone();
+        before.remove(&key);
+        !c.matches(&before)
     }
 
     fn chord_fired(&mut self) {
@@ -468,13 +617,334 @@ mod tests {
     }
 
     #[test]
-    fn vk_codes_normalise_left_and_right_variants() {
-        assert_eq!(Key::from_vk(0xA2), Key::Ctrl);
-        assert_eq!(Key::from_vk(0xA3), Key::Ctrl);
+    fn vk_codes_keep_the_side_of_ctrl_alt_shift_but_fold_win() {
+        assert_eq!(Key::from_vk(0xA2), Key::LCtrl);
+        assert_eq!(Key::from_vk(0xA3), Key::RCtrl);
+        assert_eq!(Key::from_vk(0xA4), Key::LAlt);
+        assert_eq!(Key::from_vk(0xA5), Key::RAlt);
+        assert_eq!(Key::from_vk(0xA0), Key::LShift);
+        assert_eq!(Key::from_vk(0xA1), Key::RShift);
+        assert_eq!(Key::from_vk(0x12), Key::Alt, "sideless VK_MENU");
         assert_eq!(Key::from_vk(0x5B), Key::Win);
         assert_eq!(Key::from_vk(0x5C), Key::Win);
-        assert_eq!(Key::from_vk(0xA5), Key::Alt);
         assert_eq!(Key::from_vk(0x41), Key::Vk(0x41));
+    }
+
+    // --- Side-specific keys (Right Alt push-to-talk) ---
+
+    const LCTRL_VK: u16 = 0xA2;
+    const LALT_VK: u16 = 0xA4;
+    const RALT_VK: u16 = 0xA5;
+    const TAB_VK: u16 = 0x09;
+    /// Scan code of a real Left Ctrl.
+    const LCTRL_SCAN: u32 = 0x1D;
+    /// Scan code of the fake Left Ctrl an AltGr layout sends with Right Alt.
+    const FAKE_SCAN: u32 = 0x21D;
+    const ALT_SCAN: u32 = 0x38;
+
+    fn ralt_ptt() -> ChordMatcher {
+        ChordMatcher::new(Bindings {
+            ptt: "RAlt".parse().unwrap(),
+            ..Bindings::default()
+        })
+    }
+
+    fn raw(m: &mut ChordMatcher, evs: &[(u16, u32, bool)]) -> Vec<Decision> {
+        evs.iter()
+            .map(|(vk, scan, down)| m.handle_raw(*vk, *scan, *down, false))
+            .collect()
+    }
+
+    fn actions(ds: &[Decision]) -> Vec<HotkeyAction> {
+        ds.iter().flat_map(|d| d.actions.clone()).collect()
+    }
+
+    #[test]
+    fn side_key_names_parse_and_display() {
+        for s in [
+            "RAlt",
+            "ralt",
+            "Right Alt",
+            "right-alt",
+            "AltGr",
+            "Right_Alt",
+        ] {
+            assert_eq!(s.parse::<Chord>().unwrap(), Chord::new([Key::RAlt]), "{s}");
+        }
+        assert_eq!("RAlt".parse::<Chord>().unwrap().to_string(), "Right Alt");
+        assert_eq!(
+            "lctrl+Left Shift+lalt"
+                .parse::<Chord>()
+                .unwrap()
+                .to_string(),
+            "Left Ctrl+Left Alt+Left Shift"
+        );
+        assert_eq!(
+            "Right Ctrl+Right Shift+X"
+                .parse::<Chord>()
+                .unwrap()
+                .to_string(),
+            "Right Ctrl+Right Shift+X"
+        );
+        for s in ["Left Alt", "Right Alt", "Left Ctrl+Right Shift"] {
+            let c: Chord = s.parse().unwrap();
+            assert_eq!(c.to_string().parse::<Chord>().unwrap(), c, "{s}");
+        }
+    }
+
+    #[test]
+    fn side_key_alone_is_a_valid_shortcut() {
+        assert!(Chord::parse_validated("Right Alt", false).is_ok());
+        assert!(Chord::parse_validated("LCtrl+Space", false).is_ok());
+    }
+
+    #[test]
+    fn a_side_key_next_to_its_either_side_key_is_a_duplicate() {
+        assert!(matches!(
+            "Alt+RAlt".parse::<Chord>(),
+            Err(ChordError::Duplicate(_))
+        ));
+        assert!(matches!(
+            "LCtrl+Ctrl".parse::<Chord>(),
+            Err(ChordError::Duplicate(_))
+        ));
+        assert!("LAlt+RAlt".parse::<Chord>().is_ok(), "both sides together");
+    }
+
+    #[test]
+    fn right_alt_alone_fires_ptt_and_its_release_is_masked() {
+        let mut m = ralt_ptt();
+        let d = m.handle_raw(RALT_VK, ALT_SCAN, true, false);
+        assert_eq!(d.actions, vec![PttDown]);
+        assert!(!d.suppress, "modifier key-down passes through");
+        let up = m.handle_raw(RALT_VK, ALT_SCAN, false, false);
+        assert_eq!(up.actions, vec![PttUp]);
+        assert!(
+            up.mask_release && up.suppress,
+            "lone Right Alt release would focus the menu bar"
+        );
+        assert_eq!(m.pressed().count(), 0);
+    }
+
+    #[test]
+    fn left_alt_does_not_fire_right_alt_ptt() {
+        let mut m = ralt_ptt();
+        let ds = raw(
+            &mut m,
+            &[(LALT_VK, ALT_SCAN, true), (LALT_VK, ALT_SCAN, false)],
+        );
+        assert!(actions(&ds).is_empty());
+        assert!(!ds[1].mask_release, "nothing fired: plain Alt release");
+    }
+
+    #[test]
+    fn alt_tab_does_not_fire_right_alt_ptt() {
+        let mut m = ralt_ptt();
+        let ds = raw(
+            &mut m,
+            &[
+                (LALT_VK, ALT_SCAN, true),
+                (TAB_VK, 0x0F, true),
+                (TAB_VK, 0x0F, false),
+                (TAB_VK, 0x0F, true),
+                (TAB_VK, 0x0F, false),
+                (LALT_VK, ALT_SCAN, false),
+            ],
+        );
+        assert!(actions(&ds).is_empty());
+        assert!(ds.iter().all(|d| !d.suppress), "Alt+Tab untouched");
+    }
+
+    #[test]
+    fn altgr_fake_ctrl_is_ignored_and_ptt_fires_and_releases() {
+        // AltGr layout; here the fake Ctrl goes up before Right Alt.
+        let mut m = ralt_ptt();
+        let ds = raw(
+            &mut m,
+            &[
+                (LCTRL_VK, FAKE_SCAN, true),
+                (RALT_VK, ALT_SCAN, true),
+                (LCTRL_VK, FAKE_SCAN, true), // auto-repeat
+                (RALT_VK, ALT_SCAN, true),
+                (LCTRL_VK, FAKE_SCAN, false),
+                (RALT_VK, ALT_SCAN, false),
+            ],
+        );
+        assert_eq!(actions(&ds), vec![PttDown, PttUp]);
+        for i in [0, 2, 4] {
+            assert_eq!(
+                ds[i],
+                Decision::default(),
+                "fake Ctrl #{i} passes untouched"
+            );
+        }
+        assert!(ds[5].mask_release);
+        assert_eq!(m.pressed().count(), 0, "nothing left held");
+        assert!(!m.altgr_ctrl_down());
+    }
+
+    #[test]
+    fn altgr_release_with_fake_ctrl_up_last_leaves_nothing_stuck() {
+        let mut m = ralt_ptt();
+        raw(
+            &mut m,
+            &[(LCTRL_VK, FAKE_SCAN, true), (RALT_VK, ALT_SCAN, true)],
+        );
+        assert!(m.altgr_ctrl_down());
+        let up = m.handle_raw(RALT_VK, ALT_SCAN, false, false);
+        assert_eq!(up.actions, vec![PttUp]);
+        assert!(up.mask_release);
+        // The fake Ctrl is logically down but is not the user's: the masked
+        // release must send its trailing LCtrl up.
+        assert!(!m.real_lctrl_held(true));
+        let fake_up = m.handle_raw(LCTRL_VK, FAKE_SCAN, false, false);
+        assert_eq!(fake_up, Decision::default(), "fake Ctrl up passes through");
+        assert!(!m.altgr_ctrl_down());
+        assert_eq!(m.pressed().count(), 0);
+    }
+
+    #[test]
+    fn real_left_ctrl_still_counts_as_held_next_to_altgr() {
+        let mut m = ralt_ptt();
+        raw(
+            &mut m,
+            &[
+                (LCTRL_VK, LCTRL_SCAN, true),
+                (LCTRL_VK, FAKE_SCAN, true),
+                (RALT_VK, ALT_SCAN, true),
+            ],
+        );
+        assert!(m.real_lctrl_held(true));
+        let mut m = ralt_ptt();
+        assert!(m.real_lctrl_held(true), "held before the hook saw it");
+        m.handle_raw(LCTRL_VK, FAKE_SCAN, true, false);
+        assert!(!m.real_lctrl_held(true), "only the fake one is down");
+        assert!(!m.real_lctrl_held(false));
+    }
+
+    #[test]
+    fn altgr_does_not_fire_a_ctrl_alt_chord() {
+        // "Ctrl+Alt" used to fire on every AltGr press (fake Ctrl + Right Alt).
+        let mut m = ChordMatcher::new(Bindings {
+            ptt: "Ctrl+Alt".parse().unwrap(),
+            ..Bindings::default()
+        });
+        let ds = raw(
+            &mut m,
+            &[(LCTRL_VK, FAKE_SCAN, true), (RALT_VK, ALT_SCAN, true)],
+        );
+        assert!(actions(&ds).is_empty());
+        // A real Ctrl with Right Alt still matches "Ctrl+Alt".
+        let d = m.handle_raw(LCTRL_VK, LCTRL_SCAN, true, false);
+        assert_eq!(d.actions, vec![PttDown]);
+    }
+
+    #[test]
+    fn altgr_character_aborts_right_alt_ptt_and_reaches_the_app() {
+        let mut m = ralt_ptt();
+        let e = 0x45;
+        let ds = raw(
+            &mut m,
+            &[
+                (LCTRL_VK, FAKE_SCAN, true),
+                (RALT_VK, ALT_SCAN, true),
+                (e, 0x12, true),
+                (e, 0x12, false),
+            ],
+        );
+        assert_eq!(actions(&ds), vec![PttDown, PttAborted]);
+        assert!(!ds[2].suppress && !ds[3].suppress);
+    }
+
+    #[test]
+    fn right_alt_tab_aborts_ptt() {
+        let mut m = ralt_ptt();
+        let ds = raw(&mut m, &[(RALT_VK, ALT_SCAN, true), (TAB_VK, 0x0F, true)]);
+        assert_eq!(actions(&ds), vec![PttDown, PttAborted]);
+    }
+
+    #[test]
+    fn either_side_alt_matches_both_sides_and_does_not_refire() {
+        let b = Bindings {
+            ptt: "Alt".parse().unwrap(),
+            ..Bindings::default()
+        };
+        for vk in [LALT_VK, RALT_VK] {
+            let mut m = ChordMatcher::new(b.clone());
+            assert_eq!(
+                m.handle_raw(vk, ALT_SCAN, true, false).actions,
+                vec![PttDown]
+            );
+            assert_eq!(
+                m.handle_raw(vk, ALT_SCAN, false, false).actions,
+                vec![PttUp]
+            );
+        }
+        let mut m = ChordMatcher::new(b);
+        let ds = raw(
+            &mut m,
+            &[
+                (LALT_VK, ALT_SCAN, true),
+                (RALT_VK, ALT_SCAN, true),
+                (LALT_VK, ALT_SCAN, false),
+                (RALT_VK, ALT_SCAN, false),
+            ],
+        );
+        assert_eq!(
+            actions(&ds),
+            vec![PttDown, PttUp],
+            "second side doesn't refire"
+        );
+    }
+
+    #[test]
+    fn default_ctrl_win_still_matches_either_ctrl() {
+        for ctrl in [0xA2u16, 0xA3] {
+            let mut m = m();
+            let ds = raw(
+                &mut m,
+                &[
+                    (ctrl, 0x1D, true),
+                    (0x5B, 0x5B, true),
+                    (ctrl, 0x1D, false),
+                    (0x5B, 0x5B, false),
+                ],
+            );
+            assert_eq!(actions(&ds), vec![PttDown, PttUp]);
+            assert!(ds[3].mask_release, "Win release still masked");
+        }
+    }
+
+    #[test]
+    fn side_specific_chord_ignores_the_other_side() {
+        let mut m = ChordMatcher::new(Bindings {
+            ptt: "RCtrl+Win".parse().unwrap(),
+            ..Bindings::default()
+        });
+        assert!(actions(&raw(&mut m, &[(0xA2, 0x1D, true), (0x5B, 0x5B, true)])).is_empty());
+        m.reset();
+        assert_eq!(
+            actions(&raw(&mut m, &[(0xA3, 0x1D, true), (0x5B, 0x5B, true)])),
+            vec![PttDown]
+        );
+    }
+
+    #[test]
+    fn force_release_of_a_side_key_ends_ptt() {
+        let mut m = ralt_ptt();
+        m.handle_raw(RALT_VK, ALT_SCAN, true, false);
+        assert_eq!(m.force_release(Key::RAlt), vec![PttUp]);
+    }
+
+    #[test]
+    fn a_missed_fake_ctrl_up_can_be_forgotten() {
+        let mut m = ralt_ptt();
+        m.handle_raw(LCTRL_VK, FAKE_SCAN, true, false);
+        m.forget_altgr_ctrl();
+        assert!(!m.altgr_ctrl_down());
+        m.handle_raw(LCTRL_VK, FAKE_SCAN, true, false);
+        m.reset();
+        assert!(!m.altgr_ctrl_down());
     }
 
     #[test]

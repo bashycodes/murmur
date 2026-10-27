@@ -12,6 +12,29 @@ OpenRouter tab: speech-to-text and text cleanup are two separate opt-ins
 (`docs/cloud-stt.md`; both off by default). A client-only build contains no
 network code at all.
 
+## Shortcuts
+
+Settings → General → Shortcuts takes keys joined with `+`: Ctrl, Win, Alt,
+Shift, Space, Esc, A–Z, 0–9, F1–F24, Enter, Tab. At most 3 keys, at least one
+modifier (the cancel key may be a single key).
+
+`Ctrl`, `Alt` and `Shift` match either side. `Left Ctrl` / `Right Ctrl`,
+`Left Alt` / `Right Alt` and `Left Shift` / `Right Shift` match only that
+side (also typed `LCtrl`, `RAlt`, `right-alt`; `AltGr` = `Right Alt`).
+Settings shows them as `Right Alt` etc. A key can't be named with and
+without its side in one shortcut (`Alt+Right Alt`).
+
+Push-to-talk on **Right Alt alone**: type `Right Alt` (or `RAlt`) as the
+push-to-talk shortcut. Left Alt and Alt+Tab don't start dictation; Right
+Alt with another key (Right Alt+Tab, an AltGr letter) cancels the dictation
+it started and the key reaches the app as usual. Its release is masked like
+Win's (`[LCtrl↓, RAlt↑, LCtrl↑]`), so the menu bar doesn't take focus. On
+keyboard layouts with AltGr, Windows sends a fake Left Ctrl (scan code
+0x21D) with every Right Alt press: the hook ignores it for shortcuts and
+lets it through untouched, so it never stops Right Alt from matching, never
+makes AltGr look like Ctrl+Alt, and is released normally. A shortcut that
+needs Ctrl therefore no longer fires on AltGr alone.
+
 ## Build flavours (Cargo features)
 
 | Build | Command | Engines |
@@ -236,7 +259,7 @@ Settings → AI cleanup:
 
 | Path | What |
 |---|---|
-| `src/hotkeys/chord.rs` | Pure chord matcher: PTT / hands-free / cancel, Win/Alt release masking, foreign-key abort |
+| `src/hotkeys/chord.rs` | Pure chord matcher: PTT / hands-free / cancel, Win/Alt release masking, foreign-key abort, either-side vs side-specific keys, AltGr fake-Ctrl filter |
 | `src/hotkeys/win.rs` | `WH_KEYBOARD_LL` hook thread. It skips our own `dwExtraInfo`-tagged input, does masked Win/Alt releases (`[LCtrl↓, key↑, LCtrl↑]`) and runs a 1 s stale-key probe |
 | `src/dictation.rs` | Pure state machine `idle → listening(ptt\|locked) → processing → pasted\|error → idle`. Wispr's timings: 500 ms tap / double-tap lock / triple-press, warning at 19 min, hard stop at 20 min, 35 s processing timeout, 500 ms error |
 | `src/controller.rs` | Runs the machine's effects against a `Platform` trait plus `CoreApi`; integration-tested with fakes |
@@ -410,6 +433,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Esc cancels, and Esc is not delivered to the app while dictating.
 - [ ] Releasing Win after a chord does **not** open the Start menu.
 - [ ] Ctrl+Win+Left still switches desktops and aborts dictation.
+- [ ] Push-to-talk `Right Alt` (Settings → Shortcuts), on a layout with AltGr (e.g. Polish or German) and on US: holding Right Alt dictates and releasing pastes into Notepad; afterwards typing `s` gives `s` (no stuck Ctrl or Alt: not Ctrl+S, not an AltGr letter), the menu bar of Notepad/Explorer is not focused, and Left Alt / Alt+Tab never start dictation.
 - [ ] After a paste, the old clipboard is back within about 0.5 s (3 s in Outlook/Word/WhatsApp).
 - [ ] Win+V history does not contain the dictated text.
 - [ ] Dictating into an elevated window (admin cmd) shows the "runs as administrator" error and leaves the text on the clipboard.
