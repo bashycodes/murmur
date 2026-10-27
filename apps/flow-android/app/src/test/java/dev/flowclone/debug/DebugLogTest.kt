@@ -48,6 +48,16 @@ class DebugLogTest {
         assertTrue(sum, sum.contains("· casual") && sum.contains("AI not needed (already clean)"))
     }
 
+    /** Debug "WAV as microphone": `source` is mic or wav on every dictation line. */
+    @Test fun sourceFieldNamesTheAudioSource() {
+        assertTrue(JSONObject(DebugFormat.dictation(trace)).let { it.has("source") && it.isNull("source") })
+        assertEquals("wav", JSONObject(DebugFormat.dictation(trace.copy(source = "wav"))).getString("source"))
+        assertEquals("mic", JSONObject(DebugFormat.dictation(trace.copy(source = "mic"))).getString("source"))
+        val sum = DebugFormat.summary(DebugFormat.dictation(trace.copy(source = "wav")))
+        assertTrue(sum, sum.contains("source=wav"))
+        assertFalse(DebugFormat.summary(DebugFormat.dictation(trace.copy(source = "mic"))).contains("source="))
+    }
+
     /** 2026-10-24: route order + blank_asr diagnostics, additive (null when unknown). */
     @Test fun routeOrderAndSpeechDiagnosticsAreAdditive() {
         val o = JSONObject(DebugFormat.dictation(trace))

@@ -5,7 +5,7 @@ Windows and Android apps at it. Design and rules: `docs/hybrid-architecture.md`
 §2.6 (transport security) and §3 (server), `docs/protocol.md` §1.
 
 The server only listens. It makes no outbound connections, never writes audio
-or text to disk, and accepts peers only from loopback, private LAN and
+or text to disk (unless you turn on the debug capture, §9), and accepts peers only from loopback, private LAN and
 Tailscale addresses.
 
 ## 1. Prerequisites (nothing is downloaded by the installer)
@@ -228,3 +228,40 @@ Keystore. Neither puts it in exported settings.
 * Remove (system): `sudo systemctl disable --now flow-server`, then
   `sudo rm -r /opt/flow-server /etc/flow-server /etc/systemd/system/flow-server.service`,
   then `sudo systemctl daemon-reload`.
+
+## 9. Debug capture (optional, beta)
+
+Off by default. When a dictation that went through the server comes out
+wrong, the server can keep what it received so the session can be replayed
+on the PC (flow-cli), like the Android app's "Keep last dictation audio".
+
+```toml
+[debug]
+capture = true
+max_files = 30   # newest WAVs kept (default 30)
+max_age_h = 72   # older ones deleted (default 72)
+# dir = "/var/lib/flow-server/debug"   # default: <state dir>/debug
+```
+
+* State dir: `$STATE_DIRECTORY` (the system unit's `StateDirectory=`, i.e.
+  `/var/lib/flow-server`), else `$XDG_STATE_HOME/flow-server`, else
+  `~/.local/state/flow-server` (user install).
+* Layout, same as the phone's `files/debug/`:
+  `debug/audio/<ts>.wav` (16 kHz mono PCM16, every sample the client sent,
+  named by the session start in UTC with colons as dashes, e.g.
+  `2026-10-27T10-15-30.123Z.wav`) and `debug/dictations.jsonl`, one line per
+  session: `ts`, `audio` (the WAV name), `route` (`server`), `engine`,
+  `model`, `raw` (transcript), `text` (after AI cleanup), `status`,
+  `empty_reason`, `fallback_reason`, `cleanup_route`, the core timings (`audio_ms`,
+  `asr_ms`, `llm_ms`, `post_ms`, `total_ms`, …), `queue_ms`,
+  `start_to_commit_ms` and the peer IP.
+* Never written: the token, the client's `Authorization` header, any API
+  key, the field context or the dictionary. Nothing is uploaded.
+* Files are mode 0600, directories 0700. The newest `max_files` WAVs are
+  kept and none older than `max_age_h`; a line goes when its WAV goes.
+  Pruning runs after every save and at server start.
+* `check-config` validates the section (`max_files` and `max_age_h` ≥ 1,
+  `dir` absolute) and prints the capture directory when it is on. Startup
+  logs a warning while it is on.
+* To stop: set `capture = false` and restart; delete the `debug` folder to
+  remove what was kept.

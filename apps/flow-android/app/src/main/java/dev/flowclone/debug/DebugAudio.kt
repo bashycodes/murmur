@@ -17,6 +17,46 @@ object Wav {
         for (i in 0 until n) b.putShort(pcm[i])
         return b.array()
     }
+
+    /**
+     * Debug "WAV as microphone": the samples of a 16 kHz mono PCM16 WAV (any chunk order; extra
+     * chunks such as LIST are skipped). Anything else throws [IllegalArgumentException] saying why,
+     * because the engine would hear it at the wrong speed or as noise.
+     */
+    fun decode(bytes: ByteArray, rate: Int = 16_000): ShortArray {
+        val b = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        fun tag(at: Int) = String(bytes, at, 4, Charsets.US_ASCII)
+        require(bytes.size >= 12 && tag(0) == "RIFF" && tag(8) == "WAVE") { "not a RIFF/WAVE file" }
+        var fmtOk = false
+        var p = 12
+        while (p + 8 <= bytes.size) {
+            val id = tag(p)
+            val size = b.getInt(p + 4).toLong() and 0xffffffffL
+            val body = p + 8
+            require(body + size <= bytes.size || id == "data") { "chunk '$id' runs past the end of the file" }
+            when (id) {
+                "fmt " -> {
+                    require(size >= 16) { "fmt chunk too short" }
+                    val format = b.getShort(body).toInt() and 0xffff
+                    val channels = b.getShort(body + 2).toInt()
+                    val sampleRate = b.getInt(body + 4)
+                    val bits = b.getShort(body + 14).toInt()
+                    require(format == 1) { "not PCM (format $format)" }
+                    require(channels == 1) { "$channels channels; needs mono" }
+                    require(sampleRate == rate) { "$sampleRate Hz; needs $rate Hz" }
+                    require(bits == 16) { "$bits-bit; needs 16-bit" }
+                    fmtOk = true
+                }
+                "data" -> {
+                    require(fmtOk) { "no fmt chunk before the data" }
+                    val n = (minOf(size, (bytes.size - body).toLong()) / 2).toInt()
+                    return ShortArray(n) { b.getShort(body + 2 * it) }
+                }
+            }
+            p = (body + size + (size and 1)).toInt()
+        }
+        throw IllegalArgumentException(if (fmtOk) "no data chunk" else "no fmt chunk")
+    }
 }
 
 /**
