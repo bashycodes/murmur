@@ -1,0 +1,19 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <boolean name="allow_server" value="true" />
+    <string name="server.host">192.0.2.10</string>
+    <long name="server.port" value="7313" />
+    <string name="server.token_sealed">FAKEIV00:FAKE-SEALED-SERVER-TOKEN-aaaa1111</string>
+    <string name="cloud.key_sealed.openrouter">FAKEIV01:FAKE-SEALED-CLOUD-KEY-bbbb2222</string>
+    <string name="server.tls_pin_sha256">0000000000000000000000000000000000000000000000000000000000000000</string>
+    <string name="api_password">FAKE-PASSWORD-cccc3333</string>
+    <string name="oauth_refresh">FAKE-AUTH-dddd4444</string>
+    <string name="client_secret">FAKE-SECRET-eeee5555</string>
+    <int name="AuthRetries" value="31337" />
+    <string name="cloud">{&quot;schema&quot;:2,&quot;openrouter&quot;:{&quot;model&quot;:&quot;meta-llama/llama-3.3-70b&quot;,&quot;api_key&quot;:&quot;FAKE-NESTED-KEY-ffff6666&quot;},&quot;monthly_budget_usd&quot;:5}</string>
+    <string name="cloud_notice">sk-or-v1-FAKELEAKEDKEY0000777788889999</string>
+    <boolean name="debug_log" value="true" />
+    <boolean name="debug_keep_audio" value="true" />
+    <boolean name="keep_local_warm" value="false" />
+    <string name="route_order">client,server</string>
+</map>
