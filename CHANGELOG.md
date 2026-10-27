@@ -25,6 +25,16 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   pipeline, and prints a score table against the expected text and the
   phone's own results, plus the OpenRouter spend (capped, default $0.05).
   Recordings and results stay outside the repo. See `tools/replay/README.md`.
+- **Debug log: why an AI cleanup answer was not used.** When AI cleanup's
+  answer is rejected, dropped, times out or fails, the Android and Windows
+  debug-log line now has `rejected_text` (the model's answer, if any) and
+  `guard_detail` (the guard's reason: the unsupported sentence or literal
+  mark kind, the dropped clause or word count, the timeout or the error).
+  The Android log viewer shows them as "AI answer not used". Both follow the
+  `text` rules: only with the debug log on, and `<redacted>` for password
+  fields, banking and denylisted apps. flow-core's `CommitResult` and
+  `RouteInfo` carry them as additive optional fields, set only next to
+  `cloud_fallback`, so results without cloud cleanup are unchanged.
 - **Android debug: one-command pull.** `tools/phone/pull-debug.sh` copies
   the phone's debug log, the kept dictation WAVs (only new ones,
   sha256-checked) and the two settings files with every token, key,

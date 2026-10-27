@@ -153,6 +153,18 @@ pub struct CommitResult {
     /// was tried and the fallback pipeline ran. Additive.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cloud_fallback: Option<String>,
+    /// AI cleanup's answer when it was not used (guard reject, divergence),
+    /// for the debug log only (2026-10-27). Dictated text: shells log it
+    /// under D21's `text` rules. Set only with `cloud_fallback`. Additive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rejected_text: Option<String>,
+    /// Why AI cleanup's answer was not used, in detail: the guard's
+    /// unsupported sentence / literal mark kind / dropped clause or count,
+    /// the divergence, or the timeout / error. May quote dictated text
+    /// (same rules as `rejected_text`). Set only with `cloud_fallback`.
+    /// Additive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guard_detail: Option<String>,
 }
 
 /// One poll of the live session (`FlowCore::poll`, `Router::poll`): the
@@ -241,6 +253,12 @@ pub struct RouteInfo {
     pub cleanup_route: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cloud_fallback: Option<String>,
+    /// `CommitResult::rejected_text` / `guard_detail`, for the debug log
+    /// only (never the route label). Omitted while `None`. Additive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rejected_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guard_detail: Option<String>,
 }
 
 /// An amount in US dollars. A plain JSON number; a newtype only so the
@@ -282,6 +300,8 @@ impl CommitResult {
             llm: None,
             cleanup_route: None,
             cloud_fallback: None,
+            rejected_text: None,
+            guard_detail: None,
         }
     }
     fn error(msg: impl Into<String>) -> Self {
@@ -1487,7 +1507,7 @@ impl Worker {
             let timeout_ms = cloud.timeout_ms().unwrap_or(s.cfg.llm_timeout_ms);
             let max_div = s.cfg.divergence_threshold.unwrap_or(f64::INFINITY);
             let t = Instant::now();
-            let (outcome, usage) = cleanup::run_ai_cleanup(
+            let (outcome, usage, rejection) = cleanup::run_ai_cleanup(
                 cloud,
                 prompt,
                 &r.asr_text,
@@ -1509,6 +1529,8 @@ impl Worker {
                     let why = why.as_str();
                     r.cloud_fallback = Some(why.clone());
                     r.fallback_reason = Some(why);
+                    r.rejected_text = rejection.text;
+                    r.guard_detail = rejection.detail;
                 }
             }
         }

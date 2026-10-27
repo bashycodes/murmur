@@ -190,6 +190,20 @@ class DictationTraceTest {
         assertEquals(450L, t.clientMs)
     }
 
+    /** 2026-10-27: the unused AI cleanup answer and the guard's detail reach the trace. */
+    @Test fun rejectedAiAnswerReachesTheTrace() = runTest {
+        val traces = mutableListOf<DictationTrace>()
+        core.shapeResult = {
+            it.copy(route = dev.flowclone.core.RouteInfo("local", cleanupRoute = "local", cloudFallback = "llm_unsupported",
+                rejectedText = "Please buy a car.", guardDetail = "unsupported: Please buy a car"))
+        }
+        dictate(controller(Host { traces += it }))
+        val t = traces.single()
+        assertEquals("llm_unsupported", t.cloudFallback)
+        assertEquals("Please buy a car.", t.rejectedText)
+        assertEquals("unsupported: Please buy a car", t.guardDetail)
+    }
+
     /**
      * 2026-10-23 phone diag (docs/findings/2026-10-23-phone-quality-regression.md): every device
      * line had endpoint_wait_ms=0. SilenceTracker's fixed bar (mean s^2 > 33856, RMS 184 ~ -45 dBFS,

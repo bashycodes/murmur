@@ -76,7 +76,8 @@ fn cloud_cleaner() -> Arc<dyn Cleaner> {
 
 /// [`normalize`] without the per-engine metering (`llm`: engine, model,
 /// cost, generation id, latency), which is expected to differ, and
-/// without D30's route fields (`cleanup_route`, `cloud_fallback`, set only
+/// without D30's route fields (`cleanup_route`, `cloud_fallback`,
+/// `rejected_text`, `guard_detail`, set only
 /// on the cloud side). D30: the cloud gets the raw transcript and the
 /// loosened guard, the local LLM the rules' text and the strict guard, so
 /// a reject may name a different reason (`fallback_reason`); the text
@@ -84,7 +85,14 @@ fn cloud_cleaner() -> Arc<dyn Cleaner> {
 fn same_result(r: &CommitResult) -> serde_json::Value {
     let mut v = normalize(r);
     let o = v.as_object_mut().unwrap();
-    for k in ["llm", "cleanup_route", "cloud_fallback", "fallback_reason"] {
+    for k in [
+        "llm",
+        "cleanup_route",
+        "cloud_fallback",
+        "rejected_text",
+        "guard_detail",
+        "fallback_reason",
+    ] {
         o.remove(k);
     }
     v
