@@ -32,7 +32,6 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   log line says `"source":"wav"` (`"mic"` otherwise). Protected fields are
   refused; only the platform tools' shell can trigger it, and release builds
   do not contain it. See INSTALL.md, "Feed a WAV file as the microphone".
-
 - **flow-server debug capture (beta, off by default).** A new `[debug]`
   config section (`capture = true`, `max_files = 30`, `max_age_h = 72`)
   makes the server keep each session's received audio as a WAV plus one
