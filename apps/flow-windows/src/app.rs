@@ -14,6 +14,7 @@ use crate::history::{self, History};
 use crate::hotkeys::{self, win::HookHandle};
 use crate::paste::{self, PasteOptions};
 use crate::prefs::{LoadOutcome, Prefs};
+use crate::recent_apps::{self, RecentAppStore};
 use crate::router_adapter::{self, RouteView, RouterAdapter, SessionTest};
 use crate::suggestions::{self as sugg, SuggestionStore};
 use std::path::PathBuf;
@@ -48,6 +49,8 @@ struct AppState {
     input: OnceLock<mpsc::Sender<Input>>,
     history: Option<Arc<Mutex<History>>>,
     suggestions: Arc<Mutex<SuggestionStore>>,
+    /// Exe names dictated into, for the "Style per app" picker.
+    recent_apps: Arc<Mutex<RecentAppStore>>,
     /// Tray line "Dictionary suggestions (n)…".
     suggest_item: OnceLock<MenuItem<tauri::Wry>>,
     /// The OpenRouter API key (D18 C3 / D28): Credential Manager.
@@ -470,6 +473,21 @@ fn history_repaste(
 #[tauri::command]
 fn clipboard_copy(text: String) -> Result<(), String> {
     paste::win::copy_text(&text)
+}
+
+// ------------------------------------------------- style per app
+
+/// Recent apps + the built-in exe → group mapping (Writing style table).
+#[tauri::command]
+fn app_style_choices(state: tauri::State<'_, AppState>) -> recent_apps::StyleChoices {
+    recent_apps::style_choices(&state.recent_apps.lock().unwrap().data)
+}
+
+#[tauri::command]
+fn recent_apps_clear(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let mut r = state.recent_apps.lock().unwrap();
+    r.data.clear();
+    r.save().map_err(|e| e.to_string())
 }
 
 // ------------------------------------------------- dictionary tab
@@ -1640,6 +1658,9 @@ pub fn run() {
     let suggestions = Arc::new(Mutex::new(SuggestionStore::open(&sugg::default_path(
         appdata.as_deref(),
     ))));
+    let recent_apps = Arc::new(Mutex::new(RecentAppStore::open(
+        &recent_apps::default_path(appdata.as_deref()),
+    )));
     let debug_path = debug_log::default_path(appdata.as_deref());
     let debug = Arc::new(DebugLog::file(
         debug_path.clone(),
@@ -1680,6 +1701,7 @@ pub fn run() {
             input: OnceLock::new(),
             history: history.clone(),
             suggestions: suggestions.clone(),
+            recent_apps: recent_apps.clone(),
             suggest_item: OnceLock::new(),
             creds,
             usage_path,
@@ -1701,6 +1723,8 @@ pub fn run() {
             suggestions_list,
             suggestion_accept,
             suggestion_dismiss,
+            app_style_choices,
+            recent_apps_clear,
             dictionary_import,
             dictionary_export,
             dictionary_export_text,
@@ -1910,6 +1934,7 @@ pub fn run() {
             }
             controller = controller
                 .with_suggestions(suggestions.clone())
+                .with_recent_apps(recent_apps.clone())
                 .with_debug_log(debug.clone());
             let pending = suggestions.lock().unwrap().data.pending.len();
             show_suggestion_count(&handle, pending);
