@@ -452,7 +452,7 @@ class DeveloperActivity : Activity() {
                 val keep = toggleRow("Keep last dictation audio", "Debug: WAVs of the last ${dev.flowclone.debug.DebugAudioStore.MAX_FILES} dictations", app.dev.keepDebugAudio)
                 note(
                     "Saved in the app's private storage (files/debug/audio/), named like the debug log's ts and linked from its \"audio\" field. " +
-                        "Never for password fields, banking or excluded apps. Deleted after 24 hours. Nothing is sent anywhere.",
+                        "Never for password fields, banking or excluded apps. Deleted after ${dev.flowclone.debug.DebugAudioStore.MAX_AGE_MS / 3_600_000} hours. Nothing is sent anywhere.",
                 )
                 audioCount = infoRow("Files")
                 chipRow(chip("Clear audio") { clearDebugAudio() }.apply { contentDescription = "Clear kept dictation audio" })

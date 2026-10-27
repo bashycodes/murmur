@@ -167,10 +167,10 @@ engine failed behind the server. (D21 schema additions on Android, 2026-10-23: `
 `model`, `language`, `audio`, event `engine_mismatch`.)
 
 **Keep last dictation audio (debug)** (*Developer settings → Debug log & audio*, off by default): saves
-what the microphone heard for the last 10 dictations as 16 kHz mono WAV files in the app's
+what the microphone heard for the last 30 dictations as 16 kHz mono WAV files in the app's
 private storage, `files/debug/audio/<ts with - for :>.wav` (e.g. `2026-10-23T10-15-02.123Z.wav`
 for `"ts":"2026-10-23T10:15:02.123Z"`), linked from the line's `audio` field. Never for password
-fields, banking or excluded apps, nor for cancelled dictations; files older than 24 hours are
+fields, banking or excluded apps, nor for cancelled dictations; files older than 72 hours are
 deleted; *Clear audio* deletes them all. Nothing is uploaded. To replay one on the PC: copy it
 out with the platform tools' `exec-out run-as dev.flowclone cat files/debug/audio/<name>.wav >
 <name>.wav` (debug builds), then run it through `flow-cli` with the same model and language.

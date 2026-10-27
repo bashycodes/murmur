@@ -16,6 +16,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- **Android: more debug audio kept.** Developer settings → "Keep last
+  dictation audio" now keeps the last 30 dictations (was 10), each for
+  72 hours (was 24), so a replay session's early recordings are not pushed
+  out by later dictations. Protected targets, cancelled dictations and
+  *Clear audio* are unchanged.
+
 ## [0.6.0] - 2026-10-27
 
 ### Added
