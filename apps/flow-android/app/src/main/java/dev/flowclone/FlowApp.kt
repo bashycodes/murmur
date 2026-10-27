@@ -128,7 +128,7 @@ class FlowApp : Application() {
         migrateCloud()
         engine = EngineHolder(this)
         debugAudio = DebugAudioStore.inFilesDir(filesDir)
-        // 24 h limit also when the option was turned off meanwhile.
+        // 72 h limit also when the option was turned off meanwhile.
         runCatching { debugAudioWriter.execute { runCatching { debugAudio.prune() } } }
     }
 

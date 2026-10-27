@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="language">en</string>
+    <string name="asr_engine">parakeet</string>
+    <boolean name="llm_enabled" value="false" />
+    <float name="bubble_scale" value="1.0" />
+    <set name="user_denylist">
+        <string>com.example.bank</string>
+    </set>
+    <set name="session_tokens">
+        <string>FAKE-SET-TOKEN-gggg7777</string>
+    </set>
+    <string name="model_path">/storage/emulated/0/Download/ggml-base.bin</string>
+</map>

@@ -1,0 +1,3 @@
+{"kind":"dictation","ts":"2026-10-27T09:00:00.000Z","mode":"tap","route":"local","text":"first","audio":"2026-10-27T09-00-00.000Z.wav"}
+{"kind":"event","ts":"2026-10-27T10:00:00.000Z","event":"engine_load","error":null}
+{"kind":"dictation","ts":"2026-10-27T11:00:00.000Z","mode":"hold","route":"remote","text":"second sk-or-v1-FAKELEAKINLOG0000111122223333","audio":"2026-10-27T11-00-00.000Z.wav"}

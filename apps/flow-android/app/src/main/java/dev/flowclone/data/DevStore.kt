@@ -290,7 +290,7 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
 
     /**
      * "Keep last dictation audio (debug)", default off: the last few dictations' 16 kHz PCM as WAV
-     * in app-private `files/debug/audio/` (never for protected targets), deleted after 24 h.
+     * in app-private `files/debug/audio/` (never for protected targets), deleted after 72 h.
      */
     var keepDebugAudio: Boolean
         get() = kv.getBoolean(KEEP_DEBUG_AUDIO, false)

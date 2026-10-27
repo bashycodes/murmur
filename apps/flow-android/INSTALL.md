@@ -167,13 +167,30 @@ engine failed behind the server. (D21 schema additions on Android, 2026-10-23: `
 `model`, `language`, `audio`, event `engine_mismatch`.)
 
 **Keep last dictation audio (debug)** (*Developer settings → Debug log & audio*, off by default): saves
-what the microphone heard for the last 10 dictations as 16 kHz mono WAV files in the app's
+what the microphone heard for the last 30 dictations as 16 kHz mono WAV files in the app's
 private storage, `files/debug/audio/<ts with - for :>.wav` (e.g. `2026-10-23T10-15-02.123Z.wav`
 for `"ts":"2026-10-23T10:15:02.123Z"`), linked from the line's `audio` field. Never for password
-fields, banking or excluded apps, nor for cancelled dictations; files older than 24 hours are
+fields, banking or excluded apps, nor for cancelled dictations; files older than 72 hours are
 deleted; *Clear audio* deletes them all. Nothing is uploaded. To replay one on the PC: copy it
 out with the platform tools' `exec-out run-as dev.flowclone cat files/debug/audio/<name>.wav >
 <name>.wav` (debug builds), then run it through `flow-cli` with the same model and language.
+
+**Pull everything in one command** (debug builds): `tools/phone/pull-debug.sh [--since TS] [--out DIR]`
+copies `dictations.jsonl`, the kept WAVs and both settings files (`flow_settings.xml`, `dev.xml`)
+to `DIR` (default: a new temp dir; a directory inside the repo is refused) and prints one line,
+e.g. `pulled 42 lines, 3 wavs (1 new, 2 already here), 2 prefs → /tmp/flow-debug.Ab12Cd (61234
+bytes from phone)`. Read-only on the phone: the recordings stay there and the host copies are
+yours to delete. Pull into the same `--out DIR` again and only WAVs not already there (by sha256)
+cross the link; every pulled WAV is checked against the phone's sha256 (a mismatch is dropped and
+the script exits 1). `--since 2026-10-27T10:00Z` keeps only lines and WAVs from then on. Settings
+are redacted in memory before they reach disk: every entry whose name contains token, key,
+secret, passw, auth, sealed, cred, bearer or cookie (the sealed server token
+`server.token_sealed`, the cloud keys `cloud.key_sealed.<id>`) keeps its name but loses its value
+(`<redacted>`, numbers 0, sets emptied), JSON inside a value (`cloud`) is redacted by key the same
+way, and anything shaped like an API key (`sk-…`) or bearer token is replaced in the log too.
+Pick the phone with `FLOW_PHONE`: a serial (`FLOW_PHONE=100.64.0.5:5555`) or transport options
+(`FLOW_PHONE="-t 60"`); `FLOW_PKG` changes the package. Test: `tools/phone/test-pull-debug.sh`
+(fake platform tool, no phone).
 
 The server token and cloud keys are scrubbed from every line, and the clipboard is never read.
 With the toggle off nothing is written; `FlowService commit …` (timings only, never text) is
