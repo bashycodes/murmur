@@ -110,6 +110,13 @@
     capabilities: { local: true, remote: true, asr_engines: ["whisper", "parakeet"], llm: true, proto: 1, core_version: "0.1.0" },
     visible: true, version: "0.1.0", build: "abc1234-dirty", full: "0.1.0+abc1234.dirty", check: devCheck(dev), route: route(),
   });
+  let insights = {
+    total_words: 12840, week_words: 2315, dictations: 412, total_ms: 5_400_000, avg_wpm: 142.7,
+    current_streak: 4, longest_streak: 11, typing_wpm: 40, saved_minutes: 231,
+    top_apps: [{ app: "slack.exe", words: 6120 }, { app: "code.exe", words: 3011 }, { app: "", words: 90 }],
+    last7: [120, 0, 540, 300, 780, 210, 365].map((words, i) => ({ date: `2026-10-${22 + i}`, words })),
+    since: "2026-08-02",
+  };
   let history = [
     { id: 3, ts: now - 60e3, app: "outlook.exe", url: null, raw: "um so i think we should uh meet tomorrow at three",
       formatted: "I think we should meet tomorrow at 3.", pasted: "I think we should meet tomorrow at 3.", edited: null,
@@ -145,6 +152,12 @@
     history_delete: ({ id }) => { history = history.filter((h) => h.id !== id); return true; },
     history_clear: () => { const n = history.length; history = []; return n; },
     history_copy: () => {}, history_repaste: () => {}, clipboard_copy: () => {},
+    insights_get: () => structuredClone(insights),
+    insights_reset: () => {
+      insights = { ...insights, total_words: 0, week_words: 0, dictations: 0, total_ms: 0, avg_wpm: null,
+        current_streak: 0, longest_streak: 0, saved_minutes: 0, top_apps: [], since: null,
+        last7: insights.last7.map((d) => ({ ...d, words: 0 })) };
+    },
     suggestions_list: () => suggestions,
     app_style_choices: () => ({
       recent: recentApps.map((exe) => {

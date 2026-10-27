@@ -12,6 +12,7 @@ use crate::dictation::{Input, OverlayState, Sound};
 use crate::ducking::win::Ducker;
 use crate::history::{self, History};
 use crate::hotkeys::{self, win::HookHandle};
+use crate::insights::{self, InsightsStore};
 use crate::paste::{self, PasteOptions};
 use crate::prefs::{LoadOutcome, Prefs};
 use crate::recent_apps::{self, RecentAppStore};
@@ -48,6 +49,8 @@ struct AppState {
     /// Controller input (overlay ✕/✓ clicks).
     input: OnceLock<mpsc::Sender<Input>>,
     history: Option<Arc<Mutex<History>>>,
+    /// Insights page counts (`insights.json`, local only).
+    insights: Arc<Mutex<InsightsStore>>,
     suggestions: Arc<Mutex<SuggestionStore>>,
     /// Exe names dictated into, for the "Style per app" picker.
     recent_apps: Arc<Mutex<RecentAppStore>>,
@@ -205,6 +208,10 @@ impl Platform for WinPlatform {
 
     fn history_changed(&self) {
         let _ = self.app.emit_to(SETTINGS, "history:changed", ());
+    }
+
+    fn insights_changed(&self) {
+        let _ = self.app.emit_to(SETTINGS, "insights:changed", ());
     }
 
     fn suggestions_changed(&self, pending: usize) {
@@ -412,6 +419,22 @@ fn history_clear(state: tauri::State<'_, AppState>) -> Result<usize, String> {
         .unwrap()
         .clear()
         .map_err(|e| e.to_string())
+}
+
+// ------------------------------------------------- insights tab
+
+#[tauri::command]
+fn insights_get(state: tauri::State<'_, AppState>) -> flow_core::insights::Summary {
+    let today = insights::local_date(history::now_ms());
+    state.insights.lock().unwrap().summary(today)
+}
+
+/// Clear every count (History is untouched and is not re-added).
+#[tauri::command]
+fn insights_reset(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let mut s = state.insights.lock().unwrap();
+    s.reset();
+    s.save().map_err(|e| e.to_string())
 }
 
 /// Row text: the raw ASR text ("undo AI edit") or what was inserted.
@@ -1661,6 +1684,22 @@ pub fn run() {
     let recent_apps = Arc::new(Mutex::new(RecentAppStore::open(
         &recent_apps::default_path(appdata.as_deref()),
     )));
+    let mut stats = InsightsStore::open(&insights::default_path(appdata.as_deref()));
+    if !stats.data.backfilled {
+        // First run: start from the transcripts already kept. Attempted
+        // once only: a later retry would count live-recorded rows twice.
+        if let Some(h) = &history {
+            match stats.backfill_once(&h.lock().unwrap(), &insights::local_date) {
+                Ok(n) => eprintln!("[insights] counted {n} existing transcripts"),
+                Err(e) => eprintln!("[insights] backfill: {e}"),
+            }
+        }
+        stats.data.backfilled = true;
+        if let Err(e) = stats.save() {
+            eprintln!("[insights] {e}");
+        }
+    }
+    let insights_store = Arc::new(Mutex::new(stats));
     let debug_path = debug_log::default_path(appdata.as_deref());
     let debug = Arc::new(DebugLog::file(
         debug_path.clone(),
@@ -1700,6 +1739,7 @@ pub fn run() {
             dictating: OnceLock::new(),
             input: OnceLock::new(),
             history: history.clone(),
+            insights: insights_store.clone(),
             suggestions: suggestions.clone(),
             recent_apps: recent_apps.clone(),
             suggest_item: OnceLock::new(),
@@ -1719,6 +1759,8 @@ pub fn run() {
             history_clear,
             history_copy,
             history_repaste,
+            insights_get,
+            insights_reset,
             clipboard_copy,
             suggestions_list,
             suggestion_accept,
@@ -1933,6 +1975,7 @@ pub fn run() {
                 controller = controller.with_history(h);
             }
             controller = controller
+                .with_insights(insights_store.clone())
                 .with_suggestions(suggestions.clone())
                 .with_recent_apps(recent_apps.clone())
                 .with_debug_log(debug.clone());

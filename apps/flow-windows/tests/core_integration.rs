@@ -12,8 +12,9 @@ use flow_windows::controller::{AudioSink, Controller, Platform};
 use flow_windows::core_adapter::{FlowCoreAdapter, LlmSpec, LlmStatus, ModelSpec, ModelStatus};
 use flow_windows::core_api::PasteKey;
 use flow_windows::dictation::{Input, OverlayState, Phase, Sound};
-use flow_windows::history::History;
+use flow_windows::history::{now_ms, History};
 use flow_windows::hotkeys::HotkeyAction;
+use flow_windows::insights::{local_date, InsightsStore};
 use flow_windows::learn::{FieldReader, Read};
 use flow_windows::prefs::{Prefs, Retention};
 use flow_windows::suggestions::SuggestionStore;
@@ -110,6 +111,9 @@ impl Platform for FakeOs {
         self.copies.lock().unwrap().push(text.to_string());
         Ok(())
     }
+    fn insights_changed(&self) {
+        self.push("insights_changed");
+    }
     fn field_reader(&self) -> Option<Box<dyn FieldReader>> {
         let (from, to) = self.edit.clone()?;
         let pasted = self.pastes().last()?.clone();
@@ -132,6 +136,7 @@ struct Rig {
     os: Arc<FakeOs>,
     t: Arc<AtomicU64>,
     history: Arc<Mutex<History>>,
+    insights: Arc<Mutex<InsightsStore>>,
 }
 
 fn rig(core: Arc<FlowCoreAdapter>, os: FakeOs, prefs: Prefs) -> Rig {
@@ -149,6 +154,7 @@ fn rig_with(
     let t = Arc::new(AtomicU64::new(0));
     let tc = t.clone();
     let history = Arc::new(Mutex::new(History::open_in_memory().unwrap()));
+    let insights = Arc::new(Mutex::new(InsightsStore::in_memory()));
     let mut c = Controller::new(
         os.clone(),
         core,
@@ -156,7 +162,8 @@ fn rig_with(
         tx,
         Box::new(move || tc.load(Ordering::SeqCst)),
     )
-    .with_history(history.clone());
+    .with_history(history.clone())
+    .with_insights(insights.clone());
     if let Some(s) = suggestions {
         c = c.with_suggestions(s);
     }
@@ -166,6 +173,7 @@ fn rig_with(
         os,
         t,
         history,
+        insights,
     }
 }
 
@@ -290,6 +298,11 @@ fn silence_is_empty_and_pastes_nothing() {
     r.at(60_000, Input::Tick);
     assert_eq!(r.c.machine().phase(), &Phase::Idle);
     assert_eq!(r.history.lock().unwrap().count().unwrap(), 0);
+    assert_eq!(
+        r.insights.lock().unwrap().data.days.len(),
+        0,
+        "not a dictation"
+    );
 }
 
 #[test]
@@ -302,6 +315,41 @@ fn retention_never_keeps_no_history() {
     r.dictate(&tone(1.2), Duration::from_secs(10));
     assert_eq!(r.os.pastes().len(), 1);
     assert_eq!(r.history.lock().unwrap().count().unwrap(), 0);
+    // Insights still count it (no text is kept there).
+    let s = r.insights.lock().unwrap().summary(local_date(now_ms()));
+    assert_eq!((s.total_words, s.dictations), (2, 1));
+}
+
+#[test]
+fn insights_count_each_dictation_and_outlive_history() {
+    let mut r = rig(
+        mock_core("one two three four"),
+        FakeOs::new("slack.exe"),
+        Prefs::default(),
+    );
+    r.dictate(&tone(1.5), Duration::from_secs(10));
+    assert!(
+        r.os.log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|l| l == "insights_changed"),
+        "the Insights tab is told to refresh"
+    );
+    let today = local_date(now_ms());
+    let s = r.insights.lock().unwrap().summary(today);
+    assert_eq!((s.total_words, s.dictations, s.week_words), (4, 1, 4));
+    assert!((1400..=1600).contains(&s.total_ms), "{}", s.total_ms);
+    assert_eq!(s.top_apps[0].app, "slack.exe");
+    assert_eq!(s.current_streak, 1);
+    // Deleting all History keeps the stats; the next dictation adds on.
+    r.history.lock().unwrap().clear().unwrap();
+    r.dictate(&tone(1.5), Duration::from_secs(10));
+    let s = r.insights.lock().unwrap().summary(today);
+    assert_eq!((s.total_words, s.dictations), (8, 2));
+    // Reset clears them.
+    r.insights.lock().unwrap().reset();
+    assert_eq!(r.insights.lock().unwrap().summary(today).total_words, 0);
 }
 
 #[test]
