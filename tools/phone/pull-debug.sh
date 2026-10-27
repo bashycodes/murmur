@@ -140,12 +140,12 @@ fi
 # 2. WAVs: list + sha256 of all in two calls; pull only the missing / differing ones.
 WAVS=0 NEW=0 HAVE=0 BAD=0
 names=()
-if pull_var ls files/debug/audio 2>/dev/null; then
+if pull_var ls -1 files/debug/audio 2>/dev/null; then
     while read -r n; do
         case "$n" in *.wav) ;; *) continue ;; esac
         [ -n "$SINCE" ] && [[ "${n%.wav}" < "$SINCE_WAV" ]] && continue
         names+=("$n")
-    done <<<"$REPLY"
+    done < <(tr -s ' \t' '\n' <<<"$REPLY")  # toybox ls may print columns
 fi
 if [ ${#names[@]} -gt 0 ]; then
     pull_var sha256sum "${names[@]/#/files/debug/audio/}" || die "sha256sum failed on the phone"

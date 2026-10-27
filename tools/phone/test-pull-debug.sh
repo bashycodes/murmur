@@ -33,7 +33,7 @@ case "$cmd" in
     cat)
         [ -f "$1" ] || { echo "cat: $1: No such file or directory" >&2; exit 1; }
         if [ -n "${FAKE_CORRUPT:-}" ] && [ "$(basename "$1")" = "$FAKE_CORRUPT" ]; then printf 'garbled'; else cat "$1"; fi ;;
-    ls) [ -d "$1" ] || { echo "ls: $1: No such file or directory" >&2; exit 1; }; ls "$1" ;;
+    ls) [ "$1" = -1 ] && shift; [ -d "$1" ] || { echo "ls: $1: No such file or directory" >&2; exit 1; }; ls "$1" ;;
     sha256sum) sha256sum "$@" ;;
     *) echo "fake: unsupported command $cmd" >&2; exit 2 ;;
 esac
