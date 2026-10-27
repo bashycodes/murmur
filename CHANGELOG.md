@@ -18,6 +18,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Debug: replay harness.** `tools/replay/run.sh --in DIR` re-runs the
+  phone's saved dictation recordings on the PC through each speech model
+  (Parakeet, whisper, OpenRouter cloud STT), cleanup model (fallback rules,
+  local Qwen, OpenRouter models) and prompt version (v4c, v2) on the real
+  pipeline, and prints a score table against the expected text and the
+  phone's own results, plus the OpenRouter spend (capped, default $0.05).
+  Recordings and results stay outside the repo. See `tools/replay/README.md`.
 - **Android debug: one-command pull.** `tools/phone/pull-debug.sh` copies
   the phone's debug log, the kept dictation WAVs (only new ones,
   sha256-checked) and the two settings files with every token, key,
