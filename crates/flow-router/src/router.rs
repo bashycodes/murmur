@@ -667,6 +667,20 @@ impl Router {
         })
     }
 
+    /// The cleaner a one-off LLM request outside a dictation should use
+    /// (Command Mode, `flow_core::command`): the same route as dictation
+    /// cleanup. `base` is the shell's on-device LLM, if loaded. With cloud
+    /// cleanup wanted (consent, key, `cloud` in `cleanup_order`) this is
+    /// the cleanup plan applied to `base`, so the gate's consent, budget
+    /// and circuit checks apply per call; otherwise `base` alone. Additive.
+    pub fn command_cleaner(&self, base: Option<Arc<dyn Cleaner>>) -> Option<Arc<dyn Cleaner>> {
+        let plan = self.state.lk().cleanup_plan.clone();
+        match plan {
+            Some(p) => p(base.clone()).or(base),
+            None => base,
+        }
+    }
+
     /// Takes effect at the next `start_session`, except (review S5): the
     /// live session's fallback hops that the new config no longer allows
     /// are dropped, and a live cloud session that is no longer allowed
