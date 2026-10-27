@@ -327,6 +327,7 @@ function fillForm(prefs) {
     $("cancel").value = prefs.shortcuts.cancel;
     $("paste_last").value = prefs.shortcuts.paste_last;
     $("copy_last").value = prefs.shortcuts.copy_last;
+    $("scratchpad").value = prefs.shortcuts.scratchpad ?? "";
     $("microphone").value = prefs.microphone ?? "";
     for (const f of BOOL_FIELDS)
         $(f).checked = Boolean(prefs[f]);
@@ -355,6 +356,7 @@ function readForm(base) {
         cancel: $("cancel").value.trim(),
         paste_last: $("paste_last").value.trim(),
         copy_last: $("copy_last").value.trim(),
+        scratchpad: $("scratchpad").value.trim(),
     };
     next.model_path = $("model_path").value.trim() || null;
     next.asr_engine = $("asr_engine").value;

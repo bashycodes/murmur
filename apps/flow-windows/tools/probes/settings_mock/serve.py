@@ -1,8 +1,9 @@
-"""Serve ui/dist with mock-tauri.js injected into settings.html.
+"""Serve ui/dist with mock-tauri.js injected into settings.html (and
+mock-scratchpad.js into scratchpad.html).
 
 Probe for checking the settings window in a plain browser (no Tauri):
     python3 tools/probes/settings_mock/serve.py [port]
-then open http://127.0.0.1:<port>/settings.html.
+then open http://127.0.0.1:<port>/settings.html (or /scratchpad.html).
 """
 import http.server
 import pathlib
@@ -17,9 +18,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().__init__(*a, directory=str(DIST), **k)
 
     def do_GET(self):
-        if self.path.startswith("/mock-tauri.js"):
-            body = (HERE / "mock-tauri.js").read_bytes()
+        if self.path.startswith("/mock-tauri.js") or self.path.startswith(
+            "/mock-scratchpad.js"
+        ):
+            body = (HERE / self.path[1:].split("?")[0]).read_bytes()
             ctype = "text/javascript"
+        elif self.path.startswith("/scratchpad.html"):
+            html = (DIST / "scratchpad.html").read_text()
+            body = html.replace(
+                '<script src="scratchpad.js">',
+                '<script src="mock-scratchpad.js"></script><script src="scratchpad.js">',
+            ).encode()
+            ctype = "text/html"
         elif self.path.startswith("/settings.html"):
             html = (DIST / "settings.html").read_text()
             body = html.replace(
