@@ -28,6 +28,8 @@ class DictationControllerTest {
         var startOk = true
         var starts = 0; var stops = 0
         var onError: (() -> Unit)? = null
+        var label = "mic"
+        override val source: String get() = label
         override fun start(onFrame: (ShortArray, Int) -> Unit): Boolean {
             starts++
             if (!startOk) return false
@@ -606,6 +608,15 @@ class DictationControllerTest {
         val t = host.traces.single()
         assertEquals(1200L, t.speechMs)
         assertEquals(-31, t.peakDbfs)
+    }
+
+    /** Debug "WAV as microphone": the trace names the audio source the dictation ran on. */
+    @Test fun traceNamesTheAudioSource() = runTest {
+        val c = controller()
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        audio.label = "wav"
+        advanceTimeBy(600); c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        assertEquals(listOf("mic", "wav"), host.traces.map { it.source })
     }
 
     /** History stores why a dictation did not go in (HistoryPages.reason reads it). */

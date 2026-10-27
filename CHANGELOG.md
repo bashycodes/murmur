@@ -24,6 +24,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   secret, password and auth value removed into a temp directory on the PC,
   and prints how many lines, WAVs and bytes came over. Read-only on the
   phone; needs a debug build. See INSTALL.md, "Keep last dictation audio".
+- **Android debug: a WAV file as the microphone.** `tools/phone/play-wav.sh
+  hello.wav` pushes a 16 kHz mono WAV to a debug build and runs one normal
+  dictation on it instead of the mic (route order, AI cleanup, insert guard,
+  insertion into the focused field), in real time or with `--fast`, so a
+  dictation can be tested on the phone without anyone speaking. The debug
+  log line says `"source":"wav"` (`"mic"` otherwise). Protected fields are
+  refused; only the platform tools' shell can trigger it, and release builds
+  do not contain it. See INSTALL.md, "Feed a WAV file as the microphone".
 
 ### Changed
 
