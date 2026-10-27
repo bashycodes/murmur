@@ -29,6 +29,10 @@ import java.util.concurrent.atomic.AtomicInteger
  * `llm: llm_skipped_clean` stays a normal result; a cloud refusal shows as `llm_error: <code>`.
  * D30 (AI cleanup first): cleanup_route (cloud | local | rules: what produced the text) and
  * cloud_fallback (why the cloud answer was not used), only when cloud cleanup was tried.
+ * Since 2026-10-27, with cloud_fallback: rejected_text (the answer that was not used, null on a
+ * timeout / error / empty answer) and guard_detail (why: the guard's unsupported sentence or
+ * literal mark kind, the dropped clause or count, the timeout or error). Both are dictated text:
+ * "<redacted>" for protected targets, like `text`.
  *
  * Logging must never affect dictation: entries are queued (bounded, drop-oldest) and written
  * on one background thread; every failure is swallowed and counted.
@@ -100,6 +104,9 @@ data class DictationTrace(
     /** D30 `route.cleanup_route` (cloud | local | rules) and `route.cloud_fallback`; null = AI cleanup not tried. */
     val cleanupRoute: String? = null,
     val cloudFallback: String? = null,
+    /** 2026-10-27 `route.rejected_text` / `route.guard_detail`: the unused AI cleanup answer and why. Redacted like [text]. */
+    val rejectedText: String? = null,
+    val guardDetail: String? = null,
     /** D28 `llm.ttft_ms` / `llm.generation_id` (OpenRouter's id, for a later cost lookup). */
     val llmTtftMs: Long? = null,
     val llmGenerationId: String? = null,
@@ -154,6 +161,8 @@ object DebugRedact {
             target = REDACTED,
             raw = t.raw?.let { REDACTED },
             text = t.text?.let { REDACTED },
+            rejectedText = t.rejectedText?.let { REDACTED },
+            guardDetail = t.guardDetail?.let { REDACTED },
             insert = t.insert.copy(steps = emptyList()),
             audio = null,
         )
@@ -238,6 +247,8 @@ object DebugFormat {
         "llm_cost_usd" to t.llmCostUsd,
         "cleanup_route" to t.cleanupRoute,
         "cloud_fallback" to t.cloudFallback,
+        "rejected_text" to t.rejectedText,
+        "guard_detail" to t.guardDetail,
         "llm_ttft_ms" to t.llmTtftMs,
         "llm_generation_id" to t.llmGenerationId,
         "stt_cost_usd" to t.sttCostUsd,
@@ -282,7 +293,9 @@ object DebugFormat {
         ).joinToString(" · ")
         val text = s("text") ?: s("raw") ?: ""
         val err = s("error")?.let { "\n  error: $it" } ?: ""
-        "$time  ${s("mode")} · $route · $outcome · $ms · ${s("target") ?: "-"}\n  “$text”$err"
+        val rejected = listOfNotNull(s("guard_detail"), s("rejected_text")?.let { "“$it”" })
+            .takeIf { it.isNotEmpty() }?.joinToString(" · ", "\n  AI answer not used: ") ?: ""
+        "$time  ${s("mode")} · $route · $outcome · $ms · ${s("target") ?: "-"}\n  “$text”$err$rejected"
     }.getOrElse { line }
 }
 
