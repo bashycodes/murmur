@@ -169,15 +169,25 @@ pub fn prompt_name(v: PromptVersion) -> &'static str {
 /// `dictations.jsonl` (rows whose `audio` file exists). Without the log,
 /// every WAV in `audio/` (or the directory itself) with no phone result.
 pub fn load_corpus(dir: &Path) -> Result<Vec<Recording>, String> {
-    let audio = if dir.join("audio").is_dir() { dir.join("audio") } else { dir.to_path_buf() };
+    let audio = if dir.join("audio").is_dir() {
+        dir.join("audio")
+    } else {
+        dir.to_path_buf()
+    };
     let log = dir.join("dictations.jsonl");
     let mut out = Vec::new();
     if log.is_file() {
         let text = std::fs::read_to_string(&log).map_err(|e| format!("{}: {e}", log.display()))?;
-        for (i, line) in text.lines().enumerate().filter(|(_, l)| !l.trim().is_empty()) {
-            let v: serde_json::Value =
-                serde_json::from_str(line).map_err(|e| format!("{}:{}: {e}", log.display(), i + 1))?;
-            let Some(file) = v["audio"].as_str() else { continue };
+        for (i, line) in text
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| !l.trim().is_empty())
+        {
+            let v: serde_json::Value = serde_json::from_str(line)
+                .map_err(|e| format!("{}:{}: {e}", log.display(), i + 1))?;
+            let Some(file) = v["audio"].as_str() else {
+                continue;
+            };
             let wav = audio.join(file);
             if v["kind"].as_str().is_some_and(|k| k != "dictation") || !wav.is_file() {
                 continue;
@@ -201,7 +211,12 @@ pub fn load_corpus(dir: &Path) -> Result<Vec<Recording>, String> {
         wavs.sort();
         for wav in wavs {
             let id = wav.file_stem().unwrap().to_string_lossy().into_owned();
-            out.push(Recording { id, wav, app_id: String::new(), phone: None });
+            out.push(Recording {
+                id,
+                wav,
+                app_id: String::new(),
+                phone: None,
+            });
         }
     }
     Ok(out)
@@ -212,7 +227,10 @@ pub struct FixedAsr(pub String);
 
 impl AsrEngine for FixedAsr {
     fn transcribe(&self, _pcm: &[f32], _req: &AsrRequest) -> Result<AsrOutput, AsrError> {
-        Ok(AsrOutput { text: self.0.clone(), ..Default::default() })
+        Ok(AsrOutput {
+            text: self.0.clone(),
+            ..Default::default()
+        })
     }
     fn segmentable(&self) -> bool {
         false
@@ -233,8 +251,19 @@ pub struct PromptOverride {
 }
 
 impl PromptOverride {
-    pub fn new(inner: Arc<dyn Cleaner>, version: PromptVersion, session: SessionConfig, ctx: FieldContext) -> Self {
-        Self { inner, version, session, ctx, meter: Mutex::new((0.0, 0)) }
+    pub fn new(
+        inner: Arc<dyn Cleaner>,
+        version: PromptVersion,
+        session: SessionConfig,
+        ctx: FieldContext,
+    ) -> Self {
+        Self {
+            inner,
+            version,
+            session,
+            ctx,
+            meter: Mutex::new((0.0, 0)),
+        }
     }
 
     /// The summed cost of its calls, after waiting (up to `wait`) for an
@@ -252,7 +281,10 @@ impl PromptOverride {
 
     fn rewrite(&self, p: &CleanPrompt) -> CleanPrompt {
         let cat = flow_core::postprocess::effective_category(self.session.platform, &self.ctx);
-        let ctx = FieldContext { app_category: cat, ..self.ctx.clone() };
+        let ctx = FieldContext {
+            app_category: cat,
+            ..self.ctx.clone()
+        };
         build_prompt_versioned(
             &p.transcript,
             self.session.cleanup_level,
@@ -269,7 +301,12 @@ impl Cleaner for PromptOverride {
     fn clean(&self, p: &CleanPrompt, d: Instant) -> Result<String, CleanError> {
         self.inner.clean(&self.rewrite(p), d)
     }
-    fn clean_cancellable(&self, p: &CleanPrompt, d: Instant, c: &AbortFlag) -> Result<String, CleanError> {
+    fn clean_cancellable(
+        &self,
+        p: &CleanPrompt,
+        d: Instant,
+        c: &AbortFlag,
+    ) -> Result<String, CleanError> {
         self.inner.clean_cancellable(&self.rewrite(p), d, c)
     }
     fn clean_metered(
@@ -369,22 +406,45 @@ impl Matrix {
                 Ok(a) => a,
                 Err(e) => {
                     for a in &self.asr {
-                        out(&Row { rec: rec.id.clone(), asr: a.name.clone(), error: Some(e.clone()), ..Default::default() });
+                        out(&Row {
+                            rec: rec.id.clone(),
+                            asr: a.name.clone(),
+                            error: Some(e.clone()),
+                            ..Default::default()
+                        });
                     }
                     continue;
                 }
             };
-            let ctx = FieldContext { app_id: rec.app_id.clone(), app_category: AppCategory::Other, ..Default::default() };
+            let ctx = FieldContext {
+                app_id: rec.app_id.clone(),
+                app_category: AppCategory::Other,
+                ..Default::default()
+            };
             for a in &self.asr {
-                let base = Row { rec: rec.id.clone(), asr: a.name.clone(), ..Default::default() };
+                let base = Row {
+                    rec: rec.id.clone(),
+                    asr: a.name.clone(),
+                    ..Default::default()
+                };
                 if a.call_cost.is_some() && spend.total() >= self.max_spend {
-                    out(&Row { cleanup: "none".into(), prompt: "-".into(), error: Some("spend_cap".into()), ..base });
+                    out(&Row {
+                        cleanup: "none".into(),
+                        prompt: "-".into(),
+                        error: Some("spend_cap".into()),
+                        ..base
+                    });
                     continue;
                 }
                 let r = match commit(a.engine.clone(), None, &self.session, &ctx, &audio) {
                     Ok(r) => r,
                     Err(e) => {
-                        out(&Row { cleanup: "none".into(), prompt: "-".into(), error: Some(e), ..base });
+                        out(&Row {
+                            cleanup: "none".into(),
+                            prompt: "-".into(),
+                            error: Some(e),
+                            ..base
+                        });
                         continue;
                     }
                 };
@@ -394,14 +454,22 @@ impl Matrix {
                     cleanup: "none".into(),
                     prompt: "-".into(),
                     asr_cost_usd: asr_cost,
-                    ..Row { rec: base.rec.clone(), asr: base.asr.clone(), ..row_from(&r) }
+                    ..Row {
+                        rec: base.rec.clone(),
+                        asr: base.asr.clone(),
+                        ..row_from(&r)
+                    }
                 };
                 out(&first);
                 if r.error.is_some() || r.asr_text.trim().is_empty() || r.empty_reason.is_some() {
                     continue;
                 }
                 let fixed: Arc<dyn AsrEngine> = Arc::new(FixedAsr(r.asr_text.clone()));
-                for c in self.cleanup.iter().filter(|c| c.cloud.is_some() || c.local.is_some()) {
+                for c in self
+                    .cleanup
+                    .iter()
+                    .filter(|c| c.cloud.is_some() || c.local.is_some())
+                {
                     let versions: Vec<Option<PromptVersion>> = match c.cloud {
                         Some(_) => self.prompts.iter().copied().map(Some).collect(),
                         None => vec![None],
@@ -416,10 +484,19 @@ impl Matrix {
                         let cleaner: Arc<dyn Cleaner> = match (&c.cloud, v) {
                             (Some(cloud), Some(v)) => {
                                 if spend.total() >= self.max_spend {
-                                    out(&Row { transcript: r.asr_text.clone(), error: Some("spend_cap".into()), ..head });
+                                    out(&Row {
+                                        transcript: r.asr_text.clone(),
+                                        error: Some("spend_cap".into()),
+                                        ..head
+                                    });
                                     continue;
                                 }
-                                let po = Arc::new(PromptOverride::new(cloud.clone(), v, self.session.clone(), ctx.clone()));
+                                let po = Arc::new(PromptOverride::new(
+                                    cloud.clone(),
+                                    v,
+                                    self.session.clone(),
+                                    ctx.clone(),
+                                ));
                                 meter = Some(po.clone());
                                 let o: Arc<dyn Cleaner> = po;
                                 match &c.local {
@@ -429,15 +506,27 @@ impl Matrix {
                             }
                             _ => c.local.clone().expect("local slot"),
                         };
-                        let mut row = match commit(fixed.clone(), Some(cleaner), &self.session, &ctx, &audio) {
-                            Ok(res) => row_from(&res),
-                            Err(e) => Row { transcript: r.asr_text.clone(), error: Some(e), ..Default::default() },
-                        };
+                        let mut row =
+                            match commit(fixed.clone(), Some(cleaner), &self.session, &ctx, &audio)
+                            {
+                                Ok(res) => row_from(&res),
+                                Err(e) => Row {
+                                    transcript: r.asr_text.clone(),
+                                    error: Some(e),
+                                    ..Default::default()
+                                },
+                            };
                         // Cloud cost from the meter (also when the local LLM
                         // answered after a failed AI cleanup); local is free.
                         row.cost_usd = meter.map(|m| m.cost(Duration::from_secs(5)));
                         spend.cleanup += row.cost_usd.unwrap_or(0.0);
-                        out(&Row { rec: head.rec, asr: head.asr, cleanup: head.cleanup, prompt: head.prompt, ..row });
+                        out(&Row {
+                            rec: head.rec,
+                            asr: head.asr,
+                            cleanup: head.cleanup,
+                            prompt: head.prompt,
+                            ..row
+                        });
                     }
                 }
             }
