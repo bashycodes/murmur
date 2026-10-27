@@ -31,6 +31,8 @@ import dev.flowclone.core.FlowCore
 import dev.flowclone.core.FlowCoreLoader
 import dev.flowclone.core.NativeFlowCore
 import dev.flowclone.data.DictionaryStore
+import dev.flowclone.notes.DocumentStore
+import dev.flowclone.notes.FileDocumentStore
 import dev.flowclone.data.SuggestionStore
 import dev.flowclone.data.HistoryStore
 import dev.flowclone.data.EnginePlan
@@ -78,6 +80,24 @@ class FlowApp : Application() {
 
     /** Last dictation's result + route (Developer page, engine badge). In-memory only (§5). */
     val lastRoute = MutableStateFlow<LastDictation?>(null)
+
+    /**
+     * The dictation screen of ours in front right now (the Scratchpad editor sets itself on resume,
+     * clears on pause), or null. While set, the accessibility service treats our own field like any
+     * other app's ([dev.flowclone.policy.OwnAppGate]); otherwise our screens get no bubble.
+     */
+    @Volatile var dictationSurface: Any? = null
+
+    /** Scratchpad (and later Notes) text, app-private `files/notes/`. */
+    val documents: DocumentStore by lazy { FileDocumentStore(File(filesDir, "notes")) }
+
+    /**
+     * Every [documents] read and write runs on this one thread, in order: an editor opened right
+     * after another one paused reads the text that pause just saved.
+     */
+    val documentsIo: java.util.concurrent.ExecutorService by lazy {
+        java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "flow-documents").apply { isDaemon = true } }
+    }
 
     /** The live accessibility service, when connected. */
     @Volatile var accessibility: AccessibilityBridge? = null

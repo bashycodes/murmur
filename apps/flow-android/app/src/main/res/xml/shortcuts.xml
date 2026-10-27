@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static launcher shortcut (long-press the Flow Clone icon): straight into the Scratchpad. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="scratchpad"
+        android:enabled="true"
+        android:icon="@drawable/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_scratchpad_short"
+        android:shortcutLongLabel="@string/shortcut_scratchpad_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="dev.flowclone"
+            android:targetClass="dev.flowclone.ui.NoteEditorActivity" />
+    </shortcut>
+</shortcuts>

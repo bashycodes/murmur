@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- NoteEditorActivity's field: a fixed id so its text and caret survive a rotation. -->
+    <item name="note_editor" type="id" />
+</resources>
