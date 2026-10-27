@@ -45,7 +45,10 @@ import dev.flowclone.session.DictationController
 import dev.flowclone.session.DictationState
 import dev.flowclone.session.FeedbackEvent
 import dev.flowclone.ui.MainActivity
+import dev.flowclone.audio.AudioSwitch
 import dev.flowclone.audio.MicRecorder
+import dev.flowclone.audio.WavAudioSource
+import dev.flowclone.debug.DebugWav
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -95,6 +98,8 @@ class FlowService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val app get() = FlowApp.of(this)
     private lateinit var controller: DictationController
+    /** The mic, or (debug builds, one dictation) a WAV armed by [playDebugWav]. */
+    private val audio = AudioSwitch(MicRecorder())
     private lateinit var overlay: BubbleOverlay
     private val showCopy = MutableStateFlow(false)
     @Volatile private var lastText: String? = null
@@ -121,7 +126,7 @@ class FlowService : Service() {
         running = true
         tone = runCatching { ToneGenerator(AudioManager.STREAM_NOTIFICATION, 60) }.getOrNull()
         controller = DictationController(
-            scope = scope, audio = MicRecorder(), host = Host(),
+            scope = scope, audio = audio, host = Host(),
             core = { app.engine.current() }, commitDispatcher = Dispatchers.Default,
             cap = app.settings.load().sessionCap(), now = SystemClock::elapsedRealtime,
             // Review C2: start_session can connect to the server (TCP + TLS + hello): never on Main.
@@ -194,6 +199,11 @@ class FlowService : Service() {
                     val armed = text != null && controller.offerInsert(text)
                     toast(if (armed) R.string.toast_offer_insert else R.string.toast_offer_insert_busy)
                 }
+                return START_STICKY
+            }
+            DebugWav.ACTION -> {
+                // Compile-time false in release: the branch is dead code there and no receiver sends it.
+                if (dev.flowclone.BuildConfig.DEBUG) playDebugWav(intent)
                 return START_STICKY
             }
             else -> app.settings.serviceStoppedByUser = false
@@ -515,6 +525,36 @@ class FlowService : Service() {
             if (active) insertSteps.clear()
             if (active && !micPromoted) promote(withMic = true)
             app.accessibility?.onDictationActive(active)
+        }
+    }
+
+    /**
+     * Debug "WAV as microphone" (debug builds; src/debug WavMicReceiver → [DebugWav.ACTION]): one
+     * normal dictation (route order, cleanup, insert guard, insert, debug log with source=wav) on
+     * the WAV's audio instead of the mic. The end of the WAV is the release.
+     */
+    private fun playDebugWav(intent: Intent) {
+        val path = intent.getStringExtra(DebugWav.EXTRA_PATH)
+        val fast = intent.getBooleanExtra(DebugWav.EXTRA_FAST, false)
+        val hold = !intent.getBooleanExtra(DebugWav.EXTRA_TAP, false)
+        fun refuse(why: String) {
+            Log.w(TAG, "debug wav: $why")
+            app.debugLog.event("debug_wav", why)
+            toast("WAV dictation: $why")
+        }
+        scope.launch {
+            val file = path?.let { DebugWav.resolve(filesDir, it) }
+                ?: return@launch refuse("no WAV file under files/debug/: $path")
+            val pcm = withContext(Dispatchers.IO) { runCatching { dev.flowclone.debug.Wav.decode(file.readBytes()) } }
+                .getOrElse { return@launch refuse("${file.name}: ${it.message}") }
+            DebugWav.refusal(controller.state.value, app.accessibility?.insertTarget(explicit = true))
+                ?.let { return@launch refuse(it) }
+            val src = WavAudioSource(pcm, realTime = !fast, onEnd = { scope.launch { controller.release() } })
+            audio.arm(src)
+            beforeStart()
+            controller.toggle(hold)
+            if (audio.disarm()) refuse("did not start (${controller.state.value::class.simpleName})")
+            else Log.i(TAG, "debug wav: ${file.name}, ${pcm.size * 1000L / dev.flowclone.session.SAMPLE_RATE} ms, ${if (fast) "fast" else "real time"}")
         }
     }
 
