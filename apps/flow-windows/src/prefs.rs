@@ -294,12 +294,14 @@ impl Prefs {
         check("cancel", &s.cancel, true)?;
         check("paste-last", &s.paste_last, false)?;
         check("copy-last", &s.copy_last, false)?;
+        check("command", &s.command, false)?;
         let all = [
             &s.ptt,
             &s.hands_free,
             &s.cancel,
             &s.paste_last,
             &s.copy_last,
+            &s.command,
         ];
         for (i, a) in all.iter().enumerate() {
             if all[i + 1..].contains(a) {
@@ -329,11 +331,15 @@ impl Prefs {
     }
 
     /// Session config for a dictation started in `mode`: only hands-free
-    /// sessions get the endpoint (D19).
+    /// sessions get the endpoint (D19). A Command Mode instruction skips
+    /// the LLM cleanup pass (`raw_mode`): it is read by the command LLM,
+    /// never pasted, so cleaning it would only add latency.
     pub fn session_config_for(&self, mode: crate::dictation::Mode) -> SessionConfig {
         let mut c = self.session_config();
-        if mode == crate::dictation::Mode::Locked {
-            c.endpoint_silence_ms = self.hands_free_endpoint();
+        match mode {
+            crate::dictation::Mode::Locked => c.endpoint_silence_ms = self.hands_free_endpoint(),
+            crate::dictation::Mode::Command => c.raw_mode = true,
+            crate::dictation::Mode::Ptt => {}
         }
         c
     }
@@ -833,5 +839,25 @@ mod tests {
         let mut p = Prefs::default();
         p.shortcuts.ptt = "Ctrl+Win+Alt+Shift".parse().unwrap();
         assert!(p.validate().unwrap_err().contains("max 3"));
+        let mut p = Prefs::default();
+        p.shortcuts.command = p.shortcuts.hands_free.clone();
+        assert!(p.validate().unwrap_err().contains("differ"));
+        let mut p = Prefs::default();
+        p.shortcuts.command = "C".parse().unwrap();
+        assert!(p.validate().unwrap_err().contains("command"));
+    }
+
+    #[test]
+    fn command_default_and_old_prefs_without_it() {
+        let p = Prefs::default();
+        assert_eq!(p.shortcuts.command.to_string(), "Ctrl+Win+Alt");
+        let q: Prefs = serde_json::from_str(r#"{"shortcuts":{"ptt":"Ctrl+Shift"}}"#).unwrap();
+        assert_eq!(q.shortcuts.command, p.shortcuts.command);
+        use crate::dictation::Mode;
+        assert!(
+            p.session_config_for(Mode::Command).raw_mode,
+            "no LLM on the instruction"
+        );
+        assert!(!p.session_config_for(Mode::Ptt).raw_mode);
     }
 }
