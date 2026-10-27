@@ -259,8 +259,14 @@ Settings → AI cleanup:
   Everything else: Formal, Casual, Very casual, Excited, each with an example
   line). Defaults: chats casual (no final period), email and everything else
   formal; an untouched all-formal set moves to these once. **Style per app**:
-  `app = personal|work|email|other` lines, `app` = exe name (`mychat.exe`)
-  or web host (`mail.example.com`), over the built-in lists
+  a table of apps with a group dropdown (Personal / Work / Email / Other) and
+  Remove. *Add* offers the apps you recently dictated into (exe names only,
+  newest 12, `recent_apps.json`; memory only with history retention
+  "Never"; *Forget recent apps* clears it) or takes a typed exe name / path,
+  web host or URL; duplicates and `=` are refused. A collapsed *Built-in
+  groups* list shows the default mapping read-only (overridden rows struck
+  through, *Change* copies one into your table). Saved as `app_buckets`
+  (exe stem or host → group), over the built-in lists
   (`data/app-lists.json`: WhatsApp, Telegram, Signal, Messenger, Discord,
   Instagram, Google Messages → personal; Slack, Teams → work; Outlook,
   Gmail → email).
@@ -283,6 +289,7 @@ Settings → AI cleanup:
 | `src/core_adapter.rs` | `CoreApi` on `flow_core::FlowCore`: two-phase background load (whisper engine, then the optional `flow_llm` cleaner, composed with `FlowCore::from_engines`), `ModelStatus` / `LlmStatus`, shell→core type mapping |
 | `src/history.rs` | Local SQLite history (`history.sqlite`, 10-clone-spec §2 columns, no audio), keep / 24 h / never retention; list/search/get/delete/clear/set_edited for the History tab |
 | `src/learn.rs` | Learn-from-edits (03 §3), pure: anchor-bounded region, Wispr end reasons, watch state machine in injected time, semi-global trim of text typed after the dictation |
+| `src/recent_apps.rs` | Exe names recently dictated into (`recent_apps.json`, names only) and the picker's built-in exe → group rows |
 | `src/suggestions.rs` | Learned words waiting for an explicit accept (`suggestions.json`); dismissed words are never re-suggested |
 | `src/dictionary.rs` | Import/export of the shared `[{word, replacement, isSnippet}]` JSON: tolerant parse, validation, case-insensitive merge |
 | `src/overlay.rs` | Pill hit-testing so the hands-free ✕/✓ are clickable while the canvas stays click-through |
@@ -460,7 +467,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] AI cleanup on with the DLL + Qwen 0.5B GGUF: tray goes "loading…" → "AI cleanup: qwen2.5-0.5b…"; dictation works during the load; afterwards "um so i think we should uh meet tomorrow" pastes cleaned up, and History shows "AI edited".
 - [ ] The NSIS installer built with `--config tauri.llm.conf.json` puts `flow_llm.dll` beside `Flow Clone.exe`, and AI cleanup loads on a PC without Rust/VS (only the VC++ redistributable).
 - [ ] Per-app styles: defaults → a WhatsApp / Slack dictation ends without a final period, Outlook keeps it; with Personal = Very casual and AI cleanup on, WhatsApp gives lowercase without a final period; Email stays formal.
-- [ ] Style per app: `notepad.exe = personal` → Save → a Notepad dictation ends without a final period; a bad line (`notepad.exe = loud`) shows an error next to Save.
+- [ ] Style per app: dictate into Notepad, open AI cleanup → *Add* lists Notepad; add it as Personal → Save → a Notepad dictation ends without a final period. An old prefs.json with `app_buckets` opens as rows and saves back with the same keys; adding the same app twice says "Already in the list".
 - [ ] Cleanup level: an old prefs.json with `"cleanup_level":"none"` opens as *Verbatim* with Auto-format unticked; choosing *No AI* ticks Auto-format again; "comma" then becomes ",".
 - [ ] Debug log line has `"style":"casual"` for WhatsApp and `"llm"` (`llm_skipped_clean` with AI on and an already clean dictation).
 - [ ] History tab: search filters, Copy, Re-paste (Settings hides, text lands in the previously focused app), Delete, Delete all (second click), retention change prunes.

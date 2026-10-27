@@ -18,6 +18,15 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Windows: per-app style picker.** AI cleanup → Writing style → *Style
+  per app* is now a table instead of `app = group` text lines: pick a group
+  (Personal / Work / Email / Other) per app, remove rows, and add apps from
+  the ones you recently dictated into without typing an exe name (or type
+  one, a web host or a URL). The built-in exe → group mapping is listed
+  read-only so you can see why an app is in a group. Only exe names are
+  remembered (`recent_apps.json`, newest 12, nothing kept with history
+  retention "Never"). Same `app_buckets` pref: existing entries load as rows
+  unchanged.
 - **Windows: custom cue sounds.** Put `start.wav`, `stop.wav`, `lock.wav`,
   `paste.wav` or `error.wav` in `%APPDATA%\FlowClone\sounds\` to replace
   that cue's built-in tone (read at the first cue, so restart after changing

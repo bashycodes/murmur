@@ -774,6 +774,27 @@ mod tests {
     }
 
     #[test]
+    fn app_buckets_from_the_text_box_era_load_and_save_unchanged() {
+        // The old `app = group` box stored keys as typed (`.exe`, case);
+        // the picker keeps them as they are, the matcher normalises.
+        let (p, o) = load_str(
+            "buckets-old",
+            &format!(
+                r#"{{"prefs_rev":{PREFS_REV},"app_buckets":{{"MyChat.exe":"work","mail.example.com":"email","notepad":"personal"}}}}"#
+            ),
+        );
+        assert_eq!(o, LoadOutcome::Loaded);
+        let keys: Vec<&str> = p.app_buckets.keys().map(String::as_str).collect();
+        assert_eq!(keys, ["MyChat.exe", "mail.example.com", "notepad"]);
+        assert_eq!(p.app_buckets["MyChat.exe"], StyleBucket::Work);
+        let d = tmpdir("buckets-old-save");
+        let path = d.join(FILE_NAME);
+        p.save(&path).unwrap();
+        assert_eq!(Prefs::load(&path).0.app_buckets, p.app_buckets);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn right_alt_ptt_roundtrips_and_validates() {
         let d = tmpdir("ralt");
         let path = d.join(FILE_NAME);

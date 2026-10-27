@@ -287,6 +287,73 @@ ul.sugg .what {
   flex: 1;
 }
 
+/* style per app */
+h4.apps-title {
+  margin: 12px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+table.apps {
+  width: 100%;
+  border-collapse: collapse;
+}
+table.apps th {
+  text-align: left;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+table.apps td {
+  padding: 3px 4px 3px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: middle;
+}
+table.apps td:nth-child(2) {
+  width: 1%;
+  white-space: nowrap;
+}
+table.apps td:nth-child(3) {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+table.apps .exe {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 6px;
+}
+table.apps .tag {
+  color: var(--muted);
+  font-size: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 6px;
+}
+table.apps tr.overridden td:first-child {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+#app_recent,
+#app_manual {
+  flex: 1;
+  min-width: 0;
+}
+button.link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+details.defaults summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 6px 0;
+}
+
 /* ---- Developer tab ---- */
 .field-err {
   display: block;

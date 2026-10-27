@@ -32,6 +32,8 @@ fn main() {
             "suggestions_list",
             "suggestion_accept",
             "suggestion_dismiss",
+            "app_style_choices",
+            "recent_apps_clear",
             "dictionary_import",
             "dictionary_export",
             "dictionary_export_text",

@@ -9,6 +9,7 @@
     launch_at_login: false, show_flow_bar_always: true, use_ax_context: true,
     cleanup_level: "light", raw_mode: false,
     styles: { personal: "casual", work: "formal", email: "formal", other: "formal" },
+    app_buckets: { "mychat.exe": "work", "mail.example.com": "email", slack: "email" },
     dictionary: [
       { word: "Kubernetes", replacement: null, isSnippet: false },
       { word: "gh", replacement: "GitHub", isSnippet: false },
@@ -119,6 +120,13 @@
     { id: 1, ts: now - 86400e3 * 2, app: "notepad.exe", url: null, raw: "hello world", formatted: null, pasted: null,
       edited: null, duration_ms: 900, words: 2, lang: "en", final_text: "hello world", ai_edited: false },
   ];
+  let recentApps = ["slack.exe", "notepad.exe", "whatsapp.exe", "acme-crm.exe"];
+  const defaults = [
+    { key: "olk", exe: "olk.exe", name: "Outlook", default_bucket: "email" },
+    { key: "slack", exe: "slack.exe", name: "Slack", default_bucket: "work" },
+    { key: "telegram", exe: "telegram.exe", name: "Telegram", default_bucket: "personal" },
+    { key: "whatsapp", exe: "whatsapp.exe", name: "WhatsApp", default_bucket: "personal" },
+  ];
   let suggestions = [{ word: "Wispr Flow", heard: "whisper flow", app: "slack.exe", ts: now, count: 2 }];
   const listeners = {};
   const debugLog = { enabled: false, count: 12 };
@@ -138,6 +146,15 @@
     history_clear: () => { const n = history.length; history = []; return n; },
     history_copy: () => {}, history_repaste: () => {}, clipboard_copy: () => {},
     suggestions_list: () => suggestions,
+    app_style_choices: () => ({
+      recent: recentApps.map((exe) => {
+        const key = exe.replace(/\.exe$/, "");
+        const d = defaults.find((x) => x.key === key);
+        return { key, exe, name: d ? d.name : key === "notepad" ? "Notepad" : null, default_bucket: d ? d.default_bucket : "other" };
+      }),
+      defaults,
+    }),
+    recent_apps_clear: () => { recentApps = []; },
     suggestion_accept: ({ word }) => {
       suggestions = suggestions.filter((s) => s.word !== word);
       prefs.dictionary.push({ word, replacement: null, isSnippet: false });

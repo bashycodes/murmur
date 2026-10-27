@@ -21,6 +21,8 @@
     "allow-suggestions-list",
     "allow-suggestion-accept",
     "allow-suggestion-dismiss",
+    "allow-app-style-choices",
+    "allow-recent-apps-clear",
     "allow-dictionary-import",
     "allow-dictionary-export",
     "allow-dictionary-export-text",
