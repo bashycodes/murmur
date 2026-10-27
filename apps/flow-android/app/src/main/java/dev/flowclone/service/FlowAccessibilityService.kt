@@ -233,6 +233,31 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         return FieldContextBuilder.build(pkg, type, text, node?.textSelectionStart ?: -1, node?.textSelectionEnd ?: -1)
     }
 
+    /**
+     * Learn from my edits: re-read the field pinned at dictation start. Never for a password /
+     * sensitive / content-excluded field or a banking app: those return no reader, and a field
+     * that turns protected (or focus moving to another field or app) ends the watch before any
+     * text is read.
+     */
+    override fun editReader(): dev.flowclone.learn.FieldReader? {
+        val snap = startSnapshot ?: return null
+        if (startFieldProtected || BubbleVisibilityPolicy.isBanking(snap.pkg)) return null
+        return dev.flowclone.learn.FieldReader { readEditedField(snap) }
+    }
+
+    private fun readEditedField(snap: StartSnapshot): dev.flowclone.learn.FieldRead {
+        val node = focusedNode() ?: return dev.flowclone.learn.FieldRead.Unavailable
+        if (node.packageName?.toString() != snap.pkg) return dev.flowclone.learn.FieldRead.FocusChanged
+        if (snap.looseHash != null && FocusedNodeFinder.identityHash(node, false) != snap.looseHash) return dev.flowclone.learn.FieldRead.FocusChanged
+        val editor = inputMethod?.focusedEditor ?: FocusedEditor.EMPTY
+        val type = editor.inputType.takeIf { editor.packageName != null } ?: node.inputType
+        if (dev.flowclone.debug.DebugRedact.isProtectedField(type, node.isPassword, Build.VERSION.SDK_INT >= 34 && node.isAccessibilityDataSensitive) ||
+            FocusedNodeFinder.isExcludedField(node) || EditorInputType.isContentExtractionExcluded(type)
+        ) return dev.flowclone.learn.FieldRead.FocusChanged
+        val text = dev.flowclone.insert.TextMatching.readNodeText(NodeAdapter(node).snapshot(), editor.hintText, emptySet())
+        return text?.let { dev.flowclone.learn.FieldRead.Text(it) } ?: dev.flowclone.learn.FieldRead.Unavailable
+    }
+
     override suspend fun sendKey(key: dev.flowclone.core.PasteKey): Boolean = withContext(Dispatchers.Main) {
         val code = when (key) {
             dev.flowclone.core.PasteKey.ENTER -> android.view.KeyEvent.KEYCODE_ENTER

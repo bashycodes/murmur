@@ -75,6 +75,11 @@ data class Settings(
     val styles: dev.flowclone.core.Styles = dev.flowclone.core.Styles(),
     /** "Writing style → Apps": package → bucket, over the built-in [AppCategorizer] lists. */
     val appBuckets: Map<String, AppCategorizer.Category> = emptyMap(),
+    /**
+     * "Learn from my edits" (Windows `learn_from_edits`): after an insert, re-read that field for
+     * up to 45 s and offer corrected words as Dictionary suggestions (never added without Add).
+     */
+    val learnFromEdits: Boolean = true,
 ) {
     companion object {
         /** [language] not chosen: follow the phone ([LanguageDefault.effective]). */

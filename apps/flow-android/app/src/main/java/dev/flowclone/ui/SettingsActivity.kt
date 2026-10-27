@@ -266,6 +266,11 @@ class SettingsActivity : Activity() {
             card {
                 val history = navRow(R.drawable.ic_set_history, "History") { open(Page.HISTORY) }
                 refreshers += { history.setSubtitle(SettingsSummary.history(app.settings.load().retention)) }
+                toggleRow(
+                    "Learn from my edits",
+                    "After a dictation, re-reads that field for up to 45 s; words you correct show up as suggestions in Dictionary. Never password fields; nothing is added until you tap Add",
+                    app.settings.load().learnFromEdits,
+                ).onChange { on -> applyNow { copy(learnFromEdits = on) } }
             }
 
             sectionLabel("ADVANCED")

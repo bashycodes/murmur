@@ -172,6 +172,13 @@ class DictationController(
          * or starting the next dictation drops the bubble's Paste. Must return at once.
          */
         fun onNotInserted(text: String, outcome: String) = Unit
+
+        /**
+         * Learn from my edits: every text run of [pasted] went into the field captured at start
+         * ([context], null = none). [sentKey] = the plan pressed Enter (the field is likely
+         * cleared). Must return at once (the app starts its watch in the background).
+         */
+        fun onInserted(pasted: String, context: FieldContext?, sentKey: Boolean) = Unit
     }
 
     /** What the debug trace needs from the dictation's start. */
@@ -237,6 +244,7 @@ class DictationController(
     /** Completes true once the session started (false: start failed or the dictation was dropped). */
     private var started: Deferred<Boolean>? = null
     private var sessionAppId: String? = null
+    private var sessionContext: FieldContext? = null
     /** Bumped by every start / cancel: late frames, start results and mic errors of an older dictation are ignored. */
     @Volatile private var generation = 0L
     /** Generation whose mic frames are accepted; 0 once its audio stopped (C15: no stale tail). */
@@ -417,6 +425,7 @@ class DictationController(
         val gen = ++generation
         val ctx = host.captureContext()
         sessionAppId = ctx?.appId
+        sessionContext = ctx
         traceStart = TraceStart(
             wallClock(), hold, ctx?.appId, cfg.languages.firstOrNull() ?: "auto",
             style = cfg.styles.forCategory(ctx?.appCategory ?: "other").wire,
@@ -544,6 +553,7 @@ class DictationController(
         val c = session ?: return
         session = null
         val appId = sessionAppId
+        val ctx = sessionContext
         val start = started
         val gen = generation
         _state.value = DictationState.Processing(rec.hold, now())
@@ -613,6 +623,12 @@ class DictationController(
             val inserted = unpasted == null
             host.recordHistory(result, inserted, appId, if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED)
             if (!inserted) notInserted(result, unpasted!!, InsertOutcome.PASTE_FAILED)
+            else try {
+                host.onInserted(
+                    plan.filterIsInstance<PasteSegment.Text>().joinToString("") { it.text }, ctx,
+                    plan.any { it is PasteSegment.Key && it.key == PasteKey.ENTER },
+                )
+            } catch (_: Throwable) { }
             _state.value = if (inserted) restingState()
             else DictationState.Error(DictationState.ErrorKind.FailedToPaste(unpasted!!))
             done(if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED, result)

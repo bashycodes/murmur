@@ -1,5 +1,10 @@
 package dev.flowclone.service
 
+import dev.flowclone.learn.Anchors
+import dev.flowclone.learn.EditLearning
+import dev.flowclone.learn.EditWatch
+import dev.flowclone.learn.FieldRead
+import dev.flowclone.learn.runWatch
 import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
@@ -116,6 +121,9 @@ class FlowService : Service() {
     private var shakeRegistered = false
     /** D21: insertion status + steps of the current dictation (all its text runs), for the debug log. */
     private val insertSteps = java.util.Collections.synchronizedList(ArrayList<String>())
+    /** Learn from my edits: the one running field watch, and its "a new dictation started" flag. */
+    private var learnJob: Job? = null
+    @Volatile private var learnStop: java.util.concurrent.atomic.AtomicBoolean? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -399,6 +407,44 @@ class FlowService : Service() {
         }
     }
 
+    // ---- learn from my edits ----
+
+    /**
+     * After an insert, re-read the same field (off Main, once a second, up to 45 s) and turn the
+     * user's corrections into Dictionary suggestions. Nothing is added to the dictionary here.
+     * A new dictation ends the watch (its last observation still counts, as on Windows);
+     * turning the setting off ends it without learning.
+     */
+    private fun watchForEdits(pasted: String, ctx: FieldContext?, sentKey: Boolean) {
+        learnJob?.cancel()
+        learnStop?.set(true)
+        if (ctx == null || !EditLearning.shouldWatch(app.settings.load().learnFromEdits, pasted, sentKey, true)) return
+        val reader = app.accessibility?.editReader() ?: return
+        val stop = java.util.concurrent.atomic.AtomicBoolean(false)
+        learnStop = stop
+        learnJob = scope.launch(Dispatchers.Default) {
+            val watch = EditWatch(pasted, Anchors.of(ctx), SystemClock.elapsedRealtime())
+            val outcome = runWatch(
+                { if (stop.get()) FieldRead.FocusChanged else reader.read() }, watch, SystemClock::elapsedRealtime, { delay(it) },
+                stillWanted = { app.settings.load().learnFromEdits },
+            )
+            val core = (app.engine.state.value as? dev.flowclone.EngineHolder.State.Ready)?.core
+            var added: List<dev.flowclone.learn.Suggestion> = emptyList()
+            if (core != null && outcome.edited != null) {
+                app.suggestions.update { cur ->
+                    val r = EditLearning.learn(pasted, outcome, cur, app.dictionary.all(), ctx.appId, System.currentTimeMillis(), core::learnEdit)
+                    added = r?.added.orEmpty()
+                    r?.next ?: cur
+                }
+            }
+            // Reason and counts only: never the text.
+            app.debugLog.event("learn_edit", "end=${outcome.reason.name.lowercase()} edited=${outcome.edited != null} suggested=${added.size}")
+            if (added.isNotEmpty()) withContext(Dispatchers.Main) {
+                toast(getString(R.string.toast_dictionary_suggestion, added.joinToString(", ") { it.word }))
+            }
+        }
+    }
+
     // ---- feedback ----
 
     private fun toast(res: Int) = Toast.makeText(this, res, Toast.LENGTH_SHORT).show()
@@ -521,8 +567,11 @@ class FlowService : Service() {
         override fun insertTarget(explicit: Boolean) =
             app.accessibility?.insertTarget(explicit) ?: dev.flowclone.session.InsertTarget.OK
 
+        override fun onInserted(pasted: String, context: FieldContext?, sentKey: Boolean) =
+            watchForEdits(pasted, context, sentKey)
+
         override fun onRecordingActive(active: Boolean) {
-            if (active) insertSteps.clear()
+            if (active) { insertSteps.clear(); learnStop?.set(true) }
             if (active && !micPromoted) promote(withMic = true)
             app.accessibility?.onDictationActive(active)
         }
