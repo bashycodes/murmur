@@ -221,4 +221,14 @@ class RouterJsonTest {
         assertEquals(RouteDiag(connectMs = 2503, localCold = true, localLoadMs = 1840), d)
         assertNull(RouterJson.decodeRouteStatus(fixture("route_status.json")).lastDiag)
     }
+
+    /** 2026-10-27: the unused AI cleanup answer and the guard's detail reach the route (debug log only). */
+    @Test fun routeCarriesTheRejectedAnswerAndGuardDetail() {
+        val r = CoreJson.decodeRoute(JSONObject("""{"engine":"local","cleanup_route":"local","cloud_fallback":"llm_dropped",
+            "rejected_text":"The demo is on Thursday.","guard_detail":"dropped: the demo is on thursday at 3"}"""))
+        assertEquals("The demo is on Thursday.", r.rejectedText)
+        assertEquals("dropped: the demo is on thursday at 3", r.guardDetail)
+        val none = CoreJson.decodeRoute(JSONObject("""{"engine":"local"}"""))
+        assertNull(none.rejectedText); assertNull(none.guardDetail)
+    }
 }
