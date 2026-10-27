@@ -7,6 +7,9 @@
     <string name="title_settings">Settings</string>
     <string name="title_dictionary">Dictionary &amp; snippets</string>
     <string name="title_history">History</string>
+    <string name="title_scratchpad">Scratchpad</string>
+    <string name="shortcut_scratchpad_short">Scratchpad</string>
+    <string name="shortcut_scratchpad_long">Dictate into the Scratchpad</string>
     <string name="title_developer">Developer settings</string>
     <string name="notif_channel_service">Flow Clone</string>
     <string name="notif_channel_service_desc">Keeps Flow Clone running for voice dictation</string>

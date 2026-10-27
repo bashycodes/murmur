@@ -48,11 +48,16 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Long-press the icon → Scratchpad. -->
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
         <activity android:name=".ui.ModelImportActivity" android:exported="false" android:label="@string/title_models" />
         <activity android:name=".ui.SettingsActivity" android:exported="false" android:label="@string/title_settings" />
         <activity android:name=".ui.DictionaryActivity" android:exported="false" android:label="@string/title_dictionary" />
         <activity android:name=".ui.HistoryActivity" android:exported="false" android:label="@string/title_history" />
+        <!-- Scratchpad: the one screen of ours the bubble dictates into (policy/OwnAppGate). -->
+        <activity android:name=".ui.NoteEditorActivity" android:exported="false" android:label="@string/title_scratchpad"
+            android:launchMode="singleTop" android:windowSoftInputMode="adjustResize|stateVisible" />
         <activity android:name=".ui.DeveloperActivity" android:exported="false" android:label="@string/title_developer" />
         <activity android:name=".ui.OpenRouterActivity" android:exported="false" android:label="OpenRouter (cloud)" />
         <activity android:name=".ui.ModelPickerActivity" android:exported="false" android:label="Model" />

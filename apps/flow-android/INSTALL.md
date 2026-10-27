@@ -700,6 +700,12 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       *Dismiss*ed and the same edit repeated is not suggested again. Switch the field or app mid-watch:
       nothing more is read (debug log `learn_edit end=focus_changed`). *Settings → Learn from my edits*
       off → no `learn_edit` event after a dictation. Never in a password field (no bubble there anyway).
+- [ ] Scratchpad (*Main screen → Scratchpad*, and long-press the app icon → *Scratchpad*): the keyboard
+      opens and the bubble shows; dictate twice → each text appears **once** (`FlowA11y` log `insert
+      SUCCESS_TEXT_FOUND`, no `node_tier` step); swipe the app away from Recents and reopen → the text is
+      still there. *Copy all* pastes elsewhere; *Share* opens the share sheet; *Clear* asks, then empties
+      it (still empty after reopening). In *Settings* fields the bubble stays hidden. With *Learn from my
+      edits* on, correcting a dictated word here behaves as in Notes (a suggestion, nothing else).
 - [ ] History: rows grouped under *Today*; search finds the row; *Show the raw transcript* shows the
       pre-cleanup text; a row's detail page has *Copy* and *Delete dictation* (asks first).
 - [ ] Switch fields while a dictation is processing: its History row says *Not inserted — tap to copy*;

@@ -28,6 +28,7 @@ import dev.flowclone.insert.V3Inserter
 import dev.flowclone.policy.BubbleVisibilityPolicy
 import dev.flowclone.policy.EditorInputType
 import dev.flowclone.policy.InsertGuard
+import dev.flowclone.policy.OwnAppGate
 import dev.flowclone.policy.PolicyLists
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -171,7 +172,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
             BubbleVisibilityPolicy.Input(
                 inputType = editor.inputType, imeOptions = editor.imeOptions,
                 packageName = if (pkg == packageName) null else pkg,
-                nodePassword = node?.isPassword, imeVisible = imeVisible && pkg != packageName,
+                nodePassword = node?.isPassword, imeVisible = imeVisible && !ownAppBlocked(pkg),
                 notificationReplyContext = replyContext, accessibilityDataSensitive = dataSensitive,
             ),
             app.settings.load().userDenylist,
@@ -182,6 +183,9 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
             app.fieldFocus.value = published
         }
     }
+
+    /** Our own screens get no bubble and no insert, except the Scratchpad while it is in front ([OwnAppGate]). */
+    private fun ownAppBlocked(pkg: String?) = OwnAppGate.blocks(pkg, packageName, app.dictationSurface != null)
 
     /** SoftKeyboardStateTracker: visible fraction of the IME window rect. */
     private fun imeVisibleFraction(w: AccessibilityWindowInfo): Float {
@@ -285,7 +289,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
                 accessibilityDataSensitive = Build.VERSION.SDK_INT >= 34 && node?.isAccessibilityDataSensitive == true,
             ),
             app.settings.load().userDenylist,
-        ).show && pkg != packageName
+        ).show && !ownAppBlocked(pkg)
         val start = startSnapshot?.let { InsertGuard.Field(it.pkg, it.looseHash) }
         val now = InsertGuard.Field(pkg ?: node?.packageName?.toString(), node?.let { FocusedNodeFinder.identityHash(it, false) })
         val r = InsertGuard.check(start, now, allowed, explicit)
