@@ -193,6 +193,24 @@ abstract class VerifyManifestNetwork : DefaultTask() {
 }
 
 /**
+ * Release variants: the debug "WAV as microphone" receiver (src/debug) must not be in the merged
+ * manifest, so nothing outside the app can make a release build dictate. NoDebugWavReceiverTest
+ * re-checks it (and that the class is absent) from the release unit-test suite.
+ */
+abstract class VerifyNoDebugReceiver : DefaultTask() {
+    @get:InputFile abstract val manifest: RegularFileProperty
+    @get:OutputFile abstract val report: RegularFileProperty
+
+    @TaskAction
+    fun verify() {
+        val xml = manifest.get().asFile.readText()
+        val found = listOf("WavMicReceiver", "dev.flowclone.debug.PLAY_WAV").filter { xml.contains(it) }
+        report.get().asFile.apply { parentFile.mkdirs() }.writeText("found=$found\n")
+        if (found.isNotEmpty()) throw GradleException("Release manifest contains the debug WAV receiver ($found)")
+    }
+}
+
+/**
  * Inspects the packaged APK(s). `remote`: no ASR/LLM native libs and a libflow_ffi.so that
  * exports no whisper_/llama_ symbols (I4). `local`: libflow_ffi.so carries no WebSocket/TLS
  * client code (I3) and no cloud STT client (D18 C2: reqwest / webpki / flow-cloud); backs up the
@@ -264,6 +282,12 @@ abstract class VerifyApkNativeLibs : DefaultTask() {
 }
 
 androidComponents {
+    // AGP 9 creates unit tests only for the tested build type (debug). Release keeps its own
+    // suite (src/testRelease) so it can prove the debug-only "WAV as microphone" receiver is absent.
+    beforeVariants(selector().withBuildType("release")) { v ->
+        (v as? com.android.build.api.variant.HasHostTestsBuilder)
+            ?.hostTests?.get(com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE)?.enable = true
+    }
     onVariants { variant ->
         val cap = variant.name.replaceFirstChar { it.uppercase() }
         val bt = (variant.buildType ?: "").replaceFirstChar { it.uppercase() }
@@ -290,6 +314,14 @@ androidComponents {
             .configureEach { dependsOn(manifestGate) }
         tasks.matching { it.name == "assemble$cap" || it.name == "check" }
             .configureEach { apkGate?.let { g -> dependsOn(g) } }
+        if (variant.buildType == "release") {
+            val noDebugReceiver = tasks.register<VerifyNoDebugReceiver>("verify${cap}NoDebugWavReceiver") {
+                manifest.set(variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.MERGED_MANIFEST))
+                report.set(layout.buildDirectory.file("reports/debug-receiver/${variant.name}.txt"))
+            }
+            tasks.matching { it.name == "assemble$cap" || it.name == "test${cap}UnitTest" || it.name == "check" }
+                .configureEach { dependsOn(noDebugReceiver) }
+        }
     }
 }
 

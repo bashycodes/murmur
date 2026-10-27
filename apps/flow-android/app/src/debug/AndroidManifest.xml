@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only (merged into every <flavour>Debug variant, never into release:
+     verify<Variant>NoDebugWavReceiver and NoDebugWavReceiverTest check that). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- "WAV as microphone" (tools/phone/play-wav.sh). Exported so the platform tools' shell
+             can send the explicit broadcast; guarded by DUMP, which the shell holds and no
+             third-party app can be granted (signature|privileged|development), so other apps
+             cannot trigger a dictation. -->
+        <receiver
+            android:name=".debug.WavMicReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="dev.flowclone.debug.PLAY_WAV" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
