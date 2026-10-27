@@ -18,6 +18,11 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Windows: custom cue sounds.** Put `start.wav`, `stop.wav`, `lock.wav`,
+  `paste.wav` or `error.wav` in `%APPDATA%\FlowClone\sounds\` to replace
+  that cue's built-in tone (read at the first cue, so restart after changing
+  them). A file that isn't a RIFF/WAVE or is over 2 MB is ignored with a
+  `[sounds]` log line; the Sounds setting still turns every cue off.
 - **Windows: push-to-talk on Right Alt alone.** Shortcuts can name one side
   of a modifier: `Right Alt` / `Left Alt` (also `RAlt`, `AltGr`), `Left Ctrl`
   / `Right Ctrl`, `Left Shift` / `Right Shift`. Plain `Ctrl`, `Alt` and

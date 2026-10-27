@@ -197,6 +197,16 @@ next to the count). Never logged: the server token and cloud API keys
 `target`, `raw` and `text` = `"<redacted>"` and no steps. Nothing is uploaded anywhere.
 Code: `src/debug_log.rs`, lines built in `src/controller.rs`.
 
+## Custom sounds
+
+To replace a cue with your own, drop a WAV file into
+`%APPDATA%\FlowClone\sounds\` named `start.wav`, `stop.wav`, `lock.wav`
+(hands-free locked), `paste.wav` or `error.wav`, then restart the app (the
+sounds are loaded once, at the first cue). Plain PCM WAV is recommended; the
+file must be a RIFF/WAVE file of at most 2 MB, otherwise the built-in tone
+plays and a `[sounds]` line on stderr says why. Any cue without a file keeps
+its built-in tone, and turning sounds off in Settings silences custom ones too.
+
 ## Speech model (never downloaded automatically)
 
 Put a whisper.cpp ggml model at `%APPDATA%\FlowClone\models\ggml-base.bin`
@@ -267,7 +277,7 @@ Settings → AI cleanup:
 | `src/paste/` | Pure strategy, restore guard and per-app restore delay; `win.rs` = clipboard snapshot → CF_UNICODETEXT plus history/monitor opt-outs → masked Alt/Win release → `[Ctrl↓,V↓]` 50 ms `[V↑,Ctrl↑]` → restore if the sequence number is unchanged. Falls back to KEYEVENTF_UNICODE |
 | `src/context/` | Truncation, password suppression, app kind and style bucket from `data/app-lists.json` (pure); `uia.rs` = UI Automation snapshot with a 300 ms timeout, and `UiaFieldReader` (re-reads the pasted-into control, `CompareElements` for focus) |
 | `src/ducking/` | Mute plan and restore rule (pure); `win.rs` = WASAPI sessions on an MTA thread |
-| `src/sounds.rs` | Synthesised cue WAVs (pure) played with `PlaySoundW(SND_MEMORY)` |
+| `src/sounds.rs` | Synthesised cue WAVs (pure), optional user overrides from `%APPDATA%\FlowClone\sounds`, played with `PlaySoundW(SND_MEMORY)` |
 | `src/prefs.rs` | `%APPDATA%\FlowClone\prefs.json`: tolerant load, atomic save, validation, `prefs_rev` migration (rev 1, D22: a stored hands-free auto-stop of exactly 2000 ms, the old default, becomes 1500 once; rev 3, D27: LLM budget 1500 → 3000, all-formal styles → chats casual, None → Verbatim, raw mode → No AI; later saves keep any value) |
 | `src/core_api.rs` | §9 API seam (shell types) plus `StubCore` for tests |
 | `src/core_adapter.rs` | `CoreApi` on `flow_core::FlowCore`: two-phase background load (whisper engine, then the optional `flow_llm` cleaner, composed with `FlowCore::from_engines`), `ModelStatus` / `LlmStatus`, shell→core type mapping |
@@ -511,7 +521,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - Learn-from-edits polls (default every 1 s for 45 s) instead of subscribing to UIA `TextChanged` events, and uses no local LLM to vet candidates ("is this a proper noun?", 03 §6): flow-core's alignment filters plus the user's explicit accept do that job. Controls without TextPattern/ValuePattern (some Electron/canvas editors) are not watched.
 - LLM cleanup load is 10-50 s on CPU and quality with the default 0.5B model is 4/8 on the core's messy-dictation set (1.5B: 8/8, ~2x slower); see `docs/core-architecture.md`.
 - "Re-paste" from the History tab hides Settings and pastes into whatever window Windows activates next (normally the one used before Settings).
-- Cue sounds are synthesised tones, not Wispr's WAVs (those are not redistributable).
+- Cue sounds are synthesised tones, not Wispr's WAVs (those are not redistributable); see [Custom sounds](#custom-sounds) to use your own.
 
 ## flow-core integration
 
