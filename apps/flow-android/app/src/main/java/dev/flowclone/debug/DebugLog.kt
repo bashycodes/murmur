@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * `llm: llm_skipped_clean` stays a normal result; a cloud refusal shows as `llm_error: <code>`.
  * D30 (AI cleanup first): cleanup_route (cloud | local | rules: what produced the text) and
  * cloud_fallback (why the cloud answer was not used), only when cloud cleanup was tried.
+ * Since 2026-10-27: source (mic | wav: debug builds can feed a WAV file as the microphone).
  *
  * Logging must never affect dictation: entries are queued (bounded, drop-oldest) and written
  * on one background thread; every failure is swallowed and counted.
@@ -105,6 +106,8 @@ data class DictationTrace(
     val llmGenerationId: String? = null,
     /** D28: what the cloud speech-to-text of this dictation cost (`route.cost_usd`). */
     val sttCostUsd: Double? = null,
+    /** Where the audio came from: "mic", or "wav" (debug builds: "WAV as microphone", tools/phone/play-wav.sh). */
+    val source: String? = null,
 )
 
 /** `insert` field: {"outcome": …, "steps": […]}. */
@@ -241,6 +244,7 @@ object DebugFormat {
         "llm_ttft_ms" to t.llmTtftMs,
         "llm_generation_id" to t.llmGenerationId,
         "stt_cost_usd" to t.sttCostUsd,
+        "source" to t.source,
         "target" to t.target,
         "insert" to Raw(obj("outcome" to t.insert.outcome, "steps" to t.insert.steps)),
         "raw" to t.raw,
@@ -282,7 +286,8 @@ object DebugFormat {
         ).joinToString(" · ")
         val text = s("text") ?: s("raw") ?: ""
         val err = s("error")?.let { "\n  error: $it" } ?: ""
-        "$time  ${s("mode")} · $route · $outcome · $ms · ${s("target") ?: "-"}\n  “$text”$err"
+        val src = s("source")?.takeIf { it != "mic" }?.let { " · source=$it" } ?: ""
+        "$time  ${s("mode")}$src · $route · $outcome · $ms · ${s("target") ?: "-"}\n  “$text”$err"
     }.getOrElse { line }
 }
 

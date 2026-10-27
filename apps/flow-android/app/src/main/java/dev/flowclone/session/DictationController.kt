@@ -32,6 +32,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 interface AudioSource {
     fun start(onFrame: (ShortArray, Int) -> Unit): Boolean
 
+    /** What the frames come from: "mic", or "wav" (debug "WAV as microphone"); debug log `source`. Read after [start]. */
+    val source: String get() = "mic"
+
     /** Like [start]; [onError] runs once (capture thread) when the capture dies mid-session (review C15). */
     fun start(onFrame: (ShortArray, Int) -> Unit, onError: () -> Unit): Boolean = start(onFrame)
 
@@ -176,6 +179,8 @@ class DictationController(
         val wallMs: Long, val hold: Boolean, val appId: String?, val language: String? = null,
         /** D27: the style sent for the target's bucket (debug log `style`). */
         val style: String? = null,
+        /** [AudioSource.source] of this dictation (debug log `source`: mic | wav). */
+        val source: String? = null,
     )
 
     companion object {
@@ -272,6 +277,7 @@ class DictationController(
                     llmGenerationId = result?.llm?.generationId,
                     cleanupRoute = result?.route?.cleanupRoute, cloudFallback = result?.route?.cloudFallback,
                     sttCostUsd = result?.route?.takeIf { it.engine == "cloud" }?.costUsd,
+                    source = s.source,
                 )
             val audioName = if (pcm == null || pcm.isEmpty()) null else try { host.onDictationAudio(trace, pcm) } catch (_: Throwable) { null }
             host.onDictationTrace(if (audioName != null) trace.copy(audio = audioName) else trace)
@@ -440,6 +446,7 @@ class DictationController(
                 }
             }
         })
+        traceStart = traceStart?.copy(source = runCatching { audio.source }.getOrNull())
         if (!ok) {
             generation++
             liveFrames = 0
