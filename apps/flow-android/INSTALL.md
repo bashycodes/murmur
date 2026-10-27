@@ -449,7 +449,7 @@ model is imported"), then grouped rows that each show their current value and op
 |---|---|---|
 | Dictation · *Language* | Auto-format; dictation language (Phone language first) | at once |
 | Dictation · *Writing style* | Formal / Casual / Very casual for Personal messages, Work messages, Email, Other, each with an example line (default: chats casual, email + other formal); *Style per app* | at once |
-| Writing style · *Style per app* | `package = personal`, `work`, `email` or `other`, one per line (checked); overrides the built-in app list | *Save* |
+| Writing style · *Style per app* | One row per app moved to another group (icon, name, group dropdown, remove); *Add app* = searchable list of launcher apps, recently dictated-into first, then the group; overrides the built-in app list | at once |
 | Dictation · *Speech engine* (local / hybrid) | Whisper or Parakeet; *Speech model (whisper)*, *Parakeet model folder* imports | at once (reloads) |
 | Dictation · *AI cleanup* (local / hybrid) | Clean up with local AI; *Clean up with OpenRouter* (hybrid, → the OpenRouter page); *AI cleanup model* import; strength. The row says "OpenRouter (<model>), then on-device" while cloud cleanup is on | at once (reloads) |
 | Dictation · *Cloud (OpenRouter)* (hybrid / remote) | The OpenRouter page (§5c): key, privacy, speech-to-text, text cleanup, usage | at once |
@@ -659,7 +659,7 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
 - [ ] *Settings* hub row *Writing style* reads `Chats casual · Email formal` on a fresh install.
 - [ ] WhatsApp / Messages: "sounds good see you there" ends without a final period; Gmail: the same words keep it.
 - [ ] *Writing style → Work messages → Formal* applies at once: the next Slack dictation keeps the period.
-- [ ] *Style per app*: `com.google.android.keep = personal` → *Save*; a Keep dictation now drops the final period.
+- [ ] *Style per app*: *Add app* → Keep → Personal; a Keep dictation now drops the final period. Recently dictated-into apps head the list; search finds an app by name; the group dropdown and remove apply at once.
 - [ ] Developer debug log line shows `style` (`casual` in a chat app) and `llm` (`llm_skipped_clean` reads
   *AI not needed (already clean)* in the viewer).
 

@@ -19,7 +19,7 @@ object SettingsPages {
     /** [STYLE] = Writing style (D27); [APP_STYLES] = its per-app bucket list, opened from [STYLE] (not a hub row). */
     enum class Page { HUB, LANGUAGE, STYLE, APP_STYLES, ENGINE, CLEANUP, TIMING, BUBBLE, APPS, HISTORY }
 
-    enum class Field { ENDPOINT, CAP, DENYLIST, APP_STYLES }
+    enum class Field { ENDPOINT, CAP, DENYLIST }
 
     /** `remote` builds have no on-device engine: no model import, no local LLM (hybrid-architecture §1.4). */
     fun visible(p: Page, caps: BuildCaps): Boolean = when (p) {
@@ -29,9 +29,9 @@ object SettingsPages {
 
     fun visiblePages(caps: BuildCaps): List<Page> = Page.entries.filter { it != Page.HUB && visible(it, caps) }
 
-    fun hasForm(p: Page) = p == Page.TIMING || p == Page.APPS || p == Page.APP_STYLES
+    fun hasForm(p: Page) = p == Page.TIMING || p == Page.APPS
 
-    fun pageOf(f: Field): Page = when (f) { Field.DENYLIST -> Page.APPS; Field.APP_STYLES -> Page.APP_STYLES; else -> Page.TIMING }
+    fun pageOf(f: Field): Page = when (f) { Field.DENYLIST -> Page.APPS; else -> Page.TIMING }
 
     val TITLES = mapOf(
         Page.HUB to "Settings", Page.LANGUAGE to "Language", Page.STYLE to "Writing style", Page.APP_STYLES to "Style per app", Page.ENGINE to "Speech engine", Page.CLEANUP to "AI cleanup",
@@ -75,12 +75,11 @@ object SettingsPages {
     private val PACKAGE = Regex("""[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+""")
 
     /** The form pages' inputs as typed. */
-    data class Input(val endpointMs: String, val capMinutes: String, val decodeWhileSpeaking: Boolean, val denylist: String, val appStyles: String = "") {
+    data class Input(val endpointMs: String, val capMinutes: String, val decodeWhileSpeaking: Boolean, val denylist: String) {
         companion object {
             fun of(s: Settings) = Input(
                 endpointMs = s.endpointSilenceMs.toString(), capMinutes = s.capMinutes.toString(),
                 decodeWhileSpeaking = s.decodeWhileSpeaking, denylist = s.userDenylist.sorted().joinToString("\n"),
-                appStyles = WritingStyle.formatOverrides(s.appBuckets),
             )
         }
     }
@@ -106,12 +105,6 @@ object SettingsPages {
             if (bad.isNotEmpty()) errors[Field.DENYLIST] = "Not a package name: " + bad.distinct().joinToString(", ") + " (e.g. com.example.app)"
             else out = out.copy(userDenylist = lines.toSet())
         }
-        if (p == Page.APP_STYLES) {
-            val parsed = WritingStyle.parseOverrides(i.appStyles)
-            if (parsed.errors.isNotEmpty()) {
-                errors[Field.APP_STYLES] = "Write package = personal, work, email or other: " + parsed.errors.distinct().joinToString(", ")
-            } else out = out.copy(appBuckets = parsed.map)
-        }
         return Result(errors, if (errors.isEmpty()) out else null)
     }
 }
@@ -119,9 +112,8 @@ object SettingsPages {
 /** One form page's edit state: what is stored ([saved]) and what the page shows ([draft]). */
 data class SettingsDraft(val base: Settings, val saved: SettingsPages.Input, val draft: SettingsPages.Input, val page: SettingsPages.Page) {
     val dirty: Boolean get() = when (page) {
-        SettingsPages.Page.TIMING -> draft.copy(denylist = "", appStyles = "") != saved.copy(denylist = "", appStyles = "")
+        SettingsPages.Page.TIMING -> draft.copy(denylist = "") != saved.copy(denylist = "")
         SettingsPages.Page.APPS -> draft.denylist != saved.denylist
-        SettingsPages.Page.APP_STYLES -> draft.appStyles != saved.appStyles
         else -> false
     }
 
