@@ -34,7 +34,9 @@ use std::time::{Duration, Instant};
 
 use flow_core::cleanup::Cleaner;
 use flow_core::config::SessionConfig;
-use flow_replay::{load_corpus, parse_prompt, phone_session, prompt_name, AsrSlot, CleanupSlot, Matrix};
+use flow_replay::{
+    load_corpus, parse_prompt, phone_session, prompt_name, AsrSlot, CleanupSlot, Matrix,
+};
 use flow_router::SecretString;
 
 fn die(msg: impl std::fmt::Display) -> ! {
@@ -46,7 +48,10 @@ struct Args(Vec<String>);
 
 impl Args {
     fn get(&self, k: &str) -> Option<String> {
-        self.0.iter().position(|a| a == k).and_then(|i| self.0.get(i + 1).cloned())
+        self.0
+            .iter()
+            .position(|a| a == k)
+            .and_then(|i| self.0.get(i + 1).cloned())
     }
     fn has(&self, k: &str) -> bool {
         self.0.iter().any(|a| a == k)
@@ -70,10 +75,16 @@ fn env_or(arg: Option<&str>, var: &str, what: &str) -> String {
 /// The key, read once from the file; never printed.
 fn load_key(a: &Args) -> SecretString {
     let path = a.get("--key-file").map(PathBuf::from).unwrap_or_else(|| {
-        PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".config/flow-clone/openrouter.key")
+        PathBuf::from(std::env::var("HOME").unwrap_or_default())
+            .join(".config/flow-clone/openrouter.key")
     });
-    let k = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| die(format!("OpenRouter key file {}: {}", path.display(), e.kind())));
+    let k = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        die(format!(
+            "OpenRouter key file {}: {}",
+            path.display(),
+            e.kind()
+        ))
+    });
     let k = SecretString::new(k.trim().to_string());
     if k.is_empty() {
         die(format!("OpenRouter key file {} is empty", path.display()));
@@ -97,8 +108,18 @@ fn asr_slot(spec: &str, threads: usize, key: &dyn Fn() -> SecretString) -> AsrSl
             let dir = env_or(arg, "FLOW_PARAKEET_DIR", "parakeet model dir");
             let e = flow_core::parakeet::ParakeetAsr::load_with(&dir, threads, Default::default())
                 .unwrap_or_else(|e| die(format!("parakeet {dir}: {e}")));
-            let name = PathBuf::from(&dir).file_name().map_or("parakeet".into(), |n| n.to_string_lossy().into_owned());
-            AsrSlot { name: format!("parakeet:{}", name.trim_start_matches("sherpa-onnx-nemo-").trim_start_matches("parakeet-")), engine: Arc::new(e), call_cost: None }
+            let name = PathBuf::from(&dir)
+                .file_name()
+                .map_or("parakeet".into(), |n| n.to_string_lossy().into_owned());
+            AsrSlot {
+                name: format!(
+                    "parakeet:{}",
+                    name.trim_start_matches("sherpa-onnx-nemo-")
+                        .trim_start_matches("parakeet-")
+                ),
+                engine: Arc::new(e),
+                call_cost: None,
+            }
         }
         #[cfg(feature = "whisper")]
         "whisper" => {
@@ -106,8 +127,14 @@ fn asr_slot(spec: &str, threads: usize, key: &dyn Fn() -> SecretString) -> AsrSl
             let e = flow_core::whisper::WhisperEngine::load(&path, threads)
                 .unwrap_or_else(|e| die(format!("whisper {path}: {e}")))
                 .with_fit_ctx(true);
-            let name = PathBuf::from(&path).file_stem().map_or("whisper".into(), |n| n.to_string_lossy().into_owned());
-            AsrSlot { name: format!("whisper:{}", name.trim_start_matches("ggml-")), engine: Arc::new(e), call_cost: None }
+            let name = PathBuf::from(&path)
+                .file_stem()
+                .map_or("whisper".into(), |n| n.to_string_lossy().into_owned());
+            AsrSlot {
+                name: format!("whisper:{}", name.trim_start_matches("ggml-")),
+                engine: Arc::new(e),
+                call_cost: None,
+            }
         }
         "or-stt" => {
             let settings = flow_cloud::SttSettings {
@@ -120,10 +147,14 @@ fn asr_slot(spec: &str, threads: usize, key: &dyn Fn() -> SecretString) -> AsrSl
             AsrSlot {
                 name,
                 engine: asr,
-                call_cost: Some(Arc::new(move || a2.last_call().and_then(|c| c.cost_usd).or(Some(0.0)))),
+                call_cost: Some(Arc::new(move || {
+                    a2.last_call().and_then(|c| c.cost_usd).or(Some(0.0))
+                })),
             }
         }
-        k => die(format!("unknown or not compiled in speech model {k:?} (build features: parakeet, whisper)")),
+        k => die(format!(
+            "unknown or not compiled in speech model {k:?} (build features: parakeet, whisper)"
+        )),
     };
     eprintln!("asr {} loaded in {} ms", slot.name, t.elapsed().as_millis());
     slot
@@ -132,19 +163,37 @@ fn asr_slot(spec: &str, threads: usize, key: &dyn Fn() -> SecretString) -> AsrSl
 fn main() {
     let a = Args(std::env::args().skip(1).collect());
     if a.has("--help") || a.has("-h") {
-        eprintln!("{}", include_str!("main.rs").lines().take_while(|l| l.starts_with("//!")).map(|l| l.trim_start_matches("//!").trim_start_matches(' ')).collect::<Vec<_>>().join("\n"));
+        eprintln!(
+            "{}",
+            include_str!("main.rs")
+                .lines()
+                .take_while(|l| l.starts_with("//!"))
+                .map(|l| l.trim_start_matches("//!").trim_start_matches(' '))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
         return;
     }
     let input = PathBuf::from(a.get("--in").unwrap_or_else(|| die("--in CORPUS_DIR")));
     let out_dir = PathBuf::from(a.get("--out").unwrap_or_else(|| die("--out DIR")));
-    let threads: usize = a.get("--threads").map_or(4, |t| t.parse().unwrap_or_else(|_| die("--threads N")));
-    let max_spend: f64 = a.get("--max-spend").map_or(0.05, |t| t.parse().unwrap_or_else(|_| die("--max-spend USD")));
+    let threads: usize = a
+        .get("--threads")
+        .map_or(4, |t| t.parse().unwrap_or_else(|_| die("--threads N")));
+    let max_spend: f64 = a.get("--max-spend").map_or(0.05, |t| {
+        t.parse().unwrap_or_else(|_| die("--max-spend USD"))
+    });
     let asr_specs = a.list("--asr", "parakeet");
     let cleanup_specs = a.list("--cleanup", "none,or:meta-llama/llama-3.3-70b-instruct");
-    let prompts: Vec<_> = a.list("--prompt", "v4c").iter().map(|p| parse_prompt(p).unwrap_or_else(|e| die(e))).collect();
+    let prompts: Vec<_> = a
+        .list("--prompt", "v4c")
+        .iter()
+        .map(|p| parse_prompt(p).unwrap_or_else(|e| die(e)))
+        .collect();
     let session: SessionConfig = match a.get("--session") {
-        Some(p) => serde_json::from_str(&std::fs::read_to_string(&p).unwrap_or_else(|e| die(format!("{p}: {e}"))))
-            .unwrap_or_else(|e| die(format!("{p}: {e}"))),
+        Some(p) => serde_json::from_str(
+            &std::fs::read_to_string(&p).unwrap_or_else(|e| die(format!("{p}: {e}"))),
+        )
+        .unwrap_or_else(|e| die(format!("{p}: {e}"))),
         None => phone_session(),
     };
     let mut recs = load_corpus(&input).unwrap_or_else(|e| die(e));
@@ -155,9 +204,11 @@ fn main() {
     if recs.is_empty() {
         die(format!("no recordings in {}", input.display()));
     }
-    std::fs::create_dir_all(&out_dir).unwrap_or_else(|e| die(format!("{}: {e}", out_dir.display())));
+    std::fs::create_dir_all(&out_dir)
+        .unwrap_or_else(|e| die(format!("{}: {e}", out_dir.display())));
 
-    let paid = asr_specs.iter().any(|s| s.starts_with("or-stt")) || cleanup_specs.iter().any(|s| s.starts_with("or:"));
+    let paid = asr_specs.iter().any(|s| s.starts_with("or-stt"))
+        || cleanup_specs.iter().any(|s| s.starts_with("or:"));
     let key = paid.then(|| load_key(&a));
     let key_fn = || key.clone().unwrap_or_else(|| die("no key"));
     let usage_start = key.as_ref().and_then(key_usage);
@@ -170,39 +221,73 @@ fn main() {
         #[cfg(feature = "llm")]
         Some(m) => {
             let t = Instant::now();
-            let c = flow_core::llama::LlamaCleaner::load(&m, threads, a.get("--llm-lib").as_deref())
-                .unwrap_or_else(|e| die(format!("llm {m}: {e}")));
+            let c =
+                flow_core::llama::LlamaCleaner::load(&m, threads, a.get("--llm-lib").as_deref())
+                    .unwrap_or_else(|e| die(format!("llm {m}: {e}")));
             eprintln!("llm loaded in {} ms", t.elapsed().as_millis());
             Some(Arc::new(c))
         }
         #[cfg(not(feature = "llm"))]
         Some(_) => die("--llm needs a build with the llm feature"),
     };
-    let fallback = if a.has("--no-local-fallback") { None } else { local.clone() };
+    let fallback = if a.has("--no-local-fallback") {
+        None
+    } else {
+        local.clone()
+    };
 
-    let asr: Vec<AsrSlot> = asr_specs.iter().map(|s| asr_slot(s, threads, &key_fn)).collect();
+    let asr: Vec<AsrSlot> = asr_specs
+        .iter()
+        .map(|s| asr_slot(s, threads, &key_fn))
+        .collect();
     let cleanup: Vec<CleanupSlot> = cleanup_specs
         .iter()
         .map(|s| match s.as_str() {
-            "none" => CleanupSlot { name: "none".into(), cloud: None, local: None },
-            "local" => CleanupSlot { name: "local".into(), cloud: None, local: local.clone() },
+            "none" => CleanupSlot {
+                name: "none".into(),
+                cloud: None,
+                local: None,
+            },
+            "local" => CleanupSlot {
+                name: "local".into(),
+                cloud: None,
+                local: local.clone(),
+            },
             o if o.starts_with("or:") => {
                 let model = o.trim_start_matches("or:").to_string();
                 if !flow_cloud::settings::valid_model_id(&model) {
                     die(format!("bad model id {model:?}"));
                 }
-                let settings = flow_cloud::CleanupSettings { model, ..Default::default() };
-                let name = if fallback.is_some() { format!("{o}+local") } else { o.to_string() };
+                let settings = flow_cloud::CleanupSettings {
+                    model,
+                    ..Default::default()
+                };
+                let name = if fallback.is_some() {
+                    format!("{o}+local")
+                } else {
+                    o.to_string()
+                };
                 let cl = flow_cloud::OpenRouterCleaner::new(settings, key_fn());
-                CleanupSlot { name, cloud: Some(Arc::new(cl)), local: fallback.clone() }
+                CleanupSlot {
+                    name,
+                    cloud: Some(Arc::new(cl)),
+                    local: fallback.clone(),
+                }
             }
             o => die(format!("unknown cleanup {o:?} (none, local, or:MODEL)")),
         })
         .collect();
 
-    let m = Matrix { asr, cleanup, prompts: prompts.clone(), session, max_spend };
+    let m = Matrix {
+        asr,
+        cleanup,
+        prompts: prompts.clone(),
+        session,
+        max_spend,
+    };
     let mut rows_f = std::fs::File::create(out_dir.join("rows.jsonl")).unwrap_or_else(|e| die(e));
-    let mut recs_f = std::fs::File::create(out_dir.join("recordings.jsonl")).unwrap_or_else(|e| die(e));
+    let mut recs_f =
+        std::fs::File::create(out_dir.join("recordings.jsonl")).unwrap_or_else(|e| die(e));
     for r in &recs {
         writeln!(recs_f, "{}", serde_json::to_string(r).unwrap()).unwrap();
     }
@@ -222,7 +307,10 @@ fn main() {
                 row.cleanup,
                 row.prompt,
                 row.cleanup_route.as_deref().unwrap_or("-"),
-                row.error.as_deref().or(row.cloud_fallback.as_deref()).unwrap_or("")
+                row.error
+                    .as_deref()
+                    .or(row.cloud_fallback.as_deref())
+                    .unwrap_or("")
             );
         },
     );
@@ -242,7 +330,11 @@ fn main() {
                       "key_usage_delta": usage_delta},
         "flow_core": flow_core::VERSION, "postprocess_rev": flow_core::POSTPROCESS_REV,
     });
-    std::fs::write(out_dir.join("run.json"), serde_json::to_string_pretty(&run).unwrap() + "\n").unwrap();
+    std::fs::write(
+        out_dir.join("run.json"),
+        serde_json::to_string_pretty(&run).unwrap() + "\n",
+    )
+    .unwrap();
     eprintln!(
         "openrouter spend: ${:.5} (stt ${:.5}, cleanup ${:.5}){}",
         spend.total(),
