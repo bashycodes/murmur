@@ -1,6 +1,10 @@
 //! Review S18: every Tauri command is declared in build.rs (so it gets an
 //! `allow-*` permission), the settings window is granted exactly the app's
-//! commands, and the overlay window only `overlay_action`.
+//! commands, the overlay window only `overlay_action`, and the Scratchpad
+//! only its note commands plus `clipboard_copy`.
+
+/// The Scratchpad's note commands: no other window needs them.
+const SCRATCHPAD_ONLY: &[&str] = &["note_load", "note_edit", "note_flush"];
 
 fn read(p: &str) -> String {
     std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(p)).unwrap()
@@ -58,10 +62,26 @@ fn settings_gets_the_app_commands_but_not_the_overlay_click() {
     granted.sort();
     let mut want: Vec<String> = handler_commands()
         .into_iter()
-        .filter(|c| c != "overlay_action")
+        .filter(|c| c != "overlay_action" && !SCRATCHPAD_ONLY.contains(&c.as_str()))
         .collect();
     want.sort();
     assert_eq!(granted, want);
     let v: serde_json::Value = serde_json::from_str(&read("capabilities/default.json")).unwrap();
     assert_eq!(v["windows"], serde_json::json!(["settings"]));
+}
+
+#[test]
+fn scratchpad_may_only_edit_its_note_and_copy() {
+    let mut granted = permissions("capabilities/scratchpad.json");
+    granted.sort();
+    let mut want: Vec<String> = SCRATCHPAD_ONLY.iter().map(|c| c.to_string()).collect();
+    want.push("clipboard_copy".into());
+    want.sort();
+    assert_eq!(granted, want);
+    let v: serde_json::Value = serde_json::from_str(&read("capabilities/scratchpad.json")).unwrap();
+    assert_eq!(v["windows"], serde_json::json!(["scratchpad"]));
+    let handlers = handler_commands();
+    for c in SCRATCHPAD_ONLY {
+        assert!(handlers.iter().any(|h| h == c), "{c} is not a command");
+    }
 }

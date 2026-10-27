@@ -38,6 +38,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   filled in once from the History you already have. *Reset stats* (with a
   confirmation) clears them. The stats math lives in `flow-core` so Android
   can reuse it.
+- **Windows: Scratchpad.** A plain-text window to dictate into, edit and
+  copy out: tray → *Scratchpad…*, or a shortcut you set under *Settings →
+  General → Shortcuts → Open Scratchpad* (none by default). Dictation types
+  into it like any other app (style *Other*); its edits are not used to
+  learn dictionary words and it is not listed under *Style per app*. The
+  text is saved to `%APPDATA%\FlowClone\scratchpad.txt` shortly after you
+  stop typing, when the window closes and when you quit, and is there again
+  next time. *Copy all*, *Clear* (with *Undo clear*) and a word count.
 - **Android: learn dictionary words from your edits.** After a dictation is
   typed in, the app re-reads that same field (about once a second, for up
   to 45 s, or until your edit has stopped changing for 8 s). If you corrected

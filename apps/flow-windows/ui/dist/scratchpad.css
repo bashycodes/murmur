@@ -1,0 +1,96 @@
+/* Scratchpad window (same palette as settings.css). */
+:root {
+  --bg: #f6f6f8;
+  --card: #ffffff;
+  --fg: #16161d;
+  --muted: #6b6b78;
+  --line: #e2e2ea;
+  --accent: #7c5cff;
+  --ok: #1f9d55;
+  --err: #d64545;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121218;
+    --card: #1b1b23;
+    --fg: #ececf1;
+    --muted: #9a9aa8;
+    --line: #2c2c38;
+  }
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.4 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+}
+[hidden] {
+  display: none !important;
+}
+textarea {
+  flex: 1;
+  margin: 12px 12px 0;
+  padding: 12px 14px;
+  resize: none;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font: 15px/1.5 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+}
+textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+footer {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 12px 12px;
+}
+.spacer {
+  flex: 1;
+}
+.muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+#status {
+  font-size: 12px;
+  color: var(--muted);
+}
+#status.ok {
+  color: var(--ok);
+}
+#status.err {
+  color: var(--err);
+}
+button {
+  font: inherit;
+  background: var(--accent);
+  color: #fff;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button.secondary {
+  background: var(--line);
+  color: var(--fg);
+}
+button.danger {
+  background: transparent;
+  color: var(--err);
+  border: 1px solid var(--line);
+}
