@@ -1,7 +1,15 @@
 //! Cue sounds. Synthesised at startup (no bundled third-party WAVs, no
 //! files to ship) and played with `PlaySoundW(SND_MEMORY|SND_ASYNC)`.
+//!
+//! A user can replace any cue with their own file,
+//! `%APPDATA%\FlowClone\sounds\<name>.wav` ([`file_name`]). The table is
+//! built once, at the first cue, so new files need a restart. A missing
+//! file uses the built-in tone; an unreadable, non-WAV or oversized one
+//! does too, with one `[sounds]` line on stderr.
 
 use crate::dictation::Sound;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 
 pub const RATE: u32 = 22_050;
 
@@ -134,9 +142,86 @@ pub fn wav(s: Sound) -> Vec<u8> {
     wav_bytes(&samples(s), RATE)
 }
 
+/// Largest custom cue file accepted (bigger → built-in tone).
+pub const MAX_CUSTOM_BYTES: usize = 2 * 1024 * 1024;
+
+/// File name of a cue's custom override in [`sounds_dir`].
+pub fn file_name(s: Sound) -> &'static str {
+    match s {
+        Sound::Start => "start.wav",
+        Sound::Stop => "stop.wav",
+        Sound::Lock => "lock.wav",
+        Sound::Paste => "paste.wav",
+        Sound::Error => "error.wav",
+    }
+}
+
+/// `%APPDATA%\FlowClone\sounds`.
+pub fn sounds_dir(appdata: Option<&str>) -> PathBuf {
+    appdata
+        .map(PathBuf::from)
+        .unwrap_or_default()
+        .join(crate::prefs::APP_DIR)
+        .join("sounds")
+}
+
+/// Minimal check that `b` can be handed to `PlaySoundW(SND_MEMORY)`:
+/// a RIFF/WAVE header and at most [`MAX_CUSTOM_BYTES`].
+pub fn validate_custom(b: &[u8]) -> Result<(), String> {
+    if b.len() > MAX_CUSTOM_BYTES {
+        return Err(format!(
+            "larger than {} MB",
+            MAX_CUSTOM_BYTES / (1024 * 1024)
+        ));
+    }
+    if b.len() < 12 || &b[0..4] != b"RIFF" || &b[8..12] != b"WAVE" {
+        return Err("not a RIFF/WAVE file".into());
+    }
+    Ok(())
+}
+
+/// The bytes to play for `s`, given the result of reading its override
+/// file. Returns the built-in cue when the read failed or the file is
+/// invalid, plus a log reason (`None` when the file is just absent, the
+/// normal case, or when the override is used).
+pub fn choose(s: Sound, read: std::io::Result<Vec<u8>>) -> (Vec<u8>, Option<String>) {
+    match read {
+        Ok(b) => match validate_custom(&b) {
+            Ok(()) => (b, None),
+            Err(why) => (wav(s), Some(why)),
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => (wav(s), None),
+        Err(e) => (wav(s), Some(format!("unreadable: {e}"))),
+    }
+}
+
+/// Read at most `MAX_CUSTOM_BYTES + 1` bytes, so an oversized file is
+/// detected without loading all of it.
+fn read_capped(path: &Path) -> std::io::Result<Vec<u8>> {
+    let mut v = Vec::new();
+    std::fs::File::open(path)?
+        .take(MAX_CUSTOM_BYTES as u64 + 1)
+        .read_to_end(&mut v)?;
+    Ok(v)
+}
+
+/// The cue for `s`: the user's file in `dir` if valid, else built-in.
+/// Logs one `[sounds]` line when a present file is rejected.
+pub fn load(s: Sound, dir: &Path) -> Vec<u8> {
+    let path = dir.join(file_name(s));
+    let (bytes, why) = choose(s, read_capped(&path));
+    if let Some(why) = why {
+        eprintln!(
+            "[sounds] {}: {why}; using the built-in sound",
+            path.display()
+        );
+    }
+    bytes
+}
+
 #[cfg(windows)]
 pub mod win {
-    use super::wav;
+    use super::{load, sounds_dir};
     use crate::dictation::Sound;
     use std::sync::OnceLock;
     use windows::core::PCWSTR;
@@ -157,12 +242,14 @@ pub mod win {
     /// Fire-and-forget. Buffers are 'static, as SND_ASYNC|SND_MEMORY requires.
     pub fn play(s: Sound) {
         let w = WAVS.get_or_init(|| {
+            let appdata = std::env::var("APPDATA").ok();
+            let dir = sounds_dir(appdata.as_deref());
             [
-                wav(Sound::Start),
-                wav(Sound::Stop),
-                wav(Sound::Lock),
-                wav(Sound::Paste),
-                wav(Sound::Error),
+                load(Sound::Start, &dir),
+                load(Sound::Stop, &dir),
+                load(Sound::Lock, &dir),
+                load(Sound::Paste, &dir),
+                load(Sound::Error, &dir),
             ]
         });
         let buf = &w[idx(s)];
@@ -222,6 +309,94 @@ mod tests {
             assert!(p[0].unsigned_abs() < 200, "{s:?} starts silent");
             assert!(p.last().unwrap().unsigned_abs() < 200, "{s:?} ends silent");
         }
+    }
+
+    fn not_found() -> std::io::Result<Vec<u8>> {
+        Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+    }
+
+    #[test]
+    fn valid_override_is_used() {
+        let custom = wav_bytes(&[0, 100, -100, 0], 8000);
+        let (b, why) = choose(Sound::Start, Ok(custom.clone()));
+        assert_eq!(b, custom);
+        assert!(why.is_none());
+    }
+
+    #[test]
+    fn missing_override_uses_builtin_quietly() {
+        let (b, why) = choose(Sound::Stop, not_found());
+        assert_eq!(b, wav(Sound::Stop));
+        assert!(why.is_none());
+    }
+
+    #[test]
+    fn unreadable_override_uses_builtin_and_says_why() {
+        let e = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        let (b, why) = choose(Sound::Lock, Err(e));
+        assert_eq!(b, wav(Sound::Lock));
+        assert!(why.unwrap().contains("unreadable"));
+    }
+
+    #[test]
+    fn non_riff_override_uses_builtin() {
+        for junk in [
+            b"ID3\x03not a wav file".to_vec(),
+            Vec::new(),
+            b"RIFF".to_vec(),
+        ] {
+            let (b, why) = choose(Sound::Paste, Ok(junk));
+            assert_eq!(b, wav(Sound::Paste));
+            assert!(why.unwrap().contains("RIFF/WAVE"));
+        }
+        // RIFF but not WAVE (e.g. an AVI).
+        let mut avi = wav(Sound::Start);
+        avi[8..12].copy_from_slice(b"AVI ");
+        assert!(choose(Sound::Start, Ok(avi)).1.is_some());
+    }
+
+    #[test]
+    fn oversize_override_uses_builtin() {
+        let pcm = vec![0i16; MAX_CUSTOM_BYTES / 2];
+        let big = wav_bytes(&pcm, RATE);
+        assert!(big.len() > MAX_CUSTOM_BYTES);
+        let (b, why) = choose(Sound::Error, Ok(big));
+        assert_eq!(b, wav(Sound::Error));
+        assert!(why.unwrap().contains("larger"));
+        // Exactly at the limit is fine.
+        let mut edge = wav_bytes(&[], RATE);
+        edge.resize(MAX_CUSTOM_BYTES, 0);
+        assert!(choose(Sound::Error, Ok(edge)).1.is_none());
+    }
+
+    #[test]
+    fn load_reads_files_from_the_sounds_dir() {
+        let dir = std::env::temp_dir().join(format!("flow-sounds-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let custom = wav_bytes(&[1, 2, 3], 8000);
+        std::fs::write(dir.join("start.wav"), &custom).unwrap();
+        std::fs::write(dir.join("stop.wav"), b"not a wav").unwrap();
+        assert_eq!(load(Sound::Start, &dir), custom);
+        assert_eq!(load(Sound::Stop, &dir), wav(Sound::Stop));
+        assert_eq!(load(Sound::Lock, &dir), wav(Sound::Lock));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sounds_dir_and_names() {
+        let d = sounds_dir(Some("AD"));
+        assert!(d.ends_with(Path::new("FlowClone").join("sounds")));
+        let names: Vec<_> = ALL.iter().map(|s| file_name(*s)).collect();
+        assert_eq!(
+            names,
+            [
+                "start.wav",
+                "stop.wav",
+                "lock.wav",
+                "paste.wav",
+                "error.wav"
+            ]
+        );
     }
 
     #[test]
