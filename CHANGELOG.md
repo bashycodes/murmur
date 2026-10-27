@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-27
+
 ### Added
 
 - **AI cleanup prompt v4c.** flow-core has a second cleanup prompt, v4c,
@@ -318,6 +320,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/bashycodes/murmur/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/bashycodes/murmur/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/bashycodes/murmur/compare/v0.3.0...v0.4.0
