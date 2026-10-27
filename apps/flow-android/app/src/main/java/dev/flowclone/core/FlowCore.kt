@@ -358,6 +358,12 @@ data class RouteInfo(
     val cleanupRoute: String? = null,
     /** D30: why AI cleanup's answer was not used (llm_timeout, llm_unsupported, llm_error: <code>, …). */
     val cloudFallback: String? = null,
+    /**
+     * 2026-10-27, debug log only: AI cleanup's answer that was not used, and the guard's detail
+     * (unsupported sentence / mark kind, dropped clause, timeout, error). Dictated text: D21 rules.
+     */
+    val rejectedText: String? = null,
+    val guardDetail: String? = null,
 )
 
 /** D28 `CommitResult.llm` (`flow_core::CleanUsage`): the LLM step's usage; null when it did not run. */
