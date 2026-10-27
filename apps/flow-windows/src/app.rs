@@ -13,6 +13,7 @@ use crate::ducking::win::Ducker;
 use crate::history::{self, History};
 use crate::hotkeys::{self, win::HookHandle};
 use crate::insights::{self, InsightsStore};
+use crate::notes::{self, AutoSave, NoteStore};
 use crate::paste::{self, PasteOptions};
 use crate::prefs::{LoadOutcome, Prefs};
 use crate::recent_apps::{self, RecentAppStore};
@@ -24,7 +25,10 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, RunEvent, WebviewWindow, WindowEvent};
+use tauri::{
+    AppHandle, Emitter, Manager, PhysicalPosition, RunEvent, WebviewUrl, WebviewWindow,
+    WebviewWindowBuilder, WindowEvent,
+};
 use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetCursorPos, GetWindowLongPtrW, GetWindowRect, SetWindowLongPtrW, ShowWindow,
@@ -34,6 +38,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 const OVERLAY: &str = "overlay";
 const SETTINGS: &str = "settings";
+/// Created on demand (tray / shortcut), destroyed on close.
+const SCRATCHPAD: &str = "scratchpad";
 
 struct AppState {
     prefs: Arc<RwLock<Prefs>>,
@@ -63,6 +69,10 @@ struct AppState {
     /// Opt-in debug log (Developer → Debug log; off by default).
     debug: Arc<DebugLog>,
     debug_path: PathBuf,
+    /// Scratchpad text: debounced writes to `scratchpad.txt`.
+    notes: Arc<Mutex<AutoSave>>,
+    /// Clock of `notes` (ms since start).
+    started: Instant,
 }
 
 fn hwnd_of(w: &WebviewWindow) -> Option<HWND> {
@@ -216,6 +226,10 @@ impl Platform for WinPlatform {
 
     fn suggestions_changed(&self, pending: usize) {
         show_suggestion_count(&self.app, pending);
+    }
+
+    fn open_scratchpad(&self) {
+        show_scratchpad(&self.app);
     }
 }
 
@@ -496,6 +510,56 @@ fn history_repaste(
 #[tauri::command]
 fn clipboard_copy(text: String) -> Result<(), String> {
     paste::win::copy_text(&text)
+}
+
+// ------------------------------------------------- scratchpad (notes)
+
+fn notes_now(state: &AppState) -> u64 {
+    state.started.elapsed().as_millis() as u64
+}
+
+/// The note's text (an edit not yet written included); `""` if never saved.
+#[tauri::command]
+fn note_load(state: tauri::State<'_, AppState>, id: String) -> Result<String, String> {
+    state.notes.lock().unwrap().load(&id)
+}
+
+/// Every change of the editor; written after a pause (`notes::SAVE_DEBOUNCE_MS`).
+#[tauri::command]
+fn note_edit(state: tauri::State<'_, AppState>, id: String, text: String) -> Result<(), String> {
+    let now = notes_now(&state);
+    state.notes.lock().unwrap().edit(&id, &text, now)
+}
+
+/// Write the note now (the page is going away).
+#[tauri::command]
+fn note_flush(state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
+    state.notes.lock().unwrap().flush(&id).unwrap_or(Ok(()))
+}
+
+fn log_note_writes(results: Vec<(String, Result<(), String>)>) {
+    for (id, r) in results {
+        if let Err(e) = r {
+            eprintln!("[notes] {id}: {e}");
+            debug_log::event("notes", &format!("{id}: {e}"));
+        }
+    }
+}
+
+/// Writes debounced note edits (a quarter-second tick is plenty for 750 ms).
+fn spawn_note_saver(app: AppHandle) {
+    let spawned = std::thread::Builder::new()
+        .name("flow-notes".into())
+        .spawn(move || loop {
+            std::thread::sleep(Duration::from_millis(250));
+            let st = app.state::<AppState>();
+            let now = notes_now(&st);
+            let done = st.notes.lock().unwrap().tick(now);
+            log_note_writes(done);
+        });
+    if let Err(e) = spawned {
+        eprintln!("[notes] {e}");
+    }
 }
 
 // ------------------------------------------------- style per app
@@ -1531,6 +1595,32 @@ fn show_settings(app: &AppHandle) {
     }
 }
 
+/// Show the Scratchpad, creating it if it is closed. Always on the main
+/// thread (the shortcut arrives on the controller thread).
+fn show_scratchpad(app: &AppHandle) {
+    let h = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = h.get_webview_window(SCRATCHPAD) {
+            let _ = w.show();
+            let _ = w.unminimize();
+            let _ = w.set_focus();
+            return;
+        }
+        let built =
+            WebviewWindowBuilder::new(&h, SCRATCHPAD, WebviewUrl::App("scratchpad.html".into()))
+                .title("Scratchpad — Flow Clone")
+                .inner_size(520.0, 560.0)
+                .min_inner_size(320.0, 240.0)
+                .center()
+                .focused(true)
+                .build();
+        if let Err(e) = built {
+            eprintln!("[scratchpad] {e}");
+            debug_log::event("scratchpad", &e.to_string());
+        }
+    });
+}
+
 /// Never take focus from the app being dictated into; never show in
 /// Alt+Tab; click-through (02 §6 "Overlay").
 fn make_overlay_passive(w: &WebviewWindow) {
@@ -1747,6 +1837,11 @@ pub fn run() {
             usage_path,
             debug: debug.clone(),
             debug_path,
+            notes: Arc::new(Mutex::new(AutoSave::new(
+                NoteStore::new(notes::default_dir(appdata.as_deref())),
+                notes::SAVE_DEBOUNCE_MS,
+            ))),
+            started: Instant::now(),
         })
         .invoke_handler(tauri::generate_handler![
             get_prefs,
@@ -1762,6 +1857,9 @@ pub fn run() {
             insights_get,
             insights_reset,
             clipboard_copy,
+            note_load,
+            note_edit,
+            note_flush,
             suggestions_list,
             suggestion_accept,
             suggestion_dismiss,
@@ -1809,6 +1907,16 @@ pub fn run() {
                     let _ = window.hide();
                 }
             }
+            // Save on close: the page sent its last edit already.
+            if window.label() == SCRATCHPAD && matches!(event, WindowEvent::Destroyed) {
+                let st = window.app_handle().state::<AppState>();
+                let r = st.notes.lock().unwrap().flush(notes::SCRATCHPAD);
+                log_note_writes(
+                    r.map(|r| (notes::SCRATCHPAD.to_string(), r))
+                        .into_iter()
+                        .collect(),
+                );
+            }
         })
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -1829,6 +1937,7 @@ pub fn run() {
                 .suggest_item
                 .set(suggest_item.clone());
             let sep0 = PredefinedMenuItem::separator(app)?;
+            let scratch = MenuItem::with_id(app, "scratchpad", "Scratchpad…", true, None::<&str>)?;
             let open = MenuItem::with_id(app, "open", "Settings…", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Flow Clone", true, None::<&str>)?;
@@ -1839,6 +1948,7 @@ pub fn run() {
                     &llm_item,
                     &suggest_item,
                     &sep0,
+                    &scratch,
                     &open,
                     &sep,
                     &quit,
@@ -1853,6 +1963,7 @@ pub fn run() {
                         show_settings(app);
                         let _ = app.emit_to(SETTINGS, "settings:tab", "dictionary");
                     }
+                    "scratchpad" => show_scratchpad(app),
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -1974,6 +2085,11 @@ pub fn run() {
             if let Some(h) = history.clone() {
                 controller = controller.with_history(h);
             }
+            // Our own windows (Scratchpad) are style Other and never
+            // watched for edits.
+            if let Ok(exe) = std::env::current_exe() {
+                controller = controller.with_own_exe(&exe.to_string_lossy());
+            }
             controller = controller
                 .with_insights(insights_store.clone())
                 .with_suggestions(suggestions.clone())
@@ -2008,6 +2124,7 @@ pub fn run() {
                     }
                 })?;
 
+            spawn_note_saver(handle.clone());
             platform.overlay(&OverlayState::Resting);
             if matches!(outcome, LoadOutcome::Missing) {
                 show_settings(&handle);
@@ -2026,6 +2143,8 @@ pub fn run() {
                 if let Some(r) = st.router.get() {
                     persist_usage(&st, r);
                 }
+                // Quit with the Scratchpad open: its last edits.
+                log_note_writes(st.notes.lock().unwrap().flush_all());
             }
             _ => {}
         });

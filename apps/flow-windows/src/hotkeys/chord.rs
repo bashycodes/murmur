@@ -309,6 +309,20 @@ pub struct Bindings {
     pub paste_last: Chord,
     /// Put the last transcript on the clipboard (Wispr default Shift+Alt+X).
     pub copy_last: Chord,
+    /// Open the Scratchpad window. Unset by default; `""` in prefs = unset.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "optional_chord"
+    )]
+    pub scratchpad: Option<Chord>,
+}
+
+/// An optional shortcut: missing, `null` or blank = none.
+fn optional_chord<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Chord>, D::Error> {
+    match Option::<String>::deserialize(d)? {
+        Some(s) if !s.trim().is_empty() => s.parse().map(Some).map_err(serde::de::Error::custom),
+        _ => Ok(None),
+    }
 }
 
 impl Default for Bindings {
@@ -319,6 +333,7 @@ impl Default for Bindings {
             cancel: Chord::new([Key::Esc]),
             paste_last: Chord::new([Key::Shift, Key::Alt, Key::Vk(b'Z' as u16)]),
             copy_last: Chord::new([Key::Shift, Key::Alt, Key::Vk(b'X' as u16)]),
+            scratchpad: None,
         }
     }
 }
@@ -341,6 +356,8 @@ pub enum HotkeyAction {
     PasteLast,
     /// Copy-last-transcript chord pressed.
     CopyLast,
+    /// Open-the-Scratchpad chord pressed.
+    Scratchpad,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -498,6 +515,17 @@ impl ChordMatcher {
                 }
             } else if self.newly_matches(&self.bindings.copy_last, ev.key) {
                 d.actions.push(HotkeyAction::CopyLast);
+                self.chord_fired();
+                if !ev.key.is_modifier() {
+                    d.suppress = true;
+                }
+            } else if self
+                .bindings
+                .scratchpad
+                .as_ref()
+                .is_some_and(|c| self.newly_matches(c, ev.key))
+            {
+                d.actions.push(HotkeyAction::Scratchpad);
                 self.chord_fired();
                 if !ev.key.is_modifier() {
                     d.suppress = true;
@@ -1181,6 +1209,40 @@ mod tests {
         let b: Bindings = serde_json::from_str(r#"{"ptt":"Ctrl+Shift"}"#).unwrap();
         assert_eq!(b.ptt.to_string(), "Ctrl+Shift");
         assert_eq!(b.cancel, Bindings::default().cancel);
+    }
+
+    #[test]
+    fn scratchpad_shortcut_is_unset_by_default_and_round_trips() {
+        assert_eq!(Bindings::default().scratchpad, None);
+        let b: Bindings = serde_json::from_str(r#"{"scratchpad":""}"#).unwrap();
+        assert_eq!(b.scratchpad, None, "empty field = unset");
+        let b: Bindings = serde_json::from_str(r#"{"scratchpad":null}"#).unwrap();
+        assert_eq!(b.scratchpad, None);
+        let b: Bindings = serde_json::from_str(r#"{"scratchpad":"Ctrl+Alt+N"}"#).unwrap();
+        assert_eq!(b.scratchpad, Some("Ctrl+Alt+N".parse().unwrap()));
+        let j = serde_json::to_value(&b).unwrap();
+        assert_eq!(j["scratchpad"], "Ctrl+Alt+N");
+    }
+
+    #[test]
+    fn scratchpad_chord_fires_only_when_set() {
+        let n = Key::Vk(b'N' as u16);
+        let press = |m: &mut ChordMatcher| {
+            m.handle(KeyEvent::down(Key::Ctrl), false);
+            m.handle(KeyEvent::down(Key::Alt), false);
+            m.handle(KeyEvent::down(n), false)
+        };
+        let mut unset = m();
+        let d = press(&mut unset);
+        assert!(d.actions.is_empty());
+        assert!(!d.suppress, "an unset shortcut leaves N to the app");
+        let mut set = ChordMatcher::new(Bindings {
+            scratchpad: Some("Ctrl+Alt+N".parse().unwrap()),
+            ..Bindings::default()
+        });
+        let d = press(&mut set);
+        assert_eq!(d.actions, vec![Scratchpad]);
+        assert!(d.suppress, "N must not reach the app");
     }
 
     #[test]

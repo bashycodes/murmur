@@ -294,13 +294,17 @@ impl Prefs {
         check("cancel", &s.cancel, true)?;
         check("paste-last", &s.paste_last, false)?;
         check("copy-last", &s.copy_last, false)?;
-        let all = [
+        if let Some(c) = &s.scratchpad {
+            check("scratchpad", c, false)?;
+        }
+        let mut all = vec![
             &s.ptt,
             &s.hands_free,
             &s.cancel,
             &s.paste_last,
             &s.copy_last,
         ];
+        all.extend(s.scratchpad.as_ref());
         for (i, a) in all.iter().enumerate() {
             if all[i + 1..].contains(a) {
                 return Err("shortcuts must differ from each other".into());
@@ -833,5 +837,14 @@ mod tests {
         let mut p = Prefs::default();
         p.shortcuts.ptt = "Ctrl+Win+Alt+Shift".parse().unwrap();
         assert!(p.validate().unwrap_err().contains("max 3"));
+        let mut p = Prefs::default();
+        p.shortcuts.scratchpad = Some("N".parse().unwrap());
+        assert!(p.validate().unwrap_err().contains("scratchpad"));
+        let mut p = Prefs::default();
+        p.shortcuts.scratchpad = Some(p.shortcuts.copy_last.clone());
+        assert!(p.validate().unwrap_err().contains("differ"));
+        let mut p = Prefs::default();
+        p.shortcuts.scratchpad = Some("Ctrl+Alt+N".parse().unwrap());
+        assert!(p.validate().is_ok());
     }
 }

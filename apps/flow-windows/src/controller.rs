@@ -90,6 +90,8 @@ pub trait Platform: Send + Sync + 'static {
     fn insights_changed(&self) {}
     /// New dictionary suggestions are waiting (`pending` in total).
     fn suggestions_changed(&self, _pending: usize) {}
+    /// The Scratchpad shortcut: show (or create) the Scratchpad window.
+    fn open_scratchpad(&self) {}
 }
 
 /// Longest wait for a session start (model load + server connect are
@@ -180,6 +182,10 @@ pub struct Controller {
     recent_apps: Option<Arc<Mutex<RecentAppStore>>>,
     /// Bumped per dictation: a running edit watch stops when it changes.
     watch_gen: Arc<AtomicU64>,
+    /// Our own exe name (lowercase, like `FieldContext::app_id`): its
+    /// windows (Scratchpad) are pasted into like any app, as style Other,
+    /// but never watched for edits nor listed as a recent app.
+    own_exe: Option<String>,
     preview_shown: String,
     /// Hands-free session whose endpoint (D19) already sent `Finish`.
     endpoint_finished: Option<SessionId>,
@@ -214,6 +220,7 @@ impl Controller {
             suggestions: None,
             recent_apps: None,
             watch_gen: Arc::default(),
+            own_exe: None,
             preview_shown: String::new(),
             endpoint_finished: None,
             route_shown: None,
@@ -281,6 +288,12 @@ impl Controller {
         self
     }
 
+    /// Our exe name (see `own_exe`); `"flow clone.exe"` form.
+    pub fn with_own_exe(mut self, exe: &str) -> Self {
+        self.own_exe = Some(crate::context::exe_name(exe)).filter(|e| !e.is_empty());
+        self
+    }
+
     /// Shared with the keyboard hook (swallow Esc only while dictating).
     pub fn dictating_flag(&self) -> Arc<AtomicBool> {
         self.dictating.clone()
@@ -299,6 +312,10 @@ impl Controller {
             }
             Input::Hotkey(HotkeyAction::CopyLast) => {
                 self.copy_last();
+                return;
+            }
+            Input::Hotkey(HotkeyAction::Scratchpad) => {
+                self.platform.open_scratchpad();
                 return;
             }
             Input::PasteFinished { session, result } => {
@@ -522,6 +539,11 @@ impl Controller {
         }
         // No snapshot = no anchors to find the dictated region by.
         let Some(ctx) = ctx else { return };
+        // Our own window (Scratchpad): its edits are the user's notes, not
+        // corrections of the recogniser.
+        if self.own_exe.as_deref() == Some(ctx.app_id.as_str()) {
+            return;
+        }
         let pasted = r.plain();
         if pasted.trim().is_empty() {
             return;
@@ -740,14 +762,22 @@ impl Controller {
                     let buckets = prefs.app_buckets.clone();
                     let recent = self.recent_apps.clone();
                     let persist_recent = prefs.retention != crate::prefs::Retention::Never;
+                    let own_exe = self.own_exe.clone();
                     std::thread::spawn(move || {
                         if let Some(raw) = platform.snapshot_context() {
                             let mut ctx = build_field_context(&raw);
-                            if let Some(r) = &recent {
-                                r.lock().unwrap().record(&ctx.app_id, persist_recent);
+                            if own_exe.as_deref() == Some(ctx.app_id.as_str()) {
+                                // Scratchpad: always style Other, not a
+                                // "Style per app" choice.
+                                ctx.app_kind = crate::core_api::AppKind::Other;
+                                ctx.app_category = crate::core_api::StyleBucket::Other;
+                            } else {
+                                if let Some(r) = &recent {
+                                    r.lock().unwrap().record(&ctx.app_id, persist_recent);
+                                }
+                                // "Style per app" (D27) over the built-in lists.
+                                crate::context::apply_bucket_override(&mut ctx, &buckets);
                             }
-                            // "Style per app" (D27) over the built-in lists.
-                            crate::context::apply_bucket_override(&mut ctx, &buckets);
                             if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
                                 i.context = Some(ctx.clone());
                                 i.password_at_start = Some(raw.is_password);
@@ -1138,6 +1168,8 @@ mod tests {
         focus: Mutex<Option<crate::paste::FocusTarget>>,
         password: Mutex<Option<bool>>,
         on_error: Mutex<Option<CaptureError>>,
+        /// Exe of the snapshotted app (default slack.exe).
+        exe: Option<&'static str>,
     }
 
     impl Fake {
@@ -1166,7 +1198,7 @@ mod tests {
         }
         fn snapshot_context(&self) -> Option<RawSnapshot> {
             Some(RawSnapshot {
-                exe_path: r"C:\x\slack.exe".into(),
+                exe_path: format!(r"C:\x\{}", self.exe.unwrap_or("slack.exe")),
                 ..Default::default()
             })
         }
@@ -1216,6 +1248,13 @@ mod tests {
         fn copy_text(&self, text: &str) -> Result<(), String> {
             self.push(format!("copy {text}"));
             Ok(())
+        }
+        fn field_reader(&self) -> Option<Box<dyn FieldReader>> {
+            self.push("field_reader");
+            None
+        }
+        fn open_scratchpad(&self) {
+            self.push("open scratchpad");
         }
         fn live_route(&self, l: Option<&crate::core_api::LiveRouteLabel>) {
             self.push(format!(
@@ -1403,6 +1442,73 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         assert_eq!(store.lock().unwrap().data.apps, ["slack.exe"]);
+    }
+
+    #[test]
+    fn scratchpad_hotkey_opens_the_window_without_touching_dictation() {
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::Scratchpad));
+        assert_eq!(r.fake.log(), ["open scratchpad"]);
+        assert!(matches!(r.c.machine().phase(), Phase::Idle));
+    }
+
+    /// Wait for the learn thread (it runs after PasteFinished).
+    fn learn_watch_started(r: &Rig) -> bool {
+        for _ in 0..60 {
+            if r.fake.log().iter().any(|l| l == "field_reader") {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        false
+    }
+
+    #[test]
+    fn dictating_into_another_app_watches_for_edits() {
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.c = r.c.with_own_exe("flow clone.exe");
+        dictate_then(&mut r, |_| {});
+        assert!(learn_watch_started(&r));
+    }
+
+    #[test]
+    fn dictating_into_our_own_window_pastes_as_other_without_learning() {
+        // The Scratchpad: a normal paste target, but not an app to learn
+        // corrections from or to offer in "Style per app".
+        let fake = Fake {
+            exe: Some("Flow Clone.exe"),
+            ..Fake::default()
+        };
+        let store = Arc::new(Mutex::new(RecentAppStore::in_memory()));
+        let prefs = Prefs {
+            app_buckets: [(
+                "flow clone".to_string(),
+                crate::core_api::StyleBucket::Email,
+            )]
+            .into_iter()
+            .collect(),
+            ..Prefs::default()
+        };
+        let mut r = rig(fake, prefs);
+        r.c =
+            r.c.with_recent_apps(store.clone())
+                .with_own_exe("flow clone.exe");
+        dictate_then(&mut r, |_| {});
+        assert!(r
+            .fake
+            .log()
+            .contains(&"paste [stub: 1.0 s of audio]".to_string()));
+        for _ in 0..200 {
+            if r.core.last_context().is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let ctx = r.core.last_context().expect("context still sent");
+        assert_eq!(ctx.app_id, "flow clone.exe");
+        assert_eq!(ctx.app_category, crate::core_api::StyleBucket::Other);
+        assert!(store.lock().unwrap().data.apps.is_empty());
+        assert!(!learn_watch_started(&r), "no edit watch on our own window");
     }
 
     #[test]

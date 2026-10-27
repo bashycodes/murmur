@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scratchpad — Flow Clone</title>
+    <link rel="stylesheet" href="scratchpad.css" />
+  </head>
+  <body>
+    <textarea id="editor" spellcheck="true" aria-label="Scratchpad" placeholder="Dictate or type here. Saved automatically."></textarea>
+    <footer>
+      <span id="words" class="muted">0 words</span>
+      <span id="status" role="status"></span>
+      <span class="spacer"></span>
+      <button type="button" id="undo" class="secondary" hidden>Undo clear</button>
+      <button type="button" id="clear" class="danger">Clear</button>
+      <button type="button" id="copy">Copy all</button>
+    </footer>
+    <script src="scratchpad.js"></script>
+  </body>
+</html>

@@ -19,7 +19,7 @@ interface DictEntry {
 }
 
 interface Prefs {
-  shortcuts: { ptt: string; hands_free: string; cancel: string; paste_last: string; copy_last: string };
+  shortcuts: { ptt: string; hands_free: string; cancel: string; paste_last: string; copy_last: string; scratchpad?: string };
   microphone: string | null;
   languages: string[];
   enable_sounds: boolean;
@@ -475,6 +475,7 @@ function fillForm(prefs: Prefs): void {
   $<HTMLInputElement>("cancel").value = prefs.shortcuts.cancel;
   $<HTMLInputElement>("paste_last").value = prefs.shortcuts.paste_last;
   $<HTMLInputElement>("copy_last").value = prefs.shortcuts.copy_last;
+  $<HTMLInputElement>("scratchpad").value = prefs.shortcuts.scratchpad ?? "";
   $<HTMLSelectElement>("microphone").value = prefs.microphone ?? "";
   for (const f of BOOL_FIELDS) $<HTMLInputElement>(f).checked = Boolean(prefs[f]);
   $<HTMLSelectElement>("cleanup_level").value = cleanupChoice(prefs);
@@ -503,6 +504,7 @@ function readForm(base: Prefs): Prefs {
     cancel: $<HTMLInputElement>("cancel").value.trim(),
     paste_last: $<HTMLInputElement>("paste_last").value.trim(),
     copy_last: $<HTMLInputElement>("copy_last").value.trim(),
+    scratchpad: $<HTMLInputElement>("scratchpad").value.trim(),
   };
   next.model_path = $<HTMLInputElement>("model_path").value.trim() || null;
   next.asr_engine = $<HTMLSelectElement>("asr_engine").value;
