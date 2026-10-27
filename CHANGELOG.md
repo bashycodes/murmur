@@ -18,6 +18,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Android: Scratchpad.** *Main screen → More → Scratchpad* (or long-press
+  the app icon → *Scratchpad*) opens one big text field to dictate into,
+  edit and copy out: tap it, tap the bubble and talk, like in any other app.
+  It is the only screen of Flow Clone's own where the bubble appears. The
+  text saves itself as you go (and when you leave the screen) and is there
+  again after the app is closed or the phone restarts; it stays on the phone.
+  *Copy all* (removed from the clipboard after a minute, like every copied
+  transcript), *Share*, *Clear* (asks first) and a word count.
 - **Android: learn dictionary words from your edits.** After a dictation is
   typed in, the app re-reads that same field (about once a second, for up
   to 45 s, or until your edit has stopped changing for 8 s). If you corrected

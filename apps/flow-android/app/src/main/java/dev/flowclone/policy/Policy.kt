@@ -111,3 +111,13 @@ object InsertGuard {
         return dev.flowclone.session.InsertTarget.OK
     }
 }
+
+/**
+ * This app's own windows. The bubble normally ignores them (a settings field is not a place to
+ * dictate), except while a screen made for dictation is in front: the Scratchpad
+ * ([dev.flowclone.ui.NoteEditorActivity] registers itself in [dev.flowclone.FlowApp.dictationSurface]).
+ */
+object OwnAppGate {
+    /** True when [pkg] is this app and no dictation surface of ours is in front: no bubble, no insert. */
+    fun blocks(pkg: String?, ownPackage: String, surfaceInFront: Boolean) = pkg == ownPackage && !surfaceInFront
+}
