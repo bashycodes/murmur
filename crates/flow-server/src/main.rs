@@ -80,6 +80,14 @@ fn main() -> ExitCode {
                     "config ok: bind={:?} workers={} asr={:?}",
                     c.bind, c.workers, c.model.asr_backend
                 );
+                if c.debug.capture {
+                    println!(
+                        "debug capture: on, {} (newest {} files, {} h)",
+                        c.debug.resolve_dir().expect("validated").display(),
+                        c.debug.max_files,
+                        c.debug.max_age_h
+                    );
+                }
                 ExitCode::SUCCESS
             }
             Err(e) => {
