@@ -10,7 +10,7 @@
 //! overran `LowLevelHooksTimeout`, so we probe it and re-install when dead.
 
 use super::watchdog::{self, Watchdog};
-use super::{Bindings, ChordMatcher, HotkeyAction, Key, KeyEvent};
+use super::{Bindings, ChordMatcher, HotkeyAction, Key};
 use crate::input;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
@@ -228,6 +228,9 @@ fn is_physically_down(key: Key) -> bool {
 fn check_stale_keys() {
     let mut guard = state();
     let Some(s) = guard.as_mut() else { return };
+    if s.matcher.altgr_ctrl_down() && !is_physically_down(Key::LCtrl) {
+        s.matcher.forget_altgr_ctrl();
+    }
     let held: Vec<Key> = s.matcher.pressed().collect();
     for k in held {
         if !is_physically_down(k) {
@@ -251,24 +254,33 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
         if kb.dwExtraInfo != input::EXTRA_INFO_TAG {
             let msg = wparam.0 as u32;
             let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
-            let ev = KeyEvent {
-                key: Key::from_vk(kb.vkCode as u16),
-                down,
-            };
+            let vk = kb.vkCode as u16;
             let decision = {
                 let mut guard = state();
                 match guard.as_mut() {
                     Some(s) => {
-                        let d = s.matcher.handle(ev, s.dictating.load(Ordering::Relaxed));
+                        // AltGr's fake Left Ctrl (scan 0x21D) is filtered here.
+                        let d = s.matcher.handle_raw(
+                            vk,
+                            kb.scanCode,
+                            down,
+                            s.dictating.load(Ordering::Relaxed),
+                        );
                         for a in &d.actions {
                             let _ = s.tx.send(*a);
                         }
-                        Some(d)
+                        // Only the user's own Left Ctrl must stay down through
+                        // a masked release; AltGr's fake one is released.
+                        let lctrl_held = d.mask_release
+                            && s.matcher.real_lctrl_held(
+                                (GetAsyncKeyState(input::vk::LCONTROL as i32) as u16) & 0x8000 != 0,
+                            );
+                        Some((d, lctrl_held))
                     }
                     None => None,
                 }
             };
-            if let Some(d) = decision {
+            if let Some((d, lctrl_held)) = decision {
                 let mut suppress = d.suppress;
                 if d.mask_release {
                     // C11: swallow the physical Win/Alt key-up only if our
@@ -278,9 +290,7 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                         own_integrity(),
                         crate::paste::integrity::foreground(),
                     );
-                    let lctrl_held =
-                        (GetAsyncKeyState(input::vk::LCONTROL as i32) as u16) & 0x8000 != 0;
-                    let strokes = input::masked_release(kb.vkCode as u16, lctrl_held);
+                    let strokes = input::masked_release(vk, lctrl_held);
                     let sent = if blocked {
                         0
                     } else {
