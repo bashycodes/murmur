@@ -375,6 +375,18 @@ pub enum CleanOutcome {
     Fallback(FallbackReason),
 }
 
+/// Why a cleanup answer was not used, for the debug log (2026-10-27): the
+/// model's answer when there was one, and the guard's detail (the
+/// unsupported sentence or mark kind, the dropped clause or count, the
+/// divergence, the timeout or error). Both `None` on
+/// [`CleanOutcome::Formatted`]. Holds dictated text: shells log it only
+/// under the debug log's text rules (D21).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Rejection {
+    pub text: Option<String>,
+    pub detail: Option<String>,
+}
+
 /// Wispr skips its formatter for raw mode and terminals; level `none` is
 /// verbatim.
 pub fn should_run(cfg: &SessionConfig, cat: AppCategory) -> bool {
@@ -938,20 +950,23 @@ pub fn run_cleanup_metered(
     timeout: Duration,
     max_divergence: f64,
 ) -> (CleanOutcome, CleanUsage) {
-    run_metered(cleaner, prompt, asr_text, timeout, max_divergence, false)
+    let (outcome, usage, _) =
+        run_metered(cleaner, prompt, asr_text, timeout, max_divergence, false);
+    (outcome, usage)
 }
 
 /// D30 AI cleanup: [`run_cleanup_metered`] on the **raw** transcript
 /// `raw`, judged by the loosened guard ([`crate::guard::check_loose`]), with
 /// [`blank_line_before_lists`] applied to the answer. The caller builds the
-/// prompt with [`PromptVersion::V4c`].
+/// prompt with [`PromptVersion::V4c`]. The [`Rejection`] says why the
+/// answer was not used (empty when it was).
 pub fn run_ai_cleanup(
     cleaner: Arc<dyn Cleaner>,
     prompt: CleanPrompt,
     raw: &str,
     timeout: Duration,
     max_divergence: f64,
-) -> (CleanOutcome, CleanUsage) {
+) -> (CleanOutcome, CleanUsage, Rejection) {
     run_metered(cleaner, prompt, raw, timeout, max_divergence, true)
 }
 
@@ -962,7 +977,7 @@ fn run_metered(
     timeout: Duration,
     max_divergence: f64,
     ai: bool,
-) -> (CleanOutcome, CleanUsage) {
+) -> (CleanOutcome, CleanUsage, Rejection) {
     let deadline = Instant::now() + timeout;
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = AbortFlag(Some(cancel.clone()));
@@ -979,7 +994,15 @@ fn run_metered(
         Ok(v) => v,
         Err(_) => {
             cancel.store(true, Ordering::Relaxed);
-            return (CleanOutcome::Fallback(FallbackReason::Timeout), pending);
+            let why = Rejection {
+                text: None,
+                detail: Some(format!("no answer within {} ms", timeout.as_millis())),
+            };
+            return (
+                CleanOutcome::Fallback(FallbackReason::Timeout),
+                pending,
+                why,
+            );
         }
     };
     let out = match res {
@@ -988,6 +1011,10 @@ fn run_metered(
         ))),
         Ok(s) => lists_to_plain(&unwrap_output(&s)),
         Err(e) => {
+            let why = Rejection {
+                text: None,
+                detail: Some(format!("error: {e}")),
+            };
             // Refused before anything ran (no consent, open circuit, …):
             // no LLM step to report, only the reason.
             let usage = match e {
@@ -997,6 +1024,7 @@ fn run_metered(
             return (
                 CleanOutcome::Fallback(FallbackReason::Error(e.code().to_string())),
                 usage,
+                why,
             );
         }
     };
@@ -1005,7 +1033,8 @@ fn run_metered(
     } else {
         crate::guard::Strictness::Strict
     };
-    (judge(asr_text, out, max_divergence, strictness), usage)
+    let (outcome, why) = judge(asr_text, out, max_divergence, strictness);
+    (outcome, usage, why)
 }
 
 static HTML_LIST_AFTER_TEXT: LazyLock<regex::Regex> =
@@ -1044,19 +1073,36 @@ fn judge(
     out: String,
     max_divergence: f64,
     strictness: crate::guard::Strictness,
-) -> CleanOutcome {
+) -> (CleanOutcome, Rejection) {
+    let reject = |reason, out: String, detail: String| {
+        let why = Rejection {
+            text: Some(out),
+            detail: Some(detail),
+        };
+        (CleanOutcome::Fallback(reason), why)
+    };
     if out.is_empty() {
-        return CleanOutcome::Fallback(FallbackReason::Empty);
+        let why = Rejection {
+            text: None,
+            detail: Some("empty answer".into()),
+        };
+        return (CleanOutcome::Fallback(FallbackReason::Empty), why);
     }
-    if divergence_ratio(asr_text, &out) > max_divergence {
-        return CleanOutcome::Fallback(FallbackReason::Diverged);
+    let div = divergence_ratio(asr_text, &out);
+    if div > max_divergence {
+        let detail = format!("divergence {div:.2} > {max_divergence:.2}");
+        return reject(FallbackReason::Diverged, out, detail);
     }
     match crate::guard::check_with(asr_text, &out, strictness) {
-        crate::guard::Verdict::Ok => CleanOutcome::Formatted(out),
-        crate::guard::Verdict::Unsupported(_) => {
-            CleanOutcome::Fallback(FallbackReason::Unsupported)
+        crate::guard::Verdict::Ok => (CleanOutcome::Formatted(out), Rejection::default()),
+        crate::guard::Verdict::Unsupported(s) => reject(
+            FallbackReason::Unsupported,
+            out,
+            format!("unsupported: {s}"),
+        ),
+        crate::guard::Verdict::Dropped(c) => {
+            reject(FallbackReason::Dropped, out, format!("dropped: {c}"))
         }
-        crate::guard::Verdict::Dropped(_) => CleanOutcome::Fallback(FallbackReason::Dropped),
     }
 }
 

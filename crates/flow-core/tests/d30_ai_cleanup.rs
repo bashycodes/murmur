@@ -449,3 +449,135 @@ fn ai_lists_get_a_blank_line_after_the_intro() {
         r.final_text
     );
 }
+
+// Debug evidence for a fallback (2026-10-27): when AI cleanup's answer is
+// not used, the result carries the answer (`rejected_text`) and the
+// guard's reason (`guard_detail`), so the debug log can show why.
+
+/// `cloud` must already be `.cloud()`.
+fn fallback_with(raw: &str, cloud: Fake) -> CommitResult {
+    let cloud = Arc::new(cloud);
+    let local = Arc::new(Fake::ok(LOCAL));
+    dictate_cfg(
+        &core_with(raw, &cloud, Some(&local)),
+        SessionConfig {
+            llm_skip_clean: false,
+            ..Default::default()
+        },
+    )
+}
+
+#[test]
+fn a_rejected_answer_is_kept_with_the_guards_detail() {
+    let r = fallback_with(RAW, Fake::ok("Please buy a new car tomorrow.").cloud());
+    assert_eq!(
+        r.cloud_fallback.as_deref(),
+        Some("llm_unsupported"),
+        "{r:?}"
+    );
+    assert_eq!(
+        r.rejected_text.as_deref(),
+        Some("Please buy a new car tomorrow.")
+    );
+    assert_eq!(
+        r.guard_detail.as_deref(),
+        Some("unsupported: Please buy a new car tomorrow")
+    );
+}
+
+#[test]
+fn a_dropped_answer_is_kept_with_the_dropped_clause() {
+    let r = fallback_with(RAW, Fake::ok("The demo is on Thursday.").cloud());
+    assert_eq!(r.cloud_fallback.as_deref(), Some("llm_dropped"), "{r:?}");
+    assert_eq!(r.rejected_text.as_deref(), Some("The demo is on Thursday."));
+    let d = r.guard_detail.as_deref().unwrap();
+    assert!(d.starts_with("dropped: "), "{d}");
+    assert!(d.contains('3') || d.contains("three"), "{d}");
+}
+
+#[test]
+fn a_literal_command_mark_names_the_mark_kind() {
+    let r = fallback_with(
+        "The formula is in parentheses on the board.",
+        Fake::ok("The formula is (on the board).").cloud(),
+    );
+    assert_eq!(
+        r.cloud_fallback.as_deref(),
+        Some("llm_unsupported"),
+        "{r:?}"
+    );
+    assert_eq!(
+        r.rejected_text.as_deref(),
+        Some("The formula is (on the board).")
+    );
+    let d = r.guard_detail.as_deref().unwrap();
+    assert!(d.starts_with("unsupported: literal "), "{d}");
+}
+
+#[test]
+fn a_timeout_has_a_detail_but_no_answer() {
+    let r = fallback_with(
+        RAW,
+        Fake::ok(AI)
+            .cloud()
+            .timeout(100)
+            .slow(Duration::from_millis(800)),
+    );
+    assert_eq!(r.cloud_fallback.as_deref(), Some("llm_timeout"));
+    assert_eq!(r.rejected_text, None);
+    assert_eq!(r.guard_detail.as_deref(), Some("no answer within 100 ms"));
+}
+
+#[test]
+fn an_error_has_its_message_but_no_answer() {
+    let r = fallback_with(
+        RAW,
+        Fake::err(CleanError::Backend("provider_error".into())).cloud(),
+    );
+    assert_eq!(r.rejected_text, None);
+    assert_eq!(r.guard_detail.as_deref(), Some("error: provider_error"));
+}
+
+#[test]
+fn an_empty_answer_says_so() {
+    let r = fallback_with(RAW, Fake::ok("   ").cloud());
+    assert_eq!(r.cloud_fallback.as_deref(), Some("llm_empty"));
+    assert_eq!(r.rejected_text, None);
+    assert_eq!(r.guard_detail.as_deref(), Some("empty answer"));
+}
+
+#[test]
+fn an_accepted_answer_leaves_both_fields_empty() {
+    let cloud = Arc::new(Fake::ok(AI).cloud());
+    let r = dictate(&core_with(RAW, &cloud, None));
+    assert_eq!(r.cleanup_route.as_deref(), Some("cloud"));
+    assert_eq!((r.rejected_text, r.guard_detail), (None, None));
+}
+
+#[test]
+fn cloud_off_json_has_no_rejection_fields_even_when_the_local_llm_is_rejected() {
+    // The on-device LLM alone, its answer rejected by the strict guard:
+    // today's result, with no new keys.
+    let local = Arc::new(Fake::ok("Please buy a new car tomorrow."));
+    let r = dictate_cfg(
+        &FlowCore::from_engines(
+            Arc::new(MockAsr::new(RAW)),
+            Some(local.clone() as Arc<dyn Cleaner>),
+        ),
+        SessionConfig {
+            llm_skip_clean: false,
+            ..Default::default()
+        },
+    );
+    assert_eq!(local.calls(), 1);
+    assert!(r.fallback_reason.is_some(), "{r:?}");
+    assert_eq!(
+        (r.rejected_text.clone(), r.guard_detail.clone()),
+        (None, None)
+    );
+    let json = serde_json::to_string(&r).unwrap();
+    assert!(
+        !json.contains("rejected_text") && !json.contains("guard_detail"),
+        "{json}"
+    );
+}
