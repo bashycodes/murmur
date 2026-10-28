@@ -1,7 +1,7 @@
 {
   "name": "flow-windows-ui",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Overlay pill + settings front-end. Plain TS -> JS, no bundler, no runtime deps, no network assets.",
   "scripts": {
     "build": "tsc -p .",
