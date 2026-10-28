@@ -315,6 +315,12 @@ pub struct Bindings {
         deserialize_with = "optional_chord"
     )]
     pub scratchpad: Option<Chord>,
+    /// New note + hands-free dictation into it. Unset by default.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "optional_chord"
+    )]
+    pub new_note: Option<Chord>,
 }
 
 /// An optional shortcut: missing, `null` or blank = none.
@@ -334,6 +340,7 @@ impl Default for Bindings {
             paste_last: Chord::new([Key::Shift, Key::Alt, Key::Vk(b'Z' as u16)]),
             copy_last: Chord::new([Key::Shift, Key::Alt, Key::Vk(b'X' as u16)]),
             scratchpad: None,
+            new_note: None,
         }
     }
 }
@@ -358,6 +365,8 @@ pub enum HotkeyAction {
     CopyLast,
     /// Open-the-Scratchpad chord pressed.
     Scratchpad,
+    /// New-note chord pressed (create a note, open it, dictate into it).
+    NewNote,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -526,6 +535,17 @@ impl ChordMatcher {
                 .is_some_and(|c| self.newly_matches(c, ev.key))
             {
                 d.actions.push(HotkeyAction::Scratchpad);
+                self.chord_fired();
+                if !ev.key.is_modifier() {
+                    d.suppress = true;
+                }
+            } else if self
+                .bindings
+                .new_note
+                .as_ref()
+                .is_some_and(|c| self.newly_matches(c, ev.key))
+            {
+                d.actions.push(HotkeyAction::NewNote);
                 self.chord_fired();
                 if !ev.key.is_modifier() {
                     d.suppress = true;
@@ -1243,6 +1263,28 @@ mod tests {
         let d = press(&mut set);
         assert_eq!(d.actions, vec![Scratchpad]);
         assert!(d.suppress, "N must not reach the app");
+    }
+
+    #[test]
+    fn new_note_shortcut_is_optional_and_fires_when_set() {
+        assert_eq!(Bindings::default().new_note, None);
+        let j = serde_json::to_value(Bindings::default()).unwrap();
+        assert!(j.get("new_note").is_none(), "unset is not written");
+        let b: Bindings = serde_json::from_str(r#"{"new_note":""}"#).unwrap();
+        assert_eq!(b.new_note, None);
+        let b: Bindings = serde_json::from_str(r#"{"new_note":"Ctrl+Alt+M"}"#).unwrap();
+        assert_eq!(b.new_note, Some("Ctrl+Alt+M".parse().unwrap()));
+        assert_eq!(serde_json::to_value(&b).unwrap()["new_note"], "Ctrl+Alt+M");
+        let press = |m: &mut ChordMatcher| {
+            m.handle(KeyEvent::down(Key::Ctrl), false);
+            m.handle(KeyEvent::down(Key::Alt), false);
+            m.handle(KeyEvent::down(Key::Vk(b'M' as u16)), false)
+        };
+        let d = press(&mut m());
+        assert!(d.actions.is_empty() && !d.suppress);
+        let d = press(&mut ChordMatcher::new(b));
+        assert_eq!(d.actions, vec![NewNote]);
+        assert!(d.suppress);
     }
 
     #[test]

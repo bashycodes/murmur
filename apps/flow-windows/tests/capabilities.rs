@@ -3,8 +3,17 @@
 //! commands, the overlay window only `overlay_action`, and the Scratchpad
 //! only its note commands plus `clipboard_copy`.
 
-/// The Scratchpad's note commands: no other window needs them.
-const SCRATCHPAD_ONLY: &[&str] = &["note_load", "note_edit", "note_flush"];
+/// The Scratchpad / Notes window's note commands: no other window needs them.
+const SCRATCHPAD_ONLY: &[&str] = &[
+    "note_load",
+    "note_edit",
+    "note_flush",
+    "note_list",
+    "note_create",
+    "note_delete",
+    "note_set_pinned",
+    "note_export",
+];
 
 fn read(p: &str) -> String {
     std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(p)).unwrap()
