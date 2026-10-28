@@ -18,6 +18,18 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Windows: Command Mode.** Select text, hold **Ctrl+Win+Alt** (change it
+  in Settings → General → Shortcuts), say what to do ("make this more
+  formal", "translate to Spanish", "make it a bulleted list") and let go:
+  the selection is replaced by the rewritten text. With nothing selected
+  it writes new text at the cursor ("write a short thank-you note"). Uses
+  the AI cleanup model on this PC, or OpenRouter text cleanup if you turned
+  that on (the selection only goes to OpenRouter with *Send text around the
+  cursor* on). The pill turns orange while it works; Esc cancels. Without
+  an AI, or if it doesn't answer in 25 s, you hear the error sound and the
+  selected text stays as it was; your clipboard is always put back.
+  History shows the instruction, the original text and the result.
+
 - **Android: Scratchpad.** *Main screen → More → Scratchpad* (or long-press
   the app icon → *Scratchpad*) opens one big text field to dictate into,
   edit and copy out: tap it, tap the bubble and talk, like in any other app.
