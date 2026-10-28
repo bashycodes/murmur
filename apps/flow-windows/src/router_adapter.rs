@@ -611,7 +611,7 @@ impl RouterAdapter {
 }
 
 /// Pill text for flow-remote's `connect_failed … plaintext refused …`:
-/// `ws://` to an address that is not private/tailnet (review S6).
+/// `ws://` to an address that is not private/VPN (review S6).
 pub const SERVER_NEEDS_TLS: &str =
     "Server needs TLS — its address is not private; turn on TLS in Developer settings";
 

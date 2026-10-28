@@ -352,7 +352,7 @@ impl DevSettings {
             if host_is_public(&self.server.host) {
                 w.push("Public address: TLS (wss) is required and turned on.".into());
             } else {
-                w.push("Unencrypted: OK on Tailscale (WireGuard), LAN only otherwise.".into());
+                w.push("Unencrypted: OK only on your LAN or over an encrypted VPN.".into());
             }
         }
         if srv && self.token_dpapi.is_empty() {
@@ -711,7 +711,7 @@ fn parse_ipv4_strict(s: &str) -> Option<Ipv4Addr> {
 /// §2.6: is plaintext `ws://` refused for this (normalised) host at
 /// config time? The router's classifier decides (`flow_router::net`, the
 /// same one `ServerConfig::validate` uses), so the form can never disagree
-/// with the gate. Private = loopback, RFC 1918, link-local, ULA, tailnet
+/// with the gate. Private = loopback, RFC 1918, link-local, ULA, VPN
 /// (100.64/10, fd7a:115c:a1e0::/48), `*.ts.net`, `*.local`, `localhost`
 /// and single-label names. That is only the form rule: at connect time
 /// flow-remote resolves a name and requires every address to be private

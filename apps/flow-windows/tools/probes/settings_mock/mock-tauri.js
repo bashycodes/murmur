@@ -87,7 +87,7 @@
     if (f.token && f.token.length < 16) errors.push({ field: "token", message: "Token must be at least 16 characters (or empty)" });
     const warnings = [];
     if (!f.allow_server && !f.allow_client) warnings.push("Dictation disabled — enable server or client in Developer settings");
-    else if (f.allow_server && !f.tls && h) warnings.push("Unencrypted: OK on Tailscale (WireGuard), LAN only otherwise.");
+    else if (f.allow_server && !f.tls && h) warnings.push("Unencrypted: OK only on your LAN or over an encrypted VPN.");
     return { errors, warnings, tls_forced: /\.(com|org|net)$/.test(h) && !h.endsWith(".ts.net") };
   };
   const health = {
