@@ -1,8 +1,8 @@
 //! Server address classification (`docs/hybrid-architecture.md` §2.6).
 //!
 //! Plain `ws://` is allowed only to addresses that cannot be a third party
-//! on the open internet: loopback, RFC 1918, Tailscale/CGNAT 100.64/10,
-//! Tailscale IPv6 fd7a:115c:a1e0::/48, ULA fc00::/7, link-local,
+//! on the open internet: loopback, RFC 1918, CGNAT 100.64/10 (VPN overlays),
+//! the VPN overlay IPv6 range fd7a:115c:a1e0::/48, ULA fc00::/7, link-local,
 //! `*.ts.net`, `*.local` and single-label names. Everything else is
 //! public and needs `wss://`. [`classify`] is the config-time check (pure
 //! string/IP logic, no DNS); names pass it, and the connection then
@@ -95,16 +95,16 @@ fn classify_v6(ip: Ipv6Addr) -> AddrClass {
 
 /// The cleartext rule on **resolved** addresses (review S6), the one that
 /// decides at connect time: every address must be loopback, private
-/// (RFC 1918 / ULA), link-local, or tailnet. Names (`*.local`,
+/// (RFC 1918 / ULA), link-local, or VPN (`Tailnet`). Names (`*.local`,
 /// single-label, `*.ts.net`, anything) count only by what they resolve to;
 /// an empty list is refused.
 ///
 /// Tailnet (100.64.0.0/10, fd7a:115c:a1e0::/48) is accepted only when the
 /// OS would reach the peer *from* an address in the same range, i.e. over
-/// an interface that holds a tailnet address (Tailscale's). `source_of`
+/// an interface that holds a VPN overlay address in that range. `source_of`
 /// answers that ([`route_source`] in production). Choice and limit: carrier
 /// CGNAT also hands out 100.64/10 addresses, and a phone on such a carrier
-/// network with Tailscale down looks the same from here; that residual case
+/// network with its VPN down looks the same from here; that residual case
 /// needs `wss://` (or an OS VPN check in the shell).
 pub fn plaintext_ok_resolved(
     ips: &[IpAddr],
@@ -121,7 +121,7 @@ pub fn plaintext_ok_resolved(
                     source_of(*ip).is_some_and(|s| classify_ip(s) == AddrClass::Tailnet);
                 if !via_tailnet {
                     return Err(format!(
-                        "{ip} is a tailnet/CGNAT address but no tailnet interface routes to it (enable TLS)"
+                        "{ip} is a VPN/CGNAT address but no VPN interface routes to it (enable TLS)"
                     ));
                 }
             }
@@ -264,7 +264,7 @@ mod tests {
         assert!(!ok(&["192.168.1.2", "8.8.8.8"], &no_tailnet));
         assert!(!ok(&["2001:4860:4860::8888"], &no_tailnet));
         assert!(!ok(&[], &no_tailnet), "NXDOMAIN / nothing resolved");
-        // 100.64/10 and the Tailscale v6 range only via a tailnet interface.
+        // 100.64/10 and the VPN overlay v6 range only via a VPN interface.
         assert!(!ok(&["100.64.0.10"], &no_tailnet));
         assert!(!ok(&["100.64.0.10"], &|_| None));
         assert!(ok(&["100.64.0.10"], &tailnet));

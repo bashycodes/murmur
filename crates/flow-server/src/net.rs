@@ -1,5 +1,5 @@
 //! Address classes for the bind policy and the peer filter (S10, D17:
-//! "LAN/Tailscale only"). Mirrors the private classes the client accepts
+//! "LAN/VPN only"). Mirrors the private classes the client accepts
 //! for plain `ws://` (docs/protocol.md §1).
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -7,7 +7,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddrClass {
     Loopback,
-    /// RFC 1918, 100.64/10 (Tailscale / CGNAT), link-local, IPv6 ULA.
+    /// RFC 1918, 100.64/10 (VPN / CGNAT), link-local, IPv6 ULA.
     Private,
     /// 0.0.0.0 / `::`: every interface, including public ones.
     Wildcard,
@@ -16,7 +16,7 @@ pub enum AddrClass {
 
 impl AddrClass {
     /// Loopback or private: reachable only from the machine, the LAN or
-    /// the tailnet.
+    /// a VPN.
     pub fn is_local(self) -> bool {
         matches!(self, AddrClass::Loopback | AddrClass::Private)
     }

@@ -64,7 +64,7 @@ fn connect_failed(m: impl std::fmt::Display) -> BackendError {
 pub async fn connect(cfg: &ServerConfig, client: &str) -> Result<Arc<Conn>, BackendError> {
     let host = net::bare_host(&cfg.host).to_string();
     // Resolve first; plain ws:// only if *every* address is private /
-    // loopback / link-local / tailnet-via-tailnet (review S6), and then
+    // loopback / link-local / VPN-via-VPN-interface (review S6), and then
     // connect to exactly those addresses (no second lookup to rebind).
     let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((host.as_str(), cfg.port))
         .await
