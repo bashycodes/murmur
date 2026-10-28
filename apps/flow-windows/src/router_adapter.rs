@@ -935,10 +935,14 @@ mod tests {
             p: &flow_core::cleanup::CleanPrompt,
             _deadline: Instant,
         ) -> Result<String, flow_core::cleanup::CleanError> {
-            Ok(format!(
-                "Here's the result:\n\"{}\"",
-                p.transcript.to_uppercase()
-            ))
+            // Upper-case the selection out of the user message.
+            let sel = p
+                .user
+                .split("<selected_text>\n")
+                .nth(1)
+                .and_then(|s| s.split("\n</selected_text>").next())
+                .unwrap_or_default();
+            Ok(format!("Here's the result:\n\"{}\"", sel.to_uppercase()))
         }
     }
 
