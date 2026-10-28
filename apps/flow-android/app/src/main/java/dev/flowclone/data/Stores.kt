@@ -316,5 +316,11 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
             }
         }
 
+    /** Every saved dictation, oldest first, for the one-time Insights backfill (failed ones left out). */
+    fun statsRows(): List<InsightsStore.Row> =
+        readableDatabase.query("history", arrayOf("created_at", "app_id", "final_text", "audio_ms"), "status != 'ERROR'", null, null, null, "created_at ASC").use { c ->
+            buildList { while (c.moveToNext()) add(InsightsStore.Row(c.getLong(0), c.getString(1), c.getString(2), c.getLong(3))) }
+        }
+
     fun clear() { writableDatabase.delete("history", null, null); scrub(vacuum = true) }
 }
