@@ -16,8 +16,21 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-28
+
 ### Added
 
+- **Windows: Command Mode.** Select text, hold **Ctrl+Win+Alt** (change it
+  in Settings → General → Shortcuts), say what to do ("make this more
+  formal", "translate to Spanish", "make it a bulleted list") and let go:
+  the selection is replaced by the rewritten text. With nothing selected
+  it writes new text at the cursor ("write a short thank-you note"). Uses
+  the AI cleanup model on this PC, or OpenRouter text cleanup if you turned
+  that on (the selection only goes to OpenRouter with *Send text around the
+  cursor* on). The pill turns orange while it works; Esc cancels. Without
+  an AI, or if it doesn't answer in 25 s, you hear the error sound and the
+  selected text stays as it was; your clipboard is always put back.
+  History shows the instruction, the original text and the result.
 - **Android: Command Mode.** Select text in any app and a **✎** button
   appears next to the bubble's mic: tap it, say what to do ("make it
   shorter", "make this more formal", "translate to Spanish"), and the
@@ -35,60 +48,6 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   text is left untouched (an answer that could not go in can still be
   copied). History shows the instruction, the original text and the result;
   commands don't count in Insights.
-- **Windows: Command Mode.** Select text, hold **Ctrl+Win+Alt** (change it
-  in Settings → General → Shortcuts), say what to do ("make this more
-  formal", "translate to Spanish", "make it a bulleted list") and let go:
-  the selection is replaced by the rewritten text. With nothing selected
-  it writes new text at the cursor ("write a short thank-you note"). Uses
-  the AI cleanup model on this PC, or OpenRouter text cleanup if you turned
-  that on (the selection only goes to OpenRouter with *Send text around the
-  cursor* on). The pill turns orange while it works; Esc cancels. Without
-  an AI, or if it doesn't answer in 25 s, you hear the error sound and the
-  selected text stays as it was; your clipboard is always put back.
-  History shows the instruction, the original text and the result.
-
-- **Android: Notes.** *Main screen → More → Notes* keeps as many dictated
-  notes as you like, in the same editor as the Scratchpad (the bubble works
-  in every note, and still nowhere else in Flow Clone). The list shows each
-  note's first line and when it last changed, pinned notes first; search
-  finds words anywhere in a note; *New note*, and per note *Pin*, *Share* and
-  *Delete* (asks first). Long-press the app icon → *New note* opens a fresh
-  note with the keyboard up (tap the bubble to dictate; it doesn't start
-  recording by itself). The Scratchpad is now the *Quick note*: same text,
-  pinned at the top of Notes, still on the main screen and the icon
-  shortcut. Notes stay on the phone (no sync), saved as you go. An untouched
-  new note isn't kept.
-- **Android: Scratchpad.** *Main screen → More → Scratchpad* (or long-press
-  the app icon → *Scratchpad*) opens one big text field to dictate into,
-  edit and copy out: tap it, tap the bubble and talk, like in any other app.
-  It is the only screen of Flow Clone's own where the bubble appears. The
-  text saves itself as you go (and when you leave the screen) and is there
-  again after the app is closed or the phone restarts; it stays on the phone.
-  *Copy all* (removed from the clipboard after a minute, like every copied
-  transcript), *Share*, *Clear* (asks first) and a word count.
-- **Android: Insights page.** *Main screen → More → Insights* shows the same
-  stats as the Windows Insights tab: total words dictated, words in the last 7
-  days, average speaking speed, current and longest daily streak (a streak
-  isn't broken before today's first dictation), time saved versus typing
-  (assumes 40 wpm, shown on the page), the number of dictations, your top
-  apps by name, and a 7-day words-per-day chart. Days follow the phone's time
-  zone. The counts live on the phone in their own file (words, recording
-  length and app per day; no text), so clearing History or setting it to
-  *Never* keeps them; the first time, the History you already have is counted
-  in once. *Reset stats* (asks first) clears them. The math mirrors
-  `flow-core`'s, checked against the same test vectors.
-- **Windows: Insights tab.** *Settings → Insights* shows total words
-  dictated, words in the last 7 days, average speaking speed (words per
-  minute of recording), current and longest daily streak, an estimate of
-  time saved versus typing (assumes 40 wpm, shown on the page), the number
-  of dictations, your top apps by words, and a 7-day words-per-day chart.
-  Everything is counted on the PC in `%APPDATA%\FlowClone\insights.json`
-  (words, recording length and app per local day; no text) and never leaves
-  it. The counts are kept apart from History, so deleting History or a
-  short retention setting doesn't reset them; on first start they are
-  filled in once from the History you already have. *Reset stats* (with a
-  confirmation) clears them. The stats math lives in `flow-core` so Android
-  can reuse it.
 - **Windows: Scratchpad.** A plain-text window to dictate into, edit and
   copy out: tray → *Scratchpad…*, or a shortcut you set under *Settings →
   General → Shortcuts → Open Scratchpad* (none by default). Dictation types
@@ -109,6 +68,48 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   `%APPDATA%\FlowClone\notes\` (plus a small `index.json` for pins and
   times; `.txt` files copied in by hand show up too). An existing
   `scratchpad.txt` is moved there on first start.
+- **Android: Scratchpad.** *Main screen → More → Scratchpad* (or long-press
+  the app icon → *Scratchpad*) opens one big text field to dictate into,
+  edit and copy out: tap it, tap the bubble and talk, like in any other app.
+  It is the only screen of Flow Clone's own where the bubble appears. The
+  text saves itself as you go (and when you leave the screen) and is there
+  again after the app is closed or the phone restarts; it stays on the phone.
+  *Copy all* (removed from the clipboard after a minute, like every copied
+  transcript), *Share*, *Clear* (asks first) and a word count.
+- **Android: Notes.** *Main screen → More → Notes* keeps as many dictated
+  notes as you like, in the same editor as the Scratchpad (the bubble works
+  in every note, and still nowhere else in Flow Clone). The list shows each
+  note's first line and when it last changed, pinned notes first; search
+  finds words anywhere in a note; *New note*, and per note *Pin*, *Share* and
+  *Delete* (asks first). Long-press the app icon → *New note* opens a fresh
+  note with the keyboard up (tap the bubble to dictate; it doesn't start
+  recording by itself). The Scratchpad is now the *Quick note*: same text,
+  pinned at the top of Notes, still on the main screen and the icon
+  shortcut. Notes stay on the phone (no sync), saved as you go. An untouched
+  new note isn't kept.
+- **Windows: Insights tab.** *Settings → Insights* shows total words
+  dictated, words in the last 7 days, average speaking speed (words per
+  minute of recording), current and longest daily streak, an estimate of
+  time saved versus typing (assumes 40 wpm, shown on the page), the number
+  of dictations, your top apps by words, and a 7-day words-per-day chart.
+  Everything is counted on the PC in `%APPDATA%\FlowClone\insights.json`
+  (words, recording length and app per local day; no text) and never leaves
+  it. The counts are kept apart from History, so deleting History or a
+  short retention setting doesn't reset them; on first start they are
+  filled in once from the History you already have. *Reset stats* (with a
+  confirmation) clears them. The stats math lives in `flow-core` so Android
+  can reuse it.
+- **Android: Insights page.** *Main screen → More → Insights* shows the same
+  stats as the Windows Insights tab: total words dictated, words in the last 7
+  days, average speaking speed, current and longest daily streak (a streak
+  isn't broken before today's first dictation), time saved versus typing
+  (assumes 40 wpm, shown on the page), the number of dictations, your top
+  apps by name, and a 7-day words-per-day chart. Days follow the phone's time
+  zone. The counts live on the phone in their own file (words, recording
+  length and app per day; no text), so clearing History or setting it to
+  *Never* keeps them; the first time, the History you already have is counted
+  in once. *Reset stats* (asks first) clears them. The math mirrors
+  `flow-core`'s, checked against the same test vectors.
 - **Android: learn dictionary words from your edits.** After a dictation is
   typed in, the app re-reads that same field (about once a second, for up
   to 45 s, or until your edit has stopped changing for 8 s). If you corrected
@@ -120,15 +121,6 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   Password and other sensitive fields and banking apps are never re-read.
   *Settings → Privacy → Learn from my edits* (on by default, like Windows)
   turns it off; then the field is not read again after inserting.
-- **Windows: per-app style picker.** AI cleanup → Writing style → *Style
-  per app* is now a table instead of `app = group` text lines: pick a group
-  (Personal / Work / Email / Other) per app, remove rows, and add apps from
-  the ones you recently dictated into without typing an exe name (or type
-  one, a web host or a URL). The built-in exe → group mapping is listed
-  read-only so you can see why an app is in a group. Only exe names are
-  remembered (`recent_apps.json`, newest 12, nothing kept with history
-  retention "Never"). Same `app_buckets` pref: existing entries load as rows
-  unchanged.
 - **Windows: custom cue sounds.** Put `start.wav`, `stop.wav`, `lock.wav`,
   `paste.wav` or `error.wav` in `%APPDATA%\FlowClone\sounds\` to replace
   that cue's built-in tone (read at the first cue, so restart after changing
@@ -142,13 +134,6 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   the release doesn't focus the menu bar, and on AltGr keyboard layouts the
   fake Left Ctrl Windows sends with Right Alt is ignored (it also no longer
   makes AltGr fire a Ctrl+Alt shortcut) and is never left stuck.
-- **Debug: replay harness.** `tools/replay/run.sh --in DIR` re-runs the
-  phone's saved dictation recordings on the PC through each speech model
-  (Parakeet, whisper, OpenRouter cloud STT), cleanup model (fallback rules,
-  local Qwen, OpenRouter models) and prompt version (v4c, v2) on the real
-  pipeline, and prints a score table against the expected text and the
-  phone's own results, plus the OpenRouter spend (capped, default $0.05).
-  Recordings and results stay outside the repo. See `tools/replay/README.md`.
 - **Debug log: why an AI cleanup answer was not used.** When AI cleanup's
   answer is rejected, dropped, times out or fails, the Android and Windows
   debug-log line now has `rejected_text` (the model's answer, if any) and
@@ -159,6 +144,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   fields, banking and denylisted apps. flow-core's `CommitResult` and
   `RouteInfo` carry them as additive optional fields, set only next to
   `cloud_fallback`, so results without cloud cleanup are unchanged.
+- **Debug: replay harness.** `tools/replay/run.sh --in DIR` re-runs the
+  phone's saved dictation recordings on the PC through each speech model
+  (Parakeet, whisper, OpenRouter cloud STT), cleanup model (fallback rules,
+  local Qwen, OpenRouter models) and prompt version (v4c, v2) on the real
+  pipeline, and prints a score table against the expected text and the
+  phone's own results, plus the OpenRouter spend (capped, default $0.05).
+  Recordings and results stay outside the repo. See `tools/replay/README.md`.
 - **Android debug: one-command pull.** `tools/phone/pull-debug.sh` copies
   the phone's debug log, the kept dictation WAVs (only new ones,
   sha256-checked) and the two settings files with every token, key,
@@ -184,6 +176,15 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
+- **Windows: per-app style picker.** AI cleanup → Writing style → *Style
+  per app* is now a table instead of `app = group` text lines: pick a group
+  (Personal / Work / Email / Other) per app, remove rows, and add apps from
+  the ones you recently dictated into without typing an exe name (or type
+  one, a web host or a URL). The built-in exe → group mapping is listed
+  read-only so you can see why an app is in a group. Only exe names are
+  remembered (`recent_apps.json`, newest 12, nothing kept with history
+  retention "Never"). Same `app_buckets` pref: existing entries load as rows
+  unchanged.
 - **Android: Style per app is an app list.** Settings → Writing style →
   Style per app no longer asks for typed `package = group` lines. Each
   override is a row with the app's icon and name, a group dropdown
@@ -506,7 +507,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/bashycodes/murmur/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/bashycodes/murmur/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/bashycodes/murmur/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/bashycodes/murmur/compare/v0.3.0...v0.4.0
