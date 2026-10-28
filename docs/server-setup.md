@@ -6,7 +6,7 @@ Windows and Android apps at it. Design and rules: `docs/hybrid-architecture.md`
 
 The server only listens. It makes no outbound connections, never writes audio
 or text to disk (unless you turn on the debug capture, §9), and accepts peers only from loopback, private LAN and
-Tailscale addresses.
+VPN (100.64.0.0/10) addresses.
 
 ## 1. Prerequisites (nothing is downloaded by the installer)
 
@@ -42,7 +42,8 @@ Tailscale addresses.
 * Optional, for LLM cleanup: a GGUF (`tools/fetch-models.sh --llm 1.5b` puts
   `qwen2.5-1.5b-instruct-q4_k_m.gguf` in `models/`), libclang and cmake for
   the llama.cpp build.
-* Recommended: Tailscale on the server and on every client device.
+* Recommended: a WireGuard-based mesh VPN on the server and on every client
+  device (one that hands out 100.64.0.0/10 addresses).
 
 ## 2. Install
 
@@ -120,21 +121,20 @@ installer falls back to `/run/user/$UID`; for later `systemctl --user` /
 A healthy start logs `ready workers=1 asr=parakeet load_ms=… listening=…`.
 Check a config without starting: `flow-server check-config --config <path>`.
 
-## 3. Address: Tailscale (recommended)
+## 3. Address: VPN (recommended)
 
-* Server address: `tailscale ip -4` on the server gives `100.x.y.z`. By default
-  the installer binds `127.0.0.1:7313` plus that address. Without Tailscale it
-  binds loopback only; add `--bind <LAN IP>:7313`.
-* The unit starts after `tailscaled.service`. If the 100.x address is not up
-  yet at boot, the bind fails and systemd restarts the server (`RestartSec=3`).
-* Plain `ws://` is fine on Tailscale, because WireGuard already encrypts the
-  traffic. The clients allow `ws://` only to private, LAN and Tailscale
-  addresses. A MagicDNS name (`box.<tailnet>.ts.net`) works too, because the
+* Server address: the server's VPN IPv4, `100.x.y.z` (`ip -4 addr`). By default
+  the installer binds `127.0.0.1:7313` plus the first 100.64.0.0/10 address it
+  finds. Without one it binds loopback only; add `--bind <LAN IP>:7313`.
+* If the VPN's 100.x address is not up yet at boot, the bind fails and systemd restarts the server (`RestartSec=3`).
+* Plain `ws://` is fine on a WireGuard VPN, because it already encrypts the
+  traffic. The clients allow `ws://` only to private, LAN and VPN
+  addresses. A VPN DNS name works too, because the
   client resolves it and requires every address it gets back to be private.
-* Optional: restrict port 7313 to your own devices with a Tailscale ACL.
+* Optional: restrict port 7313 to your own devices with your VPN's access rules.
 
 `0.0.0.0`, `::` or a public bind address is refused unless `[tls]` is set. Even
-then, peers outside loopback, LAN and Tailscale are dropped before any byte is
+then, peers outside loopback, LAN and VPN are dropped before any byte is
 read. Never add `--insecure-bind-any` to the unit.
 
 ## 4. Token
@@ -149,7 +149,7 @@ read. Never add `--insecure-bind-any` to the unit.
 * The token travels only in the `Authorization: Bearer` header of the upgrade
   and health requests. Neither side logs it.
 
-## 5. TLS (optional: LAN without Tailscale)
+## 5. TLS (optional: LAN without a VPN)
 
 Use `wss://` when the clients reach the server over a LAN that WireGuard
 doesn't cover. Self-signed certificates are pinned by the SHA-256 of the leaf
@@ -184,7 +184,7 @@ plus allow loopback, RFC 1918, 100.64.0.0/10, link-local and fc00::/7. A host
 firewall is a second layer. With ufw:
 
 ```sh
-sudo ufw allow in on tailscale0 to any port 7313 proto tcp          # Tailscale
+sudo ufw allow in on <vpn-iface> to any port 7313 proto tcp        # VPN
 sudo ufw allow from 192.168.1.0/24 to any port 7313 proto tcp       # LAN (TLS)
 ```
 
@@ -197,9 +197,9 @@ reachable from the internet.
 |---|---|
 | Allow server (`allow_server`) | on |
 | Prefer / order | "Server first" to use the server whenever it is up, with the local model as fallback (`allow_client` on) |
-| Server host (`server.host`) | Tailscale: `100.x.y.z` (or the MagicDNS name). LAN: the LAN IP. Host only, without port or scheme |
+| Server host (`server.host`) | VPN: `100.x.y.z` (or its VPN DNS name). LAN: the LAN IP. Host only, without port or scheme |
 | Port (`server.port`) | `7313` (or your `--port`) |
-| Use TLS (`server.tls`) | off on Tailscale and plain LAN. On when `[tls]` is configured (forced on for public names) |
+| Use TLS (`server.tls`) | off on a VPN and plain LAN. On when `[tls]` is configured (forced on for public names) |
 | Certificate pin (`server.tls_pin_sha256`) | the `sha256sum` above (TLS only) |
 | Token (`server.token`) | the token file's content |
 | Timeouts | defaults (connect 800 ms, commit base 3000 ms) |
@@ -208,7 +208,7 @@ Then press **Test connection**. It should show `OK · … · parakeet`. Hints fo
 the common errors:
 
 * `auth_failed`: wrong token.
-* `connect_failed`: the server isn't running, Tailscale is down, or the bind
+* `connect_failed`: the server isn't running, the VPN is down, or the bind
   address is wrong.
 * `proto_mismatch`: update the app or the server.
 

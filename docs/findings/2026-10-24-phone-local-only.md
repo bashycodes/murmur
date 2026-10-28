@@ -121,7 +121,7 @@ connect, probe or sleep there. A timeline built from the two clocks:
 So the `commit` message reached the server about 4.5 s after the phone sent
 it. Nothing on either side waits in that window. The message sat behind the
 audio upload: the connection was opened 0.8 s into the recording, on a link
-with 239 ms RTT (a Tailscale relay path, as in D24), and the uplink could not
+with 239 ms RTT (a VPN relay path, as in D24), and the uplink could not
 keep up with real time during TCP slow start. The next dictation on the same
 connection 18 s later had a 150 ms gap (`client_ms` 2860 vs `total_ms` 2708),
 which fits a fresh-connection effect.
