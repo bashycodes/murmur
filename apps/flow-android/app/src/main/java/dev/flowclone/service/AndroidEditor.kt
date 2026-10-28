@@ -35,9 +35,22 @@ class ShellInputMethod(service: AccessibilityService, private val onStarted: () 
     /** Incremented on every onStartInput (keep-alive's per-session nudge epoch). */
     val epoch: Long get() = starts.value
 
+    /** Command Mode: the bound editor's selection from `onUpdateSelection` (start, end); null = none reported yet. */
+    @Volatile var selection: Pair<Int, Int>? = null; private set
+
+    override fun onUpdateSelection(oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int) {
+        super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        selection = newSelStart to newSelEnd
+        runCatching(onStarted) // re-evaluate: the bubble shows ✎ while text is selected
+    }
+
+    /** The editor reports a non-empty selection. */
+    val hasSelection: Boolean get() = selection?.let { it.first != it.second && it.first >= 0 && it.second >= 0 } == true
+
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
         try {
             super.onStartInput(attribute, restarting)
+            if (!restarting) selection = null
             focusedEditor = FocusedEditor(
                 attribute.packageName, attribute.inputType, attribute.imeOptions,
                 runCatching { attribute.hintText?.toString() }.getOrNull(), restarting,
@@ -52,6 +65,7 @@ class ShellInputMethod(service: AccessibilityService, private val onStarted: () 
     override fun onFinishInput() {
         super.onFinishInput()
         focusedEditor = FocusedEditor.EMPTY
+        selection = null
         finishes.value++
         runCatching(onStarted)
     }
@@ -79,6 +93,23 @@ class ShellInputMethod(service: AccessibilityService, private val onStarted: () 
         val t = android.os.SystemClock.uptimeMillis()
         ic.sendKeyEvent(android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_DOWN, keyCode, 0))
         ic.sendKeyEvent(android.view.KeyEvent(t, t, android.view.KeyEvent.ACTION_UP, keyCode, 0))
+        return true
+    }
+
+    /** Command Mode: the connection's selected text now; null = no connection or nothing selected. */
+    fun selectedText(): String? {
+        // AccessibilityInputConnection has no getSelectedText: a zero-width window is exactly the selection.
+        val st = currentInputConnection?.getSurroundingText(0, 0, 0) ?: return null
+        val t = st.text?.toString() ?: return null
+        val a = minOf(st.selectionStart, st.selectionEnd); val b = maxOf(st.selectionStart, st.selectionEnd)
+        if (a < 0 || b > t.length || a == b) return null
+        return t.substring(a, b)
+    }
+
+    /** Command Mode: `commitText` replaces the connection's current selection. */
+    fun commitText(text: String): Boolean {
+        val ic = currentInputConnection ?: return false
+        ic.commitText(text, 1, null)
         return true
     }
 

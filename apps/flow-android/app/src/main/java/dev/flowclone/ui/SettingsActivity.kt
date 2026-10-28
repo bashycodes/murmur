@@ -524,6 +524,18 @@ class SettingsActivity : Activity() {
                     value = SettingsSummary.bubbleSizePercent(s.bubbleScale),
                 ) { "$it%" }.onChange { pct -> applyNow { copy(bubbleScale = Settings.bubbleScaleOf(pct / 100f)) } }
             }
+            sectionLabel("COMMAND MODE")
+            card {
+                choiceRows(
+                    listOf(
+                        DevUi.Choice(dev.flowclone.data.CommandButton.WITH_SELECTION, "When text is selected", "Select text, tap ✎ next to the mic and say what to do (\"make it shorter\")"),
+                        DevUi.Choice(dev.flowclone.data.CommandButton.ALWAYS, "Always", "Also without a selection: say what to write at the cursor (the bubble no longer shrinks)"),
+                        DevUi.Choice(dev.flowclone.data.CommandButton.OFF, "Off", "No ✎ button"),
+                    ),
+                    s.commandButton,
+                ) { v -> applyNow { copy(commandButton = v) } }
+            }
+            note("Command Mode uses AI cleanup: the on-device model, or OpenRouter only when \"send text around the cursor\" is on. Never in password, sensitive or banking fields.")
             note("Drag the bubble onto the target at the bottom of the screen to snooze it for 10 minutes. Changes apply at once.")
         }
     }

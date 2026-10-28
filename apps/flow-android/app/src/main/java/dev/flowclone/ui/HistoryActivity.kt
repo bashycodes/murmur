@@ -148,9 +148,19 @@ class HistoryActivity : Activity() {
                     Tone.WARN,
                 )
             }
-            sectionLabel(if (r.inserted) "INSERTED TEXT" else "TEXT")
-            card { selectableText(HistoryView.text(r, raw = false)) }
-            if (HistoryView.hasRawVariant(r)) {
+            if (r.isCommand) {
+                // Command Mode: what was said, what it acted on, what came back.
+                sectionLabel("INSTRUCTION")
+                card { selectableText(HistoryView.text(r, raw = true)) }
+                sectionLabel(if (r.commandOriginal != null) "ORIGINAL SELECTION" else "ORIGINAL")
+                card { selectableText(r.commandOriginal ?: "(nothing selected: written at the cursor)", 14f, p.muted) }
+                sectionLabel(if (r.inserted) "RESULT (REPLACED THE SELECTION)" else "RESULT")
+                card { selectableText(HistoryView.text(r, raw = false)) }
+            } else {
+                sectionLabel(if (r.inserted) "INSERTED TEXT" else "TEXT")
+                card { selectableText(HistoryView.text(r, raw = false)) }
+            }
+            if (!r.isCommand && HistoryView.hasRawVariant(r)) {
                 sectionLabel("RAW TRANSCRIPT")
                 card { selectableText(HistoryView.text(r, raw = true), 14f, p.muted) }
             }

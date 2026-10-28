@@ -55,11 +55,13 @@ object HistoryView {
     }
 
     fun text(r: HistoryRow, raw: Boolean): String {
+        // Command Mode: raw = the spoken instruction, else the AI's result (never the instruction in its place).
+        if (r.isCommand) return (if (raw) r.asrText else r.finalText).ifEmpty { if (raw) "(no instruction)" else "(no result)" }
         val t = if (raw) r.asrText.ifEmpty { r.finalText } else r.finalText.ifEmpty { r.asrText }
         return t.ifEmpty { "(no speech)" }
     }
 
-    fun label(r: HistoryRow): String = when (runCatching { CommitStatus.valueOf(r.status) }.getOrNull()) {
+    fun label(r: HistoryRow): String = if (r.isCommand) (if (r.finalText.isEmpty()) "Command failed" else "Command") else when (runCatching { CommitStatus.valueOf(r.status) }.getOrNull()) {
         CommitStatus.FORMATTED -> "AI cleaned"
         CommitStatus.RAW_TRANSCRIPT -> "Transcript"
         CommitStatus.EMPTY -> "No speech"
