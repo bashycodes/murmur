@@ -45,8 +45,19 @@ function frame() {
 requestAnimationFrame(frame);
 function apply(s) {
     const wasActive = isActive();
-    pillState = s.state;
-    pill.dataset.state = s.state;
+    pillState =
+        s.state === "active_command"
+            ? "active_ptt"
+            : s.state === "command_processing"
+                ? "processing"
+                : s.state;
+    pill.dataset.state = pillState;
+    if (s.state === "active_command" || s.state === "command_processing") {
+        pill.dataset.command = "on";
+    }
+    else {
+        delete pill.dataset.command;
+    }
     const message = s.state === "error" || s.state === "notice" ? s.message : "";
     msg.textContent = message;
     if (!isActive()) {

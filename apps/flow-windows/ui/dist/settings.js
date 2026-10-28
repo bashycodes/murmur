@@ -324,6 +324,7 @@ function fillForm(prefs) {
     showEngineFields();
     $("ptt").value = prefs.shortcuts.ptt;
     $("hands_free").value = prefs.shortcuts.hands_free;
+    $("command").value = prefs.shortcuts.command;
     $("cancel").value = prefs.shortcuts.cancel;
     $("paste_last").value = prefs.shortcuts.paste_last;
     $("copy_last").value = prefs.shortcuts.copy_last;
@@ -352,6 +353,7 @@ function readForm(base) {
     next.shortcuts = {
         ptt: $("ptt").value.trim(),
         hands_free: $("hands_free").value.trim(),
+        command: $("command").value.trim(),
         cancel: $("cancel").value.trim(),
         paste_last: $("paste_last").value.trim(),
         copy_last: $("copy_last").value.trim(),

@@ -8,7 +8,9 @@ type OverlayState =
   | { state: "resting" }
   | { state: "active_ptt" }
   | { state: "active_locked" }
+  | { state: "active_command" }
   | { state: "processing" }
+  | { state: "command_processing" }
   | { state: "error"; message: string }
   | { state: "notice"; message: string };
 
@@ -38,7 +40,10 @@ for (let i = 0; i < 8; i++) {
   spinner.appendChild(s);
 }
 
-let pillState: OverlayState["state"] = "resting";
+// Command Mode reuses the push-to-talk / processing pill with an orange
+// accent (#pill[data-command]), so every other rule keeps working.
+type PillState = Exclude<OverlayState["state"], "active_command" | "command_processing">;
+let pillState: PillState = "resting";
 // Cloud failure notice (see `showCloudNotice`); declared before the first apply().
 let noticeText = "";
 let noticeUntil = 0;
@@ -59,8 +64,18 @@ requestAnimationFrame(frame);
 
 function apply(s: OverlayState): void {
   const wasActive = isActive();
-  pillState = s.state;
-  pill.dataset.state = s.state;
+  pillState =
+    s.state === "active_command"
+      ? "active_ptt"
+      : s.state === "command_processing"
+        ? "processing"
+        : s.state;
+  pill.dataset.state = pillState;
+  if (s.state === "active_command" || s.state === "command_processing") {
+    pill.dataset.command = "on";
+  } else {
+    delete pill.dataset.command;
+  }
   const message = s.state === "error" || s.state === "notice" ? s.message : "";
   msg.textContent = message;
   if (!isActive()) {
