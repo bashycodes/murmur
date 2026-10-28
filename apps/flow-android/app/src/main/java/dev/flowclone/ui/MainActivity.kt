@@ -33,7 +33,7 @@ import java.io.File
  * cleanup, version), SETUP (the five permissions in Wispr's order, 03 §Onboarding / 10 §2, each
  * showing its state or the action that fixes it, [SetupChecklist]; the OEM autostart guidance as
  * a collapsible row), RUN (start / stop the bubble) and MORE (Settings, Dictionary & snippets,
- * Scratchpad, Insights, History, speech model, Developer settings). While a required step is missing SETUP comes first.
+ * Notes, Quick note, Insights, History, speech model, Developer settings). While a required step is missing SETUP comes first.
  */
 class MainActivity : Activity() {
     private val app get() = FlowApp.of(this)
@@ -222,7 +222,10 @@ class MainActivity : Activity() {
             navRow(R.drawable.ic_scr_settings, "Settings", "Language, writing style, timing, bubble, history") {
                 startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
             }
-            navRow(R.drawable.ic_scr_file, "Scratchpad", "A note to dictate into, edit and copy out") {
+            navRow(R.drawable.ic_scr_snippet, "Notes", "Saved notes to dictate into, search and share") {
+                startActivity(Intent(this@MainActivity, NotesActivity::class.java))
+            }
+            navRow(R.drawable.ic_scr_file, "Quick note", "One note to dictate into, edit and copy out") {
                 startActivity(NoteEditorActivity.scratchpad(this@MainActivity))
             }
             navRow(R.drawable.ic_scr_chart, "Insights", "Words, speaking speed, streaks and top apps") {
