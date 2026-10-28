@@ -54,6 +54,10 @@ impl Backend for FlowCore {
         self.set_cleaner(plan.and_then(|p| p(self.cleaner())));
     }
 
+    fn llm_cleaner(&self) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
+        self.cleaner()
+    }
+
     fn probe(&self) -> HealthReport {
         HealthReport {
             ok: true,
@@ -197,6 +201,10 @@ impl Backend for LazyLocal {
         if let Some(c) = self.loaded() {
             c.install_cleanup(plan);
         }
+    }
+
+    fn llm_cleaner(&self) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
+        self.loaded()?.llm_cleaner()
     }
 
     fn probe(&self) -> HealthReport {
