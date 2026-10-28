@@ -244,3 +244,55 @@ fn cloud_symbols_over_c_abi() {
         flow_unload(h);
     }
 }
+
+/// Command Mode over the C ABI: a core with an on-device LLM rewrites the
+/// selection (answer sanitised by flow-core); without one the JSON says
+/// `no_llm` and nothing is called.
+#[test]
+fn command_over_c_abi() {
+    use flow_core::cleanup::{CleanError, CleanPrompt, Cleaner};
+    use std::sync::{Arc, Mutex};
+    struct Llm(Mutex<Vec<String>>);
+    impl Cleaner for Llm {
+        fn clean(&self, p: &CleanPrompt, _d: std::time::Instant) -> Result<String, CleanError> {
+            self.0.lock().unwrap().push(p.user.clone());
+            Ok("Sure! Here's the shorter version:\n\"Short.\"".into())
+        }
+    }
+    unsafe {
+        let llm = Arc::new(Llm(Mutex::new(Vec::new())));
+        let core = flow_core::FlowCore::from_engines(
+            Arc::new(flow_core::asr::MockAsr::new("x")),
+            Some(llm.clone() as Arc<dyn Cleaner>),
+        );
+        let h = Box::into_raw(Box::new(FlowHandle::Core(core)));
+        let v: serde_json::Value = serde_json::from_str(&take(flow_command(
+            h,
+            c("make it shorter").as_ptr(),
+            c("A very long sentence.").as_ptr(),
+        )))
+        .unwrap();
+        assert_eq!(v, serde_json::json!({"ok": true, "text": "Short."}));
+        let sent = llm.0.lock().unwrap()[0].clone();
+        assert!(sent.contains("make it shorter") && sent.contains("A very long sentence."));
+        // Blank instruction: refused before the LLM.
+        let v = take(flow_command(h, c("  ").as_ptr(), ptr::null()));
+        assert!(v.contains(r#""kind":"no_instruction""#), "{v}");
+        assert_eq!(llm.0.lock().unwrap().len(), 1);
+        flow_unload(h);
+
+        // No LLM at all (mock ASR only), core and router handles alike.
+        let h = flow_load_models(c(r#"{"asr_backend":{"mock":{"text":"x"}}}"#).as_ptr());
+        let v = take(flow_command(h, c("shorten").as_ptr(), c("x").as_ptr()));
+        assert!(
+            v.contains(r#""ok":false"#) && v.contains(r#""kind":"no_llm""#),
+            "{v}"
+        );
+        let rt = flow_open_router(c(r#"{"allow_client":true}"#).as_ptr(), h);
+        assert!(!rt.is_null());
+        let v = take(flow_command(rt, c("shorten").as_ptr(), c("x").as_ptr()));
+        assert!(v.contains(r#""kind":"no_llm""#), "{v}");
+        flow_unload(rt);
+        assert!(flow_command(ptr::null_mut(), c("x").as_ptr(), ptr::null()).is_null());
+    }
+}

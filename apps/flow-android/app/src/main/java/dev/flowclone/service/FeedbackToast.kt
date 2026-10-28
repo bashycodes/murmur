@@ -17,7 +17,7 @@ data class FeedbackToast(val res: Int, val long: Boolean = false) {
             FeedbackEvent.PasteRetryFailed -> FeedbackToast(R.string.toast_paste_failed)
             FeedbackEvent.TargetProtected -> FeedbackToast(R.string.toast_target_protected, long = true)
             FeedbackEvent.StartSound, FeedbackEvent.StopSound, FeedbackEvent.CancelHaptic, FeedbackEvent.NoSpeech,
-            FeedbackEvent.TargetChanged, FeedbackEvent.MicLost -> null
+            FeedbackEvent.TargetChanged, FeedbackEvent.MicLost, FeedbackEvent.CommandFailed -> null
         }
     }
 }

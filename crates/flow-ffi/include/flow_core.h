@@ -66,6 +66,10 @@ char *flow_cloud_presets(void);                                      /* D28: the
 char *flow_migrate_cloud(const char *router_config_json);  /* {"config","report"}; NULL + bad_config */
 int flow_set_cleanup(FlowHandle *h, const char *cleanup_json); /* {"allow_cloud_cleanup"?,"cleanup_order"?,"cleanup"?} */
 char *flow_cleanup_status(FlowHandle *h);                   /* CleanupStatus JSON */
+/* Command Mode: selected NULL = generate at the cursor. BLOCKS (LLM). {"ok":true,"text"} |
+ * {"ok":false,"kind":"no_llm"|"selection_not_allowed"|"no_instruction"|"selection_too_long"|
+ * "timeout"|"empty"|"backend","error":pill text} */
+char *flow_command(FlowHandle *h, const char *instruction, const char *selected);
 char *flow_cloud_notice(FlowHandle *h);                     /* one-time migration notice or NULL */
 void flow_ack_cloud_notice(FlowHandle *h);
 int flow_set_cloud_model(FlowHandle *h, const char *use_, const char *model); /* use_ "stt"|"cleanup" */

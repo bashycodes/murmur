@@ -803,6 +803,59 @@ fn command_cleaner_rechecks_consent_per_call() {
     assert_eq!(k.cloud.calls(), 0, "consent revoked: nothing sent");
 }
 
+// ---- Router::command: the router finds the on-device LLM itself (Android) --
+
+#[test]
+fn router_command_uses_the_local_engines_llm() {
+    use flow_core::command::CommandError;
+    const T: Duration = Duration::from_secs(5);
+    // Cloud cleanup off: the warm local engine's LLM, no base from the shell.
+    let k = rig(RouterConfig {
+        allow_cloud_cleanup: false,
+        ..cfg()
+    });
+    assert_eq!(
+        k.router
+            .command("make it shorter", Some("a long text"), T)
+            .as_deref(),
+        Ok(LOCAL_OUT)
+    );
+    assert_eq!((k.cloud.calls(), local_calls(&k)), (0, 1));
+
+    // Cloud first, a selection, surrounding text not allowed: the on-device part.
+    let k = rig(cfg());
+    assert_eq!(
+        k.router
+            .command("make it shorter", Some("SELECTEDSECRET"), T)
+            .as_deref(),
+        Ok(LOCAL_OUT)
+    );
+    assert_eq!(k.cloud.calls(), 0, "the selection never reached OpenRouter");
+
+    // No local LLM and no cloud cleanup: nothing to ask, nothing called.
+    let no_cloud = RouterConfig {
+        allow_cloud_cleanup: false,
+        ..cfg()
+    };
+    let k = rig_opts(no_cloud, true, false, true);
+    assert_eq!(
+        k.router.command("make it shorter", Some("x"), T),
+        Err(CommandError::NoLlm)
+    );
+    // No local LLM, cloud only, a selection without surrounding-text consent.
+    let k = rig_opts(cfg(), true, false, true);
+    assert_eq!(
+        k.router.command("make it shorter", Some("x"), T),
+        Err(CommandError::SelectionNotAllowed)
+    );
+    assert_eq!(k.cloud.calls(), 0);
+    // ... while generating at the cursor may use the cloud.
+    assert_eq!(
+        k.router.command("write hello", None, T).as_deref(),
+        Ok(CLOUD_OUT)
+    );
+}
+
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

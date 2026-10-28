@@ -95,6 +95,12 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
   `isAccessibilityDataSensitive` hides the bubble. A user app denylist sits next to the
   137 banking packages.
 - History stores text only, never audio.
+- Command Mode is a second bubble button (✎, shown while the focused field has a selection;
+  *Settings → Bubble → Command mode*), not a gesture on the mic: tap / hold / drag keep their
+  meaning. The instruction is transcribed raw and rewritten by the shared Rust Command Mode
+  (`nativeCommand` → `flow_core::command`, same prompt, sanitiser and privacy gate as Windows).
+  Only the captured selection is replaced (`command/SelectionSplice`: `ACTION_SET_TEXT` with the
+  text around it kept, read back; else `commitText` while the same text is still selected).
 
 ## Needs a device
 See the checklist in [`INSTALL.md`](INSTALL.md) and `PROJECT_CONTEXT.md` §Android.

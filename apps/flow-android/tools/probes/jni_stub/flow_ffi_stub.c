@@ -78,3 +78,13 @@ JNIEXPORT void JNICALL FN(nativeCancel)(JNIEnv *env, jclass c, jlong h) { ((Core
 JNIEXPORT jstring JNICALL FN(nativeLearnEdit)(JNIEnv *env, jclass c, jlong h, jstring a, jstring b) {
     return (*env)->NewStringUTF(env, "[{\"original\":\"wisper\",\"corrected\":\"Wispr\"}]");
 }
+
+/* 2026-10-28: Command Mode. No AI in the stub, unless the instruction is "upper". */
+JNIEXPORT jstring JNICALL FN(nativeCommand)(JNIEnv *env, jclass c, jlong h, jstring instruction, jstring selected) {
+    const char *i = (*env)->GetStringUTFChars(env, instruction, NULL);
+    int upper = strcmp(i, "upper") == 0;
+    (*env)->ReleaseStringUTFChars(env, instruction, i);
+    return (*env)->NewStringUTF(env, upper && selected
+        ? "{\"ok\":true,\"text\":\"STUB\"}"
+        : "{\"ok\":false,\"kind\":\"no_llm\",\"error\":\"no AI in the stub\"}");
+}

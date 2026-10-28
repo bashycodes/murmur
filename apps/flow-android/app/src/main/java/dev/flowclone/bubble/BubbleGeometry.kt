@@ -18,12 +18,17 @@ data class BubbleUi(
     val scale: Float = 1f,
     /** "Shrink to a dot" setting ([dev.flowclone.data.Settings.shrinkToDot]): the minimised look is a plain 16dp dot. */
     val dot: Boolean = true,
+    /**
+     * Command Mode button (✎) next to the mic while resting: shown when the focused field has a
+     * selection (or always, per the "Command button" setting). Keeps the bubble full size.
+     */
+    val showCommand: Boolean = false,
 ) {
     /** Resting (no dictation in flight), so the repair / minimised looks apply. */
     val resting: Boolean get() = state == DictationState.Idle || state == DictationState.Ready
 }
 
-enum class BubbleButton { MAIN, CANCEL, DONE, COPY, PASTE, DISMISS }
+enum class BubbleButton { MAIN, CANCEL, DONE, COPY, PASTE, DISMISS, COMMAND }
 
 /**
  * Bubble sizes and button layout (07 §5.4), pure so sizes and hit-testing are JVM-testable.
@@ -33,13 +38,17 @@ object BubbleGeometry {
     /** One round button: the h×h square starting at [left] px (the bubble's full height). */
     data class Slot(val left: Float, val right: Float, val button: BubbleButton)
 
-    /** The 36dp minimised look applies: resting, shrunk, and neither repair nor the copy button showing. */
-    fun isMinimisedLook(u: BubbleUi): Boolean = u.resting && u.minimized && !u.repair && !u.showCopy
+    /** The 36dp minimised look applies: resting, shrunk, and neither repair nor the copy / command button showing. */
+    fun isMinimisedLook(u: BubbleUi): Boolean = u.resting && u.minimized && !u.repair && !u.showCopy && !u.showCommand
 
-    /** Widths from 07 §5.4 (56 circle, 120 with copy, 230 tap row, 160 hold row; 176 paste/copy/dismiss), unscaled. */
+    /** Resting buttons right of the mic, 64dp apart: ✎ (Command Mode) first, then ⧉ (copy last). */
+    private fun extras(u: BubbleUi): List<BubbleButton> =
+        listOfNotNull(BubbleButton.COMMAND.takeIf { u.showCommand }, BubbleButton.COPY.takeIf { u.showCopy })
+
+    /** Widths from 07 §5.4 (56 circle, +64 per resting extra (copy, command), 230 tap row, 160 hold row; 176 paste/copy/dismiss), unscaled. */
     fun baseWidthDp(u: BubbleUi): Float = if (u.resting && u.repair) 56f else if (isMinimisedLook(u)) 36f else when (val s = u.state) {
         DictationState.Idle -> 56f
-        DictationState.Ready -> if (u.showCopy) 120f else 56f
+        DictationState.Ready -> 56f + 64f * extras(u).size
         is DictationState.Recording -> if (s.hold) 160f else 230f
         is DictationState.Processing -> if (s.hold) 160f else 230f
         is DictationState.Error -> if (s.kind is ErrorKind.FailedToPaste) 176f else 56f
@@ -73,8 +82,7 @@ object BubbleGeometry {
         return when (val s = u.state) {
             DictationState.Idle, DictationState.Ready -> when {
                 u.repair || isMinimisedLook(u) -> listOf(at(0f, BubbleButton.MAIN))
-                u.showCopy -> listOf(at(0f, BubbleButton.MAIN), at(px(64f), BubbleButton.COPY))
-                else -> listOf(at(0f, BubbleButton.MAIN))
+                else -> listOf(at(0f, BubbleButton.MAIN)) + extras(u).mapIndexed { i, b -> at(px(64f * (i + 1)), b) }
             }
             is DictationState.Recording ->
                 if (s.hold) listOf(at(0f, BubbleButton.MAIN))

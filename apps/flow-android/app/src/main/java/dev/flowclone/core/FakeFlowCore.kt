@@ -70,6 +70,17 @@ class FakeFlowCore(@Volatile var transcript: String = "") : FlowCore {
 
     override fun cancel() { active = false }
 
+    /** Command Mode (tests): the answer; null = the engine has no AI ([CommandOutcome.noLlm]). */
+    @Volatile var commandReply: ((instruction: String, selected: String?) -> CommandOutcome)? = null
+    /** Every [command] call as (instruction, selected). */
+    val commands: MutableList<Pair<String, String?>> = java.util.Collections.synchronizedList(mutableListOf())
+
+    override fun command(instruction: String, selected: String?): CommandOutcome {
+        BlockingCalls.check("command")
+        commands += instruction to selected
+        return commandReply?.invoke(instruction, selected) ?: CommandOutcome.noLlm
+    }
+
     override fun learnEdit(pasted: String, edited: String) = emptyList<LearnCandidate>()
 
     override fun unload() { active = false; unloaded = true }

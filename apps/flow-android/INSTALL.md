@@ -454,7 +454,7 @@ model is imported"), then grouped rows that each show their current value and op
 | Dictation · *AI cleanup* (local / hybrid) | Clean up with local AI; *Clean up with OpenRouter* (hybrid, → the OpenRouter page); *AI cleanup model* import; strength. The row says "OpenRouter (<model>), then on-device" while cloud cleanup is on | at once (reloads) |
 | Dictation · *Cloud (OpenRouter)* (hybrid / remote) | The OpenRouter page (§5c): key, privacy, speech-to-text, text cleanup, usage | at once |
 | Dictation · *Timing & limits* | Stop after silence (ms, 0 or 300–10000), Decode while speaking, session limit (1–20 min) | *Save* |
-| Bubble & apps · *Bubble* | Live preview, Shrink to a dot, Shake to restore | at once |
+| Bubble & apps · *Bubble* | Live preview, Shrink to a dot, Shake to restore; *Command mode* (✎ button: When text is selected / Always / Off) | at once |
 | Bubble & apps · *Excluded apps* | package names, one per line (checked) | *Save* |
 | Privacy · *History* | Keep / 24 hours / Never save (asks before deleting) | at once |
 | Advanced | *Developer settings* (when visible), *Mock engine* switch | at once |
@@ -526,7 +526,14 @@ keyboard:
 - **hold** is push-to-talk; release to insert;
 - drag the bubble to move it; drop it on the **zZ** target at the bottom to snooze it for
   10 minutes; **shake** the phone to bring it back (or tap the notification);
-- after 5 s of no use it shrinks to a dot; a tap restores it.
+- after 5 s of no use it shrinks to a dot; a tap restores it;
+- **✎** (Command Mode) appears next to the mic while text is selected: tap it, say what to do
+  ("make it shorter", "translate to Spanish"); the selection is replaced by the rewrite, the rest of
+  the text stays. It stops on a pause or ✓; ✕ cancels. Needs AI cleanup
+  (the on-device model, or OpenRouter text cleanup with *Send text around the cursor* on). With
+  *Settings → Bubble → Command mode → Always* it is always there and, without a selection, writes
+  what you describe at the cursor. Refused in password / number / phone / URL fields, banking and
+  excluded apps.
 
 While you speak, the line above the bubble shows the live transcript (*Settings → Bubble → Live
 preview*). "Can't hear you" means 3 s of silence; "No speech detected" means nothing was
@@ -724,6 +731,22 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       then reopen Insights: numbers unchanged. *Settings → History → Never*, dictate: Insights still
       counts it. *Reset stats* asks first; *Reset* → all zero (and History is not re-added after an
       app restart). Next day without dictating: *Current streak* keeps yesterday's run.
+- [ ] Command Mode (needs AI cleanup: local model, or OpenRouter cleanup with *Send text around the
+      cursor* on). In Notes type "Hi team. The meeting that we planned for tomorrow has been moved to
+      Friday afternoon. Thanks!", select the middle sentence: **✎** appears right of the mic (gone again
+      when the selection is cleared). Tap ✎, say "make it shorter": the line above the bubble reads
+      *Command: make it shorter*, then *Command: rewriting…*; only the selected sentence changes, "Hi
+      team." and "Thanks!" stay, the cursor sits after the new text (`FlowA11y` log `command replace
+      ok=true`). History: a *Command* row; its page shows *Instruction*, *Original selection*, *Result*;
+      Insights unchanged. Gmail / WhatsApp / Chrome text box: same (a field without `ACTION_SET_TEXT`
+      goes through the keyboard connection). Select text in a password field, a PIN field, a banking app:
+      no ✎ there (no bubble) — and via *Always*, tapping ✎ says "Command Mode is off in password,
+      sensitive and banking fields", nothing recorded. Turn AI cleanup off (and OpenRouter cleanup off):
+      tap ✎, speak → error tone, "Command Mode needs AI: …", the text is unchanged. With only OpenRouter
+      cleanup and *Send text around the cursor* off → "Command Mode would send the selection to
+      OpenRouter: …", unchanged. Change the selected text with the keyboard while it is rewriting →
+      error tone, text unchanged, bubble offers ✓ / ⧉ for the answer. *Command mode → Always*, no
+      selection, "write a two-line thank-you note" → written at the cursor. *Off* → no ✎ ever.
 - [ ] History: rows grouped under *Today*; search finds the row; *Show the raw transcript* shows the
       pre-cleanup text; a row's detail page has *Copy* and *Delete dictation* (asks first).
 - [ ] Switch fields while a dictation is processing: its History row says *Not inserted — tap to copy*;

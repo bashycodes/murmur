@@ -187,6 +187,17 @@ partial timer, and when `endpoint_reached` is `true` run the normal finish path 
 `nativeCommit`, paste) exactly as if the user had ended the session. `endpoint_reached` latches;
 it is always `false` without `endpoint_silence_ms`.
 
+## Command Mode (2026-10-28) — additive
+
+Selected-text transforms (Windows Command Mode, `crates/flow-core/src/command.rs`): the shell
+records a raw (`raw_mode: true`) instruction with the normal session calls, then asks the
+router to apply it to the selection. The prompt, the answer sanitiser and the privacy gate are
+the shared Rust ones, so Android and Windows behave alike. Every flavour exports it.
+
+| Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | C ABI | Semantics |
+|---|---|---|---|---|
+| `nativeCommand(h: Long, instruction: String, selected: String?): String` | `(JLjava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCommand` | `flow_command` | **Blocking** (LLM call, ≤ `command::DEFAULT_TIMEOUT` 25 s, plus a D24 on-demand model load when nothing else can answer). `Router::command`: the warm local engine's on-device LLM and/or OpenRouter cleanup per `cleanup_order`, consent, key, budget. A **selection** goes to OpenRouter only with `cloud.openrouter.cleanup.send_surrounding_text`; otherwise the on-device part answers, or `selection_not_allowed`. `selected` null / blank = write at the cursor. Never null: `{"ok":true,"text":…}` (sanitised, ready to replace the selection) or `{"ok":false,"kind":…,"error":…}` with `kind` ∈ `no_instruction`, `selection_too_long` (> 4000 chars), `no_llm`, `selection_not_allowed`, `timeout`, `empty`, `backend`; `error` is user-facing text. A core handle uses its own LLM only |
+
 ## Threading: blocking vs non-blocking (review C2)
 
 Kotlin must never call a **blocking** native on the main thread.
@@ -198,7 +209,7 @@ Kotlin must never call a **blocking** native on the main thread.
 | `nativeCommit` (ASR + LLM; server/cloud round trip) | `nativeCancel` (also aborts a commit running on another thread, see below) |
 | `nativeProbeServer`, `nativeProbeRouter`, `nativeProbeCloud`, `nativePrewarm` (D24) | `nativeRouteStatus`, `nativeCapabilities`, `nativeCloudCapabilities`, `nativeCloudPresets`, `nativeLastError*` |
 | `nativeUnload` (joins the engine worker; waits for a running commit) | `nativeOpenRouter`, `nativeUpdateRouter`, `nativeResetCircuit`, `nativeSetLocalLoader` (no network; the load itself runs later on a router thread) |
-| `nativeRefreshCloudCatalog`, `nativeCloudKeyInfo` (D28, network) | `nativeSetCloudKey`, `nativeSetCloudKeyFor`, `nativeCloudUsage`, `nativeSetCloudUsage`, `nativeResetCloudUsage`, `nativeMigrateCloud`, `nativeSetCleanup`, `nativeCleanupStatus`, `nativeCloudNotice`, `nativeAckCloudNotice`, `nativeSetCloudModel`, `nativeSetCloudCacheDir`, `nativeCloudCatalog` |
+| `nativeRefreshCloudCatalog`, `nativeCloudKeyInfo` (D28, network), `nativeCommand` (LLM) | `nativeSetCloudKey`, `nativeSetCloudKeyFor`, `nativeCloudUsage`, `nativeSetCloudUsage`, `nativeResetCloudUsage`, `nativeMigrateCloud`, `nativeSetCleanup`, `nativeCleanupStatus`, `nativeCloudNotice`, `nativeAckCloudNotice`, `nativeSetCloudModel`, `nativeSetCloudCacheDir`, `nativeCloudCatalog` |
 
 Session semantics (2026-10-22, review fixes):
 

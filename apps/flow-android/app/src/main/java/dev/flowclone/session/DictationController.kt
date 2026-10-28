@@ -1,5 +1,8 @@
 package dev.flowclone.session
 
+import dev.flowclone.command.CommandRecord
+import dev.flowclone.command.CommandTarget
+import dev.flowclone.core.CommandOutcome
 import dev.flowclone.core.CommitResult
 import dev.flowclone.core.CommitStatus
 import dev.flowclone.core.CoreException
@@ -59,6 +62,8 @@ enum class FeedbackEvent {
     TargetProtected,
     /** C15: the microphone stopped delivering audio; what was heard is transcribed. */
     MicLost,
+    /** Command Mode failed (refused field, no AI, timeout, …): error tone; the field was not touched. */
+    CommandFailed,
 }
 
 /** Transient hint shown next to the bubble (live preview line). */
@@ -76,8 +81,9 @@ sealed interface DictationState {
     /** No allowed field focused: bubble hidden. */
     data object Idle : DictationState
     data object Ready : DictationState
-    data class Recording(val hold: Boolean, val startedAt: Long) : DictationState
-    data class Processing(val hold: Boolean, val since: Long) : DictationState
+    /** [command] = Command Mode: the speech is an instruction for the selection, not text to type. */
+    data class Recording(val hold: Boolean, val startedAt: Long, val command: Boolean = false) : DictationState
+    data class Processing(val hold: Boolean, val since: Long, val command: Boolean = false) : DictationState
     data class Error(val kind: ErrorKind) : DictationState
 
     sealed interface ErrorKind {
@@ -85,6 +91,8 @@ sealed interface DictationState {
         data object FailedToTranscribe : ErrorKind
         data object MicUnavailable : ErrorKind
         data class EngineUnavailable(val message: String) : ErrorKind
+        /** Command Mode produced nothing to write ([message] says why); the field is unchanged. */
+        data class CommandFailed(val message: String) : ErrorKind
     }
 }
 
@@ -179,6 +187,21 @@ class DictationController(
          * cleared). Must return at once (the app starts its watch in the background).
          */
         fun onInserted(pasted: String, context: FieldContext?, sentKey: Boolean) = Unit
+
+        /**
+         * Command Mode: read the focused field's text + selection, refusing password / sensitive
+         * fields, banking apps and the denylist. Also pins the field for [insertTarget] (S12).
+         */
+        fun captureCommand(): CommandTarget = CommandTarget.Refused(CommandTarget.NO_FIELD_MESSAGE)
+
+        /**
+         * Command Mode: put [text] in place of [target]'s selection, keeping the text around it
+         * (or at the cursor without a selection). False = nothing was changed.
+         */
+        suspend fun applyCommand(target: CommandTarget.Field, text: String): Boolean = false
+
+        /** Command Mode history row (instruction, original, result). Must return at once. */
+        fun recordCommand(record: CommandRecord) = Unit
     }
 
     /** What the debug trace needs from the dictation's start. */
@@ -188,6 +211,8 @@ class DictationController(
         val style: String? = null,
         /** [AudioSource.source] of this dictation (debug log `source`: mic | wav). */
         val source: String? = null,
+        /** Command Mode (debug log `mode` = command). */
+        val command: Boolean = false,
     )
 
     companion object {
@@ -199,6 +224,11 @@ class DictationController(
         const val HINT_MS = 2_500L
         /** `Break` segment: let the app react (e.g. open an @-mention popup) before the next run. */
         const val BREAK_PAUSE_MS = 150L
+        /**
+         * Command Mode: the AI's budget after the instruction is transcribed (the core's own LLM
+         * timeout is 25 s; an on-demand phone model load comes on top).
+         */
+        const val COMMAND_TIMEOUT_MS = 35_000L
         /** D24: at most one server pre-warm per this interval (field focus can flap). */
         const val PREWARM_MIN_INTERVAL_MS = 20_000L
 
@@ -265,7 +295,7 @@ class DictationController(
             val s = start ?: return
             val t = result?.timings
             val trace = DictationTrace(
-                    tsMs = s.wallMs, mode = if (s.hold) "hold" else "tap",
+                    tsMs = s.wallMs, mode = if (s.command) "command" else if (s.hold) "hold" else "tap",
                     route = result?.route?.engine ?: liveRoute?.engine,
                     fallback = result?.route?.fallback ?: liveRoute?.fallback ?: fallback,
                     model = result?.route?.model ?: liveRoute?.model, language = s.language,
@@ -337,6 +367,33 @@ class DictationController(
         }
     }
 
+    /**
+     * Command Mode button: starts a hands-free command (the instruction ends on silence or ✓,
+     * like a tap dictation), or stops one. Debounced with [toggle].
+     */
+    fun toggleCommand() {
+        val t = now()
+        if (t - lastToggleAt < TOGGLE_DEBOUNCE_MS) return
+        when (_state.value) {
+            DictationState.Idle, DictationState.Ready, is DictationState.Error -> {
+                if (started?.isActive == true) return
+                lastToggleAt = t
+                when (val target = host.captureCommand()) {
+                    is CommandTarget.Refused -> failCommand(target.message)
+                    is CommandTarget.Field -> start(hold = false, command = target)
+                }
+            }
+            is DictationState.Recording -> { lastToggleAt = t; stopAndSubmit() }
+            is DictationState.Processing -> Unit
+        }
+    }
+
+    /** Command Mode outcome without text: error tone + the reason; the field is left as it was. */
+    private fun failCommand(message: String) {
+        host.feedback(FeedbackEvent.CommandFailed)
+        _state.value = DictationState.Error(DictationState.ErrorKind.CommandFailed(message))
+    }
+
     /** Finger lifted after a hold: always stop + submit (not debounced). Also the ✓ button. */
     fun release() {
         if (_state.value is DictationState.Recording) stopAndSubmit()
@@ -358,6 +415,7 @@ class DictationController(
         if (_state.value !is DictationState.Recording) return
         trace(traceStart, InsertOutcome.CANCELLED, liveRoute = _route.value)
         capture = null
+        commandTarget = null
         generation++
         endAudio()
         _partial.value = null
@@ -403,7 +461,10 @@ class DictationController(
         if (_state.value is DictationState.Error) _state.value = restingState()
     }
 
-    private fun start(hold: Boolean) {
+    /** Command Mode target of the recording / processing command; null for a dictation. */
+    private var commandTarget: CommandTarget.Field? = null
+
+    private fun start(hold: Boolean, command: CommandTarget.Field? = null) {
         if (!host.hasMicPermission()) {
             host.feedback(FeedbackEvent.NeedMicPermission)
             return
@@ -417,18 +478,24 @@ class DictationController(
             return
         }
         val handsFree = !hold
-        val cfg = host.sessionConfig().copy(
+        val base = host.sessionConfig()
+        val cfg = base.copy(
             maxSamples = cap.maxSamples,
             // D19: only hands-free sessions end themselves on silence; push-to-talk leaves it unset.
             endpointSilenceMs = if (handsFree) host.endpointSilenceMs() else null,
+            // Command Mode: the instruction is transcribed as spoken (no cleanup; Windows does the same).
+            rawMode = base.rawMode || command != null,
         )
         val gen = ++generation
-        val ctx = host.captureContext()
-        sessionAppId = ctx?.appId
+        // A command's field was read by captureCommand; its text is not dictation context.
+        val ctx = if (command != null) null else host.captureContext()
+        commandTarget = command
+        sessionAppId = command?.appId ?: ctx?.appId
         sessionContext = ctx
         traceStart = TraceStart(
-            wallClock(), hold, ctx?.appId, cfg.languages.firstOrNull() ?: "auto",
+            wallClock(), hold, sessionAppId, cfg.languages.firstOrNull() ?: "auto",
             style = cfg.styles.forCategory(ctx?.appCategory ?: "other").wire,
+            command = command != null,
         )
         session = c
         meter.reset()
@@ -462,13 +529,14 @@ class DictationController(
             liveFrames = 0
             session = null
             capture = null
+            commandTarget = null
             host.onRecordingActive(false)
             trace(traceStart, InsertOutcome.START_FAILED, error = "microphone unavailable")
             _state.value = DictationState.Error(DictationState.ErrorKind.MicUnavailable)
             return
         }
         host.feedback(FeedbackEvent.StartSound)
-        _state.value = DictationState.Recording(hold, now())
+        _state.value = DictationState.Recording(hold, now(), command = command != null)
         // C2: the (possibly network-bound) start runs off the caller's thread; frames wait in the gate.
         started = scope.async(start = CoroutineStart.UNDISPATCHED) {
             val info = try {
@@ -516,6 +584,7 @@ class DictationController(
         if (_state.value is DictationState.Recording) endAudio()
         session = null
         capture = null
+        commandTarget = null
         _route.value = null
         _partial.value = null
         // e.g. router `no_engine_enabled`: "Dictation disabled — enable server or client …"
@@ -554,9 +623,11 @@ class DictationController(
         session = null
         val appId = sessionAppId
         val ctx = sessionContext
+        val cmd = commandTarget
+        commandTarget = null
         val start = started
         val gen = generation
-        _state.value = DictationState.Processing(rec.hold, now())
+        _state.value = DictationState.Processing(rec.hold, now(), rec.command)
         processingCore = c
         processingJob = scope.launch {
             // The start may still be connecting; a failed start already showed its error.
@@ -582,7 +653,7 @@ class DictationController(
                 return@launch
             }
             if (result.status == CommitStatus.ERROR) {
-                host.recordHistory(result, false, appId, InsertOutcome.ERROR)
+                if (cmd == null) host.recordHistory(result, false, appId, InsertOutcome.ERROR)
                 val routed = routerFailure(result)?.let {
                     withClientNote(it, CoreException.kindOf(result.error), runCatching { host.clientFallbackNote() }.getOrNull())
                 }
@@ -595,13 +666,17 @@ class DictationController(
             // core-p1: paste `segments` (text runs + Break/Tab/Enter) instead of final_text + press_enter.
             val plan = result.pastePlan()
             if (result.status == CommitStatus.EMPTY || plan.none { it is PasteSegment.Text && it.text.isNotBlank() }) {
-                host.recordHistory(result, false, appId, InsertOutcome.EMPTY)
+                if (cmd == null) host.recordHistory(result, false, appId, InsertOutcome.EMPTY)
                 host.feedback(FeedbackEvent.NoSpeech)
                 val h = if (result.emptyReason == "only_filler") DictationHint.OnlyFiller else DictationHint.NoSpeechDetected
                 _hint.value = h
                 hintJob = scope.launch { delay(HINT_MS); if (_hint.value == h) _hint.value = null }
                 _state.value = restingState()
                 done(InsertOutcome.EMPTY, result, error = result.emptyReason?.let { "empty_reason=$it" })
+                return@launch
+            }
+            if (cmd != null) {
+                runCommand(c, cmd, result, appId, gen) { outcome, r, error, text -> done(outcome, r, error, text) }
                 return@launch
             }
             // S12: only into the field focused at dictation start, and only while it is still allowed.
@@ -633,6 +708,59 @@ class DictationController(
             else DictationState.Error(DictationState.ErrorKind.FailedToPaste(unpasted!!))
             done(if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED, result)
         }
+    }
+
+    /**
+     * Command Mode, after the instruction was transcribed: ask the AI (off the caller's thread,
+     * bounded by [COMMAND_TIMEOUT_MS]), then replace the selection, or write at the cursor. Any
+     * failure leaves the field as it was: error tone + the reason in the bubble.
+     */
+    private suspend fun runCommand(
+        c: FlowCore, target: CommandTarget.Field, result: CommitResult, appId: String?, gen: Long,
+        done: (outcome: String, r: CommitResult?, error: String?, text: String?) -> Unit,
+    ) {
+        val instruction = result.historyText.ifBlank { result.asrText }.trim()
+        val selected = target.selected
+        fun record(text: String?, outcome: String, error: String? = null) = try {
+            host.recordCommand(CommandRecord(instruction, selected, text, appId, outcome, error))
+        } catch (_: Throwable) { }
+        // Not a child: a hung native call must be abandonable (cancel / timeout).
+        val pending = CoroutineScope(commitDispatcher).async { c.command(instruction, selected) }
+        val answer = withTimeoutOrNull(COMMAND_TIMEOUT_MS) { pending.await() }
+            ?: CommandOutcome.Failed(CommandOutcome.TIMEOUT, "AI didn't answer within ${COMMAND_TIMEOUT_MS / 1000} s")
+        if (generation != gen) return
+        val text = when (answer) {
+            is CommandOutcome.Failed -> {
+                record(null, InsertOutcome.COMMAND_FAILED, answer.message)
+                failCommand(answer.message)
+                done(InsertOutcome.COMMAND_FAILED, result, answer.kind, null)
+                return
+            }
+            is CommandOutcome.Text -> answer.text
+        }
+        // S12: only into the field the command started in, and only while it is still allowed.
+        if (host.insertTarget(explicit = false) != InsertTarget.OK) {
+            val protected = host.insertTarget(explicit = true) == InsertTarget.PROTECTED
+            host.feedback(if (protected) FeedbackEvent.TargetProtected else FeedbackEvent.TargetChanged)
+            val outcome = if (protected) InsertOutcome.TARGET_PROTECTED else InsertOutcome.TARGET_CHANGED
+            record(text, outcome)
+            try { host.onNotInserted(text, outcome) } catch (_: Throwable) { }
+            _state.value = DictationState.Error(DictationState.ErrorKind.FailedToPaste(text))
+            done(outcome, result, null, text)
+            return
+        }
+        val applied = try { host.applyCommand(target, text) } catch (e: Exception) { false }
+        val outcome = if (applied) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED
+        record(text, outcome)
+        if (applied) {
+            _state.value = restingState()
+        } else {
+            // The selection moved or the app refused the write: nothing changed; keep the answer recoverable.
+            host.feedback(FeedbackEvent.CommandFailed)
+            try { host.onNotInserted(text, outcome) } catch (_: Throwable) { }
+            _state.value = DictationState.Error(DictationState.ErrorKind.FailedToPaste(text))
+        }
+        done(outcome, result, null, text)
     }
 
     /**

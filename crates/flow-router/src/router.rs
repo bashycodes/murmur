@@ -681,6 +681,34 @@ impl Router {
         }
     }
 
+    /// Command Mode (`flow_core::command::run`) for a shell whose local
+    /// engine the router owns (Android, `nativeCommand`): the base LLM is
+    /// the warm local engine's on-device model, then [`Self::command_cleaner`]
+    /// applies the cleanup route (cloud first / local first, consent,
+    /// budget, and the `send_surrounding_text` gate for a selection). A
+    /// cold on-demand engine (D24) is loaded only when nothing else could
+    /// answer. The server route never runs commands. Blocking (LLM call,
+    /// bounded by `timeout`, plus a possible model load). Additive.
+    pub fn command(
+        &self,
+        instruction: &str,
+        selected: Option<&str>,
+        timeout: std::time::Duration,
+    ) -> Result<String, flow_core::command::CommandError> {
+        let (warm, cold) = {
+            let st = self.state.lk();
+            (st.warm_local(), st.cold_local())
+        };
+        let mut base = warm.and_then(|l| l.llm_cleaner());
+        if base.is_none() && self.command_cleaner(None).is_none() && !instruction.trim().is_empty()
+        {
+            if let Some(z) = cold {
+                base = z.ensure().0.ok().and_then(|l| l.llm_cleaner());
+            }
+        }
+        flow_core::command::run(self.command_cleaner(base), instruction, selected, timeout)
+    }
+
     /// Takes effect at the next `start_session`, except (review S5): the
     /// live session's fallback hops that the new config no longer allows
     /// are dropped, and a live cloud session that is no longer allowed

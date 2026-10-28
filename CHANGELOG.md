@@ -18,6 +18,23 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Android: Command Mode.** Select text in any app and a **✎** button
+  appears next to the bubble's mic: tap it, say what to do ("make it
+  shorter", "make this more formal", "translate to Spanish"), and the
+  selection is replaced by the rewrite; the text around it stays as it was.
+  The instruction ends on a pause or ✓ (✕ cancels); the line above the
+  bubble says *Command: …* while it listens. *Settings → Bubble → Command
+  mode*: *When text is selected* (default), *Always* (also without a
+  selection: say what to write at the cursor) or *Off*. Tap, hold and drag
+  on the mic work as before. Uses the same AI and rules as Windows Command
+  Mode (the on-device AI cleanup model, or OpenRouter text cleanup only with
+  *Send text around the cursor* on). Password, PIN, number, phone and URL
+  fields, banking apps and your excluded apps are refused before anything is
+  read. Without an AI, if it doesn't answer in time, or if the selection
+  changed meanwhile, you hear the error tone, the bubble says why and the
+  text is left untouched (an answer that could not go in can still be
+  copied). History shows the instruction, the original text and the result;
+  commands don't count in Insights.
 - **Windows: Command Mode.** Select text, hold **Ctrl+Win+Alt** (change it
   in Settings → General → Shortcuts), say what to do ("make this more
   formal", "translate to Spanish", "make it a bulleted list") and let go:

@@ -45,6 +45,9 @@ object PreviewContent {
     const val CANT_HEAR = "Can't hear you. Check the microphone."
     const val NO_SPEECH = "No speech heard. Nothing was inserted."
     const val ONLY_FILLER = "Only filler words heard. Nothing was inserted."
+    /** Command Mode: the bubble is listening for an instruction, not for text to type. */
+    const val COMMAND_LISTENING = "Command: say what to do with the selection"
+    const val COMMAND_WORKING = "Command: rewriting…"
 
     data class Line(val text: String, val dim: Boolean)
 
@@ -69,6 +72,12 @@ object PreviewContent {
             DictationHint.OnlyFiller -> return Line(ONLY_FILLER, dim = false)
             DictationHint.NoSpeechYet -> if (state is DictationState.Recording) return Line(CANT_HEAR, dim = false)
             null -> Unit
+        }
+        val command = (state as? DictationState.Recording)?.command == true || (state as? DictationState.Processing)?.command == true
+        if (command) {
+            // Always shown (the only cue that this is a command); the instruction itself only with the live preview on.
+            val said = partial?.takeIf { enabled && it.isNotBlank() }?.let { "Command: " + tail(it, MAX_CHARS - 9) }
+            return if (state is DictationState.Recording) Line(said ?: COMMAND_LISTENING, dim = false) else Line(COMMAND_WORKING, dim = true)
         }
         if (!enabled || partial.isNullOrBlank()) return null
         return when (state) {

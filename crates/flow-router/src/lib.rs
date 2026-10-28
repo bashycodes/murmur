@@ -714,6 +714,13 @@ pub trait Backend: Send + Sync {
     /// (`FlowCore::set_cleaner`). Default: ignored, which is what the
     /// server route does (its own pipeline cleans; never cloud cleanup).
     fn install_cleanup(&self, _plan: Option<CleanupPlan>) {}
+    /// The on-device LLM this engine was built with (`FlowCore::cleaner`),
+    /// for one-off requests outside a dictation (Command Mode,
+    /// [`Router::command`]). Default: none (remote / cloud STT backends).
+    /// Additive.
+    fn llm_cleaner(&self) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
+        None
+    }
 }
 
 /// Builds the cleaner an in-process engine should use from its built-in
