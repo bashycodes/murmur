@@ -1,8 +1,10 @@
 # flow-windows — Windows shell of the local Wispr Flow clone
 
 Tauri 2 tray app: hold **Ctrl+Win** to dictate, **Ctrl+Win+Space** (or double-tap
-Ctrl+Win) for hands-free, **Esc** to cancel, **Shift+Alt+Z** to paste the last
-transcript again, **Shift+Alt+X** to copy it. Text is pasted into the focused app.
+Ctrl+Win) for hands-free, **Ctrl+Win+Alt** for [Command Mode](#command-mode)
+(rewrite the selected text by voice), **Esc** to cancel, **Shift+Alt+Z** to
+paste the last transcript again, **Shift+Alt+X** to copy it. Text is pasted
+into the focused app.
 Speech-to-text runs either on this PC (the real `crates/flow-core`: whisper.cpp
 or Parakeet) or on **your own** `flow-server` over LAN/Tailscale (hybrid mode,
 `docs/hybrid-architecture.md`, D17). Every dictation goes through
@@ -271,14 +273,45 @@ Settings → AI cleanup:
   Instagram, Google Messages → personal; Slack, Teams → work; Outlook,
   Gmail → email).
 
+## Command Mode
+
+Select text, **hold Ctrl+Win+Alt** (Wispr's default; Settings → General →
+Shortcuts → *Command Mode*), say what to do ("make this more formal",
+"translate to Spanish", "turn this into bullet points") and release. The
+pill turns orange while it listens and while the AI works; the answer
+replaces the selection (pasted like a dictation, your clipboard restored
+afterwards). With nothing selected it writes new text at the cursor
+("write a short thank-you note to the team"). Holding push-to-talk and
+adding Alt turns that dictation into a command. Esc cancels at any point
+before the paste.
+
+* The instruction is transcribed on the normal speech route, word for word
+  (no cleanup); the selection is read with UI Automation (TextPattern) and,
+  for controls without it, with a Ctrl+C whose clipboard change is undone
+  right away (only if nothing else wrote to the clipboard meanwhile).
+* The rewrite needs an AI: the local model from [AI cleanup](#ai-cleanup-optional-off-by-default),
+  or OpenRouter text cleanup (same order, consent and budget as cleanup).
+  The selected text goes to OpenRouter only with *Send text around the
+  cursor* on; otherwise the command uses the local model, or says it
+  can't. Prompt and answer cleaning (`crates/flow-core/src/command.rs`)
+  strip preambles ("Sure, here is…"), wrapping quotes, code fences and
+  trailing notes, so only the result is pasted.
+* No AI, model still loading, a selection over 4000 characters, a password
+  field, a non-text selection or no answer within 25 s: the error sound
+  plays, the pill says why, and nothing is pasted (the selection stays as
+  it was).
+* History records a command as instruction (`raw`), result and the
+  replaced text (`original`, column `kind = 'command'`); Paste last
+  repeats the result.
+
 ## Layout
 
 | Path | What |
 |---|---|
-| `src/hotkeys/chord.rs` | Pure chord matcher: PTT / hands-free / cancel, Win/Alt release masking, foreign-key abort, either-side vs side-specific keys, AltGr fake-Ctrl filter |
+| `src/hotkeys/chord.rs` | Pure chord matcher: PTT / hands-free / Command Mode / cancel, Win/Alt release masking, foreign-key abort, either-side vs side-specific keys, AltGr fake-Ctrl filter |
 | `src/hotkeys/win.rs` | `WH_KEYBOARD_LL` hook thread. It skips our own `dwExtraInfo`-tagged input, does masked Win/Alt releases (`[LCtrl↓, key↑, LCtrl↑]`) and runs a 1 s stale-key probe |
 | `src/dictation.rs` | Pure state machine `idle → listening(ptt\|locked) → processing → pasted\|error → idle`. Wispr's timings: 500 ms tap / double-tap lock / triple-press, warning at 19 min, hard stop at 20 min, 35 s processing timeout, 500 ms error |
-| `src/controller.rs` | Runs the machine's effects against a `Platform` trait plus `CoreApi`; integration-tested with fakes |
+| `src/controller.rs` | Runs the machine's effects against a `Platform` trait plus `CoreApi`; integration-tested with fakes. Command Mode: selection capture after the chord is up, `CoreApi::command`, history row |
 | `src/audio/` | Resampler to 16 kHz mono i16 and a Wispr-style level meter (pure); `capture.rs` = cpal/WASAPI |
 | `src/paste/` | Pure strategy, restore guard and per-app restore delay; `win.rs` = clipboard snapshot → CF_UNICODETEXT plus history/monitor opt-outs → masked Alt/Win release → `[Ctrl↓,V↓]` 50 ms `[V↑,Ctrl↑]` → restore if the sequence number is unchanged. Falls back to KEYEVENTF_UNICODE |
 | `src/context/` | Truncation, password suppression, app kind and style bucket from `data/app-lists.json` (pure); `uia.rs` = UI Automation snapshot with a 300 ms timeout, and `UiaFieldReader` (re-reads the pasted-into control, `CompareElements` for focus) |
@@ -462,6 +495,10 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Unplugging the mic during capture leaves an error pill, not a stuck "listening" pill.
 - [ ] "Launch at login" writes `HKCU\…\Run\FlowClone`.
 - [ ] Shift+Alt+X puts the last transcript on the clipboard (no paste); Ctrl+V in Notepad shows it.
+- [ ] Command Mode with AI cleanup ready: select "hey cant make it tmrw" in Notepad, Word and a Chrome text box, hold Ctrl+Win+Alt, say "make this more formal", release → the orange pill spins, then the selection is replaced by a formal sentence (no "Sure, here…", no quotes); Ctrl+V afterwards gives your old clipboard; History shows the instruction and result.
+- [ ] Command Mode with nothing selected: "write a two-line thank-you note" is typed at the cursor.
+- [ ] Command Mode with AI cleanup off and no OpenRouter cleanup: error sound, pill "Command Mode needs AI…", the selection is untouched. Esc while the pill spins: nothing is pasted.
+- [ ] Command Mode in an app without UI Automation text (e.g. a terminal or an Electron editor): the Ctrl+C fallback reads the selection and the clipboard is restored.
 - [ ] AI cleanup off (default): tray "AI cleanup: off", results unchanged.
 - [ ] AI cleanup on without `flow_llm.dll`: tray "⚠ AI cleanup engine (flow_llm.dll) missing", dictation still pastes.
 - [ ] AI cleanup on with the DLL + Qwen 0.5B GGUF: tray goes "loading…" → "AI cleanup: qwen2.5-0.5b…"; dictation works during the load; afterwards "um so i think we should uh meet tomorrow" pastes cleaned up, and History shows "AI edited".
@@ -517,6 +554,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - OpenRouter (D28): the **C** badge appears after the commit (like S/L); while recording the line above the pill names OpenRouter and the model. Cloud cleanup never runs on dictations served by your own server (it keeps its own AI). No "Connect with OpenRouter" (OAuth) yet: the key is pasted. HTTPS uses webpki roots, so a corporate TLS-inspection CA in the Windows store is not trusted.
 - Hands-free auto-stop (D19) applies to dictations *started* hands-free (Ctrl+Win+Space). A push-to-talk dictation locked later (double tap, or Space added to the chord) has no endpoint, because the router fixes `endpoint_silence_ms` at session start; stop it with the key or ✓.
 - Paste target (S13): the guard compares the foreground window (HWND + process) with the one at dictation start; switching tabs *inside* the same window (browser tabs) is not detected. The password-field re-check needs UI Automation to answer within 300 ms; otherwise only the window check applies.
+- Command Mode: in controls without UI Automation TextPattern the selection is read with Ctrl+C, and editors that copy the whole line when nothing is selected (VS Code) make an empty selection look like that line: the result is then pasted at the cursor, not over the line. Commands never run on your own `flow-server` (the server route has no LLM endpoint for them); answers are capped by the cleanup output budget (about 230 tokens for a short selection, 430 when generating). No saved transform presets yet.
 - Clipboard privacy formats (S14) are honoured by Windows' own history/cloud sync; third-party clipboard managers that ignore `ExcludeClipboardContentFromMonitorProcessing` still see the text.
 
 - Hands-free ✕/✓ use a 30 ms cursor poll that toggles click-through over the pill (not `setShape`). A click in the first ~30 ms after the cursor arrives can fall through.
