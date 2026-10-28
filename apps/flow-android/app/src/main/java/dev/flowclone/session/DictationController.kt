@@ -368,8 +368,8 @@ class DictationController(
     }
 
     /**
-     * Command Mode button: starts a hands-free command (the instruction ends on silence, a
-     * second tap or ✓), or stops one. Debounced with [toggle].
+     * Command Mode button: starts a hands-free command (the instruction ends on silence or ✓,
+     * like a tap dictation), or stops one. Debounced with [toggle].
      */
     fun toggleCommand() {
         val t = now()

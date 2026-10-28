@@ -303,7 +303,10 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         if (fromNode?.hasSelection == true) return CommandTarget.Field(appPkg, fromNode)
         // The IME: a window around its selection (apps whose node hides the selection).
         val fromIme = inputMethod?.readSurrounding(COMMAND_WINDOW, COMMAND_WINDOW)?.let { SelectionSnapshot.of(it.first, it.second, it.third) }
-        return CommandTarget.Field(appPkg, fromIme?.takeIf { it.hasSelection } ?: fromNode ?: fromIme)
+        if (fromIme?.hasSelection == true) return CommandTarget.Field(appPkg, fromIme)
+        // Text is selected but unreadable: refuse rather than turn "make it shorter" into new text at the cursor.
+        if (inputMethod?.hasSelection == true) return CommandTarget.Refused(CommandTarget.UNREADABLE_SELECTION_MESSAGE)
+        return CommandTarget.Field(appPkg, fromNode ?: fromIme)
     }
 
     override suspend fun applyCommand(target: CommandTarget.Field, text: String): Boolean = withContext(Dispatchers.Main) {
