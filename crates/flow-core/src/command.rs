@@ -69,6 +69,17 @@ impl CommandError {
     }
 }
 
+/// The wire shape of a command's outcome (FFI `flow_command`, JNI
+/// `nativeCommand`): `{"ok":true,"text":…}` or `{"ok":false,"kind":…,
+/// "error":…}`. Pinned by `fixtures/command/command_results.json`, which the
+/// Android shell's decoder is checked against too.
+pub fn result_json(r: &Result<String, CommandError>) -> serde_json::Value {
+    match r {
+        Ok(text) => serde_json::json!({"ok": true, "text": text}),
+        Err(e) => serde_json::json!({"ok": false, "kind": e.kind(), "error": e.to_string()}),
+    }
+}
+
 const SYSTEM_TRANSFORM: &str = "You edit text for the user. You get a piece of text the user \
 selected and a spoken instruction saying what to do with it (rewrite, shorten, change the tone, \
 translate, fix, turn into a list, and so on). Apply the instruction to the text and reply with \

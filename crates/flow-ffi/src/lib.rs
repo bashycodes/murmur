@@ -621,11 +621,7 @@ pub mod json_api {
     }
 
     pub fn command_json(r: Result<String, flow_core::command::CommandError>) -> String {
-        match r {
-            Ok(text) => serde_json::json!({"ok": true, "text": text}),
-            Err(e) => serde_json::json!({"ok": false, "kind": e.kind(), "error": e.to_string()}),
-        }
-        .to_string()
+        flow_core::command::result_json(&r).to_string()
     }
 
     /// `CleanupStatus` JSON (`supported:false` for a core handle).
