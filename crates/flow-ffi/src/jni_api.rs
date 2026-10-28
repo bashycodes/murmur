@@ -19,6 +19,8 @@ use jni::objects::{JClass, JShortArray, JString};
 use jni::sys::{jboolean, jint, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
 
+use flow_core::command::CommandError;
+
 use crate::{
     clear_error, json_api, set_error, set_error_kind, FlowHandle, LAST_ERROR, LAST_ERROR_KIND,
 };
@@ -716,6 +718,44 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCleanupStatu
     let r = guard("{}".to_owned(), || {
         handle(h).map_or_else(|| "{}".to_owned(), json_api::cleanup_status)
     });
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
+
+/// Command Mode (JNI_CONTRACT.md "Command Mode"): blocking, off Main.
+/// `selected` null = generate at the cursor. Never null: failures are
+/// `{"ok":false,"kind":…,"error":…}` JSON.
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCommand(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    instruction: JString,
+    selected: JString,
+) -> jstring {
+    let r = guard(
+        json_api::command_json(Err(CommandError::Backend("panic inside flow-core".into()))),
+        || {
+            let Some(h) = handle(h) else {
+                return json_api::command_json(Err(CommandError::Backend("null handle".into())));
+            };
+            let Some(i) = jstr(&mut env, &instruction, "command instruction") else {
+                return json_api::command_json(Err(CommandError::NoInstruction));
+            };
+            let sel = if selected.is_null() {
+                None
+            } else {
+                match jstr(&mut env, &selected, "command selection") {
+                    Some(s) => Some(s),
+                    None => {
+                        return json_api::command_json(Err(CommandError::Backend(
+                            "bad selection string".into(),
+                        )))
+                    }
+                }
+            };
+            json_api::command(h, &i, sel.as_deref())
+        },
+    );
     guard(std::ptr::null_mut(), || out(&mut env, &r))
 }
 

@@ -60,6 +60,14 @@ interface FlowCore {
 
     /** D24: routing details of the last committed session (router handles), else null. */
     fun lastRouteDiag(): RouteDiag? = null
+
+    /**
+     * Command Mode (2026-10-28, `nativeCommand`): rewrite [selected] as [instruction] says, or
+     * (null / blank [selected]) write what it describes. Uses the AI cleanup route (on-device
+     * LLM, or OpenRouter only when "send text around the cursor" is on). **Blocking** (up to
+     * ~25 s): never on Main. Engines without it answer [CommandOutcome.noLlm].
+     */
+    fun command(instruction: String, selected: String?): CommandOutcome = CommandOutcome.noLlm
 }
 
 /** `load_models(ModelConfig) -> Handle`. */

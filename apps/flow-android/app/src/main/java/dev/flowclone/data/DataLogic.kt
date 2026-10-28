@@ -59,6 +59,8 @@ data class Settings(
     val shrinkToDot: Boolean = true,
     /** "Bubble size": multiplies every bubble dimension; 0.75..1.5 on a 5 % grid ([bubbleScaleOf]). */
     val bubbleScale: Float = 1f,
+    /** Command Mode's ✎ button next to the mic: off, while text is selected (default), or always (also speak-to-generate). */
+    val commandButton: CommandButton = CommandButton.WITH_SELECTION,
     /** core-p1 deterministic spoken cleanup ("Auto-format punctuation, fillers and corrections"). */
     val spokenCleanup: Boolean = true,
     /** On-device ASR engine; Parakeet is English-only (D4/D12). */
@@ -243,5 +245,21 @@ object FieldContextBuilder {
             selected = surrounding.substring(a, b),
             after = surrounding.substring(b).take(WINDOW),
         )
+    }
+}
+
+/** When the bubble shows Command Mode's ✎ button (Settings → Bubble). */
+enum class CommandButton(val key: String) {
+    OFF("off"),
+    /** Only while the focused field has a selection: tap ✎, say "make it shorter". */
+    WITH_SELECTION("selection"),
+    /** Whenever the bubble is up; without a selection the instruction writes new text at the cursor. */
+    ALWAYS("always");
+
+    /** Show ✎ now? [hasSelection] = the focused field has a non-empty selection. */
+    fun shows(hasSelection: Boolean): Boolean = this == ALWAYS || (this == WITH_SELECTION && hasSelection)
+
+    companion object {
+        fun fromKey(k: String?): CommandButton = entries.firstOrNull { it.key == k } ?: WITH_SELECTION
     }
 }

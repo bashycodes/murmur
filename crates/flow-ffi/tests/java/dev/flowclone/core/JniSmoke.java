@@ -82,6 +82,9 @@ public class JniSmoke {
         check(NativeFlowCore.nativeUpdateRouter(r, cfg.replace("\"prefer\":\"server\"", "\"prefer\":\"client\"")), "update: " + NativeFlowCore.nativeLastError());
         check(!NativeFlowCore.nativeUpdateRouter(r, "{\"server\":{\"port\":0}}"), "port 0 must be bad_config");
         System.out.println("KIND " + NativeFlowCore.nativeLastErrorKind());
+        // Command Mode: the mock local engine has no LLM, so both answer no_llm (never null).
+        System.out.println(NativeFlowCore.nativeCommand(r, "make it shorter", "a long text"));
+        System.out.println(NativeFlowCore.nativeCommand(r, "write hello", null));
         NativeFlowCore.nativeResetCircuit(r);
         NativeFlowCore.nativeUnload(r);
         check(NativeFlowCore.nativeOpenRouter("{\"allow_server\":false,\"allow_client\":false}", 0) == 0, "both off must refuse");
@@ -118,4 +121,5 @@ class NativeFlowCore {
     static native void nativeResetCircuit(long h);
     static native String nativeStartSessionInfo(long h, String cfg);
     static native String nativePoll(long h);
+    static native String nativeCommand(long h, String instruction, String selected);
 }

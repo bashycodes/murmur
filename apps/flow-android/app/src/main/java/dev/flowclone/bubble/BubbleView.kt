@@ -96,6 +96,7 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
                 circleButton(canvas, accent, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy, 9f) }
             } else {
                 circleButton(canvas, accent, BubbleButton.MAIN) { cx, cy -> drawMic(canvas, cx, cy) }
+                if (ui.showCommand) circleButton(canvas, bg, BubbleButton.COMMAND) { cx, cy -> drawGlyph(canvas, "✎", cx, cy) }
                 if (ui.showCopy) circleButton(canvas, bg, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }
             }
             is DictationState.Recording -> {

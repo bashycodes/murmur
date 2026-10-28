@@ -1,0 +1,41 @@
+{
+  "_comment": "Command Mode outcome wire shape (flow_core::command::result_json; FFI flow_command, JNI nativeCommand). Checked by crates/flow-core/tests/command_vectors.rs and the Android CommandVectorsTest. `input` names the Rust value: ok = the answer text, err = CommandError::kind() (+ its field).",
+  "cases": [
+    {
+      "input": {"ok": "Meeting moved to Friday."},
+      "json": {"ok": true, "text": "Meeting moved to Friday."}
+    },
+    {
+      "input": {"ok": "- one\n- two \"quoted\" é\n"},
+      "json": {"ok": true, "text": "- one\n- two \"quoted\" é\n"}
+    },
+    {
+      "input": {"err": "no_instruction"},
+      "json": {"ok": false, "kind": "no_instruction", "error": "No instruction heard"}
+    },
+    {
+      "input": {"err": "selection_too_long", "max": 4000},
+      "json": {"ok": false, "kind": "selection_too_long", "error": "Selection too long for Command Mode (max 4000 characters)"}
+    },
+    {
+      "input": {"err": "no_llm"},
+      "json": {"ok": false, "kind": "no_llm", "error": "Command Mode needs AI: turn on AI cleanup (local model) or OpenRouter text cleanup"}
+    },
+    {
+      "input": {"err": "selection_not_allowed"},
+      "json": {"ok": false, "kind": "selection_not_allowed", "error": "Command Mode would send the selection to OpenRouter: allow surrounding text there, or use a local AI model"}
+    },
+    {
+      "input": {"err": "timeout", "secs": 25},
+      "json": {"ok": false, "kind": "timeout", "error": "AI didn't answer within 25 s"}
+    },
+    {
+      "input": {"err": "empty"},
+      "json": {"ok": false, "kind": "empty", "error": "AI returned no text"}
+    },
+    {
+      "input": {"err": "backend", "detail": "auth_failed"},
+      "json": {"ok": false, "kind": "backend", "error": "AI failed: auth_failed"}
+    }
+  ]
+}

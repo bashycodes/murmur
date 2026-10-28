@@ -17,6 +17,14 @@ class PreviewLogicTest {
         assertNull(PreviewContent.line(rec, "hello", null, enabled = false))
     }
 
+    @Test fun aCommandAlwaysSaysItIsACommand() {
+        val cmd = DictationState.Recording(false, 0, command = true)
+        assertEquals(PreviewContent.Line(PreviewContent.COMMAND_LISTENING, false), PreviewContent.line(cmd, null, null, enabled = false))
+        assertEquals("instruction hidden with the preview off", PreviewContent.COMMAND_LISTENING, PreviewContent.line(cmd, "make it", null, false)!!.text)
+        assertEquals("Command: make it shorter", PreviewContent.line(cmd, "make it shorter", null, true)!!.text)
+        assertEquals(PreviewContent.Line(PreviewContent.COMMAND_WORKING, true), PreviewContent.line(DictationState.Processing(false, 0, command = true), "x", null, true))
+    }
+
     @Test fun hintsBeatPartials() {
         assertEquals(PreviewContent.CANT_HEAR, PreviewContent.line(rec, "x", DictationHint.NoSpeechYet, true)!!.text)
         assertEquals(PreviewContent.NO_SPEECH, PreviewContent.line(DictationState.Ready, null, DictationHint.NoSpeechDetected, false)!!.text)
