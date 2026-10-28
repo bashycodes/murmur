@@ -212,6 +212,15 @@ impl Platform for WinPlatform {
         paste::win::wait_modifiers_released(Duration::from_millis(1000));
     }
 
+    fn capture_selection(&self) -> Result<Option<String>, String> {
+        // UIA first (no clipboard traffic); Ctrl+C only when the control has
+        // no TextPattern or UIA hangs. Bounded well under SELECTION_WAIT.
+        crate::context::resolve_selection(
+            uia::selection(Duration::from_millis(800)),
+            paste::win::copy_selection,
+        )
+    }
+
     fn field_reader(&self) -> Option<Box<dyn crate::learn::FieldReader>> {
         uia::field_reader().map(|r| Box::new(r) as Box<dyn crate::learn::FieldReader>)
     }

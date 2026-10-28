@@ -15,6 +15,7 @@
   --resting-bg: rgba(0, 0, 0, 0.5);
   --resting-border: hsla(0, 0%, 100%, 0.5);
   --error: #ee6a6a;
+  --command: #ffa946;
   --bar: #fff;
   --bar-inactive: hsla(0, 0%, 100%, 0.4);
   --cancel-bg: #4d4a42;
@@ -302,4 +303,26 @@ body {
 }
 body.has-route .preview {
   bottom: 74px;
+}
+
+/* ---- Command Mode: the push-to-talk / processing pill, orange accent ---- */
+.pill[data-command] {
+  border: 1.5px solid var(--command);
+}
+.pill[data-command] .bar {
+  background: var(--command);
+}
+.pill[data-command][data-mic="inactive"] .bar {
+  background: rgba(255, 169, 70, 0.45);
+}
+.pill[data-command] .spinner i {
+  animation-name: spinner-fade-command;
+}
+@keyframes spinner-fade-command {
+  from {
+    background: rgba(255, 169, 70, 0.9);
+  }
+  to {
+    background: rgba(255, 169, 70, 0.15);
+  }
 }
