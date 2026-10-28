@@ -17,7 +17,14 @@ interface DictEntry {
 }
 
 interface Prefs {
-  shortcuts: { ptt: string; hands_free: string; cancel: string; paste_last: string; copy_last: string };
+  shortcuts: {
+    ptt: string;
+    hands_free: string;
+    command: string;
+    cancel: string;
+    paste_last: string;
+    copy_last: string;
+  };
   microphone: string | null;
   languages: string[];
   enable_sounds: boolean;
@@ -469,6 +476,7 @@ function fillForm(prefs: Prefs): void {
   showEngineFields();
   $<HTMLInputElement>("ptt").value = prefs.shortcuts.ptt;
   $<HTMLInputElement>("hands_free").value = prefs.shortcuts.hands_free;
+  $<HTMLInputElement>("command").value = prefs.shortcuts.command;
   $<HTMLInputElement>("cancel").value = prefs.shortcuts.cancel;
   $<HTMLInputElement>("paste_last").value = prefs.shortcuts.paste_last;
   $<HTMLInputElement>("copy_last").value = prefs.shortcuts.copy_last;
@@ -497,6 +505,7 @@ function readForm(base: Prefs): Prefs {
   next.shortcuts = {
     ptt: $<HTMLInputElement>("ptt").value.trim(),
     hands_free: $<HTMLInputElement>("hands_free").value.trim(),
+    command: $<HTMLInputElement>("command").value.trim(),
     cancel: $<HTMLInputElement>("cancel").value.trim(),
     paste_last: $<HTMLInputElement>("paste_last").value.trim(),
     copy_last: $<HTMLInputElement>("copy_last").value.trim(),
