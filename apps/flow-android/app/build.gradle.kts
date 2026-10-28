@@ -92,6 +92,8 @@ android {
         getByName("test").resources.directories.add("../../../crates/flow-router/fixtures")
         // AppVersionTest: the version-rule vectors tools/versioning/test_versioning.py also checks.
         getByName("test").resources.directories.add("../../../tools/versioning/fixtures")
+        // InsightsVectorsTest: flow-core's Insights vectors (insights/insights_vectors.json).
+        getByName("test").resources.directories.add("../../../crates/flow-core/fixtures")
     }
 
     // Release signing without secrets in git: the keystore and its passwords come from Gradle

@@ -26,6 +26,17 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   again after the app is closed or the phone restarts; it stays on the phone.
   *Copy all* (removed from the clipboard after a minute, like every copied
   transcript), *Share*, *Clear* (asks first) and a word count.
+- **Android: Insights page.** *Main screen → More → Insights* shows the same
+  stats as the Windows Insights tab: total words dictated, words in the last 7
+  days, average speaking speed, current and longest daily streak (a streak
+  isn't broken before today's first dictation), time saved versus typing
+  (assumes 40 wpm, shown on the page), the number of dictations, your top
+  apps by name, and a 7-day words-per-day chart. Days follow the phone's time
+  zone. The counts live on the phone in their own file (words, recording
+  length and app per day; no text), so clearing History or setting it to
+  *Never* keeps them; the first time, the History you already have is counted
+  in once. *Reset stats* (asks first) clears them. The math mirrors
+  `flow-core`'s, checked against the same test vectors.
 - **Windows: Insights tab.** *Settings → Insights* shows total words
   dictated, words in the last 7 days, average speaking speed (words per
   minute of recording), current and longest daily streak, an estimate of

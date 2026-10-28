@@ -28,6 +28,17 @@ class HistoryStoreTest {
         s.close()
     }
 
+    /** Insights backfill: every saved dictation (not just the 500 the list shows), errors left out. */
+    @Test fun statsRowsCoverAllRowsOldestFirstWithoutErrors() {
+        val s = HistoryStore(ctx)
+        for (i in 1..502) s.add(HistoryRow(0, i.toLong(), "a", "RAW_TRANSCRIPT", "x", "w$i", true, 10), Retention.KEEP)
+        s.add(HistoryRow(0, 600, "a", "ERROR", "", "", false, 10), Retention.KEEP)
+        val rows = s.statsRows()
+        assertEquals(502, rows.size)
+        assertEquals(InsightsStore.Row(1, "a", "w1", 10), rows.first())
+        s.close()
+    }
+
     @Test fun v2FileUpgradesWithUnknownOutcome() {
         ctx.deleteDatabase(NAME)
         val f = ctx.getDatabasePath(NAME).also { it.parentFile?.mkdirs() }
