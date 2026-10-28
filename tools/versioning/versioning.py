@@ -75,7 +75,7 @@ def describe(version: str, sha: str, dirty: bool) -> tuple[str, str]:
 
 
 def read_version(root: Path) -> str:
-    return (root / "VERSION").read_text().strip()
+    return (root / "VERSION").read_text(encoding="utf-8").strip()
 
 
 def _section_span(text: str, header: str) -> tuple[int, int] | None:
@@ -128,24 +128,24 @@ def collect(root: Path) -> list[tuple[str, str]]:
         out.append(("VERSION", read_version(root)))
     cargo = root / "Cargo.toml"
     if cargo.is_file():
-        val = _toml_section_version(cargo.read_text(), "[workspace.package]")
+        val = _toml_section_version(cargo.read_text(encoding="utf-8"), "[workspace.package]")
         out.append(("Cargo.toml [workspace.package]", val or "<missing>"))
     wcargo = root / WIN / "Cargo.toml"
     if wcargo.is_file():
-        val = _toml_section_version(wcargo.read_text(), "[package]")
+        val = _toml_section_version(wcargo.read_text(encoding="utf-8"), "[package]")
         out.append((f"{WIN}/Cargo.toml", val or "<missing>"))
     for lock in ("Cargo.lock", f"{WIN}/Cargo.lock"):
         p = root / lock
         if p.is_file():
-            text = p.read_text()
+            text = p.read_text(encoding="utf-8")
             for name, (s, e) in _lock_blocks(text):
                 out.append((f"{lock} {name}", text[s:e]))
     pkg = root / WIN / "ui" / "package.json"
     if pkg.is_file():
-        out.append((f"{WIN}/ui/package.json", json.loads(pkg.read_text()).get("version", "<missing>")))
+        out.append((f"{WIN}/ui/package.json", json.loads(pkg.read_text(encoding="utf-8")).get("version", "<missing>")))
     plock = root / WIN / "ui" / "package-lock.json"
     if plock.is_file():
-        data = json.loads(plock.read_text())
+        data = json.loads(plock.read_text(encoding="utf-8"))
         out.append((f"{WIN}/ui/package-lock.json", data.get("version", "<missing>")))
         out.append(
             (f'{WIN}/ui/package-lock.json packages[""]', data.get("packages", {}).get("", {}).get("version", "<missing>"))
@@ -167,11 +167,11 @@ def check(root: Path, tag: str | None = None) -> list[str]:
         if where != "VERSION" and val != version:
             errors.append(f"{where}: {val} != VERSION {version} (run tools/release.sh, never edit copies by hand)")
     tauri = root / WIN / "tauri.conf.json"
-    if tauri.is_file() and "version" in json.loads(tauri.read_text()):
+    if tauri.is_file() and "version" in json.loads(tauri.read_text(encoding="utf-8")):
         errors.append(f"{WIN}/tauri.conf.json: has a \"version\"; drop it so Tauri takes Cargo.toml's")
     gradle = root / GRADLE
     if gradle.is_file():
-        g = gradle.read_text()
+        g = gradle.read_text(encoding="utf-8")
         if re.search(r'^\s*versionName\s*=\s*"', g, re.M) or re.search(r"^\s*versionCode\s*=\s*[0-9]", g, re.M):
             errors.append(f"{GRADLE}: literal versionName/versionCode; derive both from VERSION")
         if "VERSION" not in g:
@@ -181,7 +181,7 @@ def check(root: Path, tag: str | None = None) -> list[str]:
         if t != f"v{version}":
             errors.append(f"tag {t} does not match VERSION {version} (expected v{version})")
         cl = root / "CHANGELOG.md"
-        if not cl.is_file() or changelog_section(cl.read_text(), version) is None:
+        if not cl.is_file() or changelog_section(cl.read_text(encoding="utf-8"), version) is None:
             errors.append(f"CHANGELOG.md: no '## [{version}] - <date>' section for tag {t}")
     return errors
 
@@ -192,29 +192,29 @@ def check(root: Path, tag: str | None = None) -> list[str]:
 def stamp(root: Path, new: str) -> None:
     """Rewrite VERSION and every copy in :func:`collect` to ``new``."""
     parse(new)
-    (root / "VERSION").write_text(new + "\n")
+    (root / "VERSION").write_text(new + "\n", encoding="utf-8")
     cargo = root / "Cargo.toml"
-    cargo.write_text(_set_toml_section_version(cargo.read_text(), "[workspace.package]", new))
+    cargo.write_text(_set_toml_section_version(cargo.read_text(encoding="utf-8"), "[workspace.package]", new), encoding="utf-8")
     wcargo = root / WIN / "Cargo.toml"
     if wcargo.is_file():
-        wcargo.write_text(_set_toml_section_version(wcargo.read_text(), "[package]", new))
+        wcargo.write_text(_set_toml_section_version(wcargo.read_text(encoding="utf-8"), "[package]", new), encoding="utf-8")
     for lock in ("Cargo.lock", f"{WIN}/Cargo.lock"):
         p = root / lock
         if not p.is_file():
             continue
-        text = p.read_text()
+        text = p.read_text(encoding="utf-8")
         for _, (s, e) in sorted(_lock_blocks(text), key=lambda x: -x[1][0]):
             text = text[:s] + new + text[e:]
-        p.write_text(text)
+        p.write_text(text, encoding="utf-8")
     for name in ("package.json", "package-lock.json"):
         p = root / WIN / "ui" / name
         if not p.is_file():
             continue
-        data = json.loads(p.read_text())
+        data = json.loads(p.read_text(encoding="utf-8"))
         data["version"] = new
         if name == "package-lock.json" and "" in data.get("packages", {}):
             data["packages"][""]["version"] = new
-        p.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+        p.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
 # ---------------------------------------------------------------- changelog
@@ -282,6 +282,10 @@ def changelog_release(text: str, version: str, date: str, repo_url: str | None =
 
 
 def main(argv: list[str]) -> int:
+    # Windows defaults stdout to cp1252; CHANGELOG notes contain non-ASCII (→, ✎).
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
     root_default = Path(__file__).resolve().parent.parent.parent
@@ -324,17 +328,17 @@ def main(argv: list[str]) -> int:
             return 0
         if a.cmd == "changelog-release":
             p = a.root / "CHANGELOG.md"
-            p.write_text(changelog_release(p.read_text(), a.version, a.date, a.repo_url))
+            p.write_text(changelog_release(p.read_text(encoding="utf-8"), a.version, a.date, a.repo_url), encoding="utf-8")
             return 0
         if a.cmd == "section":
-            body = changelog_section((a.root / "CHANGELOG.md").read_text(), a.version)
+            body = changelog_section((a.root / "CHANGELOG.md").read_text(encoding="utf-8"), a.version)
             if body is None:
                 print(f"no [{a.version}] section", file=sys.stderr)
                 return 1
             print(body)
             return 0
         if a.cmd == "unreleased":
-            print(changelog_unreleased((a.root / "CHANGELOG.md").read_text()) or "")
+            print(changelog_unreleased((a.root / "CHANGELOG.md").read_text(encoding="utf-8")) or "")
             return 0
         if a.cmd == "current":
             print(read_version(a.root))
