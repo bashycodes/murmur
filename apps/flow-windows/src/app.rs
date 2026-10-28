@@ -69,7 +69,7 @@ struct AppState {
     /// Opt-in debug log (Developer → Debug log; off by default).
     debug: Arc<DebugLog>,
     debug_path: PathBuf,
-    /// Scratchpad text: debounced writes to `scratchpad.txt`.
+    /// Notes (Scratchpad = Quick note): debounced writes to `notes\<id>.txt`.
     notes: Arc<Mutex<AutoSave>>,
     /// Clock of `notes` (ms since start).
     started: Instant,
@@ -239,6 +239,35 @@ impl Platform for WinPlatform {
 
     fn open_scratchpad(&self) {
         show_scratchpad(&self.app);
+    }
+
+    fn open_new_note(&self) -> bool {
+        let st = self.app.state::<AppState>();
+        let created = st.notes.lock().unwrap().create();
+        let id = match created {
+            Ok(id) => id,
+            Err(e) => {
+                eprintln!("[notes] new note: {e}");
+                debug_log::event("notes", &format!("new note: {e}"));
+                return false;
+            }
+        };
+        show_notes_window(&self.app, format!("note={id}"));
+        // The dictation pastes only into the window it started in (S13), so
+        // start it once the note window is in front.
+        let deadline = Instant::now() + Duration::from_millis(2000);
+        while Instant::now() < deadline {
+            let front = self
+                .app
+                .get_webview_window(SCRATCHPAD)
+                .is_some_and(|w| w.is_focused().unwrap_or(false));
+            if front {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        eprintln!("[notes] the new note's window did not come to the front");
+        false
     }
 }
 
@@ -546,6 +575,48 @@ fn note_flush(state: tauri::State<'_, AppState>, id: String) -> Result<(), Strin
     state.notes.lock().unwrap().flush(&id).unwrap_or(Ok(()))
 }
 
+/// The Notes list (content search; pinned first, then newest).
+#[tauri::command]
+fn note_list(
+    state: tauri::State<'_, AppState>,
+    query: String,
+) -> Result<Vec<notes::NoteMeta>, String> {
+    state.notes.lock().unwrap().list(&query)
+}
+
+/// A new empty note; returns its id (the page then opens it).
+#[tauri::command]
+fn note_create(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    state.notes.lock().unwrap().create()
+}
+
+/// The page asked first (second click on Delete).
+#[tauri::command]
+fn note_delete(state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
+    state.notes.lock().unwrap().delete(&id)
+}
+
+#[tauri::command]
+fn note_set_pinned(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    pinned: bool,
+) -> Result<(), String> {
+    state.notes.lock().unwrap().set_pinned(&id, pinned)
+}
+
+/// Write the note to Downloads as `<title>.txt` / `.md`; returns the path.
+#[tauri::command]
+fn note_export(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    ext: String,
+) -> Result<String, String> {
+    let dir = downloads_dir()?;
+    let path = state.notes.lock().unwrap().export(&id, &ext, &dir)?;
+    Ok(path.display().to_string())
+}
+
 fn log_note_writes(results: Vec<(String, Result<(), String>)>) {
     for (id, r) in results {
         if let Err(e) = r {
@@ -642,16 +713,21 @@ fn dictionary_import(
     crate::dictionary::import(&entries, &json, replace)
 }
 
-/// Write the exchange JSON to the Downloads folder; returns the path.
-#[tauri::command]
-fn dictionary_export(entries: Vec<crate::prefs::DictEntry>) -> Result<String, String> {
+/// `%USERPROFILE%\Downloads` (else Documents, else the profile folder).
+fn downloads_dir() -> Result<PathBuf, String> {
     let base = std::env::var("USERPROFILE")
         .map(PathBuf::from)
         .unwrap_or_default();
-    let dir = [base.join("Downloads"), base.join("Documents"), base]
+    [base.join("Downloads"), base.join("Documents"), base]
         .into_iter()
         .find(|d| d.is_dir())
-        .ok_or("no Downloads folder")?;
+        .ok_or_else(|| "no Downloads folder".to_string())
+}
+
+/// Write the exchange JSON to the Downloads folder; returns the path.
+#[tauri::command]
+fn dictionary_export(entries: Vec<crate::prefs::DictEntry>) -> Result<String, String> {
+    let dir = downloads_dir()?;
     let path = dir.join("flow-dictionary.json");
     std::fs::write(&path, crate::dictionary::export(&entries)).map_err(|e| e.to_string())?;
     Ok(path.display().to_string())
@@ -1604,25 +1680,40 @@ fn show_settings(app: &AppHandle) {
     }
 }
 
-/// Show the Scratchpad, creating it if it is closed. Always on the main
-/// thread (the shortcut arrives on the controller thread).
+/// Show the Scratchpad (the Quick note), creating the window if it is closed.
 fn show_scratchpad(app: &AppHandle) {
+    show_notes_window(app, format!("note={}", notes::SCRATCHPAD));
+}
+
+/// Show the notes window on `scratchpad.html?<query>` (`note=<id>` = that
+/// note in the editor, `view=notes` = the Notes list), creating it if it is
+/// closed and navigating it if it shows something else (the page flushes
+/// its note on the way out). Always on the main thread (the shortcuts
+/// arrive on the controller thread).
+fn show_notes_window(app: &AppHandle, query: String) {
     let h = app.clone();
     let _ = app.run_on_main_thread(move || {
+        let page = format!("scratchpad.html?{query}");
         if let Some(w) = h.get_webview_window(SCRATCHPAD) {
+            if let Ok(cur) = w.url() {
+                if cur.query() != Some(query.as_str()) {
+                    if let Ok(url) = cur.join(&page) {
+                        let _ = w.navigate(url);
+                    }
+                }
+            }
             let _ = w.show();
             let _ = w.unminimize();
             let _ = w.set_focus();
             return;
         }
-        let built =
-            WebviewWindowBuilder::new(&h, SCRATCHPAD, WebviewUrl::App("scratchpad.html".into()))
-                .title("Scratchpad — Flow Clone")
-                .inner_size(520.0, 560.0)
-                .min_inner_size(320.0, 240.0)
-                .center()
-                .focused(true)
-                .build();
+        let built = WebviewWindowBuilder::new(&h, SCRATCHPAD, WebviewUrl::App(page.into()))
+            .title("Notes — Flow Clone")
+            .inner_size(520.0, 560.0)
+            .min_inner_size(320.0, 240.0)
+            .center()
+            .focused(true)
+            .build();
         if let Err(e) = built {
             eprintln!("[scratchpad] {e}");
             debug_log::event("scratchpad", &e.to_string());
@@ -1799,6 +1890,13 @@ pub fn run() {
         }
     }
     let insights_store = Arc::new(Mutex::new(stats));
+    // Notes: the pre-Notes Scratchpad file moves into notes\ (once).
+    let notes_dir = notes::default_dir(appdata.as_deref());
+    match notes::migrate_scratchpad(&notes::app_dir(appdata.as_deref()), &notes_dir) {
+        Ok(true) => eprintln!("[notes] moved scratchpad.txt into {}", notes_dir.display()),
+        Ok(false) => {}
+        Err(e) => eprintln!("[notes] could not move scratchpad.txt: {e}"),
+    }
     let debug_path = debug_log::default_path(appdata.as_deref());
     let debug = Arc::new(DebugLog::file(
         debug_path.clone(),
@@ -1847,7 +1945,7 @@ pub fn run() {
             debug: debug.clone(),
             debug_path,
             notes: Arc::new(Mutex::new(AutoSave::new(
-                NoteStore::new(notes::default_dir(appdata.as_deref())),
+                NoteStore::new(notes_dir),
                 notes::SAVE_DEBOUNCE_MS,
             ))),
             started: Instant::now(),
@@ -1869,6 +1967,11 @@ pub fn run() {
             note_load,
             note_edit,
             note_flush,
+            note_list,
+            note_create,
+            note_delete,
+            note_set_pinned,
+            note_export,
             suggestions_list,
             suggestion_accept,
             suggestion_dismiss,
@@ -1919,12 +2022,8 @@ pub fn run() {
             // Save on close: the page sent its last edit already.
             if window.label() == SCRATCHPAD && matches!(event, WindowEvent::Destroyed) {
                 let st = window.app_handle().state::<AppState>();
-                let r = st.notes.lock().unwrap().flush(notes::SCRATCHPAD);
-                log_note_writes(
-                    r.map(|r| (notes::SCRATCHPAD.to_string(), r))
-                        .into_iter()
-                        .collect(),
-                );
+                // Whichever note it showed (one window, one note at a time).
+                log_note_writes(st.notes.lock().unwrap().flush_all());
             }
         })
         .setup(move |app| {
@@ -1947,6 +2046,7 @@ pub fn run() {
                 .set(suggest_item.clone());
             let sep0 = PredefinedMenuItem::separator(app)?;
             let scratch = MenuItem::with_id(app, "scratchpad", "Scratchpad…", true, None::<&str>)?;
+            let notes_item = MenuItem::with_id(app, "notes", "Notes…", true, None::<&str>)?;
             let open = MenuItem::with_id(app, "open", "Settings…", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Flow Clone", true, None::<&str>)?;
@@ -1958,6 +2058,7 @@ pub fn run() {
                     &suggest_item,
                     &sep0,
                     &scratch,
+                    &notes_item,
                     &open,
                     &sep,
                     &quit,
@@ -1973,6 +2074,7 @@ pub fn run() {
                         let _ = app.emit_to(SETTINGS, "settings:tab", "dictionary");
                     }
                     "scratchpad" => show_scratchpad(app),
+                    "notes" => show_notes_window(app, "view=notes".into()),
                     "quit" => app.exit(0),
                     _ => {}
                 })
