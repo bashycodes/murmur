@@ -12,23 +12,23 @@ Full guide: [`docs/server-setup.md`](server-setup.md).
 
 1. Prerequisites: the Parakeet model folder (`FLOW_PARAKEET_DIR`, or
    `models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8`) and the sherpa-onnx
-   libs (`SHERPA_ONNX_LIB_DIR`). Tailscale up on this box, the Windows PC and
-   the phone, all in one tailnet.
+   libs (`SHERPA_ONNX_LIB_DIR`). This box, the Windows PC and the phone on one
+   VPN (or one LAN).
 2. Install as a user service (no sudo):
    ```sh
    tools/server/install.sh --user --dry-run   # review the steps
    tools/server/install.sh --user --start     # build, install, gen-token, config, start
    ```
-   It binds `127.0.0.1:7313` plus this box's Tailscale IPv4 on port **7313**.
+   It binds `127.0.0.1:7313` plus this box's VPN IPv4 (100.64.0.0/10) on port **7313**.
    It writes the token once with `flow-server gen-token`; it never overwrites
    an existing one.
 3. Collect the three values the apps need:
    ```sh
-   tailscale ip -4                          # host: 100.x.y.z
+   ip -4 addr                               # host: the VPN 100.x.y.z (or LAN IP)
    cat ~/.config/flow-server/token          # token (copy over a trusted channel only)
    journalctl --user -u flow-server -f      # expect "ready workers=1 asr=parakeet … listening=…"
    ```
-   Port = `7313`. Use TLS = off (Tailscale already encrypts the traffic).
+   Port = `7313`. Use TLS = off (the VPN already encrypts the traffic; on a plain LAN, consider TLS).
    `loginctl enable-linger $USER` (no sudo for yourself) keeps the server
    running after you log out; the installer asks for it when no systemd user
    manager is reachable (e.g. over ssh). If `systemctl --user` says "Failed to
@@ -54,7 +54,7 @@ Full guide: [`apps/flow-windows/README.md` "Live test on Windows"](../apps/flow-
 
 ## (c) Phone (~15 min)
 
-Full guide: [`apps/flow-android/INSTALL.md` "Live test on phone"](../apps/flow-android/INSTALL.md#live-test-on-phone-tailscale-10-minutes).
+Full guide: [`apps/flow-android/INSTALL.md` "Live test on phone"](../apps/flow-android/INSTALL.md#live-test-on-phone-vpn-10-minutes).
 
 1. APK: **hybrid**. Either `flow-clone-hybrid-debug.apk` from the artifact
    **`flow-clone-android-debug-apks`** of <https://github.com/bashycodes/murmur/actions/runs/39837428823> (commit b9942f1; predates the 2026-10-23 model-import and a11y-health fixes from `fix/android-live`), or
@@ -83,8 +83,8 @@ Only if you want to test third-party STT. Design and presets:
 * Windows: the cloud lines of the smoke checklist, and README "Cloud
   providers" for the full list.
 * Phone: INSTALL.md §5c and the "Cloud STT (D18)" checklist.
-* Self-hosted (speaches / LocalAI on the LAN or tailnet): pick preset
-  **Custom**. It needs no API key on a private or Tailscale host. Named presets
+* Self-hosted (speaches / LocalAI on the LAN or a VPN): pick preset
+  **Custom**. It needs no API key on a private or VPN host. Named presets
   (Groq, OpenAI, …) always need a key.
 * Host keys only: `FLOW_CLOUD_LIVE_<GROQ|OPENAI|…>_KEY=… cargo test -p
   flow-cloud --test live_smoke -- --nocapture`.

@@ -42,7 +42,7 @@ whisper = ["local-engine", "flow-core/whisper"]
 parakeet = ["local-engine", "flow-core/parakeet"]
 # Self-hosted flow-server over WebSocket ("server"): the only network code.
 remote = ["dep:flow-remote"]
-# wss:// to a server outside LAN/Tailscale (rustls + ring). In the default
+# wss:// to a server outside your LAN/VPN (rustls + ring). In the default
 # build; separate so the Linux MSVC cross-check can leave ring's C out.
 tls = ["remote", "flow-remote/tls"]
 # Opt-in third-party cloud speech-to-text (D18, docs/cloud-stt.md): HTTPS

@@ -70,9 +70,9 @@ class DictionaryPagesTest {
     }
 
     @Test fun validNewWordCanBeSavedAndAppends() {
-        val d = DictionaryDraft.new(Kind.WORDS).copy(word = "  Tailscale ")
+        val d = DictionaryDraft.new(Kind.WORDS).copy(word = "  Kubernetes ")
         assertTrue(d.dirty); assertTrue(d.canSave(all))
-        assertEquals(all + DictEntry("Tailscale", null, false), d.save(all))
+        assertEquals(all + DictEntry("Kubernetes", null, false), d.save(all))
     }
 
     @Test fun duplicateWordIsAnInlineWordError() {

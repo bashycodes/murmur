@@ -243,7 +243,7 @@ impl Prefs {
         if self.prefs_rev < 1 && self.hands_free_silence_ms == OLD_HANDS_FREE_SILENCE_MS {
             self.hands_free_silence_ms = flow_core::endpoint::RECOMMENDED_SILENCE_MS;
         }
-        // D24: 800 ms was the default and is too tight over a Tailscale relay.
+        // D24: 800 ms was the default and is too tight over a VPN relay.
         if self.prefs_rev < 2
             && self.developer.server.connect_timeout_ms == flow_router::LEGACY_CONNECT_TIMEOUT_MS
         {

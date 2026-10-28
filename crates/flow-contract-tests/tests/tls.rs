@@ -1,4 +1,4 @@
-//! wss:// with a self-signed, pinned certificate (LAN without Tailscale).
+//! wss:// with a self-signed, pinned certificate (LAN without a VPN).
 
 use flow_contract_tests::*;
 use flow_core::config::SessionConfig;

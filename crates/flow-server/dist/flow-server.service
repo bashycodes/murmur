@@ -5,8 +5,10 @@
 # (readable by the service: DynamicUser gets it via LoadCredential below), put
 # models under /var/lib/flow-server/models, then `systemctl enable --now flow-server`.
 [Unit]
-Description=flow-server (self-hosted dictation ASR; LAN/Tailscale only)
-After=network-online.target tailscaled.service
+Description=flow-server (self-hosted dictation ASR; LAN/VPN only)
+# Bound to a VPN address that is not up yet at boot, the start fails and
+# Restart= below retries every 3 s until it is.
+After=network-online.target
 Wants=network-online.target
 
 [Service]
@@ -39,7 +41,7 @@ RestrictRealtime=yes
 CapabilityBoundingSet=
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 # The kernel enforces "no third party": only loopback, private LAN and
-# Tailscale peers can talk to the server, and it cannot reach anything else.
+# VPN (100.64/10) peers can talk to the server, and it cannot reach anything else.
 IPAddressDeny=any
 # Same classes the server's own peer filter accepts (src/net.rs). Never add
 # --insecure-bind-any to ExecStart: the server then accepts any peer.

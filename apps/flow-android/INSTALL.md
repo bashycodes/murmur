@@ -7,7 +7,7 @@ in-place update that keeps settings, dictionary and history.
 | Flavour | APK | Dictates with | Network |
 |---|---|---|---|
 | `local` | `app-local-debug.apk` | the speech model on the phone | **none**: no INTERNET permission, no network code in the native library |
-| `hybrid` | `app-hybrid-debug.apk` | your own `flow-server` (LAN / Tailscale), falling back to the phone's model | INTERNET only, used only for the server you enter |
+| `hybrid` | `app-hybrid-debug.apk` | your own `flow-server` (your LAN or a VPN), falling back to the phone's model | INTERNET only, used only for the server you enter |
 | `remote` | `app-remote-debug.apk` | your own `flow-server` only; no models, no ASR libraries (~10x smaller) | INTERNET only |
 
 The `local` flavour can't download anything, including the speech model: you fetch the model
@@ -19,9 +19,9 @@ Requirements: Android 13 or newer (minSdk 33), an arm64 phone, and about 200 MB 
 and roughly as much free RAM. Android 15 phones with 16 KB pages are supported: every
 `.so` is 16 KB aligned (checked by `tools/probes/check_native_so.sh`).
 
-## Live test on phone (Tailscale, ~10 minutes)
+## Live test on phone (VPN, ~10 minutes)
 
-The fastest end-to-end test of the whole system: phone → your `flow-server` over Tailscale, with
+The fastest end-to-end test of the whole system: phone → your `flow-server` over a VPN, with
 the phone's own model as the fallback.
 
 **Which APK.** Install **`hybrid`** (`dist/flow-clone-hybrid-debug.apk`): it talks to your server
@@ -48,17 +48,17 @@ another machine or from the CI artifact (`.github/workflows/android-build.yml`) 
 debug key: Android refuses it as an update, so uninstall the old app first (this deletes its
 settings, dictionary and history).
 
-**1. Server (on the PC).** Install Tailscale on the PC and the phone and log both into the same
-tailnet. Then on the PC:
+**1. Server (on the PC).** Join the PC and the phone to the same VPN (any WireGuard-based mesh
+VPN that hands out 100.64.0.0/10 addresses works), or put both on one LAN. Then on the PC:
 
 ```sh
 flow-server gen-token --out ~/.config/flow-server/token        # writes a new token (mode 0600), never overwrites
-# config.toml: bind = ["127.0.0.1:7313", "<the PC's 100.x Tailscale IP>:7313"], token_file = that path
+# config.toml: bind = ["127.0.0.1:7313", "<the PC's VPN IP, e.g. 100.x.y.z>:7313"], token_file = that path
 flow-server --config config.toml                                # crates/flow-server/dist/config.example.toml
 ```
 
-`tailscale ip -4` prints the 100.x address; the token is the content of that file. Copy it to the phone over a channel you trust
-(e.g. a Taildrop file or typing it); never paste it into a chat.
+Your VPN client (or `ip -4 addr`) shows the 100.x address; the token is the content of that file. Copy it to the phone over a channel you trust
+(e.g. your VPN's file transfer or typing it); never paste it into a chat.
 
 **2. Install + permissions (phone).** Copy the APK to the phone and open it in Files ("Install
 unknown apps" for Files), or use the platform-tools install command over USB. Open Flow Clone
@@ -69,11 +69,11 @@ background* (each is a row in the main screen's *Setup* card: tap it). The main 
 *Native engine* `flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26).
 
 **3. Point it at the server.** Main screen → *Developer settings* → *Server*: host = the PC's
-`100.x.y.z` (or its MagicDNS name), port `7313`, *Paste* the token, *Use TLS* off, *Save* (top
+`100.x.y.z` (or its VPN DNS name), port `7313`, *Paste* the token, *Use TLS* off, *Save* (top
 bar), then *Test connection* (bottom) → `OK · median N ms … · parakeet`. *Routing & engines*:
 *Allow server* + *Allow on-device* on (the defaults in hybrid), *Save*. Plain `ws://` is
-only allowed when the address is private or tailnet **and** the phone reaches it through its
-Tailscale interface: "Server needs TLS — turn on Use TLS …" means Tailscale is off on the phone
+only allowed when the address is private or a VPN address **and** the phone reaches it through its
+VPN interface: "Server needs TLS — turn on Use TLS …" means the VPN is off on the phone
 or the host is a public address. For on-device fallback, either import a model (§2, §5) or tick
 *Settings → Mock engine*.
 
@@ -101,7 +101,7 @@ or the host is a public address. For on-device fallback, either import a model (
       previous clip again, or is empty (S16; note the result, Android may refuse background
       clipboard access).
 - [ ] Tap ✕ while "Transcribing…": nothing is inserted, no history row is added.
-- [ ] Airplane mode on (Tailscale down): dictation still inserts from the phone engine, label
+- [ ] Airplane mode on (VPN down): dictation still inserts from the phone engine, label
       `via phone · server unreachable`.
 - [ ] **Never-fail fallback (D24)**: *Developer settings → Keep the on-device model loaded* **off**,
       Save, stop `flow-server` (or airplane mode). Tap the bubble and talk right away: the preview
@@ -375,15 +375,15 @@ the engine.
 ## 5b. Server mode (hybrid / remote)
 
 1. On the server box: run `flow-server` (see `docs/protocol.md` / `crates/flow-server`), bound
-   to its Tailscale `100.x` address or the LAN; `flow-server gen-token` prints the token.
-2. Phone: install Tailscale (or be on the same LAN). No extra permission is needed.
+   to its VPN `100.x` address or the LAN; `flow-server gen-token` prints the token.
+2. Phone: join the same VPN (or be on the same LAN). No extra permission is needed.
 3. Main screen → **Developer settings** (visible by default in hybrid/remote) → **Server**:
-   host = the server's `100.x.y.z` or `name.tailnet.ts.net`, port `7313`, *Paste* the token,
+   host = the server's `100.x.y.z` or its VPN DNS name, port `7313`, *Paste* the token,
    *Save* (top bar), then *Test connection* → "OK · median N ms (…) · flow-server … · parakeet".
 4. Dictate: the hub's status card shows *Last dictation* `Server · client N ms`; *Status &
    server info → Active engine* shows `Server 100.x.y.z:7313 · …`.
 5. **Server → Timeouts → Connect timeout** (default **2500 ms** since D24; a stored 800, the old default, becomes 2500
-   once). Over a Tailscale DERP relay the handshake is 3+ round trips of 150-300 ms, which 800 ms
+   once). Over a VPN relay the handshake is 3+ round trips of 150-300 ms, which 800 ms
    could not fit. After a successful *Test connection* the router raises it further to
    `RTT × 6` (1.5-10 s) on slow paths; it never lowers what you set.
 6. **The server being down never fails a dictation** while *Routing & engines → Allow on-device* is on (D24): the phone
@@ -571,7 +571,7 @@ Every screen uses the Settings look (grouped cards, rows with their current valu
 - [ ] `hybrid` over `local`: dictionary/history kept. Developer settings visible; host
       validation (*Server* page): `http://x`, `10.0.0.1:7313`, `256.1.1.1`, `a_b.com` show inline
       errors and the top-bar *Save* greys out; `8.8.8.8` / `example.com` lock *Use TLS* on.
-- [ ] `hybrid`, server up (Tailscale): *Test connection* shows median RTT + server version;
+- [ ] `hybrid`, server up (VPN): *Test connection* shows median RTT + server version;
       dictation → last engine `Server …`, optional badge `[S]` on the preview line; Server info
       shows "pipeline ✓".
 - [ ] `hybrid`, airplane mode (or `systemctl stop flow-server`): dictation still inserts, last

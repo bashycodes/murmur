@@ -271,7 +271,7 @@ async fn accept_loop(l: TcpListener, app: Router, state: Arc<AppState>, tls: Acc
             _ = kill.changed() => return,
         };
         if !state.cfg.insecure_bind_any && !net::classify(peer.ip()).is_local() {
-            tracing::info!(%peer, "rejected: peer outside loopback/LAN/Tailscale");
+            tracing::info!(%peer, "rejected: peer outside loopback/LAN/VPN");
             continue;
         }
         let Some(slot) = state.take_slot(peer.ip()) else {

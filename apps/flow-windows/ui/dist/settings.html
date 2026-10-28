@@ -440,7 +440,7 @@
     <section class="panel" data-panel="developer">
       <fieldset>
         <legend>Engines</legend>
-        <p class="hint">Where speech is turned into text. <strong>Client</strong> = this PC. <strong>Server</strong> = your own flow-server (LAN or Tailscale); audio goes only there, never to a third party.<span id="dev_or_hint" hidden> <strong>OpenRouter</strong> = cloud speech-to-text, turned on and set up in the OpenRouter tab; only its place in the order is set here.</span></p>
+        <p class="hint">Where speech is turned into text. <strong>Client</strong> = this PC. <strong>Server</strong> = your own flow-server (your LAN or a VPN); audio goes only there, never to a third party.<span id="dev_or_hint" hidden> <strong>OpenRouter</strong> = cloud speech-to-text, turned on and set up in the OpenRouter tab; only its place in the order is set here.</span></p>
         <label class="row"><input type="checkbox" id="dev_allow_server" /> Allow server <small id="dev_server_na" class="hint" hidden>(not in this build)</small></label>
         <label class="row"><input type="checkbox" id="dev_allow_client" /> Allow client (this PC) <small id="dev_client_na" class="hint" hidden>(not in this build)</small></label>
         <div id="dev_order_box">
@@ -467,7 +467,7 @@
       <fieldset id="dev_server_box">
         <legend>Server</legend>
         <div class="grid2">
-          <label>Host or IP <input id="dev_host" spellcheck="false" placeholder="100.64.0.10 or mybox.tailnet.ts.net" /><small class="field-err" data-err="host"></small></label>
+          <label>Host or IP <input id="dev_host" spellcheck="false" placeholder="100.64.0.10 or mybox.local" /><small class="field-err" data-err="host"></small></label>
           <label>Port <input id="dev_port" type="number" min="1" max="65535" /><small class="field-err" data-err="port"></small></label>
         </div>
         <label class="row"><input type="checkbox" id="dev_tls" /> Use TLS (wss) <small id="dev_tls_forced" class="hint" hidden>— required for a public address</small></label>

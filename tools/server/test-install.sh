@@ -139,5 +139,33 @@ check "--llm-model: token generated" "$(cat "$T/home/.config/flow-server/token")
 o="$(inst "$R" --dry-run --llm-model "$T/nope.gguf")"
 check "--llm-model missing file: exits 1" "$o" "rc=1"
 
+# 8. No --bind: loopback plus the first VPN (100.64/10) IPv4 that a stub
+# `ip -4 -o addr` reports; 100.128.x (public) and LAN addresses are skipped.
+cat >"$T/bin/ip" <<'EOF'
+#!/usr/bin/env bash
+cat "$IP_ADDRS"
+EOF
+chmod +x "$T/bin/ip"
+nobind() {
+    local rc=0 out
+    out="$(env -u DBUS_SESSION_BUS_ADDRESS PATH="$T/bin:$PATH" HOME="$T/home" XDG_CONFIG_HOME="$T/home/.config" \
+        FLOW_INSTALL_RUN_USER="$T/run" XDG_RUNTIME_DIR="$R" IP_ADDRS="$1" \
+        bash "$HERE/install.sh" --user --model "$T/model" --sherpa-lib "$T/lib" --dry-run 2>&1)" || rc=$?
+    printf '%s\nrc=%s\n' "$out" "$rc"
+}
+cat >"$T/ip-vpn" <<'EOF'
+2: eno1    inet 192.168.1.5/24 brd 192.168.1.255 scope global eno1\       valid_lft forever preferred_lft forever
+3: wan0    inet 100.128.0.9/24 scope global wan0\       valid_lft forever preferred_lft forever
+5: wg0    inet 100.101.102.103/32 scope global wg0\       valid_lft forever preferred_lft forever
+EOF
+o="$(nobind "$T/ip-vpn")"
+check "no --bind: VPN address bound" "$o" "127.0.0.1:7313 100.101.102.103:7313"
+check "no --bind: public 100.128 skipped" "$o" "100.128.0.9:7313" "!"
+check "no --bind: completes" "$o" "rc=0"
+head -n 1 "$T/ip-vpn" >"$T/ip-lan"
+o="$(nobind "$T/ip-lan")"
+check "no --bind, no VPN: loopback only" "$o" "note: no VPN (100.64.0.0/10) IPv4 found; binding loopback only"
+check "no --bind, no VPN: LAN not bound" "$o" "192.168.1.5:7313" "!"
+
 if [ "$fails" != 0 ]; then echo "$fails failed"; exit 1; fi
 echo "all passed"

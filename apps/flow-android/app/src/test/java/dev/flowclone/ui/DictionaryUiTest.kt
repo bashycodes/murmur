@@ -102,11 +102,11 @@ class DictionaryUiTest {
         word.setText("Wisper")
         assertFalse(save.isEnabled)
         assertTrue(texts(a).toString(), "\"Wisper\" is already in the dictionary." in texts(a))
-        word.setText("Tailscale")
+        word.setText("Kubernetes")
         assertTrue(save.isEnabled)
         repl.setText("")
         a.onOptionsItemSelected(save)
-        assertEquals(DictEntry("Tailscale", null, false), store.all().last())
+        assertEquals(DictEntry("Kubernetes", null, false), store.all().last())
         assertTrue(a.isFinishing)
     }
 

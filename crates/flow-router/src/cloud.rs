@@ -750,7 +750,7 @@ mod tests {
         assert!(bad(&|c| c.model = " ".into()).contains("model"));
         assert!(bad(&|c| c.timeout_base_ms = 500).contains("timeout"));
         assert!(bad(&|c| c.dialect = "x".into()).contains("dialect"));
-        // Self-hosted speaches on the LAN / tailnet may use http.
+        // Self-hosted speaches on the LAN / a VPN may use http.
         let mut c = p();
         c.base_url = "http://100.64.0.10:8000/v1".into();
         assert_eq!(c.validate(), Ok(()));

@@ -787,7 +787,7 @@ let devOrder = ["server", "client", "cloud"];
 let devValid = true;
 const HINTS = {
     auth_failed: "token rejected — copy it again from the server's token file",
-    connect_failed: "is flow-server running / Tailscale up?",
+    connect_failed: "is flow-server running / LAN or VPN up?",
     proto_mismatch: "client and server protocol versions differ — update one of them",
     server_not_configured: "enter the server host first",
     timeout: "the server is too slow or stuck",
@@ -890,7 +890,7 @@ function scheduleCheck() {
 function healthText(h) {
     if (!h.ok) {
         const code = h.error ?? "error";
-        // flow-remote refuses ws:// to an address that is not private/tailnet (S6).
+        // flow-remote refuses ws:// to an address that is not private/VPN (S6).
         if (/plaintext (refused|to public address)/.test(h.message ?? "")) {
             return "Server needs TLS — its address is not private (or resolves to a public one); turn on TLS and set a certificate pin";
         }
