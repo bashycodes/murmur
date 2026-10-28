@@ -8,6 +8,7 @@
     <string name="title_dictionary">Dictionary &amp; snippets</string>
     <string name="title_history">History</string>
     <string name="title_scratchpad">Scratchpad</string>
+    <string name="title_insights">Insights</string>
     <string name="shortcut_scratchpad_short">Scratchpad</string>
     <string name="shortcut_scratchpad_long">Dictate into the Scratchpad</string>
     <string name="title_developer">Developer settings</string>

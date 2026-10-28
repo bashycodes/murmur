@@ -35,6 +35,7 @@ import dev.flowclone.notes.DocumentStore
 import dev.flowclone.notes.FileDocumentStore
 import dev.flowclone.data.SuggestionStore
 import dev.flowclone.data.HistoryStore
+import dev.flowclone.data.InsightsStore
 import dev.flowclone.data.EnginePlan
 import dev.flowclone.data.SettingsStore
 import dev.flowclone.health.A11ySetting
@@ -55,6 +56,13 @@ class FlowApp : Application() {
     /** Learn-from-edits suggestions waiting for Add / Dismiss (Dictionary screen). */
     lateinit var suggestions: SuggestionStore; private set
     lateinit var history: HistoryStore; private set
+    /**
+     * Insights page counts (`files/insights.json`; words, recording length, app per local day,
+     * no text). Separate from [history]: clearing History or retention "Never" keeps them.
+     */
+    val insights: InsightsStore by lazy {
+        InsightsStore(File(filesDir, "insights.json")) { history.statsRows() }
+    }
     lateinit var engine: EngineHolder; private set
     lateinit var dev: DevStore; private set
     /** D28: the OpenRouter API key (Keystore-sealed, id [OpenRouter.ID]). */
