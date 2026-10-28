@@ -9,9 +9,9 @@ import kotlinx.coroutines.sync.withLock
 import java.io.File
 
 /**
- * Plain-text documents the user dictates into (the Scratchpad today; Notes will add more ids).
+ * Plain-text documents the user dictates into (the Scratchpad / Quick note and every note).
  * Platform-free and small on purpose: the editor ([dev.flowclone.ui.NoteEditorActivity]) only
- * needs load + save by id, so a later list / delete for Notes extends this without touching it.
+ * needs load + save by id; listing, pins and delete live in [NotesStore].
  */
 interface DocumentStore {
     /** The saved text, or null when nothing was ever saved under [id]. */
@@ -57,6 +57,13 @@ class FileDocumentStore(private val dir: File) : DocumentStore {
             tmp.delete()
             throw java.io.IOException("could not replace ${f.name}")
         }
+    }
+
+    /** Removes [id]'s file (already missing = done). */
+    @Synchronized
+    fun delete(id: String) {
+        val f = file(id)
+        if (f.exists() && !f.delete()) throw java.io.IOException("could not delete ${f.name}")
     }
 }
 
