@@ -43,9 +43,21 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   General → Shortcuts → Open Scratchpad* (none by default). Dictation types
   into it like any other app (style *Other*); its edits are not used to
   learn dictionary words and it is not listed under *Style per app*. The
-  text is saved to `%APPDATA%\FlowClone\scratchpad.txt` shortly after you
-  stop typing, when the window closes and when you quit, and is there again
-  next time. *Copy all*, *Clear* (with *Undo clear*) and a word count.
+  text is saved to `%APPDATA%\FlowClone\notes\scratchpad.txt` shortly after
+  you stop typing, when the window closes and when you quit, and is there
+  again next time. *Copy all*, *Clear* (with *Undo clear*) and a word count.
+- **Windows: Notes.** Tray → *Notes…* lists your saved notes (the
+  Scratchpad is the pinnable *Quick note* at the bottom, nothing lost):
+  title (first line), last edited, word count; search by content; *New
+  note*; *Pin* (pinned first); *Export…* `.txt` / `.md` (a copy in
+  Downloads, never overwriting a file); *Delete* (click twice). A note opens
+  in the Scratchpad editor (← *All notes* to go back) and saves itself the
+  same way. Optional shortcut *Settings → General → Shortcuts → New note +
+  dictate* (none by default) creates a note, opens it and starts hands-free
+  dictation into it. Each note is a plain `.txt` in
+  `%APPDATA%\FlowClone\notes\` (plus a small `index.json` for pins and
+  times; `.txt` files copied in by hand show up too). An existing
+  `scratchpad.txt` is moved there on first start.
 - **Android: learn dictionary words from your edits.** After a dictation is
   typed in, the app re-reads that same field (about once a second, for up
   to 45 s, or until your edit has stopped changing for 8 s). If you corrected

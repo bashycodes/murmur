@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "scratchpad",
-  "description": "Scratchpad window: load, edit and flush its note and copy its text (nothing else).",
+  "description": "Scratchpad / Notes window: list, create, edit, pin, delete and export notes and copy their text (nothing else).",
   "windows": [
     "scratchpad"
   ],
@@ -9,6 +9,11 @@
     "allow-note-load",
     "allow-note-edit",
     "allow-note-flush",
+    "allow-note-list",
+    "allow-note-create",
+    "allow-note-delete",
+    "allow-note-set-pinned",
+    "allow-note-export",
     "allow-clipboard-copy"
   ]
 }

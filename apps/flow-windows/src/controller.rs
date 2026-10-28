@@ -92,6 +92,12 @@ pub trait Platform: Send + Sync + 'static {
     fn suggestions_changed(&self, _pending: usize) {}
     /// The Scratchpad shortcut: show (or create) the Scratchpad window.
     fn open_scratchpad(&self) {}
+    /// The New-note shortcut: create a note and show it in the Scratchpad
+    /// window. `true` once that window is in front (so a dictation started
+    /// now pastes into it; S13 only pastes into the start window).
+    fn open_new_note(&self) -> bool {
+        false
+    }
 }
 
 /// Longest wait for a session start (model load + server connect are
@@ -303,7 +309,16 @@ impl Controller {
         &self.machine
     }
 
-    pub fn handle(&mut self, input: Input) {
+    pub fn handle(&mut self, mut input: Input) {
+        if input == Input::Hotkey(HotkeyAction::NewNote) {
+            // New note, then hands-free into it, unless already dictating
+            // (that dictation keeps its own target window).
+            let idle = !self.machine.is_active();
+            if !self.platform.open_new_note() || !idle {
+                return;
+            }
+            input = Input::Hotkey(HotkeyAction::HandsFreeToggle);
+        }
         let now = (self.clock)();
         match &input {
             Input::Hotkey(HotkeyAction::PasteLast) => {
@@ -1170,6 +1185,8 @@ mod tests {
         on_error: Mutex<Option<CaptureError>>,
         /// Exe of the snapshotted app (default slack.exe).
         exe: Option<&'static str>,
+        /// `open_new_note` brings the note window to the front.
+        note_opens: bool,
     }
 
     impl Fake {
@@ -1255,6 +1272,10 @@ mod tests {
         }
         fn open_scratchpad(&self) {
             self.push("open scratchpad");
+        }
+        fn open_new_note(&self) -> bool {
+            self.push("open new note");
+            self.note_opens
         }
         fn live_route(&self, l: Option<&crate::core_api::LiveRouteLabel>) {
             self.push(format!(
@@ -1450,6 +1471,52 @@ mod tests {
         r.at(0, Input::Hotkey(HotkeyAction::Scratchpad));
         assert_eq!(r.fake.log(), ["open scratchpad"]);
         assert!(matches!(r.c.machine().phase(), Phase::Idle));
+    }
+
+    #[test]
+    fn new_note_hotkey_opens_a_note_then_dictates_hands_free_into_it() {
+        let fake = Fake {
+            note_opens: true,
+            ..Fake::default()
+        };
+        let mut r = rig(fake, Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::NewNote));
+        assert_eq!(
+            r.fake.log().first().map(String::as_str),
+            Some("open new note")
+        );
+        assert!(
+            matches!(r.c.machine().phase(), Phase::Listening(l) if l.mode == crate::dictation::Mode::Locked),
+            "{:?}",
+            r.c.machine().phase()
+        );
+    }
+
+    #[test]
+    fn new_note_does_not_dictate_when_its_window_is_not_in_front() {
+        // Pasting needs the start window (S13): no window, no dictation.
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::NewNote));
+        assert_eq!(r.fake.log(), ["open new note"]);
+        assert!(matches!(r.c.machine().phase(), Phase::Idle));
+    }
+
+    #[test]
+    fn new_note_while_dictating_leaves_that_dictation_alone() {
+        let fake = Fake {
+            note_opens: true,
+            ..Fake::default()
+        };
+        let mut r = rig(fake, Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        let before = r.c.machine().phase().clone();
+        r.at(100, Input::Hotkey(HotkeyAction::NewNote));
+        assert_eq!(
+            r.c.machine().phase(),
+            &before,
+            "same session, still push-to-talk"
+        );
+        assert!(r.fake.log().iter().any(|l| l == "open new note"));
     }
 
     /// Wait for the learn thread (it runs after PasteFinished).
