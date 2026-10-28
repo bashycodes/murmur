@@ -245,7 +245,7 @@ class DeveloperActivity : Activity() {
             banner = banner()
             sectionLabel("ENGINES")
             card {
-                allowServer = toggleRow("Allow server", if (caps.remote) "Your flow-server over LAN / Tailscale" else CloudText.NOT_IN_BUILD.cap(), s.allowServer && caps.remote, enabled = caps.remote)
+                allowServer = toggleRow("Allow server", if (caps.remote) "Your flow-server over your LAN or a VPN" else CloudText.NOT_IN_BUILD.cap(), s.allowServer && caps.remote, enabled = caps.remote)
                 allowClient = toggleRow("Allow on-device", if (caps.local) "The speech model on this phone" else CloudText.NOT_IN_BUILD.cap(), s.allowClient && caps.local, enabled = caps.local)
             }
             sectionLabel("ROUTE ORDER")
@@ -376,7 +376,7 @@ class DeveloperActivity : Activity() {
             sectionLabel("ADDRESS")
             card {
                 host = fieldRow("Host or IP", s.host, InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI,
-                    help = "No scheme, no port", hint = "100.64.0.10 or desktop.tail1234.ts.net", onEdit = edit)
+                    help = "No scheme, no port", hint = "100.64.0.10 or desktop.local", onEdit = edit)
                 port = fieldRow("Port", s.port.toString(), InputType.TYPE_CLASS_NUMBER, onEdit = edit)
                 tls = toggleRow("Use TLS (wss)", "Encrypt the connection", s.tls)
                 pin = fieldRow("Certificate pin (optional)", s.tlsPinSha256, InputType.TYPE_CLASS_TEXT,

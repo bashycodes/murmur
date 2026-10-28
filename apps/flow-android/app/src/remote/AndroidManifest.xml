@@ -2,7 +2,7 @@
 <!-- `remote` flavour: talks to the user's own flow-server (D17). Adds INTERNET and nothing
      else; verifyRemote<BuildType>OnlyInternetPermission checks the merged manifest.
      Native sockets are not subject to the cleartext policy; flow_router's address
-     check (ws:// only to private / tailnet addresses) is the gate. -->
+     check (ws:// only to private / VPN addresses) is the gate. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />

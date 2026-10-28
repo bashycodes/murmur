@@ -94,8 +94,8 @@ class MainActivity : Activity() {
             note(
                 when (app.caps.flavor) {
                     "local" -> "On-device voice dictation. This app has no internet permission: audio, transcripts and history never leave the phone."
-                    "hybrid" -> "Voice dictation on this phone or on your own flow-server (LAN / Tailscale; Developer settings). Voice never goes to a third party; history stays on the phone."
-                    else -> "Voice dictation through your own flow-server (LAN / Tailscale; Developer settings). Voice never goes to a third party; history stays on the phone."
+                    "hybrid" -> "Voice dictation on this phone or on your own flow-server (your LAN or a VPN; Developer settings). Voice never goes to a third party; history stays on the phone."
+                    else -> "Voice dictation through your own flow-server (your LAN or a VPN; Developer settings). Voice never goes to a third party; history stays on the phone."
                 },
             )
             SetupChecklist.banner(setup)?.let { b -> banner().show(b.text, if (b.blocking) Tone.BAD else Tone.WARN) }

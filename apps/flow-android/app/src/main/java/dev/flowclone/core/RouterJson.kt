@@ -251,7 +251,7 @@ object DevText {
         }
         val hint = when (h.error) {
             "auth_failed" -> "token rejected"
-            "connect_failed" -> "is flow-server running / Tailscale up?"
+            "connect_failed" -> "is flow-server running / LAN or VPN up?"
             "proto_mismatch" -> "client and server protocol versions differ (server proto ${h.proto ?: "?"})"
             "server_not_configured" -> "set the server host first"
             "busy" -> "server busy, try again"

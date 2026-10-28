@@ -117,7 +117,7 @@ object RouterErrors {
     const val NEEDS_TLS = "Server needs TLS — turn on Use TLS for this server in Developer settings"
     const val CLOUD_NEEDS_TLS = "Provider needs TLS — use an https:// base URL"
 
-    /** flow-remote / flow-cloud refused cleartext to an address that is not private or tailnet. */
+    /** flow-remote / flow-cloud refused cleartext to an address that is not private or a VPN address. */
     fun plaintextRefused(message: String?) = message?.contains("plaintext refused", ignoreCase = true) == true
 
     /** D24: the router names the phone-model failure after the server's (`…; phone model failed to load: why`). */
