@@ -3,7 +3,6 @@ package dev.flowclone.ui
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.Editable
@@ -20,23 +19,30 @@ import dev.flowclone.FlowApp
 import dev.flowclone.R
 import dev.flowclone.notes.Autosaver
 import dev.flowclone.notes.DocumentStore
+import dev.flowclone.notes.NotesView
 import dev.flowclone.notes.TextStats
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.SupervisorJob
 
 /**
- * One plain-text document to dictate into, edit and copy out. Today that is the Scratchpad
- * ([DocumentStore.SCRATCHPAD], main screen → *Scratchpad*, or the launcher shortcut); Notes will
- * open other ids through [EXTRA_DOC] / [EXTRA_TITLE].
+ * One plain-text note to dictate into, edit and copy out: the Quick note
+ * ([DocumentStore.SCRATCHPAD], main screen → *Quick note*, or its launcher shortcut) or any note
+ * from [NotesActivity] ([EXTRA_DOC]). [ACTION_NEW_NOTE] (*New note* in Notes and the launcher
+ * shortcut) opens a fresh id from [dev.flowclone.notes.NotesStore.newId]; nothing is written until
+ * there is text, so backing out of an untouched new note leaves no empty note behind. The id is
+ * kept across recreation (rotation, process death).
  *
  * Dictation: the field is an ordinary EditText, so the bubble and the accessibility service type
  * into it like into any other app. While this screen is in front it registers itself as
  * [FlowApp.dictationSurface], the one exception to "no bubble on our own screens"
  * ([dev.flowclone.policy.OwnAppGate]). Nothing here inserts dictated text itself, so a
- * dictation goes in once, through the same commitText path as everywhere else.
+ * dictation goes in once, through the same commitText path as everywhere else. A new note does
+ * not start recording by itself: the mic session belongs to the bubble's service and starts from
+ * a bubble tap (starting it from here would need a new service entry point and a mic start
+ * without the user's tap); the field is focused with the keyboard up, so the bubble is one tap away.
  *
- * Saving: [Autosaver] writes [DocumentStore] shortly after edits pause and at once on pause.
+ * Saving: [Autosaver] writes [DocumentStore] (per note) shortly after edits pause and at once on pause.
  */
 class NoteEditorActivity : Activity() {
     private val app get() = FlowApp.of(this)
@@ -44,16 +50,33 @@ class NoteEditorActivity : Activity() {
     private lateinit var edit: EditText
     private lateinit var count: TextView
     private lateinit var saver: Autosaver
+    /** Swapping in another note's text ([onNewIntent]): not an edit. */
+    private var loading = false
 
     /** On [FlowApp.documentsIo]; not cancelled on destroy: the last flush must still reach the disk. */
     private val io by lazy { CoroutineScope(SupervisorJob() + app.documentsIo.asCoroutineDispatcher()) }
 
+    /** The note open right now (tests). */
+    val noteId: String get() = docId
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        docId = intent.getStringExtra(EXTRA_DOC)?.takeIf(DocumentStore::isValidId) ?: DocumentStore.SCRATCHPAD
-        title = intent.getStringExtra(EXTRA_TITLE) ?: TITLE
         actionBar?.setDisplayHomeAsUpEnabled(true)
+        val text = open(intent, savedInstanceState?.getString(STATE_DOC)) ?: return
+        build(text)
+    }
+
+    /**
+     * Picks the note [i] asks for ([restored]: the id this screen had before a recreation) and
+     * reads it. Null (after finishing) when the file could not be read.
+     */
+    private fun open(i: Intent, restored: String?): String? {
         val store = app.documents
+        docId = restored?.takeIf(DocumentStore::isValidId)
+            ?: i.getStringExtra(EXTRA_DOC)?.takeIf(DocumentStore::isValidId)
+            ?: (if (i.action == ACTION_NEW_NOTE) runCatching { app.documentsIo.submit<String> { store.newId() }.get() }.getOrNull() else null)
+            ?: DocumentStore.SCRATCHPAD
+        title = i.getStringExtra(EXTRA_TITLE) ?: if (docId == DocumentStore.SCRATCHPAD) TITLE else NOTE_TITLE
         // A small private file, read before the field exists so nothing typed can race a late
         // load; on the documents thread, after any save another editor's pause queued.
         val id = docId
@@ -62,11 +85,32 @@ class NoteEditorActivity : Activity() {
             // Never start empty over a file we could not read: the first autosave would replace it.
             Toast.makeText(this, "Couldn't open the ${title.toString().lowercase()}", Toast.LENGTH_LONG).show()
             finish()
-            return
+            return null
         }
         val text = loaded.getOrNull().orEmpty()
-        saver = Autosaver(io, text) { store.save(docId, it) }
-        build(text)
+        saver = Autosaver(io, text) { store.save(id, it) }
+        return text
+    }
+
+    /** singleTop: another note asked for while this one is in front (e.g. *New note* again). */
+    override fun onNewIntent(i: Intent) {
+        super.onNewIntent(i)
+        if (!::edit.isInitialized) return
+        val same = i.action != ACTION_NEW_NOTE && (i.getStringExtra(EXTRA_DOC) ?: DocumentStore.SCRATCHPAD) == docId
+        if (same) return
+        saver.flush()
+        setIntent(i)
+        val text = open(i, null) ?: return
+        loading = true
+        edit.setText(text)
+        edit.setSelection(text.length)
+        loading = false
+        showCount()
+    }
+
+    override fun onSaveInstanceState(out: Bundle) {
+        super.onSaveInstanceState(out)
+        if (::docId.isInitialized) out.putString(STATE_DOC, docId)
     }
 
     private fun build(initial: String) {
@@ -120,7 +164,7 @@ class NoteEditorActivity : Activity() {
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) = Unit
             override fun afterTextChanged(s: Editable?) {
                 showCount()
-                saver.edited(s?.toString().orEmpty())
+                if (!loading) saver.edited(s?.toString().orEmpty())
             }
         })
         edit.requestFocus()
@@ -153,9 +197,7 @@ class NoteEditorActivity : Activity() {
     private fun share() {
         val t = current()
         if (t.isBlank()) { Toast.makeText(this, "Nothing to share yet", Toast.LENGTH_SHORT).show(); return }
-        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, t)
-        runCatching { startActivity(Intent.createChooser(send, "Share ${title}")) }
-            .onFailure { Toast.makeText(this, "No app to share with", Toast.LENGTH_SHORT).show() }
+        shareText(this, t, title.toString())
     }
 
     private fun clear() {
@@ -170,12 +212,27 @@ class NoteEditorActivity : Activity() {
     override fun onNavigateUp(): Boolean { finish(); return true }
 
     companion object {
-        /** [DocumentStore] id to open (default: the Scratchpad). */
+        /** [DocumentStore] id to open (default: the Quick note). */
         const val EXTRA_DOC = "doc"
-        /** Screen title (default "Scratchpad"). */
+        /** Screen title (default [TITLE] for the Quick note, [NOTE_TITLE] for other notes). */
         const val EXTRA_TITLE = "title"
-        const val TITLE = "Scratchpad"
+        /** Open a fresh note (res/xml/shortcuts.xml names this action too). */
+        const val ACTION_NEW_NOTE = "dev.flowclone.action.NEW_NOTE"
+        const val TITLE = NotesView.QUICK_NOTE
+        const val NOTE_TITLE = "Note"
+        private const val STATE_DOC = "doc_id"
 
         fun scratchpad(c: Context): Intent = Intent(c, NoteEditorActivity::class.java)
+
+        fun note(c: Context, id: String): Intent = Intent(c, NoteEditorActivity::class.java).putExtra(EXTRA_DOC, id)
+
+        fun newNote(c: Context): Intent = Intent(c, NoteEditorActivity::class.java).setAction(ACTION_NEW_NOTE)
+
+        /** Plain-text share sheet (editor and Notes list). */
+        fun shareText(a: Activity, text: String, what: String) {
+            val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+            runCatching { a.startActivity(Intent.createChooser(send, "Share $what")) }
+                .onFailure { Toast.makeText(a, "No app to share with", Toast.LENGTH_SHORT).show() }
+        }
     }
 }

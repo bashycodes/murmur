@@ -114,7 +114,7 @@ object InsertGuard {
 
 /**
  * This app's own windows. The bubble normally ignores them (a settings field is not a place to
- * dictate), except while a screen made for dictation is in front: the Scratchpad
+ * dictate), except while a screen made for dictation is in front: a note editor
  * ([dev.flowclone.ui.NoteEditorActivity] registers itself in [dev.flowclone.FlowApp.dictationSurface]).
  */
 object OwnAppGate {

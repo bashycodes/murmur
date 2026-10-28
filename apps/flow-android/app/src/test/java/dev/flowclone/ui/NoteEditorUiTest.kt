@@ -24,7 +24,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowAlertDialog
 import java.io.File
 
-/** Scratchpad: restore on open, save on pause, Copy / Share / Clear, word count, dictation surface. */
+/** Note editor (Quick note + notes): restore on open, save on pause, Copy / Share / Clear, word count, dictation surface, note ids. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = FlowApp::class)
 class NoteEditorUiTest {
@@ -110,6 +110,70 @@ class NoteEditorUiTest {
         assertEquals("", editor(a).text.toString())
         awaitSaved("")
         assertTrue(file.isFile)
+    }
+
+    private fun awaitNote(id: String, want: String?) {
+        repeat(300) { idle(); if (app.documents.load(id) == want) return; Thread.sleep(10) }
+        assertEquals(want, app.documents.load(id))
+    }
+
+    @Test fun aNoteIdOpensAndSavesThatNoteNotTheScratchpad() {
+        app.documents.save("n-shop", "milk")
+        val c = Robolectric.buildActivity(NoteEditorActivity::class.java, NoteEditorActivity.note(ctx, "n-shop")).setup()
+        assertEquals("milk", editor(c.get()).text.toString())
+        assertEquals(NoteEditorActivity.NOTE_TITLE, c.get().title.toString())
+        assertSame(c.get(), app.dictationSurface) // the bubble works in every note editor
+        editor(c.get()).setText("milk and eggs")
+        c.pause().stop().destroy()
+        awaitNote("n-shop", "milk and eggs")
+        assertNull(app.documents.load(DocumentStore.SCRATCHPAD))
+    }
+
+    @Test fun unsafeNoteIdFallsBackToTheScratchpad() {
+        val a = Robolectric.buildActivity(NoteEditorActivity::class.java, NoteEditorActivity.note(ctx, "../../x")).setup().get()
+        assertEquals(DocumentStore.SCRATCHPAD, a.noteId)
+        assertEquals(NoteEditorActivity.TITLE, a.title.toString())
+    }
+
+    @Test fun newNoteGetsAFreshIdAndIsOnlyWrittenOnceItHasText() {
+        val c = Robolectric.buildActivity(NoteEditorActivity::class.java, NoteEditorActivity.newNote(ctx)).setup()
+        val id = c.get().noteId
+        assertTrue(id, DocumentStore.isValidId(id) && id != DocumentStore.SCRATCHPAD)
+        assertTrue(editor(c.get()).hasFocus())
+        c.pause()
+        idle()
+        assertTrue("untouched new note leaves nothing", app.documents.list().isEmpty())
+        c.resume()
+        editor(c.get()).setText("dictated idea")
+        c.pause().stop().destroy()
+        awaitNote(id, "dictated idea")
+        assertEquals(listOf(id), app.documents.list().map { it.id })
+    }
+
+    @Test fun newNoteKeepsItsIdAcrossRecreation() {
+        val c = Robolectric.buildActivity(NoteEditorActivity::class.java, NoteEditorActivity.newNote(ctx)).setup()
+        val id = c.get().noteId
+        editor(c.get()).setText("half a thought")
+        val state = android.os.Bundle()
+        c.pause().saveInstanceState(state).stop().destroy()
+        awaitNote(id, "half a thought")
+        val again = Robolectric.buildActivity(NoteEditorActivity::class.java, NoteEditorActivity.newNote(ctx)).setup(state).get()
+        assertEquals(id, again.noteId)
+        assertEquals("half a thought", editor(again).text.toString())
+    }
+
+    @Test fun newNoteIntentWhileInFrontSavesAndSwitches() {
+        val c = Robolectric.buildActivity(NoteEditorActivity::class.java, NoteEditorActivity.note(ctx, "first")).setup()
+        editor(c.get()).setText("first text")
+        c.newIntent(NoteEditorActivity.newNote(ctx))
+        awaitNote("first", "first text")
+        val second = c.get().noteId
+        assertTrue(second != "first")
+        assertEquals("", editor(c.get()).text.toString())
+        editor(c.get()).setText("second text")
+        c.pause()
+        awaitNote(second, "second text")
+        assertEquals("first text", app.documents.load("first"))
     }
 
     @Test fun touchTargetsAreAtLeast48dp() {

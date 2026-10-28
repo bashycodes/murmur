@@ -184,7 +184,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         }
     }
 
-    /** Our own screens get no bubble and no insert, except the Scratchpad while it is in front ([OwnAppGate]). */
+    /** Our own screens get no bubble and no insert, except a note editor while it is in front ([OwnAppGate]). */
     private fun ownAppBlocked(pkg: String?) = OwnAppGate.blocks(pkg, packageName, app.dictationSurface != null)
 
     /** SoftKeyboardStateTracker: visible fraction of the IME window rect. */

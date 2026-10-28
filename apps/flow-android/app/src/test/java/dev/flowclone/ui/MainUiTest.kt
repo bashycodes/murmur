@@ -38,7 +38,7 @@ class MainUiTest {
         for (want in listOf(
             "STATUS", "SETUP", "RUN", "MORE", "Native engine", "Speech engine", "Language", "Version",
             "Microphone", "Display over other apps", "Accessibility service", "Battery optimisation", "Notifications",
-            "Start / show bubble", "Stop bubble", "Settings", "Scratchpad", "Insights", "Dictionary & snippets", "History",
+            "Start / show bubble", "Stop bubble", "Settings", "Notes", "Quick note", "Insights", "Dictionary & snippets", "History",
         )) assertTrue(want, want in t)
         assertTrue(t.toString(), t.any { it.startsWith("Keep it running: ") })
         assertTrue(AppVersion.current.label(FlowApp.of(a).caps.flavor) in t)
@@ -95,8 +95,13 @@ class MainUiTest {
         assertEquals(HistoryActivity::class.java.name, shadowOf(a).nextStartedActivity.component?.className)
         rowTitled(a, "Dictionary & snippets").performClick()
         assertEquals(DictionaryActivity::class.java.name, shadowOf(a).nextStartedActivity.component?.className)
-        rowTitled(a, "Scratchpad").performClick()
-        assertEquals(NoteEditorActivity::class.java.name, shadowOf(a).nextStartedActivity.component?.className)
+        rowTitled(a, "Notes").performClick()
+        assertEquals(NotesActivity::class.java.name, shadowOf(a).nextStartedActivity.component?.className)
+        rowTitled(a, "Quick note").performClick()
+        shadowOf(a).nextStartedActivity.let {
+            assertEquals(NoteEditorActivity::class.java.name, it.component?.className)
+            assertEquals(null, it.getStringExtra(NoteEditorActivity.EXTRA_DOC)) // = the Scratchpad document
+        }
         rowTitled(a, "Insights").performClick()
         assertEquals(InsightsActivity::class.java.name, shadowOf(a).nextStartedActivity.component?.className)
     }
