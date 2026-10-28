@@ -603,6 +603,31 @@ pub mod json_api {
             .map_err(|e| (e.kind(), e.to_string()))
     }
 
+    /// Command Mode (`flow_core::command`): `instruction` applied to
+    /// `selected` (`None` / blank = write at the cursor) on the cleanup
+    /// route ([`Router::command`]; a core handle uses its own on-device
+    /// LLM only). `{"ok":true,"text":…}` or `{"ok":false,"kind":…,"error":…}`
+    /// (`kind` = `CommandError::kind`, `error` = the pill text). Blocking
+    /// (LLM call, at most `command::DEFAULT_TIMEOUT` plus a model load).
+    pub fn command(h: &FlowHandle, instruction: &str, selected: Option<&str>) -> String {
+        let timeout = flow_core::command::DEFAULT_TIMEOUT;
+        let r = match h {
+            FlowHandle::Router(r) => r.command(instruction, selected, timeout),
+            FlowHandle::Core(c) => {
+                flow_core::command::run(c.cleaner(), instruction, selected, timeout)
+            }
+        };
+        command_json(r)
+    }
+
+    pub fn command_json(r: Result<String, flow_core::command::CommandError>) -> String {
+        match r {
+            Ok(text) => serde_json::json!({"ok": true, "text": text}),
+            Err(e) => serde_json::json!({"ok": false, "kind": e.kind(), "error": e.to_string()}),
+        }
+        .to_string()
+    }
+
     /// `CleanupStatus` JSON (`supported:false` for a core handle).
     pub fn cleanup_status(h: &FlowHandle) -> String {
         let s = h.router().map(Router::cleanup_status).unwrap_or_default();
@@ -1199,6 +1224,28 @@ pub unsafe extern "C" fn flow_set_cleanup(h: *mut FlowHandle, json: *const c_cha
             return -1;
         };
         int_result(json_api::set_cleanup(h, j))
+    })
+}
+
+/// Command Mode: rewrite `selected` (NULL / blank = generate at the cursor)
+/// per the spoken `instruction` on the cleanup route. BLOCKS (LLM call).
+/// `{"ok":true,"text":…}` / `{"ok":false,"kind":…,"error":…}`; NULL only
+/// for a NULL handle or instruction.
+///
+/// # Safety
+/// `h` a handle or NULL; strings valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn flow_command(
+    h: *mut FlowHandle,
+    instruction: *const c_char,
+    selected: *const c_char,
+) -> *mut c_char {
+    guard(std::ptr::null_mut(), || {
+        let (Some(h), Some(i)) = (h.as_ref(), str_arg(instruction)) else {
+            set_error("null handle or instruction");
+            return std::ptr::null_mut();
+        };
+        out_string(json_api::command(h, i, str_arg(selected)))
     })
 }
 
