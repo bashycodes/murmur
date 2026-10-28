@@ -16,6 +16,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Fixed
+
+- **Windows release build.** The release's version check stopped on the
+  Windows build server: it read CHANGELOG.md as Windows-1252 text and failed
+  on characters like → and ✎, so 0.7.0 shipped without the Windows
+  installer. The version tool now always reads, writes and prints UTF-8.
+
 ## [0.7.0] - 2026-10-28
 
 ### Added

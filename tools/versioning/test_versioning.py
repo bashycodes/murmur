@@ -4,7 +4,9 @@ Run: python3 -m unittest discover -s tools/versioning   (from the repo root)
 """
 
 import json
+import os
 import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -237,6 +239,36 @@ class ChangelogTest(unittest.TestCase):
     def test_duplicate_version_is_refused(self):
         with self.assertRaises(ValueError):
             v.changelog_release(CHANGELOG, "0.0.9", "2026-10-24")
+
+
+class EncodingTest(unittest.TestCase):
+    """Windows runners default to cp1252: every file read/write must say utf-8 (v0.7.0 CI failure)."""
+
+    def test_every_file_call_names_utf8(self):
+        import ast
+
+        src = (HERE / "versioning.py").read_text(encoding="utf-8")
+        missing = [
+            n.lineno
+            for n in ast.walk(ast.parse(src))
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr in ("read_text", "write_text", "open")
+            and not any(k.arg == "encoding" for k in n.keywords)
+        ]
+        self.assertEqual(missing, [], "calls without encoding=\"utf-8\" on these lines")
+
+    def test_section_prints_non_ascii_through_a_cp1252_stdout(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as d:
+            Path(d, "CHANGELOG.md").write_text("# Changelog\n\n## [1.0.0] - 2026-10-28\n\n- Bubble \u270e button \u2192 rewrite\n", encoding="utf-8")
+            env = dict(os.environ, PYTHONIOENCODING="cp1252")
+            out = subprocess.run(
+                [sys.executable, str(HERE / "versioning.py"), "section", "1.0.0", "--root", d],
+                capture_output=True, env=env, check=True,
+            ).stdout.decode("utf-8")
+        self.assertIn("\u270e button \u2192 rewrite", out)
 
 
 if __name__ == "__main__":
