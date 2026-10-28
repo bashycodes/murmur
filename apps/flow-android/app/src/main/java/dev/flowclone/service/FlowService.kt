@@ -503,7 +503,15 @@ class FlowService : Service() {
                 insertOutcome = outcome, route = result.route?.engine,
             )
             Log.i(TAG, dev.flowclone.debug.CommitLine.of(result))
-            scope.launch(Dispatchers.IO) { runCatching { app.history.add(row, retention) } }
+            scope.launch(Dispatchers.IO) {
+                // Insights first, in the same coroutine: its one-time backfill from History must
+                // not already see this row, or it would be counted twice. Kept whatever the retention.
+                if (result.status != dev.flowclone.core.CommitStatus.ERROR) {
+                    runCatching { app.insights.record(row.createdAt, result.historyText, t.audioMs, appId) }
+                        .onFailure { Log.w(TAG, "insights: ${it.message}") }
+                }
+                runCatching { app.history.add(row, retention) }
+            }
         }
 
         override fun hasMicPermission() = hasMic()
