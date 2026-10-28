@@ -20,7 +20,8 @@
 #   --sherpa-lib DIR    dir with libsherpa-onnx-c-api.so + libonnxruntime.so
 #                       (default $SHERPA_ONNX_LIB_DIR)
 #   --bind ADDR         listen address, repeatable (default 127.0.0.1:7313 plus
-#                       this machine's Tailscale IPv4 on the same port, if any)
+#                       this machine's first VPN IPv4 in 100.64.0.0/10 on the
+#                       same port, if any)
 #   --port N            port for the default bind addresses (default 7313)
 #   --threads N         ASR threads (default 4)
 #   --llm               also build LLM cleanup: flow-server with the `llm`
@@ -163,14 +164,19 @@ if [ "$MODE" = user ] && ! systemctl --user show-environment >/dev/null 2>&1; th
 fi
 if [ ${#BINDS[@]} -eq 0 ]; then
     BINDS=("127.0.0.1:$PORT")
-    TS_IP=""
-    if command -v tailscale >/dev/null 2>&1; then
-        TS_IP="$(tailscale ip -4 2>/dev/null | head -n 1 || true)"
+    # A VPN overlay address (100.64.0.0/10, the range mesh VPNs hand out)
+    # on any interface; LAN and other addresses need an explicit --bind.
+    VPN_IP=""
+    if command -v ip >/dev/null 2>&1; then
+        VPN_IP="$(ip -4 -o addr show scope global 2>/dev/null | awk '{
+            split($4, a, "/"); split(a[1], o, ".")
+            if (o[1] == 100 && o[2] >= 64 && o[2] <= 127) { print a[1]; exit }
+        }' || true)"
     fi
-    if [ -n "$TS_IP" ]; then
-        BINDS+=("$TS_IP:$PORT")
+    if [ -n "$VPN_IP" ]; then
+        BINDS+=("$VPN_IP:$PORT")
     else
-        echo "note: no Tailscale IPv4 found; binding loopback only (add --bind <tailscale-ip>:$PORT)" >&2
+        echo "note: no VPN (100.64.0.0/10) IPv4 found; binding loopback only (add --bind <LAN-or-VPN-ip>:$PORT)" >&2
     fi
 fi
 BIND_TOML="$(printf '"%s", ' "${BINDS[@]}")"
@@ -294,7 +300,7 @@ else
     priv_write "$CONF" 0644 <<EOF
 # flow-server config, written by tools/server/install.sh. Reference:
 # crates/flow-server/dist/config.example.toml, docs/server-setup.md.
-# Loopback / LAN / Tailscale addresses only: 0.0.0.0 or a public address is
+# Loopback / LAN / VPN addresses only: 0.0.0.0 or a public address is
 # refused unless [tls] is set.
 bind = $BIND_TOML
 token_file = "$TOKEN"
@@ -339,9 +345,9 @@ else
 # flow-server as a systemd user unit (tools/server/install.sh --user).
 # The system unit (crates/flow-server/dist/flow-server.service) adds
 # DynamicUser and a kernel IP allowlist; here the server's own bind policy
-# and peer filter (loopback / LAN / Tailscale only) are the boundary.
+# and peer filter (loopback / LAN / VPN only) are the boundary.
 [Unit]
-Description=flow-server (self-hosted dictation ASR; LAN/Tailscale only)
+Description=flow-server (self-hosted dictation ASR; LAN/VPN only)
 After=network-online.target
 
 [Service]
@@ -381,6 +387,6 @@ Next steps (docs/server-setup.md):
   * LLM cleanup loaded: GET /v1/health with the token shows "llm":true
   * the token for the apps:                        ${SUDO}cat $TOKEN
   * apps, Developer settings: Allow server on, Server host = one of
-    ${BINDS[*]} (host part; the Tailscale 100.x address from other devices),
-    port $PORT, TLS off on Tailscale, token as above, then "Test connection".
+    ${BINDS[*]} (host part; the LAN or VPN address from other devices),
+    port $PORT, TLS off on a VPN or trusted LAN, token as above, then "Test connection".
 EOF
