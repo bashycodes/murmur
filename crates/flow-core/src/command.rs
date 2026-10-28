@@ -53,6 +53,22 @@ pub enum CommandError {
     Backend(String),
 }
 
+impl CommandError {
+    /// Stable machine-readable kind (FFI / JNI `nativeCommand`), so a
+    /// shell can react without parsing the pill text.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            CommandError::NoInstruction => "no_instruction",
+            CommandError::SelectionTooLong { .. } => "selection_too_long",
+            CommandError::NoLlm => "no_llm",
+            CommandError::SelectionNotAllowed => "selection_not_allowed",
+            CommandError::Timeout { .. } => "timeout",
+            CommandError::Empty => "empty",
+            CommandError::Backend(_) => "backend",
+        }
+    }
+}
+
 const SYSTEM_TRANSFORM: &str = "You edit text for the user. You get a piece of text the user \
 selected and a spoken instruction saying what to do with it (rewrite, shorten, change the tone, \
 translate, fix, turn into a list, and so on). Apply the instruction to the text and reply with \
@@ -84,7 +100,7 @@ fn non_empty(selected: Option<&str>) -> Option<&str> {
 }
 
 /// Backends size the answer from `CleanPrompt::transcript` (2x its tokens
-/// + 32: right for cleanup, far too little for "write an email to..." or
+/// plus 32: right for cleanup, far too little for "write an email to..." or
 /// "expand this"). The command's source text is repeated up to these
 /// lengths so the cap allows a real answer (~230 / ~430 tokens at least);
 /// the local engine also drafts from it, which repetition doesn't hurt.
@@ -613,6 +629,25 @@ mod tests {
             run(dynamic(&cloud), "shorten", Some("text"), T).as_deref(),
             Ok("cloud answer")
         );
+    }
+
+    #[test]
+    fn error_kinds_are_stable() {
+        let all = [
+            (CommandError::NoInstruction, "no_instruction"),
+            (
+                CommandError::SelectionTooLong { max: 1 },
+                "selection_too_long",
+            ),
+            (CommandError::NoLlm, "no_llm"),
+            (CommandError::SelectionNotAllowed, "selection_not_allowed"),
+            (CommandError::Timeout { secs: 1 }, "timeout"),
+            (CommandError::Empty, "empty"),
+            (CommandError::Backend("x".into()), "backend"),
+        ];
+        for (e, k) in all {
+            assert_eq!(e.kind(), k);
+        }
     }
 
     #[test]
