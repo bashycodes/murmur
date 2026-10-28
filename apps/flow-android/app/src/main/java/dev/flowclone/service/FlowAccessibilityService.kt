@@ -14,6 +14,11 @@ import android.widget.Toast
 import dev.flowclone.AccessibilityBridge
 import dev.flowclone.FlowApp
 import dev.flowclone.R
+import dev.flowclone.command.CommandApply
+import dev.flowclone.command.CommandField
+import dev.flowclone.command.CommandGuard
+import dev.flowclone.command.CommandTarget
+import dev.flowclone.command.SelectionSnapshot
 import dev.flowclone.core.FieldContext
 import dev.flowclone.data.FieldContextBuilder
 import dev.flowclone.health.AccessibilityHealth
@@ -150,6 +155,7 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         scope.cancel()
         if (app.accessibility === this) { app.accessibility = null; app.a11yConnectedAt = null }
         app.fieldFocus.value = null
+        app.fieldSelection.value = false
     }
 
     // ---- 07 §2.2 evaluateCurrentState ----
@@ -182,6 +188,10 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
             lastDecision = published
             app.fieldFocus.value = published
         }
+        // Command Mode's ✎: the IME's selection, else the node's (apps that report one but not the other).
+        val selected = published != null && (inputMethod?.hasSelection == true ||
+            (node != null && node.textSelectionStart >= 0 && node.textSelectionEnd != node.textSelectionStart))
+        if (app.fieldSelection.value != selected) app.fieldSelection.value = selected
     }
 
     /** Our own screens get no bubble and no insert, except the Scratchpad while it is in front ([OwnAppGate]). */
@@ -214,14 +224,19 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
     /** D21: the field pinned at dictation start is a password / sensitive field (debug log redacts it). */
     @Volatile override var startFieldProtected: Boolean = false; private set
 
-    override fun captureFieldContext(): FieldContext? {
-        val pkg = currentPackageName
-        val node = focusedNode()
+    /** Pin [node] as the dictation / command target (S12 [insertTarget], learn-from-edits). */
+    private fun pinStart(pkg: String?, node: AccessibilityNodeInfo?) {
         startSnapshot = StartSnapshot(
             pkg ?: node?.packageName?.toString(),
             node?.let { FocusedNodeFinder.identityHash(it, true) },
             node?.let { FocusedNodeFinder.identityHash(it, false) },
         )
+    }
+
+    override fun captureFieldContext(): FieldContext? {
+        val pkg = currentPackageName
+        val node = focusedNode()
+        pinStart(pkg, node)
         val editor = inputMethod?.focusedEditor ?: FocusedEditor.EMPTY
         val type = editor.inputType.takeIf { editor.packageName != null } ?: node?.inputType ?: 0
         startFieldProtected = dev.flowclone.debug.DebugRedact.isProtectedField(
@@ -260,6 +275,64 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         ) return dev.flowclone.learn.FieldRead.FocusChanged
         val text = dev.flowclone.insert.TextMatching.readNodeText(NodeAdapter(node).snapshot(), editor.hintText, emptySet())
         return text?.let { dev.flowclone.learn.FieldRead.Text(it) } ?: dev.flowclone.learn.FieldRead.Unavailable
+    }
+
+    // ---- Command Mode ----
+
+    override fun captureCommand(): CommandTarget {
+        runCatching { evaluateCurrentState() }
+        val pkg = currentPackageName
+        val node = focusedNode()
+        pinStart(pkg, node)
+        val editor = inputMethod?.focusedEditor ?: FocusedEditor.EMPTY
+        val type = editor.inputType.takeIf { editor.packageName != null } ?: node?.inputType ?: 0
+        val sensitive = Build.VERSION.SDK_INT >= 34 && node?.isAccessibilityDataSensitive == true
+        startFieldProtected = dev.flowclone.debug.DebugRedact.isProtectedField(type, node?.isPassword == true, sensitive)
+        val appPkg = pkg ?: node?.packageName?.toString()
+        CommandGuard.refusal(
+            hasField = node != null || inputMethod?.isInputSessionActive == true, inputType = type,
+            nodePassword = node?.let(FocusedNodeFinder::isExcludedField) == true, dataSensitive = sensitive,
+            pkg = appPkg, userDenylist = app.settings.load().userDenylist, ownAppBlocked = ownAppBlocked(pkg),
+        )?.let {
+            Log.i(TAG, "command refused")
+            return CommandTarget.Refused(it)
+        }
+        // The node: the whole text + selection (what ACTION_SET_TEXT rewrites).
+        val nodeText = node?.let { dev.flowclone.insert.TextMatching.readNodeText(NodeAdapter(it).snapshot(), editor.hintText, emptySet()) }
+        val fromNode = SelectionSnapshot.of(nodeText, node?.textSelectionStart ?: -1, node?.textSelectionEnd ?: -1)
+        if (fromNode?.hasSelection == true) return CommandTarget.Field(appPkg, fromNode)
+        // The IME: a window around its selection (apps whose node hides the selection).
+        val fromIme = inputMethod?.readSurrounding(COMMAND_WINDOW, COMMAND_WINDOW)?.let { SelectionSnapshot.of(it.first, it.second, it.third) }
+        return CommandTarget.Field(appPkg, fromIme?.takeIf { it.hasSelection } ?: fromNode ?: fromIme)
+    }
+
+    override suspend fun applyCommand(target: CommandTarget.Field, text: String): Boolean = withContext(Dispatchers.Main) {
+        val sel = target.selection?.takeIf { it.hasSelection }
+            // Nothing selected: the answer goes in at the cursor like a dictation.
+            ?: return@withContext insertTextAndVerify(text)
+        val node = focusedNode()
+        val hint = inputMethod?.focusedEditor?.hintText
+        val field = object : CommandField {
+            override fun readText(): String? = node?.let {
+                runCatching { it.refresh() }
+                dev.flowclone.insert.TextMatching.readNodeText(NodeAdapter(it).snapshot(), hint, emptySet())
+            }
+            override val canSetText: Boolean get() = node != null && NodeAdapter(node).canSetText
+            override fun setText(text: String): Boolean = node != null && NodeAdapter(node).setText(text)
+            override fun setCursor(at: Int): Boolean = node?.performAction(
+                AccessibilityNodeInfo.ACTION_SET_SELECTION,
+                android.os.Bundle().apply {
+                    putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, at)
+                    putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, at)
+                },
+            ) == true
+            override fun imeSelectedText(): String? = inputMethod?.selectedText()
+            override fun imeCommit(text: String): Boolean = inputMethod?.commitText(text) == true
+        }
+        val ok = runCatching { CommandApply.replaceSelection(sel, text, field) }.getOrDefault(false)
+        lastInsertSteps = listOf(if (ok) "COMMAND_REPLACED" else "COMMAND_NOT_REPLACED")
+        Log.i(TAG, "command replace ok=$ok")
+        ok
     }
 
     override suspend fun sendKey(key: dev.flowclone.core.PasteKey): Boolean = withContext(Dispatchers.Main) {
@@ -380,5 +453,9 @@ class FlowAccessibilityService : AccessibilityService(), AccessibilityBridge {
         }
     }
 
-    companion object { private const val TAG = "FlowA11y" }
+    companion object {
+        private const val TAG = "FlowA11y"
+        /** Command Mode via the IME: characters read on each side of the selection. */
+        private const val COMMAND_WINDOW = 2000
+    }
 }

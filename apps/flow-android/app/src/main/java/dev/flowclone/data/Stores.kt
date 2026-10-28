@@ -34,6 +34,7 @@ class SettingsStore(context: Context) {
         shrinkBubble = sp.getBoolean("shrink_bubble", true),
         shrinkToDot = loadShrinkToDot(),
         bubbleScale = loadBubbleScale(),
+        commandButton = loadCommandButton(),
         spokenCleanup = sp.getBoolean("spoken_cleanup", true),
         asrEngine = dev.flowclone.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.flowclone.core.AsrEngine.WHISPER,
         endpointSilenceMs = loadEndpointMs(),
@@ -89,6 +90,7 @@ class SettingsStore(context: Context) {
             .putBoolean("shrink_bubble", s.shrinkBubble)
             .putBoolean("shrink_to_dot", s.shrinkToDot)
             .putFloat("bubble_scale", s.bubbleScale)
+            .putString("command_button", s.commandButton.key)
             .putBoolean("spoken_cleanup", s.spokenCleanup)
             .putString("asr_engine", s.asrEngine.wire)
             .putInt("endpoint_silence_ms", s.endpointSilenceMs)
@@ -104,7 +106,13 @@ class SettingsStore(context: Context) {
             .apply()
         _bubbleScale.value = s.bubbleScale
         _shrinkToDot.value = s.shrinkToDot
+        _commandButton.value = s.commandButton
     }
+
+    private fun loadCommandButton() = CommandButton.fromKey(sp.getString("command_button", null))
+    private val _commandButton = kotlinx.coroutines.flow.MutableStateFlow(loadCommandButton())
+    /** The saved "Command button", so the running bubble shows / hides ✎ the moment it changes. */
+    val commandButton: kotlinx.coroutines.flow.StateFlow<CommandButton> = _commandButton
 
     private fun loadBubbleScale() = Settings.bubbleScaleOf(sp.getFloat("bubble_scale", 1f))
     private val _bubbleScale = kotlinx.coroutines.flow.MutableStateFlow(loadBubbleScale())
@@ -217,7 +225,25 @@ data class HistoryRow(
     val insertOutcome: String? = null,
     /** v3: [dev.flowclone.core.RouteInfo.engine] (local / remote / cloud); null = unknown. */
     val route: String? = null,
-)
+    /**
+     * v4, Command Mode rows only ([status] = [COMMAND]): the selected text the instruction
+     * rewrote; null = speak-to-generate. [asrText] holds the instruction, [finalText] the result.
+     */
+    val commandOriginal: String? = null,
+) {
+    val isCommand: Boolean get() = status == COMMAND
+
+    companion object {
+        /** [status] of a Command Mode row (not a [dev.flowclone.core.CommitStatus]). */
+        const val COMMAND = "COMMAND"
+
+        fun ofCommand(r: dev.flowclone.command.CommandRecord, createdAt: Long) = HistoryRow(
+            0, createdAt, r.appId, COMMAND, r.instruction, r.result.orEmpty(),
+            inserted = r.outcome == dev.flowclone.debug.InsertOutcome.INSERTED, audioMs = 0,
+            insertOutcome = r.outcome, commandOriginal = r.original,
+        )
+    }
+}
 
 /** Local-only history (plain SQLite; no audio stored). */
 /**
@@ -231,7 +257,7 @@ object HistoryHygiene {
     const val AFTER_CLEAR = "VACUUM"
 }
 
-class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", null, 3) {
+class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", null, 4) {
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
         db.rawQuery(HistoryHygiene.ON_OPEN, null).use { it.moveToFirst() }
@@ -255,6 +281,12 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
         db.execSQL("CREATE INDEX history_created ON history(created_at)")
         addV2Columns(db)
         addV3Columns(db)
+        addV4Columns(db)
+    }
+
+    /** v4: Command Mode's original selection (status COMMAND rows only). */
+    private fun addV4Columns(db: SQLiteDatabase) {
+        db.execSQL("ALTER TABLE history ADD COLUMN command_original TEXT")
     }
 
     /** v3: the insert outcome and route (fix/route-order); NULL for older rows = unknown. */
@@ -271,6 +303,7 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         if (oldVersion < 2) addV2Columns(db)
         if (oldVersion < 3) addV3Columns(db)
+        if (oldVersion < 4) addV4Columns(db)
     }
 
     fun add(row: HistoryRow, retention: Retention) {
@@ -281,6 +314,7 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
             put("inserted", if (row.inserted) 1 else 0); put("audio_ms", row.audioMs)
             put("fallback_reason", row.fallbackReason); put("asr_ms", row.asrMs); put("llm_ms", row.llmMs); put("total_ms", row.totalMs)
             put("insert_outcome", row.insertOutcome); put("route", row.route)
+            put("command_original", row.commandOriginal)
         })
         purge(retention, row.createdAt)
     }
@@ -311,14 +345,15 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
                         totalMs = c.getLong(c.getColumnIndexOrThrow("total_ms")),
                         insertOutcome = c.getString(c.getColumnIndexOrThrow("insert_outcome")),
                         route = c.getString(c.getColumnIndexOrThrow("route")),
+                        commandOriginal = c.getString(c.getColumnIndexOrThrow("command_original")),
                     ),
                 )
             }
         }
 
-    /** Every saved dictation, oldest first, for the one-time Insights backfill (failed ones left out). */
+    /** Every saved dictation, oldest first, for the one-time Insights backfill (failed ones and Command Mode left out). */
     fun statsRows(): List<InsightsStore.Row> =
-        readableDatabase.query("history", arrayOf("created_at", "app_id", "final_text", "audio_ms"), "status != 'ERROR'", null, null, null, "created_at ASC").use { c ->
+        readableDatabase.query("history", arrayOf("created_at", "app_id", "final_text", "audio_ms"), "status NOT IN ('ERROR', 'COMMAND')", null, null, null, "created_at ASC").use { c ->
             buildList { while (c.moveToNext()) add(InsightsStore.Row(c.getLong(0), c.getString(1), c.getString(2), c.getLong(3))) }
         }
 

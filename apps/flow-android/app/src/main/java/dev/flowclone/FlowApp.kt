@@ -86,6 +86,9 @@ class FlowApp : Application() {
     /** Latest keyboard/field decision from the accessibility service (null = no allowed field). */
     val fieldFocus = MutableStateFlow<BubbleVisibilityPolicy.Decision?>(null)
 
+    /** Command Mode: the allowed focused field has a non-empty selection (the bubble shows ✎). */
+    val fieldSelection = MutableStateFlow(false)
+
     /** Last dictation's result + route (Developer page, engine badge). In-memory only (§5). */
     val lastRoute = MutableStateFlow<LastDictation?>(null)
 
@@ -216,6 +219,16 @@ interface AccessibilityBridge {
      * that field must not be re-read (password / sensitive / banking / no field).
      */
     fun editReader(): dev.flowclone.learn.FieldReader? = null
+
+    /**
+     * Command Mode: the focused field's text + selection, or why it is refused (password /
+     * sensitive / banking / denylisted / no field). Pins the field like [captureFieldContext].
+     */
+    fun captureCommand(): dev.flowclone.command.CommandTarget =
+        dev.flowclone.command.CommandTarget.Refused(dev.flowclone.command.CommandTarget.NO_FIELD_MESSAGE)
+
+    /** Command Mode: replace [target]'s selection with [text] (at the cursor without one). False = field unchanged. */
+    suspend fun applyCommand(target: dev.flowclone.command.CommandTarget.Field, text: String): Boolean = false
 }
 
 /**

@@ -129,6 +129,8 @@ data class InsertOutcome(val outcome: String, val steps: List<String> = emptyLis
         const val TIMEOUT = "timeout"
         const val START_FAILED = "start_failed"
         const val CANCELLED = "cancelled"
+        /** Command Mode: the AI gave no text (no AI, timeout, refused selection, …); nothing changed. */
+        const val COMMAND_FAILED = "command_failed"
     }
 }
 

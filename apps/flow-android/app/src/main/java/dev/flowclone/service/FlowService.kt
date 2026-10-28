@@ -147,9 +147,14 @@ class FlowService : Service() {
         scope.launch { controller.state.collect { presence.onState(it) } }
         scope.launch {
             // "Bubble size" and "Shrink to a dot" ride along with repair, so either applies to the live bubble at once.
-            val repairAndLook = combine(repair, app.settings.bubbleScale, app.settings.shrinkToDot, ::Triple)
-            combine(controller.state, controller.level, showCopy, presence.presence, repairAndLook) { s, l, c, p, (r, scale, dot) ->
-                BubbleUi(s, c && s == DictationState.Ready, l, minimized = p.minimized, repair = r, visible = presence.visible(s), scale = scale, dot = dot)
+            // Command Mode's ✎ rides along too: shown per the "Command button" setting and the field's selection.
+            val command = combine(app.settings.commandButton, app.fieldSelection) { mode, sel -> mode.shows(sel) }
+            val repairAndLook = combine(repair, app.settings.bubbleScale, app.settings.shrinkToDot, command) { r, scale, dot, cmd -> Look(r, scale, dot, cmd) }
+            combine(controller.state, controller.level, showCopy, presence.presence, repairAndLook) { s, l, c, p, look ->
+                BubbleUi(
+                    s, c && s == DictationState.Ready, l, minimized = p.minimized, repair = look.repair, visible = presence.visible(s),
+                    scale = look.scale, dot = look.dot, showCommand = look.command && s == DictationState.Ready,
+                )
             }.collect { if (::overlay.isInitialized) overlay.render(it) }
         }
         scope.launch {
@@ -172,6 +177,7 @@ class FlowService : Service() {
             controller.state.collect { s ->
                 if (s is DictationState.Error && s.kind == DictationState.ErrorKind.FailedToTranscribe) toast(R.string.toast_transcribe_failed)
                 if (s is DictationState.Error && s.kind is DictationState.ErrorKind.EngineUnavailable) toast(s.kind.message)
+                if (s is DictationState.Error && s.kind is DictationState.ErrorKind.CommandFailed) toast(s.kind.message)
                 if (s is DictationState.Error && s.kind == DictationState.ErrorKind.MicUnavailable) toast(R.string.toast_mic_unavailable)
             }
         }
@@ -470,6 +476,8 @@ class FlowService : Service() {
                     startActivity(Intent(this@FlowService, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 FeedbackEvent.PasteRetryFailed, FeedbackEvent.NoSpeech, FeedbackEvent.TargetChanged,
                 FeedbackEvent.TargetProtected, FeedbackEvent.MicLost -> Unit
+                // Command Mode: the error tone (the reason is the bubble's toast); the field was not touched.
+                FeedbackEvent.CommandFailed -> tone?.startTone(ToneGenerator.TONE_PROP_NACK, 200)
             }
         }
 
@@ -515,6 +523,24 @@ class FlowService : Service() {
         }
 
         override fun hasMicPermission() = hasMic()
+
+        override fun captureCommand(): dev.flowclone.command.CommandTarget =
+            app.accessibility?.captureCommand()
+                ?: dev.flowclone.command.CommandTarget.Refused(dev.flowclone.command.CommandTarget.NO_FIELD_MESSAGE)
+
+        override suspend fun applyCommand(target: dev.flowclone.command.CommandTarget.Field, text: String): Boolean {
+            val bridge = app.accessibility ?: return false
+            val ok = bridge.applyCommand(target, text)
+            runCatching { insertSteps += bridge.lastInsertSteps }
+            return ok
+        }
+
+        /** History only (instruction, original, result): a command is not dictated text, so Insights skips it. */
+        override fun recordCommand(record: dev.flowclone.command.CommandRecord) {
+            val retention = app.settings.load().retention
+            val row = HistoryRow.ofCommand(record, System.currentTimeMillis())
+            scope.launch(Dispatchers.IO) { runCatching { app.history.add(row, retention) } }
+        }
 
         override fun clientFallbackNote(): String? = app.engine.clientNote()
 
@@ -621,10 +647,20 @@ class FlowService : Service() {
         controller.cap = app.settings.load().sessionCap()
     }
 
+    /** Bubble look settings + Command Mode's ✎ (one flow, so the bubble combine stays at five inputs). */
+    private data class Look(val repair: Boolean, val scale: Float, val dot: Boolean, val command: Boolean)
+
     private inner class BubbleListener : BubbleView.Listener {
         override fun onTap(button: BubbleButton) {
             val s = controller.state.value
             when (button) {
+                BubbleButton.COMMAND -> {
+                    // Command Mode: tap ✎, say the instruction; it ends on silence, ✓ or a second tap.
+                    presence.touch()
+                    haptic(VibrationEffect.EFFECT_CLICK)
+                    beforeStart()
+                    controller.toggleCommand()
+                }
                 BubbleButton.CANCEL -> controller.cancel()
                 BubbleButton.DONE -> { haptic(VibrationEffect.EFFECT_CLICK); controller.release() }
                 BubbleButton.PASTE -> controller.pasteRetry()

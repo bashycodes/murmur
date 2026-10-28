@@ -65,5 +65,50 @@ class HistoryStoreTest {
         s.close()
     }
 
+    /** Command Mode rows: instruction, original selection and result round-trip; Insights never counts them. */
+    @Test fun commandRowsRoundTripAndStayOutOfInsights() {
+        val s = HistoryStore(ctx)
+        val rec = dev.flowclone.command.CommandRecord("make it shorter", "A very long sentence.", "Short.", "com.example.notes", "inserted")
+        s.add(HistoryRow.ofCommand(rec, 7L), Retention.KEEP)
+        s.add(HistoryRow.ofCommand(rec.copy(original = null, result = null, outcome = "command_failed"), 8L), Retention.KEEP)
+        val (failed, ok) = s.recent()
+        assertEquals(true, ok.isCommand)
+        assertEquals("make it shorter", ok.asrText)
+        assertEquals("A very long sentence.", ok.commandOriginal)
+        assertEquals("Short.", ok.finalText)
+        assertEquals(true, ok.inserted)
+        assertEquals("Command", HistoryView.label(ok))
+        assertNull(failed.commandOriginal)
+        assertEquals(false, failed.inserted)
+        assertEquals("Command failed", HistoryView.label(failed))
+        assertEquals("(no result)", HistoryView.text(failed, raw = false))
+        assertEquals("make it shorter", HistoryView.text(failed, raw = true))
+        assertEquals(emptyList<InsightsStore.Row>(), s.statsRows())
+        s.close()
+    }
+
+    @Test fun v3FileUpgradesToV4() {
+        ctx.deleteDatabase(NAME)
+        val f = ctx.getDatabasePath(NAME).also { it.parentFile?.mkdirs() }
+        SQLiteDatabase.openOrCreateDatabase(f, null).use { db ->
+            db.execSQL(
+                """CREATE TABLE history(id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER NOT NULL,
+                   app_id TEXT, status TEXT NOT NULL, asr_text TEXT NOT NULL, final_text TEXT NOT NULL,
+                   inserted INTEGER NOT NULL, audio_ms INTEGER NOT NULL)""",
+            )
+            db.execSQL("ALTER TABLE history ADD COLUMN fallback_reason TEXT")
+            for (c in listOf("asr_ms", "llm_ms", "total_ms")) db.execSQL("ALTER TABLE history ADD COLUMN $c INTEGER NOT NULL DEFAULT 0")
+            for (c in listOf("insert_outcome", "route")) db.execSQL("ALTER TABLE history ADD COLUMN $c TEXT")
+            db.execSQL("INSERT INTO history(created_at, app_id, status, asr_text, final_text, inserted, audio_ms, route) VALUES (5, 'b', 'FORMATTED', 'old', 'Old.', 1, 900, 'local')")
+            db.version = 3
+        }
+        val s = HistoryStore(ctx)
+        val old = s.recent().single()
+        assertEquals("local", old.route)
+        assertNull(old.commandOriginal)
+        assertEquals(false, old.isCommand)
+        s.close()
+    }
+
     private companion object { const val NAME = "history.db" }
 }

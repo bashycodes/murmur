@@ -128,4 +128,29 @@ class BubbleGeometryTest {
         assertEquals(MAIN, hit(procHold.copy(scale = 1.5f), 10f, processingCancel = false))
         assertEquals(CANCEL, hit(procHold.copy(scale = 1.5f), 10f, processingCancel = true))
     }
+
+    // ---- Command Mode button (✎): right of the mic, before copy ----
+
+    private val readyCommand = BubbleUi(DictationState.Ready, showCommand = true)
+
+    @Test fun theCommandButtonSitsRightOfTheMicAndBeforeCopy() {
+        assertEquals(120f to 56f, size(readyCommand))
+        assertEquals(MAIN, hit(readyCommand, 28f))
+        assertEquals(BubbleButton.COMMAND, hit(readyCommand, 64f))
+        assertEquals(BubbleButton.COMMAND, hit(readyCommand, 119f))
+        val both = readyCommand.copy(showCopy = true)
+        assertEquals(184f to 56f, size(both))
+        assertEquals(BubbleButton.COMMAND, hit(both, 100f))
+        assertEquals(COPY, hit(both, 150f))
+        assertEquals(BubbleButton.COMMAND, hit(readyCommand.copy(scale = 1.5f), 100f))
+    }
+
+    @Test fun theCommandButtonKeepsTheBubbleFullSizeAndLeavesRecordingAlone() {
+        assertEquals(false, BubbleGeometry.isMinimisedLook(readyCommand.copy(minimized = true)))
+        assertEquals(120f to 56f, size(readyCommand.copy(minimized = true)))
+        val rec = BubbleUi(DictationState.Recording(hold = false, startedAt = 0, command = true), showCommand = true)
+        assertEquals(230f to 56f, size(rec))
+        assertEquals(CANCEL, hit(rec, 28f))
+        assertEquals(DONE, hit(rec, 200f))
+    }
 }
