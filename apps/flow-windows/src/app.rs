@@ -1790,6 +1790,13 @@ pub fn run() {
         }
     }
     let insights_store = Arc::new(Mutex::new(stats));
+    // Notes: the pre-Notes Scratchpad file moves into notes\ (once).
+    let notes_dir = notes::default_dir(appdata.as_deref());
+    match notes::migrate_scratchpad(&notes::app_dir(appdata.as_deref()), &notes_dir) {
+        Ok(true) => eprintln!("[notes] moved scratchpad.txt into {}", notes_dir.display()),
+        Ok(false) => {}
+        Err(e) => eprintln!("[notes] could not move scratchpad.txt: {e}"),
+    }
     let debug_path = debug_log::default_path(appdata.as_deref());
     let debug = Arc::new(DebugLog::file(
         debug_path.clone(),
@@ -1838,7 +1845,7 @@ pub fn run() {
             debug: debug.clone(),
             debug_path,
             notes: Arc::new(Mutex::new(AutoSave::new(
-                NoteStore::new(notes::default_dir(appdata.as_deref())),
+                NoteStore::new(notes_dir),
                 notes::SAVE_DEBOUNCE_MS,
             ))),
             started: Instant::now(),
