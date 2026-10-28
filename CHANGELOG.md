@@ -30,6 +30,17 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   selected text stays as it was; your clipboard is always put back.
   History shows the instruction, the original text and the result.
 
+- **Android: Notes.** *Main screen → More → Notes* keeps as many dictated
+  notes as you like, in the same editor as the Scratchpad (the bubble works
+  in every note, and still nowhere else in Flow Clone). The list shows each
+  note's first line and when it last changed, pinned notes first; search
+  finds words anywhere in a note; *New note*, and per note *Pin*, *Share* and
+  *Delete* (asks first). Long-press the app icon → *New note* opens a fresh
+  note with the keyboard up (tap the bubble to dictate; it doesn't start
+  recording by itself). The Scratchpad is now the *Quick note*: same text,
+  pinned at the top of Notes, still on the main screen and the icon
+  shortcut. Notes stay on the phone (no sync), saved as you go. An untouched
+  new note isn't kept.
 - **Android: Scratchpad.** *Main screen → More → Scratchpad* (or long-press
   the app icon → *Scratchpad*) opens one big text field to dictate into,
   edit and copy out: tap it, tap the bubble and talk, like in any other app.

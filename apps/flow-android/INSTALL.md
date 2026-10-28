@@ -543,10 +543,12 @@ Every screen uses the Settings look (grouped cards, rows with their current valu
 
 | Screen | Contents |
 |---|---|
-| Main | banner while a required permission is missing; *Status* (Native engine, Speech engine, Language → Settings · Language, AI cleanup → Settings · AI cleanup, Version); *Setup* (5 permissions + *Keep it running*); *Run* (Start / show bubble, Stop bubble); *More* (Settings, Scratchpad, Insights, Dictionary & snippets, History, Speech model (local / hybrid), Developer settings (when visible)) |
+| Main | banner while a required permission is missing; *Status* (Native engine, Speech engine, Language → Settings · Language, AI cleanup → Settings · AI cleanup, Version); *Setup* (5 permissions + *Keep it running*); *Run* (Start / show bubble, Stop bubble); *More* (Settings, Notes, Quick note, Insights, Dictionary & snippets, History, Speech model (local / hybrid), Developer settings (when visible)) |
 | Dictionary & snippets | *Dictionary* and *Snippets* rows with counts; *Import JSON*, *Export JSON*. Each list: *Add* in the top bar, search from 8 entries, tap to edit, TalkBack action / long-press to delete. Edit page: *Save* in the top bar when changed + valid, Discard prompt, *Snippet* switch, *Delete* |
 | History | *Keep dictations* (→ Settings · History), *Show the raw transcript*, search from 8 entries, rows grouped by day (first line, time · app, result badge); *Clear all* in the top bar. Detail: text, raw transcript, when / app / result / inserted / timings, *Copy*, *Delete dictation* |
 | Insights | *Last 7 days* (words-per-day bars + total), *Totals* (Words dictated, Dictations, Average speed, Current / Longest streak, Time saved vs typing at 40 words/min), *Top apps* (by words, app names), *Reset stats* (asks first). Counts only, in `files/insights.json`; kept when History is cleared |
+| Notes | *New note*, search (by content), notes as rows (first line, last changed · more text, *Pinned* badge) under *Pinned* and *Notes*; tap opens the note editor, ⋮ / long-press / TalkBack actions: *Pin* or *Unpin*, *Share*, *Delete* (asks). The *Quick note* (the old Scratchpad) is one of them, pinned by default |
+| Note editor (Quick note, any note) | word count, *Copy all*, *Share*, *Clear* (asks), one big field; saves as you go; the only screen of ours with the bubble |
 | Speech model / Parakeet model / AI cleanup model | *Status* (Active model, Size, Engine), *Import model file…* / *Import model folder…* with progress and errors under it, *Recommended* (tap = copy download link), *Imported* (*Use*, *Delete* asks first) |
 | OpenRouter (Settings → Cloud (OpenRouter), Developer settings) | *API key* (masked; Show / Paste / Clear, *Save key*, *Check key*), *Privacy*, *Speech-to-text* (opt-in + consent, Model, Language, Send dictionary words, *Test*), *Text cleanup* (opt-in + its own consent, Model, order, Provider choice, Time limit, Status), *What cleanup sends*, *Usage* (budget, Reset counters) |
 | Model picker (OpenRouter → Model) | *In use*, list source + *Refresh*, search, filter chips, rows (name, id, price, context, badges), *Use custom model id…* |
@@ -701,12 +703,20 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       *Dismiss*ed and the same edit repeated is not suggested again. Switch the field or app mid-watch:
       nothing more is read (debug log `learn_edit end=focus_changed`). *Settings → Learn from my edits*
       off → no `learn_edit` event after a dictation. Never in a password field (no bubble there anyway).
-- [ ] Scratchpad (*Main screen → Scratchpad*, and long-press the app icon → *Scratchpad*): the keyboard
+- [ ] Quick note (*Main screen → Quick note*, and long-press the app icon → *Quick note*; the Scratchpad before Notes): the keyboard
       opens and the bubble shows; dictate twice → each text appears **once** (`FlowA11y` log `insert
       SUCCESS_TEXT_FOUND`, no `node_tier` step); swipe the app away from Recents and reopen → the text is
       still there. *Copy all* pastes elsewhere; *Share* opens the share sheet; *Clear* asks, then empties
       it (still empty after reopening). In *Settings* fields the bubble stays hidden. With *Learn from my
-      edits* on, correcting a dictated word here behaves as in Notes (a suggestion, nothing else).
+      edits* on, correcting a dictated word here behaves as in other apps (a suggestion, nothing else).
+- [ ] Notes (*Main screen → Notes*): on a phone that used the Scratchpad, its text is there as the
+      pinned *Quick note*. *New note*, dictate with the bubble, back → the note is listed by its first
+      line with the time; make three, swipe the app away from Recents, reopen → all three are there.
+      The bubble shows in every note editor but not on the list (search box included). Search finds a
+      word from the middle of a note. ⋮ → *Pin* moves it to *Pinned*; *Share* opens the share sheet;
+      *Delete* asks, then the note is gone (still gone after reopening). Back out of an untouched *New
+      note* → no empty note listed. Long-press the app icon → *New note*: a fresh note opens with the
+      keyboard up (dictation starts on a bubble tap, not by itself).
 - [ ] Insights (*Main screen → Insights*): on an install that already has History, the first open
       shows those dictations counted (words, top apps by name, bars on their days). Dictate a 10-word
       sentence in Notes and come back: *Words dictated* +10, *Dictations* +1, today's bar grows, *Current
