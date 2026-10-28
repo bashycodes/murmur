@@ -21,5 +21,7 @@ sealed interface CommandTarget {
     companion object {
         const val PROTECTED_MESSAGE = "Command Mode is off in password, sensitive and banking fields"
         const val NO_FIELD_MESSAGE = "Command Mode needs a text field: tap into one first"
+        /** The keyboard reports a selection the app doesn't let us read: never guess (it would write at the cursor instead). */
+        const val UNREADABLE_SELECTION_MESSAGE = "Command Mode can't read the selected text in this app"
     }
 }

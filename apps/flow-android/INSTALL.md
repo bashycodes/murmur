@@ -529,7 +529,7 @@ keyboard:
 - after 5 s of no use it shrinks to a dot; a tap restores it;
 - **✎** (Command Mode) appears next to the mic while text is selected: tap it, say what to do
   ("make it shorter", "translate to Spanish"); the selection is replaced by the rewrite, the rest of
-  the text stays. It stops on a pause, a second tap on the bubble or ✓; ✕ cancels. Needs AI cleanup
+  the text stays. It stops on a pause or ✓; ✕ cancels. Needs AI cleanup
   (the on-device model, or OpenRouter text cleanup with *Send text around the cursor* on). With
   *Settings → Bubble → Command mode → Always* it is always there and, without a selection, writes
   what you describe at the cursor. Refused in password / number / phone / URL fields, banking and

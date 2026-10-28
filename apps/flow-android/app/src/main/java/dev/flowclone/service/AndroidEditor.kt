@@ -40,8 +40,10 @@ class ShellInputMethod(service: AccessibilityService, private val onStarted: () 
 
     override fun onUpdateSelection(oldSelStart: Int, oldSelEnd: Int, newSelStart: Int, newSelEnd: Int, candidatesStart: Int, candidatesEnd: Int) {
         super.onUpdateSelection(oldSelStart, oldSelEnd, newSelStart, newSelEnd, candidatesStart, candidatesEnd)
+        val had = hasSelection
         selection = newSelStart to newSelEnd
-        runCatching(onStarted) // re-evaluate: the bubble shows ✎ while text is selected
+        // Re-evaluate only when a selection appears or goes (✎), not on every caret move while typing.
+        if (hasSelection != had) runCatching(onStarted)
     }
 
     /** The editor reports a non-empty selection. */

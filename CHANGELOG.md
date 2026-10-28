@@ -22,7 +22,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   appears next to the bubble's mic: tap it, say what to do ("make it
   shorter", "make this more formal", "translate to Spanish"), and the
   selection is replaced by the rewrite; the text around it stays as it was.
-  The instruction ends on a pause, a second tap or ✓; the line above the
+  The instruction ends on a pause or ✓ (✕ cancels); the line above the
   bubble says *Command: …* while it listens. *Settings → Bubble → Command
   mode*: *When text is selected* (default), *Always* (also without a
   selection: say what to write at the cursor) or *Off*. Tap, hold and drag
