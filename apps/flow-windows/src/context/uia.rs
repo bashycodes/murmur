@@ -186,6 +186,57 @@ unsafe fn browser_url(uia: &IUIAutomation, hwnd: HWND) -> Option<String> {
     looks_like_url.then_some(v)
 }
 
+// ------------------------------------------------------------ command mode
+
+/// Command Mode: the focused control's selected text via TextPattern
+/// (up to one character past `flow_core::command::MAX_SELECTION_CHARS`, so
+/// an oversized selection is refused rather than cut). `None` = UIA did
+/// not answer within `timeout`.
+pub fn selection(timeout: Duration) -> Option<super::UiaSelection> {
+    let (tx, rx) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("flow-uia-sel".into())
+        .spawn(move || unsafe {
+            let inited = CoInitializeEx(None, COINIT_MULTITHREADED).is_ok();
+            let r = selection_blocking();
+            let _ = tx.send(r);
+            if inited {
+                CoUninitialize();
+            }
+        })
+        .ok()?;
+    rx.recv_timeout(timeout).ok()
+}
+
+unsafe fn selection_blocking() -> super::UiaSelection {
+    use super::UiaSelection;
+    let Ok(uia) = CoCreateInstance::<_, IUIAutomation>(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
+    else {
+        return UiaSelection::Unsupported;
+    };
+    let Ok(el) = uia.GetFocusedElement() else {
+        return UiaSelection::Unsupported;
+    };
+    if el.CurrentIsPassword().map(|b| b.as_bool()).unwrap_or(false) {
+        return UiaSelection::Password;
+    }
+    let Ok(tp) = el.GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId) else {
+        return UiaSelection::Unsupported;
+    };
+    let Ok(sel) = tp.GetSelection() else {
+        return UiaSelection::Unsupported;
+    };
+    let max = flow_core::command::MAX_SELECTION_CHARS as i32 + 1;
+    let mut text = String::new();
+    // Multiple ranges (multi-cursor editors) are joined in order.
+    for i in 0..sel.Length().unwrap_or(0) {
+        if let Ok(r) = sel.GetElement(i) {
+            text.push_str(&bstr(r.GetText(max)));
+        }
+    }
+    UiaSelection::Text(text)
+}
+
 // ------------------------------------------------------------ learn-from-edits
 
 /// Longest field text read back while watching (characters).
