@@ -260,7 +260,7 @@ LibriSpeech clips (5.3-14.4 s) dictated in-process (FlowCore, Parakeet,
 Both sides ran on the same loaded CPU one after the other, so per-file
 differences (e.g. 720 vs 2045 ms) are load noise, not protocol cost: the
 protocol and pipeline overhead is single-digit milliseconds on loopback.
-Over Tailscale add the network RTT (a few ms on a LAN path). The win of the
+Over a VPN add the network RTT (a few ms on a LAN path). The win of the
 server mode comes from running on a faster machine than the client (a phone),
 which this single-box test cannot show. After the run the server's state
 directory (its cwd, HOME and TMPDIR) was empty, and its log had 10 `result`

@@ -1,8 +1,8 @@
 # flow-server example config (/etc/flow-server/config.toml).
-# Bind only to loopback / LAN / Tailscale addresses; the server must never be
-# reachable from the internet. Recommended: the machine's Tailscale 100.x IP.
+# Bind only to loopback / LAN / VPN addresses; the server must never be
+# reachable from the internet. Recommended: the machine's VPN address (e.g. 100.x).
 # 0.0.0.0, :: or a public address is refused unless [tls] is set (or the
-# --insecure-bind-any flag is given); peers outside loopback/LAN/Tailscale are
+# --insecure-bind-any flag is given); peers outside loopback/LAN/VPN are
 # dropped before any byte is read either way (unless --insecure-bind-any).
 bind = ["127.0.0.1:7313"]          # e.g. ["127.0.0.1:7313", "100.64.0.10:7313"]
 token_file = "/etc/flow-server/token"  # create with: flow-server gen-token --out /etc/flow-server/token
@@ -24,7 +24,7 @@ threads = 4            # 4 on the i7-6700: oversubscribing hyperthreads is far s
 # llm_lib = "/usr/local/lib/libflow_llm.so"
 # vad_model_path = "/var/lib/flow-server/models/ggml-silero-v5.1.2.bin"
 
-# [tls]                # optional wss:// (LAN without Tailscale); pin the cert in the client
+# [tls]                # optional wss:// (LAN without a VPN); pin the cert in the client
 # cert = "/etc/flow-server/cert.pem"
 # key = "/etc/flow-server/key.pem"
 

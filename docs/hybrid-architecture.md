@@ -6,7 +6,7 @@ Covers the `core-p1` API (segments, `plain_text`, `empty_reason`, typed load err
 
 **Goal.** A shell (Windows, Android) dictates either on-device ("client", today's path)
 or by streaming to a self-hosted `flow-server` on the user's own machine (i7-6700, 8
-threads, 19 GB RAM, no GPU; LAN or Tailscale). Voice never reaches a third party.
+threads, 19 GB RAM, no GPU; LAN or VPN). Voice never reaches a third party.
 **Hard requirement:** going server-only or client-only later must be a build-flag
 change with no integration work. Proof: the toggle-matrix and equivalence suites (§4)
 and the per-flavour build gates (§1.4).
@@ -204,8 +204,8 @@ three so switching is an in-place update that keeps prefs, dictionary and histor
 * jniLibs move from `src/main/jniLibs` to `src/<flavour>/jniLibs`; `tools/build-native.sh --flavor local|hybrid|remote` fills them.
 * `BuildConfig.CAP_LOCAL` / `CAP_REMOTE` per flavour; at startup they must equal `nativeCapabilities()` (mismatch = main-screen error "native library flavour mismatch").
 * `remote` flavour hides model import / LLM GGUF import; `ModelConfig` is never built.
-* Native sockets are not subject to Android's cleartext policy (Network Security Config covers Java stacks only), so `ws://` to a tailnet address works without `usesCleartextTraffic`. The router's own address check (§2.6) is the gate.
-* Tailscale on Android is a VPN: no extra permission or code.
+* Native sockets are not subject to Android's cleartext policy (Network Security Config covers Java stacks only), so `ws://` to a VPN address works without `usesCleartextTraffic`. The router's own address check (§2.6) is the gate.
+* A mesh VPN on Android is an OS VPN: no extra permission or code.
 
 **Root workspace gate** `tools/check-build-matrix.sh` (owner: server implementer):
 `cargo tree -p flow-ffi -e normal --features jni,whisper` must not contain
@@ -269,11 +269,11 @@ Spec file: `docs/protocol.md` (normative; this section is its outline). Types:
 
 | Server address (client-side check, `flow_router::net::classify`) | `ws://` | `wss://` |
 |---|---|---|
-| loopback, RFC 1918, 100.64.0.0/10 (Tailscale/CGNAT), fd7a:115c:a1e0::/48 (Tailscale), fc00::/7, link-local, `*.ts.net`, `*.local`, single-label names | allowed; Developer page shows "unencrypted: OK on Tailscale (WireGuard), LAN only otherwise" | allowed |
+| loopback, RFC 1918, 100.64.0.0/10 (VPN/CGNAT), fd7a:115c:a1e0::/48 (VPN overlay), fc00::/7, link-local, `*.ts.net`, `*.local`, single-label names | allowed; Developer page shows "unencrypted: OK only on your LAN or over an encrypted VPN" | allowed |
 | anything else (public IP or public DNS name) | **refused** (`connect_failed: plaintext to public address`) | required |
 
-Recommended: Tailscale (WireGuard already encrypts; bind the server to its 100.x address).
-TLS (server `[tls] cert/key`, rustls) for LAN without Tailscale; self-signed certs pinned
+Recommended: a WireGuard-based VPN (it already encrypts; bind the server to its 100.x address).
+TLS (server `[tls] cert/key`, rustls) for LAN without a VPN; self-signed certs pinned
 with `tls_pin_sha256` (SHA-256 of the leaf cert DER, 64 hex). Hostnames resolve to the
 user-entered server only; no discovery, no relay, no fallback hosts.
 
@@ -440,7 +440,7 @@ Read-only rows:
 * **Circuit:** closed / open until hh:mm:ss (reason).
 
 Buttons:
-* **Test connection** → `probe_server()` with the form's unsaved values, off the UI thread. Shows "OK · median 4 ms (3-6) · flow-server 0.2.0+1a2b3c4 · parakeet" or the error code with a hint (`auth_failed` → "token rejected", `connect_failed` → "is flow-server running / Tailscale up?", `proto_mismatch` → versions).
+* **Test connection** → `probe_server()` with the form's unsaved values, off the UI thread. Shows "OK · median 4 ms (3-6) · flow-server 0.2.0+1a2b3c4 · parakeet" or the error code with a hint (`auth_failed` → "token rejected", `connect_failed` → "is flow-server running / LAN or VPN up?", `proto_mismatch` → versions).
 * **Test session** → 1 s silence through the full router path with the current toggles; expects EMPTY `no_speech`; shows the route used.
 * **Reset circuit**, **Reset to defaults**.
 
@@ -512,7 +512,7 @@ exactly as in §1.2; any change needs this doc updated first.
 ### 6.4 Definition of done (new `PROJECT_CONTEXT.md` "What works" rows)
 
 1. `equivalence.rs` + `toggle_matrix.rs` green (mock), real-model equivalence green when models are present.
-2. `flow-server` on the i7-6700 under systemd; Windows hybrid dictation via Tailscale shows route `remote`, then `local` with `connect_failed` after `systemctl stop flow-server`, with no lost words.
+2. `flow-server` on the i7-6700 under systemd; Windows hybrid dictation via a VPN shows route `remote`, then `local` with `connect_failed` after `systemctl stop flow-server`, with no lost words.
 3. Android `local` APK identical in behaviour to today (no-network gate green); `remote` APK has no ASR libs (gate green) and dictates through the server; `hybrid` falls back on airplane mode.
 4. Developer page in both apps: toggles, host/port validation, Test connection with latency, active-engine row.
 
@@ -822,11 +822,11 @@ can adapt. Server-side items (S7-S10, C5, the server half of C4) are on branch `
   No shell change (just call `update_config` as today).
 * **S6 cleartext by resolved address** (`flow-remote`, `flow-cloud`, `flow_router::net`). `ws://`
   (and cloud `http://`) to a name resolves it and requires **every** address to be loopback, RFC 1918,
-  ULA, link-local, or tailnet (100.64/10, fd7a:115c:a1e0::/48) reached through an interface that holds
-  a tailnet address (`net::plaintext_ok_resolved`, `net::route_source`); the connection then goes to
+  ULA, link-local, or VPN (100.64/10, fd7a:115c:a1e0::/48) reached through an interface that holds
+  a VPN address (`net::plaintext_ok_resolved`, `net::route_source`); the connection then goes to
   exactly those addresses. `*.local`, single-label and `*.ts.net` names still pass the config-time
   check (`ServerConfig::validate`) but no longer count as private by name. Choice/limit: carrier CGNAT
-  also uses 100.64/10, so a phone on such a network with Tailscale down cannot be told apart here;
+  also uses 100.64/10, so a phone on such a network with its VPN down cannot be told apart here;
   that case needs `wss://`. Failure: `connect_failed` "…: plaintext refused: … (enable TLS)"; shells
   may show it as "Use TLS for this server".
 * **S11 stale preview** (`flow-core`). A partial decode of a cancelled/committed session can no
@@ -865,7 +865,7 @@ No API change; behaviour the shells can see:
   back) no longer changes that commit's context (app category, screen words) or its
   `dropped_samples`.
 * Cloud, keyless self-hosted servers (P3): a `custom`-preset `openai_compat` provider whose base
-  URL host is loopback, LAN or Tailscale is usable **without a key**. The request then carries no
+  URL host is loopback, LAN or VPN is usable **without a key**. The request then carries no
   `Authorization` header, and **Test provider** works with an empty key field. Consent is still
   required. `has_cloud_key()` stays `false` for it. Shells may drop a "key required" check on
   Save for that case (W/A Developer forms). Named presets (Groq, OpenAI, …), public hosts and the other adapters still need a key, as does
@@ -901,7 +901,7 @@ symbol changes.
 
 **2026-10-23 — D24 never-fail fallback (branch `fix/never-fail`)**
 
-Live bug (S25+, hybrid, `keep_local_warm=false`, Parakeet imported, Tailscale DERP relay):
+Live bug (S25+, hybrid, `keep_local_warm=false`, Parakeet imported, VPN relay):
 `start_failed`, "Server unreachable (connect_failed: no handshake within 800 ms)". Root cause:
 with keep-warm off the shell opened the router with no local backend, so after the server's
 connect timeout `start_routes` found no ready local engine and returned

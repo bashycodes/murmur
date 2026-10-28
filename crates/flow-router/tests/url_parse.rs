@@ -1,5 +1,5 @@
 //! Review S2: one URL parser (the `url` crate, which reqwest uses) decides
-//! the host for consent, the LAN/tailnet class and the cleartext rule.
+//! the host for consent, the LAN/VPN class and the cleartext rule.
 //! These vectors are the contract the Kotlin mirror (`CloudSettings.kt`)
 //! must match.
 
@@ -74,7 +74,7 @@ fn cleartext_rule_uses_the_parsed_host() {
     assert!(provider("http://0x08080808/v1").validate().is_err());
     assert!(provider("http://8.8.8.8/v1").validate().is_err());
     assert!(provider("http://api.example.com/v1").validate().is_err());
-    // Private / loopback / tailnet literals may use http.
+    // Private / loopback / VPN literals may use http.
     for ok in [
         "http://0x7f.1/v1",
         "http://10.0.0.2:8000/v1",

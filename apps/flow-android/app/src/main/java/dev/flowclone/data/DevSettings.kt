@@ -139,7 +139,7 @@ data class DevSettings(
             "cloud=$allowCloud cleanup=$allowCloudCleanup/${cleanupOrder.joinToString(",") { it.wire }} order=${routeOrder.joinToString(",") { it.wire }})"
 
     companion object {
-        /** D24: was 800 ms, too tight through a Tailscale DERP relay (3+ round trips of 150-300 ms). */
+        /** D24: was 800 ms, too tight through a VPN relay (3+ round trips of 150-300 ms). */
         const val DEFAULT_CONNECT_TIMEOUT_MS = 2500L
         const val OLD_DEFAULT_CONNECT_TIMEOUT_MS = 800L
 
@@ -397,7 +397,7 @@ object DevSettingsForm {
 
     const val BOTH_OFF = "Dictation disabled: turn on Allow server or Allow client."
     const val NO_HOST = "Server enabled but no host set: dictation will use the client (or fail if the client is off)."
-    const val PLAINTEXT = "Unencrypted (ws://): OK on Tailscale (WireGuard), LAN only otherwise."
+    const val PLAINTEXT = "Unencrypted (ws://): OK only on your LAN or over an encrypted VPN."
     const val CLOUD_NO_CONSENT = "Cloud speech-to-text is on but has no consent: it will be skipped (OpenRouter page)."
     const val CLOUD_NOT_IN_ORDER = "Cloud allowed but not in the route order: it will not be used."
     const val NO_TOKEN = "No token: a server with auth (the default) will reject the connection."

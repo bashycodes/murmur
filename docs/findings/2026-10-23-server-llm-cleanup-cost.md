@@ -111,7 +111,7 @@ on-device (15 rows with timings, median 10 words):
 | total_ms | 429 | 2147 |
 | perceived_ms (release→text) | 655 | 2755 |
 
-Server side, the phone's sessions in the flow-server journal (Tailscale peer, since
+Server side, the phone's sessions in the flow-server journal (VPN peer, since
 2026-10-22): 26 sessions, 21 with text, 5 empty.
 
 | metric (server) | median | p90 |

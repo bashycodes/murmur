@@ -16,6 +16,19 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- Product text no longer names a specific VPN. App strings (Android main
+  screen and Developer settings, Windows settings), server messages, the
+  example config, the systemd unit and the docs now say "your LAN or a VPN".
+  The address rules are unchanged: 100.64.0.0/10 and fd7a:115c:a1e0::/48
+  still count as private when reached through a VPN interface.
+- `tools/server/install.sh` without `--bind` now picks the server's first
+  100.64.0.0/10 IPv4 from `ip -4 addr` (any mesh VPN) instead of asking one
+  VPN's CLI; on such a machine it binds the same address as before.
+- The packaged `flow-server.service` no longer orders itself after one VPN's
+  daemon; a bind to a VPN address that is not up yet still retries every 3 s.
+
 ## [0.7.1] - 2026-10-28
 
 ### Fixed

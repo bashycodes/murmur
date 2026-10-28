@@ -30,7 +30,7 @@ pub use migrate::{MigrationReport, RemovedProvider};
 pub use router::Router;
 
 /// Default `ServerConfig::connect_timeout_ms` (D24). Was 800 ms, too tight
-/// for a phone reaching the server through a Tailscale DERP relay (TCP +
+/// for a phone reaching the server through a VPN relay (TCP +
 /// WS upgrade + hello = 3+ round trips at 150-300 ms each).
 pub const DEFAULT_CONNECT_TIMEOUT_MS: u64 = 2500;
 /// The pre-D24 default; shells migrate a stored value equal to it.

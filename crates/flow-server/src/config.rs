@@ -70,7 +70,7 @@ pub struct Config {
     /// `[debug]`: opt-in capture of received audio + results (beta).
     pub debug: crate::capture::DebugConfig,
     /// `--insecure-bind-any`: allow a wildcard or public bind without TLS
-    /// and accept peers outside loopback/LAN/Tailscale. Command line only.
+    /// and accept peers outside loopback/LAN/VPN. Command line only.
     #[serde(skip)]
     pub insecure_bind_any: bool,
 }
@@ -128,7 +128,7 @@ impl Config {
 
     /// S10: a wildcard (`0.0.0.0`, `::`) or public bind is refused without
     /// `[tls]` unless `insecure_bind_any` is set. Returns the addresses that
-    /// are reachable beyond loopback/LAN/Tailscale (for the startup warning).
+    /// are reachable beyond loopback/LAN/VPN (for the startup warning).
     pub fn check_bind(&self) -> Result<Vec<SocketAddr>, String> {
         let wide: Vec<SocketAddr> = self
             .bind_addrs()?
@@ -140,7 +140,7 @@ impl Config {
         }
         let list: Vec<String> = wide.iter().map(|a| a.to_string()).collect();
         Err(format!(
-            "bind {} is a wildcard or public address: plain ws:// would expose audio and the token beyond loopback/LAN/Tailscale. Bind a loopback, LAN or Tailscale address, configure [tls], or pass --insecure-bind-any",
+            "bind {} is a wildcard or public address: plain ws:// would expose audio and the token beyond loopback/LAN/VPN. Bind a loopback, LAN or VPN (100.64/10) address, configure [tls], or pass --insecure-bind-any",
             list.join(", ")
         ))
     }

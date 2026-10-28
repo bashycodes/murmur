@@ -338,7 +338,7 @@ reachable until a shell enables cloud.
     Option<Usd> }`; `CloudProviderConfig` = the §8.1 schema exactly (fixture
     `router_config_cloud.json`). `RouterConfig::validate()` now also rejects duplicate
     routes in `order` and runs `CloudConfig::validate()` (§8.1 rules; `http://` only for
-    private/tailnet hosts; no credentials in URLs). `CloudProviderConfig::host()`,
+    private/VPN hosts; no credentials in URLs). `CloudProviderConfig::host()`,
     `consent_ok()` (consent is void once the base URL's host changes), `display_name()`.
     `RouterConfig::route_order()` follows `order` when set; `route_allowed(Route)`.
   * `EngineKind::Cloud` (`"cloud"`); `Failure::{CloudNotConfigured, BudgetExceeded,
@@ -452,4 +452,4 @@ reachable until a shell enables cloud.
   `connect_failed` → "no internet / base URL wrong", `budget_exceeded` → "monthly budget
   reached", `cloud_not_configured` → "set a key and accept the consent").
 
-**2026-10-22 (crates-final):** keyless `custom`-preset `openai_compat` providers on loopback/LAN/Tailscale hosts (no `Authorization` header, consent still required); AssemblyAI create/upload not retried on 504 and still-processing transcripts deleted in the background; budget/C10 routing fix. Details in `docs/hybrid-architecture.md` "Changelog for shells" (remaining review fixes entry).
+**2026-10-22 (crates-final):** keyless `custom`-preset `openai_compat` providers on loopback/LAN/VPN hosts (no `Authorization` header, consent still required); AssemblyAI create/upload not retried on 504 and still-processing transcripts deleted in the background; budget/C10 routing fix. Details in `docs/hybrid-architecture.md` "Changelog for shells" (remaining review fixes entry).

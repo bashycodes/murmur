@@ -233,8 +233,8 @@ Session semantics (2026-10-22, review fixes):
   characters and any userinfo are refused (`bad_config`). `CloudSettings.kt`'s mirror must
   give the same answers as `crates/flow-router/tests/url_parse.rs`.
 * `ws://` and `http://` (cloud) to a **name** are decided by its resolved addresses: every
-  address must be loopback / private / link-local, or tailnet (100.64/10, fd7a:115c:a1e0::/48)
-  reached through a tailnet interface; otherwise `connect_failed` "plaintext refused" (use TLS).
+  address must be loopback / private / link-local, or a VPN address (100.64/10, fd7a:115c:a1e0::/48)
+  reached through a VPN interface; otherwise `connect_failed` "plaintext refused" (use TLS).
 
 ## JSON payloads Kotlin sends (see `CoreJson.kt`, pinned by `CoreJsonTest`)
 
