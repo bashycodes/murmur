@@ -83,10 +83,24 @@ fn non_empty(selected: Option<&str>) -> Option<&str> {
     selected.filter(|s| !s.trim().is_empty())
 }
 
+/// Backends size the answer from `CleanPrompt::transcript` (2x its tokens
+/// + 32: right for cleanup, far too little for "write an email to..." or
+/// "expand this"). The command's source text is repeated up to these
+/// lengths so the cap allows a real answer (~230 / ~430 tokens at least);
+/// the local engine also drafts from it, which repetition doesn't hurt.
+pub const TRANSFORM_BUDGET_CHARS: usize = 400;
+pub const GENERATE_BUDGET_CHARS: usize = 800;
+
+/// `text` repeated (newline-joined) until it is at least `min` chars.
+fn budget_source(text: &str, min: usize) -> String {
+    let n = text.chars().count().max(1);
+    vec![text; min.div_ceil(n).max(1)].join("\n")
+}
+
 /// The chat prompt for `instruction` applied to `selected` (`None` or
-/// blank = speak-to-generate). `transcript` (what backends size their
-/// output budget from, 2x + 32 tokens) is the selection, else the
-/// instruction.
+/// blank = speak-to-generate). `transcript` (the backends' output budget
+/// source) is the selection, else the instruction, stretched by
+/// [`budget_source`].
 pub fn build_prompt(instruction: &str, selected: Option<&str>) -> CleanPrompt {
     let instruction = instruction.trim();
     match non_empty(selected) {
@@ -101,7 +115,7 @@ pub fn build_prompt(instruction: &str, selected: Option<&str>) -> CleanPrompt {
                     .into(),
             )],
             user: user_transform(instruction, sel),
-            transcript: sel.into(),
+            transcript: budget_source(sel, TRANSFORM_BUDGET_CHARS),
         },
         None => CleanPrompt {
             system: SYSTEM_GENERATE.into(),
@@ -112,7 +126,7 @@ pub fn build_prompt(instruction: &str, selected: Option<&str>) -> CleanPrompt {
                     .into(),
             )],
             user: user_generate(instruction),
-            transcript: instruction.into(),
+            transcript: budget_source(instruction, GENERATE_BUDGET_CHARS),
         },
     }
 }
@@ -277,10 +291,13 @@ mod tests {
             p.user,
             "<instruction>make it formal</instruction>\n<selected_text>\nhey whats up\n</selected_text>"
         );
-        assert_eq!(
-            p.transcript, "hey whats up",
+        assert!(
+            p.transcript.starts_with("hey whats up\nhey whats up"),
             "output budget sized from the selection"
         );
+        assert!(p.transcript.chars().count() >= TRANSFORM_BUDGET_CHARS);
+        let long = "x".repeat(TRANSFORM_BUDGET_CHARS * 2);
+        assert_eq!(build_prompt("shorten", Some(&long)).transcript, long);
         assert_eq!(p.examples.len(), 1);
         let m = p.messages();
         assert_eq!(m.first().unwrap().0, "system");
@@ -296,7 +313,8 @@ mod tests {
                 p.user,
                 "<instruction>write a haiku about rain</instruction>"
             );
-            assert_eq!(p.transcript, "write a haiku about rain");
+            assert!(p.transcript.starts_with("write a haiku about rain\n"));
+            assert!(p.transcript.chars().count() >= GENERATE_BUDGET_CHARS);
             assert!(!p.user.contains("selected_text"));
         }
     }
