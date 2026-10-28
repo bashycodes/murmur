@@ -112,6 +112,12 @@ fn jvm_round_trip() {
         "router learn_edit uses the last dictionary"
     );
     assert_eq!(lines.next().unwrap(), "KIND bad_config");
+    for _ in 0..2 {
+        let cmd: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
+        assert_eq!(cmd["ok"], false, "{cmd}");
+        assert_eq!(cmd["kind"], "no_llm", "{cmd}");
+        assert!(cmd["error"].as_str().unwrap().contains("needs AI"), "{cmd}");
+    }
     assert_eq!(lines.next().unwrap(), "KIND no_engine_enabled");
     let caps: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
     assert_eq!(caps["remote"], cfg!(feature = "remote"), "{caps}");
@@ -186,7 +192,7 @@ fn contract_symbols_exported() {
         .split('`')
         .filter(|w| w.starts_with("Java_dev_flowclone_core_NativeFlowCore_native"))
         .collect();
-    assert_eq!(want.len(), 41, "{want:?}"); // D28: +10 OpenRouter natives
+    assert_eq!(want.len(), 42, "{want:?}"); // D28: +10 OpenRouter natives; +1 Command Mode
     let src = include_str!("../src/jni_api.rs");
     let have: std::collections::BTreeSet<&str> = src
         .split(|c: char| !c.is_alphanumeric() && c != '_')
