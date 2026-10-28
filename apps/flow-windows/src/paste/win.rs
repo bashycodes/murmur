@@ -13,8 +13,9 @@
 
 use super::{
     fallback_after_clipboard_failure, initial_strategy, integrity, is_restorable_format,
-    restore_delay_ms, segments, should_restore, uipi_blocks, unicode_text_bytes, PasteOptions,
-    Segment, Strategy, BREAK_PAUSE_MS, ELEVATED_TARGET_MSG,
+    restore_delay_ms, segments, selection_from_copy, should_restore, uipi_blocks,
+    unicode_text_bytes, PasteOptions, Segment, Strategy, BREAK_PAUSE_MS, COPY_WAIT_MS,
+    ELEVATED_TARGET_MSG,
 };
 use crate::input::{self, Stroke};
 use std::time::Duration;
@@ -220,6 +221,58 @@ fn send_chord(shift_insert: bool) -> Result<(), String> {
         input::win::send(&ups);
     }
     sent
+}
+
+/// Command Mode, when UI Automation can't read the selection: Ctrl+C in
+/// the focused app, read what it put on the clipboard, then put the
+/// user's clipboard back (if nobody else wrote to it since). `Ok(None)` =
+/// the clipboard did not change within [`COPY_WAIT_MS`] (nothing
+/// selected). Call after the shortcut keys are up; serialised with every
+/// paste (S15) so a paste never snapshots our copy.
+pub fn copy_selection() -> Result<Option<String>, String> {
+    let _op = clipboard_op();
+    if uipi_blocks(integrity::own(), integrity::foreground()) {
+        return Err(ELEVATED_TARGET_MSG.into());
+    }
+    let snap = {
+        let _g = ClipGuard::open().ok_or("clipboard is busy")?;
+        unsafe { snapshot() }
+    };
+    let before = unsafe { GetClipboardSequenceNumber() };
+    send_all(&input::release_before_paste(
+        &held_alt_win_vks(),
+        ctrl_held(),
+    ))?;
+    let (downs, ups) = input::copy_chord();
+    let sent = send_all(&downs);
+    std::thread::sleep(Duration::from_millis(input::PASTE_HOLD_MS));
+    if input::win::send(&ups) != ups.len() {
+        input::win::send(&ups);
+    }
+    sent?;
+    let t0 = std::time::Instant::now();
+    let mut changed = false;
+    while t0.elapsed() < Duration::from_millis(COPY_WAIT_MS) {
+        if unsafe { GetClipboardSequenceNumber() } != before {
+            changed = true;
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    if !changed {
+        return Ok(None);
+    }
+    // Apps write several formats one SetClipboardData at a time (each
+    // bumps the number): let the copy settle before reading it.
+    std::thread::sleep(Duration::from_millis(40));
+    let copied_seq = unsafe { GetClipboardSequenceNumber() };
+    let text = read_text();
+    if let Some(_g) = ClipGuard::open() {
+        if should_restore(true, copied_seq, unsafe { GetClipboardSequenceNumber() }) {
+            unsafe { restore(&snap) };
+        }
+    }
+    selection_from_copy(true, text)
 }
 
 /// "Copy last transcript" / History → Copy: the text stays on the

@@ -405,6 +405,18 @@ pub trait CoreApi: Send + Sync {
     fn commit(&self) -> CommitResult;
     fn cancel(&self);
     fn learn_edit(&self, pasted: &str, edited: &str) -> Vec<LearnCandidate>;
+    /// Command Mode: run the spoken `instruction` on `selected` (`None` =
+    /// write new text) with the cleanup LLM route (`flow_core::command`),
+    /// blocking up to `timeout`. `Ok` = the text to paste, `Err` = pill
+    /// text. Default: no LLM available.
+    fn command(
+        &self,
+        instruction: &str,
+        selected: Option<&str>,
+        timeout: std::time::Duration,
+    ) -> Result<String, String> {
+        flow_core::command::run(None, instruction, selected, timeout).map_err(|e| e.to_string())
+    }
 }
 
 /// Model-free stand-in for `flow-core`: counts samples and returns
@@ -425,6 +437,10 @@ struct StubState {
     start_route: Option<SessionRoute>,
     cancels: usize,
     starts: usize,
+    /// Scripted Command Mode answer (`None` = the trait default, no LLM)
+    /// and the (instruction, selection) pairs it was asked.
+    command_reply: Option<Result<String, String>>,
+    commands: Vec<(String, Option<String>)>,
 }
 
 impl StubCore {
@@ -457,6 +473,16 @@ impl StubCore {
     pub fn starts(&self) -> usize {
         self.inner.lock().unwrap().starts
     }
+
+    /// Script what `command()` answers.
+    pub fn set_command_reply(&self, reply: Result<String, String>) {
+        self.inner.lock().unwrap().command_reply = Some(reply);
+    }
+
+    /// (instruction, selection) of every `command()` call.
+    pub fn commands(&self) -> Vec<(String, Option<String>)> {
+        self.inner.lock().unwrap().commands.clone()
+    }
 }
 
 impl CoreApi for StubCore {
@@ -470,6 +496,8 @@ impl CoreApi for StubCore {
             start_route: old.start_route,
             cancels: old.cancels,
             starts: old.starts + 1,
+            command_reply: old.command_reply,
+            commands: old.commands,
             ..StubState::default()
         };
         Ok(())
@@ -527,6 +555,25 @@ impl CoreApi for StubCore {
 
     fn learn_edit(&self, _pasted: &str, _edited: &str) -> Vec<LearnCandidate> {
         Vec::new()
+    }
+
+    fn command(
+        &self,
+        instruction: &str,
+        selected: Option<&str>,
+        timeout: std::time::Duration,
+    ) -> Result<String, String> {
+        let reply = {
+            let mut s = self.inner.lock().unwrap();
+            s.commands
+                .push((instruction.to_string(), selected.map(str::to_string)));
+            s.command_reply.clone()
+        };
+        match reply {
+            Some(r) => r,
+            None => flow_core::command::run(None, instruction, selected, timeout)
+                .map_err(|e| e.to_string()),
+        }
     }
 }
 

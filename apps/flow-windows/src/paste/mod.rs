@@ -304,9 +304,50 @@ pub fn uipi_blocks(own: Option<u32>, target: Option<u32>) -> bool {
 pub const ELEVATED_TARGET_MSG: &str = "The app you're dictating into runs as administrator, so \
      Windows blocks pasting from Flow Clone. The text is on your clipboard: press Ctrl+V.";
 
+/// Command Mode's Ctrl+C fallback: how long the target gets to put the
+/// selection on the clipboard. No change by then = nothing was selected.
+pub const COPY_WAIT_MS: u64 = 400;
+
+/// Command Mode: the selection a Ctrl+C produced. `changed` = the clipboard
+/// sequence number moved after our Ctrl+C; `text` = its CF_UNICODETEXT.
+/// Unchanged = nothing selected (`Ok(None)`, speak-to-generate); changed
+/// without text = a non-text selection (an image), refused so the command
+/// never pastes over it.
+pub fn selection_from_copy(changed: bool, text: Option<String>) -> Result<Option<String>, String> {
+    if !changed {
+        return Ok(None);
+    }
+    match text {
+        Some(t) if t.is_empty() => Ok(None),
+        Some(t) => Ok(Some(t)),
+        None => Err(NOT_TEXT_SELECTION_MSG.into()),
+    }
+}
+
+pub const NOT_TEXT_SELECTION_MSG: &str = "Command Mode works on selected text only";
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn copied_selection_reads_unchanged_as_nothing_selected() {
+        assert_eq!(selection_from_copy(false, None), Ok(None));
+        assert_eq!(
+            selection_from_copy(false, Some("old clipboard".into())),
+            Ok(None),
+            "an untouched clipboard is the user's, not the selection"
+        );
+        assert_eq!(selection_from_copy(true, Some(String::new())), Ok(None));
+        assert_eq!(
+            selection_from_copy(true, Some("picked".into())),
+            Ok(Some("picked".into()))
+        );
+        assert_eq!(
+            selection_from_copy(true, None),
+            Err(NOT_TEXT_SELECTION_MSG.to_string())
+        );
+    }
 
     fn t(hwnd: usize, pid: u32) -> FocusTarget {
         FocusTarget {

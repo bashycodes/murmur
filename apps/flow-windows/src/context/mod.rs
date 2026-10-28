@@ -304,9 +304,68 @@ pub fn build_field_context(raw: &RawSnapshot) -> FieldContext {
     }
 }
 
+/// What UI Automation said about the focused control's selection
+/// (Command Mode).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UiaSelection {
+    /// TextPattern selection text (empty = nothing selected).
+    Text(String),
+    Password,
+    /// No TextPattern (or no focused element): ask the app via Ctrl+C.
+    Unsupported,
+}
+
+/// Refused selection: never copy out of / paste into a password field.
+pub const PASSWORD_SELECTION_MSG: &str = "Command Mode doesn't work in password fields";
+
+/// Command Mode selection: trust UI Automation when the control speaks
+/// TextPattern (an empty selection there = speak-to-generate, no Ctrl+C
+/// that some editors turn into "copy the whole line"); otherwise, and when
+/// UIA timed out (`None`), fall back to `copy` (Ctrl+C with the clipboard
+/// restored).
+pub fn resolve_selection(
+    uia: Option<UiaSelection>,
+    copy: impl FnOnce() -> Result<Option<String>, String>,
+) -> Result<Option<String>, String> {
+    match uia {
+        Some(UiaSelection::Text(t)) if t.is_empty() => Ok(None),
+        Some(UiaSelection::Text(t)) => Ok(Some(t)),
+        Some(UiaSelection::Password) => Err(PASSWORD_SELECTION_MSG.into()),
+        Some(UiaSelection::Unsupported) | None => copy(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selection_prefers_uia_and_falls_back_to_copy() {
+        let never = || -> Result<Option<String>, String> { panic!("no Ctrl+C wanted") };
+        let copy = || Ok(Some("copied".to_string()));
+        assert_eq!(
+            resolve_selection(Some(UiaSelection::Text("sel".into())), never),
+            Ok(Some("sel".into()))
+        );
+        assert_eq!(
+            resolve_selection(Some(UiaSelection::Text(String::new())), never),
+            Ok(None),
+            "TextPattern says nothing is selected: generate, no Ctrl+C"
+        );
+        assert_eq!(
+            resolve_selection(Some(UiaSelection::Password), never),
+            Err(PASSWORD_SELECTION_MSG.into())
+        );
+        assert_eq!(
+            resolve_selection(Some(UiaSelection::Unsupported), copy),
+            Ok(Some("copied".into()))
+        );
+        assert_eq!(
+            resolve_selection(None, copy),
+            Ok(Some("copied".into())),
+            "UIA timed out"
+        );
+    }
 
     fn ctx(exe: &str, host: Option<&str>) -> FieldContext {
         build_field_context(&RawSnapshot {

@@ -18,6 +18,7 @@ pub mod vk {
     pub const TAB: u16 = 0x09;
     pub const INSERT: u16 = 0x2D;
     pub const V: u16 = 0x56;
+    pub const C: u16 = 0x43;
     /// Masking key for lone Win/Alt releases (Wispr uses VK_LCONTROL, not 0xFF).
     pub const LCONTROL: u16 = 0xA2;
 }
@@ -136,6 +137,15 @@ pub fn paste_chord(shift_insert: bool) -> (Vec<Stroke>, Vec<Stroke>) {
     let downs = keys.iter().map(|k| Stroke::down(*k)).collect();
     let ups = keys.iter().rev().map(|k| Stroke::up(*k)).collect();
     (downs, ups)
+}
+
+/// Command Mode's selection read when UI Automation can't: `[Ctrl↓, C↓]`
+/// … hold … `[C↑, Ctrl↑]`, same shape as [`paste_chord`].
+pub fn copy_chord() -> (Vec<Stroke>, Vec<Stroke>) {
+    (
+        vec![Stroke::down(vk::CONTROL), Stroke::down(vk::C)],
+        vec![Stroke::up(vk::C), Stroke::up(vk::CONTROL)],
+    )
 }
 
 /// KEYEVENTF_UNICODE typing fallback. Newlines become VK_RETURN (many apps
@@ -288,6 +298,13 @@ mod tests {
         assert_eq!(d, vec![Stroke::down(0x10), Stroke::down(0x2D)]);
         assert_eq!(u, vec![Stroke::up(0x2D), Stroke::up(0x10)]);
         assert_eq!(PASTE_HOLD_MS, 50);
+    }
+
+    #[test]
+    fn copy_chord_is_ctrl_c_down_then_reversed_up() {
+        let (d, u) = copy_chord();
+        assert_eq!(d, vec![Stroke::down(0x11), Stroke::down(0x43)]);
+        assert_eq!(u, vec![Stroke::up(0x43), Stroke::up(0x11)]);
     }
 
     #[test]

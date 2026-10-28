@@ -2,7 +2,9 @@
 //!
 //! Schema per windows-research 10-clone-spec §2 (Wispr's 28-table
 //! `flow.sqlite` reduced to what the clone needs):
-//! `history(id, ts, app, url, raw, formatted, pasted, edited, duration, words, lang)`.
+//! `history(id, ts, app, url, raw, formatted, pasted, edited, duration, words, lang)`,
+//! plus `kind` / `original` for Command Mode rows (added in place to
+//! older databases).
 //! **Audio is never stored** — there is no column for it.
 //!
 //! Retention pref (`keep` / `day` = 24 h / `never`) is enforced on every
@@ -38,6 +40,12 @@ pub struct Entry {
     pub duration_ms: i64,
     pub words: i64,
     pub lang: Option<String>,
+    /// A Command Mode row: `raw` = the spoken instruction, `formatted` /
+    /// `pasted` = the AI result, `original` = the selection it replaced.
+    pub command: bool,
+    /// Command Mode: the selected text before the rewrite (`None` = the
+    /// result was generated at the cursor).
+    pub original: Option<String>,
 }
 
 /// A row's counts only (Insights backfill).
@@ -63,10 +71,12 @@ pub struct Item {
 impl From<Entry> for Item {
     fn from(entry: Entry) -> Item {
         let final_text = entry.best_text().to_string();
-        let ai_edited = entry
-            .formatted
-            .as_deref()
-            .is_some_and(|f| f.trim() != entry.raw.trim());
+        // A command's result is all AI: there is no transcript to undo to.
+        let ai_edited = !entry.command
+            && entry
+                .formatted
+                .as_deref()
+                .is_some_and(|f| f.trim() != entry.raw.trim());
         Item {
             entry,
             final_text,
@@ -75,7 +85,11 @@ impl From<Entry> for Item {
     }
 }
 
-const COLUMNS: &str = "id, ts, app, url, raw, formatted, pasted, edited, duration, words, lang";
+const COLUMNS: &str =
+    "id, ts, app, url, raw, formatted, pasted, edited, duration, words, lang, kind, original";
+
+/// `history.kind` of a Command Mode row (`''` = a dictation).
+const KIND_COMMAND: &str = "command";
 
 fn row_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<Entry> {
     Ok(Entry {
@@ -90,6 +104,8 @@ fn row_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<Entry> {
         duration_ms: row.get(8)?,
         words: row.get(9)?,
         lang: row.get(10)?,
+        command: row.get::<_, String>(11)? == KIND_COMMAND,
+        original: row.get(12)?,
     })
 }
 
@@ -177,6 +193,15 @@ impl History {
              );
              CREATE INDEX IF NOT EXISTS history_ts ON history(ts);",
         )?;
+        // Command Mode columns, added to databases created before them.
+        for (col, decl) in [("kind", "TEXT NOT NULL DEFAULT ''"), ("original", "TEXT")] {
+            let has = conn
+                .prepare("SELECT 1 FROM pragma_table_info('history') WHERE name = ?1")?
+                .exists([col])?;
+            if !has {
+                conn.execute_batch(&format!("ALTER TABLE history ADD COLUMN {col} {decl};"))?;
+            }
+        }
         Ok(History { conn })
     }
 
@@ -210,8 +235,9 @@ impl History {
             return Ok(None);
         }
         self.conn.execute(
-            "INSERT INTO history (ts, app, url, raw, formatted, pasted, edited, duration, words, lang)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO history
+               (ts, app, url, raw, formatted, pasted, edited, duration, words, lang, kind, original)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 e.ts,
                 e.app,
@@ -222,7 +248,9 @@ impl History {
                 e.edited,
                 e.duration_ms,
                 e.words,
-                e.lang
+                e.lang,
+                if e.command { KIND_COMMAND } else { "" },
+                e.original
             ],
         )?;
         Ok(Some(self.conn.last_insert_rowid()))
@@ -255,7 +283,8 @@ impl History {
             "SELECT {COLUMNS} FROM history
              WHERE ts >= ?1 AND (?2 = '%%' OR raw LIKE ?2 ESCAPE '\\'
                OR formatted LIKE ?2 ESCAPE '\\' OR pasted LIKE ?2 ESCAPE '\\'
-               OR edited LIKE ?2 ESCAPE '\\' OR app LIKE ?2 ESCAPE '\\')
+               OR edited LIKE ?2 ESCAPE '\\' OR app LIKE ?2 ESCAPE '\\'
+               OR original LIKE ?2 ESCAPE '\\')
              ORDER BY ts DESC, id DESC LIMIT ?3"
         ))?;
         let rows = st.query_map(
@@ -422,6 +451,59 @@ mod tests {
     }
 
     #[test]
+    fn command_rows_keep_instruction_original_and_result() {
+        let h = History::open_in_memory().unwrap();
+        let e = Entry {
+            ts: 5,
+            raw: "make it formal".into(),
+            formatted: Some("I am unable to attend.".into()),
+            pasted: Some("I am unable to attend.".into()),
+            command: true,
+            original: Some("cant come".into()),
+            ..Entry::default()
+        };
+        let id = h.record(&e, Retention::Keep, 10).unwrap().unwrap();
+        let got = h.get(id).unwrap().unwrap();
+        assert_eq!(got, Entry { id, ..e });
+        assert_eq!(got.best_text(), "I am unable to attend.");
+        let item = Item::from(got);
+        assert!(!item.ai_edited, "nothing to undo to");
+        assert_eq!(h.list("cant", 10, Retention::Keep, 10).unwrap().len(), 1);
+        let plain = h.record(&entry(6, "hello"), Retention::Keep, 10).unwrap();
+        let plain = h.get(plain.unwrap()).unwrap().unwrap();
+        assert!(!plain.command && plain.original.is_none());
+    }
+
+    #[test]
+    fn a_database_from_before_command_mode_gains_its_columns() {
+        let dir = std::env::temp_dir().join(format!("flow-hist-mig-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("history.sqlite");
+        let _ = std::fs::remove_file(&path);
+        {
+            let c = Connection::open(&path).unwrap();
+            c.execute_batch(
+                "CREATE TABLE history (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL,
+                   app TEXT NOT NULL DEFAULT '', url TEXT, raw TEXT NOT NULL DEFAULT '',
+                   formatted TEXT, pasted TEXT, edited TEXT,
+                   duration INTEGER NOT NULL DEFAULT 0, words INTEGER NOT NULL DEFAULT 0,
+                   lang TEXT);
+                 INSERT INTO history (ts, raw, pasted) VALUES (1, 'old words', 'Old words.');",
+            )
+            .unwrap();
+        }
+        let h = History::open(&path).unwrap();
+        let old = h.latest(Retention::Keep, 2).unwrap().unwrap();
+        assert_eq!(old.best_text(), "Old words.");
+        assert!(!old.command && old.original.is_none());
+        drop(h);
+        // Opening again (columns present) is a no-op.
+        assert!(History::open(&path).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn failed_paste_keeps_text_for_paste_last() {
         let e = Entry {
             raw: "raw words".into(),
@@ -517,7 +599,9 @@ mod tests {
                 "edited",
                 "duration",
                 "words",
-                "lang"
+                "lang",
+                "kind",
+                "original"
             ]
         );
     }

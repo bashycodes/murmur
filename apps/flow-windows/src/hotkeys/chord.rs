@@ -309,6 +309,11 @@ pub struct Bindings {
     pub paste_last: Chord,
     /// Put the last transcript on the clipboard (Wispr default Shift+Alt+X).
     pub copy_last: Chord,
+    /// Hold to speak a Command Mode instruction for the selected text
+    /// (Wispr default Ctrl+Win+Alt). Like hands-free it extends the
+    /// push-to-talk chord: pressing Alt while Ctrl+Win dictates turns that
+    /// dictation into a command.
+    pub command: Chord,
     /// Open the Scratchpad window. Unset by default; `""` in prefs = unset.
     #[serde(
         skip_serializing_if = "Option::is_none",
@@ -334,6 +339,7 @@ impl Default for Bindings {
             paste_last: Chord::new([Key::Shift, Key::Alt, Key::Vk(b'Z' as u16)]),
             copy_last: Chord::new([Key::Shift, Key::Alt, Key::Vk(b'X' as u16)]),
             scratchpad: None,
+            command: Chord::new([Key::Ctrl, Key::Win, Key::Alt]),
         }
     }
 }
@@ -345,8 +351,9 @@ pub enum HotkeyAction {
     PttDown,
     /// PTT chord released (after a `PttDown`).
     PttUp,
-    /// PTT was held but a foreign key was pressed (e.g. Ctrl+Win+Left = switch
-    /// desktop): the user meant an OS shortcut, not dictation.
+    /// PTT (or the Command chord) was held but a foreign key was pressed
+    /// (e.g. Ctrl+Win+Left = switch desktop): the user meant an OS
+    /// shortcut, not dictation.
     PttAborted,
     /// Hands-free chord pressed (toggle lock).
     HandsFreeToggle,
@@ -358,6 +365,11 @@ pub enum HotkeyAction {
     CopyLast,
     /// Open-the-Scratchpad chord pressed.
     Scratchpad,
+    /// Command chord became fully held (supersedes a push-to-talk that
+    /// started on the way).
+    CommandDown,
+    /// Command chord released (after a `CommandDown`).
+    CommandUp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -392,6 +404,8 @@ pub struct ChordMatcher {
     bindings: Bindings,
     pressed: BTreeSet<Key>,
     ptt_active: bool,
+    /// The Command chord fired and none of its keys was released yet.
+    command_active: bool,
     /// Keys whose key-down we swallowed: their key-up must be swallowed too.
     swallowed: BTreeSet<Key>,
     /// Mask-needing keys (Win/Alt) held while some chord fired.
@@ -406,6 +420,7 @@ impl ChordMatcher {
             bindings,
             pressed: BTreeSet::new(),
             ptt_active: false,
+            command_active: false,
             swallowed: BTreeSet::new(),
             needs_mask: BTreeSet::new(),
             altgr_ctrl: false,
@@ -463,6 +478,7 @@ impl ChordMatcher {
     pub fn reset(&mut self) {
         self.pressed.clear();
         self.ptt_active = false;
+        self.command_active = false;
         self.swallowed.clear();
         self.needs_mask.clear();
         self.altgr_ctrl = false;
@@ -496,6 +512,16 @@ impl ChordMatcher {
                 // Hands-free chord supersedes a PTT that started on the way.
                 self.ptt_active = false;
                 d.actions.push(HotkeyAction::HandsFreeToggle);
+                self.chord_fired();
+                if !ev.key.is_modifier() {
+                    d.suppress = true;
+                }
+            } else if self.newly_matches(&self.bindings.command, ev.key) {
+                // Command supersedes a PTT that started on the way
+                // (Ctrl+Win, then Alt).
+                self.ptt_active = false;
+                self.command_active = true;
+                d.actions.push(HotkeyAction::CommandDown);
                 self.chord_fired();
                 if !ev.key.is_modifier() {
                     d.suppress = true;
@@ -538,8 +564,12 @@ impl ChordMatcher {
             } else if self.ptt_active
                 && !self.bindings.ptt.covers(ev.key)
                 && !self.bindings.hands_free.covers(ev.key)
+                && !self.bindings.command.covers(ev.key)
             {
                 self.ptt_active = false;
+                d.actions.push(HotkeyAction::PttAborted);
+            } else if self.command_active && !self.bindings.command.covers(ev.key) {
+                self.command_active = false;
                 d.actions.push(HotkeyAction::PttAborted);
             }
             if d.suppress {
@@ -554,6 +584,10 @@ impl ChordMatcher {
             if self.ptt_active && self.bindings.ptt.covers(ev.key) {
                 self.ptt_active = false;
                 d.actions.push(HotkeyAction::PttUp);
+            }
+            if self.command_active && self.bindings.command.covers(ev.key) {
+                self.command_active = false;
+                d.actions.push(HotkeyAction::CommandUp);
             }
             d.suppress = self.swallowed.remove(&ev.key);
             if !d.suppress && self.needs_mask.remove(&ev.key) {
@@ -622,6 +656,59 @@ mod tests {
         assert_eq!(d.actions, vec![CopyLast]);
         assert!(d.suppress, "X must not reach the app");
         assert!(m.handle(KeyEvent::up(x), false).suppress);
+    }
+
+    #[test]
+    fn command_chord_extends_a_push_to_talk_on_the_way() {
+        let mut m = m();
+        let a = feed(
+            &mut m,
+            &[
+                KeyEvent::down(Key::LCtrl),
+                KeyEvent::down(Key::Win),
+                KeyEvent::down(Key::LAlt),
+            ],
+        );
+        assert_eq!(
+            a,
+            vec![PttDown, CommandDown],
+            "Alt is not a foreign key here"
+        );
+        let up = m.handle(KeyEvent::up(Key::LAlt), false);
+        assert_eq!(up.actions, vec![CommandUp]);
+        assert!(up.mask_release, "lone Alt release would focus the menu bar");
+        assert!(
+            feed(&mut m, &[KeyEvent::up(Key::Win), KeyEvent::up(Key::LCtrl)]).is_empty(),
+            "the superseded push-to-talk never reports a release"
+        );
+    }
+
+    #[test]
+    fn command_chord_alone_and_its_foreign_key_abort() {
+        let mut m = m();
+        let a = feed(
+            &mut m,
+            &[
+                KeyEvent::down(Key::LAlt),
+                KeyEvent::down(Key::LCtrl),
+                KeyEvent::down(Key::Win),
+            ],
+        );
+        assert_eq!(a, vec![CommandDown]);
+        let d = m.handle(KeyEvent::down(Key::Vk(0x25)), false);
+        assert_eq!(
+            d.actions,
+            vec![PttAborted],
+            "Ctrl+Win+Alt+Left is an OS shortcut"
+        );
+        assert!(
+            feed(
+                &mut m,
+                &[KeyEvent::up(Key::Vk(0x25)), KeyEvent::up(Key::Win)]
+            )
+            .is_empty(),
+            "an aborted command reports no release"
+        );
     }
 
     #[test]
@@ -1204,7 +1291,7 @@ mod tests {
         let j = serde_json::to_string(&Bindings::default()).unwrap();
         assert_eq!(
             j,
-            r#"{"ptt":"Ctrl+Win","hands_free":"Ctrl+Win+Space","cancel":"Esc","paste_last":"Alt+Shift+Z","copy_last":"Alt+Shift+X"}"#
+            r#"{"ptt":"Ctrl+Win","hands_free":"Ctrl+Win+Space","cancel":"Esc","paste_last":"Alt+Shift+Z","copy_last":"Alt+Shift+X","command":"Ctrl+Win+Alt"}"#
         );
         let b: Bindings = serde_json::from_str(r#"{"ptt":"Ctrl+Shift"}"#).unwrap();
         assert_eq!(b.ptt.to_string(), "Ctrl+Shift");
