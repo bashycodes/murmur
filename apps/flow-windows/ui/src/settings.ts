@@ -27,6 +27,7 @@ interface Prefs {
     paste_last: string;
     copy_last: string;
     scratchpad?: string;
+    new_note?: string;
   };
   microphone: string | null;
   languages: string[];
@@ -485,6 +486,7 @@ function fillForm(prefs: Prefs): void {
   $<HTMLInputElement>("paste_last").value = prefs.shortcuts.paste_last;
   $<HTMLInputElement>("copy_last").value = prefs.shortcuts.copy_last;
   $<HTMLInputElement>("scratchpad").value = prefs.shortcuts.scratchpad ?? "";
+  $<HTMLInputElement>("new_note").value = prefs.shortcuts.new_note ?? "";
   $<HTMLSelectElement>("microphone").value = prefs.microphone ?? "";
   for (const f of BOOL_FIELDS) $<HTMLInputElement>(f).checked = Boolean(prefs[f]);
   $<HTMLSelectElement>("cleanup_level").value = cleanupChoice(prefs);
@@ -515,6 +517,7 @@ function readForm(base: Prefs): Prefs {
     paste_last: $<HTMLInputElement>("paste_last").value.trim(),
     copy_last: $<HTMLInputElement>("copy_last").value.trim(),
     scratchpad: $<HTMLInputElement>("scratchpad").value.trim(),
+    new_note: $<HTMLInputElement>("new_note").value.trim(),
   };
   next.model_path = $<HTMLInputElement>("model_path").value.trim() || null;
   next.asr_engine = $<HTMLSelectElement>("asr_engine").value;

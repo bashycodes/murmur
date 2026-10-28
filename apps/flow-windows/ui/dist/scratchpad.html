@@ -3,19 +3,40 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Scratchpad — Flow Clone</title>
+    <title>Notes — Flow Clone</title>
     <link rel="stylesheet" href="scratchpad.css" />
   </head>
   <body>
-    <textarea id="editor" spellcheck="true" aria-label="Scratchpad" placeholder="Dictate or type here. Saved automatically."></textarea>
-    <footer>
-      <span id="words" class="muted">0 words</span>
-      <span id="status" role="status"></span>
-      <span class="spacer"></span>
-      <button type="button" id="undo" class="secondary" hidden>Undo clear</button>
-      <button type="button" id="clear" class="danger">Clear</button>
-      <button type="button" id="copy">Copy all</button>
-    </footer>
+    <section id="list-view" class="view" hidden>
+      <header class="bar">
+        <input id="search" type="search" placeholder="Search notes" aria-label="Search notes" />
+        <button type="button" id="new-note">New note</button>
+      </header>
+      <ul id="notes" aria-label="Notes"></ul>
+      <p id="empty" class="muted" hidden>No notes match.</p>
+      <footer>
+        <span id="count" class="muted"></span>
+        <span id="list-status" role="status"></span>
+      </footer>
+    </section>
+    <section id="editor-view" class="view" hidden>
+      <header class="bar">
+        <button type="button" id="back" class="secondary">← All notes</button>
+        <span id="note-name" class="muted"></span>
+        <span class="spacer"></span>
+        <button type="button" id="export-txt" class="secondary" title="Save a copy to Downloads">Export .txt</button>
+        <button type="button" id="export-md" class="secondary" title="Save a copy to Downloads">.md</button>
+      </header>
+      <textarea id="editor" spellcheck="true" aria-label="Note" placeholder="Dictate or type here. Saved automatically."></textarea>
+      <footer>
+        <span id="words" class="muted">0 words</span>
+        <span id="status" role="status"></span>
+        <span class="spacer"></span>
+        <button type="button" id="undo" class="secondary" hidden>Undo clear</button>
+        <button type="button" id="clear" class="danger">Clear</button>
+        <button type="button" id="copy">Copy all</button>
+      </footer>
+    </section>
     <script src="scratchpad.js"></script>
   </body>
 </html>

@@ -34,9 +34,100 @@ body {
 [hidden] {
   display: none !important;
 }
+.view {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 12px 8px;
+}
+#note-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+#search {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 6px 10px;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+#notes {
+  flex: 1;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0 12px;
+  padding: 0;
+}
+#notes li {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+#notes li.pinned {
+  border-color: var(--accent);
+}
+#notes button.open {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  color: var(--fg);
+  padding: 4px 6px;
+}
+#notes .title {
+  display: block;
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#notes .meta {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+#notes .badge {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--accent);
+  margin-left: 6px;
+}
+#notes button.icon {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+#notes select {
+  font: inherit;
+  font-size: 12px;
+  background: var(--line);
+  color: var(--fg);
+  border: 0;
+  border-radius: 6px;
+  padding: 4px;
+}
+#empty {
+  margin: 4px 16px;
+}
 textarea {
   flex: 1;
-  margin: 12px 12px 0;
+  margin: 0 12px;
   padding: 12px 14px;
   resize: none;
   background: var(--card);
