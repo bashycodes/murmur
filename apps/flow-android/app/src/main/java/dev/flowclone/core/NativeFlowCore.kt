@@ -180,6 +180,13 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
 
     override fun cancel() = lease.use({}) { h -> nativeCancel(h) }
 
+    /** A library without `nativeCommand` (pre-2026-10-28) reads as "no AI" (never a crash). */
+    override fun command(instruction: String, selected: String?): CommandOutcome =
+        lease.use({ CommandOutcome.Failed(CommandOutcome.BACKEND, "Speech engine was unloaded, try again in a moment.") }) { h ->
+            BlockingCalls.check("nativeCommand")
+            try { CommandOutcome.decode(nativeCommand(h, instruction, selected)) } catch (e: UnsatisfiedLinkError) { CommandOutcome.noLlm }
+        }
+
     override fun learnEdit(pasted: String, edited: String): List<LearnCandidate> =
         lease.use({ emptyList() }) { h -> CoreJson.decodeCandidates(nativeLearnEdit(h, pasted, edited)) }
 
@@ -397,5 +404,8 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
         @JvmStatic external fun nativeCloudCatalog(handle: Long, use: String, query: String, filtersJson: String): String
         @JvmStatic external fun nativeRefreshCloudCatalog(handle: Long, force: Boolean): String
         @JvmStatic external fun nativeCloudKeyInfo(handle: Long): String
+
+        // ---- 2026-10-28 Command Mode (JNI_CONTRACT.md "Command Mode"); never null ----
+        @JvmStatic external fun nativeCommand(handle: Long, instruction: String, selected: String?): String
     }
 }
