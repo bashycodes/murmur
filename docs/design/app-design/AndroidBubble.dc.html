@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Android: Dictation bubble</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="fl" style="width: 390px; height: 844px; position: relative; display: flex; flex-direction: column; background: var(--pure-white); font-family: var(--font-sans); color: var(--foreground); overflow: hidden;">
+  <header style="flex: none; height: 56px; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--vast-100);">
+    <span style="width: 32px; height: 32px; border-radius: 50%; background: var(--vast-200);"></span>
+    <span style="font: 600 16px/22px var(--font-sans);">Sam</span>
+    <span style="margin-left: auto; font: 400 12px/16px var(--font-sans); color: var(--vast-600);">Any chat app</span>
+  </header>
+
+  <div style="flex: 1; min-height: 0; padding: 16px; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; background: var(--vast-50);">
+    <span style="align-self: flex-start; max-width: 260px; padding: 10px 14px; border-radius: 18px 18px 18px 4px; background: var(--pure-white); font: 400 15px/20px var(--font-sans);">Are you coming tonight?</span>
+    <span style="align-self: flex-end; max-width: 260px; padding: 10px 14px; border-radius: 18px 18px 4px 18px; background: var(--vast-800); color: var(--pure-white); font: 400 15px/20px var(--font-sans);">Yes! Leaving work soon</span>
+    <span style="align-self: flex-start; max-width: 260px; padding: 10px 14px; border-radius: 18px 18px 18px 4px; background: var(--pure-white); font: 400 15px/20px var(--font-sans);">Can you grab drinks on the way?</span>
+  </div>
+
+  <div style="flex: none; padding: 8px 12px; display: flex; align-items: center; gap: 8px; background: var(--pure-white); border-top: 1px solid var(--vast-100);">
+    <div style="flex: 1; min-height: 40px; box-sizing: border-box; padding: 10px 14px; border-radius: 20px; border: 2px solid var(--vast-800); font: 400 15px/20px var(--font-sans);">Sure, what should I<span style="display: inline-block; width: 2px; height: 16px; margin-left: 1px; vertical-align: -3px; background: var(--vast-950);"></span></div>
+  </div>
+
+  <div aria-hidden="true" style="flex: none; height: 280px; background: var(--vast-100); display: flex; align-items: center; justify-content: center; font: 550 13px/20px var(--font-sans); color: var(--vast-600);">Keyboard</div>
+
+  <div style="position: absolute; right: 12px; bottom: 340px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px;">
+    <div style="max-width: 280px; padding: 8px 12px; border-radius: 12px; background: var(--vast-950); color: var(--sand-50); font: 400 14px/20px var(--font-sans); box-shadow: var(--shadow-lg);">get? red or white, and how many</div>
+    <div style="width: 230px; height: 56px; display: flex; align-items: center; gap: 6px; border-radius: 9999px; background: var(--vast-950); box-shadow: 0 2px 6px rgba(26,26,26,.3);">
+      <button type="button" aria-label="Cancel dictation" style="width: 56px; height: 56px; border: 0; border-radius: 50%; background: transparent; color: var(--sand-50); display: inline-flex; align-items: center; justify-content: center; padding: 0;"><svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="width: 22px; height: 22px;"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+      <span aria-hidden="true" style="width: 106px; height: 32px; display: flex; align-items: center; justify-content: center; gap: 4px;">
+        <span style="width: 3px; height: 8px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 16px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 26px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 18px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 30px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 14px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 22px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 10px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 6px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 3px; border-radius: 2px; background: var(--sand-50);"></span>
+      </span>
+      <button type="button" aria-label="Stop and insert" style="width: 56px; height: 56px; border: 0; border-radius: 50%; background: transparent; color: var(--sand-50); display: inline-flex; align-items: center; justify-content: center; padding: 0;"><svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="width: 24px; height: 24px;"><path d="M5 12.5l4.5 4.5L19 7"></path></svg></button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

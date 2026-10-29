@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Setup: AI cleanup</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl" style="width: 1280px; height: 800px; box-sizing: border-box; padding: 8px; display: flex; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground);">
+  <main class="fl-panel" style="flex: 1; box-sizing: border-box; padding: 56px 64px; display: flex; flex-direction: column; border-radius: 16px;">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <span style="font: 600 18px/24px var(--font-sans);">Murmur</span>
+      <span class="fl-overline">Step 4 of 5</span>
+    </div>
+
+    <div style="flex: 1; display: flex; gap: 64px; align-items: center;">
+      <div style="flex: 0 0 400px; display: flex; flex-direction: column; gap: 16px;">
+        <h1 class="fl-serif" style="margin: 0; font-size: 36px; line-height: 40px; font-weight: 400;">Polish what you say?</h1>
+        <p style="margin: 0; font: 400 16px/24px var(--font-sans); color: var(--neutral-600);">AI cleanup fixes run-on sentences, drops "um"s, applies your corrections and matches the tone of each app.</p>
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px; padding: 16px; border-radius: 12px; background: var(--background-tertiary);">
+          <span class="fl-overline">You said</span>
+          <span style="font: 400 14px/20px var(--font-sans); color: var(--neutral-600);">um so lunch is tuesday no wait thursday</span>
+          <span class="fl-overline" style="margin-top: 8px;">Pasted</span>
+          <span style="font: 400 15px/20px var(--font-sans);">{{sample}}</span>
+        </div>
+      </div>
+
+      <div role="radiogroup" aria-label="AI cleanup" style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px;">
+        <sc-for list="{{options}}" as="o" hint-placeholder-count="3">
+          <button type="button" role="radio" aria-checked="{{o.checked}}" onClick="{{o.pick}}" style="display: flex; align-items: flex-start; gap: 16px; padding: 16px 20px; text-align: left; border-radius: 12px; cursor: pointer; font: inherit; color: inherit; background: var(--shade-white); border: {{o.border}};">
+            <span style="flex: none; margin-top: 2px; width: 18px; height: 18px; border-radius: 50%; box-sizing: border-box; border: {{o.radio}};"></span>
+            <span style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+              <span style="display: flex; align-items: center; gap: 8px; font: 600 16px/24px var(--font-sans);">{{o.title}}<sc-if value="{{o.rec}}" hint-placeholder-val="{{false}}"><span class="fl-badge fl-badge-dark">Recommended</span></sc-if></span>
+              <span style="font: 400 15px/20px var(--font-sans); color: var(--neutral-600);">{{o.desc}}</span>
+            </span>
+          </button>
+        </sc-for>
+
+        <sc-if value="{{showLocal}}" hint-placeholder-val="{{true}}">
+          <div class="fl-group">
+            <div class="fl-row">
+              <div class="fl-row-text"><div class="fl-row-title">qwen2.5-1.5b-instruct-q4_k_m.gguf</div><div class="fl-row-desc">Found in your models folder · 1.1 GB · loading…</div></div>
+              <span class="fl-badge fl-badge-light">Loading</span>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{showCloud}}" hint-placeholder-val="{{false}}">
+          <div class="fl-group">
+            <div class="fl-row">
+              <div class="fl-row-text"><label class="fl-row-title" for="or-key">OpenRouter API key</label><div class="fl-row-desc">Your words are sent as text, to zero-retention providers only.</div></div>
+              <div class="fl-row-control"><input id="or-key" class="fl-input" type="password" placeholder="sk-or-…" style="width: 220px;"></div>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <a href="OnboardModel.dc.html" class="fl-btn fl-btn-ghost" style="text-decoration: none;">Back</a>
+      <a href="OnboardTry.dc.html" class="fl-btn fl-btn-primary" style="text-decoration: none;">Continue</a>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { picked: 'pc' };
+  }
+  renderVals() {
+    const defs = [
+      { id: 'rules', title: 'Rules only', rec: false, desc: 'Instant. Punctuation, numbers and "scratch that" by fixed rules. No model needed.', sample: 'So lunch is Thursday.' },
+      { id: 'pc', title: 'On this PC', rec: true, desc: 'A small model on this PC. Private, adds about a second. Needs a 1 GB file.', sample: 'Lunch is on Thursday.' },
+      { id: 'cloud', title: 'OpenRouter', rec: false, desc: 'A large cloud model. Best quality, costs a few cents a month. Sends text, never audio.', sample: 'Lunch is on Thursday.' }
+    ];
+    const cur = this.state.picked;
+    return {
+      sample: defs.find((d) => d.id === cur).sample,
+      showLocal: cur === 'pc',
+      showCloud: cur === 'cloud',
+      options: defs.map((d) => {
+        const on = d.id === cur;
+        return Object.assign({}, d, {
+          checked: on ? 'true' : 'false',
+          border: on ? '2px solid var(--primary)' : '1px solid var(--border)',
+          radio: on ? '5px solid var(--primary)' : '1.5px solid var(--sand-700)',
+          pick: () => this.setState({ picked: d.id })
+        });
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

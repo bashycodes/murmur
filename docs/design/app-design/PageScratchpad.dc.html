@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scratchpad</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl" style="width: 1280px; height: 800px; display: flex; flex-direction: column; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground); overflow: hidden;">
+  <header style="height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px;">
+    <x-import component-from-global-scope="Flow.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
+    <div style="display: flex; align-items: center; gap: 4px;">
+      <x-import component-from-global-scope="Flow.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Flow.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
+      <span style="width: 132px;"></span>
+    </div>
+  </header>
+  <div style="flex: 1; min-height: 0; display: flex;">
+    <dc-import name="AppSidebar" active="scratchpad" hint-size="208px,756px" style="flex: none;"></dc-import>
+    <main class="fl-panel" style="flex: 1; min-width: 0; margin: 0 8px 8px 0; overflow: hidden; display: flex; justify-content: center;">
+      <div style="width: 100%; max-width: 860px; display: flex; flex-direction: column; gap: 20px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <h1 class="fl-page-title">Scratchpad</h1>
+          <span class="fl-badge fl-badge-dark">Beta</span>
+          <span style="flex: 1;"></span>
+          <span style="font: 550 15px/20px var(--font-sans);">Add to Flow bar</span>
+          <x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Add to Flow bar"></x-import>
+          <x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm">Set a shortcut</x-import>
+        </div>
+
+        <div class="fl-banner fl-banner-amber">
+          <h3 class="fl-banner-title">Notes you dictate and keep</h3>
+          <p class="fl-banner-body">A to-do list, a message to polish before you send it, a brain dump. Notes are saved on this PC only.</p>
+          <div class="fl-banner-actions">
+            <x-import component-from-global-scope="Flow.Button" variant="lumen" icon="plus">Start new note</x-import>
+          </div>
+        </div>
+
+        <div class="fl-tabs" style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+          <span style="font: 600 16px/24px var(--font-sans);">Recents</span>
+          <div style="display: flex; gap: 2px;">
+            <x-import component-from-global-scope="Flow.IconButton" icon="search" label="Search notes" variant="toolbar"></x-import>
+            <x-import component-from-global-scope="Flow.IconButton" icon="plus" label="New note" variant="toolbar"></x-import>
+          </div>
+        </div>
+
+        <div class="fl-list">
+          <sc-for list="{{notes}}" as="n" hint-placeholder-count="3">
+            <div class="fl-list-row" style="align-items: flex-start; padding: 14px 16px;">
+              <svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; color: var(--foreground-tertiary);"><path d="M5 4h14v16H5zM8.5 9h7M8.5 13h4"></path></svg>
+              <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+                <span style="font-weight: 550;">{{n.title}}</span>
+                <span style="color: var(--foreground-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{n.preview}}</span>
+              </span>
+              <span class="fl-list-time" style="text-align: right;">{{n.when}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      yes: true,
+      notes: [
+        { title: 'Release checklist', preview: 'Bump VERSION, run check-build-matrix, tag, write the changelog entry…', when: '2:14pm' },
+        { title: 'Reply to Sam', preview: 'Thursday at 3 works. I’ll bring the slides and the latest numbers.', when: 'Yesterday' },
+        { title: 'Ideas', preview: 'Per-app engine choice? Push-to-talk on the mouse side button.', when: 'Oct 22' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

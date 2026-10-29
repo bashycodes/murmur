@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Android: Settings</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="lw-android" style="width: 390px; height: 1240px; display: flex; flex-direction: column; background: var(--a-bg-settings); overflow: hidden;">
+  <header style="flex: none; height: 64px; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; padding: 0 4px;">
+    <a href="AndroidDrawer.dc.html" aria-label="Back" style="width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; color: var(--a-ink);"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg></a>
+    <h1 style="margin: 0; text-align: center; font: 550 21px/28px var(--font-sans);">Settings</h1>
+    <span></span>
+  </header>
+
+  <div style="padding: 0 16px 24px; display: flex; flex-direction: column; gap: 10px;">
+    <sc-for list="{{sections}}" as="s" hint-placeholder-count="3">
+      <div class="a-section">{{s.title}}</div>
+      <sc-for list="{{s.rows}}" as="r" hint-placeholder-count="3">
+        <a href="{{r.href}}" class="a-card" style="display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 16px 20px; text-decoration: none; color: var(--a-ink);">
+          <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+            <span style="font: 550 17px/24px var(--font-sans);">{{r.title}}</span>
+            <sc-if value="{{r.value}}" hint-placeholder-val="{{true}}"><span style="font: 400 15px/21px var(--font-sans); color: var(--a-ink-2);">{{r.value}}</span></sc-if>
+          </span>
+          <svg viewBox="0 0 24 24" aria-hidden="true" style="flex: none; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;"><path d="M9 6l6 6-6 6"></path></svg>
+        </a>
+      </sc-for>
+    </sc-for>
+
+    <div class="a-section">Data &amp; privacy</div>
+    <div class="a-card" style="padding: 4px 20px;">
+      <a href="AndroidSettings.dc.html" style="display: flex; align-items: center; gap: 12px; padding: 16px 0; text-decoration: none; color: var(--a-ink);">
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 2px;"><span style="font: 550 17px/24px var(--font-sans);">Keep history</span><span style="font: 400 15px/21px var(--font-sans); color: var(--a-ink-2);">1 day. Stored only on this phone.</span></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true" style="flex: none; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;"><path d="M9 6l6 6-6 6"></path></svg>
+      </a>
+      <div style="display: flex; align-items: center; gap: 16px; padding: 16px 0; border-top: 1px solid var(--a-divider);">
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 2px;"><span style="font: 550 17px/24px var(--font-sans);">Use what's on screen</span><span style="font: 400 15px/21px var(--font-sans); color: var(--a-ink-2);">Reads nearby text to spell names right. Never leaves the phone.</span></span>
+        <button type="button" role="switch" aria-checked="true" aria-label="Use what's on screen" class="a-switch"></button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px; padding: 16px 0; border-top: 1px solid var(--a-divider);">
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 2px;"><span style="font: 550 17px/24px var(--font-sans);">Debug log</span><span style="font: 400 15px/21px var(--font-sans); color: var(--a-ink-2);">Saves what you said and timings for bug reports. Never uploaded.</span></span>
+        <button type="button" role="switch" aria-checked="false" aria-label="Debug log" class="a-switch"></button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1240}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const r = (title, value, href) => ({ title, value: value || '', href: href || 'AndroidSettings.dc.html' });
+    return {
+      sections: [
+        { title: 'General', rows: [
+          r('Languages', 'English'),
+          r('Bubble size', '100%'),
+          r('Bubble opacity', '90%'),
+          r('Excluded apps', 'Banking apps and 2 more'),
+          r('Timing and limits', 'Stops after a 2 s pause · 5 min max')
+        ] },
+        { title: 'Models', rows: [
+          r('Speech to text', 'Your server, then this phone', 'AndroidSpeech.dc.html'),
+          r('AI cleanup', 'Medium · OpenRouter, then rules')
+        ] },
+        { title: 'Connections', rows: [
+          r('Your server', 'Connected · 41 ms'),
+          r('OpenRouter', 'Key saved · $0.42 this month')
+        ] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

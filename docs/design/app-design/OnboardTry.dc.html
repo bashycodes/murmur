@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Setup: Try it</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl" style="width: 1280px; height: 800px; box-sizing: border-box; padding: 8px; display: flex; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground);">
+  <main class="fl-panel" style="flex: 1; box-sizing: border-box; padding: 56px 64px; display: flex; flex-direction: column; border-radius: 16px;">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <span style="font: 600 18px/24px var(--font-sans);">Murmur</span>
+      <span class="fl-overline">Step 5 of 5</span>
+    </div>
+
+    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 28px;">
+      <div style="text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px;">
+        <h1 class="fl-serif" style="margin: 0; font-size: 36px; line-height: 40px; font-weight: 400;">Now try it</h1>
+        <x-import component-from-global-scope="Flow.Kbd" keys="{{keys}}">Hold, say anything, then let go</x-import>
+      </div>
+
+      <div style="width: 640px; display: flex; flex-direction: column; gap: 12px;">
+        <label for="try-box" class="fl-overline">Practice box</label>
+        <textarea id="try-box" rows="4" style="box-sizing: border-box; width: 100%; padding: 16px; border: none; border-radius: 12px; outline: 2px solid var(--neutral-500); background: var(--shade-white); font: 400 16px/24px var(--font-sans); color: var(--foreground); resize: none;">Hey, are we still on for Thursday? I'll bring the slides.</textarea>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; background: var(--recording-background);">
+          <svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--green-800);"><path d="M5 12.5l4.5 4.5L19 7"></path></svg>
+          <span style="flex: 1; font: 400 15px/20px var(--font-sans); color: var(--green-800);"><b style="font-weight: 600;">It works.</b> Heard on this PC in 0.9 s, cleaned up in 1.1 s.</span>
+        </div>
+      </div>
+
+      <div class="fl-group" style="width: 640px; box-sizing: border-box;">
+        <div class="fl-row">
+          <div class="fl-row-text"><div class="fl-row-title">Microphone</div><div class="fl-row-desc">Microphone Array (Realtek Audio)</div></div>
+          <div aria-hidden="true" style="display: flex; gap: 3px; align-items: center;">
+            <span style="width: 6px; height: 14px; border-radius: 2px; background: var(--fathom-700);"></span>
+            <span style="width: 6px; height: 14px; border-radius: 2px; background: var(--fathom-700);"></span>
+            <span style="width: 6px; height: 14px; border-radius: 2px; background: var(--fathom-700);"></span>
+            <span style="width: 6px; height: 14px; border-radius: 2px; background: var(--fathom-400);"></span>
+            <span style="width: 6px; height: 14px; border-radius: 2px; background: var(--background-secondary);"></span>
+            <span style="width: 6px; height: 14px; border-radius: 2px; background: var(--background-secondary);"></span>
+          </div>
+          <x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm">Change</x-import>
+        </div>
+        <div class="fl-row">
+          <div class="fl-row-text"><div class="fl-row-title">Shortcut</div><div class="fl-row-desc">Hold Ctrl + Win. Double-tap for hands-free.</div></div>
+          <x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm">Change</x-import>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <a href="OnboardCleanup.dc.html" class="fl-btn fl-btn-ghost" style="text-decoration: none;">Back</a>
+      <a href="Main.dc.html" class="fl-btn fl-btn-primary" style="text-decoration: none;">Finish</a>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() { return { keys: ['Ctrl', 'Win'] }; }
+}
+</script>
+</body>
+</html>

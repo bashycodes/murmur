@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Insights</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl" style="width: 1280px; height: 800px; display: flex; flex-direction: column; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground); overflow: hidden;">
+  <header style="height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px;">
+    <x-import component-from-global-scope="Flow.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
+    <div style="display: flex; align-items: center; gap: 4px;">
+      <x-import component-from-global-scope="Flow.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Flow.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
+      <span style="width: 132px;"></span>
+    </div>
+  </header>
+  <div style="flex: 1; min-height: 0; display: flex;">
+    <dc-import name="AppSidebar" active="insights" hint-size="208px,756px" style="flex: none;"></dc-import>
+    <main class="fl-panel" style="flex: 1; min-width: 0; margin: 0 8px 8px 0; overflow: hidden; display: flex; justify-content: center;">
+      <div style="width: 100%; max-width: 980px; display: flex; flex-direction: column; gap: 16px;">
+        <div style="display: flex; align-items: baseline; gap: 12px;">
+          <h1 class="fl-page-title" style="flex: 1;">Insights</h1>
+          <span style="font: 400 13px/20px var(--font-sans); color: var(--foreground-tertiary);">Worked out on this PC from your history</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;">
+          <div class="fl-card" style="display: flex; flex-direction: column; gap: 4px; padding: 20px;">
+            <div class="fl-metric">136</div>
+            <div class="fl-metric-cap">Words per minute</div>
+            <div style="display: flex; align-items: flex-end; gap: 12px; margin-top: 12px;">
+              <svg viewBox="0 0 120 64" width="120" height="64" role="img" aria-label="About 3 times faster than typing">
+                <path d="M10 60a50 50 0 0 1 100 0" fill="none" stroke="var(--background-secondary)" stroke-width="12" stroke-linecap="round"></path>
+                <path d="M10 60a50 50 0 0 1 86 -35" fill="none" stroke="var(--fathom-900)" stroke-width="12" stroke-linecap="round"></path>
+              </svg>
+              <span style="font: 400 14px/20px var(--font-sans); color: var(--neutral-600);">About 3× your typing speed</span>
+            </div>
+          </div>
+          <div class="fl-card" style="display: flex; flex-direction: column; gap: 4px; padding: 20px;">
+            <div class="fl-metric">566</div>
+            <div class="fl-metric-cap">Fixes made for you</div>
+            <div style="height: 1px; background: var(--border); margin: 12px 0 8px;"></div>
+            <div style="display: flex; justify-content: space-between; font: 400 15px/24px var(--font-sans);"><span>AI cleanup edits</span><span>297</span></div>
+            <div style="display: flex; justify-content: space-between; font: 400 15px/24px var(--font-sans);"><span>Dictionary fixes</span><span>269</span></div>
+          </div>
+          <div class="fl-card" style="display: flex; flex-direction: column; gap: 4px; padding: 20px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;"><span class="fl-metric">40,122</span><span class="fl-pill">↗ 3.4% this month</span></div>
+            <div class="fl-metric-cap">Total words dictated</div>
+            <div style="height: 1px; background: var(--border); margin: 12px 0 8px;"></div>
+            <div class="fl-split" style="height: 22px;"><span class="is-a" style="flex: 85;">This PC</span><span class="is-b" style="flex: 15;">Server</span></div>
+            <span style="font: 400 13px/20px var(--font-sans); color: var(--foreground-tertiary);">Where your speech was turned into text</span>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;">
+          <div class="fl-card" style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between;"><span style="font: 600 24px/32px var(--font-sans);">Where you dictate</span><span class="fl-metric-cap">32 apps</span></div>
+            <x-import component-from-global-scope="Flow.UsageBars" rows="{{usage}}" max-width="{{barW}}"></x-import>
+          </div>
+          <div class="fl-card" style="padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+            <div style="display: flex; align-items: baseline; justify-content: space-between;"><span style="font: 600 24px/32px var(--font-sans);">12 day streak</span><span class="fl-metric-cap">Longest 34 days</span></div>
+            <x-import component-from-global-scope="Flow.Heatmap" weeks="{{weeks}}"></x-import>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const weeks = [];
+    for (let w = 0; w < 18; w++) {
+      const col = [];
+      for (let d = 0; d < 7; d++) {
+        const v = (w * 7 + d * 3 + (w % 3) * 5) % 9;
+        col.push(w > 13 ? Math.min(4, 1 + ((w + d) % 4)) : (v > 6 ? 0 : Math.min(4, Math.floor(v / 2))));
+      }
+      weeks.push(col);
+    }
+    weeks[17][5] = null;
+    weeks[17][6] = null;
+    return {
+      barW: 180,
+      weeks,
+      usage: [
+        { icon: 'hash', pct: 58, label: '312 AI prompts' },
+        { icon: 'users', pct: 21, label: '118 work messages' },
+        { icon: 'user', pct: 12, label: '64 personal messages' },
+        { icon: 'file', pct: 6, label: '31 documents' },
+        { icon: 'note', pct: 3, label: '17 emails' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Setup: Welcome</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl" style="width: 1280px; height: 800px; box-sizing: border-box; padding: 8px; display: flex; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground);">
+  <main class="fl-panel" style="flex: 1; padding: 0; display: flex; overflow: hidden; border-radius: 16px;">
+
+    <section style="flex: 0 0 560px; box-sizing: border-box; padding: 56px 64px; display: flex; flex-direction: column;">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <span style="font: 600 18px/24px var(--font-sans);">Murmur</span>
+        <span class="fl-overline">Step 1 of 5</span>
+      </div>
+      <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 24px;">
+        <h1 class="fl-serif" style="margin: 0; font-size: 48px; line-height: 52px; font-weight: 400;">Speak, and it's <em style="color: var(--dawn-700);">written</em>.</h1>
+        <p style="margin: 0; font: 400 16px/24px var(--font-sans); color: var(--neutral-600); max-width: 420px;">Hold a key, talk, let go. Murmur turns your voice into clean text in whatever app you're typing in.</p>
+        <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px;">
+          <li style="display: flex; gap: 12px; align-items: flex-start; font: 400 15px/20px var(--font-sans);"><svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; color: var(--fathom-800);"><path d="M5 12.5l4.5 4.5L19 7"></path></svg><span><b style="font-weight: 600;">Runs on this PC.</b> Works offline, no account.</span></li>
+          <li style="display: flex; gap: 12px; align-items: flex-start; font: 400 15px/20px var(--font-sans);"><svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; color: var(--fathom-800);"><path d="M5 12.5l4.5 4.5L19 7"></path></svg><span><b style="font-weight: 600;">Nothing goes online</b> unless you choose a server or OpenRouter.</span></li>
+          <li style="display: flex; gap: 12px; align-items: flex-start; font: 400 15px/20px var(--font-sans);"><svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; color: var(--fathom-800);"><path d="M5 12.5l4.5 4.5L19 7"></path></svg><span><b style="font-weight: 600;">About 3 minutes</b> to set up.</span></li>
+        </ul>
+        <div style="display: flex; gap: 8px; margin-top: 8px;">
+          <a href="OnboardEngine.dc.html" class="fl-btn fl-btn-primary fl-btn-lg" style="text-decoration: none;">Get started</a>
+        </div>
+      </div>
+    </section>
+
+    <section aria-hidden="true" style="flex: 1; min-width: 0; margin: 8px; border-radius: 12px; background: var(--background-tertiary); display: flex; align-items: center; justify-content: center; position: relative;">
+      <div style="width: 440px; padding: 20px; border-radius: 12px; background: var(--shade-white); border: 1px solid var(--border); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; gap: 8px; align-items: center;"><span class="lw-dot" style="background: var(--sand-700);"></span><span class="lw-dot" style="background: var(--sand-700);"></span><span class="lw-dot" style="background: var(--sand-700);"></span><span style="margin-left: 8px; font: 550 13px/20px var(--font-sans); color: var(--foreground-tertiary);">New message</span></div>
+        <div style="height: 1px; background: var(--border);"></div>
+        <div style="font: 400 15px/22px var(--font-sans); color: var(--foreground);">Hi Sam,<br><br>Thursday at 3 works. I'll bring the slides and the latest numbers.<span style="display: inline-block; width: 2px; height: 18px; margin-left: 2px; vertical-align: -3px; background: var(--foreground);"></span></div>
+      </div>
+      <div style="position: absolute; bottom: 48px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 3px; height: 32px; padding: 0 16px; border-radius: 9999px; background: var(--vast-950); box-shadow: var(--shadow-lg);">
+        <span style="width: 3px; height: 8px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 14px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 20px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 12px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 18px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 9px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 15px; border-radius: 2px; background: var(--sand-50);"></span>
+        <span style="width: 3px; height: 6px; border-radius: 2px; background: var(--sand-50);"></span>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

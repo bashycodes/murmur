@@ -1,0 +1,89 @@
+/* Wispr Flow tokens (light theme), resolved from the design system's tokens.json.
+   The system ships no tokens.css, so the bundle's var(--…) references are defined here. */
+:root {
+  --sand-50:#fcfcfb;--sand-100:#faf9f7;--sand-200:#f8f7f3;--sand-300:#f7f6f2;--sand-400:#f6f5f1;--sand-500:#f5f4f0;--sand-600:#eeebe3;--sand-700:#c5c0b3;--sand-800:#a39d8e;--sand-900:#736e62;--sand-950:#4d4a42;
+  --vast-50:#e9e8e1;--vast-100:#deddd7;--vast-200:#c8c8c2;--vast-300:#b3b2ad;--vast-400:#9d9c98;--vast-500:#878683;--vast-600:#71716e;--vast-700:#5b5b59;--vast-800:#464544;--vast-875:#343432;--vast-900:#30302f;--vast-910:#2a2a29;--vast-925:#202020;--vast-950:#1a1a1a;
+  --pure-white:#ffffff;--pure-black:#000000;
+  --dawn-50:#fdfbff;--dawn-100:#fcf7ff;--dawn-200:#faf1ff;--dawn-300:#f7ebff;--dawn-400:#f4e1ff;--dawn-500:#f0d7ff;--dawn-600:#d2ace9;--dawn-700:#a26ec1;--dawn-800:#6c358c;--dawn-900:#502b66;--dawn-950:#3c2947;
+  --lumen-400:#ffffeb;
+  --fathom-50:#e2f5f2;--fathom-100:#ceedea;--fathom-200:#b8e4dc;--fathom-300:#9fd9cf;--fathom-400:#84cdc1;--fathom-500:#68bdb0;--fathom-600:#4daa9d;--fathom-700:#369489;--fathom-800:#247872;--fathom-900:#1a5c5c;--fathom-950:#034f46;
+  --glow-50:#fdf3ea;--glow-100:#fce5d1;--glow-200:#facda1;--glow-300:#ffa946;--glow-600:#834f0c;--glow-800:#3c2407;--glow-900:#251403;
+  --pulse-700:#7f1c34;--signal-400:#ffc9f5;
+  --red-100:#fee2e2;--red-800:#991b1b;--orange-100:#ffedd5;--orange-800:#9a3412;--green-100:#d1fae5;--green-600:#059669;--green-800:#065f46;
+  --background:#fcfcfb;--background-secondary:#eeebe3;--background-tertiary:#f5f4f0;--card:#ffffff;--popover:#fcfcfb;
+  --primary:#1a1a1a;--primary-foreground:#fcfcfb;--foreground:#1a1a1a;--foreground-secondary:#1a1a1a;--foreground-tertiary:#71716e;
+  --border:#eeebe3;--ring:#4d4a42;--shade-white:#ffffff;--shade-black:#000000;--muted-hover:#f1ebe1;
+  --destructive:#dc2626;--destructive-foreground:#fee2e2;--info:#2563eb;--info-foreground:#dbeafe;
+  --success:#059669;--success-foreground:#d1fae5;--recording-foreground:#059669;--recording-background:#ecfdf5;
+  --warning:#ea580c;--warning-foreground:#ffedd5;--success-500:#4fbf78;--warning-400:#ffd467;--warning-700:#efa249;
+  --destructive-400:#f87171;--destructive-500:#ee6a6a;
+  --neutral-10:#fcfcfb;--neutral-50:#f5f4f0;--neutral-100:#f5f4f0;--neutral-200:#eeebe3;--neutral-300:#eeebe3;--neutral-400:#4d4a42;--neutral-500:#4d4a42;--neutral-600:#30302f;--neutral-800:#1a1a1a;--neutral-900:#1a1a1a;
+  --toggle-border:#c5c0b3;--keycap-bg:#ffffff;--keycap-edge:#eeebe3;--keycap-drop:#d3ced6;--keycap-ink:#30302f;
+  --emboss-stroke:#1a1a1a;--scrim:rgba(26,26,26,0.3);--bubble:#fcf7ff;--selected-border:#d2ace9;--peach-bg:#fdf3ea;--peach-border:#facda1;
+  --shadow-lg:0 10px 15px -3px rgba(26,26,26,0.1),0 4px 6px -4px rgba(26,26,26,0.1);
+  --shadow-xl:0 20px 25px -5px rgba(26,26,26,0.1),0 8px 10px -6px rgba(26,26,26,0.1);
+  --font-sans:Figtree,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --font-serif:"EB Garamond",EBGaramond,serif;
+  --spring-easing:cubic-bezier(.34,1.4,.64,1);
+}
+
+/* Dark theme: the system's dark values, applied to any subtree with .lw-dark */
+.lw-dark {
+  color-scheme: dark;
+  --background:#1a1a1a;--background-secondary:#30302f;--background-tertiary:#202020;--card:#000000;--popover:#1a1a1a;
+  --primary:#fcfcfb;--primary-foreground:#1a1a1a;--foreground:#e9e8e1;--foreground-secondary:#deddd7;--foreground-tertiary:#9d9c98;
+  --border:#30302f;--ring:#eeebe3;--shade-white:#1a1a1a;--shade-black:#e9e8e1;--muted-hover:#30302f;
+  --destructive:#ff5757;--success:#34d399;--recording-foreground:#34d399;--recording-background:rgba(52,211,153,0.15);
+  --warning:#f97316;--success-500:#34d399;--warning-400:#f97316;--warning-700:#f97316;--destructive-400:#ff5757;--destructive-500:#ff5757;
+  --neutral-10:#1a1a1a;--neutral-50:#202020;--neutral-100:#202020;--neutral-200:#30302f;--neutral-300:#30302f;--neutral-400:#9d9c98;--neutral-500:#9d9c98;--neutral-600:#deddd7;--neutral-800:#e9e8e1;--neutral-900:#e9e8e1;
+  --toggle-border:#5b5b59;--keycap-bg:#464544;--keycap-edge:#5b5b59;--keycap-drop:#202020;--keycap-ink:#e9e8e1;
+  --emboss-stroke:#af6a06;--scrim:rgba(0,0,0,0.55);--bubble:#502b66;--selected-border:#a26ec1;--peach-bg:#251403;--peach-border:#3c2407;
+  --shadow-lg:0 4px 8px -2px rgba(0,0,0,0.45),0 1px 3px rgba(0,0,0,0.3);
+  --shadow-xl:0 6px 12px -3px rgba(0,0,0,0.5),0 2px 4px rgba(0,0,0,0.32);
+}
+.lw-dark .fl-callout-lilac { background: var(--dawn-950); }
+.lw-dark .fl-callout-lilac .fl-callout-body { color: var(--dawn-600); }
+.lw-dark .fl-quota em { color: var(--dawn-600); }
+.lw-dark .lw-route.is-pc { background: var(--fathom-950); color: var(--fathom-200); }
+.lw-dark .lw-route.is-server { background: var(--dawn-950); color: var(--dawn-500); }
+.lw-dark .lw-route.is-cloud { background: var(--glow-900); color: var(--glow-200); }
+.lw-dark .fl-badge-success { background: rgba(52,211,153,0.15); color: #34d399; }
+
+/* Android: Wispr's Android app uses its own cool-grey Material-style surfaces.
+   Values sampled from screenshots of the Wispr Android app (not in the design system). */
+.lw-android {
+  --a-bg:#eeeef0; --a-bg-settings:#f5f5f5; --a-card:#ffffff; --a-ink:#1a1a1a; --a-ink-2:#79767d;
+  --a-outline:#cac4d0; --a-selected:#dcdcdc; --a-divider:#dae0dc; --a-button:#48454e;
+  --a-peach:#fdd8ac; --a-bubble:#f8f7ff; --a-track-off:#f3ebfa; --a-track-off-border:#e4d8ef;
+  font-family: var(--font-sans); color: var(--a-ink); -webkit-font-smoothing: antialiased;
+}
+.lw-android * { box-sizing: border-box; }
+.a-card { background: var(--a-card); border-radius: 24px; }
+.a-list > * + * { border-top: 1px solid var(--a-divider); }
+.a-section { padding: 20px 4px 10px; font: 600 13px/18px var(--font-sans); letter-spacing: .06em; text-transform: uppercase; color: var(--a-ink-2); }
+.a-switch { position: relative; flex: none; width: 52px; height: 32px; padding: 0; border-radius: 9999px; border: 2px solid var(--a-track-off-border); background: var(--a-track-off); cursor: pointer; }
+.a-switch::before { content: ""; position: absolute; top: 6px; left: 6px; width: 16px; height: 16px; border-radius: 50%; background: var(--pure-white); }
+.a-switch[aria-checked="true"] { border-color: var(--a-ink); background: var(--a-ink); }
+.a-switch[aria-checked="true"]::before { left: 24px; top: 3px; width: 22px; height: 22px; }
+.a-fab { position: absolute; right: 16px; bottom: 88px; width: 56px; height: 56px; border: 0; border-radius: 50%; background: var(--vast-950); color: var(--pure-white); display: inline-flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(26,26,26,.25); cursor: pointer; }
+.a-search { display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 16px; border-radius: 10px; border: 1.5px solid var(--a-outline); background: var(--a-card); }
+.a-search input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font: 400 17px/24px var(--font-sans); color: var(--a-ink); }
+.a-search input::placeholder { color: var(--a-ink-2); }
+
+/* Murmur additions, built only from the tokens above */
+.lw-seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 10px; background: var(--background-secondary); }
+.lw-seg button { border: 0; padding: 6px 12px; border-radius: 8px; background: transparent; font: 550 14px/20px var(--font-sans); color: var(--neutral-600); cursor: pointer; }
+.lw-seg button.is-on { background: var(--shade-white); color: var(--foreground); box-shadow: 0 1px 2px rgba(26,26,26,.08); }
+.lw-rank { flex: none; width: 24px; height: 24px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; background: var(--background-secondary); font: 600 12px/20px var(--font-sans); color: var(--neutral-600); }
+.lw-tile { flex: none; width: 36px; height: 36px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: var(--shade-white); border: 1px solid var(--border); color: var(--foreground); }
+.lw-tile svg, .lw-ico { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.lw-link { font: 600 15px/20px var(--font-sans); color: var(--foreground); text-decoration: none; }
+.lw-link:hover { text-decoration: underline; }
+.lw-mono { font-family: "Google Sans Code", ui-monospace, Consolas, monospace; font-size: 13px; }
+.lw-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.lw-chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 9999px; border: 1px solid var(--neutral-300); background: var(--shade-white); font: 550 13px/20px var(--font-sans); color: var(--foreground); cursor: pointer; }
+.lw-chip.is-on { background: var(--primary); border-color: var(--primary); color: var(--primary-foreground); }
+.lw-route { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border-radius: 4px; font: 550 11px/18px var(--font-sans); white-space: nowrap; }
+.lw-route.is-pc { background: var(--fathom-100); color: var(--fathom-950); }
+.lw-route.is-server { background: var(--dawn-300); color: var(--dawn-900); }
+.lw-route.is-cloud { background: var(--glow-100); color: var(--glow-800); }

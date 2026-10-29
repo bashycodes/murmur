@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Android: Home</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="lw-android" style="width: 390px; height: 844px; position: relative; display: flex; flex-direction: column; background: var(--a-bg); overflow: hidden;">
+  <header style="flex: none; height: 64px; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; padding: 0 4px;">
+    <a href="AndroidDrawer.dc.html" aria-label="Open menu" style="width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; color: var(--a-ink);"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round;"><path d="M5 7h14M5 12h14M5 17h14"></path></svg></a>
+    <span style="text-align: center; font: 700 22px/28px var(--font-sans); letter-spacing: -0.02em;">Murmur</span>
+    <span></span>
+  </header>
+
+  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 12px;">
+    <sc-for list="{{days}}" as="day" hint-placeholder-count="2">
+      <h2 style="margin: 10px 4px 0; font: 700 20px/28px var(--font-sans);">{{day.date}}</h2>
+      <sc-for list="{{day.items}}" as="it" hint-placeholder-count="2">
+        <div class="a-card" style="position: relative; padding: 18px 20px 8px; display: flex; flex-direction: column; gap: 10px;">
+          <p style="margin: 0; font: 400 17px/24px var(--font-sans);">{{it.text}}</p>
+          <div style="display: flex; align-items: center; gap: 8px; font: 400 14px/20px var(--font-sans); color: var(--a-ink-2);">
+            <span>{{it.time}}</span>
+            <span class="{{it.routeClass}}">{{it.route}}</span>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between; margin: 0 -8px;">
+            <button type="button" style="display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 9999px; background: transparent; font: 550 15px/20px var(--font-sans); color: var(--a-ink); cursor: pointer;"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="M8 8h12v12H8zM4 16V4h12"></path></svg>Copy</button>
+            <button type="button" aria-label="More actions" style="width: 44px; height: 44px; border: 0; border-radius: 50%; background: {{it.moreBg}}; display: inline-flex; align-items: center; justify-content: center; color: var(--a-ink); cursor: pointer;"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 20px; height: 20px; fill: currentColor;"><circle cx="12" cy="5" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="12" cy="19" r="1.8"></circle></svg></button>
+          </div>
+          <sc-if value="{{it.menu}}" hint-placeholder-val="{{false}}">
+            <div role="menu" style="position: absolute; right: 12px; bottom: -88px; z-index: 2; width: 220px; padding: 8px 0; border-radius: 12px; background: var(--a-card); box-shadow: 0 6px 20px rgba(26,26,26,.18);">
+              <button type="button" role="menuitem" style="width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 0; background: transparent; font: 400 16px/22px var(--font-sans); color: var(--a-ink); text-align: left;"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round;"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"></path></svg>Retry transcription</button>
+              <button type="button" role="menuitem" style="width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 0; background: transparent; font: 400 16px/22px var(--font-sans); color: var(--a-ink); text-align: left;"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round;"><path d="M5 7h14M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"></path></svg>Delete</button>
+            </div>
+          </sc-if>
+        </div>
+      </sc-for>
+    </sc-for>
+  </div>
+
+  <dc-import name="AndroidNav" active="home" hint-size="390px,76px" style="flex: none;"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const route = { pc: ['This phone', 'lw-route is-pc'], server: ['Server', 'lw-route is-server'] };
+    const row = (time, text, k, menu) => ({ time, text, menu: !!menu, moreBg: menu ? 'var(--a-selected)' : 'transparent', route: route[k][0], routeClass: route[k][1] });
+    return {
+      days: [
+        { date: 'Today', items: [
+          row('9:37am', 'Running ten minutes late, start without me and I’ll catch up.', 'server', true),
+          row('8:12am', 'Can you send me the address again?', 'pc')
+        ] },
+        { date: 'Yesterday', items: [
+          row('Oct 28, 6:55pm', 'Picking up groceries on the way home, need anything?', 'pc')
+        ] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

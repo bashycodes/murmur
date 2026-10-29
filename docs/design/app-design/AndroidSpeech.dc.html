@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Android: Speech to text</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="lw-android" style="width: 390px; height: 844px; display: flex; flex-direction: column; background: var(--a-bg-settings); overflow: hidden;">
+  <header style="flex: none; height: 64px; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; padding: 0 4px;">
+    <a href="AndroidSettings.dc.html" aria-label="Back" style="width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; color: var(--a-ink);"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg></a>
+    <h1 style="margin: 0; text-align: center; font: 550 21px/28px var(--font-sans);">Speech to text</h1>
+    <span></span>
+  </header>
+
+  <div style="padding: 0 16px 24px; display: flex; flex-direction: column; gap: 10px;">
+    <p style="margin: 4px 4px 0; font: 400 15px/21px var(--font-sans); color: var(--a-ink-2);">Tried top to bottom. If one fails, the next picks up the same audio and nothing is lost.</p>
+
+    <div class="a-section">Engines</div>
+    <div class="a-card a-list" style="padding: 0 20px;">
+      <sc-for list="{{engines}}" as="e" hint-placeholder-count="3">
+        <div style="display: flex; align-items: center; gap: 14px; padding: 16px 0;">
+          <span class="lw-rank">{{e.rank}}</span>
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 2px;"><span style="font: 550 17px/24px var(--font-sans);">{{e.title}}</span><span style="font: 400 15px/21px var(--font-sans); color: var(--a-ink-2);">{{e.sub}}</span></span>
+          <button type="button" role="switch" aria-checked="{{e.on}}" aria-label="{{e.label}}" class="a-switch"></button>
+        </div>
+      </sc-for>
+      <button type="button" style="display: flex; align-items: center; gap: 10px; width: 100%; min-height: 52px; padding: 0; border: 0; background: transparent; font: 550 16px/22px var(--font-sans); color: var(--a-ink); text-align: left;"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round;"><path d="M8 4v16M4 8l4-4 4 4M16 20V4M12 16l4 4 4-4"></path></svg>Change order</button>
+    </div>
+
+    <div class="a-section">On this phone</div>
+    <div class="a-card a-list" style="padding: 0 20px;">
+      <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px 0;">
+        <span style="display: flex; flex-direction: column; gap: 2px;"><span style="font: 550 17px/24px var(--font-sans);">Parakeet TDT 0.6B</span><span style="font: 400 15px/21px var(--font-sans); color: var(--a-ink-2);">English · 640 MB · imported Oct 20</span></span>
+        <button type="button" style="height: 44px; border: 1.5px solid var(--a-outline); border-radius: 10px; background: transparent; font: 550 16px/22px var(--font-sans); color: var(--a-ink);">Import another model</button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px; padding: 16px 0;">
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 2px;"><span style="font: 550 17px/24px var(--font-sans);">Use dictionary words</span><span style="font: 400 15px/21px var(--font-sans); color: var(--a-ink-2);">Better at names. Uses more memory.</span></span>
+        <button type="button" role="switch" aria-checked="true" aria-label="Use dictionary words" class="a-switch"></button>
+      </div>
+      <div style="display: flex; align-items: center; gap: 16px; padding: 16px 0;">
+        <span style="flex: 1; font: 550 17px/24px var(--font-sans);">Transcribe while I speak</span>
+        <button type="button" role="switch" aria-checked="true" aria-label="Transcribe while I speak" class="a-switch"></button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      engines: [
+        { rank: '1', title: 'Your server', sub: 'Connected · 41 ms', on: 'true', label: 'Use your server' },
+        { rank: '2', title: 'This phone', sub: 'Parakeet · works offline', on: 'true', label: 'Use this phone' },
+        { rank: '3', title: 'OpenRouter', sub: 'Sends audio · asks first', on: 'false', label: 'Use OpenRouter for speech' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

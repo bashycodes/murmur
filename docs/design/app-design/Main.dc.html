@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Murmur home</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl {{themeClass}}" style="width: 1280px; height: 800px; display: flex; flex-direction: column; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground); overflow: hidden;">
+
+  <header style="height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px;">
+    <div style="display: flex; align-items: center; gap: 4px;">
+      <x-import component-from-global-scope="Flow.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
+    </div>
+    <div style="display: flex; align-items: center; gap: 4px;">
+      <x-import component-from-global-scope="Flow.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Flow.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
+      <span style="width: 132px; display: flex; justify-content: flex-end; gap: 0; color: var(--foreground-tertiary); font-size: 12px;">— ▢ ✕</span>
+    </div>
+  </header>
+
+  <div style="flex: 1; min-height: 0; display: flex;">
+    <dc-import name="AppSidebar" active="dictation" hint-size="208px,756px" style="flex: none;"></dc-import>
+
+    <main class="fl-panel" style="flex: 1; min-width: 0; margin: 0 8px 8px 0; overflow: hidden; display: flex; justify-content: center;">
+      <div style="width: 100%; max-width: 1120px; display: flex; gap: 32px; align-items: flex-start;">
+
+        <section style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 24px;">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <h1 class="fl-page-title">Welcome back, Alex</h1>
+            <x-import component-from-global-scope="Flow.Kbd" keys="{{pttKeys}}">Hold to dictate in any app</x-import>
+          </div>
+
+          <div class="fl-callout fl-callout-lilac" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px;">
+            <div class="fl-grow" style="flex: 1;">
+              <div class="fl-callout-title">Your voice stays on your devices</div>
+              <div class="fl-callout-body">Speech runs on this PC or your own server. OpenRouter only gets what you turn on: right now, text for AI cleanup.</div>
+            </div>
+            <a class="lw-link" href="SettingsPrivacy.dc.html" style="white-space: nowrap;">Review →</a>
+          </div>
+
+          <div>
+            <sc-for list="{{days}}" as="day" hint-placeholder-count="2">
+              <div class="fl-list-date" style="margin: 0 0 8px;">
+                <span class="fl-overline">{{day.date}}</span>
+              </div>
+              <div class="fl-list" style="margin-bottom: 24px;">
+                <sc-for list="{{day.items}}" as="it" hint-placeholder-count="3">
+                  <div class="fl-list-row" style="align-items: flex-start;">
+                    <span class="fl-list-time">{{it.time}}</span>
+                    <span style="flex: 1; min-width: 0;">{{it.text}}</span>
+                    <sc-if value="{{it.hover}}" hint-placeholder-val="{{false}}">
+                      <span style="display: flex; gap: 2px; margin: -4px 0;">
+                        <button type="button" class="fl-iconbtn is-toolbar" aria-label="Copy" title="Copy"><svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M8 8h12v12H8zM4 16V4h12"></path></svg></button>
+                        <button type="button" class="fl-iconbtn is-toolbar" aria-label="Redo with another engine" title="Redo with another engine"><svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v4h-4"></path></svg></button>
+                        <button type="button" class="fl-iconbtn is-toolbar" aria-label="Add a word to Dictionary" title="Add a word to Dictionary"><svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 3h12v18H6zM12 9v6M9 12h6"></path></svg></button>
+                      </span>
+                    </sc-if>
+                    <span class="{{it.routeClass}}">{{it.route}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+        </section>
+
+        <aside class="fl-stats" style="flex: none; width: 240px;">
+          <div class="fl-stats-sec">
+            <div class="fl-stat" style="display: flex; align-items: baseline; gap: 8px;"><span class="fl-stat-value fl-serif" style="font-size: 28px; line-height: 28px;">40.1K</span><span class="fl-stat-unit">total words</span></div>
+            <div class="fl-stat" style="display: flex; align-items: baseline; gap: 8px;"><span class="fl-stat-value fl-serif" style="font-size: 28px; line-height: 28px;">136</span><span class="fl-stat-unit">wpm</span></div>
+            <div class="fl-stat" style="display: flex; align-items: baseline; gap: 8px;"><span class="fl-stat-value fl-serif" style="font-size: 28px; line-height: 28px;">12</span><span class="fl-stat-unit">day streak</span></div>
+          </div>
+          <div class="fl-stats-sec" style="display: flex; flex-direction: column; gap: 10px;">
+            <span class="fl-overline">Where speech ran this week</span>
+            <div style="display: flex; gap: 3px; height: 10px;">
+              <span style="flex: 85; border-radius: 3px; background: var(--fathom-900);"></span>
+              <span style="flex: 15; border-radius: 3px; background: var(--fathom-500);"></span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px; font: 400 13px/20px var(--font-sans);">
+              <span style="display: flex; align-items: center; gap: 8px;"><span class="lw-dot" style="background: var(--fathom-900);"></span><span style="flex: 1;">This PC</span><span>85%</span></span>
+              <span style="display: flex; align-items: center; gap: 8px;"><span class="lw-dot" style="background: var(--fathom-500);"></span><span style="flex: 1;">Your server</span><span>15%</span></span>
+              <span style="display: flex; align-items: center; gap: 8px;"><span class="lw-dot" style="background: var(--background-secondary);"></span><span style="flex: 1;">OpenRouter</span><span>Off</span></span>
+            </div>
+          </div>
+          <div class="fl-stats-sec">
+            <div class="fl-quota"><em>$1.18</em> of $5.00</div>
+            <p class="fl-help">OpenRouter spend this month. Dictation switches to this PC when the budget runs out.</p>
+            <a href="SettingsOpenRouter.dc.html" class="fl-btn fl-btn-outline fl-btn-block" style="text-decoration: none; justify-content: center;">View usage</a>
+          </div>
+        </aside>
+
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const themeClass = (this.props.theme ?? 'light') === 'dark' ? 'lw-dark' : '';
+    const route = (k) => ({ pc: ['This PC', 'lw-route is-pc'], server: ['Server', 'lw-route is-server'], cloud: ['OpenRouter', 'lw-route is-cloud'] })[k];
+    const row = (time, text, k, hover) => ({ time, text, hover: !!hover, route: route(k)[0], routeClass: route(k)[1] });
+    return {
+      themeClass,
+      yes: true,
+      pttKeys: ['Ctrl', 'Win'],
+      days: [
+        { date: 'Today', items: [
+          row('2:08pm', 'Can we move the review to Thursday? I want one more pass over the Parakeet benchmarks before we share them.', 'pc'),
+          row('1:41pm', 'Ship the hands-free fix first, then the clipboard restore.', 'pc', true),
+          row('11:02am', 'Thanks, that works for me.', 'pc')
+        ] },
+        { date: 'Yesterday', items: [
+          row('7:09pm', 'Could we make all of this into a Bash script?', 'server'),
+          row('4:22pm', 'The server answered in 38 milliseconds, so the fallback never kicked in.', 'server')
+        ] }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

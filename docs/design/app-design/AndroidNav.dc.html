@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Android bottom navigation</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<nav class="lw-android" aria-label="Main" style="width: 390px; height: 76px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 8px 0 10px; background: var(--a-bg);">
+  <sc-for list="{{items}}" as="n" hint-placeholder-count="4">
+    <a href="{{n.href}}" aria-current="{{n.current}}" style="display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; color: {{n.color}}; font: {{n.font}};">
+      <span style="display: inline-flex; align-items: center; justify-content: center; width: 64px; height: 32px; border-radius: 9999px; background: {{n.pill}};">
+        <svg viewBox="0 0 24 24" aria-hidden="true" style="width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;"><path d="{{n.icon}}"></path></svg>
+      </span>
+      {{n.label}}
+    </a>
+  </sc-for>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["home","dictionary","style","snippets"],"default":"home"},"$preview":{"width":390,"height":76}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const active = this.props.active ?? 'home';
+    const defs = [
+      ['home', 'Home', 'AndroidHome.dc.html', 'M4 11l8-7 8 7v9h-5v-6h-6v6H4z'],
+      ['dictionary', 'Dictionary', 'AndroidDictionary.dc.html', 'M6 3h8l4 4v14H6zM11 9v6a1.5 1.5 0 0 0 3 0V9'],
+      ['style', 'Style', 'AndroidStyle.dc.html', 'M3 7V5h10v2M8 5v14M6 19h4M14 12v-1h7v1M17.5 11v8M16 19h3'],
+      ['snippets', 'Snippets', 'AndroidSnippets.dc.html', 'M6 3.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5zM6 15.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5zM8 7.5L20 18M8 16.5L20 6']
+    ];
+    return {
+      items: defs.map(([id, label, href, icon]) => {
+        const on = id === active;
+        return {
+          label, href, icon,
+          current: on ? 'page' : 'false',
+          pill: on ? 'var(--a-selected)' : 'transparent',
+          color: on ? 'var(--a-ink)' : 'var(--a-ink-2)',
+          font: on ? '600 14px/18px var(--font-sans)' : '500 14px/18px var(--font-sans)'
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

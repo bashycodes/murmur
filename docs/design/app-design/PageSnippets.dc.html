@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Snippets</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl" style="width: 1280px; height: 800px; display: flex; flex-direction: column; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground); overflow: hidden;">
+  <header style="height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px;">
+    <x-import component-from-global-scope="Flow.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
+    <div style="display: flex; align-items: center; gap: 4px;">
+      <x-import component-from-global-scope="Flow.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Flow.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
+      <span style="width: 132px;"></span>
+    </div>
+  </header>
+  <div style="flex: 1; min-height: 0; display: flex;">
+    <dc-import name="AppSidebar" active="snippets" hint-size="208px,756px" style="flex: none;"></dc-import>
+    <main class="fl-panel" style="flex: 1; min-width: 0; margin: 0 8px 8px 0; overflow: hidden; display: flex; justify-content: center;">
+      <div style="width: 100%; max-width: 860px; display: flex; flex-direction: column; gap: 20px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+            <h1 class="fl-page-title">Snippets</h1>
+            <span style="font: 400 15px/20px var(--font-sans); color: var(--foreground-tertiary);">Say a short phrase, get the full text pasted.</span>
+          </div>
+          <x-import component-from-global-scope="Flow.Button" variant="secondary">Import</x-import>
+          <x-import component-from-global-scope="Flow.Button" variant="primary" icon="plus">Add new</x-import>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 12px; border: 2px solid var(--neutral-500); background: var(--shade-white);">
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+            <label style="display: flex; flex-direction: column; gap: 6px;"><span class="fl-overline">When I say</span><input class="fl-input" type="text" value="my calendar link" style="width: 100%;"></label>
+            <label style="display: flex; flex-direction: column; gap: 6px;"><span class="fl-overline">Paste</span><input class="fl-input" type="text" value="https://cal.com/alex/30min" style="width: 100%;"></label>
+          </div>
+          <div style="display: flex; justify-content: flex-end; gap: 8px;">
+            <x-import component-from-global-scope="Flow.Button" variant="ghost" size="sm">Cancel</x-import>
+            <x-import component-from-global-scope="Flow.Button" variant="primary" size="sm">Save</x-import>
+          </div>
+        </div>
+
+        <div class="fl-list">
+          <sc-for list="{{snips}}" as="s" hint-placeholder-count="4">
+            <div class="fl-list-row" style="padding: 14px 16px; gap: 12px;">
+              <span style="flex: none; width: 200px; font-weight: 550;">{{s.say}}</span>
+              <span aria-hidden="true" style="color: var(--foreground-tertiary);">→</span>
+              <span style="flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--neutral-600);">{{s.paste}}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      snips: [
+        { say: 'my email address', paste: 'alex@example.com' },
+        { say: 'my sign-off', paste: 'Thanks, Alex' },
+        { say: 'bug report template', paste: 'Steps to reproduce: … Expected: … Actual: … Version: …' },
+        { say: 'my home address', paste: '[YOUR ADDRESS]' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
