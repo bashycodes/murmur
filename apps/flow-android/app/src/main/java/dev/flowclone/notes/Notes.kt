@@ -52,6 +52,34 @@ class NotesStore(private val dir: File, private val clock: () -> Long = System::
             .sortedWith(compareByDescending<Note> { it.pinned }.thenByDescending { it.updatedAt }.thenBy { it.id })
     }
 
+    /**
+     * Backup restore: every note replaced by [notes]. They are written to a sibling staging
+     * directory first and swapped in by rename, so a failed write leaves the old notes as they were.
+     */
+    @Synchronized fun replaceAll(notes: List<Note>) {
+        for (n in notes) require(DocumentStore.isValidId(n.id)) { "bad document id" }
+        val parent = dir.absoluteFile.parentFile ?: throw java.io.IOException("no parent for ${dir.name}")
+        val staging = File(parent, dir.name + ".restore")
+        val old = File(parent, dir.name + ".old")
+        staging.deleteRecursively()
+        old.deleteRecursively()
+        try {
+            val files = FileDocumentStore(staging)
+            for (n in notes) files.save(n.id, n.text)
+            NotesStore(staging, clock).writeIndex(notes.associate { it.id to Meta(it.pinned, it.createdAt, it.updatedAt) })
+        } catch (e: Exception) {
+            staging.deleteRecursively()
+            throw e
+        }
+        if (dir.exists() && !dir.renameTo(old)) { staging.deleteRecursively(); throw java.io.IOException("could not move ${dir.name} aside") }
+        if (!staging.renameTo(dir)) {
+            old.renameTo(dir)
+            staging.deleteRecursively()
+            throw java.io.IOException("could not replace ${dir.name}")
+        }
+        old.deleteRecursively()
+    }
+
     @Synchronized fun setPinned(id: String, pinned: Boolean) {
         require(DocumentStore.isValidId(id)) { "bad document id" }
         val idx = existing(readIndex())
