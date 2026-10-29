@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dictionary</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl" style="width: 1280px; height: 800px; display: flex; flex-direction: column; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground); overflow: hidden;">
+  <header style="height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px;">
+    <x-import component-from-global-scope="Flow.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
+    <div style="display: flex; align-items: center; gap: 4px;">
+      <x-import component-from-global-scope="Flow.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Flow.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
+      <span style="width: 132px;"></span>
+    </div>
+  </header>
+  <div style="flex: 1; min-height: 0; display: flex;">
+    <dc-import name="AppSidebar" active="dictionary" hint-size="208px,756px" style="flex: none;"></dc-import>
+    <main class="fl-panel" style="flex: 1; min-width: 0; margin: 0 8px 8px 0; overflow: hidden; display: flex; justify-content: center;">
+      <div style="width: 100%; max-width: 860px; display: flex; flex-direction: column; gap: 20px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <h1 class="fl-page-title" style="flex: 1;">Dictionary</h1>
+          <x-import component-from-global-scope="Flow.Button" variant="secondary">Import</x-import>
+          <x-import component-from-global-scope="Flow.Button" variant="primary" icon="plus">Add new</x-import>
+        </div>
+
+        <div class="fl-card" style="display: flex; align-items: center; gap: 16px;">
+          <div style="flex: 1;">
+            <div class="fl-row-title">Learn from my corrections</div>
+            <div class="fl-row-desc">When you fix a word right after dictating, it's added here. Learned words are marked ✨.</div>
+          </div>
+          <x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Learn from my corrections"></x-import>
+        </div>
+
+        <div class="fl-tabs" style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border);">
+          <div class="fl-tabs-list" role="tablist" style="display: flex;">
+            <button type="button" role="tab" aria-selected="true" class="fl-tab is-active">All</button>
+            <button type="button" role="tab" aria-selected="false" class="fl-tab">Added by you</button>
+            <button type="button" role="tab" aria-selected="false" class="fl-tab">Learned</button>
+          </div>
+          <div class="fl-tabs-actions" style="display: flex; gap: 2px;">
+            <x-import component-from-global-scope="Flow.IconButton" icon="search" label="Search" variant="toolbar"></x-import>
+            <x-import component-from-global-scope="Flow.IconButton" icon="sort" label="Sort" variant="toolbar"></x-import>
+          </div>
+        </div>
+
+        <div class="fl-list">
+          <sc-for list="{{words}}" as="w" hint-placeholder-count="8">
+            <div class="fl-list-row" style="padding: 14px 16px;">
+              <span style="flex: 1; display: flex; align-items: center; gap: 10px;">
+                <sc-if value="{{w.heard}}" hint-placeholder-val="{{false}}"><span style="color: var(--foreground-tertiary);">{{w.heard}}</span><span aria-hidden="true" style="color: var(--foreground-tertiary);">→</span></sc-if>
+                <span>{{w.word}}</span>
+                <sc-if value="{{w.learned}}" hint-placeholder-val="{{false}}"><span aria-label="learned">✨</span></sc-if>
+              </span>
+            </div>
+          </sc-for>
+        </div>
+        <p style="margin: 0; font: 400 13px/20px var(--font-sans); color: var(--foreground-tertiary);">Words here help Parakeet and Whisper hear names correctly, and the AI cleanup spell them your way. They're sent to OpenRouter only if you allow it in Settings.</p>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const w = (word, heard, learned) => ({ word, heard: heard || '', learned: !!learned });
+    return {
+      yes: true,
+      words: [
+        w('Claude'),
+        w('Parakeet'),
+        w('JSON', 'jason'),
+        w('Hetzner', '', true),
+        w('Alex Rivera'),
+        w('Tailscale', 'tail scale'),
+        w('n8n', '', true),
+        w('TickTick', '', true)
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

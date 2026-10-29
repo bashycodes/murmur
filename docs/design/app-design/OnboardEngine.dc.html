@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Setup: Where speech runs</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl" style="width: 1280px; height: 800px; box-sizing: border-box; padding: 8px; display: flex; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground);">
+  <main class="fl-panel" style="flex: 1; box-sizing: border-box; padding: 56px 64px; display: flex; flex-direction: column; border-radius: 16px;">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <span style="font: 600 18px/24px var(--font-sans);">Murmur</span>
+      <span class="fl-overline">Step 2 of 5</span>
+    </div>
+
+    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 32px;">
+      <div style="text-align: center; display: flex; flex-direction: column; gap: 12px; max-width: 640px;">
+        <h1 class="fl-serif" style="margin: 0; font-size: 36px; line-height: 40px; font-weight: 400;">Where should your voice become text?</h1>
+        <p style="margin: 0; font: 400 16px/24px var(--font-sans); color: var(--neutral-600);">You can add the others later and use them as backups, in Settings → Speech to text.</p>
+      </div>
+
+      <div role="radiogroup" aria-label="Speech engine" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; width: 100%; max-width: 960px;">
+        <sc-for list="{{options}}" as="o" hint-placeholder-count="3">
+          <button type="button" role="radio" aria-checked="{{o.checked}}" onClick="{{o.pick}}" style="display: flex; flex-direction: column; gap: 12px; padding: 20px; text-align: left; border-radius: 12px; cursor: pointer; font: inherit; color: inherit; background: var(--shade-white); border: {{o.border}}; outline: none;">
+            <span style="display: flex; align-items: center; justify-content: space-between;">
+              <span class="lw-tile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{o.icon}}"></path></svg></span>
+              <sc-if value="{{o.rec}}" hint-placeholder-val="{{false}}"><span class="fl-badge fl-badge-dark">Recommended</span></sc-if>
+            </span>
+            <span style="font: 600 18px/24px var(--font-sans);">{{o.title}}</span>
+            <span style="font: 400 15px/20px var(--font-sans); color: var(--neutral-600); min-height: 60px;">{{o.desc}}</span>
+            <span style="display: flex; flex-direction: column; gap: 6px; padding-top: 12px; border-top: 1px solid var(--border);">
+              <sc-for list="{{o.facts}}" as="f" hint-placeholder-count="3">
+                <span style="font: 400 13px/20px var(--font-sans); color: var(--neutral-600);">{{f}}</span>
+              </sc-for>
+            </span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <a href="OnboardWelcome.dc.html" class="fl-btn fl-btn-ghost" style="text-decoration: none;">Back</a>
+      <a href="OnboardModel.dc.html" class="fl-btn fl-btn-primary" style="text-decoration: none;">Continue</a>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { picked: 'pc' };
+  }
+  renderVals() {
+    const defs = [
+      { id: 'pc', title: 'This PC', rec: true, icon: 'M6 6h12v12H6zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4',
+        desc: 'Private and works offline. Fast on most computers from the last five years.',
+        facts: ['Needs a 0.7 GB model file', 'About 1 second after you stop talking', 'Nothing leaves this PC'] },
+      { id: 'server', title: 'Your server', rec: false, icon: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
+        desc: 'A faster computer you own does the work. Good for older laptops.',
+        facts: ['Needs flow-server running at home or on Tailscale', 'Audio goes to your server, encrypted', 'This PC can step in if it’s offline'] },
+      { id: 'cloud', title: 'OpenRouter', rec: false, icon: 'M7 18a4 4 0 0 1-.5-7.97A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z',
+        desc: 'A cloud model. No download, but your audio leaves this computer.',
+        facts: ['Needs an OpenRouter API key', 'From $0.012 per hour of audio', 'Zero-retention providers only'] }
+    ];
+    return {
+      options: defs.map((d) => {
+        const on = d.id === this.state.picked;
+        return Object.assign({}, d, {
+          checked: on ? 'true' : 'false',
+          border: on ? '2px solid var(--primary)' : '1px solid var(--border)',
+          pick: () => this.setState({ picked: d.id })
+        });
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

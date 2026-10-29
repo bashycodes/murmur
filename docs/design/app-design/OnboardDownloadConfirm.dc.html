@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Setup: Confirm model download</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl" style="width: 1280px; height: 800px; position: relative; overflow: hidden; font-family: var(--font-sans); color: var(--foreground);">
+  <dc-import name="OnboardModel" state="idle" hint-size="1280px,800px"></dc-import>
+
+  <div class="fl-scrim" style="position: absolute; inset: 0;">
+    <div class="fl-dialog" role="dialog" aria-label="Download Parakeet?" style="width: 560px; gap: 20px; background: var(--shade-white);">
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <h2 class="fl-serif" style="margin: 0; font-size: 28px; line-height: 28px; font-weight: 400;">Download Parakeet?</h2>
+        <p style="margin: 0; font: 400 15px/20px var(--font-sans); color: var(--neutral-600);">This is the only thing that will be downloaded. Here is exactly what happens.</p>
+      </div>
+
+      <dl style="margin: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); row-gap: 12px; column-gap: 16px; padding: 16px; border-radius: 12px; background: var(--background-tertiary); font: 400 14px/20px var(--font-sans);">
+        <dt style="color: var(--foreground-tertiary);">From</dt>
+        <dd class="lw-mono" style="margin: 0; font-size: 12px; line-height: 18px; overflow-wrap: anywhere;">https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2</dd>
+        <dt style="color: var(--foreground-tertiary);">Size</dt>
+        <dd style="margin: 0;">640 MB once unpacked</dd>
+        <dt style="color: var(--foreground-tertiary);">Saved to</dt>
+        <dd class="lw-mono" style="margin: 0; font-size: 12px; line-height: 18px; overflow-wrap: anywhere;">%APPDATA%\Murmur\models\</dd>
+        <dt style="color: var(--foreground-tertiary);">Checked</dt>
+        <dd style="margin: 0;">Against a SHA-256 fingerprint built into this version. If it doesn't match, the file is deleted and never loaded.</dd>
+      </dl>
+
+      <ul style="margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; font: 400 14px/20px var(--font-sans); color: var(--neutral-600);">
+        <li style="display: flex; gap: 10px;"><svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; width: 18px; height: 18px; color: var(--fathom-800);"><path d="M5 12.5l4.5 4.5L19 7"></path></svg>Nothing about you, your audio or your settings is sent.</li>
+        <li style="display: flex; gap: 10px;"><svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; width: 18px; height: 18px; color: var(--fathom-800);"><path d="M5 12.5l4.5 4.5L19 7"></path></svg>Only happens when you press Download. No automatic updates.</li>
+      </ul>
+
+      <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
+        <a href="OnboardModel.dc.html" class="fl-btn fl-btn-ghost" style="text-decoration: none;">Cancel</a>
+        <a href="OnboardDownloading.dc.html" class="fl-btn fl-btn-primary" style="text-decoration: none;">Download 640 MB</a>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

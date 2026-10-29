@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>App sidebar</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<nav class="fl fl-sidebar" aria-label="Main" style="width: 208px; height: 756px; box-sizing: border-box; padding-top: 0; font-family: var(--font-sans); color: var(--foreground);">
+  <div class="fl-logo">Murmur</div>
+  <sc-for list="{{items}}" as="n" hint-placeholder-count="8">
+    <a class="{{n.cls}}" href="{{n.href}}" aria-current="{{n.current}}" style="text-decoration: none;">
+      <svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="width: 20px; height: 20px;"><path d="{{n.icon}}"></path></svg>
+      <span class="fl-nav-label">{{n.label}}</span>
+      <sc-if value="{{n.soon}}" hint-placeholder-val="{{false}}"><span class="fl-badge fl-badge-light">Later</span></sc-if>
+    </a>
+  </sc-for>
+
+  <div style="flex: 1;"></div>
+
+  <a href="SettingsSpeech.dc.html" style="display: flex; flex-direction: column; gap: 10px; margin: 4px 0 6px; padding: 14px; border-radius: 12px; background: var(--card); border: 1px solid var(--border); text-decoration: none; color: var(--foreground);">
+    <span class="fl-overline">Engines</span>
+    <span style="display: flex; flex-direction: column; gap: 2px;">
+      <span style="font: 400 12px/16px var(--font-sans); color: var(--foreground-tertiary);">Speech to text</span>
+      <span style="display: flex; align-items: center; gap: 6px; font: 550 14px/20px var(--font-sans);"><span class="lw-dot" style="background: var(--success-500);"></span>This PC · Parakeet</span>
+    </span>
+    <span style="display: flex; flex-direction: column; gap: 2px;">
+      <span style="font: 400 12px/16px var(--font-sans); color: var(--foreground-tertiary);">AI cleanup</span>
+      <span style="display: flex; align-items: center; gap: 6px; font: 550 14px/20px var(--font-sans);"><span class="lw-dot" style="background: var(--glow-300);"></span>OpenRouter · Llama 3.3</span>
+    </span>
+    <span style="font: 400 12px/16px var(--font-sans); color: var(--foreground-tertiary);">Falls back to this PC</span>
+  </a>
+
+  <a class="fl-nav" href="SettingsGeneral.dc.html" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="width: 20px; height: 20px;"><path d="M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6zM12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"></path></svg><span class="fl-nav-label">Settings</span></a>
+  <a class="fl-nav" href="https://github.com/bashycodes/murmur" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="width: 20px; height: 20px;"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.3-1 .8-1 1.5v.7M12 17h.01"></path></svg><span class="fl-nav-label">Help</span></a>
+</nav>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","options":["dictation","notetaker","insights","dictionary","snippets","style","transforms","scratchpad"],"default":"dictation"},"$preview":{"width":208,"height":756}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const active = this.props.active ?? 'dictation';
+    const defs = [
+      ['dictation', 'Dictation', 'Main.dc.html', 'M9 6a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0zM5 11a7 7 0 0 0 14 0M12 18v3'],
+      ['notetaker', 'Notetaker', 'PageNotetaker.dc.html', 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z', true],
+      ['insights', 'Insights', 'PageInsights.dc.html', 'M4 20h16M7 16V10M12 16V5M17 16v-4'],
+      ['dictionary', 'Dictionary', 'PageDictionary.dc.html', 'M6 3h12v18H6zM9.5 8h5M9.5 12h5'],
+      ['snippets', 'Snippets', 'PageSnippets.dc.html', 'M6 3.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5zM6 15.5a2.5 2.5 0 1 0 0 5a2.5 2.5 0 1 0 0-5zM8 7.5L20 18M8 16.5L20 6'],
+      ['style', 'Style', 'PageStyle.dc.html', 'M3 7V5h10v2M8 5v14M6 19h4M14 12v-1h7v1M17.5 11v8M16 19h3'],
+      ['transforms', 'Transforms', 'PageTransforms.dc.html', 'M4 20L15 9M17 3l1 2 2 1-2 1-1 2-1-2-2-1 2-1z'],
+      ['scratchpad', 'Scratchpad', 'PageScratchpad.dc.html', 'M5 4h14v16H5zM8.5 9h7M8.5 13h4']
+    ];
+    return {
+      items: defs.map(([id, label, href, icon, soon]) => ({
+        label, href, icon, soon: !!soon,
+        cls: id === active ? 'fl-nav is-active' : 'fl-nav',
+        current: id === active ? 'page' : 'false'
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

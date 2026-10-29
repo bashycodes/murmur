@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Android: Style</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="lw-android" style="width: 390px; height: 844px; position: relative; display: flex; flex-direction: column; background: var(--a-bg); overflow: hidden;">
+  <header style="flex: none; height: 64px; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; padding: 0 4px;">
+    <a href="AndroidDrawer.dc.html" aria-label="Open menu" style="width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; color: var(--a-ink);"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round;"><path d="M5 7h14M5 12h14M5 17h14"></path></svg></a>
+    <span style="text-align: center; font: 700 22px/28px var(--font-sans); letter-spacing: -0.02em;">Murmur</span>
+    <span></span>
+  </header>
+
+  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 8px 16px 0; display: flex; flex-direction: column; gap: 18px;">
+    <div role="tablist" aria-label="App type" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); height: 42px; border-radius: 9999px; border: 2px solid var(--a-selected); overflow: hidden;">
+      <sc-for list="{{tabs}}" as="t" hint-placeholder-count="4">
+        <button type="button" role="tab" aria-selected="{{t.sel}}" onClick="{{t.pick}}" style="border: 0; border-left: {{t.edge}}; background: {{t.bg}}; font: {{t.font}}; color: var(--a-ink); cursor: pointer;">{{t.label}}</button>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      <div style="display: flex;">
+        <sc-for list="{{apps}}" as="a" hint-placeholder-count="4">
+          <span title="{{a.name}}" style="width: 50px; height: 50px; margin-right: -10px; border-radius: 50%; border: 3px solid var(--a-bg); background: {{a.bg}}; display: inline-flex; align-items: center; justify-content: center; font: 700 16px/20px var(--font-sans); color: {{a.fg}};">{{a.initial}}</span>
+        </sc-for>
+        <span style="width: 50px; height: 50px; border-radius: 50%; border: 3px solid var(--a-bg); background: var(--a-card); display: inline-flex; align-items: center; justify-content: center; color: var(--a-ink-2);"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round;"><path d="M12 5v14M5 12h14"></path></svg></span>
+      </div>
+      <span style="font: 400 17px/24px var(--font-sans); color: var(--a-ink-2);">{{caption}}</span>
+    </div>
+
+    <a href="AndroidStyle.dc.html" class="a-card" style="display: flex; flex-direction: column; gap: 14px; padding: 20px; text-decoration: none; color: var(--a-ink);">
+      <span style="display: flex; align-items: center;">
+        <span style="flex: 1; display: flex; flex-direction: column;"><span style="font: 700 22px/28px var(--font-sans);">{{styleTitle}}</span><span style="font: 400 17px/24px var(--font-sans);">{{styleSub}}</span></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true" style="width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round;"><path d="M9 6l6 6-6 6"></path></svg>
+      </span>
+      <span style="display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 14px; background: var(--a-bubble);">
+        <span style="flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--dawn-500);"></span>
+        <span style="font: 400 16px/22px var(--font-sans);">{{styleSample}}</span>
+      </span>
+    </a>
+  </div>
+
+  <div style="flex: none; padding: 10px 16px 6px; text-align: center; font: 400 14px/20px var(--font-sans); color: var(--a-ink-2);">Styles currently apply in English only</div>
+  <dc-import name="AndroidNav" active="style" hint-size="390px,76px" style="flex: none;"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'personal' };
+  }
+  renderVals() {
+    const app = (name, bg, fg) => ({ name, initial: name[0], bg, fg });
+    const data = {
+      personal: ['Personal', 'Used when you dictate into chat apps for friends and family', [app('WhatsApp', 'var(--fathom-100)', 'var(--fathom-950)'), app('Telegram', 'var(--dawn-300)', 'var(--dawn-900)'), app('Signal', 'var(--glow-100)', 'var(--glow-800)'), app('Messages', 'var(--sand-600)', 'var(--vast-900)')], 'Casual', 'Capitals, lighter punctuation', 'Hey are you free for lunch tomorrow?'],
+      work: ['Work', 'Used when you dictate into team chat apps', [app('Slack', 'var(--dawn-300)', 'var(--dawn-900)'), app('Teams', 'var(--fathom-100)', 'var(--fathom-950)')], 'Casual', 'Capitals, lighter punctuation', 'Hey are you free for a quick call?'],
+      email: ['Email', 'Used when you dictate into email', [app('Gmail', 'var(--glow-100)', 'var(--glow-800)'), app('Outlook', 'var(--fathom-100)', 'var(--fathom-950)')], 'Formal.', 'Capitals, full punctuation', 'Hi Sam, are you free for lunch tomorrow?'],
+      other: ['Other', 'Used in every other app', [app('Notes', 'var(--sand-600)', 'var(--vast-900)'), app('Docs', 'var(--dawn-300)', 'var(--dawn-900)')], 'Formal.', 'Capitals, full punctuation', 'Remember to book the dentist.']
+    };
+    const keys = Object.keys(data);
+    const cur = this.state.tab;
+    const d = data[cur];
+    return {
+      tabs: keys.map((k, i) => ({
+        label: data[k][0],
+        sel: k === cur ? 'true' : 'false',
+        bg: k === cur ? 'var(--a-selected)' : 'transparent',
+        font: k === cur ? '600 16px/20px var(--font-sans)' : '400 16px/20px var(--font-sans)',
+        edge: i === 0 ? '0' : '2px solid var(--a-selected)',
+        pick: () => this.setState({ tab: k })
+      })),
+      caption: d[1],
+      apps: d[2],
+      styleTitle: d[3],
+      styleSub: d[4],
+      styleSample: d[5]
+    };
+  }
+}
+</script>
+</body>
+</html>

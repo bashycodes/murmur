@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Android: Permissions</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="lw-android" style="width: 390px; height: 844px; display: flex; flex-direction: column; background: var(--a-bg-settings); overflow: hidden;">
+  <header style="flex: none; height: 64px; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; padding: 0 4px;">
+    <a href="AndroidDrawer.dc.html" aria-label="Back" style="width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; color: var(--a-ink);"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg></a>
+    <h1 style="margin: 0; text-align: center; font: 550 21px/28px var(--font-sans);">Permissions</h1>
+    <span></span>
+  </header>
+
+  <div style="padding: 0 16px 24px; display: flex; flex-direction: column; gap: 10px;">
+    <div style="display: flex; flex-direction: column; gap: 8px; padding: 4px 4px 6px;">
+      <span style="font: 400 15px/21px var(--font-sans); color: var(--a-ink-2);">3 of 5 done</span>
+      <div style="height: 6px; border-radius: 3px; background: var(--a-selected); overflow: hidden;"><div style="width: 60%; height: 100%; background: var(--a-ink);"></div></div>
+    </div>
+
+    <div style="padding: 14px 16px; border-radius: 16px; background: var(--a-peach); font: 400 15px/21px var(--font-sans); color: var(--vast-950);"><b style="font-weight: 600;">Dictation can't start yet.</b> Turn on the Accessibility service below.</div>
+
+    <div class="a-card" style="padding: 18px 20px; display: flex; flex-direction: column; gap: 12px;">
+      <span style="display: flex; align-items: flex-start; gap: 12px;">
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 4px;"><span style="font: 550 17px/24px var(--font-sans);">Accessibility service</span><span style="font: 400 15px/21px var(--font-sans); color: var(--a-ink-2);">Types the text into the app you're using and reads up to 500 characters around the cursor. Never touches password or PIN fields, hides in banking apps, and nothing it sees leaves the phone.</span></span>
+        <span class="fl-badge fl-badge-warning">Off</span>
+      </span>
+      <a href="AndroidHome.dc.html" style="display: flex; align-items: center; justify-content: center; height: 48px; border-radius: 10px; background: var(--a-button); color: var(--pure-white); text-decoration: none; font: 550 17px/24px var(--font-sans);">Turn on</a>
+    </div>
+
+    <sc-for list="{{rows}}" as="r" hint-placeholder-count="4">
+      <div class="a-card" style="display: flex; align-items: center; gap: 12px; padding: 16px 20px;">
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 2px;"><span style="font: 550 17px/24px var(--font-sans);">{{r.title}}</span><span style="font: 400 15px/21px var(--font-sans); color: var(--a-ink-2);">{{r.desc}}</span></span>
+        <sc-if value="{{r.done}}" hint-placeholder-val="{{true}}"><span class="fl-badge fl-badge-success">{{r.state}}</span></sc-if>
+        <sc-if value="{{r.todo}}" hint-placeholder-val="{{false}}"><button type="button" style="min-height: 40px; padding: 0 16px; border: 1.5px solid var(--a-outline); border-radius: 9999px; background: transparent; font: 550 15px/20px var(--font-sans); color: var(--a-ink);">{{r.state}}</button></sc-if>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const r = (title, desc, state, done) => ({ title, desc, state, done: !!done, todo: !done });
+    return {
+      rows: [
+        r('Microphone', 'Hears you. Audio is never stored.', 'Granted', true),
+        r('Display over other apps', 'Shows the dictation bubble.', 'Allowed', true),
+        r('Battery optimisation', 'Recommended, so Android doesn’t stop the bubble.', 'Allow', false),
+        r('Notifications', 'Optional. Alerts if something needs fixing.', 'Allowed', true)
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

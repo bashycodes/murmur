@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Style</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl" style="width: 1280px; height: 800px; display: flex; flex-direction: column; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground); overflow: hidden;">
+  <header style="height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px;">
+    <x-import component-from-global-scope="Flow.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
+    <div style="display: flex; align-items: center; gap: 4px;">
+      <x-import component-from-global-scope="Flow.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Flow.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
+      <span style="width: 132px;"></span>
+    </div>
+  </header>
+  <div style="flex: 1; min-height: 0; display: flex;">
+    <dc-import name="AppSidebar" active="style" hint-size="208px,756px" style="flex: none;"></dc-import>
+    <main class="fl-panel" style="flex: 1; min-width: 0; margin: 0 8px 8px 0; overflow: hidden; display: flex; justify-content: center;">
+      <div style="width: 100%; max-width: 860px; display: flex; flex-direction: column; gap: 20px;">
+        <h1 class="fl-page-title">Style</h1>
+
+        <div class="fl-tabs" style="display: flex; align-items: center; border-bottom: 1px solid var(--border);">
+          <div class="fl-tabs-list" role="tablist" style="display: flex;">
+            <sc-for list="{{tabs}}" as="t" hint-placeholder-count="4">
+              <button type="button" role="tab" aria-selected="{{t.sel}}" class="{{t.cls}}" onClick="{{t.pick}}">{{t.label}}</button>
+            </sc-for>
+          </div>
+        </div>
+
+        <div class="fl-banner fl-banner-night" style="min-height: 120px; flex-direction: row; align-items: center; gap: 24px;">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 8px;">
+            <h3 class="fl-banner-title">{{bannerTitle}}</h3>
+            <p class="fl-banner-body">Applies in English. How much AI rewrites your words is set in <a href="SettingsCleanup.dc.html" style="color: var(--lumen-400); font-weight: 600;">AI cleanup →</a></p>
+          </div>
+          <div style="flex: none; max-width: 300px; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px;">
+            <sc-for list="{{apps}}" as="a" hint-placeholder-count="4">
+              <span style="display: inline-flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 9999px; background: hsla(0, 0%, 100%, .15); color: var(--lumen-400); font: 550 13px/20px var(--font-sans);">{{a}}</span>
+            </sc-for>
+            <button type="button" aria-label="Add an app to this group" style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border: 0; border-radius: 9999px; background: hsla(0, 0%, 100%, .25); color: var(--lumen-400); padding: 0;"><svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px;"><path d="M12 5v14M5 12h14"></path></svg></button>
+          </div>
+        </div>
+
+        <div role="radiogroup" aria-label="Writing style" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;">
+          <sc-for list="{{options}}" as="o" hint-placeholder-count="3">
+            <x-import component-from-global-scope="Flow.OptionCard" title="{{o.title}}" subtitle="{{o.sub}}" sample="{{o.sample}}" avatar-tone="{{o.tone}}" selected="{{o.selected}}" on-click="{{o.pick}}" style="display: block;"></x-import>
+          </sc-for>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tab: 'personal', pick: { personal: 'casual', work: 'casual', email: 'formal', other: 'formal' } };
+  }
+  renderVals() {
+    const msg = "Hey, are you free for lunch tomorrow? Let's do 12 if that works for you.";
+    const chat = [
+      { id: 'formal', title: 'Formal.', sub: 'Capitals, full punctuation', sample: msg, tone: 'lilac' },
+      { id: 'casual', title: 'Casual', sub: 'Capitals, lighter punctuation', sample: "Hey are you free for lunch tomorrow? Let's do 12 if that works for you", tone: 'pink' },
+      { id: 'very_casual', title: 'very casual', sub: 'Lowercase, lighter punctuation', sample: "hey are you free for lunch tomorrow? let's do 12 if that works for you", tone: 'maroon' }
+    ];
+    const prose = [
+      { id: 'formal', title: 'Formal.', sub: 'Capitals, full punctuation', sample: msg, tone: 'lilac' },
+      { id: 'casual', title: 'Casual', sub: 'Capitals, lighter punctuation', sample: "Hey are you free for lunch tomorrow? Let's do 12 if that works for you", tone: 'pink' },
+      { id: 'excited', title: 'Excited!', sub: 'More exclamations', sample: "Hey, are you free for lunch tomorrow? Let's do 12 if that works for you!", tone: 'maroon' }
+    ];
+    const tabs = {
+      personal: ['Personal messages', 'Used when you dictate into chat apps for friends and family', ['WhatsApp', 'Telegram', 'Signal', 'Discord', 'Messenger'], chat],
+      work: ['Work messages', 'Used when you dictate into team chat apps', ['Slack', 'Teams'], chat],
+      email: ['Email', 'Used when you dictate into email', ['Outlook', 'Gmail', 'mail.example.com'], prose],
+      other: ['Other', 'Used in every other app', ['Notes', 'Docs', 'Browsers'], prose]
+    };
+    const cur = this.state.tab;
+    const picked = this.state.pick[cur];
+    return {
+      tabs: Object.keys(tabs).map((k) => ({
+        label: tabs[k][0],
+        sel: k === cur ? 'true' : 'false',
+        cls: k === cur ? 'fl-tab is-active' : 'fl-tab',
+        pick: () => this.setState({ tab: k })
+      })),
+      bannerTitle: tabs[cur][1],
+      apps: tabs[cur][2],
+      options: tabs[cur][3].map((o) => Object.assign({}, o, {
+        selected: o.id === picked,
+        pick: () => this.setState({ pick: Object.assign({}, this.state.pick, { [cur]: o.id }) })
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

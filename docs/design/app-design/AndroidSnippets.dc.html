@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Android: Snippets</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="lw-android" style="width: 390px; height: 844px; position: relative; display: flex; flex-direction: column; background: var(--a-bg); overflow: hidden;">
+  <header style="flex: none; height: 64px; display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; padding: 0 4px;">
+    <a href="AndroidDrawer.dc.html" aria-label="Open menu" style="width: 48px; height: 48px; display: inline-flex; align-items: center; justify-content: center; color: var(--a-ink);"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round;"><path d="M5 7h14M5 12h14M5 17h14"></path></svg></a>
+    <span style="text-align: center; font: 700 22px/28px var(--font-sans); letter-spacing: -0.02em;">Murmur</span>
+    <span></span>
+  </header>
+
+  <div style="flex: 1; min-height: 0; overflow: hidden; padding: 8px 16px 0; display: flex; flex-direction: column; gap: 12px;">
+    <label class="a-search" style="margin-bottom: 12px;">
+      <svg viewBox="0 0 24 24" aria-hidden="true" style="width: 24px; height: 24px; fill: none; stroke: var(--a-outline); stroke-width: 2; stroke-linecap: round;"><path d="M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14zM20 20l-4-4"></path></svg>
+      <input type="search" aria-label="Search snippets" placeholder="Search">
+    </label>
+    <sc-for list="{{snips}}" as="s" hint-placeholder-count="3">
+      <div class="a-card" style="padding: 22px 20px; display: flex; flex-direction: column; gap: 2px;">
+        <span style="font: 400 17px/24px var(--font-sans);">{{s.say}}</span>
+        <span style="font: 400 17px/24px var(--font-sans); color: var(--a-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{s.paste}}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <button type="button" class="a-fab" aria-label="Add a snippet"><svg viewBox="0 0 24 24" aria-hidden="true" style="width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round;"><path d="M12 5v14M5 12h14"></path></svg></button>
+  <dc-import name="AndroidNav" active="snippets" hint-size="390px,76px" style="flex: none;"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      snips: [
+        { say: 'my email address', paste: 'alex@example.com' },
+        { say: 'my sign-off', paste: 'Thanks, Alex' },
+        { say: 'on my way', paste: 'On my way, be there in 15 minutes.' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

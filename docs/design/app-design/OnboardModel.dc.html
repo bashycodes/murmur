@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Setup: Speech model</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl" style="width: 1280px; height: 800px; box-sizing: border-box; padding: 8px; display: flex; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground);">
+  <main class="fl-panel" style="flex: 1; box-sizing: border-box; padding: 56px 64px; display: flex; flex-direction: column; border-radius: 16px;">
+    <div style="display: flex; align-items: center; justify-content: space-between;">
+      <span style="font: 600 18px/24px var(--font-sans);">Murmur</span>
+      <span class="fl-overline">Step 3 of 5</span>
+    </div>
+
+    <div style="flex: 1; display: flex; gap: 64px; align-items: center;">
+      <div style="flex: 0 0 400px; display: flex; flex-direction: column; gap: 16px;">
+        <h1 class="fl-serif" style="margin: 0; font-size: 36px; line-height: 40px; font-weight: 400;">Add a speech model</h1>
+        <p style="margin: 0; font: 400 16px/24px var(--font-sans); color: var(--neutral-600);">The model is the part that listens. We can download it for you once, from where its makers publish it, or you can add the file yourself.</p>
+        <div style="display: flex; gap: 12px; padding: 14px 16px; border-radius: 12px; background: var(--background-tertiary);">
+          <svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; color: var(--fathom-800);"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9c-4-1.5-7-4.5-7-9V6zM9 12l2 2 4-4"></path></svg>
+          <span style="font: 400 14px/20px var(--font-sans); color: var(--neutral-600);">A download only fetches the file. Nothing about you or your voice is sent, and the file is checked against a fingerprint built into the app before it's used.</span>
+        </div>
+      </div>
+
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px;">
+        <div class="fl-group">
+          <div class="fl-row" style="flex-wrap: wrap;">
+            <span class="lw-tile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{pkIcon}}"></path></svg></span>
+            <div class="fl-row-text"><div class="fl-row-title" style="display: flex; align-items: center; gap: 8px;">Parakeet TDT 0.6B <span class="fl-badge fl-badge-dark">Recommended</span></div><div class="fl-row-desc">{{pkDesc}}</div></div>
+            <sc-if value="{{isIdle}}" hint-placeholder-val="{{true}}">
+              <span style="display: flex; gap: 8px;">
+                <x-import component-from-global-scope="Flow.Button" variant="ghost" size="sm">Choose folder</x-import>
+                <a href="OnboardDownloadConfirm.dc.html" class="fl-btn fl-btn-primary fl-btn-sm" style="text-decoration: none;">Download</a>
+              </span>
+            </sc-if>
+            <sc-if value="{{isDownloading}}" hint-placeholder-val="{{false}}">
+              <x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm">Cancel</x-import>
+            </sc-if>
+            <sc-if value="{{isReady}}" hint-placeholder-val="{{false}}">
+              <span class="fl-badge fl-badge-success">Ready</span>
+            </sc-if>
+            <sc-if value="{{isDownloading}}" hint-placeholder-val="{{false}}">
+              <div style="flex: 1 0 100%; display: flex; flex-direction: column; gap: 6px; padding-left: 48px;">
+                <div role="progressbar" aria-label="Downloading Parakeet" aria-valuemin="0" aria-valuemax="100" aria-valuenow="49" style="height: 6px; border-radius: 3px; background: var(--background-secondary); overflow: hidden;"><div style="width: 49%; height: 100%; background: var(--fathom-900);"></div></div>
+                <span style="font: 400 13px/20px var(--font-sans); color: var(--foreground-tertiary);">312 of 640 MB · about 20 seconds left · from github.com/k2-fsa</span>
+              </div>
+            </sc-if>
+          </div>
+          <div class="fl-row">
+            <span class="lw-tile" style="color: var(--foreground-tertiary);"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v4h4"></path></svg></span>
+            <div class="fl-row-text"><div class="fl-row-title">Whisper base</div><div class="fl-row-desc">Many languages · 148 MB · optional</div></div>
+            <span style="display: flex; gap: 8px;">
+              <x-import component-from-global-scope="Flow.Button" variant="ghost" size="sm">Choose file</x-import>
+              <x-import component-from-global-scope="Flow.Button" variant="secondary" size="sm">Download</x-import>
+            </span>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 12px; border: 1.5px dashed var(--sand-700); color: var(--neutral-600);">
+          <svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex: none;"><path d="M12 15V4M8 8l4-4 4 4M5 13v7h14v-7"></path></svg>
+          <span style="flex: 1; font: 400 14px/20px var(--font-sans);">Already have the files? Drop them here, or put them in <span class="lw-mono" style="font-size: 12px;">%APPDATA%\Murmur\models</span></span>
+          <a class="lw-link" href="https://github.com/k2-fsa/sherpa-onnx/releases" style="font-size: 14px; white-space: nowrap;">Download links →</a>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+      <a href="OnboardEngine.dc.html" class="fl-btn fl-btn-ghost" style="text-decoration: none;">Back</a>
+      <span style="flex: 1; text-align: right; font: 400 14px/20px var(--font-sans); color: var(--foreground-tertiary);">{{continueHint}}</span>
+      <sc-if value="{{canContinue}}" hint-placeholder-val="{{true}}">
+        <a href="OnboardCleanup.dc.html" class="fl-btn fl-btn-primary" style="text-decoration: none;">Continue</a>
+      </sc-if>
+      <sc-if value="{{isIdle}}" hint-placeholder-val="{{false}}">
+        <button type="button" class="fl-btn fl-btn-primary" disabled="disabled">Continue</button>
+      </sc-if>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"state":{"editor":"enum","options":["idle","downloading","ready"],"default":"idle"},"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.props.state ?? 'idle';
+    const desc = {
+      idle: 'English · fastest · 640 MB. Not on this PC yet.',
+      downloading: 'English · fastest · 640 MB',
+      ready: 'English · fastest · downloaded and checked. Loaded in 3 seconds.'
+    };
+    const hint = {
+      idle: 'Add a speech model to continue',
+      downloading: 'You can carry on. It finishes in the background.',
+      ready: ''
+    };
+    return {
+      isIdle: s === 'idle',
+      isDownloading: s === 'downloading',
+      isReady: s === 'ready',
+      canContinue: s !== 'idle',
+      pkDesc: desc[s],
+      continueHint: hint[s],
+      pkIcon: s === 'ready' ? 'M5 12.5l4.5 4.5L19 7' : 'M12 4v11M8 11l4 4 4-4M5 20h14'
+    };
+  }
+}
+</script>
+</body>
+</html>

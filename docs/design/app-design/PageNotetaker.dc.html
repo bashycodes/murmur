@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Notetaker</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl" style="width: 1280px; height: 800px; display: flex; flex-direction: column; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground); overflow: hidden;">
+  <header style="height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px;">
+    <x-import component-from-global-scope="Flow.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
+    <div style="display: flex; align-items: center; gap: 4px;">
+      <x-import component-from-global-scope="Flow.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Flow.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
+      <span style="width: 132px;"></span>
+    </div>
+  </header>
+  <div style="flex: 1; min-height: 0; display: flex;">
+    <dc-import name="AppSidebar" active="notetaker" hint-size="208px,756px" style="flex: none;"></dc-import>
+    <main class="fl-panel" style="flex: 1; min-width: 0; margin: 0 8px 8px 0; overflow: hidden; display: flex; justify-content: center;">
+      <div style="width: 100%; max-width: 860px; display: flex; flex-direction: column; gap: 24px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <h1 class="fl-page-title">Notetaker</h1>
+          <span class="fl-badge fl-badge-light">Coming later</span>
+          <span style="flex: 1;"></span>
+          <x-import component-from-global-scope="Flow.Button" variant="secondary" icon="record" disabled="{{yes}}">Start Notetaker</x-import>
+        </div>
+
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 32px; border-radius: 16px; background: var(--background-tertiary); text-align: center;">
+          <svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--foreground-tertiary);"><path d="M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z"></path></svg>
+          <h2 class="fl-serif" style="margin: 0; font-size: 36px; line-height: 40px; font-weight: 400;">Meeting notes, <em style="color: var(--dawn-700);">without the bot</em></h2>
+          <p style="margin: 0; max-width: 520px; font: 400 16px/24px var(--font-sans); color: var(--neutral-600);">Notetaker will record your mic and computer audio, then transcribe and summarise the meeting with the same engines you use for dictation. No bot joins the call, and nothing leaves this PC unless you've turned on OpenRouter.</p>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px; text-align: left;">
+            <span style="display: flex; gap: 10px; font: 400 15px/20px var(--font-sans);"><svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; color: var(--fathom-800);"><path d="M5 12.5l4.5 4.5L19 7"></path></svg>Works with any meeting app</span>
+            <span style="display: flex; gap: 10px; font: 400 15px/20px var(--font-sans);"><svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; color: var(--fathom-800);"><path d="M5 12.5l4.5 4.5L19 7"></path></svg>Summary and action items from AI cleanup</span>
+            <span style="display: flex; gap: 10px; font: 400 15px/20px var(--font-sans);"><svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="flex: none; color: var(--fathom-800);"><path d="M5 12.5l4.5 4.5L19 7"></path></svg>Notes saved as files you own</span>
+          </div>
+        </div>
+
+        <div class="fl-tabs" style="display: flex; align-items: center; border-bottom: 1px solid var(--border);">
+          <div class="fl-tabs-list" role="tablist" style="display: flex;">
+            <button type="button" role="tab" aria-selected="true" class="fl-tab is-active">Past notes</button>
+            <button type="button" role="tab" aria-selected="false" class="fl-tab">Folders</button>
+          </div>
+        </div>
+        <div class="fl-list" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--background-tertiary); border: 0;">
+          <svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="color: var(--foreground-tertiary);"><path d="M6 3h8l4 4v14H6zM14 3v4h4"></path></svg>
+          <span style="font: 550 15px/20px var(--font-sans); color: var(--neutral-600);">Your meetings will appear here</span>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() { return { yes: true }; }
+}
+</script>
+</body>
+</html>

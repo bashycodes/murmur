@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Transforms</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl" style="width: 1280px; height: 800px; display: flex; flex-direction: column; background: var(--background-tertiary); font-family: var(--font-sans); color: var(--foreground); overflow: hidden;">
+  <header style="height: 44px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 16px;">
+    <x-import component-from-global-scope="Flow.IconButton" icon="panel" label="Collapse sidebar" variant="titlebar"></x-import>
+    <div style="display: flex; align-items: center; gap: 4px;">
+      <x-import component-from-global-scope="Flow.IconButton" icon="moon" label="Theme" variant="titlebar"></x-import>
+      <x-import component-from-global-scope="Flow.IconButton" icon="bell" label="Notifications" variant="titlebar"></x-import>
+      <span style="width: 132px;"></span>
+    </div>
+  </header>
+  <div style="flex: 1; min-height: 0; display: flex;">
+    <dc-import name="AppSidebar" active="transforms" hint-size="208px,756px" style="flex: none;"></dc-import>
+    <main class="fl-panel" style="flex: 1; min-width: 0; margin: 0 8px 8px 0; overflow: hidden; display: flex; justify-content: center;">
+      <div style="width: 100%; max-width: 860px; display: flex; flex-direction: column; gap: 20px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <h1 class="fl-page-title">Transforms</h1>
+          <span class="fl-badge fl-badge-dark">Beta</span>
+          <span style="flex: 1;"></span>
+          <span style="font: 550 15px/20px var(--font-sans);">Opt in</span>
+          <x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Opt in to Transforms"></x-import>
+          <x-import component-from-global-scope="Flow.Kbd" keys="{{viewKeys}}">to view changes</x-import>
+        </div>
+
+        <div class="fl-banner fl-banner-mist">
+          <h3 class="fl-banner-title">Transform works anywhere you write</h3>
+          <p class="fl-banner-body">Select text in any app, press a shortcut, and it's rewritten in place. Uses your AI cleanup engine: OpenRouter, then this PC.</p>
+          <div class="fl-banner-actions">
+            <x-import component-from-global-scope="Flow.Button" variant="lumen">Try it out</x-import>
+            <a class="fl-btn fl-btn-link-light" href="SettingsCleanup.dc.html" style="text-decoration: none;">How it works</a>
+          </div>
+        </div>
+
+        <div class="fl-row" style="border-top: 0; padding: 0;">
+          <div class="fl-row-text"><div class="fl-row-title">Auto Apply After Dictation</div><div class="fl-row-desc">Pass each dictation through the chosen transform before it is pasted.</div></div>
+          <x-import component-from-global-scope="Flow.Select" options="{{tOpts}}" default-value="polish" width="{{w180}}" disabled="{{yes}}"></x-import>
+          <x-import component-from-global-scope="Flow.Toggle" label="Auto apply after dictation"></x-import>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 8px;">
+          <h2 class="fl-serif" style="margin: 0; flex: 1; font-size: 28px; line-height: 28px; font-weight: 400;">My Transforms</h2>
+          <x-import component-from-global-scope="Flow.Button" variant="ghost" icon="refresh">Reset to defaults</x-import>
+          <x-import component-from-global-scope="Flow.Button" variant="primary">Create New</x-import>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;">
+          <div style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 12px; border: 1px solid var(--border); background: var(--background); min-height: 150px; box-sizing: border-box;">
+            <x-import component-from-global-scope="Flow.Kbd" keys="{{k1}}"></x-import>
+            <span style="font: 600 16px/24px var(--font-sans);">Polish</span>
+            <span style="font: 400 15px/20px var(--font-sans); color: var(--foreground-tertiary);">Improve clarity and conciseness</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 12px; border: 1px solid var(--border); background: var(--background); min-height: 150px; box-sizing: border-box;">
+            <x-import component-from-global-scope="Flow.Kbd" keys="{{k2}}"></x-import>
+            <span style="font: 600 16px/24px var(--font-sans);">Prompt Engineer</span>
+            <span style="font: 400 15px/20px var(--font-sans); color: var(--foreground-tertiary);">Turns a rough ask into a clear prompt</span>
+          </div>
+          <button type="button" style="display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 20px; border-radius: 12px; border: 1px dashed var(--sand-700); background: transparent; min-height: 150px; box-sizing: border-box; font: inherit; color: inherit; text-align: left; cursor: pointer;">
+            <span style="width: 28px; height: 28px; border-radius: 50%; background: var(--background-tertiary); display: inline-flex; align-items: center; justify-content: center;"><svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true" style="width: 14px; height: 14px;"><path d="M12 5v14M5 12h14"></path></svg></span>
+            <span style="font: 600 16px/24px var(--font-sans);">Create your own</span>
+            <span style="font: 400 15px/20px var(--font-sans); color: var(--foreground-tertiary);">Write your own instruction</span>
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      yes: true,
+      w180: 180,
+      viewKeys: ['Win', 'Alt', 'O'],
+      k1: ['Win', 'Alt', '1'],
+      k2: ['Win', 'Alt', '2'],
+      tOpts: [{ value: 'polish', label: 'Polish' }, { value: 'prompt', label: 'Prompt Engineer' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

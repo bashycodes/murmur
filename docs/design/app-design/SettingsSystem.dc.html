@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings: System</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="flow-theme.css">
+<link rel="stylesheet" href="ds/flow/components/bundle.css">
+<script src="ds/flow/components/bundle.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=Figtree:ital,wght@0,300..900;1,300..900&display=swap">
+<style>
+body{margin:0}
+a{color:#1a1a1a}a:hover{color:#30302f}
+</style>
+</helmet>
+<div class="fl" style="width: 1040px; height: 1000px; box-sizing: border-box; padding: 40px; background: var(--scrim); font-family: var(--font-sans); color: var(--foreground);">
+  <div class="fl-modal" role="dialog" aria-label="Settings" style="max-width: 960px; height: 920px; position: relative;">
+
+    <div class="fl-modal-nav">
+      <div class="fl-modal-nav-top">
+        <div class="fl-nav-section">Settings</div>
+        <a class="fl-nav" href="SettingsGeneral.dc.html" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4"></path></svg><span class="fl-nav-label">General</span></a>
+        <a class="fl-nav is-active" aria-current="page" href="SettingsSystem.dc.html" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M3 4h18v12H3zM8 20h8M12 16v4"></path></svg><span class="fl-nav-label">System</span></a>
+        <a class="fl-nav" href="SettingsPrivacy.dc.html" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9c-4-1.5-7-4.5-7-9V6zM9 12l2 2 4-4"></path></svg><span class="fl-nav-label">Data and privacy</span></a>
+        <div class="fl-nav-rule"></div>
+        <div class="fl-nav-section">Models</div>
+        <a class="fl-nav" href="SettingsSpeech.dc.html" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M9 6a3 3 0 0 1 6 0v5a3 3 0 0 1-6 0zM5 11a7 7 0 0 0 14 0M12 18v3"></path></svg><span class="fl-nav-label">Speech to text</span></a>
+        <a class="fl-nav" href="SettingsCleanup.dc.html" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 20L15 9M17 3l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"></path></svg><span class="fl-nav-label">AI cleanup</span></a>
+        <div class="fl-nav-rule"></div>
+        <div class="fl-nav-section">Connections</div>
+        <a class="fl-nav" href="SettingsServer.dc.html" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01"></path></svg><span class="fl-nav-label">Your server</span></a>
+        <a class="fl-nav" href="SettingsOpenRouter.dc.html" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-7.970A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"></path></svg><span class="fl-nav-label">OpenRouter</span></a>
+      </div>
+      <div class="fl-modal-foot"><span>Murmur 0.6.0</span><span class="fl-badge fl-badge-light">Up to date</span></div>
+    </div>
+
+    <div class="fl-modal-body" style="overflow: hidden;">
+      <h2 class="fl-modal-title">System</h2>
+
+      <div class="fl-group-title">App settings</div>
+      <div class="fl-group">
+        <div class="fl-row">
+          <div class="fl-row-text"><div class="fl-row-title">Launch app at login</div></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Launch app at login"></x-import></div>
+        </div>
+        <div class="fl-row">
+          <div class="fl-row-text"><div class="fl-row-title">Show Flow bar at all times</div><div class="fl-row-desc">Otherwise it only appears while you dictate.</div></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" label="Show Flow bar at all times"></x-import></div>
+        </div>
+        <div class="fl-row">
+          <div class="fl-row-text"><div class="fl-row-title">Show which engine was used</div><div class="fl-row-desc">A small <b>L</b>, <b>S</b> or <b>C</b> on the Flow bar after each dictation: this PC, your server or OpenRouter.</div></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Show which engine was used"></x-import></div>
+        </div>
+      </div>
+
+      <div class="fl-group-title" style="margin-top: 32px;">Sound</div>
+      <div class="fl-group">
+        <div class="fl-row">
+          <div class="fl-row-text"><div class="fl-row-title">Dictation sounds</div><div class="fl-row-desc">A soft click when dictation starts and stops.</div></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Dictation sounds"></x-import></div>
+        </div>
+        <div class="fl-row">
+          <div class="fl-row-text"><div class="fl-row-title">Mute music while dictating</div></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Mute music while dictating"></x-import></div>
+        </div>
+      </div>
+
+      <div class="fl-group-title" style="margin-top: 32px;">Pasting</div>
+      <div class="fl-group">
+        <div class="fl-row">
+          <div class="fl-row-text"><div class="fl-row-title">Paste with</div><div class="fl-row-desc">Change this if an app ignores Ctrl+V.</div></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{pasteOpts}}" default-value="ctrlv" width="{{w160}}"></x-import></div>
+        </div>
+        <div class="fl-row">
+          <div class="fl-row-text"><div class="fl-row-title">Restore clipboard after pasting</div><div class="fl-row-desc">Puts back whatever you had copied before dictating.</div></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Restore clipboard after pasting"></x-import></div>
+        </div>
+        <div class="fl-row">
+          <div class="fl-row-text"><div class="fl-row-title">Longest dictation</div><div class="fl-row-desc">Recording stops by itself after this.</div></div>
+          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{maxOpts}}" default-value="6" width="{{w160}}"></x-import></div>
+        </div>
+      </div>
+    </div>
+
+    <button type="button" aria-label="Close settings" class="fl-iconbtn" style="position: absolute; top: 16px; right: 16px;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1040,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      yes: true,
+      w160: 160,
+      pasteOpts: [
+        { value: 'ctrlv', label: 'Ctrl+V' },
+        { value: 'shiftins', label: 'Shift+Insert' },
+        { value: 'type', label: 'Typing' }
+      ],
+      maxOpts: [
+        { value: '2', label: '2 minutes' },
+        { value: '6', label: '6 minutes' },
+        { value: '15', label: '15 minutes' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
