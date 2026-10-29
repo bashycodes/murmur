@@ -16,6 +16,19 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Android: back up and restore all your data.** Settings → *Back up &
+  restore* → *Export all data* saves one file (`flow-clone-backup-<date>.json`)
+  wherever you pick: Notes and the Quick note, History, Dictionary and
+  snippets, learned-word suggestions, Insights and all settings. *Restore
+  from a backup* checks the whole file first, shows what it holds and, once
+  you confirm, replaces the app's data with it, so a reinstall that wiped
+  everything gets it all back. API keys and the server token are never in
+  the file: enter them again after a restore (models are not included
+  either). A backup from a newer app version is refused with a clear
+  message. Format: `docs/backup-format.md` (meant for the Windows app too).
+
 ### Changed
 
 - Product text no longer names a specific VPN. App strings (Android main

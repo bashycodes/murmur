@@ -153,4 +153,24 @@ class NotesStoreTest {
         s.newId()
         assertTrue(s.list().isEmpty())
     }
+
+    @Test fun replaceAllSwapsEveryNoteAndKeepsTimesAndPins() {
+        val s = store()
+        s.save("old", "gone after restore")
+        s.save("scratchpad", "old quick note")
+        s.replaceAll(listOf(Note("scratchpad", "restored", false, 10, 20), Note("n1", "body", true, 30, 40)))
+        val notes = store().list()
+        assertEquals(listOf("n1", "scratchpad"), notes.map { it.id })
+        assertEquals(Note("n1", "body", true, 30, 40), notes[0])
+        assertEquals(Note("scratchpad", "restored", false, 10, 20), notes[1])
+        assertFalse(File(tmp.root, "notes.restore").exists())
+        assertFalse(File(tmp.root, "notes.old").exists())
+    }
+
+    @Test fun replaceAllWithABadIdChangesNothing() {
+        val s = store()
+        s.save("keep", "still here")
+        runCatching { s.replaceAll(listOf(Note("../x", "evil", false, 1, 1))) }
+        assertEquals(listOf("keep"), store().list().map { it.id })
+    }
 }

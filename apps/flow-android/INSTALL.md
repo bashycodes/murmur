@@ -731,6 +731,14 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       then reopen Insights: numbers unchanged. *Settings → History → Never*, dictate: Insights still
       counts it. *Reset stats* asks first; *Reset* → all zero (and History is not re-added after an
       app restart). Next day without dictating: *Current streak* keeps yesterday's run.
+- [ ] Back up & restore (*Settings → Back up & restore*): *Export all data* opens the system file
+      picker with `flow-clone-backup-<date>.json`; save it to Downloads or Drive. Open the file: no
+      `token`, `key_sealed` or `sk-or-` text in it. Uninstall the app (or *Clear storage*), reinstall,
+      *Restore from a backup* → pick the file → the dialog lists notes, dictations, dictionary words,
+      snippets, Insights days and settings; *Replace* → toast, Settings reopens with the old values.
+      Notes (with pins), History, Dictionary, Insights and the OpenRouter / server choices are back;
+      the OpenRouter key and server token are empty (enter them again) and models need re-importing.
+      Picking a dictionary export or a photo → "not a Flow Clone backup", nothing changed.
 - [ ] Command Mode (needs AI cleanup: local model, or OpenRouter cleanup with *Send text around the
       cursor* on). In Notes type "Hi team. The meeting that we planned for tomorrow has been moved to
       Friday afternoon. Thanks!", select the middle sentence: **✎** appears right of the mic (gone again

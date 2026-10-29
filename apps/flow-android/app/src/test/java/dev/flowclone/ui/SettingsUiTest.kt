@@ -235,4 +235,16 @@ class SettingsUiTest {
         val a = launch(Page.CLEANUP)
         assertEquals(if (BuildConfig.CAP_LOCAL) "AI cleanup" else "Settings", a.title.toString())
     }
+
+    @Test fun hubOffersBackupAndRestoreThroughTheSystemFilePicker() {
+        val a = launch()
+        val t = texts(a)
+        for (want in listOf("BACK UP & RESTORE", "Export all data", "Restore from a backup", dev.flowclone.data.Backup.SECRETS_NOTE)) assertTrue(want, want in t)
+        rowTitled(a, "Export all data").performClick()
+        val export = shadowOf(a).nextStartedActivityForResult.intent
+        assertEquals(android.content.Intent.ACTION_CREATE_DOCUMENT, export.action)
+        assertTrue(export.getStringExtra(android.content.Intent.EXTRA_TITLE)!!.matches(Regex("""flow-clone-backup-\d{4}-\d{2}-\d{2}\.json""")))
+        rowTitled(a, "Restore from a backup").performClick()
+        assertEquals(android.content.Intent.ACTION_OPEN_DOCUMENT, shadowOf(a).nextStartedActivityForResult.intent.action)
+    }
 }
