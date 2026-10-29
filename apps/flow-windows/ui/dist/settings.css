@@ -26,7 +26,7 @@ body {
 }
 header,
 form,
-body > section {
+body > .page-root > section {
   max-width: 560px;
   margin: 0 auto;
   padding: 0 16px;
@@ -35,11 +35,15 @@ header {
   padding-top: 20px;
 }
 form,
-body > section {
+body > .page-root > section {
   padding-bottom: 32px;
 }
 [hidden] {
   display: none !important;
+}
+/* Page containers (ui/src/pages/*.ts render into them) take no box. */
+.page-root {
+  display: contents;
 }
 h1 {
   margin: 0;
