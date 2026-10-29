@@ -121,12 +121,12 @@
   let history = [
     { id: 3, ts: now - 60e3, app: "outlook.exe", url: null, raw: "um so i think we should uh meet tomorrow at three",
       formatted: "I think we should meet tomorrow at 3.", pasted: "I think we should meet tomorrow at 3.", edited: null,
-      duration_ms: 4100, words: 8, lang: "en", final_text: "I think we should meet tomorrow at 3.", ai_edited: true },
+      duration_ms: 4100, words: 8, lang: "en", route: "server", final_text: "I think we should meet tomorrow at 3.", ai_edited: true },
     { id: 2, ts: now - 3600e3, app: "slack.exe", url: null, raw: "i use whisper flow daily",
       formatted: null, pasted: "I use whisper flow daily", edited: "I use Wispr Flow daily",
-      duration_ms: 2000, words: 5, lang: "en", final_text: "I use whisper flow daily", ai_edited: false },
+      duration_ms: 2000, words: 5, lang: "en", route: "pc", final_text: "I use whisper flow daily", ai_edited: false },
     { id: 1, ts: now - 86400e3 * 2, app: "notepad.exe", url: null, raw: "hello world", formatted: null, pasted: null,
-      edited: null, duration_ms: 900, words: 2, lang: "en", final_text: "hello world", ai_edited: false },
+      edited: null, duration_ms: 900, words: 2, lang: "en", route: null, final_text: "hello world", ai_edited: false },
   ];
   let recentApps = ["slack.exe", "notepad.exe", "whatsapp.exe", "acme-crm.exe"];
   const defaults = [

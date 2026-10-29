@@ -560,6 +560,7 @@ impl Controller {
                 lang: r.language.clone(),
                 command: false,
                 original: None,
+                route: result_route(&r),
             };
             let retention = self.prefs.read().unwrap().retention;
             match h.lock().unwrap().record(&entry, retention, entry.ts) {
@@ -604,6 +605,7 @@ impl Controller {
             lang: r.language.clone(),
             command: true,
             original: cmd.original,
+            route: result_route(r),
         };
         let retention = self.prefs.read().unwrap().retention;
         if let Err(e) = h.lock().unwrap().record(&entry, retention, entry.ts) {
@@ -1197,6 +1199,14 @@ fn step_names(steps: &[crate::paste::Step], method: crate::prefs::PasteMethod) -
             Step::Pause(_) => None,
         })
         .collect()
+}
+
+/// History `route` of a result (`pc` / `server` / `cloud`; `None` = unknown).
+fn result_route(r: &CommitResult) -> Option<String> {
+    r.route
+        .as_ref()
+        .and_then(|x| history::route_label(&x.engine))
+        .map(String::from)
 }
 
 /// The debug line of a session (schema: [`crate::debug_log::Entry`]).
@@ -2512,6 +2522,31 @@ mod tests {
         assert_eq!(a[0]["client_ms"], serde_json::Value::Null);
         assert_eq!(a[0]["segments"], 0);
         assert_eq!(a[0]["wait_ms"], 0);
+    }
+
+    #[test]
+    fn history_rows_record_where_the_speech_ran() {
+        let mut ok = CommitResult::text(CommitStatus::RawTranscript, "hi there", false);
+        ok.route = Some(crate::core_api::RouteInfo {
+            engine: "remote".into(),
+            ..Default::default()
+        });
+        let mut r = rig_with(Fake::default(), Prefs::default(), |core| {
+            Arc::new(Scripted {
+                inner: core,
+                result: ok,
+            })
+        });
+        r.c =
+            r.c.with_history(Arc::new(Mutex::new(History::open_in_memory().unwrap())));
+        dictate_then(&mut r, |_| {});
+        assert_eq!(history_latest(&r).unwrap().route.as_deref(), Some("server"));
+        // A bare core reports no route: unknown.
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.c =
+            r.c.with_history(Arc::new(Mutex::new(History::open_in_memory().unwrap())));
+        dictate_then(&mut r, |_| {});
+        assert_eq!(history_latest(&r).unwrap().route, None);
     }
 
     #[test]
