@@ -535,8 +535,22 @@ impl Controller {
             // Independent of History retention: counts only, kept local.
             let app = info.context.as_ref().map_or("", |c| c.app_id.as_str());
             let now = history::now_ms();
+            let fixes = crate::insights::Fixes {
+                // The AI cleanup's text was used and differs from the
+                // transcript.
+                ai: u64::from(
+                    r.status == CommitStatus::Formatted && plain.trim() != r.asr_text.trim(),
+                ),
+                dictionary: crate::insights::dictionary_fixes(
+                    &r.asr_text,
+                    &plain,
+                    &self.prefs.read().unwrap().dictionary,
+                ),
+            };
+            let day = crate::insights::local_date(now);
             let mut s = store.lock().unwrap();
-            s.record(crate::insights::local_date(now), words, duration_ms, app);
+            s.record(day, words, duration_ms, app);
+            s.record_extras(day, result_route(&r).as_deref(), fixes);
             if let Err(e) = s.save() {
                 eprintln!("[insights] {e}");
             }
@@ -2547,6 +2561,36 @@ mod tests {
             r.c.with_history(Arc::new(Mutex::new(History::open_in_memory().unwrap())));
         dictate_then(&mut r, |_| {});
         assert_eq!(history_latest(&r).unwrap().route, None);
+    }
+
+    #[test]
+    fn insights_count_route_and_fixes() {
+        let mut ok = CommitResult::text(CommitStatus::Formatted, "Push to GitHub.", false);
+        ok.asr_text = "um push to gh".into();
+        ok.route = Some(crate::core_api::RouteInfo {
+            engine: "cloud".into(),
+            ..Default::default()
+        });
+        let mut prefs = Prefs::default();
+        prefs.dictionary.push(crate::core_api::DictEntry {
+            word: "gh".into(),
+            replacement: Some("GitHub".into()),
+            is_snippet: false,
+        });
+        let mut r = rig_with(Fake::default(), prefs, |core| {
+            Arc::new(Scripted {
+                inner: core,
+                result: ok,
+            })
+        });
+        let store = Arc::new(Mutex::new(InsightsStore::in_memory()));
+        r.c = r.c.with_insights(store.clone());
+        dictate_then(&mut r, |_| {});
+        let today = crate::insights::local_date(history::now_ms());
+        let v = store.lock().unwrap().view(today);
+        assert_eq!(v.routes_7d.cloud, 1);
+        assert_eq!(v.routes_7d.unknown, 0);
+        assert_eq!((v.fixes.ai, v.fixes.dictionary), (1, 1));
     }
 
     #[test]
