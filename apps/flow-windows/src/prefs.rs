@@ -69,11 +69,18 @@ pub enum PasteMethod {
     Type,
 }
 
+/// How long History keeps a dictation. JSON: `keep` (forever), `days_30`,
+/// `days_7`, `day` (24 h, the pre-redesign option, kept so old files load
+/// unchanged) and `never` (don't keep; wipes existing rows).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Retention {
     #[default]
     Keep,
+    #[serde(rename = "days_30")]
+    Days30,
+    #[serde(rename = "days_7")]
+    Days7,
     Day,
     Never,
 }

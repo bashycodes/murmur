@@ -7,7 +7,8 @@
 //! older databases).
 //! **Audio is never stored** — there is no column for it.
 //!
-//! Retention pref (`keep` / `day` = 24 h / `never`) is enforced on every
+//! Retention pref (`keep` / `days_30` / `days_7` / `day` = 24 h / `never`)
+//! is enforced on every
 //! write and on open, so switching to `never` wipes existing rows.
 
 use crate::prefs::Retention;
@@ -155,6 +156,8 @@ pub fn now_ms() -> i64 {
 pub fn cutoff(r: Retention, now: i64) -> Option<i64> {
     match r {
         Retention::Keep => None,
+        Retention::Days30 => Some(now - 30 * DAY_MS),
+        Retention::Days7 => Some(now - 7 * DAY_MS),
         Retention::Day => Some(now - DAY_MS),
         Retention::Never => Some(i64::MAX),
     }
@@ -439,6 +442,30 @@ mod tests {
             .latest(Retention::Day, now + 2 * DAY_MS)
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn week_and_month_retention_prune_by_age() {
+        let h = History::open_in_memory().unwrap();
+        let now = 100 * DAY_MS;
+        for age in [40, 20, 3] {
+            h.record(&entry(now - age * DAY_MS, "x"), Retention::Keep, now)
+                .unwrap();
+        }
+        h.prune(Retention::Days30, now).unwrap();
+        assert_eq!(h.count().unwrap(), 2);
+        assert_eq!(h.list("", 10, Retention::Days7, now).unwrap().len(), 1);
+        h.prune(Retention::Days7, now).unwrap();
+        assert_eq!(h.count().unwrap(), 1);
+        for (r, j) in [
+            (Retention::Keep, "keep"),
+            (Retention::Days30, "days_30"),
+            (Retention::Days7, "days_7"),
+            (Retention::Day, "day"),
+            (Retention::Never, "never"),
+        ] {
+            assert_eq!(serde_json::to_value(r).unwrap(), j);
+        }
     }
 
     #[test]
