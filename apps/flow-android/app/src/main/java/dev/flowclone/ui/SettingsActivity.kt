@@ -18,6 +18,8 @@ import dev.flowclone.EngineHolder
 import dev.flowclone.FlowApp
 import dev.flowclone.R
 import dev.flowclone.core.AsrEngine
+import dev.flowclone.data.Backup
+import dev.flowclone.data.BackupIo
 import dev.flowclone.data.DevSummary
 import dev.flowclone.data.DevUnlock
 import dev.flowclone.data.EnginePlan
@@ -272,6 +274,13 @@ class SettingsActivity : Activity() {
                 ).onChange { on -> applyNow { copy(learnFromEdits = on) } }
             }
 
+            sectionLabel("BACK UP & RESTORE")
+            card {
+                navRow(R.drawable.ic_scr_share, "Export all data", "Notes, History, Dictionary, Insights and settings in one file", chevron = false) { exportBackup() }
+                navRow(R.drawable.ic_scr_import, "Restore from a backup", "Replaces this app's data with a backup file", chevron = false) { pickBackup() }
+            }
+            note(Backup.SECRETS_NOTE)
+
             sectionLabel("ADVANCED")
             card {
                 if (app.dev.visible) {
@@ -295,6 +304,101 @@ class SettingsActivity : Activity() {
                     } else if (unlock.remaining <= 4) {
                         Toast.makeText(this@SettingsActivity, "${unlock.remaining} more taps", Toast.LENGTH_SHORT).show()
                     }
+                }
+            }
+        }
+    }
+
+    // =====================================================================================
+    // Back up & restore (SAF: the user picks the file; no storage permission)
+    // =====================================================================================
+
+    @Suppress("DEPRECATION")
+    private fun exportBackup() = startActivityForResult(
+        Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json")
+            .putExtra(Intent.EXTRA_TITLE, Backup.fileName(java.time.LocalDate.now())),
+        REQ_BACKUP_EXPORT,
+    )
+
+    @Suppress("DEPRECATION")
+    private fun pickBackup() = startActivityForResult(
+        Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_BACKUP_IMPORT,
+    )
+
+    @Deprecated("platform Activity result API")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        val uri = data?.data ?: return
+        if (resultCode != RESULT_OK) return
+        when (requestCode) {
+            REQ_BACKUP_EXPORT -> writeBackup(uri)
+            REQ_BACKUP_IMPORT -> readBackup(uri)
+        }
+    }
+
+    private fun alive() = !isFinishing && !isDestroyed
+
+    private fun writeBackup(uri: android.net.Uri) {
+        Toast.makeText(this, "Exporting…", Toast.LENGTH_SHORT).show()
+        thread(name = "backup-export") {
+            val r = runCatching {
+                val json = BackupIo(app).export()
+                contentResolver.openOutputStream(uri, "wt")!!.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+            }
+            runOnUiThread {
+                val msg = r.fold({ "Backup saved. API keys and the server token are not in it." }, { "Export failed: ${it.message}" })
+                Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    /** Parse and check the whole file first; nothing is written until the user confirms. */
+    private fun readBackup(uri: android.net.Uri) {
+        thread(name = "backup-read") {
+            val parsed = runCatching {
+                contentResolver.openInputStream(uri)!!.use { input ->
+                    val bytes = input.readNBytes(Backup.MAX_BYTES + 1)
+                    if (bytes.size > Backup.MAX_BYTES) Backup.Parsed.Rejected("This file is too large to be a Flow Clone backup.")
+                    else Backup.decode(bytes.toString(Charsets.UTF_8))
+                }
+            }.getOrElse { Backup.Parsed.Rejected("Couldn't read the file: ${it.message}") }
+            runOnUiThread { if (alive()) confirmRestore(parsed) }
+        }
+    }
+
+    private fun confirmRestore(p: Backup.Parsed) {
+        when (p) {
+            is Backup.Parsed.Rejected -> AlertDialog.Builder(this)
+                .setTitle("Can't restore this file")
+                .setMessage(p.reason + "\n\nNothing was changed.")
+                .setPositiveButton("OK", null)
+                .show()
+            is Backup.Parsed.Ok -> AlertDialog.Builder(this)
+                .setTitle("Replace your data with this backup?")
+                .setMessage(
+                    Backup.summary(p.meta, p.data).joinToString("\n") +
+                        "\n\nWhat this backup holds replaces what the app has now; this can't be undone. " + Backup.SECRETS_NOTE,
+                )
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Replace") { _, _ -> restore(p.data) }
+                .show()
+        }
+    }
+
+    private fun restore(d: Backup.Data) {
+        Toast.makeText(this, "Restoring…", Toast.LENGTH_SHORT).show()
+        thread(name = "backup-restore") {
+            val r = runCatching { BackupIo(app).restore(d) }
+            runOnUiThread {
+                if (r.isSuccess) {
+                    Toast.makeText(this, "Restored. Enter your API keys again if you use them.", Toast.LENGTH_LONG).show()
+                    if (alive()) recreate()
+                } else if (alive()) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Restore failed")
+                        .setMessage("${r.exceptionOrNull()?.message}\n\nPart of your data may already be restored. The backup file is unchanged: restore it again to finish.")
+                        .setPositiveButton("OK", null)
+                        .show()
                 }
             }
         }
@@ -596,6 +700,8 @@ class SettingsActivity : Activity() {
     companion object {
         const val EXTRA_PAGE = "page"
         private const val MENU_SAVE = 1
+        private const val REQ_BACKUP_EXPORT = 30
+        private const val REQ_BACKUP_IMPORT = 31
 
         fun intent(ctx: Context, p: Page = Page.HUB): Intent = Intent(ctx, SettingsActivity::class.java).putExtra(EXTRA_PAGE, p.name)
 
