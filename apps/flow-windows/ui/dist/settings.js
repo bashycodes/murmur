@@ -980,7 +980,7 @@ function showRoute(r) {
 function showDev(v) {
     devView = v;
     $("tab_developer").hidden = !v.visible;
-    $("version_row").textContent = `Flow Clone ${v.version} · ${v.build}`;
+    $("version_row").textContent = `Murmur ${v.version} · ${v.build}`;
     showPrivacyLine();
     fillDev(v.form);
     // Server-only builds have no local model: no model paths or LLM files.
@@ -994,7 +994,7 @@ function showDev(v) {
     $("dev_or_hint").hidden = !v.caps.cloud;
     const c = v.capabilities;
     $("dev_build").textContent =
-        `Flow Clone ${v.full} · ` +
+        `Murmur ${v.full} · ` +
             `${[c.local ? "client" : "", c.remote ? "server" : ""].filter(Boolean).join(" + ") || "no engine"}` +
             ` · ASR ${c.asr_engines.join(", ") || "none"} · LLM ${c.llm ? "yes" : "no"} · proto ${c.proto} · core ${c.core_version}`;
     showCheck(v.check);

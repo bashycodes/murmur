@@ -28,7 +28,7 @@ class DebugLogProvider : ContentProvider() {
             val send = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_STREAM, u)
-                putExtra(Intent.EXTRA_SUBJECT, "Flow Clone debug log")
+                putExtra(Intent.EXTRA_SUBJECT, "Murmur debug log")
                 clipData = android.content.ClipData.newRawUri(NAME, u)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }

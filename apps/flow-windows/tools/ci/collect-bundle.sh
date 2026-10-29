@@ -13,7 +13,7 @@ for f in target/release/bundle/msi/*.msi target/release/bundle/nsis/*.exe; do
   cp "$f" "$out/${base// /-}"
   n=$((n + 1))
 done
-# Rename to carry the flavour: Flow-Clone_0.1.0_x64_en-US.msi -> ..._hybrid.msi
+# Rename to carry the flavour: Murmur_0.8.0_x64_en-US.msi -> ..._hybrid.msi
 for f in "$out"/*; do
   ext=${f##*.}
   stem=${f%.*}

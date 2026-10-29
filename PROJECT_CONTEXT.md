@@ -1,4 +1,4 @@
-# PROJECT_CONTEXT — flow-clone (local-only Wispr Flow clone)
+# PROJECT_CONTEXT — Murmur (local-only Wispr Flow clone)
 
 Research inputs: `research/windows/findings/by-topic/10-clone-spec.md` (§9 = core API), `research/android/findings/by-topic/10-clone-spec-android.md`. Decisions: `docs/DECISIONS.md` (D1-D28). Versioning + releases: `docs/versioning.md`, `CHANGELOG.md`. Core architecture + "Changelog for shells": `docs/core-architecture.md`. Core requests from the shells: `docs/core-change-requests.md`. Model choices: `docs/model-benchmarks.md`.
 

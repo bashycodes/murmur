@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Flow Clone",
+  "productName": "Murmur",
   "identifier": "dev.flowclone.windows",
   "build": {
     "frontendDist": "ui/dist",
@@ -30,7 +30,7 @@
       },
       {
         "label": "settings",
-        "title": "Flow Clone Settings",
+        "title": "Murmur Settings",
         "url": "settings.html",
         "width": 600,
         "height": 760,

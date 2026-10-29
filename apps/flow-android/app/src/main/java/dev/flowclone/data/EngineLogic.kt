@@ -114,8 +114,8 @@ object EnginePlan {
         val parakeetOk = s.asrEngine == AsrEngine.PARAKEET && parakeetPath != null && isModelDir(parakeetPath)
         if (!whisperOk && !parakeetOk) {
             return Plan.Missing(
-                if (s.asrEngine == AsrEngine.PARAKEET) "No Parakeet model folder imported. Open Flow Clone → Speech model."
-                else "No speech model imported. Open Flow Clone → Speech model.",
+                if (s.asrEngine == AsrEngine.PARAKEET) "No Parakeet model folder imported. Open Murmur → Speech model."
+                else "No speech model imported. Open Murmur → Speech model.",
             )
         }
         val llm = when {

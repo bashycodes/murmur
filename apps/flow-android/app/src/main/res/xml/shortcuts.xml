@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Static launcher shortcuts (long-press the Flow Clone icon). The Quick note keeps the
+<!-- Static launcher shortcuts (long-press the Murmur icon). The Quick note keeps the
      "scratchpad" id so a shortcut pinned before Notes still works. -->
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut

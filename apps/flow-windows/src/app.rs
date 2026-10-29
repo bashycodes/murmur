@@ -289,7 +289,7 @@ fn show_suggestion_count(app: &AppHandle, pending: usize) {
 
 // ---------------------------------------------------------------- model notice
 
-const TRAY_TIP: &str = "Flow Clone — hold Ctrl+Win to dictate";
+const TRAY_TIP: &str = "Murmur — hold Ctrl+Win to dictate";
 
 /// Tray notice for the model state: menu line + tooltip; Settings opens on
 /// a missing/broken model so the user sees why dictation can't start.
@@ -311,11 +311,11 @@ fn apply_model_status(app: &AppHandle, item: &MenuItem<tauri::Wry>, st: &ModelSt
         ),
         ModelStatus::Missing { .. } => (
             "⚠ Speech model missing — open Settings".to_string(),
-            "Flow Clone — speech model missing (see Settings)".to_string(),
+            "Murmur — speech model missing (see Settings)".to_string(),
         ),
         ModelStatus::Failed { .. } => (
             "⚠ Speech model failed to load — open Settings".to_string(),
-            "Flow Clone — speech model failed to load (see Settings)".to_string(),
+            "Murmur — speech model failed to load (see Settings)".to_string(),
         ),
     };
     let _ = item.set_text(line);
@@ -1708,7 +1708,7 @@ fn show_notes_window(app: &AppHandle, query: String) {
             return;
         }
         let built = WebviewWindowBuilder::new(&h, SCRATCHPAD, WebviewUrl::App(page.into()))
-            .title("Notes — Flow Clone")
+            .title("Notes — Murmur")
             .inner_size(520.0, 560.0)
             .min_inner_size(320.0, 240.0)
             .center()
@@ -2049,7 +2049,7 @@ pub fn run() {
             let notes_item = MenuItem::with_id(app, "notes", "Notes…", true, None::<&str>)?;
             let open = MenuItem::with_id(app, "open", "Settings…", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
-            let quit = MenuItem::with_id(app, "quit", "Quit Flow Clone", true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", "Quit Murmur", true, None::<&str>)?;
             let menu = Menu::with_items(
                 app,
                 &[

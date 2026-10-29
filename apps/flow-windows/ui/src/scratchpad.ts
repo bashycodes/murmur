@@ -73,7 +73,7 @@
 
   function listView(): void {
     $("list-view").hidden = false;
-    document.title = "Notes — Flow Clone";
+    document.title = "Notes — Murmur";
     const search = $<HTMLInputElement>("search");
     const list = $<HTMLUListElement>("notes");
     const empty = $("empty");
@@ -229,7 +229,7 @@
         const first = editor.value.split("\n").map((l) => l.trim()).find((l) => l) ?? "";
         name.textContent = first || "Untitled";
       }
-      document.title = `${name.textContent} — Flow Clone`;
+      document.title = `${name.textContent} — Murmur`;
     }
 
     function setUndo(text: string | null): void {
