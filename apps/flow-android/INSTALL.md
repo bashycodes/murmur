@@ -1,6 +1,6 @@
-# Installing Flow Clone on an Android phone
+# Installing Murmur on an Android phone
 
-Flow Clone comes in three **flavours** (D17, `docs/hybrid-architecture.md`). They share one
+Murmur comes in three **flavours** (D17, `docs/hybrid-architecture.md`). They share one
 application id (`dev.flowclone`), so installing another flavour over the current one is an
 in-place update that keeps settings, dictionary and history.
 
@@ -61,10 +61,10 @@ Your VPN client (or `ip -4 addr`) shows the 100.x address; the token is the cont
 (e.g. your VPN's file transfer or typing it); never paste it into a chat.
 
 **2. Install + permissions (phone).** Copy the APK to the phone and open it in Files ("Install
-unknown apps" for Files), or use the platform-tools install command over USB. Open Flow Clone
+unknown apps" for Files), or use the platform-tools install command over USB. Open Murmur
 and grant, in this order: *Microphone* → *Display over other apps* → *Accessibility service*
-(Settings → Accessibility → Flow Clone → on; if the switch is greyed out: Settings → Apps →
-Flow Clone → ⋮ → *Allow restricted settings*, then retry) → *Notifications* → *Battery: allow
+(Settings → Accessibility → Murmur → on; if the switch is greyed out: Settings → Apps →
+Murmur → ⋮ → *Allow restricted settings*, then retry) → *Notifications* → *Battery: allow
 background* (each is a row in the main screen's *Setup* card: tap it). The main screen's *Status* card must show
 *Native engine* `flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26).
 
@@ -321,16 +321,16 @@ history.
 
 ## 4. Grant permissions (in order)
 
-Open **Flow Clone**. The main screen's **Setup** card lists each permission with its state on
+Open **Murmur**. The main screen's **Setup** card lists each permission with its state on
 the right (*Granted*, *Allowed*, *On*) or the action that fixes it (*Grant*, *Allow*, *Turn on*);
 tap the row. While a required one is missing, a red banner at the top names it and *Setup* sits
 above *Status*.
 
 1. **Microphone**: tap the row (*Grant*), then *While using the app*.
 2. **Display over other apps**: tap the row (*Allow*) and switch it on. The bubble needs it.
-3. **Accessibility service**: tap the row (*Turn on*) → *Flow Clone* → on.
+3. **Accessibility service**: tap the row (*Turn on*) → *Murmur* → on.
    - If you installed from Files or a browser (step 3, second option), Android 13+ greys
-     the switch out as a **restricted setting**. Fix it in *Settings → Apps → Flow Clone →
+     the switch out as a **restricted setting**. Fix it in *Settings → Apps → Murmur →
      ⋮ (top right) → Allow restricted settings*, then try again. USB installs aren't
      restricted.
 4. **Battery optimisation**: tap the row (*Allow*) → *Allow*. Without it Android may stop the
@@ -343,7 +343,7 @@ above *Status*.
 
 If the *Accessibility service* row later says **Not responding** (banner: "the Accessibility
 service stopped responding"), the phone killed it without turning the switch off. Tap *Fix*,
-turn Flow Clone off and on again in Accessibility settings, then redo steps 4 and 6. The bubble
+turn Murmur off and on again in Accessibility settings, then redo steps 4 and 6. The bubble
 shows a red **!** in that state; tapping it opens the main screen.
 
 ## 5. Import the model (SAF)
@@ -683,11 +683,11 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
 - [ ] Battery step: the system "Allow app to always run in background?" dialog appears.
 - [ ] OEM button opens the vendor's autostart / battery screen (record the phone model and
       which screen opened, or that it fell back to app info).
-- [ ] Ghost check: with the service on, force-stop Flow Clone from App info, reopen it.
+- [ ] Ghost check: with the service on, force-stop Murmur from App info, reopen it.
       Within ~15–60 s the main screen says "switched on but not responding" and the service
       notification shows the ghost text. Toggle off/on → "On".
 - [ ] Reboot the phone: the bubble service comes back without opening the app (accessibility
-      on), or a "Turn Flow Clone back on" notification appears (accessibility off).
+      on), or a "Turn Murmur back on" notification appears (accessibility off).
 - [ ] Update in place (reinstall with `-r`): the service restarts (MY_PACKAGE_REPLACED).
 - [ ] *Stop bubble*: the service stays stopped (the a11y watchdog and the boot receiver
       respect it); *Start / show bubble* brings it back.

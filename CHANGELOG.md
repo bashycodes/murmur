@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Flow Clone (Windows app, Android app, flow-server and
+All notable changes to Murmur (Windows app, Android app, flow-server and
 the shared Rust crates) are recorded here. One product version covers the
 whole repo; see `docs/versioning.md` (decision D26). The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and versions follow
@@ -31,6 +31,16 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
+- **Renamed to Murmur.** Every "Flow Clone" the apps show (Windows
+  window titles, tray, Settings About row, installer and exe name; Android
+  app name, notifications, accessibility notice, setup and battery help) and
+  the release titles now say "Murmur". Data and settings are unaffected:
+  the Windows data folder (`%APPDATA%\FlowClone`), the stored keys, the
+  launch-at-login entry and the Android package (`dev.flowclone`) keep their
+  old internal names, so Android updates in place. On Windows the installer
+  is now `Murmur_<version>_…` and installs to a new "Murmur"
+  folder: uninstall "Flow Clone" afterwards (settings carry over), and turn
+  "Launch app at login" off and on once so it points at the new exe.
 - Product text no longer names a specific VPN. App strings (Android main
   screen and Developer settings, Windows settings), server messages, the
   example config, the systemd unit and the docs now say "your LAN or a VPN".

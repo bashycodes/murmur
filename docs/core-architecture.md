@@ -1,6 +1,6 @@
 # flow-core architecture
 
-Shared Rust core of the local dictation app. It implements the §9 v2 API from
+Shared Rust core of Murmur, the local dictation app. It implements the §9 v2 API from
 `windows-research/findings/by-topic/10-clone-spec.md` (Android alignment in
 `10-clone-spec-android.md` §9). All speech recognition and text shaping run
 on-device; the core makes no network calls.

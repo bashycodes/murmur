@@ -102,6 +102,6 @@ fi
 notes=$(py section "$new")
 git add -- "${files[@]}"
 git commit -q -m "Release $new" -m "$notes"
-git tag -a "$tag" -m "Flow Clone $new" -m "$notes"
+git tag -a "$tag" -m "Murmur $new" -m "$notes"
 echo "release: committed $(git rev-parse --short HEAD) and tagged $tag (local only)."
 echo "next: git push origin $branch $tag   # CI builds and attaches the $tag artifacts"

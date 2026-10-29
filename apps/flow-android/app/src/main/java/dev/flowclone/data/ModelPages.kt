@@ -57,7 +57,7 @@ object ModelPages {
     }
 
     fun intro(s: Screen) = when (s) {
-        Screen.WHISPER -> "Copy a whisper.cpp model file (ggml-*.bin) to this phone, then import it. Flow Clone never downloads anything."
+        Screen.WHISPER -> "Copy a whisper.cpp model file (ggml-*.bin) to this phone, then import it. Murmur never downloads anything."
         Screen.PARAKEET -> "English only and more accurate than whisper base. Copy the unpacked model folder to the phone, then pick that folder. Recommended on phones with 6–8 GB RAM."
         Screen.LLM -> "Optional. A small local language model polishes each transcript (punctuation, fillers, \"scratch that\" corrections, lists). " +
             "It runs only on this phone and is off until you turn it on in Settings → AI cleanup. Expect 1–3 s extra per dictation; " +

@@ -1,4 +1,4 @@
-//! Windows shell of the local dictation app.
+//! Windows shell of Murmur, the local dictation app.
 //!
 //! Pure, platform-independent logic (chord matching, dictation state machine,
 //! resampling, paste planning, context truncation/bucketing, prefs) lives in
