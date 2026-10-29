@@ -1,7 +1,12 @@
-/* Flow bar pill — geometry/colours from windows-research
-   findings/data/overlay-spec.json (Wispr 1.6.1167, light-theme tokens).
-   System fonts only: no network fonts. The 512x614 window is transparent
-   and click-through; the pill sits 14 px above the canvas bottom. */
+/* Flow bar — styled after the Murmur design artboard
+   docs/design/app-design/FlowBar.dc.html (Idle, Hold to talk, Hands-free,
+   Working, Done with engine, Fell back, Can't dictate). Tokens are copied
+   from docs/design/app-design/flow-theme.css so the overlay stays
+   self-contained (no shared stylesheet, no network fonts).
+
+   The 512x614 window is transparent and click-through; the pill sits 14 px
+   above the canvas bottom. src/overlay.rs mirrors the hands-free pill size
+   (187 x 36) for hit-testing the ✕ / ■ buttons — keep them in sync. */
 
 @property --wave {
   syntax: "<number>";
@@ -10,20 +15,66 @@
 }
 
 :root {
-  --pill-bg: #000;
-  --pill-border: #30302f;
-  --resting-bg: rgba(0, 0, 0, 0.5);
-  --resting-border: hsla(0, 0%, 100%, 0.5);
-  --error: #ee6a6a;
-  --command: #ffa946;
-  --bar: #fff;
-  --bar-inactive: hsla(0, 0%, 100%, 0.4);
-  --cancel-bg: #4d4a42;
-  --cancel-fg: #fcfcfb;
-  --stop-bg: #fcfcfb;
-  --stop-fg: #1a1a1a;
+  /* Palette (flow-theme.css) */
+  --sand-50: #fcfcfb;
+  --vast-700: #5b5b59;
+  --vast-800: #464544;
+  --vast-950: #1a1a1a;
+  --pure-white: #ffffff;
+  --fathom-100: #ceedea;
+  --fathom-200: #b8e4dc;
+  --fathom-950: #034f46;
+  --dawn-300: #f7ebff;
+  --dawn-500: #f0d7ff;
+  --dawn-900: #502b66;
+  --dawn-950: #3c2947;
+  --glow-100: #fce5d1;
+  --glow-200: #facda1;
+  --glow-300: #ffa946;
+  --glow-800: #3c2407;
+  --glow-900: #251403;
+  --destructive-500: #ee6a6a;
+  --warning-400: #ffd467;
+  --shadow-lg: 0 10px 15px -3px rgba(26, 26, 26, 0.1), 0 4px 6px -4px rgba(26, 26, 26, 0.1);
+  --font-sans: Figtree, "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, system-ui,
+    sans-serif;
+
+  /* Flow bar roles */
+  --bar-bg: var(--vast-950);
+  --bar-fg: var(--sand-50);
+  --bar-edge: transparent;
+  --idle-edge: var(--vast-700);
+  --cancel-bg: var(--vast-800);
+  --stop-bg: var(--destructive-500);
+  --error-dot: var(--destructive-500);
+  --notice-dot: var(--warning-400);
+  --command: var(--glow-300);
+  --badge-l-bg: var(--fathom-100);
+  --badge-l-fg: var(--fathom-950);
+  --badge-s-bg: var(--dawn-300);
+  --badge-s-fg: var(--dawn-900);
+  --badge-c-bg: var(--glow-100);
+  --badge-c-fg: var(--glow-800);
   --ease: cubic-bezier(0.05, 0.6, 0.4, 0.95);
-  --audio-scale: 1;
+  --level: 0;
+}
+
+/* Dark: flow-theme.css `.lw-dark` values. The bar stays near-black but
+   gets a hairline edge so it reads on dark wallpapers. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --destructive-500: #ff5757;
+    --warning-400: #f97316;
+    --shadow-lg: 0 4px 8px -2px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
+    --bar-edge: var(--vast-800);
+    --badge-l-bg: var(--fathom-950);
+    --badge-l-fg: var(--fathom-200);
+    --badge-s-bg: var(--dawn-950);
+    --badge-s-fg: var(--dawn-500);
+    --badge-c-bg: var(--glow-900);
+    --badge-c-fg: var(--glow-200);
+  }
 }
 
 html,
@@ -34,7 +85,7 @@ body {
   background: transparent;
   overflow: hidden;
   user-select: none;
-  font: 12px/1.2 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  font: 400 13px/18px var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -47,282 +98,337 @@ body {
   align-items: flex-end;
 }
 
+/* ---- pill: Idle = 44 x 10 translucent capsule ---- */
 .pill {
   box-sizing: border-box;
-  width: 40px;
-  height: 8px;
-  border-radius: 6px;
-  border: 1px solid var(--resting-border);
-  background: var(--resting-bg);
+  width: 44px;
+  height: 10px;
+  padding: 0;
+  border-radius: 9999px;
+  border: 1px solid var(--idle-edge);
+  background: color-mix(in srgb, var(--bar-bg) 55%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   overflow: hidden;
-  color: #fff;
-  transition: all 0.1s var(--ease);
+  color: var(--bar-fg);
+  transition: all 0.12s var(--ease);
 }
-
 .pill > * {
   display: none;
 }
 
-/* ---- active / processing / error share the black 30 px pill ---- */
+/* Every non-idle state shares the solid near-black capsule. */
 .pill[data-state="active_ptt"],
 .pill[data-state="active_locked"],
 .pill[data-state="processing"],
-.pill[data-state="error"],
-.pill[data-state="notice"] {
-  height: 30px;
-  border-radius: 22.5px;
-  background: var(--pill-bg);
-  border-color: var(--pill-border);
+.pill[data-done] {
+  height: 32px;
+  border: 1px solid var(--bar-edge);
+  background: var(--bar-bg);
+  box-shadow: var(--shadow-lg);
 }
+
+/* Hold to talk: 18 bars, 0 16 px padding (139 x 32 incl. border). */
 .pill[data-state="active_ptt"] {
-  width: 73px;
+  width: 139px;
+  padding: 0 16px;
 }
+/* Hands-free: ✕ · bars · ■, 36 tall, 6 px padding, 10 px gaps (187 x 36 incl. border). */
 .pill[data-state="active_locked"] {
-  width: 102.5px;
+  width: 187px;
+  height: 36px;
   padding: 0 6px;
-  justify-content: space-between;
+  gap: 10px;
 }
+/* Working: three fading dots. */
 .pill[data-state="processing"] {
-  width: 98px;
-  padding: 6px 12px;
+  width: 74px;
+  padding: 0 18px;
+  gap: 6px;
+}
+/* Done, with engine: ✓ + letter (S / L / C). */
+.pill[data-done] {
+  width: auto;
+  padding: 0 6px 0 14px;
   gap: 8px;
-}
-.pill[data-state="error"] {
-  width: 91px;
-  border: 1.5px solid var(--error);
-}
-.pill[data-state="notice"] {
-  width: 91px;
 }
 
 .pill[data-state="active_ptt"] .wave,
-.pill[data-state="active_locked"] .wave,
-.pill[data-state="processing"] .wave,
-.pill[data-state="error"] .wave,
-.pill[data-state="notice"] .wave {
+.pill[data-state="active_locked"] .wave {
   display: flex;
 }
 .pill[data-state="active_locked"] .btn {
   display: inline-flex;
 }
-.pill[data-state="processing"] .spinner {
-  display: block;
+.pill[data-state="processing"] .dots {
+  display: flex;
+}
+.pill[data-done] .done-check,
+.pill[data-done] .engine-badge:not([hidden]) {
+  display: inline-flex;
 }
 
-/* ---- waveform: 10 bars, 2 px wide, natural height 2 px ---- */
+/* ---- waveform: 18 bars, 3 px wide, profile heights from the artboard ---- */
 .wave {
-  height: 18px;
+  height: 24px;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
 }
 .bar {
-  width: 2px;
-  height: 2px;
-  min-height: 2px;
-  border-radius: 0.5px;
-  background: var(--bar);
-  transform: scaleY(calc(var(--audio-scale) * var(--bar-height-scale) * var(--wave)));
-  animation: wave 1s ease-in-out infinite;
+  flex: none;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--bar-fg);
+  /* height = artboard profile; the mic level scales it from ~20 % to 100 %. */
+  transform: scaleY(calc((0.2 + 0.8 * var(--level)) * var(--wave)));
+  animation: wave 1.1s ease-in-out infinite;
+  transition: background-color 0.15s;
 }
-.pill[data-mic="inactive"] .bar,
-.pill[data-state="processing"] .bar,
-.pill[data-state="error"] .bar,
-.pill[data-state="notice"] .bar {
-  background: var(--bar-inactive);
+.pill[data-mic="inactive"] .bar {
+  background: color-mix(in srgb, var(--bar-fg) 40%, transparent);
   animation: none;
+  transform: scaleY(0.2);
 }
 @keyframes wave {
   0% {
+    --wave: 0.85;
+  }
+  30% {
     --wave: 1;
   }
-  20% {
-    --wave: 1.2;
-  }
-  40% {
-    --wave: 1.5;
-  }
-  80% {
-    --wave: 1.1;
-  }
-  90% {
-    --wave: 1.3;
+  60% {
+    --wave: 0.75;
   }
   100% {
-    --wave: 1;
+    --wave: 0.85;
   }
 }
 
-/* ---- hands-free buttons (visual; window is click-through in v1) ---- */
+/* ---- hands-free buttons: ✕ cancel, ■ stop and paste ---- */
 .btn {
-  width: 18px;
-  height: 18px;
-  border-radius: 9999px;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
   align-items: center;
   justify-content: center;
-  flex: none;
-}
-.btn svg {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 3;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  cursor: pointer;
 }
 .btn.cancel {
   background: var(--cancel-bg);
-  color: var(--cancel-fg);
+  color: var(--bar-fg);
+}
+.btn.cancel svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .btn.stop {
   background: var(--stop-bg);
-  color: var(--stop-fg);
+}
+.btn.stop i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--pure-white);
+}
+.btn:hover {
+  filter: brightness(1.2);
 }
 
-/* ---- spinner: 8 spokes 2x5 ---- */
-.spinner {
-  position: relative;
+/* ---- working dots ---- */
+.dots {
+  align-items: center;
+  gap: 6px;
+}
+.dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bar-fg);
+  animation: dot 0.9s linear infinite;
+}
+.dots i:nth-child(2) {
+  animation-delay: -0.6s;
+}
+.dots i:nth-child(3) {
+  animation-delay: -0.3s;
+}
+@keyframes dot {
+  0% {
+    opacity: 1;
+  }
+  33% {
+    opacity: 0.3;
+  }
+  66% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* ---- done: ✓ + engine letter ---- */
+.done-check {
+  flex: none;
   width: 16px;
   height: 16px;
+  fill: none;
+  stroke: var(--bar-fg);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.engine-badge {
+  position: relative;
   flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  font: 600 11px/20px var(--font-sans);
+  background: var(--sand-50);
+  color: var(--vast-950);
 }
-.spinner i {
-  position: absolute;
-  left: 7px;
-  top: 5.5px;
-  width: 2px;
-  height: 5px;
-  border-radius: 1px;
-  background: rgba(163, 148, 199, 0.88);
-  animation: spinner-fade 1.1s linear infinite;
+.engine-badge[data-letter="L"] {
+  background: var(--badge-l-bg);
+  color: var(--badge-l-fg);
 }
-@keyframes spinner-fade {
-  from {
-    background: rgba(163, 148, 199, 0.88);
-  }
-  to {
-    background: rgba(163, 148, 199, 0.15);
-  }
+.engine-badge[data-letter="S"] {
+  background: var(--badge-s-bg);
+  color: var(--badge-s-fg);
+}
+.engine-badge[data-letter="C"] {
+  background: var(--badge-c-bg);
+  color: var(--badge-c-fg);
+}
+/* Fell back: a warning ring; the reason (if any) is in the bubble. */
+.engine-badge.fallback {
+  box-shadow: 0 0 0 1.5px var(--notice-dot);
 }
 
 .msg {
   display: none;
 }
 
-/* ---- live partial transcript (flow-core partials), above the pill ---- */
-.preview {
+/* ---- above the pill: bubbles and chips, newest closest to the pill ---- */
+.above {
   position: absolute;
   left: 50%;
-  bottom: 54px;
+  bottom: 58px;
   transform: translateX(-50%);
+  width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.bubble {
   box-sizing: border-box;
   max-width: 480px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.78);
-  color: #fff;
-  font-size: 13px;
-  line-height: 1.35;
-  /* Show the newest words: clamp to 3 lines, overflow at the top. */
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--bar-edge);
+  background: var(--bar-bg);
+  color: var(--bar-fg);
+  box-shadow: var(--shadow-lg);
+  font: 400 13px/18px var(--font-sans);
+}
+/* Live partial transcript: newest words, clamped to 3 lines (overflow at the top). */
+.preview {
   display: none;
-  max-height: calc(3 * 1.35em + 12px);
+  max-height: calc(3 * 18px + 16px + 2px);
   overflow: hidden;
   flex-direction: column;
   justify-content: flex-end;
-  pointer-events: none;
 }
 .preview.visible {
   display: flex;
 }
-.preview[data-kind="error"] {
-  border: 1.5px solid var(--error);
+/* Error ("Can't dictate") / notice ("Fell back", "No speech heard"): dot + text. */
+.preview[data-kind] {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
 }
-
-/* Hands-free buttons are clickable: the shell turns click-through off
-   while the cursor is over the locked pill. */
-.pill[data-state="active_locked"] .btn {
-  cursor: pointer;
-}
-.pill[data-state="active_locked"] .btn:hover {
-  filter: brightness(1.2);
-}
-
-/* ---- Engine badge: S = server, L = this PC (Developer setting), C = cloud (always) ---- */
-.engine-badge {
-  position: absolute;
-  left: calc(50% + 52px);
-  bottom: 8px;
-  min-width: 14px;
-  height: 14px;
-  padding: 0 3px;
-  border-radius: 7px;
-  background: var(--pill-bg);
-  color: #fff;
-  font: 600 10px/14px system-ui, sans-serif;
-  text-align: center;
-}
-.engine-badge[hidden] {
-  display: none;
-}
-.engine-badge.fallback::after {
+.preview[data-kind]::before {
   content: "";
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 6px;
-  height: 6px;
-  border-radius: 3px;
-  background: var(--error);
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--notice-dot);
+}
+.preview[data-kind="error"]::before {
+  background: var(--error-dot);
 }
 
-/* ---- live route: "Transcribing via this PC / server / <provider>…" ---- */
-.route-label {
-  position: absolute;
-  left: 50%;
-  bottom: 50px;
-  transform: translateX(-50%);
+.chip {
+  box-sizing: border-box;
   max-width: 480px;
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.65);
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 11px;
-  line-height: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  border: 1px solid var(--bar-edge);
+  background: var(--bar-bg);
+  color: var(--bar-fg);
+  box-shadow: var(--shadow-lg);
+  font: 500 12px/16px var(--font-sans);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  pointer-events: none;
 }
-.route-label[hidden] {
+.chip[hidden] {
   display: none;
 }
-.route-label[data-engine="cloud"] {
-  border: 1px solid rgba(163, 148, 199, 0.9);
-}
-body.has-route .preview {
-  bottom: 74px;
+.chip::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--bar-fg);
 }
 
-/* ---- Command Mode: the push-to-talk / processing pill, orange accent ---- */
-.pill[data-command] {
-  border: 1.5px solid var(--command);
+/* ---- live route: "Transcribing via this PC / server / <provider>…" ---- */
+.route-label[data-engine="local"]::before {
+  background: var(--fathom-100);
 }
-.pill[data-command] .bar {
+.route-label[data-engine="remote"]::before {
+  background: var(--dawn-500);
+}
+.route-label[data-engine="cloud"]::before {
+  background: var(--glow-300);
+}
+
+/* ---- max dictation length countdown ---- */
+.max-warn::before {
+  background: var(--notice-dot);
+}
+
+/* ---- Command Mode: the hold / working pill with an orange accent ---- */
+/* Ring drawn as a shadow so the fixed pill widths keep their inner room. */
+.pill[data-command] {
+  border-color: var(--command);
+  box-shadow: 0 0 0 0.5px var(--command), var(--shadow-lg);
+}
+.pill[data-command] .bar,
+.pill[data-command] .dots i {
   background: var(--command);
 }
 .pill[data-command][data-mic="inactive"] .bar {
-  background: rgba(255, 169, 70, 0.45);
-}
-.pill[data-command] .spinner i {
-  animation-name: spinner-fade-command;
-}
-@keyframes spinner-fade-command {
-  from {
-    background: rgba(255, 169, 70, 0.9);
-  }
-  to {
-    background: rgba(255, 169, 70, 0.15);
-  }
+  background: color-mix(in srgb, var(--command) 45%, transparent);
 }

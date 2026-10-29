@@ -5,13 +5,13 @@
 //! app underneath (Wispr does the same with `setShape` / alpha hit-testing).
 //!
 //! Geometry mirrors `ui/dist/overlay.css`: the pill is centred horizontally,
-//! its bottom 14 CSS px above the canvas bottom; locked = 102.5 x 30.
+//! its bottom 14 CSS px above the canvas bottom; locked (hands-free) = 187 x 36.
 
 use crate::dictation::OverlayState;
 
 pub const PILL_BOTTOM_GAP: f64 = 14.0;
-pub const LOCKED_W: f64 = 102.5;
-pub const PILL_H: f64 = 30.0;
+pub const LOCKED_W: f64 = 187.0;
+pub const PILL_H: f64 = 36.0;
 /// Slack around the pill so a click on the rounded edge still lands.
 pub const HIT_MARGIN: f64 = 3.0;
 
@@ -68,16 +68,16 @@ mod tests {
     #[test]
     fn locked_pill_is_bottom_centre() {
         let r = locked_pill_rect(win(1.0), 1.0);
-        assert_eq!(r.left, 1256.0 - 51.25 - 3.0);
-        assert_eq!(r.right, 1256.0 + 51.25 + 3.0);
+        assert_eq!(r.left, 1256.0 - 93.5 - 3.0);
+        assert_eq!(r.right, 1256.0 + 93.5 + 3.0);
         assert_eq!(r.bottom, 1014.0 - 11.0);
-        assert_eq!(r.top, 1014.0 - 47.0);
+        assert_eq!(r.top, 1014.0 - 53.0);
     }
 
     #[test]
     fn scales_with_dpi() {
         let r = locked_pill_rect(win(1.5), 1.5);
-        assert!((r.right - r.left - (102.5 + 6.0) * 1.5).abs() < 1e-9);
+        assert!((r.right - r.left - (187.0 + 6.0) * 1.5).abs() < 1e-9);
     }
 
     #[test]
