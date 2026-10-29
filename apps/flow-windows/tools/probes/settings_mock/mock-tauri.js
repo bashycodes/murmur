@@ -117,6 +117,13 @@
     top_apps: [{ app: "slack.exe", words: 6120 }, { app: "code.exe", words: 3011 }, { app: "", words: 90 }],
     last7: [120, 0, 540, 300, 780, 210, 365].map((words, i) => ({ date: `2026-10-${22 + i}`, words })),
     since: "2026-08-02",
+    // 18 Monday-first weeks ending this week; null = after today.
+    heatmap: Array.from({ length: 126 }, (_, i) => ({
+      date: new Date(Date.UTC(2026, 5, 29 + i)).toISOString().slice(0, 10),
+      words: i > 123 ? null : (i * 37) % 5 === 0 ? 0 : (i * 53) % 900,
+    })),
+    routes_7d: { pc: 41, server: 63, cloud: 0, unknown: 2 },
+    fixes: { ai: 297, dictionary: 269, total: 566 },
   };
   let history = [
     { id: 3, ts: now - 60e3, app: "outlook.exe", url: null, raw: "um so i think we should uh meet tomorrow at three",
@@ -157,7 +164,9 @@
     insights_reset: () => {
       insights = { ...insights, total_words: 0, week_words: 0, dictations: 0, total_ms: 0, avg_wpm: null,
         current_streak: 0, longest_streak: 0, saved_minutes: 0, top_apps: [], since: null,
-        last7: insights.last7.map((d) => ({ ...d, words: 0 })) };
+        last7: insights.last7.map((d) => ({ ...d, words: 0 })),
+        heatmap: insights.heatmap.map((d) => ({ ...d, words: d.words === null ? null : 0 })),
+        routes_7d: { pc: 0, server: 0, cloud: 0, unknown: 0 }, fixes: { ai: 0, dictionary: 0, total: 0 } };
     },
     suggestions_list: () => suggestions,
     app_style_choices: () => ({

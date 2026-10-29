@@ -476,9 +476,9 @@ fn history_clear(state: tauri::State<'_, AppState>) -> Result<usize, String> {
 // ------------------------------------------------- insights tab
 
 #[tauri::command]
-fn insights_get(state: tauri::State<'_, AppState>) -> flow_core::insights::Summary {
+fn insights_get(state: tauri::State<'_, AppState>) -> insights::View {
     let today = insights::local_date(history::now_ms());
-    state.insights.lock().unwrap().summary(today)
+    state.insights.lock().unwrap().view(today)
 }
 
 /// Clear every count (History is untouched and is not re-added).
