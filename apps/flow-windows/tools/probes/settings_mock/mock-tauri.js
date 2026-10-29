@@ -19,6 +19,7 @@
     model_path: null, live_preview: true, llm_enabled: true, llm_model_path: null, llm_lib_path: null,
     llm_timeout_ms: 1500, learn_from_edits: true,
     asr_engine: "whisper", parakeet_model_dir: null, spoken_cleanup: true,
+    theme: "system",
   };
   let dev = {
     allow_server: true, allow_client: true, route_order: ["server", "client", "cloud"], host: "100.64.0.10", port: 7313,
