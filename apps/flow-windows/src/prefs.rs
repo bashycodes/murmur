@@ -53,6 +53,12 @@ fn rev_zero() -> u32 {
     0
 }
 
+/// A prefs file without `onboarded` predates first-run setup: that user
+/// already set the app up.
+fn yes() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PasteMethod {
@@ -108,6 +114,10 @@ pub struct Prefs {
     pub show_flow_bar_always: bool,
     /// `system` / `light` / `dark`.
     pub theme: Theme,
+    /// First-run setup finished (or skipped). False only on a fresh
+    /// install: a file from before this field reads as true.
+    #[serde(default = "yes")]
+    pub onboarded: bool,
     /// Read the focused field via UIA (local only; never leaves the machine).
     pub use_ax_context: bool,
     pub cleanup_level: CleanupLevel,
@@ -182,6 +192,7 @@ impl Default for Prefs {
             launch_at_login: false,
             show_flow_bar_always: true,
             theme: Theme::System,
+            onboarded: false,
             use_ax_context: true,
             cleanup_level: CleanupLevel::Light,
             raw_mode: false,
@@ -243,7 +254,12 @@ impl Prefs {
             Err(_) => {
                 let bak = path.with_extension("json.corrupt");
                 let _ = std::fs::rename(path, &bak);
-                (Prefs::default(), LoadOutcome::Corrupt(bak))
+                // The app was set up before; don't replay first-run setup.
+                let p = Prefs {
+                    onboarded: true,
+                    ..Prefs::default()
+                };
+                (p, LoadOutcome::Corrupt(bak))
             }
         }
     }
@@ -511,13 +527,31 @@ mod tests {
     }
 
     #[test]
+    fn onboarded_false_only_for_fresh_installs() {
+        let d = tmpdir("onboard-fresh");
+        let (fresh, o) = Prefs::load(&d.join(FILE_NAME));
+        assert_eq!(o, LoadOutcome::Missing);
+        assert!(!fresh.onboarded, "no prefs file = first run");
+        let (old, _) = load_str("onboard-old", r#"{"enable_sounds": true}"#);
+        assert!(old.onboarded, "an upgrader skips first-run setup");
+        let (mid, _) = load_str("onboard-mid", r#"{"onboarded": false}"#);
+        assert!(!mid.onboarded, "setup left unfinished stays unfinished");
+    }
+
+    #[test]
     fn corrupt_file_is_moved_aside() {
         let d = tmpdir("corrupt");
         std::fs::create_dir_all(&d).unwrap();
         let path = d.join(FILE_NAME);
         std::fs::write(&path, "{not json").unwrap();
         let (p, o) = Prefs::load(&path);
-        assert_eq!(p, Prefs::default());
+        assert_eq!(
+            p,
+            Prefs {
+                onboarded: true,
+                ..Prefs::default()
+            }
+        );
         match o {
             LoadOutcome::Corrupt(bak) => {
                 assert_eq!(std::fs::read_to_string(&bak).unwrap(), "{not json");
