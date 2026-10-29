@@ -1,4 +1,4 @@
-# flow-windows — Windows shell of the local Wispr Flow clone
+# flow-windows — Windows shell of Murmur (a local Wispr Flow clone)
 
 Tauri 2 tray app: hold **Ctrl+Win** to dictate, **Ctrl+Win+Space** (or double-tap
 Ctrl+Win) for hands-free, **Ctrl+Win+Alt** for [Command Mode](#command-mode)
@@ -434,7 +434,7 @@ The installers are unsigned: SmartScreen says "Windows protected your PC" →
 More info → Run anyway.
 
 1. **Download**: `gh run download <run-id> -n flow-clone-windows-hybrid`
-   (or the run page → Artifacts), unzip, run `Flow-Clone_<version>_x64-setup_hybrid.exe` (e.g. `Flow-Clone_0.2.0_x64-setup_hybrid.exe`)
+   (or the run page → Artifacts), unzip, run `Murmur_<version>_x64-setup_hybrid.exe` (e.g. `Murmur_0.7.0_x64-setup_hybrid.exe`)
    (per-user, no admin) or the `.msi`. Install only one flavour at a time
    (same app id). The tray icon appears; Settings opens on first start.
 2. **Model** (only for "this PC"): copy `ggml-base.bin` (or `ggml-tiny.en.bin`
@@ -465,7 +465,7 @@ More info → Run anyway.
 - [ ] (1 min) Client-only build: Developer tab hidden; dictation works with the model; `netstat -ano | findstr <pid>` shows no outbound connection.
 
 Report failures with `%APPDATA%\FlowClone\prefs.json` (no secrets in it) and the
-console output (`"C:\Program Files\Flow Clone\Flow Clone.exe"` started from a
+console output (`"C:\Program Files\Murmur\Murmur.exe"` started from a
 terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 
 ## Build and run on a real Windows 10/11 machine
@@ -537,7 +537,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] AI cleanup off (default): tray "AI cleanup: off", results unchanged.
 - [ ] AI cleanup on without `flow_llm.dll`: tray "⚠ AI cleanup engine (flow_llm.dll) missing", dictation still pastes.
 - [ ] AI cleanup on with the DLL + Qwen 0.5B GGUF: tray goes "loading…" → "AI cleanup: qwen2.5-0.5b…"; dictation works during the load; afterwards "um so i think we should uh meet tomorrow" pastes cleaned up, and History shows "AI edited".
-- [ ] The NSIS installer built with `--config tauri.llm.conf.json` puts `flow_llm.dll` beside `Flow Clone.exe`, and AI cleanup loads on a PC without Rust/VS (only the VC++ redistributable).
+- [ ] The NSIS installer built with `--config tauri.llm.conf.json` puts `flow_llm.dll` beside `Murmur.exe`, and AI cleanup loads on a PC without Rust/VS (only the VC++ redistributable).
 - [ ] Per-app styles: defaults → a WhatsApp / Slack dictation ends without a final period, Outlook keeps it; with Personal = Very casual and AI cleanup on, WhatsApp gives lowercase without a final period; Email stays formal.
 - [ ] Style per app: dictate into Notepad, open AI cleanup → *Add* lists Notepad; add it as Personal → Save → a Notepad dictation ends without a final period. An old prefs.json with `app_buckets` opens as rows and saves back with the same keys; adding the same app twice says "Already in the list".
 - [ ] Cleanup level: an old prefs.json with `"cleanup_level":"none"` opens as *Verbatim* with Auto-format unticked; choosing *No AI* ticks Auto-format again; "comma" then becomes ",".

@@ -30,14 +30,14 @@ object SetupChecklist {
     data class Banner(val text: String, val blocking: Boolean)
 
     const val A11Y_DISCLOSURE =
-        "Flow Clone uses Accessibility to notice when your keyboard is open, show the bubble, read up to 500 " +
+        "Murmur uses Accessibility to notice when your keyboard is open, show the bubble, read up to 500 " +
             "characters around the cursor so the transcript fits, and type the transcript into the focused field. " +
             "It never reads or types into password, PIN, number or phone fields, and stays hidden in banking apps. " +
-            "Nothing it sees leaves the phone.\n\nIf the switch is greyed out: Settings → Apps → Flow Clone → ⋮ → Allow restricted settings."
+            "Nothing it sees leaves the phone.\n\nIf the switch is greyed out: Settings → Apps → Murmur → ⋮ → Allow restricted settings."
 
     const val A11Y_GHOST =
         "Switched on but not responding. Android or the phone's battery manager stopped it without turning " +
-            "the switch off. Turn Flow Clone OFF and then ON again in Accessibility settings. Then allow Battery " +
+            "the switch off. Turn Murmur OFF and then ON again in Accessibility settings. Then allow Battery " +
             "optimisation and follow Keep it running below so it stays alive."
 
     fun rows(s: State): List<Row> {
@@ -54,10 +54,10 @@ object SetupChecklist {
                 AccessibilityHealth.Status.DISABLED -> Row(Item.ACCESSIBILITY, "Accessibility service", A11Y_DISCLOSURE, "Off", false, "Turn on", Need.REQUIRED)
                 AccessibilityHealth.Status.GHOST -> Row(Item.ACCESSIBILITY, "Accessibility service", A11Y_GHOST, "Not responding", false, "Fix", Need.REQUIRED)
             },
-            if (s.batteryExempt) Row(Item.BATTERY, "Battery optimisation", "Android won't stop Flow Clone in the background", "Unrestricted", true, null, Need.RECOMMENDED)
+            if (s.batteryExempt) Row(Item.BATTERY, "Battery optimisation", "Android won't stop Murmur in the background", "Unrestricted", true, null, Need.RECOMMENDED)
             else Row(
                 Item.BATTERY, "Battery optimisation",
-                "Recommended. Without it Android may stop Flow Clone in the background, and the bubble disappears until you reopen the app.",
+                "Recommended. Without it Android may stop Murmur in the background, and the bubble disappears until you reopen the app.",
                 "Optimised", false, "Allow", Need.RECOMMENDED,
             ),
             if (s.notifications) Row(Item.NOTIFICATIONS, "Notifications", "Status, session limit and Accessibility alerts", "Allowed", true, null, Need.OPTIONAL)

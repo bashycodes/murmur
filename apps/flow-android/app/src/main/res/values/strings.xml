@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Flow Clone</string>
+    <string name="app_name">Murmur</string>
     <string name="a11y_label">Effortless on-device voice dictation</string>
-    <string name="a11y_description">Flow Clone uses Accessibility to notice when your keyboard is open, show the dictation bubble, read up to 500 characters around the cursor so the transcript fits what you already wrote, and type the transcript into the focused text field.\n\nEverything stays on this phone: the app has no internet permission, and speech recognition runs locally.\n\nFlow Clone never reads or types into password, PIN, number or phone fields, and it stays hidden in banking and payment apps and in apps you exclude.</string>
+    <string name="a11y_description">Murmur uses Accessibility to notice when your keyboard is open, show the dictation bubble, read up to 500 characters around the cursor so the transcript fits what you already wrote, and type the transcript into the focused text field.\n\nEverything stays on this phone: the app has no internet permission, and speech recognition runs locally.\n\nMurmur never reads or types into password, PIN, number or phone fields, and it stays hidden in banking and payment apps and in apps you exclude.</string>
     <string name="title_models">Speech model</string>
     <string name="title_settings">Settings</string>
     <string name="title_dictionary">Dictionary &amp; snippets</string>
@@ -15,13 +15,13 @@
     <string name="shortcut_new_note_short">New note</string>
     <string name="shortcut_new_note_long">Dictate a new note</string>
     <string name="title_developer">Developer settings</string>
-    <string name="notif_channel_service">Flow Clone</string>
-    <string name="notif_channel_service_desc">Keeps Flow Clone running for voice dictation</string>
+    <string name="notif_channel_service">Murmur</string>
+    <string name="notif_channel_service_desc">Keeps Murmur running for voice dictation</string>
     <string name="notif_channel_limit">Session limits</string>
-    <string name="notif_title">Flow Clone</string>
+    <string name="notif_title">Murmur</string>
     <string name="notif_text">Voice dictation is ready</string>
     <string name="notif_limit_title">Session ended</string>
-    <string name="notif_limit_text">Flow Clone supports up to %d minutes per session</string>
+    <string name="notif_limit_text">Murmur supports up to %d minutes per session</string>
     <string name="toast_cap_warning">1 minute left before you reach the session limit.</string>
     <string name="toast_cap_reached">Session ended, limit reached</string>
     <string name="toast_paste_failed">Failed to paste text. It is on your clipboard for 1 minute.</string>
@@ -32,14 +32,14 @@
     <string name="toast_dictionary_suggestion">Dictionary suggestion: %1$s. Add it in Dictionary.</string>
     <string name="toast_copied_for_a_minute">Not inserted: copied to the clipboard for 1 minute</string>
     <string name="toast_transcribe_failed">Failed to transcribe. Saved in the app.</string>
-    <string name="toast_need_mic">Microphone permission is needed. Open Flow Clone to grant it.</string>
-    <string name="toast_no_overlay">Allow \"Display over other apps\" for Flow Clone to show the bubble.</string>
+    <string name="toast_need_mic">Microphone permission is needed. Open Murmur to grant it.</string>
+    <string name="toast_no_overlay">Allow \"Display over other apps\" for Murmur to show the bubble.</string>
     <string name="toast_mic_unavailable">Microphone is busy or unavailable.</string>
-    <string name="notif_channel_status">Tips and Flow Clone status</string>
-    <string name="notif_text_ghost">Dictation stopped. Turn Flow Clone off and on again in Accessibility settings.</string>
-    <string name="notif_text_a11y_off">Accessibility is off. Tap to turn Flow Clone on.</string>
-    <string name="notif_snooze_title">Flow Clone bubble hidden</string>
+    <string name="notif_channel_status">Tips and Murmur status</string>
+    <string name="notif_text_ghost">Dictation stopped. Turn Murmur off and on again in Accessibility settings.</string>
+    <string name="notif_text_a11y_off">Accessibility is off. Tap to turn Murmur on.</string>
+    <string name="notif_snooze_title">Murmur bubble hidden</string>
     <string name="notif_snooze_text">Tap to bring it back, or shake your phone.</string>
-    <string name="notif_boot_title">Turn Flow Clone back on</string>
-    <string name="notif_boot_text">Accessibility for Flow Clone is off, so the dictation bubble can\'t appear. Tap to fix.</string>
+    <string name="notif_boot_title">Turn Murmur back on</string>
+    <string name="notif_boot_text">Accessibility for Murmur is off, so the dictation bubble can\'t appear. Tap to fix.</string>
 </resources>

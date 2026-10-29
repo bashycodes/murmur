@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Product version rules for Flow Clone (docs/versioning.md, DECISIONS D26).
+"""Product version rules for Murmur (docs/versioning.md, DECISIONS D26).
 
 One version for the whole repo lives in the top-level ``VERSION`` file.
 Everything else either derives it at build time (Android Gradle, Tauri via

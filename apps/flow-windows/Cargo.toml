@@ -2,7 +2,7 @@
 name = "flow-windows"
 version = "0.7.1"
 edition = "2021"
-description = "Windows shell (Tauri 2) of the fully-local Wispr Flow clone"
+description = "Windows shell (Tauri 2) of Murmur, the fully-local Wispr Flow clone"
 license = "MIT"
 publish = false
 

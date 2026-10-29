@@ -9,7 +9,7 @@
 # SmartScreen warns on first run (README "Live test on Windows").
 # A pushed tag vX.Y.Z (tools/release.sh, D26) also checks the tag against
 # VERSION/CHANGELOG and attaches the installers to the GitHub release vX.Y.Z
-# (their names already carry the version: Flow-Clone_X.Y.Z_x64-setup_hybrid.exe).
+# (their names already carry the version: Murmur_X.Y.Z_x64-setup_hybrid.exe).
 name: windows-build
 
 on:
@@ -199,6 +199,6 @@ jobs:
           (cd assets && sha256sum ./* | sed 's| \./| |' > "../SHA256SUMS-windows-$v.txt") && mv "SHA256SUMS-windows-$v.txt" assets/
           python3 tools/versioning/versioning.py section "$v" > notes.md
           gh release view "$tag" >/dev/null 2>&1 \
-            || gh release create "$tag" --verify-tag --title "Flow Clone $v" --notes-file notes.md \
+            || gh release create "$tag" --verify-tag --title "Murmur $v" --notes-file notes.md \
             || gh release view "$tag" >/dev/null   # lost the race to android-build: fine
           gh release upload "$tag" assets/* --clobber

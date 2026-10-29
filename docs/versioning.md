@@ -30,7 +30,7 @@ from it or is a stamped copy that `tools/check-version.sh` verifies:
 | every crate in `crates/` | `version.workspace = true` → root `Cargo.toml` `[workspace.package] version` (stamped copy) |
 | root `Cargo.lock`, `apps/flow-windows/Cargo.lock` | the `flow-*` path packages' entries (stamped copies; CI builds `--locked`) |
 | `apps/flow-windows/Cargo.toml` (own workspace) | `[package] version` (stamped copy) |
-| Windows installers (Tauri) | `tauri.conf.json` has **no** `version`, so Tauri 2 takes Cargo.toml's → `Flow-Clone_0.2.0_x64-setup_hybrid.exe` |
+| Windows installers (Tauri) | `tauri.conf.json` has **no** `version`, so Tauri 2 takes Cargo.toml's → `Murmur_0.7.0_x64-setup_hybrid.exe` (`Flow-Clone_…` up to 0.6.0) |
 | `apps/flow-windows/ui/package.json` + `package-lock.json` | stamped copies (kept so `npm ci` sees a consistent lock) |
 | Android `versionName` / `versionCode` | read from `VERSION` by `app/build.gradle.kts` at build time; a literal fails the check |
 | `flow_core::VERSION`, `flow_build_info::VERSION` | `CARGO_PKG_VERSION` |
@@ -67,8 +67,8 @@ Where it is shown:
 | Android main screen | `Version 0.2.0 (hybrid) · 1a2b3c4` + `Native engine: flow-ffi 0.2.0+1a2b3c4` |
 | Android Developer → Build (hub and Status page) | `Version: 0.2.0 (200) · build 1a2b3c4` |
 | Android Settings → About row (7 taps unlock Developer settings) | `Version 0.2.0 (hybrid) · 1a2b3c4` (`AppVersion.current.label()`, same as the main screen) |
-| Windows Settings About row (`version_row`) | `Flow Clone 0.2.0 · 1a2b3c4` |
-| Windows Developer build line | `Flow Clone 0.2.0+1a2b3c4 · client + server · ASR … · proto 1 · core 0.2.0` |
+| Windows Settings About row (`version_row`) | `Murmur 0.2.0 · 1a2b3c4` |
+| Windows Developer build line | `Murmur 0.2.0+1a2b3c4 · client + server · ASR … · proto 1 · core 0.2.0` |
 | flow-server | `ready` log line `version=0.2.0+1a2b3c4`; `hello_ok.server` / `/v1/health` `flow-server 0.2.0+1a2b3c4` (shown by every client's Test connection) |
 | `hello.client` (both shells → server log `connected client=…`) | `flow-ffi 0.2.0+1a2b3c4` / `flow-windows 0.2.0+1a2b3c4` |
 | D21 debug log, both platforms | every line (dictation and event): `"app_version":"0.2.0","build":"1a2b3c4"` right after `ts` (additive) |
