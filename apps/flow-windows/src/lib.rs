@@ -1,4 +1,4 @@
-//! Windows shell of the local Wispr Flow clone.
+//! Windows shell of Murmur, the local Wispr Flow clone.
 //!
 //! Pure, platform-independent logic (chord matching, dictation state machine,
 //! resampling, paste planning, context truncation/bucketing, prefs) lives in

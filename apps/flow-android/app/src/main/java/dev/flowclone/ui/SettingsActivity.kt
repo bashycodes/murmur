@@ -358,7 +358,7 @@ class SettingsActivity : Activity() {
             val parsed = runCatching {
                 contentResolver.openInputStream(uri)!!.use { input ->
                     val bytes = input.readNBytes(Backup.MAX_BYTES + 1)
-                    if (bytes.size > Backup.MAX_BYTES) Backup.Parsed.Rejected("This file is too large to be a Flow Clone backup.")
+                    if (bytes.size > Backup.MAX_BYTES) Backup.Parsed.Rejected("This file is too large to be a Murmur backup.")
                     else Backup.decode(bytes.toString(Charsets.UTF_8))
                 }
             }.getOrElse { Backup.Parsed.Rejected("Couldn't read the file: ${it.message}") }

@@ -119,7 +119,7 @@ class NeverFailFallbackTest {
     }
 
     @Test fun noRoutePossibleSaysExactlyWhy() = runTest {
-        host.note = "No speech model imported. Open Flow Clone → Speech model."
+        host.note = "No speech model imported. Open Murmur → Speech model."
         val dead = object : FlowCore by FakeFlowCore() {
             override fun startSessionInfo(cfg: SessionConfig): StartInfo =
                 throw CoreException("server_unavailable: connect_failed: no handshake within 2500 ms", "server_unavailable")
@@ -129,7 +129,7 @@ class NeverFailFallbackTest {
         settle()
         val s = c.state.value as DictationState.Error
         val msg = (s.kind as DictationState.ErrorKind.EngineUnavailable).message
-        assertEquals("Server unreachable (connect_failed: no handshake within 2500 ms) — phone fallback unavailable: No speech model imported. Open Flow Clone → Speech model.", msg)
+        assertEquals("Server unreachable (connect_failed: no handshake within 2500 ms) — phone fallback unavailable: No speech model imported. Open Murmur → Speech model.", msg)
     }
 
     @Test fun phoneModelLoadFailureIsNamedInTheError() = runTest {

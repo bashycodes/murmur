@@ -318,7 +318,7 @@ impl Controller {
         self
     }
 
-    /// Our exe name (see `own_exe`); `"flow clone.exe"` form.
+    /// Our exe name (see `own_exe`); `"murmur.exe"` form.
     pub fn with_own_exe(mut self, exe: &str) -> Self {
         self.own_exe = Some(crate::context::exe_name(exe)).filter(|e| !e.is_empty());
         self
@@ -1837,7 +1837,7 @@ mod tests {
     #[test]
     fn dictating_into_another_app_watches_for_edits() {
         let mut r = rig(Fake::default(), Prefs::default());
-        r.c = r.c.with_own_exe("flow clone.exe");
+        r.c = r.c.with_own_exe("murmur.exe");
         dictate_then(&mut r, |_| {});
         assert!(learn_watch_started(&r));
     }
@@ -1847,13 +1847,13 @@ mod tests {
         // The Scratchpad: a normal paste target, but not an app to learn
         // corrections from or to offer in "Style per app".
         let fake = Fake {
-            exe: Some("Flow Clone.exe"),
+            exe: Some("Murmur.exe"),
             ..Fake::default()
         };
         let store = Arc::new(Mutex::new(RecentAppStore::in_memory()));
         let prefs = Prefs {
             app_buckets: [(
-                "flow clone".to_string(),
+                "murmur".to_string(),
                 crate::core_api::StyleBucket::Email,
             )]
             .into_iter()
@@ -1863,7 +1863,7 @@ mod tests {
         let mut r = rig(fake, prefs);
         r.c =
             r.c.with_recent_apps(store.clone())
-                .with_own_exe("flow clone.exe");
+                .with_own_exe("murmur.exe");
         dictate_then(&mut r, |_| {});
         assert!(r
             .fake
@@ -1876,7 +1876,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(5));
         }
         let ctx = r.core.last_context().expect("context still sent");
-        assert_eq!(ctx.app_id, "flow clone.exe");
+        assert_eq!(ctx.app_id, "murmur.exe");
         assert_eq!(ctx.app_category, crate::core_api::StyleBucket::Other);
         assert!(store.lock().unwrap().data.apps.is_empty());
         assert!(!learn_watch_started(&r), "no edit watch on our own window");

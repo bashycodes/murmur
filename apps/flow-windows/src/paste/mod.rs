@@ -302,7 +302,7 @@ pub fn uipi_blocks(own: Option<u32>, target: Option<u32>) -> bool {
 }
 
 pub const ELEVATED_TARGET_MSG: &str = "The app you're dictating into runs as administrator, so \
-     Windows blocks pasting from Flow Clone. The text is on your clipboard: press Ctrl+V.";
+     Windows blocks pasting from Murmur. The text is on your clipboard: press Ctrl+V.";
 
 /// Command Mode's Ctrl+C fallback: how long the target gets to put the
 /// selection on the clipboard. No change by then = nothing was selected.

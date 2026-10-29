@@ -55,7 +55,7 @@ class AndroidClipPort(context: Context) : ClipboardGuard.Port {
     }
 
     companion object {
-        const val LABEL = "Flow Clone"
+        const val LABEL = "Murmur"
         const val EXTRA_MARKER = "dev.flowclone.clip_marker"
     }
 }

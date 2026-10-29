@@ -1,4 +1,4 @@
-# flow-android: Android shell of the local Wispr Flow clone
+# flow-android: Android shell of Murmur (a local Wispr Flow clone)
 
 This is a Kotlin shell around the shared Rust core (`crates/flow-core` via `crates/flow-ffi`).
 It's single-process with no AndroidX. minSdk 33 (it needs `AccessibilityService.InputMethod`),
