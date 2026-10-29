@@ -211,11 +211,20 @@ fn main() {
     let or_cleaner: Option<Arc<flow_cloud::OpenRouterCleaner>> = get("--openrouter").map(|m| {
         assert!(!key.is_empty(), "--openrouter needs OPENROUTER_KEY in the env");
         let settings = flow_cloud::settings::CleanupSettings {
-            model: m,
+            model: m.clone(),
             timeout_ms: timeout.as_millis() as u64,
             ..Default::default()
         };
-        Arc::new(flow_cloud::OpenRouterCleaner::new(settings, key.clone()))
+        // The app resolves the model from its live catalogue store; the
+        // baked one lacks newer models, and without the entry no
+        // `reasoning` is sent (optional-reasoning models then return empty).
+        let api = flow_cloud::api::Api::new();
+        let info = flow_cloud::catalog::refresh(&api, None)
+            .ok()
+            .and_then(|c| c.get(&m).cloned())
+            .or_else(|| flow_cloud::catalog::lookup_model(&api, &m).ok());
+        eprintln!("model info: {}", info.as_ref().map_or("none".into(), |i| format!("reasoning effort {:?}", i.reasoning_effort())));
+        Arc::new(flow_cloud::OpenRouterCleaner::new(settings, key.clone()).with_model_info(info))
     });
     let key_usage = || flow_cloud::keyinfo::fetch(&key).ok().and_then(|k| k.usage);
     let usage_start = or_cleaner.as_ref().and_then(|_| key_usage());
