@@ -72,6 +72,17 @@ pub enum Retention {
     Never,
 }
 
+/// App colour scheme (design: Settings → General → Appearance). `system`
+/// follows the Windows light/dark setting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 /// Local speech engine (D4/D12). Parakeet is English-only and needs a
 /// build with the `parakeet` feature.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -95,6 +106,8 @@ pub struct Prefs {
     pub mute_audio_while_dictating: bool,
     pub launch_at_login: bool,
     pub show_flow_bar_always: bool,
+    /// `system` / `light` / `dark`.
+    pub theme: Theme,
     /// Read the focused field via UIA (local only; never leaves the machine).
     pub use_ax_context: bool,
     pub cleanup_level: CleanupLevel,
@@ -168,6 +181,7 @@ impl Default for Prefs {
             mute_audio_while_dictating: true,
             launch_at_login: false,
             show_flow_bar_always: true,
+            theme: Theme::System,
             use_ax_context: true,
             cleanup_level: CleanupLevel::Light,
             raw_mode: false,
@@ -483,6 +497,17 @@ mod tests {
         assert!(!p.enable_sounds);
         assert!(p.mute_audio_while_dictating);
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn theme_defaults_to_system_and_round_trips() {
+        assert_eq!(Prefs::default().theme, Theme::System);
+        let (old, _) = load_str("theme-old", r#"{"enable_sounds": true}"#);
+        assert_eq!(old.theme, Theme::System, "files from before the pref");
+        let (dark, _) = load_str("theme-dark", r#"{"theme": "dark"}"#);
+        assert_eq!(dark.theme, Theme::Dark);
+        let j = serde_json::to_value(&dark).unwrap();
+        assert_eq!(j["theme"], "dark");
     }
 
     #[test]
