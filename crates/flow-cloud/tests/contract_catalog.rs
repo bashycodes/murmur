@@ -218,6 +218,29 @@ fn lookup_unknown_model_by_endpoints() {
 }
 
 #[test]
+fn lookup_takes_supported_parameters_from_endpoints() {
+    // Optional-reasoning models (nvidia/nemotron-3.5-lightning) reason by
+    // default; without the endpoints' parameter list the cleaner sends no
+    // `reasoning` and the whole token budget goes to hidden reasoning.
+    let _srv = mock_fixed(Reply::json(
+        200,
+        serde_json::json!({"data": {
+            "id": "acme/thinker", "name": "Acme Thinker",
+            "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
+            "endpoints": [
+                {"pricing": {"prompt": "0.0000001", "completion": "0.0000002"},
+                 "supported_parameters": ["max_tokens", "temperature"]},
+                {"pricing": {"prompt": "0.0000002", "completion": "0.0000004"},
+                 "supported_parameters": ["max_tokens", "reasoning", "include_reasoning"]}
+            ]
+        }}),
+    ));
+    let m = catalog::lookup_model(&Api::new(), "acme/thinker").unwrap();
+    assert!(m.supports.reasoning && m.supports.include_reasoning && m.supports.temperature);
+    assert_eq!(m.reasoning_effort(), Some("none"));
+}
+
+#[test]
 fn key_info() {
     let srv = mock_seq(vec![
         Reply::json(200, fixture("key_ok.json")),
