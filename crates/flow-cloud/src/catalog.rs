@@ -829,6 +829,24 @@ pub fn lookup_model(api: &Api, id: &str) -> Result<ModelInfo, CloudError> {
             m["pricing"] = p.clone();
         }
     }
+    // Parameters live per endpoint; the model supports what any endpoint
+    // does (the /models list carries the same union).
+    if m.get("supported_parameters").is_none() {
+        let mut params: Vec<Value> = Vec::new();
+        for p in d
+            .get("endpoints")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.get("supported_parameters").and_then(Value::as_array))
+            .flatten()
+        {
+            if !params.contains(p) {
+                params.push(p.clone());
+            }
+        }
+        m["supported_parameters"] = Value::Array(params);
+    }
     let mut info = parse_model(&m).ok_or(CloudError::Malformed)?;
     info.id = id.to_string();
     Ok(info)

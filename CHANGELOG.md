@@ -29,6 +29,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 - The packaged `flow-server.service` no longer orders itself after one VPN's
   daemon; a bind to a VPN address that is not up yet still retries every 3 s.
 
+### Fixed
+
+- AI cleanup with a model entered by id (not in the catalogue) now turns
+  reasoning off when the model allows it. Before, the lookup lost the model's
+  parameter list, so models that reason by default (e.g. Nemotron 3.5
+  Lightning) spent the whole output budget reasoning and returned nothing,
+  and every dictation fell back to the raw transcript.
+
 ## [0.7.1] - 2026-10-28
 
 ### Fixed
