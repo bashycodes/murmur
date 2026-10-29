@@ -3,7 +3,6 @@ package dev.flowclone.bubble
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
@@ -44,8 +43,12 @@ class BubbleOverlay(
         override fun onDragEnd() { dragEnded(); listener.onDragEnd() }
     }
     val view = BubbleView(context, forwarding)
+    /** Transparent margin round the bubble so its drop shadow is not clipped by the window edge. */
+    private val shadowPad = (BubbleColors.SHADOW_PAD_DP * density).toInt()
     private val root = FrameLayout(context).apply {
         descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        setPadding(shadowPad, shadowPad, shadowPad, shadowPad)
+        clipChildren = false; clipToPadding = false
         addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
     private var attached = false
@@ -67,6 +70,15 @@ class BubbleOverlay(
         title = "FlowCloneBubble"
     }
 
+    /**
+     * [params] holds the bubble's own top-left (all the positioning maths uses it); the window
+     * itself sits [shadowPad] up-left of that so the padded root puts the bubble exactly there.
+     */
+    private val windowParams = WindowManager.LayoutParams()
+    private fun win(): WindowManager.LayoutParams = windowParams.apply {
+        copyFrom(params); x = params.x - shadowPad; y = params.y - shadowPad
+    }
+
     private fun positioner(): BubblePositioner {
         val m = context.resources.displayMetrics
         return BubblePositioner(m.widthPixels, m.heightPixels, m.density, positionStore, view.ui.scale)
@@ -80,7 +92,7 @@ class BubbleOverlay(
         val p = positioner().position(bubbleW(), bubbleH())
         params.x = p.x; params.y = p.y
         applyVisibility(false)
-        runCatching { wm.addView(root, params) }.onSuccess { attached = true }
+        runCatching { wm.addView(root, win()) }.onSuccess { attached = true }
         startWatchdog()
     }
 
@@ -88,7 +100,7 @@ class BubbleOverlay(
     fun ensureAttached() {
         if (attached && root.isAttachedToWindow) return
         attached = false
-        runCatching { wm.addView(root, params) }.onSuccess { attached = true }
+        runCatching { wm.addView(root, win()) }.onSuccess { attached = true }
     }
 
     fun detach() {
@@ -141,7 +153,7 @@ class BubbleOverlay(
     }
 
     private fun update() {
-        if (attached) runCatching { wm.updateViewLayout(root, params) }
+        if (attached) runCatching { wm.updateViewLayout(root, win()) }
         if (preview.shown) placePreview()
     }
 
@@ -204,7 +216,7 @@ class BubbleOverlay(
         val m = context.resources.displayMetrics
         val p = PreviewPlacement.place(
             params.x, params.y, bubbleW(), bubbleH(), preview.measuredHeight(m.widthPixels),
-            m.widthPixels, (8 * density).toInt(), (24 * density).toInt(),
+            m.widthPixels, (10 * density).toInt(), (24 * density).toInt(),
         )
         preview.moveTo(p)
     }
@@ -215,7 +227,7 @@ class BubbleOverlay(
         main.postDelayed(object : Runnable {
             override fun run() {
                 if (visible && !root.isAttachedToWindow) {
-                    if (++missing >= 3) { missing = 0; attached = false; runCatching { wm.addView(root, params) }.onSuccess { attached = true } }
+                    if (++missing >= 3) { missing = 0; attached = false; runCatching { wm.addView(root, win()) }.onSuccess { attached = true } }
                 } else missing = 0
                 main.postDelayed(this, 15_000)
             }
@@ -235,10 +247,12 @@ class BubbleOverlay(
     private inner class PreviewWindow {
         var shown = false; private set
         private val text = TextView(context).apply {
-            setTextColor(Color.WHITE); textSize = 14f; maxLines = 3; ellipsize = TextUtils.TruncateAt.START
+            // Design tooltip: vast-950 rounded rect (12dp), sand-50 14sp/20sp text, 8×12dp padding.
+            setTextColor(BubbleColors.onSurface); textSize = 14f; maxLines = 3; ellipsize = TextUtils.TruncateAt.START
+            setLineHeight((20 * density).toInt())
             maxWidth = (280 * density).toInt()
-            val pad = (10 * density).toInt(); setPadding(pad, pad / 2 + 2, pad, pad / 2 + 2)
-            background = GradientDrawable().apply { cornerRadius = 14 * density; setColor(Color.parseColor("#E61C1B1F")) }
+            setPadding((12 * density).toInt(), (8 * density).toInt(), (12 * density).toInt(), (8 * density).toInt())
+            background = GradientDrawable().apply { cornerRadius = 12 * density; setColor(BubbleColors.surface) }
         }
         private val lp = satelliteParams(
             WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.START, "FlowClonePreview",
@@ -268,9 +282,9 @@ class BubbleOverlay(
         var shown = false; private set
         private var near = false
         private val circle = object : View(context) {
-            private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#CC1C1B1F") }
-            private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.STROKE; strokeWidth = 2 * density }
-            private val glyph = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textAlign = Paint.Align.CENTER; textSize = 18 * density }
+            private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = BubbleColors.surface; alpha = 0xCC }
+            private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = BubbleColors.onSurface; style = Paint.Style.STROKE; strokeWidth = 2 * density }
+            private val glyph = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = BubbleColors.onSurface; textAlign = Paint.Align.CENTER; textSize = 18 * density }
             override fun onDraw(c: Canvas) {
                 val r = (if (near) SnoozeTarget.CIRCLE_NEAR_DP else SnoozeTarget.CIRCLE_DP) * density / 2
                 c.drawCircle(width / 2f, height / 2f, r, fill)
