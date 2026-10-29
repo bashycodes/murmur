@@ -30,7 +30,7 @@ from it or is a stamped copy that `tools/check-version.sh` verifies:
 | every crate in `crates/` | `version.workspace = true` → root `Cargo.toml` `[workspace.package] version` (stamped copy) |
 | root `Cargo.lock`, `apps/flow-windows/Cargo.lock` | the `flow-*` path packages' entries (stamped copies; CI builds `--locked`) |
 | `apps/flow-windows/Cargo.toml` (own workspace) | `[package] version` (stamped copy) |
-| Windows installers (Tauri) | `tauri.conf.json` has **no** `version`, so Tauri 2 takes Cargo.toml's → `Murmur_0.7.0_x64-setup_hybrid.exe` (`Flow-Clone_…` up to 0.6.0) |
+| Windows installers (Tauri) | `tauri.conf.json` has **no** `version`, so Tauri 2 takes Cargo.toml's → `Murmur_0.8.0_x64-setup_hybrid.exe` (`Flow-Clone_…` up to 0.7.1) |
 | `apps/flow-windows/ui/package.json` + `package-lock.json` | stamped copies (kept so `npm ci` sees a consistent lock) |
 | Android `versionName` / `versionCode` | read from `VERSION` by `app/build.gradle.kts` at build time; a literal fails the check |
 | `flow_core::VERSION`, `flow_build_info::VERSION` | `CARGO_PKG_VERSION` |

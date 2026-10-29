@@ -116,9 +116,9 @@ class BackupTest {
     }
 
     @Test fun notABackupIsRefused() {
-        assertTrue(rejected("this is not json").contains("not a Flow Clone backup"))
-        assertTrue(rejected("""[{"word":"x"}]""").contains("not a Flow Clone backup")) // a dictionary export
-        assertTrue(rejected("""{"format":"something-else","version":1,"data":{}}""").contains("not a Flow Clone backup"))
+        assertTrue(rejected("this is not json").contains("not a Murmur backup"))
+        assertTrue(rejected("""[{"word":"x"}]""").contains("not a Murmur backup")) // a dictionary export
+        assertTrue(rejected("""{"format":"something-else","version":1,"data":{}}""").contains("not a Murmur backup"))
         assertTrue(rejected("""{"format":"flow-clone-backup","data":{}}""").contains("damaged"))
         assertTrue(rejected("""{"format":"flow-clone-backup","version":0,"data":{}}""").contains("damaged"))
         assertTrue(rejected("""{"format":"flow-clone-backup","version":"1","data":{}}""").contains("damaged"))
