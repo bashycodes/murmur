@@ -1,5 +1,5 @@
 """Serve ui/dist with mock-tauri.js injected into settings.html (and
-mock-scratchpad.js into scratchpad.html).
+mock-scratchpad.js into scratchpad.html, mock-overlay.js into overlay.html).
 
 Probe for checking the settings window in a plain browser (no Tauri):
     python3 tools/probes/settings_mock/serve.py [port]
@@ -20,7 +20,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith("/mock-tauri.js") or self.path.startswith(
             "/mock-scratchpad.js"
-        ):
+        ) or self.path.startswith("/mock-overlay.js"):
             body = (HERE / self.path[1:].split("?")[0]).read_bytes()
             ctype = "text/javascript"
         elif self.path.startswith("/scratchpad.html"):
@@ -28,6 +28,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             body = html.replace(
                 '<script src="scratchpad.js">',
                 '<script src="mock-scratchpad.js"></script><script src="scratchpad.js">',
+            ).encode()
+            ctype = "text/html"
+        elif self.path.startswith("/overlay.html"):
+            html = (DIST / "overlay.html").read_text()
+            body = html.replace(
+                '<script src="overlay.js">',
+                '<script src="mock-overlay.js"></script><script src="overlay.js">',
             ).encode()
             ctype = "text/html"
         elif self.path.startswith("/settings.html"):
