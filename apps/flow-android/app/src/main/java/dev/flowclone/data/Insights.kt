@@ -236,6 +236,10 @@ class InsightsStore(
     @Synchronized
     fun reset() { set(load().reset()) }
 
+    /** Backup restore: these counts replace the stored ones (marked backfilled, so History is not folded in again). */
+    @Synchronized
+    fun replace(a: Insights.Aggregates) { set(a.copy(backfilled = true)) }
+
     fun summary(nowMs: Long = System.currentTimeMillis()): Insights.Summary =
         load().summary(localDay(nowMs), Insights.DEFAULT_TYPING_WPM)
 

@@ -308,15 +308,17 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
 
     fun add(row: HistoryRow, retention: Retention) {
         if (!retention.stores) return
-        writableDatabase.insert("history", null, ContentValues().apply {
-            put("created_at", row.createdAt); put("app_id", row.appId); put("status", row.status)
-            put("asr_text", row.asrText); put("final_text", row.finalText)
-            put("inserted", if (row.inserted) 1 else 0); put("audio_ms", row.audioMs)
-            put("fallback_reason", row.fallbackReason); put("asr_ms", row.asrMs); put("llm_ms", row.llmMs); put("total_ms", row.totalMs)
-            put("insert_outcome", row.insertOutcome); put("route", row.route)
-            put("command_original", row.commandOriginal)
-        })
+        writableDatabase.insert("history", null, values(row))
         purge(retention, row.createdAt)
+    }
+
+    private fun values(row: HistoryRow) = ContentValues().apply {
+        put("created_at", row.createdAt); put("app_id", row.appId); put("status", row.status)
+        put("asr_text", row.asrText); put("final_text", row.finalText)
+        put("inserted", if (row.inserted) 1 else 0); put("audio_ms", row.audioMs)
+        put("fallback_reason", row.fallbackReason); put("asr_ms", row.asrMs); put("llm_ms", row.llmMs); put("total_ms", row.totalMs)
+        put("insert_outcome", row.insertOutcome); put("route", row.route)
+        put("command_original", row.commandOriginal)
     }
 
     fun purge(retention: Retention, now: Long = System.currentTimeMillis()) {
@@ -326,8 +328,13 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
 
     fun delete(id: Long) { writableDatabase.delete("history", "id = ?", arrayOf(id.toString())); scrub() }
 
-    fun recent(limit: Int = 500): List<HistoryRow> =
-        readableDatabase.query("history", null, null, null, null, null, "created_at DESC", limit.toString()).use { c ->
+    fun recent(limit: Int = 500): List<HistoryRow> = rows("created_at DESC", limit.toString())
+
+    /** Every saved row, oldest first (backup export). */
+    fun all(): List<HistoryRow> = rows("created_at ASC, id ASC", null)
+
+    private fun rows(order: String, limit: String?): List<HistoryRow> =
+        readableDatabase.query("history", null, null, null, null, null, order, limit).use { c ->
             buildList {
                 while (c.moveToNext()) add(
                     HistoryRow(
@@ -350,6 +357,24 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
                 )
             }
         }
+
+    /**
+     * Backup restore: every row replaced by [rows] in one transaction (a failure keeps the old
+     * ones), then [retention] applied as after any insert.
+     */
+    fun replaceAll(rows: List<HistoryRow>, retention: Retention, now: Long = System.currentTimeMillis()) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete("history", null, null)
+            for (r in rows) db.insertOrThrow("history", null, values(r))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        scrub(vacuum = true)
+        purge(retention, now)
+    }
 
     /** Every saved dictation, oldest first, for the one-time Insights backfill (failed ones and Command Mode left out). */
     fun statsRows(): List<InsightsStore.Row> =
