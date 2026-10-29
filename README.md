@@ -1,4 +1,4 @@
-# murmur (flow-clone)
+# murmur (Murmur)
 
 A privacy-first, local-only clone of the reference app: push-to-talk dictation that
 transcribes speech (whisper.cpp or Parakeet-TDT), cleans it up (deterministic

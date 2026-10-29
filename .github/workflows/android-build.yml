@@ -179,6 +179,6 @@ jobs:
           ls -la assets
           python3 tools/versioning/versioning.py section "$v" > notes.md
           gh release view "$tag" >/dev/null 2>&1 \
-            || gh release create "$tag" --verify-tag --title "Flow Clone $v" --notes-file notes.md \
+            || gh release create "$tag" --verify-tag --title "Murmur $v" --notes-file notes.md \
             || gh release view "$tag" >/dev/null   # lost the race to windows-build: fine
           gh release upload "$tag" assets/* --clobber

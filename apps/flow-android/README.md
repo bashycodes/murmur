@@ -1,4 +1,4 @@
-# flow-android: Android shell of the local dictation app
+# flow-android: Android shell of Murmur (a local dictation app)
 
 This is a Kotlin shell around the shared Rust core (`crates/flow-core` via `crates/flow-ffi`).
 It's single-process with no AndroidX. minSdk 33 (it needs `AccessibilityService.InputMethod`),

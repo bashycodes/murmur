@@ -153,14 +153,14 @@ object Backup {
         val root = try {
             JSONObject(text.trimStart('﻿'))
         } catch (_: JSONException) {
-            return Parsed.Rejected("This file is not a Flow Clone backup (not JSON).")
+            return Parsed.Rejected("This file is not a Murmur backup (not JSON).")
         }
-        if (root.optString("format") != FORMAT) return Parsed.Rejected("This file is not a Flow Clone backup.")
+        if (root.optString("format") != FORMAT) return Parsed.Rejected("This file is not a Murmur backup.")
         val v = root.opt("version")
         if (v !is Int || v < 1) return Parsed.Rejected("This backup is damaged (no valid format version).")
         if (v > VERSION) {
             return Parsed.Rejected(
-                "This backup was made by a newer version of Flow Clone (backup format $v; this app reads up to $VERSION). Update the app, then restore.",
+                "This backup was made by a newer version of Murmur (backup format $v; this app reads up to $VERSION). Update the app, then restore.",
             )
         }
         return try {
@@ -249,7 +249,7 @@ object Backup {
     /** "12 notes · 340 dictations · 25 dictionary words · 3 snippets · …" lines. */
     fun summary(meta: Meta, d: Data): List<String> = buildList {
         val created = meta.created.ifEmpty { "an unknown date" }
-        add("Made $created by Flow Clone ${meta.appVersion} (${meta.platform}${if (meta.flavor.isNotEmpty()) ", ${meta.flavor}" else ""}).")
+        add("Made $created by Murmur ${meta.appVersion} (${meta.platform}${if (meta.flavor.isNotEmpty()) ", ${meta.flavor}" else ""}).")
         d.notes?.let { add(count(it.size, "note")) }
         d.history?.let { add(count(it.size, "dictation") + " in History") }
         d.dictionary?.let { dict ->
