@@ -704,8 +704,8 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
 - [ ] *Dictionary & snippets → Dictionary → Add*: "wisper" → "Wispr" (*Save* enables only once valid;
       a duplicate word shows its error under the field), dictate "wisper flow" → "Wispr flow". Edit it, delete it.
 - [ ] *Snippets → Add*: "my address" → multi-line text; say only "my address" → the text.
-- [ ] Learn from my edits (real engine; the mock engine suggests nothing): dictate "flo clone" into
-      Notes, change it to "Flow Clone" within 45 s and leave it → toast "Dictionary suggestion: Flow
+- [ ] Learn from my edits (real engine; the mock engine suggests nothing): dictate "local whisper" into
+      Notes, change it to "Murmur" within 45 s and leave it → toast "Dictionary suggestion: Flow
       Clone"; *Dictionary → Suggestions* lists it. *Add* puts it in the dictionary; a second suggestion
       *Dismiss*ed and the same edit repeated is not suggested again. Switch the field or app mid-watch:
       nothing more is read (debug log `learn_edit end=focus_changed`). *Settings → Learn from my edits*
@@ -738,7 +738,7 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       snippets, Insights days and settings; *Replace* → toast, Settings reopens with the old values.
       Notes (with pins), History, Dictionary, Insights and the OpenRouter / server choices are back;
       the OpenRouter key and server token are empty (enter them again) and models need re-importing.
-      Picking a dictionary export or a photo → "not a Flow Clone backup", nothing changed.
+      Picking a dictionary export or a photo → "not a Murmur backup", nothing changed.
 - [ ] Command Mode (needs AI cleanup: local model, or OpenRouter cleanup with *Send text around the
       cursor* on). In Notes type "Hi team. The meeting that we planned for tomorrow has been moved to
       Friday afternoon. Thanks!", select the middle sentence: **✎** appears right of the mic (gone again

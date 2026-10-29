@@ -41,7 +41,7 @@ Full guide: [`apps/flow-windows/README.md` "Live test on Windows"](../apps/flow-
 1. Download the installer from the green integration run:
    <https://github.com/bashycodes/murmur/actions/runs/39839507123> (commit 30972dd). Artifact **`flow-clone-windows-hybrid`**
    (`gh run download 39839507123 -n flow-clone-windows-hybrid`). Unzip it.
-2. Run `Murmur_<version>_x64-setup_hybrid.exe` (e.g. `Murmur_0.7.0_x64-setup_hybrid.exe`) (per user, no admin) or the
+2. Run `Murmur_<version>_x64-setup_hybrid.exe` (e.g. `Murmur_0.8.0_x64-setup_hybrid.exe`) (per user, no admin) or the
    `.msi`. SmartScreen: More info → Run anyway (the installer is unsigned).
    Install only one flavour at a time.
 3. Optional local model, for the fallback: copy `ggml-base.bin` (or the

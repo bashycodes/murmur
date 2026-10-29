@@ -434,7 +434,7 @@ The installers are unsigned: SmartScreen says "Windows protected your PC" →
 More info → Run anyway.
 
 1. **Download**: `gh run download <run-id> -n flow-clone-windows-hybrid`
-   (or the run page → Artifacts), unzip, run `Murmur_<version>_x64-setup_hybrid.exe` (e.g. `Murmur_0.7.0_x64-setup_hybrid.exe`)
+   (or the run page → Artifacts), unzip, run `Murmur_<version>_x64-setup_hybrid.exe` (e.g. `Murmur_0.8.0_x64-setup_hybrid.exe`)
    (per-user, no admin) or the `.msi`. Install only one flavour at a time
    (same app id). The tray icon appears; Settings opens on first start.
 2. **Model** (only for "this PC"): copy `ggml-base.bin` (or `ggml-tiny.en.bin`
@@ -546,7 +546,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] History tab: search filters, Copy, Re-paste (Settings hides, text lands in the previously focused app), Delete, Delete all (second click), retention change prunes.
 - [ ] Undo AI edit: the diff shows removed/added words; "Re-paste original" inserts the raw ASR text.
 - [ ] Learn from edits: dictate "I use whisper flow daily" into Notepad, fix it to "Wispr Flow" within ~45 s, click elsewhere → tray "1 dictionary suggestion…"; Dictionary tab lists it; nothing was added until "Add word". Same in Chrome (textarea), Word and Slack.
-- [ ] Scratchpad: tray → Scratchpad… (and a set *Open Scratchpad* shortcut) opens it focused; Ctrl+Win dictation lands at the caret; editing it adds no dictionary suggestion and Settings → AI cleanup → *Add* doesn't list Flow Clone; Quit, start again, reopen → text is there (`%APPDATA%\FlowClone\notes\scratchpad.txt`; an old `FlowClone\scratchpad.txt` from before Notes was moved there); Copy all → Ctrl+V in Notepad gives the full text; Clear → Undo clear restores it.
+- [ ] Scratchpad: tray → Scratchpad… (and a set *Open Scratchpad* shortcut) opens it focused; Ctrl+Win dictation lands at the caret; editing it adds no dictionary suggestion and Settings → AI cleanup → *Add* doesn't list Murmur; Quit, start again, reopen → text is there (`%APPDATA%\FlowClone\notes\scratchpad.txt`; an old `FlowClone\scratchpad.txt` from before Notes was moved there); Copy all → Ctrl+V in Notepad gives the full text; Clear → Undo clear restores it.
 - [ ] Notes: tray → Notes… lists the Quick note; New note ×3 with text, Quit, start again → all 4 there with content (`%APPDATA%\FlowClone\notes\*.txt`); search finds a word from a body line; Pin moves a note to the top and survives a restart; Export… .md lands in Downloads (a second export is `(2)`); Delete twice removes the `.txt`; a set *New note + dictate* shortcut from Notepad opens a new note in front and the hands-free dictation lands in it (not in Notepad); a `.txt` copied into `notes\` by hand is listed.
 - [ ] Learn from edits ignores password fields, and a chat message sent with "press enter".
 - [ ] Dictionary editor: add/edit/delete rows, snippet with a multi-line body, Save; export writes `Downloads\flow-dictionary.json`; importing that file (merge) changes nothing; importing the Android app's export works.

@@ -1708,7 +1708,7 @@ fn show_notes_window(app: &AppHandle, query: String) {
             return;
         }
         let built = WebviewWindowBuilder::new(&h, SCRATCHPAD, WebviewUrl::App(page.into()))
-            .title("Notes — Flow Clone")
+            .title("Notes — Murmur")
             .inner_size(520.0, 560.0)
             .min_inner_size(320.0, 240.0)
             .center()
