@@ -60,7 +60,7 @@ def make_repo(root: Path, version: str = "0.1.0") -> None:
         lock + f'\n[[package]]\nname = "flow-windows"\nversion = "{version}"\n'
         '\n[[package]]\nname = "windows-strings"\nversion = "0.1.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n'
     )
-    (w / "tauri.conf.json").write_text('{\n  "productName": "Flow Clone",\n  "identifier": "dev.flowclone.windows"\n}\n')
+    (w / "tauri.conf.json").write_text('{\n  "productName": "Murmur",\n  "identifier": "dev.flowclone.windows"\n}\n')
     (w / "ui" / "package.json").write_text(
         json.dumps({"name": "flow-windows-ui", "private": True, "version": version}, indent=2) + "\n"
     )
@@ -172,7 +172,7 @@ class CheckTest(unittest.TestCase):
 
     def test_tauri_version_must_not_be_pinned(self):
         t = self.root / "apps/flow-windows/tauri.conf.json"
-        t.write_text('{"productName": "Flow Clone", "version": "0.1.0"}\n')
+        t.write_text('{"productName": "Murmur", "version": "0.1.0"}\n')
         self.assertTrue(any("tauri.conf.json" in e for e in v.check(self.root)))
 
     def test_tag_must_match_and_have_a_changelog_section(self):

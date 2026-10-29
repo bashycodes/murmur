@@ -41,7 +41,7 @@ Full guide: [`apps/flow-windows/README.md` "Live test on Windows"](../apps/flow-
 1. Download the installer from the green integration run:
    <https://github.com/bashycodes/murmur/actions/runs/39839507123> (commit 30972dd). Artifact **`flow-clone-windows-hybrid`**
    (`gh run download 39839507123 -n flow-clone-windows-hybrid`). Unzip it.
-2. Run `Flow-Clone_<version>_x64-setup_hybrid.exe` (e.g. `Flow-Clone_0.2.0_x64-setup_hybrid.exe`) (per user, no admin) or the
+2. Run `Murmur_<version>_x64-setup_hybrid.exe` (e.g. `Murmur_0.8.0_x64-setup_hybrid.exe`) (per user, no admin) or the
    `.msi`. SmartScreen: More info → Run anyway (the installer is unsigned).
    Install only one flavour at a time.
 3. Optional local model, for the fallback: copy `ggml-base.bin` (or the
@@ -60,11 +60,11 @@ Full guide: [`apps/flow-android/INSTALL.md` "Live test on phone"](../apps/flow-a
    **`flow-clone-android-debug-apks`** of <https://github.com/bashycodes/murmur/actions/runs/39837428823> (commit b9942f1; predates the 2026-10-23 model-import and a11y-health fixes from `fix/android-live`), or
    `apps/flow-android/dist/flow-clone-hybrid-debug.apk` built on this box
    (rebuild with `tools/dist.sh` from current `integration` to get those fixes; the SHA-256 values in INSTALL.md are for the earlier build). Check it with `sha256sum` before installing.
-2. **Uninstall first** if Flow Clone is already on the phone and was built
+2. **Uninstall first** if Murmur is already on the phone and was built
    elsewhere: the CI APK and the local one are signed with different debug
    keys, and Android refuses one as an update of the other. Uninstalling
    deletes settings, dictionary and history.
-3. Install from Files ("Install unknown apps" for Files). Open Flow Clone and
+3. Install from Files ("Install unknown apps" for Files). Open Murmur and
    grant in this order: *Microphone* → *Display over other apps* →
    *Accessibility service* (greyed out: App info → ⋮ → *Allow restricted
    settings*) → *Notifications* → *Battery: allow background*. The main
@@ -97,7 +97,7 @@ the checklist line, what you saw, and:
 | Where | Send |
 |---|---|
 | Server | `journalctl --user -u flow-server --since "10 min ago"` (it logs no text and no token) |
-| Windows | the **Active engine** row on the Developer tab (route, fallback reason, rtt); `%APPDATA%\FlowClone\prefs.json` (no secrets in it); console output of `"C:\Program Files\Flow Clone\Flow Clone.exe"` started from a terminal (`[audio]`, `[hotkeys]`, `[cloud]` lines) |
+| Windows | the **Active engine** row on the Developer tab (route, fallback reason, rtt); `%APPDATA%\FlowClone\prefs.json` (no secrets in it); console output of `"C:\Program Files\Murmur\Murmur.exe"` started from a terminal (`[audio]`, `[hotkeys]`, `[cloud]` lines) |
 | Phone | the **Active engine (last dictation)** row on the Developer page; the Test connection line; logcat for tags `FlowService`, `FlowEngine`, `FlowA11y`, `FlowMic` (over USB with the platform tools) |
 
 Never paste the server token or a cloud key into a report.

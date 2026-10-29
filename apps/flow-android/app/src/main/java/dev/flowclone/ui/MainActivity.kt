@@ -184,7 +184,7 @@ class MainActivity : Activity() {
                 stateRow(ICONS.getValue(r.item), r.title, r.subtitle, r.state, tone, r.action) { act(r.item) }
             }
             val oem = OemGuidance.forManufacturer(Build.MANUFACTURER)
-            val ex = expandRow(R.drawable.ic_scr_phone, "Keep it running: ${oem.title}", "Phone-specific steps so Android doesn't stop Flow Clone", oemOpen) {
+            val ex = expandRow(R.drawable.ic_scr_phone, "Keep it running: ${oem.title}", "Phone-specific steps so Android doesn't stop Murmur", oemOpen) {
                 note(oem.steps, p.text, 14f)
                 oem.extraWarning?.let { note(it, p.danger, 14f) }
                 if (oem.intents.isNotEmpty()) chipRow(chip("Open phone settings") { openOem(oem) })
@@ -258,7 +258,7 @@ class MainActivity : Activity() {
             val i = Intent().setComponent(ComponentName(c.packageName, c.className)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             if (runCatching { startActivity(i) }.isSuccess) return
         }
-        Toast.makeText(this, "Couldn't open that screen on this phone; opening Flow Clone's app settings.", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "Couldn't open that screen on this phone; opening Murmur's app settings.", Toast.LENGTH_LONG).show()
         runCatching { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
     }
 

@@ -111,15 +111,15 @@ data class OemGuidance(val title: String, val steps: String, val intents: List<C
     companion object {
         private val GENERIC = OemGuidance(
             "Android",
-            "Keep battery optimisation off for Flow Clone (above). Nothing else is needed on this phone.",
+            "Keep battery optimisation off for Murmur (above). Nothing else is needed on this phone.",
             emptyList(), null,
         )
 
         fun forManufacturer(manufacturer: String?): OemGuidance = when (manufacturer?.trim()?.lowercase()) {
             "xiaomi", "redmi", "poco" -> OemGuidance(
                 "Xiaomi / Redmi / POCO (MIUI, HyperOS)",
-                "Security app → Permissions → Autostart → turn on Flow Clone. Then Settings → Apps → Flow Clone → " +
-                    "Battery saver → No restrictions. In Recents, pull Flow Clone down to lock it.",
+                "Security app → Permissions → Autostart → turn on Murmur. Then Settings → Apps → Murmur → " +
+                    "Battery saver → No restrictions. In Recents, pull Murmur down to lock it.",
                 listOf(
                     Component("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"),
                     Component("com.miui.powerkeeper", "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"),
@@ -128,14 +128,14 @@ data class OemGuidance(val title: String, val steps: String, val intents: List<C
             )
             "samsung" -> OemGuidance(
                 "Samsung (One UI)",
-                "Settings → Battery → Background usage limits → Never sleeping apps → add Flow Clone. " +
-                    "Also make sure Flow Clone is not in Sleeping apps or Deep sleeping apps.",
+                "Settings → Battery → Background usage limits → Never sleeping apps → add Murmur. " +
+                    "Also make sure Murmur is not in Sleeping apps or Deep sleeping apps.",
                 listOf(Component("com.samsung.android.lool", "com.samsung.android.sm.battery.ui.BatteryActivity")),
                 null,
             )
             "huawei", "honor" -> OemGuidance(
                 "Huawei / Honor (EMUI, MagicOS)",
-                "Settings → Battery → App launch → Flow Clone → switch off \"Manage automatically\" and turn on " +
+                "Settings → Battery → App launch → Murmur → switch off \"Manage automatically\" and turn on " +
                     "Auto-launch, Secondary launch and Run in background.",
                 listOf(
                     Component("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"),
@@ -145,8 +145,8 @@ data class OemGuidance(val title: String, val steps: String, val intents: List<C
             )
             "oppo", "realme", "oneplus" -> OemGuidance(
                 "OPPO / realme / OnePlus (ColorOS, OxygenOS)",
-                "Settings → Apps → Flow Clone → Battery usage → allow Auto launch and Background activity. " +
-                    "In Recents, lock Flow Clone.",
+                "Settings → Apps → Murmur → Battery usage → allow Auto launch and Background activity. " +
+                    "In Recents, lock Murmur.",
                 listOf(
                     Component("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"),
                     Component("com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity"),
@@ -156,8 +156,8 @@ data class OemGuidance(val title: String, val steps: String, val intents: List<C
             )
             "vivo", "iqoo" -> OemGuidance(
                 "vivo / iQOO (Funtouch, OriginOS)",
-                "i Manager → App manager → Autostart manager → turn on Flow Clone. Settings → Battery → " +
-                    "Background power consumption → allow Flow Clone.",
+                "i Manager → App manager → Autostart manager → turn on Murmur. Settings → Battery → " +
+                    "Background power consumption → allow Murmur.",
                 listOf(
                     Component("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"),
                     Component("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager"),

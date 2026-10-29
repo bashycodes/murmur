@@ -32,20 +32,20 @@ class EditWatchTest {
     }
 
     @Test fun floCloneEditThenTimeoutYieldsTheCorrection() {
-        val w = EditWatch("I use flo clone daily. ", a("Hi. ", ""), 0, fast.copy(stableMs = 60_000))
-        assertNull(w.observe(0, t("Hi. I use flo clone daily. ")))
-        assertNull(w.observe(1_000, t("Hi. I use Flow clone daily.")))
-        assertNull(w.observe(2_000, t("Hi. I use Flow Clone daily.")))
-        assertEquals(Outcome(EndReason.TIMEOUT, "I use Flow Clone daily."), w.observe(10_000, t("Hi. I use Flow Clone daily.")))
+        val w = EditWatch("I use local whisper daily. ", a("Hi. ", ""), 0, fast.copy(stableMs = 60_000))
+        assertNull(w.observe(0, t("Hi. I use local whisper daily. ")))
+        assertNull(w.observe(1_000, t("Hi. I use Murmur daily.")))
+        assertNull(w.observe(2_000, t("Hi. I use Murmur daily.")))
+        assertEquals(Outcome(EndReason.TIMEOUT, "I use Murmur daily."), w.observe(10_000, t("Hi. I use Murmur daily.")))
     }
 
     @Test fun anEditThatStopsChangingEndsTheWatchEarly() {
-        val w = EditWatch("flo clone", a("", ""), 0, fast)
-        assertNull(w.observe(0, t("flo clone")))
-        assertNull(w.observe(1_000, t("Flow Clone")))
-        assertNull(w.observe(2_000, t("Flow Clone")))
-        assertNull("not yet stable for 3 s", w.observe(3_500, t("Flow Clone")))
-        assertEquals(Outcome(EndReason.STABLE, "Flow Clone"), w.observe(4_000, t("Flow Clone")))
+        val w = EditWatch("local whisper", a("", ""), 0, fast)
+        assertNull(w.observe(0, t("local whisper")))
+        assertNull(w.observe(1_000, t("Murmur")))
+        assertNull(w.observe(2_000, t("Murmur")))
+        assertNull("not yet stable for 3 s", w.observe(3_500, t("Murmur")))
+        assertEquals(Outcome(EndReason.STABLE, "Murmur"), w.observe(4_000, t("Murmur")))
     }
 
     @Test fun anUntouchedInsertNeverStabilisesEarlyAndLearnsNothing() {
@@ -107,8 +107,8 @@ class EditWatchTest {
         var reads = 0
         var enabled = true
         val o = runWatch(
-            { reads++; if (reads == 2) enabled = false; t(if (reads == 1) "flo clone" else "Flow Clone") },
-            EditWatch("flo clone", a("", ""), 0, fast), { now }, { now += it }, stillWanted = { enabled },
+            { reads++; if (reads == 2) enabled = false; t(if (reads == 1) "local whisper" else "Murmur") },
+            EditWatch("local whisper", a("", ""), 0, fast), { now }, { now += it }, stillWanted = { enabled },
         )
         assertEquals(Outcome(EndReason.CANCELLED, null), o)
         assertEquals("no read after the switch went off", 2, reads)

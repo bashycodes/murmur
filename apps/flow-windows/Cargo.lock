@@ -1202,7 +1202,7 @@ dependencies = [
 
 [[package]]
 name = "flow-asr-sherpa"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "sherpa-onnx",
  "thiserror 2.0.21",
@@ -1210,11 +1210,11 @@ dependencies = [
 
 [[package]]
 name = "flow-build-info"
-version = "0.7.1"
+version = "0.8.0"
 
 [[package]]
 name = "flow-cloud"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "base64 0.22.1",
  "flacenc",
@@ -1227,7 +1227,7 @@ dependencies = [
 
 [[package]]
 name = "flow-core"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "fancy-regex",
  "flow-asr-sherpa",
@@ -1243,7 +1243,7 @@ dependencies = [
 
 [[package]]
 name = "flow-protocol"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "flow-core",
  "serde",
@@ -1252,7 +1252,7 @@ dependencies = [
 
 [[package]]
 name = "flow-remote"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "flow-core",
  "flow-protocol",
@@ -1269,7 +1269,7 @@ dependencies = [
 
 [[package]]
 name = "flow-router"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "flow-core",
  "flow-protocol",
@@ -1281,7 +1281,7 @@ dependencies = [
 
 [[package]]
 name = "flow-server"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -1302,7 +1302,7 @@ dependencies = [
 
 [[package]]
 name = "flow-windows"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "base64 0.22.1",
  "cpal",
