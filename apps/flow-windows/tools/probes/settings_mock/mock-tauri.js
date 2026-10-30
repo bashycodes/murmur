@@ -174,7 +174,7 @@
       return structuredClone(prefs);
     },
     suggestion_dismiss: ({ word }) => { suggestions = suggestions.filter((s) => s.word !== word); },
-    dictionary_import: ({ entries, json }) => ({ entries: entries.concat(JSON.parse(json)), added: 1, updated: 0, skipped: 0 }),
+    dictionary_import: ({ entries, json, replace }) => ({ entries: (replace ? [] : entries).concat(JSON.parse(json)), added: 1, updated: 0, skipped: 0 }),
     dictionary_export: () => "C:\\Users\\u\\Downloads\\flow-dictionary.json",
     dictionary_export_text: ({ entries }) => JSON.stringify(entries, null, 2),
     dev_get: devView,
