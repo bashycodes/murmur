@@ -6,13 +6,17 @@ import dev.flowclone.data.DevSettingsForm.Field
 import dev.flowclone.data.DevSettingsForm.Input
 
 /**
- * Developer settings is a hub with focused sub-pages (ui/DeveloperActivity). Each page edits
- * its own slice of the one [DevSettingsForm.Input]; Save validates and writes the whole
+ * Developer settings is a hub with focused sub-pages (ui/DeveloperActivity). The Server page
+ * edits its slice of the one [DevSettingsForm.Input]; Save validates and writes the whole
  * [DevSettings] exactly as the old single page did, so prefs keys and validation are unchanged.
+ *
+ * Which engines are on and their order moved to Settings → Speech to text (2026-10-30,
+ * AndroidSpeech.dc.html): a ranked list whose switches and moves apply at once ([engines],
+ * [engineOn], [withEngine], [reorder]). Developer keeps the engine extras on [Page.ENGINES].
  */
 object DevPages {
     /** D28: the cloud has its own page (ui/OpenRouterActivity), not a sub-page of this form. */
-    enum class Page { HUB, ROUTING, SERVER, DEBUG, STATUS }
+    enum class Page { HUB, ENGINES, SERVER, DEBUG, STATUS }
 
     private val SERVER_FIELDS = setOf(
         Field.HOST, Field.PORT, Field.PIN, Field.TOKEN, Field.CONNECT_TIMEOUT, Field.COMMIT_TIMEOUT, Field.HEALTH_TTL,
@@ -31,25 +35,25 @@ object DevPages {
 
     private val SERVER_WARNINGS = setOf(DevSettingsForm.NO_HOST, DevSettingsForm.PLAINTEXT, DevSettingsForm.NO_TOKEN)
     /**
-     * The form's warnings that belong on [p]. "Dictation disabled" is on the hub and Routing;
-     * the cloud's (no consent, not in the order, fallback position) on Routing, where its order is.
+     * The form's warnings that belong on [p]: the server's on the Server page, "no engine is on"
+     * on the hub. The rest (engines, cloud consent and position) are on Speech to text ([speechWarnings]).
      */
     fun warningsFor(p: Page, warnings: List<String>): List<String> = warnings.filter { w ->
-        val server = w in SERVER_WARNINGS; val off = w == DevSettingsForm.BOTH_OFF
         when (p) {
-            Page.HUB -> off
-            Page.ROUTING -> !server
-            Page.SERVER -> server
+            Page.HUB -> w == DevSettingsForm.BOTH_OFF
+            Page.SERVER -> w in SERVER_WARNINGS
             else -> false
         }
     }
 
+    const val NO_ENGINE = "No engine is on: turn one on to dictate."
+
+    /** Settings → Speech to text banner: every warning that is not the server's ("no engine" reworded for the switches). */
+    fun speechWarnings(warnings: List<String>): List<String> =
+        warnings.filter { it !in SERVER_WARNINGS }.map { if (it == DevSettingsForm.BOTH_OFF) NO_ENGINE else it }
+
     /** [base] with the inputs [p] edits taken from [edits]. The cloud part is never page-owned (OpenRouter page). */
     fun merge(base: Input, edits: Input, p: Page): Input = when (p) {
-        Page.ROUTING -> base.copy(
-            allowServer = edits.allowServer, allowClient = edits.allowClient, routeOrder = edits.routeOrder,
-            keepLocalWarm = edits.keepLocalWarm, showEngineBadge = edits.showEngineBadge,
-        )
         Page.SERVER -> base.copy(
             host = edits.host, port = edits.port, tls = edits.tls, pin = edits.pin, token = edits.token,
             connectTimeoutMs = edits.connectTimeoutMs, commitTimeoutBaseMs = edits.commitTimeoutBaseMs, healthTtlS = edits.healthTtlS,
@@ -64,6 +68,53 @@ object DevPages {
         if (i < 0 || j !in visible.indices) return order
         val other = visible[j]
         return order.map { when (it) { r -> other; other -> r; else -> it } }
+    }
+
+    /** Engines this build has (server: `remote`, phone: `local`, OpenRouter: `cloud`). */
+    fun available(r: Route, caps: BuildCaps) = when (r) {
+        Route.SERVER -> caps.remote
+        Route.CLIENT -> caps.local
+        Route.CLOUD -> caps.cloud
+    }
+
+    /**
+     * Speech to text's ranked list: the stored order, this build's engines only. The cloud is
+     * in the stored order only once it was turned on or moved, so until then it is listed last.
+     */
+    fun engines(s: DevSettings, caps: BuildCaps): List<Route> {
+        val listed = s.routeOrder.filter { available(it, caps) }.distinct()
+        return listed + Route.entries.filter { available(it, caps) && it !in listed }
+    }
+
+    /** The engine's switch (the cloud counts as on once it is allowed and in the order). */
+    fun engineOn(s: DevSettings, r: Route) = when (r) {
+        Route.SERVER -> s.allowServer
+        Route.CLIENT -> s.allowClient
+        Route.CLOUD -> s.cloudRouted
+    }
+
+    /**
+     * Server / phone switch. The cloud goes through its consent ([OpenRouterPage.enableStt]) after
+     * [placeCloud], so it starts where the list shows it instead of jumping to the top.
+     */
+    fun withEngine(s: DevSettings, r: Route, on: Boolean): DevSettings = when (r) {
+        Route.SERVER -> s.copy(allowServer = on)
+        Route.CLIENT -> s.copy(allowClient = on)
+        Route.CLOUD -> if (on) s.copy(allowCloud = true) else OpenRouterPage.disableStt(s)
+    }
+
+    /** The cloud put into the stored order at its listed place (before turning it on). */
+    fun placeCloud(s: DevSettings, caps: BuildCaps): DevSettings =
+        if (Route.CLOUD in s.routeOrder) s else s.copy(routeOrder = engines(s, caps) + s.routeOrder.filter { !available(it, caps) })
+
+    /**
+     * "Change order": [r] swapped with its listed neighbour. Engines this build lacks keep their
+     * stored place at the end; a cloud that was never placed stays out of the order unless moved up.
+     */
+    fun reorder(s: DevSettings, caps: BuildCaps, r: Route, dir: Int): List<Route> {
+        val moved = move(engines(s, caps), r, dir) { true }
+        val out = moved + s.routeOrder.filter { !available(it, caps) }
+        return if (Route.CLOUD !in s.routeOrder && moved.lastOrNull() == Route.CLOUD) out - Route.CLOUD else out
     }
 }
 
@@ -140,6 +191,10 @@ object DevSummary {
             s.cloud.monthlyBudgetUsd?.let { "budget ${CloudText.usd(it)}" },
         ).joinToString(" · ")
     }
+
+    /** Engine options row: "Badge off · Parakeet greedy" ([parakeet] = decoding wire name, null without on-device). */
+    fun engineOptions(badge: Boolean, parakeet: String?) =
+        "Badge ${if (badge) "on" else "off"}" + (parakeet?.let { " · Parakeet $it" } ?: "")
 
     fun debug(log: Boolean, audio: Boolean) = "Log ${if (log) "on" else "off"} · audio ${if (audio) "kept" else "off"}"
 

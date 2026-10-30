@@ -52,46 +52,47 @@ class DevPagesTest {
 
     @Test fun savedSettingsEqualOldWholePageSave() {
         // Same semantics as the single-page form: the whole DevSettings is validated + written.
-        val e = DevDraft.of(saved, Page.ROUTING).edit { copy(keepLocalWarm = false, routeOrder = listOf(Route.CLIENT, Route.SERVER)) }
-        val want = DevSettingsForm.validate(DevSettingsForm.Input.of(saved).copy(keepLocalWarm = false, routeOrder = listOf(Route.CLIENT, Route.SERVER)), caps).settings
+        val e = DevDraft.of(saved, Page.SERVER).edit { copy(port = "7400", healthTtlS = "60") }
+        val want = DevSettingsForm.validate(DevSettingsForm.Input.of(saved).copy(port = "7400", healthTtlS = "60"), caps).settings
         assertEquals(want, e.result(caps).settings)
         assertEquals(saved.token, e.result(caps).settings!!.token)
     }
 
     @Test fun rebaseKeepsThisPagesEditsAndTakesTheRestFromTheStore() {
-        // The OpenRouter page saved the cloud part meanwhile; Routing keeps its own edit.
-        val d = DevDraft.of(saved, Page.ROUTING).edit { copy(keepLocalWarm = false) }
-        val stored = OpenRouterPage.enableCleanup(OpenRouterPage.enableStt(saved, 1), 1, caps).copy(host = "10.0.0.9")
+        // Speech to text / the OpenRouter page saved meanwhile; Server keeps its own edit.
+        val d = DevDraft.of(saved, Page.SERVER).edit { copy(port = "7400") }
+        val stored = OpenRouterPage.enableCleanup(OpenRouterPage.enableStt(saved, 1), 1, caps).copy(allowClient = false, routeOrder = listOf(Route.CLOUD, Route.CLIENT, Route.SERVER))
         val r = d.rebase(stored)
-        assertFalse(r.draft.keepLocalWarm)
-        assertTrue(r.draft.allowCloud); assertTrue(r.draft.allowCloudCleanup)
+        assertEquals("7400", r.draft.port)
+        assertTrue(r.draft.allowCloud); assertTrue(r.draft.allowCloudCleanup); assertFalse(r.draft.allowClient)
         assertEquals(stored.cloud, r.draft.cloud)
-        assertEquals("10.0.0.9", r.draft.host)
+        assertEquals(stored.routeOrder, r.draft.routeOrder)
         assertTrue(r.dirty)
-        assertFalse(DevDraft.of(saved, Page.ROUTING).rebase(stored).dirty)
-        // Saving Routing writes the cloud part back unchanged (never wipes the OpenRouter page's choices).
+        assertFalse(DevDraft.of(saved, Page.SERVER).rebase(stored).dirty)
+        // Saving Server writes the engines and the cloud part back unchanged.
         val out = r.result(caps).settings!!
         assertEquals(stored.cloud, out.cloud); assertEquals(stored.cleanupOrder, out.cleanupOrder); assertTrue(out.allowCloudCleanup)
+        assertEquals(stored.routeOrder, out.routeOrder); assertFalse(out.allowClient)
     }
 
     @Test fun errorsOnOtherPagesAreReportedSeparately() {
         // A stored value out of range (e.g. an old pref) blocks save; the page must say where.
         val bad = DevSettingsForm.Input.of(saved).copy(connectTimeoutMs = "50")
-        val d = DevDraft(bad, bad, Page.ROUTING).edit { copy(keepLocalWarm = false) }
+        val d = DevDraft(bad, bad, Page.SERVER).edit { copy(port = "7400") }
         assertFalse(d.canSave(caps))
-        val off = DevPages.offPageErrors(d.result(caps), Page.ROUTING)
-        assertEquals(setOf(Field.CONNECT_TIMEOUT), off.keys)
         assertTrue(DevPages.offPageErrors(d.result(caps), Page.SERVER).isEmpty())
+        assertEquals(setOf(Field.CONNECT_TIMEOUT), DevPages.offPageErrors(d.result(caps), Page.ENGINES).keys)
     }
 
     @Test fun warningsGoToTheirPage() {
         val order = "When your server is unreachable, audio goes to OpenRouter."
         val all = listOf(DevSettingsForm.BOTH_OFF, DevSettingsForm.NO_HOST, DevSettingsForm.PLAINTEXT, DevSettingsForm.NO_TOKEN, DevSettingsForm.CLOUD_NO_CONSENT, order)
         assertEquals(listOf(DevSettingsForm.BOTH_OFF), DevPages.warningsFor(Page.HUB, all))
-        assertEquals(listOf(DevSettingsForm.BOTH_OFF, DevSettingsForm.CLOUD_NO_CONSENT, order), DevPages.warningsFor(Page.ROUTING, all))
         assertEquals(listOf(DevSettingsForm.NO_HOST, DevSettingsForm.PLAINTEXT, DevSettingsForm.NO_TOKEN), DevPages.warningsFor(Page.SERVER, all))
+        // Engines, consent and the cloud's place: on Settings → Speech to text, in its words.
+        assertEquals(listOf(DevPages.NO_ENGINE, DevSettingsForm.CLOUD_NO_CONSENT, order), DevPages.speechWarnings(all))
         // every warning is shown somewhere
-        for (w in all) assertTrue(w, Page.entries.any { w in DevPages.warningsFor(it, all) })
+        for (w in all) assertTrue(w, Page.entries.any { w in DevPages.warningsFor(it, all) } || w in DevPages.speechWarnings(all))
     }
 
     // ---- route order ----
@@ -103,6 +104,40 @@ class DevPagesTest {
         assertEquals(order, DevPages.move(order, Route.SERVER, -1, shown))
         assertEquals(order, DevPages.move(order, Route.CLIENT, +1, shown))
         assertEquals(order, DevPages.move(order, Route.CLOUD, +1, shown))
+    }
+
+    // ---- Speech to text: ranked engines ----
+
+    @Test fun enginesListThisBuildsEnginesInStoredOrderWithANewCloudLast() {
+        assertEquals(listOf(Route.SERVER, Route.CLIENT, Route.CLOUD), DevPages.engines(saved, caps))
+        assertEquals(listOf(Route.CLIENT, Route.SERVER, Route.CLOUD), DevPages.engines(saved.copy(routeOrder = listOf(Route.CLIENT, Route.SERVER)), caps))
+        assertEquals(listOf(Route.CLOUD, Route.SERVER, Route.CLIENT), DevPages.engines(OpenRouterPage.enableStt(saved, 1), caps))
+        assertEquals(listOf(Route.CLIENT), DevPages.engines(saved, BuildCaps.LOCAL))
+        assertEquals(listOf(Route.SERVER, Route.CLOUD), DevPages.engines(saved, BuildCaps.REMOTE))
+    }
+
+    @Test fun engineSwitches() {
+        assertTrue(DevPages.engineOn(saved, Route.SERVER)); assertTrue(DevPages.engineOn(saved, Route.CLIENT)); assertFalse(DevPages.engineOn(saved, Route.CLOUD))
+        assertFalse(DevPages.withEngine(saved, Route.SERVER, false).allowServer)
+        assertFalse(DevPages.withEngine(saved, Route.CLIENT, false).allowClient)
+        val on = OpenRouterPage.enableStt(DevPages.placeCloud(saved, caps), 5)
+        assertTrue(DevPages.engineOn(on, Route.CLOUD))
+        // Turned on from its listed place (3rd), it stays 3rd instead of jumping to the top.
+        assertEquals(listOf(Route.SERVER, Route.CLIENT, Route.CLOUD), on.routeOrder)
+        val off = DevPages.withEngine(on, Route.CLOUD, false)
+        assertFalse(off.allowCloud); assertTrue("consent kept", off.cloud.stt.consentOk)
+        assertEquals(on.routeOrder, off.routeOrder)
+    }
+
+    @Test fun reorderSwapsListedNeighbours() {
+        assertEquals(listOf(Route.CLIENT, Route.SERVER), DevPages.reorder(saved, caps, Route.CLIENT, -1))
+        assertEquals(listOf(Route.SERVER, Route.CLIENT), DevPages.reorder(saved, caps, Route.SERVER, -1))
+        // Moving the never-placed cloud up puts it in the order; moving another engine leaves it out.
+        assertEquals(listOf(Route.SERVER, Route.CLOUD, Route.CLIENT), DevPages.reorder(saved, caps, Route.CLOUD, -1))
+        assertEquals(listOf(Route.CLIENT, Route.SERVER), DevPages.reorder(saved, caps, Route.SERVER, +1))
+        // An engine this build lacks keeps its stored entry.
+        val local = saved.copy(routeOrder = listOf(Route.SERVER, Route.CLIENT, Route.CLOUD))
+        assertEquals(listOf(Route.CLIENT, Route.SERVER, Route.CLOUD), DevPages.reorder(local, BuildCaps.LOCAL, Route.CLIENT, -1))
     }
 
     // ---- hub subtitles ----
@@ -158,5 +193,10 @@ class DevPagesTest {
         assertEquals("Server · client 412 ms", DevSummary.lastShort(r))
         val l = CommitResult(CommitStatus.FORMATTED, timings = Timings(totalMs = 650), route = RouteInfo(engine = "local", fallback = "connect_failed"))
         assertEquals("On-device (fallback: connect_failed) · total 650 ms", DevSummary.lastShort(l))
+    }
+
+    @Test fun engineOptionsSummary() {
+        assertEquals("Badge off", DevSummary.engineOptions(false, null))
+        assertEquals("Badge on · Parakeet greedy", DevSummary.engineOptions(true, "greedy"))
     }
 }

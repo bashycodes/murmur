@@ -27,13 +27,14 @@ import kotlin.concurrent.thread
 
 /**
  * D28: the one cloud page (docs/proposals/openrouter-only-cloud.md; replaces the D18 provider
- * list). Reached from Developer settings and from Settings → DICTATION "Cloud (OpenRouter)".
+ * list), in the app design's look (top bar, cards; desktop SettingsOpenRouter.dc.html adapted to
+ * the phone). Reached from Settings → Connections "OpenRouter" and from Developer settings.
  *   API KEY          SecretField (never in the a11y tree), Paste / Clear, Save, Check key
  *   PRIVACY          zero-retention providers only, deny data collection (confirm to turn off)
  *   SPEECH-TO-TEXT   opt-in + its consent dialog, model → picker, language, dictionary; Test
  *   TEXT CLEANUP     opt-in + its own consent dialog, model → picker, order, provider choice,
  *                    time limit, what is sent (PromptScope), live status
- *   USAGE            speech vs cleanup cost this month, budget, reset
+ *   USAGE            this month's cost (total / speech / cleanup), requests, budget, reset
  * Every change applies at once (store + live router), like the old consent dialog did.
  */
 class OpenRouterActivity : Activity() {
@@ -52,7 +53,6 @@ class OpenRouterActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         title = TITLE
-        actionBar?.setDisplayHomeAsUpEnabled(true)
         ui = DevUi(this)
         if (!caps.cloud) { renderNotInBuild(); return }
         app.migrateCloud()
@@ -67,13 +67,18 @@ class OpenRouterActivity : Activity() {
         refresh()
     }
 
-    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean =
-        if (item.itemId == android.R.id.home) { finish(); true } else super.onOptionsItemSelected(item)
+    /** The page under the design's top bar (back, "OpenRouter"). */
+    private fun page(build: LinearLayout.() -> Unit) = with(ui) {
+        screen {
+            topBar(OpenRouter.NAME, DevUi.TopNav.BACK, onNav = ::finish)
+            build()
+        }
+    }
 
     private fun refresh() { for (r in refreshers) r() }
 
     private fun renderNotInBuild() = with(ui) {
-        screen {
+        page {
             card {
                 toggleRow("Cloud speech-to-text", CloudText.NOT_IN_BUILD.cap(), checked = false, enabled = false)
                 toggleRow("Clean up text with OpenRouter", CloudText.NOT_IN_BUILD.cap(), checked = false, enabled = false)
@@ -84,7 +89,7 @@ class OpenRouterActivity : Activity() {
 
     private fun render() = with(ui) {
         val s0 = app.dev.load()
-        screen {
+        page {
             noticeBanner()
             note(CloudText.INTRO)
 
@@ -116,13 +121,18 @@ class OpenRouterActivity : Activity() {
             cleanupCard(s0)
 
             sectionLabel("USAGE")
+            val stats = statRow(listOf("$0" to "this month", "$0" to "speech", "$0" to "cleanup"))
             card {
-                val usage = infoRow("This month (this phone only, never sent anywhere)")
+                val usage = infoRow("Requests and budget (counted on this phone only, never sent anywhere)")
                 val budget = navRow(R.drawable.ic_dev_cloud, "Monthly budget") { editBudget() }
                 chipRow(chip("Reset counters") { onResetUsage() }.apply { contentDescription = "Reset cloud usage counters" })
                 refreshers += {
                     val s = app.dev.load()
-                    usage.text = CloudText.usageLines(CloudUsage.decode(app.engine.router()?.cloudUsageJson() ?: app.dev.cloudUsageJson), s.cloud).joinToString("\n")
+                    val u = CloudUsage.decode(app.engine.router()?.cloudUsageJson() ?: app.dev.cloudUsageJson)
+                    fun cost(purpose: String) = (if (u.estimated(purpose)) "≈" else "") + CloudText.usd(u.costFor(purpose))
+                    stats.set(0, CloudText.usd(u.totalCostUsd), "this month" + (s.cloud.monthlyBudgetUsd?.let { " of ${CloudText.usd(it)}" } ?: ""))
+                    stats.set(1, cost(CloudUsage.PURPOSE_STT)); stats.set(2, cost(CloudUsage.PURPOSE_CLEANUP))
+                    usage.text = CloudText.usageLines(u, s.cloud).drop(1).joinToString("\n")
                     budget.setSubtitle(s.cloud.monthlyBudgetUsd?.let { "${CloudText.usd(it)} per month for speech and cleanup together; both pause once it is reached" } ?: "None")
                 }
             }
