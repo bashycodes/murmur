@@ -25,6 +25,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   Shortcuts don't fire while recording. Esc, 10 s without keys, or leaving
   the window cancels. "Type instead" opens the old text field for keys you
   can't press.
+- **Windows: download AI cleanup models.** Settings → AI cleanup → On this PC
+  has a "Download a model" row like the speech one: Qwen2.5 0.5B Instruct
+  (Q4_K_M, 491 MB, the default) or Qwen2.5 1.5B Instruct (Q4_K_M, 1.1 GB),
+  each pinned to a Hugging Face commit and SHA-256 checked. A finished
+  download turns cleanup on this PC on with that file and loads it; Use
+  switches between downloaded models and Delete removes one (turning local
+  cleanup off when it was in use). Pins: `docs/findings/2026-10-30-cleanup-model-pins.md`.
+
 - **Core: Hebrew zipformer engine.** A new speech engine, `sherpa_online`
   (also accepted as `zipformer`), runs streaming sherpa-onnx models such as
   ivrit.ai's 69 MB Hebrew zipformer. Use it as the Hebrew model

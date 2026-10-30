@@ -202,6 +202,8 @@
   const WH = ["ggerganov/whisper.cpp", "5359861c739e955e79d9a303bcbc70fb988958b1"];
   const ZH = ["ivrit-ai/zipformer2-66m-streaming-he", "ee769a2a13b887f91572eec349458bfb0fe79e7a"];
   const PH = ["krut42/voice-parakeet-he-int8", "39de3b473bed626c7796c156d71adc66161ebfe1"];
+  const Q05 = ["Qwen/Qwen2.5-0.5B-Instruct-GGUF", "9217f5db79a29953eb74d5343926648285ec7e67"];
+  const Q15 = ["Qwen/Qwen2.5-1.5B-Instruct-GGUF", "91cad51170dc346986eccefdc2dd33a9da36ead9"];
   // H6: the language-ID model comes with each Hebrew model (models folder).
   const LID = hf("ggerganov/whisper.cpp", "5359861c739e955e79d9a303bcbc70fb988958b1", "ggml-tiny-q5_1.bin", 32152673, "8187…");
   const zh = (name, size, sha) => ({ ...hf(...ZH, name, size, sha), url: `https://huggingface.co/${ZH[0]}/resolve/${ZH[1]}/sherpa-onnx/${name}` });
@@ -222,6 +224,13 @@
       language: "he", license: "CC-BY-4.0 · krut42, based on thewh1teagle/parakeet-tdt-0.6b-v3-he",
       page: "https://huggingface.co/" + PH[0], dest: MODELS + "parakeet-tdt-0.6b-v3-he-int8", available: true,
       files: [hf(...PH, "encoder.int8.onnx", 653215173, "7eaf…"), hf(...PH, "decoder.int8.onnx", 12494234, "3a1d…"), hf(...PH, "joiner.int8.onnx", 7008293, "056c…"), hf(...PH, "tokens.txt", 107590, "55a9…"), LID] },
+    // AI cleanup models (engine "llm", docs/findings/2026-10-30-cleanup-model-pins.md).
+    { id: "qwen2.5-0.5b-instruct-q4_k_m", title: "Qwen2.5 0.5B Instruct", desc: "Fast · the default", engine: "llm", recommended: true, size: 491400032,
+      page: "https://huggingface.co/" + Q05[0], dest: MODELS + "qwen2.5-0.5b-instruct-q4_k_m.gguf", available: true,
+      files: [hf(...Q05, "qwen2.5-0.5b-instruct-q4_k_m.gguf", 491400032, "74a4…")] },
+    { id: "qwen2.5-1.5b-instruct-q4_k_m", title: "Qwen2.5 1.5B Instruct", desc: "More accurate · about twice as slow", engine: "llm", recommended: false, size: 1117320736,
+      page: "https://huggingface.co/" + Q15[0], dest: MODELS + "qwen2.5-1.5b-instruct-q4_k_m.gguf", available: true,
+      files: [hf(...Q15, "qwen2.5-1.5b-instruct-q4_k_m.gguf", 1117320736, "6a1a…")] },
   ];
   // The Hebrew model's load state (`model:hebrew`): null = none chosen.
   const heDir = { zipformer: "zipformer-he-int8", parakeet_he: "parakeet-tdt-0.6b-v3-he-int8" };
@@ -461,6 +470,14 @@
             loadHebrew();
             return;
           }
+          if (c.engine === "llm") {
+            // A cleanup model turns local cleanup on with that file.
+            prefs = { ...prefs, llm_enabled: true, llm_model_path: path };
+            ev("done", { path });
+            window.__emit("llm:status", { state: "loading", path });
+            setTimeout(() => window.__emit("llm:status", { state: "ready", path, load_ms: 700, plugin: "flow_llm.dll" }), 150);
+            return;
+          }
           prefs = c.engine === "parakeet" ? { ...prefs, asr_engine: "parakeet", parakeet_model_dir: path } : { ...prefs, asr_engine: "whisper", model_path: path };
           modelStatus = { state: "loading", path };
           ev("done", { path });
@@ -468,6 +485,20 @@
           setTimeout(() => { modelStatus = { state: "ready", path, load_ms: 900 }; window.__emit("model:status", modelStatus); }, 150);
         }, 150);
       }, window.__dlTickMs || 250);
+      return null;
+    },
+    // Deletes a downloaded cleanup model; turns local cleanup off when it was in use.
+    model_delete: ({ id }) => {
+      const c = dlCatalog.find((x) => x.id === id);
+      if (!c) throw new Error(`unknown model ${id}`);
+      if (c.engine !== "llm") throw new Error("only AI cleanup models can be deleted here");
+      if (dlRunning && dlRunning.id === id) throw new Error("this model is downloading; cancel it first");
+      const inUse = (prefs.llm_model_path || MODELS + "qwen2.5-0.5b-instruct-q4_k_m.gguf") === c.dest;
+      if (inUse) {
+        prefs = { ...prefs, llm_enabled: false, llm_model_path: null };
+        window.__emit("llm:status", { state: "off" });
+      }
+      dlInstalled.delete(id);
       return null;
     },
     model_download_cancel: ({ id }) => {
