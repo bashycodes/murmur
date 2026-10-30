@@ -26,6 +26,23 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   of words the model already hears. Builds without the `parakeet` feature
   report a load error for it, as they do for Parakeet.
 
+## [0.9.1] - 2026-10-30
+
+### Changed
+
+- **Speech in languages other than English** no longer goes through the
+  English-only clean-up rules (filler words, spoken punctuation, number
+  formatting, capitalisation). Whitespace tidy, the closing full stop, your
+  dictionary and "press enter" still apply. Groundwork for Hebrew in 0.10.0;
+  per-language models are not selectable in the apps yet.
+
+### Fixed
+
+- **Windows build:** a merge slip in 0.9.0's source broke the Windows
+  installer build, so 0.9.0 shipped without Windows installers. 0.9.1 has
+  them.
+- The model-downloader tests now pass on Windows.
+
 ## [0.9.0] - 2026-10-30
 
 ### Added
@@ -731,7 +748,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/bashycodes/murmur/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/bashycodes/murmur/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/bashycodes/murmur/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/bashycodes/murmur/compare/v0.7.0...v0.7.1
