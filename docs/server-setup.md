@@ -118,8 +118,43 @@ installer falls back to `/run/user/$UID`; for later `systemctl --user` /
 `XDG_RUNTIME_DIR=/run/user/$(id -u)`. Test the preflight with
 `tools/server/test-install.sh`.
 
-A healthy start logs `ready workers=1 asr=parakeet load_ms=… listening=…`.
+A healthy start logs `ready workers=1 asr=parakeet languages= load_ms=… listening=…`.
 Check a config without starting: `flow-server check-config --config <path>`.
+
+### Hebrew (optional, D33)
+
+English stays on Parakeet; Hebrew gets its own model, used only by sessions
+whose language is forced to Hebrew (the app's language set to Hebrew: `he`,
+`he-IL` and `iw` all match). Auto-detect stays on the default model.
+
+```sh
+FLOW_MODELS_DIR=<models dir> tools/fetch-models.sh --hebrew   # zipformer-he int8, 69 MiB
+# optional alternative, 642 MiB: --hebrew-parakeet (parakeet-tdt-0.6b-v3-he-int8)
+```
+
+The script downloads pinned revisions and checks each file's SHA-256
+(`docs/findings/2026-10-30-hebrew-model-pins.md`); files already present with
+the right hash are skipped, so re-running it is cheap. Without
+`FLOW_MODELS_DIR` it uses `models/`. Then add to the config's `[model]`
+(the installer never edits an existing config; the block is in
+`crates/flow-server/dist/config.example.toml`):
+
+```toml
+[model.languages.he]
+asr_backend = "sherpa_online"     # streaming zipformer (alias "zipformer")
+asr_path = "<models dir>/zipformer2-66m-streaming-he-int8"
+# threads = 4                     # optional, default [model] threads
+```
+
+`sherpa_online` needs the `parakeet` feature, which `install.sh` always
+builds. Every worker loads the Hebrew model next to the default one at
+startup (the zipformer is 69 MiB of int8 weights; the Parakeet-he
+alternative costs about as much memory as the English Parakeet). After a restart the `ready` line shows
+`languages=he=sherpa_online`, `check-config` prints the language route, and
+`/v1/health` (`hello_ok`) lists `"languages":["he"]`. Each `result` log line
+carries the decoded `language`; a Hebrew session's result has
+`"language":"he"`. Measured on the i7-6700: FLEURS-dev WER 26.8 %, RTF 0.05
+(`docs/findings/2026-10-28-hebrew-stt-models.md`).
 
 ## 3. Address: VPN (recommended)
 

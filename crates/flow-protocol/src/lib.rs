@@ -99,6 +99,13 @@ pub struct HelloOk {
     /// field, which still gives the full text.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub features: Vec<String>,
+    /// Languages with their own ASR model on this server (additive,
+    /// 2026-10-30, D33): a session whose single forced language
+    /// (`SessionConfig.languages`) matches one decodes on that model
+    /// (e.g. `"he"` -> the Hebrew zipformer); everything else, auto-detect
+    /// included, on `asr_backend`/`asr_model`. Omitted when there are none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub languages: Vec<String>,
 }
 
 /// [`HelloOk::features`] value for pause-segmented decoding (D22).
