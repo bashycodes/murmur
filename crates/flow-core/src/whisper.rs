@@ -23,6 +23,14 @@ const SILENCE_RMS: f32 = 0.003;
 const CTX_PER_SEC: usize = 50;
 const FULL_CTX: usize = 1500;
 
+/// The CPU features this whisper.cpp/ggml build was compiled for, e.g.
+/// `"... CPU : SSE3 = 1 | AVX2 = 1 | ..."`. Compile-time flags, not what the
+/// running CPU supports: a feature listed here that the CPU lacks is an
+/// illegal-instruction crash on the first decode.
+pub fn build_cpu_features() -> &'static str {
+    whisper_rs::print_system_info()
+}
+
 /// `audio_ctx` for `samples` of (padded) audio: its length plus 1 s, in
 /// encoder positions; 0 (= the full 30 s window) when that is no smaller.
 pub fn audio_ctx_for(samples: usize) -> i32 {
