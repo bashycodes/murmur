@@ -14,6 +14,7 @@ pub mod guard;
 pub mod hallucination;
 pub mod insights;
 pub mod learn;
+pub mod lid;
 #[cfg(feature = "llm")]
 pub mod llama;
 #[cfg(feature = "parakeet")]
