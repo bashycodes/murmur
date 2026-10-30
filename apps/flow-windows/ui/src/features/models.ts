@@ -24,7 +24,10 @@ export interface CatalogEntry {
   desc: string;
   /** "llm": an AI cleanup model (Settings → AI cleanup), not a speech model. */
   engine: "whisper" | "parakeet" | "sherpa_online" | "llm";
+  /** Speech: the pick. AI cleanup: the pick for a PC without a GPU. */
   recommended: boolean;
+  /** AI cleanup: the pick when cleanup runs on a GPU (`llm_backend`). */
+  recommended_gpu?: boolean;
   /** "he": the model of the Hebrew route (D33); absent for a default model. */
   language?: string;
   /** Licence + attribution (CC-BY-4.0 models). */
@@ -252,18 +255,65 @@ function renderSettingsRow(): void {
 // ------------------------------------------------------------ Settings → AI cleanup row
 
 /** The file the app loads when no cleanup model is set (core_adapter DEFAULT_LLM_FILE, D11). */
-const DEFAULT_LLM_FILE = "qwen2.5-0.5b-instruct-q4_k_m.gguf";
+const DEFAULT_LLM_FILE = "qwen2.5-1.5b-instruct-q4_k_m.gguf";
+/** The previous default, still loaded when it is the only one there (core_adapter LEGACY_LLM_FILE). */
+const LEGACY_LLM_FILE = "qwen2.5-0.5b-instruct-q4_k_m.gguf";
+const isFile = (c: CatalogEntry, f: string): boolean => c.dest.endsWith(`\\${f}`) || c.dest.endsWith(`/${f}`);
 /** "Deleted." after a delete, until the selection or the catalogue changes. */
 let llmNote = "";
 
 const llmModels = (): CatalogEntry[] => catalog.filter((c) => c.engine === "llm");
+
+/** Where local AI cleanup would run (`llm_backend`, core_adapter LlmBackendView). */
+export interface LlmBackend {
+  gpu: boolean;
+  backend: string;
+  device: string;
+  plugin: string | null;
+  error?: string;
+}
+/** undefined = not asked yet, null = asking. */
+let llmBackend: LlmBackend | null | undefined;
+
+/** Ask once which device cleanup would use (the backend loads the engine plugin for it). */
+function askLlmBackend(): void {
+  if (llmBackend !== undefined) return;
+  llmBackend = null;
+  invoke<LlmBackend>("llm_backend")
+    .then((b) => {
+      llmBackend = b;
+    })
+    .catch((err) => {
+      llmBackend = { gpu: false, backend: "", device: "", plugin: null, error: String(err) };
+    })
+    .finally(renderLlmRow);
+}
+
+/** The recommended cleanup model for this PC: the GPU pick when a GPU runs cleanup, else the CPU pick. */
+export function recommendedLlm(list: CatalogEntry[], gpu: boolean): CatalogEntry | undefined {
+  return list.find((c) => (gpu ? c.recommended_gpu : c.recommended));
+}
+
+/** "This PC: …" under the cleanup model list. */
+function hardwareLine(b: LlmBackend | null | undefined, rec: CatalogEntry | undefined): string {
+  if (!b) return "";
+  const pick = rec ? ` Recommended: ${rec.title}.` : "";
+  if (b.gpu) return `This PC runs AI cleanup on its graphics chip (${b.device}, ${b.backend}).${pick}`;
+  if (!b.plugin) return `No AI cleanup engine found to check this PC's graphics chip; assuming the CPU.${pick}`;
+  return `No graphics chip found for AI cleanup: it runs on the CPU.${pick}`;
+}
 
 /** Local cleanup runs with this catalogue model (path set to it, or empty = the default file). */
 export function llmInUse(c: CatalogEntry, p = prefsStore.get()): boolean {
   if (!p?.llm_enabled) return false;
   const path = p.llm_model_path?.trim();
   if (path) return path === c.dest;
-  return c.dest.endsWith(`\\${DEFAULT_LLM_FILE}`) || c.dest.endsWith(`/${DEFAULT_LLM_FILE}`);
+  // Empty = the default file, or the old default when only that one is there (core_adapter default_llm_path).
+  const list = llmModels();
+  const legacyOnly =
+    !list.some((x) => x.installed && isFile(x, DEFAULT_LLM_FILE)) &&
+    list.some((x) => x.installed && isFile(x, LEGACY_LLM_FILE));
+  return isFile(c, legacyOnly ? LEGACY_LLM_FILE : DEFAULT_LLM_FILE);
 }
 
 function renderLlmRow(): void {
@@ -271,16 +321,28 @@ function renderLlmRow(): void {
   if (!sel) return;
   const list = llmModels();
   $<HTMLElement>("llm_dl_row").hidden = list.length === 0;
+  if (list.length) askLlmBackend();
+  const rec = recommendedLlm(list, Boolean(llmBackend?.gpu));
   const keep = sel.value;
+  // The recommendation moves once the backend answers (GPU → Llama 3B).
+  const keepIt = keep && list.some((c) => c.id === keep) && sel.dataset.rec === rec?.id;
+  sel.dataset.rec = rec?.id ?? "";
   sel.replaceChildren(
-    ...list.map((c) => new Option(`${c.title} · ${mb(c.size)}${c.installed ? (llmInUse(c) ? " · in use" : " · downloaded") : ""}`, c.id)),
+    ...list.map(
+      (c) =>
+        new Option(
+          `${c.title} · ${mb(c.size)}${c.installed ? (llmInUse(c) ? " · in use" : " · downloaded") : c === rec ? " · recommended" : ""}`,
+          c.id,
+        ),
+    ),
   );
-  if (keep && list.some((c) => c.id === keep)) sel.value = keep;
+  if (keepIt) sel.value = keep;
   else {
-    // Open on the model in use, else the recommended one.
-    const pick = list.find((c) => c.installed && llmInUse(c)) ?? list.find((c) => c.recommended);
+    // Open on the model in use, else the one recommended for this PC.
+    const pick = list.find((c) => c.installed && llmInUse(c)) ?? rec;
     if (pick) sel.value = pick.id;
   }
+  $<HTMLElement>("llm_dl_hw").textContent = hardwareLine(llmBackend, rec);
   const e = models.entry(sel.value);
   const start = $<HTMLButtonElement>("llm_dl_start");
   const stop = $<HTMLButtonElement>("llm_dl_stop");
@@ -315,6 +377,7 @@ function renderLlmRow(): void {
     line.className = "hint";
     line.append(`${e.desc}. Not downloaded yet${e.available ? "." : ": "}`);
     if (!e.available) line.append(html(extLink(e.page, "get it from its model page")));
+    if (e.license) line.append(` ${e.license}.`);
     return;
   }
   if (inUse) return set(`${e.desc}. Downloaded and in use for cleanup on this PC.`, "ok");
@@ -355,7 +418,7 @@ export const LLM_DOWNLOAD_ROW = `
 <div class="fl-row lw-dl-row" id="llm_dl_row" data-needs="local" hidden>
   <div class="fl-row-text">
     <div class="fl-row-title"><label for="llm_dl_model">Download a model</label></div>
-    <div class="fl-row-desc">From Hugging Face, checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent. A downloaded model turns on cleanup on this PC.<span class="lw-status-sub"><span class="lw-dl-bar" id="llm_dl_bar" hidden><span></span></span><span id="llm_dl_status"></span></span></div>
+    <div class="fl-row-desc">From Hugging Face, checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent. A downloaded model turns on cleanup on this PC.<span class="lw-status-sub"><span class="lw-dl-bar" id="llm_dl_bar" hidden><span></span></span><span id="llm_dl_status"></span></span><span class="lw-status-sub hint" id="llm_dl_hw"></span></div>
   </div>
   <div class="fl-row-control">
     <select id="llm_dl_model" class="fl-select lw-w220" aria-label="Cleanup model to download"></select>

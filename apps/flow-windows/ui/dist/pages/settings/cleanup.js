@@ -76,7 +76,7 @@ ${heading("AI cleanup", `Turns what you said into what you meant: punctuation, p
   </div>
 </section>
 
-${group("On this PC", row("Model file", `A GGUF model. Qwen2.5-0.5B-Instruct Q4_K_M is the fast default; Qwen2.5-1.5B-Instruct is more accurate and about twice as slow (${extLink("https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF", "get it →")}, or download one below). Never downloaded automatically. Empty = default.`, `<input id="llm_model_path" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" />${browseButton("llm_model_path")}`, `data-needs="local"`) +
+${group("On this PC", row("Model file", `A GGUF model. Qwen2.5-1.5B-Instruct Q4_K_M is the default; Qwen2.5-0.5B-Instruct is about twice as fast but misses many fixes (${extLink("https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF", "get it →")}, or download one below). Never downloaded automatically. Empty = default.`, `<input id="llm_model_path" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" />${browseButton("llm_model_path")}`, `data-needs="local"`) +
         LLM_DOWNLOAD_ROW +
         row("Engine library", `llama.cpp, <code id="llm_plugin" class="lw-mono"></code>. Empty = next to the app.`, `<input id="llm_lib_path" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" />`, `data-needs="local"`) +
         row("Give up after", "Then the formatting rules take over.", `<select id="llm_timeout_ms" class="fl-select lw-w160" data-save="prefs">

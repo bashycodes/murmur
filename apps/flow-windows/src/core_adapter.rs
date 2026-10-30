@@ -16,9 +16,9 @@
 //! * The shell's §9 types are mapped onto flow-core's here (pure functions,
 //!   unit-tested), so the rest of the shell never names a flow-core type.
 //! * Default models: `%APPDATA%\FlowClone\models\ggml-base.bin` (D4 CPU
-//!   tier) and, when cleanup is on, `qwen2.5-0.5b-instruct-q4_k_m.gguf`
-//!   (D11). Threads = flow-core's default unless prefs `asr_threads` says
-//!   otherwise.
+//!   tier) and, when cleanup is on, `qwen2.5-1.5b-instruct-q4_k_m.gguf`
+//!   (D11; the 0.5B file when only that one is there). Threads =
+//!   flow-core's default unless prefs `asr_threads` says otherwise.
 
 use crate::core_api::{
     AppKind, CleanupLevel, CommitResult, CommitStatus, CoreApi, DictEntry, FieldContext,
@@ -35,8 +35,6 @@ pub const DEFAULT_MODEL_FILE: &str = "ggml-base.bin";
 /// D12: Parakeet-TDT-0.6B-v2 int8 (sherpa-onnx), a model *directory*.
 /// English only; faster and more accurate than whisper on this CPU tier.
 pub const DEFAULT_PARAKEET_DIR: &str = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
-/// D11: the 1.5 s CPU budget model. `qwen2.5-1.5b-instruct-q4_k_m.gguf` is
-/// the quality step up (8/8 vs 4/8 on the messy-dictation set, ~2x slower).
 /// The Hebrew models' folders (docs/findings/2026-10-30-hebrew-model-pins.md),
 /// the names `fetch-models.sh` and the flow-core tests use too.
 pub const ZIPFORMER_HE_DIR: &str = "zipformer2-66m-streaming-he-int8";
@@ -46,7 +44,13 @@ pub const PARAKEET_HE_DIR: &str = "parakeet-tdt-0.6b-v3-he-int8";
 pub const LID_FILE: &str = "ggml-tiny-q5_1.bin";
 /// The `languages` key of the Hebrew route (D33).
 pub const HEBREW: &str = "he";
-pub const DEFAULT_LLM_FILE: &str = "qwen2.5-0.5b-instruct-q4_k_m.gguf";
+/// D11: the cleanup model loaded when none is set. Qwen2.5 1.5B since the
+/// 2026-10-30 laptop benchmark (74 % vs 43 % for the 0.5B on the 88-suite,
+/// p50 about 1 s on a laptop CPU).
+pub const DEFAULT_LLM_FILE: &str = "qwen2.5-1.5b-instruct-q4_k_m.gguf";
+/// The default before that. A PC that has only this file in the models
+/// folder keeps loading it: nothing is migrated or deleted.
+pub const LEGACY_LLM_FILE: &str = "qwen2.5-0.5b-instruct-q4_k_m.gguf";
 /// How long a dictation started during model load waits for it. Short:
 /// `start_session` runs on the controller loop, which must stay responsive.
 pub const LOAD_WAIT: Duration = Duration::from_secs(3);
@@ -68,8 +72,20 @@ pub fn default_parakeet_dir(appdata: Option<&str>) -> PathBuf {
     models_dir(appdata).join(DEFAULT_PARAKEET_DIR)
 }
 
+/// The default cleanup model: [`DEFAULT_LLM_FILE`], or [`LEGACY_LLM_FILE`]
+/// when only that one is in the models folder.
 pub fn default_llm_path(appdata: Option<&str>) -> PathBuf {
-    models_dir(appdata).join(DEFAULT_LLM_FILE)
+    default_llm_in(&models_dir(appdata))
+}
+
+fn default_llm_in(dir: &std::path::Path) -> PathBuf {
+    let new = dir.join(DEFAULT_LLM_FILE);
+    let old = dir.join(LEGACY_LLM_FILE);
+    if !new.is_file() && old.is_file() {
+        old
+    } else {
+        new
+    }
 }
 
 /// File name of the llama.cpp plugin the shell ships next to its exe.
@@ -141,6 +157,10 @@ pub enum LlmStatus {
         /// The `flow_llm` plugin that was loaded.
         plugin: String,
         load_ms: u64,
+        /// GPU or CPU (older plugins do not say). Boxed: keeps the status
+        /// (the loader's error type) small.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        backend: Option<Box<flow_core::llama::LlmBackend>>,
     },
     /// The GGUF file does not exist. Never downloaded automatically.
     Missing {
@@ -341,10 +361,17 @@ impl LlmSpec {
     }
 }
 
+/// A loaded cleaner and, for the status line, its plugin path and where it
+/// runs (GPU or CPU).
+pub struct LlmLoaded {
+    pub cleaner: Arc<dyn Cleaner>,
+    pub plugin: String,
+    pub backend: Option<flow_core::llama::LlmBackend>,
+}
+
 /// Loads a cleaner; injectable so the two-phase logic is testable without
-/// llama.cpp. `Ok` carries the plugin path for the status line.
-pub type LlmLoader =
-    Arc<dyn Fn(&LlmSpec) -> Result<(Arc<dyn Cleaner>, String), LlmStatus> + Send + Sync>;
+/// llama.cpp.
+pub type LlmLoader = Arc<dyn Fn(&LlmSpec) -> Result<LlmLoaded, LlmStatus> + Send + Sync>;
 
 /// The real loader: GGUF existence check, then `flow_core::llama`.
 pub fn llama_loader() -> LlmLoader {
@@ -356,13 +383,71 @@ pub fn llama_loader() -> LlmLoader {
         let threads = spec.threads.unwrap_or_else(fc::default_threads).max(1);
         let lib = spec.lib_path.as_ref().map(|p| p.display().to_string());
         match flow_core::llama::LlamaCleaner::load(&path, threads, lib.as_deref()) {
-            Ok(c) => {
-                let plugin = c.plugin_path.display().to_string();
-                Ok((Arc::new(c) as Arc<dyn Cleaner>, plugin))
-            }
+            Ok(c) => Ok(LlmLoaded {
+                plugin: c.plugin_path.display().to_string(),
+                backend: c.backend(),
+                cleaner: Arc::new(c),
+            }),
             Err(e) => Err(classify_llm_error(path, e)),
         }
     })
+}
+
+/// Where local AI cleanup would run on this PC (Settings → AI cleanup
+/// recommends a model by it): the plugin the loader picks (GPU build first,
+/// flow-core `llama::plugin_candidates`) and the device it would use.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct LlmBackendView {
+    /// A GPU runs the model (Vulkan).
+    pub gpu: bool,
+    /// "Vulkan" / "CPU"; empty when no plugin loads.
+    pub backend: String,
+    /// The GPU's name, or "CPU".
+    pub device: String,
+    /// The plugin's path; `None` = none found (`error` says why).
+    pub plugin: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl LlmBackendView {
+    pub fn from_probe(
+        r: Result<(PathBuf, flow_core::llama::LlmBackend), flow_core::llama::LlamaLoadError>,
+    ) -> Self {
+        match r {
+            Ok((path, b)) => Self {
+                gpu: b.is_gpu(),
+                backend: b.backend,
+                device: b.device,
+                plugin: Some(path.display().to_string()),
+                error: None,
+            },
+            Err(e) => Self {
+                gpu: false,
+                backend: String::new(),
+                device: String::new(),
+                plugin: None,
+                error: Some(e.to_string()),
+            },
+        }
+    }
+}
+
+/// Probe the plugin once per explicit plugin path (`llm_lib_path`) and
+/// cache it: it loads the plugin, and a Vulkan build starts the Vulkan
+/// driver to list the GPUs (~0.1-1 s the first time).
+pub fn llm_backend_probe(lib_path: Option<&str>) -> LlmBackendView {
+    static CACHE: Mutex<Vec<(Option<String>, LlmBackendView)>> = Mutex::new(Vec::new());
+    let key = lib_path.map(str::to_string);
+    if let Some((_, v)) = CACHE.lock().unwrap().iter().find(|(k, _)| *k == key) {
+        return v.clone();
+    }
+    let v = LlmBackendView::from_probe(flow_core::llama::probe_backend(lib_path));
+    // A missing plugin is not cached: it may be put next to the exe later.
+    if v.plugin.is_some() {
+        CACHE.lock().unwrap().push((key, v.clone()));
+    }
+    v
 }
 
 /// Typed since core-p1 (CR-1): "plugin not found" gets its own status so
@@ -710,18 +795,19 @@ impl FlowCoreAdapter {
         &self,
         generation: u64,
         spec: &LlmSpec,
-        r: Result<(Arc<dyn Cleaner>, String), LlmStatus>,
+        r: Result<LlmLoaded, LlmStatus>,
         load_ms: u64,
     ) {
         match r {
-            Ok((cleaner, plugin)) => self.finish_llm_status(
+            Ok(l) => self.finish_llm_status(
                 generation,
                 LlmStatus::Ready {
                     path: spec.model_path.display().to_string(),
-                    plugin,
+                    plugin: l.plugin,
                     load_ms,
+                    backend: l.backend.map(Box::new),
                 },
-                Some(cleaner),
+                Some(l.cleaner),
             ),
             Err(st) => self.finish_llm_status(generation, st, None),
         }
@@ -1415,7 +1501,11 @@ mod tests {
             std::thread::sleep(Duration::from_millis(delay_ms));
             match &fail {
                 Some(st) => Err(st.clone()),
-                None => Ok((Arc::new(Sentence) as Arc<dyn Cleaner>, "fake-plugin".into())),
+                None => Ok(LlmLoaded {
+                    cleaner: Arc::new(Sentence),
+                    plugin: "fake-plugin".into(),
+                    backend: None,
+                }),
             }
         })
     }
@@ -1434,6 +1524,64 @@ mod tests {
         a.start_session(session()).unwrap();
         a.push_audio(&[3000; 16_000]);
         a.commit()
+    }
+
+    #[test]
+    fn backend_probe_view() {
+        use flow_core::llama::{LlamaLoadError, LlmBackend};
+        let gpu = LlmBackendView::from_probe(Ok((
+            PathBuf::from("C:/app/flow_llm_vulkan.dll"),
+            LlmBackend {
+                backend: "Vulkan".into(),
+                device: "Intel(R) Arc(TM) 140V GPU".into(),
+                gpu_error: None,
+            },
+        )));
+        assert!(gpu.gpu);
+        assert_eq!(gpu.device, "Intel(R) Arc(TM) 140V GPU");
+        assert_eq!(gpu.plugin.as_deref(), Some("C:/app/flow_llm_vulkan.dll"));
+        let cpu = LlmBackendView::from_probe(Ok((
+            PathBuf::from("C:/app/flow_llm.dll"),
+            LlmBackend {
+                backend: "CPU".into(),
+                device: "CPU".into(),
+                gpu_error: None,
+            },
+        )));
+        assert!(!cpu.gpu && cpu.error.is_none());
+        let none = LlmBackendView::from_probe(Err(LlamaLoadError::PluginNotFound { tried: vec!["x: gone".into()] }));
+        assert!(!none.gpu && none.plugin.is_none());
+        assert!(none.error.unwrap().contains("plugin not found"));
+        // A missing plugin is reported, not cached as "CPU".
+        let v = llm_backend_probe(Some("/nonexistent/flow_llm_vulkan.dll"));
+        assert!(!v.gpu && v.plugin.is_none() && v.error.is_some());
+        let j = serde_json::to_value(&gpu).unwrap();
+        assert_eq!(j["gpu"], true);
+        assert!(j.get("error").is_none());
+    }
+
+    #[test]
+    fn ready_status_says_where_cleanup_runs() {
+        let st = LlmStatus::Ready {
+            path: "m.gguf".into(),
+            plugin: "flow_llm_vulkan.dll".into(),
+            load_ms: 3,
+            backend: Some(Box::new(flow_core::llama::LlmBackend {
+                backend: "Vulkan".into(),
+                device: "iGPU".into(),
+                gpu_error: None,
+            })),
+        };
+        let j = serde_json::to_value(&st).unwrap();
+        assert_eq!(j["backend"]["backend"], "Vulkan");
+        assert_eq!(j["backend"]["device"], "iGPU");
+        let old = LlmStatus::Ready {
+            path: "m.gguf".into(),
+            plugin: "flow_llm.dll".into(),
+            load_ms: 3,
+            backend: None,
+        };
+        assert!(serde_json::to_value(&old).unwrap().get("backend").is_none());
     }
 
     #[test]
@@ -1532,6 +1680,23 @@ mod tests {
             panic!("loaded a nonexistent plugin")
         };
         assert!(matches!(st, LlmStatus::PluginMissing { .. }), "{st:?}");
+    }
+
+    #[test]
+    fn default_llm_is_the_1_5b_unless_only_the_old_0_5b_is_there() {
+        let dir = std::env::temp_dir().join(format!("flow-default-llm-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // Nothing there: the 1.5B (what the "not found" message names).
+        assert_eq!(default_llm_in(&dir), dir.join(DEFAULT_LLM_FILE));
+        // Only the 0.5B (the default before): keep using it.
+        std::fs::write(dir.join(LEGACY_LLM_FILE), b"x").unwrap();
+        assert_eq!(default_llm_in(&dir), dir.join(LEGACY_LLM_FILE));
+        // Both: the 1.5B.
+        std::fs::write(dir.join(DEFAULT_LLM_FILE), b"x").unwrap();
+        assert_eq!(default_llm_in(&dir), dir.join(DEFAULT_LLM_FILE));
+        assert!(LEGACY_LLM_FILE.contains("0.5b") && DEFAULT_LLM_FILE.contains("1.5b"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

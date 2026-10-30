@@ -195,7 +195,8 @@ pub struct Prefs {
     /// default (DECISIONS D5): deterministic post-processing always runs.
     pub llm_enabled: bool,
     /// GGUF instruct model; `None` = `%APPDATA%\FlowClone\models\`
-    /// `qwen2.5-0.5b-instruct-q4_k_m.gguf` (D11). Never downloaded.
+    /// `qwen2.5-1.5b-instruct-q4_k_m.gguf`, or the older 0.5B default when
+    /// only that file is there (D11). Never downloaded automatically.
     pub llm_model_path: Option<String>,
     /// Explicit `flow_llm.dll`; `None` = next to the exe (the shipped layout).
     pub llm_lib_path: Option<String>,
