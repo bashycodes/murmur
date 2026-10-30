@@ -143,6 +143,12 @@ pub struct Entry {
     /// (`null` unless `route` is `cloud`).
     pub stt_model: Option<String>,
     pub stt_cost_usd: Option<flow_core::Usd>,
+    /// D37: language sent to the engine (`null` = auto-detect) and where
+    /// it came from: `keyboard` (the foreground window's layout), `fixed`
+    /// (Settings → Languages) or `auto`. Android writes the same keys
+    /// (`phone` instead of `auto` there).
+    pub language: Option<String>,
+    pub language_source: Option<String>,
 }
 
 /// A non-dictation line (`"kind": "event"`): engine load, server probe,
@@ -799,6 +805,8 @@ pub(crate) mod tests {
             "guard_detail",
             "stt_model",
             "stt_cost_usd",
+            "language",
+            "language_source",
         ];
         want.sort();
         assert_eq!(keys, want);

@@ -196,6 +196,10 @@ impl Platform for WinPlatform {
         paste::win::copy_text(text)
     }
 
+    fn keyboard_language(&self) -> Option<String> {
+        crate::keyboard_language::win::foreground_language().map(String::from)
+    }
+
     fn focus_target(&self) -> Option<paste::FocusTarget> {
         use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
         let (hwnd, exe, _) = uia::foreground_app();
@@ -1524,6 +1528,14 @@ async fn dev_test_connection(
         .map_err(|e| e.to_string())
 }
 
+/// D37: Settings → Languages "Keyboard language · now: Hebrew": the
+/// language of the foreground window's layout (Settings itself while it
+/// is open), `None` when unknown.
+#[tauri::command]
+fn keyboard_language() -> Option<String> {
+    crate::keyboard_language::win::foreground_language().map(String::from)
+}
+
 #[tauri::command]
 async fn dev_test_session(app: AppHandle) -> Result<SessionTest, String> {
     let state = app.state::<AppState>();
@@ -2386,6 +2398,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_prefs,
+            keyboard_language,
             set_prefs,
             list_microphones,
             get_model_status,
