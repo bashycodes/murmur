@@ -28,7 +28,7 @@ const OUT_QUEUE: usize = 256;
 enum Event {
     Leased(u64, Result<Lease, LeaseError>),
     Result(u64, Box<CommitResult>),
-    /// A text-only cleanup finished (D35).
+    /// A text-only cleanup finished (D36).
     Cleaned(Cleaned),
 }
 
@@ -311,7 +311,7 @@ impl Conn {
         }
     }
 
-    /// D35 text-only cleanup, independent of the session: lease a worker
+    /// D36 text-only cleanup, independent of the session: lease a worker
     /// (queueing like a session), run its LLM on the request off the async
     /// threads, answer `cleaned` with the same `id`.
     fn clean(&mut self, id: u64, req: CleanRequest) {

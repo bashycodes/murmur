@@ -73,7 +73,7 @@ pub fn context(ctx: &FieldContext) -> Result<(), String> {
     Ok(())
 }
 
-/// Reject a text-only cleanup request (D35) over the server limits.
+/// Reject a text-only cleanup request (D36) over the server limits.
 pub fn clean(req: &flow_core::cleanup::CleanRequest) -> Result<(), String> {
     if req.text.len() > flow_protocol::MAX_CLEAN_TEXT_BYTES {
         return Err(format!(

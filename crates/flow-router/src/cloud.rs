@@ -135,7 +135,7 @@ pub enum CleanupRoute {
     Local,
     /// OpenRouter chat completions.
     Cloud,
-    /// The configured flow-server's LLM (D35, text-only `clean`), whatever
+    /// The configured flow-server's LLM (D36, text-only `clean`), whatever
     /// route transcribed the dictation.
     Server,
 }

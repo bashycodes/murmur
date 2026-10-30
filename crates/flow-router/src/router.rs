@@ -163,7 +163,7 @@ struct State {
     /// Shared with the cleanup gate (one budget for both uses).
     cloud_usage: Arc<Mutex<CloudUsage>>,
     cloud_adapters: Vec<String>,
-    /// The cleanup plan installed on in-process engines (D28; D35: the
+    /// The cleanup plan installed on in-process engines (D28; D36: the
     /// whole cleanup order as a chain, always set once refreshed).
     cleanup_plan: Option<CleanupPlan>,
     /// Command Mode's plan: the D28 local/cloud rule (no server), only
@@ -266,10 +266,10 @@ struct Hop {
 
 struct Active {
     cfg: SessionConfig,
-    /// What the server route is sent (D35): `cfg`, or `cfg` with
+    /// What the server route is sent (D36): `cfg`, or `cfg` with
     /// `cleanup_level: none` when another engine cleans first.
     remote_cfg: SessionConfig,
-    /// D35: the server cleans its own session (first available cleaner).
+    /// D36: the server cleans its own session (first available cleaner).
     server_cleans: bool,
     /// Backend currently fed with audio; `None` = the session is dead.
     engine: Option<Arc<dyn Backend>>,
@@ -352,11 +352,11 @@ pub struct Router {
     /// Cloud cleanup checks (D28); its own lock, never taken while it
     /// waits on `state`.
     gate: Arc<Gate>,
-    /// Server cleanup hop (D35); its own lock, a leaf like the gate's.
+    /// Server cleanup hop (D36); its own lock, a leaf like the gate's.
     server_clean: Arc<ServerClean>,
 }
 
-/// Every engine in the cleanup order is switched off (D35): the LLM step
+/// Every engine in the cleanup order is switched off (D36): the LLM step
 /// is refused up front, so only the deterministic cleanup runs.
 struct NoCleanup;
 
@@ -380,7 +380,7 @@ impl Cleaner for NoCleanup {
     }
 }
 
-/// The session config the server route gets (D35): unchanged when the
+/// The session config the server route gets (D36): unchanged when the
 /// server cleans, else without its LLM step (the client cleans).
 fn remote_cfg(cfg: &SessionConfig, server_cleans: bool) -> SessionConfig {
     let mut c = cfg.clone();
@@ -542,7 +542,7 @@ impl Router {
         }
         let (backend, server) = {
             let mut st = self.state.lk();
-            // D35: also when the server only cleans (its first `clean`
+            // D36: also when the server only cleans (its first `clean`
             // would otherwise pay the handshake out of the LLM budget).
             if (!self.routes(&st).contains(&Route::Server) && self.server_clean.backend().is_none())
                 || !st.cfg.server.is_configured()
@@ -566,7 +566,7 @@ impl Router {
             Ok(()) => true,
             Err(e) => {
                 st.circuit.record_failure(e.kind, Instant::now());
-                // D35: the server cleanup hop skips it too, instead of
+                // D36: the server cleanup hop skips it too, instead of
                 // spending the next dictation's LLM budget connecting.
                 self.server_clean
                     .st
@@ -717,11 +717,11 @@ impl Router {
     }
 
     /// Point the server cleanup hop at the remote backend of the current
-    /// server config, or switch it off (D35): wanted when `server` is in
+    /// server config, or switch it off (D36): wanted when `server` is in
     /// the cleanup order, a server is configured and this build has remote
     /// support.
     fn refresh_server_clean(&self, st: &mut State) {
-        // Explicitly listed only: an empty (pre-D35) order never sends
+        // Explicitly listed only: an empty (pre-D36) order never sends
         // text to the server outside its own sessions.
         let wanted = self.remote_factory.is_some()
             && st.cfg.server.is_configured()
@@ -740,7 +740,7 @@ impl Router {
     }
 
     /// The dictation cleaner for an engine with built-in cleaner `base`
-    /// (D35): the cleanup order as a [`ChainCleaner`] of the on-device LLM
+    /// (D36): the cleanup order as a [`ChainCleaner`] of the on-device LLM
     /// (`base`, when loaded), the server (when wanted; not with
     /// `skip_server`) and the cloud gate (when wanted), tried in order.
     /// Nothing listed but a `base` loaded: [`NoCleanup`] (the user switched
@@ -769,7 +769,7 @@ impl Router {
         })
     }
 
-    /// Does the server clean the dictations it transcribes (D35)? Yes when
+    /// Does the server clean the dictations it transcribes (D36)? Yes when
     /// it is the first engine in the cleanup order that is available now
     /// (on-device LLM loaded; cloud cleanup allowed and not refused;
     /// server cleanup wanted with a closed circuit and an LLM, or not yet
@@ -777,7 +777,7 @@ impl Router {
     /// server skips its LLM and the client cleans the transcript.
     fn server_cleans(&self, st: &State) -> bool {
         if st.cfg.cleanup_order.is_empty() {
-            // Pre-D35: the server cleans its own sessions.
+            // Pre-D36: the server cleans its own sessions.
             return true;
         }
         let local = st.warm_local().and_then(|l| l.llm_cleaner()).is_some();
@@ -796,7 +796,7 @@ impl Router {
     }
 
     /// The cleaner that re-cleans a server-route result on the client
-    /// (D35), or `None` when the server's own result stands: the server
+    /// (D36), or `None` when the server's own result stands: the server
     /// cleaned (or skipped an already clean text), or there is nothing to
     /// clean. When the server was meant to clean but could not (no LLM,
     /// timeout, error) the rest of the order (without the server) cleans.
@@ -820,7 +820,7 @@ impl Router {
             )
         };
         if cfg.cleanup_order.is_empty() {
-            // Pre-D35: the server's result stands.
+            // Pre-D36: the server's result stands.
             return None;
         }
         Some(self.plan(&cfg, a.server_cleans)(base))
@@ -1779,7 +1779,7 @@ impl Router {
     /// buffered while a helper thread loads the on-device engine, then it
     /// is replayed (the same machinery as a mid-session failover). The
     /// routes after the client stay fallbacks if the load fails.
-    /// `remote`: the server route's config and whether it cleans (D35).
+    /// `remote`: the server route's config and whether it cleans (D36).
     #[allow(clippy::too_many_arguments)]
     fn start_cold(
         &self,
@@ -1980,7 +1980,7 @@ impl Router {
             EngineKind::Cloud => {
                 let base = st.cloud.as_ref().map_or(6000, |(v, _)| v.1.timeout_base_ms);
                 // D28: the cloud cleanup has its own timeout.
-                // D35: the whole cleanup chain may run (one budget per
+                // D36: the whole cleanup chain may run (one budget per
                 // engine in the order).
                 let llm = self.cleanup_budget_ms(&st, cfg.llm_timeout_ms);
                 let d = Duration::from_millis(base + audio_ms / 2 + llm);
@@ -1992,7 +1992,7 @@ impl Router {
     }
 
     /// Time the cleanup chain may take: one `session_ms` per on-device /
-    /// server hop, the cloud cleanup timeout for the cloud (D35).
+    /// server hop, the cloud cleanup timeout for the cloud (D36).
     fn cleanup_budget_ms(&self, st: &State, session_ms: u64) -> u64 {
         let cloud = self.cleanup_factory.is_some() && st.cfg.cloud_cleanup_wanted();
         let server = self.server_clean.backend().is_some();
@@ -2010,7 +2010,7 @@ impl Router {
         ms.max(session_ms)
     }
 
-    /// A remote/cloud backend produced the (final) result. D35: a server
+    /// A remote/cloud backend produced the (final) result. D36: a server
     /// result is re-cleaned on the client when another engine comes first
     /// in the cleanup order, or the server could not clean it.
     fn finish_remote(&self, a: &Active, mut r: CommitResult) -> CommitResult {
@@ -2242,7 +2242,7 @@ impl Router {
 
 /// The failover itself (helper thread): start the next usable hop, replay
 /// the buffer into it (checking every push), set the last context.
-/// `cfgs`: (the session config, what the server route gets, D35).
+/// `cfgs`: (the session config, what the server route gets, D36).
 fn run_switch(
     mut hops: VecDeque<Hop>,
     buf: Vec<i16>,

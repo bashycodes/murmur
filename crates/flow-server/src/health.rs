@@ -22,7 +22,7 @@ pub(crate) fn hello_ok(state: &AppState, proto: u32) -> flow_protocol::HelloOk {
         busy: state.pool.busy(),
         max_samples: state.cfg.max_session_samples() as u64,
         features: std::iter::once(flow_protocol::FEATURE_SEGMENTS)
-            // D35: text-only cleanup needs a loaded LLM.
+            // D36: text-only cleanup needs a loaded LLM.
             .chain(state.pool.llm.then_some(flow_protocol::FEATURE_CLEAN))
             .map(String::from)
             .collect(),

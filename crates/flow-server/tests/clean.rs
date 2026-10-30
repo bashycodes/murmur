@@ -1,4 +1,4 @@
-//! D35 (server side): text-only `clean` requests.
+//! D36 (server side): text-only `clean` requests.
 
 mod common;
 

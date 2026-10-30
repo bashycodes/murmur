@@ -44,7 +44,7 @@ struct State {
     close_reason: Option<String>,
     pongs: Vec<u64>,
     last_busy: Option<u32>,
-    /// D35 `cleaned` answers by request id, until taken.
+    /// D36 `cleaned` answers by request id, until taken.
     cleaned: HashMap<u64, Cleaned>,
 }
 
@@ -427,7 +427,7 @@ impl Conn {
         }
     }
 
-    /// Send a D35 `clean` request and wait for its `cleaned` answer.
+    /// Send a D36 `clean` request and wait for its `cleaned` answer.
     pub fn clean(
         &self,
         id: u64,

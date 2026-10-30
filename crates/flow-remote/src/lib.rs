@@ -64,9 +64,9 @@ struct Inner {
     /// review C4) and whether it was cancelled.
     committing: Mutex<Option<Committing>>,
     next_sid: AtomicU64,
-    /// D35 `clean` request ids.
+    /// D36 `clean` request ids.
     next_clean: AtomicU64,
-    /// The `hello_ok` of the last connection (D35 feature check).
+    /// The `hello_ok` of the last connection (D36 feature check).
     hello: Mutex<Option<flow_protocol::HelloOk>>,
 }
 
@@ -384,7 +384,7 @@ impl Backend for RemoteBackend {
         self.inner.hello.lock().unwrap().clone()
     }
 
-    /// D35: on the warm connection (independent of a session on it).
+    /// D36: on the warm connection (independent of a session on it).
     fn clean_text(
         &self,
         req: &flow_core::cleanup::CleanRequest,

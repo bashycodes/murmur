@@ -53,7 +53,7 @@ additive core fields need no protocol change. The server never sets
 | S→C | `{"t":"cancelled","sid":7}` | |
 | C→S | `{"t":"ping","n":3}` | Application-level health ping |
 | S→C | `{"t":"pong","n":3,"busy":0}` | `busy` = leased workers |
-| C→S | `{"t":"clean","id":4,"req":<CleanRequest>}` | D35 text-only AI cleanup, outside any session (needs `hello_ok.features` ∋ `"clean"`) |
+| C→S | `{"t":"clean","id":4,"req":<CleanRequest>}` | D36 text-only AI cleanup, outside any session (needs `hello_ok.features` ∋ `"clean"`) |
 | S→C | `{"t":"cleaned","id":4,"text":"…","llm_ms":640,"queue_ms":0,"model":"…"}` | Answer to `clean` with the same `id`: `text` on success, else `error` (`llm_timeout`, `llm_error: <code>`, `no_llm`, `busy`, `too_large`, `server_error`) |
 | S→C | `{"t":"error","sid":7,"code":"…","message":"…","fatal":false}` | `sid` omitted for connection-level errors. `fatal:true` = the server closes after sending |
 
@@ -62,7 +62,7 @@ additive core fields need no protocol change. The server never sets
 * No dictionary or `learn_edit` sync: the dictionary travels in every
   `start.config`; `learn_edit` runs on the client. The server keeps no
   per-user state.
-* Text-only cleanup (D35): `<CleanRequest>` = `{text, level, style, ctx:
+* Text-only cleanup (D36): `<CleanRequest>` = `{text, level, style, ctx:
   <FieldContext>, dictionary, language?, timeout_ms, prompt: "v2"|"v4c"}`
   (`flow_core::cleanup::CleanRequest`), the dictation's raw text and the
   inputs the client's prompt builder would use, already narrowed to what the
@@ -160,7 +160,7 @@ and `core` = the plain product version are informational only.
   when the core stops the job.
 * A session leases a worker at `start` and returns it at `result`,
   `cancelled` or disconnect.
-* `clean` (D35) leases a worker like a session (queued up to
+* `clean` (D36) leases a worker like a session (queued up to
   `queue_timeout_ms`, `busy` when the queue is full), runs the worker's LLM
   on the full-scope prompt built from the request (V2 or V4c, the language
   hint, the dictionary) for at most `timeout_ms`, and returns the worker. The

@@ -112,14 +112,14 @@ pub struct HelloOk {
 /// [`HelloOk::features`] value for pause-segmented decoding (D22).
 pub const FEATURE_SEGMENTS: &str = "segments";
 /// [`HelloOk::features`] value: the server answers text-only cleanup
-/// requests ([`ClientMsg::Clean`], D35). Advertised only when it has an
+/// requests ([`ClientMsg::Clean`], D36). Advertised only when it has an
 /// LLM loaded.
 pub const FEATURE_CLEAN: &str = "clean";
 
 /// Largest `text` a [`ClientMsg::Clean`] may carry (bytes).
 pub const MAX_CLEAN_TEXT_BYTES: usize = 32 * 1024;
 
-/// Answer to a [`ClientMsg::Clean`] (D35): the model's text, or why there
+/// Answer to a [`ClientMsg::Clean`] (D36): the model's text, or why there
 /// is none. The client's core judges the text with its own guard, as for
 /// any cleaner, so the server does not.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -198,7 +198,7 @@ pub enum ClientMsg {
         #[serde(default)]
         n: u64,
     },
-    /// Text-only AI cleanup (D35), independent of any session: answered
+    /// Text-only AI cleanup (D36), independent of any session: answered
     /// with [`ServerMsg::Cleaned`] carrying the same `id`. Only sent to a
     /// server whose `hello_ok.features` lists [`FEATURE_CLEAN`].
     Clean {
@@ -238,7 +238,7 @@ pub enum ServerMsg {
         busy: u32,
     },
     Error(ErrorMsg),
-    /// Answer to [`ClientMsg::Clean`] (D35).
+    /// Answer to [`ClientMsg::Clean`] (D36).
     Cleaned(Cleaned),
 }
 
