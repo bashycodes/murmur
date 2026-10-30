@@ -17,6 +17,7 @@
     "allow-history-clear",
     "allow-history-copy",
     "allow-history-repaste",
+    "allow-history-retry",
     "allow-insights-get",
     "allow-insights-reset",
     "allow-clipboard-copy",

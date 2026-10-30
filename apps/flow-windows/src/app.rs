@@ -236,6 +236,14 @@ impl Platform for WinPlatform {
         let _ = self.app.emit_to(SETTINGS, "history:changed", ());
     }
 
+    fn retry_finished(&self, row: i64, result: &Result<(), String>) {
+        let _ = self.app.emit_to(
+            SETTINGS,
+            "history:retry",
+            serde_json::json!({ "id": row, "error": result.as_ref().err() }),
+        );
+    }
+
     fn insights_changed(&self) {
         let _ = self.app.emit_to(SETTINGS, "insights:changed", ());
     }
@@ -445,7 +453,9 @@ fn save_prefs(app: &AppHandle, state: &AppState, mut prefs: Prefs) -> Result<(),
     }
     sync_on_demand(state, &prefs);
     if let Some(h) = &state.history {
-        let _ = h.lock().unwrap().prune(prefs.retention, history::now_ms());
+        let g = h.lock().unwrap();
+        let _ = g.prune(prefs.retention, history::now_ms());
+        let _ = g.prune_audio(prefs.retry_audio_keep);
     }
     let pending = {
         let mut s = state.suggestions.lock().unwrap();
@@ -475,12 +485,30 @@ fn history_list(
     limit: Option<usize>,
 ) -> Result<Vec<history::Item>, String> {
     let retention = state.prefs.read().unwrap().retention;
-    let rows = history_db(&state)?
-        .lock()
-        .unwrap()
+    let h = history_db(&state)?.lock().unwrap();
+    let rows = h
         .list(&query, limit.unwrap_or(200), retention, history::now_ms())
         .map_err(|e| e.to_string())?;
-    Ok(rows.into_iter().map(history::Item::from).collect())
+    rows.into_iter()
+        .map(|e| h.item(e).map_err(|e| e.to_string()))
+        .collect()
+}
+
+/// Re-transcribe row `id`'s kept recording with today's settings (never
+/// pastes). Returns at once; `history:retry` {id, error} reports the end.
+#[tauri::command]
+fn history_retry(state: tauri::State<'_, AppState>, id: i64) -> Result<(), String> {
+    let has = history_db(&state)?
+        .lock()
+        .unwrap()
+        .has_audio(id)
+        .map_err(|e| e.to_string())?;
+    if !has {
+        return Err(crate::controller::RETRY_GONE.into());
+    }
+    let tx = state.input.get().ok_or("dictation is not running yet")?;
+    tx.send(Input::Retry { row: id })
+        .map_err(|_| "dictation is not running".to_string())
 }
 
 #[tauri::command]
@@ -825,7 +853,11 @@ fn model_catalog(state: tauri::State<'_, AppState>) -> Vec<crate::model_download
 /// pressed Download). Progress arrives as `model:download` events; on
 /// `done` the prefs point the local engine at it and it loads.
 #[tauri::command]
-fn model_download_start(app: AppHandle, state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
+fn model_download_start(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
     #[cfg(feature = "download")]
     {
         use crate::model_download::{self as md, Progress, State, Stop};
@@ -855,7 +887,11 @@ fn model_download_start(app: AppHandle, state: tauri::State<'_, AppState>, id: S
                     entry.apply_to(&mut prefs, &dir);
                     match save_prefs(&app, &st, prefs) {
                         Ok(()) => end(State::Done, None, Some(path.display().to_string())),
-                        Err(e) => end(State::Error, Some(format!("downloaded, but the setting was not saved: {e}")), None),
+                        Err(e) => end(
+                            State::Error,
+                            Some(format!("downloaded, but the setting was not saved: {e}")),
+                            None,
+                        ),
                     }
                 }
                 Err(Stop::Cancelled) => end(State::Cancelled, None, None),
@@ -1150,7 +1186,10 @@ fn on_demand_spec(prefs: &Prefs, appdata: Option<&str>) -> Option<ModelSpec> {
 fn sync_on_demand(state: &AppState, prefs: &Prefs) {
     if let Some(r) = state.router.get() {
         let ad = state.appdata.as_deref();
-        r.set_on_demand_with(on_demand_spec(prefs, ad), LanguageSpec::from_prefs(prefs, ad));
+        r.set_on_demand_with(
+            on_demand_spec(prefs, ad),
+            LanguageSpec::from_prefs(prefs, ad),
+        );
     }
 }
 
@@ -2313,6 +2352,7 @@ pub fn run() {
             history_clear,
             history_copy,
             history_repaste,
+            history_retry,
             insights_get,
             insights_reset,
             clipboard_copy,

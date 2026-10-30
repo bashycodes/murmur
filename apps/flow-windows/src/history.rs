@@ -6,7 +6,14 @@
 //! plus `kind` / `original` for Command Mode rows, `route` (where the
 //! speech was turned into text) and `transform` (the transform applied),
 //! all added in place to older databases.
-//! **Audio is never stored** — there is no column for it.
+//!
+//! Retry (0.11.0, DECISIONS D35): the 16 kHz mono audio of the newest
+//! dictations only (`retry_audio_keep`, default 20; never a password
+//! field's, never a command's) sits in `history_audio`, so a row can be
+//! re-transcribed with the settings active now. Each retry adds a row to
+//! `history_versions` (version 0 = the original); the `history` row always
+//! holds the newest version, so copy / paste again / paste last / stats
+//! read it unchanged. Both go with their row (delete, retention, clear).
 //!
 //! Retention pref (`keep` / `days_30` / `days_7` / `day` = 24 h / `never`)
 //! is enforced on every
@@ -87,6 +94,52 @@ pub struct Item {
     pub final_text: String,
     /// The LLM changed the wording: "undo AI edit" has something to undo.
     pub ai_edited: bool,
+    /// The recording is still kept: the row can be retried.
+    pub has_audio: bool,
+    /// Every version once the row was retried (0 = the original, the last
+    /// = this row's text); empty = never retried.
+    pub versions: Vec<Version>,
+}
+
+/// One transcription of a row's recording (`history_versions`).
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
+pub struct Version {
+    /// 0 = the original dictation, then one per retry.
+    pub n: i64,
+    /// When this version was made (Unix ms).
+    pub ts: i64,
+    pub raw: String,
+    pub formatted: Option<String>,
+    pub pasted: Option<String>,
+    pub words: i64,
+    pub lang: Option<String>,
+    pub route: Option<String>,
+    pub transform: Option<String>,
+    pub original: Option<String>,
+    /// What the version shows (its `best_text`).
+    pub text: String,
+}
+
+/// The outcome of a retry, written over the row ([`History::apply_retry`]).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Retried {
+    pub raw: String,
+    /// The AI cleanup's text (`None` = the transcript was used as is).
+    pub formatted: Option<String>,
+    /// The auto-apply transform that ran on it: (name, its result).
+    pub transform: Option<(String, String)>,
+    pub lang: Option<String>,
+    pub route: Option<String>,
+}
+
+/// A kept recording (`history_audio`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Recording {
+    /// 16 kHz mono PCM.
+    pub pcm: Vec<i16>,
+    /// The built-in style bucket of the app at dictation time (from its
+    /// window title too, which is not kept); `None` = unknown.
+    pub bucket: Option<String>,
 }
 
 impl From<Entry> for Item {
@@ -102,8 +155,21 @@ impl From<Entry> for Item {
             entry,
             final_text,
             ai_edited,
+            has_audio: false,
+            versions: Vec::new(),
         }
     }
+}
+
+/// 16-bit little-endian bytes of `pcm` (the `history_audio.pcm` blob).
+fn pcm_bytes(pcm: &[i16]) -> Vec<u8> {
+    pcm.iter().flat_map(|s| s.to_le_bytes()).collect()
+}
+
+fn pcm_from_bytes(b: &[u8]) -> Vec<i16> {
+    b.chunks_exact(2)
+        .map(|c| i16::from_le_bytes([c[0], c[1]]))
+        .collect()
 }
 
 const COLUMNS: &str =
@@ -216,7 +282,28 @@ impl History {
                words     INTEGER NOT NULL DEFAULT 0,
                lang      TEXT
              );
-             CREATE INDEX IF NOT EXISTS history_ts ON history(ts);",
+             CREATE INDEX IF NOT EXISTS history_ts ON history(ts);
+             CREATE TABLE IF NOT EXISTS history_audio (
+               history_id INTEGER PRIMARY KEY,
+               rate       INTEGER NOT NULL DEFAULT 16000,
+               pcm        BLOB NOT NULL,
+               bucket     TEXT
+             );
+             CREATE TABLE IF NOT EXISTS history_versions (
+               id         INTEGER PRIMARY KEY AUTOINCREMENT,
+               history_id INTEGER NOT NULL,
+               n          INTEGER NOT NULL,
+               ts         INTEGER NOT NULL,
+               raw        TEXT NOT NULL DEFAULT '',
+               formatted  TEXT,
+               pasted     TEXT,
+               words      INTEGER NOT NULL DEFAULT 0,
+               lang       TEXT,
+               route      TEXT,
+               transform  TEXT,
+               original   TEXT,
+               UNIQUE (history_id, n)
+             );",
         )?;
         // Columns added after the first schema (Command Mode, route), added
         // to databases created before them.
@@ -233,7 +320,9 @@ impl History {
                 conn.execute_batch(&format!("ALTER TABLE history ADD COLUMN {col} {decl};"))?;
             }
         }
-        Ok(History { conn })
+        let h = History { conn };
+        h.drop_orphans()?;
+        Ok(h)
     }
 
     /// Delete rows older than the retention window.
@@ -245,9 +334,198 @@ impl History {
                 .execute("DELETE FROM history WHERE ts < ?1", [c])?,
         };
         if n > 0 {
+            self.drop_orphans()?;
             self.scrub();
         }
         Ok(n)
+    }
+
+    /// Recordings and versions whose row is gone go too.
+    fn drop_orphans(&self) -> rusqlite::Result<()> {
+        self.conn.execute_batch(
+            "DELETE FROM history_audio WHERE history_id NOT IN (SELECT id FROM history);
+             DELETE FROM history_versions WHERE history_id NOT IN (SELECT id FROM history);",
+        )
+    }
+
+    /// Keep the recordings of the newest `keep` rows only (0 = none).
+    pub fn prune_audio(&self, keep: u32) -> rusqlite::Result<usize> {
+        let n = self.conn.execute(
+            "DELETE FROM history_audio WHERE history_id NOT IN
+               (SELECT id FROM history ORDER BY ts DESC, id DESC LIMIT ?1)",
+            [i64::from(keep)],
+        )?;
+        if n > 0 {
+            self.scrub();
+        }
+        Ok(n)
+    }
+
+    /// Keep row `id`'s recording (16 kHz mono), then prune to the newest
+    /// `keep`. Nothing is stored when `keep` is 0 or the row is gone.
+    pub fn record_audio(
+        &self,
+        id: i64,
+        pcm: &[i16],
+        bucket: Option<&str>,
+        keep: u32,
+    ) -> rusqlite::Result<bool> {
+        if keep == 0 || pcm.is_empty() || self.get(id)?.is_none() {
+            self.prune_audio(keep)?;
+            return Ok(false);
+        }
+        self.conn.execute(
+            "INSERT OR REPLACE INTO history_audio (history_id, rate, pcm, bucket)
+             VALUES (?1, 16000, ?2, ?3)",
+            params![id, pcm_bytes(pcm), bucket],
+        )?;
+        self.prune_audio(keep)?;
+        self.has_audio(id)
+    }
+
+    pub fn has_audio(&self, id: i64) -> rusqlite::Result<bool> {
+        self.conn
+            .prepare_cached("SELECT 1 FROM history_audio WHERE history_id = ?1")?
+            .exists([id])
+    }
+
+    /// Row `id`'s kept recording.
+    pub fn audio(&self, id: i64) -> rusqlite::Result<Option<Recording>> {
+        self.conn
+            .query_row(
+                "SELECT pcm, bucket FROM history_audio WHERE history_id = ?1",
+                [id],
+                |r| {
+                    Ok(Recording {
+                        pcm: pcm_from_bytes(&r.get::<_, Vec<u8>>(0)?),
+                        bucket: r.get(1)?,
+                    })
+                },
+            )
+            .optional()
+    }
+
+    /// Every version of row `id`, oldest (0) first; empty = never retried.
+    pub fn versions(&self, id: i64) -> rusqlite::Result<Vec<Version>> {
+        let mut st = self.conn.prepare_cached(
+            "SELECT n, ts, raw, formatted, pasted, words, lang, route, transform, original
+             FROM history_versions WHERE history_id = ?1 ORDER BY n",
+        )?;
+        let rows = st.query_map([id], |r| {
+            let mut v = Version {
+                n: r.get(0)?,
+                ts: r.get(1)?,
+                raw: r.get(2)?,
+                formatted: r.get(3)?,
+                pasted: r.get(4)?,
+                words: r.get(5)?,
+                lang: r.get(6)?,
+                route: r.get(7)?,
+                transform: r.get(8)?,
+                original: r.get(9)?,
+                text: String::new(),
+            };
+            v.text = v
+                .pasted
+                .clone()
+                .or(v.formatted.clone())
+                .unwrap_or(v.raw.clone());
+            Ok(v)
+        })?;
+        rows.collect()
+    }
+
+    /// The settings History list's view of a row (retry state included).
+    pub fn item(&self, e: Entry) -> rusqlite::Result<Item> {
+        let id = e.id;
+        let mut item = Item::from(e);
+        item.has_audio = !item.entry.command && self.has_audio(id)?;
+        item.versions = self.versions(id)?;
+        Ok(item)
+    }
+
+    /// A retry of row `id` finished: the first one saves the original as
+    /// version 0; the new text becomes the next version and the row's own
+    /// text (the "pasted" text too when the original was pasted, so paste
+    /// last / copy read the newest; nothing is pasted by a retry). The
+    /// user's correction belonged to the old text and is cleared. Returns
+    /// the new version's number and the row before the retry.
+    pub fn apply_retry(
+        &mut self,
+        id: i64,
+        r: &Retried,
+        now: i64,
+    ) -> rusqlite::Result<Option<(i64, Entry)>> {
+        let Some(old) = self.get(id)? else {
+            return Ok(None);
+        };
+        let final_text = r
+            .transform
+            .as_ref()
+            .map(|(_, t)| t.clone())
+            .or(r.formatted.clone())
+            .unwrap_or(r.raw.clone());
+        // A not-pasted original stays "not pasted", unless a transform ran
+        // (its result is only reachable through `pasted`).
+        let pasted = old.pasted.is_some() || r.transform.is_some();
+        let new = Entry {
+            raw: r.raw.clone(),
+            formatted: r.formatted.clone(),
+            pasted: pasted.then(|| final_text.clone()),
+            edited: None,
+            words: word_count(r.formatted.as_deref().unwrap_or(&r.raw)),
+            lang: r.lang.clone(),
+            route: r.route.clone(),
+            transform: r.transform.as_ref().map(|(n, _)| n.clone()),
+            original: r
+                .transform
+                .as_ref()
+                .map(|_| r.formatted.clone().unwrap_or(r.raw.clone())),
+            ..old.clone()
+        };
+        let tx = self.conn.transaction()?;
+        let insert = |e: &Entry, n: i64, ts: i64| {
+            tx.execute(
+                "INSERT INTO history_versions
+                   (history_id, n, ts, raw, formatted, pasted, words, lang, route, transform, original)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                params![
+                    id, n, ts, e.raw, e.formatted, e.pasted, e.words, e.lang, e.route,
+                    e.transform, e.original
+                ],
+            )
+        };
+        let last: Option<i64> = tx.query_row(
+            "SELECT MAX(n) FROM history_versions WHERE history_id = ?1",
+            [id],
+            |r| r.get(0),
+        )?;
+        let n = match last {
+            Some(n) => n + 1,
+            None => {
+                insert(&old, 0, old.ts)?;
+                1
+            }
+        };
+        insert(&new, n, now)?;
+        tx.execute(
+            "UPDATE history SET raw = ?2, formatted = ?3, pasted = ?4, edited = NULL,
+               words = ?5, lang = ?6, route = ?7, transform = ?8, original = ?9
+             WHERE id = ?1",
+            params![
+                id,
+                new.raw,
+                new.formatted,
+                new.pasted,
+                new.words,
+                new.lang,
+                new.route,
+                new.transform,
+                new.original
+            ],
+        )?;
+        tx.commit()?;
+        Ok(Some((n, old)))
     }
 
     /// After a delete: fold the WAL into the database and truncate it, so
@@ -357,12 +635,14 @@ impl History {
         let n = self
             .conn
             .execute("DELETE FROM history WHERE id = ?1", [id])?;
+        self.drop_orphans()?;
         self.scrub();
         Ok(n > 0)
     }
 
     pub fn clear(&self) -> rusqlite::Result<usize> {
         let n = self.conn.execute("DELETE FROM history", [])?;
+        self.drop_orphans()?;
         // A full clear also returns the pages to the OS.
         let _ = self.conn.execute_batch("VACUUM;");
         self.scrub();
@@ -722,6 +1002,267 @@ mod tests {
                 "transform"
             ]
         );
+    }
+
+    fn pcm(n: usize) -> Vec<i16> {
+        (0..n).map(|i| (i as i16).wrapping_mul(37)).collect()
+    }
+
+    #[test]
+    fn audio_is_kept_for_the_newest_rows_only() {
+        let h = History::open_in_memory().unwrap();
+        let ids: Vec<i64> = (1..=4)
+            .map(|t| {
+                let id = h
+                    .record(&entry(t, "x"), Retention::Keep, 10)
+                    .unwrap()
+                    .unwrap();
+                assert!(h.record_audio(id, &pcm(320), Some("work"), 2).unwrap());
+                id
+            })
+            .collect();
+        let kept: Vec<bool> = ids.iter().map(|&i| h.has_audio(i).unwrap()).collect();
+        assert_eq!(kept, [false, false, true, true], "newest 2");
+        let rec = h.audio(ids[3]).unwrap().unwrap();
+        assert_eq!(rec.pcm, pcm(320), "PCM round-trips");
+        assert_eq!(rec.bucket.as_deref(), Some("work"));
+        // Lowering the setting prunes; 0 keeps none and stores none.
+        h.prune_audio(1).unwrap();
+        assert!(!h.has_audio(ids[2]).unwrap() && h.has_audio(ids[3]).unwrap());
+        let id = h
+            .record(&entry(9, "y"), Retention::Keep, 10)
+            .unwrap()
+            .unwrap();
+        assert!(!h.record_audio(id, &pcm(10), None, 0).unwrap());
+        assert_eq!(h.audio(ids[3]).unwrap(), None, "0 = keep none");
+        assert!(!h.record_audio(999, &pcm(10), None, 5).unwrap(), "no row");
+    }
+
+    #[test]
+    fn audio_and_versions_go_with_their_row() {
+        let mut h = History::open_in_memory().unwrap();
+        let now = 100 * DAY_MS;
+        let old = h
+            .record(&entry(now - 10 * DAY_MS, "old"), Retention::Keep, now)
+            .unwrap()
+            .unwrap();
+        let a = h
+            .record(&entry(now - 2, "a"), Retention::Keep, now)
+            .unwrap()
+            .unwrap();
+        let b = h
+            .record(&entry(now - 1, "b"), Retention::Keep, now)
+            .unwrap()
+            .unwrap();
+        for id in [old, a, b] {
+            h.record_audio(id, &pcm(16), None, 20).unwrap();
+            h.apply_retry(
+                id,
+                &Retried {
+                    raw: "again".into(),
+                    ..Retried::default()
+                },
+                now,
+            )
+            .unwrap();
+        }
+        let count = |h: &History, t: &str| -> i64 {
+            h.conn
+                .query_row(&format!("SELECT COUNT(*) FROM {t}"), [], |r| r.get(0))
+                .unwrap()
+        };
+        assert_eq!(
+            (count(&h, "history_audio"), count(&h, "history_versions")),
+            (3, 6)
+        );
+        h.prune(Retention::Days7, now).unwrap();
+        assert!(
+            !h.has_audio(old).unwrap() && h.versions(old).unwrap().is_empty(),
+            "expired"
+        );
+        assert!(h.delete(a).unwrap());
+        assert_eq!(h.audio(a).unwrap(), None, "deleted");
+        assert!(h.versions(a).unwrap().is_empty());
+        assert_eq!(
+            (count(&h, "history_audio"), count(&h, "history_versions")),
+            (1, 2)
+        );
+        h.clear().unwrap();
+        assert_eq!(
+            (count(&h, "history_audio"), count(&h, "history_versions")),
+            (0, 0)
+        );
+        assert!(
+            h.apply_retry(b, &Retried::default(), now)
+                .unwrap()
+                .is_none(),
+            "gone"
+        );
+    }
+
+    #[test]
+    fn deleted_audio_leaves_no_trace_on_disk() {
+        let dir = std::env::temp_dir().join(format!("flow-hist-audio-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("history.sqlite");
+        let h = History::open(&path).unwrap();
+        let id = h
+            .record(&entry(1, "x"), Retention::Keep, 10)
+            .unwrap()
+            .unwrap();
+        // A recognisable sample pattern ("AUDIOMARK" as PCM bytes).
+        let mark: Vec<i16> = b"AUDIOMARKAUDIOMARK"
+            .chunks_exact(2)
+            .map(|c| i16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        h.record_audio(id, &mark, None, 20).unwrap();
+        assert!(h.delete(id).unwrap());
+        assert!(!contains(&disk_bytes(&path), "AUDIOMARKAUDIOMARK"));
+        drop(h);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn retries_add_versions_and_the_row_shows_the_newest() {
+        let mut h = History::open_in_memory().unwrap();
+        let e = Entry {
+            raw: "um send it".into(),
+            formatted: Some("Send it.".into()),
+            pasted: Some("Send it.".into()),
+            edited: Some("Send it now.".into()),
+            route: Some("pc".into()),
+            lang: Some("en".into()),
+            duration_ms: 1200,
+            ..entry(5, "")
+        };
+        let id = h.record(&e, Retention::Keep, 10).unwrap().unwrap();
+        assert!(h.versions(id).unwrap().is_empty(), "never retried");
+        let r1 = Retried {
+            raw: "um send it".into(),
+            formatted: Some("Send it, please.".into()),
+            route: Some("server".into()),
+            lang: Some("en".into()),
+            ..Retried::default()
+        };
+        let (n, before) = h.apply_retry(id, &r1, 20).unwrap().unwrap();
+        assert_eq!((n, before.words), (1, 0));
+        let row = h.get(id).unwrap().unwrap();
+        assert_eq!(row.best_text(), "Send it, please.");
+        assert_eq!(row.edited, None, "the correction was of the old text");
+        assert_eq!(
+            (row.route.as_deref(), row.words, row.ts),
+            (Some("server"), 3, 5)
+        );
+        assert_eq!(row.duration_ms, 1200, "same recording");
+        // A transform that is on now runs too.
+        let r2 = Retried {
+            raw: "send it".into(),
+            formatted: None,
+            transform: Some(("Polish".into(), "Please send it.".into())),
+            ..Retried::default()
+        };
+        assert_eq!(h.apply_retry(id, &r2, 30).unwrap().unwrap().0, 2);
+        let row = h.get(id).unwrap().unwrap();
+        assert_eq!(row.best_text(), "Please send it.");
+        assert_eq!(row.original.as_deref(), Some("send it"));
+        let v = h.versions(id).unwrap();
+        assert_eq!(
+            v.iter().map(|v| (v.n, v.text.as_str())).collect::<Vec<_>>(),
+            [
+                (0, "Send it."),
+                (1, "Send it, please."),
+                (2, "Please send it.")
+            ]
+        );
+        assert_eq!((v[0].ts, v[1].ts), (5, 20));
+        assert_eq!(v[0].route.as_deref(), Some("pc"));
+        let item = h.item(row).unwrap();
+        let j = serde_json::to_value(&item).unwrap();
+        assert_eq!(j["final_text"], "Please send it.");
+        assert_eq!(j["versions"].as_array().unwrap().len(), 3);
+        assert_eq!(j["has_audio"], false);
+        // A not-pasted original stays not pasted.
+        let np = h
+            .record(
+                &Entry {
+                    pasted: None,
+                    ..entry(6, "hi")
+                },
+                Retention::Keep,
+                10,
+            )
+            .unwrap()
+            .unwrap();
+        let r3 = Retried {
+            raw: "hi there".into(),
+            ..Retried::default()
+        };
+        h.apply_retry(np, &r3, 40).unwrap();
+        let row = h.get(np).unwrap().unwrap();
+        assert_eq!((row.pasted.as_deref(), row.best_text()), (None, "hi there"));
+    }
+
+    #[test]
+    fn a_database_from_before_retry_gains_its_tables() {
+        let dir = std::env::temp_dir().join(format!("flow-hist-mig-retry-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("history.sqlite");
+        {
+            // The 0.10 schema: history only.
+            let c = Connection::open(&path).unwrap();
+            c.execute_batch(
+                "CREATE TABLE history (
+                   id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER NOT NULL,
+                   app TEXT NOT NULL DEFAULT '', url TEXT, raw TEXT NOT NULL DEFAULT '',
+                   formatted TEXT, pasted TEXT, edited TEXT,
+                   duration INTEGER NOT NULL DEFAULT 0, words INTEGER NOT NULL DEFAULT 0,
+                   lang TEXT, kind TEXT NOT NULL DEFAULT '', original TEXT, route TEXT,
+                   transform TEXT);
+                 INSERT INTO history (ts, raw, pasted) VALUES (1, 'old words', 'Old words.');",
+            )
+            .unwrap();
+        }
+        let mut h = History::open(&path).unwrap();
+        let old = h.latest(Retention::Keep, 2).unwrap().unwrap();
+        let item = h.item(old.clone()).unwrap();
+        assert!(
+            !item.has_audio && item.versions.is_empty(),
+            "old rows: no audio"
+        );
+        h.apply_retry(
+            old.id,
+            &Retried {
+                raw: "old words".into(),
+                ..Retried::default()
+            },
+            3,
+        )
+        .unwrap();
+        drop(h);
+        let h = History::open(&path).unwrap();
+        assert_eq!(h.versions(old.id).unwrap().len(), 2, "persisted");
+        drop(h);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn command_rows_offer_no_retry() {
+        let h = History::open_in_memory().unwrap();
+        let id = h
+            .record(
+                &Entry {
+                    command: true,
+                    ..entry(1, "x")
+                },
+                Retention::Keep,
+                1,
+            )
+            .unwrap()
+            .unwrap();
+        h.record_audio(id, &pcm(8), None, 20).unwrap();
+        let e = h.get(id).unwrap().unwrap();
+        assert!(!h.item(e).unwrap().has_audio);
     }
 
     #[test]

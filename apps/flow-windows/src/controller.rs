@@ -110,6 +110,9 @@ pub trait Platform: Send + Sync + 'static {
     /// `row` (the last transform) expanded as before / after (`None` =
     /// just Home).
     fn view_changes(&self, _row: Option<i64>) {}
+    /// A history retry ended: `Ok` = row `row` holds a new version, `Err`
+    /// = why not (shown on Home). Any thread.
+    fn retry_finished(&self, _row: i64, _result: &Result<(), String>) {}
 }
 
 /// Longest wait for the selection capture (UIA timeout + Ctrl+C wait).
@@ -199,6 +202,12 @@ struct SessionInfo {
     command: Option<CommandInfo>,
     /// The auto-apply transform rewrote this dictation.
     applied: Option<AppliedTransform>,
+    /// The recording, kept for History "Retry" (`None` = not kept:
+    /// `retry_audio_keep` 0 or history off).
+    audio: Option<Arc<Mutex<Vec<i16>>>>,
+    /// The app's built-in style bucket at the start (before "Style per
+    /// app"), kept with the recording for a retry.
+    base_bucket: Option<crate::core_api::StyleBucket>,
 }
 
 #[derive(Default)]
@@ -211,6 +220,8 @@ struct Shared {
     /// Last transcript (pasted or not): "paste last transcript" source when
     /// history is off/unavailable.
     last_text: Mutex<Option<String>>,
+    /// A history retry is running (one at a time).
+    retrying: AtomicBool,
 }
 
 pub struct Controller {
@@ -376,6 +387,10 @@ impl Controller {
             }
             Input::Hotkey(HotkeyAction::ViewChanges) => {
                 self.view_changes();
+                return;
+            }
+            Input::Retry { row } => {
+                self.retry(*row);
                 return;
             }
             Input::PasteFinished { session, result } => {
@@ -620,11 +635,28 @@ impl Controller {
                 route: result_route(&r),
                 transform: info.applied.as_ref().map(|a| a.name.clone()),
             };
-            let retention = self.prefs.read().unwrap().retention;
-            match h.lock().unwrap().record(&entry, retention, entry.ts) {
+            let (retention, keep) = {
+                let p = self.prefs.read().unwrap();
+                (p.retention, p.retry_audio_keep)
+            };
+            let g = h.lock().unwrap();
+            match g.record(&entry, retention, entry.ts) {
                 Ok(id) => row = id,
                 Err(e) => eprintln!("[history] {e}"),
             }
+            // Retry: the recording, never a password field's (at the start,
+            // or one the paste guard refused).
+            let guarded = paste.as_ref().err().map(String::as_str)
+                == Some(crate::paste::GuardFailure::Guarded.message());
+            let secret = info.password_at_start == Some(true) || guarded;
+            if let (Some(id), Some(audio), false) = (row, &info.audio, secret) {
+                let pcm = std::mem::take(&mut *audio.lock().unwrap());
+                let bucket = info.base_bucket.map(bucket_name);
+                if let Err(e) = g.record_audio(id, &pcm, bucket, keep) {
+                    eprintln!("[history] audio: {e}");
+                }
+            }
+            drop(g);
             self.platform.history_changed();
         }
         // A transformed paste is the AI's wording: nothing to learn from.
@@ -843,6 +875,12 @@ impl Controller {
                 let silence = self.debug_on().then(|| Arc::new(SilenceTracker::default()));
                 let gate = Arc::new(StartGate::default());
                 let pending: Arc<Mutex<Option<Vec<i16>>>> = Arc::new(Mutex::new(Some(Vec::new())));
+                // Retry: a copy of the recording, for the history row.
+                let keep_audio = (!command
+                    && self.history.is_some()
+                    && prefs.retry_audio_keep > 0
+                    && prefs.retention != crate::prefs::Retention::Never)
+                    .then(|| Arc::new(Mutex::new(Vec::new())));
                 self.shared.sessions.lock().unwrap().insert(
                     session,
                     SessionInfo {
@@ -852,6 +890,7 @@ impl Controller {
                         silence: silence.clone(),
                         styles: prefs.styles.clone(),
                         command: command.then(CommandInfo::default),
+                        audio: keep_audio.clone(),
                         ..SessionInfo::default()
                     },
                 );
@@ -921,6 +960,7 @@ impl Controller {
                     std::thread::spawn(move || {
                         if let Some(raw) = platform.snapshot_context() {
                             let mut ctx = build_field_context(&raw);
+                            let base_bucket = ctx.app_category;
                             if own_exe.as_deref() == Some(ctx.app_id.as_str()) {
                                 // Scratchpad: always style Other, not a
                                 // "Style per app" choice.
@@ -936,6 +976,7 @@ impl Controller {
                             if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
                                 i.context = Some(ctx.clone());
                                 i.password_at_start = Some(raw.is_password);
+                                i.base_bucket = Some(base_bucket);
                             }
                             if gate.wait(START_WAIT).is_ok()
                                 && shared.live.load(Ordering::SeqCst) == session
@@ -951,6 +992,11 @@ impl Controller {
                 let cap = prefs.policy().max_samples() as usize;
                 let sink: AudioSink = Box::new(move |pcm: &[i16]| {
                     samples.fetch_add(pcm.len() as u64, Ordering::Relaxed);
+                    if let Some(k) = &keep_audio {
+                        let mut k = k.lock().unwrap();
+                        let room = cap.saturating_sub(k.len());
+                        k.extend_from_slice(&pcm[..pcm.len().min(room)]);
+                    }
                     if let Some(t) = &silence {
                         t.update(pcm);
                     }
@@ -1408,6 +1454,205 @@ impl Controller {
     }
 }
 
+/// The recording of a history row is no longer kept.
+pub const RETRY_GONE: &str = "The recording of this dictation is no longer kept";
+/// Retry refused while a dictation runs (the engine serves one at a time).
+pub const RETRY_BUSY: &str = "Finish the dictation first, then retry";
+/// A second retry while one runs.
+pub const RETRY_RUNNING: &str = "A retry is already running";
+/// The retry heard nothing this time.
+pub const RETRY_EMPTY: &str = "No speech found in the recording with these settings";
+
+/// `history_audio.bucket` of a style bucket.
+fn bucket_name(b: crate::core_api::StyleBucket) -> &'static str {
+    use crate::core_api::StyleBucket;
+    match b {
+        StyleBucket::Personal => "personal",
+        StyleBucket::Work => "work",
+        StyleBucket::Email => "email",
+        StyleBucket::Other => "other",
+    }
+}
+
+/// The field context a retry of `e` runs with: the original app (and its
+/// built-in style bucket, `bucket`), with today's "Style per app" on top.
+/// No field text: it is never kept.
+fn retry_context(
+    e: &history::Entry,
+    bucket: Option<&str>,
+    prefs: &Prefs,
+    own_exe: Option<&str>,
+) -> FieldContext {
+    use crate::core_api::{AppKind, StyleBucket};
+    let url = e.url.as_deref();
+    let mut ctx = FieldContext {
+        app_id: e.app.clone(),
+        url_host: e.url.clone(),
+        app_kind: crate::context::app_kind(&e.app, url),
+        app_category: match bucket {
+            Some("personal") => StyleBucket::Personal,
+            Some("work") => StyleBucket::Work,
+            Some("email") => StyleBucket::Email,
+            Some(_) => StyleBucket::Other,
+            None => crate::context::classify(&e.app, url, ""),
+        },
+        ..FieldContext::default()
+    };
+    if own_exe == Some(e.app.as_str()) {
+        ctx.app_kind = AppKind::Other;
+        ctx.app_category = StyleBucket::Other;
+    } else {
+        crate::context::apply_bucket_override(&mut ctx, &prefs.app_buckets);
+    }
+    ctx
+}
+
+impl Controller {
+    /// History "Retry": re-run row `row`'s kept recording through the
+    /// whole pipeline with the settings active now (route, engine, model,
+    /// language, dictionary, style, AI cleanup, auto-apply transform) and
+    /// the row's original app for the style. The result becomes the row's
+    /// newest version; nothing is pasted. One at a time, never during a
+    /// dictation: a dictation started meanwhile waits for it (start_lock).
+    fn retry(&self, row: i64) {
+        let done = |r: Result<(), String>| self.platform.retry_finished(row, &r);
+        let Some(h) = self.history.clone() else {
+            return done(Err("history is unavailable".into()));
+        };
+        if self.machine.is_active() {
+            return done(Err(RETRY_BUSY.into()));
+        }
+        if self.shared.retrying.swap(true, Ordering::SeqCst) {
+            return done(Err(RETRY_RUNNING.into()));
+        }
+        let core = self.core.clone();
+        let shared = self.shared.clone();
+        let platform = self.platform.clone();
+        let prefs = self.prefs.clone();
+        let insights = self.insights.clone();
+        let own_exe = self.own_exe.clone();
+        let debug = self.debug.clone();
+        let spawned = std::thread::Builder::new()
+            .name("flow-retry".into())
+            .spawn(move || {
+                let r = {
+                    let _serial = shared.start_lock.lock().unwrap();
+                    run_retry(&*core, &h, &prefs, row, own_exe.as_deref())
+                };
+                shared.retrying.store(false, Ordering::SeqCst);
+                match &r {
+                    Ok(change) => {
+                        if let Some(s) = &insights {
+                            let mut s = s.lock().unwrap();
+                            let c = change;
+                            let routes = (c.routes.0.as_deref(), c.routes.1.as_deref());
+                            s.retried(c.day, c.old, c.new, &c.app, routes);
+                            if let Err(e) = s.save() {
+                                eprintln!("[insights] {e}");
+                            }
+                            drop(s);
+                            platform.insights_changed();
+                        }
+                        platform.history_changed();
+                    }
+                    Err(e) => {
+                        if let Some(d) = &debug {
+                            d.event("retry", e);
+                        }
+                    }
+                }
+                platform.retry_finished(row, &r.map(|_| ()));
+            });
+        if let Err(e) = spawned {
+            self.shared.retrying.store(false, Ordering::SeqCst);
+            done(Err(e.to_string()));
+        }
+    }
+}
+
+/// Insights change of a retry: the row's day, old and new words and routes.
+struct RetryWords {
+    day: flow_core::insights::LocalDate,
+    old: i64,
+    new: i64,
+    app: String,
+    routes: (Option<String>, Option<String>),
+}
+
+/// The retry itself (worker thread, under `start_lock`).
+fn run_retry(
+    core: &dyn CoreApi,
+    h: &Mutex<History>,
+    prefs: &RwLock<Prefs>,
+    row: i64,
+    own_exe: Option<&str>,
+) -> Result<RetryWords, String> {
+    let (entry, rec) = {
+        let g = h.lock().unwrap();
+        let e = g.get(row).map_err(|e| e.to_string())?;
+        let a = g.audio(row).map_err(|e| e.to_string())?;
+        match (e, a) {
+            (Some(e), Some(a)) if !e.command => (e, a),
+            _ => return Err(RETRY_GONE.into()),
+        }
+    };
+    let prefs = prefs.read().unwrap().clone();
+    core.start_session_info(prefs.session_config_for(crate::dictation::Mode::Ptt))?;
+    if prefs.use_ax_context {
+        core.set_context(retry_context(
+            &entry,
+            rec.bucket.as_deref(),
+            &prefs,
+            own_exe,
+        ));
+    }
+    for chunk in rec.pcm.chunks(1600) {
+        core.push_audio(chunk);
+    }
+    let r = core.commit();
+    match r.status {
+        CommitStatus::Error => {
+            return Err(r.error.unwrap_or_else(|| "Retry failed".into()));
+        }
+        CommitStatus::Empty => return Err(RETRY_EMPTY.into()),
+        CommitStatus::Formatted | CommitStatus::RawTranscript => {}
+    }
+    let plain = r.plain();
+    // Auto-apply, as a dictation would run it now (a failure = skipped).
+    let transform = prefs.transforms.auto_apply_item().and_then(|item| {
+        core.transform(
+            &item.transform.instruction,
+            &plain,
+            flow_core::transform::Source::Dictation,
+            flow_core::transform::AUTO_APPLY_TIMEOUT,
+        )
+        .ok()
+        .map(|t| (item.transform.name.clone(), crate::paste::plain_text(&t)))
+    });
+    let retried = history::Retried {
+        raw: r.asr_text.clone(),
+        formatted: (r.status == CommitStatus::Formatted).then(|| plain.clone()),
+        transform,
+        lang: r.language.clone(),
+        route: result_route(&r),
+    };
+    let applied = h
+        .lock()
+        .unwrap()
+        .apply_retry(row, &retried, history::now_ms())
+        .map_err(|e| e.to_string())?;
+    let Some((_, old)) = applied else {
+        return Err(RETRY_GONE.into());
+    };
+    Ok(RetryWords {
+        day: crate::insights::local_date(old.ts),
+        old: old.words,
+        new: history::word_count(&plain),
+        app: old.app,
+        routes: (old.route, retried.route),
+    })
+}
+
 /// Command Mode: the selection could not be read in time.
 pub const SELECTION_FAILED: &str = "Couldn't read the selected text";
 
@@ -1728,6 +1973,9 @@ mod tests {
         }
         fn view_changes(&self, row: Option<i64>) {
             self.push(format!("view changes {row:?}"));
+        }
+        fn retry_finished(&self, row: i64, result: &Result<(), String>) {
+            self.push(format!("retry {row} {result:?}"));
         }
     }
 
@@ -2625,6 +2873,119 @@ mod tests {
             r.c.shared.last_text.lock().unwrap().as_deref(),
             Some("[stub: 1.0 s of audio]"),
             "still the last transcript (paste-last / history)"
+        );
+    }
+
+    fn with_history(mut r: Rig) -> Rig {
+        r.c =
+            r.c.with_history(Arc::new(Mutex::new(History::open_in_memory().unwrap())));
+        r
+    }
+
+    fn kept_audio(r: &Rig, id: i64) -> Option<history::Recording> {
+        r.c.history
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .audio(id)
+            .unwrap()
+    }
+
+    /// Ask for a retry of `row` and wait for its `retry_finished`.
+    fn retry_and_wait(r: &mut Rig, row: i64) -> String {
+        r.c.handle(Input::Retry { row });
+        for _ in 0..400 {
+            if let Some(l) = r.fake.log().into_iter().find(|l| l.starts_with("retry ")) {
+                return l;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        panic!("retry never finished");
+    }
+
+    #[test]
+    fn a_dictation_keeps_its_recording_for_retry() {
+        let mut r = with_history(rig(Fake::default(), Prefs::default()));
+        dictate_then(&mut r, |_| {});
+        let e = history_latest(&r).unwrap();
+        assert_eq!(kept_audio(&r, e.id).unwrap().pcm, vec![1000; 16_000]);
+        // Keep none: nothing is stored.
+        let p = Prefs {
+            retry_audio_keep: 0,
+            ..Prefs::default()
+        };
+        let mut r = with_history(rig(Fake::default(), p));
+        dictate_then(&mut r, |_| {});
+        assert_eq!(kept_audio(&r, history_latest(&r).unwrap().id), None);
+    }
+
+    #[test]
+    fn a_password_field_keeps_no_recording() {
+        let fake = Fake {
+            focus: Mutex::new(window(1)),
+            ..Fake::default()
+        };
+        let mut r = with_history(rig(fake, Prefs::default()));
+        dictate_then(&mut r, |f| *f.password.lock().unwrap() = Some(true));
+        let e = history_latest(&r).expect("the row is kept, not pasted");
+        assert_eq!(kept_audio(&r, e.id), None);
+    }
+
+    #[test]
+    fn retry_reruns_the_recording_with_the_settings_active_now() {
+        let mut r = with_history(rig(Fake::default(), Prefs::default()));
+        dictate_then(&mut r, |_| {});
+        let row = history_latest(&r).unwrap().id;
+        let pastes = |r: &Rig| {
+            r.fake
+                .log()
+                .iter()
+                .filter(|l| l.starts_with("paste"))
+                .count()
+        };
+        assert_eq!(pastes(&r), 1);
+        // The user changes settings after the dictation.
+        {
+            let mut p = r.c.prefs.write().unwrap();
+            p.languages = vec!["de".into()];
+            p.app_buckets
+                .insert("slack".into(), crate::core_api::StyleBucket::Personal);
+        }
+        assert_eq!(retry_and_wait(&mut r, row), format!("retry {row} Ok(())"));
+        let cfg = r.core.last_config().unwrap();
+        assert_eq!(cfg.languages, ["de"], "today's language");
+        let ctx = r.core.last_context().unwrap();
+        assert_eq!(ctx.app_id, "slack.exe", "the original app");
+        assert_eq!(
+            ctx.app_category,
+            crate::core_api::StyleBucket::Personal,
+            "today's style per app"
+        );
+        assert!(ctx.before.is_empty(), "no field text is kept");
+        assert_eq!(pastes(&r), 1, "a retry never pastes");
+        let h = r.c.history.as_ref().unwrap().lock().unwrap();
+        let v = h.versions(row).unwrap();
+        assert_eq!(v.len(), 2, "original + retry");
+        assert_eq!(
+            v[1].text, "[stub: 1.0 s of audio]",
+            "the whole recording again"
+        );
+        assert!(h.has_audio(row).unwrap(), "can be retried again");
+    }
+
+    #[test]
+    fn retry_waits_its_turn_and_needs_the_recording() {
+        let mut r = with_history(rig(Fake::default(), Prefs::default()));
+        assert_eq!(
+            retry_and_wait(&mut r, 42),
+            format!("retry 42 Err({RETRY_GONE:?})")
+        );
+        r.fake.log.lock().unwrap().clear();
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        assert_eq!(
+            retry_and_wait(&mut r, 1),
+            format!("retry 1 Err({RETRY_BUSY:?})")
         );
     }
 
