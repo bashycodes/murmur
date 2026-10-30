@@ -29,7 +29,7 @@ ${group("Shortcuts", row("Push to talk", "Hold, speak, let go to paste.", key("p
 ${group("Voice", row("Microphone", "", `<select id="microphone" class="fl-select is-wide" data-save="prefs" aria-label="Microphone"></select>`) +
         row("Languages", `<span id="languages_desc"></span><span id="languages_parakeet" hidden> Parakeet only understands English; <button type="button" class="lw-link" data-go="settings-speech">switch to Whisper →</button> for other languages.</span>` +
             `<span id="languages_hebrew" class="lw-status-sub hint err" hidden>No Hebrew model is downloaded, so Hebrew uses your default speech model. <button type="button" class="lw-link" data-go="settings-speech">Download the Hebrew model →</button></span>`, `<select id="language_pick" class="fl-select lw-w160" aria-label="Language">` +
-            `<option value="">Detect automatically</option><option value="en">English</option><option value="he">Hebrew</option><option value="other">Other…</option></select>` +
+            `<option value="keyboard">Keyboard language</option><option value="">Detect automatically</option><option value="en">English</option><option value="he">Hebrew</option><option value="other">Other…</option></select>` +
             `<div class="lw-edit" data-edit="languages" id="languages_other" hidden>` +
             `<input id="languages" class="fl-input lw-edit-input" data-save="prefs" spellcheck="false" placeholder="e.g. en, de (empty = detect)" aria-label="Languages" hidden />` +
             `<button type="button" class="fl-btn fl-btn-secondary lw-edit-btn">Change</button></div>`) +

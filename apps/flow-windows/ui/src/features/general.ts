@@ -96,6 +96,7 @@ function fill(prefs: Prefs): void {
   pick("theme", typeof prefs.theme === "string" ? prefs.theme : "system", (v) => v);
   for (const e of document.querySelectorAll<HTMLElement>(".lw-edit")) showEdit(e);
   showLanguages(prefs);
+  if (prefs.keyboard_language) refreshKeyboard();
 }
 
 /** Select `value`, adding it as an option first when the list lacks it
@@ -212,18 +213,15 @@ function wireEdit(box: HTMLElement): void {
     setEditing(box, false);
     showEdit(box);
     const p = prefsStore.get();
-    if (box.dataset.edit === "languages" && p) showLanguages(p, input.value);
+    if (box.dataset.edit === "languages" && p) showLanguages(p, input.value, false);
   });
 }
 
-/** "English, German" (or "Detected automatically"), and the Parakeet
- *  note when the local engine only understands English. */
-function showLanguages(prefs: Prefs, typed?: string): void {
-  const codes = typed === undefined ? prefs.languages : typed.split(",").map((s) => s.trim()).filter(Boolean);
-  let names: string[] = codes;
+/** English names of language codes ("he" → "Hebrew"); the codes without Intl.DisplayNames. */
+function languageNames(codes: string[]): string[] {
   try {
     const dn = new Intl.DisplayNames(["en"], { type: "language" });
-    names = codes.map((c) => {
+    return codes.map((c) => {
       try {
         return dn.of(c) ?? c;
       } catch {
@@ -231,32 +229,67 @@ function showLanguages(prefs: Prefs, typed?: string): void {
       }
     });
   } catch {
-    // No Intl.DisplayNames: show the codes.
+    return codes;
   }
-  $<HTMLElement>("languages_desc").textContent = names.length ? `${names.join(", ")}.` : "Detected automatically.";
+}
+
+/** D37: the keyboard layout's language right now (`null` = unknown), as
+ *  last read; re-read each time the languages are shown. */
+let keyboardNow: string | null = null;
+
+/** "English, German" (or "Detected automatically", or D37 "Keyboard
+ *  language · now: Hebrew"), and the Parakeet note when the local engine
+ *  only understands English. */
+function showLanguages(prefs: Prefs, typed?: string, keyboard?: boolean): void {
+  const codes = typed === undefined ? prefs.languages : typed.split(",").map((s) => s.trim()).filter(Boolean);
+  const kb = keyboard ?? (typed === undefined && prefs.keyboard_language === true);
+  const names = languageNames(codes);
+  const desc = $<HTMLElement>("languages_desc");
+  if (kb) {
+    const now = keyboardNow ? languageNames([keyboardNow])[0] : "unknown";
+    const fallback = names.length ? names.join(", ") : "detected automatically";
+    desc.textContent = `Keyboard language · now: ${now}. Each dictation uses the language of the keyboard layout in the app you dictate into; an unknown layout is ${fallback}.`;
+  } else {
+    desc.textContent = names.length ? `${names.join(", ")}.` : "Detected automatically.";
+  }
   // Hebrew has its own model (D33): the English-only note doesn't apply.
-  const he = hebrewChosen(codes);
+  const he = hebrewChosen(codes) || (kb && hebrewChosen(keyboardNow ? [keyboardNow] : []));
   const heModel = hebrewReady(prefs.hebrew_model);
   $<HTMLElement>("languages_parakeet").hidden = prefs.asr_engine !== "parakeet" || (he && heModel);
   // Only once the catalogue is known (it says what is downloaded).
   $<HTMLElement>("languages_hebrew").hidden = !he || heModel || models.catalog().length === 0;
-  showLanguagePick(codes);
+  showLanguagePick(codes, kb);
 }
 
-/** The picker: Detect / English / Hebrew, or "Other…" with the code field. */
-function languagePick(codes: string[]): string {
+/** Re-read the keyboard layout's language, then show the languages again. */
+function refreshKeyboard(): void {
+  invoke<string | null>("keyboard_language")
+    .then((k) => {
+      if (k === keyboardNow) return;
+      keyboardNow = k;
+      const p = prefsStore.get();
+      if (p) showLanguages(p);
+    })
+    .catch(() => {
+      // Not available (older backend): "unknown".
+    });
+}
+
+/** The picker: Keyboard / Detect / English / Hebrew, or "Other…" with the code field. */
+function languagePick(codes: string[], keyboard: boolean): string {
+  if (keyboard) return "keyboard";
   if (codes.length === 0) return "";
   if (hebrewChosen(codes)) return "he";
   if (codes.length === 1 && codes[0].trim().toLowerCase().split(/[-_]/)[0] === "en") return "en";
   return "other";
 }
 
-function showLanguagePick(codes: string[]): void {
+function showLanguagePick(codes: string[], keyboard: boolean): void {
   const sel = $<HTMLSelectElement>("language_pick");
   const box = $<HTMLElement>("languages_other");
   // Keep "Other…" while its field is open.
   if (box.classList.contains("is-editing")) return;
-  const v = languagePick(codes);
+  const v = languagePick(codes, keyboard);
   sel.value = v;
   box.hidden = v !== "other";
 }
@@ -271,10 +304,14 @@ function pickLanguage(): void {
     return;
   }
   box.hidden = true;
-  input.value = v;
+  // Keyboard language (D37): no fixed languages behind it, so an unknown
+  // layout is detected automatically.
+  const codes = v === "keyboard" ? "" : v;
+  input.value = codes;
   input.dispatchEvent(new Event("change", { bubbles: true }));
   const p = prefsStore.get();
-  if (p) showLanguages(p, v);
+  if (p) showLanguages(p, codes, v === "keyboard");
+  if (v === "keyboard") refreshKeyboard();
 }
 
 /** The prefs fields this module owns, as the pages show them. */
@@ -298,6 +335,7 @@ export function collectGeneral(): Partial<Prefs> {
   next.microphone = $<HTMLSelectElement>("microphone").value || null;
   for (const f of BOOL_FIELDS) next[f] = $<HTMLInputElement>(f).checked;
   next.paste_method = $<HTMLSelectElement>("paste_method").value;
+  next.keyboard_language = $<HTMLSelectElement>("language_pick").value === "keyboard";
   next.languages = $<HTMLInputElement>("languages")
     .value.split(",")
     .map((s) => s.trim())
@@ -318,6 +356,10 @@ export const general: Feature = {
   init(): void {
     $<HTMLSelectElement>("asr_engine").addEventListener("change", showEngineFields);
     $<HTMLSelectElement>("language_pick").addEventListener("change", pickLanguage);
+    // D37: the layout may have changed while Settings was in the background.
+    window.addEventListener("focus", () => {
+      if (prefsStore.get()?.keyboard_language) refreshKeyboard();
+    });
     // The Hebrew hint depends on what is downloaded and the Hebrew choice.
     models.onChange(() => {
       const p = prefsStore.get();

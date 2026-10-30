@@ -23,6 +23,7 @@ pub mod history;
 pub mod hotkeys;
 pub mod input;
 pub mod insights;
+pub mod keyboard_language;
 pub mod learn;
 pub mod model_download;
 pub mod notes;

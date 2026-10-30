@@ -5,7 +5,7 @@
   const now = Date.now();
   let prefs = {
     shortcuts: { ptt: "Ctrl+Win", hands_free: "Ctrl+Win+Space", command: "Ctrl+Win+Alt", cancel: "Esc", paste_last: "Alt+Shift+Z", copy_last: "Alt+Shift+X", scratchpad: "Ctrl+Alt+N" },
-    microphone: null, languages: [], enable_sounds: true, mute_audio_while_dictating: true,
+    microphone: null, languages: [], keyboard_language: true, enable_sounds: true, mute_audio_while_dictating: true,
     launch_at_login: false, show_flow_bar_always: true, use_ax_context: true,
     cleanup_level: "light", raw_mode: false,
     styles: { personal: "casual", work: "formal", email: "formal", other: "formal" },
@@ -298,6 +298,8 @@
       window.__opened.push(id);
     },
     get_prefs: () => structuredClone(prefs),
+    // D37: the foreground layout's language; checks set window.__keyboardLanguage.
+    keyboard_language: () => (window.__keyboardLanguage === undefined ? "en" : window.__keyboardLanguage),
     set_prefs: ({ prefs: p }) => {
       transformsCheck(p.transforms);
       const reload = modelKey(p) !== modelKey(prefs);

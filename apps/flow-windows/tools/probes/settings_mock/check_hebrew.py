@@ -44,11 +44,11 @@ with sync_playwright() as p:
         pg.evaluate("window.__goPage('settings-general')")
         pg.wait_for_timeout(200)
         opts = pg.eval_on_selector_all("#language_pick option", "os => os.map(o => [o.value, o.textContent])")
-        check(tag + "picker offers Hebrew", ["he", "Hebrew"] in opts and opts[0] == ["", "Detect automatically"], str(opts))
-        check(tag + "auto-detect: no Hebrew hint", pg.input_value("#language_pick") == "" and not pg.is_visible("#languages_hebrew"))
+        check(tag + "picker offers Hebrew", ["he", "Hebrew"] in opts and opts[0] == ["keyboard", "Keyboard language"] and ["", "Detect automatically"] in opts, str(opts))
+        check(tag + "keyboard language (English now): no Hebrew hint", pg.input_value("#language_pick") == "keyboard" and not pg.is_visible("#languages_hebrew"))
         pg.select_option("#language_pick", "he")
         pg.wait_for_timeout(200)
-        check(tag + "Hebrew saved as the one language", prefs(pg)["languages"] == ["he"], str(prefs(pg)["languages"]))
+        check(tag + "Hebrew saved as the one language", prefs(pg)["languages"] == ["he"] and not prefs(pg)["keyboard_language"], str(prefs(pg)["languages"]))
         check(tag + "no Hebrew model -> hint", pg.is_visible("#languages_hebrew") and "No Hebrew model" in pg.inner_text("#languages_hebrew"))
         check(tag + "codes field stays hidden", not pg.is_visible("#languages_other"))
         if scheme == "light":
@@ -107,7 +107,7 @@ with sync_playwright() as p:
         check(tag + "no Hebrew hint for other languages", not pg.is_visible("#languages_hebrew"))
         pg.select_option("#language_pick", "")
         pg.wait_for_timeout(200)
-        check(tag + "back to detect", prefs(pg)["languages"] == [] and not pg.is_visible("#languages_other") and "Detected automatically" in pg.inner_text("#languages_desc"))
+        check(tag + "back to detect", prefs(pg)["languages"] == [] and not prefs(pg)["keyboard_language"] and not pg.is_visible("#languages_other") and "Detected automatically" in pg.inner_text("#languages_desc"))
         pg.close()
     # Zipformer Hebrew downloaded before the language-ID model came with it.
     pg = b.new_page(viewport={"width": 1280, "height": 900})

@@ -25,6 +25,8 @@ export interface Prefs {
   };
   microphone: string | null;
   languages: string[];
+  /** D37 "Keyboard language": each dictation uses the foreground window's layout language. */
+  keyboard_language?: boolean;
   enable_sounds: boolean;
   mute_audio_while_dictating: boolean;
   launch_at_login: boolean;
