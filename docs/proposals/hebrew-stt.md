@@ -33,7 +33,8 @@ English.
    language when known.
 6. **Auto-detect stays English-first.** With language = auto, dictation uses the default
    engine as today. Hebrew needs the language set to Hebrew until the language-ID task
-   (whisper LID on the first seconds) lands.
+   (whisper LID on the first seconds) lands. *Landed as H6 / D34:* with `lid_path` set,
+   auto-detect identifies the first 3 s and routes Hebrew to the Hebrew model.
 7. **Engines report the language they decoded**: Parakeet-he / zipformer-he return
    `he`, the English Parakeet keeps `en`.
 8. Paste needs no change: Windows sends one UTF-16 string (or logical-order key events),

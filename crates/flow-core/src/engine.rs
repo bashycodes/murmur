@@ -21,6 +21,7 @@ use crate::config::{
 use crate::dictionary::Dictionary;
 use crate::endpoint::{EndpointState, Endpointer};
 use crate::learn::{self, Candidate};
+use crate::lid::{self, LanguageId};
 use crate::paste::{self, PasteSegment};
 use crate::postprocess::{self, DictMatcher};
 use crate::segment::{self, SegmentParams, Segmenter};
@@ -91,6 +92,11 @@ pub struct Timings {
     /// 2026-10-24.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub peak_dbfs: Option<i32>,
+    /// H6 (D34): time spent identifying the spoken language of an
+    /// auto-detect dictation (while recording, or at commit for a short
+    /// one). Omitted when 0 (language ID off).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub lid_ms: u64,
 }
 
 fn is_zero(v: &u64) -> bool {
@@ -370,6 +376,9 @@ struct AsrRoutes {
     default: Arc<dyn AsrEngine>,
     /// `(language key, engine)`; keys as configured (`"he"`).
     by_language: Vec<(String, Arc<dyn AsrEngine>)>,
+    /// H6 (D34): identifies an auto-detect dictation's language so it can
+    /// take a `by_language` route. `None` = auto-detect uses `default`.
+    lid: Option<Arc<dyn LanguageId>>,
 }
 
 impl AsrRoutes {
@@ -377,18 +386,59 @@ impl AsrRoutes {
     /// language route: the forced language's entry, else the default
     /// engine (auto-detect included).
     fn pick(&self, cfg: &SessionConfig) -> (Arc<dyn AsrEngine>, Option<String>) {
-        let want = cfg.forced_language().and_then(primary_language);
-        let hit = want.and_then(|w| {
-            self.by_language
-                .iter()
-                .find(|(k, _)| primary_language(k).as_deref() == Some(w.as_str()))
-        });
-        match hit {
+        match cfg.forced_language().and_then(|l| self.route(l)) {
             Some((k, e)) => (e.clone(), Some(k.clone())),
             None => (self.default.clone(), None),
         }
     }
+
+    /// The `by_language` entry for `language` (matched by primary code).
+    fn route(&self, language: &str) -> Option<&(String, Arc<dyn AsrEngine>)> {
+        let w = primary_language(language)?;
+        self.by_language
+            .iter()
+            .find(|(k, _)| primary_language(k).as_deref() == Some(w.as_str()))
+    }
+
+    /// H6: true when a session must have its language identified before
+    /// decoding: auto-detect, with an identifier and a language route.
+    fn needs_lid(&self, cfg: &SessionConfig) -> bool {
+        self.lid.is_some() && !self.by_language.is_empty() && cfg.forced_language().is_none()
+    }
+
+    /// The languages an identifier chooses between: the session's own
+    /// list when it names several, else the default model's language
+    /// ([`DEFAULT_LANGUAGE`]) and every route.
+    fn lid_candidates(&self, cfg: &SessionConfig) -> Vec<String> {
+        let mut c: Vec<String> = Vec::new();
+        let listed: Vec<String> = cfg
+            .languages
+            .iter()
+            .filter_map(|l| primary_language(l))
+            .collect();
+        let src = if listed.len() >= 2 {
+            listed
+        } else {
+            std::iter::once(DEFAULT_LANGUAGE.to_string())
+                .chain(
+                    self.by_language
+                        .iter()
+                        .filter_map(|(k, _)| primary_language(k)),
+                )
+                .collect()
+        };
+        for l in src {
+            if !c.contains(&l) {
+                c.push(l);
+            }
+        }
+        c
+    }
 }
+
+/// The language of the default model as far as language ID is concerned
+/// (D34): auto-detect is English-first (D33 decision 6).
+const DEFAULT_LANGUAGE: &str = "en";
 
 /// Build the engine for one model. `language` is the language the model
 /// is configured for (`None` = the default model), reported by engines
@@ -447,6 +497,27 @@ fn load_asr(
             ))
         }
     })
+}
+
+/// The language identifier of `cfg` ([`ModelConfig::lid_model`]): `None`
+/// unless `lid_path` is set and a language model is configured (D34).
+fn load_lid(cfg: &ModelConfig) -> Result<Option<Arc<dyn LanguageId>>, CoreError> {
+    let Some(path) = cfg.lid_model() else {
+        return Ok(None);
+    };
+    #[cfg(feature = "whisper")]
+    {
+        require_file(path)?;
+        let lid = crate::lid::WhisperLid::load(path, cfg.threads, true).map_err(CoreError::Load)?;
+        Ok(Some(Arc::new(lid)))
+    }
+    #[cfg(not(feature = "whisper"))]
+    {
+        let _ = path;
+        Err(CoreError::Load(
+            "lid_path set but built without the `whisper` feature".into(),
+        ))
+    }
 }
 
 enum Ctrl {
@@ -551,6 +622,7 @@ impl FlowCore {
         let routes = AsrRoutes {
             default: load_asr(&cfg.default_model(), cfg, None)?,
             by_language,
+            lid: load_lid(cfg)?,
         };
         Self::with_cleaner_from(cfg, routes)
     }
@@ -572,6 +644,7 @@ impl FlowCore {
             AsrRoutes {
                 default: asr,
                 by_language: Vec::new(),
+                lid: None,
             },
         )
     }
@@ -620,10 +693,24 @@ impl FlowCore {
         by_language: Vec<(String, Arc<dyn AsrEngine>)>,
         cleaner: Option<Arc<dyn Cleaner>>,
     ) -> Self {
+        Self::from_language_engines_with_lid(default, by_language, None, cleaner)
+    }
+
+    /// [`FlowCore::from_language_engines`] with a language identifier
+    /// (H6, D34): an auto-detect session with `lid` and at least one
+    /// language engine has its first [`crate::lid::LID_SAMPLES`] of speech
+    /// identified and decodes on that language's engine when there is one.
+    pub fn from_language_engines_with_lid(
+        default: Arc<dyn AsrEngine>,
+        by_language: Vec<(String, Arc<dyn AsrEngine>)>,
+        lid: Option<Arc<dyn LanguageId>>,
+        cleaner: Option<Arc<dyn Cleaner>>,
+    ) -> Self {
         Self::from_routes(
             AsrRoutes {
                 default,
                 by_language,
+                lid,
             },
             cleaner,
         )
@@ -882,6 +969,13 @@ struct Session {
     asr: Arc<dyn AsrEngine>,
     /// The language key of a per-language route (`None` = default engine).
     route_language: Option<String>,
+    /// H6 (D34): the language is not identified yet; segment decodes and
+    /// previews wait for it (they would run on the wrong engine).
+    lid_pending: bool,
+    /// Buffer length at the last language-ID speech check.
+    lid_checked: usize,
+    /// Time spent on language ID (`Timings::lid_ms`).
+    lid_ms: u64,
     consumer: rtrb::Consumer<i16>,
     buf: Vec<f32>,
     truncated: bool,
@@ -1086,6 +1180,82 @@ fn decode_piece(
     })
 }
 
+/// The pause segmenter (D22) or preview VAD a session on `asr` uses.
+fn listeners(
+    cfg: &SessionConfig,
+    asr: &dyn AsrEngine,
+) -> (Option<Segmenter>, Option<vad::StreamVad>) {
+    let seg = SegmentParams::for_session(cfg)
+        .filter(|_| asr.segmentable())
+        .map(Segmenter::new);
+    let track = cfg
+        .partial_interval_ms
+        .filter(|_| seg.is_none())
+        .map(|_| vad::StreamVad::new());
+    (seg, track)
+}
+
+/// Audio to re-check for speech before language ID gets another look
+/// while recording (keeps the VAD scan off every 10 ms tick).
+const LID_RECHECK: usize = SAMPLE_RATE / 4;
+
+/// H6 (D34): identify the session's language once [`lid::LID_SAMPLES`] of
+/// speech are in (`at_commit`: from whatever speech there is) and move the
+/// session to that language's engine when it has a route. True once
+/// decided; the session then decodes as if that language were forced.
+fn identify_language(routes: &AsrRoutes, s: &mut Session, at_commit: bool) -> bool {
+    let Some(id) = routes.lid.as_ref() else {
+        s.lid_pending = false;
+        return true;
+    };
+    if !at_commit && s.buf.len() < s.lid_checked + LID_RECHECK {
+        return false;
+    }
+    s.lid_checked = s.buf.len();
+    let range = match vad::detect(&s.buf) {
+        Some(sp) if at_commit => sp.start..sp.end.min(sp.start + lid::LID_SAMPLES),
+        Some(sp) if s.buf.len() >= sp.start + lid::LID_SAMPLES => {
+            sp.start..sp.start + lid::LID_SAMPLES
+        }
+        // No speech at commit: nothing to decode, the default engine says so.
+        None if at_commit => {
+            s.lid_pending = false;
+            return true;
+        }
+        _ => return false,
+    };
+    s.lid_pending = false;
+    let t = Instant::now();
+    let scores = id.scores(&s.buf[range], &routes.lid_candidates(&s.cfg));
+    s.lid_ms = (t.elapsed().as_millis() as u64).max(1);
+    // An identifier error leaves the dictation on the default engine.
+    let Some((key, engine)) = scores
+        .ok()
+        .and_then(|sc| lid::choose(&sc, DEFAULT_LANGUAGE))
+        .and_then(|l| routes.route(&l))
+    else {
+        return true;
+    };
+    let was_segmentable = s.asr.segmentable();
+    s.asr = engine.clone();
+    s.route_language = Some(key.clone());
+    s.cfg.languages = vec![key.clone()];
+    if engine.segmentable() != was_segmentable {
+        // Nothing was decoded yet; rebuild the listeners over the audio so far.
+        let (mut seg, mut track) = listeners(&s.cfg, &*s.asr);
+        if let Some(sg) = seg.as_mut() {
+            sg.push(&s.buf);
+        }
+        if let Some(t) = track.as_mut() {
+            for &v in &s.buf {
+                t.sample(v);
+            }
+        }
+        (s.seg, s.track) = (seg, track);
+    }
+    true
+}
+
 struct Worker {
     shared: Arc<Shared>,
     routes: AsrRoutes,
@@ -1106,18 +1276,16 @@ impl Worker {
                 }) => {
                     let matcher = self.matcher_for(&cfg.dictionary);
                     let (asr, route_language) = self.routes.pick(&cfg);
-                    let seg = SegmentParams::for_session(&cfg)
-                        .filter(|_| asr.segmentable())
-                        .map(Segmenter::new);
-                    let track = cfg
-                        .partial_interval_ms
-                        .filter(|_| seg.is_none())
-                        .map(|_| vad::StreamVad::new());
+                    let lid_pending = self.routes.needs_lid(&cfg);
+                    let (seg, track) = listeners(&cfg, &*asr);
                     self.session = Some(Session {
                         id,
                         cfg: *cfg,
                         asr,
                         route_language,
+                        lid_pending,
+                        lid_checked: 0,
+                        lid_ms: 0,
                         consumer,
                         buf: Vec::new(),
                         truncated: false,
@@ -1148,6 +1316,9 @@ impl Worker {
                                 cl.cancel_prefill();
                             }
                             s.drain();
+                            if s.lid_pending {
+                                identify_language(&self.routes, &mut s, true);
+                            }
                             let r = self.finalize(s, &ctx, &abort);
                             if abort.load(Ordering::SeqCst) {
                                 CommitResult::error("cancelled")
@@ -1330,6 +1501,10 @@ impl Worker {
             return;
         };
         s.drain();
+        // H6: nothing is decoded before the language is known.
+        if s.lid_pending && !identify_language(&self.routes, s, false) {
+            return;
+        }
         // D22: closed segments first (their text is part of the result);
         // previews only cover the open one.
         if self.decode_closed_segment() || self.decode_bridge() {
@@ -1389,6 +1564,7 @@ impl Worker {
         let mut r = CommitResult::status(CommitStatus::Empty);
         r.truncated = s.truncated;
         r.timings.audio_ms = audio_ms;
+        r.timings.lid_ms = s.lid_ms;
         if s.buf.is_empty() {
             r.empty_reason = Some("no_audio".into());
             return r;
