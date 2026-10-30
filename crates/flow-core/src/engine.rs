@@ -1863,7 +1863,7 @@ fn finish_text(
         }
     }
     let tried_ai = r.cloud_fallback.is_some();
-    // D35: a cleaner known to have nothing to run counts as none.
+    // D36: a cleaner known to have nothing to run counts as none.
     let local_cleaner = local_cleaner.filter(|c| c.available());
     // D27: the deterministic layer follows `spoken_cleanup` alone.
     // `cleanup_level: none` and `raw_mode` only switch the LLM off
@@ -1937,7 +1937,7 @@ fn finish_text(
                 text = f;
                 r.status = CommitStatus::Formatted;
             }
-            // D35: refused up front by a cleaner that only now knows it
+            // D36: refused up front by a cleaner that only now knows it
             // has nothing to run (first contact with a server without an
             // LLM): as if there were no cleaner.
             CleanOutcome::Fallback(_) if r.llm.is_none() && !cl.available() => {}
@@ -1947,7 +1947,7 @@ fn finish_text(
         r.timings.llm_ms += t.elapsed().as_millis() as u64;
     }
     if tried_ai {
-        // D35: the fallback chain may have reached the user's server.
+        // D36: the fallback chain may have reached the user's server.
         let by_server = r.llm.as_ref().and_then(|l| l.engine.as_deref()) == Some("server");
         r.cleanup_route = Some(
             match (r.status == CommitStatus::Formatted, by_server) {
@@ -1980,7 +1980,7 @@ fn post(
     r
 }
 
-/// D35: run the text half of a commit again on the client: spoken cleanup,
+/// D36: run the text half of a commit again on the client: spoken cleanup,
 /// AI cleanup with `cleaner` (`None` = the deterministic text) and
 /// post-processing, from `r.asr_text`. For a result that a server
 /// transcribed without its own LLM (`cleanup_level: none`) while the

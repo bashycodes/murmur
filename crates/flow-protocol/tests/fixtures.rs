@@ -68,7 +68,7 @@ fn commit_result() -> CommitResult {
     r
 }
 
-/// A text-only cleanup request (D35), as the client's prompt builder
+/// A text-only cleanup request (D36), as the client's prompt builder
 /// records it.
 fn clean_request() -> CleanRequest {
     let p = flow_core::cleanup::build_prompt_scoped(
@@ -347,10 +347,10 @@ fn unknown_fields_are_ignored() {
     assert!(matches!(m, ServerMsg::Result { .. }));
 }
 
-/// D35 is additive: an old server's hello (no `clean` feature) parses with
+/// D36 is additive: an old server's hello (no `clean` feature) parses with
 /// no features, and a `clean` with a partial request gets core defaults.
 #[test]
-fn d35_clean_is_additive() {
+fn d36_clean_is_additive() {
     let hello: ServerMsg =
         serde_json::from_str(&std::fs::read_to_string(dir().join("server_hello_ok.json")).unwrap())
             .unwrap();

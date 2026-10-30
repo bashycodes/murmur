@@ -547,9 +547,9 @@ fn default_cleanup_timeout_is_2500_ms() {
 
 // ---- routes ---------------------------------------------------------------------
 
-/// D35: with the server first in the cleanup order, a server-route
+/// D36: with the server first in the cleanup order, a server-route
 /// dictation is cleaned in its own session and never reaches the cloud
-/// (cloud first: see `d35_cleanup_order.rs`).
+/// (cloud first: see `d36_cleanup_order.rs`).
 #[test]
 fn server_first_cleans_in_session_and_never_uses_cloud_cleanup() {
     let server = Arc::new(Server {
@@ -622,7 +622,7 @@ fn cloud_stt_backend_gets_the_cleanup_plan() {
         fn probe(&self) -> HealthReport {
             HealthReport::default()
         }
-        // D35: a plan is always installed; record whether it cleans
+        // D36: a plan is always installed; record whether it cleans
         // without an on-device LLM (i.e. reaches the cloud).
         fn install_cleanup(&self, p: Option<CleanupPlan>) {
             self.0

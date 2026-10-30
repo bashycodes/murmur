@@ -1,4 +1,4 @@
-//! Server cleanup hop (D35): the configured flow-server's LLM as one
+//! Server cleanup hop (D36): the configured flow-server's LLM as one
 //! [`Cleaner`] of the cleanup chain, through the remote backend's text-only
 //! `clean` request. No network code here: the backend does the talking.
 //!

@@ -28,7 +28,7 @@ pub struct CleanPrompt {
     /// The raw ASR text alone; backends size their output budget from it
     /// (03 §7.5: max tokens = 2 x input + 32).
     pub transcript: String,
-    /// D35: what the prompt was built from (text + context, already
+    /// D36: what the prompt was built from (text + context, already
     /// narrowed to the prompt's scope), so a backend that builds its own
     /// prompt (server cleanup) or a [`ChainCleaner`] hop with a narrower
     /// scope can rebuild it. `None` for prompts not built from a
@@ -36,7 +36,7 @@ pub struct CleanPrompt {
     pub source: Option<Arc<CleanRequest>>,
 }
 
-/// D35: a text-only cleanup request: everything [`build_prompt_versioned`]
+/// D36: a text-only cleanup request: everything [`build_prompt_versioned`]
 /// needs, plus the language and the time budget. The `clean` message of
 /// the server protocol carries it verbatim (`docs/protocol.md`).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -289,7 +289,7 @@ pub trait Cleaner: Send + Sync {
 
     /// The time the core gives this cleaner for a session whose
     /// `llm_timeout_ms` is `session_ms`: [`Cleaner::timeout_ms`] or the
-    /// session value. A [`ChainCleaner`] sums its hops. Additive (D35).
+    /// session value. A [`ChainCleaner`] sums its hops. Additive (D36).
     fn budget_ms(&self, session_ms: u64) -> u64 {
         self.timeout_ms().unwrap_or(session_ms)
     }
@@ -308,7 +308,7 @@ pub trait Cleaner: Send + Sync {
         None
     }
 
-    /// D35: `false` = this cleaner is known to have nothing to run (e.g. a
+    /// D36: `false` = this cleaner is known to have nothing to run (e.g. a
     /// server without an LLM): the core then skips the LLM step as if no
     /// cleaner were set, instead of reporting a refusal. Default: `true`.
     fn available(&self) -> bool {
@@ -460,7 +460,7 @@ pub fn ai_split(cl: &Arc<dyn Cleaner>) -> Option<AiParts> {
     (cl.engine() == "cloud").then(|| (cl.clone(), None))
 }
 
-/// D35: the user's cleanup order as one cleaner: hops (on-device LLM,
+/// D36: the user's cleanup order as one cleaner: hops (on-device LLM,
 /// own server, cloud) tried in order. A hop that fails — refused up front
 /// ([`CleanError::Unavailable`]), an error, or no answer within its share
 /// of the time — hands over to the next while at least
@@ -664,7 +664,7 @@ impl Cleaner for ChainCleaner {
     }
 }
 
-/// D35 server side of a text-only cleanup request: build the prompt with
+/// D36 server side of a text-only cleanup request: build the prompt with
 /// `cleaner`'s scope and run it under the request's `timeout_ms` (capped
 /// by `max_timeout_ms`). Returns the model's answer unjudged (the client's
 /// core runs the guard on it, as for any cleaner) or why there is none

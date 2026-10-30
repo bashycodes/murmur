@@ -1,4 +1,4 @@
-//! D35: the cleanup chain (`ChainCleaner`), the prompt source a server
+//! D36: the cleanup chain (`ChainCleaner`), the prompt source a server
 //! cleaner rebuilds from (`CleanRequest`), the server's `clean_text` and
 //! the client-side `refinish` of a server transcript.
 

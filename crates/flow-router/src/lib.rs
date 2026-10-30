@@ -116,12 +116,12 @@ pub struct RouterConfig {
     /// Used only when `cleanup_order` lists `cloud`. Omitted while false.
     #[serde(skip_serializing_if = "is_false")]
     pub allow_cloud_cleanup: bool,
-    /// Enabled cleanup engines in the order they are tried (D28, D35):
+    /// Enabled cleanup engines in the order they are tried (D28, D36):
     /// each dictation is cleaned by the first that can (on-device LLM
     /// loaded; server reachable with an LLM; cloud allowed, consented,
     /// keyed, in budget), falling back down the list on a failure or
     /// timeout, whatever route transcribed it. An engine not listed never
-    /// cleans. `cloud` also needs `allow_cloud_cleanup`. Empty = pre-D35
+    /// cleans. `cloud` also needs `allow_cloud_cleanup`. Empty = pre-D36
     /// (reported as `[local, server]`): on-device dictations use the
     /// on-device LLM only, server dictations the server's own; no
     /// text-only server cleanup.
@@ -314,7 +314,7 @@ impl RouterConfig {
         self.allow_cloud_cleanup && self.cleanup_order.contains(&CleanupRoute::Cloud)
     }
 
-    /// `cleanup_order`, with the empty default spelled out (D35).
+    /// `cleanup_order`, with the empty default spelled out (D36).
     pub fn effective_cleanup_order(&self) -> Vec<CleanupRoute> {
         if self.cleanup_order.is_empty() {
             vec![CleanupRoute::Local, CleanupRoute::Server]
@@ -652,14 +652,14 @@ pub struct CleanupStatus {
     pub supported: bool,
     /// Toggle on and `cloud` in `cleanup_order`.
     pub enabled: bool,
-    /// The effective cleanup order (D35: never empty).
+    /// The effective cleanup order (D36: never empty).
     pub order: Vec<CleanupRoute>,
-    /// D35: whether the configured server can clean text (`clean` in its
+    /// D36: whether the configured server can clean text (`clean` in its
     /// `hello_ok.features`); `None` = not known yet (no connection) or no
     /// server configured. Additive.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_llm: Option<bool>,
-    /// D35: the server cleanup circuit, when `server` is in the order and a
+    /// D36: the server cleanup circuit, when `server` is in the order and a
     /// server is configured. Additive.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_circuit: Option<CircuitStatus>,
@@ -747,12 +747,12 @@ pub trait Backend: Send + Sync {
     fn llm_cleaner(&self) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
         None
     }
-    /// D35 (remote): the server's `hello_ok` from the current or last
+    /// D36 (remote): the server's `hello_ok` from the current or last
     /// connection, `None` before any. Default: none.
     fn server_hello(&self) -> Option<flow_protocol::HelloOk> {
         None
     }
-    /// D35 (remote): text-only cleanup on the server (`clean` → `cleaned`),
+    /// D36 (remote): text-only cleanup on the server (`clean` → `cleaned`),
     /// blocking until the answer or `deadline`. Default: unsupported.
     fn clean_text(
         &self,

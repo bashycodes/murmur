@@ -1,4 +1,4 @@
-//! D35: who cleans a dictation is decided by the cleanup order
+//! D36: who cleans a dictation is decided by the cleanup order
 //! {local, server, cloud}, independent of the STT route. A real `FlowCore`
 //! (MockAsr + fake on-device LLM) is the local route; a fake remote backend
 //! is the server (STT sessions and text-only `clean`); a fake OpenRouter
@@ -15,7 +15,7 @@ use flow_core::FlowCore;
 use flow_protocol::{Cleaned, HelloOk, FEATURE_CLEAN};
 use flow_router::*;
 
-const KEY: &str = "sk-or-LEAKCHECK-d35-0123456789";
+const KEY: &str = "sk-or-LEAKCHECK-d36-0123456789";
 const IN: &str = "the demo is on thursday right";
 const LOCAL_OUT: &str = "The demo is on Thursday right?";
 const SERVER_OUT: &str = "The demo is on Thursday, right.";
@@ -313,7 +313,7 @@ fn empty_order_means_local_then_server() {
 }
 
 #[test]
-fn empty_order_keeps_pre_d35_behaviour() {
+fn empty_order_keeps_pre_d36_behaviour() {
     // On-device dictation without a local LLM: the server is not asked.
     let k = rig_with(cfg(&[]), false);
     let r = dictate(&k.router);
