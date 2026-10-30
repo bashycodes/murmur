@@ -119,7 +119,7 @@ pub const TRANSFORM_BUDGET_CHARS: usize = 400;
 pub const GENERATE_BUDGET_CHARS: usize = 800;
 
 /// `text` repeated (newline-joined) until it is at least `min` chars.
-fn budget_source(text: &str, min: usize) -> String {
+pub(crate) fn budget_source(text: &str, min: usize) -> String {
     let n = text.chars().count().max(1);
     vec![text; min.div_ceil(n).max(1)].join("\n")
 }
@@ -264,14 +264,36 @@ pub fn run(
             max: MAX_SELECTION_CHARS,
         });
     }
-    let mut cl = cleaner.ok_or(CommandError::NoLlm)?;
-    if selected.is_some() && !cl.prompt_scope().surrounding_text {
-        cl = match ai_split(&cl) {
-            Some((_, Some(local))) if local.prompt_scope().surrounding_text => local,
-            _ => return Err(CommandError::SelectionNotAllowed),
+    let cl = selection_route(cleaner, selected.is_some())?;
+    ask(cl, build_prompt(instruction, selected), selected, timeout)
+}
+
+/// The cleanup route `cleaner` narrowed for text the user selected: a
+/// cloud backend whose prompt scope forbids surrounding text is replaced
+/// by the route's on-device part (none = refused). Without a selection
+/// the route is used as is.
+pub(crate) fn selection_route(
+    cleaner: Option<Arc<dyn Cleaner>>,
+    has_selection: bool,
+) -> Result<Arc<dyn Cleaner>, CommandError> {
+    let cl = cleaner.ok_or(CommandError::NoLlm)?;
+    if has_selection && !cl.prompt_scope().surrounding_text {
+        return match ai_split(&cl) {
+            Some((_, Some(local))) if local.prompt_scope().surrounding_text => Ok(local),
+            _ => Err(CommandError::SelectionNotAllowed),
         };
     }
-    let prompt = build_prompt(instruction, selected);
+    Ok(cl)
+}
+
+/// Ask `cl` for `prompt` under a hard `timeout` and sanitise the answer
+/// against `selected` (the text it replaces).
+pub(crate) fn ask(
+    cl: Arc<dyn Cleaner>,
+    prompt: CleanPrompt,
+    selected: Option<&str>,
+    timeout: Duration,
+) -> Result<String, CommandError> {
     let deadline = Instant::now() + timeout;
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = AbortFlag(Some(cancel.clone()));
