@@ -34,6 +34,7 @@ pub mod recent_apps;
 pub mod router_adapter;
 pub mod secrets;
 pub mod shell;
+pub mod single_instance;
 pub mod sounds;
 pub mod suggestions;
 pub mod transforms;
