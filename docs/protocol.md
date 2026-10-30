@@ -61,6 +61,14 @@ additive core fields need no protocol change. The server never sets
   `start.config`; `learn_edit` runs on the client. The server keeps no
   per-user state.
 * `ModelConfig` (model paths, threads) is server configuration only.
+* Language routing (D33): a session whose `config.languages` is one forced
+  language (`["he"]`, `["he-IL"]`, `["iw"]`) decodes on the server's model
+  for that language when it has one; `hello_ok.languages` lists those keys
+  (e.g. `"languages":["he"]`, omitted when none). Every other session,
+  `["auto"]` included, uses `asr_backend`/`asr_model`. The language the
+  engine decoded comes back as `result.language` (`"he"` from the Hebrew
+  model). A server without a model for the forced language still answers,
+  on its default model.
 
 ### 3.1 Server limits
 

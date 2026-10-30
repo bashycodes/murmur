@@ -892,6 +892,9 @@ symbol changes.
   one upload at commit, C5).
 * `HelloOk.features` (`["segments"]` from this server on; omitted = none). Router-internal; old
   clients ignore it (`fixtures/server_hello_ok_features.json`).
+* `HelloOk.languages` (2026-10-30, D33): the language keys with their own server model
+  (`["he"]`; omitted = none). A session with that forced language decodes on it
+  (`fixtures/server_hello_ok_languages.json`, `docs/protocol.md` §3).
 * `CommitResult.timings` gains `wait_ms`, `segments`, `pre_asr_ms` (omitted when 0;
   `fixtures/server_result_segmented.json`). The server's `result` log line now has
   `asr_audio_ms`, `wait_ms`, `segments`, `pre_asr_ms`.

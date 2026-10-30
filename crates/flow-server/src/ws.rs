@@ -516,8 +516,9 @@ impl Conn {
         };
         let (sid, peer, started) = (s.sid, self.peer, s.started);
         let (queue_ms, start_to_commit_ms) = (s.queue_ms, s.start_to_commit_ms);
-        let asr = self.state.pool.asr_backend.clone();
-        let model = self.state.pool.asr_model.clone();
+        // The model that decoded this session (its language route, D33).
+        let (asr, model) = self.state.pool.asr_for(s.cfg.forced_language());
+        let (asr, model) = (asr.to_string(), model.to_string());
         let r = r.clone();
         tokio::task::spawn_blocking(move || {
             let rec = crate::capture::Record {
@@ -596,6 +597,7 @@ fn log_result(
         speech_ms = t.speech_ms,
         peak_dbfs = t.peak_dbfs,
         status = ?r.status,
+        language = r.language.as_deref(),
         empty_reason = r.empty_reason.as_deref().unwrap_or(""),
         fallback_reason = r.fallback_reason.as_deref().unwrap_or(""),
         "result"
@@ -652,6 +654,8 @@ mod tests {
         assert!(line.contains("peak_dbfs=-2"), "{line}");
         assert!(line.contains("start_to_commit_ms=7400"), "{line}");
         assert!(!line.contains("Some("), "{line}");
+        r.language = Some("he".into());
+        assert!(captured(&r).contains("language=\"he\""));
     }
 
     #[test]
@@ -660,6 +664,7 @@ mod tests {
         assert!(line.contains(" result"), "{line}");
         assert!(!line.contains("speech_ms"), "{line}");
         assert!(!line.contains("peak_dbfs"), "{line}");
+        assert!(!line.contains("language"), "{line}");
         assert!(!line.contains("None"), "{line}");
     }
 }

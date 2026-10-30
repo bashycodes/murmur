@@ -25,6 +25,18 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   default one. Dictionary words are passed as hotwords, which fix the spelling
   of words the model already hears. Builds without the `parakeet` feature
   report a load error for it, as they do for Parakeet.
+- **Server: Hebrew.** flow-server can load a Hebrew model next to English
+  Parakeet: `[model.languages.he]` in its config (example in
+  `crates/flow-server/dist/config.example.toml`, guide in
+  `docs/server-setup.md`). Sessions whose language is set to Hebrew decode on
+  it and return `"language":"he"`; everything else, auto-detect included,
+  stays on the default model. `hello_ok` / `/v1/health` list the server's
+  languages (`"languages":["he"]`, a new optional field), and the `result`
+  log line and debug capture record the language and the model that decoded.
+- **`tools/fetch-models.sh --hebrew`** downloads the 69 MiB Hebrew zipformer
+  (pinned revision, SHA-256 checked, already-verified files skipped);
+  `--hebrew-parakeet` the 642 MiB Parakeet-he alternative. `FLOW_MODELS_DIR`
+  picks the destination.
 
 ## [0.9.1] - 2026-10-30
 
