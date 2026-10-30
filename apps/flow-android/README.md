@@ -31,7 +31,7 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
   provisioned at `~/.gradle/jdks/`; on other machines the foojay resolver provisions it.
 - `local.properties` (git-ignored) holds `sdk.dir=~/Android/Sdk`.
 - Without `app/src/<flavour>/jniLibs/arm64-v8a/libflow_ffi.so` the APK still builds and runs. The
-  main screen then says the native engine is unavailable, and dictation shows an
+  Permissions page then says the native engine is unavailable, and dictation shows an
   "engine unavailable" bubble error instead of crashing. **Settings → Mock engine** swaps in
   `FakeFlowCore`, which inserts a fixed sentence, so the shell can be tested on a device
   without the .so or a model.
@@ -88,7 +88,7 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
   (`partial_interval_ms` 1500, polled every 250 ms) plus "can't hear you" after 3 s of
   leading silence and "no speech detected" on EMPTY. Wispr has neither.
 - LLM cleanup is opt-in (default off), with a 3 s budget on Android (desktop 1.5 s). If the
-  plugin or GGUF fails to load, dictation keeps working ASR-only and the main screen says why.
+  plugin or GGUF fails to load, dictation keeps working ASR-only and the Permissions page says why.
 - Snippet expansions may be up to 2000 characters (Wispr: 60).
 - The cap is configurable (1–20 min, default 5) and warns 61 s / stops 1 s before the cap.
 - A blank transcript is treated as empty. Browser+GO never un-hides a password field.
