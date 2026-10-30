@@ -93,7 +93,8 @@ function amount(v) {
     const n = typeof v === "number" ? v : Number(String(v ?? "").replace(/[^0-9.]/g, ""));
     return Number.isFinite(n) ? n : 0;
 }
-function showOr(v) {
+/** Show an OrView everywhere (also used by the AI cleanup page's cleanup order). */
+export function showOr(v) {
     $("or_warnings").replaceChildren(...v.warnings.map((w) => el("li", "", w)));
     $("or_notice_box").hidden = !v.notice;
     $("or_notice").textContent = v.notice ?? "";
@@ -117,7 +118,6 @@ function showOr(v) {
     const c = v.cleanup;
     $("or_cleanup_allow").checked = c.allow;
     $("or_cleanup_consent").textContent = consentLine(c.consent_at_ms, c.consent, "dictated text");
-    $("or_cleanup_order").value = c.order[0] === "local" ? "local,cloud" : "cloud,local";
     const spent = c.status.month_cost_usd ? `${money(c.status.month_cost_usd)} so far this month` : "";
     showModelRow("or_cleanup", c.model, v.cleanup_model_info, spent);
     $("or_cleanup_box").classList.toggle("lw-dim", !c.allow);
@@ -129,7 +129,9 @@ function showOr(v) {
     showCleanupStatus(c.status);
     const short = (id) => id.split("/").pop() ?? id;
     $("or_used_stt").textContent = s.allow ? `Sends audio · ${short(s.model)}` : `Would send audio · ${short(s.model)}`;
-    $("or_used_cleanup").textContent = `${c.allow ? "Sends" : "Would send"} text · ${short(c.model)}${c.allow ? ` · ${c.order[0] === "local" ? "after this PC" : "first, then this PC"}` : ""}`;
+    // D36: OpenRouter's place among the engines that are on.
+    const firstOn = c.engines.find((e) => e.enabled)?.route;
+    $("or_used_cleanup").textContent = `${c.allow ? "Sends" : "Would send"} text · ${short(c.model)}${c.allow ? ` · ${firstOn === "cloud" ? "first" : "as a fallback"}` : ""}`;
     setBadge("or_used_stt_badge", s.allow);
     setBadge("or_used_cleanup_badge", c.allow);
     $("or_used_stt_link").textContent = s.allow ? "Manage →" : "Set up →";
@@ -413,7 +415,7 @@ async function orApplyCleanup(consent) {
     const form = {
         allow: $("or_cleanup_allow").checked,
         consent,
-        order: $("or_cleanup_order").value.split(","),
+        // The order is the AI cleanup page's (dev_cleanup_set_engines): kept.
         sort: $("or_cleanup_sort").value,
         timeout_ms: Number.isFinite(t) ? Math.min(8000, Math.max(800, t)) : 2500,
         send_surrounding_text: $("or_cleanup_send_surrounding_text").checked,
@@ -651,7 +653,6 @@ function wire() {
     $("or_stt_test").addEventListener("click", () => void orTestStt());
     $("or_cleanup_allow").addEventListener("change", () => void orCleanupToggled());
     for (const id of [
-        "or_cleanup_order",
         "or_cleanup_sort",
         "or_cleanup_timeout_ms",
         "or_cleanup_send_surrounding_text",

@@ -58,14 +58,23 @@ function cleanupLabel() {
     if (p.cleanup_level === "none")
         return [p.spoken_cleanup ? "Formatting rules only" : "Off (verbatim)", DOT.off];
     const or = views.or;
-    const cloud = !!or?.supported && or.cleanup.allow && or.cleanup.order.includes("cloud");
-    const local = !!p.llm_enabled && !!views.dev?.caps.local;
-    const orLabel = [`OpenRouter · ${shortModel(or?.cleanup.model ?? "")}`, "var(--glow-300)"];
-    const localLabel = [`This PC · ${fileStem(llm.path) || "local model"}`, DOT[llm.state] ?? DOT.off];
-    if (cloud && (!local || or?.cleanup.order[0] === "cloud"))
-        return orLabel;
-    if (local)
-        return localLabel;
+    const dv = views.dev;
+    // D36: the first engine of the cleanup order that is on (and, for the
+    // server, set up and not known to lack an AI model).
+    const engines = or?.cleanup.engines ?? [
+        { route: "local", enabled: true },
+        { route: "server", enabled: true },
+    ];
+    for (const e of engines) {
+        if (e.route === "cloud" && or?.supported && or.cleanup.allow)
+            return [`OpenRouter · ${shortModel(or.cleanup.model)}`, "var(--glow-300)"];
+        if (e.route === "local" && p.llm_enabled && dv?.caps.local)
+            return [`This PC · ${fileStem(llm.path) || "local model"}`, DOT[llm.state] ?? DOT.off];
+        if (e.route === "server" && e.enabled && dv?.caps.remote && dv.form.host && or?.cleanup.status.server_llm !== false) {
+            const h = dv.route?.health;
+            return [`Your server · ${dv.form.host}`, !h ? DOT.off : h.ok ? DOT.ready : DOT.failed];
+        }
+    }
     return ["Formatting rules only", DOT.off];
 }
 function render() {

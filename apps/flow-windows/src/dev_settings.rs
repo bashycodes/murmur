@@ -23,6 +23,13 @@
 //! OpenRouter page edits it with its own commands ([`crate::openrouter`]),
 //! and a form save keeps the stored values ([`DevSettings::keep_cloud`]).
 //! A D18 provider list on disk is migrated once ([`DevSettings::migrate_d28`]).
+//!
+//! AI cleanup (D36) is its own ordered list of all three engines
+//! ([`CleanupEngine`]: on-device LLM, your server, OpenRouter), each with an
+//! on/off flag; switched-off entries keep their place. The pre-D36 pair
+//! (`allow_cloud_cleanup` + a `[cloud, local]` order) is migrated once
+//! ([`DevSettings::migrate_d36`]). The router always gets the whole list
+//! (`cleanup_order` + `cleanup_off`).
 
 use flow_core::config::ParakeetDecoding;
 use flow_router::{CleanupRoute, CloudConfig, MigrationReport};
@@ -48,6 +55,57 @@ impl BuildCaps {
             cloud: cfg!(feature = "cloud"),
         }
     }
+}
+
+/// One entry of the D36 cleanup order: an engine and whether the user
+/// switched it on. OpenRouter's flag is the cloud-cleanup switch (it needs
+/// its own consent, [`crate::openrouter::apply_cleanup`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CleanupEngine {
+    pub route: CleanupRoute,
+    pub enabled: bool,
+}
+
+/// The D36 default: this PC → your server → OpenRouter (off until the
+/// user turns it on and consents).
+pub const DEFAULT_CLEANUP: [CleanupEngine; 3] = [
+    CleanupEngine {
+        route: CleanupRoute::Local,
+        enabled: true,
+    },
+    CleanupEngine {
+        route: CleanupRoute::Server,
+        enabled: true,
+    },
+    CleanupEngine {
+        route: CleanupRoute::Cloud,
+        enabled: false,
+    },
+];
+
+/// `list` as a full cleanup order: duplicates dropped, then each missing
+/// engine added (`server` right after `local`, the others at the end).
+pub fn full_cleanup_order(list: &[CleanupRoute]) -> Vec<CleanupRoute> {
+    let mut v: Vec<CleanupRoute> = Vec::new();
+    for r in list {
+        if DEFAULT_CLEANUP.iter().any(|e| e.route == *r) && !v.contains(r) {
+            v.push(*r);
+        }
+    }
+    if !v.contains(&CleanupRoute::Local) {
+        v.push(CleanupRoute::Local);
+    }
+    if !v.contains(&CleanupRoute::Server) {
+        let at = v
+            .iter()
+            .position(|r| *r == CleanupRoute::Local)
+            .map_or(v.len(), |i| i + 1);
+        v.insert(at, CleanupRoute::Server);
+    }
+    if !v.contains(&CleanupRoute::Cloud) {
+        v.push(CleanupRoute::Cloud);
+    }
+    v
 }
 
 /// One way to run a dictation. Order in `route_order` = preference.
@@ -133,12 +191,20 @@ pub struct DevSettings {
     /// `RouterConfig.cloud`). A schema-1 (D18 provider list) value is
     /// migrated at startup.
     pub cloud: CloudConfig,
-    /// Opt-in OpenRouter text cleanup (D28), separate from `allow_cloud`
-    /// and with its own consent. Off by default.
-    pub allow_cloud_cleanup: bool,
-    /// Cleanup engines in order (`[cloud, local]` / `[local, cloud]`);
-    /// empty = on-device LLM only.
-    pub cleanup_order: Vec<CleanupRoute>,
+    /// D36: who cleans the text, in the order tried, each engine once with
+    /// its on/off flag ([`DevSettings::cleanup`] reads it). OpenRouter's
+    /// flag is the opt-in cloud cleanup (D28, own consent). Empty = a file
+    /// from before D36 ([`DevSettings::migrate_d36`]): missing in the file
+    /// reads as empty (not the default list), so the old fields count.
+    #[serde(default)]
+    pub cleanup_engines: Vec<CleanupEngine>,
+    /// Pre-D36 `allow_cloud_cleanup`: read by the migration, never written.
+    #[serde(rename = "allow_cloud_cleanup", skip_serializing)]
+    pub legacy_allow_cloud_cleanup: bool,
+    /// Pre-D36 `cleanup_order` (`[cloud, local]` / `[local, cloud]`): read
+    /// by the migration, never written.
+    #[serde(rename = "cleanup_order", skip_serializing)]
+    pub legacy_cleanup_order: Vec<CleanupRoute>,
     /// The one-time D28 migration notice, until the user dismissed it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cloud_notice: Option<String>,
@@ -177,8 +243,9 @@ impl DevSettings {
             show_engine_badge: false,
             allow_cloud: false,
             cloud: CloudConfig::default(),
-            allow_cloud_cleanup: false,
-            cleanup_order: Vec::new(),
+            cleanup_engines: DEFAULT_CLEANUP.to_vec(),
+            legacy_allow_cloud_cleanup: false,
+            legacy_cleanup_order: Vec::new(),
             cloud_notice: None,
             debug_log: false,
             decode_while_speaking: true,
@@ -187,12 +254,14 @@ impl DevSettings {
     }
 
     /// The OpenRouter part of `saved` (both uses, consents, budget, the
-    /// pending notice): a Developer form save keeps it.
+    /// pending notice) and the D36 cleanup order: a Developer form save
+    /// keeps them.
     pub fn keep_cloud(&mut self, saved: &DevSettings) {
         self.allow_cloud = saved.allow_cloud;
         self.cloud = saved.cloud.clone();
-        self.allow_cloud_cleanup = saved.allow_cloud_cleanup;
-        self.cleanup_order = saved.cleanup_order.clone();
+        self.cleanup_engines = saved.cleanup();
+        self.legacy_allow_cloud_cleanup = false;
+        self.legacy_cleanup_order = Vec::new();
         self.cloud_notice = saved.cloud_notice.clone();
     }
 
@@ -234,6 +303,58 @@ impl DevSettings {
         rep
     }
 
+    /// The cleanup order, always all three engines once (D36). A file from
+    /// before D36 (no `cleanup_engines`) reads as migrated: the user's
+    /// cloud-vs-local order is kept, the server goes right after this PC,
+    /// and OpenRouter is on only if cloud cleanup was allowed.
+    pub fn cleanup(&self) -> Vec<CleanupEngine> {
+        if self.cleanup_engines.is_empty() {
+            let cloud = self.legacy_allow_cloud_cleanup
+                && self.legacy_cleanup_order.contains(&CleanupRoute::Cloud);
+            return full_cleanup_order(&self.legacy_cleanup_order)
+                .into_iter()
+                .map(|route| CleanupEngine {
+                    route,
+                    enabled: route != CleanupRoute::Cloud || cloud,
+                })
+                .collect();
+        }
+        let order: Vec<CleanupRoute> = self.cleanup_engines.iter().map(|e| e.route).collect();
+        full_cleanup_order(&order)
+            .into_iter()
+            .map(|route| {
+                let stored = self.cleanup_engines.iter().find(|e| e.route == route);
+                let default = DEFAULT_CLEANUP.iter().find(|e| e.route == route);
+                CleanupEngine {
+                    route,
+                    enabled: stored.or(default).is_some_and(|e| e.enabled),
+                }
+            })
+            .collect()
+    }
+
+    /// Whether the user switched `route` on in the cleanup order.
+    pub fn cleanup_on(&self, route: CleanupRoute) -> bool {
+        self.cleanup().iter().any(|e| e.route == route && e.enabled)
+    }
+
+    /// Set one engine's flag (it keeps its place).
+    pub fn set_cleanup_on(&mut self, route: CleanupRoute, on: bool) {
+        let mut v = self.cleanup();
+        for e in v.iter_mut().filter(|e| e.route == route) {
+            e.enabled = on;
+        }
+        self.cleanup_engines = v;
+    }
+
+    /// One-time D36 migration of the pre-D36 cleanup pair to the full
+    /// list ([`DevSettings::cleanup`]); idempotent. Runs on every load.
+    pub fn migrate_d36(&mut self) {
+        self.cleanup_engines = self.cleanup();
+        self.legacy_allow_cloud_cleanup = false;
+        self.legacy_cleanup_order = Vec::new();
+    }
+
     /// Full preference order: the stored list, then any route it misses.
     pub fn order(&self) -> Vec<Route> {
         let mut v: Vec<Route> = Vec::new();
@@ -267,10 +388,10 @@ impl DevSettings {
         caps.cloud && self.allow_cloud
     }
 
-    /// Cloud cleanup is switched on (build AND toggle AND `cloud` in the
+    /// Cloud cleanup is switched on (build AND OpenRouter's entry in the
     /// cleanup order); consent, key, budget and circuit are the router's.
     pub fn cleanup_effective(&self, caps: BuildCaps) -> bool {
-        caps.cloud && self.allow_cloud_cleanup && self.cleanup_order.contains(&CleanupRoute::Cloud)
+        caps.cloud && self.cleanup_on(CleanupRoute::Cloud)
     }
 
     /// Developer tab visibility (§5 "Access").
@@ -308,6 +429,26 @@ impl DevSettings {
             },
             "keep_local_warm": self.keep_local_warm,
         });
+        // D36: always the whole cleanup order, so the router never falls
+        // back to the pre-D36 rule; an engine the user or the build switched
+        // off keeps its place in `cleanup_off`.
+        let cleanup = self.cleanup();
+        let built = |r: CleanupRoute| match r {
+            CleanupRoute::Local => caps.local,
+            CleanupRoute::Server => caps.remote,
+            _ => caps.cloud,
+        };
+        j["cleanup_order"] =
+            serde_json::to_value(cleanup.iter().map(|e| e.route).collect::<Vec<_>>())
+                .expect("cleanup order serialises");
+        let off: Vec<CleanupRoute> = cleanup
+            .iter()
+            .filter(|e| !e.enabled || !built(e.route))
+            .map(|e| e.route)
+            .collect();
+        if !off.is_empty() {
+            j["cleanup_off"] = serde_json::to_value(off).expect("cleanup off serialises");
+        }
         // D18: cloud fields only in builds with the cloud client, and (like
         // the router's own serialisation) only while not default, so the
         // D17 fixtures stay byte-identical.
@@ -323,12 +464,8 @@ impl DevSettings {
             if !self.cloud.is_default() {
                 j["cloud"] = serde_json::to_value(&self.cloud).expect("CloudConfig serialises");
             }
-            if self.allow_cloud_cleanup {
+            if self.cleanup_on(CleanupRoute::Cloud) {
                 j["allow_cloud_cleanup"] = true.into();
-            }
-            if !self.cleanup_order.is_empty() {
-                j["cleanup_order"] =
-                    serde_json::to_value(&self.cleanup_order).expect("cleanup order serialises");
             }
         }
         j
@@ -614,8 +751,9 @@ impl DevForm {
             // stored values (`keep_cloud`).
             allow_cloud: false,
             cloud: CloudConfig::default(),
-            allow_cloud_cleanup: false,
-            cleanup_order: Vec::new(),
+            cleanup_engines: DEFAULT_CLEANUP.to_vec(),
+            legacy_allow_cloud_cleanup: false,
+            legacy_cleanup_order: Vec::new(),
             cloud_notice: None,
             debug_log: false,
             decode_while_speaking: self.decode_while_speaking,
@@ -995,7 +1133,9 @@ mod tests {
                            "tls_pin_sha256": null, "token": "0123456789abcdef0123",
                            "connect_timeout_ms": 2500, "commit_timeout_base_ms": 3000,
                            "health_ttl_s": 30},
-                "keep_local_warm": true
+                "keep_local_warm": true,
+                "cleanup_order": ["local", "server", "cloud"],
+                "cleanup_off": ["cloud"]
             })
         );
         let j = s.router_config_json(
@@ -1059,8 +1199,13 @@ mod tests {
         d.route_order = vec![Route::Cloud, Route::Server, Route::Client];
         d.cloud.openrouter.stt.consent_host = "openrouter.ai".into();
         d.cloud.openrouter.stt.consent_at_ms = 1000;
-        d.allow_cloud_cleanup = true;
-        d.cleanup_order = vec![CleanupRoute::Cloud, CleanupRoute::Local];
+        d.cleanup_engines = full_cleanup_order(&[CleanupRoute::Cloud, CleanupRoute::Local])
+            .into_iter()
+            .map(|route| CleanupEngine {
+                route,
+                enabled: true,
+            })
+            .collect();
         d.cloud.openrouter.cleanup.consent_host = "openrouter.ai".into();
         d.cloud.openrouter.cleanup.consent_at_ms = 2000;
         d
@@ -1069,18 +1214,18 @@ mod tests {
     #[test]
     fn cloud_is_off_by_default_and_not_in_the_router_json() {
         let d = DevSettings::for_build(BOTH);
-        assert!(!d.allow_cloud && !d.allow_cloud_cleanup && d.cloud.is_default());
+        assert!(!d.allow_cloud && !d.cleanup_on(CleanupRoute::Cloud) && d.cloud.is_default());
         assert_eq!(d.cloud.schema, 2);
         let j = d.router_config_json(BOTH, "");
-        for k in [
-            "allow_cloud",
-            "order",
-            "cloud",
-            "allow_cloud_cleanup",
-            "cleanup_order",
-        ] {
+        for k in ["allow_cloud", "order", "cloud", "allow_cloud_cleanup"] {
             assert!(j.get(k).is_none(), "{k}");
         }
+        // D36: the whole cleanup order always goes, OpenRouter switched off.
+        assert_eq!(
+            j["cleanup_order"],
+            serde_json::json!(["local", "server", "cloud"])
+        );
+        assert_eq!(j["cleanup_off"], serde_json::json!(["cloud"]));
         // A build without the cloud client never emits cloud fields.
         let on = openrouter_on();
         let no_cloud = BuildCaps {
@@ -1088,19 +1233,26 @@ mod tests {
             ..BOTH
         };
         let j = on.router_config_json(no_cloud, "");
-        for k in [
-            "allow_cloud",
-            "order",
-            "cloud",
-            "allow_cloud_cleanup",
-            "cleanup_order",
-        ] {
+        for k in ["allow_cloud", "order", "cloud", "allow_cloud_cleanup"] {
             assert!(j.get(k).is_none(), "{k}");
         }
+        assert_eq!(
+            j["cleanup_order"],
+            serde_json::json!(["cloud", "local", "server"])
+        );
+        assert_eq!(
+            j["cleanup_off"],
+            serde_json::json!(["cloud"]),
+            "not in this build"
+        );
         let j = on.router_config_json(BOTH, "");
         assert_eq!(j["order"], serde_json::json!(["cloud", "server", "client"]));
         assert_eq!(j["allow_cloud_cleanup"], true);
-        assert_eq!(j["cleanup_order"], serde_json::json!(["cloud", "local"]));
+        assert_eq!(
+            j["cleanup_order"],
+            serde_json::json!(["cloud", "local", "server"])
+        );
+        assert!(j.get("cleanup_off").is_none());
         assert_eq!(j["cloud"]["schema"], 2);
         let cfg: flow_router::RouterConfig = serde_json::from_value(j).unwrap();
         cfg.validate().unwrap();
@@ -1120,8 +1272,8 @@ mod tests {
         assert!(!s.allow_cloud, "validate alone knows nothing of OpenRouter");
         s.keep_cloud(&saved);
         assert_eq!(s.cloud, saved.cloud);
-        assert!(s.allow_cloud && s.allow_cloud_cleanup);
-        assert_eq!(s.cleanup_order, saved.cleanup_order);
+        assert!(s.allow_cloud && s.cleanup_on(CleanupRoute::Cloud));
+        assert_eq!(s.cleanup(), saved.cleanup());
         // A page that still posts the old fields cannot change them.
         let old: DevForm = serde_json::from_value(serde_json::json!({
             "allow_cloud": true,
