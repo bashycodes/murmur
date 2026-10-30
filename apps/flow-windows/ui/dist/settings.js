@@ -16,6 +16,7 @@ import { prefsStore } from "./lib/prefs-store.js";
 import { router } from "./lib/router.js";
 import { followSystemTheme } from "./lib/theme.js";
 import { views } from "./lib/views.js";
+import { onboarding } from "./onboarding/index.js";
 import { dictionaryPage, snippetsPage } from "./pages/dictionary.js";
 import { homePage } from "./pages/home.js";
 import { insightsPage } from "./pages/insights.js";
@@ -248,7 +249,7 @@ $("settings").addEventListener("click", (e) => {
         closeSettings();
 });
 document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || $("settings").hidden)
+    if (e.key !== "Escape" || $("settings").hidden || onboarding.isOpen())
         return;
     if (document.querySelector("dialog[open]"))
         return; // the dialog closes first
@@ -292,5 +293,17 @@ router.onNavigate((id, prev) => {
     for (const f of FEATURES)
         f.shown?.(id, id !== prev);
 });
+// First-run setup: over the shell until finished; Settings → General can
+// run it again. Finishing reloads every page's state from the backend.
+onboarding.init(() => void load());
+document.addEventListener("click", (e) => {
+    if (!e.target.closest("[data-run-setup]"))
+        return;
+    closeSettings();
+    void onboarding.open();
+});
 router.go("home");
-void load();
+void load().then(() => {
+    if (prefsStore.get()?.onboarded === false)
+        void onboarding.open();
+});
