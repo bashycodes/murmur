@@ -7,9 +7,19 @@
 //   %APPDATA%\FlowClone\notes\<id>.txt after a short pause and on close/quit.
 // - `?view=notes`: the Notes list (search by content, New note, Pin,
 //   Export, Delete). Opening a note navigates this window to its editor.
-// Wrapped in a function: tsc compiles all pages as one global scope.
+// Styled with the app window's tokens (theme.css + components.css), light
+// or dark like it. Wrapped in a function: tsc compiles all pages as one
+// global scope.
 (() => {
     const tauri = window.__TAURI__;
+    // Light or dark: the .lw-dark class switches every theme.css token
+    // (ui/src/lib/theme.ts does the same for the app window).
+    const dark = window.matchMedia("(prefers-color-scheme: dark)");
+    const applyTheme = () => {
+        document.documentElement.classList.toggle("lw-dark", dark.matches);
+    };
+    applyTheme();
+    dark.addEventListener("change", applyTheme);
     const params = new URLSearchParams(location.search);
     const QUICK = "scratchpad";
     const $ = (id) => document.getElementById(id);
@@ -97,7 +107,7 @@
             title.textContent = n.title;
             if (n.quick) {
                 const badge = document.createElement("span");
-                badge.className = "badge";
+                badge.className = "fl-badge fl-badge-light badge";
                 badge.textContent = "Scratchpad";
                 title.append(badge);
             }
@@ -108,7 +118,7 @@
                 bits.push(n.preview);
             meta.textContent = bits.join(" · ");
             openBtn.append(title, meta);
-            const pin = button(n.pinned ? "Unpin" : "Pin", "icon secondary pin", n.pinned ? "Unpin" : "Pin to the top", async () => {
+            const pin = button(n.pinned ? "Unpin" : "Pin", "fl-btn fl-btn-ghost fl-btn-sm pin", n.pinned ? "Unpin" : "Pin to the top", async () => {
                 try {
                     await tauri.core.invoke("note_set_pinned", { id: n.id, pinned: !n.pinned });
                 }
@@ -118,7 +128,7 @@
                 await refresh();
             });
             const exp = document.createElement("select");
-            exp.className = "export";
+            exp.className = "fl-select export";
             exp.title = "Save a copy to Downloads";
             exp.setAttribute("aria-label", "Export");
             for (const [v, t] of [["", "Export…"], ["txt", ".txt"], ["md", ".md"]]) {
@@ -142,7 +152,7 @@
             });
             li.append(openBtn, pin, exp);
             if (!n.quick) {
-                const del = button("Delete", "icon danger delete", "Delete this note", async () => {
+                const del = button("Delete", "fl-btn fl-btn-ghost fl-btn-sm lw-danger delete", "Delete this note", async () => {
                     if (armed !== n.id) {
                         armed = n.id;
                         del.textContent = "Delete?";

@@ -1,24 +1,7 @@
-/* Scratchpad window (same palette as settings.css). */
-:root {
-  --bg: #f6f6f8;
-  --card: #ffffff;
-  --fg: #16161d;
-  --muted: #6b6b78;
-  --line: #e2e2ea;
-  --accent: #7c5cff;
-  --ok: #1f9d55;
-  --err: #d64545;
-  color-scheme: light dark;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #121218;
-    --card: #1b1b23;
-    --fg: #ececf1;
-    --muted: #9a9aa8;
-    --line: #2c2c38;
-  }
-}
+/* The notes window (scratchpad.html): the Notes list and a note's editor,
+   built from the app window's tokens (theme.css) and components
+   (components.css), so it reads as part of the same app, light or dark. */
+
 html,
 body {
   height: 100%;
@@ -27,9 +10,8 @@ body {
   margin: 0;
   display: flex;
   flex-direction: column;
-  background: var(--bg);
-  color: var(--fg);
-  font: 14px/1.4 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  background: var(--background-tertiary);
+  color: var(--foreground);
 }
 [hidden] {
   display: none !important;
@@ -42,60 +24,98 @@ body {
 }
 .bar {
   display: flex;
-  gap: 8px;
+  gap: 4px;
   align-items: center;
   padding: 12px 12px 8px;
 }
+.bar-search {
+  padding-top: 0;
+}
+.spacer {
+  flex: 1;
+}
+.lw-np-title {
+  margin: 0 0 0 4px;
+  font: 400 28px/32px var(--font-serif);
+  letter-spacing: -0.04em;
+}
 #note-name {
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  min-width: 0;
+  font: 550 15px/20px var(--font-sans);
 }
 #search {
   flex: 1;
+  width: auto;
   min-width: 0;
-  font: inherit;
-  padding: 6px 10px;
-  background: var(--card);
-  color: var(--fg);
-  border: 1px solid var(--line);
-  border-radius: 6px;
 }
+.lw-danger {
+  color: var(--destructive);
+}
+.muted {
+  color: var(--foreground-tertiary);
+  font: 400 12px/20px var(--font-sans);
+}
+
+/* Notes list */
 #notes {
-  flex: 1;
+  flex: 0 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  list-style: none;
   margin: 0 12px;
   padding: 0;
+  list-style: none;
+}
+#notes:empty {
+  display: none;
 }
 #notes li {
   display: flex;
-  gap: 6px;
   align-items: center;
-  padding: 6px 8px;
-  margin-bottom: 6px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  gap: 4px;
+  padding: 4px 8px 4px 4px;
+  border-top: 1px solid var(--border);
+}
+#notes li:first-child {
+  border-top: 0;
+}
+#notes li:hover {
+  background: var(--muted-hover);
 }
 #notes li.pinned {
-  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--selected-border);
 }
 #notes button.open {
   flex: 1;
   min-width: 0;
-  text-align: left;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
   background: transparent;
-  color: var(--fg);
-  padding: 4px 6px;
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+#notes button.open:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: -2px;
 }
 #notes .title {
-  display: block;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 550;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+#notes .badge {
+  height: 20px;
+  padding: 0 6px;
+  font-size: 11px;
 }
 #notes .meta {
   display: block;
@@ -103,85 +123,61 @@ body {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-#notes .badge {
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--accent);
-  margin-left: 6px;
-}
-#notes button.icon {
+#notes .fl-btn {
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: 13px;
 }
-#notes select {
-  font: inherit;
-  font-size: 12px;
-  background: var(--line);
-  color: var(--fg);
-  border: 0;
-  border-radius: 6px;
-  padding: 4px;
+#notes select.export {
+  width: auto;
+  height: 28px;
+  padding: 4px 28px 4px 8px;
+  font-size: 13px;
+  background-position: right 6px center;
 }
 #empty {
   margin: 4px 16px;
 }
+
+/* Editor */
 textarea {
   flex: 1;
   margin: 0 12px;
-  padding: 12px 14px;
+  padding: 16px 18px;
   resize: none;
-  background: var(--card);
-  color: var(--fg);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  font: 15px/1.5 "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  color: var(--foreground);
+  font: 400 16px/24px var(--font-sans);
+}
+textarea::placeholder {
+  color: var(--foreground-tertiary);
 }
 textarea:focus {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--neutral-500);
   outline-offset: -1px;
 }
 footer {
+  margin-top: auto;
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   padding: 10px 12px 12px;
 }
-.spacer {
-  flex: 1;
+#status,
+#list-status {
+  font: 400 12px/20px var(--font-sans);
+  color: var(--foreground-tertiary);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
-.muted {
-  color: var(--muted);
-  font-size: 12px;
+#status.ok,
+#list-status.ok {
+  color: var(--success);
 }
-#status {
-  font-size: 12px;
-  color: var(--muted);
-}
-#status.ok {
-  color: var(--ok);
-}
-#status.err {
-  color: var(--err);
-}
-button {
-  font: inherit;
-  background: var(--accent);
-  color: #fff;
-  border: 0;
-  border-radius: 6px;
-  padding: 6px 14px;
-  cursor: pointer;
-}
-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-button.secondary {
-  background: var(--line);
-  color: var(--fg);
-}
-button.danger {
-  background: transparent;
-  color: var(--err);
-  border: 1px solid var(--line);
+#status.err,
+#list-status.err {
+  color: var(--destructive);
 }
