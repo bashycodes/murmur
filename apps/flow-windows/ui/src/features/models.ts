@@ -255,7 +255,10 @@ function renderSettingsRow(): void {
 // ------------------------------------------------------------ Settings → AI cleanup row
 
 /** The file the app loads when no cleanup model is set (core_adapter DEFAULT_LLM_FILE, D11). */
-const DEFAULT_LLM_FILE = "qwen2.5-0.5b-instruct-q4_k_m.gguf";
+const DEFAULT_LLM_FILE = "qwen2.5-1.5b-instruct-q4_k_m.gguf";
+/** The previous default, still loaded when it is the only one there (core_adapter LEGACY_LLM_FILE). */
+const LEGACY_LLM_FILE = "qwen2.5-0.5b-instruct-q4_k_m.gguf";
+const isFile = (c: CatalogEntry, f: string): boolean => c.dest.endsWith(`\\${f}`) || c.dest.endsWith(`/${f}`);
 /** "Deleted." after a delete, until the selection or the catalogue changes. */
 let llmNote = "";
 
@@ -305,7 +308,12 @@ export function llmInUse(c: CatalogEntry, p = prefsStore.get()): boolean {
   if (!p?.llm_enabled) return false;
   const path = p.llm_model_path?.trim();
   if (path) return path === c.dest;
-  return c.dest.endsWith(`\\${DEFAULT_LLM_FILE}`) || c.dest.endsWith(`/${DEFAULT_LLM_FILE}`);
+  // Empty = the default file, or the old default when only that one is there (core_adapter default_llm_path).
+  const list = llmModels();
+  const legacyOnly =
+    !list.some((x) => x.installed && isFile(x, DEFAULT_LLM_FILE)) &&
+    list.some((x) => x.installed && isFile(x, LEGACY_LLM_FILE));
+  return isFile(c, legacyOnly ? LEGACY_LLM_FILE : DEFAULT_LLM_FILE);
 }
 
 function renderLlmRow(): void {

@@ -231,10 +231,10 @@
       page: "https://huggingface.co/" + PH[0], dest: MODELS + "parakeet-tdt-0.6b-v3-he-int8", available: true,
       files: [hf(...PH, "encoder.int8.onnx", 653215173, "7eaf…"), hf(...PH, "decoder.int8.onnx", 12494234, "3a1d…"), hf(...PH, "joiner.int8.onnx", 7008293, "056c…"), hf(...PH, "tokens.txt", 107590, "55a9…"), LID] },
     // AI cleanup models (engine "llm", docs/findings/2026-10-30-cleanup-model-pins.md).
-    { id: "qwen2.5-0.5b-instruct-q4_k_m", title: "Qwen2.5 0.5B Instruct", desc: "Fastest · the default, but misses many fixes", engine: "llm", recommended: false, recommended_gpu: false, size: 491400032,
+    { id: "qwen2.5-0.5b-instruct-q4_k_m", title: "Qwen2.5 0.5B Instruct", desc: "Fastest · misses many fixes", engine: "llm", recommended: false, recommended_gpu: false, size: 491400032,
       page: "https://huggingface.co/" + Q05[0], dest: MODELS + "qwen2.5-0.5b-instruct-q4_k_m.gguf", available: true,
       files: [hf(...Q05, "qwen2.5-0.5b-instruct-q4_k_m.gguf", 491400032, "74a4…")] },
-    { id: "qwen2.5-1.5b-instruct-q4_k_m", title: "Qwen2.5 1.5B Instruct", desc: "More accurate · the pick without a GPU (about 1 s on a laptop CPU)", engine: "llm", recommended: true, recommended_gpu: false, size: 1117320736,
+    { id: "qwen2.5-1.5b-instruct-q4_k_m", title: "Qwen2.5 1.5B Instruct", desc: "The default · the pick without a GPU (about 1 s on a laptop CPU)", engine: "llm", recommended: true, recommended_gpu: false, size: 1117320736,
       page: "https://huggingface.co/" + Q15[0], dest: MODELS + "qwen2.5-1.5b-instruct-q4_k_m.gguf", available: true,
       files: [hf(...Q15, "qwen2.5-1.5b-instruct-q4_k_m.gguf", 1117320736, "6a1a…")] },
     // The GPU pick (docs/findings/2026-10-30-laptop-model-benchmark.md).
@@ -320,7 +320,7 @@
       status: { ...modelStatus }, hebrew: heStatus && { ...heStatus },
       default_path: "C:\\…\\ggml-base.bin", default_parakeet_dir: "C:\\…\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", models_dir: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models",
       llm: { state: "plugin_missing", path: "C:\\…\\qwen.gguf", message: "llm plugin not found (C:\\Program Files\\Murmur\\flow_llm.dll: not found)" },
-      default_llm_path: "C:\\…\\qwen2.5-0.5b-instruct-q4_k_m.gguf", llm_plugin: "flow_llm.dll",
+      default_llm_path: "C:\\…\\qwen2.5-1.5b-instruct-q4_k_m.gguf", llm_plugin: "flow_llm.dll",
     }),
     transforms_reset: () => {
       const custom = prefs.transforms.items.filter((i) => !BUILTIN_TRANSFORMS.some((b) => b.transform.id === i.transform.id));
@@ -538,7 +538,10 @@
       if (!c) throw new Error(`unknown model ${id}`);
       if (c.engine !== "llm") throw new Error("only AI cleanup models can be deleted here");
       if (dlRunning && dlRunning.id === id) throw new Error("this model is downloading; cancel it first");
-      const inUse = (prefs.llm_model_path || MODELS + "qwen2.5-0.5b-instruct-q4_k_m.gguf") === c.dest;
+      // Empty path = the 1.5B default, or the old 0.5B default when only that one is there.
+      const dflt = !dlInstalled.has("qwen2.5-1.5b-instruct-q4_k_m") && dlInstalled.has("qwen2.5-0.5b-instruct-q4_k_m")
+        ? "qwen2.5-0.5b-instruct-q4_k_m.gguf" : "qwen2.5-1.5b-instruct-q4_k_m.gguf";
+      const inUse = (prefs.llm_model_path || MODELS + dflt) === c.dest;
       if (inUse) {
         prefs = { ...prefs, llm_enabled: false, llm_model_path: null };
         window.__emit("llm:status", { state: "off" });

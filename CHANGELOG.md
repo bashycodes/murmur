@@ -30,8 +30,16 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   revision and SHA-256). The row recommends it when cleanup runs on a GPU,
   and Qwen2.5 1.5B on a CPU-only PC. On the laptop's Arc 140V iGPU it scored
   80 % on the 88-suite at p50 0.62 s
-  (`docs/findings/2026-10-30-laptop-model-benchmark.md`). The default model
-  file is still Qwen2.5 0.5B.
+  (`docs/findings/2026-10-30-laptop-model-benchmark.md`).
+
+### Changed
+
+- **Windows: the default AI cleanup model is now Qwen2.5 1.5B.** With no
+  model file set, local cleanup loads `qwen2.5-1.5b-instruct-q4_k_m.gguf`
+  instead of the 0.5B. On the 88-suite the 1.5B scores 74 % and the 0.5B
+  43 %; the 1.5B takes about 1 s (p50) on a laptop CPU. A PC that has only
+  the old 0.5B file keeps using it. Nothing is migrated or deleted, and a
+  model chosen in Settings stays as it is.
 
 ## [0.11.1] - 2026-10-30
 

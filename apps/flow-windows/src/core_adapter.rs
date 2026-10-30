@@ -16,9 +16,9 @@
 //! * The shell's §9 types are mapped onto flow-core's here (pure functions,
 //!   unit-tested), so the rest of the shell never names a flow-core type.
 //! * Default models: `%APPDATA%\FlowClone\models\ggml-base.bin` (D4 CPU
-//!   tier) and, when cleanup is on, `qwen2.5-0.5b-instruct-q4_k_m.gguf`
-//!   (D11). Threads = flow-core's default unless prefs `asr_threads` says
-//!   otherwise.
+//!   tier) and, when cleanup is on, `qwen2.5-1.5b-instruct-q4_k_m.gguf`
+//!   (D11; the 0.5B file when only that one is there). Threads =
+//!   flow-core's default unless prefs `asr_threads` says otherwise.
 
 use crate::core_api::{
     AppKind, CleanupLevel, CommitResult, CommitStatus, CoreApi, DictEntry, FieldContext,
@@ -35,8 +35,6 @@ pub const DEFAULT_MODEL_FILE: &str = "ggml-base.bin";
 /// D12: Parakeet-TDT-0.6B-v2 int8 (sherpa-onnx), a model *directory*.
 /// English only; faster and more accurate than whisper on this CPU tier.
 pub const DEFAULT_PARAKEET_DIR: &str = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
-/// D11: the 1.5 s CPU budget model. `qwen2.5-1.5b-instruct-q4_k_m.gguf` is
-/// the quality step up (8/8 vs 4/8 on the messy-dictation set, ~2x slower).
 /// The Hebrew models' folders (docs/findings/2026-10-30-hebrew-model-pins.md),
 /// the names `fetch-models.sh` and the flow-core tests use too.
 pub const ZIPFORMER_HE_DIR: &str = "zipformer2-66m-streaming-he-int8";
@@ -46,7 +44,13 @@ pub const PARAKEET_HE_DIR: &str = "parakeet-tdt-0.6b-v3-he-int8";
 pub const LID_FILE: &str = "ggml-tiny-q5_1.bin";
 /// The `languages` key of the Hebrew route (D33).
 pub const HEBREW: &str = "he";
-pub const DEFAULT_LLM_FILE: &str = "qwen2.5-0.5b-instruct-q4_k_m.gguf";
+/// D11: the cleanup model loaded when none is set. Qwen2.5 1.5B since the
+/// 2026-10-30 laptop benchmark (74 % vs 43 % for the 0.5B on the 88-suite,
+/// p50 about 1 s on a laptop CPU).
+pub const DEFAULT_LLM_FILE: &str = "qwen2.5-1.5b-instruct-q4_k_m.gguf";
+/// The default before that. A PC that has only this file in the models
+/// folder keeps loading it: nothing is migrated or deleted.
+pub const LEGACY_LLM_FILE: &str = "qwen2.5-0.5b-instruct-q4_k_m.gguf";
 /// How long a dictation started during model load waits for it. Short:
 /// `start_session` runs on the controller loop, which must stay responsive.
 pub const LOAD_WAIT: Duration = Duration::from_secs(3);
@@ -68,8 +72,20 @@ pub fn default_parakeet_dir(appdata: Option<&str>) -> PathBuf {
     models_dir(appdata).join(DEFAULT_PARAKEET_DIR)
 }
 
+/// The default cleanup model: [`DEFAULT_LLM_FILE`], or [`LEGACY_LLM_FILE`]
+/// when only that one is in the models folder.
 pub fn default_llm_path(appdata: Option<&str>) -> PathBuf {
-    models_dir(appdata).join(DEFAULT_LLM_FILE)
+    default_llm_in(&models_dir(appdata))
+}
+
+fn default_llm_in(dir: &std::path::Path) -> PathBuf {
+    let new = dir.join(DEFAULT_LLM_FILE);
+    let old = dir.join(LEGACY_LLM_FILE);
+    if !new.is_file() && old.is_file() {
+        old
+    } else {
+        new
+    }
 }
 
 /// File name of the llama.cpp plugin the shell ships next to its exe.
@@ -1664,6 +1680,23 @@ mod tests {
             panic!("loaded a nonexistent plugin")
         };
         assert!(matches!(st, LlmStatus::PluginMissing { .. }), "{st:?}");
+    }
+
+    #[test]
+    fn default_llm_is_the_1_5b_unless_only_the_old_0_5b_is_there() {
+        let dir = std::env::temp_dir().join(format!("flow-default-llm-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // Nothing there: the 1.5B (what the "not found" message names).
+        assert_eq!(default_llm_in(&dir), dir.join(DEFAULT_LLM_FILE));
+        // Only the 0.5B (the default before): keep using it.
+        std::fs::write(dir.join(LEGACY_LLM_FILE), b"x").unwrap();
+        assert_eq!(default_llm_in(&dir), dir.join(LEGACY_LLM_FILE));
+        // Both: the 1.5B.
+        std::fs::write(dir.join(DEFAULT_LLM_FILE), b"x").unwrap();
+        assert_eq!(default_llm_in(&dir), dir.join(DEFAULT_LLM_FILE));
+        assert!(LEGACY_LLM_FILE.contains("0.5b") && DEFAULT_LLM_FILE.contains("1.5b"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

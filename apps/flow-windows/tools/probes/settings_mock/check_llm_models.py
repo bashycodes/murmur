@@ -11,7 +11,9 @@ Download -> confirm dialog -> progress -> done turns local cleanup on with the
 file (prefs llm_enabled + llm_model_path) and leaves the speech model alone;
 Cancel stops a download; a second model can be downloaded and switched to with
 Use; Delete (confirmed) removes it and, when it was in use, turns local cleanup
-off. Writes shots/llm-*.png (gitignored).
+off. With no model file set, the 1.5B is the default, but a PC that
+has only the old 0.5B default keeps using that. Writes shots/llm-*.png
+(gitignored).
 """
 import pathlib
 import sys
@@ -180,6 +182,31 @@ with sync_playwright() as p:
         desc = pg.inner_text("#aieng_desc_local")
         check(tag + "ready line says it runs on the graphics chip", "graphics chip (Intel(R) Arc(TM) 140V GPU)" in desc, desc)
         pg.close()
+    # No model file set: the 1.5B is the default; only-the-0.5B keeps the 0.5B.
+    tag = "[default] "
+    pg = b.new_page(viewport={"width": 1280, "height": 900})
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(f"http://127.0.0.1:{port}/settings.html")
+    pg.wait_for_timeout(500)
+    pg.evaluate("window.__goPage('settings-cleanup')")
+    pg.wait_for_timeout(300)
+    check(tag + "model field placeholder is the 1.5B", pg.get_attribute("#llm_model_path", "placeholder").endswith("qwen2.5-1.5b-instruct-q4_k_m.gguf"))
+    clear = "(async () => { const t = window.__TAURI__.core; const p = await t.invoke('get_prefs'); p.llm_enabled = true; p.llm_model_path = null; await t.invoke('set_prefs', { prefs: p }); })()"
+    label = lambda i: pg.eval_on_selector("#llm_dl_model option[value='%s']" % i, "o => o.textContent")
+    pg.evaluate("window.__dlSteps = 3; window.__dlTickMs = 30")
+    for mid in [Q05, Q15]:
+        pg.select_option("#llm_dl_model", mid)
+        pg.wait_for_timeout(100)
+        pg.click("#llm_dl_start")
+        pg.wait_for_timeout(100)
+        pg.click("#dl_ok")
+        pg.wait_for_timeout(900)
+        pg.evaluate(clear)
+        pg.wait_for_timeout(300)
+        if mid == Q05:
+            check(tag + "only the old 0.5B there: it stays in use", "in use" in label(Q05), label(Q05))
+    check(tag + "1.5B there too: the 1.5B is in use", "in use" in label(Q15) and "in use" not in label(Q05), (label(Q05), label(Q15)))
+    pg.close()
     b.close()
     check("no page errors", not errors, "; ".join(errors[:5]))
 
