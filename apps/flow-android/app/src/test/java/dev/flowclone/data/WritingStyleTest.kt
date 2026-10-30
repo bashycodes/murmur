@@ -99,6 +99,13 @@ class WritingStyleTest {
         assertEquals(Style.CASUAL, s.personal)
     }
 
+    @Test fun styleTabCardsHaveAShortRuleAndReadWithTheExample() {
+        assertEquals(listOf("Capitals, full punctuation", "Capitals, lighter punctuation"), WritingStyle.CHOICES.take(2).map { it.summary })
+        for (c in WritingStyle.choicesFor(Style.EXCITED)) assertTrue(c.name, c.summary.isNotBlank())
+        assertEquals("Formal. Capitals, full punctuation. Example: Sounds good. See you at 7:30.", WritingStyle.CHOICES.first().cardDescription)
+        for (b in WritingStyle.BUCKETS) assertEquals(b, WritingStyle.bucket(b.category))
+    }
+
     // ---- the LLM part of a result: llm_skipped_clean is a normal outcome, not a failure ----
 
     @Test fun llmOutcomeCodesAndLabels() {

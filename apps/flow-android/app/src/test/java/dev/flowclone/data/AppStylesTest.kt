@@ -69,4 +69,28 @@ class AppStylesTest {
             WritingStyle.parseOverrides(WritingStyle.formatOverrides(WritingStyle.parseOverrides(typed).map)).map,
         )
     }
+
+    // ---- Style tab: the apps a group's style applies in ----
+
+    @Test fun inGroupListsMovedAppsFirstThenTheBuiltInOnes() {
+        val whatsapp = AppStyles.App("com.whatsapp", "WhatsApp")
+        val all = listOf(zoom, whatsapp, slack, gmail, notes, whatsapp)
+        assertEquals(listOf(whatsapp), AppStyles.inGroup(all, emptyMap(), Category.PERSONAL))
+        assertEquals(listOf(gmail), AppStyles.inGroup(all, emptyMap(), Category.EMAIL))
+        // Moved apps lead (the user's choice), and leave their built-in group.
+        val moved = mapOf("us.zoom.videomeetings" to Category.PERSONAL, "com.google.android.gm" to Category.OTHER)
+        assertEquals(listOf(zoom, whatsapp), AppStyles.inGroup(all, moved, Category.PERSONAL))
+        assertTrue(AppStyles.inGroup(all, moved, Category.EMAIL).isEmpty())
+        assertEquals(listOf(gmail, notes), AppStyles.inGroup(all, moved, Category.OTHER))
+        assertEquals(Category.WORK, AppStyles.groupOf("com.Slack", emptyMap()))
+        assertEquals(Category.EMAIL, AppStyles.groupOf("com.Slack", mapOf("com.Slack" to Category.EMAIL)))
+    }
+
+    @Test fun captionsAndIconRowDescription() {
+        assertEquals("Used when you dictate into chat apps for friends and family", AppStyles.caption(Category.PERSONAL))
+        assertEquals("Used in every other app", AppStyles.caption(Category.OTHER))
+        assertEquals("No apps on this phone in Work yet", AppStyles.appsDescription(Category.WORK, emptyList(), 5))
+        assertEquals("Apps in Email: Gmail", AppStyles.appsDescription(Category.EMAIL, listOf(gmail), 5))
+        assertEquals("Apps in Other: Zoom and 2 more", AppStyles.appsDescription(Category.OTHER, listOf(zoom, notes, slack), 1))
+    }
 }

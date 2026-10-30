@@ -25,18 +25,25 @@ object WritingStyle {
         Bucket(Category.OTHER, "Other", "Notes, documents, browsers, everything else", { it.other }, { s, v -> s.copy(other = v) }),
     )
 
-    class Choice(val style: Style, val name: String, val preview: String, val rule: String) {
+    /** [summary]: the Style tab card's short rule (AndroidStyle.dc.html "Capitals, full punctuation"). */
+    class Choice(val style: Style, val name: String, val preview: String, val rule: String, val summary: String) {
         /** The choice row's description: the example line, then what changes. */
         val description: String get() = "“$preview” · $rule"
+
+        /** What TalkBack reads for the Style tab card: name, short rule, example. */
+        val cardDescription: String get() = "$name. $summary. Example: $preview"
     }
 
     val CHOICES = listOf(
-        Choice(Style.FORMAL, "Formal", "Sounds good. See you at 7:30.", "Capitals and full punctuation"),
-        Choice(Style.CASUAL, "Casual", "Sounds good. See you at 7:30", "Capitals, no final period"),
-        Choice(Style.VERY_CASUAL, "Very casual", "sounds good. see you at 7:30", "No final period; all lowercase when AI cleanup is on"),
+        Choice(Style.FORMAL, "Formal", "Sounds good. See you at 7:30.", "Capitals and full punctuation", "Capitals, full punctuation"),
+        Choice(Style.CASUAL, "Casual", "Sounds good. See you at 7:30", "Capitals, no final period", "Capitals, lighter punctuation"),
+        Choice(Style.VERY_CASUAL, "Very casual", "sounds good. see you at 7:30", "No final period; all lowercase when AI cleanup is on", "Less punctuation; no caps with AI cleanup"),
     )
 
-    private val EXCITED = Choice(Style.EXCITED, "Excited", "Sounds good! See you at 7:30!", "More exclamation marks (AI cleanup)")
+    private val EXCITED = Choice(Style.EXCITED, "Excited", "Sounds good! See you at 7:30!", "More exclamation marks (AI cleanup)", "More exclamation marks")
+
+    /** The bucket of [c] (Style tab: one segment per bucket). */
+    fun bucket(c: Category): Bucket = BUCKETS.first { it.category == c }
 
     /** [CHOICES], plus [current] when it is a core style this page does not offer (kept, not lost). */
     fun choicesFor(current: Style): List<Choice> = if (CHOICES.any { it.style == current }) CHOICES else CHOICES + EXCITED

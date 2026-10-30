@@ -4,7 +4,6 @@ import android.content.Intent
 import android.view.View
 import dev.flowclone.FlowApp
 import dev.flowclone.data.AppVersion
-import dev.flowclone.data.SettingsPages
 import dev.flowclone.data.ShellPages
 import dev.flowclone.data.ShellPages.Tab
 import dev.flowclone.ui.UiTestKit.idle
@@ -49,16 +48,6 @@ class ShellUiTest {
         UiTestKit.assertTouchTargets(a, "shell")
     }
 
-    @Test fun otherTabsOpenTheirScreensForNow() {
-        val a = launch()
-        a.frame.navView(Tab.STYLE).performClick()
-        val i: Intent = shadowOf(a).nextStartedActivity
-        assertEquals(SettingsActivity::class.java.name, i.component?.className)
-        assertEquals(SettingsPages.Page.STYLE.name, i.getStringExtra(SettingsActivity.EXTRA_PAGE))
-        // A launch tab doesn't take the selection: Home stays the shell's tab.
-        assertEquals(Tab.HOME, a.current)
-        assertTrue(a.frame.navView(Tab.HOME).isSelected)
-    }
 
     @Test fun drawerShowsStatsEnginesLinksExtrasAndVersion() {
         val a = launch()
