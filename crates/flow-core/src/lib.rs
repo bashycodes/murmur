@@ -21,6 +21,8 @@ pub mod parakeet;
 pub mod paste;
 pub mod postprocess;
 pub mod segment;
+#[cfg(feature = "parakeet")]
+pub mod sherpa_online;
 pub mod transform;
 pub mod vad;
 #[cfg(feature = "whisper")]

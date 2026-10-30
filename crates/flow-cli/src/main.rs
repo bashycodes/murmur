@@ -71,7 +71,12 @@ fn parse(argv: &[String]) -> Result<Args, String> {
                 engine = Some(match val()?.as_str() {
                     "whisper" => AsrBackend::Whisper,
                     "parakeet" => AsrBackend::Parakeet,
-                    e => return Err(format!("unknown engine {e} (whisper|parakeet)")),
+                    "sherpa_online" | "zipformer" => AsrBackend::SherpaOnline,
+                    e => {
+                        return Err(format!(
+                            "unknown engine {e} (whisper|parakeet|sherpa_online)"
+                        ))
+                    }
                 })
             }
             "--mock" => {
