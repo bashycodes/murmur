@@ -55,6 +55,10 @@ dialog.lw-tf-dialog { width: min(480px, calc(100vw - 48px)); box-sizing: border-
 .lw-tf-field em { font-style: normal; font-weight: 400; color: var(--foreground-tertiary); }
 .lw-tf-field .fl-input, .lw-tf-field .fl-select { width: 100%; box-sizing: border-box; }
 .lw-tf-field textarea.fl-input { min-height: 96px; }
+.lw-tf-field > label { font: inherit; }
+.lw-tf-keyrow { display: flex; align-items: center; gap: 8px; }
+.lw-tf-keyrow .fl-input { flex: 1; min-width: 0; }
+.lw-tf-keyrow .fl-btn { flex: none; }
 .lw-tf-hint { font: 400 13px/18px var(--font-sans); color: var(--foreground-tertiary); }
 .lw-tf-err { min-height: 0; font: 400 14px/20px var(--font-sans); color: var(--destructive); }
 .lw-tf-err:empty { display: none; }

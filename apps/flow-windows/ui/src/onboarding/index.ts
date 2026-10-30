@@ -15,6 +15,7 @@ import { mb, models, pickPath, progressLine } from "../features/models.js";
 import { devStore } from "../lib/dev-store.js";
 import { $, el, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
+import { captureChord, stopCapture } from "../lib/keycapture.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import type { DevView, FieldError, Health, KeyState, OrView, Route, RouteView } from "../lib/types.js";
 import { views } from "../lib/views.js";
@@ -477,6 +478,47 @@ async function applyCleanup(): Promise<boolean> {
 
 // ------------------------------------------------------------ step: try
 
+let recordingPtt = false;
+
+function showRecording(on: boolean): void {
+  recordingPtt = on;
+  $<HTMLElement>("ob_ptt_rec").hidden = !on;
+  $<HTMLElement>("ob_ptt_type").hidden = !on;
+  $<HTMLButtonElement>("ob_ptt_change").textContent = on ? "Cancel" : "Change";
+}
+
+/** Change: hold the new push-to-talk keys and let go (keyboard hook,
+ *  lib/keycapture.ts); it saves through the field's `change`. */
+async function recordPtt(): Promise<void> {
+  if (recordingPtt) {
+    showRecording(false);
+    stopCapture();
+    return;
+  }
+  showRecording(true);
+  const r = await captureChord();
+  if (!recordingPtt) return; // Cancel / Type instead
+  showRecording(false);
+  if ("chord" in r) {
+    const i = $<HTMLInputElement>("ob_ptt");
+    i.value = r.chord;
+    i.dispatchEvent(new Event("change"));
+  } else if (r.message) {
+    $<HTMLElement>("ob_shortcut_desc").textContent = r.message;
+  }
+}
+
+/** Type instead: the text field, for keys that can't be pressed. */
+function typePtt(): void {
+  showRecording(false);
+  stopCapture();
+  const i = $<HTMLInputElement>("ob_ptt");
+  i.hidden = false;
+  $<HTMLButtonElement>("ob_ptt_change").hidden = true;
+  i.focus();
+  i.select();
+}
+
 function renderTry(): void {
   const p = prefsStore.get();
   const ptt = p?.shortcuts.ptt || "Ctrl+Win";
@@ -633,13 +675,8 @@ export const onboarding = {
     $<HTMLSelectElement>("ob_mic").addEventListener("change", () => {
       void prefsStore.save({ microphone: $<HTMLSelectElement>("ob_mic").value || null });
     });
-    $<HTMLButtonElement>("ob_ptt_change").addEventListener("click", () => {
-      const i = $<HTMLInputElement>("ob_ptt");
-      i.hidden = false;
-      $<HTMLButtonElement>("ob_ptt_change").hidden = true;
-      i.focus();
-      i.select();
-    });
+    $<HTMLButtonElement>("ob_ptt_change").addEventListener("click", () => void recordPtt());
+    $<HTMLButtonElement>("ob_ptt_type").addEventListener("click", typePtt);
     $<HTMLInputElement>("ob_ptt").addEventListener("change", async () => {
       const p = prefsStore.get();
       const v = $<HTMLInputElement>("ob_ptt").value.trim();

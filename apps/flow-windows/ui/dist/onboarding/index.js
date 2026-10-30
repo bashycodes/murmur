@@ -14,6 +14,7 @@ import { mb, models, pickPath, progressLine } from "../features/models.js";
 import { devStore } from "../lib/dev-store.js";
 import { $, el, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
+import { captureChord, stopCapture } from "../lib/keycapture.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { views } from "../lib/views.js";
 import { TEMPLATE } from "./templates.js";
@@ -448,6 +449,45 @@ async function applyCleanup() {
     }
 }
 // ------------------------------------------------------------ step: try
+let recordingPtt = false;
+function showRecording(on) {
+    recordingPtt = on;
+    $("ob_ptt_rec").hidden = !on;
+    $("ob_ptt_type").hidden = !on;
+    $("ob_ptt_change").textContent = on ? "Cancel" : "Change";
+}
+/** Change: hold the new push-to-talk keys and let go (keyboard hook,
+ *  lib/keycapture.ts); it saves through the field's `change`. */
+async function recordPtt() {
+    if (recordingPtt) {
+        showRecording(false);
+        stopCapture();
+        return;
+    }
+    showRecording(true);
+    const r = await captureChord();
+    if (!recordingPtt)
+        return; // Cancel / Type instead
+    showRecording(false);
+    if ("chord" in r) {
+        const i = $("ob_ptt");
+        i.value = r.chord;
+        i.dispatchEvent(new Event("change"));
+    }
+    else if (r.message) {
+        $("ob_shortcut_desc").textContent = r.message;
+    }
+}
+/** Type instead: the text field, for keys that can't be pressed. */
+function typePtt() {
+    showRecording(false);
+    stopCapture();
+    const i = $("ob_ptt");
+    i.hidden = false;
+    $("ob_ptt_change").hidden = true;
+    i.focus();
+    i.select();
+}
 function renderTry() {
     const p = prefsStore.get();
     const ptt = p?.shortcuts.ptt || "Ctrl+Win";
@@ -617,13 +657,8 @@ export const onboarding = {
         $("ob_mic").addEventListener("change", () => {
             void prefsStore.save({ microphone: $("ob_mic").value || null });
         });
-        $("ob_ptt_change").addEventListener("click", () => {
-            const i = $("ob_ptt");
-            i.hidden = false;
-            $("ob_ptt_change").hidden = true;
-            i.focus();
-            i.select();
-        });
+        $("ob_ptt_change").addEventListener("click", () => void recordPtt());
+        $("ob_ptt_type").addEventListener("click", typePtt);
         $("ob_ptt").addEventListener("change", async () => {
             const p = prefsStore.get();
             const v = $("ob_ptt").value.trim();

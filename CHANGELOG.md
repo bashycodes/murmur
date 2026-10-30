@@ -18,6 +18,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Windows: press a shortcut to set it.** Change on a shortcut (Settings →
+  General, setup's push-to-talk, and a transform's new "Press keys") now
+  records: hold the keys, let go, and that chord is saved. The keyboard hook
+  records it, so Right Alt is told apart from AltGr and the Win key works.
+  Shortcuts don't fire while recording. Esc, 10 s without keys, or leaving
+  the window cancels. "Type instead" opens the old text field for keys you
+  can't press.
 - **Core: Hebrew zipformer engine.** A new speech engine, `sherpa_online`
   (also accepted as `zipformer`), runs streaming sherpa-onnx models such as
   ivrit.ai's 69 MB Hebrew zipformer. Use it as the Hebrew model

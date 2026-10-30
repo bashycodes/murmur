@@ -8,7 +8,11 @@
 //! desktop switch, hook timeouts). The same timer runs the liveness
 //! [`watchdog`](super::watchdog): Windows silently removes a hook that
 //! overran `LowLevelHooksTimeout`, so we probe it and re-install when dead.
+//! While Settings records a new shortcut ([`HookHandle::start_capture`]),
+//! key events go to a [`ChordRecorder`] instead of the matcher: no hotkey
+//! fires, and the recorded keys reach no app.
 
+use super::capture::{ChordRecorder, RecordStep};
 use super::watchdog::{self, Watchdog};
 use super::{Bindings, ChordMatcher, HotkeyAction, Key};
 use crate::input;
@@ -42,6 +46,8 @@ struct HookState {
     matcher: ChordMatcher,
     tx: Sender<HotkeyAction>,
     dictating: Arc<AtomicBool>,
+    /// Recording a shortcut: the recorder and where its result goes.
+    capture: Option<(ChordRecorder, Sender<RecordStep>)>,
 }
 
 static STATE: Mutex<Option<HookState>> = Mutex::new(None);
@@ -63,6 +69,30 @@ impl HookHandle {
     pub fn set_bindings(&self, b: Bindings) {
         if let Some(s) = state().as_mut() {
             s.matcher.set_bindings(b);
+        }
+    }
+
+    /// Record the next chord the user holds and releases instead of
+    /// matching hotkeys; the result (done or Esc-cancelled) goes to `tx`.
+    /// Replaces a recording already running (its sender is dropped).
+    pub fn start_capture(&self, tx: Sender<RecordStep>) {
+        if let Some(s) = state().as_mut() {
+            // End whatever the matcher holds (a PTT in progress stops).
+            let held: Vec<Key> = s.matcher.pressed().collect();
+            for k in held {
+                for a in s.matcher.force_release(k) {
+                    let _ = s.tx.send(a);
+                }
+            }
+            s.matcher.reset();
+            s.capture = Some((ChordRecorder::new(), tx));
+        }
+    }
+
+    /// Back to matching hotkeys (timeout, Settings lost focus, Cancel).
+    pub fn stop_capture(&self) {
+        if let Some(s) = state().as_mut() {
+            s.capture = None;
         }
     }
 
@@ -100,6 +130,7 @@ pub fn install(
         matcher: ChordMatcher::new(bindings),
         tx,
         dictating,
+        capture: None,
     });
     let (ready_tx, ready_rx) = mpsc::channel::<Result<u32, String>>();
     let join = std::thread::Builder::new()
@@ -258,6 +289,19 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
             let decision = {
                 let mut guard = state();
                 match guard.as_mut() {
+                    Some(s) if s.capture.is_some() => {
+                        if let Some((rec, out)) = s.capture.as_mut() {
+                            let r = rec.handle_raw(vk, kb.scanCode, down);
+                            if r.step != RecordStep::Pending {
+                                let _ = out.send(r.step);
+                                s.capture = None;
+                            }
+                            if r.suppress {
+                                return LRESULT(1);
+                            }
+                        }
+                        None
+                    }
                     Some(s) => {
                         // AltGr's fake Left Ctrl (scan 0x21D) is filtered here.
                         let d = s.matcher.handle_raw(
