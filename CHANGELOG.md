@@ -42,6 +42,16 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   map. An auto-detect dictation then has its first 3 s identified (~70 ms
   on an i7-6700) and decodes Hebrew on the Hebrew model. Without
   `lid_path`, nothing changes.
+- **Windows: Hebrew dictation.** Settings → General → Languages is now a
+  picker (Detect automatically, English, Hebrew, or Other… for typed codes).
+  Settings → Speech to text has a **Hebrew model** choice: Zipformer
+  (recommended, 72 MB), Parakeet Hebrew (673 MB) or None. With the language
+  set to Hebrew, dictations decode on that model; every other language keeps
+  the default model, and both stay loaded, so switching language reloads
+  nothing. Both Hebrew models are in the download catalogue (pinned commit,
+  SHA-256 per file, CC-BY-4.0 credit shown in the row). Choosing Hebrew with
+  no Hebrew model downloaded shows a hint that links to the download. A
+  missing Hebrew model never blocks the default one.
 
 ## [0.9.1] - 2026-10-30
 

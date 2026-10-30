@@ -19,7 +19,7 @@
 //! No download ever starts by itself: only `model_download_start`, which the
 //! page sends after the user pressed Download in the confirm dialog.
 
-use crate::prefs::{AsrEngineChoice, Prefs};
+use crate::prefs::{AsrEngineChoice, HebrewModel, Prefs};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
@@ -33,6 +33,9 @@ use std::time::{Duration, Instant};
 pub enum ModelEngine {
     Whisper,
     Parakeet,
+    /// sherpa-onnx online transducer (the Hebrew zipformer, D33/H2).
+    #[serde(rename = "sherpa_online")]
+    SherpaOnline,
 }
 
 #[derive(Debug)]
@@ -54,6 +57,11 @@ pub struct CatalogEntry {
     /// The model's page, for "Download links" and the confirm dialog.
     pub page: &'static str,
     pub recommended: bool,
+    /// `None`: a default model (the engine for every language). `Some("he")`:
+    /// the model of that language's route (D33 `languages.he`).
+    pub language: Option<&'static str>,
+    /// Licence and attribution the model's terms ask for (CC-BY-4.0).
+    pub license: Option<&'static str>,
     pub files: &'static [ModelFile],
 }
 
@@ -73,6 +81,16 @@ macro_rules! parakeet_base {
         "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/resolve/1ab9323565ddb038682214b292f588070a538ce2/"
     };
 }
+macro_rules! zipformer_he_base {
+    () => {
+        "https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he/resolve/ee769a2a13b887f91572eec349458bfb0fe79e7a/sherpa-onnx/"
+    };
+}
+macro_rules! parakeet_he_base {
+    () => {
+        "https://huggingface.co/krut42/voice-parakeet-he-int8/resolve/39de3b473bed626c7796c156d71adc66161ebfe1/"
+    };
+}
 macro_rules! whisper_base {
     () => {
         "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/"
@@ -80,7 +98,8 @@ macro_rules! whisper_base {
 }
 
 /// Hashes computed 2026-10-30 by downloading each file once (they equal the
-/// Hugging Face LFS ids at those commits).
+/// Hugging Face LFS ids at those commits; the Hebrew ones:
+/// docs/findings/2026-10-30-hebrew-model-pins.md).
 pub const CATALOG: &[CatalogEntry] = &[
     CatalogEntry {
         id: "parakeet-tdt-0.6b-v2-int8",
@@ -90,6 +109,8 @@ pub const CATALOG: &[CatalogEntry] = &[
         dest: crate::core_adapter::DEFAULT_PARAKEET_DIR,
         page: "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
         recommended: true,
+        language: None,
+        license: None,
         files: &[
             model_file!(parakeet_base!(), "encoder.int8.onnx", 652_184_296, "a32b12d17bbbc309d0686fbbcc2987b5e9b8333a7da83fa6b089f0a2acd651ab"),
             model_file!(parakeet_base!(), "decoder.int8.onnx", 7_257_753, "b6bb64963457237b900e496ee9994b59294526439fbcc1fecf705b31a15c6b4e"),
@@ -105,6 +126,8 @@ pub const CATALOG: &[CatalogEntry] = &[
         dest: crate::core_adapter::DEFAULT_MODEL_FILE,
         page: "https://huggingface.co/ggerganov/whisper.cpp",
         recommended: false,
+        language: None,
+        license: None,
         files: &[model_file!(whisper_base!(), "ggml-base.bin", 147_951_465, "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe")],
     },
     CatalogEntry {
@@ -115,9 +138,49 @@ pub const CATALOG: &[CatalogEntry] = &[
         dest: "ggml-small-q5_1.bin",
         page: "https://huggingface.co/ggerganov/whisper.cpp",
         recommended: false,
+        language: None,
+        license: None,
         files: &[model_file!(whisper_base!(), "ggml-small-q5_1.bin", 190_085_487, "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb")],
     },
+    CatalogEntry {
+        id: ZIPFORMER_HE_ID,
+        title: "Zipformer Hebrew",
+        desc: "Hebrew · recommended, small and fast",
+        engine: ModelEngine::SherpaOnline,
+        dest: crate::core_adapter::ZIPFORMER_HE_DIR,
+        page: "https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he",
+        recommended: true,
+        language: Some(crate::core_adapter::HEBREW),
+        license: Some("CC-BY-4.0 · Yakov Kolani / ivrit.ai"),
+        files: &[
+            model_file!(zipformer_he_base!(), "encoder.int8.onnx", 70_478_964, "6c6febcb74a09435315a1d872a6539f6e7fc2c333533f14c74edc0e85c49ffcd"),
+            model_file!(zipformer_he_base!(), "decoder.int8.onnx", 1_049_105, "feb03e7c8aa761593a9284a6fa1e91259be3702de75f630062256c1a59c5a906"),
+            model_file!(zipformer_he_base!(), "joiner.int8.onnx", 771_805, "1d2c6d8e6dabc5eb52de52e95718e9bdfbffbfe7ead3808fb5ffd74e83bd9cae"),
+            model_file!(zipformer_he_base!(), "tokens.txt", 17_086, "e4ebb5e72a6aeef47437a55fa2308ebbedb7c51c557de7a89bf965c23ea9af4a"),
+        ],
+    },
+    CatalogEntry {
+        id: PARAKEET_HE_ID,
+        title: "Parakeet Hebrew",
+        desc: "Hebrew · larger alternative",
+        engine: ModelEngine::Parakeet,
+        dest: crate::core_adapter::PARAKEET_HE_DIR,
+        page: "https://huggingface.co/krut42/voice-parakeet-he-int8",
+        recommended: false,
+        language: Some(crate::core_adapter::HEBREW),
+        license: Some("CC-BY-4.0 · krut42, based on thewh1teagle/parakeet-tdt-0.6b-v3-he"),
+        files: &[
+            model_file!(parakeet_he_base!(), "encoder.int8.onnx", 653_215_173, "7eaf80bc88fccd579a7d3950c25e50e4c7935e5b037ec2aa1eee29bca5ca3981"),
+            model_file!(parakeet_he_base!(), "decoder.int8.onnx", 12_494_234, "3a1d0bbf3e393909095f826b7719fdaef42cd2e0b8b95c54518034ecc4b7d246"),
+            model_file!(parakeet_he_base!(), "joiner.int8.onnx", 7_008_293, "056c5464464b38a9cbacdccb6a9ff2114919780badb5c48e0f0260af7f91ccf2"),
+            model_file!(parakeet_he_base!(), "tokens.txt", 107_590, "55a91c862d0a63e8b9587a3264ced4fc76943e66098468b4638e6a6c5642e364"),
+        ],
+    },
 ];
+
+/// Catalogue ids of the Hebrew models (`prefs.hebrew_model`).
+pub const ZIPFORMER_HE_ID: &str = "zipformer-he-int8";
+pub const PARAKEET_HE_ID: &str = "parakeet-tdt-0.6b-v3-he-int8";
 
 pub fn entry(id: &str) -> Option<&'static CatalogEntry> {
     CATALOG.iter().find(|e| e.id == id)
@@ -129,7 +192,7 @@ impl CatalogEntry {
     }
 
     fn is_dir(&self) -> bool {
-        self.engine == ModelEngine::Parakeet
+        self.engine != ModelEngine::Whisper
     }
 
     /// Where the model ends up: the file, or the Parakeet folder.
@@ -153,10 +216,20 @@ impl CatalogEntry {
         })
     }
 
-    /// Point the local engine at the downloaded model.
+    /// Point the local engine at the downloaded model; a language model
+    /// (Hebrew) becomes that language's route and leaves the default alone.
     pub fn apply_to(&self, prefs: &mut Prefs, models_dir: &Path) {
+        if self.language.is_some() {
+            prefs.hebrew_model = match self.engine {
+                ModelEngine::SherpaOnline => HebrewModel::Zipformer,
+                _ => HebrewModel::ParakeetHe,
+            };
+            return;
+        }
         let p = Some(self.dest_path(models_dir).display().to_string());
         match self.engine {
+            // No default-model entry runs on the online engine.
+            ModelEngine::SherpaOnline => {}
             ModelEngine::Whisper => {
                 prefs.asr_engine = AsrEngineChoice::Whisper;
                 prefs.model_path = p;
@@ -185,6 +258,11 @@ pub struct CatalogView {
     pub desc: &'static str,
     pub engine: ModelEngine,
     pub recommended: bool,
+    /// `"he"` for a Hebrew model, absent for a default model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub license: Option<&'static str>,
     /// Bytes, all files together.
     pub size: u64,
     pub page: &'static str,
@@ -210,6 +288,8 @@ pub fn catalog_view(
             desc: e.desc,
             engine: e.engine,
             recommended: e.recommended,
+            language: e.language,
+            license: e.license,
             size: e.size(),
             page: e.page,
             dest: e.dest_path(models_dir).display().to_string(),
@@ -532,7 +612,7 @@ mod tests {
 
     #[test]
     fn catalogue_is_pinned_to_hugging_face_commits() {
-        assert!((2..=4).contains(&CATALOG.len()));
+        assert_eq!(CATALOG.len(), 5);
         let mut ids = std::collections::HashSet::new();
         for e in CATALOG {
             assert!(ids.insert(e.id), "duplicate id {}", e.id);
@@ -552,10 +632,18 @@ mod tests {
         // The defaults the engine looks for without a configured path.
         assert_eq!(entry("whisper-base").unwrap().dest, crate::core_adapter::DEFAULT_MODEL_FILE);
         assert_eq!(entry("parakeet-tdt-0.6b-v2-int8").unwrap().dest, crate::core_adapter::DEFAULT_PARAKEET_DIR);
-        // The Parakeet loader needs encoder, decoder, joiner and tokens.txt.
-        let pk: Vec<_> = entry("parakeet-tdt-0.6b-v2-int8").unwrap().files.iter().map(|f| f.name).collect();
-        for want in ["encoder", "decoder", "joiner", "tokens.txt"] {
-            assert!(pk.iter().any(|n| n.starts_with(want)), "{want}");
+        // The sherpa loaders need encoder, decoder, joiner and tokens.txt.
+        for id in ["parakeet-tdt-0.6b-v2-int8", ZIPFORMER_HE_ID, PARAKEET_HE_ID] {
+            let pk: Vec<_> = entry(id).unwrap().files.iter().map(|f| f.name).collect();
+            for want in ["encoder", "decoder", "joiner", "tokens.txt"] {
+                assert!(pk.iter().any(|n| n.starts_with(want)), "{id}: {want}");
+            }
+        }
+        // Hebrew models: the folders the Hebrew route loads, CC-BY credit.
+        assert_eq!(entry(ZIPFORMER_HE_ID).unwrap().dest, crate::core_adapter::ZIPFORMER_HE_DIR);
+        assert_eq!(entry(PARAKEET_HE_ID).unwrap().dest, crate::core_adapter::PARAKEET_HE_DIR);
+        for e in CATALOG {
+            assert_eq!(e.language.is_some(), e.license.is_some_and(|l| l.starts_with("CC-BY-4.0")), "{}", e.id);
         }
     }
 
@@ -615,6 +703,8 @@ mod tests {
             dest: if engine == ModelEngine::Parakeet { "pk-dir" } else { "m.bin" },
             page: "https://huggingface.co/r",
             recommended: false,
+            language: None,
+            license: None,
             files: Box::leak(fs.into_boxed_slice()),
         };
         (
@@ -745,6 +835,30 @@ mod tests {
     }
 
     #[test]
+    fn hebrew_downloads_choose_the_hebrew_route_and_keep_the_default() {
+        let d = Path::new("/m");
+        let zip = entry(ZIPFORMER_HE_ID).unwrap();
+        assert_eq!(zip.size(), 72_316_960);
+        assert_eq!(entry(PARAKEET_HE_ID).unwrap().size(), 672_825_290);
+        let mut prefs = Prefs {
+            asr_engine: AsrEngineChoice::Parakeet,
+            hebrew_model: HebrewModel::None,
+            ..Prefs::default()
+        };
+        let before = prefs.clone();
+        zip.apply_to(&mut prefs, d);
+        assert_eq!(prefs.hebrew_model, HebrewModel::Zipformer);
+        assert_eq!(prefs.asr_engine, before.asr_engine);
+        assert_eq!(prefs.parakeet_model_dir, before.parakeet_model_dir);
+        entry(PARAKEET_HE_ID).unwrap().apply_to(&mut prefs, d);
+        assert_eq!(prefs.hebrew_model, HebrewModel::ParakeetHe);
+        assert_eq!(prefs.asr_engine, AsrEngineChoice::Parakeet);
+        // Downloaded into its own folder (4 files).
+        assert_eq!(zip.dest_path(d), d.join("zipformer2-66m-streaming-he-int8"));
+        assert!(zip.is_dir());
+    }
+
+    #[test]
     fn one_download_at_a_time() {
         let d = Downloads::default();
         let flag = d.begin("a").unwrap();
@@ -763,11 +877,17 @@ mod tests {
         let d = tmp("view");
         let v = catalog_view(&d, true, |e| e == ModelEngine::Whisper);
         assert_eq!(v.len(), CATALOG.len());
-        let pk = v.iter().find(|r| r.engine == ModelEngine::Parakeet).unwrap();
+        let pk = v.iter().find(|r| r.id == "parakeet-tdt-0.6b-v2-int8").unwrap();
         assert!(!pk.available && !pk.installed);
         assert_eq!(pk.size, 661_190_513);
         assert!(v.iter().filter(|r| r.engine == ModelEngine::Whisper).all(|r| r.available));
         assert!(catalog_view(&d, false, |_| true).iter().all(|r| !r.available));
+        let he = serde_json::to_value(v.iter().find(|r| r.id == ZIPFORMER_HE_ID).unwrap()).unwrap();
+        assert_eq!(he["language"], "he");
+        assert_eq!(he["engine"], "sherpa_online");
+        assert!(he["license"].as_str().unwrap().contains("ivrit.ai"));
+        let en = serde_json::to_value(pk).unwrap();
+        assert!(en.get("language").is_none() && en.get("license").is_none());
         let j = serde_json::to_value(Progress {
             id: "whisper-base".into(),
             received: 1,

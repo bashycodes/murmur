@@ -8,6 +8,7 @@ import { $, el, setValue } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import type { Feature } from "../lib/router.js";
+import { hebrewChosen, hebrewReady, models } from "./models.js";
 import { setTheme } from "../lib/theme.js";
 
 type ModelStatus =
@@ -71,6 +72,7 @@ function fill(prefs: Prefs): void {
   setValue("model_path", prefs.model_path ?? "");
   $<HTMLSelectElement>("asr_engine").value = prefs.asr_engine;
   setValue("parakeet_model_dir", prefs.parakeet_model_dir ?? "");
+  $<HTMLSelectElement>("hebrew_model").value = prefs.hebrew_model ?? "zipformer";
   showEngineFields();
   setValue("ptt", prefs.shortcuts.ptt);
   setValue("hands_free", prefs.shortcuts.hands_free);
@@ -186,7 +188,47 @@ function showLanguages(prefs: Prefs, typed?: string): void {
     // No Intl.DisplayNames: show the codes.
   }
   $<HTMLElement>("languages_desc").textContent = names.length ? `${names.join(", ")}.` : "Detected automatically.";
-  $<HTMLElement>("languages_parakeet").hidden = prefs.asr_engine !== "parakeet";
+  // Hebrew has its own model (D33): the English-only note doesn't apply.
+  const he = hebrewChosen(codes);
+  const heModel = hebrewReady(prefs.hebrew_model);
+  $<HTMLElement>("languages_parakeet").hidden = prefs.asr_engine !== "parakeet" || (he && heModel);
+  // Only once the catalogue is known (it says what is downloaded).
+  $<HTMLElement>("languages_hebrew").hidden = !he || heModel || models.catalog().length === 0;
+  showLanguagePick(codes);
+}
+
+/** The picker: Detect / English / Hebrew, or "Other…" with the code field. */
+function languagePick(codes: string[]): string {
+  if (codes.length === 0) return "";
+  if (hebrewChosen(codes)) return "he";
+  if (codes.length === 1 && codes[0].trim().toLowerCase().split(/[-_]/)[0] === "en") return "en";
+  return "other";
+}
+
+function showLanguagePick(codes: string[]): void {
+  const sel = $<HTMLSelectElement>("language_pick");
+  const box = $<HTMLElement>("languages_other");
+  // Keep "Other…" while its field is open.
+  if (box.classList.contains("is-editing")) return;
+  const v = languagePick(codes);
+  sel.value = v;
+  box.hidden = v !== "other";
+}
+
+function pickLanguage(): void {
+  const v = $<HTMLSelectElement>("language_pick").value;
+  const box = $<HTMLElement>("languages_other");
+  const input = $<HTMLInputElement>("languages");
+  if (v === "other") {
+    box.hidden = false;
+    box.querySelector<HTMLButtonElement>(".lw-edit-btn")?.click();
+    return;
+  }
+  box.hidden = true;
+  input.value = v;
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+  const p = prefsStore.get();
+  if (p) showLanguages(p, v);
 }
 
 /** The prefs fields this module owns, as the pages show them. */
@@ -206,6 +248,7 @@ export function collectGeneral(): Partial<Prefs> {
   next.model_path = $<HTMLInputElement>("model_path").value.trim() || null;
   next.asr_engine = $<HTMLSelectElement>("asr_engine").value;
   next.parakeet_model_dir = $<HTMLInputElement>("parakeet_model_dir").value.trim() || null;
+  next.hebrew_model = $<HTMLSelectElement>("hebrew_model").value;
   next.microphone = $<HTMLSelectElement>("microphone").value || null;
   for (const f of BOOL_FIELDS) next[f] = $<HTMLInputElement>(f).checked;
   next.paste_method = $<HTMLSelectElement>("paste_method").value;
@@ -228,6 +271,12 @@ export function collectGeneral(): Partial<Prefs> {
 export const general: Feature = {
   init(): void {
     $<HTMLSelectElement>("asr_engine").addEventListener("change", showEngineFields);
+    $<HTMLSelectElement>("language_pick").addEventListener("change", pickLanguage);
+    // The Hebrew hint depends on what is downloaded and the Hebrew choice.
+    models.onChange(() => {
+      const p = prefsStore.get();
+      if (p) showLanguages(p);
+    });
     for (const e of document.querySelectorAll<HTMLElement>(".lw-edit")) wireEdit(e);
     // Theme applies at once; the save follows through data-save="prefs".
     $<HTMLSelectElement>("theme").addEventListener("change", (e) => setTheme((e.target as HTMLSelectElement).value));
