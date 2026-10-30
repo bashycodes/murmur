@@ -5,7 +5,8 @@ Probe (Playwright + its bundled Chromium):
     python3 tools/probes/settings_mock/check_flowbar.py [port] [shot-dir]
 Drives each artboard state (docs/design/app-design/FlowBar.dc.html) in light
 and dark, checks the hands-free pill geometry that src/overlay.rs hit-tests
-(187 x 36, bottom 14 px) and that ✕ / ■ send overlay_action. With shot-dir,
+(187 x 36, bottom 14 px), that ✕ / ■ send overlay_action and that the
+error / fell-back bubbles' "Fix →" / "Choose a model →" open their page. With shot-dir,
 writes <state>-<scheme>.png per state (not committed). Exits non-zero on
 the first failed check.
 """
@@ -52,6 +53,16 @@ STATES = {
     ],
     "error": [("dictation:status", {"state": "error", "message": "Speech model not found: ggml-base.bin"})],
     "notice": [("dictation:status", {"state": "notice", "message": "No speech heard"})],
+    "error-server": [("dictation:status", {"state": "error", "message": "Transcription failed: server unreachable"})],
+    "error-cleanup": [("dictation:status", {"state": "error", "message": "AI cleanup model not found: model.gguf"})],
+}
+
+# Bubble link -> settings page it opens (overlay_action open_settings).
+FIX = {
+    "fellback": ("Fix →", "settings-openrouter"),
+    "error": ("Choose a model →", "settings-speech"),
+    "error-server": ("Fix →", "settings-server"),
+    "error-cleanup": ("Choose a model →", "settings-cleanup"),
 }
 
 with sync_playwright() as p:
@@ -83,6 +94,15 @@ with sync_playwright() as p:
                 check(pg.locator("#pill[data-done] #engine-badge").is_visible(), f"{scheme} {name}: done pill shows letter")
             if name == "fellback":
                 check("rejected the key" in pg.locator("#preview").inner_text(), f"{scheme} fell-back notice bubble")
+            if name in FIX:
+                label, page = FIX[name]
+                fix = pg.locator("#preview-fix")
+                check(fix.is_visible() and fix.inner_text() == label, f"{scheme} {name}: link {label!r}")
+                fix.dispatch_event("mousedown")
+                acts = pg.evaluate("window.__actions")
+                check(acts[-1:] == [{"cmd": "overlay_action", "args": {"action": "open_settings", "page": page}}], f"{scheme} {name}: opens {page}")
+            if name in ("notice", "hold-preview"):
+                check(not pg.locator("#preview-fix").is_visible(), f"{scheme} {name}: no link")
             if name == "handsfree-maxwarn":
                 check("stops in 30" in pg.locator("#max-warn").inner_text(), f"{scheme} max-warning countdown")
             if shots:
