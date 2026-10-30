@@ -1,6 +1,7 @@
 //! Parakeet-TDT backend (feature `parakeet`, crate `flow-asr-sherpa`).
 //!
-//! English-only NeMo transducer through sherpa-onnx. `ModelConfig.asr_path`
+//! NeMo transducer through sherpa-onnx (English Parakeet, or a
+//! language fine-tune such as Parakeet-v3-he; see [`ParakeetAsr::with_language`]). `ModelConfig.asr_path`
 //! is the model *directory*. Bias: the vocabulary that the whisper backend
 //! receives as `initial_prompt` is fed to sherpa as per-decode hotwords
 //! (modified beam search + context graph); see docs/core-architecture.md.
@@ -30,6 +31,9 @@ pub struct ParakeetAsr {
     greedy_retries: AtomicU64,
     /// Empty-on-speech re-decodes in pieces (tests, logs).
     fallbacks: AtomicU64,
+    /// The language the model decodes, reported in `AsrOutput::language`
+    /// (D33). `"en"` unless [`ParakeetAsr::with_language`] says otherwise.
+    language: String,
 }
 
 impl ParakeetAsr {
@@ -59,7 +63,19 @@ impl ParakeetAsr {
             engine,
             greedy_retries: AtomicU64::new(0),
             fallbacks: AtomicU64::new(0),
+            language: "en".into(),
         })
+    }
+
+    /// The language this model decodes (ISO 639-1, e.g. `"he"` for
+    /// Parakeet-v3-he); reported as `AsrOutput::language`. Default `"en"`.
+    pub fn with_language(mut self, language: &str) -> Self {
+        self.language = language.to_string();
+        self
+    }
+
+    pub fn language(&self) -> &str {
+        &self.language
     }
 
     /// How many beam results were re-decoded with greedy search.
@@ -127,7 +143,10 @@ impl ParakeetAsr {
                 parts[k + 1] = r;
             }
         }
-        segment::capitalize_joins(&mut parts);
+        // Sentence-case repair is an English rule (D33).
+        if crate::config::english_rules(Some(&self.language)) {
+            segment::capitalize_joins(&mut parts);
+        }
         Ok(parts
             .into_iter()
             .filter(|t| !t.is_empty())
@@ -204,8 +223,8 @@ impl AsrEngine for ParakeetAsr {
         #[allow(clippy::needless_update)]
         Ok(AsrOutput {
             text,
-            // parakeet-tdt-0.6b-v2 is English-only.
-            language: Some("en".into()),
+            // A Parakeet model decodes one language (D33).
+            language: Some(self.language.clone()),
             ..Default::default()
         })
     }

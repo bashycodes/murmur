@@ -206,7 +206,7 @@ pub enum Verdict {
 
 /// Normalised word: lowercase, punctuation trimmed, "’" → "'", "$40" → "40",
 /// "5th" → "5", trailing plural "s" / "'s" removed.
-fn norm(w: &str, m: Strictness) -> String {
+fn norm(w: &str, m: Mode) -> String {
     let w = w.replace('\u{2019}', "'").to_lowercase();
     let w = w.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'');
     let w = w.trim_matches('\'');
@@ -229,7 +229,7 @@ fn norm(w: &str, m: Strictness) -> String {
     } else if w.len() > 3 && w.ends_with('s') && !w.ends_with("ss") {
         w.pop();
     }
-    if m == Strictness::Loose {
+    if m.loose() && m.english {
         if let Some((_, full)) = LOOSE_UNITS.iter().find(|(a, _)| *a == w) {
             return full.to_string();
         }
@@ -239,7 +239,7 @@ fn norm(w: &str, m: Strictness) -> String {
 
 /// Words of `s`, split also at ':' '/' '-' and between digits and letters,
 /// so "3:30pm" → 3, 30, pm. All-zero numbers ("4:00") carry nothing.
-fn words(s: &str, m: Strictness) -> Vec<String> {
+fn words(s: &str, m: Mode) -> Vec<String> {
     let mut out = Vec::new();
     for w in s.split(|c: char| c.is_whitespace() || matches!(c, ':' | '/' | '-' | '\u{2014}')) {
         let mut piece = String::new();
@@ -260,14 +260,18 @@ fn words(s: &str, m: Strictness) -> Vec<String> {
     out
 }
 
-fn is_content(w: &str, m: Strictness) -> bool {
+fn is_content(w: &str, m: Mode) -> bool {
+    if !m.english {
+        // English stopword / filler / command lists mean nothing here (D33).
+        return true;
+    }
     !STOP.contains(&w)
         && !FILLER.contains(&w)
         && !SPOKEN.contains(&w)
-        && (m != Strictness::Loose || !LOOSE_FILLER.contains(&w))
+        && (!m.loose() || !LOOSE_FILLER.contains(&w))
 }
 
-fn content(s: &str, m: Strictness) -> Vec<String> {
+fn content(s: &str, m: Mode) -> Vec<String> {
     words(s, m)
         .into_iter()
         .filter(|w| is_content(w, m))
@@ -536,7 +540,7 @@ fn number_forms(ws: &[String]) -> Vec<(usize, usize, String)> {
 
 /// Input clauses (one content word is enough to count), each flagged `true` when it may be deleted (the clause
 /// just before a backtracking phrase, or the phrase itself).
-fn clauses(s: &str, m: Strictness) -> Vec<(String, bool)> {
+fn clauses(s: &str, m: Mode) -> Vec<(String, bool)> {
     // Tokenise keeping clause punctuation as separators; each part
     // remembers whether a comma closed it.
     let mut parts: Vec<(Vec<String>, bool)> = vec![(Vec::new(), false)];
@@ -548,6 +552,7 @@ fn clauses(s: &str, m: Strictness) -> Vec<(String, bool)> {
         let next = raws.get(i + 1).map(|n| norm(n, m)).unwrap_or_default();
         // Spoken punctuation words are clause boundaries too.
         let spoken = match w.as_str() {
+            _ if !m.english => 0,
             "comma" | "period" | "semicolon" | "colon" => 1,
             "question" | "exclamation" if next == "mark" || next == "point" => 2,
             "new" if next == "line" || next == "paragraph" => 2,
@@ -576,7 +581,7 @@ fn clauses(s: &str, m: Strictness) -> Vec<(String, bool)> {
         .into_iter()
         .filter(|(p, _)| !p.is_empty())
         .map(|(p, comma)| {
-            let sorry = after_comma && comma && p.len() == 1 && p[0] == "sorry";
+            let sorry = m.english && after_comma && comma && p.len() == 1 && p[0] == "sorry";
             after_comma = comma;
             if sorry {
                 vec!["\u{0}sorry".to_string()]
@@ -599,6 +604,7 @@ fn clauses(s: &str, m: Strictness) -> Vec<(String, bool)> {
         while i < p.len() {
             if let Some(t) = TRIGGERS
                 .iter()
+                .filter(|_| m.english)
                 .find(|t| i + t.len() <= p.len() && t.iter().zip(&p[i..]).all(|(a, b)| a == b))
             {
                 if cur.is_empty() {
@@ -637,13 +643,52 @@ pub fn check_loose(input: &str, output: &str) -> Verdict {
     check_with(input, output, Strictness::Loose)
 }
 
+/// Strictness plus whether the English word lists apply (D33).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Mode {
+    strictness: Strictness,
+    english: bool,
+}
+
+impl Mode {
+    fn loose(self) -> bool {
+        self.strictness == Strictness::Loose
+    }
+}
+
 /// [`check`] or [`check_loose`].
 pub fn check_with(input: &str, output: &str, m: Strictness) -> Verdict {
-    if let Some(kind) = literal_command_marks(input, output) {
-        return Verdict::Unsupported(format!("literal {kind} made a mark: {output}"));
-    }
-    let (input, output) = (&strip_commands(input), &strip_commands(output));
-    let cleaned = crate::postprocess::spoken::spoken_cleanup(input);
+    check_for_language(input, output, m, None)
+}
+
+/// [`check_with`] for a dictation in `language` (D33). English or unknown
+/// (`None`): exactly [`check_with`]. Any other language: the English word
+/// lists (stopwords, fillers, spoken punctuation and formatting commands,
+/// backtracking phrases, unit abbreviations) and the English spoken-cleanup
+/// pass on the input are skipped, so every word counts as content; the
+/// support / coverage thresholds, the number rules and the loose deletion
+/// cap stay.
+pub fn check_for_language(
+    input: &str,
+    output: &str,
+    strictness: Strictness,
+    language: Option<&str>,
+) -> Verdict {
+    let m = Mode {
+        strictness,
+        english: crate::config::english_rules(language),
+    };
+    let (input, output, cleaned) = if m.english {
+        if let Some(kind) = literal_command_marks(input, output) {
+            return Verdict::Unsupported(format!("literal {kind} made a mark: {output}"));
+        }
+        let (i, o) = (strip_commands(input), strip_commands(output));
+        let c = crate::postprocess::spoken::spoken_cleanup(&i);
+        (i, o, c)
+    } else {
+        (input.to_string(), output.to_string(), input.to_string())
+    };
+    let (input, output) = (&input, &output);
     // The input as spoken and as the deterministic pass writes it (digits,
     // "$40", "3:30 PM"), plus digit forms of number words.
     let mut input_words = words(input, m);
@@ -745,7 +790,7 @@ pub fn check_with(input: &str, output: &str, m: Strictness) -> Verdict {
             return Verdict::Dropped(clause);
         }
     }
-    if m == Strictness::Loose {
+    if m.loose() {
         // A cap on the whole deletion: many small trims must not add up
         // to a summary.
         if total_lost > 2usize.max(total_content / 5) {
@@ -765,7 +810,7 @@ pub fn check_with(input: &str, output: &str, m: Strictness) -> Verdict {
 
 /// Content words the input capitalises other than at a sentence start or
 /// as "I" (normalised): names, for [`Strictness::Loose`].
-fn names(s: &str, m: Strictness) -> Vec<String> {
+fn names(s: &str, m: Mode) -> Vec<String> {
     let mut out = Vec::new();
     let mut start = true;
     for raw in s.split_whitespace() {
@@ -787,6 +832,71 @@ fn names(s: &str, m: Strictness) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hebrew_skips_english_word_lists() {
+        let he = Some("he");
+        // Unchanged and lightly punctuated Hebrew passes.
+        let raw = "אני רוצה לקבוע פגישה מחר בשלוש";
+        for m in [Strictness::Strict, Strictness::Loose] {
+            assert_eq!(check_for_language(raw, raw, m, he), Verdict::Ok);
+            assert_eq!(
+                check_for_language(raw, "אני רוצה לקבוע פגישה מחר בשלוש.", m, he),
+                Verdict::Ok
+            );
+        }
+        // An answer is still unsupported, a dropped clause still dropped.
+        assert!(matches!(
+            check_for_language(
+                "מה הבירה של צרפת",
+                "הבירה של צרפת היא פריז",
+                Strictness::Strict,
+                he
+            ),
+            Verdict::Unsupported(_)
+        ));
+        assert!(matches!(
+            check_for_language(
+                "תזכיר לי לקנות חלב, ואז להתקשר לדני ולשאול על הפגישה",
+                "תזכיר לי לקנות חלב.",
+                Strictness::Strict,
+                he
+            ),
+            Verdict::Dropped(_)
+        ));
+        // English lists do not apply: "the" counts as content in Hebrew mode,
+        // and "scratch that" is not a backtracking phrase.
+        assert!(matches!(
+            check_for_language(
+                "מחר בשלוש scratch that בארבע",
+                "בארבע",
+                Strictness::Strict,
+                he
+            ),
+            Verdict::Dropped(_)
+        ));
+        // Numbers still need backing.
+        assert!(matches!(
+            check_for_language(
+                "פגישה בשלוש וחצי היום",
+                "פגישה ב-4 היום",
+                Strictness::Strict,
+                he
+            ),
+            Verdict::Unsupported(_)
+        ));
+    }
+
+    #[test]
+    fn english_or_unknown_language_is_the_old_guard() {
+        let (i, o) = (
+            "Let's meet at the cafe at 3pm. Scratch that, let's meet at the library at 4pm.",
+            "Let's meet at the library at 4:00 PM.",
+        );
+        for l in [None, Some("en"), Some("en-US")] {
+            assert_eq!(check_for_language(i, o, Strictness::Strict, l), Verdict::Ok);
+        }
+    }
 
     #[test]
     fn backtracking_edit_passes() {
