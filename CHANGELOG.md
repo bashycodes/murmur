@@ -53,6 +53,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   no Hebrew model downloaded shows a hint that links to the download. A
   missing Hebrew model never blocks the default one.
 
+### Fixed
+
+- **Windows: Launch at login after a reinstall.** With Launch at login on,
+  the app now re-points its startup entry at its own exe each time it starts.
+  Before, the entry was written only when settings were saved, so after
+  reinstalling to a new folder (the "Flow Clone" → "Murmur" rename) it
+  pointed at a deleted exe and the app no longer started at login.
+
 ## [0.9.1] - 2026-10-30
 
 ### Changed
