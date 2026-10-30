@@ -170,6 +170,21 @@
     or.notice = null;
     modelStatus = { state: "missing", path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\ggml-base.bin" };
   }
+  const MODELS = "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\";
+  const hf = (repo, rev, name, size, sha256) => ({ name, url: `https://huggingface.co/${repo}/resolve/${rev}/${name}`, size, sha256 });
+  const PK = ["csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", "1ab9323565ddb038682214b292f588070a538ce2"];
+  const WH = ["ggerganov/whisper.cpp", "5359861c739e955e79d9a303bcbc70fb988958b1"];
+  const dlCatalog = [
+    { id: "parakeet-tdt-0.6b-v2-int8", title: "Parakeet TDT 0.6B", desc: "English · fastest", engine: "parakeet", recommended: true, size: 661190513,
+      page: "https://huggingface.co/" + PK[0], dest: MODELS + "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", available: true,
+      files: [hf(...PK, "encoder.int8.onnx", 652184296, "a32b…"), hf(...PK, "decoder.int8.onnx", 7257753, "b6bb…"), hf(...PK, "joiner.int8.onnx", 1739080, "7946…"), hf(...PK, "tokens.txt", 9384, "ec18…")] },
+    { id: "whisper-base", title: "Whisper base", desc: "Many languages", engine: "whisper", recommended: false, size: 147951465,
+      page: "https://huggingface.co/" + WH[0], dest: MODELS + "ggml-base.bin", available: true, files: [hf(...WH, "ggml-base.bin", 147951465, "60ed…")] },
+    { id: "whisper-small-q5_1", title: "Whisper small", desc: "Many languages · more accurate, slower", engine: "whisper", recommended: false, size: 190085487,
+      page: "https://huggingface.co/" + WH[0], dest: MODELS + "ggml-small-q5_1.bin", available: true, files: [hf(...WH, "ggml-small-q5_1.bin", 190085487, "ae85…")] },
+  ];
+  const dlInstalled = new Set(onboard ? [] : ["whisper-base"]);
+  let dlRunning = null;
   const modelKey = (p) => [p.asr_engine, p.model_path, p.parakeet_model_dir].join("|");
   const debugView = () => ({ enabled: debugLog.enabled, count: debugLog.count, path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\debug\\dictations.jsonl", stats: { written: 0, dropped: 0, write_errors: 0 } });
   // Notes as the app window sees them (list / create / pin / open only:
@@ -318,6 +333,54 @@
     debug_log_set: ({ enabled }) => { debugLog.enabled = enabled; return debugView(); },
     debug_log_clear: () => { debugLog.count = 0; return debugView(); },
     debug_log_open_folder: () => null,
+    // Native picker: window.__pickResult overrides (null = the user cancelled).
+    pick_path: ({ kind, filters }) => {
+      if (window.__pickResult !== undefined) return window.__pickResult;
+      if (kind === "folder") return "D:\\models\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
+      return (filters || []).some((f) => f.pattern.includes("gguf")) ? "D:\\models\\qwen2.5-1.5b-instruct-q4_k_m.gguf" : "D:\\models\\ggml-base.bin";
+    },
+    open_external: ({ url }) => {
+      if (!/^https?:\/\/(github\.com\/bashycodes\/murmur|huggingface\.co\/|openrouter\.ai(\/|$))/.test(url)) throw new Error(`not an allowed link: ${url}`);
+      return null;
+    },
+    // D31 downloader: a fake catalogue; a started download ticks to done in
+    // about 1.5 s (?dlfail=1: fails its fingerprint check instead).
+    model_catalog: () => dlCatalog.map((c) => ({ ...c, installed: dlInstalled.has(c.id) })),
+    model_download_start: ({ id }) => {
+      const c = dlCatalog.find((x) => x.id === id);
+      if (!c) throw new Error(`unknown model ${id}`);
+      if (dlRunning) throw new Error("another model is downloading; wait for it or cancel it");
+      dlRunning = { id, received: 0, cancelled: false };
+      const run = dlRunning;
+      const fail = new URLSearchParams(location.search).get("dlfail") === "1";
+      const ev = (state, extra = {}) => window.__emit("model:download", { id, received: run.received, total: c.size, state, ...extra });
+      const tick = setInterval(() => {
+        if (run.cancelled) {
+          clearInterval(tick); dlRunning = null; run.received = 0; ev("cancelled"); return;
+        }
+        run.received = Math.min(c.size, run.received + Math.ceil(c.size / (window.__dlSteps || 6)));
+        if (run.received < c.size) { ev("downloading"); return; }
+        clearInterval(tick);
+        ev("verifying");
+        setTimeout(() => {
+          dlRunning = null;
+          if (fail) { run.received = 0; ev("error", { error: `${c.files[0].name} did not match its fingerprint, so it was deleted` }); return; }
+          dlInstalled.add(id);
+          const path = c.dest;
+          prefs = c.engine === "parakeet" ? { ...prefs, asr_engine: "parakeet", parakeet_model_dir: path } : { ...prefs, asr_engine: "whisper", model_path: path };
+          modelStatus = { state: "loading", path };
+          ev("done", { path });
+          window.__emit("model:status", modelStatus);
+          setTimeout(() => { modelStatus = { state: "ready", path, load_ms: 900 }; window.__emit("model:status", modelStatus); }, 150);
+        }, 150);
+      }, window.__dlTickMs || 250);
+      return null;
+    },
+    model_download_cancel: ({ id }) => {
+      if (!dlRunning || dlRunning.id !== id) return false;
+      dlRunning.cancelled = true;
+      return true;
+    },
   };
   window.__mockCalls = [];
   window.__TAURI__ = {

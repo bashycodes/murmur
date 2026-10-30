@@ -9,6 +9,7 @@ import { enginesCard } from "./engines-card.js";
 import { ai, collectAi } from "./features/ai.js";
 import { engines, versionTapped } from "./features/engines.js";
 import { collectGeneral, general } from "./features/general.js";
+import { modelsFeature } from "./features/models.js";
 import { openrouter } from "./features/openrouter.js";
 import { $, el, html, setStatus } from "./lib/dom.js";
 import { ICON, iconEl } from "./lib/icons.js";
@@ -52,7 +53,7 @@ const PAGES: Page[] = [
   settingsDeveloperPage,
 ];
 
-const FEATURES: Feature[] = [general, ai, engines, openrouter];
+const FEATURES: Feature[] = [general, ai, engines, openrouter, modelsFeature];
 
 interface NavItem {
   page?: string;

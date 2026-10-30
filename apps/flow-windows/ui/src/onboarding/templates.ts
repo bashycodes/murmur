@@ -2,6 +2,7 @@
 // static template per step. Static text only; user data goes in with
 // textContent from onboarding/index.ts. Ids are prefixed `ob_`.
 
+import { extLink, SERVER_HELP } from "../features/models.js";
 import { ICON } from "../lib/icons.js";
 
 const CHECK = "M5 12.5l4.5 4.5L19 7";
@@ -10,6 +11,11 @@ const FILE = "M6 3h8l4 4v14H6zM14 3v4h4";
 const FOLDER = "M3 6h6l2 2h10v11H3z";
 
 export const STEPS = 5;
+
+/** Model pages for adding the files by hand (open in the browser). */
+export const URL_PARAKEET = "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
+export const URL_WHISPER = "https://huggingface.co/ggerganov/whisper.cpp";
+export const URL_LLM = "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF";
 
 /** A stroke icon (`lw-ico` = 20 px inline icon). */
 export function ico(path: string, cls = "lw-ico"): string {
@@ -107,6 +113,7 @@ const engine = `
         <div class="fl-row-control"><input id="ob_token" class="fl-input" type="password" autocomplete="off" spellcheck="false" placeholder="from flow-server gen-token" /><button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="ob_test_conn">Test</button></div>
       </div>
       <div class="lw-ob-status" id="ob_server_status"></div>
+      <p class="lw-ob-small lw-ob-help">No server yet? ${extLink(SERVER_HELP, "Set up a server →", "lw-link lw-ob-copy")}</p>
     </div>
     <div class="fl-group lw-ob-detail" id="ob_cloud_detail" hidden>
       <div class="fl-row" data-ob-key-row>
@@ -123,17 +130,28 @@ const engine = `
   ${foot(true, "Continue", "ob_engine_hint")}
 </div>`;
 
-const modelRow = (id: string, title: string, desc: string, input: string, placeholder: string): string => `
+const modelRow = (id: string, title: string, desc: string, input: string, placeholder: string, pick: string): string => `
 <div class="fl-row lw-ob-model" data-ob-model="${id}">
   <span class="lw-tile">${ico(id === "parakeet" ? FOLDER : FILE, "")}</span>
   <div class="fl-row-text">
     <div class="fl-row-title">${title} <span class="fl-badge fl-badge-dark" data-ob-rec hidden>Recommended</span></div>
-    <div class="fl-row-desc">${desc}</div>
+    <div class="fl-row-desc" data-ob-model-desc>${desc}</div>
   </div>
   <span class="fl-badge" data-ob-model-badge hidden></span>
-  <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" data-ob-use="${id}">Use</button>
+  <span class="lw-ob-model-actions">
+    <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" data-ob-use="${id}">Use</button>
+    <button type="button" class="fl-btn ${id === "parakeet" ? "fl-btn-primary" : "fl-btn-secondary"} fl-btn-sm" data-ob-dl="${id}" hidden>Download</button>
+    <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" data-ob-dl-cancel="${id}" hidden>Cancel</button>
+  </span>
+  <div class="lw-ob-dl" data-ob-dl-box hidden>
+    <div class="lw-ob-bar" role="progressbar" aria-label="Downloading ${title}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-ob-dl-bar><span></span></div>
+    <span class="lw-ob-dl-line" data-ob-dl-line></span>
+  </div>
   <div class="lw-ob-model-path">
-    <input id="${input}" class="fl-input" spellcheck="false" placeholder="${placeholder}" aria-label="${title} location" />
+    <span class="lw-ob-model-input">
+      <input id="${input}" class="fl-input" spellcheck="false" placeholder="${placeholder}" aria-label="${title} location" />
+      <button type="button" class="fl-btn fl-btn-ghost fl-btn-sm" data-ob-pick="${id}">${pick}</button>
+    </span>
     <span class="lw-ob-model-status" data-ob-model-status></span>
   </div>
 </div>`;
@@ -147,21 +165,21 @@ const model = `
       <p class="lw-ob-lead" id="ob_model_lead">The model is the part that listens. Get it once from where its makers publish it, then tell Murmur where it is.</p>
       <div class="lw-ob-note">
         ${ico(SHIELD, "lw-ico lw-ob-check")}
-        <span>Murmur never downloads anything by itself. Your voice is turned into text by the model on this PC.</span>
+        <span id="ob_model_note">Murmur never downloads anything by itself. Your voice is turned into text by the model on this PC.</span>
       </div>
     </div>
     <div class="lw-ob-main">
       <div class="fl-group">
-        ${modelRow("parakeet", "Parakeet TDT 0.6B", "English · fastest · a folder of about 640 MB", "ob_parakeet_dir", "Model folder")}
-        ${modelRow("whisper", "Whisper base", "Many languages · one 148 MB file (ggml-base.bin)", "ob_whisper_path", "Model file")}
+        ${modelRow("parakeet", "Parakeet TDT 0.6B", "English · fastest · a folder of about 660 MB", "ob_parakeet_dir", "Model folder", "Choose folder")}
+        ${modelRow("whisper", "Whisper base", "Many languages · one 148 MB file (ggml-base.bin)", "ob_whisper_path", "Model file", "Choose file")}
       </div>
       <div class="lw-ob-drop">
         ${ico("M12 15V4M8 8l4-4 4 4M5 13v7h14v-7", "lw-ico")}
         <div class="lw-ob-drop-text">
           <span>Put the files in <code class="lw-mono" id="ob_models_dir"></code>, or type where they are. Empty = the default name in that folder.</span>
           <span class="lw-ob-links">
-            <span>Parakeet: <code class="lw-mono" id="ob_url_parakeet">github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models</code> <button type="button" class="lw-link lw-ob-copy" data-ob-copy="ob_url_parakeet">Copy</button></span>
-            <span>Whisper: <code class="lw-mono" id="ob_url_whisper">huggingface.co/ggerganov/whisper.cpp</code> <button type="button" class="lw-link lw-ob-copy" data-ob-copy="ob_url_whisper">Copy</button></span>
+            ${extLink(URL_PARAKEET, "Parakeet download page →", "lw-link lw-ob-copy")}
+            ${extLink(URL_WHISPER, "Whisper download page →", "lw-link lw-ob-copy")}
           </span>
         </div>
       </div>
@@ -200,9 +218,9 @@ const cleanup = `
       <div class="fl-group" id="ob_llm_detail" hidden>
         <div class="fl-row">
           <div class="fl-row-text"><label class="fl-row-title" for="ob_llm_path">Model file</label><div class="fl-row-desc" id="ob_llm_status"></div></div>
-          <div class="fl-row-control"><input id="ob_llm_path" class="fl-input is-wide" spellcheck="false" /></div>
+          <div class="fl-row-control"><input id="ob_llm_path" class="fl-input is-wide" spellcheck="false" /><button type="button" class="fl-btn fl-btn-ghost fl-btn-sm" data-ob-pick="llm">Choose file</button></div>
         </div>
-        <p class="lw-ob-small">A GGUF chat model, e.g. Qwen2.5-1.5B-Instruct Q4_K_M from <code class="lw-mono" id="ob_url_llm">huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF</code> <button type="button" class="lw-link lw-ob-copy" data-ob-copy="ob_url_llm">Copy</button></p>
+        <p class="lw-ob-small">A GGUF chat model, e.g. Qwen2.5-1.5B-Instruct Q4_K_M. ${extLink(URL_LLM, "Get it from Hugging Face →", "lw-link lw-ob-copy")}</p>
       </div>
       <div class="fl-group" id="ob_or_detail" hidden>
         <div class="fl-row" data-ob-key-row>

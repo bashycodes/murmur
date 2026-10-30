@@ -76,6 +76,8 @@ struct AppState {
     notes: Arc<Mutex<AutoSave>>,
     /// Clock of `notes` (ms since start).
     started: Instant,
+    /// The speech-model download the user started (at most one, D31).
+    downloads: Arc<crate::model_download::Downloads>,
 }
 
 fn hwnd_of(w: &WebviewWindow) -> Option<HWND> {
@@ -382,8 +384,14 @@ fn get_prefs(state: tauri::State<'_, AppState>) -> Prefs {
 fn set_prefs(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
-    mut prefs: Prefs,
+    prefs: Prefs,
 ) -> Result<(), String> {
+    save_prefs(&app, &state, prefs)
+}
+
+/// Validate, save and apply new prefs (reloads the model when its choice
+/// changed). `set_prefs` and a finished model download use it.
+fn save_prefs(app: &AppHandle, state: &AppState, mut prefs: Prefs) -> Result<(), String> {
     // The Developer tab saves its own section (dev_set); a General/AI save
     // from a page loaded earlier must not roll it back.
     prefs.developer = state.prefs.read().unwrap().developer.clone();
@@ -399,8 +407,8 @@ fn set_prefs(
     let (reload, reload_llm) = {
         let old = state.prefs.read().unwrap();
         (
-            core_adapter::needs_reload(&old, &prefs) || !model_ready(&state),
-            core_adapter::needs_llm_reload(&old, &prefs) || llm_wanted_but_down(&state, &prefs),
+            core_adapter::needs_reload(&old, &prefs) || !model_ready(state),
+            core_adapter::needs_llm_reload(&old, &prefs) || llm_wanted_but_down(state, &prefs),
         )
     };
     if let Some(core) = state.core.get() {
@@ -419,7 +427,7 @@ fn set_prefs(
             core.load(ModelSpec::from_prefs(&prefs, ad));
         }
     }
-    sync_on_demand(&state, &prefs);
+    sync_on_demand(state, &prefs);
     if let Some(h) = &state.history {
         let _ = h.lock().unwrap().prune(prefs.retention, history::now_ms());
     }
@@ -431,7 +439,7 @@ fn set_prefs(
     };
     let _ = app.emit_to(OVERLAY, "overlay:theme", prefs.theme);
     *state.prefs.write().unwrap() = prefs;
-    show_suggestion_count(&app, pending);
+    show_suggestion_count(app, pending);
     Ok(())
 }
 
@@ -751,6 +759,108 @@ fn dictionary_export(entries: Vec<crate::prefs::DictEntry>) -> Result<String, St
 #[tauri::command]
 fn dictionary_export_text(entries: Vec<crate::prefs::DictEntry>) -> String {
     crate::dictionary::export(&entries)
+}
+
+/// Native folder / file picker owned by the settings window ("Browse" /
+/// "Change" next to model paths). `None` = cancelled. Runs on its own
+/// thread so the UI keeps painting while it is open.
+#[tauri::command]
+async fn pick_path(
+    app: AppHandle,
+    kind: crate::shell::PickKind,
+    title: Option<String>,
+    filters: Option<Vec<crate::shell::PickFilter>>,
+) -> Result<Option<String>, String> {
+    let req = crate::shell::PickRequest::new(kind, title, filters)?;
+    let owner = app
+        .get_webview_window(SETTINGS)
+        .and_then(|w| hwnd_of(&w))
+        .map_or(0, |h| h.0 as isize);
+    tauri::async_runtime::spawn_blocking(move || crate::shell::pick(owner, req))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Open a help / download link in the browser: only the allowlisted hosts
+/// in `shell::check_external_url` (the app never fetches it itself).
+#[tauri::command]
+async fn open_external(url: String) -> Result<(), String> {
+    crate::shell::check_external_url(&url)?;
+    tauri::async_runtime::spawn_blocking(move || crate::shell::open_external(&url))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// The speech models this build can download (D31), with where each is
+/// saved and whether it is already there.
+#[tauri::command]
+fn model_catalog(state: tauri::State<'_, AppState>) -> Vec<crate::model_download::CatalogView> {
+    use crate::model_download::{catalog_view, ModelEngine, CAN_DOWNLOAD};
+    let dir = core_adapter::models_dir(state.appdata.as_deref());
+    catalog_view(&dir, CAN_DOWNLOAD, |e| match e {
+        ModelEngine::Whisper => cfg!(feature = "whisper"),
+        ModelEngine::Parakeet => cfg!(feature = "parakeet"),
+    })
+}
+
+/// Download catalogue model `id` (D9/D31: only ever sent after the user
+/// pressed Download). Progress arrives as `model:download` events; on
+/// `done` the prefs point the local engine at it and it loads.
+#[tauri::command]
+fn model_download_start(app: AppHandle, state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
+    #[cfg(feature = "download")]
+    {
+        use crate::model_download::{self as md, Progress, State, Stop};
+        let entry = md::entry(&id).ok_or_else(|| format!("unknown model {id}"))?;
+        let fetch = md::HttpFetch::new()?;
+        let cancel = state.downloads.begin(&id)?;
+        let dir = core_adapter::models_dir(state.appdata.as_deref());
+        let downloads = state.downloads.clone();
+        std::thread::spawn(move || {
+            let total = entry.size();
+            let send = |p: Progress| {
+                let _ = app.emit_to(SETTINGS, "model:download", p);
+            };
+            let r = md::run(entry, &dir, &fetch, &cancel, &mut |p| send(p));
+            let end = |state: State, error: Option<String>, path: Option<String>| Progress {
+                id: entry.id.to_string(),
+                received: if state == State::Done { total } else { 0 },
+                total,
+                state,
+                error,
+                path,
+            };
+            let last = match r {
+                Ok(path) => {
+                    let st = app.state::<AppState>();
+                    let mut prefs = st.prefs.read().unwrap().clone();
+                    entry.apply_to(&mut prefs, &dir);
+                    match save_prefs(&app, &st, prefs) {
+                        Ok(()) => end(State::Done, None, Some(path.display().to_string())),
+                        Err(e) => end(State::Error, Some(format!("downloaded, but the setting was not saved: {e}")), None),
+                    }
+                }
+                Err(Stop::Cancelled) => end(State::Cancelled, None, None),
+                Err(Stop::Failed(e)) => end(State::Error, Some(e), None),
+            };
+            eprintln!("model download {}: {:?}", entry.id, last.state);
+            downloads.finish(entry.id);
+            send(last);
+        });
+        Ok(())
+    }
+    #[cfg(not(feature = "download"))]
+    {
+        let _ = (app, state, id);
+        Err("this build has no downloader: get the model from its page".into())
+    }
+}
+
+/// Stop the running download of `id`; its `.part` file is deleted and a
+/// `cancelled` event follows. False when it was not running.
+#[tauri::command]
+fn model_download_cancel(state: tauri::State<'_, AppState>, id: String) -> bool {
+    state.downloads.cancel(&id)
 }
 
 fn model_ready(state: &AppState) -> bool {
@@ -2021,6 +2131,7 @@ pub fn run() {
                 notes::SAVE_DEBOUNCE_MS,
             ))),
             started: Instant::now(),
+            downloads: Arc::new(crate::model_download::Downloads::default()),
         })
         .invoke_handler(tauri::generate_handler![
             get_prefs,
@@ -2054,6 +2165,11 @@ pub fn run() {
             dictionary_import,
             dictionary_export,
             dictionary_export_text,
+            pick_path,
+            open_external,
+            model_catalog,
+            model_download_start,
+            model_download_cancel,
             dev_get,
             dev_validate,
             dev_set,

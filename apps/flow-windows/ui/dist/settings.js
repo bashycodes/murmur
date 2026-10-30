@@ -8,6 +8,7 @@ import { enginesCard } from "./engines-card.js";
 import { ai, collectAi } from "./features/ai.js";
 import { engines, versionTapped } from "./features/engines.js";
 import { collectGeneral, general } from "./features/general.js";
+import { modelsFeature } from "./features/models.js";
 import { openrouter } from "./features/openrouter.js";
 import { $, el, html, setStatus } from "./lib/dom.js";
 import { ICON, iconEl } from "./lib/icons.js";
@@ -48,7 +49,7 @@ const PAGES = [
     settingsOpenrouterPage,
     settingsDeveloperPage,
 ];
-const FEATURES = [general, ai, engines, openrouter];
+const FEATURES = [general, ai, engines, openrouter, modelsFeature];
 const MAIN_NAV = [
     { page: "home", label: "Dictation", icon: ICON.dictation },
     { page: "notetaker", label: "Notetaker", icon: ICON.notetaker, later: true },

@@ -4,6 +4,7 @@
 // and cleanup switches and models are on those pages.
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
+import { extLink } from "../../features/models.js";
 export const settingsOpenrouterPage = {
     id: "settings-openrouter",
     area: "settings",
@@ -18,7 +19,7 @@ ${group("API key", row(`<span id="or_key_state" class="lw-key-state">No key save
        <button type="button" class="fl-btn fl-btn-ghost" id="or_key_clear">Remove</button>
        <button type="button" class="fl-btn fl-btn-secondary" id="or_key_check">Check key</button>
      </span>`) +
-        row(`<label for="or_key" id="or_key_label">Paste a key</label>`, `From openrouter.ai → Keys. Set a credit limit on the key.`, `<input id="or_key" class="fl-input lw-w220 lw-mono-input" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-…" />
+        row(`<label for="or_key" id="or_key_label">Paste a key</label>`, `From ${extLink("https://openrouter.ai/settings/keys", "openrouter.ai → Keys")}. Set a credit limit on the key.`, `<input id="or_key" class="fl-input lw-w220 lw-mono-input" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-…" />
        <button type="button" class="fl-btn fl-btn-secondary" id="or_key_paste">Paste</button>
        <button type="button" class="fl-btn fl-btn-primary" id="or_key_save">Save</button>`, `id="or_key_entry"`) +
         row("Credit", `<span id="or_key_info" hidden></span><span id="or_key_warn" class="hint warn" hidden> This key has no credit limit; OpenRouter recommends setting one.</span> <span id="or_key_status"></span>`, `<span class="fl-badge fl-badge-light" id="or_key_badge">Not checked</span>`, `id="or_credit_row"`))}

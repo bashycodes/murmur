@@ -6,6 +6,7 @@
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import type { Page } from "../../lib/router.js";
+import { extLink } from "../../features/models.js";
 
 export const settingsOpenrouterPage: Page = {
   id: "settings-openrouter",
@@ -32,7 +33,7 @@ ${group(
   ) +
     row(
       `<label for="or_key" id="or_key_label">Paste a key</label>`,
-      `From openrouter.ai → Keys. Set a credit limit on the key.`,
+      `From ${extLink("https://openrouter.ai/settings/keys", "openrouter.ai → Keys")}. Set a credit limit on the key.`,
       `<input id="or_key" class="fl-input lw-w220 lw-mono-input" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-…" />
        <button type="button" class="fl-btn fl-btn-secondary" id="or_key_paste">Paste</button>
        <button type="button" class="fl-btn fl-btn-primary" id="or_key_save">Save</button>`,
