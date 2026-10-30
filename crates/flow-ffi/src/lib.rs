@@ -206,9 +206,37 @@ pub mod json_api {
     /// Like [`load_models`], with the error's stable kind
     /// (`bad_config`, or [`flow_core::CoreError::kind`]).
     pub fn load_models_kind(cfg_json: &str) -> Result<FlowCore, (&'static str, String)> {
-        let cfg: ModelConfig = serde_json::from_str(cfg_json)
+        let v: serde_json::Value = serde_json::from_str(cfg_json)
             .map_err(|e| ("bad_config", format!("bad model config: {e}")))?;
-        FlowCore::load_models(&cfg).map_err(|e| (e.kind(), e.to_string()))
+        let load = model_load(v).map_err(|e| ("bad_config", format!("bad model config: {e}")))?;
+        load.load().map_err(|e| (e.kind(), e.to_string()))
+    }
+
+    /// A `ModelConfig` plus the shell-only field `load_language` (D33, RAM-tight
+    /// shells): when set, only the model `ModelConfig::language_route` names
+    /// for it is loaded (`FlowCore::load_models_for`), else every model.
+    pub struct ModelLoad {
+        pub cfg: ModelConfig,
+        pub language: Option<String>,
+    }
+
+    impl ModelLoad {
+        pub fn load(&self) -> Result<FlowCore, flow_core::CoreError> {
+            match self.language.as_deref() {
+                Some(l) => FlowCore::load_models_for(&self.cfg, Some(l)),
+                None => FlowCore::load_models(&self.cfg),
+            }
+        }
+    }
+
+    fn model_load(mut v: serde_json::Value) -> Result<ModelLoad, String> {
+        let language = match v.as_object_mut().and_then(|o| o.remove("load_language")) {
+            None | Some(serde_json::Value::Null) => None,
+            Some(serde_json::Value::String(s)) if !s.is_empty() => Some(s),
+            Some(other) => return Err(format!("load_language must be a language code, got {other}")),
+        };
+        let cfg = serde_json::from_value(v).map_err(|e| e.to_string())?;
+        Ok(ModelLoad { cfg, language })
     }
 
     pub fn start_session(h: &FlowHandle, cfg_json: &str) -> Result<(), (&'static str, String)> {
@@ -321,7 +349,9 @@ pub mod json_api {
         let r = h
             .router()
             .ok_or(("bad_config", "not a router handle".to_string()))?;
-        let attempts: Vec<ModelConfig> = serde_json::from_str(json)
+        let attempts: Vec<ModelLoad> = serde_json::from_str::<Vec<serde_json::Value>>(json)
+            .map_err(|e| e.to_string())
+            .and_then(|vs| vs.into_iter().map(model_load).collect())
             .map_err(|e| ("bad_config", format!("bad_config: bad model configs: {e}")))?;
         if attempts.is_empty() {
             r.set_local_loader(None);
@@ -330,7 +360,7 @@ pub mod json_api {
         r.set_local_loader(Some(Arc::new(move || {
             let mut errors = Vec::new();
             for c in &attempts {
-                match FlowCore::load_models(c) {
+                match c.load() {
                     Ok(core) => return Ok(Arc::new(core) as Arc<dyn Backend>),
                     Err(e) => errors.push(e.to_string()),
                 }

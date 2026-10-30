@@ -11,7 +11,9 @@ class ModelPagesTest {
         for (s in Screen.entries) {
             val r = ModelPages.recommended(s)
             assertTrue("$s", r.isNotEmpty())
-            for (m in r) assertTrue(m.url, m.url.startsWith("https://") && m.url.endsWith(m.file.substringAfterLast('/')) || m.url.endsWith("${m.file}.tar.bz2"))
+            // H5: Hebrew models are four files: the link is the pinned revision's folder on Hugging Face.
+            if (s == Screen.HEBREW) for (m in r) assertTrue(m.url, m.url.startsWith("https://huggingface.co/") && Regex("/tree/[0-9a-f]{40}").containsMatchIn(m.url))
+            else for (m in r) assertTrue(m.url, m.url.startsWith("https://") && m.url.endsWith(m.file.substringAfterLast('/')) || m.url.endsWith("${m.file}.tar.bz2"))
         }
     }
 

@@ -170,6 +170,8 @@ class SettingsActivity : Activity() {
         // Review P3: database work off the main thread (the engine reload is non-blocking since C1).
         if (e.purgeHistory) thread(name = "history-purge") { runCatching { app.history.purge(n.retention) } }
         if (e.reloadEngine) app.engine.reload()
+        // H5: Hebrew with a Hebrew model installed loads that model instead (one model in RAM).
+        else if (n.language != old.language) app.engine.ensureLanguage()
         if (n.llmEnabled && !old.llmEnabled && app.settings.llmModelPath == null) {
             Toast.makeText(this, "AI cleanup needs a GGUF model: import one first.", Toast.LENGTH_LONG).show()
         }
@@ -495,9 +497,14 @@ class SettingsActivity : Activity() {
                 choiceRows(choices, s.language) { code -> applyNow { copy(language = code) } }
             }
             note("Parakeet and *.en whisper models are English only. Changes apply at once.")
+            val hebrew = note("")
             refreshers += {
                 val n = app.settings.load()
-                effective.text = "Next dictation: " + LanguageDefault.label(n.language, app.effectiveLanguage(n))
+                val eff = app.effectiveLanguage(n)
+                effective.text = "Next dictation: " + LanguageDefault.label(n.language, eff)
+                val h = SettingsPages.hebrewNote(eff, app.engine.hebrewModel()?.second, caps.local)
+                hebrew.text = h.orEmpty()
+                hebrew.visibility = if (h == null) View.GONE else View.VISIBLE
             }
         }
         refresh()
@@ -563,9 +570,11 @@ class SettingsActivity : Activity() {
             card {
                 val whisper = navRow(R.drawable.ic_set_mic, "Speech model (whisper)") { startActivity(Intent(this@SettingsActivity, ModelImportActivity::class.java)) }
                 val parakeet = navRow(R.drawable.ic_set_mic, "Parakeet model folder") { startActivity(ModelImportActivity.parakeetIntent(this@SettingsActivity)) }
+                val hebrew = navRow(R.drawable.ic_set_language, "Hebrew model") { startActivity(ModelImportActivity.hebrewIntent(this@SettingsActivity)) }
                 refreshers += {
                     whisper.setSubtitle(fileName(app.settings.modelPath) ?: "None imported")
                     parakeet.setSubtitle(fileName(app.settings.parakeetPath) ?: "None imported")
+                    hebrew.setSubtitle(app.engine.hebrewModel()?.second?.label?.let { "$it · used when the language is Hebrew" } ?: "None imported · Hebrew uses whisper")
                 }
             }
         }

@@ -143,8 +143,20 @@ object RouterErrors {
     }
 }
 
-/** `ModelConfig.asr_engine`: whisper.cpp (any language) or Parakeet-TDT (English, D12). */
-enum class AsrEngine(val wire: String) { WHISPER("whisper"), PARAKEET("parakeet") }
+/**
+ * `ModelConfig.asr_engine`: whisper.cpp (any language) or Parakeet-TDT (English, D12).
+ * [SHERPA_ONLINE] (zipformer, D33) is only used for a per-language model (Hebrew), never as the
+ * user's default engine.
+ */
+enum class AsrEngine(val wire: String) { WHISPER("whisper"), PARAKEET("parakeet"), SHERPA_ONLINE("sherpa_online") }
+
+/** crates/flow-core `LanguageModel` (D33): one entry of [ModelConfig.languages]. */
+data class LanguageModel(
+    val asrEngine: AsrEngine,
+    /** The sherpa-onnx model directory (or whisper file). */
+    val asrPath: String,
+    val parakeetDecoding: ParakeetDecoding = ParakeetDecoding.AUTO,
+)
 
 /** crates/flow-core `ModelConfig`. [mockText] selects the core's `Mock` ASR backend. */
 data class ModelConfig(
@@ -158,7 +170,18 @@ data class ModelConfig(
     val asrEngine: AsrEngine = AsrEngine.WHISPER,
     /** D22: Parakeet search mode; [ParakeetDecoding.AUTO] is omitted from the JSON. Whisper ignores it. */
     val parakeetDecoding: ParakeetDecoding = ParakeetDecoding.AUTO,
-)
+    /** D33 per-language models keyed by ISO 639-1 code (`he`); omitted from the JSON when empty. */
+    val languages: Map<String, LanguageModel> = emptyMap(),
+    /**
+     * H5, shell-only (flow-ffi): load only the model this language routes to
+     * (`FlowCore::load_models_for`), so the phone keeps one ASR model in RAM. Null = load all.
+     */
+    val loadLanguage: String? = null,
+) {
+    /** The ASR model this config actually loads: the [loadLanguage] entry, else the default. */
+    val routed: LanguageModel
+        get() = loadLanguage?.let { languages[it] } ?: LanguageModel(asrEngine, asrPath, parakeetDecoding)
+}
 
 /**
  * crates/flow-core `ParakeetDecoding` (2026-10-23). AUTO loads a second recognizer (≈ +0.6 GB RSS)

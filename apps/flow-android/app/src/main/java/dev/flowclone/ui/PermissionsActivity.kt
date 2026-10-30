@@ -118,7 +118,7 @@ class PermissionsActivity : Activity() {
                 "Speech engine",
                 when (st) {
                     is EngineHolder.State.Ready -> "Loaded: ${st.description}"
-                    EngineHolder.State.Loading -> "Loading model…"
+                    EngineHolder.State.Loading -> app.engine.loadingLabel ?: "Loading model…"
                     is EngineHolder.State.Failed -> st.message
                     EngineHolder.State.NotLoaded -> "Not loaded"
                 },
