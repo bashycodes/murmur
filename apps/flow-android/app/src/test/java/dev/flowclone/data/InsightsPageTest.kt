@@ -24,6 +24,21 @@ class InsightsPageTest {
         assertEquals("43 words/min", InsightsPage.wpm(42.6))
     }
 
+    @Test fun speedComparedWithTyping() {
+        assertEquals(null, InsightsPage.speedVsTyping(null, 40.0))
+        assertEquals(null, InsightsPage.speedVsTyping(42.0, 40.0))
+        assertEquals("About 1.5× your typing speed", InsightsPage.speedVsTyping(60.0, 40.0))
+        assertEquals("About 2× your typing speed", InsightsPage.speedVsTyping(80.0, 40.0))
+        assertEquals("About 3× your typing speed", InsightsPage.speedVsTyping(136.0, 40.0))
+        assertEquals(null, InsightsPage.speedVsTyping(60.0, 0.0))
+    }
+
+    @Test fun appShare() {
+        assertEquals(1f, InsightsPage.share(50, 50))
+        assertEquals(0.5f, InsightsPage.share(25, 50))
+        assertEquals(0f, InsightsPage.share(5, 0))
+    }
+
     @Test fun savedTime() {
         assertEquals("None yet", InsightsPage.saved(0.0))
         assertEquals("Under a minute", InsightsPage.saved(0.4))

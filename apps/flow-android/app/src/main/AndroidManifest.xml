@@ -57,12 +57,14 @@
         <activity android:name=".ui.ModelImportActivity" android:exported="false" android:label="@string/title_models" />
         <activity android:name=".ui.SettingsActivity" android:exported="false" android:label="@string/title_settings" />
         <activity android:name=".ui.DictionaryActivity" android:exported="false" android:label="@string/title_dictionary" />
-        <activity android:name=".ui.HistoryActivity" android:exported="false" android:label="@string/title_history" />
-        <activity android:name=".ui.InsightsActivity" android:exported="false" android:label="@string/title_insights" />
+        <!-- History, Insights, Notes and the note editor draw the design's top bar (Theme.Flow.Shell). -->
+        <activity android:name=".ui.HistoryActivity" android:exported="false" android:label="@string/title_history" android:theme="@style/Theme.Flow.Shell" />
+        <activity android:name=".ui.InsightsActivity" android:exported="false" android:label="@string/title_insights" android:theme="@style/Theme.Flow.Shell" />
         <!-- Notes list: no bubble here (only the editor is a dictation surface). -->
-        <activity android:name=".ui.NotesActivity" android:exported="false" android:label="@string/title_notes" />
+        <activity android:name=".ui.NotesActivity" android:exported="false" android:label="@string/title_notes" android:theme="@style/Theme.Flow.Shell" />
         <!-- Note editor (Quick note + every note): the one screen of ours the bubble dictates into (policy/OwnAppGate). -->
         <activity android:name=".ui.NoteEditorActivity" android:exported="false" android:label="@string/title_scratchpad"
+            android:theme="@style/Theme.Flow.Shell"
             android:launchMode="singleTop" android:windowSoftInputMode="adjustResize|stateVisible" />
         <activity android:name=".ui.DeveloperActivity" android:exported="false" android:label="@string/title_developer" />
         <activity android:name=".ui.OpenRouterActivity" android:exported="false" android:label="OpenRouter (cloud)" />

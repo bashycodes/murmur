@@ -16,6 +16,17 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- **Android: History, Notes, the note editor and Insights in the new look.**
+  Each has the design's top bar with back. History shows dictations as cards
+  grouped by day, like Home: the text, the time and app, where it ran, and
+  Copy and ⋮ (*Open details*, *Delete*). *Clear all* moved to the top bar.
+  Notes are cards too, and *New note* is now the + button. Insights opens
+  with the words / wpm / day-streak numbers and how your speed compares with
+  typing. Top apps have bars. Everything else works as before, in light and
+  dark.
+
 ## [0.8.0] - 2026-10-29
 
 ### Added

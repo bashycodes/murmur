@@ -6,16 +6,20 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.os.Bundle
-import android.view.MenuItem
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.LinearLayout
 import dev.flowclone.FlowApp
 import dev.flowclone.data.Insights
 import dev.flowclone.data.InsightsPage
+import dev.flowclone.data.ShellPages
 import kotlin.concurrent.thread
 
 /**
- * Insights (main screen → *Insights*): words dictated, last 7 days, speaking speed, streaks,
+ * Insights (main screen → *Insights*), in the design's look (no Android artboard: the desktop
+ * PageInsights.dc.html and the drawer's stat card): top bar with back, the serif stat row
+ * (words / wpm / day streak) with how that compares with typing, then words dictated, last 7 days, speaking speed, streaks,
  * time saved vs typing, dictations, top apps and a words-per-day chart. Read from
  * [dev.flowclone.data.InsightsStore] (counts only, on this phone; History can be cleared without
  * touching it). Reloaded on every resume, so a dictation made meanwhile shows when you come back.
@@ -27,7 +31,6 @@ class InsightsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ui = DevUi(this)
-        actionBar?.setDisplayHomeAsUpEnabled(true)
     }
 
     override fun onResume() {
@@ -48,7 +51,10 @@ class InsightsActivity : Activity() {
     }.getOrNull()
 
     private fun render(s: Insights.Summary): Unit = with(ui) {
-        rebuild {
+        rebuild(t.bg) {
+            topBar(TITLE, DevUi.TopNav.BACK, { finish() })
+            statRow(ShellPages.stats(s))
+            InsightsPage.speedVsTyping(s.avgWpm, s.typingWpm)?.let { note(it, p.text) }
             sectionLabel("LAST 7 DAYS")
             card {
                 addView(
@@ -65,12 +71,13 @@ class InsightsActivity : Activity() {
                 infoRow("Current streak", InsightsPage.days(s.currentStreak))
                 infoRow("Longest streak", InsightsPage.days(s.longestStreak))
                 infoRow("Time saved", InsightsPage.saved(s.savedMinutes))
-                note(InsightsPage.savedHint(s.typingWpm))
+                note(InsightsPage.savedHint(s.typingWpm)).setPadding(dp(20), 0, dp(20), dp(14))
             }
             sectionLabel("TOP APPS")
             card {
                 if (s.topApps.isEmpty()) emptyState("No dictations yet", "Dictate with the bubble and your words per app show up here.")
-                for (a in s.topApps) infoRow(InsightsPage.appName(a.app, ::label), "${InsightsPage.number(a.words)} words")
+                val most = s.topApps.maxOfOrNull { it.words } ?: 0L
+                for (a in s.topApps) appRow(InsightsPage.appName(a.app, ::label), a.words, InsightsPage.share(a.words, most))
             }
             note(
                 "Counted on this phone only and never sent anywhere. Clearing History keeps these numbers." +
@@ -84,8 +91,34 @@ class InsightsActivity : Activity() {
         }
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean =
-        if (item.itemId == android.R.id.home) { finish(); true } else super.onOptionsItemSelected(item)
+    /** A top app: name and word count over a thin ink bar as long as its share of the busiest app. */
+    private fun LinearLayout.appRow(name: String, words: Long, share: Float): Unit = with(ui) {
+        val count = "${InsightsPage.number(words)} words"
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(14))
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(tv(name, TypeScale.ROW, p.text).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END },
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(12) })
+                addView(tv(count, TypeScale.SUB, p.muted))
+            })
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                background = rounded(t.selected, 3)
+                clipToOutline = true
+                weightSum = 1f
+                addView(View(context).apply { background = rounded(p.text, 3) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, share))
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(6)).apply { topMargin = dp(8) })
+            for (i in 0 until childCount) getChildAt(i).importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            isFocusable = true
+            contentDescription = "$name, $count"
+        })
+    }
+
+    companion object {
+        const val TITLE = "Insights"
+    }
 }
 
 /**

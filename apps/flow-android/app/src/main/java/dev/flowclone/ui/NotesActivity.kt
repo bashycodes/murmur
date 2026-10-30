@@ -5,7 +5,9 @@ import android.app.AlertDialog
 import android.os.Bundle
 import android.text.format.DateFormat
 import android.text.format.DateUtils
-import android.view.MenuItem
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.Toast
 import dev.flowclone.FlowApp
@@ -16,8 +18,9 @@ import dev.flowclone.notes.NotesView
 import java.util.Date
 
 /**
- * Notes (main screen → *Notes*): every saved note, pinned first then most recently changed, with
- * its first line as the title and when it was last changed. *New note*, search by content, and
+ * Notes (main screen → *Notes*): the design's top bar with back, search, then every saved note
+ * as a card (AndroidHome.dc.html's card look; the desktop Scratchpad's title + preview + when),
+ * pinned first then most recently changed. The *New note* FAB (`.a-fab`), search by content, and
  * per note (the ⋮ button, long-press, or TalkBack actions) Pin / Unpin, Share and Delete (asks
  * first). Tapping a note opens it in [NoteEditorActivity]. The Quick note (the Scratchpad from
  * before Notes) is one of them, pinned by default. Reloaded on every resume, so an edit shows
@@ -37,7 +40,6 @@ class NotesActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ui = DevUi(this)
-        actionBar?.setDisplayHomeAsUpEnabled(true)
         query = savedInstanceState?.getString(STATE_QUERY).orEmpty()
     }
 
@@ -64,8 +66,8 @@ class NotesActivity : Activity() {
 
     private fun render(): Unit = with(ui) {
         built = true
-        rebuild {
-            action("New note", DevUi.Style.PRIMARY) { startActivity(NoteEditorActivity.newNote(this@NotesActivity)) }
+        fabPage(R.drawable.ic_lw_plus, NEW_NOTE, { startActivity(NoteEditorActivity.newNote(this@NotesActivity)) }, t.bg) {
+            topBar(TITLE, DevUi.TopNav.BACK, { finish() })
             searchField("Search notes", query) { q -> query = q; fill() }
             listBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }.also { addView(it) }
         }
@@ -78,38 +80,70 @@ class NotesActivity : Activity() {
         val shown = NotesView.filter(notes, query)
         if (shown.isEmpty()) {
             box.card {
-                if (notes.isEmpty()) emptyState("No notes yet", "Tap New note, then the bubble, and talk.")
+                if (notes.isEmpty()) emptyState("No notes yet", "Tap + for a new note, then the bubble, and talk.")
                 else emptyState("No matching notes", "Nothing contains \"${query.trim()}\".")
             }
             return@with
         }
         val (pinned, rest) = shown.partition { it.pinned }
-        for ((label, group) in listOf("PINNED" to pinned, "NOTES" to rest)) {
+        for ((label, group) in listOf(PINNED to pinned, RECENT to rest)) {
             if (group.isEmpty()) continue
-            box.sectionLabel(label)
-            box.card {
-                for (n in group) {
-                    val menu = { options(n) }
-                    listRow(
-                        NotesView.title(n), meta(n), if (n.pinned) "Pinned" else "",
-                        trailing = iconButton(R.drawable.ic_dev_down, "Options for ${NotesView.title(n)}") { menu() },
-                        actions = listOf(
-                            "Options" to menu,
-                            (if (n.pinned) "Unpin" else "Pin") to { pin(n, !n.pinned) },
-                            "Share" to { share(n) },
-                            "Delete" to { delete(n) },
-                        ),
-                    ) { startActivity(NoteEditorActivity.note(this@NotesActivity, n.id)) }
-                }
-            }
+            box.heading(label)
+            for (n in group) box.addView(noteCard(n))
         }
     }
 
-    /** "3:41 PM · first words of the rest" (older than today: the date instead of the time). */
-    private fun meta(n: Note): String {
+    /**
+     * One note: its title (first line), the start of the rest, when it was last changed with a
+     * Pinned badge, and ⋮ (Pin / Share / Delete). The card body opens the editor and is one
+     * TalkBack stop with those as custom actions.
+     */
+    private fun noteCard(n: Note): View = with(ui) {
+        val title = NotesView.title(n)
+        val preview = NotesView.preview(n)
+        val whenText = whenText(n)
+        val menu = { options(n) }
+        val card = itemCard().apply { setPadding(dp(20), dp(8), dp(8), dp(8)) }
+        val body = LinearLayout(this@NotesActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(10), dp(8), dp(10))
+            addView(tv(title, TypeScale.ROW, p.text, TypeScale.W_SEMIBOLD).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+            if (preview.isNotEmpty()) addView(tv(preview, TypeScale.SUB, p.muted).apply {
+                maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, dp(2), 0, 0)
+            })
+            addView(LinearLayout(this@NotesActivity).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(tv(whenText, TypeScale.META, p.muted))
+                if (n.pinned) addView(badge("Pinned"), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) })
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
+            for (i in 0 until childCount) getChildAt(i).importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            contentDescription = listOf(title, preview, whenText, if (n.pinned) "Pinned" else "").filter { it.isNotEmpty() }.joinToString(", ")
+        }
+        val row = LinearLayout(this@NotesActivity).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(body, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(iconButton(R.drawable.ic_lw_more, "Options for $title") { menu() })
+        }
+        body.apply {
+            minimumHeight = dp(48)
+            background = ripple(null, 12)
+            isClickable = true; isFocusable = true
+            setOnClickListener { startActivity(NoteEditorActivity.note(this@NotesActivity, n.id)) }
+            customActions(this, listOf(
+                "Options" to menu,
+                (if (n.pinned) "Unpin" else "Pin") to { pin(n, !n.pinned) },
+                "Share" to { share(n) },
+                "Delete" to { delete(n) },
+            ))
+        }
+        card.addView(row)
+        card
+    }
+
+    /** When it was last changed: "3:41 PM" today, the date before. */
+    private fun whenText(n: Note): String {
         val d = Date(n.updatedAt)
-        val whenText = if (DateUtils.isToday(n.updatedAt)) DateFormat.getTimeFormat(this).format(d) else DateFormat.getMediumDateFormat(this).format(d)
-        return listOf(whenText, NotesView.preview(n)).filter { it.isNotEmpty() }.joinToString(" · ")
+        return if (DateUtils.isToday(n.updatedAt)) DateFormat.getTimeFormat(this).format(d) else DateFormat.getMediumDateFormat(this).format(d)
     }
 
     private fun options(n: Note) {
@@ -141,10 +175,12 @@ class NotesActivity : Activity() {
         })
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean =
-        if (item.itemId == android.R.id.home) { finish(); true } else super.onOptionsItemSelected(item)
-
-    private companion object {
-        const val STATE_QUERY = "query"
+    companion object {
+        const val TITLE = "Notes"
+        /** The FAB's TalkBack label. */
+        const val NEW_NOTE = "New note"
+        const val PINNED = "Pinned"
+        const val RECENT = "Recent"
+        private const val STATE_QUERY = "query"
     }
 }
