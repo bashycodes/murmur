@@ -310,6 +310,15 @@
       if (!prefs.transforms.items.some((i) => i.transform.id === prefs.transforms.auto_apply)) prefs.transforms.auto_apply = null;
       return structuredClone(prefs);
     },
+    // Shortcut recording (src/app.rs hotkey_capture_*): the hook's answer
+    // is simulated with window.__capture("Right Alt") / __capture(null)
+    // (Esc) / __capture(null, "timeout"). __noHook = the hook isn't running.
+    hotkey_capture_start: () => {
+      if (window.__noHook) throw "The keyboard hook is not running: type the shortcut instead.";
+      window.__capturing = true;
+      return null;
+    },
+    hotkey_capture_stop: () => { window.__capturing = false; return null; },
     transform_try: async ({ id, text }) => {
       const t = prefs.transforms.items.find((i) => i.transform.id === id);
       if (!t) throw `no transform "${id}"`;
@@ -481,6 +490,10 @@
     },
   };
   window.__emit = (name, payload) => (listeners[name] || []).forEach((cb) => cb({ payload }));
+  window.__capture = (chord, state) => {
+    window.__capturing = false;
+    window.__emit("hotkey:capture", chord ? { state: "done", chord } : { state: state || "cancelled", chord: null });
+  };
 })();
 // Old tab names -> page ids (the app shell's data-page values).
 const OLD_TABS = { general: "settings-general", ai: "settings-cleanup", history: "home", developer: "settings-developer", openrouter: "settings-openrouter" };

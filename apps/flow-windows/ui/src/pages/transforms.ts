@@ -9,6 +9,7 @@
 import { $, askDialog, el } from "../lib/dom.js";
 import { ICON, iconEl, iconSvg } from "../lib/icons.js";
 import { invoke } from "../lib/ipc.js";
+import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js";
 import { prefsStore, type Prefs, type TransformItem, type TransformPrefs } from "../lib/prefs-store.js";
 import type { Page } from "../lib/router.js";
 
@@ -63,8 +64,9 @@ const TEMPLATE = `
       <input class="fl-input" id="tf_desc" maxlength="${MAX_DESCRIPTION}" placeholder="Shown on the card" /></label>
     <label class="lw-tf-field"><span>Instruction</span>
       <textarea class="fl-input" id="tf_instruction" rows="5" maxlength="${MAX_INSTRUCTION}" placeholder="Rewrite the text so it sounds warm and friendly. Keep it short."></textarea></label>
-    <label class="lw-tf-field"><span>Shortcut <em>(optional)</em></span>
-      <input class="fl-input" id="tf_shortcut" placeholder="Win+Alt+3" spellcheck="false" /></label>
+    <div class="lw-tf-field"><label for="tf_shortcut">Shortcut <em>(optional)</em></label>
+      <span class="lw-tf-keyrow"><input class="fl-input" id="tf_shortcut" placeholder="Win+Alt+3" spellcheck="false" />
+      <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="tf_shortcut_rec">Press keys</button></span></div>
     <p class="lw-tf-hint" id="tf_builtin_hint" hidden>A built-in transform: Reset to defaults puts back its shipped wording.</p>
     <p class="lw-tf-err" id="tf_edit_err" role="alert"></p>
     <div class="lw-dialog-actions">
@@ -217,6 +219,48 @@ function closeEditor(): void {
   $<HTMLDialogElement>("tf_edit_dlg").close();
 }
 
+// "Press keys": the keyboard hook records the chord (lib/keycapture.ts);
+// the field stays for typing one by hand.
+let recordingKeys = false;
+
+function showRecordingKeys(on: boolean): void {
+  recordingKeys = on;
+  const input = $<HTMLInputElement>("tf_shortcut");
+  input.placeholder = on ? RECORDING_TEXT : "Win+Alt+3";
+  input.classList.toggle("is-recording", on);
+  $<HTMLButtonElement>("tf_shortcut_rec").textContent = on ? "Stop" : "Press keys";
+}
+
+async function recordShortcut(): Promise<void> {
+  const input = $<HTMLInputElement>("tf_shortcut");
+  if (recordingKeys) {
+    showRecordingKeys(false);
+    stopCapture();
+    return;
+  }
+  const before = input.value;
+  input.value = "";
+  showRecordingKeys(true);
+  const r = await captureChord();
+  if (!recordingKeys) {
+    input.value ||= before;
+    return;
+  }
+  showRecordingKeys(false);
+  if ("chord" in r) {
+    input.value = r.chord;
+  } else {
+    input.value = before;
+    if (r.message) $<HTMLElement>("tf_edit_err").textContent = r.message;
+  }
+}
+
+function stopRecordingKeys(): void {
+  if (!recordingKeys) return;
+  showRecordingKeys(false);
+  stopCapture();
+}
+
 function edit(id: string | null): void {
   const t = current();
   const item = id ? t.items.find((i) => i.transform.id === id) : undefined;
@@ -346,6 +390,10 @@ export const transformsPage: Page = {
     $<HTMLButtonElement>("tf_edit_save").addEventListener("click", () => void saveEditor());
     $<HTMLButtonElement>("tf_edit_cancel").addEventListener("click", () => closeEditor());
     $<HTMLButtonElement>("tf_edit_delete").addEventListener("click", () => void deleteEditing());
+    $<HTMLButtonElement>("tf_shortcut_rec").addEventListener("click", () => void recordShortcut());
+    // Typing in the field (or closing the dialog) ends a recording.
+    $<HTMLInputElement>("tf_shortcut").addEventListener("input", stopRecordingKeys);
+    $<HTMLDialogElement>("tf_edit_dlg").addEventListener("close", stopRecordingKeys);
     $<HTMLInputElement>("tf_name").addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();

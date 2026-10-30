@@ -661,6 +661,20 @@ dialog.fl-dialog .lw-dl-lead {
   flex-direction: column;
   gap: 12px;
 }
+/* Shortcut Change: recording ("Press keys… Esc to cancel") + Type instead. */
+.lw-ob-rec {
+  font: 400 15px/20px var(--font-sans);
+  color: var(--foreground);
+}
+.lw-ob-type {
+  font: 400 13px/20px var(--font-sans);
+  color: var(--foreground-tertiary);
+  text-decoration: underline;
+}
+.lw-ob-rec[hidden],
+.lw-ob-type[hidden] {
+  display: none;
+}
 .fl-group.lw-ob-try {
   gap: 0;
 }
