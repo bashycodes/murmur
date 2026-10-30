@@ -1,0 +1,11 @@
+# whisper-rs-sys forwards every GGML_* env var to whisper.cpp's CMake.
+# Without this, ggml builds with GGML_NATIVE=ON, i.e. for the CPU of the
+# machine that compiles it: GitHub's windows-latest runners have AVX-512,
+# so the CI exe crashed with 0xc000001d (illegal instruction) on the first
+# whisper decode on CPUs without it (Intel Core Ultra / Lunar Lake, most
+# consumer Intel since Alder Lake). OFF = a portable AVX2 + FMA + F16C +
+# BMI2 baseline (any x86-64 CPU since 2013).
+# Cargo does not rebuild whisper-rs-sys when this changes: run
+# `cargo clean -p whisper-rs-sys` once (CI bumps its rust-cache key).
+[env]
+GGML_NATIVE = "OFF"
