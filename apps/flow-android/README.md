@@ -102,5 +102,13 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
   Only the captured selection is replaced (`command/SelectionSplice`: `ACTION_SET_TEXT` with the
   text around it kept, read back; else `commitText` while the same text is still selected).
 
+## Look and fonts
+Screens follow the Murmur design (`docs/design/app-design`, Android artboards): tokens in
+`ui/Tokens.kt` (light from `.lw-android`, dark from `.lw-dark`), helpers in `ui/DevUi.kt`.
+Text uses Figtree and stat numbers EB Garamond, both variable-weight fonts bundled in
+`app/src/main/assets/fonts/` under the SIL Open Font License 1.1; the licence texts ship in the
+APK at `assets/licenses/figtree-OFL.txt` and `assets/licenses/ebgaramond-OFL.txt`
+(EB Garamond is a Latin subset). If a font fails to load, the system sans / serif is used.
+
 ## Needs a device
 See the checklist in [`INSTALL.md`](INSTALL.md) and `PROJECT_CONTEXT.md` §Android.
