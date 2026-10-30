@@ -1,0 +1,25 @@
+/* Home (ui/src/pages/home.ts), after Main.dc.html / DarkHome.dc.html.
+   Layout of the feed and rail is in settings.css (.lw-home*); this adds the
+   design's row shape (time | text | hover actions | route pill) and the
+   rail's "where speech ran this week" split. Colours are theme.css tokens. */
+
+.lw-home-search .fl-input { max-width: 280px; }
+
+/* History rows: actions and the route pill sit on the first text line. */
+.lw-home .lw-hist-row { gap: 12px; }
+.lw-home .fl-list-time { padding-top: 0; cursor: default; }
+.lw-home .lw-hist-actions { flex: none; }
+.lw-home .lw-hist-row > .lw-route { flex: none; margin-top: 0; }
+.lw-home .lw-hist-meta { margin-top: 6px; }
+
+/* Rail: where speech ran this week */
+.lw-home-routes { display: flex; flex-direction: column; gap: 10px; }
+.lw-home-routebar { display: flex; gap: 3px; height: 10px; }
+.lw-home-routebar > span { flex: 1; border-radius: 3px; }
+.lw-home-routebar .is-pc, .lw-home-route .lw-dot.is-pc { background: var(--fathom-900); }
+.lw-home-routebar .is-server, .lw-home-route .lw-dot.is-server { background: var(--fathom-500); }
+.lw-home-routebar .is-cloud, .lw-home-route .lw-dot.is-cloud { background: var(--glow-300); }
+.lw-home-routebar .is-none, .lw-home-route .lw-dot.is-off { background: var(--background-secondary); }
+.lw-home-routelist { display: flex; flex-direction: column; gap: 4px; font: 400 13px/20px var(--font-sans); color: var(--foreground); }
+.lw-home-route { display: flex; align-items: center; gap: 8px; }
+.lw-home-route .lw-grow { flex: 1; min-width: 0; }

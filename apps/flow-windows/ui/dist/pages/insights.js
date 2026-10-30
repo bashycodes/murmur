@@ -1,35 +1,73 @@
-// Insights page: local usage counts (`insights_get` / `insights_reset`; kept
-// apart from History, never sent anywhere) and a 7-day SVG chart.
-import { $, askDialog, el, setStatus, svg } from "../lib/dom.js";
+// Insights page, after PageInsights.dc.html: speaking speed (gauge against
+// typing), fixes made, total words with where speech ran this week, top apps
+// and the streak heatmap. Everything is counted on this PC (`insights_get` /
+// `insights_reset`; kept apart from History, never sent anywhere).
+import { $, askDialog, el, setStatus } from "../lib/dom.js";
+import { ICON, iconEl } from "../lib/icons.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { router } from "../lib/router.js";
+export const ROUTES = ["pc", "server", "cloud"];
+export const ROUTE_LABEL = { pc: "This PC", server: "Your server", cloud: "Cloud" };
+/** Percent per known route (unknown left out); null when none is known. */
+export function routeShare(r) {
+    const known = r.pc + r.server + r.cloud;
+    if (known === 0)
+        return null;
+    const pct = (n) => Math.round((100 * n) / known);
+    return { pc: pct(r.pc), server: pct(r.server), cloud: pct(r.cloud) };
+}
 const TEMPLATE = `
-<div class="lw-page">
-  <div class="lw-page-head">
+<div class="lw-ins">
+  <div class="lw-ins-head">
     <h1 class="fl-page-title">Insights</h1>
+    <span class="lw-ins-sub">Worked out on this PC from your history</span>
     <button type="button" id="ins_reset" class="fl-btn fl-btn-ghost fl-btn-sm lw-danger">Reset stats</button>
   </div>
-  <div class="lw-cards">
-    <div class="fl-card"><div class="fl-metric-cap">Words dictated</div><div class="fl-metric" id="ins_total">0</div></div>
-    <div class="fl-card"><div class="fl-metric-cap">Last 7 days</div><div class="fl-metric" id="ins_week">0</div></div>
-    <div class="fl-card"><div class="fl-metric-cap">Speaking speed</div><div class="fl-metric"><span id="ins_wpm">–</span> <small>wpm</small></div></div>
-    <div class="fl-card"><div class="fl-metric-cap">Time saved</div><div class="fl-metric" id="ins_saved">0 min</div></div>
-    <div class="fl-card"><div class="fl-metric-cap">Day streak</div><div class="fl-metric" id="ins_streak">0</div></div>
-    <div class="fl-card"><div class="fl-metric-cap">Longest streak</div><div class="fl-metric" id="ins_longest">0</div></div>
-    <div class="fl-card"><div class="fl-metric-cap">Dictations</div><div class="fl-metric" id="ins_count">0</div></div>
-  </div>
-  <div class="lw-cards lw-cards-2">
-    <div class="fl-card">
-      <div class="fl-metric-cap">Words per day</div>
-      <svg id="ins_chart" class="chart" viewBox="0 0 350 140" role="img" aria-label="Words per day, last 7 days"></svg>
+
+  <div class="lw-ins-row3">
+    <div class="fl-card lw-ins-card">
+      <div class="fl-metric" id="ins_wpm">–</div>
+      <div class="fl-metric-cap">Words per minute</div>
+      <div class="lw-ins-gauge">
+        <svg viewBox="0 0 120 64" width="120" height="64" role="img" id="ins_gauge">
+          <path d="M10 60a50 50 0 0 1 100 0" pathLength="100" fill="none" stroke="var(--background-secondary)" stroke-width="12" stroke-linecap="round"></path>
+          <path id="ins_gauge_arc" d="M10 60a50 50 0 0 1 100 0" pathLength="100" fill="none" stroke="var(--fathom-900)" stroke-width="12" stroke-linecap="round" stroke-dasharray="0 100"></path>
+        </svg>
+        <span id="ins_vs_typing"></span>
+      </div>
     </div>
-    <div class="fl-card">
-      <div class="fl-metric-cap">Top apps</div>
-      <ol id="ins_apps" class="lw-plain lw-apps"></ol>
-      <p id="ins_apps_empty" class="hint">No dictations yet.</p>
+    <div class="fl-card lw-ins-card">
+      <div class="fl-metric" id="ins_fixes">0</div>
+      <div class="fl-metric-cap">Fixes made for you</div>
+      <div class="lw-ins-rule"></div>
+      <div class="lw-ins-kv"><span>AI cleanup edits</span><span id="ins_fix_ai">0</span></div>
+      <div class="lw-ins-kv"><span>Dictionary fixes</span><span id="ins_fix_dict">0</span></div>
+    </div>
+    <div class="fl-card lw-ins-card">
+      <div class="fl-metric" id="ins_total">0</div>
+      <div class="fl-metric-cap">Total words dictated</div>
+      <div class="lw-ins-rule"></div>
+      <div class="lw-split" id="ins_split"></div>
+      <span class="lw-ins-note" id="ins_split_note">Where your speech was turned into text this week</span>
     </div>
   </div>
-  <p class="fl-help"><span id="ins_assume"></span> Counted on this PC only (words, recording length and app name per day; no text). Nothing is sent anywhere. Deleting history keeps these numbers. <span id="ins_status"></span></p>
+
+  <div class="lw-ins-row2">
+    <div class="fl-card lw-ins-card lw-ins-big">
+      <div class="lw-ins-cardhead"><span class="lw-ins-title">Where you dictate</span><span class="fl-metric-cap">Top apps by words</span></div>
+      <div class="fl-usage" id="ins_apps"></div>
+      <p id="ins_apps_empty" class="lw-ins-note">No dictations yet.</p>
+    </div>
+    <div class="fl-card lw-ins-card lw-ins-big">
+      <div class="lw-ins-cardhead"><span class="lw-ins-title" id="ins_streak">0 day streak</span><span class="fl-metric-cap" id="ins_longest">Longest 0 days</span></div>
+      <div>
+        <div class="fl-heat" id="ins_heat" role="img" aria-label="Words per day, last 18 weeks"></div>
+        <div class="fl-heat-legend">More<i class="h4"></i><i class="h3"></i><i class="h2"></i><i class="h1"></i>Less</div>
+      </div>
+    </div>
+  </div>
+
+  <p class="fl-help lw-ins-foot"><span id="ins_assume"></span> Counted on this PC only (words, recording length, app name and where speech ran, per day; no text). Nothing is sent anywhere. Deleting history keeps these numbers. <span id="ins_status"></span></p>
 
   <dialog id="ins_reset_dlg" class="fl-dialog">
     <h3>Reset all stats?</h3>
@@ -50,51 +88,105 @@ export function minutesText(m) {
 function days(n) {
     return n === 1 ? "1 day" : `${n} days`;
 }
-/** 7 bars, oldest left; today's bar is highlighted. */
-function drawChart(last7) {
-    const W = 350, H = 140, top = 16, bottom = 22, gap = 12;
-    const bw = (W - gap * (last7.length + 1)) / last7.length;
-    const max = Math.max(1, ...last7.map((d) => d.words));
-    const parts = [svg("line", { class: "base", x1: 0, x2: W, y1: H - bottom, y2: H - bottom })];
-    last7.forEach((d, i) => {
-        const x = gap + i * (bw + gap);
-        const h = ((H - top - bottom) * d.words) / max;
-        const y = H - bottom - h;
-        const [yy, mm, dd] = d.date.split("-").map(Number);
-        const day = new Date(yy, mm - 1, dd).toLocaleDateString(undefined, { weekday: "short" });
-        const bar = svg("rect", {
-            class: i === last7.length - 1 ? "bar today" : "bar",
-            x, y, width: bw, height: Math.max(h, d.words > 0 ? 1 : 0), rx: 3,
-        });
-        bar.appendChild(svg("title", {}, `${d.date}: ${d.words.toLocaleString()} words`));
-        parts.push(bar);
-        if (d.words > 0)
-            parts.push(svg("text", { x: x + bw / 2, y: y - 4 }, d.words.toLocaleString()));
-        parts.push(svg("text", { x: x + bw / 2, y: H - 6 }, day));
+/** Speed against typing: the gauge fills at 4.5× typing speed. */
+function showSpeed(s) {
+    const arc = $("ins_gauge_arc");
+    const vs = $("ins_vs_typing");
+    if (s.avg_wpm === null || s.typing_wpm <= 0) {
+        $("ins_wpm").textContent = "–";
+        arc.setAttribute("stroke-dasharray", "0 100");
+        vs.textContent = "Dictate a few times to see your speed";
+    }
+    else {
+        const ratio = s.avg_wpm / s.typing_wpm;
+        $("ins_wpm").textContent = String(Math.round(s.avg_wpm));
+        arc.setAttribute("stroke-dasharray", `${Math.min(100, (100 * ratio) / 4.5).toFixed(1)} 100`);
+        const x = ratio < 2 ? ratio.toFixed(1).replace(/\.0$/, "") : String(Math.round(ratio));
+        vs.textContent = `About ${x}× your typing speed`;
+    }
+    $("ins_gauge").setAttribute("aria-label", vs.textContent ?? "");
+}
+/** Split bar of where speech ran this week (known routes only). */
+function showSplit(s) {
+    const share = routeShare(s.routes_7d);
+    const bar = $("ins_split");
+    bar.hidden = share === null;
+    $("ins_split_note").textContent = share
+        ? "Where your speech was turned into text this week"
+        : "No dictations with a known engine this week";
+    if (!share)
+        return;
+    bar.replaceChildren(...ROUTES.filter((r) => s.routes_7d[r] > 0).map((r) => {
+        const seg = el("span", `is-${r}`, share[r] >= 18 ? ROUTE_LABEL[r] : "");
+        seg.style.flex = String(Math.max(share[r], 3));
+        seg.title = `${ROUTE_LABEL[r]}: ${share[r]}%`;
+        return seg;
+    }));
+}
+function showApps(s) {
+    const total = Math.max(1, s.total_words);
+    const pcts = s.top_apps.map((a) => Math.round((100 * a.words) / total));
+    const max = Math.max(1, ...pcts);
+    const cells = [];
+    s.top_apps.forEach((a, i) => {
+        const icon = el("span", "lw-ins-appicon");
+        icon.append(iconEl(ICON.system, 20));
+        const track = el("span", "fl-usage-track");
+        const bar = el("span", `fl-usage-bar ${i === 0 ? "is-top" : "is-mid"}`, `${pcts[i]}%`);
+        bar.style.width = `${Math.max(30, Math.round((pcts[i] / max) * 180))}px`;
+        const name = (a.app || "Unknown app").replace(/\.exe$/i, "");
+        track.append(bar, el("span", "fl-usage-label", name));
+        track.title = `${name}: ${a.words.toLocaleString()} words`;
+        cells.push(icon, track);
     });
-    $("ins_chart").replaceChildren(...parts);
+    $("ins_apps").replaceChildren(...cells);
+    $("ins_apps_empty").hidden = s.top_apps.length > 0;
+}
+const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+/** Heat level 1–4 on a square-root scale against the busiest day, so one
+ *  long day doesn't wash out the rest (h0 = no words, "" = future). */
+function level(words, max) {
+    if (words === null)
+        return "";
+    if (words === 0)
+        return "h0";
+    return `h${Math.min(4, Math.max(1, Math.ceil(4 * Math.sqrt(words / max))))}`;
+}
+/** Rows = weekdays (Mon first), columns = weeks (oldest left). */
+function showHeatmap(s) {
+    const weeks = [];
+    for (let i = 0; i < s.heatmap.length; i += 7)
+        weeks.push(s.heatmap.slice(i, i + 7));
+    const max = Math.max(1, ...s.heatmap.map((d) => d.words ?? 0));
+    const heat = $("ins_heat");
+    heat.style.setProperty("--cols", String(weeks.length));
+    const cells = [];
+    WEEKDAYS.forEach((name, d) => {
+        cells.push(el("span", undefined, name));
+        for (const w of weeks) {
+            const day = w[d];
+            const cell = el("i", day ? level(day.words, max) : "");
+            if (day && day.words !== null)
+                cell.title = `${day.date}: ${day.words.toLocaleString()} words`;
+            cells.push(cell);
+        }
+    });
+    heat.replaceChildren(...cells);
+    $("ins_streak").textContent = `${s.current_streak} day streak`;
+    $("ins_longest").textContent = `Longest ${days(s.longest_streak)}`;
 }
 function showInsights(s) {
+    showSpeed(s);
+    $("ins_fixes").textContent = s.fixes.total.toLocaleString();
+    $("ins_fix_ai").textContent = s.fixes.ai.toLocaleString();
+    $("ins_fix_dict").textContent = s.fixes.dictionary.toLocaleString();
     $("ins_total").textContent = s.total_words.toLocaleString();
-    $("ins_week").textContent = s.week_words.toLocaleString();
-    $("ins_wpm").textContent = s.avg_wpm === null ? "–" : String(Math.round(s.avg_wpm));
-    $("ins_saved").textContent = minutesText(s.saved_minutes);
-    $("ins_streak").textContent = days(s.current_streak);
-    $("ins_longest").textContent = days(s.longest_streak);
-    $("ins_count").textContent = s.dictations.toLocaleString();
+    showSplit(s);
+    showApps(s);
+    showHeatmap(s);
     $("ins_assume").textContent =
-        `Time saved assumes typing at ${s.typing_wpm} words per minute, minus the time spent speaking.` +
+        `${s.dictations.toLocaleString()} dictations; about ${minutesText(s.saved_minutes)} saved against typing at ${s.typing_wpm} words per minute.` +
             (s.since ? ` Counting since ${s.since}.` : "");
-    drawChart(s.last7);
-    const max = Math.max(1, ...s.top_apps.map((a) => a.words));
-    $("ins_apps").replaceChildren(...s.top_apps.map((a) => {
-        const li = el("li");
-        const bar = el("span", "lw-app-bar");
-        bar.style.width = `${Math.max(2, (100 * a.words) / max)}%`;
-        li.append(el("span", "lw-app-name", a.app || "Unknown app"), el("span", "lw-app-words", a.words.toLocaleString()), bar);
-        return li;
-    }));
-    $("ins_apps_empty").hidden = s.top_apps.length > 0;
 }
 async function loadInsights() {
     try {
