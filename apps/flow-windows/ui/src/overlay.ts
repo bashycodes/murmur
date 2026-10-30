@@ -6,6 +6,8 @@
 // Backend events: `dictation:status` ({state, message?}), `audio:level`
 // (0..1, ~every 150 ms), `dictation:preview`, `dictation:route`,
 // `dictation:live-route`, `dictation:max-warning` (ms left).
+// Error / fell-back bubbles carry a "Fix →" / "Choose a model →" link to
+// the settings page that fixes them (`overlay_action` open_settings).
 
 type OverlayState =
   | { state: "resting" }
@@ -25,6 +27,8 @@ const pill = document.getElementById("pill") as HTMLDivElement;
 const wave = document.getElementById("wave") as HTMLDivElement;
 const msg = document.getElementById("msg") as HTMLDivElement;
 const preview = document.getElementById("preview") as HTMLDivElement;
+const previewText = document.getElementById("preview-text") as HTMLSpanElement;
+const previewFix = document.getElementById("preview-fix") as HTMLAnchorElement;
 
 PROFILE.forEach((h, i) => {
   const b = document.createElement("span");
@@ -80,11 +84,11 @@ function apply(s: OverlayState): void {
   // Error / notice text ("Dictation disabled — …", "No speech heard")
   // shows in the bubble above the pill for as long as the pill lingers.
   if (message) {
-    preview.textContent = message;
-    preview.dataset.kind = s.state;
+    setBubble(message, s.state === "error" ? "error" : "notice");
     preview.classList.add("visible");
   } else {
     delete preview.dataset.kind;
+    previewFix.hidden = true;
     showCloudNotice();
   }
   if (isActive() && !wasActive) {
@@ -94,8 +98,43 @@ function apply(s: OverlayState): void {
   syncDone();
 }
 
+// Settings pages the Flow bar may open (src/app.rs OVERLAY_SETTINGS_PAGES).
+type FixPage = "settings-speech" | "settings-cleanup" | "settings-openrouter" | "settings-server";
+interface Fix {
+  page: FixPage;
+  label: string;
+}
+
+/** Which settings page fixes what the bubble says; null = nothing to fix
+ *  there ("No speech heard", a microphone or paste error). Cloud first:
+ *  "Cloud STT failed (…); used your server" is about OpenRouter. */
+function fixFor(text: string): Fix | null {
+  if (/AI cleanup model not found/i.test(text)) return { page: "settings-cleanup", label: "Choose a model →" };
+  if (/(speech|whisper|parakeet) model (not found|failed)|model file not found/i.test(text)) {
+    return { page: "settings-speech", label: "Choose a model →" };
+  }
+  if (/cloud stt|openrouter|openrouter\.ai/i.test(text)) return { page: "settings-openrouter", label: "Fix →" };
+  if (/cloud cleanup|ai cleanup/i.test(text)) return { page: "settings-cleanup", label: "Fix →" };
+  if (/dictation disabled|local model not loaded/i.test(text)) return { page: "settings-speech", label: "Fix →" };
+  if (/server/i.test(text)) return { page: "settings-server", label: "Fix →" };
+  return null;
+}
+
+/** Bubble text; `kind` (error / notice) adds the dot and, when a settings
+ *  page can fix it, the link. Live transcript passes no kind. */
+function setBubble(text: string, kind?: "error" | "notice"): void {
+  previewText.textContent = text;
+  if (kind) preview.dataset.kind = kind;
+  else delete preview.dataset.kind;
+  const fix = kind ? fixFor(text) : null;
+  previewFix.hidden = !fix;
+  previewFix.textContent = fix?.label ?? "";
+  if (fix) previewFix.dataset.page = fix.page;
+  else delete previewFix.dataset.page;
+}
+
 function showPreview(text: string): void {
-  preview.textContent = text;
+  setBubble(text);
   preview.classList.toggle("visible", text.length > 0 && isActive());
 }
 
@@ -113,6 +152,13 @@ for (const [id, action] of [
     if (pillState === "active_locked") void overlayInvoke("overlay_action", { action });
   });
 }
+
+// The link opens Settings on its page without taking focus from the app.
+previewFix.addEventListener("mousedown", (e) => {
+  e.preventDefault();
+  const page = previewFix.dataset.page;
+  if (page) void overlayInvoke("overlay_action", { action: "open_settings", page });
+});
 
 void listen<string>("dictation:preview", (e) => showPreview(e.payload));
 void listen<OverlayState>("dictation:status", (e) => apply(e.payload));
@@ -172,15 +218,15 @@ void listen<Badge | null>("dictation:route", (e) => {
 function showCloudNotice(): void {
   if (!noticeText || isActive()) return;
   if (Date.now() >= noticeUntil) {
-    if (preview.textContent === noticeText) {
+    if (previewText.textContent === noticeText) {
       preview.classList.remove("visible");
       delete preview.dataset.kind;
+      previewFix.hidden = true;
     }
     noticeText = "";
     return;
   }
-  preview.textContent = noticeText;
-  preview.dataset.kind = "notice";
+  setBubble(noticeText, "notice");
   preview.classList.add("visible");
 }
 
