@@ -3,7 +3,6 @@ package dev.flowclone.ui
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.Editable
 import android.text.InputType
@@ -43,12 +42,16 @@ import kotlinx.coroutines.SupervisorJob
  * without the user's tap); the field is focused with the keyboard up, so the bubble is one tap away.
  *
  * Saving: [Autosaver] writes [DocumentStore] (per note) shortly after edits pause and at once on pause.
+ *
+ * Look: the design's top bar with back and the note's name, Copy all / Share / Clear pills, the
+ * word count, and the text on a white 24 dp card (no artboard of its own; Android*.dc.html parts).
  */
 class NoteEditorActivity : Activity() {
     private val app get() = FlowApp.of(this)
     private lateinit var docId: String
     private lateinit var edit: EditText
     private lateinit var count: TextView
+    private var bar: DevUi.TopBar? = null
     private lateinit var saver: Autosaver
     /** Swapping in another note's text ([onNewIntent]): not an edit. */
     private var loading = false
@@ -61,7 +64,6 @@ class NoteEditorActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        actionBar?.setDisplayHomeAsUpEnabled(true)
         val text = open(intent, savedInstanceState?.getString(STATE_DOC)) ?: return
         build(text)
     }
@@ -105,6 +107,7 @@ class NoteEditorActivity : Activity() {
         edit.setText(text)
         edit.setSelection(text.length)
         loading = false
+        bar?.title?.text = title
         showCount()
     }
 
@@ -116,10 +119,10 @@ class NoteEditorActivity : Activity() {
     private fun build(initial: String) {
         val ui = DevUi(this)
         val p = ui.p
-        fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-        count = TextView(this).apply {
-            textSize = 13f; setTextColor(p.muted)
-            setPadding(dp(16), dp(4), dp(16), dp(4))
+        val bg = ui.t.bg
+        fun dp(v: Int) = ui.dp(v)
+        count = ui.tv("", TypeScale.META, p.muted).apply {
+            setPadding(dp(20), 0, dp(20), dp(8))
         }
         edit = EditText(this).apply {
             id = R.id.note_editor
@@ -128,16 +131,20 @@ class NoteEditorActivity : Activity() {
             isSingleLine = false
             gravity = Gravity.TOP or Gravity.START
             hint = "Tap here, then the bubble, and talk. Saved as you go."
-            setHintTextColor((p.muted and 0x00FFFFFF) or 0x99000000.toInt())
-            textSize = 17f; setTextColor(p.text)
-            background = GradientDrawable().apply { setColor(p.surface); cornerRadius = dp(20).toFloat() }
-            setPadding(dp(16), dp(14), dp(16), dp(14))
+            setHintTextColor(p.muted)
+            textSize = TypeScale.ROW; setTextColor(p.text)
+            typeface = Fonts.sans(this@NoteEditorActivity, TypeScale.W_REGULAR)
+            setLineSpacing(0f, 1.15f)
+            background = ui.rounded(p.surface, 24)
+            setPadding(dp(20), dp(18), dp(20), dp(18))
             setText(initial)
             setSelection(initial.length)
         }
+        val topBar = ui.buildTopBar(title.toString(), DevUi.TopNav.BACK, { finish() }).also { bar = it }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(p.bg)
+            setBackgroundColor(bg)
+            addView(topBar.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(64)))
             with(ui) {
                 chipRow(
                     chip("Copy all") { copyAll() },
@@ -151,11 +158,11 @@ class NoteEditorActivity : Activity() {
             })
             setOnApplyWindowInsetsListener { v, insets ->
                 val i = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout() or WindowInsets.Type.ime())
-                v.setPadding(i.left, i.top + dp(4), i.right, i.bottom + dp(8))
+                v.setPadding(i.left, i.top, i.right, i.bottom + dp(8))
                 insets
             }
         }
-        window.decorView.setBackgroundColor(p.bg)
+        window.decorView.setBackgroundColor(bg)
         setContentView(root)
         root.requestApplyInsets()
         showCount()
@@ -208,8 +215,6 @@ class NoteEditorActivity : Activity() {
             window.decorView.announceForAccessibility("Cleared")
         })
     }
-
-    override fun onNavigateUp(): Boolean { finish(); return true }
 
     companion object {
         /** [DocumentStore] id to open (default: the Quick note). */

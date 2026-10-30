@@ -53,6 +53,8 @@ class InsightsUiTest {
         assertEquals("No recordings yet", value(a, "Average speed"))
         assertTrue(t.toString(), t.any { it.contains("40 words/min") })
         assertTrue(walk(a.window.decorView).any { it is InsightsChartView })
+        assertTrue(InsightsActivity.TITLE in t)
+        assertFalse("no speed yet, no comparison", t.any { it.contains("your typing speed") })
         UiTestKit.assertTouchTargets(a, "insights")
     }
 
@@ -67,6 +69,11 @@ class InsightsUiTest {
         assertEquals("60 words/min", value(a, "Average speed"))
         assertEquals("1 day", value(a, "Current streak"))
         assertTrue(texts(a).toString(), "com.example.chat" in texts(a))
+        // The stat row (serif numbers, one TalkBack stop each) and how it compares with typing.
+        val cds = walk(a.window.decorView).mapNotNull { it.contentDescription?.toString() }
+        assertTrue(cds.toString(), "6 words" in cds && "60 wpm" in cds && "1 day streak" in cds)
+        assertTrue(texts(a).toString(), "About 1.5× your typing speed" in texts(a))
+        assertTrue(cds.toString(), "com.example.chat, 6 words" in cds)
         // Another dictation while the page is in the background: shown when it comes back.
         c.pause()
         app.insights.record(now, "seven eight", 2_000, "com.example.chat")

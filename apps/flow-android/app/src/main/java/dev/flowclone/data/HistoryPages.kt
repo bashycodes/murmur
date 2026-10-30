@@ -8,9 +8,10 @@ import java.time.temporal.ChronoUnit
 import java.util.Locale
 
 /**
- * History (ui/HistoryActivity) in the Settings look: a list grouped by day (one row per
- * dictation: first line, time + target app, engine-outcome badge) and a detail page. Search and
- * raw-vs-formatted text stay in [HistoryView]; this only formats.
+ * History (ui/HistoryActivity): a list grouped by day ("Today", "Yesterday", …) of dictation
+ * cards like the Home tab's (AndroidHome.dc.html: the text, time + target app, route tag,
+ * engine-outcome badge, Copy and ⋮) and a detail page. Search and raw-vs-formatted text stay in
+ * [HistoryView]; this only formats.
  */
 object HistoryPages {
     data class Group(val label: String, val rows: List<HistoryRow>)
@@ -44,6 +45,15 @@ object HistoryPages {
     /** Row title: the first non-blank line of what the row shows. */
     fun title(r: HistoryRow, raw: Boolean): String =
         HistoryView.text(r, raw).lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() } ?: "(no speech)"
+
+    /** A card's text: everything the row shows (formatted, or raw with [raw]), or "(no speech)". */
+    fun cardText(r: HistoryRow, raw: Boolean): String = HistoryView.text(r, raw).trim().ifEmpty { "(no speech)" }
+
+    /** A card's TalkBack text: "text. 9:37 AM · app, Your server, AI cleaned, Not inserted — tap to copy". */
+    fun cardDescription(text: String, meta: String, route: String?, outcome: String, flag: String?): String =
+        (if (text.trimEnd().lastOrNull() in SENTENCE_END) "$text " else "$text. ") + listOfNotNull(meta, route, outcome.ifEmpty { null }, flag).joinToString(", ")
+
+    private val SENTENCE_END = setOf('.', '!', '?', '…')
 
     fun app(r: HistoryRow): String = r.appId?.takeIf { it.isNotBlank() } ?: "Unknown app"
 

@@ -27,6 +27,21 @@ object InsightsPage {
         }
     }
 
+    /**
+     * Under the stat row (the desktop Insights page's "About 3× your typing speed"): null until
+     * there is a speed, or when it is not clearly faster than typing.
+     */
+    fun speedVsTyping(avgWpm: Double?, typingWpm: Double): String? {
+        if (avgWpm == null || typingWpm <= 0.0) return null
+        val ratio = avgWpm / typingWpm
+        if (ratio < 1.1) return null
+        val x = if (ratio < 2.0) (Math.round(ratio * 10) / 10.0).toString().removeSuffix(".0") else ratio.roundToLong().toString()
+        return "About $x× your typing speed"
+    }
+
+    /** A top app's share of the busiest app's words (its bar length), 0..1. */
+    fun share(words: Long, most: Long): Float = if (most <= 0) 0f else (words.toFloat() / most).coerceIn(0f, 1f)
+
     fun savedHint(typingWpm: Double) = "Compared with typing at ${typingWpm.roundToLong()} words/min"
 
     /** Short weekday per bar, the last one "Today". */
