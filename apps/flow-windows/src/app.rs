@@ -4,7 +4,9 @@
 use crate::audio::capture::{self, Capture};
 use crate::context::{uia, RawSnapshot};
 use crate::controller::{AudioSink, Controller, Platform};
-use crate::core_adapter::{self, FlowCoreAdapter, LlmSpec, LlmStatus, ModelSpec, ModelStatus};
+use crate::core_adapter::{
+    self, FlowCoreAdapter, LanguageSpec, LlmSpec, LlmStatus, ModelSpec, ModelStatus,
+};
 use crate::credentials::{self, CredentialStore, KeyState};
 use crate::debug_log::{self, DebugLog};
 use crate::dev_settings::{BuildCaps, DevForm, DevSettings, FieldError};
@@ -426,11 +428,19 @@ fn save_prefs(app: &AppHandle, state: &AppState, mut prefs: Prefs) -> Result<(),
             if reload_llm {
                 core.load_llm(LlmSpec::from_prefs(&prefs, ad));
             }
-        } else if core.is_ready()
-            && core_adapter::needs_reload(&state.prefs.read().unwrap(), &prefs)
-        {
+            // D33: the Hebrew model loads (or retries, e.g. after its
+            // download) next to the default one, never reloading it.
+            if core_adapter::needs_language_reload(core, &prefs, ad) {
+                core.load_language(LanguageSpec::from_prefs(&prefs, ad));
+            }
+        } else if core.is_ready() {
             // D24: a model loaded on demand follows the new model choice.
-            core.load(ModelSpec::from_prefs(&prefs, ad));
+            if core_adapter::needs_reload(&state.prefs.read().unwrap(), &prefs) {
+                core.load(ModelSpec::from_prefs(&prefs, ad));
+            }
+            if core_adapter::needs_language_reload(core, &prefs, ad) {
+                core.load_language(LanguageSpec::from_prefs(&prefs, ad));
+            }
         }
     }
     sync_on_demand(state, &prefs);
@@ -805,7 +815,7 @@ fn model_catalog(state: tauri::State<'_, AppState>) -> Vec<crate::model_download
     let dir = core_adapter::models_dir(state.appdata.as_deref());
     catalog_view(&dir, CAN_DOWNLOAD, |e| match e {
         ModelEngine::Whisper => cfg!(feature = "whisper"),
-        ModelEngine::Parakeet => cfg!(feature = "parakeet"),
+        ModelEngine::Parakeet | ModelEngine::SherpaOnline => cfg!(feature = "parakeet"),
     })
 }
 
@@ -930,6 +940,8 @@ fn llm_wanted_but_down(state: &AppState, prefs: &Prefs) -> bool {
 #[derive(serde::Serialize)]
 struct ModelInfo {
     status: ModelStatus,
+    /// The Hebrew model (D33 route); `null` = none chosen.
+    hebrew: Option<ModelStatus>,
     default_path: String,
     default_parakeet_dir: String,
     models_dir: String,
@@ -949,6 +961,7 @@ fn get_model_status(state: tauri::State<'_, AppState>) -> ModelInfo {
             .unwrap_or(ModelStatus::Loading {
                 path: String::new(),
             }),
+        hebrew: state.core.get().and_then(|c| c.language_status()),
         default_path: core_adapter::default_model_path(ad).display().to_string(),
         default_parakeet_dir: core_adapter::default_parakeet_dir(ad).display().to_string(),
         models_dir: core_adapter::models_dir(ad).display().to_string(),
@@ -1051,7 +1064,8 @@ fn on_demand_spec(prefs: &Prefs, appdata: Option<&str>) -> Option<ModelSpec> {
 
 fn sync_on_demand(state: &AppState, prefs: &Prefs) {
     if let Some(r) = state.router.get() {
-        r.set_on_demand(on_demand_spec(prefs, state.appdata.as_deref()));
+        let ad = state.appdata.as_deref();
+        r.set_on_demand_with(on_demand_spec(prefs, ad), LanguageSpec::from_prefs(prefs, ad));
     }
 }
 
@@ -1066,6 +1080,7 @@ fn ensure_local(state: &AppState, prefs: &Prefs) {
     // A slot that never started a load reports `Loading` with no path.
     if matches!(core.status(), ModelStatus::Loading { ref path } if path.is_empty()) {
         core.load(ModelSpec::from_prefs(prefs, ad));
+        core.load_language(LanguageSpec::from_prefs(prefs, ad));
         core.load_llm(LlmSpec::from_prefs(prefs, ad));
     }
 }
@@ -2069,6 +2084,19 @@ mod autostart {
             r
         }
     }
+
+    /// At startup: when launch at login is on, write the Run value again so
+    /// it names this exe. `set` otherwise runs only on a prefs save, so after
+    /// a reinstall to another folder (the "Flow Clone" → "Murmur"
+    /// rename moved it) the value kept pointing at a deleted exe and the app
+    /// silently stopped starting. Idempotent; never turns it on when off.
+    pub fn refresh(enabled: bool) {
+        if enabled {
+            if let Err(e) = set(true) {
+                eprintln!("[autostart] could not refresh the Run value: {e}");
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------- entry
@@ -2091,6 +2119,7 @@ pub fn run() {
             eprintln!("[cloud] could not save the migrated settings: {e}");
         }
     }
+    autostart::refresh(prefs.launch_at_login);
     let prefs = Arc::new(RwLock::new(prefs));
     let history =
         match crate::history::History::open(&crate::history::default_path(appdata.as_deref())) {
@@ -2369,9 +2398,14 @@ pub fn run() {
                 let h = handle.clone();
                 let item = llm_item.clone();
                 core.on_llm_status(move |st| apply_llm_status(&h, &item, st));
+                let h = handle.clone();
+                core.on_language_status(move |st| {
+                    let _ = h.emit_to(SETTINGS, "model:hebrew", st);
+                });
                 let p = prefs.read().unwrap().clone();
                 if want_local(&p) {
                     core.load(ModelSpec::from_prefs(&p, appdata.as_deref()));
+                    core.load_language(LanguageSpec::from_prefs(&p, appdata.as_deref()));
                     core.load_llm(LlmSpec::from_prefs(&p, appdata.as_deref()));
                 } else {
                     let _ = model_item
@@ -2393,7 +2427,10 @@ pub fn run() {
             let router = RouterAdapter::new(cfg, local, router_adapter::remote_factory());
             {
                 let p = prefs.read().unwrap();
-                router.set_on_demand(on_demand_spec(&p, appdata.as_deref()));
+                router.set_on_demand_with(
+                    on_demand_spec(&p, appdata.as_deref()),
+                    LanguageSpec::from_prefs(&p, appdata.as_deref()),
+                );
             }
             // D18: the key from Credential Manager, last counters from disk.
             {

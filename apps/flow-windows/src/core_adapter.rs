@@ -37,6 +37,15 @@ pub const DEFAULT_MODEL_FILE: &str = "ggml-base.bin";
 pub const DEFAULT_PARAKEET_DIR: &str = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
 /// D11: the 1.5 s CPU budget model. `qwen2.5-1.5b-instruct-q4_k_m.gguf` is
 /// the quality step up (8/8 vs 4/8 on the messy-dictation set, ~2x slower).
+/// The Hebrew models' folders (docs/findings/2026-10-30-hebrew-model-pins.md),
+/// the names `fetch-models.sh` and the flow-core tests use too.
+pub const ZIPFORMER_HE_DIR: &str = "zipformer2-66m-streaming-he-int8";
+pub const PARAKEET_HE_DIR: &str = "parakeet-tdt-0.6b-v3-he-int8";
+/// Language-ID model for auto-detect (H6/D34): multilingual whisper tiny,
+/// in the models folder; it comes with the Hebrew downloads.
+pub const LID_FILE: &str = "ggml-tiny-q5_1.bin";
+/// The `languages` key of the Hebrew route (D33).
+pub const HEBREW: &str = "he";
 pub const DEFAULT_LLM_FILE: &str = "qwen2.5-0.5b-instruct-q4_k_m.gguf";
 /// How long a dictation started during model load waits for it. Short:
 /// `start_session` runs on the controller loop, which must stay responsive.
@@ -256,6 +265,58 @@ impl ModelSpec {
     }
 }
 
+/// A per-language model (D33 `ModelConfig.languages[language]`): today
+/// only Hebrew (`prefs.hebrew_model`). It loads next to the default model,
+/// independently of it, like the LLM: choosing, downloading or dropping it
+/// never reloads the default model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LanguageSpec {
+    /// `languages` key, e.g. `"he"`.
+    pub language: String,
+    pub model: fc::LanguageModel,
+    /// `ModelConfig.lid_path` (H6/D34): set when the language-ID model is
+    /// in the models folder, so auto-detect dictations that sound like this
+    /// language decode on it. `None` = auto-detect stays on the default
+    /// model (English first), as before.
+    pub lid_path: Option<String>,
+}
+
+impl LanguageSpec {
+    /// The Hebrew route; `None` when the user chose no Hebrew model.
+    pub fn from_prefs(prefs: &crate::prefs::Prefs, appdata: Option<&str>) -> Option<Self> {
+        use crate::prefs::HebrewModel;
+        let (backend, dir) = match prefs.hebrew_model {
+            HebrewModel::None => return None,
+            HebrewModel::Zipformer => (fc::AsrBackend::SherpaOnline, ZIPFORMER_HE_DIR),
+            HebrewModel::ParakeetHe => (fc::AsrBackend::Parakeet, PARAKEET_HE_DIR),
+        };
+        let lid = models_dir(appdata).join(LID_FILE);
+        Some(LanguageSpec {
+            lid_path: lid.is_file().then(|| lid.display().to_string()),
+            language: HEBREW.into(),
+            model: fc::LanguageModel {
+                asr_backend: backend,
+                asr_path: models_dir(appdata).join(dir).display().to_string(),
+                threads: prefs.asr_threads,
+                parakeet_decoding: prefs.developer.parakeet_decoding,
+            },
+        })
+    }
+}
+
+/// The whole flow-core model config the prefs describe: the default model
+/// plus the per-language routes (`languages.he`). The shell loads the parts
+/// itself (two-phase, see the module docs); this is the same config as one
+/// value (logs, tests, `flow-core` JSON).
+pub fn model_config(prefs: &crate::prefs::Prefs, appdata: Option<&str>) -> fc::ModelConfig {
+    let mut cfg = ModelSpec::from_prefs(prefs, appdata).model_config();
+    if let Some(l) = LanguageSpec::from_prefs(prefs, appdata) {
+        cfg.languages.insert(l.language, l.model);
+        cfg.lid_path = l.lid_path;
+    }
+    cfg
+}
+
 /// What LLM to load for cleanup; `None` in prefs terms = cleanup off.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LlmSpec {
@@ -322,6 +383,13 @@ type Listener<T> = Box<dyn Fn(&T) + Send + Sync>;
 struct Slot {
     status: ModelStatus,
     asr: Option<Arc<dyn AsrEngine>>,
+    /// The per-language model (`None` status = none chosen).
+    lang_status: Option<ModelStatus>,
+    lang_spec: Option<LanguageSpec>,
+    lang_asr: Option<(String, Arc<dyn AsrEngine>)>,
+    /// Auto-detect's language identifier (H6), with the language model.
+    lang_lid: Option<Arc<dyn flow_core::lid::LanguageId>>,
+    lang_generation: u64,
     llm_status: LlmStatus,
     cleaner: Option<Arc<dyn Cleaner>>,
     /// `from_engines(asr, cleaner)`; rebuilt whenever either changes.
@@ -334,8 +402,10 @@ struct Slot {
 impl Slot {
     fn rebuild(&mut self) {
         self.core = self.asr.as_ref().map(|asr| {
-            Arc::new(flow_core::FlowCore::from_engines(
+            Arc::new(flow_core::FlowCore::from_language_engines_with_lid(
                 asr.clone(),
+                self.lang_asr.iter().cloned().collect(),
+                self.lang_asr.as_ref().and(self.lang_lid.clone()),
                 self.cleaner.clone(),
             ))
         });
@@ -348,6 +418,7 @@ pub struct FlowCoreAdapter {
     /// Core of the open session (stays fixed even if a reload lands mid-session).
     active: RwLock<Option<Arc<flow_core::FlowCore>>>,
     listener: Mutex<Option<Listener<ModelStatus>>>,
+    lang_listener: Mutex<Option<Listener<Option<ModelStatus>>>>,
     llm_listener: Mutex<Option<Listener<LlmStatus>>>,
     llm_loader: LlmLoader,
 }
@@ -365,6 +436,11 @@ impl FlowCoreAdapter {
                     path: String::new(),
                 },
                 asr: None,
+                lang_status: None,
+                lang_spec: None,
+                lang_asr: None,
+                lang_lid: None,
+                lang_generation: 0,
                 llm_status: LlmStatus::Off,
                 cleaner: None,
                 core: None,
@@ -374,6 +450,7 @@ impl FlowCoreAdapter {
             loaded: Condvar::new(),
             active: RwLock::new(None),
             listener: Mutex::new(None),
+            lang_listener: Mutex::new(None),
             llm_listener: Mutex::new(None),
             llm_loader: loader,
         })
@@ -398,6 +475,113 @@ impl FlowCoreAdapter {
 
     pub fn llm_status(&self) -> LlmStatus {
         self.slot.lock().unwrap().llm_status.clone()
+    }
+
+    /// The per-language model's state; `None` = no language model chosen.
+    pub fn language_status(&self) -> Option<ModelStatus> {
+        self.slot.lock().unwrap().lang_status.clone()
+    }
+
+    /// Called on every per-language model status change. Fires once now.
+    pub fn on_language_status(&self, f: impl Fn(&Option<ModelStatus>) + Send + Sync + 'static) {
+        *self.lang_listener.lock().unwrap() = Some(Box::new(f));
+        self.notify_lang();
+    }
+
+    /// (Re)load the per-language model in the background, or drop it
+    /// (`None`). The default model and dictation keep running meanwhile; a
+    /// missing folder is `Missing` and never blocks the default model.
+    pub fn load_language(self: &Arc<Self>, spec: Option<LanguageSpec>) {
+        let Some(generation) = self.begin_language(spec.clone()) else {
+            return;
+        };
+        let spec = spec.expect("begin_language returns a generation only for Some");
+        let me = self.clone();
+        let spawned = std::thread::Builder::new()
+            .name("flow-lang-load".into())
+            .spawn(move || {
+                let (st, asr) = load_language_asr(&spec);
+                let lid = asr.as_ref().and_then(|_| load_lid(&spec));
+                me.finish_language(generation, &spec, st, asr, lid);
+            });
+        if let Err(e) = spawned {
+            let failed = ModelStatus::Failed {
+                path: String::new(),
+                message: e.to_string(),
+            };
+            let mut s = self.slot.lock().unwrap();
+            if s.lang_generation == generation {
+                s.lang_status = Some(failed);
+            }
+            drop(s);
+            self.notify_lang();
+        }
+    }
+
+    /// Synchronous [`FlowCoreAdapter::load_language`] (tests, on-demand load).
+    pub fn load_language_now(&self, spec: Option<LanguageSpec>) -> Option<ModelStatus> {
+        if let Some(generation) = self.begin_language(spec.clone()) {
+            let spec = spec.expect("Some");
+            let (st, asr) = load_language_asr(&spec);
+            let lid = asr.as_ref().and_then(|_| load_lid(&spec));
+            self.finish_language(generation, &spec, st, asr, lid);
+        }
+        self.language_status()
+    }
+
+    /// The spec the per-language slot holds or is loading.
+    pub fn language_spec(&self) -> Option<LanguageSpec> {
+        self.slot.lock().unwrap().lang_spec.clone()
+    }
+
+    /// Mark a new per-language load; `None` (after dropping the model)
+    /// when `spec` is `None`.
+    fn begin_language(&self, spec: Option<LanguageSpec>) -> Option<u64> {
+        let generation = {
+            let mut s = self.slot.lock().unwrap();
+            s.lang_generation += 1;
+            s.lang_status = spec.as_ref().map(|l| ModelStatus::Loading {
+                path: l.model.asr_path.clone(),
+            });
+            s.lang_spec = spec.clone();
+            // The old model keeps serving until the new one is ready; a
+            // dropped route goes at once.
+            if spec.is_none() && s.lang_asr.take().is_some() {
+                s.lang_lid = None;
+                s.rebuild();
+            }
+            s.lang_generation
+        };
+        self.notify_lang();
+        spec.map(|_| generation)
+    }
+
+    fn finish_language(
+        &self,
+        generation: u64,
+        spec: &LanguageSpec,
+        status: ModelStatus,
+        asr: Option<Arc<dyn AsrEngine>>,
+        lid: Option<Arc<dyn flow_core::lid::LanguageId>>,
+    ) {
+        {
+            let mut s = self.slot.lock().unwrap();
+            if s.lang_generation != generation {
+                return; // superseded
+            }
+            s.lang_status = Some(status);
+            s.lang_asr = asr.map(|a| (spec.language.clone(), a));
+            s.lang_lid = lid;
+            s.rebuild();
+        }
+        self.notify_lang();
+    }
+
+    fn notify_lang(&self) {
+        let st = self.language_status();
+        if let Some(f) = self.lang_listener.lock().unwrap().as_ref() {
+            f(&st);
+        }
     }
 
     /// Start loading the speech model on a background thread.
@@ -627,6 +811,58 @@ fn load_asr(spec: &ModelSpec) -> (ModelStatus, Option<Arc<dyn AsrEngine>>) {
     }
 }
 
+/// Load one per-language model (the engine reports `spec.language`).
+fn load_language_asr(spec: &LanguageSpec) -> (ModelStatus, Option<Arc<dyn AsrEngine>>) {
+    let m = &spec.model;
+    let path = m.asr_path.clone();
+    let t0 = Instant::now();
+    let threads = m.threads.unwrap_or_else(fc::default_threads).max(1);
+    let dir = std::path::Path::new(&m.asr_path);
+    let engine = match &m.asr_backend {
+        fc::AsrBackend::Mock { text } => Ok(Arc::new(flow_core::asr::MockAsr::new(text)) as _),
+        fc::AsrBackend::Whisper => whisper_engine(dir, threads),
+        fc::AsrBackend::Parakeet => {
+            parakeet_language_engine(dir, threads, m.parakeet_decoding, &spec.language)
+        }
+        fc::AsrBackend::SherpaOnline => sherpa_online_engine(dir, threads, &spec.language),
+    };
+    match engine {
+        Ok(e) => (
+            ModelStatus::Ready {
+                path,
+                load_ms: t0.elapsed().as_millis() as u64,
+            },
+            Some(e),
+        ),
+        Err(e) => (status_of_load_error(path, m.asr_backend.name(), e), None),
+    }
+}
+
+/// Auto-detect's language identifier (H6/D34) for `spec`, when its model is
+/// there. A failure only logs: the language model still serves dictations
+/// with the language set, and auto-detect stays on the default model.
+fn load_lid(spec: &LanguageSpec) -> Option<Arc<dyn flow_core::lid::LanguageId>> {
+    let path = spec.lid_path.as_deref()?;
+    let threads = spec.model.threads.unwrap_or_else(fc::default_threads).max(1);
+    match whisper_lid(path, threads) {
+        Ok(l) => Some(l),
+        Err(e) => {
+            eprintln!("[model] language ID unavailable ({path}): {e}");
+            None
+        }
+    }
+}
+
+#[cfg(feature = "whisper")]
+fn whisper_lid(path: &str, threads: usize) -> Result<Arc<dyn flow_core::lid::LanguageId>, String> {
+    flow_core::lid::WhisperLid::load(path, threads, true).map(|l| Arc::new(l) as _)
+}
+
+#[cfg(not(feature = "whisper"))]
+fn whisper_lid(_path: &str, _threads: usize) -> Result<Arc<dyn flow_core::lid::LanguageId>, String> {
+    Err("this build has no whisper engine (feature `whisper`)".into())
+}
+
 /// Typed load errors (CR-1): `ModelNotFound` is the "put a model there"
 /// state; everything else is a failed load.
 fn status_of_load_error(path: String, engine: &str, e: flow_core::CoreError) -> ModelStatus {
@@ -698,6 +934,54 @@ fn parakeet_engine(
     require(dir, true)?;
     Err(flow_core::CoreError::Load(
         "this build has no Parakeet engine (feature `parakeet`)".into(),
+    ))
+}
+
+#[cfg(feature = "parakeet")]
+fn parakeet_language_engine(
+    dir: &std::path::Path,
+    threads: usize,
+    decoding: fc::ParakeetDecoding,
+    language: &str,
+) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+    let path = require(dir, true)?;
+    flow_core::parakeet::ParakeetAsr::load_with(&path, threads, decoding)
+        .map(|e| Arc::new(e.with_language(language)) as Arc<dyn AsrEngine>)
+        .map_err(|e| flow_core::CoreError::Load(e.to_string()))
+}
+
+#[cfg(not(feature = "parakeet"))]
+fn parakeet_language_engine(
+    dir: &std::path::Path,
+    threads: usize,
+    decoding: fc::ParakeetDecoding,
+    _language: &str,
+) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+    parakeet_engine(dir, threads, decoding)
+}
+
+/// Streaming zipformer (D33/H2 `AsrBackend::SherpaOnline`, feature `parakeet`).
+#[cfg(feature = "parakeet")]
+fn sherpa_online_engine(
+    dir: &std::path::Path,
+    threads: usize,
+    language: &str,
+) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+    let path = require(dir, true)?;
+    flow_core::sherpa_online::SherpaOnlineAsr::load(&path, threads, Some(language))
+        .map(|e| Arc::new(e) as Arc<dyn AsrEngine>)
+        .map_err(|e| flow_core::CoreError::Load(e.to_string()))
+}
+
+#[cfg(not(feature = "parakeet"))]
+fn sherpa_online_engine(
+    dir: &std::path::Path,
+    _threads: usize,
+    _language: &str,
+) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+    require(dir, true)?;
+    Err(flow_core::CoreError::Load(
+        "this build has no sherpa-onnx engine (feature `parakeet`)".into(),
     ))
 }
 
@@ -818,6 +1102,7 @@ impl CoreApi for FlowCoreAdapter {
 pub fn make_core(prefs: &crate::prefs::Prefs, appdata: Option<&str>) -> Arc<FlowCoreAdapter> {
     let a = FlowCoreAdapter::new();
     a.load(ModelSpec::from_prefs(prefs, appdata));
+    a.load_language(LanguageSpec::from_prefs(prefs, appdata));
     a.load_llm(LlmSpec::from_prefs(prefs, appdata));
     a
 }
@@ -825,6 +1110,21 @@ pub fn make_core(prefs: &crate::prefs::Prefs, appdata: Option<&str>) -> Arc<Flow
 /// True when the prefs change means a different speech model must be loaded.
 pub fn needs_reload(old: &crate::prefs::Prefs, new: &crate::prefs::Prefs) -> bool {
     ModelSpec::from_prefs(old, None) != ModelSpec::from_prefs(new, None)
+}
+
+/// True when the per-language model must be loaded, dropped or retried:
+/// the choice changed, or it is chosen but not loaded (a folder that was
+/// missing may be there now, e.g. after a download). Never touches the
+/// default model.
+pub fn needs_language_reload(core: &FlowCoreAdapter, new: &crate::prefs::Prefs, appdata: Option<&str>) -> bool {
+    let want = LanguageSpec::from_prefs(new, appdata);
+    if core.language_spec() != want {
+        return true;
+    }
+    matches!(
+        core.language_status(),
+        Some(ModelStatus::Missing { .. } | ModelStatus::Failed { .. })
+    )
 }
 
 /// True when the prefs change means the LLM must be loaded or dropped.
@@ -1391,6 +1691,128 @@ mod tests {
             (7, 2, 900)
         );
         assert_eq!(s.route.unwrap().client_ms, Some(450));
+    }
+
+    fn mock_lang(text: &str, path: &str) -> LanguageSpec {
+        LanguageSpec {
+            language: HEBREW.into(),
+            model: fc::LanguageModel {
+                asr_backend: fc::AsrBackend::Mock { text: text.into() },
+                asr_path: path.into(),
+                ..fc::LanguageModel::default()
+            },
+            lid_path: None,
+        }
+    }
+
+    fn dictate_in(a: &FlowCoreAdapter, languages: &[&str]) -> CommitResult {
+        a.start_session(SessionConfig {
+            languages: languages.iter().map(|l| l.to_string()).collect(),
+            ..session()
+        })
+        .unwrap();
+        a.push_audio(&[3000; 16_000]);
+        a.commit()
+    }
+
+    #[test]
+    fn hebrew_choice_becomes_the_languages_he_route() {
+        use crate::prefs::{HebrewModel, Prefs};
+        let mut p = Prefs {
+            asr_engine: crate::prefs::AsrEngineChoice::Parakeet,
+            ..Prefs::default()
+        };
+        assert_eq!(p.hebrew_model, HebrewModel::Zipformer, "recommended default");
+        let cfg = model_config(&p, Some("C:/AppData"));
+        assert_eq!(cfg.asr_backend, fc::AsrBackend::Parakeet, "default model unchanged");
+        let he = &cfg.languages["he"];
+        assert_eq!(he.asr_backend, fc::AsrBackend::SherpaOnline);
+        assert!(Path::new(&he.asr_path).ends_with(Path::new("FlowClone").join("models").join(ZIPFORMER_HE_DIR)));
+        assert_eq!(cfg.language_route(Some("he-IL")), Some("he"));
+        assert_eq!(cfg.language_route(Some("en")), None);
+        // The same JSON flow-core / flow-server read.
+        let j = serde_json::to_value(&cfg).unwrap();
+        assert_eq!(j["languages"]["he"]["asr_backend"], "sherpa_online");
+        p.hebrew_model = HebrewModel::ParakeetHe;
+        let he = model_config(&p, None).languages["he"].clone();
+        assert_eq!(he.asr_backend, fc::AsrBackend::Parakeet);
+        assert!(he.asr_path.ends_with(PARAKEET_HE_DIR));
+        p.hebrew_model = HebrewModel::None;
+        assert!(model_config(&p, None).languages.is_empty());
+        assert!(serde_json::to_value(model_config(&p, None)).unwrap().get("languages").is_none());
+        // Old prefs files get the recommended model.
+        let old: Prefs = serde_json::from_str(r#"{"asr_engine":"parakeet"}"#).unwrap();
+        assert_eq!(old.hebrew_model, HebrewModel::Zipformer);
+        let j = serde_json::to_value(&p).unwrap();
+        assert_eq!(j["hebrew_model"], "none");
+    }
+
+    #[test]
+    fn language_id_is_set_only_when_its_model_is_there() {
+        use crate::prefs::{HebrewModel, Prefs};
+        let appdata = std::env::temp_dir().join(format!("flow-lid-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&appdata);
+        let ad = appdata.display().to_string();
+        let mut p = Prefs::default();
+        // No tiny model: auto-detect stays on the default model (before H6).
+        let cfg = model_config(&p, Some(&ad));
+        assert_eq!(cfg.lid_path, None);
+        assert_eq!(cfg.lid_model(), None);
+        let dir = models_dir(Some(&ad));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(LID_FILE), b"x").unwrap();
+        let cfg = model_config(&p, Some(&ad));
+        assert!(cfg.lid_path.as_deref().unwrap().ends_with(LID_FILE));
+        assert_eq!(cfg.lid_model(), cfg.lid_path.as_deref(), "on: a Hebrew route exists");
+        let spec = LanguageSpec::from_prefs(&p, Some(&ad)).unwrap();
+        assert_eq!(spec.lid_path, cfg.lid_path);
+        // No Hebrew model chosen: no route, no language ID.
+        p.hebrew_model = HebrewModel::None;
+        assert_eq!(model_config(&p, Some(&ad)).lid_model(), None);
+        let _ = std::fs::remove_dir_all(&appdata);
+    }
+
+    #[test]
+    fn hebrew_dictations_decode_on_the_hebrew_model_next_to_the_default() {
+        let a = FlowCoreAdapter::new();
+        a.load_now(&ModelSpec::Mock {
+            text: "hello there".into(),
+        });
+        assert_eq!(a.language_status(), None);
+        let st = a.load_language_now(Some(mock_lang("שלום עולם", "mock-he")));
+        assert!(matches!(st, Some(ModelStatus::Ready { .. })), "{st:?}");
+        assert!(dictate_in(&a, &["he"]).final_text.contains("שלום עולם"));
+        assert!(dictate_in(&a, &["en"]).final_text.to_lowercase().contains("hello there"));
+        // Auto-detect stays on the default model (D33 decision 6).
+        assert!(dictate_in(&a, &[]).final_text.to_lowercase().contains("hello there"));
+        // Dropping the route sends Hebrew back to the default model.
+        assert_eq!(a.load_language_now(None), None);
+        assert!(dictate_in(&a, &["he"]).final_text.to_lowercase().contains("hello there"));
+    }
+
+    #[test]
+    fn a_missing_hebrew_folder_never_blocks_the_default_model() {
+        let a = FlowCoreAdapter::new();
+        a.load_now(&ModelSpec::Mock { text: "fine".into() });
+        let mut spec = mock_lang("x", "/nonexistent/zipformer-he");
+        spec.model.asr_backend = fc::AsrBackend::SherpaOnline;
+        let st = a.load_language_now(Some(spec.clone()));
+        assert!(matches!(st, Some(ModelStatus::Missing { ref path, .. }) if path.contains("zipformer-he")), "{st:?}");
+        assert!(a.status().is_ready());
+        assert!(dictate_in(&a, &["he"]).final_text.contains("fine"));
+        // Saving prefs again retries a missing model (it may have been
+        // downloaded since); a loaded one with the same choice is left alone.
+        let mut p = crate::prefs::Prefs {
+            hebrew_model: crate::prefs::HebrewModel::None,
+            ..Default::default()
+        };
+        assert!(needs_language_reload(&a, &p, None), "choice changed");
+        a.load_language_now(LanguageSpec::from_prefs(&p, None));
+        assert!(!needs_language_reload(&a, &p, None));
+        p.hebrew_model = crate::prefs::HebrewModel::Zipformer;
+        a.load_language_now(LanguageSpec::from_prefs(&p, None));
+        assert!(matches!(a.language_status(), Some(ModelStatus::Missing { .. })));
+        assert!(needs_language_reload(&a, &p, None), "missing = retry");
     }
 
     #[test]

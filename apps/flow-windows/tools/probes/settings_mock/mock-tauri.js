@@ -18,7 +18,7 @@
     paste_method: "ctrl_v", restore_clipboard: true, max_dictation_minutes: 20, hands_free_silence_ms: 2000, retention: "keep",
     model_path: null, live_preview: true, llm_enabled: true, llm_model_path: null, llm_lib_path: null,
     llm_timeout_ms: 1500, learn_from_edits: true,
-    asr_engine: "whisper", parakeet_model_dir: null, spoken_cleanup: true,
+    asr_engine: "whisper", parakeet_model_dir: null, hebrew_model: "zipformer", spoken_cleanup: true,
     theme: "system", onboarded: true,
     transforms: {
       enabled: false, auto_apply: null, view_changes: "Win+Alt+O",
@@ -200,6 +200,11 @@
   const hf = (repo, rev, name, size, sha256) => ({ name, url: `https://huggingface.co/${repo}/resolve/${rev}/${name}`, size, sha256 });
   const PK = ["csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", "1ab9323565ddb038682214b292f588070a538ce2"];
   const WH = ["ggerganov/whisper.cpp", "5359861c739e955e79d9a303bcbc70fb988958b1"];
+  const ZH = ["ivrit-ai/zipformer2-66m-streaming-he", "ee769a2a13b887f91572eec349458bfb0fe79e7a"];
+  const PH = ["krut42/voice-parakeet-he-int8", "39de3b473bed626c7796c156d71adc66161ebfe1"];
+  // H6: the language-ID model comes with each Hebrew model (models folder).
+  const LID = hf("ggerganov/whisper.cpp", "5359861c739e955e79d9a303bcbc70fb988958b1", "ggml-tiny-q5_1.bin", 32152673, "8187…");
+  const zh = (name, size, sha) => ({ ...hf(...ZH, name, size, sha), url: `https://huggingface.co/${ZH[0]}/resolve/${ZH[1]}/sherpa-onnx/${name}` });
   const dlCatalog = [
     { id: "parakeet-tdt-0.6b-v2-int8", title: "Parakeet TDT 0.6B", desc: "English · fastest", engine: "parakeet", recommended: true, size: 661190513,
       page: "https://huggingface.co/" + PK[0], dest: MODELS + "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", available: true,
@@ -208,8 +213,36 @@
       page: "https://huggingface.co/" + WH[0], dest: MODELS + "ggml-base.bin", available: true, files: [hf(...WH, "ggml-base.bin", 147951465, "60ed…")] },
     { id: "whisper-small-q5_1", title: "Whisper small", desc: "Many languages · more accurate, slower", engine: "whisper", recommended: false, size: 190085487,
       page: "https://huggingface.co/" + WH[0], dest: MODELS + "ggml-small-q5_1.bin", available: true, files: [hf(...WH, "ggml-small-q5_1.bin", 190085487, "ae85…")] },
+    // D33 Hebrew route models (src/model_download.rs).
+    { id: "zipformer-he-int8", title: "Zipformer Hebrew", desc: "Hebrew · recommended, small and fast", engine: "sherpa_online", recommended: true, size: 72316960 + 32152673,
+      language: "he", license: "CC-BY-4.0 · Yakov Kolani / ivrit.ai",
+      page: "https://huggingface.co/" + ZH[0], dest: MODELS + "zipformer2-66m-streaming-he-int8", available: true,
+      files: [zh("encoder.int8.onnx", 70478964, "6c6f…"), zh("decoder.int8.onnx", 1049105, "feb0…"), zh("joiner.int8.onnx", 771805, "1d2c…"), zh("tokens.txt", 17086, "e4eb…"), LID] },
+    { id: "parakeet-tdt-0.6b-v3-he-int8", title: "Parakeet Hebrew", desc: "Hebrew · larger alternative", engine: "parakeet", recommended: false, size: 672825290 + 32152673,
+      language: "he", license: "CC-BY-4.0 · krut42, based on thewh1teagle/parakeet-tdt-0.6b-v3-he",
+      page: "https://huggingface.co/" + PH[0], dest: MODELS + "parakeet-tdt-0.6b-v3-he-int8", available: true,
+      files: [hf(...PH, "encoder.int8.onnx", 653215173, "7eaf…"), hf(...PH, "decoder.int8.onnx", 12494234, "3a1d…"), hf(...PH, "joiner.int8.onnx", 7008293, "056c…"), hf(...PH, "tokens.txt", 107590, "55a9…"), LID] },
   ];
-  const dlInstalled = new Set(onboard ? [] : ["whisper-base"]);
+  // The Hebrew model's load state (`model:hebrew`): null = none chosen.
+  const heDir = { zipformer: "zipformer-he-int8", parakeet_he: "parakeet-tdt-0.6b-v3-he-int8" };
+  let heStatus = null;
+  const loadHebrew = () => {
+    const c = dlCatalog.find((x) => x.id === heDir[prefs.hebrew_model]);
+    if (!c) { heStatus = null; window.__emit?.("model:hebrew", heStatus); return; }
+    heStatus = dlInstalled.has(c.id) ? { state: "ready", path: c.dest, load_ms: 410 } : { state: "missing", path: c.dest, engine: c.engine };
+    window.__emit?.("model:hebrew", heStatus);
+  };
+  // ?he=nolid: Zipformer Hebrew downloaded before the language-ID model came with it.
+  const heParam = new URLSearchParams(location.search).get("he");
+  const dlInstalled = new Set(onboard ? [] : heParam === "nolid" ? ["whisper-base", "zipformer-he-int8"] : ["whisper-base"]);
+  let lidPresent = false;
+  const view = (c) => {
+    const installed = dlInstalled.has(c.id);
+    if (!c.language) return { ...c, installed, complete: installed, missing: installed ? 0 : c.size };
+    const lid = lidPresent ? 0 : LID.size;
+    return { ...c, installed, complete: installed && lidPresent, missing: installed ? lid : c.size - LID.size + lid };
+  };
+  loadHebrew();
   let dlRunning = null;
   const modelKey = (p) => [p.asr_engine, p.model_path, p.parakeet_model_dir].join("|");
   const debugView = () => ({ enabled: debugLog.enabled, count: debugLog.count, path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\debug\\dictations.jsonl", stats: { written: 0, dropped: 0, write_errors: 0 } });
@@ -248,7 +281,9 @@
     set_prefs: ({ prefs: p }) => {
       transformsCheck(p.transforms);
       const reload = modelKey(p) !== modelKey(prefs);
+      const heChanged = p.hebrew_model !== prefs.hebrew_model;
       prefs = structuredClone(p);
+      if (heChanged) setTimeout(loadHebrew, 100);
       if (reload) {
         const path = p.asr_engine === "parakeet"
           ? p.parakeet_model_dir || "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
@@ -262,7 +297,7 @@
     },
     list_microphones: () => ["USB Mic", "Realtek"],
     get_model_status: () => ({
-      status: { ...modelStatus },
+      status: { ...modelStatus }, hebrew: heStatus && { ...heStatus },
       default_path: "C:\\…\\ggml-base.bin", default_parakeet_dir: "C:\\…\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", models_dir: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models",
       llm: { state: "plugin_missing", path: "C:\\…\\qwen.gguf", message: "llm plugin not found (C:\\Program Files\\Murmur\\flow_llm.dll: not found)" },
       default_llm_path: "C:\\…\\qwen2.5-0.5b-instruct-q4_k_m.gguf", llm_plugin: "flow_llm.dll",
@@ -387,7 +422,7 @@
     },
     // D31 downloader: a fake catalogue; a started download ticks to done in
     // about 1.5 s (?dlfail=1: fails its fingerprint check instead).
-    model_catalog: () => dlCatalog.map((c) => ({ ...c, installed: dlInstalled.has(c.id) })),
+    model_catalog: () => dlCatalog.map(view),
     model_download_start: ({ id }) => {
       const c = dlCatalog.find((x) => x.id === id);
       if (!c) throw new Error(`unknown model ${id}`);
@@ -409,6 +444,14 @@
           if (fail) { run.received = 0; ev("error", { error: `${c.files[0].name} did not match its fingerprint, so it was deleted` }); return; }
           dlInstalled.add(id);
           const path = c.dest;
+          if (c.language) {
+            lidPresent = true;
+            // A Hebrew model becomes the Hebrew route; the default stays.
+            prefs = { ...prefs, hebrew_model: c.engine === "sherpa_online" ? "zipformer" : "parakeet_he" };
+            ev("done", { path });
+            loadHebrew();
+            return;
+          }
           prefs = c.engine === "parakeet" ? { ...prefs, asr_engine: "parakeet", parakeet_model_dir: path } : { ...prefs, asr_engine: "whisper", model_path: path };
           modelStatus = { state: "loading", path };
           ev("done", { path });

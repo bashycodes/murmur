@@ -106,6 +106,22 @@ pub enum AsrEngineChoice {
     Parakeet,
 }
 
+/// The Hebrew model (D33 `languages.he`, docs/proposals/hebrew-stt.md):
+/// dictations with the language set to Hebrew decode on it, everything
+/// else on the default model. It loads next to the default model when its
+/// folder is there (Windows keeps both, decision 4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HebrewModel {
+    /// ivrit-ai zipformer2-66m-streaming-he int8 (72 MB, sherpa online).
+    #[default]
+    Zipformer,
+    /// Parakeet-TDT-0.6B-v3-he int8 (673 MB, the Parakeet engine).
+    ParakeetHe,
+    /// No Hebrew route: Hebrew dictations use the default model.
+    None,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Prefs {
@@ -154,6 +170,9 @@ pub struct Prefs {
     /// Parakeet model directory; `None` = `%APPDATA%\FlowClone\models\`
     /// `sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8`. Never downloaded.
     pub parakeet_model_dir: Option<String>,
+    /// Model for dictations in Hebrew (`%APPDATA%\FlowClone\models\<folder>`,
+    /// see [`HebrewModel`]); downloaded only from Settings → Speech to text.
+    pub hebrew_model: HebrewModel,
     /// Deterministic spoken cleanup in the core (core-p1, D15): spoken
     /// punctuation, fillers, "scratch that", money/time/date formatting.
     pub spoken_cleanup: bool,
@@ -220,6 +239,7 @@ impl Default for Prefs {
             asr_threads: None,
             asr_engine: AsrEngineChoice::Whisper,
             parakeet_model_dir: None,
+            hebrew_model: HebrewModel::Zipformer,
             spoken_cleanup: true,
             live_preview: true,
             live_preview_interval_ms: 1500,
