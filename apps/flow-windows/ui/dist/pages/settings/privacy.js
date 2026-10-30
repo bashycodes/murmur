@@ -1,28 +1,40 @@
-// Settings → Data and privacy: what leaves this PC (a summary of the
+// Settings → Data and privacy (docs/design/app-design/SettingsPrivacy.dc.html):
+// what leaves this PC (a summary of the
 // engine and OpenRouter switches, changed on their own pages), history
 // retention, and the opt-in debug log (README "Debug log").
 import { $, askDialog, setStatus } from "../../lib/dom.js";
 import { invoke, onEvent } from "../../lib/ipc.js";
+import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import { prefsStore } from "../../lib/prefs-store.js";
 import { views } from "../../lib/views.js";
 import { reloadHistory } from "../home.js";
-const link = (page, label) => `<button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" data-go="${page}">${label}</button>`;
+/** A "What leaves this PC" row: icon tile, title + desc, On/Off, Edit →. */
+const leave = (id, icon, title, page) => `<div class="fl-row lw-leave" id="${id}">
+    <span class="lw-tile">${iconSvg(icon)}</span>
+    <div class="fl-row-text"><div class="fl-row-title">${title}</div><div class="fl-row-desc" id="${id}_desc"></div></div>
+    <span id="${id}_badge" class="fl-badge"></span>
+    <button type="button" class="lw-link lw-leave-edit" data-go="${page}">Edit →</button>
+  </div>`;
 const TEMPLATE = `
-${heading("Data and privacy")}
-${group("What leaves this PC", row("Nothing", "Everything runs on this PC. Nothing is sent over the network.", "", `id="leave_none"`) +
-    row("Audio to your server", `<span id="leave_server_desc"></span>`, `<span id="leave_server_badge" class="fl-badge"></span>${link("settings-speech", "Change")}`, `id="leave_server"`) +
-    row("Audio to OpenRouter", `<span id="leave_or_audio_desc"></span>`, `<span id="leave_or_audio_badge" class="fl-badge"></span>${link("settings-speech", "Change")}`, `id="leave_or_audio"`) +
-    row("Text to OpenRouter", `<span id="leave_or_text_desc"></span>`, `<span id="leave_or_text_badge" class="fl-badge"></span>${link("settings-cleanup", "Change")}`, `id="leave_or_text"`))}
-${group("History", row("Keep dictation history", "Shown on Home. Text only, in a local file on this PC; audio is never stored.", `<select id="retention" class="fl-select">
+${heading("Data and privacy", "No account, no telemetry, nothing sent to us. This is everything that can leave this PC, in one place.")}
+${group("What leaves this PC", `<div class="fl-row lw-leave" id="leave_none">
+    <span class="lw-tile">${iconSvg(ICON.chip)}</span>
+    <div class="fl-row-text"><div class="fl-row-title">Nothing</div><div class="fl-row-desc">Everything runs on this PC. Nothing is sent over the network.</div></div>
+  </div>` +
+    leave("leave_server", ICON.server, "Audio to your server", "settings-server") +
+    leave("leave_or_audio", ICON.cloud, "Audio to OpenRouter", "settings-speech") +
+    leave("leave_or_text", ICON.cloud, "Text to OpenRouter", "settings-cleanup"))}
+${group("History", row("Keep dictation history", "Shown on Home. Stored only on this PC; audio is never stored.", `<select id="retention" class="fl-select lw-w160" aria-label="Keep dictation history">
       <option value="keep">Forever</option>
-      <option value="day">24 hours</option>
+      <option value="days_30">30 days</option>
+      <option value="days_7">7 days</option>
       <option value="never">Don't keep</option>
     </select>`) +
-    row("Delete all history", "Erases every saved dictation from disk. This can't be undone. Insights keep their counts.", `<button type="button" id="hist_clear" class="fl-btn fl-btn-destructive fl-btn-sm">Delete all</button>`))}
-${group("Troubleshooting", row("Debug log", `Saves each dictation's raw and final text, timings, engine and target app to a file on this PC (last 500), for bug reports. <b>Includes what you said.</b> Never contains your server token, API keys or clipboard. Turn it off when you are done.`, toggle("dev_debug_log", "Debug log")) +
-    row("Log file", `<span id="dev_debug_count">No entries</span> · <code id="dev_debug_path" class="lw-mono"></code>`, `<button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="dev_debug_open">Open folder</button>
-       <button type="button" class="fl-btn fl-btn-ghost fl-btn-sm lw-danger" id="dev_debug_clear">Delete</button>`))}
+    row("Delete all history", "Erases every saved dictation from disk. This can't be undone.", `<button type="button" id="hist_clear" class="fl-btn fl-btn-destructive">Delete</button>`))}
+${group("Troubleshooting", row("Debug log", `Saves each dictation's text and timings to a file here, for bug reports. <b>Includes what you said.</b> Never uploaded, and never holds your server token or API keys.`, toggle("dev_debug_log", "Debug log")) +
+    row("Log file", `<span id="dev_debug_count">Empty</span>`, `<button type="button" class="fl-btn fl-btn-ghost" id="dev_debug_clear">Clear</button>
+       <button type="button" class="fl-btn fl-btn-secondary" id="dev_debug_open">Open folder</button>`, `id="dev_debug_file"`))}
 <p class="lw-status-line"><span id="priv_status"></span></p>
 
 <dialog id="hist_clear_dlg" class="fl-dialog">
@@ -76,6 +88,13 @@ function showLeaves() {
             : "Off. Turning it on asks first.";
     }
 }
+/** Older files may hold `day` (24 hours, before the redesign): show it as is. */
+function showRetention(r) {
+    const s = $("retention");
+    if (r === "day" && ![...s.options].some((o) => o.value === "day"))
+        s.add(new Option("24 hours", "day"));
+    s.value = r;
+}
 async function saveRetention() {
     try {
         await prefsStore.save({ retention: $("retention").value });
@@ -101,7 +120,7 @@ async function clearHistory() {
 // ------------------------------------------------------------- debug log
 function showDebugLog(v) {
     $("dev_debug_log").checked = v.enabled;
-    $("dev_debug_path").textContent = v.path;
+    $("dev_debug_file").title = v.path;
     const n = v.count;
     let line = n === null ? "Not readable" : n === 0 ? "Empty" : n === 1 ? "1 entry" : `${n} entries`;
     if (v.stats.write_errors > 0)
@@ -159,7 +178,7 @@ export const settingsPrivacyPage = {
         $("dev_debug_log").addEventListener("change", () => void debugLogToggled());
         $("dev_debug_open").addEventListener("click", () => void debugCall("debug_log_open_folder", {}, "Opened the log folder"));
         $("dev_debug_clear").addEventListener("click", () => void debugCall("debug_log_clear", {}, "Debug log deleted").then((v) => v && showDebugLog(v)));
-        prefsStore.subscribe((p) => ($("retention").value = p.retention));
+        prefsStore.subscribe((p) => showRetention(p.retention));
         views.onDev(showLeaves);
         views.onOr(showLeaves);
         void onEvent("history:changed", () => {

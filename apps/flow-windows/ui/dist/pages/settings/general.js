@@ -1,24 +1,47 @@
-// Settings → General: shortcuts and voice. Fields: features/general.ts.
+// Settings → General: shortcuts, voice and theme
+// (docs/design/app-design/SettingsGeneral.dc.html). Fields and the
+// keycap / Change editors: features/general.ts.
 import { group, heading, row, toggle } from "../../lib/markup.js";
-const key = (id, ph) => `<input id="${id}" class="fl-input" data-save="prefs" spellcheck="false" placeholder="${ph}" />`;
+/** Keycaps of the saved shortcut + Change; Change swaps in the text field. */
+const key = (id, label) => `<div class="lw-edit" data-edit="${id}">` +
+    `<span class="fl-kbd-group lw-edit-view" id="${id}_view"></span>` +
+    `<input id="${id}" class="fl-input lw-edit-input" data-save="prefs" spellcheck="false" aria-label="${label} shortcut" hidden />` +
+    `<button type="button" class="fl-btn fl-btn-secondary fl-btn-sm lw-edit-btn">Change</button></div>`;
+const select = (id, options, cls = "lw-w160") => `<select id="${id}" class="fl-select ${cls}" data-save="prefs">${options
+    .map(([v, l]) => `<option value="${v}">${l}</option>`)
+    .join("")}</select>`;
 export const settingsGeneralPage = {
     id: "settings-general",
     area: "settings",
     template: `
 ${heading("General")}
-${group("Shortcuts", row("Push to talk", "Hold, speak, let go to paste.", key("ptt", "Ctrl+Win")) +
-        row("Hands-free", "Press to start, press again to stop.", key("hands_free", "Ctrl+Win+Space")) +
-        row("Command Mode", "Hold and say an instruction: rewrites the selected text (or writes new text at the cursor) with the AI cleanup model.", key("command", "Ctrl+Win+Alt")) +
-        row("Cancel", "", key("cancel", "Esc")) +
-        row("Paste last dictation", "", key("paste_last", "Shift+Alt+Z")) +
-        row("Copy last dictation", "", key("copy_last", "Shift+Alt+X")) +
-        row("Open Scratchpad", "", key("scratchpad", "none (e.g. Ctrl+Alt+N)")) +
-        row("New note and dictate", "", key("new_note", "none (e.g. Ctrl+Alt+M)")))}
-<p class="fl-help lw-group-help">Keys: Ctrl, Win, Alt, Shift, Space, Esc, A–Z, 0–9, F1–F24. Ctrl/Alt/Shift match either side; Left Alt, Right Alt (also Left/Right Ctrl, Shift) match one side only, e.g. push to talk = Right Alt. Max 3 keys, at least one modifier.</p>
-${group("Voice", row("Microphone", "", `<select id="microphone" class="fl-select is-wide" data-save="prefs"></select>`) +
-        row("Languages", "Comma-separated, e.g. <code>en, de</code>. Empty = detect automatically.", `<input id="languages" class="fl-input" data-save="prefs" spellcheck="false" placeholder="auto" />`) +
-        row("Hands-free stops after", "Seconds of silence before hands-free dictation ends (0 = never).", `<input id="hands_free_silence_s" class="fl-input is-narrow" data-save="prefs" type="number" min="0" max="10" step="0.1" />`) +
+${group("Shortcuts", row("Push to talk", "Hold, speak, let go to paste.", key("ptt", "Push to talk")) +
+        row("Hands-free", "Or double-tap push to talk. Stops by itself when you go quiet.", key("hands_free", "Hands-free")) +
+        row("Command Mode", "Hold and say an instruction: rewrites the selected text (or writes new text at the cursor) with the AI cleanup model.", key("command", "Command Mode")) +
+        row("Cancel", "", key("cancel", "Cancel")) +
+        row("Paste last dictation", "", key("paste_last", "Paste last dictation")) +
+        row("Copy last dictation", "", key("copy_last", "Copy last dictation")) +
+        row("Open Scratchpad", "", key("scratchpad", "Open Scratchpad")) +
+        row("New note and dictate", "", key("new_note", "New note and dictate")))}
+<p class="fl-help lw-group-help" id="keys_help" hidden>Type the keys joined by +, e.g. <code>Ctrl+Win</code>. Keys: Ctrl, Win, Alt, Shift, Space, Esc, A–Z, 0–9, F1–F24. Ctrl/Alt/Shift match either side; Left Alt, Right Alt (also Left/Right Ctrl, Shift) match one side only, e.g. push to talk = Right Alt. Max 3 keys, at least one modifier. Empty = off (Scratchpad, New note). Enter saves, Esc cancels.</p>
+${group("Voice", row("Microphone", "", `<select id="microphone" class="fl-select is-wide" data-save="prefs" aria-label="Microphone"></select>`) +
+        row("Languages", `<span id="languages_desc"></span><span id="languages_parakeet" hidden> Parakeet only understands English; <button type="button" class="lw-link" data-go="settings-speech">switch to Whisper →</button> for other languages.</span>`, `<div class="lw-edit" data-edit="languages">` +
+            `<input id="languages" class="fl-input lw-edit-input" data-save="prefs" spellcheck="false" placeholder="e.g. en, de (empty = detect)" aria-label="Languages" hidden />` +
+            `<button type="button" class="fl-btn fl-btn-secondary lw-edit-btn">Change</button></div>`) +
+        row("Hands-free stops after", "How long you can pause before dictation ends.", select("hands_free_silence_s", [
+            ["1", "1 second"],
+            ["1.5", "1.5 seconds"],
+            ["2", "2 seconds"],
+            ["3", "3 seconds"],
+            ["5", "5 seconds"],
+            ["0", "Never"],
+        ])) +
         row("Live preview", "Show words in the Flow bar while you speak.", toggle("live_preview", "Live preview", `data-save="prefs"`)) +
         row("Learn from my corrections", "After a paste the field is re-read for about 45 s. Words you fix show up in Dictionary as suggestions; nothing is added without your OK.", toggle("learn_from_edits", "Learn from my corrections", `data-save="prefs"`)))}
+${group("", row("Theme", "", select("theme", [
+        ["light", "Light"],
+        ["dark", "Dark"],
+        ["system", "System"],
+    ])))}
 ${group("Setup", row("Run setup again", "Choose where speech runs, the speech model and AI cleanup step by step.", `<button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="run_setup" data-run-setup>Run setup</button>`))}`,
 };

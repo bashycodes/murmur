@@ -1,0 +1,50 @@
+/* Settings → General, System, Data and privacy: the bits the shared
+   components lack (docs/design/app-design/Settings{General,System,Privacy}.dc.html).
+   Pages: ui/src/pages/settings/{general,system,privacy}.ts. */
+
+/* Flow.Select width="160" */
+.fl-row-control > .fl-select.lw-w160 {
+  width: 160px;
+}
+
+/* Shortcut keycaps + Change (88 px); Change swaps in the text field. */
+.lw-edit {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+.lw-edit .fl-btn-sm.lw-edit-btn {
+  width: 88px;
+}
+.lw-edit-view {
+  min-height: 24px;
+}
+.lw-edit-view[hidden],
+.lw-edit-input[hidden] {
+  display: none;
+}
+.lw-edit-off {
+  font: 400 15px/20px var(--font-sans);
+  color: var(--foreground-tertiary);
+}
+.lw-edit .fl-input.lw-edit-input {
+  width: 200px;
+}
+[data-edit="languages"] .fl-input.lw-edit-input {
+  width: 240px;
+}
+
+/* What leaves this PC: tile, text, On/Off, Edit → (72 px, right-aligned). */
+.fl-row.lw-leave {
+  justify-content: flex-start;
+}
+.lw-leave .lw-leave-edit {
+  width: 72px;
+  text-align: right;
+}
+
+/* Log file: the folder path is the row's tooltip. */
+#dev_debug_file .fl-row-control {
+  gap: 8px;
+}
