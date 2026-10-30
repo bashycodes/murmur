@@ -1,6 +1,7 @@
 //! `workers` × `FlowCore`, loaded at startup; lease at `start`, return at
 //! result / cancel / disconnect.
 
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -19,6 +20,11 @@ pub struct Pool {
     pub(crate) force_busy: AtomicBool,
     pub asr_backend: String,
     pub asr_model: String,
+    /// Per-language models (`[model.languages.<code>]`, D33): language
+    /// key -> (backend, model name), for `hello_ok` and debug capture.
+    pub languages: BTreeMap<String, (String, String)>,
+    /// The loaded config, for [`Pool::asr_for`]'s routing.
+    model: ModelConfig,
     pub llm: bool,
 }
 
@@ -42,9 +48,9 @@ pub enum LeaseError {
     Timeout,
 }
 
-fn backend_name(m: &ModelConfig) -> (String, String) {
-    let name = m.asr_backend.name();
-    let model = std::path::Path::new(&m.asr_path)
+fn backend_name(backend: &flow_core::config::AsrBackend, path: &str) -> (String, String) {
+    let name = backend.name();
+    let model = std::path::Path::new(path)
         .file_name()
         .map(|f| f.to_string_lossy().into_owned())
         .unwrap_or_else(|| name.to_string());
@@ -61,7 +67,12 @@ impl Pool {
     }
 
     pub fn from_cores(cores: Vec<Arc<FlowCore>>, model: &ModelConfig, max_queue: usize) -> Self {
-        let (asr_backend, asr_model) = backend_name(model);
+        let (asr_backend, asr_model) = backend_name(&model.asr_backend, &model.asr_path);
+        let languages = model
+            .languages
+            .iter()
+            .map(|(k, m)| (k.clone(), backend_name(&m.asr_backend, &m.asr_path)))
+            .collect();
         let n = cores.len();
         Self {
             free: Mutex::new((0..n).collect()),
@@ -72,7 +83,23 @@ impl Pool {
             force_busy: AtomicBool::new(false),
             asr_backend,
             asr_model,
+            languages,
+            model: model.clone(),
             llm: model.llm_path.as_deref().is_some_and(|p| !p.is_empty()),
+        }
+    }
+
+    /// (backend, model name) that decodes a session with this forced
+    /// language: its `[model.languages]` entry, else the default model
+    /// (FlowCore's routing, `ModelConfig::language_route`).
+    pub fn asr_for(&self, language: Option<&str>) -> (&str, &str) {
+        match self
+            .model
+            .language_route(language)
+            .and_then(|k| self.languages.get(k))
+        {
+            Some((b, m)) => (b, m),
+            None => (&self.asr_backend, &self.asr_model),
         }
     }
 
