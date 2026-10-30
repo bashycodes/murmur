@@ -25,6 +25,15 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   default one. Dictionary words are passed as hotwords, which fix the spelling
   of words the model already hears. Builds without the `parakeet` feature
   report a load error for it, as they do for Parakeet.
+- **Android: Hebrew model.** *Settings → Speech to text → Model on this
+  phone → Hebrew model* imports ivrit.ai's zipformer-he (69 MiB) or
+  parakeet-v3-he as a folder or a .zip; each file's size and SHA-256 are
+  checked against the pinned release. With the dictation language set to
+  Hebrew (or a Hebrew phone language), the phone loads only that model, so
+  one model stays in RAM; switching language reloads the engine (a few
+  seconds, "Loading the Hebrew speech model…"). If it fails to load,
+  whisper is used. flow-ffi accepts `load_language` in the model config for
+  this (`FlowCore::load_models_for`).
 
 ## [0.9.1] - 2026-10-30
 

@@ -9,6 +9,8 @@ import android.provider.OpenableColumns
 import android.widget.Toast
 import dev.flowclone.FlowApp
 import dev.flowclone.R
+import dev.flowclone.data.HebrewImport
+import dev.flowclone.data.HebrewModels
 import dev.flowclone.data.ModelFiles
 import dev.flowclone.data.ModelPages
 import java.io.File
@@ -35,24 +37,30 @@ class ModelImportActivity : Activity() {
         set(v) { if (llm) app.settings.llmModelPath = v else app.settings.modelPath = v }
 
     private val parakeet get() = intent.getStringExtra(EXTRA_KIND) == KIND_PARAKEET
+    /** H5: the Hebrew model slot (a folder or .zip of a pinned model, [HebrewModels]). */
+    private val hebrew get() = intent.getStringExtra(EXTRA_KIND) == KIND_HEBREW
+    /** Folder-based screens (Parakeet, Hebrew). */
+    private val folder get() = parakeet || hebrew
     private lateinit var ui: DevUi
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        title = if (llm) "AI cleanup model" else if (parakeet) "Parakeet model" else "Speech model"
+        title = if (llm) "AI cleanup model" else if (parakeet) "Parakeet model" else if (hebrew) "Hebrew model" else "Speech model"
         ui = DevUi(this)
         render()
     }
 
-    private val screen get() = if (llm) ModelPages.Screen.LLM else if (parakeet) ModelPages.Screen.PARAKEET else ModelPages.Screen.WHISPER
+    private val screen get() = if (llm) ModelPages.Screen.LLM else if (parakeet) ModelPages.Screen.PARAKEET else if (hebrew) ModelPages.Screen.HEBREW else ModelPages.Screen.WHISPER
     private var statusLine: DevUi.Result? = null
     private var importButton: android.widget.Button? = null
 
     /** Rebuilds the page (keeps the scroll position); [status] = the line under Import. */
     private fun render(status: String? = null, tone: Tone = Tone.NEUTRAL): Unit = with(ui) {
-        val current = if (parakeet) app.settings.parakeetPath else activePath
+        val current = if (parakeet) app.settings.parakeetPath else if (hebrew) app.settings.hebrewModelPath else activePath
         val items = if (parakeet) {
             app.engine.parakeetDir().listFiles()?.filter { !it.name.endsWith(".part") && dev.flowclone.data.ParakeetFiles.isModelDir(it) }?.sortedBy { it.name }.orEmpty()
+        } else if (hebrew) {
+            app.engine.hebrewDir().listFiles()?.filter { !it.name.endsWith(".part") && HebrewModels.kindOf(it) != null }?.sortedBy { it.name }.orEmpty()
         } else dir().listFiles()?.filter { it.isFile && !it.name.endsWith(".part") }?.sortedBy { it.name }.orEmpty()
         fun bytes(f: File) = if (f.isDirectory) f.walk().filter { it.isFile }.sumOf { it.length() } else f.length()
         rebuild {
@@ -67,7 +75,11 @@ class ModelImportActivity : Activity() {
             }
             importButton = action(ModelPages.importLabel(screen, busy), DevUi.Style.PRIMARY) {
                 @Suppress("DEPRECATION")
-                if (busy) Unit else if (parakeet) startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQ_TREE) else pick()
+                if (busy) Unit else if (folder) startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQ_TREE) else pick()
+            }
+            if (hebrew) action("Import .zip…", DevUi.Style.TONAL) {
+                @Suppress("DEPRECATION")
+                if (!busy) startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/zip"), REQ_ZIP)
             }
             statusLine = result().also { r -> status?.let { r.show(it, tone) } }
 
@@ -83,16 +95,16 @@ class ModelImportActivity : Activity() {
                     selectableText(m.url, 12f, p.muted)
                 }
             }
-            note("Download on a computer (this app can't), copy the ${if (parakeet) "folder" else "file"} to the phone, then import it.")
+            note("Download on a computer (this app can't), copy the ${if (folder) "folder" else "file"} to the phone, then import it.")
 
             sectionLabel("IMPORTED")
             card {
                 if (items.isEmpty()) emptyState("None imported yet", "Imported models are copied into the app's private storage.")
                 for (f in items) {
                     val active = f.absolutePath == current
-                    stateRow(if (parakeet) R.drawable.ic_scr_folder else R.drawable.ic_scr_file, f.name, ModelPages.imported(bytes(f), active), if (active) "In use" else "", if (active) Tone.OK else Tone.NEUTRAL)
+                    stateRow(if (folder) R.drawable.ic_scr_folder else R.drawable.ic_scr_file, f.name, ModelPages.imported(bytes(f), active), if (active) "In use" else "", if (active) Tone.OK else Tone.NEUTRAL)
                     chipRow(
-                        chip("Use") { if (parakeet) activateParakeet(f) else activate(f) }.apply { isEnabled = !active; alpha = if (active) 0.5f else 1f; contentDescription = "Use ${f.name}" },
+                        chip("Use") { if (parakeet) activateParakeet(f) else if (hebrew) activateHebrew(f) else activate(f) }.apply { isEnabled = !active; alpha = if (active) 0.5f else 1f; contentDescription = "Use ${f.name}" },
                         chip("Delete") { confirmDelete(f, active) }.apply { setTextColor(p.danger); contentDescription = "Delete ${f.name}" },
                     )
                 }
@@ -121,6 +133,9 @@ class ModelImportActivity : Activity() {
                 if (parakeet) {
                     if (active) { app.settings.parakeetPath = null; reloadEngine() }
                     f.deleteRecursively()
+                } else if (hebrew) {
+                    if (active) { app.settings.hebrewModelPath = null; reloadEngine() }
+                    f.deleteRecursively()
                 } else {
                     if (active) { activePath = null; reloadEngine() }
                     f.delete()
@@ -144,7 +159,8 @@ class ModelImportActivity : Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         val uri = data?.data
         if (requestCode == REQ_PICK && resultCode == RESULT_OK && uri != null) importFrom(uri)
-        if (requestCode == REQ_TREE && resultCode == RESULT_OK && uri != null) importTree(uri)
+        if (requestCode == REQ_TREE && resultCode == RESULT_OK && uri != null) { if (hebrew) importHebrewTree(uri) else importTree(uri) }
+        if (requestCode == REQ_ZIP && resultCode == RESULT_OK && uri != null) importHebrewZip(uri)
     }
 
     private fun meta(uri: Uri): Pair<String, Long> =
@@ -198,7 +214,8 @@ class ModelImportActivity : Activity() {
 
     // ---- Parakeet: a sherpa-onnx model *folder* (encoder/decoder/joiner *.onnx + tokens.txt) ----
 
-    private fun importTree(tree: Uri) {
+    /** The picked folder's direct children: display name → (document uri, size or -1). */
+    private fun children(tree: Uri): Map<String, Pair<Uri, Long>> {
         val docId = android.provider.DocumentsContract.getTreeDocumentId(tree)
         val children = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, docId)
         val entries = HashMap<String, Pair<Uri, Long>>()
@@ -212,6 +229,82 @@ class ModelImportActivity : Activity() {
                 entries[name] = android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, c.getString(0)) to (if (c.isNull(2)) -1L else c.getLong(2))
             }
         }
+        return entries
+    }
+
+    // ---- Hebrew (H5): a pinned model's four files, from a folder or a .zip, hash-checked ----
+
+    private fun importHebrewTree(tree: Uri) {
+        val entries = children(tree)
+        val pre = HebrewModels.identify(entries.mapValues { HebrewModels.Facts(it.value.second) })
+        if (pre is HebrewModels.Check.Bad) return render(pre.message, Tone.BAD)
+        val total = HebrewModels.FILES.sumOf { entries.getValue(it).second.coerceAtLeast(0) }
+        importHebrew(total) { tmp, onBytes ->
+            HebrewModels.FILES.associateWith { name ->
+                contentResolver.openInputStream(entries.getValue(name).first)!!.use { HebrewImport.copyHashed(it, File(tmp, name), onBytes) }
+            }
+        }
+    }
+
+    private fun importHebrewZip(uri: Uri) {
+        val (_, size) = meta(uri)
+        importHebrew(size) { tmp, onBytes ->
+            contentResolver.openInputStream(uri)!!.use { HebrewImport.extractZip(it, tmp, onBytes) }
+        }
+    }
+
+    /** Copies into `hebrew/.import.part`, checks sizes + SHA-256, then moves to `hebrew/<kind>/` and uses it. */
+    private fun importHebrew(totalBytes: Long, copy: (File, (Long) -> Unit) -> Map<String, HebrewModels.Facts>) {
+        val root = app.engine.hebrewDir()
+        if (totalBytes > 0 && root.usableSpace < totalBytes + 100_000_000) return render("Not enough free space: needs ${totalBytes / 1_000_000} MB.", Tone.BAD)
+        busy = true
+        render("Copying and checking the Hebrew model…")
+        thread(name = "hebrew-import") {
+            val tmp = File(root, ".import.part")
+            val result = runCatching {
+                tmp.deleteRecursively(); tmp.mkdirs()
+                var done = 0L; var shown = 0L
+                val facts = copy(tmp) { n ->
+                    done += n
+                    if (done - shown >= 16_000_000) {
+                        shown = done
+                        val of = if (totalBytes > 0) " / ${totalBytes / 1_000_000}" else ""
+                        runOnUiThread { progress("Copying… ${done / 1_000_000}$of MB") }
+                    }
+                }
+                when (val c = HebrewModels.identify(facts)) {
+                    is HebrewModels.Check.Bad -> error(c.message)
+                    is HebrewModels.Check.Ok -> {
+                        val dest = File(root, c.kind.dirName)
+                        dest.deleteRecursively()
+                        check(tmp.renameTo(dest)) { "Could not save the model folder." }
+                        dest
+                    }
+                }
+            }
+            runOnUiThread {
+                busy = false
+                result.onSuccess { activateHebrew(it) }.onFailure {
+                    app.debugLog.event("model_import", "hebrew: ${it.message}", it)
+                    tmp.deleteRecursively()
+                    render("Import failed: ${it.message}", Tone.BAD)
+                }
+            }
+        }
+    }
+
+    private fun activateHebrew(d: File) {
+        app.settings.hebrewModelPath = d.absolutePath
+        val kind = HebrewModels.kindOf(d)
+        // Reload only when the next dictation is Hebrew (it then loads this model); otherwise nothing to do yet.
+        if (HebrewModels.isHebrew(app.effectiveLanguage())) reloadEngine()
+        Toast.makeText(this, "Hebrew dictation uses ${kind?.label ?: d.name}.", Toast.LENGTH_LONG).show()
+        render()
+    }
+
+    private fun importTree(tree: Uri) {
+        val docId = android.provider.DocumentsContract.getTreeDocumentId(tree)
+        val entries = children(tree)
         val pick = dev.flowclone.data.ParakeetFiles.select(entries.keys)
             ?: return render("Not a Parakeet model folder; missing ${dev.flowclone.data.ParakeetFiles.missing(entries.keys).joinToString()}.", Tone.BAD)
         val folder = (docId.substringAfterLast('/').substringAfterLast(':').ifEmpty { "parakeet" }).replace(Regex("[^A-Za-z0-9._-]"), "_")
@@ -269,7 +362,10 @@ class ModelImportActivity : Activity() {
     companion object {
         private const val REQ_PICK = 10
         private const val REQ_TREE = 11
+        private const val REQ_ZIP = 12
         const val KIND_PARAKEET = "parakeet"
+        const val KIND_HEBREW = "hebrew"
+        fun hebrewIntent(c: Context) = Intent(c, ModelImportActivity::class.java).putExtra(EXTRA_KIND, KIND_HEBREW)
         fun parakeetIntent(c: Context) = Intent(c, ModelImportActivity::class.java).putExtra(EXTRA_KIND, KIND_PARAKEET)
         const val EXTRA_KIND = "kind"
         const val KIND_LLM = "llm"

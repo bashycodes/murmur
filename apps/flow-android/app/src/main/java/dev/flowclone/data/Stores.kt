@@ -133,6 +133,11 @@ class SettingsStore(context: Context) {
         get() = sp.getString("parakeet_path", null)
         set(v) { sp.edit().putString("parakeet_path", v).apply() }
 
+    /** H5: the Hebrew model slot, an imported directory (filesDir/hebrew/<kind>/), see [HebrewModels]. */
+    var hebrewModelPath: String?
+        get() = sp.getString("hebrew_model_path", null)
+        set(v) { sp.edit().putString("hebrew_model_path", v).apply() }
+
     /** Imported GGUF for LLM cleanup (filesDir/llm/…). */
     var llmModelPath: String?
         get() = sp.getString("llm_model_path", null)

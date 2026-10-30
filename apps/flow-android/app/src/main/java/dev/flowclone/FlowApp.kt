@@ -8,6 +8,7 @@ import dev.flowclone.core.BlockingCalls
 import dev.flowclone.insert.ClipboardGuard
 import dev.flowclone.service.AndroidClipPort
 import dev.flowclone.data.EngineMismatch
+import dev.flowclone.data.HebrewModels
 import dev.flowclone.data.LanguageDefault
 import dev.flowclone.data.Settings
 import dev.flowclone.data.LastDictation
@@ -168,7 +169,10 @@ class FlowApp : Application() {
 
     /** The language the next dictation uses ([dev.flowclone.data.LanguageDefault]). */
     fun effectiveLanguage(s: Settings = settings.load()): String =
-        LanguageDefault.effective(s.language, java.util.Locale.getDefault().language, engine.loadedAsr())
+        LanguageDefault.effective(
+            s.language, java.util.Locale.getDefault().language, engine.loadedAsr(),
+            if (engine.hebrewModel() != null) setOf(HebrewModels.LANGUAGE) else emptySet(),
+        )
 
     /**
      * D28, once: stored D18 cloud settings (schema 1) become the one OpenRouter config. The rules
@@ -269,6 +273,38 @@ class EngineHolder(
 
     fun modelsDir() = File(app.filesDir, "models").apply { mkdirs() }
     fun parakeetDir() = File(app.filesDir, "parakeet").apply { mkdirs() }
+    fun hebrewDir() = File(app.filesDir, "hebrew").apply { mkdirs() }
+
+    /** H5: the Hebrew slot's model when it is installed and intact, else null. */
+    fun hebrewModel(): Pair<String, HebrewModels.Kind>? {
+        val path = app.settings.hebrewModelPath ?: return null
+        return HebrewModels.kindOf(File(path))?.let { path to it }
+    }
+
+    /** The language whose own model the phone loads for the next dictation (`he`), or null = the default engine. */
+    private fun wantedRoute(s: Settings = app.settings.load()): String? =
+        if (!app.caps.local || s.mockEngine) null
+        else HebrewModels.route(app.effectiveLanguage(s), hebrewModel() != null)
+
+    /** The route the current (or loading) engine was planned with. */
+    @Volatile private var loadedRoute: String? = null
+
+    /** "Loading the Hebrew model…" while a load for a language model runs (bubble / main screen). */
+    @Volatile var loadingLabel: String? = null; private set
+
+    /**
+     * H5 (decision 4: one model in RAM): after a language change, reload when the next
+     * dictation needs a different model (Hebrew ↔ default). No-op otherwise.
+     */
+    @Synchronized
+    fun ensureLanguage() {
+        when (_state.value) {
+            State.NotLoaded -> return
+            State.Loading -> return // the load re-checks when it finishes
+            else -> Unit
+        }
+        if (wantedRoute() != loadedRoute) reload()
+    }
 
     /** Native library status, for the UI. */
     fun libraryState(): NativeFlowCore.LibraryState = NativeFlowCore.loadLibrary()
@@ -280,7 +316,12 @@ class EngineHolder(
             else -> Unit
         }
         _state.value = State.Loading
-        scope.launch { _state.value = load() }
+        scope.launch {
+            _state.value = load()
+            loadingLabel = null
+            // The language changed while this load ran: load the right model now.
+            if (_state.value !is State.Failed) ensureLanguage()
+        }
     }
 
     @Synchronized
@@ -310,7 +351,7 @@ class EngineHolder(
     /** For DictationController: the warm core, or why there isn't one. */
     fun current(): FlowCore = when (val s = _state.value) {
         is State.Ready -> s.core
-        State.Loading -> throw CoreException("Speech model is still loading…")
+        State.Loading -> throw CoreException(loadingLabel ?: "Speech model is still loading…")
         is State.Failed -> throw CoreException(s.message, s.kind)
         State.NotLoaded -> { ensureLoaded(); throw CoreException("Speech model is loading, try again in a moment.") }
     }
@@ -377,11 +418,16 @@ class EngineHolder(
         // D28: the catalogue cache (no network here; the router's STT / cleanup resolve models from it).
         if (app.caps.cloud) runCatching { NativeFlowCore.setCloudCacheDir(app.cacheDir.path) }
         app.migrateCloud()
+        val route = wantedRoute(s)
+        loadedRoute = route
+        loadingLabel = if (route != null) "Loading the Hebrew speech model…" else null
+        val hebrew = hebrewModel()?.let { (path, kind) -> HebrewModels.languageModel(path, kind, app.dev.parakeetDecoding) }
         val local = if (!app.caps.local && !s.mockEngine) EnginePlan.Plan.Missing("This build has no on-device engine.")
         else EnginePlan.plan(
             s, app.settings.modelPath, app.settings.llmModelPath, { File(it).isFile }, threads,
             parakeetPath = app.settings.parakeetPath, isModelDir = { ParakeetFiles.isModelDir(File(it)) },
             parakeetDecoding = app.dev.parakeetDecoding,
+            language = app.effectiveLanguage(s), hebrew = hebrew,
         )
         return when (val plan = EngineRoute.plan(local, app.dev.load(), app.caps)) {
             EngineRoute.Plan.Mock -> State.Ready(FakeFlowCore("This is a test of on-device dictation."), "mock engine", mock = true)
@@ -400,7 +446,7 @@ class EngineHolder(
                     app.debugLog.event("engine_load", "${r.errorKind ?: "error"}: ${r.error}")
                     State.Failed(RouterErrors.userMessage(r.errorKind, r.error ?: "Speech engine failed to load"), r.errorKind)
                 } else {
-                    EngineMismatch.message(s.asrEngine, plan.local, r.asr, r.description)?.let {
+                    EngineMismatch.message(EnginePlan.selectedEngine(s, plan.local), plan.local, r.asr, r.description)?.let {
                         Log.w("FlowEngine", "engine mismatch: $it")
                         app.debugLog.event("engine_mismatch", it)
                     }
