@@ -212,6 +212,21 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         )
     }
 
+    /**
+     * D36, once: stores the full cleanup order so later loads never re-run the pre-D36 rule.
+     * An upgrade whose AI cleanup was off ([phoneAiWasOn] false and no cloud cleanup) gets the
+     * new server entry switched off, so upgrading never turns cleanup on (user decision); a fresh
+     * install (nothing stored yet) keeps the default, server on.
+     */
+    fun migrateCleanupD36(phoneAiWasOn: Boolean) {
+        val order = DevSettings.parseCleanupOrder(kv.getString(CLEANUP_ORDER))
+        if (DevSettings.CleanupRoute.SERVER in order) return
+        val upgrade = listOf(CONNECT_TIMEOUT_MIGRATED, CLEANUP_ORDER, ALLOW_CLOUD_CLEANUP, "allow_server").any(kv::contains)
+        val c = DevSettings.cleanupFrom(order, emptyList(), kv.getBoolean(ALLOW_CLOUD_CLEANUP, false))
+        val off = if (upgrade && !phoneAiWasOn && !c.cloudOn) c.off + DevSettings.CleanupRoute.SERVER else c.off
+        kv.edit { putCleanup(c.cloudOn, c.order, off) }
+    }
+
     /** The stored `cloud` JSON when it is still D18 schema 1 (one-time [CloudMigration] input), else null. */
     fun legacyCloudJson(): org.json.JSONObject? = kv.getString("cloud")?.let { raw ->
         runCatching { org.json.JSONObject(raw) }.getOrNull()?.takeIf(CloudSettings::isLegacy)

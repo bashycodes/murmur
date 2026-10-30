@@ -150,4 +150,38 @@ class CleanupOrderTest {
         assertEquals("Sends text · llama-3.3-70b-instruct · no key", CleanupEngines.cloudLine(on, hasKey = false))
         assertEquals("Sends text · llama-3.3-70b-instruct", CleanupEngines.cloudLine(on, hasKey = true))
     }
+
+    @Test fun anUpgradeWithAiCleanupOffKeepsItOffButAFreshInstallHasTheServerOn() {
+        // (pre-D36 prefs, phone AI was on, server on after the upgrade)
+        val cases = listOf(
+            Triple(mapOf("allow_server" to "true"), false, false),
+            Triple(mapOf(DevStore.CLEANUP_ORDER to "cloud,local"), false, false),
+            Triple(mapOf(DevStore.CLEANUP_ORDER to "local", DevStore.ALLOW_CLOUD_CLEANUP to "true"), false, false),
+            Triple(mapOf("allow_server" to "true"), true, true),
+            // Cloud cleanup was on: some AI cleaned, so the server joins after the phone.
+            Triple(mapOf(DevStore.CLEANUP_ORDER to "cloud,local", DevStore.ALLOW_CLOUD_CLEANUP to "true"), false, true),
+        )
+        cases.forEachIndexed { i, (old, phoneAi, serverOn) ->
+            val kv = MemKV()
+            kv.edit {
+                old.forEach { (k, v) -> if (v == "true") putBoolean(k, true) else putString(k, v) }
+            }
+            store(kv).migrateCleanupD36(phoneAiWasOn = phoneAi)
+            val s = store(kv).load()
+            assertEquals("case $i", serverOn, s.cleanupOn(SERVER))
+            assertEquals("case $i", SERVER, s.cleanupOrder[s.cleanupOrder.indexOf(LOCAL) + 1])
+            val router = JSONObject(s.routerConfigFor(BuildCaps.ALL))
+            val off = router.getJSONArray("cleanup_off").let { a -> (0 until a.length()).map { a.getString(it) } }
+            assertEquals("case $i", !serverOn, "server" in off)
+            // Once only: turning the phone AI on later doesn't change it.
+            store(kv).migrateCleanupD36(phoneAiWasOn = true)
+            assertEquals("case $i", serverOn, store(kv).load().cleanupOn(SERVER))
+        }
+        // Fresh install (nothing stored), phone AI off by default: the server is on, and stays on.
+        val kv = MemKV()
+        store(kv).migrateCleanupD36(phoneAiWasOn = false)
+        assertTrue(store(kv).load().cleanupOn(SERVER))
+        store(kv).load(); store(kv).migrateCleanupD36(phoneAiWasOn = false)
+        assertTrue(store(kv).load().cleanupOn(SERVER))
+    }
 }

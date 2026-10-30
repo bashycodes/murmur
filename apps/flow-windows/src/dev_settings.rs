@@ -349,8 +349,21 @@ impl DevSettings {
 
     /// One-time D36 migration of the pre-D36 cleanup pair to the full
     /// list ([`DevSettings::cleanup`]); idempotent. Runs on every load.
-    pub fn migrate_d36(&mut self) {
+    /// `cleanup_was_on` = the pre-D36 prefs ran AI cleanup at all; when they
+    /// did not, the new server entry starts off so an upgrade never turns
+    /// cleanup on (user decision). Already-migrated lists are left alone.
+    pub fn migrate_d36(&mut self, cleanup_was_on: bool) {
+        let legacy = self.cleanup_engines.is_empty();
         self.cleanup_engines = self.cleanup();
+        if legacy && !cleanup_was_on {
+            for e in self
+                .cleanup_engines
+                .iter_mut()
+                .filter(|e| e.route == CleanupRoute::Server)
+            {
+                e.enabled = false;
+            }
+        }
         self.legacy_allow_cloud_cleanup = false;
         self.legacy_cleanup_order = Vec::new();
     }

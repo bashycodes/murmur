@@ -29,12 +29,22 @@ fn tmp(tag: &str) -> PathBuf {
     ))
 }
 
-/// prefs.json with this `developer` section, loaded the way the app does.
+/// prefs.json with this `developer` section and this PC's AI on, loaded the
+/// way the app does.
 fn load(tag: &str, developer: serde_json::Value) -> Prefs {
+    load_with(tag, serde_json::json!({"llm_enabled": true}), developer)
+}
+
+/// prefs.json with these top-level prefs and this `developer` section.
+fn load_with(tag: &str, top: serde_json::Value, developer: serde_json::Value) -> Prefs {
     let dir = tmp(tag);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("prefs.json");
-    let text = serde_json::json!({"prefs_rev": 3, "developer": developer}).to_string();
+    let mut v = serde_json::json!({"prefs_rev": 3, "developer": developer});
+    for (k, x) in top.as_object().unwrap() {
+        v[k] = x.clone();
+    }
+    let text = v.to_string();
     std::fs::write(&path, text).unwrap();
     let (p, _) = Prefs::load(&path);
     let _ = std::fs::remove_dir_all(&dir);
@@ -220,4 +230,71 @@ fn an_engine_the_build_lacks_is_off_for_the_router() {
         router(&d, server_only).effective_cleanup_order(),
         vec![Server]
     );
+}
+
+#[test]
+fn an_upgrade_with_ai_cleanup_off_keeps_it_off_but_a_fresh_install_has_the_server_on() {
+    use serde_json::json;
+    let cases = [
+        // (top-level prefs, pre-D36 developer section, server on after the upgrade)
+        // This PC's AI off and no cloud cleanup: nothing cleaned, so the server starts off.
+        (json!({"llm_enabled": false}), json!({}), false),
+        (
+            json!({"llm_enabled": false}),
+            json!({"allow_cloud_cleanup": false, "cleanup_order": ["cloud", "local"]}),
+            false,
+        ),
+        // "No AI" level: off, whatever engine was on.
+        (
+            json!({"llm_enabled": true, "cleanup_level": "none"}),
+            json!({}),
+            false,
+        ),
+        (
+            json!({"llm_enabled": false, "cleanup_level": "none"}),
+            json!({"allow_cloud_cleanup": true, "cleanup_order": ["cloud", "local"]}),
+            false,
+        ),
+        // Some AI cleaned before: the server joins after this PC.
+        (json!({"llm_enabled": true}), json!({}), true),
+        (
+            json!({"llm_enabled": false}),
+            json!({"allow_cloud_cleanup": true, "cleanup_order": ["cloud", "local"]}),
+            true,
+        ),
+    ];
+    for (i, (top, dev, server_on)) in cases.into_iter().enumerate() {
+        let p = load_with(&format!("off{i}"), top.clone(), dev.clone());
+        assert_eq!(
+            p.developer.cleanup_on(Server),
+            server_on,
+            "case {i}: {top} {dev}"
+        );
+        // It keeps its place (right after this PC) and the router hears it is off.
+        let order: Vec<_> = p
+            .developer
+            .cleanup_engines
+            .iter()
+            .map(|x| x.route)
+            .collect();
+        let at = order.iter().position(|r| *r == Local).unwrap();
+        assert_eq!(order[at + 1], Server, "case {i}");
+        let cfg = router(&p.developer, ALL);
+        assert_eq!(cfg.cleanup_off.contains(&Server), !server_on, "case {i}");
+        // Migrated once: turning this PC's AI on later does not flip it.
+        let mut again = p.clone();
+        again.llm_enabled = true;
+        again.migrate();
+        assert_eq!(again.developer.cleanup_on(Server), server_on, "case {i}");
+    }
+    // A fresh install (no prefs.json) has the server on, AI off or not.
+    let dir = tmp("fresh");
+    let (p, _) = Prefs::load(&dir.join("prefs.json"));
+    assert!(!p.llm_enabled && p.developer.cleanup_on(Server));
+    // ...and still after it was saved and loaded back.
+    std::fs::create_dir_all(&dir).unwrap();
+    p.save(&dir.join("prefs.json")).unwrap();
+    let (back, _) = Prefs::load(&dir.join("prefs.json"));
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(back.developer.cleanup_on(Server));
 }
