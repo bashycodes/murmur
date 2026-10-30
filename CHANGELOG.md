@@ -16,6 +16,21 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- **Speech in languages other than English** no longer goes through the
+  English-only clean-up rules (filler words, spoken punctuation, number
+  formatting, capitalisation). Whitespace tidy, the closing full stop, your
+  dictionary and "press enter" still apply. Groundwork for Hebrew in 0.10.0;
+  per-language models are not selectable in the apps yet.
+
+### Fixed
+
+- **Windows build:** a merge slip in 0.9.0's source broke the Windows
+  installer build, so 0.9.0 shipped without Windows installers. 0.9.1 has
+  them.
+- The model-downloader tests now pass on Windows.
+
 ## [0.9.0] - 2026-10-30
 
 ### Added
