@@ -103,7 +103,8 @@ pub struct NoteMeta {
     /// First non-blank line ("Untitled" if none); "Quick note" for the
     /// Scratchpad.
     pub title: String,
-    /// The Quick note's first line (its title is fixed), else "".
+    /// The Quick note's first line (its title is fixed); for other notes
+    /// the line under the title (the app window's Scratchpad page shows it).
     pub preview: String,
     pub words: usize,
     pub created_ms: u64,
@@ -119,10 +120,16 @@ pub fn word_count(text: &str) -> usize {
 }
 
 fn first_line(text: &str) -> String {
+    nth_line(text, 0)
+}
+
+/// The `n`th non-blank line (0 = the first), trimmed and cut to `TITLE_MAX`.
+fn nth_line(text: &str, n: usize) -> String {
     let line = text
         .lines()
         .map(str::trim)
-        .find(|l| !l.is_empty())
+        .filter(|l| !l.is_empty())
+        .nth(n)
         .unwrap_or("");
     if line.chars().count() > TITLE_MAX {
         let cut: String = line.chars().take(TITLE_MAX - 1).collect();
@@ -291,7 +298,7 @@ impl NoteStore {
             let (title, preview) = match (quick, line.is_empty()) {
                 (true, _) => ("Quick note".to_string(), line),
                 (false, true) => ("Untitled".to_string(), String::new()),
-                (false, false) => (line, String::new()),
+                (false, false) => (line, nth_line(&text, 1)),
             };
             out.push(NoteMeta {
                 words: word_count(&text),
@@ -656,6 +663,8 @@ mod tests {
             "newest first"
         );
         assert_eq!(list[2].title, "Groceries");
+        assert_eq!(list[2].preview, "milk eggs", "the line under the title");
+        assert_eq!(list[1].preview, "", "a one-line note has no preview");
         assert_eq!(list[2].words, 3);
         assert_eq!(list[2].created_ms, 2_000);
         assert_eq!(s2.load(&made[1]).unwrap(), "Meeting notes");
