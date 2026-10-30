@@ -33,6 +33,8 @@ use llama_cpp_2::model::{LlamaChatMessage, LlamaChatTemplate, LlamaModel};
 use llama_cpp_2::sampling::LlamaSampler;
 use llama_cpp_2::token::LlamaToken;
 
+use crate::backend;
+
 /// The system prompt (~1k tokens) + user message (≤ ~250 tokens of
 /// context) + output fits comfortably.
 const N_CTX: u32 = 4096;
@@ -80,6 +82,13 @@ pub struct Info {
     pub warm_prefill_tokens: usize,
     pub warm_ms: u64,
     pub load_ms: u64,
+    /// ggml backend the layers run on: "Vulkan", "CPU", …
+    pub backend: String,
+    /// The GPU's name, or "CPU".
+    pub device: String,
+    /// Why the GPU was not used although one was found (its load failed
+    /// and the CPU took over).
+    pub gpu_error: Option<String>,
 }
 
 /// Counters of the most recent `clean` call (benchmarks, the CLI).
@@ -110,6 +119,25 @@ fn backend() -> Result<&'static LlamaBackend, String> {
         })
         .as_ref()
         .map_err(Clone::clone)
+}
+
+/// Model params for `plan`: every layer on the chosen GPU, or the CPU with
+/// the GPUs excluded. With no GPU in the build the defaults stay untouched.
+fn model_params(plan: &backend::Plan) -> Result<LlamaModelParams, String> {
+    let p = LlamaModelParams::default();
+    match plan {
+        backend::Plan::Gpu { index, .. } => p
+            .with_devices(&[*index])
+            .map(|p| p.with_n_gpu_layers(999))
+            .map_err(|e| format!("llm device {index}: {e}")),
+        backend::Plan::Cpu {
+            gpus_present: false,
+        } => Ok(p),
+        backend::Plan::Cpu { gpus_present: true } => p
+            .with_devices(&[])
+            .map(|p| p.with_n_gpu_layers(0))
+            .map_err(|e| format!("llm cpu params: {e}")),
+    }
 }
 
 struct Job {
@@ -176,93 +204,107 @@ impl Engine {
         let worker = std::thread::Builder::new()
             .name("flow-llm".into())
             .spawn(move || {
-                let setup = || -> Result<(LlamaModel, LlamaContextParams), String> {
-                    let model =
-                        LlamaModel::load_from_file(backend()?, &p, &LlamaModelParams::default())
-                            .map_err(|e| format!("llm load: {e}"))?;
-                    let cparams = LlamaContextParams::default()
-                        .with_n_ctx(NonZeroU32::new(N_CTX))
-                        .with_n_batch(N_BATCH as u32)
-                        .with_n_ubatch(N_BATCH as u32)
-                        .with_n_threads(threads)
-                        .with_n_threads_batch(threads);
-                    Ok((model, cparams))
-                };
-                let (model, cparams) = match setup() {
-                    Ok(x) => x,
+                let b = match backend() {
+                    Ok(b) => b,
                     Err(e) => {
                         let _ = ready_tx.send(Err(e));
                         return;
                     }
                 };
-                let ctx = match backend().and_then(|b| {
-                    model
-                        .new_context(b, cparams)
-                        .map_err(|e| format!("llm context: {e}"))
-                }) {
-                    Ok(c) => c,
-                    Err(e) => {
-                        let _ = ready_tx.send(Err(e));
+                let cparams = LlamaContextParams::default()
+                    .with_n_ctx(NonZeroU32::new(N_CTX))
+                    .with_n_batch(N_BATCH as u32)
+                    .with_n_ubatch(N_BATCH as u32)
+                    .with_n_threads(threads)
+                    .with_n_threads_batch(threads);
+                // The GPU first (if any), then the CPU: a model or context
+                // that fails on the GPU (driver error, out of device memory)
+                // loads again on the CPU. A failed attempt's model is
+                // dropped before the next one loads.
+                let plans =
+                    backend::choose(&backend::devices(), backend::force_cpu_from_env()).fallbacks();
+                let mut errors: Vec<String> = Vec::new();
+                for plan in plans {
+                    let model = match model_params(&plan).and_then(|mp| {
+                        LlamaModel::load_from_file(b, &p, &mp)
+                            .map_err(|e| format!("llm load ({}): {e}", plan.device()))
+                    }) {
+                        Ok(m) => m,
+                        Err(e) => {
+                            errors.push(e);
+                            continue;
+                        }
+                    };
+                    let ctx = match model.new_context(b, cparams.clone()) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            errors.push(format!("llm context ({}): {e}", plan.device()));
+                            continue;
+                        }
+                    };
+                    let mut st = State {
+                        template: model.chat_template(None).ok(),
+                        model: &model,
+                        ctx,
+                        cached: Vec::new(),
+                        stats: Stats::default(),
+                    };
+                    let tw = Instant::now();
+                    let warm_prefill_tokens = warm.as_ref().map_or(0, |w| st.warm(w));
+                    let info = Info {
+                        n_params: model.n_params(),
+                        chat_template: st.template.is_some(),
+                        warm_prefill_tokens,
+                        warm_ms: tw.elapsed().as_millis() as u64,
+                        load_ms: 0,
+                        backend: plan.backend().to_string(),
+                        device: plan.device().to_string(),
+                        gpu_error: (!errors.is_empty()).then(|| errors.join("; ")),
+                    };
+                    if ready_tx.send(Ok(info)).is_err() {
                         return;
                     }
-                };
-                let mut st = State {
-                    template: model.chat_template(None).ok(),
-                    model: &model,
-                    ctx,
-                    cached: Vec::new(),
-                    stats: Stats::default(),
-                };
-                let tw = Instant::now();
-                let warm_prefill_tokens = warm.map_or(0, |w| st.warm(&w));
-                let info = Info {
-                    n_params: model.n_params(),
-                    chat_template: st.template.is_some(),
-                    warm_prefill_tokens,
-                    warm_ms: tw.elapsed().as_millis() as u64,
-                    load_ms: 0,
-                };
-                if ready_tx.send(Ok(info)).is_err() {
-                    return;
-                }
-                while let Ok(first) = jobs_rx.recv() {
-                    // Everything queued right now: a prefill that has a
-                    // later message behind it is stale and skipped.
-                    let batch: Vec<Msg> =
-                        std::iter::once(first).chain(jobs_rx.try_iter()).collect();
-                    let n = batch.len();
-                    for (i, m) in batch.into_iter().enumerate() {
-                        match m {
-                            Msg::Clean(job) => {
-                                // SAFETY: see `unsafe impl Send for Job`.
-                                let cancel = unsafe { job.cancel.as_ref() };
-                                st.stats = Stats::default();
-                                let r = st.run(&job.prompt, job.deadline, cancel);
-                                *wstats.lock().unwrap() = st.stats;
-                                let _ = job.reply.send(r);
-                            }
-                            Msg::Prefill(p, e) => {
-                                let mut a = wahead.lock().unwrap();
-                                a.requests += 1;
-                                if i + 1 < n || wepoch.load(Ordering::Relaxed) != e {
-                                    continue;
+                    while let Ok(first) = jobs_rx.recv() {
+                        // Everything queued right now: a prefill that has a
+                        // later message behind it is stale and skipped.
+                        let batch: Vec<Msg> =
+                            std::iter::once(first).chain(jobs_rx.try_iter()).collect();
+                        let n = batch.len();
+                        for (i, m) in batch.into_iter().enumerate() {
+                            match m {
+                                Msg::Clean(job) => {
+                                    // SAFETY: see `unsafe impl Send for Job`.
+                                    let cancel = unsafe { job.cancel.as_ref() };
+                                    st.stats = Stats::default();
+                                    let r = st.run(&job.prompt, job.deadline, cancel);
+                                    *wstats.lock().unwrap() = st.stats;
+                                    let _ = job.reply.send(r);
                                 }
-                                drop(a);
-                                let t = Instant::now();
-                                let stop = || wepoch.load(Ordering::Relaxed) != e;
-                                let (toks, done) = st.prefill_ahead(&p, &stop);
-                                let mut a = wahead.lock().unwrap();
-                                a.tokens += toks as u64;
-                                a.ms += t.elapsed().as_millis() as u64;
-                                if done {
-                                    a.completed += 1;
-                                } else {
-                                    a.preempted += 1;
+                                Msg::Prefill(p, e) => {
+                                    let mut a = wahead.lock().unwrap();
+                                    a.requests += 1;
+                                    if i + 1 < n || wepoch.load(Ordering::Relaxed) != e {
+                                        continue;
+                                    }
+                                    drop(a);
+                                    let t = Instant::now();
+                                    let stop = || wepoch.load(Ordering::Relaxed) != e;
+                                    let (toks, done) = st.prefill_ahead(&p, &stop);
+                                    let mut a = wahead.lock().unwrap();
+                                    a.tokens += toks as u64;
+                                    a.ms += t.elapsed().as_millis() as u64;
+                                    if done {
+                                        a.completed += 1;
+                                    } else {
+                                        a.preempted += 1;
+                                    }
                                 }
                             }
                         }
                     }
+                    return;
                 }
+                let _ = ready_tx.send(Err(errors.join("; ")));
             })
             .map_err(|e| format!("spawn llm thread: {e}"))?;
         let mut info = match ready_rx.recv() {

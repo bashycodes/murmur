@@ -21,10 +21,13 @@
 //! // Optional (added 2026-10, still ABI 1; loaders look them up lazily):
 //! int32_t flow_llm_prefill(void* h, const char* messages); // non-blocking, 0 ok / 2 bad json
 //! void    flow_llm_prefill_cancel(void* h);
+//! // Optional (added 2026-10-30, still ABI 1): no model needed.
+//! char*   flow_llm_backends(void); // JSON {"devices":[…],"backend":"Vulkan"|"CPU","device":"…"}
 //! void    flow_llm_free_string(char*);
 //! void    flow_llm_unload(void* h);
 //! ```
 
+pub mod backend;
 pub mod engine;
 
 use std::ffi::{c_char, CStr, CString};
@@ -218,6 +221,9 @@ pub unsafe extern "C" fn flow_llm_info(h: *const Engine) -> *mut c_char {
             "warm_prefill_tokens": i.warm_prefill_tokens,
             "warm_ms": i.warm_ms,
             "load_ms": i.load_ms,
+            "backend": i.backend,
+            "device": i.device,
+            "gpu_error": i.gpu_error,
             "last": {
                 "prompt_tokens": st.prompt_tokens,
                 "prefill_tokens": st.prefill_tokens,
@@ -237,6 +243,26 @@ pub unsafe extern "C" fn flow_llm_info(h: *const Engine) -> *mut c_char {
         })
         .to_string(),
     )
+}
+
+/// The devices this build sees and where a model would load (JSON, see the
+/// module docs), without loading one. Settings uses it to recommend a
+/// cleanup model for this PC. Free with [`flow_llm_free_string`].
+#[no_mangle]
+pub extern "C" fn flow_llm_backends() -> *mut c_char {
+    let r = std::panic::catch_unwind(|| {
+        let devices = backend::devices();
+        let plan = backend::choose(&devices, backend::force_cpu_from_env());
+        serde_json::json!({
+            "devices": devices,
+            "backend": plan.backend(),
+            "device": plan.device(),
+        })
+        .to_string()
+    });
+    to_c(&r.unwrap_or_else(|_| {
+        r#"{"devices":[],"backend":"CPU","device":"CPU","error":"panicked"}"#.into()
+    }))
 }
 
 /// # Safety
