@@ -171,7 +171,7 @@ function renderSettingsRow() {
     row.hidden = !models.canDownload();
     const keep = sel.value;
     sel.replaceChildren(...catalog
-        .filter((c) => c.available)
+        .filter((c) => c.available && !c.language)
         .map((c) => new Option(`${c.title} · ${mb(c.size)}${c.installed ? " · downloaded" : ""}`, c.id)));
     if (keep && catalog.some((c) => c.id === keep))
         sel.value = keep;
@@ -194,6 +194,112 @@ function renderSettingsRow() {
     line.textContent = progressLine(p, models.entry(id));
     line.className = `hint ${p.state === "error" ? "err" : p.state === "done" ? "ok" : ""}`;
 }
+/** prefs.hebrew_model → catalogue id. */
+export const HEBREW_IDS = {
+    zipformer: "zipformer-he-int8",
+    parakeet_he: "parakeet-tdt-0.6b-v3-he-int8",
+};
+let heStatus = null;
+/** True when `languages` forces Hebrew (exactly one, `he`/`he-IL`/`iw`). */
+export function hebrewChosen(languages) {
+    if (!languages || languages.length !== 1)
+        return false;
+    const p = languages[0].trim().toLowerCase().split(/[-_]/)[0];
+    return p === "he" || p === "iw" || p === "hebrew";
+}
+/** The catalogue entry of the chosen Hebrew model (undefined = none). */
+export function hebrewEntry(choice) {
+    return models.entry(HEBREW_IDS[choice ?? ""] ?? "");
+}
+/** A Hebrew model is chosen and on disk (catalogue `installed`). */
+export function hebrewReady(choice) {
+    return Boolean(hebrewEntry(choice)?.installed);
+}
+function renderHebrewRow() {
+    const sel = document.getElementById("hebrew_model");
+    if (!sel)
+        return;
+    const e = hebrewEntry(sel.value);
+    const wantHe = hebrewChosen(prefsStore.get()?.languages);
+    const line = $("he_status");
+    const credit = $("he_credit");
+    const start = $("he_download");
+    const stop = $("he_stop");
+    const bar = $("he_bar");
+    const busy = Boolean(e && models.busy(e.id));
+    const complete = e ? (e.complete ?? e.installed) : false;
+    start.hidden = !e || complete || busy || !e.available;
+    start.disabled = models.busy();
+    stop.hidden = !busy;
+    bar.hidden = !busy;
+    credit.replaceChildren();
+    if (e?.license) {
+        credit.append(`${e.license} · `, html(extLink(e.page, "model page")));
+    }
+    credit.hidden = !e;
+    if (e)
+        start.textContent = `Download ${mb(e.missing || e.size)}…`;
+    const set = (text, cls = "") => {
+        line.textContent = text;
+        line.className = `hint${cls ? ` ${cls}` : ""}`;
+    };
+    if (!e) {
+        set(wantHe ? "Your language is Hebrew, but with no Hebrew model it uses the model above." : "Hebrew uses the model above.", wantHe ? "err" : "");
+        return;
+    }
+    const p = models.progress(e.id);
+    if (p && busy) {
+        bar.firstElementChild.style.width = `${p.total ? Math.round((p.received / p.total) * 100) : 0}%`;
+        set(progressLine(p, e));
+        return;
+    }
+    if (p?.state === "error") {
+        set(progressLine(p, e), "err");
+        return;
+    }
+    if (!e.installed) {
+        const how = e.available ? "press Download" : "get it from its model page";
+        set(`Not downloaded yet: ${how} (${mb(e.size)}).${wantHe ? " Until then Hebrew uses the model above." : ""}`, wantHe ? "err" : "");
+        if (!e.available)
+            credit.append(" · ", html(extLink(e.page, "Download page")));
+        return;
+    }
+    // Installed before the language-ID model came with it (H6).
+    const noLid = complete ? "" : ` Auto-detect needs a ${mb(e.missing ?? 0)} language-ID model: ${e.available ? "press Download" : "get it from the Whisper model page"}.`;
+    switch (heStatus?.state) {
+        case "ready":
+            set(`Ready for Hebrew (loaded in ${heStatus.load_ms} ms).${noLid}`, "ok");
+            break;
+        case "loading":
+            set("Loading…");
+            break;
+        case "failed":
+            set(`Failed to load: ${heStatus.message}`, "err");
+            break;
+        case "missing":
+            set(`Not found: ${heStatus.path}`, "err");
+            break;
+        default:
+            set("Downloaded. Loads when this PC's engine is in use.");
+    }
+}
+/** Settings → Speech to text: the Hebrew model (D33 route) row. */
+export const HEBREW_ROW = `
+<div class="fl-row lw-dl-row" id="he_row">
+  <div class="fl-row-text">
+    <div class="fl-row-title"><label for="hebrew_model">Hebrew model</label></div>
+    <div class="fl-row-desc">Used when the language is Hebrew (Settings → General), or on Detect automatically when you speak Hebrew; every other language keeps the model above. Zipformer is smaller and more accurate. The download includes a 32 MB Whisper model that tells Hebrew from English.<span class="lw-status-sub"><span class="lw-dl-bar" id="he_bar" hidden><span></span></span><span id="he_status"></span></span><span class="lw-status-sub lw-he-credit" id="he_credit" hidden></span></div>
+  </div>
+  <div class="fl-row-control">
+    <select id="hebrew_model" class="fl-select lw-w220" data-save="prefs" aria-label="Hebrew model">
+      <option value="zipformer">Zipformer (recommended)</option>
+      <option value="parakeet_he">Parakeet</option>
+      <option value="none">None</option>
+    </select>
+    <button type="button" class="fl-btn fl-btn-secondary" id="he_download" hidden>Download…</button>
+    <button type="button" class="fl-btn fl-btn-secondary" id="he_stop" hidden>Cancel</button>
+  </div>
+</div>`;
 export const modelsFeature = {
     init() {
         document.body.append(html(DIALOG));
@@ -216,6 +322,23 @@ export const modelsFeature = {
         });
         document.getElementById("dl_stop")?.addEventListener("click", () => void models.cancel($("dl_model").value));
         models.onChange(renderSettingsRow);
+        models.onChange(renderHebrewRow);
+        prefsStore.subscribe(() => renderHebrewRow());
+        document.getElementById("hebrew_model")?.addEventListener("change", renderHebrewRow);
+        document.getElementById("he_download")?.addEventListener("click", () => {
+            const e = hebrewEntry($("hebrew_model").value);
+            if (e)
+                void models.confirmAndStart(e.id);
+        });
+        document.getElementById("he_stop")?.addEventListener("click", () => {
+            const e = hebrewEntry($("hebrew_model").value);
+            if (e)
+                void models.cancel(e.id);
+        });
+        void onEvent("model:hebrew", (ev) => {
+            heStatus = ev.payload;
+            renderHebrewRow();
+        });
         void onEvent("model:download", (ev) => {
             const p = ev.payload;
             const started = progress.get(p.id)?.started || Date.now();
@@ -230,6 +353,8 @@ export const modelsFeature = {
         });
     },
     async load() {
+        const info = await invoke("get_model_status").catch(() => ({ hebrew: null }));
+        heStatus = info.hebrew ?? null;
         await models.refresh();
     },
 };

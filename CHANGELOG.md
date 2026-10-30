@@ -51,6 +51,30 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   seconds, "Loading the Hebrew speech model…"). If it fails to load,
   whisper is used. flow-ffi accepts `load_language` in the model config for
   this (`FlowCore::load_models_for`).
+- **Windows: Hebrew dictation.** Settings → General → Languages is now a
+  picker (Detect automatically, English, Hebrew, or Other… for typed codes).
+  Settings → Speech to text has a **Hebrew model** choice: Zipformer
+  (recommended, 72 MB), Parakeet Hebrew (673 MB) or None. With the language
+  set to Hebrew, dictations decode on that model; every other language keeps
+  the default model, and both stay loaded, so switching language reloads
+  nothing. Both Hebrew models are in the download catalogue (pinned commit,
+  SHA-256 per file, CC-BY-4.0 credit shown in the row). Choosing Hebrew with
+  no Hebrew model downloaded shows a hint that links to the download. A
+  missing Hebrew model never blocks the default one.
+- **Windows: auto-detect hears Hebrew.** Each Hebrew model download now
+  also fetches Whisper tiny (32 MB, `ggml-tiny-q5_1.bin`) as a language-ID
+  model. With it present and a Hebrew model chosen, "Detect automatically"
+  sends Hebrew speech to the Hebrew model and everything else to the default
+  one. Without it, auto-detect stays English as before; a Hebrew model
+  downloaded earlier shows "Download 32 MB…" to fetch just that file.
+
+### Fixed
+
+- **Windows: Launch at login after a reinstall.** With Launch at login on,
+  the app now re-points its startup entry at its own exe each time it starts.
+  Before, the entry was written only when settings were saved, so after
+  reinstalling to a new folder (the "Flow Clone" → "Murmur" rename) it
+  pointed at a deleted exe and the app no longer started at login.
 
 ## [0.9.2] - 2026-10-30
 

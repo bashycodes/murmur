@@ -5,7 +5,7 @@
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import type { Page } from "../../lib/router.js";
-import { browseButton, DOWNLOAD_ROW } from "../../features/models.js";
+import { browseButton, DOWNLOAD_ROW, HEBREW_ROW } from "../../features/models.js";
 
 /** One engine in a ranked list (`<prefix>_row_<key>`, `_desc_`, `_badge_`):
  *  rank, tile, text, status badge, move up/down, switch. The feature module
@@ -75,6 +75,7 @@ ${group(
       `data-engine="parakeet"`,
     ) +
     DOWNLOAD_ROW +
+    HEBREW_ROW +
     row(
       "Use dictionary words when listening",
       "Better at names and jargon. Uses about 0.6 GB more memory; changing it reloads the model.",

@@ -6,6 +6,7 @@
 import { $, el, setValue } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
+import { hebrewChosen, hebrewReady, models } from "./models.js";
 import { setTheme } from "../lib/theme.js";
 const BOOL_FIELDS = [
     "enable_sounds",
@@ -49,6 +50,7 @@ function fill(prefs) {
     setValue("model_path", prefs.model_path ?? "");
     $("asr_engine").value = prefs.asr_engine;
     setValue("parakeet_model_dir", prefs.parakeet_model_dir ?? "");
+    $("hebrew_model").value = prefs.hebrew_model ?? "zipformer";
     showEngineFields();
     setValue("ptt", prefs.shortcuts.ptt);
     setValue("hands_free", prefs.shortcuts.hands_free);
@@ -166,7 +168,49 @@ function showLanguages(prefs, typed) {
         // No Intl.DisplayNames: show the codes.
     }
     $("languages_desc").textContent = names.length ? `${names.join(", ")}.` : "Detected automatically.";
-    $("languages_parakeet").hidden = prefs.asr_engine !== "parakeet";
+    // Hebrew has its own model (D33): the English-only note doesn't apply.
+    const he = hebrewChosen(codes);
+    const heModel = hebrewReady(prefs.hebrew_model);
+    $("languages_parakeet").hidden = prefs.asr_engine !== "parakeet" || (he && heModel);
+    // Only once the catalogue is known (it says what is downloaded).
+    $("languages_hebrew").hidden = !he || heModel || models.catalog().length === 0;
+    showLanguagePick(codes);
+}
+/** The picker: Detect / English / Hebrew, or "Other…" with the code field. */
+function languagePick(codes) {
+    if (codes.length === 0)
+        return "";
+    if (hebrewChosen(codes))
+        return "he";
+    if (codes.length === 1 && codes[0].trim().toLowerCase().split(/[-_]/)[0] === "en")
+        return "en";
+    return "other";
+}
+function showLanguagePick(codes) {
+    const sel = $("language_pick");
+    const box = $("languages_other");
+    // Keep "Other…" while its field is open.
+    if (box.classList.contains("is-editing"))
+        return;
+    const v = languagePick(codes);
+    sel.value = v;
+    box.hidden = v !== "other";
+}
+function pickLanguage() {
+    const v = $("language_pick").value;
+    const box = $("languages_other");
+    const input = $("languages");
+    if (v === "other") {
+        box.hidden = false;
+        box.querySelector(".lw-edit-btn")?.click();
+        return;
+    }
+    box.hidden = true;
+    input.value = v;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    const p = prefsStore.get();
+    if (p)
+        showLanguages(p, v);
 }
 /** The prefs fields this module owns, as the pages show them. */
 export function collectGeneral() {
@@ -185,6 +229,7 @@ export function collectGeneral() {
     next.model_path = $("model_path").value.trim() || null;
     next.asr_engine = $("asr_engine").value;
     next.parakeet_model_dir = $("parakeet_model_dir").value.trim() || null;
+    next.hebrew_model = $("hebrew_model").value;
     next.microphone = $("microphone").value || null;
     for (const f of BOOL_FIELDS)
         next[f] = $(f).checked;
@@ -204,6 +249,13 @@ export function collectGeneral() {
 export const general = {
     init() {
         $("asr_engine").addEventListener("change", showEngineFields);
+        $("language_pick").addEventListener("change", pickLanguage);
+        // The Hebrew hint depends on what is downloaded and the Hebrew choice.
+        models.onChange(() => {
+            const p = prefsStore.get();
+            if (p)
+                showLanguages(p);
+        });
         for (const e of document.querySelectorAll(".lw-edit"))
             wireEdit(e);
         // Theme applies at once; the save follows through data-save="prefs".
