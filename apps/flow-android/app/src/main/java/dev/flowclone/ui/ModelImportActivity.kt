@@ -41,7 +41,6 @@ class ModelImportActivity : Activity() {
         super.onCreate(savedInstanceState)
         title = if (llm) "AI cleanup model" else if (parakeet) "Parakeet model" else "Speech model"
         ui = DevUi(this)
-        actionBar?.setDisplayHomeAsUpEnabled(true)
         render()
     }
 
@@ -57,6 +56,7 @@ class ModelImportActivity : Activity() {
         } else dir().listFiles()?.filter { it.isFile && !it.name.endsWith(".part") }?.sortedBy { it.name }.orEmpty()
         fun bytes(f: File) = if (f.isDirectory) f.walk().filter { it.isFile }.sumOf { it.length() } else f.length()
         rebuild {
+            topBar(title.toString(), DevUi.TopNav.BACK, onNav = ::finish)
             note(ModelPages.intro(screen))
             sectionLabel("STATUS")
             card {
@@ -265,9 +265,6 @@ class ModelImportActivity : Activity() {
     }
 
     private fun reloadEngine() = app.engine.reload()
-
-    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean =
-        if (item.itemId == android.R.id.home) { finish(); true } else super.onOptionsItemSelected(item)
 
     companion object {
         private const val REQ_PICK = 10

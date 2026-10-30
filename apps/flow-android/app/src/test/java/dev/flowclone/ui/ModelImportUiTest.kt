@@ -58,6 +58,15 @@ class ModelImportUiTest {
         UiTestKit.assertTouchTargets(a, "speech")
     }
 
+    @Test fun topBarNamesTheScreenAndBackFinishes() {
+        val a = launch(ModelImportActivity.parakeetIntent(ctx))
+        assertTrue("Parakeet model" in texts(a))
+        val back = walk(a.window.decorView).filterIsInstance<android.widget.ImageButton>().first()
+        assertEquals("Back", back.contentDescription)
+        back.performClick()
+        assertTrue(a.isFinishing)
+    }
+
     @Test fun recommendedRowCopiesItsDownloadLink() {
         val a = launch(ModelImportActivity.llmIntent(ctx))
         val m = ModelFiles.LLM_RECOMMENDATIONS.first()
