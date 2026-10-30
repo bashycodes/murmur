@@ -16,6 +16,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Fixed
+
+- **Windows: crash a few seconds into a dictation with local Whisper** on
+  CPUs without AVX-512 (e.g. Intel Core Ultra / Lunar Lake, most AMD and
+  consumer Intel chips). whisper.cpp was compiled for the CI machine's CPU;
+  it is now built for an AVX2 baseline that every supported PC has.
+
 ## [0.9.1] - 2026-10-30
 
 ### Changed
