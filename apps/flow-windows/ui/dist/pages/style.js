@@ -1,43 +1,32 @@
-// Writing style per app group, and which group each app is in ("Style per
-// app", D27). Rows of `prefs.app_buckets` (exe stem or web host -> group).
+// Style page (docs/design/app-design/PageStyle.dc.html): a tab per app group,
+// a banner with the apps in that group, and a card per writing style.
+// Below it, which group each app is in ("Style per app", D27). Rows of `prefs.app_buckets` (exe stem or web host -> group).
 // Keys keep the spelling they were stored with, so old prefs save back
 // unchanged; the backend matches them case- and `.exe`-insensitively
 // (`context::bucket_key`).
 import { $, button, el, setStatus } from "../lib/dom.js";
+import { ICON, iconEl } from "../lib/icons.js";
 import { invoke } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { router } from "../lib/router.js";
 const TEMPLATE = `
-<div class="lw-page">
+<div class="lw-page lw-style">
   <div class="lw-page-head">
-    <div class="lw-grow">
-      <h1 class="fl-page-title">Style</h1>
-      <p class="lw-sub">How your words are written in each kind of app. How much AI rewrites them is set in <button type="button" class="lw-link" id="style_cleanup_link">AI cleanup →</button></p>
-    </div>
+    <h1 class="fl-page-title">Style</h1>
     <span id="style_status" class="lw-status"></span>
   </div>
-  <section class="lw-section">
-    <h3 class="fl-group-title">Writing style</h3>
-    <div class="fl-group">
-      <div class="fl-row">
-        <div class="fl-row-text"><div class="fl-row-title">Personal messages</div><div class="fl-row-desc">WhatsApp, Telegram, Signal, Messenger, Discord, Instagram. <span class="lw-preview" id="style_personal_preview"></span></div></div>
-        <div class="fl-row-control"><select id="style_personal" class="fl-select is-wide" aria-label="Personal messages style"></select></div>
-      </div>
-      <div class="fl-row">
-        <div class="fl-row-text"><div class="fl-row-title">Work messages</div><div class="fl-row-desc">Slack, Teams. <span class="lw-preview" id="style_work_preview"></span></div></div>
-        <div class="fl-row-control"><select id="style_work" class="fl-select is-wide" aria-label="Work messages style"></select></div>
-      </div>
-      <div class="fl-row">
-        <div class="fl-row-text"><div class="fl-row-title">Email</div><div class="fl-row-desc">Outlook, Gmail. <span class="lw-preview" id="style_email_preview"></span></div></div>
-        <div class="fl-row-control"><select id="style_email" class="fl-select is-wide" aria-label="Email style"></select></div>
-      </div>
-      <div class="fl-row">
-        <div class="fl-row-text"><div class="fl-row-title">Everything else</div><div class="fl-row-desc"><span class="lw-preview" id="style_other_preview"></span></div></div>
-        <div class="fl-row-control"><select id="style_other" class="fl-select is-wide" aria-label="Everything else style"></select></div>
-      </div>
+  <div class="fl-tabs">
+    <div class="fl-tabs-list" role="tablist" aria-label="Kind of app" id="style_tabs"></div>
+  </div>
+  <div class="fl-banner fl-banner-night lw-style-banner" role="tabpanel" id="style_panel">
+    <div class="lw-style-banner-text">
+      <h3 class="fl-banner-title" id="style_banner_title"></h3>
+      <p class="fl-banner-body">How much AI rewrites your words is set in <button type="button" class="lw-link lw-style-banner-link" id="style_cleanup_link">AI cleanup →</button></p>
     </div>
-  </section>
-  <section class="lw-section">
+    <div class="lw-style-chips" id="style_chips"></div>
+  </div>
+  <div class="lw-style-options" role="radiogroup" aria-label="Writing style" id="style_options"></div>
+  <section class="lw-section lw-style-apps" id="style_apps">
     <h3 class="fl-group-title">Style per app</h3>
     <p class="lw-sub">Put an app in another group. Yours override the built-in groups below.</p>
     <div class="fl-list">
@@ -66,32 +55,169 @@ const TEMPLATE = `
     </details>
   </section>
 </div>`;
-const STYLES = [
-    ["formal", "Formal — capitals and full punctuation"],
-    ["casual", "Casual — capitals, no final period"],
-    ["very_casual", "Very casual — no final period; lowercase with AI cleanup"],
-    ["excited", "Excited — more exclamation marks (AI cleanup)"],
-];
-/** Example line per style (shared with Android's Writing style page). */
-const STYLE_PREVIEW = {
-    formal: "“Sounds good. See you at 7:30.”",
-    casual: "“Sounds good. See you at 7:30”",
-    very_casual: "“sounds good. see you at 7:30”",
-    excited: "“Sounds good! See you at 7:30!”",
-};
 const BUCKETS = ["personal", "work", "email", "other"];
-const BUCKET_NAMES = ["personal", "work", "email", "other"];
+const BUCKET_NAMES = [...BUCKETS];
 const BUCKET_LABELS = {
     personal: "Personal",
     work: "Work",
     email: "Email",
     other: "Other",
 };
+/** Tab label and banner line per group (PageStyle artboard). */
+const TABS = {
+    personal: { label: "Personal messages", banner: "Used when you dictate into chat apps for friends and family" },
+    work: { label: "Work messages", banner: "Used when you dictate into team chat apps" },
+    email: { label: "Email", banner: "Used when you dictate into email" },
+    other: { label: "Other", banner: "Used in every other app" },
+};
+/** The four backend styles (flow-core `Style`). Casual drops optional
+ *  commas and very casual lowercases only with AI cleanup on; without it
+ *  both just drop the final period. */
+const OPTIONS = {
+    formal: {
+        id: "formal",
+        title: "Formal.",
+        sub: "Capitals, full punctuation",
+        sample: "Hey, are you free for lunch tomorrow? Let's do 12 if that works for you.",
+    },
+    casual: {
+        id: "casual",
+        title: "Casual",
+        sub: "Capitals, lighter punctuation",
+        sample: "Hey are you free for lunch tomorrow? Let's do 12 if that works for you",
+    },
+    very_casual: {
+        id: "very_casual",
+        title: "very casual",
+        sub: "Lowercase, lighter punctuation",
+        sample: "hey are you free for lunch tomorrow? let's do 12 if that works for you",
+    },
+    excited: {
+        id: "excited",
+        title: "Excited!",
+        sub: "More exclamations",
+        sample: "Hey, are you free for lunch tomorrow? Let's do 12 if that works for you!",
+    },
+};
+/** Chats offer very casual, email and the rest offer excited (as in the
+ *  design); a stored style outside a group's three still shows as a card. */
+const GROUP_OPTIONS = {
+    personal: ["formal", "casual", "very_casual"],
+    work: ["formal", "casual", "very_casual"],
+    email: ["formal", "casual", "excited"],
+    other: ["formal", "casual", "excited"],
+};
+const TONES = ["lilac", "pink", "maroon", "maroon"];
+/** Banner chips before "+N more". */
+const MAX_CHIPS = 6;
 let appRows = [];
 let styleChoices = { recent: [], defaults: [] };
-function showStylePreview(b) {
-    const v = $(`style_${b}`).value;
-    $(`style_${b}_preview`).textContent = STYLE_PREVIEW[v] ?? "";
+/** The group whose tab is open, and each group's style. */
+let tab = "personal";
+const picked = { personal: "formal", work: "formal", email: "formal", other: "formal" };
+/** Prefs spell styles "Very Casual" / "very_casual" / "veryCasual". */
+function styleId(v) {
+    const k = (v ?? "").replace(/([a-z])([A-Z])/g, "$1_$2").toLowerCase().replace(/[ -]/g, "_");
+    return k in OPTIONS ? k : "formal";
+}
+function renderTabs() {
+    $("style_tabs").replaceChildren(...BUCKETS.map((b) => {
+        const on = b === tab;
+        const t = button(TABS[b].label, () => pickTab(b), on ? "fl-tab is-active" : "fl-tab");
+        t.id = `style_tab_${b}`;
+        t.setAttribute("role", "tab");
+        t.setAttribute("aria-selected", String(on));
+        t.setAttribute("aria-controls", "style_panel");
+        t.tabIndex = on ? 0 : -1;
+        t.dataset.bucket = b;
+        return t;
+    }));
+    $("style_panel").setAttribute("aria-labelledby", `style_tab_${tab}`);
+}
+function pickTab(b, focus = false) {
+    tab = b;
+    renderTabs();
+    renderBanner();
+    renderOptions();
+    if (focus)
+        $(`style_tab_${b}`).focus();
+}
+/** Apps that land in `b` now: your rows, then built-ins you didn't move. */
+function appsIn(b) {
+    const names = [];
+    const push = (n) => {
+        if (!names.includes(n))
+            names.push(n);
+    };
+    for (const r of appRows)
+        if (r.bucket === b)
+            push(choiceFor(r.key)?.name ?? r.key);
+    for (const c of styleChoices.defaults)
+        if (c.default_bucket === b && !hasAppRow(c.key))
+            push(c.name ?? c.exe);
+    return names;
+}
+function renderBanner() {
+    $("style_banner_title").textContent = TABS[tab].banner;
+    const names = appsIn(tab);
+    const chips = names.slice(0, MAX_CHIPS).map((n) => el("span", "lw-style-chip", n));
+    if (names.length > MAX_CHIPS) {
+        const more = el("span", "lw-style-chip", `+${names.length - MAX_CHIPS} more`);
+        more.title = names.slice(MAX_CHIPS).join(", ");
+        chips.push(more);
+    }
+    if (names.length === 0)
+        chips.push(el("span", "lw-style-chip is-muted", tab === "other" ? "Every other app" : "No apps yet"));
+    const add = button("", () => {
+        $("style_apps").scrollIntoView({ behavior: "smooth", block: "start" });
+        const recent = $("app_recent");
+        (recent.disabled ? $("app_manual") : recent).focus({ preventScroll: true });
+    }, "lw-style-chip-add");
+    add.setAttribute("aria-label", "Add an app to a group");
+    add.title = "Add an app";
+    add.append(iconEl(ICON.plus, 14));
+    chips.push(add);
+    $("style_chips").replaceChildren(...chips);
+}
+function renderOptions() {
+    const cur = picked[tab];
+    const ids = GROUP_OPTIONS[tab].includes(cur) ? GROUP_OPTIONS[tab] : [...GROUP_OPTIONS[tab], cur];
+    const box = $("style_options");
+    box.style.setProperty("--lw-style-cols", String(ids.length));
+    box.replaceChildren(...ids.map((id, i) => {
+        const o = OPTIONS[id];
+        const on = id === cur;
+        const card = el("button", on ? "fl-option is-selected" : "fl-option");
+        card.type = "button";
+        card.setAttribute("role", "radio");
+        card.setAttribute("aria-checked", String(on));
+        card.tabIndex = on ? 0 : -1;
+        card.dataset.style = id;
+        const avatar = el("span", `fl-avatar fl-avatar-lg fl-avatar-${TONES[i]}`, "J");
+        avatar.setAttribute("aria-hidden", "true");
+        const wrap = el("span", "fl-bubble-wrap");
+        wrap.append(el("span", "fl-bubble", o.sample), avatar);
+        card.append(el("span", "fl-option-title", o.title), el("span", "fl-option-sub", o.sub), wrap);
+        card.addEventListener("click", () => pickStyle(id));
+        return card;
+    }));
+}
+function pickStyle(id, focus = false) {
+    if (picked[tab] === id)
+        return;
+    picked[tab] = id;
+    renderOptions();
+    if (focus)
+        $("style_options").querySelector(`[data-style="${id}"]`)?.focus();
+    void saveStyle();
+}
+/** Arrow keys move along the tabs / style cards (ARIA tablist, radiogroup). */
+function arrowStep(e) {
+    if (e.key === "ArrowRight" || e.key === "ArrowDown")
+        return 1;
+    if (e.key === "ArrowLeft" || e.key === "ArrowUp")
+        return -1;
+    return 0;
 }
 /** Mirrors `context::bucket_key`: `Slack.exe` -> `slack`, `www.X.com` -> `x.com`. */
 function appKey(s) {
@@ -169,6 +295,7 @@ function renderAppRows() {
         const group = el("td");
         group.append(bucketSelect(row.bucket, (v) => {
             row.bucket = v;
+            renderBanner();
             void saveStyle();
         }));
         const act = el("td");
@@ -180,6 +307,7 @@ function renderAppRows() {
     $("app_rows_empty").hidden = appRows.length > 0;
     renderRecentPicker();
     renderDefaultRows();
+    renderBanner();
 }
 function renderRecentPicker() {
     const sel = $("app_recent");
@@ -250,11 +378,9 @@ function addManualApp() {
         input.value = "";
 }
 function fill(p) {
-    for (const b of BUCKETS) {
-        const v = p.styles[b].toLowerCase().replace(/[ -]/g, "_");
-        $(`style_${b}`).value = STYLES.some(([k]) => k === v) ? v : "formal";
-        showStylePreview(b);
-    }
+    for (const b of BUCKETS)
+        picked[b] = styleId(p.styles?.[b]);
+    renderOptions();
     fillAppRows(p.app_buckets);
 }
 /** Every change saves at once (the page has no Save button). */
@@ -273,12 +399,7 @@ function collectStyle() {
     for (const r of appRows)
         app_buckets[r.key] = r.bucket;
     return {
-        styles: {
-            personal: $("style_personal").value,
-            work: $("style_work").value,
-            email: $("style_email").value,
-            other: $("style_other").value,
-        },
+        styles: { ...picked },
         app_buckets,
     };
 }
@@ -287,13 +408,22 @@ export const stylePage = {
     area: "main",
     template: TEMPLATE,
     init() {
-        for (const b of BUCKETS) {
-            $(`style_${b}`).replaceChildren(...STYLES.map(([v, label]) => new Option(label, v)));
-            $(`style_${b}`).addEventListener("change", () => {
-                showStylePreview(b);
-                void saveStyle();
-            });
-        }
+        pickTab(tab);
+        $("style_tabs").addEventListener("keydown", (e) => {
+            const d = arrowStep(e);
+            if (!d)
+                return;
+            e.preventDefault();
+            pickTab(BUCKETS[(BUCKETS.indexOf(tab) + d + BUCKETS.length) % BUCKETS.length], true);
+        });
+        $("style_options").addEventListener("keydown", (e) => {
+            const d = arrowStep(e);
+            if (!d)
+                return;
+            e.preventDefault();
+            const ids = [...$("style_options").querySelectorAll("[data-style]")].map((c) => c.dataset.style ?? "");
+            pickStyle(ids[(ids.indexOf(picked[tab]) + d + ids.length) % ids.length], true);
+        });
         $("style_cleanup_link").addEventListener("click", () => router.go("settings-cleanup"));
         $("app_add_recent").addEventListener("click", addRecentApp);
         $("app_add_manual").addEventListener("click", addManualApp);
