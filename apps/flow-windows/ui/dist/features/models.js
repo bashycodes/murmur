@@ -2,10 +2,11 @@
 // help links that open in the browser (open_external, allowlisted hosts
 // only), and the speech-model downloader (D31): the catalogue, the confirm
 // dialog (OnboardDownloadConfirm.dc.html), progress from `model:download`
-// and the minimal "Download a model" row in Settings → Speech to text.
-// Onboarding uses the same state and dialog. A download starts only from
+// and the minimal "Download a model" row in Settings → Speech to text; the
+// AI cleanup models (GGUF, engine "llm") get the same row in Settings → AI
+// cleanup, plus Use and Delete. Onboarding uses the same state and dialog. A download starts only from
 // the dialog's Download button, never by itself (D9).
-import { $, html } from "../lib/dom.js";
+import { $, askDialog, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
 let catalog = [];
@@ -114,6 +115,8 @@ export const models = {
         await invoke("model_download_cancel", { id }).catch(() => false);
     },
 };
+/** Speech models (Settings → Speech to text, onboarding). */
+const isSpeech = (c) => c.engine !== "llm";
 function confirm(e) {
     $("dl_title").textContent = `Download ${e.title}?`;
     const many = e.files.length > 1;
@@ -171,7 +174,7 @@ function renderSettingsRow() {
     row.hidden = !models.canDownload();
     const keep = sel.value;
     sel.replaceChildren(...catalog
-        .filter((c) => c.available && !c.language)
+        .filter((c) => c.available && !c.language && isSpeech(c))
         .map((c) => new Option(`${c.title} · ${mb(c.size)}${c.installed ? " · downloaded" : ""}`, c.id)));
     if (keep && catalog.some((c) => c.id === keep))
         sel.value = keep;
@@ -194,6 +197,138 @@ function renderSettingsRow() {
     line.textContent = progressLine(p, models.entry(id));
     line.className = `hint ${p.state === "error" ? "err" : p.state === "done" ? "ok" : ""}`;
 }
+// ------------------------------------------------------------ Settings → AI cleanup row
+/** The file the app loads when no cleanup model is set (core_adapter DEFAULT_LLM_FILE, D11). */
+const DEFAULT_LLM_FILE = "qwen2.5-0.5b-instruct-q4_k_m.gguf";
+/** "Deleted." after a delete, until the selection or the catalogue changes. */
+let llmNote = "";
+const llmModels = () => catalog.filter((c) => c.engine === "llm");
+/** Local cleanup runs with this catalogue model (path set to it, or empty = the default file). */
+export function llmInUse(c, p = prefsStore.get()) {
+    if (!p?.llm_enabled)
+        return false;
+    const path = p.llm_model_path?.trim();
+    if (path)
+        return path === c.dest;
+    return c.dest.endsWith(`\\${DEFAULT_LLM_FILE}`) || c.dest.endsWith(`/${DEFAULT_LLM_FILE}`);
+}
+function renderLlmRow() {
+    const sel = document.getElementById("llm_dl_model");
+    if (!sel)
+        return;
+    const list = llmModels();
+    $("llm_dl_row").hidden = list.length === 0;
+    const keep = sel.value;
+    sel.replaceChildren(...list.map((c) => new Option(`${c.title} · ${mb(c.size)}${c.installed ? (llmInUse(c) ? " · in use" : " · downloaded") : ""}`, c.id)));
+    if (keep && list.some((c) => c.id === keep))
+        sel.value = keep;
+    else {
+        // Open on the model in use, else the recommended one.
+        const pick = list.find((c) => c.installed && llmInUse(c)) ?? list.find((c) => c.recommended);
+        if (pick)
+            sel.value = pick.id;
+    }
+    const e = models.entry(sel.value);
+    const start = $("llm_dl_start");
+    const stop = $("llm_dl_stop");
+    const use = $("llm_dl_use");
+    const del = $("llm_dl_delete");
+    const bar = $("llm_dl_bar");
+    const line = $("llm_dl_status");
+    const busy = Boolean(e && models.busy(e.id));
+    const inUse = Boolean(e && e.installed && llmInUse(e));
+    start.hidden = !e || e.installed || busy || !e.available;
+    start.disabled = models.busy();
+    if (e)
+        start.textContent = `Download ${mb(e.size)}…`;
+    stop.hidden = !busy;
+    bar.hidden = !busy;
+    use.hidden = !e || !e.installed || busy || inUse;
+    del.hidden = !e || !e.installed || busy;
+    const set = (text, cls = "") => {
+        line.textContent = text;
+        line.className = `hint${cls ? ` ${cls}` : ""}`;
+    };
+    if (!e)
+        return set("");
+    const p = models.progress(e.id);
+    if (p && busy) {
+        bar.firstElementChild.style.width = `${p.total ? Math.round((p.received / p.total) * 100) : 0}%`;
+        return set(progressLine(p, e));
+    }
+    if (p?.state === "error")
+        return set(progressLine(p, e), "err");
+    if (llmNote)
+        return set(llmNote);
+    if (p?.state === "cancelled" && !e.installed)
+        return set(progressLine(p, e));
+    if (!e.installed) {
+        line.replaceChildren();
+        line.className = "hint";
+        line.append(`${e.desc}. Not downloaded yet${e.available ? "." : ": "}`);
+        if (!e.available)
+            line.append(html(extLink(e.page, "get it from its model page")));
+        return;
+    }
+    if (inUse)
+        return set(`${e.desc}. Downloaded and in use for cleanup on this PC.`, "ok");
+    set(`${e.desc}. Downloaded. Press Use to clean up with it.`);
+}
+async function useLlm(id) {
+    const e = models.entry(id);
+    if (!e?.installed)
+        return;
+    llmNote = "";
+    await prefsStore.save({ llm_enabled: true, llm_model_path: e.dest }).catch((err) => {
+        llmNote = `Could not switch: ${String(err)}`;
+    });
+    renderLlmRow();
+}
+async function deleteLlm(id) {
+    const e = models.entry(id);
+    if (!e?.installed || models.busy(e.id))
+        return;
+    $("llm_del_title").textContent = `Delete ${e.title}?`;
+    $("llm_del_body").textContent = llmInUse(e)
+        ? `Frees ${mb(e.size)}. It is the model AI cleanup on this PC uses, so that turns off; the formatting rules keep working. You can download it again any time.`
+        : `Frees ${mb(e.size)}. You can download it again any time.`;
+    if (!(await askDialog("llm_del_confirm", "llm_del_ok", "llm_del_cancel")))
+        return;
+    try {
+        await invoke("model_delete", { id });
+        llmNote = "Deleted.";
+    }
+    catch (err) {
+        llmNote = `Could not delete: ${String(err)}`;
+    }
+    progress.delete(id);
+    await prefsStore.load().catch(() => { });
+    await models.refresh().catch(() => { });
+}
+/** Settings → AI cleanup → On this PC: download / use / delete a cleanup model. */
+export const LLM_DOWNLOAD_ROW = `
+<div class="fl-row lw-dl-row" id="llm_dl_row" data-needs="local" hidden>
+  <div class="fl-row-text">
+    <div class="fl-row-title"><label for="llm_dl_model">Download a model</label></div>
+    <div class="fl-row-desc">From Hugging Face, checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent. A downloaded model turns on cleanup on this PC.<span class="lw-status-sub"><span class="lw-dl-bar" id="llm_dl_bar" hidden><span></span></span><span id="llm_dl_status"></span></span></div>
+  </div>
+  <div class="fl-row-control">
+    <select id="llm_dl_model" class="fl-select lw-w220" aria-label="Cleanup model to download"></select>
+    <button type="button" class="fl-btn fl-btn-secondary" id="llm_dl_start">Download…</button>
+    <button type="button" class="fl-btn fl-btn-secondary" id="llm_dl_use" hidden>Use</button>
+    <button type="button" class="fl-btn fl-btn-secondary" id="llm_dl_delete" hidden>Delete…</button>
+    <button type="button" class="fl-btn fl-btn-secondary" id="llm_dl_stop" hidden>Cancel</button>
+  </div>
+</div>`;
+const LLM_DELETE_DIALOG = `
+<dialog id="llm_del_confirm" class="fl-dialog" aria-labelledby="llm_del_title">
+  <h3 id="llm_del_title">Delete?</h3>
+  <p id="llm_del_body"></p>
+  <div class="lw-dialog-actions">
+    <button type="button" class="fl-btn fl-btn-secondary" id="llm_del_cancel">Cancel</button>
+    <button type="button" class="fl-btn fl-btn-destructive" id="llm_del_ok">Delete</button>
+  </div>
+</dialog>`;
 /** prefs.hebrew_model → catalogue id. */
 export const HEBREW_IDS = {
     zipformer: "zipformer-he-int8",
@@ -303,6 +438,7 @@ export const HEBREW_ROW = `
 export const modelsFeature = {
     init() {
         document.body.append(html(DIALOG));
+        document.body.append(html(LLM_DELETE_DIALOG));
         // Browse buttons next to path fields (data-browse = the field's id).
         document.addEventListener("click", (e) => {
             const t = e.target;
@@ -322,6 +458,20 @@ export const modelsFeature = {
         });
         document.getElementById("dl_stop")?.addEventListener("click", () => void models.cancel($("dl_model").value));
         models.onChange(renderSettingsRow);
+        models.onChange(renderLlmRow);
+        prefsStore.subscribe(() => renderLlmRow());
+        const llmSel = () => $("llm_dl_model").value;
+        document.getElementById("llm_dl_model")?.addEventListener("change", () => {
+            llmNote = "";
+            renderLlmRow();
+        });
+        document.getElementById("llm_dl_start")?.addEventListener("click", () => {
+            llmNote = "";
+            void models.confirmAndStart(llmSel());
+        });
+        document.getElementById("llm_dl_stop")?.addEventListener("click", () => void models.cancel(llmSel()));
+        document.getElementById("llm_dl_use")?.addEventListener("click", () => void useLlm(llmSel()));
+        document.getElementById("llm_dl_delete")?.addEventListener("click", () => void deleteLlm(llmSel()));
         models.onChange(renderHebrewRow);
         prefsStore.subscribe(() => renderHebrewRow());
         document.getElementById("hebrew_model")?.addEventListener("change", renderHebrewRow);
