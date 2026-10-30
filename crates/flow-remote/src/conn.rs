@@ -1,15 +1,16 @@
 //! One WebSocket connection: handshake, reader task, writer task, and the
 //! shared state the sync `Backend` methods wait on.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use flow_core::CommitResult;
 use flow_protocol::{
-    code, ClientMsg, ErrorMsg, Hello, HelloOk, ServerMsg, ServerTimings, CLOSE_PROTO_MISMATCH,
-    CLOSE_UNAUTHORIZED, IDLE_KEEPALIVE_S, PATH_STREAM, PROTO_MAX, PROTO_MIN, SUBPROTOCOL,
-    WS_DEAD_S, WS_PING_S,
+    code, Cleaned, ClientMsg, ErrorMsg, Hello, HelloOk, ServerMsg, ServerTimings,
+    CLOSE_PROTO_MISMATCH, CLOSE_UNAUTHORIZED, IDLE_KEEPALIVE_S, PATH_STREAM, PROTO_MAX, PROTO_MIN,
+    SUBPROTOCOL, WS_DEAD_S, WS_PING_S,
 };
 use flow_router::{net, BackendError, Failure, ServerConfig};
 use futures_util::{SinkExt, StreamExt};
@@ -43,6 +44,8 @@ struct State {
     close_reason: Option<String>,
     pongs: Vec<u64>,
     last_busy: Option<u32>,
+    /// D35 `cleaned` answers by request id, until taken.
+    cleaned: HashMap<u64, Cleaned>,
 }
 
 pub struct Conn {
@@ -282,12 +285,14 @@ impl Conn {
         let pongs = std::mem::take(&mut st.pongs);
         let close_reason = st.close_reason.take();
         let last_busy = st.last_busy;
+        let cleaned = std::mem::take(&mut st.cleaned);
         *st = State {
             sid: Some(sid),
             started_at: Some(Instant::now()),
             pongs,
             close_reason,
             last_busy,
+            cleaned,
             ..Default::default()
         };
         drop(st);
@@ -318,6 +323,9 @@ impl Conn {
                         .get_or_insert(format!("{}: {}", e.code, e.message));
                 }
                 st.error = Some(e);
+            }
+            ServerMsg::Cleaned(c) => {
+                st.cleaned.insert(c.id, c);
             }
             ServerMsg::Pong { n, busy } => {
                 st.pongs.push(n);
@@ -417,6 +425,50 @@ impl Conn {
             }
             st = self.cv.wait_timeout(st, deadline - now).unwrap().0;
         }
+    }
+
+    /// Send a D35 `clean` request and wait for its `cleaned` answer.
+    pub fn clean(
+        &self,
+        id: u64,
+        req: &flow_core::cleanup::CleanRequest,
+        deadline: Instant,
+    ) -> Result<Cleaned, BackendError> {
+        self.touch();
+        let m = ClientMsg::Clean {
+            id,
+            req: Box::new(req.clone()),
+        };
+        if !self.try_send(Outgoing::Text(m.to_json())) {
+            return Err(BackendError::new(
+                Failure::Disconnected,
+                "connection closed at clean",
+            ));
+        }
+        let mut st = self.st.lock().unwrap();
+        let out = loop {
+            if let Some(c) = st.cleaned.remove(&id) {
+                break Ok(c);
+            }
+            if self.is_closed() {
+                let why = st
+                    .close_reason
+                    .clone()
+                    .unwrap_or_else(|| "connection closed".into());
+                break Err(BackendError::new(Failure::Disconnected, why));
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                break Err(BackendError::new(
+                    Failure::Timeout,
+                    "no cleaned before the deadline",
+                ));
+            }
+            st = self.cv.wait_timeout(st, deadline - now).unwrap().0;
+        };
+        drop(st);
+        self.touch();
+        out
     }
 
     pub fn wait_pong(&self, n: u64, deadline: Instant) -> Option<()> {

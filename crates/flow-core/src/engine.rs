@@ -1863,6 +1863,8 @@ fn finish_text(
         }
     }
     let tried_ai = r.cloud_fallback.is_some();
+    // D35: a cleaner known to have nothing to run counts as none.
+    let local_cleaner = local_cleaner.filter(|c| c.available());
     // D27: the deterministic layer follows `spoken_cleanup` alone.
     // `cleanup_level: none` and `raw_mode` only switch the LLM off
     // (Android sends both when "Clean up with local AI" is off, which
@@ -1935,17 +1937,23 @@ fn finish_text(
                 text = f;
                 r.status = CommitStatus::Formatted;
             }
+            // D35: refused up front by a cleaner that only now knows it
+            // has nothing to run (first contact with a server without an
+            // LLM): as if there were no cleaner.
+            CleanOutcome::Fallback(_) if r.llm.is_none() && !cl.available() => {}
             CleanOutcome::Fallback(why) => r.fallback_reason = Some(why.as_str()),
         }
         // After a failed AI cleanup this adds to its time.
         r.timings.llm_ms += t.elapsed().as_millis() as u64;
     }
     if tried_ai {
+        // D35: the fallback chain may have reached the user's server.
+        let by_server = r.llm.as_ref().and_then(|l| l.engine.as_deref()) == Some("server");
         r.cleanup_route = Some(
-            if r.status == CommitStatus::Formatted {
-                "local"
-            } else {
-                "rules"
+            match (r.status == CommitStatus::Formatted, by_server) {
+                (true, true) => "server",
+                (true, false) => "local",
+                (false, _) => "rules",
             }
             .into(),
         );
