@@ -28,17 +28,23 @@ features we don't have are left out until a backend chunk adds them; no dead swi
 |---|---|---|---|
 | A1 | Tokens (light + dark derived from `.lw-dark`), fonts, DevUi helpers restyle + new helpers | — | done |
 | A2 | Shell: top bar, bottom nav (Home/Dictionary/Style/Snippets), drawer, Home tab, Permissions screen | A1 | done |
-| A3 | Dictionary + Snippets tabs | A2 | in progress |
-| A4 | Style tab | A2 | in progress |
-| A5 | Settings hub + Speech page (routing moves out of Developer) | A2 | in progress |
+| A3 | Dictionary + Snippets tabs | A2 | done |
+| A4 | Style tab | A2 | done |
+| A5 | Settings hub + Speech page (routing moves out of Developer) | A2 | done |
 | A6 | Bubble restyle | A1 | done |
-| A7 | Remaining screens (History, Notes, Insights, OpenRouter, model picker) in the new look | A3–A5 |  |
+| A7 | Remaining screens (History, Notes, Insights, OpenRouter, model picker) in the new look | A3–A5 | done (OpenRouter + model picker with A5) |
 
 Features with no place in the Android design (Notes, Quick note, Insights, History, Start/Stop
 bubble, Developer, backup) go into a second drawer card.
 
 ## Not backed today (follow-ups, not rendered)
 
-Transforms; model downloader; Retry transcription (no stored audio); bubble opacity;
-"Use what's on screen"; "Use dictionary words" switch; dictionary learned flag (shared format);
-user display name in greeting; "Up to date" check (no runtime network, D9).
+Transforms and the model downloader are done on Windows (W7 / D32, D31); Android has
+neither, so both stay out of the Android UI.
+
+Still unbacked: Retry transcription (no stored audio); dictionary learned
+flag (shared format); user display name in the greeting; "Up to date" check (no runtime
+network, D9); Home's monthly trend pill, usage by category and "Add a word to Dictionary" on a
+row (desktop); Scratchpad "Add to Flow bar" (desktop). Android only: bubble opacity; "Use
+what's on screen"; "Use dictionary words" switch (Parakeet decoding stays in Developer → Engine
+options); the Style tab's "English only" footer (the core has no such limit).
