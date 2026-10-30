@@ -423,9 +423,154 @@ body.lw-ob-open .lw-settings {
 .lw-ob-copy {
   border: none;
   background: none;
-  padding: 0 0 0 6px;
+  padding: 0;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
+}
+.lw-ob-links {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+}
+.lw-ob-help {
+  padding: 0 0 12px;
+}
+
+/* ---- model rows: picker, Download / Cancel, progress (3b) ---- */
+
+.lw-ob-model-actions {
+  display: flex;
+  gap: 8px;
+}
+.lw-ob-model-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lw-ob-model-input .fl-input {
+  flex: 1;
+  min-width: 0;
+}
+.lw-ob-model-input .fl-btn {
+  flex: none;
+}
+.lw-ob-dl {
+  flex: 1 0 100%;
+  box-sizing: border-box;
+  padding-left: 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lw-ob-bar,
+.lw-dl-bar {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--background-secondary);
+  overflow: hidden;
+}
+.lw-ob-bar > span,
+.lw-dl-bar > span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--fathom-900);
+  transition: width 0.2s linear;
+}
+.lw-dark .lw-ob-bar > span,
+.lw-dark .lw-dl-bar > span {
+  background: var(--foreground);
+}
+.lw-ob-bar[hidden],
+.lw-dl-bar[hidden] {
+  display: none;
+}
+.lw-ob-dl-line {
+  font: 400 13px/20px var(--font-sans);
+  color: var(--foreground-tertiary);
+  overflow-wrap: anywhere;
+}
+.lw-ob-dl.is-err .lw-ob-dl-line {
+  color: var(--destructive);
+}
+
+/* ---- download confirm (3a), also used from Settings ---- */
+
+dialog.fl-dialog.lw-dl-dialog {
+  width: 560px;
+  max-width: calc(100vw - 48px);
+  box-sizing: border-box;
+  gap: 20px;
+  background: var(--shade-white);
+}
+.lw-dark dialog.fl-dialog.lw-dl-dialog {
+  background: var(--background);
+}
+.lw-dl-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+dialog.fl-dialog .lw-dl-title {
+  margin: 0;
+  font-size: 28px;
+  line-height: 28px;
+  font-weight: 400;
+}
+dialog.fl-dialog .lw-dl-lead {
+  margin: 0;
+  font: 400 15px/20px var(--font-sans);
+  color: var(--neutral-600);
+}
+.lw-dl-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  row-gap: 12px;
+  column-gap: 16px;
+  padding: 16px;
+  border-radius: 12px;
+  background: var(--background-tertiary);
+  font: 400 14px/20px var(--font-sans);
+}
+.lw-dl-facts dt {
+  color: var(--foreground-tertiary);
+}
+.lw-dl-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.lw-dl-facts dd.lw-mono {
+  font-size: 12px;
+  line-height: 18px;
+}
+.lw-dl-bullets {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font: 400 14px/20px var(--font-sans);
+  color: var(--neutral-600);
+}
+.lw-dl-bullets li {
+  display: flex;
+  gap: 10px;
+}
+.lw-dl-bullets .lw-ico {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--fathom-800);
+}
+.lw-dark .lw-dl-bullets .lw-ico {
+  color: var(--success);
+}
+.lw-dl-row .lw-dl-bar {
+  margin: 6px 0 2px;
+  max-width: 360px;
 }
 
 /* ---- cleanup ---- */

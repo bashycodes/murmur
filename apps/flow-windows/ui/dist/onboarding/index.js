@@ -5,9 +5,12 @@
 // its choice with the existing commands when the user presses Continue
 // (dev_set through the dev store, prefs through the prefs store,
 // dev_cloud_set_key / dev_or_set_* for OpenRouter); Finish sets
-// onboarded = true. Nothing here downloads anything (D9): the model step
-// only points the app at files the user already has. A server test or an
-// OpenRouter key/consent happens only on the user's own click.
+// onboarded = true. Nothing downloads by itself (D9/D31): the model step
+// points the app at files the user already has, or downloads a catalogue
+// model after the user pressed Download and confirmed it (3a/3b, through
+// features/models.ts). A server test or an OpenRouter key/consent happens
+// only on the user's own click.
+import { mb, models, pickPath, progressLine } from "../features/models.js";
 import { devStore } from "../lib/dev-store.js";
 import { $, el, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
@@ -20,10 +23,10 @@ const SAMPLE = {
     pc: "Lunch is on Thursday.",
     cloud: "Lunch is on Thursday.",
 };
-const URLS = {
-    ob_url_parakeet: "https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models",
-    ob_url_whisper: "https://huggingface.co/ggerganov/whisper.cpp",
-    ob_url_llm: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+/** The catalogue model behind each row (model_catalog ids). */
+const CATALOG_ID = {
+    parakeet: "parakeet-tdt-0.6b-v2-int8",
+    whisper: "whisper-base",
 };
 const st = {
     step: "welcome",
@@ -214,9 +217,15 @@ function activeModel() {
 function renderModel() {
     const needed = st.engine === "pc";
     $("ob_model_title").textContent = needed ? "Add a speech model" : "A backup model (optional)";
-    $("ob_model_lead").textContent = needed
-        ? "The model is the part that listens. Get it once from where its makers publish it, then tell Murmur where it is."
-        : "Your choice does the listening. A model on this PC keeps dictation working when it can't be reached. You can skip this.";
+    const dl = models.canDownload();
+    $("ob_model_lead").textContent = !needed
+        ? "Your choice does the listening. A model on this PC keeps dictation working when it can't be reached. You can skip this."
+        : dl
+            ? "The model is the part that listens. We can download it for you once, from where its makers publish it, or you can add the file yourself."
+            : "The model is the part that listens. Get it once from where its makers publish it, then tell Murmur where it is.";
+    $("ob_model_note").textContent = dl
+        ? "A download only fetches the file. Nothing about you or your voice is sent, and the file is checked against a fingerprint built into the app before it's used."
+        : "Murmur never downloads anything by itself. Your voice is turned into text by the model on this PC.";
     const p = prefsStore.get();
     if (p) {
         const pk = $("ob_parakeet_dir");
@@ -242,6 +251,7 @@ function renderModel() {
         const line = r.querySelector("[data-ob-model-status]");
         const use = r.querySelector("[data-ob-use]");
         use.textContent = on ? "Check again" : "Use";
+        renderDownload(r, id);
         badge.hidden = !on || !m;
         line.textContent = "";
         line.className = "lw-ob-model-status";
@@ -259,14 +269,70 @@ function renderModel() {
         line.textContent = desc;
         line.classList.add(m.state === "ready" ? "ok" : m.state === "loading" ? "hint" : "err");
     }
-    const ok = !needed || (!!m && (m.state === "ready" || m.state === "loading"));
+    const downloading = models.busy();
+    const ok = !needed || downloading || (!!m && (m.state === "ready" || m.state === "loading"));
     const next = nextBtn("model");
     next.disabled = !ok;
     $("ob_model_hint").textContent = !ok
         ? "Add a speech model to continue"
-        : m?.state === "loading"
-            ? "You can carry on. It finishes loading in the background."
-            : "";
+        : downloading
+            ? "You can carry on. It finishes in the background."
+            : m?.state === "loading"
+                ? "You can carry on. It finishes loading in the background."
+                : "";
+}
+/** A row's Download / Cancel buttons and progress (3b). */
+function renderDownload(r, id) {
+    const e = models.entry(CATALOG_ID[id]);
+    const p = e ? models.progress(e.id) : undefined;
+    const busy = !!e && models.busy(e.id);
+    const dl = r.querySelector("[data-ob-dl]");
+    const cancel = r.querySelector("[data-ob-dl-cancel]");
+    const use = r.querySelector("[data-ob-use]");
+    const box = r.querySelector("[data-ob-dl-box]");
+    const bar = r.querySelector("[data-ob-dl-bar]");
+    const line = r.querySelector("[data-ob-dl-line]");
+    const desc = r.querySelector("[data-ob-model-desc]");
+    if (e) {
+        const what = e.files.length > 1 ? `a folder of ${mb(e.size)}` : `a ${mb(e.size)} file`;
+        desc.textContent = `${e.desc} · ${what}${e.installed ? " · downloaded and checked" : ""}`;
+    }
+    dl.hidden = !e || !e.available || e.installed || busy;
+    dl.disabled = models.busy();
+    dl.textContent = p?.state === "error" ? "Try again" : "Download";
+    cancel.hidden = !busy;
+    use.hidden = busy;
+    const shown = !!p && p.state !== "done";
+    box.hidden = !shown;
+    box.classList.toggle("is-err", p?.state === "error");
+    bar.hidden = !busy;
+    if (!p || !shown)
+        return;
+    const pct = p.total ? Math.round((p.received / p.total) * 100) : 0;
+    bar.setAttribute("aria-valuenow", String(pct));
+    bar.firstElementChild.style.width = `${pct}%`;
+    line.textContent = progressLine(p, e);
+}
+/** "Choose folder" / "Choose file": the native picker, then Use it. */
+async function pickModel(id) {
+    try {
+        const p = id === "parakeet"
+            ? await pickPath("folder", "Choose the Parakeet model folder")
+            : id === "whisper"
+                ? await pickPath("file", "Choose a Whisper model", [{ name: "Whisper model (ggml)", pattern: "*.bin" }, { name: "All files", pattern: "*.*" }])
+                : await pickPath("file", "Choose an AI cleanup model", [{ name: "GGUF model", pattern: "*.gguf" }, { name: "All files", pattern: "*.*" }]);
+        if (!p)
+            return;
+        if (id === "llm") {
+            $("ob_llm_path").value = p;
+            return;
+        }
+        $(id === "parakeet" ? "ob_parakeet_dir" : "ob_whisper_path").value = p;
+        await useModel(id);
+    }
+    catch (e) {
+        console.error("pick_path", e);
+    }
 }
 /** "Use": save the engine + its location; the app reloads the model and reports model:status. */
 async function useModel(id) {
@@ -528,10 +594,15 @@ export const onboarding = {
             const use = t.closest("[data-ob-use]")?.dataset.obUse;
             if (use)
                 void useModel(use);
-            const copy = t.closest("[data-ob-copy]")?.dataset.obCopy;
-            if (copy) {
-                void invoke("clipboard_copy", { text: URLS[copy] }).then(() => (t.closest("[data-ob-copy]").textContent = "Copied"), () => { });
-            }
+            const pick = t.closest("[data-ob-pick]")?.dataset.obPick;
+            if (pick)
+                void pickModel(pick);
+            const dl = t.closest("[data-ob-dl]")?.dataset.obDl;
+            if (dl)
+                void models.confirmAndStart(CATALOG_ID[dl]);
+            const stop = t.closest("[data-ob-dl-cancel]")?.dataset.obDlCancel;
+            if (stop)
+                void models.cancel(CATALOG_ID[stop]);
         });
         // Enter in a model path field = Use.
         for (const [id, m] of [["ob_parakeet_dir", "parakeet"], ["ob_whisper_path", "whisper"]]) {
@@ -569,6 +640,25 @@ export const onboarding = {
             }
             renderTry();
         });
+        // Download progress, and the prefs the backend saved when one finished.
+        models.onChange(() => {
+            if (st.step === "model")
+                renderModel();
+        });
+        prefsStore.subscribe(() => {
+            if (st.step === "model")
+                renderModel();
+        });
+        void onEvent("model:download", (e) => {
+            if (e.payload.state !== "done")
+                return;
+            void invoke("get_model_status").then((i) => {
+                st.info = i;
+                st.model = i.status;
+                if (st.step === "model")
+                    renderModel();
+            });
+        });
         void onEvent("model:status", (e) => {
             st.model = e.payload;
             if (st.step === "model")
@@ -602,6 +692,7 @@ export const onboarding = {
             const [info, mics] = await Promise.all([
                 invoke("get_model_status"),
                 invoke("list_microphones"),
+                models.refresh().catch(() => []),
             ]);
             st.info = info;
             st.model = info.status;
