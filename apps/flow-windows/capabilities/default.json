@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Settings window: event listening and every app command.",
+  "description": "App window: event listening and every app command except the overlay click and the note editor's own (load, edit, flush, delete, export).",
   "windows": [
     "settings"
   ],
@@ -20,6 +20,10 @@
     "allow-insights-get",
     "allow-insights-reset",
     "allow-clipboard-copy",
+    "allow-note-list",
+    "allow-note-create",
+    "allow-note-set-pinned",
+    "allow-note-open",
     "allow-suggestions-list",
     "allow-suggestion-accept",
     "allow-suggestion-dismiss",
