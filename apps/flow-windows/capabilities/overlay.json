@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "overlay",
-  "description": "Flow bar: listens to dictation events and may only send the hands-free cancel/finish click (review S18).",
+  "description": "Flow bar: listens to dictation events and may only send the hands-free cancel/finish click or open one of a fixed list of settings pages (review S18).",
   "windows": [
     "overlay"
   ],

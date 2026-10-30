@@ -3,11 +3,12 @@
 //! Schema per windows-research 10-clone-spec §2 (Wispr's 28-table
 //! `flow.sqlite` reduced to what the clone needs):
 //! `history(id, ts, app, url, raw, formatted, pasted, edited, duration, words, lang)`,
-//! plus `kind` / `original` for Command Mode rows (added in place to
-//! older databases).
+//! plus `kind` / `original` for Command Mode rows and `route` (where the
+//! speech was turned into text), all added in place to older databases.
 //! **Audio is never stored** — there is no column for it.
 //!
-//! Retention pref (`keep` / `day` = 24 h / `never`) is enforced on every
+//! Retention pref (`keep` / `days_30` / `days_7` / `day` = 24 h / `never`)
+//! is enforced on every
 //! write and on open, so switching to `never` wipes existing rows.
 
 use crate::prefs::Retention;
@@ -46,6 +47,21 @@ pub struct Entry {
     /// Command Mode: the selected text before the rewrite (`None` = the
     /// result was generated at the cursor).
     pub original: Option<String>,
+    /// Where the speech was turned into text: `pc` / `server` / `cloud`
+    /// ([`route_label`]); `None` = unknown (rows from before the column, or
+    /// a result without route info).
+    pub route: Option<String>,
+}
+
+/// History / Insights name of a router engine (`RouteInfo.engine`):
+/// `local` → `pc`, `remote` → `server`, `cloud` → `cloud`.
+pub fn route_label(engine: &str) -> Option<&'static str> {
+    match engine {
+        "local" => Some("pc"),
+        "remote" => Some("server"),
+        "cloud" => Some("cloud"),
+        _ => None,
+    }
 }
 
 /// A row's counts only (Insights backfill).
@@ -86,7 +102,7 @@ impl From<Entry> for Item {
 }
 
 const COLUMNS: &str =
-    "id, ts, app, url, raw, formatted, pasted, edited, duration, words, lang, kind, original";
+    "id, ts, app, url, raw, formatted, pasted, edited, duration, words, lang, kind, original, route";
 
 /// `history.kind` of a Command Mode row (`''` = a dictation).
 const KIND_COMMAND: &str = "command";
@@ -106,6 +122,7 @@ fn row_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<Entry> {
         lang: row.get(10)?,
         command: row.get::<_, String>(11)? == KIND_COMMAND,
         original: row.get(12)?,
+        route: row.get(13)?,
     })
 }
 
@@ -155,6 +172,8 @@ pub fn now_ms() -> i64 {
 pub fn cutoff(r: Retention, now: i64) -> Option<i64> {
     match r {
         Retention::Keep => None,
+        Retention::Days30 => Some(now - 30 * DAY_MS),
+        Retention::Days7 => Some(now - 7 * DAY_MS),
         Retention::Day => Some(now - DAY_MS),
         Retention::Never => Some(i64::MAX),
     }
@@ -193,8 +212,13 @@ impl History {
              );
              CREATE INDEX IF NOT EXISTS history_ts ON history(ts);",
         )?;
-        // Command Mode columns, added to databases created before them.
-        for (col, decl) in [("kind", "TEXT NOT NULL DEFAULT ''"), ("original", "TEXT")] {
+        // Columns added after the first schema (Command Mode, route), added
+        // to databases created before them.
+        for (col, decl) in [
+            ("kind", "TEXT NOT NULL DEFAULT ''"),
+            ("original", "TEXT"),
+            ("route", "TEXT"),
+        ] {
             let has = conn
                 .prepare("SELECT 1 FROM pragma_table_info('history') WHERE name = ?1")?
                 .exists([col])?;
@@ -236,8 +260,8 @@ impl History {
         }
         self.conn.execute(
             "INSERT INTO history
-               (ts, app, url, raw, formatted, pasted, edited, duration, words, lang, kind, original)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+               (ts, app, url, raw, formatted, pasted, edited, duration, words, lang, kind, original, route)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 e.ts,
                 e.app,
@@ -250,7 +274,8 @@ impl History {
                 e.words,
                 e.lang,
                 if e.command { KIND_COMMAND } else { "" },
-                e.original
+                e.original,
+                e.route
             ],
         )?;
         Ok(Some(self.conn.last_insert_rowid()))
@@ -442,6 +467,30 @@ mod tests {
     }
 
     #[test]
+    fn week_and_month_retention_prune_by_age() {
+        let h = History::open_in_memory().unwrap();
+        let now = 100 * DAY_MS;
+        for age in [40, 20, 3] {
+            h.record(&entry(now - age * DAY_MS, "x"), Retention::Keep, now)
+                .unwrap();
+        }
+        h.prune(Retention::Days30, now).unwrap();
+        assert_eq!(h.count().unwrap(), 2);
+        assert_eq!(h.list("", 10, Retention::Days7, now).unwrap().len(), 1);
+        h.prune(Retention::Days7, now).unwrap();
+        assert_eq!(h.count().unwrap(), 1);
+        for (r, j) in [
+            (Retention::Keep, "keep"),
+            (Retention::Days30, "days_30"),
+            (Retention::Days7, "days_7"),
+            (Retention::Day, "day"),
+            (Retention::Never, "never"),
+        ] {
+            assert_eq!(serde_json::to_value(r).unwrap(), j);
+        }
+    }
+
+    #[test]
     fn never_stores_nothing_and_wipes_existing() {
         let h = History::open_in_memory().unwrap();
         h.record(&entry(1, "kept"), Retention::Keep, 1).unwrap();
@@ -497,10 +546,27 @@ mod tests {
         let old = h.latest(Retention::Keep, 2).unwrap().unwrap();
         assert_eq!(old.best_text(), "Old words.");
         assert!(!old.command && old.original.is_none());
+        assert_eq!(old.route, None, "old rows: route unknown");
         drop(h);
         // Opening again (columns present) is a no-op.
         assert!(History::open(&path).is_ok());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn route_is_stored_and_listed() {
+        let h = History::open_in_memory().unwrap();
+        let e = Entry {
+            route: route_label("remote").map(String::from),
+            ..entry(1, "via server")
+        };
+        let id = h.record(&e, Retention::Keep, 1).unwrap().unwrap();
+        assert_eq!(h.get(id).unwrap().unwrap().route.as_deref(), Some("server"));
+        let j = serde_json::to_value(Item::from(h.get(id).unwrap().unwrap())).unwrap();
+        assert_eq!(j["route"], "server");
+        assert_eq!(route_label("local"), Some("pc"));
+        assert_eq!(route_label("cloud"), Some("cloud"));
+        assert_eq!(route_label("mock"), None);
     }
 
     #[test]
@@ -601,7 +667,8 @@ mod tests {
                 "words",
                 "lang",
                 "kind",
-                "original"
+                "original",
+                "route"
             ]
         );
     }
