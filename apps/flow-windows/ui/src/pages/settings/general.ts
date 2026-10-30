@@ -5,11 +5,13 @@
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import type { Page } from "../../lib/router.js";
 
-/** Keycaps of the saved shortcut + Change; Change swaps in the text field. */
+/** Keycaps of the saved shortcut + Change; Change records the keys the
+ *  user presses ("Type instead" swaps in the text field). */
 const key = (id: string, label: string): string =>
   `<div class="lw-edit" data-edit="${id}">` +
   `<span class="fl-kbd-group lw-edit-view" id="${id}_view"></span>` +
   `<input id="${id}" class="fl-input lw-edit-input" data-save="prefs" spellcheck="false" aria-label="${label} shortcut" hidden />` +
+  `<button type="button" class="lw-link lw-edit-type" hidden>Type instead</button>` +
   `<button type="button" class="fl-btn fl-btn-secondary fl-btn-sm lw-edit-btn">Change</button></div>`;
 
 const select = (id: string, options: [string, string][], cls = "lw-w160"): string =>

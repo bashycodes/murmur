@@ -4,8 +4,9 @@
 // collect them for a save. Owns these fields and nothing else, plus the
 // General page's keycap / Change editors (`.lw-edit`).
 
-import { $, el, setValue } from "../lib/dom.js";
+import { $, el, setStatus, setValue } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
+import { captureChord, RECORDING_TEXT, stopCapture } from "../lib/keycapture.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import type { Feature } from "../lib/router.js";
 import { hebrewChosen, hebrewReady, models } from "./models.js";
@@ -111,7 +112,7 @@ function pick(id: string, value: string, label: (v: string) => string): void {
 function showEdit(box: HTMLElement): void {
   const input = box.querySelector<HTMLInputElement>(".lw-edit-input");
   const view = box.querySelector<HTMLElement>(".lw-edit-view");
-  if (!input || !view) return;
+  if (!input || !view || box.classList.contains("is-recording")) return;
   const keys = input.value.split("+").map((k) => k.trim()).filter(Boolean);
   view.replaceChildren(...(keys.length ? keys.map((k) => el("kbd", "fl-kbd", k)) : [el("span", "lw-edit-off", "Off")]));
 }
@@ -130,13 +131,49 @@ function setEditing(box: HTMLElement, on: boolean): void {
   }
 }
 
-/** Change swaps the keycaps for the text field; Enter / Done / leaving
+/** A shortcut's Change: "Press keys… Esc to cancel" until the user has
+ *  held a chord and let go; it then saves like a typed one (the field's
+ *  `change`). Cancel / Esc / 10 s / leaving the window keep the old one. */
+function setRecording(box: HTMLElement, on: boolean): void {
+  const view = box.querySelector<HTMLElement>(".lw-edit-view");
+  const btn = box.querySelector<HTMLButtonElement>(".lw-edit-btn");
+  const type = box.querySelector<HTMLElement>(".lw-edit-type");
+  box.classList.toggle("is-recording", on);
+  if (btn) btn.textContent = on ? "Cancel" : "Change";
+  if (type) type.hidden = !on;
+  if (on) view?.replaceChildren(el("span", "lw-edit-rec", RECORDING_TEXT));
+  else showEdit(box);
+}
+
+async function record(box: HTMLElement, input: HTMLInputElement): Promise<void> {
+  setRecording(box, true);
+  const r = await captureChord();
+  // Cancel or Type instead already left recording.
+  if (!box.classList.contains("is-recording")) return;
+  setRecording(box, false);
+  if ("chord" in r) {
+    input.value = r.chord;
+    showEdit(box);
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  } else if (r.message) {
+    setStatus("status", r.message, false);
+  }
+}
+
+/** Change records the keys (shortcuts) or swaps the keycaps for the text
+ *  field (languages, or a shortcut's Type instead); Enter / Done / leaving
  *  the field saves (the field's own `change`), Esc puts the old value back. */
 function wireEdit(box: HTMLElement): void {
   const input = box.querySelector<HTMLInputElement>(".lw-edit-input");
   const btn = box.querySelector<HTMLButtonElement>(".lw-edit-btn");
   if (!input || !btn) return;
   let before = "";
+  const startTyping = (): void => {
+    before = input.value;
+    setEditing(box, true);
+    input.focus();
+    input.select();
+  };
   // Keep focus in the field so Done is not undone by the field's blur.
   btn.addEventListener("mousedown", (e) => {
     if (!input.hidden) e.preventDefault();
@@ -146,10 +183,19 @@ function wireEdit(box: HTMLElement): void {
       input.blur();
       return;
     }
-    before = input.value;
-    setEditing(box, true);
-    input.focus();
-    input.select();
+    if (box.dataset.edit === "languages") {
+      startTyping();
+    } else if (box.classList.contains("is-recording")) {
+      setRecording(box, false);
+      stopCapture();
+    } else {
+      void record(box, input);
+    }
+  });
+  box.querySelector<HTMLButtonElement>(".lw-edit-type")?.addEventListener("click", () => {
+    setRecording(box, false);
+    stopCapture();
+    startTyping();
   });
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
