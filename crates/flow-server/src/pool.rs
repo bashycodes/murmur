@@ -43,12 +43,7 @@ pub enum LeaseError {
 }
 
 fn backend_name(m: &ModelConfig) -> (String, String) {
-    use flow_core::config::AsrBackend;
-    let name = match &m.asr_backend {
-        AsrBackend::Whisper => "whisper",
-        AsrBackend::Parakeet => "parakeet",
-        AsrBackend::Mock { .. } => "mock",
-    };
+    let name = m.asr_backend.name();
     let model = std::path::Path::new(&m.asr_path)
         .file_name()
         .map(|f| f.to_string_lossy().into_owned())
