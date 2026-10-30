@@ -248,7 +248,7 @@ impl Default for FieldContext {
 
 /// Which ASR engine a model runs on.
 ///
-/// Adding a backend (e.g. H2's sherpa online / zipformer engine) takes
+/// Adding a backend (as [`AsrBackend::SherpaOnline`] was) takes
 /// three small changes: a variant here, its [`AsrBackend::name`], and one
 /// arm in `FlowCore`'s engine loader (`engine::load_asr`). Routing,
 /// language reporting and the per-language map need nothing new.
@@ -262,6 +262,18 @@ pub enum AsrBackend {
     /// default model, the map key in [`ModelConfig::languages`] (e.g.
     /// Parakeet-v3-he).
     Parakeet,
+    /// Streaming (online) transducer through sherpa-onnx's
+    /// `OnlineRecognizer` (feature `parakeet`, like [`AsrBackend::Parakeet`]),
+    /// for icefall zipformer2 models such as
+    /// `ivrit-ai/zipformer2-66m-streaming-he` (the default Hebrew model,
+    /// docs/proposals/hebrew-stt.md). `asr_path` is the model directory.
+    /// The whole buffer is decoded at commit. Serde name `"sherpa_online"`
+    /// (the engine, not one model family); `"zipformer"` is accepted too.
+    /// Reports the language it is configured for (the map key in
+    /// [`ModelConfig::languages`]); as the default model, the session's
+    /// forced language, else unknown.
+    #[serde(alias = "zipformer")]
+    SherpaOnline,
     /// Returns a fixed transcript for any non-silent audio; for shell
     /// development and tests without a model.
     Mock {
@@ -270,12 +282,13 @@ pub enum AsrBackend {
 }
 
 impl AsrBackend {
-    /// Stable short name (`"whisper"`, `"parakeet"`, `"mock"`) for logs
-    /// and status reports.
+    /// Stable short name (`"whisper"`, `"parakeet"`, `"sherpa_online"`,
+    /// `"mock"`) for logs and status reports; the serde name.
     pub fn name(&self) -> &'static str {
         match self {
             AsrBackend::Whisper => "whisper",
             AsrBackend::Parakeet => "parakeet",
+            AsrBackend::SherpaOnline => "sherpa_online",
             AsrBackend::Mock { .. } => "mock",
         }
     }
@@ -300,7 +313,8 @@ pub enum ParakeetDecoding {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ModelConfig {
-    /// `"whisper"` (default), `"parakeet"` or `{"mock":{"text":…}}`; also
+    /// `"whisper"` (default), `"parakeet"`, `"sherpa_online"` (alias
+    /// `"zipformer"`) or `{"mock":{"text":…}}`; also
     /// accepted as `asr_engine`.
     #[serde(alias = "asr_engine")]
     pub asr_backend: AsrBackend,
@@ -598,6 +612,32 @@ mod tests {
         }
         let back: ModelConfig = serde_json::from_value(serde_json::to_value(&c).unwrap()).unwrap();
         assert_eq!(back, c);
+    }
+
+    #[test]
+    fn sherpa_online_backend_round_trips() {
+        for j in [
+            r#"{"asr_backend":"sherpa_online","asr_path":"/m/zip"}"#,
+            r#"{"asr_engine":"zipformer","asr_path":"/m/zip"}"#,
+        ] {
+            let c: ModelConfig = serde_json::from_str(j).unwrap();
+            assert_eq!(c.asr_backend, AsrBackend::SherpaOnline, "{j}");
+            let v = serde_json::to_value(&c).unwrap();
+            assert_eq!(v["asr_backend"], "sherpa_online");
+            assert_eq!(serde_json::from_value::<ModelConfig>(v).unwrap(), c);
+        }
+        assert_eq!(AsrBackend::SherpaOnline.name(), "sherpa_online");
+        // As a language route next to an English default.
+        let c: ModelConfig = serde_json::from_str(
+            r#"{"asr_backend":"parakeet","asr_path":"/m/en",
+                "languages":{"he":{"asr_backend":"zipformer","dir":"/m/zip-he"}}}"#,
+        )
+        .unwrap();
+        assert_eq!(c.languages["he"].asr_backend, AsrBackend::SherpaOnline);
+        assert_eq!(c.language_route(Some("he-IL")), Some("he"));
+        let v = serde_json::to_value(&c).unwrap();
+        assert_eq!(v["languages"]["he"]["asr_backend"], "sherpa_online");
+        assert_eq!(serde_json::from_value::<ModelConfig>(v).unwrap(), c);
     }
 
     #[test]

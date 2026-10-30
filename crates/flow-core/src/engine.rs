@@ -392,9 +392,9 @@ impl AsrRoutes {
 
 /// Build the engine for one model. `language` is the language the model
 /// is configured for (`None` = the default model), reported by engines
-/// that cannot tell (Parakeet). Adding a backend = one arm here (see
+/// that cannot tell (Parakeet, sherpa online). Adding a backend = one arm here (see
 /// `config::AsrBackend`).
-// `language` is used by Parakeet only, `threads` by the model backends.
+// `language` is used by the sherpa backends only, `threads` by the model backends.
 #[cfg_attr(not(feature = "parakeet"), allow(unused_variables))]
 fn load_asr(
     m: &LanguageModel,
@@ -432,8 +432,16 @@ fn load_asr(
                     .with_language(language.unwrap_or("en")),
             )
         }
+        #[cfg(feature = "parakeet")]
+        AsrBackend::SherpaOnline => {
+            require_dir(&m.asr_path)?;
+            Arc::new(
+                crate::sherpa_online::SherpaOnlineAsr::load(&m.asr_path, threads, language)
+                    .map_err(|e| CoreError::Load(e.to_string()))?,
+            )
+        }
         #[cfg(not(feature = "parakeet"))]
-        AsrBackend::Parakeet => {
+        AsrBackend::Parakeet | AsrBackend::SherpaOnline => {
             return Err(CoreError::Load(
                 "built without the `parakeet` feature".into(),
             ))
