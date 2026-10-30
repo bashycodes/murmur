@@ -1,4 +1,5 @@
-// Settings → System: app behaviour, sounds and pasting. Fields:
+// Settings → System: app behaviour, sounds and pasting
+// (docs/design/app-design/SettingsSystem.dc.html). Fields:
 // features/general.ts (prefs) and features/engines.ts (engine badge).
 
 import { group, heading, row, toggle } from "../../lib/markup.js";
@@ -19,7 +20,7 @@ ${group(
     ) +
     row(
       "Show which engine was used",
-      "A small S (server) or L (this PC) on the Flow bar after each dictation; a red dot means it fell back.",
+      "A small <b>L</b>, <b>S</b> or <b>C</b> on the Flow bar after each dictation: this PC, your server or OpenRouter.",
       toggle("dev_show_engine_badge", "Show which engine was used", `data-save="dev"`),
       `data-needs="dev"`,
     ),
@@ -38,10 +39,10 @@ ${group(
   row(
     "Paste with",
     "Change this if an app ignores Ctrl+V.",
-    `<select id="paste_method" class="fl-select" data-save="prefs">
+    `<select id="paste_method" class="fl-select lw-w160" data-save="prefs" aria-label="Paste with">
       <option value="ctrl_v">Ctrl+V</option>
       <option value="shift_insert">Shift+Insert</option>
-      <option value="type">Typing the characters</option>
+      <option value="type">Typing</option>
     </select>`,
   ) +
     row(
@@ -51,8 +52,14 @@ ${group(
     ) +
     row(
       "Longest dictation",
-      "Recording stops by itself after this many minutes.",
-      `<input id="max_dictation_minutes" class="fl-input is-narrow" data-save="prefs" type="number" min="1" max="60" />`,
+      "Recording stops by itself after this.",
+      `<select id="max_dictation_minutes" class="fl-select lw-w160" data-save="prefs" aria-label="Longest dictation">
+        <option value="2">2 minutes</option>
+        <option value="6">6 minutes</option>
+        <option value="15">15 minutes</option>
+        <option value="20">20 minutes</option>
+        <option value="30">30 minutes</option>
+      </select>`,
     ),
 )}`,
 };
