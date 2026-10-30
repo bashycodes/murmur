@@ -21,6 +21,7 @@ pub mod parakeet;
 pub mod paste;
 pub mod postprocess;
 pub mod segment;
+pub mod transform;
 pub mod vad;
 #[cfg(feature = "whisper")]
 pub mod whisper;
