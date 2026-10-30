@@ -3,10 +3,10 @@ package dev.flowclone.data
 import dev.flowclone.health.AccessibilityHealth
 
 /**
- * Main screen SETUP card (ui/MainActivity), in Wispr's onboarding order (03 §Onboarding, 10 §2):
+ * Permissions page (ui/PermissionsActivity; drawer → Permissions), in Wispr's onboarding order (03 §Onboarding, 10 §2):
  * mic → overlay → accessibility (prominent disclosure, ghost check) → battery → notifications.
  * Each row shows its state ("Granted") or the action that fixes it ("Grant"); [banner] is the
- * problem line at the top of the screen while a step is missing.
+ * problem line (Permissions callout, Home notice) while a step is missing.
  */
 object SetupChecklist {
     enum class Item { MIC, OVERLAY, ACCESSIBILITY, BATTERY, NOTIFICATIONS }
