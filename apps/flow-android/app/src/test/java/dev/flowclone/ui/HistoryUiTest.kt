@@ -59,12 +59,18 @@ class HistoryUiTest {
         add("Yesterday's note", at = System.currentTimeMillis() - 86_400_000L)
         val a = settle(launchList()) { "Dear Sam," in texts(it) }
         val t = texts(a)
-        assertTrue(t.toString(), "TODAY" in t)
-        assertTrue("YESTERDAY" in t)
+        assertTrue(t.toString(), "Today" in t)
+        assertTrue("Yesterday" in t)
         assertTrue("AI cleaned" in t)
         assertTrue("2 dictations · audio is never stored" in t)
-        val row = rowTitled(a, "Dear Sam,")
-        assertTrue(row.contentDescription.toString(), row.contentDescription.startsWith("Dear Sam,, ") && "com.example.chat" in row.contentDescription && row.contentDescription.endsWith("AI cleaned"))
+        val row = rowTitled(a, "Dear Sam,\nthe slides are attached.")
+        // One TalkBack stop: the text, then when / where / how.
+        assertTrue(row.contentDescription.toString(), row.contentDescription.startsWith("Dear Sam,\nthe slides are attached. ") && "com.example.chat" in row.contentDescription && row.contentDescription.endsWith("AI cleaned"))
+        // The card's Copy pill copies without opening anything.
+        walk(a.window.decorView).first { it.contentDescription?.startsWith("Copy dictation from") == true }.performClick()
+        assertEquals("Copied (cleared after 1 minute)", ShadowToast.getTextOfLatestToast())
+        assertEquals(null, shadowOf(a).nextStartedActivity)
+        assertTrue(walk(a.window.decorView).any { it.contentDescription?.startsWith("More actions for dictation from") == true })
         row.performClick()
         val i = shadowOf(a).nextStartedActivity
         assertEquals(HistoryActivity::class.java.name, i.component?.className)
@@ -84,10 +90,12 @@ class HistoryUiTest {
         row.performClick()
         assertEquals("Copied (cleared after 1 minute)", ShadowToast.getTextOfLatestToast())
         assertEquals(null, shadowOf(a).nextStartedActivity)
-        val details = walk(a.window.decorView).first { it.contentDescription == "Open details" }
-        details.performClick()
+        // Details stay reachable: ⋮ and a TalkBack action on the card.
+        val actions = row.createAccessibilityNodeInfo().actionList
+        assertTrue(actions.any { it.label == "Delete" })
+        row.performAccessibilityAction(actions.first { it.label == "Open details" }.id, null)
         assertEquals(HistoryActivity::class.java.name, shadowOf(a).nextStartedActivity.component?.className)
-        assertTrue(row.createAccessibilityNodeInfo().actionList.any { it.label == "Delete" })
+        UiTestKit.assertTouchTargets(a, "history list, not inserted")
     }
 
     @Test fun detailShowsTextTimingsAndDeletes() {
@@ -137,12 +145,17 @@ class HistoryUiTest {
     @Test fun clearAllAsksFirst() {
         add("one")
         val a = settle(launchList()) { "one" in texts(it) }
-        val menu = org.robolectric.fakes.RoboMenu(a); a.onCreateOptionsMenu(menu)
-        val clear = menu.findItem(1)
-        assertEquals("Clear all", clear.title.toString())
-        a.onOptionsItemSelected(clear)
+        walk(a.window.decorView).first { it.contentDescription == HistoryActivity.CLEAR_ALL }.performClick()
         val d = ShadowAlertDialog.getLatestAlertDialog()
         d.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).performClick(); idle()
         assertFalse(app.history.recent().isEmpty())
+    }
+
+    @Test fun topBarHasTheTitleAndBackFinishes() {
+        val a = settle(launchList()) { "No dictations yet" in texts(it) }
+        assertTrue(HistoryActivity.LIST_TITLE in texts(a))
+        assertFalse("Clear all is off while there is nothing to clear", walk(a.window.decorView).first { it.contentDescription == HistoryActivity.CLEAR_ALL }.isEnabled)
+        walk(a.window.decorView).first { it.contentDescription == "Back" }.performClick()
+        assertTrue(a.isFinishing)
     }
 }

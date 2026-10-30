@@ -42,6 +42,14 @@ class HistoryPagesTest {
         assertEquals("first", HistoryPages.title(row(1, now, "\n  first\nsecond"), raw = false))
     }
 
+    @Test fun cardTextIsTheWholeTextAndItsDescriptionOneSentence() {
+        assertEquals("line one\nline two", HistoryPages.cardText(row(1, now, "  line one\nline two \n"), raw = false))
+        assertEquals("Running late. 9:37 AM · com.whatsapp, Your server, Transcript",
+            HistoryPages.cardDescription("Running late.", "9:37 AM · com.whatsapp", "Your server", "Transcript", null))
+        assertEquals("Call me back. 9:37 AM · app, AI cleaned, Not inserted — tap to copy",
+            HistoryPages.cardDescription("Call me back", "9:37 AM · app", null, "AI cleaned", "Not inserted — tap to copy"))
+    }
+
     @Test fun metaLineHasTimeAndTargetApp() {
         assertEquals("14:00 · com.whatsapp", HistoryPages.meta(row(1, now), "14:00"))
         assertEquals("14:00 · Unknown app", HistoryPages.meta(row(1, now, app = null), "14:00"))

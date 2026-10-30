@@ -176,6 +176,16 @@ class NoteEditorUiTest {
         assertEquals("first text", app.documents.load("first"))
     }
 
+    @Test fun topBarNamesTheNoteAndBackFinishes() {
+        val c = Robolectric.buildActivity(NoteEditorActivity::class.java, NoteEditorActivity.note(ctx, "first")).setup()
+        assertTrue(texts(c.get()).toString(), NoteEditorActivity.NOTE_TITLE in texts(c.get()))
+        // Switching to the Quick note in place renames the bar too.
+        c.newIntent(NoteEditorActivity.scratchpad(ctx))
+        assertTrue(texts(c.get()).toString(), NoteEditorActivity.TITLE in texts(c.get()))
+        walk(c.get().window.decorView).first { it.contentDescription == "Back" }.performClick()
+        assertTrue(c.get().isFinishing)
+    }
+
     @Test fun touchTargetsAreAtLeast48dp() {
         val a = launch().visible().get()
         idle()

@@ -3,7 +3,6 @@ package dev.flowclone.ui
 import android.content.DialogInterface
 import android.content.Intent
 import android.widget.EditText
-import android.widget.TextView
 import dev.flowclone.FlowApp
 import dev.flowclone.notes.DocumentStore
 import dev.flowclone.notes.NotesView
@@ -62,7 +61,7 @@ class NotesUiTest {
         seed()
         val a = launch().await("Plumber Tuesday")
         val t = texts(a)
-        assertTrue(t.toString(), NotesView.QUICK_NOTE in t && "Groceries" in t && "PINNED" in t)
+        assertTrue(t.toString(), NotesView.QUICK_NOTE in t && "Groceries" in t && NotesActivity.PINNED in t)
         assertTrue(t.indexOf(NotesView.QUICK_NOTE) < t.indexOf("Plumber Tuesday"))
         assertEquals("kept from before", app.documents.load(DocumentStore.SCRATCHPAD))
         // Not a dictation surface: the bubble stays off our own list screen.
@@ -80,7 +79,10 @@ class NotesUiTest {
 
     @Test fun newNoteOpensAFreshEditor() {
         val a = launch().await("No notes yet")
-        (walk(a.window.decorView).first { it is TextView && it.text.toString() == "New note" }).performClick()
+        // The FAB: a 56 dp ink circle labelled for TalkBack.
+        val fab = walk(a.window.decorView).first { it.contentDescription == NotesActivity.NEW_NOTE }
+        assertTrue(fab is android.widget.ImageButton && fab.minimumHeight >= (56 * a.resources.displayMetrics.density).toInt())
+        fab.performClick()
         val i: Intent = shadowOf(a).nextStartedActivity
         assertEquals(NoteEditorActivity::class.java.name, i.component?.className)
         assertEquals(NoteEditorActivity.ACTION_NEW_NOTE, i.action)
@@ -112,7 +114,7 @@ class NotesUiTest {
         assertTrue(texts(a).indexOf("Newer note") < texts(a).indexOf("Older note"))
         optionsFor(a, "Older note")
         shadowOf(ShadowAlertDialog.getLatestAlertDialog()).clickOnItem(0)
-        c.await("PINNED")
+        c.await(NotesActivity.PINNED)
         assertTrue(app.documents.list().first { it.id == "a1" }.pinned)
         assertTrue(texts(a).indexOf("Older note") < texts(a).indexOf("Newer note"))
     }
@@ -141,6 +143,18 @@ class NotesUiTest {
         awaitGone(a, "Groceries")
         assertFalse(File(dir, "b2.txt").exists())
         assertTrue("Plumber Tuesday" in texts(a))
+    }
+
+    @Test fun cardReadsAsOneStopWithItsActions() {
+        seed()
+        val a = launch().await("Groceries")
+        val row = rowTitled(a, "Groceries")
+        assertTrue(row.contentDescription.toString(), row.contentDescription.startsWith("Groceries, milk, eggs, "))
+        val labels = row.createAccessibilityNodeInfo().actionList.mapNotNull { it.label?.toString() }
+        assertTrue(labels.toString(), labels.containsAll(listOf("Options", "Pin", "Share", "Delete")))
+        assertTrue(NotesActivity.TITLE in texts(a))
+        walk(a.window.decorView).first { it.contentDescription == "Back" }.performClick()
+        assertTrue(a.isFinishing)
     }
 
     @Test fun touchTargetsAreAtLeast48dp() {
