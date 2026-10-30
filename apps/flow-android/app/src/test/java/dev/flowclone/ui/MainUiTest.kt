@@ -1,18 +1,15 @@
 package dev.flowclone.ui
 
-import android.Manifest
-import android.content.Intent
-import android.provider.Settings
-import android.view.accessibility.AccessibilityNodeInfo
+import android.content.ClipboardManager
 import dev.flowclone.FlowApp
-import dev.flowclone.data.AppVersion
-import dev.flowclone.data.SettingsPages
-import dev.flowclone.ui.UiTestKit.rowTitled
+import dev.flowclone.data.HistoryRow
+import dev.flowclone.data.Retention
+import dev.flowclone.ui.UiTestKit.idle
 import dev.flowclone.ui.UiTestKit.texts
+import dev.flowclone.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -21,111 +18,95 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowAlertDialog
+import org.robolectric.shadows.ShadowPopupMenu
 import org.robolectric.shadows.ShadowSettings
 
-/** Main screen in the Settings look: banner + SETUP first while a permission is missing, state rows, links, a11y. */
+/** Home tab (AndroidHome): day-grouped dictation cards with route tag, Copy and ⋮ (details, delete), empty state, notices. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], application = FlowApp::class)
 class MainUiTest {
-    private val app get() = RuntimeEnvironment.getApplication()
-    private fun launch() = Robolectric.buildActivity(MainActivity::class.java).setup()
+    private val ctx get() = RuntimeEnvironment.getApplication()
+    private val app get() = FlowApp.of(ctx)
 
-    @After fun reset() { ShadowSettings.setCanDrawOverlays(false) }
+    @After fun reset() { app.history.clear(); ShadowSettings.setCanDrawOverlays(false) }
 
-    @Test fun everySectionAndRowIsThere() {
-        val a = launch().get()
+    private fun add(text: String, route: String? = "remote", at: Long = System.currentTimeMillis()) =
+        app.history.add(HistoryRow(0, at, "com.example.chat", "FORMATTED", text.lowercase(), text, true, 2_000, route = route), Retention.KEEP)
+
+    private fun launch(): MainActivity {
+        val a = Robolectric.buildActivity(MainActivity::class.java).setup().visible().get()
+        val home = a.tab(dev.flowclone.data.ShellPages.Tab.HOME) as HomeTab
+        repeat(200) { idle(); if (home.loaded) return a; Thread.sleep(10) }
+        idle(); return a
+    }
+
+    @Test fun topBarTitleAndEmptyState() {
+        val a = launch()
         val t = texts(a)
-        for (want in listOf(
-            "STATUS", "SETUP", "RUN", "MORE", "Native engine", "Speech engine", "Language", "Version",
-            "Microphone", "Display over other apps", "Accessibility service", "Battery optimisation", "Notifications",
-            "Start / show bubble", "Stop bubble", "Settings", "Notes", "Quick note", "Insights", "Dictionary & snippets", "History",
-        )) assertTrue(want, want in t)
-        assertTrue(t.toString(), t.any { it.startsWith("Keep it running: ") })
-        assertTrue(AppVersion.current.label(FlowApp.of(a).caps.flavor) in t)
-        // `remote` has no on-device model import.
-        assertEquals(FlowApp.of(a).caps.local, "Speech model" in t)
-        assertEquals(FlowApp.of(a).dev.visible, "Developer settings" in t)
+        assertTrue(t.toString(), "Murmur" in t)
+        assertTrue("No dictations yet" in t)
+        for (want in listOf("Home", "Dictionary", "Style", "Snippets")) assertTrue(want, want in t)
+        // The old main screen's sections are gone (Permissions has its own page now).
+        assertFalse("SETUP" in t)
+        assertFalse("Microphone" in t)
     }
 
-    @Test fun missingPermissionsShowABannerAndPutSetupFirst() {
-        val a = launch().get()
+    @Test fun cardsAreGroupedByDayWithRouteTagAndTalkBackText() {
+        add("Running ten minutes late.", route = "remote")
+        add("Send me the address again?", route = "local")
+        add("Groceries on the way home?", route = null, at = System.currentTimeMillis() - 86_400_000L)
+        val a = launch()
         val t = texts(a)
-        assertTrue(t.toString(), t.any { it.startsWith("Dictation can't start yet: allow Microphone, Display over other apps and Accessibility service") })
-        assertTrue("SETUP above STATUS while blocked", t.indexOf("SETUP") < t.indexOf("STATUS"))
-        assertTrue("0 of 5 done" in t)
+        assertTrue(t.toString(), "Today" in t)
+        assertTrue("Yesterday" in t)
+        assertTrue("Running ten minutes late." in t)
+        assertTrue("Your server" in t)
+        assertTrue("This phone" in t)
+        assertTrue("Today above its cards", t.indexOf("Today") < t.indexOf("Running ten minutes late."))
+        assertTrue("newest first", t.indexOf("Send me the address again?") < t.indexOf("Running ten minutes late."))
+        val card = walk(a.window.decorView).first { it.isFocusable && it.contentDescription?.startsWith("Running ten minutes late.") == true }
+        assertTrue(card.contentDescription.toString(), card.contentDescription.endsWith(", Your server"))
+        UiTestKit.assertTouchTargets(a, "home")
     }
 
-    @Test fun grantedRowsShowTheirStateAndTheScreenReorders() {
-        shadowOf(app).grantPermissions(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)
-        ShadowSettings.setCanDrawOverlays(true)
-        val ctl = launch()
-        val a = ctl.get()
-        val mic = UiTestKit.walk(a.window.decorView).first { it.isFocusable && it.contentDescription?.startsWith("Microphone,") == true }
-        assertTrue(mic.contentDescription.toString(), mic.contentDescription.startsWith("Microphone, Granted"))
-        // A granted row is not a button any more; a missing one is.
-        assertFalse(mic.isClickable)
-        val a11y = rowTitled(a, "Accessibility service")
-        assertTrue(a11y.isClickable)
-        assertTrue(a11y.contentDescription.toString(), "double-tap to Turn on" in a11y.contentDescription)
-        // Accessibility is still off, so the banner names only it.
-        assertTrue(texts(a).any { it == "Dictation can't start yet: allow Accessibility service below." })
+    @Test fun copyPutsTheTextOnTheClipboard() {
+        add("Copy me please.")
+        val a = launch()
+        walk(a.window.decorView).first { it.isClickable && it.contentDescription?.startsWith("Copy dictation from ") == true }.performClick()
+        val clip = ctx.getSystemService(ClipboardManager::class.java).primaryClip
+        assertEquals("Copy me please.", clip?.getItemAt(0)?.text?.toString())
     }
 
-    @Test fun missingRowsRunTheirAction() {
-        val a = launch().get()
-        rowTitled(a, "Microphone").performClick()
-        val req = shadowOf(a).lastRequestedPermission
-        assertNotNull(req)
-        assertTrue(Manifest.permission.RECORD_AUDIO in req.requestedPermissions)
-        rowTitled(a, "Display over other apps").performClick()
-        assertEquals(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, shadowOf(a).nextStartedActivity.action)
-        rowTitled(a, "Accessibility service").performClick()
-        assertEquals(Settings.ACTION_ACCESSIBILITY_SETTINGS, shadowOf(a).nextStartedActivity.action)
+    @Test fun moreMenuOpensDetailsAndDeletes() {
+        add("Delete me.")
+        val a = launch()
+        val id = app.history.recent().single().id
+        val more = walk(a.window.decorView).first { it.isClickable && it.contentDescription?.startsWith("More actions for dictation from ") == true }
+        more.performClick()
+        val menu = ShadowPopupMenu.getLatestPopupMenu()
+        val items = (0 until menu.menu.size()).map { menu.menu.getItem(it).title.toString() }
+        assertEquals(listOf("Open details", "Delete"), items)
+        assertFalse("no Retry: audio is never stored", items.any { it.startsWith("Retry") })
+        shadowOf(menu).onMenuItemClickListener.onMenuItemClick(menu.menu.getItem(0))
+        val i = shadowOf(a).nextStartedActivity
+        assertEquals(HistoryActivity::class.java.name, i.component?.className)
+        assertEquals(id, i.getLongExtra(HistoryActivity.EXTRA_ID, -1))
+
+        more.performClick()
+        val m2 = ShadowPopupMenu.getLatestPopupMenu()
+        shadowOf(m2).onMenuItemClickListener.onMenuItemClick(m2.menu.getItem(1))
+        ShadowAlertDialog.getLatestAlertDialog().getButton(android.app.AlertDialog.BUTTON_POSITIVE).performClick()
+        repeat(200) { idle(); if ("No dictations yet" in texts(a)) return@repeat; Thread.sleep(10) }
+        assertTrue(app.history.recent().isEmpty())
+        assertTrue(texts(a).toString(), "No dictations yet" in texts(a))
     }
 
-    @Test fun statusLinksOpenTheirSettingsPage() {
-        val a = launch().get()
-        val lang = rowTitled(a, "Language")
-        assertTrue(lang.contentDescription.toString(), lang.contentDescription.endsWith("Opens Language settings"))
-        lang.performClick()
-        val i: Intent = shadowOf(a).nextStartedActivity
-        assertEquals(SettingsActivity::class.java.name, i.component?.className)
-        assertEquals(SettingsPages.Page.LANGUAGE.name, i.getStringExtra(SettingsActivity.EXTRA_PAGE))
-        rowTitled(a, "History").performClick()
-        assertEquals(HistoryActivity::class.java.name, shadowOf(a).nextStartedActivity.component?.className)
-        rowTitled(a, "Dictionary & snippets").performClick()
-        assertEquals(DictionaryActivity::class.java.name, shadowOf(a).nextStartedActivity.component?.className)
-        rowTitled(a, "Notes").performClick()
-        assertEquals(NotesActivity::class.java.name, shadowOf(a).nextStartedActivity.component?.className)
-        rowTitled(a, "Quick note").performClick()
-        shadowOf(a).nextStartedActivity.let {
-            assertEquals(NoteEditorActivity::class.java.name, it.component?.className)
-            assertEquals(null, it.getStringExtra(NoteEditorActivity.EXTRA_DOC)) // = the Scratchpad document
-        }
-        rowTitled(a, "Insights").performClick()
-        assertEquals(InsightsActivity::class.java.name, shadowOf(a).nextStartedActivity.component?.className)
-    }
-
-    @Test fun oemGuidanceIsCollapsibleAndReadsAsExpandable() {
-        val a = launch().get()
-        val header = UiTestKit.walk(a.window.decorView).first { it.isClickable && it.contentDescription?.startsWith("Keep it running: ") == true }
-        val info = header.createAccessibilityNodeInfo()
-        assertTrue(info.actionList.contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_EXPAND))
-        assertEquals("Collapsed", header.stateDescription)
-        header.performClick()
-        assertEquals("Expanded", header.stateDescription)
-        assertTrue(header.createAccessibilityNodeInfo().actionList.contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_COLLAPSE))
-    }
-
-    @Test fun touchTargetsAreAtLeast48dp() {
-        val a = launch().get()
-        UiTestKit.walk(a.window.decorView).first { it.isClickable && it.contentDescription?.startsWith("Keep it running: ") == true }.performClick()
-        UiTestKit.assertTouchTargets(a, "main")
-    }
-
-    @Test fun startBubbleNeedsTheOverlayFirst() {
-        val a = launch().get()
-        rowTitled(a, "Start / show bubble").performClick()
-        assertTrue(org.robolectric.shadows.ShadowToast.getTextOfLatestToast().startsWith("Allow Display over other apps first"))
+    @Test fun missingSetupShowsANoticeThatOpensPermissions() {
+        val a = launch()
+        val notice = walk(a.window.decorView).first { it.isClickable && (it as? android.widget.TextView)?.text?.startsWith("Dictation can't start yet.") == true }
+        assertTrue(notice.toString(), (notice as android.widget.TextView).text.toString().endsWith("in Permissions."))
+        notice.performClick()
+        assertEquals(PermissionsActivity::class.java.name, shadowOf(a).nextStartedActivity.component?.className)
     }
 }
