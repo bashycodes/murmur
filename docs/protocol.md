@@ -53,6 +53,8 @@ additive core fields need no protocol change. The server never sets
 | S→C | `{"t":"cancelled","sid":7}` | |
 | C→S | `{"t":"ping","n":3}` | Application-level health ping |
 | S→C | `{"t":"pong","n":3,"busy":0}` | `busy` = leased workers |
+| C→S | `{"t":"clean","id":4,"req":<CleanRequest>}` | D35 text-only AI cleanup, outside any session (needs `hello_ok.features` ∋ `"clean"`) |
+| S→C | `{"t":"cleaned","id":4,"text":"…","llm_ms":640,"queue_ms":0,"model":"…"}` | Answer to `clean` with the same `id`: `text` on success, else `error` (`llm_timeout`, `llm_error: <code>`, `no_llm`, `busy`, `too_large`, `server_error`) |
 | S→C | `{"t":"error","sid":7,"code":"…","message":"…","fatal":false}` | `sid` omitted for connection-level errors. `fatal:true` = the server closes after sending |
 
 * `sid`: client-chosen u64, increasing per connection. A control message
@@ -60,6 +62,15 @@ additive core fields need no protocol change. The server never sets
 * No dictionary or `learn_edit` sync: the dictionary travels in every
   `start.config`; `learn_edit` runs on the client. The server keeps no
   per-user state.
+* Text-only cleanup (D35): `<CleanRequest>` = `{text, level, style, ctx:
+  <FieldContext>, dictionary, language?, timeout_ms, prompt: "v2"|"v4c"}`
+  (`flow_core::cleanup::CleanRequest`), the dictation's raw text and the
+  inputs the client's prompt builder would use, already narrowed to what the
+  client allows the server to see. `id` is client-chosen; replies may arrive
+  in any order and independently of a session on the same connection. The
+  server advertises `"clean"` in `hello_ok.features` only when it has an LLM.
+  A client that wants to clean a dictation itself sends `start` with
+  `config.cleanup_level:"none"` and refinishes the returned `asr_text`.
 * `ModelConfig` (model paths, threads) is server configuration only.
 * Language routing (D33): a session whose `config.languages` is one forced
   language (`["he"]`, `["he-IL"]`, `["iw"]`) decodes on the server's model
@@ -80,6 +91,8 @@ The server bounds every client-controlled size (`crates/flow-server/src/limits.r
 | `max_samples` | clamped to the server's `max_session_s` × 16 000 (advertised as `hello_ok.max_samples`) |
 | `ring_capacity_samples` | ≤ that cap + 30 s replay headroom, else `too_large` |
 | `llm_timeout_ms` | ≤ 120 000, else `too_large` |
+| `clean.req.text` | ≤ 32 KiB (`MAX_CLEAN_TEXT_BYTES`), else `cleaned{error:"too_large"}` |
+| `clean.req.timeout_ms` | ≤ 120 000, else `too_large`; `0` = the session default |
 | `partial_interval_ms` | raised to at least 100 |
 | `context` | `before`/`selected`/`after`/`app_id`/`url_host` ≤ 8 KiB each; `screen_words` + `file_names` ≤ 1 000 entries, else `too_large` |
 
@@ -147,6 +160,12 @@ and `core` = the plain product version are informational only.
   when the core stops the job.
 * A session leases a worker at `start` and returns it at `result`,
   `cancelled` or disconnect.
+* `clean` (D35) leases a worker like a session (queued up to
+  `queue_timeout_ms`, `busy` when the queue is full), runs the worker's LLM
+  on the full-scope prompt built from the request (V2 or V4c, the language
+  hint, the dictionary) for at most `timeout_ms`, and returns the worker. The
+  answer is not judged server-side: the client applies its own answer guard
+  and post-processing.
 * Never written to disk: audio, transcripts, contexts, dictionaries. Logs
   carry sizes and timings only, unless `log_text = true`. This holds at any
   `RUST_LOG` level: events from dependencies (tungstenite, hyper, axum) are

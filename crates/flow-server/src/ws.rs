@@ -6,11 +6,12 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
+use flow_core::cleanup::CleanRequest;
 use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
 use flow_core::{CommitResult, FlowCore};
 use flow_protocol::{
-    code, decode_pcm, negotiate, samples_to_ms, ClientMsg, FrameError, ServerMsg, ServerTimings,
-    CLOSE_PROTO_MISMATCH, PROTO_MAX, PROTO_MIN,
+    code, decode_pcm, negotiate, samples_to_ms, Cleaned, ClientMsg, FrameError, ServerMsg,
+    ServerTimings, CLOSE_PROTO_MISMATCH, PROTO_MAX, PROTO_MIN,
 };
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
@@ -27,6 +28,8 @@ const OUT_QUEUE: usize = 256;
 enum Event {
     Leased(u64, Result<Lease, LeaseError>),
     Result(u64, Box<CommitResult>),
+    /// A text-only cleanup finished (D35).
+    Cleaned(Cleaned),
 }
 
 struct Sess {
@@ -304,7 +307,99 @@ impl Conn {
                 n,
                 busy: self.state.pool.busy(),
             }),
+            ClientMsg::Clean { id, req } => self.clean(id, *req),
         }
+    }
+
+    /// D35 text-only cleanup, independent of the session: lease a worker
+    /// (queueing like a session), run its LLM on the request off the async
+    /// threads, answer `cleaned` with the same `id`.
+    fn clean(&mut self, id: u64, req: CleanRequest) {
+        let refuse = |error: &str| {
+            ServerMsg::Cleaned(Cleaned {
+                id,
+                error: Some(error.into()),
+                ..Default::default()
+            })
+        };
+        if !self.state.pool.llm {
+            return self.send(&refuse("no_llm"));
+        }
+        if let Err(e) = crate::limits::clean(&req) {
+            tracing::info!(id, peer = %self.peer, "clean refused: {e}");
+            return self.send(&refuse(code::TOO_LARGE));
+        }
+        let pool = self.state.pool.clone();
+        let ev = self.ev.clone();
+        let peer = self.peer;
+        let queue_timeout = Duration::from_millis(self.state.cfg.queue_timeout_ms);
+        let t0 = Instant::now();
+        let lease = match pool.try_lease() {
+            Some(l) => Some(l),
+            None if pool.enqueue() => None,
+            None => return self.send(&refuse(code::BUSY)),
+        };
+        tokio::spawn(async move {
+            let lease = match lease {
+                Some(l) => l,
+                None => match pool.wait_lease(queue_timeout).await {
+                    Ok(l) => l,
+                    Err(_) => {
+                        let _ = ev.send(Event::Cleaned(Cleaned {
+                            id,
+                            error: Some(code::BUSY.into()),
+                            queue_ms: t0.elapsed().as_millis() as u64,
+                            ..Default::default()
+                        }));
+                        return;
+                    }
+                },
+            };
+            let queue_ms = t0.elapsed().as_millis() as u64;
+            let chars = req.text.chars().count();
+            let out = tokio::task::spawn_blocking(move || {
+                let Some(cl) = lease.core.cleaner() else {
+                    return Cleaned {
+                        id,
+                        error: Some("no_llm".into()),
+                        queue_ms,
+                        ..Default::default()
+                    };
+                };
+                let (r, usage, took) =
+                    flow_core::cleanup::clean_text(cl, &req, crate::limits::MAX_LLM_TIMEOUT_MS);
+                drop(lease); // the worker is free once its LLM call ended
+                let (text, error) = match r {
+                    Ok(t) => (Some(t), None),
+                    Err(e) => (None, Some(e)),
+                };
+                Cleaned {
+                    id,
+                    text,
+                    error,
+                    llm_ms: took.as_millis() as u64,
+                    queue_ms,
+                    model: usage.model,
+                }
+            })
+            .await
+            .unwrap_or_else(|_| Cleaned {
+                id,
+                error: Some(code::SERVER_ERROR.into()),
+                ..Default::default()
+            });
+            // Timings and sizes only, never text.
+            tracing::info!(
+                id,
+                peer = %peer,
+                chars,
+                llm_ms = out.llm_ms,
+                queue_ms = out.queue_ms,
+                error = out.error.as_deref().unwrap_or(""),
+                "cleaned"
+            );
+            let _ = ev.send(Event::Cleaned(out));
+        });
     }
 
     fn start(&mut self, sid: u64, cfg: SessionConfig) {
@@ -445,6 +540,7 @@ impl Conn {
 
     fn on_event(&mut self, ev: Event) {
         match ev {
+            Event::Cleaned(c) => self.send(&ServerMsg::Cleaned(c)),
             Event::Leased(sid, r) => {
                 let Some(s) = self
                     .sess
