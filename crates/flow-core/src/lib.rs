@@ -31,8 +31,8 @@ pub mod whisper;
 
 pub use endpoint::EndpointState;
 pub use engine::{
-    CommitResult, CommitStatus, CoreError, FlowCore, RouteInfo, SessionPoll, Timings, Usd,
-    PEAK_DBFS_FLOOR,
+    refinish, CommitResult, CommitStatus, CoreError, FlowCore, RouteInfo, SessionPoll, Timings,
+    Usd, PEAK_DBFS_FLOOR,
 };
 
 /// flow-core version (reported by the hybrid router and server).

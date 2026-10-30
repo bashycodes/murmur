@@ -28,6 +28,60 @@ pub struct CleanPrompt {
     /// The raw ASR text alone; backends size their output budget from it
     /// (03 §7.5: max tokens = 2 x input + 32).
     pub transcript: String,
+    /// D35: what the prompt was built from (text + context, already
+    /// narrowed to the prompt's scope), so a backend that builds its own
+    /// prompt (server cleanup) or a [`ChainCleaner`] hop with a narrower
+    /// scope can rebuild it. `None` for prompts not built from a
+    /// dictation (commands, transforms, tests).
+    pub source: Option<Arc<CleanRequest>>,
+}
+
+/// D35: a text-only cleanup request: everything [`build_prompt_versioned`]
+/// needs, plus the language and the time budget. The `clean` message of
+/// the server protocol carries it verbatim (`docs/protocol.md`).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CleanRequest {
+    /// The text to clean (the fallback rules' output for prompt v2, the
+    /// raw transcript for v4c).
+    pub text: String,
+    pub level: CleanupLevel,
+    /// The style for the field's app category (`Styles::for_category`).
+    pub style: Style,
+    /// Field context (`app_category` already resolved).
+    pub ctx: FieldContext,
+    pub dictionary: Dictionary,
+    /// The dictation's language (D33), when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// The session's `llm_timeout_ms` (0 = unknown).
+    pub timeout_ms: u64,
+    pub prompt: PromptVersion,
+    /// What the context was narrowed to (not sent: a receiver builds with
+    /// its own scope over the context it got).
+    #[serde(skip)]
+    pub scope: PromptScope,
+}
+
+impl CleanRequest {
+    /// The prompt for this request, narrowed to `scope` (and never wider
+    /// than the request's own scope).
+    pub fn prompt_for(&self, scope: PromptScope) -> CleanPrompt {
+        let mut p = build_prompt_versioned(
+            &self.text,
+            self.level,
+            self.style,
+            &self.ctx,
+            &self.dictionary,
+            scope.intersect(self.scope),
+            self.prompt,
+        )
+        .with_language(self.language.as_deref());
+        if let Some(src) = p.source.as_mut() {
+            Arc::make_mut(src).timeout_ms = self.timeout_ms;
+        }
+        p
+    }
 }
 
 impl CleanPrompt {
@@ -59,6 +113,18 @@ impl CleanPrompt {
         match self.user.rfind("TRANSCRIPT: ") {
             Some(i) => self.user.insert_str(i, &line),
             None => self.user.insert_str(0, &line),
+        }
+        if let Some(src) = self.source.as_mut() {
+            Arc::make_mut(src).language = Some(code.to_string());
+        }
+        self
+    }
+
+    /// Record the session's `llm_timeout_ms` in [`CleanPrompt::source`]
+    /// (a [`ChainCleaner`] splits the time between its hops with it).
+    pub fn with_timeout(mut self, ms: u64) -> Self {
+        if let Some(src) = self.source.as_mut() {
+            Arc::make_mut(src).timeout_ms = ms;
         }
         self
     }
@@ -93,7 +159,8 @@ impl CleanError {
 /// the prompt off the device (cloud cleanup) narrows it; the on-device LLM
 /// uses [`PromptScope::FULL`]. `Default` = nothing extra (the cloud
 /// default).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PromptScope {
     /// Field text before / after the cursor and the selection.
     pub surrounding_text: bool,
@@ -123,6 +190,20 @@ impl PromptScope {
             screen_words: self.screen_words && o.screen_words,
             app_id: self.app_id && o.app_id,
         }
+    }
+
+    /// Items either scope allows.
+    pub fn union(self, o: Self) -> Self {
+        Self {
+            surrounding_text: self.surrounding_text || o.surrounding_text,
+            screen_words: self.screen_words || o.screen_words,
+            app_id: self.app_id || o.app_id,
+        }
+    }
+
+    /// `self` allows everything `o` allows.
+    pub fn covers(self, o: Self) -> bool {
+        self.union(o) == self
     }
 }
 
@@ -204,6 +285,13 @@ pub trait Cleaner: Send + Sync {
     /// Default: the session value.
     fn timeout_ms(&self) -> Option<u64> {
         None
+    }
+
+    /// The time the core gives this cleaner for a session whose
+    /// `llm_timeout_ms` is `session_ms`: [`Cleaner::timeout_ms`] or the
+    /// session value. A [`ChainCleaner`] sums its hops. Additive (D35).
+    fn budget_ms(&self, session_ms: u64) -> u64 {
+        self.timeout_ms().unwrap_or(session_ms)
     }
 
     /// Pre-flight cost estimate in USD for `prompt` (budget check, D28
@@ -363,6 +451,253 @@ pub fn ai_split(cl: &Arc<dyn Cleaner>) -> Option<AiParts> {
         return Some(p);
     }
     (cl.engine() == "cloud").then(|| (cl.clone(), None))
+}
+
+/// D35: the user's cleanup order as one cleaner: hops (on-device LLM,
+/// own server, cloud) tried in order. A hop that fails — refused up front
+/// ([`CleanError::Unavailable`]), an error, or no answer within its share
+/// of the time — hands over to the next while at least
+/// `min_fallback_ms` are left. An answer is final: the core's guard
+/// judges it, as with a single cleaner.
+///
+/// Time: the core gives the chain [`Cleaner::budget_ms`] = the sum of the
+/// hops' budgets; each hop but the last gets its own budget, the last
+/// whatever is left. Prompt: built with the union of the hops' scopes and
+/// rebuilt from [`CleanPrompt::source`] for a hop with a narrower one; a
+/// hop whose scope does not cover the prompt is skipped when there is no
+/// source to rebuild from (nothing it may not see is ever sent).
+pub struct ChainCleaner {
+    hops: Vec<Arc<dyn Cleaner>>,
+    pub min_fallback_ms: u64,
+}
+
+impl ChainCleaner {
+    pub fn new(hops: Vec<Arc<dyn Cleaner>>) -> Self {
+        Self {
+            hops,
+            min_fallback_ms: MIN_FALLBACK_MS,
+        }
+    }
+
+    /// No hop: `None`; one hop: that cleaner itself; more: a chain.
+    pub fn build(mut hops: Vec<Arc<dyn Cleaner>>) -> Option<Arc<dyn Cleaner>> {
+        match hops.len() {
+            0 => None,
+            1 => hops.pop(),
+            _ => Some(Arc::new(Self::new(hops))),
+        }
+    }
+
+    pub fn hops(&self) -> &[Arc<dyn Cleaner>] {
+        &self.hops
+    }
+
+    /// The prompt `hop` may get, or `None` when it would see more than
+    /// its scope allows and there is no source to narrow it from.
+    fn prompt_for(&self, hop: &Arc<dyn Cleaner>, p: &CleanPrompt) -> Option<CleanPrompt> {
+        let want = hop.prompt_scope();
+        match &p.source {
+            Some(src) if want.covers(src.scope) => Some(p.clone()),
+            Some(src) => Some(src.prompt_for(want)),
+            None if want.covers(self.prompt_scope()) => Some(p.clone()),
+            None => None,
+        }
+    }
+}
+
+/// Run one chain hop until `hop_deadline`, on its own thread when that is
+/// before the chain's deadline (the core only enforces the latter).
+fn run_hop(
+    hop: &Arc<dyn Cleaner>,
+    prompt: CleanPrompt,
+    hop_deadline: Instant,
+    deadline: Instant,
+    cancel: &AbortFlag,
+) -> (Result<String, CleanError>, CleanUsage) {
+    if hop_deadline >= deadline {
+        return hop.clean_metered(&prompt, deadline, cancel);
+    }
+    let flag = Arc::new(AtomicBool::new(false));
+    let hop_cancel = AbortFlag(Some(flag.clone()));
+    let pending = CleanUsage {
+        engine: Some(hop.engine().into()),
+        model: hop.model(),
+        ..Default::default()
+    };
+    let (tx, rx) = mpsc::channel();
+    let h = hop.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(h.clean_metered(&prompt, hop_deadline, &hop_cancel));
+    });
+    loop {
+        let left = hop_deadline.saturating_duration_since(Instant::now());
+        match rx.recv_timeout(left.min(Duration::from_millis(50))) {
+            Ok(r) => return r,
+            Err(mpsc::RecvTimeoutError::Timeout) if !left.is_zero() && !cancel.is_set() => {}
+            Err(_) => {
+                flag.store(true, Ordering::Relaxed);
+                return (Err(CleanError::Backend("timeout".into())), pending);
+            }
+        }
+    }
+}
+
+impl Cleaner for ChainCleaner {
+    fn clean(&self, prompt: &CleanPrompt, deadline: Instant) -> Result<String, CleanError> {
+        self.clean_metered(prompt, deadline, &AbortFlag::default())
+            .0
+    }
+
+    fn clean_cancellable(
+        &self,
+        prompt: &CleanPrompt,
+        deadline: Instant,
+        cancel: &AbortFlag,
+    ) -> Result<String, CleanError> {
+        self.clean_metered(prompt, deadline, cancel).0
+    }
+
+    fn clean_metered(
+        &self,
+        prompt: &CleanPrompt,
+        deadline: Instant,
+        cancel: &AbortFlag,
+    ) -> (Result<String, CleanError>, CleanUsage) {
+        let session_ms = prompt
+            .source
+            .as_ref()
+            .map(|s| s.timeout_ms)
+            .filter(|&ms| ms > 0);
+        let mut last = (
+            Err(CleanError::Unavailable("no_cleaner".into())),
+            CleanUsage::default(),
+        );
+        for (i, hop) in self.hops.iter().enumerate() {
+            let now = Instant::now();
+            if cancel.is_set() {
+                break;
+            }
+            if i > 0
+                && deadline.saturating_duration_since(now)
+                    < Duration::from_millis(self.min_fallback_ms)
+            {
+                break;
+            }
+            let Some(p) = self.prompt_for(hop, prompt) else {
+                last = (
+                    Err(CleanError::Unavailable("prompt_scope".into())),
+                    CleanUsage::default(),
+                );
+                continue;
+            };
+            let hop_deadline = match session_ms {
+                Some(ms) if i + 1 < self.hops.len() => {
+                    (now + Duration::from_millis(hop.budget_ms(ms))).min(deadline)
+                }
+                _ => deadline,
+            };
+            let r = run_hop(hop, p, hop_deadline, deadline, cancel);
+            if r.0.is_ok() {
+                return r;
+            }
+            // A refusal reports no usage: keep the last hop that ran.
+            if r.1.engine.is_some() || last.1.engine.is_none() {
+                last = r;
+            } else {
+                last.0 = r.0;
+            }
+        }
+        last
+    }
+
+    fn prefill(&self, prompt: &CleanPrompt) {
+        for h in &self.hops {
+            if let Some(p) = self.prompt_for(h, prompt) {
+                h.prefill(&p);
+            }
+        }
+    }
+
+    fn cancel_prefill(&self) {
+        for h in &self.hops {
+            h.cancel_prefill();
+        }
+    }
+
+    fn info_json(&self) -> Option<String> {
+        self.hops.iter().find_map(|h| h.info_json())
+    }
+
+    fn prompt_scope(&self) -> PromptScope {
+        self.hops
+            .iter()
+            .fold(PromptScope::MINIMAL, |a, h| a.union(h.prompt_scope()))
+    }
+
+    fn engine(&self) -> &'static str {
+        self.hops.first().map_or("local", |h| h.engine())
+    }
+
+    fn model(&self) -> Option<String> {
+        self.hops.first().and_then(|h| h.model())
+    }
+
+    fn budget_ms(&self, session_ms: u64) -> u64 {
+        self.hops.iter().map(|h| h.budget_ms(session_ms)).sum()
+    }
+
+    fn ai_parts(&self) -> Option<AiParts> {
+        let first = self.hops.first()?;
+        (first.engine() == "cloud")
+            .then(|| (first.clone(), ChainCleaner::build(self.hops[1..].to_vec())))
+    }
+}
+
+/// D35 server side of a text-only cleanup request: build the prompt with
+/// `cleaner`'s scope and run it under the request's `timeout_ms` (capped
+/// by `max_timeout_ms`). Returns the model's answer unjudged (the client's
+/// core runs the guard on it, as for any cleaner) or why there is none
+/// (`llm_timeout`, `llm_error: <code>`), plus the call's usage and time.
+pub fn clean_text(
+    cleaner: Arc<dyn Cleaner>,
+    req: &CleanRequest,
+    max_timeout_ms: u64,
+) -> (Result<String, String>, CleanUsage, Duration) {
+    let mut req = req.clone();
+    req.scope = PromptScope::FULL;
+    let prompt = req.prompt_for(cleaner.prompt_scope());
+    let ms = if req.timeout_ms == 0 {
+        crate::config::SessionConfig::default().llm_timeout_ms
+    } else {
+        req.timeout_ms
+    }
+    .min(max_timeout_ms);
+    let timeout = Duration::from_millis(ms);
+    let t = Instant::now();
+    let deadline = t + timeout;
+    let cancel = Arc::new(AtomicBool::new(false));
+    let flag = AbortFlag(Some(cancel.clone()));
+    let pending = CleanUsage {
+        engine: Some(cleaner.engine().into()),
+        model: cleaner.model(),
+        ..Default::default()
+    };
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(cleaner.clean_metered(&prompt, deadline, &flag));
+    });
+    let (res, usage) = match rx.recv_timeout(timeout) {
+        Ok(v) => v,
+        Err(_) => {
+            cancel.store(true, Ordering::Relaxed);
+            return (Err(FallbackReason::Timeout.as_str()), pending, t.elapsed());
+        }
+    };
+    let out = match res {
+        Ok(s) => Ok(s),
+        Err(e) => Err(FallbackReason::Error(e.code().to_string()).as_str()),
+    };
+    (out, usage, t.elapsed())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -792,7 +1127,8 @@ pub fn build_prompt_scoped(
 /// (`Engine`, the cloud and local cleaners) builds [`PromptVersion::V2`];
 /// v4c is the all-in-one AI-cleanup prompt of the 2026-10-26 benchmark,
 /// selectable for the bench and the AI-cleanup work but not wired in.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PromptVersion {
     /// D27 prompt v2: formats text the fallback rules already processed.
     #[default]
@@ -873,11 +1209,35 @@ pub fn build_prompt_versioned(
         transcript: asr_text,
     }
     .render();
+    let mut ctx = ctx.clone();
+    if !scope.surrounding_text {
+        (ctx.before, ctx.selected, ctx.after) = Default::default();
+    }
+    if !scope.screen_words {
+        ctx.screen_words.clear();
+    }
+    if !scope.app_id {
+        ctx.app_id.clear();
+        ctx.url_host.clear();
+    }
+    // Never sent to a cleaner; IDE tagging is post-processing.
+    ctx.file_names.clear();
     CleanPrompt {
         system,
         examples,
         user,
         transcript: asr_text.to_string(),
+        source: Some(Arc::new(CleanRequest {
+            text: asr_text.to_string(),
+            level,
+            style,
+            ctx,
+            dictionary: dict.clone(),
+            language: None,
+            timeout_ms: 0,
+            prompt: version,
+            scope,
+        })),
     }
 }
 
@@ -1277,6 +1637,7 @@ mod tests {
             examples: Vec::new(),
             user: String::new(),
             transcript: asr.into(),
+            source: None,
         };
         run_cleanup(cl, p, asr, Duration::from_millis(timeout_ms), 0.5)
     }

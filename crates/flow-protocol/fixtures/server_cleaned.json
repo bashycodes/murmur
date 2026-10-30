@@ -1,0 +1,8 @@
+{
+  "t": "cleaned",
+  "id": 4,
+  "text": "The demo is on Thursday, right?",
+  "llm_ms": 640,
+  "queue_ms": 0,
+  "model": "qwen2.5-1.5b-instruct-q4_k_m"
+}

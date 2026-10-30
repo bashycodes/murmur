@@ -167,6 +167,7 @@ pub fn build_prompt(instruction: &str, text: &str) -> CleanPrompt {
         )],
         user: user_turn(instruction.trim(), text),
         transcript: command::budget_source(text, command::TRANSFORM_BUDGET_CHARS),
+        source: None,
     }
 }
 

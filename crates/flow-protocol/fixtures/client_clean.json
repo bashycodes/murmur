@@ -1,0 +1,36 @@
+{
+  "t": "clean",
+  "id": 4,
+  "req": {
+    "text": "the demo is on thursday right",
+    "level": "light",
+    "style": "default",
+    "ctx": {
+      "app_id": "com.slack",
+      "url_host": "",
+      "app_category": "work_chat",
+      "before": "Hi team, ",
+      "selected": "",
+      "after": "",
+      "screen_words": [
+        "Kubernetes"
+      ],
+      "file_names": [],
+      "context_known": true
+    },
+    "dictionary": [
+      {
+        "word": "wispr",
+        "replacement": "Wispr",
+        "isSnippet": false
+      },
+      {
+        "word": "my address",
+        "replacement": "1 Main St",
+        "isSnippet": true
+      }
+    ],
+    "timeout_ms": 1500,
+    "prompt": "v2"
+  }
+}

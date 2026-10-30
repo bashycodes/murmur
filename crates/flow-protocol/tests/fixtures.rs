@@ -68,6 +68,21 @@ fn commit_result() -> CommitResult {
     r
 }
 
+/// A text-only cleanup request (D35), as the client's prompt builder
+/// records it.
+fn clean_request() -> CleanRequest {
+    let p = flow_core::cleanup::build_prompt_scoped(
+        "the demo is on thursday right",
+        flow_core::config::CleanupLevel::Light,
+        flow_core::config::Style::Default,
+        &context(),
+        &session_config().dictionary,
+        flow_core::cleanup::PromptScope::FULL,
+    )
+    .with_timeout(1500);
+    (*p.source.unwrap()).clone()
+}
+
 fn hello_ok() -> HelloOk {
     HelloOk {
         proto: 1,
@@ -120,6 +135,13 @@ fn client_cases() -> Vec<(&'static str, ClientMsg)> {
                     endpoint_silence_ms: Some(1500),
                     ..session_config()
                 },
+            },
+        ),
+        (
+            "client_clean",
+            ClientMsg::Clean {
+                id: 4,
+                req: Box::new(clean_request()),
             },
         ),
         ("client_commit", ClientMsg::Commit { sid: 7 }),
@@ -194,6 +216,36 @@ fn server_cases() -> Vec<(&'static str, ServerMsg)> {
                     recv_audio_ms: 1000,
                 },
             },
+        ),
+        (
+            "server_hello_ok_clean",
+            ServerMsg::HelloOk(HelloOk {
+                llm: true,
+                features: vec![FEATURE_SEGMENTS.into(), FEATURE_CLEAN.into()],
+                ..hello_ok()
+            }),
+        ),
+        (
+            "server_cleaned",
+            ServerMsg::Cleaned(Cleaned {
+                id: 4,
+                text: Some("The demo is on Thursday, right?".into()),
+                error: None,
+                llm_ms: 640,
+                queue_ms: 0,
+                model: Some("qwen2.5-1.5b-instruct-q4_k_m".into()),
+            }),
+        ),
+        (
+            "server_cleaned_timeout",
+            ServerMsg::Cleaned(Cleaned {
+                id: 5,
+                text: None,
+                error: Some("llm_timeout".into()),
+                llm_ms: 1500,
+                queue_ms: 12,
+                model: None,
+            }),
         ),
         ("server_cancelled", ServerMsg::Cancelled { sid: 7 }),
         ("server_pong", ServerMsg::Pong { n: 3, busy: 0 }),
@@ -293,6 +345,29 @@ fn unknown_fields_are_ignored() {
     )
     .unwrap();
     assert!(matches!(m, ServerMsg::Result { .. }));
+}
+
+/// D35 is additive: an old server's hello (no `clean` feature) parses with
+/// no features, and a `clean` with a partial request gets core defaults.
+#[test]
+fn d35_clean_is_additive() {
+    let hello: ServerMsg =
+        serde_json::from_str(&std::fs::read_to_string(dir().join("server_hello_ok.json")).unwrap())
+            .unwrap();
+    let ServerMsg::HelloOk(h) = hello else {
+        panic!()
+    };
+    assert!(!h.features.iter().any(|f| f == FEATURE_CLEAN));
+    let m: ClientMsg =
+        serde_json::from_str(r#"{"t":"clean","id":2,"req":{"text":"hi","later":1}}"#).unwrap();
+    let ClientMsg::Clean { id, req } = m else {
+        panic!()
+    };
+    assert_eq!((id, req.text.as_str()), (2, "hi"));
+    assert_eq!(req.timeout_ms, 0);
+    let c: ServerMsg = serde_json::from_str(r#"{"t":"cleaned","id":2,"error":"busy"}"#).unwrap();
+    let ServerMsg::Cleaned(c) = c else { panic!() };
+    assert_eq!((c.text, c.error.as_deref()), (None, Some("busy")));
 }
 
 #[test]
