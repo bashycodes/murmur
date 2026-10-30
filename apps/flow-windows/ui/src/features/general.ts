@@ -1,12 +1,14 @@
 // The everyday prefs fields on the General, System, Speech to text and AI
-// cleanup settings pages (shortcuts, voice, sounds, pasting, the speech
-// model on this PC, formatting): fill them from the prefs store and
-// collect them for a save. Owns these fields and nothing else.
+// cleanup settings pages (shortcuts, voice, theme, sounds, pasting, the
+// speech model on this PC, formatting): fill them from the prefs store and
+// collect them for a save. Owns these fields and nothing else, plus the
+// General page's keycap / Change editors (`.lw-edit`).
 
-import { $, setValue } from "../lib/dom.js";
+import { $, el, setValue } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import type { Feature } from "../lib/router.js";
+import { setTheme } from "../lib/theme.js";
 
 type ModelStatus =
   | { state: "loading"; path: string }
@@ -82,8 +84,109 @@ function fill(prefs: Prefs): void {
   for (const f of BOOL_FIELDS) $<HTMLInputElement>(f).checked = Boolean(prefs[f]);
   $<HTMLSelectElement>("paste_method").value = prefs.paste_method;
   setValue("languages", prefs.languages.join(", "));
-  setValue("max_dictation_minutes", String(prefs.max_dictation_minutes));
-  setValue("hands_free_silence_s", prefs.hands_free_silence_ms > 0 ? String(prefs.hands_free_silence_ms / 1000) : "0");
+  pick("max_dictation_minutes", String(prefs.max_dictation_minutes), (v) => `${v} minutes`);
+  pick(
+    "hands_free_silence_s",
+    prefs.hands_free_silence_ms > 0 ? String(prefs.hands_free_silence_ms / 1000) : "0",
+    (v) => `${v} seconds`,
+  );
+  pick("theme", typeof prefs.theme === "string" ? prefs.theme : "system", (v) => v);
+  for (const e of document.querySelectorAll<HTMLElement>(".lw-edit")) showEdit(e);
+  showLanguages(prefs);
+}
+
+/** Select `value`, adding it as an option first when the list lacks it
+ *  (a value saved by hand or by an older version). */
+function pick(id: string, value: string, label: (v: string) => string): void {
+  const s = $<HTMLSelectElement>(id);
+  if (![...s.options].some((o) => o.value === value)) s.add(new Option(label(value), value));
+  s.value = value;
+}
+
+// ----------------------------------------------- keycap / Change editors
+
+/** Show the saved value: keycaps for a shortcut (or "Off"), nothing for languages. */
+function showEdit(box: HTMLElement): void {
+  const input = box.querySelector<HTMLInputElement>(".lw-edit-input");
+  const view = box.querySelector<HTMLElement>(".lw-edit-view");
+  if (!input || !view) return;
+  const keys = input.value.split("+").map((k) => k.trim()).filter(Boolean);
+  view.replaceChildren(...(keys.length ? keys.map((k) => el("kbd", "fl-kbd", k)) : [el("span", "lw-edit-off", "Off")]));
+}
+
+function setEditing(box: HTMLElement, on: boolean): void {
+  const input = box.querySelector<HTMLInputElement>(".lw-edit-input");
+  const view = box.querySelector<HTMLElement>(".lw-edit-view");
+  const btn = box.querySelector<HTMLButtonElement>(".lw-edit-btn");
+  if (!input || !btn) return;
+  box.classList.toggle("is-editing", on);
+  input.hidden = !on;
+  if (view) view.hidden = on;
+  btn.textContent = on ? "Done" : "Change";
+  if (box.dataset.edit !== "languages") {
+    $<HTMLElement>("keys_help").hidden = !document.querySelector(".lw-edit.is-editing:not([data-edit=languages])");
+  }
+}
+
+/** Change swaps the keycaps for the text field; Enter / Done / leaving
+ *  the field saves (the field's own `change`), Esc puts the old value back. */
+function wireEdit(box: HTMLElement): void {
+  const input = box.querySelector<HTMLInputElement>(".lw-edit-input");
+  const btn = box.querySelector<HTMLButtonElement>(".lw-edit-btn");
+  if (!input || !btn) return;
+  let before = "";
+  // Keep focus in the field so Done is not undone by the field's blur.
+  btn.addEventListener("mousedown", (e) => {
+    if (!input.hidden) e.preventDefault();
+  });
+  btn.addEventListener("click", () => {
+    if (!input.hidden) {
+      input.blur();
+      return;
+    }
+    before = input.value;
+    setEditing(box, true);
+    input.focus();
+    input.select();
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      input.blur();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation(); // not the Settings dialog's Esc
+      input.value = before;
+      input.blur();
+    }
+  });
+  input.addEventListener("blur", () => {
+    setEditing(box, false);
+    showEdit(box);
+    const p = prefsStore.get();
+    if (box.dataset.edit === "languages" && p) showLanguages(p, input.value);
+  });
+}
+
+/** "English, German" (or "Detected automatically"), and the Parakeet
+ *  note when the local engine only understands English. */
+function showLanguages(prefs: Prefs, typed?: string): void {
+  const codes = typed === undefined ? prefs.languages : typed.split(",").map((s) => s.trim()).filter(Boolean);
+  let names: string[] = codes;
+  try {
+    const dn = new Intl.DisplayNames(["en"], { type: "language" });
+    names = codes.map((c) => {
+      try {
+        return dn.of(c) ?? c;
+      } catch {
+        return c;
+      }
+    });
+  } catch {
+    // No Intl.DisplayNames: show the codes.
+  }
+  $<HTMLElement>("languages_desc").textContent = names.length ? `${names.join(", ")}.` : "Detected automatically.";
+  $<HTMLElement>("languages_parakeet").hidden = prefs.asr_engine !== "parakeet";
 }
 
 /** The prefs fields this module owns, as the pages show them. */
@@ -112,10 +215,11 @@ export function collectGeneral(): Partial<Prefs> {
     .filter(Boolean);
   next.max_dictation_minutes = Math.max(
     1,
-    parseInt($<HTMLInputElement>("max_dictation_minutes").value, 10) || 20,
+    parseInt($<HTMLSelectElement>("max_dictation_minutes").value, 10) || 20,
   );
+  next.theme = $<HTMLSelectElement>("theme").value;
   // Hands-free auto-stop (D19): 0 = off, else 0.3-10 s of silence.
-  const hf = parseFloat($<HTMLInputElement>("hands_free_silence_s").value);
+  const hf = parseFloat($<HTMLSelectElement>("hands_free_silence_s").value);
   next.hands_free_silence_ms =
     !Number.isFinite(hf) || hf <= 0 ? 0 : Math.round(Math.min(10, Math.max(0.3, hf)) * 1000);
   return next;
@@ -124,6 +228,9 @@ export function collectGeneral(): Partial<Prefs> {
 export const general: Feature = {
   init(): void {
     $<HTMLSelectElement>("asr_engine").addEventListener("change", showEngineFields);
+    for (const e of document.querySelectorAll<HTMLElement>(".lw-edit")) wireEdit(e);
+    // Theme applies at once; the save follows through data-save="prefs".
+    $<HTMLSelectElement>("theme").addEventListener("change", (e) => setTheme((e.target as HTMLSelectElement).value));
     void onEvent<ModelStatus>("model:status", (e) => showModel(e.payload));
     prefsStore.subscribe(fill);
   },

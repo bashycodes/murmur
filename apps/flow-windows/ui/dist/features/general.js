@@ -1,10 +1,12 @@
 // The everyday prefs fields on the General, System, Speech to text and AI
-// cleanup settings pages (shortcuts, voice, sounds, pasting, the speech
-// model on this PC, formatting): fill them from the prefs store and
-// collect them for a save. Owns these fields and nothing else.
-import { $, setValue } from "../lib/dom.js";
+// cleanup settings pages (shortcuts, voice, theme, sounds, pasting, the
+// speech model on this PC, formatting): fill them from the prefs store and
+// collect them for a save. Owns these fields and nothing else, plus the
+// General page's keycap / Change editors (`.lw-edit`).
+import { $, el, setValue } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
+import { setTheme } from "../lib/theme.js";
 const BOOL_FIELDS = [
     "enable_sounds",
     "mute_audio_while_dictating",
@@ -61,8 +63,110 @@ function fill(prefs) {
         $(f).checked = Boolean(prefs[f]);
     $("paste_method").value = prefs.paste_method;
     setValue("languages", prefs.languages.join(", "));
-    setValue("max_dictation_minutes", String(prefs.max_dictation_minutes));
-    setValue("hands_free_silence_s", prefs.hands_free_silence_ms > 0 ? String(prefs.hands_free_silence_ms / 1000) : "0");
+    pick("max_dictation_minutes", String(prefs.max_dictation_minutes), (v) => `${v} minutes`);
+    pick("hands_free_silence_s", prefs.hands_free_silence_ms > 0 ? String(prefs.hands_free_silence_ms / 1000) : "0", (v) => `${v} seconds`);
+    pick("theme", typeof prefs.theme === "string" ? prefs.theme : "system", (v) => v);
+    for (const e of document.querySelectorAll(".lw-edit"))
+        showEdit(e);
+    showLanguages(prefs);
+}
+/** Select `value`, adding it as an option first when the list lacks it
+ *  (a value saved by hand or by an older version). */
+function pick(id, value, label) {
+    const s = $(id);
+    if (![...s.options].some((o) => o.value === value))
+        s.add(new Option(label(value), value));
+    s.value = value;
+}
+// ----------------------------------------------- keycap / Change editors
+/** Show the saved value: keycaps for a shortcut (or "Off"), nothing for languages. */
+function showEdit(box) {
+    const input = box.querySelector(".lw-edit-input");
+    const view = box.querySelector(".lw-edit-view");
+    if (!input || !view)
+        return;
+    const keys = input.value.split("+").map((k) => k.trim()).filter(Boolean);
+    view.replaceChildren(...(keys.length ? keys.map((k) => el("kbd", "fl-kbd", k)) : [el("span", "lw-edit-off", "Off")]));
+}
+function setEditing(box, on) {
+    const input = box.querySelector(".lw-edit-input");
+    const view = box.querySelector(".lw-edit-view");
+    const btn = box.querySelector(".lw-edit-btn");
+    if (!input || !btn)
+        return;
+    box.classList.toggle("is-editing", on);
+    input.hidden = !on;
+    if (view)
+        view.hidden = on;
+    btn.textContent = on ? "Done" : "Change";
+    if (box.dataset.edit !== "languages") {
+        $("keys_help").hidden = !document.querySelector(".lw-edit.is-editing:not([data-edit=languages])");
+    }
+}
+/** Change swaps the keycaps for the text field; Enter / Done / leaving
+ *  the field saves (the field's own `change`), Esc puts the old value back. */
+function wireEdit(box) {
+    const input = box.querySelector(".lw-edit-input");
+    const btn = box.querySelector(".lw-edit-btn");
+    if (!input || !btn)
+        return;
+    let before = "";
+    // Keep focus in the field so Done is not undone by the field's blur.
+    btn.addEventListener("mousedown", (e) => {
+        if (!input.hidden)
+            e.preventDefault();
+    });
+    btn.addEventListener("click", () => {
+        if (!input.hidden) {
+            input.blur();
+            return;
+        }
+        before = input.value;
+        setEditing(box, true);
+        input.focus();
+        input.select();
+    });
+    input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            input.blur();
+        }
+        else if (e.key === "Escape") {
+            e.preventDefault();
+            e.stopPropagation(); // not the Settings dialog's Esc
+            input.value = before;
+            input.blur();
+        }
+    });
+    input.addEventListener("blur", () => {
+        setEditing(box, false);
+        showEdit(box);
+        const p = prefsStore.get();
+        if (box.dataset.edit === "languages" && p)
+            showLanguages(p, input.value);
+    });
+}
+/** "English, German" (or "Detected automatically"), and the Parakeet
+ *  note when the local engine only understands English. */
+function showLanguages(prefs, typed) {
+    const codes = typed === undefined ? prefs.languages : typed.split(",").map((s) => s.trim()).filter(Boolean);
+    let names = codes;
+    try {
+        const dn = new Intl.DisplayNames(["en"], { type: "language" });
+        names = codes.map((c) => {
+            try {
+                return dn.of(c) ?? c;
+            }
+            catch {
+                return c;
+            }
+        });
+    }
+    catch {
+        // No Intl.DisplayNames: show the codes.
+    }
+    $("languages_desc").textContent = names.length ? `${names.join(", ")}.` : "Detected automatically.";
+    $("languages_parakeet").hidden = prefs.asr_engine !== "parakeet";
 }
 /** The prefs fields this module owns, as the pages show them. */
 export function collectGeneral() {
@@ -90,6 +194,7 @@ export function collectGeneral() {
         .map((s) => s.trim())
         .filter(Boolean);
     next.max_dictation_minutes = Math.max(1, parseInt($("max_dictation_minutes").value, 10) || 20);
+    next.theme = $("theme").value;
     // Hands-free auto-stop (D19): 0 = off, else 0.3-10 s of silence.
     const hf = parseFloat($("hands_free_silence_s").value);
     next.hands_free_silence_ms =
@@ -99,6 +204,10 @@ export function collectGeneral() {
 export const general = {
     init() {
         $("asr_engine").addEventListener("change", showEngineFields);
+        for (const e of document.querySelectorAll(".lw-edit"))
+            wireEdit(e);
+        // Theme applies at once; the save follows through data-save="prefs".
+        $("theme").addEventListener("change", (e) => setTheme(e.target.value));
         void onEvent("model:status", (e) => showModel(e.payload));
         prefsStore.subscribe(fill);
     },
