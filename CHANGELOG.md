@@ -16,6 +16,11 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Fixed
+
+- **Windows 0.11.0 installers were missing:** CI's newer clippy rejected two
+  audio-byte conversions in history. 0.11.1 is 0.11.0 with that fixed.
+
 ## [0.11.0] - 2026-10-30
 
 ### Added
