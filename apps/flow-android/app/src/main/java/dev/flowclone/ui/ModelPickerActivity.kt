@@ -50,7 +50,6 @@ class ModelPickerActivity : Activity() {
         super.onCreate(savedInstanceState)
         use = intent.getStringExtra(EXTRA_USE)?.let { w -> Use.entries.firstOrNull { it.wire == w } } ?: Use.STT
         title = if (use == Use.STT) "Speech-to-text model" else "Cleanup model"
-        actionBar?.setDisplayHomeAsUpEnabled(true)
         ui = DevUi(this)
         if (!app.caps.cloud) { finish(); return }
         runCatching { NativeFlowCore.setCloudCacheDir(cacheDir.path) }
@@ -59,11 +58,9 @@ class ModelPickerActivity : Activity() {
         refresh(force = false)
     }
 
-    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean =
-        if (item.itemId == android.R.id.home) { finish(); true } else super.onOptionsItemSelected(item)
-
     private fun render() = with(ui) {
         screen {
+            topBar(title.toString(), DevUi.TopNav.BACK, onNav = ::finish)
             card {
                 current = infoRow("In use")
                 statusLine = infoRow("Model list")
