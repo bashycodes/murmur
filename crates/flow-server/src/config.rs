@@ -272,6 +272,18 @@ mod tests {
     }
 
     #[test]
+    fn hebrew_zipformer_route_in_toml() {
+        let c = Config::from_toml(
+            "auth = \"none\"\n[model]\nasr_engine = \"parakeet\"\nasr_path = \"/m/en\"\n\
+             [model.languages.he]\nasr_backend = \"zipformer\"\nasr_path = \"/m/zip-he\"\n",
+        )
+        .unwrap();
+        let he = &c.model.languages["he"];
+        assert_eq!(he.asr_backend, flow_core::config::AsrBackend::SherpaOnline);
+        assert_eq!(he.asr_path, "/m/zip-he");
+    }
+
+    #[test]
     fn auth_none_needs_loopback_only() {
         let c =
             Config::from_toml("auth = \"none\"\nbind = [\"127.0.0.1:1\", \"100.64.0.10:7313\"]")
