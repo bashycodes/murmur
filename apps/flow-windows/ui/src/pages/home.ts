@@ -1,7 +1,9 @@
-// Home (Dictation): the greeting with the push-to-talk keys, where speech
-// goes, the local history (copy, re-paste, delete, undo AI edit = use the
-// raw ASR text instead of the cleaned one) and the stats rail (Insights
-// counts, OpenRouter spend). Retention lives in Settings → Data and privacy.
+// Home (Dictation), after Main.dc.html / DarkHome.dc.html: the greeting with
+// the push-to-talk keys, where speech goes, the local history (copy,
+// re-paste, delete, undo AI edit = use the raw ASR text instead of the
+// cleaned one; a pill per row for where speech ran) and the stats rail
+// (Insights counts, where speech ran this week, OpenRouter spend).
+// Retention lives in Settings → Data and privacy.
 
 import { $, el, setStatus } from "../lib/dom.js";
 import { money } from "../lib/format.js";
@@ -10,7 +12,7 @@ import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { router, type Page } from "../lib/router.js";
 import { views } from "../lib/views.js";
-import type { InsightsSummary } from "./insights.js";
+import { ROUTE_LABEL, ROUTES, routeShare, type InsightsView, type Route } from "./insights.js";
 
 interface HistoryItem {
   id: number;
@@ -26,6 +28,8 @@ interface HistoryItem {
   lang: string | null;
   final_text: string;
   ai_edited: boolean;
+  /** Where speech was turned into text; null = unknown (older rows). */
+  route: Route | null;
 }
 
 const TEMPLATE = `
@@ -44,7 +48,7 @@ const TEMPLATE = `
       <button type="button" class="lw-link" id="privacy_review">Review →</button>
     </div>
 
-    <div class="lw-search">
+    <div class="lw-search lw-home-search">
       <input id="hist_query" class="fl-input" type="search" placeholder="Search your dictations" spellcheck="false" aria-label="Search your dictations" />
       <span id="hist_status" class="lw-status"></span>
     </div>
@@ -60,6 +64,11 @@ const TEMPLATE = `
       <div class="fl-stat"><span class="fl-stat-value" id="home_words">0</span><span class="fl-stat-unit">total words</span></div>
       <div class="fl-stat"><span class="fl-stat-value" id="home_wpm">–</span><span class="fl-stat-unit">wpm</span></div>
       <div class="fl-stat"><span class="fl-stat-value" id="home_streak">0</span><span class="fl-stat-unit">day streak</span></div>
+    </div>
+    <div class="fl-stats-sec lw-home-routes">
+      <span class="fl-overline">Where speech ran this week</span>
+      <div class="lw-home-routebar" id="home_routebar"></div>
+      <div class="lw-home-routelist" id="home_routes"></div>
     </div>
     <div class="fl-stats-sec" id="home_quota_sec" hidden>
       <div class="fl-quota" id="home_quota"></div>
@@ -145,13 +154,13 @@ function historyRow(h: HistoryItem): HTMLElement {
   const row = el("div", "fl-list-row lw-hist-row");
   const body = el("div", "lw-hist-body");
   body.append(el("p", "lw-hist-text", h.final_text));
-  const meta = el("div", "lw-hist-meta");
-  if (h.app) meta.append(el("span", undefined, h.app.replace(/\.exe$/i, "")));
-  meta.append(el("span", undefined, `${h.words} words`));
-  if (h.ai_edited) meta.append(el("span", "fl-badge fl-badge-brandLight", "AI edited"));
-  if (h.edited) meta.append(el("span", "fl-badge fl-badge-light", "You corrected it"));
-  if (h.pasted === null) meta.append(el("span", "fl-badge fl-badge-destructive", "Not pasted"));
-  body.append(meta);
+  // Only the exceptions get a badge; "AI edited" shows as the undo button.
+  if (h.edited || h.pasted === null) {
+    const meta = el("div", "lw-hist-meta");
+    if (h.edited) meta.append(el("span", "fl-badge fl-badge-light", "You corrected it"));
+    if (h.pasted === null) meta.append(el("span", "fl-badge fl-badge-destructive", "Not pasted"));
+    body.append(meta);
+  }
   if (h.edited) {
     const c = el("p", "lw-hist-note");
     c.append("Your correction: ", el("q", undefined, h.edited));
@@ -200,7 +209,11 @@ function historyRow(h: HistoryItem): HTMLElement {
       })(),
     ),
   );
-  row.append(el("span", "fl-list-time", timeText(h.ts)), body, actions);
+  const time = el("span", "fl-list-time", timeText(h.ts));
+  const app = h.app.replace(/\.exe$/i, "");
+  time.title = `${app ? `${app}, ` : ""}${h.words} ${h.words === 1 ? "word" : "words"}`;
+  row.append(time, body, actions);
+  if (h.route) row.append(el("span", `lw-route is-${h.route}`, ROUTE_LABEL[h.route]));
   return row;
 }
 
@@ -287,13 +300,44 @@ function compact(n: number): string {
 
 async function loadStats(): Promise<void> {
   try {
-    const s = await invoke<InsightsSummary>("insights_get");
+    const s = await invoke<InsightsView>("insights_get");
     $<HTMLElement>("home_words").textContent = compact(s.total_words);
     $<HTMLElement>("home_wpm").textContent = s.avg_wpm === null ? "–" : String(Math.round(s.avg_wpm));
     $<HTMLElement>("home_streak").textContent = String(s.current_streak);
+    lastRoutes = s.routes_7d;
+    showRoutes();
   } catch {
     /* the stats rail keeps its last numbers */
   }
+}
+
+let lastRoutes: InsightsView["routes_7d"] | null = null;
+
+/** The rail's split bar + legend; Cloud reads "Off" while OpenRouter speech is off and unused. */
+function showRoutes(): void {
+  if (!lastRoutes) return;
+  const share = routeShare(lastRoutes);
+  const bar = $<HTMLElement>("home_routebar");
+  bar.replaceChildren(
+    ...(share
+      ? ROUTES.filter((r) => lastRoutes![r] > 0).map((r) => {
+          const seg = el("span", `is-${r}`);
+          seg.style.flex = String(Math.max(share[r], 2));
+          seg.title = `${ROUTE_LABEL[r]}: ${share[r]}%`;
+          return seg;
+        })
+      : [el("span", "is-none")]),
+  );
+  const cloudOff = !(views.or?.supported && views.or.stt.allow);
+  $<HTMLElement>("home_routes").replaceChildren(
+    ...ROUTES.map((r) => {
+      const line = el("span", "lw-home-route");
+      const off = r === "cloud" && cloudOff && lastRoutes!.cloud === 0;
+      const dot = el("span", `lw-dot is-${off ? "off" : r}`);
+      line.append(dot, el("span", "lw-grow", ROUTE_LABEL[r]), el("span", undefined, off ? "Off" : share ? `${share[r]}%` : "–"));
+      return line;
+    }),
+  );
 }
 
 function showQuota(): void {
@@ -328,6 +372,7 @@ export const homePage: Page = {
     views.onOr(() => {
       showPrivacy();
       showQuota();
+      showRoutes();
     });
     void onEvent<null>("history:changed", () => {
       if (router.active() === "home") {
