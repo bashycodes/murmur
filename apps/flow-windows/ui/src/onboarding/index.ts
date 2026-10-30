@@ -429,8 +429,9 @@ function cleanupForm(allow: boolean, consent: boolean): Record<string, unknown> 
   return {
     allow,
     consent,
-    // Always the whole order: pages read order[0].
-    order: allow ? ["cloud", "local"] : (c?.order ?? ["cloud", "local"]),
+    // Choosing OpenRouter here makes it the first cleaner (D36); otherwise
+    // the cleanup order is kept (undefined = keep).
+    order: allow ? ["cloud", "local", "server"] : undefined,
     sort: c?.sort ?? "latency",
     timeout_ms: c?.timeout_ms ?? 2500,
     send_surrounding_text: c?.send_surrounding_text ?? false,

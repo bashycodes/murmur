@@ -916,7 +916,7 @@ mod tests {
     }
 
     fn dev(server: bool, client: bool) -> DevSettings {
-        DevSettings {
+        let mut d = DevSettings {
             allow_server: server,
             allow_client: client,
             server: ServerSettings {
@@ -924,7 +924,12 @@ mod tests {
                 ..ServerSettings::default()
             },
             ..DevSettings::for_build(BOTH)
-        }
+        };
+        // D36: server cleanup is its own switch (a configured server with
+        // it on is reached for text even when it does not transcribe);
+        // "server off" here means not used at all.
+        d.set_cleanup_on(flow_router::CleanupRoute::Server, server);
+        d
     }
 
     fn rig(d: &DevSettings) -> Rig {
@@ -1360,9 +1365,28 @@ mod tests {
             let t = std::fs::read_to_string(dir.join(name)).unwrap();
             serde_json::from_str(&t).unwrap()
         };
+        // D36: the shell always sends the whole cleanup order, which the
+        // pre-D36 fixtures leave out (= the same behaviour): compared
+        // without it here, checked in tests/cleanup_order.rs.
+        let fixture_cfg = fixture;
+        let fixture = |name: &str| -> serde_json::Value {
+            let mut j = fixture_cfg(name);
+            assert!(j.get("cleanup_order").is_none(), "{name}");
+            j.as_object_mut().unwrap().remove("cleanup_off");
+            j
+        };
+        let without_cleanup = |mut j: serde_json::Value| -> serde_json::Value {
+            let o = j.as_object_mut().unwrap();
+            assert_eq!(
+                o.remove("cleanup_order").unwrap().as_array().unwrap().len(),
+                3
+            );
+            o.remove("cleanup_off");
+            j
+        };
         let def = DevSettings::for_build(BOTH);
         assert_eq!(
-            def.router_config_json(BOTH, ""),
+            without_cleanup(def.router_config_json(BOTH, "")),
             fixture("router_config_default.json")
         );
         let hybrid = DevSettings {
@@ -1373,7 +1397,7 @@ mod tests {
             ..def.clone()
         };
         assert_eq!(
-            hybrid.router_config_json(BOTH, "dev-token-0123456789abcdef"),
+            without_cleanup(hybrid.router_config_json(BOTH, "dev-token-0123456789abcdef")),
             fixture("router_config_hybrid.json")
         );
         let local_caps = BuildCaps {
@@ -1386,7 +1410,7 @@ mod tests {
             ..DevSettings::for_build(local_caps)
         };
         assert_eq!(
-            local_only.router_config_json(local_caps, ""),
+            without_cleanup(local_only.router_config_json(local_caps, "")),
             fixture("router_config_local_only.json")
         );
         let remote_caps = BuildCaps {
@@ -1408,7 +1432,9 @@ mod tests {
             ..DevSettings::for_build(remote_caps)
         };
         assert_eq!(
-            remote_only.router_config_json(remote_caps, "dev-token-0123456789abcdef"),
+            without_cleanup(
+                remote_only.router_config_json(remote_caps, "dev-token-0123456789abcdef")
+            ),
             fixture("router_config_remote_only.json")
         );
         // ...and every one of them is a valid RouterConfig.
@@ -1419,7 +1445,7 @@ mod tests {
             "router_config_remote_only.json",
             "router_config_cloud.json",
         ] {
-            let c: RouterConfig = serde_json::from_value(fixture(f)).unwrap();
+            let c: RouterConfig = serde_json::from_value(fixture_cfg(f)).unwrap();
             c.validate().unwrap();
         }
     }

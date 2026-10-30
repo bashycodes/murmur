@@ -179,6 +179,12 @@ export interface CleanUsage {
 export interface CleanupStatus {
   supported: boolean;
   enabled: boolean;
+  /** D36: the engines that may clean, in order (switched-off ones left out). */
+  order?: CleanupRoute[];
+  /** D36: the server can clean text (`null`/absent = not known yet or no server). */
+  server_llm?: boolean | null;
+  /** D36: the server cleanup circuit, when the server is in the order. */
+  server_circuit?: Circuit | null;
   consent: boolean;
   blocked?: string | null;
   circuit: Circuit | null;
@@ -189,7 +195,13 @@ export interface CleanupStatus {
 }
 
 export type Purpose = "stt" | "cleanup";
-export type CleanupRoute = "cloud" | "local";
+export type CleanupRoute = "local" | "server" | "cloud";
+
+/** One entry of the D36 cleanup order (all three engines, in order). */
+export interface CleanupEngine {
+  route: CleanupRoute;
+  enabled: boolean;
+}
 
 export interface OrView {
   supported: boolean;
@@ -208,7 +220,8 @@ export interface OrView {
     allow: boolean;
     consent: boolean;
     consent_at_ms: number;
-    order: CleanupRoute[];
+    /** D36: every engine once, in the order tried, with its switch. */
+    engines: CleanupEngine[];
     model: string;
     sort: string;
     timeout_ms: number;

@@ -1,15 +1,18 @@
-// AI cleanup: the local LLM, the cleanup level and (D28) which engine
-// cleans the text and in what order, on the AI cleanup settings page
-// (design: SettingsCleanup.dc.html). The OpenRouter switch and the order
-// select belong to features/openrouter.ts; the ranked list here only
-// moves rows and changes that select.
+// AI cleanup: the local LLM, the cleanup level and (D36) the cleanup
+// order — this PC, your server, OpenRouter, each with its switch — on the
+// AI cleanup settings page (design: SettingsCleanup.dc.html). Same widget
+// as the speech-to-text order (features/engines.ts). The order and the
+// server switch save with `dev_cleanup_set_engines`; this PC's switch is
+// the `llm_enabled` pref; OpenRouter's switch (with its consent) belongs to
+// features/openrouter.ts.
 
-import { $ } from "../lib/dom.js";
+import { $, el, setStatus } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import type { Feature } from "../lib/router.js";
-import type { CleanupRoute } from "../lib/types.js";
+import type { CleanupEngine, CleanupRoute, OrView } from "../lib/types.js";
 import { views } from "../lib/views.js";
+import { showOr } from "./openrouter.js";
 
 type LlmStatus =
   | { state: "off" }
@@ -100,59 +103,131 @@ function showLlm(st: LlmStatus): void {
 
 type Kind = "success" | "warning" | "destructive" | "light";
 
+/** The D36 default, until the backend's view arrives. */
+const DEFAULT_ENGINES: CleanupEngine[] = [
+  { route: "local", enabled: true },
+  { route: "server", enabled: true },
+  { route: "cloud", enabled: false },
+];
+
+function engines(): CleanupEngine[] {
+  return views.or?.cleanup.engines ?? DEFAULT_ENGINES;
+}
+
+/** The engine is in this build (its row is shown). */
+function available(r: CleanupRoute): boolean {
+  if (r === "cloud") return !!views.or?.supported;
+  if (r === "local") return !!views.dev?.caps.local;
+  return !!views.dev?.caps.remote;
+}
+
+/** The engine's switch is on. */
+function engineOn(r: CleanupRoute): boolean {
+  if (r === "local") return $<HTMLInputElement>("llm_enabled").checked;
+  if (r === "cloud") return !!views.or?.cleanup.allow;
+  return engines().some((e) => e.route === r && e.enabled);
+}
+
+/** The server could clean now: on, set up, and not known to lack an AI model. */
+function serverUsable(): boolean {
+  return engineOn("server") && !!views.dev?.form.host && views.or?.cleanup.status.server_llm !== false;
+}
+
 function setBadge(r: CleanupRoute, text: string, kind: Kind): void {
   const b = $<HTMLElement>(`aieng_badge_${r}`);
   b.textContent = text;
   b.className = `fl-badge fl-badge-${kind}`;
 }
 
-/** The ranked cleanup engines: OpenRouter and this PC, in the saved order. */
+function goLink(page: string, text: string): HTMLButtonElement {
+  const b = el("button", "lw-link", text);
+  b.type = "button";
+  b.dataset.go = page;
+  return b;
+}
+
+/** One line + badge per engine: what it is and whether it can clean now. */
+function describe(r: CleanupRoute): void {
+  const on = engineOn(r);
+  if (r === "local") {
+    if (!on) setBadge(r, "Off", "light");
+    else if (llm.state === "ready") setBadge(r, "Ready", "success");
+    else if (llm.state === "loading" || llm.state === "off") setBadge(r, "Loading", "light");
+    else if (llm.state === "plugin_missing") setBadge(r, "Not installed", "destructive");
+    else if (llm.state === "missing") setBadge(r, "Model missing", "destructive");
+    else setBadge(r, "Failed", "destructive");
+  } else if (r === "server") {
+    const host = views.dev?.form.host;
+    const st = views.or?.cleanup.status;
+    const d = $<HTMLElement>("aieng_desc_server");
+    if (!host) d.replaceChildren("Not set up yet. ", goLink("settings-server", "Set up →"));
+    else if (st?.server_llm === false) d.textContent = `${host} has no AI cleanup model: skipped.`;
+    else d.textContent = `${host}. Cleans the text with its own AI model.`;
+    if (!on) setBadge(r, "Off", "light");
+    else if (!host) setBadge(r, "Not set up", "warning");
+    else if (st?.server_llm === false) setBadge(r, "No AI model", "warning");
+    else if (st?.server_circuit?.open) setBadge(r, "Paused", "warning");
+    else if (st?.server_llm === true) setBadge(r, "Ready", "success");
+    else setBadge(r, "On", "light");
+  } else {
+    const v = views.or;
+    $<HTMLElement>("aieng_desc_cloud").textContent = on
+      ? `Sends the transcript as text to openrouter.ai · ${(v?.cleanup.model ?? "").split("/").pop()}.`
+      : "Sends the transcript as text to openrouter.ai. Asks first.";
+    const st = v?.cleanup.status;
+    if (!on) setBadge(r, "Off", "light");
+    else if (st?.blocked) setBadge(r, "Not set up", "warning");
+    else if (st?.circuit?.open) setBadge(r, "Paused", "warning");
+    else setBadge(r, "On", "success");
+  }
+}
+
+/** The cleanup order: rows in the saved order, ranked among the shown ones. */
 function renderEngines(): void {
-  const v = views.or;
-  const cloudShown = !!v?.supported;
-  const localShown = !!views.dev?.caps.local;
-  const order: CleanupRoute[] = v?.cleanup.order[0] === "local" ? ["local", "cloud"] : ["cloud", "local"];
-  const shown = order.filter((r) => (r === "cloud" ? cloudShown : localShown));
+  const order = engines().map((e) => e.route);
+  const shown = order.filter(available);
   const list = $<HTMLElement>("ai_routes");
   const foot = list.querySelector(".lw-foot-row");
   for (const r of order) list.insertBefore($<HTMLElement>(`aieng_row_${r}`), foot);
+  $<HTMLInputElement>("aieng_server_on").checked = engineOn("server");
   shown.forEach((r, i) => {
     const row = $<HTMLElement>(`aieng_row_${r}`);
+    row.classList.toggle("is-off", !engineOn(r));
     (row.querySelector(".lw-rank") as HTMLElement).textContent = String(i + 1);
     (row.querySelector("[data-move=up]") as HTMLButtonElement).disabled = i === 0;
     (row.querySelector("[data-move=down]") as HTMLButtonElement).disabled = i === shown.length - 1;
     (row.querySelector(".lw-move") as HTMLElement).hidden = shown.length < 2;
+    describe(r);
   });
-
-  const cloudOn = !!v?.cleanup.allow;
-  $<HTMLElement>("aieng_row_cloud").classList.toggle("is-off", !cloudOn);
-  $<HTMLElement>("aieng_desc_cloud").textContent = cloudOn
-    ? `Sends the transcript as text to openrouter.ai · ${(v?.cleanup.model ?? "").split("/").pop()}.`
-    : "Sends the transcript as text to openrouter.ai. Asks first.";
-  const st = v?.cleanup.status;
-  if (!cloudOn) setBadge("cloud", "Off", "light");
-  else if (st?.blocked) setBadge("cloud", "Not set up", "warning");
-  else if (st?.circuit?.open) setBadge("cloud", "Paused", "warning");
-  else setBadge("cloud", "On", "success");
-
-  const localOn = $<HTMLInputElement>("llm_enabled").checked;
-  $<HTMLElement>("aieng_row_local").classList.toggle("is-off", !localOn);
-  if (!localOn) setBadge("local", "Off", "light");
-  else if (llm.state === "ready") setBadge("local", "Ready", "success");
-  else if (llm.state === "loading" || llm.state === "off") setBadge("local", "Loading", "light");
-  else if (llm.state === "plugin_missing") setBadge("local", "Not installed", "destructive");
-  else if (llm.state === "missing") setBadge("local", "Model missing", "destructive");
-  else setBadge("local", "Failed", "destructive");
 }
 
-/** Move a cleanup engine: the order select is features/openrouter.ts's, which saves it. */
+/** Save the order and the server switch; the answer is shown everywhere. */
+async function saveEngines(list: CleanupEngine[]): Promise<void> {
+  try {
+    showOr(await invoke<OrView>("dev_cleanup_set_engines", { engines: list }));
+    $<HTMLElement>("cleanup_order_msg").textContent = "";
+  } catch (e) {
+    setStatus("cleanup_order_msg", String(e), false);
+    renderEngines();
+  }
+}
+
+/** Swap with the next shown engine up or down. */
 function moveEngine(r: CleanupRoute, dir: -1 | 1): void {
-  const sel = $<HTMLSelectElement>("or_cleanup_order");
-  const cloudFirst = sel.value !== "local,cloud";
-  const cloudUp = (r === "cloud" && dir === -1) || (r === "local" && dir === 1);
-  if (cloudUp === cloudFirst) return;
-  sel.value = cloudUp ? "cloud,local" : "local,cloud";
-  sel.dispatchEvent(new Event("change"));
+  const list = engines().map((e) => ({ ...e }));
+  const shown = list.filter((e) => available(e.route));
+  const i = shown.findIndex((e) => e.route === r);
+  const other = shown[i + dir];
+  if (i < 0 || !other) return;
+  const a = list.indexOf(shown[i]);
+  const b = list.indexOf(other);
+  [list[a], list[b]] = [list[b], list[a]];
+  void saveEngines(list);
+}
+
+function serverToggled(): void {
+  const on = $<HTMLInputElement>("aieng_server_on").checked;
+  void saveEngines(engines().map((e) => (e.route === "server" ? { ...e, enabled: on } : { ...e })));
 }
 
 /** D27: cleanup "None" = No AI (formatting still runs); Verbatim = Auto-format off too. */
@@ -160,24 +235,25 @@ function cleanupChoice(p: Prefs): string {
   return p.cleanup_level === "none" && !p.spoken_cleanup ? "verbatim" : p.cleanup_level;
 }
 
-/** Which engine cleans the text (local LLM toggle + OrView). */
+/** Which engines clean the text, in order (switches + OrView). */
 function showAiEngine(): void {
-  const v = views.or;
   const level = $<HTMLSelectElement>("cleanup_level").value;
-  const local = $<HTMLInputElement>("llm_enabled").checked && !!views.dev?.caps.local;
-  const cloud = !!v?.supported && v.cleanup.allow && v.cleanup.order.includes("cloud");
-  const or = `OpenRouter (${v?.cleanup.model ?? ""})`;
+  const name: Record<CleanupRoute, string> = {
+    local: "this PC",
+    server: "your server",
+    cloud: `OpenRouter (${views.or?.cleanup.model ?? ""})`,
+  };
+  const used = engines()
+    .map((e) => e.route)
+    .filter((r) => available(r) && (r === "server" ? serverUsable() : engineOn(r)));
   let text: string;
   if (level === "none" || level === "verbatim")
     text = `no AI (the cleanup level is ${level === "none" ? "Rules only" : "Verbatim"})`;
-  else if (cloud && local)
-    text =
-      v?.cleanup.order[0] === "local"
-        ? `This PC · ${or} only when no local model is loaded`
-        : `${or}, then this PC`;
-  else if (cloud) text = or;
-  else if (local) text = "This PC";
-  else text = "the formatting rules only";
+  else if (used.length === 0) text = "the formatting rules only";
+  else {
+    const t = used.map((r) => name[r]).join(", then ");
+    text = t.charAt(0).toUpperCase() + t.slice(1);
+  }
   $<HTMLElement>("ai_engine_line").textContent = text;
 }
 
@@ -230,6 +306,7 @@ export const ai: Feature = {
   init(): void {
     $<HTMLInputElement>("llm_enabled").addEventListener("change", showAiEngine);
     $<HTMLInputElement>("llm_enabled").addEventListener("change", renderEngines);
+    $<HTMLInputElement>("aieng_server_on").addEventListener("change", serverToggled);
     for (const b of document.querySelectorAll<HTMLButtonElement>("#ai_routes [data-move]")) {
       const r = (b.closest("[data-cleanup]") as HTMLElement).dataset.cleanup as CleanupRoute;
       b.addEventListener("click", () => moveEngine(r, b.dataset.move === "up" ? -1 : 1));

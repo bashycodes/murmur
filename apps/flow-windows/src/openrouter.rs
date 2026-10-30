@@ -12,7 +12,7 @@
 //! * the key never appears in any view (only [`crate::credentials::KeyState`]).
 
 use crate::credentials::KeyState;
-use crate::dev_settings::{BuildCaps, DevSettings, Route};
+use crate::dev_settings::{full_cleanup_order, BuildCaps, CleanupEngine, DevSettings, Route};
 use flow_router::cloud::{valid_model_id, CLEANUP_TIMEOUT_RANGE_MS, OPENROUTER_HOST};
 use flow_router::{CleanupRoute, CleanupStatus, CloudUsage, Usd};
 use serde::{Deserialize, Serialize};
@@ -29,13 +29,15 @@ pub struct SttView {
     pub send_dictionary: bool,
 }
 
-/// Text cleanup card.
+/// Text cleanup card, and the D36 cleanup order (AI cleanup page).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CleanupView {
+    /// OpenRouter's entry in the cleanup order is on.
     pub allow: bool,
     pub consent: bool,
     pub consent_at_ms: u64,
-    pub order: Vec<CleanupRoute>,
+    /// D36: all three engines in the order tried, with their on/off flags.
+    pub engines: Vec<CleanupEngine>,
     pub model: String,
     pub sort: String,
     pub timeout_ms: u64,
@@ -98,10 +100,10 @@ pub fn view(dev: &DevSettings, i: ViewInputs) -> OrView {
             send_dictionary: or.stt.send_dictionary,
         },
         cleanup: CleanupView {
-            allow: dev.allow_cloud_cleanup,
+            allow: dev.cleanup_on(CleanupRoute::Cloud),
             consent: or.cleanup.consent_ok(),
             consent_at_ms: or.cleanup.consent_at_ms,
-            order: dev.cleanup_order.clone(),
+            engines: dev.cleanup(),
             model: or.cleanup.model.clone(),
             sort: or.cleanup.sort.clone(),
             timeout_ms: or.cleanup.timeout_ms,
@@ -142,7 +144,8 @@ pub struct CleanupForm {
     pub allow: bool,
     /// The cleanup consent dialog was accepted just now.
     pub consent: bool,
-    /// `None` = keep; `[]` with `allow` = the default `[cloud, local]`.
+    /// `None` = keep; otherwise the new cleanup order (completed as
+    /// [`full_cleanup_order`]; every engine keeps its on/off flag).
     pub order: Option<Vec<CleanupRoute>>,
     /// `latency` | `throughput` | `price` | `""`.
     pub sort: String,
@@ -196,8 +199,9 @@ pub fn apply_stt(dev: &mut DevSettings, f: &SttForm, now_ms: u64) -> Result<(), 
     Ok(())
 }
 
-/// Text cleanup card: toggle (with its own consent), order, sort, timeout
-/// and the three "send …" switches.
+/// Text cleanup card: toggle (with its own consent: OpenRouter's flag in
+/// the cleanup order), order, sort, timeout and the three "send …"
+/// switches. Turning OpenRouter on keeps its place in the order.
 pub fn apply_cleanup(dev: &mut DevSettings, f: &CleanupForm, now_ms: u64) -> Result<(), String> {
     let mut next = dev.clone();
     let c = &mut next.cloud.openrouter.cleanup;
@@ -218,18 +222,41 @@ pub fn apply_cleanup(dev: &mut DevSettings, f: &CleanupForm, now_ms: u64) -> Res
         return Err("Accept sending text to OpenRouter before turning this on".into());
     }
     if let Some(order) = &f.order {
-        let mut o: Vec<CleanupRoute> = Vec::new();
-        for r in order {
-            if !o.contains(r) {
-                o.push(*r);
-            }
+        reorder_cleanup(&mut next, order);
+    }
+    next.set_cleanup_on(CleanupRoute::Cloud, f.allow);
+    check(&next)?;
+    *dev = next;
+    Ok(())
+}
+
+/// `order` (completed as [`full_cleanup_order`]) with each engine's flag kept.
+fn reorder_cleanup(dev: &mut DevSettings, order: &[CleanupRoute]) {
+    let now = dev.cleanup();
+    dev.cleanup_engines = full_cleanup_order(order)
+        .into_iter()
+        .map(|route| CleanupEngine {
+            route,
+            enabled: now.iter().any(|e| e.route == route && e.enabled),
+        })
+        .collect();
+}
+
+/// D36 cleanup order (AI cleanup page): the order of `engines` and the
+/// on/off flags of this PC and your server. OpenRouter keeps its flag: it
+/// is switched with its consent ([`apply_cleanup`]).
+pub fn apply_cleanup_engines(
+    dev: &mut DevSettings,
+    engines: &[CleanupEngine],
+) -> Result<(), String> {
+    let mut next = dev.clone();
+    let order: Vec<CleanupRoute> = engines.iter().map(|e| e.route).collect();
+    reorder_cleanup(&mut next, &order);
+    for e in engines {
+        if e.route != CleanupRoute::Cloud {
+            next.set_cleanup_on(e.route, e.enabled);
         }
-        next.cleanup_order = o;
     }
-    if f.allow && !next.cleanup_order.contains(&CleanupRoute::Cloud) {
-        next.cleanup_order = vec![CleanupRoute::Cloud, CleanupRoute::Local];
-    }
-    next.allow_cloud_cleanup = f.allow;
     check(&next)?;
     *dev = next;
     Ok(())
@@ -357,10 +384,10 @@ mod tests {
             apply_cleanup(&mut d, &cleanup(true, false), 11).is_err(),
             "STT consent does not cover text"
         );
-        assert!(!d.allow_cloud_cleanup);
+        assert!(!d.cleanup_on(CleanupRoute::Cloud));
         let mut e = dev();
         apply_cleanup(&mut e, &cleanup(true, true), 12).unwrap();
-        assert!(e.allow_cloud_cleanup && !e.allow_cloud);
+        assert!(e.cleanup_on(CleanupRoute::Cloud) && !e.allow_cloud);
         assert!(
             !e.cloud.openrouter.stt.consent_ok(),
             "cleanup consent does not cover audio"
@@ -370,24 +397,33 @@ mod tests {
 
     #[test]
     fn cleanup_order_defaults_and_validation() {
+        use CleanupRoute::{Cloud, Local, Server};
+        let routes = |d: &DevSettings| d.cleanup().iter().map(|e| e.route).collect::<Vec<_>>();
         let mut d = dev();
         apply_cleanup(&mut d, &cleanup(true, true), 1).unwrap();
         assert_eq!(
-            d.cleanup_order,
-            vec![CleanupRoute::Cloud, CleanupRoute::Local]
+            routes(&d),
+            vec![Local, Server, Cloud],
+            "turning it on keeps its place"
         );
+        assert!(d.cleanup().iter().all(|e| e.enabled));
         let mut f = cleanup(true, false);
-        f.order = Some(vec![
-            CleanupRoute::Local,
-            CleanupRoute::Cloud,
-            CleanupRoute::Local,
-        ]);
+        f.order = Some(vec![Cloud, Local, Cloud]);
         apply_cleanup(&mut d, &f, 2).unwrap();
         assert_eq!(
-            d.cleanup_order,
-            vec![CleanupRoute::Local, CleanupRoute::Cloud]
+            routes(&d),
+            vec![Cloud, Local, Server],
+            "server after this PC"
         );
         assert!(d.cleanup_effective(ALL));
+        apply_cleanup(&mut d, &cleanup(false, false), 2).unwrap();
+        assert_eq!(
+            routes(&d),
+            vec![Cloud, Local, Server],
+            "off keeps its place"
+        );
+        assert!(!d.cleanup_on(Cloud) && !d.cleanup_effective(ALL));
+        apply_cleanup(&mut d, &cleanup(true, false), 2).unwrap();
         for bad in [0, 799, 8001] {
             let mut f = cleanup(true, false);
             f.timeout_ms = bad;
@@ -401,6 +437,26 @@ mod tests {
         apply_cleanup(&mut d, &f, 4).unwrap();
         assert!(d.cloud.openrouter.cleanup.scope().surrounding_text);
         assert!(!d.cloud.openrouter.cleanup.scope().screen_words);
+    }
+
+    #[test]
+    fn the_cleanup_order_page_moves_engines_but_not_the_cloud_switch() {
+        use CleanupRoute::{Cloud, Local, Server};
+        let e = |route, enabled| CleanupEngine { route, enabled };
+        let mut d = dev();
+        apply_cleanup_engines(&mut d, &[e(Server, false), e(Cloud, true), e(Local, true)]).unwrap();
+        assert_eq!(
+            d.cleanup(),
+            vec![e(Server, false), e(Cloud, false), e(Local, true)],
+            "OpenRouter needs its consent: its flag is not this page's"
+        );
+        apply_cleanup(&mut d, &cleanup(true, true), 5).unwrap();
+        apply_cleanup_engines(&mut d, &[e(Local, true), e(Cloud, false)]).unwrap();
+        assert_eq!(
+            d.cleanup(),
+            vec![e(Local, true), e(Server, false), e(Cloud, true)],
+            "a short list is completed; flags are kept"
+        );
     }
 
     #[test]
@@ -459,6 +515,15 @@ mod tests {
         );
         assert_eq!(j["stt"]["model"], "openai/whisper-large-v3-turbo");
         assert_eq!(j["cleanup"]["model"], "meta-llama/llama-3.3-70b-instruct");
+        assert_eq!(
+            j["cleanup"]["engines"],
+            serde_json::json!([
+                {"route": "local", "enabled": true},
+                {"route": "server", "enabled": true},
+                {"route": "cloud", "enabled": false}
+            ])
+        );
+        assert_eq!(j["cleanup"]["allow"], false);
         assert_eq!(
             j["privacy"],
             serde_json::json!({"zdr": true, "data_collection": "deny"})

@@ -338,6 +338,9 @@ impl Prefs {
             }
             self.raw_mode = false;
         }
+        // D36: the cleanup order holds all three engines (idempotent, so
+        // not tied to a revision: an older shell may have saved over it).
+        self.developer.migrate_d36();
         // Transforms: a file from before them was seeded with the
         // built-ins by serde; ids and the auto-apply choice are tidied.
         self.transforms.normalize();
