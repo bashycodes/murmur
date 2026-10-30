@@ -4,6 +4,7 @@
 
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import type { Page } from "../../lib/router.js";
+import { extLink, SERVER_HELP } from "../../features/models.js";
 
 const err = (field: string): string => `<small class="field-err" data-err="${field}"></small>`;
 
@@ -19,7 +20,7 @@ export const settingsServerPage: Page = {
   template: `
 ${heading(
   "Your server",
-  "Run flow-server on a faster computer you own, at home or on a VPN like Tailscale, and this PC sends it the audio. It keeps nothing, and nothing goes to a third party.",
+  `Run flow-server on a faster computer you own, at home or on a VPN like Tailscale, and this PC sends it the audio. It keeps nothing, and nothing goes to a third party. ${extLink(SERVER_HELP, "Set up a server →")}`,
 )}
 ${group(
   "Connection",
