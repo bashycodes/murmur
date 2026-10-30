@@ -68,10 +68,10 @@ Murmur → ⋮ → *Allow restricted settings*, then retry) → *Notifications* 
 background* (each is a row on the *Permissions* page, menu ☰ → Permissions: tap it). The Permissions page's *Status* card must show
 *Native engine* `flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26).
 
-**3. Point it at the server.** Menu ☰ → *Developer settings* → *Server*: host = the PC's
+**3. Point it at the server.** Menu ☰ → *Settings* → *Your server* (or Menu ☰ → *Developer settings* → *Server*): host = the PC's
 `100.x.y.z` (or its VPN DNS name), port `7313`, *Paste* the token, *Use TLS* off, *Save* (top
-bar), then *Test connection* (bottom) → `OK · median N ms … · parakeet`. *Routing & engines*:
-*Allow server* + *Allow on-device* on (the defaults in hybrid), *Save*. Plain `ws://` is
+bar), then *Test connection* (bottom) → `OK · median N ms … · parakeet`. *Settings → Speech to text*:
+*Use your server* + *Use this phone* on (the defaults in hybrid; they apply at once). Plain `ws://` is
 only allowed when the address is private or a VPN address **and** the phone reaches it through its
 VPN interface: "Server needs TLS — turn on Use TLS …" means the VPN is off on the phone
 or the host is a public address. For on-device fallback, either import a model (§2, §5) or tick
@@ -103,8 +103,8 @@ or the host is a public address. For on-device fallback, either import a model (
 - [ ] Tap ✕ while "Transcribing…": nothing is inserted, no history row is added.
 - [ ] Airplane mode on (VPN down): dictation still inserts from the phone engine, label
       `via phone · server unreachable`.
-- [ ] **Never-fail fallback (D24)**: *Developer settings → Keep the on-device model loaded* **off**,
-      Save, stop `flow-server` (or airplane mode). Tap the bubble and talk right away: the preview
+- [ ] **Never-fail fallback (D24)**: *Settings → Speech to text → Keep loaded while the server is used* **off**
+      (applies at once), stop `flow-server` (or airplane mode). Tap the bubble and talk right away: the preview
       shows `Loading phone model… · server unreachable` for a few seconds (Parakeet ≈ 1 GB), then
       `via phone · …`; nothing you said is lost and the text is inserted. The debug line has
       `connect_ms` (≈ the connect timeout), `local_cold: true` and `local_load_ms`. The next
@@ -363,12 +363,12 @@ models, tap *Use* under another imported file. *Delete* (asks first) frees the s
 English-only, more accurate engine (D12). On the PC, get the folder
 `sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8` (`tools/fetch-models.sh --parakeet`; ~661 MB:
 `encoder.int8.onnx`, `decoder.int8.onnx`, `joiner.int8.onnx`, `tokens.txt`) and copy the whole
-folder to the phone. *Settings → Speech engine → Parakeet model folder → Import model folder…* and pick the
-folder; the app copies the four files into `files/parakeet/<name>/` and switches the engine.
-*Settings → Speech engine → Whisper* switches back. If Parakeet fails to load (RAM, files), the
+folder to the phone. *Settings → Speech to text* → tap the model card (*Model on this phone*) → *Parakeet
+model folder → Import model folder…* and pick the folder; the app copies the four files into
+`files/parakeet/<name>/` and switches the engine. *Model on this phone → Whisper* switches back. If Parakeet fails to load (RAM, files), the
 app loads the whisper model instead and the Permissions page says "Parakeet failed: …".
 On the phone Parakeet decodes **greedy** (one recognizer; saves ≈ 0.6 GB RAM, dictionary words
-are not used as hotwords). *Developer settings → Routing & engines → On-device decoding (Parakeet)* switches to *Auto* (beam
+are not used as hotwords). *Developer settings → Engine options → On-device decoding (Parakeet)* switches to *Auto* (beam
 search with dictionary hotwords, plus a greedy recognizer) or *Beam only*; changing it reloads
 the engine.
 
@@ -377,7 +377,7 @@ the engine.
 1. On the server box: run `flow-server` (see `docs/protocol.md` / `crates/flow-server`), bound
    to its VPN `100.x` address or the LAN; `flow-server gen-token` prints the token.
 2. Phone: join the same VPN (or be on the same LAN). No extra permission is needed.
-3. Menu ☰ → **Developer settings** (visible by default in hybrid/remote) → **Server**:
+3. Menu ☰ → **Settings** → **Your server** (the same page as Menu ☰ → *Developer settings* → *Server*):
    host = the server's `100.x.y.z` or its VPN DNS name, port `7313`, *Paste* the token,
    *Save* (top bar), then *Test connection* → "OK · median N ms (…) · flow-server … · parakeet".
 4. Dictate: the hub's status card shows *Last dictation* `Server · client N ms`; *Status &
@@ -386,11 +386,11 @@ the engine.
    once). Over a VPN relay the handshake is 3+ round trips of 150-300 ms, which 800 ms
    could not fit. After a successful *Test connection* the router raises it further to
    `RTT × 6` (1.5-10 s) on slow paths; it never lowers what you set.
-6. **The server being down never fails a dictation** while *Routing & engines → Allow on-device* is on (D24): the phone
+6. **The server being down never fails a dictation** while *Settings → Speech to text → Use this phone* is on (D24): the phone
    records at once and the audio is kept; if the server can't be reached (or its circuit is open,
    e.g. a failed pre-warm when you focused the field) the phone model takes over. With *Keep
-   on-device model warm* off it is loaded on demand ("Loading phone model…") and then stays
-   loaded. Dictation fails only when no route is possible (both toggles off, or no phone model),
+   loaded while the server is used* off it is loaded on demand ("Loading phone model…") and then stays
+   loaded. Dictation fails only when no route is possible (both engines off, or no phone model),
    and the error says which.
 
 ## 5c. Cloud → OpenRouter (hybrid / remote, opt-in, third party)
@@ -401,7 +401,7 @@ voice). Both are off by default and each has its own consent; turning one on nev
 other on. No other provider is in the app any more, and no extra permission: it uses `INTERNET`.
 The `local` flavour has no cloud at all.
 
-Open it from *Settings → Dictation → Cloud (OpenRouter)* or *Developer settings → OpenRouter (cloud)*:
+Open it from *Settings → OpenRouter* (under *Connections*) or *Developer settings → OpenRouter (cloud)*:
 
 1. **API key**: paste a key from openrouter.ai/keys (*Paste*), *Save key*. It is stored only
    Keystore-encrypted; the page shows `••••` + the last 4 characters and other accessibility
@@ -411,7 +411,7 @@ Open it from *Settings → Dictation → Cloud (OpenRouter)* or *Developer setti
    either off asks first ("Some providers may keep or train on your audio and text").
 3. **Speech-to-text**: switch on *Cloud speech-to-text*. The dialog "Send your voice to
    OpenRouter?" says the audio leaves the phone; *Send audio to OpenRouter* records consent and
-   puts *Cloud* first in the route order (reorder under *Developer settings → Routing & engines*).
+   puts *Cloud* first in the route order (reorder under *Settings → Speech to text → Change order*).
    *Model* opens the model picker (default `openai/whisper-large-v3-turbo`, about $0.012-0.04
    per hour of audio). *Test speech-to-text* uploads a 3 s public-domain clip → "OK · heard "And
    so, my fellow Americans" · N ms · $… · <model>".
@@ -441,29 +441,31 @@ until you tap *Dismiss*.
 
 ## Settings layout
 
-Menu ☰ → *Settings*: the same look as Developer settings. A *Status* card on top (engine
-state, the language the next dictation uses, warnings such as "AI cleanup is on but no GGUF
-model is imported"), then grouped rows that each show their current value and open a page:
+Menu ☰ → *Settings*: a top bar with back, a warning callout while something blocks dictation
+(e.g. "AI cleanup is on but no GGUF model is imported"), then grouped rows that each show their
+current value and open a page:
 
 | Section · row | Page contents | Applies |
 |---|---|---|
-| Dictation · *Language* | Auto-format; dictation language (Phone language first) | at once |
-| Dictation · *Writing style* | Formal / Casual / Very casual for Personal messages, Work messages, Email, Other, each with an example line (default: chats casual, email + other formal); *Style per app* | at once |
+| General · *Language* | Auto-format; dictation language (Phone language first) | at once |
+| General · *Writing style* | Formal / Casual / Very casual for Personal messages, Work messages, Email, Other, each with an example line (default: chats casual, email + other formal); *Style per app*. The *Style* tab sets the same choices | at once |
 | Writing style · *Style per app* | One row per app moved to another group (icon, name, group dropdown, remove); *Add app* = searchable list of launcher apps, recently dictated-into first, then the group; overrides the built-in app list | at once |
-| Dictation · *Speech engine* (local / hybrid) | Whisper or Parakeet; *Speech model (whisper)*, *Parakeet model folder* imports | at once (reloads) |
-| Dictation · *AI cleanup* (local / hybrid) | Clean up with local AI; *Clean up with OpenRouter* (hybrid, → the OpenRouter page); *AI cleanup model* import; strength. The row says "OpenRouter (<model>), then on-device" while cloud cleanup is on | at once (reloads) |
-| Dictation · *Cloud (OpenRouter)* (hybrid / remote) | The OpenRouter page (§5c): key, privacy, speech-to-text, text cleanup, usage | at once |
-| Dictation · *Timing & limits* | Stop after silence (ms, 0 or 300–10000), Decode while speaking, session limit (1–20 min) | *Save* |
-| Bubble & apps · *Bubble* | Live preview, Shrink to a dot, Shake to restore; *Command mode* (✎ button: When text is selected / Always / Off) | at once |
-| Bubble & apps · *Excluded apps* | package names, one per line (checked) | *Save* |
-| Privacy · *History* | Keep / 24 hours / Never save (asks before deleting) | at once |
+| General · *Bubble size* | Live preview, Shrink to a dot, Shake to restore, Bubble size; *Command mode* (✎ button: When text is selected / Always / Off) | at once |
+| General · *Excluded apps* | package names, one per line (checked) | *Save* |
+| General · *Timing and limits* | Stop after silence (ms, 0 or 300–10000), Decode while speaking, session limit (1–20 min) | *Save* |
+| Models · *Speech to text* | *Engines*: one switch per engine (Use your server / Use this phone / Use OpenRouter for speech; OpenRouter asks for consent) in try order, *Change order* (↑ / ↓). *On this phone* (local / hybrid): the model in use → *Model on this phone* (Whisper or Parakeet, *Speech model (whisper)* / *Parakeet model folder* imports), *Import another model*, *Keep loaded while the server is used* (hybrid); *Transcribe while I speak* | at once (reloads) |
+| Models · *AI cleanup* | Clean up with local AI; *Clean up with OpenRouter* (hybrid, → the OpenRouter page); *AI cleanup model* import; strength. The row says "OpenRouter (<model>), then on-device" while cloud cleanup is on. In `remote` it opens the OpenRouter page | at once (reloads) |
+| Connections · *Your server* (hybrid / remote) | Developer settings' *Server* page; the row shows the last check ("Connected · 41 ms") | top bar |
+| Connections · *OpenRouter* (hybrid / remote) | The OpenRouter page (§5c); the row shows this month's cost | at once |
+| Data & privacy | *Keep history* (Keep / 24 hours / Never save, asks before deleting); *Learn from my edits*; *Debug log* | at once |
+| Back up & restore | *Export all data*, *Restore from a backup* | – |
 | Advanced | *Developer settings* (when visible), *Mock engine* switch | at once |
 | About | version + flavour; 7 taps unlock Developer settings (local) | – |
 
 The rule: a page with typed fields has *Save* in the top bar (grey until something changed and
 every field is valid; errors under the field; leaving with unsaved changes asks *Discard
-changes?*); switches and choices apply at once, like Developer → *Debug log & audio*. The main
-screen's *Language* and *AI cleanup* lines open their pages.
+changes?*); switches and choices apply at once, like Developer → *Debug log & audio*. The
+Permissions page's *Language* and *AI cleanup* lines open their pages.
 
 ## Developer settings layout
 
@@ -472,7 +474,8 @@ A hub with grouped cards; each row shows its current value and opens a focused p
 | Hub row | Page contents | Save |
 |---|---|---|
 | *Status* card | route in use, last dictation engine + `client_ms`, circuit; *Status & server info* → active engine, circuits, server info (last probe), native library; *Reset circuit* | – |
-| *Routing & engines* | Allow server / on-device, route order (↑ / ↓), keep model warm, engine badge, Parakeet decoding (applies at once); *Test session* | top bar |
+| *Speech to text* | Opens *Settings → Speech to text* (engines on/off and their order moved there) | at once |
+| *Engine options* | Engine badge, Parakeet decoding (both apply at once); *Test session* | – |
 | *Server* | host, port, Use TLS, certificate pin, token (masked; Show / Paste / Clear), timeouts; *Test connection* | top bar |
 | *OpenRouter (cloud)* | The OpenRouter page (§5c); the row says "Speech on/off · Cleanup on/off" (+ "no key", budget). A one-time migration notice sits on top of the hub until dismissed | at once |
 | *Debug log & audio* | Debug log, Keep last dictation audio (apply at once); View / Share / Clear | – |
@@ -546,18 +549,21 @@ transcribed (*Phone*, *Server*, *Cloud*) for dictations saved from 0.4.0 on.
 
 ## Screens
 
-Every screen uses the Settings look (grouped cards, rows with their current value):
+Every screen uses the app design (top bar, cards, light and dark):
 
 | Screen | Contents |
 |---|---|
-| Main | banner while a required permission is missing; *Status* (Native engine, Speech engine, Language → Settings · Language, AI cleanup → Settings · AI cleanup, Version); *Setup* (5 permissions + *Keep it running*); *Run* (Start / show bubble, Stop bubble); *More* (Settings, Notes, Quick note, Insights, Dictionary & snippets, History, Speech model (local / hybrid), Developer settings (when visible)) |
-| Dictionary & snippets | *Dictionary* and *Snippets* rows with counts; *Import JSON*, *Export JSON*. Each list: *Add* in the top bar, search from 8 entries, tap to edit, TalkBack action / long-press to delete. Edit page: *Save* in the top bar when changed + valid, Discard prompt, *Snippet* switch, *Delete* |
-| History | *Keep dictations* (→ Settings · History), *Show the raw transcript*, search from 8 entries, rows grouped by day (first line, time · app, result badge); *Clear all* in the top bar. Detail: text, raw transcript, when / app / result / inserted / timings, *Copy*, *Delete dictation* |
-| Insights | *Last 7 days* (words-per-day bars + total), *Totals* (Words dictated, Dictations, Average speed, Current / Longest streak, Time saved vs typing at 40 words/min), *Top apps* (by words, app names), *Reset stats* (asks first). Counts only, in `files/insights.json`; kept when History is cleared |
-| Notes | *New note*, search (by content), notes as rows (first line, last changed · more text, *Pinned* badge) under *Pinned* and *Notes*; tap opens the note editor, ⋮ / long-press / TalkBack actions: *Pin* or *Unpin*, *Share*, *Delete* (asks). The *Quick note* (the old Scratchpad) is one of them, pinned by default |
+| Shell | top bar with the menu ☰; bottom bar *Home* / *Dictionary* / *Style* / *Snippets*; drawer: words / wpm / day streak, *Engines* card (opens where routing is set), *Settings*, *Permissions* (badge "N to fix"), *Help*, *More* (Notes, Quick note, Insights, History, Start / show bubble, Stop bubble, Speech model (local / hybrid), Developer settings (when visible)), version. Back closes the drawer first |
+| Home | notices while dictation can't start (they open Permissions / Settings); recent dictations as cards by day (text, time · app, route tag, *Copy*, ⋮ *Open details* / *Delete*) |
+| Permissions | banner while a required permission is missing; *Setup* (5 permissions + *Keep it running*); *Status* (Native engine, Speech engine, Language → Settings · Language, AI cleanup → Settings · AI cleanup, Version) |
+| Dictionary / Snippets tabs | search, cards (*heard → word*, *say → paste*), **+** to add, tap to edit, TalkBack action / long-press to delete; *Suggestions* card above the words while any wait; top-bar *Import or export* (JSON). Edit page: *Save* and *Delete* in the top bar (Save when changed + valid), Discard prompt, *Snippet* switch |
+| Style tab | group pills (Personal / Work / Email / Other), the phone's apps in that group (**+** adds one), a card per style with its rule and an example; a tap saves it |
+| History | *Keep dictations* (→ Settings · History), *Show the raw transcript*, search from 8 entries, cards grouped by day (text, time · app, route tag, result badge, *Copy*, ⋮ *Open details* / *Delete*); *Clear all* in the top bar. Detail: text, raw transcript, when / app / result / inserted / timings, *Copy*, *Delete dictation* |
+| Insights | words / wpm / day streak with "N× your typing speed"; *Last 7 days* (words-per-day bars + total), *Totals* (Words dictated, Dictations, Average speed, Current / Longest streak, Time saved vs typing at 40 words/min), *Top apps* (bars by words, app names), *Reset stats* (asks first). Counts only, in `files/insights.json`; kept when History is cleared |
+| Notes | **+** (*New note*), search (by content), notes as cards (first line, last changed · more text, *Pinned* badge) under *Pinned* and *Notes*; tap opens the note editor, ⋮ / long-press / TalkBack actions: *Pin* or *Unpin*, *Share*, *Delete* (asks). The *Quick note* (the old Scratchpad) is one of them, pinned by default |
 | Note editor (Quick note, any note) | word count, *Copy all*, *Share*, *Clear* (asks), one big field; saves as you go; the only screen of ours with the bubble |
 | Speech model / Parakeet model / AI cleanup model | *Status* (Active model, Size, Engine), *Import model file…* / *Import model folder…* with progress and errors under it, *Recommended* (tap = copy download link), *Imported* (*Use*, *Delete* asks first) |
-| OpenRouter (Settings → Cloud (OpenRouter), Developer settings) | *API key* (masked; Show / Paste / Clear, *Save key*, *Check key*), *Privacy*, *Speech-to-text* (opt-in + consent, Model, Language, Send dictionary words, *Test*), *Text cleanup* (opt-in + its own consent, Model, order, Provider choice, Time limit, Status), *What cleanup sends*, *Usage* (budget, Reset counters) |
+| OpenRouter (Settings → OpenRouter, Developer settings) | *This month* (total / speech / cleanup, budget), *API key* (masked; Show / Paste / Clear, *Save key*, *Check key*), *Privacy*, *Speech-to-text* (opt-in + consent, Model, Language, Send dictionary words, *Test*), *Text cleanup* (opt-in + its own consent, Model, order, Provider choice, Time limit, Status), *What cleanup sends*, *Usage* (budget, Reset counters) |
 | Model picker (OpenRouter → Model) | *In use*, list source + *Refresh*, search, filter chips, rows (name, id, price, context, badges), *Use custom model id…* |
 
 ## Device test checklist
@@ -565,9 +571,9 @@ Every screen uses the Settings look (grouped cards, rows with their current valu
 **Flavours / developer settings (D17)** — one APK of each flavour, same phone, installed over each other
 - [ ] `local`: App info → Permissions shows no network; Permissions page text says "no internet
       permission"; Developer settings hidden until 7 taps on the version row in *Settings → About* ("Developer
-      settings unlocked"); *Routing & engines → Allow server* shows "Not in this build"; *Lock* hides it again.
+      settings unlocked"); *Settings → Speech to text* shows the server as "Not in this build"; *Lock* hides it again.
 - [ ] `local`: dictation works exactly as before (Permissions page `Loaded: client: …`); *Test
-      session* (*Routing & engines*) says `OK: Client (on-device) · … EMPTY (no_speech)`.
+      session* (*Developer settings → Engine options*) says `OK: Client (on-device) · … EMPTY (no_speech)`.
 - [ ] `hybrid` over `local`: dictionary/history kept. Developer settings visible; host
       validation (*Server* page): `http://x`, `10.0.0.1:7313`, `256.1.1.1`, `a_b.com` show inline
       errors and the top-bar *Save* greys out; `8.8.8.8` / `example.com` lock *Use TLS* on.
@@ -581,7 +587,7 @@ Every screen uses the Settings look (grouped cards, rows with their current valu
       to the client and the circuit stays open until the server settings change.
 - [ ] `hybrid`, kill the server mid-dictation (long hands-free session): the text is complete
       (fallback `disconnected`, buffered audio replayed).
-- [ ] Both toggles off (*Routing & engines*) → the red "Dictation disabled" banner (also on the hub's status card); tapping the bubble
+- [ ] Both engines off (*Settings → Speech to text*) → the red "Dictation disabled" banner (also on the hub's status card); tapping the bubble
       toasts "Dictation disabled — enable server or client in Developer settings".
 - [ ] `remote` over `hybrid`: APK ~10x smaller; no Speech model / AI cleanup entries; Allow
       client "not in this build"; server down → bubble error "Server unreachable (connect_failed)".
@@ -590,7 +596,7 @@ Every screen uses the Settings look (grouped cards, rows with their current valu
       (red "Enter 1–20 minutes") and Back after an edit asks *Discard changes?*; TalkBack reads
       each switch row as one switch and each choice as a radio button; dark mode follows the phone.
 - [ ] Settings changes apply to the next dictation without reloading the model (Permissions page
-      keeps `Loaded:`; logcat `FlowEngine` shows no reload) unless *Keep on-device model warm* changed.
+      keeps `Loaded:`; logcat `FlowEngine` shows no reload) unless *Keep loaded while the server is used* changed.
 - [ ] Token survives an app restart (Keystore); *Clear* + *Save* removes it. With TalkBack (or a
       UI dump) the token field reads "set (hidden)", also after *Show*.
 - [ ] Parakeet (local/hybrid, 6-8 GB phone): folder import, `Loaded: client: Parakeet …`, jfk-style
@@ -605,14 +611,14 @@ Logcat tags: `FlowA11y` (insertion step trail), `FlowService`, `FlowMic`, `FlowE
 
 **OpenRouter (D28)** — `hybrid` (and `remote`) APK and a real OpenRouter key; record model,
 latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CONTEXT.md`
-- [ ] `local`: no *Cloud (OpenRouter)* row in Settings; Developer settings → OpenRouter says "Not in this build";
+- [ ] `local`: no *OpenRouter* row in Settings; Developer settings → OpenRouter says "Not in this build";
       App info shows no network permission (unchanged).
 - [ ] Upgrade over a 0.4.0 install that had a Groq provider active: the hub shows "Cloud speech-to-text now
       uses OpenRouter only. Groq was removed and its key deleted…"; cloud speech-to-text is off; *Dismiss* hides it.
 - [ ] Fresh install: both opt-ins off, both privacy switches on. *Paste* + *Save key*: the field empties and
       `Stored key: ••••abcd`; *Check key* → "Key OK · … · credit left …"; a wrong key → "auth_failed: key rejected".
-- [ ] *Cloud speech-to-text* on: "Send your voice to OpenRouter?"; *Cancel* leaves it off; accept → *Routing &
-      engines* shows `1. Cloud: OpenRouter (whisper-large-v3-turbo)`. Text cleanup stays off.
+- [ ] *Cloud speech-to-text* on: "Send your voice to OpenRouter?"; *Cancel* leaves it off; accept → *Settings →
+      Speech to text* lists OpenRouter first. Text cleanup stays off.
 - [ ] *Test speech-to-text* → "OK · heard "And so, my fellow Americans…" · N ms · $…".
 - [ ] Dictate 10 s in Notes: preview badge `[C]` even with *Engine badge* off; *Active engine* `cloud ·
       OpenRouter · openai/whisper-large-v3-turbo · $…`; Usage "Speech $… · Cleanup $0".
@@ -701,12 +707,12 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       "No speech detected. Nothing was inserted." and nothing is typed.
 
 **Dictionary & history**
-- [ ] *Dictionary & snippets → Dictionary → Add*: "wisper" → "Wispr" (*Save* enables only once valid;
+- [ ] *Dictionary* tab → **+**: "wisper" → "Wispr" (*Save* enables only once valid;
       a duplicate word shows its error under the field), dictate "wisper flow" → "Wispr flow". Edit it, delete it.
-- [ ] *Snippets → Add*: "my address" → multi-line text; say only "my address" → the text.
+- [ ] *Snippets* tab → **+**: "my address" → multi-line text; say only "my address" → the text.
 - [ ] Learn from my edits (real engine; the mock engine suggests nothing): dictate "local whisper" into
       Notes, change it to "Murmur" within 45 s and leave it → toast "Dictionary suggestion: Flow
-      Clone"; *Dictionary → Suggestions* lists it. *Add* puts it in the dictionary; a second suggestion
+      Clone"; the *Dictionary* tab's *Suggestions* card lists it. *Add* puts it in the dictionary; a second suggestion
       *Dismiss*ed and the same edit repeated is not suggested again. Switch the field or app mid-watch:
       nothing more is read (debug log `learn_edit end=focus_changed`). *Settings → Learn from my edits*
       off → no `learn_edit` event after a dictation. Never in a password field (no bubble there anyway).
@@ -728,7 +734,7 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       shows those dictations counted (words, top apps by name, bars on their days). Dictate a 10-word
       sentence in Notes and come back: *Words dictated* +10, *Dictations* +1, today's bar grows, *Current
       streak* ≥ 1 day; *Time saved* says "Compared with typing at 40 words/min". *History → Clear all*,
-      then reopen Insights: numbers unchanged. *Settings → History → Never*, dictate: Insights still
+      then reopen Insights: numbers unchanged. *Settings → Keep history → Never*, dictate: Insights still
       counts it. *Reset stats* asks first; *Reset* → all zero (and History is not re-added after an
       app restart). Next day without dictating: *Current streak* keeps yesterday's run.
 - [ ] Back up & restore (*Settings → Back up & restore*): *Export all data* opens the system file
