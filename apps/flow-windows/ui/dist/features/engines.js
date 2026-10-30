@@ -1,6 +1,7 @@
 // Engines: hybrid local/server routing (docs/hybrid-architecture.md §5),
 // speech decoding, the server connection and engine status, on the Speech
-// to text, System, Your server and Developer settings pages. The backend
+// to text, System, Your server and Developer settings pages (designs:
+// SettingsSpeech / SettingsServer .dc.html). The backend
 // owns validation (`dev_validate`), so the inline errors and Save use the
 // same rules; the token is typed here but stored DPAPI-encrypted. Saves go
 // through the dev store: switches save at once, the server form on Save.
@@ -17,6 +18,10 @@ const DEV_SWITCHES = ["allow_server", "allow_client", "keep_local_warm", "show_e
 const SRV_NUM = ["port", "connect_timeout_ms", "commit_timeout_base_ms", "health_ttl_s"];
 const SRV_TEXT = ["host", "tls_pin_sha256", "token"];
 let devOrder = ["server", "client", "cloud"];
+/** The speech model on this PC (get_model_status / `model:status`), for its engine badge. */
+let pcModel = { state: "loading" };
+/** A Test button's result is on screen: the last known health must not replace it. */
+let testShown = false;
 let devValid = true;
 /** The server form has edits that are not saved yet (a switch's save must not overwrite them). */
 let serverDirty = false;
@@ -46,19 +51,41 @@ function readServer() {
         f.token_saved = false;
     return f;
 }
+/** "1.5 seconds" / "2 minutes" for a saved timeout that is not one of the presets. */
+function durationLabel(field, v) {
+    const s = field.endsWith("_ms") ? v / 1000 : v;
+    if (s >= 60 && s % 60 === 0)
+        return `${s / 60} minute${s === 60 ? "" : "s"}`;
+    return `${s} second${s === 1 ? "" : "s"}`;
+}
+/** Set a number field; a preset list gets the saved value as an extra choice when it is not a preset. */
+function setNum(field, v) {
+    const e = $(`dev_${field}`);
+    if (e instanceof HTMLSelectElement && ![...e.options].some((o) => o.value === String(v))) {
+        const opt = new Option(durationLabel(field, v), String(v));
+        const after = [...e.options].find((o) => Number(o.value) > v);
+        e.add(opt, after ?? null);
+    }
+    e.value = String(v);
+}
 function fillServer(f) {
     $("dev_tls").checked = f.tls;
     for (const k of SRV_TEXT)
         $(`dev_${k}`).value = f[k];
-    for (const k of SRV_NUM)
-        $(`dev_${k}`).value = String(f[k]);
+    for (const k of SRV_NUM) {
+        if (k === "port")
+            $("dev_port").value = String(f.port);
+        else
+            setNum(k, f[k]);
+    }
     tokenCleared = false;
     showTokenSaved(!!f.token_saved);
 }
 function fillDev(f) {
     for (const k of DEV_SWITCHES)
         $(`dev_${k}`).checked = f[k];
-    $("dev_parakeet_decoding").value = f.parakeet_decoding ?? "auto";
+    // Beam search with hotwords = dictionary words; greedy = without.
+    $("dev_parakeet_decoding").checked = (f.parakeet_decoding ?? "auto") !== "greedy";
     devOrder = [...f.route_order];
     if (!serverDirty)
         fillServer(f);
@@ -92,6 +119,16 @@ function setBadge(r, text, kind) {
     b.textContent = text;
     b.className = `fl-badge fl-badge-${kind}`;
 }
+/** A link to another settings page inside a row's description. */
+function goLink(page, text) {
+    const b = el("button", "lw-link", text);
+    b.type = "button";
+    b.dataset.go = page;
+    return b;
+}
+function fileStem(path) {
+    return ((path ?? "").split(/[\\/]/).pop() ?? "").replace(/\.(bin|onnx)$/i, "");
+}
 /** One line per engine: what it is and whether it answers. */
 function describe(r) {
     const on = engineOn(r);
@@ -100,7 +137,10 @@ function describe(r) {
         const f = views.dev?.form;
         const h = views.dev?.route.health;
         const rtt = h?.ok && h.rtt_ms ? ` · ${h.rtt_ms.median} ms` : "";
-        d.textContent = f?.host ? `${f.host}${rtt}. Set up under Your server.` : "Not set up yet: add it under Your server.";
+        if (f?.host)
+            d.replaceChildren(`${f.host}${rtt}. `, goLink("settings-server", "Connection →"));
+        else
+            d.replaceChildren("Not set up yet. ", goLink("settings-server", "Set up →"));
         if (!on)
             setBadge(r, "Off", "light");
         else if (!h)
@@ -109,13 +149,26 @@ function describe(r) {
             setBadge(r, h.ok ? "Connected" : "Unreachable", h.ok ? "success" : "destructive");
     }
     else if (r === "client") {
-        const engine = prefsStore.get()?.asr_engine === "parakeet" ? "Parakeet" : "Whisper";
-        d.textContent = `${engine}. Private and works offline.`;
-        setBadge(r, on ? "On" : "Off", on ? "success" : "light");
+        const parakeet = prefsStore.get()?.asr_engine === "parakeet";
+        const stem = fileStem(pcModel.path);
+        const name = parakeet ? "Parakeet TDT 0.6B" : `Whisper${stem ? ` (${stem})` : ""}`;
+        d.textContent = `${name}. Private and works offline.`;
+        const st = pcModel.state;
+        if (!on)
+            setBadge(r, "Off", "light");
+        else if (st === "ready")
+            setBadge(r, "Ready", "success");
+        else if (st === "loading")
+            setBadge(r, "Loading", "light");
+        else if (st === "missing")
+            setBadge(r, "Model missing", "destructive");
+        else
+            setBadge(r, "Failed", "destructive");
     }
     else {
         const or = views.or;
-        d.textContent = on && or ? `${or.stt.model}. Sends your audio to openrouter.ai.` : "Sends your audio to openrouter.ai. Asks first.";
+        d.textContent =
+            on && or ? `${or.stt.model.split("/").pop()}. Sends your audio to openrouter.ai.` : "Sends your audio to openrouter.ai. Asks first.";
         setBadge(r, on ? "On" : "Off", on ? "success" : "light");
     }
 }
@@ -137,6 +190,8 @@ function renderRoutes() {
     // Builds with one engine and no server or cloud: nothing to choose.
     $("eng_group").hidden = shown.length === 0 || (shown.length === 1 && !views.dev?.visible);
     $("dev_pin_row").hidden = !$("dev_tls").checked;
+    // Dictionary words while listening = Parakeet's beam search with hotwords.
+    $("dict_words_row").classList.toggle("lw-gone", $("asr_engine").value !== "parakeet");
 }
 function move(r, dir) {
     const shown = devOrder.filter(available);
@@ -221,6 +276,35 @@ function healthText(h) {
     ].filter(Boolean);
     return parts.join(" · ");
 }
+/** The Your server page's result box: `ok` null = neutral (running). */
+function showResult(ok, lead, rest) {
+    const box = $("dev_test");
+    box.hidden = false;
+    box.classList.toggle("is-ok", ok === true);
+    box.classList.toggle("is-err", ok === false);
+    const t = $("dev_test_text");
+    t.replaceChildren();
+    if (lead)
+        t.append(el("b", undefined, lead), " ");
+    t.append(rest);
+}
+/** "38 ms · flow-server 0.6.0 · parakeet · same pipeline version as this app". */
+function connectedLine(h) {
+    const pp = h.postprocess_match === false
+        ? "different pipeline version: results may differ from this PC"
+        : h.postprocess_match
+            ? "same pipeline version as this app"
+            : "";
+    return [h.rtt_ms ? `${h.rtt_ms.median} ms` : "", h.server_version ?? "", h.asr_backend ?? "", pp]
+        .filter(Boolean)
+        .join(" · ");
+}
+function showHealth(h) {
+    if (h.ok)
+        showResult(h.postprocess_match === false ? null : true, "Connected.", connectedLine(h));
+    else
+        showResult(false, "Not connected.", healthText(h));
+}
 function showServerInfo(h) {
     const e = $("dev_server_info");
     if (!h) {
@@ -282,6 +366,8 @@ function showRoute(r) {
             ? `open until the server settings change (${c.reason ?? "?"})`
             : `open until ${new Date(Date.now() + (c.retry_in_ms ?? 0)).toLocaleTimeString()} (${c.reason ?? "?"})`;
     showServerInfo(r.health);
+    if (r.health && !testShown)
+        showHealth(r.health);
     const cc = r.cloud_circuit;
     $("dev_cloud_circuit_dt").hidden = !cc;
     $("dev_cloud_circuit").hidden = !cc;
@@ -305,6 +391,12 @@ function showDev(v) {
     showRoute(v.route);
 }
 async function loadDev() {
+    try {
+        pcModel = (await invoke("get_model_status")).status;
+    }
+    catch {
+        /* the badge stays "Loading" */
+    }
     try {
         views.setDev(await invoke("dev_get"));
     }
@@ -339,38 +431,35 @@ async function serverSave() {
 async function devTestConnection() {
     if (!devValid)
         return;
-    const out = $("dev_test");
-    out.textContent = "Testing…";
-    out.className = "hint";
+    testShown = true;
+    showResult(null, "", "Testing…");
     try {
-        const h = await invoke("dev_test_connection", { form: devStore.form(readServer()) });
-        out.textContent = `Test connection: ${healthText(h)}`;
-        out.className = h.ok ? "hint ok" : "hint err";
+        showHealth(await invoke("dev_test_connection", { form: devStore.form(readServer()) }));
     }
     catch (e) {
-        out.textContent = String(e);
-        out.className = "hint err";
+        showResult(false, "Not connected.", String(e));
     }
 }
-async function devTestSession() {
-    const out = $("dev_diag");
-    out.textContent = "Running a 1 s silent session through the saved settings…";
-    out.className = "hint";
+/** One silent 1 s session through the saved settings (Developer: Test session; Your server: Test a dictation). */
+async function devTestSession(show) {
+    show(null, "Running a 1 s silent session through the saved settings…");
     try {
         const r = await invoke("dev_test_session");
         const engine = r.engine === "remote" ? "server" : r.engine === "local" ? "client" : "none";
         const ok = r.status === "EMPTY" && r.empty_reason === "no_speech";
-        out.textContent =
-            `Test session: ${r.status}${r.empty_reason ? ` (${r.empty_reason})` : ""} via ${engine}` +
-                `${r.fallback ? ` (fallback: ${r.fallback} — ${hint(r.fallback)})` : ""} in ${r.total_ms} ms` +
-                `${r.error ? ` — ${r.error}` : ""}`;
-        out.className = ok ? "hint ok" : "hint err";
+        show(ok, `Test session: ${r.status}${r.empty_reason ? ` (${r.empty_reason})` : ""} via ${engine}` +
+            `${r.fallback ? ` (fallback: ${r.fallback} — ${hint(r.fallback)})` : ""} in ${r.total_ms} ms` +
+            `${r.error ? ` — ${r.error}` : ""}`);
     }
     catch (e) {
-        out.textContent = String(e);
-        out.className = "hint err";
+        show(false, String(e));
     }
     void refreshRoute();
+}
+function showDiag(ok, text) {
+    const out = $("dev_diag");
+    out.textContent = text;
+    out.className = ok === null ? "hint" : ok ? "hint ok" : "hint err";
 }
 async function refreshRoute() {
     try {
@@ -407,7 +496,13 @@ export const engines = {
             box.addEventListener("change", () => void saveSwitch({ [k]: box.checked }));
         }
         const dec = $("dev_parakeet_decoding");
-        dec.addEventListener("change", () => void saveSwitch({ parakeet_decoding: dec.value }));
+        dec.addEventListener("change", () => void saveSwitch({ parakeet_decoding: dec.checked ? "auto" : "greedy" }));
+        $("asr_engine").addEventListener("change", () => views.dev && renderRoutes());
+        void onEvent("model:status", (e) => {
+            pcModel = e.payload;
+            if (views.dev)
+                renderRoutes();
+        });
         for (const b of document.querySelectorAll("#dev_routes [data-move]")) {
             const r = b.closest("[data-route]").dataset.route;
             b.addEventListener("click", () => move(r, b.dataset.move === "up" ? -1 : 1));
@@ -422,7 +517,11 @@ export const engines = {
         }
         $("dev_save").addEventListener("click", () => void serverSave());
         $("dev_test_conn").addEventListener("click", () => void devTestConnection());
-        $("dev_test_session").addEventListener("click", () => void devTestSession());
+        $("dev_test_session").addEventListener("click", () => void devTestSession(showDiag));
+        $("srv_test_dictation").addEventListener("click", () => {
+            testShown = true;
+            void devTestSession((ok, text) => showResult(ok, ok ? "Dictation works." : ok === false ? "Dictation failed." : "", text));
+        });
         $("dev_reset_circuit").addEventListener("click", () => void devCall("dev_reset_circuit", {}, "Circuit reset", "dev_diag_status").then((r) => r && showRoute(r)));
         $("dev_reset").addEventListener("click", () => void devCall("dev_reset_defaults", {}, "Defaults restored", "dev_diag_status").then((v) => {
             if (!v)
