@@ -77,6 +77,10 @@ jobs:
         with:
           workspaces: apps/flow-windows -> target
           cache-on-failure: true
+          # Bump when apps/flow-windows/.cargo/config.toml's GGML_* env
+          # changes: whisper-rs-sys' build script does not track it, so a
+          # restored cache would keep the old whisper.cpp objects.
+          key: ggml-native-off
 
       - uses: actions/setup-node@v4
         with:
