@@ -218,15 +218,22 @@ class SettingsPagesTest {
 
     @Test fun aiCleanupRowNamesStrengthEnginesAndRules() {
         val caps = BuildCaps.ALL
-        assertEquals("Rules only", SettingsSummary.cleanupRow(s, dev, caps))
-        assertEquals("Off", SettingsSummary.cleanupRow(s.copy(spokenCleanup = false), dev, caps))
-        assertEquals("Light · This phone, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true), dev, caps))
-        val cloud = OpenRouterPage.enableCleanup(dev, 1, caps)
+        val r = DevSettings.CleanupRoute.entries
+        val noServer = dev.withCleanup(DevSettings.CleanupRoute.SERVER, false)
+        assertEquals("Rules only", SettingsSummary.cleanupRow(s, noServer, caps))
+        assertEquals("Off", SettingsSummary.cleanupRow(s.copy(spokenCleanup = false), noServer, caps))
+        assertEquals("Light · This phone, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true), noServer, caps))
+        val cloud = OpenRouterPage.enableCleanup(noServer, 1).copy(cleanupOrder = listOf(r[2], r[0], r[1]))
         assertEquals("Medium · OpenRouter, then rules", SettingsSummary.cleanupRow(s.copy(cleanup = CleanupLevel.MEDIUM), cloud, caps))
         assertEquals("High · OpenRouter, then this phone, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true, cleanup = CleanupLevel.HIGH), cloud, caps))
-        assertEquals("Light · This phone, then OpenRouter", SettingsSummary.cleanupRow(s.copy(llmEnabled = true, spokenCleanup = false), OpenRouterPage.withCleanupOrder(cloud, cloudFirst = false), caps))
+        assertEquals("Light · This phone, then OpenRouter", SettingsSummary.cleanupRow(s.copy(llmEnabled = true, spokenCleanup = false), cloud.copy(cleanupOrder = DevSettings.DEFAULT_CLEANUP_ORDER), caps))
         // No consent recorded: the cloud is not used, so not named.
-        assertEquals("Rules only", SettingsSummary.cleanupRow(s, dev.copy(allowCloudCleanup = true, cleanupOrder = DevSettings.CLEANUP_CLOUD_FIRST), caps))
+        assertEquals("Rules only", SettingsSummary.cleanupRow(s, noServer.copy(allowCloudCleanup = true), caps))
+        // D36: your server (on by default) cleans even with the phone's AI off; named only once set up.
+        assertEquals("Light · Your server, then rules", SettingsSummary.cleanupRow(s, dev, caps))
+        assertEquals("Light · This phone, then your server, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true), dev, caps))
+        assertEquals("Rules only", SettingsSummary.cleanupRow(s, DevSettings.defaults(caps), caps))
+        assertEquals("Rules only", SettingsSummary.cleanupRow(s, dev.effective(BuildCaps.LOCAL), BuildCaps.LOCAL))
     }
 
     @Test fun serverRowFromTheLastHealthProbe() {

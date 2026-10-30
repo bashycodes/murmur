@@ -22,39 +22,41 @@ class OpenRouterPageTest {
         assertFalse(stt.cloud.cleanup.consentOk)
         assertTrue(OpenRouterPage.cleanupNeedsConsent(stt))
 
-        val cl = OpenRouterPage.enableCleanup(base, now, BuildCaps.ALL)
+        val cl = OpenRouterPage.enableCleanup(base, now)
         assertTrue(cl.allowCloudCleanup); assertTrue(cl.cloud.cleanup.consentOk)
-        assertEquals(listOf(CleanupRoute.CLOUD, CleanupRoute.LOCAL), cl.cleanupOrder)
+        // D36: switched on where it stands in the order (default: last).
+        assertEquals(listOf(CleanupRoute.LOCAL, CleanupRoute.SERVER, CleanupRoute.CLOUD), cl.cleanupOrder)
         assertFalse("cleanup never turns STT on", cl.allowCloud); assertFalse(cl.cloud.stt.consentOk)
         assertTrue(cl.cloudCleanupRouted)
 
         // Off keeps the consent: on again asks nothing.
         val off = OpenRouterPage.disableCleanup(cl)
         assertFalse(off.allowCloudCleanup); assertFalse(OpenRouterPage.cleanupNeedsConsent(off))
-        assertEquals(cl.cloud.cleanup.consentAtMs, OpenRouterPage.enableCleanup(off, now + 5, BuildCaps.ALL).cloud.cleanup.consentAtMs)
+        assertEquals(cl.cloud.cleanup.consentAtMs, OpenRouterPage.enableCleanup(off, now + 5).cloud.cleanup.consentAtMs)
         assertFalse(OpenRouterPage.disableStt(stt).allowCloud)
         assertEquals(stt.routeOrder, OpenRouterPage.disableStt(stt).routeOrder)
     }
 
     @Test fun cleanupOrder() {
-        // A build without the on-device LLM (remote): cloud only.
-        assertEquals(listOf(CleanupRoute.CLOUD), OpenRouterPage.enableCleanup(base, now, BuildCaps.REMOTE).cleanupOrder)
-        val cl = OpenRouterPage.enableCleanup(base, now, BuildCaps.ALL)
-        val phoneFirst = OpenRouterPage.withCleanupOrder(cl, cloudFirst = false)
-        assertEquals(listOf(CleanupRoute.LOCAL, CleanupRoute.CLOUD), phoneFirst.cleanupOrder)
-        assertFalse(OpenRouterPage.cleanupCloudFirst(phoneFirst))
-        assertEquals("On-device, then OpenRouter (llama-3.3-70b-instruct)", OpenRouterPage.cleanupEngineLine(phoneFirst))
-        assertEquals("OpenRouter (llama-3.3-70b-instruct), then on-device", OpenRouterPage.cleanupEngineLine(cl))
+        val cl = OpenRouterPage.enableCleanup(base, now)
+        val cloudFirst = cl.copy(cleanupOrder = listOf(CleanupRoute.CLOUD, CleanupRoute.LOCAL, CleanupRoute.SERVER))
+        assertEquals("On-device, then OpenRouter (llama-3.3-70b-instruct)", OpenRouterPage.cleanupEngineLine(cl))
+        assertEquals("OpenRouter (llama-3.3-70b-instruct), then on-device", OpenRouterPage.cleanupEngineLine(cloudFirst))
+        // A configured server is named; a switched-off engine is not.
+        val withServer = cl.copy(host = "100.64.0.10")
+        assertEquals("On-device, then your server, then OpenRouter (llama-3.3-70b-instruct)", OpenRouterPage.cleanupEngineLine(withServer))
+        assertEquals("Your server, then OpenRouter (llama-3.3-70b-instruct)", OpenRouterPage.cleanupEngineLine(withServer.withCleanup(CleanupRoute.LOCAL, false)))
         // A chosen order survives off → on.
-        assertEquals(phoneFirst.cleanupOrder, OpenRouterPage.enableCleanup(OpenRouterPage.disableCleanup(phoneFirst), now, BuildCaps.ALL).cleanupOrder)
+        assertEquals(cloudFirst.cleanupOrder, OpenRouterPage.enableCleanup(OpenRouterPage.disableCleanup(cloudFirst), now).cleanupOrder)
         assertNull(OpenRouterPage.cleanupEngineLine(base))
     }
 
     @Test fun routerJsonCarriesBothUses() {
-        val s = OpenRouterPage.enableCleanup(OpenRouterPage.enableStt(base, now), now, BuildCaps.ALL)
+        val s = OpenRouterPage.enableCleanup(OpenRouterPage.enableStt(base, now), now)
         val j = JSONObject(s.routerConfigFor(BuildCaps.ALL))
         assertTrue(j.getBoolean("allow_cloud")); assertTrue(j.getBoolean("allow_cloud_cleanup"))
-        assertEquals("[\"cloud\",\"local\"]", j.getJSONArray("cleanup_order").toString())
+        assertEquals("[\"local\",\"server\",\"cloud\"]", j.getJSONArray("cleanup_order").toString())
+        assertEquals("[]", j.getJSONArray("cleanup_off").toString())
         assertEquals(2, j.getJSONObject("cloud").getInt("schema"))
         assertEquals("openrouter.ai", j.getJSONObject("cloud").getJSONObject("openrouter").getJSONObject("cleanup").getString("consent_host"))
     }
@@ -73,7 +75,7 @@ class OpenRouterPageTest {
 
     @Test fun summaries() {
         assertEquals("Speech off · Cleanup off", OpenRouterPage.settingsSummary(base, hasKey = false))
-        val s = OpenRouterPage.enableCleanup(OpenRouterPage.enableStt(base, now), now, BuildCaps.ALL)
+        val s = OpenRouterPage.enableCleanup(OpenRouterPage.enableStt(base, now), now)
         assertEquals("Speech on · Cleanup on (llama-3.3-70b-instruct) · no key", OpenRouterPage.settingsSummary(s, hasKey = false))
         assertEquals("Speech on · Cleanup on (llama-3.3-70b-instruct)", OpenRouterPage.settingsSummary(s, hasKey = true))
         assertEquals("Speech on · Cleanup on · budget \$5.00",

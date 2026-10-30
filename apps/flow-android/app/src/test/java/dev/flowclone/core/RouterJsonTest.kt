@@ -33,6 +33,16 @@ class RouterJsonTest {
         else -> a == b
     }
 
+    /**
+     * D36: the shell always sends the whole cleanup order (an empty one is the router's pre-D36
+     * behaviour), which the pre-D36 fixtures predate: compared without it, checked on its own.
+     */
+    private fun withoutCleanup(j: JSONObject) = JSONObject(j.toString()).apply {
+        remove("allow_cloud_cleanup"); remove("cleanup_order"); remove("cleanup_off")
+    }
+
+    private fun withoutCleanup(fixture: String) = withoutCleanup(JSONObject(fixture)).toString()
+
     @Test fun devSettingsSerialiseToEveryRouterConfigFixture() {
         val token = "dev-token-0123456789abcdef"
         val cases = mapOf(
@@ -46,7 +56,10 @@ class RouterJsonTest {
             ),
         )
         for ((file, s) in cases) {
-            assertSameJson(fixture(file), s.toRouterConfigJson())
+            assertSameJson(fixture(file), withoutCleanup(s.toRouterConfigJson()))
+            assertEquals(file, "[\"local\",\"server\",\"cloud\"]", s.toRouterConfigJson().getJSONArray("cleanup_order").toString())
+            assertEquals(file, "[\"cloud\"]", s.toRouterConfigJson().getJSONArray("cleanup_off").toString())
+            assertFalse(file, s.toRouterConfigJson().getBoolean("allow_cloud_cleanup"))
             // …and parse back to the same settings (the UI-only badge flag is not part of RouterConfig).
             assertEquals(file, s, DevSettings.fromRouterConfigJson(fixture(file)))
         }
@@ -57,13 +70,17 @@ class RouterJsonTest {
         val s = DevSettings.defaults(BuildCaps.ALL).copy(
             host = "100.64.0.10", token = "dev-token-0123456789abcdef", allowCloud = true, allowCloudCleanup = true,
             routeOrder = listOf(DevSettings.Route.CLOUD, DevSettings.Route.SERVER, DevSettings.Route.CLIENT),
-            cleanupOrder = listOf(DevSettings.CleanupRoute.CLOUD, DevSettings.CleanupRoute.LOCAL),
+            // D36: the fixture's pre-D36 `cloud, local` gains the server right after the phone.
+            cleanupOrder = listOf(DevSettings.CleanupRoute.CLOUD, DevSettings.CleanupRoute.LOCAL, DevSettings.CleanupRoute.SERVER),
             cloud = CloudSettings(
                 stt = SttSettings().withConsent(1792540800000), cleanup = CleanupSettings().withConsent(1792540900000),
                 monthlyBudgetUsd = 5.0,
             ),
         )
-        assertSameJson(fixture("router_config_cloud.json"), s.toRouterConfigJson())
+        assertSameJson(withoutCleanup(fixture("router_config_cloud.json")), withoutCleanup(s.toRouterConfigJson()))
+        val j = s.toRouterConfigJson()
+        assertEquals("[\"cloud\",\"local\",\"server\"]", j.getJSONArray("cleanup_order").toString())
+        assertEquals("[]", j.getJSONArray("cleanup_off").toString()); assertTrue(j.getBoolean("allow_cloud_cleanup"))
         assertEquals(s, DevSettings.fromRouterConfigJson(fixture("router_config_cloud.json")))
         assertTrue(s.cloud.stt.consentOk); assertTrue(s.cloud.cleanup.consentOk)
         assertTrue(s.cloudCleanupRouted)
@@ -71,7 +88,9 @@ class RouterJsonTest {
         assertEquals(DevSettings.Prefer.SERVER, s.prefer)
         // A local build never sends cloud fields at all (C2).
         val local = JSONObject(s.routerConfigFor(BuildCaps.LOCAL))
-        for (k in listOf("cloud", "order", "allow_cloud", "allow_cloud_cleanup", "cleanup_order")) assertFalse(k, local.has(k))
+        for (k in listOf("cloud", "order", "allow_cloud", "allow_cloud_cleanup", "cleanup_order", "cleanup_off")) assertFalse(k, local.has(k))
+        // A remote build has no phone engine: the server and the cloud only.
+        assertEquals("[\"cloud\",\"server\"]", JSONObject(s.routerConfigFor(BuildCaps.REMOTE)).getJSONArray("cleanup_order").toString())
     }
 
     @Test fun cloudFixturesDecode() {
@@ -109,7 +128,10 @@ class RouterJsonTest {
     @Test fun cleanupStatusFixture() {
         val c = RouterJson.decodeCleanupStatus(fixture("cleanup_status.json"))
         assertTrue(c.supported && c.enabled && c.consent)
-        assertEquals(listOf("cloud", "local"), c.order)
+        assertEquals(listOf("cloud", "local", "server"), c.order)
+        // D36: the server's AI and its cleanup breaker.
+        assertEquals(true, c.serverLlm); assertEquals(CircuitStatus(), c.serverCircuit)
+        assertNull(RouterJson.decodeCleanupStatus("{}").serverLlm)
         assertNull(c.blocked); assertEquals(CircuitStatus(), c.circuit)
         assertEquals("meta-llama/llama-3.3-70b-instruct", c.model); assertEquals(2500L, c.timeoutMs)
         assertEquals(CleanUsage("cloud", "meta-llama/llama-3.3-70b-instruct", 0.0007, false, "gen-0000000000-fixture", 310, 640), c.last)

@@ -83,6 +83,10 @@ data class CleanupStatus(
     val timeoutMs: Long? = null,
     val last: CleanUsage? = null,
     val monthCostUsd: Double = 0.0,
+    /** D36: the server has an AI model (`hello_ok.features`); null = not known yet / no server. */
+    val serverLlm: Boolean? = null,
+    /** D36: the server cleanup's breaker, when the server is in the order and set up. */
+    val serverCircuit: CircuitStatus? = null,
 )
 
 /** D28 `nativeCloudKeyInfo` (`GET /api/v1/key`; never the key itself), or [error]. */
@@ -221,6 +225,8 @@ object RouterJson {
             model = o.optStringOrNull("model"), timeoutMs = o.optLongOrNull("timeout_ms"),
             last = CoreJson.decodeCleanUsage(o.optJSONObject("last")),
             monthCostUsd = o.optDoubleOrNull("month_cost_usd") ?: 0.0,
+            serverLlm = o.optBoolOrNull("server_llm"),
+            serverCircuit = o.optJSONObject("server_circuit")?.let(::circuitOf),
         )
     } catch (e: JSONException) {
         CleanupStatus()
