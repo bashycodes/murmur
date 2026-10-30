@@ -8,7 +8,10 @@
 // (0..1, ~every 150 ms), `dictation:preview`, `dictation:route`,
 // `dictation:live-route`, `dictation:max-warning` (ms left).
 // Error / fell-back bubbles carry a "Fix →" / "Choose a model →" link to
-// the settings page that fixes them (`overlay_action` open_settings).
+// the settings page that fixes them (`overlay_action` open_settings). The
+// window is click-through, so the page reports the link's box
+// (`overlay_action` link_rect, null once it is gone) and src/overlay.rs
+// makes just that box clickable. Theme: `overlay_theme` + `overlay:theme`.
 // Bar heights (px) from the artboard's waveform; the mic level scales them.
 const PROFILE = [6, 10, 16, 12, 20, 14, 8, 18, 22, 12, 9, 16, 11, 6, 14, 10, 7, 5];
 const GAIN = 5; // --level = min(1, 5 * v) for dictation
@@ -115,6 +118,7 @@ function setBubble(text, kind) {
         previewFix.dataset.page = fix.page;
     else
         delete previewFix.dataset.page;
+    scheduleLinkHit();
 }
 function showPreview(text) {
     setBubble(text);
@@ -122,6 +126,54 @@ function showPreview(text) {
 }
 const { listen } = window.__TAURI__.event;
 const overlayInvoke = window.__TAURI__.core.invoke;
+// Where the bubble's link is (CSS px in the canvas), sent whenever it
+// appears, moves (text / chips change the layout) or goes away. Only the
+// link box: the bubble text stays click-through.
+let linkSent = "null";
+let linkFrame = 0;
+function syncLinkHit() {
+    linkFrame = 0;
+    const shown = preview.classList.contains("visible") && !previewFix.hidden;
+    const r = shown ? previewFix.getBoundingClientRect() : null;
+    const rect = r && r.width > 0 && r.height > 0
+        ? { left: r.left, top: r.top, right: r.right, bottom: r.bottom }
+        : null;
+    const key = JSON.stringify(rect);
+    if (key === linkSent)
+        return;
+    linkSent = key;
+    void overlayInvoke("overlay_action", { action: "link_rect", rect }).catch(() => {
+        linkSent = ""; // refused (out of bounds): retry on the next change
+    });
+}
+function scheduleLinkHit() {
+    if (!linkFrame)
+        linkFrame = requestAnimationFrame(syncLinkHit);
+}
+// Visibility toggles and layout shifts (route / countdown chips, fonts).
+new ResizeObserver(scheduleLinkHit).observe(preview);
+new ResizeObserver(scheduleLinkHit).observe(document.querySelector(".above"));
+new MutationObserver(scheduleLinkHit).observe(preview, {
+    attributes: true,
+    attributeFilter: ["class", "hidden"],
+    subtree: true,
+});
+// Light / dark: .lw-dark on <html> (overlay.css) from the `theme` pref;
+// "system" follows Windows' app mode live.
+const darkMedia = window.matchMedia("(prefers-color-scheme: dark)");
+let themePref = "system";
+function applyTheme() {
+    const dark = themePref === "dark" || (themePref === "system" && darkMedia.matches);
+    document.documentElement.classList.toggle("lw-dark", dark);
+}
+function setThemePref(t) {
+    themePref = t === "light" || t === "dark" ? t : "system";
+    applyTheme();
+}
+applyTheme();
+darkMedia.addEventListener("change", applyTheme);
+void overlayInvoke("overlay_theme").then(setThemePref, () => { });
+void listen("overlay:theme", (e) => setThemePref(e.payload));
 // ✕ / ✓ in hands-free mode. The window never takes focus (WS_EX_NOACTIVATE),
 // so clicking does not steal the caret from the target app.
 for (const [id, action] of [

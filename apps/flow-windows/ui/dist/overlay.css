@@ -6,7 +6,8 @@
 
    The 512x614 window is transparent and click-through; the pill sits 14 px
    above the canvas bottom. src/overlay.rs mirrors the hands-free pill size
-   (187 x 36) for hit-testing the ✕ / ■ buttons — keep them in sync. */
+   (187 x 36) for hit-testing the ✕ / ■ buttons — keep them in sync. The
+   bubble's .fix link reports its own box (overlay.ts syncLinkHit). */
 
 @property --wave {
   syntax: "<number>";
@@ -60,21 +61,20 @@
 }
 
 /* Dark: flow-theme.css `.lw-dark` values. The bar stays near-black but
-   gets a hairline edge so it reads on dark wallpapers. */
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --destructive-500: #ff5757;
-    --warning-400: #f97316;
-    --shadow-lg: 0 4px 8px -2px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
-    --bar-edge: var(--vast-800);
-    --badge-l-bg: var(--fathom-950);
-    --badge-l-fg: var(--fathom-200);
-    --badge-s-bg: var(--dawn-950);
-    --badge-s-fg: var(--dawn-500);
-    --badge-c-bg: var(--glow-900);
-    --badge-c-fg: var(--glow-200);
-  }
+   gets a hairline edge so it reads on dark wallpapers. overlay.ts sets
+   .lw-dark from the `theme` pref (system = Windows' app mode). */
+:root.lw-dark {
+  color-scheme: dark;
+  --destructive-500: #ff5757;
+  --warning-400: #f97316;
+  --shadow-lg: 0 4px 8px -2px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --bar-edge: var(--vast-800);
+  --badge-l-bg: var(--fathom-950);
+  --badge-l-fg: var(--fathom-200);
+  --badge-s-bg: var(--dawn-950);
+  --badge-s-fg: var(--dawn-500);
+  --badge-c-bg: var(--glow-900);
+  --badge-c-fg: var(--glow-200);
 }
 
 html,
