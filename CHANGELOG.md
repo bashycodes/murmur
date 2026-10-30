@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-30
+
 ### Added
 
 - **Windows: Transforms.** Select text anywhere and press a shortcut to have
@@ -719,7 +721,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/bashycodes/murmur/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/bashycodes/murmur/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/bashycodes/murmur/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/bashycodes/murmur/compare/v0.6.0...v0.7.0
