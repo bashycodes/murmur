@@ -272,6 +272,15 @@ class DebugLogTest {
         assertTrue(line, line.contains("\"fallback\":\"connect_failed\",\"engine\":null,\"model\":null,\"language\":null,\"rtt_ms\""))
     }
 
+    @Test fun dictationLineCarriesTheLanguageSource() {
+        val o = JSONObject(DebugFormat.dictation(trace.copy(language = "he", languageSource = "keyboard")))
+        assertEquals("he", o.getString("language"))
+        assertEquals("keyboard", o.getString("language_source"))
+        val none = JSONObject(DebugFormat.dictation(trace))
+        assertTrue(none.has("language_source") && none.isNull("language_source"))
+        assertTrue(DebugFormat.summary(DebugFormat.dictation(trace.copy(language = "he", languageSource = "keyboard"))).contains("lang he (keyboard)"))
+    }
+
     @Test fun engineAndModelPerRoute() {
         val whisper = dev.flowclone.data.LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-base-q5_1.bin")
         val parakeet = dev.flowclone.data.LoadedAsr(dev.flowclone.core.AsrEngine.PARAKEET, "parakeet-int8")

@@ -34,6 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * literal mark kind, the dropped clause or count, the timeout or error). Both are dictated text:
  * "<redacted>" for protected targets, like `text`.
  * Since 2026-10-27: source (mic | wav: debug builds can feed a WAV file as the microphone).
+ * D37 (2026-10-31): language_source (keyboard | phone | fixed: where `language` came from).
  *
  * Logging must never affect dictation: entries are queued (bounded, drop-oldest) and written
  * on one background thread; every failure is swallowed and counted.
@@ -55,6 +56,8 @@ data class DictationTrace(
     val model: String? = null,
     /** Language sent to the engine ("auto" = detect). */
     val language: String? = null,
+    /** D37: where [language] came from: keyboard | phone | fixed (null = unknown). */
+    val languageSource: String? = null,
     val rttMs: Long? = null,
     val audioMs: Long? = null,
     /** Last speech → stop (shell-side energy tracker); null when no speech was heard. */
@@ -258,6 +261,7 @@ object DebugFormat {
         "llm_generation_id" to t.llmGenerationId,
         "stt_cost_usd" to t.sttCostUsd,
         "source" to t.source,
+        "language_source" to t.languageSource,
         "target" to t.target,
         "insert" to Raw(obj("outcome" to t.insert.outcome, "steps" to t.insert.steps)),
         "raw" to t.raw,
@@ -285,7 +289,7 @@ object DebugFormat {
         if (o.optString("kind") == "event") return@runCatching "$time  ${s("event")}: ${s("error") ?: ""}"
         val outcome = o.optJSONObject("insert")?.optString("outcome") ?: "?"
         val route = listOfNotNull(s("route") ?: "-", s("fallback")?.let { "($it)" }, s("engine"), s("model")).joinToString(" ") +
-            (s("language")?.let { " · lang $it" } ?: "") + (s("style")?.let { " · $it" } ?: "") +
+            (s("language")?.let { " · lang $it" + (s("language_source")?.let { src -> " ($src)" } ?: "") } ?: "") + (s("style")?.let { " · $it" } ?: "") +
             (dev.flowclone.data.LlmOutcome.label(s("llm"))?.let { " · $it" } ?: "") +
             (s("llm_engine")?.let { e -> " · AI " + (if (e == "cloud") "OpenRouter" else e) + (s("llm_model")?.let { " ${it.substringAfter('/')}" } ?: "") } ?: "") +
             (s("cleanup_route")?.let { c -> " · text by $c" + (s("cloud_fallback")?.let { " (cloud: $it)" } ?: "") } ?: "") +

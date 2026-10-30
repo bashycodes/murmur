@@ -32,7 +32,8 @@ import java.io.File
  *                  applies at once ([DevPages.withEngine], [DevPages.reorder]). OpenRouter asks for
  *                  its consent first, as on the OpenRouter page ([OpenRouterPage.enableStt]).
  *   On this phone  the model in use (name, language, size, import date) → engine choice and imports;
- *                  "Import another model"; keep it loaded (hybrid); Transcribe while I speak.
+ *                  "Import another model"; "Hebrew model" (D37: visible here, not only on the engine
+ *                  page); keep it loaded (hybrid); Transcribe while I speak.
  * "Use dictionary words" from the design is left out: Android has no such switch (Parakeet's beam
  * search mode stays in Developer settings → Engine options).
  */
@@ -54,6 +55,7 @@ internal class SpeechPage(
     private var modelSub: TextView? = null
     private var modelRow: View? = null
     private var importButton: android.widget.Button? = null
+    private var hebrewRow: DevUi.NavRow? = null
     private var keepWarm: DevUi.ToggleRow? = null
     private lateinit var transcribe: DevUi.ToggleRow
     private var reordering = false
@@ -80,6 +82,8 @@ internal class SpeechPage(
         col.card {
             if (caps.local) {
                 modelBlock()
+                // D37: the Hebrew model was only reachable through the model block → engine page.
+                hebrewRow = navRow(R.drawable.ic_set_language, "Hebrew model") { activity.startActivity(ModelImportActivity.hebrewIntent(activity)) }
                 if (caps.remote) {
                     keepWarm = toggleRow("Keep loaded while the server is used", "Instant fallback if the server drops, at the cost of memory", app.dev.load().keepLocalWarm)
                         .also { it.onChange { on -> saveDev(app.dev.load().copy(keepLocalWarm = on)) } }
@@ -188,6 +192,7 @@ internal class SpeechPage(
             importButton?.text = "Import another model"
         }
         modelRow?.contentDescription = "${title.text}, ${modelSub?.text}. Engine and models"
+        hebrewRow?.setSubtitle(SettingsSummary.hebrewModel(app.engine.hebrewModel()?.second?.label))
     }
 
     private fun renderEngines(d: DevSettings, s: Settings) {
