@@ -31,6 +31,10 @@ export interface CatalogEntry {
   page: string;
   dest: string;
   installed: boolean;
+  /** Installed with its extras (Hebrew: the language-ID model, H6). */
+  complete?: boolean;
+  /** Bytes a download would still fetch. */
+  missing?: number;
   available: boolean;
   files: CatalogFile[];
 }
@@ -285,7 +289,8 @@ function renderHebrewRow(): void {
   const stop = $<HTMLButtonElement>("he_stop");
   const bar = $<HTMLElement>("he_bar");
   const busy = Boolean(e && models.busy(e.id));
-  start.hidden = !e || e.installed || busy || !e.available;
+  const complete = e ? (e.complete ?? e.installed) : false;
+  start.hidden = !e || complete || busy || !e.available;
   start.disabled = models.busy();
   stop.hidden = !busy;
   bar.hidden = !busy;
@@ -294,7 +299,7 @@ function renderHebrewRow(): void {
     credit.append(`${e.license} · `, html(extLink(e.page, "model page")));
   }
   credit.hidden = !e;
-  if (e) start.textContent = `Download ${mb(e.size)}…`;
+  if (e) start.textContent = `Download ${mb(e.missing || e.size)}…`;
   const set = (text: string, cls = ""): void => {
     line.textContent = text;
     line.className = `hint${cls ? ` ${cls}` : ""}`;
@@ -319,9 +324,11 @@ function renderHebrewRow(): void {
     if (!e.available) credit.append(" · ", html(extLink(e.page, "Download page")));
     return;
   }
+  // Installed before the language-ID model came with it (H6).
+  const noLid = complete ? "" : ` Auto-detect needs a ${mb(e.missing ?? 0)} language-ID model: ${e.available ? "press Download" : "get it from the Whisper model page"}.`;
   switch (heStatus?.state) {
     case "ready":
-      set(`Ready for Hebrew (loaded in ${heStatus.load_ms} ms).`, "ok");
+      set(`Ready for Hebrew (loaded in ${heStatus.load_ms} ms).${noLid}`, "ok");
       break;
     case "loading":
       set("Loading…");
@@ -342,7 +349,7 @@ export const HEBREW_ROW = `
 <div class="fl-row lw-dl-row" id="he_row">
   <div class="fl-row-text">
     <div class="fl-row-title"><label for="hebrew_model">Hebrew model</label></div>
-    <div class="fl-row-desc">Used when the language is Hebrew (Settings → General); every other language keeps the model above. Zipformer is smaller and more accurate.<span class="lw-status-sub"><span class="lw-dl-bar" id="he_bar" hidden><span></span></span><span id="he_status"></span></span><span class="lw-status-sub lw-he-credit" id="he_credit" hidden></span></div>
+    <div class="fl-row-desc">Used when the language is Hebrew (Settings → General), or on Detect automatically when you speak Hebrew; every other language keeps the model above. Zipformer is smaller and more accurate. The download includes a 32 MB Whisper model that tells Hebrew from English.<span class="lw-status-sub"><span class="lw-dl-bar" id="he_bar" hidden><span></span></span><span id="he_status"></span></span><span class="lw-status-sub lw-he-credit" id="he_credit" hidden></span></div>
   </div>
   <div class="fl-row-control">
     <select id="hebrew_model" class="fl-select lw-w220" data-save="prefs" aria-label="Hebrew model">
