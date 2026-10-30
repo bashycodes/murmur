@@ -120,7 +120,7 @@ class DictionaryUiTest {
     }
 
     @Test fun snippetsTabShowsCardsSearchAndFab() {
-        store.replaceAll(listOf(DictEntry("my sign-off", "Thanks,\nBasil", true), DictEntry("on my way", "On my way, be there in 15 minutes.", true), DictEntry("Wolt", null, false)))
+        store.replaceAll(listOf(DictEntry("my sign-off", "Thanks,\nAlex", true), DictEntry("on my way", "On my way, be there in 15 minutes.", true), DictEntry("Wolt", null, false)))
         val (a, t) = tab(Tab.SNIPPETS)
         val tx = texts(a)
         assertTrue(tx.toString(), "my sign-off" in tx && "Thanks, Alex" in tx && "on my way" in tx)

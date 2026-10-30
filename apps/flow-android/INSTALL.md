@@ -372,6 +372,28 @@ are not used as hotwords). *Developer settings → Engine options → On-device 
 search with dictionary hotwords, plus a greedy recognizer) or *Beam only*; changing it reloads
 the engine.
 
+### Hebrew model (optional, local / hybrid)
+
+Hebrew dictation on whisper has 51–67 % word errors; a Hebrew model brings that to ~27 %
+(`docs/proposals/hebrew-stt.md`). The app never downloads it (D9): on the PC, download the four
+files from the pinned revision (`docs/findings/2026-10-30-hebrew-model-pins.md`):
+
+- **zipformer-he** (default, 69 MiB): `ivrit-ai/zipformer2-66m-streaming-he`, folder `sherpa-onnx/`:
+  `encoder.int8.onnx`, `decoder.int8.onnx`, `joiner.int8.onnx`, `tokens.txt`.
+- **parakeet-v3-he** (alternative, 642 MiB, ~1 GB RAM): `krut42/voice-parakeet-he-int8`, the same four names.
+
+Put them in one folder (or zip them; any folder depth inside the zip works), copy it to the phone
+(over Wi-Fi rather than a metered connection), then *Settings → Speech to text → Model on this
+phone → Hebrew model → Import model folder…* (or *Import .zip…*). The app copies the files into
+`files/hebrew/zipformer-he/` or `files/hebrew/parakeet-v3-he/` and checks each file's size and
+SHA-256 against the pins; anything else is refused with the file that differs.
+
+Set *Settings → Language* to *Hebrew* (or leave *Phone language* on a Hebrew phone). The phone keeps
+**one** speech model in RAM: while the language is Hebrew it loads only the Hebrew model, and
+switching to another language reloads the default engine (a few seconds; the Permissions page shows
+"Loading the Hebrew speech model…"). If the Hebrew model fails to load, whisper is used and the
+debug log says "Hebrew model failed: …". Auto-detect stays English-first.
+
 ## 5b. Server mode (hybrid / remote)
 
 1. On the server box: run `flow-server` (see `docs/protocol.md` / `crates/flow-server`), bound

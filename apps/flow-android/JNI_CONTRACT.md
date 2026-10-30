@@ -43,7 +43,7 @@ still runs and shows an in-app message (`NativeFlowCore.loadLibrary()` returns
 |---|---|---|---|---|
 | `nativeVersion(): String` | `()Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeVersion` | `(env: JNIEnv, _: JClass) -> jstring` | product version + commit (D26, `flow_build_info::FULL`), e.g. `"flow-ffi 0.2.0+1a2b3c4"` (`.dirty` suffix for a build from uncommitted changes). Called once right after `loadLibrary` as a link check |
 | `nativeLastError(): String?` | `()Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeLastError` | `(env, _: JClass) -> jstring` | Last error on this thread, or `null` |
-| `nativeLoadModels(modelConfigJson: String): Long` | `(Ljava/lang/String;)J` | `Java_dev_flowclone_core_NativeFlowCore_nativeLoadModels` | `(env, _: JClass, cfg: JString) -> jlong` | `FlowCore::load_models(&ModelConfig)`. Returns the handle, or `0` with the last error set. Slow (model load) and called off the main thread |
+| `nativeLoadModels(modelConfigJson: String): Long` | `(Ljava/lang/String;)J` | `Java_dev_flowclone_core_NativeFlowCore_nativeLoadModels` | `(env, _: JClass, cfg: JString) -> jlong` | `FlowCore::load_models(&ModelConfig)`; with the shell-only field `"load_language": "he"` (D33/H5) `FlowCore::load_models_for(&cfg, Some(lang))`, which loads only the model that language routes to (the `languages` entry, else the default). Returns the handle, or `0` with the last error set. Slow (model load) and called off the main thread |
 | `nativeUnload(handle: Long)` | `(J)V` | `Java_dev_flowclone_core_NativeFlowCore_nativeUnload` | `(env, _: JClass, h: jlong)` | Drop the box. `h == 0` is a no-op |
 | `nativeStartSession(handle: Long, sessionConfigJson: String): Boolean` | `(JLjava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeStartSession` | `(env, _: JClass, h: jlong, cfg: JString) -> jboolean` | `start_session(SessionConfig)`. Any previous session is cancelled. `false` comes with the last error set |
 | `nativePushAudio(handle: Long, pcm: ShortArray, length: Int): Boolean` | `(J[SI)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativePushAudio` | `(env, _: JClass, h: jlong, pcm: JShortArray, len: jint) -> jboolean` | `push_audio(&pcm[..len])`: 16 kHz mono PCM16, about 1600 samples (100 ms) per call. **Must not block**: copy with `get_short_array_region` into a stack/reused buffer, then push to the ring. Returns the core's bool (false = no session / samples dropped) |
@@ -70,7 +70,7 @@ frees the router and the local engine it owns.
 | `nativeProbeRouter(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeProbeRouter` | Blocking probe of the router's saved server; updates its circuit and `RouteStatus.health` (run after Save) |
 | `nativeRouteStatus(h: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeRouteStatus` | `RouteStatus` JSON `{last: RouteInfo?, circuit: {open, reason, retry_in_ms, until_config_change}, health: HealthReport?}`; `{}` for a core handle |
 | `nativeResetCircuit(h: Long)` | `(J)V` | `Java_dev_flowclone_core_NativeFlowCore_nativeResetCircuit` | Close the circuit breaker (Developer "Reset circuit"); no-op for a core handle |
-| `nativeSetLocalLoader(h: Long, modelConfigsJson: String): Boolean` | `(JLjava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetLocalLoader` | D24 on-demand local engine: a JSON array of `ModelConfig`s tried in order (`EnginePlan.attempts`); the router loads the first that works on its failover thread when a session needs the client route and none is warm (`keep_local_warm` off, server unreachable / circuit open). `[]` removes it. `false` + `bad_config` for bad JSON or a core handle. No network |
+| `nativeSetLocalLoader(h: Long, modelConfigsJson: String): Boolean` | `(JLjava/lang/String;)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeSetLocalLoader` | D24 on-demand local engine: a JSON array of `ModelConfig`s (each may carry `load_language`, as `nativeLoadModels`) tried in order (`EnginePlan.attempts`); the router loads the first that works on its failover thread when a session needs the client route and none is warm (`keep_local_warm` off, server unreachable / circuit open). `[]` removes it. `false` + `bad_config` for bad JSON or a core handle. No network |
 | `nativePrewarm(h: Long): Boolean` | `(J)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativePrewarm` | D24: open the server connection ahead of a dictation (**blocking** up to the connect timeout: off Main). Does nothing with the server route off / unconfigured / circuit open / a live session; a failure opens the circuit. `false` for a core handle |
 
 Router errors: `nativeStartSession(router)` returns `false` with kind `no_engine_enabled` /
@@ -243,6 +243,10 @@ Session semantics (2026-10-22, review fixes):
 {"asr_backend":"whisper" /* or "parakeet" (asr_path = model dir) or {"mock":{"text":"…"}} */, "asr_path":"/data/user/0/dev.flowclone/files/models/ggml-base-q5_1.bin",
  "llm_path":null /* or ".../files/llm/qwen2.5-0.5b-instruct-q4_k_m.gguf" when AI cleanup is on */,
  "llm_lib":null /* default lookup; host tests pass a path */, "threads":4}
+// ModelConfig while the dictation language routes to a Hebrew model (H5): only that model loads
+{"asr_backend":"whisper", "asr_path":"…/ggml-base-q5_1.bin", "llm_path":null, "llm_lib":null, "threads":4,
+ "languages":{"he":{"asr_backend":"sherpa_online" /* or "parakeet" */, "asr_path":"…/files/hebrew/zipformer-he"}},
+ "load_language":"he"}
 // SessionConfig
 {"languages":["en"], "dictionary":[{"word":"wispr","replacement":"Wispr","isSnippet":false}],
  "styles":{"personal":"formal","work":"formal","email":"formal","other":"formal"},

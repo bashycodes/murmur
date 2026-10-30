@@ -57,6 +57,16 @@ object SettingsPages {
         return if (all.any { it.first == stored }) all else all + (stored to LanguageDefault.name(stored))
     }
 
+    /**
+     * H5: the Language page's line about Hebrew, or null when Hebrew is not the next language.
+     * [installed] = the Hebrew slot's model; [local] = this build has on-device engines.
+     */
+    fun hebrewNote(effective: String, installed: HebrewModels.Kind?, local: Boolean): String? = when {
+        !local || !HebrewModels.isHebrew(effective) -> null
+        installed == null -> "Hebrew on this phone uses whisper (about 50–65 % word errors). Import a Hebrew model: Settings → Speech to text → Model on this phone → Hebrew model."
+        else -> "Hebrew uses ${installed.label}. Switching between Hebrew and another language reloads the speech model (a few seconds)."
+    }
+
     val LEVELS = listOf(
         CleanupLevel.LIGHT to "Light", CleanupLevel.MEDIUM to "Medium", CleanupLevel.HIGH to "High",
     )

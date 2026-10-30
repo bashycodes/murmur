@@ -52,6 +52,16 @@ else
   echo "libflow_llm.so: not packaged (AI cleanup unavailable; build with --llm)"
 fi
 echo "whisper linked: $("$bin/llvm-nm" "$so" 2>/dev/null | grep -c ' whisper_full' || true) whisper_full* symbols"
+# D33/H5: the Hebrew zipformer runs on sherpa's *online* recognizer: libflow_ffi.so must import
+# it and the shipped libsherpa-onnx-c-api.so must export it (offline-only builds lack it).
+sherpa="$dir/libsherpa-onnx-c-api.so"
+if [[ -f "$sherpa" ]]; then
+  for sym in SherpaOnnxCreateOnlineRecognizer SherpaOnnxCreateOnlineStream SherpaOnnxOnlineStreamAcceptWaveform SherpaOnnxDecodeOnlineStream SherpaOnnxOnlineStreamInputFinished SherpaOnnxGetOnlineStreamResultAsJson; do
+    "$bin/llvm-nm" -D --undefined-only "$so" | grep -qw "$sym" || { echo "libflow_ffi.so: does not import $sym (feature parakeet)"; fail=1; }
+    "$bin/llvm-nm" -D --defined-only "$sherpa" | grep -qw "$sym" || { echo "libsherpa-onnx-c-api.so: does not export $sym"; fail=1; }
+  done
+  echo "sherpa online (zipformer): $("$bin/llvm-nm" -D --undefined-only "$so" | grep -c 'SherpaOnnx.*Online' || true) online symbols imported"
+fi
 case "$flavor" in
   remote)
     bad=$(ls "$dir" | grep -E '^lib(whisper|sherpa|onnxruntime|flow_llm|c\+\+_shared|llama|ggml)' || true)
