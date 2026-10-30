@@ -16,6 +16,16 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Core: Hebrew zipformer engine.** A new speech engine, `sherpa_online`
+  (also accepted as `zipformer`), runs streaming sherpa-onnx models such as
+  ivrit.ai's 69 MB Hebrew zipformer. Use it as the Hebrew model
+  (`languages.he = {asr_backend: "sherpa_online", asr_path: <dir>}`) or as the
+  default one. Dictionary words are passed as hotwords, which fix the spelling
+  of words the model already hears. Builds without the `parakeet` feature
+  report a load error for it, as they do for Parakeet.
+
 ## [0.9.0] - 2026-10-30
 
 ### Added
