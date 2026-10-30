@@ -183,6 +183,10 @@ pub struct Prefs {
     pub learn_poll_ms: u64,
     /// Developer settings: engine routing (local / self-hosted server).
     pub developer: crate::dev_settings::DevSettings,
+    /// Transforms (docs/proposals/transforms.md): opt-in, auto-apply and
+    /// the saved transforms with their shortcuts. A file without it gets
+    /// the built-ins, off.
+    pub transforms: crate::transforms::TransformPrefs,
     /// Schema revision ([`PREFS_REV`]); missing = 0 (a pre-D22 file).
     #[serde(default = "rev_zero")]
     pub prefs_rev: u32,
@@ -228,6 +232,7 @@ impl Default for Prefs {
             learn_window_ms: 45_000,
             learn_poll_ms: 1_000,
             developer: crate::dev_settings::DevSettings::default(),
+            transforms: crate::transforms::TransformPrefs::default(),
             prefs_rev: PREFS_REV,
         }
     }
@@ -304,6 +309,9 @@ impl Prefs {
             }
             self.raw_mode = false;
         }
+        // Transforms: a file from before them was seeded with the
+        // built-ins by serde; ids and the auto-apply choice are tidied.
+        self.transforms.normalize();
         self.prefs_rev = PREFS_REV;
     }
 
@@ -338,6 +346,7 @@ impl Prefs {
             check("new-note", c, false)?;
         }
         check("command", &s.command, false)?;
+        self.transforms.validate()?;
         let mut all = vec![
             &s.ptt,
             &s.hands_free,
@@ -348,6 +357,7 @@ impl Prefs {
         ];
         all.extend(s.scratchpad.as_ref());
         all.extend(s.new_note.as_ref());
+        all.extend(self.transforms.all_chords());
         for (i, a) in all.iter().enumerate() {
             if all[i + 1..].contains(a) {
                 return Err("shortcuts must differ from each other".into());
@@ -367,6 +377,14 @@ impl Prefs {
             return Err("hands-free auto-stop must be 0.3-10 s of silence (or off)".into());
         }
         Ok(())
+    }
+
+    /// The shortcuts the keyboard hook serves: `shortcuts` plus the
+    /// transform chords while Transforms is on.
+    pub fn hotkey_bindings(&self) -> Bindings {
+        let mut b = self.shortcuts.clone();
+        (b.transforms, b.view_changes) = self.transforms.chords();
+        b
     }
 
     /// `SessionConfig.endpoint_silence_ms` for a hands-free session
@@ -934,6 +952,50 @@ mod tests {
         let mut p = Prefs::default();
         p.shortcuts.command = "C".parse().unwrap();
         assert!(p.validate().unwrap_err().contains("command"));
+    }
+
+    #[test]
+    fn transform_chords_must_differ_from_every_other_shortcut() {
+        let mut p = Prefs::default();
+        p.transforms.items[0].shortcut = Some(p.shortcuts.paste_last.clone());
+        assert!(p.validate().unwrap_err().contains("differ"));
+        let mut p = Prefs::default();
+        p.transforms.items[1].shortcut = p.transforms.items[0].shortcut.clone();
+        assert!(p.validate().unwrap_err().contains("differ"));
+        let mut p = Prefs::default();
+        p.transforms.view_changes = p.transforms.items[0].shortcut.clone();
+        assert!(p.validate().unwrap_err().contains("differ"));
+        let mut p = Prefs::default();
+        p.transforms.items[0].transform.instruction = " ".into();
+        assert!(p.validate().unwrap_err().contains("instruction"));
+    }
+
+    #[test]
+    fn hotkey_bindings_carry_transform_chords_only_when_enabled() {
+        let mut p = Prefs::default();
+        let b = p.hotkey_bindings();
+        assert!(b.transforms.is_empty() && b.view_changes.is_none());
+        assert_eq!(b.ptt, p.shortcuts.ptt);
+        p.transforms.enabled = true;
+        let b = p.hotkey_bindings();
+        assert_eq!(b.transforms.len(), 2);
+        assert_eq!(b.view_changes.unwrap().to_string(), "Win+Alt+O");
+    }
+
+    #[test]
+    fn old_prefs_get_the_builtin_transforms_off_and_they_round_trip() {
+        let (p, _) = load_str("transforms-old", r#"{"enable_sounds": true}"#);
+        assert!(!p.transforms.enabled);
+        assert_eq!(p.transforms.items.len(), 2);
+        let d = tmpdir("transforms-rt");
+        let path = d.join(FILE_NAME);
+        let mut q = p.clone();
+        q.transforms.enabled = true;
+        q.transforms.auto_apply = Some("polish".into());
+        q.transforms.items[1].shortcut = None;
+        q.save(&path).unwrap();
+        assert_eq!(Prefs::load(&path).0, q);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
