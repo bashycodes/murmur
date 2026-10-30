@@ -167,8 +167,10 @@ fn pcm_bytes(pcm: &[i16]) -> Vec<u8> {
 }
 
 fn pcm_from_bytes(b: &[u8]) -> Vec<i16> {
-    b.chunks_exact(2)
-        .map(|c| i16::from_le_bytes([c[0], c[1]]))
+    b.as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| i16::from_le_bytes(*c))
         .collect()
 }
 
@@ -1112,8 +1114,10 @@ mod tests {
             .unwrap();
         // A recognisable sample pattern ("AUDIOMARK" as PCM bytes).
         let mark: Vec<i16> = b"AUDIOMARKAUDIOMARK"
-            .chunks_exact(2)
-            .map(|c| i16::from_le_bytes([c[0], c[1]]))
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|c| i16::from_le_bytes(*c))
             .collect();
         h.record_audio(id, &mark, None, 20).unwrap();
         assert!(h.delete(id).unwrap());

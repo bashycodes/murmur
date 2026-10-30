@@ -357,6 +357,7 @@ pub fn wav(pcm: &[i16]) -> Vec<u8> {
     b
 }
 
+#[cfg_attr(not(unix), allow(unused_variables))]
 fn private(o: &mut fs::OpenOptions) {
     #[cfg(unix)]
     {
