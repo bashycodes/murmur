@@ -25,12 +25,20 @@ ${group("What leaves this PC", `<div class="fl-row lw-leave" id="leave_none">
     leave("leave_server", ICON.server, "Audio to your server", "settings-server") +
     leave("leave_or_audio", ICON.cloud, "Audio to OpenRouter", "settings-speech") +
     leave("leave_or_text", ICON.cloud, "Text to OpenRouter", "settings-cleanup"))}
-${group("History", row("Keep dictation history", "Shown on Home. Stored only on this PC; audio is never stored.", `<select id="retention" class="fl-select lw-w160" aria-label="Keep dictation history">
+${group("History", row("Keep dictation history", "Shown on Home. Stored only on this PC.", `<select id="retention" class="fl-select lw-w160" aria-label="Keep dictation history">
       <option value="keep">Forever</option>
       <option value="days_30">30 days</option>
       <option value="days_7">7 days</option>
       <option value="never">Don't keep</option>
     </select>`) +
+    row("Keep recordings for retry", "The audio of your newest dictations, so Retry on Home can transcribe them again with your current settings. Never kept for password fields; deleted with its dictation.", `<select id="retry_audio_keep" class="fl-select lw-w160" aria-label="Keep recordings for retry">
+        <option value="0">Don't keep</option>
+        <option value="5">Newest 5</option>
+        <option value="10">Newest 10</option>
+        <option value="20">Newest 20</option>
+        <option value="50">Newest 50</option>
+        <option value="100">Newest 100</option>
+      </select>`) +
     row("Delete all history", "Erases every saved dictation from disk. This can't be undone.", `<button type="button" id="hist_clear" class="fl-btn fl-btn-destructive">Delete</button>`))}
 ${group("Troubleshooting", row("Debug log", `Saves each dictation's text and timings to a file here, for bug reports. <b>Includes what you said.</b> Never uploaded, and never holds your server token or API keys.`, toggle("dev_debug_log", "Debug log")) +
     row("Log file", `<span id="dev_debug_count">Empty</span>`, `<button type="button" class="fl-btn fl-btn-ghost" id="dev_debug_clear">Clear</button>
@@ -98,6 +106,24 @@ function showRetention(r) {
 async function saveRetention() {
     try {
         await prefsStore.save({ retention: $("retention").value });
+        setStatus("priv_status", "Saved", true);
+        await reloadHistory();
+    }
+    catch (e) {
+        setStatus("priv_status", String(e), false);
+    }
+}
+/** A value saved outside the list (another count) is shown as is. */
+function showRetryKeep(n) {
+    const s = $("retry_audio_keep");
+    const v = String(n ?? 20);
+    if (![...s.options].some((o) => o.value === v))
+        s.add(new Option(`Newest ${v}`, v));
+    s.value = v;
+}
+async function saveRetryKeep() {
+    try {
+        await prefsStore.save({ retry_audio_keep: Number($("retry_audio_keep").value) });
         setStatus("priv_status", "Saved", true);
         await reloadHistory();
     }
@@ -175,10 +201,14 @@ export const settingsPrivacyPage = {
     init() {
         $("retention").addEventListener("change", () => void saveRetention());
         $("hist_clear").addEventListener("click", () => void clearHistory());
+        $("retry_audio_keep").addEventListener("change", () => void saveRetryKeep());
         $("dev_debug_log").addEventListener("change", () => void debugLogToggled());
         $("dev_debug_open").addEventListener("click", () => void debugCall("debug_log_open_folder", {}, "Opened the log folder"));
         $("dev_debug_clear").addEventListener("click", () => void debugCall("debug_log_clear", {}, "Debug log deleted").then((v) => v && showDebugLog(v)));
-        prefsStore.subscribe((p) => showRetention(p.retention));
+        prefsStore.subscribe((p) => {
+            showRetention(p.retention);
+            showRetryKeep(p.retry_audio_keep);
+        });
         views.onDev(showLeaves);
         views.onOr(showLeaves);
         void onEvent("history:changed", () => {

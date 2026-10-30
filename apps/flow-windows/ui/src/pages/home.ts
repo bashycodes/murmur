@@ -1,7 +1,9 @@
 // Home (Dictation), after Main.dc.html / DarkHome.dc.html: the greeting with
 // the push-to-talk keys, where speech goes, the local history (copy,
 // re-paste, delete, undo AI edit = use the raw ASR text instead of the
-// cleaned one; a pill per row for where speech ran) and the stats rail
+// cleaned one; retry = re-transcribe the kept recording with today's
+// settings, with numbered pills to view earlier versions; a pill per row
+// for where speech ran) and the stats rail
 // (Insights counts, where speech ran this week, OpenRouter spend).
 // Retention lives in Settings → Data and privacy.
 
@@ -37,7 +39,21 @@ interface HistoryItem {
   original?: string | null;
   /** The transform's name, when one ran (docs/proposals/transforms.md). */
   transform?: string | null;
+  /** The recording is still kept: Retry is offered. */
+  has_audio?: boolean;
+  /** Every version once retried (0 = the original, last = this row's text). */
+  versions?: HistoryVersion[];
 }
+
+interface HistoryVersion {
+  n: number;
+  ts: number;
+  text: string;
+  route: Route | null;
+}
+
+/** Rows with a retry running (their Retry button stays busy across reloads). */
+const retrying = new Set<number>();
 
 const TEMPLATE = `
 <div class="lw-home">
@@ -161,7 +177,10 @@ function historyRow(h: HistoryItem): HTMLElement {
   const row = el("div", "fl-list-row lw-hist-row");
   const body = el("div", "lw-hist-body");
   row.dataset.id = String(h.id);
-  body.append(el("p", "lw-hist-text", h.final_text));
+  const text = el("p", "lw-hist-text", h.final_text);
+  body.append(text);
+  const versions = h.versions ?? [];
+  if (versions.length > 1) body.append(versionTabs(versions, text));
   // Only the exceptions get a badge; "AI edited" shows as the undo button.
   if (h.edited || h.pasted === null || h.transform) {
     const meta = el("div", "lw-hist-meta");
@@ -191,6 +210,12 @@ function historyRow(h: HistoryItem): HTMLElement {
     iconButton("Copy", ICON.copy, () => void act(invoke("history_copy", { id: h.id, raw: false }), "Copied")),
     iconButton("Paste again", ICON.paste, () => void act(invoke("history_repaste", { id: h.id, raw: false }), "Pasted")),
   );
+  if (h.has_audio && !h.command) {
+    const b = iconButton("Retry with current settings", ICON.retry, () => void retry(h.id, b));
+    b.classList.add("lw-retry");
+    if (retrying.has(h.id)) busy(b, true);
+    actions.append(b);
+  }
   if (changes) {
     const panel = changes;
     actions.append(
@@ -242,6 +267,50 @@ function historyRow(h: HistoryItem): HTMLElement {
   row.append(time, body, actions);
   if (h.route) row.append(el("span", `lw-route is-${h.route}`, ROUTE_LABEL[h.route]));
   return row;
+}
+
+/** Numbered pills (0 = the original): view an earlier version's text in
+ *  place. View only: copy and paste always use the newest. */
+function versionTabs(versions: HistoryVersion[], text: HTMLElement): HTMLElement {
+  const tabs = el("div", "lw-ver");
+  tabs.setAttribute("role", "tablist");
+  tabs.setAttribute("aria-label", "Versions");
+  const newest = versions.length - 1;
+  const pills = versions.map((v, i) => {
+    const b = el("button", "lw-ver-tab", String(v.n));
+    b.type = "button";
+    b.setAttribute("role", "tab");
+    b.title = `${v.n === 0 ? "Original" : `Retry ${v.n}`}, ${timeText(v.ts)}${v.route ? `, ${ROUTE_LABEL[v.route]}` : ""}${i === newest ? " (current)" : ""}`;
+    b.addEventListener("click", () => {
+      text.textContent = v.text;
+      text.classList.toggle("is-old", i !== newest);
+      pills.forEach((p, j) => p.setAttribute("aria-selected", String(j === i)));
+    });
+    b.setAttribute("aria-selected", String(i === newest));
+    return b;
+  });
+  tabs.append(...pills);
+  return tabs;
+}
+
+function busy(b: HTMLButtonElement, on: boolean): void {
+  b.disabled = on;
+  b.classList.toggle("is-busy", on);
+  b.setAttribute("aria-busy", String(on));
+}
+
+/** Re-transcribe row `id` with today's settings; `history:retry` ends it. */
+async function retry(id: number, b: HTMLButtonElement): Promise<void> {
+  retrying.add(id);
+  busy(b, true);
+  setStatus("hist_status", "Retrying with your current settings…", true);
+  try {
+    await invoke("history_retry", { id });
+  } catch (e) {
+    retrying.delete(id);
+    busy(b, false);
+    setStatus("hist_status", String(e), false);
+  }
 }
 
 /** Rows grouped by day, newest first (the backend's order). */
@@ -428,6 +497,17 @@ export const homePage: Page = {
       }
     });
     void onEvent<number | null>("transforms:view", (e) => void viewChanges(e.payload ?? null));
+    void onEvent<{ id: number; error: string | null }>("history:retry", (e) => {
+      const { id, error } = e.payload;
+      retrying.delete(id);
+      const b = document.querySelector<HTMLButtonElement>(`#hist_list .lw-hist-row[data-id="${id}"] .lw-retry`);
+      if (b) busy(b, false);
+      if (error) setStatus("hist_status", error, false);
+      else {
+        setStatus("hist_status", "Retried: the newest version is shown", true);
+        void reloadHistory();
+      }
+    });
     void onEvent<null>("insights:changed", () => {
       if (router.active() === "home") void loadStats();
     });

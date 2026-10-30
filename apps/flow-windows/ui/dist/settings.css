@@ -742,3 +742,50 @@ details.defaults summary {
 :root.lw-dark .lw-engines:hover {
   background: var(--background-tertiary);
 }
+
+/* History retry: numbered version pills (0 = the original), view only. */
+.lw-ver {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.lw-ver-tab {
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--background-secondary);
+  color: var(--foreground-secondary);
+  font: 550 11px/20px var(--font-sans);
+  cursor: pointer;
+}
+.lw-ver-tab:hover {
+  background: var(--muted-hover);
+}
+.lw-ver-tab[aria-selected="true"] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.lw-ver-tab:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.lw-hist-text.is-old {
+  color: var(--foreground-tertiary);
+}
+.lw-retry.is-busy {
+  opacity: 0.6;
+}
+.lw-retry.is-busy .fl-icon {
+  animation: lw-spin 1s linear infinite;
+}
+@keyframes lw-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.lw-hist-actions:has(.lw-retry.is-busy) {
+  opacity: 1;
+}
