@@ -6,13 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
-import android.view.Gravity
-import android.view.Menu
-import android.view.MenuItem
 import android.view.View
 import android.widget.LinearLayout
-import android.widget.RadioButton
-import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import android.window.OnBackInvokedCallback
@@ -41,16 +36,17 @@ import kotlin.concurrent.thread
 
 /**
  * Developer settings (docs/hybrid-architecture.md §5) as a hub + focused sub-pages, one
- * activity instance per page ([EXTRA_PAGE]):
+ * activity instance per page ([EXTRA_PAGE]), under the design's top bar (back, title, Save):
  *   hub      status card (route in use, last dictation engine + client_ms, circuit) and one
  *            row per page showing its current value; build info, reset, lock
- *   routing  engines, route order, keep warm, engine badge, Parakeet decoding; Test session
+ *   engines  engine badge, Parakeet decoding (both apply at once); Test session. Which engines
+ *            are on and their order: Settings → Speech to text (2026-10-30, [SpeechPage])
  *   server   host, port, TLS, pin, token (secret), timeouts; Test connection
  * The cloud (D28: OpenRouter only, speech-to-text and text cleanup) has its own page,
  * [OpenRouterActivity], opened from the hub's CONNECTION card.
  *   debug    debug log, keep last dictation audio (both apply at once, as before)
  *   status   active engine, circuits, server info, native capabilities; Reset circuit
- * Pages with form fields have Save in the top bar, enabled once something changed and the
+ * The Server page has Save in the top bar, enabled once something changed and the
  * whole form validates. Save writes the whole [DevSettings] like the old single page
  * ([DevDraft], [DevSettingsForm]); settings apply from the next dictation.
  */
@@ -60,8 +56,7 @@ class DeveloperActivity : Activity() {
     private lateinit var ui: DevUi
     private lateinit var page: Page
     private lateinit var draft: DevDraft
-    private var saveItem: MenuItem? = null
-    private var routeOrder = DevSettings.DEFAULT_ORDER
+    private var saveButton: View? = null
     private val refreshers = ArrayList<() -> Unit>()
     private var backCallback: OnBackInvokedCallback? = null
     private var banner: DevUi.Result? = null
@@ -71,11 +66,10 @@ class DeveloperActivity : Activity() {
         page = intent.getStringExtra(EXTRA_PAGE)?.let { n -> Page.entries.firstOrNull { it.name == n } } ?: Page.HUB
         ui = DevUi(this)
         title = TITLES.getValue(page)
-        if (page != Page.HUB) actionBar?.setDisplayHomeAsUpEnabled(true)
         load()
         when (page) {
             Page.HUB -> renderHub()
-            Page.ROUTING -> renderRouting()
+            Page.ENGINES -> renderEngines()
             Page.SERVER -> renderServer()
             Page.DEBUG -> renderDebug()
             Page.STATUS -> renderStatus()
@@ -98,37 +92,29 @@ class DeveloperActivity : Activity() {
         // The OpenRouter page / another sub-page may have saved meanwhile.
         val stored = app.dev.load()
         draft = draft.rebase(stored)
-        routeOrder = draft.draft.routeOrder
         if (hasForm) validate()
         refresh()
     }
 
     private fun load() {
-        val s = app.dev.load()
-        draft = DevDraft.of(s, page)
-        routeOrder = s.routeOrder
+        draft = DevDraft.of(app.dev.load(), page)
     }
 
-    private val hasForm get() = page == Page.ROUTING || page == Page.SERVER
+    private val hasForm get() = page == Page.SERVER
 
     private fun refresh() { for (r in refreshers) r() }
 
-    // ---- top bar Save ----
+    // ---- top bar (back, Save on the Server page) ----
 
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        if (!hasForm) return false
-        saveItem = menu.add(Menu.NONE, MENU_SAVE, Menu.NONE, "Save").apply {
-            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS or MenuItem.SHOW_AS_ACTION_WITH_TEXT)
-            isEnabled = draft.canSave(caps)
-            contentDescription = "Save ${TITLES.getValue(page)}"
+    private fun page(build: LinearLayout.() -> Unit): LinearLayout = with(ui) {
+        screen {
+            val bar = topBar(
+                TITLES.getValue(page), DevUi.TopNav.BACK, onNav = { if (hasForm) confirmLeave() else finish() },
+                actions = if (hasForm) listOf(DevUi.TopAction(R.drawable.ic_lw_check, "Save ${TITLES.getValue(page)}") { onSave() }) else emptyList(),
+            )
+            saveButton = bar.actions.firstOrNull()
+            build()
         }
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
-        MENU_SAVE -> { onSave(); true }
-        android.R.id.home -> { if (hasForm) confirmLeave() else finish(); true }
-        else -> super.onOptionsItemSelected(item)
     }
 
     /** Unsaved edits: ask before dropping them. */
@@ -148,7 +134,7 @@ class DeveloperActivity : Activity() {
 
     private fun renderHub() = with(ui) {
         app.migrateCloud()
-        screen {
+        page {
             cloudNotice()
             sectionLabel("STATUS")
             card {
@@ -173,9 +159,11 @@ class DeveloperActivity : Activity() {
 
             sectionLabel("DICTATION")
             card {
-                val routing = navRow(R.drawable.ic_dev_route, "Routing & engines") { open(Page.ROUTING) }
+                val speech = navRow(R.drawable.ic_dev_route, "Speech to text", "") { SettingsActivity.open(this@DeveloperActivity, dev.flowclone.data.SettingsPages.Page.SPEECH) }
+                val engines = navRow(R.drawable.ic_dev_engine, TITLES.getValue(Page.ENGINES)) { open(Page.ENGINES) }
                 refreshers += {
-                    routing.setSubtitle(DevSummary.routing(app.dev.load(), caps) + if (caps.local) " · Parakeet ${app.dev.parakeetDecoding.wire}" else "")
+                    speech.setSubtitle("Engines and order · " + DevSummary.routing(app.dev.load(), caps))
+                    engines.setSubtitle(DevSummary.engineOptions(app.dev.load().showEngineBadge, if (caps.local) app.dev.parakeetDecoding.wire else null))
                 }
             }
 
@@ -228,108 +216,48 @@ class DeveloperActivity : Activity() {
     }
 
     // =====================================================================================
-    // Routing & engines
+    // Engine options (engines + order: Settings → Speech to text)
     // =====================================================================================
 
-    private lateinit var allowServer: DevUi.ToggleRow
-    private lateinit var allowClient: DevUi.ToggleRow
-    private lateinit var keepWarm: DevUi.ToggleRow
-    private lateinit var badge: DevUi.ToggleRow
-    private var orderBox: LinearLayout? = null
-    private var orderCount: TextView? = null
     private var sessionResult: DevUi.Result? = null
 
-    private fun renderRouting() = with(ui) {
+    private fun renderEngines() = with(ui) {
         val s = app.dev.load()
-        screen {
-            banner = banner()
-            sectionLabel("ENGINES")
+        page {
+            note("Which engines are on and their order: Settings → Speech to text.")
+            sectionLabel("PREVIEW")
             card {
-                allowServer = toggleRow("Allow server", if (caps.remote) "Your flow-server over your LAN or a VPN" else CloudText.NOT_IN_BUILD.cap(), s.allowServer && caps.remote, enabled = caps.remote)
-                allowClient = toggleRow("Allow on-device", if (caps.local) "The speech model on this phone" else CloudText.NOT_IN_BUILD.cap(), s.allowClient && caps.local, enabled = caps.local)
-            }
-            sectionLabel("ROUTE ORDER")
-            card {
-                orderCount = cardHeader("Try in this order", "")
-                note("The first available route is used; the next ones are fallbacks.")
-                orderBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }.also(::addView)
-            }
-            sectionLabel("OPTIONS")
-            card {
-                keepWarm = toggleRow("Keep on-device model warm", "Stays loaded while the server is preferred: instant fallback. Off: loaded on demand when the server is unreachable", s.keepLocalWarm && caps.local, enabled = caps.local)
-                badge = toggleRow("Engine badge", "Show S / L on the preview line (• = fallback)", s.showEngineBadge)
+                toggleRow("Engine badge", "Show S / L on the preview line (• = fallback). Applies at once", s.showEngineBadge)
+                    .onChange { on ->
+                        app.dev.save(app.dev.load().copy(showEngineBadge = on))
+                        app.engine.applyDevSettings(app.dev.load())
+                    }
             }
             if (caps.local) parakeetCard()
             action("Test session") { onTestSession() }
             sessionResult = result()
             note("Sends 1 s of silence through the saved routes; expect EMPTY (no_speech).")
         }
-        for (t in listOf(allowServer, allowClient, keepWarm, badge)) t.onChange { validate() }
     }
 
     /** D22 Parakeet decoding: applies at once (not part of Save), as before. */
     private fun LinearLayout.parakeetCard() = with(ui) {
         sectionLabel("ON-DEVICE DECODING (PARAKEET)")
         card {
-            note("Applies immediately and reloads the engine.")
-            val labels = mapOf(
-                ParakeetDecoding.AUTO to "Auto\nBeam search for dictionary words (≈ +0.6 GB RAM)",
-                ParakeetDecoding.GREEDY to "Greedy (default)\nOne recognizer, less RAM",
-                ParakeetDecoding.BEAM to "Beam only\nThe old behaviour",
-            )
-            val group = RadioGroup(context).apply { orientation = RadioGroup.VERTICAL; setPadding(dp(8), 0, dp(16), dp(8)) }
-            for (m in ParakeetDecoding.entries) {
-                group.addView(RadioButton(context).apply {
-                    id = View.generateViewId(); tag = m
-                    text = labels.getValue(m); textSize = 15f; setTextColor(p.text)
-                    buttonTintList = android.content.res.ColorStateList.valueOf(p.accent)
-                    minHeight = dp(56)
-                    isChecked = m == app.dev.parakeetDecoding
-                })
-            }
-            group.setOnCheckedChangeListener { g, id ->
-                val m = g.findViewById<View>(id)?.tag as? ParakeetDecoding ?: return@setOnCheckedChangeListener
-                if (m == app.dev.parakeetDecoding) return@setOnCheckedChangeListener
+            choiceRows(
+                listOf(
+                    DevUi.Choice(ParakeetDecoding.AUTO, "Auto", "Beam search for dictionary words (≈ +0.6 GB RAM)"),
+                    DevUi.Choice(ParakeetDecoding.GREEDY, "Greedy (default)", "One recognizer, less RAM"),
+                    DevUi.Choice(ParakeetDecoding.BEAM, "Beam only", "The old behaviour"),
+                ),
+                app.dev.parakeetDecoding,
+            ) { m ->
                 app.dev.parakeetDecoding = m
                 if (app.settings.load().asrEngine == dev.flowclone.core.AsrEngine.PARAKEET) app.engine.reload()
                 Toast.makeText(this@DeveloperActivity, "Parakeet decoding: ${m.wire}", Toast.LENGTH_SHORT).show()
             }
-            addView(group)
         }
-    }
-
-    private fun routeShown(r: DevSettings.Route) = when (r) {
-        DevSettings.Route.SERVER -> if (page == Page.ROUTING) allowServer.isChecked else draft.draft.allowServer && caps.remote
-        DevSettings.Route.CLIENT -> if (page == Page.ROUTING) allowClient.isChecked else draft.draft.allowClient && caps.local
-        DevSettings.Route.CLOUD -> draft.draft.allowCloud && caps.cloud
-    }
-
-    /** Route order rows with ↑ / ↓ for the routes this build and the toggles allow. */
-    private fun renderOrder() = with(ui) {
-        val box = orderBox ?: return
-        box.removeAllViews()
-        val shown = routeOrder.filter { routeShown(it) }
-        orderCount?.text = "${shown.size} on"
-        if (shown.isEmpty()) box.note("No route is on: turn on an engine above.", p.danger)
-        shown.forEachIndexed { i, r ->
-            val name = when (r) {
-                DevSettings.Route.SERVER -> "Server (your flow-server)"
-                DevSettings.Route.CLIENT -> "Phone (on-device)"
-                DevSettings.Route.CLOUD -> "Cloud: " + CloudText.routeName(app.dev.load().cloud)
-            }
-            box.addView(LinearLayout(this@DeveloperActivity).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(4), dp(8), dp(4)); minimumHeight = dp(56)
-                addView(TextView(context).apply { text = "${i + 1}.  $name"; textSize = 16f; setTextColor(p.text) }, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
-                addView(iconButton(R.drawable.ic_dev_up, "Move $name up") { move(r, -1) }.apply { isEnabled = i > 0; alpha = if (i > 0) 1f else 0.3f })
-                addView(iconButton(R.drawable.ic_dev_down, "Move $name down") { move(r, +1) }.apply { isEnabled = i < shown.lastIndex; alpha = if (i < shown.lastIndex) 1f else 0.3f })
-            })
-        }
-    }
-
-    private fun move(r: DevSettings.Route, dir: Int) {
-        routeOrder = DevPages.move(routeOrder, r, dir, ::routeShown)
-        validate()
+        note("Applies immediately and reloads the engine.")
     }
 
     /** 1 s of silence through the full router path with the saved toggles: expect EMPTY no_speech. */
@@ -370,7 +298,7 @@ class DeveloperActivity : Activity() {
     private fun renderServer() = with(ui) {
         val s = app.dev.load()
         val edit = { if (::draft.isInitialized && fieldRows.isNotEmpty()) validate(); Unit }
-        screen {
+        page {
             banner = banner()
             if (!caps.remote) note("This build has no network code: the server route is not available.", p.danger, 14f)
             sectionLabel("ADDRESS")
@@ -435,7 +363,7 @@ class DeveloperActivity : Activity() {
 
     private fun renderDebug() = with(ui) {
         var debugToggle: DevUi.ToggleRow? = null
-        screen {
+        page {
             sectionLabel("DEBUG LOG")
             card {
                 debugToggle = toggleRow("Debug log", "Includes transcripts", app.dev.debugLog)
@@ -550,7 +478,7 @@ class DeveloperActivity : Activity() {
     // =====================================================================================
 
     private fun renderStatus() = with(ui) {
-        screen {
+        page {
             sectionLabel("LAST DICTATION")
             lateinit var last: TextView
             card { last = infoRow("Active engine") }
@@ -620,10 +548,6 @@ class DeveloperActivity : Activity() {
 
     /** This page's views → the draft (other pages' values stay as stored). */
     private fun readViews(i: DevSettingsForm.Input): DevSettingsForm.Input = when (page) {
-        Page.ROUTING -> i.copy(
-            allowServer = allowServer.isChecked, allowClient = allowClient.isChecked, routeOrder = routeOrder,
-            keepLocalWarm = keepWarm.isChecked, showEngineBadge = badge.isChecked,
-        )
         Page.SERVER -> i.copy(
             host = host.text, port = port.text, tls = tls.isChecked, pin = pin.text, token = token.text,
             connectTimeoutMs = connectTimeout.text, commitTimeoutBaseMs = commitTimeout.text, healthTtlS = healthTtl.text,
@@ -643,12 +567,11 @@ class DeveloperActivity : Activity() {
             pin.edit.isEnabled = tls.isChecked
             pin.edit.alpha = if (tls.isChecked) 1f else 0.5f
         }
-        renderOrder()
         val off = DevPages.offPageErrors(r, page)
         val lines = DevPages.warningsFor(page, r.warnings) + off.map { (f, e) -> "$e (on the ${TITLES.getValue(DevPages.pageOf(f))} page)" }
         banner?.show(lines.joinToString("\n"), if (off.isNotEmpty() || DevSettingsForm.BOTH_OFF in lines) Tone.BAD else Tone.WARN)
         val can = draft.canSave(caps)
-        saveItem?.let { if (it.isEnabled != can) it.isEnabled = can }
+        saveButton?.let { if (it.isEnabled != can) { it.isEnabled = can; it.alpha = if (can) 1f else 0.35f } }
         return r
     }
 
@@ -696,10 +619,9 @@ class DeveloperActivity : Activity() {
 
     companion object {
         const val EXTRA_PAGE = "page"
-        private const val MENU_SAVE = 1
 
         val TITLES = mapOf(
-            Page.HUB to "Developer settings", Page.ROUTING to "Routing & engines", Page.SERVER to "Server",
+            Page.HUB to "Developer settings", Page.ENGINES to "Engine options", Page.SERVER to "Server",
             Page.DEBUG to "Debug log & audio", Page.STATUS to "Status",
         )
 

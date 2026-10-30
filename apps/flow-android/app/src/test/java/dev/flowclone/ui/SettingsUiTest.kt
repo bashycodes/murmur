@@ -52,15 +52,31 @@ class SettingsUiTest {
     @Test fun hubShowsEverySectionAndTheFlavourGates() {
         val a = launch()
         val t = texts(a)
-        for (want in listOf("STATUS", "DICTATION", "BUBBLE & APPS", "PRIVACY", "ADVANCED", "ABOUT", "Language", "Writing style", "Chats casual · Email formal", "Timing & limits", "Bubble", "Excluded apps", "History", "Mock engine")) {
+        val caps = FlowApp.of(a).caps
+        // AndroidSettings.dc.html: General / Models / Connections / Data & privacy.
+        for (want in listOf("General", "Models", "Data & privacy", "Advanced", "About", "Language", "Writing style", "Chats casual · Email formal",
+            "Bubble size", "Excluded apps", "Timing and limits", "Speech to text", "Keep history", "Debug log", "Learn from my edits", "Mock engine")) {
             assertTrue(want, want in t)
         }
-        // docs/hybrid-architecture.md §1.4: `remote` has no on-device engine, model import or LLM.
-        assertEquals(BuildConfig.CAP_LOCAL, "Speech engine" in t)
-        assertEquals(BuildConfig.CAP_LOCAL, "AI cleanup" in t)
-        assertTrue(t.any { it.startsWith("Version ") && "(${FlowApp.of(a).caps.flavor})" in it })
+        // Omitted on purpose: no opacity setting, no screen reading.
+        for (gone in listOf("Bubble opacity", "Use what's on screen")) assertFalse(gone, gone in t)
+        // docs/hybrid-architecture.md §1.4: `remote` has no on-device engine; its cleanup is OpenRouter's.
+        assertEquals(BuildConfig.CAP_LOCAL || caps.cloud, "AI cleanup" in t)
+        assertEquals(caps.remote || caps.cloud, "Connections" in t)
+        assertEquals(caps.remote, "Your server" in t)
+        assertEquals(caps.cloud, dev.flowclone.data.OpenRouter.NAME in t)
+        assertTrue(t.any { it.startsWith("Version ") && "(${caps.flavor})" in it })
         // remote always shows Developer settings; local / hybrid only once unlocked.
         assertEquals(FlowApp.of(a).dev.visible, "Developer settings" in t)
+    }
+
+    @Test fun hubHasATopBarWithBackAndNoOptionsMenu() {
+        val a = launch()
+        val back = walk(a.window.decorView).filterIsInstance<android.widget.ImageButton>().first()
+        assertEquals("Back", back.contentDescription)
+        assertTrue("Settings" in texts(a))
+        back.performClick()
+        assertTrue(a.isFinishing)
     }
 
     @Test fun aboutRowShowsTheAppVersionLabelAndSevenTapsStillUnlock() {
@@ -83,16 +99,28 @@ class SettingsUiTest {
     @Test fun hubRowsShowTheirCurrentValue() {
         val a = launch()
         val t = texts(a)
-        assertTrue(t.toString(), "Live preview · shrinks to a dot · shake to restore" in t)
-        assertTrue("None (banking apps are always excluded)" in t)
-        assertTrue("Keep everything" in t)
-        assertTrue(t.any { it.startsWith("Stops after 1.5 s of silence") })
-        val row = rowTitled(a, "Bubble")
-        assertTrue(row.contentDescription.toString(), row.contentDescription.startsWith("Bubble, Live preview"))
+        assertTrue(t.toString(), "100% · live preview · shrinks to a dot · shake to restore" in t)
+        assertTrue("Banking apps" in t)
+        assertTrue("Until you delete it. Stored only on this phone." in t)
+        assertTrue(t.any { it.startsWith("Stops after a 1.5 s pause") })
+        val row = rowTitled(a, "Bubble size")
+        assertTrue(row.contentDescription.toString(), row.contentDescription.startsWith("Bubble size, 100%"))
+    }
+
+    @Test fun debugLogRowAppliesAtOnce() {
+        val a = launch()
+        val app = FlowApp.of(a)
+        val was = app.dev.debugLog
+        val row = rowTitled(a, "Debug log")
+        assertEquals(Switch::class.java.name, row.createAccessibilityNodeInfo().className)
+        row.performClick()
+        assertEquals(!was, app.dev.debugLog)
+        row.performClick()
+        assertEquals(was, app.dev.debugLog)
     }
 
     @Test fun everyTouchTargetIsAtLeast48dp() {
-        for (p in listOf(Page.HUB, Page.LANGUAGE, Page.STYLE, Page.APP_STYLES, Page.TIMING, Page.BUBBLE, Page.APPS, Page.HISTORY) + if (BuildConfig.CAP_LOCAL) listOf(Page.ENGINE, Page.CLEANUP) else emptyList()) {
+        for (p in listOf(Page.HUB, Page.SPEECH, Page.LANGUAGE, Page.STYLE, Page.APP_STYLES, Page.TIMING, Page.BUBBLE, Page.APPS, Page.HISTORY) + if (BuildConfig.CAP_LOCAL) listOf(Page.ENGINE, Page.CLEANUP) else emptyList()) {
             val a = launch(p)
             for (v in walk(a.window.decorView).filter { it.isClickable && it.visibility == View.VISIBLE && !(it is TextView && it.isTextSelectable && it !is EditText) }) {
                 val h = maxOf(v.minimumHeight, v.height)
@@ -188,11 +216,11 @@ class SettingsUiTest {
     @Test fun formPageSavesOnlyWhenChangedAndValidAndAsksBeforeDiscarding() {
         val ctl = Robolectric.buildActivity(SettingsActivity::class.java, SettingsActivity.intent(androidx_ctx(), Page.TIMING)).setup().visible()
         val a = ctl.get()
-        // The test theme has no action bar: drive the activity's own menu callbacks.
-        val menu = org.robolectric.fakes.RoboMenu(a)
-        a.onCreateOptionsMenu(menu)
-        val home = org.robolectric.fakes.RoboMenuItem(android.R.id.home)
-        val save = menu.findItem(1)
+        // Top bar: back first, Save as the trailing action (no options menu).
+        val buttons = walk(a.window.decorView).filterIsInstance<android.widget.ImageButton>()
+        val back = buttons.first { it.contentDescription == "Back" }
+        val save = buttons.first { it.contentDescription.toString().startsWith("Save") }
+        assertEquals("Save Timing & limits", save.contentDescription)
         assertFalse("nothing changed yet", save.isEnabled)
         val fields = walk(a.window.decorView).filterIsInstance<EditText>()
         val cap = fields[1]
@@ -202,16 +230,17 @@ class SettingsUiTest {
         cap.setText("12")
         assertTrue(save.isEnabled)
         // Back with unsaved edits asks first.
-        a.onOptionsItemSelected(home)
+        back.performClick()
         val d = ShadowAlertDialog.getLatestAlertDialog()
         assertNotNull(d); assertTrue(d.isShowing)
         assertFalse(a.isFinishing)
         d.dismiss()
-        a.onOptionsItemSelected(save)
+        save.performClick()
         assertEquals(12, FlowApp.of(a).settings.load().capMinutes)
         assertFalse("clean after Save", save.isEnabled)
-        a.onOptionsItemSelected(home)
+        back.performClick()
         assertTrue("clean page leaves without asking", a.isFinishing)
+        FlowApp.of(a).settings.save(FlowApp.of(a).settings.load().copy(capMinutes = dev.flowclone.data.Settings().capMinutes))
     }
 
     /** D27: one choice group per bucket, apply at once, with an example line per choice. */
@@ -239,7 +268,7 @@ class SettingsUiTest {
     @Test fun hubOffersBackupAndRestoreThroughTheSystemFilePicker() {
         val a = launch()
         val t = texts(a)
-        for (want in listOf("BACK UP & RESTORE", "Export all data", "Restore from a backup", dev.flowclone.data.Backup.SECRETS_NOTE)) assertTrue(want, want in t)
+        for (want in listOf("Back up & restore", "Export all data", "Restore from a backup", dev.flowclone.data.Backup.SECRETS_NOTE)) assertTrue(want, want in t)
         rowTitled(a, "Export all data").performClick()
         val export = shadowOf(a).nextStartedActivityForResult.intent
         assertEquals(android.content.Intent.ACTION_CREATE_DOCUMENT, export.action)

@@ -2,6 +2,8 @@ package dev.flowclone.data
 
 import dev.flowclone.core.AsrEngine
 import dev.flowclone.core.CleanupLevel
+import dev.flowclone.core.HealthReport
+import dev.flowclone.core.Rtt
 import dev.flowclone.data.SettingsPages.Field
 import dev.flowclone.data.SettingsPages.Page
 import org.junit.Assert.assertEquals
@@ -20,7 +22,7 @@ class SettingsPagesTest {
         val remote = SettingsPages.visiblePages(BuildCaps.REMOTE)
         assertFalse(Page.ENGINE in remote)
         assertFalse(Page.CLEANUP in remote)
-        for (p in listOf(Page.LANGUAGE, Page.STYLE, Page.APP_STYLES, Page.TIMING, Page.BUBBLE, Page.APPS, Page.HISTORY)) assertTrue("$p", p in remote)
+        for (p in listOf(Page.LANGUAGE, Page.STYLE, Page.APP_STYLES, Page.SPEECH, Page.TIMING, Page.BUBBLE, Page.APPS, Page.HISTORY)) assertTrue("$p", p in remote)
     }
 
     @Test fun localAndHybridShowEveryPage() {
@@ -73,10 +75,11 @@ class SettingsPagesTest {
         }
     }
 
-    @Test fun decodeWhileSpeakingSavesWithTheTimingPage() {
-        val d = draft(Page.TIMING).edit { copy(decodeWhileSpeaking = false) }
-        assertTrue(d.canSave())
-        assertFalse(d.result().settings!!.decodeWhileSpeaking)
+    @Test fun timingSaveLeavesTranscribeWhileISpeakAlone() {
+        // "Transcribe while I speak" is a switch on Speech to text now (applies at once).
+        val out = draft(Page.TIMING).edit { copy(capMinutes = "9") }.result(s.copy(decodeWhileSpeaking = false)).settings!!
+        assertFalse(out.decodeWhileSpeaking)
+        assertEquals(9, out.capMinutes)
     }
 
     @Test fun denylistIsTrimmedDedupedAndValidated() {
@@ -181,22 +184,85 @@ class SettingsPagesTest {
     }
 
     @Test fun timingBubbleAppsHistorySubtitles() {
-        assertEquals("Stops after 1.5 s of silence · decode while speaking · 5 min limit", SettingsSummary.timing(s))
-        assertEquals("Stops when you tap · 20 min limit", SettingsSummary.timing(s.copy(endpointSilenceMs = 0, decodeWhileSpeaking = false, capMinutes = 20)))
-        assertEquals("Stops after 0.3 s of silence · 1 min limit", SettingsSummary.timing(s.copy(endpointSilenceMs = 300, decodeWhileSpeaking = false, capMinutes = 1)))
-        assertEquals("Live preview · shrinks to a dot · shake to restore", SettingsSummary.bubble(s))
-        assertEquals("Shake to restore", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false)))
-        assertEquals("Live preview · shrinks when idle · shake to restore", SettingsSummary.bubble(s.copy(shrinkToDot = false)))
-        assertEquals("Shake to restore", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false, shrinkToDot = true)))
-        assertEquals("Preview, dot and shake off", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false, shakeToReveal = false)))
-        assertEquals("Live preview · shrinks to a dot · shake to restore · 125% size", SettingsSummary.bubble(s.copy(bubbleScale = 1.25f)))
-        assertEquals("Preview, dot and shake off · 75% size", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false, shakeToReveal = false, bubbleScale = 0.75f)))
-        assertEquals("None (banking apps are always excluded)", SettingsSummary.apps(s))
-        assertEquals("1 app", SettingsSummary.apps(s.copy(userDenylist = setOf("a.b"))))
-        assertEquals("2 apps", SettingsSummary.apps(s.copy(userDenylist = setOf("a.b", "c.d"))))
+        // AndroidSettings.dc.html: "Stops after a 2 s pause · 5 min max", "Banking apps and 2 more", "1 day. Stored only on this phone."
+        assertEquals("Stops after a 1.5 s pause · 5 min max", SettingsSummary.timing(s))
+        assertEquals("Stops when you tap · 20 min max", SettingsSummary.timing(s.copy(endpointSilenceMs = 0, capMinutes = 20)))
+        assertEquals("Stops after a 2 s pause · 1 min max", SettingsSummary.timing(s.copy(endpointSilenceMs = 2000, capMinutes = 1)))
+        assertEquals("100% · live preview · shrinks to a dot · shake to restore", SettingsSummary.bubble(s))
+        assertEquals("100% · shake to restore", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false)))
+        assertEquals("100% · live preview · shrinks when idle · shake to restore", SettingsSummary.bubble(s.copy(shrinkToDot = false)))
+        assertEquals("75%", SettingsSummary.bubble(s.copy(livePreview = false, shrinkBubble = false, shakeToReveal = false, bubbleScale = 0.75f)))
+        assertEquals("Banking apps", SettingsSummary.apps(s))
+        assertEquals("Banking apps and 1 more", SettingsSummary.apps(s.copy(userDenylist = setOf("a.b"))))
+        assertEquals("Banking apps and 2 more", SettingsSummary.apps(s.copy(userDenylist = setOf("a.b", "c.d"))))
+        assertEquals("Until you delete it. Stored only on this phone.", SettingsSummary.keepHistory(Retention.KEEP))
+        assertEquals("1 day. Stored only on this phone.", SettingsSummary.keepHistory(Retention.DAY))
+        assertEquals("Off. Nothing is saved.", SettingsSummary.keepHistory(Retention.NEVER))
         assertEquals("Keep everything", SettingsSummary.history(Retention.KEEP))
-        assertEquals("Last 24 hours", SettingsSummary.history(Retention.DAY))
-        assertEquals("Never saved", SettingsSummary.history(Retention.NEVER))
+    }
+
+    // ---- Models / Connections rows ----
+
+    private val dev = DevSettings.defaults(BuildCaps.ALL).copy(host = "100.64.0.10", token = "tok_0123456789abcdef")
+
+    @Test fun speechToTextRowListsTheEnginesThatAreOnInOrder() {
+        val caps = BuildCaps.ALL
+        assertEquals("Your server, then this phone", SettingsSummary.speech(dev, caps))
+        assertEquals("This phone, then your server", SettingsSummary.speech(dev.copy(routeOrder = listOf(DevSettings.Route.CLIENT, DevSettings.Route.SERVER)), caps))
+        assertEquals("This phone only", SettingsSummary.speech(dev.copy(allowServer = false), caps))
+        assertEquals("Off: no engine is on", SettingsSummary.speech(dev.copy(allowServer = false, allowClient = false), caps))
+        assertEquals("OpenRouter, then your server, then this phone", SettingsSummary.speech(OpenRouterPage.enableStt(dev, 1), caps))
+        // A build without the server sees only the phone, whatever is stored.
+        assertEquals("This phone only", SettingsSummary.speech(dev, BuildCaps.LOCAL))
+    }
+
+    @Test fun aiCleanupRowNamesStrengthEnginesAndRules() {
+        val caps = BuildCaps.ALL
+        assertEquals("Rules only", SettingsSummary.cleanupRow(s, dev, caps))
+        assertEquals("Off", SettingsSummary.cleanupRow(s.copy(spokenCleanup = false), dev, caps))
+        assertEquals("Light · This phone, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true), dev, caps))
+        val cloud = OpenRouterPage.enableCleanup(dev, 1, caps)
+        assertEquals("Medium · OpenRouter, then rules", SettingsSummary.cleanupRow(s.copy(cleanup = CleanupLevel.MEDIUM), cloud, caps))
+        assertEquals("High · OpenRouter, then this phone, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true, cleanup = CleanupLevel.HIGH), cloud, caps))
+        assertEquals("Light · This phone, then OpenRouter", SettingsSummary.cleanupRow(s.copy(llmEnabled = true, spokenCleanup = false), OpenRouterPage.withCleanupOrder(cloud, cloudFirst = false), caps))
+        // No consent recorded: the cloud is not used, so not named.
+        assertEquals("Rules only", SettingsSummary.cleanupRow(s, dev.copy(allowCloudCleanup = true, cleanupOrder = DevSettings.CLEANUP_CLOUD_FIRST), caps))
+    }
+
+    @Test fun serverRowFromTheLastHealthProbe() {
+        val caps = BuildCaps.ALL
+        val ok = HealthReport(ok = true, rttMs = Rtt(30, 41, 60))
+        assertEquals("Connected · 41 ms", SettingsSummary.server(dev, caps, ok))
+        assertEquals("Not reachable", SettingsSummary.server(dev, caps, HealthReport(ok = false, error = "connect_failed")))
+        assertEquals("Checking…", SettingsSummary.server(dev, caps, null, checking = true))
+        assertEquals("Not checked yet", SettingsSummary.server(dev, caps, null))
+        assertEquals("Not set up", SettingsSummary.server(DevSettings.defaults(caps), caps, ok))
+        assertEquals("Off · 100.64.0.10", SettingsSummary.server(dev.copy(allowServer = false), caps, ok))
+        assertEquals("Not in this build", SettingsSummary.server(dev, BuildCaps.LOCAL, ok))
+    }
+
+    @Test fun openRouterRowShowsKeyAndThisMonthsCost() {
+        val u = CloudUsage("2026-10", listOf(CloudUsage.ProviderUsage("openrouter", costUsd = 0.30), CloudUsage.ProviderUsage("openrouter", costUsd = 0.12, purpose = CloudUsage.PURPOSE_CLEANUP)))
+        assertEquals("Key saved · \$0.42 this month", SettingsSummary.openRouter(true, u))
+        assertEquals("No key · \$0 this month", SettingsSummary.openRouter(false, CloudUsage()))
+    }
+
+    @Test fun engineLines() {
+        assertEquals("Parakeet · works offline", SettingsSummary.phoneEngine(s.copy(asrEngine = AsrEngine.PARAKEET), "w.bin", "pk"))
+        assertEquals("Whisper · works offline", SettingsSummary.phoneEngine(s.copy(asrEngine = AsrEngine.PARAKEET), "w.bin", null))
+        assertEquals("No model imported", SettingsSummary.phoneEngine(s, null, null))
+        assertEquals("Sends audio · asks first", SettingsSummary.cloudEngine(dev, hasKey = false))
+        val on = OpenRouterPage.enableStt(dev, 1)
+        assertEquals("Sends audio · " + OpenRouter.DEFAULT_STT_MODEL.substringAfter('/'), SettingsSummary.cloudEngine(on, hasKey = true))
+        assertEquals("Sends audio · " + OpenRouter.DEFAULT_STT_MODEL.substringAfter('/') + " · no key", SettingsSummary.cloudEngine(on, hasKey = false))
+    }
+
+    @Test fun phoneModelCardLine() {
+        val oct20 = java.time.LocalDate.of(2026, 10, 20).atStartOfDay(java.time.ZoneOffset.UTC).toInstant().toEpochMilli()
+        val date = { ms: Long -> java.time.format.DateTimeFormatter.ofPattern("MMM d", java.util.Locale.US).withZone(java.time.ZoneOffset.UTC).format(java.time.Instant.ofEpochMilli(ms)) }
+        assertEquals("English · 640 MB · imported Oct 20", SettingsSummary.modelLine(AsrEngine.PARAKEET, "parakeet-tdt-0.6b-v2-int8", 640_000_000, oct20, date))
+        assertEquals("English · 60 MB · imported Oct 20", SettingsSummary.modelLine(AsrEngine.WHISPER, "ggml-base.en-q5_1.bin", 60_000_000, oct20, date))
+        assertEquals("Many languages · 60 MB", SettingsSummary.modelLine(AsrEngine.WHISPER, "ggml-base-q5_1.bin", 60_000_000, 0, date))
     }
 
     @Test fun bubbleSizeDefaultsTo100PercentAndStaysOnTheSliderGrid() {
