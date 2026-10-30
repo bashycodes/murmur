@@ -17,7 +17,7 @@ import { showOr } from "./openrouter.js";
 type LlmStatus =
   | { state: "off" }
   | { state: "loading"; path: string }
-  | { state: "ready"; path: string; plugin: string; load_ms: number }
+  | { state: "ready"; path: string; plugin: string; load_ms: number; backend?: { backend: string; device: string; gpu_error?: string } }
   | { state: "missing"; path: string }
   | { state: "plugin_missing"; path: string; message: string }
   | { state: "failed"; path: string; message: string };
@@ -79,7 +79,7 @@ function llmText(st: LlmStatus): string {
     case "loading":
       return `Loading ${st.path}… (can take a minute; dictation works meanwhile, without cleanup)`;
     case "ready":
-      return `${fileStem(st.path)}. Private; loaded in ${(st.load_ms / 1000).toFixed(1)} s.`;
+      return `${fileStem(st.path)}. Private; ${where(st.backend)}loaded in ${(st.load_ms / 1000).toFixed(1)} s.`;
     case "missing":
       return `Model file not found: ${st.path}. Dictation keeps working without cleanup.`;
     case "plugin_missing":
@@ -87,6 +87,13 @@ function llmText(st: LlmStatus): string {
     case "failed":
       return `Model failed to load (${st.path}): ${st.message}`;
   }
+}
+
+/** "on the GPU (Intel Arc 140V); " / "on the CPU; " / "" (older engine). */
+function where(b: { backend: string; device: string; gpu_error?: string } | undefined): string {
+  if (!b) return "";
+  if (b.backend.toLowerCase() !== "cpu") return `on the graphics chip (${b.device}); `;
+  return b.gpu_error ? "on the CPU (the graphics chip failed to load it); " : "on the CPU; ";
 }
 
 function fileStem(path: string): string {

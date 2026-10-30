@@ -364,7 +364,13 @@ fn apply_llm_status(app: &AppHandle, item: &MenuItem<tauri::Wry>, st: &LlmStatus
     let line = match st {
         LlmStatus::Off => "AI cleanup: off".to_string(),
         LlmStatus::Loading { path } => format!("AI cleanup: loading {}…", file(path)),
-        LlmStatus::Ready { path, .. } => format!("AI cleanup: {}", file(path)),
+        LlmStatus::Ready { path, backend, .. } => {
+            let on = match backend {
+                Some(b) if b.is_gpu() => " (GPU)",
+                _ => "",
+            };
+            format!("AI cleanup: {}{on}", file(path))
+        }
         LlmStatus::Missing { .. } => "⚠ AI cleanup model missing — open Settings".to_string(),
         LlmStatus::PluginMissing { .. } => {
             format!(
@@ -847,6 +853,30 @@ fn model_catalog(state: tauri::State<'_, AppState>) -> Vec<crate::model_download
         // llama.cpp is a plugin (flow_llm.dll) loaded by the local engine.
         ModelEngine::Llm => cfg!(feature = "local-engine"),
     })
+}
+
+/// Where local AI cleanup would run (GPU or CPU), for Settings → AI
+/// cleanup's model recommendation. Loads the plugin on first use (cached),
+/// so the page asks only when it shows the cleanup models.
+#[tauri::command]
+async fn llm_backend(state: tauri::State<'_, AppState>) -> Result<core_adapter::LlmBackendView, String> {
+    if !cfg!(feature = "local-engine") {
+        return Ok(core_adapter::LlmBackendView::from_probe(Err(
+            flow_core::llama::LlamaLoadError::Backend("this build has no local engine".into()),
+        )));
+    }
+    let lib = state
+        .prefs
+        .read()
+        .unwrap()
+        .llm_lib_path
+        .as_deref()
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(str::to_string);
+    tauri::async_runtime::spawn_blocking(move || core_adapter::llm_backend_probe(lib.as_deref()))
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Download catalogue model `id` (D9/D31: only ever sent after the user
@@ -2390,6 +2420,7 @@ pub fn run() {
             pick_path,
             open_external,
             model_catalog,
+            llm_backend,
             model_download_start,
             model_download_cancel,
             model_delete,

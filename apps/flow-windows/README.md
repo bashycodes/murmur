@@ -265,10 +265,17 @@ neither is downloaded automatically:
 
 * the GGUF model, default `%APPDATA%\FlowClone\models\qwen2.5-0.5b-instruct-q4_k_m.gguf`
   (`qwen2.5-1.5b-instruct-q4_k_m.gguf` is more accurate, ~2x slower);
-  `tools/fetch-models.sh --llm` fetches both on explicit request;
-* the engine plugin `flow_llm.dll` **next to `flow-windows.exe`** (or the
-  path in "Engine library"). llama.cpp cannot be linked into the exe:
-  whisper.cpp and llama.cpp each bundle a different ggml (D10).
+  `tools/fetch-models.sh --llm` fetches both on explicit request. Settings
+  → AI cleanup → On this PC downloads these and Llama 3.2 3B, and
+  recommends Llama 3.2 3B when cleanup runs on a GPU, Qwen2.5 1.5B
+  otherwise (benchmark: `docs/findings/2026-10-30-laptop-model-benchmark.md`);
+* the engine plugin **next to `flow-windows.exe`** (or the path in "Engine
+  library"): `flow_llm_vulkan.dll` (GPU through Vulkan) is tried first,
+  then `flow_llm.dll` (CPU). The Vulkan one does not load on a PC without
+  `vulkan-1.dll` (it comes with the GPU driver); with Vulkan but no usable
+  GPU, or a GPU that fails to load the model, it runs on the CPU.
+  `FLOW_LLM_DEVICE=cpu` forces the CPU. llama.cpp cannot be linked into
+  the exe: whisper.cpp and llama.cpp each bundle a different ggml (D10).
 
 Speech recognition is ready long before the LLM (10-50 s load on CPU,
 a few seconds more since prompt v2, whose instructions are prefilled at
@@ -432,8 +439,8 @@ and clippy, and uploads two artifacts, each with an MSI and an NSIS setup:
 | `flow-clone-windows-client` | `--no-default-features --features local,app,parakeet` | this PC only; no network code |
 
 Both ship `sherpa-onnx-c-api.dll` + `onnxruntime.dll` next to the exe
-(Parakeet). They do **not** ship `flow_llm.dll` (AI cleanup reports "engine
-missing"; build it as in step 3 below if you want it) and no model files.
+(Parakeet) and the AI cleanup engine, `flow_llm_vulkan.dll` (GPU) +
+`flow_llm.dll` (CPU). They ship no model files.
 The installers are unsigned: SmartScreen says "Windows protected your PC" →
 More info → Run anyway.
 
@@ -493,6 +500,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
    cd apps\flow-windows
    ```
    llama-cpp-sys-2 needs CMake, clang (`LIBCLANG_PATH`) and MSVC, like whisper. It is built with OpenMP, so `vcomp140.dll` (Visual C++ Redistributable) must be present on the target PC.
+   For the GPU build, install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows) (sets `VULKAN_SDK`; CI uses the version in `.github/workflows/windows-build.yml`), then `cargo build --release -p flow-llm --features vulkan` and copy `target\release\flow_llm.dll` as `flow_llm_vulkan.dll` next to the exe.
 4. Run it:
    ```powershell
    cargo run --features app

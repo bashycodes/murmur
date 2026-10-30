@@ -59,6 +59,10 @@ pub struct CatalogEntry {
     /// The model's page, for "Download links" and the confirm dialog.
     pub page: &'static str,
     pub recommended: bool,
+    /// AI cleanup only: the model recommended when local cleanup runs on a
+    /// GPU (`llm_backend` probe; [`recommended_llm`]). `recommended` is then
+    /// the pick for a CPU-only PC.
+    pub recommended_gpu: bool,
     /// `None`: a default model (the engine for every language). `Some("he")`:
     /// the model of that language's route (D33 `languages.he`).
     pub language: Option<&'static str>,
@@ -108,6 +112,11 @@ macro_rules! qwen15_base {
         "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/"
     };
 }
+macro_rules! llama32_3b_base {
+    () => {
+        "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/5ab33fa94d1d04e903623ae72c95d1696f09f9e8/"
+    };
+}
 macro_rules! whisper_base {
     () => {
         "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/"
@@ -128,6 +137,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         dest: crate::core_adapter::DEFAULT_PARAKEET_DIR,
         page: "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
         recommended: true,
+        recommended_gpu: false,
         language: None,
         license: None,
         extras: &[],
@@ -146,6 +156,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         dest: crate::core_adapter::DEFAULT_MODEL_FILE,
         page: "https://huggingface.co/ggerganov/whisper.cpp",
         recommended: false,
+        recommended_gpu: false,
         language: None,
         license: None,
         extras: &[],
@@ -159,6 +170,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         dest: "ggml-small-q5_1.bin",
         page: "https://huggingface.co/ggerganov/whisper.cpp",
         recommended: false,
+        recommended_gpu: false,
         language: None,
         license: None,
         extras: &[],
@@ -172,6 +184,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         dest: crate::core_adapter::ZIPFORMER_HE_DIR,
         page: "https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he",
         recommended: true,
+        recommended_gpu: false,
         language: Some(crate::core_adapter::HEBREW),
         license: Some("CC-BY-4.0 · Yakov Kolani / ivrit.ai"),
         extras: LID_FILES,
@@ -190,6 +203,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         dest: crate::core_adapter::PARAKEET_HE_DIR,
         page: "https://huggingface.co/krut42/voice-parakeet-he-int8",
         recommended: false,
+        recommended_gpu: false,
         language: Some(crate::core_adapter::HEBREW),
         license: Some("CC-BY-4.0 · krut42, based on thewh1teagle/parakeet-tdt-0.6b-v3-he"),
         extras: LID_FILES,
@@ -205,11 +219,12 @@ pub const CATALOG: &[CatalogEntry] = &[
     CatalogEntry {
         id: "qwen2.5-0.5b-instruct-q4_k_m",
         title: "Qwen2.5 0.5B Instruct",
-        desc: "Fast · the default",
+        desc: "Fastest · the default, but misses many fixes",
         engine: ModelEngine::Llm,
         dest: crate::core_adapter::DEFAULT_LLM_FILE,
         page: "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF",
-        recommended: true,
+        recommended: false,
+        recommended_gpu: false,
         language: None,
         license: None,
         extras: &[],
@@ -218,17 +233,48 @@ pub const CATALOG: &[CatalogEntry] = &[
     CatalogEntry {
         id: "qwen2.5-1.5b-instruct-q4_k_m",
         title: "Qwen2.5 1.5B Instruct",
-        desc: "More accurate · about twice as slow",
+        desc: "More accurate · the pick without a GPU (about 1 s on a laptop CPU)",
         engine: ModelEngine::Llm,
         dest: "qwen2.5-1.5b-instruct-q4_k_m.gguf",
         page: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF",
-        recommended: false,
+        recommended: true,
+        recommended_gpu: false,
         language: None,
         license: None,
         extras: &[],
         files: &[model_file!(qwen15_base!(), "qwen2.5-1.5b-instruct-q4_k_m.gguf", 1_117_320_736, "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e")],
     },
+    // Best local quality inside the budget on a GPU (Vulkan): 80 % on the
+    // 88-suite, p50 0.62 s on an Arc 140V iGPU; too slow on a CPU.
+    // docs/findings/2026-10-30-laptop-model-benchmark.md.
+    CatalogEntry {
+        id: LLAMA32_3B_ID,
+        title: "Llama 3.2 3B Instruct",
+        desc: "Most accurate · needs a GPU (Vulkan); slow on the CPU",
+        engine: ModelEngine::Llm,
+        dest: "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+        page: "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF",
+        recommended: false,
+        recommended_gpu: true,
+        language: None,
+        license: Some("Llama 3.2 Community License · Built with Llama"),
+        extras: &[],
+        files: &[model_file!(llama32_3b_base!(), "Llama-3.2-3B-Instruct-Q4_K_M.gguf", 2_019_377_696, "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff")],
+    },
 ];
+
+/// Catalogue id of Llama 3.2 3B (the GPU pick).
+pub const LLAMA32_3B_ID: &str = "llama-3.2-3b-instruct-q4_k_m";
+
+/// The cleanup model Settings recommends: Llama 3.2 3B when local cleanup
+/// runs on a GPU, Qwen2.5 1.5B on a CPU-only PC (the 0.5B default scores
+/// 43 % on the 88-suite, the 1.5B 74 %; benchmark 2026-10-30).
+pub fn recommended_llm(gpu: bool) -> &'static CatalogEntry {
+    CATALOG
+        .iter()
+        .find(|e| e.is_llm() && if gpu { e.recommended_gpu } else { e.recommended })
+        .expect("the catalogue has a CPU and a GPU cleanup pick")
+}
 
 /// The language-ID model the Hebrew entries bring along (H6/D34; hash and
 /// size checked 2026-10-30 by downloading it once, equal to the HF LFS id).
@@ -383,6 +429,8 @@ pub struct CatalogView {
     pub desc: &'static str,
     pub engine: ModelEngine,
     pub recommended: bool,
+    /// AI cleanup: recommended when cleanup runs on a GPU.
+    pub recommended_gpu: bool,
     /// `"he"` for a Hebrew model, absent for a default model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<&'static str>,
@@ -417,6 +465,7 @@ pub fn catalog_view(
             desc: e.desc,
             engine: e.engine,
             recommended: e.recommended,
+            recommended_gpu: e.recommended_gpu,
             language: e.language,
             license: e.license,
             size: e.size(),
@@ -742,7 +791,7 @@ mod tests {
 
     #[test]
     fn catalogue_is_pinned_to_hugging_face_commits() {
-        assert_eq!(CATALOG.len(), 7);
+        assert_eq!(CATALOG.len(), 8);
         let mut ids = std::collections::HashSet::new();
         for e in CATALOG {
             assert!(ids.insert(e.id), "duplicate id {}", e.id);
@@ -775,6 +824,8 @@ mod tests {
         for e in CATALOG {
             assert_eq!(e.language.is_some(), e.license.is_some_and(|l| l.starts_with("CC-BY-4.0")), "{}", e.id);
         }
+        // Llama's licence asks for "Built with Llama" where it is offered.
+        assert!(entry(LLAMA32_3B_ID).unwrap().license.unwrap().contains("Built with Llama"));
     }
 
     #[test]
@@ -837,6 +888,7 @@ mod tests {
             },
             page: "https://huggingface.co/r",
             recommended: false,
+            recommended_gpu: false,
             language: None,
             license: None,
             extras: &[],
@@ -1024,7 +1076,7 @@ mod tests {
         let llm: Vec<_> = CATALOG.iter().filter(|e| e.is_llm()).collect();
         assert_eq!(
             llm.iter().map(|e| e.id).collect::<Vec<_>>(),
-            ["qwen2.5-0.5b-instruct-q4_k_m", "qwen2.5-1.5b-instruct-q4_k_m"]
+            ["qwen2.5-0.5b-instruct-q4_k_m", "qwen2.5-1.5b-instruct-q4_k_m", LLAMA32_3B_ID]
         );
         for e in &llm {
             // One GGUF saved as itself in the models folder, from Qwen's repo.
@@ -1032,14 +1084,41 @@ mod tests {
             assert!(e.extras.is_empty() && e.language.is_none() && !e.is_dir());
             assert_eq!(e.files[0].name, e.dest);
             assert!(e.dest.ends_with(".gguf"));
-            assert!(e.files[0].url.starts_with("https://huggingface.co/Qwen/"), "{}", e.files[0].url);
+            assert!(
+                e.files[0].url.starts_with("https://huggingface.co/Qwen/")
+                    || e.files[0].url.starts_with("https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/"),
+                "{}",
+                e.files[0].url
+            );
             assert_eq!(e.dest_path(Path::new("/m")), Path::new("/m").join(e.dest));
         }
         // The 0.5B lands where the app looks without a configured path (D11).
         assert_eq!(llm[0].dest, crate::core_adapter::DEFAULT_LLM_FILE);
         assert_eq!(llm[0].size(), 491_400_032);
         assert_eq!(llm[1].size(), 1_117_320_736);
-        assert!(llm[0].recommended && !llm[1].recommended);
+        // docs/findings/2026-10-30-laptop-model-benchmark.md § Catalogue entries.
+        assert_eq!(llm[2].size(), 2_019_377_696);
+        assert_eq!(llm[2].files[0].sha256, "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff");
+        assert!(llm[2].files[0].url.contains("/resolve/5ab33fa94d1d04e903623ae72c95d1696f09f9e8/"));
+        // Exactly one pick each for a CPU-only PC and for a GPU.
+        assert_eq!(llm.iter().filter(|e| e.recommended).count(), 1);
+        assert_eq!(llm.iter().filter(|e| e.recommended_gpu).count(), 1);
+        // Speech models never carry the GPU flag.
+        assert!(CATALOG.iter().filter(|e| !e.is_llm()).all(|e| !e.recommended_gpu));
+    }
+
+    #[test]
+    fn cleanup_recommendation_follows_the_gpu() {
+        assert_eq!(recommended_llm(true).id, LLAMA32_3B_ID);
+        assert_eq!(recommended_llm(false).id, "qwen2.5-1.5b-instruct-q4_k_m");
+        // The default file the app loads without a configured path is
+        // still the 0.5B (D11; not changed by the recommendation).
+        assert_eq!(entry("qwen2.5-0.5b-instruct-q4_k_m").unwrap().dest, crate::core_adapter::DEFAULT_LLM_FILE);
+        let v = catalog_view(&tmp("rec"), true, |_| true);
+        let r = |id: &str| v.iter().find(|r| r.id == id).map(|r| (r.recommended, r.recommended_gpu)).unwrap();
+        assert_eq!(r(LLAMA32_3B_ID), (false, true));
+        assert_eq!(r("qwen2.5-1.5b-instruct-q4_k_m"), (true, false));
+        assert_eq!(r("qwen2.5-0.5b-instruct-q4_k_m"), (false, false));
     }
 
     #[test]
