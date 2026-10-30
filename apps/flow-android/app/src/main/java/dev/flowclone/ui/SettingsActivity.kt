@@ -8,9 +8,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.InputType
-import android.view.Menu
-import android.view.MenuItem
 import android.view.View
+import android.widget.LinearLayout
 import android.widget.Toast
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
@@ -18,11 +17,14 @@ import dev.flowclone.EngineHolder
 import dev.flowclone.FlowApp
 import dev.flowclone.R
 import dev.flowclone.core.AsrEngine
+import dev.flowclone.core.HealthReport
 import dev.flowclone.data.Backup
 import dev.flowclone.data.BackupIo
-import dev.flowclone.data.DevSummary
+import dev.flowclone.data.CloudUsage
+import dev.flowclone.data.DevPages
+import dev.flowclone.data.DevSettingsForm
 import dev.flowclone.data.DevUnlock
-import dev.flowclone.data.EnginePlan
+import dev.flowclone.data.OpenRouter
 import dev.flowclone.data.LanguageDefault
 import dev.flowclone.data.Retention
 import dev.flowclone.data.Settings
@@ -35,19 +37,25 @@ import java.io.File
 import kotlin.concurrent.thread
 
 /**
- * Settings as a hub + focused sub-pages (the Developer settings layout, ui/DevUi), one activity
- * instance per page ([EXTRA_PAGE]):
- *   hub       status (engine, next dictation language, warnings); one row per page with its
- *             current value; Developer settings + Mock engine; About (version, 7-tap unlock)
+ * Settings (docs/design/app-design/AndroidSettings.dc.html) as a hub + focused sub-pages, one
+ * activity instance per page ([EXTRA_PAGE]), each under the design's 64 dp top bar (back, title,
+ * Save as the trailing action on form pages):
+ *   hub       General (language, writing style, bubble size, excluded apps, timing), Models (speech
+ *             to text, AI cleanup), Connections (your server's latency from the router's health
+ *             probe, OpenRouter's key + this month's cost), Data & privacy (keep history, learn
+ *             from my edits, debug log), back up & restore, Developer settings + Mock engine,
+ *             About (version, 7-tap unlock). Warnings sit in a callout at the top.
  *   language  dictation language, auto-format
  *   style     writing style per bucket (personal / work / email / other), D27
  *   app_styles  per-app bucket overrides: app list + "Add app" picker, from the style page
- *   engine    whisper / Parakeet, model imports                       (not in `remote`)
- *   cleanup   local AI cleanup on/off, GGUF model, strength            (not in `remote`)
- *   timing    hands-free stop after silence, decode while speaking, session limit   [Save]
- *   bubble    live preview, shrink to a dot, shake to restore, bubble size
- *   apps      excluded apps (package names)                                          [Save]
+ *   speech    ranked engines + the phone's model (AndroidSpeech.dc.html, [SpeechPage])
+ *   engine    whisper / Parakeet, model imports, from Speech to text           (not in `remote`)
+ *   cleanup   local AI cleanup on/off, GGUF model, strength                     (not in `remote`)
+ *   timing    hands-free stop after silence, session limit                               [Save]
+ *   bubble    live preview, shrink to a dot, shake to restore, bubble size, Command Mode
+ *   apps      excluded apps (package names)                                              [Save]
  *   history   retention (asks before deleting)
+ * The design's "Bubble opacity" and "Use what's on screen" rows are left out: no such settings.
  * Save rule ([SettingsPages]): pages with typed fields have Save in the top bar (changed + valid,
  * Discard prompt); switches and choices apply at once. Same prefs keys and [Settings] as before.
  */
@@ -58,12 +66,15 @@ class SettingsActivity : Activity() {
     private lateinit var page: Page
     private var draft: SettingsDraft? = null
     private val fieldRows = LinkedHashMap<Field, DevUi.FieldRow>()
-    private var decodeToggle: DevUi.ToggleRow? = null
-    private var saveItem: MenuItem? = null
+    private var saveButton: View? = null
     private var backCallback: OnBackInvokedCallback? = null
     private val refreshers = ArrayList<() -> Unit>()
-    /** Hub status card: the engine loads / reloads while the page is open, so it is polled. */
+    /** Hub warnings callout: the engine loads / reloads while the page is open, so it is polled. */
     private var status: (() -> Unit)? = null
+    private var speech: SpeechPage? = null
+    /** The router's last server health probe (Your server row, Speech to text). */
+    private var health: HealthReport? = null
+    private var checking = false
     private val main = Handler(Looper.getMainLooper())
     private val poll = object : Runnable {
         override fun run() { status?.invoke(); main.postDelayed(this, 2_000) }
@@ -76,13 +87,13 @@ class SettingsActivity : Activity() {
         if (!SettingsPages.visible(page, caps)) page = Page.HUB
         ui = DevUi(this)
         title = SettingsPages.TITLES.getValue(page)
-        if (page != Page.HUB) actionBar?.setDisplayHomeAsUpEnabled(true)
         if (SettingsPages.hasForm(page)) draft = SettingsDraft.of(app.settings.load(), page)
         when (page) {
             Page.HUB -> renderHub()
             Page.LANGUAGE -> renderLanguage()
             Page.STYLE -> renderStyle()
             Page.APP_STYLES -> renderAppStyles()
+            Page.SPEECH -> renderSpeech()
             Page.ENGINE -> renderEngine()
             Page.CLEANUP -> renderCleanup()
             Page.TIMING -> renderTiming()
@@ -110,6 +121,7 @@ class SettingsActivity : Activity() {
         if (draft != null) validate()
         refresh()
         if (status != null) poll.run()
+        if (page == Page.HUB || page == Page.SPEECH) checkServer()
     }
 
     override fun onPause() {
@@ -122,6 +134,23 @@ class SettingsActivity : Activity() {
     private fun open(p: Page) = open(this, p)
 
     private fun fileName(path: String?) = path?.let { File(it).name }
+
+    /**
+     * This page's column under the top bar: back (asks first with unsaved edits) and, on a form
+     * page, Save as the trailing action (enabled once something changed and everything validates).
+     */
+    private fun page(build: LinearLayout.() -> Unit): LinearLayout = with(ui) {
+        screen {
+            val bar = topBar(
+                SettingsPages.TITLES.getValue(page), DevUi.TopNav.BACK, onNav = ::onBack,
+                actions = if (draft != null) listOf(DevUi.TopAction(R.drawable.ic_lw_check, "Save ${SettingsPages.TITLES.getValue(page)}") { onSave() }) else emptyList(),
+            )
+            saveButton = bar.actions.firstOrNull()
+            build()
+        }
+    }
+
+    private fun onBack() { if (draft != null) confirmLeave() else finish() }
 
     // ---- apply at once (switches, choices) ----
 
@@ -146,23 +175,34 @@ class SettingsActivity : Activity() {
         }
     }
 
-    // ---- Save (pages with typed fields) ----
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        val d = draft ?: return false
-        saveItem = menu.add(Menu.NONE, MENU_SAVE, Menu.NONE, "Save").apply {
-            setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS or MenuItem.SHOW_AS_ACTION_WITH_TEXT)
-            isEnabled = d.canSave(app.settings.load())
-            contentDescription = "Save ${SettingsPages.TITLES.getValue(page)}"
+    /**
+     * Your server's state: the router's cached health when it is recent, else one probe of the
+     * saved config (off the main thread; a few bytes over your LAN / VPN).
+     */
+    private fun checkServer() {
+        val d = app.dev.load()
+        if (!caps.remote || !d.allowServer || !d.serverConfigured || checking) return
+        val r = app.engine.router() ?: return
+        checking = true
+        refreshServer()
+        thread(name = "settings-health") {
+            var h = runCatching { r.routeStatus().health }.getOrNull()
+            val fresh = h?.checkedAtMs?.let { System.currentTimeMillis() - it < HEALTH_MAX_AGE_MS } == true
+            if (!fresh) h = runCatching { r.probeSaved() }.getOrNull() ?: h
+            runOnUiThread {
+                checking = false
+                if (h != null) health = h
+                if (alive()) refreshServer()
+            }
         }
-        return true
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
-        MENU_SAVE -> { onSave(); true }
-        android.R.id.home -> { if (draft != null) confirmLeave() else finish(); true }
-        else -> super.onOptionsItemSelected(item)
+    private fun refreshServer() {
+        speech?.let { it.health = health; it.checking = checking; it.refresh() }
+        refresh()
     }
+
+    // ---- Save (pages with typed fields) ----
 
     private fun confirmLeave() {
         if (draft?.dirty != true) { finish(); return }
@@ -177,7 +217,6 @@ class SettingsActivity : Activity() {
     private fun readViews(i: SettingsPages.Input): SettingsPages.Input = i.copy(
         endpointMs = fieldRows[Field.ENDPOINT]?.text ?: i.endpointMs,
         capMinutes = fieldRows[Field.CAP]?.text ?: i.capMinutes,
-        decodeWhileSpeaking = decodeToggle?.isChecked ?: i.decodeWhileSpeaking,
         denylist = fieldRows[Field.DENYLIST]?.text ?: i.denylist,
     )
 
@@ -189,7 +228,7 @@ class SettingsActivity : Activity() {
         val r = now.result(stored)
         for ((f, row) in fieldRows) row.setError(r.errors[f])
         val can = now.canSave(stored)
-        saveItem?.let { if (it.isEnabled != can) it.isEnabled = can }
+        saveButton?.let { if (it.isEnabled != can) { it.isEnabled = can; it.alpha = if (can) 1f else 0.35f } }
         return r
     }
 
@@ -207,95 +246,110 @@ class SettingsActivity : Activity() {
     }
 
     // =====================================================================================
-    // Hub
+    // Hub (AndroidSettings.dc.html)
     // =====================================================================================
 
+    /** A row in a card of its own (the design's General / Models / Connections rows). */
+    private fun LinearLayout.rowCard(title: String, onClick: () -> Unit): DevUi.NavRow = with(ui) {
+        lateinit var r: DevUi.NavRow
+        card { r = navRow(null, title, onClick = onClick) }
+        r
+    }
+
     private fun renderHub() = with(ui) {
-        screen {
-            sectionLabel("STATUS")
-            card {
-                val engine = infoRow("Engine")
-                val lang = infoRow("Next dictation language")
-                val warn = note("", p.danger, 14f).apply { visibility = View.GONE; accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }
-                status = {
-                    val s = app.settings.load()
-                    // Only touch views that changed (TalkBack / scroll position stay put while polling).
-                    engineStatus().let { if (engine.text.toString() != it) engine.text = it }
-                    LanguageDefault.label(s.language, app.effectiveLanguage(s)).let { if (lang.text.toString() != it) lang.text = it }
-                    val w = SettingsSummary.warnings(
-                        s, caps, whisper = fileName(app.settings.modelPath), parakeet = fileName(app.settings.parakeetPath), llm = fileName(app.settings.llmModelPath),
-                    )
-                    val t = w.joinToString("\n")
-                    if (warn.text.toString() != t) warn.text = t
-                    warn.visibility = if (w.isEmpty()) View.GONE else View.VISIBLE
-                }
+        page {
+            val warn = callout("").apply { visibility = View.GONE; accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE }
+            status = {
+                val s = app.settings.load()
+                val w = SettingsSummary.warnings(
+                    s, caps, whisper = fileName(app.settings.modelPath), parakeet = fileName(app.settings.parakeetPath), llm = fileName(app.settings.llmModelPath),
+                ) + listOfNotNull((app.engine.state.value as? EngineHolder.State.Failed)?.message) +
+                    DevPages.warningsFor(DevPages.Page.HUB, DevSettingsForm.validate(DevSettingsForm.Input.of(app.dev.load()), caps).warnings).map { DevPages.NO_ENGINE }
+                // Only touch the view when it changed (TalkBack / scroll position stay put while polling).
+                val t = w.joinToString("\n")
+                if (warn.text.toString() != t) warn.text = t
+                warn.visibility = if (w.isEmpty()) View.GONE else View.VISIBLE
             }
 
-            sectionLabel("DICTATION")
-            card {
-                val language = navRow(R.drawable.ic_set_language, "Language") { open(Page.LANGUAGE) }
-                val style = navRow(R.drawable.ic_set_style, "Writing style") { open(Page.STYLE) }
-                val engine = if (SettingsPages.visible(Page.ENGINE, caps)) navRow(R.drawable.ic_set_mic, "Speech engine") { open(Page.ENGINE) } else null
-                val cleanup = if (SettingsPages.visible(Page.CLEANUP, caps)) navRow(R.drawable.ic_set_sparkle, "AI cleanup") { open(Page.CLEANUP) } else null
-                // D28: the user-facing door to OpenRouter (speech-to-text and text cleanup), cloud builds only.
-                val cloud = if (caps.cloud) navRow(R.drawable.ic_dev_cloud, "Cloud (OpenRouter)") { OpenRouterActivity.open(this@SettingsActivity) } else null
-                val timing = navRow(R.drawable.ic_set_timer, "Timing & limits") { open(Page.TIMING) }
-                refreshers += {
-                    val d = app.dev.load()
-                    cloud?.setSubtitle(dev.flowclone.data.OpenRouterPage.settingsSummary(d, app.cloudKeys.has(dev.flowclone.data.OpenRouter.ID)))
-                    val s = app.settings.load()
-                    language.setSubtitle(SettingsSummary.language(s, app.effectiveLanguage(s)))
-                    style.setSubtitle(dev.flowclone.data.WritingStyle.summary(s))
-                    engine?.setSubtitle(SettingsSummary.engine(s, fileName(app.settings.modelPath), fileName(app.settings.parakeetPath)))
-                    cleanup?.setSubtitle(SettingsSummary.cleanup(s, fileName(app.settings.llmModelPath), dev.flowclone.data.OpenRouterPage.cleanupEngineLine(d.effective(caps))))
-                    timing.setSubtitle(SettingsSummary.timing(s))
-                }
+            sectionLabel("General")
+            val language = rowCard(SettingsPages.TITLES.getValue(Page.LANGUAGE)) { open(Page.LANGUAGE) }
+            val style = rowCard("Writing style") { open(Page.STYLE) }
+            val bubble = rowCard("Bubble size") { open(Page.BUBBLE) }
+            val apps = rowCard("Excluded apps") { open(Page.APPS) }
+            val timing = rowCard("Timing and limits") { open(Page.TIMING) }
+
+            sectionLabel("Models")
+            val speechRow = rowCard("Speech to text") { open(Page.SPEECH) }
+            // `remote` has no on-device AI: its cleanup is OpenRouter's (D28).
+            val cleanup = when {
+                SettingsPages.visible(Page.CLEANUP, caps) -> rowCard("AI cleanup") { open(Page.CLEANUP) }
+                caps.cloud -> rowCard("AI cleanup") { OpenRouterActivity.open(this@SettingsActivity) }
+                else -> null
             }
 
-            sectionLabel("BUBBLE & APPS")
-            card {
-                val bubble = navRow(R.drawable.ic_set_bubble, "Bubble") { open(Page.BUBBLE) }
-                val apps = navRow(R.drawable.ic_set_block, "Excluded apps") { open(Page.APPS) }
-                refreshers += {
-                    val s = app.settings.load()
-                    bubble.setSubtitle(SettingsSummary.bubble(s))
-                    apps.setSubtitle(SettingsSummary.apps(s))
-                }
+            var server: DevUi.NavRow? = null
+            var openRouter: DevUi.NavRow? = null
+            if (caps.remote || caps.cloud) {
+                sectionLabel("Connections")
+                if (caps.remote) server = rowCard("Your server") { DeveloperActivity.open(this@SettingsActivity, DevPages.Page.SERVER) }
+                if (caps.cloud) openRouter = rowCard(OpenRouter.NAME) { OpenRouterActivity.open(this@SettingsActivity) }
             }
 
-            sectionLabel("PRIVACY")
+            sectionLabel("Data & privacy")
+            lateinit var history: DevUi.NavRow
+            lateinit var debug: DevUi.ToggleRow
             card {
-                val history = navRow(R.drawable.ic_set_history, "History") { open(Page.HISTORY) }
-                refreshers += { history.setSubtitle(SettingsSummary.history(app.settings.load().retention)) }
+                history = navRow(null, "Keep history") { open(Page.HISTORY) }
                 toggleRow(
                     "Learn from my edits",
                     "After a dictation, re-reads that field for up to 45 s; words you correct show up as suggestions in Dictionary. Never password fields; nothing is added until you tap Add",
                     app.settings.load().learnFromEdits,
                 ).onChange { on -> applyNow { copy(learnFromEdits = on) } }
+                debug = toggleRow("Debug log", SettingsSummary.DEBUG_LOG_DESC, app.dev.debugLog)
+                debug.onChange { on -> app.dev.debugLog = on }
             }
 
-            sectionLabel("BACK UP & RESTORE")
+            refreshers += {
+                val s = app.settings.load()
+                val d = app.dev.load()
+                language.setSubtitle(SettingsSummary.language(s, app.effectiveLanguage(s)))
+                style.setSubtitle(dev.flowclone.data.WritingStyle.summary(s))
+                bubble.setSubtitle(SettingsSummary.bubble(s))
+                apps.setSubtitle(SettingsSummary.apps(s))
+                timing.setSubtitle(SettingsSummary.timing(s))
+                speechRow.setSubtitle(SettingsSummary.speech(d, caps))
+                cleanup?.setSubtitle(SettingsSummary.cleanupRow(s, d.effective(caps), caps))
+                server?.setSubtitle(SettingsSummary.server(d, caps, health, checking))
+                openRouter?.setSubtitle(
+                    SettingsSummary.openRouter(app.cloudKeys.has(OpenRouter.ID), CloudUsage.decode(app.engine.router()?.cloudUsageJson() ?: app.dev.cloudUsageJson)),
+                )
+                history.setSubtitle(SettingsSummary.keepHistory(s.retention))
+                if (debug.isChecked != app.dev.debugLog) debug.isChecked = app.dev.debugLog
+            }
+
+            sectionLabel("Back up & restore")
             card {
                 navRow(R.drawable.ic_scr_share, "Export all data", "Notes, History, Dictionary, Insights and settings in one file", chevron = false) { exportBackup() }
                 navRow(R.drawable.ic_scr_import, "Restore from a backup", "Replaces this app's data with a backup file", chevron = false) { pickBackup() }
             }
             note(Backup.SECRETS_NOTE)
 
-            sectionLabel("ADVANCED")
+            sectionLabel("Advanced")
             card {
                 if (app.dev.visible) {
-                    val dev = navRow(R.drawable.ic_set_code, "Developer settings") { startActivity(Intent(this@SettingsActivity, DeveloperActivity::class.java)) }
-                    refreshers += { dev.setSubtitle("Engines, server · " + DevSummary.routing(app.dev.load(), caps)) }
+                    navRow(null, "Developer settings", "Server, engine options, debug log, status") {
+                        startActivity(Intent(this@SettingsActivity, DeveloperActivity::class.java))
+                    }
                 }
                 val mock = toggleRow("Mock engine", "Inserts a fixed sentence; for testing without a model", app.settings.load().mockEngine)
                 mock.onChange { on -> applyNow { copy(mockEngine = on) } }
             }
 
-            sectionLabel("ABOUT")
+            sectionLabel("About")
             card {
                 // §5 Access: in builds without `remote`, 7 taps here reveal Developer settings.
                 val unlock = DevUnlock({ android.os.SystemClock.elapsedRealtime() })
-                navRow(R.drawable.ic_dev_info, versionLabel(), chevron = false) {
+                navRow(null, versionLabel(), chevron = false) {
                     if (app.dev.visible) return@navRow
                     if (unlock.tap()) {
                         app.dev.devUnlocked = true
@@ -307,6 +361,18 @@ class SettingsActivity : Activity() {
                 }
             }
         }
+    }
+
+    // =====================================================================================
+    // Speech to text (AndroidSpeech.dc.html)
+    // =====================================================================================
+
+    private fun renderSpeech() {
+        val sp = SpeechPage(this, ui, update = { f -> applyNow(f) }, openEngine = { open(Page.ENGINE) })
+        speech = sp
+        val col = page { }
+        sp.render(col)
+        refreshers += sp::refresh
     }
 
     // =====================================================================================
@@ -407,25 +473,6 @@ class SettingsActivity : Activity() {
     /** The About row: the same build label as the main screen (D26), e.g. `Version 0.2.0 (hybrid) · 1a2b3c4`. */
     private fun versionLabel() = dev.flowclone.data.AppVersion.current.label(app.caps.flavor)
 
-    private fun engineStatus(): String {
-        val st = app.engine.state.value
-        val base = when (st) {
-            is EngineHolder.State.Ready -> "Loaded: ${st.description}"
-            EngineHolder.State.Loading -> "Loading model…"
-            is EngineHolder.State.Failed -> st.message
-            EngineHolder.State.NotLoaded -> "Not loaded"
-        }
-        val llm = (st as? EngineHolder.State.Ready)?.llm?.let { l ->
-            when (l) {
-                EnginePlan.LlmStatus.Off -> null
-                EnginePlan.LlmStatus.NoModel -> "AI cleanup: no model"
-                is EnginePlan.LlmStatus.Loaded -> "AI cleanup: ${l.name}"
-                is EnginePlan.LlmStatus.Failed -> "AI cleanup failed: ${l.message}"
-            }
-        }
-        return listOfNotNull(base, llm).joinToString("\n")
-    }
-
     // =====================================================================================
     // Language
     // =====================================================================================
@@ -433,7 +480,7 @@ class SettingsActivity : Activity() {
     private fun renderLanguage() = with(ui) {
         val s = app.settings.load()
         val phone = java.util.Locale.getDefault().getDisplayLanguage(java.util.Locale.ENGLISH)
-        screen {
+        page {
             sectionLabel("FORMATTING")
             card {
                 toggleRow("Auto-format", "Punctuation, quotes, fillers and corrections (\"comma\", \"quote … unquote\", \"um\", \"scratch that\", \"five dollars\"); runs with or without AI cleanup. Off = exactly what you said", s.spokenCleanup)
@@ -462,7 +509,7 @@ class SettingsActivity : Activity() {
 
     private fun renderStyle() = with(ui) {
         val s = app.settings.load()
-        screen {
+        page {
             note("The style depends on the app you dictate into. Changes apply at once.")
             for (b in dev.flowclone.data.WritingStyle.BUCKETS) {
                 sectionLabel(b.title.uppercase())
@@ -490,7 +537,7 @@ class SettingsActivity : Activity() {
     /** Per-app overrides as an app list ([AppStylesPage]); changes apply at once. */
     private fun renderAppStyles() {
         val list = AppStylesPage(this, ui) { f -> applyNow(f) }
-        list.render()
+        list.render { with(ui) { topBar(SettingsPages.TITLES.getValue(page), DevUi.TopNav.BACK, onNav = ::onBack) } }
         refreshers += list::refresh
     }
 
@@ -500,7 +547,7 @@ class SettingsActivity : Activity() {
 
     private fun renderEngine() = with(ui) {
         val s = app.settings.load()
-        screen {
+        page {
             sectionLabel("ON-DEVICE ENGINE")
             card {
                 choiceRows(
@@ -530,7 +577,7 @@ class SettingsActivity : Activity() {
 
     private fun renderCleanup() = with(ui) {
         val s = app.settings.load()
-        screen {
+        page {
             note(
                 "Off by default. Formatting rules always run while Auto-format (Language page) is on: spoken punctuation, " +
                     "quotes and brackets, fillers, \"scratch that\", numbers, lists and your writing style. " +
@@ -580,7 +627,7 @@ class SettingsActivity : Activity() {
 
     private fun renderTiming() = with(ui) {
         val i = draft!!.draft
-        screen {
+        page {
             sectionLabel("HANDS-FREE")
             card {
                 fieldRows[Field.ENDPOINT] = fieldRow(
@@ -588,17 +635,11 @@ class SettingsActivity : Activity() {
                     help = "Tap-to-talk ends by itself after this much silence and inserts the text. 300–10000; 0 = only when you tap. Hold-to-talk is not affected.",
                 ) { validate() }
             }
-            sectionLabel("SPEED")
-            card {
-                decodeToggle = toggleRow(
-                    "Decode while speaking", "Long dictations appear sooner after you stop; on-device and own server, not cloud", i.decodeWhileSpeaking,
-                ).also { it.onChange { validate() } }
-            }
             sectionLabel("SESSION LIMIT")
             card {
                 fieldRows[Field.CAP] = fieldRow("Longest dictation (minutes)", i.capMinutes, InputType.TYPE_CLASS_NUMBER, help = "1–20") { validate() }
             }
-            note("Save is in the top bar.")
+            note("Save is at the top right.")
         }
     }
 
@@ -608,7 +649,7 @@ class SettingsActivity : Activity() {
 
     private fun renderBubble() = with(ui) {
         val s = app.settings.load()
-        screen {
+        page {
             card {
                 toggleRow("Live preview", "Shows the transcript while you speak (uses more battery)", s.livePreview)
                     .onChange { on -> applyNow { copy(livePreview = on) } }
@@ -650,7 +691,7 @@ class SettingsActivity : Activity() {
 
     private fun renderApps() = with(ui) {
         val i = draft!!.draft
-        screen {
+        page {
             note("The bubble stays hidden in these apps, in addition to the built-in banking and payment list.")
             card {
                 fieldRows[Field.DENYLIST] = fieldRow(
@@ -660,7 +701,7 @@ class SettingsActivity : Activity() {
                     hint = "com.example.app", minLines = 4,
                 ) { validate() }
             }
-            note("Save is in the top bar.")
+            note("Save is at the top right.")
         }
     }
 
@@ -670,7 +711,7 @@ class SettingsActivity : Activity() {
 
     private fun renderHistory() = with(ui) {
         val s = app.settings.load()
-        screen {
+        page {
             sectionLabel("KEEP DICTATIONS")
             lateinit var group: DevUi.ChoiceGroup<Retention>
             card {
@@ -699,7 +740,8 @@ class SettingsActivity : Activity() {
 
     companion object {
         const val EXTRA_PAGE = "page"
-        private const val MENU_SAVE = 1
+        /** A cached health probe younger than this is shown as is (else the page probes once). */
+        private const val HEALTH_MAX_AGE_MS = 60_000L
         private const val REQ_BACKUP_EXPORT = 30
         private const val REQ_BACKUP_IMPORT = 31
 

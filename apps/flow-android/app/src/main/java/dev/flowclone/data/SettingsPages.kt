@@ -16,8 +16,12 @@ import dev.flowclone.core.CleanupLevel
  * starting from what is stored now, so a page only ever changes its own fields.
  */
 object SettingsPages {
-    /** [STYLE] = Writing style (D27); [APP_STYLES] = its per-app bucket list, opened from [STYLE] (not a hub row). */
-    enum class Page { HUB, LANGUAGE, STYLE, APP_STYLES, ENGINE, CLEANUP, TIMING, BUBBLE, APPS, HISTORY }
+    /**
+     * [STYLE] = Writing style (D27); [APP_STYLES] = its per-app bucket list, opened from [STYLE] (not a hub row).
+     * [SPEECH] = Speech to text (AndroidSpeech.dc.html: ranked engines, the phone's model); [ENGINE]
+     * = the on-device engine choice and model imports, opened from [SPEECH] (not a hub row).
+     */
+    enum class Page { HUB, LANGUAGE, STYLE, APP_STYLES, SPEECH, ENGINE, CLEANUP, TIMING, BUBBLE, APPS, HISTORY }
 
     enum class Field { ENDPOINT, CAP, DENYLIST }
 
@@ -34,7 +38,8 @@ object SettingsPages {
     fun pageOf(f: Field): Page = when (f) { Field.DENYLIST -> Page.APPS; else -> Page.TIMING }
 
     val TITLES = mapOf(
-        Page.HUB to "Settings", Page.LANGUAGE to "Language", Page.STYLE to "Writing style", Page.APP_STYLES to "Style per app", Page.ENGINE to "Speech engine", Page.CLEANUP to "AI cleanup",
+        Page.HUB to "Settings", Page.LANGUAGE to "Language", Page.STYLE to "Writing style", Page.APP_STYLES to "Style per app", Page.SPEECH to "Speech to text",
+        Page.ENGINE to "Model on this phone", Page.CLEANUP to "AI cleanup",
         Page.TIMING to "Timing & limits", Page.BUBBLE to "Bubble", Page.APPS to "Excluded apps", Page.HISTORY to "History",
     )
 
@@ -74,12 +79,12 @@ object SettingsPages {
 
     private val PACKAGE = Regex("""[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+""")
 
-    /** The form pages' inputs as typed. */
-    data class Input(val endpointMs: String, val capMinutes: String, val decodeWhileSpeaking: Boolean, val denylist: String) {
+    /** The form pages' inputs as typed. ("Transcribe while I speak" is a switch on [Page.SPEECH] now.) */
+    data class Input(val endpointMs: String, val capMinutes: String, val denylist: String) {
         companion object {
             fun of(s: Settings) = Input(
                 endpointMs = s.endpointSilenceMs.toString(), capMinutes = s.capMinutes.toString(),
-                decodeWhileSpeaking = s.decodeWhileSpeaking, denylist = s.userDenylist.sorted().joinToString("\n"),
+                denylist = s.userDenylist.sorted().joinToString("\n"),
             )
         }
     }
@@ -97,7 +102,7 @@ object SettingsPages {
             if (ms == null || (ms != 0 && ms !in r)) errors[Field.ENDPOINT] = "Enter ${r.first}–${r.last} ms, or 0 to stop only when you tap"
             val cap = i.capMinutes.trim().toIntOrNull()
             if (cap == null || cap !in 1..20) errors[Field.CAP] = "Enter 1–20 minutes"
-            if (errors.isEmpty()) out = out.copy(endpointSilenceMs = ms!!, capMinutes = cap!!, decodeWhileSpeaking = i.decodeWhileSpeaking)
+            if (errors.isEmpty()) out = out.copy(endpointSilenceMs = ms!!, capMinutes = cap!!)
         }
         if (p == Page.APPS) {
             val lines = i.denylist.lines().map { it.trim() }.filter { it.isNotEmpty() }
@@ -182,36 +187,113 @@ object SettingsSummary {
         return if (ms % 1000 == 0) "${ms / 1000}" else String.format(java.util.Locale.ROOT, "%.1f", v).trimEnd('0').trimEnd('.')
     }
 
-    fun timing(s: Settings): String = listOfNotNull(
-        if (s.endpointSilenceMs > 0) "Stops after ${seconds(s.endpointSilenceMs)} s of silence" else "Stops when you tap",
-        if (s.decodeWhileSpeaking) "decode while speaking" else null,
-        "${s.capMinutes} min limit",
-    ).joinToString(" · ")
+    /** Timing and limits row (AndroidSettings.dc.html): "Stops after a 2 s pause · 5 min max". */
+    fun timing(s: Settings): String =
+        (if (s.endpointSilenceMs > 0) "Stops after a ${seconds(s.endpointSilenceMs)} s pause" else "Stops when you tap") + " · ${s.capMinutes} min max"
 
-    fun bubble(s: Settings): String {
-        val on = listOfNotNull(
-            if (s.livePreview) "live preview" else null,
-            if (!s.shrinkBubble) null else if (s.shrinkToDot) "shrinks to a dot" else "shrinks when idle",
-            if (s.shakeToReveal) "shake to restore" else null,
-        )
-        val text = if (on.isEmpty()) "Preview, dot and shake off" else on.joinToString(" · ").replaceFirstChar { it.uppercase() }
-        return if (bubbleSizePercent(s.bubbleScale) == 100) text else "$text · ${bubbleSizePercent(s.bubbleScale)}% size"
-    }
+    /** Bubble size row: the size first ("100%"), then what else the Bubble page has on. */
+    fun bubble(s: Settings): String = listOfNotNull(
+        "${bubbleSizePercent(s.bubbleScale)}%",
+        if (s.livePreview) "live preview" else null,
+        if (!s.shrinkBubble) null else if (s.shrinkToDot) "shrinks to a dot" else "shrinks when idle",
+        if (s.shakeToReveal) "shake to restore" else null,
+    ).joinToString(" · ")
 
     /** The "Bubble size" slider's value: 75..150 in steps of 5. */
     fun bubbleSizePercent(scale: Float): Int = kotlin.math.round(Settings.bubbleScaleOf(scale) * 100f).toInt()
 
+    /** Excluded apps row: the built-in banking list is always on ("Banking apps and 2 more"). */
     fun apps(s: Settings): String = when (val n = s.userDenylist.size) {
-        0 -> "None (banking apps are always excluded)"
-        1 -> "1 app"
-        else -> "$n apps"
+        0 -> "Banking apps"
+        else -> "Banking apps and $n more"
     }
 
+    /** History's "Keep dictations" row (History page, Home). */
     fun history(r: Retention): String = when (r) {
         Retention.KEEP -> "Keep everything"
         Retention.DAY -> "Last 24 hours"
         Retention.NEVER -> "Never saved"
     }
+
+    /** Settings hub "Keep history" row ("1 day. Stored only on this phone."). */
+    fun keepHistory(r: Retention): String = when (r) {
+        Retention.KEEP -> "Until you delete it. Stored only on this phone."
+        Retention.DAY -> "1 day. Stored only on this phone."
+        Retention.NEVER -> "Off. Nothing is saved."
+    }
+
+    const val DEBUG_LOG_DESC = "Saves what you said and timings for bug reports. Never uploaded."
+
+    /** An engine's name on the Speech to text page and in summaries. */
+    fun engineName(r: DevSettings.Route): String = when (r) {
+        DevSettings.Route.SERVER -> "Your server"
+        DevSettings.Route.CLIENT -> "This phone"
+        DevSettings.Route.CLOUD -> OpenRouter.NAME
+    }
+
+    /** Speech to text row: the engines that are on, in try order ("Your server, then this phone"). */
+    fun speech(d: DevSettings, caps: BuildCaps): String {
+        val on = DevPages.engines(d, caps).filter { DevPages.engineOn(d.effective(caps), it) }
+        if (on.isEmpty()) return "Off: no engine is on"
+        if (on.size == 1) return "${engineName(on[0])} only"
+        return on.mapIndexed { i, r -> if (i == 0) engineName(r) else engineName(r).replaceFirstChar { it.lowercase() } }.joinToString(", then ")
+    }
+
+    /**
+     * AI cleanup row: strength, then the engines in the order they are tried, then the formatting
+     * rules ("Medium · OpenRouter, then rules"). [d] = the effective DevSettings (cloud cleanup).
+     */
+    fun cleanupRow(s: Settings, d: DevSettings, caps: BuildCaps): String {
+        val cloud = d.cloudCleanupRouted && d.cloud.cleanup.consentOk
+        val phone = s.llmEnabled && caps.local
+        val engines = if (cloud) d.cleanupOrder.mapNotNull {
+            when (it) {
+                DevSettings.CleanupRoute.CLOUD -> OpenRouter.NAME
+                DevSettings.CleanupRoute.LOCAL -> if (phone) "this phone" else null
+            }
+        } else if (phone) listOf("this phone") else emptyList()
+        val chain = engines + listOfNotNull(if (s.spokenCleanup) "rules" else null)
+        if (engines.isEmpty()) return if (s.spokenCleanup) "Rules only" else "Off"
+        return levelName(s.cleanupFor(cloud)) + " · " + chain.mapIndexed { i, e -> if (i == 0) e.replaceFirstChar { it.uppercase() } else e }.joinToString(", then ")
+    }
+
+    /**
+     * "Your server" row from the router's last health probe ([h], null = none; [checking] while one runs):
+     * "Connected · 41 ms" / "Not reachable" / "Not set up" / "Off".
+     */
+    fun server(d: DevSettings, caps: BuildCaps, h: dev.flowclone.core.HealthReport?, checking: Boolean = false): String = when {
+        !caps.remote -> "Not in this build"
+        !d.serverConfigured -> "Not set up"
+        !d.allowServer -> "Off · ${d.host}"
+        h == null -> if (checking) "Checking…" else "Not checked yet"
+        h.ok -> "Connected" + (h.rttMs?.let { " · ${it.median} ms" } ?: "")
+        else -> "Not reachable"
+    }
+
+    /** OpenRouter row: "Key saved · $0.42 this month" (usage counted on this phone only). */
+    fun openRouter(hasKey: Boolean, usage: CloudUsage): String =
+        (if (hasKey) "Key saved" else "No key") + " · ${CloudText.usd(usage.totalCostUsd)} this month"
+
+    /** "This phone" engine line: the on-device engine that runs ("Parakeet · works offline"). */
+    fun phoneEngine(s: Settings, whisper: String?, parakeet: String?): String = when {
+        s.mockEngine -> "Mock engine (test sentence)"
+        s.asrEngine == AsrEngine.PARAKEET && parakeet != null -> "Parakeet · works offline"
+        whisper != null -> "Whisper · works offline"
+        else -> "No model imported"
+    }
+
+    /** OpenRouter engine line: "Sends audio · asks first" until consent, then its model. */
+    fun cloudEngine(d: DevSettings, hasKey: Boolean): String =
+        "Sends audio · " + (if (!d.cloud.stt.consentOk) "asks first" else d.cloud.stt.model.substringAfter('/')) +
+            if (d.allowCloud && !hasKey) " · no key" else ""
+
+    /** "English" for Parakeet and *.en whisper models, else "Many languages". */
+    fun modelLanguage(engine: AsrEngine, fileName: String): String =
+        if (engine == AsrEngine.PARAKEET || Regex("""[.-]en([.-]|$)""").containsMatchIn(fileName.substringAfterLast('/'))) "English" else "Many languages"
+
+    /** The phone's model card: "English · 640 MB · imported Oct 20" ([date] formats the file's time). */
+    fun modelLine(engine: AsrEngine, fileName: String, bytes: Long, modifiedMs: Long, date: (Long) -> String): String =
+        listOfNotNull(modelLanguage(engine, fileName), ModelPages.size(bytes), if (modifiedMs > 0) "imported ${date(modifiedMs)}" else null).joinToString(" · ")
 
     /** Hub status card warnings, in this order. Only what this build can actually run. */
     fun warnings(s: Settings, caps: BuildCaps, whisper: String?, parakeet: String?, llm: String?): List<String> = buildList {
