@@ -214,14 +214,15 @@ pub const CATALOG: &[CatalogEntry] = &[
             model_file!(parakeet_he_base!(), "tokens.txt", 107_590, "55a91c862d0a63e8b9587a3264ced4fc76943e66098468b4638e6a6c5642e364"),
         ],
     },
-    // AI cleanup (llama.cpp GGUF). The 0.5B one is saved under the name the
-    // app loads when no cleanup model is set (D11).
+    // AI cleanup (llama.cpp GGUF). The 1.5B one is saved under the name the
+    // app loads when no cleanup model is set (D11); the 0.5B was the default
+    // before and is still loaded when it is the only one there.
     CatalogEntry {
         id: "qwen2.5-0.5b-instruct-q4_k_m",
         title: "Qwen2.5 0.5B Instruct",
-        desc: "Fastest · the default, but misses many fixes",
+        desc: "Fastest · misses many fixes",
         engine: ModelEngine::Llm,
-        dest: crate::core_adapter::DEFAULT_LLM_FILE,
+        dest: crate::core_adapter::LEGACY_LLM_FILE,
         page: "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF",
         recommended: false,
         recommended_gpu: false,
@@ -233,9 +234,9 @@ pub const CATALOG: &[CatalogEntry] = &[
     CatalogEntry {
         id: "qwen2.5-1.5b-instruct-q4_k_m",
         title: "Qwen2.5 1.5B Instruct",
-        desc: "More accurate · the pick without a GPU (about 1 s on a laptop CPU)",
+        desc: "The default · the pick without a GPU (about 1 s on a laptop CPU)",
         engine: ModelEngine::Llm,
-        dest: "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        dest: crate::core_adapter::DEFAULT_LLM_FILE,
         page: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF",
         recommended: true,
         recommended_gpu: false,
@@ -267,7 +268,7 @@ pub const CATALOG: &[CatalogEntry] = &[
 pub const LLAMA32_3B_ID: &str = "llama-3.2-3b-instruct-q4_k_m";
 
 /// The cleanup model Settings recommends: Llama 3.2 3B when local cleanup
-/// runs on a GPU, Qwen2.5 1.5B on a CPU-only PC (the 0.5B default scores
+/// runs on a GPU, Qwen2.5 1.5B (the default) on a CPU-only PC (the 0.5B scores
 /// 43 % on the 88-suite, the 1.5B 74 %; benchmark 2026-10-30).
 pub fn recommended_llm(gpu: bool) -> &'static CatalogEntry {
     CATALOG
@@ -1092,8 +1093,10 @@ mod tests {
             );
             assert_eq!(e.dest_path(Path::new("/m")), Path::new("/m").join(e.dest));
         }
-        // The 0.5B lands where the app looks without a configured path (D11).
-        assert_eq!(llm[0].dest, crate::core_adapter::DEFAULT_LLM_FILE);
+        // The 1.5B lands where the app looks without a configured path (D11);
+        // the 0.5B keeps the old default name, so an existing copy still loads.
+        assert_eq!(llm[1].dest, crate::core_adapter::DEFAULT_LLM_FILE);
+        assert_eq!(llm[0].dest, crate::core_adapter::LEGACY_LLM_FILE);
         assert_eq!(llm[0].size(), 491_400_032);
         assert_eq!(llm[1].size(), 1_117_320_736);
         // docs/findings/2026-10-30-laptop-model-benchmark.md § Catalogue entries.
@@ -1111,9 +1114,9 @@ mod tests {
     fn cleanup_recommendation_follows_the_gpu() {
         assert_eq!(recommended_llm(true).id, LLAMA32_3B_ID);
         assert_eq!(recommended_llm(false).id, "qwen2.5-1.5b-instruct-q4_k_m");
-        // The default file the app loads without a configured path is
-        // still the 0.5B (D11; not changed by the recommendation).
-        assert_eq!(entry("qwen2.5-0.5b-instruct-q4_k_m").unwrap().dest, crate::core_adapter::DEFAULT_LLM_FILE);
+        // The CPU pick is also the default file the app loads without a
+        // configured path (D11).
+        assert_eq!(recommended_llm(false).dest, crate::core_adapter::DEFAULT_LLM_FILE);
         let v = catalog_view(&tmp("rec"), true, |_| true);
         let r = |id: &str| v.iter().find(|r| r.id == id).map(|r| (r.recommended, r.recommended_gpu)).unwrap();
         assert_eq!(r(LLAMA32_3B_ID), (false, true));

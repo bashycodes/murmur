@@ -263,8 +263,9 @@ turns on llama.cpp cleanup on top (run-on sentences, leftover fillers,
 corrections, tone per app; DECISIONS D5/D10/D11). It needs two files, and
 neither is downloaded automatically:
 
-* the GGUF model, default `%APPDATA%\FlowClone\models\qwen2.5-0.5b-instruct-q4_k_m.gguf`
-  (`qwen2.5-1.5b-instruct-q4_k_m.gguf` is more accurate, ~2x slower);
+* the GGUF model, default `%APPDATA%\FlowClone\models\qwen2.5-1.5b-instruct-q4_k_m.gguf`
+  (the default used to be `qwen2.5-0.5b-instruct-q4_k_m.gguf`: faster,
+  much less accurate; a PC that has only that file keeps loading it);
   `tools/fetch-models.sh --llm` fetches both on explicit request. Settings
   → AI cleanup → On this PC downloads these and Llama 3.2 3B, and
   recommends Llama 3.2 3B when cleanup runs on a GPU, Qwen2.5 1.5B
@@ -614,7 +615,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - The hook watchdog probes only while the user is active and at most every 5 s, so a dead hook is noticed after the next input, not instantly.
 - There is no mouse-button shortcut (`WH_MOUSE_LL`) and no Caps Lock single-key shortcut.
 - Learn-from-edits polls (default every 1 s for 45 s) instead of subscribing to UIA `TextChanged` events, and uses no local LLM to vet candidates ("is this a proper noun?", 03 §6): flow-core's alignment filters plus the user's explicit accept do that job. Controls without TextPattern/ValuePattern (some Electron/canvas editors) are not watched.
-- LLM cleanup load is 10-50 s on CPU and quality with the default 0.5B model is 4/8 on the core's messy-dictation set (1.5B: 8/8, ~2x slower); see `docs/core-architecture.md`.
+- LLM cleanup load is 10-50 s on CPU and quality with the default 1.5B model is 8/8 on the core's messy-dictation set (74 % on the 88-suite; the old 0.5B default: 4/8, 43 %, ~2x faster); see `docs/core-architecture.md`.
 - "Re-paste" from the History tab hides Settings and pastes into whatever window Windows activates next (normally the one used before Settings).
 - Cue sounds are synthesised tones, not Wispr's WAVs (those are not redistributable); see [Custom sounds](#custom-sounds) to use your own.
 
