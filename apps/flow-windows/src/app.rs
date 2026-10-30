@@ -786,12 +786,43 @@ fn get_model_status(state: tauri::State<'_, AppState>) -> ModelInfo {
     }
 }
 
-/// ✕ / ✓ clicked on the hands-free pill.
+/// Settings pages the overlay may open (its "Fix →" / "Choose a model →"
+/// links); anything else is refused.
+const OVERLAY_SETTINGS_PAGES: &[&str] = &[
+    "settings-speech",
+    "settings-cleanup",
+    "settings-openrouter",
+    "settings-server",
+];
+
+fn overlay_settings_page(page: Option<&str>) -> Result<&'static str, String> {
+    let page = page.unwrap_or_default();
+    OVERLAY_SETTINGS_PAGES
+        .iter()
+        .find(|p| **p == page)
+        .copied()
+        .ok_or_else(|| format!("unknown settings page {page:?}"))
+}
+
+/// ✕ / ✓ clicked on the hands-free pill, or a pill link to a settings
+/// page: `open_settings` + `page` shows the settings window and emits
+/// `settings:tab` with the page id.
 #[tauri::command]
-fn overlay_action(state: tauri::State<'_, AppState>, action: String) -> Result<(), String> {
+fn overlay_action(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    action: String,
+    page: Option<String>,
+) -> Result<(), String> {
     let input = match action.as_str() {
         "cancel" => Input::Hotkey(hotkeys::HotkeyAction::Cancel),
         "finish" => Input::Finish,
+        "open_settings" => {
+            let page = overlay_settings_page(page.as_deref())?;
+            show_settings(&app);
+            let _ = app.emit_to(SETTINGS, "settings:tab", page);
+            return Ok(());
+        }
         other => return Err(format!("unknown overlay action {other}")),
     };
     if let Some(tx) = state.input.get() {
@@ -2259,4 +2290,19 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn overlay_may_open_only_the_listed_settings_pages() {
+        for p in OVERLAY_SETTINGS_PAGES {
+            assert_eq!(overlay_settings_page(Some(p)), Ok(*p));
+        }
+        assert!(overlay_settings_page(Some("settings-developer")).is_err());
+        assert!(overlay_settings_page(Some("")).is_err());
+        assert!(overlay_settings_page(None).is_err());
+    }
 }
