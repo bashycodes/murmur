@@ -46,5 +46,13 @@ ${group(
       "After a paste the field is re-read for about 45 s. Words you fix show up in Dictionary as suggestions; nothing is added without your OK.",
       toggle("learn_from_edits", "Learn from my corrections", `data-save="prefs"`),
     ),
+)}
+${group(
+  "Setup",
+  row(
+    "Run setup again",
+    "Choose where speech runs, the speech model and AI cleanup step by step.",
+    `<button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="run_setup" data-run-setup>Run setup</button>`,
+  ),
 )}`,
 };
