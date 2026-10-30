@@ -372,6 +372,22 @@ body {
 .preview[data-kind="error"]::before {
   background: var(--error-dot);
 }
+/* "Fix →" / "Choose a model →": opens the settings page that fixes it. */
+.fix {
+  flex: none;
+  color: var(--bar-fg);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.fix:hover {
+  color: var(--pure-white);
+}
+.fix[hidden] {
+  display: none;
+}
 
 .chip {
   box-sizing: border-box;

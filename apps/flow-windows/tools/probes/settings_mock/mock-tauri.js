@@ -118,14 +118,27 @@
     last7: [120, 0, 540, 300, 780, 210, 365].map((words, i) => ({ date: `2026-10-${22 + i}`, words })),
     since: "2026-08-02",
     // 18 Monday-first weeks ending this week; null = after today.
-    heatmap: Array.from({ length: 126 }, (_, i) => ({
-      date: new Date(Date.UTC(2026, 5, 29 + i)).toISOString().slice(0, 10),
-      words: i > 123 ? null : (i * 37) % 5 === 0 ? 0 : (i * 53) % 900,
-    })),
+    // Sparse early on, busier lately, lighter weekends, a 4-day streak to today.
+    heatmap: Array.from({ length: 126 }, (_, i) => {
+      const r = ((i * 7919) % 101) / 101, weekend = i % 7 >= 5, busy = i / 126;
+      const active = i >= 120 || r < (weekend ? 0.3 : 0.5 + 0.45 * busy);
+      return {
+        date: new Date(Date.UTC(2026, 5, 29 + i)).toISOString().slice(0, 10),
+        words: i > 123 ? null : i === 119 || !active ? 0 : Math.round((weekend ? 120 : 260 + 900 * busy) * (0.3 + r)),
+      };
+    }),
     routes_7d: { pc: 41, server: 63, cloud: 0, unknown: 2 },
     fixes: { ai: 297, dictionary: 269, total: 566 },
   };
   let history = [
+    { id: 5, ts: now - 20e3, app: "chrome.exe", url: null, raw: "can we move the review to thursday i want one more pass over the parakeet benchmarks before we share them",
+      formatted: "Can we move the review to Thursday? I want one more pass over the Parakeet benchmarks before we share them.",
+      pasted: "Can we move the review to Thursday? I want one more pass over the Parakeet benchmarks before we share them.", edited: null,
+      duration_ms: 6200, words: 20, lang: "en", route: "pc",
+      final_text: "Can we move the review to Thursday? I want one more pass over the Parakeet benchmarks before we share them.", ai_edited: true },
+    { id: 4, ts: now - 30 * 60e3, app: "code.exe", url: null, raw: "ship the hands free fix first then the clipboard restore",
+      formatted: null, pasted: "Ship the hands-free fix first, then the clipboard restore.", edited: null,
+      duration_ms: 3100, words: 10, lang: "en", route: "cloud", final_text: "Ship the hands-free fix first, then the clipboard restore.", ai_edited: false },
     { id: 3, ts: now - 60e3, app: "outlook.exe", url: null, raw: "um so i think we should uh meet tomorrow at three",
       formatted: "I think we should meet tomorrow at 3.", pasted: "I think we should meet tomorrow at 3.", edited: null,
       duration_ms: 4100, words: 8, lang: "en", route: "server", final_text: "I think we should meet tomorrow at 3.", ai_edited: true },
@@ -242,6 +255,7 @@
       if (form.allow && !or.cleanup.consent && !form.consent) throw "consent required before turning on cloud cleanup";
       if (form.consent) { or.cleanup.consent = true; or.cleanup.consent_at_ms = Date.now(); }
       const { consent, ...rest } = form;
+      if (rest.order == null) delete rest.order; // null = keep (CleanupForm.order: Option)
       or.cleanup = { ...or.cleanup, ...rest, timeout_ms: Math.min(8000, Math.max(800, form.timeout_ms)) };
       return orView();
     },

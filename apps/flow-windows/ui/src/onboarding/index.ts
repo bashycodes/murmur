@@ -362,7 +362,8 @@ function cleanupForm(allow: boolean, consent: boolean): Record<string, unknown> 
   return {
     allow,
     consent,
-    order: allow ? ["cloud", "local"] : null,
+    // Always the whole order: pages read order[0].
+    order: allow ? ["cloud", "local"] : (c?.order ?? ["cloud", "local"]),
     sort: c?.sort ?? "latency",
     timeout_ms: c?.timeout_ms ?? 2500,
     send_surrounding_text: c?.send_surrounding_text ?? false,
