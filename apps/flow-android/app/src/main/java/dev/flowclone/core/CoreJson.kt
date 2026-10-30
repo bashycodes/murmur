@@ -18,6 +18,15 @@ object CoreJson {
         put("threads", c.threads)
         // Omitted when auto, like the core's serde (`skip_serializing_if = is_auto`).
         if (c.parakeetDecoding != ParakeetDecoding.AUTO) put("parakeet_decoding", c.parakeetDecoding.wire)
+        // D33: omitted when empty, like the core's serde (old libraries see the same config).
+        if (c.languages.isNotEmpty()) put("languages", JSONObject().apply {
+            for ((code, m) in c.languages) put(code, JSONObject().apply {
+                put("asr_backend", m.asrEngine.wire)
+                put("asr_path", m.asrPath)
+                if (m.parakeetDecoding != ParakeetDecoding.AUTO) put("parakeet_decoding", m.parakeetDecoding.wire)
+            })
+        })
+        c.loadLanguage?.let { put("load_language", it) }
     }.toString()
 
     fun encode(c: SessionConfig): String = JSONObject().apply {

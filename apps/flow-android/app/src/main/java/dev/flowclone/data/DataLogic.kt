@@ -203,10 +203,15 @@ object LanguageDefault {
         return !Regex("""\.en([._-]|$)""").containsMatchIn(n) && "distil" !in n
     }
 
-    /** [deviceLanguage] = `Locale.getDefault().language`; [asr] = the loaded local ASR (null: none). */
-    fun effective(setting: String, deviceLanguage: String?, asr: LoadedAsr?): String {
+    /**
+     * [deviceLanguage] = `Locale.getDefault().language`; [asr] = the loaded local ASR (null: none);
+     * [installed] = languages with their own imported model (H5: `he` with a Hebrew model), which
+     * the phone language selects whatever is loaded right now.
+     */
+    fun effective(setting: String, deviceLanguage: String?, asr: LoadedAsr?, installed: Set<String> = emptySet()): String {
         if (setting != Settings.LANGUAGE_UNSET) return setting
         val lang = deviceLanguage?.lowercase()?.let { ALIASES[it] ?: it }
+        if (lang != null && lang in installed) return lang
         return if (asr != null && isMultilingual(asr) && lang != null && lang in WHISPER_LANGUAGES) lang else "auto"
     }
 
