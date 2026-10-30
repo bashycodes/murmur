@@ -6,10 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
-import android.view.Menu
-import android.view.MenuItem
 import android.view.ViewGroup
-import android.widget.LinearLayout
+import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import android.window.OnBackInvokedCallback
@@ -18,188 +16,54 @@ import dev.flowclone.FlowApp
 import dev.flowclone.R
 import dev.flowclone.core.DictEntry
 import dev.flowclone.data.DictionaryDraft
+import dev.flowclone.data.DictionaryEdit
 import dev.flowclone.data.DictionaryPages
 import dev.flowclone.data.DictionaryPages.Kind
 
 /**
- * Dictionary words (spelling / replacements the core applies and feeds to whisper's prompt) and
- * snippets (trigger phrase → expansion), in the Settings look, one activity instance per page:
- *   hub     Dictionary + Snippets rows with their counts; Import / Export JSON
- *   list    one kind, Add in the top bar, search once the list is long, tap = edit,
- *           TalkBack actions / long-press = delete (asks first); empty state
- *   edit    word / trigger, replacement / expansion, snippet switch; Save in the top bar when
- *           changed + valid ([DictionaryDraft], inline errors), Discard prompt, Delete
- * Import/export use the shared JSON `[{word, replacement, isSnippet}]` (same file the Windows
- * clone reads), via SAF. Same [dev.flowclone.data.DictionaryStore] calls as before.
+ * Add / edit one dictionary word or snippet, opened from the Dictionary and Snippets tabs
+ * ([dev.flowclone.ui.tabs.DictionaryTab]): a top bar with Back and, trailing, Save (enabled when
+ * changed + valid, [DictionaryDraft]) and Delete (existing entries; asks first); word / trigger,
+ * replacement / expansion and the snippet switch, with inline errors. Back on a changed form asks
+ * to discard.
+ *
+ * [PAGE_IMPORT] / [PAGE_EXPORT]: no page of their own. They run the system file picker for the
+ * shared JSON `[{word, replacement, isSnippet}]` (the file the Windows clone reads), report in a
+ * toast and close, so the shell's tabs need no activity-result plumbing.
  */
 class DictionaryActivity : Activity() {
     private val app get() = FlowApp.of(this)
     private lateinit var ui: DevUi
-    private var page = PAGE_HUB
+    private var page = PAGE_EDIT
     private var kind = Kind.WORDS
-    private val refreshers = ArrayList<() -> Unit>()
 
-    // hub: learn-from-edits suggestions
-    private var suggestionsLabel: TextView? = null
-    private var suggestionsCard: LinearLayout? = null
-
-    // list page
-    private var query = ""
-    private var listCard: LinearLayout? = null
-
-    // edit page
+    private var existing: DictEntry? = null
     private var draft: DictionaryDraft? = null
+    private var titleView: TextView? = null
     private var wordRow: DevUi.FieldRow? = null
     private var replRow: DevUi.FieldRow? = null
     private var snippetToggle: DevUi.ToggleRow? = null
-    private var saveItem: MenuItem? = null
+    /** Top-bar Save (tests). */
+    internal var saveButton: ImageButton? = null; private set
     private var backCallback: OnBackInvokedCallback? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ui = DevUi(this)
-        page = intent.getStringExtra(EXTRA_PAGE) ?: PAGE_HUB
+        page = intent.getStringExtra(EXTRA_PAGE) ?: PAGE_EDIT
         kind = intent.getStringExtra(EXTRA_KIND)?.let { k -> Kind.entries.firstOrNull { it.name == k } } ?: Kind.WORDS
-        if (page != PAGE_HUB) actionBar?.setDisplayHomeAsUpEnabled(true)
         when (page) {
-            PAGE_LIST -> { title = DictionaryPages.title(kind); renderList() }
-            PAGE_EDIT -> if (!renderEdit()) { finish(); return }
-            else -> { page = PAGE_HUB; renderHub() }
+            PAGE_IMPORT, PAGE_EXPORT -> {
+                window.decorView.setBackgroundColor(ui.t.bg)
+                if (savedInstanceState == null) { if (page == PAGE_IMPORT) pick() else export() }
+            }
+            else -> { page = PAGE_EDIT; if (!renderEdit()) finish() }
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        for (r in refreshers) r()
     }
 
     override fun onDestroy() {
         backCallback?.let { onBackInvokedDispatcher.unregisterOnBackInvokedCallback(it) }
         super.onDestroy()
-    }
-
-    // =====================================================================================
-    // Hub
-    // =====================================================================================
-
-    private fun renderHub(): Unit = with(ui) {
-        screen {
-            note("Words: the speech engine is primed with them, and \"wisper\" → \"Wispr\" style fixes are applied. Snippets: say just the trigger and its text is inserted.")
-            // Learn from my edits: shown only while something waits for Add / Dismiss.
-            suggestionsLabel = sectionLabel("SUGGESTIONS")
-            suggestionsCard = card { }
-            refreshers += { fillSuggestions() }
-            sectionLabel("LISTS")
-            card {
-                val words = navRow(R.drawable.ic_scr_book, "Dictionary") { open(this@DictionaryActivity, PAGE_LIST, Kind.WORDS) }
-                val snippets = navRow(R.drawable.ic_scr_snippet, "Snippets") { open(this@DictionaryActivity, PAGE_LIST, Kind.SNIPPETS) }
-                refreshers += {
-                    val all = app.dictionary.all()
-                    words.setSubtitle(DictionaryPages.hubSubtitle(all, Kind.WORDS))
-                    snippets.setSubtitle(DictionaryPages.hubSubtitle(all, Kind.SNIPPETS))
-                }
-            }
-            sectionLabel("IMPORT & EXPORT")
-            card {
-                navRow(R.drawable.ic_scr_import, "Import JSON", "Adds a file's entries; an entry with the same word is replaced") { pick() }
-                navRow(R.drawable.ic_scr_share, "Export JSON", "Saves flow-dictionary.json (the Windows app reads the same file)") { export() }
-            }
-        }
-    }
-
-    /** Words corrected after a dictation (Learn from my edits). Nothing is added without Add. */
-    private fun fillSuggestions(): Unit = with(ui) {
-        val card = suggestionsCard ?: return@with
-        val pending = app.suggestions.update { it.pruneKnown(app.dictionary.all()) }.pending
-        card.removeAllViews()
-        val vis = if (pending.isEmpty()) android.view.View.GONE else android.view.View.VISIBLE
-        card.visibility = vis
-        suggestionsLabel?.visibility = vis
-        for (s in pending) {
-            val add = chip("Add") { addSuggestion(s.word, false) }
-            val dismiss = chip("Dismiss") { dismissSuggestion(s.word) }
-            val buttons = LinearLayout(this@DictionaryActivity).apply {
-                orientation = LinearLayout.HORIZONTAL
-                addView(add)
-                addView(dismiss, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                    marginStart = (8 * resources.displayMetrics.density).toInt()
-                })
-            }
-            card.listRow(
-                s.word, dev.flowclone.learn.Suggestions.subtitle(s), trailing = buttons,
-                actions = listOf("Add" to { addSuggestion(s.word, false) }, "Dismiss" to { dismissSuggestion(s.word) }),
-            ) { suggestionDialog(s) }
-        }
-    }
-
-    private fun suggestionDialog(s: dev.flowclone.learn.Suggestion) {
-        AlertDialog.Builder(this)
-            .setTitle("Add \u201c${s.word}\u201d?")
-            .setMessage(
-                "You changed \u201c${s.heard}\u201d to \u201c${s.word}\u201d after a dictation. Add the word to teach its spelling, " +
-                    "or add it as a fix so \u201c${s.heard}\u201d is always replaced. Dismiss = never suggested again.",
-            )
-            .setPositiveButton("Add word") { _, _ -> addSuggestion(s.word, false) }
-            .setNeutralButton("Add as fix") { _, _ -> addSuggestion(s.word, true) }
-            .setNegativeButton("Dismiss") { _, _ -> dismissSuggestion(s.word) }
-            .show()
-    }
-
-    private fun addSuggestion(word: String, asFix: Boolean) {
-        var entry: DictEntry? = null
-        app.suggestions.update { cur -> cur.accept(word, asFix).let { (next, e) -> entry = e; next } }
-        entry?.let { app.dictionary.upsert(it); ui.announce("Added ${it.replacement ?: it.word}") }
-        for (r in refreshers) r()
-    }
-
-    private fun dismissSuggestion(word: String) {
-        app.suggestions.update { it.dismiss(word) }
-        ui.announce("Dismissed $word")
-        for (r in refreshers) r()
-    }
-
-    // =====================================================================================
-    // List (one kind)
-    // =====================================================================================
-
-    private fun renderList(): Unit = with(ui) {
-        screen {
-            note(
-                if (kind == Kind.SNIPPETS) "Say the trigger phrase on its own and its text is inserted. Tap one to edit it."
-                else "Names and jargon are spelled right; a replacement fixes a word the engine keeps getting wrong. Tap one to edit it.",
-            )
-            val all = app.dictionary.all()
-            if (DictionaryPages.showSearch(DictionaryPages.of(all, kind).size)) {
-                searchField(if (kind == Kind.SNIPPETS) "Search snippets" else "Search words", query) { q -> query = q; fillList() }
-            }
-            listCard = card { }
-        }
-        refreshers += { fillList() }
-    }
-
-    private fun fillList(): Unit = with(ui) {
-        val card = listCard ?: return@with
-        card.removeAllViews()
-        val all = app.dictionary.all()
-        val shown = DictionaryPages.entries(all, kind, query)
-        if (shown.isEmpty()) {
-            val e = DictionaryPages.empty(kind, query, DictionaryPages.of(all, kind).size)
-            card.emptyState(e.title, e.hint)
-        }
-        for (e in shown) {
-            card.listRow(
-                e.word, DictionaryPages.rowSubtitle(e),
-                actions = listOf("Delete" to { confirmDelete(e) { fillList() } }),
-            ) { edit(this@DictionaryActivity, kind, e.word) }
-        }
-    }
-
-    private fun confirmDelete(e: DictEntry, then: () -> Unit) {
-        ui.confirm("Delete \"${e.word}\"?", if (e.isSnippet) "The snippet and its text are removed." else "The word is removed from the dictionary.", "Delete", onYes = {
-            app.dictionary.remove(e.word)
-            ui.announce("Deleted ${e.word}")
-            then()
-        })
     }
 
     // =====================================================================================
@@ -209,17 +73,24 @@ class DictionaryActivity : Activity() {
     /** False when the entry to edit no longer exists. */
     private fun renderEdit(): Boolean = with(ui) {
         val word = intent.getStringExtra(EXTRA_WORD)
-        val existing = word?.let { w -> app.dictionary.all().firstOrNull { it.word.equals(w, ignoreCase = true) } }
+        existing = word?.let { w -> app.dictionary.all().firstOrNull { it.word.equals(w, ignoreCase = true) } }
         if (word != null && existing == null) return false
-        val d = existing?.let(DictionaryDraft::of) ?: DictionaryDraft.new(kind)
+        val ex = existing
+        val d = ex?.let(DictionaryDraft::of) ?: DictionaryDraft.new(kind)
         draft = d
-        title = (if (existing == null) "Add " else "Edit ") + if (d.snippet) "snippet" else "word"
-        screen {
+        title = DictionaryPages.editTitle(ex == null, d.snippet)
+        screen(t.bgSettings) {
+            val actions = ArrayList<DevUi.TopAction>()
+            actions += DevUi.TopAction(R.drawable.ic_lw_check, saveLabel(d.snippet)) { onSave() }
+            if (ex != null) actions += DevUi.TopAction(R.drawable.ic_lw_delete, deleteLabel(ex.isSnippet)) { confirmDelete(ex) }
+            val bar = topBar(title.toString(), DevUi.TopNav.BACK, { confirmLeave() }, actions)
+            titleView = bar.title
+            saveButton = bar.actions.first()
             card {
                 wordRow = fieldRow(
                     if (d.snippet) "Trigger phrase" else "Word or name", d.word,
                     InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
-                    help = "Up to ${dev.flowclone.data.DictionaryEdit.MAX_WORD} characters", hint = if (d.snippet) "my address" else "Wispr",
+                    help = "Up to ${DictionaryEdit.MAX_WORD} characters", hint = if (d.snippet) "my address" else "Wispr",
                 ) { validate() }
                 replRow = fieldRow(
                     replLabel(d.snippet), d.replacement,
@@ -230,12 +101,6 @@ class DictionaryActivity : Activity() {
                     it.onChange { on -> relabel(on); validate() }
                 }
             }
-            note("Save is in the top bar.")
-            if (existing != null) {
-                action(if (existing.isSnippet) "Delete snippet" else "Delete word", DevUi.Style.DANGER) {
-                    confirmDelete(existing) { draft = null; finish() }
-                }
-            }
         }
         backCallback = OnBackInvokedCallback { confirmLeave() }.also {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, it)
@@ -244,9 +109,11 @@ class DictionaryActivity : Activity() {
         true
     }
 
+    private fun saveLabel(snippet: Boolean) = "Save " + if (snippet) "snippet" else "word"
+    private fun deleteLabel(snippet: Boolean) = "Delete " + if (snippet) "snippet" else "word"
     private fun replLabel(snippet: Boolean) = if (snippet) "Expands to" else "Replace with (optional)"
     private fun replHelp(snippet: Boolean) =
-        if (snippet) "Up to ${dev.flowclone.data.DictionaryEdit.MAX_EXPANSION} characters; line breaks are kept"
+        if (snippet) "Up to ${DictionaryEdit.MAX_EXPANSION} characters; line breaks are kept"
         else "Leave empty to only teach the spelling; fill in to replace what the engine hears"
 
     private fun DevUi.FieldRow.label(): TextView = (edit.parent as ViewGroup).getChildAt(0) as TextView
@@ -254,6 +121,9 @@ class DictionaryActivity : Activity() {
     private fun relabel(snippet: Boolean) {
         wordRow?.label()?.text = if (snippet) "Trigger phrase" else "Word or name"
         replRow?.let { it.label().text = replLabel(snippet); it.help.text = replHelp(snippet) }
+        title = DictionaryPages.editTitle(existing == null, snippet)
+        titleView?.text = title
+        saveButton?.contentDescription = saveLabel(snippet)
     }
 
     private fun read(): DictionaryDraft? = draft?.copy(
@@ -268,33 +138,7 @@ class DictionaryActivity : Activity() {
         wordRow?.setError(e[DictionaryDraft.Field.WORD])
         replRow?.setError(e[DictionaryDraft.Field.REPLACEMENT])
         val can = d.canSave(all)
-        saveItem?.let { if (it.isEnabled != can) it.isEnabled = can }
-    }
-
-    override fun onCreateOptionsMenu(menu: Menu): Boolean {
-        when (page) {
-            PAGE_LIST -> menu.add(Menu.NONE, MENU_ADD, Menu.NONE, "Add").apply {
-                setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS or MenuItem.SHOW_AS_ACTION_WITH_TEXT)
-                contentDescription = if (kind == Kind.SNIPPETS) "Add snippet" else "Add word"
-            }
-            PAGE_EDIT -> {
-                val d = draft ?: return false
-                saveItem = menu.add(Menu.NONE, MENU_SAVE, Menu.NONE, "Save").apply {
-                    setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS or MenuItem.SHOW_AS_ACTION_WITH_TEXT)
-                    isEnabled = d.canSave(app.dictionary.all())
-                    contentDescription = "Save " + if (d.snippet) "snippet" else "word"
-                }
-            }
-            else -> return false
-        }
-        return true
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean = when (item.itemId) {
-        MENU_ADD -> { edit(this, kind, null); true }
-        MENU_SAVE -> { onSave(); true }
-        android.R.id.home -> { if (page == PAGE_EDIT) confirmLeave() else finish(); true }
-        else -> super.onOptionsItemSelected(item)
+        saveButton?.let { it.isEnabled = can; it.alpha = if (can) 1f else 0.38f }
     }
 
     private fun onSave() {
@@ -306,6 +150,15 @@ class DictionaryActivity : Activity() {
         Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
         draft = null
         finish()
+    }
+
+    private fun confirmDelete(e: DictEntry) {
+        ui.confirm("Delete “${e.word}”?", if (e.isSnippet) "The snippet and its text are removed." else "The word is removed from the dictionary.", "Delete", onYes = {
+            app.dictionary.remove(e.word)
+            Toast.makeText(this, "Deleted", Toast.LENGTH_SHORT).show()
+            draft = null
+            finish()
+        })
     }
 
     private fun confirmLeave() {
@@ -337,9 +190,8 @@ class DictionaryActivity : Activity() {
     @Deprecated("platform Activity result API")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        val uri = data?.data ?: return
-        if (resultCode != RESULT_OK) return
-        val msg = runCatching {
+        val uri = data?.data
+        val msg = if (resultCode != RESULT_OK || uri == null) null else runCatching {
             when (requestCode) {
                 REQ_IMPORT -> {
                     val json = contentResolver.openInputStream(uri)!!.use { it.readBytes().toString(Charsets.UTF_8) }
@@ -352,30 +204,29 @@ class DictionaryActivity : Activity() {
                 else -> null
             }
         }.getOrElse { "Failed: ${it.message}" }
-        msg?.let { Toast.makeText(this, it, Toast.LENGTH_LONG).show() }
-        for (r in refreshers) r()
+        msg?.let { Toast.makeText(applicationContext, it, Toast.LENGTH_LONG).show() }
+        if (page != PAGE_EDIT) finish()
     }
 
     companion object {
         private const val REQ_IMPORT = 20
         private const val REQ_EXPORT = 21
-        private const val MENU_ADD = 1
-        private const val MENU_SAVE = 2
         const val EXTRA_PAGE = "page"
         const val EXTRA_KIND = "kind"
         const val EXTRA_WORD = "word"
-        const val PAGE_HUB = "hub"
-        const val PAGE_LIST = "list"
         const val PAGE_EDIT = "edit"
+        const val PAGE_IMPORT = "import"
+        const val PAGE_EXPORT = "export"
 
-        fun intent(c: Context, page: String = PAGE_HUB, kind: Kind = Kind.WORDS): Intent =
+        fun intent(c: Context, page: String = PAGE_EDIT, kind: Kind = Kind.WORDS): Intent =
             Intent(c, DictionaryActivity::class.java).putExtra(EXTRA_PAGE, page).putExtra(EXTRA_KIND, kind.name)
-
-        fun open(c: Context, page: String, kind: Kind) = c.startActivity(intent(c, page, kind))
 
         /** [word] null = add a new entry of [kind]. */
         fun editIntent(c: Context, kind: Kind, word: String?): Intent = intent(c, PAGE_EDIT, kind).apply { if (word != null) putExtra(EXTRA_WORD, word) }
 
         fun edit(c: Context, kind: Kind, word: String?) = c.startActivity(editIntent(c, kind, word))
+
+        /** Import ([import] true) or export the dictionary file through the system picker. */
+        fun transfer(c: Context, import: Boolean) = c.startActivity(intent(c, if (import) PAGE_IMPORT else PAGE_EXPORT))
     }
 }

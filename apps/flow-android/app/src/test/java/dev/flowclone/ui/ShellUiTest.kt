@@ -4,7 +4,6 @@ import android.content.Intent
 import android.view.View
 import dev.flowclone.FlowApp
 import dev.flowclone.data.AppVersion
-import dev.flowclone.data.DictionaryPages
 import dev.flowclone.data.SettingsPages
 import dev.flowclone.data.ShellPages
 import dev.flowclone.data.ShellPages.Tab
@@ -52,15 +51,8 @@ class ShellUiTest {
 
     @Test fun otherTabsOpenTheirScreensForNow() {
         val a = launch()
-        a.frame.navView(Tab.DICTIONARY).performClick()
-        var i: Intent = shadowOf(a).nextStartedActivity
-        assertEquals(DictionaryActivity::class.java.name, i.component?.className)
-        a.frame.navView(Tab.SNIPPETS).performClick()
-        i = shadowOf(a).nextStartedActivity
-        assertEquals(DictionaryActivity.PAGE_LIST, i.getStringExtra(DictionaryActivity.EXTRA_PAGE))
-        assertEquals(DictionaryPages.Kind.SNIPPETS.name, i.getStringExtra(DictionaryActivity.EXTRA_KIND))
         a.frame.navView(Tab.STYLE).performClick()
-        i = shadowOf(a).nextStartedActivity
+        val i: Intent = shadowOf(a).nextStartedActivity
         assertEquals(SettingsActivity::class.java.name, i.component?.className)
         assertEquals(SettingsPages.Page.STYLE.name, i.getStringExtra(SettingsActivity.EXTRA_PAGE))
         // A launch tab doesn't take the selection: Home stays the shell's tab.
