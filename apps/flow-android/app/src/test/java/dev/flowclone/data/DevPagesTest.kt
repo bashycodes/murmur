@@ -61,7 +61,7 @@ class DevPagesTest {
     @Test fun rebaseKeepsThisPagesEditsAndTakesTheRestFromTheStore() {
         // Speech to text / the OpenRouter page saved meanwhile; Server keeps its own edit.
         val d = DevDraft.of(saved, Page.SERVER).edit { copy(port = "7400") }
-        val stored = OpenRouterPage.enableCleanup(OpenRouterPage.enableStt(saved, 1), 1, caps).copy(allowClient = false, routeOrder = listOf(Route.CLOUD, Route.CLIENT, Route.SERVER))
+        val stored = OpenRouterPage.enableCleanup(OpenRouterPage.enableStt(saved, 1), 1).copy(allowClient = false, routeOrder = listOf(Route.CLOUD, Route.CLIENT, Route.SERVER))
         val r = d.rebase(stored)
         assertEquals("7400", r.draft.port)
         assertTrue(r.draft.allowCloud); assertTrue(r.draft.allowCloudCleanup); assertFalse(r.draft.allowClient)

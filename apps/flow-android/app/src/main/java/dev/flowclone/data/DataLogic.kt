@@ -154,7 +154,8 @@ data class Settings(
 
     /**
      * D28: with cloud cleanup on (OpenRouter, consent given) the LLM step runs even when the
-     * on-device AI is off, at the chosen strength (LIGHT when none was picked).
+     * on-device AI is off, at the chosen strength (LIGHT when none was picked). D36: likewise
+     * with your server's cleanup on ([DevSettings.offPhoneCleanup]).
      */
     fun cleanupFor(cloudCleanup: Boolean): CleanupLevel =
         if (cloudCleanup && effectiveCleanup == CleanupLevel.NONE) cleanup.takeIf { it != CleanupLevel.NONE } ?: CleanupLevel.LIGHT

@@ -180,6 +180,11 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
 
     fun load(): DevSettings {
         val d = DevSettings.defaults(caps)
+        // D36: a pre-D36 order (no `server`) is migrated on read ([DevSettings.cleanupFrom]); the next save stores the full list.
+        val cleanup = DevSettings.cleanupFrom(
+            DevSettings.parseCleanupOrder(kv.getString(CLEANUP_ORDER)), DevSettings.parseCleanupOrder(kv.getString(CLEANUP_OFF)),
+            kv.getBoolean(ALLOW_CLOUD_CLEANUP, false),
+        )
         val stored = DevSettings(
             allowServer = kv.getBoolean("allow_server", d.allowServer),
             allowClient = kv.getBoolean("allow_client", d.allowClient),
@@ -196,8 +201,9 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
             showEngineBadge = kv.getBoolean("show_engine_badge", d.showEngineBadge),
             allowCloud = kv.getBoolean("allow_cloud", false),
             cloud = kv.getString("cloud")?.let { runCatching { CloudSettings.fromJson(org.json.JSONObject(it)) }.getOrNull() } ?: CloudSettings(),
-            allowCloudCleanup = kv.getBoolean(ALLOW_CLOUD_CLEANUP, false),
-            cleanupOrder = DevSettings.parseCleanupOrder(kv.getString(CLEANUP_ORDER)),
+            allowCloudCleanup = cleanup.cloudOn,
+            cleanupOrder = cleanup.order,
+            cleanupOff = cleanup.off,
         )
         // A toggle this build can't honour reads as off (e.g. prefs kept across a flavour switch).
         return stored.copy(
@@ -240,21 +246,32 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         putBoolean("show_engine_badge", s.showEngineBadge)
         putBoolean("allow_cloud", s.allowCloud)
         putString("cloud", if (s.cloud.isDefault) null else s.cloud.toJson().toString())
-        putBoolean(ALLOW_CLOUD_CLEANUP, s.allowCloudCleanup)
-        putString(CLEANUP_ORDER, s.cleanupOrder.joinToString(",") { it.wire })
+        putCleanup(s.allowCloudCleanup, s.cleanupOrder, s.cleanupOff)
+    }
+
+    /** D36: the full order, the switched-off entries (cloud included, for a reader of this file) and the cloud's switch. */
+    private fun KeyValue.Editor.putCleanup(allowCloudCleanup: Boolean, order: List<DevSettings.CleanupRoute>, off: Set<DevSettings.CleanupRoute>) {
+        val full = DevSettings.fullCleanupOrder(order)
+        putBoolean(ALLOW_CLOUD_CLEANUP, allowCloudCleanup)
+        putString(CLEANUP_ORDER, full.joinToString(",") { it.wire })
+        putString(CLEANUP_OFF, full.filter { it in off || (it == DevSettings.CleanupRoute.CLOUD && !allowCloudCleanup) }.joinToString(",") { it.wire })
     }
 
     /** Only the cloud part (OpenRouter page, consent dialogs, migration), leaving unsaved form fields alone. */
     fun saveCloud(
         allowCloud: Boolean? = null, cloud: CloudSettings, routeOrder: List<DevSettings.Route>? = null,
         allowCloudCleanup: Boolean? = null, cleanupOrder: List<DevSettings.CleanupRoute>? = null,
-    ) = kv.edit {
-        allowCloud?.let { putBoolean("allow_cloud", it) }
-        // Always written once touched: a schema-2 value marks the D28 migration as done.
-        putString("cloud", cloud.toJson().toString())
-        routeOrder?.let { o -> putString("route_order", o.joinToString(",") { it.wire }) }
-        allowCloudCleanup?.let { putBoolean(ALLOW_CLOUD_CLEANUP, it) }
-        cleanupOrder?.let { o -> putString(CLEANUP_ORDER, o.joinToString(",") { it.wire }) }
+        cleanupOff: Set<DevSettings.CleanupRoute>? = null,
+    ) {
+        // Read before the edit: load() may write its own one-time migration flag.
+        val cur = if (allowCloudCleanup != null || cleanupOrder != null || cleanupOff != null) load() else null
+        kv.edit {
+            allowCloud?.let { putBoolean("allow_cloud", it) }
+            // Always written once touched: a schema-2 value marks the D28 migration as done.
+            putString("cloud", cloud.toJson().toString())
+            routeOrder?.let { o -> putString("route_order", o.joinToString(",") { it.wire }) }
+            if (cur != null) putCleanup(allowCloudCleanup ?: cur.allowCloudCleanup, cleanupOrder ?: cur.cleanupOrder, cleanupOff ?: cur.cleanupOff)
+        }
     }
 
     /** D28: the one-time migration notice, shown as a banner until dismissed. */
@@ -318,6 +335,8 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         const val USAGE = "cloud_usage"
         const val ALLOW_CLOUD_CLEANUP = "allow_cloud_cleanup"
         const val CLEANUP_ORDER = "cleanup_order"
+        /** D36: `cleanup_order` entries switched off (csv). */
+        const val CLEANUP_OFF = "cleanup_off"
         const val CLOUD_NOTICE = "cloud_notice"
         const val DEBUG_LOG = "debug_log"
         const val KEEP_DEBUG_AUDIO = "debug_keep_audio"

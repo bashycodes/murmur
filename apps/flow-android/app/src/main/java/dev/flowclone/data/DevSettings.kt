@@ -36,13 +36,38 @@ data class DevSettings(
     val allowCloud: Boolean = false,
     /** D28: the one OpenRouter config (no key: that lives in [CloudKeyStore] under [OpenRouter.ID]). */
     val cloud: CloudSettings = CloudSettings(),
-    /** D28: opt-in cloud text cleanup (its own consent in [CleanupSettings]). Off by default. */
+    /**
+     * D28: opt-in cloud text cleanup (its own consent in [CleanupSettings]). Off by default.
+     * D36: this is the cloud entry's switch in [cleanupOrder] (router `allow_cloud_cleanup`).
+     */
     val allowCloudCleanup: Boolean = false,
-    /** D28 `cleanup_order`: empty = on-device LLM only (as before); the enable flow sets cloud, local. */
-    val cleanupOrder: List<CleanupRoute> = emptyList(),
+    /**
+     * D36 `cleanup_order`: every [CleanupRoute], in the order they are tried (the first enabled one
+     * that can clean does; the rest are fallbacks). Always the full list ([fullCleanupOrder]).
+     */
+    val cleanupOrder: List<CleanupRoute> = DEFAULT_CLEANUP_ORDER,
+    /** D36: the local / server entries switched off (they keep their place). The cloud's switch is [allowCloudCleanup]. */
+    val cleanupOff: Set<CleanupRoute> = emptySet(),
 ) {
     /** `flow_router::CleanupRoute`. */
-    enum class CleanupRoute(val wire: String) { CLOUD("cloud"), LOCAL("local") }
+    enum class CleanupRoute(val wire: String) { LOCAL("local"), SERVER("server"), CLOUD("cloud") }
+
+    /** D36: the entry's switch (the router may still skip it: no phone model, no server LLM, no consent / key). */
+    fun cleanupOn(r: CleanupRoute): Boolean = if (r == CleanupRoute.CLOUD) allowCloudCleanup else r !in cleanupOff
+
+    /** D36: [r]'s switch set to [on] (the cloud: [allowCloudCleanup]; its consent is the caller's). */
+    fun withCleanup(r: CleanupRoute, on: Boolean): DevSettings =
+        if (r == CleanupRoute.CLOUD) copy(allowCloudCleanup = on)
+        else copy(cleanupOff = if (on) cleanupOff - r else cleanupOff + r)
+
+    /**
+     * D36: some engine off the phone may clean this dictation (cloud on with consent, or the
+     * server on and set up), so the LLM step runs even with the on-device AI off ([Settings.cleanupFor]).
+     * Call on the effective settings.
+     */
+    val offPhoneCleanup: Boolean
+        get() = (cloudCleanupRouted && cloud.cleanup.consentOk) ||
+            (CleanupRoute.SERVER in cleanupOrder && cleanupOn(CleanupRoute.SERVER) && serverConfigured)
 
     enum class Prefer(val wire: String) { SERVER("server"), CLIENT("client") }
 
@@ -70,7 +95,8 @@ data class DevSettings(
         routeOrder = if (caps.cloud) routeOrder else routeOrder - Route.CLOUD,
         cloud = if (caps.cloud) cloud else CloudSettings(),
         allowCloudCleanup = allowCloudCleanup && caps.cloud,
-        cleanupOrder = if (caps.cloud) cleanupOrder else emptyList(),
+        cleanupOrder = cleanupOrder.filter { cleanupAvailable(it, caps) },
+        cleanupOff = cleanupOff.filter { cleanupAvailable(it, caps) }.toSet(),
     )
 
     /** Cloud cleanup is on and in the order (the router still checks consent, key, circuit and budget per call). */
@@ -120,11 +146,16 @@ data class DevSettings(
         put("keep_local_warm", keepLocalWarm)
         // Cloud fields only once the cloud is touched: pre-cloud fixtures stay byte-identical,
         // like the router's `skip_serializing_if = default`. `order` (when set) replaces `prefer`.
-        if (allowCloud || allowCloudCleanup || !cloud.isDefault || Route.CLOUD in routeOrder || cleanupOrder.isNotEmpty()) {
+        if (allowCloud || allowCloudCleanup || !cloud.isDefault || Route.CLOUD in routeOrder) {
             put("allow_cloud", allowCloud)
+            put("cloud", cloud.toJson())
+        }
+        // D36: the whole cleanup order, switched-off entries in `cleanup_off` (an empty order is the
+        // router's pre-D36 behaviour). A build that can only clean on the phone sends none (C2).
+        if (cleanupOrder.any { it != CleanupRoute.LOCAL }) {
             put("allow_cloud_cleanup", allowCloudCleanup)
             put("cleanup_order", org.json.JSONArray(cleanupOrder.map { it.wire }))
-            put("cloud", cloud.toJson())
+            put("cleanup_off", org.json.JSONArray(cleanupOrder.filter { !cleanupOn(it) }.map { it.wire }))
         }
         if (Route.CLOUD in routeOrder) put("order", org.json.JSONArray(routeOrder.map { it.wire }))
     }
@@ -136,7 +167,7 @@ data class DevSettings(
     override fun toString(): String =
         "DevSettings(server=$allowServer client=$allowClient prefer=${prefer.wire} host=$host:$port tls=$tls " +
             "pin=${tlsPinSha256.isNotEmpty()} token=${if (token.isEmpty()) "none" else "set"} timeouts=$connectTimeoutMs/$commitTimeoutBaseMs/$healthTtlS warm=$keepLocalWarm " +
-            "cloud=$allowCloud cleanup=$allowCloudCleanup/${cleanupOrder.joinToString(",") { it.wire }} order=${routeOrder.joinToString(",") { it.wire }})"
+            "cloud=$allowCloud cleanup=${cleanupOrder.joinToString(",") { it.wire + if (cleanupOn(it)) "" else "(off)" }} order=${routeOrder.joinToString(",") { it.wire }})"
 
     companion object {
         /** D24: was 800 ms, too tight through a VPN relay (3+ round trips of 150-300 ms). */
@@ -166,12 +197,49 @@ data class DevSettings(
             return named + Route.entries.filter { it !in named && it != Route.CLOUD }
         }
 
-        /** Stored `cleanup_order` (`cloud,local`); unknown names skipped. */
+        /** Stored `cleanup_order` (`local,server,cloud`); unknown names skipped. */
         fun parseCleanupOrder(csv: String?): List<CleanupRoute> =
             csv.orEmpty().split(',').mapNotNull { n -> CleanupRoute.entries.firstOrNull { it.wire == n.trim() } }.distinct()
 
-        /** The cleanup enable flow: cloud first, the on-device LLM as the fallback. */
-        val CLEANUP_CLOUD_FIRST = listOf(CleanupRoute.CLOUD, CleanupRoute.LOCAL)
+        /** D36 default: the phone's AI, then your server, then OpenRouter (off until the user opts in). */
+        val DEFAULT_CLEANUP_ORDER = listOf(CleanupRoute.LOCAL, CleanupRoute.SERVER, CleanupRoute.CLOUD)
+
+        /** The engines this build can clean with (phone: `local`, server: `remote`, OpenRouter: `cloud`). */
+        fun cleanupAvailable(r: CleanupRoute, caps: BuildCaps) = when (r) {
+            CleanupRoute.LOCAL -> caps.local
+            CleanupRoute.SERVER -> caps.remote
+            CleanupRoute.CLOUD -> caps.cloud
+        }
+
+        /**
+         * D36: a stored or received order made whole. Empty = the default. A pre-D36 order
+         * (`cloud,local`, `local,cloud`, `cloud`) keeps cloud vs phone as the user had them; the
+         * server goes right after the phone; anything still missing is appended.
+         */
+        fun fullCleanupOrder(listed: List<CleanupRoute>): List<CleanupRoute> {
+            val l = listed.distinct().toMutableList()
+            if (l.isEmpty()) return DEFAULT_CLEANUP_ORDER
+            if (CleanupRoute.LOCAL !in l) l += CleanupRoute.LOCAL
+            if (CleanupRoute.SERVER !in l) l.add(l.indexOf(CleanupRoute.LOCAL) + 1, CleanupRoute.SERVER)
+            return l + CleanupRoute.entries.filter { it !in l }
+        }
+
+        /** D36: the cleanup part of [DevSettings] from stored / received values. */
+        data class CleanupPrefs(val order: List<CleanupRoute>, val off: Set<CleanupRoute>, val cloudOn: Boolean)
+
+        /**
+         * D36 migration rule, for prefs and router JSON alike. A pre-D36 value (the order lacks
+         * `server`) keeps the phone and the server on, and the cloud on only if it was allowed AND
+         * in the order (what the router used to require). A D36 value is taken as stored.
+         */
+        fun cleanupFrom(order: List<CleanupRoute>, off: List<CleanupRoute>, allowCloudCleanup: Boolean): CleanupPrefs {
+            val legacy = CleanupRoute.SERVER !in order
+            return CleanupPrefs(
+                order = fullCleanupOrder(order),
+                off = if (legacy) emptySet() else off.toSet() - CleanupRoute.CLOUD,
+                cloudOn = allowCloudCleanup && CleanupRoute.CLOUD in order && CleanupRoute.CLOUD !in off,
+            )
+        }
 
         /** §3.1 step 4: enabling the cloud puts it first, keeping the previous server / client order. */
         fun withCloudFirst(order: List<Route>) = listOf(Route.CLOUD) + (order - Route.CLOUD)
@@ -185,6 +253,8 @@ data class DevSettings(
             val d = defaults(caps)
             val s = o.optJSONObject("server") ?: JSONObject()
             val order = o.optJSONArray("order")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty()
+            fun routes(k: String) = o.optJSONArray(k)?.let { a -> parseCleanupOrder((0 until a.length()).joinToString(",") { a.optString(it) }) }.orEmpty()
+            val cleanup = cleanupFrom(routes("cleanup_order"), routes("cleanup_off"), o.optBoolean("allow_cloud_cleanup", false))
             return DevSettings(
                 allowServer = o.optBoolean("allow_server", d.allowServer),
                 allowClient = o.optBoolean("allow_client", d.allowClient),
@@ -201,8 +271,9 @@ data class DevSettings(
                 keepLocalWarm = o.optBoolean("keep_local_warm", true),
                 allowCloud = o.optBoolean("allow_cloud", false),
                 cloud = CloudSettings.fromJson(o.optJSONObject("cloud")),
-                allowCloudCleanup = o.optBoolean("allow_cloud_cleanup", false),
-                cleanupOrder = o.optJSONArray("cleanup_order")?.let { a -> parseCleanupOrder((0 until a.length()).joinToString(",") { a.optString(it) }) }.orEmpty(),
+                allowCloudCleanup = cleanup.cloudOn,
+                cleanupOrder = cleanup.order,
+                cleanupOff = cleanup.off,
             )
         }
     }
@@ -374,13 +445,14 @@ object DevSettingsForm {
         val allowCloud: Boolean = false,
         val cloud: CloudSettings = CloudSettings(),
         val allowCloudCleanup: Boolean = false,
-        val cleanupOrder: List<DevSettings.CleanupRoute> = emptyList(),
+        val cleanupOrder: List<DevSettings.CleanupRoute> = DevSettings.DEFAULT_CLEANUP_ORDER,
+        val cleanupOff: Set<DevSettings.CleanupRoute> = emptySet(),
     ) {
         companion object {
             fun of(s: DevSettings) = Input(
                 s.allowServer, s.allowClient, s.routeOrder, s.host, s.port.toString(), s.tls, s.tlsPinSha256, s.token,
                 s.connectTimeoutMs.toString(), s.commitTimeoutBaseMs.toString(), s.healthTtlS.toString(), s.keepLocalWarm, s.showEngineBadge,
-                s.allowCloud, s.cloud, s.allowCloudCleanup, s.cleanupOrder,
+                s.allowCloud, s.cloud, s.allowCloudCleanup, s.cleanupOrder, s.cleanupOff,
             )
         }
     }
@@ -448,7 +520,7 @@ object DevSettingsForm {
             // A build without the cloud keeps the stored providers / order untouched (prefs survive a
             // flavour switch); effective() strips them from what the router sees.
             allowCloud = allowCloud, routeOrder = i.routeOrder,
-            cloud = i.cloud, allowCloudCleanup = i.allowCloudCleanup, cleanupOrder = i.cleanupOrder,
+            cloud = i.cloud, allowCloudCleanup = i.allowCloudCleanup, cleanupOrder = i.cleanupOrder, cleanupOff = i.cleanupOff,
         ) else null
         return Result(settings, errors, warnings, tlsLocked)
     }
