@@ -2,10 +2,12 @@
 // (docs/design/app-design/SettingsGeneral.dc.html). Fields and the
 // keycap / Change editors: features/general.ts.
 import { group, heading, row, toggle } from "../../lib/markup.js";
-/** Keycaps of the saved shortcut + Change; Change swaps in the text field. */
+/** Keycaps of the saved shortcut + Change; Change records the keys the
+ *  user presses ("Type instead" swaps in the text field). */
 const key = (id, label) => `<div class="lw-edit" data-edit="${id}">` +
     `<span class="fl-kbd-group lw-edit-view" id="${id}_view"></span>` +
     `<input id="${id}" class="fl-input lw-edit-input" data-save="prefs" spellcheck="false" aria-label="${label} shortcut" hidden />` +
+    `<button type="button" class="lw-link lw-edit-type" hidden>Type instead</button>` +
     `<button type="button" class="fl-btn fl-btn-secondary fl-btn-sm lw-edit-btn">Change</button></div>`;
 const select = (id, options, cls = "lw-w160") => `<select id="${id}" class="fl-select ${cls}" data-save="prefs">${options
     .map(([v, l]) => `<option value="${v}">${l}</option>`)

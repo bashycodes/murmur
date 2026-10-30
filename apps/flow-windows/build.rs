@@ -56,6 +56,8 @@ fn main() {
             "model_download_cancel",
             "transforms_reset",
             "transform_try",
+            "hotkey_capture_start",
+            "hotkey_capture_stop",
             "dev_get",
             "dev_validate",
             "dev_set",

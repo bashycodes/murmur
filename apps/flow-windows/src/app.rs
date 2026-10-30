@@ -879,6 +879,67 @@ fn model_download_cancel(state: tauri::State<'_, AppState>, id: String) -> bool 
     state.downloads.cancel(&id)
 }
 
+// ------------------------------------------------- shortcut recording
+
+/// How long "press the keys" waits for a chord before giving up.
+const CAPTURE_TIMEOUT: Duration = Duration::from_secs(10);
+/// The latest recording; a timed-out older one must not stop it.
+static CAPTURE_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Payload of `hotkey:capture`: "done" (with `chord`), "cancelled" (Esc)
+/// or "timeout".
+#[derive(Clone, serde::Serialize)]
+struct CaptureResult {
+    state: &'static str,
+    chord: Option<String>,
+}
+
+/// Settings' Change button: record the next chord the user holds and
+/// releases, through the keyboard hook (the webview can't tell Right Alt
+/// from AltGr and never sees Win), and emit it as `hotkey:capture`.
+/// Hotkeys don't fire meanwhile; the page saves the chord as if typed.
+#[tauri::command]
+fn hotkey_capture_start(app: AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    use crate::hotkeys::capture::RecordStep;
+    use std::sync::atomic::Ordering;
+    let (tx, rx) = mpsc::channel();
+    match state.hook.lock().unwrap().as_ref() {
+        Some(h) => h.start_capture(tx),
+        None => return Err("The keyboard hook is not running: type the shortcut instead.".into()),
+    }
+    let gen = CAPTURE_GEN.fetch_add(1, Ordering::SeqCst) + 1;
+    std::thread::Builder::new()
+        .name("flow-hotkey-capture".into())
+        .spawn(move || {
+            let (state, chord) = match rx.recv_timeout(CAPTURE_TIMEOUT) {
+                Ok(RecordStep::Done(c)) => ("done", Some(c.to_string())),
+                Ok(_) => ("cancelled", None),
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if CAPTURE_GEN.load(Ordering::SeqCst) == gen {
+                        if let Some(h) = app.state::<AppState>().hook.lock().unwrap().as_ref() {
+                            h.stop_capture();
+                        }
+                    }
+                    ("timeout", None)
+                }
+                // Stopped by the page, or replaced by a newer recording.
+                Err(mpsc::RecvTimeoutError::Disconnected) => return,
+            };
+            let _ = app.emit("hotkey:capture", CaptureResult { state, chord });
+        })
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// The page left recording (its window lost focus, or Cancel): hotkeys
+/// work again.
+#[tauri::command]
+fn hotkey_capture_stop(state: tauri::State<'_, AppState>) {
+    if let Some(h) = state.hook.lock().unwrap().as_ref() {
+        h.stop_capture();
+    }
+}
+
 // ------------------------------------------------- transforms page
 
 /// "Reset to defaults": the built-in transforms come back, custom ones
@@ -2255,6 +2316,8 @@ pub fn run() {
             model_download_cancel,
             transforms_reset,
             transform_try,
+            hotkey_capture_start,
+            hotkey_capture_stop,
             dev_get,
             dev_validate,
             dev_set,

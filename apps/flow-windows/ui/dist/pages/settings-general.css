@@ -7,7 +7,8 @@
   width: 160px;
 }
 
-/* Shortcut keycaps + Change (88 px); Change swaps in the text field. */
+/* Shortcut keycaps + Change (88 px); Change records the keys pressed,
+   Type instead (and Languages' Change) swaps in the text field. */
 .lw-edit {
   display: flex;
   align-items: center;
@@ -22,6 +23,19 @@
 }
 .lw-edit-view[hidden],
 .lw-edit-input[hidden] {
+  display: none;
+}
+/* Recording: "Press keys… Esc to cancel" + Type instead. */
+.lw-edit-rec {
+  font: 400 15px/20px var(--font-sans);
+  color: var(--foreground);
+}
+.lw-edit .lw-edit-type {
+  font: 400 13px/20px var(--font-sans);
+  color: var(--foreground-tertiary);
+  text-decoration: underline;
+}
+.lw-edit-type[hidden] {
   display: none;
 }
 .lw-edit-off {
