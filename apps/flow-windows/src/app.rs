@@ -867,6 +867,8 @@ fn model_download_start(app: AppHandle, state: tauri::State<'_, AppState>, id: S
 #[tauri::command]
 fn model_download_cancel(state: tauri::State<'_, AppState>, id: String) -> bool {
     state.downloads.cancel(&id)
+}
+
 // ------------------------------------------------- transforms page
 
 /// "Reset to defaults": the built-in transforms come back, custom ones
