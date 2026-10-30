@@ -417,6 +417,20 @@ pub trait CoreApi: Send + Sync {
     ) -> Result<String, String> {
         flow_core::command::run(None, instruction, selected, timeout).map_err(|e| e.to_string())
     }
+    /// Transforms: run a saved `instruction` on `text` (a selection or a
+    /// dictation, see `flow_core::transform::Source`) with the cleanup LLM
+    /// route, blocking up to `timeout`. `Ok` = the text to paste, `Err` =
+    /// pill text. Default: no LLM available.
+    fn transform(
+        &self,
+        instruction: &str,
+        text: &str,
+        source: flow_core::transform::Source,
+        timeout: std::time::Duration,
+    ) -> Result<String, String> {
+        flow_core::transform::run_transform(None, instruction, text, source, timeout)
+            .map_err(|e| e.to_string())
+    }
 }
 
 /// Model-free stand-in for `flow-core`: counts samples and returns
@@ -441,6 +455,10 @@ struct StubState {
     /// and the (instruction, selection) pairs it was asked.
     command_reply: Option<Result<String, String>>,
     commands: Vec<(String, Option<String>)>,
+    /// Scripted transform answer and the (instruction, text, source)
+    /// triples it was asked.
+    transform_reply: Option<Result<String, String>>,
+    transforms: Vec<(String, String, flow_core::transform::Source)>,
 }
 
 impl StubCore {
@@ -483,6 +501,16 @@ impl StubCore {
     pub fn commands(&self) -> Vec<(String, Option<String>)> {
         self.inner.lock().unwrap().commands.clone()
     }
+
+    /// Script what `transform()` answers.
+    pub fn set_transform_reply(&self, reply: Result<String, String>) {
+        self.inner.lock().unwrap().transform_reply = Some(reply);
+    }
+
+    /// (instruction, text, source) of every `transform()` call.
+    pub fn transforms(&self) -> Vec<(String, String, flow_core::transform::Source)> {
+        self.inner.lock().unwrap().transforms.clone()
+    }
 }
 
 impl CoreApi for StubCore {
@@ -498,6 +526,8 @@ impl CoreApi for StubCore {
             starts: old.starts + 1,
             command_reply: old.command_reply,
             commands: old.commands,
+            transform_reply: old.transform_reply,
+            transforms: old.transforms,
             ..StubState::default()
         };
         Ok(())
@@ -572,6 +602,26 @@ impl CoreApi for StubCore {
         match reply {
             Some(r) => r,
             None => flow_core::command::run(None, instruction, selected, timeout)
+                .map_err(|e| e.to_string()),
+        }
+    }
+
+    fn transform(
+        &self,
+        instruction: &str,
+        text: &str,
+        source: flow_core::transform::Source,
+        timeout: std::time::Duration,
+    ) -> Result<String, String> {
+        let reply = {
+            let mut s = self.inner.lock().unwrap();
+            s.transforms
+                .push((instruction.to_string(), text.to_string(), source));
+            s.transform_reply.clone()
+        };
+        match reply {
+            Some(r) => r,
+            None => flow_core::transform::run_transform(None, instruction, text, source, timeout)
                 .map_err(|e| e.to_string()),
         }
     }

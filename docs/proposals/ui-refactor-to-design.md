@@ -19,8 +19,8 @@ features we don't have are left out until a backend chunk adds them; no dead swi
 | W3g | Insights (current data) | W1 | done |
 | W3h | Scratchpad page in main window; Notetaker as "Later" | W1 | done |
 | W5 | Backend batch (one Rust implementer: `app.rs`/`build.rs`/capabilities are shared): theme pref, route per history row + route share, insights per-day/fixes, dictionary `learned`, retention values, `onboarded` flag, overlay "open settings at page" | W1 | done |
-| W6 | First-run onboarding (file/folder model pick; downloader is a separate D9-gated chunk) | W5 | done (downloader in progress) |
-| W7 | Transforms | spec needed | in progress (spec: transforms.md) |
+| W6 | First-run onboarding (file/folder model pick; downloader is a separate D9-gated chunk) | W5 | done (downloader: D31) |
+| W7 | Transforms (`docs/proposals/transforms.md`, D32): page, editor, opt-in, auto apply, view changes | W1, W5 | done |
 
 ## Android (apps/flow-android)
 

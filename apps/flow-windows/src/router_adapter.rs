@@ -770,6 +770,31 @@ impl CoreApi for RouterAdapter {
         }
         flow_core::command::run(cleaner, instruction, selected, timeout).map_err(|e| e.to_string())
     }
+
+    /// Transforms on the same route as Command Mode (consent, budget,
+    /// OpenRouter then this PC); a selection keeps the surrounding-text
+    /// gate, a dictation's transcript doesn't need it.
+    fn transform(
+        &self,
+        instruction: &str,
+        text: &str,
+        source: flow_core::transform::Source,
+        timeout: std::time::Duration,
+    ) -> Result<String, String> {
+        let base = self.local.as_ref().and_then(|a| a.cleaner());
+        let cleaner = self.router.command_cleaner(base);
+        let loading = self.local.as_ref().is_some_and(|a| {
+            matches!(
+                a.llm_status(),
+                crate::core_adapter::LlmStatus::Loading { .. }
+            )
+        });
+        if cleaner.is_none() && loading && !text.trim().is_empty() {
+            return Err(LLM_LOADING_MSG.into());
+        }
+        flow_core::transform::run_transform(cleaner, instruction, text, source, timeout)
+            .map_err(|e| e.to_string())
+    }
 }
 
 /// Command Mode pill while the on-device LLM is still loading.
@@ -935,12 +960,18 @@ mod tests {
             p: &flow_core::cleanup::CleanPrompt,
             _deadline: Instant,
         ) -> Result<String, flow_core::cleanup::CleanError> {
-            // Upper-case the selection out of the user message.
+            // Upper-case the selection (a transform's text) out of the
+            // user message.
+            let tag = if p.user.contains("<selected_text>") {
+                "selected_text"
+            } else {
+                "text"
+            };
             let sel = p
                 .user
-                .split("<selected_text>\n")
+                .split(&format!("<{tag}>\n"))
                 .nth(1)
-                .and_then(|s| s.split("\n</selected_text>").next())
+                .and_then(|s| s.split(&format!("\n</{tag}>")).next())
                 .unwrap_or_default();
             Ok(format!("Here's the result:\n\"{}\"", sel.to_uppercase()))
         }
@@ -979,6 +1010,23 @@ mod tests {
             r.command("shout it", Some("hello there"), t).as_deref(),
             Ok("HELLO THERE")
         );
+    }
+
+    #[test]
+    fn transform_runs_on_the_local_llm_for_a_selection_and_a_dictation() {
+        use flow_core::transform::Source;
+        let r = command_rig(true);
+        let t = std::time::Duration::from_secs(5);
+        for src in [Source::Selection, Source::Dictation] {
+            assert_eq!(
+                r.transform("shout it", "hello there", src, t).as_deref(),
+                Ok("HELLO THERE")
+            );
+        }
+        let e = command_rig(false)
+            .transform("polish", "hey", Source::Selection, t)
+            .unwrap_err();
+        assert!(e.starts_with("Transforms need AI"), "{e}");
     }
 
     #[test]
