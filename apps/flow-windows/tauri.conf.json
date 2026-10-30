@@ -30,10 +30,12 @@
       },
       {
         "label": "settings",
-        "title": "Murmur Settings",
+        "title": "Murmur",
         "url": "settings.html",
-        "width": 600,
-        "height": 760,
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 640,
         "visible": false,
         "center": true
       }

@@ -1,0 +1,486 @@
+// Engines: hybrid local/server routing (docs/hybrid-architecture.md §5),
+// speech decoding, the server connection and engine status, on the Speech
+// to text, System, Your server and Developer settings pages. The backend
+// owns validation (`dev_validate`), so the inline errors and Save use the
+// same rules; the token is typed here but stored DPAPI-encrypted. Saves go
+// through the dev store: switches save at once, the server form on Save.
+import { $, el, setStatus } from "../lib/dom.js";
+import { devStore } from "../lib/dev-store.js";
+import { cloudHint } from "../lib/format.js";
+import { invoke, onEvent } from "../lib/ipc.js";
+import { prefsStore } from "../lib/prefs-store.js";
+import { router } from "../lib/router.js";
+import { views } from "../lib/views.js";
+/** Engine switches that save at once (checkbox id = `dev_<field>`). */
+const DEV_SWITCHES = ["allow_server", "allow_client", "keep_local_warm", "show_engine_badge", "decode_while_speaking"];
+/** The server form (Your server page), saved with its Save button. */
+const SRV_NUM = ["port", "connect_timeout_ms", "commit_timeout_base_ms", "health_ttl_s"];
+const SRV_TEXT = ["host", "tls_pin_sha256", "token"];
+let devOrder = ["server", "client", "cloud"];
+let devValid = true;
+/** The server form has edits that are not saved yet (a switch's save must not overwrite them). */
+let serverDirty = false;
+/** Clear was pressed: the saved token is removed on Save. */
+let tokenCleared = false;
+const HINTS = {
+    auth_failed: "token rejected — copy it again from the server's token file",
+    connect_failed: "is flow-server running / LAN or VPN up?",
+    proto_mismatch: "client and server protocol versions differ — update one of them",
+    server_not_configured: "enter the server host first",
+    timeout: "the server is too slow or stuck",
+    busy: "the server is busy with another dictation",
+};
+function hint(code) {
+    return code ? (HINTS[code] ?? "") : "";
+}
+/** The Your server page's fields as a form patch. */
+function readServer() {
+    const f = { tls: $("dev_tls").checked };
+    for (const k of SRV_TEXT)
+        f[k] = $(`dev_${k}`).value;
+    for (const k of SRV_NUM) {
+        const v = $(`dev_${k}`).value.trim();
+        f[k] = v === "" ? -1 : Number(v);
+    }
+    if (tokenCleared)
+        f.token_saved = false;
+    return f;
+}
+function fillServer(f) {
+    $("dev_tls").checked = f.tls;
+    for (const k of SRV_TEXT)
+        $(`dev_${k}`).value = f[k];
+    for (const k of SRV_NUM)
+        $(`dev_${k}`).value = String(f[k]);
+    tokenCleared = false;
+    showTokenSaved(!!f.token_saved);
+}
+function fillDev(f) {
+    for (const k of DEV_SWITCHES)
+        $(`dev_${k}`).checked = f[k];
+    $("dev_parakeet_decoding").value = f.parakeet_decoding ?? "auto";
+    devOrder = [...f.route_order];
+    if (!serverDirty)
+        fillServer(f);
+    renderRoutes();
+}
+// The saved token never comes back to the page (S18): an empty field
+// keeps it; typing replaces it; Clear removes it on Save.
+function showTokenSaved(saved) {
+    $("dev_token").placeholder = saved
+        ? "saved (hidden) — leave empty to keep it"
+        : "from flow-server gen-token";
+}
+/** Which engines this build (and the OpenRouter page) offers. */
+function available(r) {
+    const caps = views.dev?.caps;
+    if (r === "server")
+        return !!caps?.remote;
+    if (r === "client")
+        return !!caps?.local;
+    return !!caps?.cloud && !!views.or?.supported;
+}
+function engineOn(r) {
+    if (r === "server")
+        return $("dev_allow_server").checked;
+    if (r === "client")
+        return $("dev_allow_client").checked;
+    return !!views.or?.stt.allow;
+}
+function setBadge(r, text, kind) {
+    const b = $(`eng_badge_${r}`);
+    b.textContent = text;
+    b.className = `fl-badge fl-badge-${kind}`;
+}
+/** One line per engine: what it is and whether it answers. */
+function describe(r) {
+    const on = engineOn(r);
+    const d = $(`eng_desc_${r}`);
+    if (r === "server") {
+        const f = views.dev?.form;
+        const h = views.dev?.route.health;
+        const rtt = h?.ok && h.rtt_ms ? ` · ${h.rtt_ms.median} ms` : "";
+        d.textContent = f?.host ? `${f.host}${rtt}. Set up under Your server.` : "Not set up yet: add it under Your server.";
+        if (!on)
+            setBadge(r, "Off", "light");
+        else if (!h)
+            setBadge(r, "On", "light");
+        else
+            setBadge(r, h.ok ? "Connected" : "Unreachable", h.ok ? "success" : "destructive");
+    }
+    else if (r === "client") {
+        const engine = prefsStore.get()?.asr_engine === "parakeet" ? "Parakeet" : "Whisper";
+        d.textContent = `${engine}. Private and works offline.`;
+        setBadge(r, on ? "On" : "Off", on ? "success" : "light");
+    }
+    else {
+        const or = views.or;
+        d.textContent = on && or ? `${or.stt.model}. Sends your audio to openrouter.ai.` : "Sends your audio to openrouter.ai. Asks first.";
+        setBadge(r, on ? "On" : "Off", on ? "success" : "light");
+    }
+}
+function renderRoutes() {
+    const list = $("dev_routes");
+    const shown = devOrder.filter(available);
+    for (const r of ["server", "client", "cloud"])
+        $(`eng_row_${r}`).hidden = !shown.includes(r);
+    shown.forEach((r, i) => {
+        const row = $(`eng_row_${r}`);
+        list.append(row); // DOM order = try order
+        row.classList.toggle("is-off", !engineOn(r));
+        row.querySelector(".lw-rank").textContent = String(i + 1);
+        row.querySelector("[data-move=up]").disabled = i === 0;
+        row.querySelector("[data-move=down]").disabled = i === shown.length - 1;
+        row.querySelector(".lw-move").hidden = shown.length < 2;
+        describe(r);
+    });
+    // Builds with one engine and no server or cloud: nothing to choose.
+    $("eng_group").hidden = shown.length === 0 || (shown.length === 1 && !views.dev?.visible);
+    $("dev_pin_row").hidden = !$("dev_tls").checked;
+}
+function move(r, dir) {
+    const shown = devOrder.filter(available);
+    const i = shown.indexOf(r);
+    const other = shown[i + dir];
+    if (!other)
+        return;
+    const order = [...devOrder];
+    const a = order.indexOf(r);
+    const b = order.indexOf(other);
+    [order[a], order[b]] = [order[b], order[a]];
+    void saveSwitch({ route_order: order });
+}
+function showCheck(c) {
+    for (const s of document.querySelectorAll("[data-err]"))
+        s.textContent = "";
+    for (const i of document.querySelectorAll("[data-dev-field]"))
+        i.classList.remove("invalid");
+    for (const e of c.errors) {
+        const slot = document.querySelector(`[data-err="${e.field}"]`);
+        if (slot)
+            slot.textContent = e.message;
+        $(`dev_${e.field}`)?.classList.add("invalid");
+    }
+    devValid = c.errors.length === 0;
+    $("dev_save").disabled = !devValid;
+    $("dev_test_conn").disabled = !devValid;
+    $("dev_tls_forced").hidden = !c.tls_forced;
+    const tls = $("dev_tls");
+    if (c.tls_forced)
+        tls.checked = true;
+    tls.disabled = c.tls_forced;
+    $("dev_warnings").replaceChildren(...c.warnings.map((w) => el("li", w.startsWith("Dictation disabled") ? "err" : "", w)));
+}
+let checkTimer = 0;
+function scheduleCheck() {
+    renderRoutes();
+    clearTimeout(checkTimer);
+    checkTimer = setTimeout(() => {
+        if (!views.dev)
+            return;
+        void invoke("dev_validate", { form: devStore.form(readServer()) }).then(showCheck);
+    }, 150);
+}
+/** A backend error as text; field errors also go next to their fields. */
+function errorText(e) {
+    const errs = e;
+    if (Array.isArray(errs)) {
+        showCheck({ errors: errs, warnings: [], tls_forced: false });
+        const fields = errs.map((x) => x.message).join("; ");
+        return `Your server needs fixing first: ${fields}`;
+    }
+    return String(e);
+}
+/** A switch or the order changed: save it alone, over the saved form. */
+async function saveSwitch(patch) {
+    try {
+        await devStore.save(patch);
+        setStatus("status", "Saved — applies to the next dictation", true);
+    }
+    catch (e) {
+        setStatus("status", errorText(e), false);
+        if (views.dev)
+            fillDev(views.dev.form); // back to what is saved
+    }
+}
+function healthText(h) {
+    if (!h.ok) {
+        const code = h.error ?? "error";
+        // flow-remote refuses ws:// to an address that is not private/VPN (S6).
+        if (/plaintext (refused|to public address)/.test(h.message ?? "")) {
+            return "Server needs TLS — its address is not private (or resolves to a public one); turn on TLS and set a certificate pin";
+        }
+        const why = hint(code);
+        return `${code}${h.message ? `: ${h.message}` : ""}${why ? ` — ${why}` : ""}`;
+    }
+    const r = h.rtt_ms;
+    const parts = [
+        r ? `OK · median ${r.median} ms (${r.min}-${r.max})` : "OK",
+        h.server_version ?? "",
+        h.asr_backend ?? "",
+    ].filter(Boolean);
+    return parts.join(" · ");
+}
+function showServerInfo(h) {
+    const e = $("dev_server_info");
+    if (!h) {
+        e.textContent = "Not probed yet";
+        e.className = "";
+        return;
+    }
+    if (!h.ok) {
+        e.textContent = healthText(h);
+        e.className = "err";
+        return;
+    }
+    const pp = h.postprocess_match === false ? " · ⚠ server pipeline ≠ client pipeline; results may differ" : " · pipeline ✓";
+    e.textContent =
+        `${h.server ?? ""} · ${h.server_version ?? "?"} (core ${h.server_core ?? "?"}, proto ${h.proto ?? "?"})` +
+            ` · ASR ${h.asr_backend ?? "?"} ${h.asr_model ?? ""} · LLM ${h.llm ? "on" : "off"}` +
+            ` · workers ${h.workers ?? "?"} (busy ${h.busy ?? "?"})${pp}`;
+    e.className = h.postprocess_match === false ? "err" : "ok";
+}
+/** Shared with Android (D22): `total {client_ms ?: total_ms} ms · asr {asr_ms} (+{pre_asr_ms} early) · wait {wait_ms} · {segments} seg`. */
+function timingLine(l) {
+    const parts = [`total ${l.client_ms ?? l.total_ms} ms`];
+    parts.push(l.pre_asr_ms > 0 ? `asr ${l.asr_ms} (+${l.pre_asr_ms} early)` : `asr ${l.asr_ms}`);
+    if (l.wait_ms > 0)
+        parts.push(`wait ${l.wait_ms}`);
+    if (l.segments > 0)
+        parts.push(`${l.segments} seg`);
+    if (l.client_ms != null && l.client_ms !== l.total_ms)
+        parts.push(`engine ${l.total_ms}`);
+    return parts.join(" · ");
+}
+function showRoute(r) {
+    const last = r.last;
+    const e = $("dev_last");
+    if (!last) {
+        e.textContent = "No dictation yet";
+    }
+    else {
+        const engine = last.engine === "remote" ? "server" : last.engine === "local" ? "client" : (last.engine ?? "none");
+        const bits = [
+            last.row ?? engine,
+            last.notice ?? "",
+            last.fallback ? `fallback: ${last.fallback}` : "",
+            last.server ? `server ${last.server}` : "",
+            last.rtt_ms != null ? `rtt ${last.rtt_ms} ms` : "",
+            last.queue_ms != null ? `queue ${last.queue_ms} ms` : "",
+            timingLine(last),
+            last.status,
+            last.empty_reason ?? "",
+            last.llm_row ?? last.llm ?? "",
+            new Date(last.at_ms).toLocaleTimeString(),
+        ].filter(Boolean);
+        e.textContent = bits.join(" · ");
+    }
+    const c = r.circuit;
+    $("dev_circuit").textContent = !c.open
+        ? "closed"
+        : c.until_config_change
+            ? `open until the server settings change (${c.reason ?? "?"})`
+            : `open until ${new Date(Date.now() + (c.retry_in_ms ?? 0)).toLocaleTimeString()} (${c.reason ?? "?"})`;
+    showServerInfo(r.health);
+    const cc = r.cloud_circuit;
+    $("dev_cloud_circuit_dt").hidden = !cc;
+    $("dev_cloud_circuit").hidden = !cc;
+    if (cc) {
+        $("dev_cloud_circuit").textContent = !cc.open
+            ? "closed"
+            : cc.until_config_change
+                ? `open until the key, model or privacy settings change (${cloudHint(cc.reason)})`
+                : `open until ${new Date(Date.now() + (cc.retry_in_ms ?? 0)).toLocaleTimeString()} (${cloudHint(cc.reason)})`;
+    }
+}
+function showDev(v) {
+    fillDev(v.form);
+    $("dev_lock").hidden = v.caps.remote;
+    const c = v.capabilities;
+    $("dev_build").textContent =
+        `Murmur ${v.full} · ` +
+            `${[c.local ? "client" : "", c.remote ? "server" : ""].filter(Boolean).join(" + ") || "no engine"}` +
+            ` · ASR ${c.asr_engines.join(", ") || "none"} · LLM ${c.llm ? "yes" : "no"} · proto ${c.proto} · core ${c.core_version}`;
+    showCheck(v.check);
+    showRoute(v.route);
+}
+async function loadDev() {
+    try {
+        views.setDev(await invoke("dev_get"));
+    }
+    catch (e) {
+        setStatus("status", String(e), false);
+    }
+}
+async function devCall(cmd, args, okText, statusId) {
+    try {
+        const r = await invoke(cmd, args);
+        setStatus(statusId, okText, true);
+        return r;
+    }
+    catch (e) {
+        setStatus(statusId, errorText(e), false);
+        return null;
+    }
+}
+async function serverSave() {
+    if (!devValid)
+        return;
+    try {
+        serverDirty = false;
+        await devStore.save(readServer());
+        setStatus("dev_status", "Saved — applies to the next dictation", true);
+    }
+    catch (e) {
+        serverDirty = true;
+        setStatus("dev_status", errorText(e), false);
+    }
+}
+async function devTestConnection() {
+    if (!devValid)
+        return;
+    const out = $("dev_test");
+    out.textContent = "Testing…";
+    out.className = "hint";
+    try {
+        const h = await invoke("dev_test_connection", { form: devStore.form(readServer()) });
+        out.textContent = `Test connection: ${healthText(h)}`;
+        out.className = h.ok ? "hint ok" : "hint err";
+    }
+    catch (e) {
+        out.textContent = String(e);
+        out.className = "hint err";
+    }
+}
+async function devTestSession() {
+    const out = $("dev_diag");
+    out.textContent = "Running a 1 s silent session through the saved settings…";
+    out.className = "hint";
+    try {
+        const r = await invoke("dev_test_session");
+        const engine = r.engine === "remote" ? "server" : r.engine === "local" ? "client" : "none";
+        const ok = r.status === "EMPTY" && r.empty_reason === "no_speech";
+        out.textContent =
+            `Test session: ${r.status}${r.empty_reason ? ` (${r.empty_reason})` : ""} via ${engine}` +
+                `${r.fallback ? ` (fallback: ${r.fallback} — ${hint(r.fallback)})` : ""} in ${r.total_ms} ms` +
+                `${r.error ? ` — ${r.error}` : ""}`;
+        out.className = ok ? "hint ok" : "hint err";
+    }
+    catch (e) {
+        out.textContent = String(e);
+        out.className = "hint err";
+    }
+    void refreshRoute();
+}
+async function refreshRoute() {
+    try {
+        showRoute(await invoke("dev_route_status"));
+    }
+    catch {
+        /* not loaded yet */
+    }
+}
+let versionTaps = 0;
+let versionTimer = 0;
+/** Seven taps on the version line unlock the Developer page. */
+export function versionTapped() {
+    const dv = views.dev;
+    if (!dv || dv.visible)
+        return;
+    versionTaps++;
+    clearTimeout(versionTimer);
+    versionTimer = setTimeout(() => (versionTaps = 0), 3000);
+    if (versionTaps >= 7) {
+        versionTaps = 0;
+        void devCall("dev_unlock", { unlocked: true }, "Developer settings unlocked", "status").then((v) => {
+            if (v) {
+                views.setDev(v);
+                router.go("settings-developer");
+            }
+        });
+    }
+}
+export const engines = {
+    init() {
+        for (const k of DEV_SWITCHES) {
+            const box = $(`dev_${k}`);
+            box.addEventListener("change", () => void saveSwitch({ [k]: box.checked }));
+        }
+        const dec = $("dev_parakeet_decoding");
+        dec.addEventListener("change", () => void saveSwitch({ parakeet_decoding: dec.value }));
+        for (const b of document.querySelectorAll("#dev_routes [data-move]")) {
+            const r = b.closest("[data-route]").dataset.route;
+            b.addEventListener("click", () => move(r, b.dataset.move === "up" ? -1 : 1));
+        }
+        for (const i of document.querySelectorAll("[data-dev-field]")) {
+            const edited = () => {
+                serverDirty = true;
+                scheduleCheck();
+            };
+            i.addEventListener("input", edited);
+            i.addEventListener("change", edited);
+        }
+        $("dev_save").addEventListener("click", () => void serverSave());
+        $("dev_test_conn").addEventListener("click", () => void devTestConnection());
+        $("dev_test_session").addEventListener("click", () => void devTestSession());
+        $("dev_reset_circuit").addEventListener("click", () => void devCall("dev_reset_circuit", {}, "Circuit reset", "dev_diag_status").then((r) => r && showRoute(r)));
+        $("dev_reset").addEventListener("click", () => void devCall("dev_reset_defaults", {}, "Defaults restored", "dev_diag_status").then((v) => {
+            if (!v)
+                return;
+            serverDirty = false;
+            views.setDev(v);
+        }));
+        $("dev_lock").addEventListener("click", () => void devCall("dev_unlock", { unlocked: false }, "Developer settings locked", "status").then((v) => {
+            if (v) {
+                views.setDev(v);
+                router.go("settings-general");
+            }
+        }));
+        $("dev_token_show").addEventListener("click", () => {
+            const t = $("dev_token");
+            t.type = t.type === "password" ? "text" : "password";
+            $("dev_token_show").textContent = t.type === "password" ? "Show" : "Hide";
+        });
+        $("dev_token_paste").addEventListener("click", () => {
+            void navigator.clipboard
+                .readText()
+                .then((t) => {
+                $("dev_token").value = t.trim();
+                serverDirty = true;
+                scheduleCheck();
+            })
+                .catch(() => setStatus("dev_status", "Clipboard not readable: paste with Ctrl+V", false));
+        });
+        $("dev_token_clear").addEventListener("click", () => {
+            $("dev_token").value = "";
+            tokenCleared = true;
+            serverDirty = true;
+            showTokenSaved(false);
+            scheduleCheck();
+        });
+        views.onDev(showDev);
+        // Turning STT on put `cloud` first in the saved route order (backend):
+        // show that order here too.
+        views.onOr((v, prev) => {
+            if (v?.stt.allow && prev && !prev.stt.allow && v.route_order)
+                devOrder = [...v.route_order];
+            renderRoutes();
+        });
+        prefsStore.subscribe(() => {
+            if (views.dev)
+                renderRoutes();
+        });
+        void onEvent("dev:route", (e) => {
+            showRoute(e.payload);
+            if (views.dev) {
+                views.dev.route = e.payload;
+                renderRoutes();
+            }
+        });
+    },
+    load: loadDev,
+    shown(page, opened) {
+        if (opened && (page === "settings-speech" || page === "settings-developer"))
+            void refreshRoute();
+    },
+};

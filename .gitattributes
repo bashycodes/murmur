@@ -2,3 +2,5 @@
 # sources and tsc output are LF (tsconfig newLine), so keep them LF on
 # every checkout or the tag build sees ui/dist as modified (D26 clean tree).
 apps/flow-windows/ui/** text eol=lf
+# Fonts are binary: no eol conversion (it corrupts the woff2 files).
+apps/flow-windows/ui/dist/fonts/*.woff2 binary
