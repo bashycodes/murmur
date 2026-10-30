@@ -134,15 +134,25 @@ function dayText(ts) {
 function historyRow(h) {
     const row = el("div", "fl-list-row lw-hist-row");
     const body = el("div", "lw-hist-body");
+    row.dataset.id = String(h.id);
     body.append(el("p", "lw-hist-text", h.final_text));
     // Only the exceptions get a badge; "AI edited" shows as the undo button.
-    if (h.edited || h.pasted === null) {
+    if (h.edited || h.pasted === null || h.transform) {
         const meta = el("div", "lw-hist-meta");
+        if (h.transform)
+            meta.append(el("span", "fl-badge fl-badge-brandLight", `Transform: ${h.transform}`));
         if (h.edited)
             meta.append(el("span", "fl-badge fl-badge-light", "You corrected it"));
         if (h.pasted === null)
             meta.append(el("span", "fl-badge fl-badge-destructive", "Not pasted"));
         body.append(meta);
+    }
+    let changes = null;
+    if (h.transform && h.original) {
+        changes = el("div", "lw-tf-change");
+        changes.hidden = true;
+        changes.append(el("p", "lw-hist-note", "Before and after (struck = removed, underlined = added):"), diffView(h.original, h.final_text));
+        body.append(changes);
     }
     if (h.edited) {
         const c = el("p", "lw-hist-note");
@@ -151,6 +161,12 @@ function historyRow(h) {
     }
     const actions = el("div", "lw-hist-actions");
     actions.append(iconButton("Copy", ICON.copy, () => void act(invoke("history_copy", { id: h.id, raw: false }), "Copied")), iconButton("Paste again", ICON.paste, () => void act(invoke("history_repaste", { id: h.id, raw: false }), "Pasted")));
+    if (changes) {
+        const panel = changes;
+        actions.append(iconButton("View changes", ICON.cleanup, () => {
+            panel.hidden = !panel.hidden;
+        }));
+    }
     if (h.ai_edited) {
         const undo = el("div", "lw-undo");
         undo.hidden = true;
@@ -210,6 +226,25 @@ function render(rows) {
         : keep === "never"
             ? "History is off (Settings → Data and privacy), so nothing is kept."
             : "Hold your push-to-talk keys in any app and speak. Your dictations show up here.";
+}
+/** "View changes" (the Win+Alt+O chord): show the transform row `id`
+ *  (null = no transform yet) with its before / after open. */
+async function viewChanges(id) {
+    router.go("home");
+    $("hist_query").value = "";
+    await reloadHistory();
+    if (id === null) {
+        setStatus("hist_status", "No transform yet: select text in any app and press a transform shortcut.", true);
+        return;
+    }
+    const row = document.querySelector(`#hist_list .lw-hist-row[data-id="${id}"]`);
+    const panel = row?.querySelector(".lw-tf-change");
+    if (!row || !panel) {
+        setStatus("hist_status", "That transform is no longer in your history.", false);
+        return;
+    }
+    panel.hidden = false;
+    row.scrollIntoView({ block: "center" });
 }
 let histSeq = 0;
 /** Reload the list (search, retention change, delete all). */
@@ -344,6 +379,7 @@ export const homePage = {
                 void loadStats();
             }
         });
+        void onEvent("transforms:view", (e) => void viewChanges(e.payload ?? null));
         void onEvent("insights:changed", () => {
             if (router.active() === "home")
                 void loadStats();

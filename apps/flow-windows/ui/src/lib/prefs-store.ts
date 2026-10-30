@@ -52,7 +52,25 @@ export interface Prefs {
   learn_from_edits: boolean;
   /** First-run setup finished or skipped (false only on a fresh install). */
   onboarded?: boolean;
+  transforms?: TransformPrefs;
   [k: string]: unknown;
+}
+
+/** One saved transform (`transforms::Item`, src/transforms.rs). */
+export interface TransformItem {
+  transform: { id: string; name: string; description: string; instruction: string };
+  /** "Win+Alt+1"; null = no shortcut. */
+  shortcut: string | null;
+}
+
+/** `prefs.transforms` (docs/proposals/transforms.md). */
+export interface TransformPrefs {
+  /** Master "Opt in": off = no shortcut registered, no auto apply. */
+  enabled: boolean;
+  /** Transform id run on every dictation; null = off. */
+  auto_apply: string | null;
+  view_changes: string | null;
+  items: TransformItem[];
 }
 
 type Listener = (p: Prefs) => void;
