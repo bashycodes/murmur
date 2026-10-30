@@ -56,6 +56,14 @@ class DictationControllerTest {
         override suspend fun sendKey(key: dev.flowclone.core.PasteKey): Boolean { keys += key; inserted += "<${key.wire}>"; return true }
         val outcomes = mutableListOf<String?>()
         override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?) { history += result to inserted; outcomes += outcome }
+        var keepRetry = false
+        override fun keepRetryAudio() = keepRetry
+        /** D35: the recording handed over with each History row (null = not kept). */
+        val recordings = mutableListOf<Recording?>()
+        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?, recording: Recording?) {
+            recordings += recording
+            recordHistory(result, inserted, appId, outcome)
+        }
         override fun hasMicPermission() = micGranted
         override fun captureContext() = context
         var config = SessionConfig(languages = listOf("en"))
@@ -619,6 +627,56 @@ class DictationControllerTest {
         advanceTimeBy(600)
         c.toggle(false); advanceTimeBy(600); c.toggle(false); settle() // silence → EMPTY
         assertTrue(host.notInserted.isEmpty())
+    }
+
+    /** D35: the recording goes with the History row, styled bucket included. */
+    @Test fun aDictationKeepsItsRecordingForRetry() = runTest {
+        host.keepRetry = true
+        host.context = FieldContext(appId = "com.example.notes", appCategory = "document")
+        val c = controller()
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        val rec = host.recordings.single()!!
+        assertEquals(16_000, rec.pcm.size)
+        assertEquals("document", rec.appCategory)
+    }
+
+    @Test fun noRecordingWhenOffOrForAProtectedTarget() = runTest {
+        val c = controller()
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        assertEquals(listOf<Recording?>(null), host.recordings)
+        host.keepRetry = true
+        host.target = InsertTarget.PROTECTED; host.explicitTarget = InsertTarget.PROTECTED
+        advanceTimeBy(600)
+        c.toggle(false); audio.speak(); advanceTimeBy(600); c.toggle(false); settle()
+        assertEquals("target_protected", host.outcomes.last())
+        assertEquals(null, host.recordings.last())
+    }
+
+    /** D35: the recording runs again with the settings active now; nothing is inserted. */
+    @Test fun retryRerunsTheRecordingWithTheSettingsActiveNow() = runTest {
+        val c = controller()
+        host.config = SessionConfig(languages = listOf("de"))
+        core.transcript = "hallo welt"
+        val ctx = FieldContext(appId = "com.example.mail", appCategory = "email")
+        val out = c.retry(ShortArray(16_000) { 3000 }, ctx)
+        assertEquals("hallo welt", (out as RetryOutcome.Done).result.historyText)
+        assertEquals("de", core.lastConfig!!.languages.single())
+        assertEquals(null, core.lastConfig!!.endpointSilenceMs)
+        assertEquals(ctx, core.lastContext)
+        assertEquals(16_000, core.samplesPushed)
+        assertTrue("never inserts", host.inserted.isEmpty())
+        assertTrue("no new History row from the controller", host.history.isEmpty())
+        assertEquals(DictationState.Ready, c.state.value)
+        assertFalse(c.retrying)
+    }
+
+    @Test fun retryWaitsItsTurnAndSaysWhy() = runTest {
+        val c = controller()
+        assertEquals(RetryOutcome.Failed(dev.flowclone.data.RetryLogic.EMPTY), c.retry(ShortArray(16_000), null))
+        assertEquals(RetryOutcome.Failed(dev.flowclone.data.RetryLogic.GONE), c.retry(ShortArray(0), null))
+        c.toggle(false)
+        assertEquals(RetryOutcome.Failed(dev.flowclone.data.RetryLogic.BUSY), c.retry(ShortArray(16_000) { 3000 }, null))
+        c.cancel()
     }
 
     /** blank_asr diagnostics: the core's VAD speech + peak level reach the D21 trace. */

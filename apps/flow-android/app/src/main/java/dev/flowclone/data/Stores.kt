@@ -25,6 +25,7 @@ class SettingsStore(context: Context) {
         language = loadLanguage(),
         cleanup = CleanupLevel.entries.firstOrNull { it.wire == sp.getString("cleanup", null) } ?: CleanupLevel.NONE,
         retention = Retention.fromKey(sp.getString("retention", null)),
+        retryAudioKeep = RetryLogic.keepOf(sp.getInt("retry_audio_keep", RetryLogic.DEFAULT_KEEP)),
         capMinutes = sp.getInt("cap_minutes", 5),
         mockEngine = sp.getBoolean("mock_engine", false),
         userDenylist = sp.getStringSet("user_denylist", emptySet())?.toSet() ?: emptySet(),
@@ -81,6 +82,7 @@ class SettingsStore(context: Context) {
             .putString("language", s.language)
             .putString("cleanup", s.cleanup.wire)
             .putString("retention", s.retention.key)
+            .putInt("retry_audio_keep", RetryLogic.keepOf(s.retryAudioKeep))
             .putInt("cap_minutes", s.capMinutes)
             .putBoolean("mock_engine", s.mockEngine)
             .putStringSet("user_denylist", s.userDenylist)
@@ -235,6 +237,11 @@ data class HistoryRow(
      * rewrote; null = speak-to-generate. [asrText] holds the instruction, [finalText] the result.
      */
     val commandOriginal: String? = null,
+    /**
+     * v5: the writing-style bucket ([FieldContext.appCategory][dev.flowclone.core.FieldContext.appCategory])
+     * of the dictation's app, so a retry picks the same style; null = saved before v5.
+     */
+    val appCategory: String? = null,
 ) {
     val isCommand: Boolean get() = status == COMMAND
 
@@ -250,7 +257,6 @@ data class HistoryRow(
     }
 }
 
-/** Local-only history (plain SQLite; no audio stored). */
 /**
  * Review S17: deleted transcripts must not stay readable in free pages or the WAL file.
  * `secure_delete` zeroes freed content on every connection; after a delete / purge / clear the
@@ -262,7 +268,14 @@ object HistoryHygiene {
     const val AFTER_CLEAR = "VACUUM"
 }
 
-class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", null, 4) {
+/**
+ * Local-only history (plain SQLite). D35: the recordings of the newest rows live beside it in
+ * [audio] (for "Retry with current settings"); a recording and a row's versions go with the row.
+ */
+class HistoryStore(
+    context: Context,
+    val audio: RetryAudioStore = RetryAudioStore(File(context.filesDir, "retry_audio")),
+) : SQLiteOpenHelper(context, "history.db", null, 5) {
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
         db.rawQuery(HistoryHygiene.ON_OPEN, null).use { it.moveToFirst() }
@@ -287,6 +300,17 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
         addV2Columns(db)
         addV3Columns(db)
         addV4Columns(db)
+        addV5(db)
+    }
+
+    /** v5 (D35): the app's style bucket, and the earlier texts of retried rows (0 = the original). */
+    private fun addV5(db: SQLiteDatabase) {
+        db.execSQL("ALTER TABLE history ADD COLUMN app_category TEXT")
+        db.execSQL(
+            """CREATE TABLE history_versions(id INTEGER PRIMARY KEY AUTOINCREMENT, history_id INTEGER NOT NULL,
+               n INTEGER NOT NULL, created_at INTEGER NOT NULL, status TEXT NOT NULL, asr_text TEXT NOT NULL,
+               final_text TEXT NOT NULL, route TEXT, UNIQUE(history_id, n))""",
+        )
     }
 
     /** v4: Command Mode's original selection (status COMMAND rows only). */
@@ -309,12 +333,15 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
         if (oldVersion < 2) addV2Columns(db)
         if (oldVersion < 3) addV3Columns(db)
         if (oldVersion < 4) addV4Columns(db)
+        if (oldVersion < 5) addV5(db)
     }
 
-    fun add(row: HistoryRow, retention: Retention) {
-        if (!retention.stores) return
-        writableDatabase.insert("history", null, values(row))
+    /** The new row's id, or null when [retention] saves nothing (or the insert failed). */
+    fun add(row: HistoryRow, retention: Retention): Long? {
+        if (!retention.stores) return null
+        val id = writableDatabase.insert("history", null, values(row))
         purge(retention, row.createdAt)
+        return id.takeIf { it > 0 }
     }
 
     private fun values(row: HistoryRow) = ContentValues().apply {
@@ -324,22 +351,109 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
         put("fallback_reason", row.fallbackReason); put("asr_ms", row.asrMs); put("llm_ms", row.llmMs); put("total_ms", row.totalMs)
         put("insert_outcome", row.insertOutcome); put("route", row.route)
         put("command_original", row.commandOriginal)
+        put("app_category", row.appCategory)
     }
 
     fun purge(retention: Retention, now: Long = System.currentTimeMillis()) {
         val cutoff = retention.cutoff(now) ?: return
-        if (writableDatabase.delete("history", "created_at < ?", arrayOf(cutoff.toString())) > 0) scrub(vacuum = retention == Retention.NEVER)
+        if (writableDatabase.delete("history", "created_at < ?", arrayOf(cutoff.toString())) > 0) {
+            dropOrphans()
+            scrub(vacuum = retention == Retention.NEVER)
+        }
     }
 
-    fun delete(id: Long) { writableDatabase.delete("history", "id = ?", arrayOf(id.toString())); scrub() }
+    fun delete(id: Long) {
+        writableDatabase.delete("history", "id = ?", arrayOf(id.toString()))
+        dropOrphans()
+        scrub()
+    }
+
+    /** Versions and recordings whose row is gone (deleted, expired, cleared, replaced). */
+    private fun dropOrphans() {
+        writableDatabase.delete("history_versions", "history_id NOT IN (SELECT id FROM history)", null)
+        runCatching { audio.retain(audio.ids().intersect(ids().toSet())) }
+    }
+
+    /** Every row id, newest first. */
+    private fun ids(): List<Long> =
+        readableDatabase.rawQuery("SELECT id FROM history ORDER BY created_at DESC, id DESC", null).use { c ->
+            buildList { while (c.moveToNext()) add(c.getLong(0)) }
+        }
+
+    /** D35: keep [pcm] as row [id]'s recording, then only the newest [keep] rows keep theirs. */
+    fun recordAudio(id: Long, pcm: ShortArray, keep: Int) {
+        if (keep <= 0 || pcm.isEmpty()) return
+        audio.save(id, pcm)
+        pruneAudio(keep)
+    }
+
+    /** D35: only the newest [keep] rows keep their recording (0 = none). */
+    fun pruneAudio(keep: Int) {
+        val ids = RetryLogic.keepIds(ids(), keep)
+        audio.retain(audio.ids().intersect(ids))
+    }
+
+    fun hasAudio(id: Long): Boolean = audio.has(id)
+
+    /** Ids among [ids] whose recording is kept. */
+    fun withAudio(ids: Collection<Long>): Set<Long> = audio.ids().intersect(ids.toSet())
+
+    fun row(id: Long): HistoryRow? = rows("created_at DESC", null, "id = ?", arrayOf(id.toString())).firstOrNull()
+
+    /** Every text of row [id], oldest first (empty for a row never retried). */
+    fun versions(id: Long): List<HistoryVersion> = versionsFor(listOf(id))[id].orEmpty()
+
+    fun versionsFor(ids: Collection<Long>): Map<Long, List<HistoryVersion>> {
+        if (ids.isEmpty()) return emptyMap()
+        val out = HashMap<Long, MutableList<HistoryVersion>>()
+        for (chunk in ids.chunked(500)) {
+            val q = chunk.joinToString(",") { "?" }
+            readableDatabase.rawQuery(
+                "SELECT history_id, n, created_at, status, asr_text, final_text, route FROM history_versions WHERE history_id IN ($q) ORDER BY history_id, n",
+                chunk.map { it.toString() }.toTypedArray(),
+            ).use { c ->
+                while (c.moveToNext()) out.getOrPut(c.getLong(0)) { mutableListOf() } +=
+                    HistoryVersion(c.getInt(1), c.getLong(2), c.getString(3), c.getString(4), c.getString(5), c.getString(6))
+            }
+        }
+        return out
+    }
+
+    /**
+     * D35: row [id] was retried and got [r]. Version 0 keeps the text as it was (first retry
+     * only), the new text becomes the next version and the row's text. Returns the row as it
+     * was and the new version's number, or null when the row is gone.
+     */
+    fun applyRetry(id: Long, r: dev.flowclone.core.CommitResult, now: Long = System.currentTimeMillis()): Pair<HistoryRow, Int>? {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val old = row(id) ?: return null
+            val vs = versions(id)
+            if (vs.isEmpty()) db.insertOrThrow("history_versions", null, versionValues(id, RetryLogic.original(old)))
+            val n = (vs.maxOfOrNull { it.n } ?: 0) + 1
+            val new = RetryLogic.retried(old, r)
+            db.insertOrThrow("history_versions", null, versionValues(id, HistoryVersion(n, now, new.status, new.asrText, new.finalText, new.route)))
+            db.update("history", values(new), "id = ?", arrayOf(id.toString()))
+            db.setTransactionSuccessful()
+            return old to n
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    private fun versionValues(id: Long, v: HistoryVersion) = ContentValues().apply {
+        put("history_id", id); put("n", v.n); put("created_at", v.createdAt); put("status", v.status)
+        put("asr_text", v.asrText); put("final_text", v.finalText); put("route", v.route)
+    }
 
     fun recent(limit: Int = 500): List<HistoryRow> = rows("created_at DESC", limit.toString())
 
     /** Every saved row, oldest first (backup export). */
     fun all(): List<HistoryRow> = rows("created_at ASC, id ASC", null)
 
-    private fun rows(order: String, limit: String?): List<HistoryRow> =
-        readableDatabase.query("history", null, null, null, null, null, order, limit).use { c ->
+    private fun rows(order: String, limit: String?, where: String? = null, args: Array<String>? = null): List<HistoryRow> =
+        readableDatabase.query("history", null, where, args, null, null, order, limit).use { c ->
             buildList {
                 while (c.moveToNext()) add(
                     HistoryRow(
@@ -358,6 +472,7 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
                         insertOutcome = c.getString(c.getColumnIndexOrThrow("insert_outcome")),
                         route = c.getString(c.getColumnIndexOrThrow("route")),
                         commandOriginal = c.getString(c.getColumnIndexOrThrow("command_original")),
+                        appCategory = c.getString(c.getColumnIndexOrThrow("app_category")),
                     ),
                 )
             }
@@ -372,11 +487,13 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
         db.beginTransaction()
         try {
             db.delete("history", null, null)
+            db.delete("history_versions", null, null)
             for (r in rows) db.insertOrThrow("history", null, values(r))
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
         }
+        runCatching { audio.clear() } // restored rows get new ids: no recording belongs to them
         scrub(vacuum = true)
         purge(retention, now)
     }
@@ -387,5 +504,10 @@ class HistoryStore(context: Context) : SQLiteOpenHelper(context, "history.db", n
             buildList { while (c.moveToNext()) add(InsightsStore.Row(c.getLong(0), c.getString(1), c.getString(2), c.getLong(3))) }
         }
 
-    fun clear() { writableDatabase.delete("history", null, null); scrub(vacuum = true) }
+    fun clear() {
+        writableDatabase.delete("history", null, null)
+        writableDatabase.delete("history_versions", null, null)
+        runCatching { audio.clear() }
+        scrub(vacuum = true)
+    }
 }

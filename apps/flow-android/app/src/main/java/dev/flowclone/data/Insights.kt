@@ -60,6 +60,23 @@ object Insights {
             return copy(days = (days + (k to nd)).toSortedMap())
         }
 
+        /**
+         * D35: a retried dictation of [day] now counts [newWords] instead of [oldWords] (its
+         * [ms] of audio stays). A day already forgotten (reset) is left alone.
+         */
+        fun retried(day: Long, oldWords: Long, newWords: Long, ms: Long, app: String): Aggregates {
+            if (oldWords == newWords) return this
+            if (oldWords <= 0) return add(day, newWords, ms, app)
+            val k = key(day)
+            val d = days[k] ?: return this
+            val apps = d.apps.toMutableMap()
+            val appWords = (apps[app] ?: 0) - oldWords + newWords.coerceAtLeast(0)
+            if (appWords > 0) apps[app] = appWords else apps.remove(app)
+            val nd = if (newWords > 0) d.copy(words = (d.words - oldWords + newWords).coerceAtLeast(0), apps = apps.toSortedMap())
+            else DayStats((d.words - oldWords).coerceAtLeast(0), (d.ms - ms.coerceAtLeast(0)).coerceAtLeast(0), (d.count - 1).coerceAtLeast(0), apps.toSortedMap())
+            return copy(days = (days + (k to nd)).toSortedMap())
+        }
+
         /** Forget every count; stays [backfilled] so History is not re-added. */
         fun reset(): Aggregates = Aggregates(backfilled = true)
 
@@ -231,6 +248,14 @@ class InsightsStore(
         if (words <= 0) return false
         set(before.add(localDay(atMs), words, audioMs, appId.orEmpty()))
         return true
+    }
+
+    /** D35: History row created at [createdAtMs] was retried; its words move from [oldWords] to [newWords]. */
+    @Synchronized
+    fun retried(createdAtMs: Long, oldWords: Long, newWords: Long, audioMs: Long, appId: String?) {
+        val before = load()
+        val after = before.retried(localDay(createdAtMs), oldWords, newWords, audioMs, appId.orEmpty())
+        if (after != before) set(after)
     }
 
     @Synchronized

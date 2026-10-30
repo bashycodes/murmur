@@ -107,7 +107,10 @@ class FieldContextBuilderTest {
         assertEquals("PRAGMA wal_checkpoint(TRUNCATE)", HistoryHygiene.AFTER_DELETE)
         assertEquals("VACUUM", HistoryHygiene.AFTER_CLEAR)
         val src = java.io.File("src/main/java/dev/flowclone/data/Stores.kt").readText()
-        assertTrue("every delete path scrubs", Regex("""fun (delete|clear)\(.*scrub\(""").findAll(src).count() == 2)
+        for (f in listOf("fun delete(", "fun clear(")) {
+            val body = src.substringAfter(f).substringBefore("\n    fun ")
+            assertTrue("$f scrubs", body.contains("scrub("))
+        }
         assertTrue(src.contains("override fun onConfigure"))
     }
 
