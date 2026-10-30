@@ -37,6 +37,8 @@
     "allow-model-catalog",
     "allow-model-download-start",
     "allow-model-download-cancel",
+    "allow-transforms-reset",
+    "allow-transform-try",
     "allow-dev-get",
     "allow-dev-validate",
     "allow-dev-set",

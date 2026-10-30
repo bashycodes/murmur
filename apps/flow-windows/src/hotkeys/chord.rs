@@ -326,10 +326,21 @@ pub struct Bindings {
         deserialize_with = "optional_chord"
     )]
     pub new_note: Option<Chord>,
+    /// Transforms (docs/proposals/transforms.md): one entry per saved
+    /// transform, in its order (`None` = no shortcut). Not saved here (the
+    /// transforms own them, `Prefs::hotkey_bindings`); empty while
+    /// Transforms is off, so no chord is registered.
+    #[serde(skip)]
+    pub transforms: Vec<Option<Chord>>,
+    /// Transforms' "view changes" shortcut (`None` = off / Transforms off).
+    #[serde(skip)]
+    pub view_changes: Option<Chord>,
 }
 
 /// An optional shortcut: missing, `null` or blank = none.
-fn optional_chord<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Chord>, D::Error> {
+pub(crate) fn optional_chord<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Chord>, D::Error> {
     match Option::<String>::deserialize(d)? {
         Some(s) if !s.trim().is_empty() => s.parse().map(Some).map_err(serde::de::Error::custom),
         _ => Ok(None),
@@ -347,6 +358,8 @@ impl Default for Bindings {
             scratchpad: None,
             new_note: None,
             command: Chord::new([Key::Ctrl, Key::Win, Key::Alt]),
+            transforms: Vec::new(),
+            view_changes: None,
         }
     }
 }
@@ -379,6 +392,10 @@ pub enum HotkeyAction {
     CommandDown,
     /// Command chord released (after a `CommandDown`).
     CommandUp,
+    /// The shortcut of the transform at this index was pressed.
+    Transform(u8),
+    /// Transforms' "view changes" shortcut was pressed.
+    ViewChanges,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -576,6 +593,23 @@ impl ChordMatcher {
                 if !ev.key.is_modifier() {
                     d.suppress = true;
                 }
+            } else if let Some(i) = self.transform_fired(ev.key) {
+                d.actions.push(HotkeyAction::Transform(i));
+                self.chord_fired();
+                if !ev.key.is_modifier() {
+                    d.suppress = true;
+                }
+            } else if self
+                .bindings
+                .view_changes
+                .as_ref()
+                .is_some_and(|c| self.newly_matches(c, ev.key))
+            {
+                d.actions.push(HotkeyAction::ViewChanges);
+                self.chord_fired();
+                if !ev.key.is_modifier() {
+                    d.suppress = true;
+                }
             } else if self.is_cancel(ev.key) {
                 d.actions.push(HotkeyAction::Cancel);
                 if dictating {
@@ -616,6 +650,16 @@ impl ChordMatcher {
             }
         }
         d
+    }
+
+    /// Index of the transform whose shortcut `key` just completed.
+    fn transform_fired(&self, key: Key) -> Option<u8> {
+        self.bindings
+            .transforms
+            .iter()
+            .take(usize::from(u8::MAX) + 1)
+            .position(|c| c.as_ref().is_some_and(|c| self.newly_matches(c, key)))
+            .map(|i| i as u8)
     }
 
     /// A single-key cancel (Esc) fires regardless of other held keys; a
@@ -1372,6 +1416,53 @@ mod tests {
         let d = press(&mut ChordMatcher::new(b));
         assert_eq!(d.actions, vec![NewNote]);
         assert!(d.suppress);
+    }
+
+    fn win_alt(k: char) -> Chord {
+        Chord::new([Key::Win, Key::Alt, Key::Vk(k as u16)])
+    }
+
+    #[test]
+    fn transform_chords_fire_their_index_and_swallow_the_digit() {
+        let b = Bindings {
+            transforms: vec![Some(win_alt('1')), None, Some(win_alt('3'))],
+            view_changes: Some(win_alt('O')),
+            ..Default::default()
+        };
+        let mut m = ChordMatcher::new(b);
+        m.handle(KeyEvent::down(Key::Win), false);
+        m.handle(KeyEvent::down(Key::LAlt), false);
+        let d = m.handle(KeyEvent::down(Key::Vk(b'3' as u16)), false);
+        assert_eq!(d.actions, vec![Transform(2)]);
+        assert!(d.suppress, "the digit must not reach the app");
+        assert!(m.handle(KeyEvent::up(Key::Vk(b'3' as u16)), false).suppress);
+        let d = m.handle(KeyEvent::down(Key::Vk(b'O' as u16)), false);
+        assert_eq!(d.actions, vec![ViewChanges]);
+        m.handle(KeyEvent::up(Key::Vk(b'O' as u16)), false);
+        assert!(
+            m.handle(KeyEvent::up(Key::Win), false).mask_release,
+            "a lone Win release would open Start"
+        );
+    }
+
+    #[test]
+    fn no_transform_chord_without_bindings_and_never_saved() {
+        let mut m = m();
+        m.handle(KeyEvent::down(Key::Win), false);
+        m.handle(KeyEvent::down(Key::LAlt), false);
+        let d = m.handle(KeyEvent::down(Key::Vk(b'1' as u16)), false);
+        assert!(d.actions.is_empty());
+        assert!(
+            !d.suppress,
+            "Win+Alt+1 stays the taskbar's while Transforms is off"
+        );
+        let b = Bindings {
+            transforms: vec![Some(win_alt('1'))],
+            view_changes: Some(win_alt('O')),
+            ..Default::default()
+        };
+        let j = serde_json::to_value(&b).unwrap();
+        assert!(j.get("transforms").is_none() && j.get("view_changes").is_none());
     }
 
     #[test]

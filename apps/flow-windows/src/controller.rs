@@ -106,6 +106,10 @@ pub trait Platform: Send + Sync + 'static {
     fn capture_selection(&self) -> Result<Option<String>, String> {
         Ok(None)
     }
+    /// Transforms' "view changes" shortcut: open Home with history row
+    /// `row` (the last transform) expanded as before / after (`None` =
+    /// just Home).
+    fn view_changes(&self, _row: Option<i64>) {}
 }
 
 /// Longest wait for the selection capture (UIA timeout + Ctrl+C wait).
@@ -120,6 +124,17 @@ struct CommandInfo {
     instruction: String,
     original: Option<String>,
     result: Option<String>,
+    /// A transform shortcut session: the transform's name.
+    transform: Option<String>,
+}
+
+/// A dictation passed through the auto-apply transform.
+struct AppliedTransform {
+    name: String,
+    /// The dictation's text before it (plain).
+    original: String,
+    /// What the transform made of it (pasted instead).
+    result: String,
 }
 
 /// Longest wait for a session start (model load + server connect are
@@ -182,6 +197,8 @@ struct SessionInfo {
     styles: crate::core_api::Styles,
     /// Command Mode session (`None` = a dictation).
     command: Option<CommandInfo>,
+    /// The auto-apply transform rewrote this dictation.
+    applied: Option<AppliedTransform>,
 }
 
 #[derive(Default)]
@@ -357,6 +374,10 @@ impl Controller {
                 self.platform.open_scratchpad();
                 return;
             }
+            Input::Hotkey(HotkeyAction::ViewChanges) => {
+                self.view_changes();
+                return;
+            }
             Input::PasteFinished { session, result } => {
                 if self.debug_on() {
                     let (insert, err) = paste_insert(result);
@@ -399,6 +420,14 @@ impl Controller {
         let tick = input == Input::Tick;
         let ptt_down = input == Input::Hotkey(HotkeyAction::PttDown);
         let was_processing = matches!(self.machine.phase(), Phase::Processing { .. });
+        let auto = self
+            .prefs
+            .read()
+            .unwrap()
+            .transforms
+            .auto_apply_item()
+            .is_some();
+        self.machine.set_auto_transform(auto);
         let effects = self.machine.handle(input, now);
         // A Tick that ends processing with an error = the processing timeout.
         self.cancel_outcome =
@@ -518,17 +547,31 @@ impl Controller {
     fn record(&self, session: SessionId, paste: &Result<(), String>) {
         let info = self.shared.sessions.lock().unwrap().remove(&session);
         let Some(info) = info else { return };
-        let Some(r) = info.result else { return };
         // Cancelled before anything was inserted: the user dropped it.
         if paste.as_ref().err().map(String::as_str) == Some(PASTE_CANCELLED) {
             return;
         }
         if let Some(cmd) = info.command {
-            self.record_command(cmd, info.context, &info.samples, &r, paste);
+            // A transform shortcut has no transcript, a command has one.
+            if info.result.is_some() || cmd.transform.is_some() {
+                self.record_command(
+                    cmd,
+                    info.context,
+                    &info.samples,
+                    info.result.as_ref(),
+                    paste,
+                );
+            }
             return;
         }
+        let Some(r) = info.result else { return };
         let plain = r.plain();
-        *self.shared.last_text.lock().unwrap() = Some(plain.clone());
+        // Auto-apply: what was pasted is the transform's text.
+        let inserted = info
+            .applied
+            .as_ref()
+            .map_or_else(|| plain.clone(), |a| crate::paste::plain_text(&a.result));
+        *self.shared.last_text.lock().unwrap() = Some(inserted.clone());
         let duration_ms = (info.samples.load(Ordering::Relaxed) / 16) as i64;
         let words = history::word_count(&plain);
         if let (Some(store), true) = (&self.insights, words > 0) {
@@ -567,14 +610,15 @@ impl Controller {
                 url: ctx.url_host,
                 raw: r.asr_text.clone(),
                 formatted: (r.status == CommitStatus::Formatted).then(|| plain.clone()),
-                pasted: paste.is_ok().then(|| plain.clone()),
+                pasted: paste.is_ok().then(|| inserted.clone()),
                 edited: None,
                 duration_ms,
                 words,
                 lang: r.language.clone(),
                 command: false,
-                original: None,
+                original: info.applied.as_ref().map(|a| a.original.clone()),
                 route: result_route(&r),
+                transform: info.applied.as_ref().map(|a| a.name.clone()),
             };
             let retention = self.prefs.read().unwrap().retention;
             match h.lock().unwrap().record(&entry, retention, entry.ts) {
@@ -583,7 +627,8 @@ impl Controller {
             }
             self.platform.history_changed();
         }
-        if paste.is_ok() {
+        // A transformed paste is the AI's wording: nothing to learn from.
+        if paste.is_ok() && info.applied.is_none() {
             self.watch_for_edits(info.context, &r, row);
         }
     }
@@ -597,7 +642,7 @@ impl Controller {
         cmd: CommandInfo,
         ctx: Option<FieldContext>,
         samples: &AtomicU64,
-        r: &CommitResult,
+        r: Option<&CommitResult>,
         paste: &Result<(), String>,
     ) {
         let Some(result) = cmd.result else { return };
@@ -616,10 +661,11 @@ impl Controller {
             edited: None,
             duration_ms: (samples.load(Ordering::Relaxed) / 16) as i64,
             words: history::word_count(&plain),
-            lang: r.language.clone(),
+            lang: r.and_then(|r| r.language.clone()),
             command: true,
             original: cmd.original,
-            route: result_route(r),
+            route: r.and_then(result_route),
+            transform: cmd.transform,
         };
         let retention = self.prefs.read().unwrap().retention;
         if let Err(e) = h.lock().unwrap().record(&entry, retention, entry.ts) {
@@ -1008,6 +1054,8 @@ impl Controller {
                 session,
                 instruction,
             } => self.run_command(session, instruction),
+            Effect::Transform { session, index } => self.run_transform(session, index),
+            Effect::AutoTransform { session, text } => self.run_auto_transform(session, text),
             Effect::Paste { session, text } => {
                 // The core's paste plan (core-p1): text runs, Tab/Break and
                 // a trailing Enter. `text` is only the fallback for a result
@@ -1020,8 +1068,15 @@ impl Controller {
                     .unwrap()
                     .get(&session)
                     .filter(|i| i.command.is_none())
-                    .and_then(|i| i.result.as_ref())
-                    .map(|r| r.paste_segments())
+                    .and_then(|i| {
+                        let r = i.result.as_ref()?;
+                        // Auto-apply: the transform's text, with the
+                        // dictation's spoken "press enter".
+                        Some(match &i.applied {
+                            Some(_) => flow_core::paste::segments(&text, r.press_enter),
+                            None => r.paste_segments(),
+                        })
+                    })
                     .unwrap_or_else(|| flow_core::paste::segments(&text, false));
                 let steps = crate::paste::plan(&segs);
                 if self.debug_on() {
@@ -1169,6 +1224,187 @@ impl Controller {
             });
             let _ = tx.send(Input::CommandFinished { session, result });
         });
+    }
+}
+
+impl Controller {
+    /// A transform shortcut: wait for its keys to be up, read the
+    /// selection, run the transform on it (off-thread); the answer comes
+    /// back as `CommandFinished` and is pasted over the selection. Nothing
+    /// selected = the "Select text to transform" notice, nothing pasted.
+    fn run_transform(&self, session: SessionId, index: u8) {
+        let item = {
+            let p = self.prefs.read().unwrap();
+            p.transforms
+                .enabled
+                .then(|| p.transforms.items.get(usize::from(index)).cloned())
+                .flatten()
+        };
+        let Some(item) = item else {
+            let _ = self.tx.send(Input::CommandFinished {
+                session,
+                result: Err("That transform no longer exists".into()),
+            });
+            return;
+        };
+        let target = self.platform.focus_target();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        self.shared.sessions.lock().unwrap().insert(
+            session,
+            SessionInfo {
+                context: target.as_ref().map(|t| FieldContext {
+                    app_id: t.exe.clone(),
+                    ..FieldContext::default()
+                }),
+                target,
+                cancelled: cancelled.clone(),
+                mode: "transform",
+                command: Some(CommandInfo {
+                    instruction: item.transform.instruction.clone(),
+                    transform: Some(item.transform.name.clone()),
+                    ..CommandInfo::default()
+                }),
+                ..SessionInfo::default()
+            },
+        );
+        let platform = self.platform.clone();
+        let core = self.core.clone();
+        let shared = self.shared.clone();
+        let tx = self.tx.clone();
+        let debug = self.debug.clone();
+        let instruction = item.transform.instruction;
+        let spawned = std::thread::Builder::new()
+            .name("flow-transform".into())
+            .spawn(move || {
+                // A Ctrl+C fallback must not be read as Win+Alt+C.
+                platform.wait_shortcut_released();
+                let result = platform.capture_selection().and_then(|sel| {
+                    let sel = sel
+                        .filter(|s| !s.trim().is_empty())
+                        .ok_or_else(|| crate::dictation::TRANSFORM_NO_SELECTION.to_string())?;
+                    if cancelled.load(Ordering::SeqCst) {
+                        return Err(PASTE_CANCELLED.to_string());
+                    }
+                    let set = |f: &dyn Fn(&mut CommandInfo)| {
+                        if let Some(c) = shared
+                            .sessions
+                            .lock()
+                            .unwrap()
+                            .get_mut(&session)
+                            .and_then(|i| i.command.as_mut())
+                        {
+                            f(c);
+                        }
+                    };
+                    set(&|c| c.original = Some(sel.clone()));
+                    let r = core.transform(
+                        &instruction,
+                        &sel,
+                        flow_core::transform::Source::Selection,
+                        flow_core::transform::SELECTION_TIMEOUT,
+                    );
+                    if let Ok(text) = &r {
+                        set(&|c| c.result = Some(text.clone()));
+                    }
+                    r
+                });
+                if let (Err(e), Some(d)) = (&result, &debug) {
+                    d.event("transform", e);
+                }
+                let _ = tx.send(Input::CommandFinished { session, result });
+            });
+        if let Err(e) = spawned {
+            let _ = self.tx.send(Input::CommandFinished {
+                session,
+                result: Err(e.to_string()),
+            });
+        }
+    }
+
+    /// Auto-apply: run the chosen transform on a dictation's text before
+    /// the paste, within [`flow_core::transform::AUTO_APPLY_TIMEOUT`]. Any
+    /// failure sends the untransformed `text` back to be pasted.
+    fn run_auto_transform(&self, session: SessionId, text: String) {
+        let item = self
+            .prefs
+            .read()
+            .unwrap()
+            .transforms
+            .auto_apply_item()
+            .cloned();
+        let plain = self
+            .shared
+            .sessions
+            .lock()
+            .unwrap()
+            .get(&session)
+            .and_then(|i| i.result.as_ref().map(|r| r.plain()))
+            .unwrap_or_else(|| crate::paste::plain_text(&text));
+        let Some(item) = item else {
+            let _ = self.tx.send(Input::AutoTransformFinished {
+                session,
+                original: text,
+                result: Err("auto-apply is off".into()),
+            });
+            return;
+        };
+        let core = self.core.clone();
+        let shared = self.shared.clone();
+        let tx = self.tx.clone();
+        let debug = self.debug.clone();
+        let fallback = text.clone();
+        let spawned = std::thread::Builder::new()
+            .name("flow-auto-transform".into())
+            .spawn(move || {
+                let r = core.transform(
+                    &item.transform.instruction,
+                    &plain,
+                    flow_core::transform::Source::Dictation,
+                    flow_core::transform::AUTO_APPLY_TIMEOUT,
+                );
+                match &r {
+                    Ok(t) => {
+                        if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
+                            i.applied = Some(AppliedTransform {
+                                name: item.transform.name.clone(),
+                                original: plain,
+                                result: t.clone(),
+                            });
+                        }
+                    }
+                    Err(e) => {
+                        if let Some(d) = &debug {
+                            d.event("transform", &format!("auto-apply skipped: {e}"));
+                        }
+                    }
+                }
+                let _ = tx.send(Input::AutoTransformFinished {
+                    session,
+                    original: text,
+                    result: r,
+                });
+            });
+        if let Err(e) = spawned {
+            let _ = self.tx.send(Input::AutoTransformFinished {
+                session,
+                original: fallback,
+                result: Err(e.to_string()),
+            });
+        }
+    }
+
+    /// "View changes": Home with the last transform's row expanded.
+    fn view_changes(&self) {
+        let row = self.history.as_ref().and_then(|h| {
+            let retention = self.prefs.read().unwrap().retention;
+            h.lock()
+                .unwrap()
+                .latest_transform(retention, history::now_ms())
+                .ok()
+                .flatten()
+                .map(|e| e.id)
+        });
+        self.platform.view_changes(row);
     }
 }
 
@@ -1490,6 +1726,9 @@ mod tests {
             self.push("capture selection");
             self.selection.lock().unwrap().clone().unwrap_or(Ok(None))
         }
+        fn view_changes(&self, row: Option<i64>) {
+            self.push(format!("view changes {row:?}"));
+        }
     }
 
     struct Rig {
@@ -1619,7 +1858,14 @@ mod tests {
         r.pump(); // PasteFinished
         assert!(matches!(r.c.machine().phase(), Phase::Pasted { .. }));
         assert!(!r.c.dictating_flag().load(Ordering::SeqCst));
-        let log = r.fake.log();
+        // The learn watch starts on its own thread after the paste and
+        // may or may not have logged yet (learn_watch_started covers it).
+        let log: Vec<String> = r
+            .fake
+            .log()
+            .into_iter()
+            .filter(|l| l != "field_reader")
+            .collect();
         assert_eq!(
             log,
             vec![
@@ -1705,6 +1951,163 @@ mod tests {
             Some("I won't be able to come tomorrow."),
             "Paste last repeats the result"
         );
+    }
+
+    fn transforms_on() -> Prefs {
+        let mut p = Prefs::default();
+        p.transforms.enabled = true;
+        p
+    }
+
+    fn transform_rig(selection: Result<Option<String>, String>, prefs: Prefs) -> Rig {
+        let fake = Fake::default();
+        *fake.selection.lock().unwrap() = Some(selection);
+        let mut r = rig(fake, prefs);
+        r.c =
+            r.c.with_history(Arc::new(Mutex::new(History::open_in_memory().unwrap())));
+        r
+    }
+
+    #[test]
+    fn transform_shortcut_rewrites_the_selection_records_it_and_views_it() {
+        let mut r = transform_rig(Ok(Some("teh draft".into())), transforms_on());
+        r.core.set_transform_reply(Ok("The draft.".into()));
+        r.at(0, Input::Hotkey(HotkeyAction::Transform(0)));
+        assert!(r.c.dictating_flag().load(Ordering::SeqCst));
+        r.pump(); // CommandFinished -> Paste
+        r.pump(); // PasteFinished
+        let log = r.fake.log();
+        assert_eq!(
+            log,
+            [
+                "overlay CommandProcessing",
+                "capture selection",
+                "paste The draft.",
+                "play Paste",
+                "overlay Resting",
+            ],
+            "no mic, no ducking"
+        );
+        let polish = &Prefs::default().transforms.items[0].transform;
+        assert_eq!(
+            r.core.transforms(),
+            [(
+                polish.instruction.clone(),
+                "teh draft".to_string(),
+                flow_core::transform::Source::Selection
+            )]
+        );
+        assert!(r.core.starts() == 0, "no speech session");
+        let e = history_latest(&r).expect("history row");
+        assert!(e.command);
+        assert_eq!(e.transform.as_deref(), Some("Polish"));
+        assert_eq!(e.original.as_deref(), Some("teh draft"));
+        assert_eq!(e.best_text(), "The draft.");
+        r.at(2000, Input::Hotkey(HotkeyAction::ViewChanges));
+        assert_eq!(
+            r.fake.log().last().unwrap(),
+            &format!("view changes Some({})", e.id)
+        );
+    }
+
+    #[test]
+    fn transform_with_nothing_selected_says_so_and_pastes_nothing() {
+        let mut r = transform_rig(Ok(Some("  ".into())), transforms_on());
+        r.at(0, Input::Hotkey(HotkeyAction::Transform(1)));
+        r.pump(); // CommandFinished(Err)
+        let log = r.fake.log();
+        assert!(!log.iter().any(|l| l.starts_with("paste")), "{log:?}");
+        assert!(
+            log.iter()
+                .any(|l| l.contains("Notice") && l.contains("Select text")),
+            "{log:?}"
+        );
+        assert!(
+            !log.contains(&"play Error".to_string()),
+            "a notice, not an error"
+        );
+        assert!(r.core.transforms().is_empty(), "no AI call");
+        assert_eq!(history_latest(&r), None);
+        r.at(5000, Input::Hotkey(HotkeyAction::ViewChanges));
+        assert_eq!(r.fake.log().last().unwrap(), "view changes None");
+    }
+
+    fn auto_prefs() -> Prefs {
+        let mut p = transforms_on();
+        p.transforms.auto_apply = Some(flow_core::transform::POLISH.into());
+        p
+    }
+
+    fn dictate_auto(r: &mut Rig) {
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump(); // Committed -> AutoTransform
+        r.pump(); // AutoTransformFinished -> Paste
+        r.pump(); // PasteFinished
+    }
+
+    #[test]
+    fn auto_apply_pastes_the_transformed_dictation_and_records_both() {
+        let mut r = transform_rig(Ok(None), auto_prefs());
+        r.core.set_transform_reply(Ok("Polished words.".into()));
+        dictate_auto(&mut r);
+        let log = r.fake.log();
+        let pastes: Vec<_> = log.iter().filter(|l| l.starts_with("paste")).collect();
+        assert_eq!(pastes, ["paste Polished words."]);
+        assert_eq!(
+            r.core.transforms()[0].1,
+            "[stub: 1.0 s of audio]",
+            "the dictation's text"
+        );
+        assert_eq!(
+            r.core.transforms()[0].2,
+            flow_core::transform::Source::Dictation
+        );
+        let e = history_latest(&r).unwrap();
+        assert!(!e.command);
+        assert_eq!(e.transform.as_deref(), Some("Polish"));
+        assert_eq!(e.original.as_deref(), Some("[stub: 1.0 s of audio]"));
+        assert_eq!(e.pasted.as_deref(), Some("Polished words."));
+        assert_eq!(
+            r.c.shared.last_text.lock().unwrap().as_deref(),
+            Some("Polished words.")
+        );
+    }
+
+    #[test]
+    fn a_failed_auto_apply_pastes_the_dictation_with_a_notice() {
+        let mut r = transform_rig(Ok(None), auto_prefs());
+        r.core
+            .set_transform_reply(Err("AI didn't answer within 8 s".into()));
+        dictate_auto(&mut r);
+        let log = r.fake.log();
+        let pastes: Vec<_> = log.iter().filter(|l| l.starts_with("paste")).collect();
+        assert_eq!(pastes, ["paste [stub: 1.0 s of audio]"]);
+        // The notice follows the paste (the learn watch may log after it).
+        let notice = log.iter().position(|l| l.contains("Transform skipped"));
+        let paste = log.iter().position(|l| l.starts_with("paste"));
+        assert!(notice > paste, "{log:?}");
+        let e = history_latest(&r).unwrap();
+        assert_eq!(e.transform, None);
+        assert_eq!(e.pasted.as_deref(), Some("[stub: 1.0 s of audio]"));
+    }
+
+    #[test]
+    fn auto_apply_needs_the_opt_in() {
+        let mut p = auto_prefs();
+        p.transforms.enabled = false;
+        let mut r = transform_rig(Ok(None), p);
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump(); // Committed -> Paste
+        r.pump(); // PasteFinished
+        assert!(r.core.transforms().is_empty());
+        assert!(r
+            .fake
+            .log()
+            .contains(&"paste [stub: 1.0 s of audio]".to_string()));
     }
 
     #[test]

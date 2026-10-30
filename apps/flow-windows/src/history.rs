@@ -3,8 +3,9 @@
 //! Schema per windows-research 10-clone-spec §2 (Wispr's 28-table
 //! `flow.sqlite` reduced to what the clone needs):
 //! `history(id, ts, app, url, raw, formatted, pasted, edited, duration, words, lang)`,
-//! plus `kind` / `original` for Command Mode rows and `route` (where the
-//! speech was turned into text), all added in place to older databases.
+//! plus `kind` / `original` for Command Mode rows, `route` (where the
+//! speech was turned into text) and `transform` (the transform applied),
+//! all added in place to older databases.
 //! **Audio is never stored** — there is no column for it.
 //!
 //! Retention pref (`keep` / `days_30` / `days_7` / `day` = 24 h / `never`)
@@ -51,6 +52,10 @@ pub struct Entry {
     /// ([`route_label`]); `None` = unknown (rows from before the column, or
     /// a result without route info).
     pub route: Option<String>,
+    /// Name of the transform that produced the pasted text: a transform
+    /// shortcut row (`command`, `original` = the selection) or a dictation
+    /// passed through auto-apply (`original` = the dictation before it).
+    pub transform: Option<String>,
 }
 
 /// History / Insights name of a router engine (`RouteInfo.engine`):
@@ -102,7 +107,7 @@ impl From<Entry> for Item {
 }
 
 const COLUMNS: &str =
-    "id, ts, app, url, raw, formatted, pasted, edited, duration, words, lang, kind, original, route";
+    "id, ts, app, url, raw, formatted, pasted, edited, duration, words, lang, kind, original, route, transform";
 
 /// `history.kind` of a Command Mode row (`''` = a dictation).
 const KIND_COMMAND: &str = "command";
@@ -123,6 +128,7 @@ fn row_entry(row: &rusqlite::Row<'_>) -> rusqlite::Result<Entry> {
         command: row.get::<_, String>(11)? == KIND_COMMAND,
         original: row.get(12)?,
         route: row.get(13)?,
+        transform: row.get(14)?,
     })
 }
 
@@ -218,6 +224,7 @@ impl History {
             ("kind", "TEXT NOT NULL DEFAULT ''"),
             ("original", "TEXT"),
             ("route", "TEXT"),
+            ("transform", "TEXT"),
         ] {
             let has = conn
                 .prepare("SELECT 1 FROM pragma_table_info('history') WHERE name = ?1")?
@@ -260,8 +267,8 @@ impl History {
         }
         self.conn.execute(
             "INSERT INTO history
-               (ts, app, url, raw, formatted, pasted, edited, duration, words, lang, kind, original, route)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+               (ts, app, url, raw, formatted, pasted, edited, duration, words, lang, kind, original, route, transform)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 e.ts,
                 e.app,
@@ -275,7 +282,8 @@ impl History {
                 e.lang,
                 if e.command { KIND_COMMAND } else { "" },
                 e.original,
-                e.route
+                e.route,
+                e.transform
             ],
         )?;
         Ok(Some(self.conn.last_insert_rowid()))
@@ -287,6 +295,21 @@ impl History {
             .query_row(
                 &format!(
                     "SELECT {COLUMNS} FROM history WHERE ts >= ?1 ORDER BY ts DESC, id DESC LIMIT 1"
+                ),
+                [min_ts],
+                row_entry,
+            )
+            .optional()
+    }
+
+    /// The newest row a transform produced ("view changes").
+    pub fn latest_transform(&self, r: Retention, now: i64) -> rusqlite::Result<Option<Entry>> {
+        let min_ts = cutoff(r, now).unwrap_or(i64::MIN);
+        self.conn
+            .query_row(
+                &format!(
+                    "SELECT {COLUMNS} FROM history WHERE ts >= ?1 AND transform IS NOT NULL
+                     ORDER BY ts DESC, id DESC LIMIT 1"
                 ),
                 [min_ts],
                 row_entry,
@@ -547,10 +570,37 @@ mod tests {
         assert_eq!(old.best_text(), "Old words.");
         assert!(!old.command && old.original.is_none());
         assert_eq!(old.route, None, "old rows: route unknown");
+        assert_eq!(old.transform, None);
         drop(h);
         // Opening again (columns present) is a no-op.
         assert!(History::open(&path).is_ok());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn transform_rows_are_stored_and_the_latest_is_found() {
+        let h = History::open_in_memory().unwrap();
+        assert_eq!(h.latest_transform(Retention::Keep, 10).unwrap(), None);
+        let e = Entry {
+            ts: 2,
+            raw: "polish instruction".into(),
+            pasted: Some("Polished.".into()),
+            command: true,
+            original: Some("polishd".into()),
+            transform: Some("Polish".into()),
+            ..Entry::default()
+        };
+        let id = h.record(&e, Retention::Keep, 10).unwrap().unwrap();
+        h.record(&entry(3, "plain dictation later"), Retention::Keep, 10)
+            .unwrap();
+        let got = h.latest_transform(Retention::Keep, 10).unwrap().unwrap();
+        assert_eq!(got, Entry { id, ..e });
+        let j = serde_json::to_value(Item::from(got)).unwrap();
+        assert_eq!(j["transform"], "Polish");
+        assert_eq!(
+            h.latest(Retention::Keep, 10).unwrap().unwrap().transform,
+            None
+        );
     }
 
     #[test]
@@ -668,7 +718,8 @@ mod tests {
                 "lang",
                 "kind",
                 "original",
-                "route"
+                "route",
+                "transform"
             ]
         );
     }

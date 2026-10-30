@@ -54,6 +54,8 @@ fn main() {
             "model_catalog",
             "model_download_start",
             "model_download_cancel",
+            "transforms_reset",
+            "transform_try",
             "dev_get",
             "dev_validate",
             "dev_set",

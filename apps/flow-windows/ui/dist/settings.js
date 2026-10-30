@@ -31,6 +31,7 @@ import { settingsServerPage } from "./pages/settings/server.js";
 import { settingsSpeechPage } from "./pages/settings/speech.js";
 import { settingsSystemPage } from "./pages/settings/system.js";
 import { stylePage } from "./pages/style.js";
+import { transformsPage } from "./pages/transforms.js";
 followSystemTheme();
 const PAGES = [
     homePage,
@@ -38,6 +39,7 @@ const PAGES = [
     dictionaryPage,
     snippetsPage,
     stylePage,
+    transformsPage,
     scratchpadPage,
     notetakerPage,
     settingsGeneralPage,
@@ -57,6 +59,7 @@ const MAIN_NAV = [
     { page: "dictionary", label: "Dictionary", icon: ICON.dictionary, badge: "sugg_badge" },
     { page: "snippets", label: "Snippets", icon: ICON.snippets },
     { page: "style", label: "Style", icon: ICON.style },
+    { page: "transforms", label: "Transforms", icon: ICON.cleanup },
     { page: "scratchpad", label: "Scratchpad", icon: "M5 4h14v16H5zM8.5 9h7M8.5 13h4" },
 ];
 const SETTINGS_NAV = [

@@ -6,6 +6,14 @@
 //! run it on the selection (`Effect::Command`) and pastes the answer that
 //! comes back (`Input::CommandFinished`); a failure pastes nothing.
 //!
+//! Transforms (docs/proposals/transforms.md): a transform shortcut goes
+//! straight from rest to processing (`Effect::Transform`; nothing is
+//! recorded) and its answer comes back as `CommandFinished` like a
+//! command's. With auto-apply on, a dictation's text first goes through
+//! the chosen transform (`Effect::AutoTransform` →
+//! `Input::AutoTransformFinished`); on failure the untransformed text is
+//! pasted with a "Transform skipped" notice, so a dictation is never lost.
+//!
 //! Pure: inputs are hotkey actions, core/paste completions and clock ticks
 //! (`now_ms` is passed in); outputs are `Effect`s the shell executes. Session
 //! ids let late completions from a cancelled session be dropped.
@@ -127,6 +135,13 @@ pub enum Input {
         session: SessionId,
         result: Result<String, String>,
     },
+    /// The auto-apply transform ran on a dictation's `original` text:
+    /// the transformed text, or why it was skipped.
+    AutoTransformFinished {
+        session: SessionId,
+        original: String,
+        result: Result<String, String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -151,6 +166,18 @@ pub enum Effect {
     Command {
         session: SessionId,
         instruction: String,
+    },
+    /// Run the transform at `index` on the selection once the shortcut is
+    /// up (off-thread; reply = `CommandFinished`).
+    Transform {
+        session: SessionId,
+        index: u8,
+    },
+    /// Run the auto-apply transform on a dictation's `text` before it is
+    /// pasted (off-thread; reply = `AutoTransformFinished`).
+    AutoTransform {
+        session: SessionId,
+        text: String,
     },
     /// Max-duration about to be reached (overlay hint).
     MaxDurationWarning {
@@ -200,11 +227,22 @@ impl Policy {
     }
 }
 
+/// Pill text of a transform shortcut pressed with nothing selected.
+pub const TRANSFORM_NO_SELECTION: &str = "Select text to transform";
+
+/// Notice after an auto-apply transform failed and the untransformed text
+/// was pasted.
+pub const TRANSFORM_SKIPPED: &str = "Transform skipped";
+
 #[derive(Debug, Clone)]
 pub struct Dictation {
     phase: Phase,
     policy: Policy,
     next_session: SessionId,
+    /// Dictations go through the auto-apply transform before the paste.
+    auto_transform: bool,
+    /// A notice to show once this session's paste is done.
+    after_paste: Option<(SessionId, String)>,
 }
 
 impl Dictation {
@@ -213,7 +251,15 @@ impl Dictation {
             phase: Phase::Idle,
             policy,
             next_session: 1,
+            auto_transform: false,
+            after_paste: None,
         }
+    }
+
+    /// Auto-apply on or off (Transforms on and a transform chosen); read
+    /// when a dictation's text arrives.
+    pub fn set_auto_transform(&mut self, on: bool) {
+        self.auto_transform = on;
     }
 
     pub fn phase(&self) -> &Phase {
@@ -249,6 +295,9 @@ impl Dictation {
             (_, Input::Hotkey(HotkeyAction::PttDown)) => self.begin(Mode::Ptt, now_ms),
             (_, Input::Hotkey(HotkeyAction::HandsFreeToggle)) => self.begin(Mode::Locked, now_ms),
             (_, Input::Hotkey(HotkeyAction::CommandDown)) => self.begin(Mode::Command, now_ms),
+            (_, Input::Hotkey(HotkeyAction::Transform(index))) => {
+                self.begin_transform(index, now_ms)
+            }
             (Phase::Pasted { since_ms }, Input::Tick)
                 if now_ms.saturating_sub(*since_ms) >= p.pasted_linger_ms =>
             {
@@ -388,9 +437,32 @@ impl Dictation {
             Input::CommandFinished { session: s, result } if s == session && command => {
                 match result {
                     Ok(text) => vec![Effect::Paste { session, text }],
+                    Err(message) if message == TRANSFORM_NO_SELECTION => {
+                        self.notice(message, now_ms)
+                    }
                     Err(message) => self.fail(message, now_ms),
                 }
             }
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text(text),
+            } if s == session && self.auto_transform => {
+                vec![Effect::AutoTransform { session, text }]
+            }
+            Input::AutoTransformFinished {
+                session: s,
+                original,
+                result,
+            } if s == session && !command => match result {
+                Ok(text) => vec![Effect::Paste { session, text }],
+                Err(_) => {
+                    self.after_paste = Some((session, TRANSFORM_SKIPPED.into()));
+                    vec![Effect::Paste {
+                        session,
+                        text: original,
+                    }]
+                }
+            },
             Input::Committed {
                 session: s,
                 outcome,
@@ -406,6 +478,13 @@ impl Dictation {
             Input::PasteFinished { session: s, result } if s == session => match result {
                 // No success pill: back to rest, the paste sound is the feedback.
                 Ok(()) => {
+                    if let Some((_, message)) =
+                        self.after_paste.take().filter(|(s, _)| *s == session)
+                    {
+                        let mut fx = vec![Effect::Sound(Sound::Paste)];
+                        fx.extend(self.notice(message, now_ms));
+                        return fx;
+                    }
                     self.phase = Phase::Pasted { since_ms: now_ms };
                     vec![
                         Effect::Sound(Sound::Paste),
@@ -449,6 +528,21 @@ impl Dictation {
             Effect::Duck,
             Effect::BeginSession(session),
             Effect::Overlay(overlay),
+        ]
+    }
+
+    /// A transform shortcut: no recording, straight to processing.
+    fn begin_transform(&mut self, index: u8, now_ms: u64) -> Vec<Effect> {
+        let session = self.next_session;
+        self.next_session += 1;
+        self.phase = Phase::Processing {
+            session,
+            since_ms: now_ms,
+            command: true,
+        };
+        vec![
+            Effect::Overlay(OverlayState::CommandProcessing),
+            Effect::Transform { session, index },
         ]
     }
 
@@ -1251,6 +1345,222 @@ mod tests {
             .is_empty(),
             "a dictation ignores command results"
         );
+    }
+
+    fn transform_session(fx: &[Effect]) -> SessionId {
+        fx.iter()
+            .find_map(|e| match e {
+                Effect::Transform { session, .. } => Some(*session),
+                _ => None,
+            })
+            .expect("Effect::Transform")
+    }
+
+    #[test]
+    fn transform_shortcut_goes_straight_to_processing_and_pastes_the_answer() {
+        let mut d = d();
+        let fx = hk(&mut d, Transform(1), 0);
+        let s = transform_session(&fx);
+        assert_eq!(
+            fx,
+            vec![
+                Effect::Overlay(OverlayState::CommandProcessing),
+                Effect::Transform {
+                    session: s,
+                    index: 1
+                },
+            ],
+            "no sound, no mic, no ducking"
+        );
+        assert!(d.is_active(), "Esc is swallowed while it runs");
+        assert!(hk(&mut d, Transform(0), 10).is_empty(), "one at a time");
+        let fx = d.handle(
+            Input::CommandFinished {
+                session: s,
+                result: Ok("better".into()),
+            },
+            500,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Paste {
+                session: s,
+                text: "better".into()
+            }]
+        );
+        let fx = d.handle(
+            Input::PasteFinished {
+                session: s,
+                result: Ok(()),
+            },
+            600,
+        );
+        assert_eq!(fx[0], Effect::Sound(Sound::Paste));
+        assert!(!d.is_active());
+    }
+
+    #[test]
+    fn transform_with_nothing_selected_is_a_notice_and_esc_cancels() {
+        let mut d = d();
+        let s = transform_session(&hk(&mut d, Transform(0), 0));
+        let fx = d.handle(
+            Input::CommandFinished {
+                session: s,
+                result: Err(TRANSFORM_NO_SELECTION.into()),
+            },
+            100,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Overlay(OverlayState::Notice {
+                message: TRANSFORM_NO_SELECTION.into()
+            })]
+        );
+        let s = transform_session(&hk(&mut d, Transform(0), 5000));
+        assert_eq!(
+            hk(&mut d, Cancel, 5100),
+            vec![
+                Effect::CancelSession(s),
+                Effect::Overlay(OverlayState::Resting)
+            ]
+        );
+        let s = transform_session(&hk(&mut d, Transform(0), 9000));
+        let fx = d.handle(
+            Input::CommandFinished {
+                session: s,
+                result: Err("AI failed".into()),
+            },
+            9100,
+        );
+        assert!(fx.contains(&Effect::Sound(Sound::Error)));
+    }
+
+    fn dictated(d: &mut Dictation) -> SessionId {
+        let s = session_of(&hk(d, PttDown, 0));
+        hk(d, PttUp, 1000);
+        s
+    }
+
+    #[test]
+    fn auto_apply_transforms_a_dictation_before_the_paste() {
+        let mut d = d();
+        d.set_auto_transform(true);
+        let s = dictated(&mut d);
+        let fx = d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("hello there".into()),
+            },
+            1100,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::AutoTransform {
+                session: s,
+                text: "hello there".into()
+            }]
+        );
+        let fx = d.handle(
+            Input::AutoTransformFinished {
+                session: s,
+                original: "hello there".into(),
+                result: Ok("Hello there.".into()),
+            },
+            1500,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Paste {
+                session: s,
+                text: "Hello there.".into()
+            }]
+        );
+        let fx = d.handle(
+            Input::PasteFinished {
+                session: s,
+                result: Ok(()),
+            },
+            1600,
+        );
+        assert_eq!(
+            fx,
+            vec![
+                Effect::Sound(Sound::Paste),
+                Effect::Overlay(OverlayState::Resting)
+            ]
+        );
+    }
+
+    #[test]
+    fn a_failed_auto_apply_pastes_the_original_then_says_so() {
+        let mut d = d();
+        d.set_auto_transform(true);
+        let s = dictated(&mut d);
+        d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("keep me".into()),
+            },
+            1100,
+        );
+        let fx = d.handle(
+            Input::AutoTransformFinished {
+                session: s,
+                original: "keep me".into(),
+                result: Err("AI didn't answer within 8 s".into()),
+            },
+            9100,
+        );
+        assert_eq!(
+            fx,
+            vec![Effect::Paste {
+                session: s,
+                text: "keep me".into()
+            }],
+            "never lose a dictation"
+        );
+        let fx = d.handle(
+            Input::PasteFinished {
+                session: s,
+                result: Ok(()),
+            },
+            9200,
+        );
+        assert_eq!(
+            fx,
+            vec![
+                Effect::Sound(Sound::Paste),
+                Effect::Overlay(OverlayState::Notice {
+                    message: TRANSFORM_SKIPPED.into()
+                })
+            ]
+        );
+    }
+
+    #[test]
+    fn auto_apply_off_pastes_directly_and_commands_are_never_auto_transformed() {
+        let mut d = d();
+        let s = dictated(&mut d);
+        let fx = d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("x".into()),
+            },
+            1100,
+        );
+        assert!(matches!(fx[0], Effect::Paste { .. }));
+        let mut d = Dictation::new(Policy::default());
+        d.set_auto_transform(true);
+        let s = session_of(&hk(&mut d, CommandDown, 0));
+        hk(&mut d, CommandUp, 1000);
+        let fx = d.handle(
+            Input::Committed {
+                session: s,
+                outcome: CommitOutcome::Text("make it formal".into()),
+            },
+            1100,
+        );
+        assert!(matches!(fx[0], Effect::Command { .. }));
     }
 
     #[test]
