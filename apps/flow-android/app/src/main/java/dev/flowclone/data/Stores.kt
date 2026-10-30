@@ -19,6 +19,8 @@ class SettingsStore(context: Context) {
         const val ENDPOINT_MIGRATED = "endpoint_default_1500"
         /** 2026-10-23: the language default moved auto → phone language; set once that ran (or on any save). */
         const val LANGUAGE_MIGRATED = "language_default_device"
+        /** D37: the default moved phone language → keyboard language; set once that ran (or on any save). */
+        const val KEYBOARD_MIGRATED = "language_default_keyboard"
     }
 
     fun load() = Settings(
@@ -55,12 +57,18 @@ class SettingsStore(context: Context) {
         )
     }
 
-    /** One-time move of an untouched stored "auto" to unset ([Settings.migrateLanguage]). */
+    /**
+     * One-time moves: an untouched stored "auto" to phone language ([Settings.migrateLanguage]),
+     * then phone language to keyboard language (D37, [Settings.migrateKeyboardLanguage]).
+     */
     private fun loadLanguage(): String {
         val stored = sp.getString("language", null)
         val migrated = sp.getBoolean(LANGUAGE_MIGRATED, false)
-        val v = Settings.migrateLanguage(stored, migrated)
-        if (!migrated) sp.edit().putBoolean(LANGUAGE_MIGRATED, true).putString("language", v).apply()
+        val keyboard = sp.getBoolean(KEYBOARD_MIGRATED, false)
+        val v = Settings.migrateKeyboardLanguage(stored, migrated, keyboard)
+        if (!migrated || !keyboard) {
+            sp.edit().putBoolean(LANGUAGE_MIGRATED, true).putBoolean(KEYBOARD_MIGRATED, true).putString("language", v).apply()
+        }
         return v
     }
 
@@ -98,6 +106,7 @@ class SettingsStore(context: Context) {
             .putInt("endpoint_silence_ms", s.endpointSilenceMs)
             .putBoolean(ENDPOINT_MIGRATED, true)
             .putBoolean(LANGUAGE_MIGRATED, true)
+            .putBoolean(KEYBOARD_MIGRATED, true)
             .putBoolean("decode_while_speaking", s.decodeWhileSpeaking)
             .putString("style_personal", s.styles.personal.wire)
             .putString("style_work", s.styles.work.wire)

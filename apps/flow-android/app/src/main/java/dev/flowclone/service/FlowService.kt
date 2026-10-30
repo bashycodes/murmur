@@ -637,6 +637,7 @@ class FlowService : Service() {
                     trace.copy(
                         insert = trace.insert.copy(steps = steps), engine = engine, model = model,
                         routeOrder = runCatching { app.dev.load().routeOrderWire(app.caps) }.getOrNull(),
+                        languageSource = trace.languageSource ?: languageSource.takeIf { trace.language != null },
                     ),
                     protectedField = app.accessibility?.startFieldProtected == true,
                     protectedApp = dev.flowclone.debug.DebugRedact.isProtectedApp(trace.target, app.settings.load().userDenylist),
@@ -670,7 +671,10 @@ class FlowService : Service() {
             // D28 / D36: an engine off the phone (OpenRouter, your server) may clean even with the
             // on-device AI off; the router re-checks consent, key, circuit, budget and the server's LLM per call.
             val cloudCleanup = app.dev.load().effective(app.caps).offPhoneCleanup
-            it.toSessionConfig(app.dictionary.all(), language = app.effectiveLanguage(it), cloudCleanup = cloudCleanup)
+            // D37: read the keyboard now, at dictation start; the source goes on the debug line.
+            val lang = app.resolveLanguage(it)
+            languageSource = lang.source.wire
+            it.toSessionConfig(app.dictionary.all(), language = lang.language, cloudCleanup = cloudCleanup)
         }
 
         override fun endpointSilenceMs(): Int? = app.settings.load().handsFreeEndpointMs()
@@ -722,7 +726,12 @@ class FlowService : Service() {
     private fun beforeStart() {
         if (!micPromoted) promote(withMic = true)
         controller.cap = app.settings.load().sessionCap()
+        // D37: the keyboard may have switched to (or from) Hebrew: load the model it needs.
+        app.engine.ensureLanguage()
     }
+
+    /** D37: where the last session's language came from (keyboard / phone / fixed), for the debug line. */
+    @Volatile private var languageSource: String? = null
 
     /** Bubble look settings + Command Mode's ✎ (one flow, so the bubble combine stays at five inputs). */
     private data class Look(val repair: Boolean, val scale: Float, val dot: Boolean, val command: Boolean)

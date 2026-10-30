@@ -24,6 +24,10 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <!-- D37: the active keyboard's subtype (dictation language follows the keyboard). -->
+        <intent>
+            <action android:name="android.view.InputMethod" />
+        </intent>
     </queries>
 
     <uses-feature android:name="android.hardware.microphone" android:required="true" />

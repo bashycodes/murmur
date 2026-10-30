@@ -493,8 +493,15 @@ class SettingsActivity : Activity() {
             sectionLabel("DICTATION LANGUAGE")
             val effective = note("")
             card {
-                val choices = SettingsPages.languageChoices(s.language, phone).map { (code, name) ->
-                    DevUi.Choice(code, name, if (code == Settings.LANGUAGE_UNSET) "If the speech model supports it, else auto-detect" else "")
+                val choices = SettingsPages.languageChoices(s.language, phone, app.keyboardLanguage()).map { (code, name) ->
+                    DevUi.Choice(
+                        code, name,
+                        when (code) {
+                            Settings.LANGUAGE_KEYBOARD -> "Follows the keyboard you type with (e.g. Hebrew on Gboard → Hebrew), read when you start dictating"
+                            Settings.LANGUAGE_UNSET -> "If the speech model supports it, else auto-detect"
+                            else -> ""
+                        },
+                    )
                 }
                 choiceRows(choices, s.language) { code -> applyNow { copy(language = code) } }
             }
@@ -502,8 +509,9 @@ class SettingsActivity : Activity() {
             val hebrew = note("")
             refreshers += {
                 val n = app.settings.load()
-                val eff = app.effectiveLanguage(n)
-                effective.text = "Next dictation: " + LanguageDefault.label(n.language, eff)
+                val r = app.resolveLanguage(n)
+                val eff = r.language
+                effective.text = "Next dictation: " + LanguageDefault.label(n.language, eff, r.source)
                 val h = SettingsPages.hebrewNote(eff, app.engine.hebrewModel()?.second, caps.local)
                 hebrew.text = h.orEmpty()
                 hebrew.visibility = if (h == null) View.GONE else View.VISIBLE
@@ -576,7 +584,7 @@ class SettingsActivity : Activity() {
                 refreshers += {
                     whisper.setSubtitle(fileName(app.settings.modelPath) ?: "None imported")
                     parakeet.setSubtitle(fileName(app.settings.parakeetPath) ?: "None imported")
-                    hebrew.setSubtitle(app.engine.hebrewModel()?.second?.label?.let { "$it · used when the language is Hebrew" } ?: "None imported · Hebrew uses whisper")
+                    hebrew.setSubtitle(SettingsSummary.hebrewModel(app.engine.hebrewModel()?.second?.label))
                 }
             }
         }
