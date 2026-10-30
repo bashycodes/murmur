@@ -20,6 +20,27 @@
     llm_timeout_ms: 1500, learn_from_edits: true,
     asr_engine: "whisper", parakeet_model_dir: null, spoken_cleanup: true,
     theme: "system", onboarded: true,
+    transforms: {
+      enabled: false, auto_apply: null, view_changes: "Win+Alt+O",
+      items: [
+        { transform: { id: "polish", name: "Polish", description: "Improve clarity and conciseness", instruction: "Rewrite the text so it reads clearly and concisely. Keep the meaning, the language and the voice." }, shortcut: "Win+Alt+1" },
+        { transform: { id: "prompt_engineer", name: "Prompt Engineer", description: "Turns a rough ask into a clear prompt", instruction: "Turn the text into a clear, specific prompt for an AI assistant." }, shortcut: "Win+Alt+2" },
+      ],
+    },
+  };
+  // transforms::TransformPrefs::reset_builtins + Prefs::validate (the parts the page can trip).
+  const BUILTIN_TRANSFORMS = structuredClone(prefs.transforms.items);
+  const transformsCheck = (t) => {
+    if (!t) return;
+    if (t.items.length > 20) throw "at most 20 transforms";
+    for (const i of t.items) {
+      if (!i.transform.name.trim()) throw "every transform needs a name";
+      if (!i.transform.instruction.trim()) throw `transform "${i.transform.name}" needs an instruction`;
+      if (i.shortcut && !/^((Ctrl|Alt|Shift|Win)\+)+[A-Z0-9]$/i.test(i.shortcut)) throw `transform "${i.transform.name}" shortcut: "${i.shortcut}" is not a shortcut`;
+    }
+    const all = [...t.items.map((i) => i.shortcut), t.view_changes].filter(Boolean).map((c) => c.toLowerCase());
+    const dup = all.find((c, n) => all.indexOf(c) !== n);
+    if (dup) throw `shortcut ${dup} is used twice`;
   };
   let dev = {
     allow_server: true, allow_client: true, route_order: ["server", "client", "cloud"], host: "100.64.0.10", port: 7313,
@@ -131,6 +152,11 @@
     fixes: { ai: 297, dictionary: 269, total: 566 },
   };
   let history = [
+    { id: 6, ts: now - 10e3, app: "slack.exe", url: null, raw: "Rewrite the text so it reads clearly and concisely.", command: true, transform: "Polish",
+      original: "so basically i think we should probably ship it on friday if nothing breaks",
+      formatted: "I think we should ship on Friday if nothing breaks.", pasted: "I think we should ship on Friday if nothing breaks.", edited: null,
+      duration_ms: 0, words: 10, lang: null, route: "cloud",
+      final_text: "I think we should ship on Friday if nothing breaks.", ai_edited: false },
     { id: 5, ts: now - 20e3, app: "chrome.exe", url: null, raw: "can we move the review to thursday i want one more pass over the parakeet benchmarks before we share them",
       formatted: "Can we move the review to Thursday? I want one more pass over the Parakeet benchmarks before we share them.",
       pasted: "Can we move the review to Thursday? I want one more pass over the Parakeet benchmarks before we share them.", edited: null,
@@ -205,6 +231,7 @@
     },
     get_prefs: () => structuredClone(prefs),
     set_prefs: ({ prefs: p }) => {
+      transformsCheck(p.transforms);
       const reload = modelKey(p) !== modelKey(prefs);
       prefs = structuredClone(p);
       if (reload) {
@@ -225,6 +252,21 @@
       llm: { state: "plugin_missing", path: "C:\\…\\qwen.gguf", message: "llm plugin not found (C:\\Program Files\\Murmur\\flow_llm.dll: not found)" },
       default_llm_path: "C:\\…\\qwen2.5-0.5b-instruct-q4_k_m.gguf", llm_plugin: "flow_llm.dll",
     }),
+    transforms_reset: () => {
+      const custom = prefs.transforms.items.filter((i) => !BUILTIN_TRANSFORMS.some((b) => b.transform.id === i.transform.id));
+      const taken = custom.map((i) => i.shortcut).filter(Boolean);
+      const items = structuredClone(BUILTIN_TRANSFORMS).map((i) => (taken.includes(i.shortcut) ? { ...i, shortcut: null } : i));
+      prefs.transforms = { ...prefs.transforms, items: items.concat(custom) };
+      if (!prefs.transforms.items.some((i) => i.transform.id === prefs.transforms.auto_apply)) prefs.transforms.auto_apply = null;
+      return structuredClone(prefs);
+    },
+    transform_try: async ({ id, text }) => {
+      const t = prefs.transforms.items.find((i) => i.transform.id === id);
+      if (!t) throw `no transform "${id}"`;
+      if (window.__failTransform) throw "Transforms need AI: turn on OpenRouter cleanup or a model on this PC.";
+      await new Promise((r) => setTimeout(r, 50));
+      return `${t.transform.name}: ${text.trim().replace(/^./, (c) => c.toUpperCase())}`;
+    },
     history_list: ({ query }) => history.filter((h) => !query || JSON.stringify(h).toLowerCase().includes(query.toLowerCase())),
     history_delete: ({ id }) => { history = history.filter((h) => h.id !== id); return true; },
     history_clear: () => { const n = history.length; history = []; return n; },
