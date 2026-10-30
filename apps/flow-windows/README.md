@@ -74,7 +74,7 @@ an existing one.
 
 | Build | Command | Engines |
 |---|---|---|
-| Hybrid (default) | `cargo build --features app` | this PC + your server, fallback between them, plus opt-in OpenRouter STT / text cleanup (feature `cloud`) |
+| Hybrid (default) | `cargo build --features app` | this PC + your server, fallback between them, plus opt-in OpenRouter STT / text cleanup (feature `cloud`) and the click-only speech-model downloader (feature `download`, D31) |
 | Client only | `cargo build --no-default-features --features local,app` | this PC only; no network code linked |
 | Server only | `cargo build --no-default-features --features remote,app` | your server only; no whisper / `flow_llm.dll` / models needed |
 
@@ -371,6 +371,7 @@ before the paste.
 | `tests/cloud_settings.rs` | Page edits + Developer form → prefs (no key) → router JSON == `router_config_cloud.json`; separate consents; the D28 migration of every old preset fixture (settings, Credential Manager, usage) |
 | `tests/cloud_integration.rs` | Controller → router → flow-cloud → flow-cloud's mock OpenRouter (via `flow_cloud::testing::override_base_url`, never a config URL): cloud paste with exact cost, ZDR body, usage restore, 500/401/503-routing → local fallback with all audio, no key/consent → no request, cloud-only error pills, Test; key never shown |
 | `src/shell.rs` | `pick_path` (Win32 `IFileOpenDialog` on its own STA thread, owned by the settings window; validated title / `*.ext` filters) and `open_external` (`ShellExecuteW`, only https/http links to `github.com/bashycodes/murmur…`, `huggingface.co`, `openrouter.ai`) |
+| `src/model_download.rs` | D31 speech-model downloader: fixed catalogue (Parakeet v2 int8, Whisper base, Whisper small q5_1) pinned to Hugging Face commits with size + SHA-256 per file; `.part` → verify → rename; one at a time, cancellable; `model:download` progress events. HTTP only with feature `download` |
 | `src/secrets.rs` | DPAPI (`CryptProtectData`) blobs for secrets in prefs (server token; reusable for later API keys) |
 | `tests/router_integration.rs` | Controller → router → flow-remote → in-process flow-server (MockAsr) vs local MockAsr: all four toggle combos, server down / killed mid-dictation (no lost audio), error pills, Test connection / Test session |
 | `tests/core_integration.rs` | Controller + real flow-core (MockAsr, and whisper tiny.en on `jfk.wav` when present): audio → commit → paste plan → history |
@@ -394,9 +395,10 @@ rustup target add x86_64-pc-windows-msvc
 # default `whisper` feature off; the Rust side of whisper is covered by the
 # host build.
 # Each flavour without whisper/sherpa (they can't cross-build): hybrid
-# with cloud STT (reqwest + rustls/ring), hybrid with and without TLS,
+# with cloud STT and the model downloader (reqwest + rustls/ring), with
+# cloud STT only, hybrid with and without TLS,
 # client-only and server-only.
-for f in app,local-engine,remote,cloud app,local-engine,remote,tls app,local-engine,remote app,local-engine app,remote; do
+for f in app,local-engine,remote,cloud,download app,local-engine,remote,cloud app,local-engine,remote,tls app,local-engine,remote app,local-engine app,remote; do
   RC=$PWD/tools/check-shims/fake-windres AR_x86_64_pc_windows_msvc=$PWD/tools/check-shims/fake-lib \
     cargo clippy --all-targets --target x86_64-pc-windows-msvc --no-default-features --features $f -- -D warnings
 done

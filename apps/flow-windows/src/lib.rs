@@ -24,6 +24,7 @@ pub mod hotkeys;
 pub mod input;
 pub mod insights;
 pub mod learn;
+pub mod model_download;
 pub mod notes;
 pub mod openrouter;
 pub mod overlay;
