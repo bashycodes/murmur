@@ -2102,6 +2102,9 @@ mod autostart {
 // ---------------------------------------------------------------- entry
 
 pub fn run() {
+    // Before anything else starts: a second launch only brings this one's
+    // window forward and exits (one tray icon, one hook).
+    let instance = crate::single_instance::win::claim_or_exit();
     let appdata = std::env::var("APPDATA").ok();
     let path = Prefs::default_path(appdata.as_deref());
     let (mut prefs, outcome) = Prefs::load(&path);
@@ -2300,6 +2303,8 @@ pub fn run() {
         })
         .setup(move |app| {
             let handle = app.handle().clone();
+            let h = handle.clone();
+            instance.listen(move || show_settings(&h));
 
             // Tray.
             let model_item =

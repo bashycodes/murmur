@@ -75,6 +75,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   Before, the entry was written only when settings were saved, so after
   reinstalling to a new folder (the "Flow Clone" → "Murmur" rename) it
   pointed at a deleted exe and the app no longer started at login.
+- **Windows: opening the app twice.** Starting Murmur while it already
+  runs no longer adds a second tray icon (and a second keyboard hook): the
+  new launch brings the running app's Settings window to the front and
+  exits. A dictation in progress is not interrupted.
 
 ## [0.9.2] - 2026-10-30
 
