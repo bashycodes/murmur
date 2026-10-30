@@ -738,6 +738,36 @@ fn dictionary_export_text(entries: Vec<crate::prefs::DictEntry>) -> String {
     crate::dictionary::export(&entries)
 }
 
+/// Native folder / file picker owned by the settings window ("Browse" /
+/// "Change" next to model paths). `None` = cancelled. Runs on its own
+/// thread so the UI keeps painting while it is open.
+#[tauri::command]
+async fn pick_path(
+    app: AppHandle,
+    kind: crate::shell::PickKind,
+    title: Option<String>,
+    filters: Option<Vec<crate::shell::PickFilter>>,
+) -> Result<Option<String>, String> {
+    let req = crate::shell::PickRequest::new(kind, title, filters)?;
+    let owner = app
+        .get_webview_window(SETTINGS)
+        .and_then(|w| hwnd_of(&w))
+        .map_or(0, |h| h.0 as isize);
+    tauri::async_runtime::spawn_blocking(move || crate::shell::pick(owner, req))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Open a help / download link in the browser: only the allowlisted hosts
+/// in `shell::check_external_url` (the app never fetches it itself).
+#[tauri::command]
+async fn open_external(url: String) -> Result<(), String> {
+    crate::shell::check_external_url(&url)?;
+    tauri::async_runtime::spawn_blocking(move || crate::shell::open_external(&url))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 fn model_ready(state: &AppState) -> bool {
     state.core.get().is_some_and(|c| c.status().is_ready())
 }
@@ -2011,6 +2041,8 @@ pub fn run() {
             dictionary_import,
             dictionary_export,
             dictionary_export_text,
+            pick_path,
+            open_external,
             dev_get,
             dev_validate,
             dev_set,

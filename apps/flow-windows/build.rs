@@ -47,6 +47,8 @@ fn main() {
             "dictionary_import",
             "dictionary_export",
             "dictionary_export_text",
+            "pick_path",
+            "open_external",
             "dev_get",
             "dev_validate",
             "dev_set",

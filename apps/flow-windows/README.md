@@ -370,6 +370,7 @@ before the paste.
 | `src/openrouter.rs` | The OpenRouter page: `OrView`, validated edits (STT / cleanup with separate consents, privacy, budget, model) |
 | `tests/cloud_settings.rs` | Page edits + Developer form → prefs (no key) → router JSON == `router_config_cloud.json`; separate consents; the D28 migration of every old preset fixture (settings, Credential Manager, usage) |
 | `tests/cloud_integration.rs` | Controller → router → flow-cloud → flow-cloud's mock OpenRouter (via `flow_cloud::testing::override_base_url`, never a config URL): cloud paste with exact cost, ZDR body, usage restore, 500/401/503-routing → local fallback with all audio, no key/consent → no request, cloud-only error pills, Test; key never shown |
+| `src/shell.rs` | `pick_path` (Win32 `IFileOpenDialog` on its own STA thread, owned by the settings window; validated title / `*.ext` filters) and `open_external` (`ShellExecuteW`, only https/http links to `github.com/bashycodes/murmur…`, `huggingface.co`, `openrouter.ai`) |
 | `src/secrets.rs` | DPAPI (`CryptProtectData`) blobs for secrets in prefs (server token; reusable for later API keys) |
 | `tests/router_integration.rs` | Controller → router → flow-remote → in-process flow-server (MockAsr) vs local MockAsr: all four toggle combos, server down / killed mid-dictation (no lost audio), error pills, Test connection / Test session |
 | `tests/core_integration.rs` | Controller + real flow-core (MockAsr, and whisper tiny.en on `jfk.wav` when present): audio → commit → paste plan → history |

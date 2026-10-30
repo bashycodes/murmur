@@ -32,5 +32,6 @@ pub mod prefs;
 pub mod recent_apps;
 pub mod router_adapter;
 pub mod secrets;
+pub mod shell;
 pub mod sounds;
 pub mod suggestions;
