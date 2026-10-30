@@ -634,7 +634,9 @@ mod tests {
     }
 
     fn files_in(d: &Path) -> Vec<String> {
-        let mut v: Vec<String> = walk(d).into_iter().map(|p| p.strip_prefix(d).unwrap().display().to_string()).collect();
+        // '/'-separated on every OS so the expectations hold on Windows too.
+        let mut v: Vec<String> =
+            walk(d).into_iter().map(|p| p.strip_prefix(d).unwrap().display().to_string().replace('\\', "/")).collect();
         v.sort();
         v
     }
