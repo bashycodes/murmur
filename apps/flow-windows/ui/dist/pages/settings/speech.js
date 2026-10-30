@@ -3,7 +3,7 @@
 // and OpenRouter speech to text (features/openrouter.ts). Markup only.
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
-import { browseButton, DOWNLOAD_ROW } from "../../features/models.js";
+import { browseButton, DOWNLOAD_ROW, HEBREW_ROW } from "../../features/models.js";
 /** One engine in a ranked list (`<prefix>_row_<key>`, `_desc_`, `_badge_`):
  *  rank, tile, text, status badge, move up/down, switch. The feature module
  *  moves the row, numbers it and fills the text and badge. `keyAttr` names
@@ -44,6 +44,7 @@ ${group("On this PC", row("Model", `Parakeet is fastest but English only. Whispe
         row("Model file", `A whisper.cpp ggml model, e.g. <code>ggml-base.bin</code> (default) or <code>ggml-small-q5_1.bin</code> for better accuracy. Empty = default.`, `<input id="model_path" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" />${browseButton("model_path")}`, `data-engine="whisper"`) +
         row("Model folder", "The <code>sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8</code> folder. Empty = default.", `<input id="parakeet_model_dir" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" />${browseButton("parakeet_model_dir")}`, `data-engine="parakeet"`) +
         DOWNLOAD_ROW +
+        HEBREW_ROW +
         row("Use dictionary words when listening", "Better at names and jargon. Uses about 0.6 GB more memory; changing it reloads the model.", toggle("dev_parakeet_decoding", "Use dictionary words when listening"), `data-needs="dev" id="dict_words_row"`) +
         row("Keep loaded while the server is used", "Instant fallback if the server drops, at the cost of memory.", toggle("dev_keep_local_warm", "Keep loaded while the server is used", `data-save="dev"`), `data-needs="remote"`), `data-needs="local"`)}
 <p class="fl-help lw-group-help" data-needs="local">Models are never downloaded automatically: press Download, or put them in <code id="models_dir" class="lw-mono"></code>.</p>

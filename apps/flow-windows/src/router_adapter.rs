@@ -421,6 +421,17 @@ impl RouterAdapter {
     /// (the slot is warm, or the client route is off). Re-call on every
     /// prefs save.
     pub fn set_on_demand(&self, spec: Option<crate::core_adapter::ModelSpec>) {
+        self.set_on_demand_with(spec, None);
+    }
+
+    /// [`RouterAdapter::set_on_demand`] plus the per-language model (D33
+    /// Hebrew route): it starts loading in the background once the default
+    /// model is in, so the fallback dictation itself is not delayed.
+    pub fn set_on_demand_with(
+        &self,
+        spec: Option<crate::core_adapter::ModelSpec>,
+        lang: Option<crate::core_adapter::LanguageSpec>,
+    ) {
         let (Some(adapter), Some(spec)) = (self.local.clone(), spec) else {
             self.router.set_local_loader(None);
             return;
@@ -432,6 +443,9 @@ impl RouterAdapter {
                     return Err(st
                         .problem()
                         .unwrap_or_else(|| "speech model failed to load".into()));
+                }
+                if lang.is_some() && adapter.language_spec() != lang {
+                    adapter.load_language(lang.clone());
                 }
             }
             Ok(LocalBackend::new(adapter.clone()) as Arc<dyn Backend>)

@@ -44,6 +44,8 @@ export interface Prefs {
   model_path: string | null;
   asr_engine: string;
   parakeet_model_dir: string | null;
+  /** Model of the Hebrew route (D33): "zipformer" | "parakeet_he" | "none". */
+  hebrew_model?: string;
   spoken_cleanup: boolean;
   llm_enabled: boolean;
   llm_model_path: string | null;
