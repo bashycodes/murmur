@@ -1818,6 +1818,20 @@ fn dev_or_set_cleanup(
     })
 }
 
+/// D36: the cleanup order on the AI cleanup page (order + this PC / your
+/// server switches; OpenRouter's switch is `dev_or_set_cleanup`'s). In
+/// every build: the answer's `cleanup.engines` is what the page shows.
+#[tauri::command]
+fn dev_cleanup_set_engines(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    engines: Vec<crate::dev_settings::CleanupEngine>,
+) -> Result<crate::openrouter::OrView, String> {
+    edit_cloud(&app, &state, |d| {
+        crate::openrouter::apply_cleanup_engines(d, &engines)
+    })
+}
+
 #[tauri::command]
 fn dev_or_set_privacy(
     app: AppHandle,
@@ -2404,6 +2418,7 @@ pub fn run() {
             dev_or_set_model,
             dev_or_set_stt,
             dev_or_set_cleanup,
+            dev_cleanup_set_engines,
             dev_or_set_privacy,
             dev_or_set_budget,
             dev_or_ack_notice,

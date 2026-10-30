@@ -322,7 +322,13 @@ fn cloud_fixtures() -> Vec<(String, Value)> {
         serde_json::to_value(CleanupStatus {
             supported: true,
             enabled: true,
-            order: vec![CleanupRoute::Cloud, CleanupRoute::Local],
+            order: vec![
+                CleanupRoute::Cloud,
+                CleanupRoute::Local,
+                CleanupRoute::Server,
+            ],
+            server_llm: Some(true),
+            server_circuit: Some(CircuitStatus::default()),
             consent: true,
             blocked: None,
             circuit: Some(CircuitStatus::default()),

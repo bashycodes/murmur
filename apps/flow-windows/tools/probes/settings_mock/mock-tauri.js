@@ -71,7 +71,7 @@
   let or = {
     privacy: { zdr: true, data_collection: "deny" },
     stt: { allow: false, consent: false, consent_at_ms: 0, model: "openai/whisper-large-v3-turbo", stt_path: "auto", language: "", send_dictionary: true },
-    cleanup: { allow: false, consent: false, consent_at_ms: 0, order: ["cloud", "local"], model: "meta-llama/llama-3.3-70b-instruct", sort: "latency", timeout_ms: 2500, send_surrounding_text: false, send_screen_words: false, send_app_name: false },
+    cleanup: { allow: false, consent: false, consent_at_ms: 0, engines: [{ route: "local", enabled: true }, { route: "server", enabled: true }, { route: "cloud", enabled: false }], model: "meta-llama/llama-3.3-70b-instruct", sort: "latency", timeout_ms: 2500, send_surrounding_text: false, send_screen_words: false, send_app_name: false },
     budget: null,
     notice: "Cloud speech now runs only through OpenRouter. Your Groq provider was removed; your OpenRouter key was kept. Cloud speech was turned off: turn it on again in this tab.",
   };
@@ -85,7 +85,7 @@
   const cleanupStatus = () => ({
     supported: true, enabled: or.cleanup.allow && or.cleanup.consent && !!orKey, consent: or.cleanup.consent,
     blocked: or.cleanup.allow && !orKey ? "cloud_cleanup_not_configured" : null,
-    order: or.cleanup.order, circuit: { open: false, reason: null, retry_in_ms: null, until_config_change: false },
+    order: or.cleanup.engines.filter((e) => e.enabled).map((e) => e.route), server_llm: window.__serverLlm ?? true, server_circuit: null, circuit: { open: false, reason: null, retry_in_ms: null, until_config_change: false },
     model: or.cleanup.model, timeout_ms: or.cleanup.timeout_ms,
     last: { engine: "cloud", model: or.cleanup.model, cost_usd: 0.0007, ttft_ms: 310, latency_ms: 640, generation_id: "gen-mock" },
     month_cost_usd: 0.014,
@@ -418,9 +418,20 @@
     dev_or_set_cleanup: ({ form }) => {
       if (form.allow && !or.cleanup.consent && !form.consent) throw "consent required before turning on cloud cleanup";
       if (form.consent) { or.cleanup.consent = true; or.cleanup.consent_at_ms = Date.now(); }
-      const { consent, ...rest } = form;
-      if (rest.order == null) delete rest.order; // null = keep (CleanupForm.order: Option)
+      const { consent, order, ...rest } = form;
+      // order: null/absent = keep (CleanupForm.order: Option); else completed, flags kept.
+      if (order) or.cleanup.engines = [...new Set([...order, "local", "server", "cloud"])].map((r) => ({ route: r, enabled: or.cleanup.engines.find((e) => e.route === r).enabled }));
       or.cleanup = { ...or.cleanup, ...rest, timeout_ms: Math.min(8000, Math.max(800, form.timeout_ms)) };
+      or.cleanup.engines = or.cleanup.engines.map((e) => (e.route === "cloud" ? { ...e, enabled: form.allow } : e));
+      return orView();
+    },
+    // D36: order + this PC / server switches; OpenRouter keeps its switch (consent).
+    dev_cleanup_set_engines: ({ engines }) => {
+      const routes = [...new Set([...engines.map((e) => e.route), "local", "server", "cloud"])];
+      or.cleanup.engines = routes.map((r) => ({
+        route: r,
+        enabled: r === "cloud" ? or.cleanup.allow : (engines.find((e) => e.route === r) ?? { enabled: true }).enabled,
+      }));
       return orView();
     },
     dev_or_set_budget: ({ budget }) => { or.budget = budget; return orView(); },

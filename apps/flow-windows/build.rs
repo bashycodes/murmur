@@ -81,6 +81,7 @@ fn main() {
             "dev_or_set_model",
             "dev_or_set_stt",
             "dev_or_set_cleanup",
+            "dev_cleanup_set_engines",
             "dev_or_set_privacy",
             "dev_or_set_budget",
             "dev_or_ack_notice",

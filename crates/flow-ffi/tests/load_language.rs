@@ -24,7 +24,9 @@ fn load_language_loads_only_the_routed_model() {
     // only Hebrew's model does not touch it.
     let cfg = format!(r#"{{"asr_backend":"whisper","asr_path":"/nonexistent.bin",{HE}}}"#);
     assert!(json_api::load_models_kind(&cfg).is_err());
-    let with = format!(r#"{{"asr_backend":"whisper","asr_path":"/nonexistent.bin",{HE},"load_language":"he"}}"#);
+    let with = format!(
+        r#"{{"asr_backend":"whisper","asr_path":"/nonexistent.bin",{HE},"load_language":"he"}}"#
+    );
     let core = json_api::load_models_kind(&with).expect("only the Hebrew model is loaded");
     let mut h = FlowHandle::Core(core);
     // Every session decodes on the one loaded model.
@@ -44,18 +46,28 @@ fn load_language_without_a_route_loads_the_default_only() {
 
 #[test]
 fn bad_load_language_is_a_config_error() {
-    let (kind, msg) = json_api::load_models_kind(r#"{"asr_backend":{"mock":{"text":"x"}},"load_language":5}"#)
-        .err()
-        .unwrap();
+    let (kind, msg) =
+        json_api::load_models_kind(r#"{"asr_backend":{"mock":{"text":"x"}},"load_language":5}"#)
+            .err()
+            .unwrap();
     assert_eq!(kind, "bad_config", "{msg}");
     // null / absent = load everything, as before.
-    assert!(json_api::load_models_kind(r#"{"asr_backend":{"mock":{"text":"x"}},"load_language":null}"#).is_ok());
+    assert!(json_api::load_models_kind(
+        r#"{"asr_backend":{"mock":{"text":"x"}},"load_language":null}"#
+    )
+    .is_ok());
 }
 
 #[test]
 fn local_loader_honours_load_language() {
-    let mut h = json_api::open_router(r#"{"allow_server":false,"allow_client":true,"keep_local_warm":false}"#, None).unwrap();
-    let cfg = format!(r#"[{{"asr_backend":"whisper","asr_path":"/nonexistent.bin",{HE},"load_language":"he"}}]"#);
+    let mut h = json_api::open_router(
+        r#"{"allow_server":false,"allow_client":true,"keep_local_warm":false}"#,
+        None,
+    )
+    .unwrap();
+    let cfg = format!(
+        r#"[{{"asr_backend":"whisper","asr_path":"/nonexistent.bin",{HE},"load_language":"he"}}]"#
+    );
     json_api::set_local_loader(&h, &cfg).unwrap();
     assert!(json_api::set_local_loader(&h, r#"[{"load_language":[]}]"#).is_err());
     json_api::set_local_loader(&h, &cfg).unwrap();

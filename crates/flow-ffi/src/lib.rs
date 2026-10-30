@@ -233,7 +233,11 @@ pub mod json_api {
         let language = match v.as_object_mut().and_then(|o| o.remove("load_language")) {
             None | Some(serde_json::Value::Null) => None,
             Some(serde_json::Value::String(s)) if !s.is_empty() => Some(s),
-            Some(other) => return Err(format!("load_language must be a language code, got {other}")),
+            Some(other) => {
+                return Err(format!(
+                    "load_language must be a language code, got {other}"
+                ))
+            }
         };
         let cfg = serde_json::from_value(v).map_err(|e| e.to_string())?;
         Ok(ModelLoad { cfg, language })
@@ -603,7 +607,8 @@ pub mod json_api {
     }
 
     /// Merge the cleanup part of the config: `{"allow_cloud_cleanup"?,
-    /// "cleanup_order"?, "cleanup"?}` (missing keys keep their value).
+    /// "cleanup_order"?, "cleanup_off"? (D36), "cleanup"?}` (missing keys
+    /// keep their value).
     pub fn set_cleanup(h: &FlowHandle, json: &str) -> Result<(), (&'static str, String)> {
         let r = h
             .router()
@@ -623,14 +628,24 @@ pub mod json_api {
         };
         let order = match field("cleanup_order") {
             Some(x) => serde_json::from_value(x).map_err(|e| bad(e.to_string()))?,
-            None => cur.cleanup_order,
+            None => cur.cleanup_order.clone(),
         };
         let cleanup = match field("cleanup") {
             Some(x) => serde_json::from_value(x).map_err(|e| bad(e.to_string()))?,
-            None => cur.cloud.openrouter.cleanup,
+            None => cur.cloud.openrouter.cleanup.clone(),
         };
-        r.set_cleanup(allow, order, cleanup)
-            .map_err(|e| (e.kind(), e.to_string()))
+        let off = match field("cleanup_off") {
+            Some(x) => serde_json::from_value(x).map_err(|e| bad(e.to_string()))?,
+            None => cur.cleanup_off.clone(),
+        };
+        let mut cfg = cur;
+        cfg.allow_cloud_cleanup = allow;
+        cfg.cleanup_order = order;
+        cfg.cleanup_off = off;
+        cfg.cloud.openrouter.cleanup = cleanup;
+        cfg.validate().map_err(|e| (e.kind(), e.to_string()))?;
+        r.update_config(cfg);
+        Ok(())
     }
 
     /// Command Mode (`flow_core::command`): `instruction` applied to
@@ -1237,7 +1252,7 @@ pub unsafe extern "C" fn flow_migrate_cloud(json: *const c_char) -> *mut c_char 
     })
 }
 
-/// Merge `{"allow_cloud_cleanup"?,"cleanup_order"?,"cleanup"?}` into the
+/// Merge `{"allow_cloud_cleanup"?,"cleanup_order"?,"cleanup_off"?,"cleanup"?}` into the
 /// router config. 0 ok, -1 (`bad_config`, `error` for a core handle).
 ///
 /// # Safety

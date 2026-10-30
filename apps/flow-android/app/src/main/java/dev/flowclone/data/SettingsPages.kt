@@ -252,20 +252,19 @@ object SettingsSummary {
 
     /**
      * AI cleanup row: strength, then the engines in the order they are tried, then the formatting
-     * rules ("Medium · OpenRouter, then rules"). [d] = the effective DevSettings (cloud cleanup).
+     * rules ("Medium · OpenRouter, then rules"). [d] = the effective DevSettings (D36 cleanup order).
      */
     fun cleanupRow(s: Settings, d: DevSettings, caps: BuildCaps): String {
-        val cloud = d.cloudCleanupRouted && d.cloud.cleanup.consentOk
-        val phone = s.llmEnabled && caps.local
-        val engines = if (cloud) d.cleanupOrder.mapNotNull {
+        val engines = d.cleanupOrder.filter { d.cleanupOn(it) }.mapNotNull {
             when (it) {
-                DevSettings.CleanupRoute.CLOUD -> OpenRouter.NAME
-                DevSettings.CleanupRoute.LOCAL -> if (phone) "this phone" else null
+                DevSettings.CleanupRoute.LOCAL -> if (s.llmEnabled && caps.local) "this phone" else null
+                DevSettings.CleanupRoute.SERVER -> if (caps.remote && d.serverConfigured) "your server" else null
+                DevSettings.CleanupRoute.CLOUD -> if (d.cloudCleanupRouted && d.cloud.cleanup.consentOk) OpenRouter.NAME else null
             }
-        } else if (phone) listOf("this phone") else emptyList()
+        }
         val chain = engines + listOfNotNull(if (s.spokenCleanup) "rules" else null)
         if (engines.isEmpty()) return if (s.spokenCleanup) "Rules only" else "Off"
-        return levelName(s.cleanupFor(cloud)) + " · " + chain.mapIndexed { i, e -> if (i == 0) e.replaceFirstChar { it.uppercase() } else e }.joinToString(", then ")
+        return levelName(s.cleanupFor(d.offPhoneCleanup)) + " · " + chain.mapIndexed { i, e -> if (i == 0) e.replaceFirstChar { it.uppercase() } else e }.joinToString(", then ")
     }
 
     /**

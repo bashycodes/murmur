@@ -12,7 +12,6 @@ import { cloudHint, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import type {
   CatalogStatus,
-  CleanupRoute,
   CleanupStatus,
   Health,
   KeyState,
@@ -133,7 +132,8 @@ function amount(v: string | number | null | undefined): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function showOr(v: OrView): void {
+/** Show an OrView everywhere (also used by the AI cleanup page's cleanup order). */
+export function showOr(v: OrView): void {
   $<HTMLUListElement>("or_warnings").replaceChildren(...v.warnings.map((w) => el("li", "", w)));
   $<HTMLElement>("or_notice_box").hidden = !v.notice;
   $<HTMLElement>("or_notice").textContent = v.notice ?? "";
@@ -161,7 +161,6 @@ function showOr(v: OrView): void {
   const c = v.cleanup;
   $<HTMLInputElement>("or_cleanup_allow").checked = c.allow;
   $<HTMLElement>("or_cleanup_consent").textContent = consentLine(c.consent_at_ms, c.consent, "dictated text");
-  $<HTMLSelectElement>("or_cleanup_order").value = c.order[0] === "local" ? "local,cloud" : "cloud,local";
   const spent = c.status.month_cost_usd ? `${money(c.status.month_cost_usd)} so far this month` : "";
   showModelRow("or_cleanup", c.model, v.cleanup_model_info, spent);
   $<HTMLElement>("or_cleanup_box").classList.toggle("lw-dim", !c.allow);
@@ -173,8 +172,10 @@ function showOr(v: OrView): void {
   showCleanupStatus(c.status);
   const short = (id: string): string => id.split("/").pop() ?? id;
   $<HTMLElement>("or_used_stt").textContent = s.allow ? `Sends audio · ${short(s.model)}` : `Would send audio · ${short(s.model)}`;
+  // D36: OpenRouter's place among the engines that are on.
+  const firstOn = c.engines.find((e) => e.enabled)?.route;
   $<HTMLElement>("or_used_cleanup").textContent = `${c.allow ? "Sends" : "Would send"} text · ${short(c.model)}${
-    c.allow ? ` · ${c.order[0] === "local" ? "after this PC" : "first, then this PC"}` : ""
+    c.allow ? ` · ${firstOn === "cloud" ? "first" : "as a fallback"}` : ""
   }`;
   setBadge("or_used_stt_badge", s.allow);
   setBadge("or_used_cleanup_badge", c.allow);
@@ -473,7 +474,7 @@ async function orApplyCleanup(consent: boolean): Promise<boolean> {
   const form = {
     allow: $<HTMLInputElement>("or_cleanup_allow").checked,
     consent,
-    order: $<HTMLSelectElement>("or_cleanup_order").value.split(",") as CleanupRoute[],
+    // The order is the AI cleanup page's (dev_cleanup_set_engines): kept.
     sort: $<HTMLSelectElement>("or_cleanup_sort").value,
     timeout_ms: Number.isFinite(t) ? Math.min(8000, Math.max(800, t)) : 2500,
     send_surrounding_text: $<HTMLInputElement>("or_cleanup_send_surrounding_text").checked,
@@ -719,7 +720,6 @@ function wire(): void {
 
   $<HTMLInputElement>("or_cleanup_allow").addEventListener("change", () => void orCleanupToggled());
   for (const id of [
-    "or_cleanup_order",
     "or_cleanup_sort",
     "or_cleanup_timeout_ms",
     "or_cleanup_send_surrounding_text",

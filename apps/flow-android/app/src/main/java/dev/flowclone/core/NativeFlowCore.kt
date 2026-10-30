@@ -112,7 +112,7 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
             runCatching { RouterJson.decodeCleanupStatus(nativeCleanupStatus(h)) }.getOrDefault(CleanupStatus())
         }
 
-    /** `nativeSetCleanup` (merge `{allow_cloud_cleanup?, cleanup_order?, cleanup?}`); false + kind `bad_config` on refusal. */
+    /** `nativeSetCleanup` (merge `{allow_cloud_cleanup?, cleanup_order?, cleanup_off?, cleanup?}`); false + kind `bad_config` on refusal. */
     fun setCleanup(json: String): Boolean = isRouter && lease.use({ false }) { h -> runCatching { nativeSetCleanup(h, json) }.getOrDefault(false) }
 
     /** The one-time notice of a legacy config this router migrated in memory, else null. */

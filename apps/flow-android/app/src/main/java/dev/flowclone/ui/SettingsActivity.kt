@@ -51,7 +51,7 @@ import kotlin.concurrent.thread
  *   app_styles  per-app bucket overrides: app list + "Add app" picker, from the style page
  *   speech    ranked engines + the phone's model (AndroidSpeech.dc.html, [SpeechPage])
  *   engine    whisper / Parakeet, model imports, from Speech to text           (not in `remote`)
- *   cleanup   local AI cleanup on/off, GGUF model, strength                     (not in `remote`)
+ *   cleanup   cleanup engines in try order (D36, [CleanupPage]), GGUF model, strength (not in `remote`)
  *   timing    hands-free stop after silence, session limit                               [Save]
  *   bubble    live preview, shrink to a dot, shake to restore, bubble size, Command Mode
  *   apps      excluded apps (package names)                                              [Save]
@@ -590,28 +590,25 @@ class SettingsActivity : Activity() {
         val s = app.settings.load()
         page {
             note(
-                "Off by default. Formatting rules always run while Auto-format (Language page) is on: spoken punctuation, " +
+                "Formatting rules always run while Auto-format (Language page) is on: spoken punctuation, " +
                     "quotes and brackets, fillers, \"scratch that\", numbers, lists and your writing style. " +
-                    "When on, a small language model on this phone also polishes each transcript (run-on sentences, " +
-                    "leftover fillers, corrections). It needs an imported GGUF model and adds 1–3 s; it is skipped when the " +
-                    "text is already clean, and if it takes longer than 3 s, or changes too much, the formatted transcript " +
-                    "is inserted instead. Loading the model takes a little longer than before (its instructions are prepared " +
-                    "at load). Dictionary replacements and snippets apply either way.",
+                    "AI cleanup also polishes each transcript (run-on sentences, leftover fillers, corrections) with the " +
+                    "first engine below that is on and ready: a small model on this phone (needs an imported GGUF model, adds " +
+                    "1–3 s), your server's, or OpenRouter's. It is skipped when the text is already clean, and if it takes too " +
+                    "long, or changes too much, the formatted transcript is inserted instead. Dictionary replacements and " +
+                    "snippets apply either way.",
             )
             lateinit var strength: DevUi.ChoiceGroup<dev.flowclone.core.CleanupLevel>
-            val cloudOn = { dev.flowclone.data.OpenRouterPage.cleanupEngineLine(app.dev.load().effective(caps)) != null }
-            card {
-                toggleRow("Clean up with local AI", "Off: formatting rules still run. Applies at once and reloads the engine", s.llmEnabled)
-                    .onChange { on -> strength.isEnabled = on || cloudOn(); applyNow { copy(llmEnabled = on) } }
-                // D28: cloud cleanup is its own opt-in (and consent) on the OpenRouter page.
-                if (caps.cloud) {
-                    val cloud = navRow(R.drawable.ic_dev_cloud, "Clean up with OpenRouter") { OpenRouterActivity.open(this@SettingsActivity) }
-                    refreshers += {
-                        cloud.setSubtitle(dev.flowclone.data.OpenRouterPage.cleanupEngineLine(app.dev.load().effective(caps)) ?: "Off · sends the text, not your voice, when on")
-                        strength.isEnabled = app.settings.load().llmEnabled || cloudOn()
-                    }
-                }
+            // D36: the engines (this phone, your server, OpenRouter) in try order, as on Speech to text.
+            val engines = CleanupPage(this@SettingsActivity, ui, update = { f -> applyNow(f) })
+            engines.render(this)
+            val anyOn = { app.settings.load().llmEnabled || app.dev.load().effective(caps).offPhoneCleanup }
+            refreshers += {
+                engines.refresh()
+                strength.isEnabled = anyOn()
             }
+            // The phone model loads (and the server reports its AI) while the page is open.
+            status = { engines.refresh() }
             sectionLabel("MODEL")
             card {
                 val model = navRow(R.drawable.ic_set_sparkle, "AI cleanup model") { startActivity(ModelImportActivity.llmIntent(this@SettingsActivity)) }
@@ -627,7 +624,7 @@ class SettingsActivity : Activity() {
                     ),
                     SettingsPages.shownStrength(s.cleanup),
                 ) { l -> applyNow { copy(cleanup = l) } }
-                strength.isEnabled = s.llmEnabled || cloudOn()
+                strength.isEnabled = anyOn()
             }
         }
     }

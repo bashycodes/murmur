@@ -64,6 +64,7 @@
     "allow-dev-or-set-model",
     "allow-dev-or-set-stt",
     "allow-dev-or-set-cleanup",
+    "allow-dev-cleanup-set-engines",
     "allow-dev-or-set-privacy",
     "allow-dev-or-set-budget",
     "allow-dev-or-ack-notice",

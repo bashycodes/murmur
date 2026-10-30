@@ -73,6 +73,22 @@ pub fn context(ctx: &FieldContext) -> Result<(), String> {
     Ok(())
 }
 
+/// Reject a text-only cleanup request (D36) over the server limits.
+pub fn clean(req: &flow_core::cleanup::CleanRequest) -> Result<(), String> {
+    if req.text.len() > flow_protocol::MAX_CLEAN_TEXT_BYTES {
+        return Err(format!(
+            "text over {} bytes",
+            flow_protocol::MAX_CLEAN_TEXT_BYTES
+        ));
+    }
+    if req.timeout_ms > MAX_LLM_TIMEOUT_MS {
+        return Err(format!(
+            "timeout_ms over the server limit of {MAX_LLM_TIMEOUT_MS}"
+        ));
+    }
+    context(&req.ctx)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -137,5 +153,23 @@ mod tests {
             ..Default::default()
         };
         assert!(context(&c).is_err());
+    }
+
+    #[test]
+    fn clean_limits() {
+        let mut r = flow_core::cleanup::CleanRequest {
+            text: "x".repeat(flow_protocol::MAX_CLEAN_TEXT_BYTES),
+            timeout_ms: MAX_LLM_TIMEOUT_MS,
+            ..Default::default()
+        };
+        assert!(clean(&r).is_ok());
+        r.text.push('x');
+        assert!(clean(&r).is_err());
+        r.text.clear();
+        r.timeout_ms += 1;
+        assert!(clean(&r).is_err());
+        r.timeout_ms = 0;
+        r.ctx.before = "x".repeat(MAX_CONTEXT_TEXT_BYTES + 1);
+        assert!(clean(&r).is_err());
     }
 }

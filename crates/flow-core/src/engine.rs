@@ -1766,183 +1766,258 @@ impl Worker {
         s: Session,
         ctx: &FieldContext,
         abort: &Arc<AtomicBool>,
-        mut r: CommitResult,
+        r: CommitResult,
         evidence: hallucination::Evidence,
     ) -> CommitResult {
-        if s.cfg.hallucination_guard && hallucination::is_hallucination(&r.asr_text, evidence) {
-            r.empty_reason = Some("hallucination".into());
+        finish_text(
+            self.cleaner.as_ref(),
+            &s.cfg,
+            &s.matcher,
+            ctx,
+            abort,
+            r,
+            evidence,
+        )
+    }
+}
+
+/// Guard, spoken cleanup, LLM and post-processing on `r.asr_text` (the
+/// session's tail of `commit`, and [`refinish`]).
+#[allow(clippy::too_many_arguments)]
+fn finish_text(
+    cleaner: Option<&Arc<dyn Cleaner>>,
+    cfg: &SessionConfig,
+    matcher: &DictMatcher,
+    ctx: &FieldContext,
+    abort: &Arc<AtomicBool>,
+    mut r: CommitResult,
+    evidence: hallucination::Evidence,
+) -> CommitResult {
+    if cfg.hallucination_guard && hallucination::is_hallucination(&r.asr_text, evidence) {
+        r.empty_reason = Some("hallucination".into());
+        return r;
+    }
+    let mut ctx = ctx.clone();
+    ctx.app_category = postprocess::effective_category(cfg.platform, &ctx);
+    let mut text = r.asr_text.clone();
+    // D33: the dictation's language as the engine reported it. The
+    // English-only rules (spoken cleanup with ITN, layout, the guard's
+    // word lists) run only for English or unknown; the cleanup prompt
+    // names any other language.
+    let language = r.language.clone();
+    let english = english_rules(language.as_deref());
+    // A whole-utterance snippet trigger is pasted as its expansion; the
+    // LLM must not see (or reword) it (03 §7.1).
+    let snippet = matcher.whole_snippet(&r.asr_text).is_some();
+    // D30: with a cloud cleaner active, AI cleanup gets the raw
+    // transcript first (no rules pre-pass, no skip); the rules and the
+    // on-device LLM below run only when it cannot or its answer is
+    // rejected. Without one, nothing here changes.
+    let mut local_cleaner = cleaner.cloned();
+    let ai = (cleanup::should_run(cfg, ctx.app_category) && !snippet)
+        .then(|| cleaner.and_then(cleanup::ai_split))
+        .flatten();
+    if let Some((cloud, local)) = ai {
+        local_cleaner = local;
+        let style = cfg.styles.for_category(ctx.app_category);
+        let prompt = cleanup::build_prompt_versioned(
+            &r.asr_text,
+            cfg.cleanup_level,
+            style,
+            &ctx,
+            &cfg.dictionary,
+            cloud.prompt_scope(),
+            cleanup::PromptVersion::V4c,
+        )
+        .with_language(language.as_deref())
+        .with_timeout(cfg.llm_timeout_ms);
+        let timeout_ms = cloud.budget_ms(cfg.llm_timeout_ms);
+        let max_div = cfg.divergence_threshold.unwrap_or(f64::INFINITY);
+        let t = Instant::now();
+        let (outcome, usage, rejection) = cleanup::run_ai_cleanup_for(
+            cloud,
+            prompt,
+            &r.asr_text,
+            Duration::from_millis(timeout_ms),
+            max_div,
+            language.as_deref(),
+        );
+        r.timings.llm_ms = t.elapsed().as_millis() as u64;
+        r.llm = usage.engine.is_some().then_some(usage);
+        match outcome {
+            CleanOutcome::Formatted(f) => {
+                r.status = CommitStatus::Formatted;
+                r.cleanup_route = Some("cloud".into());
+                if abort.load(Ordering::SeqCst) {
+                    return CommitResult::error("cancelled");
+                }
+                return post(cfg, matcher, &ctx, r, f);
+            }
+            CleanOutcome::Fallback(why) => {
+                let why = why.as_str();
+                r.cloud_fallback = Some(why.clone());
+                r.fallback_reason = Some(why);
+                r.rejected_text = rejection.text;
+                r.guard_detail = rejection.detail;
+            }
+        }
+    }
+    let tried_ai = r.cloud_fallback.is_some();
+    // D36: a cleaner known to have nothing to run counts as none.
+    let local_cleaner = local_cleaner.filter(|c| c.available());
+    // D27: the deterministic layer follows `spoken_cleanup` alone.
+    // `cleanup_level: none` and `raw_mode` only switch the LLM off
+    // (Android sends both when "Clean up with local AI" is off, which
+    // used to mean no cleanup at all: 17 % vs 44 % on the
+    // formatting-gap eval). Verbatim = `spoken_cleanup: false` + none.
+    if cfg.spoken_cleanup && !snippet {
+        if english {
+            text = postprocess::spoken::spoken_cleanup(&text);
+            // Numbered lists and email structure without the LLM (the
+            // LLM, when it runs, starts from this layout).
+            text = postprocess::spoken::layout(&text, ctx.app_category);
+        } else {
+            // D33: English word rules would mangle other languages;
+            // only the whitespace tidy is language-neutral.
+            text = postprocess::spoken::tidy_whitespace(&text);
+        }
+        if text.trim().is_empty() {
+            r.empty_reason = Some("only_filler".into());
             return r;
         }
-        let mut ctx = ctx.clone();
-        ctx.app_category = postprocess::effective_category(s.cfg.platform, &ctx);
-        let mut text = r.asr_text.clone();
-        // D33: the dictation's language as the engine reported it. The
-        // English-only rules (spoken cleanup with ITN, layout, the guard's
-        // word lists) run only for English or unknown; the cleanup prompt
-        // names any other language.
-        let language = r.language.clone();
-        let english = english_rules(language.as_deref());
-        // A whole-utterance snippet trigger is pasted as its expansion; the
-        // LLM must not see (or reword) it (03 §7.1).
-        let snippet = s.matcher.whole_snippet(&r.asr_text).is_some();
-        // D30: with a cloud cleaner active, AI cleanup gets the raw
-        // transcript first (no rules pre-pass, no skip); the rules and the
-        // on-device LLM below run only when it cannot or its answer is
-        // rejected. Without one, nothing here changes.
-        let mut local_cleaner = self.cleaner.clone();
-        let ai = (cleanup::should_run(&s.cfg, ctx.app_category) && !snippet)
-            .then(|| self.cleaner.as_ref().and_then(cleanup::ai_split))
-            .flatten();
-        if let Some((cloud, local)) = ai {
-            local_cleaner = local;
-            let style = s.cfg.styles.for_category(ctx.app_category);
-            let prompt = cleanup::build_prompt_versioned(
-                &r.asr_text,
-                s.cfg.cleanup_level,
-                style,
-                &ctx,
-                &s.cfg.dictionary,
-                cloud.prompt_scope(),
-                cleanup::PromptVersion::V4c,
-            )
-            .with_language(language.as_deref());
-            let timeout_ms = cloud.timeout_ms().unwrap_or(s.cfg.llm_timeout_ms);
-            let max_div = s.cfg.divergence_threshold.unwrap_or(f64::INFINITY);
-            let t = Instant::now();
-            let (outcome, usage, rejection) = cleanup::run_ai_cleanup_for(
-                cloud,
-                prompt,
-                &r.asr_text,
-                Duration::from_millis(timeout_ms),
-                max_div,
-                language.as_deref(),
-            );
-            r.timings.llm_ms = t.elapsed().as_millis() as u64;
-            r.llm = usage.engine.is_some().then_some(usage);
-            match outcome {
-                CleanOutcome::Formatted(f) => {
-                    r.status = CommitStatus::Formatted;
-                    r.cleanup_route = Some("cloud".into());
-                    if abort.load(Ordering::SeqCst) {
-                        return CommitResult::error("cancelled");
-                    }
-                    return self.post(s, &ctx, r, f);
-                }
-                CleanOutcome::Fallback(why) => {
-                    let why = why.as_str();
-                    r.cloud_fallback = Some(why.clone());
-                    r.fallback_reason = Some(why);
-                    r.rejected_text = rejection.text;
-                    r.guard_detail = rejection.detail;
-                }
-            }
-        }
-        let tried_ai = r.cloud_fallback.is_some();
-        // D27: the deterministic layer follows `spoken_cleanup` alone.
-        // `cleanup_level: none` and `raw_mode` only switch the LLM off
-        // (Android sends both when "Clean up with local AI" is off, which
-        // used to mean no cleanup at all: 17 % vs 44 % on the
-        // formatting-gap eval). Verbatim = `spoken_cleanup: false` + none.
-        if s.cfg.spoken_cleanup && !snippet {
-            if english {
-                text = postprocess::spoken::spoken_cleanup(&text);
-                // Numbered lists and email structure without the LLM (the
-                // LLM, when it runs, starts from this layout).
-                text = postprocess::spoken::layout(&text, ctx.app_category);
-            } else {
-                // D33: English word rules would mangle other languages;
-                // only the whitespace tidy is language-neutral.
-                text = postprocess::spoken::tidy_whitespace(&text);
-            }
-            if text.trim().is_empty() {
-                r.empty_reason = Some("only_filler".into());
-                return r;
-            }
-        }
-        if (s.cfg.spoken_cleanup || s.cfg.cleanup_level != CleanupLevel::None) && !snippet {
-            // Parakeet-unified often ends without a period, whisper on a
-            // comma; Wispr's server would close the sentence (D25).
-            text = postprocess::terminal::close_sentence(&text);
-        }
-        r.status = CommitStatus::RawTranscript;
-        if abort.load(Ordering::SeqCst) {
-            return CommitResult::error("cancelled");
-        }
-        let mut run_llm = cleanup::should_run(&s.cfg, ctx.app_category) && !snippet;
-        if run_llm
-            && local_cleaner.is_some()
-            && s.cfg.llm_skip_clean
-            && !cleanup::llm_can_help(&text, ctx.app_category)
-        {
-            run_llm = false;
-            r.fallback_reason = Some("llm_skipped_clean".into());
-        }
-        if let (true, Some(cl)) = (run_llm, &local_cleaner) {
-            let style = s.cfg.styles.for_category(ctx.app_category);
-            // D28: a cloud backend narrows what the prompt may carry.
-            let prompt = cleanup::build_prompt_scoped(
-                &text,
-                s.cfg.cleanup_level,
-                style,
-                &ctx,
-                &s.cfg.dictionary,
-                cl.prompt_scope(),
-            )
-            .with_language(language.as_deref());
-            let timeout_ms = cl.timeout_ms().unwrap_or(s.cfg.llm_timeout_ms);
-            // The edit-distance guard only runs when a shell asks for it;
-            // the default guard is `guard::check` (support + coverage).
-            let max_div = s.cfg.divergence_threshold.unwrap_or(f64::INFINITY);
-            let t = Instant::now();
-            let (outcome, usage) = cleanup::run_cleanup_metered_for(
-                cl.clone(),
-                prompt,
-                &text,
-                Duration::from_millis(timeout_ms),
-                max_div,
-                language.as_deref(),
-            );
-            // `None` when every backend refused up front (nothing ran).
-            r.llm = usage.engine.is_some().then_some(usage);
-            match outcome {
-                CleanOutcome::Formatted(f) => {
-                    text = f;
-                    r.status = CommitStatus::Formatted;
-                }
-                CleanOutcome::Fallback(why) => r.fallback_reason = Some(why.as_str()),
-            }
-            // After a failed AI cleanup this adds to its time.
-            r.timings.llm_ms += t.elapsed().as_millis() as u64;
-        }
-        if tried_ai {
-            r.cleanup_route = Some(
-                if r.status == CommitStatus::Formatted {
-                    "local"
-                } else {
-                    "rules"
-                }
-                .into(),
-            );
-        }
-        self.post(s, &ctx, r, text)
     }
-
-    /// Post-processing (dictionary, cursor context, paste plan) on the
-    /// cleaned `text`.
-    fn post(
-        &self,
-        s: Session,
-        ctx: &FieldContext,
-        mut r: CommitResult,
-        text: String,
-    ) -> CommitResult {
+    if (cfg.spoken_cleanup || cfg.cleanup_level != CleanupLevel::None) && !snippet {
+        // Parakeet-unified often ends without a period, whisper on a
+        // comma; Wispr's server would close the sentence (D25).
+        text = postprocess::terminal::close_sentence(&text);
+    }
+    r.status = CommitStatus::RawTranscript;
+    if abort.load(Ordering::SeqCst) {
+        return CommitResult::error("cancelled");
+    }
+    let mut run_llm = cleanup::should_run(cfg, ctx.app_category) && !snippet;
+    if run_llm
+        && local_cleaner.is_some()
+        && cfg.llm_skip_clean
+        && !cleanup::llm_can_help(&text, ctx.app_category)
+    {
+        run_llm = false;
+        r.fallback_reason = Some("llm_skipped_clean".into());
+    }
+    if let (true, Some(cl)) = (run_llm, &local_cleaner) {
+        let style = cfg.styles.for_category(ctx.app_category);
+        // D28: a cloud backend narrows what the prompt may carry.
+        let prompt = cleanup::build_prompt_scoped(
+            &text,
+            cfg.cleanup_level,
+            style,
+            &ctx,
+            &cfg.dictionary,
+            cl.prompt_scope(),
+        )
+        .with_language(language.as_deref())
+        .with_timeout(cfg.llm_timeout_ms);
+        let timeout_ms = cl.budget_ms(cfg.llm_timeout_ms);
+        // The edit-distance guard only runs when a shell asks for it;
+        // the default guard is `guard::check` (support + coverage).
+        let max_div = cfg.divergence_threshold.unwrap_or(f64::INFINITY);
         let t = Instant::now();
-        let post = postprocess::apply_with(&text, &r.asr_text, &s.cfg, ctx, &s.matcher);
-        r.timings.postprocess_ms = t.elapsed().as_millis() as u64;
-        r.segments = paste::segments(&post.text, post.press_enter);
-        r.plain_text = paste::plain_text(&post.text);
-        r.final_text = post.text;
-        r.press_enter = post.press_enter;
-        r
+        let (outcome, usage) = cleanup::run_cleanup_metered_for(
+            cl.clone(),
+            prompt,
+            &text,
+            Duration::from_millis(timeout_ms),
+            max_div,
+            language.as_deref(),
+        );
+        // `None` when every backend refused up front (nothing ran).
+        r.llm = usage.engine.is_some().then_some(usage);
+        match outcome {
+            CleanOutcome::Formatted(f) => {
+                text = f;
+                r.status = CommitStatus::Formatted;
+            }
+            // D36: refused up front by a cleaner that only now knows it
+            // has nothing to run (first contact with a server without an
+            // LLM): as if there were no cleaner.
+            CleanOutcome::Fallback(_) if r.llm.is_none() && !cl.available() => {}
+            CleanOutcome::Fallback(why) => r.fallback_reason = Some(why.as_str()),
+        }
+        // After a failed AI cleanup this adds to its time.
+        r.timings.llm_ms += t.elapsed().as_millis() as u64;
     }
+    if tried_ai {
+        // D36: the fallback chain may have reached the user's server.
+        let by_server = r.llm.as_ref().and_then(|l| l.engine.as_deref()) == Some("server");
+        r.cleanup_route = Some(
+            match (r.status == CommitStatus::Formatted, by_server) {
+                (true, true) => "server",
+                (true, false) => "local",
+                (false, _) => "rules",
+            }
+            .into(),
+        );
+    }
+    post(cfg, matcher, &ctx, r, text)
+}
+
+/// Post-processing (dictionary, cursor context, paste plan) on the
+/// cleaned `text`.
+fn post(
+    cfg: &SessionConfig,
+    matcher: &DictMatcher,
+    ctx: &FieldContext,
+    mut r: CommitResult,
+    text: String,
+) -> CommitResult {
+    let t = Instant::now();
+    let post = postprocess::apply_with(&text, &r.asr_text, cfg, ctx, matcher);
+    r.timings.postprocess_ms = t.elapsed().as_millis() as u64;
+    r.segments = paste::segments(&post.text, post.press_enter);
+    r.plain_text = paste::plain_text(&post.text);
+    r.final_text = post.text;
+    r.press_enter = post.press_enter;
+    r
+}
+
+/// D36: run the text half of a commit again on the client: spoken cleanup,
+/// AI cleanup with `cleaner` (`None` = the deterministic text) and
+/// post-processing, from `r.asr_text`. For a result that a server
+/// transcribed without its own LLM (`cleanup_level: none`) while the
+/// user's cleanup order picks another engine. ASR, the hallucination guard
+/// and the timings of the server's work are kept; an `EMPTY` or `ERROR`
+/// result, or one with no transcript, comes back unchanged.
+pub fn refinish(
+    cfg: &SessionConfig,
+    ctx: &FieldContext,
+    cleaner: Option<Arc<dyn Cleaner>>,
+    mut r: CommitResult,
+) -> CommitResult {
+    if matches!(r.status, CommitStatus::Empty | CommitStatus::Error) || r.asr_text.is_empty() {
+        return r;
+    }
+    let t = Instant::now();
+    let mut cfg = cfg.clone();
+    // The server already judged the transcript.
+    cfg.hallucination_guard = false;
+    let matcher = DictMatcher::new(&cfg.dictionary.entries, &[]);
+    r.status = CommitStatus::RawTranscript;
+    r.fallback_reason = None;
+    r.llm = None;
+    r.cleanup_route = None;
+    r.cloud_fallback = None;
+    r.rejected_text = None;
+    r.guard_detail = None;
+    r.empty_reason = None;
+    let server_llm_ms = r.timings.llm_ms;
+    r.timings.llm_ms = 0;
+    let abort = Arc::new(AtomicBool::new(false));
+    let evidence = hallucination::Evidence {
+        speech_ms: None,
+        no_speech_prob: None,
+    };
+    let mut r = finish_text(cleaner.as_ref(), &cfg, &matcher, ctx, &abort, r, evidence);
+    r.timings.llm_ms += server_llm_ms;
+    r.timings.total_ms += t.elapsed().as_millis() as u64;
+    r
 }

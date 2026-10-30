@@ -177,13 +177,6 @@ class OpenRouterActivity : Activity() {
         card {
             val on = toggleRow("Clean up text with OpenRouter", "Sends the dictated text (not your voice) after each dictation; off by default", s0.allowCloudCleanup)
             val model = navRow(R.drawable.ic_set_sparkle, "Model") { ModelPickerActivity.open(this@OpenRouterActivity, CloudCatalog.Use.CLEANUP) }
-            val order = if (caps.local) choiceRows(
-                listOf(
-                    DevUi.Choice(true, "OpenRouter first", "The phone's AI is the backup when OpenRouter is unreachable"),
-                    DevUi.Choice(false, "Phone AI first", "OpenRouter only when no AI model is loaded on the phone"),
-                ),
-                OpenRouterPage.cleanupCloudFirst(s0),
-            ) { first -> change { OpenRouterPage.withCleanupOrder(it, first) } } else null
             val sort = navRow(R.drawable.ic_dev_route, "Provider choice") { editSort() }
             val timeout = navRow(R.drawable.ic_set_timer, "Time limit") { editTimeout() }
             val consent = infoRow("Consent to send text")
@@ -191,7 +184,7 @@ class OpenRouterActivity : Activity() {
             on.onChange { v -> if (!quiet) onCleanup(on, v) }
             refreshers += {
                 val s = app.dev.load()
-                quietly { on.isChecked = s.allowCloudCleanup; order?.select(OpenRouterPage.cleanupCloudFirst(s)) }
+                quietly { on.isChecked = s.allowCloudCleanup }
                 model.setSubtitle(CloudCatalog.modelSummary(s.cloud.cleanup.model))
                 sort.setSubtitle(CloudInput.sortName(s.cloud.cleanup.sort))
                 timeout.setSubtitle("${s.cloud.cleanup.timeoutMs} ms, then the text is pasted without it")
@@ -214,7 +207,7 @@ class OpenRouterActivity : Activity() {
                 always.text = "Sent with each cleanup: ${CloudText.cleanupSends(c)}."
             }
         }
-        note("Cleanup is used for on-device and cloud dictations. Your server uses its own AI. About half of dictations need no AI and send nothing.")
+        note("Which engine cleans first (this phone, your server or OpenRouter) is set in Settings → AI cleanup. About half of dictations need no AI and send nothing.")
     }
 
     // ---- changes ----
@@ -226,7 +219,7 @@ class OpenRouterActivity : Activity() {
         val s = f(app.dev.load())
         app.dev.saveCloud(
             allowCloud = s.allowCloud, cloud = s.cloud, routeOrder = s.routeOrder,
-            allowCloudCleanup = s.allowCloudCleanup, cleanupOrder = s.cleanupOrder,
+            allowCloudCleanup = s.allowCloudCleanup, cleanupOrder = s.cleanupOrder, cleanupOff = s.cleanupOff,
         )
         app.engine.applyDevSettings(app.dev.load())
         refresh()
@@ -244,7 +237,7 @@ class OpenRouterActivity : Activity() {
     private fun onCleanup(row: DevUi.ToggleRow, on: Boolean) {
         if (!on) { change(OpenRouterPage::disableCleanup); return }
         val s = app.dev.load()
-        val enable = { change { OpenRouterPage.enableCleanup(it, System.currentTimeMillis(), caps) }; refreshCatalog(); warnNoKey() }
+        val enable = { change { OpenRouterPage.enableCleanup(it, System.currentTimeMillis()) }; refreshCatalog(); warnNoKey() }
         if (!OpenRouterPage.cleanupNeedsConsent(s)) { enable(); return }
         ui.confirm(CloudText.CLEANUP_CONSENT_TITLE, CloudText.cleanupConsentBody(s.cloud.cleanup), CloudText.CLEANUP_CONSENT_BUTTON, onYes = enable,
             onNo = { quietly { row.isChecked = false } })

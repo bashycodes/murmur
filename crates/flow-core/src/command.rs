@@ -143,6 +143,7 @@ pub fn build_prompt(instruction: &str, selected: Option<&str>) -> CleanPrompt {
             )],
             user: user_transform(instruction, sel),
             transcript: budget_source(sel, TRANSFORM_BUDGET_CHARS),
+            source: None,
         },
         None => CleanPrompt {
             system: SYSTEM_GENERATE.into(),
@@ -154,6 +155,7 @@ pub fn build_prompt(instruction: &str, selected: Option<&str>) -> CleanPrompt {
             )],
             user: user_generate(instruction),
             transcript: budget_source(instruction, GENERATE_BUDGET_CHARS),
+            source: None,
         },
     }
 }

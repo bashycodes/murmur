@@ -12,6 +12,7 @@ mod local;
 pub mod migrate;
 pub mod net;
 mod router;
+mod server_clean;
 
 use std::sync::Arc;
 
@@ -115,11 +116,23 @@ pub struct RouterConfig {
     /// Used only when `cleanup_order` lists `cloud`. Omitted while false.
     #[serde(skip_serializing_if = "is_false")]
     pub allow_cloud_cleanup: bool,
-    /// Cleanup engines in order (D28): `[cloud, local]` = cloud first, the
-    /// on-device LLM when the cloud fails fast; `[local, cloud]` = cloud
-    /// only when no local LLM is loaded. Empty = local LLM only (pre-D28).
+    /// Enabled cleanup engines in the order they are tried (D28, D36):
+    /// each dictation is cleaned by the first that can (on-device LLM
+    /// loaded; server reachable with an LLM; cloud allowed, consented,
+    /// keyed, in budget), falling back down the list on a failure or
+    /// timeout, whatever route transcribed it. An engine not listed never
+    /// cleans. `cloud` also needs `allow_cloud_cleanup`. Empty = pre-D36
+    /// (reported as `[local, server]`): on-device dictations use the
+    /// on-device LLM only, server dictations the server's own; no
+    /// text-only server cleanup.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub cleanup_order: Vec<CleanupRoute>,
+    /// Entries of `cleanup_order` the user switched off (D36): they keep
+    /// their place in the list but never clean. Lets a shell send the whole
+    /// list, so "everything off" is not the empty (pre-D36) order.
+    /// Omitted while empty.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub cleanup_off: Vec<CleanupRoute>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -139,6 +152,7 @@ impl Default for RouterConfig {
             cloud: CloudConfig::default(),
             allow_cloud_cleanup: false,
             cleanup_order: Vec::new(),
+            cleanup_off: Vec::new(),
         }
     }
 }
@@ -304,7 +318,24 @@ impl RouterConfig {
     /// Cloud cleanup is switched on by the user (toggle + order). Build
     /// capability, consent, key, budget and circuit are checked per call.
     pub fn cloud_cleanup_wanted(&self) -> bool {
-        self.allow_cloud_cleanup && self.cleanup_order.contains(&CleanupRoute::Cloud)
+        self.allow_cloud_cleanup
+            && self
+                .effective_cleanup_order()
+                .contains(&CleanupRoute::Cloud)
+    }
+
+    /// The engines that may clean, in order (D36): `cleanup_order` minus
+    /// `cleanup_off`, with the empty (pre-D36) order spelled out.
+    pub fn effective_cleanup_order(&self) -> Vec<CleanupRoute> {
+        if self.cleanup_order.is_empty() {
+            vec![CleanupRoute::Local, CleanupRoute::Server]
+        } else {
+            self.cleanup_order
+                .iter()
+                .copied()
+                .filter(|r| !self.cleanup_off.contains(r))
+                .collect()
+        }
     }
 }
 
@@ -636,7 +667,17 @@ pub struct CleanupStatus {
     pub supported: bool,
     /// Toggle on and `cloud` in `cleanup_order`.
     pub enabled: bool,
+    /// The effective cleanup order (D36: never empty).
     pub order: Vec<CleanupRoute>,
+    /// D36: whether the configured server can clean text (`clean` in its
+    /// `hello_ok.features`); `None` = not known yet (no connection) or no
+    /// server configured. Additive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_llm: Option<bool>,
+    /// D36: the server cleanup circuit, when `server` is in the order and a
+    /// server is configured. Additive.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server_circuit: Option<CircuitStatus>,
     /// Cleanup consent recorded for openrouter.ai.
     pub consent: bool,
     /// Why a call now would be refused (`Failure` string), `None` = ready.
@@ -720,6 +761,23 @@ pub trait Backend: Send + Sync {
     /// Additive.
     fn llm_cleaner(&self) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
         None
+    }
+    /// D36 (remote): the server's `hello_ok` from the current or last
+    /// connection, `None` before any. Default: none.
+    fn server_hello(&self) -> Option<flow_protocol::HelloOk> {
+        None
+    }
+    /// D36 (remote): text-only cleanup on the server (`clean` → `cleaned`),
+    /// blocking until the answer or `deadline`. Default: unsupported.
+    fn clean_text(
+        &self,
+        _req: &flow_core::cleanup::CleanRequest,
+        _deadline: std::time::Instant,
+    ) -> Result<flow_protocol::Cleaned, BackendError> {
+        Err(BackendError::new(
+            Failure::ServerNotConfigured,
+            "this backend cannot clean text",
+        ))
     }
 }
 

@@ -77,10 +77,10 @@ class NativeFlowCoreCloudHostTest {
         requireCloudLib()
         val caps = BuildCaps(local = true, remote = true, cloud = true)
         val dev = OpenRouterPage.enableCleanup(
-            OpenRouterPage.enableStt(DevSettings(allowServer = false, allowClient = true), 1), 1, caps,
-        )
+            OpenRouterPage.enableStt(DevSettings(allowServer = false, allowClient = true), 1), 1,
+        ).copy(cleanupOrder = listOf(DevSettings.CleanupRoute.CLOUD, DevSettings.CleanupRoute.LOCAL, DevSettings.CleanupRoute.SERVER))
         val plan = EngineRoute.plan(EnginePlan.Plan.Native(ModelConfig(asrPath = "", threads = 2), EnginePlan.LlmStatus.Off), dev, caps) as EngineRoute.Plan.Routed
-        assertTrue(plan.routerConfigJson, plan.routerConfigJson.contains("\"cleanup_order\":[\"cloud\",\"local\"]"))
+        assertTrue(plan.routerConfigJson, plan.routerConfigJson.contains("\"cleanup_order\":[\"cloud\",\"local\",\"server\"]"))
         val loader = FlowCoreLoader { NativeFlowCore.loadModels(it.copy(mockText = "local words btw")) }
         val a = EngineRoute.assemble(plan, loader, NativeFlowCore.routerOpener)
         assertTrue(a.description, a.description.startsWith("cloud: OpenRouter"))
@@ -94,7 +94,7 @@ class NativeFlowCoreCloudHostTest {
         val st = r.cleanupStatus()
         assertTrue(st.supported); assertTrue(st.enabled); assertTrue(st.consent)
         assertEquals("cloud_cleanup_not_configured", st.blocked)
-        assertEquals(listOf("cloud", "local"), st.order)
+        assertEquals(listOf("cloud", "local", "server"), st.order)
         assertEquals(CloudKeyInfo(error = "cloud_not_configured"), r.cloudKeyInfo())
         assertTrue(r.setCloudModel("cleanup", "meta-llama/llama-3.1-8b-instruct:nitro")!!)
         assertFalse(r.setCloudModel("cleanup", "Not An Id")!!)
