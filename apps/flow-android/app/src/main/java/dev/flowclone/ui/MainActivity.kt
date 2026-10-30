@@ -21,7 +21,6 @@ import dev.flowclone.core.NativeFlowCore
 import dev.flowclone.data.AppVersion
 import dev.flowclone.data.DevSummary
 import dev.flowclone.data.OpenRouterPage
-import dev.flowclone.data.SettingsPages
 import dev.flowclone.data.SetupChecklist
 import dev.flowclone.data.ShellPages
 import dev.flowclone.data.ShellPages.Extra
@@ -35,9 +34,8 @@ import kotlin.concurrent.thread
  * drawer (stats, engines, Settings / Permissions / Help, the features the design has no slot for,
  * version). Back closes the drawer first.
  *
- * Tabs: [createTab] maps each [Tab] to a [ShellTab]. Home is embedded ([HomeTab]); Dictionary,
- * Style and Snippets are [LaunchTab]s that open their existing screens until their chunks replace
- * them with embedded tabs (see [ShellTab]).
+ * Tabs: [createTab] maps each [Tab] to an embedded [ShellTab] (Home, Dictionary, Style, Snippets);
+ * [LaunchTab] remains for a destination that has to be its own activity.
  */
 class MainActivity : Activity() {
     private val app get() = FlowApp.of(this)
@@ -104,7 +102,7 @@ class MainActivity : Activity() {
     private fun createTab(t: Tab): ShellTab = when (t) {
         Tab.HOME -> HomeTab(this, ui)
         Tab.DICTIONARY -> dev.flowclone.ui.tabs.DictionaryTab(this, ui)
-        Tab.STYLE -> LaunchTab(t.label) { SettingsActivity.intent(this, SettingsPages.Page.STYLE) }
+        Tab.STYLE -> dev.flowclone.ui.tabs.StyleTab(this, ui)
         Tab.SNIPPETS -> dev.flowclone.ui.tabs.SnippetsTab(this, ui)
     }
 
