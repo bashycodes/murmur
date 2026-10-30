@@ -142,6 +142,12 @@ pub enum Input {
         original: String,
         result: Result<String, String>,
     },
+    /// History "Retry": re-transcribe row `row`'s kept recording with the
+    /// settings active now (the controller handles it; the machine
+    /// ignores it). Never pastes.
+    Retry {
+        row: i64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -15,6 +15,9 @@ import dev.flowclone.FlowApp
 import dev.flowclone.R
 import dev.flowclone.data.HistoryPages
 import dev.flowclone.data.HistoryRow
+import dev.flowclone.data.HistoryVersion
+import dev.flowclone.data.RetryLogic
+import dev.flowclone.ui.RetryUi.versionPills
 import dev.flowclone.data.HistoryView
 import dev.flowclone.data.Retention
 import dev.flowclone.data.SettingsPages
@@ -28,11 +31,13 @@ import kotlin.concurrent.thread
  * with back (no artboard of its own: it follows AndroidHome.dc.html's dictation cards):
  *   list    retention row (→ Settings → History), raw-transcript switch, search once the list is
  *           long, dictations grouped by day ([HistoryPages]) as cards: the text, time · app, route
- *           tag, outcome badge, Copy and ⋮ (Open details, Delete); tapping a card opens its
+ *           tag, outcome badge, version pills once retried, Copy and ⋮ (Open details, Retry with
+ *           current settings while the recording is kept (D35), Delete); tapping a card opens its
  *           details, except a dictation that never reached its field ("Not inserted — tap to
  *           copy"), which copies; Clear all in the top bar
  *   detail  full text (+ raw transcript when it differs), when / app / result / per-stage
- *           timings (the device latency checklist in INSTALL.md reads them), Copy, Delete
+ *           timings (the device latency checklist in INSTALL.md reads them), Copy, Retry, earlier
+ *           versions, Delete
  * Same [dev.flowclone.data.HistoryStore] calls as before (purge on open, recent, delete, clear).
  */
 class HistoryActivity : Activity() {
@@ -44,6 +49,10 @@ class HistoryActivity : Activity() {
     private var raw = false
     private var detailId: Long? = null
     private var clearButton: ImageButton? = null
+    /** D35: rows whose recording is kept, and the versions of retried rows (from the last load). */
+    private var audio: Set<Long> = emptySet()
+    private var versions: Map<Long, List<HistoryVersion>> = emptyMap()
+    private val watch = RetryUi.Watch(this) { load() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,6 +64,12 @@ class HistoryActivity : Activity() {
     override fun onResume() {
         super.onResume()
         load()
+        watch.resume()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        watch.pause()
     }
 
     private fun load() {
@@ -62,9 +77,12 @@ class HistoryActivity : Activity() {
             val retention = app.settings.load().retention
             app.history.purge(retention)
             val r = app.history.recent()
+            val ids = r.map { it.id }
+            val a = runCatching { app.history.withAudio(ids) }.getOrDefault(emptySet())
+            val v = runCatching { app.history.versionsFor(ids) }.getOrDefault(emptyMap())
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                rows = r; loaded = true
+                rows = r; loaded = true; audio = a; versions = v
                 val id = detailId
                 if (id == null) renderList(retention) else r.firstOrNull { it.id == id }?.let(::renderDetail) ?: finish()
                 clearButton?.let { it.isEnabled = rows.isNotEmpty(); it.alpha = if (rows.isNotEmpty()) 1f else 0.4f }
@@ -72,7 +90,8 @@ class HistoryActivity : Activity() {
         }
     }
 
-    private fun time(r: HistoryRow) = DateFormat.getTimeFormat(this).format(Date(r.createdAt))
+    private fun time(r: HistoryRow) = time(r.createdAt)
+    private fun time(ms: Long) = DateFormat.getTimeFormat(this).format(Date(ms))
 
     /** S16: sensitive clip, removed again after a minute. */
     private fun copy(text: String) {
@@ -146,12 +165,13 @@ class HistoryActivity : Activity() {
         val details = { open(this@HistoryActivity, r.id) }
         val remove = { delete(r) { fillGroups(retention) } }
         val card = itemCard()
+        val textView = tv(text, TypeScale.ROW, p.text).apply { maxLines = 6; ellipsize = android.text.TextUtils.TruncateAt.END }
         val body = LinearLayout(this@HistoryActivity).apply {
             orientation = LinearLayout.VERTICAL
             minimumHeight = dp(48)
             background = ripple(null, 12)
             isClickable = true; isFocusable = true
-            addView(tv(text, TypeScale.ROW, p.text).apply { maxLines = 6; ellipsize = android.text.TextUtils.TruncateAt.END })
+            addView(textView)
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 addView(tv(meta, 14f, p.muted).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END },
@@ -169,10 +189,21 @@ class HistoryActivity : Activity() {
             ))
         }
         card.addView(body)
+        // The raw-transcript view shows what the engine heard; versions are about the shown text.
+        if (!raw) versionPills(versions[r.id].orEmpty(), textView, text) { shown ->
+            body.contentDescription = HistoryPages.cardDescription(shown, meta, route?.label, outcome, flag)
+        }?.let { card.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) }) }
         val whenText = ShellPages.cardTime(r.createdAt, now, time(r))
+        val more = RetryLogic.menu(r, r.id in audio).filter { it != RetryLogic.MenuItem.RETRY || r.id !in app.retrying.value }.map {
+            it.label to when (it) {
+                RetryLogic.MenuItem.DETAILS -> details
+                RetryLogic.MenuItem.RETRY -> { { RetryUi.start(this@HistoryActivity, r.id) } }
+                RetryLogic.MenuItem.DELETE -> remove
+            }
+        }
         card.addView(cardActions(
             copyPill("Copy dictation from $whenText") { copy(HistoryPages.copyText(r)) },
-            moreButton("More actions for dictation from $whenText", listOf("Open details" to details, "Delete" to remove)),
+            moreButton("More actions for dictation from $whenText", more),
         ))
         card
     }
@@ -208,6 +239,20 @@ class HistoryActivity : Activity() {
             }
             action("Copy", DevUi.Style.PRIMARY) { copy(HistoryPages.copyText(r)) }
             if (HistoryPages.notInserted(r)) action(REINSERT) { offerInsert(r) }
+            if (RetryLogic.canRetry(r, r.id in audio)) {
+                if (r.id in app.retrying.value) note("Retrying with your current settings…")
+                else action(RetryLogic.RETRY_LABEL) { RetryUi.start(this@HistoryActivity, r.id) }
+            }
+            val earlier = versions[r.id].orEmpty().dropLast(1)
+            if (earlier.isNotEmpty()) {
+                sectionLabel("EARLIER VERSIONS")
+                card {
+                    for (v in earlier.asReversed()) {
+                        infoRow(if (v.n == 0) "Version 0 (original)" else "Version ${v.n}", time(v.createdAt))
+                        selectableText(v.text.trim().ifEmpty { "(no speech)" }, 14f, p.muted)
+                    }
+                }
+            }
             sectionLabel("DETAILS")
             card {
                 infoRow("When", DateFormat.getLongDateFormat(this@HistoryActivity).format(Date(r.createdAt)) + ", " + time(r))

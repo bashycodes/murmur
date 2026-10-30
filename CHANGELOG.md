@@ -33,6 +33,17 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   switches between downloaded models and Delete removes one (turning local
   cleanup off when it was in use). Pins: `docs/findings/2026-10-30-cleanup-model-pins.md`.
 
+- **Retry with current settings (Windows, Android).** History can transcribe a
+  dictation's exact recording again with the settings active now (speech
+  route, engine, model, language, dictionary, style, AI cleanup), styled for
+  the original app and never pasted. Windows: a Retry icon beside Copy and
+  Paste again; Android: "Retry with current settings" in the card ⋮ menu and
+  on the details screen. Each retry is a new version: the card shows the
+  newest, and numbered pills (0 = original) show earlier ones. Copy, Paste
+  again and Insights use the newest. The recordings of the newest 20 History
+  rows are kept for this ("Keep recordings for retry" in Data and privacy /
+  Settings > History; 0 turns it off), never from password or protected
+  fields, and deleted with their row (D35).
 - **Core: Hebrew zipformer engine.** A new speech engine, `sherpa_online`
   (also accepted as `zipformer`), runs streaming sherpa-onnx models such as
   ivrit.ai's 69 MB Hebrew zipformer. Use it as the Hebrew model

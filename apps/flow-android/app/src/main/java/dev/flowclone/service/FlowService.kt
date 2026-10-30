@@ -85,6 +85,12 @@ class FlowService : Service() {
          */
         const val ACTION_OFFER_INSERT = "dev.flowclone.action.OFFER_INSERT"
         const val EXTRA_HISTORY_ID = "history_id"
+        /**
+         * D35 History → "Retry with current settings": transcribe row [EXTRA_HISTORY_ID]'s kept
+         * recording again with the settings active now. The result becomes the row's newest
+         * version; nothing is inserted.
+         */
+        const val ACTION_RETRY = "dev.flowclone.action.RETRY"
         private const val CHANNEL_SERVICE = "flow_service"
         private const val CHANNEL_LIMIT = "flow_session_limit"
         const val CHANNEL_STATUS = "flow_status"
@@ -214,6 +220,10 @@ class FlowService : Service() {
                     val armed = text != null && controller.offerInsert(text)
                     toast(if (armed) R.string.toast_offer_insert else R.string.toast_offer_insert_busy)
                 }
+                return START_STICKY
+            }
+            ACTION_RETRY -> {
+                retry(intent?.getLongExtra(EXTRA_HISTORY_ID, -1) ?: -1)
                 return START_STICKY
             }
             DebugWav.ACTION -> {
@@ -454,6 +464,54 @@ class FlowService : Service() {
 
     // ---- feedback ----
 
+    /**
+     * D35: History's "Retry with current settings" for row [id]: its recording through the full
+     * pipeline with today's settings (route, engine, language, dictionary, style, AI cleanup),
+     * styled for the original app. The text becomes the row's newest version; never inserted.
+     */
+    private fun retry(id: Long) {
+        if (id in app.retrying.value) return
+        app.retrying.value = app.retrying.value + id
+        scope.launch {
+            val msg = try {
+                val loaded = withContext(Dispatchers.IO) { runCatching { app.history.row(id) to app.history.audio.load(id) }.getOrNull() }
+                val row = loaded?.first
+                val pcm = loaded?.second
+                if (row == null || pcm == null || row.isCommand) dev.flowclone.data.RetryLogic.GONE
+                else {
+                    val s = app.settings.load()
+                    val bucket = row.appCategory ?: dev.flowclone.policy.AppCategorizer.categorize(row.appId, null).coreName
+                    val ctx = s.withAppBucket(FieldContext(appId = row.appId.orEmpty(), appCategory = bucket))
+                    when (val out = controller.retry(pcm, ctx.takeIf { row.appId != null })) {
+                        is dev.flowclone.session.RetryOutcome.Failed -> out.message
+                        is dev.flowclone.session.RetryOutcome.Done -> withContext(Dispatchers.IO) {
+                            val r = out.result
+                            val applied = runCatching { app.history.applyRetry(id, r) }.getOrNull()
+                            if (applied == null) dev.flowclone.data.RetryLogic.GONE
+                            else {
+                                val (old, _) = applied
+                                runCatching {
+                                    app.insights.retried(
+                                        old.createdAt, dev.flowclone.data.RetryLogic.countedWords(old.status, old.finalText),
+                                        dev.flowclone.data.RetryLogic.countedWords(r.status.name, r.historyText), old.audioMs, old.appId,
+                                    )
+                                }
+                                dev.flowclone.data.RetryLogic.DONE
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "retry: ${e.message}")
+                "Retry failed: ${e.message}"
+            } finally {
+                app.retrying.value = app.retrying.value - id
+            }
+            app.historyRevision.value = app.historyRevision.value + 1
+            toast(msg)
+        }
+    }
+
     private fun toast(res: Int) = Toast.makeText(this, res, Toast.LENGTH_SHORT).show()
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
 
@@ -500,17 +558,31 @@ class FlowService : Service() {
 
         override suspend fun sendKey(key: dev.flowclone.core.PasteKey): Boolean = app.accessibility?.sendKey(key) ?: false
 
-        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?) {
+        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?) =
+            recordHistory(result, inserted, appId, outcome, null)
+
+        override fun keepRetryAudio(): Boolean = app.settings.load().let { it.retryAudioKeep > 0 && it.retention.stores }
+
+        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?, recording: dev.flowclone.session.Recording?) {
             app.lastRoute.value = dev.flowclone.data.LastDictation.of(result, System.currentTimeMillis())
             // D18 / D28: persist this month's cloud counters (speech or cleanup). A cloud failover shows in the live route label.
             if (result.route?.engine == "cloud" || result.route?.llmEngine == "cloud") scope.launch(Dispatchers.IO) { runCatching { app.engine.persistCloudUsage() } }
-            val retention = app.settings.load().retention
+            val settings = app.settings.load()
+            val retention = settings.retention
             val t = result.timings
             val row = HistoryRow(
                 0, System.currentTimeMillis(), appId, result.status.name, result.asrText, result.historyText, inserted, t.audioMs,
                 fallbackReason = result.fallbackReason, asrMs = t.asrMs, llmMs = t.llmMs, totalMs = t.totalMs,
-                insertOutcome = outcome, route = result.route?.engine,
+                insertOutcome = outcome, route = result.route?.engine, appCategory = recording?.appCategory,
             )
+            // D35: never from a password / sensitive field, a banking or denylisted app, or a protected target.
+            val keep = recording?.takeIf {
+                dev.flowclone.data.RetryLogic.keepsRecording(
+                    settings.retryAudioKeep, retention, command = false, outcome = outcome,
+                    protectedField = app.accessibility?.startFieldProtected == true,
+                    protectedApp = dev.flowclone.debug.DebugRedact.isProtectedApp(appId, settings.userDenylist),
+                )
+            }
             Log.i(TAG, dev.flowclone.debug.CommitLine.of(result))
             scope.launch(Dispatchers.IO) {
                 // Insights first, in the same coroutine: its one-time backfill from History must
@@ -519,7 +591,10 @@ class FlowService : Service() {
                     runCatching { app.insights.record(row.createdAt, result.historyText, t.audioMs, appId) }
                         .onFailure { Log.w(TAG, "insights: ${it.message}") }
                 }
-                runCatching { app.history.add(row, retention) }
+                runCatching {
+                    val id = app.history.add(row, retention)
+                    if (id != null && keep != null) app.history.recordAudio(id, keep.pcm, settings.retryAudioKeep)
+                }.onFailure { Log.w(TAG, "history: ${it.message}") }
             }
         }
 

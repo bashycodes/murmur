@@ -74,12 +74,13 @@ object SettingsPages {
     /** Stored NONE (never picked) runs as LIGHT when AI cleanup is on, so the picker shows LIGHT. */
     fun shownStrength(stored: CleanupLevel) = stored.takeIf { it != CleanupLevel.NONE } ?: CleanupLevel.LIGHT
 
-    data class Effects(val reloadEngine: Boolean, val purgeHistory: Boolean)
+    data class Effects(val reloadEngine: Boolean, val purgeHistory: Boolean, val pruneRecordings: Boolean = false)
 
     /** What saving [new] over [old] triggers (same as the old single page's Save). */
     fun effects(old: Settings, new: Settings) = Effects(
         reloadEngine = new.mockEngine != old.mockEngine || new.llmEnabled != old.llmEnabled || new.asrEngine != old.asrEngine,
         purgeHistory = new.retention != old.retention,
+        pruneRecordings = new.retryAudioKeep != old.retryAudioKeep,
     )
 
     private fun strictness(r: Retention) = when (r) { Retention.KEEP -> 0; Retention.DAY -> 1; Retention.NEVER -> 2 }

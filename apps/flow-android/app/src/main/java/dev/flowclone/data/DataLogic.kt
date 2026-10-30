@@ -44,6 +44,8 @@ data class Settings(
     val language: String = LANGUAGE_UNSET,
     val cleanup: CleanupLevel = CleanupLevel.NONE,
     val retention: Retention = Retention.KEEP,
+    /** D35: how many of the newest History rows keep their recording for "Retry with current settings" (0 = none). */
+    val retryAudioKeep: Int = RetryLogic.DEFAULT_KEEP,
     val capMinutes: Int = 5,
     val mockEngine: Boolean = false,
     val userDenylist: Set<String> = emptySet(),
