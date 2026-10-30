@@ -17,7 +17,11 @@ use flow_core::endpoint::{EndpointState, Endpointer};
 use flow_core::learn::Candidate;
 use flow_core::{CommitResult, CommitStatus, RouteInfo, SessionPoll};
 
-use flow_core::cleanup::{Cleaner, RoutedCleaner};
+use flow_core::asr::AbortFlag;
+use flow_core::cleanup::{
+    ChainCleaner, CleanError, CleanPrompt, CleanUsage, Cleaner, RoutedCleaner,
+};
+use flow_core::config::CleanupLevel;
 
 use crate::cloud::{
     month_of, CleanupRoute, CloudUsage, OpenRouterConfig, Privacy, Route, SecretString, SttConfig,
@@ -26,6 +30,7 @@ use crate::cloud::{
 use crate::gate::Gate;
 use crate::local::{LazyLocal, LoadNote, LocalLoader};
 use crate::migrate::MigrationReport;
+use crate::server_clean::ServerClean;
 use crate::{
     effective_connect_timeout_ms, now_unix_ms, Backend, BackendError, Capabilities, CircuitStatus,
     CleanupFactory, CleanupPlan, CleanupStatus, CloudCapabilities, CloudFactory, EngineKind,
@@ -158,8 +163,12 @@ struct State {
     /// Shared with the cleanup gate (one budget for both uses).
     cloud_usage: Arc<Mutex<CloudUsage>>,
     cloud_adapters: Vec<String>,
-    /// The cleanup plan installed on in-process engines (D28).
+    /// The cleanup plan installed on in-process engines (D28; D35: the
+    /// whole cleanup order as a chain, always set once refreshed).
     cleanup_plan: Option<CleanupPlan>,
+    /// Command Mode's plan: the D28 local/cloud rule (no server), only
+    /// while cloud cleanup is wanted.
+    command_plan: Option<CleanupPlan>,
     /// (privacy, cleanup config, key) the gate's cleaner was built for.
     cleanup_built: Option<(Privacy, crate::cloud::CleanupConfig, SecretString)>,
     /// A `prewarm` is connecting.
@@ -257,6 +266,11 @@ struct Hop {
 
 struct Active {
     cfg: SessionConfig,
+    /// What the server route is sent (D35): `cfg`, or `cfg` with
+    /// `cleanup_level: none` when another engine cleans first.
+    remote_cfg: SessionConfig,
+    /// D35: the server cleans its own session (first available cleaner).
+    server_cleans: bool,
     /// Backend currently fed with audio; `None` = the session is dead.
     engine: Option<Arc<dyn Backend>>,
     kind: EngineKind,
@@ -338,6 +352,42 @@ pub struct Router {
     /// Cloud cleanup checks (D28); its own lock, never taken while it
     /// waits on `state`.
     gate: Arc<Gate>,
+    /// Server cleanup hop (D35); its own lock, a leaf like the gate's.
+    server_clean: Arc<ServerClean>,
+}
+
+/// Every engine in the cleanup order is switched off (D35): the LLM step
+/// is refused up front, so only the deterministic cleanup runs.
+struct NoCleanup;
+
+impl Cleaner for NoCleanup {
+    fn clean(&self, _p: &CleanPrompt, _d: Instant) -> Result<String, CleanError> {
+        Err(CleanError::Unavailable("cleanup_off".into()))
+    }
+
+    fn clean_metered(
+        &self,
+        p: &CleanPrompt,
+        d: Instant,
+        _c: &AbortFlag,
+    ) -> (Result<String, CleanError>, CleanUsage) {
+        (self.clean(p, d), CleanUsage::default())
+    }
+
+    /// The LLM step is skipped altogether (no refusal reported).
+    fn available(&self) -> bool {
+        false
+    }
+}
+
+/// The session config the server route gets (D35): unchanged when the
+/// server cleans, else without its LLM step (the client cleans).
+fn remote_cfg(cfg: &SessionConfig, server_cleans: bool) -> SessionConfig {
+    let mut c = cfg.clone();
+    if !server_cleans {
+        c.cleanup_level = CleanupLevel::None;
+    }
+    c
 }
 
 /// `lock()` that survives a panic in a backend or factory called under
@@ -386,8 +436,9 @@ impl Router {
         }));
         let mut cfg = cfg;
         let rep = cfg.migrate_d28();
-        Self {
+        let r = Self {
             gate: Arc::new(Gate::new(usage.clone())),
+            server_clean: Arc::new(ServerClean::new()),
             cleanup_factory: None,
             state: Mutex::new(State {
                 cfg,
@@ -411,6 +462,7 @@ impl Router {
                 cloud_usage: usage,
                 cloud_adapters: Vec::new(),
                 cleanup_plan: None,
+                command_plan: None,
                 cleanup_built: None,
                 warming: false,
             }),
@@ -419,7 +471,12 @@ impl Router {
             starting: Mutex::new(()),
             remote_factory: remote,
             cloud_factory: None,
+        };
+        {
+            let mut st = r.state.lk();
+            r.refresh_cleanup(&mut st);
         }
+        r
     }
 
     /// Declare that this build has a local engine even before its models are
@@ -485,7 +542,9 @@ impl Router {
         }
         let (backend, server) = {
             let mut st = self.state.lk();
-            if !self.routes(&st).contains(&Route::Server)
+            // D35: also when the server only cleans (its first `clean`
+            // would otherwise pay the handshake out of the LLM budget).
+            if (!self.routes(&st).contains(&Route::Server) && self.server_clean.backend().is_none())
                 || !st.cfg.server.is_configured()
                 || st.circuit.is_open(Instant::now())
             {
@@ -507,6 +566,13 @@ impl Router {
             Ok(()) => true,
             Err(e) => {
                 st.circuit.record_failure(e.kind, Instant::now());
+                // D35: the server cleanup hop skips it too, instead of
+                // spending the next dictation's LLM budget connecting.
+                self.server_clean
+                    .st
+                    .lk()
+                    .circuit
+                    .record_failure(e.kind, Instant::now());
                 false
             }
         }
@@ -569,7 +635,9 @@ impl Router {
         CleanupStatus {
             supported,
             enabled: supported && cfg.cloud_cleanup_wanted(),
-            order: cfg.cleanup_order.clone(),
+            order: cfg.effective_cleanup_order(),
+            server_llm: self.server_clean.server_llm(),
+            server_circuit: self.server_clean.circuit_status(),
             consent: cfg.cloud.openrouter.cleanup.consent_ok(),
             blocked: supported
                 .then(|| self.gate.not_ready().map(|f| f.as_str().to_string()))
@@ -623,7 +691,16 @@ impl Router {
                 st.cleanup_built = built;
             }
         }
-        st.cleanup_plan = wanted.then(|| self.plan(&st.cfg.cleanup_order));
+        self.refresh_server_clean(st);
+        st.cleanup_plan = Some(self.plan(&st.cfg, false));
+        let legacy: Vec<CleanupRoute> = st
+            .cfg
+            .cleanup_order
+            .iter()
+            .copied()
+            .filter(|r| *r != CleanupRoute::Server)
+            .collect();
+        st.command_plan = wanted.then(|| self.legacy_plan(&legacy));
         let plan = st.cleanup_plan.clone();
         for b in [
             st.local.clone(),
@@ -639,11 +716,121 @@ impl Router {
         }
     }
 
-    /// The cleaner an engine with built-in cleaner `base` should use for
-    /// `order` (D28 §2.5). `[cloud, …]`: cloud first, `base` on a fast
-    /// failure when `local` is listed. `[local, cloud]`: `base` when
-    /// loaded (full on-device prompt), else the cloud.
-    fn plan(&self, order: &[CleanupRoute]) -> CleanupPlan {
+    /// Point the server cleanup hop at the remote backend of the current
+    /// server config, or switch it off (D35): wanted when `server` is in
+    /// the cleanup order, a server is configured and this build has remote
+    /// support.
+    fn refresh_server_clean(&self, st: &mut State) {
+        // Explicitly listed only: an empty (pre-D35) order never sends
+        // text to the server outside its own sessions.
+        let wanted = self.remote_factory.is_some()
+            && st.cfg.server.is_configured()
+            && st.cfg.cleanup_order.contains(&CleanupRoute::Server);
+        let backend = wanted.then(|| self.remote_for(st));
+        let mut g = self.server_clean.st.lk();
+        let same = match (&g.backend, &backend) {
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        };
+        if !same {
+            g.epoch += 1;
+        }
+        g.backend = backend;
+    }
+
+    /// The dictation cleaner for an engine with built-in cleaner `base`
+    /// (D35): the cleanup order as a [`ChainCleaner`] of the on-device LLM
+    /// (`base`, when loaded), the server (when wanted; not with
+    /// `skip_server`) and the cloud gate (when wanted), tried in order.
+    /// Nothing listed but a `base` loaded: [`NoCleanup`] (the user switched
+    /// the on-device LLM off too).
+    fn plan(&self, cfg: &crate::RouterConfig, skip_server: bool) -> CleanupPlan {
+        let gate: Option<Arc<dyn Cleaner>> = (self.cleanup_factory.is_some()
+            && cfg.cloud_cleanup_wanted())
+        .then(|| self.gate.clone() as Arc<dyn Cleaner>);
+        let server: Option<Arc<dyn Cleaner>> = (!skip_server
+            && self.server_clean.backend().is_some())
+        .then(|| self.server_clean.clone() as Arc<dyn Cleaner>);
+        let order = cfg.effective_cleanup_order();
+        Arc::new(move |base: Option<Arc<dyn Cleaner>>| {
+            let hops: Vec<Arc<dyn Cleaner>> = order
+                .iter()
+                .filter_map(|r| match r {
+                    CleanupRoute::Local => base.clone(),
+                    CleanupRoute::Server => server.clone(),
+                    CleanupRoute::Cloud => gate.clone(),
+                })
+                .collect();
+            ChainCleaner::build(hops).or_else(|| {
+                base.is_some()
+                    .then(|| Arc::new(NoCleanup) as Arc<dyn Cleaner>)
+            })
+        })
+    }
+
+    /// Does the server clean the dictations it transcribes (D35)? Yes when
+    /// it is the first engine in the cleanup order that is available now
+    /// (on-device LLM loaded; cloud cleanup allowed and not refused;
+    /// server cleanup wanted with a closed circuit and an LLM, or not yet
+    /// known). Then a server-route session is one pass; otherwise the
+    /// server skips its LLM and the client cleans the transcript.
+    fn server_cleans(&self, st: &State) -> bool {
+        if st.cfg.cleanup_order.is_empty() {
+            // Pre-D35: the server cleans its own sessions.
+            return true;
+        }
+        let local = st.warm_local().and_then(|l| l.llm_cleaner()).is_some();
+        let cloud = self.cleanup_factory.is_some()
+            && st.cfg.cloud_cleanup_wanted()
+            && self.gate.not_ready().is_none();
+        for r in st.cfg.effective_cleanup_order() {
+            match r {
+                CleanupRoute::Local if local => return false,
+                CleanupRoute::Cloud if cloud => return false,
+                CleanupRoute::Server if self.server_clean.ready() => return true,
+                _ => {}
+            }
+        }
+        false
+    }
+
+    /// The cleaner that re-cleans a server-route result on the client
+    /// (D35), or `None` when the server's own result stands: the server
+    /// cleaned (or skipped an already clean text), or there is nothing to
+    /// clean. When the server was meant to clean but could not (no LLM,
+    /// timeout, error) the rest of the order (without the server) cleans.
+    fn refinish_cleaner(&self, a: &Active, r: &CommitResult) -> Option<Option<Arc<dyn Cleaner>>> {
+        if a.cfg.cleanup_level == CleanupLevel::None
+            || matches!(r.status, CommitStatus::Empty | CommitStatus::Error)
+        {
+            return None;
+        }
+        if a.server_cleans
+            && (r.status == CommitStatus::Formatted
+                || r.fallback_reason.as_deref() == Some("llm_skipped_clean"))
+        {
+            return None;
+        }
+        let (cfg, base) = {
+            let st = self.state.lk();
+            (
+                st.cfg.clone(),
+                st.warm_local().and_then(|l| l.llm_cleaner()),
+            )
+        };
+        if cfg.cleanup_order.is_empty() {
+            // Pre-D35: the server's result stands.
+            return None;
+        }
+        Some(self.plan(&cfg, a.server_cleans)(base))
+    }
+
+    /// Command Mode's cleaner for `order` (D28 §2.5, local/cloud only).
+    /// `[cloud, …]`: cloud first, `base` on a fast failure when `local` is
+    /// listed. `[local, cloud]`: `base` when loaded (full on-device
+    /// prompt), else the cloud.
+    fn legacy_plan(&self, order: &[CleanupRoute]) -> CleanupPlan {
         let gate: Arc<dyn Cleaner> = self.gate.clone();
         let order = order.to_vec();
         Arc::new(move |base: Option<Arc<dyn Cleaner>>| {
@@ -674,7 +861,7 @@ impl Router {
     /// the cleanup plan applied to `base`, so the gate's consent, budget
     /// and circuit checks apply per call; otherwise `base` alone. Additive.
     pub fn command_cleaner(&self, base: Option<Arc<dyn Cleaner>>) -> Option<Arc<dyn Cleaner>> {
-        let plan = self.state.lk().cleanup_plan.clone();
+        let plan = self.state.lk().command_plan.clone();
         match plan {
             Some(p) => p(base.clone()).or(base),
             None => base,
@@ -730,6 +917,7 @@ impl Router {
             st.remote = None;
             st.circuit = Circuit::new(false);
             st.health = None;
+            self.server_clean.reset_circuit();
         }
         if stt_view(&st.cfg.cloud.openrouter) != stt_view(&cfg.cloud.openrouter) {
             st.cloud = None;
@@ -1234,6 +1422,7 @@ impl Router {
         st.circuit = Circuit::new(false);
         st.cloud_circuit = Circuit::new(true);
         self.gate.reset_circuit();
+        self.server_clean.reset_circuit();
     }
 
     // ---- internals --------------------------------------------------------
@@ -1259,6 +1448,12 @@ impl Router {
         eff.connect_timeout_ms = timeout;
         let b = f(&eff);
         st.remote = Some((st.cfg.server.clone(), timeout, b.clone()));
+        // The server cleanup hop talks through the same backend (one warm
+        // connection); a rebuilt one replaces it there too.
+        let mut g = self.server_clean.st.lk();
+        if g.backend.is_some() {
+            g.backend = Some(b.clone());
+        }
         b
     }
 
@@ -1438,6 +1633,8 @@ impl Router {
                 Err(RouterError::NoEngineEnabled),
             );
         }
+        let server_cleans = self.server_cleans(st);
+        let rcfg = remote_cfg(&cfg, server_cleans);
         let mut route = RouteInfo::default();
         // Last non-local failure (engine, error, index) for the error path.
         let mut last_fail: Option<(EngineKind, BackendError, usize)> = None;
@@ -1460,7 +1657,8 @@ impl Router {
                     let cause = last_fail.map(|(_, e, _)| e).unwrap_or_else(|| {
                         BackendError::new(Failure::LocalNotReady, "local model not loaded")
                     });
-                    let a = self.start_cold(st, cfg, route, z, &routes[i + 1..], cause);
+                    let remote = (rcfg, server_cleans);
+                    let a = self.start_cold(st, cfg, remote, route, z, &routes[i + 1..], cause);
                     return (a, Ok(false));
                 }
             }
@@ -1488,7 +1686,7 @@ impl Router {
                 },
                 Route::Server => {
                     route.server = Some(st.cfg.server.addr());
-                    self.try_server(st, &cfg, &routes, i, &mut diag.connect_ms)
+                    self.try_server(st, &rcfg, &routes, i, &mut diag.connect_ms)
                 }
                 Route::Cloud => self.try_cloud(st, &cfg, &routes, i, &mut route),
             };
@@ -1516,6 +1714,8 @@ impl Router {
                     };
                     let mut a = Active::live(cfg, backend, kind, route);
                     a.ident = ident;
+                    a.remote_cfg = rcfg;
+                    a.server_cleans = server_cleans;
                     if !fallbacks.is_empty() {
                         a.buffer = Some(Vec::new());
                     }
@@ -1536,7 +1736,9 @@ impl Router {
                 let cause = last_fail.map(|(_, e, _)| e).unwrap_or_else(|| {
                     BackendError::new(Failure::LocalNotReady, "local model not loaded")
                 });
-                return (self.start_cold(st, cfg, route, z, &[], cause), Ok(false));
+                let remote = (rcfg, server_cleans);
+                let a = self.start_cold(st, cfg, remote, route, z, &[], cause);
+                return (a, Ok(false));
             }
         }
         let Some((kind, e, i)) = last_fail else {
@@ -1577,10 +1779,13 @@ impl Router {
     /// buffered while a helper thread loads the on-device engine, then it
     /// is replayed (the same machinery as a mid-session failover). The
     /// routes after the client stay fallbacks if the load fails.
+    /// `remote`: the server route's config and whether it cleans (D35).
+    #[allow(clippy::too_many_arguments)]
     fn start_cold(
         &self,
         st: &mut State,
         cfg: SessionConfig,
+        remote: (SessionConfig, bool),
         mut route: RouteInfo,
         z: Arc<LazyLocal>,
         later: &[Route],
@@ -1604,6 +1809,7 @@ impl Router {
             }
         }
         let mut a = Active::dead(cfg, String::new(), Some(route));
+        (a.remote_cfg, a.server_cleans) = remote;
         a.dead = None;
         a.switched = true;
         a.diag.local_cold = true;
@@ -1774,12 +1980,9 @@ impl Router {
             EngineKind::Cloud => {
                 let base = st.cloud.as_ref().map_or(6000, |(v, _)| v.1.timeout_base_ms);
                 // D28: the cloud cleanup has its own timeout.
-                let llm = if st.cleanup_plan.is_some() {
-                    cfg.llm_timeout_ms
-                        .max(st.cfg.cloud.openrouter.cleanup.timeout_ms)
-                } else {
-                    cfg.llm_timeout_ms
-                };
+                // D35: the whole cleanup chain may run (one budget per
+                // engine in the order).
+                let llm = self.cleanup_budget_ms(&st, cfg.llm_timeout_ms);
                 let d = Duration::from_millis(base + audio_ms / 2 + llm);
                 return Instant::now() + d.min(CLOUD_DEADLINE_MAX);
             }
@@ -1788,8 +1991,42 @@ impl Router {
         Instant::now() + Duration::from_millis(ms)
     }
 
-    /// A remote/cloud backend produced the (final) result.
+    /// Time the cleanup chain may take: one `session_ms` per on-device /
+    /// server hop, the cloud cleanup timeout for the cloud (D35).
+    fn cleanup_budget_ms(&self, st: &State, session_ms: u64) -> u64 {
+        let cloud = self.cleanup_factory.is_some() && st.cfg.cloud_cleanup_wanted();
+        let server = self.server_clean.backend().is_some();
+        let ms: u64 = st
+            .cfg
+            .effective_cleanup_order()
+            .iter()
+            .map(|r| match r {
+                CleanupRoute::Local => session_ms,
+                CleanupRoute::Server if server => session_ms,
+                CleanupRoute::Cloud if cloud => st.cfg.cloud.openrouter.cleanup.timeout_ms,
+                _ => 0,
+            })
+            .sum();
+        ms.max(session_ms)
+    }
+
+    /// A remote/cloud backend produced the (final) result. D35: a server
+    /// result is re-cleaned on the client when another engine comes first
+    /// in the cleanup order, or the server could not clean it.
     fn finish_remote(&self, a: &Active, mut r: CommitResult) -> CommitResult {
+        let mut engine = if a.kind == EngineKind::Remote {
+            "server"
+        } else {
+            "local"
+        };
+        if a.kind == EngineKind::Remote {
+            if let Some(cl) = self.refinish_cleaner(a, &r) {
+                let ctx = a.last_ctx.clone().unwrap_or_default();
+                // Keeps the server's route info (taken below).
+                r = flow_core::refinish(&a.cfg, &ctx, cl, r);
+                engine = "local";
+            }
+        }
         let mut st = self.state.lk();
         let mut route = a.route.clone();
         let rr = r.route.take();
@@ -1829,11 +2066,6 @@ impl Router {
                 }
             }
         }
-        let engine = if a.kind == EngineKind::Remote {
-            "server"
-        } else {
-            "local"
-        };
         llm_into_route(&r, &mut route, engine);
         r.route = Some(route);
         r
@@ -1879,10 +2111,12 @@ impl Router {
         let lazy = hops.front().and_then(|h| h.lazy.clone());
         let (tx, rx) = mpsc::channel();
         let (cfg, ctx, c2, cause) = (a.cfg.clone(), a.last_ctx.clone(), cancel.clone(), e.clone());
+        let rcfg = a.remote_cfg.clone();
         std::thread::Builder::new()
             .name("flow-router-failover".into())
             .spawn(move || {
-                let done = run_switch(hops, snapshot, &cfg, ctx.as_ref(), &c2, &cause);
+                let cfgs = (&cfg, &rcfg);
+                let done = run_switch(hops, snapshot, cfgs, ctx.as_ref(), &c2, &cause);
                 if let Err(mpsc::SendError(done)) = tx.send(done) {
                     // The session is gone (cancel / commit cancelled).
                     if let Some(h) = done.started {
@@ -2008,10 +2242,11 @@ impl Router {
 
 /// The failover itself (helper thread): start the next usable hop, replay
 /// the buffer into it (checking every push), set the last context.
+/// `cfgs`: (the session config, what the server route gets, D35).
 fn run_switch(
     mut hops: VecDeque<Hop>,
     buf: Vec<i16>,
-    cfg: &SessionConfig,
+    cfgs: (&SessionConfig, &SessionConfig),
     ctx: Option<&FieldContext>,
     cancel: &AtomicBool,
     e: &BackendError,
@@ -2061,7 +2296,11 @@ fn run_switch(
             }
             continue;
         }
-        let mut cfg = cfg.clone();
+        let mut cfg = if hop.kind == EngineKind::Remote {
+            cfgs.1.clone()
+        } else {
+            cfgs.0.clone()
+        };
         cfg.ring_capacity_samples = cfg.ring_capacity_samples.max(buf.len() + REPLAY_HEADROOM);
         match hop.backend.start_session(&cfg) {
             Ok(_) => {}
@@ -2163,6 +2402,8 @@ impl Active {
     ) -> Self {
         Self {
             endpointer: Endpointer::for_session(&cfg),
+            remote_cfg: cfg.clone(),
+            server_cleans: true,
             cfg,
             engine: Some(engine),
             kind,
@@ -2182,6 +2423,8 @@ impl Active {
     fn dead(cfg: SessionConfig, msg: String, route: Option<RouteInfo>) -> Self {
         Self {
             endpointer: Endpointer::for_session(&cfg),
+            remote_cfg: cfg.clone(),
+            server_cleans: true,
             cfg,
             engine: None,
             kind: EngineKind::Local,

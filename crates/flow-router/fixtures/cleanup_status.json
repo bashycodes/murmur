@@ -19,8 +19,16 @@
   "month_cost_usd": 0.014,
   "order": [
     "cloud",
-    "local"
+    "local",
+    "server"
   ],
+  "server_circuit": {
+    "open": false,
+    "reason": null,
+    "retry_in_ms": null,
+    "until_config_change": false
+  },
+  "server_llm": true,
   "supported": true,
   "timeout_ms": 2500
 }

@@ -308,6 +308,13 @@ pub trait Cleaner: Send + Sync {
         None
     }
 
+    /// D35: `false` = this cleaner is known to have nothing to run (e.g. a
+    /// server without an LLM): the core then skips the LLM step as if no
+    /// cleaner were set, instead of reporting a refusal. Default: `true`.
+    fn available(&self) -> bool {
+        true
+    }
+
     /// [`Cleaner::clean_cancellable`] plus metering. Backends with a cost
     /// override it and report usage even on error / cancel. Default: the
     /// plain call, usage = engine + model.
@@ -644,6 +651,10 @@ impl Cleaner for ChainCleaner {
 
     fn budget_ms(&self, session_ms: u64) -> u64 {
         self.hops.iter().map(|h| h.budget_ms(session_ms)).sum()
+    }
+
+    fn available(&self) -> bool {
+        self.hops.iter().any(|h| h.available())
     }
 
     fn ai_parts(&self) -> Option<AiParts> {

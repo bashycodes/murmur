@@ -64,7 +64,7 @@ char *flow_cloud_presets(void);                                      /* D28: the
 
 /* D28 OpenRouter-only cloud (docs/proposals/openrouter-only-cloud.md). */
 char *flow_migrate_cloud(const char *router_config_json);  /* {"config","report"}; NULL + bad_config */
-int flow_set_cleanup(FlowHandle *h, const char *cleanup_json); /* {"allow_cloud_cleanup"?,"cleanup_order"?,"cleanup"?} */
+int flow_set_cleanup(FlowHandle *h, const char *cleanup_json); /* {"allow_cloud_cleanup"?,"cleanup_order"?,"cleanup"?}; order entries: "local", "server" (D35), "cloud" */
 char *flow_cleanup_status(FlowHandle *h);                   /* CleanupStatus JSON */
 /* Command Mode: selected NULL = generate at the cursor. BLOCKS (LLM). {"ok":true,"text"} |
  * {"ok":false,"kind":"no_llm"|"selection_not_allowed"|"no_instruction"|"selection_too_long"|

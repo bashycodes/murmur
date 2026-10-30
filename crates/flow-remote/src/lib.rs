@@ -64,6 +64,10 @@ struct Inner {
     /// review C4) and whether it was cancelled.
     committing: Mutex<Option<Committing>>,
     next_sid: AtomicU64,
+    /// D35 `clean` request ids.
+    next_clean: AtomicU64,
+    /// The `hello_ok` of the last connection (D35 feature check).
+    hello: Mutex<Option<flow_protocol::HelloOk>>,
 }
 
 impl Drop for Inner {
@@ -94,6 +98,8 @@ impl RemoteBackend {
                 session: Mutex::new(None),
                 committing: Mutex::new(None),
                 next_sid: AtomicU64::new(1),
+                next_clean: AtomicU64::new(1),
+                hello: Mutex::new(None),
             }),
         }
     }
@@ -154,6 +160,7 @@ impl RemoteBackend {
             c.close();
         }
         let c = self.connect_new()?;
+        *self.inner.hello.lock().unwrap() = Some(c.hello().clone());
         *g = Some(c.clone());
         Ok(c)
     }
@@ -333,6 +340,7 @@ impl Backend for RemoteBackend {
         }
         conn.close();
         let hello = conn.hello().clone();
+        *self.inner.hello.lock().unwrap() = Some(hello.clone());
         let mut sorted = rtts.clone();
         sorted.sort_unstable();
         if rtts.len() < 4 {
@@ -370,6 +378,32 @@ impl Backend for RemoteBackend {
     /// D24 pre-warm: open (or keep) the warm connection, no session.
     fn warm(&self) -> Result<(), BackendError> {
         self.connection().map(|_| ())
+    }
+
+    fn server_hello(&self) -> Option<flow_protocol::HelloOk> {
+        self.inner.hello.lock().unwrap().clone()
+    }
+
+    /// D35: on the warm connection (independent of a session on it).
+    fn clean_text(
+        &self,
+        req: &flow_core::cleanup::CleanRequest,
+        deadline: Instant,
+    ) -> Result<flow_protocol::Cleaned, BackendError> {
+        let conn = self.connection()?;
+        if !conn
+            .hello()
+            .features
+            .iter()
+            .any(|f| f == flow_protocol::FEATURE_CLEAN)
+        {
+            return Ok(flow_protocol::Cleaned {
+                error: Some("no_llm".into()),
+                ..Default::default()
+            });
+        }
+        let id = self.inner.next_clean.fetch_add(1, Ordering::Relaxed);
+        conn.clean(id, req, deadline)
     }
 
     fn session_failure(&self) -> Option<BackendError> {
