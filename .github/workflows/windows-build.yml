@@ -5,7 +5,11 @@
 #   * client  = client-only, no network code linked
 #               (`--no-default-features --features local,app,parakeet`).
 # Both bundle whisper.cpp and Parakeet (sherpa-onnx + onnxruntime DLLs next
-# to the exe). No secrets, no signing: the installers are unsigned, so
+# to the exe) and the AI cleanup engine (llama.cpp plugin, D10) twice:
+# flow_llm_vulkan.dll (GPU through Vulkan; built with the LunarG Vulkan SDK)
+# and flow_llm.dll (CPU). The app loads the Vulkan one first and the CPU one
+# when it does not load (no vulkan-1.dll); with no usable GPU the Vulkan
+# one runs on the CPU itself. No secrets, no signing: the installers are unsigned, so
 # SmartScreen warns on first run (README "Live test on Windows").
 # A pushed tag vX.Y.Z (tools/release.sh, D26) also checks the tag against
 # VERSION/CHANGELOG and attaches the installers to the GitHub release vX.Y.Z
@@ -21,6 +25,7 @@ on:
     paths:
       - "apps/flow-windows/**"
       - "crates/**"
+      - "Cargo.lock"
       - "VERSION"
       - "tools/versioning/**"
       - "tools/check-version.sh"
@@ -39,11 +44,15 @@ env:
   CARGO_INCREMENTAL: "0"
   # whisper-rs-sys runs bindgen; windows-latest ships LLVM here.
   LIBCLANG_PATH: C:\Program Files\LLVM\bin
+  # LunarG Vulkan SDK for the GPU build of the AI cleanup engine (headers,
+  # vulkan-1.lib, glslc). Bump with care: it is cached per version.
+  VULKAN_VERSION: 1.4.363.0
 
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 120
+    # Two llama.cpp builds (CPU + Vulkan shaders) on a cold cache add ~30 min.
+    timeout-minutes: 150
     defaults:
       run:
         shell: bash
@@ -75,7 +84,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/flow-windows -> target
+          workspaces: |
+            apps/flow-windows -> target
+            . -> target
           cache-on-failure: true
           # Bump when apps/flow-windows/.cargo/config.toml's GGML_* env
           # changes: whisper-rs-sys' build script does not track it, so a
@@ -105,6 +116,34 @@ jobs:
           ls -la "$lib"
           echo "SHERPA_ONNX_LIB_DIR=$(cygpath -w "$lib")" >> "$GITHUB_ENV"
 
+      # Vulkan SDK for the GPU AI cleanup engine. The installer only runs
+      # on a cache miss.
+      - name: Vulkan SDK (cache)
+        id: vksdk
+        uses: actions/cache@v4
+        with:
+          path: C:\VulkanSDK\${{ env.VULKAN_VERSION }}
+          key: vulkan-sdk-${{ env.VULKAN_VERSION }}
+
+      - name: Vulkan SDK (install)
+        if: steps.vksdk.outputs.cache-hit != 'true'
+        shell: pwsh
+        working-directory: .
+        run: |
+          $exe = "$env:RUNNER_TEMP\vulkansdk.exe"
+          curl.exe -fsSL -o $exe "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_VERSION.exe"
+          Start-Process -FilePath $exe -ArgumentList '--accept-licenses','--default-answer','--confirm-command','install' -Wait -NoNewWindow
+
+      - name: Vulkan SDK (env)
+        shell: pwsh
+        working-directory: .
+        run: |
+          $sdk = "C:\VulkanSDK\$env:VULKAN_VERSION"
+          if (-not (Test-Path "$sdk\Bin\glslc.exe")) { Get-ChildItem C:\VulkanSDK -ErrorAction SilentlyContinue; throw "glslc not found in $sdk" }
+          & "$sdk\Bin\glslc.exe" --version
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=$sdk"
+          Add-Content $env:GITHUB_PATH "$sdk\Bin"
+
       - name: Front-end (ui/dist)
         run: npm --prefix ui ci && npm --prefix ui run build
 
@@ -129,6 +168,27 @@ jobs:
             if [ "$GITHUB_REF_TYPE" = tag ]; then exit 1; fi
             echo "::warning::the build modified tracked files; a tag build would fail here"
           fi
+
+      # The AI cleanup engine, from the root workspace: CPU, then Vulkan
+      # (same target dir; the two llama.cpp builds have their own feature
+      # hashes, so both stay cached). GGML_NATIVE=OFF keeps ggml portable,
+      # as for whisper (0.9.2, AVX-512 crash): llama-cpp-sys-2 also forces it
+      # unless target-cpu=native, so both DLLs get the AVX2 baseline. The
+      # Vulkan DLL's GPU-vs-CPU policy is unit-tested here (flow-llm
+      # `backend`); it links vulkan-1.dll, which GPU drivers install.
+      - name: AI cleanup engine (CPU + Vulkan)
+        working-directory: .
+        env:
+          GGML_NATIVE: "OFF"
+        run: |
+          out=apps/flow-windows/target/release
+          mkdir -p "$out"
+          cargo build --locked --release -p flow-llm
+          cp target/release/flow_llm.dll "$out/flow_llm.dll"
+          cargo build --locked --release -p flow-llm --features vulkan
+          cp target/release/flow_llm.dll "$out/flow_llm_vulkan.dll"
+          cargo test --locked --release -p flow-llm --features vulkan --lib
+          ls -la "$out"/flow_llm*.dll
 
       - name: Release build (hybrid + Parakeet) and the DLL bundle overlay
         run: |
