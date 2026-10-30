@@ -3,6 +3,8 @@
 //! All types are serde so the FFI/JNI layers can pass JSON verbatim.
 //! Every field has a default so shells may send partial objects.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::dictionary::Dictionary;
@@ -244,18 +246,39 @@ impl Default for FieldContext {
     }
 }
 
+/// Which ASR engine a model runs on.
+///
+/// Adding a backend (e.g. H2's sherpa online / zipformer engine) takes
+/// three small changes: a variant here, its [`AsrBackend::name`], and one
+/// arm in `FlowCore`'s engine loader (`engine::load_asr`). Routing,
+/// language reporting and the per-language map need nothing new.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AsrBackend {
     Whisper,
-    /// Parakeet-TDT through sherpa-onnx (feature `parakeet`); `asr_path` is
-    /// the model directory. English only.
+    /// NeMo transducer (Parakeet-TDT) through sherpa-onnx (feature
+    /// `parakeet`); `asr_path` is the model directory. The model's
+    /// language is the one it is configured for (D33): English as the
+    /// default model, the map key in [`ModelConfig::languages`] (e.g.
+    /// Parakeet-v3-he).
     Parakeet,
     /// Returns a fixed transcript for any non-silent audio; for shell
     /// development and tests without a model.
     Mock {
         text: String,
     },
+}
+
+impl AsrBackend {
+    /// Stable short name (`"whisper"`, `"parakeet"`, `"mock"`) for logs
+    /// and status reports.
+    pub fn name(&self) -> &'static str {
+        match self {
+            AsrBackend::Whisper => "whisper",
+            AsrBackend::Parakeet => "parakeet",
+            AsrBackend::Mock { .. } => "mock",
+        }
+    }
 }
 
 /// Parakeet search mode (`ModelConfig.parakeet_decoding`, 2026-10-23).
@@ -301,10 +324,139 @@ pub struct ModelConfig {
     /// recognizer's RAM on a phone). Omitted from JSON when `auto`.
     #[serde(skip_serializing_if = "is_auto")]
     pub parakeet_decoding: ParakeetDecoding,
+    /// Per-language models (D33), keyed by ISO 639-1 code (`"he"`). A
+    /// dictation whose forced language (`SessionConfig::forced_language`)
+    /// has an entry decodes on that model; everything else, auto-detect
+    /// included, on the default model above, as before. Empty (default) =
+    /// one model; omitted from JSON when empty, so older shells and
+    /// servers see the same config. TOML: `[model.languages.he]`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub languages: BTreeMap<String, LanguageModel>,
 }
 
 fn is_auto(d: &ParakeetDecoding) -> bool {
     *d == ParakeetDecoding::Auto
+}
+
+/// One entry of [`ModelConfig::languages`]: the ASR model for a language.
+/// Fields mirror the default model's; the rest (`vad_model_path`,
+/// `whisper_fit_ctx`, the LLM) is shared with the default model.
+///
+/// JSON: `{"asr_backend":"parakeet","asr_path":"/models/parakeet-he"}`
+/// (`asr_engine` and `dir` / `path` are accepted as aliases).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct LanguageModel {
+    #[serde(alias = "asr_engine")]
+    pub asr_backend: AsrBackend,
+    /// Model file (whisper) or directory (sherpa-onnx backends).
+    #[serde(alias = "dir", alias = "path")]
+    pub asr_path: String,
+    /// `None` = `ModelConfig::threads`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub threads: Option<usize>,
+    #[serde(skip_serializing_if = "is_auto")]
+    pub parakeet_decoding: ParakeetDecoding,
+}
+
+impl Default for LanguageModel {
+    fn default() -> Self {
+        Self {
+            asr_backend: AsrBackend::Whisper,
+            asr_path: String::new(),
+            threads: None,
+            parakeet_decoding: ParakeetDecoding::Auto,
+        }
+    }
+}
+
+impl ModelConfig {
+    /// The key of [`ModelConfig::languages`] that serves a dictation in
+    /// `language` (normally `SessionConfig::forced_language()`), or `None`
+    /// when the default model does (no entry, or auto-detect). Matching
+    /// uses [`primary_language`], so `"he-IL"`, `"iw"` and `"Hebrew"` find
+    /// a `"he"` entry. Shells that keep one model in memory (Android, D33)
+    /// compare this across language changes to know when to reload.
+    pub fn language_route(&self, language: Option<&str>) -> Option<&str> {
+        let want = primary_language(language?)?;
+        self.languages
+            .keys()
+            .find(|k| primary_language(k).as_deref() == Some(want.as_str()))
+            .map(String::as_str)
+    }
+
+    /// The default model as a [`LanguageModel`] (same fields).
+    pub fn default_model(&self) -> LanguageModel {
+        LanguageModel {
+            asr_backend: self.asr_backend.clone(),
+            asr_path: self.asr_path.clone(),
+            threads: Some(self.threads),
+            parakeet_decoding: self.parakeet_decoding,
+        }
+    }
+}
+
+/// Language names some engines report instead of codes (cloud STT's
+/// `verbose_json` says `"english"`), and the display name used in the
+/// cleanup prompt.
+const LANGUAGE_NAMES: &[(&str, &str)] = &[
+    ("en", "English"),
+    ("he", "Hebrew"),
+    ("ar", "Arabic"),
+    ("ru", "Russian"),
+    ("de", "German"),
+    ("fr", "French"),
+    ("es", "Spanish"),
+    ("it", "Italian"),
+    ("pt", "Portuguese"),
+    ("nl", "Dutch"),
+    ("pl", "Polish"),
+    ("uk", "Ukrainian"),
+    ("tr", "Turkish"),
+    ("zh", "Chinese"),
+    ("ja", "Japanese"),
+    ("ko", "Korean"),
+    ("hi", "Hindi"),
+];
+
+/// The ISO 639-1 primary code of a language tag or name: lowercased,
+/// region dropped (`"he-IL"` / `"he_IL"` → `"he"`), the legacy `"iw"` →
+/// `"he"`, English names mapped (`"English"` → `"en"`). `None` for empty
+/// and `"auto"`.
+pub fn primary_language(tag: &str) -> Option<String> {
+    let t = tag.trim().to_ascii_lowercase();
+    let p = t.split(['-', '_']).next().unwrap_or("");
+    match p {
+        "" | "auto" => None,
+        "iw" => Some("he".into()),
+        _ => Some(
+            LANGUAGE_NAMES
+                .iter()
+                .find(|(_, n)| n.eq_ignore_ascii_case(p))
+                .map_or(p, |(c, _)| c)
+                .to_string(),
+        ),
+    }
+}
+
+/// English display name of a language code (`"he"` → `"Hebrew"`), or the
+/// code itself when the table does not know it.
+pub fn language_name(code: &str) -> String {
+    let p = primary_language(code).unwrap_or_default();
+    LANGUAGE_NAMES
+        .iter()
+        .find(|(c, _)| *c == p)
+        .map_or(p, |(_, n)| n.to_string())
+}
+
+/// Whether the English-only text rules (spoken cleanup and ITN, layout,
+/// segment capitalisation, the guard's English word lists) apply to a
+/// dictation the engine reported in `language` (D33): English, or unknown
+/// (the default engine is English unless it says otherwise).
+pub fn english_rules(language: Option<&str>) -> bool {
+    language
+        .and_then(primary_language)
+        .is_none_or(|l| l == "en")
 }
 
 /// Half the logical CPUs (≈ physical cores), capped at 8: ggml's spinning
@@ -325,6 +477,7 @@ impl Default for ModelConfig {
             vad_model_path: None,
             whisper_fit_ctx: true,
             parakeet_decoding: ParakeetDecoding::Auto,
+            languages: BTreeMap::new(),
         }
     }
 }
@@ -412,6 +565,53 @@ mod tests {
             let c: ModelConfig = serde_json::from_str(j).unwrap();
             assert_eq!(c.asr_backend, AsrBackend::Parakeet);
         }
+    }
+
+    #[test]
+    fn model_config_without_languages_is_unchanged() {
+        // Old prefs / server JSON parses, and serialises without the new key.
+        let old =
+            r#"{"asr_backend":"parakeet","asr_path":"/m/p","threads":4,"whisper_fit_ctx":true}"#;
+        let c: ModelConfig = serde_json::from_str(old).unwrap();
+        assert!(c.languages.is_empty());
+        let v = serde_json::to_value(&c).unwrap();
+        assert!(v.get("languages").is_none(), "{v}");
+        assert_eq!(c.language_route(Some("he")), None);
+    }
+
+    #[test]
+    fn language_map_parses_and_routes() {
+        let c: ModelConfig = serde_json::from_str(
+            r#"{"asr_backend":"parakeet","asr_path":"/m/en",
+                "languages":{"he":{"asr_engine":"parakeet","dir":"/m/he","threads":2}}}"#,
+        )
+        .unwrap();
+        let he = &c.languages["he"];
+        assert_eq!(he.asr_backend, AsrBackend::Parakeet);
+        assert_eq!(he.asr_path, "/m/he");
+        assert_eq!(he.threads, Some(2));
+        for l in ["he", "he-IL", "iw", "Hebrew", " HE "] {
+            assert_eq!(c.language_route(Some(l)), Some("he"), "{l}");
+        }
+        for l in [None, Some("auto"), Some("en"), Some("de"), Some("")] {
+            assert_eq!(c.language_route(l), None, "{l:?}");
+        }
+        let back: ModelConfig = serde_json::from_value(serde_json::to_value(&c).unwrap()).unwrap();
+        assert_eq!(back, c);
+    }
+
+    #[test]
+    fn language_helpers() {
+        assert_eq!(primary_language("en-US").as_deref(), Some("en"));
+        assert_eq!(primary_language("english").as_deref(), Some("en"));
+        assert_eq!(primary_language("auto"), None);
+        assert_eq!(language_name("he"), "Hebrew");
+        assert_eq!(language_name("xx"), "xx");
+        assert!(english_rules(None));
+        assert!(english_rules(Some("en")));
+        assert!(english_rules(Some("English")));
+        assert!(!english_rules(Some("he")));
+        assert!(!english_rules(Some("de")));
     }
 
     #[test]

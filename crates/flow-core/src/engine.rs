@@ -14,7 +14,10 @@ use crate::asr::{
     AsrPurpose, AsrRequest,
 };
 use crate::cleanup::{self, CleanOutcome, Cleaner};
-use crate::config::{CleanupLevel, FieldContext, ModelConfig, SessionConfig, SAMPLE_RATE};
+use crate::config::{
+    english_rules, primary_language, CleanupLevel, FieldContext, LanguageModel, ModelConfig,
+    SessionConfig, SAMPLE_RATE,
+};
 use crate::dictionary::Dictionary;
 use crate::endpoint::{EndpointState, Endpointer};
 use crate::learn::{self, Candidate};
@@ -360,6 +363,84 @@ fn require_dir(path: &str) -> Result<(), CoreError> {
     }
 }
 
+/// The ASR engines of a core (D33): the default one, plus one per
+/// language from `ModelConfig::languages`.
+#[derive(Clone)]
+struct AsrRoutes {
+    default: Arc<dyn AsrEngine>,
+    /// `(language key, engine)`; keys as configured (`"he"`).
+    by_language: Vec<(String, Arc<dyn AsrEngine>)>,
+}
+
+impl AsrRoutes {
+    /// The engine for a session, and the language key when it is a
+    /// language route: the forced language's entry, else the default
+    /// engine (auto-detect included).
+    fn pick(&self, cfg: &SessionConfig) -> (Arc<dyn AsrEngine>, Option<String>) {
+        let want = cfg.forced_language().and_then(primary_language);
+        let hit = want.and_then(|w| {
+            self.by_language
+                .iter()
+                .find(|(k, _)| primary_language(k).as_deref() == Some(w.as_str()))
+        });
+        match hit {
+            Some((k, e)) => (e.clone(), Some(k.clone())),
+            None => (self.default.clone(), None),
+        }
+    }
+}
+
+/// Build the engine for one model. `language` is the language the model
+/// is configured for (`None` = the default model), reported by engines
+/// that cannot tell (Parakeet). Adding a backend = one arm here (see
+/// `config::AsrBackend`).
+// `language` is used by Parakeet only, `threads` by the model backends.
+#[cfg_attr(not(feature = "parakeet"), allow(unused_variables))]
+fn load_asr(
+    m: &LanguageModel,
+    cfg: &ModelConfig,
+    language: Option<&str>,
+) -> Result<Arc<dyn AsrEngine>, CoreError> {
+    use crate::config::AsrBackend;
+    let threads = m.threads.unwrap_or(cfg.threads).max(1);
+    Ok(match &m.asr_backend {
+        AsrBackend::Mock { text } => Arc::new(crate::asr::MockAsr::new(text)),
+        #[cfg(feature = "whisper")]
+        AsrBackend::Whisper => {
+            require_file(&m.asr_path)?;
+            let mut w = crate::whisper::WhisperEngine::load(&m.asr_path, threads)
+                .map_err(|e| CoreError::Load(e.to_string()))?
+                .with_fit_ctx(cfg.whisper_fit_ctx);
+            if let Some(v) = cfg.vad_model_path.as_deref().filter(|v| !v.is_empty()) {
+                require_file(v)?;
+                w = w.with_silero_vad(v);
+            }
+            Arc::new(w)
+        }
+        #[cfg(not(feature = "whisper"))]
+        AsrBackend::Whisper => {
+            return Err(CoreError::Load(
+                "built without the `whisper` feature".into(),
+            ))
+        }
+        #[cfg(feature = "parakeet")]
+        AsrBackend::Parakeet => {
+            require_dir(&m.asr_path)?;
+            Arc::new(
+                crate::parakeet::ParakeetAsr::load_with(&m.asr_path, threads, m.parakeet_decoding)
+                    .map_err(|e| CoreError::Load(e.to_string()))?
+                    .with_language(language.unwrap_or("en")),
+            )
+        }
+        #[cfg(not(feature = "parakeet"))]
+        AsrBackend::Parakeet => {
+            return Err(CoreError::Load(
+                "built without the `parakeet` feature".into(),
+            ))
+        }
+    })
+}
+
 enum Ctrl {
     Start {
         id: u64,
@@ -450,48 +531,44 @@ pub struct FlowCore {
 }
 
 impl FlowCore {
-    /// Load models and keep them warm until [`FlowCore::unload`] / drop.
+    /// Load models and keep them warm until [`FlowCore::unload`] / drop:
+    /// the default ASR model, every model in `cfg.languages` (D33) and the
+    /// LLM. Sessions whose forced language has a map entry decode on that
+    /// model, all others on the default one.
     pub fn load_models(cfg: &ModelConfig) -> Result<Self, CoreError> {
-        use crate::config::AsrBackend;
-        let asr: Arc<dyn AsrEngine> = match &cfg.asr_backend {
-            AsrBackend::Mock { text } => Arc::new(crate::asr::MockAsr::new(text)),
-            #[cfg(feature = "whisper")]
-            AsrBackend::Whisper => {
-                require_file(&cfg.asr_path)?;
-                let mut w = crate::whisper::WhisperEngine::load(&cfg.asr_path, cfg.threads)
-                    .map_err(|e| CoreError::Load(e.to_string()))?
-                    .with_fit_ctx(cfg.whisper_fit_ctx);
-                if let Some(v) = cfg.vad_model_path.as_deref().filter(|v| !v.is_empty()) {
-                    require_file(v)?;
-                    w = w.with_silero_vad(v);
-                }
-                Arc::new(w)
-            }
-            #[cfg(not(feature = "whisper"))]
-            AsrBackend::Whisper => {
-                return Err(CoreError::Load(
-                    "built without the `whisper` feature".into(),
-                ))
-            }
-            #[cfg(feature = "parakeet")]
-            AsrBackend::Parakeet => {
-                require_dir(&cfg.asr_path)?;
-                Arc::new(
-                    crate::parakeet::ParakeetAsr::load_with(
-                        &cfg.asr_path,
-                        cfg.threads,
-                        cfg.parakeet_decoding,
-                    )
-                    .map_err(|e| CoreError::Load(e.to_string()))?,
-                )
-            }
-            #[cfg(not(feature = "parakeet"))]
-            AsrBackend::Parakeet => {
-                return Err(CoreError::Load(
-                    "built without the `parakeet` feature".into(),
-                ))
-            }
+        let mut by_language = Vec::with_capacity(cfg.languages.len());
+        for (k, m) in &cfg.languages {
+            by_language.push((k.clone(), load_asr(m, cfg, Some(k))?));
+        }
+        let routes = AsrRoutes {
+            default: load_asr(&cfg.default_model(), cfg, None)?,
+            by_language,
         };
+        Self::with_cleaner_from(cfg, routes)
+    }
+
+    /// Like [`FlowCore::load_models`] but with one ASR model in memory
+    /// (D33 decision 4, for RAM-tight shells such as Android): the model
+    /// that serves `language` ([`ModelConfig::language_route`]: the map
+    /// entry, else the default model), plus the LLM. Every session then
+    /// decodes on that model, whatever its language, so the shell reloads
+    /// when the user switches to a language that routes elsewhere (compare
+    /// `language_route` of the old and new language).
+    pub fn load_models_for(cfg: &ModelConfig, language: Option<&str>) -> Result<Self, CoreError> {
+        let asr = match cfg.language_route(language) {
+            Some(k) => load_asr(&cfg.languages[k], cfg, Some(k))?,
+            None => load_asr(&cfg.default_model(), cfg, None)?,
+        };
+        Self::with_cleaner_from(
+            cfg,
+            AsrRoutes {
+                default: asr,
+                by_language: Vec::new(),
+            },
+        )
+    }
+
+    fn with_cleaner_from(cfg: &ModelConfig, routes: AsrRoutes) -> Result<Self, CoreError> {
         let cleaner: Option<Arc<dyn Cleaner>> = match cfg.llm_path.as_deref() {
             None | Some("") => None,
             #[cfg(feature = "llm")]
@@ -518,11 +595,33 @@ impl FlowCore {
                 ))
             }
         };
-        Ok(Self::from_engines(asr, cleaner))
+        Ok(Self::from_routes(routes, cleaner))
     }
 
     /// Build a core around caller-supplied engines (tests, custom backends).
     pub fn from_engines(asr: Arc<dyn AsrEngine>, cleaner: Option<Arc<dyn Cleaner>>) -> Self {
+        Self::from_language_engines(asr, Vec::new(), cleaner)
+    }
+
+    /// [`FlowCore::from_engines`] with per-language engines (D33): a
+    /// session whose forced language matches a key (`"he"`; matched like
+    /// [`ModelConfig::language_route`]) decodes on that engine, every other
+    /// session on `default`.
+    pub fn from_language_engines(
+        default: Arc<dyn AsrEngine>,
+        by_language: Vec<(String, Arc<dyn AsrEngine>)>,
+        cleaner: Option<Arc<dyn Cleaner>>,
+    ) -> Self {
+        Self::from_routes(
+            AsrRoutes {
+                default,
+                by_language,
+            },
+            cleaner,
+        )
+    }
+
+    fn from_routes(routes: AsrRoutes, cleaner: Option<Arc<dyn Cleaner>>) -> Self {
         let shared = Arc::new(Shared {
             producer: Mutex::new(None),
             context: Mutex::new(FieldContext::default()),
@@ -545,7 +644,7 @@ impl FlowCore {
             .spawn(move || {
                 Worker {
                     shared: ws,
-                    asr,
+                    routes,
                     cleaner,
                     session: None,
                     dict_cache: None,
@@ -771,6 +870,10 @@ impl Drop for FlowCore {
 struct Session {
     id: u64,
     cfg: SessionConfig,
+    /// The engine this session decodes on (D33 routing).
+    asr: Arc<dyn AsrEngine>,
+    /// The language key of a per-language route (`None` = default engine).
+    route_language: Option<String>,
     consumer: rtrb::Consumer<i16>,
     buf: Vec<f32>,
     truncated: bool,
@@ -977,7 +1080,7 @@ fn decode_piece(
 
 struct Worker {
     shared: Arc<Shared>,
-    asr: Arc<dyn AsrEngine>,
+    routes: AsrRoutes,
     cleaner: Option<Arc<dyn Cleaner>>,
     session: Option<Session>,
     dict_cache: Option<(Dictionary, Arc<DictMatcher>)>,
@@ -994,8 +1097,9 @@ impl Worker {
                     abort,
                 }) => {
                     let matcher = self.matcher_for(&cfg.dictionary);
+                    let (asr, route_language) = self.routes.pick(&cfg);
                     let seg = SegmentParams::for_session(&cfg)
-                        .filter(|_| self.asr.segmentable())
+                        .filter(|_| asr.segmentable())
                         .map(Segmenter::new);
                     let track = cfg
                         .partial_interval_ms
@@ -1004,6 +1108,8 @@ impl Worker {
                     self.session = Some(Session {
                         id,
                         cfg: *cfg,
+                        asr,
+                        route_language,
                         consumer,
                         buf: Vec::new(),
                         truncated: false,
@@ -1088,14 +1194,17 @@ impl Worker {
             return;
         }
         let style = s.cfg.styles.for_category(ctx.app_category);
-        cl.prefill(&cleanup::build_prompt_scoped(
-            &transcript,
-            s.cfg.cleanup_level,
-            style,
-            &ctx,
-            &s.cfg.dictionary,
-            cl.prompt_scope(),
-        ));
+        cl.prefill(
+            &cleanup::build_prompt_scoped(
+                &transcript,
+                s.cfg.cleanup_level,
+                style,
+                &ctx,
+                &s.cfg.dictionary,
+                cl.prompt_scope(),
+            )
+            .with_language(s.cfg.forced_language()),
+        );
     }
 
     /// The compiled matcher for `dict`, rebuilt only when it changed.
@@ -1153,7 +1262,7 @@ impl Worker {
         let mut req = key.clone();
         req.abort = AbortFlag(Some(s.abort.clone()));
         let range = s.next()..cut;
-        match decode_piece(&*self.asr, &s.buf, range, s.cfg.vad, key, &req) {
+        match decode_piece(&*s.asr.clone(), &s.buf, range, s.cfg.vad, key, &req) {
             Ok(o) => s.done.push(o),
             Err(_) => {
                 s.seg_failed = true;
@@ -1193,7 +1302,7 @@ impl Worker {
         let key = Self::asr_request(&s.cfg, &ctx, AsrPurpose::Segment);
         let mut req = key.clone();
         req.abort = AbortFlag(Some(s.abort.clone()));
-        match decode_piece(&*self.asr, &s.buf, range, s.cfg.vad, key, &req) {
+        match decode_piece(&*s.asr.clone(), &s.buf, range, s.cfg.vad, key, &req) {
             Ok(o) => s.bridges.push(o),
             Err(_) => s.seg_failed = true,
         }
@@ -1248,7 +1357,7 @@ impl Worker {
         if s.seg.is_some() {
             req.prior_text = prior_for(&s.done, s.cfg.hallucination_guard);
         }
-        if let Ok(out) = self.asr.transcribe(window, &req) {
+        if let Ok(out) = s.asr.transcribe(window, &req) {
             let t = out.text.trim();
             if !t.is_empty() {
                 let t = if start > open {
@@ -1297,7 +1406,7 @@ impl Worker {
         let mut req = Self::asr_request(&s.cfg, ctx, AsrPurpose::Final);
         req.abort = AbortFlag(Some(abort.clone()));
         let t = Instant::now();
-        let out = match self.asr.transcribe(pcm, &req) {
+        let out = match s.asr.transcribe(pcm, &req) {
             Ok(o) => o,
             Err(e) => {
                 let mut e = CommitResult::error(e.to_string());
@@ -1306,7 +1415,7 @@ impl Worker {
             }
         };
         r.timings.asr_ms = t.elapsed().as_millis() as u64;
-        r.language = out.language;
+        r.language = out.language.or_else(|| s.route_language.clone());
         r.asr_text = out.text.trim().to_string();
         if r.asr_text.is_empty() {
             r.empty_reason = Some("blank_asr".into());
@@ -1357,7 +1466,7 @@ impl Worker {
             if k + 1 == n {
                 req.purpose = AsrPurpose::Final;
             }
-            match decode_piece(&*self.asr, &s.buf, range, s.cfg.vad, key, &req) {
+            match decode_piece(&*s.asr, &s.buf, range, s.cfg.vad, key, &req) {
                 Ok(o) => pieces.push(o),
                 Err(e) => {
                     let mut e = CommitResult::error(e.to_string());
@@ -1382,7 +1491,8 @@ impl Worker {
         r.language = spoken
             .iter()
             .max_by_key(|p| p.asr_samples)
-            .and_then(|p| p.out.as_ref()?.language.clone());
+            .and_then(|p| p.out.as_ref()?.language.clone())
+            .or_else(|| s.route_language.clone());
         let raw = join_pieces(
             spoken
                 .iter()
@@ -1422,7 +1532,7 @@ impl Worker {
                     }
                     let mut req = key.clone();
                     req.abort = AbortFlag(Some(abort.clone()));
-                    match decode_piece(&*self.asr, &s.buf, range, s.cfg.vad, key, &req) {
+                    match decode_piece(&*s.asr, &s.buf, range, s.cfg.vad, key, &req) {
                         Ok(b) => b,
                         Err(e) => {
                             let mut e = CommitResult::error(e.to_string());
@@ -1438,7 +1548,8 @@ impl Worker {
                 texts[k + 1] = rt;
             }
         }
-        if join != JoinMode::Plain {
+        // Sentence-case repair across cuts is an English rule (D33).
+        if join != JoinMode::Plain && english_rules(r.language.as_deref()) {
             segment::capitalize_joins(&mut texts);
         }
         r.timings.asr_ms = t.elapsed().as_millis() as u64;
@@ -1481,6 +1592,12 @@ impl Worker {
         let mut ctx = ctx.clone();
         ctx.app_category = postprocess::effective_category(s.cfg.platform, &ctx);
         let mut text = r.asr_text.clone();
+        // D33: the dictation's language as the engine reported it. The
+        // English-only rules (spoken cleanup with ITN, layout, the guard's
+        // word lists) run only for English or unknown; the cleanup prompt
+        // names any other language.
+        let language = r.language.clone();
+        let english = english_rules(language.as_deref());
         // A whole-utterance snippet trigger is pasted as its expansion; the
         // LLM must not see (or reword) it (03 §7.1).
         let snippet = s.matcher.whole_snippet(&r.asr_text).is_some();
@@ -1503,16 +1620,18 @@ impl Worker {
                 &s.cfg.dictionary,
                 cloud.prompt_scope(),
                 cleanup::PromptVersion::V4c,
-            );
+            )
+            .with_language(language.as_deref());
             let timeout_ms = cloud.timeout_ms().unwrap_or(s.cfg.llm_timeout_ms);
             let max_div = s.cfg.divergence_threshold.unwrap_or(f64::INFINITY);
             let t = Instant::now();
-            let (outcome, usage, rejection) = cleanup::run_ai_cleanup(
+            let (outcome, usage, rejection) = cleanup::run_ai_cleanup_for(
                 cloud,
                 prompt,
                 &r.asr_text,
                 Duration::from_millis(timeout_ms),
                 max_div,
+                language.as_deref(),
             );
             r.timings.llm_ms = t.elapsed().as_millis() as u64;
             r.llm = usage.engine.is_some().then_some(usage);
@@ -1541,10 +1660,16 @@ impl Worker {
         // used to mean no cleanup at all: 17 % vs 44 % on the
         // formatting-gap eval). Verbatim = `spoken_cleanup: false` + none.
         if s.cfg.spoken_cleanup && !snippet {
-            text = postprocess::spoken::spoken_cleanup(&text);
-            // Numbered lists and email structure without the LLM (the
-            // LLM, when it runs, starts from this layout).
-            text = postprocess::spoken::layout(&text, ctx.app_category);
+            if english {
+                text = postprocess::spoken::spoken_cleanup(&text);
+                // Numbered lists and email structure without the LLM (the
+                // LLM, when it runs, starts from this layout).
+                text = postprocess::spoken::layout(&text, ctx.app_category);
+            } else {
+                // D33: English word rules would mangle other languages;
+                // only the whitespace tidy is language-neutral.
+                text = postprocess::spoken::tidy_whitespace(&text);
+            }
             if text.trim().is_empty() {
                 r.empty_reason = Some("only_filler".into());
                 return r;
@@ -1578,18 +1703,20 @@ impl Worker {
                 &ctx,
                 &s.cfg.dictionary,
                 cl.prompt_scope(),
-            );
+            )
+            .with_language(language.as_deref());
             let timeout_ms = cl.timeout_ms().unwrap_or(s.cfg.llm_timeout_ms);
             // The edit-distance guard only runs when a shell asks for it;
             // the default guard is `guard::check` (support + coverage).
             let max_div = s.cfg.divergence_threshold.unwrap_or(f64::INFINITY);
             let t = Instant::now();
-            let (outcome, usage) = cleanup::run_cleanup_metered(
+            let (outcome, usage) = cleanup::run_cleanup_metered_for(
                 cl.clone(),
                 prompt,
                 &text,
                 Duration::from_millis(timeout_ms),
                 max_div,
+                language.as_deref(),
             );
             // `None` when every backend refused up front (nothing ran).
             r.llm = usage.engine.is_some().then_some(usage);
