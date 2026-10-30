@@ -50,7 +50,7 @@ class OpenRouterUiTest {
             "Stored key", "Show", "Paste", "Clear", "Save key", "Check key",
             "Zero-retention providers only", "Deny data collection", "Cloud speech-to-text", "Clean up text with OpenRouter",
             "Model", "Send text around the cursor", "Send on-screen words", "Send app name", "Monthly budget", "Reset counters",
-            "Test speech-to-text",
+            "Test speech-to-text", "this month", "speech", "cleanup",
         )) assertTrue(want, want in t)
         assertTrue(switchOf(a, "Zero-retention providers only").isChecked)
         assertTrue(switchOf(a, "Deny data collection").isChecked)
@@ -146,8 +146,29 @@ class OpenRouterUiTest {
 
     @Test fun settingsHubHasTheUserFacingEntry() {
         val a = Robolectric.buildActivity(SettingsActivity::class.java, Intent(ctx, SettingsActivity::class.java)).setup().visible().get()
-        assertTrue("Cloud (OpenRouter)" in texts(a))
-        assertTrue("Speech off · Cleanup off" in texts(a))
+        val t = texts(a)
+        // Connections → "OpenRouter · No key · $0 this month" (AndroidSettings.dc.html).
+        assertTrue(t.toString(), OpenRouter.NAME in t)
+        assertTrue(t.toString(), "No key · \$0 this month" in t)
+        rowTitled(a, OpenRouter.NAME).performClick()
+        assertEquals(OpenRouterActivity::class.java.name, org.robolectric.Shadows.shadowOf(a).nextStartedActivity.component?.className)
+    }
+
+    @Test fun pagesHaveTheDesignTopBarWithALabelledBack() {
+        val pages = listOf(
+            launch() to OpenRouter.NAME,
+            Robolectric.buildActivity(
+                ModelPickerActivity::class.java,
+                Intent(ctx, ModelPickerActivity::class.java).putExtra(ModelPickerActivity.EXTRA_USE, CloudCatalog.Use.CLEANUP.wire),
+            ).setup().visible().get() to "Cleanup model",
+        )
+        for ((a, title) in pages) {
+            val back = walk(a.window.decorView).filterIsInstance<android.widget.ImageButton>().first()
+            assertEquals("Back", back.contentDescription)
+            assertTrue(title, title in texts(a))
+            back.performClick()
+            assertTrue(a.isFinishing)
+        }
     }
 
     @Test fun pickerHasFiltersAndTheFreeTextRow() {
