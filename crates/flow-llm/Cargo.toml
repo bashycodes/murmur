@@ -15,4 +15,15 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 llama-cpp-2 = { version = "0.1.160", default-features = false, features = ["openmp", "android-shared-stdcxx"] }
+serde.workspace = true
 serde_json.workspace = true
+
+[features]
+# GPU offload through Vulkan (llama.cpp GGML_VULKAN). Needs the Vulkan SDK
+# (VULKAN_SDK, glslc) at build time. The Windows CI builds the plugin twice:
+# flow_llm.dll (CPU) and, with this feature, flow_llm_vulkan.dll. The loader
+# (flow-core `llama::plugin_candidates`) tries the Vulkan one first; it does
+# not load on a PC without vulkan-1.dll, and then the CPU one does. Inside
+# the Vulkan build a missing or failing GPU falls back to the CPU
+# (`backend::choose`, `Plan::fallbacks`).
+vulkan = ["llama-cpp-2/vulkan"]
