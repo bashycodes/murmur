@@ -16,7 +16,147 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Windows: Transforms.** Select text anywhere and press a shortcut to have
+  AI rewrite it with your own instruction. Two built-ins come ready:
+  *Polish* (Win+Alt+1) and *Prompt Engineer* (Win+Alt+2); edit them or make
+  up to 20 of your own on the new *Transforms* page (sidebar, between Style
+  and Scratchpad), and try one on sample text with *Try it out*. Transforms
+  are **off until you turn on *Opt in***, so an upgrade never takes your
+  Win+Alt+digit keys. *Auto Apply After Dictation* runs a chosen transform on
+  every dictation; if it fails or takes longer than 8 s, your words are pasted
+  as dictated and the Flow bar says "Transform skipped", so nothing is lost.
+  Win+Alt+O opens Home on the latest transform's before / after. Transforms
+  use the same AI cleanup engines (OpenRouter, then this PC) and the same
+  privacy check as Command Mode; with nothing selected the Flow bar says
+  "Select text to transform". Decision D32.
+- **Windows: download a speech model in the app.** First-run setup and
+  Settings → Speech to text offer *Download* for Parakeet TDT 0.6B v2 (661 MB),
+  Whisper base (148 MB) or Whisper small (190 MB). Nothing downloads until you
+  press *Download* and confirm a dialog that shows the size, source and folder;
+  then a progress bar with *Cancel* runs while you carry on. Every file is
+  pinned to a fixed Hugging Face version and checked against its SHA-256
+  before it is used; when it finishes the app switches to the new model. The
+  client-only (`local`) build has no downloader. Decision D31.
+- **Windows: first-run setup.** A fresh install opens a short guided setup
+  over the app window: pick how speech is turned into text (your server, this
+  PC, OpenRouter), point the app at a model, choose AI cleanup, and try a
+  dictation. *Set up later* skips it; Settings → General → *Run setup* opens
+  it again. Existing installs don't see it.
+- **Windows: Browse buttons and links that open.** Model and folder fields in
+  Settings and setup have *Browse* / *Choose folder* / *Choose file* buttons
+  that open the Windows file picker, instead of typing a path. Links to
+  Hugging Face, OpenRouter keys and the server guide now open in your browser
+  instead of being copied (only links to those sites and this project are
+  allowed).
+- **Windows: Scratchpad page.** Notes are now in the app window's sidebar:
+  pinned then recent notes with their first line and time, search, pin, and a
+  click opens the note (or a new one) in the notes window. The page shows your
+  Scratchpad shortcut. The notes window itself matches the new look, light
+  and dark. *Notetaker* has a "Later" page; nothing behind it yet.
+- **Windows: Light / Dark / System theme.** Settings → General → *Theme*. The
+  app window, the notes window and the Flow bar all follow it; *System*
+  follows Windows as before.
+- **Windows: Fix links on the Flow bar.** When a dictation falls back or
+  can't run, the bubble has a link to the settings page that fixes it ("Fix
+  →", or "Choose a model →" when a model is missing): Speech to text, AI
+  cleanup, Your server or OpenRouter. The link is clickable; the rest of the
+  Flow bar still lets clicks through to the app underneath.
+- **Windows: shorter history retention.** Settings → Data and privacy → keep
+  history *Forever*, *30 days*, *7 days* or *Don't keep* (an old "24 hours"
+  choice keeps working).
+- **Windows: where each dictation ran.** New history rows remember whether
+  speech ran on this PC, your server or OpenRouter, and Home shows it as a
+  pill on each row (older rows show none).
+- **Android: Permissions page.** Setup and status moved off the main screen
+  to their own page (menu ☰ → *Permissions*): the five permissions with their
+  state, *Keep it running* for your phone maker, and the engine / language /
+  AI cleanup / version status. The drawer shows how many permissions need
+  fixing, Home shows a notice that leads there while dictation can't start,
+  and the bubble's mic-permission and Accessibility-repair taps open it
+  directly.
+- **Android: Settings → Speech to text.** Turning your server, this phone and
+  OpenRouter on or off, and the order they are tried in, moved from Developer
+  settings to this page: one switch per engine, *Change order*, the model on
+  this phone with *Import another model*, *Keep loaded while the server is
+  used* and *Transcribe while I speak*. Turning OpenRouter on asks for the
+  same consent as the OpenRouter page. Engine badge, Parakeet decoding and
+  *Test session* stay in Developer settings → *Engine options*.
+
 ### Changed
+
+- **New look on Windows and Android.** Both apps now follow the Murmur
+  app design (`docs/design/app-design/`): warm light and dark colours, the
+  Figtree and EB Garamond typefaces, rounded cards. Every feature works as
+  before; the notes below say where things moved.
+- **Windows: the settings window is now the app window.** It opens at
+  1280×800 with a sidebar (Home, Insights, Dictionary, Snippets, Style,
+  Transforms, Scratchpad, Notetaker "Later", an Engines card, Settings).
+  Settings is a dialog over it with its own pages: General, System, Data and
+  privacy, Speech to text, AI cleanup, Your server, OpenRouter, Developer.
+  Changes save as you make them (no footer *Save*); only the server address
+  keeps a *Save* button so a half-typed host never reconnects. The tray's
+  links open the matching page.
+- **Windows: Home and Insights.** Home's history rows show the time, the
+  text, hover actions and a *This PC* / *Your server* / *Cloud* pill; app and
+  word count are in the time's tooltip, and only "You corrected it" and "Not
+  pasted" keep a badge. The side panel adds "Where speech ran this week".
+  Insights shows your speed against typing, fixes made (AI cleanup /
+  dictionary), total words split by where speech ran, "Where you dictate" by
+  app, and your streak with an 18-week activity heatmap.
+- **Windows: Dictionary and Snippets.** Tabs (All / Words / Replacements),
+  search, A–Z sort, read-only *heard → word* and *say → paste* rows that open
+  an edit card, and a *Learn from my corrections* card holding the pending
+  suggestions. Every add, edit, delete and import saves at once with an
+  *Undo*. Replace-all import and export are under *Import and export*.
+- **Windows: Style.** A tab per app group, a banner naming the apps in that
+  group, and a card per style with a sample message; a click saves it. *Style
+  per app* stays below.
+- **Windows: Settings pages.** General shows shortcuts as keycaps with
+  *Change*, languages by name, and hands-free silence as a list (1–5 s,
+  Never). Data and privacy has a tile per route with *Edit →*, retention, and
+  the debug log (moved here from Developer). Speech to text says what each
+  engine is doing (this PC's model and whether it is loaded), and the
+  Parakeet decoding choice is now a *Use dictionary words when listening*
+  switch. Your server shows host and port in one row, timeouts as lists, the
+  last health result, and *Test a dictation* next to *Test connection*. AI
+  cleanup has the levels Verbatim / Rules only / Light / Medium / High with a
+  "You said / Pasted" example and OpenRouter / This PC as a ranked list.
+  OpenRouter shows the saved key masked with *Remove* / *Check key*, and this
+  month's cost against a budget meter. The model picker has filter chips,
+  badges and prices, and says how many models the zero-retention filter
+  hides.
+- **Windows: Flow bar.** Restyled for every state (idle, hold to talk,
+  hands-free with cancel / stop-and-paste, working, done with the engine
+  letter, fell back, can't dictate), in light and dark.
+- **Android: new app shell.** The main screen is now a top bar with the menu,
+  a bottom bar (Home / Dictionary / Style / Snippets) and a drawer (menu ☰)
+  with your words / wpm / day streak, an Engines card, Settings, Permissions,
+  Help and, under *More*: Notes, Quick note, Insights, History, Start / Stop
+  bubble, Speech model and Developer settings. Home lists recent dictations as
+  cards by day with the text, time and app, where it ran, *Copy* and ⋮ (*Open
+  details*, *Delete*). Back closes the drawer first.
+- **Android: Dictionary and Snippets are tabs.** Each has search, cards
+  (*heard → word*, *say → paste*) and a + button; learned-word suggestions
+  show in a card above the words while any wait. Import / export JSON is the
+  top-bar button. The edit page has *Save* and *Delete* in its top bar.
+- **Android: Style tab.** Pills per group (Personal / Work / Email / Other),
+  the phone's apps in that group (+ adds one), and a card per style with its
+  rule and an example; a tap saves it.
+- **Android: Settings.** The hub is grouped General (Language, Writing style,
+  Bubble, Excluded apps, Timing & limits), Models (Speech to text, AI
+  cleanup), Connections (Your server, OpenRouter), Data & privacy (Keep
+  history, Learn from my edits, Debug log), Back up & restore, Advanced and
+  About. Rows show live state: the server row reads the last check
+  ("Connected · 41 ms"), the OpenRouter row this month's cost. *Save* is in
+  the top bar on form pages. OpenRouter, the model picker and model import use
+  the same top bar; OpenRouter shows this month's cost (total / speech /
+  cleanup, with the budget) above the request counts.
+- **Android: dictation bubble.** A dark pill with light waveform and controls
+  and a dark preview tooltip above it, so it reads on light and dark apps.
+  Sizes, positions and behaviour are unchanged; red is used only for errors
+  and the repair alert.
 
 - **Android: History, Notes, the note editor and Insights in the new look.**
   Each has the design's top bar with back. History shows dictations as cards
@@ -26,6 +166,12 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   with the words / wpm / day-streak numbers and how your speed compares with
   typing. Top apps have bars. Everything else works as before, in light and
   dark.
+
+### Fixed
+
+- **Windows: the "max recording" countdown shows.** The warning before a
+  dictation hits its length limit was sent but never drawn; the Flow bar now
+  shows a countdown chip.
 
 ## [0.8.0] - 2026-10-29
 
