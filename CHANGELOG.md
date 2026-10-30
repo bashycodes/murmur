@@ -16,6 +16,23 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Windows: AI cleanup on the graphics chip.** The installers now ship the
+  AI cleanup engine twice: `flow_llm_vulkan.dll` (GPU through Vulkan) and
+  `flow_llm.dll` (CPU). The app loads the Vulkan one first. On a PC without
+  a Vulkan driver it loads the CPU one instead. With no usable GPU, or a GPU
+  that fails to load the model, the Vulkan one runs on the CPU.
+  `FLOW_LLM_DEVICE=cpu` forces the CPU. Settings and the tray say where
+  cleanup runs. Both builds keep the portable AVX2 baseline (`GGML_NATIVE=OFF`).
+- **Windows: Llama 3.2 3B Instruct for AI cleanup.** Settings → AI cleanup →
+  On this PC can download Llama 3.2 3B Instruct Q4_K_M (2.0 GB, pinned
+  revision and SHA-256). The row recommends it when cleanup runs on a GPU,
+  and Qwen2.5 1.5B on a CPU-only PC. On the laptop's Arc 140V iGPU it scored
+  80 % on the 88-suite at p50 0.62 s
+  (`docs/findings/2026-10-30-laptop-model-benchmark.md`). The default model
+  file is still Qwen2.5 0.5B.
+
 ## [0.11.1] - 2026-10-30
 
 ### Fixed
