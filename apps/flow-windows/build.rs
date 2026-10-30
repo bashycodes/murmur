@@ -48,6 +48,8 @@ fn main() {
             "dictionary_import",
             "dictionary_export",
             "dictionary_export_text",
+            "transforms_reset",
+            "transform_try",
             "dev_get",
             "dev_validate",
             "dev_set",

@@ -241,6 +241,11 @@ impl Platform for WinPlatform {
         show_scratchpad(&self.app);
     }
 
+    fn view_changes(&self, row: Option<i64>) {
+        show_settings(&self.app);
+        let _ = self.app.emit_to(SETTINGS, "transforms:view", row);
+    }
+
     fn open_new_note(&self) -> bool {
         let st = self.app.state::<AppState>();
         let created = st.notes.lock().unwrap().create();
@@ -387,10 +392,11 @@ fn set_prefs(
     // Whatever the page sent, what is saved now is the current schema.
     prefs.prefs_rev = crate::prefs::PREFS_REV;
     prefs.dictionary = crate::dictionary::normalize(prefs.dictionary);
+    prefs.transforms.normalize();
     prefs.validate()?;
     prefs.save(&state.path).map_err(|e| e.to_string())?;
     if let Some(h) = state.hook.lock().unwrap().as_ref() {
-        h.set_bindings(prefs.shortcuts.clone());
+        h.set_bindings(prefs.hotkey_bindings());
     }
     let _ = autostart::set(prefs.launch_at_login);
     let (reload, reload_llm) = {
@@ -747,6 +753,51 @@ fn dictionary_export(entries: Vec<crate::prefs::DictEntry>) -> Result<String, St
 #[tauri::command]
 fn dictionary_export_text(entries: Vec<crate::prefs::DictEntry>) -> String {
     crate::dictionary::export(&entries)
+}
+
+// ------------------------------------------------- transforms page
+
+/// "Reset to defaults": the built-in transforms come back, custom ones
+/// stay. Returns the saved prefs for the page to adopt.
+#[tauri::command]
+fn transforms_reset(state: tauri::State<'_, AppState>) -> Result<Prefs, String> {
+    let mut prefs = state.prefs.read().unwrap().clone();
+    prefs.transforms.reset_builtins();
+    prefs.validate()?;
+    prefs.save(&state.path).map_err(|e| e.to_string())?;
+    if let Some(h) = state.hook.lock().unwrap().as_ref() {
+        h.set_bindings(prefs.hotkey_bindings());
+    }
+    *state.prefs.write().unwrap() = prefs.clone();
+    Ok(prefs)
+}
+
+/// "Try it out": run transform `id` on `text` typed in the page, with the
+/// same route and privacy gate as a selection (the text is the user's,
+/// like a selection). Nothing is pasted or recorded.
+#[tauri::command]
+async fn transform_try(app: AppHandle, id: String, text: String) -> Result<String, String> {
+    let state = app.state::<AppState>();
+    let instruction = state
+        .prefs
+        .read()
+        .unwrap()
+        .transforms
+        .find(&id)
+        .map(|i| i.transform.instruction.clone())
+        .ok_or("that transform no longer exists")?;
+    let router = state.router.get().cloned().ok_or("AI is not ready yet")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        use crate::core_api::CoreApi;
+        router.transform(
+            &instruction,
+            &text,
+            flow_core::transform::Source::Selection,
+            flow_core::transform::SELECTION_TIMEOUT,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 fn model_ready(state: &AppState) -> bool {
@@ -2023,6 +2074,8 @@ pub fn run() {
             dictionary_import,
             dictionary_export,
             dictionary_export_text,
+            transforms_reset,
+            transform_try,
             dev_get,
             dev_validate,
             dev_set,
@@ -2258,7 +2311,7 @@ pub fn run() {
                 .spawn(move || controller.run(rx))?;
 
             let (hk_tx, hk_rx) = mpsc::channel();
-            let bindings = prefs.read().unwrap().shortcuts.clone();
+            let bindings = prefs.read().unwrap().hotkey_bindings();
             match hotkeys::win::install(bindings, dictating, hk_tx) {
                 Ok(h) => {
                     *app.state::<AppState>().hook.lock().unwrap() = Some(h);
