@@ -47,5 +47,9 @@ name = "audio_ctx_bench"
 required-features = ["whisper", "wav"]
 
 [[test]]
+name = "lid_e2e"
+required-features = ["whisper", "wav"]
+
+[[test]]
 name = "sherpa_online_e2e"
 required-features = ["parakeet", "wav"]

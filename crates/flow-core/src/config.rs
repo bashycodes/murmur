@@ -346,6 +346,15 @@ pub struct ModelConfig {
     /// servers see the same config. TOML: `[model.languages.he]`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub languages: BTreeMap<String, LanguageModel>,
+    /// Spoken language ID for auto-detect (H6, D34): a multilingual
+    /// whisper ggml model (`ggml-tiny-q5_1.bin`, 31 MB; feature `whisper`).
+    /// Loaded only when `languages` has an entry: an auto-detect dictation
+    /// then hears its first 3 s identified and decodes on that language's
+    /// model when it has one (else the default model). `None` (default) or
+    /// no `languages` = auto-detect uses the default model, as before.
+    /// Omitted from JSON when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lid_path: Option<String>,
 }
 
 fn is_auto(d: &ParakeetDecoding) -> bool {
@@ -397,6 +406,14 @@ impl ModelConfig {
             .keys()
             .find(|k| primary_language(k).as_deref() == Some(want.as_str()))
             .map(String::as_str)
+    }
+
+    /// The language-ID model path when auto-detect routing is on: `lid_path`
+    /// is set and at least one language model is configured (D34).
+    pub fn lid_model(&self) -> Option<&str> {
+        self.lid_path
+            .as_deref()
+            .filter(|p| !p.is_empty() && !self.languages.is_empty())
     }
 
     /// The default model as a [`LanguageModel`] (same fields).
@@ -492,6 +509,7 @@ impl Default for ModelConfig {
             whisper_fit_ctx: true,
             parakeet_decoding: ParakeetDecoding::Auto,
             languages: BTreeMap::new(),
+            lid_path: None,
         }
     }
 }

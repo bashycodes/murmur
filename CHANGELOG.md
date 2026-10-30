@@ -37,6 +37,11 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   (pinned revision, SHA-256 checked, already-verified files skipped);
   `--hebrew-parakeet` the 642 MiB Parakeet-he alternative. `FLOW_MODELS_DIR`
   picks the destination.
+- **Core: Hebrew auto-detect (H6, D34).** Set `ModelConfig.lid_path` to a
+  multilingual whisper model (`ggml-tiny-q5_1.bin`) next to a `languages`
+  map. An auto-detect dictation then has its first 3 s identified (~70 ms
+  on an i7-6700) and decodes Hebrew on the Hebrew model. Without
+  `lid_path`, nothing changes.
 
 ## [0.9.1] - 2026-10-30
 
