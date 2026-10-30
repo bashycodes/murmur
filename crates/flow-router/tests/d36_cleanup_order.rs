@@ -559,3 +559,28 @@ fn server_known_without_llm_counts_as_no_cleaner() {
     assert_eq!(r.fallback_reason, None);
     assert_eq!(k.server.cleans(), 0);
 }
+
+#[test]
+fn switched_off_entries_keep_their_place_but_never_clean() {
+    let mut c = cfg(&[S, L, C]);
+    c.cleanup_off = vec![S];
+    let k = rig(c.clone());
+    assert_eq!(k.router.cleanup_status().order, vec![L, C]);
+    assert!(has(&dictate(&k.router), LOCAL_OUT));
+    assert_eq!(k.server.cleans(), 0);
+    // All three off: no AI cleanup at all (not the pre-D36 empty order).
+    c.cleanup_off = vec![S, L, C];
+    let k = rig(server_stt(&[]));
+    k.router.update_config(RouterConfig {
+        cleanup_order: vec![S, L, C],
+        cleanup_off: vec![S, L, C],
+        ..k.router.config()
+    });
+    let r = dictate(&k.router);
+    assert_eq!(r.status, CommitStatus::RawTranscript, "{r:?}");
+    assert_eq!(k.server.levels(), vec![CleanupLevel::None]);
+    assert_eq!(
+        (k.local_calls(), k.cloud_calls(), k.server.cleans()),
+        (0, 0, 0)
+    );
+}

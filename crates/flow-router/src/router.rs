@@ -698,7 +698,7 @@ impl Router {
             .cleanup_order
             .iter()
             .copied()
-            .filter(|r| *r != CleanupRoute::Server)
+            .filter(|r| *r != CleanupRoute::Server && !st.cfg.cleanup_off.contains(r))
             .collect();
         st.command_plan = wanted.then(|| self.legacy_plan(&legacy));
         let plan = st.cleanup_plan.clone();
@@ -725,7 +725,11 @@ impl Router {
         // text to the server outside its own sessions.
         let wanted = self.remote_factory.is_some()
             && st.cfg.server.is_configured()
-            && st.cfg.cleanup_order.contains(&CleanupRoute::Server);
+            && !st.cfg.cleanup_order.is_empty()
+            && st
+                .cfg
+                .effective_cleanup_order()
+                .contains(&CleanupRoute::Server);
         let backend = wanted.then(|| self.remote_for(st));
         let mut g = self.server_clean.st.lk();
         let same = match (&g.backend, &backend) {

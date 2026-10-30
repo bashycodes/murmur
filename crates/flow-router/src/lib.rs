@@ -127,6 +127,12 @@ pub struct RouterConfig {
     /// text-only server cleanup.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub cleanup_order: Vec<CleanupRoute>,
+    /// Entries of `cleanup_order` the user switched off (D36): they keep
+    /// their place in the list but never clean. Lets a shell send the whole
+    /// list, so "everything off" is not the empty (pre-D36) order.
+    /// Omitted while empty.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub cleanup_off: Vec<CleanupRoute>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -146,6 +152,7 @@ impl Default for RouterConfig {
             cloud: CloudConfig::default(),
             allow_cloud_cleanup: false,
             cleanup_order: Vec::new(),
+            cleanup_off: Vec::new(),
         }
     }
 }
@@ -311,15 +318,23 @@ impl RouterConfig {
     /// Cloud cleanup is switched on by the user (toggle + order). Build
     /// capability, consent, key, budget and circuit are checked per call.
     pub fn cloud_cleanup_wanted(&self) -> bool {
-        self.allow_cloud_cleanup && self.cleanup_order.contains(&CleanupRoute::Cloud)
+        self.allow_cloud_cleanup
+            && self
+                .effective_cleanup_order()
+                .contains(&CleanupRoute::Cloud)
     }
 
-    /// `cleanup_order`, with the empty default spelled out (D36).
+    /// The engines that may clean, in order (D36): `cleanup_order` minus
+    /// `cleanup_off`, with the empty (pre-D36) order spelled out.
     pub fn effective_cleanup_order(&self) -> Vec<CleanupRoute> {
         if self.cleanup_order.is_empty() {
             vec![CleanupRoute::Local, CleanupRoute::Server]
         } else {
-            self.cleanup_order.clone()
+            self.cleanup_order
+                .iter()
+                .copied()
+                .filter(|r| !self.cleanup_off.contains(r))
+                .collect()
         }
     }
 }
