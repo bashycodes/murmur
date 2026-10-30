@@ -1,22 +1,24 @@
 package dev.flowclone.bubble
 
 import android.graphics.Color
+import dev.flowclone.ui.Tokens
 
 /**
  * Bubble colours from the app design (docs/design/app-design/AndroidBubble.dc.html, flow-theme.css).
- * Kept local to the bubble package until the shared ui tokens land; then this folds into them.
+ * The bubble is always dark (it floats over any app, either theme), so it takes fixed token
+ * values from [Tokens] where the design shares them; `raised` (vast-875) has no token of its own.
  */
 internal object BubbleColors {
     /** vast-950: the pill, the preview tooltip, the snooze target. */
-    val surface = Color.parseColor("#FF1A1A1A")
+    val surface = Tokens.LIGHT.ink
     /** vast-875: a resting round button on the pill (mic disc, hold-mode pulse). */
     val raised = Color.parseColor("#FF343432")
     /** sand-50: glyphs, waveform bars, the primary action's disc. */
-    val onSurface = Color.parseColor("#FFFCFCFB")
+    val onSurface = Tokens.DARK.button
     /** vast-600: the dot's ring / dimmed strokes. */
-    val muted = Color.parseColor("#FF71716E")
+    val muted = Tokens.LIGHT.badgeNeutralFg
     /** destructive (dark theme): errors and the repair alert only, never plain cancel. */
-    val error = Color.parseColor("#FFFF5757")
+    val error = Tokens.DARK.danger
     /** Pill shadow: 0 2px 6px rgba(26,26,26,.3). */
     val shadow = Color.argb(0x4D, 0x1A, 0x1A, 0x1A)
     const val SHADOW_RADIUS_DP = 3f
