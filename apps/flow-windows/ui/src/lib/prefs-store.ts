@@ -50,6 +50,8 @@ export interface Prefs {
   llm_lib_path: string | null;
   llm_timeout_ms: number;
   learn_from_edits: boolean;
+  /** First-run setup finished or skipped (false only on a fresh install). */
+  onboarded?: boolean;
   [k: string]: unknown;
 }
 
