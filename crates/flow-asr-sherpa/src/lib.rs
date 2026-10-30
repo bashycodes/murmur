@@ -11,11 +11,18 @@
 //! sentencepiece-encoded with a `bpe.vocab` that this crate derives from the
 //! model's `tokens.txt` (see [`bpe_vocab_from_tokens`]).
 //!
+//! [`OnlineEngine`] does the same for streaming (online) transducers such
+//! as ivrit-ai's zipformer2 Hebrew model; both implement
+//! [`SherpaTranscriber`].
+//!
 //! The crate does not depend on flow-core; flow-core's `parakeet` module
 //! adapts it to the `AsrEngine` trait.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+
+mod online;
+pub use online::{OnlineConfig, OnlineEngine, DEFAULT_TAIL_PADDING_S};
 
 use sherpa_onnx::{OfflineRecognizer, OfflineRecognizerConfig, OfflineTransducerModelConfig};
 
@@ -237,7 +244,7 @@ impl ParakeetEngine {
         let mut temp_vocab = None;
         let mut hotwords = false;
         if cfg.hotwords {
-            match vocab_path(cfg, &files) {
+            match vocab_path(&cfg.model_dir, cfg.scratch_dir.as_deref(), &files.tokens) {
                 Ok((path, is_temp)) => {
                     c.decoding_method = Some("modified_beam_search".into());
                     c.max_active_paths = cfg.max_active_paths.max(1) as i32;
@@ -354,20 +361,69 @@ impl ParakeetEngine {
 
 /// `bpe.vocab` shipped in the model dir, else one derived from `tokens.txt`
 /// in the scratch dir (returned with `is_temp = true`).
-fn vocab_path(cfg: &ParakeetConfig, files: &ModelFiles) -> Result<(PathBuf, bool), String> {
-    let shipped = cfg.model_dir.join("bpe.vocab");
+fn vocab_path(
+    model_dir: &Path,
+    scratch_dir: Option<&Path>,
+    tokens: &Path,
+) -> Result<(PathBuf, bool), String> {
+    let shipped = model_dir.join("bpe.vocab");
     if shipped.is_file() {
         return Ok((shipped, false));
     }
-    let tokens = std::fs::read_to_string(&files.tokens)
-        .map_err(|e| format!("{}: {e}", files.tokens.display()))?;
-    let dir = cfg.scratch_dir.clone().unwrap_or_else(std::env::temp_dir);
+    let tokens =
+        std::fs::read_to_string(tokens).map_err(|e| format!("{}: {e}", tokens.display()))?;
+    let dir = scratch_dir.map_or_else(std::env::temp_dir, Path::to_path_buf);
     static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let path = dir.join(format!("flow-parakeet-{}-{n}.vocab", std::process::id()));
+    let path = dir.join(format!("flow-sherpa-{}-{n}.vocab", std::process::id()));
     std::fs::write(&path, bpe_vocab_from_tokens(&tokens))
         .map_err(|e| format!("{}: {e}", path.display()))?;
     Ok((path, true))
+}
+
+/// The decode interface both engines share, so flow-core's sherpa adapter
+/// (beam/greedy retry, piecewise fallback) can drive either one. Object
+/// safe; phrases are `String`s because that is what core passes.
+pub trait SherpaTranscriber: Send + Sync {
+    /// Whether per-decode hotwords are honoured (beam search + vocab loaded).
+    fn supports_hotwords(&self) -> bool;
+    /// Whether a greedy recognizer is loaded.
+    fn has_greedy(&self) -> bool;
+    /// The search a plain decode with these hotwords uses.
+    fn default_search(&self, hotwords: &[String]) -> Search;
+    /// Decode one utterance (16 kHz mono f32) with an explicit search.
+    fn transcribe_with(
+        &self,
+        pcm: &[f32],
+        hotwords: &[String],
+        search: Search,
+    ) -> Result<String, SherpaError>;
+    /// The language this model writes, when it is fixed by configuration
+    /// (`None` = the caller knows, e.g. the English Parakeet).
+    fn language(&self) -> Option<&str>;
+}
+
+impl SherpaTranscriber for ParakeetEngine {
+    fn supports_hotwords(&self) -> bool {
+        ParakeetEngine::supports_hotwords(self)
+    }
+    fn has_greedy(&self) -> bool {
+        ParakeetEngine::has_greedy(self)
+    }
+    fn default_search(&self, hotwords: &[String]) -> Search {
+        ParakeetEngine::default_search(self, hotwords)
+    }
+    fn transcribe_with(
+        &self,
+        pcm: &[f32],
+        hotwords: &[String],
+        search: Search,
+    ) -> Result<String, SherpaError> {
+        ParakeetEngine::transcribe_with(self, pcm, hotwords, search)
+    }
+    fn language(&self) -> Option<&str> {
+        None
+    }
 }
 
 #[cfg(test)]
