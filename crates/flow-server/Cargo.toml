@@ -33,6 +33,8 @@ rustls = { version = "0.23", optional = true, default-features = false, features
 rustls-pemfile = { version = "2", optional = true }
 
 [dev-dependencies]
+# `wav`: tests/languages.rs reads a Hebrew clip for the real-model test.
+flow-core = { path = "../flow-core", features = ["wav"] }
 tempfile = "3"
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake"] }
 rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }

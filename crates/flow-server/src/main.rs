@@ -80,6 +80,9 @@ fn main() -> ExitCode {
                     "config ok: bind={:?} workers={} asr={:?}",
                     c.bind, c.workers, c.model.asr_backend
                 );
+                for (lang, m) in &c.model.languages {
+                    println!("language {lang}: asr={:?} {}", m.asr_backend, m.asr_path);
+                }
                 if c.debug.capture {
                     println!(
                         "debug capture: on, {} (newest {} files, {} h)",
@@ -137,6 +140,11 @@ fn serve(a: &Args) -> ExitCode {
         }
         let workers = pool.workers();
         let asr = pool.asr_backend.clone();
+        let languages: Vec<String> = pool
+            .languages
+            .iter()
+            .map(|(k, (b, _))| format!("{k}={b}"))
+            .collect();
         let h = match flow_server::serve_with_pool(cfg, pool, listeners).await {
             Ok(h) => h,
             Err(e) => {
@@ -149,6 +157,7 @@ fn serve(a: &Args) -> ExitCode {
             version = flow_build_info::FULL,
             workers,
             asr = %asr,
+            languages = %languages.join(","),
             load_ms,
             listening = %addrs.join(","),
             "ready"

@@ -81,6 +81,7 @@ fn hello_ok() -> HelloOk {
         busy: 0,
         max_samples: 19_200_000,
         features: vec![],
+        languages: vec![],
     }
 }
 
@@ -134,6 +135,14 @@ fn server_cases() -> Vec<(&'static str, ServerMsg)> {
             "server_hello_ok_features",
             ServerMsg::HelloOk(HelloOk {
                 features: vec![FEATURE_SEGMENTS.into()],
+                ..hello_ok()
+            }),
+        ),
+        (
+            "server_hello_ok_languages",
+            ServerMsg::HelloOk(HelloOk {
+                features: vec![FEATURE_SEGMENTS.into()],
+                languages: vec!["he".into()],
                 ..hello_ok()
             }),
         ),

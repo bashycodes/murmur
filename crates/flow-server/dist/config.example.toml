@@ -24,6 +24,19 @@ threads = 4            # 4 on the i7-6700: oversubscribing hyperthreads is far s
 # llm_lib = "/usr/local/lib/libflow_llm.so"
 # vad_model_path = "/var/lib/flow-server/models/ggml-silero-v5.1.2.bin"
 
+# Per-language models (D33). A session whose language is forced to one of
+# these (the client's language setting: "he", "he-IL" and "iw" all match
+# "he") decodes on that model; every other session, auto-detect included,
+# on the model above. hello_ok lists the keys as "languages". Each worker
+# loads every model (zipformer-he: 69 MiB on disk).
+# [model.languages.he]                 # Hebrew: tools/fetch-models.sh --hebrew
+# asr_backend = "sherpa_online"        # streaming zipformer (alias "zipformer"); needs the parakeet feature
+# asr_path = "/var/lib/flow-server/models/zipformer2-66m-streaming-he-int8"
+# threads = 4                          # optional, default [model] threads
+# Alternative, 642 MiB, slightly less accurate (fetch-models.sh --hebrew-parakeet):
+# asr_backend = "parakeet"
+# asr_path = "/var/lib/flow-server/models/parakeet-tdt-0.6b-v3-he-int8"
+
 # [tls]                # optional wss:// (LAN without a VPN); pin the cert in the client
 # cert = "/etc/flow-server/cert.pem"
 # key = "/etc/flow-server/key.pem"

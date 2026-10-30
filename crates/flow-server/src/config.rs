@@ -244,6 +244,36 @@ mod tests {
     }
 
     #[test]
+    fn example_hebrew_block_parses_when_uncommented() {
+        // The commented `[model.languages.he]` block of the example config,
+        // uncommented up to its alternative, must be valid as shipped.
+        let s = include_str!("../dist/config.example.toml");
+        let mut out = String::new();
+        let mut on = false;
+        for l in s.lines() {
+            if l.starts_with("# [model.languages.he]") {
+                on = true;
+            } else if l.starts_with("# Alternative") || l.starts_with("# [tls]") {
+                on = false;
+            }
+            match l.strip_prefix("# ").filter(|_| on) {
+                Some(u) => out.push_str(u),
+                None => out.push_str(l),
+            }
+            out.push('\n');
+        }
+        let c = Config::from_toml(&out).unwrap();
+        assert_eq!(c.model.asr_backend, flow_core::config::AsrBackend::Parakeet);
+        let he = &c.model.languages["he"];
+        assert_eq!(he.asr_backend, flow_core::config::AsrBackend::SherpaOnline);
+        assert!(he.asr_path.ends_with("/zipformer2-66m-streaming-he-int8"));
+        assert_eq!(he.threads, Some(4));
+        assert_eq!(c.model.language_route(Some("he-IL")), Some("he"));
+        assert_eq!(c.model.language_route(Some("auto")), None);
+        assert!(Config::from_toml(s).unwrap().model.languages.is_empty());
+    }
+
+    #[test]
     fn debug_section_parses_and_validates() {
         let ok = "auth = \"none\"\n[debug]\ncapture = true\nmax_files = 5\nmax_age_h = 24\ndir = \"/var/lib/flow-server/debug\"\n";
         let c = Config::from_toml(ok).unwrap();
