@@ -63,6 +63,11 @@ pub struct CatalogEntry {
     /// Licence and attribution the model's terms ask for (CC-BY-4.0).
     pub license: Option<&'static str>,
     pub files: &'static [ModelFile],
+    /// Files saved in the models folder itself, next to `dest`, that come
+    /// with this model: the Hebrew models bring the language-ID model
+    /// (`ggml-tiny-q5_1.bin`, H6/D34) so auto-detect can route to them.
+    /// Shared by entries; one already there and intact is not fetched again.
+    pub extras: &'static [ModelFile],
 }
 
 macro_rules! model_file {
@@ -111,6 +116,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: true,
         language: None,
         license: None,
+        extras: &[],
         files: &[
             model_file!(parakeet_base!(), "encoder.int8.onnx", 652_184_296, "a32b12d17bbbc309d0686fbbcc2987b5e9b8333a7da83fa6b089f0a2acd651ab"),
             model_file!(parakeet_base!(), "decoder.int8.onnx", 7_257_753, "b6bb64963457237b900e496ee9994b59294526439fbcc1fecf705b31a15c6b4e"),
@@ -128,6 +134,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: false,
         language: None,
         license: None,
+        extras: &[],
         files: &[model_file!(whisper_base!(), "ggml-base.bin", 147_951_465, "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe")],
     },
     CatalogEntry {
@@ -140,6 +147,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: false,
         language: None,
         license: None,
+        extras: &[],
         files: &[model_file!(whisper_base!(), "ggml-small-q5_1.bin", 190_085_487, "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb")],
     },
     CatalogEntry {
@@ -152,6 +160,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: true,
         language: Some(crate::core_adapter::HEBREW),
         license: Some("CC-BY-4.0 · Yakov Kolani / ivrit.ai"),
+        extras: LID_FILES,
         files: &[
             model_file!(zipformer_he_base!(), "encoder.int8.onnx", 70_478_964, "6c6febcb74a09435315a1d872a6539f6e7fc2c333533f14c74edc0e85c49ffcd"),
             model_file!(zipformer_he_base!(), "decoder.int8.onnx", 1_049_105, "feb03e7c8aa761593a9284a6fa1e91259be3702de75f630062256c1a59c5a906"),
@@ -169,6 +178,7 @@ pub const CATALOG: &[CatalogEntry] = &[
         recommended: false,
         language: Some(crate::core_adapter::HEBREW),
         license: Some("CC-BY-4.0 · krut42, based on thewh1teagle/parakeet-tdt-0.6b-v3-he"),
+        extras: LID_FILES,
         files: &[
             model_file!(parakeet_he_base!(), "encoder.int8.onnx", 653_215_173, "7eaf80bc88fccd579a7d3950c25e50e4c7935e5b037ec2aa1eee29bca5ca3981"),
             model_file!(parakeet_he_base!(), "decoder.int8.onnx", 12_494_234, "3a1d0bbf3e393909095f826b7719fdaef42cd2e0b8b95c54518034ecc4b7d246"),
@@ -177,6 +187,15 @@ pub const CATALOG: &[CatalogEntry] = &[
         ],
     },
 ];
+
+/// The language-ID model the Hebrew entries bring along (H6/D34; hash and
+/// size checked 2026-10-30 by downloading it once, equal to the HF LFS id).
+const LID_FILES: &[ModelFile] = &[model_file!(
+    whisper_base!(),
+    "ggml-tiny-q5_1.bin",
+    32_152_673,
+    "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7"
+)];
 
 /// Catalogue ids of the Hebrew models (`prefs.hebrew_model`).
 pub const ZIPFORMER_HE_ID: &str = "zipformer-he-int8";
@@ -187,8 +206,29 @@ pub fn entry(id: &str) -> Option<&'static CatalogEntry> {
 }
 
 impl CatalogEntry {
+    /// Bytes of everything a download fetches (model + extras).
     pub fn size(&self) -> u64 {
-        self.files.iter().map(|f| f.size).sum()
+        self.all_files().map(|(f, _)| f.size).sum()
+    }
+
+    /// The model's files, then the extras (`true` = saved in the models
+    /// folder itself).
+    fn all_files(&self) -> impl Iterator<Item = (&'static ModelFile, bool)> {
+        self.files.iter().map(|f| (f, false)).chain(self.extras.iter().map(|f| (f, true)))
+    }
+
+    fn present(&self, models_dir: &Path, f: &ModelFile, extra: bool) -> bool {
+        std::fs::metadata(self.file_path(models_dir, f, extra)).is_ok_and(|m| m.is_file() && m.len() == f.size)
+    }
+
+    /// The model and its extras are all there.
+    pub fn complete(&self, models_dir: &Path) -> bool {
+        self.all_files().all(|(f, x)| self.present(models_dir, f, x))
+    }
+
+    /// Bytes a download would still fetch.
+    pub fn missing(&self, models_dir: &Path) -> u64 {
+        self.all_files().filter(|(f, x)| !self.present(models_dir, f, *x)).map(|(f, _)| f.size).sum()
     }
 
     fn is_dir(&self) -> bool {
@@ -200,20 +240,21 @@ impl CatalogEntry {
         models_dir.join(self.dest)
     }
 
-    fn file_path(&self, models_dir: &Path, f: &ModelFile) -> PathBuf {
-        if self.is_dir() {
+    fn file_path(&self, models_dir: &Path, f: &ModelFile, extra: bool) -> PathBuf {
+        if extra {
+            models_dir.join(f.name)
+        } else if self.is_dir() {
             self.dest_path(models_dir).join(f.name)
         } else {
             self.dest_path(models_dir)
         }
     }
 
-    /// Every file present with its pinned size (cheap; the hash was checked
-    /// when it was downloaded).
+    /// Every model file present with its pinned size (cheap; the hash was
+    /// checked when it was downloaded). Extras don't count: the model works
+    /// without them ([`CatalogEntry::complete`]).
     pub fn installed(&self, models_dir: &Path) -> bool {
-        self.files.iter().all(|f| {
-            std::fs::metadata(self.file_path(models_dir, f)).is_ok_and(|m| m.is_file() && m.len() == f.size)
-        })
+        self.files.iter().all(|f| self.present(models_dir, f, false))
     }
 
     /// Point the local engine at the downloaded model; a language model
@@ -269,6 +310,10 @@ pub struct CatalogView {
     /// Full path of the file / folder it is saved as.
     pub dest: String,
     pub installed: bool,
+    /// Installed with its extras (the Hebrew models' language-ID model).
+    pub complete: bool,
+    /// Bytes a download would still fetch (0 when complete).
+    pub missing: u64,
     /// This build can download it (feature `download`) and run its engine.
     pub available: bool,
     pub files: Vec<FileView>,
@@ -294,11 +339,12 @@ pub fn catalog_view(
             page: e.page,
             dest: e.dest_path(models_dir).display().to_string(),
             installed: e.installed(models_dir),
+            complete: e.complete(models_dir),
+            missing: e.missing(models_dir),
             available: can_download && engine_built(e.engine),
             files: e
-                .files
-                .iter()
-                .map(|f| FileView {
+                .all_files()
+                .map(|(f, _)| FileView {
                     name: f.name,
                     url: f.url,
                     size: f.size,
@@ -418,8 +464,8 @@ pub fn run(
     std::fs::create_dir_all(&dir).map_err(|er| io("could not create the models folder", er))?;
     let mut done: u64 = 0;
     report(0, State::Downloading);
-    for f in e.files {
-        let target = e.file_path(models_dir, f);
+    for (f, extra) in e.all_files() {
+        let target = e.file_path(models_dir, f, extra);
         // Already there and intact (an earlier, cancelled try): keep it.
         if std::fs::metadata(&target).is_ok_and(|m| m.len() == f.size) {
             report(done, State::Verifying);
@@ -618,7 +664,7 @@ mod tests {
             assert!(ids.insert(e.id), "duplicate id {}", e.id);
             assert!(e.page.starts_with("https://huggingface.co/"));
             crate::shell::check_external_url(e.page).unwrap();
-            for f in e.files {
+            for (f, _) in e.all_files() {
                 check_download_url(f.url).unwrap();
                 // .../resolve/<40-hex commit>/<name>: never a moving branch.
                 let rev = f.url.split("/resolve/").nth(1).unwrap().split('/').next().unwrap();
@@ -700,11 +746,12 @@ mod tests {
             title: "T",
             desc: "",
             engine,
-            dest: if engine == ModelEngine::Parakeet { "pk-dir" } else { "m.bin" },
+            dest: if engine != ModelEngine::Whisper { "pk-dir" } else { "m.bin" },
             page: "https://huggingface.co/r",
             recommended: false,
             language: None,
             license: None,
+            extras: &[],
             files: Box::leak(fs.into_boxed_slice()),
         };
         (
@@ -812,6 +859,30 @@ mod tests {
     }
 
     #[test]
+    fn extras_land_in_the_models_folder_and_are_shared() {
+        let (mut e, mut mem) = entry_of(ModelEngine::SherpaOnline, vec![("encoder.int8.onnx", b"enc"), ("tokens.txt", b"tok")]);
+        let lid: &[u8] = b"tiny lid model";
+        let url: &'static str = Box::leak(format!("https://huggingface.co/w/resolve/{}/lid.bin", "b".repeat(40)).into_boxed_str());
+        mem.files.insert(url, lid.to_vec());
+        e.extras = Box::leak(vec![ModelFile { name: "lid.bin", url, size: lid.len() as u64, sha256: sha(lid) }].into_boxed_slice());
+        let d = tmp("extras");
+        assert_eq!(e.missing(&d), 3 + 3 + lid.len() as u64);
+        run(&e, &d, &mem, &AtomicBool::new(false), &mut |_| {}).unwrap();
+        assert_eq!(files_in(&d), vec!["lid.bin", "pk-dir/encoder.int8.onnx", "pk-dir/tokens.txt"]);
+        assert!(e.installed(&d) && e.complete(&d) && e.missing(&d) == 0);
+        // A model installed before extras existed: installed, not complete;
+        // the download fetches only the extra.
+        std::fs::remove_file(d.join("lid.bin")).unwrap();
+        assert!(e.installed(&d) && !e.complete(&d));
+        assert_eq!(e.missing(&d), lid.len() as u64);
+        mem.opens.lock().unwrap().clear();
+        run(&e, &d, &mem, &AtomicBool::new(false), &mut |_| {}).unwrap();
+        assert_eq!(*mem.opens.lock().unwrap(), vec![url.to_string()]);
+        assert!(e.complete(&d));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn cancel_stops_and_leaves_no_part_file() {
         let (e, mut mem) = entry_of(ModelEngine::Whisper, vec![("m.bin", b"model")]);
         let flag = Arc::new(AtomicBool::new(false));
@@ -838,8 +909,10 @@ mod tests {
     fn hebrew_downloads_choose_the_hebrew_route_and_keep_the_default() {
         let d = Path::new("/m");
         let zip = entry(ZIPFORMER_HE_ID).unwrap();
-        assert_eq!(zip.size(), 72_316_960);
-        assert_eq!(entry(PARAKEET_HE_ID).unwrap().size(), 672_825_290);
+        // Model + the 32 MB language-ID model (H6).
+        assert_eq!(zip.size(), 72_316_960 + 32_152_673);
+        assert_eq!(entry(PARAKEET_HE_ID).unwrap().size(), 672_825_290 + 32_152_673);
+        assert_eq!(zip.extras[0].name, crate::core_adapter::LID_FILE);
         let mut prefs = Prefs {
             asr_engine: AsrEngineChoice::Parakeet,
             hebrew_model: HebrewModel::None,

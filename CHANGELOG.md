@@ -52,6 +52,12 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   SHA-256 per file, CC-BY-4.0 credit shown in the row). Choosing Hebrew with
   no Hebrew model downloaded shows a hint that links to the download. A
   missing Hebrew model never blocks the default one.
+- **Windows: auto-detect hears Hebrew.** Each Hebrew model download now
+  also fetches Whisper tiny (32 MB, `ggml-tiny-q5_1.bin`) as a language-ID
+  model. With it present and a Hebrew model chosen, "Detect automatically"
+  sends Hebrew speech to the Hebrew model and everything else to the default
+  one. Without it, auto-detect stays English as before; a Hebrew model
+  downloaded earlier shows "Download 32 MB…" to fetch just that file.
 
 ### Fixed
 
