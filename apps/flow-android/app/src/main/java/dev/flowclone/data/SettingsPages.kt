@@ -43,7 +43,7 @@ object SettingsPages {
         Page.TIMING to "Timing & limits", Page.BUBBLE to "Bubble", Page.APPS to "Excluded apps", Page.HISTORY to "History",
     )
 
-    /** Whisper language codes offered in the picker; [Settings.LANGUAGE_UNSET] first. */
+    /** Whisper language codes offered in the picker, after Keyboard language and Phone language ([languageChoices]). */
     val LANGUAGES = listOf(
         "auto" to "Auto-detect", "en" to "English", "es" to "Spanish", "fr" to "French", "de" to "German",
         "it" to "Italian", "pt" to "Portuguese", "nl" to "Dutch", "he" to "Hebrew", "ar" to "Arabic",
@@ -52,10 +52,17 @@ object SettingsPages {
     )
 
     /** Picker entries; a stored code not in the short list (set elsewhere) is shown as an extra entry and kept. */
-    fun languageChoices(stored: String, phoneLanguage: String): List<Pair<String, String>> {
-        val all = listOf(Settings.LANGUAGE_UNSET to "Phone language ($phoneLanguage)") + LANGUAGES
+    fun languageChoices(stored: String, phoneLanguage: String, keyboardLanguage: String? = null): List<Pair<String, String>> {
+        val all = listOf(
+            Settings.LANGUAGE_KEYBOARD to keyboardChoice(keyboardLanguage),
+            Settings.LANGUAGE_UNSET to "Phone language ($phoneLanguage)",
+        ) + LANGUAGES
         return if (all.any { it.first == stored }) all else all + (stored to LanguageDefault.name(stored))
     }
+
+    /** D37: "Keyboard language · now: Hebrew"; [keyboardLanguage] = [KeyboardLanguage.of] (null = unknown). */
+    fun keyboardChoice(keyboardLanguage: String?): String =
+        "Keyboard language · now: " + (keyboardLanguage?.let(LanguageDefault::name) ?: "unknown (phone language is used)")
 
     /**
      * H5: the Language page's line about Hebrew, or null when Hebrew is not the next language.
@@ -63,7 +70,7 @@ object SettingsPages {
      */
     fun hebrewNote(effective: String, installed: HebrewModels.Kind?, local: Boolean): String? = when {
         !local || !HebrewModels.isHebrew(effective) -> null
-        installed == null -> "Hebrew on this phone uses whisper (about 50–65 % word errors). Import a Hebrew model: Settings → Speech to text → Model on this phone → Hebrew model."
+        installed == null -> "Hebrew on this phone uses whisper (about 50–65 % word errors). Import a Hebrew model: Settings → Speech to text → Hebrew model."
         else -> "Hebrew uses ${installed.label}. Switching between Hebrew and another language reloads the speech model (a few seconds)."
     }
 
@@ -171,11 +178,18 @@ object SettingsSummary {
     }
 
     fun language(s: Settings, effective: String): String {
-        val l = if (s.language == Settings.LANGUAGE_UNSET) {
-            "Phone language (" + (if (effective == "auto") "auto-detect" else LanguageDefault.name(effective)) + ")"
-        } else LanguageDefault.name(s.language)
+        val shown = if (effective == "auto") "auto-detect" else LanguageDefault.name(effective)
+        val l = when (s.language) {
+            Settings.LANGUAGE_KEYBOARD -> "Keyboard language ($shown)"
+            Settings.LANGUAGE_UNSET -> "Phone language ($shown)"
+            else -> LanguageDefault.name(s.language)
+        }
         return "$l · auto-format ${if (s.spokenCleanup) "on" else "off"}"
     }
+
+    /** The "Hebrew model" row (Speech to text, Model on this phone); [installed] = its label, null = none. */
+    fun hebrewModel(installed: String?): String =
+        installed?.let { "$it · used when the language is Hebrew" } ?: "None imported · Hebrew uses whisper"
 
     /** [whisper] / [parakeet]: imported file / folder names (null = none). */
     fun engine(s: Settings, whisper: String?, parakeet: String?): String = when (s.asrEngine) {

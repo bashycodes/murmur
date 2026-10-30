@@ -38,10 +38,11 @@ object DictionaryMerge {
 
 data class Settings(
     /**
-     * Dictation language: a whisper code, "auto", or [LANGUAGE_UNSET] = the phone's language when
-     * the loaded whisper model is multilingual and knows it, else auto ([LanguageDefault]).
+     * Dictation language: a whisper code, "auto", [LANGUAGE_KEYBOARD] = the active keyboard's
+     * language at dictation start (default since 2026-10-31), or [LANGUAGE_UNSET] = the phone's
+     * language when the loaded whisper model is multilingual and knows it, else auto ([LanguageDefault]).
      */
-    val language: String = LANGUAGE_UNSET,
+    val language: String = LANGUAGE_KEYBOARD,
     val cleanup: CleanupLevel = CleanupLevel.NONE,
     val retention: Retention = Retention.KEEP,
     /** D35: how many of the newest History rows keep their recording for "Retry with current settings" (0 = none). */
@@ -86,8 +87,11 @@ data class Settings(
     val learnFromEdits: Boolean = true,
 ) {
     companion object {
-        /** [language] not chosen: follow the phone ([LanguageDefault.effective]). */
+        /** "Phone language": follow the phone ([LanguageDefault.effective]). */
         const val LANGUAGE_UNSET = ""
+
+        /** D37 "Keyboard language": the active keyboard's language at dictation start, else the phone's. */
+        const val LANGUAGE_KEYBOARD = "keyboard"
 
         /**
          * The stored language after the 2026-10-23 default change (auto → phone language).
@@ -99,6 +103,19 @@ data class Settings(
             stored == null -> LANGUAGE_UNSET
             !migrated && stored == "auto" -> LANGUAGE_UNSET
             else -> stored
+        }
+
+        /**
+         * D37, once ([keyboardMigrated] false): "Phone language" ([LANGUAGE_UNSET], the default
+         * until 2026-10-31, after [migrateLanguage]) becomes [LANGUAGE_KEYBOARD]; nothing stored
+         * (a new install) is [LANGUAGE_KEYBOARD] too. An explicit language, or "auto"
+         * (Auto-detect) picked after the 2026-10-23 change, is kept, and so is Phone language
+         * picked after this migration ran.
+         */
+        fun migrateKeyboardLanguage(stored: String?, migrated: Boolean, keyboardMigrated: Boolean): String {
+            if (stored == null) return LANGUAGE_KEYBOARD
+            val v = migrateLanguage(stored, migrated)
+            return if (!keyboardMigrated && v == LANGUAGE_UNSET) LANGUAGE_KEYBOARD else v
         }
 
         /** "Bubble size" slider: 75 %..150 % in 5 % steps, 100 % = the spec sizes. */
@@ -186,7 +203,9 @@ data class Settings(
  * The dictation language when the user has not chosen one (2026-10-23: with `auto`, a 2 s English
  * clip on multilingual base came out as Bulgarian; whisper's language ID is unreliable on short,
  * accented phone speech). Unset = the phone's language if the loaded whisper model is
- * multilingual and whisper knows that language, else "auto". Explicit choices are kept.
+ * multilingual and whisper knows that language, else "auto". D37: [Settings.LANGUAGE_KEYBOARD]
+ * applies the same rule to the active keyboard's language ([KeyboardLanguage]) and falls back to
+ * the phone's when the keyboard's is unknown. Explicit choices are kept.
  */
 object LanguageDefault {
     /** whisper.cpp's language codes (g_lang). */
@@ -199,6 +218,9 @@ object LanguageDefault {
     /** java.util.Locale's legacy codes and whisper's own Javanese code. */
     private val ALIASES = mapOf("iw" to "he", "in" to "id", "ji" to "yi", "jv" to "jw", "nb" to "no")
 
+    /** "iw" → "he", "jv" → "jw", …; lowercase; null for null. */
+    fun normalize(code: String?): String? = code?.lowercase()?.let { ALIASES[it] ?: it }
+
     /** English-only whisper files: `*.en.bin`, `*.en-q5_1.bin`, distil-whisper. Parakeet: English only. */
     fun isMultilingual(asr: LoadedAsr): Boolean {
         if (asr.engine != dev.flowclone.core.AsrEngine.WHISPER) return false
@@ -206,17 +228,35 @@ object LanguageDefault {
         return !Regex("""\.en([._-]|$)""").containsMatchIn(n) && "distil" !in n
     }
 
+    /** Where the dictation language came from (debug log `language_source`). */
+    enum class Source(val wire: String) { KEYBOARD("keyboard"), PHONE("phone"), FIXED("fixed") }
+
+    /** The language the next dictation uses ("auto" = detect) and where it came from. */
+    data class Resolved(val language: String, val source: Source)
+
     /**
      * [deviceLanguage] = `Locale.getDefault().language`; [asr] = the loaded local ASR (null: none);
      * [installed] = languages with their own imported model (H5: `he` with a Hebrew model), which
-     * the phone language selects whatever is loaded right now.
+     * the phone (or keyboard) language selects whatever is loaded right now; [keyboard] = the
+     * active keyboard's language ([KeyboardLanguage.of]; null = unknown).
      */
-    fun effective(setting: String, deviceLanguage: String?, asr: LoadedAsr?, installed: Set<String> = emptySet()): String {
-        if (setting != Settings.LANGUAGE_UNSET) return setting
-        val lang = deviceLanguage?.lowercase()?.let { ALIASES[it] ?: it }
-        if (lang != null && lang in installed) return lang
-        return if (asr != null && isMultilingual(asr) && lang != null && lang in WHISPER_LANGUAGES) lang else "auto"
+    fun resolve(setting: String, deviceLanguage: String?, asr: LoadedAsr?, installed: Set<String> = emptySet(), keyboard: String? = null): Resolved {
+        fun follow(lang: String?): String {
+            val l = normalize(lang)
+            if (l != null && l in installed) return l
+            return if (asr != null && isMultilingual(asr) && l != null && l in WHISPER_LANGUAGES) l else "auto"
+        }
+        val kb = normalize(keyboard)?.takeIf { it in WHISPER_LANGUAGES }
+        return when (setting) {
+            Settings.LANGUAGE_KEYBOARD ->
+                if (kb != null) Resolved(follow(kb), Source.KEYBOARD) else Resolved(follow(deviceLanguage), Source.PHONE)
+            Settings.LANGUAGE_UNSET -> Resolved(follow(deviceLanguage), Source.PHONE)
+            else -> Resolved(setting, Source.FIXED)
+        }
     }
+
+    fun effective(setting: String, deviceLanguage: String?, asr: LoadedAsr?, installed: Set<String> = emptySet(), keyboard: String? = null): String =
+        resolve(setting, deviceLanguage, asr, installed, keyboard).language
 
     fun name(code: String): String = when (code) {
         "auto" -> "Auto-detect"
@@ -226,10 +266,30 @@ object LanguageDefault {
     }
 
     /** Main screen: what the next dictation uses, and why. */
-    fun label(setting: String, effective: String): String = when {
+    fun label(setting: String, effective: String, source: Source? = null): String = when {
+        setting == Settings.LANGUAGE_KEYBOARD && source == Source.KEYBOARD ->
+            if (effective == "auto") "Auto-detect (keyboard language not used: model is English-only or unknown)"
+            else "${name(effective)} (keyboard language)"
+        setting == Settings.LANGUAGE_KEYBOARD ->
+            if (effective == "auto") "Auto-detect (keyboard language unknown; phone language not used)"
+            else "${name(effective)} (phone language; keyboard language unknown)"
         setting != Settings.LANGUAGE_UNSET -> name(effective)
         effective == "auto" -> "Auto-detect (phone language not used: model is English-only or unknown)"
         else -> "${name(effective)} (phone language)"
+    }
+}
+
+/**
+ * D37: the active keyboard's language, from `InputMethodManager.getCurrentInputMethodSubtype()`:
+ * its `languageTag` ("he-IL"), else the deprecated `locale` ("iw_IL") when the tag is empty.
+ * Returns whisper's code ("he"), or null when there is none or whisper does not know it (emoji /
+ * handwriting subtypes, "und", "zz"): the caller then falls back to the phone language.
+ */
+object KeyboardLanguage {
+    fun of(languageTag: String?, locale: String?): String? {
+        val raw = languageTag?.trim()?.takeIf { it.isNotEmpty() } ?: locale?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val primary = raw.split('-', '_').first()
+        return LanguageDefault.normalize(primary)?.takeIf { it in LanguageDefault.WHISPER_LANGUAGES }
     }
 }
 

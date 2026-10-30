@@ -9,6 +9,7 @@ import dev.flowclone.insert.ClipboardGuard
 import dev.flowclone.service.AndroidClipPort
 import dev.flowclone.data.EngineMismatch
 import dev.flowclone.data.HebrewModels
+import dev.flowclone.data.KeyboardLanguage
 import dev.flowclone.data.LanguageDefault
 import dev.flowclone.data.Settings
 import dev.flowclone.data.LastDictation
@@ -177,11 +178,27 @@ class FlowApp : Application() {
     }
 
     /** The language the next dictation uses ([dev.flowclone.data.LanguageDefault]). */
-    fun effectiveLanguage(s: Settings = settings.load()): String =
-        LanguageDefault.effective(
+    fun effectiveLanguage(s: Settings = settings.load()): String = resolveLanguage(s).language
+
+    /** [effectiveLanguage] and where it came from (D37: keyboard / phone / fixed). */
+    fun resolveLanguage(s: Settings = settings.load()): LanguageDefault.Resolved =
+        LanguageDefault.resolve(
             s.language, java.util.Locale.getDefault().language, engine.loadedAsr(),
             if (engine.hebrewModel() != null) setOf(HebrewModels.LANGUAGE) else emptySet(),
+            keyboard = if (s.language == Settings.LANGUAGE_KEYBOARD) keyboardLanguage() else null,
         )
+
+    /**
+     * D37: the active keyboard's language (whisper code), or null when there is no keyboard
+     * subtype or its language is unknown. One binder call; never throws.
+     */
+    @Suppress("DEPRECATION") // InputMethodSubtype.locale: only when languageTag is empty
+    fun keyboardLanguage(): String? = try {
+        val st = getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.currentInputMethodSubtype
+        st?.let { KeyboardLanguage.of(it.languageTag, it.locale) }
+    } catch (_: Exception) {
+        null
+    }
 
     /**
      * D28, once: stored D18 cloud settings (schema 1) become the one OpenRouter config. The rules
@@ -257,6 +274,8 @@ class EngineHolder(
     companion object {
         /** Longest a reload waits for the previous engine's running commit (20 s UI timeout + slack). */
         const val UNLOAD_WAIT_MS = 30_000L
+        /** H5: the bubble / main screen while the Hebrew model loads (also after a keyboard switch, D37). */
+        const val HEBREW_LOADING = "Loading the Hebrew speech model…"
     }
 
     sealed interface State {
@@ -303,7 +322,9 @@ class EngineHolder(
 
     /**
      * H5 (decision 4: one model in RAM): after a language change, reload when the next
-     * dictation needs a different model (Hebrew ↔ default). No-op otherwise.
+     * dictation needs a different model (Hebrew ↔ default). No-op otherwise. D37: also at every
+     * dictation start, since the keyboard language can change at any time; the label is set
+     * before the reload so a dictation started right now says why it has to wait.
      */
     @Synchronized
     fun ensureLanguage() {
@@ -312,7 +333,11 @@ class EngineHolder(
             State.Loading -> return // the load re-checks when it finishes
             else -> Unit
         }
-        if (wantedRoute() != loadedRoute) reload()
+        val want = wantedRoute()
+        if (want != loadedRoute) {
+            loadingLabel = if (want != null) HEBREW_LOADING else null
+            reload()
+        }
     }
 
     /** Native library status, for the UI. */
@@ -429,7 +454,7 @@ class EngineHolder(
         app.migrateCloud()
         val route = wantedRoute(s)
         loadedRoute = route
-        loadingLabel = if (route != null) "Loading the Hebrew speech model…" else null
+        loadingLabel = if (route != null) HEBREW_LOADING else null
         val hebrew = hebrewModel()?.let { (path, kind) -> HebrewModels.languageModel(path, kind, app.dev.parakeetDecoding) }
         val local = if (!app.caps.local && !s.mockEngine) EnginePlan.Plan.Missing("This build has no on-device engine.")
         else EnginePlan.plan(

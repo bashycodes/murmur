@@ -72,6 +72,8 @@ function fill(prefs) {
     for (const e of document.querySelectorAll(".lw-edit"))
         showEdit(e);
     showLanguages(prefs);
+    if (prefs.keyboard_language)
+        refreshKeyboard();
 }
 /** Select `value`, adding it as an option first when the list lacks it
  *  (a value saved by hand or by an older version). */
@@ -197,17 +199,14 @@ function wireEdit(box) {
         showEdit(box);
         const p = prefsStore.get();
         if (box.dataset.edit === "languages" && p)
-            showLanguages(p, input.value);
+            showLanguages(p, input.value, false);
     });
 }
-/** "English, German" (or "Detected automatically"), and the Parakeet
- *  note when the local engine only understands English. */
-function showLanguages(prefs, typed) {
-    const codes = typed === undefined ? prefs.languages : typed.split(",").map((s) => s.trim()).filter(Boolean);
-    let names = codes;
+/** English names of language codes ("he" → "Hebrew"); the codes without Intl.DisplayNames. */
+function languageNames(codes) {
     try {
         const dn = new Intl.DisplayNames(["en"], { type: "language" });
-        names = codes.map((c) => {
+        return codes.map((c) => {
             try {
                 return dn.of(c) ?? c;
             }
@@ -217,19 +216,55 @@ function showLanguages(prefs, typed) {
         });
     }
     catch {
-        // No Intl.DisplayNames: show the codes.
+        return codes;
     }
-    $("languages_desc").textContent = names.length ? `${names.join(", ")}.` : "Detected automatically.";
+}
+/** D37: the keyboard layout's language right now (`null` = unknown), as
+ *  last read; re-read each time the languages are shown. */
+let keyboardNow = null;
+/** "English, German" (or "Detected automatically", or D37 "Keyboard
+ *  language · now: Hebrew"), and the Parakeet note when the local engine
+ *  only understands English. */
+function showLanguages(prefs, typed, keyboard) {
+    const codes = typed === undefined ? prefs.languages : typed.split(",").map((s) => s.trim()).filter(Boolean);
+    const kb = keyboard ?? (typed === undefined && prefs.keyboard_language === true);
+    const names = languageNames(codes);
+    const desc = $("languages_desc");
+    if (kb) {
+        const now = keyboardNow ? languageNames([keyboardNow])[0] : "unknown";
+        const fallback = names.length ? names.join(", ") : "detected automatically";
+        desc.textContent = `Keyboard language · now: ${now}. Each dictation uses the language of the keyboard layout in the app you dictate into; an unknown layout is ${fallback}.`;
+    }
+    else {
+        desc.textContent = names.length ? `${names.join(", ")}.` : "Detected automatically.";
+    }
     // Hebrew has its own model (D33): the English-only note doesn't apply.
-    const he = hebrewChosen(codes);
+    const he = hebrewChosen(codes) || (kb && hebrewChosen(keyboardNow ? [keyboardNow] : []));
     const heModel = hebrewReady(prefs.hebrew_model);
     $("languages_parakeet").hidden = prefs.asr_engine !== "parakeet" || (he && heModel);
     // Only once the catalogue is known (it says what is downloaded).
     $("languages_hebrew").hidden = !he || heModel || models.catalog().length === 0;
-    showLanguagePick(codes);
+    showLanguagePick(codes, kb);
 }
-/** The picker: Detect / English / Hebrew, or "Other…" with the code field. */
-function languagePick(codes) {
+/** Re-read the keyboard layout's language, then show the languages again. */
+function refreshKeyboard() {
+    invoke("keyboard_language")
+        .then((k) => {
+        if (k === keyboardNow)
+            return;
+        keyboardNow = k;
+        const p = prefsStore.get();
+        if (p)
+            showLanguages(p);
+    })
+        .catch(() => {
+        // Not available (older backend): "unknown".
+    });
+}
+/** The picker: Keyboard / Detect / English / Hebrew, or "Other…" with the code field. */
+function languagePick(codes, keyboard) {
+    if (keyboard)
+        return "keyboard";
     if (codes.length === 0)
         return "";
     if (hebrewChosen(codes))
@@ -238,13 +273,13 @@ function languagePick(codes) {
         return "en";
     return "other";
 }
-function showLanguagePick(codes) {
+function showLanguagePick(codes, keyboard) {
     const sel = $("language_pick");
     const box = $("languages_other");
     // Keep "Other…" while its field is open.
     if (box.classList.contains("is-editing"))
         return;
-    const v = languagePick(codes);
+    const v = languagePick(codes, keyboard);
     sel.value = v;
     box.hidden = v !== "other";
 }
@@ -258,11 +293,16 @@ function pickLanguage() {
         return;
     }
     box.hidden = true;
-    input.value = v;
+    // Keyboard language (D37): no fixed languages behind it, so an unknown
+    // layout is detected automatically.
+    const codes = v === "keyboard" ? "" : v;
+    input.value = codes;
     input.dispatchEvent(new Event("change", { bubbles: true }));
     const p = prefsStore.get();
     if (p)
-        showLanguages(p, v);
+        showLanguages(p, codes, v === "keyboard");
+    if (v === "keyboard")
+        refreshKeyboard();
 }
 /** The prefs fields this module owns, as the pages show them. */
 export function collectGeneral() {
@@ -286,6 +326,7 @@ export function collectGeneral() {
     for (const f of BOOL_FIELDS)
         next[f] = $(f).checked;
     next.paste_method = $("paste_method").value;
+    next.keyboard_language = $("language_pick").value === "keyboard";
     next.languages = $("languages")
         .value.split(",")
         .map((s) => s.trim())
@@ -302,6 +343,11 @@ export const general = {
     init() {
         $("asr_engine").addEventListener("change", showEngineFields);
         $("language_pick").addEventListener("change", pickLanguage);
+        // D37: the layout may have changed while Settings was in the background.
+        window.addEventListener("focus", () => {
+            if (prefsStore.get()?.keyboard_language)
+                refreshKeyboard();
+        });
         // The Hebrew hint depends on what is downloaded and the Hebrew choice.
         models.onChange(() => {
             const p = prefsStore.get();
