@@ -60,4 +60,34 @@ object AppStyles {
     fun set(overrides: Map<String, Category>, pkg: String, c: Category): Map<String, Category> = LinkedHashMap(overrides).apply { put(pkg, c) }
 
     fun remove(overrides: Map<String, Category>, pkg: String): Map<String, Category> = overrides - pkg
+
+    // ---- Style tab (AndroidStyle.dc.html): the apps a group's style applies in ----
+
+    /** The group dictation into [pkg] gets: the user's override, else the built-in list ([AppCategorizer]). */
+    fun groupOf(pkg: String, overrides: Map<String, Category>): Category = overrides[pkg] ?: AppCategorizer.categorize(pkg, null)
+
+    /**
+     * The launchable apps whose dictation gets [c]'s style: apps the user moved into [c] first
+     * (their own choice), then the built-in list's; each part by label (case-insensitive), then package.
+     */
+    fun inGroup(installed: List<App>, overrides: Map<String, Category>, c: Category): List<App> {
+        val byLabel = compareBy<App, String>(String.CASE_INSENSITIVE_ORDER) { it.label }.thenBy { it.pkg }
+        val (moved, builtIn) = installed.distinctBy { it.pkg }.filter { groupOf(it.pkg, overrides) == c }.partition { it.pkg in overrides }
+        return moved.sortedWith(byLabel) + builtIn.sortedWith(byLabel)
+    }
+
+    /** The line under the app icons on the Style tab. */
+    fun caption(c: Category): String = when (c) {
+        Category.PERSONAL -> "Used when you dictate into chat apps for friends and family"
+        Category.WORK -> "Used when you dictate into team chat apps"
+        Category.EMAIL -> "Used when you dictate into email"
+        Category.OTHER -> "Used in every other app"
+    }
+
+    /** TalkBack text of the icon row: "Apps in Personal: WhatsApp, Signal and 3 more" ([shown] icons of [apps]). */
+    fun appsDescription(c: Category, apps: List<App>, shown: Int): String = when {
+        apps.isEmpty() -> "No apps on this phone in ${groupName(c)} yet"
+        apps.size <= shown -> "Apps in ${groupName(c)}: " + apps.joinToString(", ") { it.label }
+        else -> "Apps in ${groupName(c)}: " + apps.take(shown).joinToString(", ") { it.label } + " and ${apps.size - shown} more"
+    }
 }

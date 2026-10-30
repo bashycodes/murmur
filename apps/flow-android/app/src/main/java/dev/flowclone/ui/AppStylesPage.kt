@@ -28,6 +28,9 @@ import kotlin.concurrent.thread
  * of launchable apps with the ones dictated into recently first. Changes apply at once through
  * [update] (SettingsActivity.applyNow); storage is [Settings.appBuckets] as before.
  *
+ * The Style tab ([dev.flowclone.ui.tabs.StyleTab]) uses it without [render]: [apps] / [icon] for
+ * its icon row ([onLoaded] when they arrive) and [openPicker] for its "+".
+ *
  * App visibility: the manifest's `<queries>` launcher intent (not QUERY_ALL_PACKAGES), so an
  * override for an app without a launcher icon reads like an uninstalled one (package name only).
  */
@@ -45,6 +48,13 @@ internal class AppStylesPage(
     private val icons = HashMap<String, Drawable?>()
     private var recent: List<String> = emptyList()
     private var picker: (() -> Unit)? = null
+    private var loading = false
+
+    /** Called on the main thread once the launchable apps (and icons) are loaded. */
+    var onLoaded: (() -> Unit)? = null
+
+    /** Launchable apps, null until loaded ([load]). */
+    val apps: List<AppStyles.App>? get() = installed
     /** The overrides the rows show now: a refresh rebuilds only when the stored map differs (a dropdown change does not). */
     private var shown: Map<String, Category>? = null
 
@@ -64,18 +74,23 @@ internal class AppStylesPage(
     /** Called from SettingsActivity.onResume via the page's refresher: another screen may have changed the overrides. */
     fun refresh() { if (::list.isInitialized) fill() }
 
-    private fun load() {
+    /** Loads the launchable apps and recent target apps off the main thread ([force]: again, e.g. apps were installed). */
+    fun load(force: Boolean = false) {
+        if (loading || (installed != null && !force)) return
+        loading = true
         thread(name = "app-styles-load") {
             val apps = runCatching { launchable() }.getOrDefault(emptyList())
             // Cheap: the last 500 history rows, newest first; empty when history is off (Never save).
             val r = runCatching { app.history.recent().mapNotNull { it.appId?.takeIf(String::isNotBlank) } }.getOrDefault(emptyList())
             activity.runOnUiThread {
+                loading = false
                 if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
                 recent = r
                 installed = apps.map { it.first }
                 for ((a, icon) in apps) icons[a.pkg] = icon
                 fill(force = true)
                 picker?.invoke()
+                onLoaded?.invoke()
             }
         }
     }
@@ -96,9 +111,12 @@ internal class AppStylesPage(
         pm.getApplicationLabel(pm.getApplicationInfo(pkg, PackageManager.ApplicationInfoFlags.of(0))).toString()
     }.getOrNull()
 
+    fun icon(pkg: String): Drawable? = iconOf(pkg)
+
     private fun iconOf(pkg: String): Drawable? = icons.getOrPut(pkg) { runCatching { pm.getApplicationIcon(pkg) }.getOrNull() }
 
     private fun fill(force: Boolean = false) = with(ui) {
+        if (!::list.isInitialized) return@with
         val overrides = app.settings.load().appBuckets
         if (!force && overrides == shown) return@with
         shown = overrides
@@ -165,7 +183,10 @@ internal class AppStylesPage(
 
     // ---- Add app ----
 
-    private fun pick() = with(ui) {
+    /** "Add app" from elsewhere (Style tab "+"): the same picker; the group step preselects [preselect] (null: the built-in group). */
+    fun openPicker(preselect: Category? = null) { load(); pick(preselect) }
+
+    private fun pick(preselect: Category? = null) = with(ui) {
         var query = ""
         lateinit var results: LinearLayout
         lateinit var dialog: AlertDialog
@@ -184,7 +205,7 @@ internal class AppStylesPage(
                     results.sectionLabel(if (isRecent) "RECENTLY DICTATED INTO" else "ALL APPS")
                     header = isRecent
                 }
-                results.addView(pickRow(a) { dialog.dismiss(); chooseGroup(a) })
+                results.addView(pickRow(a) { dialog.dismiss(); chooseGroup(a, preselect) })
             }
         }
         val body = LinearLayout(activity).apply {
@@ -216,10 +237,10 @@ internal class AppStylesPage(
         contentDescription = "${a.label}, ${AppStyles.builtIn(a.pkg)}"
     }
 
-    /** Second step: which group [a] goes in (preselected: its built-in one). */
-    private fun chooseGroup(a: AppStyles.App) {
+    /** Second step: which group [a] goes in (preselected: [preselect], else its built-in one). */
+    private fun chooseGroup(a: AppStyles.App, preselect: Category?) {
         val names = AppStyles.GROUPS.map { it.second }.toTypedArray()
-        val pre = AppStyles.GROUPS.indexOfFirst { it.first == AppStyles.suggested(a.pkg) }
+        val pre = AppStyles.GROUPS.indexOfFirst { it.first == (preselect ?: AppStyles.suggested(a.pkg)) }
         AlertDialog.Builder(activity)
             .setTitle("${a.label}: group")
             .setSingleChoiceItems(names, pre) { d, which ->
