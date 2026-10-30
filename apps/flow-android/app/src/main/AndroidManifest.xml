@@ -54,8 +54,10 @@
         </activity>
         <!-- Drawer → Permissions (the setup checklist); draws its own top bar. -->
         <activity android:name=".ui.PermissionsActivity" android:exported="false" android:label="Permissions" android:theme="@style/Theme.Flow.Shell" />
-        <activity android:name=".ui.ModelImportActivity" android:exported="false" android:label="@string/title_models" />
-        <activity android:name=".ui.SettingsActivity" android:exported="false" android:label="@string/title_settings" />
+        <activity android:name=".ui.ModelImportActivity" android:exported="false" android:label="@string/title_models"
+            android:theme="@style/Theme.Flow.Shell" />
+        <activity android:name=".ui.SettingsActivity" android:exported="false" android:label="@string/title_settings"
+            android:theme="@style/Theme.Flow.Shell" />
         <activity android:name=".ui.DictionaryActivity" android:exported="false" android:label="@string/title_dictionary" />
         <!-- History, Insights, Notes and the note editor draw the design's top bar (Theme.Flow.Shell). -->
         <activity android:name=".ui.HistoryActivity" android:exported="false" android:label="@string/title_history" android:theme="@style/Theme.Flow.Shell" />
@@ -66,9 +68,12 @@
         <activity android:name=".ui.NoteEditorActivity" android:exported="false" android:label="@string/title_scratchpad"
             android:theme="@style/Theme.Flow.Shell"
             android:launchMode="singleTop" android:windowSoftInputMode="adjustResize|stateVisible" />
-        <activity android:name=".ui.DeveloperActivity" android:exported="false" android:label="@string/title_developer" />
-        <activity android:name=".ui.OpenRouterActivity" android:exported="false" android:label="OpenRouter (cloud)" />
-        <activity android:name=".ui.ModelPickerActivity" android:exported="false" android:label="Model" />
+        <activity android:name=".ui.DeveloperActivity" android:exported="false" android:label="@string/title_developer"
+            android:theme="@style/Theme.Flow.Shell" />
+        <activity android:name=".ui.OpenRouterActivity" android:exported="false" android:label="OpenRouter (cloud)"
+            android:theme="@style/Theme.Flow.Shell" />
+        <activity android:name=".ui.ModelPickerActivity" android:exported="false" android:label="Model"
+            android:theme="@style/Theme.Flow.Shell" />
 
         <!-- D21: the debug log file, shared only through a user-initiated share sheet (read grant). -->
         <provider
