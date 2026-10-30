@@ -145,13 +145,39 @@
   let suggestions = [{ word: "Wispr Flow", heard: "whisper flow", app: "slack.exe", ts: now, count: 2 }];
   const listeners = {};
   const debugLog = { enabled: false, count: 12 };
+  // ?onboard=1: a fresh install (onboarded false, no server, no model yet):
+  // first-run setup opens over the shell. Saving a model location
+  // "loads" it: a path containing "missing" is not found, anything else is ready.
+  const onboard = new URLSearchParams(location.search).get("onboard") === "1";
+  let modelStatus = { state: "ready", path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\ggml-base.bin", load_ms: 312 };
+  if (onboard) {
+    prefs.onboarded = false;
+    prefs.llm_enabled = false;
+    dev = { ...dev, host: "", token: "", allow_server: true };
+    or.notice = null;
+    modelStatus = { state: "missing", path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\ggml-base.bin" };
+  }
+  const modelKey = (p) => [p.asr_engine, p.model_path, p.parakeet_model_dir].join("|");
   const debugView = () => ({ enabled: debugLog.enabled, count: debugLog.count, path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\debug\\dictations.jsonl", stats: { written: 0, dropped: 0, write_errors: 0 } });
   const cmds = {
     get_prefs: () => structuredClone(prefs),
-    set_prefs: ({ prefs: p }) => { prefs = structuredClone(p); },
+    set_prefs: ({ prefs: p }) => {
+      const reload = modelKey(p) !== modelKey(prefs);
+      prefs = structuredClone(p);
+      if (reload) {
+        const path = p.asr_engine === "parakeet"
+          ? p.parakeet_model_dir || "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
+          : p.model_path || "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\ggml-base.bin";
+        modelStatus = { state: "loading", path };
+        setTimeout(() => {
+          modelStatus = path.includes("missing") ? { state: "missing", path } : { state: "ready", path, load_ms: 900 };
+          window.__emit("model:status", modelStatus);
+        }, 150);
+      }
+    },
     list_microphones: () => ["USB Mic", "Realtek"],
     get_model_status: () => ({
-      status: { state: "ready", path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\ggml-base.bin", load_ms: 312 },
+      status: { ...modelStatus },
       default_path: "C:\\…\\ggml-base.bin", default_parakeet_dir: "C:\\…\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", models_dir: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models",
       llm: { state: "plugin_missing", path: "C:\\…\\qwen.gguf", message: "llm plugin not found (C:\\Program Files\\Murmur\\flow_llm.dll: not found)" },
       default_llm_path: "C:\\…\\qwen2.5-0.5b-instruct-q4_k_m.gguf", llm_plugin: "flow_llm.dll",
