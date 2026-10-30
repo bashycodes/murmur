@@ -254,10 +254,13 @@
   };
   window.__emit = (name, payload) => (listeners[name] || []).forEach((cb) => cb({ payload }));
 })();
-// ?tab=history etc.: open that tab once the page has booted (screenshots).
+// Old tab names -> page ids (the app shell's data-page values).
+const OLD_TABS = { general: "settings-general", ai: "settings-cleanup", history: "home", developer: "settings-developer", openrouter: "settings-openrouter" };
+window.__goPage = (id) => document.querySelector(`[data-page="${OLD_TABS[id] ?? id}"]`)?.click();
+// ?tab=home / ?tab=settings-speech etc.: open that page once the page has booted (screenshots).
 window.addEventListener("load", () => {
   const tab = new URLSearchParams(location.search).get("tab");
-  if (tab) setTimeout(() => document.querySelector(`nav.tabs [data-tab="${tab}"]`)?.click(), 50);
+  if (tab) setTimeout(() => window.__goPage(tab), 50);
   const undo = new URLSearchParams(location.search).get("undo");
   if (undo) setTimeout(() => [...document.querySelectorAll("button")].find((b) => b.textContent.startsWith("Undo"))?.click(), 300);
 });
@@ -280,7 +283,7 @@ window.addEventListener("load", () => {
     await wait(300);
     log("BOOT tab hidden:", $("tab_openrouter").hidden, "| badge hidden:", $("or_badge").hidden, "| refreshes:", window.__refreshes || 0);
     log("PRIVACY LINE", $("privacy_line").textContent);
-    document.querySelector('nav.tabs [data-tab="openrouter"]').click();
+    window.__goPage("settings-openrouter");
     await wait(300);
     log("OPEN refreshes:", window.__refreshes || 0, "| notice:", $("or_notice").textContent.slice(0, 40));
     $("or_notice_ok").click();
@@ -359,13 +362,17 @@ window.addEventListener("load", () => {
     $("or_budget").dispatchEvent(new Event("change"));
     await wait(100);
     log("USAGE", $("or_usage_total").textContent, "|", $("or_usage_rows").textContent);
-    document.querySelector('nav.tabs [data-tab="ai"]').click();
+    window.__goPage("settings-cleanup");
     await wait(100);
     log("AI ENGINE", $("ai_engine_line").textContent);
-    document.querySelector('nav.tabs [data-tab="developer"]').click();
+    window.__goPage("settings-speech");
     await wait(200);
-    log("ROUTES", [...$("dev_routes").children].map((li) => li.firstChild.textContent.trim()).join(" > "));
+    log("ROUTES", [...$("dev_routes").querySelectorAll("[data-route]")].map((r) => r.dataset.route + (r.classList.contains("is-off") ? "(off)" : "")).join(" > "));
+    window.__goPage("settings-developer");
+    await wait(200);
     log("LAST", $("dev_last").textContent);
+    window.__goPage("settings-server");
+    await wait(100);
     $("dev_save").click();
     await wait(200);
     log("DEV_SET keys:", Object.keys(calls("dev_set").at(-1)?.[1].form ?? {}).join(","));
