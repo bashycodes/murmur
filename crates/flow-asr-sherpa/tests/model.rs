@@ -93,3 +93,46 @@ fn greedy_without_hotwords_beam_with() {
         );
     }
 }
+
+/// Parakeet-v3-he int8 (krut42/voice-parakeet-he-int8, pinned in
+/// docs/findings/2026-10-30-hebrew-model-pins.md) on the unchanged
+/// `nemo_transducer` path. Runs when FLOW_PARAKEET_HE_DIR and FLOW_HE_WAV
+/// (16 kHz mono Hebrew wav, int16 or float) are set.
+#[test]
+fn parakeet_he_loads_on_nemo_path() {
+    let (Some(dir), Some(wav)) = (
+        std::env::var_os("FLOW_PARAKEET_HE_DIR"),
+        std::env::var_os("FLOW_HE_WAV"),
+    ) else {
+        eprintln!("SKIP: FLOW_PARAKEET_HE_DIR / FLOW_HE_WAV unset");
+        return;
+    };
+    let mut r = hound::WavReader::open(&wav).unwrap();
+    let mut pcm: Vec<f32> = match r.spec().sample_format {
+        hound::SampleFormat::Float => r.samples::<f32>().map(|s| s.unwrap()).collect(),
+        hound::SampleFormat::Int => r
+            .samples::<i16>()
+            .map(|s| s.unwrap() as f32 / 32768.0)
+            .collect(),
+    };
+    let peak = pcm.iter().fold(0f32, |m, x| m.max(x.abs()));
+    pcm.iter_mut().for_each(|x| *x *= 0.5 / peak.max(1e-6));
+    let t = Instant::now();
+    let eng = ParakeetEngine::load(&ParakeetConfig::new(PathBuf::from(dir), 4)).expect("load");
+    eprintln!("load: {} ms", t.elapsed().as_millis());
+    assert!(eng.supports_hotwords());
+    for s in [Search::Greedy, Search::Beam] {
+        let t = Instant::now();
+        let text = eng.transcribe_with::<&str>(&pcm, &[], s).unwrap();
+        let secs = t.elapsed().as_secs_f64();
+        eprintln!(
+            "{s:?}: RTF {:.3}: {text}",
+            secs * 16_000.0 / pcm.len() as f64
+        );
+        let he = text
+            .chars()
+            .filter(|c| ('\u{05D0}'..='\u{05EA}').contains(c))
+            .count();
+        assert!(he > 10, "{text}");
+    }
+}
