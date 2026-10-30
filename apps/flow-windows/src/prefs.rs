@@ -122,6 +122,11 @@ pub enum HebrewModel {
     None,
 }
 
+/// Recordings kept for retry by default (the newest history rows).
+pub const DEFAULT_RETRY_AUDIO_KEEP: u32 = 20;
+/// Most recordings the setting accepts.
+pub const MAX_RETRY_AUDIO_KEEP: u32 = 200;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Prefs {
@@ -159,6 +164,9 @@ pub struct Prefs {
     /// can't be opened.
     pub type_fallback_max_chars: usize,
     pub retention: Retention,
+    /// Retry (DECISIONS D35): keep the recordings of this many newest
+    /// history rows so they can be re-transcribed (0 = keep none).
+    pub retry_audio_keep: u32,
     pub max_dictation_minutes: u64,
     /// Whisper ggml model; `None` = `%APPDATA%\FlowClone\models\ggml-base.bin`.
     /// Never downloaded automatically (DECISIONS D9).
@@ -234,6 +242,7 @@ impl Default for Prefs {
             paste_restore_delay_ms: None,
             type_fallback_max_chars: 200,
             retention: Retention::Keep,
+            retry_audio_keep: DEFAULT_RETRY_AUDIO_KEEP,
             max_dictation_minutes: 20,
             model_path: None,
             asr_threads: None,
@@ -395,6 +404,11 @@ impl Prefs {
         let hf = self.hands_free_silence_ms;
         if hf != 0 && !(300..=10_000).contains(&hf) {
             return Err("hands-free auto-stop must be 0.3-10 s of silence (or off)".into());
+        }
+        if self.retry_audio_keep > MAX_RETRY_AUDIO_KEEP {
+            return Err(format!(
+                "keep recordings for retry: at most {MAX_RETRY_AUDIO_KEEP} dictations"
+            ));
         }
         Ok(())
     }
@@ -935,6 +949,17 @@ mod tests {
     #[test]
     fn validate_accepts_defaults() {
         assert_eq!(Prefs::default().validate(), Ok(()));
+    }
+
+    #[test]
+    fn retry_audio_keep_defaults_to_20_and_is_bounded() {
+        let p: Prefs = serde_json::from_str("{}").unwrap();
+        assert_eq!(p.retry_audio_keep, 20, "a file from before retry");
+        let mut p = Prefs::default();
+        p.retry_audio_keep = 0;
+        assert_eq!(p.validate(), Ok(()), "0 = keep none");
+        p.retry_audio_keep = MAX_RETRY_AUDIO_KEEP + 1;
+        assert!(p.validate().unwrap_err().contains("retry"));
     }
 
     #[test]

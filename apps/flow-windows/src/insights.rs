@@ -230,6 +230,39 @@ impl InsightsStore {
             .add(date, words.max(0) as u64, duration_ms.max(0) as u64, app);
     }
 
+    /// A retry changed a dictation of `date` from `old` to `new` words:
+    /// the counts follow the newest version (same dictation, same audio).
+    /// A dictation not counted before (no words) is counted now.
+    /// Its route share moves from `routes.0` to `routes.1` too.
+    pub fn retried(
+        &mut self,
+        date: LocalDate,
+        old: i64,
+        new: i64,
+        app: &str,
+        routes: (Option<&str>, Option<&str>),
+    ) {
+        if routes.0 != routes.1 {
+            let day = self.extra.routes.entry(date.key()).or_default();
+            if let Some(n) = routes.0.and_then(|r| day.get_mut(r)) {
+                *n = n.saturating_sub(1);
+            }
+            if let Some(r) = routes.1 {
+                *day.entry(r.to_string()).or_default() += 1;
+            }
+        }
+        let (old, new) = (old.max(0) as u64, new.max(0) as u64);
+        let counted = old > 0 && self.data.days.get(&date.key()).is_some_and(|d| d.count > 0);
+        if !counted {
+            self.data.add(date, new, 0, app);
+            return;
+        }
+        let d = self.data.days.entry(date.key()).or_default();
+        d.words = d.words.saturating_sub(old) + new;
+        let a = d.apps.entry(app.to_string()).or_default();
+        *a = a.saturating_sub(old) + new;
+    }
+
     /// First run only: fold the transcripts already in History in, so the
     /// page doesn't start at zero. Returns how many rows were counted.
     pub fn backfill_once(
@@ -327,6 +360,24 @@ impl InsightsStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_retry_moves_the_counts_to_the_newest_version() {
+        let mut s = InsightsStore::in_memory();
+        let day = LocalDate(20_000);
+        s.record(day, 5, 2000, "slack.exe");
+        s.record(day, 3, 1000, "code.exe");
+        s.record_extras(day, Some("pc"), Fixes::default());
+        s.retried(day, 5, 8, "slack.exe", (Some("pc"), Some("cloud")));
+        let routes = &s.extra.routes[&day.key()];
+        assert_eq!((routes["pc"], routes["cloud"]), (0, 1));
+        let d = &s.data.days[&day.key()];
+        assert_eq!((d.words, d.count, d.ms), (11, 2, 3000), "same dictations");
+        assert_eq!(d.apps["slack.exe"], 8);
+        // An empty original was never counted: the retry counts it.
+        s.retried(LocalDate(20_001), 0, 4, "code.exe", (None, None));
+        assert_eq!(s.data.days[&LocalDate(20_001).key()].count, 1);
+    }
     use crate::history::{word_count, Entry};
     use crate::prefs::Retention;
 
