@@ -4,7 +4,7 @@
 // audio, cleanup = text), shared privacy + budget. Every change is applied
 // at once by a `dev_or_set_*` command that returns the whole OrView.
 
-import { $, askDialog, el, html, setStatus, setValue, when } from "../lib/dom.js";
+import { $, askDialog, el, setStatus, setValue, when } from "../lib/dom.js";
 import { cloudHint, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import type {
@@ -19,6 +19,7 @@ import type {
   SttPath,
   UsageView,
 } from "../lib/types.js";
+import type { Feature } from "../lib/router.js";
 import { views } from "../lib/views.js";
 
 interface KeyInfo {
@@ -45,186 +46,6 @@ interface CleanupTest {
   cost_usd?: number | null;
   model?: string | null;
 }
-
-const TEMPLATE = `
-<!-- D28 (docs/proposals/openrouter-only-cloud.md §2): the only place audio or
-     text can reach a third party. The tab is hidden in builds without it. -->
-<section class="panel" data-panel="openrouter">
-  <ul id="or_warnings" class="warnings"></ul>
-
-  <fieldset id="or_notice_box" hidden>
-    <legend>Cloud settings changed</legend>
-    <p id="or_notice" class="banner"></p>
-    <div class="toolbar"><button type="button" class="small" id="or_notice_ok">OK</button></div>
-  </fieldset>
-
-  <fieldset>
-    <legend>OpenRouter account</legend>
-    <label>API key
-      <span class="token-row">
-        <input id="or_key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-v1-…" />
-        <button type="button" class="small secondary" id="or_key_paste">Paste</button>
-        <button type="button" class="small" id="or_key_save">Save key</button>
-        <button type="button" class="small secondary" id="or_key_clear">Clear</button>
-      </span>
-    </label>
-    <p id="or_key_state" class="hint">No key saved</p>
-    <p class="hint">Stored in Windows Credential Manager (flow-clone/cloud/openrouter), never in prefs.json, never logged. Only ever sent to openrouter.ai.</p>
-    <div class="toolbar"><button type="button" class="small secondary" id="or_key_check">Check key</button></div>
-    <dl id="or_key_info" class="kv" hidden></dl>
-    <p id="or_key_warn" class="hint warn" hidden>This key has no credit limit; OpenRouter recommends setting one.</p>
-    <p id="or_key_status" class="hint"></p>
-  </fieldset>
-
-  <fieldset>
-    <legend>Privacy</legend>
-    <label class="row"><input type="checkbox" id="or_zdr" /> Zero-retention providers only (recommended)</label>
-    <label class="row"><input type="checkbox" id="or_dc_deny" /> Only providers that don't collect data</label>
-    <p class="hint">Applies to speech and text cleanup. OpenRouter routes each request only to providers that meet both.</p>
-    <p id="or_privacy_status" class="hint"></p>
-  </fieldset>
-
-  <fieldset>
-    <legend>Speech-to-text (sends audio)</legend>
-    <label class="row"><input type="checkbox" id="or_stt_allow" /> Transcribe with OpenRouter</label>
-    <p id="or_stt_consent" class="hint"></p>
-    <div class="or-model">
-      <span class="grow">
-        <span id="or_stt_model_name"></span>
-        <code id="or_stt_model_id" class="model-id"></code>
-        <span id="or_stt_model_badges" class="pills"></span>
-      </span>
-      <button type="button" class="small secondary" id="or_stt_change">Change model…</button>
-    </div>
-    <div class="grid2">
-      <label>Language (empty = auto) <input id="or_stt_language" spellcheck="false" placeholder="auto" /></label>
-      <span></span>
-    </div>
-    <label>Speech path
-      <select id="or_stt_path">
-        <option value="auto">Auto (from the catalogue)</option>
-        <option value="transcriptions">Transcription endpoint</option>
-        <option value="chat_audio">Chat model with audio input (may paraphrase)</option>
-      </select>
-    </label>
-    <label class="row"><input type="checkbox" id="or_stt_send_dictionary" /> Send dictionary words (improves spelling of names)</label>
-    <div class="toolbar"><button type="button" class="secondary" id="or_stt_test">Test</button></div>
-    <p id="or_stt_test_out" class="hint"></p>
-    <p id="or_stt_status" class="hint"></p>
-    <p class="hint">The order of the engines (server, this PC, OpenRouter) is under Developer → Engines.</p>
-  </fieldset>
-
-  <fieldset>
-    <legend>Text cleanup (sends text)</legend>
-    <label class="row"><input type="checkbox" id="or_cleanup_allow" /> Clean up text with OpenRouter</label>
-    <p id="or_cleanup_consent" class="hint"></p>
-    <p class="hint">Sent: the transcript, the app category and writing style, your dictionary words. Not sent unless you turn it on below: text around the cursor, words on screen, the app name.</p>
-    <label>Order
-      <select id="or_cleanup_order">
-        <option value="cloud,local">OpenRouter first, then this PC's model</option>
-        <option value="local,cloud">This PC's model first, OpenRouter only when none is loaded</option>
-      </select>
-    </label>
-    <div class="or-model">
-      <span class="grow">
-        <span id="or_cleanup_model_name"></span>
-        <code id="or_cleanup_model_id" class="model-id"></code>
-        <span id="or_cleanup_model_badges" class="pills"></span>
-      </span>
-      <button type="button" class="small secondary" id="or_cleanup_change">Change model…</button>
-    </div>
-    <div class="grid2">
-      <label>Provider choice
-        <select id="or_cleanup_sort">
-          <option value="latency">Lowest latency</option>
-          <option value="throughput">Highest throughput</option>
-          <option value="price">Lowest price</option>
-          <option value="">OpenRouter default</option>
-        </select>
-      </label>
-      <label>Timeout (ms) <input id="or_cleanup_timeout_ms" type="number" min="800" max="8000" step="100" placeholder="2500" /></label>
-    </div>
-    <label class="row"><input type="checkbox" id="or_cleanup_send_surrounding_text" /> Send text around the cursor</label>
-    <label class="row"><input type="checkbox" id="or_cleanup_send_screen_words" /> Send words on screen</label>
-    <label class="row"><input type="checkbox" id="or_cleanup_send_app_name" /> Send app name</label>
-    <div class="toolbar"><button type="button" class="secondary" id="or_cleanup_test">Test</button></div>
-    <p id="or_cleanup_test_out" class="hint"></p>
-    <p id="or_cleanup_state" class="hint"></p>
-    <p id="or_cleanup_msg" class="hint"></p>
-    <p class="hint">Cloud cleanup is used for on-device and cloud dictations. Your server uses its own AI.</p>
-  </fieldset>
-
-  <fieldset>
-    <legend>Usage this month</legend>
-    <p id="or_usage_total"></p>
-    <ul id="or_usage_rows" class="routes"></ul>
-    <div class="grid2">
-      <label>Monthly budget (USD, optional) <input id="or_budget" type="number" min="0" step="0.5" placeholder="no limit" /></label>
-      <span></span>
-    </div>
-    <p class="hint">Shared by speech and cleanup. When the next request could pass it, OpenRouter is skipped until next month.</p>
-    <div class="toolbar"><button type="button" class="small secondary" id="or_reset_usage">Reset counters</button></div>
-    <p id="or_usage_status" class="hint"></p>
-  </fieldset>
-
-  <dialog id="or_stt_consent_dlg">
-    <h3>Send audio to OpenRouter?</h3>
-    <p>When on, the audio of your dictations leaves this PC and is sent to OpenRouter (openrouter.ai) and the model provider it routes to, along with your dictionary words. Routed only to zero-retention providers by default.</p>
-    <p class="hint">You can turn this off at any time.</p>
-    <div class="toolbar">
-      <button type="button" class="secondary" id="or_stt_consent_cancel">Cancel</button>
-      <button type="button" id="or_stt_consent_ok">Send audio to OpenRouter</button>
-    </div>
-  </dialog>
-
-  <dialog id="or_cleanup_consent_dlg">
-    <h3>Send dictated text to OpenRouter?</h3>
-    <p>After each dictation, the text (and your dictionary words) is sent to OpenRouter (openrouter.ai) and to the model provider it routes to. Your voice is not sent unless Cloud speech-to-text is also on. Routed only to zero-retention providers by default.</p>
-    <p class="hint">You can turn this off at any time.</p>
-    <div class="toolbar">
-      <button type="button" class="secondary" id="or_cleanup_consent_cancel">Cancel</button>
-      <button type="button" id="or_cleanup_consent_ok">Send text to OpenRouter</button>
-    </div>
-  </dialog>
-
-  <dialog id="or_confirm">
-    <h3 id="or_confirm_title"></h3>
-    <p id="or_confirm_body"></p>
-    <div class="toolbar">
-      <button type="button" class="secondary" id="or_confirm_cancel">Cancel</button>
-      <button type="button" id="or_confirm_ok">OK</button>
-    </div>
-  </dialog>
-
-  <dialog id="or_picker" class="picker">
-    <h3 id="or_picker_title">Model</h3>
-    <div class="toolbar">
-      <span id="or_cat_status" class="hint grow"></span>
-      <button type="button" class="small secondary" id="or_cat_refresh">Refresh models</button>
-    </div>
-    <div class="toolbar">
-      <input id="or_picker_query" type="search" placeholder="Search by name or id" spellcheck="false" />
-    </div>
-    <div class="chips">
-      <span id="or_chip_text" class="chip">Text</span>
-      <button type="button" class="toggle" id="or_chip_transcriptions" aria-pressed="false">Transcription</button>
-      <button type="button" class="toggle" id="or_chip_chat_audio" aria-pressed="false">Chat audio</button>
-      <button type="button" class="toggle" id="or_chip_zdr" aria-pressed="true">ZDR only</button>
-      <button type="button" class="toggle" id="or_chip_fast" aria-pressed="false">Fast providers</button>
-      <button type="button" class="toggle" id="or_chip_free" aria-pressed="false">Free</button>
-    </div>
-    <ul id="or_picker_list" class="models"></ul>
-    <p id="or_picker_empty" class="hint" hidden>No models match. Turn off a filter or type a custom model id.</p>
-    <label>Custom model id
-      <span class="token-row">
-        <input id="or_picker_custom" spellcheck="false" placeholder="author/model or author/model:nitro" />
-        <button type="button" class="small" id="or_picker_use">Use</button>
-      </span>
-    </label>
-    <p id="or_picker_status" class="hint"></p>
-    <div class="toolbar"><button type="button" class="secondary" id="or_picker_close">Close</button></div>
-  </dialog>
-</section>`;
 
 const PARAPHRASE_BADGE = "chat model, may paraphrase";
 
@@ -305,6 +126,12 @@ function showOr(v: OrView): void {
   $<HTMLInputElement>("or_cleanup_send_screen_words").checked = c.send_screen_words;
   $<HTMLInputElement>("or_cleanup_send_app_name").checked = c.send_app_name;
   showCleanupStatus(c.status);
+  $<HTMLElement>("or_used_stt").textContent = s.allow
+    ? `Sends audio · ${s.model}`
+    : "Off: speech is turned into text on your own engines.";
+  $<HTMLElement>("or_used_cleanup").textContent = c.allow
+    ? `Sends text · ${c.model} · ${c.order[0] === "local" ? "after this PC" : "first, then this PC"}`
+    : "Off: text is cleaned up on your own engines.";
 
   setValue("or_budget", v.budget == null ? "" : String(v.budget));
   showOrUsage(v.usage);
@@ -835,15 +662,13 @@ function wire(): void {
   });
 }
 
-export const openrouterPage = {
-  id: "openrouter",
-  mount(root: HTMLElement): void {
-    root.append(html(TEMPLATE));
+export const openrouter: Feature = {
+  init(): void {
     wire();
   },
   load: loadOr,
-  show(opened: boolean): void {
-    // D28 fetch policy: the catalogue is refreshed (network) once per opening of this page.
-    if (opened && views.or?.supported) void refreshCatalog(false);
+  shown(page: string, opened: boolean): void {
+    // D28 fetch policy: the catalogue is refreshed (network) once per opening of the OpenRouter page.
+    if (page === "settings-openrouter" && opened && views.or?.supported) void refreshCatalog(false);
   },
 };

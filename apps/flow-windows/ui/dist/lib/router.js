@@ -1,5 +1,6 @@
-// Which page is on screen. Every page renders its own DOM once at boot
-// into its own container; the router only shows one and tells it so.
+// Which page is on screen. Every page renders its own static template once
+// at boot into an empty container the shell made for it; the router only
+// shows one page and tells it so.
 const pages = new Map();
 let active = "";
 const navListeners = [];
@@ -10,20 +11,24 @@ export const router = {
     pages() {
         return [...pages.values()];
     },
+    has(id) {
+        return pages.has(id);
+    },
     active() {
         return active;
     },
-    /** Called after every navigation (the shell marks its nav). */
+    /** Called after every navigation (the shell shows the page, marks its nav). */
     onNavigate(l) {
         navListeners.push(l);
     },
     go(id) {
-        const opened = id !== active;
+        if (!pages.has(id))
+            return;
+        const prev = active;
+        const opened = id !== prev;
         active = id;
         for (const l of navListeners)
-            l(id);
-        for (const p of pages.values())
-            if ((p.tab ?? p.id) === id)
-                p.show?.(opened);
+            l(id, prev);
+        pages.get(id)?.show?.(opened);
     },
 };

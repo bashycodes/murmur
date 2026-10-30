@@ -9,7 +9,7 @@ export function el(tag, cls, text) {
         e.textContent = text;
     return e;
 }
-export function button(label, onClick, cls = "small") {
+export function button(label, onClick, cls = "fl-btn fl-btn-secondary fl-btn-sm") {
     const b = el("button", cls, label);
     b.type = "button";
     b.addEventListener("click", onClick);
@@ -18,7 +18,8 @@ export function button(label, onClick, cls = "small") {
 export function setStatus(id, text, ok) {
     const s = $(id);
     s.textContent = text;
-    s.className = ok ? "ok" : "err";
+    s.classList.toggle("ok", ok);
+    s.classList.toggle("err", !ok);
 }
 /** A page's static markup (never user text) as nodes. */
 export function html(markup) {

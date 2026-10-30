@@ -4,46 +4,70 @@
 // unchanged; the backend matches them case- and `.exe`-insensitively
 // (`context::bucket_key`).
 
-import { $, button, el, html, setStatus } from "../lib/dom.js";
+import { $, button, el, setStatus } from "../lib/dom.js";
 import { invoke } from "../lib/ipc.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
+import { router, type Page } from "../lib/router.js";
 
 const TEMPLATE = `
-<section class="panel" data-panel="ai">
-  <fieldset>
-    <legend>Writing style</legend>
-    <p class="hint">Which style applies depends on the app you dictate into. Chats default to casual, email and everything else to formal.</p>
-    <div class="styles">
-      <label>Personal messages <small>WhatsApp, Telegram, Signal, Messenger, Discord, Instagram</small> <select id="style_personal" class="style"></select> <small class="preview" id="style_personal_preview"></small></label>
-      <label>Work messages <small>Slack, Teams</small> <select id="style_work" class="style"></select> <small class="preview" id="style_work_preview"></small></label>
-      <label>Email <small>Outlook, Gmail</small> <select id="style_email" class="style"></select> <small class="preview" id="style_email_preview"></small></label>
-      <label>Everything else <select id="style_other" class="style"></select> <small class="preview" id="style_other_preview"></small></label>
+<div class="lw-page">
+  <div class="lw-page-head">
+    <div class="lw-grow">
+      <h1 class="fl-page-title">Style</h1>
+      <p class="lw-sub">How your words are written in each kind of app. How much AI rewrites them is set in <button type="button" class="lw-link" id="style_cleanup_link">AI cleanup →</button></p>
     </div>
-    <h4 class="apps-title">Style per app</h4>
-    <table class="apps">
-      <thead><tr><th>App</th><th>Group</th><th></th></tr></thead>
-      <tbody id="app_rows"></tbody>
-    </table>
-    <p id="app_rows_empty" class="hint">No apps of your own yet. The built-in groups below apply.</p>
-    <div class="toolbar">
-      <select id="app_recent" aria-label="Recently used app"></select>
-      <button type="button" class="small" id="app_add_recent">Add</button>
+    <span id="style_status" class="lw-status"></span>
+  </div>
+  <section class="lw-section">
+    <h3 class="fl-group-title">Writing style</h3>
+    <div class="fl-group">
+      <div class="fl-row">
+        <div class="fl-row-text"><div class="fl-row-title">Personal messages</div><div class="fl-row-desc">WhatsApp, Telegram, Signal, Messenger, Discord, Instagram. <span class="lw-preview" id="style_personal_preview"></span></div></div>
+        <div class="fl-row-control"><select id="style_personal" class="fl-select is-wide" aria-label="Personal messages style"></select></div>
+      </div>
+      <div class="fl-row">
+        <div class="fl-row-text"><div class="fl-row-title">Work messages</div><div class="fl-row-desc">Slack, Teams. <span class="lw-preview" id="style_work_preview"></span></div></div>
+        <div class="fl-row-control"><select id="style_work" class="fl-select is-wide" aria-label="Work messages style"></select></div>
+      </div>
+      <div class="fl-row">
+        <div class="fl-row-text"><div class="fl-row-title">Email</div><div class="fl-row-desc">Outlook, Gmail. <span class="lw-preview" id="style_email_preview"></span></div></div>
+        <div class="fl-row-control"><select id="style_email" class="fl-select is-wide" aria-label="Email style"></select></div>
+      </div>
+      <div class="fl-row">
+        <div class="fl-row-text"><div class="fl-row-title">Everything else</div><div class="fl-row-desc"><span class="lw-preview" id="style_other_preview"></span></div></div>
+        <div class="fl-row-control"><select id="style_other" class="fl-select is-wide" aria-label="Everything else style"></select></div>
+      </div>
     </div>
-    <div class="toolbar">
-      <input id="app_manual" type="text" spellcheck="false" placeholder="Other app: mychat.exe or mail.example.com" aria-label="Exe name or web host" />
-      <button type="button" class="small secondary" id="app_add_manual">Add</button>
-      <span id="app_add_status"></span>
+  </section>
+  <section class="lw-section">
+    <h3 class="fl-group-title">Style per app</h3>
+    <p class="lw-sub">Put an app in another group. Yours override the built-in groups below.</p>
+    <div class="fl-list">
+      <table class="apps">
+        <tbody id="app_rows"></tbody>
+      </table>
+      <p id="app_rows_empty" class="lw-empty-row">No apps of your own yet. The built-in groups apply.</p>
     </div>
-    <p class="hint">Your groups override the built-in ones. Recent apps are the exe names you dictated into (names only, kept on this PC). <button type="button" class="link" id="app_recent_clear">Forget recent apps</button></p>
+    <div class="lw-toolbar">
+      <select id="app_recent" class="fl-select lw-grow" aria-label="Recently used app"></select>
+      <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="app_add_recent">Add</button>
+    </div>
+    <div class="lw-toolbar">
+      <input id="app_manual" class="fl-input lw-grow" type="text" spellcheck="false" placeholder="Other app: mychat.exe or mail.example.com" aria-label="Exe name or web host" />
+      <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="app_add_manual">Add</button>
+    </div>
+    <p class="fl-help"><span id="app_add_status"></span> Recent apps are the exe names you dictated into (names only, kept on this PC). <button type="button" class="lw-link" id="app_recent_clear">Forget recent apps</button></p>
     <details class="defaults">
       <summary>Built-in groups (<span id="app_defaults_count">0</span> apps)</summary>
-      <table class="apps">
-        <tbody id="app_default_rows"></tbody>
-      </table>
-      <p class="hint">Web hosts (<code>mail.google.com</code>, <code>app.slack.com</code>…) are grouped the same way in a browser.</p>
+      <div class="fl-list">
+        <table class="apps">
+          <tbody id="app_default_rows"></tbody>
+        </table>
+      </div>
+      <p class="fl-help">Web hosts (<code>mail.google.com</code>, <code>app.slack.com</code>…) are grouped the same way in a browser.</p>
     </details>
-  </fieldset>
-</section>`;
+  </section>
+</div>`;
 
 const STYLES: [string, string][] = [
   ["formal", "Formal — capitals and full punctuation"],
@@ -130,7 +154,7 @@ function appCell(key: string, name: string | null | undefined, exe?: string): HT
 }
 
 function bucketSelect(value: string, onChange: (v: string) => void): HTMLSelectElement {
-  const sel = el("select");
+  const sel = el("select", "fl-select");
   sel.setAttribute("aria-label", "Group");
   for (const b of BUCKETS) sel.append(new Option(BUCKET_LABELS[b], b));
   sel.value = BUCKET_NAMES.includes(value) ? value : "other";
@@ -146,6 +170,7 @@ function addAppRow(key: string, bucket: string): void {
   }
   appRows.push({ key, bucket });
   renderAppRows();
+  void saveStyle();
   const sels = $<HTMLTableSectionElement>("app_rows").querySelectorAll("select");
   sels[appRows.length - 1]?.focus();
 }
@@ -159,10 +184,16 @@ function renderAppRows(): void {
       const del = button("Remove", () => {
         appRows.splice(i, 1);
         renderAppRows();
-      }, "small danger");
+        void saveStyle();
+      }, "fl-btn fl-btn-ghost fl-btn-sm");
       del.setAttribute("aria-label", `Remove ${label}`);
       const group = el("td");
-      group.append(bucketSelect(row.bucket, (v) => (row.bucket = v)));
+      group.append(
+        bucketSelect(row.bucket, (v) => {
+          row.bucket = v;
+          void saveStyle();
+        }),
+      );
       const act = el("td");
       act.append(del);
       const tr = el("tr");
@@ -211,10 +242,10 @@ function renderDefaultRows(): void {
       const mine = hasAppRow(c.key);
       if (mine) tr.className = "overridden";
       const group = el("td");
-      group.append(el("span", "tag", `default: ${BUCKET_LABELS[c.default_bucket] ?? c.default_bucket}`));
+      group.append(el("span", "fl-badge fl-badge-light", `default: ${BUCKET_LABELS[c.default_bucket] ?? c.default_bucket}`));
       const act = el("td");
-      if (mine) act.append(el("span", "hint", "yours above"));
-      else act.append(button("Change", () => addAppRow(c.key, c.default_bucket), "small secondary"));
+      if (mine) act.append(el("span", "lw-muted", "yours above"));
+      else act.append(button("Change", () => addAppRow(c.key, c.default_bucket)));
       tr.append(appCell(c.key, c.name, c.exe), group, act);
       return tr;
     }),
@@ -264,8 +295,18 @@ function fill(p: Prefs): void {
   fillAppRows(p.app_buckets);
 }
 
-/** The prefs fields this section owns. */
-export function collectStyle(): Partial<Prefs> {
+/** Every change saves at once (the page has no Save button). */
+async function saveStyle(): Promise<void> {
+  try {
+    await prefsStore.save(collectStyle());
+    setStatus("style_status", "Saved", true);
+  } catch (e) {
+    setStatus("style_status", String(e), false);
+  }
+}
+
+/** The prefs fields this page owns. */
+function collectStyle(): Partial<Prefs> {
   const app_buckets: Record<string, string> = {};
   for (const r of appRows) app_buckets[r.key] = r.bucket;
   return {
@@ -279,21 +320,24 @@ export function collectStyle(): Partial<Prefs> {
   };
 }
 
-export const stylePage = {
+export const stylePage: Page = {
   id: "style",
-  tab: "ai",
-  mount(root: HTMLElement): void {
-    root.append(html(TEMPLATE));
+  area: "main",
+  template: TEMPLATE,
+  init(): void {
     for (const b of BUCKETS) {
       $<HTMLSelectElement>(`style_${b}`).replaceChildren(
         ...STYLES.map(([v, label]) => new Option(label, v)),
       );
-      $<HTMLSelectElement>(`style_${b}`).addEventListener("change", () => showStylePreview(b));
+      $<HTMLSelectElement>(`style_${b}`).addEventListener("change", () => {
+        showStylePreview(b);
+        void saveStyle();
+      });
     }
+    $<HTMLButtonElement>("style_cleanup_link").addEventListener("click", () => router.go("settings-cleanup"));
     $<HTMLButtonElement>("app_add_recent").addEventListener("click", addRecentApp);
     $<HTMLButtonElement>("app_add_manual").addEventListener("click", addManualApp);
     $<HTMLInputElement>("app_manual").addEventListener("keydown", (e) => {
-      // Enter adds the app instead of submitting (saving) the whole form.
       if (e.key === "Enter") {
         e.preventDefault();
         addManualApp();
@@ -304,11 +348,14 @@ export const stylePage = {
         setStatus("app_add_status", String(e), false),
       );
     });
-  },
-  async load(): Promise<void> {
-    const p = prefsStore.get();
-    if (p) fill(p);
-    await loadAppChoices();
+    // First load only: this page's own saves already show what they saved.
+    let loaded = false;
+    prefsStore.subscribe((p) => {
+      if (loaded) return;
+      loaded = true;
+      fill(p);
+      void loadAppChoices();
+    });
   },
   show(): void {
     void loadAppChoices();

@@ -14,7 +14,7 @@ export function el<K extends keyof HTMLElementTagNameMap>(
   return e;
 }
 
-export function button(label: string, onClick: () => void, cls = "small"): HTMLButtonElement {
+export function button(label: string, onClick: () => void, cls = "fl-btn fl-btn-secondary fl-btn-sm"): HTMLButtonElement {
   const b = el("button", cls, label);
   b.type = "button";
   b.addEventListener("click", onClick);
@@ -24,7 +24,8 @@ export function button(label: string, onClick: () => void, cls = "small"): HTMLB
 export function setStatus(id: string, text: string, ok: boolean): void {
   const s = $<HTMLElement>(id);
   s.textContent = text;
-  s.className = ok ? "ok" : "err";
+  s.classList.toggle("ok", ok);
+  s.classList.toggle("err", !ok);
 }
 
 /** A page's static markup (never user text) as nodes. */
