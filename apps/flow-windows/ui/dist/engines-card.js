@@ -1,0 +1,109 @@
+// The sidebar's Engines card: which engine turns speech into text and
+// which cleans it up right now, and the fallback. Built only from what the
+// backend already reports (dev_get, dev_or_get, get_model_status and their
+// events); a click opens Settings → Speech to text.
+import { $ } from "./lib/dom.js";
+import { invoke, onEvent } from "./lib/ipc.js";
+import { prefsStore } from "./lib/prefs-store.js";
+import { views } from "./lib/views.js";
+let model = { state: "loading" };
+let llm = { state: "off" };
+const DOT = {
+    ready: "var(--success-500)",
+    loading: "var(--warning-400)",
+    missing: "var(--destructive-500)",
+    failed: "var(--destructive-500)",
+    plugin_missing: "var(--destructive-500)",
+    off: "var(--toggle-border)",
+};
+/** `meta-llama/llama-3.3-70b-instruct` -> `llama-3.3-70b-instruct`. */
+function shortModel(id) {
+    return id.split("/").pop() ?? id;
+}
+function fileStem(path) {
+    const f = (path ?? "").split(/[\\/]/).pop() ?? "";
+    return f.replace(/\.(gguf|bin)$/i, "");
+}
+function routeOn(r) {
+    const dv = views.dev;
+    if (!dv)
+        return false;
+    if (r === "server")
+        return dv.caps.remote && dv.form.allow_server;
+    if (r === "client")
+        return dv.caps.local && dv.form.allow_client;
+    return dv.caps.cloud && !!views.or?.supported && !!views.or.stt.allow;
+}
+function routeLabel(r) {
+    const dv = views.dev;
+    if (r === "server") {
+        const h = dv?.route.health;
+        return [`Your server · ${dv?.form.host || "not set up"}`, !h ? DOT.off : h.ok ? DOT.ready : DOT.failed];
+    }
+    if (r === "client") {
+        const engine = prefsStore.get()?.asr_engine === "parakeet" ? "Parakeet" : "Whisper";
+        return [`This PC · ${engine}`, DOT[model.state] ?? DOT.off];
+    }
+    return [`OpenRouter · ${shortModel(views.or?.stt.model ?? "")}`, "var(--glow-300)"];
+}
+const FALLBACK = {
+    server: "Falls back to your server",
+    client: "Falls back to this PC",
+    cloud: "Falls back to OpenRouter",
+};
+function cleanupLabel() {
+    const p = prefsStore.get();
+    if (!p)
+        return ["", DOT.off];
+    if (p.cleanup_level === "none")
+        return [p.spoken_cleanup ? "Formatting rules only" : "Off (verbatim)", DOT.off];
+    const or = views.or;
+    const cloud = !!or?.supported && or.cleanup.allow && or.cleanup.order.includes("cloud");
+    const local = !!p.llm_enabled && !!views.dev?.caps.local;
+    const orLabel = [`OpenRouter · ${shortModel(or?.cleanup.model ?? "")}`, "var(--glow-300)"];
+    const localLabel = [`This PC · ${fileStem(llm.path) || "local model"}`, DOT[llm.state] ?? DOT.off];
+    if (cloud && (!local || or?.cleanup.order[0] === "cloud"))
+        return orLabel;
+    if (local)
+        return localLabel;
+    return ["Formatting rules only", DOT.off];
+}
+function render() {
+    const dv = views.dev;
+    const card = $("engines_card");
+    card.hidden = !dv;
+    if (!dv)
+        return;
+    const order = dv.form.route_order.filter(routeOn);
+    const [stt, sttDot] = order.length ? routeLabel(order[0]) : ["Off: no engine is on", DOT.failed];
+    $("eng_stt").textContent = stt;
+    $("eng_stt_dot").style.background = sttDot;
+    const [ai, aiDot] = cleanupLabel();
+    $("eng_ai").textContent = ai;
+    $("eng_ai_dot").style.background = aiDot;
+    const fb = $("eng_fallback");
+    fb.hidden = order.length < 2;
+    fb.textContent = order.length > 1 ? FALLBACK[order[1]] : "";
+}
+export const enginesCard = {
+    init() {
+        views.onDev(render);
+        views.onOr(render);
+        prefsStore.subscribe(render);
+        void onEvent("model:status", (e) => {
+            model = e.payload;
+            render();
+        });
+        void onEvent("llm:status", (e) => {
+            llm = e.payload;
+            render();
+        });
+        void onEvent("dev:route", () => setTimeout(render, 0));
+    },
+    async load() {
+        const m = await invoke("get_model_status");
+        model = m.status;
+        llm = m.llm;
+        render();
+    },
+};

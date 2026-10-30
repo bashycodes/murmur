@@ -3,37 +3,53 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Murmur Settings</title>
+    <title>Murmur</title>
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="components.css" />
     <link rel="stylesheet" href="settings.css" />
   </head>
-  <body>
-    <header>
-      <h1>Murmur</h1>
-      <p class="sub" id="privacy_line">Everything runs on this PC. Nothing is sent over the network.</p>
-      <nav class="tabs" role="tablist">
-        <button type="button" role="tab" data-tab="general">General</button>
-        <button type="button" role="tab" data-tab="ai">AI cleanup</button>
-        <button type="button" role="tab" data-tab="history">History</button>
-        <button type="button" role="tab" data-tab="insights">Insights</button>
-        <button type="button" role="tab" data-tab="dictionary">Dictionary <span id="sugg_badge" class="badge" hidden></span></button>
-        <button type="button" role="tab" data-tab="openrouter" id="tab_openrouter" hidden>OpenRouter <span id="or_badge" class="badge" hidden>!</span></button>
-        <button type="button" role="tab" data-tab="developer" id="tab_developer" hidden>Developer</button>
+  <body class="fl">
+    <!-- The app window: the sidebar and the main panel (Home, Insights,
+         Dictionary, Snippets, Style). Pages render into empty containers
+         (ui/src/pages/*.ts); the shell is ui/src/settings.ts. -->
+    <div class="lw-app">
+      <nav class="fl-sidebar lw-sidebar" aria-label="Main">
+        <div class="fl-logo">Murmur</div>
+        <div id="main_nav" class="lw-nav"></div>
+        <div class="lw-spacer"></div>
+        <button type="button" class="lw-engines" id="engines_card" data-page="settings-speech" hidden>
+          <span class="fl-overline">Engines</span>
+          <span class="lw-engines-line">
+            <span class="lw-engines-label">Speech to text</span>
+            <span class="lw-engines-value"><span class="lw-dot" id="eng_stt_dot"></span><span id="eng_stt"></span></span>
+          </span>
+          <span class="lw-engines-line">
+            <span class="lw-engines-label">AI cleanup</span>
+            <span class="lw-engines-value"><span class="lw-dot" id="eng_ai_dot"></span><span id="eng_ai"></span></span>
+          </span>
+          <span class="lw-engines-label" id="eng_fallback"></span>
+        </button>
+        <div id="foot_nav" class="lw-nav"></div>
       </nav>
-    </header>
+      <main class="fl-panel lw-main" id="main"></main>
+    </div>
 
-    <form id="form">
-      <div class="page-root" id="page_general"></div>
-      <div class="page-root" id="page_ai"></div>
-      <div class="page-root" id="page_style"></div>
-
-      <footer><button type="submit">Save</button> <span id="status"></span></footer>
-    </form>
-
-    <div class="page-root" id="page_history"></div>
-    <div class="page-root" id="page_insights"></div>
-    <div class="page-root" id="page_dictionary"></div>
-    <div class="page-root" id="page_openrouter"></div>
-    <div class="page-root" id="page_developer"></div>
+    <!-- Settings: a dialog over the app, its own sub-navigation. -->
+    <div class="fl-scrim lw-settings" id="settings" hidden>
+      <div class="fl-modal lw-settings-modal" role="dialog" aria-modal="true" aria-label="Settings">
+        <nav class="fl-modal-nav" aria-label="Settings">
+          <div class="fl-modal-nav-top" id="settings_nav"></div>
+          <div class="fl-modal-foot">
+            <span class="lw-version" id="version_row" title="Version">Murmur</span>
+            <span id="status" class="lw-status"></span>
+          </div>
+        </nav>
+        <div class="fl-modal-body lw-settings-body" id="settings_body"></div>
+        <button type="button" class="fl-iconbtn lw-settings-close" id="settings_close" aria-label="Close settings" title="Close (Esc)">
+          <svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+    </div>
 
     <script type="module" src="settings.js"></script>
   </body>

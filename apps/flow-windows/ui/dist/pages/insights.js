@@ -1,44 +1,45 @@
-// Insights: local usage counts (`insights_get` / `insights_reset`; kept
+// Insights page: local usage counts (`insights_get` / `insights_reset`; kept
 // apart from History, never sent anywhere) and a 7-day SVG chart.
-import { $, askDialog, el, html, setStatus, svg } from "../lib/dom.js";
+import { $, askDialog, el, setStatus, svg } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { router } from "../lib/router.js";
 const TEMPLATE = `
-<section class="panel" data-panel="insights">
-  <fieldset>
-    <legend>Your dictation</legend>
-    <div class="stats">
-      <div class="stat"><b id="ins_total">0</b><small>words dictated</small></div>
-      <div class="stat"><b id="ins_week">0</b><small>words, last 7 days</small></div>
-      <div class="stat"><b id="ins_wpm">–</b><small>speaking speed (wpm)</small></div>
-      <div class="stat"><b id="ins_saved">0 min</b><small>time saved vs typing</small></div>
-      <div class="stat"><b id="ins_streak">0</b><small>day streak</small></div>
-      <div class="stat"><b id="ins_longest">0</b><small>longest streak</small></div>
-      <div class="stat"><b id="ins_count">0</b><small>dictations</small></div>
+<div class="lw-page">
+  <div class="lw-page-head">
+    <h1 class="fl-page-title">Insights</h1>
+    <button type="button" id="ins_reset" class="fl-btn fl-btn-ghost fl-btn-sm lw-danger">Reset stats</button>
+  </div>
+  <div class="lw-cards">
+    <div class="fl-card"><div class="fl-metric-cap">Words dictated</div><div class="fl-metric" id="ins_total">0</div></div>
+    <div class="fl-card"><div class="fl-metric-cap">Last 7 days</div><div class="fl-metric" id="ins_week">0</div></div>
+    <div class="fl-card"><div class="fl-metric-cap">Speaking speed</div><div class="fl-metric"><span id="ins_wpm">–</span> <small>wpm</small></div></div>
+    <div class="fl-card"><div class="fl-metric-cap">Time saved</div><div class="fl-metric" id="ins_saved">0 min</div></div>
+    <div class="fl-card"><div class="fl-metric-cap">Day streak</div><div class="fl-metric" id="ins_streak">0</div></div>
+    <div class="fl-card"><div class="fl-metric-cap">Longest streak</div><div class="fl-metric" id="ins_longest">0</div></div>
+    <div class="fl-card"><div class="fl-metric-cap">Dictations</div><div class="fl-metric" id="ins_count">0</div></div>
+  </div>
+  <div class="lw-cards lw-cards-2">
+    <div class="fl-card">
+      <div class="fl-metric-cap">Words per day</div>
+      <svg id="ins_chart" class="chart" viewBox="0 0 350 140" role="img" aria-label="Words per day, last 7 days"></svg>
     </div>
-    <p class="hint" id="ins_assume"></p>
-  </fieldset>
-  <fieldset>
-    <legend>Words per day</legend>
-    <svg id="ins_chart" class="chart" viewBox="0 0 350 140" role="img" aria-label="Words per day, last 7 days"></svg>
-  </fieldset>
-  <fieldset>
-    <legend>Top apps</legend>
-    <ol id="ins_apps" class="routes"></ol>
-    <p id="ins_apps_empty" class="hint">No dictations yet.</p>
-  </fieldset>
-  <p class="hint">Counted on this PC only (words, recording length and app name per day; no text). Nothing is sent anywhere. Deleting History keeps these numbers. <span id="ins_status"></span></p>
-  <div class="toolbar"><button type="button" id="ins_reset" class="small danger">Reset stats</button></div>
+    <div class="fl-card">
+      <div class="fl-metric-cap">Top apps</div>
+      <ol id="ins_apps" class="lw-plain lw-apps"></ol>
+      <p id="ins_apps_empty" class="hint">No dictations yet.</p>
+    </div>
+  </div>
+  <p class="fl-help"><span id="ins_assume"></span> Counted on this PC only (words, recording length and app name per day; no text). Nothing is sent anywhere. Deleting history keeps these numbers. <span id="ins_status"></span></p>
 
-  <dialog id="ins_reset_dlg">
+  <dialog id="ins_reset_dlg" class="fl-dialog">
     <h3>Reset all stats?</h3>
     <p>Words, streaks and app counts go back to zero. History is not affected and won't be counted again.</p>
-    <div class="toolbar">
-      <button type="button" class="secondary" id="ins_reset_cancel">Cancel</button>
-      <button type="button" class="danger" id="ins_reset_ok">Reset stats</button>
+    <div class="lw-dialog-actions">
+      <button type="button" class="fl-btn fl-btn-secondary" id="ins_reset_cancel">Cancel</button>
+      <button type="button" class="fl-btn fl-btn-destructive" id="ins_reset_ok">Reset stats</button>
     </div>
   </dialog>
-</section>`;
+</div>`;
 export function minutesText(m) {
     if (m < 1)
         return `${Math.round(m * 60)} s`;
@@ -85,7 +86,14 @@ function showInsights(s) {
         `Time saved assumes typing at ${s.typing_wpm} words per minute, minus the time spent speaking.` +
             (s.since ? ` Counting since ${s.since}.` : "");
     drawChart(s.last7);
-    $("ins_apps").replaceChildren(...s.top_apps.map((a) => el("li", undefined, `${a.app || "Unknown app"}: ${a.words.toLocaleString()} words`)));
+    const max = Math.max(1, ...s.top_apps.map((a) => a.words));
+    $("ins_apps").replaceChildren(...s.top_apps.map((a) => {
+        const li = el("li");
+        const bar = el("span", "lw-app-bar");
+        bar.style.width = `${Math.max(2, (100 * a.words) / max)}%`;
+        li.append(el("span", "lw-app-name", a.app || "Unknown app"), el("span", "lw-app-words", a.words.toLocaleString()), bar);
+        return li;
+    }));
     $("ins_apps_empty").hidden = s.top_apps.length > 0;
 }
 async function loadInsights() {
@@ -110,8 +118,9 @@ async function resetInsights() {
 }
 export const insightsPage = {
     id: "insights",
-    mount(root) {
-        root.append(html(TEMPLATE));
+    area: "main",
+    template: TEMPLATE,
+    init() {
         $("ins_reset").addEventListener("click", () => void resetInsights());
         void onEvent("insights:changed", () => {
             if (router.active() === "insights")
