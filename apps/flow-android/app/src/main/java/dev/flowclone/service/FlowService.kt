@@ -50,6 +50,7 @@ import dev.flowclone.session.DictationController
 import dev.flowclone.session.DictationState
 import dev.flowclone.session.FeedbackEvent
 import dev.flowclone.ui.MainActivity
+import dev.flowclone.ui.PermissionsActivity
 import dev.flowclone.audio.AudioSwitch
 import dev.flowclone.audio.MicRecorder
 import dev.flowclone.audio.WavAudioSource
@@ -473,7 +474,7 @@ class FlowService : Service() {
                 FeedbackEvent.CapWarning -> haptic(VibrationEffect.EFFECT_HEAVY_CLICK)
                 FeedbackEvent.CapReached -> limitNotification()
                 FeedbackEvent.NeedMicPermission ->
-                    startActivity(Intent(this@FlowService, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    startActivity(PermissionsActivity.intent(this@FlowService).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 FeedbackEvent.PasteRetryFailed, FeedbackEvent.NoSpeech, FeedbackEvent.TargetChanged,
                 FeedbackEvent.TargetProtected, FeedbackEvent.MicLost -> Unit
                 // Command Mode: the error tone (the reason is the bubble's toast); the field was not touched.
@@ -675,7 +676,8 @@ class FlowService : Service() {
                     controller.dismissError()
                 }
                 BubbleButton.MAIN -> if (repair.value && (s == DictationState.Ready || s == DictationState.Idle)) {
-                    startActivity(Intent(this@FlowService, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    // The repair alert (Accessibility stopped): straight to where it is fixed.
+                    startActivity(PermissionsActivity.intent(this@FlowService).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 } else when (s) {
                     DictationState.Ready, DictationState.Idle -> {
                         presence.touch()

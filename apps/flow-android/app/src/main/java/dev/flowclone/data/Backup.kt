@@ -151,7 +151,7 @@ object Backup {
 
     fun decode(text: String): Parsed {
         val root = try {
-            JSONObject(text.trimStart('﻿'))
+            JSONObject(text.trimStart('\uFEFF'))
         } catch (_: JSONException) {
             return Parsed.Rejected("This file is not a Murmur backup (not JSON).")
         }

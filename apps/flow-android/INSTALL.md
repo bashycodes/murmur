@@ -65,10 +65,10 @@ unknown apps" for Files), or use the platform-tools install command over USB. Op
 and grant, in this order: *Microphone* → *Display over other apps* → *Accessibility service*
 (Settings → Accessibility → Murmur → on; if the switch is greyed out: Settings → Apps →
 Murmur → ⋮ → *Allow restricted settings*, then retry) → *Notifications* → *Battery: allow
-background* (each is a row in the main screen's *Setup* card: tap it). The main screen's *Status* card must show
+background* (each is a row on the *Permissions* page, menu ☰ → Permissions: tap it). The Permissions page's *Status* card must show
 *Native engine* `flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26).
 
-**3. Point it at the server.** Main screen → *Developer settings* → *Server*: host = the PC's
+**3. Point it at the server.** Menu ☰ → *Developer settings* → *Server*: host = the PC's
 `100.x.y.z` (or its VPN DNS name), port `7313`, *Paste* the token, *Use TLS* off, *Save* (top
 bar), then *Test connection* (bottom) → `OK · median N ms … · parakeet`. *Routing & engines*:
 *Allow server* + *Allow on-device* on (the defaults in hybrid), *Save*. Plain `ws://` is
@@ -265,10 +265,10 @@ whisper/sherpa/onnxruntime/flow_llm/libc++ in the APK, no `whisper_`/`llama_` ex
 `…NoNetworkCode` also rejects the cloud STT client (`reqwest` / `webpki` / `flow-cloud`) in the
 local library (D18 C2); `check_native_so.sh --flavor hybrid|remote` requires it there.
 
-If you skip `build-native.sh`, the APK still installs, but the main screen's *Native engine* row
+If you skip `build-native.sh`, the APK still installs, but the Permissions page's *Native engine* row
 says "Unavailable". Only the mock engine works in that build. Without the LLM plugin
-(`--no-llm`) dictation works, and turning on AI cleanup makes the main screen's *AI cleanup* row
-say "Failed to load … plugin missing". If the main screen says **"Native library flavour
+(`--no-llm`) dictation works, and turning on AI cleanup makes the Permissions page's *AI cleanup* row
+say "Failed to load … plugin missing". If the Permissions page says **"Native library flavour
 mismatch"**, the APK was packaged with another flavour's `libflow_ffi.so`: rebuild with the
 matching `--flavor`.
 
@@ -297,7 +297,7 @@ as Bulgarian on `base-q5_1` + auto). So *Settings → Language* now defaults to 
 language**: with a multilingual whisper model loaded, the phone's language is used (if whisper
 supports it); with an English-only file, Parakeet, or no phone engine it stays auto. Pick
 *Auto-detect* or a language to override; an explicit choice is kept. A stored *Auto-detect*
-from before this change is treated as the default once. The main screen shows the language the
+from before this change is treated as the default once. The Permissions page shows the language the
 next dictation uses ("Language: English (phone language)"). A direct link looks like
 `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en-q5_1.bin`.
 
@@ -321,7 +321,7 @@ history.
 
 ## 4. Grant permissions (in order)
 
-Open **Murmur**. The main screen's **Setup** card lists each permission with its state on
+Open **Murmur**. The **Permissions** page (menu ☰ → Permissions) lists each permission with its state on
 the right (*Granted*, *Allowed*, *On*) or the action that fixes it (*Grant*, *Allow*, *Turn on*);
 tap the row. While a required one is missing, a red banner at the top names it and *Setup* sits
 above *Status*.
@@ -344,17 +344,17 @@ above *Status*.
 If the *Accessibility service* row later says **Not responding** (banner: "the Accessibility
 service stopped responding"), the phone killed it without turning the switch off. Tap *Fix*,
 turn Murmur off and on again in Accessibility settings, then redo steps 4 and 6. The bubble
-shows a red **!** in that state; tapping it opens the main screen.
+shows a red **!** in that state; tapping it opens the Permissions page.
 
 ## 5. Import the model (SAF)
 
-Main screen → *More* → **Speech model** → **Import model file…**. The system file picker opens.
+Menu ☰ → **Speech model** → **Import model file…**. The system file picker opens.
 Choose `Download/ggml-base.en-q5_1.bin`, or the model you copied. The *Recommended* rows list
 whisper files with size / speed / quality; tapping one copies its download link (for the PC).
 
 The app copies the file into its private storage (`files/models/`) and loads it. The
 original in `Download/` can be deleted afterwards. The import page's *Status* card shows it as
-*Active model*; the main screen's *Status* card shows *Native engine* `flow-ffi <version>+<commit>`
+*Active model*; the Permissions page's *Status* card shows *Native engine* `flow-ffi <version>+<commit>`
 (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26) and *Speech engine* `Loaded: ggml-base.en-q5_1.bin`. To switch
 models, tap *Use* under another imported file. *Delete* (asks first) frees the space.
 
@@ -366,7 +366,7 @@ English-only, more accurate engine (D12). On the PC, get the folder
 folder to the phone. *Settings → Speech engine → Parakeet model folder → Import model folder…* and pick the
 folder; the app copies the four files into `files/parakeet/<name>/` and switches the engine.
 *Settings → Speech engine → Whisper* switches back. If Parakeet fails to load (RAM, files), the
-app loads the whisper model instead and the main screen says "Parakeet failed: …".
+app loads the whisper model instead and the Permissions page says "Parakeet failed: …".
 On the phone Parakeet decodes **greedy** (one recognizer; saves ≈ 0.6 GB RAM, dictionary words
 are not used as hotwords). *Developer settings → Routing & engines → On-device decoding (Parakeet)* switches to *Auto* (beam
 search with dictionary hotwords, plus a greedy recognizer) or *Beam only*; changing it reloads
@@ -377,7 +377,7 @@ the engine.
 1. On the server box: run `flow-server` (see `docs/protocol.md` / `crates/flow-server`), bound
    to its VPN `100.x` address or the LAN; `flow-server gen-token` prints the token.
 2. Phone: join the same VPN (or be on the same LAN). No extra permission is needed.
-3. Main screen → **Developer settings** (visible by default in hybrid/remote) → **Server**:
+3. Menu ☰ → **Developer settings** (visible by default in hybrid/remote) → **Server**:
    host = the server's `100.x.y.z` or its VPN DNS name, port `7313`, *Paste* the token,
    *Save* (top bar), then *Test connection* → "OK · median N ms (…) · flow-server … · parakeet".
 4. Dictate: the hub's status card shows *Last dictation* `Server · client N ms`; *Status &
@@ -441,7 +441,7 @@ until you tap *Dismiss*.
 
 ## Settings layout
 
-Main screen → *Settings*: the same look as Developer settings. A *Status* card on top (engine
+Menu ☰ → *Settings*: the same look as Developer settings. A *Status* card on top (engine
 state, the language the next dictation uses, warnings such as "AI cleanup is on but no GGUF
 model is imported"), then grouped rows that each show their current value and open a page:
 
@@ -508,7 +508,7 @@ It is **off by default** and never uses the network.
 2. Copy it to the phone's `Download/`.
 3. *Settings → AI cleanup → AI cleanup model → Import model file…*. The import refuses non-GGUF files
    and checks free space; a 1 GB copy takes a minute.
-4. *Settings → AI cleanup → Clean up with local AI* → on, pick the strength (both apply at once). The main screen's
+4. *Settings → AI cleanup → Clean up with local AI* → on, pick the strength (both apply at once). The Permissions page's
    *AI cleanup* row shows `qwen2.5-…gguf` once it has loaded (10–60 s; a little longer than in 0.2,
    because the model's instructions are prepared at load).
 
@@ -519,7 +519,7 @@ instead (History shows *AI too slow, formatted text used* / *AI result not used 
 
 ## 7. Use it
 
-Main screen → **Start / show bubble**. Focus any text field and the bubble appears by the
+Menu ☰ → **Start / show bubble**. Focus any text field and the bubble appears by the
 keyboard:
 
 - **tap** starts hands-free dictation; tap again to stop and insert;
@@ -537,7 +537,7 @@ keyboard:
 
 While you speak, the line above the bubble shows the live transcript (*Settings → Bubble → Live
 preview*). "Can't hear you" means 3 s of silence; "No speech detected" means nothing was
-inserted. Main screen → *More* → *History* lists dictations by day; tap one for the full text,
+inserted. Menu ☰ → *History* lists dictations by day; tap one for the full text,
 the raw transcript and per-stage timings. A dictation that never reached its field (you switched
 fields, a protected field) says **Not inserted — tap to copy**: tap the row to copy it. Its detail
 page says why (*You switched apps*, *Protected field*, *Couldn't paste*) and offers *Insert with
@@ -563,10 +563,10 @@ Every screen uses the Settings look (grouped cards, rows with their current valu
 ## Device test checklist
 
 **Flavours / developer settings (D17)** — one APK of each flavour, same phone, installed over each other
-- [ ] `local`: App info → Permissions shows no network; main screen text says "no internet
+- [ ] `local`: App info → Permissions shows no network; Permissions page text says "no internet
       permission"; Developer settings hidden until 7 taps on the version row in *Settings → About* ("Developer
       settings unlocked"); *Routing & engines → Allow server* shows "Not in this build"; *Lock* hides it again.
-- [ ] `local`: dictation works exactly as before (main screen `Loaded: client: …`); *Test
+- [ ] `local`: dictation works exactly as before (Permissions page `Loaded: client: …`); *Test
       session* (*Routing & engines*) says `OK: Client (on-device) · … EMPTY (no_speech)`.
 - [ ] `hybrid` over `local`: dictionary/history kept. Developer settings visible; host
       validation (*Server* page): `http://x`, `10.0.0.1:7313`, `256.1.1.1`, `a_b.com` show inline
@@ -589,7 +589,7 @@ Every screen uses the Settings look (grouped cards, rows with their current valu
       changes the hub row on Back without *Save*; *Timing & limits* *Save* stays grey for 25 min
       (red "Enter 1–20 minutes") and Back after an edit asks *Discard changes?*; TalkBack reads
       each switch row as one switch and each choice as a radio button; dark mode follows the phone.
-- [ ] Settings changes apply to the next dictation without reloading the model (main screen
+- [ ] Settings changes apply to the next dictation without reloading the model (Permissions page
       keeps `Loaded:`; logcat `FlowEngine` shows no reload) unless *Keep on-device model warm* changed.
 - [ ] Token survives an app restart (Keystore); *Clear* + *Save* removes it. With TalkBack (or a
       UI dump) the token field reads "set (hidden)", also after *Show*.
@@ -634,7 +634,7 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
 - [ ] logcat (`FlowEngine`, `FlowService`, `FlowDebug`) never shows the key (search for its last 8 characters).
 
 **Native engine / packaging**
-- [ ] The main screen's *Native engine* row shows `flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26), not "Unavailable". This is
+- [ ] The Permissions page's *Native engine* row shows `flow-ffi <version>+<commit>` (e.g. `flow-ffi 0.2.0+1a2b3c4`; D26), not "Unavailable". This is
       the first time `System.loadLibrary` runs on bionic: `libc++_shared.so` is resolved,
       and there is no `dlopen` error under `FlowEngine`.
 - [ ] Android 15 / 16 KB-page device (e.g. Pixel 8+ with the 16 KB developer option): the
@@ -651,7 +651,7 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       `dropped_samples` yet.
 
 **AI cleanup** (`tools/build-native.sh --whisper --llm`; host-proven with Qwen2.5 0.5B/1.5B)
-- [ ] The main screen's *AI cleanup* row shows `qwen2.5-0.5b-instruct-q4_k_m.gguf`, not "Failed to
+- [ ] The Permissions page's *AI cleanup* row shows `qwen2.5-0.5b-instruct-q4_k_m.gguf`, not "Failed to
       load". This is the first `System.loadLibrary("flow_llm")` plus the core's
       `dlopen("libflow_llm.so")` on bionic. Note the load time (switch on → line appears).
 - [ ] Dictate "um so I think we should meet tomorrow at noon". History shows *AI cleaned*
@@ -684,7 +684,7 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
 - [ ] OEM button opens the vendor's autostart / battery screen (record the phone model and
       which screen opened, or that it fell back to app info).
 - [ ] Ghost check: with the service on, force-stop Murmur from App info, reopen it.
-      Within ~15–60 s the main screen says "switched on but not responding" and the service
+      Within ~15–60 s the Permissions page says "switched on but not responding" and the service
       notification shows the ghost text. Toggle off/on → "On".
 - [ ] Reboot the phone: the bubble service comes back without opening the app (accessibility
       on), or a "Turn Murmur back on" notification appears (accessibility off).
@@ -710,13 +710,13 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       *Dismiss*ed and the same edit repeated is not suggested again. Switch the field or app mid-watch:
       nothing more is read (debug log `learn_edit end=focus_changed`). *Settings → Learn from my edits*
       off → no `learn_edit` event after a dictation. Never in a password field (no bubble there anyway).
-- [ ] Quick note (*Main screen → Quick note*, and long-press the app icon → *Quick note*; the Scratchpad before Notes): the keyboard
+- [ ] Quick note (*Menu ☰ → Quick note*, and long-press the app icon → *Quick note*; the Scratchpad before Notes): the keyboard
       opens and the bubble shows; dictate twice → each text appears **once** (`FlowA11y` log `insert
       SUCCESS_TEXT_FOUND`, no `node_tier` step); swipe the app away from Recents and reopen → the text is
       still there. *Copy all* pastes elsewhere; *Share* opens the share sheet; *Clear* asks, then empties
       it (still empty after reopening). In *Settings* fields the bubble stays hidden. With *Learn from my
       edits* on, correcting a dictated word here behaves as in other apps (a suggestion, nothing else).
-- [ ] Notes (*Main screen → Notes*): on a phone that used the Scratchpad, its text is there as the
+- [ ] Notes (*Menu ☰ → Notes*): on a phone that used the Scratchpad, its text is there as the
       pinned *Quick note*. *New note*, dictate with the bubble, back → the note is listed by its first
       line with the time; make three, swipe the app away from Recents, reopen → all three are there.
       The bubble shows in every note editor but not on the list (search box included). Search finds a
@@ -724,7 +724,7 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       *Delete* asks, then the note is gone (still gone after reopening). Back out of an untouched *New
       note* → no empty note listed. Long-press the app icon → *New note*: a fresh note opens with the
       keyboard up (dictation starts on a bubble tap, not by itself).
-- [ ] Insights (*Main screen → Insights*): on an install that already has History, the first open
+- [ ] Insights (*Menu ☰ → Insights*): on an install that already has History, the first open
       shows those dictations counted (words, top apps by name, bars on their days). Dictate a 10-word
       sentence in Notes and come back: *Words dictated* +10, *Dictations* +1, today's bar grows, *Current
       streak* ≥ 1 day; *Time saved* says "Compared with typing at 40 words/min". *History → Clear all*,
@@ -761,7 +761,7 @@ latency (stop → text) and the cost shown, in `docs/cloud-stt.md` / `PROJECT_CO
       tapping it copies the text (toast "Copied"). Its detail page says *You switched apps*; *Insert with
       the bubble* → open another app's field → ✓ on the bubble types it there. The notification's copy
       and History's copy give the same text (a list keeps its line breaks).
-- [ ] TalkBack: main screen rows read as one item each ("Microphone, Granted…"); *Keep it running*
+- [ ] TalkBack: Permissions page rows read as one item each ("Microphone, Granted…"); *Keep it running*
       announces expanded / collapsed; Dictionary rows offer *Delete* in the actions menu.
 
 **Shell** (mock engine: *Settings → Mock engine*, then the real engine)
