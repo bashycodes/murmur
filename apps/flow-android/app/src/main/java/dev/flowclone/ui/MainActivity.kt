@@ -22,7 +22,6 @@ import dev.flowclone.data.AppVersion
 import dev.flowclone.data.DevSummary
 import dev.flowclone.data.DictionaryPages
 import dev.flowclone.data.OpenRouterPage
-import dev.flowclone.data.SettingsPages
 import dev.flowclone.data.SetupChecklist
 import dev.flowclone.data.ShellPages
 import dev.flowclone.data.ShellPages.Extra
@@ -105,7 +104,7 @@ class MainActivity : Activity() {
     private fun createTab(t: Tab): ShellTab = when (t) {
         Tab.HOME -> HomeTab(this, ui)
         Tab.DICTIONARY -> LaunchTab(t.label) { DictionaryActivity.intent(this) }
-        Tab.STYLE -> LaunchTab(t.label) { SettingsActivity.intent(this, SettingsPages.Page.STYLE) }
+        Tab.STYLE -> dev.flowclone.ui.tabs.StyleTab(this, ui)
         Tab.SNIPPETS -> LaunchTab(t.label) { DictionaryActivity.intent(this, DictionaryActivity.PAGE_LIST, DictionaryPages.Kind.SNIPPETS) }
     }
 
