@@ -40,6 +40,7 @@ fn main() {
             "note_delete",
             "note_set_pinned",
             "note_export",
+            "note_open",
             "suggestions_list",
             "suggestion_accept",
             "suggestion_dismiss",

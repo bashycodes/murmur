@@ -4,15 +4,25 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Notes — Murmur</title>
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="components.css" />
     <link rel="stylesheet" href="scratchpad.css" />
   </head>
-  <body>
+  <body class="fl">
+    <!-- The notes window (ui/src/scratchpad.ts): the Notes list or one
+         note's editor, in the app window's tokens (theme.css). -->
     <section id="list-view" class="view" hidden>
       <header class="bar">
-        <input id="search" type="search" placeholder="Search notes" aria-label="Search notes" />
-        <button type="button" id="new-note">New note</button>
+        <h1 class="lw-np-title">Notes</h1>
+        <span class="spacer"></span>
+        <button type="button" id="new-note" class="fl-btn fl-btn-primary fl-btn-sm">
+          <svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>New note
+        </button>
       </header>
-      <ul id="notes" aria-label="Notes"></ul>
+      <div class="bar bar-search">
+        <input id="search" class="fl-input" type="search" placeholder="Search notes" aria-label="Search notes" />
+      </div>
+      <ul id="notes" class="fl-list" aria-label="Notes"></ul>
       <p id="empty" class="muted" hidden>No notes match.</p>
       <footer>
         <span id="count" class="muted"></span>
@@ -21,20 +31,22 @@
     </section>
     <section id="editor-view" class="view" hidden>
       <header class="bar">
-        <button type="button" id="back" class="secondary">← All notes</button>
-        <span id="note-name" class="muted"></span>
+        <button type="button" id="back" class="fl-btn fl-btn-ghost fl-btn-sm" title="All notes">
+          <svg class="fl-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>All notes
+        </button>
+        <span id="note-name"></span>
         <span class="spacer"></span>
-        <button type="button" id="export-txt" class="secondary" title="Save a copy to Downloads">Export .txt</button>
-        <button type="button" id="export-md" class="secondary" title="Save a copy to Downloads">.md</button>
+        <button type="button" id="export-txt" class="fl-btn fl-btn-ghost fl-btn-sm" title="Save a copy to Downloads">Export .txt</button>
+        <button type="button" id="export-md" class="fl-btn fl-btn-ghost fl-btn-sm" title="Save a copy to Downloads">.md</button>
       </header>
       <textarea id="editor" spellcheck="true" aria-label="Note" placeholder="Dictate or type here. Saved automatically."></textarea>
       <footer>
         <span id="words" class="muted">0 words</span>
         <span id="status" role="status"></span>
         <span class="spacer"></span>
-        <button type="button" id="undo" class="secondary" hidden>Undo clear</button>
-        <button type="button" id="clear" class="danger">Clear</button>
-        <button type="button" id="copy">Copy all</button>
+        <button type="button" id="undo" class="fl-btn fl-btn-ghost fl-btn-sm" hidden>Undo clear</button>
+        <button type="button" id="clear" class="fl-btn fl-btn-ghost fl-btn-sm lw-danger">Clear</button>
+        <button type="button" id="copy" class="fl-btn fl-btn-primary fl-btn-sm">Copy all</button>
       </footer>
     </section>
     <script src="scratchpad.js"></script>

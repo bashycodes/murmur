@@ -4,7 +4,7 @@
 (() => {
   const now = Date.now();
   let prefs = {
-    shortcuts: { ptt: "Ctrl+Win", hands_free: "Ctrl+Win+Space", command: "Ctrl+Win+Alt", cancel: "Esc", paste_last: "Alt+Shift+Z", copy_last: "Alt+Shift+X" },
+    shortcuts: { ptt: "Ctrl+Win", hands_free: "Ctrl+Win+Space", command: "Ctrl+Win+Alt", cancel: "Esc", paste_last: "Alt+Shift+Z", copy_last: "Alt+Shift+X", scratchpad: "Ctrl+Alt+N" },
     microphone: null, languages: [], enable_sounds: true, mute_audio_while_dictating: true,
     launch_at_login: false, show_flow_bar_always: true, use_ax_context: true,
     cleanup_level: "light", raw_mode: false,
@@ -158,13 +158,69 @@
   let suggestions = [{ word: "Wispr Flow", heard: "whisper flow", app: "slack.exe", ts: now, count: 2 }];
   const listeners = {};
   const debugLog = { enabled: false, count: 12 };
+  // ?onboard=1: a fresh install (onboarded false, no server, no model yet):
+  // first-run setup opens over the shell. Saving a model location
+  // "loads" it: a path containing "missing" is not found, anything else is ready.
+  const onboard = new URLSearchParams(location.search).get("onboard") === "1";
+  let modelStatus = { state: "ready", path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\ggml-base.bin", load_ms: 312 };
+  if (onboard) {
+    prefs.onboarded = false;
+    prefs.llm_enabled = false;
+    dev = { ...dev, host: "", token: "", allow_server: true };
+    or.notice = null;
+    modelStatus = { state: "missing", path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\ggml-base.bin" };
+  }
+  const modelKey = (p) => [p.asr_engine, p.model_path, p.parakeet_model_dir].join("|");
   const debugView = () => ({ enabled: debugLog.enabled, count: debugLog.count, path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\debug\\dictations.jsonl", stats: { written: 0, dropped: 0, write_errors: 0 } });
+  // Notes as the app window sees them (list / create / pin / open only:
+  // the text is the notes window's, mock-scratchpad.js). Opened ids land in
+  // window.__opened.
+  let notes = [
+    { id: "scratchpad", title: "Quick note", preview: "Call the plumber back", words: 4, created_ms: now - 864e5 * 9, updated_ms: now - 3600e3, pinned: false, quick: true },
+    { id: "note-1", title: "Release checklist", preview: "Bump VERSION, run check-build-matrix, tag, write the changelog entry and attach the installers", words: 24, created_ms: now - 864e5 * 3, updated_ms: now - 600e3, pinned: true, quick: false },
+    { id: "note-2", title: "Reply to Sam", preview: "Thursday at 3 works. I'll bring the slides and the latest numbers.", words: 15, created_ms: now - 864e5 * 2, updated_ms: now - 864e5, pinned: false, quick: false },
+    { id: "note-3", title: "Ideas", preview: "Per-app engine choice? Push-to-talk on the mouse side button.", words: 11, created_ms: now - 864e5 * 8, updated_ms: now - 864e5 * 8, pinned: false, quick: false },
+  ];
+  let noteSeq = 4;
+  window.__opened = [];
+  const noteOrder = (a, b) => b.pinned - a.pinned || b.updated_ms - a.updated_ms || (a.id < b.id ? -1 : 1);
   const cmds = {
+    note_list: ({ query }) => {
+      const q = (query || "").trim().toLowerCase();
+      return notes.filter((n) => !q || (n.title + "\n" + n.preview).toLowerCase().includes(q)).sort(noteOrder).map((n) => ({ ...n }));
+    },
+    note_create: () => {
+      const id = `note-${noteSeq++}`;
+      notes.push({ id, title: "Untitled", preview: "", words: 0, created_ms: Date.now(), updated_ms: Date.now(), pinned: false, quick: false });
+      return id;
+    },
+    note_set_pinned: ({ id, pinned }) => {
+      const n = notes.find((x) => x.id === id);
+      if (!n) throw `no note "${id}"`;
+      n.pinned = pinned;
+    },
+    note_open: ({ id }) => {
+      if (!/^[a-z0-9_-]{1,64}$/.test(id)) throw `"${id}" is not a note id`;
+      window.__opened.push(id);
+    },
     get_prefs: () => structuredClone(prefs),
-    set_prefs: ({ prefs: p }) => { prefs = structuredClone(p); },
+    set_prefs: ({ prefs: p }) => {
+      const reload = modelKey(p) !== modelKey(prefs);
+      prefs = structuredClone(p);
+      if (reload) {
+        const path = p.asr_engine === "parakeet"
+          ? p.parakeet_model_dir || "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"
+          : p.model_path || "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\ggml-base.bin";
+        modelStatus = { state: "loading", path };
+        setTimeout(() => {
+          modelStatus = path.includes("missing") ? { state: "missing", path } : { state: "ready", path, load_ms: 900 };
+          window.__emit("model:status", modelStatus);
+        }, 150);
+      }
+    },
     list_microphones: () => ["USB Mic", "Realtek"],
     get_model_status: () => ({
-      status: { state: "ready", path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models\\ggml-base.bin", load_ms: 312 },
+      status: { ...modelStatus },
       default_path: "C:\\…\\ggml-base.bin", default_parakeet_dir: "C:\\…\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", models_dir: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models",
       llm: { state: "plugin_missing", path: "C:\\…\\qwen.gguf", message: "llm plugin not found (C:\\Program Files\\Murmur\\flow_llm.dll: not found)" },
       default_llm_path: "C:\\…\\qwen2.5-0.5b-instruct-q4_k_m.gguf", llm_plugin: "flow_llm.dll",
@@ -229,6 +285,7 @@
       if (form.allow && !or.cleanup.consent && !form.consent) throw "consent required before turning on cloud cleanup";
       if (form.consent) { or.cleanup.consent = true; or.cleanup.consent_at_ms = Date.now(); }
       const { consent, ...rest } = form;
+      if (rest.order == null) delete rest.order; // null = keep (CleanupForm.order: Option)
       or.cleanup = { ...or.cleanup, ...rest, timeout_ms: Math.min(8000, Math.max(800, form.timeout_ms)) };
       return orView();
     },

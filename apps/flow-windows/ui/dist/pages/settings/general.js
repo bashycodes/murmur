@@ -42,5 +42,6 @@ ${group("", row("Theme", "", select("theme", [
         ["light", "Light"],
         ["dark", "Dark"],
         ["system", "System"],
-    ])))}`,
+    ])))}
+${group("Setup", row("Run setup again", "Choose where speech runs, the speech model and AI cleanup step by step.", `<button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="run_setup" data-run-setup>Run setup</button>`))}`,
 };
