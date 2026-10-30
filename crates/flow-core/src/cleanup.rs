@@ -41,6 +41,27 @@ impl CleanPrompt {
         m.push(("user", self.user.as_str()));
         m
     }
+
+    /// Name the dictation's language in the user message (D33): a
+    /// `LANGUAGE:` line before the transcript when `language` is known and
+    /// not English (the system prompt already says "keep the speaker's
+    /// language"). English or unknown: the prompt is returned unchanged,
+    /// so English prompts stay byte-identical. Per-dictation, so it sits in
+    /// the user message and the cached prefix is unaffected.
+    pub fn with_language(mut self, language: Option<&str>) -> Self {
+        let Some(code) = language.filter(|l| !crate::config::english_rules(Some(l))) else {
+            return self;
+        };
+        let line = format!(
+            "LANGUAGE: {} (write the text in this language; never translate)\n",
+            crate::config::language_name(code)
+        );
+        match self.user.rfind("TRANSCRIPT: ") {
+            Some(i) => self.user.insert_str(i, &line),
+            None => self.user.insert_str(0, &line),
+        }
+        self
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -950,8 +971,30 @@ pub fn run_cleanup_metered(
     timeout: Duration,
     max_divergence: f64,
 ) -> (CleanOutcome, CleanUsage) {
-    let (outcome, usage, _) =
-        run_metered(cleaner, prompt, asr_text, timeout, max_divergence, false);
+    run_cleanup_metered_for(cleaner, prompt, asr_text, timeout, max_divergence, None)
+}
+
+/// [`run_cleanup_metered`] for a dictation in `language`: the guard skips
+/// its English word lists for non-English text
+/// ([`crate::guard::check_for_language`], D33). `None` / English = the
+/// same as [`run_cleanup_metered`].
+pub fn run_cleanup_metered_for(
+    cleaner: Arc<dyn Cleaner>,
+    prompt: CleanPrompt,
+    asr_text: &str,
+    timeout: Duration,
+    max_divergence: f64,
+    language: Option<&str>,
+) -> (CleanOutcome, CleanUsage) {
+    let (outcome, usage, _) = run_metered(
+        cleaner,
+        prompt,
+        asr_text,
+        timeout,
+        max_divergence,
+        false,
+        language,
+    );
     (outcome, usage)
 }
 
@@ -967,7 +1010,28 @@ pub fn run_ai_cleanup(
     timeout: Duration,
     max_divergence: f64,
 ) -> (CleanOutcome, CleanUsage, Rejection) {
-    run_metered(cleaner, prompt, raw, timeout, max_divergence, true)
+    run_metered(cleaner, prompt, raw, timeout, max_divergence, true, None)
+}
+
+/// [`run_ai_cleanup`] for a dictation in `language` (see
+/// [`run_cleanup_metered_for`]).
+pub fn run_ai_cleanup_for(
+    cleaner: Arc<dyn Cleaner>,
+    prompt: CleanPrompt,
+    raw: &str,
+    timeout: Duration,
+    max_divergence: f64,
+    language: Option<&str>,
+) -> (CleanOutcome, CleanUsage, Rejection) {
+    run_metered(
+        cleaner,
+        prompt,
+        raw,
+        timeout,
+        max_divergence,
+        true,
+        language,
+    )
 }
 
 fn run_metered(
@@ -977,6 +1041,7 @@ fn run_metered(
     timeout: Duration,
     max_divergence: f64,
     ai: bool,
+    language: Option<&str>,
 ) -> (CleanOutcome, CleanUsage, Rejection) {
     let deadline = Instant::now() + timeout;
     let cancel = Arc::new(AtomicBool::new(false));
@@ -1033,7 +1098,7 @@ fn run_metered(
     } else {
         crate::guard::Strictness::Strict
     };
-    let (outcome, why) = judge(asr_text, out, max_divergence, strictness);
+    let (outcome, why) = judge(asr_text, out, max_divergence, strictness, language);
     (outcome, usage, why)
 }
 
@@ -1073,6 +1138,7 @@ fn judge(
     out: String,
     max_divergence: f64,
     strictness: crate::guard::Strictness,
+    language: Option<&str>,
 ) -> (CleanOutcome, Rejection) {
     let reject = |reason, out: String, detail: String| {
         let why = Rejection {
@@ -1093,7 +1159,7 @@ fn judge(
         let detail = format!("divergence {div:.2} > {max_divergence:.2}");
         return reject(FallbackReason::Diverged, out, detail);
     }
-    match crate::guard::check_with(asr_text, &out, strictness) {
+    match crate::guard::check_for_language(asr_text, &out, strictness, language) {
         crate::guard::Verdict::Ok => (CleanOutcome::Formatted(out), Rejection::default()),
         crate::guard::Verdict::Unsupported(s) => reject(
             FallbackReason::Unsupported,
@@ -1155,6 +1221,29 @@ mod tests {
         assert!(p.user.contains("DICTIONARY: Kubernetes"), "{}", p.user);
         assert!(p.user.contains("um so yeah"));
         assert!(p.user.contains("Dear Bob,"));
+    }
+
+    #[test]
+    fn prompt_names_a_non_english_language() {
+        let ctx = FieldContext::default();
+        let base = build_prompt(
+            "שלום",
+            CleanupLevel::Light,
+            Style::Default,
+            &ctx,
+            &Dictionary::default(),
+        );
+        for l in [None, Some("en"), Some("en-GB")] {
+            assert_eq!(base.clone().with_language(l), base, "{l:?}");
+        }
+        let he = base.clone().with_language(Some("he"));
+        assert_eq!(he.system, base.system);
+        assert_eq!(he.examples, base.examples);
+        assert!(
+            he.user.ends_with("LANGUAGE: Hebrew (write the text in this language; never translate)\nTRANSCRIPT: \u{ab}שלום\u{bb}"),
+            "{}",
+            he.user
+        );
     }
 
     #[test]

@@ -248,6 +248,12 @@ fn tokenize(s: &str) -> Vec<Tok> {
 }
 
 fn render(toks: &[Tok]) -> String {
+    render_with(toks, true)
+}
+
+/// `capitalize`: sentence-case the first word of each sentence (the
+/// English pass); off for [`tidy_whitespace`].
+fn render_with(toks: &[Tok], capitalize: bool) -> String {
     let mut s = String::new();
     let mut cap_next = true;
     for t in toks {
@@ -265,7 +271,7 @@ fn render(toks: &[Tok]) -> String {
         if !s.is_empty() && !s.ends_with('\n') {
             s.push(' ');
         }
-        if cap_next || t.cap {
+        if capitalize && (cap_next || t.cap) {
             s.push_str(&capitalise(&t.text));
         } else {
             s.push_str(&t.text);
@@ -1203,6 +1209,14 @@ fn unglue_currency(toks: Vec<Tok>) -> Vec<Tok> {
     out
 }
 
+/// The language-neutral part of [`spoken_cleanup`] (D33), for dictations
+/// that are not in English: runs of spaces collapse, a token that is only
+/// `,.;:?!` joins the word before it, and leading/trailing/doubled line
+/// breaks go. No word lists, number formatting or capitalisation.
+pub fn tidy_whitespace(text: &str) -> String {
+    render_with(&tidy(tokenize(text)), false)
+}
+
 /// Run the whole pass. Returns `text` unchanged when nothing applies.
 pub fn spoken_cleanup(text: &str) -> String {
     let toks = tokenize(text);
@@ -1605,6 +1619,27 @@ pub fn layout(text: &str, category: AppCategory) -> String {
         out = email_layout(&out);
     }
     out
+}
+
+#[cfg(test)]
+mod tidy_tests {
+    use super::*;
+
+    #[test]
+    fn tidy_whitespace_is_language_neutral() {
+        assert_eq!(
+            tidy_whitespace("  שלום   עולם , מה  שלומך ?\n\n\n"),
+            "שלום עולם, מה שלומך?"
+        );
+        // No English rules: fillers, spoken punctuation and number words stay,
+        // and nothing is capitalised.
+        assert_eq!(
+            tidy_whitespace("um so the iPhone comma twenty dollars"),
+            "um so the iPhone comma twenty dollars"
+        );
+        assert_eq!(tidy_whitespace("שורה\n\n\n\nשנייה"), "שורה\n\nשנייה");
+        assert_eq!(tidy_whitespace("   "), "");
+    }
 }
 
 #[cfg(test)]
