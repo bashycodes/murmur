@@ -44,7 +44,7 @@ ${group(
   "History",
   row(
     "Keep dictation history",
-    "Shown on Home. Stored only on this PC; audio is never stored.",
+    "Shown on Home. Stored only on this PC.",
     `<select id="retention" class="fl-select lw-w160" aria-label="Keep dictation history">
       <option value="keep">Forever</option>
       <option value="days_30">30 days</option>
@@ -52,6 +52,18 @@ ${group(
       <option value="never">Don't keep</option>
     </select>`,
   ) +
+    row(
+      "Keep recordings for retry",
+      "The audio of your newest dictations, so Retry on Home can transcribe them again with your current settings. Never kept for password fields; deleted with its dictation.",
+      `<select id="retry_audio_keep" class="fl-select lw-w160" aria-label="Keep recordings for retry">
+        <option value="0">Don't keep</option>
+        <option value="5">Newest 5</option>
+        <option value="10">Newest 10</option>
+        <option value="20">Newest 20</option>
+        <option value="50">Newest 50</option>
+        <option value="100">Newest 100</option>
+      </select>`,
+    ) +
     row(
       "Delete all history",
       "Erases every saved dictation from disk. This can't be undone.",
@@ -146,6 +158,24 @@ async function saveRetention(): Promise<void> {
   }
 }
 
+/** A value saved outside the list (another count) is shown as is. */
+function showRetryKeep(n: number | undefined): void {
+  const s = $<HTMLSelectElement>("retry_audio_keep");
+  const v = String(n ?? 20);
+  if (![...s.options].some((o) => o.value === v)) s.add(new Option(`Newest ${v}`, v));
+  s.value = v;
+}
+
+async function saveRetryKeep(): Promise<void> {
+  try {
+    await prefsStore.save({ retry_audio_keep: Number($<HTMLSelectElement>("retry_audio_keep").value) });
+    setStatus("priv_status", "Saved", true);
+    await reloadHistory();
+  } catch (e) {
+    setStatus("priv_status", String(e), false);
+  }
+}
+
 async function clearHistory(): Promise<void> {
   if (!(await askDialog("hist_clear_dlg", "hist_clear_ok", "hist_clear_cancel"))) return;
   try {
@@ -220,6 +250,7 @@ export const settingsPrivacyPage: Page = {
   init(): void {
     $<HTMLSelectElement>("retention").addEventListener("change", () => void saveRetention());
     $<HTMLButtonElement>("hist_clear").addEventListener("click", () => void clearHistory());
+    $<HTMLSelectElement>("retry_audio_keep").addEventListener("change", () => void saveRetryKeep());
     $<HTMLInputElement>("dev_debug_log").addEventListener("change", () => void debugLogToggled());
     $<HTMLButtonElement>("dev_debug_open").addEventListener("click", () =>
       void debugCall("debug_log_open_folder", {}, "Opened the log folder"),
@@ -227,7 +258,10 @@ export const settingsPrivacyPage: Page = {
     $<HTMLButtonElement>("dev_debug_clear").addEventListener("click", () =>
       void debugCall("debug_log_clear", {}, "Debug log deleted").then((v) => v && showDebugLog(v)),
     );
-    prefsStore.subscribe((p) => showRetention(p.retention));
+    prefsStore.subscribe((p) => {
+      showRetention(p.retention);
+      showRetryKeep(p.retry_audio_keep);
+    });
     views.onDev(showLeaves);
     views.onOr(showLeaves);
     void onEvent<null>("history:changed", () => {

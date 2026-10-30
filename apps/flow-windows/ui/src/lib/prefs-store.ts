@@ -41,6 +41,8 @@ export interface Prefs {
   max_dictation_minutes: number;
   hands_free_silence_ms: number;
   retention: string;
+  /** Recordings kept for History "Retry" (the newest rows; 0 = none). */
+  retry_audio_keep?: number;
   model_path: string | null;
   asr_engine: string;
   parakeet_model_dir: string | null;

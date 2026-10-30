@@ -15,7 +15,7 @@
       { word: "gh", replacement: "GitHub", isSnippet: false },
       { word: "my address", replacement: "1 Main Street\nSpringfield", isSnippet: true },
     ],
-    paste_method: "ctrl_v", restore_clipboard: true, max_dictation_minutes: 20, hands_free_silence_ms: 2000, retention: "keep",
+    paste_method: "ctrl_v", restore_clipboard: true, max_dictation_minutes: 20, hands_free_silence_ms: 2000, retention: "keep", retry_audio_keep: 20,
     model_path: null, live_preview: true, llm_enabled: true, llm_model_path: null, llm_lib_path: null,
     llm_timeout_ms: 1500, learn_from_edits: true,
     asr_engine: "whisper", parakeet_model_dir: null, hebrew_model: "zipformer", spoken_cleanup: true,
@@ -161,13 +161,18 @@
       formatted: "Can we move the review to Thursday? I want one more pass over the Parakeet benchmarks before we share them.",
       pasted: "Can we move the review to Thursday? I want one more pass over the Parakeet benchmarks before we share them.", edited: null,
       duration_ms: 6200, words: 20, lang: "en", route: "pc",
-      final_text: "Can we move the review to Thursday? I want one more pass over the Parakeet benchmarks before we share them.", ai_edited: true },
+      final_text: "Can we move the review to Thursday? I want one more pass over the Parakeet benchmarks before we share them.", ai_edited: true,
+      has_audio: true, versions: [
+        { n: 0, ts: now - 20e3, route: "pc", text: "Can we move the review to Thursday? I want one more pass over the parakeet bench marks before we share them." },
+        { n: 1, ts: now - 15e3, route: "server", text: "Can we move the review to Thursday? I want one more pass over the Parakeet benchmarks before we share them." },
+      ] },
     { id: 4, ts: now - 30 * 60e3, app: "code.exe", url: null, raw: "ship the hands free fix first then the clipboard restore",
       formatted: null, pasted: "Ship the hands-free fix first, then the clipboard restore.", edited: null,
       duration_ms: 3100, words: 10, lang: "en", route: "cloud", final_text: "Ship the hands-free fix first, then the clipboard restore.", ai_edited: false },
     { id: 3, ts: now - 60e3, app: "outlook.exe", url: null, raw: "um so i think we should uh meet tomorrow at three",
       formatted: "I think we should meet tomorrow at 3.", pasted: "I think we should meet tomorrow at 3.", edited: null,
-      duration_ms: 4100, words: 8, lang: "en", route: "server", final_text: "I think we should meet tomorrow at 3.", ai_edited: true },
+      duration_ms: 4100, words: 8, lang: "en", route: "server", final_text: "I think we should meet tomorrow at 3.", ai_edited: true,
+      has_audio: true, versions: [] },
     { id: 2, ts: now - 3600e3, app: "slack.exe", url: null, raw: "i use whisper flow daily",
       formatted: null, pasted: "I use whisper flow daily", edited: "I use Wispr Flow daily",
       duration_ms: 2000, words: 5, lang: "en", route: "pc", final_text: "I use whisper flow daily", ai_edited: false },
@@ -339,6 +344,25 @@
     history_delete: ({ id }) => { history = history.filter((h) => h.id !== id); return true; },
     history_clear: () => { const n = history.length; history = []; return n; },
     history_copy: () => {}, history_repaste: () => {}, clipboard_copy: () => {},
+    // Retry: a new version a moment later (row 3's second retry fails, to
+    // show the error path), reported like the app does.
+    history_retry: ({ id }) => {
+      const h = history.find((x) => x.id === id);
+      if (!h || !h.has_audio) throw "The recording of this dictation is no longer kept";
+      window.__retries = (window.__retries || 0) + 1;
+      setTimeout(() => {
+        if (id === 3 && (h.versions || []).length > 0) {
+          window.__emit("history:retry", { id, error: "No speech found in the recording with these settings" });
+          return;
+        }
+        const vs = h.versions && h.versions.length ? h.versions : [{ n: 0, ts: h.ts, route: h.route, text: h.final_text }];
+        const text = `${h.final_text.replace(/\.$/, "")} (retry ${vs.length}).`;
+        vs.push({ n: vs.length, ts: Date.now(), route: "cloud", text });
+        Object.assign(h, { versions: vs, final_text: text, pasted: h.pasted === null ? null : text, route: "cloud" });
+        window.__emit("history:changed", null);
+        window.__emit("history:retry", { id, error: null });
+      }, 300);
+    },
     insights_get: () => structuredClone(insights),
     insights_reset: () => {
       insights = { ...insights, total_words: 0, week_words: 0, dictations: 0, total_ms: 0, avg_wpm: null,

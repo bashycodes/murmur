@@ -28,6 +28,7 @@ export const ICON = {
   down: "M6 9l6 6 6-6",
   plus: "M12 5v14M5 12h14",
   search: "M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14zM20 20l-4-4",
+  retry: "M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5",
 } as const;
 
 /** Markup for a static template. */
