@@ -32,6 +32,8 @@
     "allow-dictionary-import",
     "allow-dictionary-export",
     "allow-dictionary-export-text",
+    "allow-transforms-reset",
+    "allow-transform-try",
     "allow-dev-get",
     "allow-dev-validate",
     "allow-dev-set",
