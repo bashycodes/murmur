@@ -1,8 +1,8 @@
-//! Speech-model downloader (D9 exception on an explicit click, see
-//! docs/DECISIONS.md D31).
+//! Model downloader (D9 exception on an explicit click, see
+//! docs/DECISIONS.md D31): speech models and, since 0.11.0, AI cleanup models.
 //!
 //! * [`CATALOG`]: the few models the local engine already loads (a whisper.cpp
-//!   ggml file, or the Parakeet sherpa-onnx folder), each file with its URL
+//!   ggml file, a sherpa-onnx folder, or a llama.cpp GGUF), each file with its URL
 //!   pinned to a Hugging Face commit, its size and its SHA-256. Nothing else
 //!   can be downloaded: the command takes a catalogue id, never a URL.
 //! * [`run`]: download one entry into the models folder. Each file goes to
@@ -36,6 +36,8 @@ pub enum ModelEngine {
     /// sherpa-onnx online transducer (the Hebrew zipformer, D33/H2).
     #[serde(rename = "sherpa_online")]
     SherpaOnline,
+    /// A GGUF instruct model for local AI cleanup (llama.cpp, `flow_llm`).
+    Llm,
 }
 
 #[derive(Debug)]
@@ -52,7 +54,7 @@ pub struct CatalogEntry {
     pub title: &'static str,
     pub desc: &'static str,
     pub engine: ModelEngine,
-    /// File name (whisper) or folder name (Parakeet) in the models folder.
+    /// File name (whisper, GGUF) or folder name (sherpa) in the models folder.
     pub dest: &'static str,
     /// The model's page, for "Download links" and the confirm dialog.
     pub page: &'static str,
@@ -96,6 +98,16 @@ macro_rules! parakeet_he_base {
         "https://huggingface.co/krut42/voice-parakeet-he-int8/resolve/39de3b473bed626c7796c156d71adc66161ebfe1/"
     };
 }
+macro_rules! qwen05_base {
+    () => {
+        "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/"
+    };
+}
+macro_rules! qwen15_base {
+    () => {
+        "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/"
+    };
+}
 macro_rules! whisper_base {
     () => {
         "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/"
@@ -104,7 +116,9 @@ macro_rules! whisper_base {
 
 /// Hashes computed 2026-10-30 by downloading each file once (they equal the
 /// Hugging Face LFS ids at those commits; the Hebrew ones:
-/// docs/findings/2026-10-30-hebrew-model-pins.md).
+/// docs/findings/2026-10-30-hebrew-model-pins.md). The cleanup models (engine
+/// `Llm`) are pinned from the HF API: docs/findings/2026-10-30-cleanup-model-pins.md.
+/// More cleanup GGUFs are one entry each.
 pub const CATALOG: &[CatalogEntry] = &[
     CatalogEntry {
         id: "parakeet-tdt-0.6b-v2-int8",
@@ -186,6 +200,34 @@ pub const CATALOG: &[CatalogEntry] = &[
             model_file!(parakeet_he_base!(), "tokens.txt", 107_590, "55a91c862d0a63e8b9587a3264ced4fc76943e66098468b4638e6a6c5642e364"),
         ],
     },
+    // AI cleanup (llama.cpp GGUF). The 0.5B one is saved under the name the
+    // app loads when no cleanup model is set (D11).
+    CatalogEntry {
+        id: "qwen2.5-0.5b-instruct-q4_k_m",
+        title: "Qwen2.5 0.5B Instruct",
+        desc: "Fast · the default",
+        engine: ModelEngine::Llm,
+        dest: crate::core_adapter::DEFAULT_LLM_FILE,
+        page: "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+        recommended: true,
+        language: None,
+        license: None,
+        extras: &[],
+        files: &[model_file!(qwen05_base!(), "qwen2.5-0.5b-instruct-q4_k_m.gguf", 491_400_032, "74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db")],
+    },
+    CatalogEntry {
+        id: "qwen2.5-1.5b-instruct-q4_k_m",
+        title: "Qwen2.5 1.5B Instruct",
+        desc: "More accurate · about twice as slow",
+        engine: ModelEngine::Llm,
+        dest: "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+        page: "https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+        recommended: false,
+        language: None,
+        license: None,
+        extras: &[],
+        files: &[model_file!(qwen15_base!(), "qwen2.5-1.5b-instruct-q4_k_m.gguf", 1_117_320_736, "6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e")],
+    },
 ];
 
 /// The language-ID model the Hebrew entries bring along (H6/D34; hash and
@@ -232,10 +274,15 @@ impl CatalogEntry {
     }
 
     fn is_dir(&self) -> bool {
-        self.engine != ModelEngine::Whisper
+        matches!(self.engine, ModelEngine::Parakeet | ModelEngine::SherpaOnline)
     }
 
-    /// Where the model ends up: the file, or the Parakeet folder.
+    /// An AI cleanup model (Settings → AI cleanup), not a speech model.
+    pub fn is_llm(&self) -> bool {
+        self.engine == ModelEngine::Llm
+    }
+
+    /// Where the model ends up: the file, or the sherpa folder.
     pub fn dest_path(&self, models_dir: &Path) -> PathBuf {
         models_dir.join(self.dest)
     }
@@ -269,6 +316,11 @@ impl CatalogEntry {
         }
         let p = Some(self.dest_path(models_dir).display().to_string());
         match self.engine {
+            // The cleanup model: turn local cleanup on with this file.
+            ModelEngine::Llm => {
+                prefs.llm_enabled = true;
+                prefs.llm_model_path = p;
+            }
             // No default-model entry runs on the online engine.
             ModelEngine::SherpaOnline => {}
             ModelEngine::Whisper => {
@@ -280,6 +332,38 @@ impl CatalogEntry {
                 prefs.parakeet_model_dir = p;
             }
         }
+    }
+
+    /// Before deleting this cleanup model: when the prefs use it, turn local
+    /// cleanup off and forget the path (the formatting rules keep working).
+    /// True when the prefs changed.
+    pub fn forget_in(&self, prefs: &mut Prefs, models_dir: &Path, appdata: Option<&str>) -> bool {
+        if !self.is_llm() || prefs.resolved_llm_path(appdata) != self.dest_path(models_dir) {
+            return false;
+        }
+        let was = (prefs.llm_enabled, prefs.llm_model_path.clone());
+        prefs.llm_enabled = false;
+        prefs.llm_model_path = None;
+        was != (prefs.llm_enabled, prefs.llm_model_path.clone())
+    }
+
+    /// Delete the downloaded files (and `.part` leftovers). Only cleanup
+    /// models can be deleted from the app; missing files are fine.
+    pub fn delete(&self, models_dir: &Path) -> Result<(), String> {
+        if !self.is_llm() {
+            return Err("only AI cleanup models can be deleted here".into());
+        }
+        for f in self.files {
+            let p = self.file_path(models_dir, f, false);
+            for q in [p.with_file_name(format!("{}.part", f.name)), p] {
+                match std::fs::remove_file(&q) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) => return Err(format!("could not delete {}: {e}", q.display())),
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -658,7 +742,7 @@ mod tests {
 
     #[test]
     fn catalogue_is_pinned_to_hugging_face_commits() {
-        assert_eq!(CATALOG.len(), 5);
+        assert_eq!(CATALOG.len(), 7);
         let mut ids = std::collections::HashSet::new();
         for e in CATALOG {
             assert!(ids.insert(e.id), "duplicate id {}", e.id);
@@ -746,7 +830,11 @@ mod tests {
             title: "T",
             desc: "",
             engine,
-            dest: if engine != ModelEngine::Whisper { "pk-dir" } else { "m.bin" },
+            dest: match engine {
+                ModelEngine::Parakeet | ModelEngine::SherpaOnline => "pk-dir",
+                ModelEngine::Llm => "m.gguf",
+                ModelEngine::Whisper => "m.bin",
+            },
             page: "https://huggingface.co/r",
             recommended: false,
             language: None,
@@ -932,6 +1020,83 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_models_are_pinned_ggufs() {
+        let llm: Vec<_> = CATALOG.iter().filter(|e| e.is_llm()).collect();
+        assert_eq!(
+            llm.iter().map(|e| e.id).collect::<Vec<_>>(),
+            ["qwen2.5-0.5b-instruct-q4_k_m", "qwen2.5-1.5b-instruct-q4_k_m"]
+        );
+        for e in &llm {
+            // One GGUF saved as itself in the models folder, from Qwen's repo.
+            assert_eq!(e.files.len(), 1, "{}", e.id);
+            assert!(e.extras.is_empty() && e.language.is_none() && !e.is_dir());
+            assert_eq!(e.files[0].name, e.dest);
+            assert!(e.dest.ends_with(".gguf"));
+            assert!(e.files[0].url.starts_with("https://huggingface.co/Qwen/"), "{}", e.files[0].url);
+            assert_eq!(e.dest_path(Path::new("/m")), Path::new("/m").join(e.dest));
+        }
+        // The 0.5B lands where the app looks without a configured path (D11).
+        assert_eq!(llm[0].dest, crate::core_adapter::DEFAULT_LLM_FILE);
+        assert_eq!(llm[0].size(), 491_400_032);
+        assert_eq!(llm[1].size(), 1_117_320_736);
+        assert!(llm[0].recommended && !llm[1].recommended);
+    }
+
+    #[test]
+    fn a_cleanup_download_turns_local_cleanup_on_and_keeps_speech() {
+        let d = Path::new("/m");
+        let e = entry("qwen2.5-1.5b-instruct-q4_k_m").unwrap();
+        let mut prefs = Prefs {
+            asr_engine: AsrEngineChoice::Parakeet,
+            llm_enabled: false,
+            ..Prefs::default()
+        };
+        let before = prefs.clone();
+        e.apply_to(&mut prefs, d);
+        assert!(prefs.llm_enabled);
+        let want = d.join("qwen2.5-1.5b-instruct-q4_k_m.gguf");
+        assert_eq!(prefs.llm_model_path.as_deref(), Some(want.display().to_string().as_str()));
+        assert_eq!(prefs.resolved_llm_path(None), want);
+        assert_eq!(
+            (prefs.asr_engine, &prefs.model_path, &prefs.parakeet_model_dir, prefs.hebrew_model),
+            (before.asr_engine, &before.model_path, &before.parakeet_model_dir, before.hebrew_model)
+        );
+        // The engine loads it: the cleanup spec changed.
+        assert!(crate::core_adapter::needs_llm_reload(&before, &prefs));
+        let spec = crate::core_adapter::LlmSpec::from_prefs(&prefs, None).unwrap();
+        assert_eq!(spec.model_path, want);
+        assert_eq!(spec.lib_path, before.llm_lib_path.map(PathBuf::from));
+    }
+
+    #[test]
+    fn deleting_a_cleanup_model_forgets_it_and_removes_its_file() {
+        let (e, mem) = entry_of(ModelEngine::Llm, vec![("m.gguf", b"gguf bytes")]);
+        let d = tmp("llm");
+        run(&e, &d, &mem, &AtomicBool::new(false), &mut |_| {}).unwrap();
+        assert_eq!(files_in(&d), vec!["m.gguf"]);
+        std::fs::write(d.join("m.gguf.part"), b"left over").unwrap();
+        let mut prefs = Prefs::default();
+        e.apply_to(&mut prefs, &d);
+        // Another cleanup model in use: nothing to forget.
+        let mut other = Prefs {
+            llm_enabled: true,
+            llm_model_path: Some("/x/other.gguf".into()),
+            ..Prefs::default()
+        };
+        assert!(!e.forget_in(&mut other, &d, None));
+        assert!(other.llm_enabled);
+        assert!(e.forget_in(&mut prefs, &d, None));
+        assert!(!prefs.llm_enabled && prefs.llm_model_path.is_none());
+        e.delete(&d).unwrap();
+        assert!(files_in(&d).is_empty(), "{:?}", files_in(&d));
+        assert!(!e.installed(&d));
+        e.delete(&d).unwrap(); // already gone: fine
+        // Speech models are never deleted from here.
+        assert!(entry("whisper-base").unwrap().delete(&d).is_err());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn one_download_at_a_time() {
         let d = Downloads::default();
         let flag = d.begin("a").unwrap();
@@ -959,6 +1124,8 @@ mod tests {
         assert_eq!(he["language"], "he");
         assert_eq!(he["engine"], "sherpa_online");
         assert!(he["license"].as_str().unwrap().contains("ivrit.ai"));
+        let q = serde_json::to_value(v.iter().find(|r| r.id == "qwen2.5-0.5b-instruct-q4_k_m").unwrap()).unwrap();
+        assert_eq!(q["engine"], "llm");
         let en = serde_json::to_value(pk).unwrap();
         assert!(en.get("language").is_none() && en.get("license").is_none());
         let j = serde_json::to_value(Progress {

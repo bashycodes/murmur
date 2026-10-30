@@ -37,6 +37,7 @@
     "allow-model-catalog",
     "allow-model-download-start",
     "allow-model-download-cancel",
+    "allow-model-delete",
     "allow-transforms-reset",
     "allow-transform-try",
     "allow-hotkey-capture-start",

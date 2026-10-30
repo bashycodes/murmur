@@ -6,7 +6,7 @@
 import { ICON } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import type { Page } from "../../lib/router.js";
-import { browseButton, extLink } from "../../features/models.js";
+import { browseButton, extLink, LLM_DOWNLOAD_ROW } from "../../features/models.js";
 import { engineRow } from "./speech.js";
 
 /** A small switch with its label, for a stacked list of switches in one row. */
@@ -111,10 +111,11 @@ ${group(
   "On this PC",
   row(
     "Model file",
-    `A GGUF model. Qwen2.5-0.5B-Instruct Q4_K_M is the fast default; Qwen2.5-1.5B-Instruct is more accurate and about twice as slow (${extLink("https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF", "get it →")}). Never downloaded automatically. Empty = default.`,
+    `A GGUF model. Qwen2.5-0.5B-Instruct Q4_K_M is the fast default; Qwen2.5-1.5B-Instruct is more accurate and about twice as slow (${extLink("https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF", "get it →")}, or download one below). Never downloaded automatically. Empty = default.`,
     `<input id="llm_model_path" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" />${browseButton("llm_model_path")}`,
     `data-needs="local"`,
   ) +
+    LLM_DOWNLOAD_ROW +
     row(
       "Engine library",
       `llama.cpp, <code id="llm_plugin" class="lw-mono"></code>. Empty = next to the app.`,
