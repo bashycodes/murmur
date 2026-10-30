@@ -9,27 +9,12 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Dictionary & snippets hub, list pages and the edit form (Save when changed + valid). */
+/** Dictionary & Snippets tabs (rows, labels, empty states) and the edit form (Save when changed + valid). */
 class DictionaryPagesTest {
     private val reference = DictEntry("wisper", "Whisperly", false)
     private val kubectl = DictEntry("kubectl", null, false)
     private val sig = DictEntry("my signature", "Best,\nAlex", true)
     private val all = listOf(reference, kubectl, sig)
-
-    @Test fun hubSubtitlesCountEachKind() {
-        assertEquals("2 words · 1 replacement", DictionaryPages.hubSubtitle(all, Kind.WORDS))
-        assertEquals("1 snippet", DictionaryPages.hubSubtitle(all, Kind.SNIPPETS))
-        assertEquals("None yet", DictionaryPages.hubSubtitle(emptyList(), Kind.WORDS))
-        assertEquals("None yet", DictionaryPages.hubSubtitle(emptyList(), Kind.SNIPPETS))
-        assertEquals("1 word", DictionaryPages.hubSubtitle(listOf(kubectl), Kind.WORDS))
-        assertEquals("3 snippets", DictionaryPages.hubSubtitle(List(3) { DictEntry("s$it", "x", true) }, Kind.SNIPPETS))
-    }
-
-    @Test fun mainScreenSubtitle() {
-        assertEquals("2 words · 1 snippet", DictionaryPages.mainSubtitle(all))
-        assertEquals("No words or snippets yet", DictionaryPages.mainSubtitle(emptyList()))
-        assertEquals("0 words · 1 snippet", DictionaryPages.mainSubtitle(listOf(sig)))
-    }
 
     @Test fun listPagesShowOnlyTheirKindSortedAndFiltered() {
         assertEquals(listOf(kubectl, reference), DictionaryPages.entries(all, Kind.WORDS, ""))
@@ -38,23 +23,27 @@ class DictionaryPagesTest {
         assertEquals(listOf(sig), DictionaryPages.entries(all, Kind.SNIPPETS, "alex"))
     }
 
-    @Test fun rowSubtitles() {
-        assertEquals("→ Whisperly", DictionaryPages.rowSubtitle(reference))
-        assertEquals("Spelling hint for the speech engine", DictionaryPages.rowSubtitle(kubectl))
-        assertEquals("Best, Alex", DictionaryPages.rowSubtitle(sig))
-        val long = DictEntry("x", "a".repeat(200), true)
-        assertEquals(81, DictionaryPages.rowSubtitle(long).length)
-        assertTrue(DictionaryPages.rowSubtitle(long).endsWith("…"))
+    @Test fun tabRowsShowHeardArrowWordAndSnippetText() {
+        assertEquals(DictionaryPages.Row("wisper", "Whisperly", "", "wisper, replaced with Whisperly"), DictionaryPages.row(reference))
+        assertEquals(DictionaryPages.Row(null, "kubectl", "", "kubectl"), DictionaryPages.row(kubectl))
+        assertEquals(DictionaryPages.Row(null, "my signature", "Best, Alex", "my signature, inserts Best, Alex"), DictionaryPages.row(sig))
+        val long = DictionaryPages.row(DictEntry("x", "a".repeat(200), true)).detail
+        assertEquals(81, long.length)
+        assertTrue(long.endsWith("…"))
     }
 
-    @Test fun searchOnlyForLongLists() {
-        assertFalse(DictionaryPages.showSearch(DictionaryPages.SEARCH_FROM - 1))
-        assertTrue(DictionaryPages.showSearch(DictionaryPages.SEARCH_FROM))
+    @Test fun labels() {
+        assertEquals("Search dictionary", DictionaryPages.searchLabel(Kind.WORDS))
+        assertEquals("Search snippets", DictionaryPages.searchLabel(Kind.SNIPPETS))
+        assertEquals("Add a word", DictionaryPages.addLabel(Kind.WORDS))
+        assertEquals("Add a snippet", DictionaryPages.addLabel(Kind.SNIPPETS))
+        assertEquals("Add word", DictionaryPages.editTitle(true, false))
+        assertEquals("Edit snippet", DictionaryPages.editTitle(false, true))
     }
 
     @Test fun emptyStates() {
         assertEquals("No words yet", DictionaryPages.empty(Kind.WORDS, "", 0).title)
-        assertTrue(DictionaryPages.empty(Kind.SNIPPETS, "", 0).hint.contains("Add"))
+        assertTrue(DictionaryPages.empty(Kind.SNIPPETS, "", 0).hint.startsWith("Tap + to add one."))
         assertEquals("Nothing matches “zz”", DictionaryPages.empty(Kind.WORDS, " zz ", 4).title)
     }
 

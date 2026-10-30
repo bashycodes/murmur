@@ -20,7 +20,6 @@ import dev.flowclone.R
 import dev.flowclone.core.NativeFlowCore
 import dev.flowclone.data.AppVersion
 import dev.flowclone.data.DevSummary
-import dev.flowclone.data.DictionaryPages
 import dev.flowclone.data.OpenRouterPage
 import dev.flowclone.data.SettingsPages
 import dev.flowclone.data.SetupChecklist
@@ -104,9 +103,9 @@ class MainActivity : Activity() {
     /** The extension point: which [ShellTab] hosts each bottom-nav destination. */
     private fun createTab(t: Tab): ShellTab = when (t) {
         Tab.HOME -> HomeTab(this, ui)
-        Tab.DICTIONARY -> LaunchTab(t.label) { DictionaryActivity.intent(this) }
+        Tab.DICTIONARY -> dev.flowclone.ui.tabs.DictionaryTab(this, ui)
         Tab.STYLE -> LaunchTab(t.label) { SettingsActivity.intent(this, SettingsPages.Page.STYLE) }
-        Tab.SNIPPETS -> LaunchTab(t.label) { DictionaryActivity.intent(this, DictionaryActivity.PAGE_LIST, DictionaryPages.Kind.SNIPPETS) }
+        Tab.SNIPPETS -> dev.flowclone.ui.tabs.SnippetsTab(this, ui)
     }
 
     internal fun tab(t: Tab): ShellTab = tabs.getOrPut(t) { createTab(t) }
