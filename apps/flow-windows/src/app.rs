@@ -54,6 +54,9 @@ struct AppState {
     dictating: OnceLock<Arc<std::sync::atomic::AtomicBool>>,
     /// Controller input (overlay ✕/✓ clicks).
     input: OnceLock<mpsc::Sender<Input>>,
+    /// Box (CSS px) of the bubble's "Fix →" link while the overlay shows
+    /// one; the hover watcher makes it clickable (`overlay::click_through`).
+    overlay_link: Arc<Mutex<Option<crate::overlay::Rect>>>,
     history: Option<Arc<Mutex<History>>>,
     /// Insights page counts (`insights.json`, local only).
     insights: Arc<Mutex<InsightsStore>>,
@@ -426,6 +429,7 @@ fn set_prefs(
         let _ = s.save();
         s.data.pending.len()
     };
+    let _ = app.emit_to(OVERLAY, "overlay:theme", prefs.theme);
     *state.prefs.write().unwrap() = prefs;
     show_suggestion_count(&app, pending);
     Ok(())
@@ -806,17 +810,25 @@ fn overlay_settings_page(page: Option<&str>) -> Result<&'static str, String> {
 
 /// ✕ / ✓ clicked on the hands-free pill, or a pill link to a settings
 /// page: `open_settings` + `page` shows the settings window and emits
-/// `settings:tab` with the page id.
+/// `settings:tab` with the page id. `link_rect` + `rect` (CSS px, `null` =
+/// no link shown) tells the hover watcher where that link is, so it is
+/// clickable while the rest of the canvas stays click-through.
 #[tauri::command]
 fn overlay_action(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
     action: String,
     page: Option<String>,
+    rect: Option<crate::overlay::Rect>,
 ) -> Result<(), String> {
     let input = match action.as_str() {
         "cancel" => Input::Hotkey(hotkeys::HotkeyAction::Cancel),
         "finish" => Input::Finish,
+        "link_rect" => {
+            let rect = rect.map(crate::overlay::accept_link_rect).transpose()?;
+            *state.overlay_link.lock().unwrap() = rect;
+            return Ok(());
+        }
         "open_settings" => {
             let page = overlay_settings_page(page.as_deref())?;
             show_settings(&app);
@@ -829,6 +841,14 @@ fn overlay_action(
         let _ = tx.send(input);
     }
     Ok(())
+}
+
+/// The Flow bar's colour scheme (`theme` pref). The overlay is not granted
+/// `get_prefs` (review S18: it sees no dictionary, host or history), only
+/// this; later changes arrive as `overlay:theme`.
+#[tauri::command]
+fn overlay_theme(state: tauri::State<'_, AppState>) -> crate::prefs::Theme {
+    state.prefs.read().unwrap().theme
 }
 
 #[tauri::command]
@@ -1765,9 +1785,14 @@ fn make_overlay_passive(w: &WebviewWindow) {
     }
 }
 
-/// Click-through except while the cursor is over the locked pill, so the
-/// hands-free ✕/✓ are clickable but the transparent canvas never eats clicks.
-fn spawn_hover_watch(app: AppHandle, state: Arc<Mutex<OverlayState>>) {
+/// Click-through except while the cursor is over the locked pill or the
+/// bubble's settings link, so the hands-free ✕/✓ and "Fix →" are clickable
+/// but the transparent canvas never eats clicks.
+fn spawn_hover_watch(
+    app: AppHandle,
+    state: Arc<Mutex<OverlayState>>,
+    link: Arc<Mutex<Option<crate::overlay::Rect>>>,
+) {
     let _ = std::thread::Builder::new()
         .name("flow-overlay-hover".into())
         .spawn(move || {
@@ -1775,14 +1800,17 @@ fn spawn_hover_watch(app: AppHandle, state: Arc<Mutex<OverlayState>>) {
             loop {
                 std::thread::sleep(Duration::from_millis(30));
                 let st = state.lock().unwrap().clone();
-                if st != OverlayState::ActiveLocked && ignoring {
+                let link = *link.lock().unwrap();
+                if st != OverlayState::ActiveLocked && link.is_none() && ignoring {
                     continue;
                 }
                 let Some(w) = app.get_webview_window(OVERLAY) else {
                     continue;
                 };
+                // A hidden overlay has no link to click, whatever the page said last.
+                let link = link.filter(|_| w.is_visible().unwrap_or(false));
                 let want = match hwnd_of(&w) {
-                    Some(h) if st == OverlayState::ActiveLocked => {
+                    Some(h) if st == OverlayState::ActiveLocked || link.is_some() => {
                         let mut r = RECT::default();
                         let mut p = POINT::default();
                         let ok = unsafe {
@@ -1798,6 +1826,7 @@ fn spawn_hover_watch(app: AppHandle, state: Arc<Mutex<OverlayState>>) {
                             },
                             w.scale_factor().unwrap_or(1.0),
                             (p.x as f64, p.y as f64),
+                            link,
                         )
                     }
                     _ => true,
@@ -1966,6 +1995,7 @@ pub fn run() {
             router: OnceLock::new(),
             dictating: OnceLock::new(),
             input: OnceLock::new(),
+            overlay_link: Arc::new(Mutex::new(None)),
             history: history.clone(),
             insights: insights_store.clone(),
             suggestions: suggestions.clone(),
@@ -1987,6 +2017,7 @@ pub fn run() {
             list_microphones,
             get_model_status,
             overlay_action,
+            overlay_theme,
             history_list,
             history_delete,
             history_clear,
@@ -2134,7 +2165,11 @@ pub fn run() {
             let (tx, rx) = mpsc::channel::<Input>();
             let _ = app.state::<AppState>().input.set(tx.clone());
             let overlay_state = Arc::new(Mutex::new(OverlayState::Resting));
-            spawn_hover_watch(handle.clone(), overlay_state.clone());
+            spawn_hover_watch(
+                handle.clone(),
+                overlay_state.clone(),
+                app.state::<AppState>().overlay_link.clone(),
+            );
             let platform = Arc::new(WinPlatform {
                 app: handle.clone(),
                 prefs: prefs.clone(),

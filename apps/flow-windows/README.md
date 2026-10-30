@@ -374,7 +374,7 @@ before the paste.
 | `tests/router_integration.rs` | Controller → router → flow-remote → in-process flow-server (MockAsr) vs local MockAsr: all four toggle combos, server down / killed mid-dictation (no lost audio), error pills, Test connection / Test session |
 | `tests/core_integration.rs` | Controller + real flow-core (MockAsr, and whisper tiny.en on `jfk.wav` when present): audio → commit → paste plan → history |
 | `src/app.rs` | Tauri: tray, overlay window (512x614, click-through, `WS_EX_NOACTIVATE`), settings window, Scratchpad/Notes window (created on demand), commands, autostart |
-| `build.rs`, `capabilities/` | Every command is declared in the app manifest; the settings window gets all of them except the note commands, the overlay only `overlay_action`, the Scratchpad/Notes window only `note_*` + `clipboard_copy` (`tests/capabilities.rs`) |
+| `build.rs`, `capabilities/` | Every command is declared in the app manifest; the settings window gets all of them except the note commands, the overlay only `overlay_action` + `overlay_theme` (not `get_prefs`), the Scratchpad/Notes window only `note_*` + `clipboard_copy` (`tests/capabilities.rs`) |
 | `tools/ci/` | CI helpers: Parakeet DLL bundle overlay, installer collection (`.github/workflows/windows-build.yml`) |
 | `ui/` | Plain TypeScript → `ui/dist/*.js` (committed). No bundler, no CDN, no web fonts; the CSP is `'self'` only. Settings tabs: General, AI cleanup, History, Insights, Dictionary, Developer; `scratchpad.html` (`?note=<id>`, default `scratchpad`; `?view=notes` = Notes list) |
 | `tauri.llm.conf.json` | Config overlay that bundles `flow_llm.dll` next to the exe (`cargo tauri build --config tauri.llm.conf.json`) |

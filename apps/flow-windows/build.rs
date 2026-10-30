@@ -15,14 +15,15 @@ fn main() {
     {
         // Every app command gets an `allow-<command>` permission, so each
         // window can be granted only what it uses (capabilities/*.json;
-        // review S18: the overlay may invoke `overlay_action` only, not the
-        // history or cloud-key commands).
+        // review S18: the overlay may invoke `overlay_action` / `overlay_theme`
+        // only, not the history or cloud-key commands).
         const COMMANDS: &[&str] = &[
             "get_prefs",
             "set_prefs",
             "list_microphones",
             "get_model_status",
             "overlay_action",
+            "overlay_theme",
             "history_list",
             "history_delete",
             "history_clear",

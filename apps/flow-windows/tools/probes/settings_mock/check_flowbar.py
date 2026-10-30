@@ -6,7 +6,10 @@ Probe (Playwright + its bundled Chromium):
 Drives each artboard state (docs/design/app-design/FlowBar.dc.html) in light
 and dark, checks the hands-free pill geometry that src/overlay.rs hit-tests
 (187 x 36, bottom 14 px), that ✕ / ■ send overlay_action and that the
-error / fell-back bubbles' "Fix →" / "Choose a model →" open their page. With shot-dir,
+error / fell-back bubbles' "Fix →" / "Choose a model →" open their page,
+that the link's box is reported to Rust (overlay_action link_rect; null once
+the bubble goes) and that the `theme` pref (overlay_theme / overlay:theme)
+overrides the system scheme. With shot-dir,
 writes <state>-<scheme>.png per state (not committed). Exits non-zero on
 the first failed check.
 """
@@ -65,6 +68,19 @@ FIX = {
     "error-cleanup": ("Choose a model →", "settings-cleanup"),
 }
 
+def actions(pg):
+    return pg.evaluate("window.__actions")
+
+
+def clicks(pg):
+    """overlay_action calls other than link-box reports."""
+    return [a for a in actions(pg) if a["cmd"] == "overlay_action" and a["args"]["action"] != "link_rect"]
+
+
+def link_rects(pg):
+    return [a["args"]["rect"] for a in actions(pg) if a["cmd"] == "overlay_action" and a["args"]["action"] == "link_rect"]
+
+
 with sync_playwright() as p:
     b = p.chromium.launch()
     for scheme in ("light", "dark"):
@@ -88,8 +104,9 @@ with sync_playwright() as p:
                     check(bb["x"] >= box["x"] and bb["x"] + bb["width"] <= box["x"] + box["width"], f"{scheme} #{bid} inside pill")
                 pg.locator("#btn-cancel").dispatch_event("mousedown")
                 pg.locator("#btn-finish").dispatch_event("mousedown")
-                acts = pg.evaluate("window.__actions")
+                acts = clicks(pg)
                 check([a["args"]["action"] for a in acts] == ["cancel", "finish"], f"{scheme} overlay_action cancel/finish")
+                check(link_rects(pg) == [], f"{scheme} handsfree: no link box claimed")
             if name.startswith("done-") or name == "fellback":
                 check(pg.locator("#pill[data-done] #engine-badge").is_visible(), f"{scheme} {name}: done pill shows letter")
             if name == "fellback":
@@ -98,11 +115,39 @@ with sync_playwright() as p:
                 label, page = FIX[name]
                 fix = pg.locator("#preview-fix")
                 check(fix.is_visible() and fix.inner_text() == label, f"{scheme} {name}: link {label!r}")
+                bb = fix.bounding_box()
+                rects = link_rects(pg)
+                got = rects[-1] if rects else None
+                want = {"left": bb["x"], "top": bb["y"], "right": bb["x"] + bb["width"], "bottom": bb["y"] + bb["height"]}
+                check(
+                    got is not None and all(abs(got[k] - want[k]) < 0.5 for k in want),
+                    f"{scheme} {name}: link box reported {got} ~ {want}",
+                )
+                check(want["right"] - want["left"] <= 200 and want["bottom"] - want["top"] <= 40, f"{scheme} {name}: link box within overlay.rs MAX_LINK_*")
                 fix.dispatch_event("mousedown")
-                acts = pg.evaluate("window.__actions")
+                acts = clicks(pg)
                 check(acts[-1:] == [{"cmd": "overlay_action", "args": {"action": "open_settings", "page": page}}], f"{scheme} {name}: opens {page}")
+                # Bubble goes (next dictation / resting) -> click-through again.
+                pg.evaluate("([e, p]) => window.__emit(e, p)", ["dictation:status", {"state": "active_ptt"}])
+                pg.wait_for_timeout(100)
+                check(link_rects(pg)[-1:] == [None], f"{scheme} {name}: link box cleared when the bubble hides")
             if name in ("notice", "hold-preview"):
                 check(not pg.locator("#preview-fix").is_visible(), f"{scheme} {name}: no link")
+                check(link_rects(pg) == [], f"{scheme} {name}: no link box claimed")
+            if name == "idle":
+                dark = pg.evaluate("document.documentElement.classList.contains('lw-dark')")
+                check(dark == (scheme == "dark"), f"{scheme} theme=system follows the OS")
+                other = "light" if scheme == "dark" else "dark"
+                pg.evaluate("([e, p]) => window.__emit(e, p)", ["overlay:theme", other])
+                dark = pg.evaluate("document.documentElement.classList.contains('lw-dark')")
+                check(dark == (other == "dark"), f"{scheme} overlay:theme {other} overrides the OS")
+                pg2 = ctx.new_page()
+                pg2.add_init_script("window.__theme = '%s'" % other)
+                pg2.goto(url)
+                pg2.wait_for_timeout(100)
+                dark = pg2.evaluate("document.documentElement.classList.contains('lw-dark')")
+                check(dark == (other == "dark"), f"{scheme} overlay_theme {other} at load overrides the OS")
+                pg2.close()
             if name == "handsfree-maxwarn":
                 check("stops in 30" in pg.locator("#max-warn").inner_text(), f"{scheme} max-warning countdown")
             if shots:
