@@ -4,7 +4,7 @@
 (() => {
   const now = Date.now();
   let prefs = {
-    shortcuts: { ptt: "Ctrl+Win", hands_free: "Ctrl+Win+Space", command: "Ctrl+Win+Alt", cancel: "Esc", paste_last: "Alt+Shift+Z", copy_last: "Alt+Shift+X" },
+    shortcuts: { ptt: "Ctrl+Win", hands_free: "Ctrl+Win+Space", command: "Ctrl+Win+Alt", cancel: "Esc", paste_last: "Alt+Shift+Z", copy_last: "Alt+Shift+X", scratchpad: "Ctrl+Alt+N" },
     microphone: null, languages: [], enable_sounds: true, mute_audio_while_dictating: true,
     launch_at_login: false, show_flow_bar_always: true, use_ax_context: true,
     cleanup_level: "light", raw_mode: false,
@@ -146,7 +146,37 @@
   const listeners = {};
   const debugLog = { enabled: false, count: 12 };
   const debugView = () => ({ enabled: debugLog.enabled, count: debugLog.count, path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\debug\\dictations.jsonl", stats: { written: 0, dropped: 0, write_errors: 0 } });
+  // Notes as the app window sees them (list / create / pin / open only:
+  // the text is the notes window's, mock-scratchpad.js). Opened ids land in
+  // window.__opened.
+  let notes = [
+    { id: "scratchpad", title: "Quick note", preview: "Call the plumber back", words: 4, created_ms: now - 864e5 * 9, updated_ms: now - 3600e3, pinned: false, quick: true },
+    { id: "note-1", title: "Release checklist", preview: "Bump VERSION, run check-build-matrix, tag, write the changelog entry and attach the installers", words: 24, created_ms: now - 864e5 * 3, updated_ms: now - 600e3, pinned: true, quick: false },
+    { id: "note-2", title: "Reply to Sam", preview: "Thursday at 3 works. I'll bring the slides and the latest numbers.", words: 15, created_ms: now - 864e5 * 2, updated_ms: now - 864e5, pinned: false, quick: false },
+    { id: "note-3", title: "Ideas", preview: "Per-app engine choice? Push-to-talk on the mouse side button.", words: 11, created_ms: now - 864e5 * 8, updated_ms: now - 864e5 * 8, pinned: false, quick: false },
+  ];
+  let noteSeq = 4;
+  window.__opened = [];
+  const noteOrder = (a, b) => b.pinned - a.pinned || b.updated_ms - a.updated_ms || (a.id < b.id ? -1 : 1);
   const cmds = {
+    note_list: ({ query }) => {
+      const q = (query || "").trim().toLowerCase();
+      return notes.filter((n) => !q || (n.title + "\n" + n.preview).toLowerCase().includes(q)).sort(noteOrder).map((n) => ({ ...n }));
+    },
+    note_create: () => {
+      const id = `note-${noteSeq++}`;
+      notes.push({ id, title: "Untitled", preview: "", words: 0, created_ms: Date.now(), updated_ms: Date.now(), pinned: false, quick: false });
+      return id;
+    },
+    note_set_pinned: ({ id, pinned }) => {
+      const n = notes.find((x) => x.id === id);
+      if (!n) throw `no note "${id}"`;
+      n.pinned = pinned;
+    },
+    note_open: ({ id }) => {
+      if (!/^[a-z0-9_-]{1,64}$/.test(id)) throw `"${id}" is not a note id`;
+      window.__opened.push(id);
+    },
     get_prefs: () => structuredClone(prefs),
     set_prefs: ({ prefs: p }) => { prefs = structuredClone(p); },
     list_microphones: () => ["USB Mic", "Realtek"],

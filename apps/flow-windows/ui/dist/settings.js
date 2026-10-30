@@ -19,6 +19,7 @@ import { views } from "./lib/views.js";
 import { dictionaryPage, snippetsPage } from "./pages/dictionary.js";
 import { homePage } from "./pages/home.js";
 import { insightsPage } from "./pages/insights.js";
+import { notetakerPage, scratchpadPage } from "./pages/scratchpad.js";
 import { settingsCleanupPage } from "./pages/settings/cleanup.js";
 import { settingsDeveloperPage } from "./pages/settings/developer.js";
 import { settingsGeneralPage } from "./pages/settings/general.js";
@@ -35,6 +36,8 @@ const PAGES = [
     dictionaryPage,
     snippetsPage,
     stylePage,
+    scratchpadPage,
+    notetakerPage,
     settingsGeneralPage,
     settingsSystemPage,
     settingsPrivacyPage,
@@ -47,11 +50,12 @@ const PAGES = [
 const FEATURES = [general, ai, engines, openrouter];
 const MAIN_NAV = [
     { page: "home", label: "Dictation", icon: ICON.dictation },
-    { label: "Notetaker", icon: ICON.notetaker, later: true },
+    { page: "notetaker", label: "Notetaker", icon: ICON.notetaker, later: true },
     { page: "insights", label: "Insights", icon: ICON.insights },
     { page: "dictionary", label: "Dictionary", icon: ICON.dictionary, badge: "sugg_badge" },
     { page: "snippets", label: "Snippets", icon: ICON.snippets },
     { page: "style", label: "Style", icon: ICON.style },
+    { page: "scratchpad", label: "Scratchpad", icon: "M5 4h14v16H5zM8.5 9h7M8.5 13h4" },
 ];
 const SETTINGS_NAV = [
     [
@@ -104,7 +108,7 @@ function navButton(n) {
         b.append(badge);
     }
     if (n.later) {
-        b.disabled = true;
+        b.disabled = !n.page;
         b.classList.add("is-later");
         b.title = "Not built yet";
         b.append(el("span", "fl-badge fl-badge-light", "Later"));
