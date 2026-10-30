@@ -340,7 +340,11 @@ impl Prefs {
         }
         // D36: the cleanup order holds all three engines (idempotent, so
         // not tied to a revision: an older shell may have saved over it).
-        self.developer.migrate_d36();
+        // An upgrade from "No AI", or from no AI engine on (this PC's model
+        // off and no cloud cleanup), keeps AI cleanup off: server starts off.
+        let cleanup_was_on = self.cleanup_level != CleanupLevel::None
+            && (self.llm_enabled || self.developer.cleanup_on(flow_router::CleanupRoute::Cloud));
+        self.developer.migrate_d36(cleanup_was_on);
         // Transforms: a file from before them was seeded with the
         // built-ins by serde; ids and the auto-apply choice are tidied.
         self.transforms.normalize();

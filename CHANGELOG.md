@@ -25,7 +25,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   list, whichever route transcribed it; the server cleans text sent to it
   with a new `clean` request (protocol feature `clean`). The Developer
   cleanup order and "Allow cloud cleanup" settings move into this list
-  (decision D36).
+  (decision D36). If AI cleanup was off before the update, the Server entry
+  starts off, so nothing changes until you turn it on.
 - **Windows: press a shortcut to set it.** Change on a shortcut (Settings →
   General, setup's push-to-talk, and a transform's new "Press keys") now
   records: hold the keys, let go, and that chord is saved. The keyboard hook
