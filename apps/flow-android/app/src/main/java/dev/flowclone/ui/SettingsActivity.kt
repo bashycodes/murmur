@@ -27,6 +27,7 @@ import dev.flowclone.data.DevUnlock
 import dev.flowclone.data.OpenRouter
 import dev.flowclone.data.LanguageDefault
 import dev.flowclone.data.Retention
+import dev.flowclone.data.RetryLogic
 import dev.flowclone.data.Settings
 import dev.flowclone.data.SettingsDraft
 import dev.flowclone.data.SettingsPages
@@ -169,6 +170,7 @@ class SettingsActivity : Activity() {
         val e = SettingsPages.effects(old, n)
         // Review P3: database work off the main thread (the engine reload is non-blocking since C1).
         if (e.purgeHistory) thread(name = "history-purge") { runCatching { app.history.purge(n.retention) } }
+        if (e.pruneRecordings) thread(name = "history-recordings") { runCatching { app.history.pruneAudio(n.retryAudioKeep) } }
         if (e.reloadEngine) app.engine.reload()
         // H5: Hebrew with a Hebrew model installed loads that model instead (one model in RAM).
         else if (n.language != old.language) app.engine.ensureLanguage()
@@ -744,6 +746,17 @@ class SettingsActivity : Activity() {
                 }
             }
             note("History stays on this phone. Changes apply at once.")
+            sectionLabel("KEEP RECORDINGS FOR RETRY")
+            card {
+                choiceRows(
+                    RetryLogic.KEEP_CHOICES.map { DevUi.Choice(it, RetryLogic.keepLabel(it)) },
+                    RetryLogic.KEEP_CHOICES.minByOrNull { kotlin.math.abs(it - s.retryAudioKeep) } ?: RetryLogic.DEFAULT_KEEP,
+                ) { n -> applyNow { copy(retryAudioKeep = n) } }
+            }
+            note(
+                "The recordings of your newest dictations stay on this phone, so History can transcribe them " +
+                    "again with your current settings. Never from password or protected fields; deleted with their dictation.",
+            )
         }
     }
 

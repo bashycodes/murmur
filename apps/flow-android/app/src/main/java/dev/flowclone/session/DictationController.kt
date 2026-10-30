@@ -66,6 +66,18 @@ enum class FeedbackEvent {
     CommandFailed,
 }
 
+/**
+ * D35: a dictation's recording, kept for History's "Retry with current settings". [appCategory]
+ * = the style bucket the dictation was sent with, so a retry styles it the same way.
+ */
+class Recording(val pcm: ShortArray, val appCategory: String?)
+
+/** D35: what History's "Retry with current settings" produced. */
+sealed interface RetryOutcome {
+    data class Done(val result: CommitResult) : RetryOutcome
+    data class Failed(val message: String) : RetryOutcome
+}
+
 /** Transient hint shown next to the bubble (live preview line). */
 enum class DictationHint {
     /** Recording, but nothing above the speech threshold for 3 s: "Can't hear you". */
@@ -137,6 +149,16 @@ class DictationController(
         suspend fun sendKey(key: PasteKey): Boolean = false
         /** [outcome] = the [InsertOutcome] wire value this dictation ended with (History shows why). */
         fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?)
+
+        /**
+         * D35: [recordHistory] with the dictation's [recording] for Retry (null = not kept: off,
+         * Command Mode, or a protected target). Must return at once.
+         */
+        fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?, recording: Recording?) =
+            recordHistory(result, inserted, appId, outcome)
+
+        /** D35: keep this dictation's recording for Retry (read at record start). */
+        fun keepRetryAudio(): Boolean = false
         fun hasMicPermission(): Boolean
         /** captureFieldSnapshot at dictation start (also pins the target field, S12); null when extraction isn't allowed. */
         fun captureContext(): FieldContext?
@@ -231,6 +253,10 @@ class DictationController(
         const val COMMAND_TIMEOUT_MS = 35_000L
         /** D24: at most one server pre-warm per this interval (field focus can flap). */
         const val PREWARM_MIN_INTERVAL_MS = 20_000L
+        /** D35: a retry transcribes a whole recording again (up to the cap) after the user asked: more room than a dictation. */
+        const val RETRY_TIMEOUT_MS = 90_000L
+        /** D35: samples per push when a recording is fed back (100 ms, like the microphone). */
+        const val RETRY_CHUNK = 1600
 
         /** D24: "Server unreachable (…)" + why the phone could not take over. */
         fun withClientNote(msg: String, kind: String?, note: String?): String =
@@ -281,8 +307,15 @@ class DictationController(
     @Volatile private var liveFrames = 0L
     private val meter = LevelMeter()
     private var traceStart: TraceStart? = null
-    /** "Keep last dictation audio (debug)": this dictation's PCM; null when the option is off. */
+    /** "Keep last dictation audio (debug)" or D35 Retry: this dictation's PCM; null when neither keeps it. */
     private var capture: PcmCapture? = null
+    /** The [capture] is for the debug log (else only for Retry). */
+    private var captureDebug = false
+    /** The [capture] is for Retry. */
+    private var captureRetry = false
+    /** D35: a History retry holds the core; no dictation starts meanwhile. */
+    @Volatile var retrying = false
+        private set
 
     /** D21: build + hand off the trace; never throws, never suspends. */
     private fun trace(
@@ -361,7 +394,7 @@ class DictationController(
         lastToggleAt = t
         when (_state.value) {
             // A previous start still connecting (it was cancelled): one session start at a time.
-            DictationState.Idle, DictationState.Ready, is DictationState.Error -> if (started?.isActive != true) start(hold)
+            DictationState.Idle, DictationState.Ready, is DictationState.Error -> if (started?.isActive != true && !retrying) start(hold)
             is DictationState.Recording -> stopAndSubmit()
             is DictationState.Processing -> Unit
         }
@@ -376,7 +409,7 @@ class DictationController(
         if (t - lastToggleAt < TOGGLE_DEBOUNCE_MS) return
         when (_state.value) {
             DictationState.Idle, DictationState.Ready, is DictationState.Error -> {
-                if (started?.isActive == true) return
+                if (started?.isActive == true || retrying) return
                 lastToggleAt = t
                 when (val target = host.captureCommand()) {
                     is CommandTarget.Refused -> failCommand(target.message)
@@ -461,6 +494,61 @@ class DictationController(
         if (_state.value is DictationState.Error) _state.value = restingState()
     }
 
+    /**
+     * D35 History "Retry with current settings": transcribe [pcm] again through the full
+     * pipeline with the settings active now ([Host.sessionConfig]), styled for [ctx] (the
+     * original app; no field text). Never inserts anything. Refused while a dictation records,
+     * processes or starts, or another retry runs.
+     */
+    suspend fun retry(pcm: ShortArray, ctx: FieldContext?): RetryOutcome {
+        if (retrying) return RetryOutcome.Failed(dev.flowclone.data.RetryLogic.RUNNING)
+        val s = _state.value
+        if (s is DictationState.Recording || s is DictationState.Processing || started?.isActive == true) {
+            return RetryOutcome.Failed(dev.flowclone.data.RetryLogic.BUSY)
+        }
+        if (pcm.isEmpty()) return RetryOutcome.Failed(dev.flowclone.data.RetryLogic.GONE)
+        retrying = true
+        try {
+            val c = try {
+                core()
+            } catch (e: CoreException) {
+                return RetryOutcome.Failed(RouterErrors.userMessage(e.kind, e.message ?: "engine unavailable"))
+            }
+            val cfg = host.sessionConfig().copy(maxSamples = cap.maxSamples, endpointSilenceMs = null, partialIntervalMs = null)
+            // Not a child: a hung native call must be abandonable.
+            val pending = CoroutineScope(commitDispatcher).async {
+                c.startSessionInfo(cfg)
+                ctx?.let(c::setContext)
+                var i = 0
+                while (i < pcm.size) {
+                    val n = minOf(RETRY_CHUNK, pcm.size - i)
+                    c.pushAudio(pcm.copyOfRange(i, i + n), n)
+                    i += n
+                }
+                c.commit()
+            }
+            val r = try {
+                withTimeoutOrNull(RETRY_TIMEOUT_MS) { pending.await() }
+            } catch (e: CoreException) {
+                val msg = withClientNote(RouterErrors.userMessage(e.kind, e.message ?: "start failed"), e.kind, runCatching { host.clientFallbackNote() }.getOrNull())
+                return RetryOutcome.Failed(msg)
+            }
+            if (r == null) {
+                c.cancel()
+                return RetryOutcome.Failed("No result after ${RETRY_TIMEOUT_MS / 1000} s")
+            }
+            if (isCancelled(r)) return RetryOutcome.Failed("Cancelled")
+            if (r.status == CommitStatus.ERROR) {
+                val routed = routerFailure(r)?.let { withClientNote(it, CoreException.kindOf(r.error), runCatching { host.clientFallbackNote() }.getOrNull()) }
+                return RetryOutcome.Failed(routed ?: dev.flowclone.data.RetryLogic.failure(r)!!)
+            }
+            dev.flowclone.data.RetryLogic.failure(r)?.let { return RetryOutcome.Failed(it) }
+            return RetryOutcome.Done(r)
+        } finally {
+            retrying = false
+        }
+    }
+
     /** Command Mode target of the recording / processing command; null for a dictation. */
     private var commandTarget: CommandTarget.Field? = null
 
@@ -500,7 +588,9 @@ class DictationController(
         session = c
         meter.reset()
         silence.reset()
-        val pcmCapture = if (runCatching { host.keepDictationAudio() }.getOrDefault(false)) PcmCapture(cap.maxSamples.toInt()) else null
+        captureDebug = runCatching { host.keepDictationAudio() }.getOrDefault(false)
+        captureRetry = command == null && runCatching { host.keepRetryAudio() }.getOrDefault(false)
+        val pcmCapture = if (captureDebug || captureRetry) PcmCapture(cap.maxSamples.toInt()) else null
         capture = pcmCapture
         hintJob?.cancel(); _hint.value = null; _partial.value = null; _route.value = null
         val gate = StartGate()
@@ -609,8 +699,10 @@ class DictationController(
         val ts = traceStart
         val endpointWait = if (silence.heardSpeech) silence.trailingSilenceMs else null
         val live = _route.value
-        val pcm = capture?.take()
+        val kept = capture?.take()
         capture = null
+        val pcm = kept?.takeIf { captureDebug }
+        val recording = kept?.takeIf { captureRetry && it.isNotEmpty() }?.let { Recording(it, sessionContext?.appCategory) }
         // D24 routing details for the trace, read on the commit thread right after the commit
         // (never on the caller's thread: logging must not block dictation).
         var diag: RouteDiag? = null
@@ -653,7 +745,7 @@ class DictationController(
                 return@launch
             }
             if (result.status == CommitStatus.ERROR) {
-                if (cmd == null) host.recordHistory(result, false, appId, InsertOutcome.ERROR)
+                if (cmd == null) host.recordHistory(result, false, appId, InsertOutcome.ERROR, recording)
                 val routed = routerFailure(result)?.let {
                     withClientNote(it, CoreException.kindOf(result.error), runCatching { host.clientFallbackNote() }.getOrNull())
                 }
@@ -666,7 +758,7 @@ class DictationController(
             // core-p1: paste `segments` (text runs + Break/Tab/Enter) instead of final_text + press_enter.
             val plan = result.pastePlan()
             if (result.status == CommitStatus.EMPTY || plan.none { it is PasteSegment.Text && it.text.isNotBlank() }) {
-                if (cmd == null) host.recordHistory(result, false, appId, InsertOutcome.EMPTY)
+                if (cmd == null) host.recordHistory(result, false, appId, InsertOutcome.EMPTY, recording)
                 host.feedback(FeedbackEvent.NoSpeech)
                 val h = if (result.emptyReason == "only_filler") DictationHint.OnlyFiller else DictationHint.NoSpeechDetected
                 _hint.value = h
@@ -687,7 +779,8 @@ class DictationController(
                     host.feedback(if (protected) FeedbackEvent.TargetProtected else FeedbackEvent.TargetChanged)
                     val text = plan.filterIsInstance<PasteSegment.Text>().joinToString("") { it.text }
                     val outcome = if (protected) InsertOutcome.TARGET_PROTECTED else InsertOutcome.TARGET_CHANGED
-                    host.recordHistory(result, false, appId, outcome)
+                    // D35: never keep a recording meant for a protected field.
+                    host.recordHistory(result, false, appId, outcome, recording.takeIf { !protected })
                     notInserted(result, text, outcome)
                     _state.value = DictationState.Error(DictationState.ErrorKind.FailedToPaste(text))
                     done(outcome, result)
@@ -696,7 +789,7 @@ class DictationController(
             }
             val unpasted = paste(plan)
             val inserted = unpasted == null
-            host.recordHistory(result, inserted, appId, if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED)
+            host.recordHistory(result, inserted, appId, if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED, recording)
             if (!inserted) notInserted(result, unpasted!!, InsertOutcome.PASTE_FAILED)
             else try {
                 host.onInserted(

@@ -92,6 +92,12 @@ class FlowApp : Application() {
     /** Last dictation's result + route (Developer page, engine badge). In-memory only (§5). */
     val lastRoute = MutableStateFlow<LastDictation?>(null)
 
+    /** D35: History rows being retried now (their Retry shows busy). */
+    val retrying = MutableStateFlow<Set<Long>>(emptySet())
+
+    /** D35: bumped when a retry changed a History row, so open History screens reload. */
+    val historyRevision = MutableStateFlow(0L)
+
     /**
      * The dictation screen of ours in front right now (any note editor sets itself on resume,
      * clears on pause), or null. While set, the accessibility service treats our own field like any

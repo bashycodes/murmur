@@ -12,6 +12,9 @@ import dev.flowclone.FlowApp
 import dev.flowclone.R
 import dev.flowclone.data.HistoryPages
 import dev.flowclone.data.HistoryRow
+import dev.flowclone.data.HistoryVersion
+import dev.flowclone.data.RetryLogic
+import dev.flowclone.ui.RetryUi.versionPills
 import dev.flowclone.data.ShellPages
 import java.util.Date
 import kotlin.concurrent.thread
@@ -19,7 +22,8 @@ import kotlin.concurrent.thread
 /**
  * Home tab (AndroidHome.dc.html): recent dictations as cards grouped by day ("Today",
  * "Yesterday", …): the text, time + route tag, Copy, and ⋮ (Open details → HistoryActivity
- * detail, Delete). No "Retry transcription": audio is never stored. Above the cards, problem
+ * detail, Retry with current settings while the recording is kept (D35), Delete). A retried
+ * card shows numbered version pills (0 = the original; view only). Above the cards, problem
  * notices (setup missing, engine down) that open where they are fixed. Reloads on every [onShow].
  */
 internal class HomeTab(private val activity: Activity, private val ui: DevUi) : ShellTab {
@@ -39,7 +43,7 @@ internal class HomeTab(private val activity: Activity, private val ui: DevUi) : 
     override fun createView(): View = view ?: ui.scrollColumn(ui.t.bg) {
         notices = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }.also { addView(it) }
         list = LinearLayout(activity).apply { orientation = LinearLayout.VERTICAL }.also { addView(it) }
-    }.first.also { view = it }
+    }.first.also { v -> view = v; RetryUi.watch(activity, v) { load() } }
 
     override fun onShow() = load()
 
@@ -59,12 +63,20 @@ internal class HomeTab(private val activity: Activity, private val ui: DevUi) : 
         thread(name = "home-load") {
             val retention = app.settings.load().retention
             val rows = runCatching { app.history.purge(retention); app.history.recent(ShellPages.HOME_LIMIT) }.getOrDefault(emptyList())
+            val ids = rows.map { it.id }
+            val audio = runCatching { app.history.withAudio(ids) }.getOrDefault(emptySet())
+            val versions = runCatching { app.history.versionsFor(ids) }.getOrDefault(emptyMap())
             activity.runOnUiThread {
                 if (activity.isFinishing || activity.isDestroyed || seq != loadSeq) return@runOnUiThread
+                this.audio = audio; this.versions = versions
                 render(rows, retention)
             }
         }
     }
+
+    /** D35: rows whose recording is kept, and the versions of retried rows (from the last load). */
+    private var audio: Set<Long> = emptySet()
+    private var versions: Map<Long, List<HistoryVersion>> = emptyMap()
 
     private fun time(r: HistoryRow) = DateFormat.getTimeFormat(activity).format(Date(r.createdAt))
 
@@ -101,12 +113,15 @@ internal class HomeTab(private val activity: Activity, private val ui: DevUi) : 
             background = rounded(p.surface, 24)
             setPadding(dp(20), dp(18), dp(20), dp(8))
         }
+        val textView = tv(text, TypeScale.ROW, p.text)
+        val busy = r.id in app.retrying.value
         val body = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            addView(tv(text, TypeScale.ROW, p.text))
+            addView(textView)
             addView(LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 addView(tv(whenText, 14f, p.muted))
+                if (busy) addView(tv("Retrying…", 14f, p.muted, TypeScale.W_MEDIUM), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) })
                 if (rt != null) addView(routeTag(rt), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) })
                 if (notInserted) addView(tv("Not inserted", 14f, p.danger, TypeScale.W_MEDIUM), LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) })
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
@@ -117,6 +132,10 @@ internal class HomeTab(private val activity: Activity, private val ui: DevUi) : 
         }
         for (i in 0 until body.childCount) body.getChildAt(i).importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         card.addView(body)
+        val meta = listOfNotNull(whenText, rt?.label, if (notInserted) "Not inserted" else null).joinToString(", ")
+        versionPills(versions[r.id].orEmpty(), textView, text) { shown -> body.contentDescription = "$shown. $meta" }?.let {
+            card.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+        }
 
         val copy = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -143,13 +162,16 @@ internal class HomeTab(private val activity: Activity, private val ui: DevUi) : 
     }
 
     private fun menu(r: HistoryRow, anchor: View) {
+        val items = RetryLogic.menu(r, r.id in audio)
         PopupMenu(activity, anchor).apply {
-            menu.add(0, MENU_DETAILS, 0, "Open details")
-            menu.add(0, MENU_DELETE, 1, "Delete")
+            items.forEachIndexed { i, item ->
+                menu.add(0, item.ordinal, i, item.label).isEnabled = item != RetryLogic.MenuItem.RETRY || r.id !in app.retrying.value
+            }
             setOnMenuItemClickListener {
-                when (it.itemId) {
-                    MENU_DETAILS -> HistoryActivity.open(activity, r.id)
-                    MENU_DELETE -> delete(r)
+                when (RetryLogic.MenuItem.entries[it.itemId]) {
+                    RetryLogic.MenuItem.DETAILS -> HistoryActivity.open(activity, r.id)
+                    RetryLogic.MenuItem.RETRY -> RetryUi.start(activity, r.id)
+                    RetryLogic.MenuItem.DELETE -> delete(r)
                 }
                 true
             }
@@ -170,10 +192,5 @@ internal class HomeTab(private val activity: Activity, private val ui: DevUi) : 
                 activity.runOnUiThread { ui.announce("Deleted"); load() }
             }
         })
-    }
-
-    private companion object {
-        const val MENU_DETAILS = 1
-        const val MENU_DELETE = 2
     }
 }
