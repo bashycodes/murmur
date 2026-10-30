@@ -999,10 +999,11 @@ mod tests {
     fn command_rig(llm: bool) -> Arc<RouterAdapter> {
         use crate::core_adapter::LlmSpec;
         let local = FlowCoreAdapter::with_llm_loader(Arc::new(|_s: &LlmSpec| {
-            Ok((
-                Arc::new(EchoLlm) as Arc<dyn flow_core::cleanup::Cleaner>,
-                "fake-plugin".into(),
-            ))
+            Ok(crate::core_adapter::LlmLoaded {
+                cleaner: Arc::new(EchoLlm),
+                plugin: "fake-plugin".into(),
+                backend: None,
+            })
         }));
         assert!(local
             .load_now(&ModelSpec::Mock { text: "x".into() })

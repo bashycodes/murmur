@@ -154,6 +154,18 @@ fn messy_dictation_is_cleaned_safely_and_fast() {
     )
     .expect("load llm");
     let load_ms = t.elapsed().as_millis();
+    // The plugin says where the model runs; a CPU build runs it on the CPU.
+    let backend = cleaner.backend().expect("plugin reports its backend");
+    let (probe_path, probed) = flow_core::llama::probe_backend(None).expect("probe");
+    assert_eq!(probe_path, cleaner.plugin_path);
+    assert_eq!(
+        probed.is_gpu(),
+        backend.is_gpu(),
+        "{probed:?} vs {backend:?}"
+    );
+    if !backend.is_gpu() {
+        assert_eq!(backend.device, "CPU");
+    }
     eprintln!(
         "model {} | plugin {} | load {load_ms} ms | {}",
         model.display(),

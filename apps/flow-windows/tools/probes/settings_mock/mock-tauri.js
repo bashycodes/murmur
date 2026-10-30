@@ -209,6 +209,7 @@
   const PH = ["krut42/voice-parakeet-he-int8", "39de3b473bed626c7796c156d71adc66161ebfe1"];
   const Q05 = ["Qwen/Qwen2.5-0.5B-Instruct-GGUF", "9217f5db79a29953eb74d5343926648285ec7e67"];
   const Q15 = ["Qwen/Qwen2.5-1.5B-Instruct-GGUF", "91cad51170dc346986eccefdc2dd33a9da36ead9"];
+  const L3B = ["bartowski/Llama-3.2-3B-Instruct-GGUF", "5ab33fa94d1d04e903623ae72c95d1696f09f9e8"];
   // H6: the language-ID model comes with each Hebrew model (models folder).
   const LID = hf("ggerganov/whisper.cpp", "5359861c739e955e79d9a303bcbc70fb988958b1", "ggml-tiny-q5_1.bin", 32152673, "8187…");
   const zh = (name, size, sha) => ({ ...hf(...ZH, name, size, sha), url: `https://huggingface.co/${ZH[0]}/resolve/${ZH[1]}/sherpa-onnx/${name}` });
@@ -230,12 +231,17 @@
       page: "https://huggingface.co/" + PH[0], dest: MODELS + "parakeet-tdt-0.6b-v3-he-int8", available: true,
       files: [hf(...PH, "encoder.int8.onnx", 653215173, "7eaf…"), hf(...PH, "decoder.int8.onnx", 12494234, "3a1d…"), hf(...PH, "joiner.int8.onnx", 7008293, "056c…"), hf(...PH, "tokens.txt", 107590, "55a9…"), LID] },
     // AI cleanup models (engine "llm", docs/findings/2026-10-30-cleanup-model-pins.md).
-    { id: "qwen2.5-0.5b-instruct-q4_k_m", title: "Qwen2.5 0.5B Instruct", desc: "Fast · the default", engine: "llm", recommended: true, size: 491400032,
+    { id: "qwen2.5-0.5b-instruct-q4_k_m", title: "Qwen2.5 0.5B Instruct", desc: "Fastest · misses many fixes", engine: "llm", recommended: false, recommended_gpu: false, size: 491400032,
       page: "https://huggingface.co/" + Q05[0], dest: MODELS + "qwen2.5-0.5b-instruct-q4_k_m.gguf", available: true,
       files: [hf(...Q05, "qwen2.5-0.5b-instruct-q4_k_m.gguf", 491400032, "74a4…")] },
-    { id: "qwen2.5-1.5b-instruct-q4_k_m", title: "Qwen2.5 1.5B Instruct", desc: "More accurate · about twice as slow", engine: "llm", recommended: false, size: 1117320736,
+    { id: "qwen2.5-1.5b-instruct-q4_k_m", title: "Qwen2.5 1.5B Instruct", desc: "The default · the pick without a GPU (about 1 s on a laptop CPU)", engine: "llm", recommended: true, recommended_gpu: false, size: 1117320736,
       page: "https://huggingface.co/" + Q15[0], dest: MODELS + "qwen2.5-1.5b-instruct-q4_k_m.gguf", available: true,
       files: [hf(...Q15, "qwen2.5-1.5b-instruct-q4_k_m.gguf", 1117320736, "6a1a…")] },
+    // The GPU pick (docs/findings/2026-10-30-laptop-model-benchmark.md).
+    { id: "llama-3.2-3b-instruct-q4_k_m", title: "Llama 3.2 3B Instruct", desc: "Most accurate · needs a GPU (Vulkan); slow on the CPU", engine: "llm", recommended: false, recommended_gpu: true, size: 2019377696,
+      license: "Llama 3.2 Community License · Built with Llama",
+      page: "https://huggingface.co/" + L3B[0], dest: MODELS + "Llama-3.2-3B-Instruct-Q4_K_M.gguf", available: true,
+      files: [hf(...L3B, "Llama-3.2-3B-Instruct-Q4_K_M.gguf", 2019377696, "6c1a…")] },
   ];
   // The Hebrew model's load state (`model:hebrew`): null = none chosen.
   const heDir = { zipformer: "zipformer-he-int8", parakeet_he: "parakeet-tdt-0.6b-v3-he-int8" };
@@ -314,7 +320,7 @@
       status: { ...modelStatus }, hebrew: heStatus && { ...heStatus },
       default_path: "C:\\…\\ggml-base.bin", default_parakeet_dir: "C:\\…\\sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8", models_dir: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\models",
       llm: { state: "plugin_missing", path: "C:\\…\\qwen.gguf", message: "llm plugin not found (C:\\Program Files\\Murmur\\flow_llm.dll: not found)" },
-      default_llm_path: "C:\\…\\qwen2.5-0.5b-instruct-q4_k_m.gguf", llm_plugin: "flow_llm.dll",
+      default_llm_path: "C:\\…\\qwen2.5-1.5b-instruct-q4_k_m.gguf", llm_plugin: "flow_llm.dll",
     }),
     transforms_reset: () => {
       const custom = prefs.transforms.items.filter((i) => !BUILTIN_TRANSFORMS.some((b) => b.transform.id === i.transform.id));
@@ -476,6 +482,9 @@
     // D31 downloader: a fake catalogue; a started download ticks to done in
     // about 1.5 s (?dlfail=1: fails its fingerprint check instead).
     model_catalog: () => dlCatalog.map(view),
+    // Where cleanup would run (core_adapter LlmBackendView). Checks set
+    // window.__llmBackend before the page loads; default: a CPU-only PC.
+    llm_backend: () => window.__llmBackend || { gpu: false, backend: "CPU", device: "CPU", plugin: "C:\\Program Files\\Murmur\\flow_llm.dll" },
     model_download_start: ({ id }) => {
       const c = dlCatalog.find((x) => x.id === id);
       if (!c) throw new Error(`unknown model ${id}`);
@@ -510,7 +519,8 @@
             prefs = { ...prefs, llm_enabled: true, llm_model_path: path };
             ev("done", { path });
             window.__emit("llm:status", { state: "loading", path });
-            setTimeout(() => window.__emit("llm:status", { state: "ready", path, load_ms: 700, plugin: "flow_llm.dll" }), 150);
+            const b = window.__llmBackend || { gpu: false, backend: "CPU", device: "CPU" };
+            setTimeout(() => window.__emit("llm:status", { state: "ready", path, load_ms: 700, plugin: b.gpu ? "flow_llm_vulkan.dll" : "flow_llm.dll", backend: { backend: b.backend, device: b.device } }), 150);
             return;
           }
           prefs = c.engine === "parakeet" ? { ...prefs, asr_engine: "parakeet", parakeet_model_dir: path } : { ...prefs, asr_engine: "whisper", model_path: path };
@@ -528,7 +538,10 @@
       if (!c) throw new Error(`unknown model ${id}`);
       if (c.engine !== "llm") throw new Error("only AI cleanup models can be deleted here");
       if (dlRunning && dlRunning.id === id) throw new Error("this model is downloading; cancel it first");
-      const inUse = (prefs.llm_model_path || MODELS + "qwen2.5-0.5b-instruct-q4_k_m.gguf") === c.dest;
+      // Empty path = the 1.5B default, or the old 0.5B default when only that one is there.
+      const dflt = !dlInstalled.has("qwen2.5-1.5b-instruct-q4_k_m") && dlInstalled.has("qwen2.5-0.5b-instruct-q4_k_m")
+        ? "qwen2.5-0.5b-instruct-q4_k_m.gguf" : "qwen2.5-1.5b-instruct-q4_k_m.gguf";
+      const inUse = (prefs.llm_model_path || MODELS + dflt) === c.dest;
       if (inUse) {
         prefs = { ...prefs, llm_enabled: false, llm_model_path: null };
         window.__emit("llm:status", { state: "off" });

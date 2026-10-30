@@ -263,12 +263,20 @@ turns on llama.cpp cleanup on top (run-on sentences, leftover fillers,
 corrections, tone per app; DECISIONS D5/D10/D11). It needs two files, and
 neither is downloaded automatically:
 
-* the GGUF model, default `%APPDATA%\FlowClone\models\qwen2.5-0.5b-instruct-q4_k_m.gguf`
-  (`qwen2.5-1.5b-instruct-q4_k_m.gguf` is more accurate, ~2x slower);
-  `tools/fetch-models.sh --llm` fetches both on explicit request;
-* the engine plugin `flow_llm.dll` **next to `flow-windows.exe`** (or the
-  path in "Engine library"). llama.cpp cannot be linked into the exe:
-  whisper.cpp and llama.cpp each bundle a different ggml (D10).
+* the GGUF model, default `%APPDATA%\FlowClone\models\qwen2.5-1.5b-instruct-q4_k_m.gguf`
+  (the default used to be `qwen2.5-0.5b-instruct-q4_k_m.gguf`: faster,
+  much less accurate; a PC that has only that file keeps loading it);
+  `tools/fetch-models.sh --llm` fetches both on explicit request. Settings
+  → AI cleanup → On this PC downloads these and Llama 3.2 3B, and
+  recommends Llama 3.2 3B when cleanup runs on a GPU, Qwen2.5 1.5B
+  otherwise (benchmark: `docs/findings/2026-10-30-laptop-model-benchmark.md`);
+* the engine plugin **next to `flow-windows.exe`** (or the path in "Engine
+  library"): `flow_llm_vulkan.dll` (GPU through Vulkan) is tried first,
+  then `flow_llm.dll` (CPU). The Vulkan one does not load on a PC without
+  `vulkan-1.dll` (it comes with the GPU driver); with Vulkan but no usable
+  GPU, or a GPU that fails to load the model, it runs on the CPU.
+  `FLOW_LLM_DEVICE=cpu` forces the CPU. llama.cpp cannot be linked into
+  the exe: whisper.cpp and llama.cpp each bundle a different ggml (D10).
 
 Speech recognition is ready long before the LLM (10-50 s load on CPU,
 a few seconds more since prompt v2, whose instructions are prefilled at
@@ -432,8 +440,8 @@ and clippy, and uploads two artifacts, each with an MSI and an NSIS setup:
 | `flow-clone-windows-client` | `--no-default-features --features local,app,parakeet` | this PC only; no network code |
 
 Both ship `sherpa-onnx-c-api.dll` + `onnxruntime.dll` next to the exe
-(Parakeet). They do **not** ship `flow_llm.dll` (AI cleanup reports "engine
-missing"; build it as in step 3 below if you want it) and no model files.
+(Parakeet) and the AI cleanup engine, `flow_llm_vulkan.dll` (GPU) +
+`flow_llm.dll` (CPU). They ship no model files.
 The installers are unsigned: SmartScreen says "Windows protected your PC" →
 More info → Run anyway.
 
@@ -493,6 +501,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
    cd apps\flow-windows
    ```
    llama-cpp-sys-2 needs CMake, clang (`LIBCLANG_PATH`) and MSVC, like whisper. It is built with OpenMP, so `vcomp140.dll` (Visual C++ Redistributable) must be present on the target PC.
+   For the GPU build, install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows) (sets `VULKAN_SDK`; CI uses the version in `.github/workflows/windows-build.yml`), then `cargo build --release -p flow-llm --features vulkan` and copy `target\release\flow_llm.dll` as `flow_llm_vulkan.dll` next to the exe.
 4. Run it:
    ```powershell
    cargo run --features app
@@ -606,7 +615,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - The hook watchdog probes only while the user is active and at most every 5 s, so a dead hook is noticed after the next input, not instantly.
 - There is no mouse-button shortcut (`WH_MOUSE_LL`) and no Caps Lock single-key shortcut.
 - Learn-from-edits polls (default every 1 s for 45 s) instead of subscribing to UIA `TextChanged` events, and uses no local LLM to vet candidates ("is this a proper noun?", 03 §6): flow-core's alignment filters plus the user's explicit accept do that job. Controls without TextPattern/ValuePattern (some Electron/canvas editors) are not watched.
-- LLM cleanup load is 10-50 s on CPU and quality with the default 0.5B model is 4/8 on the core's messy-dictation set (1.5B: 8/8, ~2x slower); see `docs/core-architecture.md`.
+- LLM cleanup load is 10-50 s on CPU and quality with the default 1.5B model is 8/8 on the core's messy-dictation set (74 % on the 88-suite; the old 0.5B default: 4/8, 43 %, ~2x faster); see `docs/core-architecture.md`.
 - "Re-paste" from the History tab hides Settings and pastes into whatever window Windows activates next (normally the one used before Settings).
 - Cue sounds are synthesised tones, not Wispr's WAVs (those are not redistributable); see [Custom sounds](#custom-sounds) to use your own.
 

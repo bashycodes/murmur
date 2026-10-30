@@ -36,6 +36,7 @@
     "allow-pick-path",
     "allow-open-external",
     "allow-model-catalog",
+    "allow-llm-backend",
     "allow-model-download-start",
     "allow-model-download-cancel",
     "allow-model-delete",
