@@ -20,7 +20,10 @@ pub const FILE_NAME: &str = "prefs.json";
 /// * 3 (D27): chat styles default to casual, the LLM budget 1500 → 3000 ms,
 ///   and cleanup "None" became "No AI" (formatting rules still run): a
 ///   stored None moves to Verbatim, `raw_mode` to No AI ([`Prefs::migrate`]).
-pub const PREFS_REV: u32 = 3;
+/// * 4 (D37): the language follows the keyboard layout by default:
+///   `keyboard_language` turns on for "Detect automatically" (empty
+///   `languages`); a language the user chose stays.
+pub const PREFS_REV: u32 = 4;
 
 /// The LLM budget default before D27 (rev ≤ 2): it timed out on nearly
 /// every dictation (docs/findings/2026-10-23-server-llm-cleanup-cost.md).
@@ -135,6 +138,10 @@ pub struct Prefs {
     pub microphone: Option<String>,
     /// Empty = auto-detect.
     pub languages: Vec<String>,
+    /// D37 "Keyboard language": each dictation uses the language of the
+    /// foreground window's keyboard layout (Hebrew layout → Hebrew model);
+    /// an unknown layout falls back to `languages` ([`crate::keyboard_language`]).
+    pub keyboard_language: bool,
     pub enable_sounds: bool,
     /// Wispr default on Windows: mute other apps while dictating.
     pub mute_audio_while_dictating: bool,
@@ -226,6 +233,7 @@ impl Default for Prefs {
             shortcuts: Bindings::default(),
             microphone: None,
             languages: Vec::new(),
+            keyboard_language: true,
             enable_sounds: true,
             mute_audio_while_dictating: true,
             launch_at_login: false,
@@ -338,6 +346,11 @@ impl Prefs {
                 self.cleanup_level = CleanupLevel::None;
             }
             self.raw_mode = false;
+        }
+        if self.prefs_rev < 4 {
+            // D37: "Detect automatically" (the old default) follows the
+            // keyboard now; an explicit language is the user's and stays.
+            self.keyboard_language = self.languages.is_empty();
         }
         // D36: the cleanup order holds all three engines (idempotent, so
         // not tied to a revision: an older shell may have saved over it).
@@ -749,6 +762,29 @@ mod tests {
         let path = d.join(FILE_NAME);
         std::fs::write(&path, json).unwrap();
         Prefs::load(&path)
+    }
+
+    #[test]
+    fn d37_detect_automatically_moves_to_keyboard_language_once() {
+        assert!(Prefs::default().keyboard_language, "new installs follow the keyboard");
+        let (p, _) = load_str("kbl-auto", r#"{"prefs_rev":3,"languages":[]}"#);
+        assert!(p.keyboard_language);
+        assert_eq!(p.prefs_rev, PREFS_REV);
+        let (p, _) = load_str("kbl-none", r#"{"prefs_rev":3}"#);
+        assert!(p.keyboard_language);
+        let (p, _) = load_str("kbl-en", r#"{"prefs_rev":3,"languages":["en"]}"#);
+        assert!(!p.keyboard_language, "an explicit language stays");
+        assert_eq!(p.languages, ["en"]);
+        let (p, _) = load_str("kbl-he", r#"{"prefs_rev":3,"languages":["he"],"keyboard_language":true}"#);
+        assert!(!p.keyboard_language);
+        // After the migration both are the user's choice.
+        let (p, _) = load_str(
+            "kbl-off",
+            &format!(r#"{{"prefs_rev":{PREFS_REV},"languages":[],"keyboard_language":false}}"#),
+        );
+        assert!(!p.keyboard_language, "Detect automatically picked after D37");
+        let (p, _) = load_str("kbl-on", &format!(r#"{{"prefs_rev":{PREFS_REV},"keyboard_language":true}}"#));
+        assert!(p.keyboard_language);
     }
 
     #[test]

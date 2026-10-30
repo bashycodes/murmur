@@ -10,6 +10,7 @@
     "core:app:default",
     "allow-get-prefs",
     "allow-set-prefs",
+    "allow-keyboard-language",
     "allow-list-microphones",
     "allow-get-model-status",
     "allow-history-list",

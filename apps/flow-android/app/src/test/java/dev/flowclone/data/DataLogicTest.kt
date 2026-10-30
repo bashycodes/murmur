@@ -188,9 +188,87 @@ class LanguageDefaultTest {
         assertEquals("en", Settings.migrateLanguage(stored = "en", migrated = false))
     }
 
+    @Test fun keyboardLanguageIsTheDefaultForNewInstallsAndPhoneLanguageUsersOnce() {
+        assertEquals(Settings.LANGUAGE_KEYBOARD, Settings().language)
+        assertEquals("new install", Settings.LANGUAGE_KEYBOARD, Settings.migrateKeyboardLanguage(null, migrated = false, keyboardMigrated = false))
+        assertEquals("never saved", Settings.LANGUAGE_KEYBOARD, Settings.migrateKeyboardLanguage(null, migrated = true, keyboardMigrated = true))
+        assertEquals("phone language", Settings.LANGUAGE_KEYBOARD, Settings.migrateKeyboardLanguage(Settings.LANGUAGE_UNSET, migrated = true, keyboardMigrated = false))
+        assertEquals("untouched auto from before 2026-10-23", Settings.LANGUAGE_KEYBOARD, Settings.migrateKeyboardLanguage("auto", migrated = false, keyboardMigrated = false))
+        assertEquals("auto picked after 2026-10-23", "auto", Settings.migrateKeyboardLanguage("auto", migrated = true, keyboardMigrated = false))
+        assertEquals("explicit language", "en", Settings.migrateKeyboardLanguage("en", migrated = true, keyboardMigrated = false))
+        assertEquals("explicit Hebrew", "he", Settings.migrateKeyboardLanguage("he", migrated = false, keyboardMigrated = false))
+        assertEquals("phone language picked after the move", Settings.LANGUAGE_UNSET, Settings.migrateKeyboardLanguage(Settings.LANGUAGE_UNSET, migrated = true, keyboardMigrated = true))
+        assertEquals(Settings.LANGUAGE_KEYBOARD, Settings.migrateKeyboardLanguage(Settings.LANGUAGE_KEYBOARD, migrated = true, keyboardMigrated = true))
+    }
+
+    @Test fun keyboardSubtypeMapsToWhisperCodes() {
+        assertEquals("he", KeyboardLanguage.of("he-IL", "iw_IL"))
+        assertEquals("deprecated locale when the tag is empty", "he", KeyboardLanguage.of("", "iw_IL"))
+        assertEquals("he", KeyboardLanguage.of(null, "iw"))
+        assertEquals("he", KeyboardLanguage.of("iw-IL", null))
+        assertEquals("en", KeyboardLanguage.of("en-US", "en_US"))
+        assertEquals("de", KeyboardLanguage.of("DE", ""))
+        assertEquals("yi", KeyboardLanguage.of("ji", null))
+        assertEquals("id", KeyboardLanguage.of("in-ID", null))
+        assertEquals("zh", KeyboardLanguage.of("zh-Hant-TW", null))
+    }
+
+    @Test fun keyboardSubtypeWithoutAKnownLanguageIsNull() {
+        assertEquals(null, KeyboardLanguage.of(null, null))
+        assertEquals(null, KeyboardLanguage.of("", ""))
+        assertEquals(null, KeyboardLanguage.of("  ", " "))
+        assertEquals("emoji / handwriting subtypes", null, KeyboardLanguage.of("und", ""))
+        assertEquals(null, KeyboardLanguage.of("zz", null))
+        assertEquals(null, KeyboardLanguage.of("fil-PH", null))
+    }
+
+    @Test fun keyboardSettingFollowsTheKeyboard() {
+        val he = setOf("he")
+        assertEquals(
+            LanguageDefault.Resolved("he", LanguageDefault.Source.KEYBOARD),
+            LanguageDefault.resolve(Settings.LANGUAGE_KEYBOARD, "en", parakeet, he, keyboard = "he"),
+        )
+        assertEquals("Hebrew model wins over an English-only default", "he", LanguageDefault.effective(Settings.LANGUAGE_KEYBOARD, "en", english, he, keyboard = "iw"))
+        assertEquals("multilingual whisper", "de", LanguageDefault.effective(Settings.LANGUAGE_KEYBOARD, "en", multi, keyboard = "de"))
+        assertEquals("English keyboard over a Hebrew phone", "en", LanguageDefault.effective(Settings.LANGUAGE_KEYBOARD, "iw", multi, he, keyboard = "en"))
+        assertEquals(
+            "English-only model: auto, as with the phone language",
+            LanguageDefault.Resolved("auto", LanguageDefault.Source.KEYBOARD),
+            LanguageDefault.resolve(Settings.LANGUAGE_KEYBOARD, "en", parakeet, keyboard = "en"),
+        )
+    }
+
+    @Test fun keyboardSettingFallsBackToThePhoneLanguage() {
+        assertEquals(
+            LanguageDefault.Resolved("de", LanguageDefault.Source.PHONE),
+            LanguageDefault.resolve(Settings.LANGUAGE_KEYBOARD, "de", multi, keyboard = null),
+        )
+        assertEquals(
+            "unknown keyboard language",
+            LanguageDefault.Resolved("he", LanguageDefault.Source.PHONE),
+            LanguageDefault.resolve(Settings.LANGUAGE_KEYBOARD, "iw", null, setOf("he"), keyboard = "zz"),
+        )
+        assertEquals(
+            LanguageDefault.Resolved("auto", LanguageDefault.Source.PHONE),
+            LanguageDefault.resolve(Settings.LANGUAGE_KEYBOARD, "en", parakeet),
+        )
+    }
+
+    @Test fun otherSettingsIgnoreTheKeyboard() {
+        assertEquals(
+            LanguageDefault.Resolved("en", LanguageDefault.Source.PHONE),
+            LanguageDefault.resolve(Settings.LANGUAGE_UNSET, "en", multi, setOf("he"), keyboard = "he"),
+        )
+        assertEquals(
+            LanguageDefault.Resolved("fr", LanguageDefault.Source.FIXED),
+            LanguageDefault.resolve("fr", "en", multi, setOf("he"), keyboard = "he"),
+        )
+        assertEquals(LanguageDefault.Source.FIXED, LanguageDefault.resolve("auto", "en", multi, keyboard = "he").source)
+    }
+
     @Test fun sessionConfigUsesTheEffectiveLanguage() {
         assertEquals(listOf("de"), Settings().toSessionConfig(emptyList(), language = "de").languages)
-        assertTrue("unset, unresolved → auto", Settings().toSessionConfig(emptyList()).languages.isEmpty())
+        assertTrue("unset, unresolved → auto", Settings(language = Settings.LANGUAGE_UNSET).toSessionConfig(emptyList()).languages.isEmpty())
         assertEquals(listOf("fr"), Settings(language = "fr").toSessionConfig(emptyList()).languages)
     }
 
@@ -199,5 +277,10 @@ class LanguageDefaultTest {
         assertEquals("Auto-detect (phone language not used: model is English-only or unknown)", LanguageDefault.label(Settings.LANGUAGE_UNSET, "auto"))
         assertEquals("Auto-detect", LanguageDefault.label("auto", "auto"))
         assertEquals("German", LanguageDefault.label("de", "de"))
+        val kb = Settings.LANGUAGE_KEYBOARD
+        assertEquals("Hebrew (keyboard language)", LanguageDefault.label(kb, "he", LanguageDefault.Source.KEYBOARD))
+        assertEquals("English (phone language; keyboard language unknown)", LanguageDefault.label(kb, "en", LanguageDefault.Source.PHONE))
+        assertEquals("Auto-detect (keyboard language not used: model is English-only or unknown)", LanguageDefault.label(kb, "auto", LanguageDefault.Source.KEYBOARD))
+        assertEquals("Auto-detect (keyboard language unknown; phone language not used)", LanguageDefault.label(kb, "auto", LanguageDefault.Source.PHONE))
     }
 }

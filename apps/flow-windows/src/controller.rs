@@ -113,6 +113,11 @@ pub trait Platform: Send + Sync + 'static {
     /// A history retry ended: `Ok` = row `row` holds a new version, `Err`
     /// = why not (shown on Home). Any thread.
     fn retry_finished(&self, _row: i64, _result: &Result<(), String>) {}
+    /// D37: the language of the foreground window's keyboard layout
+    /// (`he`, `en`, …), `None` when unknown. Cheap; any thread.
+    fn keyboard_language(&self) -> Option<String> {
+        None
+    }
 }
 
 /// Longest wait for the selection capture (UIA timeout + Ctrl+C wait).
@@ -208,6 +213,9 @@ struct SessionInfo {
     /// The app's built-in style bucket at the start (before "Style per
     /// app"), kept with the recording for a retry.
     base_bucket: Option<crate::core_api::StyleBucket>,
+    /// D37: the session's forced language (`None` = auto) and its source.
+    language: Option<String>,
+    language_source: Option<crate::keyboard_language::Source>,
 }
 
 #[derive(Default)]
@@ -876,6 +884,9 @@ impl Controller {
                 let gate = Arc::new(StartGate::default());
                 let pending: Arc<Mutex<Option<Vec<i16>>>> = Arc::new(Mutex::new(Some(Vec::new())));
                 // Retry: a copy of the recording, for the history row.
+                // D37: the layout of the window being dictated into, read now.
+                let mut cfg = prefs.session_config_for(mode);
+                let language_source = apply_keyboard_language(&mut cfg, &prefs, &*self.platform);
                 let keep_audio = (!command
                     && self.history.is_some()
                     && prefs.retry_audio_keep > 0
@@ -891,6 +902,8 @@ impl Controller {
                         styles: prefs.styles.clone(),
                         command: command.then(CommandInfo::default),
                         audio: keep_audio.clone(),
+                        language: cfg.languages.first().cloned(),
+                        language_source: Some(language_source),
                         ..SessionInfo::default()
                     },
                 );
@@ -901,7 +914,6 @@ impl Controller {
                     let tx = self.tx.clone();
                     let pending = pending.clone();
                     let start_gate = gate.clone();
-                    let cfg = prefs.session_config_for(mode);
                     let spawned =
                         std::thread::Builder::new()
                             .name("flow-start".into())
@@ -1537,7 +1549,7 @@ impl Controller {
             .spawn(move || {
                 let r = {
                     let _serial = shared.start_lock.lock().unwrap();
-                    run_retry(&*core, &h, &prefs, row, own_exe.as_deref())
+                    run_retry(&*core, &h, &prefs, row, own_exe.as_deref(), &*platform)
                 };
                 shared.retrying.store(false, Ordering::SeqCst);
                 match &r {
@@ -1586,6 +1598,7 @@ fn run_retry(
     prefs: &RwLock<Prefs>,
     row: i64,
     own_exe: Option<&str>,
+    platform: &dyn Platform,
 ) -> Result<RetryWords, String> {
     let (entry, rec) = {
         let g = h.lock().unwrap();
@@ -1597,7 +1610,10 @@ fn run_retry(
         }
     };
     let prefs = prefs.read().unwrap().clone();
-    core.start_session_info(prefs.session_config_for(crate::dictation::Mode::Ptt))?;
+    // D37: today's keyboard language too ("the settings active now").
+    let mut cfg = prefs.session_config_for(crate::dictation::Mode::Ptt);
+    apply_keyboard_language(&mut cfg, &prefs, platform);
+    core.start_session_info(cfg)?;
     if prefs.use_ax_context {
         core.set_context(retry_context(
             &entry,
@@ -1786,7 +1802,28 @@ fn debug_entry(i: &SessionInfo, insert: &str, error: Option<String>) -> Entry {
         stt_cost_usd: route
             .filter(|x| x.engine == "cloud")
             .and_then(|x| x.cost_usd),
+        language: i.language.clone(),
+        language_source: i.language_source.map(|s| s.as_str().to_string()),
     }
+}
+
+/// D37: with "Keyboard language" on, the foreground window's layout
+/// language replaces `cfg.languages`; an unknown layout leaves them as
+/// the prefs say (empty = auto-detect).
+fn apply_keyboard_language(
+    cfg: &mut crate::core_api::SessionConfig,
+    prefs: &Prefs,
+    platform: &dyn Platform,
+) -> crate::keyboard_language::Source {
+    let keyboard = if prefs.keyboard_language {
+        platform.keyboard_language()
+    } else {
+        None
+    };
+    let (languages, source) =
+        crate::keyboard_language::resolve(&cfg.languages, prefs.keyboard_language, keyboard.as_deref());
+    cfg.languages = languages;
+    source
 }
 
 /// Execute paste steps in order; the first failure stops the plan.
@@ -1871,6 +1908,8 @@ mod tests {
         /// Command Mode: what `capture_selection` answers (`None` = no
         /// selection).
         selection: Mutex<Option<Result<Option<String>, String>>>,
+        /// D37: the foreground window's keyboard language.
+        keyboard: Mutex<Option<String>>,
     }
 
     impl Fake {
@@ -1890,6 +1929,9 @@ mod tests {
     impl Platform for Fake {
         fn play(&self, s: Sound) {
             self.push(format!("play {s:?}"));
+        }
+        fn keyboard_language(&self) -> Option<String> {
+            self.keyboard.lock().unwrap().clone()
         }
         fn duck(&self) {
             self.push("duck");
@@ -3419,6 +3461,59 @@ mod tests {
         for k in ["llm_engine", "llm_cost_usd", "stt_model", "stt_cost_usd"] {
             assert_eq!(s[k], serde_json::Value::Null, "{k}");
         }
+    }
+
+    fn keyboard(lang: Option<&str>) -> Fake {
+        Fake {
+            keyboard: Mutex::new(lang.map(String::from)),
+            ..Fake::default()
+        }
+    }
+
+    #[test]
+    fn keyboard_language_forces_the_session_language() {
+        // D37: a Hebrew layout in the target window → `he` (the Hebrew route).
+        let mut r = rig(keyboard(Some("he")), Prefs::default());
+        dictate_then(&mut r, |_| {});
+        assert_eq!(r.core.last_config().unwrap().languages, ["he"]);
+        // The layout is read at each start.
+        *r.fake.keyboard.lock().unwrap() = Some("en".into());
+        dictate_then(&mut r, |_| {});
+        assert_eq!(r.core.last_config().unwrap().languages, ["en"]);
+    }
+
+    #[test]
+    fn unknown_layout_or_option_off_keeps_todays_languages() {
+        let mut r = rig(keyboard(None), Prefs::default());
+        dictate_then(&mut r, |_| {});
+        assert!(r.core.last_config().unwrap().languages.is_empty(), "auto-detect");
+        let prefs = Prefs {
+            keyboard_language: false,
+            languages: vec!["de".into()],
+            ..Prefs::default()
+        };
+        let mut r = rig(keyboard(Some("he")), prefs);
+        dictate_then(&mut r, |_| {});
+        assert_eq!(r.core.last_config().unwrap().languages, ["de"]);
+    }
+
+    #[test]
+    fn debug_line_names_the_language_and_its_source() {
+        let mut out = Vec::new();
+        for (kb, on) in [(Some("he"), true), (None, true), (Some("he"), false)] {
+            let mem = MemSink::default();
+            let prefs = Prefs {
+                keyboard_language: on,
+                languages: if on { vec![] } else { vec!["en".into()] },
+                ..Prefs::default()
+            };
+            let (mut r, log) = logged(prefs, keyboard(kb), Box::new(mem.clone()), true);
+            dictate_then(&mut r, |_| {});
+            out.push(lines(&mem, &log).remove(0));
+        }
+        assert_eq!((&out[0]["language"], &out[0]["language_source"]), (&"he".into(), &"keyboard".into()));
+        assert_eq!((&out[1]["language"], &out[1]["language_source"]), (&serde_json::Value::Null, &"auto".into()));
+        assert_eq!((&out[2]["language"], &out[2]["language_source"]), (&"en".into(), &"fixed".into()));
     }
 
     /// One dictation whose commit returns `result`, `password` set before

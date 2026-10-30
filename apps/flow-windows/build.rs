@@ -20,6 +20,7 @@ fn main() {
         const COMMANDS: &[&str] = &[
             "get_prefs",
             "set_prefs",
+            "keyboard_language",
             "list_microphones",
             "get_model_status",
             "overlay_action",

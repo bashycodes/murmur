@@ -18,6 +18,22 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Dictation language follows the keyboard (D37).** New language option
+  "Keyboard language", now the default: each dictation uses the language of
+  the keyboard you type with. A Hebrew keyboard (Gboard on Android, a Hebrew
+  layout in the app you dictate into on Windows) means Hebrew, so the Hebrew
+  model is used when it is installed, without changing the app's language.
+  An unknown keyboard language falls back to the old behaviour: the phone
+  language on Android, auto-detect on Windows. Users on Phone language
+  (Android) or Detect automatically (Windows) move to it once; a language
+  you picked stays. On Android a switch to or from Hebrew reloads the speech
+  model ("Loading the Hebrew speech model…"). Settings → Language shows
+  "Keyboard language · now: Hebrew"; the debug log line gains
+  `language_source` (keyboard / phone / fixed; Windows: keyboard / fixed /
+  auto, plus `language`).
+- **Android: "Hebrew model" on Settings → Speech to text.** The Hebrew model
+  import was only reachable through the model row; it now has its own row
+  on that page.
 - **Windows: AI cleanup on the graphics chip.** The installers now ship the
   AI cleanup engine twice: `flow_llm_vulkan.dll` (GPU through Vulkan) and
   `flow_llm.dll` (CPU). The app loads the Vulkan one first. On a PC without
