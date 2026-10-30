@@ -2084,6 +2084,19 @@ mod autostart {
             r
         }
     }
+
+    /// At startup: when launch at login is on, write the Run value again so
+    /// it names this exe. `set` otherwise runs only on a prefs save, so after
+    /// a reinstall to another folder (the "Flow Clone" → "Murmur"
+    /// rename moved it) the value kept pointing at a deleted exe and the app
+    /// silently stopped starting. Idempotent; never turns it on when off.
+    pub fn refresh(enabled: bool) {
+        if enabled {
+            if let Err(e) = set(true) {
+                eprintln!("[autostart] could not refresh the Run value: {e}");
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------- entry
@@ -2106,6 +2119,7 @@ pub fn run() {
             eprintln!("[cloud] could not save the migrated settings: {e}");
         }
     }
+    autostart::refresh(prefs.launch_at_login);
     let prefs = Arc::new(RwLock::new(prefs));
     let history =
         match crate::history::History::open(&crate::history::default_path(appdata.as_deref())) {
