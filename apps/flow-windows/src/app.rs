@@ -617,6 +617,17 @@ fn note_export(
     Ok(path.display().to_string())
 }
 
+/// The app window's Scratchpad page: show `id` in the notes window (an
+/// unknown id opens an empty editor, as `note=<id>` always has).
+#[tauri::command]
+fn note_open(app: AppHandle, id: String) -> Result<(), String> {
+    if !notes::valid_id(&id) {
+        return Err(format!("\"{id}\" is not a note id"));
+    }
+    show_notes_window(&app, format!("note={id}"));
+    Ok(())
+}
+
 fn log_note_writes(results: Vec<(String, Result<(), String>)>) {
     for (id, r) in results {
         if let Err(e) = r {
@@ -2003,6 +2014,7 @@ pub fn run() {
             note_delete,
             note_set_pinned,
             note_export,
+            note_open,
             suggestions_list,
             suggestion_accept,
             suggestion_dismiss,
