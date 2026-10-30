@@ -66,15 +66,15 @@ internal class DevUi(val activity: Activity) {
     /** Design tokens (same object as [DevPalette.t]). */
     val t: Tokens get() = p.t
     private val density get() = ctx.resources.displayMetrics.density
-    private fun dp(v: Int) = (v * density).toInt()
+    fun dp(v: Int) = (v * density).toInt()
     private fun dpf(v: Float) = v * density
 
-    private fun rounded(color: Int, radiusDp: Int = 24) = GradientDrawable().apply { setColor(color); cornerRadius = dpf(radiusDp.toFloat()) }
-    private fun outlined(fill: Int, radiusDp: Int, stroke: Int = t.outline) = GradientDrawable().apply {
+    fun rounded(color: Int, radiusDp: Int = 24) = GradientDrawable().apply { setColor(color); cornerRadius = dpf(radiusDp.toFloat()) }
+    fun outlined(fill: Int, radiusDp: Int, stroke: Int = t.outline) = GradientDrawable().apply {
         setColor(fill); cornerRadius = dpf(radiusDp.toFloat()); setStroke(dpf(1.5f).toInt().coerceAtLeast(1), stroke)
     }
 
-    private fun ripple(content: Drawable?, radiusDp: Int = 0): RippleDrawable {
+    fun ripple(content: Drawable?, radiusDp: Int = 0): RippleDrawable {
         val mask = if (radiusDp > 0) rounded(Color.WHITE, radiusDp) else GradientDrawable().apply { setColor(Color.WHITE) }
         return RippleDrawable(ColorStateList.valueOf((p.text and 0x00FFFFFF) or 0x22000000), content, mask)
     }
@@ -114,6 +114,25 @@ internal class DevUi(val activity: Activity) {
         activity.setContentView(scroll)
         scroll.requestApplyInsets()
         return col
+    }
+
+    /**
+     * A scrolling column that is not attached (a shell tab's content, the drawer): 16 dp side
+     * padding, no system-bar insets (the shell pads its own frame). [screen] is the attached kind.
+     */
+    fun scrollColumn(background: Int? = null, topDp: Int = 4, build: LinearLayout.() -> Unit): Pair<ScrollView, LinearLayout> {
+        val col = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(topDp), dp(16), dp(24))
+            build()
+        }
+        val scroll = ScrollView(ctx).apply {
+            if (background != null) setBackgroundColor(background)
+            isFillViewport = true
+            clipToPadding = false
+            addView(col, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        return scroll to col
     }
 
     // ---- text ----
@@ -165,7 +184,7 @@ internal class DevUi(val activity: Activity) {
         return r
     }
 
-    private fun icon(res: Int, tint: Int, sizeDp: Int = 24) = ImageView(ctx).apply {
+    fun icon(res: Int, tint: Int, sizeDp: Int = 24) = ImageView(ctx).apply {
         setImageResource(res); imageTintList = ColorStateList.valueOf(tint)
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp))

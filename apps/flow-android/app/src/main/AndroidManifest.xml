@@ -43,7 +43,8 @@
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
-            android:launchMode="singleTask">
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Flow.Shell">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -51,6 +52,8 @@
             <!-- Long-press the icon → New note / Quick note. -->
             <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
+        <!-- Drawer → Permissions (the setup checklist); draws its own top bar. -->
+        <activity android:name=".ui.PermissionsActivity" android:exported="false" android:label="Permissions" android:theme="@style/Theme.Flow.Shell" />
         <activity android:name=".ui.ModelImportActivity" android:exported="false" android:label="@string/title_models" />
         <activity android:name=".ui.SettingsActivity" android:exported="false" android:label="@string/title_settings" />
         <activity android:name=".ui.DictionaryActivity" android:exported="false" android:label="@string/title_dictionary" />
