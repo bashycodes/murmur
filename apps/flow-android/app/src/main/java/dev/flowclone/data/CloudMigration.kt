@@ -60,7 +60,7 @@ object CloudMigration {
             put("allow_cloud", stored.allowCloud)
             put("order", JSONArray(stored.routeOrder.map { it.wire }))
             put("cloud", legacy)
-            remove("allow_cloud_cleanup"); remove("cleanup_order")
+            remove("allow_cloud_cleanup"); remove("cleanup_order"); remove("cleanup_off")
         }.toString()
 
     /** The migrated config into the stored settings; only the cloud part changes. */
@@ -71,7 +71,7 @@ object CloudMigration {
             // "If another provider was active, cloud STT is switched off rather than silently moved."
             allowCloud = if (r.cloudDisabled) false else config.optBoolean("allow_cloud", stored.allowCloud),
             routeOrder = if (r.cloudDisabled) stored.routeOrder - DevSettings.Route.CLOUD else stored.routeOrder,
-            allowCloudCleanup = m.allowCloudCleanup, cleanupOrder = m.cleanupOrder,
+            allowCloudCleanup = m.allowCloudCleanup, cleanupOrder = m.cleanupOrder, cleanupOff = m.cleanupOff,
         )
     }
 
@@ -121,7 +121,7 @@ object CloudMigration {
         val next = apply(stored, config, r)
         store.saveCloud(
             allowCloud = next.allowCloud, cloud = next.cloud, routeOrder = next.routeOrder,
-            allowCloudCleanup = next.allowCloudCleanup, cleanupOrder = next.cleanupOrder,
+            allowCloudCleanup = next.allowCloudCleanup, cleanupOrder = next.cleanupOrder, cleanupOff = next.cleanupOff,
         )
         r.notice?.let { store.cloudNotice = it }
         return r

@@ -126,7 +126,7 @@ class CloudSettingsTest {
         val fake = FakeVaultKeys()
         val keys = CloudKeyStore(kv) { id -> SecretVault(SecretVault.cloudAlias(id), fake) }
         val store = DevStore(kv, BuildCaps.ALL, SecretVault("flow_dev_token", fake))
-        val s = OpenRouterPage.enableCleanup(OpenRouterPage.enableStt(DevSettings.defaults(BuildCaps.ALL), now), now, BuildCaps.ALL)
+        val s = OpenRouterPage.enableCleanup(OpenRouterPage.enableStt(DevSettings.defaults(BuildCaps.ALL), now), now)
             .let { it.copy(cloud = it.cloud.copy(monthlyBudgetUsd = 3.0)) }
         store.save(s)
         keys.set(OpenRouter.ID, " $key ")
@@ -154,9 +154,13 @@ class CloudSettingsTest {
 
     @Test fun storeKeepsCleanupFieldsAndALocalBuildMasksThem() {
         val kv = MemKV(); val fake = FakeVaultKeys()
-        val s = OpenRouterPage.enableCleanup(DevSettings.defaults(BuildCaps.ALL), now, BuildCaps.ALL)
+        val s = OpenRouterPage.enableCleanup(DevSettings.defaults(BuildCaps.ALL), now)
+            .copy(cleanupOrder = listOf(DevSettings.CleanupRoute.CLOUD, DevSettings.CleanupRoute.SERVER, DevSettings.CleanupRoute.LOCAL))
+            .withCleanup(DevSettings.CleanupRoute.SERVER, false)
         DevStore(kv, BuildCaps.ALL, SecretVault("t", fake)).save(s)
-        assertEquals(listOf(DevSettings.CleanupRoute.CLOUD, DevSettings.CleanupRoute.LOCAL), DevStore(kv, BuildCaps.ALL, SecretVault("t", fake)).load().cleanupOrder)
+        val back = DevStore(kv, BuildCaps.ALL, SecretVault("t", fake)).load()
+        assertEquals(s.cleanupOrder, back.cleanupOrder); assertEquals(setOf(DevSettings.CleanupRoute.SERVER), back.cleanupOff)
+        assertTrue(back.allowCloudCleanup)
         val local = DevStore(kv, BuildCaps.LOCAL, SecretVault("t", fake)).load()
         assertFalse(local.allowCloudCleanup)
         // …and a local build's router JSON carries no cloud field at all (C2).

@@ -1,7 +1,7 @@
 // Settings → AI cleanup (design: SettingsCleanup.dc.html): the cleanup
-// level and formatting (features/ai.ts, features/general.ts), which engine
-// cleans the text and in what order, and OpenRouter cleanup
-// (features/openrouter.ts). Markup only.
+// level and formatting (features/ai.ts, features/general.ts), the cleanup
+// order (D36: this PC, your server, OpenRouter; features/ai.ts) and
+// OpenRouter cleanup (features/openrouter.ts). Markup only.
 
 import { ICON } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
@@ -49,17 +49,14 @@ ${heading(
   </div>
 </section>
 
-<section class="lw-section">
-  <h3 class="fl-group-title">Engines</h3>
+<section class="lw-section" id="cleanup_order_group">
+  <h3 class="fl-group-title">Cleanup order</h3>
   <div class="fl-group" id="ai_routes">
-    ${engineRow("aieng", "cleanup", "cloud", ICON.cloud, "OpenRouter", toggle("or_cleanup_allow", "Use OpenRouter for cleanup"), `data-needs="cloud"`)}
     ${engineRow("aieng", "cleanup", "local", ICON.chip, "This PC", toggle("llm_enabled", "Use this PC for cleanup", `data-save="prefs"`), `data-needs="local"`)}
-    <div class="fl-row lw-foot-row"><div class="fl-row-desc">If both fail or run out of time, the built-in formatting rules finish the job. Dictations sent to your server are cleaned up there. Now: <span id="ai_engine_line">On this PC</span>. <span id="or_cleanup_consent"></span></div></div>
+    ${engineRow("aieng", "cleanup", "server", ICON.server, "Your server", toggle("aieng_server_on", "Use your server for cleanup"), `data-needs="remote"`)}
+    ${engineRow("aieng", "cleanup", "cloud", ICON.cloud, "OpenRouter", toggle("or_cleanup_allow", "Use OpenRouter for cleanup"), `data-needs="cloud"`)}
+    <div class="fl-row lw-foot-row"><div class="fl-row-desc">Every dictation is cleaned by the first engine that is on and ready, whichever engine transcribed it; if it fails or runs out of time, the next one tries, and the built-in formatting rules finish the job. Now: <span id="ai_engine_line">On this PC</span>. <span id="or_cleanup_consent"></span> <span id="cleanup_order_msg" class="hint"></span></div></div>
   </div>
-  <select id="or_cleanup_order" hidden aria-hidden="true" tabindex="-1">
-    <option value="cloud,local">OpenRouter first, then this PC</option>
-    <option value="local,cloud">This PC first, OpenRouter only when no model is loaded</option>
-  </select>
 </section>
 
 <section class="lw-section" id="or_cleanup_group" data-needs="cloud">

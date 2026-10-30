@@ -106,9 +106,20 @@ fn page_edits_map_to_the_router_cloud_fixture() {
         vec![Route::Cloud, Route::Server, Route::Client],
         "turning STT on puts it first"
     );
-    let j = dev.router_config_json(ALL, &token);
-    assert_eq!(j, fixture("router_config_cloud.json"));
-    let cfg: RouterConfig = serde_json::from_value(j).unwrap();
+    let mut j = dev.router_config_json(ALL, &token);
+    // D36: the shell sends the whole cleanup order (the fixture's
+    // `[cloud, local]` plus the server right after this PC), all on.
+    let mut want = fixture("router_config_cloud.json");
+    assert_eq!(want["cleanup_order"], serde_json::json!(["cloud", "local"]));
+    assert_eq!(
+        j["cleanup_order"],
+        serde_json::json!(["cloud", "local", "server"])
+    );
+    assert!(j.get("cleanup_off").is_none());
+    want.as_object_mut().unwrap().remove("cleanup_order");
+    j.as_object_mut().unwrap().remove("cleanup_order");
+    assert_eq!(j, want);
+    let cfg: RouterConfig = serde_json::from_value(dev.router_config_json(ALL, &token)).unwrap();
     cfg.validate().unwrap();
     assert!(cfg.cloud.openrouter.stt.consent_ok());
     assert!(cfg.cloud.openrouter.cleanup.consent_ok());
@@ -123,7 +134,8 @@ fn a_developer_save_after_the_page_keeps_openrouter() {
     let (mut dev, _) = f.with_token(&saved).validate(ALL).unwrap();
     dev.keep_cloud(&saved);
     assert_eq!(dev.cloud, saved.cloud);
-    assert!(dev.allow_cloud && dev.allow_cloud_cleanup);
+    assert!(dev.allow_cloud && dev.cleanup_on(CleanupRoute::Cloud));
+    assert_eq!(dev.cleanup(), saved.cleanup());
     assert_eq!(dev.server.host, "100.64.0.11");
 }
 
@@ -153,7 +165,20 @@ fn prefs_round_trip_without_keys() {
         fixture("router_config_cloud.json")["cloud"]
     );
     assert_eq!(on_disk["developer"]["allow_cloud"], true);
-    assert_eq!(on_disk["developer"]["allow_cloud_cleanup"], true);
+    assert_eq!(
+        on_disk["developer"]["cleanup_engines"],
+        serde_json::json!([
+            {"route": "cloud", "enabled": true},
+            {"route": "local", "enabled": true},
+            {"route": "server", "enabled": true}
+        ])
+    );
+    for k in ["allow_cloud_cleanup", "cleanup_order"] {
+        assert!(
+            on_disk["developer"].get(k).is_none(),
+            "pre-D36 {k} is not written"
+        );
+    }
     // ...while the key is in the store, and only masked for the page.
     assert_eq!(credentials::openrouter_key(&*store).as_deref(), Some(KEY));
     let ks = credentials::key_state(&*store, OPENROUTER);
@@ -169,7 +194,7 @@ fn prefs_round_trip_without_keys() {
 fn old_prefs_without_cloud_load_with_cloud_off() {
     let old: DevSettings =
         serde_json::from_str(r#"{"allow_server":true,"route_order":["client","server"]}"#).unwrap();
-    assert!(!old.allow_cloud && !old.allow_cloud_cleanup && old.cloud.is_default());
+    assert!(!old.allow_cloud && !old.cleanup_on(CleanupRoute::Cloud) && old.cloud.is_default());
     assert!(!old.cloud.is_legacy(), "nothing to migrate");
     assert_eq!(
         old.order(),
@@ -320,7 +345,7 @@ fn every_old_preset_migrates_with_its_keys_and_usage() {
             "{case}: notice kept until read"
         );
         assert!(
-            !dev.allow_cloud_cleanup,
+            !dev.cleanup_on(CleanupRoute::Cloud),
             "{case}: cleanup is never switched on"
         );
         // Keys: only the OpenRouter one survives, under its new id.

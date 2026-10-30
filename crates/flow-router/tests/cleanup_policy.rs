@@ -547,8 +547,11 @@ fn default_cleanup_timeout_is_2500_ms() {
 
 // ---- routes ---------------------------------------------------------------------
 
+/// D36: with the server first in the cleanup order, a server-route
+/// dictation is cleaned in its own session and never reaches the cloud
+/// (cloud first: see `d36_cleanup_order.rs`).
 #[test]
-fn server_route_never_uses_cloud_cleanup() {
+fn server_first_cleans_in_session_and_never_uses_cloud_cleanup() {
     let server = Arc::new(Server {
         installs: AtomicUsize::new(0),
     });
@@ -556,6 +559,11 @@ fn server_route_never_uses_cloud_cleanup() {
     let mut c = cfg();
     c.allow_server = true;
     c.order = vec![Route::Server, Route::Client];
+    c.cleanup_order = vec![
+        CleanupRoute::Server,
+        CleanupRoute::Cloud,
+        CleanupRoute::Local,
+    ];
     c.server = ServerConfig {
         host: "100.64.0.10".into(),
         token: "0123456789abcdef".into(),
@@ -614,8 +622,13 @@ fn cloud_stt_backend_gets_the_cleanup_plan() {
         fn probe(&self) -> HealthReport {
             HealthReport::default()
         }
+        // D36: a plan is always installed; record whether it cleans
+        // without an on-device LLM (i.e. reaches the cloud).
         fn install_cleanup(&self, p: Option<CleanupPlan>) {
-            self.0.lock().unwrap().push(p.is_some());
+            self.0
+                .lock()
+                .unwrap()
+                .push(p.and_then(|p| p(None)).is_some());
         }
     }
     let stt = Arc::new(CloudStt(Mutex::new(Vec::new())));

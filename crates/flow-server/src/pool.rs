@@ -74,6 +74,7 @@ impl Pool {
             .map(|(k, m)| (k.clone(), backend_name(&m.asr_backend, &m.asr_path)))
             .collect();
         let n = cores.len();
+        let has_cleaner = cores.first().is_some_and(|c| c.cleaner().is_some());
         Self {
             free: Mutex::new((0..n).collect()),
             sem: Arc::new(Semaphore::new(n)),
@@ -85,7 +86,9 @@ impl Pool {
             asr_model,
             languages,
             model: model.clone(),
-            llm: model.llm_path.as_deref().is_some_and(|p| !p.is_empty()),
+            // A configured model, or (tests, embedders) cores built with a
+            // cleaner.
+            llm: model.llm_path.as_deref().is_some_and(|p| !p.is_empty()) || has_cleaner,
         }
     }
 

@@ -14,6 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 
+pub use flow_core::cleanup::CleanRequest;
 pub use flow_core::config::{FieldContext, SessionConfig};
 pub use flow_core::CommitResult;
 
@@ -110,6 +111,36 @@ pub struct HelloOk {
 
 /// [`HelloOk::features`] value for pause-segmented decoding (D22).
 pub const FEATURE_SEGMENTS: &str = "segments";
+/// [`HelloOk::features`] value: the server answers text-only cleanup
+/// requests ([`ClientMsg::Clean`], D36). Advertised only when it has an
+/// LLM loaded.
+pub const FEATURE_CLEAN: &str = "clean";
+
+/// Largest `text` a [`ClientMsg::Clean`] may carry (bytes).
+pub const MAX_CLEAN_TEXT_BYTES: usize = 32 * 1024;
+
+/// Answer to a [`ClientMsg::Clean`] (D36): the model's text, or why there
+/// is none. The client's core judges the text with its own guard, as for
+/// any cleaner, so the server does not.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Cleaned {
+    pub id: u64,
+    /// The model's answer; `None` with `error`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Why there is no text: `llm_timeout`, `llm_error: <code>`, `busy`,
+    /// `no_llm`, `too_large`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// LLM wall time on the server.
+    pub llm_ms: u64,
+    /// Time the request waited for a free worker.
+    pub queue_ms: u64,
+    /// The server's cleanup model, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -167,6 +198,14 @@ pub enum ClientMsg {
         #[serde(default)]
         n: u64,
     },
+    /// Text-only AI cleanup (D36), independent of any session: answered
+    /// with [`ServerMsg::Cleaned`] carrying the same `id`. Only sent to a
+    /// server whose `hello_ok.features` lists [`FEATURE_CLEAN`].
+    Clean {
+        id: u64,
+        #[serde(default)]
+        req: Box<CleanRequest>,
+    },
 }
 
 /// Server → client control messages.
@@ -199,6 +238,8 @@ pub enum ServerMsg {
         busy: u32,
     },
     Error(ErrorMsg),
+    /// Answer to [`ClientMsg::Clean`] (D36).
+    Cleaned(Cleaned),
 }
 
 impl ClientMsg {

@@ -24,25 +24,16 @@ object OpenRouterPage {
     fun disableStt(s: DevSettings) = s.copy(allowCloud = false)
 
     /**
-     * Cleanup on (after its own consent): order cloud → phone AI when this build has an on-device
-     * LLM, else cloud only. A user-chosen order that already has the cloud is kept.
+     * Cleanup on (after its own consent): the cloud entry of the cleanup order switched on where
+     * it stands (D36: the order itself is set on Settings → AI cleanup).
      */
-    fun enableCleanup(s: DevSettings, nowMs: Long, caps: BuildCaps): DevSettings = s.copy(
+    fun enableCleanup(s: DevSettings, nowMs: Long): DevSettings = s.copy(
         allowCloudCleanup = true,
-        cleanupOrder = if (CleanupRoute.CLOUD in s.cleanupOrder) s.cleanupOrder else defaultCleanupOrder(caps),
+        cleanupOrder = DevSettings.fullCleanupOrder(s.cleanupOrder),
         cloud = if (s.cloud.cleanup.consentOk) s.cloud else s.cloud.copy(cleanup = s.cloud.cleanup.withConsent(nowMs)),
     )
 
     fun disableCleanup(s: DevSettings) = s.copy(allowCloudCleanup = false)
-
-    fun defaultCleanupOrder(caps: BuildCaps): List<CleanupRoute> =
-        if (caps.local) DevSettings.CLEANUP_CLOUD_FIRST else listOf(CleanupRoute.CLOUD)
-
-    /** "Cloud first" = [cloud, local]; "Phone AI first" = [local, cloud] (cloud only when no phone model is loaded). */
-    fun withCleanupOrder(s: DevSettings, cloudFirst: Boolean) =
-        s.copy(cleanupOrder = if (cloudFirst) DevSettings.CLEANUP_CLOUD_FIRST else listOf(CleanupRoute.LOCAL, CleanupRoute.CLOUD))
-
-    fun cleanupCloudFirst(s: DevSettings) = s.cleanupOrder.firstOrNull() != CleanupRoute.LOCAL
 
     /** Picker choice for one use. [sttPath] (STT only): auto | transcriptions | chat_audio. */
     fun withModel(s: DevSettings, use: CloudCatalog.Use, id: String, sttPath: String = "auto"): DevSettings {
@@ -79,13 +70,19 @@ object OpenRouterPage {
         return "$speech · $cleanup" + if (!hasKey && (s.allowCloud || s.allowCloudCleanup)) " · no key" else ""
     }
 
-    /** The AI cleanup row: "OpenRouter (llama-3.3-70b-instruct), then on-device" / null when cloud cleanup is off. */
+    /**
+     * The Home tab's AI cleanup line while cloud cleanup is on: the switched-on engines in order
+     * ("On-device, then your server, then OpenRouter (llama-3.3-70b-instruct)"); null when it is off.
+     */
     fun cleanupEngineLine(s: DevSettings): String? {
         if (!(s.cloudCleanupRouted && s.cloud.cleanup.consentOk)) return null
-        val cloud = "${OpenRouter.NAME} (${s.cloud.cleanup.model.substringAfter('/')})"
-        return when (s.cleanupOrder.firstOrNull()) {
-            CleanupRoute.LOCAL -> "On-device, then $cloud"
-            else -> if (CleanupRoute.LOCAL in s.cleanupOrder) "$cloud, then on-device" else cloud
+        val names = s.cleanupOrder.filter { s.cleanupOn(it) }.mapNotNull {
+            when (it) {
+                CleanupRoute.LOCAL -> "on-device"
+                CleanupRoute.SERVER -> if (s.serverConfigured) "your server" else null
+                CleanupRoute.CLOUD -> "${OpenRouter.NAME} (${s.cloud.cleanup.model.substringAfter('/')})"
+            }
         }
+        return names.joinToString(", then ").replaceFirstChar { it.uppercase() }
     }
 }

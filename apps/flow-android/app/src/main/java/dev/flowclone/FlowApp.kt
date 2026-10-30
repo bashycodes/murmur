@@ -166,6 +166,9 @@ class FlowApp : Application() {
             // Scrubbed from every line, whatever path a secret took (never the clipboard: nothing reads it).
             secrets = { debugSecrets() },
         )
+        // D36: before anything reads the cleanup order (AI cleanup off before the upgrade stays off).
+        runCatching { dev.migrateCleanupD36(phoneAiWasOn = settings.load().llmEnabled) }
+            .onFailure { Log.w("FlowEngine", "cleanup order migration: ${it.message}") }
         migrateCloud()
         engine = EngineHolder(this)
         debugAudio = DebugAudioStore.inFilesDir(filesDir)

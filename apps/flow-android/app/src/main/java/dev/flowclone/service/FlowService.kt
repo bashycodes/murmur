@@ -667,8 +667,9 @@ class FlowService : Service() {
             app.accessibility?.captureFieldContext()?.let { app.settings.load().withAppBucket(it) }
 
         override fun sessionConfig() = app.settings.load().let {
-            // D28: the router re-checks consent, key, circuit and budget on every cleanup call.
-            val cloudCleanup = app.dev.load().effective(app.caps).let { d -> d.cloudCleanupRouted && d.cloud.cleanup.consentOk }
+            // D28 / D36: an engine off the phone (OpenRouter, your server) may clean even with the
+            // on-device AI off; the router re-checks consent, key, circuit, budget and the server's LLM per call.
+            val cloudCleanup = app.dev.load().effective(app.caps).offPhoneCleanup
             it.toSessionConfig(app.dictionary.all(), language = app.effectiveLanguage(it), cloudCleanup = cloudCleanup)
         }
 
