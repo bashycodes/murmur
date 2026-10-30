@@ -40,8 +40,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         elif self.path.startswith("/settings.html"):
             html = (DIST / "settings.html").read_text()
             body = html.replace(
-                '<script src="settings.js">',
-                '<script src="mock-tauri.js"></script><script src="settings.js">',
+                '<script type="module" src="settings.js">',
+                '<script src="mock-tauri.js"></script><script type="module" src="settings.js">',
             ).encode()
             ctype = "text/html"
         else:
