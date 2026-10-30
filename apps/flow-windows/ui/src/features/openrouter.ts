@@ -3,8 +3,11 @@
 // never sent back to this page), two separately consented uses (speech =
 // audio, cleanup = text), shared privacy + budget. Every change is applied
 // at once by a `dev_or_set_*` command that returns the whole OrView.
+// Designs: SettingsOpenRouter / ModelPicker .dc.html, and the OpenRouter
+// groups of SettingsSpeech / SettingsCleanup.
 
 import { $, askDialog, el, setStatus, setValue, when } from "../lib/dom.js";
+import { iconEl } from "../lib/icons.js";
 import { cloudHint, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import type {
@@ -77,24 +80,57 @@ function consentLine(at: number, given: boolean, what: string): string {
     : "Not yet agreed: turning this on asks first.";
 }
 
-function modelLine(id: string, info: ModelRow | null): string {
-  if (!info) return `${id} (not in the model list)`;
-  return `${info.name} · ${info.price_label}`;
+/** "Transcription model · $0.04/h audio" (+ this month's cleanup spend). */
+function modelDesc(info: ModelRow | null, extra: string): string {
+  if (!info) return "Not in the model list.";
+  const kind =
+    info.stt_path === "transcriptions" ? "Transcription model" : info.stt_path === "chat_audio" ? "Chat model with audio" : "Text model";
+  return [kind, info.price_label, extra].filter(Boolean).join(" · ");
 }
 
-function showModelRow(prefix: string, id: string, info: ModelRow | null): void {
-  $<HTMLElement>(`${prefix}_model_name`).textContent = modelLine(id, info);
+function showModelRow(prefix: string, id: string, info: ModelRow | null, extra = ""): void {
+  $<HTMLElement>(`${prefix}_model_name`).textContent = info?.name || id;
+  $<HTMLElement>(`${prefix}_model_desc`).textContent = modelDesc(info, extra);
   $<HTMLElement>(`${prefix}_model_id`).textContent = id;
-  $<HTMLElement>(`${prefix}_model_badges`).replaceChildren(...pills(info));
+  $<HTMLElement>(`${prefix}_model_badges`).replaceChildren(...badges(info, true));
 }
 
-function pills(r: ModelRow | null): HTMLElement[] {
+/** A model's badges as the design shows them (fl-badge). `zdr`: show "Zero retention". */
+function badges(r: ModelRow | null, zdr: boolean): HTMLElement[] {
   if (!r) return [];
   const out: HTMLElement[] = [];
-  if (r.recommended) out.push(el("span", "pill rec", "Recommended"));
-  for (const b of r.badges) out.push(el("span", b === PARAPHRASE_BADGE ? "pill warn" : "pill", b));
-  if (r.allowed_by_account === false) out.push(el("span", "pill err", "blocked by your OpenRouter privacy settings"));
+  if (r.recommended) out.push(el("span", "fl-badge fl-badge-dark", "Recommended"));
+  if (zdr && r.zdr) out.push(el("span", "fl-badge fl-badge-neutral", "Zero retention"));
+  for (const b of r.badges) {
+    if (b === "ZDR") continue;
+    if (b === "fast") out.push(el("span", "fl-badge fl-badge-light", "Fast"));
+    else out.push(el("span", b === PARAPHRASE_BADGE ? "fl-badge fl-badge-warning" : "fl-badge fl-badge-light", b));
+  }
+  if (r.allowed_by_account === false)
+    out.push(el("span", "fl-badge fl-badge-destructive", "blocked by your OpenRouter privacy settings"));
   return out;
+}
+
+/** Select `value` in a preset list, adding it as a choice when it is not a preset. */
+function ensureOption(id: string, value: string, label: string): void {
+  const sel = $<HTMLSelectElement>(id);
+  if (![...sel.options].some((o) => o.value === value)) {
+    const after = [...sel.options].find((o) => o.value !== "" && Number(o.value) > Number(value));
+    sel.add(new Option(label, value), after ?? null);
+  }
+  sel.value = value;
+}
+
+function setBadge(id: string, on: boolean): void {
+  const b = $<HTMLElement>(id);
+  b.textContent = on ? "On" : "Off";
+  b.className = `fl-badge ${on ? "fl-badge-success" : "fl-badge-light"}`;
+}
+
+/** "$0.0234" or 0.0234 as a number. */
+function amount(v: string | number | null | undefined): number {
+  const n = typeof v === "number" ? v : Number(String(v ?? "").replace(/[^0-9.]/g, ""));
+  return Number.isFinite(n) ? n : 0;
 }
 
 function showOr(v: OrView): void {
@@ -102,7 +138,12 @@ function showOr(v: OrView): void {
   $<HTMLElement>("or_notice_box").hidden = !v.notice;
   $<HTMLElement>("or_notice").textContent = v.notice ?? "";
 
-  $<HTMLElement>("or_key_state").textContent = v.key.set ? `Key set: ${v.key.masked}` : "No key saved";
+  const ks = $<HTMLElement>("or_key_state");
+  ks.textContent = v.key.set ? `Key ${v.key.masked}` : "No key saved";
+  ks.classList.toggle("lw-mono", v.key.set);
+  $<HTMLElement>("or_key_saved_ctl").hidden = !v.key.set;
+  $<HTMLElement>("or_key_entry").hidden = v.key.set;
+  $<HTMLElement>("or_credit_row").hidden = !v.key.set;
 
   $<HTMLInputElement>("or_zdr").checked = v.privacy.zdr;
   $<HTMLInputElement>("or_dc_deny").checked = v.privacy.data_collection === "deny";
@@ -111,6 +152,8 @@ function showOr(v: OrView): void {
   $<HTMLInputElement>("or_stt_allow").checked = s.allow;
   $<HTMLElement>("or_stt_consent").textContent = consentLine(s.consent_at_ms, s.consent, "audio");
   showModelRow("or_stt", s.model, v.stt_model_info);
+  $<HTMLElement>("or_stt_box").classList.toggle("lw-dim", !s.allow);
+  $<HTMLElement>("or_stt_used_badge").hidden = s.allow;
   setValue("or_stt_language", s.language);
   $<HTMLInputElement>("or_stt_send_dictionary").checked = s.send_dictionary;
   $<HTMLSelectElement>("or_stt_path").value = s.stt_path;
@@ -119,21 +162,28 @@ function showOr(v: OrView): void {
   $<HTMLInputElement>("or_cleanup_allow").checked = c.allow;
   $<HTMLElement>("or_cleanup_consent").textContent = consentLine(c.consent_at_ms, c.consent, "dictated text");
   $<HTMLSelectElement>("or_cleanup_order").value = c.order[0] === "local" ? "local,cloud" : "cloud,local";
-  showModelRow("or_cleanup", c.model, v.cleanup_model_info);
+  const spent = c.status.month_cost_usd ? `${money(c.status.month_cost_usd)} so far this month` : "";
+  showModelRow("or_cleanup", c.model, v.cleanup_model_info, spent);
+  $<HTMLElement>("or_cleanup_box").classList.toggle("lw-dim", !c.allow);
   $<HTMLSelectElement>("or_cleanup_sort").value = c.sort;
-  setValue("or_cleanup_timeout_ms", String(c.timeout_ms));
+  ensureOption("or_cleanup_timeout_ms", String(c.timeout_ms), `${c.timeout_ms / 1000} seconds`);
   $<HTMLInputElement>("or_cleanup_send_surrounding_text").checked = c.send_surrounding_text;
   $<HTMLInputElement>("or_cleanup_send_screen_words").checked = c.send_screen_words;
   $<HTMLInputElement>("or_cleanup_send_app_name").checked = c.send_app_name;
   showCleanupStatus(c.status);
-  $<HTMLElement>("or_used_stt").textContent = s.allow
-    ? `Sends audio · ${s.model}`
-    : "Off: speech is turned into text on your own engines.";
-  $<HTMLElement>("or_used_cleanup").textContent = c.allow
-    ? `Sends text · ${c.model} · ${c.order[0] === "local" ? "after this PC" : "first, then this PC"}`
-    : "Off: text is cleaned up on your own engines.";
+  const short = (id: string): string => id.split("/").pop() ?? id;
+  $<HTMLElement>("or_used_stt").textContent = s.allow ? `Sends audio · ${short(s.model)}` : `Would send audio · ${short(s.model)}`;
+  $<HTMLElement>("or_used_cleanup").textContent = `${c.allow ? "Sends" : "Would send"} text · ${short(c.model)}${
+    c.allow ? ` · ${c.order[0] === "local" ? "after this PC" : "first, then this PC"}` : ""
+  }`;
+  setBadge("or_used_stt_badge", s.allow);
+  setBadge("or_used_cleanup_badge", c.allow);
+  $<HTMLElement>("or_used_stt_link").textContent = s.allow ? "Manage →" : "Set up →";
+  $<HTMLElement>("or_used_cleanup_link").textContent = c.allow ? "Manage →" : "Set up →";
 
-  setValue("or_budget", v.budget == null ? "" : String(v.budget));
+  if (document.activeElement !== $("or_budget")) {
+    ensureOption("or_budget", v.budget == null ? "" : String(v.budget), `$${v.budget} a month`);
+  }
   showOrUsage(v.usage);
   showCatalogStatus(v.catalog);
   views.setOr(v);
@@ -141,11 +191,21 @@ function showOr(v: OrView): void {
 
 function showOrUsage(u: UsageView): void {
   if (views.or) views.or.usage = u;
-  const budget =
-    u.budget != null ? ` of $${u.budget.toFixed(2)}${u.budget_reached ? " — budget reached, OpenRouter paused" : ""}` : "";
-  const e = $<HTMLElement>("or_usage_total");
-  e.textContent = `${u.month}: Speech ${money(u.speech)} · Cleanup ${money(u.cleanup)} · total ${money(u.total)}${budget}`;
-  e.className = u.budget_reached ? "err" : "";
+  $<HTMLElement>("or_usage_amount").textContent = money(u.total);
+  const of = $<HTMLElement>("or_usage_of");
+  of.textContent =
+    u.budget != null
+      ? `of your $${u.budget.toFixed(2)} budget${u.budget_reached ? ": reached, OpenRouter is paused until next month" : ""}`
+      : `spent in ${u.month} · no budget set`;
+  of.classList.toggle("err", u.budget_reached);
+  const meter = $<HTMLElement>("or_usage_meter");
+  meter.hidden = u.budget == null || u.budget <= 0;
+  if (u.budget) $<HTMLElement>("or_usage_bar").style.width = `${Math.min(100, (amount(u.total) / u.budget) * 100)}%`;
+  meter.classList.toggle("is-full", u.budget_reached);
+  const dictations = u.rows.filter((r) => r.purpose !== "cleanup").reduce((n, r) => n + r.requests, 0);
+  const cleanups = u.rows.filter((r) => r.purpose === "cleanup").reduce((n, r) => n + r.requests, 0);
+  $<HTMLElement>("or_usage_total").textContent =
+    `Speech ${money(u.speech)} · ${dictations} dictations    Cleanup ${money(u.cleanup)} · ${cleanups} cleanups`;
   $<HTMLUListElement>("or_usage_rows").replaceChildren(
     ...u.rows.map((r) => {
       const what = r.purpose === "cleanup" ? "cleanups" : "dictations";
@@ -268,45 +328,49 @@ async function orClearKey(): Promise<void> {
   if (k) await loadOr();
 }
 
-function kvRow(dl: HTMLElement, k: string, v: string): void {
-  dl.append(el("dt", undefined, k), el("dd", undefined, v));
+function keyBadge(text: string, kind: string): void {
+  const b = $<HTMLElement>("or_key_badge");
+  b.textContent = text;
+  b.className = `fl-badge fl-badge-${kind}`;
+}
+
+/** "$8.42 left of a $10.00 limit on this key." + what was used and the label. */
+function creditText(r: KeyInfo): string {
+  const limit =
+    r.limit == null
+      ? "No credit limit on this key."
+      : `${r.limit_remaining != null ? `${money(r.limit_remaining)} left of a ` : "A "}${money(r.limit)} limit on this key${r.limit_reset ? ` (resets ${r.limit_reset})` : ""}.`;
+  const used = ` ${money(r.usage_monthly ?? 0)} used this month.`;
+  const free = r.is_free_tier
+    ? ` Free tier${r.free_requests_remaining != null ? `: ${r.free_requests_remaining} free requests left` : ""}.`
+    : "";
+  const label = r.label ? ` Key "${r.label}".` : "";
+  return limit + used + free + label;
 }
 
 async function orCheckKey(): Promise<void> {
-  const dl = $<HTMLElement>("or_key_info");
+  const info = $<HTMLElement>("or_key_info");
   const out = $<HTMLElement>("or_key_status");
   out.textContent = "Checking the key with openrouter.ai…";
   out.className = "hint";
-  dl.hidden = true;
+  info.hidden = true;
   $<HTMLElement>("or_key_warn").hidden = true;
+  keyBadge("Checking", "light");
   try {
     const r = await invoke<KeyInfo | { error: string }>("dev_or_key_info");
     if ("error" in r) {
       setStatus("or_key_status", failText(r.error), false);
+      keyBadge("Not valid", "destructive");
       return;
     }
-    dl.replaceChildren();
-    kvRow(dl, "Label", r.label || "—");
-    kvRow(
-      dl,
-      "Credit limit",
-      r.limit == null
-        ? "none"
-        : `${money(r.limit)}${r.limit_remaining != null ? ` · ${money(r.limit_remaining)} left` : ""}${r.limit_reset ? ` (resets ${r.limit_reset})` : ""}`,
-    );
-    kvRow(dl, "Used this month", money(r.usage_monthly ?? 0));
-    kvRow(
-      dl,
-      "Free tier",
-      r.is_free_tier
-        ? `yes${r.free_requests_remaining != null ? ` · ${r.free_requests_remaining} free requests left` : ""}`
-        : "no",
-    );
-    dl.hidden = false;
+    info.textContent = creditText(r);
+    info.hidden = false;
     $<HTMLElement>("or_key_warn").hidden = !r.warn_no_limit;
-    setStatus("or_key_status", `Key OK (checked ${when(r.checked_at_ms || Date.now())})`, true);
+    setStatus("or_key_status", ` Checked ${when(r.checked_at_ms || Date.now())}.`, true);
+    keyBadge("Valid", "success");
   } catch (e) {
     setStatus("or_key_status", String(e), false);
+    keyBadge("Not checked", "light");
   }
 }
 
@@ -472,7 +536,7 @@ async function refreshCleanupStatus(): Promise<void> {
 // ---- usage + budget
 
 async function orBudgetChanged(): Promise<void> {
-  const raw = $<HTMLInputElement>("or_budget").value.trim();
+  const raw = $<HTMLSelectElement>("or_budget").value.trim();
   const n = Number(raw);
   if (raw !== "" && (!Number.isFinite(n) || n < 0)) {
     setStatus("or_usage_status", "Budget: a number of dollars, or empty for no limit", false);
@@ -510,34 +574,42 @@ const CHIPS: [string, () => boolean, () => void][] = [
 ];
 
 function showChips(): void {
-  for (const [id, on] of CHIPS) $<HTMLButtonElement>(id).setAttribute("aria-pressed", String(on()));
+  for (const [id, on] of CHIPS) {
+    const b = $<HTMLButtonElement>(id);
+    b.setAttribute("aria-pressed", String(on()));
+    b.classList.toggle("is-on", on());
+  }
   const stt = pickerPurpose === "stt";
   $<HTMLElement>("or_chip_transcriptions").hidden = !stt;
   $<HTMLElement>("or_chip_chat_audio").hidden = !stt;
-  $<HTMLElement>("or_chip_text").hidden = stt;
 }
 
 function currentModel(): string {
   return pickerPurpose === "stt" ? (views.or?.stt.model ?? "") : (views.or?.cleanup.model ?? "");
 }
 
-function pickerRow(r: ModelRow): HTMLLIElement {
-  const li = el("li");
-  const b = el("button", r.id === currentModel() ? "model current" : "model");
+/** One model in the picker (ModelPicker.dc.html): name + badges, id, price, a check on the current one. */
+function pickerRow(r: ModelRow): HTMLButtonElement {
+  const current = r.id === currentModel();
+  const b = el("button", current ? "fl-list-row lw-model is-current" : "fl-list-row lw-model");
   b.type = "button";
-  const head = el("span", "model-head");
-  head.append(el("strong", undefined, r.name || r.id), ...pills(r));
-  const meta = el("span", "model-meta");
-  meta.append(el("code", undefined, r.id), el("span", undefined, r.price_label));
-  if (pickerPurpose === "cleanup" && r.context_length > 0) {
-    meta.append(el("span", undefined, `${Math.round(r.context_length / 1000)}k ctx`));
-  }
-  if (r.id === currentModel()) meta.append(el("span", "ok", "current"));
-  b.append(head, meta);
+  b.setAttribute("role", "option");
+  b.setAttribute("aria-selected", String(current));
+  const text = el("span", "lw-model-text");
+  const head = el("span", "lw-model-head");
+  head.append(el("span", "lw-model-name", r.name || r.id), ...badges(r, false));
+  const id = el("code", "lw-mono lw-model-id", r.id);
+  text.append(head, id);
+  const price = el("span", "lw-model-price", r.price_label);
+  if (pickerPurpose === "cleanup" && r.context_length > 0) price.title = `${Math.round(r.context_length / 1000)}k context`;
+  const check = el("span", "lw-model-check");
+  if (current) check.append(iconEl(ICON_CHECK, 18));
+  b.append(text, price, check);
   b.addEventListener("click", () => void pickModel(r.id, r.badges.includes(PARAPHRASE_BADGE)));
-  li.append(b);
-  return li;
+  return b;
 }
+
+const ICON_CHECK = "M5 12.5l4.5 4.5L19 7";
 
 async function loadPicker(): Promise<void> {
   const seq = ++pickerSeq;
@@ -550,8 +622,25 @@ async function loadPicker(): Promise<void> {
     if (seq !== pickerSeq) return; // a newer search is in flight
     // Recommended first; otherwise the backend's order (price).
     const sorted = [...rows.filter((r) => r.recommended), ...rows.filter((r) => !r.recommended)];
-    $<HTMLUListElement>("or_picker_list").replaceChildren(...sorted.map(pickerRow));
+    $<HTMLElement>("or_picker_list").replaceChildren(...sorted.map(pickerRow));
+    $<HTMLElement>("or_picker_list").hidden = rows.length === 0;
     $<HTMLElement>("or_picker_empty").hidden = rows.length > 0;
+    // How many the zero-retention filter hides (the same search without it).
+    const hiddenNote = $<HTMLElement>("or_picker_hidden");
+    hiddenNote.hidden = true;
+    if (pickerFilters.zdr_only) {
+      const all = await invoke<ModelRow[]>("dev_or_catalog", {
+        purpose: pickerPurpose,
+        query: $<HTMLInputElement>("or_picker_query").value.trim(),
+        filters: { ...pickerFilters, zdr_only: false, stt_path: pickerPurpose === "stt" ? pickerFilters.stt_path : null },
+      });
+      if (seq !== pickerSeq) return;
+      const n = all.length - rows.length;
+      if (n > 0) {
+        hiddenNote.textContent = `${n} more model${n === 1 ? " is" : "s are"} hidden because no zero-retention provider serves ${n === 1 ? "it" : "them"}.`;
+        hiddenNote.hidden = false;
+      }
+    }
   } catch (e) {
     setStatus("or_picker_status", String(e), false);
   }
@@ -561,7 +650,10 @@ async function openPicker(purpose: Purpose): Promise<void> {
   pickerPurpose = purpose;
   pickerFilters = { zdr_only: true, fast_only: false, free_only: false, stt_path: null };
   $<HTMLElement>("or_picker_title").textContent =
-    purpose === "stt" ? "Speech-to-text model" : "Text cleanup model";
+    purpose === "stt" ? "Choose a speech model" : "Choose a cleanup model";
+  const cat = views.or?.catalog;
+  const n = cat ? (purpose === "stt" ? cat.stt : cat.cleanup) : 0;
+  $<HTMLInputElement>("or_picker_query").placeholder = n > 0 ? `Search ${n} models` : "Search models";
   $<HTMLInputElement>("or_picker_query").value = "";
   $<HTMLInputElement>("or_picker_custom").value = "";
   $<HTMLElement>("or_picker_status").textContent = "";
@@ -598,6 +690,11 @@ async function pickModel(id: string, paraphrase: boolean): Promise<void> {
 }
 
 function wire(): void {
+  // The dialogs are opened from the Speech to text and AI cleanup pages too: a
+  // modal inside a hidden page root would never show, so they live on <body>.
+  for (const id of ["or_stt_consent_dlg", "or_cleanup_consent_dlg", "or_confirm", "or_picker"]) {
+    document.body.append($<HTMLDialogElement>(id));
+  }
   $<HTMLButtonElement>("or_notice_ok").addEventListener("click", () =>
     void orCall<OrView>("dev_or_ack_notice", {}, "or_key_status", "").then((v) => v && showOr(v)),
   );
@@ -653,10 +750,18 @@ function wire(): void {
     });
   }
   $<HTMLButtonElement>("or_cat_refresh").addEventListener("click", () => void refreshCatalog(true));
-  $<HTMLButtonElement>("or_picker_use").addEventListener("click", () =>
-    void pickModel($<HTMLInputElement>("or_picker_custom").value, false),
-  );
-  $<HTMLButtonElement>("or_picker_close").addEventListener("click", () => $<HTMLDialogElement>("or_picker").close());
+  // The list applies a model on click; "Use this model" applies a pasted ID, or closes.
+  $<HTMLButtonElement>("or_picker_use").addEventListener("click", () => {
+    const custom = $<HTMLInputElement>("or_picker_custom").value;
+    if (custom.trim() === "") $<HTMLDialogElement>("or_picker").close();
+    else void pickModel(custom, false);
+  });
+  $<HTMLInputElement>("or_picker_custom").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $<HTMLButtonElement>("or_picker_use").click();
+  });
+  for (const id of ["or_picker_close", "or_picker_cancel"]) {
+    $<HTMLButtonElement>(id).addEventListener("click", () => $<HTMLDialogElement>("or_picker").close());
+  }
   void onEvent<unknown>("dev:route", () => {
     if (views.or?.supported) void refreshOrAfterDictation();
   });
