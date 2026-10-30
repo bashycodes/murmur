@@ -807,8 +807,8 @@ async fn open_external(url: String) -> Result<(), String> {
         .map_err(|e| e.to_string())?
 }
 
-/// The speech models this build can download (D31), with where each is
-/// saved and whether it is already there.
+/// The speech and AI cleanup models this build can download (D31), with
+/// where each is saved and whether it is already there.
 #[tauri::command]
 fn model_catalog(state: tauri::State<'_, AppState>) -> Vec<crate::model_download::CatalogView> {
     use crate::model_download::{catalog_view, ModelEngine, CAN_DOWNLOAD};
@@ -816,6 +816,8 @@ fn model_catalog(state: tauri::State<'_, AppState>) -> Vec<crate::model_download
     catalog_view(&dir, CAN_DOWNLOAD, |e| match e {
         ModelEngine::Whisper => cfg!(feature = "whisper"),
         ModelEngine::Parakeet | ModelEngine::SherpaOnline => cfg!(feature = "parakeet"),
+        // llama.cpp is a plugin (flow_llm.dll) loaded by the local engine.
+        ModelEngine::Llm => cfg!(feature = "local-engine"),
     })
 }
 
@@ -938,6 +940,28 @@ fn hotkey_capture_stop(state: tauri::State<'_, AppState>) {
     if let Some(h) = state.hook.lock().unwrap().as_ref() {
         h.stop_capture();
     }
+}
+
+/// Delete a downloaded AI cleanup model (Settings → AI cleanup). When the
+/// prefs use it, local cleanup is turned off first so the engine lets go of
+/// the file; the formatting rules keep working. Speech models are not
+/// deleted from the app.
+#[tauri::command]
+fn model_delete(app: AppHandle, state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
+    let entry = crate::model_download::entry(&id).ok_or_else(|| format!("unknown model {id}"))?;
+    if !entry.is_llm() {
+        return Err("only AI cleanup models can be deleted here".into());
+    }
+    if state.downloads.running().as_deref() == Some(entry.id) {
+        return Err("this model is downloading; cancel it first".into());
+    }
+    let ad = state.appdata.as_deref();
+    let dir = core_adapter::models_dir(ad);
+    let mut prefs = state.prefs.read().unwrap().clone();
+    if entry.forget_in(&mut prefs, &dir, ad) {
+        save_prefs(&app, &state, prefs)?;
+    }
+    entry.delete(&dir)
 }
 
 // ------------------------------------------------- transforms page
@@ -2314,6 +2338,7 @@ pub fn run() {
             model_catalog,
             model_download_start,
             model_download_cancel,
+            model_delete,
             transforms_reset,
             transform_try,
             hotkey_capture_start,
