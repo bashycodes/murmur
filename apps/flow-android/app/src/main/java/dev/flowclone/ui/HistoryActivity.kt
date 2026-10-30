@@ -222,7 +222,7 @@ class HistoryActivity : Activity() {
     companion object {
         const val EXTRA_ID = "id"
         const val REINSERT = "Insert with the bubble"
-        const val REINSERT_NEEDS_SERVICE = "Turn on the bubble first (main screen), then try again"
+        const val REINSERT_NEEDS_SERVICE = "Turn on the bubble first (menu → Start / show bubble), then try again"
         private const val MENU_CLEAR = 1
 
         fun detailIntent(c: Context, id: Long): Intent = Intent(c, HistoryActivity::class.java).putExtra(EXTRA_ID, id)
