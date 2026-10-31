@@ -418,7 +418,11 @@ impl Conn {
         // A start while a session is active cancels it (FlowCore semantics).
         self.sess = None;
         let cfg = match crate::limits::session(cfg, self.state.cfg.max_session_samples()) {
-            Ok(c) => c,
+            Ok(c) => crate::limits::llm_scale(
+                c,
+                self.state.cfg.llm_timeout_per_char_ms,
+                self.state.cfg.llm_timeout_max_ms,
+            ),
             Err(e) => return self.err(Some(sid), code::TOO_LARGE, e),
         };
         self.state.sessions.fetch_add(1, Ordering::SeqCst);

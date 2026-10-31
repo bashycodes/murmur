@@ -72,6 +72,13 @@ pub struct Config {
     /// protocol.md §1: 15 s / 45 s).
     pub ws_ping_ms: u64,
     pub ws_dead_ms: u64,
+    /// LLM cleanup budget per character of the transcript, added to the
+    /// session's `llm_timeout_ms` when the client sets no rate of its own
+    /// (`SessionConfig::llm_budget_ms`): a long or Hebrew dictation on a
+    /// CPU box needs more than a fixed 3 s. 0 = off (fixed budget).
+    pub llm_timeout_per_char_ms: u32,
+    /// Cap on that scaled budget (≤ the 120 s server limit).
+    pub llm_timeout_max_ms: u64,
     pub model: ModelConfig,
     pub tls: Option<TlsConfig>,
     pub log: LogConfig,
@@ -103,6 +110,8 @@ impl Default for Config {
             max_connections_per_ip: 16,
             ws_ping_ms: flow_protocol::WS_PING_S * 1000,
             ws_dead_ms: flow_protocol::WS_DEAD_S * 1000,
+            llm_timeout_per_char_ms: 15,
+            llm_timeout_max_ms: flow_core::config::DEFAULT_LLM_TIMEOUT_MAX_MS,
             model: ModelConfig::default(),
             tls: None,
             log: LogConfig::default(),

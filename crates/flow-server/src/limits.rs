@@ -48,6 +48,21 @@ pub fn session(
     Ok(cfg)
 }
 
+/// The server's length scaling of the LLM budget
+/// (`Config::llm_timeout_per_char_ms` / `llm_timeout_max_ms`): applied
+/// when the client set no rate of its own; any cap is held to
+/// [`MAX_LLM_TIMEOUT_MS`].
+pub fn llm_scale(mut cfg: SessionConfig, per_char_ms: u32, max_ms: u64) -> SessionConfig {
+    if cfg.llm_timeout_per_char_ms.is_none() && per_char_ms > 0 {
+        cfg.llm_timeout_per_char_ms = Some(per_char_ms);
+        cfg.llm_timeout_max_ms.get_or_insert(max_ms);
+    }
+    if let Some(m) = cfg.llm_timeout_max_ms.as_mut() {
+        *m = (*m).min(MAX_LLM_TIMEOUT_MS);
+    }
+    cfg
+}
+
 /// Reject a context whose text or word lists exceed the server limits.
 pub fn context(ctx: &FieldContext) -> Result<(), String> {
     let texts = [
@@ -94,6 +109,33 @@ mod tests {
     use super::*;
 
     const CAP: usize = 1200 * SAMPLE_RATE;
+
+    #[test]
+    fn llm_scale_fills_the_server_rate_unless_the_client_set_one() {
+        let c = llm_scale(SessionConfig::default(), 15, 8000);
+        assert_eq!(c.llm_timeout_per_char_ms, Some(15));
+        assert_eq!(c.llm_timeout_max_ms, Some(8000));
+        let base = SessionConfig {
+            llm_timeout_ms: 3000,
+            ..Default::default()
+        };
+        let c = llm_scale(base.clone(), 15, 8000);
+        assert_eq!(c.llm_budget_ms(&"a".repeat(200)), 6000);
+        assert_eq!(c.llm_budget_ms(&"a".repeat(2000)), 8000);
+        // Off on the server: the session keeps its fixed budget.
+        let c = llm_scale(base.clone(), 0, 8000);
+        assert_eq!(c.llm_timeout_per_char_ms, None);
+        assert_eq!(c.llm_budget_ms(&"a".repeat(200)), 3000);
+        // The client's own rate wins; its cap is held to the server limit.
+        let own = SessionConfig {
+            llm_timeout_per_char_ms: Some(5),
+            llm_timeout_max_ms: Some(u64::MAX),
+            ..base
+        };
+        let c = llm_scale(own, 15, 8000);
+        assert_eq!(c.llm_timeout_per_char_ms, Some(5));
+        assert_eq!(c.llm_timeout_max_ms, Some(MAX_LLM_TIMEOUT_MS));
+    }
 
     #[test]
     fn defaults_pass_unchanged() {
