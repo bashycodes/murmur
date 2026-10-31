@@ -77,6 +77,9 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 reqwest = { version = "0.12", optional = true, default-features = false, features = ["blocking", "rustls-tls-webpki-roots"] }
 # Pinned SHA-256 of downloaded models (pure Rust, no network).
 sha2 = "0.10"
+# Manual model import from a .zip (model_import; deflate only, pure Rust,
+# no network). In every build: air-gapped client-only builds need it most.
+zip = { version = "2.6", default-features = false, features = ["deflate"] }
 tauri = { version = "2", optional = true, features = ["tray-icon", "image-png"] }
 
 [build-dependencies]
