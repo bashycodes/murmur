@@ -433,3 +433,15 @@ engine = "silero"
 
 The wire format (`GET /v1/models`, downloads with `Range`) is in
 `docs/protocol.md` §1.
+
+### What the apps do with it (D41)
+
+With this server set, the Windows app downloads models **only** from the
+library (Settings → Speech to text → From your server): it never contacts
+Hugging Face, even for a model the library lacks. Folders with a
+`catalogue_id` must match the hashes built into the app (a different copy
+is refused); other folders are trusted by the hash the server lists. `kind`
++ `engine` decide what a model is used for: `stt` + `whisper` / `parakeet`,
+`hebrew` + `sherpa_online` / `parakeet`, `llm` + `gguf`, `lid` + `whisper`.
+`vad` and other engines are listed with the reason and can't be chosen.
+Interrupted downloads resume. Android follows in a later release.
