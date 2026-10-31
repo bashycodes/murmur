@@ -13,6 +13,7 @@ import dev.flowclone.data.HebrewImport
 import dev.flowclone.data.HebrewModels
 import dev.flowclone.data.ModelFiles
 import dev.flowclone.data.ModelPages
+import dev.flowclone.server.ServerModels
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -25,6 +26,8 @@ import kotlin.concurrent.thread
  * app-private storage and point the engine at it. Two kinds share this screen:
  * - speech (whisper.cpp ggml-*.bin) → `files/models/`;
  * - AI cleanup (llama.cpp *.gguf) → `files/llm/`.
+ * D41: hybrid / remote builds add "From your server" ([ServerModelsSection]): the same slots,
+ * downloaded from the set server's library on a tap. The local build has no such block.
  */
 class ModelImportActivity : Activity() {
     private val app get() = FlowApp.of(this)
@@ -42,12 +45,31 @@ class ModelImportActivity : Activity() {
     /** Folder-based screens (Parakeet, Hebrew). */
     private val folder get() = parakeet || hebrew
     private lateinit var ui: DevUi
+    private var server: ServerModelsSection? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         title = if (llm) "AI cleanup model" else if (parakeet) "Parakeet model" else if (hebrew) "Hebrew model" else "Speech model"
         ui = DevUi(this)
+        server = ServerModels.section(serverHost)
         render()
+    }
+
+    override fun onDestroy() {
+        server?.detach()
+        super.onDestroy()
+    }
+
+    private val currentPath get() = if (parakeet) app.settings.parakeetPath else if (hebrew) app.settings.hebrewModelPath else activePath
+
+    /** D41: the server block points this screen's slot at what it downloaded, as an import would. */
+    private val serverHost = object : ServerModelsHost {
+        override val activity get() = this@ModelImportActivity
+        override val ui get() = this@ModelImportActivity.ui
+        override val screen get() = this@ModelImportActivity.screen
+        override fun activePath() = currentPath
+        override fun use(target: File) = if (parakeet) activateParakeet(target) else if (hebrew) activateHebrew(target) else activate(target)
+        override fun refresh() = render()
     }
 
     private val screen get() = if (llm) ModelPages.Screen.LLM else if (parakeet) ModelPages.Screen.PARAKEET else if (hebrew) ModelPages.Screen.HEBREW else ModelPages.Screen.WHISPER
@@ -56,16 +78,16 @@ class ModelImportActivity : Activity() {
 
     /** Rebuilds the page (keeps the scroll position); [status] = the line under Import. */
     private fun render(status: String? = null, tone: Tone = Tone.NEUTRAL): Unit = with(ui) {
-        val current = if (parakeet) app.settings.parakeetPath else if (hebrew) app.settings.hebrewModelPath else activePath
+        val current = currentPath
         val items = if (parakeet) {
             app.engine.parakeetDir().listFiles()?.filter { !it.name.endsWith(".part") && dev.flowclone.data.ParakeetFiles.isModelDir(it) }?.sortedBy { it.name }.orEmpty()
         } else if (hebrew) {
-            app.engine.hebrewDir().listFiles()?.filter { !it.name.endsWith(".part") && HebrewModels.kindOf(it) != null }?.sortedBy { it.name }.orEmpty()
+            app.engine.hebrewDir().listFiles()?.filter { !it.name.endsWith(".part") && HebrewModels.installed(it) != null }?.sortedBy { it.name }.orEmpty()
         } else dir().listFiles()?.filter { it.isFile && !it.name.endsWith(".part") }?.sortedBy { it.name }.orEmpty()
         fun bytes(f: File) = if (f.isDirectory) f.walk().filter { it.isFile }.sumOf { it.length() } else f.length()
         rebuild {
             topBar(title.toString(), DevUi.TopNav.BACK, onNav = ::finish)
-            note(ModelPages.intro(screen))
+            note(ModelPages.intro(screen, server != null))
             sectionLabel("STATUS")
             card {
                 val active = current?.let(::File)
@@ -82,6 +104,7 @@ class ModelImportActivity : Activity() {
                 if (!busy) startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/zip"), REQ_ZIP)
             }
             statusLine = result().also { r -> status?.let { r.show(it, tone) } }
+            server?.render(this)
 
             sectionLabel("RECOMMENDED")
             card {
@@ -95,7 +118,7 @@ class ModelImportActivity : Activity() {
                     selectableText(m.url, 12f, p.muted)
                 }
             }
-            note("Download on a computer (this app can't), copy the ${if (folder) "folder" else "file"} to the phone, then import it.")
+            note(ModelPages.recommendedNote(folder, server != null))
 
             sectionLabel("IMPORTED")
             card {
@@ -295,7 +318,7 @@ class ModelImportActivity : Activity() {
 
     private fun activateHebrew(d: File) {
         app.settings.hebrewModelPath = d.absolutePath
-        val kind = HebrewModels.kindOf(d)
+        val kind = HebrewModels.installed(d)
         // Reload only when the next dictation is Hebrew (it then loads this model); otherwise nothing to do yet.
         if (HebrewModels.isHebrew(app.effectiveLanguage())) reloadEngine()
         Toast.makeText(this, "Hebrew dictation uses ${kind?.label ?: d.name}.", Toast.LENGTH_LONG).show()

@@ -64,6 +64,13 @@ object ModelPages {
         Screen.HEBREW -> "sherpa-onnx (zipformer or Parakeet-TDT)"
     }
 
+    /** The line under RECOMMENDED: where the files come from. */
+    fun recommendedNote(folder: Boolean, server: Boolean): String {
+        val what = if (folder) "folder" else "file"
+        return if (server) "Get these onto your server (its library folder) to download them here, or download on a computer, copy the $what to the phone and import it."
+        else "Download on a computer (this app can't), copy the $what to the phone, then import it."
+    }
+
     fun imported(bytes: Long, active: Boolean) = size(bytes) + if (active) " · In use" else ""
 
     fun importLabel(s: Screen, busy: Boolean) = when {
@@ -72,8 +79,10 @@ object ModelPages {
         else -> "Import model file…"
     }
 
-    fun intro(s: Screen) = when (s) {
-        Screen.WHISPER -> "Copy a whisper.cpp model file (ggml-*.bin) to this phone, then import it. Murmur never downloads anything."
+    /** [server]: this build can also download from the set server's library (D41, hybrid / remote). */
+    fun intro(s: Screen, server: Boolean = false) = when (s) {
+        Screen.WHISPER -> if (server) "Copy a whisper.cpp model file (ggml-*.bin) to this phone and import it, or download one from your own server. Nothing ever comes from the internet."
+        else "Copy a whisper.cpp model file (ggml-*.bin) to this phone, then import it. Murmur never downloads anything."
         Screen.PARAKEET -> "English only and more accurate than whisper base. Copy the unpacked model folder to the phone, then pick that folder. Recommended on phones with 6–8 GB RAM."
         Screen.HEBREW -> "Used only when the dictation language is Hebrew; the phone then loads this model instead of the English one " +
             "(switching language reloads, a few seconds). Put the four files in one folder (or one .zip), copy it to the phone and import it. " +

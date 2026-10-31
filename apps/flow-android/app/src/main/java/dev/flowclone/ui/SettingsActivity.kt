@@ -512,7 +512,7 @@ class SettingsActivity : Activity() {
                 val r = app.resolveLanguage(n)
                 val eff = r.language
                 effective.text = "Next dictation: " + LanguageDefault.label(n.language, eff, r.source)
-                val h = SettingsPages.hebrewNote(eff, app.engine.hebrewModel()?.second, caps.local)
+                val h = SettingsPages.hebrewNote(eff, app.engine.hebrewModel()?.second?.label, caps.local)
                 hebrew.text = h.orEmpty()
                 hebrew.visibility = if (h == null) View.GONE else View.VISIBLE
             }
