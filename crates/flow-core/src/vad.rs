@@ -310,4 +310,21 @@ mod tests {
         let sp = detect(&pcm).unwrap();
         assert_eq!((sp.start, sp.end), (0, pcm.len()));
     }
+
+    #[test]
+    fn a_soft_lead_in_before_loud_speech_is_kept() {
+        // The shape of FLEURS he 10043827527204102024 (2026-10-31): ~1 s of
+        // breath at ≈ -33 dBFS RMS, then speech at ≈ -10 dBFS. The quiet
+        // part is above ABS_CAP, so nothing before the first word is cut.
+        let pcm = concat(&[
+            noise(S, 0.035, 7),
+            voiced(3 * S, 0.4),
+            noise(S / 2, 0.001, 8),
+        ]);
+        let (rms, _) = frame_stats(&pcm[..FRAME * 10]);
+        assert!(rms > ABS_CAP, "{rms}");
+        let sp = detect(&pcm).unwrap();
+        assert_eq!(sp.start, 0, "{sp:?}");
+        assert!(sp.end >= 4 * S, "{sp:?}");
+    }
 }
