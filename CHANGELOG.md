@@ -26,6 +26,17 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   sessions. Changes apply without restarting the server. Only a hash of each
   secret is stored. Upgrading needs nothing: the existing token becomes the
   admin key `owner`, and the apps keep working with it unchanged.
+- **Windows: import a model from a folder, .zip or file (no network).**
+  "Import from file…" next to each downloadable model in Settings → Speech to
+  text (default and Hebrew models) and AI cleanup installs that catalogue
+  model from files copied to the PC, for air-gapped PCs and client-only
+  builds without the downloader. The dialog lists the files the model needs;
+  each is checked against the same pinned size and SHA-256 as a download and
+  goes through a `.part` file, and only when all of them match is anything
+  moved into place (a mismatch installs nothing). The imported model is then
+  selected exactly as after a download. The Hebrew models' language-ID file
+  is optional and can be imported later on its own. Other or custom model
+  files are refused.
 
 ## [0.12.0] - 2026-10-31
 

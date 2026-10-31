@@ -894,54 +894,100 @@ fn model_download_start(
 ) -> Result<(), String> {
     #[cfg(feature = "download")]
     {
-        use crate::model_download::{self as md, Progress, State, Stop};
+        use crate::model_download as md;
         let entry = md::entry(&id).ok_or_else(|| format!("unknown model {id}"))?;
         let fetch = md::HttpFetch::new()?;
-        let cancel = state.downloads.begin(&id)?;
-        let dir = core_adapter::models_dir(state.appdata.as_deref());
-        let downloads = state.downloads.clone();
-        std::thread::spawn(move || {
-            let total = entry.size();
-            let send = |p: Progress| {
-                let _ = app.emit_to(SETTINGS, "model:download", p);
-            };
-            let r = md::run(entry, &dir, &fetch, &cancel, &mut |p| send(p));
-            let end = |state: State, error: Option<String>, path: Option<String>| Progress {
-                id: entry.id.to_string(),
-                received: if state == State::Done { total } else { 0 },
-                total,
-                state,
-                error,
-                path,
-            };
-            let last = match r {
-                Ok(path) => {
-                    let st = app.state::<AppState>();
-                    let mut prefs = st.prefs.read().unwrap().clone();
-                    entry.apply_to(&mut prefs, &dir);
-                    match save_prefs(&app, &st, prefs) {
-                        Ok(()) => end(State::Done, None, Some(path.display().to_string())),
-                        Err(e) => end(
-                            State::Error,
-                            Some(format!("downloaded, but the setting was not saved: {e}")),
-                            None,
-                        ),
-                    }
-                }
-                Err(Stop::Cancelled) => end(State::Cancelled, None, None),
-                Err(Stop::Failed(e)) => end(State::Error, Some(e), None),
-            };
-            eprintln!("model download {}: {:?}", entry.id, last.state);
-            downloads.finish(entry.id);
-            send(last);
-        });
-        Ok(())
+        spawn_model_job(app, &state, entry, "download", move |dir, cancel, emit| {
+            md::run(entry, dir, &fetch, cancel, emit)
+        })
     }
     #[cfg(not(feature = "download"))]
     {
         let _ = (app, state, id);
         Err("this build has no downloader: get the model from its page".into())
     }
+}
+
+/// Import catalogue model `id` from `path` (a folder, a .zip or the model
+/// file the user picked with `pick_path`): no network, the same pinned
+/// fingerprints as a download, same `model:download` events (`importing`
+/// while copying) and, on `done`, the same prefs as after a download.
+#[tauri::command]
+fn model_import_start(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    id: String,
+    path: String,
+) -> Result<(), String> {
+    let entry = crate::model_download::entry(&id).ok_or_else(|| format!("unknown model {id}"))?;
+    let src = std::path::PathBuf::from(path.trim());
+    if !src.is_absolute() {
+        return Err("choose the folder, zip or file with the picker".into());
+    }
+    spawn_model_job(app, &state, entry, "import", move |dir, cancel, emit| {
+        crate::model_import::run_import(entry, dir, &src, cancel, emit)
+    })
+}
+
+/// Run a download or import of `entry` on its own thread (one at a time,
+/// cancellable with `model_download_cancel`), then point the prefs at the
+/// model and send the final `model:download` event.
+fn spawn_model_job<F>(
+    app: AppHandle,
+    state: &AppState,
+    entry: &'static crate::model_download::CatalogEntry,
+    what: &'static str,
+    job: F,
+) -> Result<(), String>
+where
+    F: FnOnce(
+            &std::path::Path,
+            &std::sync::atomic::AtomicBool,
+            &mut dyn FnMut(crate::model_download::Progress),
+        ) -> Result<std::path::PathBuf, crate::model_download::Stop>
+        + Send
+        + 'static,
+{
+    use crate::model_download::{Progress, State, Stop};
+    let cancel = state.downloads.begin(entry.id)?;
+    let dir = core_adapter::models_dir(state.appdata.as_deref());
+    let downloads = state.downloads.clone();
+    std::thread::spawn(move || {
+        let total = entry.size();
+        let send = |p: Progress| {
+            let _ = app.emit_to(SETTINGS, "model:download", p);
+        };
+        let r = job(&dir, &cancel, &mut |p| send(p));
+        let end = |state: State, error: Option<String>, path: Option<String>| Progress {
+            id: entry.id.to_string(),
+            received: if state == State::Done { total } else { 0 },
+            total,
+            state,
+            error,
+            path,
+        };
+        let last = match r {
+            Ok(path) => {
+                let st = app.state::<AppState>();
+                let mut prefs = st.prefs.read().unwrap().clone();
+                entry.apply_to(&mut prefs, &dir);
+                match save_prefs(&app, &st, prefs) {
+                    Ok(()) => end(State::Done, None, Some(path.display().to_string())),
+                    Err(e) => end(
+                        State::Error,
+                        Some(format!("installed, but the setting was not saved: {e}")),
+                        None,
+                    ),
+                }
+            }
+            Err(Stop::Cancelled) => end(State::Cancelled, None, None),
+            Err(Stop::Failed(e)) => end(State::Error, Some(e), None),
+        };
+        eprintln!("model {what} {}: {:?}", entry.id, last.state);
+        downloads.finish(entry.id);
+        send(last);
+    });
+    Ok(())
 }
 
 /// Stop the running download of `id`; its `.part` file is deleted and a
@@ -2435,6 +2481,7 @@ pub fn run() {
             model_catalog,
             llm_backend,
             model_download_start,
+            model_import_start,
             model_download_cancel,
             model_delete,
             transforms_reset,

@@ -56,6 +56,7 @@ fn main() {
             "model_catalog",
             "llm_backend",
             "model_download_start",
+            "model_import_start",
             "model_download_cancel",
             "model_delete",
             "transforms_reset",

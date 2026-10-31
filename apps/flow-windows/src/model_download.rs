@@ -302,7 +302,7 @@ impl CatalogEntry {
 
     /// The model's files, then the extras (`true` = saved in the models
     /// folder itself).
-    fn all_files(&self) -> impl Iterator<Item = (&'static ModelFile, bool)> {
+    pub(crate) fn all_files(&self) -> impl Iterator<Item = (&'static ModelFile, bool)> {
         self.files.iter().map(|f| (f, false)).chain(self.extras.iter().map(|f| (f, true)))
     }
 
@@ -320,7 +320,7 @@ impl CatalogEntry {
         self.all_files().filter(|(f, x)| !self.present(models_dir, f, *x)).map(|(f, _)| f.size).sum()
     }
 
-    fn is_dir(&self) -> bool {
+    pub(crate) fn is_dir(&self) -> bool {
         matches!(self.engine, ModelEngine::Parakeet | ModelEngine::SherpaOnline)
     }
 
@@ -334,7 +334,7 @@ impl CatalogEntry {
         models_dir.join(self.dest)
     }
 
-    fn file_path(&self, models_dir: &Path, f: &ModelFile, extra: bool) -> PathBuf {
+    pub(crate) fn file_path(&self, models_dir: &Path, f: &ModelFile, extra: bool) -> PathBuf {
         if extra {
             models_dir.join(f.name)
         } else if self.is_dir() {
@@ -402,7 +402,7 @@ impl CatalogEntry {
         }
         for f in self.files {
             let p = self.file_path(models_dir, f, false);
-            for q in [p.with_file_name(format!("{}.part", f.name)), p] {
+            for q in [part_path(&p, f), p] {
                 match std::fs::remove_file(&q) {
                     Ok(()) => {}
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -420,6 +420,10 @@ pub struct FileView {
     pub url: &'static str,
     pub size: u64,
     pub sha256: &'static str,
+    /// Saved next to the model, optional for an import (the Hebrew models'
+    /// language-ID model); absent for the model's own files.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub extra: bool,
 }
 
 /// `model_catalog` row.
@@ -449,6 +453,9 @@ pub struct CatalogView {
     pub missing: u64,
     /// This build can download it (feature `download`) and run its engine.
     pub available: bool,
+    /// This build runs its engine, so it can be imported from a folder,
+    /// zip or file (`model_import`), with or without feature `download`.
+    pub importable: bool,
     pub files: Vec<FileView>,
 }
 
@@ -476,13 +483,15 @@ pub fn catalog_view(
             complete: e.complete(models_dir),
             missing: e.missing(models_dir),
             available: can_download && engine_built(e.engine),
+            importable: engine_built(e.engine),
             files: e
                 .all_files()
-                .map(|(f, _)| FileView {
+                .map(|(f, extra)| FileView {
                     name: f.name,
                     url: f.url,
                     size: f.size,
                     sha256: f.sha256,
+                    extra,
                 })
                 .collect(),
         })
@@ -495,6 +504,8 @@ pub fn catalog_view(
 #[serde(rename_all = "lowercase")]
 pub enum State {
     Downloading,
+    /// Copying from a local folder / zip / file (`model_import`).
+    Importing,
     Verifying,
     Done,
     Error,
@@ -603,13 +614,13 @@ pub fn run(
         // Already there and intact (an earlier, cancelled try): keep it.
         if std::fs::metadata(&target).is_ok_and(|m| m.len() == f.size) {
             report(done, State::Verifying);
-            if sha256_file(&target).is_ok_and(|h| h == f.sha256) {
+            if intact(&target, f) {
                 done += f.size;
                 report(done, State::Downloading);
                 continue;
             }
         }
-        let part = target.with_file_name(format!("{}.part", f.name));
+        let part = part_path(&target, f);
         let got = fetch_file(f, &part, fetch, cancel, &mut |n| report(done + n, State::Downloading));
         let digest = match got {
             Ok(d) => d,
@@ -648,6 +659,33 @@ fn fetch_file(
     }
     check_download_url(f.url).map_err(Stop::Failed)?;
     let mut src = fetch.open(f.url).map_err(Stop::Failed)?;
+    copy_verified(&mut src, f, part, "download of", cancel, tick)
+}
+
+/// Where `f` is written before it is checked: `<name>.part` next to `target`.
+pub(crate) fn part_path(target: &Path, f: &ModelFile) -> PathBuf {
+    target.with_file_name(format!("{}.part", f.name))
+}
+
+/// `target` holds exactly `f` (pinned size and SHA-256).
+pub(crate) fn intact(target: &Path, f: &ModelFile) -> bool {
+    std::fs::metadata(target).is_ok_and(|m| m.is_file() && m.len() == f.size)
+        && sha256_file(target).is_ok_and(|h| h == f.sha256)
+}
+
+/// Copy `src` into `part` (created or truncated), hashing it on the way;
+/// returns the hex SHA-256. Fails on more or fewer bytes than `f.size`
+/// (`what` names the source in a read error: "download of", "reading").
+/// The caller compares the hash and deletes `part` on any error. Shared by
+/// downloads and imports (`model_import`).
+pub(crate) fn copy_verified(
+    src: &mut dyn Read,
+    f: &ModelFile,
+    part: &Path,
+    what: &str,
+    cancel: &AtomicBool,
+    tick: &mut dyn FnMut(u64),
+) -> Result<String, Stop> {
     let mut out = std::fs::File::create(part).map_err(|e| Stop::Failed(format!("could not write {}: {e}", f.name)))?;
     let mut h = Sha256::new();
     let mut buf = vec![0u8; 256 << 10];
@@ -659,7 +697,7 @@ fn fetch_file(
         }
         let k = src
             .read(&mut buf)
-            .map_err(|e| Stop::Failed(format!("download of {} stopped: {e}", f.name)))?;
+            .map_err(|e| Stop::Failed(format!("{what} {} stopped: {e}", f.name)))?;
         if k == 0 {
             break;
         }
@@ -1202,10 +1240,15 @@ mod tests {
         assert_eq!(pk.size, 661_190_513);
         assert!(v.iter().filter(|r| r.engine == ModelEngine::Whisper).all(|r| r.available));
         assert!(catalog_view(&d, false, |_| true).iter().all(|r| !r.available));
+        // No downloader (client-only build): every model can still be imported.
+        assert!(catalog_view(&d, false, |_| true).iter().all(|r| r.importable));
+        assert!(!pk.importable);
         let he = serde_json::to_value(v.iter().find(|r| r.id == ZIPFORMER_HE_ID).unwrap()).unwrap();
         assert_eq!(he["language"], "he");
         assert_eq!(he["engine"], "sherpa_online");
         assert!(he["license"].as_str().unwrap().contains("ivrit.ai"));
+        assert_eq!(he["files"][4]["extra"], true);
+        assert!(he["files"][0].get("extra").is_none());
         let q = serde_json::to_value(v.iter().find(|r| r.id == "qwen2.5-0.5b-instruct-q4_k_m").unwrap()).unwrap();
         assert_eq!(q["engine"], "llm");
         let en = serde_json::to_value(pk).unwrap();

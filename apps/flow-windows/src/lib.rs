@@ -26,6 +26,7 @@ pub mod insights;
 pub mod keyboard_language;
 pub mod learn;
 pub mod model_download;
+pub mod model_import;
 pub mod notes;
 pub mod openrouter;
 pub mod overlay;
