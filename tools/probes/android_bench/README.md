@@ -56,7 +56,7 @@ installing a debug APK means a different signing key, which wipes `files/`, mode
 ```sh
 export ADB="<device bridge> -s <serial>"
 S=tools/probes/android_bench/run_on_device.sh
-$S push                       # bundle -> /sdcard/Android/data/dev.flowclone/files/bench/in (--sync)
+$S push                       # bundle -> /data/local/tmp/flow-bench -> (run-as) files/bench/in
 $S start r1                   # everything; or e.g. --es suite stt / --es llm qwen1.5b --es modes v4c
 $S wait r1                    # polls out/r1/status.json every 30 s
 $S pull r1                    # -> $CACHE/android-bench/results/r1
@@ -75,9 +75,18 @@ $S pull r1                    # -> $CACHE/android-bench/results/r1
     decode. This is the worst case, and the number to compare with the PC benches.
   * `pace=realtime` with `segment=800` feeds the audio at speaking speed with "decode while
     speaking" on, so `commit_ms` is the release → text latency a user feels.
-* If `/sdcard/Android/data` is not writable by the shell, use the app's private copy instead.
-  The activity also reads `files/bench/in`:
-  `$ADB push <bundle> /data/local/tmp/flowbench && $ADB shell run-as dev.flowclone cp -r /data/local/tmp/flowbench files/bench/in`.
+* Why `push` goes through run-as: files the shell pushes into
+  `/sdcard/Android/data/dev.flowclone/` are owned by the shell uid (FUSE) and the app cannot
+  read them ("no bundle: manifest.json missing"). So the bundle is staged in
+  `/data/local/tmp/flow-bench`, copied into the app's private `files/bench/in`, and the
+  staging copy is deleted (`KEEP_TMP=1` keeps it so the next push only sends changes).
+  Results still go to `<ext>/bench/out/<run>`, which the app creates itself, so `pull` works
+  without run-as. `push` also removes a shell-created `<ext>/bench/in` left by older runs.
+  By hand:
+  `$ADB push <bundle>/. /data/local/tmp/flow-bench/ && $ADB shell chmod -R a+rX /data/local/tmp/flow-bench && $ADB shell run-as dev.flowclone sh -c "'rm -rf files/bench/in && mkdir -p files/bench && cp -r /data/local/tmp/flow-bench files/bench/in'"`.
+* If that copy fails, a fallback that worked on the phone: push to `<ext>/bench/in`, run
+  `run-as dev.flowclone cp -r <ext>/bench/in files/bench/`, then `rm -rf <ext>/bench` so the
+  app recreates `bench/out` itself.
 
 ## 3. Score (Linux)
 
