@@ -79,6 +79,11 @@ JNIEXPORT jstring JNICALL FN(nativeLearnEdit)(JNIEnv *env, jclass c, jlong h, js
     return (*env)->NewStringUTF(env, "[{\"original\":\"wisper\",\"corrected\":\"Wispr\"}]");
 }
 
+/* 2026-10-31: benchmark hook. No LLM in the stub. */
+JNIEXPORT jstring JNICALL FN(nativeBenchClean)(JNIEnv *env, jclass c, jlong h, jstring request) {
+    return (*env)->NewStringUTF(env, "{\"error\":\"no LLM loaded on this handle\"}");
+}
+
 /* 2026-10-28: Command Mode. No AI in the stub, unless the instruction is "upper". */
 JNIEXPORT jstring JNICALL FN(nativeCommand)(JNIEnv *env, jclass c, jlong h, jstring instruction, jstring selected) {
     const char *i = (*env)->GetStringUTFChars(env, instruction, NULL);

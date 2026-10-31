@@ -187,6 +187,16 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
             try { CommandOutcome.decode(nativeCommand(h, instruction, selected)) } catch (e: UnsatisfiedLinkError) { CommandOutcome.noLlm }
         }
 
+    /**
+     * Benchmark hook (debug BenchActivity, tools/probes/android_bench): one AI-cleanup request
+     * (`{"mode":"prod"|"v4c","input","context","session"}`) on this core handle's on-device LLM.
+     * **Blocking** (one LLM call). Never throws: `{"error":…}` on failure or an old library.
+     */
+    fun benchClean(requestJson: String): String = lease.use({ """{"error":"unloaded"}""" }) { h ->
+        BlockingCalls.check("nativeBenchClean")
+        try { nativeBenchClean(h, requestJson) } catch (e: UnsatisfiedLinkError) { """{"error":"library has no nativeBenchClean"}""" }
+    }
+
     override fun learnEdit(pasted: String, edited: String): List<LearnCandidate> =
         lease.use({ emptyList() }) { h -> CoreJson.decodeCandidates(nativeLearnEdit(h, pasted, edited)) }
 
@@ -407,5 +417,8 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
 
         // ---- 2026-10-28 Command Mode (JNI_CONTRACT.md "Command Mode"); never null ----
         @JvmStatic external fun nativeCommand(handle: Long, instruction: String, selected: String?): String
+
+        // ---- 2026-10-31 on-device benchmark hook (JNI_CONTRACT.md "Benchmark"); never null ----
+        @JvmStatic external fun nativeBenchClean(handle: Long, requestJson: String): String
     }
 }

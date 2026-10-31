@@ -198,6 +198,16 @@ the shared Rust ones, so Android and Windows behave alike. Every flavour exports
 |---|---|---|---|---|
 | `nativeCommand(h: Long, instruction: String, selected: String?): String` | `(JLjava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeCommand` | `flow_command` | **Blocking** (LLM call, ≤ `command::DEFAULT_TIMEOUT` 25 s, plus a D24 on-demand model load when nothing else can answer). `Router::command`: the warm local engine's on-device LLM and/or OpenRouter cleanup per `cleanup_order`, consent, key, budget. A **selection** goes to OpenRouter only with `cloud.openrouter.cleanup.send_surrounding_text`; otherwise the on-device part answers, or `selection_not_allowed`. `selected` null / blank = write at the cursor. Never null: `{"ok":true,"text":…}` (sanitised, ready to replace the selection) or `{"ok":false,"kind":…,"error":…}` with `kind` ∈ `no_instruction`, `selection_too_long` (> 4000 chars), `no_llm`, `selection_not_allowed`, `timeout`, `empty`, `backend`; `error` is user-facing text. A core handle uses its own LLM only |
 
+## Benchmark (2026-10-31) — additive
+
+On-device benchmark hook for the debug-only `BenchActivity` (`tools/probes/android_bench`). Every
+flavour's library exports it; only debug builds call it. No network, and no text but the
+request's own.
+
+| Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | C ABI | Semantics |
+|---|---|---|---|---|
+| `nativeBenchClean(h: Long, requestJson: String): String` | `(JLjava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeBenchClean` | — | **Blocking** (one LLM call). The request is `{"mode":"prod"\|"v4c","input","context":FieldContext,"session":SessionConfig}`, run on a **core** handle's on-device LLM. `prod` runs `flow_core::refinish` on `input` (the product's text path) and returns `output`, `status` and `fallback_reason`. `v4c` sends the raw transcript with prompt v4c to the LLM once, with no guard. Both return `llm_raw`, `llm_error`, `llm_ms`, `llm_calls`, `wall_ms` and `llm_info`. Never null; on failure, or for a router handle, it returns `{"error":…}` |
+
 ## Threading: blocking vs non-blocking (review C2)
 
 Kotlin must never call a **blocking** native on the main thread.
@@ -209,7 +219,7 @@ Kotlin must never call a **blocking** native on the main thread.
 | `nativeCommit` (ASR + LLM; server/cloud round trip) | `nativeCancel` (also aborts a commit running on another thread, see below) |
 | `nativeProbeServer`, `nativeProbeRouter`, `nativeProbeCloud`, `nativePrewarm` (D24) | `nativeRouteStatus`, `nativeCapabilities`, `nativeCloudCapabilities`, `nativeCloudPresets`, `nativeLastError*` |
 | `nativeUnload` (joins the engine worker; waits for a running commit) | `nativeOpenRouter`, `nativeUpdateRouter`, `nativeResetCircuit`, `nativeSetLocalLoader` (no network; the load itself runs later on a router thread) |
-| `nativeRefreshCloudCatalog`, `nativeCloudKeyInfo` (D28, network), `nativeCommand` (LLM) | `nativeSetCloudKey`, `nativeSetCloudKeyFor`, `nativeCloudUsage`, `nativeSetCloudUsage`, `nativeResetCloudUsage`, `nativeMigrateCloud`, `nativeSetCleanup`, `nativeCleanupStatus`, `nativeCloudNotice`, `nativeAckCloudNotice`, `nativeSetCloudModel`, `nativeSetCloudCacheDir`, `nativeCloudCatalog` |
+| `nativeRefreshCloudCatalog`, `nativeCloudKeyInfo` (D28, network), `nativeCommand` (LLM), `nativeBenchClean` (LLM) | `nativeSetCloudKey`, `nativeSetCloudKeyFor`, `nativeCloudUsage`, `nativeSetCloudUsage`, `nativeResetCloudUsage`, `nativeMigrateCloud`, `nativeSetCleanup`, `nativeCleanupStatus`, `nativeCloudNotice`, `nativeAckCloudNotice`, `nativeSetCloudModel`, `nativeSetCloudCacheDir`, `nativeCloudCatalog` |
 
 Session semantics (2026-10-22, review fixes):
 

@@ -34,6 +34,7 @@ class NativeFlowCoreStubTest {
         assertEquals(listOf(LearnCandidate("wisper", "Wispr")), core.learnEdit("wisper", "Wispr"))
         assertEquals(CommandOutcome.Text("STUB"), core.command("upper", "stub"))
         assertEquals(CommandOutcome.Failed("no_llm", "no AI in the stub"), core.command("shorter", null))
+        assertEquals("""{"error":"no LLM loaded on this handle"}""", (core as NativeFlowCore).benchClean("{}"))
         core.cancel()
         assertFalse(core.pushAudio(ShortArray(10)))
         core.unload()

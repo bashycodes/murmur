@@ -29,6 +29,7 @@ use flow_router::{
     RouterPoll, SecretString, ServerConfig, StartInfo,
 };
 
+pub mod bench;
 #[cfg(feature = "jni")]
 pub mod jni_api;
 
@@ -667,6 +668,19 @@ pub mod json_api {
 
     pub fn command_json(r: Result<String, flow_core::command::CommandError>) -> String {
         flow_core::command::result_json(&r).to_string()
+    }
+
+    /// Benchmark hook ([`crate::bench`]): one AI-cleanup request on a bare
+    /// core handle's on-device LLM. Router handles answer `{"error":…}`.
+    /// Blocking (one LLM call).
+    pub fn bench_clean(h: &FlowHandle, req_json: &str) -> String {
+        let v = match h {
+            FlowHandle::Core(c) => crate::bench::clean(c, req_json),
+            FlowHandle::Router(_) => {
+                serde_json::json!({"error": "bench_clean needs a core handle"})
+            }
+        };
+        v.to_string()
     }
 
     /// `CleanupStatus` JSON (`supported:false` for a core handle).
