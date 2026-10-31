@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-31
+
 ### Added
 
 - **Dictation language follows the keyboard (D37).** New language option
@@ -896,7 +898,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/bashycodes/murmur/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/bashycodes/murmur/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/bashycodes/murmur/compare/v0.9.2...v0.11.0
 [0.9.2]: https://github.com/bashycodes/murmur/compare/v0.9.1...v0.9.2
