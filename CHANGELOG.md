@@ -136,6 +136,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   are fine; a regression test now covers that clip and a soft lead-in
   before speech (`docs/findings/2026-10-31-zipformer-first-words.md`).
 
+- **Windows: the Users & keys page may call the server.** Its four
+  commands were missing from the settings window's permissions, so Tauri
+  refused them; the capabilities test caught it.
+
 - **Server: upgrading with `install.sh` keeps language detection working.**
   The installer now builds with whisper (language ID, Silero VAD), reuses
   the installed model when no `--model` is given, and `--start` restarts a
