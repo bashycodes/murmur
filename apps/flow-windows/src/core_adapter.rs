@@ -305,18 +305,19 @@ impl LanguageSpec {
     /// The Hebrew route; `None` when the user chose no Hebrew model.
     pub fn from_prefs(prefs: &crate::prefs::Prefs, appdata: Option<&str>) -> Option<Self> {
         use crate::prefs::HebrewModel;
-        let (backend, dir) = match prefs.hebrew_model {
+        let backend = match prefs.hebrew_model {
             HebrewModel::None => return None,
-            HebrewModel::Zipformer => (fc::AsrBackend::SherpaOnline, ZIPFORMER_HE_DIR),
-            HebrewModel::ParakeetHe => (fc::AsrBackend::Parakeet, PARAKEET_HE_DIR),
+            HebrewModel::Zipformer => fc::AsrBackend::SherpaOnline,
+            HebrewModel::ParakeetHe => fc::AsrBackend::Parakeet,
         };
-        let lid = models_dir(appdata).join(LID_FILE);
+        let dir = prefs.resolved_hebrew_dir(appdata)?;
+        let lid = prefs.resolved_lid_path(appdata);
         Some(LanguageSpec {
             lid_path: lid.is_file().then(|| lid.display().to_string()),
             language: HEBREW.into(),
             model: fc::LanguageModel {
                 asr_backend: backend,
-                asr_path: models_dir(appdata).join(dir).display().to_string(),
+                asr_path: dir.display().to_string(),
                 threads: prefs.asr_threads,
                 parakeet_decoding: prefs.developer.parakeet_decoding,
             },

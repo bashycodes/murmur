@@ -355,6 +355,7 @@ impl CatalogEntry {
     /// (Hebrew) becomes that language's route and leaves the default alone.
     pub fn apply_to(&self, prefs: &mut Prefs, models_dir: &Path) {
         if self.language.is_some() {
+            prefs.hebrew_model_dir = None;
             prefs.hebrew_model = match self.engine {
                 ModelEngine::SherpaOnline => HebrewModel::Zipformer,
                 _ => HebrewModel::ParakeetHe,
@@ -456,6 +457,10 @@ pub struct CatalogView {
     /// This build runs its engine, so it can be imported from a folder,
     /// zip or file (`model_import`), with or without feature `download`.
     pub importable: bool,
+    /// A server is set (D41): downloads come from its library (Settings
+    /// lists it), never from Hugging Face, so `available` is false here.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub from_server: bool,
     pub files: Vec<FileView>,
 }
 
@@ -484,6 +489,7 @@ pub fn catalog_view(
             missing: e.missing(models_dir),
             available: can_download && engine_built(e.engine),
             importable: engine_built(e.engine),
+            from_server: false,
             files: e
                 .all_files()
                 .map(|(f, extra)| FileView {
@@ -578,13 +584,75 @@ pub enum Stop {
 /// How often progress is reported while bytes arrive.
 const TICK: Duration = Duration::from_millis(250);
 
-/// Download `e` into `models_dir` (see the module docs). Emits progress
-/// through `emit`, but not the final `done` / `error` / `cancelled`: the
-/// caller sends that once prefs are updated.
+/// Download `e` into `models_dir` from Hugging Face (see the module docs).
+/// Emits progress through `emit`, but not the final `done` / `error` /
+/// `cancelled`: the caller sends that once prefs are updated.
 pub fn run(
     e: &CatalogEntry,
     models_dir: &Path,
     fetch: &dyn Fetch,
+    cancel: &AtomicBool,
+    emit: &mut dyn FnMut(Progress),
+) -> Result<PathBuf, Stop> {
+    run_from(e, models_dir, &HfSource(fetch), cancel, emit)
+}
+
+/// Where a catalogue model's files come from (D41): Hugging Face, or the
+/// configured server's library (`server_library`). Never both: a set
+/// server replaces Hugging Face.
+pub trait FileSource {
+    /// Bring `f` to `target`, checked against its pinned size and SHA-256,
+    /// writing through `part`; `tick` gets this file's bytes so far. On
+    /// any error nothing is left at `target`.
+    fn fetch(
+        &self,
+        f: &ModelFile,
+        target: &Path,
+        part: &Path,
+        cancel: &AtomicBool,
+        tick: &mut dyn FnMut(u64),
+    ) -> Result<(), Stop>;
+}
+
+/// Hugging Face through a [`Fetch`] (D31): stream into `part`, compare
+/// the hash, rename.
+pub struct HfSource<'a>(pub &'a dyn Fetch);
+
+impl FileSource for HfSource<'_> {
+    fn fetch(
+        &self,
+        f: &ModelFile,
+        target: &Path,
+        part: &Path,
+        cancel: &AtomicBool,
+        tick: &mut dyn FnMut(u64),
+    ) -> Result<(), Stop> {
+        let digest = match fetch_file(f, part, self.0, cancel, tick) {
+            Ok(d) => d,
+            Err(s) => {
+                let _ = std::fs::remove_file(part);
+                return Err(s);
+            }
+        };
+        if digest != f.sha256 {
+            let _ = std::fs::remove_file(part);
+            return Err(Stop::Failed(format!(
+                "{} did not match its fingerprint, so it was deleted",
+                f.name
+            )));
+        }
+        std::fs::rename(part, target).map_err(|er| {
+            let _ = std::fs::remove_file(part);
+            Stop::Failed(format!("could not save the file: {er}"))
+        })
+    }
+}
+
+/// [`run`] with any [`FileSource`].
+pub fn run_from(
+    e: &CatalogEntry,
+    models_dir: &Path,
+    src: &dyn FileSource,
     cancel: &AtomicBool,
     emit: &mut dyn FnMut(Progress),
 ) -> Result<PathBuf, Stop> {
@@ -621,26 +689,8 @@ pub fn run(
             }
         }
         let part = part_path(&target, f);
-        let got = fetch_file(f, &part, fetch, cancel, &mut |n| report(done + n, State::Downloading));
-        let digest = match got {
-            Ok(d) => d,
-            Err(s) => {
-                let _ = std::fs::remove_file(&part);
-                return Err(s);
-            }
-        };
+        src.fetch(f, &target, &part, cancel, &mut |n| report(done + n, State::Downloading))?;
         report(done + f.size, State::Verifying);
-        if digest != f.sha256 {
-            let _ = std::fs::remove_file(&part);
-            return Err(Stop::Failed(format!(
-                "{} did not match its fingerprint, so it was deleted",
-                f.name
-            )));
-        }
-        std::fs::rename(&part, &target).map_err(|er| {
-            let _ = std::fs::remove_file(&part);
-            io("could not save the file", er)
-        })?;
         done += f.size;
     }
     Ok(e.dest_path(models_dir))
@@ -822,6 +872,16 @@ impl Fetch for HttpFetch {
 }
 
 pub const CAN_DOWNLOAD: bool = cfg!(feature = "download");
+
+/// Whether this build runs `e`'s engine (a model for it can be used).
+pub fn engine_built(e: ModelEngine) -> bool {
+    match e {
+        ModelEngine::Whisper => cfg!(feature = "whisper"),
+        ModelEngine::Parakeet | ModelEngine::SherpaOnline => cfg!(feature = "parakeet"),
+        // llama.cpp is a plugin (flow_llm.dll) loaded by the local engine.
+        ModelEngine::Llm => cfg!(feature = "local-engine"),
+    }
+}
 
 #[cfg(test)]
 mod tests {
