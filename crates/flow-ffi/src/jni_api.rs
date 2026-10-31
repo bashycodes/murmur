@@ -759,6 +759,29 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCommand(
     guard(std::ptr::null_mut(), || out(&mut env, &r))
 }
 
+/// Benchmark hook (`dev.flowclone.debug.BenchActivity`): one AI-cleanup
+/// request on a core handle's on-device LLM ([`crate::bench`]). Blocking.
+/// Never null: the result JSON, or `{"error":…}`.
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeBenchClean(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    request: JString,
+) -> jstring {
+    let err = |m: &str| serde_json::json!({ "error": m }).to_string();
+    let r = guard(err("panic inside flow-core"), || {
+        let Some(h) = handle(h) else {
+            return err("null handle");
+        };
+        let Some(req) = jstr(&mut env, &request, "bench request") else {
+            return err("bad bench request string");
+        };
+        json_api::bench_clean(h, &req)
+    });
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
+
 #[no_mangle]
 pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudNotice(
     mut env: JNIEnv,

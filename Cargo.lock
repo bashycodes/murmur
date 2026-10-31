@@ -672,6 +672,7 @@ dependencies = [
  "flow-router",
  "flow-server",
  "jni",
+ "serde",
  "serde_json",
  "tokio",
 ]
