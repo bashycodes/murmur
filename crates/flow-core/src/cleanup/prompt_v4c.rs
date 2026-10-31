@@ -24,7 +24,8 @@ with \"?\". Every sentence starts with a capital letter.
 - Spoken marks become the mark: comma, period, question mark, exclamation point, colon, semicolon, dash (—). \"new \
 line\" starts a new line, \"new paragraph\" a blank line.
 - \"quote ... unquote\", \"open quote ... close quote\" or \"... end quote\" put the words between them in double \
-quotes; \"quote unquote X\" quotes only X. \"in parentheses X\" or \"open paren ... close paren\" put the words in ( ); \
+quotes. \"quote unquote\" mid-sentence quotes only the next word; at the start of a sentence it quotes the \
+whole sentence. \"in parentheses X\" or \"open paren ... close paren\" put the words in ( ); \
 \"in brackets X\" in [ ]. With no closing word the span ends where that phrase ends.
 - A command word used in its ordinary sense stays a word (\"a quote for the gutters\", \"the grace period\", \"the new \
 paragraph reads well\"). \"in parentheses\" or \"in brackets\" that says where something is written (\"the total is in \
@@ -61,7 +62,8 @@ const C: Style = Style::Casual;
 
 /// The 21 few-shots of the bench's v4b (casual ones now carry the v4c STYLE
 /// line) plus 3 for the v4c fixes: openers kept in a chat, a counted list
-/// in a chat.
+/// in a chat; plus 1 for "quote unquote" at a sentence start (quotes the
+/// whole sentence).
 pub(super) const EXAMPLES: &[Example] = &[
     (
         "Notes",
@@ -97,6 +99,13 @@ pub(super) const EXAMPLES: &[Example] = &[
         C,
         "it was a quote unquote quick fix that took all weekend",
         "It was a \"quick fix\" that took all weekend",
+    ),
+    (
+        "Notes",
+        N,
+        F,
+        "quote unquote the printer works fine it jammed twice this morning",
+        "\"The printer works fine.\" It jammed twice this morning.",
     ),
     (
         "Notes",

@@ -195,6 +195,81 @@ pub fn literal_command_marks(input: &str, output: &str) -> Option<&'static str> 
     })
 }
 
+/// Phrases that make a "quote unquote" command.
+static QUOTE_UNQUOTE: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"(?i)\bquote[\s,-]+unquote\b").unwrap());
+
+/// The text between each pair of double quotes in `s`.
+fn quoted_spans(s: &str) -> Vec<&str> {
+    s.split(['"', '\u{201c}', '\u{201d}'])
+        .skip(1)
+        .step_by(2)
+        .collect()
+}
+
+/// Content words of `s` plus the digit forms of its number words.
+fn content_and_numbers(s: &str, m: Mode) -> Vec<String> {
+    let ws = words(s, m);
+    let mut out = content(s, m);
+    out.extend(number_aliases(&ws));
+    out.extend(number_forms(&ws).into_iter().map(|f| f.2));
+    out
+}
+
+/// "quote unquote" quoted the wrong words: the rest of a sentence
+/// mid-sentence ("she called it "cozy and left""), or one word at a
+/// sentence start. The fallback rules decide the scope (one word, or a
+/// pause-wrapped phrase, mid-sentence; the whole sentence at its start);
+/// each quotation in `output` must keep at least half of the matching
+/// rules quotation's content words (any of them when the model ended the
+/// quotation with its own sentence end: it split a run-on the rules
+/// could not) and add none of its own. Applies only
+/// when the input has a "quote unquote" and no quote marks yet. An answer
+/// with fewer quotations than the rules left the command as words; one
+/// with more is left to the other checks. Returns the offending quotation
+/// (or the whole answer).
+fn quote_unquote_scope(input: &str, output: &str, m: Mode) -> Option<String> {
+    if !QUOTE_UNQUOTE.is_match(input) || !quoted_spans(input).is_empty() {
+        return None;
+    }
+    let cleaned = crate::postprocess::spoken::spoken_cleanup(input);
+    let (want, got) = (quoted_spans(&cleaned), quoted_spans(output));
+    if want.is_empty() {
+        return None;
+    }
+    if got.len() < want.len() {
+        // The command was left as words ("Quote, unquote, this cake …").
+        return Some(output.to_string());
+    }
+    if got.len() != want.len() {
+        return None;
+    }
+    want.iter().zip(&got).find_map(|(w, g)| {
+        let allowed = content_and_numbers(w, m);
+        let got_all = content_and_numbers(g, m);
+        let extra = content(g, m).iter().any(|x| !present(x, &allowed));
+        let want_words = content(w, m);
+        let kept = want_words
+            .iter()
+            .filter(|x| {
+                present(x, &got_all)
+                    || number_aliases(std::slice::from_ref(*x))
+                        .iter()
+                        .any(|a| present(a, &got_all))
+            })
+            .count();
+        // A quotation the model closed with its own sentence end split a
+        // run-on the rules could not; it only has to keep something.
+        let own_end = g.trim_end().ends_with(['.', '?', '!']);
+        let lost = if own_end {
+            kept == 0 && !want_words.is_empty()
+        } else {
+            kept * 2 < want_words.len()
+        };
+        (extra || lost).then(|| g.to_string())
+    })
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verdict {
     Ok,
@@ -682,6 +757,9 @@ pub fn check_for_language(
         if let Some(kind) = literal_command_marks(input, output) {
             return Verdict::Unsupported(format!("literal {kind} made a mark: {output}"));
         }
+        if let Some(q) = quote_unquote_scope(input, output, m) {
+            return Verdict::Unsupported(format!("quote unquote scope: \"{q}\""));
+        }
         let (i, o) = (strip_commands(input), strip_commands(output));
         let c = crate::postprocess::spoken::spoken_cleanup(&i);
         (i, o, c)
@@ -983,8 +1061,55 @@ mod tests {
             ("See the appendix, in brackets, page four, for details.", "See the appendix [page 4] for details."),
             ("The demo went well dash mostly.", "The demo went well — mostly."),
             ("He said quote hello end quote and left.", "He said \"hello\" and left."),
+            (
+                "she called it quote unquote cozy and left",
+                "She called it \"cozy\" and left.",
+            ),
+            (
+                "quote unquote the plan works great",
+                "\"The plan works great.\"",
+            ),
+            (
+                "We tried it. Quote unquote, it works every time. Not really.",
+                "We tried it. \"It works every time.\" Not really.",
+            ),
+            ("it cost quote unquote forty dollars", "It cost \"$40\" dollars."),
+            (
+                "quote unquote the printer works fine it jammed twice this morning",
+                "\"The printer works fine.\" It jammed twice this morning.",
+            ),
         ] {
             assert_eq!(check(i, o), Verdict::Ok, "{i:?} -> {o:?}");
+        }
+    }
+
+    #[test]
+    fn quote_unquote_scope_is_checked() {
+        for (i, o) in [
+            // Mid-sentence: one word, not the rest of the sentence.
+            (
+                "she called it quote unquote cozy and left",
+                "She called it \"cozy and left.\"",
+            ),
+            // Sentence start: the whole sentence, not one word.
+            (
+                "quote unquote the plan works great",
+                "\"The\" plan works great.",
+            ),
+            // The command left as words.
+            (
+                "Quote, unquote, this cake is the best one yet.",
+                "Quote, unquote, this cake is the best one yet.",
+            ),
+        ] {
+            assert!(
+                matches!(check_loose(i, o), Verdict::Unsupported(_)),
+                "{i:?} -> {o:?}"
+            );
+            assert!(
+                matches!(check(i, o), Verdict::Unsupported(_)),
+                "{i:?} -> {o:?}"
+            );
         }
     }
 

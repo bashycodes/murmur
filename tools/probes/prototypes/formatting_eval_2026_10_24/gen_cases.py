@@ -36,6 +36,10 @@ C = [
     ("q6", "quote", WA, "It was, quote unquote, fine.", 'It was "fine"', ['It was "fine."']),
     ("q7", "quote", DOCS, "The error message says, quote, file not found, unquote.", 'The error message says "file not found."', ['The error message says, "File not found."', 'The error message says "file not found".', 'The error message says, "file not found."']),
     ("q8", "quote", WA, "He literally just said, quote, whatever.", 'He literally just said "whatever"', ['He literally just said, "whatever"', 'He literally just said "whatever."']),
+    # "quote unquote" scope (2026-10-31): one word mid-sentence, the whole sentence at its start.
+    ("q9", "quote", KEEP, "quote unquote the new menu is a big improvement", '"The new menu is a big improvement."', ['"The new menu is a big improvement"']),
+    ("q10", "quote", WA, "We tried the new place. Quote unquote, best tacos in the city. Not even close.", 'We tried the new place. "Best tacos in the city." Not even close', ['We tried the new place. "Best tacos in the city." Not even close.']),
+    ("q11", "quote", WA, "he called the plan quote unquote genius and walked off", 'He called the plan "genius" and walked off', ['He called the plan "genius" and walked off.']),
     # --- parenthetical -----------------------------------------------------
     ("p1", "paren", KEEP, "I'll bring the charger in parentheses the USB-C one to the meeting.", "I'll bring the charger (the USB-C one) to the meeting.", []),
     ("p2", "paren", KEEP, "I'll bring the charger, in parentheses, the USB-C one, to the meeting.", "I'll bring the charger (the USB-C one) to the meeting.", []),
