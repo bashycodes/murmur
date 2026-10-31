@@ -29,7 +29,11 @@ use flow_router::{
     RouterPoll, SecretString, ServerConfig, StartInfo,
 };
 
+#[cfg(feature = "admin")]
+pub mod admin_api;
 pub mod bench;
+#[cfg(all(feature = "jni", feature = "admin"))]
+pub mod jni_admin;
 #[cfg(feature = "jni")]
 pub mod jni_api;
 

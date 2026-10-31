@@ -105,6 +105,7 @@ WINT=(--target x86_64-pc-windows-msvc)
 check "flow-ffi jni,whisper,llm,parakeet (local flavour, android) has no network deps" "$NET" -p flow-ffi --features jni,whisper,llm,parakeet "${ANDROID[@]}"
 check "flow-ffi jni,whisper,llm,parakeet (local flavour, android) has no cloud client" "$CLOUD" -p flow-ffi --features jni,whisper,llm,parakeet "${ANDROID[@]}"
 check "flow-ffi jni,remote,cloud (remote+cloud flavour, android) has no ASR/LLM libs" "$ASR" -p flow-ffi --features jni,remote,cloud "${ANDROID[@]}"
+check "flow-ffi jni,remote,cloud,admin (remote flavour + D39 admin, android) has no ASR/LLM libs" "$ASR" -p flow-ffi --features jni,remote,cloud,admin "${ANDROID[@]}"
 check "flow-windows local,app (windows) has no WS client" "$WIN_NET" "${WIN[@]}" --features local,app "${WINT[@]}"
 check "flow-windows local,app (windows) has no cloud client" "$CLOUD" "${WIN[@]}" --features local,app "${WINT[@]}"
 check "flow-windows remote,cloud,app (windows) has no ASR/LLM libs" "$ASR" "${WIN[@]}" --features remote,cloud,app "${WINT[@]}"

@@ -668,6 +668,7 @@ dependencies = [
  "flow-build-info",
  "flow-cloud",
  "flow-core",
+ "flow-protocol",
  "flow-remote",
  "flow-router",
  "flow-server",

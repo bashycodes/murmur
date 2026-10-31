@@ -24,6 +24,9 @@ remote = ["dep:flow-remote"]
 # `hybrid` / `remote` flavours enable it; the `local` flavour's library must
 # not link it (C2; tools/check-build-matrix.sh, verifyLocal*NoNetworkCode).
 cloud = ["dep:flow-cloud"]
+# D39: the admin API client (flow_remote::admin) for the Android "Users & keys"
+# page. Only the `hybrid` / `remote` flavours enable it (it needs `remote`).
+admin = ["remote", "dep:flow-protocol"]
 
 [dependencies]
 flow-build-info = { path = "../flow-build-info" }
@@ -31,6 +34,7 @@ flow-core = { path = "../flow-core" }
 flow-router = { path = "../flow-router" }
 flow-remote = { path = "../flow-remote", optional = true, features = ["tls"] }
 flow-cloud = { path = "../flow-cloud", optional = true }
+flow-protocol = { path = "../flow-protocol", optional = true }
 serde.workspace = true
 serde_json.workspace = true
 jni = { version = "0.21", optional = true }
