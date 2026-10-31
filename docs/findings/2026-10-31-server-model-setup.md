@@ -53,7 +53,7 @@ The box was loaded (other agents' builds, load 6–13, swap ~95 % full).
 | he 7.6 s | `en` | en | Latin gibberish (Parakeet-en on Hebrew) | 1474 | skipped | 1481 |
 | he 7.6 s | auto | he | same Hebrew as forced `he` | 403 | skipped | 406 |
 | he 6.5 s | `he` / auto | he / he | exact match to reference | 217 / 304 | skipped | 219 / 307 |
-| he 13.3 s | `he` | he | Hebrew, first 3 words missing (see notes) | 711 | 3000 (timeout) | 3714 |
+| he 13.3 s | `he` | he | Hebrew, all words; the speaker reads the first 3 words last (see notes) | 711 | 3000 (timeout) | 3714 |
 | jfk 11 s | auto | en | correct, Formatted | 1234 | 2578 | 3816 |
 | jfk 11 s | `en` | en | correct, Formatted | 919–1197 | 2412–2650 | 3335–3850 |
 
@@ -91,9 +91,10 @@ supports keeping sessions on the production path. 4 min 35 s wall.
   `--lid` switch) so a re-install keeps LID working; today a plain
   `install.sh --user` re-install would build without `whisper` and the server
   would refuse to start with this config.
-* zipformer-he dropped the first ~3 words of the 13.3 s FLEURS clip
-  (peak 0 dBFS, starts with speech at t≈0) both forced and auto; not
-  investigated. One FLEURS clip (peak −46 dBFS) is VAD `no_speech`, expected.
+* zipformer-he seemed to drop the first ~3 words of the 13.3 s FLEURS clip
+  both forced and auto. Not a bug: the speaker says those words near the
+  end of the clip and the output has them there
+  (`2026-10-31-zipformer-first-words.md`). One FLEURS clip (peak −46 dBFS) is VAD `no_speech`, expected.
 * Hebrew LLM cleanup on long dictations exceeds a 3 s budget.
 
 ## Rollback
