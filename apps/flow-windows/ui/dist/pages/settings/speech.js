@@ -3,7 +3,7 @@
 // and OpenRouter speech to text (features/openrouter.ts). Markup only.
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
-import { browseButton, DOWNLOAD_ROW, HEBREW_ROW } from "../../features/models.js";
+import { browseButton, DOWNLOAD_ROW, HEBREW_ROW, SERVER_MODELS_GROUP } from "../../features/models.js";
 /** One engine in a ranked list (`<prefix>_row_<key>`, `_desc_`, `_badge_`):
  *  rank, tile, text, status badge, move up/down, switch. The feature module
  *  moves the row, numbers it and fills the text and badge. `keyAttr` names
@@ -48,6 +48,8 @@ ${group("On this PC", row("Model", `Parakeet is fastest but English only. Whispe
         row("Use dictionary words when listening", "Better at names and jargon. Uses about 0.6 GB more memory; changing it reloads the model.", toggle("dev_parakeet_decoding", "Use dictionary words when listening"), `data-needs="dev" id="dict_words_row"`) +
         row("Keep loaded while the server is used", "Instant fallback if the server drops, at the cost of memory.", toggle("dev_keep_local_warm", "Keep loaded while the server is used", `data-save="dev"`), `data-needs="remote"`), `data-needs="local"`)}
 <p class="fl-help lw-group-help" data-needs="local">Models are never downloaded automatically: press Download, or put them in <code id="models_dir" class="lw-mono"></code>.</p>
+
+${SERVER_MODELS_GROUP}
 
 <section class="lw-section" id="or_stt_group" data-needs="cloud">
   <h3 class="fl-group-title lw-title-badge">OpenRouter <span class="fl-badge fl-badge-light" id="or_stt_used_badge">Used only when on above</span></h3>

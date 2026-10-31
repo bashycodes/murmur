@@ -394,3 +394,19 @@ dialog.lw-picker p.hint:empty {
   background: rgba(255, 87, 87, 0.12);
   color: var(--destructive);
 }
+
+/* ---- Speech to text → From your server (D41) ---- */
+.lw-srv-list:empty { display: none; }
+.lw-srv-model {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.lw-srv-text { min-width: 0; flex: 1; }
+.lw-srv-status { display: block; margin-top: 4px; overflow-wrap: anywhere; }
+.lw-srv-status .lw-dl-bar { margin-bottom: 4px; max-width: 320px; }
+.lw-srv-model .fl-row-control { flex: none; }
+.lw-btn-sm { margin-left: 8px; padding: 2px 10px; font-size: 12px; }

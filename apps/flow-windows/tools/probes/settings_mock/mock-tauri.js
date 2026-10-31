@@ -259,15 +259,52 @@
   // ?nodl=1: a client-only build (no downloader): nothing is `available`,
   // every model is still `importable` (model_import, no network).
   const noDl = new URLSearchParams(location.search).get("nodl") === "1";
+  // ?server=1: a server is set (D41): the catalogue is not downloadable
+  // from Hugging Face (`from_server`); `server_models` lists its library.
+  // ?server=err: set, but its library can't be read.
+  const serverParam = new URLSearchParams(location.search).get("server");
+  const fromServer = serverParam === "1" || serverParam === "err";
   const view = (c) => {
     const installed = dlInstalled.has(c.id);
-    const base = { ...c, available: c.available && !noDl, importable: true };
+    const base = { ...c, available: c.available && !noDl && !fromServer, importable: true, ...(fromServer ? { from_server: true } : {}) };
     if (!c.language) return { ...base, installed, complete: installed, missing: installed ? 0 : c.size };
     const lid = lidPresent ? 0 : LID.size;
     return { ...base, installed, complete: installed && lidPresent, missing: installed ? lid : c.size - LID.size + lid };
   };
   loadHebrew();
   let dlRunning = null;
+  // The server's library (server_library::views): catalogue copies, custom
+  // models with a slot, and ones the app can't use (with the reason).
+  const SRV = MODELS + "server\\";
+  const srvLib = [
+    { id: "whisper-base", title: "Whisper base", kind: "stt", engine: "whisper", catalogue_id: "whisper-base", size: 147951465, files: 1, slot: "stt_whisper" },
+    { id: "qwen15", title: "Qwen 2.5 1.5B (cleanup)", kind: "llm", engine: "gguf", catalogue_id: "qwen2.5-1.5b-instruct-q4_k_m", size: 1117320736, files: 1, slot: "llm" },
+    { id: "whisper-large-he", title: "Whisper large (my Hebrew fine-tune)", kind: "stt", engine: "whisper", size: 1080000000, files: 1, slot: "stt_whisper", file: "ggml-large-he.bin" },
+    { id: "zipformer-he-v2", title: "Zipformer Hebrew v2", kind: "hebrew", language: "he", engine: "sherpa_online", size: 75000000, files: 4, slot: "hebrew_zipformer" },
+    { id: "tiny-lid", title: "Whisper tiny (language detection)", kind: "lid", engine: "whisper", size: 32152673, files: 1, slot: "lid", file: "ggml-tiny-q5_1.bin" },
+    { id: "silero", title: "Silero VAD", kind: "vad", engine: "silero", size: 2300000, files: 1, reason: "this app has no slot for a voice-activity model" },
+    { id: "ct2-medium", title: "Whisper medium (CTranslate2)", kind: "stt", engine: "ctranslate2", size: 1500000000, files: 3, reason: "this app can't load the ctranslate2 engine" },
+  ];
+  const srvInstalled = new Set();
+  const srvDest = (m) => {
+    if (m.catalogue_id) return dlCatalog.find((c) => c.id === m.catalogue_id)?.dest ?? "";
+    return SRV + m.id + (m.file ? "\\" + m.file : "");
+  };
+  const srvInUse = (m, dest) => {
+    switch (m.slot) {
+      case "stt_whisper": return prefs.asr_engine === "whisper" && (prefs.model_path || MODELS + "ggml-base.bin") === dest;
+      case "llm": return Boolean(prefs.llm_enabled) && (prefs.llm_model_path || MODELS + "qwen2.5-1.5b-instruct-q4_k_m.gguf") === dest;
+      case "hebrew_zipformer": return prefs.hebrew_model === "zipformer" && prefs.hebrew_model_dir === dest;
+      case "lid": return prefs.lid_model_path === dest;
+      default: return false;
+    }
+  };
+  const srvView = (m) => {
+    const dest = m.slot ? srvDest(m) : SRV + m.id;
+    const installed = Boolean(m.slot) && (m.catalogue_id ? dlInstalled.has(m.catalogue_id) : srvInstalled.has(m.id));
+    const { file, ...rest } = m;
+    return { ...rest, dest, installed, in_use: installed && srvInUse(m, dest) };
+  };
   // After a download or import: the same prefs as the backend's apply_to.
   // `lid: false`: an import without the Hebrew models' language-ID extra.
   const installDone = (c, ev, { lid = true } = {}) => {
@@ -277,7 +314,7 @@
     if (c.language) {
       if (lid) lidPresent = true;
       // A Hebrew model becomes the Hebrew route; the default stays.
-      prefs = { ...prefs, hebrew_model: c.engine === "sherpa_online" ? "zipformer" : "parakeet_he" };
+      prefs = { ...prefs, hebrew_model: c.engine === "sherpa_online" ? "zipformer" : "parakeet_he", hebrew_model_dir: null };
       ev("done", { path });
       loadHebrew();
       return;
@@ -587,6 +624,42 @@
           dlRunning = null;
           if (/bad/i.test(path)) { run.received = 0; ev("error", { error: `${c.files[0].name} did not match its fingerprint (a different or damaged file). Nothing was installed.` }); return; }
           installDone(c, ev, { lid: !/nolid/i.test(path) });
+        }, 150);
+      }, window.__dlTickMs || 250);
+      return null;
+    },
+    server_models: () => {
+      if (!fromServer) return { configured: false, models: [] };
+      if (serverParam === "err") return { configured: true, error: "the server refused the key (HTTP 401)", models: [] };
+      return { configured: true, models: srvLib.map(srvView) };
+    },
+    // A custom server model: ticks like a download, then the prefs of its slot.
+    server_model_download: ({ id }) => {
+      if (!fromServer) throw new Error("no server is set");
+      const m = srvLib.find((x) => x.id === id);
+      if (!m) throw new Error(`${id} is no longer on the server`);
+      if (!m.slot) throw new Error(m.reason);
+      if (m.catalogue_id) throw new Error("a catalogue model: use model_download_start");
+      if (dlRunning) throw new Error("another model is downloading; wait for it or cancel it");
+      const pid = `server:${id}`;
+      dlRunning = { id: pid, received: 0, cancelled: false };
+      const run = dlRunning;
+      const ev = (state, extra = {}) => window.__emit("model:download", { id: pid, received: run.received, total: m.size, state, ...extra });
+      const already = srvInstalled.has(id);
+      const tick = setInterval(() => {
+        if (run.cancelled) { clearInterval(tick); dlRunning = null; run.received = 0; ev("cancelled"); return; }
+        run.received = already ? m.size : Math.min(m.size, run.received + Math.ceil(m.size / (window.__dlSteps || 6)));
+        if (run.received < m.size) { ev("downloading"); return; }
+        clearInterval(tick);
+        ev("verifying");
+        setTimeout(() => {
+          dlRunning = null;
+          srvInstalled.add(id);
+          const path = srvDest(m);
+          if (m.slot === "stt_whisper") prefs = { ...prefs, asr_engine: "whisper", model_path: path };
+          if (m.slot === "hebrew_zipformer") prefs = { ...prefs, hebrew_model: "zipformer", hebrew_model_dir: path };
+          if (m.slot === "lid") prefs = { ...prefs, lid_model_path: path };
+          ev("done", { path });
         }, 150);
       }, window.__dlTickMs || 250);
       return null;
