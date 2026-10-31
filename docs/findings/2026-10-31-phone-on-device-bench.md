@@ -22,6 +22,8 @@ inside the app on the device? Which should the phone default to?
   * Of the ~50 cases that reach it, **11 time out at 3 s** and 2 more end in a deadline or
     drop. The answered calls take p50 **1189 ms** and p90 2.6 s.
   * Loading takes 38 s and the model then holds **2.1 GB** PSS. It runs on the CPU only.
+  * The LLM alone (prompt v4c, no rules in front) scores 75 %, the same as on the laptop
+    CPU, at p50 2.0 s.
 * **Recommendation:**
   * Phone STT: Parakeet-en for English, zipformer-he for Hebrew.
   * Cleanup: cloud or server first, the on-device LLM only as the offline fallback, with
@@ -90,7 +92,7 @@ the guard, post-processing and the 3 s Android budget.
 
 | | qwen1.5b `prod` |
 |---|---|
-| **88-suite pass** | **92 %** (81/88) |
+| **88-suite pass** | **92 %** (81/88); `v4c` 75 % |
 | Wispr exact / closeness / char ratio (14) | 2/14 / 0.796 / 0.859 |
 | guard rejects, strict and loose (good answers rejected) | 0 (0) |
 | reached the LLM | ~50 of 102 (52 `llm_skipped_clean`) |
@@ -108,10 +110,14 @@ the guard, post-processing and the 3 s Android budget.
   rules' text, which is why the score holds.
 * A timed-out call is abandoned, not cancelled. It may still occupy the LLM while the next
   case starts, so these latencies may be pessimistic for back-to-back dictations.
-* The `v4c` raw answers (prompt v4c on the raw transcript) were recorded: 102/102, p50
-  1977 ms, p90 3262 ms, 15 over 3 s. They are not judged yet. That needs the
-  `ai-cleanup-bench` binary (README § 3). v4c is slower than prod because every case calls
-  the LLM, with a longer prompt.
+* **`v4c`** sends prompt v4c on the raw transcript, has no rules in front, and is judged
+  with the product's strict guard, as in the 2026-10-30 laptop bench.
+  * It scores **75 %** on the 88-suite with target-closeness 0.812. The laptop CPU scored
+    74–76 % with 0.813 for the same model, so the phone's quantised build behaves the same.
+  * Its LLM time is p50 **1977 ms** and p90 3262 ms. 15 of the 102 calls exceed 3 s, and
+    the guard rejects 6 answers.
+  * It is slower than `prod` because every case calls the LLM, with a longer prompt.
+  * Its weak categories are newline (1/5), filler (2/6) and correction (3/7).
 * For comparison, Qwen2.5-1.5B runs at p50 1.0 s on the laptop CPU, 0.39 s on the laptop
   iGPU (Vulkan) and 1.4 s on the home server (2026-10-30).
 
@@ -129,7 +135,6 @@ the guard, post-processing and the 3 s Android budget.
    production 88-suite score.
 3. **Follow-ups (not blocking):**
    * a realtime-paced run for the zipformer's real latency;
-   * judging the v4c column;
    * a GPU (OpenCL/Vulkan) llama.cpp build for the phone, which on the laptop made the
      1.5B 2.6× faster;
    * possibly a quiet-speech path in the VAD.
