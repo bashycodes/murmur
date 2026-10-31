@@ -83,6 +83,15 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- **Server: upgrading with `install.sh` keeps language detection working.**
+  The installer now builds with whisper (language ID, Silero VAD), reuses
+  the installed model when no `--model` is given, and `--start` restarts a
+  running server, so a re-install no longer stops a server whose config
+  sets `lid_path`. `--no-whisper` opts out unless the config needs it.
+- **Server: AI cleanup no longer times out on the first or a long
+  dictation.** The LLM is warmed at startup, and its time budget grows
+  with the transcript (`llm_timeout_per_char_ms`, default 15 ms per
+  character, capped by `llm_timeout_max_ms`, default 8 s).
 - **AI cleanup notices when your server gains an AI model, without a
   restart.** After a server upgrade that added AI cleanup, Settings → AI
   cleanup kept saying the server "has no AI cleanup model: skipped" and the

@@ -85,6 +85,10 @@ impl Styles {
     }
 }
 
+/// Default cap of the length-scaled LLM budget
+/// ([`SessionConfig::llm_budget_ms`]).
+pub const DEFAULT_LLM_TIMEOUT_MAX_MS: u64 = 8000;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SessionConfig {
@@ -104,6 +108,16 @@ pub struct SessionConfig {
     pub partial_interval_ms: Option<u32>,
     /// LLM cleanup budget before falling back to RAW_TRANSCRIPT.
     pub llm_timeout_ms: u64,
+    /// Extra LLM budget per character of the text the model rewrites, on
+    /// top of `llm_timeout_ms` (a long dictation decodes more tokens).
+    /// `None` (default) = the fixed `llm_timeout_ms`. flow-server sets it
+    /// from its config when the client does not. See [`Self::llm_budget_ms`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_timeout_per_char_ms: Option<u32>,
+    /// Cap on the scaled budget (never below `llm_timeout_ms`). `None` =
+    /// [`DEFAULT_LLM_TIMEOUT_MAX_MS`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_timeout_max_ms: Option<u64>,
     /// Optional extra guard: reject LLM output whose word edit distance /
     /// words exceeds this (0..1; the old 03 §7.1 check). `None` (default):
     /// only the support/coverage guard (`guard::check`) runs.
@@ -182,6 +196,8 @@ impl Default for SessionConfig {
             platform: Platform::Windows,
             partial_interval_ms: None,
             llm_timeout_ms: 1500,
+            llm_timeout_per_char_ms: None,
+            llm_timeout_max_ms: None,
             divergence_threshold: None,
             ring_capacity_samples: SAMPLE_RATE * 30,
             all_lowercase: false,
@@ -208,6 +224,24 @@ impl SessionConfig {
             [one] if one != "auto" => Some(one.as_str()),
             _ => None,
         }
+    }
+
+    /// The LLM cleanup budget for rewriting `text`: `llm_timeout_ms` plus
+    /// `llm_timeout_per_char_ms` per character, capped at
+    /// `llm_timeout_max_ms` (never below `llm_timeout_ms`). Without a
+    /// per-character rate, `llm_timeout_ms` unchanged.
+    pub fn llm_budget_ms(&self, text: &str) -> u64 {
+        let base = self.llm_timeout_ms;
+        let Some(per_char) = self.llm_timeout_per_char_ms.filter(|&p| p > 0) else {
+            return base;
+        };
+        let cap = self
+            .llm_timeout_max_ms
+            .unwrap_or(DEFAULT_LLM_TIMEOUT_MAX_MS)
+            .max(base);
+        let chars = text.chars().count() as u64;
+        base.saturating_add(chars.saturating_mul(u64::from(per_char)))
+            .min(cap)
     }
 }
 
@@ -527,6 +561,35 @@ mod tests {
         assert_eq!(c.max_samples, 16_000 * 60 * 20);
         assert!(c.languages.is_empty());
         assert_eq!(c.endpoint_silence_ms, None);
+    }
+
+    #[test]
+    fn llm_budget_scales_with_text_length_up_to_the_cap() {
+        let mut c = SessionConfig {
+            llm_timeout_ms: 3000,
+            ..Default::default()
+        };
+        // Off by default: the fixed budget, and nothing new on the wire.
+        assert_eq!(c.llm_budget_ms(&"x".repeat(500)), 3000);
+        let off = serde_json::to_value(&c).unwrap();
+        assert!(off.get("llm_timeout_per_char_ms").is_none());
+        assert!(off.get("llm_timeout_max_ms").is_none());
+        c.llm_timeout_per_char_ms = Some(15);
+        assert_eq!(c.llm_budget_ms(""), 3000);
+        assert_eq!(c.llm_budget_ms(&"a".repeat(100)), 4500);
+        // Characters, not bytes: 100 Hebrew letters are 200 bytes.
+        assert_eq!(c.llm_budget_ms(&"\u{5d0}".repeat(100)), 4500);
+        // Default cap, then an explicit one; a cap below the base keeps the base.
+        assert_eq!(
+            c.llm_budget_ms(&"a".repeat(10_000)),
+            DEFAULT_LLM_TIMEOUT_MAX_MS
+        );
+        c.llm_timeout_max_ms = Some(5000);
+        assert_eq!(c.llm_budget_ms(&"a".repeat(1000)), 5000);
+        c.llm_timeout_max_ms = Some(1000);
+        assert_eq!(c.llm_budget_ms(&"a".repeat(1000)), 3000);
+        c.llm_timeout_per_char_ms = Some(0);
+        assert_eq!(c.llm_budget_ms(&"a".repeat(1000)), 3000);
     }
 
     #[test]

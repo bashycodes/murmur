@@ -43,6 +43,11 @@ impl Drop for Lease {
     }
 }
 
+/// Synthetic dictation [`Pool::warm_llm`] cleans once per worker.
+const WARM_TEXT: &str = "so um the meeting moved to thursday can you tell the team";
+/// Budget of that warm-up call (a cold CPU box can take seconds).
+const WARM_TIMEOUT_MS: u64 = 60_000;
+
 pub enum LeaseError {
     /// Waited `queue_timeout_ms` without a free worker.
     Timeout,
@@ -63,7 +68,39 @@ impl Pool {
         let cores = (0..workers.max(1))
             .map(|_| FlowCore::load_models(model).map(Arc::new))
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(Self::from_cores(cores, model, max_queue))
+        let pool = Self::from_cores(cores, model, max_queue);
+        pool.warm_llm();
+        Ok(pool)
+    }
+
+    /// Run one throwaway cleanup on every worker's LLM, so the first
+    /// dictation after a restart does not pay the cold first decode (page
+    /// faults on the mmapped weights, compute buffers, thread pool): on a
+    /// 4-core CPU box that first call blew the client's 3 s budget while
+    /// later ones fit. Blocking; a failure is logged, not fatal. Returns
+    /// how many workers warmed.
+    pub fn warm_llm(&self) -> usize {
+        let req = flow_core::cleanup::CleanRequest {
+            text: WARM_TEXT.into(),
+            timeout_ms: WARM_TIMEOUT_MS,
+            ..Default::default()
+        };
+        let mut warmed = 0;
+        for (worker, core) in self.cores.iter().enumerate() {
+            let Some(cl) = core.cleaner().filter(|c| c.available()) else {
+                continue;
+            };
+            let (r, _, took) = flow_core::cleanup::clean_text(cl, &req, WARM_TIMEOUT_MS);
+            let llm_ms = took.as_millis() as u64;
+            match r {
+                Ok(_) => {
+                    warmed += 1;
+                    tracing::info!(worker, llm_ms, "llm warmed");
+                }
+                Err(e) => tracing::warn!(worker, llm_ms, error = %e, "llm warm-up failed"),
+            }
+        }
+        warmed
     }
 
     pub fn from_cores(cores: Vec<Arc<FlowCore>>, model: &ModelConfig, max_queue: usize) -> Self {

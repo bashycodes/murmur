@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests for install.sh --user: the preflight of the systemd user manager,
-# and LLM cleanup (--llm, --llm-model, auto-on from an existing config's
-# llm_path, config and token never overwritten).
+# LLM cleanup (--llm, --llm-model, auto-on from an existing config's
+# llm_path, config and token never overwritten), the whisper feature
+# (--no-whisper, forced back on by lid_path & co.) and an in-place upgrade.
 # No systemd, model or build needed: a stub `systemctl` on PATH answers only
 # when $XDG_RUNTIME_DIR/bus is a socket, a fake /run/user root is passed
 # through FLOW_INSTALL_RUN_USER, and real (non-dry) runs use --no-build with
@@ -70,11 +71,11 @@ check "good env: completes" "$o" "rc=0"
 R="$T/run/$(id -u)"
 CONF="$T/home/.config/flow-server/config.toml"
 o="$(inst "$R" --dry-run)"
-check "no llm: plain features" "$o" "--features parakeet,tls\$"
+check "no llm: whisper on by default" "$o" "--features whisper,parakeet,tls\$"
 check "no llm: no plugin build" "$o" "-p flow-llm" "!"
 check "no llm: summary says off" "$o" "llm      off"
 o="$(inst "$R" --dry-run --llm)"
-check "--llm: llm feature" "$o" "--features parakeet,tls,llm"
+check "--llm: llm feature" "$o" "--features whisper,parakeet,tls,llm"
 check "--llm: plugin build" "$o" "cargo build --release --offline .* -p flow-llm"
 check "--llm: plugin installed" "$o" "install -m 0644 $T/target/release/libflow_llm.so $T/home/.local/lib/flow-server/libflow_llm.so"
 check "--llm: new config has commented llm_path" "$o" "| # llm_path = "
@@ -89,15 +90,15 @@ check "--llm: caller's bindgen args kept" "$o" "BINDGEN_EXTRA_CLANG_ARGS=-I/cust
 mkdir -p "$(dirname "$CONF")"
 printf '[model]\n# llm_path = "/x.gguf"\n' >"$CONF"
 o="$(inst "$R" --dry-run)"
-check "commented llm_path: stays off" "$o" "--features parakeet,tls\$"
+check "commented llm_path: stays off" "$o" "--features whisper,parakeet,tls\$"
 printf '[model]\nllm_path = "/m/q.gguf"\nllm_lib = "%s"\n' "$T/home/.local/lib/flow-server/libflow_llm.so" >"$CONF"
 o="$(inst "$R" --dry-run)"
 check "config llm_path: note" "$o" "sets llm_path; building with LLM cleanup"
-check "config llm_path: llm feature" "$o" "--features parakeet,tls,llm"
+check "config llm_path: llm feature" "$o" "--features whisper,parakeet,tls,llm"
 check "config llm_path: matching llm_lib, no warning" "$o" "warning:" "!"
 printf '[model]\n  llm_path = "/m/q.gguf"\nllm_lib = "/elsewhere/libflow_llm.so"\n' >"$CONF"
 o="$(inst "$R" --dry-run)"
-check "config llm_path (indented): llm feature" "$o" "--features parakeet,tls,llm"
+check "config llm_path (indented): llm feature" "$o" "--features whisper,parakeet,tls,llm"
 check "other llm_lib: warning" "$o" "warning: .*llm_lib = \"/elsewhere/libflow_llm.so\""
 
 # 6. Real runs (--no-build, stub binary + plugin): existing config and token
@@ -166,6 +167,87 @@ head -n 1 "$T/ip-vpn" >"$T/ip-lan"
 o="$(nobind "$T/ip-lan")"
 check "no --bind, no VPN: loopback only" "$o" "note: no VPN (100.64.0.0/10) IPv4 found; binding loopback only"
 check "no --bind, no VPN: LAN not bound" "$o" "192.168.1.5:7313" "!"
+
+# 9. whisper: on by default; --no-whisper leaves it out unless the config
+# uses whisper.cpp (lid_path, vad_model_path, a whisper engine).
+rm -rf "${T:?}/home"
+o="$(inst "$R" --dry-run --no-whisper)"
+check "--no-whisper: plain features" "$o" "--features parakeet,tls\$"
+check "--no-whisper: summary says off" "$o" "whisper  off"
+mkdir -p "$(dirname "$CONF")"
+for k in lid_path vad_model_path engine; do
+    case "$k" in
+        engine) line='[model.languages.xx]
+asr_engine = "whisper"' ;;
+        *) line="$k = \"/m/x.bin\"" ;;
+    esac
+    printf '[model]\nasr_engine = "parakeet"\n%s\n' "$line" >"$CONF"
+    o="$(inst "$R" --dry-run --no-whisper)"
+    check "--no-whisper, config $k: whisper forced" "$o" "--features whisper,parakeet,tls\$"
+    check "--no-whisper, config $k: note" "$o" "note: .* building with whisper despite --no-whisper"
+done
+printf '[model]\nasr_engine = "parakeet"\n# lid_path = "/m/x.bin"\n' >"$CONF"
+o="$(inst "$R" --dry-run --no-whisper)"
+check "--no-whisper, commented lid_path: stays off" "$o" "--features parakeet,tls\$"
+
+# 10. Upgrade in place of the home-server layout: lid_path + llm_path +
+# per-language model, installed model, keys. No --model: the config's
+# asr_path is reused; config, token, keys, models kept; whisper and llm
+# built; the service restarted with --start.
+rm -rf "${T:?}/home"
+M="$T/home/.local/share/flow-server/models"
+P="$M/parakeet-installed"
+mkdir -p "$P" "$M/zipformer-he" "$(dirname "$CONF")" "$T/home/.local/state/flow-server"
+echo tokens >"$P/tokens.txt"
+echo he >"$M/zipformer-he/tokens.txt"
+echo lid >"$M/ggml-tiny-q5_1.bin"
+echo gguf >"$M/q.gguf"
+cat >"$CONF" <<EOC
+bind = ["127.0.0.1:7313"]
+token_file = "$T/home/.config/flow-server/token"
+[model]
+asr_engine = "parakeet"
+asr_path = "$P"
+llm_path = "$M/q.gguf"
+llm_lib = "$T/home/.local/lib/flow-server/libflow_llm.so"
+lid_path = "$M/ggml-tiny-q5_1.bin"
+[model.languages.he]
+asr_backend = "sherpa_online"
+asr_path = "$M/zipformer-he"
+EOC
+echo "user-token" >"$T/home/.config/flow-server/token"
+echo '{"keys":[]}' >"$T/home/.local/state/flow-server/keys.json"
+cp "$CONF" "$T/conf.before"
+(cd "$M" && find . -type f -exec sha256sum {} + | sort) >"$T/models.before"
+upgrade() {
+    local rc=0 out
+    out="$(env -u DBUS_SESSION_BUS_ADDRESS PATH="$T/bin:$PATH" HOME="$T/home" XDG_CONFIG_HOME="$T/home/.config" \
+        FLOW_INSTALL_RUN_USER="$T/run" XDG_RUNTIME_DIR="$R" FLOW_PARAKEET_DIR= \
+        bash "$HERE/install.sh" --user --sherpa-lib "$T/lib" --bind 127.0.0.1:7313 "$@" 2>&1)" || rc=$?
+    printf '%s\nrc=%s\n' "$out" "$rc"
+}
+o="$(upgrade --dry-run)"
+check "upgrade: in-place note" "$o" "note: upgrading in place; model from .*: $P"
+check "upgrade: whisper + llm build" "$o" "--features whisper,parakeet,tls,llm\$"
+check "upgrade: plugin build" "$o" "-p flow-llm"
+check "upgrade: summary whisper on" "$o" "whisper  on"
+o="$(upgrade --no-build --start)"
+check "upgrade: completes" "$o" "rc=0"
+check "upgrade: model kept in place" "$o" "$P is the source model, kept"
+check "upgrade: config kept" "$o" "config.toml exists, kept"
+check "upgrade: token kept" "$o" "token exists, kept"
+check "upgrade: new config checked" "$o" "check-config --config $CONF"
+check "upgrade: restarted" "$o" "systemctl --user restart flow-server"
+check "upgrade: config unchanged" "$(cmp "$T/conf.before" "$CONF" && echo same)" "same"
+check "upgrade: token unchanged" "$(cat "$T/home/.config/flow-server/token")" "^user-token$"
+check "upgrade: keys unchanged" "$(cat "$T/home/.local/state/flow-server/keys.json")" '^{"keys":\[\]}$'
+check "upgrade: models unchanged" "$( (cd "$M" && find . -type f -exec sha256sum {} + | sort) | cmp - "$T/models.before" && echo same)" "same"
+check "upgrade: binary replaced" "$(cmp "$T/target/release/flow-server" "$T/home/.local/bin/flow-server" && echo same)" "same"
+# An asr_path without a model is not reused: the usual error.
+sed -i "s|^asr_path = \"$P\"|asr_path = \"$T/nowhere\"|" "$CONF"
+o="$(upgrade --dry-run)"
+check "upgrade, config model gone: no in-place note" "$o" "upgrading in place" "!"
+check "upgrade, config model gone: exits 1" "$o" "rc=1"
 
 if [ "$fails" != 0 ]; then echo "$fails failed"; exit 1; fi
 echo "all passed"
