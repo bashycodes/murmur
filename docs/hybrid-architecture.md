@@ -262,7 +262,7 @@ Spec file: `docs/protocol.md` (normative; this section is its outline). Types:
 
 ### 2.5 Auth
 
-* Named keys (D38, `src/keys.rs`): each person or device has its own bearer secret, managed with `flow-server keys add <name> [--admin] | list | revoke <name|id>`. `keys.json` in the state dir stores only SHA-256 hashes + metadata; `key-usage.json` per-key counters. The old `token_file` is imported once as the admin key `owner`; the server re-reads `keys.json` on change, so a revoke applies to the next connection. Details: `docs/server-setup.md` §4.
+* Named keys (D38, `src/keys.rs`): each person or device has its own bearer secret, managed with `flow-server keys add <name> [--admin] | list | revoke <name|id>`. `keys.json` in the state dir stores only SHA-256 hashes + metadata; `key-usage.json` per-key counters. The old `token_file` is imported once as the admin key `owner`; the server re-reads `keys.json` on change, so a revoke applies to the next connection. Details: `docs/server-setup.md` §4. Admin API (D39, `src/admin.rs`): admin keys list / create / revoke keys over `/v1/admin/keys`; Windows Settings → Users & keys uses it through `flow_remote::admin`.
 * Originally one shared bearer token: `flow-server gen-token` writes 32 random bytes base64url (43 chars) to `token_file` (mode 0600). Constant-time compare. Clients store it (Windows: DPAPI `CryptProtectData` blob in prefs; Android: Android Keystore AES-GCM key `flow_dev_token`, ciphertext in the `dev` prefs file). Minimum accepted length 16.
 * The server refuses to start without a token or a keys file unless `auth = "none"` **and** every bind address is loopback.
 

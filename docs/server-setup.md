@@ -187,10 +187,17 @@ running server picks changes up at the next connection (no restart).
 
 ```sh
 sudo flow-server keys add phone            # prints the secret once (stdout)
-sudo flow-server keys add laptop --admin   # admin keys: for the admin tools to come
+sudo flow-server keys add laptop --admin   # admin keys can manage keys from the Windows app
 sudo flow-server keys list                 # name, id, admin, created, last seen, client, dictations, audio minutes
 sudo flow-server keys revoke phone         # by name or id
+sudo flow-server keys revoke owner --force # --force: even the last admin key
 ```
+
+With an admin key saved in the Windows app, Settings → **Users & keys** does
+the same from the app (D39): the key list with usage, **Create key** (the
+secret is shown once, in a copy box) and **Revoke**. The server refuses to
+revoke its last admin key (the app and the CLI both; only `--force` on the
+CLI overrides), so you cannot lock yourself out from the app.
 
 The binary is the installed one (`/opt/flow-server/bin/flow-server` or
 `~/.local/bin/flow-server`); a Parakeet build needs
@@ -207,7 +214,8 @@ For a user install drop `sudo` and pass `--config ~/.config/flow-server/config.t
   flag, created / revoked times) and `key-usage.json` (per key: last seen,
   the app's client string, dictation count, audio milliseconds; written by
   the server every 30 s and at shutdown). Both mode 0600, replaced
-  atomically. No text or audio, ever.
+  atomically. No text or audio, ever. `keys.json.lock` (empty) serialises
+  the CLI and the server (admin API) when both change keys at once.
 * With the config under `/etc`, `keys` defaults to `/var/lib/flow-server`
   even though root has no `$STATE_DIRECTORY`; it hands the files to the
   service user so the service can read them.
