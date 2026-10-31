@@ -39,6 +39,7 @@
     "allow-model-catalog",
     "allow-llm-backend",
     "allow-model-download-start",
+    "allow-model-import-start",
     "allow-model-download-cancel",
     "allow-model-delete",
     "allow-transforms-reset",

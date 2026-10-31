@@ -211,7 +211,7 @@
   const Q15 = ["Qwen/Qwen2.5-1.5B-Instruct-GGUF", "91cad51170dc346986eccefdc2dd33a9da36ead9"];
   const L3B = ["bartowski/Llama-3.2-3B-Instruct-GGUF", "5ab33fa94d1d04e903623ae72c95d1696f09f9e8"];
   // H6: the language-ID model comes with each Hebrew model (models folder).
-  const LID = hf("ggerganov/whisper.cpp", "5359861c739e955e79d9a303bcbc70fb988958b1", "ggml-tiny-q5_1.bin", 32152673, "8187…");
+  const LID = { ...hf("ggerganov/whisper.cpp", "5359861c739e955e79d9a303bcbc70fb988958b1", "ggml-tiny-q5_1.bin", 32152673, "8187…"), extra: true };
   const zh = (name, size, sha) => ({ ...hf(...ZH, name, size, sha), url: `https://huggingface.co/${ZH[0]}/resolve/${ZH[1]}/sherpa-onnx/${name}` });
   const dlCatalog = [
     { id: "parakeet-tdt-0.6b-v2-int8", title: "Parakeet TDT 0.6B", desc: "English · fastest", engine: "parakeet", recommended: true, size: 661190513,
@@ -256,14 +256,47 @@
   const heParam = new URLSearchParams(location.search).get("he");
   const dlInstalled = new Set(onboard ? [] : heParam === "nolid" ? ["whisper-base", "zipformer-he-int8"] : ["whisper-base"]);
   let lidPresent = false;
+  // ?nodl=1: a client-only build (no downloader): nothing is `available`,
+  // every model is still `importable` (model_import, no network).
+  const noDl = new URLSearchParams(location.search).get("nodl") === "1";
   const view = (c) => {
     const installed = dlInstalled.has(c.id);
-    if (!c.language) return { ...c, installed, complete: installed, missing: installed ? 0 : c.size };
+    const base = { ...c, available: c.available && !noDl, importable: true };
+    if (!c.language) return { ...base, installed, complete: installed, missing: installed ? 0 : c.size };
     const lid = lidPresent ? 0 : LID.size;
-    return { ...c, installed, complete: installed && lidPresent, missing: installed ? lid : c.size - LID.size + lid };
+    return { ...base, installed, complete: installed && lidPresent, missing: installed ? lid : c.size - LID.size + lid };
   };
   loadHebrew();
   let dlRunning = null;
+  // After a download or import: the same prefs as the backend's apply_to.
+  // `lid: false`: an import without the Hebrew models' language-ID extra.
+  const installDone = (c, ev, { lid = true } = {}) => {
+    const id = c.id;
+    dlInstalled.add(id);
+    const path = c.dest;
+    if (c.language) {
+      if (lid) lidPresent = true;
+      // A Hebrew model becomes the Hebrew route; the default stays.
+      prefs = { ...prefs, hebrew_model: c.engine === "sherpa_online" ? "zipformer" : "parakeet_he" };
+      ev("done", { path });
+      loadHebrew();
+      return;
+    }
+    if (c.engine === "llm") {
+      // A cleanup model turns local cleanup on with that file.
+      prefs = { ...prefs, llm_enabled: true, llm_model_path: path };
+      ev("done", { path });
+      window.__emit("llm:status", { state: "loading", path });
+      const b = window.__llmBackend || { gpu: false, backend: "CPU", device: "CPU" };
+      setTimeout(() => window.__emit("llm:status", { state: "ready", path, load_ms: 700, plugin: b.gpu ? "flow_llm_vulkan.dll" : "flow_llm.dll", backend: { backend: b.backend, device: b.device } }), 150);
+      return;
+    }
+    prefs = c.engine === "parakeet" ? { ...prefs, asr_engine: "parakeet", parakeet_model_dir: path } : { ...prefs, asr_engine: "whisper", model_path: path };
+    modelStatus = { state: "loading", path };
+    ev("done", { path });
+    window.__emit("model:status", modelStatus);
+    setTimeout(() => { modelStatus = { state: "ready", path, load_ms: 900 }; window.__emit("model:status", modelStatus); }, 150);
+  };
   const modelKey = (p) => [p.asr_engine, p.model_path, p.parakeet_model_dir].join("|");
   const debugView = () => ({ enabled: debugLog.enabled, count: debugLog.count, path: "C:\\Users\\u\\AppData\\Roaming\\FlowClone\\debug\\dictations.jsonl", stats: { written: 0, dropped: 0, write_errors: 0 } });
   // Notes as the app window sees them (list / create / pin / open only:
@@ -506,30 +539,7 @@
         setTimeout(() => {
           dlRunning = null;
           if (fail) { run.received = 0; ev("error", { error: `${c.files[0].name} did not match its fingerprint, so it was deleted` }); return; }
-          dlInstalled.add(id);
-          const path = c.dest;
-          if (c.language) {
-            lidPresent = true;
-            // A Hebrew model becomes the Hebrew route; the default stays.
-            prefs = { ...prefs, hebrew_model: c.engine === "sherpa_online" ? "zipformer" : "parakeet_he" };
-            ev("done", { path });
-            loadHebrew();
-            return;
-          }
-          if (c.engine === "llm") {
-            // A cleanup model turns local cleanup on with that file.
-            prefs = { ...prefs, llm_enabled: true, llm_model_path: path };
-            ev("done", { path });
-            window.__emit("llm:status", { state: "loading", path });
-            const b = window.__llmBackend || { gpu: false, backend: "CPU", device: "CPU" };
-            setTimeout(() => window.__emit("llm:status", { state: "ready", path, load_ms: 700, plugin: b.gpu ? "flow_llm_vulkan.dll" : "flow_llm.dll", backend: { backend: b.backend, device: b.device } }), 150);
-            return;
-          }
-          prefs = c.engine === "parakeet" ? { ...prefs, asr_engine: "parakeet", parakeet_model_dir: path } : { ...prefs, asr_engine: "whisper", model_path: path };
-          modelStatus = { state: "loading", path };
-          ev("done", { path });
-          window.__emit("model:status", modelStatus);
-          setTimeout(() => { modelStatus = { state: "ready", path, load_ms: 900 }; window.__emit("model:status", modelStatus); }, 150);
+          installDone(c, ev);
         }, 150);
       }, window.__dlTickMs || 250);
       return null;
@@ -549,6 +559,36 @@
         window.__emit("llm:status", { state: "off" });
       }
       dlInstalled.delete(id);
+      return null;
+    },
+    // Manual import (model_import_start): no network. The picked path
+    // decides the outcome: "custom" -> refused (not a catalogue model),
+    // "bad" -> fingerprint mismatch (nothing installed), "nolid" (Hebrew)
+    // -> installed without the language-ID extra; else copies and verifies.
+    model_import_start: ({ id, path }) => {
+      const c = dlCatalog.find((x) => x.id === id);
+      if (!c) throw new Error(`unknown model ${id}`);
+      if (!/^[A-Za-z]:\\|^\\\\|^\//.test(path || "")) throw new Error("choose the folder, zip or file with the picker");
+      if (dlRunning) throw new Error("another model is downloading; wait for it or cancel it");
+      dlRunning = { id, received: 0, cancelled: false };
+      const run = dlRunning;
+      const ev = (state, extra = {}) => window.__emit("model:download", { id, received: run.received, total: c.size, state, ...extra });
+      if (/custom/i.test(path)) {
+        setTimeout(() => { dlRunning = null; ev("error", { error: `${path} has none of the files of ${c.title} (${c.files.filter((f) => !f.extra).map((f) => f.name).join(", ")}). Only the models listed here can be imported, each checked against its built-in fingerprint; custom models will come from your server's library.` }); }, 50);
+        return null;
+      }
+      const tick = setInterval(() => {
+        if (run.cancelled) { clearInterval(tick); dlRunning = null; run.received = 0; ev("cancelled"); return; }
+        run.received = Math.min(c.size, run.received + Math.ceil(c.size / (window.__dlSteps || 6)));
+        if (run.received < c.size) { ev("importing"); return; }
+        clearInterval(tick);
+        ev("verifying");
+        setTimeout(() => {
+          dlRunning = null;
+          if (/bad/i.test(path)) { run.received = 0; ev("error", { error: `${c.files[0].name} did not match its fingerprint (a different or damaged file). Nothing was installed.` }); return; }
+          installDone(c, ev, { lid: !/nolid/i.test(path) });
+        }, 150);
+      }, window.__dlTickMs || 250);
       return null;
     },
     model_download_cancel: ({ id }) => {
