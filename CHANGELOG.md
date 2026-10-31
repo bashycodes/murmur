@@ -40,6 +40,12 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   are picked up without a restart; `flow-server library list` shows what is
   served and why a folder was skipped. Downloads count toward the key
   (`keys list` → DOWNLOADS). App-side download comes in later releases.
+- **Android (debug builds): on-device benchmark.** A shell-only
+  `BenchActivity` measures STT (WER/CER, latency, RTF) and AI cleanup
+  (88-suite score, LLM latency) on the phone. It reads the models the app
+  already has, in place, and runs them through the app's own engine code.
+  Fixtures are public clips; the results are scored on Linux
+  (`tools/probes/android_bench/`). Release builds do not contain it.
 - **Server: one key per device instead of one shared token (D38).** On the
   server, `flow-server keys add <name> [--admin]` creates a key and prints
   its secret once, `keys list` shows each key's last use, app version,
