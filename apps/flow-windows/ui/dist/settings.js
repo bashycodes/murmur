@@ -25,6 +25,7 @@ import { notetakerPage, scratchpadPage } from "./pages/scratchpad.js";
 import { settingsCleanupPage } from "./pages/settings/cleanup.js";
 import { settingsDeveloperPage } from "./pages/settings/developer.js";
 import { settingsGeneralPage } from "./pages/settings/general.js";
+import { adminStore, settingsKeysPage } from "./pages/settings/keys.js";
 import { settingsOpenrouterPage } from "./pages/settings/openrouter.js";
 import { settingsPrivacyPage } from "./pages/settings/privacy.js";
 import { settingsServerPage } from "./pages/settings/server.js";
@@ -48,6 +49,7 @@ const PAGES = [
     settingsSpeechPage,
     settingsCleanupPage,
     settingsServerPage,
+    settingsKeysPage,
     settingsOpenrouterPage,
     settingsDeveloperPage,
 ];
@@ -82,6 +84,8 @@ const SETTINGS_NAV = [
         "Connections",
         [
             { page: "settings-server", label: "Your server", icon: ICON.server, id: "tab_server" },
+            // D39: only when this app's server token is an admin key.
+            { page: "settings-keys", label: "Users & keys", icon: ICON.keys, id: "tab_keys" },
             { page: "settings-openrouter", label: "OpenRouter", icon: ICON.cloud, id: "tab_openrouter", badge: "or_badge" },
         ],
         "nav_connections",
@@ -239,6 +243,12 @@ function applyNeeds() {
     for (const e of document.querySelectorAll("[data-needs]"))
         e.hidden = !has[e.dataset.needs ?? ""];
     $("tab_server").hidden = !caps?.remote;
+    const admin = !!caps?.remote && adminStore.get().admin;
+    $("tab_keys").hidden = !admin;
+    $("srv_keys").hidden = !admin;
+    // Lost admin (key revoked, server changed) while on the page: leave it.
+    if (!admin && router.active() === "settings-keys")
+        router.go("settings-server");
     $("tab_openrouter").hidden = !views.or || (!views.or.supported && !views.or.notice);
     $("nav_developer").hidden = !views.dev?.visible;
     $("nav_connections").hidden =
@@ -279,6 +289,10 @@ document.addEventListener("click", (e) => {
 $("version_row").addEventListener("click", versionTapped);
 views.onDev((v) => {
     $("version_row").textContent = `Murmur ${v.version}`;
+    applyNeeds();
+});
+adminStore.onChange((s) => {
+    $("srv_keys_who").textContent = s.admin && s.name ? `This app uses the key “${s.name}”.` : "";
     applyNeeds();
 });
 views.onOr((v) => {

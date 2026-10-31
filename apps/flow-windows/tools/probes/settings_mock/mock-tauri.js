@@ -670,6 +670,52 @@
       return true;
     },
   };
+  // D39 Users & keys: the server's keys as flow-server's admin API keeps
+  // them (server_admin.rs error texts). ?admin=0: this app's key is not an
+  // admin key; ?admin=down: the server can't be reached. Invented data.
+  const adminParam = new URLSearchParams(location.search).get("admin");
+  const nowS = Math.floor(now / 1000);
+  const srvKeys = [
+    { id: "k-0a1b2c3d4e5f6071", name: "owner", admin: true, created: nowS - 86400 * 40, last_seen: nowS - 60, client: "flow-windows 0.12.0", dictations: 412, audio_ms: 3_960_000, current: adminParam !== "0" },
+    { id: "k-1b2c3d4e5f607182", name: "phone", admin: false, created: nowS - 86400 * 12, last_seen: nowS - 3600 * 5, client: "flow-android 0.12.0", dictations: 87, audio_ms: 610_000, current: adminParam === "0" },
+    { id: "k-2c3d4e5f60718293", name: "old-tablet", admin: false, created: nowS - 86400 * 90, revoked: nowS - 86400 * 30, last_seen: nowS - 86400 * 31, client: "flow-android 0.9.0", dictations: 15, audio_ms: 80_000, current: false },
+  ];
+  let srvNext = 0x300;
+  const me = () => srvKeys.find((k) => k.current && !k.revoked);
+  const adminCheck = () => {
+    if (adminParam === "down") throw "can't reach the server";
+    const k = me();
+    if (!k) throw "the server no longer accepts this app's key";
+    if (!k.admin) throw "this app's key is not an admin key";
+  };
+  Object.assign(cmds, {
+    admin_status: () => {
+      if (adminParam === "down") return { configured: true, admin: false, name: "", id: "", error: "can't reach the server", code: "connect_failed" };
+      const k = me();
+      if (!k) return { configured: true, admin: false, name: "", id: "", error: "the server no longer accepts this app's key", code: "unauthorized" };
+      return { configured: true, admin: k.admin, name: k.name, id: k.id };
+    },
+    admin_list_keys: () => { adminCheck(); return { keys: structuredClone(srvKeys) }; },
+    admin_create_key: ({ name, admin }) => {
+      adminCheck();
+      name = name.trim();
+      if (!name) throw "give the key a name, e.g. phone or laptop";
+      if (!/^[A-Za-z0-9._-]{1,64}$/.test(name)) throw `key name "${name}": 1-64 characters of A-Z a-z 0-9 . _ -`;
+      if (srvKeys.some((k) => !k.revoked && k.name === name)) throw "a key with this name already exists";
+      const key = { id: `k-${(srvNext++).toString(16).padStart(16, "0")}`, name, admin: !!admin, created: Math.floor(Date.now() / 1000), dictations: 0, audio_ms: 0, current: false };
+      srvKeys.push(key);
+      // Invented, like flow-server's: 43 base64url characters.
+      return { key: structuredClone(key), secret: "MOCKSECRET-" + "x".repeat(32) };
+    },
+    admin_revoke_key: ({ id }) => {
+      adminCheck();
+      const k = srvKeys.find((x) => x.id === id && !x.revoked);
+      if (!k) throw `no active key with id "${id}"`;
+      if (k.admin && srvKeys.filter((x) => x.admin && !x.revoked).length <= 1) throw "this is the last admin key: create another admin key first";
+      k.revoked = Math.floor(Date.now() / 1000);
+      return { key: structuredClone(k) };
+    },
+  });
   window.__mockCalls = [];
   window.__TAURI__ = {
     core: {

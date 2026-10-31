@@ -240,3 +240,40 @@ export interface OrView {
   stt_model_info: ModelRow | null;
   cleanup_model_info: ModelRow | null;
 }
+
+// ------------------------------------------------- Users & keys (D39)
+
+/** `admin_status`: whether the saved token is an admin key. */
+export interface AdminStatus {
+  configured: boolean;
+  admin: boolean;
+  name: string;
+  id: string;
+  error?: string;
+  code?: string;
+}
+
+/** flow_protocol::admin::KeyView. Times are Unix seconds. */
+export interface KeyView {
+  id: string;
+  name: string;
+  admin: boolean;
+  created: number;
+  revoked?: number | null;
+  last_seen?: number | null;
+  client?: string | null;
+  dictations: number;
+  audio_ms: number;
+  /** The key this app is using. */
+  current: boolean;
+}
+
+export interface KeyList {
+  keys: KeyView[];
+}
+
+/** `admin_create_key`: `secret` is shown once, never stored. */
+export interface CreatedKey {
+  key: KeyView;
+  secret: string;
+}

@@ -62,6 +62,15 @@ ${group(
   <span class="lw-dot"></span><span class="lw-result-text" id="dev_test_text"></span>
 </div>
 ${group(
+  "Users & keys",
+  row(
+    "Keys for people and devices",
+    `This app's key is an admin key, so you can give each person or device its own key and revoke it. <span id="srv_keys_who"></span>`,
+    `<button type="button" class="fl-btn fl-btn-outline" data-go="settings-keys">Manage keys</button>`,
+  ),
+  `id="srv_keys" hidden`,
+)}
+${group(
   "Advanced",
   row(
     "Give up connecting after",
