@@ -207,6 +207,7 @@
   const WH = ["ggerganov/whisper.cpp", "5359861c739e955e79d9a303bcbc70fb988958b1"];
   const ZH = ["ivrit-ai/zipformer2-66m-streaming-he", "ee769a2a13b887f91572eec349458bfb0fe79e7a"];
   const PH = ["krut42/voice-parakeet-he-int8", "39de3b473bed626c7796c156d71adc66161ebfe1"];
+  const IV = ["tagidu/ivrit-whisper-large-v3-turbo-ggml-quantized", "540d7736f31952a65efbdff0dc41e2b4b086a197"];
   const Q05 = ["Qwen/Qwen2.5-0.5B-Instruct-GGUF", "9217f5db79a29953eb74d5343926648285ec7e67"];
   const Q15 = ["Qwen/Qwen2.5-1.5B-Instruct-GGUF", "91cad51170dc346986eccefdc2dd33a9da36ead9"];
   const L3B = ["bartowski/Llama-3.2-3B-Instruct-GGUF", "5ab33fa94d1d04e903623ae72c95d1696f09f9e8"];
@@ -230,6 +231,11 @@
       language: "he", license: "CC-BY-4.0 · krut42, based on thewh1teagle/parakeet-tdt-0.6b-v3-he",
       page: "https://huggingface.co/" + PH[0], dest: MODELS + "parakeet-tdt-0.6b-v3-he-int8", available: true,
       files: [hf(...PH, "encoder.int8.onnx", 653215173, "7eaf…"), hf(...PH, "decoder.int8.onnx", 12494234, "3a1d…"), hf(...PH, "joiner.int8.onnx", 7008293, "056c…"), hf(...PH, "tokens.txt", 107590, "55a9…"), LID] },
+    // The GPU pick for Hebrew (docs/findings/2026-10-31-laptop-model-setup.md).
+    { id: "ivrit-whisper-large-v3-turbo-q5_0", title: "ivrit.ai Whisper turbo", desc: "Hebrew · most accurate · needs a GPU (Vulkan); slow on the CPU", engine: "whisper", recommended: false, recommended_gpu: true, size: 574041195 + 32152673,
+      language: "he", license: "Apache-2.0 · ivrit.ai (ivrit-ai/whisper-large-v3-turbo); q5_0 by Tagidu",
+      page: "https://huggingface.co/" + IV[0], dest: MODELS + "ggml-ivrit-large-v3-turbo-q5_0.bin", available: true,
+      files: [hf(...IV, "ggml-ivrit-large-v3-turbo-q5_0.bin", 574041195, "6c1d…"), LID] },
     // AI cleanup models (engine "llm", docs/findings/2026-10-30-cleanup-model-pins.md).
     { id: "qwen2.5-0.5b-instruct-q4_k_m", title: "Qwen2.5 0.5B Instruct", desc: "Fastest · misses many fixes", engine: "llm", recommended: false, recommended_gpu: false, size: 491400032,
       page: "https://huggingface.co/" + Q05[0], dest: MODELS + "qwen2.5-0.5b-instruct-q4_k_m.gguf", available: true,
@@ -244,12 +250,16 @@
       files: [hf(...L3B, "Llama-3.2-3B-Instruct-Q4_K_M.gguf", 2019377696, "6c1a…")] },
   ];
   // The Hebrew model's load state (`model:hebrew`): null = none chosen.
-  const heDir = { zipformer: "zipformer-he-int8", parakeet_he: "parakeet-tdt-0.6b-v3-he-int8" };
+  const heDir = { zipformer: "zipformer-he-int8", parakeet_he: "parakeet-tdt-0.6b-v3-he-int8", ivrit_turbo: "ivrit-whisper-large-v3-turbo-q5_0" };
+  // Where whisper runs (`whisper_backend`): set window.__whisperBackend before the page loads; default: a CPU-only PC.
+  const whisperBackend = () => window.__whisperBackend || { gpu: false, backend: "CPU", device: "CPU", plugin: null, error: "flow_whisper_vulkan.dll not found" };
   let heStatus = null;
   const loadHebrew = () => {
     const c = dlCatalog.find((x) => x.id === heDir[prefs.hebrew_model]);
     if (!c) { heStatus = null; window.__emit?.("model:hebrew", heStatus); return; }
-    heStatus = dlInstalled.has(c.id) ? { state: "ready", path: c.dest, load_ms: 410 } : { state: "missing", path: c.dest, engine: c.engine };
+    const wb = whisperBackend();
+    const backend = c.engine === "whisper" ? { backend: wb.backend, device: wb.device } : { backend: "CPU", device: "CPU" };
+    heStatus = dlInstalled.has(c.id) ? { state: "ready", path: c.dest, load_ms: 410, backend } : { state: "missing", path: c.dest, engine: c.engine };
     window.__emit?.("model:hebrew", heStatus);
   };
   // ?he=nolid: Zipformer Hebrew downloaded before the language-ID model came with it.
@@ -295,6 +305,7 @@
       case "stt_whisper": return prefs.asr_engine === "whisper" && (prefs.model_path || MODELS + "ggml-base.bin") === dest;
       case "llm": return Boolean(prefs.llm_enabled) && (prefs.llm_model_path || MODELS + "qwen2.5-1.5b-instruct-q4_k_m.gguf") === dest;
       case "hebrew_zipformer": return prefs.hebrew_model === "zipformer" && prefs.hebrew_model_dir === dest;
+      case "hebrew_whisper": return prefs.hebrew_model === "ivrit_turbo" && prefs.hebrew_model_dir === dest;
       case "lid": return prefs.lid_model_path === dest;
       default: return false;
     }
@@ -314,7 +325,7 @@
     if (c.language) {
       if (lid) lidPresent = true;
       // A Hebrew model becomes the Hebrew route; the default stays.
-      prefs = { ...prefs, hebrew_model: c.engine === "sherpa_online" ? "zipformer" : "parakeet_he", hebrew_model_dir: null };
+      prefs = { ...prefs, hebrew_model: { sherpa_online: "zipformer", parakeet: "parakeet_he", whisper: "ivrit_turbo" }[c.engine], hebrew_model_dir: null };
       ev("done", { path });
       loadHebrew();
       return;
@@ -556,6 +567,7 @@
     model_catalog: () => dlCatalog.map(view),
     // Where cleanup would run (core_adapter LlmBackendView). Checks set
     // window.__llmBackend before the page loads; default: a CPU-only PC.
+    whisper_backend: () => whisperBackend(),
     llm_backend: () => window.__llmBackend || { gpu: false, backend: "CPU", device: "CPU", plugin: "C:\\Program Files\\Murmur\\flow_llm.dll" },
     model_download_start: ({ id }) => {
       const c = dlCatalog.find((x) => x.id === id);
@@ -658,6 +670,7 @@
           const path = srvDest(m);
           if (m.slot === "stt_whisper") prefs = { ...prefs, asr_engine: "whisper", model_path: path };
           if (m.slot === "hebrew_zipformer") prefs = { ...prefs, hebrew_model: "zipformer", hebrew_model_dir: path };
+          if (m.slot === "hebrew_whisper") prefs = { ...prefs, hebrew_model: "ivrit_turbo", hebrew_model_dir: path };
           if (m.slot === "lid") prefs = { ...prefs, lid_model_path: path };
           ev("done", { path });
         }, 150);

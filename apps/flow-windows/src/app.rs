@@ -979,6 +979,23 @@ async fn server_model_download(app: AppHandle, id: String) -> Result<(), String>
     }
 }
 
+/// Where whisper models would run (GPU through `flow_whisper_vulkan.dll`,
+/// or the CPU), for Settings → Speech to text: it recommends ivrit turbo
+/// as the Hebrew model on a GPU. Probes the plugin on first use (cached).
+#[tauri::command]
+async fn whisper_backend() -> Result<core_adapter::LlmBackendView, String> {
+    if !cfg!(feature = "local-engine") {
+        return Ok(core_adapter::whisper_backend_view(Err(
+            flow_core::whisper_plugin::WhisperPluginError::Backend(
+                "this build has no local engine".into(),
+            ),
+        )));
+    }
+    tauri::async_runtime::spawn_blocking(core_adapter::whisper_backend_probe)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Where local AI cleanup would run (GPU or CPU), for Settings → AI
 /// cleanup's model recommendation. Loads the plugin on first use (cached),
 /// so the page asks only when it shows the cleanup models.
@@ -2690,6 +2707,7 @@ pub fn run() {
             open_external,
             model_catalog,
             llm_backend,
+            whisper_backend,
             model_download_start,
             server_models,
             server_model_download,

@@ -9,6 +9,9 @@ description = "Shared local dictation core: ASR session, cleanup, deterministic 
 default = []
 whisper = ["dep:whisper-rs"]
 llm = ["dep:libloading"]
+# The GPU whisper.cpp plugin (crate flow-whisper; Windows
+# flow_whisper_vulkan.dll), loaded at runtime like the `llm` plugin.
+whisper-plugin = ["dep:libloading"]
 wav = ["dep:hound"]
 # Parakeet-TDT via sherpa-onnx (links libsherpa-onnx-c-api + libonnxruntime).
 parakeet = ["dep:flow-asr-sherpa"]

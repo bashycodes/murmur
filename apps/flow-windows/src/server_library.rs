@@ -59,6 +59,9 @@ pub enum Slot {
     HebrewZipformer,
     /// The Hebrew route: Parakeet folder.
     HebrewParakeet,
+    /// The Hebrew route: whisper.cpp ggml file (ivrit turbo; GPU when the
+    /// Vulkan plugin loads).
+    HebrewWhisper,
     /// AI cleanup: llama.cpp GGUF file.
     Llm,
     /// Language identification (auto-detect → Hebrew): whisper ggml file.
@@ -68,7 +71,7 @@ pub enum Slot {
 impl Slot {
     pub fn engine(self) -> ModelEngine {
         match self {
-            Slot::SttWhisper | Slot::Lid => ModelEngine::Whisper,
+            Slot::SttWhisper | Slot::Lid | Slot::HebrewWhisper => ModelEngine::Whisper,
             Slot::SttParakeet | Slot::HebrewParakeet => ModelEngine::Parakeet,
             Slot::HebrewZipformer => ModelEngine::SherpaOnline,
             Slot::Llm => ModelEngine::Llm,
@@ -78,7 +81,7 @@ impl Slot {
     /// A single model file (else a folder of sherpa-onnx files).
     fn file_ext(self) -> Option<&'static str> {
         match self {
-            Slot::SttWhisper | Slot::Lid => Some(".bin"),
+            Slot::SttWhisper | Slot::Lid | Slot::HebrewWhisper => Some(".bin"),
             Slot::Llm => Some(".gguf"),
             _ => None,
         }
@@ -90,7 +93,8 @@ impl Slot {
             (ModelEngine::SherpaOnline, _) => Slot::HebrewZipformer,
             (ModelEngine::Parakeet, true) => Slot::HebrewParakeet,
             (ModelEngine::Parakeet, false) => Slot::SttParakeet,
-            (ModelEngine::Whisper, _) => Slot::SttWhisper,
+            (ModelEngine::Whisper, true) => Slot::HebrewWhisper,
+            (ModelEngine::Whisper, false) => Slot::SttWhisper,
         }
     }
 }
@@ -136,9 +140,10 @@ pub fn plan(m: &LibraryModel, engine_built: &dyn Fn(ModelEngine) -> bool) -> Res
         }
         (ModelKind::Hebrew, "sherpa_online") => Slot::HebrewZipformer,
         (ModelKind::Hebrew, "parakeet") => Slot::HebrewParakeet,
+        (ModelKind::Hebrew, "whisper") => Slot::HebrewWhisper,
         (ModelKind::Hebrew, e) => {
             return Err(format!(
-                "the Hebrew model must be sherpa_online or parakeet, not {e}"
+                "the Hebrew model must be sherpa_online, parakeet or whisper, not {e}"
             ))
         }
         (ModelKind::Llm, "gguf") => Slot::Llm,
@@ -265,6 +270,10 @@ pub fn apply(slot: Slot, path: &Path, prefs: &mut Prefs) {
             prefs.hebrew_model = HebrewModel::ParakeetHe;
             prefs.hebrew_model_dir = p;
         }
+        Slot::HebrewWhisper => {
+            prefs.hebrew_model = HebrewModel::IvritTurbo;
+            prefs.hebrew_model_dir = p;
+        }
         Slot::Llm => {
             prefs.llm_enabled = true;
             prefs.llm_model_path = p;
@@ -290,6 +299,10 @@ pub fn in_use(slot: Slot, path: &Path, prefs: &Prefs, appdata: Option<&str>) -> 
         }
         Slot::HebrewParakeet => {
             prefs.hebrew_model == HebrewModel::ParakeetHe
+                && prefs.resolved_hebrew_dir(appdata).as_deref() == Some(path)
+        }
+        Slot::HebrewWhisper => {
+            prefs.hebrew_model == HebrewModel::IvritTurbo
                 && prefs.resolved_hebrew_dir(appdata).as_deref() == Some(path)
         }
         Slot::Llm => prefs.llm_enabled && prefs.resolved_llm_path(appdata) == path,
@@ -611,6 +624,10 @@ mod tests {
                 Slot::HebrewParakeet,
             ),
             (
+                model("hw", ModelKind::Hebrew, Some("whisper"), one("ggml-he.bin")),
+                Slot::HebrewWhisper,
+            ),
+            (
                 model("l", ModelKind::Llm, Some("gguf"), one("m.gguf")),
                 Slot::Llm,
             ),
@@ -704,6 +721,14 @@ mod tests {
             Slot::HebrewParakeet
         );
         assert_eq!(
+            Slot::of_catalogue(md::entry(md::IVRIT_TURBO_ID).unwrap()),
+            Slot::HebrewWhisper
+        );
+        assert_eq!(
+            Slot::of_catalogue(md::entry("whisper-base").unwrap()),
+            Slot::SttWhisper
+        );
+        assert_eq!(
             Slot::of_catalogue(md::entry("parakeet-tdt-0.6b-v2-int8").unwrap()),
             Slot::SttParakeet
         );
@@ -717,6 +742,7 @@ mod tests {
             Slot::SttParakeet,
             Slot::HebrewZipformer,
             Slot::HebrewParakeet,
+            Slot::HebrewWhisper,
             Slot::Llm,
             Slot::Lid,
         ] {
