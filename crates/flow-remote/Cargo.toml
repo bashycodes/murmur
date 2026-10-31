@@ -34,7 +34,14 @@ http-body-util = { version = "0.1", optional = true }
 # tests/library.rs: a real in-process flow-server with a temp library.
 flow-server = { path = "../flow-server", default-features = false, features = ["tls"] }
 tempfile = "3"
+# examples/airgap_e2e.rs reads the test clip.
+flow-core = { path = "../flow-core", default-features = false, features = ["wav"] }
 
 [[test]]
 name = "library"
+required-features = ["library"]
+
+# tools/e2e/airgap/run.sh: the client half of the air-gapped end-to-end check.
+[[example]]
+name = "airgap_e2e"
 required-features = ["library"]
