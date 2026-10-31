@@ -9,7 +9,10 @@
 # flow_llm_vulkan.dll (GPU through Vulkan; built with the LunarG Vulkan SDK)
 # and flow_llm.dll (CPU). The app loads the Vulkan one first and the CPU one
 # when it does not load (no vulkan-1.dll); with no usable GPU the Vulkan
-# one runs on the CPU itself. No secrets, no signing: the installers are unsigned, so
+# one runs on the CPU itself. Whisper gets the same treatment (D42):
+# flow_whisper_vulkan.dll (whisper.cpp on the GPU through Vulkan) is loaded
+# first; without vulkan-1.dll or a usable GPU the app uses its built-in CPU
+# whisper. No secrets, no signing: the installers are unsigned, so
 # SmartScreen warns on first run (README "Live test on Windows").
 # A pushed tag vX.Y.Z (tools/release.sh, D26) also checks the tag against
 # VERSION/CHANGELOG and attaches the installers to the GitHub release vX.Y.Z
@@ -51,8 +54,9 @@ env:
 jobs:
   build:
     runs-on: windows-latest
-    # Two llama.cpp builds (CPU + Vulkan shaders) on a cold cache add ~30 min.
-    timeout-minutes: 150
+    # Two llama.cpp builds (CPU + Vulkan shaders) and the Vulkan whisper.cpp
+    # build on a cold cache add ~45 min.
+    timeout-minutes: 180
     defaults:
       run:
         shell: bash
@@ -176,7 +180,11 @@ jobs:
       # unless target-cpu=native, so both DLLs get the AVX2 baseline. The
       # Vulkan DLL's GPU-vs-CPU policy is unit-tested here (flow-llm
       # `backend`); it links vulkan-1.dll, which GPU drivers install.
-      - name: AI cleanup engine (CPU + Vulkan)
+      # Then whisper on the GPU (flow-whisper, D42): only a Vulkan build, as
+      # the app's built-in whisper is the CPU fallback. Its bindgen needs
+      # LIBCLANG_PATH (the bundled bindings lack the Vulkan API, so a
+      # bindgen failure stops the build rather than shipping a CPU DLL).
+      - name: AI cleanup engine (CPU + Vulkan) and Vulkan whisper
         working-directory: .
         env:
           GGML_NATIVE: "OFF"
@@ -189,6 +197,10 @@ jobs:
           cp target/release/flow_llm.dll "$out/flow_llm_vulkan.dll"
           cargo test --locked --release -p flow-llm --features vulkan --lib
           ls -la "$out"/flow_llm*.dll
+          cargo build --locked --release -p flow-whisper --features vulkan
+          cp target/release/flow_whisper.dll "$out/flow_whisper_vulkan.dll"
+          cargo test --locked --release -p flow-whisper --features vulkan --lib
+          ls -la "$out"/flow_whisper_vulkan.dll
 
       - name: Release build (hybrid + Parakeet) and the DLL bundle overlay
         run: |
