@@ -172,17 +172,59 @@ carries the decoded `language`; a Hebrew session's result has
 then, peers outside loopback, LAN and VPN are dropped before any byte is
 read. Never add `--insecure-bind-any` to the unit.
 
-## 4. Token
+## 4. Keys (who may connect)
 
-* Created at install with `flow-server gen-token --out <path>`: 32 random
-  bytes, base64url, mode 0600. It refuses to overwrite an existing file. To
-  rotate, delete the file, run `gen-token` again, and restart the service.
-* Read it once to paste into the apps: `sudo cat /etc/flow-server/token`
+Every person or device gets its own **key** (D38): a named secret, pasted into
+the app's Token field. Keys are managed with the CLI, on the server, and a
+running server picks changes up at the next connection (no restart).
+
+```sh
+sudo flow-server keys add phone            # prints the secret once (stdout)
+sudo flow-server keys add laptop --admin   # admin keys: for the admin tools to come
+sudo flow-server keys list                 # name, id, admin, created, last seen, client, dictations, audio minutes
+sudo flow-server keys revoke phone         # by name or id
+```
+
+The binary is the installed one (`/opt/flow-server/bin/flow-server` or
+`~/.local/bin/flow-server`); a Parakeet build needs
+`LD_LIBRARY_PATH=<libraries dir>` (§2) like any other run, e.g.
+`sudo env LD_LIBRARY_PATH=/opt/flow-server/lib /opt/flow-server/bin/flow-server keys list`.
+For a user install drop `sudo` and pass `--config ~/.config/flow-server/config.toml`.
+
+* The secret is 32 random bytes, base64url (43 characters), shown only by
+  `keys add`. The server keeps only its SHA-256, so a lost secret cannot be
+  read back: revoke the key and add a new one.
+* Files, in the state dir (§9: `/var/lib/flow-server` for the system unit,
+  `~/.local/state/flow-server` for a user install; `state_dir` in the config
+  or `--state-dir` overrides it): `keys.json` (names, ids, hashes, admin
+  flag, created / revoked times) and `key-usage.json` (per key: last seen,
+  the app's client string, dictation count, audio milliseconds; written by
+  the server every 30 s and at shutdown). Both mode 0600, replaced
+  atomically. No text or audio, ever.
+* With the config under `/etc`, `keys` defaults to `/var/lib/flow-server`
+  even though root has no `$STATE_DIRECTORY`; it hands the files to the
+  service user so the service can read them.
+* Revoke: the next connection or health check with that key gets 401. A
+  session that is already open finishes.
+* The key id (`k-` + 16 hex digits) is stable and never reused; the log's
+  `connected` and `result` lines carry it, never the secret.
+
+### Upgrade from the single token
+
+Nothing to do. The first start (or the first `keys` command) imports the
+existing `token_file` as the admin key `owner`, and the apps keep using the
+same token. `gen-token --out PATH` still writes a token file (fresh installs
+use it for the first key); regenerating the file and restarting moves the
+`owner` key to the new secret, as rotation did before. Once `owner` is
+revoked it is never re-imported. A server with a `keys.json` needs no
+`token_file` at all.
+
+* Read the owner token to paste into the apps: `sudo cat /etc/flow-server/token`
   (system install) or `cat ~/.config/flow-server/token` (user install).
-* The system unit hands the token to the service through `LoadCredential`, so
-  the dynamic service user never reads `/etc` directly.
-* The token travels only in the `Authorization: Bearer` header of the upgrade
-  and health requests. Neither side logs it.
+* The system unit hands the token file to the service through
+  `LoadCredential`, so the dynamic service user never reads `/etc` directly.
+* Keys travel only in the `Authorization: Bearer` header of the upgrade
+  and health requests. Neither side logs them.
 
 ## 5. TLS (optional: LAN without a VPN)
 
@@ -236,13 +278,13 @@ reachable from the internet.
 | Port (`server.port`) | `7313` (or your `--port`) |
 | Use TLS (`server.tls`) | off on a VPN and plain LAN. On when `[tls]` is configured (forced on for public names) |
 | Certificate pin (`server.tls_pin_sha256`) | the `sha256sum` above (TLS only) |
-| Token (`server.token`) | the token file's content |
+| Token (`server.token`) | a key's secret (`keys add`), or the token file's content for the `owner` key |
 | Timeouts | defaults (connect 800 ms, commit base 3000 ms) |
 
 Then press **Test connection**. It should show `OK · … · parakeet`. Hints for
 the common errors:
 
-* `auth_failed`: wrong token.
+* `auth_failed`: wrong or revoked key.
 * `connect_failed`: the server isn't running, the VPN is down, or the bind
   address is wrong.
 * `proto_mismatch`: update the app or the server.

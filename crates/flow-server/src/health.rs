@@ -31,7 +31,7 @@ pub(crate) fn hello_ok(state: &AppState, proto: u32) -> flow_protocol::HelloOk {
 }
 
 pub(crate) async fn handler(State(state): State<Arc<AppState>>, headers: HeaderMap) -> Response {
-    if !crate::authorized(&state, &headers) {
+    if crate::authorize(&state, &headers).is_err() {
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     }
     let body = serde_json::to_string(&hello_ok(&state, flow_protocol::PROTO_MAX)).unwrap();

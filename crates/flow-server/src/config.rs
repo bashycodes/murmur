@@ -43,11 +43,19 @@ impl Default for LogConfig {
 #[serde(default)]
 pub struct Config {
     pub bind: Vec<String>,
+    /// The old single token (D38: imported once as the admin key `owner`;
+    /// regenerating the file moves that key to the new secret).
     pub token_file: Option<PathBuf>,
     pub auth: AuthMode,
     /// In-process use (tests): the token itself instead of `token_file`.
+    /// Without `state_dir`, the keys then live only in memory.
     #[serde(skip)]
     pub token: Option<String>,
+    /// Where `keys.json` and `key-usage.json` live (D38). Default:
+    /// [`crate::capture::state_dir`] (systemd's `$STATE_DIRECTORY`, else
+    /// the XDG state dir); the CLI falls back to `/var/lib/flow-server`
+    /// for a config under `/etc` (see `main.rs`).
+    pub state_dir: Option<PathBuf>,
     pub workers: usize,
     pub max_queue: usize,
     pub queue_timeout_ms: u64,
@@ -82,6 +90,7 @@ impl Default for Config {
             token_file: None,
             auth: AuthMode::Token,
             token: None,
+            state_dir: None,
             workers: 1,
             max_queue: 2,
             queue_timeout_ms: 30_000,
@@ -145,18 +154,26 @@ impl Config {
         ))
     }
 
-    /// Resolve the bearer token (`None` = auth disabled) and check the
-    /// rules: a token is required unless `auth = "none"` and every bind
-    /// address is loopback.
-    pub fn resolve_token(&self) -> Result<Option<String>, String> {
+    /// `auth = "none"` is only allowed when every bind address is loopback.
+    /// Returns whether auth is on.
+    fn auth_on(&self) -> Result<bool, String> {
         if self.auth == AuthMode::None {
             let addrs = self.bind_addrs()?;
             if addrs.iter().all(|a| a.ip().is_loopback()) {
-                return Ok(None);
+                return Ok(false);
             }
             return Err(
                 "auth = \"none\" is only allowed when every bind address is loopback".into(),
             );
+        }
+        Ok(true)
+    }
+
+    /// The old single token (`token`, else `token_file`), if configured;
+    /// `None` too when auth is off.
+    pub fn resolve_token(&self) -> Result<Option<String>, String> {
+        if !self.auth_on()? {
+            return Ok(None);
         }
         let t = match (&self.token, &self.token_file) {
             (Some(t), _) => t.clone(),
@@ -164,11 +181,7 @@ impl Config {
                 .map_err(|e| format!("token_file {}: {e}", p.display()))?
                 .trim()
                 .to_string(),
-            (None, None) => {
-                return Err(
-                    "token_file is required (run `flow-server gen-token --out PATH`)".into(),
-                )
-            }
+            (None, None) => return Ok(None),
         };
         if t.len() < flow_protocol::MIN_TOKEN_LEN {
             return Err(format!(
@@ -179,8 +192,51 @@ impl Config {
         Ok(Some(t))
     }
 
+    /// The keys directory: `state_dir`, else the default state dir.
+    pub fn keys_dir(&self) -> Option<PathBuf> {
+        self.state_dir.clone().or_else(crate::capture::state_dir)
+    }
+
+    /// Check the auth rules without writing anything: auth needs a token
+    /// to import or an existing keys file.
+    pub fn check_auth(&self) -> Result<(), String> {
+        if self.resolve_token()?.is_some() || !self.auth_on()? {
+            return Ok(());
+        }
+        match self.keys_dir() {
+            Some(d) if d.join(crate::keys::KEYS_FILE).is_file() => Ok(()),
+            _ => Err(NO_KEYS.into()),
+        }
+    }
+
+    /// Open the key store (`None` = auth off). An in-process `token`
+    /// without `state_dir` gives an in-memory store; otherwise the store
+    /// lives in [`Config::keys_dir`] and imports the token file.
+    pub fn open_keys(&self) -> Result<Option<crate::keys::KeyStore>, String> {
+        use crate::keys::KeyStore;
+        let token = self.resolve_token()?;
+        if !self.auth_on()? {
+            return Ok(None);
+        }
+        if let (Some(t), None, None) = (&self.token, &self.state_dir, &self.token_file) {
+            return Ok(Some(KeyStore::in_memory(t)));
+        }
+        let dir = self.keys_dir().ok_or(
+            "no state directory for the keys file (set state_dir in the config)".to_string(),
+        )?;
+        if token.is_none() && !dir.join(crate::keys::KEYS_FILE).is_file() {
+            return Err(NO_KEYS.into());
+        }
+        if let Some(d) = &self.state_dir {
+            if !d.is_absolute() {
+                return Err(format!("state_dir {} must be absolute", d.display()));
+            }
+        }
+        KeyStore::open(&dir, token.as_deref()).map(Some)
+    }
+
     pub fn validate(&self) -> Result<(), String> {
-        self.resolve_token()?;
+        self.check_auth()?;
         self.check_bind()?;
         if self.workers == 0 {
             return Err("workers must be >= 1".into());
@@ -200,6 +256,8 @@ impl Config {
         Ok(())
     }
 }
+
+const NO_KEYS: &str = "no keys: set token_file (`flow-server gen-token --out PATH`) or add one with `flow-server keys add <name> --admin`";
 
 /// 32 random bytes, base64url without padding (43 chars).
 pub fn gen_token() -> String {
@@ -349,8 +407,13 @@ mod tests {
 
     #[test]
     fn token_required_and_long_enough() {
-        let c = Config::default();
-        assert!(c.resolve_token().is_err());
+        let d = tempfile::tempdir().unwrap();
+        let c = Config {
+            state_dir: Some(d.path().into()),
+            ..Default::default()
+        };
+        assert!(c.check_auth().unwrap_err().contains("keys add"));
+        assert!(c.open_keys().is_err(), "no token and no keys file");
         let c = Config {
             token: Some("short".into()),
             ..Default::default()
@@ -361,6 +424,29 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(c.resolve_token().unwrap().unwrap(), "0123456789abcdef");
+    }
+
+    #[test]
+    fn keys_file_alone_is_enough_and_token_lives_in_memory_in_process() {
+        let d = tempfile::tempdir().unwrap();
+        crate::keys::KeyStore::open(d.path(), None)
+            .unwrap()
+            .add("phone", false)
+            .unwrap();
+        let c = Config {
+            state_dir: Some(d.path().into()),
+            ..Default::default()
+        };
+        assert!(c.check_auth().is_ok());
+        assert_eq!(c.open_keys().unwrap().unwrap().active(), 1);
+        // An in-process token without state_dir never touches the disk.
+        let c = Config {
+            token: Some("0123456789abcdef".into()),
+            ..Default::default()
+        };
+        assert!(c.open_keys().unwrap().unwrap().keys_path().is_none());
+        let c = Config::from_toml("auth = \"none\"").unwrap();
+        assert!(c.open_keys().unwrap().is_none());
     }
 
     #[test]

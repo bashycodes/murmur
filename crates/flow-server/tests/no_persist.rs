@@ -1,5 +1,6 @@
-//! I6: the server writes nothing to disk and logs no text by default.
-//! Runs the real binary with HOME / TMPDIR / cwd pointed at an empty
+//! I6: the server writes no audio or text to disk and logs no text by
+//! default. The only files it writes are the key store's (D38: key hashes
+//! and per-key counters, in the state dir). Runs the real binary with HOME / TMPDIR / cwd pointed at an empty
 //! directory and a mock transcript that must not leak. S9: the same holds at
 //! `RUST_LOG=trace`, where dependencies (tungstenite logs every received
 //! text frame) would otherwise print dictionaries, contexts and partials.
@@ -120,8 +121,36 @@ async fn run_session(rust_log: Option<&str>, level: &str, log_text: bool) -> Run
     log.push_str(&reader.join().unwrap());
     assert!(status.success(), "clean shutdown on SIGTERM: {log}");
     assert!(log.contains("result"), "session was logged: {log}");
-    let files_left = std::fs::read_dir(state.path()).unwrap().count();
+    let files_left = files_besides_the_key_store(state.path());
     Run { log, files_left }
+}
+
+/// Files under `root` other than the key store's two files, which must
+/// hold no secret, transcript, dictionary or context.
+fn files_besides_the_key_store(root: &std::path::Path) -> usize {
+    let keys = root.join(".local/state/flow-server");
+    let mut n = 0;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d).unwrap() {
+            let p = e.unwrap().path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.parent() == Some(keys.as_path())
+                && ["keys.json", "key-usage.json"]
+                    .iter()
+                    .any(|f| p.file_name().unwrap() == *f)
+            {
+                let body = std::fs::read_to_string(&p).unwrap();
+                for s in [SECRET, "zebra", DICT_SECRET, CTX_SECRET, TOKEN] {
+                    assert!(!body.contains(s), "{s} in {}: {body}", p.display());
+                }
+            } else {
+                n += 1;
+            }
+        }
+    }
+    n
 }
 
 fn assert_no_secrets(log: &str, allow_transcript: bool) {
@@ -142,7 +171,7 @@ fn assert_no_secrets(log: &str, allow_transcript: bool) {
 async fn a_session_leaves_no_files_and_no_text_in_the_log() {
     let r = run_session(None, "debug", false).await;
     assert_no_secrets(&r.log, false);
-    assert_eq!(r.files_left, 0, "server wrote files");
+    assert_eq!(r.files_left, 0, "server wrote files besides the key store");
 }
 
 #[tokio::test(flavor = "multi_thread")]

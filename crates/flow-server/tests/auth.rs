@@ -60,8 +60,11 @@ async fn auth_none_only_on_loopback() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn refuses_to_start_without_a_token() {
+    // No token and no keys file in the state dir (never the real one).
+    let d = tempfile::tempdir().unwrap();
     let mut c = mock_cfg("x");
     c.token = None;
+    c.state_dir = Some(d.path().into());
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     assert!(flow_server::serve(c, vec![l]).await.is_err());
 }

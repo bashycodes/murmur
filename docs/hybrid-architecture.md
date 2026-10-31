@@ -262,8 +262,9 @@ Spec file: `docs/protocol.md` (normative; this section is its outline). Types:
 
 ### 2.5 Auth
 
-* Shared bearer token: `flow-server gen-token` writes 32 random bytes base64url (43 chars) to `token_file` (mode 0600). Constant-time compare. Clients store it (Windows: DPAPI `CryptProtectData` blob in prefs; Android: Android Keystore AES-GCM key `flow_dev_token`, ciphertext in the `dev` prefs file). Minimum accepted length 16.
-* The server refuses to start without a token unless `auth = "none"` **and** every bind address is loopback.
+* Named keys (D38, `src/keys.rs`): each person or device has its own bearer secret, managed with `flow-server keys add <name> [--admin] | list | revoke <name|id>`. `keys.json` in the state dir stores only SHA-256 hashes + metadata; `key-usage.json` per-key counters. The old `token_file` is imported once as the admin key `owner`; the server re-reads `keys.json` on change, so a revoke applies to the next connection. Details: `docs/server-setup.md` §4.
+* Originally one shared bearer token: `flow-server gen-token` writes 32 random bytes base64url (43 chars) to `token_file` (mode 0600). Constant-time compare. Clients store it (Windows: DPAPI `CryptProtectData` blob in prefs; Android: Android Keystore AES-GCM key `flow_dev_token`, ciphertext in the `dev` prefs file). Minimum accepted length 16.
+* The server refuses to start without a token or a keys file unless `auth = "none"` **and** every bind address is loopback.
 
 ### 2.6 Transport security
 
@@ -292,7 +293,8 @@ text shaping, so remote and local differ only if the ASR/LLM models differ.
 
 | File | Content |
 |---|---|
-| `src/main.rs` | CLI: `flow-server [--config PATH]`, `gen-token`, `check-config` |
+| `src/main.rs` | CLI: `flow-server [--config PATH]`, `gen-token`, `check-config`, `keys` |
+| `src/keys.rs` | Named keys (D38): hashed key store, usage counters, hot reload |
 | `src/config.rs` | TOML config (below), validation |
 | `src/pool.rs` | `workers` × `FlowCore`, loaded at startup; lease/return; queue |
 | `src/ws.rs` | per-connection task: auth, hello, message loop, partial poller |
@@ -305,7 +307,8 @@ text shaping, so remote and local differ only if the ASR/LLM models differ.
 
 ```toml
 bind = ["127.0.0.1:7313", "100.64.0.10:7313"]  # default ["127.0.0.1:7313"]
-token_file = "/etc/flow-server/token"           # required unless auth="none" on loopback
+token_file = "/etc/flow-server/token"           # imported as key "owner" (D38); needed unless keys.json exists or auth="none" on loopback
+# state_dir = "/var/lib/flow-server"            # keys.json + key-usage.json (default $STATE_DIRECTORY / XDG state dir)
 workers = 1            # FlowCore instances; each holds its models (Parakeet ≈ 0.9 GB RSS)
 max_queue = 2          # sessions waiting for a worker
 queue_timeout_ms = 30000
