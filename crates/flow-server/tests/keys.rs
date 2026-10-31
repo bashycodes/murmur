@@ -78,7 +78,7 @@ async fn cli_added_key_works_without_restart_and_revoke_hits_the_next_connection
     hello(&mut open).await;
     assert_eq!(http_get(s.addr(), "/v1/health", Some(&secret)).await.0, 200);
 
-    cli(d.path()).revoke("phone").unwrap();
+    cli(d.path()).revoke("phone", false).unwrap();
     // Next connection and health: 401.
     assert!(connect(s.addr(), Some(&secret)).await.is_err());
     assert_eq!(http_get(s.addr(), "/v1/health", Some(&secret)).await.0, 401);
@@ -185,6 +185,17 @@ fn keys_cli_add_list_revoke() {
     assert!(phone.contains("revoked"), "{table}");
     let (ok, _, err) = run(d.path(), &["keys", "revoke", "phone"]);
     assert!(!ok && err.contains("no active key"), "{err}");
+    // Last-admin guard: desk goes (owner remains), then owner is the
+    // last admin and needs --force.
+    let (ok, _, err) = run(d.path(), &["keys", "revoke", "desk"]);
+    assert!(ok, "{err}");
+    let (ok, _, err) = run(d.path(), &["keys", "revoke", OWNER]);
+    assert!(
+        !ok && err.contains("last admin") && err.contains("--force"),
+        "{err}"
+    );
+    let (ok, _, err) = run(d.path(), &["keys", "revoke", OWNER, "--force"]);
+    assert!(ok, "{err}");
     let (ok, _, _) = run(d.path(), &["keys", "frobnicate"]);
     assert!(!ok);
     // gen-token still works (it writes a token file; the owner key follows it).
