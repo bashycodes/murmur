@@ -29,6 +29,7 @@ export const ICON = {
   plus: "M12 5v14M5 12h14",
   search: "M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14zM20 20l-4-4",
   retry: "M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5",
+  keys: "M8 10a4 4 0 1 0 0 8a4 4 0 1 0 0-8zM11 11l8-8M16 6l3 3M14 8l2 2",
 } as const;
 
 /** Markup for a static template. */

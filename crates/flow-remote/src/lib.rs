@@ -10,6 +10,7 @@
 //! a bounded channel (writer, 64 frames) and a mutex + condvar (reader
 //! state), so `push_audio` never blocks.
 
+pub mod admin;
 mod conn;
 #[cfg(feature = "library")]
 pub mod library;

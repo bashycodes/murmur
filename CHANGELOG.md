@@ -61,6 +61,20 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   already has, in place, and runs them through the app's own engine code.
   Fixtures are public clips; the results are scored on Linux
   (`tools/probes/android_bench/`). Release builds do not contain it.
+  (`keys list` → DOWNLOADS). App-side download comes in later releases.
+- **Windows: manage the server's keys from the app (D39).** With an admin
+  key saved in Settings → Your server, a new **Users & keys** page lists
+  every key with its last use, app, dictation count and audio minutes,
+  creates a key (name, admin switch; the secret is shown once in a copy box
+  and kept nowhere) and revokes one after a confirm, with a warning when it
+  is the key this app uses. The page is hidden for non-admin keys.
+- **Server: admin API (D39).** `GET /v1/whoami`, `GET`/`POST
+  /v1/admin/keys` and `DELETE /v1/admin/keys/{id}` on the usual port, with
+  the usual key; non-admin keys get 403. The server refuses to revoke the
+  last admin key, from the API and from `flow-server keys revoke` (which
+  gets `--force` to override). The CLI and the running server can now both
+  change keys at once safely (a lock file). The client is in the shared
+  `flow-remote` crate, ready for Android.
 - **Server: one key per device instead of one shared token (D38).** On the
   server, `flow-server keys add <name> [--admin]` creates a key and prints
   its secret once, `keys list` shows each key's last use, app version,

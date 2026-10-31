@@ -1739,6 +1739,51 @@ async fn dev_test_connection(
         .map_err(|e| e.to_string())
 }
 
+/// D39 Users & keys: run `f` on the saved server's admin client, off the
+/// UI thread (each call is one HTTP request).
+async fn with_admin<T: Send + 'static>(
+    app: &AppHandle,
+    f: impl FnOnce(&dyn crate::server_admin::AdminApi) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let dev = app.state::<AppState>().prefs.read().unwrap().developer.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let api = crate::server_admin::for_settings(&dev)?;
+        f(&*api)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Whether the saved token is an admin key (shows "Users & keys").
+#[tauri::command]
+async fn admin_status(app: AppHandle) -> crate::server_admin::AdminStatus {
+    let dev = app.state::<AppState>().prefs.read().unwrap().developer.clone();
+    tauri::async_runtime::spawn_blocking(move || crate::server_admin::status(&dev))
+        .await
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+async fn admin_list_keys(app: AppHandle) -> Result<flow_protocol::admin::KeyList, String> {
+    with_admin(&app, |a| a.list()).await
+}
+
+/// The answer carries the new key's secret: shown once by the page, never
+/// logged or stored here.
+#[tauri::command]
+async fn admin_create_key(
+    app: AppHandle,
+    name: String,
+    admin: bool,
+) -> Result<flow_protocol::admin::CreatedKey, String> {
+    with_admin(&app, move |a| a.create(&name, admin)).await
+}
+
+#[tauri::command]
+async fn admin_revoke_key(app: AppHandle, id: String) -> Result<flow_protocol::admin::RevokedKey, String> {
+    with_admin(&app, move |a| a.revoke(&id)).await
+}
+
 /// D37: Settings → Languages "Keyboard language · now: Hebrew": the
 /// language of the foreground window's layout (Settings itself while it
 /// is open), `None` when unknown.
@@ -2660,6 +2705,10 @@ pub fn run() {
             dev_set,
             dev_test_connection,
             dev_test_session,
+            admin_status,
+            admin_list_keys,
+            admin_create_key,
+            admin_revoke_key,
             dev_route_status,
             dev_reset_circuit,
             dev_reset_defaults,

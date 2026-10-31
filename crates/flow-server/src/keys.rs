@@ -8,11 +8,13 @@
 //! Two files in the server's state directory, both mode 0600 and written
 //! atomically (temp file + rename):
 //!
-//! * `keys.json`: the key records. Written by the `flow-server keys` CLI,
-//!   and by the server only when it imports the old `token_file` (the
-//!   `owner` key). A running server re-reads it when it changes (one
-//!   `stat` per authentication), so `keys add` / `keys revoke` take effect
-//!   on the next connection without a restart.
+//! * `keys.json`: the key records. Written by the `flow-server keys` CLI
+//!   and by the server (admin API, D39; `token_file` import). Every
+//!   read-modify-write holds an exclusive lock on `keys.json.lock` and
+//!   re-reads the file under it, so two writers never lose each other's
+//!   change. A running server re-reads it when it changes (one `stat` per
+//!   authentication), so `keys add` / `keys revoke` take effect on the
+//!   next connection without a restart.
 //! * `key-usage.json`: per-key counters (last seen, client, dictations,
 //!   audio). Written only by the server, batched ([`KeyStore::flush`]).
 //!   Never text or audio (D17).
@@ -31,6 +33,8 @@ use sha2::{Digest, Sha256};
 
 pub const KEYS_FILE: &str = "keys.json";
 pub const USAGE_FILE: &str = "key-usage.json";
+/// Lock file serialising writers of `keys.json` (CLI and server, D39).
+pub const LOCK_FILE: &str = "keys.json.lock";
 /// The name the imported `token_file` secret gets.
 pub const OWNER: &str = "owner";
 /// `Key::origin` of the key imported from `token_file`.
@@ -96,6 +100,42 @@ impl From<&Key> for KeyRef {
             name: k.name.clone(),
             admin: k.admin,
         }
+    }
+}
+
+/// Why a key operation failed. The admin API maps each to a status code.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeyError {
+    /// Bad key name (400).
+    BadName(String),
+    /// An active key already has this name (409).
+    NameTaken(String),
+    /// No active key with this name or id (404).
+    NotFound(String),
+    /// Revoking it would leave no active admin key (409); the CLI can
+    /// override with `--force`.
+    LastAdmin(String),
+    /// Reading or writing the key files failed (500).
+    Io(String),
+}
+
+impl std::fmt::Display for KeyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            KeyError::BadName(m)
+            | KeyError::NameTaken(m)
+            | KeyError::NotFound(m)
+            | KeyError::LastAdmin(m)
+            | KeyError::Io(m) => f.write_str(m),
+        }
+    }
+}
+
+impl std::error::Error for KeyError {}
+
+impl From<KeyError> for String {
+    fn from(e: KeyError) -> Self {
+        e.to_string()
     }
 }
 
@@ -166,6 +206,12 @@ impl KeyStore {
     pub fn open(dir: &Path, token: Option<&str>) -> Result<Self, String> {
         create_dir(dir)?;
         let path = dir.join(KEYS_FILE);
+        // Held through the import write below, so a concurrent writer's
+        // change is read here, not overwritten.
+        let _lock = match token {
+            Some(_) => Some(lock_file(dir)?),
+            None => None,
+        };
         let existing = read_json::<KeysFile>(&path)?;
         let st = stamp(&path);
         let mut keys = existing.unwrap_or(KeysFile {
@@ -220,6 +266,32 @@ impl KeyStore {
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Run a read-modify-write of `keys.json`: under the writers' file
+    /// lock, re-read the file (whatever its stamp says), apply `f`, save
+    /// when `f` succeeds. In memory there is no file and no lock.
+    fn write_locked<T>(
+        &self,
+        f: impl FnOnce(&mut KeysFile) -> Result<T, KeyError>,
+    ) -> Result<T, KeyError> {
+        let mut g = self.lock();
+        let _lock = match &self.dir {
+            Some(d) => {
+                let l = lock_file(d).map_err(KeyError::Io)?;
+                let path = d.join(KEYS_FILE);
+                let st = stamp(&path);
+                g.keys = read_json::<KeysFile>(&path)
+                    .map_err(KeyError::Io)?
+                    .unwrap_or_default();
+                g.stamp = st;
+                Some(l)
+            }
+            None => None,
+        };
+        let r = f(&mut g.keys)?;
+        self.save_keys(&mut g).map_err(KeyError::Io)?;
+        Ok(r)
     }
 
     /// Pick up changes another process (the CLI) made to `keys.json`.
@@ -295,50 +367,70 @@ impl KeyStore {
     }
 
     /// Create a key. Returns it and its secret, which is never stored.
-    pub fn add(&self, name: &str, admin: bool) -> Result<(KeyRef, String), String> {
+    pub fn add(&self, name: &str, admin: bool) -> Result<(KeyRef, String), KeyError> {
         check_name(name)?;
-        let mut g = self.lock();
-        self.refresh(&mut g);
-        if g.keys.keys.iter().any(|k| k.active() && k.name == name) {
-            return Err(format!("a key named {name:?} already exists"));
-        }
-        let secret = crate::config::gen_token();
-        let key = Key {
-            id: new_id(&g.keys),
-            name: name.into(),
-            admin,
-            hash: sha256_hex(&secret),
-            created: now_s(),
-            revoked: None,
-            origin: None,
-        };
-        let r = KeyRef::from(&key);
-        g.keys.keys.push(key);
-        self.save_keys(&mut g)?;
-        Ok((r, secret))
+        self.write_locked(|keys| {
+            if keys.keys.iter().any(|k| k.active() && k.name == name) {
+                return Err(KeyError::NameTaken(format!(
+                    "a key named {name:?} already exists"
+                )));
+            }
+            let secret = crate::config::gen_token();
+            let key = Key {
+                id: new_id(keys),
+                name: name.into(),
+                admin,
+                hash: sha256_hex(&secret),
+                created: now_s(),
+                revoked: None,
+                origin: None,
+            };
+            let r = KeyRef::from(&key);
+            keys.keys.push(key);
+            Ok((r, secret))
+        })
     }
 
     /// Revoke the active key with this name or id. Open connections keep
-    /// running; the next connection with it gets 401.
-    pub fn revoke(&self, name_or_id: &str) -> Result<KeyRef, String> {
-        let mut g = self.lock();
-        self.refresh(&mut g);
-        let i = g
-            .keys
-            .keys
-            .iter()
-            .position(|k| k.active() && k.name == name_or_id)
-            .or_else(|| {
-                g.keys
-                    .keys
-                    .iter()
-                    .position(|k| k.active() && k.id == name_or_id)
-            })
-            .ok_or_else(|| format!("no active key named or with id {name_or_id:?}"))?;
-        g.keys.keys[i].revoked = Some(now_s());
-        let r = KeyRef::from(&g.keys.keys[i]);
-        self.save_keys(&mut g)?;
-        Ok(r)
+    /// running; the next connection with it gets 401. Refuses to revoke
+    /// the last active admin key ([`KeyError::LastAdmin`]) unless `force`.
+    pub fn revoke(&self, name_or_id: &str, force: bool) -> Result<KeyRef, KeyError> {
+        // A name match wins over an id match (names of active keys are
+        // unique; ids always are).
+        let find = |keys: &[Key]| {
+            let pos = |f: &dyn Fn(&Key) -> bool| keys.iter().position(|k| k.active() && f(k));
+            pos(&|k| k.name == name_or_id).or_else(|| pos(&|k| k.id == name_or_id))
+        };
+        self.revoke_where(force, find, || {
+            format!("no active key named or with id {name_or_id:?}")
+        })
+    }
+
+    /// [`KeyStore::revoke`] by id only (the admin API).
+    pub fn revoke_id(&self, id: &str, force: bool) -> Result<KeyRef, KeyError> {
+        let find = |keys: &[Key]| keys.iter().position(|k| k.active() && k.id == id);
+        self.revoke_where(force, find, || format!("no active key with id {id:?}"))
+    }
+
+    fn revoke_where(
+        &self,
+        force: bool,
+        find: impl FnOnce(&[Key]) -> Option<usize>,
+        not_found: impl FnOnce() -> String,
+    ) -> Result<KeyRef, KeyError> {
+        self.write_locked(|keys| {
+            let i = find(&keys.keys).ok_or_else(|| KeyError::NotFound(not_found()))?;
+            let k = &keys.keys[i];
+            let admins = keys.keys.iter().filter(|k| k.active() && k.admin).count();
+            if k.admin && admins <= 1 && !force {
+                return Err(KeyError::LastAdmin(format!(
+                    "{:?} is the last admin key: add another admin key first",
+                    k.name
+                )));
+            }
+            keys.keys[i].revoked = Some(now_s());
+            Ok(KeyRef::from(&keys.keys[i]))
+        })
     }
 
     /// Every key (revoked ones too), oldest first, with its usage.
@@ -489,7 +581,7 @@ fn import_token(keys: &mut KeysFile, token: &str) -> bool {
     true
 }
 
-fn check_name(name: &str) -> Result<(), String> {
+fn check_name(name: &str) -> Result<(), KeyError> {
     let ok = !name.is_empty()
         && name.len() <= 64
         && name
@@ -498,9 +590,9 @@ fn check_name(name: &str) -> Result<(), String> {
     if ok {
         Ok(())
     } else {
-        Err(format!(
+        Err(KeyError::BadName(format!(
             "key name {name:?}: 1-64 characters of A-Z a-z 0-9 . _ -"
-        ))
+        )))
     }
 }
 
@@ -548,6 +640,34 @@ pub(crate) fn create_dir(dir: &Path) -> Result<(), String> {
     }
     b.create(dir)
         .map_err(|e| format!("state dir {}: {e}", dir.display()))
+}
+
+/// Take the writers' exclusive lock on `keys.json` (blocks until free;
+/// released when the returned file drops). The lock file is empty and
+/// never removed: removing it would let two writers lock different files.
+fn lock_file(dir: &Path) -> Result<std::fs::File, String> {
+    let p = dir.join(LOCK_FILE);
+    let mut o = std::fs::OpenOptions::new();
+    o.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        o.mode(0o600);
+    }
+    let f = o.open(&p).map_err(|e| format!("{}: {e}", p.display()))?;
+    #[cfg(unix)]
+    {
+        // Same hand-over as write_json: a root CLI must not leave a lock
+        // file the service user cannot open.
+        use std::os::unix::fs::MetadataExt;
+        if let (Ok(d), Ok(m)) = (std::fs::metadata(dir), f.metadata()) {
+            if (d.uid(), d.gid()) != (m.uid(), m.gid()) {
+                let _ = std::os::unix::fs::chown(&p, Some(d.uid()), Some(d.gid()));
+            }
+        }
+    }
+    f.lock().map_err(|e| format!("{}: {e}", p.display()))?;
+    Ok(f)
 }
 
 pub(crate) fn read_json<T: serde::de::DeserializeOwned>(p: &Path) -> Result<Option<T>, String> {
@@ -640,7 +760,11 @@ mod tests {
         assert_eq!(s.list().len(), 1);
         assert_eq!(s.authenticate(TOKEN).unwrap().id, k.id);
         // A revoked owner is not re-imported on the next start.
-        s.revoke(OWNER).unwrap();
+        assert!(matches!(
+            s.revoke(OWNER, false),
+            Err(KeyError::LastAdmin(_))
+        ));
+        s.revoke(OWNER, true).unwrap();
         let s = KeyStore::open(d.path(), Some(TOKEN)).unwrap();
         assert!(s.authenticate(TOKEN).is_none());
         assert_eq!(s.list().len(), 1);
@@ -680,9 +804,14 @@ mod tests {
         let body = std::fs::read_to_string(d.path().join(KEYS_FILE)).unwrap();
         assert!(body.contains(&sha256_hex(&secret)));
         assert!(body.contains(&sha256_hex(TOKEN)));
-        // No temp files left behind.
-        let n = std::fs::read_dir(d.path()).unwrap().count();
-        assert_eq!(n, 2);
+        // No temp files left behind (the writers' lock file stays).
+        let mut names: Vec<String> = std::fs::read_dir(d.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        assert_eq!(names, [USAGE_FILE, KEYS_FILE, LOCK_FILE]);
+        assert_eq!(mode(&d.path().join(LOCK_FILE)), 0o600);
     }
 
     #[test]
@@ -697,9 +826,9 @@ mod tests {
         assert!(s.authenticate("laptop").is_none());
         assert!(s.authenticate(&secret[..42]).is_none());
         // Revoke by id; the name is free again, the new key gets a new id.
-        assert_eq!(s.revoke(&k.id).unwrap().id, k.id);
+        assert_eq!(s.revoke(&k.id, false).unwrap().id, k.id);
         assert!(s.authenticate(&secret).is_none());
-        assert!(s.revoke(&k.id).is_err(), "already revoked");
+        assert!(s.revoke(&k.id, false).is_err(), "already revoked");
         let (k2, _) = s.add("laptop", false).unwrap();
         assert_ne!(k2.id, k.id);
         assert_eq!(s.list().len(), 3);
@@ -717,7 +846,7 @@ mod tests {
         assert_eq!(server.authenticate(&secret).unwrap().name, "tablet");
         KeyStore::open(d.path(), None)
             .unwrap()
-            .revoke("tablet")
+            .revoke("tablet", false)
             .unwrap();
         assert!(server.authenticate(&secret).is_none());
         assert!(server.authenticate(TOKEN).is_some());
@@ -750,7 +879,7 @@ mod tests {
         s.record_dictation(&id, 90_000);
         s.record_download(&id, 2_500_000);
         let (k, _) = s.add("old", false).unwrap();
-        s.revoke(&k.id).unwrap();
+        s.revoke(&k.id, false).unwrap();
         let t = table(&s.list());
         assert_eq!(t.lines().count(), 3, "{t}");
         let owner = t.lines().nth(1).unwrap();
@@ -776,5 +905,69 @@ mod tests {
         let s = KeyStore::open(d.path(), None).unwrap();
         assert_eq!(s.active(), 0);
         assert!(!d.path().join(KEYS_FILE).exists(), "nothing to write");
+    }
+
+    #[test]
+    fn last_admin_guard() {
+        let s = KeyStore::in_memory(TOKEN);
+        let (phone, _) = s.add("phone", false).unwrap();
+        assert!(matches!(
+            s.revoke(OWNER, false),
+            Err(KeyError::LastAdmin(_))
+        ));
+        let (laptop, _) = s.add("laptop", true).unwrap();
+        // Another admin remains: the owner may go (even revoking itself).
+        s.revoke(OWNER, false).unwrap();
+        assert!(matches!(
+            s.revoke_id(&laptop.id, false),
+            Err(KeyError::LastAdmin(_))
+        ));
+        // Non-admin keys are never guarded.
+        s.revoke_id(&phone.id, false).unwrap();
+        assert!(matches!(
+            s.revoke_id(&phone.id, false),
+            Err(KeyError::NotFound(_))
+        ));
+        assert!(
+            matches!(s.revoke_id("phone", false), Err(KeyError::NotFound(_))),
+            "id only"
+        );
+        s.revoke_id(&laptop.id, true).unwrap();
+        assert_eq!(s.active(), 0);
+    }
+
+    #[test]
+    fn concurrent_writers_lose_nothing() {
+        // Several stores on one dir (the server and CLI runs), each adding
+        // keys from its own thread: every add must survive.
+        let d = tempfile::tempdir().unwrap();
+        KeyStore::open(d.path(), Some(TOKEN)).unwrap();
+        let threads: Vec<_> = (0..4)
+            .map(|t| {
+                let dir = d.path().to_path_buf();
+                std::thread::spawn(move || {
+                    let s = KeyStore::open(&dir, None).unwrap();
+                    for i in 0..10 {
+                        s.add(&format!("k{t}-{i}"), false).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        let s = KeyStore::open(d.path(), Some(TOKEN)).unwrap();
+        assert_eq!(s.active(), 41);
+        // A store whose cached copy is stale still writes on top of the
+        // file, not over it.
+        let stale = KeyStore::open(d.path(), None).unwrap();
+        stale.list();
+        KeyStore::open(d.path(), None)
+            .unwrap()
+            .add("other", false)
+            .unwrap();
+        stale.add("mine", false).unwrap();
+        let names: Vec<String> = s.list().into_iter().map(|k| k.key.name).collect();
+        assert!(names.contains(&"other".into()) && names.contains(&"mine".into()));
     }
 }

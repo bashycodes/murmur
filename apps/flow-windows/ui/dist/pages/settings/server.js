@@ -32,6 +32,7 @@ ${group("Connection", row(`<label for="dev_host">Address</label>`, `A name or IP
 <div id="dev_test" class="lw-result" role="status" hidden>
   <span class="lw-dot"></span><span class="lw-result-text" id="dev_test_text"></span>
 </div>
+${group("Users & keys", row("Keys for people and devices", `This app's key is an admin key, so you can give each person or device its own key and revoke it. <span id="srv_keys_who"></span>`, `<button type="button" class="fl-btn fl-btn-outline" data-go="settings-keys">Manage keys</button>`), `id="srv_keys" hidden`)}
 ${group("Advanced", row("Give up connecting after", `Then the next engine takes over. ${err("connect_timeout_ms")}`, choice("connect_timeout_ms", "Give up connecting after", [
         [500, "0.5 seconds"],
         [800, "0.8 seconds"],
