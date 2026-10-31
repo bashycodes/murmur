@@ -4,11 +4,12 @@
 //! Privacy: audio, transcripts, contexts and dictionaries live only in memory
 //! for the duration of a session. None of it is written to disk; logs carry
 //! sizes and timings only (unless `log_text = true`). The key store
-//! (`keys.rs`, D38) writes key hashes and per-key counters, never text or
-//! audio. The one opt-in exception is `[debug] capture` (`capture.rs`): received audio and the
+//! (`keys.rs`, D38; managed over `admin.rs`, D39) writes key hashes and
+//! per-key counters, never text or audio. The one opt-in exception is `[debug] capture` (`capture.rs`): received audio and the
 //! result, local, mode 0600, pruned to 30 files / 72 h. The server only
 //! listens; it never opens an outbound connection.
 
+mod admin;
 pub mod capture;
 pub mod config;
 mod health;
@@ -280,6 +281,7 @@ pub async fn serve_with_pool(
         .route(flow_protocol::PATH_STREAM, get(stream_handler))
         .route(flow_protocol::PATH_HEALTH, get(health::handler))
         .merge(library::routes())
+        .merge(admin::routes())
         .with_state(state.clone());
     if let Some(k) = state.keys.clone() {
         let mut kill = state.kill.clone();
