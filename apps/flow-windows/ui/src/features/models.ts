@@ -47,7 +47,33 @@ export interface CatalogEntry {
   available: boolean;
   /** This build runs its engine: it can be imported from a folder, .zip or file (no network). */
   importable?: boolean;
+  /** A server is set (D41): downloads come from its library, never Hugging Face. */
+  from_server?: boolean;
   files: CatalogFile[];
+}
+
+/** One model in the server's library (`server_models`, D41). */
+export interface ServerModel {
+  id: string;
+  title: string;
+  kind: "stt" | "hebrew" | "llm" | "lid" | "vad";
+  language?: string;
+  engine?: string;
+  /** A copy of this catalogue model: downloads via model_download_start, checked against the built-in pins. */
+  catalogue_id?: string;
+  size: number;
+  files: number;
+  /** Where it fills in; absent when it can't be used here (see `reason`). */
+  slot?: "stt_whisper" | "stt_parakeet" | "hebrew_zipformer" | "hebrew_parakeet" | "llm" | "lid";
+  reason?: string;
+  dest: string;
+  installed: boolean;
+  in_use: boolean;
+}
+export interface ServerLibrary {
+  configured: boolean;
+  error?: string;
+  models: ServerModel[];
 }
 export type DlState = "downloading" | "importing" | "verifying" | "done" | "error" | "cancelled";
 export interface DlProgress {
@@ -64,6 +90,8 @@ interface Filter {
 }
 
 let catalog: CatalogEntry[] = [];
+/** undefined = not asked yet. */
+let serverLib: ServerLibrary | undefined;
 /** `via`: "import" while (and after) a model is imported from a file, else a download. */
 type Tracked = DlProgress & { started: number; via?: "import" };
 const progress = new Map<string, Tracked>();
@@ -91,7 +119,7 @@ export function progressLine(p: DlProgress & { started?: number; via?: "import" 
     left = rest < 60 ? ` · about ${Math.max(1, Math.round(rest / 5) * 5)} seconds left` : ` · about ${Math.round(rest / 60)} min left`;
   }
   if (imp) return `Copying ${got} of ${mb(p.total)}${left} · from this PC`;
-  const host = entry ? new URL(entry.files[0]?.url ?? entry.page).host : "";
+  const host = entry?.from_server || p.id.startsWith("server:") ? "your server" : entry ? new URL(entry.files[0]?.url ?? entry.page).host : "";
   return `${got} of ${mb(p.total)}${left}${host ? ` · from ${host}` : ""}`;
 }
 
@@ -162,6 +190,35 @@ export const models = {
     notify();
     return catalog;
   },
+  /** A server is set: downloads come from its library (D41). */
+  fromServer(): boolean {
+    return catalog.some((c) => c.from_server);
+  },
+  server(): ServerLibrary | undefined {
+    return serverLib;
+  },
+  /** The server's library (`server_models`; asks the server). */
+  async refreshServer(): Promise<ServerLibrary> {
+    serverLib = await invoke<ServerLibrary>("server_models").catch((e) => ({ configured: true, error: String(e), models: [] }));
+    notify();
+    return serverLib;
+  },
+  /** Download (after the confirm dialog) or, when installed, re-check and select a server model. */
+  async serverStart(id: string): Promise<void> {
+    const m = serverLib?.models.find((x) => x.id === id);
+    if (!m || !m.slot || models.busy()) return;
+    if (!m.installed && !(await confirmServer(m))) return;
+    const pid = m.catalogue_id ?? serverProgressId(m.id);
+    progress.set(pid, { id: pid, received: 0, total: m.size, state: m.installed ? "verifying" : "downloading", started: Date.now() });
+    notify();
+    try {
+      if (m.catalogue_id) await invoke("model_download_start", { id: m.catalogue_id });
+      else await invoke("server_model_download", { id: m.id });
+    } catch (err) {
+      progress.set(pid, { id: pid, received: 0, total: m.size, state: "error", error: String(err), started: 0 });
+      notify();
+    }
+  },
   /** The confirm dialog (3a); downloads only when the user presses Download there. */
   async confirmAndStart(id: string): Promise<void> {
     const e = models.entry(id);
@@ -195,6 +252,9 @@ export const models = {
     }
   },
 };
+
+/** `model:download` id of a custom server model (server_library::progress_id). */
+export const serverProgressId = (id: string): string => `server:${id}`;
 
 /** File names of the model's single file (whisper ggml, GGUF): "*.bin" / "*.gguf". */
 function singleFilePattern(e: CatalogEntry): string | null {
@@ -252,12 +312,22 @@ function askImport(e: CatalogEntry): Promise<string | null> {
 const isSpeech = (c: CatalogEntry): boolean => c.engine !== "llm";
 
 function confirm(e: CatalogEntry): Promise<boolean> {
-  $<HTMLElement>("dl_title").textContent = `Download ${e.title}?`;
   const many = e.files.length > 1;
-  $<HTMLElement>("dl_from").textContent = many ? e.page : e.files[0].url;
-  $<HTMLElement>("dl_size").textContent = many ? `${mb(e.size)} in ${e.files.length} files` : mb(e.size);
-  $<HTMLElement>("dl_dest").textContent = e.dest;
-  $<HTMLButtonElement>("dl_ok").textContent = `Download ${mb(e.size)}`;
+  return askDownload(e.title, many ? e.page : e.files[0].url, e.size, e.files.length, e.dest, CHECK_PINNED);
+}
+
+/** The same dialog for a model from the server's library. */
+function confirmServer(m: ServerModel): Promise<boolean> {
+  return askDownload(m.title, "Your server's model library", m.size, m.files, m.dest, m.catalogue_id ? CHECK_PINNED : CHECK_SERVER);
+}
+
+function askDownload(title: string, from: string, size: number, files: number, dest: string, check: string): Promise<boolean> {
+  $<HTMLElement>("dl_title").textContent = `Download ${title}?`;
+  $<HTMLElement>("dl_from").textContent = from;
+  $<HTMLElement>("dl_size").textContent = files > 1 ? `${mb(size)} in ${files} files` : mb(size);
+  $<HTMLElement>("dl_dest").textContent = dest;
+  $<HTMLElement>("dl_check").textContent = check;
+  $<HTMLButtonElement>("dl_ok").textContent = `Download ${mb(size)}`;
   const d = $<HTMLDialogElement>("dl_confirm");
   return new Promise((resolve) => {
     const done = (ok: boolean): void => {
@@ -278,6 +348,9 @@ function confirm(e: CatalogEntry): Promise<boolean> {
   });
 }
 
+const CHECK_PINNED = "Against a SHA-256 fingerprint built into this version. If it doesn't match, the file is deleted and never loaded.";
+const CHECK_SERVER = "Against the SHA-256 your server lists for it, over your key and the server's certificate. If it doesn't match, the file is deleted and never loaded.";
+
 const CHECK = `<svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"></path></svg>`;
 
 const DIALOG = `
@@ -290,7 +363,7 @@ const DIALOG = `
     <dt>From</dt><dd class="lw-mono" id="dl_from"></dd>
     <dt>Size</dt><dd id="dl_size"></dd>
     <dt>Saved to</dt><dd class="lw-mono" id="dl_dest"></dd>
-    <dt>Checked</dt><dd>Against a SHA-256 fingerprint built into this version. If it doesn't match, the file is deleted and never loaded.</dd>
+    <dt>Checked</dt><dd id="dl_check">${CHECK_PINNED}</dd>
   </dl>
   <ul class="lw-dl-bullets">
     <li>${CHECK}Nothing about you, your audio or your settings is sent.</li>
@@ -347,13 +420,16 @@ function renderSettingsRow(): void {
   bar.hidden = !models.busy(id);
   if (p && models.busy(id)) (bar.firstElementChild as HTMLElement).style.width = `${p.total ? Math.round((p.received / p.total) * 100) : 0}%`;
   if (!p) {
-    line.textContent = "";
-    line.className = "";
+    line.textContent = e?.from_server && !e.installed ? FROM_SERVER_HINT : "";
+    line.className = e?.from_server ? "hint" : "";
     return;
   }
   line.textContent = progressLine(p, models.entry(id));
   line.className = `hint ${p.state === "error" ? "err" : p.state === "done" ? "ok" : ""}`;
 }
+
+/** Under a catalogue row when a server is set (D41). */
+const FROM_SERVER_HINT = "A server is set, so models come only from its library: see From your server below, or Import from file.";
 
 // ------------------------------------------------------------ Settings → AI cleanup row
 
@@ -481,6 +557,10 @@ function renderLlmRow(): void {
   if (!e.installed) {
     line.replaceChildren();
     line.className = "hint";
+    if (e.from_server) {
+      line.append(`${e.desc}. Not downloaded yet. A server is set, so models come only from its library: Settings → Speech to text → From your server${e.importable ? ", or Import from file" : ""}.`);
+      return;
+    }
     line.append(`${e.desc}. Not downloaded yet${e.available ? "." : ": "}`);
     if (!e.available) line.append(html(extLink(e.page, "get it from its model page")), e.importable ? ", then Import from file." : ".");
     if (e.license) line.append(` ${e.license}.`);
@@ -577,6 +657,7 @@ export function hebrewEntry(choice: string | undefined): CatalogEntry | undefine
 
 /** A Hebrew model is chosen and on disk (catalogue `installed`). */
 export function hebrewReady(choice: string | undefined): boolean {
+  if (choice !== "none" && prefsStore.get()?.hebrew_model_dir?.trim()) return true;
   return Boolean(hebrewEntry(choice)?.installed);
 }
 
@@ -623,8 +704,19 @@ function renderHebrewRow(): void {
     set(progressLine(p, e), "err");
     return;
   }
+  const custom = prefsStore.get()?.hebrew_model_dir?.trim();
+  if (custom) {
+    set(`Uses ${custom} (from your server).`, "ok");
+    return;
+  }
   if (!e.installed) {
-    const how = e.available ? "press Download" : e.importable ? "get it from its model page, then Import from file" : "get it from its model page";
+    const how = e.from_server
+      ? "a server is set, so get it from its library (From your server below)"
+      : e.available
+        ? "press Download"
+        : e.importable
+          ? "get it from its model page, then Import from file"
+          : "get it from its model page";
     set(`Not downloaded yet: ${how} (${mb(e.size)}).${wantHe ? " Until then Hebrew uses the model above." : ""}`, wantHe ? "err" : "");
     if (!e.available) credit.append(" · ", html(extLink(e.page, "Download page")));
     return;
@@ -670,6 +762,120 @@ export const HEBREW_ROW = `
   </div>
 </div>`;
 
+// ------------------------------------------------------------ Settings → Speech to text: From your server (D41)
+
+const KIND_LABEL: Record<ServerModel["kind"], string> = {
+  stt: "Speech to text",
+  hebrew: "Hebrew",
+  llm: "AI cleanup",
+  lid: "Language detection",
+  vad: "Voice activity",
+};
+const SLOT_LABEL: Record<NonNullable<ServerModel["slot"]>, string> = {
+  stt_whisper: "the model on this PC (Whisper)",
+  stt_parakeet: "the model on this PC (Parakeet)",
+  hebrew_zipformer: "the Hebrew model (streaming)",
+  hebrew_parakeet: "the Hebrew model (Parakeet)",
+  llm: "AI cleanup on this PC",
+  lid: "language detection (auto-detect → Hebrew)",
+};
+
+function serverRow(m: ServerModel): HTMLElement {
+  const pid = m.catalogue_id ?? serverProgressId(m.id);
+  const p = models.progress(pid);
+  const busy = models.busy(pid);
+  const row = document.createElement("div");
+  row.className = "lw-srv-model";
+  row.dataset.srvId = m.id;
+  const text = document.createElement("div");
+  text.className = "lw-srv-text";
+  const title = document.createElement("div");
+  title.className = "fl-row-title";
+  title.textContent = m.title;
+  const meta = document.createElement("div");
+  meta.className = "fl-row-desc";
+  meta.textContent = `${KIND_LABEL[m.kind]}${m.language ? ` · ${m.language}` : ""} · ${mb(m.size)}${m.engine ? ` · ${m.engine}` : ""}${m.catalogue_id ? " · same as the built-in model" : ""}`;
+  const status = document.createElement("div");
+  status.className = "hint lw-srv-status";
+  text.append(title, meta, status);
+  const ctl = document.createElement("div");
+  ctl.className = "fl-row-control";
+  const btn = (label: string, act: string): HTMLButtonElement => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "fl-btn fl-btn-secondary";
+    b.textContent = label;
+    b.dataset.srvAct = act;
+    b.dataset.srvId = m.id;
+    return b;
+  };
+  if (!m.slot) {
+    status.textContent = `Can't be used here: ${m.reason ?? "unknown"}.`;
+  } else if (busy) {
+    const bar = html(`<span class="lw-dl-bar"><span style="width:${p && p.total ? Math.round((p.received / p.total) * 100) : 0}%"></span></span>`);
+    status.append(bar, p ? progressLine(p, models.entry(m.catalogue_id ?? "")) : "");
+    ctl.append(btn("Cancel", "cancel"));
+  } else {
+    if (p?.state === "error") {
+      status.textContent = progressLine(p);
+      status.classList.add("err");
+    } else if (p?.state === "cancelled" && !m.installed) {
+      status.textContent = progressLine(p);
+    } else if (m.in_use) {
+      status.textContent = `Downloaded and in use for ${SLOT_LABEL[m.slot]}.`;
+      status.classList.add("ok");
+    } else if (m.installed) {
+      status.textContent = `Downloaded. Press Use for ${SLOT_LABEL[m.slot]}.`;
+    } else {
+      status.textContent = `For ${SLOT_LABEL[m.slot]}.`;
+    }
+    if (!m.installed) {
+      const b = btn(`Download ${mb(m.size)}…`, "start");
+      b.disabled = models.busy();
+      ctl.append(b);
+    } else if (!m.in_use) {
+      const b = btn("Use", "start");
+      b.disabled = models.busy();
+      ctl.append(b);
+    }
+  }
+  row.append(text, ctl);
+  return row;
+}
+
+function renderServerModels(): void {
+  const box = document.getElementById("srv_models");
+  if (!box) return;
+  const group = $<HTMLElement>("srv_group");
+  const lib = serverLib;
+  group.hidden = !lib?.configured;
+  if (!lib?.configured) return;
+  const note = $<HTMLElement>("srv_note");
+  if (lib.error) {
+    note.textContent = `Could not read your server's library: ${lib.error}`;
+    note.className = "hint err";
+  } else if (!lib.models.length) {
+    note.textContent = "Your server lists no models. Add them to its library folder (server setup guide, section 10).";
+    note.className = "hint";
+  } else {
+    note.textContent = "";
+    note.className = "hint";
+  }
+  box.replaceChildren(...(lib.models ?? []).map(serverRow));
+}
+
+/** Settings → Speech to text: the server's model library (shown when a server is set). */
+export const SERVER_MODELS_GROUP = `
+<section class="lw-section" id="srv_group" data-needs="local" hidden>
+  <h3 class="fl-group-title lw-title-badge">From your server <button type="button" class="fl-btn fl-btn-ghost lw-btn-sm" id="srv_refresh">Refresh</button></h3>
+  <div class="fl-group">
+    <div class="fl-row">
+      <div class="fl-row-text"><div class="fl-row-desc">A server is set, so models download from its library instead of Hugging Face, including models you added to it. Only when you press Download; built-in models are checked against the fingerprints in this version, your own against the fingerprint your server lists.<span class="lw-status-sub" id="srv_note"></span></div></div>
+    </div>
+    <div id="srv_models" class="lw-srv-list"></div>
+  </div>
+</section>`;
+
 export const modelsFeature: Feature = {
   init(): void {
     document.body.append(html(DIALOG));
@@ -713,6 +919,18 @@ export const modelsFeature: Feature = {
     document.getElementById("llm_dl_use")?.addEventListener("click", () => void useLlm(llmSel()));
     document.getElementById("llm_dl_delete")?.addEventListener("click", () => void deleteLlm(llmSel()));
     models.onChange(renderHebrewRow);
+    models.onChange(renderServerModels);
+    document.getElementById("srv_refresh")?.addEventListener("click", () => void models.refreshServer());
+    document.addEventListener("click", (ev) => {
+      const b = (ev.target as HTMLElement).closest<HTMLButtonElement>("[data-srv-act]");
+      if (!b) return;
+      const id = b.dataset.srvId ?? "";
+      if (b.dataset.srvAct === "start") void models.serverStart(id);
+      else {
+        const m = serverLib?.models.find((x) => x.id === id);
+        if (m) void models.cancel(m.catalogue_id ?? serverProgressId(m.id));
+      }
+    });
     prefsStore.subscribe(() => renderHebrewRow());
     document.getElementById("hebrew_model")?.addEventListener("change", renderHebrewRow);
     document.getElementById("he_download")?.addEventListener("click", () => {
@@ -742,6 +960,7 @@ export const modelsFeature: Feature = {
         // The backend pointed the engine at the new model: take its prefs.
         if (p.state === "done") void prefsStore.load().catch(() => {});
         void models.refresh().catch(() => {});
+        if (serverLib?.configured) void models.refreshServer();
       }
       notify();
     });
@@ -750,6 +969,7 @@ export const modelsFeature: Feature = {
     const info = await invoke<{ hebrew?: HeStatus }>("get_model_status").catch(() => ({ hebrew: null }));
     heStatus = info.hebrew ?? null;
     await models.refresh();
+    if (models.fromServer()) void models.refreshServer();
   },
 };
 

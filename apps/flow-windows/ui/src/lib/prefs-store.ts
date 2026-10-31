@@ -50,6 +50,10 @@ export interface Prefs {
   parakeet_model_dir: string | null;
   /** Model of the Hebrew route (D33): "zipformer" | "parakeet_he" | "none". */
   hebrew_model?: string;
+  /** A Hebrew model folder from the server's library (D41); null = the catalogue folder. */
+  hebrew_model_dir?: string | null;
+  /** Language-ID model from the server's library (D41); null = the default file. */
+  lid_model_path?: string | null;
   spoken_cleanup: boolean;
   llm_enabled: boolean;
   llm_model_path: string | null;

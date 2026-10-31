@@ -846,17 +846,137 @@ async fn open_external(url: String) -> Result<(), String> {
 }
 
 /// The speech and AI cleanup models this build can download (D31), with
-/// where each is saved and whether it is already there.
+/// where each is saved and whether it is already there. With a server set
+/// (D41) none is downloadable from Hugging Face (`from_server`): Settings
+/// lists the server's library instead (`server_models`).
 #[tauri::command]
 fn model_catalog(state: tauri::State<'_, AppState>) -> Vec<crate::model_download::CatalogView> {
-    use crate::model_download::{catalog_view, ModelEngine, CAN_DOWNLOAD};
+    use crate::model_download::{catalog_view, engine_built, CAN_DOWNLOAD};
     let dir = core_adapter::models_dir(state.appdata.as_deref());
-    catalog_view(&dir, CAN_DOWNLOAD, |e| match e {
-        ModelEngine::Whisper => cfg!(feature = "whisper"),
-        ModelEngine::Parakeet | ModelEngine::SherpaOnline => cfg!(feature = "parakeet"),
-        // llama.cpp is a plugin (flow_llm.dll) loaded by the local engine.
-        ModelEngine::Llm => cfg!(feature = "local-engine"),
-    })
+    let server = configured_server(&state).is_some();
+    let mut v = catalog_view(&dir, CAN_DOWNLOAD, engine_built);
+    if server {
+        for r in &mut v {
+            r.from_server = true;
+            r.available = false;
+        }
+    }
+    v
+}
+
+/// The saved server, when one is set (and this build talks to servers).
+fn configured_server(state: &AppState) -> Option<flow_router::ServerConfig> {
+    if !cfg!(feature = "remote") {
+        return None;
+    }
+    let dev = state.prefs.read().unwrap().developer.clone();
+    router_adapter::server_config(&dev, &dev.token())
+        .ok()
+        .filter(|s| s.is_configured())
+}
+
+/// `User-Agent` of the model library client.
+#[cfg(feature = "remote")]
+fn library_client_name() -> String {
+    format!("flow-windows {}", flow_build_info::FULL)
+}
+
+/// Settings: the configured server's model library (D41), each model with
+/// its slot (or why it can't be used), size and whether it is installed /
+/// in use. `configured: false` without a server.
+#[tauri::command]
+async fn server_models(app: AppHandle) -> Result<serde_json::Value, String> {
+    #[cfg(feature = "remote")]
+    {
+        use crate::server_library as sl;
+        let state = app.state::<AppState>();
+        let Some(cfg) = configured_server(&state) else {
+            return serde_json::to_value(sl::ServerLibraryView::default()).map_err(|e| e.to_string());
+        };
+        let appdata = state.appdata.clone();
+        let prefs = state.prefs.read().unwrap().clone();
+        let view = tauri::async_runtime::spawn_blocking(move || {
+            let dir = core_adapter::models_dir(appdata.as_deref());
+            let listed = flow_remote::library::LibraryClient::new(cfg, &library_client_name())
+                .and_then(|c| c.list());
+            match listed {
+                Ok(l) => sl::ServerLibraryView {
+                    configured: true,
+                    error: None,
+                    models: sl::views(
+                        &l.models,
+                        &dir,
+                        &prefs,
+                        appdata.as_deref(),
+                        &crate::model_download::engine_built,
+                    ),
+                },
+                Err(e) => sl::ServerLibraryView {
+                    configured: true,
+                    error: Some(e.message),
+                    models: Vec::new(),
+                },
+            }
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        serde_json::to_value(view).map_err(|e| e.to_string())
+    }
+    #[cfg(not(feature = "remote"))]
+    {
+        let _ = app;
+        Ok(serde_json::json!({ "configured": false, "models": [] }))
+    }
+}
+
+/// Download custom server model `id` (D41; only ever sent after the user
+/// pressed Download in the confirm dialog) into `<models>\server\<id>\`,
+/// checked against the server's SHA-256; on `done` the prefs of its slot
+/// point at it. Re-running it on an installed model only re-checks the
+/// files and selects it ("Use"). Progress: `model:download` with id
+/// `server:<id>`. Catalogue copies go through `model_download_start`.
+#[tauri::command]
+async fn server_model_download(app: AppHandle, id: String) -> Result<(), String> {
+    #[cfg(feature = "remote")]
+    {
+        use crate::server_library as sl;
+        let state = app.state::<AppState>();
+        let cfg = configured_server(&state).ok_or("no server is set")?;
+        let (client, model, plan) = tauri::async_runtime::spawn_blocking(move || {
+            let c = flow_remote::library::LibraryClient::new(cfg, &library_client_name())
+                .map_err(|e| e.message)?;
+            let l = c.list().map_err(|e| e.message)?;
+            let m = l
+                .models
+                .into_iter()
+                .find(|m| m.id == id)
+                .ok_or_else(|| format!("{id} is no longer on the server"))?;
+            let p = sl::plan(&m, &crate::model_download::engine_built)?;
+            if p.catalogue.is_some() {
+                return Err("a catalogue model: use model_download_start".to_string());
+            }
+            Ok::<_, String>((c, m, p))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        let total = model.size();
+        let pid = sl::progress_id(&model.id);
+        let slot = plan.slot;
+        spawn_model_job(
+            app.clone(),
+            &state,
+            pid,
+            total,
+            "server download",
+            move |dir, cancel, emit| sl::install_custom(&client, &model, &plan, dir, cancel, emit),
+            move |prefs, path, _dir| sl::apply(slot, path, prefs),
+        )
+    }
+    #[cfg(not(feature = "remote"))]
+    {
+        let _ = (app, id);
+        Err("this build has no server support".into())
+    }
 }
 
 /// Where local AI cleanup would run (GPU or CPU), for Settings → AI
@@ -884,7 +1004,9 @@ async fn llm_backend(state: tauri::State<'_, AppState>) -> Result<core_adapter::
 }
 
 /// Download catalogue model `id` (D9/D31: only ever sent after the user
-/// pressed Download). Progress arrives as `model:download` events; on
+/// pressed Download). From the server's library when a server is set
+/// (D41: its copy must match the built-in pins; never Hugging Face then),
+/// else from Hugging Face. Progress arrives as `model:download` events; on
 /// `done` the prefs point the local engine at it and it loads.
 #[tauri::command]
 fn model_download_start(
@@ -892,18 +1014,52 @@ fn model_download_start(
     state: tauri::State<'_, AppState>,
     id: String,
 ) -> Result<(), String> {
+    use crate::model_download as md;
+    let entry = md::entry(&id).ok_or_else(|| format!("unknown model {id}"))?;
+    let server = configured_server(&state);
+    #[cfg(feature = "remote")]
+    let job = {
+        let origin = crate::server_library::Origin::of(server);
+        move |dir: &std::path::Path, cancel: &std::sync::atomic::AtomicBool, emit: &mut dyn FnMut(md::Progress)| {
+            crate::server_library::download_catalogue(
+                entry,
+                dir,
+                &origin,
+                &library_client_name(),
+                &hugging_face_fetch,
+                cancel,
+                emit,
+            )
+        }
+    };
+    #[cfg(not(feature = "remote"))]
+    let job = {
+        let _ = server;
+        move |dir: &std::path::Path, cancel: &std::sync::atomic::AtomicBool, emit: &mut dyn FnMut(md::Progress)| {
+            let fetch = hugging_face_fetch().map_err(md::Stop::Failed)?;
+            md::run(entry, dir, fetch.as_ref(), cancel, emit)
+        }
+    };
+    spawn_model_job(
+        app,
+        &state,
+        entry.id.to_string(),
+        entry.size(),
+        "download",
+        job,
+        move |prefs, _path, dir| entry.apply_to(prefs, dir),
+    )
+}
+
+/// The Hugging Face client (feature `download`); only built for a
+/// download when no server is set.
+fn hugging_face_fetch() -> Result<Box<dyn crate::model_download::Fetch + Send>, String> {
     #[cfg(feature = "download")]
     {
-        use crate::model_download as md;
-        let entry = md::entry(&id).ok_or_else(|| format!("unknown model {id}"))?;
-        let fetch = md::HttpFetch::new()?;
-        spawn_model_job(app, &state, entry, "download", move |dir, cancel, emit| {
-            md::run(entry, dir, &fetch, cancel, emit)
-        })
+        Ok(Box::new(crate::model_download::HttpFetch::new()?))
     }
     #[cfg(not(feature = "download"))]
     {
-        let _ = (app, state, id);
         Err("this build has no downloader: get the model from its page".into())
     }
 }
@@ -924,20 +1080,29 @@ fn model_import_start(
     if !src.is_absolute() {
         return Err("choose the folder, zip or file with the picker".into());
     }
-    spawn_model_job(app, &state, entry, "import", move |dir, cancel, emit| {
-        crate::model_import::run_import(entry, dir, &src, cancel, emit)
-    })
+    spawn_model_job(
+        app,
+        &state,
+        entry.id.to_string(),
+        entry.size(),
+        "import",
+        move |dir, cancel, emit| crate::model_import::run_import(entry, dir, &src, cancel, emit),
+        move |prefs, _path, dir| entry.apply_to(prefs, dir),
+    )
 }
 
-/// Run a download or import of `entry` on its own thread (one at a time,
-/// cancellable with `model_download_cancel`), then point the prefs at the
+/// Run a download or import (`id` = its `model:download` id, `total` its
+/// bytes) on its own thread (one at a time, cancellable with
+/// `model_download_cancel`), then `apply` the prefs for the installed
 /// model and send the final `model:download` event.
-fn spawn_model_job<F>(
+fn spawn_model_job<F, A>(
     app: AppHandle,
     state: &AppState,
-    entry: &'static crate::model_download::CatalogEntry,
+    id: String,
+    total: u64,
     what: &'static str,
     job: F,
+    apply: A,
 ) -> Result<(), String>
 where
     F: FnOnce(
@@ -947,19 +1112,19 @@ where
         ) -> Result<std::path::PathBuf, crate::model_download::Stop>
         + Send
         + 'static,
+    A: FnOnce(&mut Prefs, &std::path::Path, &std::path::Path) + Send + 'static,
 {
     use crate::model_download::{Progress, State, Stop};
-    let cancel = state.downloads.begin(entry.id)?;
+    let cancel = state.downloads.begin(&id)?;
     let dir = core_adapter::models_dir(state.appdata.as_deref());
     let downloads = state.downloads.clone();
     std::thread::spawn(move || {
-        let total = entry.size();
         let send = |p: Progress| {
             let _ = app.emit_to(SETTINGS, "model:download", p);
         };
         let r = job(&dir, &cancel, &mut |p| send(p));
         let end = |state: State, error: Option<String>, path: Option<String>| Progress {
-            id: entry.id.to_string(),
+            id: id.clone(),
             received: if state == State::Done { total } else { 0 },
             total,
             state,
@@ -970,7 +1135,7 @@ where
             Ok(path) => {
                 let st = app.state::<AppState>();
                 let mut prefs = st.prefs.read().unwrap().clone();
-                entry.apply_to(&mut prefs, &dir);
+                apply(&mut prefs, &path, &dir);
                 match save_prefs(&app, &st, prefs) {
                     Ok(()) => end(State::Done, None, Some(path.display().to_string())),
                     Err(e) => end(
@@ -983,8 +1148,8 @@ where
             Err(Stop::Cancelled) => end(State::Cancelled, None, None),
             Err(Stop::Failed(e)) => end(State::Error, Some(e), None),
         };
-        eprintln!("model {what} {}: {:?}", entry.id, last.state);
-        downloads.finish(entry.id);
+        eprintln!("model {what} {id}: {:?}", last.state);
+        downloads.finish(&id);
         send(last);
     });
     Ok(())
@@ -2481,6 +2646,8 @@ pub fn run() {
             model_catalog,
             llm_backend,
             model_download_start,
+            server_models,
+            server_model_download,
             model_import_start,
             model_download_cancel,
             model_delete,

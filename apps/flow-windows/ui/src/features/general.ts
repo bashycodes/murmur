@@ -332,6 +332,8 @@ export function collectGeneral(): Partial<Prefs> {
   next.asr_engine = $<HTMLSelectElement>("asr_engine").value;
   next.parakeet_model_dir = $<HTMLInputElement>("parakeet_model_dir").value.trim() || null;
   next.hebrew_model = $<HTMLSelectElement>("hebrew_model").value;
+  // Choosing another Hebrew model leaves a server one (D41) behind.
+  if (next.hebrew_model !== prefsStore.get()?.hebrew_model) next.hebrew_model_dir = null;
   next.microphone = $<HTMLSelectElement>("microphone").value || null;
   for (const f of BOOL_FIELDS) next[f] = $<HTMLInputElement>(f).checked;
   next.paste_method = $<HTMLSelectElement>("paste_method").value;

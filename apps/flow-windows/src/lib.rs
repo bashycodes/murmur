@@ -35,6 +35,8 @@ pub mod prefs;
 pub mod recent_apps;
 pub mod router_adapter;
 pub mod secrets;
+#[cfg(feature = "remote")]
+pub mod server_library;
 pub mod shell;
 pub mod single_instance;
 pub mod sounds;
