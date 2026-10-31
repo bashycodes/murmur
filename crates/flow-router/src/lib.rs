@@ -29,6 +29,7 @@ pub use flow_core::{CommitResult, CommitStatus, RouteInfo, SessionPoll};
 pub use local::LocalLoader;
 pub use migrate::{MigrationReport, RemovedProvider};
 pub use router::Router;
+pub use server_clean::Clock;
 
 /// Default `ServerConfig::connect_timeout_ms` (D24). Was 800 ms, too tight
 /// for a phone reaching the server through a VPN relay (TCP +

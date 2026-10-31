@@ -592,6 +592,13 @@ impl Router {
         self
     }
 
+    /// Replace the clock that expires a cached "server has no AI cleanup"
+    /// answer after `server.health_ttl_s` (tests). Additive.
+    pub fn with_clock(self, now: crate::Clock) -> Self {
+        self.server_clean.st.lk().now = now;
+        self
+    }
+
     /// Enable opt-in cloud text cleanup (D28): `f` builds the OpenRouter
     /// cleaner (`flow_cloud::cleanup_factory`). Without it cloud cleanup is
     /// never used, whatever the config says. Additive.
@@ -732,6 +739,7 @@ impl Router {
                 .contains(&CleanupRoute::Server);
         let backend = wanted.then(|| self.remote_for(st));
         let mut g = self.server_clean.st.lk();
+        g.ttl = Duration::from_secs(st.cfg.server.health_ttl_s);
         let same = match (&g.backend, &backend) {
             (Some(a), Some(b)) => Arc::ptr_eq(a, b),
             (None, None) => true,
