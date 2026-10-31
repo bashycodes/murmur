@@ -6,7 +6,7 @@
 #  4. optional APK: zipalign -P 16 says the .so entries are page-aligned + stored.
 #  5. per flavour (D17): remote ships no ASR/LLM libs and libflow_ffi.so has no whisper_/llama_
 #     symbols; local's libflow_ffi.so has no WebSocket/TLS code and no cloud STT client (D18 C2);
-#     hybrid/remote's carries the cloud client (feature `cloud`).
+#     hybrid/remote's carries the cloud client (feature `cloud`) and the D39 admin natives (`admin`).
 # Usage: tools/probes/check_native_so.sh [--flavor local|hybrid|remote] [app.apk]
 set -euo pipefail
 app="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -19,6 +19,10 @@ echo "flavor $flavor: $dir"
 so="$dir/libflow_ffi.so"
 fail=0
 want=$(grep -o 'Java_dev_flowclone_core_NativeFlowCore_native[A-Za-z]*' "$app/JNI_CONTRACT.md" | sort -u)
+# D39: hybrid / remote also export the admin API (feature `admin`); local must not.
+if [[ "$flavor" != local ]]; then
+  want=$(printf '%s\n%s\n' "$want" "$(grep -o 'Java_dev_flowclone_admin_NativeAdmin_native[A-Za-z]*' "$app/JNI_CONTRACT.md")" | sort -u)
+fi
 have=$("$bin/llvm-nm" -D --defined-only "$so" | awk '$2=="T"{print $3}' | grep '^Java_' | sort -u)
 missing=$(comm -23 <(echo "$want") <(echo "$have"))
 extra=$(comm -13 <(echo "$want") <(echo "$have"))
