@@ -1,0 +1,82 @@
+# flow-server with Docker Compose (docs/container.md). From deploy/:
+#
+#   docker compose build                      # CPU image flow-server:local
+#   docker compose up -d                      # waits for the first key
+#   docker compose exec flow-server flow-server keys add owner --admin
+#   docker compose logs -f                    # expect "ready … asr=parakeet"
+#
+# GPU (NVIDIA, needs the NVIDIA container toolkit), instead of the CPU service:
+#   docker compose --profile gpu build flow-server-gpu
+#   docker compose --profile gpu up -d flow-server-gpu
+#
+# Settings (environment or deploy/.env):
+#   FLOW_MODELS_DIR         host folder with the models (default ./models), mounted read-only
+#   FLOW_CONFIG_FILE        config (default ./docker/config.toml)
+#   FLOW_PUBLISH_ADDR       host address the port is published on (default 127.0.0.1;
+#                           set your LAN or VPN address, never 0.0.0.0 on a public host)
+#   FLOW_HOST_PORT          host port (default 7313)
+#   FLOW_BIND_CONTAINER_IP  1 (default): the server binds 127.0.0.1 + the container's
+#                           own (private) address, so its loopback/LAN/VPN rules and
+#                           peer filter apply unchanged; 0: the config's bind as written
+#   FLOW_INSECURE_BIND_ANY  0 (default); 1 allows a 0.0.0.0 bind without [tls] and turns
+#                           the peer filter off (docs/container.md "Binding")
+#   FLOW_BUILD_SOURCE       source (default, compile in Docker) | prebuilt
+#                           (tools/container/stage-prebuilt.sh, no network)
+name: flow-server
+
+x-server: &server
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:size=16m,mode=1777
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  environment:
+    FLOW_BIND_CONTAINER_IP: ${FLOW_BIND_CONTAINER_IP:-1}
+    FLOW_INSECURE_BIND_ANY: ${FLOW_INSECURE_BIND_ANY:-0}
+  ports:
+    - "${FLOW_PUBLISH_ADDR:-127.0.0.1}:${FLOW_HOST_PORT:-7313}:7313"
+  volumes:
+    - ${FLOW_MODELS_DIR:-./models}:/models:ro
+    - flow-state:/var/lib/flow-server
+    - ${FLOW_CONFIG_FILE:-./docker/config.toml}:/etc/flow-server/config.toml:ro
+    # [tls]: put cert.pem + key.pem in ./tls and enable [tls] in the config
+    # - ./tls:/etc/flow-server/tls:ro
+  # Parakeet ~1 GB, + Qwen2.5-1.5B ~1.5 GB, + LID; same cap as the systemd unit.
+  mem_limit: 8g
+  stop_grace_period: 20s
+
+services:
+  flow-server:
+    <<: *server
+    image: flow-server:local
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile
+      target: runtime
+      args:
+        SOURCE: ${FLOW_BUILD_SOURCE:-source}
+
+  flow-server-gpu:
+    <<: *server
+    profiles: [gpu]
+    image: flow-server:local-cuda
+    build:
+      context: ..
+      dockerfile: deploy/docker/Dockerfile
+      target: cuda
+      args:
+        SOURCE: ${FLOW_BUILD_SOURCE:-source}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  # keys.json, key-usage.json, library-hashes.json. Survives `down`;
+  # `down -v` deletes the keys.
+  flow-state:
