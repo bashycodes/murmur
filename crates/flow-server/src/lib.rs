@@ -2,15 +2,17 @@
 //! over WebSocket (D17; `docs/protocol.md`, `docs/hybrid-architecture.md` §3).
 //!
 //! Privacy: audio, transcripts, contexts and dictionaries live only in memory
-//! for the duration of a session. Nothing is written to disk; logs carry
-//! sizes and timings only (unless `log_text = true`). The one opt-in
-//! exception is `[debug] capture` (`capture.rs`): received audio and the
+//! for the duration of a session. None of it is written to disk; logs carry
+//! sizes and timings only (unless `log_text = true`). The key store
+//! (`keys.rs`, D38) writes key hashes and per-key counters, never text or
+//! audio. The one opt-in exception is `[debug] capture` (`capture.rs`): received audio and the
 //! result, local, mode 0600, pruned to 30 files / 72 h. The server only
 //! listens; it never opens an outbound connection.
 
 pub mod capture;
 pub mod config;
 mod health;
+pub mod keys;
 pub mod limits;
 pub mod logging;
 pub mod net;
@@ -45,7 +47,8 @@ pub struct Hooks {
 
 pub(crate) struct AppState {
     pub pool: Arc<Pool>,
-    pub token: Option<String>,
+    /// Named keys (D38); `None` = auth off (`auth = "none"` on loopback).
+    pub keys: Option<Arc<keys::KeyStore>>,
     pub cfg: Config,
     pub hooks: Arc<Hooks>,
     /// `[debug] capture`: where finished sessions are saved (None = off).
@@ -111,6 +114,20 @@ impl ServerHandle {
     /// or `systemctl stop`).
     pub fn kill(&self) {
         let _ = self.kill_tx.send(true);
+        self.flush_usage();
+    }
+    /// Write the per-key usage counters now (they are otherwise written
+    /// every [`USAGE_FLUSH`] and at [`ServerHandle::kill`]).
+    pub fn flush_usage(&self) {
+        if let Some(k) = &self.state.keys {
+            if let Err(e) = k.flush() {
+                tracing::warn!("key usage: {e}");
+            }
+        }
+    }
+    /// The key store (`None` when auth is off).
+    pub fn keys(&self) -> Option<&Arc<keys::KeyStore>> {
+        self.state.keys.as_ref()
     }
     /// TCP connections accepted so far.
     pub fn connections(&self) -> u64 {
@@ -173,6 +190,9 @@ fn acceptor(cfg: &Config) -> Result<Acceptor, String> {
     }
 }
 
+/// How often changed per-key usage counters are written (D38).
+pub const USAGE_FLUSH: Duration = Duration::from_secs(30);
+
 /// Serve on already-bound listeners with an already-loaded pool.
 pub async fn serve_with_pool(
     cfg: Config,
@@ -180,6 +200,20 @@ pub async fn serve_with_pool(
     listeners: Vec<TcpListener>,
 ) -> Result<ServerHandle, String> {
     let token = cfg.resolve_token()?;
+    let keys = cfg.open_keys()?.map(Arc::new);
+    if let Some(k) = &keys {
+        let path = k.keys_path();
+        let n = k.active();
+        let file = path.as_ref().map(|p| p.display().to_string());
+        tracing::info!(
+            keys = n,
+            file = file.as_deref().unwrap_or("(memory)"),
+            "auth: named keys"
+        );
+        if n == 0 {
+            tracing::warn!("no active keys: every request gets 401 until `flow-server keys add`");
+        }
+    }
     let wide = cfg.check_bind()?;
     if cfg.insecure_bind_any {
         let list: Vec<String> = wide.iter().map(|a| a.to_string()).collect();
@@ -218,7 +252,7 @@ pub async fn serve_with_pool(
     let cfg_max_conns = cfg.max_connections.max(1);
     let state = Arc::new(AppState {
         pool,
-        token,
+        keys,
         cfg,
         hooks: Arc::new(Hooks::default()),
         capture,
@@ -233,6 +267,24 @@ pub async fn serve_with_pool(
         .route(flow_protocol::PATH_STREAM, get(stream_handler))
         .route(flow_protocol::PATH_HEALTH, get(health::handler))
         .with_state(state.clone());
+    if let Some(k) = state.keys.clone() {
+        let mut kill = state.kill.clone();
+        tokio::spawn(async move {
+            let mut t =
+                tokio::time::interval_at(tokio::time::Instant::now() + USAGE_FLUSH, USAGE_FLUSH);
+            loop {
+                tokio::select! {
+                    _ = t.tick() => {}
+                    _ = kill.changed() => return,
+                }
+                let k = k.clone();
+                let r = tokio::task::spawn_blocking(move || k.flush()).await;
+                if let Ok(Err(e)) = r {
+                    tracing::warn!("key usage: {e}");
+                }
+            }
+        });
+    }
     let mut addrs = Vec::new();
     for l in listeners {
         addrs.push(l.local_addr().map_err(|e| e.to_string())?);
@@ -247,7 +299,7 @@ pub async fn serve_with_pool(
 
 /// Load models, then serve on the given listeners.
 pub async fn serve(cfg: Config, listeners: Vec<TcpListener>) -> Result<ServerHandle, String> {
-    cfg.resolve_token()?;
+    cfg.check_auth()?;
     let (m, w, q) = (cfg.model.clone(), cfg.workers, cfg.max_queue);
     let pool = tokio::task::spawn_blocking(move || Pool::load(&m, w, q))
         .await
@@ -330,22 +382,22 @@ async fn accept_loop(l: TcpListener, app: Router, state: Arc<AppState>, tls: Acc
     }
 }
 
-/// Constant-time bearer check.
-pub(crate) fn authorized(state: &AppState, headers: &HeaderMap) -> bool {
-    let Some(want) = &state.token else {
-        return true;
+/// The bearer check (D38): `Ok(None)` when auth is off, `Ok(Some(key))`
+/// for an active key, `Err(())` otherwise. The key store compares hashes
+/// in constant time and re-reads `keys.json` when the CLI changed it.
+pub(crate) fn authorize(state: &AppState, headers: &HeaderMap) -> Result<Option<keys::KeyRef>, ()> {
+    let Some(store) = &state.keys else {
+        return Ok(None);
     };
     let got = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.strip_prefix("Bearer "))
         .unwrap_or("");
-    let (a, b) = (got.as_bytes(), want.as_bytes());
-    let mut diff = (a.len() ^ b.len()) as u8;
-    for (i, bi) in b.iter().enumerate() {
-        diff |= a.get(i).copied().unwrap_or(0) ^ bi;
+    if got.is_empty() {
+        return Err(());
     }
-    diff == 0 && a.len() == b.len()
+    store.authenticate(got).map(Some).ok_or(())
 }
 
 async fn stream_handler(
@@ -355,15 +407,15 @@ async fn stream_handler(
     headers: HeaderMap,
     ws: WebSocketUpgrade,
 ) -> Response {
-    if !authorized(&state, &headers) {
+    let Ok(key) = authorize(&state, &headers) else {
         tracing::info!(%peer, "rejected: bad or missing token");
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
-    }
+    };
     ws.protocols([flow_protocol::SUBPROTOCOL])
         .max_message_size(limits::MAX_WS_MESSAGE_BYTES)
         .max_frame_size(limits::MAX_WS_MESSAGE_BYTES)
         .on_upgrade(move |socket| async move {
             let _slot = slot; // the WebSocket keeps its connection slot
-            ws::run(socket, state, peer).await
+            ws::run(socket, state, peer, key).await
         })
 }

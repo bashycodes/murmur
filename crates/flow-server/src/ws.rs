@@ -90,6 +90,8 @@ impl Drop for Sess {
 struct Conn {
     state: Arc<AppState>,
     peer: SocketAddr,
+    /// The key this connection authenticated with (D38; never the secret).
+    key: Option<String>,
     out: mpsc::Sender<Message>,
     /// Set when `out` was full: the client is not reading.
     overflow: std::cell::Cell<bool>,
@@ -102,7 +104,12 @@ struct Conn {
     last_rx: Instant,
 }
 
-pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAddr) {
+pub(crate) async fn run(
+    socket: WebSocket,
+    state: Arc<AppState>,
+    peer: SocketAddr,
+    key: Option<crate::keys::KeyRef>,
+) {
     let (mut sink, mut stream) = socket.split();
     let (out_tx, mut out_rx) = mpsc::channel::<Message>(OUT_QUEUE);
     let writer = tokio::spawn(async move {
@@ -153,12 +160,17 @@ pub(crate) async fn run(socket: WebSocket, state: Arc<AppState>, peer: SocketAdd
         return;
     };
     send(&ServerMsg::HelloOk(crate::health::hello_ok(&state, proto)));
-    tracing::info!(%peer, client = %h.client, core = %h.core, "connected");
+    let key_id = key.map(|k| k.id);
+    if let (Some(store), Some(id)) = (&state.keys, &key_id) {
+        store.record_client(id, &h.client);
+    }
+    tracing::info!(%peer, key = key_id.as_deref().unwrap_or("-"), client = %h.client, core = %h.core, "connected");
 
     let (ev_tx, mut ev_rx) = mpsc::unbounded_channel::<Event>();
     let mut c = Conn {
         state: state.clone(),
         peer,
+        key: key_id,
         out: out_tx.clone(),
         overflow: Default::default(),
         ev: ev_tx,
@@ -587,7 +599,17 @@ impl Conn {
                     self.sess = Some(s);
                     return;
                 }
-                log_result(sid, self.peer, &r, s.queue_ms, s.start_to_commit_ms);
+                log_result(
+                    sid,
+                    self.peer,
+                    self.key.as_deref(),
+                    &r,
+                    s.queue_ms,
+                    s.start_to_commit_ms,
+                );
+                if let (Some(store), Some(id)) = (&self.state.keys, &self.key) {
+                    store.record_dictation(id, samples_to_ms(s.samples));
+                }
                 if self.state.cfg.log.log_text {
                     tracing::debug!(sid, text = %r.final_text, "result text");
                 }
@@ -672,6 +694,7 @@ impl Conn {
 fn log_result(
     sid: u64,
     peer: SocketAddr,
+    key: Option<&str>,
     r: &CommitResult,
     queue_ms: u64,
     start_to_commit_ms: Option<u64>,
@@ -680,6 +703,7 @@ fn log_result(
     tracing::info!(
         sid,
         peer = %peer,
+        key,
         audio_ms = t.audio_ms,
         asr_ms = t.asr_ms,
         asr_audio_ms = t.asr_audio_ms,
@@ -734,7 +758,14 @@ mod tests {
             .with_writer(move || out.clone())
             .finish();
         tracing::subscriber::with_default(sub, || {
-            log_result(7, "100.64.0.2:5000".parse().unwrap(), r, 12, Some(7400));
+            log_result(
+                7,
+                "100.64.0.2:5000".parse().unwrap(),
+                Some("k-0123456789abcdef"),
+                r,
+                12,
+                Some(7400),
+            );
         });
         let v = buf.0.lock().unwrap().clone();
         String::from_utf8(v).unwrap()
@@ -749,6 +780,7 @@ mod tests {
         assert!(line.contains("speech_ms=7200"), "{line}");
         assert!(line.contains("peak_dbfs=-2"), "{line}");
         assert!(line.contains("start_to_commit_ms=7400"), "{line}");
+        assert!(line.contains("key=\"k-0123456789abcdef\""), "{line}");
         assert!(!line.contains("Some("), "{line}");
         r.language = Some("he".into());
         assert!(captured(&r).contains("language=\"he\""));
