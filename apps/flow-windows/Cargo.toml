@@ -65,9 +65,10 @@ serde_json = "1"
 base64 = "0.22"
 # `llm` = only a libloading loader for the flow_llm plugin (llama.cpp lives
 # in that separate DLL, docs/DECISIONS.md D10), so it is always on and
-# cross-checks for MSVC like any pure-Rust crate.
+# cross-checks for MSVC like any pure-Rust crate. `whisper-plugin` = the
+# same for the GPU whisper.cpp (flow_whisper_vulkan.dll, crate flow-whisper).
 flow-build-info = { path = "../../crates/flow-build-info" }
-flow-core = { path = "../../crates/flow-core", features = ["llm"] }
+flow-core = { path = "../../crates/flow-core", features = ["llm", "whisper-plugin"] }
 # Local history (audio is never stored). `bundled` = no system sqlite needed.
 # D17: every dictation goes through the router (no network code in it;
 # the remote backend is injected by `remote`).

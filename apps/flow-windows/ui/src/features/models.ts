@@ -30,7 +30,7 @@ export interface CatalogEntry {
   engine: "whisper" | "parakeet" | "sherpa_online" | "llm";
   /** Speech: the pick. AI cleanup: the pick for a PC without a GPU. */
   recommended: boolean;
-  /** AI cleanup: the pick when cleanup runs on a GPU (`llm_backend`). */
+  /** AI cleanup / Hebrew: the pick when it runs on a GPU (`llm_backend` / `whisper_backend`). */
   recommended_gpu?: boolean;
   /** "he": the model of the Hebrew route (D33); absent for a default model. */
   language?: string;
@@ -64,7 +64,7 @@ export interface ServerModel {
   size: number;
   files: number;
   /** Where it fills in; absent when it can't be used here (see `reason`). */
-  slot?: "stt_whisper" | "stt_parakeet" | "hebrew_zipformer" | "hebrew_parakeet" | "llm" | "lid";
+  slot?: "stt_whisper" | "stt_parakeet" | "hebrew_zipformer" | "hebrew_parakeet" | "hebrew_whisper" | "llm" | "lid";
   reason?: string;
   dest: string;
   installed: boolean;
@@ -628,9 +628,16 @@ const LLM_DELETE_DIALOG = `
 
 // ------------------------------------------------------------ Hebrew model (D33)
 
+/** Where a loaded speech model runs (core_adapter ModelStatus::Ready `backend`). */
+interface RunsOn {
+  backend: string;
+  device: string;
+  gpu_error?: string;
+}
+
 type HeStatus =
   | { state: "loading"; path: string }
-  | { state: "ready"; path: string; load_ms: number }
+  | { state: "ready"; path: string; load_ms: number; backend?: RunsOn }
   | { state: "missing"; path: string }
   | { state: "failed"; path: string; message: string }
   | null;
@@ -639,9 +646,46 @@ type HeStatus =
 export const HEBREW_IDS: Record<string, string> = {
   zipformer: "zipformer-he-int8",
   parakeet_he: "parakeet-tdt-0.6b-v3-he-int8",
+  ivrit_turbo: "ivrit-whisper-large-v3-turbo-q5_0",
 };
 
 let heStatus: HeStatus = null;
+
+/** Where whisper would run on this PC (`whisper_backend`); undefined = not asked, null = asking. */
+let whisperBackend: LlmBackend | null | undefined;
+
+/** Ask once (the backend loads the GPU whisper plugin, flow_whisper_vulkan.dll, to list the GPUs). */
+function askWhisperBackend(): void {
+  if (whisperBackend !== undefined) return;
+  whisperBackend = null;
+  invoke<LlmBackend>("whisper_backend")
+    .then((b) => {
+      whisperBackend = b;
+    })
+    .catch((err) => {
+      whisperBackend = { gpu: false, backend: "CPU", device: "CPU", plugin: null, error: String(err) };
+    })
+    .finally(renderHebrewRow);
+}
+
+const onGpu = (b: { backend: string }): boolean => b.backend.toLowerCase() !== "cpu";
+
+/** "Runs on …" for a loaded Hebrew model; `whisper` = the model is a whisper one (GPU possible). */
+export function runsOnLine(b: RunsOn | undefined, whisper: boolean): string {
+  if (!b) return "";
+  if (onGpu(b)) return ` Runs on the graphics chip (${b.device}, ${b.backend}).`;
+  if (b.gpu_error) return ` Runs on the CPU: the graphics chip failed (${b.gpu_error}).`;
+  return whisper ? " Runs on the CPU (no graphics chip found), so expect several seconds per dictation; Zipformer is faster." : " Runs on the CPU.";
+}
+
+/** Where a Hebrew model would run before it is loaded, from the whisper probe. */
+function wouldRunLine(e: CatalogEntry, rec: CatalogEntry | undefined): string {
+  if (e.engine !== "whisper") return "";
+  const b = whisperBackend;
+  if (!b) return "";
+  if (b.gpu) return ` This PC runs it on its graphics chip (${b.device}, ${b.backend}).`;
+  return ` No graphics chip found for it: it would run on the CPU, slowly.${rec && rec.id !== e.id ? ` Recommended here: ${rec.title}.` : ""}`;
+}
 
 /** True when `languages` forces Hebrew (exactly one, `he`/`he-IL`/`iw`). */
 export function hebrewChosen(languages: string[] | undefined): boolean {
@@ -664,6 +708,16 @@ export function hebrewReady(choice: string | undefined): boolean {
 function renderHebrewRow(): void {
   const sel = document.getElementById("hebrew_model") as HTMLSelectElement | null;
   if (!sel) return;
+  if (models.entry(HEBREW_IDS.ivrit_turbo)) askWhisperBackend();
+  // "(recommended)" follows where whisper runs: ivrit turbo on a GPU, Zipformer on the CPU.
+  const hebrew = catalog.filter((c) => c.language === "he");
+  const rec = hebrew.find((c) => (whisperBackend?.gpu ? c.recommended_gpu : c.recommended));
+  for (const o of Array.from(sel.options)) {
+    const c = models.entry(HEBREW_IDS[o.value] ?? "");
+    const base = o.dataset.label ?? o.textContent ?? "";
+    o.dataset.label = base;
+    o.textContent = c && c === rec ? `${base} (recommended)` : base;
+  }
   const e = hebrewEntry(sel.value);
   const wantHe = hebrewChosen(prefsStore.get()?.languages);
   const line = $<HTMLElement>("he_status");
@@ -717,7 +771,7 @@ function renderHebrewRow(): void {
         : e.importable
           ? "get it from its model page, then Import from file"
           : "get it from its model page";
-    set(`Not downloaded yet: ${how} (${mb(e.size)}).${wantHe ? " Until then Hebrew uses the model above." : ""}`, wantHe ? "err" : "");
+    set(`Not downloaded yet: ${how} (${mb(e.size)}).${wantHe ? " Until then Hebrew uses the model above." : ""}${wouldRunLine(e, rec)}`, wantHe ? "err" : "");
     if (!e.available) credit.append(" · ", html(extLink(e.page, "Download page")));
     return;
   }
@@ -727,7 +781,7 @@ function renderHebrewRow(): void {
     : ` Auto-detect needs a ${mb(e.missing ?? 0)} language-ID model: ${e.available ? "press Download" : "get it from the Whisper model page"}${e.importable ? ` or import ${e.files.find((f) => f.extra)?.name ?? "it"}` : ""}.`;
   switch (heStatus?.state) {
     case "ready":
-      set(`Ready for Hebrew (loaded in ${heStatus.load_ms} ms).${noLid}`, "ok");
+      set(`Ready for Hebrew (loaded in ${heStatus.load_ms} ms).${runsOnLine(heStatus.backend, e.engine === "whisper")}${noLid}`, "ok");
       break;
     case "loading":
       set("Loading…");
@@ -748,11 +802,12 @@ export const HEBREW_ROW = `
 <div class="fl-row lw-dl-row" id="he_row">
   <div class="fl-row-text">
     <div class="fl-row-title"><label for="hebrew_model">Hebrew model</label></div>
-    <div class="fl-row-desc">Used when the language is Hebrew (Settings → General), or on Detect automatically when you speak Hebrew; every other language keeps the model above. Zipformer is smaller and more accurate. The download includes a 32 MB Whisper model that tells Hebrew from English.<span class="lw-status-sub"><span class="lw-dl-bar" id="he_bar" hidden><span></span></span><span id="he_status"></span></span><span class="lw-status-sub lw-he-credit" id="he_credit" hidden></span></div>
+    <div class="fl-row-desc">Used when the language is Hebrew (Settings → General), or on Detect automatically when you speak Hebrew; every other language keeps the model above. Zipformer is small and fast on any PC; ivrit.ai Whisper turbo is the most accurate but needs a graphics chip (GPU). The download includes a 32 MB Whisper model that tells Hebrew from English.<span class="lw-status-sub"><span class="lw-dl-bar" id="he_bar" hidden><span></span></span><span id="he_status"></span></span><span class="lw-status-sub lw-he-credit" id="he_credit" hidden></span></div>
   </div>
   <div class="fl-row-control">
     <select id="hebrew_model" class="fl-select lw-w220" data-save="prefs" aria-label="Hebrew model">
-      <option value="zipformer">Zipformer (recommended)</option>
+      <option value="zipformer">Zipformer</option>
+      <option value="ivrit_turbo">ivrit.ai Whisper turbo</option>
       <option value="parakeet_he">Parakeet</option>
       <option value="none">None</option>
     </select>
@@ -776,6 +831,7 @@ const SLOT_LABEL: Record<NonNullable<ServerModel["slot"]>, string> = {
   stt_parakeet: "the model on this PC (Parakeet)",
   hebrew_zipformer: "the Hebrew model (streaming)",
   hebrew_parakeet: "the Hebrew model (Parakeet)",
+  hebrew_whisper: "the Hebrew model (Whisper)",
   llm: "AI cleanup on this PC",
   lid: "language detection (auto-detect → Hebrew)",
 };

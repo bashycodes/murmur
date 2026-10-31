@@ -1,0 +1,37 @@
+[package]
+name = "flow-whisper"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "whisper.cpp speech engine as a plugin library (the Windows GPU build: flow_whisper_vulkan.dll)"
+
+# cdylib = the plugin flow-core loads at runtime (`whisper_plugin`); rlib =
+# the Rust API for tests. A separate library for the same reason as
+# flow-llm (D10): the Vulkan build bundles its own whisper.cpp + ggml, and
+# the app already links the CPU whisper.cpp. A cdylib exports only the
+# `flow_whisper_*` functions, so its ggml stays private.
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# The decode itself (padding, silence gate, fitted encoder window and its
+# repetition guard, prompt) is flow-core's WhisperEngine, so the plugin
+# transcribes exactly like the built-in engine.
+flow-core = { path = "../flow-core", features = ["whisper"] }
+# raw-api: ggml's device list (backend.rs).
+whisper-rs = { version = "0.16", features = ["raw-api"] }
+serde.workspace = true
+serde_json.workspace = true
+
+[features]
+# GPU through Vulkan (whisper.cpp GGML_VULKAN). Needs the Vulkan SDK
+# (VULKAN_SDK, glslc) at build time. The Windows CI builds it as
+# flow_whisper_vulkan.dll; it links vulkan-1.dll, so on a PC without a
+# Vulkan driver it does not load and the app uses its built-in CPU whisper.
+# Inside it, no usable GPU, or a GPU that fails to load the model, means
+# the CPU (`backend::choose`, `Plan::fallbacks`).
+vulkan = ["whisper-rs/vulkan"]
+
+[dev-dependencies]
+# tests/plugin_e2e.rs drives the built cdylib through flow-core's loader.
+flow-core = { path = "../flow-core", features = ["whisper", "whisper-plugin", "wav"] }
