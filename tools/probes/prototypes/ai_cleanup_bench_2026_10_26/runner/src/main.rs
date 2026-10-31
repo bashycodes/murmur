@@ -31,7 +31,7 @@ use std::time::{Duration, Instant};
 
 use flow_core::asr::{AsrEngine, AsrError, AsrOutput, AsrRequest};
 use flow_core::cleanup::{
-    build_prompt, lists_to_plain, unwrap_output, CleanError, CleanPrompt, Cleaner, PromptVersion,
+    build_prompt, lists_to_plain, unwrap_output_for, CleanError, CleanPrompt, Cleaner, PromptVersion,
 };
 use flow_core::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig};
 use flow_core::guard::Verdict;
@@ -134,7 +134,7 @@ fn judge(
 ) -> serde_json::Value {
     let fallback_text = rules(&c.input, c.app_category);
     let post = |s: &str| postprocess::apply(s, &c.input, session, ctx).text;
-    let out = llm_raw.as_deref().map(|s| lists_to_plain(&unwrap_output(s)));
+    let out = llm_raw.as_deref().map(|s| lists_to_plain(&unwrap_output_for(s, &c.input)));
     // An empty answer is valid only for an all-filler input; the fallback
     // rules decide that.
     let (vs, vl) = match &out {

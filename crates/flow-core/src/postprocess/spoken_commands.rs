@@ -8,7 +8,8 @@
 //! |---|---|
 //! | quote … unquote / close quote / end quote / end of quote | `"…"` |
 //! | open quote / begin quote … (same closers) | `"…"` |
-//! | quote unquote X | `"X"` |
+//! | quote unquote X (mid-sentence) | `"X"` (one word, or to the next pause after a pause) |
+//! | quote unquote X … (sentence start) | `"X …."` (the whole sentence) |
 //! | (and) I quote … unquote (any closer) | `, "…,"` (intro dropped) |
 //! | ", quote, X," / ", in quotes, X," (no closer) | `"X"` |
 //! | open paren(s/thesis/theses) … close / end paren… | `(…)` |
@@ -279,6 +280,23 @@ fn pause_end(toks: &[Tok], from: usize, max: usize) -> Option<usize> {
         .filter(|&k| !toks[from..=k].iter().any(Tok::is_break))
 }
 
+/// Index of the last token of the sentence starting at `from`: the first
+/// token with sentence punctuation, else the one before a break or the
+/// end of the text.
+fn sentence_end(toks: &[Tok], from: usize) -> usize {
+    let mut end = from;
+    for (k, t) in toks.iter().enumerate().skip(from) {
+        if t.is_break() {
+            break;
+        }
+        end = k;
+        if t.ends_sentence() {
+            break;
+        }
+    }
+    end
+}
+
 /// Split a token into (word, trailing punctuation it carries).
 fn split_tail(t: &Tok) -> (String, String) {
     let end = t
@@ -350,8 +368,9 @@ fn emit(out: &mut Vec<Tok>, mut content: Vec<Tok>, w: Wrap, next: Option<&str>) 
     let text = if w.mark == Mark::Quote {
         if !inner_q.is_empty() {
             // "Are you okay?" — the quotation's own mark; a period after it
-            // is dropped.
-            let outer = if matches!(after.as_str(), "." | ",") {
+            // is dropped, and so is the same mark again (a span that ends
+            // the sentence carries it once, inside).
+            let outer = if matches!(after.as_str(), "." | ",") || after == inner_q {
                 ""
             } else {
                 after.as_str()
@@ -449,8 +468,13 @@ fn try_command(toks: &[Tok], c: &[String], i: usize, out: &mut Vec<Tok>) -> Opti
         if from >= toks.len() || toks[from].is_break() || c[from].is_empty() {
             return None;
         }
-        // After a pause the quotation runs to the next one; else one word.
-        let end = if toks[from - 1].suffix().contains(',') {
+        // At the start of a sentence the quotation is the whole sentence;
+        // mid-sentence it runs to the next pause after a pause, else it is
+        // one word.
+        let sentence_start = out.last().is_none_or(Tok::ends_sentence);
+        let end = if sentence_start {
+            sentence_end(toks, from)
+        } else if toks[from - 1].suffix().contains(',') {
             pause_end(toks, from, 6).unwrap_or(from)
         } else {
             from
@@ -675,6 +699,34 @@ mod tests {
             t("he is a quote unquote expert on this"),
             "He is a \"expert\" on this"
         );
+        assert_eq!(
+            t("she called it quote unquote cozy and left"),
+            "She called it \"cozy\" and left"
+        );
+    }
+
+    #[test]
+    fn quote_unquote_at_a_sentence_start_quotes_the_sentence() {
+        assert_eq!(
+            t("quote unquote the plan works great"),
+            "\"The plan works great\""
+        );
+        assert_eq!(
+            t("Quote unquote, the plan works great."),
+            "\"The plan works great.\""
+        );
+        assert_eq!(
+            t("Quote, unquote, the plan is fine. We start Monday."),
+            "\"The plan is fine.\" We start Monday."
+        );
+        assert_eq!(
+            t("We tried it. Quote unquote, it works every time? Not really."),
+            "We tried it. \"It works every time?\" Not really."
+        );
+        assert_eq!(
+            t("quote unquote best pizza ever\nnext line here"),
+            "\"Best pizza ever\"\nNext line here"
+        );
     }
 
     #[test]
@@ -803,6 +855,7 @@ mod tests {
             "She said, quote, I'll be there soon, unquote, and then never showed up.",
             "I'll bring the charger in parentheses the USB-C one to the meeting.",
             "The deadline dash which nobody likes dash is Friday.",
+            "Quote unquote, the plan works great.",
         ] {
             let once = t(s);
             assert_eq!(t(&once), once, "{s}");

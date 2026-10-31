@@ -896,7 +896,8 @@ the correction.
 - Spoken punctuation becomes the symbol: comma, period, question mark, exclamation point, colon, semicolon, dash (—), \
 new line, new paragraph.
 - \"quote ... unquote\", \"open quote ... close quote\" and \"... end quote\" wrap the words between them in double \
-quotes; \"quote unquote X\" quotes only X. \"open paren ... close paren\" and \"in parentheses X\" wrap the words in ( ), \
+quotes. \"quote unquote\" mid-sentence quotes only the next word; at the start of a sentence it quotes the \
+whole sentence. \"open paren ... close paren\" and \"in parentheses X\" wrap the words in ( ), \
 \"in brackets X\" in [ ]. With no closing command the span ends where the phrase ends, usually at the next comma.
 - A command word used as an ordinary word stays a word: \"a quote for the roof\", \"the trial period\", \"the Oxford \
 comma\", \"put the area code in parentheses\".
@@ -936,6 +937,13 @@ const EXAMPLES: &[Example] = &[
         Style::Formal,
         "My sister called it, quote unquote, cozy, and like forty people came.",
         "My sister called it \"cozy,\" and 40 people came.",
+    ),
+    (
+        "Notes",
+        AppCategory::Other,
+        Style::Formal,
+        "Quote unquote, the printer works fine. It jammed twice this morning.",
+        "\"The printer works fine.\" It jammed twice this morning.",
     ),
     (
         "Docs",
@@ -1305,10 +1313,28 @@ static POSTAMBLE: LazyLock<regex::Regex> = LazyLock::new(|| {
 
 /// Strip preamble/commentary, then one layer of wrapping quotes or guillemets.
 pub fn unwrap_output(s: &str) -> String {
+    unwrap_output_inner(s, false)
+}
+
+/// [`unwrap_output`] for an answer to `input`: when the speaker quoted the
+/// whole dictation ("quote unquote the bus was on time" → `"The bus was on
+/// time."`, or a transcript the rules already wrote that way), the
+/// wrapping double quotes are the answer, not packaging, and stay.
+pub fn unwrap_output_for(s: &str, input: &str) -> String {
+    let t = input.trim_start();
+    let quoted = t.starts_with(['"', '\u{201c}'])
+        || crate::postprocess::spoken::spoken_cleanup(t).starts_with('"');
+    unwrap_output_inner(s, quoted)
+}
+
+fn unwrap_output_inner(s: &str, keep_quotes: bool) -> String {
     let t = POSTAMBLE.replace(s.trim(), "");
     let t = PREAMBLE.replace(&t, "");
     let mut t = t.trim();
     for (open, close) in [('"', '"'), ('\u{ab}', '\u{bb}'), ('\u{201c}', '\u{201d}')] {
+        if keep_quotes && open != '\u{ab}' {
+            continue;
+        }
         if let Some(x) = t.strip_prefix(open).and_then(|x| x.strip_suffix(close)) {
             if !x.contains(close) {
                 t = x;
@@ -1441,11 +1467,12 @@ fn run_metered(
             );
         }
     };
+    let unwrap = |s: &str| unwrap_output_for(s, asr_text);
     let out = match res {
-        Ok(s) if ai => blank_line_before_lists(&lists_to_plain(&blank_line_before_html_lists(
-            &unwrap_output(&s),
-        ))),
-        Ok(s) => lists_to_plain(&unwrap_output(&s)),
+        Ok(s) if ai => {
+            blank_line_before_lists(&lists_to_plain(&blank_line_before_html_lists(&unwrap(&s))))
+        }
+        Ok(s) => lists_to_plain(&unwrap(&s)),
         Err(e) => {
             let why = Rejection {
                 text: None,
@@ -1745,7 +1772,7 @@ mod tests {
         // Prompt v2 is ~2x the old prefix; keep it bounded (prefill cost).
         assert!(p.system.len() < 2600, "{}", p.system.len());
         // Few-shot turns in the user-message format.
-        assert_eq!(p.examples.len(), 17);
+        assert_eq!(p.examples.len(), 18);
         assert!(p.examples[0]
             .0
             .starts_with("APP: Messages | CATEGORY: personal chat\nTRANSCRIPT: «"));
@@ -1784,7 +1811,8 @@ mod tests {
             "unquote",
             "open quote",
             "end quote",
-            "quote unquote X",
+            "quote unquote\" mid-sentence quotes only the next word",
+            "at the start of a sentence it quotes the whole sentence",
             "open paren",
             "in parentheses X",
             "in brackets X",
@@ -1923,6 +1951,27 @@ mod tests {
         ] {
             assert_eq!(unwrap_output(raw), want, "{raw:?}");
         }
+    }
+
+    #[test]
+    fn whole_dictation_quote_survives_unwrapping() {
+        let raw = "\"The bus was right on time.\"";
+        for input in [
+            "quote unquote the bus was right on time",
+            "Quote unquote, the bus was right on time.",
+            "\"The bus was right on time\"",
+        ] {
+            assert_eq!(unwrap_output_for(raw, input), raw, "{input:?}");
+        }
+        // Packaging quotes around an unquoted dictation still go.
+        assert_eq!(
+            unwrap_output_for(raw, "the bus was right on time"),
+            "The bus was right on time."
+        );
+        assert_eq!(
+            unwrap_output_for("\u{ab}Meet at 3 PM.\u{bb}", "quote unquote meet at three"),
+            "Meet at 3 PM."
+        );
     }
 
     struct Watcher(Arc<AtomicBool>);

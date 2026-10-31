@@ -24,6 +24,7 @@ rejected.
 | `run_or.sh` | Phase 1d: one OpenRouter model through the product's `OpenRouterCleaner` (zdr + data_collection deny), prompt v4b; key from `~/.config/flow-clone/openrouter.key` into the env only; summed `usage.cost` over all `results/or_*` capped at `$CAP` (1.50) |
 | `run_big.sh` | Qwen2.5-7B / Llama-3.1-8B rows; only after the home flow-server is stopped (not run in phase 1) |
 | `fetch_llama8b.sh` | Llama-3.1-8B-Instruct Q4_K_M download with sha256 check |
+| `results/quote_*` | 2026-10-31 "quote unquote" smart-scope check (9 cases, `quote_cases.jsonl`): Qwen2.5-1.5B, prompt v4c before (`quote_prompt_v4c_before.json`, the pre-change dump) vs after, plus the rules. Raw answer right 3/9 → 7/9; final text after guard + fallback 7/9 → 9/9 |
 | `results/` | Raw rows (`*.jsonl`) and `/usr/bin/time -v` output (`*.time`, peak RSS). `v4_q15` was judged by an earlier loose guard (a reverted 2-word-run rule and a "USB-C" name bug); score `*_rejudged`, which re-judges the same LLM answers with the final guards (for the other runs it is identical) |
 
 ## Reproduce
