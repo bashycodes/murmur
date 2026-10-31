@@ -125,7 +125,7 @@ async fn run_session(rust_log: Option<&str>, level: &str, log_text: bool) -> Run
     Run { log, files_left }
 }
 
-/// Files under `root` other than the key store's two files, which must
+/// Files under `root` other than the key store's files, which must
 /// hold no secret, transcript, dictionary or context.
 fn files_besides_the_key_store(root: &std::path::Path) -> usize {
     let keys = root.join(".local/state/flow-server");
@@ -137,7 +137,7 @@ fn files_besides_the_key_store(root: &std::path::Path) -> usize {
             if p.is_dir() {
                 stack.push(p);
             } else if p.parent() == Some(keys.as_path())
-                && ["keys.json", "key-usage.json"]
+                && ["keys.json", "key-usage.json", "keys.json.lock"]
                     .iter()
                     .any(|f| p.file_name().unwrap() == *f)
             {

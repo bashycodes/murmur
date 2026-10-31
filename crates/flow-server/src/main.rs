@@ -1,7 +1,7 @@
 //! `flow-server [--config PATH] [--token-file PATH] [--insecure-bind-any]`
 //! `flow-server gen-token --out PATH`
 //! `flow-server check-config [--config PATH]`
-//! `flow-server keys add <name> [--admin] | list | revoke <name|id>` (D38)
+//! `flow-server keys add <name> [--admin] | list | revoke <name|id> [--force]` (D38)
 //! `flow-server library list` (D40)
 
 use std::path::PathBuf;
@@ -16,7 +16,7 @@ const SYSTEM_STATE_DIR: &str = "/var/lib/flow-server";
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage:\n  flow-server [--config PATH] [--token-file PATH] [--insecure-bind-any]\n  flow-server gen-token --out PATH\n  flow-server check-config [--config PATH] [--token-file PATH]\n  flow-server keys add <name> [--admin] [--config PATH] [--state-dir DIR]\n  flow-server keys list [--config PATH] [--state-dir DIR]\n  flow-server keys revoke <name|id> [--config PATH] [--state-dir DIR]\n  flow-server library list [--config PATH] [--state-dir DIR]"
+        "usage:\n  flow-server [--config PATH] [--token-file PATH] [--insecure-bind-any]\n  flow-server gen-token --out PATH\n  flow-server check-config [--config PATH] [--token-file PATH]\n  flow-server keys add <name> [--admin] [--config PATH] [--state-dir DIR]\n  flow-server keys list [--config PATH] [--state-dir DIR]\n  flow-server keys revoke <name|id> [--force] [--config PATH] [--state-dir DIR]\n  flow-server library list [--config PATH] [--state-dir DIR]"
     );
     ExitCode::from(2)
 }
@@ -29,6 +29,8 @@ struct Args {
     insecure_bind_any: bool,
     state_dir: Option<PathBuf>,
     admin: bool,
+    /// `keys revoke --force`: allow revoking the last admin key.
+    force: bool,
     /// `keys` / `library` arguments (`add NAME`, `list`, `revoke NAME|ID`).
     rest: Vec<String>,
 }
@@ -42,6 +44,7 @@ fn parse() -> Option<Args> {
         insecure_bind_any: false,
         state_dir: None,
         admin: false,
+        force: false,
         rest: Vec::new(),
     };
     let mut it = std::env::args().skip(1);
@@ -53,6 +56,7 @@ fn parse() -> Option<Args> {
             "--insecure-bind-any" => a.insecure_bind_any = true,
             "--state-dir" => a.state_dir = Some(it.next()?.into()),
             "--admin" => a.admin = true,
+            "--force" => a.force = true,
             "gen-token" | "check-config" | "serve" | "keys" | "library" if a.cmd == "serve" => {
                 a.cmd = x
             }
@@ -167,7 +171,12 @@ fn keys(a: &Args) -> ExitCode {
             }
             ["list"] => print!("{}", flow_server::keys::table(&store.list())),
             ["revoke", who] => {
-                let k = store.revoke(who)?;
+                let k = store.revoke(who, a.force).map_err(|e| match e {
+                    flow_server::keys::KeyError::LastAdmin(m) => {
+                        format!("{m} (or pass --force)")
+                    }
+                    e => e.to_string(),
+                })?;
                 eprintln!(
                     "revoked key {:?} (id {}): new connections with it get 401; open sessions finish",
                     k.name, k.id
