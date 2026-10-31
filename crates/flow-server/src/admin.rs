@@ -114,6 +114,8 @@ fn view(k: &KeyInfo, current: &str) -> KeyView {
         client: k.usage.client.clone(),
         dictations: k.usage.dictations,
         audio_ms: k.usage.audio_ms,
+        downloads: k.usage.downloads,
+        download_bytes: k.usage.download_bytes,
         current: k.key.id == current,
     }
 }

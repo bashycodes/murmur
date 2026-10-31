@@ -38,6 +38,7 @@ export const adminStore = {
 const seen = (secs) => (secs ? when(secs * 1000) : "never");
 const day = (secs) => new Date(secs * 1000).toLocaleDateString([], { dateStyle: "medium" });
 const minutes = (ms) => (ms / 60000).toFixed(1);
+const megabytes = (b) => `${(b / 1e6).toFixed(1)} MB`;
 export const settingsKeysPage = {
     id: "settings-keys",
     area: "settings",
@@ -50,7 +51,7 @@ ${heading("Users & keys", "Give each person or device its own key, so you can se
   <h3 class="fl-group-title">Keys</h3>
   <div class="fl-group">
     <table class="lw-keys" id="keys_table">
-      <thead><tr><th>Name</th><th>Created</th><th>Last seen</th><th class="num">Dictations</th><th class="num">Audio min</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Created</th><th>Last seen</th><th class="num">Dictations</th><th class="num">Audio min</th><th class="num">Downloads</th><th></th></tr></thead>
       <tbody id="keys_rows"></tbody>
     </table>
     <p class="lw-empty-row" id="keys_empty" hidden>Loading…</p>
@@ -129,6 +130,14 @@ async function load() {
         void adminStore.refresh();
     }
 }
+// Model downloads: the count, with the bytes sent on hover.
+function downloads(k) {
+    const n = k.downloads ?? 0;
+    const td = el("td", "num", String(n));
+    if (n)
+        td.title = megabytes(k.download_bytes ?? 0);
+    return td;
+}
 function render(keys) {
     const body = $("keys_rows");
     body.replaceChildren();
@@ -152,7 +161,7 @@ function render(keys) {
             name.append(tags);
         // The app it last connected with, under the name.
         name.append(el("span", "lw-key-client", k.client ?? "not used yet"));
-        tr.append(name, el("td", "", day(k.created)), el("td", "", seen(k.last_seen)), el("td", "num", String(k.dictations)), el("td", "num", minutes(k.audio_ms)));
+        tr.append(name, el("td", "", day(k.created)), el("td", "", seen(k.last_seen)), el("td", "num", String(k.dictations)), el("td", "num", minutes(k.audio_ms)), downloads(k));
         const act = el("td", "act");
         if (k.revoked) {
             act.append(el("span", "lw-muted", `Revoked ${day(k.revoked)}`));
