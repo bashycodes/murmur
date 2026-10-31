@@ -49,7 +49,14 @@ tools/fetch-models.sh --llm 0.5b      # Qwen2.5-Instruct Q4_K_M GGUF for LLM cle
 tools/fetch-models.sh --parakeet      # Parakeet-TDT-0.6B-v2 int8 (sherpa-onnx)
 ```
 
-The apps themselves never download anything.
+The apps download a model only when you press Download, and with a server
+set only from that server's model library.
+
+## No internet
+
+Flow Clone runs on a network with no internet at all: one `flow-server`
+does the dictation, serves the models and hands out one key per device.
+Owner guide: [`docs/air-gapped.md`](docs/air-gapped.md).
 
 ## Privacy
 

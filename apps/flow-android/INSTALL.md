@@ -14,6 +14,11 @@ The `local` flavour can't download anything, including the speech model: you fet
 on a PC and copy it to the phone yourself. The `hybrid`/`remote` flavours only talk to the
 server address you type in Developer settings; voice never reaches a third party.
 
+No internet at all (a home network with only your own server): see `docs/air-gapped.md`.
+The `hybrid` flavour then downloads its models from the server's library (each model
+screen → *From your server*), and an admin key manages the other devices' keys
+(Settings → *Your server* → *Users & keys*).
+
 Requirements: Android 13 or newer (minSdk 33), an arm64 phone, and about 200 MB free
 (APK about 14 MB, model 30–150 MB). Optional AI cleanup needs another 0.5–1.1 GB of storage
 and roughly as much free RAM. Android 15 phones with 16 KB pages are supported: every
