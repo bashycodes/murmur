@@ -68,6 +68,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   creates a key (name, admin switch; the secret is shown once in a copy box
   and kept nowhere) and revokes one after a confirm, with a warning when it
   is the key this app uses. The page is hidden for non-admin keys.
+- **Android: manage the server's keys from the phone (D39).** In the
+  hybrid and remote apps, with an admin key saved, Settings → Your server
+  shows **Users & keys**: every key with its app, last use, dictations,
+  audio minutes and model downloads; create a key (name, admin switch; the
+  secret is shown once with a Copy button that marks the clip sensitive,
+  and is never stored or logged) and revoke one after a confirm. The last
+  admin key can't be revoked. Hidden for non-admin keys and in the
+  on-device-only app.
 - **Server: admin API (D39).** `GET /v1/whoami`, `GET`/`POST
   /v1/admin/keys` and `DELETE /v1/admin/keys/{id}` on the usual port, with
   the usual key; non-admin keys get 403. The server refuses to revoke the

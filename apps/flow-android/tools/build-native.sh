@@ -3,8 +3,8 @@
 # D17 §1.4:
 #   --flavor local   libflow_ffi.so (jni,whisper,llm,parakeet) + libflow_llm.so + libc++_shared.so
 #                    + libsherpa-onnx-c-api.so + libonnxruntime.so          (no network code)
-#   --flavor hybrid  as local, flow-ffi additionally with `remote,cloud`
-#   --flavor remote  libflow_ffi.so (jni,remote,cloud) only: no ASR/LLM, no C++ runtime
+#   --flavor hybrid  as local, flow-ffi additionally with `remote,cloud,admin`
+#   --flavor remote  libflow_ffi.so (jni,remote,cloud,admin) only: no ASR/LLM, no C++ runtime
 #   `cloud` (D18, docs/cloud-stt.md §9) = opt-in third-party STT over HTTPS (reqwest + rustls,
 #   webpki roots; no OpenSSL). Never in `local` (C2; tools/check-build-matrix.sh + the APK gate).
 #   libflow_llm.so   crates/flow-llm (llama.cpp cleanup plugin). It must stay a separate .so:
@@ -50,6 +50,8 @@ features="jni"
 [[ $parakeet == 1 ]] && features="$features,parakeet"
 [[ $remote == 1 ]] && features="$features,remote"
 [[ $cloud == 1 ]] && features="$features,cloud"
+# D39 "Users & keys": the admin API client rides on `remote`.
+[[ $remote == 1 ]] && features="$features,admin"
 out="$app/app/src/$flavor/jniLibs"
 rm -rf "$out/arm64-v8a"; mkdir -p "$out/arm64-v8a"
 echo "flavor=$flavor features=$features -> $out/arm64-v8a"

@@ -208,6 +208,28 @@ request's own.
 |---|---|---|---|---|
 | `nativeBenchClean(h: Long, requestJson: String): String` | `(JLjava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeBenchClean` | — | **Blocking** (one LLM call). The request is `{"mode":"prod"\|"v4c","input","context":FieldContext,"session":SessionConfig}`, run on a **core** handle's on-device LLM. `prod` runs `flow_core::refinish` on `input` (the product's text path) and returns `output`, `status` and `fallback_reason`. `v4c` sends the raw transcript with prompt v4c to the LLM once, with no guard. Both return `llm_raw`, `llm_error`, `llm_ms`, `llm_calls`, `wall_ms` and `llm_info`. Never null; on failure, or for a router handle, it returns `{"error":…}` |
 
+## Admin API (D39, "Users & keys") — additive, `hybrid` / `remote` only
+
+The owner manages the server's named keys from Settings → Your server → Users & keys. A
+separate class, **`dev.flowclone.admin.NativeAdmin`** (Kotlin `object` + `@JvmStatic external`,
+`app/src/main/java/dev/flowclone/admin/NativeAdmin.kt`), so the second C parameter is again a
+`jclass`. Rust: `crates/flow-ffi/src/jni_admin.rs` over `admin_api.rs` (feature **`admin`** =
+`remote` + `flow_remote::admin::AdminClient`); `tools/build-native.sh` enables it for `hybrid`
+and `remote`, so the `local` library has none of these symbols (Kotlin treats
+`UnsatisfiedLinkError` as "not in this build"). `serverConfigJson` is the saved
+`ServerConfig` (as for `nativeProbeServer`). All four are **blocking** (one HTTP request,
+≤ 15 s) and never return null. Answer: `{"ok":true,"value":…}` or
+`{"ok":false,"code":…,"message":…}` with `code` from `flow_protocol::admin::code`
+(`forbidden` = not an admin key: Kotlin hides the page). Nothing is logged; the Rust copy of
+an answer is wiped after it is handed to Java.
+
+| Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | Semantics |
+|---|---|---|---|
+| `nativeAdminWhoami(serverConfigJson: String): String` | `(Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_admin_NativeAdmin_nativeAdminWhoami` | `GET /v1/whoami` → `value` = `{id, name, admin}` |
+| `nativeAdminListKeys(serverConfigJson: String): String` | `(Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_admin_NativeAdmin_nativeAdminListKeys` | `GET /v1/admin/keys` → `value` = `{keys:[KeyView]}` (usage incl. `downloads`, `download_bytes`; `current` = this key) |
+| `nativeAdminCreateKey(serverConfigJson: String, name: String, admin: Boolean): String` | `(Ljava/lang/String;Ljava/lang/String;Z)Ljava/lang/String;` | `Java_dev_flowclone_admin_NativeAdmin_nativeAdminCreateKey` | `POST /v1/admin/keys` → `value` = `{key, secret}`. The **secret** is shown once and never stored or logged by the app |
+| `nativeAdminRevokeKey(serverConfigJson: String, id: String): String` | `(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_admin_NativeAdmin_nativeAdminRevokeKey` | `DELETE /v1/admin/keys/{id}` → `value` = `{key}`; `last_admin` for the last admin key |
+
 ## Threading: blocking vs non-blocking (review C2)
 
 Kotlin must never call a **blocking** native on the main thread.
