@@ -21,6 +21,13 @@ fn jvm_round_trip() {
     if cfg!(feature = "cloud") {
         features.push("cloud");
     }
+    // (+ `library`, so jni_library's build of the same cdylib is not undone either.)
+    if cfg!(feature = "library") {
+        features = vec!["jni", "remote", "library"];
+        if cfg!(feature = "cloud") {
+            features.push("cloud");
+        }
+    }
     let features = features.join(",");
     let st = Command::new(env!("CARGO"))
         .args([
@@ -190,9 +197,13 @@ fn contract_symbols_exported() {
     .unwrap();
     let want: std::collections::BTreeSet<&str> = contract
         .split('`')
-        .filter(|w| w.starts_with("Java_dev_flowclone_core_NativeFlowCore_native"))
+        .filter(|w| {
+            w.starts_with("Java_dev_flowclone_core_NativeFlowCore_native")
+                || w.starts_with("Java_dev_flowclone_server_ServerLibraryNative_native")
+        })
         .collect();
-    assert_eq!(want.len(), 43, "{want:?}"); // D28: +10 OpenRouter natives; +1 Command Mode; +1 nativeBenchClean
+    // D28: +10 OpenRouter natives; +1 Command Mode; +1 nativeBenchClean; D41: +2 model library (feature `library`).
+    assert_eq!(want.len(), 45, "{want:?}");
     let src = include_str!("../src/jni_api.rs");
     let have: std::collections::BTreeSet<&str> = src
         .split(|c: char| !c.is_alphanumeric() && c != '_')

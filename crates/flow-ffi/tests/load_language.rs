@@ -36,10 +36,8 @@ fn load_language_loads_only_the_routed_model() {
 
 #[test]
 fn load_language_without_a_route_loads_the_default_only() {
-    let cfg = format!(
-        r#"{{"asr_backend":{{"mock":{{"text":"hello"}}}},"asr_path":"","languages":{{"he":{{"asr_backend":"whisper","asr_path":"/nonexistent.bin"}}}},"load_language":"en"}}"#
-    );
-    let core = json_api::load_models_kind(&cfg).expect("the missing Hebrew model is not loaded");
+    let cfg = r#"{"asr_backend":{"mock":{"text":"hello"}},"asr_path":"","languages":{"he":{"asr_backend":"whisper","asr_path":"/nonexistent.bin"}},"load_language":"en"}"#;
+    let core = json_api::load_models_kind(cfg).expect("the missing Hebrew model is not loaded");
     let mut h = FlowHandle::Core(core);
     assert_eq!(dictate(&mut h, "{}")["final_text"], "hello ");
 }

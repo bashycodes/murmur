@@ -895,3 +895,107 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudKeyInfo
     });
     guard(std::ptr::null_mut(), || out(&mut env, &r))
 }
+
+// ---- D41 model library (JNI_CONTRACT.md "Model library"; feature `library`) --
+// Static natives on `dev.flowclone.server.ServerLibraryNative`, a class only
+// the `hybrid` / `remote` flavours compile; the `local` library has neither
+// these symbols nor any network code. Both calls block (worker thread).
+
+#[cfg(feature = "library")]
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_server_ServerLibraryNative_nativeList(
+    mut env: JNIEnv,
+    _c: JClass,
+    server: JString,
+) -> jstring {
+    let j = guard(None, || jstr(&mut env, &server, "server config"));
+    let r = guard(
+        crate::library_api::error_json("protocol", "panic in library list"),
+        || match j.as_deref() {
+            Some(j) => crate::library_api::list(j),
+            None => crate::library_api::error_json("bad_config", "server config: null"),
+        },
+    );
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
+
+/// `listener`: any object with `void onProgress(long bytesOnDisk)` and
+/// `boolean isCancelled()` (`ServerLibraryNative.Listener`). A listener
+/// method that throws is cleared; a throwing `isCancelled` counts as false.
+#[cfg(feature = "library")]
+#[no_mangle]
+#[allow(clippy::too_many_arguments)]
+pub extern "system" fn Java_dev_flowclone_server_ServerLibraryNative_nativeDownload(
+    mut env: JNIEnv,
+    _c: JClass,
+    server: JString,
+    model_id: JString,
+    file: JString,
+    dest: JString,
+    part: JString,
+    listener: jni::objects::JObject,
+) -> jstring {
+    use jni::objects::JValue;
+    let args = guard(None, || {
+        Some((
+            jstr(&mut env, &server, "server config")?,
+            jstr(&mut env, &model_id, "model id")?,
+            jstr(&mut env, &file, "file")?,
+            jstr(&mut env, &dest, "dest")?,
+            jstr(&mut env, &part, "part")?,
+        ))
+    });
+    let Some((server, model_id, file, dest, part)) = args else {
+        return guard(std::ptr::null_mut(), || {
+            out(
+                &mut env,
+                &crate::library_api::error_json("bad_config", "null argument"),
+            )
+        });
+    };
+    let cell = RefCell::new(env);
+    let r = guard(
+        crate::library_api::error_json("protocol", "panic in library download"),
+        || {
+            let mut progress = |n: u64| {
+                if listener.is_null() {
+                    return;
+                }
+                let mut env = cell.borrow_mut();
+                if env
+                    .call_method(&listener, "onProgress", "(J)V", &[JValue::Long(n as i64)])
+                    .is_err()
+                {
+                    clear(&mut env);
+                }
+            };
+            let cancel = || {
+                if listener.is_null() {
+                    return false;
+                }
+                let mut env = cell.borrow_mut();
+                match env
+                    .call_method(&listener, "isCancelled", "()Z", &[])
+                    .and_then(|v| v.z())
+                {
+                    Ok(b) => b,
+                    Err(_) => {
+                        clear(&mut env);
+                        false
+                    }
+                }
+            };
+            crate::library_api::download(
+                &server,
+                &model_id,
+                &file,
+                &dest,
+                &part,
+                &mut progress,
+                &cancel,
+            )
+        },
+    );
+    let mut env = cell.into_inner();
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
