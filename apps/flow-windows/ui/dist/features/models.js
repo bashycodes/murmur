@@ -12,6 +12,8 @@ import { $, askDialog, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
 let catalog = [];
+/** undefined = not asked yet. */
+let serverLib;
 const progress = new Map();
 const listeners = [];
 const notify = () => listeners.forEach((l) => l());
@@ -39,7 +41,7 @@ export function progressLine(p, entry) {
     }
     if (imp)
         return `Copying ${got} of ${mb(p.total)}${left} · from this PC`;
-    const host = entry ? new URL(entry.files[0]?.url ?? entry.page).host : "";
+    const host = entry?.from_server || p.id.startsWith("server:") ? "your server" : entry ? new URL(entry.files[0]?.url ?? entry.page).host : "";
     return `${got} of ${mb(p.total)}${left}${host ? ` · from ${host}` : ""}`;
 }
 // ------------------------------------------------------------ pickers + links
@@ -103,6 +105,40 @@ export const models = {
         notify();
         return catalog;
     },
+    /** A server is set: downloads come from its library (D41). */
+    fromServer() {
+        return catalog.some((c) => c.from_server);
+    },
+    server() {
+        return serverLib;
+    },
+    /** The server's library (`server_models`; asks the server). */
+    async refreshServer() {
+        serverLib = await invoke("server_models").catch((e) => ({ configured: true, error: String(e), models: [] }));
+        notify();
+        return serverLib;
+    },
+    /** Download (after the confirm dialog) or, when installed, re-check and select a server model. */
+    async serverStart(id) {
+        const m = serverLib?.models.find((x) => x.id === id);
+        if (!m || !m.slot || models.busy())
+            return;
+        if (!m.installed && !(await confirmServer(m)))
+            return;
+        const pid = m.catalogue_id ?? serverProgressId(m.id);
+        progress.set(pid, { id: pid, received: 0, total: m.size, state: m.installed ? "verifying" : "downloading", started: Date.now() });
+        notify();
+        try {
+            if (m.catalogue_id)
+                await invoke("model_download_start", { id: m.catalogue_id });
+            else
+                await invoke("server_model_download", { id: m.id });
+        }
+        catch (err) {
+            progress.set(pid, { id: pid, received: 0, total: m.size, state: "error", error: String(err), started: 0 });
+            notify();
+        }
+    },
     /** The confirm dialog (3a); downloads only when the user presses Download there. */
     async confirmAndStart(id) {
         const e = models.entry(id);
@@ -142,6 +178,8 @@ export const models = {
         }
     },
 };
+/** `model:download` id of a custom server model (server_library::progress_id). */
+export const serverProgressId = (id) => `server:${id}`;
 /** File names of the model's single file (whisper ggml, GGUF): "*.bin" / "*.gguf". */
 function singleFilePattern(e) {
     if (e.engine !== "whisper" && e.engine !== "llm")
@@ -196,12 +234,20 @@ function askImport(e) {
 /** Speech models (Settings → Speech to text, onboarding). */
 const isSpeech = (c) => c.engine !== "llm";
 function confirm(e) {
-    $("dl_title").textContent = `Download ${e.title}?`;
     const many = e.files.length > 1;
-    $("dl_from").textContent = many ? e.page : e.files[0].url;
-    $("dl_size").textContent = many ? `${mb(e.size)} in ${e.files.length} files` : mb(e.size);
-    $("dl_dest").textContent = e.dest;
-    $("dl_ok").textContent = `Download ${mb(e.size)}`;
+    return askDownload(e.title, many ? e.page : e.files[0].url, e.size, e.files.length, e.dest, CHECK_PINNED);
+}
+/** The same dialog for a model from the server's library. */
+function confirmServer(m) {
+    return askDownload(m.title, "Your server's model library", m.size, m.files, m.dest, m.catalogue_id ? CHECK_PINNED : CHECK_SERVER);
+}
+function askDownload(title, from, size, files, dest, check) {
+    $("dl_title").textContent = `Download ${title}?`;
+    $("dl_from").textContent = from;
+    $("dl_size").textContent = files > 1 ? `${mb(size)} in ${files} files` : mb(size);
+    $("dl_dest").textContent = dest;
+    $("dl_check").textContent = check;
+    $("dl_ok").textContent = `Download ${mb(size)}`;
     const d = $("dl_confirm");
     return new Promise((resolve) => {
         const done = (ok) => {
@@ -221,6 +267,8 @@ function confirm(e) {
         $("dl_cancel").focus();
     });
 }
+const CHECK_PINNED = "Against a SHA-256 fingerprint built into this version. If it doesn't match, the file is deleted and never loaded.";
+const CHECK_SERVER = "Against the SHA-256 your server lists for it, over your key and the server's certificate. If it doesn't match, the file is deleted and never loaded.";
 const CHECK = `<svg class="lw-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"></path></svg>`;
 const DIALOG = `
 <dialog class="fl-dialog lw-dl-dialog" id="dl_confirm" aria-labelledby="dl_title">
@@ -232,7 +280,7 @@ const DIALOG = `
     <dt>From</dt><dd class="lw-mono" id="dl_from"></dd>
     <dt>Size</dt><dd id="dl_size"></dd>
     <dt>Saved to</dt><dd class="lw-mono" id="dl_dest"></dd>
-    <dt>Checked</dt><dd>Against a SHA-256 fingerprint built into this version. If it doesn't match, the file is deleted and never loaded.</dd>
+    <dt>Checked</dt><dd id="dl_check">${CHECK_PINNED}</dd>
   </dl>
   <ul class="lw-dl-bullets">
     <li>${CHECK}Nothing about you, your audio or your settings is sent.</li>
@@ -287,13 +335,15 @@ function renderSettingsRow() {
     if (p && models.busy(id))
         bar.firstElementChild.style.width = `${p.total ? Math.round((p.received / p.total) * 100) : 0}%`;
     if (!p) {
-        line.textContent = "";
-        line.className = "";
+        line.textContent = e?.from_server && !e.installed ? FROM_SERVER_HINT : "";
+        line.className = e?.from_server ? "hint" : "";
         return;
     }
     line.textContent = progressLine(p, models.entry(id));
     line.className = `hint ${p.state === "error" ? "err" : p.state === "done" ? "ok" : ""}`;
 }
+/** Under a catalogue row when a server is set (D41). */
+const FROM_SERVER_HINT = "A server is set, so models come only from its library: see From your server below, or Import from file.";
 // ------------------------------------------------------------ Settings → AI cleanup row
 /** The file the app loads when no cleanup model is set (core_adapter DEFAULT_LLM_FILE, D11). */
 const DEFAULT_LLM_FILE = "qwen2.5-1.5b-instruct-q4_k_m.gguf";
@@ -410,6 +460,10 @@ function renderLlmRow() {
     if (!e.installed) {
         line.replaceChildren();
         line.className = "hint";
+        if (e.from_server) {
+            line.append(`${e.desc}. Not downloaded yet. A server is set, so models come only from its library: Settings → Speech to text → From your server${e.importable ? ", or Import from file" : ""}.`);
+            return;
+        }
         line.append(`${e.desc}. Not downloaded yet${e.available ? "." : ": "}`);
         if (!e.available)
             line.append(html(extLink(e.page, "get it from its model page")), e.importable ? ", then Import from file." : ".");
@@ -496,6 +550,8 @@ export function hebrewEntry(choice) {
 }
 /** A Hebrew model is chosen and on disk (catalogue `installed`). */
 export function hebrewReady(choice) {
+    if (choice !== "none" && prefsStore.get()?.hebrew_model_dir?.trim())
+        return true;
     return Boolean(hebrewEntry(choice)?.installed);
 }
 function renderHebrewRow() {
@@ -543,8 +599,19 @@ function renderHebrewRow() {
         set(progressLine(p, e), "err");
         return;
     }
+    const custom = prefsStore.get()?.hebrew_model_dir?.trim();
+    if (custom) {
+        set(`Uses ${custom} (from your server).`, "ok");
+        return;
+    }
     if (!e.installed) {
-        const how = e.available ? "press Download" : e.importable ? "get it from its model page, then Import from file" : "get it from its model page";
+        const how = e.from_server
+            ? "a server is set, so get it from its library (From your server below)"
+            : e.available
+                ? "press Download"
+                : e.importable
+                    ? "get it from its model page, then Import from file"
+                    : "get it from its model page";
         set(`Not downloaded yet: ${how} (${mb(e.size)}).${wantHe ? " Until then Hebrew uses the model above." : ""}`, wantHe ? "err" : "");
         if (!e.available)
             credit.append(" · ", html(extLink(e.page, "Download page")));
@@ -589,6 +656,126 @@ export const HEBREW_ROW = `
     <button type="button" class="fl-btn fl-btn-secondary" id="he_stop" hidden>Cancel</button>
   </div>
 </div>`;
+// ------------------------------------------------------------ Settings → Speech to text: From your server (D41)
+const KIND_LABEL = {
+    stt: "Speech to text",
+    hebrew: "Hebrew",
+    llm: "AI cleanup",
+    lid: "Language detection",
+    vad: "Voice activity",
+};
+const SLOT_LABEL = {
+    stt_whisper: "the model on this PC (Whisper)",
+    stt_parakeet: "the model on this PC (Parakeet)",
+    hebrew_zipformer: "the Hebrew model (streaming)",
+    hebrew_parakeet: "the Hebrew model (Parakeet)",
+    llm: "AI cleanup on this PC",
+    lid: "language detection (auto-detect → Hebrew)",
+};
+function serverRow(m) {
+    const pid = m.catalogue_id ?? serverProgressId(m.id);
+    const p = models.progress(pid);
+    const busy = models.busy(pid);
+    const row = document.createElement("div");
+    row.className = "lw-srv-model";
+    row.dataset.srvId = m.id;
+    const text = document.createElement("div");
+    text.className = "lw-srv-text";
+    const title = document.createElement("div");
+    title.className = "fl-row-title";
+    title.textContent = m.title;
+    const meta = document.createElement("div");
+    meta.className = "fl-row-desc";
+    meta.textContent = `${KIND_LABEL[m.kind]}${m.language ? ` · ${m.language}` : ""} · ${mb(m.size)}${m.engine ? ` · ${m.engine}` : ""}${m.catalogue_id ? " · same as the built-in model" : ""}`;
+    const status = document.createElement("div");
+    status.className = "hint lw-srv-status";
+    text.append(title, meta, status);
+    const ctl = document.createElement("div");
+    ctl.className = "fl-row-control";
+    const btn = (label, act) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "fl-btn fl-btn-secondary";
+        b.textContent = label;
+        b.dataset.srvAct = act;
+        b.dataset.srvId = m.id;
+        return b;
+    };
+    if (!m.slot) {
+        status.textContent = `Can't be used here: ${m.reason ?? "unknown"}.`;
+    }
+    else if (busy) {
+        const bar = html(`<span class="lw-dl-bar"><span style="width:${p && p.total ? Math.round((p.received / p.total) * 100) : 0}%"></span></span>`);
+        status.append(bar, p ? progressLine(p, models.entry(m.catalogue_id ?? "")) : "");
+        ctl.append(btn("Cancel", "cancel"));
+    }
+    else {
+        if (p?.state === "error") {
+            status.textContent = progressLine(p);
+            status.classList.add("err");
+        }
+        else if (p?.state === "cancelled" && !m.installed) {
+            status.textContent = progressLine(p);
+        }
+        else if (m.in_use) {
+            status.textContent = `Downloaded and in use for ${SLOT_LABEL[m.slot]}.`;
+            status.classList.add("ok");
+        }
+        else if (m.installed) {
+            status.textContent = `Downloaded. Press Use for ${SLOT_LABEL[m.slot]}.`;
+        }
+        else {
+            status.textContent = `For ${SLOT_LABEL[m.slot]}.`;
+        }
+        if (!m.installed) {
+            const b = btn(`Download ${mb(m.size)}…`, "start");
+            b.disabled = models.busy();
+            ctl.append(b);
+        }
+        else if (!m.in_use) {
+            const b = btn("Use", "start");
+            b.disabled = models.busy();
+            ctl.append(b);
+        }
+    }
+    row.append(text, ctl);
+    return row;
+}
+function renderServerModels() {
+    const box = document.getElementById("srv_models");
+    if (!box)
+        return;
+    const group = $("srv_group");
+    const lib = serverLib;
+    group.hidden = !lib?.configured;
+    if (!lib?.configured)
+        return;
+    const note = $("srv_note");
+    if (lib.error) {
+        note.textContent = `Could not read your server's library: ${lib.error}`;
+        note.className = "hint err";
+    }
+    else if (!lib.models.length) {
+        note.textContent = "Your server lists no models. Add them to its library folder (server setup guide, section 10).";
+        note.className = "hint";
+    }
+    else {
+        note.textContent = "";
+        note.className = "hint";
+    }
+    box.replaceChildren(...(lib.models ?? []).map(serverRow));
+}
+/** Settings → Speech to text: the server's model library (shown when a server is set). */
+export const SERVER_MODELS_GROUP = `
+<section class="lw-section" id="srv_group" data-needs="local" hidden>
+  <h3 class="fl-group-title lw-title-badge">From your server <button type="button" class="fl-btn fl-btn-ghost lw-btn-sm" id="srv_refresh">Refresh</button></h3>
+  <div class="fl-group">
+    <div class="fl-row">
+      <div class="fl-row-text"><div class="fl-row-desc">A server is set, so models download from its library instead of Hugging Face, including models you added to it. Only when you press Download; built-in models are checked against the fingerprints in this version, your own against the fingerprint your server lists.<span class="lw-status-sub" id="srv_note"></span></div></div>
+    </div>
+    <div id="srv_models" class="lw-srv-list"></div>
+  </div>
+</section>`;
 export const modelsFeature = {
     init() {
         document.body.append(html(DIALOG));
@@ -633,6 +820,21 @@ export const modelsFeature = {
         document.getElementById("llm_dl_use")?.addEventListener("click", () => void useLlm(llmSel()));
         document.getElementById("llm_dl_delete")?.addEventListener("click", () => void deleteLlm(llmSel()));
         models.onChange(renderHebrewRow);
+        models.onChange(renderServerModels);
+        document.getElementById("srv_refresh")?.addEventListener("click", () => void models.refreshServer());
+        document.addEventListener("click", (ev) => {
+            const b = ev.target.closest("[data-srv-act]");
+            if (!b)
+                return;
+            const id = b.dataset.srvId ?? "";
+            if (b.dataset.srvAct === "start")
+                void models.serverStart(id);
+            else {
+                const m = serverLib?.models.find((x) => x.id === id);
+                if (m)
+                    void models.cancel(m.catalogue_id ?? serverProgressId(m.id));
+            }
+        });
         prefsStore.subscribe(() => renderHebrewRow());
         document.getElementById("hebrew_model")?.addEventListener("change", renderHebrewRow);
         document.getElementById("he_download")?.addEventListener("click", () => {
@@ -666,6 +868,8 @@ export const modelsFeature = {
                 if (p.state === "done")
                     void prefsStore.load().catch(() => { });
                 void models.refresh().catch(() => { });
+                if (serverLib?.configured)
+                    void models.refreshServer();
             }
             notify();
         });
@@ -674,6 +878,8 @@ export const modelsFeature = {
         const info = await invoke("get_model_status").catch(() => ({ hebrew: null }));
         heStatus = info.hebrew ?? null;
         await models.refresh();
+        if (models.fromServer())
+            void models.refreshServer();
     },
 };
 /** A "Browse" button for a path field (`field` = the input's id). */
