@@ -2,6 +2,7 @@
 //! `flow-server gen-token --out PATH`
 //! `flow-server check-config [--config PATH]`
 //! `flow-server keys add <name> [--admin] | list | revoke <name|id>` (D38)
+//! `flow-server library list` (D40)
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -15,7 +16,7 @@ const SYSTEM_STATE_DIR: &str = "/var/lib/flow-server";
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage:\n  flow-server [--config PATH] [--token-file PATH] [--insecure-bind-any]\n  flow-server gen-token --out PATH\n  flow-server check-config [--config PATH] [--token-file PATH]\n  flow-server keys add <name> [--admin] [--config PATH] [--state-dir DIR]\n  flow-server keys list [--config PATH] [--state-dir DIR]\n  flow-server keys revoke <name|id> [--config PATH] [--state-dir DIR]"
+        "usage:\n  flow-server [--config PATH] [--token-file PATH] [--insecure-bind-any]\n  flow-server gen-token --out PATH\n  flow-server check-config [--config PATH] [--token-file PATH]\n  flow-server keys add <name> [--admin] [--config PATH] [--state-dir DIR]\n  flow-server keys list [--config PATH] [--state-dir DIR]\n  flow-server keys revoke <name|id> [--config PATH] [--state-dir DIR]\n  flow-server library list [--config PATH] [--state-dir DIR]"
     );
     ExitCode::from(2)
 }
@@ -28,7 +29,7 @@ struct Args {
     insecure_bind_any: bool,
     state_dir: Option<PathBuf>,
     admin: bool,
-    /// `keys` arguments (`add NAME`, `list`, `revoke NAME|ID`).
+    /// `keys` / `library` arguments (`add NAME`, `list`, `revoke NAME|ID`).
     rest: Vec<String>,
 }
 
@@ -52,8 +53,12 @@ fn parse() -> Option<Args> {
             "--insecure-bind-any" => a.insecure_bind_any = true,
             "--state-dir" => a.state_dir = Some(it.next()?.into()),
             "--admin" => a.admin = true,
-            "gen-token" | "check-config" | "serve" | "keys" if a.cmd == "serve" => a.cmd = x,
-            _ if a.cmd == "keys" && !x.starts_with("--") => a.rest.push(x),
+            "gen-token" | "check-config" | "serve" | "keys" | "library" if a.cmd == "serve" => {
+                a.cmd = x
+            }
+            _ if matches!(a.cmd.as_str(), "keys" | "library") && !x.starts_with("--") => {
+                a.rest.push(x)
+            }
             _ => return None,
         }
     }
@@ -131,6 +136,7 @@ fn main() -> ExitCode {
             }
         },
         "keys" => keys(&a),
+        "library" => library(&a),
         _ => serve(&a),
     }
 }
@@ -180,6 +186,29 @@ fn keys(a: &Args) -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("keys: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `flow-server library list` (D40): scans the library like the server does
+/// (sharing its hash cache) and prints what is served and what is skipped.
+fn library(a: &Args) -> ExitCode {
+    let run = || -> Result<(), String> {
+        if a.rest != ["list"] {
+            return Err("expected `library list`".into());
+        }
+        let c = load_unchecked(a)?;
+        let lib = flow_server::library::Library::from_config(&c)
+            .ok_or("no library folder: set [library] dir or state_dir (or pass --state-dir)")?;
+        let idx = lib.rescan();
+        print!("{}", flow_server::library::table(lib.dir(), &idx));
+        Ok(())
+    };
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("library: {e}");
             ExitCode::FAILURE
         }
     }

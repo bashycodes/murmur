@@ -21,7 +21,7 @@ serde_json.workspace = true
 axum = { version = "0.8", default-features = false, features = ["ws", "http1", "tokio"] }
 hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto", "http1", "service"] }
-tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros", "signal", "fs", "io-util"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 toml = "0.8"
 tracing = "0.1"

@@ -14,6 +14,8 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod library;
+
 pub use flow_core::cleanup::CleanRequest;
 pub use flow_core::config::{FieldContext, SessionConfig};
 pub use flow_core::CommitResult;

@@ -75,6 +75,10 @@ pub struct Usage {
     pub client: Option<String>,
     pub dictations: u64,
     pub audio_ms: u64,
+    /// Model library downloads (D40): requests that sent bytes, and the
+    /// bytes sent (a resumed download counts again, with its own bytes).
+    pub downloads: u64,
+    pub download_bytes: u64,
 }
 
 /// Who a request authenticated as. Never carries the secret.
@@ -280,6 +284,16 @@ impl KeyStore {
         g.dirty = true;
     }
 
+    /// One model-library download request that sent `bytes` (D40).
+    pub fn record_download(&self, id: &str, bytes: u64) {
+        let mut g = self.lock();
+        let u = g.usage.entry(id.to_string()).or_default();
+        u.downloads += 1;
+        u.download_bytes = u.download_bytes.saturating_add(bytes);
+        u.last_seen = Some(now_s());
+        g.dirty = true;
+    }
+
     /// Create a key. Returns it and its secret, which is never stored.
     pub fn add(&self, name: &str, admin: bool) -> Result<(KeyRef, String), String> {
         check_name(name)?;
@@ -393,6 +407,7 @@ pub fn table(keys: &[KeyInfo]) -> String {
         "CLIENT",
         "DICTATIONS",
         "AUDIO MIN",
+        "DOWNLOADS",
         "STATUS",
     ]
     .map(String::from)];
@@ -407,13 +422,17 @@ pub fn table(keys: &[KeyInfo]) -> String {
             u.client.clone().unwrap_or_else(|| "-".into()),
             u.dictations.to_string(),
             format!("{:.1}", u.audio_ms as f64 / 60_000.0),
+            match u.downloads {
+                0 => "0".into(),
+                n => format!("{n} ({:.1} MB)", u.download_bytes as f64 / 1e6),
+            },
             match k.key.revoked {
                 Some(t) => format!("revoked {}", when(Some(t))),
                 None => "active".into(),
             },
         ]);
     }
-    let mut w = [0usize; 9];
+    let mut w = [0usize; 10];
     for r in &rows {
         for (i, c) in r.iter().enumerate() {
             w[i] = w[i].max(c.chars().count());
@@ -519,7 +538,7 @@ pub fn now_s() -> u64 {
         .as_secs()
 }
 
-fn create_dir(dir: &Path) -> Result<(), String> {
+pub(crate) fn create_dir(dir: &Path) -> Result<(), String> {
     let mut b = std::fs::DirBuilder::new();
     b.recursive(true);
     #[cfg(unix)]
@@ -531,7 +550,7 @@ fn create_dir(dir: &Path) -> Result<(), String> {
         .map_err(|e| format!("state dir {}: {e}", dir.display()))
 }
 
-fn read_json<T: serde::de::DeserializeOwned>(p: &Path) -> Result<Option<T>, String> {
+pub(crate) fn read_json<T: serde::de::DeserializeOwned>(p: &Path) -> Result<Option<T>, String> {
     match std::fs::read(p) {
         Ok(b) => serde_json::from_slice(&b)
             .map(Some)
@@ -544,7 +563,7 @@ fn read_json<T: serde::de::DeserializeOwned>(p: &Path) -> Result<Option<T>, Stri
 /// Write `v` to `p` atomically, mode 0600. When the CLI runs as root on a
 /// state dir owned by the service user, the file is handed to that user so
 /// the server can still read it.
-fn write_json<T: Serialize>(p: &Path, v: &T) -> Result<(), String> {
+pub(crate) fn write_json<T: Serialize>(p: &Path, v: &T) -> Result<(), String> {
     use std::io::Write;
     let dir = p.parent().unwrap_or(Path::new("."));
     let mut rnd = [0u8; 4];
@@ -712,10 +731,13 @@ mod tests {
         s.record_client(&id, "flow-windows 1.0.0");
         s.record_dictation(&id, 1500);
         s.record_dictation(&id, 2500);
+        s.record_download(&id, 1000);
+        s.record_download(&id, 500);
         s.flush().unwrap();
         let s = KeyStore::open(d.path(), Some(TOKEN)).unwrap();
         let u = &s.list()[0].usage;
         assert_eq!((u.dictations, u.audio_ms), (2, 4000));
+        assert_eq!((u.downloads, u.download_bytes), (2, 1500));
         assert_eq!(u.client.as_deref(), Some("flow-windows 1.0.0"));
         assert!(u.last_seen.is_some());
     }
@@ -726,6 +748,7 @@ mod tests {
         let id = s.authenticate(TOKEN).unwrap().id;
         s.record_client(&id, "flow-android 1.0.0");
         s.record_dictation(&id, 90_000);
+        s.record_download(&id, 2_500_000);
         let (k, _) = s.add("old", false).unwrap();
         s.revoke(&k.id).unwrap();
         let t = table(&s.list());
@@ -738,6 +761,7 @@ mod tests {
             "flow-android 1.0.0",
             " 1 ",
             "1.5",
+            "1 (2.5 MB)",
             "active",
         ] {
             assert!(owner.contains(want), "{want}: {t}");
