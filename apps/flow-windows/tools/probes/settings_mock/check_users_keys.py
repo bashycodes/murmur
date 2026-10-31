@@ -68,6 +68,9 @@ with sync_playwright() as p:
         check(tag + "three keys, revoked last", len(r) == 3 and "old-tablet" in r[2], str(r))
         owner = pg.inner_text(row_of(pg, "owner"))
         check(tag + "owner row: badges and usage", "admin" in owner and "this app" in owner and "412" in owner and "66.0" in owner and "flow-windows 0.12.0" in owner, owner)
+        dl = pg.locator(row_of(pg, "owner") + " td.num").nth(2)
+        check(tag + "owner row: downloads, bytes on hover", dl.inner_text().strip() == "3" and dl.get_attribute("title") == "1620.0 MB", dl.inner_text())
+        check(tag + "table fits the page", pg.evaluate("() => { const t = document.querySelector('#keys_rows').closest('table'); return t.scrollWidth <= t.parentElement.clientWidth + 1; }"))
         check(tag + "revoked row: no button, says revoked", pg.locator(row_of(pg, "old-tablet") + " button").count() == 0 and "Revoked" in pg.inner_text(row_of(pg, "old-tablet")) and "is-revoked" in pg.get_attribute(row_of(pg, "old-tablet"), "class"))
         check(tag + "last admin: Revoke disabled with a reason", pg.is_disabled(row_of(pg, "owner") + " button") and "last admin" in (pg.get_attribute(row_of(pg, "owner") + " button", "title") or ""))
         if scheme == "light":

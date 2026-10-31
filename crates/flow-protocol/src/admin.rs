@@ -117,6 +117,12 @@ pub struct KeyView {
     pub client: Option<String>,
     pub dictations: u64,
     pub audio_ms: u64,
+    /// Model library downloads (D40): requests that sent bytes, and the
+    /// bytes sent. Older servers omit them (0).
+    #[serde(default)]
+    pub downloads: u64,
+    #[serde(default)]
+    pub download_bytes: u64,
     /// The key this request authenticated with.
     pub current: bool,
 }
@@ -176,7 +182,7 @@ mod tests {
         assert_eq!(
             j,
             serde_json::json!({"id":"k-0123456789abcdef","name":"phone","admin":false,
-                "created":1,"dictations":0,"audio_ms":0,"current":false})
+                "created":1,"dictations":0,"audio_ms":0,"downloads":0,"download_bytes":0,"current":false})
         );
         // Unknown fields are ignored; missing ones default.
         let c: CreateKey = serde_json::from_str(r#"{"name":"x","future":1}"#).unwrap();

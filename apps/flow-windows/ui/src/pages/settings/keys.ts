@@ -42,6 +42,7 @@ export const adminStore = {
 const seen = (secs?: number | null): string => (secs ? when(secs * 1000) : "never");
 const day = (secs: number): string => new Date(secs * 1000).toLocaleDateString([], { dateStyle: "medium" });
 const minutes = (ms: number): string => (ms / 60000).toFixed(1);
+const megabytes = (b: number): string => `${(b / 1e6).toFixed(1)} MB`;
 
 export const settingsKeysPage: Page = {
   id: "settings-keys",
@@ -58,7 +59,7 @@ ${heading(
   <h3 class="fl-group-title">Keys</h3>
   <div class="fl-group">
     <table class="lw-keys" id="keys_table">
-      <thead><tr><th>Name</th><th>Created</th><th>Last seen</th><th class="num">Dictations</th><th class="num">Audio min</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Created</th><th>Last seen</th><th class="num">Dictations</th><th class="num">Audio min</th><th class="num">Downloads</th><th></th></tr></thead>
       <tbody id="keys_rows"></tbody>
     </table>
     <p class="lw-empty-row" id="keys_empty" hidden>Loading…</p>
@@ -149,6 +150,14 @@ async function load(): Promise<void> {
   }
 }
 
+// Model downloads: the count, with the bytes sent on hover.
+function downloads(k: KeyView): HTMLElement {
+  const n = k.downloads ?? 0;
+  const td = el("td", "num", String(n));
+  if (n) td.title = megabytes(k.download_bytes ?? 0);
+  return td;
+}
+
 function render(keys: KeyView[]): void {
   const body = $<HTMLElement>("keys_rows");
   body.replaceChildren();
@@ -174,6 +183,7 @@ function render(keys: KeyView[]): void {
       el("td", "", seen(k.last_seen)),
       el("td", "num", String(k.dictations)),
       el("td", "num", minutes(k.audio_ms)),
+      downloads(k),
     );
     const act = el("td", "act");
     if (k.revoked) {

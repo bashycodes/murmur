@@ -264,6 +264,9 @@ export interface KeyView {
   client?: string | null;
   dictations: number;
   audio_ms: number;
+  /** Model downloads from the server (absent on older servers). */
+  downloads?: number;
+  download_bytes?: number;
   /** The key this app is using. */
   current: boolean;
 }
