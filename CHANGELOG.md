@@ -40,6 +40,19 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   An interrupted download resumes where it stopped. While a server is set
   the app never contacts Hugging Face; models the app can't load (a
   voice-activity model, an unknown engine) are listed with the reason.
+- **Android (hybrid): download models from your own server (D41).** Each
+  model screen (Speech model, Parakeet, Hebrew model, AI cleanup) gains
+  "From your server": tap Show models on your server to list what the
+  server's library has for that slot, then Download (the confirm dialog
+  shows the size, since you may be on mobile data). The model lands in the
+  same place an import would and is selected; Use switches to one already
+  downloaded. Built-in models are checked against the fingerprints in the
+  app, models you added against the ones your server lists. An interrupted
+  download keeps what arrived and Resume continues from there; Cancel keeps
+  nothing. Hebrew models you add yourself (streaming or Parakeet) now work
+  too. Import .zip / Import from file stay. Nothing ever comes from the
+  internet, and the local build has no download code or network permission
+  at all (D9 amended).
 - **flow-remote: model library client (D41)** shared by the apps: list the
   server's models and download a file resumably (HTTP Range) with its
   SHA-256 checked, over the same TLS pin and key as dictation.
@@ -53,8 +66,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   same port and TLS as dictation, to any valid key. New and changed folders
   are picked up without a restart; `flow-server library list` shows what is
   served and why a folder was skipped. Downloads count toward the key
-  (`keys list` → DOWNLOADS). The Windows app downloads from it (D41); Android
-  comes next.
+  (`keys list` → DOWNLOADS). The Windows and Android apps download from it (D41).
 - **Android (debug builds): on-device benchmark.** A shell-only
   `BenchActivity` measures STT (WER/CER, latency, RTF) and AI cleanup
   (88-suite score, LLM latency) on the phone. It reads the models the app
