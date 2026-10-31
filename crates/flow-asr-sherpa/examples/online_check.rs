@@ -2,7 +2,7 @@
 //!
 //! cargo run --release -p flow-asr-sherpa --example online_check -- \
 //!   MODEL_DIR [--threads N] [--greedy] [--beam N] [--score F] [--hotwords a,b]
-//!   [--tail S] [--norm] WAV...
+//!   [--tail S] [--lead S] [--skip S] [--norm] WAV...
 //! Prints `file \t ms \t RTF \t text` per clip; load time on stderr.
 
 use std::time::Instant;
@@ -36,6 +36,8 @@ fn main() {
     let mut hotwords: Vec<String> = Vec::new();
     let mut wavs = Vec::new();
     let mut norm = false;
+    let mut lead = 0f32;
+    let mut skip = 0f32;
     let mut i = 1;
     while i < a.len() {
         match a[i].as_str() {
@@ -56,6 +58,14 @@ fn main() {
                 i += 1;
                 cfg.max_active_paths = a[i].parse().unwrap()
             }
+            "--lead" => {
+                i += 1;
+                lead = a[i].parse().unwrap()
+            }
+            "--skip" => {
+                i += 1;
+                skip = a[i].parse().unwrap()
+            }
             "--norm" => norm = true,
             "--hotwords" => {
                 i += 1;
@@ -73,6 +83,10 @@ fn main() {
         if norm {
             peak_normalize(&mut pcm);
         }
+        // --skip drops the first S seconds, --lead prepends S seconds of silence.
+        let n = ((skip * 16_000.0) as usize).min(pcm.len());
+        pcm.drain(..n);
+        let pcm = [vec![0.0; (lead * 16_000.0) as usize], pcm].concat();
         let t = Instant::now();
         let text = eng.transcribe(&pcm, &hotwords).unwrap();
         let s = t.elapsed().as_secs_f64();
