@@ -95,6 +95,18 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   is optional and can be imported later on its own. Other or custom model
   files are refused.
 
+### Changed
+
+- **"quote unquote" at the start of a sentence quotes the whole sentence.**
+  Mid-sentence it still quotes one word ("she called it quote unquote cozy
+  and left" → `she called it "cozy" and left`); at the start of a
+  dictation or right after a sentence end or line break it now quotes up to
+  the sentence end ("quote unquote the new menu is great" → `"The new menu
+  is great."`). Same scope in the fallback rules, both AI cleanup prompts
+  (local, server and cloud models) and the guard, which now rejects an AI
+  answer that quotes the wrong words (the rest of the sentence mid-sentence,
+  or one word at a sentence start).
+
 ### Fixed
 
 - **Server: upgrading with `install.sh` keeps language detection working.**
