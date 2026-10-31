@@ -5,7 +5,9 @@
 // and the minimal "Download a model" row in Settings → Speech to text; the
 // AI cleanup models (GGUF, engine "llm") get the same row in Settings → AI
 // cleanup, plus Use and Delete. Onboarding uses the same state and dialog. A download starts only from
-// the dialog's Download button, never by itself (D9).
+// the dialog's Download button, never by itself (D9). "Import from file…" next to each row installs
+// the same catalogue model from a folder, .zip or file on this PC (model_import_start, no network),
+// checked against the same fingerprints; its progress comes as the same `model:download` events.
 import { $, askDialog, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
@@ -19,14 +21,15 @@ export function mb(bytes) {
 }
 /** "312 of 661 MB · about 20 seconds left · from huggingface.co". */
 export function progressLine(p, entry) {
+    const imp = p.via === "import" || p.state === "importing";
     if (p.state === "verifying")
         return "Checking the fingerprint…";
     if (p.state === "error")
-        return `Download failed: ${p.error ?? "unknown error"}`;
+        return `${imp ? "Import" : "Download"} failed: ${p.error ?? "unknown error"}`;
     if (p.state === "cancelled")
-        return "Download cancelled. Nothing was kept.";
+        return `${imp ? "Import" : "Download"} cancelled. Nothing was kept.`;
     if (p.state === "done")
-        return "Downloaded and checked.";
+        return imp ? "Imported and checked." : "Downloaded and checked.";
     const got = Math.round(p.received / 1e6);
     let left = "";
     const secs = p.started ? (Date.now() - p.started) / 1000 : 0;
@@ -34,6 +37,8 @@ export function progressLine(p, entry) {
         const rest = ((p.total - p.received) / p.received) * secs;
         left = rest < 60 ? ` · about ${Math.max(1, Math.round(rest / 5) * 5)} seconds left` : ` · about ${Math.round(rest / 60)} min left`;
     }
+    if (imp)
+        return `Copying ${got} of ${mb(p.total)}${left} · from this PC`;
     const host = entry ? new URL(entry.files[0]?.url ?? entry.page).host : "";
     return `${got} of ${mb(p.total)}${left}${host ? ` · from ${host}` : ""}`;
 }
@@ -80,11 +85,15 @@ export const models = {
     canDownload() {
         return catalog.some((c) => c.available);
     },
+    /** Can this build import anything from a file (any build with a local engine)? */
+    canImport() {
+        return catalog.some((c) => c.importable);
+    },
     progress(id) {
         return progress.get(id);
     },
     busy(id) {
-        return [...progress.values()].some((p) => (!id || p.id === id) && (p.state === "downloading" || p.state === "verifying"));
+        return [...progress.values()].some((p) => (!id || p.id === id) && (p.state === "downloading" || p.state === "importing" || p.state === "verifying"));
     },
     onChange(l) {
         listeners.push(l);
@@ -114,7 +123,76 @@ export const models = {
     async cancel(id) {
         await invoke("model_download_cancel", { id }).catch(() => false);
     },
+    /** "Import from file…": the import dialog, then the picker, then model_import_start. */
+    async importFlow(id) {
+        const e = models.entry(id);
+        if (!e || !e.importable || models.busy())
+            return;
+        const path = await askImport(e);
+        if (!path)
+            return;
+        progress.set(id, { id, received: 0, total: e.size, state: "importing", started: Date.now(), via: "import" });
+        notify();
+        try {
+            await invoke("model_import_start", { id, path });
+        }
+        catch (err) {
+            progress.set(id, { id, received: 0, total: e.size, state: "error", error: String(err), started: 0, via: "import" });
+            notify();
+        }
+    },
 };
+/** File names of the model's single file (whisper ggml, GGUF): "*.bin" / "*.gguf". */
+function singleFilePattern(e) {
+    if (e.engine !== "whisper" && e.engine !== "llm")
+        return null;
+    const ext = e.files[0]?.name.split(".").pop();
+    return ext ? `*.${ext}` : null;
+}
+/** The import dialog: what is needed, then a folder or a .zip / file picker. The picked path, or null. */
+function askImport(e) {
+    $("imp_title").textContent = `Import ${e.title}`;
+    const list = $("imp_files");
+    list.replaceChildren(...e.files.map((f) => {
+        const li = document.createElement("li");
+        li.className = "lw-mono";
+        li.textContent = `${f.name} · ${mb(f.size)}${f.extra ? " · optional, for auto-detect" : ""}`;
+        return li;
+    }));
+    const single = singleFilePattern(e);
+    $("imp_file").textContent = single ? "Choose .zip or model file…" : "Choose .zip…";
+    const d = $("imp_dialog");
+    return new Promise((resolve) => {
+        const done = (pick) => {
+            for (const b of ["imp_folder", "imp_file", "imp_cancel"])
+                $(b).onclick = null;
+            d.oncancel = null;
+            d.close();
+            if (!pick)
+                return resolve(null);
+            const filters = [
+                { name: single ? "Model file or zip" : "Zip", pattern: single ? `${single};*.zip` : "*.zip" },
+                { name: "All files", pattern: "*.*" },
+            ];
+            const title = pick === "folder" ? `Choose the folder with ${e.title}` : `Choose ${e.title} (.zip${single ? " or model file" : ""})`;
+            pickPath(pick, title, pick === "file" ? filters : undefined)
+                .then(resolve)
+                .catch((err) => {
+                console.error("pick_path", err);
+                resolve(null);
+            });
+        };
+        $("imp_folder").onclick = () => done("folder");
+        $("imp_file").onclick = () => done("file");
+        $("imp_cancel").onclick = () => done(null);
+        d.oncancel = (ev) => {
+            ev.preventDefault();
+            done(null);
+        };
+        d.showModal();
+        $("imp_cancel").focus();
+    });
+}
 /** Speech models (Settings → Speech to text, onboarding). */
 const isSpeech = (c) => c.engine !== "llm";
 function confirm(e) {
@@ -165,24 +243,43 @@ const DIALOG = `
     <button type="button" class="fl-btn fl-btn-primary" id="dl_ok">Download</button>
   </div>
 </dialog>`;
+const IMPORT_DIALOG = `
+<dialog class="fl-dialog lw-dl-dialog" id="imp_dialog" aria-labelledby="imp_title">
+  <div class="lw-dl-head">
+    <h2 class="fl-serif lw-dl-title" id="imp_title">Import</h2>
+    <p class="lw-dl-lead">From a folder, a .zip or the model file you copied to this PC. Nothing is downloaded.</p>
+  </div>
+  <dl class="lw-dl-facts">
+    <dt>Needs</dt><dd><ul class="lw-imp-files" id="imp_files"></ul></dd>
+    <dt>Checked</dt><dd>Against the SHA-256 fingerprints built into this version. If any file doesn't match, nothing is installed. Other or custom models can't be imported here.</dd>
+  </dl>
+  <div class="lw-dialog-actions">
+    <button type="button" class="fl-btn fl-btn-ghost" id="imp_cancel">Cancel</button>
+    <button type="button" class="fl-btn fl-btn-secondary" id="imp_folder">Choose folder…</button>
+    <button type="button" class="fl-btn fl-btn-primary" id="imp_file">Choose .zip…</button>
+  </div>
+</dialog>`;
 // ------------------------------------------------------------ Settings → Speech to text row
 function renderSettingsRow() {
     const sel = document.getElementById("dl_model");
     if (!sel)
         return;
     const row = $("dl_row");
-    row.hidden = !models.canDownload();
+    row.hidden = !models.canDownload() && !models.canImport();
     const keep = sel.value;
     sel.replaceChildren(...catalog
-        .filter((c) => c.available && !c.language && isSpeech(c))
+        .filter((c) => (c.available || c.importable) && !c.language && isSpeech(c))
         .map((c) => new Option(`${c.title} · ${mb(c.size)}${c.installed ? " · downloaded" : ""}`, c.id)));
     if (keep && catalog.some((c) => c.id === keep))
         sel.value = keep;
     const id = sel.value;
     const p = models.progress(id);
     const busy = models.busy();
-    $("dl_start").hidden = models.busy(id);
+    const e = models.entry(id);
+    $("dl_start").hidden = models.busy(id) || !e?.available;
     $("dl_start").disabled = busy;
+    $("dl_import").hidden = models.busy(id) || !e?.importable;
+    $("dl_import").disabled = busy;
     $("dl_stop").hidden = !models.busy(id);
     const line = $("dl_status");
     const bar = $("dl_bar");
@@ -278,6 +375,7 @@ function renderLlmRow() {
     const stop = $("llm_dl_stop");
     const use = $("llm_dl_use");
     const del = $("llm_dl_delete");
+    const imp = $("llm_dl_import");
     const bar = $("llm_dl_bar");
     const line = $("llm_dl_status");
     const busy = Boolean(e && models.busy(e.id));
@@ -286,6 +384,8 @@ function renderLlmRow() {
     start.disabled = models.busy();
     if (e)
         start.textContent = `Download ${mb(e.size)}…`;
+    imp.hidden = !e || e.installed || busy || !e.importable;
+    imp.disabled = models.busy();
     stop.hidden = !busy;
     bar.hidden = !busy;
     use.hidden = !e || !e.installed || busy || inUse;
@@ -312,7 +412,7 @@ function renderLlmRow() {
         line.className = "hint";
         line.append(`${e.desc}. Not downloaded yet${e.available ? "." : ": "}`);
         if (!e.available)
-            line.append(html(extLink(e.page, "get it from its model page")));
+            line.append(html(extLink(e.page, "get it from its model page")), e.importable ? ", then Import from file." : ".");
         if (e.license)
             line.append(` ${e.license}.`);
         return;
@@ -357,11 +457,12 @@ export const LLM_DOWNLOAD_ROW = `
 <div class="fl-row lw-dl-row" id="llm_dl_row" data-needs="local" hidden>
   <div class="fl-row-text">
     <div class="fl-row-title"><label for="llm_dl_model">Download a model</label></div>
-    <div class="fl-row-desc">From Hugging Face, checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent. A downloaded model turns on cleanup on this PC.<span class="lw-status-sub"><span class="lw-dl-bar" id="llm_dl_bar" hidden><span></span></span><span id="llm_dl_status"></span></span><span class="lw-status-sub hint" id="llm_dl_hw"></span></div>
+    <div class="fl-row-desc">From Hugging Face, checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent. A downloaded or imported model turns on cleanup on this PC.<span class="lw-status-sub"><span class="lw-dl-bar" id="llm_dl_bar" hidden><span></span></span><span id="llm_dl_status"></span></span><span class="lw-status-sub hint" id="llm_dl_hw"></span></div>
   </div>
   <div class="fl-row-control">
     <select id="llm_dl_model" class="fl-select lw-w220" aria-label="Cleanup model to download"></select>
     <button type="button" class="fl-btn fl-btn-secondary" id="llm_dl_start">Download…</button>
+    <button type="button" class="fl-btn fl-btn-secondary" id="llm_dl_import" hidden>Import from file…</button>
     <button type="button" class="fl-btn fl-btn-secondary" id="llm_dl_use" hidden>Use</button>
     <button type="button" class="fl-btn fl-btn-secondary" id="llm_dl_delete" hidden>Delete…</button>
     <button type="button" class="fl-btn fl-btn-secondary" id="llm_dl_stop" hidden>Cancel</button>
@@ -407,11 +508,14 @@ function renderHebrewRow() {
     const credit = $("he_credit");
     const start = $("he_download");
     const stop = $("he_stop");
+    const imp = $("he_import");
     const bar = $("he_bar");
     const busy = Boolean(e && models.busy(e.id));
     const complete = e ? (e.complete ?? e.installed) : false;
     start.hidden = !e || complete || busy || !e.available;
     start.disabled = models.busy();
+    imp.hidden = !e || complete || busy || !e.importable;
+    imp.disabled = models.busy();
     stop.hidden = !busy;
     bar.hidden = !busy;
     credit.replaceChildren();
@@ -440,14 +544,16 @@ function renderHebrewRow() {
         return;
     }
     if (!e.installed) {
-        const how = e.available ? "press Download" : "get it from its model page";
+        const how = e.available ? "press Download" : e.importable ? "get it from its model page, then Import from file" : "get it from its model page";
         set(`Not downloaded yet: ${how} (${mb(e.size)}).${wantHe ? " Until then Hebrew uses the model above." : ""}`, wantHe ? "err" : "");
         if (!e.available)
             credit.append(" · ", html(extLink(e.page, "Download page")));
         return;
     }
     // Installed before the language-ID model came with it (H6).
-    const noLid = complete ? "" : ` Auto-detect needs a ${mb(e.missing ?? 0)} language-ID model: ${e.available ? "press Download" : "get it from the Whisper model page"}.`;
+    const noLid = complete
+        ? ""
+        : ` Auto-detect needs a ${mb(e.missing ?? 0)} language-ID model: ${e.available ? "press Download" : "get it from the Whisper model page"}${e.importable ? ` or import ${e.files.find((f) => f.extra)?.name ?? "it"}` : ""}.`;
     switch (heStatus?.state) {
         case "ready":
             set(`Ready for Hebrew (loaded in ${heStatus.load_ms} ms).${noLid}`, "ok");
@@ -479,6 +585,7 @@ export const HEBREW_ROW = `
       <option value="none">None</option>
     </select>
     <button type="button" class="fl-btn fl-btn-secondary" id="he_download" hidden>Download…</button>
+    <button type="button" class="fl-btn fl-btn-secondary" id="he_import" hidden>Import from file…</button>
     <button type="button" class="fl-btn fl-btn-secondary" id="he_stop" hidden>Cancel</button>
   </div>
 </div>`;
@@ -486,6 +593,7 @@ export const modelsFeature = {
     init() {
         document.body.append(html(DIALOG));
         document.body.append(html(LLM_DELETE_DIALOG));
+        document.body.append(html(IMPORT_DIALOG));
         // Browse buttons next to path fields (data-browse = the field's id).
         document.addEventListener("click", (e) => {
             const t = e.target;
@@ -504,6 +612,7 @@ export const modelsFeature = {
             void models.confirmAndStart($("dl_model").value);
         });
         document.getElementById("dl_stop")?.addEventListener("click", () => void models.cancel($("dl_model").value));
+        document.getElementById("dl_import")?.addEventListener("click", () => void models.importFlow($("dl_model").value));
         models.onChange(renderSettingsRow);
         models.onChange(renderLlmRow);
         prefsStore.subscribe(() => renderLlmRow());
@@ -517,6 +626,10 @@ export const modelsFeature = {
             void models.confirmAndStart(llmSel());
         });
         document.getElementById("llm_dl_stop")?.addEventListener("click", () => void models.cancel(llmSel()));
+        document.getElementById("llm_dl_import")?.addEventListener("click", () => {
+            llmNote = "";
+            void models.importFlow(llmSel());
+        });
         document.getElementById("llm_dl_use")?.addEventListener("click", () => void useLlm(llmSel()));
         document.getElementById("llm_dl_delete")?.addEventListener("click", () => void deleteLlm(llmSel()));
         models.onChange(renderHebrewRow);
@@ -526,6 +639,11 @@ export const modelsFeature = {
             const e = hebrewEntry($("hebrew_model").value);
             if (e)
                 void models.confirmAndStart(e.id);
+        });
+        document.getElementById("he_import")?.addEventListener("click", () => {
+            const e = hebrewEntry($("hebrew_model").value);
+            if (e)
+                void models.importFlow(e.id);
         });
         document.getElementById("he_stop")?.addEventListener("click", () => {
             const e = hebrewEntry($("hebrew_model").value);
@@ -538,8 +656,11 @@ export const modelsFeature = {
         });
         void onEvent("model:download", (ev) => {
             const p = ev.payload;
-            const started = progress.get(p.id)?.started || Date.now();
-            progress.set(p.id, { ...p, started });
+            const prev = progress.get(p.id);
+            const started = prev?.started || Date.now();
+            // An import keeps its wording through verifying / done / error.
+            const via = p.state === "importing" || (prev?.via === "import" && p.state !== "downloading") ? "import" : undefined;
+            progress.set(p.id, { ...p, started, via });
             if (p.state === "done" || p.state === "error" || p.state === "cancelled") {
                 // The backend pointed the engine at the new model: take its prefs.
                 if (p.state === "done")
@@ -568,11 +689,12 @@ export const DOWNLOAD_ROW = `
 <div class="fl-row lw-dl-row" id="dl_row" hidden>
   <div class="fl-row-text">
     <div class="fl-row-title"><label for="dl_model">Download a model</label></div>
-    <div class="fl-row-desc">From Hugging Face, checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent.<span class="lw-status-sub"><span class="lw-dl-bar" id="dl_bar" hidden><span></span></span><span id="dl_status"></span></span></div>
+    <div class="fl-row-desc">From Hugging Face, or Import from file (a folder, .zip or model file you copied here, no network); either way checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent.<span class="lw-status-sub"><span class="lw-dl-bar" id="dl_bar" hidden><span></span></span><span id="dl_status"></span></span></div>
   </div>
   <div class="fl-row-control">
     <select id="dl_model" class="fl-select lw-w220" aria-label="Model to download"></select>
     <button type="button" class="fl-btn fl-btn-secondary" id="dl_start">Download…</button>
+    <button type="button" class="fl-btn fl-btn-secondary" id="dl_import" hidden>Import from file…</button>
     <button type="button" class="fl-btn fl-btn-secondary" id="dl_stop" hidden>Cancel</button>
   </div>
 </div>`;

@@ -1322,6 +1322,7 @@ dependencies = [
  "tauri-build",
  "tokio",
  "windows 0.58.0",
+ "zip",
 ]
 
 [[package]]

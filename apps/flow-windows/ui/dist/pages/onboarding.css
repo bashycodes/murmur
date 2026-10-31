@@ -568,6 +568,17 @@ dialog.fl-dialog .lw-dl-lead {
 .lw-dark .lw-dl-bullets .lw-ico {
   color: var(--success);
 }
+/* Import dialog: the files a model needs (model_import). */
+.lw-imp-files {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 18px;
+}
 .lw-dl-row .lw-dl-bar {
   margin: 6px 0 2px;
   max-width: 360px;
