@@ -224,16 +224,24 @@ fn content_and_numbers(s: &str, m: Mode) -> Vec<String> {
 /// rules quotation's content words (any of them when the model ended the
 /// quotation with its own sentence end: it split a run-on the rules
 /// could not) and add none of its own. Applies only
-/// when the input has a "quote unquote" and no quote marks yet, and both
-/// sides have the same number of quotations (else the other checks
-/// decide). Returns the offending quotation.
+/// when the input has a "quote unquote" and no quote marks yet. An answer
+/// with fewer quotations than the rules left the command as words; one
+/// with more is left to the other checks. Returns the offending quotation
+/// (or the whole answer).
 fn quote_unquote_scope(input: &str, output: &str, m: Mode) -> Option<String> {
     if !QUOTE_UNQUOTE.is_match(input) || !quoted_spans(input).is_empty() {
         return None;
     }
     let cleaned = crate::postprocess::spoken::spoken_cleanup(input);
     let (want, got) = (quoted_spans(&cleaned), quoted_spans(output));
-    if want.is_empty() || want.len() != got.len() {
+    if want.is_empty() {
+        return None;
+    }
+    if got.len() < want.len() {
+        // The command was left as words ("Quote, unquote, this cake …").
+        return Some(output.to_string());
+    }
+    if got.len() != want.len() {
         return None;
     }
     want.iter().zip(&got).find_map(|(w, g)| {
@@ -1087,6 +1095,11 @@ mod tests {
             (
                 "quote unquote the plan works great",
                 "\"The\" plan works great.",
+            ),
+            // The command left as words.
+            (
+                "Quote, unquote, this cake is the best one yet.",
+                "Quote, unquote, this cake is the best one yet.",
             ),
         ] {
             assert!(
