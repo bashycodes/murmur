@@ -188,6 +188,14 @@ pub struct Prefs {
     /// Model for dictations in Hebrew (`%APPDATA%\FlowClone\models\<folder>`,
     /// see [`HebrewModel`]); downloaded only from Settings → Speech to text.
     pub hebrew_model: HebrewModel,
+    /// A Hebrew model folder from the server's library (D41) in place of
+    /// the catalogue folder of `hebrew_model` (which still picks the engine:
+    /// `zipformer` = sherpa online, `parakeet_he` = Parakeet). `None` = the
+    /// catalogue folder. Choosing a catalogue Hebrew model clears it.
+    pub hebrew_model_dir: Option<String>,
+    /// Language-ID whisper model (H6/D34) from the server's library (D41);
+    /// `None` = `ggml-tiny-q5_1.bin` in the models folder, when there.
+    pub lid_model_path: Option<String>,
     /// Deterministic spoken cleanup in the core (core-p1, D15): spoken
     /// punctuation, fillers, "scratch that", money/time/date formatting.
     pub spoken_cleanup: bool,
@@ -258,6 +266,8 @@ impl Default for Prefs {
             asr_engine: AsrEngineChoice::Whisper,
             parakeet_model_dir: None,
             hebrew_model: HebrewModel::Zipformer,
+            hebrew_model_dir: None,
+            lid_model_path: None,
             spoken_cleanup: true,
             live_preview: true,
             live_preview_interval_ms: 1500,
@@ -520,6 +530,29 @@ impl Prefs {
         match self.parakeet_model_dir.as_deref().map(str::trim) {
             Some(p) if !p.is_empty() => PathBuf::from(p),
             _ => crate::core_adapter::default_parakeet_dir(appdata),
+        }
+    }
+
+    /// The Hebrew model folder: [`Prefs::hebrew_model_dir`] when set, else
+    /// `<models>\<catalogue folder>`; `None` when no Hebrew model is chosen.
+    pub fn resolved_hebrew_dir(&self, appdata: Option<&str>) -> Option<PathBuf> {
+        let dir = match self.hebrew_model {
+            HebrewModel::None => return None,
+            HebrewModel::Zipformer => crate::core_adapter::ZIPFORMER_HE_DIR,
+            HebrewModel::ParakeetHe => crate::core_adapter::PARAKEET_HE_DIR,
+        };
+        Some(match self.hebrew_model_dir.as_deref().map(str::trim) {
+            Some(p) if !p.is_empty() => PathBuf::from(p),
+            _ => crate::core_adapter::models_dir(appdata).join(dir),
+        })
+    }
+
+    /// The language-ID model file: [`Prefs::lid_model_path`] when set, else
+    /// `<models>\ggml-tiny-q5_1.bin`.
+    pub fn resolved_lid_path(&self, appdata: Option<&str>) -> PathBuf {
+        match self.lid_model_path.as_deref().map(str::trim) {
+            Some(p) if !p.is_empty() => PathBuf::from(p),
+            _ => crate::core_adapter::models_dir(appdata).join(crate::core_adapter::LID_FILE),
         }
     }
 

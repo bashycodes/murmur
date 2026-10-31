@@ -41,6 +41,8 @@
     "allow-model-download-start",
     "allow-model-import-start",
     "allow-model-download-cancel",
+    "allow-server-models",
+    "allow-server-model-download",
     "allow-model-delete",
     "allow-transforms-reset",
     "allow-transform-try",

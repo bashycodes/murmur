@@ -41,7 +41,9 @@ whisper = ["local-engine", "flow-core/whisper"]
 # (SHERPA_ONNX_LIB_DIR at build time; the DLLs ship next to the exe).
 parakeet = ["local-engine", "flow-core/parakeet"]
 # Self-hosted flow-server over WebSocket ("server"): the only network code.
-remote = ["dep:flow-remote"]
+# Also the server's model library (D41): with a server set, model
+# downloads come from it instead of Hugging Face (src/server_library.rs).
+remote = ["dep:flow-remote", "flow-remote/library", "dep:flow-protocol"]
 # wss:// to a server outside your LAN/VPN (rustls + ring). In the default
 # build; separate so the Linux MSVC cross-check can leave ring's C out.
 tls = ["remote", "flow-remote/tls"]
@@ -71,6 +73,8 @@ flow-core = { path = "../../crates/flow-core", features = ["llm"] }
 # the remote backend is injected by `remote`).
 flow-router = { path = "../../crates/flow-router" }
 flow-remote = { path = "../../crates/flow-remote", optional = true }
+# Model library types (D40/D41: `server_library`), with `remote`.
+flow-protocol = { path = "../../crates/flow-protocol", optional = true }
 flow-cloud = { path = "../../crates/flow-cloud", optional = true }
 rusqlite = { version = "0.32", features = ["bundled"] }
 # Model downloader (feature `download`, D31): same client stack as flow-cloud.
