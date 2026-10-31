@@ -28,6 +28,8 @@ pub mod transform;
 pub mod vad;
 #[cfg(feature = "whisper")]
 pub mod whisper;
+#[cfg(feature = "whisper-plugin")]
+pub mod whisper_plugin;
 
 pub use endpoint::EndpointState;
 pub use engine::{

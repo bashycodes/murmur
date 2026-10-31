@@ -4,6 +4,7 @@
 //! `initial_prompt`; language is forced or auto-detected (English-only
 //! `.en` models are always forced to `en`).
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, Once};
 
 use regex::Regex;
@@ -96,6 +97,18 @@ pub fn clean_text(s: &str) -> String {
     t.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Where whisper.cpp runs a model. Only a GPU build of whisper.cpp (the
+/// Windows `flow_whisper_vulkan.dll` plugin, crate `flow-whisper`) has a GPU
+/// to use; in a CPU build `Gpu` loads on the CPU, as whisper.cpp finds no
+/// GPU device.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WhisperDevice {
+    Cpu,
+    /// whisper.cpp's `gpu_device`: the index among the GPU devices ggml
+    /// lists (discrete and integrated).
+    Gpu(i32),
+}
+
 pub struct WhisperEngine {
     state: Mutex<WhisperState>,
     multilingual: bool,
@@ -113,9 +126,27 @@ pub struct WhisperEngine {
 
 impl WhisperEngine {
     pub fn load(path: &str, threads: usize) -> Result<Self, AsrError> {
+        Self::load_with(path, threads, WhisperContextParameters::default())
+    }
+
+    /// [`WhisperEngine::load`] on a chosen device.
+    pub fn load_on(path: &str, threads: usize, device: WhisperDevice) -> Result<Self, AsrError> {
+        let mut p = WhisperContextParameters::default();
+        match device {
+            WhisperDevice::Cpu => p.use_gpu(false),
+            WhisperDevice::Gpu(i) => p.use_gpu(true).gpu_device(i),
+        };
+        Self::load_with(path, threads, p)
+    }
+
+    fn load_with(
+        path: &str,
+        threads: usize,
+        params: WhisperContextParameters,
+    ) -> Result<Self, AsrError> {
         static HOOK: Once = Once::new();
         HOOK.call_once(whisper_rs::install_logging_hooks);
-        let ctx = WhisperContext::new_with_params(path, WhisperContextParameters::default())
+        let ctx = WhisperContext::new_with_params(path, params)
             .map_err(|e| AsrError::Load(format!("{path}: {e}")))?;
         let state = ctx
             .create_state()
@@ -149,23 +180,40 @@ impl WhisperEngine {
     pub fn redecodes(&self) -> u64 {
         self.redecodes.load(std::sync::atomic::Ordering::Relaxed)
     }
-}
 
-impl AsrEngine for WhisperEngine {
-    fn transcribe(&self, pcm: &[f32], req: &AsrRequest) -> Result<AsrOutput, AsrError> {
+    /// The model is multilingual (not a `.en` model).
+    pub fn is_multilingual(&self) -> bool {
+        self.multilingual
+    }
+
+    /// [`AsrEngine::transcribe`] with the stop flag passed as a plain
+    /// reference instead of `req.abort` (which is ignored): the
+    /// `flow-whisper` plugin gets its flag as a pointer from the host.
+    pub fn transcribe_abortable(
+        &self,
+        pcm: &[f32],
+        req: &AsrRequest,
+        abort: Option<&AtomicBool>,
+    ) -> Result<AsrOutput, AsrError> {
         let audio = pad(pcm);
         let ctx = if self.fit_ctx {
             audio_ctx_for(audio.len())
         } else {
             0
         };
-        let out = self.decode(pcm, &audio, req, ctx)?;
+        let out = self.decode(pcm, &audio, req, ctx, abort)?;
         if ctx > 0 && looks_degenerate(&out.text, audio.len() as f32 / SAMPLE_RATE as f32) {
             self.redecodes
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            return self.decode(pcm, &audio, req, 0);
+            return self.decode(pcm, &audio, req, 0, abort);
         }
         Ok(out)
+    }
+}
+
+impl AsrEngine for WhisperEngine {
+    fn transcribe(&self, pcm: &[f32], req: &AsrRequest) -> Result<AsrOutput, AsrError> {
+        self.transcribe_abortable(pcm, req, req.abort.0.as_deref())
     }
 }
 
@@ -178,6 +226,7 @@ impl WhisperEngine {
         audio: &[f32],
         req: &AsrRequest,
         audio_ctx: i32,
+        abort: Option<&AtomicBool>,
     ) -> Result<AsrOutput, AsrError> {
         let lang = if self.multilingual {
             req.language.clone()
@@ -216,26 +265,21 @@ impl WhisperEngine {
         // whisper-rs 0.16's `set_abort_callback_safe` boxes the closure as
         // `Box<dyn FnMut>` but its trampoline reads it back as the concrete
         // closure type, so the callback read garbage and aborted decodes at
-        // random (whisper error -6). Pass the flag itself instead; `flag`
-        // (an `Arc`) outlives `st.full` below.
-        let flag = req.abort.0.clone();
-        if let Some(f) = &flag {
+        // random (whisper error -6). Pass the flag itself instead; `abort`
+        // outlives `st.full` below.
+        if let Some(f) = abort {
             unsafe extern "C" fn abort_cb(user_data: *mut std::ffi::c_void) -> bool {
-                // SAFETY: user_data is `Arc::as_ptr` of a live AtomicBool.
-                unsafe {
-                    (*(user_data as *const std::sync::atomic::AtomicBool))
-                        .load(std::sync::atomic::Ordering::Relaxed)
-                }
+                // SAFETY: user_data points at a live AtomicBool.
+                unsafe { (*(user_data as *const AtomicBool)).load(Ordering::Relaxed) }
             }
             // SAFETY: the pointer stays valid for the whole `full` call.
             unsafe {
                 p.set_abort_callback(Some(abort_cb));
-                p.set_abort_callback_user_data(std::sync::Arc::as_ptr(f) as *mut std::ffi::c_void);
+                p.set_abort_callback_user_data(f as *const AtomicBool as *mut std::ffi::c_void);
             }
         }
         let mut st = self.state.lock().unwrap();
         let full = st.full(p, audio);
-        drop(flag);
         full.map_err(|e| AsrError::Transcribe(e.to_string()))?;
         let mut text = String::new();
         let mut no_speech: Option<f32> = None;
