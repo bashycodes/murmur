@@ -195,8 +195,8 @@ abstract class VerifyManifestNetwork : DefaultTask() {
 }
 
 /**
- * Release variants: the debug "WAV as microphone" receiver (src/debug) must not be in the merged
- * manifest, so nothing outside the app can make a release build dictate. NoDebugWavReceiverTest
+ * Release variants: the debug "WAV as microphone" receiver and the BenchActivity (src/debug) must
+ * not be in the merged manifest, so nothing outside the app can make a release build dictate. NoDebugWavReceiverTest
  * re-checks it (and that the class is absent) from the release unit-test suite.
  */
 abstract class VerifyNoDebugReceiver : DefaultTask() {
@@ -206,9 +206,9 @@ abstract class VerifyNoDebugReceiver : DefaultTask() {
     @TaskAction
     fun verify() {
         val xml = manifest.get().asFile.readText()
-        val found = listOf("WavMicReceiver", "dev.flowclone.debug.PLAY_WAV").filter { xml.contains(it) }
+        val found = listOf("WavMicReceiver", "dev.flowclone.debug.PLAY_WAV", "BenchActivity").filter { xml.contains(it) }
         report.get().asFile.apply { parentFile.mkdirs() }.writeText("found=$found\n")
-        if (found.isNotEmpty()) throw GradleException("Release manifest contains the debug WAV receiver ($found)")
+        if (found.isNotEmpty()) throw GradleException("Release manifest contains a debug-only component ($found)")
     }
 }
 

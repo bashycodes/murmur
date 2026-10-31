@@ -25,6 +25,14 @@ class NoDebugWavReceiverTest {
         }
     }
 
+    @Test fun benchActivityIsNotInRelease() {
+        try {
+            Class.forName("dev.flowclone.debug.BenchActivity")
+            fail("BenchActivity is on the $variant classpath")
+        } catch (_: ClassNotFoundException) {
+        }
+    }
+
     @Test fun mergedReleaseManifestHasNoWavReceiver() {
         val cap = variant.replaceFirstChar { it.uppercase() }
         val merged = File("build/intermediates/merged_manifest/$variant/process${cap}MainManifest/AndroidManifest.xml")
@@ -32,5 +40,6 @@ class NoDebugWavReceiverTest {
         val xml = merged.readText()
         assertFalse("WavMicReceiver in the $variant manifest", xml.contains("WavMicReceiver"))
         assertFalse(xml.contains(DebugWav.BROADCAST))
+        assertFalse("BenchActivity in the $variant manifest", xml.contains("BenchActivity"))
     }
 }
