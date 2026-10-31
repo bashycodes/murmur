@@ -192,3 +192,75 @@ async fn clean_queues_behind_a_busy_worker_and_busy_when_full() {
     assert_eq!(qb.text.as_deref(), Some("B"));
     assert!(qb.queue_ms >= 200, "{qb:?}");
 }
+
+/// Counts its calls.
+struct Counting(std::sync::atomic::AtomicUsize);
+
+impl Cleaner for Counting {
+    fn clean(&self, p: &CleanPrompt, _: Instant) -> Result<String, CleanError> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Ok(p.transcript.clone())
+    }
+}
+
+#[test]
+fn warm_llm_cleans_once_per_worker_with_an_llm() {
+    let cfg = mock_cfg("words");
+    let cl = Arc::new(Counting(Default::default()));
+    let with = |c: Option<Arc<dyn Cleaner>>| {
+        Arc::new(FlowCore::from_engines(Arc::new(MockAsr::new("w")), c))
+    };
+    let pool = Pool::from_cores(
+        vec![with(Some(cl.clone())), with(None), with(Some(cl.clone()))],
+        &cfg.model,
+        cfg.max_queue,
+    );
+    assert_eq!(pool.warm_llm(), 2);
+    assert_eq!(cl.0.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
+
+/// One session through a server whose LLM takes 700 ms, with a 300 ms
+/// session budget and a 100-character transcript: the fallback reason.
+async fn session_fallback(per_char_ms: u32) -> Option<String> {
+    let text = "so the build is green now and the release can go out today ".repeat(2);
+    let text = &text[..100];
+    let mut cfg = mock_cfg(text);
+    cfg.llm_timeout_per_char_ms = per_char_ms;
+    let core = FlowCore::from_engines(
+        Arc::new(MockAsr::new(text)),
+        Some(Arc::new(Upper {
+            delay: Duration::from_millis(700),
+        }) as Arc<dyn Cleaner>),
+    );
+    let pool = Pool::from_cores(vec![Arc::new(core)], &cfg.model, cfg.max_queue);
+    let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let s = flow_server::serve_with_pool(cfg, Arc::new(pool), vec![l])
+        .await
+        .unwrap();
+    let mut ws = session(s.addr()).await;
+    let config = flow_core::config::SessionConfig {
+        llm_timeout_ms: 300,
+        llm_skip_clean: false,
+        ..Default::default()
+    };
+    send(&mut ws, &ClientMsg::Start { sid: 1, config }).await;
+    assert!(matches!(
+        recv(&mut ws).await,
+        Some(ServerMsg::Started { .. })
+    ));
+    send_audio(&mut ws, &speech(500)).await;
+    send(&mut ws, &ClientMsg::Commit { sid: 1 }).await;
+    match recv_final(&mut ws).await {
+        Some(ServerMsg::Result { result, .. }) => result.fallback_reason,
+        other => panic!("{other:?}"),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn session_llm_budget_scales_with_the_transcript_length() {
+    // 300 ms + 15 ms x 100 chars = 1.8 s: the 700 ms LLM fits.
+    let scaled = session_fallback(15).await;
+    assert_ne!(scaled.as_deref(), Some("llm_timeout"), "{scaled:?}");
+    // Scaling off on the server: the fixed 300 ms runs out.
+    assert_eq!(session_fallback(0).await.as_deref(), Some("llm_timeout"));
+}

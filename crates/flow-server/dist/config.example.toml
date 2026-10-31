@@ -18,6 +18,11 @@ max_session_s = 1200   # 20 min, same as the Windows hard stop
 handshake_timeout_ms = 10000  # TLS handshake + HTTP upgrade request must finish by then
 max_connections = 64          # open sockets in total (unauthenticated ones included)
 max_connections_per_ip = 16   # open sockets per peer address
+# LLM cleanup budget = the session's llm_timeout_ms + this per transcript
+# character, at most llm_timeout_max_ms (unless the client sends its own
+# rate). A long or Hebrew dictation decodes more tokens; 0 = fixed budget.
+# llm_timeout_per_char_ms = 15
+# llm_timeout_max_ms = 8000
 
 [model]                # = flow_core::ModelConfig
 asr_engine = "parakeet"

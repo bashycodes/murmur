@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Build and install the self-hosted flow-server (Parakeet ASR) with its
-# systemd unit. Setup guide: docs/server-setup.md.
+# systemd unit, or upgrade an existing install in place (binary and libs
+# replaced; config, token, keys and models kept). Setup guide:
+# docs/server-setup.md.
 #
 #   tools/server/install.sh [--system | --user] [options]
 #
@@ -16,6 +18,8 @@
 # Options:
 #   --prefix DIR        install root (default /opt/flow-server or ~/.local)
 #   --model DIR         Parakeet model dir (default $FLOW_PARAKEET_DIR, else
+#                       the existing config's asr_path when it holds a
+#                       model (upgrade in place), else
 #                       models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8)
 #   --sherpa-lib DIR    dir with libsherpa-onnx-c-api.so + libonnxruntime.so
 #                       (default $SHERPA_ONNX_LIB_DIR)
@@ -32,9 +36,14 @@
 #   --llm-model FILE    GGUF for LLM cleanup (implies --llm): copied next to
 #                       the ASR model and written as llm_path into a *new*
 #                       config (an existing config is never edited)
+#   --no-whisper        leave out the `whisper` feature (whisper.cpp: the
+#                       whisper engine, lid_path language ID, vad_model_path).
+#                       Ignored when the existing config uses any of them (a
+#                       build without it refuses to start then)
 #   --no-build          install the already built target/release/flow-server
-#   --start             enable and start the service at the end (otherwise
-#                       the commands are printed)
+#   --start             enable and (re)start the service at the end, so an
+#                       upgrade runs the new binary (otherwise the commands
+#                       are printed)
 #   --dry-run           print every step, change nothing (no build either)
 #   --yes               do not ask before running the sudo commands
 #
@@ -46,7 +55,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 MODE=system
 PREFIX=""
-MODEL="${FLOW_PARAKEET_DIR:-$ROOT/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8}"
+MODEL="${FLOW_PARAKEET_DIR:-}"
 SHERPA_LIB="${SHERPA_ONNX_LIB_DIR:-}"
 BINDS=()
 PORT=7313
@@ -54,12 +63,13 @@ THREADS=4
 BUILD=1
 LLM=0
 LLM_MODEL=""
+WHISPER=1
 START=0
 DRY=0
 YES=0
 
 die() { echo "install.sh: $*" >&2; exit 1; }
-usage() { sed -n '2,42p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,52p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -73,6 +83,7 @@ while [ $# -gt 0 ]; do
         --threads) THREADS="${2:?--threads N}"; shift ;;
         --llm) LLM=1 ;;
         --llm-model) LLM_MODEL="${2:?--llm-model FILE}"; LLM=1; shift ;;
+        --no-whisper) WHISPER=0 ;;
         --no-build) BUILD=0 ;;
         --start) START=1 ;;
         --dry-run) DRY=1 ;;
@@ -102,28 +113,49 @@ else
     SYSTEMCTL=(systemctl --user)
     JOURNAL="journalctl --user -u flow-server -f"
 fi
-MODEL_NAME="$(basename "$MODEL")"
-MODEL_DST="$MODEL_ROOT/$MODEL_NAME"
 CONF="$CONF_DIR/config.toml"
 TOKEN="$CONF_DIR/token"
 BIN="$BIN_DIR/flow-server"
 PLUGIN="$LIB_DIR/libflow_llm.so"
 
 # ---- preflight (read-only) ---------------------------------------------------
+# An existing config (re-install / upgrade) decides what the build needs;
+# it is never edited.
+CONF_LLM_PATH=""
+CONF_LLM_LIB=""
+CONF_ASR_PATH=""
+CONF_WHISPER=""
+if [ -r "$CONF" ]; then
+    toml_str() { sed -n -E "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$CONF" | head -n 1; }
+    CONF_LLM_PATH="$(toml_str llm_path)"
+    CONF_LLM_LIB="$(toml_str llm_lib)"
+    CONF_ASR_PATH="$(toml_str asr_path)"
+    # whisper.cpp users: language ID (D34), the Silero VAD, a whisper engine.
+    for k in lid_path vad_model_path; do
+        [ -n "$(toml_str "$k")" ] && CONF_WHISPER="$CONF_WHISPER $k"
+    done
+    grep -q -E '^[[:space:]]*asr_(engine|backend)[[:space:]]*=[[:space:]]*"whisper"' "$CONF" \
+        && CONF_WHISPER="$CONF_WHISPER asr_engine=whisper"
+fi
+# Upgrade in place: without --model, keep serving the installed model.
+if [ -z "$MODEL" ] && [ -n "$CONF_ASR_PATH" ] && [ -f "$CONF_ASR_PATH/tokens.txt" ]; then
+    echo "note: upgrading in place; model from $CONF: $CONF_ASR_PATH" >&2
+    MODEL="$CONF_ASR_PATH"
+fi
+MODEL="${MODEL:-$ROOT/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8}"
+MODEL_NAME="$(basename "$MODEL")"
+MODEL_DST="$MODEL_ROOT/$MODEL_NAME"
 [ -f "$MODEL/tokens.txt" ] || die "no Parakeet model in $MODEL (tools/fetch-models.sh --parakeet, or --model DIR)"
 [ -n "$SHERPA_LIB" ] || die "set SHERPA_ONNX_LIB_DIR or pass --sherpa-lib DIR (the sherpa-onnx shared libraries)"
 for l in libsherpa-onnx-c-api.so libonnxruntime.so; do
     [ -e "$SHERPA_LIB/$l" ] || die "$SHERPA_LIB/$l not found"
 done
-# LLM cleanup. An existing config with llm_path needs an llm build: without
-# the feature flow-server stops at startup ("llm_path set but built without
-# the `llm` feature"), so a plain re-install would take the server down.
-CONF_LLM_PATH=""
-CONF_LLM_LIB=""
-if [ -r "$CONF" ]; then
-    toml_str() { sed -n -E "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" "$CONF" | head -n 1; }
-    CONF_LLM_PATH="$(toml_str llm_path)"
-    CONF_LLM_LIB="$(toml_str llm_lib)"
+# A config that needs a feature the build leaves out stops flow-server at
+# startup ("lid_path set but built without the `whisper` feature", same for
+# llm_path), so a plain re-install would take the server down.
+if [ -n "$CONF_WHISPER" ] && [ "$WHISPER" = 0 ]; then
+    echo "note: $CONF uses${CONF_WHISPER}; building with whisper despite --no-whisper" >&2
+    WHISPER=1
 fi
 if [ -n "$CONF_LLM_PATH" ] && [ "$LLM" = 0 ]; then
     echo "note: $CONF sets llm_path; building with LLM cleanup (as --llm)" >&2
@@ -224,6 +256,7 @@ flow-server install ($MODE mode)$( [ "$DRY" = 1 ] && echo ", DRY RUN: nothing is
   token    $TOKEN
   unit     $UNIT_PATH
   bind     ${BINDS[*]}
+  whisper  $( if [ "$WHISPER" = 1 ]; then echo "on (language ID, VAD, whisper engine)"; else echo "off (--no-whisper)"; fi )
   llm      $( if [ "$LLM" = 1 ]; then echo "on: plugin $PLUGIN${LLM_MODEL:+, model ${LLM_MODEL_DST:-}}"; else echo "off (--llm to build cleanup)"; fi )
 EOF
 
@@ -240,7 +273,8 @@ fi
 
 # ---- 1. build ------------------------------------------------------------------
 FEATURES=parakeet,tls
-[ "$LLM" = 1 ] && FEATURES=parakeet,tls,llm
+[ "$WHISPER" = 1 ] && FEATURES=whisper,$FEATURES
+[ "$LLM" = 1 ] && FEATURES=$FEATURES,llm
 step "1. build flow-server (release, features $FEATURES)"
 if [ "$BUILD" = 1 ]; then
     # Never downloads: SHERPA_ONNX_LIB_DIR points sherpa-onnx-sys at the local libs.
@@ -373,10 +407,12 @@ step "6. start"
 SUDO=""
 [ "$MODE" = system ] && SUDO="sudo "
 if [ "$START" = 1 ]; then
-    priv "${SYSTEMCTL[@]}" enable --now flow-server
+    # restart, not `enable --now`: an upgrade must replace the running binary.
+    priv "${SYSTEMCTL[@]}" enable flow-server
+    priv "${SYSTEMCTL[@]}" restart flow-server
 else
-    echo "    not started (pass --start). To start now and at boot:"
-    echo "      ${SUDO}${SYSTEMCTL[*]} enable --now flow-server"
+    echo "    not started (pass --start). To (re)start now and enable at boot:"
+    echo "      ${SUDO}${SYSTEMCTL[*]} enable flow-server && ${SUDO}${SYSTEMCTL[*]} restart flow-server"
     [ "$MODE" = user ] && echo "      sudo loginctl enable-linger $USER   # keep it running while logged out"
 fi
 
