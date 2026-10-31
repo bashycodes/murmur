@@ -1,0 +1,11 @@
+# Build context for deploy/docker/Dockerfile (docs/container.md): only what
+# the flow-server build and the image need. Everything else (apps, docs,
+# models, target/, .git) stays out of the context.
+*
+!Cargo.toml
+!Cargo.lock
+!VERSION
+!crates/
+!deploy/docker/
+crates/**/target/
+deploy/docker/prebuilt/.gitignore

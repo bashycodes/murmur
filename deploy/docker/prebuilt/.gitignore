@@ -1,0 +1,4 @@
+# Filled by tools/container/stage-prebuilt.sh for
+# `docker build --build-arg SOURCE=prebuilt`; never committed.
+*
+!.gitignore

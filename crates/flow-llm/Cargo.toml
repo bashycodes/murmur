@@ -27,3 +27,8 @@ serde_json.workspace = true
 # the Vulkan build a missing or failing GPU falls back to the CPU
 # (`backend::choose`, `Plan::fallbacks`).
 vulkan = ["llama-cpp-2/vulkan"]
+# GPU offload through CUDA (llama.cpp GGML_CUDA) for the NVIDIA container
+# image (deploy/docker/Dockerfile `--target cuda`, docs/container.md). Needs
+# the CUDA toolkit (nvcc) at build time. Device choice and CPU fallback are
+# the same as for Vulkan: ggml lists CUDA devices as GPUs.
+cuda = ["llama-cpp-2/cuda"]
