@@ -22,7 +22,8 @@ import java.util.Locale
  * Debug builds only (src/debug): the on-device benchmark (tools/probes/android_bench/README.md).
  * Exported for the platform tools' shell and guarded by android.permission.DUMP, like
  * [WavMicReceiver]: `am start -n dev.flowclone/.debug.BenchActivity --es suite all --es run r1`.
- * Reads the bundle from `<external files>/bench/in` (else `files/bench/in`), writes
+ * Reads the bundle from `files/bench/in` (copied in with run-as; `<external files>/bench/in` is
+ * also tried, but files the shell puts there are unreadable to the app), writes
  * `<external files>/bench/out/<run>/`. Keeps the screen on while it runs; `--ez stop true` stops
  * after the current item. One run at a time per process.
  */
@@ -70,7 +71,7 @@ class BenchActivity : Activity() {
         val ext = getExternalFilesDir(null)
         val inDir = args.inDir?.let(::File)
             ?: listOfNotNull(ext?.let { File(it, "bench/in") }, File(filesDir, "bench/in")).firstOrNull { File(it, "manifest.json").isFile }
-        if (inDir == null || !File(inDir, "manifest.json").isFile) return show("no bundle: push it to ${ext?.path}/bench/in (manifest.json missing)")
+        if (inDir == null || !File(inDir, "manifest.json").isFile) return show("no bundle: manifest.json missing in ${File(filesDir, "bench/in")} (tools/probes/android_bench/run_on_device.sh push)")
         val run = args.run ?: SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())
         val outDir = File(ext ?: filesDir, "bench/out/$run")
         // Parakeet derives bpe.vocab into TMPDIR (as FlowApp.load does).
