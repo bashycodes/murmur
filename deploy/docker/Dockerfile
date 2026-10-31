@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 # hadolint global ignore=DL3006,DL3008
 # (DL3006: the FROM lines name ARG-pinned images and stages; DL3008: apt
 # packages follow the pinned base image.)
@@ -11,6 +10,9 @@
 #   NVIDIA CUDA variant (LLM cleanup on the GPU):
 #     docker build -f deploy/docker/Dockerfile --target cuda -t flow-server:local-cuda .
 #
+# Needs BuildKit (Docker 23+ default; RUN --mount, COPY --chmod). No
+# `# syntax=` line: the built-in frontend works without pulling one, so
+# offline builds need only the base images.
 # No models are baked in: /models, /var/lib/flow-server and the config are
 # mounted. The default target (last stage) is the CPU image.
 
