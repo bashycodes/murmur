@@ -1,6 +1,7 @@
 //! `flow-server [--config PATH] [--token-file PATH] [--insecure-bind-any]`
 //! `flow-server gen-token --out PATH`
 //! `flow-server check-config [--config PATH]`
+//! `flow-server keys add <name> [--admin] | list | revoke <name|id>` (D38)
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -10,10 +11,11 @@ use std::time::Instant;
 use flow_server::{config, Config, Pool};
 
 const DEFAULT_CONFIG: &str = "/etc/flow-server/config.toml";
+const SYSTEM_STATE_DIR: &str = "/var/lib/flow-server";
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage:\n  flow-server [--config PATH] [--token-file PATH] [--insecure-bind-any]\n  flow-server gen-token --out PATH\n  flow-server check-config [--config PATH] [--token-file PATH]"
+        "usage:\n  flow-server [--config PATH] [--token-file PATH] [--insecure-bind-any]\n  flow-server gen-token --out PATH\n  flow-server check-config [--config PATH] [--token-file PATH]\n  flow-server keys add <name> [--admin] [--config PATH] [--state-dir DIR]\n  flow-server keys list [--config PATH] [--state-dir DIR]\n  flow-server keys revoke <name|id> [--config PATH] [--state-dir DIR]"
     );
     ExitCode::from(2)
 }
@@ -24,6 +26,10 @@ struct Args {
     token_file: Option<PathBuf>,
     out: Option<PathBuf>,
     insecure_bind_any: bool,
+    state_dir: Option<PathBuf>,
+    admin: bool,
+    /// `keys` arguments (`add NAME`, `list`, `revoke NAME|ID`).
+    rest: Vec<String>,
 }
 
 fn parse() -> Option<Args> {
@@ -33,6 +39,9 @@ fn parse() -> Option<Args> {
         token_file: None,
         out: None,
         insecure_bind_any: false,
+        state_dir: None,
+        admin: false,
+        rest: Vec::new(),
     };
     let mut it = std::env::args().skip(1);
     while let Some(x) = it.next() {
@@ -41,19 +50,39 @@ fn parse() -> Option<Args> {
             "--token-file" => a.token_file = Some(it.next()?.into()),
             "--out" => a.out = Some(it.next()?.into()),
             "--insecure-bind-any" => a.insecure_bind_any = true,
-            "gen-token" | "check-config" | "serve" => a.cmd = x,
+            "--state-dir" => a.state_dir = Some(it.next()?.into()),
+            "--admin" => a.admin = true,
+            "gen-token" | "check-config" | "serve" | "keys" if a.cmd == "serve" => a.cmd = x,
+            _ if a.cmd == "keys" && !x.starts_with("--") => a.rest.push(x),
             _ => return None,
         }
     }
     Some(a)
 }
 
-fn load(a: &Args) -> Result<Config, String> {
+fn load_unchecked(a: &Args) -> Result<Config, String> {
     let mut c = Config::load(&a.config)?;
     if a.token_file.is_some() {
         c.token_file = a.token_file.clone();
     }
+    if a.state_dir.is_some() {
+        c.state_dir = a.state_dir.clone();
+    }
+    // A system install (config under /etc) keeps its state in the unit's
+    // StateDirectory; the CLI, run by root outside the unit, has no
+    // $STATE_DIRECTORY, so default to the same place (D38).
+    if c.state_dir.is_none()
+        && std::env::var_os("STATE_DIRECTORY").is_none()
+        && a.config.starts_with("/etc")
+    {
+        c.state_dir = Some(SYSTEM_STATE_DIR.into());
+    }
     c.insecure_bind_any = a.insecure_bind_any;
+    Ok(c)
+}
+
+fn load(a: &Args) -> Result<Config, String> {
+    let c = load_unchecked(a)?;
     c.validate()?;
     Ok(c)
 }
@@ -83,6 +112,9 @@ fn main() -> ExitCode {
                 for (lang, m) in &c.model.languages {
                     println!("language {lang}: asr={:?} {}", m.asr_backend, m.asr_path);
                 }
+                if let Some(d) = c.keys_dir().filter(|_| c.auth == config::AuthMode::Token) {
+                    println!("keys: {}", d.join(flow_server::keys::KEYS_FILE).display());
+                }
                 if c.debug.capture {
                     println!(
                         "debug capture: on, {} (newest {} files, {} h)",
@@ -98,7 +130,58 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        "keys" => keys(&a),
         _ => serve(&a),
+    }
+}
+
+/// `flow-server keys …` (D38). Works on the same files as the running
+/// server, which picks the change up on the next connection.
+fn keys(a: &Args) -> ExitCode {
+    let run = || -> Result<(), String> {
+        let c = load_unchecked(a)?;
+        if c.auth == config::AuthMode::None {
+            return Err("auth = \"none\": this server does not use keys".into());
+        }
+        let dir = c
+            .keys_dir()
+            .ok_or("no state directory for the keys file (pass --state-dir)")?;
+        // Imports token_file as `owner` first, exactly as the server would.
+        let store = flow_server::keys::KeyStore::open(&dir, c.resolve_token()?.as_deref())?;
+        match a.rest.iter().map(String::as_str).collect::<Vec<_>>()[..] {
+            ["add", name] => {
+                let (k, secret) = store.add(name, a.admin)?;
+                eprintln!(
+                    "added key {:?} (id {}{}). Its secret, shown only now; paste it into the app as the token:",
+                    k.name,
+                    k.id,
+                    if k.admin { ", admin" } else { "" }
+                );
+                println!("{secret}");
+            }
+            ["list"] => print!("{}", flow_server::keys::table(&store.list())),
+            ["revoke", who] => {
+                let k = store.revoke(who)?;
+                eprintln!(
+                    "revoked key {:?} (id {}): new connections with it get 401; open sessions finish",
+                    k.name, k.id
+                );
+            }
+            _ => {
+                return Err(
+                    "expected `keys add <name> [--admin]`, `keys list` or `keys revoke <name|id>`"
+                        .into(),
+                )
+            }
+        }
+        Ok(())
+    };
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("keys: {e}");
+            ExitCode::FAILURE
+        }
     }
 }
 
