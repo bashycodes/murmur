@@ -19,6 +19,7 @@ RUN_DIR holds what BenchActivity wrote (meta.json, stt-*.jsonl, cleanup-*.jsonl)
 Writes RUN_DIR/score.md (and judged/) and prints it.
 """
 import argparse, json, os, pathlib, re, subprocess, sys
+from collections import Counter
 
 HERE = pathlib.Path(__file__).resolve().parent
 PROBES = HERE.parent
@@ -120,15 +121,21 @@ def main():
     stt = sorted(d.glob("stt-*.jsonl"))
     if stt:
         out.append("## STT\n")
-        out.append("| model | set | clips | audio s | WER | CER | commit ms p50 / p90 / max | RTF | bad rows |")
-        out.append("|---|---|---|---|---|---|---|---|---|")
+        out.append("| model | set | clips | audio s | WER | CER | EMPTY | WER / CER on non-empty | commit ms p50 / p90 / max (non-empty) | RTF (non-empty) | bad rows |")
+        out.append("|---|---|---|---|---|---|---|---|---|---|---|")
         for f in stt:
             rows = load(f)
             if not rows:
                 continue
             s = score_stt(rows, ref)
+            # EMPTY rows (the app's VAD found no speech, or ASR returned nothing) count as all
+            # deletions in WER; the non-empty column separates recognition from gating.
+            empty = [r for r in rows if r.get("status") == "EMPTY"]
+            why = ", ".join(f"{k} {v}" for k, v in sorted(Counter(r.get("empty_reason") for r in empty).items(), key=str))
+            ne = score_stt([r for r in rows if r.get("status") != "EMPTY"], ref)
             out.append(f"| {f.stem[4:]} | {rows[0]['set']} | {s['n']} | {s['audio_s']:.0f} | {s['wer']:.1%} | {s['cer']:.1%} | "
-                       f"{s['p50']} / {s['p90']} / {s['max']} | {s['rtf']:.3f} | {s['bad']} |")
+                       f"{len(empty)}{f' ({why})' if empty else ''} | {ne['wer']:.1%} / {ne['cer']:.1%} | "
+                       f"{ne['p50']} / {ne['p90']} / {ne['max']} | {ne['rtf']:.3f} | {s['bad']} |")
         out.append("")
 
     clean = sorted(d.glob("cleanup-*.jsonl"))
