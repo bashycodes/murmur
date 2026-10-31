@@ -70,6 +70,32 @@ class HebrewModelsTest {
         } finally { d.deleteRecursively() }
     }
 
+    @Test fun aCustomServerModelIsKnownByItsEngineFile() {
+        val d = kotlin.io.path.createTempDirectory("hecustom").toFile()
+        try {
+            for (n in listOf("encoder.onnx", "decoder.onnx", "joiner.onnx", "tokens.txt")) java.io.File(d, n).writeText("x")
+            assertNull("no engine file: not a model", HebrewModels.installed(d))
+            java.io.File(d, HebrewModels.ENGINE_FILE).writeText("""{"engine":"parakeet","title":"My Hebrew"}""")
+            assertEquals(HebrewModels.Installed(AsrEngine.PARAKEET, "My Hebrew"), HebrewModels.installed(d))
+            assertEquals(LanguageModel(AsrEngine.PARAKEET, "/h/c", ParakeetDecoding.GREEDY), HebrewModels.languageModel("/h/c", HebrewModels.installed(d)!!))
+            java.io.File(d, HebrewModels.ENGINE_FILE).writeText("""{"engine":"sherpa_online"}""")
+            assertEquals(AsrEngine.SHERPA_ONLINE, HebrewModels.installed(d)!!.engine)
+            java.io.File(d, HebrewModels.ENGINE_FILE).writeText("""{"engine":"whisper"}""")
+            assertNull(HebrewModels.installed(d))
+            java.io.File(d, HebrewModels.ENGINE_FILE).writeText("""{"engine":"parakeet"}""")
+            java.io.File(d, "joiner.onnx").delete()
+            assertNull("incomplete folder", HebrewModels.installed(d))
+        } finally { d.deleteRecursively() }
+    }
+
+    @Test fun aPinnedModelNeedsNoEngineFile() {
+        val d = kotlin.io.path.createTempDirectory("hepinned").toFile()
+        try {
+            for (p in HebrewModels.Kind.PARAKEET.pins) java.io.RandomAccessFile(java.io.File(d, p.name), "rw").use { it.setLength(p.size) }
+            assertEquals(HebrewModels.Installed(AsrEngine.PARAKEET, HebrewModels.Kind.PARAKEET.label, HebrewModels.Kind.PARAKEET), HebrewModels.installed(d))
+        } finally { d.deleteRecursively() }
+    }
+
     @Test fun zipImportKeepsOnlyModelFilesAtAnyDepthAndHashesThem() {
         val bytes = ByteArrayOutputStream().also { b ->
             ZipOutputStream(b).use { z ->
@@ -186,9 +212,9 @@ class HebrewRoutingTest {
     }
 
     @Test fun languagePageNote() {
-        assertNull(SettingsPages.hebrewNote("en", HebrewModels.Kind.ZIPFORMER, local = true))
+        assertNull(SettingsPages.hebrewNote("en", HebrewModels.Kind.ZIPFORMER.label, local = true))
         assertNull(SettingsPages.hebrewNote("he", null, local = false))
         assertTrue(SettingsPages.hebrewNote("he", null, local = true)!!.contains("Import a Hebrew model"))
-        assertTrue(SettingsPages.hebrewNote("he", HebrewModels.Kind.ZIPFORMER, local = true)!!.contains("reloads"))
+        assertTrue(SettingsPages.hebrewNote("he", HebrewModels.Kind.ZIPFORMER.label, local = true)!!.contains("reloads"))
     }
 }

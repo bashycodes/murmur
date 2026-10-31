@@ -88,7 +88,33 @@ object HebrewModels {
 
     /** The `ModelConfig.languages` entry for an imported model. Parakeet-he decodes greedy on the phone (D22). */
     fun languageModel(dir: String, kind: Kind, parakeetDecoding: ParakeetDecoding = ParakeetDecoding.GREEDY) =
-        LanguageModel(kind.engine, dir, if (kind == Kind.PARAKEET) parakeetDecoding else ParakeetDecoding.AUTO)
+        languageModel(dir, Installed(kind.engine, kind.label, kind), parakeetDecoding)
+
+    fun languageModel(dir: String, m: Installed, parakeetDecoding: ParakeetDecoding = ParakeetDecoding.GREEDY) =
+        LanguageModel(m.engine, dir, if (m.engine == AsrEngine.PARAKEET) parakeetDecoding else ParakeetDecoding.AUTO)
+
+    /** What the Hebrew slot holds: a pinned [kind], or (D41, [kind] null) a custom model from the server's library. */
+    data class Installed(val engine: AsrEngine, val label: String, val kind: Kind? = null)
+
+    /**
+     * D41: a custom Hebrew model downloaded from the server carries this file (`{"engine":
+     * "sherpa_online" | "parakeet", "title": …}`), written by the hybrid / remote installer after
+     * every file verified against the server's SHA-256. Pinned models never need it.
+     */
+    const val ENGINE_FILE = "flow-model.json"
+
+    /** The Hebrew model in [dir]: a pinned one by its sizes, else a custom one by its [ENGINE_FILE]; null = none / incomplete. */
+    fun installed(dir: java.io.File): Installed? {
+        kindOf(dir)?.let { return Installed(it.engine, it.label, it) }
+        if (!ParakeetFiles.isModelDir(dir)) return null
+        val o = runCatching { org.json.JSONObject(java.io.File(dir, ENGINE_FILE).readText()) }.getOrNull() ?: return null
+        val engine = when (o.optString("engine")) {
+            "sherpa_online" -> AsrEngine.SHERPA_ONLINE
+            "parakeet" -> AsrEngine.PARAKEET
+            else -> return null
+        }
+        return Installed(engine, o.optString("title").ifBlank { dir.name }, null)
+    }
 
     /** True when [language] (a code like `he`, `he-IL`, legacy `iw`) is Hebrew. */
     fun isHebrew(language: String?): Boolean {

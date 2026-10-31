@@ -18,6 +18,10 @@ fn features() -> String {
     if cfg!(feature = "remote") {
         f.push("remote");
     }
+    // Same set as jni_smoke / jni_library build, so none undoes another's cdylib.
+    if cfg!(feature = "library") {
+        f.push("library");
+    }
     f.join(",")
 }
 

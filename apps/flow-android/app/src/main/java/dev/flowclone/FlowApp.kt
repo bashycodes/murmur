@@ -303,10 +303,10 @@ class EngineHolder(
     fun parakeetDir() = File(app.filesDir, "parakeet").apply { mkdirs() }
     fun hebrewDir() = File(app.filesDir, "hebrew").apply { mkdirs() }
 
-    /** H5: the Hebrew slot's model when it is installed and intact, else null. */
-    fun hebrewModel(): Pair<String, HebrewModels.Kind>? {
+    /** H5: the Hebrew slot's model when it is installed and intact (a pinned one, or D41 a custom one from the server), else null. */
+    fun hebrewModel(): Pair<String, HebrewModels.Installed>? {
         val path = app.settings.hebrewModelPath ?: return null
-        return HebrewModels.kindOf(File(path))?.let { path to it }
+        return HebrewModels.installed(File(path))?.let { path to it }
     }
 
     /** The language whose own model the phone loads for the next dictation (`he`), or null = the default engine. */
@@ -455,7 +455,7 @@ class EngineHolder(
         val route = wantedRoute(s)
         loadedRoute = route
         loadingLabel = if (route != null) HEBREW_LOADING else null
-        val hebrew = hebrewModel()?.let { (path, kind) -> HebrewModels.languageModel(path, kind, app.dev.parakeetDecoding) }
+        val hebrew = hebrewModel()?.let { (path, m) -> HebrewModels.languageModel(path, m, app.dev.parakeetDecoding) }
         val local = if (!app.caps.local && !s.mockEngine) EnginePlan.Plan.Missing("This build has no on-device engine.")
         else EnginePlan.plan(
             s, app.settings.modelPath, app.settings.llmModelPath, { File(it).isFile }, threads,
