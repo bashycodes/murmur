@@ -294,6 +294,29 @@ export function collectAi() {
     next.llm_timeout_ms = Math.min(30000, Math.max(200, parseInt($("llm_timeout_ms").value, 10) || 3000));
     return next;
 }
+/** While the page is on screen the server's answers can change (it was
+ *  upgraded, restarted, its circuit closed): re-read the cleanup status.
+ *  Cheap: the backend only reconnects when a cached "no AI model" expired. */
+const STATUS_POLL_MS = 10000;
+let statusPoll;
+async function pollCleanupStatus() {
+    const v = views.or;
+    if (!v || document.hidden)
+        return;
+    let st;
+    try {
+        st = await invoke("dev_or_cleanup_status");
+    }
+    catch {
+        return; // older backend
+    }
+    const prev = v.cleanup.status;
+    if (prev.server_llm === st.server_llm && !!prev.server_circuit?.open === !!st.server_circuit?.open)
+        return;
+    if (views.or !== v)
+        return; // a newer view arrived meanwhile
+    views.setOr({ ...v, cleanup: { ...v.cleanup, status: st } });
+}
 export const ai = {
     init() {
         $("llm_enabled").addEventListener("change", showAiEngine);
@@ -353,5 +376,15 @@ export const ai = {
         const p = prefsStore.get();
         if (p)
             fill(p);
+    },
+    shown(page, opened) {
+        if (page !== "settings-cleanup") {
+            clearInterval(statusPoll);
+            statusPoll = undefined;
+            return;
+        }
+        if (opened)
+            void pollCleanupStatus();
+        statusPoll ?? (statusPoll = setInterval(() => void pollCleanupStatus(), STATUS_POLL_MS));
     },
 };

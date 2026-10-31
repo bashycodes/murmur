@@ -10,7 +10,7 @@ import { $, el, setStatus } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import type { Feature } from "../lib/router.js";
-import type { CleanupEngine, CleanupRoute, OrView } from "../lib/types.js";
+import type { CleanupEngine, CleanupRoute, CleanupStatus, OrView } from "../lib/types.js";
 import { views } from "../lib/views.js";
 import { showOr } from "./openrouter.js";
 
@@ -309,6 +309,27 @@ export function collectAi(): Partial<Prefs> {
   return next;
 }
 
+/** While the page is on screen the server's answers can change (it was
+ *  upgraded, restarted, its circuit closed): re-read the cleanup status.
+ *  Cheap: the backend only reconnects when a cached "no AI model" expired. */
+const STATUS_POLL_MS = 10_000;
+let statusPoll: ReturnType<typeof setInterval> | undefined;
+
+async function pollCleanupStatus(): Promise<void> {
+  const v = views.or;
+  if (!v || document.hidden) return;
+  let st: CleanupStatus;
+  try {
+    st = await invoke<CleanupStatus>("dev_or_cleanup_status");
+  } catch {
+    return; // older backend
+  }
+  const prev = v.cleanup.status;
+  if (prev.server_llm === st.server_llm && !!prev.server_circuit?.open === !!st.server_circuit?.open) return;
+  if (views.or !== v) return; // a newer view arrived meanwhile
+  views.setOr({ ...v, cleanup: { ...v.cleanup, status: st } });
+}
+
 export const ai: Feature = {
   init(): void {
     $<HTMLInputElement>("llm_enabled").addEventListener("change", showAiEngine);
@@ -362,5 +383,14 @@ export const ai: Feature = {
     $<HTMLInputElement>("llm_model_path").placeholder = model.default_llm_path;
     const p = prefsStore.get();
     if (p) fill(p);
+  },
+  shown(page: string, opened: boolean): void {
+    if (page !== "settings-cleanup") {
+      clearInterval(statusPoll);
+      statusPoll = undefined;
+      return;
+    }
+    if (opened) void pollCleanupStatus();
+    statusPoll ??= setInterval(() => void pollCleanupStatus(), STATUS_POLL_MS);
   },
 };

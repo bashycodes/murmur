@@ -60,6 +60,18 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   is optional and can be imported later on its own. Other or custom model
   files are refused.
 
+### Fixed
+
+- **AI cleanup notices when your server gains an AI model, without a
+  restart.** After a server upgrade that added AI cleanup, Settings → AI
+  cleanup kept saying the server "has no AI cleanup model: skipped" and the
+  server was never asked, until the app restarted or "Test connection" ran.
+  A "no AI model" answer is now believed for the health interval only
+  (`server.health_ttl_s`, 30 s): after it the app checks the server again
+  once in the background, and the next dictation tries it. A server that
+  has AI cleanup costs no extra connections. The Windows AI cleanup page
+  re-reads the status every 10 seconds while it is open.
+
 ## [0.12.0] - 2026-10-31
 
 ### Added
