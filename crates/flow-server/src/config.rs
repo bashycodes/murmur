@@ -77,6 +77,8 @@ pub struct Config {
     pub log: LogConfig,
     /// `[debug]`: opt-in capture of received audio + results (beta).
     pub debug: crate::capture::DebugConfig,
+    /// `[library]`: model files served to clients (D40).
+    pub library: crate::library::LibraryConfig,
     /// `--insecure-bind-any`: allow a wildcard or public bind without TLS
     /// and accept peers outside loopback/LAN/VPN. Command line only.
     #[serde(skip)]
@@ -105,6 +107,7 @@ impl Default for Config {
             tls: None,
             log: LogConfig::default(),
             debug: Default::default(),
+            library: Default::default(),
             insecure_bind_any: false,
         }
     }
@@ -245,6 +248,9 @@ impl Config {
             return Err("max_connections and max_connections_per_ip must be >= 1".into());
         }
         self.debug.validate()?;
+        if let Some(d) = self.library.dir.as_ref().filter(|d| !d.is_absolute()) {
+            return Err(format!("[library] dir {} must be absolute", d.display()));
+        }
         if let Some(t) = &self.tls {
             if !cfg!(feature = "tls") {
                 return Err("[tls] set but built without the `tls` feature".into());
