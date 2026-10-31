@@ -109,6 +109,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- **Hebrew (zipformer) no longer suspected of dropping first words.** The
+  13 s FLEURS clip that seemed to lose its first three words on the server
+  has every word; the speaker reads them last, and the output has them
+  there. Leading padding, VAD trimming and endpointing were checked and
+  are fine; a regression test now covers that clip and a soft lead-in
+  before speech (`docs/findings/2026-10-31-zipformer-first-words.md`).
+
 - **Server: upgrading with `install.sh` keeps language detection working.**
   The installer now builds with whisper (language ID, Silero VAD), reuses
   the installed model when no `--model` is given, and `--start` restarts a

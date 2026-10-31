@@ -163,6 +163,59 @@ fn zipformer_he_route_through_flow_core() {
     assert_eq!(core.commit().status, CommitStatus::Empty);
 }
 
+/// FLEURS he_il dev 10043827527204102024.wav (13.3 s). Its reference
+/// starts "הפארק הלאומי קרוגר (KNP) נמצא ...", but the reader starts at
+/// "נמצא" (~1.1 s, after ~1 s of quiet breath) and says "הפארק הלאומי
+/// קרוגר" near the end (~9.5-11 s), before "קרוקודייל". The 2026-10-31
+/// server e2e scored that as "first 3 words dropped";
+/// docs/findings/2026-10-31-zipformer-first-words.md.
+fn kruger_clip() -> Option<PathBuf> {
+    pick(
+        "FLOW_HE_KRUGER_WAV",
+        cache()
+            .map(|c| c.join("fleurs-he-sample/raw/10043827527204102024.wav"))
+            .into_iter()
+            .collect(),
+        |p| p.is_file(),
+    )
+    .filter(|p| p.is_file())
+}
+
+#[test]
+fn zipformer_keeps_every_spoken_word_of_the_kruger_clip() {
+    let (Some((dir, _)), Some(wav)) = (inputs(), kruger_clip()) else {
+        eprintln!("SKIP: zipformer or FLEURS he 10043827527204102024.wav missing");
+        return;
+    };
+    let pcm = clip(&wav);
+    // VAD keeps the lead-in: the trimmed span starts before the first word.
+    let f: Vec<f32> = pcm.iter().map(|s| *s as f32 / 32768.0).collect();
+    let sp = flow_core::vad::detect(&f).expect("speech");
+    assert!(sp.start <= 16_000, "VAD start {} samples", sp.start);
+
+    let cfg = ModelConfig {
+        asr_backend: AsrBackend::SherpaOnline,
+        asr_path: dir.display().to_string(),
+        threads: 4,
+        ..Default::default()
+    };
+    let core = FlowCore::load_models(&cfg).expect("load zipformer");
+    let r = dictate(&core, &pcm, hebrew("he", &[]));
+    let t = &r.asr_text;
+    // Spoken order: "נמצא בחלק ..." first, "... הלאומי קרוגר קרוקודייל" last.
+    let first = t
+        .find("נמצא")
+        .unwrap_or_else(|| panic!("first word lost: {t}"));
+    let kruger = t
+        .find("הלאומי קרוגר")
+        .unwrap_or_else(|| panic!("park name lost: {t}"));
+    let croc = t
+        .find("קרוקודייל")
+        .unwrap_or_else(|| panic!("last word lost: {t}"));
+    assert!(first < kruger && kruger < croc, "{t}");
+    assert!(t.split_whitespace().count() >= 20, "{t}");
+}
+
 #[test]
 fn zipformer_as_the_default_model_reports_the_forced_language() {
     let Some((dir, wav)) = inputs() else { return };
