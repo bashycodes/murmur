@@ -1830,8 +1830,8 @@ fn finish_text(
             cleanup::PromptVersion::V4c,
         )
         .with_language(language.as_deref())
-        .with_timeout(cfg.llm_timeout_ms);
-        let timeout_ms = cloud.budget_ms(cfg.llm_timeout_ms);
+        .with_timeout(cfg.llm_budget_ms(&r.asr_text));
+        let timeout_ms = cloud.budget_ms(cfg.llm_budget_ms(&r.asr_text));
         let max_div = cfg.divergence_threshold.unwrap_or(f64::INFINITY);
         let t = Instant::now();
         let (outcome, usage, rejection) = cleanup::run_ai_cleanup_for(
@@ -1916,8 +1916,10 @@ fn finish_text(
             cl.prompt_scope(),
         )
         .with_language(language.as_deref())
-        .with_timeout(cfg.llm_timeout_ms);
-        let timeout_ms = cl.budget_ms(cfg.llm_timeout_ms);
+        .with_timeout(cfg.llm_budget_ms(&text));
+        // Scaled with the text's length when the session asks (a long
+        // dictation decodes more tokens; flow-server sets the rate).
+        let timeout_ms = cl.budget_ms(cfg.llm_budget_ms(&text));
         // The edit-distance guard only runs when a shell asks for it;
         // the default guard is `guard::check` (support + coverage).
         let max_div = cfg.divergence_threshold.unwrap_or(f64::INFINITY);

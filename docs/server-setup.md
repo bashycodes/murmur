@@ -37,8 +37,11 @@ VPN (100.64.0.0/10) addresses.
   `libonnxruntime.so`), passed with `SHERPA_ONNX_LIB_DIR=<dir>` or
   `--sherpa-lib <dir>`.
 * A Rust toolchain. The build is `cargo build --release --offline -p flow-server
-  --no-default-features --features parakeet,tls` (`parakeet,tls,llm` plus
-  `-p flow-llm` with `--llm`, see "LLM cleanup" below).
+  --no-default-features --features whisper,parakeet,tls` (plus `llm` and
+  `-p flow-llm` with `--llm`, see "LLM cleanup" below). `whisper`
+  (whisper.cpp, needs cmake) carries language ID (`lid_path`), the Silero
+  VAD and the whisper engine; `--no-whisper` leaves it out unless the
+  existing config uses one of them.
 * Optional, for LLM cleanup: a GGUF (`tools/fetch-models.sh --llm 1.5b` puts
   `qwen2.5-1.5b-instruct-q4_k_m.gguf` in `models/`), libclang and cmake for
   the llama.cpp build.
@@ -51,7 +54,7 @@ VPN (100.64.0.0/10) addresses.
 tools/server/install.sh --dry-run          # print every step, change nothing
 tools/server/install.sh                    # system install (sudo, confirmed first)
 tools/server/install.sh --user             # per-user install, no sudo
-tools/server/install.sh --start            # ... and enable + start the service
+tools/server/install.sh --start            # ... and enable + (re)start the service
 ```
 
 | | `--system` (default) | `--user` |
@@ -105,7 +108,11 @@ The `ready` log line does not show LLM state. Check
 `curl -H "Authorization: Bearer $(cat <token file>)" http://127.0.0.1:7313/v1/health`
 for `"llm":true`. Cleanup runs only for sessions that ask for it
 (`cleanup_level` not `none`, `raw_mode` off), within the session's
-`llm_timeout_ms`. It adds about 1.8 GB RSS and roughly 2-7 s per dictation on
+`llm_timeout_ms` plus `llm_timeout_per_char_ms` (default 15) per transcript
+character, at most `llm_timeout_max_ms` (default 8000; top-level config
+keys, 0 = fixed budget), since a long or Hebrew dictation decodes more
+tokens. Each worker's LLM cleans one throwaway sentence at startup, so the
+first dictation after a restart is not cold. It adds about 1.8 GB RSS and roughly 2-7 s per dictation on
 a CPU-only i7-6700 (`docs/findings/2026-10-23-server-llm-cleanup-cost.md`).
 
 `--user` needs a running systemd user manager. Without a login session
@@ -297,10 +304,12 @@ Keystore. Neither puts it in exported settings.
 
 ## 8. Update or remove
 
-* Update: pull, then run `tools/server/install.sh` again. Config and token are
-  kept, and a config with `llm_path` keeps its LLM build (see "LLM cleanup").
-  Then `sudo systemctl restart flow-server` (`systemctl --user restart
-  flow-server` for `--user`). The installer replaces the binary while the old
+* Update: pull, then run `tools/server/install.sh` again (`--start` restarts
+  the service for you). Config, token, keys and models are kept; without
+  `--model` the config's `asr_path` is reused in place. A config with
+  `llm_path` keeps its LLM build, one with `lid_path` / `vad_model_path` /
+  a whisper engine its whisper build. Without `--start`, `sudo systemctl
+  restart flow-server` (`systemctl --user restart flow-server` for `--user`). The installer replaces the binary while the old
   one keeps running, so the downtime is only the restart and model load.
 * Remove (system): `sudo systemctl disable --now flow-server`, then
   `sudo rm -r /opt/flow-server /etc/flow-server /etc/systemd/system/flow-server.service`,
