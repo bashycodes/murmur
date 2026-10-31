@@ -230,6 +230,23 @@ an answer is wiped after it is handed to Java.
 | `nativeAdminCreateKey(serverConfigJson: String, name: String, admin: Boolean): String` | `(Ljava/lang/String;Ljava/lang/String;Z)Ljava/lang/String;` | `Java_dev_flowclone_admin_NativeAdmin_nativeAdminCreateKey` | `POST /v1/admin/keys` → `value` = `{key, secret}`. The **secret** is shown once and never stored or logged by the app |
 | `nativeAdminRevokeKey(serverConfigJson: String, id: String): String` | `(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_admin_NativeAdmin_nativeAdminRevokeKey` | `DELETE /v1/admin/keys/{id}` → `value` = `{key}`; `last_admin` for the last admin key |
 
+## Model library (D41, 2026-10-31) — additive, `hybrid` / `remote` only
+
+Model downloads from the set server's library (D40), wrapping `flow_remote::library` like the
+Windows app. The natives live on their own class, **`dev.flowclone.server.ServerLibraryNative`**
+(`object` + `@JvmStatic external`), which only the `hybrid` / `remote` source sets compile; the
+library exports them only with cargo feature `library` (`tools/build-native.sh --flavor hybrid|remote`).
+The `local` APK has neither the class nor the symbols nor any network code (D9). Both calls are
+**blocking** (worker thread). Results are never null; a failure is
+`{"ok":false,"error":<kind>,"message":…}` with `kind` ∈ `bad_config`, `not_configured`,
+`network`, `auth`, `not_found`, `unavailable`, `protocol`, `mismatch`, `io`, `cancelled`. The key
+never appears in a result.
+
+| Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | Semantics |
+|---|---|---|---|
+| `nativeList(server: String): String` | `(Ljava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_server_ServerLibraryNative_nativeList` | `server` = `ServerConfig` JSON (`DevSettings.toServerConfigJson`). `GET /v1/models` → `{"ok":true,"models":[{id,title,kind,language?,catalogue_id?,engine?,files:[{name,size,sha256}]}]}` (`flow_protocol::library`; entries with unsafe ids / names / hashes dropped) |
+| `nativeDownload(server: String, modelId: String, file: String, dest: String, part: String, listener: Any?): String` | `(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/Object;)Ljava/lang/String;` | `Java_dev_flowclone_server_ServerLibraryNative_nativeDownload` | One file (`file` = `{name,size,sha256}` JSON: the built-in pin for a catalogue copy, the listing for a custom model) into `dest` through `part` → `{"ok":true}`. Resumable: a network error / stall / short body keeps `part` and the next call sends `Range` + `If-Range`; `cancelled` and `mismatch` delete it; `dest` appears only verified, and a `dest` already holding the expected bytes is kept without a request. `listener` (nullable): `onProgress(Long)` = bytes of this file on disk (≤ 4/s), `isCancelled(): Boolean` polled between chunks; a listener method that throws is cleared (a throwing `isCancelled` counts as false) |
+
 ## Threading: blocking vs non-blocking (review C2)
 
 Kotlin must never call a **blocking** native on the main thread.

@@ -27,6 +27,11 @@ cloud = ["dep:flow-cloud"]
 # D39: the admin API client (flow_remote::admin) for the Android "Users & keys"
 # page. Only the `hybrid` / `remote` flavours enable it (it needs `remote`).
 admin = ["remote", "dep:flow-protocol"]
+# D41: model downloads from the set server's library (flow_remote::library:
+# HTTP/1.1 on the session port, same TLS pin and key). Only the Android
+# `hybrid` / `remote` flavours enable it; `local` stays import-only with no
+# network code (D9; tools/check-build-matrix.sh, verifyLocal*NoNetworkCode).
+library = ["remote", "flow-remote/library", "dep:flow-protocol"]
 
 [dependencies]
 flow-build-info = { path = "../flow-build-info" }
@@ -45,3 +50,6 @@ flow-server = { path = "../flow-server", default-features = false, features = ["
 tokio = { version = "1", features = ["rt-multi-thread", "net"] }
 # jni_cloud routes a JVM session to flow-cloud's in-process mock provider with `--features jni,cloud`.
 flow-cloud = { path = "../flow-cloud", features = ["mock-server"] }
+# tests/library.rs, jni_library: an in-process flow-server with a temp model library.
+tempfile = "3"
+sha2 = "0.10"
