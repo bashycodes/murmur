@@ -342,3 +342,94 @@ max_age_h = 72   # older ones deleted (default 72)
   logs a warning while it is on.
 * To stop: set `capture = false` and restart; delete the `debug` folder to
   remove what was kept.
+
+## 10. Model library (serve models to the apps, D40)
+
+The server can hand model files to the apps, so a PC or phone with no
+internet gets its models from your own server. Nothing is downloaded from
+anywhere: you copy model folders into the library folder by hand and tag
+each one; the server lists the tagged ones and serves their files on the
+same port and TLS as dictation, to any valid key.
+
+* Folder: `[library] dir` in the config, default `<state dir>/library`
+  (`/var/lib/flow-server/library` for the system unit,
+  `~/.local/state/flow-server/library` for a user install). It must be
+  readable by the service; the system unit can read its state dir, but not
+  `/home` (`ProtectHome=yes`).
+* One folder per model. The folder name is the model's id (only
+  `A-Z a-z 0-9 . _ -`). A single-file model (a GGUF, a whisper `.bin`) still
+  gets its own folder. Subfolders are allowed (up to 4 deep); hidden files
+  (`.name`) are ignored.
+* Each folder needs a `model.toml` tag. Folders without one, or with an
+  invalid one, are skipped; the log says why when the set changes, and so
+  does `flow-server library list`.
+* Changes are picked up without a restart: the server rescans every
+  `rescan_s` seconds (default 60; one `stat` per file). A file is hashed
+  (SHA-256) only when it is new or its size or mtime changed; the hashes are
+  cached in `<state dir>/library-hashes.json`. A model shows up once all its
+  files are hashed (a few seconds per GB, in the background).
+* Symlinks inside the library are followed; a symlink that leads out of it
+  skips the model. Only files the scan listed can be downloaded.
+* Each download counts toward the key that made it (`keys list` →
+  DOWNLOADS: requests that sent bytes, and the bytes).
+
+```sh
+sudo mkdir -p /var/lib/flow-server/library/whisper-base
+sudo cp ggml-base.bin /var/lib/flow-server/library/whisper-base/
+sudoedit /var/lib/flow-server/library/whisper-base/model.toml
+sudo flow-server library list   # what is served, and why folders were skipped
+```
+
+### The tag: `model.toml`
+
+| Key | Required | Meaning |
+|---|---|---|
+| `kind` | yes | `stt` (speech to text, every language), `hebrew` (the Hebrew route), `llm` (AI cleanup), `lid` (language detection), `vad` (voice activity) |
+| `title` | yes | Shown in the apps |
+| `language` | no | `en`, `he`, …; leave out for a multilingual model |
+| `catalogue_id` | no | The app catalogue id this folder is a copy of (`whisper-base`, `parakeet-tdt-0.6b-v2-int8`, …). The apps then check the files against the hashes built into them |
+| `engine` | no | How the app loads it: `whisper` (whisper.cpp ggml `.bin`), `parakeet` (sherpa-onnx NeMo transducer), `sherpa_online` (sherpa-onnx streaming transducer), `gguf` (llama.cpp), or another short name |
+
+Unknown keys are an error (a typo would otherwise vanish silently).
+
+```toml
+# whisper-base/model.toml  (next to ggml-base.bin)
+kind = "stt"
+title = "Whisper base"
+catalogue_id = "whisper-base"
+engine = "whisper"
+```
+
+```toml
+# zipformer-he/model.toml  (next to encoder/decoder/joiner .onnx + tokens.txt)
+kind = "hebrew"
+title = "Zipformer Hebrew"
+language = "he"
+catalogue_id = "zipformer-he-int8"
+engine = "sherpa_online"
+```
+
+```toml
+# qwen2.5-1.5b/model.toml  (next to the .gguf)
+kind = "llm"
+title = "Qwen 2.5 1.5B (cleanup)"
+catalogue_id = "qwen2.5-1.5b-instruct-q4_k_m"
+engine = "gguf"
+```
+
+```toml
+# whisper-tiny-lid/model.toml  (next to ggml-tiny-q5_1.bin)
+kind = "lid"
+title = "Whisper tiny (language detection)"
+engine = "whisper"
+```
+
+```toml
+# silero-vad/model.toml  (next to silero_vad.onnx)
+kind = "vad"
+title = "Silero VAD"
+engine = "silero"
+```
+
+The wire format (`GET /v1/models`, downloads with `Range`) is in
+`docs/protocol.md` §1.
