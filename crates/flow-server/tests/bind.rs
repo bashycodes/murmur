@@ -53,7 +53,7 @@ fn write_cfg(dir: &std::path::Path, bind: &str) -> std::path::PathBuf {
     std::fs::write(
         &p,
         format!(
-            "bind = [\"{bind}\"]\ntoken_file = {token:?}\n[model]\nasr_engine = {{ mock = {{ text = \"x\" }} }}\n"
+            "bind = [\"{bind}\"]\ntoken_file = {token:?}\nstate_dir = {dir:?}\n[model]\nasr_engine = {{ mock = {{ text = \"x\" }} }}\n"
         ),
     )
     .unwrap();

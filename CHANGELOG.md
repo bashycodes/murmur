@@ -16,6 +16,17 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Server: one key per device instead of one shared token (D38).** On the
+  server, `flow-server keys add <name> [--admin]` creates a key and prints
+  its secret once, `keys list` shows each key's last use, app version,
+  dictation count and audio minutes, and `keys revoke <name>` locks out one
+  device at its next connection without touching the others or open
+  sessions. Changes apply without restarting the server. Only a hash of each
+  secret is stored. Upgrading needs nothing: the existing token becomes the
+  admin key `owner`, and the apps keep working with it unchanged.
+
 ## [0.12.0] - 2026-10-31
 
 ### Added
