@@ -72,6 +72,8 @@ impl Swapped {
             system: self.system.clone(),
             examples: self.examples.clone(),
             user: p.user.clone(),
+            // The swapped prompt is the one to send; do not let a cleaner rebuild it from the request.
+            source: None,
             transcript: p.transcript.clone(),
         }
     }
