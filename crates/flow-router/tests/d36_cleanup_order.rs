@@ -6,7 +6,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use flow_core::asr::{AbortFlag, MockAsr};
 use flow_core::cleanup::{CleanError, CleanPrompt, CleanRequest, Cleaner};
@@ -79,6 +79,10 @@ enum Answer {
 struct Server {
     llm: Mutex<bool>,
     hello_known: Mutex<bool>,
+    /// `Some(llm)`: the hello of an older connection, still cached until
+    /// the next connection (`warm`, `clean`, a session) renews it.
+    old_hello: Mutex<Option<bool>>,
+    warms: AtomicUsize,
     commit_fails: Mutex<bool>,
     answer: Mutex<Answer>,
     starts: Mutex<Vec<CleanupLevel>>,
@@ -90,6 +94,8 @@ impl Server {
         Arc::new(Self {
             llm: Mutex::new(true),
             hello_known: Mutex::new(true),
+            old_hello: Mutex::new(None),
+            warms: AtomicUsize::new(0),
             commit_fails: Mutex::new(false),
             answer: Mutex::new(Answer::Text),
             starts: Mutex::new(Vec::new()),
@@ -101,6 +107,13 @@ impl Server {
     }
     fn levels(&self) -> Vec<CleanupLevel> {
         self.starts.lock().unwrap().clone()
+    }
+    fn warms(&self) -> usize {
+        self.warms.load(Ordering::SeqCst)
+    }
+    /// A new connection: its hello is the server's current one.
+    fn connected(&self) {
+        *self.old_hello.lock().unwrap() = None;
     }
 }
 
@@ -124,6 +137,7 @@ impl Backend for Server {
         true
     }
     fn start_session(&self, c: &SessionConfig) -> Result<StartInfo, BackendError> {
+        self.connected();
         self.starts.lock().unwrap().push(c.cleanup_level);
         Ok(StartInfo::default())
     }
@@ -151,10 +165,23 @@ impl Backend for Server {
     fn probe(&self) -> HealthReport {
         HealthReport::default()
     }
+    fn warm(&self) -> Result<(), BackendError> {
+        self.warms.fetch_add(1, Ordering::SeqCst);
+        self.connected();
+        Ok(())
+    }
     fn server_hello(&self) -> Option<HelloOk> {
-        let llm = *self.llm.lock().unwrap();
+        let old = *self.old_hello.lock().unwrap();
+        let llm = old.unwrap_or(*self.llm.lock().unwrap());
         self.hello_known.lock().unwrap().then(|| HelloOk {
             llm,
+            // The build with the AI model is the newer one.
+            server: if llm {
+                "flow-server 0.12.0"
+            } else {
+                "flow-server 0.11.0"
+            }
+            .into(),
             features: if llm {
                 vec![FEATURE_CLEAN.into()]
             } else {
@@ -164,7 +191,14 @@ impl Backend for Server {
         })
     }
     fn clean_text(&self, req: &CleanRequest, _d: Instant) -> Result<Cleaned, BackendError> {
+        self.connected();
         self.cleans.lock().unwrap().push(req.clone());
+        if !*self.llm.lock().unwrap() {
+            return Ok(Cleaned {
+                error: Some("no_llm".into()),
+                ..Default::default()
+            });
+        }
         match *self.answer.lock().unwrap() {
             Answer::Text => Ok(Cleaned {
                 text: Some(SERVER_OUT.into()),
@@ -266,6 +300,35 @@ fn rig_with(c: RouterConfig, local_llm: bool) -> Rig {
 
 fn rig(c: RouterConfig) -> Rig {
     rig_with(c, true)
+}
+
+/// A fake clock for the "no clean" expiry.
+#[derive(Clone)]
+struct FakeClock(Arc<Mutex<Instant>>);
+impl FakeClock {
+    fn advance(&self, s: u64) {
+        *self.0.lock().unwrap() += Duration::from_secs(s);
+    }
+}
+
+/// `rig_with` on a fake clock; no local LLM.
+fn clocked(c: RouterConfig) -> (Rig, FakeClock) {
+    let clock = FakeClock(Arc::new(Mutex::new(Instant::now())));
+    let k = rig_with(c, false);
+    let c2 = clock.clone();
+    let router = k.router.with_clock(Arc::new(move || *c2.0.lock().unwrap()));
+    (Rig { router, ..k }, clock)
+}
+
+/// The status once the background re-probe settled.
+fn settled_llm(r: &Router) -> Option<bool> {
+    for _ in 0..200 {
+        if let Some(v) = r.cleanup_status().server_llm {
+            return Some(v);
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    None
 }
 
 fn session() -> SessionConfig {
@@ -583,4 +646,78 @@ fn switched_off_entries_keep_their_place_but_never_clean() {
         (k.local_calls(), k.cloud_calls(), k.server.cleans()),
         (0, 0, 0)
     );
+}
+
+// ---- a cached "no clean" expires --------------------------------------------
+
+/// The server had no AI model, then was upgraded (and restarted): the hello
+/// cached from the old connection still says "no".
+fn upgraded(k: &Rig) {
+    *k.server.llm.lock().unwrap() = true;
+    *k.server.old_hello.lock().unwrap() = Some(false);
+}
+
+#[test]
+fn no_clean_is_rechecked_after_the_health_ttl() {
+    let (k, clock) = clocked(cfg(&[S, C]));
+    *k.server.llm.lock().unwrap() = false;
+    assert_eq!(k.router.cleanup_status().server_llm, Some(false));
+    upgraded(&k);
+    // Within the TTL (30 s): believed, skipped, no connection.
+    clock.advance(10);
+    assert_eq!(k.router.cleanup_status().server_llm, Some(false));
+    assert!(has(&dictate(&k.router), CLOUD_OUT));
+    assert_eq!((k.server.warms(), k.server.cleans()), (0, 0));
+    // Past it: one background re-probe renews the hello.
+    clock.advance(21);
+    assert_eq!(settled_llm(&k.router), Some(true));
+    assert_eq!(k.server.warms(), 1);
+    assert!(has(&dictate(&k.router), SERVER_OUT));
+}
+
+#[test]
+fn a_dictation_after_the_ttl_asks_the_server_again() {
+    let (k, clock) = clocked(cfg(&[S, C]));
+    *k.server.llm.lock().unwrap() = false;
+    assert_eq!(k.router.cleanup_status().server_llm, Some(false));
+    upgraded(&k);
+    clock.advance(31);
+    assert!(has(&dictate(&k.router), SERVER_OUT));
+    assert_eq!(settled_llm(&k.router), Some(true));
+}
+
+#[test]
+fn still_no_clean_after_the_recheck_waits_another_ttl() {
+    let (k, clock) = clocked(cfg(&[S, C]));
+    *k.server.llm.lock().unwrap() = false;
+    assert_eq!(k.router.cleanup_status().server_llm, Some(false));
+    clock.advance(31);
+    assert_eq!(settled_llm(&k.router), Some(false));
+    assert_eq!(k.server.warms(), 1);
+    clock.advance(20);
+    assert_eq!(k.router.cleanup_status().server_llm, Some(false));
+    assert!(has(&dictate(&k.router), CLOUD_OUT));
+    assert_eq!((k.server.warms(), k.server.cleans()), (1, 0));
+}
+
+#[test]
+fn the_health_ttl_setting_is_used() {
+    let mut c = cfg(&[S, C]);
+    c.server.health_ttl_s = 5;
+    let (k, clock) = clocked(c);
+    *k.server.llm.lock().unwrap() = false;
+    assert_eq!(k.router.cleanup_status().server_llm, Some(false));
+    upgraded(&k);
+    clock.advance(6);
+    assert_eq!(settled_llm(&k.router), Some(true));
+}
+
+#[test]
+fn a_server_with_clean_is_never_rechecked() {
+    let (k, clock) = clocked(cfg(&[S, C]));
+    for _ in 0..5 {
+        clock.advance(3600);
+        assert_eq!(k.router.cleanup_status().server_llm, Some(true));
+    }
+    assert_eq!(k.server.warms(), 0);
 }

@@ -6,9 +6,16 @@
 //! not configured, its circuit is open, the server is known to have no LLM,
 //! or the prompt carries no [`CleanPrompt::source`] to send, so the chain
 //! moves on at once.
+//!
+//! "Known to have no LLM" comes from the backend's last `hello_ok`, which is
+//! only renewed by a new connection. A "no" is therefore believed for the
+//! health TTL (`server.health_ttl_s`) only: after it (or as soon as the
+//! hello names another server build) it is stale, the hop is tried again
+//! and one background `warm` re-reads the hello. A server that has `clean`
+//! costs nothing extra.
 
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use flow_core::asr::AbortFlag;
 use flow_core::cleanup::{CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope};
@@ -25,10 +32,27 @@ pub(crate) struct ServerCleanState {
     /// Bumped when the server config changes: results of calls started
     /// before do not touch the new circuit.
     pub epoch: u64,
+    /// How long a hello without `clean` is believed (`server.health_ttl_s`).
+    pub ttl: Duration,
+    /// Time source of the "no clean" expiry (tests fake it).
+    pub now: Clock,
+    /// Since when the current server build is known to have no `clean`.
+    no_clean: Option<NoClean>,
+    /// A background re-probe is running.
+    probing: bool,
+}
+
+/// The time source of [`ServerClean`]'s "no clean" expiry.
+pub type Clock = Arc<dyn Fn() -> Instant + Send + Sync>;
+
+struct NoClean {
+    /// `hello_ok.server`, e.g. `"flow-server 0.12.0"`.
+    build: String,
+    since: Instant,
 }
 
 pub(crate) struct ServerClean {
-    pub st: Mutex<ServerCleanState>,
+    pub st: Arc<Mutex<ServerCleanState>>,
 }
 
 fn unavailable(why: &str) -> CleanError {
@@ -38,11 +62,15 @@ fn unavailable(why: &str) -> CleanError {
 impl ServerClean {
     pub fn new() -> Self {
         Self {
-            st: Mutex::new(ServerCleanState {
+            st: Arc::new(Mutex::new(ServerCleanState {
                 backend: None,
                 circuit: Circuit::new(false),
                 epoch: 0,
-            }),
+                ttl: Duration::from_secs(crate::ServerConfig::default().health_ttl_s),
+                now: Arc::new(Instant::now),
+                no_clean: None,
+                probing: false,
+            })),
         }
     }
 
@@ -50,20 +78,74 @@ impl ServerClean {
         self.st.lk().backend.clone()
     }
 
-    /// Would a call be tried now? `hello` unknown counts as yes (the call
-    /// connects and finds out).
+    /// Would a call be tried now? `hello` unknown or a stale "no clean"
+    /// counts as yes (the call connects and finds out).
     pub fn ready(&self) -> bool {
-        let st = self.st.lk();
-        let Some(b) = st.backend.as_ref() else {
-            return false;
+        let b = {
+            let st = self.st.lk();
+            let Some(b) = st.backend.clone() else {
+                return false;
+            };
+            if st.circuit.is_open(Instant::now()) {
+                return false;
+            }
+            b
         };
-        !st.circuit.is_open(Instant::now()) && self::server_llm(b.as_ref()) != Some(false)
+        self.llm(&b) != Some(false)
     }
 
-    /// `Some(has clean)` once the backend has seen a `hello_ok`.
+    /// `Some(has clean)` once the backend has seen a `hello_ok`; `None`
+    /// also while a "no" is stale and being re-checked.
     pub fn server_llm(&self) -> Option<bool> {
         let b = self.backend()?;
-        server_llm(b.as_ref())
+        self.llm(&b)
+    }
+
+    /// The last hello's answer, with a "no" expiring after the TTL or when
+    /// the server build changes. A stale "no" starts one background
+    /// re-probe and reads as unknown.
+    fn llm(&self, b: &Arc<dyn Backend>) -> Option<bool> {
+        // The backend's own lock: taken before ours, never inside it.
+        let h = b.server_hello()?;
+        let mut st = self.st.lk();
+        if h.features.iter().any(|f| f == flow_protocol::FEATURE_CLEAN) {
+            st.no_clean = None;
+            return Some(true);
+        }
+        let now = (st.now)();
+        let fresh = match &st.no_clean {
+            Some(n) if n.build == h.server => now.saturating_duration_since(n.since) < st.ttl,
+            _ => {
+                st.no_clean = Some(NoClean {
+                    build: h.server,
+                    since: now,
+                });
+                true
+            }
+        };
+        if fresh {
+            return Some(false);
+        }
+        if !st.probing {
+            st.probing = true;
+            let (shared, b2, epoch) = (self.st.clone(), b.clone(), st.epoch);
+            let spawned = std::thread::Builder::new()
+                .name("server-clean-recheck".into())
+                .spawn(move || {
+                    // Reconnects when the old connection is gone (the
+                    // server restarted), which renews the hello.
+                    let _ = b2.warm();
+                    let mut g = shared.lk();
+                    g.probing = false;
+                    if g.epoch == epoch {
+                        g.no_clean = None;
+                    }
+                });
+            if spawned.is_err() {
+                st.probing = false;
+            }
+        }
+        None
     }
 
     pub fn circuit_status(&self) -> Option<CircuitStatus> {
@@ -82,6 +164,8 @@ impl ServerClean {
         if st.epoch != epoch {
             return;
         }
+        // The call read a current hello: a "no" counts from now.
+        st.no_clean = None;
         match f {
             None => {
                 if !st.circuit.sticky {
@@ -91,11 +175,6 @@ impl ServerClean {
             Some(f) => st.circuit.record_failure(f, Instant::now()),
         }
     }
-}
-
-fn server_llm(b: &dyn Backend) -> Option<bool> {
-    b.server_hello()
-        .map(|h| h.features.iter().any(|f| f == flow_protocol::FEATURE_CLEAN))
 }
 
 impl Cleaner for ServerClean {
@@ -136,7 +215,7 @@ impl Cleaner for ServerClean {
             }
             (b, st.epoch)
         };
-        if server_llm(backend.as_ref()) == Some(false) {
+        if self.llm(&backend) == Some(false) {
             return (Err(unavailable("server_no_llm")), none);
         }
         let left = deadline.saturating_duration_since(Instant::now());
@@ -199,8 +278,7 @@ impl Cleaner for ServerClean {
 
     /// Known to have no LLM (or switched off): the core skips the step.
     fn available(&self) -> bool {
-        self.backend()
-            .is_some_and(|b| server_llm(b.as_ref()) != Some(false))
+        self.backend().is_some_and(|b| self.llm(&b) != Some(false))
     }
 
     fn model(&self) -> Option<String> {
