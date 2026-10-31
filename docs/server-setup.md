@@ -8,6 +8,9 @@ The server only listens. It makes no outbound connections, never writes audio
 or text to disk (unless you turn on the debug capture, §9), and accepts peers only from loopback, private LAN and
 VPN (100.64.0.0/10) addresses.
 
+Running with no internet at all (server, PCs and phones on a closed
+network): the short owner guide is `docs/air-gapped.md`.
+
 ## 1. Prerequisites (nothing is downloaded by the installer)
 
 * The Parakeet model: `tools/fetch-models.sh --parakeet` (explicit, one-time
@@ -461,4 +464,5 @@ is refused); other folders are trusted by the hash the server lists. `kind`
 + `engine` decide what a model is used for: `stt` + `whisper` / `parakeet`,
 `hebrew` + `sherpa_online` / `parakeet`, `llm` + `gguf`, `lid` + `whisper`.
 `vad` and other engines are listed with the reason and can't be chosen.
-Interrupted downloads resume. Android follows in a later release.
+Interrupted downloads resume. The Android hybrid app does the same from
+each model screen (*From your server*).

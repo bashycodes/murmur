@@ -32,6 +32,24 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   default whisper model also uses the GPU when there is one.
   `FLOW_WHISPER_DEVICE=cpu` forces the CPU.
 
+- **Guide: running Flow Clone with no internet (`docs/air-gapped.md`).**
+  One short owner page for a closed network: install the server (host
+  build or the Docker image moved with `docker save` / `docker load`),
+  copy and tag models into its library, create the admin key on the
+  command line and the other keys from the app's Users & keys, set up the
+  Windows and Android apps so they download their models from the server,
+  copy models by hand when there is no server, and the network-free local
+  Android app. Linked from the README, the Android install guide and the
+  server setup guide.
+- **Air-gapped end-to-end check (`tools/e2e/airgap/run.sh`).** Builds
+  flow-server from the checkout and runs it on loopback with a temp state
+  dir and model library, then drives it with the apps' own client code: an
+  admin key from the CLI, a user key from the admin API, a library model
+  downloaded and its SHA-256 checked, one dictation (public clip), the
+  user's dictations and downloads in the admin's key list, then revoke and
+  the key refused on every route. Both processes run under strace and the
+  check fails on any connection to a non-loopback address (in a loopback-only
+  network namespace too, where the system allows unprivileged ones).
 - **Server: Docker image, Compose file and Helm chart.** Run flow-server
   in a container with your own models: a locally built CPU image (with
   Parakeet, whisper, TLS and LLM cleanup) and an NVIDIA CUDA variant that
