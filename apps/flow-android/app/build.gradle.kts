@@ -94,6 +94,14 @@ android {
         getByName("test").resources.directories.add("../../../tools/versioning/fixtures")
         // InsightsVectorsTest: flow-core's Insights vectors (insights/insights_vectors.json).
         getByName("test").resources.directories.add("../../../crates/flow-core/fixtures")
+        // D41: the model-library client (server downloads) exists only where there is a server:
+        // src/server in hybrid + remote, a no-op stand-in (src/noserver) in local, so the local
+        // APK carries no library code at all (verifyLocal*NoNetworkCode checks the dex too).
+        for ((set, dir) in listOf("hybrid" to "src/server/java", "remote" to "src/server/java", "local" to "src/noserver/java",
+            "testHybrid" to "src/testServer/java", "testRemote" to "src/testServer/java")) {
+            getByName(set).java.directories.add(dir)
+            getByName(set).kotlin.directories.add(dir)
+        }
     }
 
     // Release signing without secrets in git: the keystore and its passwords come from Gradle
@@ -145,6 +153,8 @@ val jniStubDir = providers.gradleProperty("flow.jniStubDir").orNull
 val jniLibDir = providers.gradleProperty("flow.jniLibDir").orNull
 tasks.withType<Test>().configureEach {
     systemProperty("flow.versionFile", flowVersionFile.absolutePath)
+    // ServerCatalogTest: the Android pins equal the Windows catalogue's (one set of hashes).
+    systemProperty("flow.windowsCatalog", rootProject.file("../flow-windows/src/model_download.rs").absolutePath)
     if (jniStubDir != null) {
         systemProperty("java.library.path", jniStubDir)
         systemProperty("flow.jniStub", "1")
@@ -272,9 +282,14 @@ abstract class VerifyApkNativeLibs : DefaultTask() {
                     }
                     "noNetCode" -> if (n == "libflow_ffi.so") {
                         val s = String(bytes, Charsets.ISO_8859_1)
-                        for (m in listOf("tungstenite", "rustls", "flow-remote", "flow_remote", "reqwest", "webpki", "flow-cloud")) if (s.contains(m)) errors += "${apk.name}: libflow_ffi.so contains '$m' (network / cloud STT code in the local flavour, D17 I3 / D18 C2)"
+                        for (m in listOf("tungstenite", "rustls", "flow-remote", "flow_remote", "reqwest", "webpki", "flow-cloud", "Java_dev_flowclone_server_")) if (s.contains(m)) errors += "${apk.name}: libflow_ffi.so contains '$m' (network / cloud STT / model-library code in the local flavour, D17 I3 / D18 C2 / D41)"
                     }
                 }
+            }
+            // D41: the local flavour has no server-library classes (src/server is hybrid / remote only).
+            if (mode.get() == "noNetCode") for (e in all.filter { it.name.matches(Regex("""classes\d*\.dex""")) }) {
+                val s = String(zip.getInputStream(e).readBytes(), Charsets.ISO_8859_1)
+                if (s.contains("Ldev/flowclone/server/")) errors += "${apk.name}: ${e.name} contains dev.flowclone.server classes (model library in the local flavour, D41)"
             }
             zip.close()
         }
