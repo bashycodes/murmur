@@ -45,9 +45,11 @@ docker build -f deploy/docker/Dockerfile -t flow-server:local \
     --build-arg FLOW_GIT_SHA="$(git rev-parse --short=7 HEAD)" .
 ```
 
-The build compiles whisper.cpp and llama.cpp: about 20 minutes and 3-4 GB of
+The build compiles whisper.cpp and llama.cpp: about 10 minutes on a 4-core box and 3-4 GB of
 RAM with the default `CARGO_BUILD_JOBS=2` (raise it with `--build-arg` on a
-bigger machine).
+bigger machine). Cargo's registry and `target/` live in BuildKit cache
+mounts, so a rebuild after a code change is incremental; `docker builder
+prune` frees them.
 
 ### Offline build from host binaries
 
