@@ -78,6 +78,8 @@
             android:theme="@style/Theme.Flow.Shell" />
         <activity android:name=".ui.ModelPickerActivity" android:exported="false" android:label="Model"
             android:theme="@style/Theme.Flow.Shell" />
+        <activity android:name=".ui.UsersKeysActivity" android:exported="false" android:label="Users &amp; keys"
+            android:theme="@style/Theme.Flow.Shell" />
 
         <!-- D21: the debug log file, shared only through a user-initiated share sheet (read grant). -->
         <provider

@@ -41,7 +41,8 @@ import kotlin.concurrent.thread
  *            row per page showing its current value; build info, reset, lock
  *   engines  engine badge, Parakeet decoding (both apply at once); Test session. Which engines
  *            are on and their order: Settings → Speech to text (2026-10-30, [SpeechPage])
- *   server   host, port, TLS, pin, token (secret), timeouts; Test connection
+ *   server   host, port, TLS, pin, token (secret), timeouts; Test connection; with an admin
+ *            key (D39) a USERS & KEYS row → [UsersKeysActivity]
  * The cloud (D28: OpenRouter only, speech-to-text and text cleanup) has its own page,
  * [OpenRouterActivity], opened from the hub's CONNECTION card.
  *   debug    debug log, keep last dictation audio (both apply at once, as before)
@@ -293,6 +294,7 @@ class DeveloperActivity : Activity() {
     private lateinit var commitTimeout: DevUi.FieldRow
     private lateinit var healthTtl: DevUi.FieldRow
     private var probeResult: DevUi.Result? = null
+    private var usersKeys: UsersKeysActivity.Entry? = null
     private val fieldRows = HashMap<Field, DevUi.FieldRow>()
 
     private fun renderServer() = with(ui) {
@@ -323,6 +325,8 @@ class DeveloperActivity : Activity() {
             action("Test connection") { onTestConnection() }
             probeResult = result()
             note("Uses the values on this page, saved or not.")
+            // D39: only for an admin key (saved settings); hidden otherwise and in the local flavour.
+            usersKeys = UsersKeysActivity.entry(this@DeveloperActivity, ui, this)
         }
         fieldRows += mapOf(
             Field.HOST to host, Field.PORT to port, Field.PIN to pin, Field.TOKEN to token,
@@ -584,6 +588,7 @@ class DeveloperActivity : Activity() {
         Toast.makeText(this, if (s.effective(caps).bothOff) DevSettingsForm.BOTH_OFF else "Saved: applies to the next dictation", Toast.LENGTH_LONG).show()
         draft = DevDraft.of(app.dev.load(), page)
         validate()
+        usersKeys?.check()
         // §5: a probe runs after each save; its result fills "Server info".
         if (s.effective(caps).allowServer && s.serverConfigured) {
             val router = app.engine.router()
