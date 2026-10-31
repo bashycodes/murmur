@@ -13,6 +13,7 @@ pub mod capture;
 pub mod config;
 mod health;
 pub mod keys;
+pub mod library;
 pub mod limits;
 pub mod logging;
 pub mod net;
@@ -53,6 +54,8 @@ pub(crate) struct AppState {
     pub hooks: Arc<Hooks>,
     /// `[debug] capture`: where finished sessions are saved (None = off).
     pub capture: Option<Arc<capture::CaptureStore>>,
+    /// The model library (D40); `None` without a library dir.
+    pub library: Option<Arc<library::Library>>,
     pub kill: watch::Receiver<bool>,
     pub connections: AtomicU64,
     pub sessions: AtomicU64,
@@ -124,6 +127,10 @@ impl ServerHandle {
                 tracing::warn!("key usage: {e}");
             }
         }
+    }
+    /// The model library (D40), for tests and `library list`.
+    pub fn library(&self) -> Option<&Arc<library::Library>> {
+        self.state.library.as_ref()
     }
     /// The key store (`None` when auth is off).
     pub fn keys(&self) -> Option<&Arc<keys::KeyStore>> {
@@ -248,7 +255,12 @@ pub async fn serve_with_pool(
     } else {
         None
     };
+    let library = library::Library::from_config(&cfg).map(Arc::new);
     let (kill_tx, kill_rx) = watch::channel(false);
+    if let Some(l) = &library {
+        let every = Duration::from_secs(cfg.library.rescan_s);
+        library::spawn_rescan(l.clone(), every, kill_rx.clone());
+    }
     let cfg_max_conns = cfg.max_connections.max(1);
     let state = Arc::new(AppState {
         pool,
@@ -256,6 +268,7 @@ pub async fn serve_with_pool(
         cfg,
         hooks: Arc::new(Hooks::default()),
         capture,
+        library,
         kill: kill_rx,
         connections: AtomicU64::new(0),
         sessions: AtomicU64::new(0),
@@ -266,6 +279,7 @@ pub async fn serve_with_pool(
     let app = Router::new()
         .route(flow_protocol::PATH_STREAM, get(stream_handler))
         .route(flow_protocol::PATH_HEALTH, get(health::handler))
+        .merge(library::routes())
         .with_state(state.clone());
     if let Some(k) = state.keys.clone() {
         let mut kill = state.kill.clone();

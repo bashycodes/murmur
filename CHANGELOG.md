@@ -18,6 +18,16 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Server: model library, so the apps can get models from your own server
+  (D40).** Copy a model folder into the server's library folder (default
+  `<state dir>/library`, or `[library] dir`) and tag it with a small
+  `model.toml` (kind, title, optional language, catalogue id and engine);
+  the server lists tagged models with each file's size and SHA-256 at
+  `GET /v1/models` and serves the files, with resume (HTTP Range), on the
+  same port and TLS as dictation, to any valid key. New and changed folders
+  are picked up without a restart; `flow-server library list` shows what is
+  served and why a folder was skipped. Downloads count toward the key
+  (`keys list` → DOWNLOADS). App-side download comes in later releases.
 - **Server: one key per device instead of one shared token (D38).** On the
   server, `flow-server keys add <name> [--admin]` creates a key and prints
   its secret once, `keys list` shows each key's last use, app version,

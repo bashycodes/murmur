@@ -54,3 +54,7 @@ log_text = false       # true prints transcripts at debug level (startup warns)
 # max_files = 30       # newest WAVs kept
 # max_age_h = 72       # older ones deleted (on every save and at start)
 # dir = "/var/lib/flow-server/debug"  # default: <state dir>/debug
+
+# [library]            # model files served to the apps (D40; docs/server-setup.md §10)
+# dir = "/var/lib/flow-server/library"  # default: <state dir>/library; one tagged folder per model
+# rescan_s = 60        # seconds between rescans (stat only; changed files are re-hashed); 0 = at start only
