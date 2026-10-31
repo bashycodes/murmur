@@ -55,6 +55,7 @@ fn main() {
             "open_external",
             "model_catalog",
             "llm_backend",
+            "whisper_backend",
             "model_download_start",
             "model_import_start",
             "model_download_cancel",

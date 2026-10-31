@@ -59,9 +59,10 @@ pub struct CatalogEntry {
     /// The model's page, for "Download links" and the confirm dialog.
     pub page: &'static str,
     pub recommended: bool,
-    /// AI cleanup only: the model recommended when local cleanup runs on a
-    /// GPU (`llm_backend` probe; [`recommended_llm`]). `recommended` is then
-    /// the pick for a CPU-only PC.
+    /// The model recommended when it runs on a GPU: AI cleanup by the
+    /// `llm_backend` probe ([`recommended_llm`]), the Hebrew model by the
+    /// `whisper_backend` probe ([`recommended_hebrew`]). `recommended` is
+    /// then the pick for a CPU-only PC.
     pub recommended_gpu: bool,
     /// `None`: a default model (the engine for every language). `Some("he")`:
     /// the model of that language's route (D33 `languages.he`).
@@ -100,6 +101,16 @@ macro_rules! zipformer_he_base {
 macro_rules! parakeet_he_base {
     () => {
         "https://huggingface.co/krut42/voice-parakeet-he-int8/resolve/39de3b473bed626c7796c156d71adc66161ebfe1/"
+    };
+}
+// ivrit-ai's Hebrew whisper-large-v3-turbo, q5_0. ivrit.ai publishes only
+// the f16 ggml (1.6 GB); this repo's q5_0 is `whisper-quantize ... q5_0`
+// of exactly that file (ivrit-ai/whisper-large-v3-turbo-ggml @ 2130c78e,
+// SHA-256 c8090411…), byte-identical to the q5_0 the laptop bench made
+// from it (docs/findings/2026-10-31-laptop-model-setup.md).
+macro_rules! ivrit_turbo_base {
+    () => {
+        "https://huggingface.co/tagidu/ivrit-whisper-large-v3-turbo-ggml-quantized/resolve/540d7736f31952a65efbdff0dc41e2b4b086a197/"
     };
 }
 macro_rules! qwen05_base {
@@ -214,6 +225,24 @@ pub const CATALOG: &[CatalogEntry] = &[
             model_file!(parakeet_he_base!(), "tokens.txt", 107_590, "55a91c862d0a63e8b9587a3264ced4fc76943e66098468b4638e6a6c5642e364"),
         ],
     },
+    // The most accurate Hebrew model when whisper runs on a GPU
+    // (flow_whisper_vulkan.dll): 20.5 % WER vs the zipformer's 27.2 % on 49
+    // FLEURS clips, mean 0.97 s on the laptop's Arc 140V; about 13 s on a
+    // laptop CPU (docs/findings/2026-10-31-laptop-model-setup.md).
+    CatalogEntry {
+        id: IVRIT_TURBO_ID,
+        title: "ivrit.ai Whisper turbo",
+        desc: "Hebrew · most accurate · needs a GPU (Vulkan); slow on the CPU",
+        engine: ModelEngine::Whisper,
+        dest: crate::core_adapter::IVRIT_TURBO_FILE,
+        page: "https://huggingface.co/tagidu/ivrit-whisper-large-v3-turbo-ggml-quantized",
+        recommended: false,
+        recommended_gpu: true,
+        language: Some(crate::core_adapter::HEBREW),
+        license: Some("Apache-2.0 · ivrit.ai (ivrit-ai/whisper-large-v3-turbo); q5_0 by Tagidu"),
+        extras: LID_FILES,
+        files: &[model_file!(ivrit_turbo_base!(), "ggml-ivrit-large-v3-turbo-q5_0.bin", 574_041_195, "6c1da92e8e41dd64b8cc402eee7eb7a433d2152567e1a4d9cf181fefcc67a572")],
+    },
     // AI cleanup (llama.cpp GGUF). The 1.5B one is saved under the name the
     // app loads when no cleanup model is set (D11); the 0.5B was the default
     // before and is still loaded when it is the only one there.
@@ -289,6 +318,16 @@ const LID_FILES: &[ModelFile] = &[model_file!(
 /// Catalogue ids of the Hebrew models (`prefs.hebrew_model`).
 pub const ZIPFORMER_HE_ID: &str = "zipformer-he-int8";
 pub const PARAKEET_HE_ID: &str = "parakeet-tdt-0.6b-v3-he-int8";
+pub const IVRIT_TURBO_ID: &str = "ivrit-whisper-large-v3-turbo-q5_0";
+
+/// The Hebrew model Settings recommends: ivrit turbo when whisper runs on
+/// a GPU (`whisper_backend` probe), the zipformer on a CPU-only PC.
+pub fn recommended_hebrew(gpu: bool) -> &'static CatalogEntry {
+    CATALOG
+        .iter()
+        .find(|e| e.language.is_some() && if gpu { e.recommended_gpu } else { e.recommended })
+        .expect("the catalogue has a CPU and a GPU Hebrew pick")
+}
 
 pub fn entry(id: &str) -> Option<&'static CatalogEntry> {
     CATALOG.iter().find(|e| e.id == id)
@@ -358,6 +397,7 @@ impl CatalogEntry {
             prefs.hebrew_model_dir = None;
             prefs.hebrew_model = match self.engine {
                 ModelEngine::SherpaOnline => HebrewModel::Zipformer,
+                ModelEngine::Whisper => HebrewModel::IvritTurbo,
                 _ => HebrewModel::ParakeetHe,
             };
             return;
@@ -435,7 +475,7 @@ pub struct CatalogView {
     pub desc: &'static str,
     pub engine: ModelEngine,
     pub recommended: bool,
-    /// AI cleanup: recommended when cleanup runs on a GPU.
+    /// AI cleanup / Hebrew: recommended when it runs on a GPU.
     pub recommended_gpu: bool,
     /// `"he"` for a Hebrew model, absent for a default model.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -890,7 +930,7 @@ mod tests {
 
     #[test]
     fn catalogue_is_pinned_to_hugging_face_commits() {
-        assert_eq!(CATALOG.len(), 8);
+        assert_eq!(CATALOG.len(), 9);
         let mut ids = std::collections::HashSet::new();
         for e in CATALOG {
             assert!(ids.insert(e.id), "duplicate id {}", e.id);
@@ -920,8 +960,10 @@ mod tests {
         // Hebrew models: the folders the Hebrew route loads, CC-BY credit.
         assert_eq!(entry(ZIPFORMER_HE_ID).unwrap().dest, crate::core_adapter::ZIPFORMER_HE_DIR);
         assert_eq!(entry(PARAKEET_HE_ID).unwrap().dest, crate::core_adapter::PARAKEET_HE_DIR);
+        assert_eq!(entry(IVRIT_TURBO_ID).unwrap().dest, crate::core_adapter::IVRIT_TURBO_FILE);
         for e in CATALOG {
-            assert_eq!(e.language.is_some(), e.license.is_some_and(|l| l.starts_with("CC-BY-4.0")), "{}", e.id);
+            let credited = e.license.is_some_and(|l| l.starts_with("CC-BY-4.0") || l.starts_with("Apache-2.0 · ivrit.ai"));
+            assert_eq!(e.language.is_some(), credited, "{}", e.id);
         }
         // Llama's licence asks for "Built with Llama" where it is offered.
         assert!(entry(LLAMA32_3B_ID).unwrap().license.unwrap().contains("Built with Llama"));
@@ -1168,6 +1210,25 @@ mod tests {
         // Downloaded into its own folder (4 files).
         assert_eq!(zip.dest_path(d), d.join("zipformer2-66m-streaming-he-int8"));
         assert!(zip.is_dir());
+        // ivrit turbo: one whisper file in the models folder, whisper engine.
+        let ivrit = entry(IVRIT_TURBO_ID).unwrap();
+        assert_eq!(ivrit.size(), 574_041_195 + 32_152_673);
+        assert!(!ivrit.is_dir());
+        assert_eq!(ivrit.dest_path(d), d.join("ggml-ivrit-large-v3-turbo-q5_0.bin"));
+        assert_eq!(ivrit.files[0].name, ivrit.dest);
+        assert!(ivrit.files[0].url.contains("/resolve/540d7736f31952a65efbdff0dc41e2b4b086a197/"), "{}", ivrit.files[0].url);
+        prefs.hebrew_model_dir = Some("/srv/custom".into());
+        ivrit.apply_to(&mut prefs, d);
+        assert_eq!(prefs.hebrew_model, HebrewModel::IvritTurbo);
+        assert_eq!(prefs.hebrew_model_dir, None, "a catalogue pick clears a server folder");
+        assert_eq!(prefs.asr_engine, AsrEngineChoice::Parakeet, "the default model stays");
+        assert_eq!(prefs.resolved_hebrew_dir(Some("/ad")).unwrap(), crate::core_adapter::models_dir(Some("/ad")).join(crate::core_adapter::IVRIT_TURBO_FILE));
+    }
+
+    #[test]
+    fn hebrew_recommendation_follows_the_gpu() {
+        assert_eq!(recommended_hebrew(true).id, IVRIT_TURBO_ID);
+        assert_eq!(recommended_hebrew(false).id, ZIPFORMER_HE_ID);
     }
 
     #[test]
@@ -1204,8 +1265,9 @@ mod tests {
         // Exactly one pick each for a CPU-only PC and for a GPU.
         assert_eq!(llm.iter().filter(|e| e.recommended).count(), 1);
         assert_eq!(llm.iter().filter(|e| e.recommended_gpu).count(), 1);
-        // Speech models never carry the GPU flag.
-        assert!(CATALOG.iter().filter(|e| !e.is_llm()).all(|e| !e.recommended_gpu));
+        // Of the speech models only the Hebrew GPU pick carries the flag.
+        let gpu_speech: Vec<_> = CATALOG.iter().filter(|e| !e.is_llm() && e.recommended_gpu).map(|e| e.id).collect();
+        assert_eq!(gpu_speech, [IVRIT_TURBO_ID]);
     }
 
     #[test]

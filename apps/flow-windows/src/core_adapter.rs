@@ -27,6 +27,7 @@ use crate::core_api::{
 use flow_core::asr::AsrEngine;
 use flow_core::cleanup::Cleaner;
 use flow_core::config as fc;
+use flow_core::whisper_plugin::WhisperBackend;
 use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::{Duration, Instant};
@@ -39,6 +40,9 @@ pub const DEFAULT_PARAKEET_DIR: &str = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-in
 /// the names `fetch-models.sh` and the flow-core tests use too.
 pub const ZIPFORMER_HE_DIR: &str = "zipformer2-66m-streaming-he-int8";
 pub const PARAKEET_HE_DIR: &str = "parakeet-tdt-0.6b-v3-he-int8";
+/// ivrit-ai whisper-large-v3-turbo q5_0 (`prefs.hebrew_model = ivrit_turbo`):
+/// the Hebrew model for a PC with a GPU, a file in the models folder.
+pub const IVRIT_TURBO_FILE: &str = "ggml-ivrit-large-v3-turbo-q5_0.bin";
 /// Language-ID model for auto-detect (H6/D34): multilingual whisper tiny,
 /// in the models folder; it comes with the Hebrew downloads.
 pub const LID_FILE: &str = "ggml-tiny-q5_1.bin";
@@ -104,6 +108,11 @@ pub enum ModelStatus {
     Ready {
         path: String,
         load_ms: u64,
+        /// Where it runs: a GPU (whisper through `flow_whisper_vulkan.dll`)
+        /// or the CPU. `None` for the mock engine. Boxed: keeps the status
+        /// small.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        backend: Option<Box<WhisperBackend>>,
     },
     /// The model file (Parakeet: directory) does not exist. Never
     /// downloaded automatically. `engine`: "whisper" | "parakeet".
@@ -309,6 +318,7 @@ impl LanguageSpec {
             HebrewModel::None => return None,
             HebrewModel::Zipformer => fc::AsrBackend::SherpaOnline,
             HebrewModel::ParakeetHe => fc::AsrBackend::Parakeet,
+            HebrewModel::IvritTurbo => fc::AsrBackend::Whisper,
         };
         let dir = prefs.resolved_hebrew_dir(appdata)?;
         let lid = prefs.resolved_lid_path(appdata);
@@ -447,6 +457,45 @@ pub fn llm_backend_probe(lib_path: Option<&str>) -> LlmBackendView {
     // A missing plugin is not cached: it may be put next to the exe later.
     if v.plugin.is_some() {
         CACHE.lock().unwrap().push((key, v.clone()));
+    }
+    v
+}
+
+/// Where a whisper model would run on this PC (Settings → Speech to text
+/// recommends the Hebrew model by it and says where Hebrew runs): the GPU
+/// plugin's device when `flow_whisper_vulkan.dll` loads, else the built-in
+/// CPU engine (`plugin: None`, `error` says why the plugin did not load).
+pub fn whisper_backend_view(
+    r: Result<(PathBuf, WhisperBackend), flow_core::whisper_plugin::WhisperPluginError>,
+) -> LlmBackendView {
+    match r {
+        Ok((path, b)) => LlmBackendView {
+            gpu: b.is_gpu(),
+            backend: b.backend,
+            device: b.device,
+            plugin: Some(path.display().to_string()),
+            error: None,
+        },
+        Err(e) => LlmBackendView {
+            gpu: false,
+            backend: "CPU".into(),
+            device: "CPU".into(),
+            plugin: None,
+            error: Some(e.to_string()),
+        },
+    }
+}
+
+/// [`whisper_backend_view`] of the plugin next to the exe, probed once and
+/// cached like [`llm_backend_probe`] (a missing plugin is not cached).
+pub fn whisper_backend_probe() -> LlmBackendView {
+    static CACHE: Mutex<Option<LlmBackendView>> = Mutex::new(None);
+    if let Some(v) = CACHE.lock().unwrap().clone() {
+        return v;
+    }
+    let v = whisper_backend_view(flow_core::whisper_plugin::probe_backend(None));
+    if v.plugin.is_some() {
+        *CACHE.lock().unwrap() = Some(v.clone());
     }
     v
 }
@@ -875,7 +924,7 @@ fn load_asr(spec: &ModelSpec) -> (ModelStatus, Option<Arc<dyn AsrEngine>>) {
     let t0 = Instant::now();
     let threads = |t: &Option<usize>| t.unwrap_or_else(fc::default_threads).max(1);
     let engine = match spec {
-        ModelSpec::Mock { text } => Ok(Arc::new(flow_core::asr::MockAsr::new(text)) as _),
+        ModelSpec::Mock { text } => Ok(mock_engine(text)),
         ModelSpec::Whisper {
             path: p,
             threads: t,
@@ -884,13 +933,14 @@ fn load_asr(spec: &ModelSpec) -> (ModelStatus, Option<Arc<dyn AsrEngine>>) {
             dir,
             threads: t,
             decoding,
-        } => parakeet_engine(dir, threads(t), *decoding),
+        } => parakeet_engine(dir, threads(t), *decoding).map(on_cpu),
     };
     match engine {
-        Ok(e) => (
+        Ok((e, backend)) => (
             ModelStatus::Ready {
                 path,
                 load_ms: t0.elapsed().as_millis() as u64,
+                backend: backend.map(Box::new),
             },
             Some(e),
         ),
@@ -906,18 +956,21 @@ fn load_language_asr(spec: &LanguageSpec) -> (ModelStatus, Option<Arc<dyn AsrEng
     let threads = m.threads.unwrap_or_else(fc::default_threads).max(1);
     let dir = std::path::Path::new(&m.asr_path);
     let engine = match &m.asr_backend {
-        fc::AsrBackend::Mock { text } => Ok(Arc::new(flow_core::asr::MockAsr::new(text)) as _),
+        fc::AsrBackend::Mock { text } => Ok(mock_engine(text)),
         fc::AsrBackend::Whisper => whisper_engine(dir, threads),
         fc::AsrBackend::Parakeet => {
-            parakeet_language_engine(dir, threads, m.parakeet_decoding, &spec.language)
+            parakeet_language_engine(dir, threads, m.parakeet_decoding, &spec.language).map(on_cpu)
         }
-        fc::AsrBackend::SherpaOnline => sherpa_online_engine(dir, threads, &spec.language),
+        fc::AsrBackend::SherpaOnline => {
+            sherpa_online_engine(dir, threads, &spec.language).map(on_cpu)
+        }
     };
     match engine {
-        Ok(e) => (
+        Ok((e, backend)) => (
             ModelStatus::Ready {
                 path,
                 load_ms: t0.elapsed().as_millis() as u64,
+                backend: backend.map(Box::new),
             },
             Some(e),
         ),
@@ -978,23 +1031,65 @@ fn require(p: &std::path::Path, dir: bool) -> Result<String, flow_core::CoreErro
     }
 }
 
-#[cfg(feature = "whisper")]
-fn whisper_engine(
-    p: &std::path::Path,
-    threads: usize,
-) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+/// A loaded speech engine and where it runs (`None`: the mock).
+type Loaded = (Arc<dyn AsrEngine>, Option<WhisperBackend>);
+
+fn mock_engine(text: &str) -> Loaded {
+    (Arc::new(flow_core::asr::MockAsr::new(text)), None)
+}
+
+/// The sherpa-onnx engines run on the CPU.
+fn on_cpu(e: Arc<dyn AsrEngine>) -> Loaded {
+    (e, Some(WhisperBackend::cpu()))
+}
+
+/// A whisper model: on the GPU through the Vulkan plugin
+/// (`flow_whisper_vulkan.dll` next to the exe, flow-core `whisper_plugin`),
+/// else on the built-in CPU engine. The plugin itself uses the CPU when it
+/// finds no usable GPU or the GPU fails to load the model; when the plugin
+/// does not load at all (no Vulkan driver: no `vulkan-1.dll`), or fails,
+/// the built-in engine takes over. `FLOW_WHISPER_DEVICE=cpu` keeps the
+/// plugin on the CPU.
+fn whisper_engine(p: &std::path::Path, threads: usize) -> Result<Loaded, flow_core::CoreError> {
+    use flow_core::whisper_plugin::{PluginOptions, PluginWhisper, WhisperPluginError};
     let path = require(p, false)?;
-    flow_core::whisper::WhisperEngine::load(&path, threads)
+    let opts = PluginOptions {
+        threads,
+        // Same as the built-in engine below: the full 30 s window.
+        fit_ctx: false,
+        vad_model: None,
+    };
+    let gpu_error = match PluginWhisper::load(&path, &opts, None) {
+        Ok(e) => {
+            let b = e.backend();
+            return Ok((Arc::new(e), Some(b)));
+        }
+        // No plugin next to the exe, or no Vulkan driver: the CPU, quietly.
+        Err(WhisperPluginError::PluginNotFound { .. }) => None,
+        Err(WhisperPluginError::Backend(m)) => {
+            eprintln!("[model] whisper GPU engine failed ({path}): {m}; using the CPU");
+            Some(m)
+        }
+    };
+    let e = builtin_whisper(&path, threads)?;
+    Ok((
+        e,
+        Some(WhisperBackend {
+            gpu_error,
+            ..WhisperBackend::cpu()
+        }),
+    ))
+}
+
+#[cfg(feature = "whisper")]
+fn builtin_whisper(path: &str, threads: usize) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+    flow_core::whisper::WhisperEngine::load(path, threads)
         .map(|e| Arc::new(e) as Arc<dyn AsrEngine>)
         .map_err(|e| flow_core::CoreError::Load(e.to_string()))
 }
 
 #[cfg(not(feature = "whisper"))]
-fn whisper_engine(
-    p: &std::path::Path,
-    _threads: usize,
-) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
-    require(p, false)?;
+fn builtin_whisper(_path: &str, _threads: usize) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
     Err(flow_core::CoreError::Load(
         "this build has no whisper engine (feature `whisper`)".into(),
     ))

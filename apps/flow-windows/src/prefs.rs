@@ -121,6 +121,11 @@ pub enum HebrewModel {
     Zipformer,
     /// Parakeet-TDT-0.6B-v3-he int8 (673 MB, the Parakeet engine).
     ParakeetHe,
+    /// ivrit-ai whisper-large-v3-turbo q5_0 (574 MB file, the whisper
+    /// engine): the most accurate, for a PC with a GPU (Vulkan,
+    /// `flow_whisper_vulkan.dll`); slow on a CPU. With `hebrew_model_dir`
+    /// set it is any whisper file from the server's library.
+    IvritTurbo,
     /// No Hebrew route: Hebrew dictations use the default model.
     None,
 }
@@ -190,8 +195,9 @@ pub struct Prefs {
     pub hebrew_model: HebrewModel,
     /// A Hebrew model folder from the server's library (D41) in place of
     /// the catalogue folder of `hebrew_model` (which still picks the engine:
-    /// `zipformer` = sherpa online, `parakeet_he` = Parakeet). `None` = the
-    /// catalogue folder. Choosing a catalogue Hebrew model clears it.
+    /// `zipformer` = sherpa online, `parakeet_he` = Parakeet, `ivrit_turbo`
+    /// = whisper, and then this is the model file). `None` = the catalogue
+    /// folder. Choosing a catalogue Hebrew model clears it.
     pub hebrew_model_dir: Option<String>,
     /// Language-ID whisper model (H6/D34) from the server's library (D41);
     /// `None` = `ggml-tiny-q5_1.bin` in the models folder, when there.
@@ -533,13 +539,15 @@ impl Prefs {
         }
     }
 
-    /// The Hebrew model folder: [`Prefs::hebrew_model_dir`] when set, else
-    /// `<models>\<catalogue folder>`; `None` when no Hebrew model is chosen.
+    /// The Hebrew model folder (whisper: file): [`Prefs::hebrew_model_dir`]
+    /// when set, else `<models>\<catalogue folder or file>`; `None` when no
+    /// Hebrew model is chosen.
     pub fn resolved_hebrew_dir(&self, appdata: Option<&str>) -> Option<PathBuf> {
         let dir = match self.hebrew_model {
             HebrewModel::None => return None,
             HebrewModel::Zipformer => crate::core_adapter::ZIPFORMER_HE_DIR,
             HebrewModel::ParakeetHe => crate::core_adapter::PARAKEET_HE_DIR,
+            HebrewModel::IvritTurbo => crate::core_adapter::IVRIT_TURBO_FILE,
         };
         Some(match self.hebrew_model_dir.as_deref().map(str::trim) {
             Some(p) if !p.is_empty() => PathBuf::from(p),

@@ -38,6 +38,7 @@
     "allow-open-external",
     "allow-model-catalog",
     "allow-llm-backend",
+    "allow-whisper-backend",
     "allow-model-download-start",
     "allow-model-import-start",
     "allow-model-download-cancel",

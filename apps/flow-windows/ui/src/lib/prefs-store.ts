@@ -48,7 +48,7 @@ export interface Prefs {
   model_path: string | null;
   asr_engine: string;
   parakeet_model_dir: string | null;
-  /** Model of the Hebrew route (D33): "zipformer" | "parakeet_he" | "none". */
+  /** Model of the Hebrew route (D33): "zipformer" | "parakeet_he" | "ivrit_turbo" | "none". */
   hebrew_model?: string;
   /** A Hebrew model folder from the server's library (D41); null = the catalogue folder. */
   hebrew_model_dir?: string | null;
