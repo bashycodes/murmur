@@ -896,7 +896,8 @@ the correction.
 - Spoken punctuation becomes the symbol: comma, period, question mark, exclamation point, colon, semicolon, dash (—), \
 new line, new paragraph.
 - \"quote ... unquote\", \"open quote ... close quote\" and \"... end quote\" wrap the words between them in double \
-quotes; \"quote unquote X\" quotes only X. \"open paren ... close paren\" and \"in parentheses X\" wrap the words in ( ), \
+quotes. \"quote unquote\" mid-sentence quotes only the next word; at the start of a sentence it quotes the \
+whole sentence. \"open paren ... close paren\" and \"in parentheses X\" wrap the words in ( ), \
 \"in brackets X\" in [ ]. With no closing command the span ends where the phrase ends, usually at the next comma.
 - A command word used as an ordinary word stays a word: \"a quote for the roof\", \"the trial period\", \"the Oxford \
 comma\", \"put the area code in parentheses\".
@@ -936,6 +937,13 @@ const EXAMPLES: &[Example] = &[
         Style::Formal,
         "My sister called it, quote unquote, cozy, and like forty people came.",
         "My sister called it \"cozy,\" and 40 people came.",
+    ),
+    (
+        "Notes",
+        AppCategory::Other,
+        Style::Formal,
+        "Quote unquote, the printer works fine. It jammed twice this morning.",
+        "\"The printer works fine.\" It jammed twice this morning.",
     ),
     (
         "Docs",
@@ -1745,7 +1753,7 @@ mod tests {
         // Prompt v2 is ~2x the old prefix; keep it bounded (prefill cost).
         assert!(p.system.len() < 2600, "{}", p.system.len());
         // Few-shot turns in the user-message format.
-        assert_eq!(p.examples.len(), 17);
+        assert_eq!(p.examples.len(), 18);
         assert!(p.examples[0]
             .0
             .starts_with("APP: Messages | CATEGORY: personal chat\nTRANSCRIPT: «"));
@@ -1784,7 +1792,8 @@ mod tests {
             "unquote",
             "open quote",
             "end quote",
-            "quote unquote X",
+            "quote unquote\" mid-sentence quotes only the next word",
+            "at the start of a sentence it quotes the whole sentence",
             "open paren",
             "in parentheses X",
             "in brackets X",
