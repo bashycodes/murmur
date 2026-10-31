@@ -302,7 +302,7 @@ impl CatalogEntry {
 
     /// The model's files, then the extras (`true` = saved in the models
     /// folder itself).
-    fn all_files(&self) -> impl Iterator<Item = (&'static ModelFile, bool)> {
+    pub(crate) fn all_files(&self) -> impl Iterator<Item = (&'static ModelFile, bool)> {
         self.files.iter().map(|f| (f, false)).chain(self.extras.iter().map(|f| (f, true)))
     }
 
@@ -320,7 +320,7 @@ impl CatalogEntry {
         self.all_files().filter(|(f, x)| !self.present(models_dir, f, *x)).map(|(f, _)| f.size).sum()
     }
 
-    fn is_dir(&self) -> bool {
+    pub(crate) fn is_dir(&self) -> bool {
         matches!(self.engine, ModelEngine::Parakeet | ModelEngine::SherpaOnline)
     }
 
@@ -334,7 +334,7 @@ impl CatalogEntry {
         models_dir.join(self.dest)
     }
 
-    fn file_path(&self, models_dir: &Path, f: &ModelFile, extra: bool) -> PathBuf {
+    pub(crate) fn file_path(&self, models_dir: &Path, f: &ModelFile, extra: bool) -> PathBuf {
         if extra {
             models_dir.join(f.name)
         } else if self.is_dir() {
@@ -402,7 +402,7 @@ impl CatalogEntry {
         }
         for f in self.files {
             let p = self.file_path(models_dir, f, false);
-            for q in [p.with_file_name(format!("{}.part", f.name)), p] {
+            for q in [part_path(&p, f), p] {
                 match std::fs::remove_file(&q) {
                     Ok(()) => {}
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
@@ -495,6 +495,8 @@ pub fn catalog_view(
 #[serde(rename_all = "lowercase")]
 pub enum State {
     Downloading,
+    /// Copying from a local folder / zip / file (`model_import`).
+    Importing,
     Verifying,
     Done,
     Error,
@@ -603,13 +605,13 @@ pub fn run(
         // Already there and intact (an earlier, cancelled try): keep it.
         if std::fs::metadata(&target).is_ok_and(|m| m.len() == f.size) {
             report(done, State::Verifying);
-            if sha256_file(&target).is_ok_and(|h| h == f.sha256) {
+            if intact(&target, f) {
                 done += f.size;
                 report(done, State::Downloading);
                 continue;
             }
         }
-        let part = target.with_file_name(format!("{}.part", f.name));
+        let part = part_path(&target, f);
         let got = fetch_file(f, &part, fetch, cancel, &mut |n| report(done + n, State::Downloading));
         let digest = match got {
             Ok(d) => d,
@@ -648,6 +650,33 @@ fn fetch_file(
     }
     check_download_url(f.url).map_err(Stop::Failed)?;
     let mut src = fetch.open(f.url).map_err(Stop::Failed)?;
+    copy_verified(&mut src, f, part, "download of", cancel, tick)
+}
+
+/// Where `f` is written before it is checked: `<name>.part` next to `target`.
+pub(crate) fn part_path(target: &Path, f: &ModelFile) -> PathBuf {
+    target.with_file_name(format!("{}.part", f.name))
+}
+
+/// `target` holds exactly `f` (pinned size and SHA-256).
+pub(crate) fn intact(target: &Path, f: &ModelFile) -> bool {
+    std::fs::metadata(target).is_ok_and(|m| m.is_file() && m.len() == f.size)
+        && sha256_file(target).is_ok_and(|h| h == f.sha256)
+}
+
+/// Copy `src` into `part` (created or truncated), hashing it on the way;
+/// returns the hex SHA-256. Fails on more or fewer bytes than `f.size`
+/// (`what` names the source in a read error: "download of", "reading").
+/// The caller compares the hash and deletes `part` on any error. Shared by
+/// downloads and imports (`model_import`).
+pub(crate) fn copy_verified(
+    src: &mut dyn Read,
+    f: &ModelFile,
+    part: &Path,
+    what: &str,
+    cancel: &AtomicBool,
+    tick: &mut dyn FnMut(u64),
+) -> Result<String, Stop> {
     let mut out = std::fs::File::create(part).map_err(|e| Stop::Failed(format!("could not write {}: {e}", f.name)))?;
     let mut h = Sha256::new();
     let mut buf = vec![0u8; 256 << 10];
@@ -659,7 +688,7 @@ fn fetch_file(
         }
         let k = src
             .read(&mut buf)
-            .map_err(|e| Stop::Failed(format!("download of {} stopped: {e}", f.name)))?;
+            .map_err(|e| Stop::Failed(format!("{what} {} stopped: {e}", f.name)))?;
         if k == 0 {
             break;
         }
