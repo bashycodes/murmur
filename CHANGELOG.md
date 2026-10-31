@@ -18,6 +18,20 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Windows: Hebrew on the graphics chip with ivrit.ai Whisper turbo.**
+  Settings → Speech to text → Hebrew model offers ivrit.ai Whisper turbo
+  (574 MB, Apache-2.0), the most accurate Hebrew model (about 20 % word
+  errors against Zipformer's 27 %). Whisper now runs on the GPU through
+  Vulkan (new `flow_whisper_vulkan.dll` in the installers, D42): about 1 s
+  per dictation on a laptop's integrated GPU. Without a usable GPU or
+  Vulkan driver the app falls back to its CPU whisper, where this model is
+  slow (about 13 s), so Settings recommends it only when it finds a GPU
+  (Zipformer otherwise) and says where Hebrew runs: the graphics chip's
+  name, or the CPU and why. It downloads from Hugging Face, from your
+  server's library, or imports from a file like the other models; the
+  default whisper model also uses the GPU when there is one.
+  `FLOW_WHISPER_DEVICE=cpu` forces the CPU.
+
 - **Server: Docker image, Compose file and Helm chart.** Run flow-server
   in a container with your own models: a locally built CPU image (with
   Parakeet, whisper, TLS and LLM cleanup) and an NVIDIA CUDA variant that
