@@ -1,0 +1,78 @@
+/* ---- Users & keys (D39) ---- */
+
+table.lw-keys {
+  width: 100%;
+  border-collapse: collapse;
+  font: 400 14px/20px var(--font-sans);
+}
+table.lw-keys th {
+  padding: 10px 8px;
+  text-align: left;
+  font: 550 12px/16px var(--font-sans);
+  color: var(--foreground-tertiary);
+  white-space: nowrap;
+}
+table.lw-keys td {
+  padding: 10px 8px;
+  border-top: 1px solid var(--border);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+table.lw-keys td.name {
+  width: 100%;
+  white-space: normal;
+}
+table.lw-keys .lw-key-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+table.lw-keys .lw-key-name {
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+table.lw-keys th:first-child,
+table.lw-keys td:first-child {
+  padding-left: 16px;
+}
+table.lw-keys .lw-key-client {
+  display: block;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--foreground-tertiary);
+  overflow-wrap: anywhere;
+}
+table.lw-keys td.act.is-revoked {
+  white-space: normal;
+  font-size: 12px;
+}
+table.lw-keys .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+table.lw-keys td.act {
+  text-align: right;
+}
+table.lw-keys tr.is-revoked td {
+  color: var(--foreground-tertiary);
+}
+table.lw-keys tr.is-revoked .lw-key-name {
+  text-decoration: line-through;
+  font-weight: 400;
+}
+.lw-secret {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+.lw-secret .fl-input {
+  flex: 1;
+  min-width: 0;
+}
+.lw-warn {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--orange-100) 60%, transparent);
+  color: var(--orange-800);
+}
