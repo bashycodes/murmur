@@ -18,6 +18,18 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Server: Docker image, Compose file and Helm chart.** Run flow-server
+  in a container with your own models: a locally built CPU image (with
+  Parakeet, whisper, TLS and LLM cleanup) and an NVIDIA CUDA variant that
+  runs LLM cleanup on the GPU. Models, keys and config are volumes, so
+  nothing is baked in and keys survive restarts and rebuilds. On first
+  start the server waits until you add the admin key (`docker compose exec
+  flow-server flow-server keys add owner --admin`, or `kubectl exec` with
+  the chart). It runs as a non-root user on a read-only filesystem and
+  keeps the server's LAN/VPN-only rules: it binds the container's own
+  address instead of `0.0.0.0`. The image can be built offline from host
+  binaries and moved to air-gapped hosts with `docker save` / `docker
+  load`. Nothing is published to a registry. See `docs/container.md`.
 - **Server: model library, so the apps can get models from your own server
   (D40).** Copy a model folder into the server's library folder (default
   `<state dir>/library`, or `[library] dir`) and tag it with a small
