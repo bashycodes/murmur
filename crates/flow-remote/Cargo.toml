@@ -9,6 +9,9 @@ description = "RemoteBackend: WebSocket client of flow-server behind flow_router
 default = []
 # wss:// with rustls (Mozilla roots via webpki-roots, or a pinned leaf cert).
 tls = ["dep:tokio-rustls", "dep:rustls", "dep:webpki-roots", "dep:sha2"]
+# Model library client (D40/D41): `GET /v1/models` + resumable, verified
+# downloads over HTTP/1.1 on the same port, TLS pin and key as dictation.
+library = ["dep:hyper", "dep:hyper-util", "dep:http-body-util", "dep:sha2"]
 
 [dependencies]
 flow-core = { path = "../flow-core", default-features = false }
@@ -22,3 +25,15 @@ tokio-rustls = { version = "0.26", optional = true, default-features = false, fe
 rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
 webpki-roots = { version = "1", optional = true }
 sha2 = { version = "0.10", optional = true }
+hyper = { version = "1", optional = true, default-features = false, features = ["client", "http1"] }
+hyper-util = { version = "0.1", optional = true, default-features = false, features = ["tokio"] }
+http-body-util = { version = "0.1", optional = true }
+
+[dev-dependencies]
+# tests/library.rs: a real in-process flow-server with a temp library.
+flow-server = { path = "../flow-server", default-features = false, features = ["tls"] }
+tempfile = "3"
+
+[[test]]
+name = "library"
+required-features = ["library"]
