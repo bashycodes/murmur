@@ -386,6 +386,8 @@ Next steps (docs/server-setup.md):
   * logs (expect "ready workers=1 asr=parakeet"):  ${SUDO}$JOURNAL
   * LLM cleanup loaded: GET /v1/health with the token shows "llm":true
   * the token for the apps:                        ${SUDO}cat $TOKEN
+    (that is the admin key "owner"; one key per device:
+     ${SUDO}env LD_LIBRARY_PATH=$LIB_DIR $BIN keys add <name> --config $CONF)
   * apps, Developer settings: Allow server on, Server host = one of
     ${BINDS[*]} (host part; the LAN or VPN address from other devices),
     port $PORT, TLS off on a VPN or trusted LAN, token as above, then "Test connection".
