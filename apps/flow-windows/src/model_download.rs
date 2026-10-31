@@ -420,6 +420,10 @@ pub struct FileView {
     pub url: &'static str,
     pub size: u64,
     pub sha256: &'static str,
+    /// Saved next to the model, optional for an import (the Hebrew models'
+    /// language-ID model); absent for the model's own files.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub extra: bool,
 }
 
 /// `model_catalog` row.
@@ -449,6 +453,9 @@ pub struct CatalogView {
     pub missing: u64,
     /// This build can download it (feature `download`) and run its engine.
     pub available: bool,
+    /// This build runs its engine, so it can be imported from a folder,
+    /// zip or file (`model_import`), with or without feature `download`.
+    pub importable: bool,
     pub files: Vec<FileView>,
 }
 
@@ -476,13 +483,15 @@ pub fn catalog_view(
             complete: e.complete(models_dir),
             missing: e.missing(models_dir),
             available: can_download && engine_built(e.engine),
+            importable: engine_built(e.engine),
             files: e
                 .all_files()
-                .map(|(f, _)| FileView {
+                .map(|(f, extra)| FileView {
                     name: f.name,
                     url: f.url,
                     size: f.size,
                     sha256: f.sha256,
+                    extra,
                 })
                 .collect(),
         })
@@ -1231,10 +1240,15 @@ mod tests {
         assert_eq!(pk.size, 661_190_513);
         assert!(v.iter().filter(|r| r.engine == ModelEngine::Whisper).all(|r| r.available));
         assert!(catalog_view(&d, false, |_| true).iter().all(|r| !r.available));
+        // No downloader (client-only build): every model can still be imported.
+        assert!(catalog_view(&d, false, |_| true).iter().all(|r| r.importable));
+        assert!(!pk.importable);
         let he = serde_json::to_value(v.iter().find(|r| r.id == ZIPFORMER_HE_ID).unwrap()).unwrap();
         assert_eq!(he["language"], "he");
         assert_eq!(he["engine"], "sherpa_online");
         assert!(he["license"].as_str().unwrap().contains("ivrit.ai"));
+        assert_eq!(he["files"][4]["extra"], true);
+        assert!(he["files"][0].get("extra").is_none());
         let q = serde_json::to_value(v.iter().find(|r| r.id == "qwen2.5-0.5b-instruct-q4_k_m").unwrap()).unwrap();
         assert_eq!(q["engine"], "llm");
         let en = serde_json::to_value(pk).unwrap();
