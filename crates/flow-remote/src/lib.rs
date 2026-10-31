@@ -11,6 +11,8 @@
 //! state), so `push_audio` never blocks.
 
 mod conn;
+#[cfg(feature = "library")]
+pub mod library;
 #[cfg(feature = "tls")]
 mod tls;
 
@@ -108,33 +110,8 @@ impl RemoteBackend {
         self.inner.rt.as_ref().expect("runtime alive")
     }
 
-    /// Refuse plaintext to public addresses before any socket exists (§2.6).
-    fn check_address(&self) -> Result<(), BackendError> {
-        let c = &self.inner.cfg;
-        if !c.is_configured() {
-            return Err(BackendError::new(
-                Failure::ServerNotConfigured,
-                "no server host set",
-            ));
-        }
-        if !c.tls && !net::classify(&c.host).plaintext_ok() {
-            return Err(BackendError::new(
-                Failure::ConnectFailed,
-                "plaintext to public address (enable TLS)",
-            ));
-        }
-        #[cfg(not(feature = "tls"))]
-        if c.tls {
-            return Err(BackendError::new(
-                Failure::ConnectFailed,
-                "TLS requested but this build has no TLS support",
-            ));
-        }
-        Ok(())
-    }
-
     fn connect_new(&self) -> Result<Arc<Conn>, BackendError> {
-        self.check_address()?;
+        check_address(&self.inner.cfg)?;
         let cfg = self.inner.cfg.clone();
         let client = self.inner.client.clone();
         let timeout = Duration::from_millis(cfg.connect_timeout_ms);
@@ -417,6 +394,30 @@ impl Backend for RemoteBackend {
             Duration::from_millis(self.inner.cfg.connect_timeout_ms),
         )
     }
+}
+
+/// Refuse plaintext to public addresses before any socket exists (§2.6).
+pub(crate) fn check_address(c: &ServerConfig) -> Result<(), BackendError> {
+    if !c.is_configured() {
+        return Err(BackendError::new(
+            Failure::ServerNotConfigured,
+            "no server host set",
+        ));
+    }
+    if !c.tls && !net::classify(&c.host).plaintext_ok() {
+        return Err(BackendError::new(
+            Failure::ConnectFailed,
+            "plaintext to public address (enable TLS)",
+        ));
+    }
+    #[cfg(not(feature = "tls"))]
+    if c.tls {
+        return Err(BackendError::new(
+            Failure::ConnectFailed,
+            "TLS requested but this build has no TLS support",
+        ));
+    }
+    Ok(())
 }
 
 /// Map a server `error` code to the router's failure kinds.

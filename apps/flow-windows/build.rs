@@ -58,6 +58,8 @@ fn main() {
             "model_download_start",
             "model_import_start",
             "model_download_cancel",
+            "server_models",
+            "server_model_download",
             "model_delete",
             "transforms_reset",
             "transform_try",

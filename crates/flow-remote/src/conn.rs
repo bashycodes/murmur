@@ -62,9 +62,15 @@ fn connect_failed(m: impl std::fmt::Display) -> BackendError {
     BackendError::new(Failure::ConnectFailed, m.to_string())
 }
 
-/// TCP (+TLS) + upgrade + hello/hello_ok. The caller bounds it with
-/// `connect_timeout_ms`.
-pub async fn connect(cfg: &ServerConfig, client: &str) -> Result<Arc<Conn>, BackendError> {
+/// A connected byte stream to the server: TCP, or TLS over TCP.
+pub(crate) trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
+impl<T: AsyncRead + AsyncWrite + Unpin + Send> Io for T {}
+pub(crate) type BoxIo = Box<dyn Io>;
+
+/// TCP (+TLS) to the configured server, with the cleartext rules: shared
+/// by the WebSocket session ([`connect`]) and the model library's HTTP
+/// client (`library`). The caller bounds it with `connect_timeout_ms`.
+pub(crate) async fn dial(cfg: &ServerConfig) -> Result<BoxIo, BackendError> {
     let host = net::bare_host(&cfg.host).to_string();
     // Resolve first; plain ws:// only if *every* address is private /
     // loopback / link-local / VPN-via-VPN-interface (review S6), and then
@@ -82,6 +88,17 @@ pub async fn connect(cfg: &ServerConfig, client: &str) -> Result<Arc<Conn>, Back
         .await
         .map_err(|e| connect_failed(format!("{}: {e}", cfg.addr())))?;
     let _ = tcp.set_nodelay(true);
+    #[cfg(feature = "tls")]
+    if cfg.tls {
+        return Ok(Box::new(crate::tls::connect(cfg, &host, tcp).await?));
+    }
+    Ok(Box::new(tcp))
+}
+
+/// TCP (+TLS) + upgrade + hello/hello_ok. The caller bounds it with
+/// `connect_timeout_ms`.
+pub async fn connect(cfg: &ServerConfig, client: &str) -> Result<Arc<Conn>, BackendError> {
+    let io = dial(cfg).await?;
     let scheme = if cfg.tls { "wss" } else { "ws" };
     let mut req = format!("{scheme}://{}{PATH_STREAM}", cfg.addr())
         .into_client_request()
@@ -96,12 +113,7 @@ pub async fn connect(cfg: &ServerConfig, client: &str) -> Result<Arc<Conn>, Back
             .map_err(|_| BackendError::new(Failure::AuthFailed, "token has invalid characters"))?;
         h.insert(AUTHORIZATION, v);
     }
-    #[cfg(feature = "tls")]
-    if cfg.tls {
-        let s = crate::tls::connect(cfg, &host, tcp).await?;
-        return handshake(tokio_tungstenite::client_async(req, s).await, client).await;
-    }
-    handshake(tokio_tungstenite::client_async(req, tcp).await, client).await
+    handshake(tokio_tungstenite::client_async(req, io).await, client).await
 }
 
 type Upgrade<S> = Result<

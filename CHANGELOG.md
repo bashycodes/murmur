@@ -30,6 +30,20 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   address instead of `0.0.0.0`. The image can be built offline from host
   binaries and moved to air-gapped hosts with `docker save` / `docker
   load`. Nothing is published to a registry. See `docs/container.md`.
+- **Windows: with a server set, models download from its library instead
+  of Hugging Face (D41).** Settings → Speech to text → From your server
+  lists every model your server serves (speech to text, Hebrew, AI cleanup,
+  language detection) with its size and what it is for; Download (after
+  the usual confirm dialog) installs and selects it, Use switches to one
+  already downloaded. Built-in models are checked against the fingerprints
+  in the app, models you added against the fingerprint your server lists.
+  An interrupted download resumes where it stopped. While a server is set
+  the app never contacts Hugging Face; models the app can't load (a
+  voice-activity model, an unknown engine) are listed with the reason.
+- **flow-remote: model library client (D41)** shared by the apps: list the
+  server's models and download a file resumably (HTTP Range) with its
+  SHA-256 checked, over the same TLS pin and key as dictation.
+
 - **Server: model library, so the apps can get models from your own server
   (D40).** Copy a model folder into the server's library folder (default
   `<state dir>/library`, or `[library] dir`) and tag it with a small
@@ -39,7 +53,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   same port and TLS as dictation, to any valid key. New and changed folders
   are picked up without a restart; `flow-server library list` shows what is
   served and why a folder was skipped. Downloads count toward the key
-  (`keys list` → DOWNLOADS). App-side download comes in later releases.
+  (`keys list` → DOWNLOADS). The Windows app downloads from it (D41); Android
+  comes next.
 - **Server: one key per device instead of one shared token (D38).** On the
   server, `flow-server keys add <name> [--admin]` creates a key and prints
   its secret once, `keys list` shows each key's last use, app version,
