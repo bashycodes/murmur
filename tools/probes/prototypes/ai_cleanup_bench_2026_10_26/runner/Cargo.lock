@@ -241,7 +241,7 @@ dependencies = [
 
 [[package]]
 name = "flow-cloud"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "flacenc",
@@ -254,7 +254,7 @@ dependencies = [
 
 [[package]]
 name = "flow-core"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "fancy-regex",
  "libloading",
@@ -268,7 +268,7 @@ dependencies = [
 
 [[package]]
 name = "flow-protocol"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "flow-core",
  "serde",
@@ -277,7 +277,7 @@ dependencies = [
 
 [[package]]
 name = "flow-router"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "flow-core",
  "flow-protocol",

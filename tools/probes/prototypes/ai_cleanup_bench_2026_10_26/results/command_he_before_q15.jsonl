@@ -1,0 +1,14 @@
+{"answer":"The meeting has been canceled for Wednesday.","error":null,"id":"he_formal_1","mode":"before","ms":3297,"pass":false,"script":"latin","want":"he"}
+{"answer":"Hello, I am currently unavailable for the time being. Would Friday be acceptable?","error":null,"id":"he_formal_2","mode":"before","ms":1471,"pass":false,"script":"latin","want":"he"}
+{"answer":"I just wanted to say that the shipment arrived today in the morning and everything was fine overall, thank you for the quick message.","error":null,"id":"he_short_1","mode":"before","ms":2200,"pass":false,"script":"latin","want":"he"}
+{"answer":"Please send me the file by tomorrow.","error":null,"id":"he_polite_1","mode":"before","ms":906,"pass":false,"script":"latin","want":"he"}
+{"answer":"I am going to the store after work, then I will return home.","error":null,"id":"he_fix_1","mode":"before","ms":1383,"pass":false,"script":"latin","want":"he"}
+{"answer":"1. חלב\n2. לחם\n3. ביצים\n4. עגבניות","error":null,"id":"he_list_1","mode":"before","ms":2033,"pass":true,"script":"he","want":"he"}
+{"answer":"Hey, sorry for the delay. Could you send it by the end of the day?","error":null,"id":"he_friendly_1","mode":"before","ms":1540,"pass":false,"script":"latin","want":"he"}
+{"answer":"The server will be offline on Monday night for maintenance and optimization.","error":null,"id":"he_expand_1","mode":"before","ms":1292,"pass":false,"script":"latin","want":"he"}
+{"answer":"The quarterly financial report will be released on Thursday at 10 AM.","error":null,"id":"he_mixed_1","mode":"before","ms":1662,"pass":false,"script":"latin","want":"he"}
+{"answer":"I will arrive tomorrow at 8 o'clock at the station.","error":null,"id":"he_heinstr_1","mode":"before","ms":1169,"pass":false,"script":"latin","want":"he"}
+{"answer":"The meeting has been canceled for Wednesday.","error":null,"id":"he_tr_1","mode":"before","ms":948,"pass":true,"script":"latin","want":"latin"}
+{"answer":"The letter arrived this morning.","error":null,"id":"he_tr_2","mode":"before","ms":769,"pass":true,"script":"latin","want":"latin"}
+{"answer":"Show me tomorrow at eight near the courthouse.","error":null,"id":"he_tr_3","mode":"before","ms":1024,"pass":true,"script":"latin","want":"latin"}
+{"answer":"Hello, the package has arrived this morning, thank you very much.","error":null,"id":"en_formal_1","mode":"before","ms":1438,"pass":true,"script":"latin","want":"latin"}
