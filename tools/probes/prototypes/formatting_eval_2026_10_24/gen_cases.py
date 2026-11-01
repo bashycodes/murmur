@@ -47,6 +47,9 @@ C = [
     ("p4", "paren", DOCS, "Add the new field, in brackets, optional, to the form.", "Add the new field [optional] to the form.", []),
     ("p5", "paren", WA, "Grab the blue folder, in parentheses, the one on my desk.", "Grab the blue folder (the one on my desk)", ["Grab the blue folder (the one on my desk)."]),
     ("p6", "paren", SLACK, "The new build, open parenthesis, version two point three, close parenthesis, is live.", "The new build (version 2.3) is live", ["The new build (version 2.3) is live."]),
+    # Clause asides without pause commas (2026-11-01): close before the main verb.
+    ("p7", "paren", KEEP, "my bike in parentheses which is the green one is locked outside the library", "My bike (which is the green one) is locked outside the library.", []),
+    ("p8", "paren", DOCS, "The new intern in parentheses, who started on Monday, will shadow the support team.", "The new intern (who started on Monday) will shadow the support team.", []),
     # --- spoken punctuation ------------------------------------------------
     ("s1", "spoken_punct", KEEP, "Buy milk, comma, eggs, comma, and bread. Period.", "Buy milk, eggs, and bread.", []),
     ("s2", "spoken_punct", WA, "Are you coming tonight question mark", "Are you coming tonight?", []),
@@ -79,7 +82,10 @@ C = [
     ("i5", "itn", SLACK, "We have about two hundred and fifty users on the beta.", "We have about 250 users on the beta", ["We have about 250 users on the beta."]),
     ("i6", "itn", KEEP, "My number is five five five, one two three, four five six seven.", "My number is 555-123-4567.", []),
     ("i7", "itn", WA, "I'll be there in like ten minutes.", "I'll be there in 10 minutes", ["I'll be there in like 10 minutes"]),
-    ("i8", "itn", DOCS, "The meeting is on the twenty first of October at two PM.", "The meeting is on October 21st at 2 PM.", ["The meeting is on the 21st of October at 2 PM.", "The meeting is on October 21st at 2:00 PM."]),
+    ("i8", "itn", DOCS, "The meeting is on the twenty first of October at two PM.", "The meeting is on October 21st at 2 pm.", ["The meeting is on October 21st at 2 PM.", "The meeting is on the 21st of October at 2 PM.", "The meeting is on October 21st at 2:00 PM."]),
+    # Degrees and split "A M" (2026-11-01): "21°", lowercase "am" as Wispr writes it.
+    ("i9", "itn", KEEP, "Set the thermostat to twenty one degrees before we get home.", "Set the thermostat to 21° before we get home.", []),
+    ("i10", "itn", WA, "The bakery opens at 7 A M on Saturdays.", "The bakery opens at 7 am on Saturdays", ["The bakery opens at 7 am on Saturdays."]),
     # --- lists -------------------------------------------------------------
     ("l1", "list", KEEP, "For the trip I need to pack, first, my passport, second, chargers, and third, a rain jacket.", "For the trip I need to pack:\n\n1. My passport\n2. Chargers\n3. A rain jacket", []),
     ("l2", "list", DOCS, "Our priorities are one, hiring, two, onboarding, three, retention.", "Our priorities are:\n\n1. Hiring\n2. Onboarding\n3. Retention", []),
@@ -97,7 +103,7 @@ C = [
     # --- formal email ------------------------------------------------------
     ("e1", "email", GMAIL, "Hi Maria, I wanted to follow up on the proposal. Could you send me the final numbers by Friday? Best regards, Tom.", "Hi Maria,\n\nI wanted to follow up on the proposal. Could you send me the final numbers by Friday?\n\nBest regards,\nTom", []),
     ("e2", "email", GMAIL, "Dear Mr. Patel, thank you for your time yesterday. I've attached the contract for your review. Sincerely, Laura Chen.", "Dear Mr. Patel,\n\nThank you for your time yesterday. I've attached the contract for your review.\n\nSincerely,\nLaura Chen", []),
-    ("e3", "email", GMAIL, "Hey John, just a quick note. The meeting moved to three PM. Thanks.", "Hey John,\n\nJust a quick note. The meeting moved to 3 PM.\n\nThanks", ["Hey John,\n\nJust a quick note. The meeting moved to 3 PM.\n\nThanks,", "Hey John,\n\nJust a quick note. The meeting moved to 3 PM.\n\nThanks."]),
+    ("e3", "email", GMAIL, "Hey John, just a quick note. The meeting moved to three PM. Thanks.", "Hey John,\n\nJust a quick note. The meeting moved to 3 pm.\n\nThanks", ["Hey John,\n\nJust a quick note. The meeting moved to 3 pm.\n\nThanks,", "Hey John,\n\nJust a quick note. The meeting moved to 3 pm.\n\nThanks.", "Hey John,\n\nJust a quick note. The meeting moved to 3 PM.\n\nThanks", "Hey John,\n\nJust a quick note. The meeting moved to 3 PM.\n\nThanks,", "Hey John,\n\nJust a quick note. The meeting moved to 3 PM.\n\nThanks."]),
     ("e4", "email", GMAIL, "Please find the report attached. Let me know if you have any questions.", "Please find the report attached. Let me know if you have any questions.", []),
     ("e5", "email", GMAIL, "Hi everyone, um, just a reminder that the office is closed on Monday. Thanks, Priya.", "Hi everyone,\n\nJust a reminder that the office is closed on Monday.\n\nThanks,\nPriya", []),
     # --- filler removal ----------------------------------------------------
@@ -114,6 +120,8 @@ C = [
     ("r4", "runon", DOCS, "Before we start, however we need to agree on the scope.", "Before we start, however, we need to agree on the scope.", []),
     ("r5", "runon", SLACK, "can you take a look at the PR when you get a chance thanks", "Can you take a look at the PR when you get a chance? Thanks", ["Can you take a look at the PR when you get a chance? Thanks!"]),
     ("r6", "runon", WA, "ok cool see you at eight", "Ok cool, see you at 8", ["Okay cool, see you at 8", "Ok cool see you at 8", "OK cool, see you at 8"]),
+    # Comma before "and" + a clause opening with a time phrase (2026-11-01).
+    ("r7", "runon", KEEP, "The bins go out on Tuesday and at six the truck comes past.", "The bins go out on Tuesday, and at 6 the truck comes past.", ["The bins go out on Tuesday, and at six the truck comes past."]),
     # --- fallback-rule regressions (2026-10-26, ticket 6aded21e) -----------
     # Inputs: the owner's Wispr A/B script (../wispr_ab_2026_10_25/pairs.jsonl
     # ab5, ab7, ab8) and the 158 cm height from the AI-cleanup benchmark.
@@ -140,6 +148,10 @@ C = [
     ("x14", "negative", DOCS, "Put the area code in parentheses.", "Put the area code in parentheses.", []),
     ("x15", "negative", DOCS, "The answer is in brackets at the bottom of the page.", "The answer is in brackets at the bottom of the page.", []),
     ("x16", "negative", SLACK, "Can you get me a quote by end of day?", "Can you get me a quote by end of day?", []),
+    # Literal "in parentheses which" and "degrees" (2026-11-01).
+    ("x17", "negative", DOCS, "Write the date in parentheses, which keeps the table tidy.", "Write the date in parentheses, which keeps the table tidy.", []),
+    ("x18", "negative", DOCS, "The arm has six degrees of freedom.", "The arm has six degrees of freedom.", ["The arm has 6 degrees of freedom."]),
+    ("x19", "negative", WA, "My brother has two degrees in history.", "My brother has two degrees in history", ["My brother has two degrees in history.", "My brother has 2 degrees in history"]),
 ]
 
 
