@@ -22,6 +22,8 @@ sealed interface CommandOutcome {
         const val SELECTION_NOT_ALLOWED = "selection_not_allowed"
         const val TIMEOUT = "timeout"
         const val EMPTY = "empty"
+        /** A Hebrew (non-Latin) selection came back in another script, retry included. */
+        const val LANGUAGE_CHANGED = "language_changed"
         const val BACKEND = "backend"
 
         /** Same wording as the core's `CommandError::NoLlm` (engines / libraries without Command Mode). */

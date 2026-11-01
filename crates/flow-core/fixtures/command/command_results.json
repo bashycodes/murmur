@@ -34,6 +34,10 @@
       "json": {"ok": false, "kind": "empty", "error": "AI returned no text"}
     },
     {
+      "input": {"err": "language_changed"},
+      "json": {"ok": false, "kind": "language_changed", "error": "AI changed the text's language: text left unchanged"}
+    },
+    {
       "input": {"err": "backend", "detail": "auth_failed"},
       "json": {"ok": false, "kind": "backend", "error": "AI failed: auth_failed"}
     }
