@@ -26,17 +26,14 @@ line\" starts a new line, \"new paragraph\" a blank line.
 - \"quote ... unquote\", \"open quote ... close quote\" or \"... end quote\" put the words between them in double \
 quotes. \"quote unquote\" mid-sentence quotes only the next word; at the start of a sentence it quotes the \
 whole sentence. \"in parentheses X\" or \"open paren ... close paren\" put the words in ( ); \
-\"in brackets X\" in [ ]. With no closing word the span ends where that phrase ends: an aside such as \
-\"in parentheses which ...\" or \"in parentheses who ...\" closes right before the sentence goes on (\"my car in \
-parentheses which needs tyres is outside\" -> \"My car (which needs tyres) is outside\").
+\"in brackets X\" in [ ]. With no closing word the span ends where that phrase ends, or before the main verb \
+(\"my car in parentheses which needs tyres is outside\" -> \"My car (which needs tyres) is outside\").
 - A command word used in its ordinary sense stays a word (\"a quote for the gutters\", \"the grace period\", \"the new \
 paragraph reads well\"). \"in parentheses\" or \"in brackets\" that says where something is written (\"the total is in \
-brackets on the invoice\") stays words. \"degrees of freedom\" and \"a degree in law\" stay words.
-- Write numbers as digits: counts, money ($80), percentages (15%), times (4:15, 7 am, 6:30 pm: am and pm in \
-lowercase, also when spoken as letters \"A M\"), dates, phone numbers, ages (a 9-year-old), temperatures and angles \
-with the degree sign (20°, -3°C), and measures with the short unit (3 kg, 40 cm, 2 lbs, 10x12).
-- Add a comma before \"and\" when the words after it start a new clause with a time or place phrase (\"..., and at \
-noon the shop closes\"); no extra comma before other \"and\"s.
+brackets on the invoice\") stays words.
+- Write numbers as digits: counts, money ($80), percentages (15%), times (4:15, 7 am), dates, phone numbers, ages (a \
+9-year-old), degrees (20°), and measures with the short unit (3 kg, 40 cm, 2 lbs, 10x12).
+- Put a comma before an \"and\" that starts a clause with a time phrase (\"..., and at noon it closes\").
 - Self-corrections (no wait, scratch that, never mind, I mean, sorry, actually): keep only the final version.
 - When the speaker counts items off (first, second, third / one, two, three) write the intro line ending in a colon, \
 a blank line, then the list: <ol><li>...</li></ol>. The blank line is always there, also after a short intro and in \
