@@ -34,6 +34,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - Android: Settings ▸ Accessibility now lists the service as "Murmur" (it showed "Effortless on-device voice dictation", so it was hard to find). The hybrid and remote builds no longer claim "no internet permission" in the accessibility description.
 - Android: English dictation no longer comes out as Hebrew when the language setting is a fixed Hebrew left over from before 1.0.0. That Hebrew choice kept every dictation on the Hebrew-only speech model even with an English keyboard, and that model writes English speech as a Hebrew translation. It now moves once to "Keyboard language", so a Hebrew keyboard still gets the Hebrew model and an English keyboard gets English. Pick Hebrew again in Settings ▸ Language to keep it fixed.
+- flow-server `install.sh`: an upgrade with `--sherpa-lib` pointing at the install's own lib dir no longer stops halfway with "are the same file" (libs that are already the installed files are kept), and without `--sherpa-lib` an upgrade now uses the installed libs. The binary and libraries are staged first and renamed into place together, the binary last, so a failed copy leaves the previous binary and libraries in place instead of a new binary next to old libs.
 
 ## [1.0.0] - 2026-11-01
 
