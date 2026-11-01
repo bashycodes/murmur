@@ -77,7 +77,7 @@ check "no llm: summary says off" "$o" "llm      off"
 o="$(inst "$R" --dry-run --llm)"
 check "--llm: llm feature" "$o" "--features whisper,parakeet,tls,llm"
 check "--llm: plugin build" "$o" "cargo build --release --offline .* -p flow-llm"
-check "--llm: plugin installed" "$o" "install -m 0644 $T/target/release/libflow_llm.so $T/home/.local/lib/flow-server/libflow_llm.so"
+check "--llm: plugin installed" "$o" "install -m 0644 $T/target/release/libflow_llm.so $T/home/.local/lib/flow-server/libflow_llm.so.new"
 check "--llm: new config has commented llm_path" "$o" "| # llm_path = "
 if command -v gcc >/dev/null 2>&1 && [ -f "$(gcc -print-file-name=include)/stdbool.h" ]; then
     check "--llm: bindgen gets gcc include" "$o" "BINDGEN_EXTRA_CLANG_ARGS=-I$(gcc -print-file-name=include) "
@@ -248,6 +248,46 @@ sed -i "s|^asr_path = \"$P\"|asr_path = \"$T/nowhere\"|" "$CONF"
 o="$(upgrade --dry-run)"
 check "upgrade, config model gone: no in-place note" "$o" "upgrading in place" "!"
 check "upgrade, config model gone: exits 1" "$o" "rc=1"
+sed -i "s|^asr_path = \"$T/nowhere\"|asr_path = \"$P\"|" "$CONF"
+
+# 11. Upgrade with --sherpa-lib naming the install's own lib dir: the libs
+# are the installed files, kept (install(1) refuses "are the same file");
+# the binary is still replaced. Without --sherpa-lib the installed libs are
+# the default.
+L="$T/home/.local/lib/flow-server"
+echo sherpa-v1 >"$L/libsherpa-onnx-c-api.so"
+echo ort-v1 >"$L/libonnxruntime.so"
+echo '#!/usr/bin/env bash' >"$T/home/.local/bin/flow-server"
+o="$(upgrade --no-build --sherpa-lib "$L")"
+check "same lib dir: completes" "$o" "rc=0"
+check "same lib dir: no same-file error" "$o" "are the same file" "!"
+check "same lib dir: libs kept" "$o" "$L/libonnxruntime.so is the source, kept"
+check "same lib dir: lib content kept" "$(cat "$L/libsherpa-onnx-c-api.so")" "^sherpa-v1$"
+check "same lib dir: binary replaced" "$(cmp "$T/target/release/flow-server" "$T/home/.local/bin/flow-server" && echo same)" "same"
+check "same lib dir: nothing staged left" "$(ls "$L" "$T/home/.local/bin")" "\.new" "!"
+o="$(env -u DBUS_SESSION_BUS_ADDRESS -u SHERPA_ONNX_LIB_DIR PATH="$T/bin:$PATH" HOME="$T/home" XDG_CONFIG_HOME="$T/home/.config" \
+    FLOW_INSTALL_RUN_USER="$T/run" XDG_RUNTIME_DIR="$R" FLOW_PARAKEET_DIR= \
+    bash "$HERE/install.sh" --user --bind 127.0.0.1:7313 --no-build 2>&1; echo "rc=$?")"
+check "no --sherpa-lib: installed libs used" "$o" "note: upgrading in place; sherpa libs from $L"
+check "no --sherpa-lib: completes" "$o" "rc=0"
+
+# 12. A copy that fails mid-install (an unreadable second lib) leaves the
+# previous binary and libs in place, with no staged leftovers.
+if [ "$(id -u)" != 0 ]; then
+    mkdir -p "$T/badlib"
+    echo sherpa-v2 >"$T/badlib/libsherpa-onnx-c-api.so"
+    echo ort-v2 >"$T/badlib/libonnxruntime.so"
+    chmod 000 "$T/badlib/libonnxruntime.so"
+    cp "$T/home/.local/bin/flow-server" "$T/bin.before"
+    printf '#!/usr/bin/env bash\n# v2\n' >"$T/target/release/flow-server"
+    o="$(upgrade --no-build --sherpa-lib "$T/badlib")"
+    check "failed copy: exits 1" "$o" "rc=1"
+    check "failed copy: says unchanged" "$o" "installed binary and libraries are unchanged"
+    check "failed copy: old binary kept" "$(cmp "$T/bin.before" "$T/home/.local/bin/flow-server" && echo same)" "same"
+    check "failed copy: old libs kept" "$(cat "$L/libsherpa-onnx-c-api.so")" "^sherpa-v1$"
+    check "failed copy: nothing staged left" "$(ls "$L" "$T/home/.local/bin")" "\.new" "!"
+    chmod 644 "$T/badlib/libonnxruntime.so"
+fi
 
 if [ "$fails" != 0 ]; then echo "$fails failed"; exit 1; fi
 echo "all passed"

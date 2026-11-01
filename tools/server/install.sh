@@ -22,7 +22,8 @@
 #                       model (upgrade in place), else
 #                       models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8)
 #   --sherpa-lib DIR    dir with libsherpa-onnx-c-api.so + libonnxruntime.so
-#                       (default $SHERPA_ONNX_LIB_DIR)
+#                       (default $SHERPA_ONNX_LIB_DIR, else the install's
+#                       lib dir when it holds both (upgrade in place))
 #   --bind ADDR         listen address, repeatable (default 127.0.0.1:7313 plus
 #                       this machine's first VPN IPv4 in 100.64.0.0/10 on the
 #                       same port, if any)
@@ -69,7 +70,7 @@ DRY=0
 YES=0
 
 die() { echo "install.sh: $*" >&2; exit 1; }
-usage() { sed -n '2,52p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,53p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -146,6 +147,11 @@ MODEL="${MODEL:-$ROOT/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8}"
 MODEL_NAME="$(basename "$MODEL")"
 MODEL_DST="$MODEL_ROOT/$MODEL_NAME"
 [ -f "$MODEL/tokens.txt" ] || die "no Parakeet model in $MODEL (tools/fetch-models.sh --parakeet, or --model DIR)"
+# Upgrade in place: without --sherpa-lib, keep serving the installed libs.
+if [ -z "$SHERPA_LIB" ] && [ -e "$LIB_DIR/libsherpa-onnx-c-api.so" ] && [ -e "$LIB_DIR/libonnxruntime.so" ]; then
+    echo "note: upgrading in place; sherpa libs from $LIB_DIR" >&2
+    SHERPA_LIB="$LIB_DIR"
+fi
 [ -n "$SHERPA_LIB" ] || die "set SHERPA_ONNX_LIB_DIR or pass --sherpa-lib DIR (the sherpa-onnx shared libraries)"
 for l in libsherpa-onnx-c-api.so libonnxruntime.so; do
     [ -e "$SHERPA_LIB/$l" ] || die "$SHERPA_LIB/$l not found"
@@ -296,11 +302,33 @@ BUILT_PLUGIN="$TARGET_DIR/release/libflow_llm.so"
 # ---- 2. files ------------------------------------------------------------------
 step "2. install binary, libraries and model"
 priv mkdir -p "$BIN_DIR" "$LIB_DIR" "$MODEL_ROOT" "$CONF_DIR"
-priv install -m 0755 "$BUILT" "$BIN"
+# Binary and libs go in as one set: each file is staged next to its target
+# as <name>.new, and only once all are staged are they renamed over the old
+# ones, libs first and the binary last. A failed copy leaves the previous set
+# untouched (a restart would otherwise load a new binary against old libs).
+# A source that is the installed file itself (--sherpa-lib naming the
+# install's lib dir) is kept: `install` refuses to copy a file onto itself.
+STAGED=()
+stage() { # SRC DST MODE
+    if [ "$1" -ef "$2" ]; then
+        echo "    $2 is the source, kept"
+        return 0
+    fi
+    if ! priv install -m "$3" "$1" "$2.new"; then
+        [ ${#STAGED[@]} -eq 0 ] || priv rm -f "${STAGED[@]/%/.new}"
+        priv rm -f "$2.new"
+        die "copying $1 failed; the installed binary and libraries are unchanged"
+    fi
+    STAGED+=("$2")
+}
 for l in libsherpa-onnx-c-api.so libonnxruntime.so; do
-    priv install -m 0644 "$(readlink -f "$SHERPA_LIB/$l")" "$LIB_DIR/$l"
+    stage "$(readlink -f "$SHERPA_LIB/$l")" "$LIB_DIR/$l" 0644
 done
-[ "$LLM" = 1 ] && priv install -m 0644 "$BUILT_PLUGIN" "$PLUGIN"
+if [ "$LLM" = 1 ]; then stage "$BUILT_PLUGIN" "$PLUGIN" 0644; fi
+stage "$BUILT" "$BIN" 0755
+for f in ${STAGED[@]+"${STAGED[@]}"}; do
+    priv mv -f "$f.new" "$f"
+done
 # --model may name the installed copy itself (re-install in place).
 if [ "$(readlink -f "$MODEL")" = "$(readlink -f "$MODEL_DST" 2>/dev/null || true)" ]; then
     echo "    $MODEL_DST is the source model, kept"
