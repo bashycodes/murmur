@@ -118,19 +118,6 @@ data class Settings(
             return if (!keyboardMigrated && v == LANGUAGE_UNSET) LANGUAGE_KEYBOARD else v
         }
 
-        /**
-         * 2026-11-01, once ([hebrewMigrated] false): an explicit Hebrew ("he") becomes
-         * [LANGUAGE_KEYBOARD]. Before D37 a fixed Hebrew was the only way to reach the Hebrew
-         * model, and D37 kept it, so every dictation stayed on the Hebrew-only model even with an
-         * English keyboard; that model (ivrit.ai zipformer) writes English speech as a Hebrew
-         * translation. With the keyboard language a Hebrew keyboard still picks the Hebrew model.
-         * Hebrew picked after this ran is kept (the flag is set on every save).
-         */
-        fun migrateHebrewToKeyboard(stored: String, hebrewMigrated: Boolean): String =
-            if (!hebrewMigrated && stored == HEBREW_FIXED) LANGUAGE_KEYBOARD else stored
-
-        private const val HEBREW_FIXED = "he"
-
         /** "Bubble size" slider: 75 %..150 % in 5 % steps, 100 % = the spec sizes. */
         val BUBBLE_SIZE_PERCENT = 75..150
         const val BUBBLE_SIZE_STEP_PERCENT = 5
