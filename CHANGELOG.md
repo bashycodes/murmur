@@ -34,6 +34,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - Android: Settings ▸ Accessibility now lists the service as "Murmur" (it showed "Effortless on-device voice dictation", so it was hard to find). The hybrid and remote builds no longer claim "no internet permission" in the accessibility description.
 - flow-server `install.sh`: an upgrade with `--sherpa-lib` pointing at the install's own lib dir no longer stops halfway with "are the same file" (libs that are already the installed files are kept), and without `--sherpa-lib` an upgrade now uses the installed libs. The binary and libraries are staged first and renamed into place together, the binary last, so a failed copy leaves the previous binary and libraries in place instead of a new binary next to old libs.
+- Quiet speech (around -60 to -50 dBFS, e.g. a soft voice or a low-gain mic) is no longer dropped as "no speech" or returned blank, on every platform (shared `flow-core`). The speech detector now measures speech against the recording's own noise floor when that floor is very low, and quiet speech it accepts is raised in level before the speech model, whose own silence check used to blank it. Silence and noise alone are still skipped. On the 49 Hebrew FLEURS bench clips, the 15 that came back empty on the phone now reach the model (21 % WER on them in a host-side check).
 
 ## [1.0.0] - 2026-11-01
 

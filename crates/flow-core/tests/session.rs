@@ -1242,3 +1242,79 @@ fn fallback_rules_fix_the_four_ab_shapes_without_ai() {
         "He is about 158 cm tall."
     );
 }
+
+/// Like the sherpa and whisper engines: "" below a whole-clip RMS of 0.003.
+struct GatedAsr(std::sync::Mutex<Option<f32>>);
+impl AsrEngine for GatedAsr {
+    fn transcribe(&self, pcm: &[f32], _req: &AsrRequest) -> Result<AsrOutput, AsrError> {
+        let rms = (pcm.iter().map(|s| s * s).sum::<f32>() / pcm.len().max(1) as f32).sqrt();
+        *self.0.lock().unwrap() = Some(rms);
+        Ok(AsrOutput {
+            text: if rms < 0.003 {
+                String::new()
+            } else {
+                "shalom".into()
+            },
+            language: Some("he".into()),
+            no_speech_prob: None,
+        })
+    }
+}
+
+/// Commit `pcm` with VAD on; also the RMS the ASR got (None: not called).
+fn gated_commit(pcm: &[i16]) -> (flow_core::CommitResult, Option<f32>) {
+    let asr = Arc::new(GatedAsr(Default::default()));
+    let core = FlowCore::from_engines(asr.clone(), None);
+    core.start_session(SessionConfig::default()).unwrap();
+    push_all(&core, pcm);
+    let r = core.commit();
+    let rms = *asr.0.lock().unwrap();
+    (r, rms)
+}
+
+/// Quiet speech-like audio: 150 Hz voiced bursts at ±`amp` (PCM16),
+/// 400 ms on / 200 ms off after 500 ms of lead-in, over hiss at ±`floor`.
+fn quiet_words(words: usize, amp: f32, floor: i16) -> Vec<i16> {
+    let hiss = noise(600 * words + 1000, floor, 11);
+    hiss.iter()
+        .enumerate()
+        .map(|(i, &h)| {
+            let t = i as f32 / 16000.0;
+            let in_word = i >= 8000 && i < 8000 + words * 9600 && (i - 8000) % 9600 < 6400;
+            let v = if in_word {
+                amp * (0.7 * (std::f32::consts::TAU * 150.0 * t).sin()
+                    + 0.3 * (std::f32::consts::TAU * 450.0 * t).sin())
+            } else {
+                0.0
+            };
+            h.saturating_add(v as i16)
+        })
+        .collect()
+}
+
+#[test]
+fn quiet_speech_reaches_the_asr_at_a_usable_level() {
+    // FLEURS he (2026-10-31 phone bench): speech at ≈ -60 dBFS was dropped
+    // as `no_speech`, and at ≈ -50 dBFS blanked by the engine's RMS gate.
+    for amp in [45.0, 150.0] {
+        let (r, rms) = gated_commit(&quiet_words(6, amp, 2));
+        assert_eq!(r.status, CommitStatus::RawTranscript, "amp {amp}: {r:?}");
+        assert_eq!(r.asr_text, "shalom");
+        assert!(rms.unwrap() >= 0.003, "amp {amp}: {rms:?}");
+    }
+}
+
+#[test]
+fn silence_and_quiet_noise_are_still_no_speech() {
+    for pcm in [
+        vec![0i16; 32000],
+        noise(2000, 2, 12),
+        noise(2000, 30, 13),
+        noise(2000, 150, 14),
+    ] {
+        let (r, rms) = gated_commit(&pcm);
+        assert_eq!(r.status, CommitStatus::Empty, "{r:?}");
+        assert_eq!(r.empty_reason.as_deref(), Some("no_speech"));
+        assert_eq!(rms, None, "the ASR was not called");
+    }
+}
