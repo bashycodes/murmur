@@ -1168,8 +1168,14 @@ fn decode_piece(
             }
         }
     }
+    // Quiet speech the VAD passed: raise it above the engines' own gate.
+    let level = if use_vad {
+        vad::asr_level(pcm)
+    } else {
+        pcm.into()
+    };
     let t = Instant::now();
-    let out = asr.transcribe(pcm, req)?;
+    let out = asr.transcribe(&level, req)?;
     Ok(SegOut {
         range,
         key,
@@ -1226,7 +1232,8 @@ fn identify_language(routes: &AsrRoutes, s: &mut Session, at_commit: bool) -> bo
     };
     s.lid_pending = false;
     let t = Instant::now();
-    let scores = id.scores(&s.buf[range], &routes.lid_candidates(&s.cfg));
+    let pcm = vad::asr_level(&s.buf[range]);
+    let scores = id.scores(&pcm, &routes.lid_candidates(&s.cfg));
     s.lid_ms = (t.elapsed().as_millis() as u64).max(1);
     // An identifier error leaves the dictation on the default engine.
     let Some((key, engine)) = scores
@@ -1534,13 +1541,18 @@ impl Worker {
             };
             window = &window[sp.start..sp.end];
         }
+        let window = if s.cfg.vad {
+            vad::asr_level(window)
+        } else {
+            window.into()
+        };
         let ctx = self.shared.context.lock().unwrap().clone();
         let mut req = Self::asr_request(&s.cfg, &ctx, AsrPurpose::Partial);
         req.abort = AbortFlag(Some(self.shared.stop_partial.clone()));
         if s.seg.is_some() {
             req.prior_text = prior_for(&s.done, s.cfg.hallucination_guard);
         }
-        if let Ok(out) = s.asr.transcribe(window, &req) {
+        if let Ok(out) = s.asr.transcribe(&window, &req) {
             let t = out.text.trim();
             if !t.is_empty() {
                 let t = if start > open {
@@ -1590,7 +1602,13 @@ impl Worker {
         let mut req = Self::asr_request(&s.cfg, ctx, AsrPurpose::Final);
         req.abort = AbortFlag(Some(abort.clone()));
         let t = Instant::now();
-        let out = match s.asr.transcribe(pcm, &req) {
+        // Quiet speech the VAD passed: raise it above the engines' own gate.
+        let level = if s.cfg.vad {
+            vad::asr_level(pcm)
+        } else {
+            pcm.into()
+        };
+        let out = match s.asr.transcribe(&level, &req) {
             Ok(o) => o,
             Err(e) => {
                 let mut e = CommitResult::error(e.to_string());

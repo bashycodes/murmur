@@ -56,3 +56,7 @@ required-features = ["whisper", "wav"]
 [[test]]
 name = "sherpa_online_e2e"
 required-features = ["parakeet", "wav"]
+
+[[example]]
+name = "vad_gate"
+required-features = ["wav"]
