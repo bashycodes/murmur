@@ -23,9 +23,11 @@
 //! …"): the span runs to the next pause comma or sentence end, at most
 //! [`MAX_OPEN_SPAN`] tokens. Without the pause commas the words stay as
 //! spoken ("put the area code in parentheses", "the formula is in
-//! parentheses on the board"), with one narrow exception for the
-//! aside-before-a-preposition shape the user dictates ("the charger in
-//! parentheses the USB-C one to the meeting"): see [`bare_aside`].
+//! parentheses on the board"), with two narrow exceptions: an aside
+//! before a preposition ("the charger in parentheses the USB-C one to the
+//! meeting") and a "which/who …" clause aside before the main clause's
+//! verb ("my heater in parentheses which is the only one will be set …"):
+//! see [`bare_aside`].
 //!
 //! **Punctuation (US style).** A period or comma after a closing quote
 //! goes inside it; `?`/`!` stay outside unless the quotation had them.
@@ -393,13 +395,89 @@ fn emit(out: &mut Vec<Tok>, mut content: Vec<Tok>, w: Wrap, next: Option<&str>) 
     out.extend(content);
 }
 
-/// "the charger in parentheses the USB-C one to the meeting": an aside
-/// with no pause commas. Fires only when the word before is a plain noun
-/// (no punctuation, not a verb or copula, see [`ASIDE_BLOCK_BEFORE`]), the
-/// aside starts with a determiner and is 2-6 words, and a preposition
-/// right after it continues the sentence. Returns the index of the aside's
+/// Relative words that open a clause aside in [`bare_aside`] ("my heater
+/// in parentheses which is the only one …").
+const RELATIVES: &[&str] = &["which", "who", "whose", "where", "whom"];
+/// The start of the main clause's verb group: a clause aside ends before
+/// it ("… (which is the only heater in the house) will be set …").
+const VERB_GROUP: &[&str] = &[
+    "will",
+    "would",
+    "is",
+    "are",
+    "was",
+    "were",
+    "has",
+    "have",
+    "had",
+    "can",
+    "could",
+    "should",
+    "must",
+    "may",
+    "might",
+    "does",
+    "did",
+    "do",
+    "shall",
+    "won't",
+    "wouldn't",
+    "isn't",
+    "aren't",
+    "wasn't",
+    "weren't",
+    "hasn't",
+    "haven't",
+    "hadn't",
+    "can't",
+    "couldn't",
+    "shouldn't",
+    "doesn't",
+    "didn't",
+    "don't",
+    "needs",
+    "gets",
+    "goes",
+    "keeps",
+    "stays",
+];
+/// Subjects inside the aside: a verb after one of them is still the
+/// aside's own ("which is what it is").
+const SUBJECTS: &[&str] = &[
+    "i", "you", "he", "she", "it", "we", "they", "there", "that", "this", "which", "who",
+];
+/// Verbs that say where something is written; with one earlier in the
+/// sentence a following "in parentheses which …" is literal ("write the
+/// total in parentheses which is how the form wants it").
+const WRITE_VERBS: &[&str] = &[
+    "put", "write", "wrap", "enclose", "type", "place", "mark", "list", "add", "show", "keep",
+];
+
+/// "the charger in parentheses the USB-C one to the meeting", "my heater
+/// in parentheses which is the only one will be set to 20": an aside with
+/// no pause commas. Fires only when the word before is a plain noun (no
+/// punctuation, not a verb or copula, see [`ASIDE_BLOCK_BEFORE`]) and the
+/// sentence goes on after the aside:
+/// * an aside starting with a determiner is 2-6 words and ends before a
+///   preposition or the main clause's verb group ([`VERB_GROUP`]);
+/// * an aside starting with a relative word ("which", "who", …) is 2-12
+///   words and ends before the main clause's verb group (not its own first
+///   word, nor a verb right after a subject); never after a writing verb
+///   ([`WRITE_VERBS`]) in the same sentence.
+///
+/// `comma_opened`: Parakeet wrote a pause comma after "in parentheses"
+/// but none before it; the aside must then end in a pause comma too, right
+/// before the continuation ("my heater in parentheses, which is the only
+/// one, will …"). Without that flag a pause comma may still close the
+/// aside right before the continuation. Returns the index of the aside's
 /// last token.
-fn bare_aside(toks: &[Tok], c: &[String], out: &[Tok], from: usize) -> Option<usize> {
+fn bare_aside(
+    toks: &[Tok],
+    c: &[String],
+    out: &[Tok],
+    from: usize,
+    comma_opened: bool,
+) -> Option<usize> {
     let prev = out
         .last()
         .filter(|p| !p.is_break() && p.suffix().is_empty())?;
@@ -407,17 +485,48 @@ fn bare_aside(toks: &[Tok], c: &[String], out: &[Tok], from: usize) -> Option<us
     if pc.is_empty() || ASIDE_BLOCK_BEFORE.contains(&pc.as_str()) || number_word(&pc).is_some() {
         return None;
     }
-    if !DETERMINERS.contains(&c.get(from)?.as_str()) {
+    let first = c.get(from)?.as_str();
+    let relative = RELATIVES.contains(&first);
+    if !relative && !DETERMINERS.contains(&first) {
         return None;
     }
-    // The aside: unpunctuated words up to a preposition.
-    for k in from + 1..toks.len().min(from + 7) {
-        if toks[k].is_break() || !toks[k - 1].suffix().is_empty() {
+    if relative
+        && out
+            .iter()
+            .rev()
+            .take_while(|t| !t.ends_sentence())
+            .any(|t| WRITE_VERBS.contains(&t.core().as_str()))
+    {
+        return None;
+    }
+    let max = if relative { 13 } else { 7 };
+    // "whose" is followed by its noun, then its own verb ("whose screen is
+    // cracked was …"): the first verb-group word is the aside's.
+    let mut own_verb_pending = first == "whose";
+    for k in from + 1..toks.len().min(from + max) {
+        if toks[k].is_break() {
             return None;
         }
-        if PREPOSITIONS.contains(&c[k].as_str()) {
-            // A word must follow the preposition (no "to." at the end).
-            return (k >= from + 2 && k + 1 < toks.len()).then_some(k - 1);
+        let w = c[k].as_str();
+        let ends = if relative {
+            let verb =
+                k >= from + 2 && VERB_GROUP.contains(&w) && !SUBJECTS.contains(&c[k - 1].as_str());
+            if verb && own_verb_pending {
+                own_verb_pending = false;
+                false
+            } else {
+                verb
+            }
+        } else {
+            k >= from + 2 && (PREPOSITIONS.contains(&w) || VERB_GROUP.contains(&w))
+        };
+        let tail = toks[k - 1].suffix();
+        if ends && (tail.is_empty() || tail == ",") && (!comma_opened || tail == ",") {
+            // A word must follow the continuation (no "to." at the end).
+            return (k + 1 < toks.len()).then_some(k - 1);
+        }
+        if !tail.is_empty() {
+            return None;
         }
     }
     None
@@ -547,8 +656,8 @@ fn try_command(toks: &[Tok], c: &[String], i: usize, out: &mut Vec<Tok>) -> Opti
     let wrapped = pause_before(out) && toks[from - 1].suffix() == ",";
     let end = if wrapped {
         pause_end(toks, from, MAX_OPEN_SPAN)?
-    } else if mark != Mark::Quote && toks[from - 1].suffix().is_empty() && c[i] == "in" {
-        bare_aside(toks, c, out, from)?
+    } else if mark != Mark::Quote && c[i] == "in" && matches!(toks[from - 1].suffix(), "" | ",") {
+        bare_aside(toks, c, out, from, toks[from - 1].suffix() == ",")?
     } else {
         return None;
     };
@@ -802,6 +911,61 @@ mod tests {
     }
 
     #[test]
+    fn clause_aside_without_pauses_closes_before_the_main_verb() {
+        assert_eq!(
+            t("each night my heater in parentheses which is the only heater in the house will be set to 20 degrees"),
+            "Each night my heater (which is the only heater in the house) will be set to 20\u{b0}"
+        );
+        assert_eq!(
+            t("my neighbour in parentheses who works nights is moving out next week"),
+            "My neighbour (who works nights) is moving out next week"
+        );
+        assert_eq!(
+            t("The old tablet in parentheses whose screen is cracked was sold on Friday."),
+            "The old tablet (whose screen is cracked) was sold on Friday."
+        );
+        assert_eq!(
+            t("The old printer in parentheses which I bought last year was fixed today."),
+            "The old printer (which I bought last year) was fixed today."
+        );
+        // A determiner aside may end before the verb group too.
+        assert_eq!(
+            t("The spare key in parentheses the brass one is under the mat."),
+            "The spare key (the brass one) is under the mat."
+        );
+    }
+
+    #[test]
+    fn clause_aside_with_parakeet_commas_after_the_command() {
+        assert_eq!(
+            t("My heater in parentheses, which is the only heater in the house, will be set to 20 degrees."),
+            "My heater (which is the only heater in the house) will be set to 20\u{b0}."
+        );
+        assert_eq!(
+            t("The van in parentheses which is parked outside, needs new tyres."),
+            "The van (which is parked outside) needs new tyres."
+        );
+    }
+
+    #[test]
+    fn clause_aside_literal_uses_stay_words() {
+        for s in [
+            // No main clause after the aside.
+            "Write the total in parentheses which is how the form wants it.",
+            "The label in parentheses which says draft.",
+            // A writing verb earlier in the sentence.
+            "Put the year in parentheses which is the usual style and it will look right.",
+            // The verb after a subject is the aside's own.
+            "The code in parentheses which is what it is.",
+            // Comma after the command but the aside runs on.
+            "Keep the name in parentheses, which is fine by me.",
+            "We are in parentheses which is odd.",
+        ] {
+            assert_eq!(t(s), s, "{s}");
+        }
+    }
+
+    #[test]
     fn literal_parentheses_and_brackets_stay_words() {
         for s in [
             "The formula is in parentheses on the board.",
@@ -856,6 +1020,7 @@ mod tests {
             "I'll bring the charger in parentheses the USB-C one to the meeting.",
             "The deadline dash which nobody likes dash is Friday.",
             "Quote unquote, the plan works great.",
+            "my heater in parentheses which is the only heater in the house will be set to 20 degrees",
         ] {
             let once = t(s);
             assert_eq!(t(&once), once, "{s}");

@@ -25,6 +25,7 @@ rejected.
 | `run_big.sh` | Qwen2.5-7B / Llama-3.1-8B rows; only after the home flow-server is stopped (not run in phase 1) |
 | `fetch_llama8b.sh` | Llama-3.1-8B-Instruct Q4_K_M download with sha256 check |
 | `results/quote_*` | 2026-10-31 "quote unquote" smart-scope check (9 cases, `quote_cases.jsonl`): Qwen2.5-1.5B, prompt v4c before (`quote_prompt_v4c_before.json`, the pre-change dump) vs after, plus the rules. Raw answer right 3/9 → 7/9; final text after guard + fallback 7/9 → 9/9 |
+| `results/units_*` | 2026-11-01 clause aside / degrees / "A M" check: 12 synthetic cases (`units_cases.jsonl`), Qwen2.5-1.5B, flow-core before (integration `dbcffad`) vs after (`feat/format-units`), prompts v4c and v2, plus the rules. Final text right: rules 0/12 → 6/12, v4c 3/12 → 10/12, v2 4/12 → 10/12. `units_suite_*`: the 105 suite cases (88-suite + 3 quote + 14 Wispr) before vs after, v4c strict, scored with `FMT_CASES` = the suite without the new cases: 75 % → 77 %, target-closeness 0.813 → 0.812; `_after_a` is the first (longer) prompt wording, 74 %. The first 3-5 calls after model load timed out on the shared box in every run (8 s limit) |
 | `results/` | Raw rows (`*.jsonl`) and `/usr/bin/time -v` output (`*.time`, peak RSS). `v4_q15` was judged by an earlier loose guard (a reverted 2-word-run rule and a "USB-C" name bug); score `*_rejudged`, which re-judges the same LLM answers with the final guards (for the other runs it is identical) |
 
 ## Reproduce

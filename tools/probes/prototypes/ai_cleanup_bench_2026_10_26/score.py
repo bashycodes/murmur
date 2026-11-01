@@ -30,7 +30,9 @@ import sys
 from collections import defaultdict
 
 here = os.path.dirname(os.path.abspath(__file__))
-FMT = os.path.join(here, "..", "formatting_eval_2026_10_24", "cases.jsonl")
+# FMT_CASES: score against another formatting-eval file (e.g. the suite as
+# it was before cases were added, to compare old and new runs on equal terms).
+FMT = os.environ.get("FMT_CASES") or os.path.join(here, "..", "formatting_eval_2026_10_24", "cases.jsonl")
 WISPR = os.path.join(here, "wispr_cases.jsonl")
 
 

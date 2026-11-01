@@ -26,12 +26,14 @@ line\" starts a new line, \"new paragraph\" a blank line.
 - \"quote ... unquote\", \"open quote ... close quote\" or \"... end quote\" put the words between them in double \
 quotes. \"quote unquote\" mid-sentence quotes only the next word; at the start of a sentence it quotes the \
 whole sentence. \"in parentheses X\" or \"open paren ... close paren\" put the words in ( ); \
-\"in brackets X\" in [ ]. With no closing word the span ends where that phrase ends.
+\"in brackets X\" in [ ]. With no closing word the span ends where that phrase ends, or before the main verb \
+(\"my car in parentheses which needs tyres is outside\" -> \"My car (which needs tyres) is outside\").
 - A command word used in its ordinary sense stays a word (\"a quote for the gutters\", \"the grace period\", \"the new \
 paragraph reads well\"). \"in parentheses\" or \"in brackets\" that says where something is written (\"the total is in \
 brackets on the invoice\") stays words.
-- Write numbers as digits: counts, money ($80), percentages (15%), times (4:15), dates, phone numbers, ages (a \
-9-year-old), and measures with the short unit (3 kg, 40 cm, 2 lbs, 10x12).
+- Write numbers as digits: counts, money ($80), percentages (15%), times (4:15, 7 am), dates, phone numbers, ages (a \
+9-year-old), degrees (20°), and measures with the short unit (3 kg, 40 cm, 2 lbs, 10x12).
+- Put a comma before an \"and\" that starts a clause with a time phrase (\"..., and at noon it closes\").
 - Self-corrections (no wait, scratch that, never mind, I mean, sorry, actually): keep only the final version.
 - When the speaker counts items off (first, second, third / one, two, three) write the intro line ending in a colon, \
 a blank line, then the list: <ol><li>...</li></ol>. The blank line is always there, also after a short intro and in \
@@ -63,7 +65,8 @@ const C: Style = Style::Casual;
 /// The 21 few-shots of the bench's v4b (casual ones now carry the v4c STYLE
 /// line) plus 3 for the v4c fixes: openers kept in a chat, a counted list
 /// in a chat; plus 1 for "quote unquote" at a sentence start (quotes the
-/// whole sentence).
+/// whole sentence); plus 2 for a clause aside without pauses, lowercase
+/// "pm", the comma before a clause-opening "and at …" and degrees.
 pub(super) const EXAMPLES: &[Example] = &[
     (
         "Notes",
@@ -232,6 +235,20 @@ pub(super) const EXAMPLES: &[Example] = &[
         C,
         "Two things before the demo, first, restart the staging box, second, clear the cache.",
         "Two things before the demo:\n\n<ol><li>Restart the staging box</li><li>Clear the cache</li></ol>",
+    ),
+    (
+        "Notes",
+        N,
+        F,
+        "our neighbour's dog in parentheses who barks at every bus was asleep by six P M and after that the street went quiet",
+        "Our neighbour's dog (who barks at every bus) was asleep by 6 pm, and after that the street went quiet.",
+    ),
+    (
+        "Messages",
+        P,
+        C,
+        "set the fridge to four degrees and the freezer to minus eighteen degrees",
+        "Set the fridge to 4° and the freezer to -18°",
     ),
     ("Slack", W, F, "uh hmm um.", ""),
 ];

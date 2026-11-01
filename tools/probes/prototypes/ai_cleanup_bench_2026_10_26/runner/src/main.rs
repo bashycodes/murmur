@@ -134,7 +134,9 @@ fn judge(
 ) -> serde_json::Value {
     let fallback_text = rules(&c.input, c.app_category);
     let post = |s: &str| postprocess::apply(s, &c.input, session, ctx).text;
-    let out = llm_raw.as_deref().map(|s| lists_to_plain(&unwrap_output_for(s, &c.input)));
+    let out = llm_raw
+        .as_deref()
+        .map(|s| postprocess::spoken::unit_style(&lists_to_plain(&unwrap_output_for(s, &c.input))));
     // An empty answer is valid only for an all-filler input; the fallback
     // rules decide that.
     let (vs, vl) = match &out {
