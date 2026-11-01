@@ -6,7 +6,7 @@
      flagReportViewIds feeds the dictation-start node identity hash. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/a11y_description"
-    android:summary="@string/a11y_label"
+    android:summary="@string/a11y_summary"
     android:accessibilityEventTypes="typeWindowsChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:notificationTimeout="10"
