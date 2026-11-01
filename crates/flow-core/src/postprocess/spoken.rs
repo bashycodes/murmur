@@ -1379,6 +1379,56 @@ pub fn spoken_cleanup(text: &str) -> String {
     render(&toks)
 }
 
+/// Degrees and am/pm in the house style on an AI cleanup answer, which
+/// does not always follow the prompt (Qwen 1.5B kept "4 PM" and "90
+/// degrees"): "90 degrees" → "90°" (same literal-use rules as the
+/// fallback rules), "4 PM" / "4PM" / "4:30 P.M." → "4 pm" / "4:30 pm".
+/// Nothing else changes; text without either comes back as it was.
+pub fn unit_style(text: &str) -> String {
+    let lower = text.to_lowercase();
+    if !lower.contains("degree") && !lower.contains('m') {
+        return text.to_string();
+    }
+    let toks = tokenize(text);
+    let c = cores(&toks);
+    let mut out: Vec<Tok> = Vec::with_capacity(toks.len());
+    let mut changed = false;
+    let mut i = 0;
+    while i < toks.len() {
+        if !toks[i].is_break() {
+            let hit = degrees(&c, &toks, i).or_else(|| {
+                // Only a digit time: a spelled "four pm" is the rules' job.
+                toks[i]
+                    .text
+                    .starts_with(|ch: char| ch.is_ascii_digit())
+                    .then(|| clock(&c, &toks, i))
+                    .flatten()
+            });
+            if let Some((t, used)) = hit {
+                let joined = toks[i..i + used]
+                    .iter()
+                    .map(|t| t.text.as_str())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let mut t = Tok::new(&format!("{}{t}", lead_marks(&toks[i].text)));
+                if t.text != joined {
+                    changed = true;
+                    t.cap = toks[i].cap;
+                    out.push(t);
+                    i += used;
+                    continue;
+                }
+            }
+        }
+        out.push(toks[i].clone());
+        i += 1;
+    }
+    if !changed {
+        return text.to_string();
+    }
+    render_with(&out, false)
+}
+
 // ---- layout: numbered lists and email structure -------------------------------
 //
 // The
@@ -2158,6 +2208,38 @@ mod tests {
             "Both degrees took four years.",
         ] {
             assert_eq!(t(s), s, "{s}");
+        }
+    }
+
+    #[test]
+    fn unit_style_fixes_an_ai_answer_and_nothing_else() {
+        use super::unit_style as u;
+        assert_eq!(
+            u("Turn the camera 90 degrees to the left."),
+            "Turn the camera 90\u{b0} to the left."
+        );
+        assert_eq!(
+            u("Can you pick me up at 4 PM?"),
+            "Can you pick me up at 4 pm?"
+        );
+        assert_eq!(
+            u("The pool opens at 6:30 AM on weekdays."),
+            "The pool opens at 6:30 am on weekdays."
+        );
+        assert_eq!(u("Lunch at 1PM, then home"), "Lunch at 1 pm, then home");
+        assert_eq!(
+            u("It dropped to minus 3 degrees Celsius."),
+            "It dropped to -3\u{b0}C."
+        );
+        for s in [
+            "The robot arm has 6 degrees of freedom.",
+            "My cousin has two degrees in chemistry.",
+            "Hi Dana,\n\nSee you at 4 pm.\n\nBest,\nSam",
+            "Four PM works.",
+            "I am here at 4 o'clock.",
+            "Team  standup\n\n1. Notes",
+        ] {
+            assert_eq!(u(s), s, "{s}");
         }
     }
 

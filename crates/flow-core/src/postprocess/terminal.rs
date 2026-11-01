@@ -11,8 +11,8 @@
 /// form values ("John Smith", "pizza near me").
 pub const MIN_WORDS: usize = 4;
 
-/// `text` with a closing period: appended when it ends in a letter or a
-/// digit, or replacing a trailing `,` / `;` (whisper's "Thank you, sir,"),
+/// `text` with a closing period: appended when it ends in a letter, a
+/// digit, "°" or "%", or replacing a trailing `,` / `;` (whisper's "Thank you, sir,"),
 /// when it has at least [`MIN_WORDS`] words. Multi-line text (lists,
 /// email layout) and text with paste markers is left alone.
 pub fn close_sentence(text: &str) -> String {
@@ -23,7 +23,8 @@ pub fn close_sentence(text: &str) -> String {
     let Some(last) = t.chars().next_back() else {
         return text.to_string();
     };
-    if last.is_alphanumeric() {
+    // "set to 20°", "up 15%": a unit sign ends a word too.
+    if last.is_alphanumeric() || matches!(last, '\u{b0}' | '%') {
         format!("{t}.")
     } else if last == ',' || last == ';' {
         format!("{}.", &t[..t.len() - 1])
@@ -35,6 +36,18 @@ pub fn close_sentence(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_unit_sign_at_the_end_still_closes() {
+        assert_eq!(
+            close_sentence("set the heater to 20°"),
+            "set the heater to 20°."
+        );
+        assert_eq!(
+            close_sentence("sales went up by 15%"),
+            "sales went up by 15%."
+        );
+    }
 
     #[test]
     fn closes_an_open_dictation() {

@@ -1502,6 +1502,12 @@ fn run_metered(
             );
         }
     };
+    // Degrees and am/pm as the rules write them, whatever the model did.
+    let out = if crate::config::english_rules(language) {
+        crate::postprocess::spoken::unit_style(&out)
+    } else {
+        out
+    };
     let strictness = if ai {
         crate::guard::Strictness::Loose
     } else {
