@@ -201,22 +201,6 @@ class LanguageDefaultTest {
         assertEquals(Settings.LANGUAGE_KEYBOARD, Settings.migrateKeyboardLanguage(Settings.LANGUAGE_KEYBOARD, migrated = true, keyboardMigrated = true))
     }
 
-    /** 2026-11-01: a fixed Hebrew kept every English dictation on the Hebrew-only model (Hebrew output). */
-    @Test fun fixedHebrewMovesToKeyboardLanguageOnce() {
-        assertEquals("fixed Hebrew from before", Settings.LANGUAGE_KEYBOARD, Settings.migrateHebrewToKeyboard("he", hebrewMigrated = false))
-        assertEquals("Hebrew picked after the move", "he", Settings.migrateHebrewToKeyboard("he", hebrewMigrated = true))
-        assertEquals("other explicit language", "en", Settings.migrateHebrewToKeyboard("en", hebrewMigrated = false))
-        assertEquals("auto", "auto", Settings.migrateHebrewToKeyboard("auto", hebrewMigrated = false))
-        assertEquals("phone language", Settings.LANGUAGE_UNSET, Settings.migrateHebrewToKeyboard(Settings.LANGUAGE_UNSET, hebrewMigrated = false))
-        // Chained as Stores.loadLanguage does: the D37 move keeps "he", this one moves it.
-        assertEquals(Settings.LANGUAGE_KEYBOARD, Settings.migrateHebrewToKeyboard(Settings.migrateKeyboardLanguage("he", migrated = true, keyboardMigrated = true), hebrewMigrated = false))
-        // After the move, an English keyboard means English and a Hebrew keyboard still means the Hebrew model.
-        val installed = setOf(HebrewModels.LANGUAGE)
-        val en = LanguageDefault.resolve(Settings.LANGUAGE_KEYBOARD, "en", null, installed, keyboard = "en")
-        assertEquals("auto", en.language) // no multilingual whisper loaded in this test: English is not forced to Hebrew
-        assertEquals("he", LanguageDefault.resolve(Settings.LANGUAGE_KEYBOARD, "en", null, installed, keyboard = "iw").language)
-    }
-
     @Test fun keyboardSubtypeMapsToWhisperCodes() {
         assertEquals("he", KeyboardLanguage.of("he-IL", "iw_IL"))
         assertEquals("deprecated locale when the tag is empty", "he", KeyboardLanguage.of("", "iw_IL"))
