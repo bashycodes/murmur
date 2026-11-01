@@ -21,6 +21,7 @@ pub mod llama;
 pub mod parakeet;
 pub mod paste;
 pub mod postprocess;
+pub mod script_lock;
 pub mod segment;
 #[cfg(feature = "parakeet")]
 pub mod sherpa_online;

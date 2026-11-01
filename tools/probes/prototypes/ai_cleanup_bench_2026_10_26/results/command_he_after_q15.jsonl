@@ -1,0 +1,14 @@
+{"answer":"הפגישה נדחתה ליום שלישי","error":null,"id":"he_formal_1","mode":"after","ms":5083,"pass":true,"script":"he","want":"he"}
+{"answer":"שלום, אני מאחר קצת, תתחילו בלעדיי.","error":null,"id":"he_formal_2","mode":"after","ms":2242,"pass":true,"script":"he","want":"he"}
+{"answer":"רציתי רק להגיד שהחבילה הגיעה היום ושהכול היה בסדר.","error":null,"id":"he_short_1","mode":"after","ms":2738,"pass":true,"script":"he","want":"he"}
+{"answer":"תשלח לי את הקובץ עד מחר, בבקשה.","error":null,"id":"he_polite_1","mode":"after","ms":1793,"pass":true,"script":"he","want":"he"}
+{"answer":"אני הולך לחנות אחרי העבודה ואז אני נחזור הביתה.","error":null,"id":"he_fix_1","mode":"after","ms":2256,"pass":true,"script":"he","want":"he"}
+{"answer":"1. חלב\n2. לחם\n3. ביצים\n4. עגבניות","error":null,"id":"he_list_1","mode":"after","ms":2172,"pass":true,"script":"he","want":"he"}
+{"answer":"הдорגו לא הוגש בזמן. נא להגיש עד סוף היום.","error":null,"id":"he_friendly_1","mode":"after","ms":2041,"pass":true,"script":"he","want":"he"}
+{"answer":"השרת י停工 ביום ראשון ל Nachlaot כדי להתחזוק.","error":null,"id":"he_expand_1","mode":"after","ms":2102,"pass":true,"script":"he","want":"he"}
+{"answer":"נעשה סינק בזום על הדוח של Q3 מחר בעשר.","error":null,"id":"he_mixed_1","mode":"after","ms":2037,"pass":true,"script":"he","want":"he"}
+{"answer":"נתראה מחר בשמונה ליד המשרד.","error":null,"id":"he_heinstr_1","mode":"after","ms":1847,"pass":true,"script":"he","want":"he"}
+{"answer":"The meeting has been canceled for Wednesday.","error":null,"id":"he_tr_1","mode":"after","ms":1408,"pass":true,"script":"latin","want":"latin"}
+{"answer":"The letter arrived this morning.","error":null,"id":"he_tr_2","mode":"after","ms":811,"pass":true,"script":"latin","want":"latin"}
+{"answer":"Show me tomorrow at eight near the courthouse.","error":null,"id":"he_tr_3","mode":"after","ms":1015,"pass":true,"script":"latin","want":"latin"}
+{"answer":"Hello, the package has arrived this morning, thank you very much.","error":null,"id":"en_formal_1","mode":"after","ms":1524,"pass":true,"script":"latin","want":"latin"}

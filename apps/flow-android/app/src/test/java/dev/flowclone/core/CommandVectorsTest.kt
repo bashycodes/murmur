@@ -34,7 +34,8 @@ class CommandVectorsTest {
         }
         val all = setOf(
             CommandOutcome.NO_INSTRUCTION, CommandOutcome.SELECTION_TOO_LONG, CommandOutcome.NO_LLM,
-            CommandOutcome.SELECTION_NOT_ALLOWED, CommandOutcome.TIMEOUT, CommandOutcome.EMPTY, CommandOutcome.BACKEND,
+            CommandOutcome.SELECTION_NOT_ALLOWED, CommandOutcome.TIMEOUT, CommandOutcome.EMPTY,
+            CommandOutcome.LANGUAGE_CHANGED, CommandOutcome.BACKEND,
         )
         assertEquals("the Kotlin kind constants are the core's", all, kinds)
     }
