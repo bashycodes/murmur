@@ -287,9 +287,13 @@ abstract class VerifyApkNativeLibs : DefaultTask() {
                 }
             }
             // D41: the local flavour has no server-library classes (src/server is hybrid / remote only).
+            // Its one dev.flowclone.server class is src/noserver's no-op ServerModels stand-in (main
+            // code imports that name in every flavour), so any other class in the package fails.
             if (mode.get() == "noNetCode") for (e in all.filter { it.name.matches(Regex("""classes\d*\.dex""")) }) {
                 val s = String(zip.getInputStream(e).readBytes(), Charsets.ISO_8859_1)
-                if (s.contains("Ldev/flowclone/server/")) errors += "${apk.name}: ${e.name} contains dev.flowclone.server classes (model library in the local flavour, D41)"
+                val server = Regex("""Ldev/flowclone/server/[^;\u0000]*;""").findAll(s).map { it.value }
+                    .filter { it != "Ldev/flowclone/server/ServerModels;" }.toSortedSet()
+                if (server.isNotEmpty()) errors += "${apk.name}: ${e.name} contains dev.flowclone.server classes ${server.take(5)} (model library in the local flavour, D41)"
             }
             zip.close()
         }
