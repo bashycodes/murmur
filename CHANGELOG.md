@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-11-01
+
 ### Added
 
 - **Windows: Hebrew on the graphics chip with ivrit.ai Whisper turbo.**
@@ -1073,7 +1075,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/bashycodes/murmur/compare/v0.12.0...v1.0.0
 [0.12.0]: https://github.com/bashycodes/murmur/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/bashycodes/murmur/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/bashycodes/murmur/compare/v0.9.2...v0.11.0

@@ -583,7 +583,7 @@ dependencies = [
 
 [[package]]
 name = "flow-asr-sherpa"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "hound",
  "serde_json",
@@ -593,14 +593,14 @@ dependencies = [
 
 [[package]]
 name = "flow-build-info"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "flow-cli"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "flow-core",
  "hound",
@@ -610,7 +610,7 @@ dependencies = [
 
 [[package]]
 name = "flow-cloud"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "claxon",
@@ -626,7 +626,7 @@ dependencies = [
 
 [[package]]
 name = "flow-contract-tests"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "claxon",
@@ -646,7 +646,7 @@ dependencies = [
 
 [[package]]
 name = "flow-core"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "fancy-regex",
  "flow-asr-sherpa",
@@ -663,7 +663,7 @@ dependencies = [
 
 [[package]]
 name = "flow-ffi"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "flow-build-info",
  "flow-cloud",
@@ -682,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "flow-llm"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "llama-cpp-2",
  "serde",
@@ -691,7 +691,7 @@ dependencies = [
 
 [[package]]
 name = "flow-protocol"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "flow-core",
  "serde",
@@ -700,7 +700,7 @@ dependencies = [
 
 [[package]]
 name = "flow-remote"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "flow-core",
  "flow-protocol",
@@ -723,7 +723,7 @@ dependencies = [
 
 [[package]]
 name = "flow-replay"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "flow-cloud",
  "flow-core",
@@ -734,7 +734,7 @@ dependencies = [
 
 [[package]]
 name = "flow-router"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "flow-core",
  "flow-protocol",
@@ -746,7 +746,7 @@ dependencies = [
 
 [[package]]
 name = "flow-server"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "axum",
  "base64 0.22.1",
@@ -774,7 +774,7 @@ dependencies = [
 
 [[package]]
 name = "flow-whisper"
-version = "0.12.0"
+version = "1.0.0"
 dependencies = [
  "flow-core",
  "serde",
