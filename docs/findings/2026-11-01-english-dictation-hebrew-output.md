@@ -49,22 +49,25 @@ I/FlowDebug: {"kind":"dictation","app_version":"1.0.0","build":"3c8df49","route"
    to Hebrew, which translates English speech. That is how it behaves, not
    something the app can fix in decoding.
 
-## Fix
+## Proposed fix (reverted)
 
-A one-time migration `Settings.migrateHebrewToKeyboard` (flag
-`language_he_keyboard`, also set on every save) turns a stored `"he"` into
-`"keyboard"`. With "Keyboard language":
+`feat/stt-lang-hebrew` added a one-time migration `Settings.migrateHebrewToKeyboard`
+(flag `language_he_keyboard`) that turned a stored `"he"` into `"keyboard"`, plus a
+D37 amendment. It was removed before release (`feat/drop-he-migration`); see Decision.
 
-- an English keyboard → English (multilingual whisper) or auto-detect, never the Hebrew model;
-- a Hebrew keyboard (`he` / `iw`) → the Hebrew model, as before.
+## Decision
 
-If Hebrew is picked again after the migration ran, it stays fixed. Regression
-test: `DataLogicTest.fixedHebrewMovesToKeyboardLanguageOnce`. D37 is amended.
+- No migration. A fixed Hebrew is a deliberate user choice, and the app respects it.
+  D37's original rule "explicit languages are kept" stands.
+- The fix for a user with an English keyboard is Settings ▸ Language ▸ Keyboard
+  language: an English keyboard then gets English, a Hebrew keyboard the Hebrew model.
+- No warning when the keyboard language differs from a fixed language (the owner
+  declined it).
 
 ## Not changed / follow-ups
 
-- If Hebrew is picked as a fixed language on purpose, English speech still comes out
-  in Hebrew, because that is how the model behaves. A guard could compare the
-  keyboard language with a fixed language and warn when they differ. Not done.
+- If Hebrew is picked as a fixed language, English speech still comes out in
+  Hebrew, because that is how the model behaves. A mismatch warning was declined
+  (see Decision).
 - The keyboard language is read once at dictation start. A keyboard switch in the
   middle of a dictation is not seen.
