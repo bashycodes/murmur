@@ -16,6 +16,20 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- **Asides, degrees and times read like Wispr's.** "my bike in parentheses
+  which is the green one is locked outside" → `My bike (which is the green
+  one) is locked outside`: an "in parentheses which/who …" aside spoken
+  without pauses now closes right before the sentence goes on ("write the
+  date in parentheses which …" and other literal uses stay words).
+  "20 degrees" → `20°` ("-3°C", "350°F"; "degrees of freedom", "two
+  degrees in history" stay words). Times use lowercase am/pm (`7 am`,
+  `6:30 pm`, was `7 AM`), also when the speech model spells the letters
+  ("7 A M"). The AI cleanup prompts aim at the same text and add a comma
+  before an "and" that opens a clause with a time or place ("…, and at
+  7 am the heater …").
+
 ### Fixed
 
 - Android: Settings ▸ Accessibility now lists the service as "Murmur" (it showed "Effortless on-device voice dictation", so it was hard to find). The hybrid and remote builds no longer claim "no internet permission" in the accessibility description.
@@ -165,17 +179,6 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   (local, server and cloud models) and the guard, which now rejects an AI
   answer that quotes the wrong words (the rest of the sentence mid-sentence,
   or one word at a sentence start).
-- **Asides, degrees and times read like Wispr's.** "my bike in parentheses
-  which is the green one is locked outside" → `My bike (which is the green
-  one) is locked outside`: an "in parentheses which/who …" aside spoken
-  without pauses now closes right before the sentence goes on ("write the
-  date in parentheses which …" and other literal uses stay words).
-  "20 degrees" → `20°` ("-3°C", "350°F"; "degrees of freedom", "two
-  degrees in history" stay words). Times use lowercase am/pm (`7 am`,
-  `6:30 pm`, was `7 AM`), also when the speech model spells the letters
-  ("7 A M"). The AI cleanup prompts aim at the same text and add a comma
-  before an "and" that opens a clause with a time or place ("…, and at
-  7 am the heater …").
 
 ### Fixed
 
