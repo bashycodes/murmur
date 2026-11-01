@@ -837,8 +837,8 @@ pub fn check_for_language(
                 let digits = number_aliases(std::slice::from_ref(w));
                 let k = d
                     || present(w, &output_words)
-                    // "3:30" as the output's "3", "30".
-                    || (w.contains([':', '/', '-'])
+                    // "3:30" as the output's "3", "30"; "4°c" as "4", "c".
+                    || (w.contains([':', '/', '-', '\u{b0}'])
                         && words(w, m).iter().all(|p| present(p, &output_words)))
                     || digits.iter().any(|a| present(a, &output_words))
                     // A collapsed digit run ("two two two" -> "two") the
@@ -910,6 +910,40 @@ fn names(s: &str, m: Mode) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clause_aside_degrees_and_am_pm_answers_pass() {
+        let input = "every morning my kettle in parentheses which is the old steel one will be heated to 90 degrees and at 6 A M the lights will be set to dim";
+        let target = "Every morning my kettle (which is the old steel one) will be heated to 90°, and at 6 am the lights will be set to dim.";
+        for m in [Strictness::Strict, Strictness::Loose] {
+            assert_eq!(check_with(input, target, m), Verdict::Ok);
+            // Words kept, uppercase AM: also fine.
+            let kept = "Every morning my kettle (which is the old steel one) will be heated to 90 degrees, and at 6 AM the lights will be set to dim.";
+            assert_eq!(check_with(input, kept, m), Verdict::Ok);
+            assert_eq!(
+                check_with(
+                    "it fell to minus four degrees celsius overnight",
+                    "It fell to -4°C overnight.",
+                    m
+                ),
+                Verdict::Ok
+            );
+            // A changed temperature is still a changed fact.
+            assert!(!matches!(
+                check_with(input, &target.replace("90°", "80°"), m),
+                Verdict::Ok
+            ));
+            // A literal "in parentheses" the model turned into marks.
+            assert!(!matches!(
+                check_with(
+                    "write the total in parentheses which is how the form wants it",
+                    "Write the total (which is how the form wants it).",
+                    m
+                ),
+                Verdict::Ok
+            ));
+        }
+    }
 
     #[test]
     fn hebrew_skips_english_word_lists() {

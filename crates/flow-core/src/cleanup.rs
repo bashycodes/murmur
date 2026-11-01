@@ -898,10 +898,14 @@ new line, new paragraph.
 - \"quote ... unquote\", \"open quote ... close quote\" and \"... end quote\" wrap the words between them in double \
 quotes. \"quote unquote\" mid-sentence quotes only the next word; at the start of a sentence it quotes the \
 whole sentence. \"open paren ... close paren\" and \"in parentheses X\" wrap the words in ( ), \
-\"in brackets X\" in [ ]. With no closing command the span ends where the phrase ends, usually at the next comma.
+\"in brackets X\" in [ ]. With no closing command the span ends where the phrase ends, usually at the next comma; \
+an aside such as \"in parentheses which ...\" closes right before the sentence goes on.
 - A command word used as an ordinary word stays a word: \"a quote for the roof\", \"the trial period\", \"the Oxford \
 comma\", \"put the area code in parentheses\".
-- Write numbers, money, percentages, times, dates and phone numbers as digits.
+- Write numbers, money, percentages, times, dates and phone numbers as digits; am/pm in lowercase (7 am, also for \
+spoken \"A M\"); temperatures and angles with ° (20°, -3°C), but \"degrees of freedom\" and \"a degree in law\" \
+stay words.
+- Add a comma before \"and\" when a new clause after it opens with a time or place phrase (\", and at noon ...\").
 - In run-on speech add the sentence breaks, commas and capitals; questions end with \"?\".
 - Only when the speaker enumerates 3 or more items make a list (<ol> if numbered or first/second/third, else <ul>) \
 after the intro sentence.
@@ -1043,6 +1047,13 @@ const EXAMPLES: &[Example] = &[
         Style::Formal,
         "Hi Maria, just checking you got the invoice. Let me know if anything's missing. Cheers, Dan.",
         "Hi Maria,\n\nJust checking you got the invoice. Let me know if anything's missing.\n\nCheers,\nDan",
+    ),
+    (
+        "Notes",
+        AppCategory::Other,
+        Style::Formal,
+        "our neighbour's dog in parentheses who barks at every bus was asleep by six P M and after that the street went quiet",
+        "Our neighbour's dog (who barks at every bus) was asleep by 6 pm, and after that the street went quiet.",
     ),
     ("Slack", AppCategory::WorkChat, Style::Formal, "um, hmm, uh.", ""),
 ];
@@ -1772,7 +1783,7 @@ mod tests {
         // Prompt v2 is ~2x the old prefix; keep it bounded (prefill cost).
         assert!(p.system.len() < 2600, "{}", p.system.len());
         // Few-shot turns in the user-message format.
-        assert_eq!(p.examples.len(), 18);
+        assert_eq!(p.examples.len(), 19);
         assert!(p.examples[0]
             .0
             .starts_with("APP: Messages | CATEGORY: personal chat\nTRANSCRIPT: «"));
