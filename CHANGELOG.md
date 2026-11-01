@@ -19,6 +19,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 ### Fixed
 
 - Android: Settings ▸ Accessibility now lists the service as "Murmur" (it showed "Effortless on-device voice dictation", so it was hard to find). The hybrid and remote builds no longer claim "no internet permission" in the accessibility description.
+- Android: English dictation no longer comes out as Hebrew when the language setting is a fixed Hebrew left over from before 1.0.0. That Hebrew choice kept every dictation on the Hebrew-only speech model even with an English keyboard, and that model writes English speech as a Hebrew translation. It now moves once to "Keyboard language", so a Hebrew keyboard still gets the Hebrew model and an English keyboard gets English. Pick Hebrew again in Settings ▸ Language to keep it fixed.
 
 ## [1.0.0] - 2026-11-01
 
