@@ -21,8 +21,6 @@ class SettingsStore(context: Context) {
         const val LANGUAGE_MIGRATED = "language_default_device"
         /** D37: the default moved phone language → keyboard language; set once that ran (or on any save). */
         const val KEYBOARD_MIGRATED = "language_default_keyboard"
-        /** 2026-11-01: a fixed Hebrew moved to keyboard language ([Settings.migrateHebrewToKeyboard]); set once that ran (or on any save). */
-        const val HEBREW_MIGRATED = "language_he_keyboard"
     }
 
     fun load() = Settings(
@@ -61,18 +59,15 @@ class SettingsStore(context: Context) {
 
     /**
      * One-time moves: an untouched stored "auto" to phone language ([Settings.migrateLanguage]),
-     * then phone language to keyboard language (D37, [Settings.migrateKeyboardLanguage]), then a
-     * fixed Hebrew to keyboard language ([Settings.migrateHebrewToKeyboard]).
+     * then phone language to keyboard language (D37, [Settings.migrateKeyboardLanguage]).
      */
     private fun loadLanguage(): String {
         val stored = sp.getString("language", null)
         val migrated = sp.getBoolean(LANGUAGE_MIGRATED, false)
         val keyboard = sp.getBoolean(KEYBOARD_MIGRATED, false)
-        val hebrew = sp.getBoolean(HEBREW_MIGRATED, false)
-        val v = Settings.migrateHebrewToKeyboard(Settings.migrateKeyboardLanguage(stored, migrated, keyboard), hebrew)
-        if (!migrated || !keyboard || !hebrew) {
-            sp.edit().putBoolean(LANGUAGE_MIGRATED, true).putBoolean(KEYBOARD_MIGRATED, true).putBoolean(HEBREW_MIGRATED, true)
-                .putString("language", v).apply()
+        val v = Settings.migrateKeyboardLanguage(stored, migrated, keyboard)
+        if (!migrated || !keyboard) {
+            sp.edit().putBoolean(LANGUAGE_MIGRATED, true).putBoolean(KEYBOARD_MIGRATED, true).putString("language", v).apply()
         }
         return v
     }
@@ -112,7 +107,6 @@ class SettingsStore(context: Context) {
             .putBoolean(ENDPOINT_MIGRATED, true)
             .putBoolean(LANGUAGE_MIGRATED, true)
             .putBoolean(KEYBOARD_MIGRATED, true)
-            .putBoolean(HEBREW_MIGRATED, true)
             .putBoolean("decode_while_speaking", s.decodeWhileSpeaking)
             .putString("style_personal", s.styles.personal.wire)
             .putString("style_work", s.styles.work.wire)
