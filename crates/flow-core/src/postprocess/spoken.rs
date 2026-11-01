@@ -9,7 +9,7 @@
 //! 4. explicit backtracking: "scratch that", "never mind", "no wait",
 //!    "actually I mean", … keep the correction, drop what it replaced
 //! 5. inverse text normalisation for money, percentages, clock times and
-//!    dates: "forty dollars" → "$40", "three thirty pm" → "3:30 PM",
+//!    dates: "forty dollars" → "$40", "three thirty pm" → "3:30 pm",
 //!    "March fifth" → "March 5th"; an amount the ASR glued to the word
 //!    before gets its space back ("about$250" → "about $250")
 //! 6. spoken formatting commands: "quote … unquote", "in parentheses",
@@ -769,6 +769,7 @@ fn itn(toks: Vec<Tok>) -> Vec<Tok> {
     while i < toks.len() {
         if let Some((t, used)) = phone(&c, &toks, i)
             .or_else(|| money(&c, &toks, i))
+            .or_else(|| degrees(&c, &toks, i))
             .or_else(|| percent(&c, &toks, i))
             .or_else(|| clock(&c, &toks, i))
             .or_else(|| date(&c, &toks, i))
@@ -955,19 +956,155 @@ fn percent(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
     Some((format!("{v}%{}", last_suffix(toks, i, n + 1)), n + 1))
 }
 
-/// "am"/"pm"/"a.m."/"p.m." at `j` (one token, or "a" "m" split): (AM|PM, tokens).
+/// Words before "N degrees" that make it a qualification ("has two
+/// degrees", "earned three degrees", "with two degrees").
+const DEGREE_BLOCK_BEFORE: &[&str] = &[
+    "has",
+    "have",
+    "had",
+    "having",
+    "holds",
+    "hold",
+    "held",
+    "earned",
+    "earn",
+    "earns",
+    "got",
+    "gets",
+    "get",
+    "with",
+    "both",
+    "university",
+    "college",
+    "academic",
+];
+
+/// "twenty degrees" / "20 degrees" → "20°", "minus three degrees celsius"
+/// → "-3°C", "one degree" → "1°". Literal uses stay words: a following
+/// "of" / "from" ("three degrees of freedom", "degrees from two
+/// universities"), "in" + a field ("two degrees in chemistry"; "in the
+/// shade" converts), a qualification verb before ("has two degrees"), and
+/// a singular "degree" after any number but one ("a 45 degree angle", the
+/// compound adjective). "degrees kelvin" stays too (kelvin takes no °).
+fn degrees(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
+    let (sign, start) = match c[i].as_str() {
+        "minus" | "negative" if toks[i].suffix().is_empty() => ("-", i + 1),
+        // The ASR's own sign: "-3 degrees".
+        _ if toks[i].text.starts_with(['-', '\u{2212}']) => ("-", i),
+        _ => ("", i),
+    };
+    let w = c.get(start)?;
+    // Digits (also "20.5"), or number words.
+    let (value, n) = if w.chars().next().is_some_and(|d| d.is_ascii_digit()) {
+        let ok = w
+            .chars()
+            .all(|d| d.is_ascii_digit() || d == '.' || d == ',')
+            && !w.ends_with('.')
+            && w.matches('.').count() <= 1;
+        if !ok || !toks[start].text.chars().all(|d| !d.is_alphabetic()) {
+            return None;
+        }
+        (w.replace(',', ""), 1)
+    } else {
+        let (v, n) = parse_number(c, toks, start)?;
+        (v.to_string(), n)
+    };
+    let last = start + n - 1;
+    if !toks[last].suffix().is_empty() {
+        return None;
+    }
+    let unit_i = last + 1;
+    let word = c.get(unit_i)?.as_str();
+    let one = value == "1";
+    if !(word == "degrees" || (word == "degree" && one)) || toks[unit_i].is_break() {
+        return None;
+    }
+    if start > 0 && DEGREE_BLOCK_BEFORE.contains(&c[start - 1].as_str()) && sign.is_empty() {
+        return None;
+    }
+    // "five to ten degrees" keeps the range in one form, like `cardinal`.
+    if start > 1
+        && matches!(c[start - 1].as_str(), "and" | "or" | "to")
+        && number_word(&c[start - 2]).is_some()
+    {
+        return None;
+    }
+    let mut used = unit_i + 1 - i;
+    let mut scale = "";
+    if toks[unit_i].suffix().is_empty() {
+        let next = c.get(unit_i + 1).map(String::as_str);
+        let after = c.get(unit_i + 2).map(String::as_str);
+        match next {
+            Some("of" | "from" | "kelvin") => return None,
+            Some("in")
+                if !after.is_some_and(|a| {
+                    matches!(
+                        a,
+                        "the"
+                            | "a"
+                            | "an"
+                            | "my"
+                            | "our"
+                            | "your"
+                            | "his"
+                            | "her"
+                            | "their"
+                            | "this"
+                            | "that"
+                            | "here"
+                            | "there"
+                    )
+                }) =>
+            {
+                return None
+            }
+            Some("celsius" | "centigrade") => scale = "C",
+            Some("fahrenheit") => scale = "F",
+            _ => {}
+        }
+        // An ASR that already wrote the scale letter: "20 degrees C".
+        if scale.is_empty() {
+            if let Some(t) = toks.get(unit_i + 1) {
+                let bare = t.text.trim_end_matches(|ch: char| !ch.is_alphanumeric());
+                if bare == "C" || bare == "F" {
+                    scale = if bare == "C" { "C" } else { "F" };
+                }
+            }
+        }
+        if !scale.is_empty() {
+            used += 1;
+        }
+    }
+    Some((
+        format!("{sign}{value}\u{00B0}{scale}{}", last_suffix(toks, i, used)),
+        used,
+    ))
+}
+
+/// "am"/"pm"/"a.m."/"p.m." at `j`, or the letters the ASR split ("A M",
+/// "p m", "a. m."): (am|pm, tokens). Written lowercase with a space, as
+/// Wispr does ("7 am", "6:30 pm").
 fn meridiem(c: &[String], toks: &[Tok], j: usize) -> Option<(&'static str, usize)> {
     let w = c.get(j)?;
     let raw = toks[j].text.to_lowercase();
+    // "A M" / "p. m.": a lone letter, then "m" (callers only ask after an
+    // hour, so "a" is not the article here: "at 7 a man" has no "m").
+    if (w == "a" || w == "p")
+        && !toks[j].suffix().contains([',', ';', ':', '?', '!'])
+        && c.get(j + 1).is_some_and(|m| m == "m")
+        && !toks[j + 1].is_break()
+    {
+        return Some((if w == "p" { "pm" } else { "am" }, 2));
+    }
     let m = if w == "pm" || raw.starts_with("p.m") {
-        "PM"
+        "pm"
     } else if w == "am"
         && (toks[j].text.contains('.')
             || toks[j].text.to_lowercase() == toks[j].text
             || raw == "am")
     {
         // "am" is also the verb ("I am"); callers only ask after an hour.
-        "AM"
+        "am"
     } else {
         return None;
     };
@@ -991,8 +1128,8 @@ fn clock(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
             return None;
         }
         let (mer, used) = match rest {
-            "pm" | "p.m" => ("PM", 1),
-            "am" | "a.m" => ("AM", 1),
+            "pm" | "p.m" => ("pm", 1),
+            "am" | "a.m" => ("am", 1),
             "" if toks[i].suffix().is_empty() => {
                 let (m, n) = meridiem(c, toks, i + 1)?;
                 (m, 1 + n)
@@ -1061,7 +1198,10 @@ fn clock_suffix(toks: &[Tok], k: usize) -> String {
     let t = &toks[k];
     let suffix = t.suffix().to_string();
     let lower = t.text.to_lowercase();
-    if !(lower.ends_with("a.m.") || lower.ends_with("p.m.")) {
+    // "a. m." split by the ASR: the dots are the abbreviation's too.
+    let split_dotted =
+        lower == "m." && k > 0 && matches!(toks[k - 1].text.to_lowercase().as_str(), "a." | "p.");
+    if !(lower.ends_with("a.m.") || lower.ends_with("p.m.") || split_dotted) {
         return suffix;
     }
     let rest: String = suffix.chars().skip_while(|c| *c == '.').collect();
@@ -1712,7 +1852,7 @@ mod tests {
     fn backtracking_keeps_the_correction() {
         assert_eq!(
             t("Let's meet at the cafe at 3pm. Scratch that, let's meet at the library at 4pm."),
-            "Let's meet at the library at 4 PM."
+            "Let's meet at the library at 4 pm."
         );
         assert_eq!(
             t("let's meet at the cafe at two scratch that at three and bring the slides"),
@@ -1756,17 +1896,17 @@ mod tests {
         );
         assert_eq!(
             t("Remind me to call the dentist at three thirty pm on March fifth."),
-            "Remind me to call the dentist at 3:30 PM on March 5th."
+            "Remind me to call the dentist at 3:30 pm on March 5th."
         );
-        assert_eq!(t("Meet at 4pm."), "Meet at 4 PM.");
-        assert_eq!(t("Meet at 4 p.m."), "Meet at 4 PM.");
+        assert_eq!(t("Meet at 4pm."), "Meet at 4 pm.");
+        assert_eq!(t("Meet at 4 p.m."), "Meet at 4 pm.");
         assert_eq!(
             t("It costs twenty five dollars and fifty cents."),
             "It costs $25.50."
         );
         assert_eq!(t("Sales grew twenty percent."), "Sales grew 20%.");
         assert_eq!(t("Due March twenty first."), "Due March 21st.");
-        assert_eq!(t("Lunch at eight oh five am"), "Lunch at 8:05 AM");
+        assert_eq!(t("Lunch at eight oh five am"), "Lunch at 8:05 am");
         // Not money/time: left alone.
         assert_eq!(t("I am one of three people."), "I am one of three people.");
         assert_eq!(t("I may go in May."), "I may go in May.");
@@ -1978,6 +2118,66 @@ mod tests {
     }
 
     #[test]
+    fn degrees_become_the_degree_sign() {
+        assert_eq!(t("Set it to 20 degrees."), "Set it to 20\u{b0}.");
+        assert_eq!(
+            t("preheat the oven to two hundred degrees and wait"),
+            "Preheat the oven to 200\u{b0} and wait"
+        );
+        assert_eq!(t("it was minus three degrees celsius"), "It was -3\u{b0}C");
+        assert_eq!(
+            t("It was -3 degrees this morning."),
+            "It was -3\u{b0} this morning."
+        );
+        assert_eq!(t("Bake at 350 degrees Fahrenheit."), "Bake at 350\u{b0}F.");
+        assert_eq!(t("It's 25 degrees C outside."), "It's 25\u{b0}C outside.");
+        assert_eq!(
+            t("Turn it ninety degrees to the left."),
+            "Turn it 90\u{b0} to the left."
+        );
+        assert_eq!(t("It went up one degree."), "It went up 1\u{b0}.");
+        assert_eq!(
+            t("It's 30 degrees in the shade."),
+            "It's 30\u{b0} in the shade."
+        );
+        assert_eq!(t("Keep it at 18.5 degrees."), "Keep it at 18.5\u{b0}.");
+    }
+
+    #[test]
+    fn literal_degrees_stay_words() {
+        for s in [
+            "She has two degrees in chemistry.",
+            "He earned three degrees before thirty.",
+            "The arm has six degrees of freedom.",
+            "We are six degrees from anyone.",
+            "Cut it at a 45 degree angle.",
+            "Water freezes at 273 degrees kelvin.",
+            "A degree in physics takes years.",
+            "Five to eight degrees is fine.",
+            "Both degrees took four years.",
+        ] {
+            assert_eq!(t(s), s, "{s}");
+        }
+    }
+
+    #[test]
+    fn split_meridiem_letters_become_lowercase_am_pm() {
+        assert_eq!(t("Wake me at 7 A M."), "Wake me at 7 am.");
+        assert_eq!(
+            t("the pool opens at six thirty A M on weekdays"),
+            "The pool opens at 6:30 am on weekdays"
+        );
+        assert_eq!(t("Pick me up at four P M"), "Pick me up at 4 pm");
+        assert_eq!(t("Lunch is at 12 p m."), "Lunch is at 12 pm.");
+        assert_eq!(t("Call at 9 a. m. tomorrow."), "Call at 9 am tomorrow.");
+        assert_eq!(t("Meet at 3 PM."), "Meet at 3 pm.");
+        // "a" stays the article when no "m" follows; "A M" without an hour
+        // stays letters.
+        assert_eq!(t("At seven a man came by."), "At seven a man came by.");
+        assert_eq!(t("Tune to the A M station."), "Tune to the A M station.");
+    }
+
+    #[test]
     fn itn_times_cardinals_decimals_and_dates() {
         assert_eq!(
             t("Meet me at seven thirty tonight."),
@@ -2005,7 +2205,7 @@ mod tests {
         );
         assert_eq!(
             t("The meeting is on the twenty first of October at two PM."),
-            "The meeting is on October 21st at 2 PM."
+            "The meeting is on October 21st at 2 pm."
         );
         assert_eq!(t("Due the fifth of May."), "Due May 5th.");
         // Left as words.
@@ -2043,7 +2243,7 @@ mod tests {
                 "Hey John, just a quick note. The meeting moved to three PM. Thanks.",
                 AppCategory::Email
             ),
-            "Hey John,\n\nJust a quick note. The meeting moved to 3 PM.\n\nThanks,"
+            "Hey John,\n\nJust a quick note. The meeting moved to 3 pm.\n\nThanks,"
         );
         // No greeting: prose (email_layout_never_invents_structure).
         assert_eq!(
