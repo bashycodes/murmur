@@ -197,8 +197,14 @@ jobs:
           cp target/release/flow_llm.dll "$out/flow_llm_vulkan.dll"
           cargo test --locked --release -p flow-llm --features vulkan --lib
           ls -la "$out"/flow_llm*.dll
+          # Short target dir: whisper.cpp's Vulkan build configures a nested
+          # vulkan-shaders-gen project whose MSBuild tracker logs exceed
+          # MAX_PATH under target/release/build/whisper-rs-sys-<hash>/
+          # (FTK1011 "could not create the new file tracking log file").
+          # Not covered by rust-cache, so this build is always cold.
+          export CARGO_TARGET_DIR=D:/fw
           cargo build --locked --release -p flow-whisper --features vulkan
-          cp target/release/flow_whisper.dll "$out/flow_whisper_vulkan.dll"
+          cp "$CARGO_TARGET_DIR/release/flow_whisper.dll" "$out/flow_whisper_vulkan.dll"
           cargo test --locked --release -p flow-whisper --features vulkan --lib
           ls -la "$out"/flow_whisper_vulkan.dll
 
