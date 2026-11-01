@@ -23,9 +23,11 @@
 //! …"): the span runs to the next pause comma or sentence end, at most
 //! [`MAX_OPEN_SPAN`] tokens. Without the pause commas the words stay as
 //! spoken ("put the area code in parentheses", "the formula is in
-//! parentheses on the board"), with one narrow exception for the
-//! aside-before-a-preposition shape the user dictates ("the charger in
-//! parentheses the USB-C one to the meeting"): see [`bare_aside`].
+//! parentheses on the board"), with two narrow exceptions: an aside
+//! before a preposition ("the charger in parentheses the USB-C one to the
+//! meeting") and a "which/who …" clause aside before the main clause's
+//! verb ("my heater in parentheses which is the only one will be set …"):
+//! see [`bare_aside`].
 //!
 //! **Punctuation (US style).** A period or comma after a closing quote
 //! goes inside it; `?`/`!` stay outside unless the quotation had them.
@@ -498,13 +500,23 @@ fn bare_aside(
         return None;
     }
     let max = if relative { 13 } else { 7 };
+    // "whose" is followed by its noun, then its own verb ("whose screen is
+    // cracked was …"): the first verb-group word is the aside's.
+    let mut own_verb_pending = first == "whose";
     for k in from + 1..toks.len().min(from + max) {
         if toks[k].is_break() {
             return None;
         }
         let w = c[k].as_str();
         let ends = if relative {
-            k >= from + 2 && VERB_GROUP.contains(&w) && !SUBJECTS.contains(&c[k - 1].as_str())
+            let verb =
+                k >= from + 2 && VERB_GROUP.contains(&w) && !SUBJECTS.contains(&c[k - 1].as_str());
+            if verb && own_verb_pending {
+                own_verb_pending = false;
+                false
+            } else {
+                verb
+            }
         } else {
             k >= from + 2 && (PREPOSITIONS.contains(&w) || VERB_GROUP.contains(&w))
         };
@@ -907,6 +919,10 @@ mod tests {
         assert_eq!(
             t("my neighbour in parentheses who works nights is moving out next week"),
             "My neighbour (who works nights) is moving out next week"
+        );
+        assert_eq!(
+            t("The old tablet in parentheses whose screen is cracked was sold on Friday."),
+            "The old tablet (whose screen is cracked) was sold on Friday."
         );
         assert_eq!(
             t("The old printer in parentheses which I bought last year was fixed today."),

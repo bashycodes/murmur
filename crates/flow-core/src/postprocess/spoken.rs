@@ -8,8 +8,9 @@
 //! 3. stutters: "I I think" → "I think" (not "that that" / "had had")
 //! 4. explicit backtracking: "scratch that", "never mind", "no wait",
 //!    "actually I mean", … keep the correction, drop what it replaced
-//! 5. inverse text normalisation for money, percentages, clock times and
-//!    dates: "forty dollars" → "$40", "three thirty pm" → "3:30 pm",
+//! 5. inverse text normalisation for money, percentages, degrees, clock
+//!    times and dates: "forty dollars" → "$40", "twenty degrees" → "20°",
+//!    "three thirty pm" / "three thirty P M" → "3:30 pm",
 //!    "March fifth" → "March 5th"; an amount the ASR glued to the word
 //!    before gets its space back ("about$250" → "about $250")
 //! 6. spoken formatting commands: "quote … unquote", "in parentheses",
