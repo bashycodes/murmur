@@ -1,0 +1,14 @@
+{"id":"he_formal_1","instruction":"make it more formal","selected":"הפגישה נדחתה ליום שלישי","want":"he"}
+{"id":"he_formal_2","instruction":"make this more formal","selected":"היי, אני מאחר קצת, תתחילו בלעדיי","want":"he"}
+{"id":"he_short_1","instruction":"make it shorter","selected":"רציתי רק להגיד שהחבילה הגיעה היום בבוקר ושהכול היה בסדר גמור, תודה רבה על המשלוח המהיר","want":"he"}
+{"id":"he_polite_1","instruction":"make it more polite","selected":"תשלח לי את הקובץ עד מחר","want":"he"}
+{"id":"he_fix_1","instruction":"fix the grammar","selected":"אני הולכים לחנות אחרי העבודה ואז נחזור הבייתה","want":"he"}
+{"id":"he_list_1","instruction":"turn this into a list","selected":"צריך לקנות חלב, לחם, ביצים ועגבניות","want":"he"}
+{"id":"he_friendly_1","instruction":"make it sound friendlier","selected":"הדוח לא הוגש בזמן. נא להגיש עד סוף היום.","want":"he"}
+{"id":"he_expand_1","instruction":"expand this into a short message to the team","selected":"השרת יהיה מושבת ביום ראשון בלילה לתחזוקה","want":"he"}
+{"id":"he_mixed_1","instruction":"make it more formal","selected":"נעשה סינק בזום על הדוח של Q3 מחר בעשר","want":"he"}
+{"id":"he_heinstr_1","instruction":"תנסח את זה יותר רשמי","selected":"נתראה מחר בשמונה ליד המשרד","want":"he"}
+{"id":"he_tr_1","instruction":"translate this to English","selected":"הפגישה נדחתה ליום שלישי","want":"latin"}
+{"id":"he_tr_2","instruction":"write it in English","selected":"החבילה הגיעה היום בבוקר","want":"latin"}
+{"id":"he_tr_3","instruction":"תתרגם לאנגלית","selected":"נתראה מחר בשמונה ליד המשרד","want":"latin"}
+{"id":"en_formal_1","instruction":"make it more formal","selected":"hey, the package got here this morning, thanks a lot","want":"latin"}

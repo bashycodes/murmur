@@ -29,6 +29,7 @@ fn input(v: &Value) -> Result<String, CommandError> {
         "selection_not_allowed" => CommandError::SelectionNotAllowed,
         "timeout" => CommandError::Timeout { secs: num("secs") },
         "empty" => CommandError::Empty,
+        "language_changed" => CommandError::LanguageChanged,
         "backend" => CommandError::Backend(v["detail"].as_str().unwrap().into()),
         other => panic!("unknown kind {other}"),
     })
@@ -46,7 +47,7 @@ fn result_json_matches_the_shared_vectors() {
         }
         assert_eq!(result_json(&r), c["json"], "{}", c["input"]);
     }
-    assert_eq!(kinds.len(), 7, "every CommandError kind has a vector");
+    assert_eq!(kinds.len(), 8, "every CommandError kind has a vector");
 }
 
 #[test]
