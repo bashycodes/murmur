@@ -4,7 +4,7 @@
 
 ### Issue tracker
 
-Work items live as tasks in the TickTick list "Murmur", reached through the TickTick MCP tools; code and PRs stay on GitHub. See `docs/agents/issue-tracker.md`.
+Work items live as tasks in the TickTick list "Murmur", reached through the TickTick MCP tools; code and PRs stay on GitHub. Copy argument shapes from `docs/agents/issue-tracker.md` §Call shapes before any TickTick write: casing and wrapping differ per tool.
 
 ### Triage labels
 

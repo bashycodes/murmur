@@ -21,10 +21,28 @@ TickTick holds only the work items.
 | Close as done | `complete_task`, after a comment linking the commit or PR. |
 | Close as wontfix | `update_task` with `status: -1` (abandoned), after the explaining comment. |
 
+## Call shapes
+
+The write tools disagree on casing and wrapping, and a wrong guess fails
+validation. Copy these (`P` = `6ade2cbf8f081c311be5b39d`):
+
+| Tool | Arguments |
+|---|---|
+| `create_task` | `{"task": {"projectId": P, "title": …, "content": …, "tags": ["bug", "ready-for-agent"], "parentId": …}}` |
+| `update_task` | `{"task_id": ID, "task": {"id": ID, "projectId": P, "etag": ETAG, "tags": [...]}}`: `task_id` *and* `task.id` |
+| `add_comment` | `{"project_id": P, "task_id": ID, "title": "<comment text>"}`: the text goes in `title`; there is no `content` |
+| `complete_task` | `{"project_id": P, "task_id": ID}` |
+| `filter_tasks` | `{"filter": {"projectIds": [P], "tag": ["ready-for-agent"], "status": [0]}}` |
+| `create_tag` | `{"tag": {"name": "v0.7.0"}}` |
+
+`tags` is a JSON array, never a string holding one (`"[\"bug\"]"` fails).
+`create_task`/`update_task` nest camelCase fields under `task`; `add_comment`
+and `complete_task` take flat snake_case ids.
+
 ## When a skill says "publish to the issue tracker"
 
-`create_task` with `projectId` `6ade2cbf8f081c311be5b39d`, the title, the body in
-`content`, and the right tags. For tickets of a spec, also set `parentId`.
+`create_task` (shape above) with the title, the body in `content`, and the
+right tags. For tickets of a spec, also set `parentId`.
 
 ## When a skill says "fetch the relevant ticket"
 
@@ -34,9 +52,11 @@ Read the comments too when the skill needs history.
 
 ## Listing work
 
-- Open tasks in the list: `get_project_with_undone_tasks`.
-- By state: `filter_tasks` with `projectIds: [6ade2cbf8f081c311be5b39d]` and `tag: [<state tag>]`.
-  Always pass the project id: tags are shared with the owner's other lists.
+- By state: `filter_tasks` (shape above) with the state tag. Prefer it to a full
+  list read; always pass the project id, since tags are shared with the owner's
+  other lists.
+- Every open task, only when you need all of them: `get_project_with_undone_tasks`
+  (10–20 KB per call).
 
 ## Agent briefs and triage notes
 
