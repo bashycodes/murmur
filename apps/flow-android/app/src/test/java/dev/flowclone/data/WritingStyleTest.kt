@@ -108,6 +108,19 @@ class WritingStyleTest {
 
     // ---- the LLM part of a result: llm_skipped_clean is a normal outcome, not a failure ----
 
+    @Test fun llmOffReasonSaysWhyNoAiCleanupRan() {
+        val loaded = EnginePlan.LlmStatus.Loaded("qwen.gguf")
+        assertEquals("ai_cleanup_off", LlmOutcome.offReason(phoneOn = false, phone = EnginePlan.LlmStatus.Off, offPhone = false))
+        assertEquals("no_phone_model", LlmOutcome.offReason(phoneOn = true, phone = EnginePlan.LlmStatus.NoModel, offPhone = false))
+        assertEquals("phone_model_failed", LlmOutcome.offReason(phoneOn = true, phone = EnginePlan.LlmStatus.Failed("oom"), offPhone = false))
+        // On and loaded (terminal app, snippet) or an off-phone engine on but unusable.
+        assertEquals("no_engine_available", LlmOutcome.offReason(phoneOn = true, phone = loaded, offPhone = false))
+        assertEquals("no_engine_available", LlmOutcome.offReason(phoneOn = false, phone = EnginePlan.LlmStatus.Off, offPhone = true))
+        assertEquals("no AI cleanup (all cleanup engines off)", LlmOutcome.offLabel("ai_cleanup_off"))
+        assertEquals("no AI cleanup (no_engine_available)", LlmOutcome.offLabel("no_engine_available"))
+        assertNull(LlmOutcome.offLabel(null))
+    }
+
     @Test fun llmOutcomeCodesAndLabels() {
         fun r(st: CommitStatus, fb: String?) = CommitResult(status = st, fallbackReason = fb)
         assertEquals("formatted", LlmOutcome.code(r(CommitStatus.FORMATTED, null)))

@@ -23,6 +23,7 @@ struct Hop {
     scope: PromptScope,
     engine: &'static str,
     timeout: Option<u64>,
+    ready: bool,
     calls: AtomicUsize,
     seen: Mutex<Vec<(CleanPrompt, Instant)>>,
 }
@@ -36,6 +37,7 @@ impl Hop {
             scope: PromptScope::FULL,
             engine: "local",
             timeout: None,
+            ready: true,
             calls: AtomicUsize::new(0),
             seen: Mutex::new(Vec::new()),
         }
@@ -70,6 +72,9 @@ impl Cleaner for Hop {
     }
     fn timeout_ms(&self) -> Option<u64> {
         self.timeout
+    }
+    fn ready(&self) -> bool {
+        self.ready
     }
 }
 
@@ -433,4 +438,114 @@ fn a_failed_local_hop_falls_back_inside_a_real_commit() {
     // The server hop got the session's timeout to size its request.
     let (p, _) = server.seen.lock().unwrap()[0].clone();
     assert_eq!(p.source.unwrap().timeout_ms, session().llm_timeout_ms);
+}
+
+/// A server hop that refuses up front (circuit open after the server
+/// went unreachable, or known to have no LLM).
+fn refusing_server() -> Arc<Hop> {
+    let mut h = Hop::new(
+        "srv",
+        Err(CleanError::Unavailable("server_circuit_open".into())),
+    );
+    h.engine = "server";
+    h.ready = false;
+    Arc::new(h)
+}
+
+fn cloud_hop(out: &'static str) -> Arc<Hop> {
+    let mut c = Hop::new("c", Ok(out));
+    c.engine = "cloud";
+    Arc::new(c)
+}
+
+#[test]
+fn ai_parts_skips_leading_hops_that_would_refuse() {
+    // 2026-11-02 (local-cleanup-skipped): order server → cloud with the
+    // server unreachable is cloud-first in practice, so D30 applies.
+    let server = refusing_server();
+    let cloud = cloud_hop("C");
+    let local = Arc::new(Hop::new("l", Ok("L")));
+    let c = chain(&[&server, &cloud, &local]);
+    let (a, rest) = c.ai_parts().expect("cloud is the first ready hop");
+    assert!(Arc::ptr_eq(&a, &(cloud.clone() as Arc<dyn Cleaner>)));
+    // The fallback is the hops after the cloud.
+    assert_eq!(rest.unwrap().model().as_deref(), Some("l"));
+    // A ready server first: the server cleans first (no AI split).
+    let mut up = Hop::new("srv", Ok("S"));
+    up.engine = "server";
+    let up = Arc::new(up);
+    assert!(chain(&[&up, &cloud]).ai_parts().is_none());
+    // A local hop is never passed over.
+    assert!(chain(&[&server, &local, &cloud]).ai_parts().is_none());
+    // Nothing ready at all: no split (the chain reports its refusals).
+    assert!(chain(&[&server]).ai_parts().is_none());
+}
+
+#[test]
+fn an_unreachable_server_before_the_cloud_does_not_skip_ai_cleanup() {
+    // The owner's report: route local, order server → cloud, server down.
+    // A tidy-looking transcript used to hit `llm_skipped_clean` (D27's
+    // skip, tuned for the on-device 1.5B), so the cloud never saw it. Now
+    // the cloud gets the raw transcript (D30).
+    let dictate = |raw: &'static str, out: &'static str| {
+        let server = refusing_server();
+        let cloud = cloud_hop(out);
+        let chain: Arc<dyn Cleaner> = Arc::new(chain(&[&server, &cloud]));
+        let core = FlowCore::from_engines(Arc::new(MockAsr::new(raw)), Some(chain));
+        let cfg = SessionConfig {
+            languages: vec!["en".into()],
+            ..Default::default()
+        };
+        assert!(cfg.llm_skip_clean, "the default skip is on");
+        core.start_session(cfg).unwrap();
+        core.push_audio(&speech(1000));
+        let r = core.commit();
+        assert_ne!(
+            r.fallback_reason.as_deref(),
+            Some("llm_skipped_clean"),
+            "{r:?}"
+        );
+        assert_eq!(cloud.calls(), 1, "{r:?}");
+        assert_eq!(server.calls(), 0, "a hop that would refuse is not asked");
+        let (p, _) = cloud.seen.lock().unwrap()[0].clone();
+        assert_eq!(p.transcript, raw, "raw transcript in");
+        r
+    };
+    let r = dictate("The demo is on Thursday.", "The demo is on Thursday.");
+    assert_eq!(r.cleanup_route.as_deref(), Some("cloud"), "{r:?}");
+    assert_eq!(r.status, CommitStatus::Formatted, "{r:?}");
+    // A misheard technical term is not the AI's to fix: the guard rejects
+    // words the speech did not back ("UUID4", "pytest"), so the rules'
+    // text stands. The dictionary is the fix for those (see the finding).
+    let r = dictate(
+        "Generate a UID four with pie test.",
+        "Generate a UUID4 with pytest.",
+    );
+    assert_eq!(r.cleanup_route.as_deref(), Some("rules"), "{r:?}");
+    assert_eq!(r.cloud_fallback.as_deref(), Some("llm_unsupported"));
+}
+
+#[test]
+fn a_dictionary_replacement_fixes_misheard_terms_without_any_ai() {
+    // No cleaner at all (phone AI off, no OpenRouter): replacements still
+    // apply in post-processing.
+    let core = FlowCore::from_engines(
+        Arc::new(MockAsr::new("generate a UID four with pie test")),
+        None,
+    );
+    let cfg = SessionConfig {
+        languages: vec!["en".into()],
+        dictionary: Dictionary {
+            entries: vec![
+                DictEntry::replacement("UID four", "UUID4"),
+                DictEntry::replacement("pie test", "pytest"),
+            ],
+        },
+        ..Default::default()
+    };
+    core.start_session(cfg).unwrap();
+    core.push_audio(&speech(1000));
+    let r = core.commit();
+    assert!(r.final_text.contains("a UUID4 with pytest."), "{r:?}");
+    assert!(r.llm.is_none());
 }

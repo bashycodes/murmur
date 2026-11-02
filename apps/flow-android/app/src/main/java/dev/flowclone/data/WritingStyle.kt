@@ -121,4 +121,35 @@ object LlmOutcome {
     }
 
     fun isNormal(code: String?): Boolean = code == null || code == FORMATTED || code == SKIPPED_CLEAN
+
+    /** [offReason]: no cleanup engine is switched on (phone AI off, no OpenRouter or server cleanup). */
+    const val OFF_ALL = "ai_cleanup_off"
+    /** [offReason]: the phone AI is on but no model is imported. */
+    const val OFF_NO_MODEL = "no_phone_model"
+    /** [offReason]: the phone AI is on but its model failed to load. */
+    const val OFF_FAILED = "phone_model_failed"
+    /** [offReason]: an engine is on but none could run (terminal app, snippet, server without an LLM, …). */
+    const val OFF_NONE_AVAILABLE = "no_engine_available"
+
+    /**
+     * Debug line `llm_off` (2026-11-02, local-cleanup-skipped): why a dictation got no AI cleanup
+     * at all (its `llm` is null), which used to be a silent gap. [phoneOn]: the phone's cleanup
+     * switch ([CleanupEngines.on] LOCAL); [phone]: the engine's on-device LLM status (null =
+     * unknown); [offPhone]: OpenRouter or server cleanup is on ([DevSettings.offPhoneCleanup]).
+     */
+    fun offReason(phoneOn: Boolean, phone: EnginePlan.LlmStatus?, offPhone: Boolean): String = when {
+        offPhone -> OFF_NONE_AVAILABLE
+        !phoneOn -> OFF_ALL
+        phone is EnginePlan.LlmStatus.NoModel -> OFF_NO_MODEL
+        phone is EnginePlan.LlmStatus.Failed -> OFF_FAILED
+        else -> OFF_NONE_AVAILABLE
+    }
+
+    fun offLabel(reason: String?): String? = when (reason) {
+        null -> null
+        OFF_ALL -> "no AI cleanup (all cleanup engines off)"
+        OFF_NO_MODEL -> "no AI cleanup (phone AI on, no model imported)"
+        OFF_FAILED -> "no AI cleanup (phone model failed to load)"
+        else -> "no AI cleanup ($reason)"
+    }
 }
