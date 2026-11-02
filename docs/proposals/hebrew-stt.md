@@ -16,6 +16,9 @@ English.
    int8 (28.8 %, 673 MB) on both accuracy and size. Parakeet-v3-he
    (`krut42/voice-parakeet-he-int8`) stays selectable: it loads on today's
    `nemo_transducer` path with no engine code.
+   *Confirmed by H7* on the owner's own dictations (13.6–14.4 % vs 18.9 % WER,
+   ≈ 50 ms vs ≈ 420 ms after the last audio):
+   `docs/findings/2026-11-02-h7-hebrew-stt-scores.md`.
 3. **The zipformer needs a sherpa *online* engine.** sherpa-onnx 1.13.8 (already a
    dependency) has `OnlineRecognizer` / `OnlineStream`. First version feeds the whole
    buffer at commit, then ~1.5 s of silence and `input_finished()` (still RTF 0.05).
@@ -50,4 +53,4 @@ English.
 | H4 | Windows: language picker with Hebrew, Hebrew model in Settings → Speech + download catalogue (zipformer-he, parakeet-he) | H1, H2 |
 | H5 | Android: Hebrew in Speech settings, Hebrew model import, load-by-language | H1, H2 |
 | H6 | Auto-detect Hebrew (language ID before decode) | H1 |
-| H7 | Score 10–20 of the owner's own Hebrew dictations on both models | owner recordings |
+| H7 | Score 10–20 of the owner's own Hebrew dictations on both models. *Done:* `docs/findings/2026-11-02-h7-hebrew-stt-scores.md` (16 clips: zipformer-he 13.6–14.4 % WER vs parakeet-he 18.9 %; decision 2 holds) | owner recordings |
