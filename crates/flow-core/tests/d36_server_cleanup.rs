@@ -549,3 +549,102 @@ fn a_dictionary_replacement_fixes_misheard_terms_without_any_ai() {
     assert!(r.final_text.contains("a UUID4 with pytest."), "{r:?}");
     assert!(r.llm.is_none());
 }
+
+// ---- D43: the "already clean" skip is for the on-device LLM only ----------
+
+/// A tidy dictation (D27's `llm_can_help` says no) through `chain`, with
+/// the default skip on.
+fn dictate_tidy(chain: Arc<dyn Cleaner>) -> flow_core::CommitResult {
+    let core = FlowCore::from_engines(
+        Arc::new(MockAsr::new("The demo is on Thursday.")),
+        Some(chain),
+    );
+    let cfg = SessionConfig {
+        languages: vec!["en".into()],
+        ..Default::default()
+    };
+    assert!(cfg.llm_skip_clean, "the default skip is on");
+    core.start_session(cfg).unwrap();
+    core.push_audio(&speech(1000));
+    core.commit()
+}
+
+fn server_hop(out: Result<&'static str, CleanError>) -> Arc<Hop> {
+    let mut h = Hop::new("srv", out);
+    h.engine = "server";
+    Arc::new(h)
+}
+
+#[test]
+fn tidy_text_with_the_cloud_first_is_cleaned() {
+    let cloud = cloud_hop("The demo is on Thursday!");
+    let local = Arc::new(Hop::new("l", Ok("L")));
+    let r = dictate_tidy(Arc::new(chain(&[&cloud, &local])));
+    assert_eq!(r.status, CommitStatus::Formatted, "{r:?}");
+    assert_eq!(r.final_text.trim(), "The demo is on Thursday!");
+    assert_eq!((cloud.calls(), local.calls()), (1, 0));
+}
+
+#[test]
+fn tidy_text_with_the_server_first_is_cleaned() {
+    let server = server_hop(Ok("The demo is on Thursday!"));
+    let local = Arc::new(Hop::new("l", Ok("L")));
+    let r = dictate_tidy(Arc::new(chain(&[&server, &local])));
+    assert_eq!(r.status, CommitStatus::Formatted, "{r:?}");
+    assert_ne!(r.fallback_reason.as_deref(), Some("llm_skipped_clean"));
+    assert_eq!(r.final_text.trim(), "The demo is on Thursday!");
+    assert_eq!(r.llm.unwrap().engine.as_deref(), Some("server"));
+    assert_eq!((server.calls(), local.calls()), (1, 0));
+    // A bare server cleaner too.
+    let server = server_hop(Ok("The demo is on Thursday!"));
+    let r = dictate_tidy(server.clone());
+    assert_eq!(r.status, CommitStatus::Formatted, "{r:?}");
+    assert_eq!(server.calls(), 1);
+}
+
+#[test]
+fn tidy_text_with_the_local_model_first_is_skipped() {
+    let local = Arc::new(Hop::new("l", Ok("L")));
+    let server = server_hop(Ok("S"));
+    let cloud = cloud_hop("C");
+    let r = dictate_tidy(Arc::new(chain(&[&local, &server, &cloud])));
+    assert_eq!(r.fallback_reason.as_deref(), Some("llm_skipped_clean"));
+    assert_eq!(r.status, CommitStatus::RawTranscript, "{r:?}");
+    assert_eq!((local.calls(), server.calls(), cloud.calls()), (0, 0, 0));
+    // A bare on-device cleaner: as before.
+    let local = Arc::new(Hop::new("l", Ok("L")));
+    let r = dictate_tidy(local.clone());
+    assert_eq!(r.fallback_reason.as_deref(), Some("llm_skipped_clean"));
+    assert_eq!(local.calls(), 0);
+    // A local hop that would refuse is passed over: the server is first.
+    let mut cold = Hop::new("l", Ok("L"));
+    cold.ready = false;
+    let cold = Arc::new(cold);
+    let server = server_hop(Ok("The demo is on Thursday!"));
+    let r = dictate_tidy(Arc::new(chain(&[&cold, &server])));
+    assert_eq!(r.status, CommitStatus::Formatted, "{r:?}");
+    assert_eq!((cold.calls(), server.calls()), (0, 1));
+}
+
+#[test]
+fn tidy_text_after_a_server_drop_goes_to_the_cloud_not_the_local_model() {
+    // The server still counts as ready (circuit closed: it has not failed
+    // yet) but is gone: the first tidy dictation after the drop used to be
+    // skipped. Now the cloud next in line cleans it, and the on-device LLM
+    // is never handed tidy text.
+    let server = server_hop(Err(CleanError::Unavailable("disconnected".into())));
+    let local = Arc::new(Hop::new("l", Ok("L")));
+    let cloud = cloud_hop("The demo is on Thursday!");
+    let r = dictate_tidy(Arc::new(chain(&[&server, &local, &cloud])));
+    assert_ne!(r.fallback_reason.as_deref(), Some("llm_skipped_clean"));
+    assert_eq!(r.status, CommitStatus::Formatted, "{r:?}");
+    assert_eq!(r.final_text.trim(), "The demo is on Thursday!");
+    assert_eq!((server.calls(), local.calls(), cloud.calls()), (1, 0, 1));
+    // Server gone, only the on-device LLM after it: the rules' text stands.
+    let server = server_hop(Err(CleanError::Backend("disconnected".into())));
+    let local = Arc::new(Hop::new("l", Ok("L")));
+    let r = dictate_tidy(Arc::new(chain(&[&server, &local])));
+    assert_eq!(r.status, CommitStatus::RawTranscript, "{r:?}");
+    assert_eq!(r.final_text.trim(), "The demo is on Thursday.");
+    assert_eq!((server.calls(), local.calls()), (1, 0));
+}

@@ -1914,13 +1914,23 @@ fn finish_text(
         return CommitResult::error("cancelled");
     }
     let mut run_llm = cleanup::should_run(cfg, ctx.app_category) && !snippet;
-    if run_llm
-        && local_cleaner.is_some()
-        && cfg.llm_skip_clean
-        && !cleanup::llm_can_help(&text, ctx.app_category)
-    {
-        run_llm = false;
-        r.fallback_reason = Some("llm_skipped_clean".into());
+    // D27's "already clean" skip is for the on-device LLM only (D43,
+    // owner decision 2026-11-02): it damages tidy text, a server or cloud
+    // model does not. A tidy dictation whose first ready cleaner is the
+    // server or the cloud is still cleaned, by the hops that are not
+    // on-device (it never falls through to the on-device LLM).
+    let mut local_cleaner = local_cleaner;
+    if run_llm && cfg.llm_skip_clean && !cleanup::llm_can_help(&text, ctx.app_category) {
+        if let Some(cl) = local_cleaner.take() {
+            local_cleaner = match cleanup::first_ready_engine(&cl) {
+                "local" => None,
+                _ => cleanup::off_device(&cl),
+            };
+            if local_cleaner.is_none() {
+                run_llm = false;
+                r.fallback_reason = Some("llm_skipped_clean".into());
+            }
+        }
     }
     if let (true, Some(cl)) = (run_llm, &local_cleaner) {
         let style = cfg.styles.for_category(ctx.app_category);

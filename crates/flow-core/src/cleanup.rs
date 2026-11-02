@@ -323,6 +323,13 @@ pub trait Cleaner: Send + Sync {
         self.available()
     }
 
+    /// A composite cleaner's hops in the order they are tried
+    /// ([`ChainCleaner`]); `None` (the default) for a single backend. Used
+    /// by [`first_ready_engine`] and [`off_device`].
+    fn chain_hops(&self) -> Option<&[Arc<dyn Cleaner>]> {
+        None
+    }
+
     /// [`Cleaner::clean_cancellable`] plus metering. Backends with a cost
     /// override it and report usage even on error / cancel. Default: the
     /// plain call, usage = engine + model.
@@ -466,6 +473,32 @@ pub fn ai_split(cl: &Arc<dyn Cleaner>) -> Option<AiParts> {
         return Some(p);
     }
     (cl.engine() == "cloud").then(|| (cl.clone(), None))
+}
+
+/// The engine (`"local"` | `"server"` | `"cloud"`) that would clean first
+/// with `cl`: a chain's first hop that is [`Cleaner::ready`] (its first
+/// hop when none is), a single backend's own [`Cleaner::engine`].
+pub fn first_ready_engine(cl: &Arc<dyn Cleaner>) -> &'static str {
+    match cl.chain_hops() {
+        Some(hops) => hops
+            .iter()
+            .find(|h| h.ready())
+            .or(hops.first())
+            .map_or(cl.engine(), first_ready_engine),
+        None => cl.engine(),
+    }
+}
+
+/// `cl` without its on-device hops (engine `"local"`), or `None` when
+/// nothing else is left. Owner decision 2026-11-02 (D43): D27's "already
+/// clean" skip is for the on-device LLM only, so a tidy dictation still
+/// goes to the server / cloud, but never falls through to the on-device
+/// LLM when they fail.
+pub fn off_device(cl: &Arc<dyn Cleaner>) -> Option<Arc<dyn Cleaner>> {
+    match cl.chain_hops() {
+        Some(hops) => ChainCleaner::build(hops.iter().filter_map(off_device).collect()),
+        None => (cl.engine() != "local").then(|| cl.clone()),
+    }
 }
 
 /// D36: the user's cleanup order as one cleaner: hops (on-device LLM,
@@ -667,6 +700,10 @@ impl Cleaner for ChainCleaner {
 
     fn ready(&self) -> bool {
         self.hops.iter().any(|h| h.ready())
+    }
+
+    fn chain_hops(&self) -> Option<&[Arc<dyn Cleaner>]> {
+        Some(&self.hops)
     }
 
     /// Cloud first → D30 (AI cleanup on the raw transcript, the hops after

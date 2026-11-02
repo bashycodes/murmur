@@ -86,6 +86,8 @@ struct Server {
     commit_fails: Mutex<bool>,
     answer: Mutex<Answer>,
     starts: Mutex<Vec<CleanupLevel>>,
+    /// Each session's `llm_skip_clean`.
+    skips: Mutex<Vec<bool>>,
     cleans: Mutex<Vec<CleanRequest>>,
 }
 
@@ -99,6 +101,7 @@ impl Server {
             commit_fails: Mutex::new(false),
             answer: Mutex::new(Answer::Text),
             starts: Mutex::new(Vec::new()),
+            skips: Mutex::new(Vec::new()),
             cleans: Mutex::new(Vec::new()),
         })
     }
@@ -139,6 +142,7 @@ impl Backend for Server {
     fn start_session(&self, c: &SessionConfig) -> Result<StartInfo, BackendError> {
         self.connected();
         self.starts.lock().unwrap().push(c.cleanup_level);
+        self.skips.lock().unwrap().push(c.llm_skip_clean);
         Ok(StartInfo::default())
     }
     fn push_audio(&self, _p: &[i16]) -> bool {
@@ -513,15 +517,17 @@ fn unreachable_server_before_the_cloud_leaves_the_cloud_first() {
         assert!(k.router.push_audio(&pcm));
         k.router.commit()
     };
-    // A dictation the LLM is asked about: the server is tried (circuit
-    // closed), fails, and the cloud cleans it. While the server's circuit
-    // is still closed a tidy dictation is skipped: the server is first
-    // and believed reachable (D27 skip, as on the server itself).
-    assert_eq!(
-        go(&k, true).fallback_reason.as_deref(),
-        Some("llm_skipped_clean")
+    // D43: the first tidy dictation after the drop (circuit still closed,
+    // the server believed reachable) is no longer skipped: the server is
+    // tried, fails, and the cloud cleans it.
+    let r = go(&k, true);
+    assert_ne!(
+        r.fallback_reason.as_deref(),
+        Some("llm_skipped_clean"),
+        "{r:?}"
     );
-    let _ = go(&k, false);
+    assert_eq!(r.status, CommitStatus::Formatted, "{r:?}");
+    assert_eq!((k.server.cleans(), k.cloud_calls()), (1, 1), "{r:?}");
     assert!(k.router.cleanup_status().server_circuit.unwrap().open);
     let before = k.cloud_calls();
     let r = go(&k, true);
@@ -591,6 +597,16 @@ fn server_first_is_one_pass() {
     assert_eq!(r.final_text, SESSION_OUT, "{r:?}");
     assert_eq!(k.server.levels(), vec![session().cleanup_level]);
     assert_eq!(k.server.cleans(), 0);
+    // D43: the server cleaning its own session never skips tidy text.
+    let k2 = rig_with(server_stt(&[S, L, C]), false);
+    k2.router
+        .start_session(SessionConfig {
+            llm_skip_clean: true,
+            ..session()
+        })
+        .unwrap();
+    k2.router.cancel();
+    assert_eq!(*k2.server.skips.lock().unwrap(), vec![false]);
     let rt = r.route.unwrap();
     assert_eq!(rt.engine, "remote");
     assert_eq!(rt.llm_engine.as_deref(), Some("server"));
