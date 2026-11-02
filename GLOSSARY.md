@@ -16,6 +16,18 @@ _Avoid_: post-processing, formatting rules, LLM cleanup, spoken commands (as a s
 The fixed text rules used only when AI cleanup cannot run or its answer is rejected.
 _Avoid_: deterministic layer, spoken cleanup
 
+**Route order**:
+The ordered list of speech routes (own server, this device, cloud) a dictation tries; when one fails, the next takes over. A meeting's chunks follow the same order.
+_Avoid_: fallback chain, prefer (the old two-route setting)
+
+**Meeting**:
+A recording of any length (a meeting, a phone call) transcribed into timestamped segments, rather than typed into a text field. It is cut at pauses into chunks of at most 30 s, and each chunk is transcribed as one ordinary dictation.
+_Avoid_: long dictation, notetaker session (Notetaker is the Windows feature that records one)
+
+**Segment**:
+One timestamped piece of a meeting transcript: start, end (ms from the start of the recording) and text.
+_Avoid_: chunk (the audio behind it), paste segment, utterance
+
 ## Server access
 
 **Key**:

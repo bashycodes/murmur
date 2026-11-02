@@ -61,9 +61,158 @@ pub fn read_wav_16k_mono(path: &std::path::Path) -> Result<Vec<i16>, String> {
     ))
 }
 
+/// Streaming linear resampler to 16 kHz (the same interpolation as
+/// [`resample_to_16k`], carried across blocks).
+#[derive(Debug, Clone)]
+pub struct Resampler {
+    step: f64,
+    /// Source position of the next output sample, relative to `prev`'s
+    /// index (`prev` is source sample -1 of the next block).
+    pos: f64,
+    prev: Option<i16>,
+}
+
+impl Resampler {
+    pub fn new(rate: u32) -> Self {
+        Self {
+            step: rate.max(1) as f64 / SAMPLE_RATE as f64,
+            pos: 0.0,
+            prev: None,
+        }
+    }
+
+    /// Resample the next block (mono).
+    pub fn push(&mut self, pcm: &[i16], out: &mut Vec<i16>) {
+        if (self.step - 1.0).abs() < f64::EPSILON {
+            out.extend_from_slice(pcm);
+            return;
+        }
+        // Source = [prev?] ++ pcm; `pos` indexes it.
+        let off = usize::from(self.prev.is_some());
+        let at = |i: usize| -> i16 {
+            if i < off {
+                self.prev.unwrap_or(0)
+            } else {
+                pcm[i - off]
+            }
+        };
+        let n = pcm.len() + off;
+        while n > 0 && (self.pos as usize) + 1 < n {
+            let j = self.pos as usize;
+            let f = self.pos - j as f64;
+            let (a, b) = (at(j) as f64, at(j + 1) as f64);
+            out.push((a + (b - a) * f).round() as i16);
+            self.pos += self.step;
+        }
+        if n > 0 {
+            // Keep the last sample as the next block's index 0.
+            self.prev = Some(at(n - 1));
+            self.pos -= (n - 1) as f64;
+        }
+    }
+}
+
+/// A PCM WAV (int or float, any rate and channel count) read block by
+/// block as 16 kHz mono PCM16: memory stays bounded for hour-long files.
+#[cfg(feature = "wav")]
+pub struct WavBlocks {
+    reader: hound::WavReader<std::io::BufReader<std::fs::File>>,
+    spec: hound::WavSpec,
+    resampler: Resampler,
+    block: usize,
+    done: bool,
+}
+
+#[cfg(feature = "wav")]
+impl WavBlocks {
+    /// `block_samples` = output samples per block (about).
+    pub fn open(path: &std::path::Path, block_samples: usize) -> Result<Self, String> {
+        let reader =
+            hound::WavReader::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let spec = reader.spec();
+        Ok(Self {
+            resampler: Resampler::new(spec.sample_rate),
+            reader,
+            spec,
+            block: block_samples.max(1),
+            done: false,
+        })
+    }
+
+    /// Length of the whole file at 16 kHz, in samples.
+    pub fn total_samples(&self) -> usize {
+        (self.reader.duration() as u64 * SAMPLE_RATE as u64 / self.spec.sample_rate.max(1) as u64)
+            as usize
+    }
+}
+
+#[cfg(feature = "wav")]
+impl Iterator for WavBlocks {
+    type Item = Result<Vec<i16>, String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.done {
+            return None;
+        }
+        let ch = self.spec.channels.max(1) as usize;
+        let src = self.block * self.spec.sample_rate.max(1) as usize / SAMPLE_RATE * ch;
+        let mut raw = Vec::with_capacity(src.max(ch));
+        let res: Result<(), hound::Error> = match self.spec.sample_format {
+            hound::SampleFormat::Int => {
+                let shift = self.spec.bits_per_sample.saturating_sub(16);
+                self.reader
+                    .samples::<i32>()
+                    .take(src.max(ch))
+                    .try_for_each(|s| s.map(|v| raw.push((v >> shift) as i16)))
+            }
+            hound::SampleFormat::Float => self
+                .reader
+                .samples::<f32>()
+                .take(src.max(ch))
+                .try_for_each(|s| s.map(|v| raw.push((v.clamp(-1.0, 1.0) * 32767.0) as i16))),
+        };
+        if let Err(e) = res {
+            self.done = true;
+            return Some(Err(e.to_string()));
+        }
+        if raw.is_empty() {
+            self.done = true;
+            return None;
+        }
+        let mut out = Vec::with_capacity(self.block + 2);
+        self.resampler.push(&downmix(&raw, ch), &mut out);
+        Some(Ok(out))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn streaming_resampler_matches_the_batch_one() {
+        let x: Vec<i16> = (0..44_100)
+            .map(|i| ((i * 37) % 2000) as i16 - 1000)
+            .collect();
+        for rate in [44_100u32, 48_000, 8_000, 22_050, 16_000] {
+            let batch = resample_to_16k(&x, rate);
+            for block in [1usize, 441, 1000, 44_100] {
+                let mut r = Resampler::new(rate);
+                let mut out = Vec::new();
+                for c in x.chunks(block) {
+                    r.push(c, &mut out);
+                }
+                let n = batch.len().min(out.len());
+                // The stream holds back the output past the last source
+                // sample (at most one source sample's worth).
+                let slack = (16_000 / rate as usize).max(1);
+                assert!(batch.len().abs_diff(out.len()) <= slack, "{rate} {block}");
+                // Same interpolation; float rounding may differ by 1 LSB.
+                let worst = (0..n).map(|i| (batch[i] - out[i]).abs()).max().unwrap_or(0);
+                assert!(worst <= 1, "{rate} {block}: {worst}");
+            }
+        }
+    }
 
     #[test]
     fn downmix_averages_channels() {
