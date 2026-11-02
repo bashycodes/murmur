@@ -131,7 +131,16 @@
     form: structuredClone(dev), caps: { local: true, remote: true, cloud: true },
     capabilities: { local: true, remote: true, asr_engines: ["whisper", "parakeet"], llm: true, proto: 1, core_version: "0.1.0" },
     visible: true, version: "0.1.0", build: "abc1234-dirty", full: "0.1.0+abc1234.dirty", check: devCheck(dev), route: route(),
+    meetings: { routes: meetingOrder(), follows_dictation: meetingRoutes === null },
   });
+  // D47: the meeting order; null = never edited = dictation's order and switches (live).
+  let meetingRoutes = null;
+  const meetingOrder = () => {
+    const dictOn = (r) => (r === "server" ? dev.allow_server : r === "client" ? dev.allow_client : or.stt.allow);
+    const v = (meetingRoutes ?? []).filter((e, i, a) => a.findIndex((x) => x.route === e.route) === i).map((e) => ({ ...e }));
+    for (const r of [...dev.route_order, "server", "client", "cloud"]) if (!v.some((e) => e.route === r)) v.push({ route: r, enabled: dictOn(r) });
+    return v;
+  };
   let insights = {
     total_words: 12840, week_words: 2315, dictations: 412, total_ms: 5_400_000, avg_wpm: 142.7,
     current_streak: 4, longest_streak: 11, typing_wpm: 40, saved_minutes: 231,
@@ -561,6 +570,19 @@
       return orView();
     },
     // D36: order + this PC / server switches; OpenRouter keeps its switch (consent).
+    // D47: OpenRouter needs the speech consent (DevSettings::set_meeting_order).
+    dev_meeting_routes_set: ({ routes }) => {
+      const prev = meetingRoutes;
+      const cloudWas = meetingOrder().some((e) => e.route === "cloud" && e.enabled);
+      meetingRoutes = routes;
+      const full = meetingOrder();
+      if (full.some((e) => e.route === "cloud" && e.enabled) && !cloudWas && !or.stt.consent) {
+        meetingRoutes = prev;
+        throw "Accept sending audio to OpenRouter first: turn OpenRouter on under Engines above";
+      }
+      meetingRoutes = full;
+      return devView();
+    },
     dev_cleanup_set_engines: ({ engines }) => {
       const routes = [...new Set([...engines.map((e) => e.route), "local", "server", "cloud"])];
       or.cleanup.engines = routes.map((r) => ({

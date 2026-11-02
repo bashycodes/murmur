@@ -18,6 +18,15 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Windows: choose where meetings are transcribed.** Settings › Speech to
+  text has a third ordered list, **Meetings**, built like Engines and the
+  AI cleanup order: this PC, your server and OpenRouter, each moved up or
+  down and switched on or off. Recorded meetings are transcribed by the
+  first one that is on and answers, and fall back down the list when it
+  is unreachable; dictation keeps its own order. Until you change it, the
+  list is the same as your dictation engines. This PC's model is loaded
+  for a meeting only when this PC is first or the engines above it fail.
+  OpenRouter needs the same audio consent as for dictation (D47).
 - **Windows: Notetaker records meetings (Meetings page).** Start and stop
   a recording from the tray, the Meetings page or an optional shortcut
   (Settings › General). Your microphone and what the PC plays are

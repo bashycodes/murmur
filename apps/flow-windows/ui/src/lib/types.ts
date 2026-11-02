@@ -112,6 +112,20 @@ export interface DevView {
   full: string;
   check: DevCheck;
   route: RouteView;
+  /** D47: the meeting transcription order (absent from an older backend). */
+  meetings?: MeetingOrder;
+}
+
+/** D47: one place that transcribes meetings, with its own switch. */
+export interface MeetingRoute {
+  route: Route;
+  enabled: boolean;
+}
+
+export interface MeetingOrder {
+  routes: MeetingRoute[];
+  /** Never edited: dictation's order and switches. */
+  follows_dictation: boolean;
 }
 
 // ------------------------------------------------- OpenRouter (D28)

@@ -683,8 +683,8 @@ impl meetings::AudioSources for WinSources {
 const MEETING_MAX_YIELD: Duration = Duration::from_secs(600);
 
 /// Build the Notetaker: its jobs run on their own router and on-device
-/// slot (the user's route order), yield to a running dictation, and see
-/// the user's languages and dictionary.
+/// slot (the meeting route order, D47), yield to a running dictation,
+/// and see the user's languages and dictionary.
 fn setup_meetings(app: &AppHandle, dictating: Arc<std::sync::atomic::AtomicBool>) -> Arc<Meetings> {
     let st = app.state::<AppState>();
     let prefs = st.prefs.clone();
@@ -693,16 +693,15 @@ fn setup_meetings(app: &AppHandle, dictating: Arc<std::sync::atomic::AtomicBool>
     let p = prefs.clone();
     let engine: meetings::EngineFactory = Arc::new(move || {
         let prefs = p.read().unwrap().clone();
-        let caps = BuildCaps::current();
-        let cfg = router_adapter::router_config(&prefs.developer, caps)?;
-        let (_, cli) = prefs.developer.effective(caps);
-        let local = (caps.local && cli).then(|| router_adapter::MeetingLocal {
+        // D47: the meeting route order, not dictation's.
+        let plan = router_adapter::meeting_plan(&prefs.developer, BuildCaps::current())?;
+        let local = plan.local.then(|| router_adapter::MeetingLocal {
             spec: ModelSpec::from_prefs(&prefs, appdata.as_deref()).background(),
             lang: LanguageSpec::from_prefs(&prefs, appdata.as_deref()),
-            warm: want_local(&prefs),
+            warm: plan.warm,
         });
         let e = router_adapter::MeetingEngine::new(
-            cfg,
+            plan.cfg,
             local,
             router_adapter::remote_factory(),
             Some(&*creds),
@@ -1755,6 +1754,15 @@ struct DevView {
     full: &'static str,
     check: DevCheck,
     route: Option<RouteView>,
+    /// D47: the meeting transcription order (Speech to text → Meetings).
+    meetings: MeetingOrderView,
+}
+
+#[derive(serde::Serialize)]
+struct MeetingOrderView {
+    routes: Vec<crate::dev_settings::MeetingRoute>,
+    /// Never edited: the list is dictation's order and switches.
+    follows_dictation: bool,
 }
 
 fn dev_view(state: &AppState) -> DevView {
@@ -1782,6 +1790,10 @@ fn dev_view(state: &AppState) -> DevView {
         build: flow_build_info::BUILD,
         full: flow_build_info::FULL,
         route: router.map(|r| r.route_view()),
+        meetings: MeetingOrderView {
+            routes: dev.meeting_order(),
+            follows_dictation: dev.meeting_follows_dictation(),
+        },
     }
 }
 
@@ -2360,6 +2372,20 @@ fn dev_or_set_cleanup(
 /// D36: the cleanup order on the AI cleanup page (order + this PC / your
 /// server switches; OpenRouter's switch is `dev_or_set_cleanup`'s). In
 /// every build: the answer's `cleanup.engines` is what the page shows.
+/// D47: the meeting transcription order and its switches. Dictation's
+/// router is not touched; the next meeting job builds its engine from it.
+#[tauri::command]
+fn dev_meeting_routes_set(
+    state: tauri::State<'_, AppState>,
+    routes: Vec<crate::dev_settings::MeetingRoute>,
+) -> Result<DevView, String> {
+    let mut prefs = state.prefs.read().unwrap().clone();
+    prefs.developer.set_meeting_order(&routes)?;
+    prefs.save(&state.path).map_err(|e| e.to_string())?;
+    *state.prefs.write().unwrap() = prefs;
+    Ok(dev_view(&state))
+}
+
 #[tauri::command]
 fn dev_cleanup_set_engines(
     app: AppHandle,
@@ -2971,6 +2997,7 @@ pub fn run() {
             dev_or_set_stt,
             dev_or_set_cleanup,
             dev_cleanup_set_engines,
+            dev_meeting_routes_set,
             dev_or_set_privacy,
             dev_or_set_budget,
             dev_or_ack_notice,
