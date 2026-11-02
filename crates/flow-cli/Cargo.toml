@@ -14,9 +14,13 @@ llm = ["flow-core/llm"]
 # `--engine parakeet`: links libsherpa-onnx-c-api + libonnxruntime, which the
 # build copies next to the binary (build.rs adds an $ORIGIN rpath).
 parakeet = ["flow-core/parakeet"]
+# `meeting --router` with a server route (links flow-remote's network code).
+remote = ["dep:flow-remote"]
 
 [dependencies]
 flow-core = { path = "../flow-core", features = ["wav"] }
+flow-router = { path = "../flow-router" }
+flow-remote = { path = "../flow-remote", optional = true, features = ["tls"] }
 serde_json.workspace = true
 serde.workspace = true
 

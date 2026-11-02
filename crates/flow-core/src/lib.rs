@@ -17,6 +17,7 @@ pub mod learn;
 pub mod lid;
 #[cfg(feature = "llm")]
 pub mod llama;
+pub mod meeting;
 #[cfg(feature = "parakeet")]
 pub mod parakeet;
 pub mod paste;

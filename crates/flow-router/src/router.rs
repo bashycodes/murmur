@@ -409,7 +409,7 @@ impl<T> LockExt<T> for Mutex<T> {
     }
 }
 
-fn error_result(msg: impl Into<String>, route: Option<RouteInfo>) -> CommitResult {
+pub(crate) fn error_result(msg: impl Into<String>, route: Option<RouteInfo>) -> CommitResult {
     let mut r: CommitResult = serde_json::from_str(
         r#"{"status":"ERROR","asr_text":"","final_text":"","language":null,"timings":{"audio_ms":0,"asr_ms":0,"llm_ms":0,"postprocess_ms":0,"total_ms":0,"dropped_samples":0},"press_enter":false,"fallback_reason":null,"truncated":false,"error":null}"#,
     )

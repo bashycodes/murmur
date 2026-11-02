@@ -603,6 +603,8 @@ name = "flow-cli"
 version = "1.0.0"
 dependencies = [
  "flow-core",
+ "flow-remote",
+ "flow-router",
  "hound",
  "serde",
  "serde_json",
