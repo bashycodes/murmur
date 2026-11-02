@@ -177,4 +177,99 @@ class CallJobsTest {
         val done = j.state.value as CallJobState.Done
         assertEquals(10, store.load(done.id)!!.segments.size)
     }
+
+    // ---- D49: the auto queue behind manual jobs ----
+
+    private data class End(val name: String, val state: CallJobState, val stop: CallStop?)
+
+    private fun queued(
+        queue: ArrayDeque<CallRequest>, ends: MutableList<End>, src: () -> AudioSource, engine: (String) -> MeetingJob,
+        busy: () -> Boolean = { false }, thread: Boolean = false,
+    ) = CallJobs(
+        store, { src() }, engine, now = { 1_700_000_000_000 }, yieldTo = busy, pause = { Thread.sleep(it.coerceAtMost(5)) },
+        runner = if (thread) { r -> Thread(r).start() } else { r -> r.run() },
+        nextAuto = { synchronized(queue) { queue.removeFirstOrNull() } },
+        onEnd = { r, s, stop -> synchronized(ends) { ends += End(r.name, s, stop) } },
+    )
+
+    private fun auto(n: Int) = CallRequest("content://media/external_primary/audio/media/$n", "auto-$n.m4a", 0, "en", autoId = n.toLong())
+
+    @Test fun autoJobsRunOneAtATimeFromTheQueue() {
+        val q = ArrayDeque(listOf(auto(1), auto(2)))
+        val ends = ArrayList<End>()
+        val j = queued(q, ends, { Tone(3) }, { FakeJob() })
+        assertTrue(j.startNext())
+        assertEquals("auto-1.m4a", ends.single().name)
+        assertTrue(j.state.value is CallJobState.Done)
+        assertTrue(j.startNext())
+        assertFalse(j.startNext()) // empty
+        assertEquals(listOf("auto-1.m4a", "auto-2.m4a"), ends.map { it.name })
+        assertTrue(ends.all { it.state is CallJobState.Done && it.stop == null })
+        assertEquals(2, store.list().size)
+    }
+
+    @Test fun aPickedRecordingStopsTheAutoJobAndRunsFirst() {
+        val q = ArrayDeque(listOf(auto(1)))
+        val ends = ArrayList<End>()
+        val autoJob = FakeJob(chunkMs = 20)
+        val opened = AtomicInteger()
+        val j = queued(q, ends, { if (opened.getAndIncrement() == 0) Tone(6000) else Tone(3) }, { if (it == "en") autoJob else FakeJob() }, thread = true)
+        assertTrue(j.startNext())
+        var n = 0
+        while (autoJob.pushes.get() <= 3 && n++ < 500) Thread.sleep(10)
+        assertTrue(j.current!!.auto)
+        val manual = req.copy(name = "picked.m4a") // language "he": a fresh FakeJob that finishes
+        assertTrue(j.start(manual))
+        assertFalse("only one manual waits", j.start(req.copy(name = "third.m4a")))
+        assertFalse("auto never preempts", j.start(auto(9)))
+        n = 0
+        while (synchronized(ends) { ends.size } < 1 && n++ < 500) Thread.sleep(10)
+        // The picked file is now running or done; the auto job stepped aside, not failed.
+        assertEquals(End("auto-1.m4a", CallJobState.Cancelled("auto-1.m4a"), CallStop.PREEMPTED), synchronized(ends) { ends[0] })
+        n = 0
+        while (synchronized(ends) { ends.size } < 2 && n++ < 1000) Thread.sleep(10)
+        await(j)
+        assertEquals("picked.m4a", synchronized(ends) { ends[1] }.name)
+        assertTrue(j.state.value is CallJobState.Done)
+    }
+
+    @Test fun autoJobsWaitBehindAManualJob() {
+        val hold = CountDownLatch(1)
+        val q = ArrayDeque(listOf(auto(1)))
+        val ends = ArrayList<End>()
+        val j = queued(q, ends, { hold.await(); Tone(1) }, { FakeJob() }, thread = true)
+        assertTrue(j.start(req))
+        assertFalse(j.startNext())
+        assertEquals(1, q.size)
+        hold.countDown()
+        await(j)
+        assertTrue(j.startNext())
+        await(j)
+        assertEquals(listOf("call.m4a", "auto-1.m4a"), ends.map { it.name })
+    }
+
+    @Test fun autoJobsYieldToDictationToo() {
+        val dictating = AtomicBoolean(true)
+        val job = FakeJob()
+        val j = queued(ArrayDeque(listOf(auto(1))), ArrayList(), { Tone(20) }, { job }, busy = { dictating.get() }, thread = true)
+        assertTrue(j.startNext())
+        Thread.sleep(200)
+        assertEquals("no audio pushed while a dictation runs", 0, job.pushes.get())
+        dictating.set(false)
+        await(j)
+        assertTrue(j.state.value is CallJobState.Done)
+    }
+
+    @Test fun androidStoppingTheJobSaysSystem() {
+        val ends = ArrayList<End>()
+        val job = FakeJob(chunkMs = 20)
+        val j = queued(ArrayDeque(listOf(auto(1))), ends, { Tone(6000) }, { job }, thread = true)
+        assertTrue(j.startNext())
+        var n = 0
+        while (job.pushes.get() <= 3 && n++ < 500) Thread.sleep(10)
+        j.cancel(CallStop.SYSTEM)
+        await(j)
+        assertEquals(CallStop.SYSTEM, ends.single().stop)
+        assertEquals(CallJobState.Cancelled("auto-1.m4a"), j.state.value)
+    }
 }

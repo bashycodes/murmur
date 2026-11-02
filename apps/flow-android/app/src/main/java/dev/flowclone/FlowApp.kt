@@ -47,7 +47,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import dev.flowclone.calls.CallEngine
+import dev.flowclone.calls.AutoCalls
+import dev.flowclone.calls.AutoQueue
+import dev.flowclone.calls.CallJobService
 import dev.flowclone.calls.CallJobs
+import dev.flowclone.calls.MediaStoreRecordings
 import dev.flowclone.calls.CallsStore
 import dev.flowclone.calls.Decoders
 import kotlinx.coroutines.flow.StateFlow
@@ -130,6 +134,14 @@ class FlowApp : Application() {
      */
     lateinit var calls: CallJobs
 
+    /** D49: the auto-transcribe opt-in and queue of new call recordings (`files/calls-auto.json`). Tests swap it. */
+    var autoCalls: AutoQueue
+        get() = autoCallsRef ?: synchronized(this) {
+            autoCallsRef ?: AutoQueue(File(filesDir, "calls-auto.json"), MediaStoreRecordings(this)).also { autoCallsRef = it }
+        }
+        set(v) { autoCallsRef = v }
+    @Volatile private var autoCallsRef: AutoQueue? = null
+
     /**
      * D46: a dictation is recording or being processed (FlowService sets it). A call transcription
      * waits between chunks while this is true, so dictation always comes first.
@@ -196,7 +208,14 @@ class FlowApp : Application() {
             decoder = { r -> Decoders.open(this, android.net.Uri.parse(r.uri)) },
             engine = { lang -> CallEngine.open(this, lang) },
             yieldTo = { dictationBusy.value },
+            nextAuto = { autoCalls.next(AutoCalls.language(this)) },
+            onEnd = { req, end, stop ->
+                req.autoId?.let { autoCalls.finished(it, end, stop) }
+                CallJobService.notifyFinished(this, req, end)
+            },
         )
+        // D49: watch for new call recordings again (when the owner opted in); off the main thread.
+        Thread({ AutoCalls.arm(this) }, "flow-calls-arm").apply { isDaemon = true }.start()
         debugAudio = DebugAudioStore.inFilesDir(filesDir)
         // 72 h limit also when the option was turned off meanwhile.
         runCatching { debugAudioWriter.execute { runCatching { debugAudio.prune() } } }

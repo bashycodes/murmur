@@ -7,8 +7,16 @@ import dev.flowclone.core.MeetingSegment
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
-/** What the Calls page asks for: one picked recording and the language it is in. */
-data class CallRequest(val uri: String, val name: String, val recordedAt: Long, val language: String)
+/**
+ * What the Calls page asks for: one picked recording and the language it is in. [autoId]: the
+ * MediaStore id of a new call recording queued by auto-transcribe (D49); null for a picked file.
+ */
+data class CallRequest(val uri: String, val name: String, val recordedAt: Long, val language: String, val autoId: Long? = null) {
+    val auto: Boolean get() = autoId != null
+}
+
+/** Why a job was cancelled (D49): the owner asked, a manual job took its place, or Android stopped us. */
+enum class CallStop { OWNER, PREEMPTED, SYSTEM }
 
 sealed interface CallJobState {
     data object Idle : CallJobState
@@ -29,6 +37,11 @@ sealed interface CallJobState {
  * transcriber, save the transcript. [cancel] stops it from any thread; nothing is saved then.
  * [CallJobService] holds the foreground + wake lock and the notification while [state] is running.
  * Dictation always comes first: see [yieldTo] and [backgroundThread].
+ *
+ * D49 queue: [startNext] runs the next auto-transcribe recording ([nextAuto]) when nothing runs.
+ * A manual [start] while an auto job runs cancels that job ([CallStop.PREEMPTED], it goes back
+ * in the queue) and runs right after it, so auto jobs always wait behind manual ones. [onEnd]
+ * hears every job's outcome (on the worker thread, before [state] shows it).
  */
 class CallJobs(
     private val store: CallsStore,
@@ -42,24 +55,57 @@ class CallJobs(
     private val yieldTo: () -> Boolean = { false },
     private val pause: (Long) -> Unit = { ms -> Thread.sleep(ms) },
     private val runner: (Runnable) -> Unit = ::backgroundThread,
+    private val nextAuto: () -> CallRequest? = { null },
+    private val onEnd: (CallRequest, CallJobState, CallStop?) -> Unit = { _, _, _ -> },
 ) {
     private val _state = MutableStateFlow<CallJobState>(CallJobState.Idle)
     val state: StateFlow<CallJobState> = _state
 
     @Volatile private var cancelled = false
+    @Volatile private var stop: CallStop? = null
     @Volatile private var job: MeetingJob? = null
+    /** The request running now (null when idle). */
+    @Volatile var current: CallRequest? = null
+        private set
+    /** A manual request waiting for the auto job it preempted to stop. */
+    private var pendingManual: CallRequest? = null
 
-    /** False while another transcription runs. */
+    /**
+     * False while another manual transcription runs. A manual [req] while an auto job runs stops
+     * that job (it is queued again) and runs right after it.
+     */
     @Synchronized
     fun start(req: CallRequest): Boolean {
-        if (_state.value.busy) return false
-        cancelled = false
-        _state.value = CallJobState.Running(req.name, loading = true, fraction = null)
-        runner(Runnable { run(req) })
+        if (_state.value.busy) {
+            val cur = current
+            if (req.auto || cur == null || !cur.auto || pendingManual != null) return false
+            pendingManual = req
+            cancel(CallStop.PREEMPTED)
+            return true
+        }
+        launch(req)
         return true
     }
 
-    fun cancel() {
+    /** D49: runs the next queued auto job when nothing runs; false when busy or the queue is empty. */
+    @Synchronized
+    fun startNext(): Boolean {
+        if (_state.value.busy) return false
+        val req = nextAuto() ?: return false
+        launch(req)
+        return true
+    }
+
+    private fun launch(req: CallRequest) {
+        cancelled = false
+        stop = null
+        current = req
+        _state.value = CallJobState.Running(req.name, loading = true, fraction = null)
+        runner(Runnable { run(req) })
+    }
+
+    fun cancel(why: CallStop = CallStop.OWNER) {
+        if (stop == null || why == CallStop.PREEMPTED) stop = why
         cancelled = true
         job?.cancel()
     }
@@ -73,7 +119,7 @@ class CallJobs(
     private fun run(req: CallRequest) {
         var source: AudioSource? = null
         var j: MeetingJob? = null
-        _state.value = try {
+        val end = try {
             val src = decoder(req).also { source = it }
             if (cancelled) throw MeetingException("cancelled", MeetingException.CANCELLED)
             j = engine(req.language).also { job = it }
@@ -97,6 +143,14 @@ class CallJobs(
             job = null
             runCatching { j?.close() }
             runCatching { source?.close() }
+        }
+        val why = if (end is CallJobState.Cancelled) stop ?: CallStop.OWNER else null
+        runCatching { onEnd(req, end, why) }
+        synchronized(this) {
+            current = null
+            val next = pendingManual
+            pendingManual = null
+            if (next != null) launch(next) else _state.value = end
         }
     }
 

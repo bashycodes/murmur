@@ -1,8 +1,10 @@
 package dev.flowclone.ui
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -10,6 +12,8 @@ import android.text.format.DateFormat
 import android.widget.LinearLayout
 import android.widget.Toast
 import dev.flowclone.FlowApp
+import dev.flowclone.calls.AutoCalls
+import dev.flowclone.calls.AutoQueue
 import dev.flowclone.calls.CallEngine
 import dev.flowclone.calls.CallJobService
 import dev.flowclone.calls.CallJobState
@@ -29,6 +33,8 @@ import kotlin.concurrent.thread
  * Hebrew or English, keep the transcript. The list shows each transcript's date, length and
  * first line; one opens with the full text, Copy and Delete. The picked file is only read.
  * The job runs in [CallJobService]; this page shows its progress while open.
+ * D49: "Transcribe new call recordings" (opt-in, READ_MEDIA_AUDIO) queues every recording made
+ * after it was turned on; the section shows what waits and what failed (tap to try again).
  */
 class CallsActivity : Activity() {
     private val app get() = FlowApp.of(this)
@@ -37,6 +43,8 @@ class CallsActivity : Activity() {
     private var items: List<CallTranscript> = emptyList()
     private var jobBox: LinearLayout? = null
     private var listBox: LinearLayout? = null
+    private var autoBox: LinearLayout? = null
+    private var autoToggle: DevUi.ToggleRow? = null
     private var scope: CoroutineScope? = null
     private var lastState: CallJobState? = null
 
@@ -53,6 +61,8 @@ class CallsActivity : Activity() {
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { s ->
                 s.launch { app.calls.state.collect { st -> onJob(st) } }
             }
+            // D49: the app is in the foreground now, so the queue can start (and new files are seen).
+            if (app.autoCalls.isEnabled) AutoCalls.kick(this) { runOnUiThread { fillAuto() } }
         }
     }
 
@@ -89,13 +99,83 @@ class CallsActivity : Activity() {
                 val current = language()
                 segmented(langs.map(CallsView::languageName), langs.indexOf(current).coerceAtLeast(0)) { i -> setLanguage(langs[i]) }
                 action(CHOOSE, DevUi.Style.PRIMARY) { pick() }
+                sectionLabel("New call recordings")
+                card {
+                    autoToggle = toggleRow(AUTO, AUTO_DESC, app.autoCalls.isEnabled).also { r -> r.onChange { on -> setAuto(on) } }
+                }
+                autoBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }.also { addView(it) }
             }
             jobBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }.also { addView(it) }
             sectionLabel("Transcripts")
             listBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }.also { addView(it) }
         }
         fillList()
+        fillAuto()
         lastState?.let { renderJob(it) }
+    }
+
+    // ---- auto-transcribe (D49) ----
+
+    private fun setAuto(on: Boolean) {
+        if (on == app.autoCalls.isEnabled) return
+        if (!on) {
+            thread(name = "calls-auto") { AutoCalls.disable(this); runOnUiThread { fillAuto() } }
+            return
+        }
+        if (AutoCalls.hasPermission(this)) enableAuto()
+        else requestPermissions(arrayOf(Manifest.permission.READ_MEDIA_AUDIO), REQ_AUDIO)
+    }
+
+    private fun enableAuto() {
+        thread(name = "calls-auto") {
+            val ok = runCatching { AutoCalls.enable(this) }.isSuccess
+            runOnUiThread {
+                if (!ok) { autoToggle?.isChecked = false; toast("Couldn't turn it on") }
+                fillAuto()
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQ_AUDIO) return
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            enableAuto()
+        } else {
+            autoToggle?.isChecked = false
+            toast("Allow Music and audio for Flow Clone to transcribe new call recordings")
+        }
+    }
+
+    private fun fillAuto(): Unit = with(ui) {
+        val box = autoBox ?: return@with
+        box.removeAllViews()
+        val q = app.autoCalls
+        autoToggle?.isChecked = q.isEnabled
+        if (!q.isEnabled) return@with
+        val problem = when {
+            !AutoCalls.hasPermission(this@CallsActivity) -> AutoQueue.NO_ACCESS
+            else -> q.lastScanError
+        }
+        problem?.let { box.banner().show(it, Tone.WARN) }
+        val waiting = q.pending()
+        if (waiting > 0) box.note(if (waiting == 1) "1 recording waiting to be transcribed." else "$waiting recordings waiting to be transcribed.")
+        val failed = q.failures()
+        if (failed.isEmpty()) return@with
+        box.card {
+            cardHeader("Couldn't transcribe", failed.size.toString())
+            for (f in failed) {
+                val meta = DateFormat.getMediumDateFormat(this@CallsActivity).format(Date(f.rec.recordedAt))
+                listRow(f.rec.name, meta, flag = f.error ?: "Failed", flagTone = Tone.BAD) {
+                    ui.confirm("Try again?", "Transcribe ${f.rec.name} again.", "Try again", onYes = {
+                        thread(name = "calls-auto") { q.retry(f.rec.id); AutoCalls.kick(this@CallsActivity) { runOnUiThread { fillAuto() } } }
+                    })
+                }
+            }
+        }
+        box.action("Clear this list") {
+            thread(name = "calls-auto") { for (f in failed) q.dismiss(f.rec.id); runOnUiThread { fillAuto() } }
+        }
     }
 
     private fun fillList(): Unit = with(ui) {
@@ -122,6 +202,7 @@ class CallsActivity : Activity() {
         val before = lastState
         lastState = s
         if (s is CallJobState.Done && before !is CallJobState.Done) load() // the new transcript
+        if (!s.busy && before?.busy == true) fillAuto()
         renderJob(s)
     }
 
@@ -142,7 +223,8 @@ class CallsActivity : Activity() {
     }
 
     private fun pick() {
-        if (app.calls.state.value.busy) { toast("A recording is already being transcribed"); return }
+        // An automatic job steps aside for a picked file (D49); a picked one doesn't.
+        if (app.calls.state.value.busy && app.calls.current?.auto != true) { toast("A recording is already being transcribed"); return }
         val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/*")
         try {
             startActivityForResult(i, REQ_PICK)
@@ -185,9 +267,8 @@ class CallsActivity : Activity() {
         return name to modified
     }
 
-    private fun prefs() = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-    private fun language(): String = prefs().getString(KEY_LANG, null) ?: CallEngine.defaultLanguage(app)
-    private fun setLanguage(l: String) { prefs().edit().putString(KEY_LANG, l).apply() }
+    private fun language(): String = AutoCalls.language(app)
+    private fun setLanguage(l: String) = AutoCalls.setLanguage(this, l)
 
     // ---- detail ----
 
@@ -239,8 +320,10 @@ class CallsActivity : Activity() {
         const val DELETE = "Delete"
         const val EXTRA_ID = "id"
         const val REQ_PICK = 41
-        private const val PREFS = "calls"
-        private const val KEY_LANG = "language"
+        const val REQ_AUDIO = 42
+        const val AUTO = "Transcribe new call recordings"
+        const val AUTO_DESC = "Each call recording saved after you turn this on is transcribed on this phone, one at a time and never " +
+            "during a dictation. Older recordings are left alone; recordings are only read."
 
         fun detailIntent(c: Context, id: String): Intent = Intent(c, CallsActivity::class.java).putExtra(EXTRA_ID, id)
     }
