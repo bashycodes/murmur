@@ -355,6 +355,29 @@ impl ModelSpec {
         }
     }
 
+    /// The same model on half its CPU threads (at least 1), for a meeting
+    /// transcription running beside dictation (D45): the dictation's
+    /// threads stay free.
+    pub fn background(self) -> Self {
+        let half = |t: Option<usize>| Some((t.unwrap_or_else(fc::default_threads) / 2).max(1));
+        match self {
+            ModelSpec::Whisper { path, threads } => ModelSpec::Whisper {
+                path,
+                threads: half(threads),
+            },
+            ModelSpec::Parakeet {
+                dir,
+                threads,
+                decoding,
+            } => ModelSpec::Parakeet {
+                dir,
+                threads: half(threads),
+                decoding,
+            },
+            m @ ModelSpec::Mock { .. } => m,
+        }
+    }
+
     fn label(&self) -> String {
         match self {
             ModelSpec::Whisper { path, .. } => path.display().to_string(),
@@ -1581,6 +1604,22 @@ mod tests {
     use super::*;
     use std::path::Path;
 
+    #[test]
+    fn a_background_model_uses_half_the_threads() {
+        let w = |t| ModelSpec::Whisper {
+            path: "m.bin".into(),
+            threads: t,
+        };
+        assert_eq!(w(Some(8)).background(), w(Some(4)));
+        assert_eq!(w(Some(1)).background(), w(Some(1)));
+        assert_eq!(
+            w(None).background(),
+            w(Some((fc::default_threads() / 2).max(1)))
+        );
+        let m = ModelSpec::Mock { text: "x".into() };
+        assert_eq!(m.clone().background(), m);
+    }
+
     /// `SessionConfig::default()` has `max_samples: 0` (→ a 1-sample cap).
     /// The mock ASR ignored that; since core-p1 the VAD (D16) calls a
     /// 1-sample buffer silence and commits EMPTY, so give the session room.
@@ -1840,9 +1879,21 @@ mod tests {
         let gpu = whisper_backend_view(Ok((p(), vk())), false);
         assert!(gpu.gpu && gpu.cpu_why.is_none());
         let why = |v: LlmBackendView| v.cpu_why.unwrap();
-        assert_eq!(why(whisper_backend_view(Ok((p(), WhisperBackend::cpu())), false)), "no Vulkan graphics chip found");
-        assert!(why(whisper_backend_view(Ok((p(), WhisperBackend::cpu())), true)).contains("forced"));
-        let gone = || Err(WhisperPluginError::PluginNotFound { tried: vec!["x: gone".into()] });
+        assert_eq!(
+            why(whisper_backend_view(
+                Ok((p(), WhisperBackend::cpu())),
+                false
+            )),
+            "no Vulkan graphics chip found"
+        );
+        assert!(
+            why(whisper_backend_view(Ok((p(), WhisperBackend::cpu())), true)).contains("forced")
+        );
+        let gone = || {
+            Err(WhisperPluginError::PluginNotFound {
+                tried: vec!["x: gone".into()],
+            })
+        };
         assert!(why(whisper_backend_view(gone(), false)).contains("plugin"));
         assert!(why(whisper_backend_view(gone(), true)).contains("forced"));
         let bad = whisper_backend_view(Err(WhisperPluginError::Backend("bad ABI".into())), false);

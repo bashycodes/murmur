@@ -70,6 +70,27 @@ the next write, a corrupt index only loses pins. Ids are `[a-z0-9_-]{1,64}`
 `FlowClone\scratchpad.txt` is moved into `notes\` once at startup, never over
 an existing one.
 
+## Meetings (Notetaker, D45)
+
+Tray *Start meeting recording* (or the Meetings page button, or the
+optional `shortcuts.meeting`, unset by default) records the microphone
+(**Me**) and what the default playback device plays (WASAPI loopback,
+**Others**) into two 16 kHz files on one timeline. A blinking "Recording
+meeting · m:ss" chip sits on the Flow bar until it stops. No playback device
+→ mic only, with a warning on the Meetings page.
+
+After *Stop*, the meeting is transcribed (no AI cleanup, the dictation
+languages and dictionary) on its own router and engine: it waits while you
+dictate, runs below normal priority on half the threads, and frees the
+engine when done (a second local model costs about its size in RAM while it
+runs). The two tracks merge into Me / Others turns by time. Unfinished
+meetings resume at the next start; a failed one can be transcribed again
+while its audio is kept.
+
+Storage (`src/meetings/`): `%APPDATA%\FlowClone\meetings\<id>.json` plus
+`<id>.mic.wav` / `<id>.system.wav`. Audio is kept for the newest 3 meetings
+only; transcripts stay until deleted on the Meetings page.
+
 ## Build flavours (Cargo features)
 
 | Build | Command | Engines |
@@ -366,6 +387,7 @@ before the paste.
 | `src/learn.rs` | Learn-from-edits (03 §3), pure: anchor-bounded region, Wispr end reasons, watch state machine in injected time, semi-global trim of text typed after the dictation |
 | `src/recent_apps.rs` | Exe names recently dictated into (`recent_apps.json`, names only) and the picker's built-in exe → group rows |
 | `src/suggestions.rs` | Learned words waiting for an explicit accept (`suggestions.json`); dismissed words are never re-suggested |
+| `src/meetings/` | Notetaker (D45): `record.rs` two-stream WAV recorder on one clock, `transcript.rs` D44 per track + Me/Others merge, `store.rs` meetings dir + keep-3 audio, `mod.rs` the service (start/stop, job queue, yield to dictation, recover) |
 | `src/notes.rs` | Notes: one `<id>.txt` per note in `%APPDATA%\FlowClone\notes\` + `index.json` (pinned, created/updated), tolerant of missing/stale entries; list/search/pin/delete/export; Scratchpad migration; atomic save, debounced `AutoSave` with injected time, flush on close/quit |
 | `src/dictionary.rs` | Import/export of the shared `[{word, replacement, isSnippet}]` JSON: tolerant parse, validation, case-insensitive merge |
 | `src/overlay.rs` | Pill hit-testing so the hands-free ✕/✓ are clickable while the canvas stays click-through |
@@ -599,6 +621,8 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Clear key → next dictation still pastes (local), bubble "Cloud STT failed (set a key and accept the consent); used this PC".
 - [ ] Monthly budget below this month's cost → "Cloud STT failed (monthly budget reached); used this PC"; cleanup falls back to this PC / the formatted text.
 - [ ] Quit and restart: usage counters and the key are unchanged.
+- [ ] Meetings: in a call, tray "Start meeting recording" → the Flow bar shows "Recording meeting · 0:0x"; speak, let the other side speak; tray "■ Stop meeting recording" → the Meetings page shows "Transcribing… n%", then Me / Others turns in order. Dictate (Ctrl+Win) during the transcription: it pastes as fast as usual.
+- [ ] Meetings with nothing playing: the Others track stays silent, the transcript is Me only with the "No sound from the PC" note. After a 4th meeting only the newest 3 have `.wav` files in `%APPDATA%\FlowClone\meetings\`.
 
 ## Known gaps / v1 limitations
 

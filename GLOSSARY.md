@@ -27,6 +27,13 @@ _Avoid_: long dictation, notetaker session (Notetaker is the Windows feature tha
 **Call transcript**:
 The Android Calls page's result: a meeting transcript of one call recording the user picked, made on the phone by its own engine and kept in the app. The recording itself is only read.
 _Avoid_: call log, call recording (the audio file, which is not ours)
+**Notetaker**:
+The Windows feature that records a meeting (microphone + what the PC plays) and turns it into a transcript of Me / Others turns on the Meetings page.
+_Avoid_: meeting bot, call recorder
+
+**Me / Others**:
+The speaker label of a meeting turn, by audio source: Me = the microphone, Others = what the PC plays (the other side of the call). Not voice recognition.
+_Avoid_: speaker 1/2, diarization
 
 **Segment**:
 One timestamped piece of a meeting transcript: start, end (ms from the start of the recording) and text.

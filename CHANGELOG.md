@@ -18,6 +18,17 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Windows: Notetaker records meetings (Meetings page).** Start and stop
+  a recording from the tray, the Meetings page or an optional shortcut
+  (Settings › General). Your microphone and what the PC plays are
+  recorded as two separate tracks; a blinking chip on the Flow bar shows
+  the recording. When you stop, the meeting is transcribed into turns
+  labelled **Me** (mic) and **Others** (PC sound) in time order, on its
+  own engine and only between dictations, so dictating during a long
+  transcription is never held up. The Meetings page lists meetings (date,
+  length, app) and opens, copies, deletes or retries them. The audio of
+  the last 3 meetings is kept; older audio is deleted, transcripts stay
+  (D45).
 - **Meeting transcription (minutes to hours).** A recording of any length
   is cut at pauses into chunks of 8-30 s, and each chunk runs as one normal
   dictation on the route order with its fallbacks. The result is a

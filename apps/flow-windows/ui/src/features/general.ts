@@ -83,6 +83,7 @@ function fill(prefs: Prefs): void {
   setValue("copy_last", prefs.shortcuts.copy_last);
   setValue("scratchpad", prefs.shortcuts.scratchpad ?? "");
   setValue("new_note", prefs.shortcuts.new_note ?? "");
+  setValue("meeting", prefs.shortcuts.meeting ?? "");
   $<HTMLSelectElement>("microphone").value = prefs.microphone ?? "";
   for (const f of BOOL_FIELDS) $<HTMLInputElement>(f).checked = Boolean(prefs[f]);
   $<HTMLSelectElement>("paste_method").value = prefs.paste_method;
@@ -326,6 +327,7 @@ export function collectGeneral(): Partial<Prefs> {
       copy_last: $<HTMLInputElement>("copy_last").value.trim(),
       scratchpad: $<HTMLInputElement>("scratchpad").value.trim(),
       new_note: $<HTMLInputElement>("new_note").value.trim(),
+      meeting: $<HTMLInputElement>("meeting").value.trim(),
     },
   };
   next.model_path = $<HTMLInputElement>("model_path").value.trim() || null;

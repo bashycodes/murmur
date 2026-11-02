@@ -325,5 +325,28 @@ function showMaxWarning(remainingMs: number): void {
 }
 void listen<number>("dictation:max-warning", (e) => showMaxWarning(e.payload));
 
+// Notetaker (D45): while a meeting records, a chip with its running time
+// (the pill stays up for it even when the resting pill is hidden).
+interface MeetingRecording {
+  id: string;
+  started_ms: number;
+}
+const meetingRec = document.getElementById("meeting-rec") as HTMLDivElement;
+let meetingTimer = 0;
+function showMeeting(r: MeetingRecording | null): void {
+  clearInterval(meetingTimer);
+  meetingRec.hidden = !r;
+  if (!r) return;
+  const tick = (): void => {
+    const s = Math.max(0, Math.floor((Date.now() - r.started_ms) / 1000));
+    const mm = Math.floor(s / 60);
+    const ss = String(s % 60).padStart(2, "0");
+    meetingRec.textContent = `Recording meeting · ${mm}:${ss}`;
+  };
+  tick();
+  meetingTimer = setInterval(tick, 1000);
+}
+void listen<MeetingRecording | null>("meeting:recording", (e) => showMeeting(e.payload));
+
 // Last: apply() touches the badge / countdown elements declared above.
 apply({ state: "resting" });

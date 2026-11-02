@@ -22,6 +22,7 @@ export interface Prefs {
     copy_last: string;
     scratchpad?: string;
     new_note?: string;
+    meeting?: string;
   };
   microphone: string | null;
   languages: string[];

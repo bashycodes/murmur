@@ -22,7 +22,8 @@ import { onboarding } from "./onboarding/index.js";
 import { dictionaryPage, snippetsPage } from "./pages/dictionary.js";
 import { homePage } from "./pages/home.js";
 import { insightsPage } from "./pages/insights.js";
-import { notetakerPage, scratchpadPage } from "./pages/scratchpad.js";
+import { meetingsPage } from "./pages/meetings.js";
+import { scratchpadPage } from "./pages/scratchpad.js";
 import { settingsCleanupPage } from "./pages/settings/cleanup.js";
 import { settingsDeveloperPage } from "./pages/settings/developer.js";
 import { settingsGeneralPage } from "./pages/settings/general.js";
@@ -45,7 +46,7 @@ const PAGES: Page[] = [
   stylePage,
   transformsPage,
   scratchpadPage,
-  notetakerPage,
+  meetingsPage,
   settingsGeneralPage,
   settingsSystemPage,
   settingsPrivacyPage,
@@ -73,7 +74,7 @@ interface NavItem {
 
 const MAIN_NAV: NavItem[] = [
   { page: "home", label: "Dictation", icon: ICON.dictation },
-  { page: "notetaker", label: "Notetaker", icon: ICON.notetaker, later: true },
+  { page: "meetings", label: "Meetings", icon: ICON.notetaker },
   { page: "insights", label: "Insights", icon: ICON.insights },
   { page: "dictionary", label: "Dictionary", icon: ICON.dictionary, badge: "sugg_badge" },
   { page: "snippets", label: "Snippets", icon: ICON.snippets },
