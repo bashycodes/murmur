@@ -61,6 +61,8 @@ export interface Prefs {
   llm_lib_path: string | null;
   llm_timeout_ms: number;
   learn_from_edits: boolean;
+  /** Notetaker meeting detection (D48): off (default) / ask / auto. */
+  meeting_detection?: "off" | "ask" | "auto";
   /** First-run setup finished or skipped (false only on a fresh install). */
   onboarded?: boolean;
   transforms?: TransformPrefs;

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Record this meeting? — Murmur</title>
+    <link rel="stylesheet" href="theme.css" />
+    <link rel="stylesheet" href="components.css" />
+    <link rel="stylesheet" href="meeting-prompt.css" />
+  </head>
+  <body class="fl">
+    <!-- Meeting detection (D48, ui/src/meeting-prompt.ts): shown when a
+         Zoom / Webex / Jabber call starts and the setting is "Ask me".
+         Not answering within a minute = Not now. -->
+    <main class="mp" role="alertdialog" aria-labelledby="mp-title" aria-describedby="mp-body">
+      <h1 id="mp-title" class="mp-title">Record this meeting?</h1>
+      <p id="mp-body" class="mp-body"></p>
+      <div class="mp-actions">
+        <button type="button" id="mp-no" class="fl-btn fl-btn-secondary fl-btn-sm">Not now</button>
+        <button type="button" id="mp-yes" class="fl-btn fl-btn-primary fl-btn-sm">Record</button>
+      </div>
+    </main>
+    <script type="module" src="meeting-prompt.js"></script>
+  </body>
+</html>

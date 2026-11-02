@@ -91,6 +91,14 @@ Storage (`src/meetings/`): `%APPDATA%\FlowClone\meetings\<id>.json` plus
 `<id>.mic.wav` / `<id>.system.wav`. Audio is kept for the newest 3 meetings
 only; transcripts stay until deleted on the Meetings page.
 
+Meeting detection (D48, off by default; Meetings page → "When a Zoom,
+Webex or Jabber call starts"): every 3 s the app checks whether Zoom,
+Webex or Jabber shows a meeting window or uses the microphone (an app that
+is merely open never counts), then asks "Record this meeting?" in a small
+box at the bottom right, or starts recording. The recording it started
+stops about 12 s after the call ends; one you started yourself is never
+stopped. The debug log lists the signals it sees (`meeting-detect`).
+
 ## Build flavours (Cargo features)
 
 | Build | Command | Engines |
@@ -387,7 +395,7 @@ before the paste.
 | `src/learn.rs` | Learn-from-edits (03 §3), pure: anchor-bounded region, Wispr end reasons, watch state machine in injected time, semi-global trim of text typed after the dictation |
 | `src/recent_apps.rs` | Exe names recently dictated into (`recent_apps.json`, names only) and the picker's built-in exe → group rows |
 | `src/suggestions.rs` | Learned words waiting for an explicit accept (`suggestions.json`); dismissed words are never re-suggested |
-| `src/meetings/` | Notetaker (D45): `record.rs` two-stream WAV recorder on one clock, `transcript.rs` D44 per track + Me/Others merge, `store.rs` meetings dir + keep-3 audio, `mod.rs` the service (start/stop, job queue, yield to dictation, recover) |
+| `src/meetings/` | Notetaker (D45): `record.rs` two-stream WAV recorder on one clock, `transcript.rs` D44 per track + Me/Others merge, `store.rs` meetings dir + keep-3 audio, `mod.rs` the service (start/stop, job queue, yield to dictation, recover); `detect.rs` meeting detection (D48: Zoom/Webex/Jabber signals → ask or auto-record, stop at call end; `detect/win.rs` the Win32/WASAPI probe, fixtures in `tests/fixtures/meeting-detect/`) |
 | `src/notes.rs` | Notes: one `<id>.txt` per note in `%APPDATA%\FlowClone\notes\` + `index.json` (pinned, created/updated), tolerant of missing/stale entries; list/search/pin/delete/export; Scratchpad migration; atomic save, debounced `AutoSave` with injected time, flush on close/quit |
 | `src/dictionary.rs` | Import/export of the shared `[{word, replacement, isSnippet}]` JSON: tolerant parse, validation, case-insensitive merge |
 | `src/overlay.rs` | Pill hit-testing so the hands-free ✕/✓ are clickable while the canvas stays click-through |
@@ -407,7 +415,7 @@ before the paste.
 | `tests/router_integration.rs` | Controller → router → flow-remote → in-process flow-server (MockAsr) vs local MockAsr: all four toggle combos, server down / killed mid-dictation (no lost audio), error pills, Test connection / Test session |
 | `tests/core_integration.rs` | Controller + real flow-core (MockAsr, and whisper tiny.en on `jfk.wav` when present): audio → commit → paste plan → history |
 | `src/app.rs` | Tauri: tray, overlay window (512x614, click-through, `WS_EX_NOACTIVATE`), settings window, Scratchpad/Notes window (created on demand), commands, autostart |
-| `build.rs`, `capabilities/` | Every command is declared in the app manifest; the settings window gets all of them except the note commands, the overlay only `overlay_action` + `overlay_theme` (not `get_prefs`), the Scratchpad/Notes window only `note_*` + `clipboard_copy` (`tests/capabilities.rs`) |
+| `build.rs`, `capabilities/` | Every command is declared in the app manifest; the settings window gets all of them except the note commands, the overlay only `overlay_action` + `overlay_theme` (not `get_prefs`), the Scratchpad/Notes window only `note_*` + `clipboard_copy`, the "Record this meeting?" prompt (`meeting-prompt`, D48) only `meeting_prompt_answer` (`tests/capabilities.rs`) |
 | `tools/ci/` | CI helpers: Parakeet DLL bundle overlay, installer collection (`.github/workflows/windows-build.yml`) |
 | `ui/` | Plain TypeScript → `ui/dist/*.js` (committed). No bundler, no CDN, no web fonts; the CSP is `'self'` only. Settings tabs: General, AI cleanup, History, Insights, Dictionary, Developer; `scratchpad.html` (`?note=<id>`, default `scratchpad`; `?view=notes` = Notes list) |
 | `tauri.llm.conf.json` | Config overlay that bundles `flow_llm.dll` next to the exe (`cargo tauri build --config tauri.llm.conf.json`) |
