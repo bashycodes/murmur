@@ -989,7 +989,7 @@ async fn whisper_backend() -> Result<core_adapter::LlmBackendView, String> {
             flow_core::whisper_plugin::WhisperPluginError::Backend(
                 "this build has no local engine".into(),
             ),
-        )));
+        ), false));
     }
     tauri::async_runtime::spawn_blocking(core_adapter::whisper_backend_probe)
         .await
