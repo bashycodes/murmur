@@ -435,6 +435,22 @@ body {
   background: var(--notice-dot);
 }
 
+/* ---- Notetaker (D45): a meeting is being recorded ---- */
+.meeting-rec::before {
+  background: var(--destructive-500);
+  animation: meeting-rec-blink 1.6s ease-in-out infinite;
+}
+@keyframes meeting-rec-blink {
+  50% {
+    opacity: 0.3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .meeting-rec::before {
+    animation: none;
+  }
+}
+
 /* ---- Command Mode: the hold / working pill with an orange accent ---- */
 /* Ring drawn as a shadow so the fixed pill widths keep their inner room. */
 .pill[data-command] {

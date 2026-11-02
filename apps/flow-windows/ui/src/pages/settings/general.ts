@@ -37,9 +37,10 @@ ${group(
     row("Paste last dictation", "", key("paste_last", "Paste last dictation")) +
     row("Copy last dictation", "", key("copy_last", "Copy last dictation")) +
     row("Open Scratchpad", "", key("scratchpad", "Open Scratchpad")) +
-    row("New note and dictate", "", key("new_note", "New note and dictate")),
+    row("New note and dictate", "", key("new_note", "New note and dictate")) +
+    row("Start or stop a meeting recording", "", key("meeting", "Start or stop a meeting recording")),
 )}
-<p class="fl-help lw-group-help" id="keys_help" hidden>Type the keys joined by +, e.g. <code>Ctrl+Win</code>. Keys: Ctrl, Win, Alt, Shift, Space, Esc, A–Z, 0–9, F1–F24. Ctrl/Alt/Shift match either side; Left Alt, Right Alt (also Left/Right Ctrl, Shift) match one side only, e.g. push to talk = Right Alt. Max 3 keys, at least one modifier. Empty = off (Scratchpad, New note). Enter saves, Esc cancels.</p>
+<p class="fl-help lw-group-help" id="keys_help" hidden>Type the keys joined by +, e.g. <code>Ctrl+Win</code>. Keys: Ctrl, Win, Alt, Shift, Space, Esc, A–Z, 0–9, F1–F24. Ctrl/Alt/Shift match either side; Left Alt, Right Alt (also Left/Right Ctrl, Shift) match one side only, e.g. push to talk = Right Alt. Max 3 keys, at least one modifier. Empty = off (Scratchpad, New note, meeting recording). Enter saves, Esc cancels.</p>
 ${group(
   "Voice",
   row("Microphone", "", `<select id="microphone" class="fl-select is-wide" data-save="prefs" aria-label="Microphone"></select>`) +

@@ -68,7 +68,10 @@ base64 = "0.22"
 # cross-checks for MSVC like any pure-Rust crate. `whisper-plugin` = the
 # same for the GPU whisper.cpp (flow_whisper_vulkan.dll, crate flow-whisper).
 flow-build-info = { path = "../../crates/flow-build-info" }
-flow-core = { path = "../../crates/flow-core", features = ["llm", "whisper-plugin"] }
+flow-core = { path = "../../crates/flow-core", features = ["llm", "whisper-plugin", "wav"] }
+# Meeting recordings (Notetaker, D45): the two streams are written as WAVs
+# while recording and read back block by block (flow-core `wav`). Pure Rust.
+hound = "3"
 # Local history (audio is never stored). `bundled` = no system sqlite needed.
 # D17: every dictation goes through the router (no network code in it;
 # the remote backend is injected by `remote`).
@@ -121,7 +124,6 @@ windows = { version = "0.58", features = [
 ] }
 
 [dev-dependencies]
-hound = "3"
 # tests/router_integration.rs: an in-process flow-server (MockAsr).
 flow-server = { path = "../../crates/flow-server", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros"] }

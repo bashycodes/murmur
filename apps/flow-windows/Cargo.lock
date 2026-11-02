@@ -1231,6 +1231,7 @@ version = "1.0.0"
 dependencies = [
  "fancy-regex",
  "flow-asr-sherpa",
+ "hound",
  "libloading 0.8.9",
  "regex",
  "rtrb",

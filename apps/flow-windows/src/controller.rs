@@ -92,6 +92,10 @@ pub trait Platform: Send + Sync + 'static {
     fn suggestions_changed(&self, _pending: usize) {}
     /// The Scratchpad shortcut: show (or create) the Scratchpad window.
     fn open_scratchpad(&self) {}
+    /// The Meeting shortcut: start or stop recording a meeting (D45). Must
+    /// not block (the shell does the work on its own thread); dictation is
+    /// untouched either way.
+    fn toggle_meeting(&self) {}
     /// The New-note shortcut: create a note and show it in the Scratchpad
     /// window. `true` once that window is in front (so a dictation started
     /// now pastes into it; S13 only pastes into the start window).
@@ -391,6 +395,10 @@ impl Controller {
             }
             Input::Hotkey(HotkeyAction::Scratchpad) => {
                 self.platform.open_scratchpad();
+                return;
+            }
+            Input::Hotkey(HotkeyAction::Meeting) => {
+                self.platform.toggle_meeting();
                 return;
             }
             Input::Hotkey(HotkeyAction::ViewChanges) => {
@@ -1999,6 +2007,9 @@ mod tests {
         fn open_scratchpad(&self) {
             self.push("open scratchpad");
         }
+        fn toggle_meeting(&self) {
+            self.push("toggle meeting");
+        }
         fn open_new_note(&self) -> bool {
             self.push("open new note");
             self.note_opens
@@ -2492,6 +2503,18 @@ mod tests {
         r.at(0, Input::Hotkey(HotkeyAction::Scratchpad));
         assert_eq!(r.fake.log(), ["open scratchpad"]);
         assert!(matches!(r.c.machine().phase(), Phase::Idle));
+    }
+
+    #[test]
+    fn meeting_hotkey_toggles_the_recording_and_leaves_a_dictation_alone() {
+        let mut r = rig(Fake::default(), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::Meeting));
+        assert_eq!(r.fake.log(), ["toggle meeting"]);
+        assert!(matches!(r.c.machine().phase(), Phase::Idle));
+        r.at(10, Input::Hotkey(HotkeyAction::PttDown));
+        let before = r.c.machine().phase().clone();
+        r.at(100, Input::Hotkey(HotkeyAction::Meeting));
+        assert_eq!(r.c.machine().phase(), &before, "still dictating");
     }
 
     #[test]
