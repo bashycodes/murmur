@@ -260,6 +260,19 @@ jobs:
             -- --no-default-features
           tools/ci/collect-bundle.sh client
 
+      # The installers run `tauri build`, which may rewrite Cargo.toml (it
+      # added `features = []` to tauri-build, so 1.0.0's CI exes said
+      # "-dirty"), and rebuild the exe after the check above. Same check
+      # again, after the last build.
+      - name: Clean tree after the installers (fails on tags)
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            git --no-pager diff --stat
+            git --no-pager diff | head -c 4000 | cat -A | head -60
+            if [ "$GITHUB_REF_TYPE" = tag ]; then exit 1; fi
+            echo "::warning::the installer build modified tracked files; the exe says -dirty"
+          fi
+
       - uses: actions/upload-artifact@v4
         with:
           name: flow-clone-windows-hybrid-${{ env.FLOW_LABEL }}

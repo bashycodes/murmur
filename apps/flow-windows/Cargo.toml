@@ -93,7 +93,10 @@ zip = { version = "2.6", default-features = false, features = ["deflate"] }
 tauri = { version = "2", optional = true, features = ["tray-icon", "image-png"] }
 
 [build-dependencies]
-tauri-build = { version = "2", optional = true }
+# `features = []` must stay: `tauri build` (the CI installers) rewrites a
+# tauri-build entry without a features array to add one, which dirtied the
+# tree and stamped every CI build "-dirty" (D26).
+tauri-build = { version = "2", optional = true, features = [] }
 
 [target.'cfg(windows)'.dependencies]
 cpal = "0.15"
