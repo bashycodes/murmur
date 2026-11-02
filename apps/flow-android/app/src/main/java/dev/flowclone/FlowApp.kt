@@ -270,12 +270,18 @@ class EngineHolder(
     private val app: FlowApp,
     private val loader: FlowCoreLoader = NativeFlowCore,
     private val opener: RouterOpener = NativeFlowCore.routerOpener,
+    /** Test seam: the route the next dictation needs (null = [wantedRoute] from the settings). */
+    private val routeProbe: (() -> String?)? = null,
+    /** Test seam: builds the engine for a route instead of the native load (null = the real load). */
+    private val builder: ((String?) -> State)? = null,
 ) {
     companion object {
         /** Longest a reload waits for the previous engine's running commit (20 s UI timeout + slack). */
         const val UNLOAD_WAIT_MS = 30_000L
         /** H5: the bubble / main screen while the Hebrew model loads (also after a keyboard switch, D37). */
         const val HEBREW_LOADING = "Loading the Hebrew speech model…"
+        /** D37: switching back from the Hebrew model to the default one (keyboard / language change). */
+        const val DEFAULT_LOADING = "Loading the default speech model…"
     }
 
     sealed interface State {
@@ -311,7 +317,8 @@ class EngineHolder(
 
     /** The language whose own model the phone loads for the next dictation (`he`), or null = the default engine. */
     private fun wantedRoute(s: Settings = app.settings.load()): String? =
-        if (!app.caps.local || s.mockEngine) null
+        if (routeProbe != null) routeProbe.invoke()
+        else if (!app.caps.local || s.mockEngine) null
         else HebrewModels.route(app.effectiveLanguage(s), hebrewModel() != null)
 
     /** The route the current (or loading) engine was planned with. */
@@ -330,14 +337,28 @@ class EngineHolder(
     fun ensureLanguage() {
         when (_state.value) {
             State.NotLoaded -> return
-            State.Loading -> return // the load re-checks when it finishes
+            State.Loading -> {
+                // A native load can't be interrupted: a load for a model no longer needed is
+                // dropped when it ends and the needed one loads next ([ensureLoaded]). Meanwhile
+                // a dictation says which model it is waiting for.
+                val want = wantedRoute()
+                loadingLabel = labelFor(want, switching = loadingLabel != null || want != loadedRoute)
+                return
+            }
             else -> Unit
         }
         val want = wantedRoute()
         if (want != loadedRoute) {
-            loadingLabel = if (want != null) HEBREW_LOADING else null
+            loadingLabel = labelFor(want, switching = true)
             reload()
         }
+    }
+
+    /** What a dictation started while the model for [route] loads says; [switching] = after a language change. */
+    private fun labelFor(route: String?, switching: Boolean): String? = when {
+        route != null -> HEBREW_LOADING
+        switching -> DEFAULT_LOADING
+        else -> null
     }
 
     /** Native library status, for the UI. */
@@ -351,11 +372,32 @@ class EngineHolder(
         }
         _state.value = State.Loading
         scope.launch {
-            _state.value = load()
-            loadingLabel = null
-            // The language changed while this load ran: load the right model now.
+            var next = load()
+            // D37: the keyboard language changed while this load ran (it can't be interrupted):
+            // never make that model the active one; free it, then load the one needed now
+            // (one model in RAM: [load] waits for the free). Stays Loading throughout.
+            while (true) {
+                val stale = synchronized(this@EngineHolder) {
+                    if (wantedRoute() == loadedRoute) {
+                        _state.value = next
+                        loadingLabel = null
+                        null
+                    } else next
+                } ?: break
+                Log.i("FlowEngine", "language changed during the load: dropping the ${loadedRoute ?: "default"} model")
+                drop(stale)
+                next = load()
+            }
+            // The language resolution changed with the loaded engine: load the right model now.
             if (_state.value !is State.Failed) ensureLanguage()
         }
+    }
+
+    /** Lets go of an engine that was never the active one (freed like [unload]'s). */
+    private fun drop(s: State) {
+        val core = (s as? State.Ready)?.core ?: return
+        core.unload()
+        (core as? NativeFlowCore)?.let { unloading = it }
     }
 
     @Synchronized
@@ -385,9 +427,9 @@ class EngineHolder(
     /** For DictationController: the warm core, or why there isn't one. */
     fun current(): FlowCore = when (val s = _state.value) {
         is State.Ready -> s.core
-        State.Loading -> throw CoreException(loadingLabel ?: "Speech model is still loading…")
+        State.Loading -> throw CoreException(loadingLabel ?: "Speech model is still loading…", CoreException.KIND_LOADING)
         is State.Failed -> throw CoreException(s.message, s.kind)
-        State.NotLoaded -> { ensureLoaded(); throw CoreException("Speech model is loading, try again in a moment.") }
+        State.NotLoaded -> { ensureLoaded(); throw CoreException("Speech model is loading, try again in a moment.", CoreException.KIND_LOADING) }
     }
 
     /** D24: why the phone route can't serve a fallback right now, or null. */
@@ -453,8 +495,9 @@ class EngineHolder(
         if (app.caps.cloud) runCatching { NativeFlowCore.setCloudCacheDir(app.cacheDir.path) }
         app.migrateCloud()
         val route = wantedRoute(s)
+        loadingLabel = labelFor(route, switching = loadingLabel != null || route != loadedRoute)
         loadedRoute = route
-        loadingLabel = if (route != null) HEBREW_LOADING else null
+        builder?.let { return it(route) }
         val hebrew = hebrewModel()?.let { (path, m) -> HebrewModels.languageModel(path, m, app.dev.parakeetDecoding) }
         val local = if (!app.caps.local && !s.mockEngine) EnginePlan.Plan.Missing("This build has no on-device engine.")
         else EnginePlan.plan(

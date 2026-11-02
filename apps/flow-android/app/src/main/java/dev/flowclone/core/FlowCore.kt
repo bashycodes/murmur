@@ -84,6 +84,12 @@ fun interface FlowCoreLoader {
 class CoreException(message: String, val kind: String? = null) : Exception(message) {
     companion object {
         /**
+         * The app's speech model is still loading (not a failure): the bubble shows a loading
+         * state that clears itself once the model is ready, and a tap checks again.
+         */
+        const val KIND_LOADING = "engine_loading"
+
+        /**
          * Typed load errors (core-p1 CR-1). The JNI message keeps a stable prefix per kind
          * ("model not found: <path>", "llm plugin not found (…)"), so the kind can be
          * recovered even from a library without `nativeLastErrorKind`.

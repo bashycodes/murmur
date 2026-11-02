@@ -80,6 +80,8 @@ class DictationControllerTest {
         override fun onDictationTrace(trace: dev.flowclone.debug.DictationTrace) { traces += trace }
         val insertedFor = mutableListOf<Triple<String, FieldContext?, Boolean>>()
         override fun onInserted(pasted: String, context: FieldContext?, sentKey: Boolean) { insertedFor += Triple(pasted, context, sentKey) }
+        val loadingNotices = mutableListOf<String>()
+        override fun engineLoading(message: String) { loadingNotices += message }
     }
 
     /** advanceUntilIdle ignores backgroundScope work, where the controller lives. */
@@ -264,6 +266,68 @@ class DictationControllerTest {
         c.toggle(false)
         assertEquals(DictationState.Error(ErrorKind.EngineUnavailable("libflow_ffi.so missing")), c.state.value)
         assertEquals(0, audio.starts)
+    }
+
+    /** A core that is still loading until [loading] goes false (EngineHolder.current() while Loading). */
+    private fun TestScope.loadingController(state: () -> Boolean): DictationController =
+        DictationController(
+            backgroundScope, audio, host,
+            { if (state()) throw dev.flowclone.core.CoreException("Loading the synthetic model…", dev.flowclone.core.CoreException.KIND_LOADING) else core },
+            StandardTestDispatcher(testScheduler),
+        ) { currentTime }.also { it.onFieldFocusChanged(true) }
+
+    @Test fun aStillLoadingModelShowsLoadingNotAnEngineError() = runTest {
+        val c = loadingController { true }
+        c.toggle(false)
+        assertEquals(DictationState.Error(ErrorKind.EngineLoading("Loading the synthetic model…")), c.state.value)
+        assertEquals(listOf("Loading the synthetic model…"), host.loadingNotices)
+        assertEquals(0, audio.starts)
+    }
+
+    @Test fun theLoadingStateClearsItselfOnceTheModelIsReady() = runTest {
+        var loading = true
+        val c = loadingController { loading }
+        c.toggle(false)
+        loading = false
+        c.engineSettled(failure = null)
+        assertEquals("back to normal without a tap", DictationState.Ready, c.state.value)
+    }
+
+    @Test fun aLoadFailureTurnsTheLoadingStateIntoTheRealError() = runTest {
+        val c = loadingController { true }
+        c.toggle(false)
+        c.engineSettled(failure = "Speech model file is missing")
+        assertEquals(DictationState.Error(ErrorKind.EngineUnavailable("Speech model file is missing")), c.state.value)
+    }
+
+    @Test fun engineSettledLeavesOtherStatesAlone() = runTest {
+        val c = controller()
+        c.engineSettled(failure = "boom")
+        assertEquals(DictationState.Ready, c.state.value)
+        c.toggle(false)
+        c.engineSettled(failure = null)
+        assertTrue(c.state.value is DictationState.Recording)
+    }
+
+    @Test fun eachTapWhileLoadingChecksAgainAndStartsOnceReady() = runTest {
+        var loading = true
+        val c = loadingController { loading }
+        c.toggle(false)
+        advanceTimeBy(600)
+        c.toggle(false)
+        assertEquals("the second tap says it is still loading too", 2, host.loadingNotices.size)
+        assertTrue(c.state.value is DictationState.Error)
+        loading = false
+        advanceTimeBy(600)
+        c.toggle(false)
+        assertTrue(c.state.value is DictationState.Recording)
+    }
+
+    @Test fun losingTheFieldWhileLoadingHidesTheLoadingBubble() = runTest {
+        val c = loadingController { true }
+        c.toggle(false)
+        c.onFieldFocusChanged(false)
+        assertEquals(DictationState.Idle, c.state.value)
     }
 
     @Test fun micStartFailureCancelsSession() = runTest {
