@@ -266,6 +266,7 @@ class MainActivity : Activity() {
             Extra.QUICK_NOTE -> startActivity(NoteEditorActivity.scratchpad(this))
             Extra.INSIGHTS -> startActivity(Intent(this, InsightsActivity::class.java))
             Extra.HISTORY -> startActivity(Intent(this, HistoryActivity::class.java))
+            Extra.CALLS -> startActivity(Intent(this, CallsActivity::class.java))
             Extra.START_BUBBLE -> startBubble()
             Extra.STOP_BUBBLE -> runCatching { startService(Intent(this, FlowService::class.java).setAction(FlowService.ACTION_STOP)) }
             Extra.SPEECH_MODEL -> startActivity(Intent(this, ModelImportActivity::class.java))
@@ -285,7 +286,7 @@ class MainActivity : Activity() {
         const val STATE_TAB = "tab"
         val EXTRA_ICONS = mapOf(
             Extra.NOTES to R.drawable.ic_scr_snippet, Extra.QUICK_NOTE to R.drawable.ic_scr_file, Extra.INSIGHTS to R.drawable.ic_scr_chart,
-            Extra.HISTORY to R.drawable.ic_set_history, Extra.START_BUBBLE to R.drawable.ic_scr_play, Extra.STOP_BUBBLE to R.drawable.ic_scr_stop,
+            Extra.HISTORY to R.drawable.ic_set_history, Extra.CALLS to R.drawable.ic_scr_file, Extra.START_BUBBLE to R.drawable.ic_scr_play, Extra.STOP_BUBBLE to R.drawable.ic_scr_stop,
             Extra.SPEECH_MODEL to R.drawable.ic_set_mic, Extra.DEVELOPER to R.drawable.ic_set_code,
         )
     }

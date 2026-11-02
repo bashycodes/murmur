@@ -46,6 +46,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import dev.flowclone.calls.CallEngine
+import dev.flowclone.calls.CallJobs
+import dev.flowclone.calls.CallsStore
+import dev.flowclone.calls.Decoders
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.io.File
@@ -117,6 +121,21 @@ class FlowApp : Application() {
         java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "flow-documents").apply { isDaemon = true } }
     }
 
+    /** D46 Calls: call transcripts, app-private `files/calls/`. */
+    val callsStore: CallsStore by lazy { CallsStore(File(filesDir, "calls")) }
+
+    /**
+     * D46 Calls: the one call transcription that may run (its own on-device engine, never the
+     * dictation router). CallJobService keeps the app in the foreground while it runs. Tests swap it.
+     */
+    lateinit var calls: CallJobs
+
+    /**
+     * D46: a dictation is recording or being processed (FlowService sets it). A call transcription
+     * waits between chunks while this is true, so dictation always comes first.
+     */
+    val dictationBusy = MutableStateFlow(false)
+
     /** The live accessibility service, when connected. */
     @Volatile var accessibility: AccessibilityBridge? = null
 
@@ -172,6 +191,12 @@ class FlowApp : Application() {
             .onFailure { Log.w("FlowEngine", "cleanup order migration: ${it.message}") }
         migrateCloud()
         engine = EngineHolder(this)
+        calls = CallJobs(
+            callsStore,
+            decoder = { r -> Decoders.open(this, android.net.Uri.parse(r.uri)) },
+            engine = { lang -> CallEngine.open(this, lang) },
+            yieldTo = { dictationBusy.value },
+        )
         debugAudio = DebugAudioStore.inFilesDir(filesDir)
         // 72 h limit also when the option was turned off meanwhile.
         runCatching { debugAudioWriter.execute { runCatching { debugAudio.prune() } } }

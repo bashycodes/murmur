@@ -101,7 +101,7 @@ object ShellPages {
 
     /**
      * Drawer features the design has no slot for (they lived on the old main screen), in the
-     * second card. [SPEECH_MODEL] only where the build transcribes on the phone, [DEVELOPER] only
+     * second card. [SPEECH_MODEL] and [CALLS] (D46) only where the build transcribes on the phone, [DEVELOPER] only
      * once Developer settings are unlocked.
      */
     enum class Extra(val title: String, val subtitle: String) {
@@ -109,6 +109,7 @@ object ShellPages {
         QUICK_NOTE("Quick note", "One note to dictate into and copy out"),
         INSIGHTS("Insights", "Words, speed, streaks and top apps"),
         HISTORY("History", "Every saved dictation"),
+        CALLS("Calls", "Transcribe a call recording"),
         START_BUBBLE("Start / show bubble", "Shows the dictation bubble over other apps"),
         STOP_BUBBLE("Stop bubble", "Hides it until you start it again"),
         SPEECH_MODEL("Speech model", "Import an on-device model"),
@@ -117,7 +118,7 @@ object ShellPages {
 
     fun extras(local: Boolean, developer: Boolean): List<Extra> = Extra.entries.filter {
         when (it) {
-            Extra.SPEECH_MODEL -> local
+            Extra.SPEECH_MODEL, Extra.CALLS -> local
             Extra.DEVELOPER -> developer
             else -> true
         }
