@@ -1,7 +1,7 @@
 # Windows CPU whisper 6–18× slower than whisper-cli, 2026-11-02
 
-> **Status:** root cause found and fixed in CI (`feat/win-cpu-whisper-speed`). Laptop
-> timing of the fixed DLL is pending a CI build. Follows bug 1 of
+> **Status:** root cause found and fixed in CI (`feat/win-cpu-whisper-speed`), confirmed on
+> the laptop: ivrit turbo on the CPU now takes 18 s, down from 267 s. Follows bug 1 of
 > `2026-11-02-vulkan-he-laptop-check.md`.
 
 ## Symptom
@@ -105,22 +105,29 @@ CMAKE_CXX_FLAGS_RELEASE: "-MD -O2 -Ob2 -DNDEBUG"
   `CMakeCache.txt`, and fails unless the Release `<Optimization>` of `ggml-cpu`, `ggml-base` and
   `whisper` is `MaxSpeed`.
 
-## Laptop check (to do once CI has built the branch)
+## Laptop check (CI run 41403282165, commit 4d3f227)
 
-1. Extract `flow_whisper_vulkan.dll` from the branch's hybrid NSIS artefact (`7z x`).
-2. Copy it to a temp folder on the laptop, not over the install.
-3. Run, from the 11-02 probe (`tools/probes/prototypes/vulkan_he_check_2026_11_02/`), with
-   `FLOW_WHISPER_DEVICE=cpu`, `--dll <temp>\flow_whisper_vulkan.dll`, the 10.38 s clip:
-   * `plugin_bench.py` with ivrit turbo q5_0 (target ≤ ~23 s, i.e. within 1.5× of whisper-cli's
-     15.1 s);
-   * the same with ggml-base, at 4 threads and at 1 thread (targets ≤ ~2.4 s and ≤ ~7.9 s).
+* **CI.** The run is green. `check-ggml-opt.sh` passed for the plugin build and for the exe
+  build: `CMAKE_C/CXX_FLAGS_RELEASE:STRING=-MD -O2 -Ob2 -DNDEBUG`, and `MaxSpeed` for `ggml-cpu`,
+  `ggml-base` and `whisper`.
+* **Method.**
+  * `flow_whisper_vulkan.dll` was taken from the run's hybrid MSI with `msiexec /a` (an
+    administrative extract, nothing installed) into a temp folder on the laptop.
+  * It was timed with the 11-02 probe's `plugin_bench.py`: `--dll <temp>`,
+    `FLOW_WHISPER_DEVICE=cpu`, the 10.38 s clip, one warm-up.
+  * The temp folder was removed afterwards. The install and prefs were not touched.
+* **Results.** `tools/probes/prototypes/vulkan_he_check_2026_11_02/results/o2-*.jsonl`.
 
-Then remove the temp folder.
+| model, 10.38 s clip | whisper-cli b5454 | plugin 1.0.0 | plugin fixed | fixed vs whisper-cli |
+|---|---|---|---|---|
+| ivrit turbo q5_0, CPU, 4 threads | 15.1 s | 267 s | **18.0 s** (warm-up 15.8 s), 3/22 word errors | 1.19× |
+| ggml-base, CPU, 4 threads | 1.60 s | 10.6 s | **1.08 s** | 0.67× |
+| ggml-base, CPU, 1 thread | 5.28 s | 33.3 s | **3.33 s** | 0.63× |
+| ivrit turbo q5_0, Vulkan GPU | 1.18 s | 1.47 s | **1.26 s** | 1.07× |
 
-Expected: whisper-cli's speed or close to it, with no OpenMP and an older ggml than b5454.
-
-| model, 10.38 s clip | whisper-cli | plugin 1.0.0 | plugin fixed |
-|---|---|---|---|
-| ivrit turbo q5_0, 4 threads | 15.1 s | 267 s | _pending CI_ |
-| ggml-base, 4 threads | 1.60 s | 10.6 s | _pending CI_ |
-| ggml-base, 1 thread | 5.28 s | 33.3 s | _pending CI_ |
+* Acceptance (within ~1.5× of whisper-cli) is met.
+* The 15× speed-up on ivrit and ~10× on base fit an unoptimised build.
+* The GPU path is a little faster too. The host-side ggml code it runs (graph build, ops that
+  stay on the CPU) is now optimised as well.
+* whisper-cli's times are its "total − load". The plugin's are the wall time of one
+  `flow_whisper_transcribe`, so the two columns are close but not identical measures.
