@@ -216,7 +216,7 @@ abstract class VerifyNoDebugReceiver : DefaultTask() {
     @TaskAction
     fun verify() {
         val xml = manifest.get().asFile.readText()
-        val found = listOf("WavMicReceiver", "dev.flowclone.debug.PLAY_WAV", "BenchActivity").filter { xml.contains(it) }
+        val found = listOf("WavMicReceiver", "dev.flowclone.debug.PLAY_WAV", "BenchActivity", "CallDecodeReceiver").filter { xml.contains(it) }
         report.get().asFile.apply { parentFile.mkdirs() }.writeText("found=$found\n")
         if (found.isNotEmpty()) throw GradleException("Release manifest contains a debug-only component ($found)")
     }

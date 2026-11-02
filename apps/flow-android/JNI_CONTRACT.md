@@ -208,6 +208,27 @@ request's own.
 |---|---|---|---|---|
 | `nativeBenchClean(h: Long, requestJson: String): String` | `(JLjava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeBenchClean` | — | **Blocking** (one LLM call). The request is `{"mode":"prod"\|"v4c","input","context":FieldContext,"session":SessionConfig}`, run on a **core** handle's on-device LLM. `prod` runs `flow_core::refinish` on `input` (the product's text path) and returns `output`, `status` and `fallback_reason`. `v4c` sends the raw transcript with prompt v4c to the LLM once, with no guard. Both return `llm_raw`, `llm_error`, `llm_ms`, `llm_calls`, `wall_ms` and `llm_info`. Never null; on failure, or for a router handle, it returns `{"error":…}` |
 
+## Meeting transcription (D44, D46, 2026-11-02) — additive
+
+A recording of any length (Calls page: a call recording) through `flow_core::meeting`
+(`crates/flow-ffi/src/meeting_api.rs`). A **job** owns its own engine handle:
+`nativeMeetingOpen` takes over a handle from `nativeLoadModels` (Calls: on-device only) or
+`nativeOpenRouter`, so the job never shares a session with the dictation engine. Each chunk
+(8-30 s, cut at pauses) is one ordinary dictation with the job's `SessionConfig`. Audio is
+16 kHz mono PCM16, pushed in order in blocks of any size. Every flavour exports these symbols.
+
+| Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | Semantics |
+|---|---|---|---|
+| `nativeMeetingOpen(engine: Long, sessionConfigJson: String, paramsJson: String?): Long` | `(JLjava/lang/String;Ljava/lang/String;)J` | `Java_dev_flowclone_core_NativeFlowCore_nativeMeetingOpen` | Takes ownership of `engine` **whatever the outcome** (Kotlin calls `NativeFlowCore.release()` first). `paramsJson` = `MeetingParams` (`null` / `{}` = defaults: pause 800 ms, chunks 8-30 s, 3 failed chunks in a row abort). Returns the job handle, or `0` + kind `bad_config` |
+| `nativeMeetingSetTotal(m: Long, samples: Long)` | `(JJ)V` | `Java_dev_flowclone_core_NativeFlowCore_nativeMeetingSetTotal` | Length of the recording in 16 kHz samples, for `total_ms` in the progress |
+| `nativeMeetingPush(m: Long, pcm: ShortArray, length: Int): String?` | `(J[SI)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeMeetingPush` | **Blocking** while a chunk transcribes. JSON array of the `Segment`s the push closed (`[{start_ms,end_ms,text,language?,engine?,error?}]`, often `[]`), or `null` + kind `cancelled` / `failed` (`max_consecutive_errors` chunks failed) |
+| `nativeMeetingFinish(m: Long): String?` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeMeetingFinish` | **Blocking.** End of the recording: the last segments, as `nativeMeetingPush` |
+| `nativeMeetingProgress(m: Long): String` | `(J)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeMeetingProgress` | Non-blocking `Progress` `{done_ms, received_ms, total_ms?, segments}` as of the last push; `{}` for `0` |
+| `nativeMeetingCancel(m: Long)` | `(J)V` | `Java_dev_flowclone_core_NativeFlowCore_nativeMeetingCancel` | Non-blocking, any thread: no new chunk starts and the chunk in flight is aborted; the running push / finish returns `null` + `cancelled` |
+| `nativeMeetingClose(m: Long)` | `(J)V` | `Java_dev_flowclone_core_NativeFlowCore_nativeMeetingClose` | Frees the job and its engine. Never while another call on `m` runs (Kotlin: `NativeMeeting` closes on the job thread after the last push and serialises `cancel` against it). `0` is a no-op |
+
+Host test: `cargo test -p flow-ffi --features jni --test jni_meeting` (real JVM, mock ASR).
+
 ## Admin API (D39, "Users & keys") — additive, `hybrid` / `remote` only
 
 The owner manages the server's named keys from Settings → Your server → Users & keys. A
@@ -258,7 +279,7 @@ Kotlin must never call a **blocking** native on the main thread.
 | `nativeCommit` (ASR + LLM; server/cloud round trip) | `nativeCancel` (also aborts a commit running on another thread, see below) |
 | `nativeProbeServer`, `nativeProbeRouter`, `nativeProbeCloud`, `nativePrewarm` (D24) | `nativeRouteStatus`, `nativeCapabilities`, `nativeCloudCapabilities`, `nativeCloudPresets`, `nativeLastError*` |
 | `nativeUnload` (joins the engine worker; waits for a running commit) | `nativeOpenRouter`, `nativeUpdateRouter`, `nativeResetCircuit`, `nativeSetLocalLoader` (no network; the load itself runs later on a router thread) |
-| `nativeRefreshCloudCatalog`, `nativeCloudKeyInfo` (D28, network), `nativeCommand` (LLM), `nativeBenchClean` (LLM) | `nativeSetCloudKey`, `nativeSetCloudKeyFor`, `nativeCloudUsage`, `nativeSetCloudUsage`, `nativeResetCloudUsage`, `nativeMigrateCloud`, `nativeSetCleanup`, `nativeCleanupStatus`, `nativeCloudNotice`, `nativeAckCloudNotice`, `nativeSetCloudModel`, `nativeSetCloudCacheDir`, `nativeCloudCatalog` |
+| `nativeRefreshCloudCatalog`, `nativeCloudKeyInfo` (D28, network), `nativeCommand` (LLM), `nativeBenchClean` (LLM), `nativeMeetingPush`, `nativeMeetingFinish` (ASR per chunk), `nativeMeetingClose` (frees the engine) | `nativeMeetingOpen`, `nativeMeetingSetTotal`, `nativeMeetingProgress`, `nativeMeetingCancel`, `nativeSetCloudKey`, `nativeSetCloudKeyFor`, `nativeCloudUsage`, `nativeSetCloudUsage`, `nativeResetCloudUsage`, `nativeMigrateCloud`, `nativeSetCleanup`, `nativeCleanupStatus`, `nativeCloudNotice`, `nativeAckCloudNotice`, `nativeSetCloudModel`, `nativeSetCloudCacheDir`, `nativeCloudCatalog` |
 
 Session semantics (2026-10-22, review fixes):
 

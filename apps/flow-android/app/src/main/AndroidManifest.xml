@@ -10,6 +10,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- D46: a call transcription keeps running with the screen off (CallJobService, held only while a job runs). -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- P1 recovery (07 §1/§6): restart after boot / update; battery-optimisation onboarding step. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -67,6 +69,7 @@
         <activity android:name=".ui.HistoryActivity" android:exported="false" android:label="@string/title_history" android:theme="@style/Theme.Flow.Shell" />
         <activity android:name=".ui.InsightsActivity" android:exported="false" android:label="@string/title_insights" android:theme="@style/Theme.Flow.Shell" />
         <!-- Notes list: no bubble here (only the editor is a dictation surface). -->
+        <activity android:name=".ui.CallsActivity" android:exported="false" android:label="Calls" android:theme="@style/Theme.Flow.Shell" />
         <activity android:name=".ui.NotesActivity" android:exported="false" android:label="@string/title_notes" android:theme="@style/Theme.Flow.Shell" />
         <!-- Note editor (Quick note + every note): the one screen of ours the bubble dictates into (policy/OwnAppGate). -->
         <activity android:name=".ui.NoteEditorActivity" android:exported="false" android:label="@string/title_scratchpad"
@@ -96,6 +99,16 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="overlay-ui-host: keeps the on-device dictation bubble visible over the keyboard, including while microphone access is being re-granted" />
+        </service>
+
+        <service
+            android:name=".calls.CallJobService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="on-device-transcription: transcribes an audio file the user picked, on the phone, with progress and cancel" />
         </service>
 
         <!-- Single process (07 §1 clone manifest). isAccessibilityTool is kept: this
