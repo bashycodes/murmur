@@ -16,6 +16,23 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **Meeting transcription (minutes to hours).** A recording of any length
+  is cut at pauses into chunks of 8-30 s, and each chunk runs as one normal
+  dictation on the route order with its fallbacks. The result is a
+  transcript of timestamped segments (start, end, text). Only the open
+  chunk is held in memory, silence is skipped without being transcribed,
+  and progress and cancellation are exposed. Hebrew and English follow the
+  dictation language setting. This is the shared engine for the coming
+  Windows Notetaker and Android call transcription: `flow_core::meeting`,
+  with `flow_router::meeting` for the router (D44). `flow-cli meeting
+  file.wav` prints the timestamped transcript of a long WAV and streams it
+  from disk (`--json`, `--progress`; `--router` with the `remote` feature
+  adds a server route).
+- `flow_core::audio::WavBlocks` / `Resampler`: read a WAV of any length
+  block by block as 16 kHz mono.
+
 ### Changed
 
 - **AI cleanup always runs on your server or OpenRouter.** The "already
