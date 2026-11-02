@@ -1,8 +1,9 @@
 //! Review S18: every Tauri command is declared in build.rs (so it gets an
 //! `allow-*` permission), the settings (app) window is granted exactly the
 //! app's commands, the overlay window only `overlay_action` and
-//! `overlay_theme` (the theme pref, not `get_prefs`), and the Scratchpad
-//! only its note commands plus `clipboard_copy`.
+//! `overlay_theme` (the theme pref, not `get_prefs`), the Scratchpad
+//! only its note commands plus `clipboard_copy`, and the meeting prompt
+//! only its answer.
 
 /// The note editor's commands: only the Scratchpad / Notes window reads,
 /// writes, deletes or exports a note's text.
@@ -25,6 +26,9 @@ const SETTINGS_ONLY_NOTES: &[&str] = &["note_open"];
 /// The Flow bar's commands: its clicks / link box, and the theme pref
 /// (never all of `get_prefs`). No other window needs them.
 const OVERLAY_ONLY: &[&str] = &["overlay_action", "overlay_theme"];
+
+/// The "Record this meeting?" prompt (D48) may only answer itself.
+const PROMPT_ONLY: &[&str] = &["meeting_prompt_answer"];
 
 fn read(p: &str) -> String {
     std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(p)).unwrap()
@@ -79,7 +83,11 @@ fn settings_gets_the_app_commands_but_not_the_overlay_click_or_note_text() {
     granted.sort();
     let mut want: Vec<String> = handler_commands()
         .into_iter()
-        .filter(|c| !OVERLAY_ONLY.contains(&c.as_str()) && !SCRATCHPAD_ONLY.contains(&c.as_str()))
+        .filter(|c| {
+            !OVERLAY_ONLY.contains(&c.as_str())
+                && !SCRATCHPAD_ONLY.contains(&c.as_str())
+                && !PROMPT_ONLY.contains(&c.as_str())
+        })
         .collect();
     want.sort();
     assert_eq!(granted, want);
@@ -112,6 +120,15 @@ fn scratchpad_may_only_edit_its_notes_and_copy() {
     {
         assert!(handlers.iter().any(|h| h == c), "{c} is not a command");
     }
+}
+
+#[test]
+fn meeting_prompt_may_only_answer() {
+    assert_eq!(permissions("capabilities/meeting-prompt.json"), PROMPT_ONLY);
+    let v: serde_json::Value =
+        serde_json::from_str(&read("capabilities/meeting-prompt.json")).unwrap();
+    assert_eq!(v["windows"], serde_json::json!(["meeting-prompt"]));
+    assert!(handler_commands().iter().any(|h| h == PROMPT_ONLY[0]));
 }
 
 #[test]

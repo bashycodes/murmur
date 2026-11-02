@@ -85,6 +85,8 @@ struct AppState {
     meetings: OnceLock<Arc<Meetings>>,
     /// Tray line "Start / Stop meeting recording".
     meeting_item: OnceLock<MenuItem<tauri::Wry>>,
+    /// Meeting detection (D48): the prompt's answer goes here.
+    meeting_detect: OnceLock<Arc<meetings::detect::AutoDetect>>,
     /// Last state sent to the pill (shared with [`WinPlatform`]).
     overlay_state: Arc<Mutex<OverlayState>>,
 }
@@ -782,6 +784,141 @@ fn toggle_meeting(app: &AppHandle, front: Option<String>) {
         eprintln!("[meetings] {e}");
         show_settings(app);
         let _ = app.emit_to(SETTINGS, "settings:tab", "meetings");
+    }
+}
+
+// ------------------------------------------- meeting detection (D48)
+
+/// [`meetings::detect::AutoDetect`]'s side in the shell: the Notetaker
+/// records, the prompt is a small window above the taskbar.
+struct DetectHost {
+    app: AppHandle,
+    meetings: Arc<Meetings>,
+}
+
+impl meetings::detect::Host for DetectHost {
+    fn recording(&self) -> Option<String> {
+        self.meetings.view().recording.map(|r| r.id)
+    }
+
+    fn start(&self, app: meetings::detect::App) -> Result<String, String> {
+        self.meetings.start(Some(app.label().to_string()))
+    }
+
+    fn stop(&self, id: &str) -> Result<(), String> {
+        if self.recording().as_deref() != Some(id) {
+            return Err("that recording already stopped".into());
+        }
+        self.meetings.stop().map(|_| ())
+    }
+
+    fn prompt(&self, app: Option<meetings::detect::App>) {
+        show_meeting_prompt(&self.app, app);
+    }
+
+    fn log(&self, what: &str) {
+        eprintln!("[meeting-detect] {what}");
+        debug_log::event("meeting-detect", what);
+    }
+}
+
+/// Watch for Zoom / Webex / Jabber calls while the setting is on.
+fn setup_meeting_detection(app: &AppHandle, m: Arc<Meetings>) {
+    let st = app.state::<AppState>();
+    let host = Arc::new(DetectHost {
+        app: app.clone(),
+        meetings: m,
+    });
+    let auto = Arc::new(meetings::detect::AutoDetect::new(
+        host,
+        meetings::detect::Tuning::default(),
+    ));
+    let _ = st.meeting_detect.set(auto.clone());
+    let prefs = st.prefs.clone();
+    meetings::detect::spawn_watcher(
+        auto,
+        Box::new(meetings::detect::win::WinProbe),
+        Arc::new(move || prefs.read().unwrap().meeting_detection),
+    );
+}
+
+const MEETING_PROMPT: &str = "meeting-prompt";
+
+/// "Record this meeting?" (`meeting-prompt.html?app=Zoom`): a small
+/// always-on-top window at the bottom right of the work area that never
+/// takes focus from the call. `None` closes it.
+fn show_meeting_prompt(app: &AppHandle, which: Option<meetings::detect::App>) {
+    let h = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = h.get_webview_window(MEETING_PROMPT) {
+            let _ = w.destroy();
+        }
+        let Some(which) = which else { return };
+        let page = format!("meeting-prompt.html?app={}", which.label());
+        let built = WebviewWindowBuilder::new(&h, MEETING_PROMPT, WebviewUrl::App(page.into()))
+            .title("Record this meeting? — Murmur")
+            .inner_size(360.0, 132.0)
+            .resizable(false)
+            .decorations(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .focused(false)
+            .visible(false)
+            .build();
+        match built {
+            Ok(w) => {
+                if let Some(hw) = hwnd_of(&w) {
+                    unsafe {
+                        let ex = GetWindowLongPtrW(hw, GWL_EXSTYLE);
+                        let add =
+                            (WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0 | WS_EX_TOPMOST.0) as isize;
+                        SetWindowLongPtrW(hw, GWL_EXSTYLE, ex | add);
+                    }
+                }
+                position_corner(&w);
+                if let Some(hw) = hwnd_of(&w) {
+                    unsafe {
+                        let _ = ShowWindow(hw, SW_SHOWNOACTIVATE);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[meeting-detect] prompt: {e}");
+                debug_log::event("meeting-detect", &format!("prompt: {e}"));
+            }
+        }
+    });
+}
+
+/// Bottom right of the primary work area, 16 px from its edges.
+fn position_corner(w: &WebviewWindow) {
+    let mut wa = RECT::default();
+    let ok = unsafe {
+        SystemParametersInfoW(
+            SPI_GETWORKAREA,
+            0,
+            Some(&mut wa as *mut RECT as *mut _),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        )
+    }
+    .is_ok();
+    if let (true, Ok(size)) = (ok, w.outer_size()) {
+        let gap = (16.0 * w.scale_factor().unwrap_or(1.0)).round() as i32;
+        let x = wa.right - size.width as i32 - gap;
+        let y = wa.bottom - size.height as i32 - gap;
+        let _ = w.set_position(PhysicalPosition::new(x, y));
+    }
+}
+
+/// The prompt's buttons (and its timeout = `false`). Recording starts off
+/// the main thread (opening the devices takes time).
+#[tauri::command]
+fn meeting_prompt_answer(state: tauri::State<'_, AppState>, record: bool) {
+    if let Some(d) = state.meeting_detect.get() {
+        let d = d.clone();
+        let _ = std::thread::Builder::new()
+            .name("flow-meeting-answer".into())
+            .spawn(move || d.answer(record));
     }
 }
 
@@ -2920,6 +3057,7 @@ pub fn run() {
             downloads: Arc::new(crate::model_download::Downloads::default()),
             meetings: OnceLock::new(),
             meeting_item: OnceLock::new(),
+            meeting_detect: OnceLock::new(),
             overlay_state: Arc::new(Mutex::new(OverlayState::Resting)),
         })
         .invoke_handler(tauri::generate_handler![
@@ -3014,7 +3152,8 @@ pub fn run() {
             meeting_get,
             meeting_copy,
             meeting_delete,
-            meeting_retry
+            meeting_retry,
+            meeting_prompt_answer
         ])
         .on_window_event(|window, event| {
             if window.label() == SETTINGS {
@@ -3247,7 +3386,8 @@ pub fn run() {
             let dictating = controller.dictating_flag();
             let _ = app.state::<AppState>().dictating.set(dictating.clone());
             let m = setup_meetings(&handle, dictating.clone());
-            let _ = app.state::<AppState>().meetings.set(m);
+            let _ = app.state::<AppState>().meetings.set(m.clone());
+            setup_meeting_detection(&handle, m);
             std::thread::Builder::new()
                 .name("flow-controller".into())
                 .spawn(move || controller.run(rx))?;

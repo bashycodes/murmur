@@ -3,7 +3,8 @@
 // recording is transcribed after it stops, on its own engine, and never
 // holds up a dictation. Audio of the last 3 meetings is kept (for Retry);
 // transcripts stay until deleted. Backend: `meeting_*` in src/app.rs,
-// events `meetings:changed` (src/meetings/mod.rs `View`).
+// events `meetings:changed` (src/meetings/mod.rs `View`). Meeting
+// detection (D48): `prefs.meeting_detection` = off / ask / auto.
 import { $, askDialog, el } from "../lib/dom.js";
 import { ICON, iconEl, iconSvg } from "../lib/icons.js";
 import { invoke, onEvent } from "../lib/ipc.js";
@@ -25,6 +26,17 @@ const TEMPLATE = `
     <span id="mt_live_text"></span>
   </div>
   <p class="lw-mt-warn" id="mt_warn" role="alert" hidden></p>
+
+  <div class="lw-mt-detect">
+    <label for="mt_detect" class="lw-mt-detect-label">When a Zoom, Webex or Jabber call starts
+      <span class="fl-help">Checks every few seconds which of these apps uses the microphone or shows a meeting window. A recording started this way stops when the call ends.</span>
+    </label>
+    <select id="mt_detect" class="fl-select lw-w220" aria-label="When a Zoom, Webex or Jabber call starts">
+      <option value="off">Do nothing</option>
+      <option value="ask">Ask me</option>
+      <option value="auto">Start recording automatically</option>
+    </select>
+  </div>
 
   <section id="mt_list_view">
     <div class="fl-list" id="mt_list"></div>
@@ -291,6 +303,23 @@ async function refresh() {
     else
         await refreshList();
 }
+function showDetect(p) {
+    const v = p.meeting_detection;
+    $("mt_detect").value = v === "ask" || v === "auto" ? v : "off";
+}
+async function saveDetect() {
+    const value = $("mt_detect").value;
+    try {
+        await prefsStore.save({ meeting_detection: value });
+        say(value === "off" ? "Meeting detection is off" : "Saved");
+    }
+    catch (e) {
+        say(String(e), false);
+        const p = prefsStore.get();
+        if (p)
+            showDetect(p);
+    }
+}
 function showShortcut(p) {
     const combo = p.shortcuts.meeting?.trim() ?? "";
     const keys = combo.split("+").map((k) => k.trim()).filter(Boolean);
@@ -310,6 +339,8 @@ export const meetingsPage = {
         $("mt_delete").addEventListener("click", () => openId && void remove(openId));
         $("mt_retry").addEventListener("click", () => openId && void retry(openId));
         prefsStore.subscribe(showShortcut);
+        prefsStore.subscribe(showDetect);
+        $("mt_detect").addEventListener("change", () => void saveDetect());
         void onEvent("meetings:changed", (e) => {
             view = e.payload;
             showLive();
