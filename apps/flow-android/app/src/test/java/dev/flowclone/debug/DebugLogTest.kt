@@ -281,6 +281,16 @@ class DebugLogTest {
         assertTrue(DebugFormat.summary(DebugFormat.dictation(trace.copy(language = "he", languageSource = "keyboard"))).contains("lang he (keyboard)"))
     }
 
+    @Test fun dictationLineSaysWhyNoAiCleanupRan() {
+        val off = trace.copy(llmOff = "ai_cleanup_off")
+        val o = JSONObject(DebugFormat.dictation(off))
+        assertEquals("ai_cleanup_off", o.getString("llm_off"))
+        assertTrue(o.isNull("llm"))
+        val none = JSONObject(DebugFormat.dictation(trace))
+        assertTrue(none.has("llm_off") && none.isNull("llm_off"))
+        assertTrue(DebugFormat.summary(DebugFormat.dictation(off)).contains("no AI cleanup (all cleanup engines off)"))
+    }
+
     @Test fun engineAndModelPerRoute() {
         val whisper = dev.flowclone.data.LoadedAsr(dev.flowclone.core.AsrEngine.WHISPER, "ggml-base-q5_1.bin")
         val parakeet = dev.flowclone.data.LoadedAsr(dev.flowclone.core.AsrEngine.PARAKEET, "parakeet-int8")

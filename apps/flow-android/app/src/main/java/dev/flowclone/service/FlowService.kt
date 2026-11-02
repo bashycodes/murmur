@@ -624,6 +624,18 @@ class FlowService : Service() {
             scope.launch(Dispatchers.Main) { unsentNotification(text, outcome) }
         }
 
+        /** Debug `llm_off`: a dictation with a transcript but no AI cleanup step says why (not Command Mode). */
+        private fun llmOffReason(trace: dev.flowclone.debug.DictationTrace, ready: dev.flowclone.EngineHolder.State.Ready?): String? {
+            if (trace.llm != null || trace.raw == null || trace.mode == "command") return null
+            val s = app.settings.load()
+            val d = app.dev.load()
+            return dev.flowclone.data.LlmOutcome.offReason(
+                phoneOn = dev.flowclone.data.CleanupEngines.on(d, s, dev.flowclone.data.DevSettings.CleanupRoute.LOCAL),
+                phone = ready?.llm,
+                offPhone = d.effective(app.caps).offPhoneCleanup,
+            )
+        }
+
         /** D21: redact protected targets, attach the insert steps, enqueue. Never blocks, never throws. */
         override fun onDictationTrace(trace: dev.flowclone.debug.DictationTrace) {
             try {
@@ -638,6 +650,7 @@ class FlowService : Service() {
                         insert = trace.insert.copy(steps = steps), engine = engine, model = model,
                         routeOrder = runCatching { app.dev.load().routeOrderWire(app.caps) }.getOrNull(),
                         languageSource = trace.languageSource ?: languageSource.takeIf { trace.language != null },
+                        llmOff = trace.llmOff ?: llmOffReason(trace, ready),
                     ),
                     protectedField = app.accessibility?.startFieldProtected == true,
                     protectedApp = dev.flowclone.debug.DebugRedact.isProtectedApp(trace.target, app.settings.load().userDenylist),
