@@ -380,11 +380,14 @@ impl Cleaner for NoCleanup {
     }
 }
 
-/// The session config the server route gets (D36): unchanged when the
-/// server cleans, else without its LLM step (the client cleans).
+/// The session config the server route gets (D36): when the server
+/// cleans, without D27's "already clean" skip (D43: the skip is for the
+/// on-device LLM only), else without its LLM step (the client cleans).
 fn remote_cfg(cfg: &SessionConfig, server_cleans: bool) -> SessionConfig {
     let mut c = cfg.clone();
-    if !server_cleans {
+    if server_cleans {
+        c.llm_skip_clean = false;
+    } else {
         c.cleanup_level = CleanupLevel::None;
     }
     c
