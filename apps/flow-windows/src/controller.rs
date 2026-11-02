@@ -152,6 +152,9 @@ struct AppliedTransform {
 /// Longest wait for a session start (model load + server connect are
 /// bounded well below this by their own timeouts).
 const START_WAIT: Duration = Duration::from_secs(30);
+/// How long the history row waits for a field snapshot still running when
+/// the paste finished (normally long done by then).
+const CONTEXT_WAIT: Duration = Duration::from_secs(2);
 
 /// Outcome of a session's background start, awaited by commit and
 /// set_context.
@@ -220,6 +223,9 @@ struct SessionInfo {
     /// D37: the session's forced language (`None` = auto) and its source.
     language: Option<String>,
     language_source: Option<crate::keyboard_language::Source>,
+    /// Opened by the field snapshot thread once `context` is filled in (or
+    /// there is none); `None` = no snapshot was taken.
+    context_done: Option<Arc<StartGate>>,
 }
 
 #[derive(Default)]
@@ -576,6 +582,18 @@ impl Controller {
     /// Store the history row once the paste outcome is known, then watch
     /// the field for corrections.
     fn record(&self, session: SessionId, paste: &Result<(), String>) {
+        // The row needs the app: a field snapshot still running under load
+        // would otherwise leave it without one (and a retry with no app).
+        let snapshot = self
+            .shared
+            .sessions
+            .lock()
+            .unwrap()
+            .get(&session)
+            .and_then(|i| i.context_done.clone());
+        if let Some(done) = snapshot {
+            let _ = done.wait(CONTEXT_WAIT);
+        }
         let info = self.shared.sessions.lock().unwrap().remove(&session);
         let Some(info) = info else { return };
         // Cancelled before anything was inserted: the user dropped it.
@@ -969,6 +987,10 @@ impl Controller {
                 }
                 if prefs.use_ax_context {
                     // set_context may legitimately arrive after audio started.
+                    let done = Arc::new(StartGate::default());
+                    if let Some(i) = self.shared.sessions.lock().unwrap().get_mut(&session) {
+                        i.context_done = Some(done.clone());
+                    }
                     let platform = self.platform.clone();
                     let core = self.core.clone();
                     let shared = self.shared.clone();
@@ -1004,6 +1026,9 @@ impl Controller {
                                 core.set_context(ctx);
                             }
                         }
+                        // After set_context too: nothing of this session
+                        // reaches the core once its row is written.
+                        done.open(Ok(()));
                     });
                 }
                 let core = self.core.clone();
@@ -1905,6 +1930,8 @@ mod tests {
         fail_capture: bool,
         /// `paste` blocks until this receives (tests of late cancels).
         paste_gate: Mutex<Option<mpsc::Receiver<()>>>,
+        /// `snapshot_context` blocks until this receives (a slow UIA).
+        snapshot_gate: Mutex<Option<mpsc::Receiver<()>>>,
         /// Foreground window (`focus_target`) and password-field answer.
         focus: Mutex<Option<crate::paste::FocusTarget>>,
         password: Mutex<Option<bool>>,
@@ -1948,6 +1975,10 @@ mod tests {
             self.push("unduck");
         }
         fn snapshot_context(&self) -> Option<RawSnapshot> {
+            let gate = self.snapshot_gate.lock().unwrap().take();
+            if let Some(g) = gate {
+                let _ = g.recv();
+            }
             Some(RawSnapshot {
                 exe_path: format!(r"C:\x\{}", self.exe.unwrap_or("slack.exe")),
                 ..Default::default()
@@ -2995,6 +3026,20 @@ mod tests {
         dictate_then(&mut r, |f| *f.password.lock().unwrap() = Some(true));
         let e = history_latest(&r).expect("the row is kept, not pasted");
         assert_eq!(kept_audio(&r, e.id), None);
+    }
+
+    #[test]
+    fn a_slow_field_snapshot_still_names_the_app_in_history() {
+        let (tx, rx) = mpsc::channel();
+        let fake = Fake {
+            snapshot_gate: Mutex::new(Some(rx)),
+            ..Fake::default()
+        };
+        let mut r = with_history(rig(fake, Prefs::default()));
+        // The snapshot is let go only once the dictation is committed; the
+        // row is written right after the paste and must wait for it.
+        dictate_then(&mut r, move |_| tx.send(()).unwrap());
+        assert_eq!(history_latest(&r).unwrap().app, "slack.exe");
     }
 
     #[test]
