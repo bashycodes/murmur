@@ -1,0 +1,6 @@
+{"kind": "env", "abi": 1, "backends": {"backend": "Vulkan", "device": "Intel(R) Arc(TM) 140V GPU (16GB)", "devices": [{"backend": "Vulkan", "description": "Intel(R) Arc(TM) 140V GPU (16GB)", "gpu_index": 0, "kind": "integrated_gpu", "memory_free": 18515384729, "memory_total": 19320695193, "name": "Vulkan0"}, {"backend": "CPU", "description": "Intel(R) Core(TM) Ultra 9 288V", "gpu_index": null, "kind": "cpu", "memory_free": 8122159104, "memory_total": 33895956480, "name": "CPU"}]}, "FLOW_WHISPER_DEVICE": null, "threads": 4}
+{"kind": "info", "backend": "Vulkan", "device": "Intel(R) Arc(TM) 140V GPU (16GB)", "gpu_error": null, "load_ms": 947, "multilingual": true}
+{"kind": "warmup", "id": "17840303524627035052", "ms": 0}
+{"kind": "clip", "id": "17840303524627035052", "dur_s": 3.24, "ms": 0, "errs": 8, "ref_words": 8, "hyp": ""}
+{"kind": "clip", "id": "10285382808955499770", "dur_s": 5.16, "ms": 0, "errs": 14, "ref_words": 14, "hyp": ""}
+{"kind": "clip", "id": "4872784854716589132", "dur_s": 10.38, "ms": 12401, "errs": 3, "ref_words": 22, "hyp": "הבודהיזם הטיבטי מבוסס על משנתו של בודה, אך זו הורחבה על ידי דרך האהבה של מאי יאנה ועל ידי טכניקות רבות מהיוגה ההודית."}
