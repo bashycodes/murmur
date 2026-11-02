@@ -183,6 +183,11 @@ class DeveloperActivity : Activity() {
             card {
                 val debug = navRow(R.drawable.ic_dev_debug, "Debug log & audio") { open(Page.DEBUG) }
                 refreshers += { debug.setSubtitle(DevSummary.debug(app.dev.debugLog, app.dev.keepDebugAudio)) }
+                // English 1 spike: the probe screen exists only in hybrid debug builds (src/hybridDebug),
+                // so the row shows only where the activity resolves. It never touches dictation routing.
+                probeIntent()?.let { i ->
+                    navRow(R.drawable.ic_dev_debug, "English speech probe", "Gemini Nano (ML Kit GenAI) and the on-device recognizer") { startActivity(i) }
+                }
             }
 
             sectionLabel("BUILD")
@@ -200,6 +205,9 @@ class DeveloperActivity : Activity() {
     }
 
     private fun open(p: Page) = open(this, p)
+
+    private fun probeIntent(): Intent? = Intent().setClassName(this, PROBE_ACTIVITY)
+        .takeIf { dev.flowclone.BuildConfig.DEBUG && packageManager.resolveActivity(it, 0) != null }
 
     /**
      * D28 one-time notice (another provider was removed / the model changed) until dismissed.
@@ -624,6 +632,7 @@ class DeveloperActivity : Activity() {
 
     companion object {
         const val EXTRA_PAGE = "page"
+        private const val PROBE_ACTIVITY = "dev.flowclone.probe.EnglishProbeActivity"
 
         val TITLES = mapOf(
             Page.HUB to "Developer settings", Page.ENGINES to "Engine options", Page.SERVER to "Server",
