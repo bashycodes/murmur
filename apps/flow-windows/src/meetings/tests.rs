@@ -517,10 +517,22 @@ fn listener_sees_recording_and_progress() {
     r.play(&voiced(150.0, 1_000), &[], |_| false);
     r.m.stop().unwrap();
     r.wait_done(&id);
-    let v = seen.lock().unwrap();
-    assert!(v.first().unwrap().recording.is_some());
-    assert!(v.iter().any(|v| v.transcribing.is_some()));
-    assert!(v.last().unwrap().transcribing.is_none());
+    // The job's last notify (after it clears its progress and prunes) can
+    // land after wait_done saw the view settle: wait for that event, the
+    // one the listener must end on.
+    let t0 = Instant::now();
+    let v = loop {
+        let v = seen.lock().unwrap().clone();
+        let ended = v.iter().any(|v| v.transcribing.is_some())
+            && v.last().is_some_and(|v| v.transcribing.is_none());
+        if ended || t0.elapsed() > Duration::from_secs(20) {
+            break v;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert!(v.first().unwrap().recording.is_some(), "{v:?}");
+    assert!(v.iter().any(|v| v.transcribing.is_some()), "{v:?}");
+    assert!(v.last().unwrap().transcribing.is_none(), "{v:?}");
 }
 
 #[test]
