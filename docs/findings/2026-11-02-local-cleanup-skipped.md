@@ -1,5 +1,8 @@
 # 2026-11-02: "local AI cleanup was dropped" (Android hybrid, 1.0.0)
 
+**Status.** Diagnosed; Fix 1 and Fix 2 merged; owner decision B taken and implemented (D43,
+`feat/cleanup-always-runs`). Decisions A (kept off) and C (dictionary) need no code.
+
 **Report.** The owner noticed that the on-device AI cleanup is not running and asked whether it
 was always like that, and whether that is why dictation is poor without OpenRouter. The
 example had technical terms: the speech model wrote the equivalent of "a UID four" for "a UUID4"
@@ -50,7 +53,7 @@ All of the following must hold, in this order:
 | 2 | A GGUF is imported and loads (`EnginePlan.LlmStatus.Loaded`) | `EngineLogic.kt`, `load_models` | no local hop; `llm_off: no_phone_model` / `phone_model_failed` |
 | 3 | Not Command Mode, not a terminal app, not a whole-utterance snippet | `DictationController` (`rawMode`), `cleanup::should_run`, `engine.rs` | rules only |
 | 4 | Local is the first *ready* engine in the cleanup order (default local → server → cloud) | router `plan`, `ChainCleaner` | a ready server / cloud ahead of it cleans first; local only runs if those fail, time out or are refused |
-| 5 | Not "already clean" (`llm_skip_clean`, default on): skipped when the rules' text is ≤ 20 words, one line, capitalised, ends in punctuation, no filler/command words, no repeated word, no 15+-word sentence without a comma, < 3 commas (email always runs) | `cleanup::llm_can_help` | `llm: llm_skipped_clean` ("AI not needed") |
+| 5 | Not "already clean" (`llm_skip_clean`, default on; since D43 only when the on-device model would clean first): skipped when the rules' text is ≤ 20 words, one line, capitalised, ends in punctuation, no filler/command words, no repeated word, no 15+-word sentence without a comma, < 3 commas (email always runs) | `cleanup::llm_can_help` | `llm: llm_skipped_clean` ("AI not needed") |
 | 6 | Answers within the budget (`ANDROID_LLM_TIMEOUT_MS` = 3000) | `run_cleanup_metered_for` | `llm_timeout`, rules' text |
 | 7 | Answer passes the strict guard (no new words, numbers, dropped content) | `guard::check` | `llm_unsupported` / other reason, rules' text |
 
@@ -74,10 +77,12 @@ grammatical sentence looks "clean".
   `flow-router/tests/d36_cleanup_order.rs::unreachable_server_before_the_cloud_leaves_the_cloud_first`
   (real router: phone AI off, order L/S/C, server disconnected).
 
-**Limit, by design for now.** Until the server hop has failed once, its circuit is closed and it
-counts as ready. So the *first* tidy dictation after the server drops is still skipped
-(`llm_skipped_clean`), as the server itself would skip it (the server's own session pipeline
-runs the same D27 skip). The router test pins this. See owner decision B.
+**Limit (removed by D43).** Until the server hop has failed once, its circuit is closed and it
+counts as ready, so the *first* tidy dictation after the server dropped was still skipped
+(`llm_skipped_clean`). Since D43 the skip is only evaluated when the on-device model would clean
+first, so that dictation goes to the server, which fails, and then to the cloud. Pinned by
+`flow-router/tests/d36_cleanup_order.rs::unreachable_server_before_the_cloud_leaves_the_cloud_first`
+and `flow-core/tests/d36_server_cleanup.rs::tidy_text_after_a_server_drop_goes_to_the_cloud_not_the_local_model`.
 
 ## Fix 2: `llm_off` on the debug line (Android)
 
@@ -101,10 +106,11 @@ path was tried). Before Fix 1, a cloud answer reached through the chain (server 
 * **A. Phone AI default.** Keep "Clean up on this phone" off by default, or turn it on when a
   model is imported? The 1.5B helps on messy speech (D27: rules 89 % → 92 %) but will not fix
   jargon (gate 7).
-* **B. Skip with an off-phone engine.** Should `llm_skip_clean` apply when the chain's first
-  ready engine is your server (bigger model) rather than the phone's 1.5B? Today it does, as on
-  the server itself. Turning it off for server/cloud would cost one LLM call on every tidy
-  dictation.
+* **B. Skip with an off-phone engine. Decided 2026-11-02 (D43): no.** `llm_skip_clean` now
+  applies only when the on-device model would clean first. A server or cloud cleaner always gets
+  the dictation (guard and time limits unchanged), the server's own sessions included, and a tidy
+  dictation never falls through to the on-device model. Cost: one LLM call per tidy dictation.
+* **A** stays as is: the phone AI is off by default.
 * **C. Jargon.** Add the owner's terms to the dictionary as replacements (no code change).
   Optionally, a "suggest a replacement" path from Learn-from-edits.
 

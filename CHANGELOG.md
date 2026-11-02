@@ -18,6 +18,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
+- **AI cleanup always runs on your server or OpenRouter.** The "already
+  clean" skip ("AI not needed") now applies only when the phone's or PC's
+  own small model would clean first, since that model damages tidy text.
+  A tidy dictation whose first cleaner is flow-server or the cloud is
+  cleaned, including the first one after the server drops (the cloud next
+  in line takes it); it never falls through to the on-device model. The
+  server cleaning its own sessions no longer skips either. Phone AI stays
+  off by default (D43).
 - **Asides, degrees and times read like Wispr's.** "my bike in parentheses
   which is the green one is locked outside" → `My bike (which is the green
   one) is locked outside`: an "in parentheses which/who …" aside spoken
