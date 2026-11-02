@@ -18,6 +18,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Hebrew models scored on the owner's own dictations (H7).** On 16
+  clips zipformer-he scores 13.6–14.4 % WER against parakeet-he's 18.9 %,
+  answers in about 50 ms after the last audio instead of 420 ms, and the
+  phone matches the host, so zipformer-he stays the Hebrew default and
+  parakeet-he stays selectable
+  (`docs/findings/2026-11-02-h7-hebrew-stt-scores.md`).
+
 - **Android: transcribe new call recordings automatically.** The Calls
   page has a switch, **Transcribe new call recordings**. Once it is on (it
   asks for access to audio files), every call recording Samsung saves
