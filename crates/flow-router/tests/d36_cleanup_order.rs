@@ -267,12 +267,17 @@ impl Rig {
 }
 
 fn rig_with(c: RouterConfig, local_llm: bool) -> Rig {
+    rig_heard(c, local_llm, IN)
+}
+
+/// `rig_with` whose speech model hears `heard`.
+fn rig_heard(c: RouterConfig, local_llm: bool, heard: &str) -> Rig {
     let local = Arc::new(Local {
         calls: AtomicUsize::new(0),
         fail: Mutex::new(false),
     });
     let core = FlowCore::from_engines(
-        Arc::new(MockAsr::new(IN)),
+        Arc::new(MockAsr::new(heard)),
         local_llm.then(|| local.clone() as Arc<dyn Cleaner>),
     );
     let server = Server::new();
@@ -482,6 +487,54 @@ fn unreachable_server_opens_its_circuit() {
     k.router.reset_circuit();
     *k.server.answer.lock().unwrap() = Answer::Text;
     assert!(has(&dictate(&k.router), SERVER_OUT));
+}
+
+#[test]
+fn unreachable_server_before_the_cloud_leaves_the_cloud_first() {
+    // 2026-11-02 local-cleanup-skipped: phone AI off, order local → server
+    // → cloud (the default), server unreachable. Once its circuit is open
+    // the cloud is the first engine that can clean, so D30 applies: raw
+    // transcript in and no "already clean" skip (which used to stop the
+    // whole chain on a tidy-looking dictation).
+    // Tidy already (the rules leave the LLM nothing obvious to do).
+    let heard = CLOUD_OUT;
+    let k = rig_heard(cfg(&[L, S, C]), false, heard);
+    *k.server.answer.lock().unwrap() = Answer::Disconnected;
+    let go = |k: &Rig, llm_skip_clean: bool| {
+        k.router
+            .start_session(SessionConfig {
+                llm_skip_clean,
+                ..session()
+            })
+            .unwrap();
+        let pcm: Vec<i16> = (0..300 * 16)
+            .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)
+            .collect();
+        assert!(k.router.push_audio(&pcm));
+        k.router.commit()
+    };
+    // A dictation the LLM is asked about: the server is tried (circuit
+    // closed), fails, and the cloud cleans it. While the server's circuit
+    // is still closed a tidy dictation is skipped: the server is first
+    // and believed reachable (D27 skip, as on the server itself).
+    assert_eq!(
+        go(&k, true).fallback_reason.as_deref(),
+        Some("llm_skipped_clean")
+    );
+    let _ = go(&k, false);
+    assert!(k.router.cleanup_status().server_circuit.unwrap().open);
+    let before = k.cloud_calls();
+    let r = go(&k, true);
+    assert_ne!(
+        r.fallback_reason.as_deref(),
+        Some("llm_skipped_clean"),
+        "{r:?}"
+    );
+    assert_eq!(k.cloud_calls(), before + 1, "{r:?}");
+    assert_eq!(k.server.cleans(), 1, "open circuit: not asked again");
+    assert_eq!(r.cleanup_route.as_deref(), Some("cloud"), "{r:?}");
+    let seen = k.cloud.seen.lock().unwrap().last().unwrap().clone();
+    assert_eq!(seen.transcript, heard, "raw transcript in");
 }
 
 #[test]

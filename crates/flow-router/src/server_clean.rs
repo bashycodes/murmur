@@ -281,6 +281,12 @@ impl Cleaner for ServerClean {
         self.backend().is_some_and(|b| self.llm(&b) != Some(false))
     }
 
+    /// Circuit closed too: an open circuit refuses at once, so a chain
+    /// with the cloud after this hop is cloud-first in practice (D30).
+    fn ready(&self) -> bool {
+        ServerClean::ready(self)
+    }
+
     fn model(&self) -> Option<String> {
         None
     }

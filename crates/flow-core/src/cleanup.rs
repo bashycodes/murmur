@@ -315,6 +315,14 @@ pub trait Cleaner: Send + Sync {
         true
     }
 
+    /// Would a call be tried now, rather than refused up front (e.g. a
+    /// server hop whose circuit is open after it went unreachable)? Used
+    /// to find the cleanup chain's effective first engine
+    /// ([`ChainCleaner`]'s `ai_parts`). Default: [`Cleaner::available`].
+    fn ready(&self) -> bool {
+        self.available()
+    }
+
     /// [`Cleaner::clean_cancellable`] plus metering. Backends with a cost
     /// override it and report usage even on error / cancel. Default: the
     /// plain call, usage = engine + model.
@@ -657,10 +665,29 @@ impl Cleaner for ChainCleaner {
         self.hops.iter().any(|h| h.available())
     }
 
+    fn ready(&self) -> bool {
+        self.hops.iter().any(|h| h.ready())
+    }
+
+    /// Cloud first → D30 (AI cleanup on the raw transcript, the hops after
+    /// it as the fallback). "First" passes over leading server hops that
+    /// would refuse up front ([`Cleaner::ready`]): with the server down,
+    /// order server → cloud is cloud-first in practice, and the D27
+    /// "already clean" skip (meant for the on-device LLM) must not keep the
+    /// cloud from seeing the dictation (2026-11-02 local-cleanup-skipped).
+    /// An on-device hop is never passed over.
     fn ai_parts(&self) -> Option<AiParts> {
-        let first = self.hops.first()?;
-        (first.engine() == "cloud")
-            .then(|| (first.clone(), ChainCleaner::build(self.hops[1..].to_vec())))
+        let i = self
+            .hops
+            .iter()
+            .position(|h| h.engine() == "cloud" || h.engine() == "local" || h.ready())?;
+        let first = &self.hops[i];
+        (first.engine() == "cloud").then(|| {
+            (
+                first.clone(),
+                ChainCleaner::build(self.hops[i + 1..].to_vec()),
+            )
+        })
     }
 }
 
