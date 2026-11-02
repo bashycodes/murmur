@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * "<redacted>" for protected targets, like `text`.
  * Since 2026-10-27: source (mic | wav: debug builds can feed a WAV file as the microphone).
  * D37 (2026-10-31): language_source (keyboard | phone | fixed: where `language` came from).
+ * 2026-11-02 (local-cleanup-skipped): llm_off (why no AI cleanup was tried when `llm` is null).
  *
  * Logging must never affect dictation: entries are queued (bounded, drop-oldest) and written
  * on one background thread; every failure is swallowed and counted.
@@ -95,6 +96,12 @@ data class DictationTrace(
     val style: String? = null,
     /** D27: "formatted" (LLM text used), the core `fallback_reason` (llm_skipped_clean = nothing to do, llm_timeout, …), or null = LLM off. */
     val llm: String? = null,
+    /**
+     * 2026-11-02: why no AI cleanup was tried when [llm] is null and there was a transcript
+     * ([dev.flowclone.data.LlmOutcome.offReason]: ai_cleanup_off | no_phone_model |
+     * phone_model_failed | no_engine_available); set by the app. Android only.
+     */
+    val llmOff: String? = null,
     /** 2026-10-24: routes the router may take, in try order ("client,server" = phone first); set by the app. */
     val routeOrder: String? = null,
     /** 2026-10-24: core VAD speech in the dictation (`timings.speech_ms`); null = VAD off / no result. */
@@ -247,6 +254,7 @@ object DebugFormat {
         "local_load_ms" to t.localLoadMs,
         "style" to t.style,
         "llm" to t.llm,
+        "llm_off" to t.llmOff,
         "route_order" to t.routeOrder,
         "speech_ms" to t.speechMs,
         "peak_dbfs" to t.peakDbfs,
@@ -291,6 +299,7 @@ object DebugFormat {
         val route = listOfNotNull(s("route") ?: "-", s("fallback")?.let { "($it)" }, s("engine"), s("model")).joinToString(" ") +
             (s("language")?.let { " · lang $it" + (s("language_source")?.let { src -> " ($src)" } ?: "") } ?: "") + (s("style")?.let { " · $it" } ?: "") +
             (dev.flowclone.data.LlmOutcome.label(s("llm"))?.let { " · $it" } ?: "") +
+            (dev.flowclone.data.LlmOutcome.offLabel(s("llm_off"))?.let { " · $it" } ?: "") +
             (s("llm_engine")?.let { e -> " · AI " + (if (e == "cloud") "OpenRouter" else e) + (s("llm_model")?.let { " ${it.substringAfter('/')}" } ?: "") } ?: "") +
             (s("cleanup_route")?.let { c -> " · text by $c" + (s("cloud_fallback")?.let { " (cloud: $it)" } ?: "") } ?: "") +
             (listOfNotNull(s("stt_cost_usd"), s("llm_cost_usd")).takeIf { it.isNotEmpty() }?.let { " · $" + it.sumOf { c -> c.toDoubleOrNull() ?: 0.0 }.let { v -> String.format(java.util.Locale.US, "%.4f", v) } } ?: "")
