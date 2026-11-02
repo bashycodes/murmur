@@ -2,8 +2,9 @@
 # D46 Calls device check (debug builds only): decode a recording on the phone with the Calls
 # decoder (MediaCodec for m4a/AAC, the WAV reader for WAV) to 16 kHz mono and print what came
 # out; optionally transcribe it with the Calls job too. Pushes the file into the app's private
-# storage (files/debug/calls-in/, via run-as), checks it arrived intact (sha256), then sends
-# the debug broadcast. The phone's shared storage is not touched.
+# storage (files/debug/calls-in/, staged in /data/local/tmp, copied in via run-as), checks it
+# arrived intact (sha256), then sends the debug broadcast. The phone's shared storage is not
+# touched.
 #
 #   tools/phone/call-decode.sh [--transcribe] [--lang he|en] [FILE]
 #
@@ -53,11 +54,21 @@ phone() { "$TOOL" "${TRANSPORT[@]}" "$@"; }
 
 NAME="$(basename "$FILE" | tr -c 'A-Za-z0-9._\n-' '_')"
 DEST="files/debug/calls-in/$NAME"
-phone exec-in run-as "$PKG" sh -c "'mkdir -p files/debug/calls-in && cat > $DEST'" <"$FILE" \
-    || die "push failed (run-as needs a debug build of the app, a connected phone and the right FLOW_PHONE)"
+# exec-in/exec-out skip the device shell on some phones (Android 17): inner quotes reach sh
+# literally, the command fails, yet exit 0 comes back. So stage the file in /data/local/tmp
+# with push and copy it in through `shell`, which always runs a shell.
+TMP="/data/local/tmp/flow-call-decode-$NAME"
+phone push "$FILE" "$TMP" >/dev/null \
+    || die "push failed (a connected phone and the right FLOW_PHONE?)"
+copied=0
+phone shell "cat '$TMP' | run-as '$PKG' sh -c 'mkdir -p files/debug/calls-in && cat > $DEST'" || copied=$?
+phone shell "rm -f '$TMP'" || true
+[ "$copied" = 0 ] || die "copy into the app failed (run-as needs a debug build of the app)"
 want="$(sha256sum <"$FILE" | cut -d' ' -f1)"
-got="$(phone exec-out run-as "$PKG" sha256sum "$DEST" | cut -d' ' -f1)" || die "sha256sum failed on the phone"
-[ "$want" = "$got" ] || die "$DEST: sha256 mismatch after the push (got ${got:-nothing})"
+raw="$(phone shell "run-as '$PKG' sha256sum $DEST" 2>&1 | tr -d '\r')" || true
+got="$(cut -d' ' -f1 <<<"$raw" | head -n 1)"
+[[ "$got" =~ ^[0-9a-f]{64}$ ]] || die "sha256sum failed on the phone: ${raw:-no output}"
+[ "$want" = "$got" ] || die "$DEST: sha256 mismatch after the push (got $got, want $want)"
 
 args=(shell am broadcast -a "$ACTION" -n "$PKG/$RECEIVER" --es path "$DEST")
 [ "$TRANSCRIBE" = 0 ] || args+=(--ez transcribe true --es lang "$LANG_CODE")
