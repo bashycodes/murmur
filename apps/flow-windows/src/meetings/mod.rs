@@ -119,6 +119,92 @@ impl ChunkTranscriber for YieldToDictation {
     }
 }
 
+/// Notes which route served each chunk of a job: a debug-log line per
+/// chunk (route and engine, never the text) and a count per route for the
+/// meeting's JSON ([`Meeting::routes`]).
+pub struct RouteTally {
+    inner: Arc<dyn ChunkTranscriber + Send + Sync>,
+    counts: Mutex<std::collections::BTreeMap<String, u32>>,
+    log: Box<dyn Fn(&str) + Send + Sync>,
+}
+
+impl RouteTally {
+    pub fn new(
+        inner: Arc<dyn ChunkTranscriber + Send + Sync>,
+        log: impl Fn(&str) + Send + Sync + 'static,
+    ) -> Self {
+        RouteTally {
+            inner,
+            counts: Mutex::new(Default::default()),
+            log: Box::new(log),
+        }
+    }
+
+    /// Chunks per route so far.
+    pub fn counts(&self) -> std::collections::BTreeMap<String, u32> {
+        self.counts.lock().unwrap().clone()
+    }
+}
+
+/// One chunk's route for the debug log: `route local`, `route remote
+/// (server x, core y)`, `route cloud (openrouter-1, model z)`, plus the
+/// fallback reason when the first route was not used.
+pub fn route_line(r: &flow_core::CommitResult) -> (String, String) {
+    let Some(ri) = r.route.as_ref() else {
+        return ("none".into(), "route none".into());
+    };
+    let route = if ri.engine.is_empty() {
+        "none".to_string()
+    } else {
+        ri.engine.clone()
+    };
+    let mut engine: Vec<String> = Vec::new();
+    for (k, v) in [
+        ("provider", &ri.provider),
+        ("model", &ri.model),
+        ("server", &ri.server),
+        ("core", &ri.server_core),
+        ("fallback", &ri.fallback),
+    ] {
+        if let Some(v) = v {
+            engine.push(format!("{k} {v}"));
+        }
+    }
+    let line = if engine.is_empty() {
+        format!("route {route}")
+    } else {
+        format!("route {route} ({})", engine.join(", "))
+    };
+    (route, line)
+}
+
+impl ChunkTranscriber for RouteTally {
+    fn transcribe_chunk(&self, pcm: &[i16], cfg: &SessionConfig) -> flow_core::CommitResult {
+        let r = self.inner.transcribe_chunk(pcm, cfg);
+        let (route, line) = route_line(&r);
+        let n = {
+            let mut c = self.counts.lock().unwrap();
+            *c.entry(route).or_default() += 1;
+            c.values().sum::<u32>()
+        };
+        (self.log)(&format!(
+            "chunk {n}: {} ms audio, {line}, {:?}",
+            pcm.len() as u64 * 1000 / 16_000,
+            r.status
+        ));
+        r
+    }
+
+    fn abort(&self) {
+        self.inner.abort()
+    }
+}
+
+fn log_line(what: &str) {
+    eprintln!("[meetings] {what}");
+    crate::debug_log::event("meetings", what);
+}
+
 /// What the tray, the indicator and the Meetings page show.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct View {
@@ -207,8 +293,7 @@ impl Inner {
     }
 
     fn log(&self, what: &str) {
-        eprintln!("[meetings] {what}");
-        crate::debug_log::event("meetings", what);
+        log_line(what);
     }
 
     fn run_next(&self) -> bool {
@@ -245,9 +330,15 @@ impl Inner {
         let t0 = std::time::Instant::now();
         let paths = self.store.audio_paths(id);
         let mut last = -1i64;
+        let mut tally: Option<Arc<RouteTally>> = None;
         let result = (self.engine)().and_then(|engine| {
+            let jid = id.to_string();
+            let t = Arc::new(RouteTally::new(engine, move |l| {
+                log_line(&format!("{jid} {l}"))
+            }));
+            tally = Some(t.clone());
             transcript::transcribe_meeting(
-                engine,
+                t,
                 &(self.session)(),
                 [&paths[0], &paths[1]],
                 self.params,
@@ -272,6 +363,7 @@ impl Inner {
                 (Err(e), Some(_)) if e == CANCELLED => {}
                 (Ok(turns), Some(mut cur)) => {
                     cur.turns = turns.clone();
+                    cur.routes = tally.as_ref().map(|t| t.counts()).unwrap_or_default();
                     cur.status = Status::Done;
                     cur.error = None;
                     if let Err(e) = self.store.save(&cur) {
@@ -289,10 +381,11 @@ impl Inner {
         }
         self.log(&match &result {
             Ok(t) => format!(
-                "transcribed {id}: {} turns, {} ms audio in {} ms",
+                "transcribed {id}: {} turns, {} ms audio in {} ms, chunks by route {:?}",
                 t.len(),
                 m.duration_ms,
-                t0.elapsed().as_millis()
+                t0.elapsed().as_millis(),
+                tally.as_ref().map(|t| t.counts()).unwrap_or_default()
             ),
             Err(e) => format!("transcription of {id} stopped: {e}"),
         });

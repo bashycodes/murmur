@@ -49,6 +49,7 @@ with sync_playwright() as p:
     pg.click('#mt_list [data-id="m2"] .lw-mt-open')
     pg.wait_for_timeout(200)
     check(pg.is_visible("#mt_detail") and not pg.is_visible("#mt_list_view"), "transcript view")
+    check(pg.inner_text("#mt_sub").endswith("Transcribed on: This PC"), "route that transcribed it")
     who = pg.eval_on_selector_all("#mt_turns .lw-mt-who", "els => els.map(e => e.textContent)")
     check(who == ["Me", "Others", "Me"], f"speakers in order: {who}")
     stamps = pg.eval_on_selector_all("#mt_turns .lw-mt-stamp", "els => els.map(e => e.textContent)")

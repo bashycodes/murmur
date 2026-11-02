@@ -46,6 +46,8 @@ export interface Meeting {
   error?: string;
   system_silent?: boolean;
   turns: Turn[];
+  /** Chunks per route that transcribed it (`local` / `remote` / `cloud`). */
+  routes?: Record<string, number>;
 }
 
 /** `meetings::View`. */
@@ -258,9 +260,28 @@ async function refreshList(): Promise<void> {
   $<HTMLElement>("mt_empty").hidden = list.length > 0;
 }
 
+const ROUTE_NAMES: Record<string, string> = {
+  local: "This PC",
+  remote: "Your server",
+  cloud: "OpenRouter",
+};
+
+/** "Transcribed on: This PC"; with several routes, the most used first
+ * with the share of chunks ("This PC 4, Your server 2"). */
+export function routesText(routes: Record<string, number> | undefined): string {
+  const used = Object.entries(routes ?? {})
+    .filter(([r, n]) => n > 0 && r in ROUTE_NAMES)
+    .sort((a, b) => b[1] - a[1]);
+  if (!used.length) return "";
+  const names = used.length === 1
+    ? ROUTE_NAMES[used[0][0]]
+    : used.map(([r, n]) => `${ROUTE_NAMES[r]} ${n}`).join(", ");
+  return `Transcribed on: ${names}`;
+}
+
 function showDetail(m: Meeting): void {
   $<HTMLElement>("mt_title").textContent = startedText(m.started_ms);
-  const facts = [duration(m.duration_ms), appName(m.app), statusText(m)].filter(Boolean);
+  const facts = [duration(m.duration_ms), appName(m.app), statusText(m), routesText(m.routes)].filter(Boolean);
   $<HTMLElement>("mt_sub").textContent = facts.join(" · ");
   const note = $<HTMLElement>("mt_note");
   note.textContent = m.system_silent
