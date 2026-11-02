@@ -1,0 +1,21 @@
+# Cheap repo-wide checks that the path-filtered app builds would skip
+# (docs-only branches never trigger them). Seconds on ubuntu; no toolchains.
+name: repo-checks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [integration, "feat/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decision ids unique
+        run: tools/checks/decision-ids.sh
