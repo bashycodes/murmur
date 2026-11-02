@@ -85,7 +85,7 @@ class ShellPagesTest {
         val all = ShellPages.extras(local = true, developer = true)
         assertEquals(Extra.entries.toList(), all)
         val remote = ShellPages.extras(local = false, developer = false)
-        assertEquals(Extra.entries.filter { it != Extra.SPEECH_MODEL && it != Extra.DEVELOPER }, remote)
+        assertEquals(Extra.entries.filter { it != Extra.SPEECH_MODEL && it != Extra.CALLS && it != Extra.DEVELOPER }, remote)
         assertEquals("Murmur 0.6.0", ShellPages.versionLine("0.6.0"))
     }
 

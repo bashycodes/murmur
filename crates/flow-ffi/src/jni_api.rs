@@ -896,6 +896,177 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudKeyInfo
     guard(std::ptr::null_mut(), || out(&mut env, &r))
 }
 
+// ---- D44/D46 meeting transcription (JNI_CONTRACT.md "Meeting transcription") --
+// A job owns its engine handle (`nativeMeetingOpen` takes it over), so it never
+// shares a session with the shell's dictation engine. `push` / `finish` block
+// (worker thread); `progress` / `cancel` never wait for a chunk.
+
+fn meeting<'a>(m: jlong) -> Option<&'a crate::meeting_api::MeetingJob> {
+    // SAFETY: the shell only passes values returned by nativeMeetingOpen and
+    // not yet passed to nativeMeetingClose (it serialises close against the
+    // other calls).
+    unsafe { (m as *const crate::meeting_api::MeetingJob).as_ref() }
+}
+
+/// Segments JSON, or `null` with the last error / kind (`cancelled`, `failed`).
+fn meeting_out(env: &mut JNIEnv, r: Result<String, crate::meeting_api::JobError>) -> jstring {
+    match r {
+        Ok(s) => {
+            clear_error();
+            out(env, &s)
+        }
+        Err((kind, e)) => {
+            set_error_kind(kind, e);
+            std::ptr::null_mut()
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingOpen(
+    mut env: JNIEnv,
+    _c: JClass,
+    engine: jlong,
+    session: JString,
+    params: JString,
+) -> jlong {
+    guard(0, || {
+        if engine == 0 {
+            set_error_kind("bad_config", "bad_config: no engine handle");
+            return 0;
+        }
+        // Ownership of `engine` moves here whatever happens next (contract).
+        // SAFETY: a value from nativeLoadModels / nativeOpenRouter that Kotlin released to us.
+        let engine = *unsafe { Box::from_raw(engine as *mut FlowHandle) };
+        let Some(s) = jstr(&mut env, &session, "bad_config: session config") else {
+            return 0;
+        };
+        let p = if params.is_null() {
+            String::new()
+        } else {
+            match jstr(&mut env, &params, "bad_config: meeting params") {
+                Some(p) => p,
+                None => return 0,
+            }
+        };
+        match crate::meeting_api::MeetingJob::open(engine, &s, &p) {
+            Ok(j) => {
+                clear_error();
+                Box::into_raw(Box::new(j)) as jlong
+            }
+            Err((kind, e)) => {
+                set_error_kind(kind, e);
+                0
+            }
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingSetTotal(
+    _env: JNIEnv,
+    _c: JClass,
+    m: jlong,
+    samples: jlong,
+) {
+    guard((), || {
+        if let Some(j) = meeting(m) {
+            j.set_total_samples(samples.max(0) as usize)
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingPush(
+    mut env: JNIEnv,
+    _c: JClass,
+    m: jlong,
+    pcm: JShortArray,
+    len: jint,
+) -> jstring {
+    guard(std::ptr::null_mut(), || {
+        let Some(j) = meeting(m) else {
+            set_error_kind("bad_config", "bad_config: no meeting job");
+            return std::ptr::null_mut();
+        };
+        if pcm.is_null() {
+            set_error_kind("bad_config", "bad_config: null pcm");
+            return std::ptr::null_mut();
+        }
+        let cap = match env.get_array_length(&pcm) {
+            Ok(n) => n.max(0),
+            Err(e) => {
+                clear(&mut env);
+                set_error(format!("pcm: {e}"));
+                return std::ptr::null_mut();
+            }
+        };
+        let mut b = vec![0i16; len.clamp(0, cap) as usize];
+        if let Err(e) = env.get_short_array_region(&pcm, 0, &mut b) {
+            clear(&mut env);
+            set_error(format!("pcm: {e}"));
+            return std::ptr::null_mut();
+        }
+        let r = j.push(&b);
+        meeting_out(&mut env, r)
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingFinish(
+    mut env: JNIEnv,
+    _c: JClass,
+    m: jlong,
+) -> jstring {
+    guard(std::ptr::null_mut(), || {
+        let Some(j) = meeting(m) else {
+            set_error_kind("bad_config", "bad_config: no meeting job");
+            return std::ptr::null_mut();
+        };
+        let r = j.finish();
+        meeting_out(&mut env, r)
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingProgress(
+    mut env: JNIEnv,
+    _c: JClass,
+    m: jlong,
+) -> jstring {
+    let r = guard("{}".to_string(), || {
+        meeting(m).map_or("{}".into(), |j| j.progress())
+    });
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingCancel(
+    _env: JNIEnv,
+    _c: JClass,
+    m: jlong,
+) {
+    guard((), || {
+        if let Some(j) = meeting(m) {
+            j.cancel()
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeMeetingClose(
+    _env: JNIEnv,
+    _c: JClass,
+    m: jlong,
+) {
+    if m != 0 {
+        // SAFETY: see `meeting`; Kotlin never uses `m` after this call.
+        guard((), || {
+            drop(unsafe { Box::from_raw(m as *mut crate::meeting_api::MeetingJob) })
+        });
+    }
+}
+
 // ---- D41 model library (JNI_CONTRACT.md "Model library"; feature `library`) --
 // Static natives on `dev.flowclone.server.ServerLibraryNative`, a class only
 // the `hybrid` / `remote` flavours compile; the `local` library has neither

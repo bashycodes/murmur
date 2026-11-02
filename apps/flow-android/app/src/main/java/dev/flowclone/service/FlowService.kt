@@ -152,7 +152,12 @@ class FlowService : Service() {
         overlay = BubbleOverlay(this, app.settings.bubblePosition, BubbleListener(), ::snoozeDrop)
         app.engine.ensureLoaded()
         scope.launch { app.fieldFocus.collect { controller.onFieldFocusChanged(it != null) } }
-        scope.launch { controller.state.collect { presence.onState(it) } }
+        scope.launch {
+            controller.state.collect {
+                presence.onState(it)
+                app.dictationBusy.value = it is DictationState.Recording || it is DictationState.Processing
+            }
+        }
         scope.launch {
             // "Bubble size" and "Shrink to a dot" ride along with repair, so either applies to the live bubble at once.
             // Command Mode's ✎ rides along too: shown per the "Command button" setting and the field's selection.
@@ -263,6 +268,7 @@ class FlowService : Service() {
         runCatching { unregisterReceiver(screenReceiver) }
         unregisterShake()
         if (::controller.isInitialized) controller.cancel()
+        app.dictationBusy.value = false
         if (::overlay.isInitialized) overlay.detach()
         tone?.release()
         scope.cancel()
