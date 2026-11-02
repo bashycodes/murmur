@@ -28,6 +28,9 @@ class BootReceiver : BroadcastReceiver() {
         val action = intent.action ?: return
         if (action !in ACTIONS) return
         val app = FlowApp.of(context)
+        // D49: JobScheduler forgets the call-recording triggers across a reboot; arm them again.
+        // (App start does it too; this covers a boot where nothing else starts the app.)
+        dev.flowclone.calls.AutoCalls.arm(context)
         if (app.settings.serviceStoppedByUser || !Settings.canDrawOverlays(context)) return
         val enabled = A11ySetting.isEnabled(
             Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES),
