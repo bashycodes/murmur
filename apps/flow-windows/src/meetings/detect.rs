@@ -447,8 +447,34 @@ impl AutoDetect {
         }
     }
 
+    /// One poll of the watcher: with detection off nothing is probed,
+    /// asked of the recorder or logged (D48: nothing runs while off); a
+    /// prompt still up when it is turned off is taken down.
+    pub fn look(&self, probe: &mut dyn Probe, mode: Mode) {
+        if mode == Mode::Off {
+            self.off();
+        } else {
+            let snap = probe.snapshot();
+            self.tick(&snap, mode);
+        }
+    }
+
+    /// Detection is off: leave any call (a recording we started stays,
+    /// it is the user's now) and forget the last signals, so turning it
+    /// on again logs them afresh. No host call unless a prompt was up.
+    fn off(&self) {
+        let mut g = self.inner.lock().unwrap();
+        g.last.clear();
+        let actions = g.detector.step(&[], Mode::Off, false);
+        self.run(&mut g, actions);
+    }
+
     /// One look at the system.
     pub fn tick(&self, snap: &Snapshot, mode: Mode) {
+        if mode == Mode::Off {
+            self.off();
+            return;
+        }
         let seen = classify(snap);
         let mut g = self.inner.lock().unwrap();
         let signals = describe(snap);
@@ -569,13 +595,7 @@ pub fn spawn_watcher(
         .spawn(move || {
             super::lower_thread_priority();
             loop {
-                let m = mode();
-                let snap = if m == Mode::Off {
-                    Snapshot::default()
-                } else {
-                    probe.snapshot()
-                };
-                auto.tick(&snap, m);
+                auto.look(probe.as_mut(), mode());
                 std::thread::sleep(POLL);
             }
         });
