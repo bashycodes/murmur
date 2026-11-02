@@ -84,6 +84,13 @@
     "allow-debug-log-status",
     "allow-debug-log-set",
     "allow-debug-log-clear",
-    "allow-debug-log-open-folder"
+    "allow-debug-log-open-folder",
+    "allow-meeting-state",
+    "allow-meeting-toggle",
+    "allow-meeting-list",
+    "allow-meeting-get",
+    "allow-meeting-copy",
+    "allow-meeting-delete",
+    "allow-meeting-retry"
   ]
 }

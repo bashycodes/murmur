@@ -296,5 +296,22 @@ function showMaxWarning(remainingMs) {
         maxWarnTimer = setInterval(tick, 250);
 }
 void listen("dictation:max-warning", (e) => showMaxWarning(e.payload));
+const meetingRec = document.getElementById("meeting-rec");
+let meetingTimer = 0;
+function showMeeting(r) {
+    clearInterval(meetingTimer);
+    meetingRec.hidden = !r;
+    if (!r)
+        return;
+    const tick = () => {
+        const s = Math.max(0, Math.floor((Date.now() - r.started_ms) / 1000));
+        const mm = Math.floor(s / 60);
+        const ss = String(s % 60).padStart(2, "0");
+        meetingRec.textContent = `Recording meeting · ${mm}:${ss}`;
+    };
+    tick();
+    meetingTimer = setInterval(tick, 1000);
+}
+void listen("meeting:recording", (e) => showMeeting(e.payload));
 // Last: apply() touches the badge / countdown elements declared above.
 apply({ state: "resting" });

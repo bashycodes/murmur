@@ -15,6 +15,7 @@ use crate::ducking::win::Ducker;
 use crate::history::{self, History};
 use crate::hotkeys::{self, win::HookHandle};
 use crate::insights::{self, InsightsStore};
+use crate::meetings::{self, Meetings};
 use crate::notes::{self, AutoSave, NoteStore};
 use crate::paste::{self, PasteOptions};
 use crate::prefs::{LoadOutcome, Prefs};
@@ -80,6 +81,12 @@ struct AppState {
     started: Instant,
     /// The speech-model download the user started (at most one, D31).
     downloads: Arc<crate::model_download::Downloads>,
+    /// Notetaker (D45): meeting recordings and their transcripts.
+    meetings: OnceLock<Arc<Meetings>>,
+    /// Tray line "Start / Stop meeting recording".
+    meeting_item: OnceLock<MenuItem<tauri::Wry>>,
+    /// Last state sent to the pill (shared with [`WinPlatform`]).
+    overlay_state: Arc<Mutex<OverlayState>>,
 }
 
 fn hwnd_of(w: &WebviewWindow) -> Option<HWND> {
@@ -154,7 +161,14 @@ impl Platform for WinPlatform {
     fn overlay(&self, st: &OverlayState) {
         *self.overlay_state.lock().unwrap() = st.clone();
         let always = self.prefs.read().unwrap().show_flow_bar_always;
-        self.set_overlay_visible(always || *st != OverlayState::Resting);
+        // A meeting recording keeps the pill up: it carries the indicator.
+        let recording = self
+            .app
+            .state::<AppState>()
+            .meetings
+            .get()
+            .is_some_and(|m| m.is_recording());
+        self.set_overlay_visible(always || recording || *st != OverlayState::Resting);
         let _ = self.app.emit_to(OVERLAY, "dictation:status", st);
     }
 
@@ -234,6 +248,21 @@ impl Platform for WinPlatform {
 
     fn field_reader(&self) -> Option<Box<dyn crate::learn::FieldReader>> {
         uia::field_reader().map(|r| Box::new(r) as Box<dyn crate::learn::FieldReader>)
+    }
+
+    fn toggle_meeting(&self) {
+        // Read the app in front now (the user is in the call), start or
+        // stop off the controller thread (opening the devices takes time).
+        let own = std::env::current_exe()
+            .map(|e| crate::context::exe_name(&e.to_string_lossy()))
+            .unwrap_or_default();
+        let front = self
+            .focus_target()
+            .and_then(|t| meetings::front_app(&t.exe, &own));
+        let h = self.app.clone();
+        let _ = std::thread::Builder::new()
+            .name("flow-meeting-toggle".into())
+            .spawn(move || toggle_meeting(&h, front));
     }
 
     fn history_changed(&self) {
@@ -614,6 +643,201 @@ fn history_repaste(
 #[tauri::command]
 fn clipboard_copy(text: String) -> Result<(), String> {
     paste::win::copy_text(&text)
+}
+
+// ------------------------------------------------- meetings (Notetaker, D45)
+
+/// The microphone (the user's pick) and WASAPI loopback of the default
+/// playback device. No loopback (no playback device, driver refuses) is
+/// not fatal: the meeting records the microphone only, with a warning.
+struct WinSources {
+    prefs: Arc<RwLock<Prefs>>,
+}
+
+impl meetings::AudioSources for WinSources {
+    fn start(
+        &self,
+        mic: meetings::record::Sink,
+        system: meetings::record::Sink,
+        on_error: meetings::OnError,
+    ) -> Result<Box<dyn Send>, String> {
+        let device = self.prefs.read().unwrap().microphone.clone();
+        let e = on_error.clone();
+        let mic = Capture::start(device, mic, Arc::new(move |m| e(m)))?;
+        let e = on_error.clone();
+        let sys = match Capture::start_loopback(system, Arc::new(move |m| e(m))) {
+            Ok(c) => Some(c),
+            Err(err) => {
+                on_error(format!(
+                    "Recording your microphone only: system audio is unavailable ({err})"
+                ));
+                None
+            }
+        };
+        Ok(Box::new((mic, sys)))
+    }
+}
+
+/// Never wait longer than this for a dictation before running the next
+/// meeting chunk anyway.
+const MEETING_MAX_YIELD: Duration = Duration::from_secs(600);
+
+/// Build the Notetaker: its jobs run on their own router and on-device
+/// slot (the user's route order), yield to a running dictation, and see
+/// the user's languages and dictionary.
+fn setup_meetings(app: &AppHandle, dictating: Arc<std::sync::atomic::AtomicBool>) -> Arc<Meetings> {
+    let st = app.state::<AppState>();
+    let prefs = st.prefs.clone();
+    let appdata = st.appdata.clone();
+    let creds = st.creds.clone();
+    let p = prefs.clone();
+    let engine: meetings::EngineFactory = Arc::new(move || {
+        let prefs = p.read().unwrap().clone();
+        let caps = BuildCaps::current();
+        let cfg = router_adapter::router_config(&prefs.developer, caps)?;
+        let (_, cli) = prefs.developer.effective(caps);
+        let local = (caps.local && cli).then(|| router_adapter::MeetingLocal {
+            spec: ModelSpec::from_prefs(&prefs, appdata.as_deref()).background(),
+            lang: LanguageSpec::from_prefs(&prefs, appdata.as_deref()),
+            warm: want_local(&prefs),
+        });
+        let e = router_adapter::MeetingEngine::new(
+            cfg,
+            local,
+            router_adapter::remote_factory(),
+            Some(&*creds),
+        );
+        Ok(Arc::new(meetings::YieldToDictation::new(
+            e,
+            dictating.clone(),
+            MEETING_MAX_YIELD,
+        ))
+            as Arc<
+                dyn flow_router::meeting::ChunkTranscriber + Send + Sync,
+            >)
+    });
+    let p = prefs.clone();
+    let mono_start = Instant::now();
+    let m = Arc::new(Meetings::new(meetings::Options {
+        dir: meetings::store::default_dir(st.appdata.as_deref()),
+        sources: Arc::new(WinSources {
+            prefs: prefs.clone(),
+        }),
+        engine,
+        session: Arc::new(move || meetings::session_config(&p.read().unwrap())),
+        wall: Arc::new(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0)
+        }),
+        mono: Arc::new(move || mono_start.elapsed().as_millis() as u64),
+        params: Default::default(),
+        keep_audio: meetings::store::KEEP_AUDIO,
+    }));
+    let h = app.clone();
+    m.on_change(move |v| show_meeting_view(&h, v));
+    m.recover();
+    m
+}
+
+/// The recording indicator: tray line + tooltip, the pill's chip, and the
+/// Meetings page.
+fn show_meeting_view(app: &AppHandle, v: &meetings::View) {
+    let st = app.state::<AppState>();
+    let recording = v.recording.is_some();
+    if let Some(item) = st.meeting_item.get() {
+        let _ = item.set_text(if recording {
+            "■ Stop meeting recording"
+        } else {
+            "Start meeting recording"
+        });
+    }
+    if let Some(t) = app.tray_by_id("main") {
+        let _ = t.set_tooltip(Some(if recording {
+            "Murmur — recording a meeting"
+        } else {
+            TRAY_TIP
+        }));
+    }
+    // The pill carries the chip, so it shows while recording even when
+    // the resting pill is hidden.
+    if let Some(w) = app.get_webview_window(OVERLAY) {
+        let always = st.prefs.read().unwrap().show_flow_bar_always;
+        let busy = *st.overlay_state.lock().unwrap() != OverlayState::Resting;
+        if let Some(h) = hwnd_of(&w) {
+            let show = recording || always || busy;
+            unsafe {
+                let _ = ShowWindow(h, if show { SW_SHOWNOACTIVATE } else { SW_HIDE });
+            }
+        }
+    }
+    let _ = app.emit_to(OVERLAY, "meeting:recording", v.recording.as_ref());
+    let _ = app.emit_to(SETTINGS, "meetings:changed", v);
+}
+
+fn toggle_meeting(app: &AppHandle, front: Option<String>) {
+    let st = app.state::<AppState>();
+    let Some(m) = st.meetings.get() else { return };
+    if let Err(e) = m.toggle(front) {
+        eprintln!("[meetings] {e}");
+        show_settings(app);
+        let _ = app.emit_to(SETTINGS, "settings:tab", "meetings");
+    }
+}
+
+fn meetings_of(state: &AppState) -> Result<&Arc<Meetings>, String> {
+    state
+        .meetings
+        .get()
+        .ok_or_else(|| "meetings are not ready yet".to_string())
+}
+
+#[tauri::command]
+fn meeting_state(state: tauri::State<'_, AppState>) -> Result<meetings::View, String> {
+    Ok(meetings_of(&state)?.view())
+}
+
+/// Start / stop from the Meetings page (no app in front to name).
+#[tauri::command]
+async fn meeting_toggle(state: tauri::State<'_, AppState>) -> Result<bool, String> {
+    let m = meetings_of(&state)?.clone();
+    tauri::async_runtime::spawn_blocking(move || m.toggle(None))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn meeting_list(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<meetings::store::MeetingMeta>, String> {
+    Ok(meetings_of(&state)?.list())
+}
+
+#[tauri::command]
+fn meeting_get(
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<meetings::store::Meeting, String> {
+    meetings_of(&state)?
+        .get(&id)
+        .ok_or_else(|| "this meeting no longer exists".to_string())
+}
+
+/// The transcript as "[m:ss] Me: …" lines, on the clipboard.
+#[tauri::command]
+fn meeting_copy(state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
+    paste::win::copy_text(&meetings_of(&state)?.text(&id)?)
+}
+
+#[tauri::command]
+fn meeting_delete(state: tauri::State<'_, AppState>, id: String) -> Result<bool, String> {
+    meetings_of(&state)?.delete(&id)
+}
+
+#[tauri::command]
+fn meeting_retry(state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
+    meetings_of(&state)?.retry(&id)
 }
 
 // ------------------------------------------------- scratchpad (notes)
@@ -2668,6 +2892,9 @@ pub fn run() {
             ))),
             started: Instant::now(),
             downloads: Arc::new(crate::model_download::Downloads::default()),
+            meetings: OnceLock::new(),
+            meeting_item: OnceLock::new(),
+            overlay_state: Arc::new(Mutex::new(OverlayState::Resting)),
         })
         .invoke_handler(tauri::generate_handler![
             get_prefs,
@@ -2753,7 +2980,14 @@ pub fn run() {
             debug_log_status,
             debug_log_set,
             debug_log_clear,
-            debug_log_open_folder
+            debug_log_open_folder,
+            meeting_state,
+            meeting_toggle,
+            meeting_list,
+            meeting_get,
+            meeting_copy,
+            meeting_delete,
+            meeting_retry
         ])
         .on_window_event(|window, event| {
             if window.label() == SETTINGS {
@@ -2790,6 +3024,17 @@ pub fn run() {
                 .suggest_item
                 .set(suggest_item.clone());
             let sep0 = PredefinedMenuItem::separator(app)?;
+            let meeting_item = MenuItem::with_id(
+                app,
+                "meeting",
+                "Start meeting recording",
+                true,
+                None::<&str>,
+            )?;
+            let _ = app
+                .state::<AppState>()
+                .meeting_item
+                .set(meeting_item.clone());
             let scratch = MenuItem::with_id(app, "scratchpad", "Scratchpad…", true, None::<&str>)?;
             let notes_item = MenuItem::with_id(app, "notes", "Notes…", true, None::<&str>)?;
             let open = MenuItem::with_id(app, "open", "Settings…", true, None::<&str>)?;
@@ -2802,6 +3047,7 @@ pub fn run() {
                     &llm_item,
                     &suggest_item,
                     &sep0,
+                    &meeting_item,
                     &scratch,
                     &notes_item,
                     &open,
@@ -2817,6 +3063,12 @@ pub fn run() {
                     "suggestions" => {
                         show_settings(app);
                         let _ = app.emit_to(SETTINGS, "settings:tab", "dictionary");
+                    }
+                    "meeting" => {
+                        let h = app.clone();
+                        let _ = std::thread::Builder::new()
+                            .name("flow-meeting-toggle".into())
+                            .spawn(move || toggle_meeting(&h, None));
                     }
                     "scratchpad" => show_scratchpad(app),
                     "notes" => show_notes_window(app, "view=notes".into()),
@@ -2847,7 +3099,7 @@ pub fn run() {
             // Controller + hook.
             let (tx, rx) = mpsc::channel::<Input>();
             let _ = app.state::<AppState>().input.set(tx.clone());
-            let overlay_state = Arc::new(Mutex::new(OverlayState::Resting));
+            let overlay_state = app.state::<AppState>().overlay_state.clone();
             spawn_hover_watch(
                 handle.clone(),
                 overlay_state.clone(),
@@ -2967,6 +3219,8 @@ pub fn run() {
             show_suggestion_count(&handle, pending);
             let dictating = controller.dictating_flag();
             let _ = app.state::<AppState>().dictating.set(dictating.clone());
+            let m = setup_meetings(&handle, dictating.clone());
+            let _ = app.state::<AppState>().meetings.set(m);
             std::thread::Builder::new()
                 .name("flow-controller".into())
                 .spawn(move || controller.run(rx))?;
@@ -3013,6 +3267,10 @@ pub fn run() {
                 }
                 // Quit with the Scratchpad open: its last edits.
                 log_note_writes(st.notes.lock().unwrap().flush_all());
+                // A recording is kept and transcribed next start.
+                if let Some(m) = st.meetings.get() {
+                    m.shutdown();
+                }
             }
             _ => {}
         });

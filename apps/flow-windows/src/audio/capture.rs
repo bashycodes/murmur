@@ -43,15 +43,38 @@ fn pick_device(name: Option<&str>) -> Result<cpal::Device, String> {
 /// "listening" to nothing).
 pub type OnError = std::sync::Arc<dyn Fn(String) + Send + Sync>;
 
-fn build(device: &cpal::Device, mut sink: Sink, on_error: OnError) -> Result<cpal::Stream, String> {
-    let supported = device.default_input_config().map_err(|e| e.to_string())?;
+/// Which side of a device to capture.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Side {
+    /// A microphone.
+    Input,
+    /// What an output device plays (WASAPI loopback: cpal turns it on for
+    /// an input stream on a render device). No callbacks while nothing
+    /// plays; the meeting recorder fills those gaps.
+    Loopback,
+}
+
+fn build(
+    device: &cpal::Device,
+    side: Side,
+    mut sink: Sink,
+    on_error: OnError,
+) -> Result<cpal::Stream, String> {
+    let supported = match side {
+        Side::Input => device.default_input_config(),
+        Side::Loopback => device.default_output_config(),
+    }
+    .map_err(|e| e.to_string())?;
     let format = supported.sample_format();
     let config: StreamConfig = supported.into();
     let mut rs = Resampler::new(config.sample_rate.0, config.channels);
     let err_fn = move |e: cpal::StreamError| {
         eprintln!("[audio] stream error: {e}");
         crate::debug_log::event("audio", &format!("stream error: {e}"));
-        on_error(format!("Microphone stopped working ({e})"));
+        on_error(match side {
+            Side::Input => format!("Microphone stopped working ({e})"),
+            Side::Loopback => format!("System audio stopped recording ({e})"),
+        });
     };
     let stream = match format {
         SampleFormat::F32 => device.build_input_stream(
@@ -91,15 +114,40 @@ fn build(device: &cpal::Device, mut sink: Sink, on_error: OnError) -> Result<cpa
     stream.map_err(|e| e.to_string())
 }
 
+fn default_output() -> Result<cpal::Device, String> {
+    cpal::default_host()
+        .default_output_device()
+        .ok_or_else(|| "no playback device".to_string())
+}
+
 impl Capture {
     /// Start capturing from `device` (by name; `None` = system default).
     pub fn start(device: Option<String>, sink: Sink, on_error: OnError) -> Result<Capture, String> {
+        Self::spawn("flow-audio", sink, on_error, move || {
+            pick_device(device.as_deref()).map(|d| (d, Side::Input))
+        })
+    }
+
+    /// Capture what the default playback device plays (WASAPI loopback):
+    /// the other side of a call, for the Notetaker (D45).
+    pub fn start_loopback(sink: Sink, on_error: OnError) -> Result<Capture, String> {
+        Self::spawn("flow-loopback", sink, on_error, || {
+            default_output().map(|d| (d, Side::Loopback))
+        })
+    }
+
+    fn spawn(
+        name: &str,
+        sink: Sink,
+        on_error: OnError,
+        device: impl FnOnce() -> Result<(cpal::Device, Side), String> + Send + 'static,
+    ) -> Result<Capture, String> {
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
         let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
         let join = std::thread::Builder::new()
-            .name("flow-audio".into())
+            .name(name.into())
             .spawn(move || {
-                let res = pick_device(device.as_deref()).and_then(|d| build(&d, sink, on_error));
+                let res = device().and_then(|(d, side)| build(&d, side, sink, on_error));
                 match res {
                     Ok(stream) => {
                         if let Err(e) = stream.play() {

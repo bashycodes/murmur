@@ -814,6 +814,71 @@ impl CoreApi for RouterAdapter {
 /// Command Mode pill while the on-device LLM is still loading.
 pub const LLM_LOADING_MSG: &str = "AI model is still loading, try again in a moment";
 
+// ------------------------------------------------------------------ meetings
+
+/// The on-device side of a meeting engine (D45).
+#[derive(Debug, Clone)]
+pub struct MeetingLocal {
+    pub spec: crate::core_adapter::ModelSpec,
+    pub lang: Option<crate::core_adapter::LanguageSpec>,
+    /// Load it before the first chunk (the client route is primary or kept
+    /// warm); otherwise it loads on demand when the server fails (D24).
+    pub warm: bool,
+}
+
+/// What a meeting transcription runs on (D45): **its own** router and
+/// on-device slot, built for one job and dropped after it. The dictation
+/// router holds one session at a time, so a meeting chunk on it would
+/// cancel a dictation and vice versa; with its own engine both run.
+pub struct MeetingEngine {
+    adapter: Arc<RouterAdapter>,
+}
+
+impl MeetingEngine {
+    /// `cfg` = the user's route order (same as dictation), `local` = the
+    /// on-device model when this build has one, `remote` =
+    /// [`remote_factory`], `keys` = where the OpenRouter key is.
+    pub fn new(
+        cfg: RouterConfig,
+        local: Option<MeetingLocal>,
+        remote: Option<RemoteFactory>,
+        keys: Option<&dyn crate::credentials::CredentialStore>,
+    ) -> Arc<MeetingEngine> {
+        let slot = local.as_ref().map(|_| FlowCoreAdapter::new());
+        let adapter = RouterAdapter::new(cfg, slot.clone(), remote);
+        if let Some(k) = keys {
+            adapter.load_cloud_keys(k);
+        }
+        if let (Some(core), Some(l)) = (&slot, local) {
+            if l.warm {
+                core.load_now(&l.spec);
+                core.load_language_now(l.lang.clone());
+                adapter.refresh_local();
+            }
+            adapter.set_on_demand_with(Some(l.spec), l.lang);
+        }
+        Arc::new(MeetingEngine { adapter })
+    }
+
+    pub fn adapter(&self) -> &Arc<RouterAdapter> {
+        &self.adapter
+    }
+}
+
+impl flow_router::meeting::ChunkTranscriber for MeetingEngine {
+    fn transcribe_chunk(
+        &self,
+        pcm: &[i16],
+        cfg: &flow_core::config::SessionConfig,
+    ) -> flow_core::CommitResult {
+        self.adapter.router().transcribe_chunk(pcm, cfg)
+    }
+
+    fn abort(&self) {
+        self.adapter.router().cancel();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1173,6 +1238,132 @@ mod tests {
         // Next one: circuit open → straight to the now-warm slot.
         let out = dictate(&r).unwrap();
         assert_eq!(out.route.unwrap().fallback.as_deref(), Some("circuit_open"));
+    }
+
+    /// D45: a meeting chunk runs on its own engine while a dictation is
+    /// open on the dictation router; neither cancels the other.
+    #[test]
+    fn a_meeting_chunk_does_not_disturb_an_open_dictation() {
+        use flow_router::meeting::ChunkTranscriber;
+        let d = dev(false, true);
+        let rig = rig(&d);
+        rig.router.start_session(session()).unwrap();
+        rig.router.push_audio(&[3000; 16_000]);
+        let meeting = MeetingEngine::new(
+            router_config(&d, BOTH).unwrap(),
+            Some(MeetingLocal {
+                spec: ModelSpec::Mock {
+                    text: "meeting words".into(),
+                },
+                lang: None,
+                warm: true,
+            }),
+            None,
+            None,
+        );
+        let cfg = flow_core::config::SessionConfig {
+            raw_mode: true,
+            ..flow_core::config::SessionConfig::default()
+        };
+        let chunk = meeting.transcribe_chunk(&[3000; 32_000], &cfg);
+        assert_eq!(chunk.final_text.trim(), "meeting words", "{chunk:?}");
+        rig.router.push_audio(&[3000; 16_000]);
+        let out = rig.router.commit();
+        assert_eq!(out.final_text.trim(), "from this pc", "{out:?}");
+        assert!(!Arc::ptr_eq(
+            meeting.adapter().local().unwrap(),
+            rig.router.local().unwrap()
+        ));
+    }
+
+    /// Probe (D45): the extra memory of a meeting engine next to a loaded
+    /// dictation model. Linux only (reads VmRSS). Run with
+    /// `FLOW_RSS_MODEL=<ggml .bin> cargo test --lib meeting_engine_rss --
+    /// --ignored --nocapture`.
+    #[test]
+    #[ignore = "probe: needs a real model in FLOW_RSS_MODEL"]
+    fn meeting_engine_rss() {
+        use flow_router::meeting::ChunkTranscriber;
+        let Ok(path) = std::env::var("FLOW_RSS_MODEL") else {
+            return;
+        };
+        let rss_mb = || {
+            std::fs::read_to_string("/proc/self/status")
+                .ok()
+                .and_then(|s| {
+                    let l = s.lines().find(|l| l.starts_with("VmRSS:"))?.to_string();
+                    l.split_whitespace().nth(1)?.parse::<u64>().ok()
+                })
+                .unwrap_or(0)
+                / 1024
+        };
+        let spec = ModelSpec::Whisper {
+            path: path.into(),
+            threads: None,
+        };
+        let base = rss_mb();
+        let dictation = FlowCoreAdapter::new();
+        dictation.load_now(&spec);
+        let one = rss_mb();
+        let meeting = MeetingEngine::new(
+            router_config(&dev(false, true), BOTH).unwrap(),
+            Some(MeetingLocal {
+                spec: spec.clone().background(),
+                lang: None,
+                warm: true,
+            }),
+            None,
+            None,
+        );
+        let loaded = rss_mb();
+        let pcm: Vec<i16> = (0..16_000 * 20)
+            .map(|i| ((i as f32 * 0.07).sin() * 6000.0) as i16)
+            .collect();
+        let cfg = flow_core::config::SessionConfig {
+            raw_mode: true,
+            max_samples: 16_000 * 60,
+            ..flow_core::config::SessionConfig::default()
+        };
+        let r = meeting.transcribe_chunk(&pcm, &cfg);
+        let ran = rss_mb();
+        eprintln!(
+            "RSS MB: start {base}, dictation model {one} (+{}), meeting engine loaded {loaded} (+{}), after a 20 s chunk {ran} (+{}); status {:?}",
+            one - base,
+            loaded - one,
+            ran - one,
+            r.status
+        );
+        drop(meeting);
+        eprintln!("RSS MB after the job's engine is dropped: {}", rss_mb());
+    }
+
+    #[test]
+    fn a_cold_meeting_engine_loads_its_model_on_demand() {
+        use flow_router::meeting::ChunkTranscriber;
+        let mut d = dev(true, true);
+        d.keep_local_warm = false;
+        let server = FakeServer::new("from the server");
+        server.up.store(false, Ordering::SeqCst);
+        let s2 = server.clone();
+        let factory: RemoteFactory = Box::new(move |_cfg: &ServerConfig| {
+            Arc::new(FakeRemote(s2.clone())) as Arc<dyn Backend>
+        });
+        let meeting = MeetingEngine::new(
+            router_config(&d, BOTH).unwrap(),
+            Some(MeetingLocal {
+                spec: ModelSpec::Mock {
+                    text: "local meeting".into(),
+                },
+                lang: None,
+                warm: false,
+            }),
+            Some(factory),
+            None,
+        );
+        assert!(!meeting.adapter().local().unwrap().is_ready());
+        let cfg = flow_core::config::SessionConfig::default();
+        let r = meeting.transcribe_chunk(&[3000; 32_000], &cfg);
+        assert_eq!(r.final_text.trim(), "local meeting", "{r:?}");
     }
 
     #[test]
