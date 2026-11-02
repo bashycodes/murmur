@@ -326,6 +326,12 @@ pub struct Bindings {
         deserialize_with = "optional_chord"
     )]
     pub new_note: Option<Chord>,
+    /// Start / stop recording a meeting (Notetaker, D45). Unset by default.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "optional_chord"
+    )]
+    pub meeting: Option<Chord>,
     /// Transforms (docs/proposals/transforms.md): one entry per saved
     /// transform, in its order (`None` = no shortcut). Not saved here (the
     /// transforms own them, `Prefs::hotkey_bindings`); empty while
@@ -357,6 +363,7 @@ impl Default for Bindings {
             copy_last: Chord::new([Key::Shift, Key::Alt, Key::Vk(b'X' as u16)]),
             scratchpad: None,
             new_note: None,
+            meeting: None,
             command: Chord::new([Key::Ctrl, Key::Win, Key::Alt]),
             transforms: Vec::new(),
             view_changes: None,
@@ -387,6 +394,8 @@ pub enum HotkeyAction {
     Scratchpad,
     /// New-note chord pressed (create a note, open it, dictate into it).
     NewNote,
+    /// Meeting chord pressed (start or stop a meeting recording).
+    Meeting,
     /// Command chord became fully held (supersedes a push-to-talk that
     /// started on the way).
     CommandDown,
@@ -589,6 +598,17 @@ impl ChordMatcher {
                 .is_some_and(|c| self.newly_matches(c, ev.key))
             {
                 d.actions.push(HotkeyAction::NewNote);
+                self.chord_fired();
+                if !ev.key.is_modifier() {
+                    d.suppress = true;
+                }
+            } else if self
+                .bindings
+                .meeting
+                .as_ref()
+                .is_some_and(|c| self.newly_matches(c, ev.key))
+            {
+                d.actions.push(HotkeyAction::Meeting);
                 self.chord_fired();
                 if !ev.key.is_modifier() {
                     d.suppress = true;
@@ -1394,6 +1414,25 @@ mod tests {
         let d = press(&mut set);
         assert_eq!(d.actions, vec![Scratchpad]);
         assert!(d.suppress, "N must not reach the app");
+    }
+
+    #[test]
+    fn meeting_shortcut_is_optional_and_fires_when_set() {
+        assert_eq!(Bindings::default().meeting, None);
+        let j = serde_json::to_value(Bindings::default()).unwrap();
+        assert!(j.get("meeting").is_none(), "unset is not written");
+        let b: Bindings = serde_json::from_str(r#"{"meeting":"Ctrl+Alt+R"}"#).unwrap();
+        assert_eq!(b.meeting, Some("Ctrl+Alt+R".parse().unwrap()));
+        let press = |m: &mut ChordMatcher| {
+            m.handle(KeyEvent::down(Key::Ctrl), false);
+            m.handle(KeyEvent::down(Key::Alt), false);
+            m.handle(KeyEvent::down(Key::Vk(b'R' as u16)), false)
+        };
+        let d = press(&mut m());
+        assert!(d.actions.is_empty() && !d.suppress);
+        let d = press(&mut ChordMatcher::new(b));
+        assert_eq!(d.actions, vec![Meeting]);
+        assert!(d.suppress);
     }
 
     #[test]

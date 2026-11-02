@@ -357,6 +357,15 @@
     { id: "note-3", title: "Ideas", preview: "Per-app engine choice? Push-to-talk on the mouse side button.", words: 11, created_ms: now - 864e5 * 8, updated_ms: now - 864e5 * 8, pinned: false, quick: false },
   ];
   let noteSeq = 4;
+  let meetingView = { recording: null, transcribing: null, queued: 0, warning: "" };
+  let meetings = [
+    { id: "m2", started_ms: now - 3600e3, duration_ms: 1520e3, app: "teams.exe", status: "done", has_audio: true, turns: [
+      { speaker: "me", start_ms: 1000, end_ms: 4000, text: "Thanks for joining, let's go over the release plan." },
+      { speaker: "others", start_ms: 5200, end_ms: 9800, text: "Sounds good. The installer build is ready for testing." },
+      { speaker: "me", start_ms: 12000, end_ms: 15000, text: "Great, I'll try it on the laptop tonight." },
+    ] },
+    { id: "m1", started_ms: now - 864e5 * 2, duration_ms: 610e3, app: null, status: "failed", error: "speech model not found", has_audio: true, turns: [] },
+  ];
   window.__opened = [];
   const noteOrder = (a, b) => b.pinned - a.pinned || b.updated_ms - a.updated_ms || (a.id < b.id ? -1 : 1);
   const cmds = {
@@ -377,6 +386,43 @@
     note_open: ({ id }) => {
       if (!/^[a-z0-9_-]{1,64}$/.test(id)) throw `"${id}" is not a note id`;
       window.__opened.push(id);
+    },
+    // Notetaker (D45): synthetic meetings, newest first.
+    meeting_state: () => ({ ...meetingView }),
+    meeting_list: () => meetings.map((m) => ({
+      id: m.id, started_ms: m.started_ms, duration_ms: m.duration_ms, app: m.app ?? null, status: m.status,
+      error: m.error ?? null, turns: m.turns.length, preview: (m.turns[0]?.text ?? "").slice(0, 120), has_audio: m.has_audio,
+    })),
+    meeting_get: ({ id }) => {
+      const m = meetings.find((x) => x.id === id);
+      if (!m) throw "this meeting no longer exists";
+      return JSON.parse(JSON.stringify(m));
+    },
+    meeting_copy: ({ id }) => {
+      const m = meetings.find((x) => x.id === id);
+      if (!m) throw "this meeting no longer exists";
+      window.__copied = m.turns.map((t) => `${t.speaker === "me" ? "Me" : "Others"}: ${t.text}`).join("\n");
+    },
+    meeting_delete: ({ id }) => {
+      const n = meetings.length;
+      meetings = meetings.filter((x) => x.id !== id);
+      return meetings.length < n;
+    },
+    meeting_retry: ({ id }) => {
+      const m = meetings.find((x) => x.id === id);
+      if (!m) throw "this meeting no longer exists";
+      m.status = "transcribing";
+    },
+    meeting_toggle: () => {
+      if (meetingView.recording) {
+        const r = meetingView.recording;
+        meetingView = { ...meetingView, recording: null };
+        meetings.unshift({ id: r.id, started_ms: r.started_ms, duration_ms: Date.now() - r.started_ms, status: "transcribing", turns: [], has_audio: true });
+      } else {
+        meetingView = { ...meetingView, recording: { id: `m${Date.now()}`, started_ms: Date.now() } };
+      }
+      window.__emit("meetings:changed", meetingView);
+      return !!meetingView.recording;
     },
     get_prefs: () => structuredClone(prefs),
     // D37: the foreground layout's language; checks set window.__keyboardLanguage.

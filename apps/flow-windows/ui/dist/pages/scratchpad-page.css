@@ -37,7 +37,7 @@
 .lw-sp-empty { margin: 0; padding: 16px; border-radius: 12px; background: var(--background-tertiary); font: 550 15px/20px var(--font-sans); color: var(--neutral-600); }
 #sp_status.err { color: var(--destructive); }
 
-/* Notetaker (a static "coming later" page) */
+/* The Meetings page's empty state (pages/meetings.css has the rest) */
 .lw-nt { gap: 24px; }
 .lw-nt-hero { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 32px; border-radius: 16px; background: var(--background-tertiary); text-align: center; color: var(--foreground-tertiary); }
 .lw-nt-title { margin: 0; font-size: 36px; line-height: 40px; color: var(--foreground); }

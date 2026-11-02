@@ -411,6 +411,9 @@ impl Prefs {
         if let Some(c) = &s.new_note {
             check("new-note", c, false)?;
         }
+        if let Some(c) = &s.meeting {
+            check("meeting", c, false)?;
+        }
         check("command", &s.command, false)?;
         self.transforms.validate()?;
         let mut all = vec![
@@ -423,6 +426,7 @@ impl Prefs {
         ];
         all.extend(s.scratchpad.as_ref());
         all.extend(s.new_note.as_ref());
+        all.extend(s.meeting.as_ref());
         all.extend(self.transforms.all_chords());
         for (i, a) in all.iter().enumerate() {
             if all[i + 1..].contains(a) {
@@ -1075,6 +1079,12 @@ mod tests {
         p.shortcuts.new_note = p.shortcuts.scratchpad.clone();
         assert!(p.validate().unwrap_err().contains("differ"));
         p.shortcuts.new_note = Some("Ctrl+Alt+M".parse().unwrap());
+        assert!(p.validate().is_ok());
+        p.shortcuts.meeting = Some("R".parse().unwrap());
+        assert!(p.validate().unwrap_err().contains("meeting"));
+        p.shortcuts.meeting = p.shortcuts.new_note.clone();
+        assert!(p.validate().unwrap_err().contains("differ"));
+        p.shortcuts.meeting = Some("Ctrl+Alt+R".parse().unwrap());
         assert!(p.validate().is_ok());
         let mut p = Prefs::default();
         p.shortcuts.command = p.shortcuts.hands_free.clone();

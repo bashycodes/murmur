@@ -1,0 +1,41 @@
+/* Meetings page (ui/src/pages/meetings.ts, Notetaker D45). The empty
+   state reuses lw-nt-hero (pages/scratchpad-page.css). Colours are
+   theme.css tokens. */
+
+.lw-mt { gap: 20px; }
+.lw-mt-head { gap: 12px; }
+.lw-mt-head > .fl-page-title { flex: none; }
+.lw-mt-grow { flex: 1; }
+
+.lw-mt-live { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-radius: 12px; background: var(--background-tertiary); font: 550 15px/20px var(--font-sans); color: var(--foreground); }
+.lw-mt-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--foreground-tertiary); }
+.lw-mt-dot.is-rec { background: var(--destructive-500); animation: lw-mt-blink 1.6s ease-in-out infinite; }
+@keyframes lw-mt-blink { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .lw-mt-dot.is-rec { animation: none; } }
+.lw-mt-warn { margin: 0; color: var(--destructive); font: 500 14px/20px var(--font-sans); }
+
+.lw-mt-row { gap: 4px; padding: 0 8px 0 0; }
+.lw-mt-open { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 16px; padding: 14px 8px 14px 16px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.lw-mt-open:focus-visible { outline: 2px solid var(--foreground); outline-offset: -2px; border-radius: 12px; }
+.lw-mt-ico { flex: none; color: var(--foreground-tertiary); }
+.lw-mt-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lw-mt-when { font-weight: 550; }
+.lw-mt-facts { color: var(--foreground-tertiary); }
+.lw-mt-preview { color: var(--foreground-tertiary); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.lw-mt-preview.is-err, .lw-mt-said.is-err { color: var(--destructive); }
+.lw-mt-actions { flex: none; display: flex; align-self: center; gap: 2px; }
+
+.lw-mt-detail-head { display: flex; align-items: center; gap: 8px; }
+.lw-mt-title { margin: 12px 0 0; font: 600 20px/28px var(--font-sans); color: var(--foreground); }
+.lw-mt-sub { margin: 0; color: var(--foreground-tertiary); }
+.lw-mt-note { margin: 0; padding: 10px 14px; border-radius: 10px; background: var(--background-tertiary); color: var(--neutral-600); }
+.lw-mt-turns { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
+.lw-mt-turn { display: grid; grid-template-columns: 56px 64px 1fr; gap: 8px; align-items: baseline; }
+.lw-mt-stamp { color: var(--foreground-tertiary); font-variant-numeric: tabular-nums; }
+.lw-mt-who { font-weight: 600; }
+.lw-mt-turn.is-me .lw-mt-who { color: var(--dawn-700); }
+:root.lw-dark .lw-mt-turn.is-me .lw-mt-who { color: var(--dawn-600); }
+.lw-mt-turn.is-others .lw-mt-who { color: var(--fathom-800); }
+:root.lw-dark .lw-mt-turn.is-others .lw-mt-who { color: var(--fathom-400); }
+.lw-mt-said { margin: 0; white-space: pre-wrap; user-select: text; }
+#mt_status.err { color: var(--destructive); }

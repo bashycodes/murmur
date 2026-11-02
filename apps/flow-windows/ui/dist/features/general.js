@@ -61,6 +61,7 @@ function fill(prefs) {
     setValue("copy_last", prefs.shortcuts.copy_last);
     setValue("scratchpad", prefs.shortcuts.scratchpad ?? "");
     setValue("new_note", prefs.shortcuts.new_note ?? "");
+    setValue("meeting", prefs.shortcuts.meeting ?? "");
     $("microphone").value = prefs.microphone ?? "";
     for (const f of BOOL_FIELDS)
         $(f).checked = Boolean(prefs[f]);
@@ -316,6 +317,7 @@ export function collectGeneral() {
             copy_last: $("copy_last").value.trim(),
             scratchpad: $("scratchpad").value.trim(),
             new_note: $("new_note").value.trim(),
+            meeting: $("meeting").value.trim(),
         },
     };
     next.model_path = $("model_path").value.trim() || null;

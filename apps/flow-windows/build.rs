@@ -102,6 +102,13 @@ fn main() {
             "debug_log_set",
             "debug_log_clear",
             "debug_log_open_folder",
+            "meeting_state",
+            "meeting_toggle",
+            "meeting_list",
+            "meeting_get",
+            "meeting_copy",
+            "meeting_delete",
+            "meeting_retry",
         ];
         tauri_build::try_build(
             tauri_build::Attributes::new()
