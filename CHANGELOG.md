@@ -18,6 +18,11 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Windows: a meeting shows where it was transcribed.** An open meeting's
+  details line now ends with "Transcribed on: This PC" (or Your server /
+  OpenRouter; with several, how many parts each one did), stored with the
+  meeting. The debug log has one line per transcribed part with the route
+  and engine (never the text) (D47).
 - **Windows: choose where meetings are transcribed.** Settings › Speech to
   text has a third ordered list, **Meetings**, built like Engines and the
   AI cleanup order: this PC, your server and OpenRouter, each moved up or
@@ -95,6 +100,16 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- Windows: CI builds no longer call themselves "-dirty" (1.0.0's installers
+  reported e.g. `a24090a-dirty`). The installer step's `tauri build`
+  rewrote `apps/flow-windows/Cargo.toml` (it adds `features = []` to a
+  `tauri-build` entry without one) just before building the shipped exe;
+  the entry now has it. CI also checks the tree after the installers.
+- Windows: with meeting detection off, the app now does no detection work
+  at all. Before, it still ran one empty look at startup (a
+  `meeting-detect: signals: no meeting app running` line in the debug log)
+  and checked the recorder every 3 s; now the detector only takes down a
+  "Record this meeting?" box when you turn it off mid-call (D48).
 - Android: the floating bubble no longer gets stuck on a red error while the speech model loads. A tap during the load now shows a pulsing "…" (still loading, with a toast naming the model) instead of the error "!", and the bubble goes back to normal by itself once the model is ready, or shows the real error if the load fails. Each tap checks again: ready starts dictating, still loading says so again, and only a real engine error opens the app. Before, the error stayed for good and every tap opened the app.
 - Android: switching the keyboard language while the Hebrew model loads (D37) now loads the model the new language needs. The running load can't be interrupted, so its model is dropped when it finishes, freed before the next load (still one model in memory), and never becomes the active engine. A dictation meanwhile says which model it waits for ("Loading the default speech model…"), not the Hebrew one. Switching back from a loaded Hebrew model now names the default model too, instead of a generic "still loading".
 - Android: Settings ▸ Accessibility now lists the service as "Murmur" (it showed "Effortless on-device voice dictation", so it was hard to find). The hybrid and remote builds no longer claim "no internet permission" in the accessibility description.

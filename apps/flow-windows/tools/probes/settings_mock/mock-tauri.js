@@ -368,7 +368,7 @@
   let noteSeq = 4;
   let meetingView = { recording: null, transcribing: null, queued: 0, warning: "" };
   let meetings = [
-    { id: "m2", started_ms: now - 3600e3, duration_ms: 1520e3, app: "teams.exe", status: "done", has_audio: true, turns: [
+    { id: "m2", started_ms: now - 3600e3, duration_ms: 1520e3, app: "teams.exe", status: "done", has_audio: true, routes: { local: 51 }, turns: [
       { speaker: "me", start_ms: 1000, end_ms: 4000, text: "Thanks for joining, let's go over the release plan." },
       { speaker: "others", start_ms: 5200, end_ms: 9800, text: "Sounds good. The installer build is ready for testing." },
       { speaker: "me", start_ms: 12000, end_ms: 15000, text: "Great, I'll try it on the laptop tonight." },
