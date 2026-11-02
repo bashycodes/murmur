@@ -10,7 +10,7 @@ name: android-build
 on:
   workflow_dispatch:
   push:
-    branches: [integration, android-final]
+    branches: [integration, android-final, "feat/**"]
     # Path filters are not evaluated for tag pushes: every release tag builds.
     tags: ["v*"]
     paths:
@@ -75,8 +75,8 @@ jobs:
 
       - name: Rust toolchain + cargo-ndk
         run: |
-          rustup toolchain install stable --profile minimal
-          rustup default stable
+          # The version comes from rust-toolchain.toml.
+          rustup toolchain install
           rustup target add aarch64-linux-android
           cargo install cargo-ndk --locked
           rustc --version; cmake --version
