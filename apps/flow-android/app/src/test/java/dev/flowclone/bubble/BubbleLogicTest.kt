@@ -5,6 +5,17 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+class ErrorTapTest {
+    @Test fun aStillLoadingBubbleChecksAgainInsteadOfOpeningTheApp() =
+        assertEquals(ErrorTap.Action.RECHECK, ErrorTap.of(dev.flowclone.session.DictationState.ErrorKind.EngineLoading("Loading…")))
+
+    @Test fun onlyARealEngineErrorOpensTheApp() {
+        assertEquals(ErrorTap.Action.OPEN_APP, ErrorTap.of(dev.flowclone.session.DictationState.ErrorKind.EngineUnavailable("missing")))
+        assertEquals(ErrorTap.Action.DISMISS, ErrorTap.of(dev.flowclone.session.DictationState.ErrorKind.MicUnavailable))
+        assertEquals(ErrorTap.Action.DISMISS, ErrorTap.of(dev.flowclone.session.DictationState.ErrorKind.FailedToTranscribe))
+    }
+}
+
 class BubbleGestureTest {
     private var blocked = false
     private val g = BubbleGesture(touchSlopPx = 10f) { blocked }
