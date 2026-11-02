@@ -12,6 +12,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <!-- D46: a call transcription keeps running with the screen off (CallJobService, held only while a job runs). -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- D49: read new call recordings from the media index (asked for only when the owner turns
+         on "Transcribe new call recordings" on the Calls page; files are only read). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <!-- P1 recovery (07 §1/§6): restart after boot / update; battery-optimisation onboarding step. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
@@ -108,8 +111,14 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="on-device-transcription: transcribes an audio file the user picked, on the phone, with progress and cancel" />
+                android:value="on-device-transcription: transcribes an audio file the user picked, or a new call recording after the user turned on automatic transcription, on the phone, with progress and cancel" />
         </service>
+
+        <!-- D49: content-URI trigger + run jobs for new call recordings (CallRecordingJob). -->
+        <service
+            android:name=".calls.CallRecordingJob"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <!-- Single process (07 §1 clone manifest). isAccessibilityTool is kept: this
              build targets sideload / F-Droid, not Play. -->

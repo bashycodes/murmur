@@ -1,12 +1,18 @@
 package dev.flowclone.ui
 
+import android.Manifest
 import android.app.Activity
 import android.content.ClipboardManager
 import android.content.DialogInterface
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import dev.flowclone.FlowApp
+import dev.flowclone.calls.AutoQueue
 import dev.flowclone.calls.CallJobService
+import dev.flowclone.calls.CallJobState
+import dev.flowclone.calls.Recording
+import dev.flowclone.calls.RecordingSource
 import dev.flowclone.calls.CallJobs
 import dev.flowclone.calls.CallTranscript
 import dev.flowclone.calls.CallsView
@@ -18,6 +24,7 @@ import dev.flowclone.ui.UiTestKit.texts
 import dev.flowclone.ui.UiTestKit.walk
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -37,7 +44,7 @@ class CallsUiTest {
     private val ctx get() = RuntimeEnvironment.getApplication()
     private val app get() = FlowApp.of(ctx)
 
-    @After fun cleanup() { File(ctx.filesDir, "calls").deleteRecursively() }
+    @After fun cleanup() { File(ctx.filesDir, "calls").deleteRecursively(); File(ctx.filesDir, "calls-auto.json").delete() }
 
     private fun <A : Activity> await(a: A, want: String): A {
         repeat(300) { idle(); if (want in texts(a)) return a; Thread.sleep(10) }
@@ -139,6 +146,67 @@ class CallsUiTest {
             assertEquals(CallJobService.ACTION_CANCEL, svc.action)
         } finally {
             app.calls = before
+        }
+    }
+
+    // ---- D49: transcribe new call recordings ----
+
+    /** A synthetic media index (no real recordings). */
+    private class FakeIndex : RecordingSource {
+        val recs = ArrayList<Recording>()
+        fun add(name: String) = Recording(500L + recs.size, "content://media/external_primary/audio/media/${500 + recs.size}", name, 1_700_000_000_000, recs.size + 1L).also { recs += it }
+        override fun generation() = recs.size.toLong()
+        override fun since(after: Long) = recs.filter { it.generation > after }
+    }
+
+    private fun withQueue(block: (AutoQueue, FakeIndex) -> Unit) {
+        val idx = FakeIndex()
+        val q = AutoQueue(File(ctx.filesDir, "calls-auto.json"), idx)
+        app.autoCalls = q
+        block(q, idx)
+    }
+
+    @Test fun turningItOnAsksForAudioAccessFirst() {
+        org.junit.Assume.assumeTrue("remote has no on-device engine", app.caps.local)
+        withQueue { q, _ ->
+            val a = await(list(), CallsActivity.AUTO)
+            rowTitled(a, CallsActivity.AUTO).performClick(); idle()
+            val asked = shadowOf(a).lastRequestedPermission
+            assertTrue(asked.requestedPermissions.contains(Manifest.permission.READ_MEDIA_AUDIO))
+            assertFalse("not on before the grant", q.isEnabled)
+            shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(Manifest.permission.READ_MEDIA_AUDIO)
+            a.onRequestPermissionsResult(asked.requestCode, arrayOf(Manifest.permission.READ_MEDIA_AUDIO), intArrayOf(PackageManager.PERMISSION_GRANTED))
+            repeat(300) { idle(); if (q.isEnabled) return@repeat; Thread.sleep(10) }
+            assertTrue(q.isEnabled)
+        }
+    }
+
+    @Test fun deniedAccessLeavesItOff() {
+        org.junit.Assume.assumeTrue("remote has no on-device engine", app.caps.local)
+        withQueue { q, _ ->
+            val a = await(list(), CallsActivity.AUTO)
+            rowTitled(a, CallsActivity.AUTO).performClick(); idle()
+            val asked = shadowOf(a).lastRequestedPermission
+            a.onRequestPermissionsResult(asked.requestCode, arrayOf(Manifest.permission.READ_MEDIA_AUDIO), intArrayOf(PackageManager.PERMISSION_DENIED))
+            idle()
+            assertFalse(q.isEnabled)
+        }
+    }
+
+    @Test fun failuresAreShownAndCanBeTriedAgain() {
+        org.junit.Assume.assumeTrue("remote has no on-device engine", app.caps.local)
+        shadowOf(RuntimeEnvironment.getApplication()).grantPermissions(Manifest.permission.READ_MEDIA_AUDIO)
+        withQueue { q, idx ->
+            q.enable()
+            val r = idx.add("fake-call.m4a")
+            q.scan(); q.next("en")
+            q.finished(r.id, CallJobState.Failed("fake-call.m4a", "no audio track"), null)
+            val a = await(list(), "fake-call.m4a")
+            assertTrue(texts(a).toString(), "no audio track" in texts(a))
+            rowTitled(a, "fake-call.m4a").performClick(); idle()
+            ShadowAlertDialog.getLatestAlertDialog().getButton(DialogInterface.BUTTON_POSITIVE).performClick()
+            repeat(300) { idle(); if (q.failures().isEmpty()) return@repeat; Thread.sleep(10) }
+            assertTrue(q.failures().isEmpty())
         }
     }
 

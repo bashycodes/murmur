@@ -18,6 +18,16 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Android: transcribe new call recordings automatically.** The Calls
+  page has a switch, **Transcribe new call recordings**. Once it is on (it
+  asks for access to audio files), every call recording Samsung saves
+  afterwards is transcribed on the phone in the background, one at a time,
+  and never while you dictate; a recording you pick yourself goes first. A
+  notification says when a transcript is ready. Recordings from before the
+  switch was turned on are left alone, a recording is never transcribed
+  twice, and the recordings themselves are only read. Failures are listed on
+  the Calls page, where you can try them again. The setting stays on after a
+  restart (D49).
 - **Windows: a meeting shows where it was transcribed.** An open meeting's
   details line now ends with "Transcribed on: This PC" (or Your server /
   OpenRouter; with several, how many parts each one did), stored with the
