@@ -42,6 +42,7 @@ import dev.flowclone.bubble.PreviewContent
 import dev.flowclone.bubble.ShakeDetector
 import dev.flowclone.bubble.BubbleUi
 import dev.flowclone.bubble.BubbleView
+import dev.flowclone.bubble.ErrorTap
 import dev.flowclone.core.CommitResult
 import dev.flowclone.core.FieldContext
 import dev.flowclone.data.HistoryRow
@@ -180,6 +181,16 @@ class FlowService : Service() {
             addAction(Intent.ACTION_SCREEN_ON); addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT)
         }, RECEIVER_NOT_EXPORTED)
         updateShakeListener()
+        // A "still loading" bubble goes back to normal (or shows the real error) once the engine settles.
+        scope.launch {
+            app.engine.state.collect { e ->
+                when (e) {
+                    is dev.flowclone.EngineHolder.State.Ready -> controller.engineSettled(failure = null)
+                    is dev.flowclone.EngineHolder.State.Failed -> controller.engineSettled(failure = e.message)
+                    else -> Unit
+                }
+            }
+        }
         scope.launch {
             controller.state.collect { s ->
                 if (s is DictationState.Error && s.kind == DictationState.ErrorKind.FailedToTranscribe) toast(R.string.toast_transcribe_failed)
@@ -540,6 +551,8 @@ class FlowService : Service() {
             }
         }
 
+        override fun engineLoading(message: String) = toast(message)
+
         override suspend fun insert(text: String): Boolean {
             lastText = text
             copyJob?.cancel()
@@ -768,10 +781,13 @@ class FlowService : Service() {
                     val failed = (s as? DictationState.Error)?.kind as? DictationState.ErrorKind.FailedToPaste
                     (failed?.text ?: lastText)?.let { copySensitive(it); showCopy.value = false }
                 }
-                BubbleButton.DISMISS -> {
-                    if (s is DictationState.Error && s.kind is DictationState.ErrorKind.EngineUnavailable)
+                BubbleButton.DISMISS -> when ((s as? DictationState.Error)?.let { ErrorTap.of(it.kind) } ?: ErrorTap.Action.DISMISS) {
+                    ErrorTap.Action.RECHECK -> recheck()
+                    ErrorTap.Action.OPEN_APP -> {
                         startActivity(Intent(this@FlowService, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    controller.dismissError()
+                        controller.dismissError()
+                    }
+                    ErrorTap.Action.DISMISS -> controller.dismissError()
                 }
                 BubbleButton.MAIN -> if (repair.value && (s == DictationState.Ready || s == DictationState.Idle)) {
                     // The repair alert (Accessibility stopped): straight to where it is fixed.
@@ -783,10 +799,18 @@ class FlowService : Service() {
                         beforeStart()
                         controller.toggle(hold = false)
                     }
-                    is DictationState.Error -> controller.dismissError()
+                    is DictationState.Error -> if (ErrorTap.of(s.kind) == ErrorTap.Action.RECHECK) recheck() else controller.dismissError()
                     else -> Unit
                 }
             }
+        }
+
+        /** "Still loading" bubble tapped: check the engine again (ready → dictate, else say it is still loading). */
+        private fun recheck() {
+            presence.touch()
+            haptic(VibrationEffect.EFFECT_CLICK)
+            beforeStart()
+            controller.toggle(hold = false)
         }
 
         override fun onHoldStart() {

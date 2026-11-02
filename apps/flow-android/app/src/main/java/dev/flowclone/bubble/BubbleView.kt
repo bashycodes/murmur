@@ -17,7 +17,7 @@ import dev.flowclone.session.DictationState.ErrorKind
 
 /**
  * Canvas-drawn bubble: circle (Ready), minimised dot or small circle, recording row X·waveform·✓ (tap mode),
- * mic+waveform (hold mode), paste/copy/dismiss (FailedToPaste), alert (other errors).
+ * mic+waveform (hold mode), paste/copy/dismiss (FailedToPaste), pulsing … (model still loading), alert (other errors).
  * Gestures go through [BubbleGesture]; the host decides what each action means.
  */
 @SuppressLint("ViewConstructor")
@@ -140,6 +140,14 @@ class BubbleView(context: Context, private val listener: Listener) : View(contex
                     circleButton(canvas, primary, BubbleButton.PASTE) { cx, cy -> drawCheck(canvas, cx, cy, onSurface = false) }
                     circleButton(canvas, null, BubbleButton.COPY) { cx, cy -> drawGlyph(canvas, "⧉", cx, cy) }
                     circleButton(canvas, null, BubbleButton.DISMISS) { cx, cy -> drawCross(canvas, cx, cy, onSurface = true) }
+                }
+                is ErrorKind.EngineLoading -> {
+                    // Still loading (not an error): a pulsing neutral disc with "…"; a tap checks again.
+                    val pulse = 0.6f + 0.4f * kotlin.math.abs(((SystemClock.uptimeMillis() % 2000) / 1000f) - 1f)
+                    raised.alpha = (255 * pulse).toInt()
+                    circleButton(canvas, raised, BubbleButton.DISMISS) { cx, cy -> drawGlyph(canvas, "…", cx, cy) }
+                    raised.alpha = 255
+                    postInvalidateOnAnimation()
                 }
                 else -> circleButton(canvas, danger, BubbleButton.DISMISS) { cx, cy -> drawGlyph(canvas, "!", cx, cy) }
             }
