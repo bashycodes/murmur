@@ -99,6 +99,114 @@ pub fn llm_plugin_file() -> &'static str {
 
 // ------------------------------------------------------------------ status
 
+/// Why a whisper model runs on the CPU, so Settings can say so instead of
+/// "no graphics chip found" on a PC that has one (laptop check 2026-11-02,
+/// bug 2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CpuReason {
+    /// `FLOW_WHISPER_DEVICE=cpu`.
+    Forced,
+    /// No `flow_whisper_vulkan.dll` next to the exe (or no Vulkan driver to
+    /// load it): the built-in CPU engine runs it.
+    NoPlugin,
+    /// The plugin loaded but found no Vulkan device.
+    NoGpu,
+    /// A GPU was there but failed; the short error.
+    GpuError(String),
+}
+
+impl CpuReason {
+    /// Classify a whisper backend: `None` when it runs on a GPU.
+    /// `plugin` = the GPU plugin loaded; `forced` = `FLOW_WHISPER_DEVICE=cpu`.
+    pub fn of(b: &WhisperBackend, plugin: bool, forced: bool) -> Option<Self> {
+        if b.is_gpu() {
+            return None;
+        }
+        Some(if forced {
+            Self::Forced
+        } else if let Some(e) = &b.gpu_error {
+            Self::GpuError(short_error(e))
+        } else if !plugin {
+            Self::NoPlugin
+        } else {
+            Self::NoGpu
+        })
+    }
+
+    /// Stable id for the UI ("forced", "no_plugin", "no_gpu", "gpu_error").
+    pub fn id(&self) -> &'static str {
+        match self {
+            Self::Forced => "forced",
+            Self::NoPlugin => "no_plugin",
+            Self::NoGpu => "no_gpu",
+            Self::GpuError(_) => "gpu_error",
+        }
+    }
+
+    /// Settings' reason text, completing "Runs on the CPU: …".
+    pub fn label(&self) -> String {
+        match self {
+            Self::Forced => "the CPU is forced (FLOW_WHISPER_DEVICE=cpu)".into(),
+            Self::NoPlugin => format!(
+                "the graphics chip plugin ({}) is missing",
+                flow_core::whisper_plugin::GPU_PLUGIN_FILE
+            ),
+            Self::NoGpu => "no Vulkan graphics chip found".into(),
+            Self::GpuError(e) => format!("the graphics chip failed ({e})"),
+        }
+    }
+}
+
+/// `FLOW_WHISPER_DEVICE=cpu`, read the way the plugin reads it
+/// (flow-whisper `backend::force_cpu_from_env`).
+pub fn whisper_cpu_forced() -> bool {
+    std::env::var("FLOW_WHISPER_DEVICE").is_ok_and(|v| v.trim().eq_ignore_ascii_case("cpu"))
+}
+
+/// First line of an error, at most 100 characters (Settings shows it inline).
+pub fn short_error(e: &str) -> String {
+    const MAX: usize = 100;
+    let line = e.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("unknown error");
+    if line.chars().count() <= MAX {
+        return line.to_string();
+    }
+    let cut: String = line.chars().take(MAX - 1).collect();
+    format!("{}…", cut.trim_end())
+}
+
+/// Where a loaded speech model runs, plus why it is the CPU when it is.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct RunsOn {
+    #[serde(flatten)]
+    pub backend: WhisperBackend,
+    /// [`CpuReason::id`]; `None` on a GPU and for the CPU-only engines.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_reason: Option<&'static str>,
+    /// [`CpuReason::label`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_why: Option<String>,
+}
+
+impl RunsOn {
+    /// A CPU-only engine (sherpa-onnx): no reason to give.
+    pub fn plain(backend: WhisperBackend) -> Self {
+        Self {
+            backend,
+            cpu_reason: None,
+            cpu_why: None,
+        }
+    }
+
+    pub fn whisper(backend: WhisperBackend, plugin: bool, forced: bool) -> Self {
+        let r = CpuReason::of(&backend, plugin, forced);
+        Self {
+            backend,
+            cpu_reason: r.as_ref().map(CpuReason::id),
+            cpu_why: r.as_ref().map(CpuReason::label),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 pub enum ModelStatus {
@@ -112,7 +220,7 @@ pub enum ModelStatus {
         /// or the CPU. `None` for the mock engine. Boxed: keeps the status
         /// small.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        backend: Option<Box<WhisperBackend>>,
+        backend: Option<Box<RunsOn>>,
     },
     /// The model file (Parakeet: directory) does not exist. Never
     /// downloaded automatically. `engine`: "whisper" | "parakeet".
@@ -419,6 +527,9 @@ pub struct LlmBackendView {
     pub plugin: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Whisper only: why it would run on the CPU ([`CpuReason::label`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_why: Option<String>,
 }
 
 impl LlmBackendView {
@@ -432,6 +543,7 @@ impl LlmBackendView {
                 device: b.device,
                 plugin: Some(path.display().to_string()),
                 error: None,
+                cpu_why: None,
             },
             Err(e) => Self {
                 gpu: false,
@@ -439,6 +551,7 @@ impl LlmBackendView {
                 device: String::new(),
                 plugin: None,
                 error: Some(e.to_string()),
+                cpu_why: None,
             },
         }
     }
@@ -467,22 +580,33 @@ pub fn llm_backend_probe(lib_path: Option<&str>) -> LlmBackendView {
 /// CPU engine (`plugin: None`, `error` says why the plugin did not load).
 pub fn whisper_backend_view(
     r: Result<(PathBuf, WhisperBackend), flow_core::whisper_plugin::WhisperPluginError>,
+    forced: bool,
 ) -> LlmBackendView {
+    use flow_core::whisper_plugin::WhisperPluginError;
     match r {
         Ok((path, b)) => LlmBackendView {
             gpu: b.is_gpu(),
+            cpu_why: CpuReason::of(&b, true, forced).map(|r| r.label()),
             backend: b.backend,
             device: b.device,
             plugin: Some(path.display().to_string()),
             error: None,
         },
-        Err(e) => LlmBackendView {
-            gpu: false,
-            backend: "CPU".into(),
-            device: "CPU".into(),
-            plugin: None,
-            error: Some(e.to_string()),
-        },
+        Err(e) => {
+            let reason = match &e {
+                _ if forced => CpuReason::Forced,
+                WhisperPluginError::PluginNotFound { .. } => CpuReason::NoPlugin,
+                WhisperPluginError::Backend(m) => CpuReason::GpuError(short_error(m)),
+            };
+            LlmBackendView {
+                gpu: false,
+                backend: "CPU".into(),
+                device: "CPU".into(),
+                plugin: None,
+                error: Some(e.to_string()),
+                cpu_why: Some(reason.label()),
+            }
+        }
     }
 }
 
@@ -493,7 +617,10 @@ pub fn whisper_backend_probe() -> LlmBackendView {
     if let Some(v) = CACHE.lock().unwrap().clone() {
         return v;
     }
-    let v = whisper_backend_view(flow_core::whisper_plugin::probe_backend(None));
+    let v = whisper_backend_view(
+        flow_core::whisper_plugin::probe_backend(None),
+        whisper_cpu_forced(),
+    );
     if v.plugin.is_some() {
         *CACHE.lock().unwrap() = Some(v.clone());
     }
@@ -1032,7 +1159,7 @@ fn require(p: &std::path::Path, dir: bool) -> Result<String, flow_core::CoreErro
 }
 
 /// A loaded speech engine and where it runs (`None`: the mock).
-type Loaded = (Arc<dyn AsrEngine>, Option<WhisperBackend>);
+type Loaded = (Arc<dyn AsrEngine>, Option<RunsOn>);
 
 fn mock_engine(text: &str) -> Loaded {
     (Arc::new(flow_core::asr::MockAsr::new(text)), None)
@@ -1040,7 +1167,7 @@ fn mock_engine(text: &str) -> Loaded {
 
 /// The sherpa-onnx engines run on the CPU.
 fn on_cpu(e: Arc<dyn AsrEngine>) -> Loaded {
-    (e, Some(WhisperBackend::cpu()))
+    (e, Some(RunsOn::plain(WhisperBackend::cpu())))
 }
 
 /// A whisper model: on the GPU through the Vulkan plugin
@@ -1061,7 +1188,7 @@ fn whisper_engine(p: &std::path::Path, threads: usize) -> Result<Loaded, flow_co
     };
     let gpu_error = match PluginWhisper::load(&path, &opts, None) {
         Ok(e) => {
-            let b = e.backend();
+            let b = RunsOn::whisper(e.backend(), true, whisper_cpu_forced());
             return Ok((Arc::new(e), Some(b)));
         }
         // No plugin next to the exe, or no Vulkan driver: the CPU, quietly.
@@ -1072,12 +1199,17 @@ fn whisper_engine(p: &std::path::Path, threads: usize) -> Result<Loaded, flow_co
         }
     };
     let e = builtin_whisper(&path, threads)?;
+    let plugin = gpu_error.is_some();
     Ok((
         e,
-        Some(WhisperBackend {
-            gpu_error,
-            ..WhisperBackend::cpu()
-        }),
+        Some(RunsOn::whisper(
+            WhisperBackend {
+                gpu_error,
+                ..WhisperBackend::cpu()
+            },
+            plugin,
+            whisper_cpu_forced(),
+        )),
     ))
 }
 
@@ -1620,6 +1752,101 @@ mod tests {
         a.start_session(session()).unwrap();
         a.push_audio(&[3000; 16_000]);
         a.commit()
+    }
+
+    fn vk() -> WhisperBackend {
+        WhisperBackend {
+            backend: "Vulkan".into(),
+            device: "Intel(R) Arc(TM) 140V GPU (16GB)".into(),
+            gpu_error: None,
+        }
+    }
+
+    #[test]
+    fn whisper_on_the_gpu_has_no_cpu_reason() {
+        let r = RunsOn::whisper(vk(), true, false);
+        assert_eq!((r.cpu_reason, r.cpu_why.as_deref()), (None, None));
+        let j = serde_json::to_value(&r).unwrap();
+        assert_eq!(j["backend"], "Vulkan");
+        assert!(j.get("cpu_reason").is_none() && j.get("cpu_why").is_none());
+    }
+
+    #[test]
+    fn cpu_reason_forced() {
+        // The plugin forced to the CPU reports CPU with no error, like a PC
+        // without a GPU; the env var tells them apart.
+        let r = RunsOn::whisper(WhisperBackend::cpu(), true, true);
+        assert_eq!(r.cpu_reason, Some("forced"));
+        assert_eq!(r.cpu_why.as_deref(), Some("the CPU is forced (FLOW_WHISPER_DEVICE=cpu)"));
+        // Forced also wins without the plugin.
+        let r = RunsOn::whisper(WhisperBackend::cpu(), false, true);
+        assert_eq!(r.cpu_reason, Some("forced"));
+    }
+
+    #[test]
+    fn cpu_reason_plugin_missing() {
+        let r = RunsOn::whisper(WhisperBackend::cpu(), false, false);
+        assert_eq!(r.cpu_reason, Some("no_plugin"));
+        let want = format!(
+            "the graphics chip plugin ({}) is missing",
+            flow_core::whisper_plugin::GPU_PLUGIN_FILE
+        );
+        assert_eq!(r.cpu_why.as_deref(), Some(want.as_str()));
+        let j = serde_json::to_value(&r).unwrap();
+        assert_eq!(j["cpu_reason"], "no_plugin");
+        assert_eq!(j["backend"], "CPU");
+    }
+
+    #[test]
+    fn cpu_reason_no_vulkan_device() {
+        let r = RunsOn::whisper(WhisperBackend::cpu(), true, false);
+        assert_eq!(r.cpu_reason, Some("no_gpu"));
+        assert_eq!(r.cpu_why.as_deref(), Some("no Vulkan graphics chip found"));
+    }
+
+    #[test]
+    fn cpu_reason_gpu_init_error_is_short() {
+        let b = WhisperBackend {
+            gpu_error: Some("vk::Device::create failed: ErrorOutOfDeviceMemory\nstack: …".into()),
+            ..WhisperBackend::cpu()
+        };
+        let r = RunsOn::whisper(b.clone(), true, false);
+        assert_eq!(r.cpu_reason, Some("gpu_error"));
+        assert_eq!(
+            r.cpu_why.as_deref(),
+            Some("the graphics chip failed (vk::Device::create failed: ErrorOutOfDeviceMemory)")
+        );
+        // The full error stays in `gpu_error`.
+        assert!(r.backend.gpu_error.unwrap().contains("stack"));
+        // The plugin failing outright (built-in engine took over) is the same reason.
+        assert_eq!(RunsOn::whisper(b, false, false).cpu_reason, Some("gpu_error"));
+        let long = "x".repeat(300);
+        let s = short_error(&long);
+        assert_eq!(s.chars().count(), 100);
+        assert!(s.ends_with('…'));
+        assert_eq!(short_error("\n  \n"), "unknown error");
+    }
+
+    #[test]
+    fn sherpa_engines_give_no_cpu_reason() {
+        let r = RunsOn::plain(WhisperBackend::cpu());
+        assert_eq!((r.cpu_reason, r.cpu_why), (None, None));
+    }
+
+    #[test]
+    fn whisper_probe_view_says_why_the_cpu() {
+        use flow_core::whisper_plugin::WhisperPluginError;
+        let p = || PathBuf::from("C:/app/flow_whisper_vulkan.dll");
+        let gpu = whisper_backend_view(Ok((p(), vk())), false);
+        assert!(gpu.gpu && gpu.cpu_why.is_none());
+        let why = |v: LlmBackendView| v.cpu_why.unwrap();
+        assert_eq!(why(whisper_backend_view(Ok((p(), WhisperBackend::cpu())), false)), "no Vulkan graphics chip found");
+        assert!(why(whisper_backend_view(Ok((p(), WhisperBackend::cpu())), true)).contains("forced"));
+        let gone = || Err(WhisperPluginError::PluginNotFound { tried: vec!["x: gone".into()] });
+        assert!(why(whisper_backend_view(gone(), false)).contains("plugin"));
+        assert!(why(whisper_backend_view(gone(), true)).contains("forced"));
+        let bad = whisper_backend_view(Err(WhisperPluginError::Backend("bad ABI".into())), false);
+        assert_eq!(why(bad), "the graphics chip failed (bad ABI)");
     }
 
     #[test]
