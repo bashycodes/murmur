@@ -18,6 +18,17 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Android (hybrid debug builds only): English speech probe.** Developer
+  settings → Diagnostics → **English speech probe** compares Google's
+  Gemini Nano speech (ML Kit GenAI, advanced or basic mode) with the
+  platform on-device recognizer (biasing terms, formatting), from the mic
+  or a synthetic TTS / picked WAV clip, and shows status, download,
+  partials, latency and every error code. An overlay runs the same
+  engines over another app, to learn whether Gemini Nano refuses when
+  Flow Clone is not on top (`BACKGROUND_USE_BLOCKED`). Each run is one
+  line in `files/probe-english.jsonl`. Dictation is unchanged
+  (`docs/findings/2026-11-02-pixel-offline-dictation.md`, PQ-a / PQ-d).
+
 - **Hebrew models scored on the owner's own dictations (H7).** On 16
   clips zipformer-he scores 13.6–14.4 % WER against parakeet-he's 18.9 %,
   answers in about 50 ms after the last audio instead of 420 ms, and the

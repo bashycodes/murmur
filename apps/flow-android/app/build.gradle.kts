@@ -138,8 +138,16 @@ android {
     }
 }
 
+// AGP does not pre-create flavour+build-type configurations; it picks this one up by name.
+configurations.create("hybridDebugImplementation")
+
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    // English 1 spike (docs/findings/2026-11-02-pixel-offline-dictation.md, PQ-a): ML Kit GenAI speech
+    // (Gemini Nano) for the debug-only probe screen in src/hybridDebug. hybridDebug only, so no
+    // release APK and no local/remote build carries it (its telemetry deps would add network code).
+    // alpha1, not alpha2: alpha2 is built with Kotlin 2.4 metadata, which our Kotlin 2.2 cannot read.
+    "hybridDebugImplementation"("com.google.mlkit:genai-speech-recognition:1.0.0-alpha1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("org.json:json:20240303")
@@ -205,7 +213,8 @@ abstract class VerifyManifestNetwork : DefaultTask() {
 }
 
 /**
- * Release variants: the debug "WAV as microphone" receiver and the BenchActivity (src/debug) must
+ * Release variants: the debug "WAV as microphone" receiver, the BenchActivity (src/debug) and the
+ * EnglishProbeActivity (src/hybridDebug) must
  * not be in the merged manifest, so nothing outside the app can make a release build dictate. NoDebugWavReceiverTest
  * re-checks it (and that the class is absent) from the release unit-test suite.
  */
@@ -216,7 +225,7 @@ abstract class VerifyNoDebugReceiver : DefaultTask() {
     @TaskAction
     fun verify() {
         val xml = manifest.get().asFile.readText()
-        val found = listOf("WavMicReceiver", "dev.flowclone.debug.PLAY_WAV", "BenchActivity", "CallDecodeReceiver").filter { xml.contains(it) }
+        val found = listOf("WavMicReceiver", "dev.flowclone.debug.PLAY_WAV", "BenchActivity", "CallDecodeReceiver", "EnglishProbeActivity").filter { xml.contains(it) }
         report.get().asFile.apply { parentFile.mkdirs() }.writeText("found=$found\n")
         if (found.isNotEmpty()) throw GradleException("Release manifest contains a debug-only component ($found)")
     }
