@@ -28,6 +28,9 @@ import kotlinx.coroutines.launch
  * FlowService, which needs the overlay permission and hosts dictation): it starts the job in
  * [CallJobs], shows its progress with a Cancel action, holds a partial wake lock so the
  * transcription keeps going with the screen off, and stops itself when the job ends.
+ * D49: [ACTION_DRAIN] runs the auto-transcribe queue the same way, one recording after another
+ * (each after any manual job); the finish notification comes from [notifyFinished] (FlowApp's
+ * job hook), so a job run inside [CallRecordingJob] gets one too.
  */
 class CallJobService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -46,6 +49,11 @@ class CallJobService : Service() {
                 if (!app.calls.state.value.busy) stopSelf()
                 return START_NOT_STICKY
             }
+            ACTION_DRAIN -> {
+                if (!promote(app.calls.current?.name ?: "new call recordings")) { stopSelf(); return START_NOT_STICKY }
+                if (!app.calls.state.value.busy && !app.calls.startNext()) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return START_NOT_STICKY }
+                watchJob()
+            }
             ACTION_START -> {
                 val req = intent.request()
                 if (!promote(req?.name ?: "")) { stopSelf(); return START_NOT_STICKY }
@@ -62,7 +70,7 @@ class CallJobService : Service() {
 
     override fun onDestroy() {
         // The system or the owner killed us mid-job: stop the job rather than run unguarded.
-        if (app.calls.state.value.busy) app.calls.cancel()
+        if (app.calls.state.value.busy) app.calls.cancel(CallStop.SYSTEM)
         releaseWake()
         scope.cancel()
         super.onDestroy()
@@ -75,7 +83,8 @@ class CallJobService : Service() {
                 when (s) {
                     is CallJobState.Running -> { acquireWake(); update(s) }
                     is CallJobState.Idle -> Unit
-                    else -> { finished(s); releaseWake(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+                    // Next in the auto queue (D49), else done.
+                    else -> if (!app.calls.startNext()) { releaseWake(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
                 }
             }
         }
@@ -115,26 +124,7 @@ class CallJobService : Service() {
             )
             .build()
 
-    private fun finished(s: CallJobState) {
-        val (title, id) = when (s) {
-            is CallJobState.Done -> "Call transcript ready" to s.id
-            is CallJobState.Failed -> "Couldn't transcribe the recording: ${s.message}" to null
-            else -> return // cancelled: the owner asked for it, no news
-        }
-        val n = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_flow)
-            .setContentTitle(title)
-            .setAutoCancel(true)
-            .setContentIntent(openPage(id))
-            .build()
-        runCatching { nm().notify(NOTIF_DONE_ID, n) }
-    }
-
-    private fun openPage(id: String?) = PendingIntent.getActivity(
-        this, if (id == null) 0 else 1,
-        Intent(this, CallsActivity::class.java).apply { id?.let { putExtra(CallsActivity.EXTRA_ID, it) } },
-        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-    )
+    private fun openPage(id: String?) = openPage(this, id)
 
     private fun acquireWake() {
         if (wake?.isHeld == true) return
@@ -151,17 +141,12 @@ class CallJobService : Service() {
 
     private fun nm() = getSystemService(NotificationManager::class.java)
 
-    private fun createChannel() {
-        runCatching {
-            nm().createNotificationChannel(
-                NotificationChannel(CHANNEL, "Call transcription", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) },
-            )
-        }
-    }
+    private fun createChannel() = createChannel(this)
 
     companion object {
         const val ACTION_START = "dev.flowclone.action.CALL_TRANSCRIBE"
         const val ACTION_CANCEL = "dev.flowclone.action.CALL_CANCEL"
+        const val ACTION_DRAIN = "dev.flowclone.action.CALL_DRAIN"
         const val EXTRA_URI = "uri"
         const val EXTRA_NAME = "name"
         const val EXTRA_RECORDED_AT = "recorded_at"
@@ -178,6 +163,43 @@ class CallJobService : Service() {
             .putExtra(EXTRA_RECORDED_AT, req.recordedAt).putExtra(EXTRA_LANGUAGE, req.language)
             // The read grant from the picker travels with the intent to the service.
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+        fun drainIntent(ctx: Context): Intent = Intent(ctx, CallJobService::class.java).setAction(ACTION_DRAIN)
+
+        /**
+         * A job ended: "transcript ready" (opens it) or the failure. Cancelled jobs say nothing
+         * (the owner asked, or the job only stepped aside and is queued again).
+         */
+        fun notifyFinished(ctx: Context, req: CallRequest, s: CallJobState) {
+            val (title, id) = when (s) {
+                is CallJobState.Done -> "Call transcript ready" to s.id
+                is CallJobState.Failed -> "Couldn't transcribe the recording: ${s.message}" to null
+                else -> return
+            }
+            createChannel(ctx)
+            val n = Notification.Builder(ctx, CHANNEL)
+                .setSmallIcon(R.drawable.ic_flow)
+                .setContentTitle(title)
+                .setContentText(req.name)
+                .setAutoCancel(true)
+                .setContentIntent(openPage(ctx, id))
+                .build()
+            runCatching { ctx.getSystemService(NotificationManager::class.java).notify(NOTIF_DONE_ID, n) }
+        }
+
+        private fun openPage(ctx: Context, id: String?) = PendingIntent.getActivity(
+            ctx, if (id == null) 0 else 1,
+            Intent(ctx, CallsActivity::class.java).apply { id?.let { putExtra(CallsActivity.EXTRA_ID, it) } },
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
+        private fun createChannel(ctx: Context) {
+            runCatching {
+                ctx.getSystemService(NotificationManager::class.java).createNotificationChannel(
+                    NotificationChannel(CHANNEL, "Call transcription", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) },
+                )
+            }
+        }
 
         fun cancelIntent(ctx: Context): Intent = Intent(ctx, CallJobService::class.java).setAction(ACTION_CANCEL)
 
