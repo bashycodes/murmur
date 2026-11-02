@@ -244,3 +244,85 @@ fn describe_lists_signals_without_titles() {
     assert!(!d.contains("Zoom Meeting"));
     assert_eq!(describe(&sig["nothing"]), "no meeting app running");
 }
+
+/// Counts what the detector asks of the system.
+#[derive(Default)]
+struct Watched {
+    probes: Mutex<u32>,
+    asks: Mutex<u32>,
+    logs: Mutex<Vec<String>>,
+    prompts: Mutex<Vec<Option<App>>>,
+    snap: Snapshot,
+}
+
+impl Probe for Arc<Watched> {
+    fn snapshot(&mut self) -> Snapshot {
+        *self.probes.lock().unwrap() += 1;
+        self.snap.clone()
+    }
+}
+
+impl Host for Watched {
+    fn recording(&self) -> Option<String> {
+        *self.asks.lock().unwrap() += 1;
+        None
+    }
+    fn start(&self, _: App) -> Result<String, String> {
+        Err("not in this test".into())
+    }
+    fn stop(&self, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn prompt(&self, app: Option<App>) {
+        self.prompts.lock().unwrap().push(app);
+    }
+    fn log(&self, what: &str) {
+        self.logs.lock().unwrap().push(what.to_string());
+    }
+}
+
+#[test]
+fn detection_off_probes_asks_and_logs_nothing() {
+    let w = Arc::new(Watched::default());
+    let auto = AutoDetect::new(w.clone(), Tuning::default());
+    let mut probe = w.clone();
+    for _ in 0..100 {
+        auto.look(&mut probe, Mode::Off);
+    }
+    assert_eq!(*w.probes.lock().unwrap(), 0);
+    assert_eq!(*w.asks.lock().unwrap(), 0);
+    assert!(w.logs.lock().unwrap().is_empty(), "{:?}", w.logs.lock());
+    assert!(w.prompts.lock().unwrap().is_empty());
+    // Turned on: it looks and logs the signals once.
+    auto.look(&mut probe, Mode::Ask);
+    auto.look(&mut probe, Mode::Ask);
+    assert_eq!(*w.probes.lock().unwrap(), 2);
+    assert_eq!(
+        *w.logs.lock().unwrap(),
+        vec!["signals: no meeting app running".to_string()]
+    );
+    // Off again, then on: the signals are logged afresh.
+    auto.look(&mut probe, Mode::Off);
+    auto.look(&mut probe, Mode::Auto);
+    assert_eq!(w.logs.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn turning_detection_off_takes_the_prompt_down() {
+    let sig = signals();
+    let w = Arc::new(Watched {
+        snap: sig["zoom_meeting"].clone(),
+        ..Watched::default()
+    });
+    let auto = AutoDetect::new(w.clone(), Tuning::default());
+    let mut probe = w.clone();
+    for _ in 0..3 {
+        auto.look(&mut probe, Mode::Ask);
+    }
+    assert_eq!(*w.prompts.lock().unwrap(), vec![Some(App::Zoom)]);
+    auto.look(&mut probe, Mode::Off);
+    assert_eq!(*w.prompts.lock().unwrap(), vec![Some(App::Zoom), None]);
+    let probes = *w.probes.lock().unwrap();
+    auto.look(&mut probe, Mode::Off);
+    assert_eq!(*w.probes.lock().unwrap(), probes);
+}
