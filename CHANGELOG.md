@@ -32,6 +32,15 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adds a server route).
 - `flow_core::audio::WavBlocks` / `Resampler`: read a WAV of any length
   block by block as 16 kHz mono.
+- **Android: Calls.** A new page in the drawer (on-device builds: local
+  and hybrid) transcribes a call recording you pick: Samsung's m4a call
+  recordings, WAV and anything else the phone can decode. It runs on the
+  phone only, in Hebrew or English, with progress and Cancel in a
+  notification, and keeps going with the screen off. The recording is only
+  read, never changed or deleted; the transcript is kept on the phone and
+  can be opened, copied or deleted. Dictation always comes first: the call
+  job uses its own copy of the speech model and pauses between chunks
+  while you dictate (D46).
 
 ### Changed
 

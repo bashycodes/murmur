@@ -39,6 +39,7 @@ pub mod jni_api;
 /// D41: model downloads from the server's library (feature `library`).
 #[cfg(feature = "library")]
 pub mod library_api;
+pub mod meeting_api;
 
 /// Opaque handle: a bare engine or the router (D17 §6.2).
 pub enum FlowHandle {

@@ -202,8 +202,9 @@ fn contract_symbols_exported() {
                 || w.starts_with("Java_dev_flowclone_server_ServerLibraryNative_native")
         })
         .collect();
-    // D28: +10 OpenRouter natives; +1 Command Mode; +1 nativeBenchClean; D41: +2 model library (feature `library`).
-    assert_eq!(want.len(), 45, "{want:?}");
+    // D28: +10 OpenRouter natives; +1 Command Mode; +1 nativeBenchClean; D41: +2 model library (feature `library`);
+    // D46: +7 meeting transcription.
+    assert_eq!(want.len(), 52, "{want:?}");
     let src = include_str!("../src/jni_api.rs");
     let have: std::collections::BTreeSet<&str> = src
         .split(|c: char| !c.is_alphanumeric() && c != '_')

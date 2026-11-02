@@ -24,6 +24,10 @@ _Avoid_: fallback chain, prefer (the old two-route setting)
 A recording of any length (a meeting, a phone call) transcribed into timestamped segments, rather than typed into a text field. It is cut at pauses into chunks of at most 30 s, and each chunk is transcribed as one ordinary dictation.
 _Avoid_: long dictation, notetaker session (Notetaker is the Windows feature that records one)
 
+**Call transcript**:
+The Android Calls page's result: a meeting transcript of one call recording the user picked, made on the phone by its own engine and kept in the app. The recording itself is only read.
+_Avoid_: call log, call recording (the audio file, which is not ours)
+
 **Segment**:
 One timestamped piece of a meeting transcript: start, end (ms from the start of the recording) and text.
 _Avoid_: chunk (the audio behind it), paste segment, utterance

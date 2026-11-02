@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# D46 Calls device check (debug builds only): decode a recording on the phone with the Calls
+# decoder (MediaCodec for m4a/AAC, the WAV reader for WAV) to 16 kHz mono and print what came
+# out; optionally transcribe it with the Calls job too. Pushes the file into the app's private
+# storage (files/debug/calls-in/, via run-as), checks it arrived intact (sha256), then sends
+# the debug broadcast. The phone's shared storage is not touched.
+#
+#   tools/phone/call-decode.sh [--transcribe] [--lang he|en] [FILE]
+#
+#   FILE           audio file on this machine (default: the committed public-domain fixture
+#                  apps/flow-android/tools/fixtures/calls/jfk-call.m4a, 11 s, 44.1 kHz stereo AAC)
+#   --transcribe   then transcribe it with the Calls job (its own engine); the transcript shows
+#                  on the Calls page, progress in logcat (tag FlowCallDecode)
+#   --lang L       the call's language for --transcribe (default en)
+#
+# Expected for the fixture: "ok: in 44100 Hz 2 ch ...; out ~176000 samples 16000 Hz mono = ~11000 ms".
+#
+# Environment:
+#   FLOW_PHONE          transport: a serial or raw transport options ("-t 60", "-d"); empty = the only device
+#   FLOW_PKG            app package (default dev.flowclone)
+#   FLOW_PLATFORM_TOOL  the Android platform tool to call (default: the one on PATH)
+set -euo pipefail
+TOOL="${FLOW_PLATFORM_TOOL:-$(printf 'a%sb' d)}"
+PKG="${FLOW_PKG:-dev.flowclone}"
+RECEIVER="dev.flowclone.debug.CallDecodeReceiver"
+ACTION="dev.flowclone.debug.DECODE_CALL"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+
+usage() { sed -n '2,/^set -euo/{/^set -euo/d;s/^# \{0,1\}//;p}' "$0" >&2; exit 2; }
+die() { echo "call-decode: $1" >&2; exit "${2:-1}"; }
+
+TRANSCRIBE=0 LANG_CODE="en" FILE=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --transcribe) TRANSCRIBE=1; shift ;;
+        --lang) [ $# -ge 2 ] || usage; LANG_CODE="$2"; shift 2 ;;
+        -h|--help) usage ;;
+        -*) echo "call-decode: unknown option $1" >&2; usage ;;
+        *) [ -z "$FILE" ] || usage; FILE="$1"; shift ;;
+    esac
+done
+[ -n "$FILE" ] || FILE="$HERE/../../apps/flow-android/tools/fixtures/calls/jfk-call.m4a"
+[ -f "$FILE" ] || die "no such file: $FILE" 2
+case "$LANG_CODE" in he|en) ;; *) die "--lang must be he or en" 2 ;; esac
+
+TRANSPORT=()
+case "${FLOW_PHONE:-}" in
+    "") ;;
+    -*) read -r -a TRANSPORT <<<"$FLOW_PHONE" ;;
+    *) TRANSPORT=(-s "$FLOW_PHONE") ;;
+esac
+phone() { "$TOOL" "${TRANSPORT[@]}" "$@"; }
+
+NAME="$(basename "$FILE" | tr -c 'A-Za-z0-9._\n-' '_')"
+DEST="files/debug/calls-in/$NAME"
+phone exec-in run-as "$PKG" sh -c "'mkdir -p files/debug/calls-in && cat > $DEST'" <"$FILE" \
+    || die "push failed (run-as needs a debug build of the app, a connected phone and the right FLOW_PHONE)"
+want="$(sha256sum <"$FILE" | cut -d' ' -f1)"
+got="$(phone exec-out run-as "$PKG" sha256sum "$DEST" | cut -d' ' -f1)" || die "sha256sum failed on the phone"
+[ "$want" = "$got" ] || die "$DEST: sha256 mismatch after the push (got ${got:-nothing})"
+
+args=(shell am broadcast -a "$ACTION" -n "$PKG/$RECEIVER" --es path "$DEST")
+[ "$TRANSCRIBE" = 0 ] || args+=(--ez transcribe true --es lang "$LANG_CODE")
+out="$(phone "${args[@]}" 2>&1)" || die "broadcast failed: $out"
+data="$(sed -n 's/.*data="\(.*\)".*/\1/p' <<<"$out" | tail -n 1)"
+[ -n "$data" ] || die "no answer from the app (not a debug build, or one without the Calls receiver?): $out"
+echo "$data"
+case "$data" in ok:*) ;; *) exit 1 ;; esac

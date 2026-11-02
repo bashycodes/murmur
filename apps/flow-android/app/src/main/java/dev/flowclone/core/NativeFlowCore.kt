@@ -420,5 +420,14 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
 
         // ---- 2026-10-31 on-device benchmark hook (JNI_CONTRACT.md "Benchmark"); never null ----
         @JvmStatic external fun nativeBenchClean(handle: Long, requestJson: String): String
+
+        // ---- 2026-11-02 meeting transcription (D44/D46, JNI_CONTRACT.md "Meeting transcription"); see NativeMeeting ----
+        @JvmStatic external fun nativeMeetingOpen(engine: Long, sessionConfigJson: String, paramsJson: String?): Long
+        @JvmStatic external fun nativeMeetingSetTotal(meeting: Long, samples: Long)
+        @JvmStatic external fun nativeMeetingPush(meeting: Long, pcm: ShortArray, length: Int): String?
+        @JvmStatic external fun nativeMeetingFinish(meeting: Long): String?
+        @JvmStatic external fun nativeMeetingProgress(meeting: Long): String
+        @JvmStatic external fun nativeMeetingCancel(meeting: Long)
+        @JvmStatic external fun nativeMeetingClose(meeting: Long)
     }
 }
