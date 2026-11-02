@@ -71,11 +71,18 @@ impl ChunkTranscriber for ToneAsr {
         let crossings = loud.windows(2).filter(|w| (w[0] < 0) != (w[1] < 0)).count();
         // Crossings per second of loud audio: 2 x the pitch.
         let hz = crossings as f32 * S as f32 / loud.len().max(1) as f32 / 2.0;
-        if hz < 220.0 {
-            result(&format!("user line {n}"))
+        // The user's chunks on this PC, the call's on the server (as if
+        // this PC failed over): the meeting counts both.
+        let (mut r, engine) = if hz < 220.0 {
+            (result(&format!("user line {n}")), "local")
         } else {
-            result(&format!("caller sentence {n}"))
-        }
+            (result(&format!("caller sentence {n}")), "remote")
+        };
+        r.route = Some(flow_core::RouteInfo {
+            engine: engine.into(),
+            ..Default::default()
+        });
+        r
     }
 }
 
@@ -246,6 +253,70 @@ fn a_recorded_meeting_becomes_me_and_others_turns_in_time_order() {
         "own engine per job"
     );
     assert!(r.m.store().has_audio(&id), "the last 3 keep audio");
+    // Which route served the chunks is kept with the meeting.
+    let calls = r.asr.calls.load(Ordering::SeqCst) as u32;
+    assert!(
+        m.routes["local"] >= 1 && m.routes["remote"] >= 1,
+        "{:?}",
+        m.routes
+    );
+    assert_eq!(m.routes.values().sum::<u32>(), calls, "{:?}", m.routes);
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(r.dir.join(format!("{id}.json"))).unwrap())
+            .unwrap();
+    assert_eq!(json["routes"]["local"], m.routes["local"], "{json}");
+}
+
+#[test]
+fn route_tally_logs_route_and_engine_but_never_the_text() {
+    struct Fixed(Vec<Option<flow_core::RouteInfo>>, AtomicUsize);
+    impl ChunkTranscriber for Fixed {
+        fn transcribe_chunk(&self, _: &[i16], _: &SessionConfig) -> CommitResult {
+            let n = self.1.fetch_add(1, Ordering::SeqCst);
+            let mut r = result("secret words");
+            r.route = self.0[n].clone();
+            r
+        }
+    }
+    let cloud = flow_core::RouteInfo {
+        engine: "cloud".into(),
+        provider: Some("openrouter-1".into()),
+        model: Some("some/model".into()),
+        fallback: Some("connect_failed".into()),
+        ..Default::default()
+    };
+    let local = flow_core::RouteInfo {
+        engine: "local".into(),
+        ..Default::default()
+    };
+    let lines = Arc::new(Mutex::new(Vec::<String>::new()));
+    let l = lines.clone();
+    let t = RouteTally::new(
+        Arc::new(Fixed(
+            vec![Some(local.clone()), Some(cloud), None, Some(local)],
+            AtomicUsize::new(0),
+        )),
+        move |x| l.lock().unwrap().push(x.to_string()),
+    );
+    for _ in 0..4 {
+        t.transcribe_chunk(&[0; 16_000], &SessionConfig::default());
+    }
+    let got = lines.lock().unwrap().clone();
+    assert_eq!(got.len(), 4);
+    assert!(
+        got[0].starts_with("chunk 1: 1000 ms audio, route local,"),
+        "{got:?}"
+    );
+    assert!(
+        got[1].contains(
+            "route cloud (provider openrouter-1, model some/model, fallback connect_failed)"
+        ),
+        "{got:?}"
+    );
+    assert!(got[2].contains("route none"), "{got:?}");
+    assert!(got.iter().all(|x| !x.contains("secret")), "{got:?}");
+    let c = t.counts();
+    assert_eq!((c["local"], c["cloud"], c["none"]), (2, 1, 1));
 }
 
 #[test]
@@ -446,10 +517,22 @@ fn listener_sees_recording_and_progress() {
     r.play(&voiced(150.0, 1_000), &[], |_| false);
     r.m.stop().unwrap();
     r.wait_done(&id);
-    let v = seen.lock().unwrap();
-    assert!(v.first().unwrap().recording.is_some());
-    assert!(v.iter().any(|v| v.transcribing.is_some()));
-    assert!(v.last().unwrap().transcribing.is_none());
+    // The job's last notify (after it clears its progress and prunes) can
+    // land after wait_done saw the view settle: wait for that event, the
+    // one the listener must end on.
+    let t0 = Instant::now();
+    let v = loop {
+        let v = seen.lock().unwrap().clone();
+        let ended = v.iter().any(|v| v.transcribing.is_some())
+            && v.last().is_some_and(|v| v.transcribing.is_none());
+        if ended || t0.elapsed() > Duration::from_secs(20) {
+            break v;
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert!(v.first().unwrap().recording.is_some(), "{v:?}");
+    assert!(v.iter().any(|v| v.transcribing.is_some()), "{v:?}");
+    assert!(v.last().unwrap().transcribing.is_none(), "{v:?}");
 }
 
 #[test]
