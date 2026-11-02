@@ -103,6 +103,11 @@ sealed interface DictationState {
         data object FailedToTranscribe : ErrorKind
         data object MicUnavailable : ErrorKind
         data class EngineUnavailable(val message: String) : ErrorKind
+        /**
+         * The speech model is still loading ([message] names it). Not a failure: it clears once the
+         * engine settles ([DictationController.engineSettled]); a tap checks again.
+         */
+        data class EngineLoading(val message: String) : ErrorKind
         /** Command Mode produced nothing to write ([message] says why); the field is unchanged. */
         data class CommandFailed(val message: String) : ErrorKind
     }
@@ -224,6 +229,9 @@ class DictationController(
 
         /** Command Mode history row (instruction, original, result). Must return at once. */
         fun recordCommand(record: CommandRecord) = Unit
+
+        /** A start found the speech model still loading ([message] names it); every time, so each tap says so. */
+        fun engineLoading(message: String) = Unit
     }
 
     /** What the debug trace needs from the dictation's start. */
@@ -362,11 +370,14 @@ class DictationController(
 
     fun onFieldFocusChanged(focused: Boolean) {
         fieldFocused = focused
-        when (_state.value) {
-            DictationState.Idle, DictationState.Ready -> {
+        val s = _state.value
+        when {
+            s == DictationState.Idle || s == DictationState.Ready -> {
                 _state.value = restingState()
                 if (focused) prewarm()
             }
+            // "Still loading" is no error to keep: without a field there is no bubble.
+            s is DictationState.Error && s.kind is DictationState.ErrorKind.EngineLoading -> if (!focused) _state.value = restingState()
             else -> Unit // recording / processing / error survive focus changes
         }
     }
@@ -490,6 +501,16 @@ class DictationController(
         return true
     }
 
+    /**
+     * The engine finished loading: [failure] = why it failed, null = ready. A "still loading"
+     * bubble goes back to rest (or shows the real error); any other state is left alone.
+     */
+    fun engineSettled(failure: String?) {
+        val s = _state.value
+        if (s !is DictationState.Error || s.kind !is DictationState.ErrorKind.EngineLoading) return
+        _state.value = if (failure == null) restingState() else DictationState.Error(DictationState.ErrorKind.EngineUnavailable(failure))
+    }
+
     fun dismissError() {
         if (_state.value is DictationState.Error) _state.value = restingState()
     }
@@ -562,6 +583,12 @@ class DictationController(
         } catch (e: CoreException) {
             val msg = RouterErrors.userMessage(e.kind, e.message ?: "engine unavailable")
             trace(TraceStart(wallClock(), hold, null), InsertOutcome.START_FAILED, error = msg, fallback = e.kind, cause = e)
+            if (e.kind == CoreException.KIND_LOADING) {
+                // Not a failure: the bubble shows "loading" until the engine settles; a tap checks again.
+                host.engineLoading(msg)
+                _state.value = DictationState.Error(DictationState.ErrorKind.EngineLoading(msg))
+                return
+            }
             _state.value = DictationState.Error(DictationState.ErrorKind.EngineUnavailable(msg))
             return
         }

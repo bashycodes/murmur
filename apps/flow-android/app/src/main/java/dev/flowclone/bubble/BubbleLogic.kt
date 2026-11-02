@@ -71,6 +71,24 @@ class BubbleGesture(private val touchSlopPx: Float, private val blocked: () -> B
     fun cancel() { phase = Phase.NONE; dragging = false }
 }
 
+/** What a tap on an error bubble (its ! or the pill around it) does. */
+object ErrorTap {
+    enum class Action {
+        /** Check the engine again and start dictating when it is ready. */
+        RECHECK,
+        /** A real engine error: open the app, where it is fixed. */
+        OPEN_APP,
+        /** Just dismiss the error. */
+        DISMISS,
+    }
+
+    fun of(kind: dev.flowclone.session.DictationState.ErrorKind): Action = when (kind) {
+        is dev.flowclone.session.DictationState.ErrorKind.EngineLoading -> Action.RECHECK
+        is dev.flowclone.session.DictationState.ErrorKind.EngineUnavailable -> Action.OPEN_APP
+        else -> Action.DISMISS
+    }
+}
+
 /**
  * Bubble anchors (07 §5.3): X snaps to Left (20dp) or Right (screenW − w − 20dp); Y snaps
  * to one of 100 evenly spaced anchors between 56dp margins, default index 35. Clone
