@@ -100,6 +100,11 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- **`tools/phone/call-decode.sh` works on Android 17.** `exec-in`/`exec-out`
+  skip the device shell there, so the push silently did nothing (exit 0) and
+  the hash check failed with "got sha256sum:". The file now goes through
+  `/data/local/tmp` and `shell` + `run-as`, and a failed hash prints the
+  phone's own output.
 - Windows: CI builds no longer call themselves "-dirty" (1.0.0's installers
   reported e.g. `a24090a-dirty`). The installer step's `tauri build`
   rewrote `apps/flow-windows/Cargo.toml` (it adds `features = []` to a
