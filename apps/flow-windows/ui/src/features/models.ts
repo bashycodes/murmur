@@ -450,6 +450,8 @@ export interface LlmBackend {
   device: string;
   plugin: string | null;
   error?: string;
+  /** whisper_backend only: why it would run on the CPU. */
+  cpu_why?: string;
 }
 /** undefined = not asked yet, null = asking. */
 let llmBackend: LlmBackend | null | undefined;
@@ -633,6 +635,10 @@ interface RunsOn {
   backend: string;
   device: string;
   gpu_error?: string;
+  /** Whisper on the CPU: "forced" | "no_plugin" | "no_gpu" | "gpu_error" (core_adapter CpuReason). */
+  cpu_reason?: string;
+  /** Why, completing "Runs on the CPU: …" (CpuReason::label). */
+  cpu_why?: string;
 }
 
 type HeStatus =
@@ -674,8 +680,10 @@ const onGpu = (b: { backend: string }): boolean => b.backend.toLowerCase() !== "
 export function runsOnLine(b: RunsOn | undefined, whisper: boolean): string {
   if (!b) return "";
   if (onGpu(b)) return ` Runs on the graphics chip (${b.device}, ${b.backend}).`;
-  if (b.gpu_error) return ` Runs on the CPU: the graphics chip failed (${b.gpu_error}).`;
-  return whisper ? " Runs on the CPU (no graphics chip found), so expect several seconds per dictation; Zipformer is faster." : " Runs on the CPU.";
+  if (!whisper) return " Runs on the CPU.";
+  // Older backends without cpu_why: the full error, else no reason.
+  const why = b.cpu_why ?? (b.gpu_error ? `the graphics chip failed (${b.gpu_error})` : "");
+  return ` Runs on the CPU${why ? `: ${why}` : ""}, so expect slow dictations; Zipformer is faster.`;
 }
 
 /** Where a Hebrew model would run before it is loaded, from the whisper probe. */
@@ -684,7 +692,8 @@ function wouldRunLine(e: CatalogEntry, rec: CatalogEntry | undefined): string {
   const b = whisperBackend;
   if (!b) return "";
   if (b.gpu) return ` This PC runs it on its graphics chip (${b.device}, ${b.backend}).`;
-  return ` No graphics chip found for it: it would run on the CPU, slowly.${rec && rec.id !== e.id ? ` Recommended here: ${rec.title}.` : ""}`;
+  const why = b.cpu_why ?? "no graphics chip found";
+  return ` It would run on the CPU, slowly: ${why}.${rec && rec.id !== e.id ? ` Recommended here: ${rec.title}.` : ""}`;
 }
 
 /** True when `languages` forces Hebrew (exactly one, `he`/`he-IL`/`iw`). */
