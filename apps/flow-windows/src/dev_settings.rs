@@ -30,6 +30,12 @@
 //! (`allow_cloud_cleanup` + a `[cloud, local]` order) is migrated once
 //! ([`DevSettings::migrate_d36`]). The router always gets the whole list
 //! (`cleanup_order` + `cleanup_off`).
+//!
+//! Meeting transcription (D47) has its own route order ([`MeetingRoute`]:
+//! this PC, your server, OpenRouter, each with an on/off flag), used only
+//! by the Notetaker's per-job engine ([`DevSettings::for_meetings`]).
+//! Missing in the file = dictation's order and switches, followed live
+//! until the user edits the meeting list.
 
 use flow_core::config::ParakeetDecoding;
 use flow_router::{CleanupRoute, CloudConfig, MigrationReport};
@@ -106,6 +112,14 @@ pub fn full_cleanup_order(list: &[CleanupRoute]) -> Vec<CleanupRoute> {
         v.push(CleanupRoute::Cloud);
     }
     v
+}
+
+/// One entry of the D47 meeting transcription order: a route and whether
+/// meetings may use it. Independent of dictation's switches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MeetingRoute {
+    pub route: Route,
+    pub enabled: bool,
 }
 
 /// One way to run a dictation. Order in `route_order` = preference.
@@ -198,6 +212,11 @@ pub struct DevSettings {
     /// reads as empty (not the default list), so the old fields count.
     #[serde(default)]
     pub cleanup_engines: Vec<CleanupEngine>,
+    /// D47: where meetings are transcribed, in the order tried, each route
+    /// once with its own flag ([`DevSettings::meeting_order`] reads it).
+    /// Empty (missing in the file) = dictation's order and switches.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub meeting_routes: Vec<MeetingRoute>,
     /// Pre-D36 `allow_cloud_cleanup`: read by the migration, never written.
     #[serde(rename = "allow_cloud_cleanup", skip_serializing)]
     pub legacy_allow_cloud_cleanup: bool,
@@ -244,6 +263,7 @@ impl DevSettings {
             allow_cloud: false,
             cloud: CloudConfig::default(),
             cleanup_engines: DEFAULT_CLEANUP.to_vec(),
+            meeting_routes: Vec::new(),
             legacy_allow_cloud_cleanup: false,
             legacy_cleanup_order: Vec::new(),
             cloud_notice: None,
@@ -254,12 +274,13 @@ impl DevSettings {
     }
 
     /// The OpenRouter part of `saved` (both uses, consents, budget, the
-    /// pending notice) and the D36 cleanup order: a Developer form save
-    /// keeps them.
+    /// pending notice), the D36 cleanup order and the D47 meeting order: a
+    /// Developer form save keeps them.
     pub fn keep_cloud(&mut self, saved: &DevSettings) {
         self.allow_cloud = saved.allow_cloud;
         self.cloud = saved.cloud.clone();
         self.cleanup_engines = saved.cleanup();
+        self.meeting_routes = saved.meeting_routes.clone();
         self.legacy_allow_cloud_cleanup = false;
         self.legacy_cleanup_order = Vec::new();
         self.cloud_notice = saved.cloud_notice.clone();
@@ -366,6 +387,93 @@ impl DevSettings {
         }
         self.legacy_allow_cloud_cleanup = false;
         self.legacy_cleanup_order = Vec::new();
+    }
+
+    /// Dictation's switch for `route` (the user toggle, not the build).
+    fn dictation_on(&self, route: Route) -> bool {
+        match route {
+            Route::Server => self.allow_server,
+            Route::Client => self.allow_client,
+            Route::Cloud => self.allow_cloud,
+        }
+    }
+
+    /// D47: the meeting transcription order, always all three routes once.
+    /// Nothing stored = dictation's order and switches (live); a stored
+    /// list missing a route gets it at the end with dictation's switch.
+    pub fn meeting_order(&self) -> Vec<MeetingRoute> {
+        let mut v: Vec<MeetingRoute> = Vec::new();
+        for e in &self.meeting_routes {
+            if !v.iter().any(|x| x.route == e.route) {
+                v.push(*e);
+            }
+        }
+        for route in self.order() {
+            if !v.iter().any(|x| x.route == route) {
+                v.push(MeetingRoute {
+                    route,
+                    enabled: self.dictation_on(route),
+                });
+            }
+        }
+        v
+    }
+
+    /// The meeting order still follows dictation's (never edited).
+    pub fn meeting_follows_dictation(&self) -> bool {
+        self.meeting_routes.is_empty()
+    }
+
+    /// Store `list` as the meeting order (completed as
+    /// [`DevSettings::meeting_order`]). Turning OpenRouter on needs the
+    /// speech-to-text consent for openrouter.ai: meeting audio goes there.
+    pub fn set_meeting_order(&mut self, list: &[MeetingRoute]) -> Result<(), String> {
+        let mut next = self.clone();
+        next.meeting_routes = list.to_vec();
+        let full = next.meeting_order();
+        let cloud_on = full.iter().any(|e| e.route == Route::Cloud && e.enabled);
+        let cloud_was_on = self
+            .meeting_order()
+            .iter()
+            .any(|e| e.route == Route::Cloud && e.enabled);
+        if cloud_on && !cloud_was_on && !self.cloud.openrouter.stt.consent_ok() {
+            return Err(MEETING_CLOUD_CONSENT_MSG.into());
+        }
+        self.meeting_routes = full;
+        Ok(())
+    }
+
+    /// D47: these settings as meetings see them: the meeting order as the
+    /// route order and its flags as the route switches. Everything else
+    /// (server, OpenRouter settings and consents) is dictation's.
+    pub fn for_meetings(&self) -> DevSettings {
+        let order = self.meeting_order();
+        let on = |r: Route| order.iter().any(|e| e.route == r && e.enabled);
+        DevSettings {
+            allow_server: on(Route::Server),
+            allow_client: on(Route::Client),
+            allow_cloud: on(Route::Cloud),
+            route_order: order.iter().map(|e| e.route).collect(),
+            meeting_routes: Vec::new(),
+            ..self.clone()
+        }
+    }
+
+    /// The meeting routes this build can try, in order (the user's flag
+    /// AND the build; consent, key and reachability are the router's).
+    pub fn meeting_routes_usable(&self, caps: BuildCaps) -> Vec<Route> {
+        self.meeting_order()
+            .into_iter()
+            .filter(|e| {
+                e.enabled
+                    && match e.route {
+                        Route::Server => caps.remote,
+                        Route::Client => caps.local,
+                        Route::Cloud => caps.cloud,
+                    }
+            })
+            .map(|e| e.route)
+            .collect()
     }
 
     /// Full preference order: the stored list, then any route it misses.
@@ -569,6 +677,14 @@ impl DevSettings {
 /// How the page names the one cloud host.
 pub const OPENROUTER_NAME: &str = "OpenRouter (openrouter.ai)";
 
+/// Turning OpenRouter on for meetings before its audio consent (D47).
+pub const MEETING_CLOUD_CONSENT_MSG: &str =
+    "Accept sending audio to OpenRouter first: turn OpenRouter on under Engines above";
+
+/// A meeting job when no route is on for meetings (D47).
+pub const NO_MEETING_ROUTE_MSG: &str =
+    "Meeting transcription is off: turn on an engine under Settings → Speech to text → Meetings";
+
 /// Normal-UI error when both engines are off (§5).
 pub const NO_ENGINE_MSG: &str =
     "Dictation disabled — enable server or client in Developer settings";
@@ -765,6 +881,7 @@ impl DevForm {
             allow_cloud: false,
             cloud: CloudConfig::default(),
             cleanup_engines: DEFAULT_CLEANUP.to_vec(),
+            meeting_routes: Vec::new(),
             legacy_allow_cloud_cleanup: false,
             legacy_cleanup_order: Vec::new(),
             cloud_notice: None,
@@ -1368,5 +1485,138 @@ mod tests {
         assert!(DevSettings::for_build(BOTH)
             .cloud_warnings(BOTH, false)
             .is_empty());
+    }
+
+    fn mr(route: Route, enabled: bool) -> MeetingRoute {
+        MeetingRoute { route, enabled }
+    }
+
+    /// D47 migration: a file without `meeting_routes` gets dictation's
+    /// order and switches, and keeps following them until edited.
+    #[test]
+    fn meeting_order_missing_in_the_file_is_dictations() {
+        let mut d: DevSettings = serde_json::from_str(
+            r#"{"allow_server":true,"allow_client":false,"route_order":["client","server"]}"#,
+        )
+        .unwrap();
+        assert!(d.meeting_follows_dictation());
+        assert_eq!(
+            d.meeting_order(),
+            vec![
+                mr(Route::Client, false),
+                mr(Route::Server, true),
+                mr(Route::Cloud, false)
+            ]
+        );
+        d.allow_client = true;
+        d.route_order = vec![Route::Server, Route::Client];
+        assert_eq!(
+            d.meeting_order()[..2],
+            [mr(Route::Server, true), mr(Route::Client, true)],
+            "follows dictation live"
+        );
+        let j = serde_json::to_value(&d).unwrap();
+        assert!(
+            j.get("meeting_routes").is_none(),
+            "not written until edited"
+        );
+        // Fresh install: the same order as dictation's.
+        let fresh = DevSettings::for_build(BOTH);
+        assert_eq!(
+            fresh
+                .meeting_order()
+                .iter()
+                .map(|e| e.route)
+                .collect::<Vec<_>>(),
+            fresh.order()
+        );
+    }
+
+    #[test]
+    fn meeting_order_is_its_own_list() {
+        let mut d = DevSettings::for_build(BOTH);
+        d.set_meeting_order(&[mr(Route::Client, true), mr(Route::Client, false)])
+            .unwrap();
+        assert_eq!(
+            d.meeting_order(),
+            vec![
+                mr(Route::Client, true),
+                mr(Route::Server, true),
+                mr(Route::Cloud, false)
+            ],
+            "deduplicated, completed with dictation's switches"
+        );
+        assert!(!d.meeting_follows_dictation());
+        // Dictation is unaffected, and dictation edits no longer move it.
+        assert_eq!(d.order()[0], Route::Server);
+        d.allow_server = false;
+        d.route_order = vec![Route::Cloud];
+        assert_eq!(d.meeting_order()[1], mr(Route::Server, true));
+        // Switched off keeps its place; persists.
+        d.set_meeting_order(&[
+            mr(Route::Client, true),
+            mr(Route::Server, false),
+            mr(Route::Cloud, false),
+        ])
+        .unwrap();
+        let back: DevSettings = serde_json::from_value(serde_json::to_value(&d).unwrap()).unwrap();
+        assert_eq!(back.meeting_order(), d.meeting_order());
+        assert_eq!(back.meeting_order()[1], mr(Route::Server, false));
+    }
+
+    #[test]
+    fn meeting_cloud_needs_the_audio_consent() {
+        let mut d = DevSettings::for_build(BOTH);
+        let e = d.set_meeting_order(&[mr(Route::Cloud, true)]).unwrap_err();
+        assert_eq!(e, MEETING_CLOUD_CONSENT_MSG);
+        assert!(d.meeting_follows_dictation(), "nothing stored on error");
+        let mut ok = openrouter_on();
+        ok.set_meeting_order(&[mr(Route::Cloud, true), mr(Route::Client, true)])
+            .unwrap();
+        assert_eq!(ok.meeting_routes_usable(BOTH)[0], Route::Cloud);
+    }
+
+    /// The router config a meeting job gets: the meeting order and flags;
+    /// dictation's config does not change.
+    #[test]
+    fn for_meetings_is_the_meeting_order_as_routes() {
+        let mut d = DevSettings::for_build(BOTH);
+        d.server.host = "100.64.0.10".into();
+        let dictation = d.router_config_json(BOTH, "");
+        d.set_meeting_order(&[mr(Route::Client, true), mr(Route::Server, false)])
+            .unwrap();
+        assert_eq!(
+            d.router_config_json(BOTH, ""),
+            dictation,
+            "dictation unaffected"
+        );
+        let m = d.for_meetings().router_config_json(BOTH, "");
+        assert_eq!(m["prefer"], "client");
+        assert_eq!(m["allow_client"], true);
+        assert_eq!(m["allow_server"], false);
+        assert_eq!(dictation["prefer"], "server");
+        assert_eq!(
+            d.meeting_routes_usable(BOTH),
+            vec![Route::Client],
+            "off and unbuilt routes are not usable"
+        );
+        assert_eq!(
+            d.meeting_routes_usable(BuildCaps {
+                local: false,
+                remote: true,
+                cloud: false
+            }),
+            Vec::<Route>::new()
+        );
+    }
+
+    #[test]
+    fn a_developer_form_save_keeps_the_meeting_order() {
+        let mut saved = DevSettings::for_build(BOTH);
+        saved.set_meeting_order(&[mr(Route::Client, true)]).unwrap();
+        let (mut next, _) = form().validate(BOTH).unwrap();
+        assert!(next.meeting_follows_dictation());
+        next.keep_cloud(&saved);
+        assert_eq!(next.meeting_order(), saved.meeting_order());
     }
 }

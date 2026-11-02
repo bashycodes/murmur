@@ -8,6 +8,7 @@
 import { $, el, setStatus } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
+import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
 import { views } from "../lib/views.js";
 import { showOr } from "./openrouter.js";
 /** What each cleanup level does (D27), with the design's example of what is pasted. */
@@ -183,22 +184,16 @@ function describe(r) {
 }
 /** The cleanup order: rows in the saved order, ranked among the shown ones. */
 function renderEngines() {
-    const order = engines().map((e) => e.route);
-    const shown = order.filter(available);
     const list = $("ai_routes");
-    const foot = list.querySelector(".lw-foot-row");
-    for (const r of order)
-        list.insertBefore($(`aieng_row_${r}`), foot);
     $("aieng_server_on").checked = engineOn("server");
-    shown.forEach((r, i) => {
-        const row = $(`aieng_row_${r}`);
-        row.classList.toggle("is-off", !engineOn(r));
-        row.querySelector(".lw-rank").textContent = String(i + 1);
-        row.querySelector("[data-move=up]").disabled = i === 0;
-        row.querySelector("[data-move=down]").disabled = i === shown.length - 1;
-        row.querySelector(".lw-move").hidden = shown.length < 2;
-        describe(r);
-    });
+    const shown = rankRows({
+        list,
+        row: (r) => $(`aieng_row_${r}`),
+        shown: available,
+        on: engineOn,
+        before: list.querySelector(".lw-foot-row"),
+    }, engines().map((e) => e.route));
+    shown.forEach(describe);
 }
 /** Save the order and the server switch; the answer is shown everywhere. */
 async function saveEngines(list) {
@@ -213,16 +208,9 @@ async function saveEngines(list) {
 }
 /** Swap with the next shown engine up or down. */
 function moveEngine(r, dir) {
-    const list = engines().map((e) => ({ ...e }));
-    const shown = list.filter((e) => available(e.route));
-    const i = shown.findIndex((e) => e.route === r);
-    const other = shown[i + dir];
-    if (i < 0 || !other)
-        return;
-    const a = list.indexOf(shown[i]);
-    const b = list.indexOf(other);
-    [list[a], list[b]] = [list[b], list[a]];
-    void saveEngines(list);
+    const list = moveShown(engines().map((e) => ({ ...e })), (e) => e.route, available, r, dir);
+    if (list)
+        void saveEngines(list);
 }
 function serverToggled() {
     const on = $("aieng_server_on").checked;
@@ -322,10 +310,7 @@ export const ai = {
         $("llm_enabled").addEventListener("change", showAiEngine);
         $("llm_enabled").addEventListener("change", renderEngines);
         $("aieng_server_on").addEventListener("change", serverToggled);
-        for (const b of document.querySelectorAll("#ai_routes [data-move]")) {
-            const r = b.closest("[data-cleanup]").dataset.cleanup;
-            b.addEventListener("click", () => moveEngine(r, b.dataset.move === "up" ? -1 : 1));
-        }
+        onMove($("ai_routes"), "cleanup", moveEngine);
         const level = $("cleanup_level");
         for (const b of document.querySelectorAll("#level_seg [data-level]")) {
             b.addEventListener("click", () => {
