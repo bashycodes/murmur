@@ -35,6 +35,10 @@ _Avoid_: call log, call recording (the audio file, which is not ours)
 The Windows feature that records a meeting (microphone + what the PC plays) and turns it into a transcript of Me / Others turns on the Meetings page.
 _Avoid_: meeting bot, call recorder
 
+**Meeting detection**:
+The Notetaker's watch for a Zoom, Webex or Jabber call (a meeting window or the app's microphone stream, not the app merely running) that asks to record it or records it, and stops that recording when the call ends.
+_Avoid_: auto-record (one of its two modes), call detection on Android (no such feature)
+
 **Me / Others**:
 The speaker label of a meeting turn, by audio source: Me = the microphone, Others = what the PC plays (the other side of the call). Not voice recognition.
 _Avoid_: speaker 1/2, diarization

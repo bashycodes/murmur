@@ -1,0 +1,196 @@
+{
+  "_about": "Replayed by src/meetings/detect_tests.rs. Each step: `look` a snapshot of signals.json `times` times (one look = one 3 s poll), `answer` the prompt, `user` start/stop a recording by hand, or switch `mode`. `expect` = the host calls of that step in order: prompt:<App> (ask), prompt:- (prompt down), start:<App>, stop:<id> (ids m1, m2, ... in start order). `recording` = whether a recording runs after the step.",
+  "scenarios": [
+    {
+      "name": "zoom open all day never starts",
+      "mode": "auto",
+      "steps": [
+        { "look": "zoom_open", "times": 40, "expect": [] },
+        { "look": "zoom_open_chat_ping", "times": 10, "expect": [] },
+        { "look": "zoom_open_idle_sessions", "times": 40, "expect": [], "recording": false }
+      ]
+    },
+    {
+      "name": "webex and jabber open all day never start",
+      "mode": "auto",
+      "steps": [
+        { "look": "webex_open", "times": 40, "expect": [] },
+        { "look": "webex_open_chat_ping", "times": 10, "expect": [] },
+        { "look": "webex_after_meeting_lingering", "times": 20, "expect": [] },
+        { "look": "jabber_open", "times": 40, "expect": [] },
+        { "look": "jabber_ringing", "times": 10, "expect": [], "recording": false }
+      ]
+    },
+    {
+      "name": "zoom mic test in settings is too short to count",
+      "mode": "auto",
+      "steps": [
+        { "look": "zoom_open", "times": 3, "expect": [] },
+        { "look": "zoom_mic_test", "times": 3, "expect": [] },
+        { "look": "zoom_open", "times": 5, "expect": [] },
+        { "look": "zoom_mic_test", "times": 3, "expect": [], "recording": false }
+      ]
+    },
+    {
+      "name": "a meeting window of another exe does not count",
+      "mode": "auto",
+      "steps": [{ "look": "zoom_window_of_other_app", "times": 20, "expect": [], "recording": false }]
+    },
+    {
+      "name": "zoom meeting auto: starts, survives mute and sharing, stops after it ends",
+      "mode": "auto",
+      "steps": [
+        { "look": "zoom_open", "times": 3, "expect": [] },
+        { "look": "zoom_meeting", "times": 1, "expect": [] },
+        { "look": "zoom_meeting", "times": 1, "expect": ["start:Zoom"], "recording": true },
+        { "look": "zoom_meeting", "times": 20, "expect": [] },
+        { "look": "zoom_meeting_muted_quiet", "times": 20, "expect": [] },
+        { "look": "zoom_meeting_sharing", "times": 20, "expect": [] },
+        { "look": "zoom_open", "times": 3, "expect": [], "recording": true },
+        { "look": "zoom_open", "times": 1, "expect": ["stop:m1"], "recording": false },
+        { "look": "zoom_open", "times": 30, "expect": [] }
+      ]
+    },
+    {
+      "name": "zoom meeting with an unknown window class: the microphone starts it",
+      "mode": "auto",
+      "steps": [
+        { "look": "zoom_meeting_unknown_window", "times": 3, "expect": [] },
+        { "look": "zoom_meeting_unknown_window", "times": 1, "expect": ["start:Zoom"] },
+        { "look": "zoom_open", "times": 4, "expect": ["stop:m1"], "recording": false }
+      ]
+    },
+    {
+      "name": "a short absence (window redrawn, stream restarted) does not stop",
+      "mode": "auto",
+      "steps": [
+        { "look": "zoom_meeting", "times": 2, "expect": ["start:Zoom"] },
+        { "look": "zoom_open", "times": 3, "expect": [] },
+        { "look": "zoom_meeting", "times": 5, "expect": [] },
+        { "look": "zoom_open", "times": 3, "expect": [], "recording": true },
+        { "look": "nothing", "times": 1, "expect": ["stop:m1"], "recording": false }
+      ]
+    },
+    {
+      "name": "zoom meeting ask: yes records, the end stops it",
+      "mode": "ask",
+      "steps": [
+        { "look": "zoom_meeting", "times": 2, "expect": ["prompt:Zoom"], "recording": false },
+        { "look": "zoom_meeting", "times": 5, "expect": [] },
+        { "answer": true, "expect": ["prompt:-", "start:Zoom"], "recording": true },
+        { "look": "zoom_meeting", "times": 10, "expect": [] },
+        { "look": "zoom_open", "times": 4, "expect": ["stop:m1"], "recording": false }
+      ]
+    },
+    {
+      "name": "zoom meeting ask: no means not this call, the next call asks again",
+      "mode": "ask",
+      "steps": [
+        { "look": "zoom_meeting", "times": 2, "expect": ["prompt:Zoom"] },
+        { "answer": false, "expect": ["prompt:-"], "recording": false },
+        { "look": "zoom_meeting", "times": 30, "expect": [] },
+        { "look": "zoom_open", "times": 4, "expect": [] },
+        { "look": "zoom_meeting", "times": 2, "expect": ["prompt:Zoom"] }
+      ]
+    },
+    {
+      "name": "ask: a call that ends unanswered takes the prompt down; a late yes does nothing",
+      "mode": "ask",
+      "steps": [
+        { "look": "webex_meeting", "times": 4, "expect": ["prompt:Webex"] },
+        { "look": "webex_open", "times": 4, "expect": ["prompt:-"] },
+        { "answer": true, "expect": ["prompt:-"], "recording": false }
+      ]
+    },
+    {
+      "name": "ask: recording by hand while the prompt is up takes it down and is never stopped",
+      "mode": "ask",
+      "steps": [
+        { "look": "zoom_meeting", "times": 2, "expect": ["prompt:Zoom"] },
+        { "user": "start", "expect": [] },
+        { "look": "zoom_meeting", "times": 1, "expect": ["prompt:-"] },
+        { "look": "zoom_open", "times": 10, "expect": [], "recording": true }
+      ]
+    },
+    {
+      "name": "a recording started by hand is never stopped by a call ending",
+      "mode": "auto",
+      "steps": [
+        { "user": "start", "expect": [] },
+        { "look": "zoom_meeting", "times": 10, "expect": [] },
+        { "look": "zoom_open", "times": 10, "expect": [], "recording": true }
+      ]
+    },
+    {
+      "name": "the user stops our recording: no restart in this call, the next call records",
+      "mode": "auto",
+      "steps": [
+        { "look": "zoom_meeting", "times": 2, "expect": ["start:Zoom"] },
+        { "user": "stop", "expect": [] },
+        { "look": "zoom_meeting", "times": 20, "expect": [], "recording": false },
+        { "look": "zoom_open", "times": 4, "expect": [] },
+        { "look": "zoom_meeting", "times": 2, "expect": ["start:Zoom"] },
+        { "look": "zoom_open", "times": 4, "expect": ["stop:m2"] }
+      ]
+    },
+    {
+      "name": "the user swaps our recording for their own: theirs is not stopped",
+      "mode": "auto",
+      "steps": [
+        { "look": "zoom_meeting", "times": 2, "expect": ["start:Zoom"] },
+        { "user": "stop", "expect": [] },
+        { "user": "start", "expect": [] },
+        { "look": "zoom_meeting", "times": 3, "expect": [] },
+        { "look": "zoom_open", "times": 10, "expect": [], "recording": true }
+      ]
+    },
+    {
+      "name": "webex app meeting auto: the microphone stream starts it, mute keeps it",
+      "mode": "auto",
+      "steps": [
+        { "look": "webex_open", "times": 5, "expect": [] },
+        { "look": "webex_meeting", "times": 3, "expect": [] },
+        { "look": "webex_meeting", "times": 1, "expect": ["start:Webex"] },
+        { "look": "webex_meeting_muted", "times": 30, "expect": [], "recording": true },
+        { "look": "webex_after_meeting_lingering", "times": 4, "expect": ["stop:m1"], "recording": false }
+      ]
+    },
+    {
+      "name": "webex classic meeting (atmgr.exe)",
+      "mode": "auto",
+      "steps": [
+        { "look": "webex_classic_meeting", "times": 4, "expect": ["start:Webex"] },
+        { "look": "nothing", "times": 4, "expect": ["stop:m1"] }
+      ]
+    },
+    {
+      "name": "jabber call ask: ringing does not ask, the answered call does",
+      "mode": "ask",
+      "steps": [
+        { "look": "jabber_ringing", "times": 5, "expect": [] },
+        { "look": "jabber_call", "times": 4, "expect": ["prompt:Jabber"] },
+        { "answer": true, "expect": ["prompt:-", "start:Jabber"] },
+        { "look": "jabber_open", "times": 4, "expect": ["stop:m1"], "recording": false }
+      ]
+    },
+    {
+      "name": "off: nothing happens, whatever the signals",
+      "mode": "off",
+      "steps": [
+        { "look": "zoom_meeting", "times": 20, "expect": [] },
+        { "look": "webex_meeting", "times": 20, "expect": [] },
+        { "look": "jabber_call", "times": 20, "expect": [], "recording": false }
+      ]
+    },
+    {
+      "name": "turning detection off mid-call: the prompt goes, a recording we started keeps running",
+      "mode": "ask",
+      "steps": [
+        { "look": "zoom_meeting", "times": 2, "expect": ["prompt:Zoom"] },
+        { "mode": "off", "look": "zoom_meeting", "times": 1, "expect": ["prompt:-"] },
+        { "mode": "auto", "look": "zoom_meeting", "times": 2, "expect": ["start:Zoom"] },
+        { "mode": "off", "look": "zoom_open", "times": 10, "expect": [], "recording": true }
+      ]
+    }
+  ]
+}

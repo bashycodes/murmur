@@ -39,3 +39,8 @@
 :root.lw-dark .lw-mt-turn.is-others .lw-mt-who { color: var(--fathom-400); }
 .lw-mt-said { margin: 0; white-space: pre-wrap; user-select: text; }
 #mt_status.err { color: var(--destructive); }
+/* Meeting detection (D48): the "When a call starts" setting. */
+.lw-mt-detect { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; border-radius: 12px; outline: 1px solid var(--border); }
+.lw-mt-detect-label { display: flex; flex-direction: column; gap: 2px; font: 550 15px/20px var(--font-sans); color: var(--foreground); }
+.lw-mt-detect-label .fl-help { margin: 0; font-weight: 400; }
+.lw-mt-detect > .fl-select { width: 240px; flex: none; }

@@ -27,6 +27,15 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   list is the same as your dictation engines. This PC's model is loaded
   for a meeting only when this PC is first or the engines above it fail.
   OpenRouter needs the same audio consent as for dictation (D47).
+- **Windows: Notetaker notices Zoom, Webex and Jabber calls.** On the
+  Meetings page, choose what happens when a call starts: **Ask me** (a
+  small "Record this meeting?" box in the corner) or **Start recording
+  automatically** (the recording chip shows on the Flow bar). The
+  recording stops by itself about 12 s after the call ends; a recording
+  you started yourself is never stopped by it. Off until you turn it on;
+  while on it looks every 3 s at which of these apps shows a meeting
+  window or uses the microphone, and does nothing more while none of them
+  runs (D48).
 - **Windows: Notetaker records meetings (Meetings page).** Start and stop
   a recording from the tray, the Meetings page or an optional shortcut
   (Settings › General). Your microphone and what the PC plays are

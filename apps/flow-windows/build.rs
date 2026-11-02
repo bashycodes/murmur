@@ -110,6 +110,7 @@ fn main() {
             "meeting_copy",
             "meeting_delete",
             "meeting_retry",
+            "meeting_prompt_answer",
         ];
         tauri_build::try_build(
             tauri_build::Attributes::new()
