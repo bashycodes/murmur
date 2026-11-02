@@ -50,6 +50,20 @@ env:
   # LunarG Vulkan SDK for the GPU build of the AI cleanup engine (headers,
   # vulkan-1.lib, glslc). Bump with care: it is cached per version.
   VULKAN_VERSION: 1.4.363.0
+  # whisper.cpp/ggml optimisation (docs/findings/2026-11-02-win-cpu-whisper-speed.md).
+  # The `cmake` crate, with the Visual Studio generator, overwrites
+  # CMAKE_<LANG>_FLAGS_RELEASE with cc's flags, which have no /O2
+  # (cmake-rs#240), so through 1.0.0 whisper-rs-sys built ggml at MSVC's
+  # default /Od: CPU whisper (the exe's built-in engine and the plugin's CPU
+  # path) ran 6-18x slower than whisper-cli. whisper-rs-sys forwards every
+  # CMAKE_* env var as a -D define, and a defined one is left alone, so these
+  # restore CMake's own Release flags (/O2 /Ob2 /DNDEBUG); -MD matches Rust's
+  # CRT. Dashes, not slashes: the MSYS bash of the run steps rewrites a
+  # "/MD..." env value into a Windows path when it starts cargo. Only here,
+  # not in .cargo/config.toml: gcc on Linux would reject them.
+  # llama-cpp-sys-2 forwards them too and already adds the same flags itself.
+  CMAKE_C_FLAGS_RELEASE: "-MD -O2 -Ob2 -DNDEBUG"
+  CMAKE_CXX_FLAGS_RELEASE: "-MD -O2 -Ob2 -DNDEBUG"
 
 jobs:
   build:
@@ -92,10 +106,11 @@ jobs:
             apps/flow-windows -> target
             . -> target
           cache-on-failure: true
-          # Bump when apps/flow-windows/.cargo/config.toml's GGML_* env
-          # changes: whisper-rs-sys' build script does not track it, so a
-          # restored cache would keep the old whisper.cpp objects.
-          key: ggml-native-off
+          # Bump when apps/flow-windows/.cargo/config.toml's GGML_* env or
+          # the CMAKE_*_FLAGS_RELEASE env above changes: whisper-rs-sys'
+          # build script does not track them, so a restored cache would keep
+          # the old whisper.cpp objects.
+          key: ggml-native-off-o2
 
       - uses: actions/setup-node@v4
         with:
@@ -207,10 +222,13 @@ jobs:
           cp "$CARGO_TARGET_DIR/release/flow_whisper.dll" "$out/flow_whisper_vulkan.dll"
           cargo test --locked --release -p flow-whisper --features vulkan --lib
           ls -la "$out"/flow_whisper_vulkan.dll
+          apps/flow-windows/tools/ci/check-ggml-opt.sh "$CARGO_TARGET_DIR/release"
 
       - name: Release build (hybrid + Parakeet) and the DLL bundle overlay
         run: |
           cargo build --locked --release --features app,parakeet
+          # The exe's built-in (CPU) whisper.cpp must be optimised too.
+          tools/ci/check-ggml-opt.sh target/release
           # sherpa-onnx-sys copies its DLLs into target/release only when its
           # build script runs; after a rust-cache restore it does not, and the
           # cache drops top-level files. Copy them from the prebuilt dir.
