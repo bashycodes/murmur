@@ -20,10 +20,17 @@ const USAGE: &str =
 [--threads N] [--llm model.gguf [--llm-lib libflow_llm.so]] [--level none|light|medium|high] \
 [--realtime] [--json] file.wav
        flow-cli clean --llm model.gguf [same options, no wav/model] [--category email|work_chat|...] TEXT...
-         (each TEXT runs as one dictation through LLM cleanup + post-processing; prints llm counters)";
+         (each TEXT runs as one dictation through LLM cleanup + post-processing; prints llm counters)
+       flow-cli meeting [transcribe's model/session/lang options] [--router router.json] [--progress] [--json] file.wav
+         (a recording of any length: chunked at pauses, each chunk one dictation on the router's route
+          order, streamed from disk; prints `[hh:mm:ss.mmm --> hh:mm:ss.mmm] text` per segment as it is made;
+          --router needs the `remote` feature for a server route; without it the route is this machine)";
 
 struct Args {
     clean: Vec<String>,
+    /// `meeting` mode: the router config (`None` = this machine only).
+    meeting: Option<Option<flow_router::RouterConfig>>,
+    progress: bool,
     model: ModelConfig,
     session: SessionConfig,
     context: Option<FieldContext>,
@@ -39,11 +46,14 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, String> {
 
 fn parse(argv: &[String]) -> Result<Args, String> {
     let mut it = argv.iter();
-    let clean_mode = match it.next().map(String::as_str) {
-        Some("transcribe") => false,
-        Some("clean") => true,
+    let (clean_mode, meeting_mode) = match it.next().map(String::as_str) {
+        Some("transcribe") => (false, false),
+        Some("clean") => (true, false),
+        Some("meeting") => (false, true),
         _ => return Err(USAGE.into()),
     };
+    let mut router = None;
+    let mut progress = false;
     let mut texts = Vec::new();
     let mut level = None;
     let mut category = None;
@@ -109,6 +119,8 @@ fn parse(argv: &[String]) -> Result<Args, String> {
                         .map_err(|e| format!("--category: {e}"))?,
                 )
             }
+            "--router" if meeting_mode => router = Some(read_json(&val()?)?),
+            "--progress" if meeting_mode => progress = true,
             "--json" => json = true,
             "--realtime" => realtime = true,
             s if s.starts_with("--") => return Err(format!("unknown option {s}\n{USAGE}")),
@@ -145,6 +157,8 @@ fn parse(argv: &[String]) -> Result<Args, String> {
         }
         return Ok(Args {
             clean: texts,
+            meeting: None,
+            progress,
             model,
             session,
             context,
@@ -159,6 +173,8 @@ fn parse(argv: &[String]) -> Result<Args, String> {
     }
     Ok(Args {
         clean: Vec::new(),
+        meeting: meeting_mode.then_some(router),
+        progress,
         model,
         session,
         context,
@@ -228,9 +244,104 @@ fn run_clean(_a: Args) -> Result<String, String> {
     Err("flow-cli was built without the `llm` feature".into())
 }
 
-fn run(a: Args) -> Result<String, String> {
+/// `meeting`: stream the WAV through `MeetingTranscriber` over a router.
+fn run_meeting(a: Args, router_cfg: Option<flow_router::RouterConfig>) -> Result<String, String> {
+    use flow_router::meeting::{transcribe_stream, MeetingParams, MeetingTranscriber};
+    let t = Instant::now();
+    let core = FlowCore::load_models(&a.model).map_err(|e| e.to_string())?;
+    let load_ms = t.elapsed().as_millis();
+    let local: Arc<dyn flow_router::Backend> = Arc::new(core);
+    let router = Arc::new(make_router(router_cfg, local)?);
+    let blocks = audio::WavBlocks::open(&a.wav, 16_000)?;
+    let total = blocks.total_samples();
+    let mut job = MeetingTranscriber::new(router, &a.session, MeetingParams::default());
+    let mut read_err = None;
+    let source = blocks.map_while(|b| b.map_err(|e| read_err = Some(e)).ok());
+    let t = Instant::now();
+    let json = a.json;
+    let mut last_pct = -1i64;
+    let tr = transcribe_stream(
+        &mut job,
+        source,
+        Some(total),
+        |s| {
+            if json {
+                println!("{}", serde_json::to_string(s).unwrap());
+            } else {
+                let text = s
+                    .error
+                    .as_deref()
+                    .map_or(s.text.clone(), |e| format!("[error: {e}]"));
+                println!(
+                    "[{} --> {}] {text}",
+                    flow_router::meeting::clock(s.start_ms),
+                    flow_router::meeting::clock(s.end_ms)
+                );
+            }
+        },
+        |p| {
+            let pct = p.percent().unwrap_or(0.0) as i64;
+            if a.progress && pct != last_pct {
+                last_pct = pct;
+                eprintln!("progress {pct}% ({} segments)", p.segments);
+            }
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    if let Some(e) = read_err {
+        return Err(e);
+    }
+    let wall = t.elapsed().as_secs_f64();
+    let audio_s = tr.duration_ms as f64 / 1000.0;
+    eprintln!(
+        "load {load_ms} ms | audio {audio_s:.1} s | wall {wall:.1} s | rtf {:.3} | {} segments",
+        wall / audio_s.max(0.001),
+        tr.segments.len()
+    );
+    Ok(String::new())
+}
+
+#[cfg(feature = "remote")]
+fn make_router(
+    cfg: Option<flow_router::RouterConfig>,
+    local: Arc<dyn flow_router::Backend>,
+) -> Result<flow_router::Router, String> {
+    let cfg = cfg.unwrap_or_else(local_only);
+    cfg.validate().map_err(|e| e.to_string())?;
+    Ok(flow_router::Router::new(
+        cfg,
+        Some(local),
+        Some(flow_remote::factory("flow-cli")),
+    ))
+}
+
+#[cfg(not(feature = "remote"))]
+fn make_router(
+    cfg: Option<flow_router::RouterConfig>,
+    local: Arc<dyn flow_router::Backend>,
+) -> Result<flow_router::Router, String> {
+    if cfg.as_ref().is_some_and(|c| c.server.is_configured()) {
+        return Err("--router with a server needs flow-cli built with the `remote` feature".into());
+    }
+    let cfg = cfg.unwrap_or_else(local_only);
+    cfg.validate().map_err(|e| e.to_string())?;
+    Ok(flow_router::Router::new(cfg, Some(local), None))
+}
+
+fn local_only() -> flow_router::RouterConfig {
+    flow_router::RouterConfig {
+        allow_server: false,
+        prefer: flow_router::Prefer::Client,
+        ..Default::default()
+    }
+}
+
+fn run(mut a: Args) -> Result<String, String> {
     if !a.clean.is_empty() {
         return run_clean(a);
+    }
+    if let Some(cfg) = a.meeting.take() {
+        return run_meeting(a, cfg);
     }
     let pcm = audio::read_wav_16k_mono(&a.wav)?;
     let t = Instant::now();
@@ -266,7 +377,9 @@ fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     match parse(&argv).and_then(run) {
         Ok(out) => {
-            println!("{out}");
+            if !out.is_empty() {
+                println!("{out}");
+            }
             ExitCode::SUCCESS
         }
         Err(e) => {

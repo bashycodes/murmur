@@ -9,6 +9,7 @@
 pub mod cloud;
 mod gate;
 mod local;
+pub mod meeting;
 pub mod migrate;
 pub mod net;
 mod router;
