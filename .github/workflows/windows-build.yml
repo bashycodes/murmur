@@ -22,7 +22,7 @@ name: windows-build
 on:
   workflow_dispatch:
   push:
-    branches: [integration, win-final]
+    branches: [integration, win-final, "feat/**"]
     # Path filters are not evaluated for tag pushes: every release tag builds.
     tags: ["v*"]
     paths:
@@ -94,8 +94,8 @@ jobs:
 
       - name: Rust toolchain
         run: |
-          rustup toolchain install stable --profile minimal --component clippy
-          rustup default stable
+          # The version, profile and clippy come from rust-toolchain.toml.
+          rustup toolchain install
           rustc --version
           cmake --version
           "$LIBCLANG_PATH/clang.exe" --version || true

@@ -1,0 +1,8 @@
+# One Rust for this machine, CI and the server image (deploy/docker: rust:1.95).
+# CI used to take whatever `stable` was: a newer Clippy lint on the runner
+# (1.99) failed the 0.11.0 Windows build that passed here on 1.95. Bump this,
+# the Dockerfile's RUST_IMAGE and the machine's toolchain together.
+[toolchain]
+channel = "1.95.0"
+components = ["clippy", "rustfmt"]
+profile = "minimal"
