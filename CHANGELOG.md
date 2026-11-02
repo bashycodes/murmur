@@ -100,6 +100,11 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- Windows: CI builds no longer call themselves "-dirty" (1.0.0's installers
+  reported e.g. `a24090a-dirty`). The installer step's `tauri build`
+  rewrote `apps/flow-windows/Cargo.toml` (it adds `features = []` to a
+  `tauri-build` entry without one) just before building the shipped exe;
+  the entry now has it. CI also checks the tree after the installers.
 - Windows: with meeting detection off, the app now does no detection work
   at all. Before, it still ran one empty look at startup (a
   `meeting-detect: signals: no meeting app running` line in the debug log)
