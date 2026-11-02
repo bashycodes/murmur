@@ -7,5 +7,12 @@
 # BMI2 baseline (any x86-64 CPU since 2013).
 # Cargo does not rebuild whisper-rs-sys when this changes: run
 # `cargo clean -p whisper-rs-sys` once (CI bumps its rust-cache key).
+#
+# A release build on Windows (MSVC) also needs
+#   CMAKE_C_FLAGS_RELEASE=CMAKE_CXX_FLAGS_RELEASE="-MD -O2 -Ob2 -DNDEBUG"
+# in the environment, or ggml compiles at /Od and CPU whisper is 6-18x
+# slower (the `cmake` crate drops CMake's Release flags). CI sets them in
+# windows-build.yml; they are not set here because this file also applies
+# to Linux builds, where gcc rejects them.
 [env]
 GGML_NATIVE = "OFF"
