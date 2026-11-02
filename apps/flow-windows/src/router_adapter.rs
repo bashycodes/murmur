@@ -826,6 +826,33 @@ pub struct MeetingLocal {
     pub warm: bool,
 }
 
+/// How a meeting job's engine is built from the saved settings (D47).
+#[derive(Debug, Clone)]
+pub struct MeetingPlan {
+    /// The meeting order as a router config ([`DevSettings::for_meetings`]).
+    pub cfg: RouterConfig,
+    /// Meetings may use this PC: the job gets its own on-device slot.
+    pub local: bool,
+    /// This PC is the first route meetings try: load its model before the
+    /// first chunk. Otherwise it loads only when the earlier routes fail
+    /// (D45: a server-routed meeting loads no second model).
+    pub warm: bool,
+}
+
+/// D47: the meeting engine's plan from the saved settings: the meeting
+/// order (not dictation's). Err when no route is on for meetings.
+pub fn meeting_plan(dev: &DevSettings, caps: BuildCaps) -> Result<MeetingPlan, String> {
+    let usable = dev.meeting_routes_usable(caps);
+    if usable.is_empty() {
+        return Err(crate::dev_settings::NO_MEETING_ROUTE_MSG.into());
+    }
+    Ok(MeetingPlan {
+        cfg: router_config(&dev.for_meetings(), caps)?,
+        local: usable.contains(&crate::dev_settings::Route::Client),
+        warm: usable[0] == crate::dev_settings::Route::Client,
+    })
+}
+
 /// What a meeting transcription runs on (D45): **its own** router and
 /// on-device slot, built for one job and dropped after it. The dictation
 /// router holds one session at a time, so a meeting chunk on it would
@@ -835,7 +862,7 @@ pub struct MeetingEngine {
 }
 
 impl MeetingEngine {
-    /// `cfg` = the user's route order (same as dictation), `local` = the
+    /// `cfg` = the meeting route order ([`meeting_plan`]), `local` = the
     /// on-device model when this build has one, `remote` =
     /// [`remote_factory`], `keys` = where the OpenRouter key is.
     pub fn new(
@@ -1364,6 +1391,113 @@ mod tests {
         let cfg = flow_core::config::SessionConfig::default();
         let r = meeting.transcribe_chunk(&[3000; 32_000], &cfg);
         assert_eq!(r.final_text.trim(), "local meeting", "{r:?}");
+    }
+
+    fn meeting_order(d: &mut DevSettings, order: &[(Route, bool)]) {
+        let list: Vec<crate::dev_settings::MeetingRoute> = order
+            .iter()
+            .map(|(route, enabled)| crate::dev_settings::MeetingRoute {
+                route: *route,
+                enabled: *enabled,
+            })
+            .collect();
+        d.set_meeting_order(&list).unwrap();
+    }
+
+    fn meeting_engine(plan: MeetingPlan, server: &Arc<FakeServer>) -> Arc<MeetingEngine> {
+        let s2 = server.clone();
+        let factory: RemoteFactory = Box::new(move |_cfg: &ServerConfig| {
+            Arc::new(FakeRemote(s2.clone())) as Arc<dyn Backend>
+        });
+        MeetingEngine::new(
+            plan.cfg,
+            plan.local.then(|| MeetingLocal {
+                spec: ModelSpec::Mock {
+                    text: "local meeting".into(),
+                },
+                lang: None,
+                warm: plan.warm,
+            }),
+            Some(factory),
+            None,
+        )
+    }
+
+    /// D47: server first for meetings, this PC second. The server answers
+    /// while it is up and no second model loads; when it is unreachable
+    /// the chunk falls back to this PC, loaded on demand.
+    #[test]
+    fn a_meeting_follows_its_order_and_falls_back() {
+        use flow_router::meeting::ChunkTranscriber;
+        let mut d = dev(true, true);
+        d.route_order = vec![Route::Client, Route::Server];
+        meeting_order(&mut d, &[(Route::Server, true), (Route::Client, true)]);
+        let plan = meeting_plan(&d, BOTH).unwrap();
+        assert!(plan.local && !plan.warm, "{plan:?}");
+        let cfg = flow_core::config::SessionConfig {
+            raw_mode: true,
+            ..flow_core::config::SessionConfig::default()
+        };
+
+        let up = FakeServer::new("from the server");
+        let m = meeting_engine(plan.clone(), &up);
+        let r = m.transcribe_chunk(&[3000; 32_000], &cfg);
+        assert_eq!(r.final_text.trim(), "from the server", "{r:?}");
+        assert!(
+            !m.adapter().local().unwrap().is_ready(),
+            "no second model while the server answers"
+        );
+
+        let down = FakeServer::new("from the server");
+        down.up.store(false, Ordering::SeqCst);
+        let m = meeting_engine(plan, &down);
+        let r = m.transcribe_chunk(&[3000; 32_000], &cfg);
+        assert_eq!(r.final_text.trim(), "local meeting", "{r:?}");
+        assert_eq!(r.route.unwrap().fallback.as_deref(), Some("connect_failed"));
+    }
+
+    /// D47: this PC first for meetings while dictation prefers the server:
+    /// meetings never reach the server, dictation still does.
+    #[test]
+    fn meeting_order_does_not_change_dictation() {
+        use flow_router::meeting::ChunkTranscriber;
+        let mut d = dev(true, true);
+        meeting_order(&mut d, &[(Route::Client, true), (Route::Server, false)]);
+        let plan = meeting_plan(&d, BOTH).unwrap();
+        assert!(plan.local && plan.warm, "{plan:?}");
+        let server = FakeServer::new("from the server");
+        let m = meeting_engine(plan, &server);
+        let r = m.transcribe_chunk(
+            &[3000; 32_000],
+            &flow_core::config::SessionConfig::default(),
+        );
+        assert_eq!(r.final_text.trim(), "local meeting", "{r:?}");
+        assert_eq!(
+            server.starts.load(Ordering::SeqCst),
+            0,
+            "server is off for meetings"
+        );
+        let rig = rig(&d);
+        let out = dictate(&rig.router).unwrap();
+        assert_eq!(out.final_text.trim(), "from the server", "{out:?}");
+    }
+
+    /// D47: no route on for meetings = the job fails with a message
+    /// instead of three failed chunks; a server-only meeting gets no slot.
+    #[test]
+    fn meeting_plan_needs_a_route() {
+        let mut d = dev(true, true);
+        meeting_order(&mut d, &[(Route::Server, false), (Route::Client, false)]);
+        assert_eq!(
+            meeting_plan(&d, BOTH).unwrap_err(),
+            crate::dev_settings::NO_MEETING_ROUTE_MSG
+        );
+        meeting_order(&mut d, &[(Route::Server, true), (Route::Client, false)]);
+        let plan = meeting_plan(&d, BOTH).unwrap();
+        assert!(!plan.local && !plan.warm);
+        // Unedited: dictation's order (server first, this PC on demand).
+        let plan = meeting_plan(&dev(true, true), BOTH).unwrap();
+        assert!(plan.local && !plan.warm);
     }
 
     #[test]

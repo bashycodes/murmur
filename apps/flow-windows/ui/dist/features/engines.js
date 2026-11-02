@@ -11,6 +11,7 @@ import { cloudHint } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { router } from "../lib/router.js";
+import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
 import { views } from "../lib/views.js";
 /** Engine switches that save at once (checkbox id = `dev_<field>`). */
 const DEV_SWITCHES = ["allow_server", "allow_client", "keep_local_warm", "show_engine_badge", "decode_while_speaking"];
@@ -173,37 +174,104 @@ function describe(r) {
     }
 }
 function renderRoutes() {
-    const list = $("dev_routes");
-    const shown = devOrder.filter(available);
-    for (const r of ["server", "client", "cloud"])
-        $(`eng_row_${r}`).hidden = !shown.includes(r);
-    shown.forEach((r, i) => {
-        const row = $(`eng_row_${r}`);
-        list.append(row); // DOM order = try order
-        row.classList.toggle("is-off", !engineOn(r));
-        row.querySelector(".lw-rank").textContent = String(i + 1);
-        row.querySelector("[data-move=up]").disabled = i === 0;
-        row.querySelector("[data-move=down]").disabled = i === shown.length - 1;
-        row.querySelector(".lw-move").hidden = shown.length < 2;
-        describe(r);
-    });
+    const shown = rankRows({
+        list: $("dev_routes"),
+        row: (r) => $(`eng_row_${r}`),
+        shown: available,
+        on: engineOn,
+    }, devOrder);
+    shown.forEach(describe);
     // Builds with one engine and no server or cloud: nothing to choose.
     $("eng_group").hidden = shown.length === 0 || (shown.length === 1 && !views.dev?.visible);
     $("dev_pin_row").hidden = !$("dev_tls").checked;
     // Dictionary words while listening = Parakeet's beam search with hotwords.
     $("dict_words_row").classList.toggle("lw-gone", $("asr_engine").value !== "parakeet");
+    renderMeetings();
 }
 function move(r, dir) {
-    const shown = devOrder.filter(available);
-    const i = shown.indexOf(r);
-    const other = shown[i + dir];
-    if (!other)
-        return;
-    const order = [...devOrder];
-    const a = order.indexOf(r);
-    const b = order.indexOf(other);
-    [order[a], order[b]] = [order[b], order[a]];
-    void saveSwitch({ route_order: order });
+    const order = moveShown(devOrder, (x) => x, available, r, dir);
+    if (order)
+        void saveSwitch({ route_order: order });
+}
+// ------------------------------------------- meeting order (D47)
+/** The saved meeting order; an older backend without it = dictation's. */
+function meetingRoutes() {
+    return (views.dev?.meetings?.routes ?? devOrder.map((route) => ({ route, enabled: route === "cloud" ? !!views.or?.stt.allow : engineOn(route) })));
+}
+function meetingOn(r) {
+    return meetingRoutes().some((e) => e.route === r && e.enabled);
+}
+function setMeetingBadge(r, text, kind) {
+    const b = $(`meet_badge_${r}`);
+    b.textContent = text;
+    b.className = `fl-badge fl-badge-${kind}`;
+}
+/** One line per meeting engine: what it is and whether it would answer. */
+function describeMeeting(r) {
+    const on = meetingOn(r);
+    const d = $(`meet_desc_${r}`);
+    if (r === "server") {
+        const f = views.dev?.form;
+        const h = views.dev?.route.health;
+        if (f?.host)
+            d.textContent = `${f.host}. Uses the server's model.`;
+        else
+            d.replaceChildren("Not set up yet. ", goLink("settings-server", "Set up →"));
+        if (!on)
+            setMeetingBadge(r, "Off", "light");
+        else if (!f?.host)
+            setMeetingBadge(r, "Not set up", "warning");
+        else if (!h)
+            setMeetingBadge(r, "On", "light");
+        else
+            setMeetingBadge(r, h.ok ? "Connected" : "Unreachable", h.ok ? "success" : "destructive");
+    }
+    else if (r === "client") {
+        d.textContent = "Uses its own copy of the model while a meeting is transcribed. Private and works offline.";
+        setMeetingBadge(r, on ? "On" : "Off", on ? "success" : "light");
+    }
+    else {
+        d.textContent = "Sends the meeting's audio to openrouter.ai.";
+        setMeetingBadge(r, on ? "On" : "Off", on ? "success" : "light");
+    }
+}
+function renderMeetings() {
+    const routes = meetingRoutes();
+    for (const r of ["server", "client", "cloud"])
+        $(`meet_on_${r}`).checked = meetingOn(r);
+    const shown = rankRows({
+        list: $("meet_routes"),
+        row: (r) => $(`meet_row_${r}`),
+        shown: available,
+        on: meetingOn,
+        before: $("meet_routes").querySelector(".lw-foot-row"),
+    }, routes.map((e) => e.route));
+    shown.forEach(describeMeeting);
+    $("meet_group").hidden = !views.dev?.meetings || shown.length === 0 || (shown.length === 1 && !views.dev?.visible);
+    $("meet_follow").textContent = views.dev?.meetings?.follows_dictation
+        ? "Same as the engines above until you change it here."
+        : "";
+}
+/** Save the meeting order and switches; the answer is the new DevView. */
+async function saveMeetings(routes) {
+    try {
+        views.setDev(await invoke("dev_meeting_routes_set", { routes }));
+        $("meet_order_msg").textContent = "";
+        setStatus("status", "Saved — applies to the next meeting", true);
+    }
+    catch (e) {
+        setStatus("meet_order_msg", String(e), false);
+        renderMeetings(); // back to what is saved
+    }
+}
+function moveMeeting(r, dir) {
+    const routes = moveShown(meetingRoutes(), (e) => e.route, available, r, dir);
+    if (routes)
+        void saveMeetings(routes);
+}
+function meetingToggled(r) {
+    const on = $(`meet_on_${r}`).checked;
+    void saveMeetings(meetingRoutes().map((e) => (e.route === r ? { ...e, enabled: on } : { ...e })));
 }
 function showCheck(c) {
     for (const s of document.querySelectorAll("[data-err]"))
@@ -503,10 +571,10 @@ export const engines = {
             if (views.dev)
                 renderRoutes();
         });
-        for (const b of document.querySelectorAll("#dev_routes [data-move]")) {
-            const r = b.closest("[data-route]").dataset.route;
-            b.addEventListener("click", () => move(r, b.dataset.move === "up" ? -1 : 1));
-        }
+        onMove($("dev_routes"), "route", move);
+        onMove($("meet_routes"), "meeting", moveMeeting);
+        for (const r of ["server", "client", "cloud"])
+            $(`meet_on_${r}`).addEventListener("change", () => meetingToggled(r));
         for (const i of document.querySelectorAll("[data-dev-field]")) {
             const edited = () => {
                 serverDirty = true;

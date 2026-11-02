@@ -17,8 +17,12 @@ The fixed text rules used only when AI cleanup cannot run or its answer is rejec
 _Avoid_: deterministic layer, spoken cleanup
 
 **Route order**:
-The ordered list of speech routes (own server, this device, cloud) a dictation tries; when one fails, the next takes over. A meeting's chunks follow the same order.
+The ordered list of speech routes (own server, this device, cloud) a dictation tries; when one fails, the next takes over. A meeting's chunks follow the meeting order.
 _Avoid_: fallback chain, prefer (the old two-route setting)
+
+**Meeting order**:
+On Windows, the route order meeting transcription uses (Settings › Speech to text › Meetings), with its own on/off switches; the same as the dictation route order until the user changes it.
+_Avoid_: meeting routes, meeting fallback chain
 
 **Meeting**:
 A recording of any length (a meeting, a phone call) transcribed into timestamped segments, rather than typed into a text field. It is cut at pauses into chunks of at most 30 s, and each chunk is transcribed as one ordinary dictation.

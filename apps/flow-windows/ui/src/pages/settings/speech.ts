@@ -1,6 +1,7 @@
 // Settings → Speech to text (design: SettingsSpeech.dc.html): the engine
-// order (features/engines.ts), the model on this PC (features/general.ts)
-// and OpenRouter speech to text (features/openrouter.ts). Markup only.
+// order and the meeting order (D47) (features/engines.ts), the model on
+// this PC (features/general.ts) and OpenRouter speech to text
+// (features/openrouter.ts). Markup only.
 
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
@@ -50,6 +51,16 @@ ${heading(
     ${engineRow("eng", "route", "cloud", ICON.cloud, "OpenRouter", toggle("or_stt_allow", "Use OpenRouter for speech"))}
   </div>
   <ul id="dev_warnings" class="lw-warnings"></ul>
+</section>
+
+<section class="lw-section" id="meet_group">
+  <h3 class="fl-group-title">Meetings</h3>
+  <div class="fl-group" id="meet_routes">
+    ${engineRow("meet", "meeting", "client", ICON.chip, "This PC", toggle("meet_on_client", "Transcribe meetings on this PC"))}
+    ${engineRow("meet", "meeting", "server", ICON.server, "Your server", toggle("meet_on_server", "Transcribe meetings on your server"))}
+    ${engineRow("meet", "meeting", "cloud", ICON.cloud, "OpenRouter", toggle("meet_on_cloud", "Transcribe meetings with OpenRouter"))}
+    <div class="fl-row lw-foot-row"><div class="fl-row-desc">Recorded meetings are transcribed after they end by the first engine that is on and answers; if it fails, the next one picks up the same part of the meeting. Dictation always goes first. <span id="meet_follow"></span> <span id="meet_order_msg" class="hint"></span></div></div>
+  </div>
 </section>
 
 ${group(
