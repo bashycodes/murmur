@@ -18,6 +18,11 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Windows: a meeting shows where it was transcribed.** An open meeting's
+  details line now ends with "Transcribed on: This PC" (or Your server /
+  OpenRouter; with several, how many parts each one did), stored with the
+  meeting. The debug log has one line per transcribed part with the route
+  and engine (never the text) (D47).
 - **Windows: choose where meetings are transcribed.** Settings › Speech to
   text has a third ordered list, **Meetings**, built like Engines and the
   AI cleanup order: this PC, your server and OpenRouter, each moved up or

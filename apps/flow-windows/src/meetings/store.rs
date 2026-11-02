@@ -63,6 +63,12 @@ pub struct Meeting {
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub system_silent: bool,
     pub turns: Vec<Turn>,
+    /// Which route transcribed the meeting's chunks, as chunk counts by
+    /// route (`local` = this PC, `remote` = the user's server, `cloud` =
+    /// OpenRouter; `none` = a chunk no route served). Set by the last
+    /// finished transcription job; empty before one.
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub routes: std::collections::BTreeMap<String, u32>,
 }
 
 /// A row of the Meetings list.
