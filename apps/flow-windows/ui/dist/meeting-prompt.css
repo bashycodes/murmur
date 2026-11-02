@@ -1,0 +1,34 @@
+/* "Record this meeting?" (D48): the whole 360x132 window is the card. */
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--card);
+}
+.mp {
+  box-sizing: border-box;
+  height: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--foreground);
+}
+.mp-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.mp-body {
+  margin: 0;
+  font-size: 13px;
+  color: var(--foreground-tertiary);
+  flex: 1;
+}
+.mp-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

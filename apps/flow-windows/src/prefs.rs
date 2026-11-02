@@ -230,6 +230,9 @@ pub struct Prefs {
     pub learn_window_ms: u64,
     /// Re-read interval while watching.
     pub learn_poll_ms: u64,
+    /// Notetaker meeting detection (D48): off (default), ask before
+    /// recording a Zoom / Webex / Jabber call, or record it automatically.
+    pub meeting_detection: crate::meetings::detect::Mode,
     /// Developer settings: engine routing (local / self-hosted server).
     pub developer: crate::dev_settings::DevSettings,
     /// Transforms (docs/proposals/transforms.md): opt-in, auto-apply and
@@ -285,6 +288,7 @@ impl Default for Prefs {
             learn_from_edits: true,
             learn_window_ms: 45_000,
             learn_poll_ms: 1_000,
+            meeting_detection: crate::meetings::detect::Mode::Off,
             developer: crate::dev_settings::DevSettings::default(),
             transforms: crate::transforms::TransformPrefs::default(),
             prefs_rev: PREFS_REV,
@@ -649,6 +653,22 @@ mod tests {
         assert_eq!(dark.theme, Theme::Dark);
         let j = serde_json::to_value(&dark).unwrap();
         assert_eq!(j["theme"], "dark");
+    }
+
+    #[test]
+    fn meeting_detection_is_off_until_turned_on() {
+        use crate::meetings::detect::Mode;
+        assert_eq!(Prefs::default().meeting_detection, Mode::Off);
+        let (old, _) = load_str("detect-old", r#"{"enable_sounds": true}"#);
+        assert_eq!(
+            old.meeting_detection,
+            Mode::Off,
+            "files from before the pref"
+        );
+        let (ask, _) = load_str("detect-ask", r#"{"meeting_detection": "ask"}"#);
+        assert_eq!(ask.meeting_detection, Mode::Ask);
+        let j = serde_json::to_value(&ask).unwrap();
+        assert_eq!(j["meeting_detection"], "ask");
     }
 
     #[test]

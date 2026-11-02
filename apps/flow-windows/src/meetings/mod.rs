@@ -17,6 +17,7 @@
 //! would cancel a dictation at every chunk; with its own engine, dictation
 //! keeps working while a meeting records or transcribes.
 
+pub mod detect;
 pub mod record;
 pub mod store;
 pub mod transcript;

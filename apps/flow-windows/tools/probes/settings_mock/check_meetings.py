@@ -5,7 +5,8 @@ Probe (Playwright + its bundled Chromium):
     python3 tools/probes/settings_mock/check_meetings.py [port]
 Checks the list (date, duration, app, failed status), opening a transcript
 with Me / Others turns, copy, delete (after the confirm dialog), start and
-stop from the page with the live indicator, and the meeting shortcut row in
+stop from the page with the live indicator, the meeting detection setting
+(D48: off by default, saved to prefs), and the meeting shortcut row in
 Settings -> General. Exits non-zero on the first failed check. Optional
 second argument: a path for a screenshot of the open transcript.
 """
@@ -81,6 +82,13 @@ with sync_playwright() as p:
     pg.wait_for_timeout(200)
     check(pg.inner_text("#mt_toggle") == "Start recording", "stopped")
     check(rows.count() == 2 and "Waiting to be transcribed" in rows.nth(0).inner_text(), "new meeting queued")
+
+    # Meeting detection (D48): off by default, saved to prefs.
+    check(pg.input_value("#mt_detect") == "off", "detection off by default")
+    pg.select_option("#mt_detect", "ask")
+    pg.wait_for_timeout(200)
+    saved = pg.evaluate("window.__TAURI__.core.invoke('get_prefs').then(p => p.meeting_detection)")
+    check(saved == "ask", f"detection saved: {saved!r}")
 
     # The shortcut row.
     pg.evaluate("window.__goPage('settings-general')")
