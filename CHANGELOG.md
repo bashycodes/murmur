@@ -143,6 +143,18 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- Windows: the AI cleanup order (D36) now applies to dictations
+  transcribed on this PC. With this PC's AI model off, cleanup went no
+  further than this PC, so your server and OpenRouter never cleaned a local
+  dictation: the model slot ignored the router's cleanup plan. It now keeps
+  the plan and puts it back on every model it loads (speech model change,
+  on-demand load, AI model on or off). The speech route is unchanged.
+  What you will notice: with server cleanup on, this PC's dictations are
+  now cleaned by the server even when server speech is off (one server
+  connection per dictation, text only). With this PC's AI model on and
+  first, a dictation transcribed on the server is now cleaned on this PC
+  (the server skips its LLM), as the order says.
+
 - Windows: a meeting recording started while the previous meeting's
   transcription was still tidying up old audio could lose its WAVs (they
   were taken for orphans, because the new meeting file appeared after the
