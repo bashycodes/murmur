@@ -106,6 +106,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
+- **Keys: "Last seen" is now "Last used" and "Last connected".** Last used
+  counts only dictations and model downloads; last connected is any
+  request, so opening Users & keys or a connection check no longer looks
+  like use. Shown in the Windows Users & keys page and `flow-server keys
+  list`. An older `key-usage.json` loads as is: its last seen becomes last
+  connected, and last used shows "unknown" (app) / "-" (CLI) until the key
+  is next used. The admin API still sends `last_seen` for older apps (D50).
 - **AI cleanup always runs on your server or OpenRouter.** The "already
   clean" skip ("AI not needed") now applies only when the phone's or PC's
   own small model would clean first, since that model damages tidy text.
