@@ -5,9 +5,24 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-/** D41: the Android catalogue ids and pins are the Windows ones (apps/flow-windows/src/model_download.rs). */
+/**
+ * D41: the Android catalogue ids and pins are the Windows ones (apps/flow-windows/src/model_download.rs),
+ * and its ids and tag engines are in the shared list (crates/flow-protocol/src/library.rs `CATALOGUE`, `ENGINES`).
+ */
 class ServerCatalogTest {
     private val windows: String = File(requireNotNull(System.getProperty("flow.windowsCatalog")) { "flow.windowsCatalog not set by build.gradle.kts" }).readText()
+    private val protocol: String = File(requireNotNull(System.getProperty("flow.protocolLibrary")) { "flow.protocolLibrary not set by build.gradle.kts" }).readText()
+
+    @Test fun everyIdIsInTheSharedList() {
+        val shared = Regex("""cat\(\s*"([^"]+)"""").findAll(protocol).map { it.groupValues[1] }.toSet()
+        assertTrue("no ids read from flow-protocol", shared.size >= ServerCatalog.ALL.size)
+        for (e in ServerCatalog.ALL) assertTrue("${e.id} is not in flow_protocol::library::CATALOGUE", e.id in shared)
+    }
+
+    @Test fun enginesAreTheSharedList() {
+        val line = protocol.lines().first { it.startsWith("pub const ENGINES") }
+        assertEquals(Regex(""""([a-z_]+)"""").findAll(line).map { it.groupValues[1] }.toList(), ServerSlots.ENGINES)
+    }
 
     @Test fun everyPinIsTheWindowsPin() {
         for (e in ServerCatalog.ALL) {

@@ -161,8 +161,9 @@ val jniStubDir = providers.gradleProperty("flow.jniStubDir").orNull
 val jniLibDir = providers.gradleProperty("flow.jniLibDir").orNull
 tasks.withType<Test>().configureEach {
     systemProperty("flow.versionFile", flowVersionFile.absolutePath)
-    // ServerCatalogTest: the Android pins equal the Windows catalogue's (one set of hashes).
+    // ServerCatalogTest: the Android pins equal the Windows catalogue's (one set of hashes), the ids and engines flow-protocol's.
     systemProperty("flow.windowsCatalog", rootProject.file("../flow-windows/src/model_download.rs").absolutePath)
+    systemProperty("flow.protocolLibrary", rootProject.file("../../crates/flow-protocol/src/library.rs").absolutePath)
     if (jniStubDir != null) {
         systemProperty("java.library.path", jniStubDir)
         systemProperty("flow.jniStub", "1")
