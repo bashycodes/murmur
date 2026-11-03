@@ -132,8 +132,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   transcription was still tidying up old audio could lose its WAVs (they
   were taken for orphans, because the new meeting file appeared after the
   clean-up listed the meetings). A WAV is now an orphan only if its meeting
-  file is missing when the clean-up looks at it. This was the cause of the
-  flaky `only_the_last_three_meetings_keep_audio` test.
+  file is missing when the clean-up looks at it, and a transcription is
+  reported finished only after its clean-up.
 - **`tools/phone/call-decode.sh` works on Android 17.** `exec-in`/`exec-out`
   skip the device shell there, so the push silently did nothing (exit 0) and
   the hash check failed with "got sha256sum:". The file now goes through
