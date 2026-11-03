@@ -25,7 +25,7 @@ import kotlin.concurrent.thread
 /**
  * Settings → Your server → Users & keys (D39; Windows: pages/settings/keys.ts). Reached from the
  * Server page's USERS & KEYS row, which only appears when this app's saved token is an admin key.
- *   KEYS     every key with its usage (client, last seen, dictations, audio, model downloads);
+ *   KEYS     every key with its usage (client, last used, last connected, dictations, audio, model downloads);
  *            tap / "Revoke" → confirm (warns when it is this app's own key). The last admin key
  *            can't be revoked.
  *   NEW KEY  name + admin switch → Create key → the secret, shown once in a dialog with Copy
