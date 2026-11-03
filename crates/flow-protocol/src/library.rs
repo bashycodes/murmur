@@ -42,6 +42,66 @@ impl ModelKind {
     }
 }
 
+/// The engines the apps load, as a tag's `engine` names them: whisper.cpp
+/// ggml, sherpa-onnx NeMo transducer, sherpa-onnx streaming transducer,
+/// llama.cpp GGUF. A tag may name another engine; no app can use it yet.
+pub const ENGINES: &[&str] = &["whisper", "parakeet", "sherpa_online", "gguf"];
+
+/// [`ENGINES`] for a message: `"whisper", "parakeet", "sherpa_online" or "gguf"`.
+pub fn engines_hint() -> String {
+    let q: Vec<String> = ENGINES.iter().map(|e| format!("\"{e}\"")).collect();
+    match q.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} or {last}", rest.join(", ")),
+        _ => q.concat(),
+    }
+}
+
+/// A model of the apps' download catalogue: the ids a tag's `catalogue_id`
+/// may name. The pins live with each app's catalogue
+/// (`apps/flow-windows/src/model_download.rs` `CATALOG`, Android
+/// `ServerCatalog`); tests keep both in step with this list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CatalogueModel {
+    pub id: &'static str,
+    pub kind: ModelKind,
+    /// One of [`ENGINES`].
+    pub engine: &'static str,
+}
+
+const fn cat(id: &'static str, kind: ModelKind, engine: &'static str) -> CatalogueModel {
+    CatalogueModel { id, kind, engine }
+}
+
+pub const CATALOGUE: &[CatalogueModel] = &[
+    cat("parakeet-tdt-0.6b-v2-int8", ModelKind::Stt, "parakeet"),
+    cat("parakeet-unified-en-0.6b-int8", ModelKind::Stt, "parakeet"),
+    cat("whisper-base", ModelKind::Stt, "whisper"),
+    cat("whisper-small-q5_1", ModelKind::Stt, "whisper"),
+    cat("whisper-base-en-q5_1", ModelKind::Stt, "whisper"),
+    cat("whisper-base-q5_1", ModelKind::Stt, "whisper"),
+    cat("whisper-tiny-en-q5_1", ModelKind::Stt, "whisper"),
+    cat("whisper-small-en-q5_1", ModelKind::Stt, "whisper"),
+    cat("zipformer-he-int8", ModelKind::Hebrew, "sherpa_online"),
+    cat(
+        "parakeet-tdt-0.6b-v3-he-int8",
+        ModelKind::Hebrew,
+        "parakeet",
+    ),
+    cat(
+        "ivrit-whisper-large-v3-turbo-q5_0",
+        ModelKind::Hebrew,
+        "whisper",
+    ),
+    cat("qwen2.5-0.5b-instruct-q4_k_m", ModelKind::Llm, "gguf"),
+    cat("qwen2.5-1.5b-instruct-q4_k_m", ModelKind::Llm, "gguf"),
+    cat("llama-3.2-3b-instruct-q4_k_m", ModelKind::Llm, "gguf"),
+];
+
+/// The catalogue model `id` names, if any.
+pub fn catalogue(id: &str) -> Option<&'static CatalogueModel> {
+    CATALOGUE.iter().find(|c| c.id == id)
+}
+
 /// One file of a model.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LibraryFile {
@@ -126,6 +186,22 @@ mod tests {
         assert!(!j.contains("language"), "{j}");
         assert_eq!(serde_json::from_str::<ModelList>(&j).unwrap(), l);
         assert_eq!(l.models[0].size(), 3);
+    }
+
+    #[test]
+    fn catalogue_ids_are_unique_and_engines_known() {
+        let mut ids = std::collections::HashSet::new();
+        for c in CATALOGUE {
+            assert!(ids.insert(c.id), "duplicate {}", c.id);
+            assert!(is_safe_name(c.id), "{}", c.id);
+            assert!(ENGINES.contains(&c.engine), "{}: {}", c.id, c.engine);
+        }
+        assert_eq!(catalogue("whisper-base").unwrap().engine, "whisper");
+        assert!(catalogue("nope").is_none());
+        assert_eq!(
+            engines_hint(),
+            r#""whisper", "parakeet", "sherpa_online" or "gguf""#
+        );
     }
 
     #[test]

@@ -271,6 +271,37 @@ async fn models_added_changed_and_removed_without_restart() {
     s.kill();
 }
 
+/// Editing only a tag (same files, same model set) shows on the next
+/// rescan: no restart (docs/server-setup.md §10).
+#[tokio::test(flavor = "multi_thread")]
+async fn tag_edits_show_without_restart() {
+    let d = tempfile::tempdir().unwrap();
+    put(
+        &d.path().join("lib/pk/model.toml"),
+        b"kind = \"stt\"\ntitle = \"Parakeet\"\n",
+    );
+    put(&d.path().join("lib/pk/tokens.txt"), b"a b");
+    let s = start(lib_cfg(d.path())).await;
+    let l = wait_models(&s, 1).await;
+    assert_eq!(l.models[0].engine, None);
+    put(
+        &d.path().join("lib/pk/model.toml"),
+        b"kind = \"stt\"\ntitle = \"Parakeet (English)\"\nlanguage = \"en\"\nengine = \"parakeet\"\n",
+    );
+    for _ in 0..50 {
+        let m = list(s.addr()).await.models.remove(0);
+        if m.engine.is_some() {
+            assert_eq!(m.title, "Parakeet (English)");
+            assert_eq!(m.language.as_deref(), Some("en"));
+            assert_eq!(m.engine.as_deref(), Some("parakeet"));
+            s.kill();
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("the edited tag never showed");
+}
+
 #[test]
 fn cli_library_list_shows_served_and_skipped() {
     let d = tempfile::tempdir().unwrap();
