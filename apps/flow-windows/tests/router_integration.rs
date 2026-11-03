@@ -134,7 +134,7 @@ struct Rig {
 }
 
 fn dev(server: &Server, allow_server: bool, allow_client: bool) -> DevSettings {
-    DevSettings {
+    let mut d = DevSettings {
         allow_server,
         allow_client,
         server: ServerSettings {
@@ -145,7 +145,12 @@ fn dev(server: &Server, allow_server: bool, allow_client: bool) -> DevSettings {
         },
         token_dpapi: flow_windows::secrets::protect(TOKEN).unwrap(),
         ..DevSettings::for_build(BOTH)
-    }
+    };
+    // D36: server cleanup is its own switch (a configured server with it
+    // on cleans this PC's dictations too); "server off" here means not
+    // used at all.
+    d.set_cleanup_on(flow_router::CleanupRoute::Server, allow_server);
+    d
 }
 
 fn rig(d: &DevSettings) -> Rig {

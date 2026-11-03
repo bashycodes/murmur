@@ -27,7 +27,7 @@ pub use flow_core::cleanup::{CleanUsage, PromptScope};
 pub use flow_core::config::{FieldContext, SessionConfig};
 pub use flow_core::learn::Candidate;
 pub use flow_core::{CommitResult, CommitStatus, RouteInfo, SessionPoll};
-pub use local::LocalLoader;
+pub use local::{install_cleanup_plan, LocalLoader};
 pub use migrate::{MigrationReport, RemovedProvider};
 pub use router::Router;
 pub use server_clean::Clock;

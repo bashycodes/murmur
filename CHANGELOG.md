@@ -128,6 +128,12 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- Windows: the AI cleanup order (D36) now applies to dictations
+  transcribed on this PC. With this PC's AI model off, cleanup went no
+  further than this PC, so your server and OpenRouter never cleaned a local
+  dictation: the model slot ignored the router's cleanup plan. It now keeps
+  the plan and puts it back on every model it loads (speech model change,
+  on-demand load, AI model on or off). The speech route is unchanged.
 - **`tools/phone/call-decode.sh` works on Android 17.** `exec-in`/`exec-out`
   skip the device shell there, so the push silently did nothing (exit 0) and
   the hash check failed with "got sha256sum:". The file now goes through

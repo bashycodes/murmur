@@ -96,6 +96,18 @@ impl Backend for LocalBackend {
         CoreApi::cancel(&*self.adapter)
     }
 
+    /// D36: the router's cleanup chain, kept by the model slot across
+    /// reloads (without it the trait default dropped the server and cloud
+    /// hops, and only this PC's LLM ever cleaned local dictations).
+    fn install_cleanup(&self, plan: Option<flow_router::CleanupPlan>) {
+        self.adapter.set_cleanup_plan(plan)
+    }
+
+    /// The on-device LLM only (Command Mode, D36 `server_cleans`).
+    fn llm_cleaner(&self) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
+        self.adapter.cleaner()
+    }
+
     fn probe(&self) -> HealthReport {
         let status = self.adapter.status();
         HealthReport {
