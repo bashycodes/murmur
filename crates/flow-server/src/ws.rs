@@ -87,6 +87,109 @@ impl Drop for Sess {
     }
 }
 
+/// Why a connection ended: the `reason` of its `disconnected` line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EndReason {
+    /// No valid `hello` within `HELLO_TIMEOUT`.
+    NoHello,
+    ProtoMismatch,
+    /// Server shutdown, or the task dropped before it chose a reason.
+    Shutdown,
+    /// A close frame or end of stream from the client.
+    ClientClosed,
+    SocketError,
+    /// Nothing, not even a pong, within `ws_dead_ms` (C5).
+    DeadPeer,
+    /// No session and no message for `idle_timeout_s`.
+    Idle,
+    /// The client stopped reading and its outbound queue filled (C17).
+    NotReading,
+}
+
+impl EndReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::NoHello => "no_hello",
+            Self::ProtoMismatch => "proto_mismatch",
+            Self::Shutdown => "shutdown",
+            Self::ClientClosed => "client_closed",
+            Self::SocketError => "socket_error",
+            Self::DeadPeer => "dead_peer",
+            Self::Idle => "idle",
+            Self::NotReading => "not_reading",
+        }
+    }
+}
+
+/// What one connection did, logged once as `disconnected` when it is
+/// dropped, so every way a connection ends (including a task dropped at
+/// shutdown) leaves exactly one line. Counts and timings only, never text.
+struct EndLog {
+    peer: SocketAddr,
+    key: Option<String>,
+    /// The client's `hello.client` (its version string); `-` before hello.
+    client: String,
+    opened: Instant,
+    /// Binary (audio) frame bytes received, including frames dropped for
+    /// lack of a session.
+    audio_bytes: u64,
+    sessions: u64,
+    results: u64,
+    cleans: u64,
+    /// The session still open when the connection ended (no result sent).
+    open_sid: Option<u64>,
+    reason: EndReason,
+}
+
+impl EndLog {
+    fn new(peer: SocketAddr, key: Option<String>) -> Self {
+        Self {
+            peer,
+            key,
+            client: "-".into(),
+            opened: Instant::now(),
+            audio_bytes: 0,
+            sessions: 0,
+            results: 0,
+            cleans: 0,
+            open_sid: None,
+            reason: EndReason::Shutdown,
+        }
+    }
+
+    /// A one-word summary: did the connection ever produce anything?
+    fn outcome(&self) -> &'static str {
+        if self.results > 0 {
+            "result"
+        } else if self.cleans > 0 {
+            "cleaned"
+        } else if self.audio_bytes == 0 {
+            "no_audio"
+        } else {
+            "no_result"
+        }
+    }
+}
+
+impl Drop for EndLog {
+    fn drop(&mut self) {
+        tracing::info!(
+            peer = %self.peer,
+            key = self.key.as_deref().unwrap_or("-"),
+            client = %self.client,
+            duration_ms = self.opened.elapsed().as_millis() as u64,
+            audio_bytes = self.audio_bytes,
+            sessions = self.sessions,
+            results = self.results,
+            cleans = self.cleans,
+            open_sid = self.open_sid,
+            reason = self.reason.as_str(),
+            outcome = self.outcome(),
+            "disconnected"
+        );
+    }
+}
+
 struct Conn {
     state: Arc<AppState>,
     peer: SocketAddr,
@@ -102,6 +205,8 @@ struct Conn {
     last_activity: Instant,
     /// Last frame of any kind, pongs included (dead-peer detection).
     last_rx: Instant,
+    /// Logs the `disconnected` line when the connection is dropped.
+    end: EndLog,
 }
 
 pub(crate) async fn run(
@@ -122,6 +227,9 @@ pub(crate) async fn run(
         let _ = sink.close().await;
     });
     let mut kill = state.kill.clone();
+    let key_id = key.map(|k| k.id);
+    // Dropped (and so logged) on every return below, or with the task.
+    let mut end = EndLog::new(peer, key_id.clone());
     let send = |m: &ServerMsg| {
         let _ = out_tx.try_send(Message::Text(m.to_json().into()));
     };
@@ -135,6 +243,7 @@ pub(crate) async fn run(
         Ok(Some(Ok(Message::Text(t)))) => serde_json::from_str::<ClientMsg>(&t).ok(),
         _ => None,
     };
+    end.reason = EndReason::NoHello;
     let Some(ClientMsg::Hello(h)) = hello else {
         send(&ServerMsg::error(
             None,
@@ -146,7 +255,9 @@ pub(crate) async fn run(
         let _ = writer.await;
         return;
     };
+    end.client = h.client.clone();
     let Some(proto) = negotiate(h.proto_min, h.proto_max, PROTO_MIN, PROTO_MAX) else {
+        end.reason = EndReason::ProtoMismatch;
         let msg = format!(
             "client speaks {}..{}, server {PROTO_MIN}..{PROTO_MAX}",
             h.proto_min, h.proto_max
@@ -160,7 +271,7 @@ pub(crate) async fn run(
         return;
     };
     send(&ServerMsg::HelloOk(crate::health::hello_ok(&state, proto)));
-    let key_id = key.map(|k| k.id);
+    end.reason = EndReason::Shutdown;
     if let (Some(store), Some(id)) = (&state.keys, &key_id) {
         store.record_client(id, &h.client);
     }
@@ -178,6 +289,7 @@ pub(crate) async fn run(
         dropped_audio: 0,
         last_activity: Instant::now(),
         last_rx: Instant::now(),
+        end,
     };
     let mut tick = tokio::time::interval(PARTIAL_POLL);
     let idle = Duration::from_secs(state.cfg.idle_timeout_s.max(1));
@@ -185,13 +297,13 @@ pub(crate) async fn run(
     let dead = Duration::from_millis(state.cfg.ws_dead_ms.max(1));
     let max_wall = Duration::from_secs(state.cfg.max_session_s);
     let mut ping = tokio::time::interval_at(tokio::time::Instant::now() + ping_every, ping_every);
-    loop {
+    let reason = loop {
         if c.overflow.get() {
             tracing::info!(%peer, "client is not reading its messages; closing");
-            break;
+            break EndReason::NotReading;
         }
         tokio::select! {
-            _ = kill.changed() => break,
+            _ = kill.changed() => break EndReason::Shutdown,
             m = stream.next() => {
                 c.last_rx = Instant::now();
                 match m {
@@ -204,7 +316,8 @@ pub(crate) async fn run(
                         c.on_audio(&b)
                     }
                     Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-                    Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+                    Some(Ok(Message::Close(_))) | None => break EndReason::ClientClosed,
+                    Some(Err(_)) => break EndReason::SocketError,
                 }
             }
             Some(ev) = ev_rx.recv() => c.on_event(ev),
@@ -218,20 +331,19 @@ pub(crate) async fn run(
                 if c.last_rx.elapsed() > dead {
                     tracing::info!(%peer, "no frame within the dead interval; closing");
                     c.push(Message::Close(None));
-                    break;
+                    break EndReason::DeadPeer;
                 }
                 c.enforce_wall_clock(max_wall);
                 c.poll_partial();
                 if c.sess.is_none() && c.last_activity.elapsed() > idle {
                     c.push(Message::Close(None));
-                    break;
+                    break EndReason::Idle;
                 }
             }
         }
-    }
-    if let Some(s) = c.sess.take() {
-        tracing::info!(sid = s.sid, %peer, "session ended by disconnect");
-    }
+    };
+    c.end.reason = reason;
+    c.end.open_sid = c.sess.take().map(|s| s.sid);
     if c.dropped_audio > 0 {
         tracing::debug!(%peer, frames = c.dropped_audio, "audio frames without a session");
     }
@@ -327,6 +439,7 @@ impl Conn {
     /// (queueing like a session), run its LLM on the request off the async
     /// threads, answer `cleaned` with the same `id`.
     fn clean(&mut self, id: u64, req: CleanRequest) {
+        self.end.cleans += 1;
         let refuse = |error: &str| {
             ServerMsg::Cleaned(Cleaned {
                 id,
@@ -426,6 +539,7 @@ impl Conn {
             Err(e) => return self.err(Some(sid), code::TOO_LARGE, e),
         };
         self.state.sessions.fetch_add(1, Ordering::SeqCst);
+        self.end.sessions += 1;
         let mut s = Sess {
             sid,
             cfg,
@@ -484,6 +598,7 @@ impl Conn {
     }
 
     fn on_audio(&mut self, b: &[u8]) {
+        self.end.audio_bytes += b.len() as u64;
         let pcm = match decode_pcm(b) {
             Ok(p) => p,
             Err(FrameError::TooLarge) => {
@@ -618,6 +733,7 @@ impl Conn {
                     tracing::debug!(sid, text = %r.final_text, "result text");
                 }
                 self.capture(&mut s, &r);
+                self.end.results += 1;
                 self.send(&ServerMsg::Result {
                     sid,
                     result: r,
@@ -742,8 +858,8 @@ mod tests {
         .unwrap()
     }
 
-    /// Captures what `log_result` prints with the server's fmt layer.
-    fn captured(r: &CommitResult) -> String {
+    /// Captures what `f` logs with the server's fmt layer.
+    fn logged(f: impl FnOnce()) -> String {
         #[derive(Clone, Default)]
         struct Buf(Arc<Mutex<Vec<u8>>>);
         impl std::io::Write for Buf {
@@ -761,7 +877,14 @@ mod tests {
             .with_ansi(false)
             .with_writer(move || out.clone())
             .finish();
-        tracing::subscriber::with_default(sub, || {
+        tracing::subscriber::with_default(sub, f);
+        let v = buf.0.lock().unwrap().clone();
+        String::from_utf8(v).unwrap()
+    }
+
+    /// What `log_result` prints.
+    fn captured(r: &CommitResult) -> String {
+        logged(|| {
             log_result(
                 7,
                 "100.64.0.2:5000".parse().unwrap(),
@@ -770,9 +893,53 @@ mod tests {
                 12,
                 Some(7400),
             );
+        })
+    }
+
+    fn end_log() -> EndLog {
+        let mut e = EndLog::new(
+            "100.64.0.2:5000".parse().unwrap(),
+            Some("k-0123456789abcdef".into()),
+        );
+        e.client = "flow-ffi 1.0.0+abc".into();
+        e
+    }
+
+    #[test]
+    fn disconnected_line_names_key_client_bytes_and_reason() {
+        let line = logged(|| {
+            let mut e = end_log();
+            e.audio_bytes = 64_000;
+            e.sessions = 1;
+            e.open_sid = Some(3);
+            e.reason = EndReason::ClientClosed;
         });
-        let v = buf.0.lock().unwrap().clone();
-        String::from_utf8(v).unwrap()
+        assert_eq!(line.matches("disconnected").count(), 1, "{line}");
+        assert!(line.contains("key=\"k-0123456789abcdef\""), "{line}");
+        assert!(line.contains("client=flow-ffi 1.0.0+abc"), "{line}");
+        assert!(line.contains("duration_ms="), "{line}");
+        assert!(line.contains("audio_bytes=64000"), "{line}");
+        assert!(line.contains("sessions=1 results=0 cleans=0"), "{line}");
+        assert!(line.contains("open_sid=3"), "{line}");
+        assert!(line.contains("reason=\"client_closed\""), "{line}");
+        assert!(line.contains("outcome=\"no_result\""), "{line}");
+        assert!(!line.contains("Some("), "{line}");
+    }
+
+    #[test]
+    fn disconnected_outcome_summarises_what_the_connection_did() {
+        let mut e = end_log();
+        assert_eq!(e.outcome(), "no_audio");
+        e.audio_bytes = 2;
+        assert_eq!(e.outcome(), "no_result");
+        e.cleans = 1;
+        assert_eq!(e.outcome(), "cleaned");
+        e.results = 1;
+        assert_eq!(e.outcome(), "result");
+        // An unset reason is a dropped task: the server shut down.
+        assert_eq!(end_log().reason, EndReason::Shutdown);
+        let line = logged(|| drop(e));
+        assert!(!line.contains("open_sid"), "{line}");
     }
 
     #[test]

@@ -18,6 +18,15 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Server: every connection's end is logged.** Each WebSocket connection
+  now leaves one `disconnected` line when it ends, however it ends, with the
+  key id, client version, duration, audio bytes received, sessions, results
+  and cleanups, the session still open (if any), why it ended
+  (`client_closed`, `idle`, `dead_peer`, `no_hello`, `proto_mismatch`,
+  `socket_error`, `not_reading`, `shutdown`) and an outcome (`result`,
+  `cleaned`, `no_audio`, `no_result`). Connections that never produced a
+  result are no longer silent. Counts and timings only, never text; it
+  replaces the "session ended by disconnect" line.
 - **Android (hybrid debug builds only): English speech probe.** Developer
   settings → Diagnostics → **English speech probe** compares Google's
   Gemini Nano speech (ML Kit GenAI, advanced or basic mode) with the
