@@ -237,11 +237,11 @@ impl MeetingStore {
     /// [`Self::prune_audio`] given the meetings listed at its start. A
     /// recording can begin after that listing (`Meetings::start` writes
     /// the meeting file, then its WAVs), so an orphan is a WAV whose
-    /// meeting file is missing *now*, not one missing from `all`;
+    /// meeting file is missing *now*, not one missing from `listed`;
     /// otherwise the newest recording could be deleted as an orphan.
-    fn prune_listed(&self, all: &[Meeting], keep: usize) -> Vec<PathBuf> {
+    fn prune_listed(&self, listed: &[Meeting], keep: usize) -> Vec<PathBuf> {
         let mut deleted = Vec::new();
-        for (i, m) in all.iter().enumerate() {
+        for (i, m) in listed.iter().enumerate() {
             let busy = matches!(m.status, Status::Recording | Status::Transcribing);
             if i < keep || busy {
                 continue;
@@ -252,7 +252,9 @@ impl MeetingStore {
                 }
             }
         }
-        // Orphans: recordings without a meeting file.
+        // Orphans: recordings without a meeting file. A meeting file that
+        // exists but doesn't parse keeps its WAVs: never delete audio we
+        // can't attribute.
         if let Ok(rd) = std::fs::read_dir(&self.dir) {
             for e in rd.filter_map(|e| e.ok()) {
                 let name = e.file_name().to_string_lossy().into_owned();
