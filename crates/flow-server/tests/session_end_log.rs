@@ -58,17 +58,29 @@ fn local_addr(ws: &Ws) -> SocketAddr {
     }
 }
 
+/// Logged lines with `msg` from `peer`.
+fn lines(msg: &str, peer: SocketAddr) -> Vec<String> {
+    let needle = format!("peer={peer} ");
+    String::from_utf8_lossy(&logs().lock().unwrap())
+        .lines()
+        .filter(|l| l.contains(msg) && l.contains(&needle))
+        .map(str::to_string)
+        .collect()
+}
+
+/// The `session ended` lines for `peer`, in order (call after `end_line`).
+fn session_lines(peer: SocketAddr) -> Vec<String> {
+    let v = lines(" session ended ", peer);
+    for l in &v {
+        assert!(!l.contains(TEXT), "no transcript: {l}");
+    }
+    v
+}
+
 /// The `disconnected` line for the connection from `peer`, after checking
 /// there is exactly one (waits up to 3 s for it, then 300 ms for a second).
 async fn end_line(peer: SocketAddr) -> String {
-    let needle = format!("peer={peer} ");
-    let find = || -> Vec<String> {
-        String::from_utf8_lossy(&logs().lock().unwrap())
-            .lines()
-            .filter(|l| l.contains(" disconnected ") && l.contains(&needle))
-            .map(str::to_string)
-            .collect()
-    };
+    let find = || lines(" disconnected ", peer);
     let t0 = Instant::now();
     while find().is_empty() && t0.elapsed() < Duration::from_secs(3) {
         tokio::time::sleep(Duration::from_millis(20)).await;
@@ -124,11 +136,18 @@ async fn a_completed_dictation_logs_result_and_audio_bytes() {
     ));
     ws.close(None).await.unwrap();
     let line = end_line(peer).await;
-    assert!(line.contains("client=flow-test 9.9.9"), "{line}");
+    assert!(line.contains("client=\"flow-test 9.9.9\""), "{line}");
     assert!(line.contains("key=\"k-"), "the owner key id: {line}");
     // 500 ms at 16 kHz, 2 bytes a sample.
     assert!(line.contains("audio_bytes=16000"), "{line}");
-    assert!(line.contains("sessions=1 results=1"), "{line}");
+    assert!(
+        line.contains("sessions=1 results=1 errors=0 cancels=0"),
+        "{line}"
+    );
+    assert!(
+        session_lines(peer).is_empty(),
+        "a result needs no session line"
+    );
     assert!(!line.contains("open_sid"), "{line}");
     assert!(line.contains("reason=\"client_closed\""), "{line}");
     assert!(line.contains("outcome=\"result\""), "{line}");
@@ -146,7 +165,13 @@ async fn a_client_that_closes_mid_session_logs_the_open_session() {
     assert!(line.contains("audio_bytes=0"), "{line}");
     assert!(line.contains("open_sid=4"), "{line}");
     assert!(line.contains("reason=\"client_closed\""), "{line}");
-    assert!(line.contains("outcome=\"no_audio\""), "{line}");
+    assert!(line.contains("errors=1"), "{line}");
+    assert!(line.contains("outcome=\"errors\""), "{line}");
+    let s = session_lines(peer);
+    assert_eq!(s.len(), 1, "{s:?}");
+    assert!(s[0].contains("sid=4 "), "{s:?}");
+    assert!(s[0].contains("reason=\"disconnect\""), "{s:?}");
+    assert!(s[0].contains("audio_bytes=0"), "{s:?}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -163,6 +188,7 @@ async fn an_authenticated_but_idle_client_is_logged_as_idle() {
     {}
     let line = end_line(peer).await;
     assert!(line.contains("reason=\"idle\""), "{line}");
+    assert!(line.contains("msgs=0 "), "{line}");
     assert!(line.contains("sessions=0"), "{line}");
     assert!(line.contains("outcome=\"no_audio\""), "{line}");
 }
@@ -192,7 +218,7 @@ async fn a_connection_without_hello_is_logged() {
     let peer = local_addr(&ws);
     ws.send(Message::Text("not json".into())).await.unwrap();
     let line = end_line(peer).await;
-    assert!(line.contains("client=-"), "{line}");
+    assert!(line.contains("client=\"-\""), "{line}");
     assert!(line.contains("reason=\"no_hello\""), "{line}");
 }
 
@@ -212,7 +238,7 @@ async fn a_protocol_mismatch_is_logged_with_the_client() {
     )
     .await;
     let line = end_line(peer).await;
-    assert!(line.contains("client=flow-future 99.0.0"), "{line}");
+    assert!(line.contains("client=\"flow-future 99.0.0\""), "{line}");
     assert!(line.contains("reason=\"proto_mismatch\""), "{line}");
 }
 
@@ -231,4 +257,89 @@ async fn a_server_shutdown_is_logged() {
     assert!(line.contains("reason=\"shutdown\""), "{line}");
     assert!(line.contains("audio_bytes=3200"), "{line}");
     assert!(line.contains("outcome=\"no_result\""), "{line}");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn failed_sessions_beside_a_result_each_get_a_line() {
+    let s = server(|_| {}).await;
+    let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
+    let peer = local_addr(&ws);
+    hello_as(&mut ws, "flow-test").await;
+    start_session(&mut ws, 1).await;
+    send_audio(&mut ws, &speech(100)).await;
+    start_session(&mut ws, 2).await; // replaces 1
+    send(&mut ws, &ClientMsg::Cancel { sid: 2 }).await;
+    assert!(matches!(
+        recv(&mut ws).await,
+        Some(ServerMsg::Cancelled { sid: 2 })
+    ));
+    // Refused at start: an LLM budget over the server limit.
+    send(
+        &mut ws,
+        &ClientMsg::Start {
+            sid: 3,
+            config: SessionConfig {
+                llm_timeout_ms: u64::MAX,
+                ..Default::default()
+            },
+        },
+    )
+    .await;
+    assert!(matches!(recv(&mut ws).await, Some(ServerMsg::Error(_))));
+    start_session(&mut ws, 4).await;
+    send_audio(&mut ws, &speech(200)).await;
+    send(&mut ws, &ClientMsg::Commit { sid: 4 }).await;
+    assert!(matches!(
+        recv_final(&mut ws).await,
+        Some(ServerMsg::Result { sid: 4, .. })
+    ));
+    ws.close(None).await.unwrap();
+
+    let line = end_line(peer).await;
+    assert!(
+        line.contains("sessions=4 results=1 errors=1 cancels=2"),
+        "{line}"
+    );
+    assert!(
+        line.contains("outcome=\"errors\""),
+        "not hidden by the result: {line}"
+    );
+    let s = session_lines(peer);
+    assert_eq!(s.len(), 3, "one line per session without a result: {s:?}");
+    assert!(
+        s[0].contains("sid=1 ") && s[0].contains("reason=\"replaced\""),
+        "{s:?}"
+    );
+    assert!(s[0].contains("audio_bytes=3200"), "{s:?}");
+    assert!(
+        s[1].contains("sid=2 ") && s[1].contains("reason=\"cancelled\""),
+        "{s:?}"
+    );
+    assert!(
+        s[2].contains("sid=3 ") && s[2].contains("reason=\"too_large\""),
+        "{s:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_newline_in_the_client_string_cannot_forge_a_line() {
+    let s = server(|_| {}).await;
+    let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
+    let peer = local_addr(&ws);
+    hello_as(&mut ws, "evil\nINFO flow_server::ws: forged peer=1.2.3.4:5").await;
+    send(&mut ws, &ClientMsg::Ping { n: 1 }).await;
+    assert!(matches!(recv(&mut ws).await, Some(ServerMsg::Pong { .. })));
+    ws.close(None).await.unwrap();
+    let line = end_line(peer).await;
+    assert!(line.contains("client=\"evil\\nINFO"), "{line}");
+    assert!(
+        line.contains("msgs=1 "),
+        "a probe's pings are counted: {line}"
+    );
+    let log = String::from_utf8_lossy(&logs().lock().unwrap()).to_string();
+    assert!(
+        !log.lines()
+            .any(|l| l.starts_with("INFO flow_server::ws: forged")),
+        "no forged line"
+    );
 }
