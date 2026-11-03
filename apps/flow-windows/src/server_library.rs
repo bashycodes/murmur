@@ -126,10 +126,10 @@ pub fn plan(m: &LibraryModel, engine_built: &dyn Fn(ModelEngine) -> bool) -> Res
     let engine = m.engine.as_deref().unwrap_or("");
     let slot = match (m.kind, engine) {
         (_, "") => {
-            return Err(
-                "its tag has no engine (add engine = \"whisper\", \"parakeet\", … to model.toml)"
-                    .into(),
-            )
+            return Err(format!(
+                "its tag has no engine (add engine = {} to model.toml)",
+                flow_protocol::library::engines_hint()
+            ))
         }
         (ModelKind::Stt, "whisper") => Slot::SttWhisper,
         (ModelKind::Stt, "parakeet") => Slot::SttParakeet,
@@ -649,7 +649,11 @@ mod tests {
             why(model("v", ModelKind::Vad, Some("silero"), one("v.onnx")))
                 .contains("voice-activity")
         );
-        assert!(why(model("x", ModelKind::Stt, None, one("x.bin"))).contains("no engine"));
+        let no_engine = why(model("x", ModelKind::Stt, None, one("x.bin")));
+        assert!(no_engine.contains("no engine"), "{no_engine}");
+        for e in flow_protocol::library::ENGINES {
+            assert!(no_engine.contains(&format!("\"{e}\"")), "{no_engine}");
+        }
         assert!(why(model(
             "x",
             ModelKind::Stt,

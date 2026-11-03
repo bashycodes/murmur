@@ -93,6 +93,13 @@ macro_rules! parakeet_base {
         "https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/resolve/1ab9323565ddb038682214b292f588070a538ce2/"
     };
 }
+// Parakeet-unified-en 0.6B int8 (D23: the server's English default, the
+// phone's default English model). NVIDIA Open Model License.
+macro_rules! parakeet_unified_base {
+    () => {
+        "https://huggingface.co/csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming/resolve/8c3a10fb13408c7a7054f6898958bf1c64a8d6c7/"
+    };
+}
 macro_rules! zipformer_he_base {
     () => {
         "https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he/resolve/ee769a2a13b887f91572eec349458bfb0fe79e7a/sherpa-onnx/"
@@ -135,7 +142,11 @@ macro_rules! whisper_base {
 }
 
 /// Hashes computed 2026-10-30 by downloading each file once (they equal the
-/// Hugging Face LFS ids at those commits; the Hebrew ones:
+/// Hugging Face LFS ids at those commits). Added 2026-11-03 from the HF API's
+/// LFS ids (no download): the whisper q5_1 files Android recommends, and
+/// Parakeet-unified-en, whose ids also equal the SHA-256 of the copy the
+/// server runs. The ids are `flow_protocol::library::CATALOGUE`'s (tested).
+/// The Hebrew ones:
 /// docs/findings/2026-10-30-hebrew-model-pins.md). The cleanup models (engine
 /// `Llm`) are pinned from the HF API: docs/findings/2026-10-30-cleanup-model-pins.md.
 /// More cleanup GGUFs are one entry each.
@@ -186,6 +197,81 @@ pub const CATALOG: &[CatalogEntry] = &[
         license: None,
         extras: &[],
         files: &[model_file!(whisper_base!(), "ggml-small-q5_1.bin", 190_085_487, "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb")],
+    },
+    CatalogEntry {
+        id: "parakeet-unified-en-0.6b-int8",
+        title: "Parakeet unified 0.6B",
+        desc: "English · as accurate as TDT, keeps long dictations whole",
+        engine: ModelEngine::Parakeet,
+        dest: "sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8",
+        page: "https://huggingface.co/csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming",
+        recommended: false,
+        recommended_gpu: false,
+        language: None,
+        license: None,
+        extras: &[],
+        files: &[
+            model_file!(parakeet_unified_base!(), "encoder.int8.onnx", 654_040_552, "6716910b7a0833997fec7a410494c995d70124001a0e9b66d6370d6aced577e0"),
+            model_file!(parakeet_unified_base!(), "decoder.int8.onnx", 7_257_753, "a5e223392c90e75f8144cdb5eb95af7625db389e39edef2bd1a9c872b3298fe6"),
+            model_file!(parakeet_unified_base!(), "joiner.int8.onnx", 1_735_860, "869f43f7d24595c55581ad3bf249a935fb8a71389fbdaa7504b9f46f93140f8a"),
+            model_file!(parakeet_unified_base!(), "tokens.txt", 8_952, "dc0b4584ab2e4ddbf888425c076c61b736e7356a015250db7d307e6f1a8188ff"),
+        ],
+    },
+    CatalogEntry {
+        id: "whisper-base-en-q5_1",
+        title: "Whisper base English",
+        desc: "English only · small and fast",
+        engine: ModelEngine::Whisper,
+        dest: "ggml-base.en-q5_1.bin",
+        page: "https://huggingface.co/ggerganov/whisper.cpp",
+        recommended: false,
+        recommended_gpu: false,
+        language: None,
+        license: None,
+        extras: &[],
+        files: &[model_file!(whisper_base!(), "ggml-base.en-q5_1.bin", 59_721_011, "4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f")],
+    },
+    CatalogEntry {
+        id: "whisper-base-q5_1",
+        title: "Whisper base q5_1",
+        desc: "Many languages · small and fast",
+        engine: ModelEngine::Whisper,
+        dest: "ggml-base-q5_1.bin",
+        page: "https://huggingface.co/ggerganov/whisper.cpp",
+        recommended: false,
+        recommended_gpu: false,
+        language: None,
+        license: None,
+        extras: &[],
+        files: &[model_file!(whisper_base!(), "ggml-base-q5_1.bin", 59_707_625, "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898")],
+    },
+    CatalogEntry {
+        id: "whisper-tiny-en-q5_1",
+        title: "Whisper tiny English",
+        desc: "English only · fastest, basic quality",
+        engine: ModelEngine::Whisper,
+        dest: "ggml-tiny.en-q5_1.bin",
+        page: "https://huggingface.co/ggerganov/whisper.cpp",
+        recommended: false,
+        recommended_gpu: false,
+        language: None,
+        license: None,
+        extras: &[],
+        files: &[model_file!(whisper_base!(), "ggml-tiny.en-q5_1.bin", 32_166_155, "c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b")],
+    },
+    CatalogEntry {
+        id: "whisper-small-en-q5_1",
+        title: "Whisper small English",
+        desc: "English only · more accurate, slower",
+        engine: ModelEngine::Whisper,
+        dest: "ggml-small.en-q5_1.bin",
+        page: "https://huggingface.co/ggerganov/whisper.cpp",
+        recommended: false,
+        recommended_gpu: false,
+        language: None,
+        license: None,
+        extras: &[],
+        files: &[model_file!(whisper_base!(), "ggml-small.en-q5_1.bin", 190_098_681, "bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30")],
     },
     CatalogEntry {
         id: ZIPFORMER_HE_ID,
@@ -930,7 +1016,7 @@ mod tests {
 
     #[test]
     fn catalogue_is_pinned_to_hugging_face_commits() {
-        assert_eq!(CATALOG.len(), 9);
+        assert_eq!(CATALOG.len(), 14);
         let mut ids = std::collections::HashSet::new();
         for e in CATALOG {
             assert!(ids.insert(e.id), "duplicate id {}", e.id);
@@ -951,7 +1037,7 @@ mod tests {
         assert_eq!(entry("whisper-base").unwrap().dest, crate::core_adapter::DEFAULT_MODEL_FILE);
         assert_eq!(entry("parakeet-tdt-0.6b-v2-int8").unwrap().dest, crate::core_adapter::DEFAULT_PARAKEET_DIR);
         // The sherpa loaders need encoder, decoder, joiner and tokens.txt.
-        for id in ["parakeet-tdt-0.6b-v2-int8", ZIPFORMER_HE_ID, PARAKEET_HE_ID] {
+        for id in ["parakeet-tdt-0.6b-v2-int8", "parakeet-unified-en-0.6b-int8", ZIPFORMER_HE_ID, PARAKEET_HE_ID] {
             let pk: Vec<_> = entry(id).unwrap().files.iter().map(|f| f.name).collect();
             for want in ["encoder", "decoder", "joiner", "tokens.txt"] {
                 assert!(pk.iter().any(|n| n.starts_with(want)), "{id}: {want}");
@@ -967,6 +1053,35 @@ mod tests {
         }
         // Llama's licence asks for "Built with Llama" where it is offered.
         assert!(entry(LLAMA32_3B_ID).unwrap().license.unwrap().contains("Built with Llama"));
+    }
+
+    /// One list of catalogue ids for the server, Windows and Android:
+    /// `flow_protocol::library::CATALOGUE` (the server infers a tag's engine
+    /// from it) names exactly these ids, with the same engine and kind.
+    #[test]
+    fn catalogue_ids_are_the_protocol_list() {
+        use flow_protocol::library::{ModelKind, CATALOGUE};
+        let mine: Vec<_> = CATALOG.iter().map(|e| e.id).collect();
+        let shared: Vec<_> = CATALOGUE.iter().map(|c| c.id).collect();
+        assert_eq!(
+            mine.iter().copied().collect::<std::collections::BTreeSet<_>>(),
+            shared.iter().copied().collect(),
+        );
+        for e in CATALOG {
+            let c = flow_protocol::library::catalogue(e.id).unwrap();
+            let engine = match e.engine {
+                ModelEngine::Whisper => "whisper",
+                ModelEngine::Parakeet => "parakeet",
+                ModelEngine::SherpaOnline => "sherpa_online",
+                ModelEngine::Llm => "gguf",
+            };
+            let kind = match (e.engine, e.language) {
+                (ModelEngine::Llm, _) => ModelKind::Llm,
+                (_, Some(_)) => ModelKind::Hebrew,
+                (_, None) => ModelKind::Stt,
+            };
+            assert_eq!((c.engine, c.kind), (engine, kind), "{}", e.id);
+        }
     }
 
     #[test]
