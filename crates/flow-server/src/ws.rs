@@ -756,10 +756,14 @@ impl Conn {
     fn on_event(&mut self, ev: Event) {
         match ev {
             Event::Cleaned(c) => {
-                if c.error.is_some() {
-                    self.end.errors += 1;
-                } else {
+                // A clean succeeded when it answered with text.
+                if c.text.is_some() {
                     self.end.cleans += 1;
+                    if let (Some(store), Some(id)) = (&self.state.keys, &self.key) {
+                        store.record_clean(id);
+                    }
+                } else {
+                    self.end.errors += 1;
                 }
                 self.send(&ServerMsg::Cleaned(c))
             }

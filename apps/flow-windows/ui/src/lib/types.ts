@@ -274,6 +274,11 @@ export interface KeyView {
   admin: boolean;
   created: number;
   revoked?: number | null;
+  /** Last dictation or model download (absent on older servers). */
+  last_used?: number | null;
+  /** Last authenticated request of any kind (absent on older servers). */
+  last_connected?: number | null;
+  /** Older servers' name for last connected; newer servers send both. */
   last_seen?: number | null;
   client?: string | null;
   dictations: number;
