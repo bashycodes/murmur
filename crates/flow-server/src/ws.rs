@@ -556,7 +556,12 @@ impl Conn {
 
     fn on_event(&mut self, ev: Event) {
         match ev {
-            Event::Cleaned(c) => self.send(&ServerMsg::Cleaned(c)),
+            Event::Cleaned(c) => {
+                if let (Some(store), Some(id), Some(_)) = (&self.state.keys, &self.key, &c.text) {
+                    store.record_clean(id);
+                }
+                self.send(&ServerMsg::Cleaned(c))
+            }
             Event::Leased(sid, r) => {
                 let Some(s) = self
                     .sess
