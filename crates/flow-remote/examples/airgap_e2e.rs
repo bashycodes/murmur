@@ -334,7 +334,7 @@ fn main() -> std::process::ExitCode {
                 && k.download_bytes == total_bytes
                 && k.client.as_deref().is_some_and(|c| c.contains(UA));
             let m = format!(
-                "{} keys; {:?}: dictations={} audio_ms={} downloads={} download_bytes={} client={:?} last_seen={:?}",
+                "{} keys; {:?}: dictations={} audio_ms={} downloads={} download_bytes={} client={:?} last_used={:?} last_connected={:?}",
                 l.keys.len(),
                 k.name,
                 k.dictations,
@@ -342,7 +342,8 @@ fn main() -> std::process::ExitCode {
                 k.downloads,
                 k.download_bytes,
                 k.client,
-                k.last_seen
+                k.last_used,
+                k.connected()
             );
             if ok {
                 Ok(m)
