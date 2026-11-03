@@ -21,7 +21,7 @@
 //!
 //! Interface: [`KeyStore::authenticate`] (secret → [`KeyRef`]),
 //! [`KeyStore::add`], [`KeyStore::revoke`], [`KeyStore::record_client`] /
-//! [`KeyStore::record_dictation`], [`KeyStore::list`], [`KeyStore::flush`].
+//! [`KeyStore::record_dictation`] / [`KeyStore::record_clean`], [`KeyStore::list`], [`KeyStore::flush`].
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -73,8 +73,9 @@ impl Key {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct Usage {
-    /// Unix seconds of the last real use: a finished dictation or a model
-    /// download. Admin page visits and connection checks don't count.
+    /// Unix seconds of the last real use: a finished dictation, a
+    /// text-only cleanup or a model download. Admin page visits and
+    /// connection checks don't count.
     pub last_used: Option<u64>,
     /// Unix seconds of the last authenticated request of any kind. Files
     /// written before the split call it `last_seen`; `last_used` is then
@@ -359,6 +360,14 @@ impl KeyStore {
         u.dictations += 1;
         u.audio_ms = u.audio_ms.saturating_add(audio_ms);
         u.last_used = Some(now_s());
+        g.dirty = true;
+    }
+
+    /// One successful text-only cleanup (D36): a use, though it counts
+    /// no dictation (the client transcribed on its own).
+    pub fn record_clean(&self, id: &str) {
+        let mut g = self.lock();
+        g.usage.entry(id.to_string()).or_default().last_used = Some(now_s());
         g.dirty = true;
     }
 
