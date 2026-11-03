@@ -48,7 +48,7 @@ class UsersKeysUiTest {
 
     private class Fake(var me: AdminResult<WhoAmI> = AdminResult.Ok(WhoAmI("k-1", "owner", true))) : AdminApi {
         val keys = CopyOnWriteArrayList(listOf(
-            KeyView("k-1", "owner", admin = true, created = 1_700_000_000, lastSeen = 1_700_000_100, client = "flow-android 1.0.0",
+            KeyView("k-1", "owner", admin = true, created = 1_700_000_000, lastUsed = 1_700_000_050, lastConnected = 1_700_000_100, client = "flow-android 1.0.0",
                 dictations = 12, audioMs = 120_000, downloads = 3, downloadBytes = 4_200_000, current = true),
             KeyView("k-2", "laptop", created = 1_700_000_000),
         ))
