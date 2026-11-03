@@ -18,6 +18,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Model catalogue: Parakeet unified and the recommended whisper files.**
+  The Windows and Android catalogues gain Parakeet-unified-en 0.6B int8 (the
+  phone's default English model) and whisper base.en / base / tiny.en /
+  small.en q5_1 (the files Android recommends), each pinned to its SHA-256,
+  so a server library copy tagged with these ids is checked against the
+  built-in fingerprints. One shared list of catalogue ids
+  (`flow_protocol::library::CATALOGUE`) is tested against both apps.
+
 - **Android (hybrid debug builds only): English speech probe.** Developer
   settings → Diagnostics → **English speech probe** compares Google's
   Gemini Nano speech (ML Kit GenAI, advanced or basic mode) with the
@@ -141,6 +149,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   clean-up listed the meetings). A WAV is now an orphan only if its meeting
   file is missing when the clean-up looks at it, and a transcription is
   reported finished only after its clean-up.
+
+- **Server library: a `catalogue_id` alone is enough.** `/v1/models` fills a
+  missing `engine` from the catalogue entry, so the apps no longer mark such
+  a model "Not usable". The "no engine" message now lists every engine,
+  `sherpa_online` included. A test now covers tag edits being picked up by
+  the rescan without a restart.
+
 - **`tools/phone/call-decode.sh` works on Android 17.** `exec-in`/`exec-out`
   skip the device shell there, so the push silently did nothing (exit 0) and
   the hash check failed with "got sha256sum:". The file now goes through
