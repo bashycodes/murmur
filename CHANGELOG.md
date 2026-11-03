@@ -134,6 +134,11 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   dictation: the model slot ignored the router's cleanup plan. It now keeps
   the plan and puts it back on every model it loads (speech model change,
   on-demand load, AI model on or off). The speech route is unchanged.
+  What you will notice: with server cleanup on, this PC's dictations are
+  now cleaned by the server even when server speech is off (one server
+  connection per dictation, text only). With this PC's AI model on and
+  first, a dictation transcribed on the server is now cleaned on this PC
+  (the server skips its LLM), as the order says.
 - **`tools/phone/call-decode.sh` works on Android 17.** `exec-in`/`exec-out`
   skip the device shell there, so the push silently did nothing (exit 0) and
   the hash check failed with "got sha256sum:". The file now goes through

@@ -697,6 +697,11 @@ impl Slot {
                 self.cleaner.clone(),
             ))
         });
+        self.apply_plan();
+    }
+
+    /// Put the router's cleanup plan on the current core (if any).
+    fn apply_plan(&self) {
         if let Some(c) = &self.core {
             flow_router::install_cleanup_plan(c, self.plan.as_ref());
         }
@@ -1350,9 +1355,7 @@ impl FlowCoreAdapter {
     pub fn set_cleanup_plan(&self, plan: Option<flow_router::CleanupPlan>) {
         let mut s = self.slot.lock().unwrap();
         s.plan = plan;
-        if let Some(c) = &s.core {
-            flow_router::install_cleanup_plan(c, s.plan.as_ref());
-        }
+        s.apply_plan();
     }
 
     /// Wait up to `wait` for a load in progress; `Err` = why it can't run.
