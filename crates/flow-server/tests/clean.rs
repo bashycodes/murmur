@@ -82,6 +82,26 @@ async fn llm_server_advertises_and_cleans() {
     assert_eq!(c.text.as_deref(), Some("THE DEMO"));
     assert_eq!(c.error, None);
     assert_eq!(c.model.as_deref(), Some("fake-llm"));
+    // A text-only cleanup is a use of the key, though no dictation.
+    let u = s.keys().unwrap().list()[0].usage.clone();
+    assert!(u.last_used.is_some(), "{u:?}");
+    assert_eq!(u.dictations, 0);
+}
+
+#[tokio::test]
+async fn failed_clean_is_not_a_use() {
+    let s = llm_server(Duration::ZERO, 4).await;
+    let mut ws = session(s.addr()).await;
+    send(
+        &mut ws,
+        &ClientMsg::Clean {
+            id: 1,
+            req: req("fail"),
+        },
+    )
+    .await;
+    assert!(cleaned(&mut ws).await.error.is_some());
+    assert_eq!(s.keys().unwrap().list()[0].usage.last_used, None);
 }
 
 #[tokio::test]

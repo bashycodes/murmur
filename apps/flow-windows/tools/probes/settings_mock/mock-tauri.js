@@ -757,8 +757,8 @@
   const adminParam = new URLSearchParams(location.search).get("admin");
   const nowS = Math.floor(now / 1000);
   const srvKeys = [
-    { id: "k-0a1b2c3d4e5f6071", name: "owner", admin: true, created: nowS - 86400 * 40, last_seen: nowS - 60, client: "flow-windows 0.12.0", dictations: 412, audio_ms: 3_960_000, downloads: 3, download_bytes: 1_620_000_000, current: adminParam !== "0" },
-    { id: "k-1b2c3d4e5f607182", name: "phone", admin: false, created: nowS - 86400 * 12, last_seen: nowS - 3600 * 5, client: "flow-android 0.12.0", dictations: 87, audio_ms: 610_000, downloads: 1, download_bytes: 240_000_000, current: adminParam === "0" },
+    { id: "k-0a1b2c3d4e5f6071", name: "owner", admin: true, created: nowS - 86400 * 40, last_used: nowS - 600, last_connected: nowS - 60, last_seen: nowS - 60, client: "flow-windows 0.12.0", dictations: 412, audio_ms: 3_960_000, downloads: 3, download_bytes: 1_620_000_000, current: adminParam !== "0" },
+    { id: "k-1b2c3d4e5f607182", name: "phone", admin: false, created: nowS - 86400 * 12, last_used: nowS - 3600 * 5, last_connected: nowS - 3600 * 2, last_seen: nowS - 3600 * 2, client: "flow-android 0.12.0", dictations: 87, audio_ms: 610_000, downloads: 1, download_bytes: 240_000_000, current: adminParam === "0" },
     { id: "k-2c3d4e5f60718293", name: "old-tablet", admin: false, created: nowS - 86400 * 90, revoked: nowS - 86400 * 30, last_seen: nowS - 86400 * 31, client: "flow-android 0.9.0", dictations: 15, audio_ms: 80_000, current: false },
   ];
   let srvNext = 0x300;

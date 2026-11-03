@@ -23,7 +23,9 @@ class ServerSlotsTest {
     }
 
     @Test fun unusableModelsSayWhy() {
-        assertTrue(reason(model("x", ModelKind.STT, null, SHERPA)).contains("no engine"))
+        val noEngine = reason(model("x", ModelKind.STT, null, SHERPA))
+        assertTrue(noEngine, noEngine.contains("no engine"))
+        for (e in ServerSlots.ENGINES) assertTrue(noEngine, noEngine.contains("\"$e\""))
         assertTrue(reason(model("x", ModelKind.STT, "sherpa_online", SHERPA)).contains("only as the Hebrew model"))
         assertTrue(reason(model("x", ModelKind.HEBREW, "whisper", listOf(f("a.bin")))).contains("sherpa_online or parakeet"))
         assertTrue(reason(model("x", ModelKind.LID, "whisper", listOf(f("a.bin")))).contains("language-detection"))
@@ -49,6 +51,17 @@ class ServerSlotsTest {
         assertEquals(File("/h/server-he1/onnx/extra.bin"), h.fetches.last().dest)
         assertNull(h.catalogue)
         assertEquals(50L, h.bytes)
+    }
+
+    /** A tag with just a catalogue id (no engine) is that catalogue model: the phone's default English model and the recommended whisper files. */
+    @Test fun aCatalogueIdAloneIsEnough() {
+        for ((id, slot) in listOf("parakeet-unified-en-0.6b-int8" to Slot.STT_PARAKEET, "whisper-base-en-q5_1" to Slot.STT_WHISPER)) {
+            val e = ServerCatalog.entry(id)!!
+            val p = plan(model("srv-$id", ModelKind.STT, null, e.pins, catalogueId = id)).getOrThrow()
+            assertEquals(slot, p.slot)
+            assertEquals(e, p.catalogue)
+        }
+        assertEquals(File("/m/ggml-base.en-q5_1.bin"), plan(model("w", ModelKind.STT, null, ServerCatalog.entry("whisper-base-en-q5_1")!!.pins, catalogueId = "whisper-base-en-q5_1")).getOrThrow().target)
     }
 
     @Test fun catalogueCopiesMustMatchTheBuiltInPins() {

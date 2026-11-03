@@ -389,8 +389,10 @@ impl Inner {
             ),
             Err(e) => format!("transcription of {id} stopped: {e}"),
         });
-        *self.job.lock().unwrap() = None;
+        // Prune before the job is cleared, so a meeting seen done (no job
+        // running) has had its old audio pruned too.
         self.prune();
+        *self.job.lock().unwrap() = None;
         self.notify();
     }
 
