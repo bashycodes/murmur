@@ -18,6 +18,19 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Server: every connection's end is logged.** Each WebSocket connection
+  now leaves one `disconnected` line when it ends, however it ends, with the
+  key id, client version, duration, control messages, audio bytes received,
+  sessions, results, errors, cancels and cleanups, the session still open
+  (if any), why it ended (`client_closed`, `idle`, `dead_peer`, `no_hello`,
+  `proto_mismatch`, `socket_error`, `not_reading`, `shutdown`, `panic`) and
+  an outcome (`errors`, `result`, `cleaned`, `no_audio`, `no_result`; the
+  worst wins). Each session that ends without a result also gets one
+  `session ended` line with its reason (`cancelled`, `replaced`,
+  `too_large`, `wall_clock`, `busy`, `worker_failed`, `disconnect`),
+  duration and audio bytes. Counts and timings only, never text; the client
+  string is quoted and cut to 64 characters. These replace the "session
+  ended by disconnect", "cancelled" and wall-clock lines.
 - **Model catalogue: Parakeet unified and the recommended whisper files.**
   The Windows and Android catalogues gain Parakeet-unified-en 0.6B int8 (the
   phone's default English model) and whisper base.en / base / tiny.en /
