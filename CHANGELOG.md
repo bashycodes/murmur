@@ -18,6 +18,14 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Model catalogue: Parakeet unified and the recommended whisper files.**
+  The Windows and Android catalogues gain Parakeet-unified-en 0.6B int8 (the
+  phone's default English model) and whisper base.en / base / tiny.en /
+  small.en q5_1 (the files Android recommends), each pinned to its SHA-256,
+  so a server library copy tagged with these ids is checked against the
+  built-in fingerprints. One shared list of catalogue ids
+  (`flow_protocol::library::CATALOGUE`) is tested against both apps.
+
 - **Android (hybrid debug builds only): English speech probe.** Developer
   settings → Diagnostics → **English speech probe** compares Google's
   Gemini Nano speech (ML Kit GenAI, advanced or basic mode) with the
@@ -106,6 +114,13 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
+- **Keys: "Last seen" is now "Last used" and "Last connected".** Last used
+  counts only dictations, text-only cleanups and model downloads; last
+  connected is any request, so opening Users & keys or a connection check
+  no longer looks like use. Shown in the Windows Users & keys page and `flow-server keys
+  list`. An older `key-usage.json` loads as is: its last seen becomes last
+  connected, and last used shows "unknown" (app) / "-" (CLI) until the key
+  is next used. The admin API still sends `last_seen` for older apps (D50).
 - **AI cleanup always runs on your server or OpenRouter.** The "already
   clean" skip ("AI not needed") now applies only when the phone's or PC's
   own small model would clean first, since that model damages tidy text.
@@ -139,6 +154,20 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   connection per dictation, text only). With this PC's AI model on and
   first, a dictation transcribed on the server is now cleaned on this PC
   (the server skips its LLM), as the order says.
+
+- Windows: a meeting recording started while the previous meeting's
+  transcription was still tidying up old audio could lose its WAVs (they
+  were taken for orphans, because the new meeting file appeared after the
+  clean-up listed the meetings). A WAV is now an orphan only if its meeting
+  file is missing when the clean-up looks at it, and a transcription is
+  reported finished only after its clean-up.
+
+- **Server library: a `catalogue_id` alone is enough.** `/v1/models` fills a
+  missing `engine` from the catalogue entry, so the apps no longer mark such
+  a model "Not usable". The "no engine" message now lists every engine,
+  `sherpa_online` included. A test now covers tag edits being picked up by
+  the rescan without a restart.
+
 - **`tools/phone/call-decode.sh` works on Android 17.** `exec-in`/`exec-out`
   skip the device shell there, so the push silently did nothing (exit 0) and
   the hash check failed with "got sha256sum:". The file now goes through

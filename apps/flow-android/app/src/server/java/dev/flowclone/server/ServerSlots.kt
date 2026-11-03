@@ -64,6 +64,32 @@ object ServerCatalog {
             "whisper-small-q5_1", "Whisper small", Slot.STT_WHISPER, "ggml-small-q5_1.bin",
             listOf(pin("ggml-small-q5_1.bin", 190_085_487, "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb")),
         ),
+        CatalogueModel(
+            "parakeet-unified-en-0.6b-int8", "Parakeet unified 0.6B", Slot.STT_PARAKEET, "sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8",
+            listOf(
+                pin("encoder.int8.onnx", 654_040_552, "6716910b7a0833997fec7a410494c995d70124001a0e9b66d6370d6aced577e0"),
+                pin("decoder.int8.onnx", 7_257_753, "a5e223392c90e75f8144cdb5eb95af7625db389e39edef2bd1a9c872b3298fe6"),
+                pin("joiner.int8.onnx", 1_735_860, "869f43f7d24595c55581ad3bf249a935fb8a71389fbdaa7504b9f46f93140f8a"),
+                pin("tokens.txt", 8_952, "dc0b4584ab2e4ddbf888425c076c61b736e7356a015250db7d307e6f1a8188ff"),
+            ),
+        ),
+        // The whisper files the Speech model screen recommends (ModelPages), saved under the same names.
+        CatalogueModel(
+            "whisper-base-en-q5_1", "Whisper base English", Slot.STT_WHISPER, "ggml-base.en-q5_1.bin",
+            listOf(pin("ggml-base.en-q5_1.bin", 59_721_011, "4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f")),
+        ),
+        CatalogueModel(
+            "whisper-base-q5_1", "Whisper base q5_1", Slot.STT_WHISPER, "ggml-base-q5_1.bin",
+            listOf(pin("ggml-base-q5_1.bin", 59_707_625, "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898")),
+        ),
+        CatalogueModel(
+            "whisper-tiny-en-q5_1", "Whisper tiny English", Slot.STT_WHISPER, "ggml-tiny.en-q5_1.bin",
+            listOf(pin("ggml-tiny.en-q5_1.bin", 32_166_155, "c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b")),
+        ),
+        CatalogueModel(
+            "whisper-small-en-q5_1", "Whisper small English", Slot.STT_WHISPER, "ggml-small.en-q5_1.bin",
+            listOf(pin("ggml-small.en-q5_1.bin", 190_098_681, "bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30")),
+        ),
         CatalogueModel("zipformer-he-int8", HebrewModels.Kind.ZIPFORMER.label, Slot.HEBREW_ZIPFORMER, HebrewModels.Kind.ZIPFORMER.dirName, he(HebrewModels.Kind.ZIPFORMER)),
         CatalogueModel("parakeet-tdt-0.6b-v3-he-int8", HebrewModels.Kind.PARAKEET.label, Slot.HEBREW_PARAKEET, HebrewModels.Kind.PARAKEET.dirName, he(HebrewModels.Kind.PARAKEET)),
         CatalogueModel(
@@ -116,6 +142,12 @@ data class Plan(val slot: Slot, val catalogue: CatalogueModel?, val target: File
 }
 
 object ServerSlots {
+    /** The engines a tag can name (`flow_protocol::library::ENGINES`; ServerCatalogTest keeps them equal). */
+    val ENGINES = listOf("whisper", "parakeet", "sherpa_online", "gguf")
+
+    /** [ENGINES] for a message: `"whisper", "parakeet", "sherpa_online" or "gguf"`. */
+    fun enginesHint(): String = ENGINES.map { "\"$it\"" }.let { q -> q.dropLast(1).joinToString(", ") + " or " + q.last() }
+
     /** Folder name of custom model [id] inside its slot's folder. */
     fun customName(id: String) = "server-$id"
 
@@ -152,7 +184,7 @@ object ServerSlots {
             m.kind == null -> error("this version doesn't know the kind \"${m.kindWire}\"")
             m.kind == ModelKind.VAD -> error("this app has no slot for a voice-activity model")
             m.kind == ModelKind.LID -> error("the phone has no language-detection slot: dictation follows the keyboard or the language you set")
-            engine.isEmpty() -> error("its tag has no engine (add engine = \"whisper\", \"parakeet\", … to model.toml)")
+            engine.isEmpty() -> error("its tag has no engine (add engine = ${enginesHint()} to model.toml)")
             m.kind == ModelKind.STT && engine == "whisper" -> Slot.STT_WHISPER
             m.kind == ModelKind.STT && engine == "parakeet" -> Slot.STT_PARAKEET
             m.kind == ModelKind.STT && engine == "sherpa_online" -> error("this app runs streaming (sherpa_online) models only as the Hebrew model")

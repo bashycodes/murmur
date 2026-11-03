@@ -97,6 +97,13 @@ async fn admin_lists_creates_and_revokes() {
     let l = list(a, TOKEN).await;
     assert_eq!(l.keys.len(), 2);
     assert!(l.keys[0].current && l.keys[0].name == OWNER);
+    // Connecting and listing keys touch "last connected", not "last used";
+    // `last_seen` mirrors last connected for clients older than the split.
+    for k in &l.keys {
+        assert!(k.last_connected.is_some(), "{k:?}");
+        assert_eq!(k.last_seen, k.last_connected, "{k:?}");
+        assert_eq!(k.last_used, None, "{k:?}");
+    }
     assert!(!body_has_secret(
         &serde_json::to_string(&l).unwrap(),
         &phone.secret

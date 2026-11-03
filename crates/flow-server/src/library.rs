@@ -32,7 +32,9 @@ use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
-use flow_protocol::library::{is_safe_name, LibraryFile, LibraryModel, ModelKind, ModelList};
+use flow_protocol::library::{
+    catalogue, is_safe_name, LibraryFile, LibraryModel, ModelKind, ModelList,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -393,8 +395,12 @@ impl Scan<'_> {
                 title: tag.title,
                 kind: tag.kind,
                 language: tag.language,
+                // A catalogue copy needs no `engine`: the catalogue knows it.
+                engine: tag.engine.or_else(|| {
+                    let c = catalogue(tag.catalogue_id.as_deref()?)?;
+                    Some(c.engine.into())
+                }),
                 catalogue_id: tag.catalogue_id,
-                engine: tag.engine,
                 files,
             },
             paths,
@@ -842,6 +848,37 @@ mod tests {
         );
         let names: Vec<&str> = z.files.iter().map(|f| f.name.as_str()).collect();
         assert_eq!(names, ["sub/encoder.onnx", "tokens.txt"]);
+    }
+
+    #[test]
+    fn a_catalogue_id_alone_gives_the_engine() {
+        let d = tempfile::tempdir().unwrap();
+        let r = d.path();
+        put(
+            &r.join("pk/model.toml"),
+            "kind = \"stt\"\ntitle = \"P\"\ncatalogue_id = \"parakeet-unified-en-0.6b-int8\"\n",
+        );
+        put(&r.join("pk/tokens.txt"), "a");
+        // The tag's own engine wins; an unknown id infers nothing.
+        put(
+            &r.join("own/model.toml"),
+            "kind = \"stt\"\ntitle = \"O\"\ncatalogue_id = \"whisper-base\"\nengine = \"custom\"\n",
+        );
+        put(&r.join("own/a.bin"), "a");
+        put(
+            &r.join("unknown/model.toml"),
+            "kind = \"stt\"\ntitle = \"U\"\ncatalogue_id = \"not-in-the-catalogue\"\n",
+        );
+        put(&r.join("unknown/a.bin"), "a");
+        let (idx, _) = scan(r, &mut BTreeMap::new());
+        let engine: BTreeMap<&str, Option<&str>> = idx
+            .models
+            .iter()
+            .map(|m| (m.info.id.as_str(), m.info.engine.as_deref()))
+            .collect();
+        assert_eq!(engine["pk"], Some("parakeet"));
+        assert_eq!(engine["own"], Some("custom"));
+        assert_eq!(engine["unknown"], None);
     }
 
     #[test]
