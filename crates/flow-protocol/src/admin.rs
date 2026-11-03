@@ -109,7 +109,17 @@ pub struct KeyView {
     /// Unix seconds; `None` = active.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revoked: Option<u64>,
-    /// Unix seconds of the last authenticated request.
+    /// Unix seconds of the last real use: a finished dictation or a model
+    /// download. Older servers omit it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_used: Option<u64>,
+    /// Unix seconds of the last authenticated request of any kind
+    /// (connection checks and admin page visits too). Older servers omit
+    /// it and send only `last_seen`; read it through [`KeyView::connected`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_connected: Option<u64>,
+    /// Same as `last_connected`, still sent for clients that predate the
+    /// split (they show it as "last seen").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_seen: Option<u64>,
     /// `hello.client` of its last connection (e.g. `flow-android 1.0.0`).
@@ -130,6 +140,11 @@ pub struct KeyView {
 impl KeyView {
     pub fn active(&self) -> bool {
         self.revoked.is_none()
+    }
+
+    /// Last connected, falling back to an older server's `last_seen`.
+    pub fn connected(&self) -> Option<u64> {
+        self.last_connected.or(self.last_seen)
     }
 }
 
@@ -196,5 +211,15 @@ mod tests {
         let e: AdminError = serde_json::from_str(r#"{"code":"forbidden"}"#).unwrap();
         assert_eq!(e.to_string(), "forbidden");
         assert_eq!(key_path("k-1"), "/v1/admin/keys/k-1");
+    }
+
+    #[test]
+    fn connected_falls_back_to_an_older_servers_last_seen() {
+        let old: KeyView = serde_json::from_str(r#"{"id":"k-1","last_seen":5}"#).unwrap();
+        assert_eq!((old.connected(), old.last_used), (Some(5), None));
+        let new: KeyView =
+            serde_json::from_str(r#"{"id":"k-1","last_used":3,"last_connected":7,"last_seen":7}"#)
+                .unwrap();
+        assert_eq!((new.connected(), new.last_used), (Some(7), Some(3)));
     }
 }

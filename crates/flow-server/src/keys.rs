@@ -15,8 +15,8 @@
 //!   change. A running server re-reads it when it changes (one `stat` per
 //!   authentication), so `keys add` / `keys revoke` take effect on the
 //!   next connection without a restart.
-//! * `key-usage.json`: per-key counters (last seen, client, dictations,
-//!   audio). Written only by the server, batched ([`KeyStore::flush`]).
+//! * `key-usage.json`: per-key counters (last used, last connected,
+//!   client, dictations, audio). Written only by the server, batched ([`KeyStore::flush`]).
 //!   Never text or audio (D17).
 //!
 //! Interface: [`KeyStore::authenticate`] (secret → [`KeyRef`]),
@@ -73,8 +73,14 @@ impl Key {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct Usage {
-    /// Unix seconds of the last authenticated request.
-    pub last_seen: Option<u64>,
+    /// Unix seconds of the last real use: a finished dictation or a model
+    /// download. Admin page visits and connection checks don't count.
+    pub last_used: Option<u64>,
+    /// Unix seconds of the last authenticated request of any kind. Files
+    /// written before the split call it `last_seen`; `last_used` is then
+    /// unknown until the key is used again.
+    #[serde(alias = "last_seen")]
+    pub last_connected: Option<u64>,
     /// `hello.client` of the last connection (e.g. `flow-android 0.12.0`).
     pub client: Option<String>,
     pub dictations: u64,
@@ -317,7 +323,7 @@ impl KeyStore {
     }
 
     /// The active key whose secret this is, if any; touches its
-    /// `last_seen`. Compares every key's hash in constant time.
+    /// `last_connected` (not `last_used`). Compares every key's hash in constant time.
     pub fn authenticate(&self, secret: &str) -> Option<KeyRef> {
         let h = sha256_hex(secret);
         let mut g = self.lock();
@@ -329,7 +335,7 @@ impl KeyStore {
             }
         }
         if let Some(k) = &hit {
-            g.usage.entry(k.id.clone()).or_default().last_seen = Some(now_s());
+            g.usage.entry(k.id.clone()).or_default().last_connected = Some(now_s());
             g.dirty = true;
         }
         hit
@@ -352,7 +358,7 @@ impl KeyStore {
         let u = g.usage.entry(id.to_string()).or_default();
         u.dictations += 1;
         u.audio_ms = u.audio_ms.saturating_add(audio_ms);
-        u.last_seen = Some(now_s());
+        u.last_used = Some(now_s());
         g.dirty = true;
     }
 
@@ -362,7 +368,7 @@ impl KeyStore {
         let u = g.usage.entry(id.to_string()).or_default();
         u.downloads += 1;
         u.download_bytes = u.download_bytes.saturating_add(bytes);
-        u.last_seen = Some(now_s());
+        u.last_used = Some(now_s());
         g.dirty = true;
     }
 
@@ -495,7 +501,8 @@ pub fn table(keys: &[KeyInfo]) -> String {
         "ID",
         "ADMIN",
         "CREATED (UTC)",
-        "LAST SEEN (UTC)",
+        "LAST USED (UTC)",
+        "LAST CONNECTED (UTC)",
         "CLIENT",
         "DICTATIONS",
         "AUDIO MIN",
@@ -510,7 +517,8 @@ pub fn table(keys: &[KeyInfo]) -> String {
             k.key.id.clone(),
             if k.key.admin { "yes" } else { "no" }.into(),
             when(Some(k.key.created)),
-            when(u.last_seen),
+            when(u.last_used),
+            when(u.last_connected),
             u.client.clone().unwrap_or_else(|| "-".into()),
             u.dictations.to_string(),
             format!("{:.1}", u.audio_ms as f64 / 60_000.0),
@@ -524,7 +532,7 @@ pub fn table(keys: &[KeyInfo]) -> String {
             },
         ]);
     }
-    let mut w = [0usize; 10];
+    let mut w = [0usize; 11];
     for r in &rows {
         for (i, c) in r.iter().enumerate() {
             w[i] = w[i].max(c.chars().count());
@@ -868,7 +876,47 @@ mod tests {
         assert_eq!((u.dictations, u.audio_ms), (2, 4000));
         assert_eq!((u.downloads, u.download_bytes), (2, 1500));
         assert_eq!(u.client.as_deref(), Some("flow-windows 1.0.0"));
-        assert!(u.last_seen.is_some());
+        assert!(u.last_used.is_some());
+        assert!(u.last_connected.is_some());
+    }
+
+    #[test]
+    fn authenticate_connects_but_does_not_use() {
+        let s = KeyStore::in_memory(TOKEN);
+        let id = s.authenticate(TOKEN).unwrap().id;
+        let u = s.list()[0].usage.clone();
+        assert!(u.last_connected.is_some());
+        assert_eq!(u.last_used, None, "an auth alone is not a use");
+        s.record_dictation(&id, 1000);
+        assert!(s.list()[0].usage.last_used.is_some());
+    }
+
+    #[test]
+    fn old_usage_file_last_seen_becomes_last_connected() {
+        let d = tempfile::tempdir().unwrap();
+        let s = KeyStore::open(d.path(), Some(TOKEN)).unwrap();
+        let id = s.list()[0].key.id.clone();
+        drop(s);
+        // key-usage.json as written before the split: only `last_seen`.
+        std::fs::write(
+            d.path().join(USAGE_FILE),
+            format!(
+                r#"{{"version":1,"usage":{{"{id}":{{"last_seen":1700000500,"client":"flow-android 1.0.0","dictations":3,"audio_ms":4000}}}}}}"#
+            ),
+        )
+        .unwrap();
+        let s = KeyStore::open(d.path(), Some(TOKEN)).unwrap();
+        let u = &s.list()[0].usage;
+        assert_eq!(u.last_connected, Some(1_700_000_500));
+        assert_eq!(u.last_used, None);
+        assert_eq!((u.dictations, u.audio_ms), (3, 4000));
+        // Rewritten in the new shape: no `last_seen` left behind.
+        s.record_client(&id, "flow-android 1.1.0");
+        s.flush().unwrap();
+        let raw = std::fs::read_to_string(d.path().join(USAGE_FILE)).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["usage"][&id]["last_connected"], 1_700_000_500, "{raw}");
+        assert!(!raw.contains("last_seen"), "{raw}");
     }
 
     #[test]
