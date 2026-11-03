@@ -384,7 +384,9 @@ same port and TLS as dictation, to any valid key.
   invalid one, are skipped; the log says why when the set changes, and so
   does `flow-server library list`.
 * Changes are picked up without a restart: the server rescans every
-  `rescan_s` seconds (default 60; one `stat` per file). A file is hashed
+  `rescan_s` seconds (default 60; one `stat` per file, and every
+  `model.toml` is read again, so a tag edit shows on the next scan; tap
+  *From your server* again in the app to see it). A file is hashed
   (SHA-256) only when it is new or its size or mtime changed; the hashes are
   cached in `<state dir>/library-hashes.json`. A model shows up once all its
   files are hashed (a few seconds per GB, in the background).
@@ -407,8 +409,21 @@ sudo flow-server library list   # what is served, and why folders were skipped
 | `kind` | yes | `stt` (speech to text, every language), `hebrew` (the Hebrew route), `llm` (AI cleanup), `lid` (language detection), `vad` (voice activity) |
 | `title` | yes | Shown in the apps |
 | `language` | no | `en`, `he`, …; leave out for a multilingual model |
-| `catalogue_id` | no | The app catalogue id this folder is a copy of (`whisper-base`, `parakeet-tdt-0.6b-v2-int8`, …). The apps then check the files against the hashes built into them |
-| `engine` | no | How the app loads it: `whisper` (whisper.cpp ggml `.bin`), `parakeet` (sherpa-onnx NeMo transducer), `sherpa_online` (sherpa-onnx streaming transducer), `gguf` (llama.cpp), or another short name |
+| `catalogue_id` | no | The app catalogue id this folder is a copy of (list below). The apps then check the files against the hashes built into them, and `engine` may be left out (the server fills it in from the catalogue) |
+| `engine` | no, with a known `catalogue_id` | How the app loads it: `whisper` (whisper.cpp ggml `.bin`), `parakeet` (sherpa-onnx NeMo transducer), `sherpa_online` (sherpa-onnx streaming transducer), `gguf` (llama.cpp), or another short name |
+
+Catalogue ids (`flow_protocol::library::CATALOGUE`; the folder must hold the
+catalogue's files under their upstream names):
+
+| `catalogue_id` | Files | Engine |
+|---|---|---|
+| `parakeet-unified-en-0.6b-int8` | encoder/decoder/joiner `.int8.onnx` + `tokens.txt` (`sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming`) | `parakeet` |
+| `parakeet-tdt-0.6b-v2-int8` | encoder/decoder/joiner `.int8.onnx` + `tokens.txt` | `parakeet` |
+| `whisper-base`, `whisper-small-q5_1` | `ggml-base.bin`, `ggml-small-q5_1.bin` | `whisper` |
+| `whisper-base-en-q5_1`, `whisper-base-q5_1`, `whisper-tiny-en-q5_1`, `whisper-small-en-q5_1` | `ggml-base.en-q5_1.bin`, `ggml-base-q5_1.bin`, `ggml-tiny.en-q5_1.bin`, `ggml-small.en-q5_1.bin` | `whisper` |
+| `zipformer-he-int8`, `parakeet-tdt-0.6b-v3-he-int8` | the Hebrew folders (kind `hebrew`) | `sherpa_online`, `parakeet` |
+| `ivrit-whisper-large-v3-turbo-q5_0` | `ggml-ivrit-large-v3-turbo-q5_0.bin` (kind `hebrew`; Windows only) | `whisper` |
+| `qwen2.5-0.5b-instruct-q4_k_m`, `qwen2.5-1.5b-instruct-q4_k_m`, `llama-3.2-3b-instruct-q4_k_m` | the `.gguf` (kind `llm`) | `gguf` |
 
 Unknown keys are an error (a typo would otherwise vanish silently).
 
