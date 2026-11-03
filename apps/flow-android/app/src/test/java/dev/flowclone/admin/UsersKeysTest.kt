@@ -24,13 +24,14 @@ class UsersKeysTest {
 
     @Test fun decodesKeysWithUsageAndDownloads() {
         val json = """{"ok":true,"value":{"keys":[
-            {"id":"k-1","name":"owner","admin":true,"created":1700000000,"last_seen":1700000500,"client":"flow-android 1.0.0",
+            {"id":"k-1","name":"owner","admin":true,"created":1700000000,"last_used":1700000400,"last_connected":1700000500,"last_seen":1700000500,"client":"flow-android 1.0.0",
              "dictations":3,"audio_ms":90000,"downloads":2,"download_bytes":2500000,"current":true},
             {"id":"k-2","name":"old","admin":false,"created":1700000000,"revoked":1700000900,"dictations":0,"audio_ms":0,"current":false}]}}"""
         val keys = (AdminJson.decode(json, AdminJson::keys) as AdminResult.Ok).value
         assertEquals(2, keys.size)
         val o = keys[0]
-        assertEquals(KeyView("k-1", "owner", true, 1700000000, null, 1700000500, "flow-android 1.0.0", 3, 90000, 2, 2500000, true), o)
+        assertEquals(KeyView("k-1", "owner", true, 1700000000, null, lastUsed = 1700000400, lastConnected = 1700000500,
+            client = "flow-android 1.0.0", dictations = 3, audioMs = 90000, downloads = 2, downloadBytes = 2500000, current = true), o)
         assertTrue(o.active)
         assertFalse(keys[1].active); assertNull(keys[1].client); assertEquals(0L, keys[1].downloads)
         val meta = UsersKeys.meta(o)
@@ -39,6 +40,26 @@ class UsersKeysTest {
         assertTrue(UsersKeys.meta(keys[1]).startsWith("Revoked "))
         assertEquals("admin · this app", UsersKeys.badge(o))
         assertEquals("", UsersKeys.badge(keys[1]))
+    }
+
+    @Test fun lastConnectedFallsBackToAnOlderServersLastSeen() {
+        val old = AdminJson.key(org.json.JSONObject("""{"id":"k-1","last_seen":5}"""))
+        assertEquals(null to 5L, old.lastUsed to old.lastConnected)
+        val new = AdminJson.key(org.json.JSONObject("""{"id":"k-1","last_used":3,"last_connected":7,"last_seen":6}"""))
+        assertEquals(3L to 7L, new.lastUsed to new.lastConnected)
+        val none = AdminJson.key(org.json.JSONObject("""{"id":"k-1","last_used":null,"last_connected":null}"""))
+        assertEquals(null to null, none.lastUsed to none.lastConnected)
+    }
+
+    @Test fun lastUsedIsUnknownForAKeyWithUsageButNoTime() {
+        assertEquals("unknown", UsersKeys.lastUsed(KeyView("k", "phone", dictations = 2)))
+        assertEquals("unknown", UsersKeys.lastUsed(KeyView("k", "phone", downloads = 1)))
+        assertEquals("never", UsersKeys.lastUsed(KeyView("k", "phone", lastConnected = 9)))
+        val used = UsersKeys.lastUsed(KeyView("k", "phone", dictations = 2, lastUsed = 1700000400))
+        assertFalse(used, used == "unknown" || used == "never")
+        val meta = UsersKeys.meta(KeyView("k", "phone", dictations = 2, lastConnected = 1700000500))
+        assertTrue(meta, meta.contains("Last used unknown · last connected ") && !meta.contains("last connected never"))
+        assertTrue(UsersKeys.meta(KeyView("k", "phone")).contains("Last used never · last connected never"))
     }
 
     @Test fun createdKeyNeverPrintsItsSecret() {

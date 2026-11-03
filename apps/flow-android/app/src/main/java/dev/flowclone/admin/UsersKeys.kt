@@ -21,14 +21,19 @@ import java.util.Locale
  */
 data class WhoAmI(val id: String, val name: String, val admin: Boolean)
 
-/** One key with its usage (`flow_protocol::admin::KeyView`). Times are Unix seconds. */
+/**
+ * One key with its usage (`flow_protocol::admin::KeyView`). Times are Unix seconds.
+ * [lastUsed]: last dictation, text-only cleanup or model download; [lastConnected]: last
+ * authenticated request of any kind (D50).
+ */
 data class KeyView(
     val id: String,
     val name: String,
     val admin: Boolean = false,
     val created: Long = 0,
     val revoked: Long? = null,
-    val lastSeen: Long? = null,
+    val lastUsed: Long? = null,
+    val lastConnected: Long? = null,
     val client: String? = null,
     val dictations: Long = 0,
     val audioMs: Long = 0,
@@ -90,7 +95,9 @@ object AdminJson {
 
     fun key(o: JSONObject) = KeyView(
         id = o.optString("id"), name = o.optString("name"), admin = o.optBoolean("admin"),
-        created = o.optLong("created"), revoked = o.optLongOrNull("revoked"), lastSeen = o.optLongOrNull("last_seen"),
+        created = o.optLong("created"), revoked = o.optLongOrNull("revoked"), lastUsed = o.optLongOrNull("last_used"),
+        // Servers older than D50 send only `last_seen`, which is last connected.
+        lastConnected = o.optLongOrNull("last_connected") ?: o.optLongOrNull("last_seen"),
         client = if (o.has("client") && !o.isNull("client")) o.optString("client") else null,
         dictations = o.optLong("dictations"), audioMs = o.optLong("audio_ms"),
         downloads = o.optLong("downloads"), downloadBytes = o.optLong("download_bytes"), current = o.optBoolean("current"),
@@ -190,11 +197,14 @@ object UsersKeys {
     /** Row badge: "admin", "this app", both or none. */
     fun badge(k: KeyView) = listOfNotNull("admin".takeIf { k.admin }, "this app".takeIf { k.current }).joinToString(" · ")
 
-    /** Row meta: client, last seen, usage incl. downloads; or when it was revoked. */
+    /** "Last used" time; "unknown" for a key with usage from before the server tracked it (as Windows). */
+    fun lastUsed(k: KeyView) = if (k.lastUsed == null && (k.dictations > 0 || k.downloads > 0)) "unknown" else seen(k.lastUsed)
+
+    /** Row meta: client, last used, last connected, usage incl. downloads; or when it was revoked. */
     fun meta(k: KeyView): String {
         val usage = "${k.dictations} dictation${if (k.dictations == 1L) "" else "s"} · ${minutes(k.audioMs)} min audio · " +
             "${k.downloads} download${if (k.downloads == 1L) "" else "s"}" + if (k.downloads > 0) " (${megabytes(k.downloadBytes)})" else ""
-        val first = (k.client ?: "not used yet") + " · last seen " + seen(k.lastSeen)
+        val first = (k.client ?: "not used yet") + "\nLast used ${lastUsed(k)} · last connected ${seen(k.lastConnected)}"
         return if (k.revoked != null) "Revoked ${day(k.revoked)} · $usage" else "$first\n$usage · created ${day(k.created)}"
     }
 
