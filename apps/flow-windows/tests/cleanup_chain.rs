@@ -7,7 +7,7 @@
 //! ignored the router's cleanup plan, so the server and cloud were never
 //! asked.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -76,6 +76,8 @@ impl Cleaner for Fake {
 struct Server {
     cleans: Mutex<Vec<CleanRequest>>,
     starts: AtomicUsize,
+    /// Answer `clean` with a lost connection.
+    fail: AtomicBool,
 }
 
 impl Server {
@@ -122,6 +124,9 @@ impl Backend for Server {
     }
     fn clean_text(&self, req: &CleanRequest, _d: Instant) -> Result<Cleaned, BackendError> {
         self.cleans.lock().unwrap().push(req.clone());
+        if self.fail.load(Ordering::SeqCst) {
+            return Err(BackendError::new(Failure::Disconnected, "gone"));
+        }
         Ok(Cleaned {
             text: Some(SERVER_OUT.into()),
             model: Some("server-llm".into()),
@@ -315,7 +320,27 @@ fn a_model_reload_keeps_the_server_hop() {
 }
 
 #[test]
-fn nothing_beyond_this_pc_opens_no_server_connection() {
+fn a_failing_server_hands_over_to_openrouter_then_the_rules() {
+    let k = Rig::new(cfg(&[L, S, C], &[]), false, HEARD);
+    k.server.fail.store(true, Ordering::SeqCst);
+    let r = k.dictate(false);
+    assert_eq!(r.final_text.trim(), CLOUD_OUT, "{r:?}");
+    assert_eq!(k.calls(), (0, 1, 1));
+    assert_eq!(engines(&r).1.as_deref(), Some("cloud"));
+    // OpenRouter off too: the rules alone, and the dictation still lands.
+    let k = Rig::new(cfg(&[L, S, C], &[C]), false, HEARD);
+    k.server.fail.store(true, Ordering::SeqCst);
+    let r = k.dictate(false);
+    assert_eq!(k.calls(), (0, 1, 0));
+    assert_eq!(r.error, None, "{r:?}");
+    assert!(
+        r.final_text.to_lowercase().contains(HEARD),
+        "rules output: {r:?}"
+    );
+}
+
+#[test]
+fn cleanup_off_beyond_this_pc_builds_no_remote() {
     let k = Rig::new(cfg(&[L, S, C], &[S, C]), true, HEARD);
     let r = k.dictate(false);
     assert_eq!(r.final_text.trim(), PC_OUT, "{r:?}");

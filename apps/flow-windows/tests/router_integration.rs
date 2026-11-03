@@ -304,6 +304,72 @@ fn on_off_server_down_shows_server_unreachable() {
     );
 }
 
+/// An in-process flow-server whose LLM ends the text with "!" (D36
+/// `clean`), so a paste shows which engine cleaned it.
+fn llm_server() -> Server {
+    struct Bang;
+    impl flow_core::cleanup::Cleaner for Bang {
+        fn clean(
+            &self,
+            p: &flow_core::cleanup::CleanPrompt,
+            _d: Instant,
+        ) -> Result<String, flow_core::cleanup::CleanError> {
+            Ok(format!("{}!", p.transcript.trim().trim_end_matches('.')))
+        }
+    }
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
+    let model = flow_core::config::ModelConfig {
+        asr_backend: flow_core::config::AsrBackend::Mock {
+            text: SERVER_SAYS.into(),
+        },
+        ..Default::default()
+    };
+    let cfg = flow_server::Config {
+        bind: vec!["127.0.0.1:0".into()],
+        token: Some(TOKEN.into()),
+        model: model.clone(),
+        ..Default::default()
+    };
+    let core = flow_core::FlowCore::from_engines(
+        Arc::new(flow_core::asr::MockAsr::new(SERVER_SAYS)),
+        Some(Arc::new(Bang) as Arc<dyn flow_core::cleanup::Cleaner>),
+    );
+    let pool = flow_server::Pool::from_cores(vec![Arc::new(core)], &model, cfg.max_queue);
+    let handle = rt.block_on(async {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        flow_server::serve_with_pool(cfg, Arc::new(pool), vec![l])
+            .await
+            .unwrap()
+    });
+    Server { handle, _rt: rt }
+}
+
+#[test]
+fn server_speech_off_server_cleanup_on_cleans_this_pcs_dictation_on_the_server() {
+    // D36: speech on this PC only, this PC's AI off, cleanup order this PC
+    // → server → cloud with the server on: the server cleans the text and
+    // never gets the audio.
+    let s = llm_server();
+    let mut d = dev(&s, false, true);
+    d.set_cleanup_on(flow_router::CleanupRoute::Server, true);
+    let mut r = rig(&d);
+    r.dictate();
+    assert!(
+        said(&r.os.pastes(), &format!("{LOCAL_SAYS}!")),
+        "{:?}",
+        r.os.pastes()
+    );
+    assert_eq!(r.last_engine(), (Some("local".into()), None));
+    let last = r.router.last().unwrap();
+    assert_eq!(last.llm_engine.as_deref(), Some("server"), "{last:?}");
+    assert_eq!(s.handle.sessions(), 0, "no audio to the server");
+    assert!(s.handle.connections() >= 1);
+}
+
 #[test]
 fn off_on_never_connects() {
     let s = Server::start();
