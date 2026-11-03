@@ -51,7 +51,7 @@ ${heading("Users & keys", "Give each person or device its own key, so you can se
   <h3 class="fl-group-title">Keys</h3>
   <div class="fl-group">
     <table class="lw-keys" id="keys_table">
-      <thead><tr><th>Name</th><th>Created</th><th>Last seen</th><th class="num">Dictations</th><th class="num">Audio min</th><th class="num">Downloads</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Created</th><th title="Last dictation or model download">Last used</th><th title="Last request of any kind, including connection checks and this page">Last connected</th><th class="num">Dictations</th><th class="num">Audio min</th><th class="num">Downloads</th><th></th></tr></thead>
       <tbody id="keys_rows"></tbody>
     </table>
     <p class="lw-empty-row" id="keys_empty" hidden>Loading…</p>
@@ -161,7 +161,11 @@ function render(keys) {
             name.append(tags);
         // The app it last connected with, under the name.
         name.append(el("span", "lw-key-client", k.client ?? "not used yet"));
-        tr.append(name, el("td", "", day(k.created)), el("td", "", seen(k.last_seen)), el("td", "num", String(k.dictations)), el("td", "num", minutes(k.audio_ms)), downloads(k));
+        // A key used before the server tracked last use has counts but no time.
+        const used = k.last_used || !(k.dictations || k.downloads) ? seen(k.last_used) : "unknown";
+        // Older servers send only `last_seen`, which is last connected.
+        const connected = seen(k.last_connected ?? k.last_seen);
+        tr.append(name, el("td", "", day(k.created)), el("td", "", used), el("td", "", connected), el("td", "num", String(k.dictations)), el("td", "num", minutes(k.audio_ms)), downloads(k));
         const act = el("td", "act");
         if (k.revoked) {
             act.append(el("span", "lw-muted", `Revoked ${day(k.revoked)}`));
