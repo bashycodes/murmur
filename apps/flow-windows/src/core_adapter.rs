@@ -679,6 +679,9 @@ struct Slot {
     cleaner: Option<Arc<dyn Cleaner>>,
     /// `from_engines(asr, cleaner)`; rebuilt whenever either changes.
     core: Option<Arc<flow_core::FlowCore>>,
+    /// The router's cleanup plan (D28/D36), installed on every rebuilt
+    /// core so a reload keeps the server and cloud hops.
+    plan: Option<flow_router::CleanupPlan>,
     /// Bumped per load so a slow, superseded load can't win.
     generation: u64,
     llm_generation: u64,
@@ -694,6 +697,14 @@ impl Slot {
                 self.cleaner.clone(),
             ))
         });
+        self.apply_plan();
+    }
+
+    /// Put the router's cleanup plan on the current core (if any).
+    fn apply_plan(&self) {
+        if let Some(c) = &self.core {
+            flow_router::install_cleanup_plan(c, self.plan.as_ref());
+        }
     }
 }
 
@@ -729,6 +740,7 @@ impl FlowCoreAdapter {
                 llm_status: LlmStatus::Off,
                 cleaner: None,
                 core: None,
+                plan: None,
                 generation: 0,
                 llm_generation: 0,
             }),
@@ -1335,6 +1347,15 @@ impl FlowCoreAdapter {
     /// so cloud text gets the same local cleanup as local ASR.
     pub fn cleaner(&self) -> Option<Arc<dyn Cleaner>> {
         self.slot.lock().unwrap().cleaner.clone()
+    }
+
+    /// The router's cleanup plan (D36 order: this PC → server → cloud):
+    /// installed on the loaded core now and on every core a later load
+    /// builds. `None` = the built-in LLM alone.
+    pub fn set_cleanup_plan(&self, plan: Option<flow_router::CleanupPlan>) {
+        let mut s = self.slot.lock().unwrap();
+        s.plan = plan;
+        s.apply_plan();
     }
 
     /// Wait up to `wait` for a load in progress; `Err` = why it can't run.

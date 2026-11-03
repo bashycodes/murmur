@@ -51,7 +51,7 @@ impl Backend for FlowCore {
 
     /// D28: `plan(built-in LLM)` becomes the cleaner for later commits.
     fn install_cleanup(&self, plan: Option<CleanupPlan>) {
-        self.set_cleaner(plan.and_then(|p| p(self.cleaner())));
+        install_cleanup_plan(self, plan.as_ref());
     }
 
     fn llm_cleaner(&self) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
@@ -68,6 +68,15 @@ impl Backend for FlowCore {
             ..Default::default()
         }
     }
+}
+
+/// Install the router's cleanup plan on `core` (D28/D36): `plan(its
+/// built-in LLM)` cleans its next commits; `None` restores the built-in
+/// one. Shells that wrap `FlowCore`s in their own backend (Windows' model
+/// slot) call this on every core they build, so a model reload keeps the
+/// server and cloud hops of the cleanup order.
+pub fn install_cleanup_plan(core: &FlowCore, plan: Option<&CleanupPlan>) {
+    core.set_cleaner(plan.and_then(|p| p(core.cleaner())));
 }
 
 /// Builds the local engine on demand (loads its models). Called on a
