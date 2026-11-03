@@ -87,6 +87,149 @@ impl Drop for Sess {
     }
 }
 
+/// Why a connection ended: the `reason` of its `disconnected` line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EndReason {
+    /// No valid `hello`: a timeout after `HELLO_TIMEOUT`, or a close,
+    /// error or other message where the hello should have been.
+    NoHello,
+    ProtoMismatch,
+    /// Server shutdown, or the task dropped before it chose a reason.
+    Shutdown,
+    /// A close frame or end of stream from the client.
+    ClientClosed,
+    SocketError,
+    /// Nothing, not even a pong, within `ws_dead_ms` (C5).
+    DeadPeer,
+    /// No session and no message for `idle_timeout_s`.
+    Idle,
+    /// The client stopped reading and its outbound queue filled (C17).
+    NotReading,
+    /// The connection task panicked.
+    Panic,
+}
+
+impl EndReason {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::NoHello => "no_hello",
+            Self::ProtoMismatch => "proto_mismatch",
+            Self::Shutdown => "shutdown",
+            Self::ClientClosed => "client_closed",
+            Self::SocketError => "socket_error",
+            Self::DeadPeer => "dead_peer",
+            Self::Idle => "idle",
+            Self::NotReading => "not_reading",
+            Self::Panic => "panic",
+        }
+    }
+}
+
+/// What one connection did, logged once as `disconnected` when it is
+/// dropped, so every way a connection ends (including a task dropped at
+/// shutdown) leaves exactly one line. Counts and timings only, never text.
+struct EndLog {
+    peer: SocketAddr,
+    key: Option<String>,
+    /// The client's `hello.client` (its version string, [`clip`]ped);
+    /// `-` before hello.
+    client: String,
+    opened: Instant,
+    /// Text (control) messages after the hello, pings included: a health
+    /// probe (hello, pings, close) has some, an idle client none.
+    msgs: u64,
+    /// Binary (audio) frame bytes received, including frames dropped for
+    /// lack of a session.
+    audio_bytes: u64,
+    /// `start`s received, refused ones included.
+    sessions: u64,
+    results: u64,
+    /// Sessions that ended without a result for another reason than the
+    /// client's (each has its own `session ended` line), plus failed
+    /// cleanups.
+    errors: u64,
+    /// Sessions the client ended itself: `cancel`, or a replacing `start`.
+    cancels: u64,
+    /// Text-only cleanups answered with text.
+    cleans: u64,
+    /// The session still open when the connection ended (no result sent).
+    open_sid: Option<u64>,
+    reason: EndReason,
+}
+
+impl EndLog {
+    fn new(peer: SocketAddr, key: Option<String>) -> Self {
+        Self {
+            peer,
+            key,
+            client: "-".into(),
+            opened: Instant::now(),
+            msgs: 0,
+            audio_bytes: 0,
+            sessions: 0,
+            results: 0,
+            errors: 0,
+            cancels: 0,
+            cleans: 0,
+            open_sid: None,
+            reason: EndReason::Shutdown,
+        }
+    }
+
+    /// A one-word summary, the worst thing that happened first: `errors`
+    /// if any session or cleanup failed (even next to results), else
+    /// `result`, `cleaned`, `no_audio` (nothing was sent) or `no_result`
+    /// (audio but no result, e.g. only cancelled sessions).
+    fn outcome(&self) -> &'static str {
+        if self.errors > 0 {
+            "errors"
+        } else if self.results > 0 {
+            "result"
+        } else if self.cleans > 0 {
+            "cleaned"
+        } else if self.audio_bytes == 0 {
+            "no_audio"
+        } else {
+            "no_result"
+        }
+    }
+}
+
+impl Drop for EndLog {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            self.reason = EndReason::Panic;
+        }
+        tracing::info!(
+            peer = %self.peer,
+            key = self.key.as_deref().unwrap_or("-"),
+            client = ?self.client,
+            duration_ms = self.opened.elapsed().as_millis() as u64,
+            msgs = self.msgs,
+            audio_bytes = self.audio_bytes,
+            sessions = self.sessions,
+            results = self.results,
+            errors = self.errors,
+            cancels = self.cancels,
+            cleans = self.cleans,
+            open_sid = self.open_sid,
+            reason = self.reason.as_str(),
+            outcome = self.outcome(),
+            "disconnected"
+        );
+    }
+}
+
+/// A client-supplied string for the log: at most 64 characters. Log it with
+/// `?` (Debug) so a newline or quote cannot forge a log line.
+fn clip(s: &str) -> String {
+    s.chars().take(64).collect()
+}
+
+/// Why a session ended without a result (its `session ended` line).
+const CANCELLED: &str = "cancelled";
+const REPLACED: &str = "replaced";
+
 struct Conn {
     state: Arc<AppState>,
     peer: SocketAddr,
@@ -102,6 +245,8 @@ struct Conn {
     last_activity: Instant,
     /// Last frame of any kind, pongs included (dead-peer detection).
     last_rx: Instant,
+    /// Logs the `disconnected` line when the connection is dropped.
+    end: EndLog,
 }
 
 pub(crate) async fn run(
@@ -122,6 +267,9 @@ pub(crate) async fn run(
         let _ = sink.close().await;
     });
     let mut kill = state.kill.clone();
+    let key_id = key.map(|k| k.id);
+    // Dropped (and so logged) on every return below, or with the task.
+    let mut end = EndLog::new(peer, key_id.clone());
     let send = |m: &ServerMsg| {
         let _ = out_tx.try_send(Message::Text(m.to_json().into()));
     };
@@ -135,6 +283,7 @@ pub(crate) async fn run(
         Ok(Some(Ok(Message::Text(t)))) => serde_json::from_str::<ClientMsg>(&t).ok(),
         _ => None,
     };
+    end.reason = EndReason::NoHello;
     let Some(ClientMsg::Hello(h)) = hello else {
         send(&ServerMsg::error(
             None,
@@ -146,7 +295,9 @@ pub(crate) async fn run(
         let _ = writer.await;
         return;
     };
+    end.client = clip(&h.client);
     let Some(proto) = negotiate(h.proto_min, h.proto_max, PROTO_MIN, PROTO_MAX) else {
+        end.reason = EndReason::ProtoMismatch;
         let msg = format!(
             "client speaks {}..{}, server {PROTO_MIN}..{PROTO_MAX}",
             h.proto_min, h.proto_max
@@ -160,11 +311,11 @@ pub(crate) async fn run(
         return;
     };
     send(&ServerMsg::HelloOk(crate::health::hello_ok(&state, proto)));
-    let key_id = key.map(|k| k.id);
+    end.reason = EndReason::Shutdown;
     if let (Some(store), Some(id)) = (&state.keys, &key_id) {
         store.record_client(id, &h.client);
     }
-    tracing::info!(%peer, key = key_id.as_deref().unwrap_or("-"), client = %h.client, core = %h.core, "connected");
+    tracing::info!(%peer, key = key_id.as_deref().unwrap_or("-"), client = ?clip(&h.client), core = ?clip(&h.core), "connected");
 
     let (ev_tx, mut ev_rx) = mpsc::unbounded_channel::<Event>();
     let mut c = Conn {
@@ -178,6 +329,7 @@ pub(crate) async fn run(
         dropped_audio: 0,
         last_activity: Instant::now(),
         last_rx: Instant::now(),
+        end,
     };
     let mut tick = tokio::time::interval(PARTIAL_POLL);
     let idle = Duration::from_secs(state.cfg.idle_timeout_s.max(1));
@@ -185,18 +337,19 @@ pub(crate) async fn run(
     let dead = Duration::from_millis(state.cfg.ws_dead_ms.max(1));
     let max_wall = Duration::from_secs(state.cfg.max_session_s);
     let mut ping = tokio::time::interval_at(tokio::time::Instant::now() + ping_every, ping_every);
-    loop {
+    let reason = loop {
         if c.overflow.get() {
             tracing::info!(%peer, "client is not reading its messages; closing");
-            break;
+            break EndReason::NotReading;
         }
         tokio::select! {
-            _ = kill.changed() => break,
+            _ = kill.changed() => break EndReason::Shutdown,
             m = stream.next() => {
                 c.last_rx = Instant::now();
                 match m {
                     Some(Ok(Message::Text(t))) => {
                         c.last_activity = c.last_rx;
+                        c.end.msgs += 1;
                         c.on_text(&t)
                     }
                     Some(Ok(Message::Binary(b))) => {
@@ -204,7 +357,8 @@ pub(crate) async fn run(
                         c.on_audio(&b)
                     }
                     Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
-                    Some(Ok(Message::Close(_))) | None | Some(Err(_)) => break,
+                    Some(Ok(Message::Close(_))) | None => break EndReason::ClientClosed,
+                    Some(Err(_)) => break EndReason::SocketError,
                 }
             }
             Some(ev) = ev_rx.recv() => c.on_event(ev),
@@ -218,20 +372,18 @@ pub(crate) async fn run(
                 if c.last_rx.elapsed() > dead {
                     tracing::info!(%peer, "no frame within the dead interval; closing");
                     c.push(Message::Close(None));
-                    break;
+                    break EndReason::DeadPeer;
                 }
                 c.enforce_wall_clock(max_wall);
                 c.poll_partial();
                 if c.sess.is_none() && c.last_activity.elapsed() > idle {
                     c.push(Message::Close(None));
-                    break;
+                    break EndReason::Idle;
                 }
             }
         }
-    }
-    if let Some(s) = c.sess.take() {
-        tracing::info!(sid = s.sid, %peer, "session ended by disconnect");
-    }
+    };
+    c.end.reason = reason;
     if c.dropped_audio > 0 {
         tracing::debug!(%peer, frames = c.dropped_audio, "audio frames without a session");
     }
@@ -244,7 +396,43 @@ pub(crate) async fn run(
     }
 }
 
+impl Drop for Conn {
+    /// A session still open when the connection ends (however it ends) gets
+    /// its `session ended` line before the connection's `disconnected`.
+    fn drop(&mut self) {
+        self.end.open_sid = self.sess.as_ref().map(|s| s.sid);
+        self.end_session("disconnect");
+    }
+}
+
 impl Conn {
+    /// End the current session (if any) without a result.
+    fn end_session(&mut self, reason: &'static str) {
+        if let Some(s) = self.sess.take() {
+            self.session_ended(s.sid, reason, Some(&s));
+        }
+    }
+
+    /// The one `session ended` line of a session that produced no result
+    /// (`s` is `None` for a `start` refused before it began). Counts and
+    /// timings only, never text.
+    fn session_ended(&mut self, sid: u64, reason: &'static str, s: Option<&Sess>) {
+        if reason == CANCELLED || reason == REPLACED {
+            self.end.cancels += 1;
+        } else {
+            self.end.errors += 1;
+        }
+        tracing::info!(
+            sid,
+            peer = %self.peer,
+            key = self.key.as_deref().unwrap_or("-"),
+            reason,
+            duration_ms = s.map_or(0, |s| s.created.elapsed().as_millis() as u64),
+            audio_bytes = s.map_or(0, |s| s.samples * 2),
+            "session ended"
+        );
+    }
+
     fn send(&self, m: &ServerMsg) {
         self.push(Message::Text(m.to_json().into()));
     }
@@ -310,8 +498,7 @@ impl Conn {
             ClientMsg::Cancel { sid } => {
                 self.state.cancels.fetch_add(1, Ordering::SeqCst);
                 if self.sess.as_ref().is_some_and(|s| s.sid == sid) {
-                    self.sess = None;
-                    tracing::info!(sid, peer = %self.peer, "cancelled");
+                    self.end_session(CANCELLED);
                 }
                 self.send(&ServerMsg::Cancelled { sid });
             }
@@ -335,10 +522,12 @@ impl Conn {
             })
         };
         if !self.state.pool.llm {
+            self.end.errors += 1;
             return self.send(&refuse("no_llm"));
         }
         if let Err(e) = crate::limits::clean(&req) {
             tracing::info!(id, peer = %self.peer, "clean refused: {e}");
+            self.end.errors += 1;
             return self.send(&refuse(code::TOO_LARGE));
         }
         let pool = self.state.pool.clone();
@@ -349,7 +538,10 @@ impl Conn {
         let lease = match pool.try_lease() {
             Some(l) => Some(l),
             None if pool.enqueue() => None,
-            None => return self.send(&refuse(code::BUSY)),
+            None => {
+                self.end.errors += 1;
+                return self.send(&refuse(code::BUSY));
+            }
         };
         tokio::spawn(async move {
             let lease = match lease {
@@ -416,14 +608,18 @@ impl Conn {
 
     fn start(&mut self, sid: u64, cfg: SessionConfig) {
         // A start while a session is active cancels it (FlowCore semantics).
-        self.sess = None;
+        self.end_session(REPLACED);
+        self.end.sessions += 1;
         let cfg = match crate::limits::session(cfg, self.state.cfg.max_session_samples()) {
             Ok(c) => crate::limits::llm_scale(
                 c,
                 self.state.cfg.llm_timeout_per_char_ms,
                 self.state.cfg.llm_timeout_max_ms,
             ),
-            Err(e) => return self.err(Some(sid), code::TOO_LARGE, e),
+            Err(e) => {
+                self.session_ended(sid, "too_large", None);
+                return self.err(Some(sid), code::TOO_LARGE, e);
+            }
         };
         self.state.sessions.fetch_add(1, Ordering::SeqCst);
         let mut s = Sess {
@@ -446,6 +642,7 @@ impl Conn {
         };
         if let Some(l) = self.state.pool.try_lease() {
             if let Err(e) = l.core.start_session(s.cfg.clone()) {
+                self.session_ended(sid, "worker_failed", Some(&s));
                 return self.worker_failed(sid, e);
             }
             s.lease = Some(l);
@@ -461,6 +658,7 @@ impl Conn {
             s.waiter = Some(task.abort_handle());
             self.send(&ServerMsg::Started { sid, queued: true });
         } else {
+            self.session_ended(sid, "busy", Some(&s));
             self.err(
                 Some(sid),
                 code::BUSY,
@@ -484,6 +682,7 @@ impl Conn {
     }
 
     fn on_audio(&mut self, b: &[u8]) {
+        self.end.audio_bytes += b.len() as u64;
         let pcm = match decode_pcm(b) {
             Ok(p) => p,
             Err(FrameError::TooLarge) => {
@@ -513,7 +712,7 @@ impl Conn {
         s.samples += pcm.len() as u64;
         if s.samples > max_session {
             let sid = s.sid;
-            self.sess = None;
+            self.end_session("too_large");
             return self.err(
                 Some(sid),
                 code::TOO_LARGE,
@@ -557,8 +756,14 @@ impl Conn {
     fn on_event(&mut self, ev: Event) {
         match ev {
             Event::Cleaned(c) => {
-                if let (Some(store), Some(id), Some(_)) = (&self.state.keys, &self.key, &c.text) {
-                    store.record_clean(id);
+                // A clean succeeded when it answered with text.
+                if c.text.is_some() {
+                    self.end.cleans += 1;
+                    if let (Some(store), Some(id)) = (&self.state.keys, &self.key) {
+                        store.record_clean(id);
+                    }
+                } else {
+                    self.end.errors += 1;
                 }
                 self.send(&ServerMsg::Cleaned(c))
             }
@@ -578,7 +783,7 @@ impl Conn {
                             .ring_capacity_samples
                             .max(s.queued_audio.len() + SAMPLE_RATE * 30);
                         if let Err(e) = l.core.start_session(cfg) {
-                            self.sess = None;
+                            self.end_session("worker_failed");
                             return self.worker_failed(sid, e);
                         }
                         l.core.push_audio(&std::mem::take(&mut s.queued_audio));
@@ -591,7 +796,7 @@ impl Conn {
                         }
                     }
                     Err(_) => {
-                        self.sess = None;
+                        self.end_session("busy");
                         self.err(
                             Some(sid),
                             code::BUSY,
@@ -623,6 +828,7 @@ impl Conn {
                     tracing::debug!(sid, text = %r.final_text, "result text");
                 }
                 self.capture(&mut s, &r);
+                self.end.results += 1;
                 self.send(&ServerMsg::Result {
                     sid,
                     result: r,
@@ -673,8 +879,7 @@ impl Conn {
             return;
         }
         let sid = s.sid;
-        self.sess = None;
-        tracing::info!(sid, peer = %self.peer, "session over max_session_s wall-clock");
+        self.end_session("wall_clock");
         self.err(
             Some(sid),
             code::TOO_LARGE,
@@ -747,8 +952,8 @@ mod tests {
         .unwrap()
     }
 
-    /// Captures what `log_result` prints with the server's fmt layer.
-    fn captured(r: &CommitResult) -> String {
+    /// Captures what `f` logs with the server's fmt layer.
+    fn logged(f: impl FnOnce()) -> String {
         #[derive(Clone, Default)]
         struct Buf(Arc<Mutex<Vec<u8>>>);
         impl std::io::Write for Buf {
@@ -766,7 +971,14 @@ mod tests {
             .with_ansi(false)
             .with_writer(move || out.clone())
             .finish();
-        tracing::subscriber::with_default(sub, || {
+        tracing::subscriber::with_default(sub, f);
+        let v = buf.0.lock().unwrap().clone();
+        String::from_utf8(v).unwrap()
+    }
+
+    /// What `log_result` prints.
+    fn captured(r: &CommitResult) -> String {
+        logged(|| {
             log_result(
                 7,
                 "100.64.0.2:5000".parse().unwrap(),
@@ -775,9 +987,79 @@ mod tests {
                 12,
                 Some(7400),
             );
+        })
+    }
+
+    fn end_log() -> EndLog {
+        let mut e = EndLog::new(
+            "100.64.0.2:5000".parse().unwrap(),
+            Some("k-0123456789abcdef".into()),
+        );
+        e.client = "flow-ffi 1.0.0+abc".into();
+        e
+    }
+
+    #[test]
+    fn disconnected_line_names_key_client_bytes_and_reason() {
+        let line = logged(|| {
+            let mut e = end_log();
+            e.audio_bytes = 64_000;
+            e.sessions = 1;
+            e.open_sid = Some(3);
+            e.reason = EndReason::ClientClosed;
         });
-        let v = buf.0.lock().unwrap().clone();
-        String::from_utf8(v).unwrap()
+        assert_eq!(line.matches("disconnected").count(), 1, "{line}");
+        assert!(line.contains("key=\"k-0123456789abcdef\""), "{line}");
+        assert!(line.contains("client=\"flow-ffi 1.0.0+abc\""), "{line}");
+        assert!(line.contains("duration_ms="), "{line}");
+        assert!(line.contains("audio_bytes=64000"), "{line}");
+        assert!(
+            line.contains(
+                "msgs=0 audio_bytes=64000 sessions=1 results=0 errors=0 cancels=0 cleans=0"
+            ),
+            "{line}"
+        );
+        assert!(line.contains("open_sid=3"), "{line}");
+        assert!(line.contains("reason=\"client_closed\""), "{line}");
+        assert!(line.contains("outcome=\"no_result\""), "{line}");
+        assert!(!line.contains("Some("), "{line}");
+    }
+
+    #[test]
+    fn a_client_string_cannot_forge_a_log_line() {
+        let line = logged(|| {
+            let mut e = end_log();
+            e.client = clip(&format!(
+                "evil\nINFO flow_server::ws: forged {}",
+                "x".repeat(100)
+            ));
+        });
+        assert_eq!(line.lines().count(), 1, "{line}");
+        assert!(line.contains("client=\"evil\\nINFO"), "{line}");
+        assert!(
+            !line.contains(&"x".repeat(60)),
+            "clipped to 64 chars: {line}"
+        );
+    }
+
+    #[test]
+    fn disconnected_outcome_summarises_what_the_connection_did() {
+        let mut e = end_log();
+        assert_eq!(e.outcome(), "no_audio");
+        e.audio_bytes = 2;
+        e.cancels = 1;
+        assert_eq!(e.outcome(), "no_result");
+        e.cleans = 1;
+        assert_eq!(e.outcome(), "cleaned");
+        e.results = 1;
+        assert_eq!(e.outcome(), "result");
+        // A failure is not hidden by results next to it.
+        e.errors = 1;
+        assert_eq!(e.outcome(), "errors");
+        // An unset reason is a dropped task: the server shut down.
+        assert_eq!(end_log().reason, EndReason::Shutdown);
+        let line = logged(|| drop(e));
+        assert!(!line.contains("open_sid"), "{line}");
     }
 
     #[test]
