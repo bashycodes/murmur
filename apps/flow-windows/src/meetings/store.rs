@@ -231,7 +231,15 @@ impl MeetingStore {
     /// being recorded or transcribed always keeps its audio (it needs it)
     /// and counts towards `keep`. Returns the files deleted.
     pub fn prune_audio(&self, keep: usize) -> Vec<PathBuf> {
-        let all = self.all();
+        self.prune_listed(&self.all(), keep)
+    }
+
+    /// [`Self::prune_audio`] given the meetings listed at its start. A
+    /// recording can begin after that listing (`Meetings::start` writes
+    /// the meeting file, then its WAVs), so an orphan is a WAV whose
+    /// meeting file is missing *now*, not one missing from `all`;
+    /// otherwise the newest recording could be deleted as an orphan.
+    fn prune_listed(&self, all: &[Meeting], keep: usize) -> Vec<PathBuf> {
         let mut deleted = Vec::new();
         for (i, m) in all.iter().enumerate() {
             let busy = matches!(m.status, Status::Recording | Status::Transcribing);
@@ -245,7 +253,6 @@ impl MeetingStore {
             }
         }
         // Orphans: recordings without a meeting file.
-        let known: std::collections::HashSet<&str> = all.iter().map(|m| m.id.as_str()).collect();
         if let Ok(rd) = std::fs::read_dir(&self.dir) {
             for e in rd.filter_map(|e| e.ok()) {
                 let name = e.file_name().to_string_lossy().into_owned();
@@ -253,7 +260,7 @@ impl MeetingStore {
                     continue;
                 };
                 let id = stem.rsplit_once('.').map_or(stem, |(id, _)| id);
-                if !known.contains(id) && std::fs::remove_file(e.path()).is_ok() {
+                if !self.json(id).exists() && std::fs::remove_file(e.path()).is_ok() {
                     deleted.push(e.path());
                 }
             }
@@ -362,6 +369,25 @@ mod tests {
         let n = s.list().iter().filter(|m| m.has_audio).count();
         assert_eq!(n, 3);
         assert!(!s.has_audio("m4000"));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn a_recording_started_during_a_prune_is_not_an_orphan() {
+        let d = tmp("race");
+        let s = MeetingStore::new(d.clone());
+        for i in 1..=4 {
+            meeting(&s, i * 1_000, Status::Done);
+        }
+        // The prune lists the meetings, then a new recording writes its
+        // meeting file and WAVs before the prune looks for orphans.
+        let listed = s.all();
+        meeting(&s, 5_000, Status::Recording);
+        std::fs::write(d.join("m77.mic.wav"), b"orphan").unwrap();
+        s.prune_listed(&listed, KEEP_AUDIO);
+        assert!(s.has_audio("m5000"), "the new recording keeps its audio");
+        assert!(!s.has_audio("m1000"));
+        assert!(!d.join("m77.mic.wav").exists(), "real orphans still go");
         let _ = std::fs::remove_dir_all(&d);
     }
 
