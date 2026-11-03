@@ -108,7 +108,8 @@ async fn usage_stats_update_per_dictation_and_survive_a_restart() {
     assert_eq!(k.key.id, id, "same key after the restart");
     assert_eq!((k.usage.dictations, k.usage.audio_ms), (2, 1500));
     assert_eq!(k.usage.client.as_deref(), Some("test"));
-    assert!(k.usage.last_seen.is_some());
+    assert!(k.usage.last_used.is_some());
+    assert!(k.usage.last_connected.is_some());
     let mut ws = session(s.addr()).await;
     dictate(&mut ws, 1, 250).await;
     s.flush_usage();
