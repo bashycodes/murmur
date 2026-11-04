@@ -207,6 +207,26 @@ pub fn openrouter_key(store: &dyn CredentialStore) -> Option<String> {
     }
 }
 
+/// D52: the id of the optional key for the user's own OpenAI-compatible
+/// cleanup server: Credential Manager `flow-clone/cloud/custom`. Not bound
+/// to a host (the base URL is the user's to change); the router only calls
+/// a server whose host the user consented to, so a changed URL sends
+/// nothing, key included, until that consent is given again.
+pub const CUSTOM: &str = flow_router::cloud::CUSTOM_CLEANUP_ID;
+
+/// Save the custom cleanup server's key.
+pub fn store_custom_key(store: &dyn CredentialStore, key: &str) -> Result<(), String> {
+    store.set(CUSTOM, key)
+}
+
+/// The custom cleanup server's key to hand the router, or `None` (the key
+/// is optional: LiteLLM without a master key, Ollama, vLLM).
+pub fn custom_key(store: &dyn CredentialStore) -> Option<String> {
+    let raw = store.get(CUSTOM).ok().flatten()?;
+    let k = decode(&raw).key;
+    (!k.is_empty()).then_some(k)
+}
+
 /// What a D28 migration did to the key store.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct KeyMigration {
@@ -388,6 +408,28 @@ mod tests {
         assert!(normalize_key("sk abc").is_err());
         assert!(normalize_key("sk-a\r\nX-Evil: 1").is_err());
         assert!(normalize_key("ключ").is_err());
+    }
+
+    #[test]
+    fn the_custom_key_is_its_own_optional_entry() {
+        let s = MemoryStore::new();
+        assert_eq!(custom_key(&*s), None);
+        store_openrouter_key(&*s, "sk-or-v1-abcdefgh1234").unwrap();
+        assert_eq!(custom_key(&*s), None, "the OpenRouter key is not it");
+        store_custom_key(&*s, "sk-litellm-LEAKCHECK-0001").unwrap();
+        assert_eq!(
+            custom_key(&*s).as_deref(),
+            Some("sk-litellm-LEAKCHECK-0001")
+        );
+        assert!(s.targets().contains(&"flow-clone/cloud/custom".to_string()));
+        assert_eq!(key_state(&*s, CUSTOM).masked, "••••0001");
+        assert_eq!(
+            openrouter_key(&*s).as_deref(),
+            Some("sk-or-v1-abcdefgh1234")
+        );
+        s.delete(CUSTOM).unwrap();
+        assert_eq!(custom_key(&*s), None);
+        assert!(!key_state(&*s, CUSTOM).set);
     }
 
     #[test]

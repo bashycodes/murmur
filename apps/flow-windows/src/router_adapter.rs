@@ -492,12 +492,19 @@ impl RouterAdapter {
     /// Hand the OpenRouter key (Credential Manager
     /// `flow-clone/cloud/openrouter`, bound to openrouter.ai) to the router,
     /// or forget it. A key stored for another host is deleted, not sent.
-    /// Startup and after every key change.
+    /// The optional custom cleanup server key (D52, `flow-clone/cloud/custom`)
+    /// goes to the router under its own id: it never stands in for the
+    /// OpenRouter key, nor the reverse. Startup and after every key change.
     pub fn load_cloud_keys(&self, store: &dyn crate::credentials::CredentialStore) {
         let key = crate::credentials::openrouter_key(store);
         self.router.set_cloud_key(
             crate::credentials::OPENROUTER,
             key.map(flow_router::SecretString::new),
+        );
+        let custom = crate::credentials::custom_key(store);
+        self.router.set_cloud_key(
+            crate::credentials::CUSTOM,
+            custom.map(flow_router::SecretString::new),
         );
     }
 
