@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-04
+
 ### Added
 
 - **Docs: moving to a network with no internet.** `docs/air-gapped.md` gains a transfer checklist, every model to download (pinned, checked; list in `docs/air-gapped-models.txt`) and the server config to use them; review in `docs/findings/2026-11-04-air-gap-readiness.md`.
@@ -1267,7 +1269,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/bashycodes/murmur/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/bashycodes/murmur/compare/v0.12.0...v1.0.0
 [0.12.0]: https://github.com/bashycodes/murmur/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/bashycodes/murmur/compare/v0.11.0...v0.11.1
