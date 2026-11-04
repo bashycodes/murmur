@@ -12,7 +12,114 @@ Docker image), the app installers, and the model files. Carry them over on
 a USB stick or any other way you like.
 
 Details live in `docs/server-setup.md` (host install, keys, model library)
-and `docs/container.md` (Docker); this page is the short path.
+and `docs/container.md` (Docker); this page is the short path. The
+step-by-step move is the [transfer checklist](#transfer-checklist) at the
+end.
+
+## Download these now
+
+Every model any part of Flow Clone can use, 15 models, **7.0 GB** in all.
+Each download link is pinned to one exact upstream version, and the apps
+check every file against a SHA-256 fingerprint built into them, so a copy
+made today still fits the apps later. Take all of them: it costs one
+evening of downloading and you never need the internet again for models.
+
+The full list, one line per file with its link, size and fingerprint, is
+`docs/air-gapped-models.txt` (copied from the Windows app's catalogue,
+`apps/flow-windows/src/model_download.rs`; Android pins the same files).
+On any connected machine with `bash`, `curl` and `sha256sum` (Linux, WSL,
+Git Bash), run from the repo folder, this downloads everything, checks each file, and writes each
+folder's `model.toml`, ready to copy into the server library (§2):
+
+```sh
+mkdir flow-models && cd flow-models
+grep -v '^#' ../docs/air-gapped-models.txt | grep . |
+while read -r dir kind engine file size sha url title; do
+  mkdir -p "$dir"
+  echo "$sha  $dir/$file" | sha256sum -c --quiet - 2>/dev/null ||
+    curl -fL -C - -o "$dir/$file" "$url" </dev/null
+  echo "$sha  $dir/$file" | sha256sum -c - || break
+  id=""; [ "$kind" = lid ] || id="catalogue_id = \"$dir\""
+  printf 'kind = "%s"\ntitle = "%s"\nengine = "%s"\n%s\n' \
+    "$kind" "$title" "$engine" "$id" > "$dir/model.toml"
+done
+```
+
+Run it again to resume; a file that fails its check stops the loop (delete
+that file and rerun).
+
+Rec. = recommended. Sizes are MB (10⁶ bytes). "PC" is the Windows app,
+"phone" the Android hybrid app; both get the models from the server.
+
+| Purpose | Folder (catalogue id) | Size | Used by | |
+|---|---|---|---|---|
+| English | `parakeet-tdt-0.6b-v2-int8` | 661 | server engine (installer default), PC English pick | rec. |
+| English | `parakeet-unified-en-0.6b-int8` | 663 | server English default, phone English default | rec. |
+| English | `whisper-base-en-q5_1` | 60 | phone, PC (light) | optional |
+| English | `whisper-tiny-en-q5_1` | 32 | older phones | optional |
+| English | `whisper-small-en-q5_1` | 190 | flagship phones, PC | optional |
+| Many languages | `whisper-base` | 148 | PC, server (whisper engine) | optional |
+| Many languages | `whisper-base-q5_1` | 60 | phone, PC | optional |
+| Many languages | `whisper-small-q5_1` | 190 | PC | optional |
+| Hebrew | `zipformer-he-int8` | 72 | server, PC and phone Hebrew default | rec. |
+| Hebrew | `parakeet-tdt-0.6b-v3-he-int8` | 673 | server, PC, phone (larger alternative) | optional |
+| Hebrew | `ivrit-whisper-large-v3-turbo-q5_0` | 574 | PC with a GPU (most accurate Hebrew) | rec. with a GPU |
+| Language ID | `whisper-tiny-lid` (`ggml-tiny-q5_1.bin`) | 32 | server `lid_path`; the PC fetches it with any Hebrew model | rec. |
+| AI cleanup | `qwen2.5-1.5b-instruct-q4_k_m` | 1117 | server cleanup, PC without a GPU, flagship phones | rec. |
+| AI cleanup | `llama-3.2-3b-instruct-q4_k_m` | 2019 | PC with a GPU (most accurate cleanup) | rec. with a GPU |
+| AI cleanup | `qwen2.5-0.5b-instruct-q4_k_m` | 491 | phones, slow PCs (fastest, misses fixes) | optional |
+
+Pinned download folders (each file's full link is in the list file):
+
+* Parakeet v2: `https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/resolve/1ab9323565ddb038682214b292f588070a538ce2/`
+* Parakeet unified: `https://huggingface.co/csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming/resolve/8c3a10fb13408c7a7054f6898958bf1c64a8d6c7/`
+* Whisper (all `ggml-*.bin`, language ID too): `https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/`
+* Zipformer Hebrew: `https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he/resolve/ee769a2a13b887f91572eec349458bfb0fe79e7a/sherpa-onnx/`
+* Parakeet Hebrew: `https://huggingface.co/krut42/voice-parakeet-he-int8/resolve/39de3b473bed626c7796c156d71adc66161ebfe1/`
+* ivrit.ai Whisper turbo: `https://huggingface.co/tagidu/ivrit-whisper-large-v3-turbo-ggml-quantized/resolve/540d7736f31952a65efbdff0dc41e2b4b086a197/`
+* Qwen2.5 0.5B / 1.5B: `https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/`, `https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/`
+* Llama 3.2 3B: `https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/5ab33fa94d1d04e903623ae72c95d1696f09f9e8/`
+
+Not pinned (no fingerprint in the code), and not needed for a normal setup:
+
+* **Silero VAD** (`ggml-silero-v5.1.2.bin`, 0.9 MB): only if you set
+  `vad_model_path` on the server; the built-in voice detection needs no
+  model, and the apps can't use a VAD from the library.
+  `https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin`
+* The links on the Android model screens and in `tools/fetch-models.sh`
+  (except `--hebrew`) point at `main` or a GitHub tarball, not a fixed
+  version. Use the list above instead: same files, pinned.
+
+## Also bring
+
+* **Windows installer:** `Murmur_<version>_x64-setup_hybrid.exe` from
+  the GitHub release (the `client` installer has no network code, so it
+  can't use your server). The speech engines, onnxruntime and the GPU
+  (Vulkan) pieces are inside the installer; GPU use needs the PC's normal
+  graphics driver.
+* **WebView2** (Windows 10 only; Windows 11 has it): the app's window
+  needs it, and the installer would otherwise try to download it. The
+  offline installer, 215 MB: `https://go.microsoft.com/fwlink/?linkid=2124701`.
+* **Android APK:** `flow-clone-android-hybrid-<version>-debug.apk` (uses
+  the server, falls back to the phone's own model). Use the `local` APK
+  only for a phone that must never open a connection (§6). The release
+  APKs are signed with a different key than one built on your machine:
+  installing one over the other means uninstalling first, which wipes the
+  app's settings and models.
+* **Server:** either the Docker image (`docker save`, §1), or the built
+  `flow-server` plus the sherpa-onnx 1.13.8 libraries (host install, §1;
+  version pinned in `crates/flow-asr-sherpa/Cargo.toml`, no fingerprint):
+  `https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-shared-lib.tar.bz2`.
+  For AI cleanup on a host install, also build the cleanup plugin on the
+  connected machine (`--features whisper,parakeet,tls,llm` and
+  `cargo build --release -p flow-llm`); the Docker image already has it.
+* **This repo** (a `git clone` or the release's source zip): the docs, the
+  installer script and `docs/air-gapped-models.txt`.
+* **Rebuilding on the closed network** is not set up: the repo has no
+  vendored dependencies. Bring built files instead. If you must build
+  there, copy a machine that already builds it (Rust 1.95.0 with its
+  `~/.cargo` cache, cmake, libclang; for Android also the SDK, NDK and
+  `~/.gradle` cache), or run `cargo vendor` and follow what it prints.
 
 ## 1. Install the server
 
@@ -154,3 +261,34 @@ no network: an admin key from the CLI, a user key from the admin API, a
 model downloaded and checked, one dictation, the usage shown to the admin,
 then the key revoked and refused. The last run's results:
 `docs/findings/2026-11-01-airgap-e2e.md`.
+
+## Transfer checklist
+
+On the connected machine:
+
+1. Get the newest release (GitHub → Releases): the hybrid Windows
+   installer, the hybrid APK (and the local one if a phone must stay
+   offline), the `SHA256SUMS-*.txt` files, and the source zip.
+2. Download the models ([Download these now](#download-these-now)) into
+   `flow-models/`; the loop checks every file.
+3. Build the server: the Docker image and `docker save` it, or the
+   host build plus the sherpa-onnx libraries (§1). Add the cleanup plugin
+   if the server should do AI cleanup.
+4. Bring WebView2's offline installer if any PC runs Windows 10.
+5. Check the installers against `SHA256SUMS-*.txt` (`sha256sum -c`), then
+   copy everything to the USB stick: installers, server build or image,
+   `flow-models/`, the repo.
+
+On the closed network:
+
+6. Install the server (§1) and bind its LAN address (or turn on TLS).
+7. Copy every folder of `flow-models/` into the server library (§2), and
+   run `flow-server library list`: 15 models served, none skipped.
+8. Create your admin key and one key per device (§3).
+9. Install the apps and connect them (§4): **Test connection** says `OK`.
+10. Download the models each device needs from **From your server** (§4).
+11. Verify: one dictation on each device, in English and in Hebrew, with
+    AI cleanup; then work through the manual checklist in
+    `docs/findings/2026-11-01-airgap-e2e.md` ("Manual checklist: real
+    devices, internet blocked").
+12. Delete the key files from the USB stick.
