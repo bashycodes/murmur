@@ -14,6 +14,7 @@ use crate::align::divergence_ratio;
 use crate::asr::AbortFlag;
 use crate::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig, Style};
 use crate::dictionary::Dictionary;
+pub use crate::summary::CleanTask;
 use crate::Usd;
 use serde::{Deserialize, Serialize};
 
@@ -57,6 +58,11 @@ pub struct CleanRequest {
     /// The session's `llm_timeout_ms` (0 = unknown).
     pub timeout_ms: u64,
     pub prompt: PromptVersion,
+    /// D53: what to do with `text`; cleanup (the default) is never written,
+    /// so cleanup requests are unchanged on the wire. A server only gets a
+    /// meeting task when it advertises `"summary"`.
+    #[serde(skip_serializing_if = "CleanTask::is_cleanup")]
+    pub task: CleanTask,
     /// What the context was narrowed to (not sent: a receiver builds with
     /// its own scope over the context it got).
     #[serde(skip)]
@@ -67,6 +73,15 @@ impl CleanRequest {
     /// The prompt for this request, narrowed to `scope` (and never wider
     /// than the request's own scope).
     pub fn prompt_for(&self, scope: PromptScope) -> CleanPrompt {
+        if !self.task.is_cleanup() {
+            // D53: a meeting summary step carries no field context.
+            let mut p =
+                crate::summary::build_prompt(self.task, &self.text, self.language.as_deref());
+            if let Some(src) = p.source.as_mut() {
+                Arc::make_mut(src).timeout_ms = self.timeout_ms;
+            }
+            return p;
+        }
         let mut p = build_prompt_versioned(
             &self.text,
             self.level,
@@ -1330,6 +1345,7 @@ pub fn build_prompt_versioned(
             language: None,
             timeout_ms: 0,
             prompt: version,
+            task: CleanTask::Cleanup,
             scope,
         })),
     }
