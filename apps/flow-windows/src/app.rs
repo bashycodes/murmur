@@ -1970,6 +1970,9 @@ fn refresh_debug_secrets(state: &AppState, dev: &DevSettings) {
     if let Some(k) = credentials::openrouter_key(&*state.creds) {
         secrets.push(k);
     }
+    if let Some(k) = credentials::custom_key(&*state.creds) {
+        secrets.push(k);
+    }
     secrets.retain(|s| !s.is_empty());
     state.debug.set_secrets(secrets);
 }
@@ -2332,6 +2335,7 @@ fn or_view(state: &AppState) -> crate::openrouter::OrView {
             catalog: catalog_status(),
             stt_model_info: model_row("stt", &or.stt.model),
             cleanup_model_info: model_row("cleanup", &or.cleanup.model),
+            custom_key: credentials::key_state(&*state.creds, credentials::CUSTOM),
         },
     )
 }
@@ -2503,6 +2507,19 @@ fn dev_or_set_cleanup(
 ) -> Result<crate::openrouter::OrView, String> {
     edit_cloud(&app, &state, |d| {
         crate::openrouter::apply_cleanup(d, &form, now_unix_ms())
+    })
+}
+
+/// D52: the cleanup provider selector and the custom server's base URL,
+/// model and time limit (consent for the typed host when `form.consent`).
+#[tauri::command]
+fn dev_or_set_custom_cleanup(
+    app: AppHandle,
+    state: tauri::State<'_, AppState>,
+    form: crate::openrouter::CustomCleanupForm,
+) -> Result<crate::openrouter::OrView, String> {
+    edit_cloud(&app, &state, |d| {
+        crate::openrouter::apply_custom_cleanup(d, &form, now_unix_ms())
     })
 }
 
@@ -2722,6 +2739,71 @@ fn dev_cloud_clear_key(state: tauri::State<'_, AppState>) -> Result<KeyState, St
         &*state.creds,
         credentials::OPENROUTER,
     ))
+}
+
+/// D52: save the custom cleanup server's optional key (Credential Manager
+/// `flow-clone/cloud/custom`), then the router. Never echoed back.
+#[tauri::command]
+fn dev_cloud_set_custom_key(
+    state: tauri::State<'_, AppState>,
+    key: String,
+) -> Result<KeyState, String> {
+    let key = credentials::normalize_key(&key)?;
+    credentials::store_custom_key(&*state.creds, &key)?;
+    if let Some(r) = state.router.get() {
+        r.load_cloud_keys(&*state.creds);
+    }
+    let dev = state.prefs.read().unwrap().developer.clone();
+    refresh_debug_secrets(&state, &dev);
+    Ok(credentials::key_state(&*state.creds, credentials::CUSTOM))
+}
+
+#[tauri::command]
+fn dev_cloud_clear_custom_key(state: tauri::State<'_, AppState>) -> Result<KeyState, String> {
+    state.creds.delete(credentials::CUSTOM)?;
+    if let Some(r) = state.router.get() {
+        r.router().set_cloud_key(credentials::CUSTOM, None);
+    }
+    Ok(credentials::key_state(&*state.creds, credentials::CUSTOM))
+}
+
+/// D52 "Load models" / "Test connection": `GET {base_url}/models` with the
+/// typed key, else the saved one, else none. `{models}` or `{error,
+/// message}` (a code and a line that never holds the URL or the key).
+#[tauri::command]
+async fn dev_or_custom_models(
+    app: AppHandle,
+    base_url: String,
+    key: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let state = app.state::<AppState>();
+    let typed = match key.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
+        Some(k) => Some(credentials::normalize_key(k)?),
+        None => None,
+    };
+    let key = typed.or_else(|| credentials::custom_key(&*state.creds));
+    tauri::async_runtime::spawn_blocking(move || custom_models(&base_url, key))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn custom_models(base_url: &str, key: Option<String>) -> serde_json::Value {
+    #[cfg(feature = "cloud")]
+    {
+        let key = key.map(flow_router::SecretString::new);
+        match flow_cloud::custom::list_models(base_url, key.as_ref(), Duration::from_secs(8)) {
+            Ok(models) => serde_json::json!({ "models": models }),
+            Err(e) => serde_json::json!({
+                "error": e.code(),
+                "message": flow_cloud::custom::describe(&e),
+            }),
+        }
+    }
+    #[cfg(not(feature = "cloud"))]
+    {
+        let _ = (base_url, key);
+        serde_json::json!({"error": "cloud_not_configured", "message": "not in this build"})
+    }
 }
 
 #[tauri::command]
@@ -3124,6 +3206,9 @@ pub fn run() {
             dev_unlock,
             dev_cloud_set_key,
             dev_cloud_clear_key,
+            dev_cloud_set_custom_key,
+            dev_cloud_clear_custom_key,
+            dev_or_custom_models,
             dev_cloud_usage,
             dev_cloud_reset_usage,
             dev_or_get,
@@ -3134,6 +3219,7 @@ pub fn run() {
             dev_or_set_model,
             dev_or_set_stt,
             dev_or_set_cleanup,
+            dev_or_set_custom_cleanup,
             dev_cleanup_set_engines,
             dev_meeting_routes_set,
             dev_or_set_privacy,

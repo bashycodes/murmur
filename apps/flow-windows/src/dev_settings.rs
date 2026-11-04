@@ -655,7 +655,30 @@ impl DevSettings {
                 }
             }
         }
-        if self.cleanup_effective(caps) {
+        let custom = !self.cloud.cleanup_provider.is_openrouter();
+        if self.cleanup_effective(caps) && custom {
+            // D52: the user's own server; its key is optional.
+            let cc = &self.cloud.custom_cleanup;
+            if !cc.consent_ok() {
+                let host = cc.host();
+                w.push(format!(
+                    "Cloud text cleanup is not used until you accept sending text to {}.",
+                    if host.is_empty() {
+                        "your server"
+                    } else {
+                        &host
+                    }
+                ));
+            }
+            if cc
+                .base_url
+                .trim_start()
+                .to_ascii_lowercase()
+                .starts_with("http://")
+            {
+                w.push(CUSTOM_PLAIN_HTTP_MSG.into());
+            }
+        } else if self.cleanup_effective(caps) {
             if !or.cleanup.consent_ok() {
                 w.push(format!(
                     "Cloud text cleanup is not used until you accept sending text to {OPENROUTER_NAME}."
@@ -667,12 +690,18 @@ impl DevSettings {
                 );
             }
         }
-        if (self.cloud_effective(caps) || self.cleanup_effective(caps)) && !or.privacy.zdr {
+        if (self.cloud_effective(caps) || (self.cleanup_effective(caps) && !custom))
+            && !or.privacy.zdr
+        {
             w.push("Zero-retention routing is off: some providers may keep or train on your audio or text.".into());
         }
         w
     }
 }
+
+/// D52: a custom cleanup server reached over plain `http://`.
+pub const CUSTOM_PLAIN_HTTP_MSG: &str =
+    "Your cleanup server uses http://: the key and your dictated text are sent unencrypted.";
 
 /// How the page names the one cloud host.
 pub const OPENROUTER_NAME: &str = "OpenRouter (openrouter.ai)";
