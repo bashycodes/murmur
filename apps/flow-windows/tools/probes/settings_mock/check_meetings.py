@@ -1,4 +1,7 @@
-"""Headless check of the Meetings page (Notetaker, D45) against mock-tauri.js.
+"""Needs the Notetaker switched on (D51: `NOTETAKER_ENABLED = true` in
+src/meetings/mod.rs and ui/src/pages/notetaker.ts, then rebuild ui/dist).
+
+Headless check of the Meetings page (Notetaker, D45) against mock-tauri.js.
 
 Probe (Playwright + its bundled Chromium):
     python3 tools/probes/settings_mock/serve.py 8765 &

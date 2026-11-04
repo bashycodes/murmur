@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- **Windows: Notetaker hidden again behind its coming-soon page; recordings kept.** No tray line, shortcut, call detection or background meeting job; meetings already on disk are left untouched (D51).
+
 ## [1.1.0] - 2026-11-04
 
 ### Added

@@ -23,6 +23,7 @@ import { dictionaryPage, snippetsPage } from "./pages/dictionary.js";
 import { homePage } from "./pages/home.js";
 import { insightsPage } from "./pages/insights.js";
 import { meetingsPage } from "./pages/meetings.js";
+import { NOTETAKER_ENABLED, notetakerPage } from "./pages/notetaker.js";
 import { scratchpadPage } from "./pages/scratchpad.js";
 import { settingsCleanupPage } from "./pages/settings/cleanup.js";
 import { settingsDeveloperPage } from "./pages/settings/developer.js";
@@ -46,7 +47,8 @@ const PAGES: Page[] = [
   stylePage,
   transformsPage,
   scratchpadPage,
-  meetingsPage,
+  // D51: the Notetaker is hidden behind its preview page unless switched on.
+  NOTETAKER_ENABLED ? meetingsPage : notetakerPage,
   settingsGeneralPage,
   settingsSystemPage,
   settingsPrivacyPage,
@@ -74,7 +76,9 @@ interface NavItem {
 
 const MAIN_NAV: NavItem[] = [
   { page: "home", label: "Dictation", icon: ICON.dictation },
-  { page: "meetings", label: "Meetings", icon: ICON.notetaker },
+  NOTETAKER_ENABLED
+    ? { page: "meetings", label: "Meetings", icon: ICON.notetaker }
+    : { page: "notetaker", label: "Notetaker", icon: ICON.notetaker, later: true },
   { page: "insights", label: "Insights", icon: ICON.insights },
   { page: "dictionary", label: "Dictionary", icon: ICON.dictionary, badge: "sugg_badge" },
   { page: "snippets", label: "Snippets", icon: ICON.snippets },

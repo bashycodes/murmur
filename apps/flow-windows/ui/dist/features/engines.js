@@ -13,6 +13,7 @@ import { prefsStore } from "../lib/prefs-store.js";
 import { router } from "../lib/router.js";
 import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
 import { views } from "../lib/views.js";
+import { NOTETAKER_ENABLED } from "../pages/notetaker.js";
 /** Engine switches that save at once (checkbox id = `dev_<field>`). */
 const DEV_SWITCHES = ["allow_server", "allow_client", "keep_local_warm", "show_engine_badge", "decode_while_speaking"];
 /** The server form (Your server page), saved with its Save button. */
@@ -247,7 +248,7 @@ function renderMeetings() {
         before: $("meet_routes").querySelector(".lw-foot-row"),
     }, routes.map((e) => e.route));
     shown.forEach(describeMeeting);
-    $("meet_group").hidden = !views.dev?.meetings || shown.length === 0 || (shown.length === 1 && !views.dev?.visible);
+    $("meet_group").hidden = !NOTETAKER_ENABLED || !views.dev?.meetings || shown.length === 0 || (shown.length === 1 && !views.dev?.visible);
     $("meet_follow").textContent = views.dev?.meetings?.follows_dictation
         ? "Same as the engines above until you change it here."
         : "";

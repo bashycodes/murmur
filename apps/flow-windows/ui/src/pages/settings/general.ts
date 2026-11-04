@@ -4,6 +4,7 @@
 
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import type { Page } from "../../lib/router.js";
+import { NOTETAKER_ENABLED } from "../notetaker.js";
 
 /** Keycaps of the saved shortcut + Change; Change records the keys the
  *  user presses ("Type instead" swaps in the text field). */
@@ -38,9 +39,10 @@ ${group(
     row("Copy last dictation", "", key("copy_last", "Copy last dictation")) +
     row("Open Scratchpad", "", key("scratchpad", "Open Scratchpad")) +
     row("New note and dictate", "", key("new_note", "New note and dictate")) +
-    row("Start or stop a meeting recording", "", key("meeting", "Start or stop a meeting recording")),
+    // Kept in the DOM (the form reads it) but hidden with the Notetaker (D51).
+    row("Start or stop a meeting recording", "", key("meeting", "Start or stop a meeting recording"), NOTETAKER_ENABLED ? "" : "hidden"),
 )}
-<p class="fl-help lw-group-help" id="keys_help" hidden>Type the keys joined by +, e.g. <code>Ctrl+Win</code>. Keys: Ctrl, Win, Alt, Shift, Space, Esc, A–Z, 0–9, F1–F24. Ctrl/Alt/Shift match either side; Left Alt, Right Alt (also Left/Right Ctrl, Shift) match one side only, e.g. push to talk = Right Alt. Max 3 keys, at least one modifier. Empty = off (Scratchpad, New note, meeting recording). Enter saves, Esc cancels.</p>
+<p class="fl-help lw-group-help" id="keys_help" hidden>Type the keys joined by +, e.g. <code>Ctrl+Win</code>. Keys: Ctrl, Win, Alt, Shift, Space, Esc, A–Z, 0–9, F1–F24. Ctrl/Alt/Shift match either side; Left Alt, Right Alt (also Left/Right Ctrl, Shift) match one side only, e.g. push to talk = Right Alt. Max 3 keys, at least one modifier. Empty = off (Scratchpad, New note${NOTETAKER_ENABLED ? ", meeting recording" : ""}). Enter saves, Esc cancels.</p>
 ${group(
   "Voice",
   row("Microphone", "", `<select id="microphone" class="fl-select is-wide" data-save="prefs" aria-label="Microphone"></select>`) +
