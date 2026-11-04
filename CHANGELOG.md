@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-04
+
 ### Changed
 
 - **Windows: Notetaker hidden again behind its coming-soon page; recordings kept.** No tray line, shortcut, call detection or background meeting job; meetings already on disk are left untouched (D51).
@@ -1273,7 +1275,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/bashycodes/murmur/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/bashycodes/murmur/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/bashycodes/murmur/compare/v0.12.0...v1.0.0
 [0.12.0]: https://github.com/bashycodes/murmur/compare/v0.11.1...v0.12.0
