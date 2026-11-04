@@ -113,6 +113,10 @@ struct Rig {
 }
 
 fn rig(name: &str, fail: bool) -> Rig {
+    rig_with(name, fail, None)
+}
+
+fn rig_with(name: &str, fail: bool, summaries: Option<Summaries>) -> Rig {
     let dir = tmp(name);
     let sinks: Sinks = Arc::new(Mutex::new(None));
     let now = Arc::new(AtomicU64::new(50_000));
@@ -142,6 +146,7 @@ fn rig(name: &str, fail: bool) -> Rig {
             ..MeetingParams::default()
         },
         keep_audio: store::KEEP_AUDIO,
+        summaries,
     });
     Rig {
         m,
@@ -452,6 +457,7 @@ fn an_engine_that_cannot_load_fails_the_meeting_and_retry_runs_it_again() {
         mono: Arc::new(|| 0),
         params: MeetingParams::default(),
         keep_audio: 3,
+        summaries: None,
     });
     let id = m.start(None).unwrap();
     sinks.lock().unwrap().as_mut().unwrap().0(&voiced(150.0, 2_000));
@@ -636,6 +642,7 @@ fn a_dictation_started_mid_job_is_not_held_up_by_the_meeting() {
             ..MeetingParams::default()
         },
         keep_audio: store::KEEP_AUDIO,
+        summaries: None,
     });
     let r = Rig {
         m,
@@ -701,5 +708,171 @@ fn notetaker_switch_matches_the_ui() {
     assert!(
         ui.contains(&line),
         "ui/src/pages/notetaker.ts must say `{line}`"
+    );
+}
+
+// ---- D53: summaries ---------------------------------------------------------
+
+use flow_core::asr::AbortFlag;
+use flow_core::cleanup::{CleanError, CleanPrompt};
+
+/// A fake AI engine: answers every summary step with `answer` and keeps
+/// what it was given (synthetic transcripts only).
+struct FakeLlm {
+    answer: Mutex<String>,
+    seen: Mutex<Vec<String>>,
+}
+
+impl Cleaner for FakeLlm {
+    fn clean(&self, p: &CleanPrompt, _: Instant) -> Result<String, CleanError> {
+        self.seen
+            .lock()
+            .unwrap()
+            .push(p.source.as_ref().unwrap().text.clone());
+        Ok(self.answer.lock().unwrap().clone())
+    }
+    fn clean_cancellable(
+        &self,
+        p: &CleanPrompt,
+        d: Instant,
+        _c: &AbortFlag,
+    ) -> Result<String, CleanError> {
+        self.clean(p, d)
+    }
+    fn engine(&self) -> &'static str {
+        "server"
+    }
+}
+
+fn fake_llm(answer: &str) -> Arc<FakeLlm> {
+    Arc::new(FakeLlm {
+        answer: Mutex::new(answer.into()),
+        seen: Mutex::default(),
+    })
+}
+
+fn summaries_on(llm: Option<Arc<FakeLlm>>) -> Option<Summaries> {
+    Some(Summaries {
+        engine: Arc::new(move || llm.clone().map(|l| l as Arc<dyn Cleaner>)),
+        options: flow_core::summary::Options::default(),
+    })
+}
+
+impl Rig {
+    fn wait_summary(&self, id: &str) -> store::MeetingSummary {
+        let t0 = Instant::now();
+        loop {
+            let m = self.m.get(id).unwrap();
+            if let Some(s) = m.summary.filter(|s| s.status != SummaryStatus::Pending) {
+                if self.m.view().summarising.is_none() {
+                    return s;
+                }
+            }
+            assert!(t0.elapsed() < Duration::from_secs(20), "no summary");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    fn record_two_party(&self) -> String {
+        let id = self.m.start(None).unwrap();
+        let (mic, sys) = two_party();
+        self.play(&mic, &sys, |ms| (4_800..10_200).contains(&ms));
+        self.m.stop().unwrap();
+        id
+    }
+}
+
+const ANSWER: &str = "SUMMARY:\nA made-up planning call.\nACTION ITEMS:\n- Me: send the plan";
+
+#[test]
+fn a_transcribed_meeting_gets_a_summary_and_regenerate_remakes_it() {
+    let llm = fake_llm(ANSWER);
+    let r = rig_with("summary", false, summaries_on(Some(llm.clone())));
+    let id = r.record_two_party();
+    assert_eq!(r.wait_done(&id).status, Status::Done);
+    let s = r.wait_summary(&id);
+    assert_eq!(s.status, SummaryStatus::Done, "{s:?}");
+    assert_eq!(s.text, "A made-up planning call.");
+    assert_eq!(s.action_items, ["Me: send the plan"]);
+    assert_eq!(
+        (s.engine.as_deref(), s.v),
+        (Some("server"), store::SUMMARY_VERSION)
+    );
+    assert!(s.made_ms > 0);
+    // The engine got the turns as "Speaker: text" lines, no times.
+    let input = llm.seen.lock().unwrap()[0].clone();
+    assert!(input.starts_with("Me: user line"), "{input}");
+    assert!(input.contains("\nOthers: caller sentence"), "{input}");
+    assert!(!input.contains('['), "{input}");
+    // Stored in the meeting's JSON, versioned.
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(r.dir.join(format!("{id}.json"))).unwrap())
+            .unwrap();
+    assert_eq!(json["summary"]["v"], 1, "{json}");
+    assert_eq!(json["summary"]["status"], "done", "{json}");
+    // Regenerate.
+    *llm.answer.lock().unwrap() = "SUMMARY:\nSecond take.\nACTION ITEMS:\n- None".into();
+    r.m.summarise(&id).unwrap();
+    let t0 = Instant::now();
+    let s = loop {
+        let s = r.wait_summary(&id);
+        if s.text == "Second take." || t0.elapsed() > Duration::from_secs(20) {
+            break s;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    assert_eq!((s.text.as_str(), s.action_items.len()), ("Second take.", 0));
+    assert_eq!(llm.seen.lock().unwrap().len(), 2);
+}
+
+#[test]
+fn without_summaries_no_job_runs() {
+    let r = rig("nosummary", false);
+    let id = r.record_two_party();
+    let m = r.wait_done(&id);
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(r.m.get(&id).unwrap().summary, None, "{m:?}");
+    assert_eq!(r.m.view().summarising, None);
+    assert_eq!(r.m.summarise(&id), Err(SUMMARIES_OFF_MSG.into()));
+}
+
+#[test]
+fn a_summary_with_no_ai_engine_fails_but_the_transcript_stays() {
+    let r = rig_with("noengine", false, summaries_on(None));
+    let id = r.record_two_party();
+    let s = r.wait_summary(&id);
+    assert_eq!(s.status, SummaryStatus::Failed);
+    assert!(s.error.unwrap().contains("Summaries need AI cleanup"));
+    let m = r.m.get(&id).unwrap();
+    assert_eq!((m.status, m.turns.len()), (Status::Done, 3));
+    // Only a transcribed meeting can be summarised.
+    assert!(r.m.summarise("m404").is_err());
+}
+
+#[test]
+fn a_summary_left_pending_is_made_at_the_next_start() {
+    let llm = fake_llm(ANSWER);
+    let r = rig_with("summary-recover", false, summaries_on(Some(llm.clone())));
+    let m = Meeting {
+        id: "m7".into(),
+        started_ms: 7,
+        status: Status::Done,
+        turns: vec![transcript::Turn {
+            speaker: transcript::Speaker::Others,
+            start_ms: 0,
+            end_ms: 1_000,
+            text: "a made-up update on the schedule".into(),
+            error: None,
+        }],
+        summary: Some(store::MeetingSummary::pending(None)),
+        ..Meeting::default()
+    };
+    r.m.store().save(&m).unwrap();
+    r.m.recover();
+    let s = r.wait_summary("m7");
+    assert_eq!(s.status, SummaryStatus::Done);
+    assert_eq!(
+        llm.seen.lock().unwrap().as_slice(),
+        ["Others: a made-up update on the schedule"]
     );
 }
