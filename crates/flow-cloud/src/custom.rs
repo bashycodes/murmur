@@ -281,6 +281,72 @@ pub fn list_models(
     parse_models(&v)
 }
 
+/// The settings pages' model list / "Test connection" result, the same
+/// JSON on every shell: `{"models": [ids]}` or `{"error": code,
+/// "message": line}` (never the URL or the key).
+pub fn models_json(r: Result<Vec<String>, CloudError>) -> Value {
+    match r {
+        Ok(models) => json!({ "models": models }),
+        Err(e) => json!({ "error": e.code(), "message": describe(&e) }),
+    }
+}
+
+/// The fixed sentence "Test cleanup" sends (never user text).
+pub const TEST_SAMPLE: &str =
+    "um so i think we should uh meet on tuesday no wait wednesday at three";
+
+/// "Test cleanup" result on the custom server.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct CleanupTest {
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_usd: Option<f64>,
+    pub model: String,
+}
+
+/// "Test cleanup" end to end: one streamed chat completion of
+/// [`TEST_SAMPLE`] on `cfg` with `key` (blocking, ≤ 2× the timeout).
+pub fn test_cleanup(cfg: &CustomCleanupConfig, key: Option<SecretString>) -> CleanupTest {
+    let model = cfg.model.trim().to_string();
+    let c = CustomCleaner::new(cfg, PromptScope::default(), key);
+    let prompt = flow_core::cleanup::build_prompt(
+        TEST_SAMPLE,
+        flow_core::config::CleanupLevel::Light,
+        flow_core::config::Style::default(),
+        &flow_core::config::FieldContext::default(),
+        &flow_core::dictionary::Dictionary::default(),
+    );
+    let t0 = Instant::now();
+    let deadline = t0 + Duration::from_millis(cfg.timeout_ms.max(800) * 2);
+    let (r, call) = c.run(&prompt, deadline, &AbortFlag::default());
+    let latency_ms = Some(t0.elapsed().as_millis() as u32);
+    match r {
+        Ok(text) => CleanupTest {
+            ok: true,
+            text: Some(text),
+            latency_ms,
+            cost_usd: call.cost_usd,
+            model,
+            ..Default::default()
+        },
+        Err(e) => CleanupTest {
+            error: Some(e.code().to_string()),
+            message: Some(describe(&e)),
+            latency_ms,
+            model,
+            ..Default::default()
+        },
+    }
+}
+
 /// `{"data": [{"id": "…"}, …]}` → ids (also a bare array of such objects).
 pub fn parse_models(v: &Value) -> Result<Vec<String>, CloudError> {
     let arr = v

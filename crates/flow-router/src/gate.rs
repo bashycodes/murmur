@@ -5,8 +5,9 @@
 //! Every call re-checks C1 for cleanup — build support, `allow_cloud_cleanup`
 //! and `cloud` in `cleanup_order`, cleanup consent for the provider's host,
 //! a key (OpenRouter; optional for a custom server),
-//! the cleanup circuit and the monthly budget (catalogue estimate before
-//! the call) — and refuses *fast* (`CleanError::Unavailable`) so a
+//! the cleanup circuit and, for OpenRouter only, the monthly budget
+//! (catalogue estimate before the call; D52: the custom server is the
+//! owner's own and never budget-gated) — and refuses *fast* (`CleanError::Unavailable`) so a
 //! `RoutedCleaner` can use the on-device LLM or the deterministic text.
 //! After the call it records the exact `usage.cost` (or the estimate, when
 //! a generation exists but reported no cost) and feeds the circuit.
@@ -35,9 +36,9 @@ pub(crate) struct GateState {
     pub circuit: Circuit,
     /// The provider's cleaner for (cleanup view, key).
     pub inner: Option<Arc<dyn Cleaner>>,
-    /// Real cost of the last call per model (estimate for unpriced
-    /// models, spec §2.6 rule 5).
-    last_cost: HashMap<String, f64>,
+    /// Real cost of the last call per (provider, model) (estimate for
+    /// unpriced models, spec §2.6 rule 5).
+    last_cost: HashMap<(CleanupProvider, String), f64>,
     pub last: Option<CleanUsage>,
     /// Bumped when the cleanup config or key changes: results of calls
     /// started before do not touch the new circuit.
@@ -81,8 +82,7 @@ impl Gate {
     }
 
     fn check_static(st: &GateState) -> Result<Arc<dyn Cleaner>, Failure> {
-        // D52: the custom server's key is optional.
-        let needs_key = st.cfg.cleanup_provider == CleanupProvider::OpenRouter;
+        let needs_key = st.cfg.cleanup_needs_key();
         if !st.wanted
             || !st.cfg.cleanup_consent_ok()
             || (needs_key && st.key.as_ref().is_none_or(|k| k.is_empty()))
@@ -112,10 +112,14 @@ impl Gate {
         self.st.lk().last.clone()
     }
 
+    fn cost_key(cfg: &CloudConfig) -> (CleanupProvider, String) {
+        (cfg.cleanup_provider, cfg.cleanup_model().to_string())
+    }
+
     fn spent(&self) -> f64 {
         let mut u = self.usage.lk();
         u.roll(&month_of(now_unix_ms()));
-        u.total_cost()
+        u.budget_cost()
     }
 
     /// Pre-flight: the cleaner to call, the estimate, the epoch.
@@ -124,20 +128,14 @@ impl Gate {
         let inner = Self::check_static(&st).map_err(unavailable)?;
         let est = inner
             .estimate_cost_usd(prompt)
-            .or_else(|| st.last_cost.get(st.cfg.cleanup_model()).map(|c| c * 2.0));
-        if let Some(b) = st.budget {
+            .or_else(|| st.last_cost.get(&Self::cost_key(&st.cfg)).map(|c| c * 2.0));
+        // D52: the budget is OpenRouter's; the custom server is not gated.
+        let budget = st.budget.filter(|_| st.cfg.cleanup_budgeted());
+        if let Some(b) = budget {
             let spent = self.spent();
             match est {
                 Some(e) if spent + e > b.0 => return Err(unavailable(Failure::BudgetExceeded)),
                 Some(_) => {}
-                // D52: a custom server may never report a cost; the budget
-                // then counts only what was reported, so it is not a
-                // permanent block.
-                None if st.cfg.cleanup_provider == CleanupProvider::Custom => {
-                    if spent >= b.0 {
-                        return Err(unavailable(Failure::BudgetExceeded));
-                    }
-                }
                 // Unknown OpenRouter price with a budget: allowed only once
                 // a real cost of this model was recorded (spec §2.6 rule 5).
                 None => return Err(unavailable(Failure::BudgetExceeded)),
@@ -175,8 +173,8 @@ impl Gate {
             );
         }
         if let (Some(c), false) = (cost, estimated) {
-            let m = st.cfg.cleanup_model().to_string();
-            st.last_cost.insert(m, c);
+            let k = Self::cost_key(&st.cfg);
+            st.last_cost.insert(k, c);
         }
         u.cost_usd = cost.map(Usd);
         u.cost_estimated = estimated;

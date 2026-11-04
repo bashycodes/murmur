@@ -346,6 +346,7 @@ fn cloud_fixtures() -> Vec<(String, Value)> {
                 latency_ms: Some(640),
             }),
             month_cost_usd: Usd(0.014),
+            custom_month_cost_usd: Usd(0.0),
         })
         .unwrap(),
     ));
