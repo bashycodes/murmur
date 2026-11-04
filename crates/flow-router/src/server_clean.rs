@@ -243,6 +243,8 @@ impl Cleaner for ServerClean {
                         self.settle(epoch, None);
                         match e.as_str() {
                             "no_llm" => (Err(unavailable("server_no_llm")), none),
+                            // D53: an older server without meeting tasks.
+                            "no_summary" => (Err(unavailable("server_no_summary")), none),
                             "busy" | "too_large" => (Err(unavailable(&e)), none),
                             "llm_timeout" => (Err(CleanError::Backend("timeout".into())), u),
                             _ => (Err(CleanError::Backend(e)), u),
