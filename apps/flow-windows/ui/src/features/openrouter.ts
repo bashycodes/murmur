@@ -90,13 +90,34 @@ function consentLine(at: number, given: boolean, what: string, host = "openroute
     : "Not yet agreed: turning this on asks first.";
 }
 
-/** Lower-cased host of a typed server address (`""` when it does not parse). */
-function hostOf(url: string): string {
+/** `dev_custom_cleanup_address`: the router's normalised URL and consent host. */
+interface CustomAddress {
+  url?: string;
+  host?: string;
+  error?: string;
+  message?: string;
+  model_ok: boolean;
+}
+
+/** The address as the router normalises it (the page never parses URLs). */
+async function addressOf(url: string, model = ""): Promise<CustomAddress> {
   try {
-    return new URL(url.trim()).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    return await invoke<CustomAddress>("dev_custom_cleanup_address", { baseUrl: url, model });
   } catch {
-    return "";
+    return { error: "bad_base_url", model_ok: false };
   }
+}
+
+/** Canonical host of a typed server address (`""` when it is unusable). */
+async function hostOf(url: string): Promise<string> {
+  return (await addressOf(url)).host ?? "";
+}
+
+/** Show where requests go, as normalised. */
+async function showNormalisedUrl(): Promise<void> {
+  const raw = $<HTMLInputElement>("cu_base_url").value;
+  const a = raw.trim() === "" ? null : await addressOf(raw);
+  $<HTMLElement>("cu_url_norm").textContent = a?.url ? `Requests go to ${a.url}/chat/completions` : a ? a.message ?? "" : "";
 }
 
 /** Where cloud cleanup text goes, for status lines. */
@@ -245,6 +266,8 @@ function showOrUsage(u: UsageView): void {
       const mins = r.purpose === "cleanup" ? "" : ` · ${r.minutes} min`;
       return el("li", "", `${r.label}: ${r.requests} ${what}${mins} · ${money(r.cost)}`);
     }),
+    // D52: what the custom server reported, apart from OpenRouter's budget.
+    ...(u.custom_cost ? [el("li", "", `Custom server: ${money(u.custom_cost)} (not in budget)`)] : []),
   );
 }
 
@@ -544,11 +567,11 @@ async function orCleanupToggled(): Promise<void> {
 // ---- D52: custom cleanup server
 
 /** The consent dialog of `provider`; the custom one names the typed host. */
-function askCleanupConsent(provider: CleanupProvider, url: string): Promise<boolean> {
+async function askCleanupConsent(provider: CleanupProvider, url: string): Promise<boolean> {
   if (provider === "openrouter") {
     return askDialog("or_cleanup_consent_dlg", "or_cleanup_consent_ok", "or_cleanup_consent_cancel");
   }
-  const host = hostOf(url) || url.trim();
+  const host = (await hostOf(url)) || url.trim();
   $<HTMLElement>("cu_consent_host_title").textContent = host;
   $<HTMLElement>("cu_consent_host").textContent = host;
   $<HTMLElement>("cu_consent_http").hidden = !/^\s*http:\/\//i.test(url);
@@ -568,6 +591,7 @@ function showCustom(v: OrView): void {
     custom ? "Use your custom server for cleanup" : "Use OpenRouter for cleanup",
   );
   if (document.activeElement !== $("cu_base_url")) setValue("cu_base_url", cu.base_url);
+  void showNormalisedUrl();
   if (document.activeElement !== $("cu_model")) setValue("cu_model", cu.model);
   ensureOption("cu_timeout_ms", String(cu.timeout_ms), `${cu.timeout_ms / 1000} seconds`);
   $<HTMLElement>("cu_http_warn").hidden = !cu.plain_http;
@@ -586,9 +610,8 @@ function showProviderRows(provider: CleanupProvider): void {
   for (const r of $<HTMLElement>("or_cleanup_box").querySelectorAll<HTMLElement>("[data-provider]")) {
     r.hidden = r.dataset.provider !== provider;
   }
-  // Sending a fixed sample is OpenRouter's test; a custom server has "Test connection".
-  $<HTMLButtonElement>("or_cleanup_test").hidden = custom;
-  if (custom) $<HTMLElement>("or_cleanup_test_out").textContent = "";
+  // "Test cleanup" sends a fixed sample to the selected provider (D52).
+  $<HTMLElement>("or_cleanup_test_out").textContent = "";
 }
 
 /** Save the provider selector and the custom server's fields together. */
@@ -626,7 +649,7 @@ async function cuChanged(provider: CleanupProvider): Promise<void> {
     const url = $<HTMLInputElement>("cu_base_url").value;
     const needs =
       provider === "custom"
-        ? url.trim() !== "" && hostOf(url) !== c.custom.consent_host.toLowerCase()
+        ? url.trim() !== "" && (await hostOf(url)) !== c.custom.consent_host
         : !c.consent;
     if (needs) {
       consent = await askCleanupConsent(provider, url);
@@ -664,7 +687,7 @@ async function cuModels(outId: string, fill: boolean): Promise<void> {
     out.className = "hint err";
     return;
   }
-  out.textContent = `Asking ${hostOf(baseUrl) || "the server"} for its models…`;
+  out.textContent = `Asking ${(await hostOf(baseUrl)) || "the server"} for its models…`;
   out.className = "hint";
   try {
     const key = $<HTMLInputElement>("cu_key").value.trim();
@@ -690,7 +713,7 @@ async function cuModels(outId: string, fill: boolean): Promise<void> {
 
 async function orTestCleanup(): Promise<void> {
   const out = $<HTMLElement>("or_cleanup_test_out");
-  out.textContent = "Sending a fixed sample sentence (not your text) to openrouter.ai…";
+  out.textContent = `Sending a fixed sample sentence (not your text) to ${cleanupTarget(views.or)}…`;
   out.className = "hint";
   try {
     const r = await invoke<CleanupTest>("dev_or_test_cleanup");
@@ -919,6 +942,7 @@ function wire(): void {
   }
   $<HTMLInputElement>("cu_base_url").addEventListener("input", () => {
     $<HTMLElement>("cu_http_warn").hidden = !/^\s*http:\/\//i.test($<HTMLInputElement>("cu_base_url").value);
+    void showNormalisedUrl();
   });
   $<HTMLButtonElement>("cu_key_save").addEventListener("click", () => void cuSaveKey());
   $<HTMLButtonElement>("cu_key_clear").addEventListener("click", () => void cuClearKey());

@@ -43,14 +43,24 @@ function consentLine(at, given, what, host = "openrouter.ai") {
         ? `You agreed to send ${what} to ${host} on ${new Date(at).toLocaleDateString()}.`
         : "Not yet agreed: turning this on asks first.";
 }
-/** Lower-cased host of a typed server address (`""` when it does not parse). */
-function hostOf(url) {
+/** The address as the router normalises it (the page never parses URLs). */
+async function addressOf(url, model = "") {
     try {
-        return new URL(url.trim()).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+        return await invoke("dev_custom_cleanup_address", { baseUrl: url, model });
     }
     catch {
-        return "";
+        return { error: "bad_base_url", model_ok: false };
     }
+}
+/** Canonical host of a typed server address (`""` when it is unusable). */
+async function hostOf(url) {
+    return (await addressOf(url)).host ?? "";
+}
+/** Show where requests go, as normalised. */
+async function showNormalisedUrl() {
+    const raw = $("cu_base_url").value;
+    const a = raw.trim() === "" ? null : await addressOf(raw);
+    $("cu_url_norm").textContent = a?.url ? `Requests go to ${a.url}/chat/completions` : a ? a.message ?? "" : "";
 }
 /** Where cloud cleanup text goes, for status lines. */
 export function cleanupTarget(v) {
@@ -190,7 +200,9 @@ function showOrUsage(u) {
         const what = r.purpose === "cleanup" ? "cleanups" : "dictations";
         const mins = r.purpose === "cleanup" ? "" : ` · ${r.minutes} min`;
         return el("li", "", `${r.label}: ${r.requests} ${what}${mins} · ${money(r.cost)}`);
-    }));
+    }), 
+    // D52: what the custom server reported, apart from OpenRouter's budget.
+    ...(u.custom_cost ? [el("li", "", `Custom server: ${money(u.custom_cost)} (not in budget)`)] : []));
 }
 function showCleanupStatus(st) {
     if (views.or)
@@ -477,11 +489,11 @@ async function orCleanupToggled() {
 }
 // ---- D52: custom cleanup server
 /** The consent dialog of `provider`; the custom one names the typed host. */
-function askCleanupConsent(provider, url) {
+async function askCleanupConsent(provider, url) {
     if (provider === "openrouter") {
         return askDialog("or_cleanup_consent_dlg", "or_cleanup_consent_ok", "or_cleanup_consent_cancel");
     }
-    const host = hostOf(url) || url.trim();
+    const host = (await hostOf(url)) || url.trim();
     $("cu_consent_host_title").textContent = host;
     $("cu_consent_host").textContent = host;
     $("cu_consent_http").hidden = !/^\s*http:\/\//i.test(url);
@@ -499,6 +511,7 @@ function showCustom(v) {
     $("or_cleanup_allow").setAttribute("aria-label", custom ? "Use your custom server for cleanup" : "Use OpenRouter for cleanup");
     if (document.activeElement !== $("cu_base_url"))
         setValue("cu_base_url", cu.base_url);
+    void showNormalisedUrl();
     if (document.activeElement !== $("cu_model"))
         setValue("cu_model", cu.model);
     ensureOption("cu_timeout_ms", String(cu.timeout_ms), `${cu.timeout_ms / 1000} seconds`);
@@ -517,10 +530,8 @@ function showProviderRows(provider) {
     for (const r of $("or_cleanup_box").querySelectorAll("[data-provider]")) {
         r.hidden = r.dataset.provider !== provider;
     }
-    // Sending a fixed sample is OpenRouter's test; a custom server has "Test connection".
-    $("or_cleanup_test").hidden = custom;
-    if (custom)
-        $("or_cleanup_test_out").textContent = "";
+    // "Test cleanup" sends a fixed sample to the selected provider (D52).
+    $("or_cleanup_test_out").textContent = "";
 }
 /** Save the provider selector and the custom server's fields together. */
 async function cuApply(provider, consent) {
@@ -555,7 +566,7 @@ async function cuChanged(provider) {
     if (c?.allow) {
         const url = $("cu_base_url").value;
         const needs = provider === "custom"
-            ? url.trim() !== "" && hostOf(url) !== c.custom.consent_host.toLowerCase()
+            ? url.trim() !== "" && (await hostOf(url)) !== c.custom.consent_host
             : !c.consent;
         if (needs) {
             consent = await askCleanupConsent(provider, url);
@@ -593,7 +604,7 @@ async function cuModels(outId, fill) {
         out.className = "hint err";
         return;
     }
-    out.textContent = `Asking ${hostOf(baseUrl) || "the server"} for its models…`;
+    out.textContent = `Asking ${(await hostOf(baseUrl)) || "the server"} for its models…`;
     out.className = "hint";
     try {
         const key = $("cu_key").value.trim();
@@ -618,7 +629,7 @@ async function cuModels(outId, fill) {
 }
 async function orTestCleanup() {
     const out = $("or_cleanup_test_out");
-    out.textContent = "Sending a fixed sample sentence (not your text) to openrouter.ai…";
+    out.textContent = `Sending a fixed sample sentence (not your text) to ${cleanupTarget(views.or)}…`;
     out.className = "hint";
     try {
         const r = await invoke("dev_or_test_cleanup");
@@ -838,6 +849,7 @@ function wire() {
     }
     $("cu_base_url").addEventListener("input", () => {
         $("cu_http_warn").hidden = !/^\s*http:\/\//i.test($("cu_base_url").value);
+        void showNormalisedUrl();
     });
     $("cu_key_save").addEventListener("click", () => void cuSaveKey());
     $("cu_key_clear").addEventListener("click", () => void cuClearKey());

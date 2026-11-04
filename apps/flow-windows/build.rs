@@ -84,6 +84,7 @@ fn main() {
             "dev_cloud_set_custom_key",
             "dev_cloud_clear_custom_key",
             "dev_or_custom_models",
+            "dev_custom_cleanup_address",
             "dev_cloud_usage",
             "dev_cloud_reset_usage",
             "dev_or_get",

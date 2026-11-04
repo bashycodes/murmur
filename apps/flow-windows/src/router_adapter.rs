@@ -605,7 +605,7 @@ impl RouterAdapter {
 
     /// Why the cloud route cannot start (budget, else setup).
     fn cloud_skip_reason(&self, cfg: &RouterConfig) -> &'static str {
-        let spent = self.router.cloud_usage().total_cost();
+        let spent = self.router.cloud_usage().budget_cost();
         if cfg.cloud.monthly_budget_usd.is_some_and(|b| spent >= b.0) {
             "budget_exceeded"
         } else {

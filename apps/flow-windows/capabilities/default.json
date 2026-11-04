@@ -67,6 +67,7 @@
     "allow-dev-cloud-set-custom-key",
     "allow-dev-cloud-clear-custom-key",
     "allow-dev-or-custom-models",
+    "allow-dev-custom-cleanup-address",
     "allow-dev-cloud-usage",
     "allow-dev-cloud-reset-usage",
     "allow-dev-or-get",
