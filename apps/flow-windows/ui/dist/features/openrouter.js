@@ -192,17 +192,22 @@ function showOrUsage(u) {
     if (u.budget)
         $("or_usage_bar").style.width = `${Math.min(100, (amount(u.total) / u.budget) * 100)}%`;
     meter.classList.toggle("is-full", u.budget_reached);
-    const dictations = u.rows.filter((r) => r.purpose !== "cleanup").reduce((n, r) => n + r.requests, 0);
+    // OpenRouter's own counts; the custom server (D52) has its own row below.
+    const dictations = u.rows.filter((r) => r.purpose === "stt" || r.purpose === "removed").reduce((n, r) => n + r.requests, 0);
     const cleanups = u.rows.filter((r) => r.purpose === "cleanup").reduce((n, r) => n + r.requests, 0);
     $("or_usage_total").textContent =
         `Speech ${money(u.speech)} · ${dictations} dictations    Cleanup ${money(u.cleanup)} · ${cleanups} cleanups`;
-    $("or_usage_rows").replaceChildren(...u.rows.map((r) => {
-        const what = r.purpose === "cleanup" ? "cleanups" : "dictations";
-        const mins = r.purpose === "cleanup" ? "" : ` · ${r.minutes} min`;
-        return el("li", "", `${r.label}: ${r.requests} ${what}${mins} · ${money(r.cost)}`);
-    }), 
-    // D52: what the custom server reported, apart from OpenRouter's budget.
-    ...(u.custom_cost ? [el("li", "", `Custom server: ${money(u.custom_cost)} (not in budget)`)] : []));
+    $("or_usage_rows").replaceChildren(...u.rows.map((r) => el("li", "", usageRowText(r, u))));
+}
+/** One usage line; the custom server's counts its cleanups even when it reports no cost (D52). */
+function usageRowText(r, u) {
+    if (r.purpose === "custom") {
+        const cost = u.custom_cost ? money(u.custom_cost) : "no cost reported";
+        return `${r.label}: ${r.requests} cleanups · ${cost} (not in budget)`;
+    }
+    const what = r.purpose === "cleanup" ? "cleanups" : "dictations";
+    const mins = r.purpose === "cleanup" ? "" : ` · ${r.minutes} min`;
+    return `${r.label}: ${r.requests} ${what}${mins} · ${money(r.cost)}`;
 }
 function showCleanupStatus(st) {
     if (views.or)
