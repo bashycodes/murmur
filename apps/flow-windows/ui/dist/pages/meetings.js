@@ -4,7 +4,9 @@
 // holds up a dictation. Audio of the last 3 meetings is kept (for Retry);
 // transcripts stay until deleted. Backend: `meeting_*` in src/app.rs,
 // events `meetings:changed` (src/meetings/mod.rs `View`). Meeting
-// detection (D48): `prefs.meeting_detection` = off / ask / auto.
+// detection (D48): `prefs.meeting_detection` = off / ask / auto. AI
+// summary + action items (D53): made after the transcript on the cleanup
+// order, `meeting_summarise` = Regenerate.
 import { $, askDialog, el } from "../lib/dom.js";
 import { ICON, iconEl, iconSvg } from "../lib/icons.js";
 import { invoke, onEvent } from "../lib/ipc.js";
@@ -59,6 +61,18 @@ const TEMPLATE = `
     <h2 class="lw-mt-title" id="mt_title"></h2>
     <p class="lw-mt-sub" id="mt_sub"></p>
     <p class="lw-mt-note" id="mt_note" hidden></p>
+    <div class="lw-mt-summary" id="mt_summary" hidden>
+      <div class="lw-mt-summary-head">
+        <h3 class="lw-mt-summary-title">Summary</h3>
+        <span class="lw-mt-summary-by" id="mt_summary_by"></span>
+        <span class="lw-mt-grow"></span>
+        <button type="button" class="fl-btn fl-btn-ghost fl-btn-sm" id="mt_regen">Regenerate</button>
+      </div>
+      <p class="lw-mt-summary-state" id="mt_summary_state" hidden></p>
+      <p class="lw-mt-summary-text" id="mt_summary_text" dir="auto"></p>
+      <h4 class="lw-mt-summary-sub" id="mt_items_title" hidden>Action items</h4>
+      <ul class="lw-mt-items" id="mt_items" dir="auto"></ul>
+    </div>
     <div class="lw-mt-turns" id="mt_turns"></div>
   </section>
 
@@ -204,6 +218,42 @@ async function refreshList() {
     $("mt_list").replaceChildren(...list.map(row));
     $("mt_empty").hidden = list.length > 0;
 }
+const SUMMARY_BY = {
+    local: "this PC's AI model",
+    server: "your server",
+    cloud: "OpenRouter",
+};
+/** What the summary box says about its state ("" when it just shows it). */
+export function summaryState(s, running) {
+    if (!s)
+        return "";
+    if (running)
+        return "Writing the summary… Dictation keeps priority.";
+    if (s.status === "pending")
+        return "Waiting to be summarised";
+    if (s.status === "failed")
+        return `No summary: ${s.error ?? "unknown error"}`;
+    return "";
+}
+function showSummary(m) {
+    const box = $("mt_summary");
+    const s = m.summary;
+    box.hidden = m.status !== "done" || !s;
+    if (!s || box.hidden)
+        return;
+    const running = view.summarising === m.id;
+    const state = summaryState(s, running);
+    const st = $("mt_summary_state");
+    st.textContent = state;
+    st.hidden = !state;
+    st.classList.toggle("is-err", s.status === "failed" && !running);
+    $("mt_summary_by").textContent =
+        s.status === "done" && s.engine ? `by ${SUMMARY_BY[s.engine] ?? s.engine}` : "";
+    $("mt_summary_text").textContent = s.text;
+    $("mt_items").replaceChildren(...s.action_items.map((t) => el("li", "", t)));
+    $("mt_items_title").hidden = s.action_items.length === 0;
+    $("mt_regen").disabled = running || s.status === "pending";
+}
 const ROUTE_NAMES = {
     local: "This PC",
     remote: "Your server",
@@ -243,6 +293,7 @@ function showDetail(m) {
         turns.push(el("p", "lw-mt-note", "Nothing was said in this meeting."));
     }
     $("mt_turns").replaceChildren(...turns);
+    showSummary(m);
 }
 async function openMeeting(id) {
     try {
@@ -276,6 +327,16 @@ async function retry(id) {
     try {
         await invoke("meeting_retry", { id });
         say("Transcribing again");
+    }
+    catch (e) {
+        say(String(e), false);
+    }
+    await refresh();
+}
+async function regenerate(id) {
+    $("mt_regen").disabled = true;
+    try {
+        await invoke("meeting_summarise", { id });
     }
     catch (e) {
         say(String(e), false);
@@ -356,6 +417,7 @@ export const meetingsPage = {
         $("mt_copy").addEventListener("click", () => openId && void copy(openId));
         $("mt_delete").addEventListener("click", () => openId && void remove(openId));
         $("mt_retry").addEventListener("click", () => openId && void retry(openId));
+        $("mt_regen").addEventListener("click", () => openId && void regenerate(openId));
         prefsStore.subscribe(showShortcut);
         prefsStore.subscribe(showDetect);
         $("mt_detect").addEventListener("change", () => void saveDetect());
