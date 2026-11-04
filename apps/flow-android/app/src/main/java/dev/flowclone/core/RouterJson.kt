@@ -87,6 +87,17 @@ data class CleanupStatus(
     val serverLlm: Boolean? = null,
     /** D36: the server cleanup's breaker, when the server is in the order and set up. */
     val serverCircuit: CircuitStatus? = null,
+    /** D52: "openrouter" | "custom" (the cloud cleanup route's service). */
+    val provider: String = "openrouter",
+    /** D52: the custom server's host; "" for OpenRouter. */
+    val host: String = "",
+)
+
+/** D52 `nativeCustomCleanupModels` (`GET {base}/models`): the ids, or [error] + [message] (never the key or URL). */
+data class CustomModels(
+    val models: List<String> = emptyList(),
+    val error: String? = null,
+    val message: String? = null,
 )
 
 /** D28 `nativeCloudKeyInfo` (`GET /api/v1/key`; never the key itself), or [error]. */
@@ -227,9 +238,23 @@ object RouterJson {
             monthCostUsd = o.optDoubleOrNull("month_cost_usd") ?: 0.0,
             serverLlm = o.optBoolOrNull("server_llm"),
             serverCircuit = o.optJSONObject("server_circuit")?.let(::circuitOf),
+            provider = o.optString("provider", "openrouter").ifEmpty { "openrouter" },
+            host = o.optString("host"),
         )
     } catch (e: JSONException) {
         CleanupStatus()
+    }
+
+    fun decodeCustomModels(json: String?): CustomModels = try {
+        val o = JSONObject(json ?: "{}")
+        val a = o.optJSONArray("models")
+        val error = o.optStringOrNull("error") ?: if (a == null) "error" else null
+        CustomModels(
+            models = if (a == null) emptyList() else (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() },
+            error = error, message = o.optStringOrNull("message"),
+        )
+    } catch (e: JSONException) {
+        CustomModels(error = "error")
     }
 
     fun decodeKeyInfo(json: String?): CloudKeyInfo = try {

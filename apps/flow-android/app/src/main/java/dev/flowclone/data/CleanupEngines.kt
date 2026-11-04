@@ -32,17 +32,18 @@ object CleanupEngines {
         return order.map { when (it) { r -> other; other -> r; else -> it } }
     }
 
-    fun name(r: CleanupRoute): String = when (r) {
+    /** D52: the cloud engine is named by its provider ("OpenRouter" / "Custom server (10.0.0.5)"). */
+    fun name(r: CleanupRoute, d: DevSettings? = null): String = when (r) {
         CleanupRoute.LOCAL -> "This phone"
         CleanupRoute.SERVER -> "Your server"
-        CleanupRoute.CLOUD -> OpenRouter.NAME
+        CleanupRoute.CLOUD -> d?.cloud?.cleanupProviderName ?: OpenRouter.NAME
     }
 
     /** The switch's spoken label. */
-    fun useLabel(r: CleanupRoute): String = when (r) {
+    fun useLabel(r: CleanupRoute, d: DevSettings? = null): String = when (r) {
         CleanupRoute.LOCAL -> "Clean up on this phone"
         CleanupRoute.SERVER -> "Clean up on your server"
-        CleanupRoute.CLOUD -> "Clean up with ${OpenRouter.NAME}"
+        CleanupRoute.CLOUD -> "Clean up with ${d?.cloud?.cleanupProviderName ?: OpenRouter.NAME}"
     }
 
     /**
@@ -69,8 +70,15 @@ object CleanupEngines {
         else -> "Not connected yet"
     }
 
-    /** OpenRouter row: "Sends text · asks first" until consent, then its model; "· no key". */
-    fun cloudLine(d: DevSettings, hasKey: Boolean): String =
-        "Sends text · " + (if (!d.cloud.cleanup.consentOk) "asks first" else d.cloud.cleanup.model.substringAfter('/')) +
-            if (d.allowCloudCleanup && !hasKey) " · no key" else ""
+    /**
+     * Cloud row: "Sends text · asks first" until consent, then its model; "· no key" ([hasKey]: the
+     * OpenRouter key; a custom server's key is optional). D52: "· unencrypted (http)" for an http:// server.
+     */
+    fun cloudLine(d: DevSettings, hasKey: Boolean): String {
+        val c = d.cloud
+        val model = if (c.customProvider) c.customCleanup.model else c.cleanup.model.substringAfter('/')
+        return "Sends text · " + (if (!c.cleanupConsentOk) "asks first" else model) +
+            (if (c.customProvider && !c.customCleanup.https) " · unencrypted (http)" else "") +
+            if (d.allowCloudCleanup && !hasKey && !c.customProvider) " · no key" else ""
+    }
 }

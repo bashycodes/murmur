@@ -16,6 +16,7 @@ import dev.flowclone.data.LastDictation
 import dev.flowclone.data.CloudKeyStore
 import dev.flowclone.data.CloudMigration
 import dev.flowclone.data.OpenRouter
+import dev.flowclone.data.CustomServer
 import dev.flowclone.data.RouterOpener
 import dev.flowclone.data.ParakeetFiles
 import dev.flowclone.data.EngineRoute
@@ -32,6 +33,7 @@ import dev.flowclone.core.FakeFlowCore
 import dev.flowclone.core.FlowCore
 import dev.flowclone.core.FlowCoreLoader
 import dev.flowclone.core.NativeFlowCore
+import dev.flowclone.core.CustomModels
 import dev.flowclone.data.DictionaryStore
 import dev.flowclone.notes.NotesStore
 import dev.flowclone.data.SuggestionStore
@@ -259,11 +261,12 @@ class FlowApp : Application() {
         debugLog.event("cloud_migration", "migrated=${r.migrated} removed=${r.removedNames.size} key_moved=${r.keyFrom != null} cloud_disabled=${r.cloudDisabled}")
     }
 
-    /** Server token + the stored OpenRouter key (runs on the debug-log thread, never throws). */
+    /** Server token + the stored OpenRouter and custom-server keys (runs on the debug-log thread, never throws). */
     private fun debugSecrets(): List<String> {
         val out = ArrayList<String>()
         runCatching { dev.load() }.getOrNull()?.token?.takeIf { it.isNotEmpty() }?.let(out::add)
         runCatching { cloudKeys.get(OpenRouter.ID) }.getOrNull()?.let(out::add)
+        runCatching { cloudKeys.get(CustomServer.ID) }.getOrNull()?.let(out::add)
         return out
     }
 
@@ -505,22 +508,29 @@ class EngineHolder(
     fun llmDir() = File(app.filesDir, "llm").apply { mkdirs() }
 
     /**
-     * A freshly opened router gets the stored OpenRouter key (keys never travel in the config
+     * A freshly opened router gets the stored OpenRouter and custom-server keys (keys never travel in the config
      * JSON) and this month's persisted usage counters. A notice from a legacy config the router
      * migrated itself (should the shell's migration not have run) is kept for the banner.
      */
     private fun syncCloud(r: NativeFlowCore) {
         if (!app.caps.cloud) return
-        app.cloudKeys.get(OpenRouter.ID)?.let { key ->
-            runCatching { r.setCloudKey(OpenRouter.ID, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key: ${it.message}") }
+        for (id in listOf(OpenRouter.ID, CustomServer.ID)) app.cloudKeys.get(id)?.let { key ->
+            runCatching { r.setCloudKey(id, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key: ${it.message}") }
         }
         app.dev.cloudUsageJson?.let { r.setCloudUsage(it) }
         r.cloudNotice()?.let { app.dev.cloudNotice = it; r.ackCloudNotice() }
     }
 
-    /** The OpenRouter key was saved / cleared: tell the live router (D28: id `openrouter`). */
-    fun setCloudKey(key: String?) {
-        runCatching { router()?.setCloudKey(OpenRouter.ID, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key: ${it.message}") }
+    /** A key was saved / cleared: tell the live router (D28 id `openrouter`, D52 `custom`). */
+    fun setCloudKey(key: String?, id: String = OpenRouter.ID) {
+        runCatching { router()?.setCloudKey(id, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key: ${it.message}") }
+    }
+
+    /** D52 blocking (≤ 8 s, off the main thread): the custom server's model list, [key] typed or else the stored one. */
+    fun customCleanupModels(baseUrl: String, key: String?): CustomModels {
+        val typed = key?.takeIf { it.isNotBlank() }
+        return router()?.customCleanupModels(baseUrl, typed)
+            ?: NativeFlowCore.customCleanupModels(baseUrl, typed ?: app.cloudKeys.get(CustomServer.ID))
     }
 
     /** Persist the router's cloud counters (after a cloud dictation, and on Reset counters). */
