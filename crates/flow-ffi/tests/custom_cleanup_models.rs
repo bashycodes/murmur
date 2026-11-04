@@ -38,3 +38,21 @@ fn lists_models_and_reports_errors_without_secrets() {
         serde_json::from_str(&custom_cleanup_models(None, "not a url", None)).unwrap();
     assert_eq!(v["error"], "connect_failed");
 }
+
+#[test]
+fn address_is_normalised_by_the_router() {
+    use flow_ffi::json_api::custom_cleanup_address;
+    let v: serde_json::Value = serde_json::from_str(&custom_cleanup_address(
+        " http://[2001:DB8::0:1]:4000/ ",
+        "m-1",
+    ))
+    .unwrap();
+    assert_eq!(v["url"], "http://[2001:db8::1]:4000/v1");
+    assert_eq!(v["host"], "2001:db8::1");
+    assert_eq!(v["model_ok"], true);
+    let v: serde_json::Value =
+        serde_json::from_str(&custom_cleanup_address("http://x/v1?k=1", "two words")).unwrap();
+    assert_eq!(v["error"], "bad_base_url");
+    assert_eq!(v["model_ok"], false);
+    assert!(v.get("host").is_none());
+}

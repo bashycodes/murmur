@@ -221,7 +221,7 @@ impl State {
         if let Some(b) = self.cfg.cloud.monthly_budget_usd {
             let u = self.cloud_usage.lk();
             let spent = if u.month == month_of(now_unix_ms()) {
-                u.total_cost()
+                u.budget_cost()
             } else {
                 0.0
             };
@@ -669,19 +669,17 @@ impl Router {
             let st = self.state.lk();
             let mut u = st.cloud_usage.lk();
             u.roll(&month_of(now_unix_ms()));
-            (st.cfg.clone(), u.cost_for(crate::cloud::PURPOSE_CLEANUP))
+            (
+                st.cfg.clone(),
+                (u.cost_for(crate::cloud::PURPOSE_CLEANUP), u.custom_cost()),
+            )
         };
         let supported = self.cleanup_supported(&cfg);
-        let custom = cfg.cloud.cleanup_provider == CleanupProvider::Custom;
         CleanupStatus {
             supported,
             enabled: supported && cfg.cloud_cleanup_wanted(),
             provider: cfg.cloud.cleanup_provider,
-            host: if custom {
-                cfg.cloud.custom_cleanup.host()
-            } else {
-                String::new()
-            },
+            host: cfg.cloud.cleanup_host(),
             order: cfg.effective_cleanup_order(),
             server_llm: self.server_clean.server_llm(),
             server_circuit: self.server_clean.circuit_status(),
@@ -693,7 +691,8 @@ impl Router {
             model: cfg.cloud.cleanup_model().to_string(),
             timeout_ms: cfg.cloud.cleanup_timeout_ms(),
             last: self.gate.last(),
-            month_cost_usd: crate::Usd(spent),
+            month_cost_usd: crate::Usd(spent.0),
+            custom_month_cost_usd: crate::Usd(spent.1),
         }
     }
 
@@ -714,8 +713,8 @@ impl Router {
         let wanted = self.cloud_cleanup_on(&st.cfg);
         let cloud = st.cfg.cloud.clone();
         let view = cloud.cleanup_view();
-        let custom = cloud.cleanup_provider == CleanupProvider::Custom;
-        let key = if custom {
+        let custom = !cloud.cleanup_needs_key();
+        let key = if cloud.cleanup_provider == CleanupProvider::Custom {
             st.custom_key.clone()
         } else {
             st.cloud_key.clone()
@@ -1061,11 +1060,26 @@ impl Router {
         f(key.as_ref().filter(|k| !k.is_empty()))
     }
 
-    /// Run `f` with the custom cleanup server's key (D52), for calls to
-    /// that server that are not dictations (the settings page's model list
-    /// and "Test connection"). Lent, never returned. Additive.
-    pub fn with_custom_cleanup_key<R>(&self, f: impl FnOnce(Option<&SecretString>) -> R) -> R {
-        let key = self.state.lk().custom_key.clone();
+    /// Run `f` with the custom cleanup server's saved key (D52), for calls
+    /// to `base_url` that are not dictations (the settings page's model
+    /// list, "Test connection", "Test cleanup"). The key is lent only when
+    /// `base_url`'s host is the consented one
+    /// ([`crate::cloud::CustomCleanupConfig::saved_key_allowed_for`]); else `f` gets
+    /// `None`, so a URL typed into the page never receives it. Additive.
+    pub fn with_custom_cleanup_key<R>(
+        &self,
+        base_url: &str,
+        f: impl FnOnce(Option<&SecretString>) -> R,
+    ) -> R {
+        let key = {
+            let st = self.state.lk();
+            st.cfg
+                .cloud
+                .custom_cleanup
+                .saved_key_allowed_for(base_url)
+                .then(|| st.custom_key.clone())
+                .flatten()
+        };
         f(key.as_ref().filter(|k| !k.is_empty()))
     }
 

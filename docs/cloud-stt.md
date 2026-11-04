@@ -215,6 +215,9 @@ OpenRouter with its own settings, consent and key, and the pages say so.
   key and the dictated text cross the network unencrypted; the pages warn).
   `flow_router::cloud::normalize_custom_base_url` adds `/v1` when the URL has no path,
   drops a trailing `/`, refuses credentials, spaces, backslashes, query and fragment.
+  `custom_server_address` adds the canonical host (lower case, IPv6 compressed, IDN in
+  punycode) that consent binds to; the shells take URL and host from it (Android
+  `nativeCustomCleanupAddress`), never from their own URL parser.
 * **Request** (`flow_cloud::custom::CustomCleaner`): streamed `POST {base}/chat/completions`
   with `model`, `messages`, `temperature: 0`, `max_tokens`, `stream: true`. None of
   OpenRouter's fields (`provider`, `zdr`, `max_price`, `reasoning`, `include_reasoning`,
@@ -223,14 +226,25 @@ OpenRouter with its own settings, consent and key, and the pages say so.
 * **Key** optional (`set_cloud_key("custom", …)`; Windows Credential Manager
   `flow-clone/cloud/custom`, Android `SecretVault("flow_cloud_custom")`); none = no
   `Authorization` header. Never used for STT; the OpenRouter key never reaches this server.
+  The settings pages' "Load models" / "Test connection" / "Test cleanup" send the key typed
+  into the field, or the saved key **only** when the URL's host is the consented one
+  (`CustomCleanupConfig::saved_key_allowed_for`, `Router::with_custom_cleanup_key`); a URL
+  typed elsewhere never receives the saved key.
 * **Model** free text (1-256 chars, no whitespace or control characters). The pages list
   `GET {base}/models` ids (`flow_cloud::custom::list_models`, also the Test connection;
-  Android `nativeCustomCleanupModels`) and allow manual entry.
+  Android `nativeCustomCleanupModels`; result JSON `custom::models_json`) and allow manual
+  entry. "Test cleanup" (`custom::test_cleanup`) runs one streamed completion of a fixed
+  sample sentence on the selected provider.
 * **Consent**: `custom_cleanup.consent_host` must equal the host of the current base URL;
   OpenRouter's cleanup consent does not count.
 * **Cost**: LiteLLM's `x-litellm-response-cost` header when present, else unknown; counted
-  under usage id `custom` (purpose `cleanup`). With a monthly budget, an unknown cost does
-  not block: only reported cost counts toward it.
+  under usage id `custom` (purpose `cleanup`) and shown apart
+  (`CleanupStatus.custom_month_cost_usd`, `CloudUsage::custom_cost`). The monthly budget is
+  OpenRouter's: it counts only OpenRouter spend (`CloudUsage::budget_cost`: STT +
+  OpenRouter cleanup) and never gates the custom server (the owner's own). The gate's
+  last-cost memory is keyed by (provider, model), so the same model id on both never mixes.
+* No `stream_options.include_usage`: some OpenAI-compatible servers refuse unknown
+  parameters, and the cost comes from the header anyway.
 * Prompt scope switches are shared with OpenRouter (stored under `openrouter.cleanup`).
 
 ---

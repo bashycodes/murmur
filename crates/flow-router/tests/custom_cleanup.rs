@@ -2,7 +2,7 @@
 //! calls the user's own OpenAI-compatible server (fake cleaner injected as
 //! the custom factory); OpenRouter stays the default and is unchanged.
 //! Consent binds to the typed host, the key is optional, STT is untouched
-//! and the budget keeps working when the server reports no cost.
+//! and the OpenRouter budget neither gates nor counts the custom server.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -31,6 +31,8 @@ impl Cleaner for Local {
 struct Fake {
     out: &'static str,
     cost: Option<f64>,
+    /// Pre-flight estimate (the OpenRouter catalogue price); None = unpriced.
+    est: Mutex<Option<f64>>,
     calls: AtomicUsize,
 }
 
@@ -39,6 +41,7 @@ impl Fake {
         Arc::new(Self {
             out,
             cost,
+            est: Mutex::new(None),
             calls: AtomicUsize::new(0),
         })
     }
@@ -53,6 +56,9 @@ impl Cleaner for Fake {
     }
     fn engine(&self) -> &'static str {
         "cloud"
+    }
+    fn estimate_cost_usd(&self, _p: &CleanPrompt) -> Option<f64> {
+        *self.est.lock().unwrap()
     }
     fn clean_metered(
         &self,
@@ -251,7 +257,8 @@ fn custom_needs_its_factory() {
 }
 
 #[test]
-fn budget_with_unknown_custom_cost_does_not_block() {
+fn custom_server_is_never_budget_gated() {
+    // Unknown cost, budget set: every call goes through.
     let mut c = custom_cfg();
     c.cloud.monthly_budget_usd = Some(Usd(1.0));
     let k = rig(c, None);
@@ -259,13 +266,51 @@ fn budget_with_unknown_custom_cost_does_not_block() {
         assert!(dictate(&k.router).final_text.contains(CUSTOM_OUT));
     }
     assert_eq!(k.custom.calls(), 3);
-    // A reported cost counts; once the budget is spent, cleanup stops.
+    // A reported cost far over the budget still does not stop it (the
+    // owner's own server), and it is shown apart from the budget.
     let mut c = custom_cfg();
     c.cloud.monthly_budget_usd = Some(Usd(0.001));
     let k = rig(c, Some(0.002));
-    assert!(dictate(&k.router).final_text.contains(CUSTOM_OUT));
+    for _ in 0..2 {
+        assert!(dictate(&k.router).final_text.contains(CUSTOM_OUT));
+    }
+    assert_eq!(k.custom.calls(), 2);
+    let u = k.router.cloud_usage();
+    assert!((u.custom_cost() - 0.004).abs() < 1e-12);
+    assert_eq!(u.budget_cost(), 0.0);
+    let st = k.router.cleanup_status();
+    assert!((st.custom_month_cost_usd.0 - 0.004).abs() < 1e-12);
+}
+
+#[test]
+fn custom_spend_does_not_count_against_the_openrouter_budget() {
+    // Same model id on both providers, so a per-model cost memory would
+    // collide.
+    let mut c = custom_cfg();
+    c.cloud.custom_cleanup.model = c.cloud.openrouter.cleanup.model.clone();
+    c.cloud.monthly_budget_usd = Some(Usd(0.001));
+    c.cloud.openrouter.cleanup.consent_host = "openrouter.ai".into();
+    c.cloud.openrouter.cleanup.consent_at_ms = 1;
+    let k = rig(c, Some(0.0001));
+    // The custom server spends well past the OpenRouter budget.
+    for _ in 0..12 {
+        assert!(dictate(&k.router).final_text.contains(CUSTOM_OUT));
+    }
+    let mut c = k.router.config();
+    c.cloud.cleanup_provider = CleanupProvider::OpenRouter;
+    k.router.update_config(c);
+    // Unpriced OpenRouter model, no OpenRouter cost recorded: refused (spec
+    // §2.6 rule 5) — the custom server's cost for the same id does not
+    // stand in for it.
     assert!(dictate(&k.router).final_text.contains(LOCAL_OUT));
-    assert_eq!(k.custom.calls(), 1);
+    assert_eq!(k.or.calls(), 0);
+    // Priced: runs, because custom spend is not in the budget.
+    *k.or.est.lock().unwrap() = Some(0.0005);
+    assert!(dictate(&k.router).final_text.contains(OR_OUT));
+    assert_eq!(k.or.calls(), 1);
+    let u = k.router.cloud_usage();
+    assert!((u.custom_cost() - 0.0012).abs() < 1e-12);
+    assert!((u.budget_cost() - 0.0007).abs() < 1e-12);
 }
 
 #[test]
@@ -280,4 +325,25 @@ fn stt_config_is_untouched_by_the_custom_provider() {
         .set_cloud_key("custom", Some(SecretString::new(CUSTOM_KEY)));
     assert!(!k.router.has_cloud_key("openrouter"));
     k.router.with_cloud_key(|key| assert!(key.is_none()));
+}
+
+#[test]
+fn saved_custom_key_is_lent_only_for_the_consented_host() {
+    let k = rig(custom_cfg(), None);
+    k.router
+        .set_cloud_key("custom", Some(SecretString::new(CUSTOM_KEY)));
+    let lent = |url: &str| {
+        k.router
+            .with_custom_cleanup_key(url, |key| key.map(|k| k.expose().to_string()))
+    };
+    assert_eq!(lent("http://10.0.0.5:4000/v1").as_deref(), Some(CUSTOM_KEY));
+    // A URL typed into the page that points elsewhere never gets it.
+    assert_eq!(lent("http://attacker.example:4000"), None);
+    assert_eq!(lent("http://10.0.0.6:4000"), None);
+    assert_eq!(lent("garbage"), None);
+    // Without consent, not even the saved host.
+    let mut c = k.router.config();
+    c.cloud.custom_cleanup.consent_at_ms = 0;
+    k.router.update_config(c);
+    assert_eq!(lent("http://10.0.0.5:4000/v1"), None);
 }

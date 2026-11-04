@@ -271,3 +271,45 @@ fn router_dictation_uses_the_custom_server() {
     }
     assert_eq!(router.cleanup_status().provider, CleanupProvider::Custom);
 }
+
+#[test]
+fn test_cleanup_runs_one_chat_completion_on_the_custom_server() {
+    let srv = MockServer::fixed(sse_ok().header(COST_HEADER, "0.00002"));
+    let t = custom::test_cleanup(&cfg(&srv.url("")), Some(SecretString::new(KEY)));
+    assert!(t.ok, "{t:?}");
+    assert_eq!(t.text.as_deref(), Some("Let's meet at noon."));
+    assert_eq!(t.cost_usd, Some(0.00002));
+    assert_eq!(t.model, MODEL);
+    let reqs = srv.requests();
+    assert_eq!(reqs.len(), 1);
+    assert_eq!(
+        (reqs[0].method.as_str(), reqs[0].path()),
+        ("POST", "/v1/chat/completions")
+    );
+    assert_eq!(
+        reqs[0].header("authorization"),
+        Some(format!("Bearer {KEY}").as_str())
+    );
+    let body: serde_json::Value = serde_json::from_slice(&reqs[0].body).unwrap();
+    assert_eq!(body["model"], MODEL);
+    assert!(body["messages"].to_string().contains("wednesday"));
+    // Errors: a code and a provider-neutral line, never the key or URL.
+    let srv = MockServer::fixed(Reply::json(401, serde_json::json!({"error": "nope"})));
+    let t = custom::test_cleanup(&cfg(&srv.url("")), Some(SecretString::new(KEY)));
+    assert!(!t.ok);
+    assert_eq!(t.error.as_deref(), Some("auth_failed"));
+    let out = serde_json::to_string(&t).unwrap();
+    assert!(
+        !out.contains("LEAKCHECK") && !out.contains("127.0.0.1"),
+        "{out}"
+    );
+}
+
+#[test]
+fn models_json_is_the_shared_shape() {
+    let v = custom::models_json(Ok(vec!["a".into()]));
+    assert_eq!(v, serde_json::json!({"models": ["a"]}));
+    let v = custom::models_json(Err(CloudError::Auth));
+    assert_eq!(v["error"], "auth_failed");
+    assert_eq!(v["message"], "the server rejected the key");
+}

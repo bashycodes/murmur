@@ -259,6 +259,26 @@ impl CloudConfig {
         }
     }
 
+    /// OpenRouter needs a key; a custom server may run without one (D52).
+    pub fn cleanup_needs_key(&self) -> bool {
+        self.cleanup_provider.is_openrouter()
+    }
+
+    /// The monthly budget gates OpenRouter cleanup only; the custom server
+    /// is the owner's own (D52).
+    pub fn cleanup_budgeted(&self) -> bool {
+        self.cleanup_provider.is_openrouter()
+    }
+
+    /// The custom server's host when it is the cleanup provider, else `""`
+    /// (the status page names the server it sends text to).
+    pub fn cleanup_host(&self) -> String {
+        match self.cleanup_provider {
+            CleanupProvider::OpenRouter => String::new(),
+            CleanupProvider::Custom => self.custom_cleanup.host(),
+        }
+    }
+
     /// The part of the config the cleanup gate depends on (a change resets
     /// its circuit and rebuilds the cleaner; STT edits do not).
     pub fn cleanup_view(&self) -> CleanupView {
@@ -350,10 +370,11 @@ impl CustomCleanupConfig {
         *self == Self::default()
     }
 
-    /// Lower-cased host of `base_url`, or `""` when it does not parse.
+    /// Canonical host of `base_url` ([`custom_server_address`]), or `""`
+    /// when the URL is unusable.
     pub fn host(&self) -> String {
-        parse_base_url(self.base_url.trim())
-            .map(|b| b.host)
+        custom_server_address(&self.base_url)
+            .map(|a| a.host)
             .unwrap_or_default()
     }
 
@@ -368,6 +389,17 @@ impl CustomCleanupConfig {
     /// The API root requests go to (`…/chat/completions`, `…/models`).
     pub fn api_base(&self) -> Result<String, String> {
         normalize_custom_base_url(&self.base_url)
+    }
+
+    /// Whether the saved key may be sent to `base_url` (the settings
+    /// page's "Load models" / "Test connection" with an empty key field):
+    /// only when that URL's host is the host the user consented to. A key
+    /// typed into the field may go anywhere the user points it.
+    pub fn saved_key_allowed_for(&self, base_url: &str) -> bool {
+        self.consent_at_ms > 0
+            && !self.consent_host.is_empty()
+            && custom_server_address(base_url)
+                .is_ok_and(|a| a.host.eq_ignore_ascii_case(&self.consent_host))
     }
 
     pub fn validate(&self) -> Result<(), String> {
@@ -402,6 +434,22 @@ pub fn normalize_custom_base_url(raw: &str) -> Result<String, String> {
         u.set_path("/v1");
     }
     Ok(u.as_str().trim_end_matches('/').to_string())
+}
+
+/// A custom server address as every shell shows and stores it: the
+/// normalised API root and the canonical host (lower case, IPv6
+/// compressed, IDN in punycode) that consent is bound to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomServerAddress {
+    pub url: String,
+    pub host: String,
+}
+
+/// [`normalize_custom_base_url`] plus the canonical host.
+pub fn custom_server_address(raw: &str) -> Result<CustomServerAddress, String> {
+    let url = normalize_custom_base_url(raw)?;
+    let host = parse_base_url(&url)?.host;
+    Ok(CustomServerAddress { url, host })
 }
 
 /// Custom server model ids are free text (`gpt-4o`, `Qwen/Qwen2.5-7B`,
@@ -831,9 +879,30 @@ pub const PURPOSE_CLEANUP: &str = "cleanup";
 pub const REMOVED_PROVIDERS_ID: &str = "removed";
 
 impl CloudUsage {
-    /// Both uses, every provider (the budget counts all of it).
+    /// Both uses, every provider, the custom cleanup server included.
     pub fn total_cost(&self) -> f64 {
         self.providers.iter().map(|p| p.cost_usd.0).sum()
+    }
+
+    /// What the monthly budget counts (D52): OpenRouter spend only (STT and
+    /// OpenRouter cleanup, plus removed providers' cost). The custom
+    /// cleanup server is the owner's own and never counts against it.
+    pub fn budget_cost(&self) -> f64 {
+        self.providers
+            .iter()
+            .filter(|p| p.provider_id != CUSTOM_CLEANUP_ID)
+            .map(|p| p.cost_usd.0)
+            .sum()
+    }
+
+    /// Cost the custom cleanup server reported this month (its
+    /// `x-litellm-response-cost` header), shown apart from the budget.
+    pub fn custom_cost(&self) -> f64 {
+        self.providers
+            .iter()
+            .filter(|p| p.provider_id == CUSTOM_CLEANUP_ID)
+            .map(|p| p.cost_usd.0)
+            .sum()
     }
 
     /// Cost of one use ("Speech $x · Cleanup $y").
@@ -1086,6 +1155,46 @@ mod tests {
         ] {
             assert!(n(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn custom_server_address_has_the_canonical_host() {
+        let a = custom_server_address("http://[2001:DB8:0:0::1]:4000").unwrap();
+        assert_eq!(a.url, "http://[2001:db8::1]:4000/v1");
+        assert_eq!(a.host, "2001:db8::1");
+        let a = custom_server_address("https://LLM.Example.org/api/v1/").unwrap();
+        assert_eq!(
+            (a.url.as_str(), a.host.as_str()),
+            ("https://llm.example.org/api/v1", "llm.example.org")
+        );
+        let a = custom_server_address("http://bücher.example:4000").unwrap();
+        assert_eq!(a.host, "xn--bcher-kva.example");
+        assert!(custom_server_address("http://x/v1?q").is_err());
+    }
+
+    #[test]
+    fn saved_custom_key_goes_only_to_the_consented_host() {
+        let c = CustomCleanupConfig {
+            base_url: "http://10.0.0.5:4000".into(),
+            consent_host: "10.0.0.5".into(),
+            consent_at_ms: 1,
+            ..Default::default()
+        };
+        assert!(c.saved_key_allowed_for("http://10.0.0.5:4000/v1"));
+        assert!(c.saved_key_allowed_for(" http://10.0.0.5:8080 "));
+        assert!(!c.saved_key_allowed_for("http://10.0.0.6:4000"));
+        assert!(!c.saved_key_allowed_for("https://evil.example/10.0.0.5"));
+        assert!(!c.saved_key_allowed_for("not a url"));
+        let unconsented = CustomCleanupConfig {
+            consent_at_ms: 0,
+            ..c.clone()
+        };
+        assert!(!unconsented.saved_key_allowed_for("http://10.0.0.5:4000"));
+        let no_host = CustomCleanupConfig {
+            consent_host: String::new(),
+            ..c
+        };
+        assert!(!no_host.saved_key_allowed_for("http://10.0.0.5:4000"));
     }
 
     #[test]

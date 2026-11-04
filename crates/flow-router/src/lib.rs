@@ -699,8 +699,12 @@ pub struct CleanupStatus {
     /// The last cloud cleanup call (engine, model, cost, ids, TTFT).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last: Option<flow_core::cleanup::CleanUsage>,
-    /// This month's cleanup cost (USD).
+    /// This month's cleanup cost (USD), both providers.
     pub month_cost_usd: Usd,
+    /// D52: the part of it the custom server reported (its cost header);
+    /// never counted against the OpenRouter budget.
+    #[serde(default)]
+    pub custom_month_cost_usd: Usd,
 }
 
 /// Errors from `Router::start_session` (stable snake_case kinds).

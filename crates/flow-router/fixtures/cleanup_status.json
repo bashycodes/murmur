@@ -6,6 +6,7 @@
     "until_config_change": false
   },
   "consent": true,
+  "custom_month_cost_usd": 0.0,
   "enabled": true,
   "last": {
     "cost_usd": 0.0007,
