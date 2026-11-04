@@ -274,7 +274,7 @@ object SettingsSummary {
             when (it) {
                 DevSettings.CleanupRoute.LOCAL -> if (s.llmEnabled && caps.local) "this phone" else null
                 DevSettings.CleanupRoute.SERVER -> if (caps.remote && d.serverConfigured) "your server" else null
-                DevSettings.CleanupRoute.CLOUD -> if (d.cloudCleanupRouted && d.cloud.cleanup.consentOk) OpenRouter.NAME else null
+                DevSettings.CleanupRoute.CLOUD -> if (d.cloudCleanupRouted && d.cloud.cleanupConsentOk) d.cloud.cleanupProviderName else null
             }
         }
         val chain = engines + listOfNotNull(if (s.spokenCleanup) "rules" else null)

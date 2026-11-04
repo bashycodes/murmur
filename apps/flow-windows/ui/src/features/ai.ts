@@ -13,7 +13,7 @@ import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
 import type { Feature } from "../lib/router.js";
 import type { CleanupEngine, CleanupRoute, CleanupStatus, OrView } from "../lib/types.js";
 import { views } from "../lib/views.js";
-import { showOr } from "./openrouter.js";
+import { cleanupTarget, showOr } from "./openrouter.js";
 
 type LlmStatus =
   | { state: "off" }
@@ -179,9 +179,11 @@ function describe(r: CleanupRoute): void {
     else setBadge(r, "On", "light");
   } else {
     const v = views.or;
+    const custom = v?.cleanup.provider === "custom";
+    const model = custom ? v?.cleanup.custom.model ?? "" : (v?.cleanup.model ?? "").split("/").pop();
     $<HTMLElement>("aieng_desc_cloud").textContent = on
-      ? `Sends the transcript as text to openrouter.ai · ${(v?.cleanup.model ?? "").split("/").pop()}.`
-      : "Sends the transcript as text to openrouter.ai. Asks first.";
+      ? `Sends the transcript as text to ${cleanupTarget(v)} · ${model}.`
+      : `Sends the transcript as text to ${cleanupTarget(v)}. Asks first.`;
     const st = v?.cleanup.status;
     if (!on) setBadge(r, "Off", "light");
     else if (st?.blocked) setBadge(r, "Not set up", "warning");
@@ -240,7 +242,10 @@ function showAiEngine(): void {
   const name: Record<CleanupRoute, string> = {
     local: "this PC",
     server: "your server",
-    cloud: `OpenRouter (${views.or?.cleanup.model ?? ""})`,
+    cloud:
+      views.or?.cleanup.provider === "custom"
+        ? `${cleanupTarget(views.or)} (${views.or.cleanup.custom.model})`
+        : `OpenRouter (${views.or?.cleanup.model ?? ""})`,
   };
   const used = engines()
     .map((e) => e.route)

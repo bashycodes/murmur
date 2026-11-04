@@ -329,6 +329,8 @@ fn cloud_fixtures() -> Vec<(String, Value)> {
             ],
             server_llm: Some(true),
             server_circuit: Some(CircuitStatus::default()),
+            provider: Default::default(),
+            host: String::new(),
             consent: true,
             blocked: None,
             circuit: Some(CircuitStatus::default()),
@@ -344,6 +346,7 @@ fn cloud_fixtures() -> Vec<(String, Value)> {
                 latency_ms: Some(640),
             }),
             month_cost_usd: Usd(0.014),
+            custom_month_cost_usd: Usd(0.0),
         })
         .unwrap(),
     ));

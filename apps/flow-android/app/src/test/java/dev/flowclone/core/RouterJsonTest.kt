@@ -253,4 +253,15 @@ class RouterJsonTest {
         val none = CoreJson.decodeRoute(JSONObject("""{"engine":"local"}"""))
         assertNull(none.rejectedText); assertNull(none.guardDetail)
     }
+
+    @Test fun decodesCustomModelsAndTheCleanupProvider() {
+        assertEquals(CustomModels(listOf("Llama-3.1-8B", "gpt-4o-mini")), RouterJson.decodeCustomModels("""{"models":["Llama-3.1-8B","gpt-4o-mini"]}"""))
+        assertEquals(CustomModels(error = "auth_failed", message = "key rejected"), RouterJson.decodeCustomModels("""{"error":"auth_failed","message":"key rejected"}"""))
+        assertEquals("error", RouterJson.decodeCustomModels("not json").error)
+        assertEquals("error", RouterJson.decodeCustomModels("{}").error)
+        val st = RouterJson.decodeCleanupStatus("""{"supported":true,"provider":"custom","host":"10.0.0.5"}""")
+        assertEquals("custom", st.provider); assertEquals("10.0.0.5", st.host)
+        val or = RouterJson.decodeCleanupStatus("{}")
+        assertEquals("openrouter", or.provider); assertEquals("", or.host)
+    }
 }

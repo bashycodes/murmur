@@ -9,7 +9,7 @@
 
 use crate::credentials::{self, CredentialStore};
 use crate::dev_settings::DevSettings;
-use flow_router::cloud::{PURPOSE_CLEANUP, PURPOSE_STT, REMOVED_PROVIDERS_ID};
+use flow_router::cloud::{CUSTOM_CLEANUP_ID, PURPOSE_CLEANUP, PURPOSE_STT, REMOVED_PROVIDERS_ID};
 use flow_router::{CloudUsage, MigrationReport};
 use std::path::{Path, PathBuf};
 
@@ -180,14 +180,21 @@ pub struct UsageView {
     pub speech: String,
     pub cleanup: String,
     pub rows: Vec<UsageRow>,
-    /// Sum this month (both uses + removed providers), formatted.
+    /// OpenRouter's sum this month (both uses + removed providers), what
+    /// the budget counts (`CloudUsage::budget_cost`), formatted.
     pub total: String,
     pub budget: Option<f64>,
     pub budget_reached: bool,
+    /// D52: what the custom cleanup server reported (its cost header),
+    /// formatted; `None` when nothing was reported. Never in the budget.
+    pub custom_cost: Option<String>,
 }
 
 fn purpose_of(p: &flow_router::ProviderUsage) -> &'static str {
-    if p.provider_id == REMOVED_PROVIDERS_ID {
+    if p.provider_id == CUSTOM_CLEANUP_ID {
+        // Shown on its own line, outside the OpenRouter rows and budget.
+        CUSTOM_CLEANUP_ID
+    } else if p.provider_id == REMOVED_PROVIDERS_ID {
         "removed"
     } else if p.purpose == PURPOSE_CLEANUP {
         PURPOSE_CLEANUP
@@ -234,7 +241,8 @@ pub fn usage_view(u: &CloudUsage, budget: Option<f64>) -> UsageView {
             cost: format_cost(cost, est(purpose)),
         });
     }
-    let total = u.total_cost();
+    let total = u.budget_cost();
+    let custom = u.custom_cost();
     UsageView {
         month: u.month.clone(),
         // Not `CloudUsage::cost_for`: that counts the `removed` counter
@@ -242,9 +250,15 @@ pub fn usage_view(u: &CloudUsage, budget: Option<f64>) -> UsageView {
         speech: format_cost(sum(PURPOSE_STT), est(PURPOSE_STT)),
         cleanup: format_cost(sum(PURPOSE_CLEANUP), est(PURPOSE_CLEANUP)),
         rows,
-        total: format_cost(total, u.providers.iter().any(|p| p.cost_estimated)),
+        total: format_cost(
+            total,
+            u.providers
+                .iter()
+                .any(|p| p.cost_estimated && p.provider_id != CUSTOM_CLEANUP_ID),
+        ),
         budget,
         budget_reached: budget.is_some_and(|b| total >= b),
+        custom_cost: (custom > 0.0).then(|| format_cost(custom, false)),
     }
 }
 
@@ -464,5 +478,36 @@ mod tests {
             (empty.speech.as_str(), empty.cleanup.as_str()),
             ("$0.0000", "$0.0000")
         );
+        assert_eq!(empty.custom_cost, None);
+    }
+
+    #[test]
+    fn custom_server_cost_is_shown_apart_from_the_budget() {
+        let u = CloudUsage {
+            month: "2026-11".into(),
+            providers: vec![
+                ProviderUsage {
+                    provider_id: "openrouter".into(),
+                    purpose: "stt".into(),
+                    requests: 1,
+                    cost_usd: Usd(0.2),
+                    ..Default::default()
+                },
+                ProviderUsage {
+                    provider_id: CUSTOM_CLEANUP_ID.into(),
+                    purpose: "cleanup".into(),
+                    requests: 9,
+                    cost_usd: Usd(5.0),
+                    cost_estimated: true,
+                    ..Default::default()
+                },
+            ],
+        };
+        let v = usage_view(&u, Some(1.0));
+        assert_eq!(v.total, "$0.2000");
+        assert!(!v.budget_reached, "custom spend never counts");
+        assert_eq!(v.custom_cost.as_deref(), Some("$5.00"));
+        assert_eq!(v.cleanup, "$0.0000");
+        assert!(v.rows.iter().all(|r| r.purpose != "cleanup"));
     }
 }

@@ -18,6 +18,8 @@ import dev.flowclone.data.CloudCatalog
 import dev.flowclone.data.CloudInput
 import dev.flowclone.data.CloudText
 import dev.flowclone.data.CloudUsage
+import dev.flowclone.data.CleanupProvider
+import dev.flowclone.data.CustomServer
 import dev.flowclone.data.DevSettings
 import dev.flowclone.data.OpenRouter
 import dev.flowclone.data.OpenRouterPage
@@ -32,8 +34,10 @@ import kotlin.concurrent.thread
  *   API KEY          SecretField (never in the a11y tree), Paste / Clear, Save, Check key
  *   PRIVACY          zero-retention providers only, deny data collection (confirm to turn off)
  *   SPEECH-TO-TEXT   opt-in + its consent dialog, model → picker, language, dictionary; Test
- *   TEXT CLEANUP     opt-in + its own consent dialog, model → picker, order, provider choice,
+ *   TEXT CLEANUP     opt-in + its own consent dialog, service (D52: OpenRouter or a custom
+ *                    OpenAI-compatible server), model → picker, order, provider choice,
  *                    time limit, what is sent (PromptScope), live status
+ *   CUSTOM SERVER    D52: base URL, optional key, model (typed or loaded), time limit, Test
  *   USAGE            this month's cost (total / speech / cleanup), requests, budget, reset
  * Every change applies at once (store + live router), like the old consent dialog did.
  */
@@ -49,6 +53,10 @@ class OpenRouterActivity : Activity() {
     private lateinit var keyField: EditText
     private lateinit var keyResult: DevUi.Result
     private lateinit var testResult: DevUi.Result
+    private lateinit var customKeyField: EditText
+    private lateinit var customResult: DevUi.Result
+    /** "Custom server" was picked before it was set up: its card shows, and it is selected once ready. */
+    private var pickingCustom = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -176,6 +184,7 @@ class OpenRouterActivity : Activity() {
         sectionLabel("TEXT CLEANUP")
         card {
             val on = toggleRow("Clean up text with OpenRouter", "Sends the dictated text (not your voice) after each dictation; off by default", s0.allowCloudCleanup)
+            val service = navRow(R.drawable.ic_dev_cloud, "Cleanup service") { editProvider() }
             val model = navRow(R.drawable.ic_set_sparkle, "Model") { ModelPickerActivity.open(this@OpenRouterActivity, CloudCatalog.Use.CLEANUP) }
             val sort = navRow(R.drawable.ic_dev_route, "Provider choice") { editSort() }
             val timeout = navRow(R.drawable.ic_set_timer, "Time limit") { editTimeout() }
@@ -184,14 +193,21 @@ class OpenRouterActivity : Activity() {
             on.onChange { v -> if (!quiet) onCleanup(on, v) }
             refreshers += {
                 val s = app.dev.load()
+                val custom = s.cloud.customProvider
                 quietly { on.isChecked = s.allowCloudCleanup }
+                on.setTitle("Clean up text with " + if (custom) "your server" else OpenRouter.NAME)
+                service.setSubtitle(if (custom) s.cloud.cleanupProviderName else OpenRouter.NAME)
+                for (row in listOf(model, sort, timeout)) row.view.visibility = if (custom) android.view.View.GONE else android.view.View.VISIBLE
                 model.setSubtitle(CloudCatalog.modelSummary(s.cloud.cleanup.model))
                 sort.setSubtitle(CloudInput.sortName(s.cloud.cleanup.sort))
                 timeout.setSubtitle("${s.cloud.cleanup.timeoutMs} ms, then the text is pasted without it")
-                consent.text = OpenRouterPage.consentLine(s.cloud.cleanup.consentAtMs, s.cloud.cleanup.consentOk, "cleanup", ::date)
-                status.text = app.engine.router()?.let { DevText.cleanupStatus(it.cleanupStatus()) } ?: "Speech engine not loaded"
+                consent.text = OpenRouterPage.cleanupConsentLine(s.cloud, ::date)
+                // D52: the router got no cleanup consent for an unusable custom server; say so here.
+                status.text = if (s.cloud.customNotSetUp) CustomServer.NOT_SET_UP
+                    else app.engine.router()?.let { DevText.cleanupStatus(it.cleanupStatus()) } ?: "Speech engine not loaded"
             }
         }
+        customCard()
         sectionLabel("WHAT CLEANUP SENDS")
         card {
             val always = note("")
@@ -207,7 +223,45 @@ class OpenRouterActivity : Activity() {
                 always.text = "Sent with each cleanup: ${CloudText.cleanupSends(c)}."
             }
         }
-        note("Which engine cleans first (this phone, your server or OpenRouter) is set in Settings → AI cleanup. About half of dictations need no AI and send nothing.")
+        note("Which engine cleans first (this phone, your server or the cloud) is set in Settings → AI cleanup. About half of dictations need no AI and send nothing.")
+    }
+
+    /** D52: the user's own OpenAI-compatible server (LiteLLM proxy, vLLM, Ollama, …) for cleanup only. */
+    private fun LinearLayout.customCard() = with(ui) {
+        val label = sectionLabel("CUSTOM SERVER")
+        val box = card {
+            note(CloudText.CUSTOM_STT_NOTE)
+            val notSetUp = note(CustomServer.NOT_SET_UP, color = p.danger)
+            val url = navRow(R.drawable.ic_dev_route, "Server address") { editCustomUrl() }
+            note(CustomServer.URL_HINT)
+            val http = note(CloudText.HTTP_WARNING, color = p.danger)
+            val keyLine = infoRow("Stored key")
+            customKeyField = secretRow(
+                "API key (optional)", "", "Only if your server asks for one (e.g. a LiteLLM virtual key). Stored only Keystore-sealed on this phone.",
+                "custom server key", onEdit = {}, clearLabel = "Clear", onClear = { confirmClearCustomKey() },
+            ).edit
+            val model = navRow(R.drawable.ic_set_sparkle, "Model") { editCustomModel() }
+            val timeout = navRow(R.drawable.ic_set_timer, "Time limit") { editCustomTimeout() }
+            chipRow(
+                chip("Save key") { saveCustomKey() }.apply { contentDescription = "Save the custom server key" },
+                chip("Load models") { loadCustomModels() }.apply { contentDescription = "Load the model list from your server" },
+                chip("Test connection") { testCustom() }.apply { contentDescription = "Test the connection to your server" },
+            )
+            refreshers += {
+                val c = app.dev.load().cloud.customCleanup
+                notSetUp.visibility = if (app.dev.load().cloud.customNotSetUp) android.view.View.VISIBLE else android.view.View.GONE
+                url.setSubtitle(c.baseUrl.ifEmpty { "Not set: e.g. http://192.168.1.20:4000" })
+                http.visibility = if (c.baseUrl.isNotEmpty() && !c.https) android.view.View.VISIBLE else android.view.View.GONE
+                keyLine.text = app.cloudKeys.masked(CustomServer.ID)
+                model.setSubtitle(c.model.ifEmpty { "Not set" })
+                timeout.setSubtitle("${c.timeoutMs} ms, then the text is pasted without it")
+            }
+        }
+        customResult = result()
+        refreshers += {
+            val show = app.dev.load().cloud.customProvider || pickingCustom
+            for (v in listOf(label, box)) v.visibility = if (show) android.view.View.VISIBLE else android.view.View.GONE
+        }
     }
 
     // ---- changes ----
@@ -237,14 +291,142 @@ class OpenRouterActivity : Activity() {
     private fun onCleanup(row: DevUi.ToggleRow, on: Boolean) {
         if (!on) { change(OpenRouterPage::disableCleanup); return }
         val s = app.dev.load()
-        val enable = { change { OpenRouterPage.enableCleanup(it, System.currentTimeMillis()) }; refreshCatalog(); warnNoKey() }
+        val enable = {
+            change { OpenRouterPage.enableCleanup(it, System.currentTimeMillis()) }
+            if (!app.dev.load().cloud.customProvider) { refreshCatalog(); warnNoKey() }
+        }
         if (!OpenRouterPage.cleanupNeedsConsent(s)) { enable(); return }
-        ui.confirm(CloudText.CLEANUP_CONSENT_TITLE, CloudText.cleanupConsentBody(s.cloud.cleanup), CloudText.CLEANUP_CONSENT_BUTTON, onYes = enable,
-            onNo = { quietly { row.isChecked = false } })
+        val (title, body, button) = CloudText.cleanupConsent(s.cloud)
+        ui.confirm(title, body, button, onYes = enable, onNo = { quietly { row.isChecked = false } })
+    }
+
+    /**
+     * D52: after the cleanup service or the custom server's host changed while cleanup is on, the
+     * new destination's consent is asked; declining turns cleanup off.
+     */
+    private fun askConsentIfNeeded() {
+        val s = app.dev.load()
+        if (!s.allowCloudCleanup || !OpenRouterPage.cleanupNeedsConsent(s)) return
+        val (title, body, button) = CloudText.cleanupConsent(s.cloud)
+        ui.confirm(title, body, button,
+            onYes = { change { OpenRouterPage.enableCleanup(it, System.currentTimeMillis()) } },
+            onNo = { change(OpenRouterPage::disableCleanup) })
     }
 
     private fun warnNoKey() {
         if (!app.cloudKeys.has(OpenRouter.ID)) keyResult.show("Add your OpenRouter API key above: nothing is sent without one.", Tone.WARN)
+    }
+
+    // ---- custom server (D52) ----
+
+    private fun editProvider() {
+        val cur = app.dev.load().cloud.cleanupProvider
+        val opts = listOf(CleanupProvider.OPENROUTER to OpenRouter.NAME, CleanupProvider.CUSTOM to "Custom server (LiteLLM / OpenAI-compatible)")
+        AlertDialog.Builder(this).setTitle("Cleanup service")
+            .setSingleChoiceItems(opts.map { it.second }.toTypedArray(), opts.indexOfFirst { it.first == cur }) { d, i ->
+                d.dismiss()
+                selectProvider(opts[i].first)
+            }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    private fun selectProvider(p: CleanupProvider) {
+        val next = OpenRouterPage.withProvider(app.dev.load(), p)
+        if (next == null) {
+            // Not set up yet: show its card; it is selected once the address and model are set.
+            pickingCustom = true
+            refresh()
+            customResult.show((OpenRouterPage.customMissing(app.dev.load().cloud.customCleanup) ?: "Check the time limit") + " below; the custom server is used once its address and model are set.", Tone.WARN)
+            return
+        }
+        pickingCustom = false
+        change { next }
+        customResult.show("")
+        askConsentIfNeeded()
+    }
+
+    /** A custom field changed: select the server if it was being picked and is now ready; re-ask a voided consent. */
+    private fun customChanged(f: (DevSettings) -> DevSettings) {
+        change(f)
+        if (pickingCustom && OpenRouterPage.withProvider(app.dev.load(), CleanupProvider.CUSTOM) != null) { selectProvider(CleanupProvider.CUSTOM); return }
+        if (app.dev.load().cloud.customProvider) askConsentIfNeeded()
+    }
+
+    private fun editCustomUrl() = textDialog(
+        "Server address", app.dev.load().cloud.customCleanup.baseUrl, "http://192.168.1.20:4000", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI,
+        "The OpenAI-compatible API root. ${CustomServer.URL_HINT} Consent is for this host only.",
+        { CloudInput.baseUrl(it).error },
+    ) { raw -> val v = CloudInput.baseUrl(raw).value!!; customChanged { OpenRouterPage.withCustom(it) { copy(baseUrl = v) } } }
+
+    private fun editCustomModel() = textDialog(
+        "Model", app.dev.load().cloud.customCleanup.model, "gpt-4o-mini", InputType.TYPE_CLASS_TEXT,
+        "As your server lists it (Load models shows the list).", { CloudInput.customModel(it).error },
+    ) { raw -> val v = CloudInput.customModel(raw).value!!; customChanged { OpenRouterPage.withCustom(it) { copy(model = v) } } }
+
+    private fun editCustomTimeout() = textDialog(
+        "Cleanup time limit (ms)", app.dev.load().cloud.customCleanup.timeoutMs.toString(), "4000", InputType.TYPE_CLASS_NUMBER,
+        "${CustomServer.TIMEOUT_MIN}-${CustomServer.TIMEOUT_MAX}. After it, the formatted text is pasted and the request is cancelled.",
+        { CloudInput.customTimeout(it).error },
+    ) { raw -> val v = CloudInput.customTimeout(raw).value!!; customChanged { OpenRouterPage.withCustom(it) { copy(timeoutMs = v) } } }
+
+    private fun saveCustomKey() {
+        val k = customKeyField.text.toString().trim()
+        if (k.isEmpty()) { customResult.show("Paste the key first.", Tone.BAD); return }
+        try {
+            app.cloudKeys.set(CustomServer.ID, k)
+        } catch (e: Exception) {
+            customResult.show("Could not store the key on this phone (${e.javaClass.simpleName}).", Tone.BAD); return
+        }
+        app.engine.setCloudKey(k, CustomServer.ID)
+        customKeyField.setText("")
+        customResult.show("Key saved on this phone.", Tone.OK)
+        refresh()
+    }
+
+    private fun confirmClearCustomKey() {
+        if (!app.cloudKeys.has(CustomServer.ID)) { customKeyField.setText(""); return }
+        ui.confirm("Delete the server key?", "Removes your custom server's key from this phone. Requests then go without one.", "Delete", onYes = {
+            app.cloudKeys.remove(CustomServer.ID)
+            app.engine.setCloudKey(null, CustomServer.ID)
+            customKeyField.setText("")
+            customResult.show("Key deleted from this phone.")
+            refresh()
+        })
+    }
+
+    /**
+     * `GET {base}/models` off the main thread with the typed key only (the router lends the stored
+     * one just for the consented host); [then] on the UI thread.
+     */
+    private fun fetchCustomModels(busy: String, then: (dev.flowclone.core.CustomModels) -> Unit) {
+        val url = app.dev.load().cloud.customCleanup.baseUrl
+        if (url.isEmpty()) { customResult.show("Set the server address first.", Tone.BAD); return }
+        val typed = dev.flowclone.data.CustomModelsKey.typedOnly(customKeyField.text.toString())
+        customResult.show(busy)
+        thread(name = "custom-models") {
+            val m = runCatching { app.engine.customCleanupModels(url, typed) }
+                .getOrElse { dev.flowclone.core.CustomModels(error = "error", message = it.javaClass.simpleName) }
+            m.error?.let { app.debugLog.event("custom_models", "error=$it") }
+            runOnUiThread { if (!isFinishing) then(m) }
+        }
+    }
+
+    private fun testCustom() = fetchCustomModels("Connecting to your server…") { m ->
+        customResult.show(CloudText.customModelsLine(m), if (m.error == null) Tone.OK else Tone.BAD)
+    }
+
+    private fun loadCustomModels() = fetchCustomModels("Loading models…") { m ->
+        if (m.error != null || m.models.isEmpty()) { customResult.show(CloudText.customModelsLine(m), if (m.error == null) Tone.WARN else Tone.BAD); return@fetchCustomModels }
+        customResult.show(CloudText.customModelsLine(m), Tone.OK)
+        val cur = app.dev.load().cloud.customCleanup.model
+        AlertDialog.Builder(this).setTitle("Model")
+            .setSingleChoiceItems(m.models.toTypedArray(), m.models.indexOf(cur)) { d, i ->
+                d.dismiss()
+                val v = m.models[i]
+                if (CustomServer.validModelId(v)) customChanged { OpenRouterPage.withCustom(it) { copy(model = v) } }
+                else customResult.show("That id has spaces or is too long: type it with Model instead.", Tone.BAD)
+            }
+            .setNegativeButton("Cancel", null).show()
     }
 
     /** Turning a privacy guard off asks first; turning it on never does. */

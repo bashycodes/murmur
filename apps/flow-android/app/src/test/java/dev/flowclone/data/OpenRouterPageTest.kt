@@ -11,6 +11,8 @@ import org.junit.Test
 
 /** D28 page logic: two independent opt-ins with their own consents, order, models, privacy. */
 class OpenRouterPageTest {
+    @org.junit.Before fun fakeRouterAddress() = FakeCustomAddress.install()
+
     private val base = DevSettings.defaults(BuildCaps.ALL)
     private val now = 1_792_540_800_000L
 
@@ -92,5 +94,52 @@ class OpenRouterPageTest {
         assertEquals(dev.flowclone.core.CleanupLevel.LIGHT, cfg.cleanupLevel); assertFalse(cfg.rawMode)
         assertEquals(dev.flowclone.core.CleanupLevel.HIGH,
             st.copy(llmEnabled = false, cleanup = dev.flowclone.core.CleanupLevel.HIGH).toSessionConfig(emptyList(), cloudCleanup = true).cleanupLevel)
+    }
+
+    // ---- D52 custom cleanup server ----
+
+    private val server = CustomCleanupSettings(baseUrl = "http://10.0.0.5:4000/v1", model = "gpt-4o-mini")
+
+    @Test fun customProviderIsSelectableOnlyOnceReady() {
+        assertNull(OpenRouterPage.withProvider(base, CleanupProvider.CUSTOM))
+        assertEquals("Set the server address first", OpenRouterPage.customMissing(base.cloud.customCleanup))
+        val url = OpenRouterPage.withCustom(base) { copy(baseUrl = server.baseUrl) }
+        assertEquals("Set the model first", OpenRouterPage.customMissing(url.cloud.customCleanup))
+        val ready = OpenRouterPage.withCustom(url) { copy(model = server.model) }
+        assertNull(OpenRouterPage.customMissing(ready.cloud.customCleanup))
+        val custom = OpenRouterPage.withProvider(ready, CleanupProvider.CUSTOM)!!
+        assertTrue(custom.cloud.customProvider)
+        assertFalse(OpenRouterPage.withProvider(custom, CleanupProvider.OPENROUTER)!!.cloud.customProvider)
+    }
+
+    @Test fun customConsentIsItsOwnAndFollowsTheHost() {
+        val s = base.copy(cloud = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = server))
+        assertTrue(OpenRouterPage.cleanupNeedsConsent(s))
+        val on = OpenRouterPage.enableCleanup(s, now)
+        assertTrue(on.allowCloudCleanup); assertTrue(on.cloud.cleanupConsentOk)
+        assertEquals("10.0.0.5", on.cloud.customCleanup.consentHost)
+        assertFalse("OpenRouter's consent is untouched", on.cloud.cleanup.consentOk)
+        assertTrue(on.offPhoneCleanup)
+        val moved = OpenRouterPage.withCustom(on) { copy(baseUrl = "http://10.0.0.9:4000") }
+        assertTrue(OpenRouterPage.cleanupNeedsConsent(moved)); assertFalse(moved.offPhoneCleanup)
+        assertEquals("Given on D for 10.0.0.5", OpenRouterPage.cleanupConsentLine(on.cloud) { "D" })
+        assertEquals("Given on D for openrouter.ai", OpenRouterPage.cleanupConsentLine(OpenRouterPage.enableCleanup(base, now).cloud) { "D" })
+    }
+
+    @Test fun customSummariesNameTheServerAndNeedNoKey() {
+        val s = OpenRouterPage.enableCleanup(base.copy(cloud = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = server)), now)
+        assertEquals("Speech off · Cleanup on (gpt-4o-mini on 10.0.0.5)", OpenRouterPage.settingsSummary(s, hasKey = false))
+        assertTrue(OpenRouterPage.cleanupEngineLine(s)!!.contains("Custom server (10.0.0.5)"))
+        val or = OpenRouterPage.enableCleanup(base, now)
+        assertTrue(OpenRouterPage.settingsSummary(or, hasKey = false).endsWith("· no key"))
+    }
+
+    @Test fun anUnusableCustomServerIsShownAsOffNotAsOpenRouter() {
+        val on = OpenRouterPage.enableCleanup(base.copy(cloud = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = server)), now)
+        val broken = OpenRouterPage.withCustom(on) { copy(model = "") }
+        assertTrue(broken.cloud.customNotSetUp)
+        assertEquals("Speech off · Cleanup off (custom server not set up)", OpenRouterPage.settingsSummary(broken, hasKey = true))
+        assertNull(OpenRouterPage.cleanupEngineLine(broken))
+        assertFalse(OpenRouterPage.settingsSummary(broken, hasKey = true).contains("OpenRouter"))
     }
 }

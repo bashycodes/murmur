@@ -24,8 +24,8 @@ use flow_core::cleanup::{
 use flow_core::config::CleanupLevel;
 
 use crate::cloud::{
-    month_of, CleanupRoute, CloudUsage, OpenRouterConfig, Privacy, Route, SecretString, SttConfig,
-    OPENROUTER_ID,
+    month_of, CleanupProvider, CleanupRoute, CleanupView, CloudUsage, OpenRouterConfig, Privacy,
+    Route, SecretString, SttConfig, CUSTOM_CLEANUP_ID, OPENROUTER_ID,
 };
 use crate::gate::Gate;
 use crate::local::{LazyLocal, LoadNote, LocalLoader};
@@ -33,9 +33,9 @@ use crate::migrate::MigrationReport;
 use crate::server_clean::ServerClean;
 use crate::{
     effective_connect_timeout_ms, now_unix_ms, Backend, BackendError, Capabilities, CircuitStatus,
-    CleanupFactory, CleanupPlan, CleanupStatus, CloudCapabilities, CloudFactory, EngineKind,
-    Failure, HealthReport, Prefer, RemoteFactory, RouteDiag, RouteStatus, RouterConfig,
-    RouterError, RouterPoll, ServerConfig, SessionRoute, StartInfo,
+    CleanupFactory, CleanupPlan, CleanupStatus, CloudCapabilities, CloudFactory,
+    CustomCleanupFactory, EngineKind, Failure, HealthReport, Prefer, RemoteFactory, RouteDiag,
+    RouteStatus, RouterConfig, RouterError, RouterPoll, ServerConfig, SessionRoute, StartInfo,
 };
 
 /// What the cloud STT backend is built for: the privacy + STT settings
@@ -149,6 +149,8 @@ struct State {
     /// The OpenRouter key (memory only; never serialised). D28: one key,
     /// bound to the constant host, for both uses.
     cloud_key: Option<SecretString>,
+    /// D52: the optional key of the custom cleanup server (memory only).
+    custom_key: Option<SecretString>,
     /// Legacy provider ids whose key now belongs to `openrouter`
     /// (`set_cloud_key("<old id>")` from a not-yet-migrated shell).
     key_aliases: Vec<String>,
@@ -169,8 +171,8 @@ struct State {
     /// Command Mode's plan: the D28 local/cloud rule (no server), only
     /// while cloud cleanup is wanted.
     command_plan: Option<CleanupPlan>,
-    /// (privacy, cleanup config, key) the gate's cleaner was built for.
-    cleanup_built: Option<(Privacy, crate::cloud::CleanupConfig, SecretString)>,
+    /// (cleanup view, key) the gate's cleaner was built for.
+    cleanup_built: Option<(CleanupView, Option<SecretString>)>,
     /// A `prewarm` is connecting.
     warming: bool,
 }
@@ -219,7 +221,7 @@ impl State {
         if let Some(b) = self.cfg.cloud.monthly_budget_usd {
             let u = self.cloud_usage.lk();
             let spent = if u.month == month_of(now_unix_ms()) {
-                u.total_cost()
+                u.budget_cost()
             } else {
                 0.0
             };
@@ -349,6 +351,8 @@ pub struct Router {
     remote_factory: Option<RemoteFactory>,
     cloud_factory: Option<CloudFactory>,
     cleanup_factory: Option<CleanupFactory>,
+    /// D52: builds the custom-server cleaner.
+    custom_cleanup_factory: Option<CustomCleanupFactory>,
     /// Cloud cleanup checks (D28); its own lock, never taken while it
     /// waits on `state`.
     gate: Arc<Gate>,
@@ -443,6 +447,7 @@ impl Router {
             gate: Arc::new(Gate::new(usage.clone())),
             server_clean: Arc::new(ServerClean::new()),
             cleanup_factory: None,
+            custom_cleanup_factory: None,
             state: Mutex::new(State {
                 cfg,
                 local_capable: local.is_some(),
@@ -457,6 +462,7 @@ impl Router {
                 health: None,
                 last_dictionary: Dictionary::default(),
                 cloud_key: None,
+                custom_key: None,
                 key_aliases: rep.key_from.clone().into_iter().collect(),
                 notice: rep.notice.clone(),
                 migration: rep.migrated.then(|| rep.clone()),
@@ -613,6 +619,30 @@ impl Router {
         self
     }
 
+    /// Enable cleanup through the user's own OpenAI-compatible server
+    /// (D52): `f` builds the custom cleaner (`flow_cloud::custom_cleanup_factory`).
+    /// Used when `cloud.cleanup_provider` is `custom`. Additive.
+    pub fn with_custom_cleanup_factory(mut self, f: CustomCleanupFactory) -> Self {
+        self.custom_cleanup_factory = Some(f);
+        let mut st = self.state.lk();
+        self.refresh_cleanup(&mut st);
+        drop(st);
+        self
+    }
+
+    /// This build can clean up with the provider `cfg` selects (D52).
+    fn cleanup_supported(&self, cfg: &RouterConfig) -> bool {
+        match cfg.cloud.cleanup_provider {
+            CleanupProvider::OpenRouter => self.cleanup_factory.is_some(),
+            CleanupProvider::Custom => self.custom_cleanup_factory.is_some(),
+        }
+    }
+
+    /// Cloud cleanup is supported and wanted by `cfg`.
+    fn cloud_cleanup_on(&self, cfg: &RouterConfig) -> bool {
+        self.cleanup_supported(cfg) && cfg.cloud_cleanup_wanted()
+    }
+
     /// Change only the cleanup part of the config (D28): `allow_cloud_cleanup`,
     /// `cleanup_order` and `cloud.openrouter.cleanup`. Errors as
     /// `RouterConfig::validate`. Additive.
@@ -639,24 +669,30 @@ impl Router {
             let st = self.state.lk();
             let mut u = st.cloud_usage.lk();
             u.roll(&month_of(now_unix_ms()));
-            (st.cfg.clone(), u.cost_for(crate::cloud::PURPOSE_CLEANUP))
+            (
+                st.cfg.clone(),
+                (u.cost_for(crate::cloud::PURPOSE_CLEANUP), u.custom_cost()),
+            )
         };
-        let supported = self.cleanup_factory.is_some();
+        let supported = self.cleanup_supported(&cfg);
         CleanupStatus {
             supported,
             enabled: supported && cfg.cloud_cleanup_wanted(),
+            provider: cfg.cloud.cleanup_provider,
+            host: cfg.cloud.cleanup_host(),
             order: cfg.effective_cleanup_order(),
             server_llm: self.server_clean.server_llm(),
             server_circuit: self.server_clean.circuit_status(),
-            consent: cfg.cloud.openrouter.cleanup.consent_ok(),
+            consent: cfg.cloud.cleanup_consent_ok(),
             blocked: supported
                 .then(|| self.gate.not_ready().map(|f| f.as_str().to_string()))
                 .flatten(),
             circuit: supported.then(|| self.gate.circuit_status()),
-            model: cfg.cloud.openrouter.cleanup.model.clone(),
-            timeout_ms: cfg.cloud.openrouter.cleanup.timeout_ms,
+            model: cfg.cloud.cleanup_model().to_string(),
+            timeout_ms: cfg.cloud.cleanup_timeout_ms(),
             last: self.gate.last(),
-            month_cost_usd: crate::Usd(spent),
+            month_cost_usd: crate::Usd(spent.0),
+            custom_month_cost_usd: crate::Usd(spent.1),
         }
     }
 
@@ -674,30 +710,44 @@ impl Router {
     /// and (re)install the cleanup plan on every in-process engine (local,
     /// on-demand local, cloud STT). Never on the server route.
     fn refresh_cleanup(&self, st: &mut State) {
-        let wanted = self.cleanup_factory.is_some() && st.cfg.cloud_cleanup_wanted();
-        let o = st.cfg.cloud.openrouter.clone();
-        let key = st.cloud_key.clone().filter(|k| !k.is_empty());
+        let wanted = self.cloud_cleanup_on(&st.cfg);
+        let cloud = st.cfg.cloud.clone();
+        let view = cloud.cleanup_view();
+        let custom = !cloud.cleanup_needs_key();
+        let key = if cloud.cleanup_provider == CleanupProvider::Custom {
+            st.custom_key.clone()
+        } else {
+            st.cloud_key.clone()
+        }
+        .filter(|k| !k.is_empty());
         {
             let mut g = self.gate.st.lk();
-            let view_changed = g.cfg.privacy != o.privacy || g.cfg.cleanup != o.cleanup;
+            let view_changed = g.cfg.cleanup_view() != view;
             let key_changed = g.key != key;
             if view_changed || key_changed {
                 g.circuit = Circuit::new(true);
                 g.epoch += 1;
             }
             g.wanted = wanted;
-            g.cfg = o.clone();
-            g.budget = st.cfg.cloud.monthly_budget_usd;
+            g.cfg = cloud.clone();
+            g.budget = cloud.monthly_budget_usd;
             g.key = key.clone();
-            let built = key
-                .as_ref()
-                .map(|k| (o.privacy.clone(), o.cleanup.clone(), k.clone()));
+            // OpenRouter needs a key; a custom server may run without one.
+            let built = (custom || key.is_some()).then(|| (view, key.clone()));
             if !wanted || built.is_none() {
                 g.inner = None;
                 st.cleanup_built = None;
             } else if st.cleanup_built != built || g.inner.is_none() {
-                let f = self.cleanup_factory.as_ref().expect("cleanup factory");
-                g.inner = Some(f(&o, key.clone().expect("key")));
+                g.inner = Some(if custom {
+                    let f = self
+                        .custom_cleanup_factory
+                        .as_ref()
+                        .expect("custom cleanup factory");
+                    f(&cloud.custom_cleanup, cloud.cleanup_scope(), key.clone())
+                } else {
+                    let f = self.cleanup_factory.as_ref().expect("cleanup factory");
+                    f(&cloud.openrouter, key.clone().expect("key"))
+                });
                 st.cleanup_built = built;
             }
         }
@@ -761,9 +811,9 @@ impl Router {
     /// Nothing listed but a `base` loaded: [`NoCleanup`] (the user switched
     /// the on-device LLM off too).
     fn plan(&self, cfg: &crate::RouterConfig, skip_server: bool) -> CleanupPlan {
-        let gate: Option<Arc<dyn Cleaner>> = (self.cleanup_factory.is_some()
-            && cfg.cloud_cleanup_wanted())
-        .then(|| self.gate.clone() as Arc<dyn Cleaner>);
+        let gate: Option<Arc<dyn Cleaner>> = self
+            .cloud_cleanup_on(cfg)
+            .then(|| self.gate.clone() as Arc<dyn Cleaner>);
         let server: Option<Arc<dyn Cleaner>> = (!skip_server
             && self.server_clean.backend().is_some())
         .then(|| self.server_clean.clone() as Arc<dyn Cleaner>);
@@ -796,9 +846,7 @@ impl Router {
             return true;
         }
         let local = st.warm_local().and_then(|l| l.llm_cleaner()).is_some();
-        let cloud = self.cleanup_factory.is_some()
-            && st.cfg.cloud_cleanup_wanted()
-            && self.gate.not_ready().is_none();
+        let cloud = self.cloud_cleanup_on(&st.cfg) && self.gate.not_ready().is_none();
         for r in st.cfg.effective_cleanup_order() {
             match r {
                 CleanupRoute::Local if local => return false,
@@ -982,8 +1030,17 @@ impl Router {
     /// be `"openrouter"` (or the legacy id of the migrated OpenRouter
     /// entry); any other id is ignored, so a removed provider's key never
     /// enters the router. The key is only ever sent to openrouter.ai.
+    ///
+    /// D52: `provider_id == "custom"` sets the optional key of the custom
+    /// cleanup server instead; it is only ever sent to that server's host
+    /// and never used for speech-to-text.
     pub fn set_cloud_key(&self, provider_id: &str, key: Option<SecretString>) {
         let mut st = self.state.lk();
+        if provider_id == CUSTOM_CLEANUP_ID {
+            st.custom_key = key.filter(|k| !k.is_empty());
+            self.refresh_cleanup(&mut st);
+            return;
+        }
         if provider_id != OPENROUTER_ID && !st.key_aliases.iter().any(|a| a == provider_id) {
             return;
         }
@@ -1018,10 +1075,36 @@ impl Router {
         f(key.as_ref().filter(|k| !k.is_empty()))
     }
 
+    /// Run `f` with the custom cleanup server's saved key (D52), for calls
+    /// to `base_url` that are not dictations (the settings page's model
+    /// list, "Test connection", "Test cleanup"). The key is lent only when
+    /// `base_url`'s host is the consented one
+    /// ([`crate::cloud::CustomCleanupConfig::saved_key_allowed_for`]); else `f` gets
+    /// `None`, so a URL typed into the page never receives it. Additive.
+    pub fn with_custom_cleanup_key<R>(
+        &self,
+        base_url: &str,
+        f: impl FnOnce(Option<&SecretString>) -> R,
+    ) -> R {
+        let key = {
+            let st = self.state.lk();
+            st.cfg
+                .cloud
+                .custom_cleanup
+                .saved_key_allowed_for(base_url)
+                .then(|| st.custom_key.clone())
+                .flatten()
+        };
+        f(key.as_ref().filter(|k| !k.is_empty()))
+    }
+
     /// Whether a key is set for `provider_id` (`"openrouter"` or its
     /// migrated legacy id). Additive.
     pub fn has_cloud_key(&self, provider_id: &str) -> bool {
         let st = self.state.lk();
+        if provider_id == CUSTOM_CLEANUP_ID {
+            return st.custom_key.as_ref().is_some_and(|k| !k.is_empty());
+        }
         (provider_id == OPENROUTER_ID || st.key_aliases.iter().any(|a| a == provider_id))
             && st.cloud_key.as_ref().is_some_and(|k| !k.is_empty())
     }
@@ -1439,10 +1522,9 @@ impl Router {
                 .cloud_factory
                 .is_some()
                 .then(|| st.cloud_circuit.status(now)),
-            cleanup_circuit: self
-                .cleanup_factory
-                .is_some()
-                .then(|| self.gate.circuit_status()),
+            cleanup_circuit: (self.cleanup_factory.is_some()
+                || self.custom_cleanup_factory.is_some())
+            .then(|| self.gate.circuit_status()),
         }
     }
 
@@ -2024,7 +2106,7 @@ impl Router {
     /// Time the cleanup chain may take: one `session_ms` per on-device /
     /// server hop, the cloud cleanup timeout for the cloud (D36).
     fn cleanup_budget_ms(&self, st: &State, session_ms: u64) -> u64 {
-        let cloud = self.cleanup_factory.is_some() && st.cfg.cloud_cleanup_wanted();
+        let cloud = self.cloud_cleanup_on(&st.cfg);
         let server = self.server_clean.backend().is_some();
         let ms: u64 = st
             .cfg
@@ -2033,7 +2115,7 @@ impl Router {
             .map(|r| match r {
                 CleanupRoute::Local => session_ms,
                 CleanupRoute::Server if server => session_ms,
-                CleanupRoute::Cloud if cloud => st.cfg.cloud.openrouter.cleanup.timeout_ms,
+                CleanupRoute::Cloud if cloud => st.cfg.cloud.cleanup_timeout_ms(),
                 _ => 0,
             })
             .sum();

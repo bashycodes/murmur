@@ -602,6 +602,59 @@ pub mod json_api {
         r#"{"error":"cloud_not_configured"}"#.into()
     }
 
+    /// D52, blocking (≤ 8 s, call off the UI thread): `GET {base}/models`
+    /// on the user's custom cleanup server — the settings page's model list
+    /// and "Test connection". `key`: the typed key; else the saved one
+    /// (`set_cloud_key("custom", …)`) only when `base_url`'s host is the
+    /// consented one (`Router::with_custom_cleanup_key`); else none.
+    /// Returns `flow_cloud::custom::models_json` (`{"models": [ids]}` or
+    /// `{"error": code, "message": text}`, never the key or URL). Sends no
+    /// user data.
+    pub fn custom_cleanup_models(
+        h: Option<&FlowHandle>,
+        base_url: &str,
+        key: Option<String>,
+    ) -> String {
+        #[cfg(feature = "cloud")]
+        {
+            let typed = key.filter(|k| !k.trim().is_empty()).map(SecretString::new);
+            let run = |k: Option<&SecretString>| {
+                flow_cloud::custom::list_models(
+                    base_url,
+                    typed.as_ref().or(k),
+                    std::time::Duration::from_secs(8),
+                )
+            };
+            let r = match (h.and_then(FlowHandle::router), typed.is_some()) {
+                (Some(r), false) => r.with_custom_cleanup_key(base_url, run),
+                _ => run(None),
+            };
+            flow_cloud::custom::models_json(r).to_string()
+        }
+        #[cfg(not(feature = "cloud"))]
+        {
+            let _ = (h, base_url, key);
+            r#"{"error":"cloud_not_configured","message":"not in this build"}"#.into()
+        }
+    }
+
+    /// D52: the custom server address as the router sees it —
+    /// `{"url": normalised API root, "host": canonical host}` or
+    /// `{"error": "bad_base_url", "message": why}` — plus `"model_ok"`
+    /// for `model` (`valid_custom_model_id`). The settings page uses it
+    /// for display, validation and the consent host, so it never parses
+    /// URLs itself.
+    pub fn custom_cleanup_address(base_url: &str, model: &str) -> String {
+        let model_ok = flow_router::cloud::valid_custom_model_id(model.trim());
+        match flow_router::cloud::custom_server_address(base_url) {
+            Ok(a) => serde_json::json!({"url": a.url, "host": a.host, "model_ok": model_ok}),
+            Err(e) => {
+                serde_json::json!({"error": "bad_base_url", "message": e, "model_ok": model_ok})
+            }
+        }
+        .to_string()
+    }
+
     /// One-time schema-1 → 2 migration of a router config JSON:
     /// `{"config": RouterConfig, "report": MigrationReport}`. The shell
     /// persists `config`, moves `report.key_from` → `key_to` and deletes
