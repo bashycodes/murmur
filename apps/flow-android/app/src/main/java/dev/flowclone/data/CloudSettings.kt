@@ -137,6 +137,182 @@ data class CleanupSettings(
     }
 }
 
+/** D52 `cloud.cleanup_provider`: which service the cloud cleanup route calls. STT is always OpenRouter. */
+enum class CleanupProvider(val wire: String) {
+    OPENROUTER("openrouter"),
+    CUSTOM("custom");
+
+    companion object {
+        fun parse(w: String?) = entries.firstOrNull { it.wire == w } ?: OPENROUTER
+    }
+}
+
+/**
+ * D52: the user's own OpenAI-compatible server for cleanup (LiteLLM proxy, vLLM, Ollama, …).
+ * Kotlin mirror of `flow_router::cloud::{normalize_custom_base_url, valid_custom_model_id}` so the
+ * page can show an inline error and record consent for the same host the router checks.
+ */
+object CustomServer {
+    /** Secure-storage id of its optional key (`SecretVault("flow_cloud_custom")`, `set_cloud_key("custom")`). */
+    const val ID = "custom"
+    const val NAME = "Custom server"
+    const val TIMEOUT_MIN = 800L
+    const val TIMEOUT_MAX = 30_000L
+    const val DEFAULT_TIMEOUT_MS = 4_000L
+
+    /** A parsed base URL: [url] normalised as the router does, [host] lower case, IPv6 without brackets. */
+    data class Parsed(val url: String, val host: String, val https: Boolean)
+
+    /**
+     * `normalize_custom_base_url`: http or https to any host; no credentials, spaces, backslash,
+     * query or fragment; the scheme's default port dropped; `/v1` added when there is no path;
+     * no trailing slash. A failure's message is the page's inline error.
+     */
+    fun parse(raw: String): Result<Parsed> {
+        val t = raw.trim()
+        fun bad(m: String) = Result.failure<Parsed>(IllegalArgumentException(m))
+        val shape = "Enter http(s)://host[:port][/path], e.g. http://192.168.1.20:4000"
+        if (t.isEmpty()) return bad(shape)
+        if ('\\' in t) return bad("The URL must not contain a backslash")
+        if (t.any { it.isWhitespace() || it.isISOControl() }) return bad("The URL must not contain spaces")
+        val sep = t.indexOf("://")
+        if (sep < 0) return bad(shape)
+        val https = when (t.substring(0, sep).lowercase()) { "https" -> true; "http" -> false; else -> return bad("The URL must start with http:// or https://") }
+        if ('?' in t || '#' in t) return bad("The URL must not contain ? or #")
+        val rest = t.substring(sep + 3)
+        val slash = rest.indexOf('/').let { if (it < 0) rest.length else it }
+        val authority = rest.substring(0, slash)
+        var path = rest.substring(slash)
+        if ('@' in authority) return bad("The URL must not contain a user name or password (user@)")
+        val host: String
+        val urlHost: String
+        val portText: String?
+        if (authority.startsWith("[")) {
+            val end = authority.indexOf(']')
+            if (end < 0) return bad(shape)
+            val v6 = ipv6(authority.substring(1, end)) ?: return bad("Not a valid IPv6 address")
+            host = v6.first; urlHost = "[${v6.second}]"
+            val after = authority.substring(end + 1)
+            portText = when { after.isEmpty() -> null; after.startsWith(":") -> after.substring(1); else -> return bad(shape) }
+        } else {
+            val colon = authority.indexOf(':')
+            val h = (if (colon < 0) authority else authority.substring(0, colon)).lowercase()
+            portText = if (colon < 0) null else authority.substring(colon + 1)
+            if (h.isEmpty()) return bad("The URL has no host")
+            if (!HOST.matches(h)) return bad("The host may use only letters, digits, dots and dashes")
+            host = h; urlHost = h
+        }
+        var port = ""
+        if (!portText.isNullOrEmpty()) {
+            val n = portText.takeIf { p -> p.all { it in '0'..'9' } && p.length <= 5 }?.toInt()
+            if (n == null || n > 65_535) return bad("The port must be a number up to 65535")
+            if (n != (if (https) 443 else 80)) port = ":$n"
+        }
+        if (path.any { it !in PATH_CHARS }) return bad("The path has characters a URL cannot hold")
+        if (path.split('/').any { it == "." || it == ".." }) return bad("The path must not contain . or .. segments")
+        path = path.trimEnd('/')
+        if (path.isEmpty()) path = "/v1"
+        return Result.success(Parsed("${if (https) "https" else "http"}://$urlHost$port$path", host, https))
+    }
+
+    fun normalizeBaseUrl(raw: String): String? = parse(raw).getOrNull()?.url
+
+    /** Lower-cased host of [baseUrl] (as the router's `CustomCleanupConfig::host`), or "" when it does not parse. */
+    fun host(baseUrl: String): String = parse(baseUrl).getOrNull()?.host.orEmpty()
+
+    /** `valid_custom_model_id`: free text, 1-256 bytes, no whitespace or control characters. */
+    fun validModelId(id: String) =
+        id.isNotEmpty() && id.toByteArray(Charsets.UTF_8).size <= 256 && id.none { it.isWhitespace() || it.isISOControl() }
+
+    private val HOST = Regex("^[a-z0-9._-]+$")
+    private val PATH_CHARS = ('a'..'z').toSet() + ('A'..'Z') + ('0'..'9') + "/-._~%!$&'()*+,;=:@".toSet()
+
+    /** (`Ipv6Addr` Display: RFC 5952, `::ffff:a.b.c.d` for mapped; the url crate's compressed form for the URL), or null. */
+    private fun ipv6(s: String): Pair<String, String>? {
+        val t = s.lowercase()
+        if (t.isEmpty() || t.count { it == ':' } < 2) return null
+        val dbl = t.indexOf("::")
+        if (dbl >= 0 && t.indexOf("::", dbl + 1) >= 0) return null
+        fun groups(part: String): List<Int>? {
+            if (part.isEmpty()) return emptyList()
+            val out = mutableListOf<Int>()
+            val items = part.split(':')
+            for ((i, g) in items.withIndex()) {
+                if (i == items.lastIndex && '.' in g) {
+                    val b = g.split('.')
+                    if (b.size != 4 || b.any { it.isEmpty() || it.length > 3 || !it.all(Char::isDigit) || it.toInt() > 255 }) return null
+                    out += b[0].toInt() * 256 + b[1].toInt(); out += b[2].toInt() * 256 + b[3].toInt()
+                } else {
+                    if (g.isEmpty() || g.length > 4 || !g.all { it in '0'..'9' || it in 'a'..'f' }) return null
+                    out += g.toInt(16)
+                }
+            }
+            return out
+        }
+        val g: List<Int> = if (dbl >= 0) {
+            val a = groups(t.substring(0, dbl)) ?: return null
+            val b = groups(t.substring(dbl + 2)) ?: return null
+            if (a.size + b.size > 7) return null
+            a + List(8 - a.size - b.size) { 0 } + b
+        } else groups(t)?.takeIf { it.size == 8 } ?: return null
+        fun compressed(gs: List<Int>): String {
+            var best = -1; var bestLen = 1; var i = 0
+            while (i < gs.size) {
+                if (gs[i] == 0) { var j = i; while (j < gs.size && gs[j] == 0) j++; if (j - i > bestLen) { best = i; bestLen = j - i }; i = j } else i++
+            }
+            fun hex(r: List<Int>) = r.joinToString(":") { Integer.toHexString(it) }
+            return if (best < 0) hex(gs) else hex(gs.subList(0, best)) + "::" + hex(gs.subList(best + bestLen, gs.size))
+        }
+        val mapped = g.subList(0, 5).all { it == 0 } && g[5] == 0xffff
+        val display = if (mapped) "::ffff:${g[6] shr 8}.${g[6] and 255}.${g[7] shr 8}.${g[7] and 255}" else compressed(g)
+        return display to compressed(g)
+    }
+}
+
+/**
+ * `cloud.custom_cleanup` (`flow_router::cloud::CustomCleanupConfig`). The consent is bound to the
+ * host of [baseUrl]: pointing it at another host voids it.
+ */
+data class CustomCleanupSettings(
+    /** Stored normalised ([CustomServer.normalizeBaseUrl]); "" = not set up. */
+    val baseUrl: String = "",
+    val model: String = "",
+    val timeoutMs: Long = CustomServer.DEFAULT_TIMEOUT_MS,
+    val connectTimeoutMs: Long = 1_500,
+    val consentHost: String = "",
+    val consentAtMs: Long = 0,
+) {
+    val host: String get() = CustomServer.host(baseUrl)
+    val https: Boolean get() = CustomServer.parse(baseUrl).getOrNull()?.https ?: true
+    val consentOk: Boolean get() = consentAtMs > 0 && consentHost.isNotEmpty() && host.isNotEmpty() && consentHost.equals(host, ignoreCase = true)
+
+    /** The router accepts it (`CustomCleanupConfig::validate`): a usable URL and model id. */
+    val ready: Boolean
+        get() = CustomServer.normalizeBaseUrl(baseUrl) != null && CustomServer.validModelId(model.trim()) &&
+            timeoutMs in CustomServer.TIMEOUT_MIN..CustomServer.TIMEOUT_MAX
+
+    fun withConsent(nowMs: Long) = copy(consentHost = host, consentAtMs = nowMs)
+
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("base_url", baseUrl); put("model", model); put("timeout_ms", timeoutMs); put("connect_timeout_ms", connectTimeoutMs)
+        put("consent_host", consentHost); put("consent_at_ms", consentAtMs)
+    }
+
+    companion object {
+        fun fromJson(o: JSONObject?): CustomCleanupSettings {
+            if (o == null) return CustomCleanupSettings()
+            return CustomCleanupSettings(
+                baseUrl = o.optString("base_url"),
+                model = o.optString("model"),
+                timeoutMs = o.optLong("timeout_ms", CustomServer.DEFAULT_TIMEOUT_MS),
+                connectTimeoutMs = o.optLong("connect_timeout_ms", 1_500),
+                consentHost = o.optString("consent_host"),
+                consentAtMs = o.optLong("consent_at_ms", 0),
+            )
+        }
+    }
+}
+
 /**
  * `RouterConfig.cloud`, schema 2 (`crates/flow-router/fixtures/router_config_cloud.json`). API
  * keys are never part of it (one key, [OpenRouter.ID], in [CloudKeyStore]).
@@ -147,8 +323,23 @@ data class CloudSettings(
     val cleanup: CleanupSettings = CleanupSettings(),
     /** One budget for both uses; null = none. */
     val monthlyBudgetUsd: Double? = null,
+    /** D52: OpenRouter (default) or [customCleanup] for the cleanup route. */
+    val cleanupProvider: CleanupProvider = CleanupProvider.OPENROUTER,
+    val customCleanup: CustomCleanupSettings = CustomCleanupSettings(),
 ) {
     val isDefault: Boolean get() = this == CloudSettings()
+    val customProvider: Boolean get() = cleanupProvider == CleanupProvider.CUSTOM
+
+    /** `CloudConfig::cleanup_consent_ok`: the selected provider's own consent. */
+    val cleanupConsentOk: Boolean get() = if (customProvider) customCleanup.consentOk else cleanup.consentOk
+    val cleanupModel: String get() = if (customProvider) customCleanup.model else cleanup.model
+    val cleanupTimeoutMs: Long get() = if (customProvider) customCleanup.timeoutMs else cleanup.timeoutMs
+    /** The cleanup key's [CloudKeyStore] id: the custom key is optional, OpenRouter's is required. */
+    val cleanupKeyId: String get() = if (customProvider) CustomServer.ID else OpenRouter.ID
+
+    /** "OpenRouter" / "Custom server (10.0.0.5)": the cloud cleanup engine's name. */
+    val cleanupProviderName: String
+        get() = if (!customProvider) OpenRouter.NAME else customCleanup.host.let { if (it.isEmpty()) CustomServer.NAME else "${CustomServer.NAME} ($it)" }
 
     /** The `OpenRouterConfig` JSON (`nativeProbeCloud`, `nativeSetCloudKeyFor`). */
     fun openRouterJson(): JSONObject = JSONObject().apply {
@@ -159,7 +350,19 @@ data class CloudSettings(
         put("schema", SCHEMA)
         put("openrouter", openRouterJson())
         put("monthly_budget_usd", monthlyBudgetUsd ?: JSONObject.NULL)
+        // Omitted while default, like the router's `skip_serializing_if`: older readers see the same JSON.
+        if (customProvider) put("cleanup_provider", cleanupProvider.wire)
+        if (customCleanup != CustomCleanupSettings()) put("custom_cleanup", customCleanup.toJson())
     }
+
+    /**
+     * [toJson] for the router: a custom server that is not [CustomCleanupSettings.ready] would make
+     * the router refuse the whole config, so it is sent as OpenRouter with no cleanup consent (no
+     * cleanup leaves the phone until the server is set up). The page only selects a ready server.
+     */
+    fun routerJson(): JSONObject =
+        if (customProvider && !customCleanup.ready) copy(cleanupProvider = CleanupProvider.OPENROUTER, cleanup = cleanup.withoutConsent()).toJson()
+        else toJson()
 
     companion object {
         const val SCHEMA = 2
@@ -176,6 +379,8 @@ data class CloudSettings(
                 stt = SttSettings.fromJson(or?.optJSONObject("stt")),
                 cleanup = CleanupSettings.fromJson(or?.optJSONObject("cleanup")),
                 monthlyBudgetUsd = if (!o.has("monthly_budget_usd") || o.isNull("monthly_budget_usd")) null else o.optDouble("monthly_budget_usd"),
+                cleanupProvider = CleanupProvider.parse(o.optString("cleanup_provider")),
+                customCleanup = CustomCleanupSettings.fromJson(o.optJSONObject("custom_cleanup")),
             )
         }
 
@@ -274,6 +479,32 @@ object CloudText {
             "zero-retention providers by default.\n\nWhat is sent: " + cleanupSends(c) + ".\n\nPassword fields are never " +
             "dictated into. Used for on-device and cloud dictations; your server uses its own AI. You can turn this off at any time."
     const val CLEANUP_CONSENT_BUTTON = "Send text to OpenRouter"
+
+    /** D52: the consent of a custom server names the typed host, not OpenRouter. */
+    fun customConsentTitle(host: String) = "Send dictated text to $host?"
+    fun customConsentBody(cc: CustomCleanupSettings, c: CleanupSettings): String =
+        "After each dictation, the text (and your dictionary words) is sent to your server at ${cc.host}. Your voice is " +
+            "not sent: cloud speech-to-text always uses OpenRouter.\n\nWhat is sent: " + cleanupSends(c) + "." +
+            (if (!cc.https) "\n\n$HTTP_WARNING" else "") +
+            "\n\nPassword fields are never dictated into. You can turn this off at any time."
+    const val CUSTOM_CONSENT_BUTTON = "Send text to this server"
+
+    /** Shown under an http:// base URL and in its consent. */
+    const val HTTP_WARNING = "This address uses http://: the key and the dictated text are sent unencrypted."
+    const val CUSTOM_STT_NOTE = "Only AI cleanup uses this server. Cloud speech-to-text always uses OpenRouter."
+
+    /** The consent dialog of the selected provider: (title, body, button). */
+    fun cleanupConsent(s: CloudSettings): Triple<String, String, String> =
+        if (s.customProvider) Triple(customConsentTitle(s.customCleanup.host), customConsentBody(s.customCleanup, s.cleanup), CUSTOM_CONSENT_BUTTON)
+        else Triple(CLEANUP_CONSENT_TITLE, cleanupConsentBody(s.cleanup), CLEANUP_CONSENT_BUTTON)
+
+    /** "Load models" / "Test connection" result: the count, or the error's hint and the server's message. */
+    fun customModelsLine(m: dev.flowclone.core.CustomModels): String = when {
+        m.error == null -> if (m.models.isEmpty()) "Connected: the server lists no models" else
+            "Connected: ${m.models.size} model${if (m.models.size == 1) "" else "s"}"
+        else -> "Failed: " + (hint(m.error)?.let { if (m.error == "connect_failed") "server not reachable" else it } ?: m.error) +
+            (m.message?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: "")
+    }
 
     /** PromptScope in words: the transcript, app category, style and dictionary always; each toggle adds its item. */
     fun cleanupSends(c: CleanupSettings): String {
@@ -395,6 +626,29 @@ object CloudInput {
         val v = raw.trim().toLongOrNull()
         if (v == null || v !in OpenRouter.CLEANUP_TIMEOUT_MIN..OpenRouter.CLEANUP_TIMEOUT_MAX) {
             return Parsed(null, "Timeout must be a whole number ${OpenRouter.CLEANUP_TIMEOUT_MIN}-${OpenRouter.CLEANUP_TIMEOUT_MAX} ms")
+        }
+        return Parsed(v, null)
+    }
+
+    /** D52 base URL as typed → the normalised URL ([CustomServer.parse]). */
+    fun baseUrl(raw: String): Parsed<String> =
+        CustomServer.parse(raw).fold({ Parsed(it.url, null) }, { Parsed(null, it.message) })
+
+    /** D52 model id: free text as the server lists it. */
+    fun customModel(raw: String): Parsed<String> {
+        val m = raw.trim()
+        return when {
+            m.isEmpty() -> Parsed(null, "Enter a model id the server lists, e.g. gpt-4o-mini")
+            !CustomServer.validModelId(m) -> Parsed(null, "A model id is at most 256 characters, without spaces")
+            else -> Parsed(m, null)
+        }
+    }
+
+    /** D52 custom server timeout, 800-30000 ms. */
+    fun customTimeout(raw: String): Parsed<Long> {
+        val v = raw.trim().toLongOrNull()
+        if (v == null || v !in CustomServer.TIMEOUT_MIN..CustomServer.TIMEOUT_MAX) {
+            return Parsed(null, "Timeout must be a whole number ${CustomServer.TIMEOUT_MIN}-${CustomServer.TIMEOUT_MAX} ms")
         }
         return Parsed(v, null)
     }

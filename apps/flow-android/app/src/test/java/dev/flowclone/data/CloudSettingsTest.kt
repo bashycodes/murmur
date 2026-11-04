@@ -167,4 +167,119 @@ class CloudSettingsTest {
         val j = JSONObject(local.routerConfigFor(BuildCaps.LOCAL))
         for (k in listOf("cloud", "allow_cloud", "allow_cloud_cleanup", "cleanup_order", "order")) assertFalse(k, j.has(k))
     }
+
+    // ---- D52 custom cleanup server ----
+
+    private val custom = CustomCleanupSettings(baseUrl = "http://10.0.0.5:4000/v1", model = "Qwen/Qwen2.5-7B-Instruct")
+
+    @Test fun customDefaultsAreOmittedFromJson() {
+        val j = CloudSettings().toJson()
+        assertFalse(j.has("cleanup_provider")); assertFalse(j.has("custom_cleanup"))
+        assertEquals(CloudSettings(), CloudSettings.fromJson(j))
+        assertEquals(CleanupProvider.OPENROUTER, CloudSettings.fromJson(JSONObject("""{"schema":2}""")).cleanupProvider)
+        assertEquals(4_000L, CustomCleanupSettings().timeoutMs); assertEquals(1_500L, CustomCleanupSettings().connectTimeoutMs)
+        // An entry kept while OpenRouter is selected is written (the provider is not).
+        val kept = CloudSettings(customCleanup = custom).toJson()
+        assertFalse(kept.has("cleanup_provider")); assertEquals("Qwen/Qwen2.5-7B-Instruct", kept.getJSONObject("custom_cleanup").getString("model"))
+    }
+
+    @Test fun customRoundTripsWithTheRouterNames() {
+        val c = CloudSettings(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom.copy(timeoutMs = 9_000).withConsent(now))
+        val j = c.toJson()
+        assertEquals("custom", j.getString("cleanup_provider"))
+        val cc = j.getJSONObject("custom_cleanup")
+        assertEquals("http://10.0.0.5:4000/v1", cc.getString("base_url"))
+        assertEquals(9_000L, cc.getLong("timeout_ms")); assertEquals(1_500L, cc.getLong("connect_timeout_ms"))
+        assertEquals("10.0.0.5", cc.getString("consent_host")); assertEquals(now, cc.getLong("consent_at_ms"))
+        assertEquals(c, CloudSettings.fromJson(JSONObject(j.toString())))
+        // Unknown provider strings read as OpenRouter.
+        assertEquals(CleanupProvider.OPENROUTER, CloudSettings.fromJson(JSONObject(j.toString()).put("cleanup_provider", "other")).cleanupProvider)
+    }
+
+    @Test fun customConsentIsBoundToTheTypedHost() {
+        val c = CloudSettings(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom)
+        assertFalse(c.cleanupConsentOk)
+        val or = c.copy(cleanup = c.cleanup.withConsent(now))
+        assertFalse("OpenRouter consent is not custom consent", or.cleanupConsentOk)
+        val ok = c.copy(customCleanup = c.customCleanup.withConsent(now))
+        assertTrue(ok.cleanupConsentOk); assertFalse("custom consent is not OpenRouter's", ok.cleanup.consentOk)
+        assertTrue(ok.copy(customCleanup = ok.customCleanup.copy(baseUrl = "http://10.0.0.5:8000/api/v1")).cleanupConsentOk)
+        assertFalse("another host voids it", ok.copy(customCleanup = ok.customCleanup.copy(baseUrl = "http://10.0.0.6:4000/v1")).cleanupConsentOk)
+        assertTrue("host compared case-insensitively", CustomCleanupSettings("http://LLM.Lan:4000", "m", consentHost = "llm.lan", consentAtMs = 1).consentOk)
+        assertFalse(CustomCleanupSettings("not a url", "m", consentHost = "", consentAtMs = 1).consentOk)
+        assertEquals(CustomServer.ID, ok.cleanupKeyId); assertEquals(OpenRouter.ID, CloudSettings().cleanupKeyId)
+        assertEquals("Qwen/Qwen2.5-7B-Instruct", ok.cleanupModel); assertEquals(4_000L, ok.cleanupTimeoutMs)
+    }
+
+    @Test fun baseUrlIsNormalisedLikeTheRouter() {
+        fun n(raw: String) = CustomServer.normalizeBaseUrl(raw)
+        assertEquals("http://10.0.0.5:4000/v1", n("http://10.0.0.5:4000"))
+        assertEquals("http://10.0.0.5:4000/v1", n("  http://10.0.0.5:4000/  "))
+        assertEquals("http://10.0.0.5:4000/v1", n("http://10.0.0.5:4000/v1/"))
+        assertEquals("https://llm.example.lan/api/v1", n("HTTPS://LLM.Example.LAN:443/api/v1//"))
+        assertEquals("http://llm.lan/v1", n("http://llm.lan:80"))
+        assertEquals("https://llm.lan:80/v1", n("https://llm.lan:80"))
+        assertEquals("http://[::1]:8080/v1", n("http://[::1]:8080"))
+        assertEquals("http://[2001:db8::1]/v1", n("http://[2001:DB8:0:0:0:0:0:1]"))
+        for (bad in listOf("", "llm.lan:4000", "ftp://llm.lan", "http://user:pw@llm.lan", "http://user@llm.lan", "http://llm .lan",
+                "http://llm.lan\\v1", "http://llm.lan/v1?x=1", "http://llm.lan/#f", "http://", "http://:4000", "http://llm.lan:99999",
+                "http://llm.lan:ab", "http://[::1", "http://[1:2:3]", "http://llm.lan/a/../b")) {
+            assertNull(bad, n(bad))
+            assertTrue(bad, CloudInput.baseUrl(bad).error!!.isNotEmpty())
+        }
+        assertEquals("http://10.0.0.5:4000/v1", CloudInput.baseUrl("http://10.0.0.5:4000").value)
+    }
+
+    @Test fun hostMatchesTheRouterHost() {
+        assertEquals("10.0.0.5", CustomServer.host("http://10.0.0.5:4000/v1"))
+        assertEquals("llm.example.lan", CustomServer.host("https://LLM.Example.lan/v1"))
+        assertEquals("::1", CustomServer.host("http://[::1]:8080/v1"))
+        assertEquals("2001:db8::1:0:0:1", CustomServer.host("http://[2001:db8:0:0:1:0:0:1]"))
+        assertEquals("::ffff:10.0.0.1", CustomServer.host("http://[::ffff:10.0.0.1]"))
+        assertEquals("http://[::ffff:a00:1]/v1", CustomServer.normalizeBaseUrl("http://[::ffff:10.0.0.1]"))
+        assertEquals("", CustomServer.host("nope"))
+        assertTrue(CustomCleanupSettings("http://h").let { !it.https }); assertTrue(CustomCleanupSettings("https://h").https)
+    }
+
+    @Test fun customModelIdsAreFreeText() {
+        for (ok in listOf("gpt-4o-mini", "Qwen/Qwen2.5-7B-Instruct", "ollama/llama3:8b", "a".repeat(256))) assertTrue(ok, CustomServer.validModelId(ok))
+        for (bad in listOf("", "a".repeat(257), "two words", "tab\tid", "nl\n", "é".repeat(129))) assertFalse(bad, CustomServer.validModelId(bad))
+        assertEquals("Qwen/Qwen2.5-7B", CloudInput.customModel("  Qwen/Qwen2.5-7B ").value)
+        assertTrue(CloudInput.customModel(" ").error!!.isNotEmpty())
+        assertEquals(30_000L, CloudInput.customTimeout("30000").value)
+        assertEquals(800L, CloudInput.customTimeout("800").value)
+        assertTrue(CloudInput.customTimeout("799").error!!.contains("800-30000"))
+        assertTrue(CloudInput.customTimeout("30001").error != null)
+    }
+
+    @Test fun customReadinessAndRouterJson() {
+        assertFalse(CustomCleanupSettings().ready)
+        assertFalse(custom.copy(model = "").ready); assertFalse(custom.copy(timeoutMs = 40_000).ready)
+        assertTrue(custom.ready)
+        val ready = CloudSettings(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom)
+        assertEquals(ready.toJson().toString(), ready.routerJson().toString())
+        // An unusable server would make the router refuse the whole config: sent as OpenRouter without cleanup consent.
+        val broken = CloudSettings(cleanupProvider = CleanupProvider.CUSTOM, cleanup = CleanupSettings().withConsent(now))
+        val j = broken.routerJson()
+        assertFalse(j.has("cleanup_provider"))
+        assertEquals(0L, j.getJSONObject("openrouter").getJSONObject("cleanup").getLong("consent_at_ms"))
+    }
+
+    @Test fun customWordingNamesTheHost() {
+        val c = CloudSettings(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom)
+        val (title, body, button) = CloudText.cleanupConsent(c)
+        assertEquals("Send dictated text to 10.0.0.5?", title)
+        assertTrue(body, body.contains("10.0.0.5") && body.contains(CloudText.HTTP_WARNING) && body.contains("always uses OpenRouter"))
+        assertFalse(body, body.contains("openrouter.ai"))
+        assertEquals(CloudText.CUSTOM_CONSENT_BUTTON, button)
+        val tls = CloudText.cleanupConsent(c.copy(customCleanup = custom.copy(baseUrl = "https://10.0.0.5/v1"))).second
+        assertFalse(tls.contains(CloudText.HTTP_WARNING))
+        assertEquals(CloudText.CLEANUP_CONSENT_TITLE, CloudText.cleanupConsent(CloudSettings()).first)
+        assertEquals("Custom server (10.0.0.5)", c.cleanupProviderName)
+        assertEquals("Custom server", CloudSettings(cleanupProvider = CleanupProvider.CUSTOM).cleanupProviderName)
+        assertEquals("OpenRouter", CloudSettings().cleanupProviderName)
+        assertEquals("Connected: 2 models", CloudText.customModelsLine(dev.flowclone.core.CustomModels(listOf("a", "b"))))
+        assertEquals("Failed: key rejected (Authentication Error)", CloudText.customModelsLine(dev.flowclone.core.CustomModels(error = "auth_failed", message = "Authentication Error")))
+        assertEquals("Failed: server not reachable", CloudText.customModelsLine(dev.flowclone.core.CustomModels(error = "connect_failed")))
+    }
 }

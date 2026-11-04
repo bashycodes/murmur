@@ -184,4 +184,19 @@ class CleanupOrderTest {
         store(kv).load(); store(kv).migrateCleanupD36(phoneAiWasOn = false)
         assertTrue(store(kv).load().cleanupOn(SERVER))
     }
+
+    @Test fun cloudEngineIsNamedByItsProvider() {
+        val d = DevSettings.defaults(BuildCaps.ALL)
+        assertEquals("OpenRouter", CleanupEngines.name(CLOUD, d))
+        assertEquals("Clean up with OpenRouter", CleanupEngines.useLabel(CLOUD, d))
+        val cc = CustomCleanupSettings(baseUrl = "http://10.0.0.5:4000/v1", model = "gpt-4o-mini")
+        val c = d.copy(cloud = d.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = cc), allowCloudCleanup = true)
+        assertEquals("Custom server (10.0.0.5)", CleanupEngines.name(CLOUD, c))
+        assertEquals("Clean up with Custom server (10.0.0.5)", CleanupEngines.useLabel(CLOUD, c))
+        assertEquals("This phone", CleanupEngines.name(LOCAL, c))
+        assertEquals("Sends text · asks first · unencrypted (http)", CleanupEngines.cloudLine(c, hasKey = false))
+        val ok = c.copy(cloud = c.cloud.copy(customCleanup = cc.copy(baseUrl = "https://10.0.0.5/v1").withConsent(1)))
+        assertEquals("Sends text · gpt-4o-mini", CleanupEngines.cloudLine(ok, hasKey = false))
+        assertEquals("Sends text · asks first · no key", CleanupEngines.cloudLine(d.copy(allowCloudCleanup = true), hasKey = false))
+    }
 }
