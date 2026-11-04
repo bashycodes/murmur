@@ -602,6 +602,47 @@ pub mod json_api {
         r#"{"error":"cloud_not_configured"}"#.into()
     }
 
+    /// D52, blocking (≤ 8 s, call off the UI thread): `GET {base}/models`
+    /// on the user's custom cleanup server — the settings page's model list
+    /// and "Test connection". `key`: the typed key, else the stored one
+    /// (`set_cloud_key("custom", …)`), else none. Returns
+    /// `{"models": [ids]}` or `{"error": code, "message": text}` (never the
+    /// key or URL). Sends no user data.
+    pub fn custom_cleanup_models(
+        h: Option<&FlowHandle>,
+        base_url: &str,
+        key: Option<String>,
+    ) -> String {
+        #[cfg(feature = "cloud")]
+        {
+            let typed = key.filter(|k| !k.trim().is_empty()).map(SecretString::new);
+            let run = |k: Option<&SecretString>| {
+                flow_cloud::custom::list_models(
+                    base_url,
+                    typed.as_ref().or(k),
+                    std::time::Duration::from_secs(8),
+                )
+            };
+            let r = match h.and_then(FlowHandle::router) {
+                Some(r) => r.with_custom_cleanup_key(run),
+                None => run(None),
+            };
+            match r {
+                Ok(m) => serde_json::json!({ "models": m }).to_string(),
+                Err(e) => serde_json::json!({
+                    "error": e.code(),
+                    "message": flow_cloud::custom::describe(&e),
+                })
+                .to_string(),
+            }
+        }
+        #[cfg(not(feature = "cloud"))]
+        {
+            let _ = (h, base_url, key);
+            r#"{"error":"cloud_not_configured","message":"not in this build"}"#.into()
+        }
+    }
+
     /// One-time schema-1 → 2 migration of a router config JSON:
     /// `{"config": RouterConfig, "report": MigrationReport}`. The shell
     /// persists `config`, moves `report.key_from` → `key_to` and deletes

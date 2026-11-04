@@ -1061,6 +1061,14 @@ impl Router {
         f(key.as_ref().filter(|k| !k.is_empty()))
     }
 
+    /// Run `f` with the custom cleanup server's key (D52), for calls to
+    /// that server that are not dictations (the settings page's model list
+    /// and "Test connection"). Lent, never returned. Additive.
+    pub fn with_custom_cleanup_key<R>(&self, f: impl FnOnce(Option<&SecretString>) -> R) -> R {
+        let key = self.state.lk().custom_key.clone();
+        f(key.as_ref().filter(|k| !k.is_empty()))
+    }
+
     /// Whether a key is set for `provider_id` (`"openrouter"` or its
     /// migrated legacy id). Additive.
     pub fn has_cloud_key(&self, provider_id: &str) -> bool {
