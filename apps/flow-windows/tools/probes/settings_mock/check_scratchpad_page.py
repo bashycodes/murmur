@@ -6,7 +6,11 @@ Probe (Playwright + its bundled Chromium):
 Checks the pinned / recent lists, the configured shortcut, opening a note
 (`note_open`), Start new note (`note_create` then `note_open`), pin, search,
 and that the page never asks for a note's text (`note_load` etc. are the
-notes window's only). Exits non-zero on the first failed check.
+notes window's only). With the Notetaker hidden (D51, `NOTETAKER_ENABLED`
+false) also checks its sidebar entry opens the static preview page, that
+no Meetings page exists and no meeting command is called, and that the
+meeting shortcut row and the Speech to text Meetings group are hidden.
+Exits non-zero on the first failed check.
 """
 import sys
 
@@ -72,9 +76,17 @@ with sync_playwright() as p:
     check(pg.is_visible("#page_scratchpad"), "Esc did not leave the page")
     cmds = sorted({c[0] for c in pg.evaluate("window.__mockCalls") if c[0].startswith("note_")})
     check(cmds == ["note_create", "note_list", "note_open", "note_set_pinned"], f"note commands used: {cmds}")
-    pg.click('.lw-sidebar [data-page="meetings"]')
+    # D51: the Notetaker is hidden behind its preview page.
+    check(pg.query_selector('.lw-sidebar [data-page="meetings"]') is None, "no Meetings entry")
+    check(pg.query_selector("#page_meetings") is None, "no Meetings page")
+    pg.click('.lw-sidebar [data-page="notetaker"]')
     pg.wait_for_timeout(100)
-    check(pg.is_visible("#page_meetings"), "Meetings page shown")
+    check(pg.is_visible("#page_notetaker"), "Notetaker preview page shown")
+    check(pg.is_visible("#page_notetaker .fl-badge"), "preview has its Coming later badge")
+    meet = sorted({c[0] for c in pg.evaluate("window.__mockCalls") if c[0].startswith("meeting_")})
+    check(meet == [], f"no meeting commands called: {meet}")
+    check(pg.eval_on_selector('[data-edit="meeting"]', "e => e.closest('.fl-row').hidden"), "meeting shortcut row hidden")
+    check(pg.eval_on_selector("#meet_group", "e => e.hidden"), "Speech to text Meetings group hidden")
     check(errors == [], f"no page errors {errors}")
     b.close()
 print("SCRATCHPAD PAGE CHECK PASSED")

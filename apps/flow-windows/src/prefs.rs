@@ -463,6 +463,11 @@ impl Prefs {
     pub fn hotkey_bindings(&self) -> Bindings {
         let mut b = self.shortcuts.clone();
         (b.transforms, b.view_changes) = self.transforms.chords();
+        // A hidden Notetaker (D51) installs no meeting chord: a saved one
+        // stays in prefs for when it comes back.
+        if !crate::meetings::NOTETAKER_ENABLED {
+            b.meeting = None;
+        }
         b
     }
 
@@ -1140,6 +1145,16 @@ mod tests {
         let b = p.hotkey_bindings();
         assert_eq!(b.transforms.len(), 2);
         assert_eq!(b.view_changes.unwrap().to_string(), "Win+Alt+O");
+    }
+
+    #[test]
+    fn meeting_chord_is_installed_only_while_the_notetaker_is_on() {
+        let mut p = Prefs::default();
+        p.shortcuts.meeting = Some("Ctrl+Alt+R".parse().unwrap());
+        let b = p.hotkey_bindings();
+        assert_eq!(b.meeting.is_some(), crate::meetings::NOTETAKER_ENABLED);
+        // The saved chord itself is kept either way.
+        assert!(p.shortcuts.meeting.is_some());
     }
 
     #[test]

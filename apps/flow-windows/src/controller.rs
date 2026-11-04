@@ -404,7 +404,11 @@ impl Controller {
                 return;
             }
             Input::Hotkey(HotkeyAction::Meeting) => {
-                self.platform.toggle_meeting();
+                // Hidden Notetaker (D51): the chord is not installed, and a
+                // stray one still never reaches the recorder.
+                if crate::meetings::NOTETAKER_ENABLED {
+                    self.platform.toggle_meeting();
+                }
                 return;
             }
             Input::Hotkey(HotkeyAction::ViewChanges) => {
@@ -2540,7 +2544,12 @@ mod tests {
     fn meeting_hotkey_toggles_the_recording_and_leaves_a_dictation_alone() {
         let mut r = rig(Fake::default(), Prefs::default());
         r.at(0, Input::Hotkey(HotkeyAction::Meeting));
-        assert_eq!(r.fake.log(), ["toggle meeting"]);
+        let toggled: &[&str] = if crate::meetings::NOTETAKER_ENABLED {
+            &["toggle meeting"]
+        } else {
+            &[] // D51: hidden, nothing starts
+        };
+        assert_eq!(r.fake.log(), toggled);
         assert!(matches!(r.c.machine().phase(), Phase::Idle));
         r.at(10, Input::Hotkey(HotkeyAction::PttDown));
         let before = r.c.machine().phase().clone();

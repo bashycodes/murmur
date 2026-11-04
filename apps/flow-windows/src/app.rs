@@ -26,7 +26,7 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{Duration, Instant};
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
     AppHandle, Emitter, Manager, PhysicalPosition, RunEvent, WebviewUrl, WebviewWindow,
@@ -923,6 +923,9 @@ fn meeting_prompt_answer(state: tauri::State<'_, AppState>, record: bool) {
 }
 
 fn meetings_of(state: &AppState) -> Result<&Arc<Meetings>, String> {
+    if !meetings::NOTETAKER_ENABLED {
+        return Err(meetings::NOTETAKER_OFF_MSG.to_string());
+    }
     state
         .meetings
         .get()
@@ -3206,21 +3209,20 @@ pub fn run() {
             let open = MenuItem::with_id(app, "open", "Settings…", true, None::<&str>)?;
             let sep = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Murmur", true, None::<&str>)?;
-            let menu = Menu::with_items(
-                app,
-                &[
-                    &model_item,
-                    &llm_item,
-                    &suggest_item,
-                    &sep0,
-                    &meeting_item,
-                    &scratch,
-                    &notes_item,
-                    &open,
-                    &sep,
-                    &quit,
-                ],
-            )?;
+            let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> =
+                vec![&model_item, &llm_item, &suggest_item, &sep0];
+            // D51: no "Start meeting recording" line while it is hidden.
+            if meetings::NOTETAKER_ENABLED {
+                items.push(&meeting_item);
+            }
+            items.extend([
+                &scratch as &dyn IsMenuItem<tauri::Wry>,
+                &notes_item,
+                &open,
+                &sep,
+                &quit,
+            ]);
+            let menu = Menu::with_items(app, &items)?;
             let mut tray = TrayIconBuilder::with_id("main")
                 .tooltip(TRAY_TIP)
                 .menu(&menu)
@@ -3385,9 +3387,14 @@ pub fn run() {
             show_suggestion_count(&handle, pending);
             let dictating = controller.dictating_flag();
             let _ = app.state::<AppState>().dictating.set(dictating.clone());
-            let m = setup_meetings(&handle, dictating.clone());
-            let _ = app.state::<AppState>().meetings.set(m.clone());
-            setup_meeting_detection(&handle, m);
+            // D51: a hidden Notetaker starts nothing (no recorder, no
+            // resumed transcription, no call detector); its meetings on
+            // disk stay as they are.
+            if meetings::NOTETAKER_ENABLED {
+                let m = setup_meetings(&handle, dictating.clone());
+                let _ = app.state::<AppState>().meetings.set(m.clone());
+                setup_meeting_detection(&handle, m);
+            }
             std::thread::Builder::new()
                 .name("flow-controller".into())
                 .spawn(move || controller.run(rx))?;
