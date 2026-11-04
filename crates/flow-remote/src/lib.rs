@@ -448,7 +448,7 @@ pub(crate) fn failure_for_code(c: &str) -> Failure {
 mod tests {
     use super::*;
     use flow_core::cleanup::CleanRequest;
-    use flow_core::summary::CleanTask;
+    use flow_core::cleanup::CleanTask;
 
     fn hello(features: &[&str]) -> flow_protocol::HelloOk {
         flow_protocol::HelloOk {

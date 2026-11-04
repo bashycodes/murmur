@@ -14,7 +14,6 @@ use crate::align::divergence_ratio;
 use crate::asr::AbortFlag;
 use crate::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig, Style};
 use crate::dictionary::Dictionary;
-pub use crate::summary::CleanTask;
 use crate::Usd;
 use serde::{Deserialize, Serialize};
 
@@ -35,6 +34,27 @@ pub struct CleanPrompt {
     /// scope can rebuild it. `None` for prompts not built from a
     /// dictation (commands, transforms, tests).
     pub source: Option<Arc<CleanRequest>>,
+}
+
+/// What a [`CleanRequest`] asks for (D53). Cleanup is the default and is
+/// never written on the wire, so cleanup requests stay byte-identical.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CleanTask {
+    /// AI cleanup of a dictation (D27/D36).
+    #[default]
+    Cleanup,
+    /// Notes on one part of a long meeting (the map step).
+    MeetingNotes,
+    /// A meeting's summary and action items, from its transcript or from
+    /// notes on its parts (the reduce step).
+    MeetingSummary,
+}
+
+impl CleanTask {
+    pub fn is_cleanup(&self) -> bool {
+        *self == CleanTask::Cleanup
+    }
 }
 
 /// D36: a text-only cleanup request: everything [`build_prompt_versioned`]

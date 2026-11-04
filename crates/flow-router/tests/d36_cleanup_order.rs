@@ -820,7 +820,7 @@ fn summaries_follow_the_cleanup_order_server_included() {
     let s = summarise(&k).unwrap();
     assert_eq!((s.engine.as_str(), s.text.as_str()), ("server", SERVER_OUT));
     let req = k.server.cleans.lock().unwrap()[0].clone();
-    assert_eq!(req.task, flow_core::summary::CleanTask::MeetingSummary);
+    assert_eq!(req.task, flow_core::cleanup::CleanTask::MeetingSummary);
     assert_eq!(req.text, SUMMARY_IN);
     assert_eq!((k.local_calls(), k.cloud_calls()), (0, 0));
     // Local first: the on-device model writes it.

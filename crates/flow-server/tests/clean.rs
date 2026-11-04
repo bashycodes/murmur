@@ -296,7 +296,8 @@ async fn session_llm_budget_scales_with_the_transcript_length() {
 /// would build (synthetic text), not the cleanup prompt.
 #[tokio::test]
 async fn meeting_tasks_build_the_summary_prompt() {
-    use flow_core::summary::{build_prompt, CleanTask};
+    use flow_core::cleanup::CleanTask;
+    use flow_core::summary::build_prompt;
     let s = llm_server(Duration::ZERO, 4).await;
     let mut ws = session(s.addr()).await;
     for (id, task, want) in [
