@@ -246,8 +246,9 @@ class OpenRouterActivity : Activity() {
                 chip("Test connection") { testCustom() }.apply { contentDescription = "Test the connection to your server" },
             )
             refreshers += {
-                val c = app.dev.load().cloud.customCleanup
-                notSetUp.visibility = if (app.dev.load().cloud.customNotSetUp) android.view.View.VISIBLE else android.view.View.GONE
+                val cloud = app.dev.load().cloud
+                val c = cloud.customCleanup
+                notSetUp.visibility = if (cloud.customNotSetUp) android.view.View.VISIBLE else android.view.View.GONE
                 url.setSubtitle(c.baseUrl.ifEmpty { "Not set: e.g. http://192.168.1.20:4000" })
                 http.visibility = if (c.baseUrl.isNotEmpty() && !c.https) android.view.View.VISIBLE else android.view.View.GONE
                 keyLine.text = app.cloudKeys.masked(CustomServer.ID)

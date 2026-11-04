@@ -267,6 +267,21 @@ class CloudSettingsTest {
         } finally { FakeCustomAddress.install() }
     }
 
+    @Test fun oneAddressLookupServesReadyHostAndHttps() {
+        // A page refresh reads ready, host, https and consent of one settings value: one native call.
+        var calls = 0
+        CustomServer.check = CustomAddressCheck { u, m -> calls++; FakeCustomAddress.check(u, m) }
+        try {
+            val c = CustomCleanupSettings("http://10.0.0.5:4000", " m ", consentHost = "10.0.0.5", consentAtMs = 1)
+            assertTrue(c.ready); assertEquals("10.0.0.5", c.host); assertFalse(c.https); assertTrue(c.consentOk)
+            assertTrue(CloudSettings(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = c).customNotSetUp.not())
+            assertEquals(1, calls)
+            // Another value (another address) is read afresh.
+            assertTrue(c.copy(baseUrl = "https://llm.example").https)
+            assertEquals(2, calls)
+        } finally { FakeCustomAddress.install() }
+    }
+
     @Test fun aLibraryWithoutTheAddressCallReadsAsNotSetUp() {
         // No native library in JVM tests: the real reader says "unusable", never a guess.
         CustomServer.check = CustomAddressCheck { u, m -> dev.flowclone.core.NativeFlowCore.customCleanupAddress(u, m) }
