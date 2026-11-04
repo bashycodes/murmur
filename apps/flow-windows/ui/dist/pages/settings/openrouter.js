@@ -67,6 +67,17 @@ ${group("Privacy", row("Zero-retention providers only", "Only providers that del
   </div>
 </dialog>
 
+<dialog id="cu_consent_dlg" class="fl-dialog">
+  <h3>Send dictated text to <span id="cu_consent_host_title"></span>?</h3>
+  <p>After each dictation, the text (and your dictionary words) is sent to your own server at <strong id="cu_consent_host"></strong>, and to whatever model it forwards to. Your voice is not sent: cloud speech to text always uses OpenRouter.</p>
+  <p class="hint warn" id="cu_consent_http" hidden>This address uses http://: the key and the text cross the network unencrypted.</p>
+  <p class="hint">Pointing the address at another server asks again. You can turn this off at any time.</p>
+  <div class="lw-dialog-actions">
+    <button type="button" class="fl-btn fl-btn-secondary" id="cu_consent_cancel">Cancel</button>
+    <button type="button" class="fl-btn fl-btn-primary" id="cu_consent_ok">Send text to this server</button>
+  </div>
+</dialog>
+
 <dialog id="or_confirm" class="fl-dialog">
   <h3 id="or_confirm_title"></h3>
   <p id="or_confirm_body"></p>

@@ -5,6 +5,9 @@
 // at once by a `dev_or_set_*` command that returns the whole OrView.
 // Designs: SettingsOpenRouter / ModelPicker .dc.html, and the OpenRouter
 // groups of SettingsSpeech / SettingsCleanup.
+// D52: text cleanup can go to the user's own OpenAI-compatible server
+// instead (provider selector on the cleanup card; its own optional key
+// `flow-clone/cloud/custom` and consent bound to the typed host).
 
 import { $, askDialog, el, setStatus, setValue, when } from "../lib/dom.js";
 import { iconEl } from "../lib/icons.js";
@@ -12,6 +15,7 @@ import { cloudHint, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import type {
   CatalogStatus,
+  CleanupProvider,
   CleanupStatus,
   Health,
   KeyState,
@@ -37,6 +41,13 @@ interface KeyInfo {
   free_requests_remaining: number | null;
   checked_at_ms: number;
   warn_no_limit: boolean;
+}
+
+/** `dev_or_custom_models`: the server's model ids, or an error line. */
+interface CustomModels {
+  models?: string[];
+  error?: string;
+  message?: string;
 }
 
 interface CleanupTest {
@@ -73,10 +84,25 @@ async function loadOr(): Promise<void> {
   }
 }
 
-function consentLine(at: number, given: boolean, what: string): string {
+function consentLine(at: number, given: boolean, what: string, host = "openrouter.ai"): string {
   return given && at > 0
-    ? `You agreed to send ${what} to openrouter.ai on ${new Date(at).toLocaleDateString()}.`
+    ? `You agreed to send ${what} to ${host} on ${new Date(at).toLocaleDateString()}.`
     : "Not yet agreed: turning this on asks first.";
+}
+
+/** Lower-cased host of a typed server address (`""` when it does not parse). */
+function hostOf(url: string): string {
+  try {
+    return new URL(url.trim()).hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+/** Where cloud cleanup text goes, for status lines. */
+export function cleanupTarget(v: OrView | null): string {
+  if (v?.cleanup.provider !== "custom") return "openrouter.ai";
+  return v.cleanup.custom.host || "your server";
 }
 
 /** "Transcription model · $0.04/h audio" (+ this month's cleanup spend). */
@@ -159,8 +185,12 @@ export function showOr(v: OrView): void {
   $<HTMLSelectElement>("or_stt_path").value = s.stt_path;
 
   const c = v.cleanup;
+  const custom = c.provider === "custom";
   $<HTMLInputElement>("or_cleanup_allow").checked = c.allow;
-  $<HTMLElement>("or_cleanup_consent").textContent = consentLine(c.consent_at_ms, c.consent, "dictated text");
+  $<HTMLElement>("or_cleanup_consent").textContent = custom
+    ? consentLine(c.custom.consent_at_ms, c.custom.consent, "dictated text", c.custom.consent_host)
+    : consentLine(c.consent_at_ms, c.consent, "dictated text");
+  showCustom(v);
   const spent = c.status.month_cost_usd ? `${money(c.status.month_cost_usd)} so far this month` : "";
   showModelRow("or_cleanup", c.model, v.cleanup_model_info, spent);
   $<HTMLElement>("or_cleanup_box").classList.toggle("lw-dim", !c.allow);
@@ -174,13 +204,15 @@ export function showOr(v: OrView): void {
   $<HTMLElement>("or_used_stt").textContent = s.allow ? `Sends audio · ${short(s.model)}` : `Would send audio · ${short(s.model)}`;
   // D36: OpenRouter's place among the engines that are on.
   const firstOn = c.engines.find((e) => e.enabled)?.route;
-  $<HTMLElement>("or_used_cleanup").textContent = `${c.allow ? "Sends" : "Would send"} text · ${short(c.model)}${
-    c.allow ? ` · ${firstOn === "cloud" ? "first" : "as a fallback"}` : ""
-  }`;
+  $<HTMLElement>("or_used_cleanup").textContent = custom
+    ? `Not used: text cleanup goes to your own server (${c.custom.host || "not set up"})`
+    : `${c.allow ? "Sends" : "Would send"} text · ${short(c.model)}${
+        c.allow ? ` · ${firstOn === "cloud" ? "first" : "as a fallback"}` : ""
+      }`;
   setBadge("or_used_stt_badge", s.allow);
-  setBadge("or_used_cleanup_badge", c.allow);
+  setBadge("or_used_cleanup_badge", c.allow && !custom);
   $<HTMLElement>("or_used_stt_link").textContent = s.allow ? "Manage →" : "Set up →";
-  $<HTMLElement>("or_used_cleanup_link").textContent = c.allow ? "Manage →" : "Set up →";
+  $<HTMLElement>("or_used_cleanup_link").textContent = c.allow || custom ? "Manage →" : "Set up →";
 
   if (document.activeElement !== $("or_budget")) {
     ensureOption("or_budget", v.budget == null ? "" : String(v.budget), `$${v.budget} a month`);
@@ -236,13 +268,14 @@ function showCleanupStatus(st: CleanupStatus): void {
     text = `On · ${st.model} · up to ${st.timeout_ms} ms`;
     cls = "hint ok";
   } else {
-    text = "Off: OpenRouter gets no text.";
+    text = `Off: ${st.provider === "custom" ? st.host || "your server" : "OpenRouter"} gets no text.`;
   }
   const l = st.last;
   if (l && l.engine) {
     const t = l.latency_ms != null ? ` ${l.latency_ms} ms` : "";
     const ft = l.ttft_ms != null ? ` (first token ${l.ttft_ms} ms)` : "";
-    const who = l.engine === "cloud" ? "OpenRouter" : l.engine === "local" ? "this PC" : l.engine;
+    const cloud = st.provider === "custom" ? st.host || "your server" : "OpenRouter";
+    const who = l.engine === "cloud" ? cloud : l.engine === "local" ? "this PC" : l.engine;
     text += ` · last: ${who}${l.model ? ` ${l.model}` : ""}${t}${ft}${usd(l.cost_usd)}`;
   }
   if (st.month_cost_usd != null && st.month_cost_usd > 0) text += ` · ${money(st.month_cost_usd)} this month`;
@@ -495,15 +528,164 @@ async function orCleanupToggled(): Promise<void> {
     await orApplyCleanup(false);
     return;
   }
+  const c = views.or?.cleanup;
+  const custom = c?.provider === "custom";
   let consent = false;
-  if (!views.or?.cleanup.consent) {
-    consent = await askDialog("or_cleanup_consent_dlg", "or_cleanup_consent_ok", "or_cleanup_consent_cancel");
+  if (custom ? !c?.custom.consent : !c?.consent) {
+    consent = await askCleanupConsent(custom ? "custom" : "openrouter", c?.custom.base_url ?? "");
     if (!consent) {
       box.checked = false;
       return;
     }
   }
-  if (await orApplyCleanup(consent)) void refreshCatalog(false);
+  if ((await orApplyCleanup(consent)) && !custom) void refreshCatalog(false);
+}
+
+// ---- D52: custom cleanup server
+
+/** The consent dialog of `provider`; the custom one names the typed host. */
+function askCleanupConsent(provider: CleanupProvider, url: string): Promise<boolean> {
+  if (provider === "openrouter") {
+    return askDialog("or_cleanup_consent_dlg", "or_cleanup_consent_ok", "or_cleanup_consent_cancel");
+  }
+  const host = hostOf(url) || url.trim();
+  $<HTMLElement>("cu_consent_host_title").textContent = host;
+  $<HTMLElement>("cu_consent_host").textContent = host;
+  $<HTMLElement>("cu_consent_http").hidden = !/^\s*http:\/\//i.test(url);
+  return askDialog("cu_consent_dlg", "cu_consent_ok", "cu_consent_cancel");
+}
+
+function showCustom(v: OrView): void {
+  const c = v.cleanup;
+  const cu = c.custom;
+  const custom = c.provider === "custom";
+  showProviderRows(c.provider);
+  // The cleanup order's cloud row names where the text goes.
+  const title = document.querySelector<HTMLElement>("#aieng_row_cloud .fl-row-title");
+  if (title) title.textContent = custom ? "Custom server" : "OpenRouter";
+  $<HTMLInputElement>("or_cleanup_allow").setAttribute(
+    "aria-label",
+    custom ? "Use your custom server for cleanup" : "Use OpenRouter for cleanup",
+  );
+  if (document.activeElement !== $("cu_base_url")) setValue("cu_base_url", cu.base_url);
+  if (document.activeElement !== $("cu_model")) setValue("cu_model", cu.model);
+  ensureOption("cu_timeout_ms", String(cu.timeout_ms), `${cu.timeout_ms / 1000} seconds`);
+  $<HTMLElement>("cu_http_warn").hidden = !cu.plain_http;
+  const ks = $<HTMLElement>("cu_key_state");
+  ks.textContent = cu.key.set ? `Key ${cu.key.masked}` : "No key saved.";
+  ks.classList.toggle("lw-mono", cu.key.set);
+  $<HTMLElement>("cu_key_saved_ctl").hidden = !cu.key.set;
+  $<HTMLElement>("cu_key_entry").hidden = cu.key.set;
+}
+
+/** The card's rows for `provider` (also before a first custom server is saved). */
+function showProviderRows(provider: CleanupProvider): void {
+  const custom = provider === "custom";
+  $<HTMLSelectElement>("or_cleanup_provider").value = provider;
+  $<HTMLElement>("or_cleanup_title").textContent = custom ? "Custom server" : "OpenRouter";
+  for (const r of $<HTMLElement>("or_cleanup_box").querySelectorAll<HTMLElement>("[data-provider]")) {
+    r.hidden = r.dataset.provider !== provider;
+  }
+  // Sending a fixed sample is OpenRouter's test; a custom server has "Test connection".
+  $<HTMLButtonElement>("or_cleanup_test").hidden = custom;
+  if (custom) $<HTMLElement>("or_cleanup_test_out").textContent = "";
+}
+
+/** Save the provider selector and the custom server's fields together. */
+async function cuApply(provider: CleanupProvider, consent: boolean): Promise<boolean> {
+  const t = parseInt($<HTMLSelectElement>("cu_timeout_ms").value, 10);
+  const form = {
+    provider,
+    base_url: $<HTMLInputElement>("cu_base_url").value,
+    model: $<HTMLInputElement>("cu_model").value,
+    timeout_ms: Number.isFinite(t) ? t : 4000,
+    consent,
+  };
+  const r = await orCall<OrView>("dev_or_set_custom_cleanup", { form }, "or_cleanup_msg", "Saved — applies to the next dictation");
+  if (r) showOr(r);
+  else if (views.or) showOr(views.or);
+  return r !== null;
+}
+
+/** A provider switch, or a custom address on a new host, while cloud
+ *  cleanup is on asks that destination's consent first. */
+async function cuChanged(provider: CleanupProvider): Promise<void> {
+  const c = views.or?.cleanup;
+  if (
+    provider === "custom" &&
+    c?.provider !== "custom" &&
+    ($<HTMLInputElement>("cu_base_url").value.trim() === "" || $<HTMLInputElement>("cu_model").value.trim() === "")
+  ) {
+    // Not switched yet: the fields first, then it is saved.
+    showProviderRows("custom");
+    setStatus("or_cleanup_msg", "Enter the server address and a model to switch", false);
+    return;
+  }
+  let consent = false;
+  if (c?.allow) {
+    const url = $<HTMLInputElement>("cu_base_url").value;
+    const needs =
+      provider === "custom"
+        ? url.trim() !== "" && hostOf(url) !== c.custom.consent_host.toLowerCase()
+        : !c.consent;
+    if (needs) {
+      consent = await askCleanupConsent(provider, url);
+      if (!consent) {
+        if (views.or) showOr(views.or);
+        return;
+      }
+    }
+  }
+  await cuApply(provider, consent);
+}
+
+async function cuSaveKey(): Promise<void> {
+  const input = $<HTMLInputElement>("cu_key");
+  if (input.value.trim() === "") {
+    setStatus("or_cleanup_msg", "Paste the key first", false);
+    return;
+  }
+  const k = await orCall<KeyState>("dev_cloud_set_custom_key", { key: input.value }, "or_cleanup_msg", "Key saved in Credential Manager");
+  input.value = "";
+  if (k) await loadOr();
+}
+
+async function cuClearKey(): Promise<void> {
+  const k = await orCall<KeyState>("dev_cloud_clear_custom_key", {}, "or_cleanup_msg", "Key removed");
+  if (k) await loadOr();
+}
+
+/** `GET /v1/models` on the typed address (typed key, else the saved one). */
+async function cuModels(outId: string, fill: boolean): Promise<void> {
+  const out = $<HTMLElement>(outId);
+  const baseUrl = $<HTMLInputElement>("cu_base_url").value.trim();
+  if (baseUrl === "") {
+    out.textContent = "Enter the server address first.";
+    out.className = "hint err";
+    return;
+  }
+  out.textContent = `Asking ${hostOf(baseUrl) || "the server"} for its models…`;
+  out.className = "hint";
+  try {
+    const key = $<HTMLInputElement>("cu_key").value.trim();
+    const r = await invoke<CustomModels>("dev_or_custom_models", { baseUrl, key: key === "" ? null : key });
+    if (r.models) {
+      if (fill) {
+        $<HTMLDataListElement>("cu_model_list").replaceChildren(
+          ...r.models.map((id) => Object.assign(document.createElement("option"), { value: id })),
+        );
+      }
+      const n = r.models.length;
+      out.textContent = `Connected · ${n} model${n === 1 ? "" : "s"}${fill && n ? ": pick one in the Model field" : ""}`;
+      out.className = "hint ok";
+    } else {
+      out.textContent = failText(r.error, r.message);
+      out.className = "hint err";
+    }
+  } catch (e) {
+    out.textContent = String(e);
+    out.className = "hint err";
+  }
 }
 
 async function orTestCleanup(): Promise<void> {
@@ -693,7 +875,7 @@ async function pickModel(id: string, paraphrase: boolean): Promise<void> {
 function wire(): void {
   // The dialogs are opened from the Speech to text and AI cleanup pages too: a
   // modal inside a hidden page root would never show, so they live on <body>.
-  for (const id of ["or_stt_consent_dlg", "or_cleanup_consent_dlg", "or_confirm", "or_picker"]) {
+  for (const id of ["or_stt_consent_dlg", "or_cleanup_consent_dlg", "cu_consent_dlg", "or_confirm", "or_picker"]) {
     document.body.append($<HTMLDialogElement>(id));
   }
   $<HTMLButtonElement>("or_notice_ok").addEventListener("click", () =>
@@ -730,6 +912,18 @@ function wire(): void {
   }
   $<HTMLButtonElement>("or_cleanup_change").addEventListener("click", () => void openPicker("cleanup"));
   $<HTMLButtonElement>("or_cleanup_test").addEventListener("click", () => void orTestCleanup());
+  const provider = (): CleanupProvider => $<HTMLSelectElement>("or_cleanup_provider").value as CleanupProvider;
+  $<HTMLSelectElement>("or_cleanup_provider").addEventListener("change", () => void cuChanged(provider()));
+  for (const id of ["cu_base_url", "cu_model", "cu_timeout_ms"]) {
+    $<HTMLElement>(id).addEventListener("change", () => void cuChanged(provider()));
+  }
+  $<HTMLInputElement>("cu_base_url").addEventListener("input", () => {
+    $<HTMLElement>("cu_http_warn").hidden = !/^\s*http:\/\//i.test($<HTMLInputElement>("cu_base_url").value);
+  });
+  $<HTMLButtonElement>("cu_key_save").addEventListener("click", () => void cuSaveKey());
+  $<HTMLButtonElement>("cu_key_clear").addEventListener("click", () => void cuClearKey());
+  $<HTMLButtonElement>("cu_models_load").addEventListener("click", () => void cuModels("cu_models_out", true));
+  $<HTMLButtonElement>("cu_test").addEventListener("click", () => void cuModels("cu_test_out", false));
 
   $<HTMLInputElement>("or_budget").addEventListener("change", () => void orBudgetChanged());
   $<HTMLButtonElement>("or_reset_usage").addEventListener("click", () =>
