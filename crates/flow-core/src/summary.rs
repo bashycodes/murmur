@@ -27,32 +27,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
-use serde::{Deserialize, Serialize};
-
 use crate::asr::AbortFlag;
-use crate::cleanup::{CleanError, CleanPrompt, CleanRequest, CleanUsage, Cleaner, PromptScope};
+use crate::cleanup::{
+    CleanError, CleanPrompt, CleanRequest, CleanTask, CleanUsage, Cleaner, PromptScope,
+};
 use crate::script_lock::{self, Script};
-
-/// What a [`CleanRequest`] asks for (D53). Cleanup is the default and is
-/// never written on the wire, so cleanup requests stay byte-identical.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CleanTask {
-    /// AI cleanup of a dictation (D27/D36).
-    #[default]
-    Cleanup,
-    /// Notes on one part of a long meeting (the map step).
-    MeetingNotes,
-    /// A meeting's summary and action items, from its transcript or from
-    /// notes on its parts (the reduce step).
-    MeetingSummary,
-}
-
-impl CleanTask {
-    pub fn is_cleanup(&self) -> bool {
-        *self == CleanTask::Cleanup
-    }
-}
 
 /// Characters of transcript (or notes) one call may carry on the
 /// on-device LLM and the server: both run flow-llm with a 4096-token
