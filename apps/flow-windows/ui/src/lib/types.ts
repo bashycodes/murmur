@@ -206,6 +206,28 @@ export interface CleanupStatus {
   timeout_ms: number;
   last: CleanUsage | null;
   month_cost_usd: number | null;
+  /** D52: who the cloud cleanup route calls. */
+  provider?: CleanupProvider;
+  /** D52: the custom server's host (absent for OpenRouter). */
+  host?: string;
+}
+
+/** D52: OpenRouter, or the user's own OpenAI-compatible server. */
+export type CleanupProvider = "openrouter" | "custom";
+
+/** D52: the custom cleanup server (`flow-clone/cloud/custom` key, masked). */
+export interface CustomCleanupView {
+  /** As saved: normalised (`/v1` added when typed without a path). */
+  base_url: string;
+  host: string;
+  model: string;
+  timeout_ms: number;
+  /** Consent for the current host (a host change voids it). */
+  consent: boolean;
+  consent_host: string;
+  consent_at_ms: number;
+  plain_http: boolean;
+  key: KeyState;
 }
 
 export type Purpose = "stt" | "cleanup";
@@ -243,6 +265,9 @@ export interface OrView {
     send_screen_words: boolean;
     send_app_name: boolean;
     status: CleanupStatus;
+    /** D52: `allow`, the order and "Also send" are shared; the rest above is OpenRouter's. */
+    provider: CleanupProvider;
+    custom: CustomCleanupView;
   };
   budget: number | null;
   usage: UsageView;

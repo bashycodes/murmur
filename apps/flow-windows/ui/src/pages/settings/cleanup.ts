@@ -1,7 +1,8 @@
 // Settings → AI cleanup (design: SettingsCleanup.dc.html): the cleanup
 // level and formatting (features/ai.ts, features/general.ts), the cleanup
 // order (D36: this PC, your server, OpenRouter; features/ai.ts) and
-// OpenRouter cleanup (features/openrouter.ts). Markup only.
+// cloud cleanup: OpenRouter or, D52, the user's own OpenAI-compatible
+// server (features/openrouter.ts). Markup only.
 
 import { ICON } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
@@ -60,12 +61,61 @@ ${heading(
 </section>
 
 <section class="lw-section" id="or_cleanup_group" data-needs="cloud">
-  <h3 class="fl-group-title">OpenRouter</h3>
+  <h3 class="fl-group-title" id="or_cleanup_title">OpenRouter</h3>
   <div class="fl-group" id="or_cleanup_box">
+    ${row(
+      "Send text to",
+      "Cloud speech to text always uses OpenRouter.",
+      `<select id="or_cleanup_provider" class="fl-select lw-w220" aria-label="Cloud cleanup provider">
+        <option value="openrouter">OpenRouter</option>
+        <option value="custom">Custom server (LiteLLM / OpenAI-compatible)</option>
+      </select>`,
+    )}
+    ${row(
+      "Server address",
+      `The base URL of your LiteLLM proxy or other OpenAI-compatible server. <code class="lw-mono">/v1</code> is added when the address has no path. <span id="cu_http_warn" class="hint warn" hidden>This is http://: the key and your dictated text are sent unencrypted.</span>`,
+      `<input id="cu_base_url" class="fl-input lw-w220 lw-mono-input" spellcheck="false" autocomplete="off" placeholder="http://192.168.1.20:4000" aria-label="Server base URL" />`,
+      `data-provider="custom"`,
+    )}
+    ${row(
+      "API key",
+      `<span id="cu_key_state" class="lw-key-state">No key saved</span> Optional. Saved in Windows Credential Manager and only ever sent to this server.`,
+      `<span id="cu_key_saved_ctl" hidden><button type="button" class="fl-btn fl-btn-ghost" id="cu_key_clear">Remove</button></span>
+       <span id="cu_key_entry"><input id="cu_key" class="fl-input lw-w160 lw-mono-input" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" aria-label="API key (optional)" />
+       <button type="button" class="fl-btn fl-btn-primary" id="cu_key_save">Save</button></span>`,
+      `data-provider="custom"`,
+    )}
+    ${row(
+      "Model",
+      `Any model your server serves; type it or load the list. <span id="cu_models_out"></span>`,
+      `<input id="cu_model" class="fl-input lw-w220 lw-mono-input" list="cu_model_list" spellcheck="false" autocomplete="off" placeholder="gpt-4o-mini" aria-label="Model id" />
+       <datalist id="cu_model_list"></datalist>
+       <button type="button" class="fl-btn fl-btn-secondary" id="cu_models_load">Load models</button>`,
+      `data-provider="custom"`,
+    )}
+    ${row(
+      "Give up after",
+      "Then this PC takes over.",
+      `<select id="cu_timeout_ms" class="fl-select lw-w160">
+        <option value="2500">2.5 seconds</option>
+        <option value="4000">4 seconds</option>
+        <option value="8000">8 seconds</option>
+        <option value="15000">15 seconds</option>
+        <option value="30000">30 seconds</option>
+      </select>`,
+      `data-provider="custom"`,
+    )}
+    ${row(
+      "Connection",
+      `<span id="cu_test_out"></span>`,
+      `<button type="button" class="fl-btn fl-btn-secondary" id="cu_test">Test connection</button>`,
+      `data-provider="custom"`,
+    )}
     ${row(
       `<span id="or_cleanup_model_name"></span> <span id="or_cleanup_model_badges" class="pills"></span>`,
       `<span id="or_cleanup_model_desc"></span> <code id="or_cleanup_model_id" class="lw-mono"></code>`,
       `<button type="button" class="fl-btn fl-btn-secondary lw-btn-160" id="or_cleanup_change">Change</button>`,
+      `data-provider="openrouter"`,
     )}
     ${row(
       "Prefer providers that are",
@@ -76,6 +126,7 @@ ${heading(
         <option value="throughput">Highest throughput</option>
         <option value="">OpenRouter default</option>
       </select>`,
+      `data-provider="openrouter"`,
     )}
     ${row(
       "Give up after",
@@ -86,6 +137,7 @@ ${heading(
         <option value="5000">5 seconds</option>
         <option value="8000">8 seconds</option>
       </select>`,
+      `data-provider="openrouter"`,
     )}
     ${row(
       "Also send",
