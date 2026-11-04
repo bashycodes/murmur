@@ -692,6 +692,7 @@ fn setup_meetings(app: &AppHandle, dictating: Arc<std::sync::atomic::AtomicBool>
     let prefs = st.prefs.clone();
     let appdata = st.appdata.clone();
     let creds = st.creds.clone();
+    let summary_busy = dictating.clone();
     let p = prefs.clone();
     let engine: meetings::EngineFactory = Arc::new(move || {
         let prefs = p.read().unwrap().clone();
@@ -735,11 +736,36 @@ fn setup_meetings(app: &AppHandle, dictating: Arc<std::sync::atomic::AtomicBool>
         mono: Arc::new(move || mono_start.elapsed().as_millis() as u64),
         params: Default::default(),
         keep_audio: meetings::store::KEEP_AUDIO,
+        summaries: Some(meetings::Summaries {
+            engine: summary_engine(app),
+            options: flow_core::summary::Options {
+                yield_to: Some(summary_busy),
+                max_yield: MEETING_MAX_YIELD,
+                ..Default::default()
+            },
+        }),
     }));
     let h = app.clone();
     m.on_change(move |v| show_meeting_view(&h, v));
     m.recover();
     m
+}
+
+/// How long a summary job waits for this PC's AI model to finish loading
+/// (right after the app starts) before running without it.
+const SUMMARY_LLM_WAIT: Duration = Duration::from_secs(120);
+
+/// D53: a meeting summary runs on the dictation's AI cleanup order (this
+/// PC's LLM shared with dictation, which pre-empts it; the server; the
+/// cloud under its consent), read when the job starts.
+fn summary_engine(app: &AppHandle) -> meetings::SummaryEngine {
+    let h = app.clone();
+    Arc::new(move || {
+        h.state::<AppState>()
+            .router
+            .get()
+            .and_then(|r| r.summary_cleaner(SUMMARY_LLM_WAIT))
+    })
 }
 
 /// The recording indicator: tray line + tooltip, the pill's chip, and the
@@ -977,6 +1003,12 @@ fn meeting_delete(state: tauri::State<'_, AppState>, id: String) -> Result<bool,
 #[tauri::command]
 fn meeting_retry(state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
     meetings_of(&state)?.retry(&id)
+}
+
+/// D53 Regenerate: make the meeting's summary again.
+#[tauri::command]
+fn meeting_summarise(state: tauri::State<'_, AppState>, id: String) -> Result<(), String> {
+    meetings_of(&state)?.summarise(&id)
 }
 
 // ------------------------------------------------- scratchpad (notes)
@@ -3156,6 +3188,7 @@ pub fn run() {
             meeting_copy,
             meeting_delete,
             meeting_retry,
+            meeting_summarise,
             meeting_prompt_answer
         ])
         .on_window_event(|window, event| {
