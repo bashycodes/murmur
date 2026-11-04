@@ -785,12 +785,7 @@ impl CoreApi for RouterAdapter {
     ) -> Result<String, String> {
         let base = self.local.as_ref().and_then(|a| a.cleaner());
         let cleaner = self.router.command_cleaner(base);
-        let loading = self.local.as_ref().is_some_and(|a| {
-            matches!(
-                a.llm_status(),
-                crate::core_adapter::LlmStatus::Loading { .. }
-            )
-        });
+        let loading = self.local_llm_loading();
         if cleaner.is_none() && loading && !instruction.trim().is_empty() {
             return Err(LLM_LOADING_MSG.into());
         }
@@ -809,12 +804,7 @@ impl CoreApi for RouterAdapter {
     ) -> Result<String, String> {
         let base = self.local.as_ref().and_then(|a| a.cleaner());
         let cleaner = self.router.command_cleaner(base);
-        let loading = self.local.as_ref().is_some_and(|a| {
-            matches!(
-                a.llm_status(),
-                crate::core_adapter::LlmStatus::Loading { .. }
-            )
-        });
+        let loading = self.local_llm_loading();
         if cleaner.is_none() && loading && !text.trim().is_empty() {
             return Err(LLM_LOADING_MSG.into());
         }
@@ -824,6 +814,16 @@ impl CoreApi for RouterAdapter {
 }
 
 impl RouterAdapter {
+    /// This PC's LLM is still loading (the app just started).
+    fn local_llm_loading(&self) -> bool {
+        self.local.as_ref().is_some_and(|a| {
+            matches!(
+                a.llm_status(),
+                crate::core_adapter::LlmStatus::Loading { .. }
+            )
+        })
+    }
+
     /// D53: what a meeting summary runs on: the user's whole AI cleanup
     /// order (this PC's LLM when loaded, the server, OpenRouter under the
     /// cleanup consent), as for a dictation's cleanup. While this PC's LLM
@@ -834,14 +834,7 @@ impl RouterAdapter {
         wait: std::time::Duration,
     ) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
         let t0 = Instant::now();
-        while t0.elapsed() < wait
-            && self.local.as_ref().is_some_and(|a| {
-                matches!(
-                    a.llm_status(),
-                    crate::core_adapter::LlmStatus::Loading { .. }
-                )
-            })
-        {
+        while t0.elapsed() < wait && self.local_llm_loading() {
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
         let base = self.local.as_ref().and_then(|a| a.cleaner());
