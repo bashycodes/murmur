@@ -23,6 +23,7 @@ import dev.flowclone.core.ParakeetDecoding
 import dev.flowclone.core.SessionConfig
 import dev.flowclone.data.CloudText
 import dev.flowclone.data.OpenRouter
+import dev.flowclone.data.CustomServer
 import dev.flowclone.data.DevDraft
 import dev.flowclone.data.DevPages
 import dev.flowclone.data.DevPages.Page
@@ -615,15 +616,16 @@ class DeveloperActivity : Activity() {
     private fun confirmResetDefaults() {
         AlertDialog.Builder(this)
             .setTitle("Reset Developer settings?")
-            .setMessage("Restores the default engines, server and timeouts, turns cloud speech-to-text and cleanup off, and deletes the OpenRouter API key from this device.")
+            .setMessage("Restores the default engines, server and timeouts, turns cloud speech-to-text and cleanup off, and deletes the OpenRouter and custom server API keys from this device.")
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Reset") { _, _ -> onResetDefaults() }
             .show()
     }
 
-    /** Also forgets the OpenRouter key (sealed copy and its Keystore key). */
+    /** Also forgets the OpenRouter and custom server keys (sealed copies and their Keystore keys). */
     private fun onResetDefaults() {
         app.cloudKeys.remove(OpenRouter.ID); app.engine.setCloudKey(null)
+        app.cloudKeys.remove(CustomServer.ID); app.engine.setCloudKey(null, CustomServer.ID)
         app.dev.reset()
         app.engine.applyDevSettings(app.dev.load())
         lastProbe = null
