@@ -44,3 +44,13 @@
 .lw-mt-detect-label { display: flex; flex-direction: column; gap: 2px; font: 550 15px/20px var(--font-sans); color: var(--foreground); }
 .lw-mt-detect-label .fl-help { margin: 0; font-weight: 400; }
 .lw-mt-detect > .fl-select { width: 240px; flex: none; }
+/* AI summary + action items (D53). */
+.lw-mt-summary { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border-radius: 12px; outline: 1px solid var(--border); }
+.lw-mt-summary-head { display: flex; align-items: center; gap: 8px; }
+.lw-mt-summary-title { margin: 0; font: 600 16px/22px var(--font-sans); color: var(--foreground); }
+.lw-mt-summary-by { color: var(--foreground-tertiary); }
+.lw-mt-summary-state { margin: 0; color: var(--foreground-tertiary); }
+.lw-mt-summary-state.is-err { color: var(--destructive); }
+.lw-mt-summary-text { margin: 0; white-space: pre-wrap; user-select: text; }
+.lw-mt-summary-sub { margin: 4px 0 0; font: 600 14px/20px var(--font-sans); color: var(--foreground); }
+.lw-mt-items { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 4px; user-select: text; }

@@ -372,7 +372,7 @@
       { speaker: "me", start_ms: 1000, end_ms: 4000, text: "Thanks for joining, let's go over the release plan." },
       { speaker: "others", start_ms: 5200, end_ms: 9800, text: "Sounds good. The installer build is ready for testing." },
       { speaker: "me", start_ms: 12000, end_ms: 15000, text: "Great, I'll try it on the laptop tonight." },
-    ] },
+    ], summary: { v: 1, status: "done", text: "The release plan was reviewed; the installer build is ready for testing.", action_items: ["Me: try the installer on the laptop tonight"], language: "en", engine: "server", made_ms: now - 3500e3 } },
     { id: "m1", started_ms: now - 864e5 * 2, duration_ms: 610e3, app: null, status: "failed", error: "speech model not found", has_audio: true, turns: [] },
   ];
   window.__opened = [];
@@ -421,6 +421,20 @@
       const m = meetings.find((x) => x.id === id);
       if (!m) throw "this meeting no longer exists";
       m.status = "transcribing";
+    },
+    // D53: Regenerate; the mock finishes it after a moment.
+    meeting_summarise: ({ id }) => {
+      const m = meetings.find((x) => x.id === id);
+      if (!m) throw "this meeting no longer exists";
+      if (m.status !== "done") throw "this meeting has no transcript yet";
+      m.summary = { ...(m.summary ?? { v: 1, text: "", action_items: [], made_ms: 0 }), status: "pending" };
+      meetingView = { ...meetingView, summarising: id };
+      window.__emit("meetings:changed", meetingView);
+      setTimeout(() => {
+        m.summary = { ...m.summary, status: "done", made_ms: Date.now() };
+        meetingView = { ...meetingView, summarising: null };
+        window.__emit("meetings:changed", meetingView);
+      }, 800);
     },
     meeting_toggle: () => {
       if (meetingView.recording) {
