@@ -13,6 +13,8 @@ import org.junit.Test
 
 /** D36: the 3-entry cleanup order {local, server, cloud}: migration, prefs, router JSON, the AI cleanup page's list. */
 class CleanupOrderTest {
+    @org.junit.Before fun fakeRouterAddress() = FakeCustomAddress.install()
+
     private val now = 1_792_540_800_000L
 
     private fun store(kv: MemKV, caps: BuildCaps = BuildCaps.ALL) = DevStore(kv, caps, SecretVault("t", FakeVaultKeys()))
@@ -198,5 +200,20 @@ class CleanupOrderTest {
         val ok = c.copy(cloud = c.cloud.copy(customCleanup = cc.copy(baseUrl = "https://10.0.0.5/v1").withConsent(1)))
         assertEquals("Sends text · gpt-4o-mini", CleanupEngines.cloudLine(ok, hasKey = false))
         assertEquals("Sends text · asks first · no key", CleanupEngines.cloudLine(d.copy(allowCloudCleanup = true), hasKey = false))
+    }
+
+    @Test fun anUnusableCustomServerSaysCloudCleanupIsOff() {
+        // Custom selected, then its model cleared: the router gets OpenRouter without cleanup
+        // consent; the order row must say so, never "OpenRouter".
+        val d = DevSettings.defaults(BuildCaps.ALL)
+        val cc = CustomCleanupSettings(baseUrl = "http://10.0.0.5:4000/v1", model = "", consentHost = "10.0.0.5", consentAtMs = 1)
+        val c = d.copy(cloud = d.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = cc), allowCloudCleanup = true)
+        assertTrue(c.cloud.customNotSetUp)
+        assertEquals("Custom server", CleanupEngines.name(CLOUD, c))
+        assertEquals("Clean up with Custom server", CleanupEngines.useLabel(CLOUD, c))
+        assertEquals(CustomServer.NOT_SET_UP, CleanupEngines.cloudLine(c, hasKey = true))
+        assertEquals(CustomServer.NOT_SET_UP, c.cloud.cleanupProviderName)
+        assertFalse(c.cloud.routerJson().has("cleanup_provider"))
+        assertEquals(0L, c.cloud.routerJson().getJSONObject("openrouter").getJSONObject("cleanup").getLong("consent_at_ms"))
     }
 }

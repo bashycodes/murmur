@@ -49,6 +49,14 @@ class DebugLogTest {
     }
 
     /** Debug "WAV as microphone": `source` is mic or wav on every dictation line. */
+    @Test fun cloudCleanupNamesTheProviderThatCleaned() {
+        val t = trace.copy(llmEngine = "cloud", llmModel = "gpt-4o-mini")
+        assertTrue(DebugFormat.summary(DebugFormat.dictation(t)).contains(" · AI OpenRouter gpt-4o-mini"))
+        val c = t.copy(llmProvider = "custom")
+        assertEquals("custom", JSONObject(DebugFormat.dictation(c)).getString("llm_provider"))
+        assertTrue(DebugFormat.summary(DebugFormat.dictation(c)).contains(" · AI custom server gpt-4o-mini"))
+    }
+
     @Test fun sourceFieldNamesTheAudioSource() {
         assertTrue(JSONObject(DebugFormat.dictation(trace)).let { it.has("source") && it.isNull("source") })
         assertEquals("wav", JSONObject(DebugFormat.dictation(trace.copy(source = "wav"))).getString("source"))

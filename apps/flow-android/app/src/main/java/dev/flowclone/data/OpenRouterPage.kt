@@ -95,7 +95,11 @@ object OpenRouterPage {
     /** Settings → DICTATION "Cloud (OpenRouter)" and the AI cleanup row: "Speech on · Cleanup on (llama-3.3-70b-instruct)". */
     fun settingsSummary(s: DevSettings, hasKey: Boolean): String {
         val speech = if (s.cloudRouted && s.cloud.stt.consentOk) "Speech on" else "Speech off"
-        val cleanup = if (s.cloudCleanupRouted && s.cloud.cleanupConsentOk) "Cleanup on (${cleanupWho(s.cloud)})" else "Cleanup off"
+        val cleanup = when {
+            s.cloud.customNotSetUp && s.allowCloudCleanup -> "Cleanup off (custom server not set up)"
+            s.cloudCleanupRouted && s.cloud.cleanupConsentOk -> "Cleanup on (${cleanupWho(s.cloud)})"
+            else -> "Cleanup off"
+        }
         // A custom server's key is optional: only OpenRouter uses need [hasKey].
         val needsKey = s.allowCloud || (s.allowCloudCleanup && !s.cloud.customProvider)
         return "$speech · $cleanup" + if (!hasKey && needsKey) " · no key" else ""
@@ -106,7 +110,7 @@ object OpenRouterPage {
      * ("On-device, then your server, then OpenRouter (llama-3.3-70b-instruct)"); null when it is off.
      */
     fun cleanupEngineLine(s: DevSettings): String? {
-        if (!(s.cloudCleanupRouted && s.cloud.cleanupConsentOk)) return null
+        if (!(s.cloudCleanupRouted && s.cloud.cleanupConsentOk) || s.cloud.customNotSetUp) return null
         val names = s.cleanupOrder.filter { s.cleanupOn(it) }.mapNotNull {
             when (it) {
                 CleanupRoute.LOCAL -> "on-device"

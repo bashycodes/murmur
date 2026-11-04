@@ -12,6 +12,8 @@ import org.junit.Test
 class CloudSettingsTest {
     private val now = 1_792_540_800_000L
 
+    @org.junit.Before fun fakeRouterAddress() = FakeCustomAddress.install()
+
     @Test fun defaultsAreThePrivateOnes() {
         val c = CloudSettings()
         assertTrue(c.privacy.zdr); assertEquals("deny", c.privacy.dataCollection)
@@ -98,12 +100,30 @@ class CloudSettingsTest {
         assertEquals(u, CloudUsage.decode(u.toJson().toString()))
     }
 
+    @Test fun customServerCostIsShownApartFromTheBudget() {
+        val u = CloudUsage("2026-11", listOf(
+            CloudUsage.ProviderUsage(OpenRouter.ID, requests = 3, costUsd = 0.5, purpose = CloudUsage.PURPOSE_STT),
+            CloudUsage.ProviderUsage(CustomServer.ID, requests = 9, costUsd = 4.0, purpose = CloudUsage.PURPOSE_CLEANUP),
+        ))
+        assertEquals(0.5, u.budgetCostUsd, 1e-9); assertEquals(4.0, u.customCostUsd, 1e-9)
+        val lines = CloudText.usageLines(u, CloudSettings(monthlyBudgetUsd = 1.0))
+        assertEquals("Budget \$1.00/month: \$0.50 used", lines[2])
+        assertEquals("Your custom server reported \$4.00 (not in the budget)", lines[3])
+        val st = dev.flowclone.core.RouterJson.decodeCleanupStatus(
+            """{"supported":true,"enabled":true,"provider":"custom","host":"10.0.0.5","model":"m","month_cost_usd":4.0,"custom_month_cost_usd":4.0}""")
+        assertEquals(4.0, st.customMonthCostUsd, 1e-9)
+        val line = dev.flowclone.core.DevText.cleanupStatus(st)
+        assertTrue(line, line.startsWith("On · Custom server (10.0.0.5) · m") && line.endsWith("\$4.00 on your server (not in budget)"))
+    }
+
     @Test fun routeWording() {
         val r = RouteInfo("cloud", provider = "openrouter", model = "openai/whisper-large-v3-turbo", costUsd = 0.000011, llmEngine = "cloud",
             llmModel = "meta-llama/llama-3.3-70b-instruct", llmCostUsd = 0.0007)
         assertEquals("cloud · OpenRouter · openai/whisper-large-v3-turbo · \$0.0000", CloudText.engineRow(r))
         assertEquals("AI cleanup: OpenRouter · llama-3.3-70b-instruct · \$0.0007", CloudText.cleanupRow(r))
         assertNull(CloudText.cleanupRow(RouteInfo("local")))
+        // D52: named by the provider that cleaned.
+        assertEquals("AI cleanup: Custom server (10.0.0.5) · llama-3.3-70b-instruct · \$0.0007", CloudText.cleanupRow(r, "Custom server (10.0.0.5)"))
         // D30: AI cleanup tried, the fallback pipeline produced the text.
         assertEquals("AI cleanup: on-device · qwen2.5-1.5b · OpenRouter not used (llm_timeout)",
             CloudText.cleanupRow(RouteInfo("local", llmEngine = "local", llmModel = "qwen2.5-1.5b", cleanupRoute = "local", cloudFallback = "llm_timeout")))
@@ -211,39 +231,48 @@ class CloudSettingsTest {
         assertEquals("Qwen/Qwen2.5-7B-Instruct", ok.cleanupModel); assertEquals(4_000L, ok.cleanupTimeoutMs)
     }
 
-    @Test fun baseUrlIsNormalisedLikeTheRouter() {
-        fun n(raw: String) = CustomServer.normalizeBaseUrl(raw)
-        assertEquals("http://10.0.0.5:4000/v1", n("http://10.0.0.5:4000"))
-        assertEquals("http://10.0.0.5:4000/v1", n("  http://10.0.0.5:4000/  "))
-        assertEquals("http://10.0.0.5:4000/v1", n("http://10.0.0.5:4000/v1/"))
-        assertEquals("https://llm.example.lan/api/v1", n("HTTPS://LLM.Example.LAN:443/api/v1//"))
-        assertEquals("http://llm.lan/v1", n("http://llm.lan:80"))
-        assertEquals("https://llm.lan:80/v1", n("https://llm.lan:80"))
-        assertEquals("http://[::1]:8080/v1", n("http://[::1]:8080"))
-        assertEquals("http://[2001:db8::1]/v1", n("http://[2001:DB8:0:0:0:0:0:1]"))
-        for (bad in listOf("", "llm.lan:4000", "ftp://llm.lan", "http://user:pw@llm.lan", "http://user@llm.lan", "http://llm .lan",
-                "http://llm.lan\\v1", "http://llm.lan/v1?x=1", "http://llm.lan/#f", "http://", "http://:4000", "http://llm.lan:99999",
-                "http://llm.lan:ab", "http://[::1", "http://[1:2:3]", "http://llm.lan/a/../b")) {
-            assertNull(bad, n(bad))
-            assertTrue(bad, CloudInput.baseUrl(bad).error!!.isNotEmpty())
-        }
-        assertEquals("http://10.0.0.5:4000/v1", CloudInput.baseUrl("http://10.0.0.5:4000").value)
+    @Test fun addressComesFromTheRouterReader() {
+        // The page parses no URLs: whatever the router's reader says is the URL, host and model check.
+        val seen = mutableListOf<Pair<String, String>>()
+        CustomServer.check = CustomAddressCheck { u, m -> seen += u to m; CustomAddress(url = "http://[2001:db8::1]:4000/v1", host = "2001:db8::1", modelOk = m == "ok") }
+        try {
+            assertEquals("http://[2001:db8::1]:4000/v1", CloudInput.baseUrl("http://[2001:DB8::0:1]:4000").value)
+            assertEquals("2001:db8::1", CustomCleanupSettings("anything").host)
+            assertEquals("2001:db8::1", CustomCleanupSettings("anything").withConsent(now).consentHost)
+            assertTrue(CustomServer.validModelId("ok")); assertFalse(CustomServer.validModelId("two words"))
+            assertTrue(seen.contains("http://[2001:DB8::0:1]:4000" to ""))
+            CustomServer.check = CustomAddressCheck { _, _ -> CustomAddress(error = "bad_base_url", message = "base URL must not contain ? or #") }
+            assertEquals("Base URL must not contain ? or #", CloudInput.baseUrl("http://x/v1?q").error)
+            assertEquals("", CustomServer.host("http://x/v1?q"))
+            assertTrue(CloudInput.baseUrl(" ").error!!.isNotEmpty())
+        } finally { FakeCustomAddress.install() }
     }
 
-    @Test fun hostMatchesTheRouterHost() {
-        assertEquals("10.0.0.5", CustomServer.host("http://10.0.0.5:4000/v1"))
-        assertEquals("llm.example.lan", CustomServer.host("https://LLM.Example.lan/v1"))
-        assertEquals("::1", CustomServer.host("http://[::1]:8080/v1"))
-        assertEquals("2001:db8::1:0:0:1", CustomServer.host("http://[2001:db8:0:0:1:0:0:1]"))
-        assertEquals("::ffff:10.0.0.1", CustomServer.host("http://[::ffff:10.0.0.1]"))
-        assertEquals("http://[::ffff:a00:1]/v1", CustomServer.normalizeBaseUrl("http://[::ffff:10.0.0.1]"))
-        assertEquals("", CustomServer.host("nope"))
-        assertTrue(CustomCleanupSettings("http://h").let { !it.https }); assertTrue(CustomCleanupSettings("https://h").https)
+    @Test fun aLibraryWithoutTheAddressCallReadsAsNotSetUp() {
+        // No native library in JVM tests: the real reader says "unusable", never a guess.
+        CustomServer.check = CustomAddressCheck { u, m -> dev.flowclone.core.NativeFlowCore.customCleanupAddress(u, m) }
+        try {
+            assertNull(CustomServer.normalizeBaseUrl("http://10.0.0.5:4000"))
+            val c = CloudSettings(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom.withConsent(now))
+            assertFalse(c.cleanupConsentOk); assertTrue(c.customNotSetUp)
+            assertEquals(CustomServer.NOT_SET_UP, c.cleanupProviderName)
+        } finally { FakeCustomAddress.install() }
+    }
+
+    @Test fun decodesTheAddressJson() {
+        val ok = dev.flowclone.core.RouterJson.decodeCustomAddress("""{"url":"http://h:4000/v1","host":"h","model_ok":true}""")
+        assertEquals(CustomAddress("http://h:4000/v1", "h", true), ok); assertFalse(ok.https)
+        val bad = dev.flowclone.core.RouterJson.decodeCustomAddress("""{"error":"bad_base_url","message":"no","model_ok":false}""")
+        assertNull(bad.url); assertEquals("", bad.host); assertEquals("bad_base_url", bad.error)
+        assertEquals("error", dev.flowclone.core.RouterJson.decodeCustomAddress("nope").error)
+    }
+
+    @Test fun modelsCallsPassOnlyATypedKey() {
+        assertNull(CustomModelsKey.typedOnly(null)); assertNull(CustomModelsKey.typedOnly("   "))
+        assertEquals("sk-typed", CustomModelsKey.typedOnly("  sk-typed "))
     }
 
     @Test fun customModelIdsAreFreeText() {
-        for (ok in listOf("gpt-4o-mini", "Qwen/Qwen2.5-7B-Instruct", "ollama/llama3:8b", "a".repeat(256))) assertTrue(ok, CustomServer.validModelId(ok))
-        for (bad in listOf("", "a".repeat(257), "two words", "tab\tid", "nl\n", "é".repeat(129))) assertFalse(bad, CustomServer.validModelId(bad))
         assertEquals("Qwen/Qwen2.5-7B", CloudInput.customModel("  Qwen/Qwen2.5-7B ").value)
         assertTrue(CloudInput.customModel(" ").error!!.isNotEmpty())
         assertEquals(30_000L, CloudInput.customTimeout("30000").value)
@@ -276,7 +305,7 @@ class CloudSettingsTest {
         assertFalse(tls.contains(CloudText.HTTP_WARNING))
         assertEquals(CloudText.CLEANUP_CONSENT_TITLE, CloudText.cleanupConsent(CloudSettings()).first)
         assertEquals("Custom server (10.0.0.5)", c.cleanupProviderName)
-        assertEquals("Custom server", CloudSettings(cleanupProvider = CleanupProvider.CUSTOM).cleanupProviderName)
+        assertEquals(CustomServer.NOT_SET_UP, CloudSettings(cleanupProvider = CleanupProvider.CUSTOM).cleanupProviderName)
         assertEquals("OpenRouter", CloudSettings().cleanupProviderName)
         assertEquals("Connected: 2 models", CloudText.customModelsLine(dev.flowclone.core.CustomModels(listOf("a", "b"))))
         assertEquals("Failed: key rejected (Authentication Error)", CloudText.customModelsLine(dev.flowclone.core.CustomModels(error = "auth_failed", message = "Authentication Error")))

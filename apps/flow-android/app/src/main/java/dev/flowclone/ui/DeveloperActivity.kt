@@ -520,7 +520,7 @@ class DeveloperActivity : Activity() {
             }
             refreshers += {
                 val l = app.lastRoute.value
-                last.text = DevText.lastDictation(l?.result) +
+                last.text = DevText.lastDictation(l?.result, app.dev.load().cloud.cleanupProviderName) +
                     (l?.let { " · " + DateFormat.getTimeInstance().format(Date(it.atMs)) } ?: "")
                 circuit.text = circuitText()
                 val rs = routeStatus()

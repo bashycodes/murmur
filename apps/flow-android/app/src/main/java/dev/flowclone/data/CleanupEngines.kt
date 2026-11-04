@@ -36,14 +36,18 @@ object CleanupEngines {
     fun name(r: CleanupRoute, d: DevSettings? = null): String = when (r) {
         CleanupRoute.LOCAL -> "This phone"
         CleanupRoute.SERVER -> "Your server"
-        CleanupRoute.CLOUD -> d?.cloud?.cleanupProviderName ?: OpenRouter.NAME
+        CleanupRoute.CLOUD -> cloudName(d)
     }
+
+    /** The row keeps "Custom server" when it is not set up; [cloudLine] then says why it is off. */
+    private fun cloudName(d: DevSettings?) =
+        if (d?.cloud?.customNotSetUp == true) CustomServer.NAME else d?.cloud?.cleanupProviderName ?: OpenRouter.NAME
 
     /** The switch's spoken label. */
     fun useLabel(r: CleanupRoute, d: DevSettings? = null): String = when (r) {
         CleanupRoute.LOCAL -> "Clean up on this phone"
         CleanupRoute.SERVER -> "Clean up on your server"
-        CleanupRoute.CLOUD -> "Clean up with ${d?.cloud?.cleanupProviderName ?: OpenRouter.NAME}"
+        CleanupRoute.CLOUD -> "Clean up with ${cloudName(d)}"
     }
 
     /**
@@ -76,6 +80,8 @@ object CleanupEngines {
      */
     fun cloudLine(d: DevSettings, hasKey: Boolean): String {
         val c = d.cloud
+        // D52: a selected custom server that is not usable sends nothing; say so, never "OpenRouter".
+        if (c.customNotSetUp) return CustomServer.NOT_SET_UP
         val model = if (c.customProvider) c.customCleanup.model else c.cleanup.model.substringAfter('/')
         return "Sends text · " + (if (!c.cleanupConsentOk) "asks first" else model) +
             (if (c.customProvider && !c.customCleanup.https) " · unencrypted (http)" else "") +
