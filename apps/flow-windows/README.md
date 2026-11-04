@@ -72,6 +72,14 @@ an existing one.
 
 ## Meetings (Notetaker, D45)
 
+**Hidden since 1.1.1 (D51).** `meetings::NOTETAKER_ENABLED` (`src/meetings/mod.rs`)
+is `false`: no tray line, shortcut, detection or background job, and the
+app window shows the static "Coming later" Notetaker page. Meetings already
+in `%APPDATA%\FlowClone\meetings\` are kept. To bring it back set it and
+`NOTETAKER_ENABLED` in `ui/src/pages/notetaker.ts` to `true` (a test keeps
+the two equal) and rebuild `ui/dist`. The rest of this section describes
+the feature as it works when switched on.
+
 Tray *Start meeting recording* (or the Meetings page button, or the
 optional `shortcuts.meeting`, unset by default) records the microphone
 (**Me**) and what the default playback device plays (WASAPI loopback,
@@ -629,6 +637,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Clear key → next dictation still pastes (local), bubble "Cloud STT failed (set a key and accept the consent); used this PC".
 - [ ] Monthly budget below this month's cost → "Cloud STT failed (monthly budget reached); used this PC"; cleanup falls back to this PC / the formatted text.
 - [ ] Quit and restart: usage counters and the key are unchanged.
+- [ ] Notetaker hidden (D51): the tray has no meeting line, the sidebar's Notetaker shows the "Coming later" page, General has no meeting shortcut row, Speech to text has no Meetings group. The two Meetings checks below need it switched on.
 - [ ] Meetings: in a call, tray "Start meeting recording" → the Flow bar shows "Recording meeting · 0:0x"; speak, let the other side speak; tray "■ Stop meeting recording" → the Meetings page shows "Transcribing… n%", then Me / Others turns in order. Dictate (Ctrl+Win) during the transcription: it pastes as fast as usual.
 - [ ] Meetings with nothing playing: the Others track stays silent, the transcript is Me only with the "No sound from the PC" note. After a 4th meeting only the newest 3 have `.wav` files in `%APPDATA%\FlowClone\meetings\`.
 

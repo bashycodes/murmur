@@ -15,6 +15,7 @@ import { router, type Feature } from "../lib/router.js";
 import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
 import type { DevCheck, DevForm, DevView, FieldError, Health, LastDictation, MeetingRoute, Route, RouteView } from "../lib/types.js";
 import { views } from "../lib/views.js";
+import { NOTETAKER_ENABLED } from "../pages/notetaker.js";
 
 interface SessionTest {
   status: string;
@@ -260,7 +261,7 @@ function renderMeetings(): void {
     routes.map((e) => e.route),
   );
   shown.forEach(describeMeeting);
-  $<HTMLElement>("meet_group").hidden = !views.dev?.meetings || shown.length === 0 || (shown.length === 1 && !views.dev?.visible);
+  $<HTMLElement>("meet_group").hidden = !NOTETAKER_ENABLED || !views.dev?.meetings || shown.length === 0 || (shown.length === 1 && !views.dev?.visible);
   $<HTMLElement>("meet_follow").textContent = views.dev?.meetings?.follows_dictation
     ? "Same as the engines above until you change it here."
     : "";

@@ -4,6 +4,7 @@
 // (features/openrouter.ts). Markup only.
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
+import { NOTETAKER_ENABLED } from "../notetaker.js";
 import { browseButton, DOWNLOAD_ROW, HEBREW_ROW, SERVER_MODELS_GROUP } from "../../features/models.js";
 /** One engine in a ranked list (`<prefix>_row_<key>`, `_desc_`, `_badge_`):
  *  rank, tile, text, status badge, move up/down, switch. The feature module
@@ -38,7 +39,7 @@ ${heading("Speech to text", "Turns your voice into words. Engines are tried top 
   <ul id="dev_warnings" class="lw-warnings"></ul>
 </section>
 
-<section class="lw-section" id="meet_group">
+<section class="lw-section" id="meet_group"${NOTETAKER_ENABLED ? "" : " hidden"}>
   <h3 class="fl-group-title">Meetings</h3>
   <div class="fl-group" id="meet_routes">
     ${engineRow("meet", "meeting", "client", ICON.chip, "This PC", toggle("meet_on_client", "Transcribe meetings on this PC"))}
