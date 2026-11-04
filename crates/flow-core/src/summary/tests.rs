@@ -9,6 +9,8 @@ struct Fake {
     engine: &'static str,
     fail: Option<CleanError>,
     summary: String,
+    /// Notes that repeat the part instead of condensing it.
+    echo_notes: bool,
     delay: Duration,
     prompts: Mutex<Vec<CleanPrompt>>,
     aborted: Mutex<u32>,
@@ -20,6 +22,7 @@ impl Fake {
             engine,
             fail: None,
             summary: summary.into(),
+            echo_notes: false,
             delay: Duration::ZERO,
             prompts: Mutex::default(),
             aborted: Mutex::default(),
@@ -68,6 +71,7 @@ impl Cleaner for Fake {
         }
         let src = p.source.as_ref().unwrap();
         Ok(match src.task {
+            CleanTask::MeetingNotes if self.echo_notes => src.text.clone(),
             CleanTask::MeetingNotes => format!("- note on {} chars", src.text.chars().count()),
             _ => self.summary.clone(),
         })
@@ -126,6 +130,20 @@ fn a_long_meeting_is_mapped_per_chunk_then_reduced() {
         let src = p.source.as_ref().unwrap();
         assert!(src.text.chars().count() <= SMALL_CONTEXT_CHARS);
     }
+}
+
+#[test]
+fn notes_that_never_shrink_give_up_after_max_rounds() {
+    let f = Arc::new(Fake {
+        echo_notes: true,
+        ..Arc::into_inner(Fake::new("local", ANSWER)).unwrap()
+    });
+    let t = transcript(100); // ~5.5k chars: 3 chunks of <= 2500
+    let parts = chunks(&t, SMALL_CONTEXT_CHARS).len();
+    let e = summarise(Some(f.clone()), &t, &Options::default()).unwrap_err();
+    assert_eq!(e, SummaryError::Failed("the meeting is too long".into()));
+    // Every round condensed the parts; no summary call was made.
+    assert_eq!(f.tasks(), vec![CleanTask::MeetingNotes; parts * MAX_ROUNDS]);
 }
 
 #[test]
