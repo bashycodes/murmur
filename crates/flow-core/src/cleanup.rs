@@ -36,6 +36,27 @@ pub struct CleanPrompt {
     pub source: Option<Arc<CleanRequest>>,
 }
 
+/// What a [`CleanRequest`] asks for (D53). Cleanup is the default and is
+/// never written on the wire, so cleanup requests stay byte-identical.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CleanTask {
+    /// AI cleanup of a dictation (D27/D36).
+    #[default]
+    Cleanup,
+    /// Notes on one part of a long meeting (the map step).
+    MeetingNotes,
+    /// A meeting's summary and action items, from its transcript or from
+    /// notes on its parts (the reduce step).
+    MeetingSummary,
+}
+
+impl CleanTask {
+    pub fn is_cleanup(&self) -> bool {
+        *self == CleanTask::Cleanup
+    }
+}
+
 /// D36: a text-only cleanup request: everything [`build_prompt_versioned`]
 /// needs, plus the language and the time budget. The `clean` message of
 /// the server protocol carries it verbatim (`docs/protocol.md`).
@@ -57,6 +78,11 @@ pub struct CleanRequest {
     /// The session's `llm_timeout_ms` (0 = unknown).
     pub timeout_ms: u64,
     pub prompt: PromptVersion,
+    /// D53: what to do with `text`; cleanup (the default) is never written,
+    /// so cleanup requests are unchanged on the wire. A server only gets a
+    /// meeting task when it advertises `"summary"`.
+    #[serde(skip_serializing_if = "CleanTask::is_cleanup")]
+    pub task: CleanTask,
     /// What the context was narrowed to (not sent: a receiver builds with
     /// its own scope over the context it got).
     #[serde(skip)]
@@ -67,6 +93,15 @@ impl CleanRequest {
     /// The prompt for this request, narrowed to `scope` (and never wider
     /// than the request's own scope).
     pub fn prompt_for(&self, scope: PromptScope) -> CleanPrompt {
+        if !self.task.is_cleanup() {
+            // D53: a meeting summary step carries no field context.
+            let mut p =
+                crate::summary::build_prompt(self.task, &self.text, self.language.as_deref());
+            if let Some(src) = p.source.as_mut() {
+                Arc::make_mut(src).timeout_ms = self.timeout_ms;
+            }
+            return p;
+        }
         let mut p = build_prompt_versioned(
             &self.text,
             self.level,
@@ -1330,6 +1365,7 @@ pub fn build_prompt_versioned(
             language: None,
             timeout_ms: 0,
             prompt: version,
+            task: CleanTask::Cleanup,
             scope,
         })),
     }

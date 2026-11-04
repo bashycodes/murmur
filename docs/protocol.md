@@ -73,6 +73,17 @@ additive core fields need no protocol change. The server never sets
   server advertises `"clean"` in `hello_ok.features` only when it has an LLM.
   A client that wants to clean a dictation itself sends `start` with
   `config.cleanup_level:"none"` and refinishes the returned `asr_text`.
+* Meeting summaries (D53): `<CleanRequest>` may carry `task:
+  "meeting_notes"` (notes on one part of a long meeting) or
+  `"meeting_summary"` (summary + action items), with `text` = the
+  transcript (`Me: …` / `Others: …` lines) or the notes and `language` =
+  the answer's language. The server builds the prompt with
+  `flow_core::summary::build_prompt` instead of the cleanup prompt; the
+  answer comes back in `cleaned` as usual. Absent `task` = cleanup, so
+  cleanup requests are unchanged. The server lists `"summary"` in
+  `hello_ok.features` next to `"clean"`; an older server ignores `task` and
+  would clean the text, so clients send a meeting task only to a server that
+  lists it.
 * `ModelConfig` (model paths, threads) is server configuration only.
 * Language routing (D33): a session whose `config.languages` is one forced
   language (`["he"]`, `["he-IL"]`, `["iw"]`) decodes on the server's model

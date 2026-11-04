@@ -43,6 +43,58 @@ pub enum Status {
     Failed,
 }
 
+/// Version of [`MeetingSummary`] this build writes (`v`).
+pub const SUMMARY_VERSION: u32 = 1;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SummaryStatus {
+    /// Waiting for, or being made by, a summary job (also after a quit
+    /// mid-job: it is made at the next start).
+    #[default]
+    Pending,
+    Done,
+    /// `error` says why; an earlier summary's text, if any, is kept.
+    Failed,
+}
+
+/// A meeting's AI summary and action items (D53), made from its
+/// transcript by the AI cleanup order.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MeetingSummary {
+    /// Format version ([`SUMMARY_VERSION`]); 0 = written before versions.
+    pub v: u32,
+    pub status: SummaryStatus,
+    pub text: String,
+    pub action_items: Vec<String>,
+    /// The language asked for (`"he"`, `"en"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    /// Who wrote it: `local` (this PC), `server`, `cloud` (OpenRouter).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub engine: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    /// Wall clock (ms since the Unix epoch) when it was last finished.
+    pub made_ms: u64,
+}
+
+impl MeetingSummary {
+    /// Queued for (re)generation; an earlier summary's text stays shown
+    /// until the new one replaces it.
+    pub fn pending(prev: Option<&MeetingSummary>) -> MeetingSummary {
+        MeetingSummary {
+            v: SUMMARY_VERSION,
+            status: SummaryStatus::Pending,
+            error: None,
+            ..prev.cloned().unwrap_or_default()
+        }
+    }
+}
+
 /// One meeting (`<id>.json`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -69,6 +121,10 @@ pub struct Meeting {
     /// finished transcription job; empty before one.
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub routes: std::collections::BTreeMap<String, u32>,
+    /// D53: the AI summary; absent in files written before it, and until
+    /// the first summary job of this meeting.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<MeetingSummary>,
 }
 
 /// A row of the Meetings list.
@@ -330,6 +386,36 @@ mod tests {
         assert!(!s.has_audio(&a.id));
         assert_eq!(s.delete(&a.id), Ok(false));
         assert_eq!(s.list().len(), 1);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn files_without_or_with_a_summary_load() {
+        let d = tmp("summary");
+        let s = MeetingStore::new(d.clone());
+        std::fs::create_dir_all(&d).unwrap();
+        // Written by 1.1.1: no summary field.
+        let old = r#"{"id":"m9","started_ms":9,"duration_ms":1000,"status":"done",
+            "turns":[{"speaker":"me","start_ms":0,"end_ms":900,"text":"made up line"}]}"#;
+        std::fs::write(d.join("m9.json"), old).unwrap();
+        let m = s.get("m9").unwrap();
+        assert_eq!((m.status, m.summary.as_ref()), (Status::Done, None));
+        assert!(!serde_json::to_string(&m).unwrap().contains("summary"));
+        // With one, and a field from a later version that this build skips.
+        let new = r#"{"id":"m10","started_ms":10,"status":"done","turns":[],
+            "summary":{"v":2,"status":"done","text":"A short sync.","action_items":["Me: book it"],
+            "engine":"server","made_ms":5,"later_field":true}}"#;
+        std::fs::write(d.join("m10.json"), new).unwrap();
+        let summary = s.get("m10").unwrap().summary.unwrap();
+        assert_eq!(summary.status, SummaryStatus::Done);
+        assert_eq!(summary.action_items, ["Me: book it"]);
+        assert_eq!(summary.engine.as_deref(), Some("server"));
+        // Regenerate keeps the old text while pending.
+        let p = MeetingSummary::pending(Some(&summary));
+        assert_eq!(
+            (p.status, p.text.as_str(), p.v),
+            (SummaryStatus::Pending, "A short sync.", 1)
+        );
         let _ = std::fs::remove_dir_all(&d);
     }
 

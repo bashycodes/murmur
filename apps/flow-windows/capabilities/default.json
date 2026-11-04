@@ -97,6 +97,7 @@
     "allow-meeting-get",
     "allow-meeting-copy",
     "allow-meeting-delete",
-    "allow-meeting-retry"
+    "allow-meeting-retry",
+    "allow-meeting-summarise"
   ]
 }

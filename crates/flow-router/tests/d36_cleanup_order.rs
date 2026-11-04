@@ -12,7 +12,7 @@ use flow_core::asr::{AbortFlag, MockAsr};
 use flow_core::cleanup::{CleanError, CleanPrompt, CleanRequest, Cleaner};
 use flow_core::config::CleanupLevel;
 use flow_core::FlowCore;
-use flow_protocol::{Cleaned, HelloOk, FEATURE_CLEAN};
+use flow_protocol::{Cleaned, HelloOk, FEATURE_CLEAN, FEATURE_SUMMARY};
 use flow_router::*;
 
 const KEY: &str = "sk-or-LEAKCHECK-d36-0123456789";
@@ -78,6 +78,8 @@ enum Answer {
 /// asked it to skip the LLM (or it has no LLM).
 struct Server {
     llm: Mutex<bool>,
+    /// Advertises D53's `summary` with `clean` (a newer server).
+    summary: Mutex<bool>,
     hello_known: Mutex<bool>,
     /// `Some(llm)`: the hello of an older connection, still cached until
     /// the next connection (`warm`, `clean`, a session) renews it.
@@ -95,6 +97,7 @@ impl Server {
     fn new() -> Arc<Self> {
         Arc::new(Self {
             llm: Mutex::new(true),
+            summary: Mutex::new(true),
             hello_known: Mutex::new(true),
             old_hello: Mutex::new(None),
             warms: AtomicUsize::new(0),
@@ -186,10 +189,10 @@ impl Backend for Server {
                 "flow-server 0.11.0"
             }
             .into(),
-            features: if llm {
-                vec![FEATURE_CLEAN.into()]
-            } else {
-                Vec::new()
+            features: match (llm, *self.summary.lock().unwrap()) {
+                (true, true) => vec![FEATURE_CLEAN.into(), FEATURE_SUMMARY.into()],
+                (true, false) => vec![FEATURE_CLEAN.into()],
+                _ => Vec::new(),
             },
             ..Default::default()
         })
@@ -200,6 +203,13 @@ impl Backend for Server {
         if !*self.llm.lock().unwrap() {
             return Ok(Cleaned {
                 error: Some("no_llm".into()),
+                ..Default::default()
+            });
+        }
+        // flow-remote's refusal of a meeting task to an older server.
+        if !req.task.is_cleanup() && !*self.summary.lock().unwrap() {
+            return Ok(Cleaned {
+                error: Some("no_summary".into()),
                 ..Default::default()
             });
         }
@@ -789,4 +799,73 @@ fn a_server_with_clean_is_never_rechecked() {
         assert_eq!(k.router.cleanup_status().server_llm, Some(true));
     }
     assert_eq!(k.server.warms(), 0);
+}
+
+// ---- D53: meeting summaries on the cleanup order ---------------------------
+
+const SUMMARY_IN: &str = "Me: the review moves to Monday\nOthers: I will send the agenda";
+
+fn summarise(k: &Rig) -> Result<flow_core::summary::Summary, flow_core::summary::SummaryError> {
+    let base = Some(k.local.clone() as Arc<dyn Cleaner>);
+    flow_core::summary::summarise(
+        k.router.cleanup_cleaner(base),
+        SUMMARY_IN,
+        &flow_core::summary::Options::default(),
+    )
+}
+
+#[test]
+fn summaries_follow_the_cleanup_order_server_included() {
+    let k = rig(cfg(&[S, L, C]));
+    let s = summarise(&k).unwrap();
+    assert_eq!((s.engine.as_str(), s.text.as_str()), ("server", SERVER_OUT));
+    let req = k.server.cleans.lock().unwrap()[0].clone();
+    assert_eq!(req.task, flow_core::cleanup::CleanTask::MeetingSummary);
+    assert_eq!(req.text, SUMMARY_IN);
+    assert_eq!((k.local_calls(), k.cloud_calls()), (0, 0));
+    // Local first: the on-device model writes it.
+    let k = rig(cfg(&[L, S, C]));
+    assert_eq!(summarise(&k).unwrap().engine, "local");
+    assert_eq!(k.server.cleans(), 0);
+}
+
+#[test]
+fn an_older_server_is_skipped_for_summaries() {
+    let k = rig(cfg(&[S, C]));
+    *k.server.summary.lock().unwrap() = false;
+    let s = summarise(&k).unwrap();
+    assert_eq!(s.engine, "cloud");
+    assert_eq!(k.cloud_calls(), 1);
+    // Still a good server for dictations: no circuit opened.
+    assert!(!k.router.cleanup_status().server_circuit.unwrap().open);
+}
+
+#[test]
+fn summaries_keep_the_cloud_consent_gate() {
+    let mut c = cfg(&[C]);
+    c.cloud.openrouter.cleanup.consent_at_ms = 0;
+    let k = rig(c);
+    assert!(summarise(&k).is_err());
+    assert_eq!(k.cloud_calls(), 0, "nothing sent without consent");
+    // Cloud switched off in the order: never asked.
+    let mut c = cfg(&[L, C]);
+    c.cleanup_off = vec![C];
+    let k = rig(c);
+    let s = summarise(&k).unwrap();
+    assert_eq!((s.engine.as_str(), k.cloud_calls()), ("local", 0));
+}
+
+#[test]
+fn no_engine_on_means_no_summary() {
+    let mut c = cfg(&[L, S, C]);
+    c.cleanup_off = vec![L, S, C];
+    let k = rig(c);
+    assert!(k
+        .router
+        .cleanup_cleaner(Some(k.local.clone() as Arc<dyn Cleaner>))
+        .is_none());
+    assert_eq!(
+        summarise(&k).unwrap_err(),
+        flow_core::summary::SummaryError::NoEngine
+    );
 }

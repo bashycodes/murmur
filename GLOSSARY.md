@@ -39,6 +39,10 @@ _Avoid_: call log, call recording (the audio file, which is not ours)
 The Windows feature that records a meeting (microphone + what the PC plays) and turns it into a transcript of Me / Others turns on the Meetings page.
 _Avoid_: meeting bot, call recorder
 
+**Meeting summary**:
+A short AI summary plus action items of one meeting transcript, written by the AI cleanup engines in the meeting's language and kept with the meeting; Regenerate writes it again.
+_Avoid_: minutes, recap, notes (the per-chunk notes a long meeting is first condensed into)
+
 **Meeting detection**:
 The Notetaker's watch for a Zoom, Webex or Jabber call (a meeting window or the app's microphone stream, not the app merely running) that asks to record it or records it, and stops that recording when the call ends.
 _Avoid_: auto-record (one of its two modes), call detection on Android (no such feature)
