@@ -329,9 +329,14 @@ object DevText {
         val last = c.last?.let { l ->
             listOfNotNull("last", l.latencyMs?.let { "$it ms" }, l.ttftMs?.let { "first token $it ms" }, l.costUsd?.let { (if (l.costEstimated) "≈" else "") + dev.flowclone.data.CloudText.usd(it) }).joinToString(" ")
         }
-        val custom = c.customMonthCostUsd.takeIf { it > 0 }?.let { "${dev.flowclone.data.CloudText.usd(it)} on your server (not in budget)" }
-        val who = if (c.provider == "custom") dev.flowclone.data.CustomServer.NAME + (if (c.host.isEmpty()) "" else " (${c.host})") else null
-        return listOfNotNull("On", who, c.model, why, last, "this month ${dev.flowclone.data.CloudText.usd(c.monthCostUsd)}", custom).joinToString(" · ")
+        // D52: month_cost_usd counts both providers; OpenRouter's part and the custom server's are shown apart.
+        val usd = dev.flowclone.data.CloudText::usd
+        val openRouter = (c.monthCostUsd - c.customMonthCostUsd).coerceAtLeast(0.0)
+        val isCustom = c.provider == "custom"
+        val orLine = if (!isCustom) "this month ${usd(openRouter)}" else openRouter.takeIf { it > 0 }?.let { "OpenRouter this month ${usd(it)}" }
+        val custom = c.customMonthCostUsd.takeIf { it > 0 }?.let { "${usd(it)} on your server this month (not in budget)" }
+        val who = if (isCustom) dev.flowclone.data.CustomServer.NAME + (if (c.host.isEmpty()) "" else " (${c.host})") else null
+        return listOfNotNull("On", who, c.model, why, last, orLine, custom).joinToString(" · ")
     }
 
     /** D18 "Test provider" result line. */
