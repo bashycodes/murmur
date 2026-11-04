@@ -22,6 +22,7 @@
     "local",
     "server"
   ],
+  "provider": "openrouter",
   "server_circuit": {
     "open": false,
     "reason": null,
