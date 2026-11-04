@@ -406,12 +406,12 @@ mod tests {
             "summary":{"v":2,"status":"done","text":"A short sync.","action_items":["Me: book it"],
             "engine":"server","made_ms":5,"later_field":true}}"#;
         std::fs::write(d.join("m10.json"), new).unwrap();
-        let sm = s.get("m10").unwrap().summary.unwrap();
-        assert_eq!(sm.status, SummaryStatus::Done);
-        assert_eq!(sm.action_items, ["Me: book it"]);
-        assert_eq!(sm.engine.as_deref(), Some("server"));
+        let summary = s.get("m10").unwrap().summary.unwrap();
+        assert_eq!(summary.status, SummaryStatus::Done);
+        assert_eq!(summary.action_items, ["Me: book it"]);
+        assert_eq!(summary.engine.as_deref(), Some("server"));
         // Regenerate keeps the old text while pending.
-        let p = MeetingSummary::pending(Some(&sm));
+        let p = MeetingSummary::pending(Some(&summary));
         assert_eq!(
             (p.status, p.text.as_str(), p.v),
             (SummaryStatus::Pending, "A short sync.", 1)

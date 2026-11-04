@@ -456,7 +456,7 @@ pub fn summarise(
     let language = meeting_language(transcript);
     let mut last = SummaryError::NoEngine;
     for hop in &hops {
-        match on_hop(hop, transcript, language, opts) {
+        match summarise_on_engine(hop, transcript, language, opts) {
             Ok(s) => return Ok(s),
             Err(SummaryError::Cancelled) => return Err(SummaryError::Cancelled),
             Err(e) => last = e,
@@ -466,7 +466,7 @@ pub fn summarise(
 }
 
 /// The whole summary on one engine.
-fn on_hop(
+fn summarise_on_engine(
     hop: &Arc<dyn Cleaner>,
     transcript: &str,
     language: Option<&str>,
@@ -508,9 +508,9 @@ in Hebrew only. Do not translate them to English.",
         );
         let (again, _) = call(hop, &prompt, opts)?;
         calls += 1;
-        let (s2, i2) = parse(&crate::command::sanitize(&again, None));
-        if !s2.is_empty() && !drifted(&s2, &i2) {
-            (summary, items) = (s2, i2);
+        let (retry_summary, retry_items) = parse(&crate::command::sanitize(&again, None));
+        if !retry_summary.is_empty() && !drifted(&retry_summary, &retry_items) {
+            (summary, items) = (retry_summary, retry_items);
         }
     }
     if summary.is_empty() && items.is_empty() {
@@ -544,11 +544,11 @@ fn call(
         let abort = AbortFlag(Some(flag.clone()));
         let deadline = Instant::now() + opts.call_timeout;
         let (tx, rx) = mpsc::channel();
-        let (h, p) = (hop.clone(), prompt.clone());
+        let (engine, call_prompt) = (hop.clone(), prompt.clone());
         std::thread::Builder::new()
             .name("flow-summary-call".into())
             .spawn(move || {
-                let _ = tx.send(h.clean_metered(&p, deadline, &abort));
+                let _ = tx.send(engine.clean_metered(&call_prompt, deadline, &abort));
             })
             .map_err(|e| SummaryError::Failed(e.to_string()))?;
         let mut yielded = false;

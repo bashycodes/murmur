@@ -401,7 +401,7 @@ impl Inner {
 
     /// Make (or remake) a meeting's summary on the AI cleanup order.
     fn run_summary(&self, id: &str) {
-        let Some(sm) = self.summaries.clone() else {
+        let Some(summaries) = self.summaries.clone() else {
             return;
         };
         let Some(m) = self.store.get(id) else { return };
@@ -415,9 +415,9 @@ impl Inner {
         let input = summary_input(&m.turns);
         let opts = flow_core::summary::Options {
             cancel,
-            ..sm.options.clone()
+            ..summaries.options.clone()
         };
-        let result = flow_core::summary::summarise((sm.engine)(), &input, &opts);
+        let result = flow_core::summary::summarise((summaries.engine)(), &input, &opts);
         {
             let _io = self.io.lock().unwrap();
             if let Some(mut cur) = self.store.get(id) {
