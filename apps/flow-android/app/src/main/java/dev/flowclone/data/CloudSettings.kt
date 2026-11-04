@@ -350,27 +350,28 @@ data class CloudUsage(val month: String = "", val providers: List<ProviderUsage>
         val costEstimated: Boolean = false,
         /** D28: "stt" (also when absent) | "cleanup". */
         val purpose: String = PURPOSE_STT,
-    )
+    ) {
+        /** D52: the custom cleanup server's counter (never OpenRouter's, never in the budget). */
+        val isCustom: Boolean get() = providerId == CustomServer.ID
+    }
 
     /** `CloudUsage::total_cost`: every provider, the custom server included (never shown as OpenRouter's). */
     val totalCostUsd: Double get() = providers.sumOf { it.costUsd }
     /** D52 `CloudUsage::budget_cost`: what the monthly budget counts (OpenRouter only, never the custom server). */
-    val budgetCostUsd: Double get() = providers.filter { it.providerId != CustomServer.ID }.sumOf { it.costUsd }
+    val budgetCostUsd: Double get() = providers.filterNot { it.isCustom }.sumOf { it.costUsd }
     /** D52 `CloudUsage::custom_cost`: what the custom server reported (its cost header), shown apart. */
-    val customCostUsd: Double get() = providers.filter { it.providerId == CustomServer.ID }.sumOf { it.costUsd }
+    val customCostUsd: Double get() = providers.filter { it.isCustom }.sumOf { it.costUsd }
 
-    /** `CloudUsage::cost_for(purpose)`; counters of removed providers count as speech-to-text. */
-    fun costFor(purpose: String): Double = providers.filter { it.purpose == purpose }.sumOf { it.costUsd }
-    fun estimated(purpose: String): Boolean = providers.any { it.purpose == purpose && it.costEstimated }
-    fun requests(purpose: String): Long = providers.filter { it.purpose == purpose }.sumOf { it.requests }
-
-    /** D52: one use's OpenRouter part (what the budget counts), the custom server left out. */
+    /**
+     * D52: one use's OpenRouter part (what the budget counts), the custom server left out; counters
+     * of removed providers count as speech-to-text.
+     */
     fun openRouterCostFor(purpose: String): Double = openRouter(purpose).sumOf { it.costUsd }
     fun openRouterEstimated(purpose: String): Boolean = openRouter(purpose).any { it.costEstimated }
     fun openRouterRequests(purpose: String): Long = openRouter(purpose).sumOf { it.requests }
     /** D52: cleanup requests sent to the custom server this month (counted even when it reports no cost). */
-    val customRequests: Long get() = providers.filter { it.providerId == CustomServer.ID }.sumOf { it.requests }
-    private fun openRouter(purpose: String) = providers.filter { it.purpose == purpose && it.providerId != CustomServer.ID }
+    val customRequests: Long get() = providers.filter { it.isCustom }.sumOf { it.requests }
+    private fun openRouter(purpose: String) = providers.filter { it.purpose == purpose && !it.isCustom }
     fun billedAudioMs(): Long = providers.filter { it.purpose == PURPOSE_STT }.sumOf { it.billedAudioMs }
 
     fun toJson(): JSONObject = JSONObject().apply {
@@ -538,33 +539,35 @@ object CloudText {
      * USAGE card header: OpenRouter this month (what the budget counts), its speech and cleanup
      * parts. D52: the custom server's usage is never in these; [usageLines] gives it its own line.
      */
-    fun usageStats(u: CloudUsage, s: CloudSettings): List<Pair<String, String>> {
-        fun cost(purpose: String) = (if (u.openRouterEstimated(purpose)) "≈" else "") + usd(u.openRouterCostFor(purpose))
-        return listOf(
-            usd(u.budgetCostUsd) to "this month" + (s.monthlyBudgetUsd?.let { " of ${usd(it)}" } ?: ""),
-            cost(CloudUsage.PURPOSE_STT) to "speech",
-            cost(CloudUsage.PURPOSE_CLEANUP) to "cleanup",
-        )
-    }
+    fun usageStats(u: CloudUsage, s: CloudSettings): List<Pair<String, String>> = listOf(
+        usd(u.budgetCostUsd) to "this month" + (s.monthlyBudgetUsd?.let { " of ${usd(it)}" } ?: ""),
+        openRouterCost(u, CloudUsage.PURPOSE_STT) to "speech",
+        openRouterCost(u, CloudUsage.PURPOSE_CLEANUP) to "cleanup",
+    )
+
+    /** "≈$0.25": one use's OpenRouter cost, marked when estimated. */
+    private fun openRouterCost(u: CloudUsage, purpose: String, approx: String = "≈") =
+        (if (u.openRouterEstimated(purpose)) approx else "") + usd(u.openRouterCostFor(purpose))
+
+    /** "1 cleanup request" / "2 cleanup requests". */
+    private fun count(n: Long, what: String) = "$n $what" + if (n == 1L) "" else "s"
 
     /** USAGE card: OpenRouter's "Speech $x · Cleanup $y", its requests, the budget line, then the custom server's line. */
     fun usageLines(u: CloudUsage, s: CloudSettings): List<String> {
-        fun part(purpose: String) = (if (u.openRouterEstimated(purpose)) "≈ " else "") + usd(u.openRouterCostFor(purpose))
-        val stt = u.openRouterRequests(CloudUsage.PURPOSE_STT)
-        val cl = u.openRouterRequests(CloudUsage.PURPOSE_CLEANUP)
+        fun part(purpose: String) = openRouterCost(u, purpose, approx = "≈ ")
         val lines = mutableListOf(
             "Speech ${part(CloudUsage.PURPOSE_STT)} · Cleanup ${part(CloudUsage.PURPOSE_CLEANUP)} · this month (${u.month.ifEmpty { "-" }})",
-            "$stt speech request${if (stt == 1L) "" else "s"} (" + String.format(java.util.Locale.US, "%.1f min", u.billedAudioMs() / 60_000.0) +
-                ") · $cl cleanup request${if (cl == 1L) "" else "s"}",
+            count(u.openRouterRequests(CloudUsage.PURPOSE_STT), "speech request") + " (" +
+                String.format(java.util.Locale.US, "%.1f min", u.billedAudioMs() / 60_000.0) + ") · " +
+                count(u.openRouterRequests(CloudUsage.PURPOSE_CLEANUP), "cleanup request"),
         )
         s.monthlyBudgetUsd?.let {
             lines += "Budget ${usd(it)}/month: ${usd(u.budgetCostUsd)} used" + if (u.budgetCostUsd >= it) " — reached, OpenRouter paused until next month" else ""
         }
         // D52: the owner's own server is never in the OpenRouter budget; its requests count even without a cost.
         if (u.customRequests > 0 || u.customCostUsd > 0) {
-            val n = u.customRequests
             val cost = u.customCostUsd.takeIf { it > 0 }?.let { "reported ${usd(it)}" } ?: "no cost reported"
-            lines += "${CustomServer.NAME}: $n cleanup request${if (n == 1L) "" else "s"} · $cost (not in the budget)"
+            lines += "${CustomServer.NAME}: ${count(u.customRequests, "cleanup request")} · $cost (not in the budget)"
         }
         return lines
     }

@@ -88,9 +88,9 @@ class CloudSettingsTest {
 
     @Test fun usageIsSplitByPurpose() {
         val u = CloudUsage.decode(javaClass.classLoader!!.getResource("cloud_usage.json")!!.readText())
-        assertEquals(0.0234, u.costFor(CloudUsage.PURPOSE_STT), 1e-9)
-        assertEquals(0.014, u.costFor(CloudUsage.PURPOSE_CLEANUP), 1e-9)
-        assertTrue(u.estimated(CloudUsage.PURPOSE_CLEANUP)); assertFalse(u.estimated(CloudUsage.PURPOSE_STT))
+        assertEquals(0.0234, u.openRouterCostFor(CloudUsage.PURPOSE_STT), 1e-9)
+        assertEquals(0.014, u.openRouterCostFor(CloudUsage.PURPOSE_CLEANUP), 1e-9)
+        assertTrue(u.openRouterEstimated(CloudUsage.PURPOSE_CLEANUP)); assertFalse(u.openRouterEstimated(CloudUsage.PURPOSE_STT))
         val lines = CloudText.usageLines(u, CloudSettings(monthlyBudgetUsd = 5.0))
         assertEquals("Speech \$0.02 · Cleanup ≈ \$0.01 · this month (2026-10)", lines[0])
         assertEquals("42 speech requests (5.2 min) · 20 cleanup requests", lines[1])
@@ -118,7 +118,12 @@ class CloudSettingsTest {
             """{"supported":true,"enabled":true,"provider":"custom","host":"10.0.0.5","model":"m","month_cost_usd":4.0,"custom_month_cost_usd":4.0}""")
         assertEquals(4.0, st.customMonthCostUsd, 1e-9)
         val line = dev.flowclone.core.DevText.cleanupStatus(st)
-        assertTrue(line, line.startsWith("On · Custom server (10.0.0.5) · m") && line.endsWith("\$4.00 on your server (not in budget)"))
+        assertEquals("On · Custom server (10.0.0.5) · m · \$4.00 on your server this month (not in budget)", line)
+        // Both providers this month: OpenRouter's part and the server's, never added together.
+        val both = dev.flowclone.core.DevText.cleanupStatus(st.copy(monthCostUsd = 4.5))
+        assertEquals("On · Custom server (10.0.0.5) · m · OpenRouter this month \$0.50 · \$4.00 on your server this month (not in budget)", both)
+        val or = dev.flowclone.core.DevText.cleanupStatus(st.copy(provider = "openrouter", host = "", monthCostUsd = 4.5))
+        assertEquals("On · m · this month \$0.50 · \$4.00 on your server this month (not in budget)", or)
     }
 
     @Test fun customServerRequestsCountWithoutACost() {
