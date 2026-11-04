@@ -18,15 +18,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
-- **Docs: moving to a network with no internet.** `docs/air-gapped.md`
-  gains "Download these now" (all 15 models, 7.0 GB, each link pinned to
-  one upstream version and checked against the apps' built-in SHA-256, with
-  a download loop that also writes each library folder's `model.toml`),
-  "Also bring" (which installers and APK, WebView2 for Windows 10, server
-  build) and a step-by-step transfer checklist. The model list is
-  `docs/air-gapped-models.txt`; the readiness review (what still reaches
-  for the internet, why to cut a release first) is
-  `docs/findings/2026-11-04-air-gap-readiness.md`.
+- **Docs: moving to a network with no internet.** `docs/air-gapped.md` gains a transfer checklist, every model to download (pinned, checked; list in `docs/air-gapped-models.txt`) and the server config to use them; review in `docs/findings/2026-11-04-air-gap-readiness.md`.
 - **Server: every connection's end is logged.** Each WebSocket connection
   now leaves one `disconnected` line when it ends, however it ends, with the
   key id, client version, duration, control messages, audio bytes received,
