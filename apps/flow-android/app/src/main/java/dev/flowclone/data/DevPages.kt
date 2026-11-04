@@ -186,7 +186,7 @@ object DevSummary {
         fun use(on: Boolean, consent: Boolean) = when { !on -> "off"; !consent -> "on, no consent"; else -> "on" }
         return listOfNotNull(
             "Speech ${use(s.cloudRouted, s.cloud.stt.consentOk)}",
-            "Cleanup ${use(s.cloudCleanupRouted, s.cloud.cleanup.consentOk)}",
+            "Cleanup ${use(s.cloudCleanupRouted, s.cloud.cleanupConsentOk)}",
             if (!hasKey) "no key" else null,
             s.cloud.monthlyBudgetUsd?.let { "budget ${CloudText.usd(it)}" },
         ).joinToString(" · ")

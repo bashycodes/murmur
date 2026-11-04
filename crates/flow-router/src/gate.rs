@@ -1,10 +1,13 @@
-//! Cloud cleanup gate (D28 §2.5/§2.6): wraps the injected OpenRouter
-//! cleaner with the per-call checks the router owns. No network code.
+//! Cloud cleanup gate (D28 §2.5/§2.6, D52): wraps the injected cleaner of
+//! the selected provider (OpenRouter or the user's custom server) with the
+//! per-call checks the router owns. No network code.
 //!
 //! Every call re-checks C1 for cleanup — build support, `allow_cloud_cleanup`
-//! and `cloud` in `cleanup_order`, cleanup consent for openrouter.ai, a key,
-//! the cleanup circuit and the monthly budget (catalogue estimate before
-//! the call) — and refuses *fast* (`CleanError::Unavailable`) so a
+//! and `cloud` in `cleanup_order`, cleanup consent for the provider's host,
+//! a key (OpenRouter; optional for a custom server),
+//! the cleanup circuit and, for OpenRouter only, the monthly budget
+//! (catalogue estimate before the call; D52: the custom server is the
+//! owner's own and never budget-gated) — and refuses *fast* (`CleanError::Unavailable`) so a
 //! `RoutedCleaner` can use the on-device LLM or the deterministic text.
 //! After the call it records the exact `usage.cost` (or the estimate, when
 //! a generation exists but reported no cost) and feeds the circuit.
@@ -17,7 +20,7 @@ use flow_core::asr::AbortFlag;
 use flow_core::cleanup::{CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope};
 
 use crate::cloud::{
-    month_of, CloudUsage, OpenRouterConfig, SecretString, Usd, OPENROUTER_ID, PURPOSE_CLEANUP,
+    month_of, CleanupProvider, CloudConfig, CloudUsage, SecretString, Usd, PURPOSE_CLEANUP,
 };
 use crate::router::{failure_from_str, Circuit, LockExt};
 use crate::{now_unix_ms, CircuitStatus, Failure};
@@ -26,15 +29,16 @@ use crate::{now_unix_ms, CircuitStatus, Failure};
 pub(crate) struct GateState {
     /// Build support + toggle + order.
     pub wanted: bool,
-    pub cfg: OpenRouterConfig,
+    /// The cloud config (D52: provider, OpenRouter or custom server entry).
+    pub cfg: CloudConfig,
     pub budget: Option<Usd>,
     pub key: Option<SecretString>,
     pub circuit: Circuit,
-    /// The OpenRouter cleaner for (privacy, cleanup, key).
+    /// The provider's cleaner for (cleanup view, key).
     pub inner: Option<Arc<dyn Cleaner>>,
-    /// Real cost of the last call per model (estimate for unpriced
-    /// models, spec §2.6 rule 5).
-    last_cost: HashMap<String, f64>,
+    /// Real cost of the last call per (provider, model) (estimate for
+    /// unpriced models, spec §2.6 rule 5).
+    last_cost: HashMap<(CleanupProvider, String), f64>,
     pub last: Option<CleanUsage>,
     /// Bumped when the cleanup config or key changes: results of calls
     /// started before do not touch the new circuit.
@@ -58,7 +62,7 @@ impl Gate {
         Self {
             st: Mutex::new(GateState {
                 wanted: false,
-                cfg: OpenRouterConfig::default(),
+                cfg: CloudConfig::default(),
                 budget: None,
                 key: None,
                 circuit: Circuit::new(true),
@@ -78,9 +82,10 @@ impl Gate {
     }
 
     fn check_static(st: &GateState) -> Result<Arc<dyn Cleaner>, Failure> {
+        let needs_key = st.cfg.cleanup_needs_key();
         if !st.wanted
-            || !st.cfg.cleanup.consent_ok()
-            || st.key.as_ref().is_none_or(|k| k.is_empty())
+            || !st.cfg.cleanup_consent_ok()
+            || (needs_key && st.key.as_ref().is_none_or(|k| k.is_empty()))
         {
             return Err(Failure::CloudCleanupNotConfigured);
         }
@@ -107,10 +112,14 @@ impl Gate {
         self.st.lk().last.clone()
     }
 
+    fn cost_key(cfg: &CloudConfig) -> (CleanupProvider, String) {
+        (cfg.cleanup_provider, cfg.cleanup_model().to_string())
+    }
+
     fn spent(&self) -> f64 {
         let mut u = self.usage.lk();
         u.roll(&month_of(now_unix_ms()));
-        u.total_cost()
+        u.budget_cost()
     }
 
     /// Pre-flight: the cleaner to call, the estimate, the epoch.
@@ -119,15 +128,17 @@ impl Gate {
         let inner = Self::check_static(&st).map_err(unavailable)?;
         let est = inner
             .estimate_cost_usd(prompt)
-            .or_else(|| st.last_cost.get(&st.cfg.cleanup.model).map(|c| c * 2.0));
-        if let Some(b) = st.budget {
-            // Unknown price with a budget: allowed only once a real cost
-            // of this model was recorded (spec §2.6 rule 5).
-            let Some(e) = est else {
-                return Err(unavailable(Failure::BudgetExceeded));
-            };
-            if self.spent() + e > b.0 {
-                return Err(unavailable(Failure::BudgetExceeded));
+            .or_else(|| st.last_cost.get(&Self::cost_key(&st.cfg)).map(|c| c * 2.0));
+        // D52: the budget is OpenRouter's; the custom server is not gated.
+        let budget = st.budget.filter(|_| st.cfg.cleanup_budgeted());
+        if let Some(b) = budget {
+            let spent = self.spent();
+            match est {
+                Some(e) if spent + e > b.0 => return Err(unavailable(Failure::BudgetExceeded)),
+                Some(_) => {}
+                // Unknown OpenRouter price with a budget: allowed only once
+                // a real cost of this model was recorded (spec §2.6 rule 5).
+                None => return Err(unavailable(Failure::BudgetExceeded)),
             }
         }
         Ok((inner, est, st.epoch))
@@ -154,7 +165,7 @@ impl Gate {
             let mut usage = self.usage.lk();
             usage.roll(&month_of(now_unix_ms()));
             usage.record_for(
-                OPENROUTER_ID,
+                st.cfg.cleanup_key_id(),
                 PURPOSE_CLEANUP,
                 0,
                 Some(Usd(cost.unwrap_or(0.0))),
@@ -162,8 +173,8 @@ impl Gate {
             );
         }
         if let (Some(c), false) = (cost, estimated) {
-            let m = st.cfg.cleanup.model.clone();
-            st.last_cost.insert(m, c);
+            let k = Self::cost_key(&st.cfg);
+            st.last_cost.insert(k, c);
         }
         u.cost_usd = cost.map(Usd);
         u.cost_estimated = estimated;
@@ -240,7 +251,7 @@ impl Cleaner for Gate {
     }
 
     fn prompt_scope(&self) -> PromptScope {
-        self.st.lk().cfg.cleanup.scope()
+        self.st.lk().cfg.cleanup_scope()
     }
 
     fn engine(&self) -> &'static str {
@@ -248,11 +259,11 @@ impl Cleaner for Gate {
     }
 
     fn model(&self) -> Option<String> {
-        Some(self.st.lk().cfg.cleanup.model.clone())
+        Some(self.st.lk().cfg.cleanup_model().to_string())
     }
 
     fn timeout_ms(&self) -> Option<u64> {
-        Some(self.st.lk().cfg.cleanup.timeout_ms)
+        Some(self.st.lk().cfg.cleanup_timeout_ms())
     }
 
     fn estimate_cost_usd(&self, prompt: &CleanPrompt) -> Option<f64> {

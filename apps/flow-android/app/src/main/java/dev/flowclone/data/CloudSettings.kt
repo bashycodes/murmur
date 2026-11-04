@@ -138,6 +138,119 @@ data class CleanupSettings(
 }
 
 /**
+ * D52 "Load models" / "Test connection": the shell passes only a key typed into the field. The
+ * stored key is chosen by the router, and only for the consented host
+ * (`Router::with_custom_cleanup_key`).
+ */
+object CustomModelsKey {
+    fun typedOnly(typed: String?): String? = typed?.trim()?.takeIf { it.isNotEmpty() }
+}
+
+/** D52 `cloud.cleanup_provider`: which service the cloud cleanup route calls. STT is always OpenRouter. */
+enum class CleanupProvider(val wire: String) {
+    OPENROUTER("openrouter"),
+    CUSTOM("custom");
+
+    companion object {
+        fun parse(w: String?) = entries.firstOrNull { it.wire == w } ?: OPENROUTER
+    }
+}
+
+/**
+ * D52 `nativeCustomCleanupAddress`: the router's own reading of a custom server address
+ * (`flow_router::cloud::custom_server_address` + `valid_custom_model_id`). [url] is the normalised
+ * API root and [host] the canonical host consent binds to; null [url] = unusable ([message] says why).
+ */
+data class CustomAddress(
+    val url: String? = null,
+    val host: String = "",
+    val modelOk: Boolean = false,
+    val error: String? = null,
+    val message: String? = null,
+) {
+    val https: Boolean get() = url?.startsWith("https://") ?: true
+}
+
+/** Where [CustomServer] gets the router's reading of an address (the native library; a fake in JVM tests). */
+fun interface CustomAddressCheck {
+    fun check(baseUrl: String, model: String): CustomAddress
+}
+
+/**
+ * D52: the user's own OpenAI-compatible server for cleanup (LiteLLM proxy, vLLM, Ollama, …).
+ * URL normalisation, the consent host and model-id rules come from the router through [check]
+ * (never a Kotlin URL parser), so the page records consent for exactly the host the router checks.
+ */
+object CustomServer {
+    /** Secure-storage id of its optional key (`SecretVault("flow_cloud_custom")`, `set_cloud_key("custom")`). */
+    const val ID = "custom"
+    const val NAME = "Custom server"
+    const val TIMEOUT_MIN = 800L
+    const val TIMEOUT_MAX = 30_000L
+    const val DEFAULT_TIMEOUT_MS = 4_000L
+    /** Custom server selected but its address or model is unusable: the router gets no cleanup consent. */
+    const val NOT_SET_UP = "Custom server not set up — cloud cleanup off"
+    const val URL_HINT = "/v1 is added when no path is given; include the full path if your server uses a prefix."
+
+    /** The router's reader; replaced in JVM tests. A library without D52 reads every address as unusable. */
+    @Volatile var check: CustomAddressCheck = CustomAddressCheck { u, m -> dev.flowclone.core.NativeFlowCore.customCleanupAddress(u, m) }
+
+    fun address(baseUrl: String, model: String = ""): CustomAddress = check.check(baseUrl, model)
+
+    fun normalizeBaseUrl(raw: String): String? = address(raw).url
+
+    /** The canonical host of [baseUrl] (the router's `CustomCleanupConfig::host`), or "" when unusable. */
+    fun host(baseUrl: String): String = address(baseUrl).host
+
+    /** `valid_custom_model_id`: free text, 1-256 bytes, no whitespace or control characters. */
+    fun validModelId(id: String): Boolean = address("", id).modelOk
+}
+
+/**
+ * `cloud.custom_cleanup` (`flow_router::cloud::CustomCleanupConfig`). The consent is bound to the
+ * host of [baseUrl]: pointing it at another host voids it.
+ */
+data class CustomCleanupSettings(
+    /** Stored normalised ([CustomServer.normalizeBaseUrl]); "" = not set up. */
+    val baseUrl: String = "",
+    val model: String = "",
+    val timeoutMs: Long = CustomServer.DEFAULT_TIMEOUT_MS,
+    val connectTimeoutMs: Long = 1_500,
+    val consentHost: String = "",
+    val consentAtMs: Long = 0,
+) {
+    val host: String get() = CustomServer.host(baseUrl)
+    val https: Boolean get() = CustomServer.address(baseUrl).https
+    val consentOk: Boolean get() = consentAtMs > 0 && consentHost.isNotEmpty() && host.isNotEmpty() && consentHost.equals(host, ignoreCase = true)
+
+    /** The router accepts it (`CustomCleanupConfig::validate`): a usable URL and model id. */
+    val ready: Boolean
+        get() = CustomServer.address(baseUrl, model.trim()).let { it.url != null && it.modelOk } &&
+            timeoutMs in CustomServer.TIMEOUT_MIN..CustomServer.TIMEOUT_MAX
+
+    fun withConsent(nowMs: Long) = copy(consentHost = host, consentAtMs = nowMs)
+
+    fun toJson(): JSONObject = JSONObject().apply {
+        put("base_url", baseUrl); put("model", model); put("timeout_ms", timeoutMs); put("connect_timeout_ms", connectTimeoutMs)
+        put("consent_host", consentHost); put("consent_at_ms", consentAtMs)
+    }
+
+    companion object {
+        fun fromJson(o: JSONObject?): CustomCleanupSettings {
+            if (o == null) return CustomCleanupSettings()
+            return CustomCleanupSettings(
+                baseUrl = o.optString("base_url"),
+                model = o.optString("model"),
+                timeoutMs = o.optLong("timeout_ms", CustomServer.DEFAULT_TIMEOUT_MS),
+                connectTimeoutMs = o.optLong("connect_timeout_ms", 1_500),
+                consentHost = o.optString("consent_host"),
+                consentAtMs = o.optLong("consent_at_ms", 0),
+            )
+        }
+    }
+}
+
+/**
  * `RouterConfig.cloud`, schema 2 (`crates/flow-router/fixtures/router_config_cloud.json`). API
  * keys are never part of it (one key, [OpenRouter.ID], in [CloudKeyStore]).
  */
@@ -147,8 +260,30 @@ data class CloudSettings(
     val cleanup: CleanupSettings = CleanupSettings(),
     /** One budget for both uses; null = none. */
     val monthlyBudgetUsd: Double? = null,
+    /** D52: OpenRouter (default) or [customCleanup] for the cleanup route. */
+    val cleanupProvider: CleanupProvider = CleanupProvider.OPENROUTER,
+    val customCleanup: CustomCleanupSettings = CustomCleanupSettings(),
 ) {
     val isDefault: Boolean get() = this == CloudSettings()
+    val customProvider: Boolean get() = cleanupProvider == CleanupProvider.CUSTOM
+
+    /** `CloudConfig::cleanup_consent_ok`: the selected provider's own consent. */
+    val cleanupConsentOk: Boolean get() = if (customProvider) customCleanup.consentOk else cleanup.consentOk
+    val cleanupModel: String get() = if (customProvider) customCleanup.model else cleanup.model
+    val cleanupTimeoutMs: Long get() = if (customProvider) customCleanup.timeoutMs else cleanup.timeoutMs
+    /** The cleanup key's [CloudKeyStore] id: the custom key is optional, OpenRouter's is required. */
+    val cleanupKeyId: String get() = if (customProvider) CustomServer.ID else OpenRouter.ID
+
+    /** Custom server selected but not usable: shown as [CustomServer.NOT_SET_UP], never as OpenRouter. */
+    val customNotSetUp: Boolean get() = customProvider && !customCleanup.ready
+
+    /** "OpenRouter" / "Custom server (10.0.0.5)" / [CustomServer.NOT_SET_UP]: the cloud cleanup engine's name. */
+    val cleanupProviderName: String
+        get() = when {
+            !customProvider -> OpenRouter.NAME
+            customNotSetUp -> CustomServer.NOT_SET_UP
+            else -> customCleanup.host.let { if (it.isEmpty()) CustomServer.NAME else "${CustomServer.NAME} ($it)" }
+        }
 
     /** The `OpenRouterConfig` JSON (`nativeProbeCloud`, `nativeSetCloudKeyFor`). */
     fun openRouterJson(): JSONObject = JSONObject().apply {
@@ -159,7 +294,20 @@ data class CloudSettings(
         put("schema", SCHEMA)
         put("openrouter", openRouterJson())
         put("monthly_budget_usd", monthlyBudgetUsd ?: JSONObject.NULL)
+        // Omitted while default, like the router's `skip_serializing_if`: older readers see the same JSON.
+        if (customProvider) put("cleanup_provider", cleanupProvider.wire)
+        if (customCleanup != CustomCleanupSettings()) put("custom_cleanup", customCleanup.toJson())
     }
+
+    /**
+     * [toJson] for the router: a custom server that is not [CustomCleanupSettings.ready] would make
+     * the router refuse the whole config, so it is sent as OpenRouter with no cleanup consent (no
+     * cleanup leaves the phone until the server is set up). The pages then say
+     * [CustomServer.NOT_SET_UP] ([customNotSetUp]), never "OpenRouter".
+     */
+    fun routerJson(): JSONObject =
+        if (customProvider && !customCleanup.ready) copy(cleanupProvider = CleanupProvider.OPENROUTER, cleanup = cleanup.withoutConsent()).toJson()
+        else toJson()
 
     companion object {
         const val SCHEMA = 2
@@ -176,6 +324,8 @@ data class CloudSettings(
                 stt = SttSettings.fromJson(or?.optJSONObject("stt")),
                 cleanup = CleanupSettings.fromJson(or?.optJSONObject("cleanup")),
                 monthlyBudgetUsd = if (!o.has("monthly_budget_usd") || o.isNull("monthly_budget_usd")) null else o.optDouble("monthly_budget_usd"),
+                cleanupProvider = CleanupProvider.parse(o.optString("cleanup_provider")),
+                customCleanup = CustomCleanupSettings.fromJson(o.optJSONObject("custom_cleanup")),
             )
         }
 
@@ -198,6 +348,10 @@ data class CloudUsage(val month: String = "", val providers: List<ProviderUsage>
     )
 
     val totalCostUsd: Double get() = providers.sumOf { it.costUsd }
+    /** D52 `CloudUsage::budget_cost`: what the monthly budget counts (OpenRouter only, never the custom server). */
+    val budgetCostUsd: Double get() = providers.filter { it.providerId != CustomServer.ID }.sumOf { it.costUsd }
+    /** D52 `CloudUsage::custom_cost`: what the custom server reported (its cost header), shown apart. */
+    val customCostUsd: Double get() = providers.filter { it.providerId == CustomServer.ID }.sumOf { it.costUsd }
 
     /** `CloudUsage::cost_for(purpose)`; counters of removed providers count as speech-to-text. */
     fun costFor(purpose: String): Double = providers.filter { it.purpose == purpose }.sumOf { it.costUsd }
@@ -275,6 +429,32 @@ object CloudText {
             "dictated into. Used for on-device and cloud dictations; your server uses its own AI. You can turn this off at any time."
     const val CLEANUP_CONSENT_BUTTON = "Send text to OpenRouter"
 
+    /** D52: the consent of a custom server names the typed host, not OpenRouter. */
+    fun customConsentTitle(host: String) = "Send dictated text to $host?"
+    fun customConsentBody(cc: CustomCleanupSettings, c: CleanupSettings): String =
+        "After each dictation, the text (and your dictionary words) is sent to your server at ${cc.host}. Your voice is " +
+            "not sent: cloud speech-to-text always uses OpenRouter.\n\nWhat is sent: " + cleanupSends(c) + "." +
+            (if (!cc.https) "\n\n$HTTP_WARNING" else "") +
+            "\n\nPassword fields are never dictated into. You can turn this off at any time."
+    const val CUSTOM_CONSENT_BUTTON = "Send text to this server"
+
+    /** Shown under an http:// base URL and in its consent. */
+    const val HTTP_WARNING = "This address uses http://: the key and the dictated text are sent unencrypted."
+    const val CUSTOM_STT_NOTE = "Only AI cleanup uses this server. Cloud speech-to-text always uses OpenRouter."
+
+    /** The consent dialog of the selected provider: (title, body, button). */
+    fun cleanupConsent(s: CloudSettings): Triple<String, String, String> =
+        if (s.customProvider) Triple(customConsentTitle(s.customCleanup.host), customConsentBody(s.customCleanup, s.cleanup), CUSTOM_CONSENT_BUTTON)
+        else Triple(CLEANUP_CONSENT_TITLE, cleanupConsentBody(s.cleanup), CLEANUP_CONSENT_BUTTON)
+
+    /** "Load models" / "Test connection" result: the count, or the error's hint and the server's message. */
+    fun customModelsLine(m: dev.flowclone.core.CustomModels): String = when {
+        m.error == null -> if (m.models.isEmpty()) "Connected: the server lists no models" else
+            "Connected: ${m.models.size} model${if (m.models.size == 1) "" else "s"}"
+        else -> "Failed: " + (hint(m.error)?.let { if (m.error == "connect_failed") "server not reachable" else it } ?: m.error) +
+            (m.message?.takeIf { it.isNotBlank() }?.let { " ($it)" } ?: "")
+    }
+
     /** PromptScope in words: the transcript, app category, style and dictionary always; each toggle adds its item. */
     fun cleanupSends(c: CleanupSettings): String {
         val items = mutableListOf("the dictated words", "the kind of app (e.g. chat, email)", "your writing style", "your dictionary words")
@@ -326,17 +506,17 @@ object CloudText {
      * D30: when the cloud answer was not used, the route actually used and why:
      * "AI cleanup: on-device · qwen · OpenRouter not used (llm_timeout)" / "AI cleanup: fixed rules · … ".
      */
-    fun cleanupRow(route: dev.flowclone.core.RouteInfo?): String? {
+    fun cleanupRow(route: dev.flowclone.core.RouteInfo?, cloudName: String = OpenRouter.NAME): String? {
         route ?: return null
         val fellBack = route.cleanupRoute != null && route.cleanupRoute != "cloud"
         if (fellBack) {
             val who = if (route.cleanupRoute == "local") "on-device" else "fixed rules"
             val model = route.llmModel?.takeIf { route.llmEngine == "local" }?.substringAfter('/')
-            return listOfNotNull("AI cleanup: $who", model, "${OpenRouter.NAME} not used (${route.cloudFallback ?: "?"})",
+            return listOfNotNull("AI cleanup: $who", model, "$cloudName not used (${route.cloudFallback ?: "?"})",
                 route.llmCostUsd?.takeIf { route.llmEngine == "cloud" }?.let(::usd)).joinToString(" · ")
         }
         val e = route.llmEngine ?: return null
-        val who = when (e) { "cloud" -> OpenRouter.NAME; "local" -> "on-device"; "server" -> "server"; else -> e }
+        val who = when (e) { "cloud" -> cloudName; "local" -> "on-device"; "server" -> "server"; else -> e }
         return listOfNotNull("AI cleanup: $who", route.llmModel?.substringAfter('/'), route.llmCostUsd?.let(::usd)).joinToString(" · ")
     }
 
@@ -351,8 +531,10 @@ object CloudText {
                 ") · $cl cleanup request${if (cl == 1L) "" else "s"}",
         )
         s.monthlyBudgetUsd?.let {
-            lines += "Budget ${usd(it)}/month: ${usd(u.totalCostUsd)} used" + if (u.totalCostUsd >= it) " — reached, cloud paused until next month" else ""
+            lines += "Budget ${usd(it)}/month: ${usd(u.budgetCostUsd)} used" + if (u.budgetCostUsd >= it) " — reached, OpenRouter paused until next month" else ""
         }
+        // D52: the owner's own server is never in the OpenRouter budget.
+        u.customCostUsd.takeIf { it > 0 }?.let { lines += "Your custom server reported ${usd(it)} (not in the budget)" }
         return lines
     }
 
@@ -395,6 +577,33 @@ object CloudInput {
         val v = raw.trim().toLongOrNull()
         if (v == null || v !in OpenRouter.CLEANUP_TIMEOUT_MIN..OpenRouter.CLEANUP_TIMEOUT_MAX) {
             return Parsed(null, "Timeout must be a whole number ${OpenRouter.CLEANUP_TIMEOUT_MIN}-${OpenRouter.CLEANUP_TIMEOUT_MAX} ms")
+        }
+        return Parsed(v, null)
+    }
+
+    /** D52 base URL as typed → the router's normalised URL ([CustomServer.address]). */
+    fun baseUrl(raw: String): Parsed<String> {
+        if (raw.isBlank()) return Parsed(null, "Enter http(s)://host[:port][/path], e.g. http://192.168.1.20:4000")
+        val a = CustomServer.address(raw)
+        return if (a.url != null) Parsed(a.url, null)
+        else Parsed(null, (a.message ?: "Not a valid http(s) URL").replaceFirstChar { it.uppercase() })
+    }
+
+    /** D52 model id: free text as the server lists it. */
+    fun customModel(raw: String): Parsed<String> {
+        val m = raw.trim()
+        return when {
+            m.isEmpty() -> Parsed(null, "Enter a model id the server lists, e.g. gpt-4o-mini")
+            !CustomServer.validModelId(m) -> Parsed(null, "A model id is at most 256 characters, without spaces")
+            else -> Parsed(m, null)
+        }
+    }
+
+    /** D52 custom server timeout, 800-30000 ms. */
+    fun customTimeout(raw: String): Parsed<Long> {
+        val v = raw.trim().toLongOrNull()
+        if (v == null || v !in CustomServer.TIMEOUT_MIN..CustomServer.TIMEOUT_MAX) {
+            return Parsed(null, "Timeout must be a whole number ${CustomServer.TIMEOUT_MIN}-${CustomServer.TIMEOUT_MAX} ms")
         }
         return Parsed(v, null)
     }

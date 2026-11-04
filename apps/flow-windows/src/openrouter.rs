@@ -10,11 +10,19 @@
 //! * consent is recorded here, with the host fixed to openrouter.ai and the
 //!   time of the call: the page only says "the dialog was accepted";
 //! * the key never appears in any view (only [`crate::credentials::KeyState`]).
+//!
+//! D52: text cleanup can go to the user's own OpenAI-compatible server
+//! (LiteLLM, vLLM, Ollama, …) instead ([`apply_custom_cleanup`]). Its
+//! consent is bound to the host of the typed base URL: pointing the URL at
+//! another host voids it. Cloud speech-to-text always stays on OpenRouter.
 
 use crate::credentials::KeyState;
 use crate::dev_settings::{full_cleanup_order, BuildCaps, CleanupEngine, DevSettings, Route};
-use flow_router::cloud::{valid_model_id, CLEANUP_TIMEOUT_RANGE_MS, OPENROUTER_HOST};
-use flow_router::{CleanupRoute, CleanupStatus, CloudUsage, Usd};
+use flow_router::cloud::{
+    normalize_custom_base_url, valid_custom_model_id, valid_model_id, CLEANUP_TIMEOUT_RANGE_MS,
+    CUSTOM_CLEANUP_TIMEOUT_RANGE_MS, OPENROUTER_HOST,
+};
+use flow_router::{CleanupProvider, CleanupRoute, CleanupStatus, CloudUsage, Usd};
 use serde::{Deserialize, Serialize};
 
 /// Speech-to-text card.
@@ -46,6 +54,30 @@ pub struct CleanupView {
     pub send_app_name: bool,
     /// `Router::cleanup_status()` (blocked reason, circuit, last call).
     pub status: CleanupStatus,
+    /// D52: who the `cloud` cleanup route calls (`openrouter` | `custom`).
+    /// `allow`, the order and the "send …" switches are shared; `consent`,
+    /// `model` and `timeout_ms` above are OpenRouter's.
+    pub provider: CleanupProvider,
+    pub custom: CustomView,
+}
+
+/// D52: the user's own OpenAI-compatible cleanup server.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CustomView {
+    /// As saved (normalised: `/v1` added when typed without a path).
+    pub base_url: String,
+    /// Lower-cased host of `base_url` (`""` when empty).
+    pub host: String,
+    pub model: String,
+    pub timeout_ms: u64,
+    /// Consent for the current host (a host change voids it).
+    pub consent: bool,
+    pub consent_host: String,
+    pub consent_at_ms: u64,
+    /// `http://`: the key and the text cross the network unencrypted.
+    pub plain_http: bool,
+    /// The optional key (`flow-clone/cloud/custom`), masked.
+    pub key: KeyState,
 }
 
 /// `dev_or_get` and every `dev_or_set_*` answer.
@@ -82,6 +114,8 @@ pub struct ViewInputs {
     pub catalog: serde_json::Value,
     pub stt_model_info: Option<serde_json::Value>,
     pub cleanup_model_info: Option<serde_json::Value>,
+    /// D52: the custom cleanup server's key, masked.
+    pub custom_key: KeyState,
 }
 
 pub fn view(dev: &DevSettings, i: ViewInputs) -> OrView {
@@ -111,6 +145,8 @@ pub fn view(dev: &DevSettings, i: ViewInputs) -> OrView {
             send_screen_words: or.cleanup.send_screen_words,
             send_app_name: or.cleanup.send_app_name,
             status: i.cleanup_status,
+            provider: dev.cloud.cleanup_provider,
+            custom: custom_view(&dev.cloud.custom_cleanup, i.custom_key),
         },
         budget,
         usage: crate::cloud::usage_view(&i.usage, budget),
@@ -122,6 +158,24 @@ pub fn view(dev: &DevSettings, i: ViewInputs) -> OrView {
         stt_model_info: i.stt_model_info,
         cleanup_model_info: i.cleanup_model_info,
     }
+}
+
+fn custom_view(cc: &flow_router::CustomCleanupConfig, key: KeyState) -> CustomView {
+    CustomView {
+        base_url: cc.base_url.clone(),
+        host: cc.host(),
+        model: cc.model.clone(),
+        timeout_ms: cc.timeout_ms,
+        consent: cc.consent_ok(),
+        consent_host: cc.consent_host.clone(),
+        consent_at_ms: cc.consent_at_ms,
+        plain_http: is_plain_http(&cc.base_url),
+        key,
+    }
+}
+
+fn is_plain_http(url: &str) -> bool {
+    url.trim_start().to_ascii_lowercase().starts_with("http://")
 }
 
 /// `dev_or_set_stt`.
@@ -154,6 +208,22 @@ pub struct CleanupForm {
     pub send_surrounding_text: bool,
     pub send_screen_words: bool,
     pub send_app_name: bool,
+}
+
+/// `dev_or_set_custom_cleanup` (D52): the provider selector and the custom
+/// server's fields, saved together.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(default)]
+pub struct CustomCleanupForm {
+    /// `"openrouter"` | `"custom"` (serde of [`CleanupProvider`]).
+    pub provider: CleanupProvider,
+    /// As typed; `""` = not set yet (allowed while OpenRouter is selected).
+    pub base_url: String,
+    pub model: String,
+    /// i64 so 0 or 99999 reach validation instead of a parse error.
+    pub timeout_ms: i64,
+    /// The consent dialog naming the typed host was accepted just now.
+    pub consent: bool,
 }
 
 /// `""` or an ISO-639-1/-3 code (`en`, `de`, `yue`).
@@ -215,11 +285,13 @@ pub fn apply_cleanup(dev: &mut DevSettings, f: &CleanupForm, now_ms: u64) -> Res
     c.send_screen_words = f.send_screen_words;
     c.send_app_name = f.send_app_name;
     if f.consent {
-        c.consent_host = OPENROUTER_HOST.into();
-        c.consent_at_ms = now_ms.max(1);
+        record_cleanup_consent(&mut next.cloud, now_ms);
     }
-    if f.allow && !c.consent_ok() {
-        return Err("Accept sending text to OpenRouter before turning this on".into());
+    if f.allow && !next.cloud.cleanup_consent_ok() {
+        return Err(format!(
+            "Accept sending text to {} before turning this on",
+            cleanup_host_name(&next.cloud)
+        ));
     }
     if let Some(order) = &f.order {
         reorder_cleanup(&mut next, order);
@@ -228,6 +300,100 @@ pub fn apply_cleanup(dev: &mut DevSettings, f: &CleanupForm, now_ms: u64) -> Res
     check(&next)?;
     *dev = next;
     Ok(())
+}
+
+/// Consent for the selected cleanup provider's host: openrouter.ai, or
+/// the custom server's current host (D52).
+fn record_cleanup_consent(cloud: &mut flow_router::cloud::CloudConfig, now_ms: u64) {
+    match cloud.cleanup_provider {
+        CleanupProvider::OpenRouter => {
+            cloud.openrouter.cleanup.consent_host = OPENROUTER_HOST.into();
+            cloud.openrouter.cleanup.consent_at_ms = now_ms.max(1);
+        }
+        CleanupProvider::Custom => {
+            let cc = &mut cloud.custom_cleanup;
+            let host = cc.host();
+            if !host.is_empty() {
+                cc.consent_host = host;
+                cc.consent_at_ms = now_ms.max(1);
+            }
+        }
+    }
+}
+
+/// How an error names where cleanup text goes.
+fn cleanup_host_name(cloud: &flow_router::cloud::CloudConfig) -> String {
+    match cloud.cleanup_provider {
+        CleanupProvider::OpenRouter => "OpenRouter".into(),
+        CleanupProvider::Custom => match cloud.cleanup_host() {
+            h if h.is_empty() => "your server".into(),
+            h => h,
+        },
+    }
+}
+
+/// D52 provider selector + custom server card: base URL (normalised and
+/// stored as normalised), model id (free text), timeout, and consent for
+/// the typed URL's host. Selecting Custom needs a URL and a model; while
+/// the cloud cleanup switch is on, the provider switched to (or a custom
+/// URL on a new host) needs its own consent first.
+pub fn apply_custom_cleanup(
+    dev: &mut DevSettings,
+    f: &CustomCleanupForm,
+    now_ms: u64,
+) -> Result<(), String> {
+    let mut next = dev.clone();
+    next.cloud.cleanup_provider = f.provider;
+    let custom = !f.provider.is_openrouter();
+    let cc = &mut next.cloud.custom_cleanup;
+    let url = f.base_url.trim();
+    cc.base_url = if url.is_empty() {
+        String::new()
+    } else {
+        normalize_custom_base_url(url).map_err(|e| format!("Base URL: {e}"))?
+    };
+    let model = f.model.trim();
+    if !model.is_empty() && !valid_custom_model_id(model) {
+        return Err("Model id: up to 256 characters, no spaces".into());
+    }
+    cc.model = model.to_string();
+    let (lo, hi) = CUSTOM_CLEANUP_TIMEOUT_RANGE_MS;
+    if !(lo as i64..=hi as i64).contains(&f.timeout_ms) {
+        return Err(format!("Cleanup time limit must be {lo}-{hi} ms"));
+    }
+    cc.timeout_ms = f.timeout_ms as u64;
+    if custom && cc.base_url.is_empty() {
+        return Err("Enter your server's base URL".into());
+    }
+    if custom && cc.model.is_empty() {
+        return Err("Enter the model id your server should use".into());
+    }
+    if f.consent {
+        if custom && cc.host().is_empty() {
+            return Err("Enter your server's base URL".into());
+        }
+        record_cleanup_consent(&mut next.cloud, now_ms);
+    }
+    if next.cleanup_on(CleanupRoute::Cloud) && !next.cloud.cleanup_consent_ok() {
+        return Err(format!(
+            "Accept sending text to {} before using it",
+            cleanup_host_name(&next.cloud)
+        ));
+    }
+    check(&next)?;
+    *dev = next;
+    Ok(())
+}
+
+/// D52 `dev_custom_cleanup_address`: [`flow_router::cloud::custom_server_address`]
+/// plus `model_ok`, the JSON `flow_ffi::json_api::custom_cleanup_address`
+/// gives Android.
+pub fn custom_address(base_url: &str, model: &str) -> serde_json::Value {
+    let model_ok = valid_custom_model_id(model.trim());
+    match flow_router::cloud::custom_server_address(base_url) {
+        Ok(a) => serde_json::json!({"url": a.url, "host": a.host, "model_ok": model_ok}),
+        Err(e) => serde_json::json!({"error": "bad_base_url", "message": e, "model_ok": model_ok}),
+    }
 }
 
 /// `order` (completed as [`full_cleanup_order`]) with each engine's flag kept.
@@ -315,6 +481,9 @@ pub fn ack_notice(dev: &mut DevSettings) {
 }
 
 /// The sentence "Test" sends for cleanup (never the user's text).
+#[cfg(feature = "cloud")]
+pub const CLEANUP_SAMPLE: &str = flow_cloud::custom::TEST_SAMPLE;
+#[cfg(not(feature = "cloud"))]
 pub const CLEANUP_SAMPLE: &str =
     "um so i think we should uh meet on tuesday no wait wednesday at three";
 
@@ -506,9 +675,16 @@ mod tests {
                 catalog: serde_json::json!({"source": "Baked"}),
                 stt_model_info: None,
                 cleanup_model_info: None,
+                custom_key: KeyState {
+                    set: false,
+                    masked: String::new(),
+                },
             },
         );
         let j = serde_json::to_value(&v).unwrap();
+        assert_eq!(j["cleanup"]["provider"], "openrouter");
+        assert_eq!(j["cleanup"]["custom"]["base_url"], "");
+        assert_eq!(j["cleanup"]["custom"]["key"]["set"], false);
         assert_eq!(
             j["key"],
             serde_json::json!({"set": true, "masked": "••••cdef"})
@@ -531,5 +707,262 @@ mod tests {
         assert!(v.notice.is_some());
         ack_notice(&mut d);
         assert_eq!(d.cloud_notice, None);
+    }
+
+    fn custom(provider: &str, url: &str, model: &str, consent: bool) -> CustomCleanupForm {
+        CustomCleanupForm {
+            provider: serde_json::from_value(serde_json::json!(provider)).unwrap(),
+            base_url: url.into(),
+            model: model.into(),
+            timeout_ms: 4000,
+            consent,
+        }
+    }
+
+    #[test]
+    fn custom_address_is_the_router_normaliser() {
+        let v = custom_address("http://[2001:DB8::0:1]:4000/", "m-1");
+        assert_eq!(v["url"], "http://[2001:db8::1]:4000/v1");
+        assert_eq!(v["host"], "2001:db8::1");
+        assert_eq!(v["model_ok"], true);
+        let v = custom_address("http://x/v1?k=1", "two words");
+        assert_eq!(v["error"], "bad_base_url");
+        assert_eq!(v["model_ok"], false);
+    }
+
+    #[test]
+    fn provider_switch_needs_a_url_and_a_model() {
+        let mut d = dev();
+        // The provider is typed: an unknown one never reaches the settings.
+        assert!(serde_json::from_value::<CustomCleanupForm>(
+            serde_json::json!({"provider": "lmstudio", "timeout_ms": 4000})
+        )
+        .is_err());
+        assert_eq!(
+            apply_custom_cleanup(&mut d, &custom("custom", "", "m", false), 5).unwrap_err(),
+            "Enter your server's base URL"
+        );
+        assert!(apply_custom_cleanup(
+            &mut d,
+            &custom("custom", "http://10.0.0.5:4000", "", false),
+            5
+        )
+        .is_err());
+        assert_eq!(
+            d.cloud.cleanup_provider,
+            CleanupProvider::OpenRouter,
+            "refused = unchanged"
+        );
+        // The URL can be typed while OpenRouter is still selected.
+        apply_custom_cleanup(
+            &mut d,
+            &custom("openrouter", "http://10.0.0.5:4000", "", false),
+            5,
+        )
+        .unwrap();
+        assert_eq!(d.cloud.custom_cleanup.base_url, "http://10.0.0.5:4000/v1");
+        apply_custom_cleanup(
+            &mut d,
+            &custom("custom", "http://10.0.0.5:4000/v1", "gpt-4o-mini", false),
+            5,
+        )
+        .unwrap();
+        assert_eq!(d.cloud.cleanup_provider, CleanupProvider::Custom);
+        apply_custom_cleanup(&mut d, &custom("openrouter", "", "", false), 5).unwrap();
+        assert_eq!(d.cloud.cleanup_provider, CleanupProvider::OpenRouter);
+        assert!(d.cloud.custom_cleanup.base_url.is_empty());
+    }
+
+    #[test]
+    fn custom_urls_are_normalised_and_checked() {
+        let mut d = dev();
+        for (typed, saved) in [
+            ("  http://10.0.0.5:4000  ", "http://10.0.0.5:4000/v1"),
+            ("https://llm.example.test/", "https://llm.example.test/v1"),
+            (
+                "https://llm.example.test/api/v1/",
+                "https://llm.example.test/api/v1",
+            ),
+        ] {
+            apply_custom_cleanup(&mut d, &custom("custom", typed, "m", false), 5).unwrap();
+            assert_eq!(d.cloud.custom_cleanup.base_url, saved, "{typed}");
+        }
+        for bad in [
+            "ftp://llm.example.test",
+            "llm.example.test:4000",
+            "https://user:pw@llm.example.test",
+            "https://llm.example.test/v1?x=1",
+        ] {
+            let e = apply_custom_cleanup(&mut d, &custom("custom", bad, "m", false), 5);
+            assert!(e.unwrap_err().starts_with("Base URL"), "{bad}");
+        }
+        assert_eq!(
+            d.cloud.custom_cleanup.base_url,
+            "https://llm.example.test/api/v1"
+        );
+        let mut f = custom("custom", "http://10.0.0.5:4000", "m", false);
+        for t in [0, 799, 30_001] {
+            f.timeout_ms = t;
+            assert!(apply_custom_cleanup(&mut d, &f, 5).is_err(), "{t}");
+        }
+        f.timeout_ms = 30_000;
+        apply_custom_cleanup(&mut d, &f, 5).unwrap();
+        assert_eq!(d.cloud.custom_cleanup.timeout_ms, 30_000);
+    }
+
+    #[test]
+    fn custom_model_ids_are_free_text() {
+        let mut d = dev();
+        for id in ["gpt-4o", "Qwen/Qwen2.5-7B-Instruct", "ollama/llama3:8b"] {
+            apply_custom_cleanup(
+                &mut d,
+                &custom("custom", "http://10.0.0.5:4000", id, false),
+                5,
+            )
+            .unwrap();
+            assert_eq!(
+                d.cloud.custom_cleanup.model, id,
+                "case and punctuation kept"
+            );
+        }
+        for bad in ["two words", "tab\there", &"x".repeat(257)] {
+            assert!(apply_custom_cleanup(
+                &mut d,
+                &custom("custom", "http://10.0.0.5:4000", bad, false),
+                5
+            )
+            .is_err());
+        }
+    }
+
+    #[test]
+    fn custom_consent_is_bound_to_the_typed_host() {
+        let mut d = dev();
+        // OpenRouter consent and switch on.
+        apply_cleanup(&mut d, &cleanup(true, true), 10).unwrap();
+        // Switching to Custom while on asks for the server's own consent.
+        let e = apply_custom_cleanup(
+            &mut d,
+            &custom("custom", "http://10.0.0.5:4000", "m", false),
+            20,
+        )
+        .unwrap_err();
+        assert!(e.contains("10.0.0.5"), "{e}");
+        assert_eq!(d.cloud.cleanup_provider, CleanupProvider::OpenRouter);
+        apply_custom_cleanup(
+            &mut d,
+            &custom("custom", "http://10.0.0.5:4000", "m", true),
+            20,
+        )
+        .unwrap();
+        let cc = &d.cloud.custom_cleanup;
+        assert_eq!(
+            (cc.consent_host.as_str(), cc.consent_at_ms),
+            ("10.0.0.5", 20)
+        );
+        assert!(
+            d.cloud.openrouter.cleanup.consent_ok(),
+            "OpenRouter's is kept"
+        );
+        // Same host, other port/path: still consented.
+        apply_custom_cleanup(
+            &mut d,
+            &custom("custom", "http://10.0.0.5:8000/api/v1", "m", false),
+            30,
+        )
+        .unwrap();
+        // Another host voids it: refused while on…
+        let e = apply_custom_cleanup(
+            &mut d,
+            &custom("custom", "https://llm.example.test", "m", false),
+            40,
+        )
+        .unwrap_err();
+        assert!(e.contains("llm.example.test"), "{e}");
+        // …and when saved with the switch off, the view shows no consent.
+        let mut off = d.clone();
+        off.set_cleanup_on(CleanupRoute::Cloud, false);
+        apply_custom_cleanup(
+            &mut off,
+            &custom("custom", "https://llm.example.test", "m", false),
+            40,
+        )
+        .unwrap();
+        assert!(!off.cloud.custom_cleanup.consent_ok());
+        assert!(apply_cleanup(&mut off, &cleanup(true, false), 50).is_err());
+        apply_cleanup(&mut off, &cleanup(true, true), 50).unwrap();
+        assert_eq!(off.cloud.custom_cleanup.consent_host, "llm.example.test");
+        assert_eq!(
+            off.cloud.openrouter.cleanup.consent_at_ms, 10,
+            "custom consent never re-dates OpenRouter's"
+        );
+    }
+
+    #[test]
+    fn the_openrouter_path_is_unchanged() {
+        let mut d = dev();
+        apply_custom_cleanup(
+            &mut d,
+            &custom("openrouter", "http://10.0.0.5:4000", "m", false),
+            5,
+        )
+        .unwrap();
+        let e = apply_cleanup(&mut d, &cleanup(true, false), 10).unwrap_err();
+        assert_eq!(
+            e,
+            "Accept sending text to OpenRouter before turning this on"
+        );
+        apply_cleanup(&mut d, &cleanup(true, true), 10).unwrap();
+        let c = &d.cloud.openrouter.cleanup;
+        assert_eq!(
+            (c.consent_host.as_str(), c.consent_at_ms),
+            (OPENROUTER_HOST, 10)
+        );
+        assert!(d.cloud.custom_cleanup.consent_host.is_empty());
+        assert!(d.cleanup_on(CleanupRoute::Cloud));
+        // Back from Custom to OpenRouter needs no new consent: it has one.
+        apply_custom_cleanup(
+            &mut d,
+            &custom("custom", "http://10.0.0.5:4000", "m", true),
+            20,
+        )
+        .unwrap();
+        apply_custom_cleanup(
+            &mut d,
+            &custom("openrouter", "http://10.0.0.5:4000", "m", false),
+            30,
+        )
+        .unwrap();
+        assert_eq!(d.cloud.cleanup_model(), "meta-llama/llama-3.3-70b-instruct");
+    }
+
+    #[test]
+    fn the_custom_view_flags_plain_http_and_never_holds_the_key() {
+        let mut d = dev();
+        apply_custom_cleanup(
+            &mut d,
+            &custom("custom", "http://10.0.0.5:4000", "m", true),
+            5,
+        )
+        .unwrap();
+        let v = custom_view(
+            &d.cloud.custom_cleanup,
+            KeyState {
+                set: true,
+                masked: "••••0001".into(),
+            },
+        );
+        assert!(v.plain_http && v.consent);
+        assert_eq!(v.host, "10.0.0.5");
+        let j = serde_json::to_string(&v).unwrap();
+        assert!(j.contains("••••0001") && !j.contains("sk-"));
+        apply_custom_cleanup(
+            &mut d,
+            &custom("custom", "https://llm.example.test", "m", false),
+            5,
+        )
+        .unwrap();
+        let v = custom_view(&d.cloud.custom_cleanup, v.key);
+        assert!(!v.plain_http && !v.consent);
     }
 }

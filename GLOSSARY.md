@@ -12,6 +12,10 @@ _Avoid_: raw text, ASR output
 The language-model step that turns a transcript into finished text: punctuation, sentence and paragraph breaks, spoken commands such as "quote unquote" or "in parentheses", quotation marks, hyphens, numbers, self-corrections, lists, tone and light edits (dropping fillers, short trims, unit abbreviations), all in one pass.
 _Avoid_: post-processing, formatting rules, LLM cleanup, spoken commands (as a separate stage)
 
+**Custom cleanup server**:
+The user's own OpenAI-compatible server (typically a LiteLLM proxy) that the cloud entry of the cleanup order can call instead of OpenRouter. Cleanup only: cloud speech-to-text always uses OpenRouter.
+_Avoid_: custom provider (for speech), LiteLLM (the usual software, not the setting), local server (that is flow-server)
+
 **Fallback rules**:
 The fixed text rules used only when AI cleanup cannot run or its answer is rejected.
 _Avoid_: deterministic layer, spoken cleanup

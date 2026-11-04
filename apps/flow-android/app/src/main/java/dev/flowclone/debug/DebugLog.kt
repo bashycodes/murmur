@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger
  * (core VAD speech) and peak_dbfs (peak level), so a blank_asr line is diagnosable.
  * D28 (OpenRouter): llm_engine (local | cloud | server; who ran the AI cleanup), llm_model,
  * llm_cost_usd, llm_ttft_ms, llm_generation_id, and stt_cost_usd (cloud speech-to-text cost).
+ * D52: llm_provider (openrouter | custom) when llm_engine is cloud.
  * `llm: llm_skipped_clean` stays a normal result; a cloud refusal shows as `llm_error: <code>`.
  * D30 (AI cleanup first): cleanup_route (cloud | local | rules: what produced the text) and
  * cloud_fallback (why the cloud answer was not used), only when cloud cleanup was tried.
@@ -110,6 +111,8 @@ data class DictationTrace(
     val peakDbfs: Int? = null,
     /** D28 `route.llm_engine`: local | cloud (OpenRouter) | server; null = no LLM step. */
     val llmEngine: String? = null,
+    /** D52: the cloud cleanup route's service when [llmEngine] is cloud ("openrouter" | "custom"); set by the app. */
+    val llmProvider: String? = null,
     val llmModel: String? = null,
     val llmCostUsd: Double? = null,
     /** D30 `route.cleanup_route` (cloud | local | rules) and `route.cloud_fallback`; null = AI cleanup not tried. */
@@ -259,6 +262,7 @@ object DebugFormat {
         "speech_ms" to t.speechMs,
         "peak_dbfs" to t.peakDbfs,
         "llm_engine" to t.llmEngine,
+        "llm_provider" to t.llmProvider,
         "llm_model" to t.llmModel,
         "llm_cost_usd" to t.llmCostUsd,
         "cleanup_route" to t.cleanupRoute,
@@ -300,7 +304,7 @@ object DebugFormat {
             (s("language")?.let { " · lang $it" + (s("language_source")?.let { src -> " ($src)" } ?: "") } ?: "") + (s("style")?.let { " · $it" } ?: "") +
             (dev.flowclone.data.LlmOutcome.label(s("llm"))?.let { " · $it" } ?: "") +
             (dev.flowclone.data.LlmOutcome.offLabel(s("llm_off"))?.let { " · $it" } ?: "") +
-            (s("llm_engine")?.let { e -> " · AI " + (if (e == "cloud") "OpenRouter" else e) + (s("llm_model")?.let { " ${it.substringAfter('/')}" } ?: "") } ?: "") +
+            (s("llm_engine")?.let { e -> " · AI " + (if (e == "cloud") (if (s("llm_provider") == "custom") "custom server" else "OpenRouter") else e) + (s("llm_model")?.let { " ${it.substringAfter('/')}" } ?: "") } ?: "") +
             (s("cleanup_route")?.let { c -> " · text by $c" + (s("cloud_fallback")?.let { " (cloud: $it)" } ?: "") } ?: "") +
             (listOfNotNull(s("stt_cost_usd"), s("llm_cost_usd")).takeIf { it.isNotEmpty() }?.let { " · $" + it.sumOf { c -> c.toDoubleOrNull() ?: 0.0 }.let { v -> String.format(java.util.Locale.US, "%.4f", v) } } ?: "")
         val ms = listOfNotNull(
