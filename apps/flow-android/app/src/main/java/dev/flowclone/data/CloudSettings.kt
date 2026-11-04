@@ -219,14 +219,19 @@ data class CustomCleanupSettings(
     val consentHost: String = "",
     val consentAtMs: Long = 0,
 ) {
-    val host: String get() = CustomServer.host(baseUrl)
-    val https: Boolean get() = CustomServer.address(baseUrl).https
+    /**
+     * The router's reading of [baseUrl] and [model], looked up once per settings value (one native
+     * call per page refresh): [host], [https], [consentOk] and [ready] all derive from it.
+     */
+    private val address: CustomAddress by lazy { CustomServer.address(baseUrl, model.trim()) }
+
+    val host: String get() = address.host
+    val https: Boolean get() = address.https
     val consentOk: Boolean get() = consentAtMs > 0 && consentHost.isNotEmpty() && host.isNotEmpty() && consentHost.equals(host, ignoreCase = true)
 
     /** The router accepts it (`CustomCleanupConfig::validate`): a usable URL and model id. */
     val ready: Boolean
-        get() = CustomServer.address(baseUrl, model.trim()).let { it.url != null && it.modelOk } &&
-            timeoutMs in CustomServer.TIMEOUT_MIN..CustomServer.TIMEOUT_MAX
+        get() = address.let { it.url != null && it.modelOk } && timeoutMs in CustomServer.TIMEOUT_MIN..CustomServer.TIMEOUT_MAX
 
     fun withConsent(nowMs: Long) = copy(consentHost = host, consentAtMs = nowMs)
 
