@@ -330,6 +330,16 @@ If a device can't reach the server, copy the model files to it yourself:
   *Import model folder…* or *Import .zip…* (`apps/flow-android/INSTALL.md`
   §5).
 
+## 6a. Bigger AI cleanup from a LiteLLM server
+
+If the closed network has a LiteLLM proxy (or any OpenAI-compatible server)
+in front of a larger model, the apps can use it for AI cleanup: Windows and
+the Android hybrid APK, on the cleanup settings page, set the cloud entry's
+provider to **Custom server**, enter its address (e.g. `http://10.0.0.5:4000`),
+the key if it needs one, and pick a model from **Load models**. Put that entry
+first in the cleanup order. Speech-to-text is not affected (D52). Over plain
+`http://` the key and dictated text are not encrypted on the network.
+
 ## 7. A phone that never talks to anything: the local APK
 
 The `local` Android flavour has no network permission and no network code

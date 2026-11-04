@@ -10,7 +10,7 @@ import { invoke, onEvent } from "../lib/ipc.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { moveShown, onMove, rankRows } from "../lib/ranked-list.js";
 import { views } from "../lib/views.js";
-import { showOr } from "./openrouter.js";
+import { cleanupTarget, showOr } from "./openrouter.js";
 /** What each cleanup level does (D27), with the design's example of what is pasted. */
 const LEVELS = {
     verbatim: [
@@ -168,9 +168,11 @@ function describe(r) {
     }
     else {
         const v = views.or;
+        const custom = v?.cleanup.provider === "custom";
+        const model = custom ? v?.cleanup.custom.model ?? "" : (v?.cleanup.model ?? "").split("/").pop();
         $("aieng_desc_cloud").textContent = on
-            ? `Sends the transcript as text to openrouter.ai · ${(v?.cleanup.model ?? "").split("/").pop()}.`
-            : "Sends the transcript as text to openrouter.ai. Asks first.";
+            ? `Sends the transcript as text to ${cleanupTarget(v)} · ${model}.`
+            : `Sends the transcript as text to ${cleanupTarget(v)}. Asks first.`;
         const st = v?.cleanup.status;
         if (!on)
             setBadge(r, "Off", "light");
@@ -226,7 +228,9 @@ function showAiEngine() {
     const name = {
         local: "this PC",
         server: "your server",
-        cloud: `OpenRouter (${views.or?.cleanup.model ?? ""})`,
+        cloud: views.or?.cleanup.provider === "custom"
+            ? `${cleanupTarget(views.or)} (${views.or.cleanup.custom.model})`
+            : `OpenRouter (${views.or?.cleanup.model ?? ""})`,
     };
     const used = engines()
         .map((e) => e.route)

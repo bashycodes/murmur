@@ -66,7 +66,7 @@ data class DevSettings(
      * Call on the effective settings.
      */
     val offPhoneCleanup: Boolean
-        get() = (cloudCleanupRouted && cloud.cleanup.consentOk) ||
+        get() = (cloudCleanupRouted && cloud.cleanupConsentOk) ||
             (CleanupRoute.SERVER in cleanupOrder && cleanupOn(CleanupRoute.SERVER) && serverConfigured)
 
     enum class Prefer(val wire: String) { SERVER("server"), CLIENT("client") }
@@ -148,7 +148,7 @@ data class DevSettings(
         // like the router's `skip_serializing_if = default`. `order` (when set) replaces `prefer`.
         if (allowCloud || allowCloudCleanup || !cloud.isDefault || Route.CLOUD in routeOrder) {
             put("allow_cloud", allowCloud)
-            put("cloud", cloud.toJson())
+            put("cloud", cloud.routerJson())
         }
         // D36: the whole cleanup order, switched-off entries in `cleanup_off` (an empty order is the
         // router's pre-D36 behaviour). A build that can only clean on the phone sends none (C2).
