@@ -225,10 +225,11 @@ const SUMMARY_BY = {
 };
 /** What the summary box says about its state ("" when it just shows it). */
 export function summaryState(s, running) {
-    if (!s)
-        return "";
     if (running)
         return "Writing the summary… Dictation keeps priority.";
+    // Transcribed before summaries existed (or with them off): offer one.
+    if (!s)
+        return "No summary yet";
     if (s.status === "pending")
         return "Waiting to be summarised";
     if (s.status === "failed")
@@ -238,21 +239,25 @@ export function summaryState(s, running) {
 function showSummary(m) {
     const box = $("mt_summary");
     const s = m.summary;
-    box.hidden = m.status !== "done" || !s;
-    if (!s || box.hidden)
+    box.hidden = m.status !== "done";
+    if (box.hidden)
         return;
     const running = view.summarising === m.id;
     const state = summaryState(s, running);
     const st = $("mt_summary_state");
     st.textContent = state;
     st.hidden = !state;
-    st.classList.toggle("is-err", s.status === "failed" && !running);
+    st.classList.toggle("is-err", s?.status === "failed" && !running);
     $("mt_summary_by").textContent =
-        s.status === "done" && s.engine ? `by ${SUMMARY_BY[s.engine] ?? s.engine}` : "";
-    $("mt_summary_text").textContent = s.text;
-    $("mt_items").replaceChildren(...s.action_items.map((t) => el("li", "", t)));
-    $("mt_items_title").hidden = s.action_items.length === 0;
-    $("mt_regen").disabled = running || s.status === "pending";
+        s?.status === "done" && s.engine ? `by ${SUMMARY_BY[s.engine] ?? s.engine}` : "";
+    $("mt_summary_text").textContent = s?.text ?? "";
+    const items = s?.action_items ?? [];
+    $("mt_items").replaceChildren(...items.map((t) => el("li", "", t)));
+    $("mt_items_title").hidden = items.length === 0;
+    const btn = $("mt_regen");
+    // Same command either way: `meeting_summarise` makes a first summary too.
+    btn.textContent = s ? "Regenerate" : "Summarise";
+    btn.disabled = running || s?.status === "pending";
 }
 const ROUTE_NAMES = {
     local: "This PC",
