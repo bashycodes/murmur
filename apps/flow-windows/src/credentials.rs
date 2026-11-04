@@ -227,6 +227,25 @@ pub fn custom_key(store: &dyn CredentialStore) -> Option<String> {
     (!k.is_empty()).then_some(k)
 }
 
+/// D52: the key the settings page's custom-server calls ("Load models",
+/// "Test connection", "Test cleanup") send to `base_url`: a key typed into
+/// the field (it goes where the user points it), else the saved key only
+/// when `base_url`'s host is the consented one
+/// (`CustomCleanupConfig::saved_key_allowed_for`), else none — so a URL
+/// typed into the page never receives the saved key.
+pub fn custom_key_for(
+    typed: Option<&str>,
+    saved: impl FnOnce() -> Option<String>,
+    cfg: &flow_router::cloud::CustomCleanupConfig,
+    base_url: &str,
+) -> Result<Option<String>, String> {
+    match typed.map(str::trim).filter(|k| !k.is_empty()) {
+        Some(k) => normalize_key(k).map(Some),
+        None if cfg.saved_key_allowed_for(base_url) => Ok(saved()),
+        None => Ok(None),
+    }
+}
+
 /// What a D28 migration did to the key store.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct KeyMigration {
@@ -547,5 +566,43 @@ mod tests {
         let m = apply_migration(&*s, &report(Some("openrouter-3"), &[]), &|_| None);
         assert_eq!(m.moved_from, None);
         assert_eq!(s.get("openrouter-3").unwrap(), None);
+    }
+
+    #[test]
+    fn custom_key_goes_to_the_consented_host_only() {
+        let cfg = flow_router::cloud::CustomCleanupConfig {
+            base_url: "http://10.0.0.5:4000".into(),
+            consent_host: "10.0.0.5".into(),
+            consent_at_ms: 1,
+            ..Default::default()
+        };
+        let saved = || Some("sk-saved-LEAKCHECK".to_string());
+        let pick = |typed: Option<&str>, url: &str| custom_key_for(typed, saved, &cfg, url);
+        // A typed key wins and goes wherever the user points it.
+        assert_eq!(
+            pick(Some(" sk-typed "), "http://elsewhere.example").unwrap(),
+            Some("sk-typed".into())
+        );
+        // The saved key: consented host only.
+        assert_eq!(
+            pick(None, "http://10.0.0.5:4000/v1").unwrap(),
+            Some("sk-saved-LEAKCHECK".into())
+        );
+        assert_eq!(
+            pick(Some("  "), "http://10.0.0.5:9000").unwrap().as_deref(),
+            Some("sk-saved-LEAKCHECK")
+        );
+        assert_eq!(pick(None, "http://attacker.example:4000").unwrap(), None);
+        assert_eq!(pick(None, "http://10.0.0.6:4000").unwrap(), None);
+        assert_eq!(pick(None, "not a url").unwrap(), None);
+        let unconsented = flow_router::cloud::CustomCleanupConfig {
+            consent_at_ms: 0,
+            ..cfg.clone()
+        };
+        assert_eq!(
+            custom_key_for(None, saved, &unconsented, "http://10.0.0.5:4000").unwrap(),
+            None
+        );
+        assert!(pick(Some("two words"), "http://10.0.0.5:4000").is_err());
     }
 }

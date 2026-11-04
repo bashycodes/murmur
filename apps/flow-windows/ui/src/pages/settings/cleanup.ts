@@ -73,7 +73,7 @@ ${heading(
     )}
     ${row(
       "Server address",
-      `The base URL of your LiteLLM proxy or other OpenAI-compatible server. <code class="lw-mono">/v1</code> is added when the address has no path. <span id="cu_http_warn" class="hint warn" hidden>This is http://: the key and your dictated text are sent unencrypted.</span>`,
+      `The base URL of your LiteLLM proxy or other OpenAI-compatible server. <code class="lw-mono">/v1</code> is added when no path is given; include the full path if your server uses a prefix. <span id="cu_url_norm" class="hint lw-mono"></span> <span id="cu_http_warn" class="hint warn" hidden>This is http://: the key and your dictated text are sent unencrypted.</span>`,
       `<input id="cu_base_url" class="fl-input lw-w220 lw-mono-input" spellcheck="false" autocomplete="off" placeholder="http://192.168.1.20:4000" aria-label="Server base URL" />`,
       `data-provider="custom"`,
     )}

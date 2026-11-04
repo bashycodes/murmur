@@ -215,8 +215,8 @@ pub struct CleanupForm {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct CustomCleanupForm {
-    /// `openrouter` | `custom`.
-    pub provider: String,
+    /// `"openrouter"` | `"custom"` (serde of [`CleanupProvider`]).
+    pub provider: CleanupProvider,
     /// As typed; `""` = not set yet (allowed while OpenRouter is selected).
     pub base_url: String,
     pub model: String,
@@ -325,7 +325,7 @@ fn record_cleanup_consent(cloud: &mut flow_router::cloud::CloudConfig, now_ms: u
 fn cleanup_host_name(cloud: &flow_router::cloud::CloudConfig) -> String {
     match cloud.cleanup_provider {
         CleanupProvider::OpenRouter => "OpenRouter".into(),
-        CleanupProvider::Custom => match cloud.custom_cleanup.host() {
+        CleanupProvider::Custom => match cloud.cleanup_host() {
             h if h.is_empty() => "your server".into(),
             h => h,
         },
@@ -343,12 +343,8 @@ pub fn apply_custom_cleanup(
     now_ms: u64,
 ) -> Result<(), String> {
     let mut next = dev.clone();
-    next.cloud.cleanup_provider = match f.provider.trim() {
-        "openrouter" => CleanupProvider::OpenRouter,
-        "custom" => CleanupProvider::Custom,
-        _ => return Err("Cleanup provider must be OpenRouter or Custom server".into()),
-    };
-    let custom = next.cloud.cleanup_provider == CleanupProvider::Custom;
+    next.cloud.cleanup_provider = f.provider;
+    let custom = !f.provider.is_openrouter();
     let cc = &mut next.cloud.custom_cleanup;
     let url = f.base_url.trim();
     cc.base_url = if url.is_empty() {
@@ -387,6 +383,17 @@ pub fn apply_custom_cleanup(
     check(&next)?;
     *dev = next;
     Ok(())
+}
+
+/// D52 `dev_custom_cleanup_address`: [`flow_router::cloud::custom_server_address`]
+/// plus `model_ok`, the JSON `flow_ffi::json_api::custom_cleanup_address`
+/// gives Android.
+pub fn custom_address(base_url: &str, model: &str) -> serde_json::Value {
+    let model_ok = valid_custom_model_id(model.trim());
+    match flow_router::cloud::custom_server_address(base_url) {
+        Ok(a) => serde_json::json!({"url": a.url, "host": a.host, "model_ok": model_ok}),
+        Err(e) => serde_json::json!({"error": "bad_base_url", "message": e, "model_ok": model_ok}),
+    }
 }
 
 /// `order` (completed as [`full_cleanup_order`]) with each engine's flag kept.
@@ -474,6 +481,9 @@ pub fn ack_notice(dev: &mut DevSettings) {
 }
 
 /// The sentence "Test" sends for cleanup (never the user's text).
+#[cfg(feature = "cloud")]
+pub const CLEANUP_SAMPLE: &str = flow_cloud::custom::TEST_SAMPLE;
+#[cfg(not(feature = "cloud"))]
 pub const CLEANUP_SAMPLE: &str =
     "um so i think we should uh meet on tuesday no wait wednesday at three";
 
@@ -701,7 +711,7 @@ mod tests {
 
     fn custom(provider: &str, url: &str, model: &str, consent: bool) -> CustomCleanupForm {
         CustomCleanupForm {
-            provider: provider.into(),
+            provider: serde_json::from_value(serde_json::json!(provider)).unwrap(),
             base_url: url.into(),
             model: model.into(),
             timeout_ms: 4000,
@@ -710,9 +720,24 @@ mod tests {
     }
 
     #[test]
+    fn custom_address_is_the_router_normaliser() {
+        let v = custom_address("http://[2001:DB8::0:1]:4000/", "m-1");
+        assert_eq!(v["url"], "http://[2001:db8::1]:4000/v1");
+        assert_eq!(v["host"], "2001:db8::1");
+        assert_eq!(v["model_ok"], true);
+        let v = custom_address("http://x/v1?k=1", "two words");
+        assert_eq!(v["error"], "bad_base_url");
+        assert_eq!(v["model_ok"], false);
+    }
+
+    #[test]
     fn provider_switch_needs_a_url_and_a_model() {
         let mut d = dev();
-        assert!(apply_custom_cleanup(&mut d, &custom("lmstudio", "", "", false), 5).is_err());
+        // The provider is typed: an unknown one never reaches the settings.
+        assert!(serde_json::from_value::<CustomCleanupForm>(
+            serde_json::json!({"provider": "lmstudio", "timeout_ms": 4000})
+        )
+        .is_err());
         assert_eq!(
             apply_custom_cleanup(&mut d, &custom("custom", "", "m", false), 5).unwrap_err(),
             "Enter your server's base URL"

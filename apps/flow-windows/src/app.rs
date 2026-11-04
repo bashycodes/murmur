@@ -2628,21 +2628,58 @@ struct CleanupTest {
     model: String,
 }
 
+/// "Test cleanup" on the selected provider (D52): OpenRouter with its key,
+/// or the custom server with its optional key (the saved one only for the
+/// consented host). Never the OpenRouter key on a custom server.
 #[tauri::command]
 async fn dev_or_test_cleanup(app: AppHandle) -> Result<CleanupTest, String> {
     let state = app.state::<AppState>();
     let router = state.router.get().cloned().ok_or("router not ready")?;
-    let cfg = state
-        .prefs
-        .read()
-        .unwrap()
-        .developer
-        .cloud
-        .openrouter
-        .clone();
+    let cloud = state.prefs.read().unwrap().developer.cloud.clone();
+    if !cloud.cleanup_provider.is_openrouter() {
+        let cc = cloud.custom_cleanup;
+        let key = credentials::custom_key_for(
+            None,
+            || credentials::custom_key(&*state.creds),
+            &cc,
+            &cc.base_url,
+        )?;
+        return tauri::async_runtime::spawn_blocking(move || test_custom_cleanup(&cc, key))
+            .await
+            .map_err(|e| e.to_string());
+    }
+    let cfg = cloud.openrouter;
     tauri::async_runtime::spawn_blocking(move || test_cleanup(&router, &cfg))
         .await
         .map_err(|e| e.to_string())
+}
+
+fn test_custom_cleanup(
+    cc: &flow_router::cloud::CustomCleanupConfig,
+    key: Option<String>,
+) -> CleanupTest {
+    #[cfg(feature = "cloud")]
+    {
+        let t = flow_cloud::custom::test_cleanup(cc, key.map(flow_router::SecretString::new));
+        CleanupTest {
+            ok: t.ok,
+            text: t.text,
+            error: t.error,
+            message: t.message,
+            latency_ms: t.latency_ms,
+            cost_usd: t.cost_usd,
+            model: t.model,
+        }
+    }
+    #[cfg(not(feature = "cloud"))]
+    {
+        let _ = key;
+        CleanupTest {
+            error: Some("cloud_not_configured".into()),
+            model: cc.model.clone(),
+            ..Default::default()
+        }
+    }
 }
 
 fn test_cleanup(router: &RouterAdapter, cfg: &flow_router::OpenRouterConfig) -> CleanupTest {
@@ -2768,8 +2805,10 @@ fn dev_cloud_clear_custom_key(state: tauri::State<'_, AppState>) -> Result<KeySt
 }
 
 /// D52 "Load models" / "Test connection": `GET {base_url}/models` with the
-/// typed key, else the saved one, else none. `{models}` or `{error,
-/// message}` (a code and a line that never holds the URL or the key).
+/// typed key, else the saved one only when `base_url`'s host is the
+/// consented one ([`credentials::custom_key_for`]), else none.
+/// `flow_cloud::custom::models_json`: `{models}` or `{error, message}` (a
+/// code and a line that never holds the URL or the key).
 #[tauri::command]
 async fn dev_or_custom_models(
     app: AppHandle,
@@ -2777,11 +2816,20 @@ async fn dev_or_custom_models(
     key: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let state = app.state::<AppState>();
-    let typed = match key.as_deref().map(str::trim).filter(|k| !k.is_empty()) {
-        Some(k) => Some(credentials::normalize_key(k)?),
-        None => None,
-    };
-    let key = typed.or_else(|| credentials::custom_key(&*state.creds));
+    let cc = state
+        .prefs
+        .read()
+        .unwrap()
+        .developer
+        .cloud
+        .custom_cleanup
+        .clone();
+    let key = credentials::custom_key_for(
+        key.as_deref(),
+        || credentials::custom_key(&*state.creds),
+        &cc,
+        &base_url,
+    )?;
     tauri::async_runtime::spawn_blocking(move || custom_models(&base_url, key))
         .await
         .map_err(|e| e.to_string())
@@ -2791,19 +2839,26 @@ fn custom_models(base_url: &str, key: Option<String>) -> serde_json::Value {
     #[cfg(feature = "cloud")]
     {
         let key = key.map(flow_router::SecretString::new);
-        match flow_cloud::custom::list_models(base_url, key.as_ref(), Duration::from_secs(8)) {
-            Ok(models) => serde_json::json!({ "models": models }),
-            Err(e) => serde_json::json!({
-                "error": e.code(),
-                "message": flow_cloud::custom::describe(&e),
-            }),
-        }
+        flow_cloud::custom::models_json(flow_cloud::custom::list_models(
+            base_url,
+            key.as_ref(),
+            Duration::from_secs(8),
+        ))
     }
     #[cfg(not(feature = "cloud"))]
     {
         let _ = (base_url, key);
         serde_json::json!({"error": "cloud_not_configured", "message": "not in this build"})
     }
+}
+
+/// D52: the custom server address as the router normalises it —
+/// `{url, host, model_ok}` or `{error: "bad_base_url", message, model_ok}`
+/// (same JSON as Android's `nativeCustomCleanupAddress`). The page uses it
+/// for the shown URL and the consent-host decision; it never parses URLs.
+#[tauri::command]
+fn dev_custom_cleanup_address(base_url: String, model: String) -> serde_json::Value {
+    crate::openrouter::custom_address(&base_url, &model)
 }
 
 #[tauri::command]
@@ -3209,6 +3264,7 @@ pub fn run() {
             dev_cloud_set_custom_key,
             dev_cloud_clear_custom_key,
             dev_or_custom_models,
+            dev_custom_cleanup_address,
             dev_cloud_usage,
             dev_cloud_reset_usage,
             dev_or_get,

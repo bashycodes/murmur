@@ -151,6 +151,8 @@ export interface UsageView {
   budget: number | null;
   budget_reached: boolean;
   rows: UsageRow[];
+  /** D52: the custom server's reported cost, never in the budget. */
+  custom_cost?: string | null;
 }
 
 export type CatalogSource = "Live" | "Cache" | "Baked";
@@ -206,6 +208,7 @@ export interface CleanupStatus {
   timeout_ms: number;
   last: CleanUsage | null;
   month_cost_usd: number | null;
+  custom_month_cost_usd?: number | null;
   /** D52: who the cloud cleanup route calls. */
   provider?: CleanupProvider;
   /** D52: the custom server's host (absent for OpenRouter). */
