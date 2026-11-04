@@ -137,9 +137,7 @@ class OpenRouterActivity : Activity() {
                 refreshers += {
                     val s = app.dev.load()
                     val u = CloudUsage.decode(app.engine.router()?.cloudUsageJson() ?: app.dev.cloudUsageJson)
-                    fun cost(purpose: String) = (if (u.estimated(purpose)) "≈" else "") + CloudText.usd(u.costFor(purpose))
-                    stats.set(0, CloudText.usd(u.totalCostUsd), "this month" + (s.cloud.monthlyBudgetUsd?.let { " of ${CloudText.usd(it)}" } ?: ""))
-                    stats.set(1, cost(CloudUsage.PURPOSE_STT)); stats.set(2, cost(CloudUsage.PURPOSE_CLEANUP))
+                    CloudText.usageStats(u, s.cloud).forEachIndexed { i, (n, unit) -> stats.set(i, n, unit) }
                     usage.text = CloudText.usageLines(u, s.cloud).drop(1).joinToString("\n")
                     budget.setSubtitle(s.cloud.monthlyBudgetUsd?.let { "${CloudText.usd(it)} per month for speech and cleanup together; both pause once it is reached" } ?: "None")
                 }
