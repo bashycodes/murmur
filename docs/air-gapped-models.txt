@@ -1,0 +1,44 @@
+# Every model Flow Clone can use, pinned: one line per file.
+# Columns: folder kind engine file bytes sha256 url title
+# folder = the server library folder (= the catalogue id the apps check
+# the file against); kind/engine/title go into that folder's model.toml.
+# URLs and SHA-256 are the Windows app's catalogue
+# (apps/flow-windows/src/model_download.rs CATALOG; Android pins the same).
+# How to use it: docs/air-gapped.md "Download these now".
+
+# English speech
+parakeet-tdt-0.6b-v2-int8 stt parakeet encoder.int8.onnx 652184296 a32b12d17bbbc309d0686fbbcc2987b5e9b8333a7da83fa6b089f0a2acd651ab https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/resolve/1ab9323565ddb038682214b292f588070a538ce2/encoder.int8.onnx Parakeet TDT 0.6B v2 (English)
+parakeet-tdt-0.6b-v2-int8 stt parakeet decoder.int8.onnx 7257753 b6bb64963457237b900e496ee9994b59294526439fbcc1fecf705b31a15c6b4e https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/resolve/1ab9323565ddb038682214b292f588070a538ce2/decoder.int8.onnx Parakeet TDT 0.6B v2 (English)
+parakeet-tdt-0.6b-v2-int8 stt parakeet joiner.int8.onnx 1739080 7946164367946e7f9f29a122407c3252b680dbae9a51343eb2488d057c3c43d2 https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/resolve/1ab9323565ddb038682214b292f588070a538ce2/joiner.int8.onnx Parakeet TDT 0.6B v2 (English)
+parakeet-tdt-0.6b-v2-int8 stt parakeet tokens.txt 9384 ec182b70dd42113aff6c5372c75cac58c952443eb22322f57bbd7f53977d497d https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/resolve/1ab9323565ddb038682214b292f588070a538ce2/tokens.txt Parakeet TDT 0.6B v2 (English)
+parakeet-unified-en-0.6b-int8 stt parakeet encoder.int8.onnx 654040552 6716910b7a0833997fec7a410494c995d70124001a0e9b66d6370d6aced577e0 https://huggingface.co/csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming/resolve/8c3a10fb13408c7a7054f6898958bf1c64a8d6c7/encoder.int8.onnx Parakeet unified 0.6B (English)
+parakeet-unified-en-0.6b-int8 stt parakeet decoder.int8.onnx 7257753 a5e223392c90e75f8144cdb5eb95af7625db389e39edef2bd1a9c872b3298fe6 https://huggingface.co/csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming/resolve/8c3a10fb13408c7a7054f6898958bf1c64a8d6c7/decoder.int8.onnx Parakeet unified 0.6B (English)
+parakeet-unified-en-0.6b-int8 stt parakeet joiner.int8.onnx 1735860 869f43f7d24595c55581ad3bf249a935fb8a71389fbdaa7504b9f46f93140f8a https://huggingface.co/csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming/resolve/8c3a10fb13408c7a7054f6898958bf1c64a8d6c7/joiner.int8.onnx Parakeet unified 0.6B (English)
+parakeet-unified-en-0.6b-int8 stt parakeet tokens.txt 8952 dc0b4584ab2e4ddbf888425c076c61b736e7356a015250db7d307e6f1a8188ff https://huggingface.co/csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming/resolve/8c3a10fb13408c7a7054f6898958bf1c64a8d6c7/tokens.txt Parakeet unified 0.6B (English)
+whisper-base-en-q5_1 stt whisper ggml-base.en-q5_1.bin 59721011 4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.en-q5_1.bin Whisper base English
+whisper-tiny-en-q5_1 stt whisper ggml-tiny.en-q5_1.bin 32166155 c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny.en-q5_1.bin Whisper tiny English
+whisper-small-en-q5_1 stt whisper ggml-small.en-q5_1.bin 190098681 bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30 https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small.en-q5_1.bin Whisper small English
+
+# Many languages (Whisper)
+whisper-base stt whisper ggml-base.bin 147951465 60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin Whisper base
+whisper-base-q5_1 stt whisper ggml-base-q5_1.bin 59707625 422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898 https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base-q5_1.bin Whisper base q5_1
+whisper-small-q5_1 stt whisper ggml-small-q5_1.bin 190085487 ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-small-q5_1.bin Whisper small
+
+# Hebrew speech
+zipformer-he-int8 hebrew sherpa_online encoder.int8.onnx 70478964 6c6febcb74a09435315a1d872a6539f6e7fc2c333533f14c74edc0e85c49ffcd https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he/resolve/ee769a2a13b887f91572eec349458bfb0fe79e7a/sherpa-onnx/encoder.int8.onnx Zipformer Hebrew
+zipformer-he-int8 hebrew sherpa_online decoder.int8.onnx 1049105 feb03e7c8aa761593a9284a6fa1e91259be3702de75f630062256c1a59c5a906 https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he/resolve/ee769a2a13b887f91572eec349458bfb0fe79e7a/sherpa-onnx/decoder.int8.onnx Zipformer Hebrew
+zipformer-he-int8 hebrew sherpa_online joiner.int8.onnx 771805 1d2c6d8e6dabc5eb52de52e95718e9bdfbffbfe7ead3808fb5ffd74e83bd9cae https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he/resolve/ee769a2a13b887f91572eec349458bfb0fe79e7a/sherpa-onnx/joiner.int8.onnx Zipformer Hebrew
+zipformer-he-int8 hebrew sherpa_online tokens.txt 17086 e4ebb5e72a6aeef47437a55fa2308ebbedb7c51c557de7a89bf965c23ea9af4a https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he/resolve/ee769a2a13b887f91572eec349458bfb0fe79e7a/sherpa-onnx/tokens.txt Zipformer Hebrew
+parakeet-tdt-0.6b-v3-he-int8 hebrew parakeet encoder.int8.onnx 653215173 7eaf80bc88fccd579a7d3950c25e50e4c7935e5b037ec2aa1eee29bca5ca3981 https://huggingface.co/krut42/voice-parakeet-he-int8/resolve/39de3b473bed626c7796c156d71adc66161ebfe1/encoder.int8.onnx Parakeet Hebrew
+parakeet-tdt-0.6b-v3-he-int8 hebrew parakeet decoder.int8.onnx 12494234 3a1d0bbf3e393909095f826b7719fdaef42cd2e0b8b95c54518034ecc4b7d246 https://huggingface.co/krut42/voice-parakeet-he-int8/resolve/39de3b473bed626c7796c156d71adc66161ebfe1/decoder.int8.onnx Parakeet Hebrew
+parakeet-tdt-0.6b-v3-he-int8 hebrew parakeet joiner.int8.onnx 7008293 056c5464464b38a9cbacdccb6a9ff2114919780badb5c48e0f0260af7f91ccf2 https://huggingface.co/krut42/voice-parakeet-he-int8/resolve/39de3b473bed626c7796c156d71adc66161ebfe1/joiner.int8.onnx Parakeet Hebrew
+parakeet-tdt-0.6b-v3-he-int8 hebrew parakeet tokens.txt 107590 55a91c862d0a63e8b9587a3264ced4fc76943e66098468b4638e6a6c5642e364 https://huggingface.co/krut42/voice-parakeet-he-int8/resolve/39de3b473bed626c7796c156d71adc66161ebfe1/tokens.txt Parakeet Hebrew
+ivrit-whisper-large-v3-turbo-q5_0 hebrew whisper ggml-ivrit-large-v3-turbo-q5_0.bin 574041195 6c1da92e8e41dd64b8cc402eee7eb7a433d2152567e1a4d9cf181fefcc67a572 https://huggingface.co/tagidu/ivrit-whisper-large-v3-turbo-ggml-quantized/resolve/540d7736f31952a65efbdff0dc41e2b4b086a197/ggml-ivrit-large-v3-turbo-q5_0.bin ivrit.ai Whisper turbo (Hebrew)
+
+# Language detection (not a catalogue model: no catalogue_id in its model.toml)
+whisper-tiny-lid lid whisper ggml-tiny-q5_1.bin 32152673 818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7 https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny-q5_1.bin Whisper tiny (language detection)
+
+# AI cleanup
+qwen2.5-1.5b-instruct-q4_k_m llm gguf qwen2.5-1.5b-instruct-q4_k_m.gguf 1117320736 6a1a2eb6d15622bf3c96857206351ba97e1af16c30d7a74ee38970e434e9407e https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/qwen2.5-1.5b-instruct-q4_k_m.gguf Qwen2.5 1.5B Instruct (cleanup)
+llama-3.2-3b-instruct-q4_k_m llm gguf Llama-3.2-3B-Instruct-Q4_K_M.gguf 2019377696 6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/5ab33fa94d1d04e903623ae72c95d1696f09f9e8/Llama-3.2-3B-Instruct-Q4_K_M.gguf Llama 3.2 3B Instruct (cleanup)
+qwen2.5-0.5b-instruct-q4_k_m llm gguf qwen2.5-0.5b-instruct-q4_k_m.gguf 491400032 74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q4_k_m.gguf Qwen2.5 0.5B Instruct (cleanup)
