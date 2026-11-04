@@ -1,11 +1,11 @@
 # Air-gap readiness, 2026-11-04
 
-Owner ticket: "Prepare the software for transferral to an air-gapped network.
-Tell me if we're ready or if there are features we still need to wait on;
-list the transfer steps; link every model to download now." Code read on
+The owner asked whether Flow Clone is ready to move to a network with no
+internet, which features are still worth waiting for, what the transfer
+steps are, and which models to download now. Code read on
 `integration` at `df49069` (CI green: windows-build, android-build,
 repo-checks). Owner guide updated in the same change: `docs/air-gapped.md`
-("Download these now", "Also bring", "Transfer checklist") and the model
+("Transfer checklist", "Download the models", "Also bring", server config) and the model
 list `docs/air-gapped-models.txt`.
 
 ## Verdict
@@ -22,9 +22,9 @@ in `docs/air-gapped-models.txt` is the Windows catalogue's
 (`apps/flow-windows/src/model_download.rs` `CATALOG` + `LID_FILES`),
 checked by script against the source; Android's `ServerCatalog` pins the
 same hashes (`ServerCatalogTest`), and the ids are
-`flow_protocol::library::CATALOGUE`'s. A HEAD request on 2026-11-04
-resolved all 27 links (HTTP 200) with the pinned sizes. No file was
-downloaded.
+`flow_protocol::library::CATALOGUE`'s. On 2026-11-04 each of the 27 links
+answered (HTTP 200) with the pinned size, checked without downloading
+the files.
 
 Not pinned in code (listed in the guide as optional or "bring"):
 
@@ -99,11 +99,6 @@ The release also puts `docs/air-gapped-models.txt` into the source zip.
 | Notetaker 4: AI summary (not started) | Would run on the server or PC model | No, unless summaries are needed soon |
 | 1.0.0 #8: guide + e2e | Guide merged; e2e findings and `PROJECT_CONTEXT.md` row present. The real-device checklist ("internet blocked") is not run yet | No: it is step 11 of the transfer checklist, run on the closed network itself |
 
-## Owner steps (short)
+## Owner steps
 
-`docs/air-gapped.md` → "Transfer checklist". In brief: get the new
-release's hybrid Windows installer and hybrid APK; run the download loop
-(7.0 GB, all checked); build or `docker save` the server; copy to USB;
-on the closed network install the server, copy `flow-models/` into the
-library, create keys, connect the apps, download per device, and run the
-manual checklist.
+The numbered "Transfer checklist" at the top of `docs/air-gapped.md`.

@@ -7,151 +7,191 @@ person or device). Nothing in this setup calls out: the server only
 listens, and while a server is set the apps take their models from it and
 from nowhere else.
 
-What you need from a connected machine, once: the server build (or the
-Docker image), the app installers, and the model files. Carry them over on
-a USB stick or any other way you like.
-
+You bring everything over once, on a USB stick or any other way you like.
 Details live in `docs/server-setup.md` (host install, keys, model library)
-and `docs/container.md` (Docker); this page is the short path. The
-step-by-step move is the [transfer checklist](#transfer-checklist) at the
-end.
+and `docs/container.md` (Docker); this page is the short path.
 
-## Download these now
+## Transfer checklist
 
-Every model any part of Flow Clone can use, 15 models, **7.0 GB** in all.
-Each download link is pinned to one exact upstream version, and the apps
+On the connected machine:
+
+1. **Get the newest release.** It must be newer than 1.0.0 (see
+   `docs/findings/2026-11-04-air-gap-readiness.md` for why). A release is
+   cut from `integration` with `tools/release.sh X.Y.Z --apply` and
+   pushing the tag; the agent that runs this repo can do it for you. Then
+   download from GitHub → Releases the files listed in [Also
+   bring](#also-bring).
+2. **Download the models** into a `flow-models` folder outside the repo
+   ([Download the models](#download-the-models)).
+3. **Build the server** and, for Docker, save the image (§1).
+4. **Check the installers** against the release's `SHA256SUMS-*.txt`
+   (`sha256sum -c`), then copy to the USB stick: installers, server build
+   or image, `flow-models/`, the repo.
+
+On the closed network:
+
+5. Install the server (§1).
+6. Copy `flow-models/` into the server's library (§2);
+   `flow-server library list` shows 15 models, none skipped.
+7. Tell the server which models to use for speech, Hebrew, language
+   detection and AI cleanup, and start it (§3).
+8. Create your admin key and one key per device (§4).
+9. Install the apps and connect them: **Test connection** says `OK` (§5).
+10. On each device, download the models it needs from **From your
+    server** (§5).
+11. Verify: one dictation on each device in English and in Hebrew, with AI
+    cleanup; then work through the "Manual checklist: real devices,
+    internet blocked" in `docs/findings/2026-11-01-airgap-e2e.md`.
+12. Delete any key files from the USB stick.
+
+## Download the models
+
+Every model any part of Flow Clone can use: 15 models, **7.0 GB** in all.
+Each download link points at one fixed upstream version, and the apps
 check every file against a SHA-256 fingerprint built into them, so a copy
-made today still fits the apps later. Take all of them: it costs one
-evening of downloading and you never need the internet again for models.
+made today still fits later. Take all of them: one evening of downloading,
+and you never need the internet for models again.
 
-The full list, one line per file with its link, size and fingerprint, is
-`docs/air-gapped-models.txt` (copied from the Windows app's catalogue,
-`apps/flow-windows/src/model_download.rs`; Android pins the same files).
-On any connected machine with `bash`, `curl` and `sha256sum` (Linux, WSL,
-Git Bash), run from the repo folder, this downloads everything, checks each file, and writes each
-folder's `model.toml`, ready to copy into the server library (§2):
+The list, one line per file with its link, size and fingerprint, is
+`docs/air-gapped-models.txt` (taken from the apps' built-in catalogue).
+Paste the loop below into a `bash` shell (Linux, or WSL / Git Bash on
+Windows) with `curl` and `sha256sum`. It downloads every file into `~/flow-models` (outside the
+repo), checks it, and writes the small `model.toml` label each library
+folder needs (§2). Set `LIST` to where your copy of the repo is:
 
 ```sh
-mkdir flow-models && cd flow-models
-grep -v '^#' ../docs/air-gapped-models.txt | grep . |
-while read -r dir kind engine file size sha url title; do
-  mkdir -p "$dir"
-  echo "$sha  $dir/$file" | sha256sum -c --quiet - 2>/dev/null ||
-    curl -fL -C - -o "$dir/$file" "$url" </dev/null
-  echo "$sha  $dir/$file" | sha256sum -c - || break
-  id=""; [ "$kind" = lid ] || id="catalogue_id = \"$dir\""
-  printf 'kind = "%s"\ntitle = "%s"\nengine = "%s"\n%s\n' \
-    "$kind" "$title" "$engine" "$id" > "$dir/model.toml"
-done
+LIST=~/flow-clone/docs/air-gapped-models.txt
+mkdir -p ~/flow-models && cd ~/flow-models && test -f "$LIST" &&
+grep -v '^#' "$LIST" | grep . | {
+  bad=0
+  while read -r dir kind engine file size sha url title; do
+    mkdir -p "$dir"
+    echo "$sha  $dir/$file" | sha256sum -c --quiet - >/dev/null 2>&1 ||
+      curl -fL -C - -o "$dir/$file" "$url" </dev/null
+    if ! echo "$sha  $dir/$file" | sha256sum -c --quiet - >/dev/null 2>&1; then
+      echo "FAILED $dir/$file"; bad=1; continue
+    fi
+    id=""; [ "$kind" = lid ] || id="catalogue_id = \"$dir\""
+    printf 'kind = "%s"\ntitle = "%s"\nengine = "%s"\n%s\n' \
+      "$kind" "$title" "$engine" "$id" > "$dir/model.toml"
+  done
+  if [ "$bad" = 0 ]; then echo "All models OK"; else
+    echo "Some files FAILED: delete them and run this again"; false; fi
+} || { echo "Stopped: check LIST, or the FAILED lines above"; false; }
 ```
 
-Run it again to resume; a file that fails its check stops the loop (delete
-that file and rerun).
+It ends with `All models OK`; otherwise it lists each `FAILED` file and
+exits with an error. Run it again to resume a cut download; files
+already checked are skipped.
 
-Rec. = recommended. Sizes are MB (10⁶ bytes). "PC" is the Windows app,
-"phone" the Android hybrid app; both get the models from the server.
+Each folder's name is the id the apps know the model by. "PC" is the
+Windows app, "phone" the Android hybrid app; both get their models from
+the server. Sizes in MB.
 
-| Purpose | Folder (catalogue id) | Size | Used by | |
+| Purpose | Folder | Size | Used by | |
 |---|---|---|---|---|
-| English | `parakeet-tdt-0.6b-v2-int8` | 661 | server engine (installer default), PC English pick | rec. |
-| English | `parakeet-unified-en-0.6b-int8` | 663 | server English default, phone English default | rec. |
+| English | `parakeet-tdt-0.6b-v2-int8` | 661 | server speech engine, PC English pick | recommended |
+| English | `parakeet-unified-en-0.6b-int8` | 663 | phone English default; server alternative | recommended |
 | English | `whisper-base-en-q5_1` | 60 | phone, PC (light) | optional |
 | English | `whisper-tiny-en-q5_1` | 32 | older phones | optional |
 | English | `whisper-small-en-q5_1` | 190 | flagship phones, PC | optional |
-| Many languages | `whisper-base` | 148 | PC, server (whisper engine) | optional |
+| Many languages | `whisper-base` | 148 | PC | optional |
 | Many languages | `whisper-base-q5_1` | 60 | phone, PC | optional |
 | Many languages | `whisper-small-q5_1` | 190 | PC | optional |
-| Hebrew | `zipformer-he-int8` | 72 | server, PC and phone Hebrew default | rec. |
+| Hebrew | `zipformer-he-int8` | 72 | server, PC and phone Hebrew default | recommended |
 | Hebrew | `parakeet-tdt-0.6b-v3-he-int8` | 673 | server, PC, phone (larger alternative) | optional |
-| Hebrew | `ivrit-whisper-large-v3-turbo-q5_0` | 574 | PC with a GPU (most accurate Hebrew) | rec. with a GPU |
-| Language ID | `whisper-tiny-lid` (`ggml-tiny-q5_1.bin`) | 32 | server `lid_path`; the PC fetches it with any Hebrew model | rec. |
-| AI cleanup | `qwen2.5-1.5b-instruct-q4_k_m` | 1117 | server cleanup, PC without a GPU, flagship phones | rec. |
-| AI cleanup | `llama-3.2-3b-instruct-q4_k_m` | 2019 | PC with a GPU (most accurate cleanup) | rec. with a GPU |
+| Hebrew | `ivrit-whisper-large-v3-turbo-q5_0` | 574 | PC with a graphics chip (most accurate Hebrew) | recommended with a GPU |
+| Language detection | `whisper-tiny-lid` | 32 | server; the PC takes it with any Hebrew model | recommended |
+| AI cleanup | `qwen2.5-1.5b-instruct-q4_k_m` | 1117 | server, PC without a GPU, flagship phones | recommended |
+| AI cleanup | `llama-3.2-3b-instruct-q4_k_m` | 2019 | PC with a GPU (most accurate cleanup) | recommended with a GPU |
 | AI cleanup | `qwen2.5-0.5b-instruct-q4_k_m` | 491 | phones, slow PCs (fastest, misses fixes) | optional |
 
-Pinned download folders (each file's full link is in the list file):
+Not on the list, and not needed:
 
-* Parakeet v2: `https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/resolve/1ab9323565ddb038682214b292f588070a538ce2/`
-* Parakeet unified: `https://huggingface.co/csukuangfj2/sherpa-onnx-nemo-parakeet-unified-en-0.6b-int8-non-streaming/resolve/8c3a10fb13408c7a7054f6898958bf1c64a8d6c7/`
-* Whisper (all `ggml-*.bin`, language ID too): `https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/`
-* Zipformer Hebrew: `https://huggingface.co/ivrit-ai/zipformer2-66m-streaming-he/resolve/ee769a2a13b887f91572eec349458bfb0fe79e7a/sherpa-onnx/`
-* Parakeet Hebrew: `https://huggingface.co/krut42/voice-parakeet-he-int8/resolve/39de3b473bed626c7796c156d71adc66161ebfe1/`
-* ivrit.ai Whisper turbo: `https://huggingface.co/tagidu/ivrit-whisper-large-v3-turbo-ggml-quantized/resolve/540d7736f31952a65efbdff0dc41e2b4b086a197/`
-* Qwen2.5 0.5B / 1.5B: `https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/`, `https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct-GGUF/resolve/91cad51170dc346986eccefdc2dd33a9da36ead9/`
-* Llama 3.2 3B: `https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/5ab33fa94d1d04e903623ae72c95d1696f09f9e8/`
-
-Not pinned (no fingerprint in the code), and not needed for a normal setup:
-
-* **Silero VAD** (`ggml-silero-v5.1.2.bin`, 0.9 MB): only if you set
-  `vad_model_path` on the server; the built-in voice detection needs no
-  model, and the apps can't use a VAD from the library.
+* **Silero VAD** (`ggml-silero-v5.1.2.bin`, 0.9 MB, no fingerprint in the
+  code): only if you set `vad_model_path` on the server; the built-in
+  speech detection needs no model.
   `https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin`
 * The links on the Android model screens and in `tools/fetch-models.sh`
-  (except `--hebrew`) point at `main` or a GitHub tarball, not a fixed
-  version. Use the list above instead: same files, pinned.
+  point at the newest upstream version, not a fixed one; the list above
+  has the same files, fixed. `fetch-models.sh`'s default
+  `ggml-tiny.en.bin` and `jfk.wav` are only for tests.
 
 ## Also bring
 
-* **Windows installer:** `Murmur_<version>_x64-setup_hybrid.exe` from
-  the GitHub release (the `client` installer has no network code, so it
-  can't use your server). The speech engines, onnxruntime and the GPU
-  (Vulkan) pieces are inside the installer; GPU use needs the PC's normal
-  graphics driver.
-* **WebView2** (Windows 10 only; Windows 11 has it): the app's window
-  needs it, and the installer would otherwise try to download it. The
-  offline installer, 215 MB: `https://go.microsoft.com/fwlink/?linkid=2124701`.
+* **Windows installer:** `Murmur_<version>_x64-setup_hybrid.exe`. The
+  `client` installer has no network code, so it can't use your server.
+  Speech engines and the GPU (Vulkan) parts are inside the installer; the
+  GPU needs the PC's normal graphics driver.
+* **WebView2 offline installer** (215 MB), only for a Windows 10 PC that
+  lacks WebView2 (Windows 11 always has it): without it the installer
+  tries to download it. `https://go.microsoft.com/fwlink/?linkid=2124701`
 * **Android APK:** `flow-clone-android-hybrid-<version>-debug.apk` (uses
-  the server, falls back to the phone's own model). Use the `local` APK
-  only for a phone that must never open a connection (§6). The release
-  APKs are signed with a different key than one built on your machine:
-  installing one over the other means uninstalling first, which wipes the
+  the server, falls back to the phone's own model). The `local` APK only
+  for a phone that must never open a connection (§7). The release APKs are
+  signed with a different key than one built on your own machine:
+  switching between the two means uninstalling first, which wipes the
   app's settings and models.
-* **Server:** either the Docker image (`docker save`, §1), or the built
-  `flow-server` plus the sherpa-onnx 1.13.8 libraries (host install, §1;
-  version pinned in `crates/flow-asr-sherpa/Cargo.toml`, no fingerprint):
-  `https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-shared-lib.tar.bz2`.
-  For AI cleanup on a host install, also build the cleanup plugin on the
-  connected machine (`--features whisper,parakeet,tls,llm` and
-  `cargo build --release -p flow-llm`); the Docker image already has it.
-* **This repo** (a `git clone` or the release's source zip): the docs, the
-  installer script and `docs/air-gapped-models.txt`.
-* **Rebuilding on the closed network** is not set up: the repo has no
-  vendored dependencies. Bring built files instead. If you must build
-  there, copy a machine that already builds it (Rust 1.95.0 with its
-  `~/.cargo` cache, cmake, libclang; for Android also the SDK, NDK and
-  `~/.gradle` cache), or run `cargo vendor` and follow what it prints.
+* **Server:** the Docker image file or the host build (§1), plus the repo
+  (a `git clone` or the release's source zip) for the docs, the installer
+  script and the config files.
+* **Building on the closed network** is not set up: the repo does not
+  carry its dependencies. Bring built files. If you must build there,
+  copy a machine that already builds it (Rust 1.95.0 with its download
+  cache, cmake, libclang; for Android also its SDK, NDK and Gradle cache).
 
 ## 1. Install the server
 
-Pick one.
+Pick one. Both are built on a connected machine.
 
-**Host install.** On a connected Linux machine with the same distribution
-(or an older glibc) as the server, build it:
+**Host install.** Build on a connected Linux machine with the same
+distribution as the server (or an older one: the binary needs the same or
+a newer system C library), with the AI cleanup plugin:
 
 ```sh
-cargo build --release --offline -p flow-server --no-default-features --features whisper,parakeet,tls
+cargo build --release -p flow-server --no-default-features --features whisper,parakeet,tls,llm
+cargo build --release -p flow-llm
 ```
 
-Copy the whole repo folder (with `target/release/flow-server`), the
-sherpa-onnx libraries and the Parakeet model folder to the server, then:
+Also download the sherpa-onnx 1.13.8 libraries (9.8 MB, the speech
+engine's runtime; version fixed in `crates/flow-asr-sherpa/Cargo.toml`, no
+fingerprint) and unpack them:
+`https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-shared-lib.tar.bz2`.
+
+Copy the repo folder (with `target/release/flow-server` and
+`libflow_llm.so`), the unpacked libraries and `flow-models/` to the server,
+then install with the speech and cleanup models:
 
 ```sh
-SHERPA_ONNX_LIB_DIR=<libs> tools/server/install.sh --no-build --model <parakeet folder> --start
+SHERPA_ONNX_LIB_DIR=<libs>/lib tools/server/install.sh --no-build \
+  --model <flow-models>/parakeet-tdt-0.6b-v2-int8 \
+  --llm-model <flow-models>/qwen2.5-1.5b-instruct-q4_k_m/qwen2.5-1.5b-instruct-q4_k_m.gguf
 ```
 
 Add `--user` for a per-user install without sudo. The installer never
-downloads anything.
+downloads anything, and it writes `[model] asr_path`, `llm_path` and
+`llm_lib` into a new config. Start it after §2 and §3 (`--start`, or
+`systemctl restart flow-server`).
 
-**Docker.** Build the image on a connected machine and move it
-(`docs/container.md` §1-2):
+**Docker.** On the connected machine, from the repo (`docs/container.md`
+§1-2):
 
 ```sh
-docker save flow-server:local | gzip > flow-server-local.tar.gz   # connected machine
-gunzip -c flow-server-local.tar.gz | docker load                   # server
+cd deploy && docker compose build
+docker save flow-server:local | gzip > flow-server-local.tar.gz
 ```
 
-Then put the models in `deploy/models/` and `docker compose up -d` as in
-`docs/container.md` §3.
+On the server: `gunzip -c flow-server-local.tar.gz | docker load`. The
+image has the cleanup plugin; models and config are mounted (§2, §3).
+
+**GPU server (optional, NVIDIA).** If the server has an NVIDIA card, also
+build and save the CUDA image (`docs/container.md` "NVIDIA CUDA image"):
+`docker compose --profile gpu build flow-server-gpu`, then
+`docker save flow-server:local-cuda | gzip > flow-server-cuda.tar.gz`. The
+server then needs the NVIDIA driver and the NVIDIA container toolkit
+installed (bring their packages too), and runs
+`docker compose --profile gpu up -d flow-server-gpu` instead of
+`docker compose up -d`.
 
 **Address.** With no VPN, bind the server's LAN address too
 (`--bind 192.168.1.20:7313`, or `FLOW_PUBLISH_ADDR` for Docker). Plain
@@ -160,38 +200,81 @@ Then put the models in `deploy/models/` and `docker compose up -d` as in
 
 ## 2. Put models in the library
 
-The library is a folder on the server, one subfolder per model (default
-`<state dir>/library`: `/var/lib/flow-server/library` for the system
-install, `~/.local/state/flow-server/library` for `--user`, `/models/library`
-in Docker). Copy each model's files into its own folder and add a
-`model.toml` that says what it is:
+The library is a folder on the server, one subfolder per model, each with a
+`model.toml` label. The download loop made both: copy the folders of
+`flow-models/` in as they are.
+
+| Install | Library folder |
+|---|---|
+| system | `/var/lib/flow-server/library` |
+| `--user` | `~/.local/state/flow-server/library` |
+| Docker | `<models>/library`, where `<models>` is the host folder mounted as `/models` (`FLOW_MODELS_DIR`) |
 
 ```sh
-sudo mkdir -p /var/lib/flow-server/library/parakeet-v2
-sudo cp <parakeet folder>/* /var/lib/flow-server/library/parakeet-v2/
-sudoedit /var/lib/flow-server/library/parakeet-v2/model.toml
+sudo mkdir -p /var/lib/flow-server/library
+sudo cp -r <usb>/flow-models/. /var/lib/flow-server/library/
+# Docker, e.g. models in /srv/flow-server:
+sudo mkdir -p /srv/flow-server/library && sudo cp -r <usb>/flow-models/. /srv/flow-server/library/
 ```
+
+A label looks like this (`catalogue_id` = a copy of a model the apps know,
+so they check its files against their built-in fingerprints and refuse a
+wrong copy; leave it out for your own models):
 
 ```toml
 kind = "stt"                            # stt, hebrew, llm, lid or vad
 title = "Parakeet TDT 0.6B v2"          # shown in the apps
-catalogue_id = "parakeet-tdt-0.6b-v2-int8"  # only for a copy of a built-in model
 engine = "parakeet"                     # whisper, parakeet, sherpa_online, gguf
+catalogue_id = "parakeet-tdt-0.6b-v2-int8"
 ```
 
-With `catalogue_id` the apps check every file against the fingerprints
-built into them, so a wrong copy is refused. Leave it out for your own
-models; the apps then trust the fingerprint the server lists. More
-examples (Whisper, Hebrew, AI cleanup) are in `docs/server-setup.md` §10.
+More examples: `docs/server-setup.md` §10. The server notices new folders
+within a minute, no restart. Check what it serves, and why a folder was
+skipped: `sudo flow-server library list` (Docker:
+`docker compose exec flow-server flow-server library list`).
 
-The server notices new folders within a minute, no restart. Check what it
-serves, and why a folder was skipped:
+## 3. Tell the server which models to use
 
-```sh
-sudo flow-server library list
+The library only hands models to the apps. The server's own dictation uses
+the models its config names. Use the library copies, so nothing is stored
+twice (`<library>` is the folder from §2; in Docker `/models/library`):
+
+```toml
+[model]
+asr_engine = "parakeet"
+asr_path = "<library>/parakeet-tdt-0.6b-v2-int8"
+llm_path = "<library>/qwen2.5-1.5b-instruct-q4_k_m/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+lid_path = "<library>/whisper-tiny-lid/ggml-tiny-q5_1.bin"   # detects Hebrew
+
+[model.languages.he]
+asr_backend = "sherpa_online"
+asr_path = "<library>/zipformer-he-int8"
 ```
 
-## 3. Create keys and hand them out
+* **Host install:** the installer already wrote `asr_path`, `llm_path`
+  and `llm_lib` (pointing at its own copies, which is fine). Add `lid_path`
+  under `[model]` and the `[model.languages.he]` block to
+  `/etc/flow-server/config.toml` (`--user`:
+  `~/.config/flow-server/config.toml`), then `flow-server check-config
+  --config <file>` and restart.
+* **Docker:** copy `deploy/docker/config.toml` to `deploy/config.local.toml`,
+  set the lines above with `<library>` = `/models/library` (the copy's
+  `asr_path` must change too: it names a folder the loop doesn't make), and
+  start:
+
+  ```sh
+  cd deploy
+  FLOW_MODELS_DIR=/srv/flow-server FLOW_CONFIG_FILE=./config.local.toml \
+    FLOW_PUBLISH_ADDR=<server LAN address> docker compose up -d
+  ```
+
+  Put these three settings in `deploy/.env` so later commands use them
+  too.
+
+After the start the log's `ready` line shows `languages=he=sherpa_online`.
+`docs/server-setup.md` §2 ("LLM cleanup", "Hebrew") has the details.
+
+## 4. Create keys and hand them out
 
 Each person or device gets its own key. The first one, an admin key, comes
 from the server's command line:
@@ -215,7 +298,7 @@ The same from the shell: `flow-server keys add phone`, `keys list`,
 Hand secrets over the way you would a password: type them in, or move them
 on the USB stick and delete the file afterwards.
 
-## 4. Set up the apps
+## 5. Set up the apps
 
 Install the apps from the files you carried over: the Windows installer,
 and on Android the APK (allow installing from files once).
@@ -236,7 +319,7 @@ server*, then Download. A cut-off download resumes; Cancel keeps nothing.
 
 **Android, remote APK.** Dictates on the server only; it needs no models.
 
-## 5. No server reachable: copy models by hand
+## 6. No server reachable: copy models by hand
 
 If a device can't reach the server, copy the model files to it yourself:
 
@@ -247,11 +330,11 @@ If a device can't reach the server, copy the model files to it yourself:
   *Import model folder…* or *Import .zip…* (`apps/flow-android/INSTALL.md`
   §5).
 
-## 6. A phone that never talks to anything: the local APK
+## 7. A phone that never talks to anything: the local APK
 
 The `local` Android flavour has no network permission and no network code
 at all. It dictates on the phone only, so it needs no server or key; import
-the model by hand as in §5. Pick it when the phone should never open a
+the model by hand as in §6. Pick it when the phone should never open a
 connection, even to your own server.
 
 ## Checking it
@@ -262,33 +345,3 @@ model downloaded and checked, one dictation, the usage shown to the admin,
 then the key revoked and refused. The last run's results:
 `docs/findings/2026-11-01-airgap-e2e.md`.
 
-## Transfer checklist
-
-On the connected machine:
-
-1. Get the newest release (GitHub → Releases): the hybrid Windows
-   installer, the hybrid APK (and the local one if a phone must stay
-   offline), the `SHA256SUMS-*.txt` files, and the source zip.
-2. Download the models ([Download these now](#download-these-now)) into
-   `flow-models/`; the loop checks every file.
-3. Build the server: the Docker image and `docker save` it, or the
-   host build plus the sherpa-onnx libraries (§1). Add the cleanup plugin
-   if the server should do AI cleanup.
-4. Bring WebView2's offline installer if any PC runs Windows 10.
-5. Check the installers against `SHA256SUMS-*.txt` (`sha256sum -c`), then
-   copy everything to the USB stick: installers, server build or image,
-   `flow-models/`, the repo.
-
-On the closed network:
-
-6. Install the server (§1) and bind its LAN address (or turn on TLS).
-7. Copy every folder of `flow-models/` into the server library (§2), and
-   run `flow-server library list`: 15 models served, none skipped.
-8. Create your admin key and one key per device (§3).
-9. Install the apps and connect them (§4): **Test connection** says `OK`.
-10. Download the models each device needs from **From your server** (§4).
-11. Verify: one dictation on each device, in English and in Hebrew, with
-    AI cleanup; then work through the manual checklist in
-    `docs/findings/2026-11-01-airgap-e2e.md` ("Manual checklist: real
-    devices, internet blocked").
-12. Delete the key files from the USB stick.

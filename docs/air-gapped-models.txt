@@ -4,7 +4,7 @@
 # the file against); kind/engine/title go into that folder's model.toml.
 # URLs and SHA-256 are the Windows app's catalogue
 # (apps/flow-windows/src/model_download.rs CATALOG; Android pins the same).
-# How to use it: docs/air-gapped.md "Download these now".
+# How to use it: docs/air-gapped.md "Download the models".
 
 # English speech
 parakeet-tdt-0.6b-v2-int8 stt parakeet encoder.int8.onnx 652184296 a32b12d17bbbc309d0686fbbcc2987b5e9b8333a7da83fa6b089f0a2acd651ab https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8/resolve/1ab9323565ddb038682214b292f588070a538ce2/encoder.int8.onnx Parakeet TDT 0.6B v2 (English)
