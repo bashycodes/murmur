@@ -690,3 +690,16 @@ fn a_dictation_started_mid_job_is_not_held_up_by_the_meeting() {
     assert_eq!(done.turns.len(), 3, "{:?}", done.turns);
     assert!(slow.ran.lock().unwrap().len() >= 3);
 }
+
+/// One switch, two halves: the shell (this const) and the app window's
+/// page (`ui/src/pages/notetaker.ts`) must agree, or the UI would offer a
+/// Meetings page whose commands all fail (or hide a working Notetaker).
+#[test]
+fn notetaker_switch_matches_the_ui() {
+    let ui = include_str!("../../ui/src/pages/notetaker.ts");
+    let line = format!("export const NOTETAKER_ENABLED = {NOTETAKER_ENABLED};");
+    assert!(
+        ui.contains(&line),
+        "ui/src/pages/notetaker.ts must say `{line}`"
+    );
+}

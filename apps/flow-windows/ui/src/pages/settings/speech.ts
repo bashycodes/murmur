@@ -6,6 +6,7 @@
 import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import type { Page } from "../../lib/router.js";
+import { NOTETAKER_ENABLED } from "../notetaker.js";
 import { browseButton, DOWNLOAD_ROW, HEBREW_ROW, SERVER_MODELS_GROUP } from "../../features/models.js";
 
 /** One engine in a ranked list (`<prefix>_row_<key>`, `_desc_`, `_badge_`):
@@ -53,7 +54,7 @@ ${heading(
   <ul id="dev_warnings" class="lw-warnings"></ul>
 </section>
 
-<section class="lw-section" id="meet_group">
+<section class="lw-section" id="meet_group"${NOTETAKER_ENABLED ? "" : " hidden"}>
   <h3 class="fl-group-title">Meetings</h3>
   <div class="fl-group" id="meet_routes">
     ${engineRow("meet", "meeting", "client", ICON.chip, "This PC", toggle("meet_on_client", "Transcribe meetings on this PC"))}

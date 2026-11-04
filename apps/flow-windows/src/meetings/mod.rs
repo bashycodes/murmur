@@ -17,6 +17,21 @@
 //! would cancel a dictation at every chunk; with its own engine, dictation
 //! keeps working while a meeting records or transcribes.
 
+/// The Notetaker switch (D51). `false` = hidden: the shell builds no
+/// [`Meetings`] service and no call detector at launch (no recorder, no
+/// resumed transcription, nothing touches the microphone or system
+/// audio), the tray has no meeting line, the meeting shortcut is not
+/// installed, the meeting commands answer [`NOTETAKER_OFF_MSG`], and the
+/// app window shows the static "coming later" Notetaker page. Meetings
+/// already on disk are left as they are. This module and its tests are
+/// unaffected. Re-enable with `true` here **and** `NOTETAKER_ENABLED` in
+/// `ui/src/pages/notetaker.ts` (`notetaker_switch_matches_the_ui` keeps
+/// the two equal).
+pub const NOTETAKER_ENABLED: bool = false;
+
+/// What a meeting command answers while the Notetaker is hidden.
+pub const NOTETAKER_OFF_MSG: &str = "The Notetaker is not available in this version";
+
 pub mod detect;
 pub mod record;
 pub mod store;
