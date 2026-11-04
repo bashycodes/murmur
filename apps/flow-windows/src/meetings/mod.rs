@@ -7,6 +7,10 @@
 //!   long-recording engine (D44) and are merged by time.
 //! * [`store`]: the meetings folder next to the history; only the last
 //!   [`store::KEEP_AUDIO`] meetings keep their audio.
+//! * Summaries (D53): after a transcript is done, a summary job on the
+//!   same queue asks the user's AI cleanup order for a summary and action
+//!   items (`flow_core::summary`), stored with the meeting; Regenerate
+//!   ([`Meetings::summarise`]) runs it again.
 //!
 //! [`Meetings`] is the service the shell drives (tray item, shortcut,
 //! Meetings page). It is platform independent: the OS captures come in
@@ -32,6 +36,9 @@ pub const NOTETAKER_ENABLED: bool = false;
 /// What a meeting command answers while the Notetaker is hidden.
 pub const NOTETAKER_OFF_MSG: &str = "The Notetaker is not available in this version";
 
+/// Regenerate without summaries configured (D53).
+pub const SUMMARIES_OFF_MSG: &str = "Meeting summaries are off";
+
 pub mod detect;
 pub mod record;
 pub mod store;
@@ -43,12 +50,13 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
+use flow_core::cleanup::Cleaner;
 use flow_core::config::SessionConfig;
 use flow_router::meeting::{ChunkTranscriber, MeetingParams};
 use serde::Serialize;
 
 use record::{Clock, Recorder, Sink, Source};
-use store::{Meeting, MeetingMeta, MeetingStore, Status};
+use store::{Meeting, MeetingMeta, MeetingStore, MeetingSummary, Status, SummaryStatus};
 use transcript::{CancelSlot, CANCELLED};
 
 /// Reports a capture that failed mid-recording (device unplugged).
@@ -69,6 +77,29 @@ pub type EngineFactory =
 pub type SessionSource = Arc<dyn Fn() -> SessionConfig + Send + Sync>;
 /// Wall clock, ms since the Unix epoch.
 pub type WallClock = Arc<dyn Fn() -> u64 + Send + Sync>;
+/// The cleaner a summary runs on: the user's AI cleanup order at that
+/// moment (D53); `None` = no AI engine is on.
+pub type SummaryEngine = Arc<dyn Fn() -> Option<Arc<dyn Cleaner>> + Send + Sync>;
+
+/// Meeting summaries (D53): where they run and how.
+#[derive(Clone)]
+pub struct Summaries {
+    pub engine: SummaryEngine,
+    /// Call timeout and the dictation flag to yield to; `cancel` is
+    /// replaced per job.
+    pub options: flow_core::summary::Options,
+}
+
+/// The transcript as the summary reads it: one `Me: …` / `Others: …`
+/// line per turn, without times or untranscribed pieces.
+pub fn summary_input(turns: &[transcript::Turn]) -> String {
+    turns
+        .iter()
+        .filter(|t| t.error.is_none() && !t.text.trim().is_empty())
+        .map(|t| format!("{}: {}", t.speaker.label(), t.text.trim()))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 
 /// The session settings of a meeting's chunks: the user's dictation
 /// settings (languages, dictionary, spoken cleanup and formatting) without
@@ -229,6 +260,8 @@ pub struct View {
     pub transcribing: Option<Progress>,
     /// Meetings waiting for transcription after the current one.
     pub queued: usize,
+    /// The meeting whose summary is being made now (D53).
+    pub summarising: Option<String>,
     /// The last capture problem of this recording ("" = none).
     pub warning: String,
 }
@@ -249,6 +282,21 @@ pub struct Progress {
 
 pub type Listener = Box<dyn Fn(&View) + Send + Sync>;
 
+/// A queued piece of work: a meeting's transcription or its summary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Job {
+    Transcribe(String),
+    Summarise(String),
+}
+
+impl Job {
+    fn id(&self) -> &str {
+        match self {
+            Job::Transcribe(id) | Job::Summarise(id) => id,
+        }
+    }
+}
+
 struct Active {
     id: String,
     started_ms: u64,
@@ -265,10 +313,13 @@ struct Inner {
     mono: Clock,
     params: MeetingParams,
     keep_audio: usize,
+    summaries: Option<Summaries>,
     listener: Mutex<Option<Listener>>,
     active: Mutex<Option<Active>>,
     job: Mutex<Option<Progress>>,
-    queue: Mutex<VecDeque<String>>,
+    /// The meeting being summarised and its job's cancel flag.
+    summary_job: Mutex<Option<(String, Arc<AtomicBool>)>>,
+    queue: Mutex<VecDeque<Job>>,
     warning: Mutex<String>,
     cancel: CancelSlot,
     /// Held while a meeting file is checked and written (delete vs. the
@@ -285,7 +336,19 @@ impl Inner {
                 started_ms: a.started_ms,
             }),
             transcribing: self.job.lock().unwrap().clone(),
-            queued: self.queue.lock().unwrap().len(),
+            queued: self
+                .queue
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|j| matches!(j, Job::Transcribe(_)))
+                .count(),
+            summarising: self
+                .summary_job
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|j| j.0.clone()),
             warning: self.warning.lock().unwrap().clone(),
         }
     }
@@ -298,10 +361,14 @@ impl Inner {
     }
 
     fn enqueue(&self, id: String) {
+        self.push(Job::Transcribe(id));
+    }
+
+    fn push(&self, job: Job) {
         {
             let mut q = self.queue.lock().unwrap();
-            if !q.contains(&id) {
-                q.push_back(id);
+            if !q.contains(&job) {
+                q.push_back(job);
             }
         }
         let _ = self.jobs.lock().unwrap().send(());
@@ -312,11 +379,90 @@ impl Inner {
     }
 
     fn run_next(&self) -> bool {
-        let Some(id) = self.queue.lock().unwrap().pop_front() else {
+        let Some(job) = self.queue.lock().unwrap().pop_front() else {
             return false;
         };
-        self.run_job(&id);
+        match job {
+            Job::Transcribe(id) => self.run_job(&id),
+            Job::Summarise(id) => self.run_summary(&id),
+        }
         true
+    }
+
+    /// D53: queue a summary of `m` (a done meeting) and mark it pending in
+    /// `m` (the caller saves). No-op without summaries.
+    fn want_summary(&self, m: &mut Meeting) -> bool {
+        if self.summaries.is_none() {
+            return false;
+        }
+        m.summary = Some(MeetingSummary::pending(m.summary.as_ref()));
+        true
+    }
+
+    /// Make (or remake) a meeting's summary on the AI cleanup order.
+    fn run_summary(&self, id: &str) {
+        let Some(summaries) = self.summaries.clone() else {
+            return;
+        };
+        let Some(m) = self.store.get(id) else { return };
+        if m.status != Status::Done {
+            return;
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        *self.summary_job.lock().unwrap() = Some((id.to_string(), cancel.clone()));
+        self.notify();
+        let t0 = Instant::now();
+        let input = summary_input(&m.turns);
+        let opts = flow_core::summary::Options {
+            cancel,
+            ..summaries.options.clone()
+        };
+        let result = flow_core::summary::summarise((summaries.engine)(), &input, &opts);
+        {
+            let _io = self.io.lock().unwrap();
+            if let Some(mut cur) = self.store.get(id) {
+                let mut s = MeetingSummary::pending(cur.summary.as_ref());
+                match &result {
+                    // Quit: stays pending, made at the next start.
+                    Err(flow_core::summary::SummaryError::Cancelled) => {}
+                    Ok(r) => {
+                        s = MeetingSummary {
+                            v: store::SUMMARY_VERSION,
+                            status: SummaryStatus::Done,
+                            text: r.text.clone(),
+                            action_items: r.action_items.clone(),
+                            language: r.language.clone(),
+                            engine: Some(r.engine.clone()),
+                            model: r.model.clone(),
+                            error: None,
+                            made_ms: (self.wall)(),
+                        };
+                    }
+                    Err(e) => {
+                        s.status = SummaryStatus::Failed;
+                        s.error = Some(e.to_string());
+                    }
+                }
+                cur.summary = Some(s);
+                if let Err(e) = self.store.save(&cur) {
+                    self.log(&format!("save {id}: {e}"));
+                }
+            }
+        }
+        // Sizes, engine and time only, never the text.
+        self.log(&match &result {
+            Ok(r) => format!(
+                "summarised {id}: {} chars in {} calls on {} in {} ms, {} action items",
+                input.chars().count(),
+                r.calls,
+                r.engine,
+                t0.elapsed().as_millis(),
+                r.action_items.len()
+            ),
+            Err(e) => format!("summary of {id} stopped: {e}"),
+        });
+        *self.summary_job.lock().unwrap() = None;
+        self.notify();
     }
 
     fn run_job(&self, id: &str) {
@@ -381,8 +527,12 @@ impl Inner {
                     cur.routes = tally.as_ref().map(|t| t.counts()).unwrap_or_default();
                     cur.status = Status::Done;
                     cur.error = None;
-                    if let Err(e) = self.store.save(&cur) {
-                        self.log(&format!("save {id}: {e}"));
+                    // D53: a new transcript gets a new summary.
+                    let summarise = self.want_summary(&mut cur);
+                    match self.store.save(&cur) {
+                        Ok(()) if summarise => self.push(Job::Summarise(id.to_string())),
+                        Ok(()) => {}
+                        Err(e) => self.log(&format!("save {id}: {e}")),
                     }
                 }
                 (Err(e), Some(mut cur)) => {
@@ -459,6 +609,8 @@ pub struct Options {
     pub mono: Clock,
     pub params: MeetingParams,
     pub keep_audio: usize,
+    /// D53: summaries after transcription; `None` = none are made.
+    pub summaries: Option<Summaries>,
 }
 
 impl Meetings {
@@ -475,9 +627,11 @@ impl Meetings {
             mono: o.mono,
             params: o.params,
             keep_audio: o.keep_audio,
+            summaries: o.summaries,
             listener: Mutex::new(None),
             active: Mutex::new(None),
             job: Mutex::new(None),
+            summary_job: Mutex::new(None),
             queue: Mutex::new(VecDeque::new()),
             warning: Mutex::new(String::new()),
             cancel: Arc::new(Mutex::new(None)),
@@ -638,7 +792,7 @@ impl Meetings {
         {
             return Err("stop the recording first".into());
         }
-        i.queue.lock().unwrap().retain(|q| q != id);
+        i.queue.lock().unwrap().retain(|q| q.id() != id);
         let deleted = {
             let _io = i.io.lock().unwrap();
             i.store.delete(id)?
@@ -648,8 +802,45 @@ impl Meetings {
                 c.cancel();
             }
         }
+        if let Some((_, c)) = i.summary_job.lock().unwrap().as_ref().filter(|j| j.0 == id) {
+            c.store(true, Ordering::SeqCst);
+        }
         i.notify();
         Ok(deleted)
+    }
+
+    /// D53 Regenerate: make the summary of a transcribed meeting again
+    /// (or for the first time, for one transcribed before summaries). The
+    /// old summary stays until the new one replaces it.
+    pub fn summarise(&self, id: &str) -> Result<(), String> {
+        let i = &self.inner;
+        if i.summaries.is_none() {
+            return Err(SUMMARIES_OFF_MSG.into());
+        }
+        if i.summary_job
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|j| j.0 == id)
+            || i.queue
+                .lock()
+                .unwrap()
+                .contains(&Job::Summarise(id.to_string()))
+        {
+            return Ok(());
+        }
+        {
+            let _io = i.io.lock().unwrap();
+            let mut m = i.store.get(id).ok_or("no such meeting")?;
+            if m.status != Status::Done {
+                return Err("the meeting has no transcript yet".into());
+            }
+            i.want_summary(&mut m);
+            i.store.save(&m)?;
+        }
+        i.push(Job::Summarise(id.to_string()));
+        i.notify();
+        Ok(())
     }
 
     /// Transcribe a failed meeting again (its audio must still be there).
@@ -673,6 +864,16 @@ impl Meetings {
     pub fn recover(&self) {
         let i = &self.inner;
         for mut m in i.store.all().into_iter().rev() {
+            // D53: a summary the last run did not finish.
+            if m.status == Status::Done
+                && i.summaries.is_some()
+                && m.summary
+                    .as_ref()
+                    .is_some_and(|s| s.status == SummaryStatus::Pending)
+            {
+                i.push(Job::Summarise(m.id.clone()));
+                continue;
+            }
             if !matches!(m.status, Status::Recording | Status::Transcribing) {
                 continue;
             }
@@ -707,6 +908,9 @@ impl Meetings {
         }
         if let Some(c) = i.cancel.lock().unwrap().as_ref() {
             c.cancel();
+        }
+        if let Some((_, c)) = i.summary_job.lock().unwrap().as_ref() {
+            c.store(true, Ordering::SeqCst);
         }
     }
 }

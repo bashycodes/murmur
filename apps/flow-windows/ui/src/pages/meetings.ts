@@ -4,7 +4,9 @@
 // holds up a dictation. Audio of the last 3 meetings is kept (for Retry);
 // transcripts stay until deleted. Backend: `meeting_*` in src/app.rs,
 // events `meetings:changed` (src/meetings/mod.rs `View`). Meeting
-// detection (D48): `prefs.meeting_detection` = off / ask / auto.
+// detection (D48): `prefs.meeting_detection` = off / ask / auto. AI
+// summary + action items (D53): made after the transcript on the cleanup
+// order, `meeting_summarise` = Regenerate.
 
 import { $, askDialog, el } from "../lib/dom.js";
 import { ICON, iconEl, iconSvg } from "../lib/icons.js";
@@ -36,6 +38,20 @@ export interface Turn {
   error?: string;
 }
 
+/** `meetings::store::MeetingSummary` (D53). */
+export interface MeetingSummary {
+  v: number;
+  status: "pending" | "done" | "failed";
+  text: string;
+  action_items: string[];
+  language?: string;
+  /** `local` (this PC), `server`, `cloud` (OpenRouter). */
+  engine?: string;
+  model?: string;
+  error?: string;
+  made_ms: number;
+}
+
 /** `meetings::store::Meeting`. */
 export interface Meeting {
   id: string;
@@ -48,6 +64,7 @@ export interface Meeting {
   turns: Turn[];
   /** Chunks per route that transcribed it (`local` / `remote` / `cloud`). */
   routes?: Record<string, number>;
+  summary?: MeetingSummary;
 }
 
 /** `meetings::View`. */
@@ -55,6 +72,8 @@ export interface MeetingView {
   recording: { id: string; started_ms: number } | null;
   transcribing: { id: string; percent: number } | null;
   queued: number;
+  /** The meeting whose summary is being made. */
+  summarising?: string | null;
   warning: string;
 }
 
@@ -107,6 +126,18 @@ const TEMPLATE = `
     <h2 class="lw-mt-title" id="mt_title"></h2>
     <p class="lw-mt-sub" id="mt_sub"></p>
     <p class="lw-mt-note" id="mt_note" hidden></p>
+    <div class="lw-mt-summary" id="mt_summary" hidden>
+      <div class="lw-mt-summary-head">
+        <h3 class="lw-mt-summary-title">Summary</h3>
+        <span class="lw-mt-summary-by" id="mt_summary_by"></span>
+        <span class="lw-mt-grow"></span>
+        <button type="button" class="fl-btn fl-btn-ghost fl-btn-sm" id="mt_regen">Regenerate</button>
+      </div>
+      <p class="lw-mt-summary-state" id="mt_summary_state" hidden></p>
+      <p class="lw-mt-summary-text" id="mt_summary_text" dir="auto"></p>
+      <h4 class="lw-mt-summary-sub" id="mt_items_title" hidden>Action items</h4>
+      <ul class="lw-mt-items" id="mt_items" dir="auto"></ul>
+    </div>
     <div class="lw-mt-turns" id="mt_turns"></div>
   </section>
 
@@ -260,6 +291,45 @@ async function refreshList(): Promise<void> {
   $<HTMLElement>("mt_empty").hidden = list.length > 0;
 }
 
+const SUMMARY_BY: Record<string, string> = {
+  local: "this PC's AI model",
+  server: "your server",
+  cloud: "OpenRouter",
+};
+
+/** What the summary box says about its state ("" when it just shows it). */
+export function summaryState(s: MeetingSummary | undefined, running: boolean): string {
+  if (running) return "Writing the summary… Dictation keeps priority.";
+  // Transcribed before summaries existed (or with them off): offer one.
+  if (!s) return "No summary yet";
+  if (s.status === "pending") return "Waiting to be summarised";
+  if (s.status === "failed") return `No summary: ${s.error ?? "unknown error"}`;
+  return "";
+}
+
+function showSummary(m: Meeting): void {
+  const box = $<HTMLElement>("mt_summary");
+  const s = m.summary;
+  box.hidden = m.status !== "done";
+  if (box.hidden) return;
+  const running = view.summarising === m.id;
+  const state = summaryState(s, running);
+  const st = $<HTMLElement>("mt_summary_state");
+  st.textContent = state;
+  st.hidden = !state;
+  st.classList.toggle("is-err", s?.status === "failed" && !running);
+  $<HTMLElement>("mt_summary_by").textContent =
+    s?.status === "done" && s.engine ? `by ${SUMMARY_BY[s.engine] ?? s.engine}` : "";
+  $<HTMLElement>("mt_summary_text").textContent = s?.text ?? "";
+  const items = s?.action_items ?? [];
+  $<HTMLElement>("mt_items").replaceChildren(...items.map((t) => el("li", "", t)));
+  $<HTMLElement>("mt_items_title").hidden = items.length === 0;
+  const btn = $<HTMLButtonElement>("mt_regen");
+  // Same command either way: `meeting_summarise` makes a first summary too.
+  btn.textContent = s ? "Regenerate" : "Summarise";
+  btn.disabled = running || s?.status === "pending";
+}
+
 const ROUTE_NAMES: Record<string, string> = {
   local: "This PC",
   remote: "Your server",
@@ -304,6 +374,7 @@ function showDetail(m: Meeting): void {
     turns.push(el("p", "lw-mt-note", "Nothing was said in this meeting."));
   }
   $<HTMLElement>("mt_turns").replaceChildren(...turns);
+  showSummary(m);
 }
 
 async function openMeeting(id: string): Promise<void> {
@@ -339,6 +410,16 @@ async function retry(id: string): Promise<void> {
   try {
     await invoke("meeting_retry", { id });
     say("Transcribing again");
+  } catch (e) {
+    say(String(e), false);
+  }
+  await refresh();
+}
+
+async function regenerate(id: string): Promise<void> {
+  $<HTMLButtonElement>("mt_regen").disabled = true;
+  try {
+    await invoke("meeting_summarise", { id });
   } catch (e) {
     say(String(e), false);
   }
@@ -416,6 +497,7 @@ export const meetingsPage: Page = {
     $<HTMLButtonElement>("mt_copy").addEventListener("click", () => openId && void copy(openId));
     $<HTMLButtonElement>("mt_delete").addEventListener("click", () => openId && void remove(openId));
     $<HTMLButtonElement>("mt_retry").addEventListener("click", () => openId && void retry(openId));
+    $<HTMLButtonElement>("mt_regen").addEventListener("click", () => openId && void regenerate(openId));
     prefsStore.subscribe(showShortcut);
     prefsStore.subscribe(showDetect);
     $<HTMLSelectElement>("mt_detect").addEventListener("change", () => void saveDetect());

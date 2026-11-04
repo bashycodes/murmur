@@ -10,7 +10,7 @@ use flow_core::asr::MockAsr;
 use flow_core::cleanup::{CleanError, CleanPrompt, CleanRequest, Cleaner};
 use flow_core::config::CleanupLevel;
 use flow_core::FlowCore;
-use flow_protocol::{ClientMsg, ServerMsg, FEATURE_CLEAN, MAX_CLEAN_TEXT_BYTES};
+use flow_protocol::{ClientMsg, ServerMsg, FEATURE_CLEAN, FEATURE_SUMMARY, MAX_CLEAN_TEXT_BYTES};
 use flow_server::{Pool, ServerHandle};
 
 /// Upper-cases the raw transcript after `delay`.
@@ -23,6 +23,11 @@ impl Cleaner for Upper {
         std::thread::sleep(self.delay);
         if p.transcript == "fail" {
             return Err(CleanError::Backend("boom".into()));
+        }
+        // D53: a meeting task answers with the system prompt's first words,
+        // so a test sees which prompt the server built.
+        if p.source.as_ref().is_some_and(|s| !s.task.is_cleanup()) {
+            return Ok(p.system.split(' ').take(4).collect::<Vec<_>>().join(" "));
         }
         Ok(p.transcript.to_uppercase())
     }
@@ -69,6 +74,7 @@ async fn llm_server_advertises_and_cleans() {
     let h = hello(&mut ws).await;
     assert!(h.llm);
     assert!(h.features.iter().any(|f| f == FEATURE_CLEAN), "{h:?}");
+    assert!(h.features.iter().any(|f| f == FEATURE_SUMMARY), "{h:?}");
     send(
         &mut ws,
         &ClientMsg::Clean {
@@ -139,6 +145,7 @@ async fn no_llm_server_refuses() {
     let mut ws = connect(s.addr(), Some(TOKEN)).await.unwrap();
     let h = hello(&mut ws).await;
     assert!(!h.features.iter().any(|f| f == FEATURE_CLEAN));
+    assert!(!h.features.iter().any(|f| f == FEATURE_SUMMARY));
     send(
         &mut ws,
         &ClientMsg::Clean {
@@ -283,4 +290,42 @@ async fn session_llm_budget_scales_with_the_transcript_length() {
     assert_ne!(scaled.as_deref(), Some("llm_timeout"), "{scaled:?}");
     // Scaling off on the server: the fixed 300 ms runs out.
     assert_eq!(session_fallback(0).await.as_deref(), Some("llm_timeout"));
+}
+
+/// D53: a `clean` with a meeting task runs the summary prompt the client
+/// would build (synthetic text), not the cleanup prompt.
+#[tokio::test]
+async fn meeting_tasks_build_the_summary_prompt() {
+    use flow_core::cleanup::CleanTask;
+    use flow_core::summary::build_prompt;
+    let s = llm_server(Duration::ZERO, 4).await;
+    let mut ws = session(s.addr()).await;
+    for (id, task, want) in [
+        (1, CleanTask::MeetingNotes, "You take notes on"),
+        (2, CleanTask::MeetingSummary, "You summarise a meeting"),
+    ] {
+        let p = build_prompt(task, "Me: the budget review moved to Monday", Some("en"));
+        let mut r = (*p.source.unwrap()).clone();
+        r.timeout_ms = 2000;
+        send(
+            &mut ws,
+            &ClientMsg::Clean {
+                id,
+                req: Box::new(r),
+            },
+        )
+        .await;
+        let c = cleaned(&mut ws).await;
+        assert_eq!((c.id, c.text.as_deref()), (id, Some(want)));
+    }
+    // A cleanup request is unchanged.
+    send(
+        &mut ws,
+        &ClientMsg::Clean {
+            id: 3,
+            req: req("the demo"),
+        },
+    )
+    .await;
+    assert_eq!(cleaned(&mut ws).await.text.as_deref(), Some("THE DEMO"));
 }

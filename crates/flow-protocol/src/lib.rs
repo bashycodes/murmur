@@ -118,6 +118,12 @@ pub const FEATURE_SEGMENTS: &str = "segments";
 /// requests ([`ClientMsg::Clean`], D36). Advertised only when it has an
 /// LLM loaded.
 pub const FEATURE_CLEAN: &str = "clean";
+/// [`HelloOk::features`] value: the server's `clean` also runs the
+/// meeting summary tasks (`CleanRequest::task`, D53). Advertised with
+/// [`FEATURE_CLEAN`]. An older server ignores `task` and would clean the
+/// text instead, so a client sends a meeting task only to a server that
+/// lists this.
+pub const FEATURE_SUMMARY: &str = "summary";
 
 /// Largest `text` a [`ClientMsg::Clean`] may carry (bytes).
 pub const MAX_CLEAN_TEXT_BYTES: usize = 32 * 1024;

@@ -931,6 +931,21 @@ impl Router {
         }
     }
 
+    /// D53: the user's cleanup order as one cleaner for a long text task
+    /// outside a dictation (meeting summaries, `flow_core::summary`): the
+    /// on-device LLM `base` (when loaded and listed), the server (when
+    /// listed and configured) and the cloud gate (when listed and allowed,
+    /// with its consent, key, budget and circuit checked per call), in
+    /// the order the user set; switched-off entries are left out. `None` =
+    /// nothing to run on. Unlike [`Self::command_cleaner`] the server is
+    /// included. Additive.
+    pub fn cleanup_cleaner(&self, base: Option<Arc<dyn Cleaner>>) -> Option<Arc<dyn Cleaner>> {
+        let cfg = self.state.lk().cfg.clone();
+        let cl = self.plan(&cfg, false)(base)?;
+        // Everything off but a loaded on-device model: no engine.
+        cl.available().then_some(cl)
+    }
+
     /// Command Mode (`flow_core::command::run`) for a shell whose local
     /// engine the router owns (Android, `nativeCommand`): the base LLM is
     /// the warm local engine's on-device model, then [`Self::command_cleaner`]

@@ -792,12 +792,7 @@ impl CoreApi for RouterAdapter {
     ) -> Result<String, String> {
         let base = self.local.as_ref().and_then(|a| a.cleaner());
         let cleaner = self.router.command_cleaner(base);
-        let loading = self.local.as_ref().is_some_and(|a| {
-            matches!(
-                a.llm_status(),
-                crate::core_adapter::LlmStatus::Loading { .. }
-            )
-        });
+        let loading = self.local_llm_loading();
         if cleaner.is_none() && loading && !instruction.trim().is_empty() {
             return Err(LLM_LOADING_MSG.into());
         }
@@ -816,17 +811,41 @@ impl CoreApi for RouterAdapter {
     ) -> Result<String, String> {
         let base = self.local.as_ref().and_then(|a| a.cleaner());
         let cleaner = self.router.command_cleaner(base);
-        let loading = self.local.as_ref().is_some_and(|a| {
-            matches!(
-                a.llm_status(),
-                crate::core_adapter::LlmStatus::Loading { .. }
-            )
-        });
+        let loading = self.local_llm_loading();
         if cleaner.is_none() && loading && !text.trim().is_empty() {
             return Err(LLM_LOADING_MSG.into());
         }
         flow_core::transform::run_transform(cleaner, instruction, text, source, timeout)
             .map_err(|e| e.to_string())
+    }
+}
+
+impl RouterAdapter {
+    /// This PC's LLM is still loading (the app just started).
+    fn local_llm_loading(&self) -> bool {
+        self.local.as_ref().is_some_and(|a| {
+            matches!(
+                a.llm_status(),
+                crate::core_adapter::LlmStatus::Loading { .. }
+            )
+        })
+    }
+
+    /// D53: what a meeting summary runs on: the user's whole AI cleanup
+    /// order (this PC's LLM when loaded, the server, OpenRouter under the
+    /// cleanup consent), as for a dictation's cleanup. While this PC's LLM
+    /// is still loading (the app just started) it waits up to `wait` so
+    /// the model is not skipped. `None` = no AI engine is on.
+    pub fn summary_cleaner(
+        &self,
+        wait: std::time::Duration,
+    ) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
+        let t0 = Instant::now();
+        while t0.elapsed() < wait && self.local_llm_loading() {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+        }
+        let base = self.local.as_ref().and_then(|a| a.cleaner());
+        self.router.cleanup_cleaner(base)
     }
 }
 
@@ -1158,6 +1177,16 @@ mod tests {
             .transform("polish", "hey", Source::Selection, t)
             .unwrap_err();
         assert!(e.starts_with("Transforms need AI"), "{e}");
+    }
+
+    #[test]
+    fn summaries_run_on_the_cleanup_order_with_this_pcs_llm() {
+        let t = std::time::Duration::ZERO;
+        let r = command_rig(true);
+        let cl = r.summary_cleaner(t).expect("the local LLM is on");
+        assert_eq!(flow_core::cleanup::first_ready_engine(&cl), "local");
+        // No LLM loaded and nothing else on: no engine.
+        assert!(command_rig(false).summary_cleaner(t).is_none());
     }
 
     #[test]

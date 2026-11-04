@@ -115,6 +115,7 @@ fn main() {
             "meeting_copy",
             "meeting_delete",
             "meeting_retry",
+            "meeting_summarise",
             "meeting_prompt_answer",
         ];
         tauri_build::try_build(

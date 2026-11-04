@@ -26,6 +26,7 @@ pub mod script_lock;
 pub mod segment;
 #[cfg(feature = "parakeet")]
 pub mod sherpa_online;
+pub mod summary;
 pub mod transform;
 pub mod vad;
 #[cfg(feature = "whisper")]
