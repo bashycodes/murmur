@@ -369,14 +369,9 @@ impl Backend for RemoteBackend {
         deadline: Instant,
     ) -> Result<flow_protocol::Cleaned, BackendError> {
         let conn = self.connection()?;
-        if !conn
-            .hello()
-            .features
-            .iter()
-            .any(|f| f == flow_protocol::FEATURE_CLEAN)
-        {
+        if let Some(error) = clean_refusal(conn.hello(), req) {
             return Ok(flow_protocol::Cleaned {
-                error: Some("no_llm".into()),
+                error: Some(error.into()),
                 ..Default::default()
             });
         }
@@ -394,6 +389,24 @@ impl Backend for RemoteBackend {
             s.sid,
             Duration::from_millis(self.inner.cfg.connect_timeout_ms),
         )
+    }
+}
+
+/// Why a `clean` request is not sent to a server with this hello:
+/// `no_llm` (no `clean` feature), `no_summary` (a meeting task, D53, to a
+/// server without the `summary` feature, which would clean the text
+/// instead), or `None` = send it.
+pub(crate) fn clean_refusal(
+    hello: &flow_protocol::HelloOk,
+    req: &flow_core::cleanup::CleanRequest,
+) -> Option<&'static str> {
+    let has = |f: &str| hello.features.iter().any(|x| x == f);
+    if !has(flow_protocol::FEATURE_CLEAN) {
+        Some("no_llm")
+    } else if !req.task.is_cleanup() && !has(flow_protocol::FEATURE_SUMMARY) {
+        Some("no_summary")
+    } else {
+        None
     }
 }
 
@@ -428,5 +441,35 @@ pub(crate) fn failure_for_code(c: &str) -> Failure {
         code::UNAUTHORIZED => Failure::AuthFailed,
         code::PROTO_MISMATCH => Failure::ProtoMismatch,
         _ => Failure::Disconnected,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flow_core::cleanup::CleanRequest;
+    use flow_core::summary::CleanTask;
+
+    fn hello(features: &[&str]) -> flow_protocol::HelloOk {
+        flow_protocol::HelloOk {
+            features: features.iter().map(|f| f.to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn meeting_tasks_need_the_summary_feature() {
+        let clean = CleanRequest::default();
+        let notes = CleanRequest {
+            task: CleanTask::MeetingNotes,
+            ..Default::default()
+        };
+        let (c, s) = (flow_protocol::FEATURE_CLEAN, flow_protocol::FEATURE_SUMMARY);
+        assert_eq!(clean_refusal(&hello(&[]), &clean), Some("no_llm"));
+        assert_eq!(clean_refusal(&hello(&[]), &notes), Some("no_llm"));
+        // An older server: cleans, but would clean a meeting task too.
+        assert_eq!(clean_refusal(&hello(&[c]), &clean), None);
+        assert_eq!(clean_refusal(&hello(&[c]), &notes), Some("no_summary"));
+        assert_eq!(clean_refusal(&hello(&[c, s]), &notes), None);
     }
 }
