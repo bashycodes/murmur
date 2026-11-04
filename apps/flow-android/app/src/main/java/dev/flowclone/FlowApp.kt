@@ -17,6 +17,7 @@ import dev.flowclone.data.CloudKeyStore
 import dev.flowclone.data.CloudMigration
 import dev.flowclone.data.OpenRouter
 import dev.flowclone.data.CustomServer
+import dev.flowclone.data.CustomModelsKey
 import dev.flowclone.data.RouterOpener
 import dev.flowclone.data.ParakeetFiles
 import dev.flowclone.data.EngineRoute
@@ -526,11 +527,14 @@ class EngineHolder(
         runCatching { router()?.setCloudKey(id, key) }.onFailure { Log.w("FlowEngine", "set_cloud_key: ${it.message}") }
     }
 
-    /** D52 blocking (≤ 8 s, off the main thread): the custom server's model list, [key] typed or else the stored one. */
+    /**
+     * D52 blocking (≤ 8 s, off the main thread): the custom server's model list with the typed [key].
+     * Without one, the router lends the stored key only when [baseUrl]'s host is the consented one;
+     * the shell never sends the stored key itself, so a URL typed into the page cannot receive it.
+     */
     fun customCleanupModels(baseUrl: String, key: String?): CustomModels {
-        val typed = key?.takeIf { it.isNotBlank() }
-        return router()?.customCleanupModels(baseUrl, typed)
-            ?: NativeFlowCore.customCleanupModels(baseUrl, typed ?: app.cloudKeys.get(CustomServer.ID))
+        val typed = CustomModelsKey.typedOnly(key)
+        return router()?.customCleanupModels(baseUrl, typed) ?: NativeFlowCore.customCleanupModels(baseUrl, typed)
     }
 
     /** Persist the router's cloud counters (after a cloud dictation, and on Reset counters). */

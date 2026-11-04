@@ -145,7 +145,8 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
 
     /**
      * D52 blocking (≤ 8 s): `GET {baseUrl}/models` on the custom cleanup server ("Load models",
-     * "Test connection"). [key]: the typed key, else the stored one, else none.
+     * "Test connection"). [key]: the typed key; else the router lends the stored one only when
+     * [baseUrl]'s host is the consented one; else none.
      */
     fun customCleanupModels(baseUrl: String, key: String?): CustomModels {
         BlockingCalls.check("nativeCustomCleanupModels")
@@ -366,12 +367,23 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
             return try { nativeRefreshCloudCatalog(0, force) } catch (e: UnsatisfiedLinkError) { NO_CLOUD }
         }
 
-        /** [customCleanupModels] without a router: only the typed [key]. Blocking. */
+        /** [customCleanupModels] without a router: only the typed [key] (never the stored one). Blocking. */
         fun customCleanupModels(baseUrl: String, key: String?): CustomModels {
             BlockingCalls.check("nativeCustomCleanupModels")
             if (loadLibrary() !is LibraryState.Loaded) return NO_CUSTOM
             return try { RouterJson.decodeCustomModels(nativeCustomCleanupModels(0, baseUrl, key)) } catch (e: UnsatisfiedLinkError) { NO_CUSTOM }
         }
+
+        /**
+         * D52 `nativeCustomCleanupAddress`: the router's normalised URL, canonical host and
+         * model-id check (pure, not blocking). A library without it reads every address as unusable.
+         */
+        fun customCleanupAddress(baseUrl: String, model: String): dev.flowclone.data.CustomAddress {
+            if (loadLibrary() !is LibraryState.Loaded) return NO_ADDRESS
+            return try { RouterJson.decodeCustomAddress(nativeCustomCleanupAddress(baseUrl, model)) } catch (e: UnsatisfiedLinkError) { NO_ADDRESS }
+        }
+
+        private val NO_ADDRESS = dev.flowclone.data.CustomAddress(error = "error", message = "not in this build's native library")
 
         /** A library without D52 (rebuild the native libs). */
         private val NO_CUSTOM = CustomModels(error = "error", message = "not in this build's native library")
@@ -438,6 +450,8 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
         @JvmStatic external fun nativeCloudKeyInfo(handle: Long): String
         /** D52 (JNI_CONTRACT.md "OpenRouter"): never null; handle 0 = no router. */
         @JvmStatic external fun nativeCustomCleanupModels(handle: Long, baseUrl: String, key: String?): String
+        /** D52 (JNI_CONTRACT.md "OpenRouter"): `{"url","host","model_ok"}` or `{"error","message","model_ok"}`; pure. */
+        @JvmStatic external fun nativeCustomCleanupAddress(baseUrl: String, model: String): String
 
         // ---- 2026-10-28 Command Mode (JNI_CONTRACT.md "Command Mode"); never null ----
         @JvmStatic external fun nativeCommand(handle: Long, instruction: String, selected: String?): String

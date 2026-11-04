@@ -670,6 +670,8 @@ class FlowService : Service() {
                         routeOrder = runCatching { app.dev.load().routeOrderWire(app.caps) }.getOrNull(),
                         languageSource = trace.languageSource ?: languageSource.takeIf { trace.language != null },
                         llmOff = trace.llmOff ?: llmOffReason(trace, ready),
+                        llmProvider = trace.llmProvider ?: trace.llmEngine?.takeIf { it == "cloud" }
+                            ?.let { runCatching { app.dev.load().cloud.cleanupProvider.wire }.getOrNull() },
                     ),
                     protectedField = app.accessibility?.startFieldProtected == true,
                     protectedApp = dev.flowclone.debug.DebugRedact.isProtectedApp(trace.target, app.settings.load().userDenylist),

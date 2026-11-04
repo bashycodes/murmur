@@ -202,7 +202,9 @@ class OpenRouterActivity : Activity() {
                 sort.setSubtitle(CloudInput.sortName(s.cloud.cleanup.sort))
                 timeout.setSubtitle("${s.cloud.cleanup.timeoutMs} ms, then the text is pasted without it")
                 consent.text = OpenRouterPage.cleanupConsentLine(s.cloud, ::date)
-                status.text = app.engine.router()?.let { DevText.cleanupStatus(it.cleanupStatus()) } ?: "Speech engine not loaded"
+                // D52: the router got no cleanup consent for an unusable custom server; say so here.
+                status.text = if (s.cloud.customNotSetUp) CustomServer.NOT_SET_UP
+                    else app.engine.router()?.let { DevText.cleanupStatus(it.cleanupStatus()) } ?: "Speech engine not loaded"
             }
         }
         customCard()
@@ -229,7 +231,9 @@ class OpenRouterActivity : Activity() {
         val label = sectionLabel("CUSTOM SERVER")
         val box = card {
             note(CloudText.CUSTOM_STT_NOTE)
+            val notSetUp = note(CustomServer.NOT_SET_UP, color = p.danger)
             val url = navRow(R.drawable.ic_dev_route, "Server address") { editCustomUrl() }
+            note(CustomServer.URL_HINT)
             val http = note(CloudText.HTTP_WARNING, color = p.danger)
             val keyLine = infoRow("Stored key")
             customKeyField = secretRow(
@@ -245,6 +249,7 @@ class OpenRouterActivity : Activity() {
             )
             refreshers += {
                 val c = app.dev.load().cloud.customCleanup
+                notSetUp.visibility = if (app.dev.load().cloud.customNotSetUp) android.view.View.VISIBLE else android.view.View.GONE
                 url.setSubtitle(c.baseUrl.ifEmpty { "Not set: e.g. http://192.168.1.20:4000" })
                 http.visibility = if (c.baseUrl.isNotEmpty() && !c.https) android.view.View.VISIBLE else android.view.View.GONE
                 keyLine.text = app.cloudKeys.masked(CustomServer.ID)
@@ -349,7 +354,7 @@ class OpenRouterActivity : Activity() {
 
     private fun editCustomUrl() = textDialog(
         "Server address", app.dev.load().cloud.customCleanup.baseUrl, "http://192.168.1.20:4000", InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI,
-        "The OpenAI-compatible API root; /v1 is added when there is no path. Consent is for this host only.",
+        "The OpenAI-compatible API root. ${CustomServer.URL_HINT} Consent is for this host only.",
         { CloudInput.baseUrl(it).error },
     ) { raw -> val v = CloudInput.baseUrl(raw).value!!; customChanged { OpenRouterPage.withCustom(it) { copy(baseUrl = v) } } }
 
@@ -389,11 +394,14 @@ class OpenRouterActivity : Activity() {
         })
     }
 
-    /** `GET {base}/models` off the main thread with the typed key, else the stored one; [then] on the UI thread. */
+    /**
+     * `GET {base}/models` off the main thread with the typed key only (the router lends the stored
+     * one just for the consented host); [then] on the UI thread.
+     */
     private fun fetchCustomModels(busy: String, then: (dev.flowclone.core.CustomModels) -> Unit) {
         val url = app.dev.load().cloud.customCleanup.baseUrl
         if (url.isEmpty()) { customResult.show("Set the server address first.", Tone.BAD); return }
-        val typed = customKeyField.text.toString().trim().ifEmpty { null }
+        val typed = dev.flowclone.data.CustomModelsKey.typedOnly(customKeyField.text.toString())
         customResult.show(busy)
         thread(name = "custom-models") {
             val m = runCatching { app.engine.customCleanupModels(url, typed) }

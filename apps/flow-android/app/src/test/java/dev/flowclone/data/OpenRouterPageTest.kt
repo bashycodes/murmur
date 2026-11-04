@@ -11,6 +11,8 @@ import org.junit.Test
 
 /** D28 page logic: two independent opt-ins with their own consents, order, models, privacy. */
 class OpenRouterPageTest {
+    @org.junit.Before fun fakeRouterAddress() = FakeCustomAddress.install()
+
     private val base = DevSettings.defaults(BuildCaps.ALL)
     private val now = 1_792_540_800_000L
 
@@ -130,5 +132,14 @@ class OpenRouterPageTest {
         assertTrue(OpenRouterPage.cleanupEngineLine(s)!!.contains("Custom server (10.0.0.5)"))
         val or = OpenRouterPage.enableCleanup(base, now)
         assertTrue(OpenRouterPage.settingsSummary(or, hasKey = false).endsWith("· no key"))
+    }
+
+    @Test fun anUnusableCustomServerIsShownAsOffNotAsOpenRouter() {
+        val on = OpenRouterPage.enableCleanup(base.copy(cloud = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = server)), now)
+        val broken = OpenRouterPage.withCustom(on) { copy(model = "") }
+        assertTrue(broken.cloud.customNotSetUp)
+        assertEquals("Speech off · Cleanup off (custom server not set up)", OpenRouterPage.settingsSummary(broken, hasKey = true))
+        assertNull(OpenRouterPage.cleanupEngineLine(broken))
+        assertFalse(OpenRouterPage.settingsSummary(broken, hasKey = true).contains("OpenRouter"))
     }
 }
