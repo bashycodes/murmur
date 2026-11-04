@@ -44,6 +44,11 @@ pub const SMALL_CONTEXT_CHARS: usize = 2_500;
 pub const CLOUD_CHUNK_CHARS: usize = 24_000;
 /// Rounds of condensing notes before giving up on a very long meeting.
 pub const MAX_ROUNDS: usize = 3;
+/// Cost cap: OpenRouter calls one summary may make (about 480k characters
+/// of transcript). A meeting whose plan needs more fails before the first
+/// call instead of spending; the on-device LLM and the server are free and
+/// have no cap.
+pub const MAX_CLOUD_CALLS: usize = 20;
 /// Time one LLM call may take (the server's `clean` limit is 120 s).
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(120);
 /// How often a call in flight is pre-empted by dictations before it is
@@ -481,8 +486,16 @@ fn summarise_on_engine(
             return Err(SummaryError::Failed("the meeting is too long".into()));
         }
         round += 1;
+        let parts = chunks(&text, max);
+        // This round's notes plus the summary call.
+        let planned = calls as usize + parts.len() + 1;
+        if hop.engine() == "cloud" && planned > MAX_CLOUD_CALLS {
+            return Err(SummaryError::Failed(format!(
+                "the meeting is too long for OpenRouter's limit of {MAX_CLOUD_CALLS} calls per summary"
+            )));
+        }
         let mut notes = Vec::new();
-        for part in chunks(&text, max) {
+        for part in parts {
             let p = build_prompt(CleanTask::MeetingNotes, &part, language);
             let (answer, _) = call(hop, &p, opts)?;
             calls += 1;
@@ -500,7 +513,8 @@ fn summarise_on_engine(
     let (answer, usage) = call(hop, &prompt, opts)?;
     calls += 1;
     let (mut summary, mut items) = parse(&crate::command::sanitize(&answer, None));
-    if language == Some("he") && drifted(&summary, &items) {
+    let may_retry = hop.engine() != "cloud" || (calls as usize) < MAX_CLOUD_CALLS;
+    if language == Some("he") && may_retry && drifted(&summary, &items) {
         prompt.user.push('\n');
         prompt.user.push_str(
             "Important: the meeting is in Hebrew, so write the summary and the action items \

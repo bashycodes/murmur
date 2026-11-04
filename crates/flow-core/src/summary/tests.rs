@@ -155,6 +155,20 @@ fn the_cloud_takes_bigger_chunks() {
 }
 
 #[test]
+fn a_summary_needing_too_many_cloud_calls_fails_before_spending() {
+    let f = Fake::new("cloud", ANSWER);
+    // Just over the cap: MAX_CLOUD_CALLS chunks of notes + the summary.
+    let t = transcript(MAX_CLOUD_CALLS * CLOUD_CHUNK_CHARS / 50);
+    assert!(chunks(&t, CLOUD_CHUNK_CHARS).len() >= MAX_CLOUD_CALLS);
+    let e = summarise(Some(f.clone()), &t, &Options::default()).unwrap_err();
+    assert!(e.to_string().contains("limit of 20 calls"), "{e}");
+    assert!(f.tasks().is_empty(), "no call was made");
+    // The same meeting on this PC's LLM has no cap.
+    let local = Fake::new("local", ANSWER);
+    assert!(summarise(Some(local), &t, &Options::default()).is_ok());
+}
+
+#[test]
 fn chunks_cut_at_turns_and_never_exceed_the_limit() {
     let t = "Me: one two three\nOthers: four five six\nMe: seven";
     assert_eq!(
