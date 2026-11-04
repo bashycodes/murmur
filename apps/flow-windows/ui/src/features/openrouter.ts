@@ -11,7 +11,7 @@
 
 import { $, askDialog, el, setStatus, setValue, when } from "../lib/dom.js";
 import { iconEl } from "../lib/icons.js";
-import { cloudHint, failText, money, usd } from "../lib/format.js";
+import { cleanupMonthCost, cloudHint, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import type {
   CatalogStatus,
@@ -23,6 +23,7 @@ import type {
   OrView,
   Purpose,
   SttPath,
+  UsageRow,
   UsageView,
 } from "../lib/types.js";
 import type { Feature } from "../lib/router.js";
@@ -212,7 +213,8 @@ export function showOr(v: OrView): void {
     ? consentLine(c.custom.consent_at_ms, c.custom.consent, "dictated text", c.custom.consent_host)
     : consentLine(c.consent_at_ms, c.consent, "dictated text");
   showCustom(v);
-  const spent = c.status.month_cost_usd ? `${money(c.status.month_cost_usd)} so far this month` : "";
+  const orSpent = cleanupMonthCost(c.status).openrouter;
+  const spent = orSpent > 0 ? `${money(orSpent)} so far this month` : "";
   showModelRow("or_cleanup", c.model, v.cleanup_model_info, spent);
   $<HTMLElement>("or_cleanup_box").classList.toggle("lw-dim", !c.allow);
   $<HTMLSelectElement>("or_cleanup_sort").value = c.sort;
@@ -256,19 +258,21 @@ function showOrUsage(u: UsageView): void {
   meter.hidden = u.budget == null || u.budget <= 0;
   if (u.budget) $<HTMLElement>("or_usage_bar").style.width = `${Math.min(100, (amount(u.total) / u.budget) * 100)}%`;
   meter.classList.toggle("is-full", u.budget_reached);
-  const dictations = u.rows.filter((r) => r.purpose !== "cleanup").reduce((n, r) => n + r.requests, 0);
+  // OpenRouter's own counts; the custom server (D52) has its own row below.
+  const dictations = u.rows.filter((r) => r.purpose === "stt" || r.purpose === "removed").reduce((n, r) => n + r.requests, 0);
   const cleanups = u.rows.filter((r) => r.purpose === "cleanup").reduce((n, r) => n + r.requests, 0);
   $<HTMLElement>("or_usage_total").textContent =
     `Speech ${money(u.speech)} · ${dictations} dictations    Cleanup ${money(u.cleanup)} · ${cleanups} cleanups`;
-  $<HTMLUListElement>("or_usage_rows").replaceChildren(
-    ...u.rows.map((r) => {
-      const what = r.purpose === "cleanup" ? "cleanups" : "dictations";
-      const mins = r.purpose === "cleanup" ? "" : ` · ${r.minutes} min`;
-      return el("li", "", `${r.label}: ${r.requests} ${what}${mins} · ${money(r.cost)}`);
-    }),
-    // D52: what the custom server reported, apart from OpenRouter's budget.
-    ...(u.custom_cost ? [el("li", "", `Custom server: ${money(u.custom_cost)} (not in budget)`)] : []),
-  );
+  $<HTMLUListElement>("or_usage_rows").replaceChildren(...u.rows.map((r) => el("li", "", usageRowText(r))));
+}
+
+/** One usage line; the custom server's counts its cleanups even when it reports no cost (D52). */
+function usageRowText(r: UsageRow): string {
+  // Its cost is the server's own figure or "no cost reported", already worded.
+  if (r.purpose === "custom") return `${r.label}: ${r.requests} cleanups · ${r.cost} (not in budget)`;
+  const what = r.purpose === "cleanup" ? "cleanups" : "dictations";
+  const mins = r.purpose === "cleanup" ? "" : ` · ${r.minutes} min`;
+  return `${r.label}: ${r.requests} ${what}${mins} · ${money(r.cost)}`;
 }
 
 function showCleanupStatus(st: CleanupStatus): void {
@@ -301,7 +305,9 @@ function showCleanupStatus(st: CleanupStatus): void {
     const who = l.engine === "cloud" ? cloud : l.engine === "local" ? "this PC" : l.engine;
     text += ` · last: ${who}${l.model ? ` ${l.model}` : ""}${t}${ft}${usd(l.cost_usd)}`;
   }
-  if (st.month_cost_usd != null && st.month_cost_usd > 0) text += ` · ${money(st.month_cost_usd)} this month`;
+  const month = cleanupMonthCost(st);
+  if (month.openrouter > 0) text += ` · ${st.provider === "custom" ? "OpenRouter " : ""}${money(month.openrouter)} this month`;
+  if (month.custom > 0) text += ` · ${money(month.custom)} on your server this month (not in budget)`;
   e.textContent = text;
   e.className = cls;
 }

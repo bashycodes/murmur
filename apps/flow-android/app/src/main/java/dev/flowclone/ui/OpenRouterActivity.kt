@@ -45,7 +45,8 @@ class OpenRouterActivity : Activity() {
     private val app get() = FlowApp.of(this)
     private val caps get() = app.caps
     private lateinit var ui: DevUi
-    private val refreshers = ArrayList<() -> Unit>()
+    /** Redraws, each given the one settings value [refresh] loaded (one custom-address lookup per refresh, D52). */
+    private val refreshers = ArrayList<(DevSettings) -> Unit>()
     /** Set while a switch is flipped back in code (a cancelled dialog), so its listener ignores it. */
     private var quiet = false
 
@@ -83,7 +84,7 @@ class OpenRouterActivity : Activity() {
         }
     }
 
-    private fun refresh() { for (r in refreshers) r() }
+    private fun refresh() { val s = app.dev.load(); for (r in refreshers) r(s) }
 
     private fun renderNotInBuild() = with(ui) {
         page {
@@ -122,7 +123,7 @@ class OpenRouterActivity : Activity() {
                 note(CloudText.PRIVACY_NOTE)
                 zdr.onChange { on -> if (!quiet) onPrivacy(zdr, on, isZdr = true) }
                 deny.onChange { on -> if (!quiet) onPrivacy(deny, on, isZdr = false) }
-                refreshers += { val s = app.dev.load(); quietly { zdr.isChecked = s.cloud.privacy.zdr; deny.isChecked = s.cloud.privacy.denyDataCollection } }
+                refreshers += { s -> quietly { zdr.isChecked = s.cloud.privacy.zdr; deny.isChecked = s.cloud.privacy.denyDataCollection } }
             }
 
             sttCard(s0)
@@ -134,19 +135,16 @@ class OpenRouterActivity : Activity() {
                 val usage = infoRow("Requests and budget (counted on this phone only, never sent anywhere)")
                 val budget = navRow(R.drawable.ic_dev_cloud, "Monthly budget") { editBudget() }
                 chipRow(chip("Reset counters") { onResetUsage() }.apply { contentDescription = "Reset cloud usage counters" })
-                refreshers += {
-                    val s = app.dev.load()
+                refreshers += { s ->
                     val u = CloudUsage.decode(app.engine.router()?.cloudUsageJson() ?: app.dev.cloudUsageJson)
-                    fun cost(purpose: String) = (if (u.estimated(purpose)) "≈" else "") + CloudText.usd(u.costFor(purpose))
-                    stats.set(0, CloudText.usd(u.totalCostUsd), "this month" + (s.cloud.monthlyBudgetUsd?.let { " of ${CloudText.usd(it)}" } ?: ""))
-                    stats.set(1, cost(CloudUsage.PURPOSE_STT)); stats.set(2, cost(CloudUsage.PURPOSE_CLEANUP))
+                    CloudText.usageStats(u, s.cloud).forEachIndexed { i, (n, unit) -> stats.set(i, n, unit) }
                     usage.text = CloudText.usageLines(u, s.cloud).drop(1).joinToString("\n")
                     budget.setSubtitle(s.cloud.monthlyBudgetUsd?.let { "${CloudText.usd(it)} per month for speech and cleanup together; both pause once it is reached" } ?: "None")
                 }
             }
             if (app.dev.visible) note("The cloud's place among your server and the phone: Developer settings → Routing & engines.")
         }
-        refreshers += { keyLine.text = app.cloudKeys.masked(OpenRouter.ID) }
+        refreshers += { _ -> keyLine.text = app.cloudKeys.masked(OpenRouter.ID) }
     }
 
     /** One-time migration notice (D28) until dismissed. */
@@ -167,8 +165,7 @@ class OpenRouterActivity : Activity() {
             val consent = infoRow("Consent to send audio")
             on.onChange { v -> if (!quiet) onStt(on, v) }
             dict.onChange { v -> if (!quiet) change { OpenRouterPage.withStt(it) { copy(sendDictionary = v) } } }
-            refreshers += {
-                val s = app.dev.load()
+            refreshers += { s ->
                 quietly { on.isChecked = s.allowCloud; dict.isChecked = s.cloud.stt.sendDictionary }
                 model.setSubtitle(CloudCatalog.modelSummary(s.cloud.stt.model, s.cloud.stt.sttPath))
                 lang.setSubtitle(s.cloud.stt.language.ifEmpty { "Follow your dictation languages" })
@@ -191,8 +188,7 @@ class OpenRouterActivity : Activity() {
             val consent = infoRow("Consent to send text")
             val status = infoRow("Status")
             on.onChange { v -> if (!quiet) onCleanup(on, v) }
-            refreshers += {
-                val s = app.dev.load()
+            refreshers += { s ->
                 val custom = s.cloud.customProvider
                 quietly { on.isChecked = s.allowCloudCleanup }
                 on.setTitle("Clean up text with " + if (custom) "your server" else OpenRouter.NAME)
@@ -217,8 +213,8 @@ class OpenRouterActivity : Activity() {
             around.onChange { v -> if (!quiet) change { OpenRouterPage.withCleanup(it) { copy(sendSurroundingText = v) } } }
             screen.onChange { v -> if (!quiet) change { OpenRouterPage.withCleanup(it) { copy(sendScreenWords = v) } } }
             appName.onChange { v -> if (!quiet) change { OpenRouterPage.withCleanup(it) { copy(sendAppName = v) } } }
-            refreshers += {
-                val c = app.dev.load().cloud.cleanup
+            refreshers += { s ->
+                val c = s.cloud.cleanup
                 quietly { around.isChecked = c.sendSurroundingText; screen.isChecked = c.sendScreenWords; appName.isChecked = c.sendAppName }
                 always.text = "Sent with each cleanup: ${CloudText.cleanupSends(c)}."
             }
@@ -247,9 +243,10 @@ class OpenRouterActivity : Activity() {
                 chip("Load models") { loadCustomModels() }.apply { contentDescription = "Load the model list from your server" },
                 chip("Test connection") { testCustom() }.apply { contentDescription = "Test the connection to your server" },
             )
-            refreshers += {
-                val c = app.dev.load().cloud.customCleanup
-                notSetUp.visibility = if (app.dev.load().cloud.customNotSetUp) android.view.View.VISIBLE else android.view.View.GONE
+            refreshers += { s ->
+                val cloud = s.cloud
+                val c = cloud.customCleanup
+                notSetUp.visibility = if (cloud.customNotSetUp) android.view.View.VISIBLE else android.view.View.GONE
                 url.setSubtitle(c.baseUrl.ifEmpty { "Not set: e.g. http://192.168.1.20:4000" })
                 http.visibility = if (c.baseUrl.isNotEmpty() && !c.https) android.view.View.VISIBLE else android.view.View.GONE
                 keyLine.text = app.cloudKeys.masked(CustomServer.ID)
@@ -258,8 +255,8 @@ class OpenRouterActivity : Activity() {
             }
         }
         customResult = result()
-        refreshers += {
-            val show = app.dev.load().cloud.customProvider || pickingCustom
+        refreshers += { s ->
+            val show = s.cloud.customProvider || pickingCustom
             for (v in listOf(label, box)) v.visibility = if (show) android.view.View.VISIBLE else android.view.View.GONE
         }
     }

@@ -29,6 +29,14 @@ export function money(v) {
         return v.startsWith("$") ? v : `$${v}`;
     return `$${v < 1 && v > 0 ? v.toFixed(4) : v.toFixed(2)}`;
 }
+/**
+ * D52: this month's cleanup cost split by service. `month_cost_usd` counts both;
+ * OpenRouter's part (what its budget counts) and the custom server's are shown apart.
+ */
+export function cleanupMonthCost(st) {
+    const custom = st.custom_month_cost_usd ?? 0;
+    return { openrouter: Math.max(0, (st.month_cost_usd ?? 0) - custom), custom };
+}
 export function usd(v) {
     return v == null ? "" : ` · $${v.toFixed(v < 0.01 ? 5 : 4)}`;
 }
