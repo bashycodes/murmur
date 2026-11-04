@@ -260,70 +260,83 @@ impl OpenRouterCleaner {
         {
             call.generation_id = Some(id.to_string());
         }
-        let is_sse = resp
-            .headers()
-            .get(reqwest::header::CONTENT_TYPE)
-            .and_then(|h| h.to_str().ok())
-            .is_some_and(|c| c.contains("event-stream"));
-        if !is_sse {
-            // A provider that ignored `stream: true`: plain JSON.
-            let v = http::json(resp)?;
-            return finish_json(&v, call);
-        }
-        // Lines are read on a helper thread so cancel / deadline are seen
-        // within a few ms; dropping the receiver makes that thread drop the
-        // response (closes the connection = provider stops billing).
-        let (tx, rx) = mpsc::sync_channel::<Option<String>>(64);
-        std::thread::spawn(move || {
-            let mut r = BufReader::new(resp);
-            loop {
-                let mut line = String::new();
-                match r.read_line(&mut line) {
-                    Ok(0) | Err(_) => {
-                        let _ = tx.send(None);
+        read_stream(resp, deadline, cancel, t0, call)
+    }
+}
+
+/// Read a 2xx `/chat/completions` answer: SSE (streamed) or plain JSON
+/// (a server that ignored `stream: true`). Shared by the OpenRouter and the
+/// custom-server cleaner (D52).
+pub(crate) fn read_stream(
+    resp: http::Response,
+    deadline: Instant,
+    cancel: &AbortFlag,
+    t0: Instant,
+    call: &mut CleanupCall,
+) -> Result<String, CloudError> {
+    let is_sse = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|h| h.to_str().ok())
+        .is_some_and(|c| c.contains("event-stream"));
+    if !is_sse {
+        // A provider that ignored `stream: true`: plain JSON.
+        let v = http::json(resp)?;
+        return finish_json(&v, call);
+    }
+    // Lines are read on a helper thread so cancel / deadline are seen
+    // within a few ms; dropping the receiver makes that thread drop the
+    // response (closes the connection = provider stops billing).
+    let (tx, rx) = mpsc::sync_channel::<Option<String>>(64);
+    std::thread::spawn(move || {
+        let mut r = BufReader::new(resp);
+        loop {
+            let mut line = String::new();
+            match r.read_line(&mut line) {
+                Ok(0) | Err(_) => {
+                    let _ = tx.send(None);
+                    return;
+                }
+                Ok(_) => {
+                    if tx.send(Some(line)).is_err() {
                         return;
                     }
-                    Ok(_) => {
-                        if tx.send(Some(line)).is_err() {
-                            return;
-                        }
-                    }
                 }
             }
-        });
-        let mut sse = SseState::default();
-        loop {
-            if cancel.is_set() || Instant::now() >= deadline {
-                sse.apply(call);
-                return Err(CloudError::Timeout);
-            }
-            match rx.recv_timeout(Duration::from_millis(5)) {
-                Ok(Some(line)) => {
-                    let had = !sse.text.is_empty();
-                    match sse.line(&line) {
-                        Ok(true) => break,
-                        Ok(false) => {}
-                        Err(e) => {
-                            sse.apply(call);
-                            return Err(e);
-                        }
-                    }
-                    if !had && !sse.text.is_empty() && call.ttft_ms.is_none() {
-                        call.ttft_ms = Some(t0.elapsed().as_millis() as u32);
+        }
+    });
+    let mut sse = SseState::default();
+    loop {
+        if cancel.is_set() || Instant::now() >= deadline {
+            sse.apply(call);
+            return Err(CloudError::Timeout);
+        }
+        match rx.recv_timeout(Duration::from_millis(5)) {
+            Ok(Some(line)) => {
+                let had = !sse.text.is_empty();
+                match sse.line(&line) {
+                    Ok(true) => break,
+                    Ok(false) => {}
+                    Err(e) => {
+                        sse.apply(call);
+                        return Err(e);
                     }
                 }
-                // EOF without [DONE]: take what arrived.
-                Ok(None) => break,
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                if !had && !sse.text.is_empty() && call.ttft_ms.is_none() {
+                    call.ttft_ms = Some(t0.elapsed().as_millis() as u32);
+                }
             }
+            // EOF without [DONE]: take what arrived.
+            Ok(None) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
-        sse.apply(call);
-        if sse.finish.is_none() && sse.text.is_empty() {
-            return Err(CloudError::Malformed);
-        }
-        Ok(sse.text)
     }
+    sse.apply(call);
+    if sse.finish.is_none() && sse.text.is_empty() {
+        return Err(CloudError::Malformed);
+    }
+    Ok(sse.text)
 }
 
 fn finish_json(v: &Value, call: &mut CleanupCall) -> Result<String, CloudError> {

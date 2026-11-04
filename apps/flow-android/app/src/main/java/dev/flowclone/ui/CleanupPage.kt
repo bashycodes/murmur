@@ -90,11 +90,11 @@ internal class CleanupPage(
         val s = app.settings.load()
         val list = CleanupEngines.engines(d, caps)
         val rows = list.map { r -> Triple(r, CleanupEngines.on(d, s, r), subtitle(r, d, s)) }
-        val key = "$reordering " + rows.joinToString("|")
+        val key = "$reordering ${d.cloud.cleanupProviderName} " + rows.joinToString("|")
         if (key != shown) {
             shown = key
             engineBox.removeAllViews()
-            rows.forEachIndexed { i, (r, on, sub) -> engineBox.engineRow(i, rows.size, r, on, sub) }
+            rows.forEachIndexed { i, (r, on, sub) -> engineBox.engineRow(i, rows.size, r, on, sub, d) }
         }
         orderLabel?.text = if (reordering) "Done" else "Change order"
         orderRow?.contentDescription = if (reordering) "Done changing the order" else "Change order"
@@ -120,8 +120,8 @@ internal class CleanupPage(
         CleanupRoute.CLOUD -> CleanupEngines.cloudLine(d, app.cloudKeys.has(OpenRouter.ID))
     }
 
-    private fun LinearLayout.engineRow(i: Int, n: Int, r: CleanupRoute, on: Boolean, sub: String) = with(ui) {
-        val name = CleanupEngines.name(r)
+    private fun LinearLayout.engineRow(i: Int, n: Int, r: CleanupRoute, on: Boolean, sub: String, d: DevSettings) = with(ui) {
+        val name = CleanupEngines.name(r, d)
         val title = tv(name, TypeScale.ROW, p.text, TypeScale.W_MEDIUM)
         val subtitle = tv(sub, TypeScale.SUB, p.muted).apply { setPadding(0, dp(2), 0, 0) }
         val texts = LinearLayout(ctx).apply {
@@ -154,7 +154,7 @@ internal class CleanupPage(
                     super.onInitializeAccessibilityNodeInfo(host, info)
                     info.className = Switch::class.java.name
                     info.isCheckable = true; info.isChecked = on
-                    info.text = "${i + 1}. ${CleanupEngines.useLabel(r)}. $sub"
+                    info.text = "${i + 1}. ${CleanupEngines.useLabel(r, d)}. $sub"
                 }
             }
         }
@@ -186,22 +186,24 @@ internal class CleanupPage(
         }
     }
 
-    /** Same consent as the OpenRouter page; the engine is switched on where the list shows it. */
+    /** Same consent as the OpenRouter page (D52: the selected provider's); the engine is switched on where the list shows it. */
     private fun enableCloud() {
         val s = app.dev.load()
         val go = {
             saveCleanup(OpenRouterPage.enableCleanup(app.dev.load(), System.currentTimeMillis()))
-            if (!app.cloudKeys.has(OpenRouter.ID)) {
+            // A custom server's key is optional.
+            if (!s.cloud.customProvider && !app.cloudKeys.has(OpenRouter.ID)) {
                 android.widget.Toast.makeText(activity, "Add your OpenRouter API key on the OpenRouter page: nothing is sent without one.", android.widget.Toast.LENGTH_LONG).show()
             }
         }
         if (!OpenRouterPage.cleanupNeedsConsent(s)) { go(); return }
-        ui.confirm(CloudText.CLEANUP_CONSENT_TITLE, CloudText.cleanupConsentBody(s.cloud.cleanup), CloudText.CLEANUP_CONSENT_BUTTON, onYes = go, onNo = { refresh() })
+        val (title, body, button) = CloudText.cleanupConsent(s.cloud)
+        ui.confirm(title, body, button, onYes = go, onNo = { refresh() })
     }
 
     private fun move(r: CleanupRoute, dir: Int) {
         val d = app.dev.load()
         saveCleanup(d.copy(cleanupOrder = CleanupEngines.reorder(d, caps, r, dir)))
-        ui.announce("${CleanupEngines.name(r)} is now number ${CleanupEngines.engines(app.dev.load(), caps).indexOf(r) + 1}")
+        ui.announce("${CleanupEngines.name(r, d)} is now number ${CleanupEngines.engines(app.dev.load(), caps).indexOf(r) + 1}")
     }
 }

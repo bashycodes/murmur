@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Added
+
+- **AI cleanup through your own server (LiteLLM / OpenAI-compatible).** Windows and Android (hybrid) can send AI cleanup to a server you run instead of OpenRouter: base URL (http or https), optional key, model from its list or typed; cloud speech-to-text stays on OpenRouter (D52).
+
 ## [1.1.1] - 2026-11-04
 
 ### Changed

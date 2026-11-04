@@ -896,6 +896,53 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCloudKeyInfo
     guard(std::ptr::null_mut(), || out(&mut env, &r))
 }
 
+/// D52 custom cleanup server: `GET {base}/models` (blocking).
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCustomCleanupModels(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    base_url: JString,
+    key: JString,
+) -> jstring {
+    let args = guard(None, || {
+        Some((
+            opt_jstr(&mut env, &base_url).unwrap_or_default(),
+            opt_jstr(&mut env, &key),
+        ))
+    });
+    let r = guard(r#"{"error":"error","message":"error"}"#.to_owned(), || {
+        let (b, k) = args.unwrap_or_default();
+        json_api::custom_cleanup_models(handle(h), &b, k)
+    });
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
+
+/// D52 custom cleanup server address: normalised URL + canonical host, or
+/// an error, plus `model_ok` (`json_api::custom_cleanup_address`). Pure.
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeCustomCleanupAddress(
+    mut env: JNIEnv,
+    _c: JClass,
+    base_url: JString,
+    model: JString,
+) -> jstring {
+    let args = guard(None, || {
+        Some((
+            opt_jstr(&mut env, &base_url).unwrap_or_default(),
+            opt_jstr(&mut env, &model).unwrap_or_default(),
+        ))
+    });
+    let r = guard(
+        r#"{"error":"error","message":"error","model_ok":false}"#.to_owned(),
+        || {
+            let (b, m) = args.unwrap_or_default();
+            json_api::custom_cleanup_address(&b, &m)
+        },
+    );
+    guard(std::ptr::null_mut(), || out(&mut env, &r))
+}
+
 // ---- D44/D46 meeting transcription (JNI_CONTRACT.md "Meeting transcription") --
 // A job owns its engine handle (`nativeMeetingOpen` takes it over), so it never
 // shares a session with the shell's dictation engine. `push` / `finish` block

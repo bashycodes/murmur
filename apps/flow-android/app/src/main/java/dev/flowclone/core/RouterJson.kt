@@ -83,10 +83,23 @@ data class CleanupStatus(
     val timeoutMs: Long? = null,
     val last: CleanUsage? = null,
     val monthCostUsd: Double = 0.0,
+    /** D52: the part of [monthCostUsd] the custom server reported; not in the OpenRouter budget. */
+    val customMonthCostUsd: Double = 0.0,
     /** D36: the server has an AI model (`hello_ok.features`); null = not known yet / no server. */
     val serverLlm: Boolean? = null,
     /** D36: the server cleanup's breaker, when the server is in the order and set up. */
     val serverCircuit: CircuitStatus? = null,
+    /** D52: "openrouter" | "custom" (the cloud cleanup route's service). */
+    val provider: String = "openrouter",
+    /** D52: the custom server's host; "" for OpenRouter. */
+    val host: String = "",
+)
+
+/** D52 `nativeCustomCleanupModels` (`GET {base}/models`): the ids, or [error] + [message] (never the key or URL). */
+data class CustomModels(
+    val models: List<String> = emptyList(),
+    val error: String? = null,
+    val message: String? = null,
 )
 
 /** D28 `nativeCloudKeyInfo` (`GET /api/v1/key`; never the key itself), or [error]. */
@@ -225,11 +238,38 @@ object RouterJson {
             model = o.optStringOrNull("model"), timeoutMs = o.optLongOrNull("timeout_ms"),
             last = CoreJson.decodeCleanUsage(o.optJSONObject("last")),
             monthCostUsd = o.optDoubleOrNull("month_cost_usd") ?: 0.0,
+            customMonthCostUsd = o.optDoubleOrNull("custom_month_cost_usd") ?: 0.0,
             serverLlm = o.optBoolOrNull("server_llm"),
             serverCircuit = o.optJSONObject("server_circuit")?.let(::circuitOf),
+            provider = o.optString("provider", "openrouter").ifEmpty { "openrouter" },
+            host = o.optString("host"),
         )
     } catch (e: JSONException) {
         CleanupStatus()
+    }
+
+    fun decodeCustomModels(json: String?): CustomModels = try {
+        val o = JSONObject(json ?: "{}")
+        val a = o.optJSONArray("models")
+        val error = o.optStringOrNull("error") ?: if (a == null) "error" else null
+        CustomModels(
+            models = if (a == null) emptyList() else (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() },
+            error = error, message = o.optStringOrNull("message"),
+        )
+    } catch (e: JSONException) {
+        CustomModels(error = "error")
+    }
+
+    /** D52 `nativeCustomCleanupAddress`. */
+    fun decodeCustomAddress(json: String?): dev.flowclone.data.CustomAddress = try {
+        val o = JSONObject(json ?: "{}")
+        val url = o.optStringOrNull("url")
+        dev.flowclone.data.CustomAddress(
+            url = url, host = if (url == null) "" else o.optString("host"), modelOk = o.optBoolean("model_ok"),
+            error = o.optStringOrNull("error") ?: if (url == null) "error" else null, message = o.optStringOrNull("message"),
+        )
+    } catch (e: JSONException) {
+        dev.flowclone.data.CustomAddress(error = "error")
     }
 
     fun decodeKeyInfo(json: String?): CloudKeyInfo = try {
@@ -289,7 +329,9 @@ object DevText {
         val last = c.last?.let { l ->
             listOfNotNull("last", l.latencyMs?.let { "$it ms" }, l.ttftMs?.let { "first token $it ms" }, l.costUsd?.let { (if (l.costEstimated) "≈" else "") + dev.flowclone.data.CloudText.usd(it) }).joinToString(" ")
         }
-        return listOfNotNull("On", c.model, why, last, "this month ${dev.flowclone.data.CloudText.usd(c.monthCostUsd)}").joinToString(" · ")
+        val custom = c.customMonthCostUsd.takeIf { it > 0 }?.let { "${dev.flowclone.data.CloudText.usd(it)} on your server (not in budget)" }
+        val who = if (c.provider == "custom") dev.flowclone.data.CustomServer.NAME + (if (c.host.isEmpty()) "" else " (${c.host})") else null
+        return listOfNotNull("On", who, c.model, why, last, "this month ${dev.flowclone.data.CloudText.usd(c.monthCostUsd)}", custom).joinToString(" · ")
     }
 
     /** D18 "Test provider" result line. */
@@ -328,7 +370,8 @@ object DevText {
     }
 
     /** "Active engine (last dictation)" row. */
-    fun lastDictation(r: CommitResult?): String {
+    /** [cloudName]: who the cloud cleanup route called (`CloudSettings.cleanupProviderName`, D52). */
+    fun lastDictation(r: CommitResult?, cloudName: String = dev.flowclone.data.OpenRouter.NAME): String {
         if (r == null) return "No dictation yet in this process."
         val route = r.route
         val engine = when (route?.engine) {
@@ -350,7 +393,7 @@ object DevText {
         // D27: llm_skipped_clean reads as a normal result ("AI not needed"), not a failure.
         dev.flowclone.data.LlmOutcome.label(dev.flowclone.data.LlmOutcome.code(r))?.let { parts += it }
         // D28: who cleaned it (on-device / OpenRouter) and what it cost.
-        dev.flowclone.data.CloudText.cleanupRow(route)?.let { parts += it }
+        dev.flowclone.data.CloudText.cleanupRow(route, cloudName)?.let { parts += it }
         return parts.joinToString(" · ")
     }
 

@@ -126,8 +126,8 @@ impl RouterConfig {
             schema: CLOUD_SCHEMA,
             openrouter: or,
             monthly_budget_usd: old.monthly_budget_usd,
-            active: String::new(),
-            providers: Vec::new(),
+            // Schema 1 had no custom cleanup server (D52).
+            ..CloudConfig::default()
         };
         rep.notice = notice(&rep, &old);
         rep
