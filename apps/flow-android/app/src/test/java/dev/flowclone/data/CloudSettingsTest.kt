@@ -107,13 +107,32 @@ class CloudSettingsTest {
         ))
         assertEquals(0.5, u.budgetCostUsd, 1e-9); assertEquals(4.0, u.customCostUsd, 1e-9)
         val lines = CloudText.usageLines(u, CloudSettings(monthlyBudgetUsd = 1.0))
+        assertEquals("Speech \$0.50 · Cleanup \$0 · this month (2026-11)", lines[0])
+        assertEquals("3 speech requests (0.0 min) · 0 cleanup requests", lines[1])
         assertEquals("Budget \$1.00/month: \$0.50 used", lines[2])
-        assertEquals("Your custom server reported \$4.00 (not in the budget)", lines[3])
+        assertEquals("Custom server: 9 cleanup requests · reported \$4.00 (not in the budget)", lines[3])
+        // The page header: OpenRouter only, against the budget.
+        assertEquals(listOf("\$0.50" to "this month of \$1.00", "\$0.50" to "speech", "\$0" to "cleanup"),
+            CloudText.usageStats(u, CloudSettings(monthlyBudgetUsd = 1.0)))
         val st = dev.flowclone.core.RouterJson.decodeCleanupStatus(
             """{"supported":true,"enabled":true,"provider":"custom","host":"10.0.0.5","model":"m","month_cost_usd":4.0,"custom_month_cost_usd":4.0}""")
         assertEquals(4.0, st.customMonthCostUsd, 1e-9)
         val line = dev.flowclone.core.DevText.cleanupStatus(st)
         assertTrue(line, line.startsWith("On · Custom server (10.0.0.5) · m") && line.endsWith("\$4.00 on your server (not in budget)"))
+    }
+
+    @Test fun customServerRequestsCountWithoutACost() {
+        // A server that sends no cost header still shows its requests; OpenRouter's cleanup stays its own.
+        val u = CloudUsage("2026-11", listOf(
+            CloudUsage.ProviderUsage(OpenRouter.ID, requests = 2, costUsd = 0.25, costEstimated = true, purpose = CloudUsage.PURPOSE_CLEANUP),
+            CloudUsage.ProviderUsage(CustomServer.ID, requests = 1, purpose = CloudUsage.PURPOSE_CLEANUP),
+        ))
+        val lines = CloudText.usageLines(u, CloudSettings())
+        assertEquals("Speech \$0 · Cleanup ≈ \$0.25 · this month (2026-11)", lines[0])
+        assertEquals("0 speech requests (0.0 min) · 2 cleanup requests", lines[1])
+        assertEquals("Custom server: 1 cleanup request · no cost reported (not in the budget)", lines.last())
+        assertEquals(listOf("\$0.25" to "this month", "\$0" to "speech", "≈\$0.25" to "cleanup"), CloudText.usageStats(u, CloudSettings()))
+        assertTrue("no custom line without custom usage", CloudText.usageLines(CloudUsage(), CloudSettings()).none { it.startsWith(CustomServer.NAME) })
     }
 
     @Test fun routeWording() {

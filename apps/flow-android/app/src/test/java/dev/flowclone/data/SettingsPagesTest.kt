@@ -267,6 +267,9 @@ class SettingsPagesTest {
         val u = CloudUsage("2026-10", listOf(CloudUsage.ProviderUsage("openrouter", costUsd = 0.30), CloudUsage.ProviderUsage("openrouter", costUsd = 0.12, purpose = CloudUsage.PURPOSE_CLEANUP)))
         assertEquals("Key saved · \$0.42 this month", SettingsSummary.openRouter(true, u))
         assertEquals("No key · \$0 this month", SettingsSummary.openRouter(false, CloudUsage()))
+        // D52: the custom server's spend is not OpenRouter's.
+        val custom = u.copy(providers = u.providers + CloudUsage.ProviderUsage(CustomServer.ID, requests = 4, costUsd = 3.0, purpose = CloudUsage.PURPOSE_CLEANUP))
+        assertEquals("Key saved · \$0.42 this month", SettingsSummary.openRouter(true, custom))
     }
 
     @Test fun engineLines() {
