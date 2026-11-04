@@ -2,11 +2,12 @@
 //! (D18, D28; `docs/cloud-stt.md`, `docs/proposals/openrouter-only-cloud.md`).
 //!
 //! The only crate in the product that sends audio or text to a third
-//! party, and that third party is always OpenRouter: the API root is the
-//! constant [`api::BASE_URL`], no other provider adapter exists, and
+//! party. Audio only ever goes to OpenRouter: the API root is the constant
+//! [`api::BASE_URL`], no other speech adapter exists, and
 //! `tools/check-build-matrix.sh` fails if another provider host string is
-//! compiled into a cloud build. It is linked only into builds that enable
-//! the shell's `cloud` feature (C2).
+//! compiled into a cloud build. D52: text cleanup may instead go to a
+//! server the user typed in ([`custom`]; never a compiled-in host). It is
+//! linked only into builds that enable the shell's `cloud` feature (C2).
 //!
 //! * [`CloudAsr`] is a `flow_core::asr::AsrEngine`: it uploads the
 //!   VAD-trimmed utterance at commit (batch) through path A
@@ -16,7 +17,8 @@
 //!   cleanup, dictionary, LLM, post-processing stay on the device, C5) and
 //!   implements `flow_router::Backend` for the router's `cloud` route.
 //! * [`cleaner::OpenRouterCleaner`] is a `flow_core::cleanup::Cleaner` for
-//!   the separate cleanup opt-in.
+//!   the separate cleanup opt-in; [`custom::CustomCleaner`] is the same for
+//!   the user's own OpenAI-compatible server (D52).
 //! * [`catalog`], [`keyinfo`], [`generation`], [`budget`]: model list,
 //!   `/key` credits, deferred `/generation` cost, estimates.
 //!
@@ -30,6 +32,7 @@ pub mod api;
 pub mod budget;
 pub mod catalog;
 pub mod cleaner;
+pub mod custom;
 pub mod encode;
 pub mod generation;
 pub mod http;
@@ -47,8 +50,8 @@ use flow_core::cleanup::Cleaner;
 use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
 use flow_core::{CommitResult, CommitStatus, FlowCore, RouteInfo};
 use flow_router::{
-    Backend, BackendError, CleanupFactory, CleanupPlan, CloudFactory, EngineKind, Failure,
-    HealthReport, OpenRouterConfig, Router, SecretString, StartInfo, Usd,
+    Backend, BackendError, CleanupFactory, CleanupPlan, CloudFactory, CustomCleanupFactory,
+    EngineKind, Failure, HealthReport, OpenRouterConfig, Router, SecretString, StartInfo, Usd,
 };
 
 pub use adapters::openrouter::{OpenRouterStt, TRANSCRIBE_PROMPT};
@@ -56,6 +59,7 @@ pub use adapters::{CloudAdapter, CloudRequest, CloudTranscript, TermBudget};
 pub use api::{Api, BASE_URL, HOST};
 pub use catalog::{Catalog, CatalogStore, ModelInfo};
 pub use cleaner::OpenRouterCleaner;
+pub use custom::CustomCleaner;
 pub use encode::{AudioFormat, EncodedAudio};
 pub use generation::{CostSink, DeferredCost};
 pub use http::CloudError;
@@ -106,6 +110,11 @@ pub fn cleanup_factory() -> CleanupFactory {
     })
 }
 
+/// `flow_router::CustomCleanupFactory` building a [`CustomCleaner`] (D52).
+pub fn custom_cleanup_factory() -> CustomCleanupFactory {
+    Box::new(|c, scope, key| Arc::new(CustomCleaner::new(c, scope, key)) as Arc<dyn Cleaner>)
+}
+
 /// [`attach`] with a cleaner looked up per backend build ([`factory_with`]).
 pub fn attach_with(
     router: Router,
@@ -114,6 +123,7 @@ pub fn attach_with(
     router
         .with_cloud(factory_with(cleaner))
         .with_cleanup_factory(cleanup_factory())
+        .with_custom_cleanup_factory(custom_cleanup_factory())
         .with_cloud_adapters(ADAPTERS.iter().map(|s| s.to_string()).collect())
 }
 

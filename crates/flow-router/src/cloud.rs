@@ -156,6 +156,14 @@ pub struct CloudConfig {
     /// Stop using the cloud (STT and cleanup) for the month once this much
     /// was spent.
     pub monthly_budget_usd: Option<Usd>,
+    /// D52: which service the `cloud` entry of the cleanup order calls.
+    /// Cloud speech-to-text always uses OpenRouter. Omitted while OpenRouter.
+    #[serde(skip_serializing_if = "CleanupProvider::is_openrouter")]
+    pub cleanup_provider: CleanupProvider,
+    /// D52: the user's own OpenAI-compatible server (LiteLLM, …) for
+    /// cleanup. Omitted while default.
+    #[serde(skip_serializing_if = "CustomCleanupConfig::is_default")]
+    pub custom_cleanup: CustomCleanupConfig,
     /// Legacy (schema 1): active provider id. Read by the migration only.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub active: String,
@@ -174,6 +182,8 @@ impl Default for CloudConfig {
             schema: CLOUD_SCHEMA,
             openrouter: OpenRouterConfig::default(),
             monthly_budget_usd: None,
+            cleanup_provider: CleanupProvider::OpenRouter,
+            custom_cleanup: CustomCleanupConfig::default(),
             active: String::new(),
             providers: Vec::new(),
         }
@@ -199,6 +209,9 @@ impl CloudConfig {
             return Err(format!("unknown cloud schema {}", self.schema));
         }
         self.openrouter.validate()?;
+        if self.cleanup_provider == CleanupProvider::Custom {
+            self.custom_cleanup.validate()?;
+        }
         if let Some(b) = self.monthly_budget_usd {
             if !(b.0.is_finite() && b.0 >= 0.0) {
                 return Err("monthly budget must be a non-negative amount".into());
@@ -206,6 +219,196 @@ impl CloudConfig {
         }
         Ok(())
     }
+
+    /// The cleanup consent for the selected provider: openrouter.ai, or
+    /// the host of the custom server's current base URL (D52).
+    pub fn cleanup_consent_ok(&self) -> bool {
+        match self.cleanup_provider {
+            CleanupProvider::OpenRouter => self.openrouter.cleanup.consent_ok(),
+            CleanupProvider::Custom => self.custom_cleanup.consent_ok(),
+        }
+    }
+
+    /// Model id the selected cleanup provider is asked for.
+    pub fn cleanup_model(&self) -> &str {
+        match self.cleanup_provider {
+            CleanupProvider::OpenRouter => &self.openrouter.cleanup.model,
+            CleanupProvider::Custom => &self.custom_cleanup.model,
+        }
+    }
+
+    /// Hard cleanup timeout of the selected provider (ms).
+    pub fn cleanup_timeout_ms(&self) -> u64 {
+        match self.cleanup_provider {
+            CleanupProvider::OpenRouter => self.openrouter.cleanup.timeout_ms,
+            CleanupProvider::Custom => self.custom_cleanup.timeout_ms,
+        }
+    }
+
+    /// What a cloud cleanup prompt may contain. One set of switches for
+    /// both providers (stored in `openrouter.cleanup`, its pre-D52 home).
+    pub fn cleanup_scope(&self) -> flow_core::cleanup::PromptScope {
+        self.openrouter.cleanup.scope()
+    }
+
+    /// The secure-storage / `set_cloud_key` id of the cleanup provider's key.
+    pub fn cleanup_key_id(&self) -> &'static str {
+        match self.cleanup_provider {
+            CleanupProvider::OpenRouter => OPENROUTER_ID,
+            CleanupProvider::Custom => CUSTOM_CLEANUP_ID,
+        }
+    }
+
+    /// The part of the config the cleanup gate depends on (a change resets
+    /// its circuit and rebuilds the cleaner; STT edits do not).
+    pub fn cleanup_view(&self) -> CleanupView {
+        CleanupView {
+            provider: self.cleanup_provider,
+            privacy: self.openrouter.privacy.clone(),
+            openrouter: self.openrouter.cleanup.clone(),
+            custom: self.custom_cleanup.clone(),
+        }
+    }
+}
+
+/// [`CloudConfig::cleanup_view`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CleanupView {
+    pub provider: CleanupProvider,
+    pub privacy: Privacy,
+    pub openrouter: CleanupConfig,
+    pub custom: CustomCleanupConfig,
+}
+
+/// The service behind the `cloud` cleanup route (D52).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum CleanupProvider {
+    /// OpenRouter (default; D28).
+    #[default]
+    #[serde(rename = "openrouter")]
+    OpenRouter,
+    /// The user's own OpenAI-compatible server ([`CustomCleanupConfig`]).
+    #[serde(rename = "custom")]
+    Custom,
+}
+
+impl CleanupProvider {
+    pub fn is_openrouter(&self) -> bool {
+        *self == CleanupProvider::OpenRouter
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CleanupProvider::OpenRouter => "openrouter",
+            CleanupProvider::Custom => "custom",
+        }
+    }
+}
+
+/// `set_cloud_key` id and usage-counter id of the custom cleanup server.
+pub const CUSTOM_CLEANUP_ID: &str = "custom";
+/// Custom server cleanup timeout default / range (ms): a self-hosted model
+/// may be slower than OpenRouter's fastest provider.
+pub const DEFAULT_CUSTOM_CLEANUP_TIMEOUT_MS: u64 = 4000;
+pub const CUSTOM_CLEANUP_TIMEOUT_RANGE_MS: (u64, u64) = (800, 30_000);
+
+/// D52: cleanup through the user's own OpenAI-compatible server (LiteLLM
+/// proxy, vLLM, Ollama, …). Plain `http://` is allowed to any host by the
+/// owner's choice: the key and the dictated text then cross the network
+/// unencrypted. The key, optional, lives in secure storage under
+/// [`CUSTOM_CLEANUP_ID`], never here.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CustomCleanupConfig {
+    /// As typed: `http(s)://host[:port][/path]`; see [`normalize_custom_base_url`].
+    pub base_url: String,
+    /// Free text (whatever the server's `/v1/models` lists).
+    pub model: String,
+    pub timeout_ms: u64,
+    pub connect_timeout_ms: u64,
+    /// Host the user consented to send dictated text to; changing the base
+    /// URL to another host voids the consent.
+    pub consent_host: String,
+    pub consent_at_ms: u64,
+}
+
+impl Default for CustomCleanupConfig {
+    fn default() -> Self {
+        Self {
+            base_url: String::new(),
+            model: String::new(),
+            timeout_ms: DEFAULT_CUSTOM_CLEANUP_TIMEOUT_MS,
+            connect_timeout_ms: 1500,
+            consent_host: String::new(),
+            consent_at_ms: 0,
+        }
+    }
+}
+
+impl CustomCleanupConfig {
+    pub fn is_default(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Lower-cased host of `base_url`, or `""` when it does not parse.
+    pub fn host(&self) -> String {
+        parse_base_url(self.base_url.trim())
+            .map(|b| b.host)
+            .unwrap_or_default()
+    }
+
+    /// The user consented to send dictated text to this server's host.
+    pub fn consent_ok(&self) -> bool {
+        self.consent_at_ms > 0 && !self.consent_host.is_empty() && {
+            let h = self.host();
+            !h.is_empty() && self.consent_host.eq_ignore_ascii_case(&h)
+        }
+    }
+
+    /// The API root requests go to (`…/chat/completions`, `…/models`).
+    pub fn api_base(&self) -> Result<String, String> {
+        normalize_custom_base_url(&self.base_url)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        self.api_base()?;
+        if !valid_custom_model_id(self.model.trim()) {
+            return Err(format!("invalid custom cleanup model id {:?}", self.model));
+        }
+        let (lo, hi) = CUSTOM_CLEANUP_TIMEOUT_RANGE_MS;
+        if !(lo..=hi).contains(&self.timeout_ms) {
+            return Err(format!("custom cleanup timeout_ms must be {lo}-{hi}"));
+        }
+        if !(200..=10_000).contains(&self.connect_timeout_ms) {
+            return Err("custom cleanup connect_timeout_ms must be 200-10000".into());
+        }
+        Ok(())
+    }
+}
+
+/// A custom server's API root: [`parse_base_url`]'s checks (http or https,
+/// any host; no credentials, spaces or backslashes), no query or fragment,
+/// no trailing slash, and `/v1` added when the URL has no path (LiteLLM
+/// and most OpenAI-compatible servers serve the API there). A URL with a
+/// path is kept as typed (`…/v1`, `…/api/v1`).
+pub fn normalize_custom_base_url(raw: &str) -> Result<String, String> {
+    let raw = raw.trim();
+    parse_base_url(raw)?;
+    let mut u = url::Url::parse(raw).map_err(|_| "base URL does not parse".to_string())?;
+    if u.query().is_some() || u.fragment().is_some() {
+        return Err("base URL must not contain ? or #".into());
+    }
+    if u.path().trim_end_matches('/').is_empty() {
+        u.set_path("/v1");
+    }
+    Ok(u.as_str().trim_end_matches('/').to_string())
+}
+
+/// Custom server model ids are free text (`gpt-4o`, `Qwen/Qwen2.5-7B`,
+/// `ollama/llama3:8b`): 1-256 characters, no whitespace or control
+/// characters.
+pub fn valid_custom_model_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 256 && !id.chars().any(|c| c.is_whitespace() || c.is_control())
 }
 
 /// Request privacy, shared by both uses (D28 §2.6).
@@ -846,6 +1049,103 @@ mod tests {
         o.cleanup.consent_host = "api.example.com".into();
         o.cleanup.consent_at_ms = 1;
         assert!(!o.cleanup.consent_ok());
+    }
+
+    #[test]
+    fn custom_base_url_is_normalised() {
+        let n = |s: &str| normalize_custom_base_url(s);
+        assert_eq!(
+            n("http://10.0.0.5:4000").unwrap(),
+            "http://10.0.0.5:4000/v1"
+        );
+        assert_eq!(
+            n(" http://10.0.0.5:4000/ ").unwrap(),
+            "http://10.0.0.5:4000/v1"
+        );
+        assert_eq!(
+            n("http://10.0.0.5:4000/v1/").unwrap(),
+            "http://10.0.0.5:4000/v1"
+        );
+        assert_eq!(
+            n("https://LLM.Example.org/api/v1").unwrap(),
+            "https://llm.example.org/api/v1"
+        );
+        // Plain http to a public name is the owner's choice (D52).
+        assert_eq!(
+            n("http://llm.example.org:4000").unwrap(),
+            "http://llm.example.org:4000/v1"
+        );
+        for bad in [
+            "",
+            "10.0.0.5:4000",
+            "ftp://x",
+            "http://u:p@x:4000",
+            "http://x:4000/v1?k=1",
+            "http://x/v1#f",
+            "http://x /v1",
+        ] {
+            assert!(n(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn custom_model_ids_are_loose() {
+        for ok in [
+            "gpt-4o",
+            "Qwen/Qwen2.5-7B-Instruct",
+            "ollama/llama3:8b",
+            "A_b.c",
+        ] {
+            assert!(valid_custom_model_id(ok), "{ok}");
+        }
+        for bad in ["", "a b", "a\tb", "a\nb", &"a".repeat(257)] {
+            assert!(!valid_custom_model_id(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn custom_cleanup_config() {
+        let mut c = CloudConfig::default();
+        assert_eq!(c.cleanup_provider, CleanupProvider::OpenRouter);
+        assert_eq!(c.cleanup_key_id(), OPENROUTER_ID);
+        // Not serialised while default: older readers see the same JSON.
+        let j = serde_json::to_value(&c).unwrap();
+        assert!(j.get("cleanup_provider").is_none() && j.get("custom_cleanup").is_none());
+        // Selecting Custom validates the server entry.
+        c.cleanup_provider = CleanupProvider::Custom;
+        assert!(c.validate().unwrap_err().contains("base URL"));
+        c.custom_cleanup.base_url = "http://10.0.0.5:4000".into();
+        assert!(c.validate().unwrap_err().contains("model"));
+        c.custom_cleanup.model = "Qwen/Qwen2.5-7B".into();
+        assert_eq!(c.validate(), Ok(()));
+        c.custom_cleanup.timeout_ms = 40_000;
+        assert!(c.validate().unwrap_err().contains("timeout"));
+        c.custom_cleanup.timeout_ms = 4000;
+        assert_eq!(c.cleanup_model(), "Qwen/Qwen2.5-7B");
+        assert_eq!(c.cleanup_timeout_ms(), 4000);
+        assert_eq!(c.cleanup_key_id(), CUSTOM_CLEANUP_ID);
+        // Consent is bound to the typed host, not openrouter.ai.
+        assert!(!c.cleanup_consent_ok());
+        c.openrouter.cleanup.consent_host = OPENROUTER_HOST.into();
+        c.openrouter.cleanup.consent_at_ms = 1;
+        assert!(
+            !c.cleanup_consent_ok(),
+            "OpenRouter consent is not custom consent"
+        );
+        c.custom_cleanup.consent_host = "10.0.0.5".into();
+        c.custom_cleanup.consent_at_ms = 1;
+        assert!(c.cleanup_consent_ok());
+        c.custom_cleanup.base_url = "http://10.0.0.6:4000".into();
+        assert!(!c.cleanup_consent_ok(), "another host voids the consent");
+        let j = serde_json::to_value(&c).unwrap();
+        assert_eq!(j["cleanup_provider"], "custom");
+        assert_eq!(j["custom_cleanup"]["model"], "Qwen/Qwen2.5-7B");
+        let back: CloudConfig = serde_json::from_value(j).unwrap();
+        assert_eq!(back, c);
+        // A custom entry kept while OpenRouter is selected is not checked.
+        let mut o = CloudConfig::default();
+        o.custom_cleanup.base_url = "not a url".into();
+        assert_eq!(o.validate(), Ok(()));
     }
 
     #[test]

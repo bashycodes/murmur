@@ -20,8 +20,9 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 pub use cloud::{
-    month_of, CleanupConfig, CleanupRoute, CloudConfig, CloudProviderConfig, CloudUsage,
-    OpenRouterConfig, Privacy, ProviderUsage, Route, SecretString, SttConfig, Usd,
+    month_of, CleanupConfig, CleanupProvider, CleanupRoute, CloudConfig, CloudProviderConfig,
+    CloudUsage, CustomCleanupConfig, OpenRouterConfig, Privacy, ProviderUsage, Route, SecretString,
+    SttConfig, Usd,
 };
 pub use flow_core::cleanup::{CleanUsage, PromptScope};
 pub use flow_core::config::{FieldContext, SessionConfig};
@@ -680,7 +681,13 @@ pub struct CleanupStatus {
     /// server is configured. Additive.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_circuit: Option<CircuitStatus>,
-    /// Cleanup consent recorded for openrouter.ai.
+    /// D52: `openrouter` or `custom` (the service behind `cloud`). Additive.
+    pub provider: crate::cloud::CleanupProvider,
+    /// D52: the custom server's host (consent, status line); `""` for
+    /// OpenRouter. Additive.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub host: String,
+    /// Cleanup consent recorded for the selected provider's host.
     pub consent: bool,
     /// Why a call now would be refused (`Failure` string), `None` = ready.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -807,6 +814,19 @@ pub type CloudFactory =
 /// checks; it never sees a call the gate refused.
 pub type CleanupFactory = Box<
     dyn Fn(&OpenRouterConfig, SecretString) -> Arc<dyn flow_core::cleanup::Cleaner> + Send + Sync,
+>;
+
+/// Builds the custom-server cleaner (D52, `flow-cloud`'s `CustomCleaner`)
+/// for the server config, the shared prompt scope and the optional key.
+/// Cached like [`CleanupFactory`] and wrapped by the same gate.
+pub type CustomCleanupFactory = Box<
+    dyn Fn(
+            &crate::cloud::CustomCleanupConfig,
+            PromptScope,
+            Option<SecretString>,
+        ) -> Arc<dyn flow_core::cleanup::Cleaner>
+        + Send
+        + Sync,
 >;
 
 pub(crate) fn now_unix_ms() -> u64 {
