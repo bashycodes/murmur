@@ -136,7 +136,8 @@ export interface KeyState {
 }
 
 export interface UsageRow {
-  purpose: string;
+  /** `cloud::PURPOSE_*`; `custom` = the D52 custom cleanup server (never in the budget). */
+  purpose: "stt" | "cleanup" | "removed" | "custom";
   label: string;
   requests: number;
   minutes: number;
@@ -151,8 +152,6 @@ export interface UsageView {
   budget: number | null;
   budget_reached: boolean;
   rows: UsageRow[];
-  /** D52: the custom server's reported cost, never in the budget. */
-  custom_cost?: string | null;
 }
 
 export type CatalogSource = "Live" | "Cache" | "Baked";
