@@ -20,6 +20,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 - **AI cleanup through your own server (LiteLLM / OpenAI-compatible).** Windows and Android (hybrid) can send AI cleanup to a server you run instead of OpenRouter: base URL (http or https), optional key, model from its list or typed; cloud speech-to-text stays on OpenRouter (D52).
 
+### Fixed
+
+- **Custom cleanup server usage shown apart from OpenRouter's.** Android's OpenRouter page header and settings summary now show OpenRouter spend only (what the budget counts), and both apps list the custom server's cleanups on their own "Custom server" line, even when it reports no cost (D52).
+
 ## [1.1.1] - 2026-11-04
 
 ### Changed
