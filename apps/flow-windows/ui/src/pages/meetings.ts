@@ -299,8 +299,9 @@ const SUMMARY_BY: Record<string, string> = {
 
 /** What the summary box says about its state ("" when it just shows it). */
 export function summaryState(s: MeetingSummary | undefined, running: boolean): string {
-  if (!s) return "";
   if (running) return "Writing the summary… Dictation keeps priority.";
+  // Transcribed before summaries existed (or with them off): offer one.
+  if (!s) return "No summary yet";
   if (s.status === "pending") return "Waiting to be summarised";
   if (s.status === "failed") return `No summary: ${s.error ?? "unknown error"}`;
   return "";
@@ -309,20 +310,24 @@ export function summaryState(s: MeetingSummary | undefined, running: boolean): s
 function showSummary(m: Meeting): void {
   const box = $<HTMLElement>("mt_summary");
   const s = m.summary;
-  box.hidden = m.status !== "done" || !s;
-  if (!s || box.hidden) return;
+  box.hidden = m.status !== "done";
+  if (box.hidden) return;
   const running = view.summarising === m.id;
   const state = summaryState(s, running);
   const st = $<HTMLElement>("mt_summary_state");
   st.textContent = state;
   st.hidden = !state;
-  st.classList.toggle("is-err", s.status === "failed" && !running);
+  st.classList.toggle("is-err", s?.status === "failed" && !running);
   $<HTMLElement>("mt_summary_by").textContent =
-    s.status === "done" && s.engine ? `by ${SUMMARY_BY[s.engine] ?? s.engine}` : "";
-  $<HTMLElement>("mt_summary_text").textContent = s.text;
-  $<HTMLElement>("mt_items").replaceChildren(...s.action_items.map((t) => el("li", "", t)));
-  $<HTMLElement>("mt_items_title").hidden = s.action_items.length === 0;
-  $<HTMLButtonElement>("mt_regen").disabled = running || s.status === "pending";
+    s?.status === "done" && s.engine ? `by ${SUMMARY_BY[s.engine] ?? s.engine}` : "";
+  $<HTMLElement>("mt_summary_text").textContent = s?.text ?? "";
+  const items = s?.action_items ?? [];
+  $<HTMLElement>("mt_items").replaceChildren(...items.map((t) => el("li", "", t)));
+  $<HTMLElement>("mt_items_title").hidden = items.length === 0;
+  const btn = $<HTMLButtonElement>("mt_regen");
+  // Same command either way: `meeting_summarise` makes a first summary too.
+  btn.textContent = s ? "Regenerate" : "Summarise";
+  btn.disabled = running || s?.status === "pending";
 }
 
 const ROUTE_NAMES: Record<string, string> = {
