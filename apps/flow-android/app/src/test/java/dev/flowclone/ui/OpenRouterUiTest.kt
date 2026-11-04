@@ -144,6 +144,24 @@ class OpenRouterUiTest {
         assertTrue("Speech off · Cleanup off · no key" in t)
     }
 
+    @Test fun aRefreshReadsTheCustomServerAddressOnce() {
+        // D52: the cleanup card and the custom-server card share one settings value per refresh.
+        val prev = dev.flowclone.data.CustomServer.check
+        var calls = 0
+        dev.flowclone.data.CustomServer.check = dev.flowclone.data.CustomAddressCheck { u, m -> calls++; dev.flowclone.data.FakeCustomAddress.check(u, m) }
+        try {
+            app.dev.saveCloud(cloud = app.dev.load().cloud.copy(
+                cleanupProvider = dev.flowclone.data.CleanupProvider.CUSTOM,
+                customCleanup = dev.flowclone.data.CustomCleanupSettings("http://10.0.0.5:4000", "m"),
+            ))
+            val c = Robolectric.buildActivity(OpenRouterActivity::class.java, Intent(ctx, OpenRouterActivity::class.java)).setup().visible()
+            assertTrue("custom card shown", "10.0.0.5" in texts(c.get()).joinToString())
+            calls = 0
+            c.pause().resume()
+            assertEquals(1, calls)
+        } finally { dev.flowclone.data.CustomServer.check = prev }
+    }
+
     @Test fun settingsHubHasTheUserFacingEntry() {
         val a = Robolectric.buildActivity(SettingsActivity::class.java, Intent(ctx, SettingsActivity::class.java)).setup().visible().get()
         val t = texts(a)

@@ -88,9 +88,9 @@ class CloudSettingsTest {
 
     @Test fun usageIsSplitByPurpose() {
         val u = CloudUsage.decode(javaClass.classLoader!!.getResource("cloud_usage.json")!!.readText())
-        assertEquals(0.0234, u.costFor(CloudUsage.PURPOSE_STT), 1e-9)
-        assertEquals(0.014, u.costFor(CloudUsage.PURPOSE_CLEANUP), 1e-9)
-        assertTrue(u.estimated(CloudUsage.PURPOSE_CLEANUP)); assertFalse(u.estimated(CloudUsage.PURPOSE_STT))
+        assertEquals(0.0234, u.openRouterCostFor(CloudUsage.PURPOSE_STT), 1e-9)
+        assertEquals(0.014, u.openRouterCostFor(CloudUsage.PURPOSE_CLEANUP), 1e-9)
+        assertTrue(u.openRouterEstimated(CloudUsage.PURPOSE_CLEANUP)); assertFalse(u.openRouterEstimated(CloudUsage.PURPOSE_STT))
         val lines = CloudText.usageLines(u, CloudSettings(monthlyBudgetUsd = 5.0))
         assertEquals("Speech \$0.02 · Cleanup ≈ \$0.01 · this month (2026-10)", lines[0])
         assertEquals("42 speech requests (5.2 min) · 20 cleanup requests", lines[1])
@@ -107,13 +107,37 @@ class CloudSettingsTest {
         ))
         assertEquals(0.5, u.budgetCostUsd, 1e-9); assertEquals(4.0, u.customCostUsd, 1e-9)
         val lines = CloudText.usageLines(u, CloudSettings(monthlyBudgetUsd = 1.0))
+        assertEquals("Speech \$0.50 · Cleanup \$0 · this month (2026-11)", lines[0])
+        assertEquals("3 speech requests (0.0 min) · 0 cleanup requests", lines[1])
         assertEquals("Budget \$1.00/month: \$0.50 used", lines[2])
-        assertEquals("Your custom server reported \$4.00 (not in the budget)", lines[3])
+        assertEquals("Custom server: 9 cleanup requests · reported \$4.00 (not in the budget)", lines[3])
+        // The page header: OpenRouter only, against the budget.
+        assertEquals(listOf("\$0.50" to "this month of \$1.00", "\$0.50" to "speech", "\$0" to "cleanup"),
+            CloudText.usageStats(u, CloudSettings(monthlyBudgetUsd = 1.0)))
         val st = dev.flowclone.core.RouterJson.decodeCleanupStatus(
             """{"supported":true,"enabled":true,"provider":"custom","host":"10.0.0.5","model":"m","month_cost_usd":4.0,"custom_month_cost_usd":4.0}""")
         assertEquals(4.0, st.customMonthCostUsd, 1e-9)
         val line = dev.flowclone.core.DevText.cleanupStatus(st)
-        assertTrue(line, line.startsWith("On · Custom server (10.0.0.5) · m") && line.endsWith("\$4.00 on your server (not in budget)"))
+        assertEquals("On · Custom server (10.0.0.5) · m · \$4.00 on your server this month (not in budget)", line)
+        // Both providers this month: OpenRouter's part and the server's, never added together.
+        val both = dev.flowclone.core.DevText.cleanupStatus(st.copy(monthCostUsd = 4.5))
+        assertEquals("On · Custom server (10.0.0.5) · m · OpenRouter this month \$0.50 · \$4.00 on your server this month (not in budget)", both)
+        val or = dev.flowclone.core.DevText.cleanupStatus(st.copy(provider = "openrouter", host = "", monthCostUsd = 4.5))
+        assertEquals("On · m · this month \$0.50 · \$4.00 on your server this month (not in budget)", or)
+    }
+
+    @Test fun customServerRequestsCountWithoutACost() {
+        // A server that sends no cost header still shows its requests; OpenRouter's cleanup stays its own.
+        val u = CloudUsage("2026-11", listOf(
+            CloudUsage.ProviderUsage(OpenRouter.ID, requests = 2, costUsd = 0.25, costEstimated = true, purpose = CloudUsage.PURPOSE_CLEANUP),
+            CloudUsage.ProviderUsage(CustomServer.ID, requests = 1, purpose = CloudUsage.PURPOSE_CLEANUP),
+        ))
+        val lines = CloudText.usageLines(u, CloudSettings())
+        assertEquals("Speech \$0 · Cleanup ≈ \$0.25 · this month (2026-11)", lines[0])
+        assertEquals("0 speech requests (0.0 min) · 2 cleanup requests", lines[1])
+        assertEquals("Custom server: 1 cleanup request · no cost reported (not in the budget)", lines.last())
+        assertEquals(listOf("\$0.25" to "this month", "\$0" to "speech", "≈\$0.25" to "cleanup"), CloudText.usageStats(u, CloudSettings()))
+        assertTrue("no custom line without custom usage", CloudText.usageLines(CloudUsage(), CloudSettings()).none { it.startsWith(CustomServer.NAME) })
     }
 
     @Test fun routeWording() {
@@ -245,6 +269,21 @@ class CloudSettingsTest {
             assertEquals("Base URL must not contain ? or #", CloudInput.baseUrl("http://x/v1?q").error)
             assertEquals("", CustomServer.host("http://x/v1?q"))
             assertTrue(CloudInput.baseUrl(" ").error!!.isNotEmpty())
+        } finally { FakeCustomAddress.install() }
+    }
+
+    @Test fun oneAddressLookupServesReadyHostAndHttps() {
+        // A page refresh reads ready, host, https and consent of one settings value: one native call.
+        var calls = 0
+        CustomServer.check = CustomAddressCheck { u, m -> calls++; FakeCustomAddress.check(u, m) }
+        try {
+            val c = CustomCleanupSettings("http://10.0.0.5:4000", " m ", consentHost = "10.0.0.5", consentAtMs = 1)
+            assertTrue(c.ready); assertEquals("10.0.0.5", c.host); assertFalse(c.https); assertTrue(c.consentOk)
+            assertTrue(CloudSettings(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = c).customNotSetUp.not())
+            assertEquals(1, calls)
+            // Another value (another address) is read afresh.
+            assertTrue(c.copy(baseUrl = "https://llm.example").https)
+            assertEquals(2, calls)
         } finally { FakeCustomAddress.install() }
     }
 

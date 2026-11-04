@@ -295,9 +295,12 @@ object SettingsSummary {
         else -> "Not reachable"
     }
 
-    /** OpenRouter row: "Key saved · $0.42 this month" (usage counted on this phone only). */
+    /**
+     * OpenRouter row: "Key saved · $0.42 this month" (usage counted on this phone only). D52: OpenRouter's
+     * spend (what the budget counts), never the custom server's.
+     */
     fun openRouter(hasKey: Boolean, usage: CloudUsage): String =
-        (if (hasKey) "Key saved" else "No key") + " · ${CloudText.usd(usage.totalCostUsd)} this month"
+        (if (hasKey) "Key saved" else "No key") + " · ${CloudText.usd(usage.budgetCostUsd)} this month"
 
     /** "This phone" engine line: the on-device engine that runs ("Parakeet · works offline"). */
     fun phoneEngine(s: Settings, whisper: String?, parakeet: String?): String = when {

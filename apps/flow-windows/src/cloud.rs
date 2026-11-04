@@ -161,11 +161,12 @@ pub fn save_usage(path: &Path, usage: &CloudUsage) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
-/// One usage row: speech-to-text, cleanup, or providers removed by the
-/// D28 migration (their cost still counts toward the budget).
+/// One usage row: speech-to-text, cleanup, providers removed by the D28
+/// migration (their cost still counts toward the budget), or the D52
+/// custom cleanup server (its requests always; never in the budget).
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct UsageRow {
-    /// `stt` / `cleanup` / `removed`.
+    /// `stt` / `cleanup` / `removed` / `custom`.
     pub purpose: String,
     pub label: String,
     pub requests: u64,
@@ -185,17 +186,22 @@ pub struct UsageView {
     pub total: String,
     pub budget: Option<f64>,
     pub budget_reached: bool,
-    /// D52: what the custom cleanup server reported (its cost header),
-    /// formatted; `None` when nothing was reported. Never in the budget.
-    pub custom_cost: Option<String>,
 }
+
+/// Row of the providers the D28 migration removed (still in the budget).
+pub const PURPOSE_REMOVED: &str = "removed";
+/// D52 row of the custom cleanup server: its cleanups always, its cost
+/// header when sent ("no cost reported" otherwise); never in the budget.
+pub const PURPOSE_CUSTOM: &str = "custom";
+/// The custom row's cost when the server sends no cost header.
+pub const NO_COST_REPORTED: &str = "no cost reported";
 
 fn purpose_of(p: &flow_router::ProviderUsage) -> &'static str {
     if p.provider_id == CUSTOM_CLEANUP_ID {
-        // Shown on its own line, outside the OpenRouter rows and budget.
-        CUSTOM_CLEANUP_ID
+        // Its own row, outside OpenRouter's speech/cleanup sums and budget.
+        PURPOSE_CUSTOM
     } else if p.provider_id == REMOVED_PROVIDERS_ID {
-        "removed"
+        PURPOSE_REMOVED
     } else if p.purpose == PURPOSE_CLEANUP {
         PURPOSE_CLEANUP
     } else {
@@ -217,7 +223,12 @@ pub fn usage_view(u: &CloudUsage, budget: Option<f64>) -> UsageView {
             .sum()
     };
     let mut rows: Vec<UsageRow> = Vec::new();
-    for purpose in [PURPOSE_STT, PURPOSE_CLEANUP, "removed"] {
+    for purpose in [
+        PURPOSE_STT,
+        PURPOSE_CLEANUP,
+        PURPOSE_REMOVED,
+        PURPOSE_CUSTOM,
+    ] {
         let of: Vec<&flow_router::ProviderUsage> = u
             .providers
             .iter()
@@ -233,16 +244,21 @@ pub fn usage_view(u: &CloudUsage, budget: Option<f64>) -> UsageView {
             label: match purpose {
                 PURPOSE_STT => "Speech-to-text",
                 PURPOSE_CLEANUP => "Text cleanup",
+                PURPOSE_CUSTOM => "Custom server",
                 _ => "Removed providers (before OpenRouter only)",
             }
             .into(),
             requests: of.iter().map(|p| p.requests).sum(),
             minutes: (ms as f64 / 60_000.0 * 100.0).round() / 100.0,
-            cost: format_cost(cost, est(purpose)),
+            cost: match purpose {
+                // The server's own cost header: exact, not an estimate.
+                PURPOSE_CUSTOM if cost > 0.0 => format_cost(cost, false),
+                PURPOSE_CUSTOM => NO_COST_REPORTED.into(),
+                _ => format_cost(cost, est(purpose)),
+            },
         });
     }
     let total = u.budget_cost();
-    let custom = u.custom_cost();
     UsageView {
         month: u.month.clone(),
         // Not `CloudUsage::cost_for`: that counts the `removed` counter
@@ -258,7 +274,6 @@ pub fn usage_view(u: &CloudUsage, budget: Option<f64>) -> UsageView {
         ),
         budget,
         budget_reached: budget.is_some_and(|b| total >= b),
-        custom_cost: (custom > 0.0).then(|| format_cost(custom, false)),
     }
 }
 
@@ -469,7 +484,7 @@ mod tests {
         assert_eq!(v.rows.len(), 3);
         assert_eq!(v.rows[0].purpose, "stt");
         assert_eq!(v.rows[0].minutes, 1.5);
-        assert_eq!(v.rows[2].purpose, "removed");
+        assert_eq!(v.rows[2].purpose, PURPOSE_REMOVED);
         assert_eq!(v.total, "≈ $1.51");
         assert!(v.budget_reached);
         assert!(!usage_view(&u, None).budget_reached);
@@ -478,7 +493,7 @@ mod tests {
             (empty.speech.as_str(), empty.cleanup.as_str()),
             ("$0.0000", "$0.0000")
         );
-        assert_eq!(empty.custom_cost, None);
+        assert!(empty.rows.is_empty());
     }
 
     #[test]
@@ -506,8 +521,48 @@ mod tests {
         let v = usage_view(&u, Some(1.0));
         assert_eq!(v.total, "$0.2000");
         assert!(!v.budget_reached, "custom spend never counts");
-        assert_eq!(v.custom_cost.as_deref(), Some("$5.00"));
         assert_eq!(v.cleanup, "$0.0000");
         assert!(v.rows.iter().all(|r| r.purpose != "cleanup"));
+        let row = v.rows.last().unwrap();
+        assert_eq!(
+            (
+                row.purpose.as_str(),
+                row.label.as_str(),
+                row.requests,
+                row.cost.as_str()
+            ),
+            (PURPOSE_CUSTOM, "Custom server", 9, "$5.00")
+        );
+    }
+
+    #[test]
+    fn custom_server_requests_count_without_a_cost() {
+        // A server that sends no cost header still shows its cleanups,
+        // next to OpenRouter's own cleanup row.
+        let u = CloudUsage {
+            month: "2026-11".into(),
+            providers: vec![
+                ProviderUsage {
+                    provider_id: "openrouter".into(),
+                    purpose: "cleanup".into(),
+                    requests: 2,
+                    cost_usd: Usd(0.01),
+                    ..Default::default()
+                },
+                ProviderUsage {
+                    provider_id: CUSTOM_CLEANUP_ID.into(),
+                    purpose: "cleanup".into(),
+                    requests: 3,
+                    ..Default::default()
+                },
+            ],
+        };
+        let v = usage_view(&u, None);
+        let purposes: Vec<&str> = v.rows.iter().map(|r| r.purpose.as_str()).collect();
+        assert_eq!(purposes, [PURPOSE_CLEANUP, PURPOSE_CUSTOM]);
+        assert_eq!((v.rows[0].requests, v.rows[1].requests), (2, 3));
+        assert_eq!(v.cleanup, "$0.0100");
+        assert_eq!(v.total, "$0.0100");
+        assert_eq!(v.rows[1].cost, NO_COST_REPORTED);
     }
 }
