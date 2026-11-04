@@ -1,4 +1,4 @@
-# Cloud speech-to-text and text cleanup (opt-in, OpenRouter only)
+# Cloud speech-to-text and text cleanup (opt-in, OpenRouter; cleanup also a custom server)
 
 Status: implemented on `feat/or-cloud` (flow-cloud, W1) + `feat/or-route` (core/router/ffi),
 decisions **D18** (cloud STT, client-direct, fenced) and **D28** (OpenRouter is the only
@@ -7,6 +7,10 @@ facts: `docs/proposals/openrouter-only-cloud.md` (§1 facts, §2 design, §4.1 f
 This file is the reference for what is built. The D18 multi-provider design (ElevenLabs,
 Deepgram, AssemblyAI, generic OpenAI-compatible, presets, custom base URLs) is
 **deleted**; git history keeps it.
+
+**D52 (2026-11-04):** AI cleanup (not speech-to-text) may instead go to the user's own
+OpenAI-compatible server, typically a LiteLLM proxy: §6.5. C8 below then holds for
+OpenRouter and speech-to-text; the custom server's host is the one the user typed.
 
 **Goal.** In Developer settings the user may attach an OpenRouter API key and opt in,
 separately, to (1) cloud speech-to-text and (2) cloud text cleanup. OpenRouter is the only
@@ -200,6 +204,37 @@ Default scope sends nothing beyond transcript, category/style and dictionary
 
 ---
 
+### 6.5 Custom cleanup server (D52)
+
+`cloud.cleanup_provider = "custom"` points the `cloud` entry of the cleanup order at
+`cloud.custom_cleanup` instead of OpenRouter; dictation cleanup, Command Mode and
+Transforms follow (they all use the cleanup gate). Cloud STT is not affected: it stays
+OpenRouter with its own settings, consent and key, and the pages say so.
+
+* **Base URL** as typed, `http://` or `https://`, any host (owner's choice: on http the
+  key and the dictated text cross the network unencrypted; the pages warn).
+  `flow_router::cloud::normalize_custom_base_url` adds `/v1` when the URL has no path,
+  drops a trailing `/`, refuses credentials, spaces, backslashes, query and fragment.
+* **Request** (`flow_cloud::custom::CustomCleaner`): streamed `POST {base}/chat/completions`
+  with `model`, `messages`, `temperature: 0`, `max_tokens`, `stream: true`. None of
+  OpenRouter's fields (`provider`, `zdr`, `max_price`, `reasoning`, `include_reasoning`,
+  `seed`), no `/key`, `/generation` or credits calls. Same SSE reader, cancel, error codes
+  and redirect rule as §6.4. `prefill` = content-free `GET {base}/models` (≤ once per 60 s).
+* **Key** optional (`set_cloud_key("custom", …)`; Windows Credential Manager
+  `flow-clone/cloud/custom`, Android `SecretVault("flow_cloud_custom")`); none = no
+  `Authorization` header. Never used for STT; the OpenRouter key never reaches this server.
+* **Model** free text (1-256 chars, no whitespace or control characters). The pages list
+  `GET {base}/models` ids (`flow_cloud::custom::list_models`, also the Test connection;
+  Android `nativeCustomCleanupModels`) and allow manual entry.
+* **Consent**: `custom_cleanup.consent_host` must equal the host of the current base URL;
+  OpenRouter's cleanup consent does not count.
+* **Cost**: LiteLLM's `x-litellm-response-cost` header when present, else unknown; counted
+  under usage id `custom` (purpose `cleanup`). With a monthly budget, an unknown cost does
+  not block: only reported cost counts toward it.
+* Prompt scope switches are shared with OpenRouter (stored under `openrouter.cleanup`).
+
+---
+
 ## 7. Pipeline and dictionary
 
 `CloudBackend` owns `FlowCore::from_engines(Arc<CloudAsr>, cleaner)`; the whole local
@@ -221,11 +256,18 @@ locally; snippet triggers are never sent.
     "cleanup": {"model": "meta-llama/llama-3.3-70b-instruct", "sort": "latency", "timeout_ms": 2500,
                 "connect_timeout_ms": 1500, "send_surrounding_text": false, "send_screen_words": false,
                 "send_app_name": false, "consent_host": "", "consent_at_ms": 0} },
-  "monthly_budget_usd": null }
+  "monthly_budget_usd": null,
+  "cleanup_provider": "custom",
+  "custom_cleanup": {"base_url": "http://10.0.0.5:4000", "model": "my-model", "timeout_ms": 4000,
+                     "connect_timeout_ms": 1500, "consent_host": "10.0.0.5", "consent_at_ms": 1} }
 ```
 
+`cleanup_provider` (default `"openrouter"`) and `custom_cleanup` (D52) are omitted while
+default.
+
 Owned by flow-router (or-route); flow-cloud mirrors the field names in `SttSettings` /
-`CleanupSettings` / `Privacy`. There is no base URL, preset, dialect or price field.
+`CleanupSettings` / `Privacy`. There is no OpenRouter base URL, preset, dialect or price
+field; the only base URL is the custom cleanup server's (D52).
 Key: Windows Credential Manager `flow-clone/cloud/openrouter`, Android
 `SecretVault("flow_cloud_openrouter")`.
 

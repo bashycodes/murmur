@@ -20,7 +20,9 @@ Each rule comes from a problem a review caught before merge.
   test snapshots.
 - **Cloud paths keep the consent gate.** Any new route that sends audio or
   text off the device goes through the router's cloud gate and is rechecked
-  on fallback hops. A provider is only ever reached through OpenRouter.
+  on fallback hops. A provider is only ever reached through OpenRouter,
+  except AI cleanup's custom server (D52), whose host the user typed and
+  consented to.
 
 ## Shared code
 
