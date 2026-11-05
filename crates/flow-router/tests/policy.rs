@@ -1502,7 +1502,7 @@ fn busy_server_with_a_cold_local_waits_instead_of_loading() {
     assert_eq!(l.loads(), 0, "busy is not down: no 1 GB load");
 }
 
-// ---- Load 2: audio recorded while the phone model loaded stays on the phone ----
+// ---- D55: audio recorded while the phone model loaded stays on the phone ----
 
 #[test]
 fn local_start_skips_a_reachable_server_first_route() {

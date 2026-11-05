@@ -84,7 +84,7 @@ data class DictationTrace(
     val localCold: Boolean? = null,
     /** D24: how long that load took. */
     val localLoadMs: Long? = null,
-    /** Load 2 (D55): recording started while the phone's speech model loaded; how long the dictation waited for it. */
+    /** D55: recording started while the phone's speech model loaded; how long the dictation waited for it. */
     val loadWaitMs: Long? = null,
     /** Package of the field the dictation started in; redacted by [DebugRedact]. */
     val target: String? = null,

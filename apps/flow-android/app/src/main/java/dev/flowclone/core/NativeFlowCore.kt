@@ -164,33 +164,27 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
     override fun partial(): String? = lease.use({ null }) { h -> nativePartial(h) }
 
     /** `nativeStartSessionInfo`; a library without it falls back to `nativeStartSession`. */
-    override fun startSessionInfo(cfg: SessionConfig): StartInfo = lease.use(::gone) { h ->
-        BlockingCalls.check("nativeStartSessionInfo")
+    override fun startSessionInfo(cfg: SessionConfig): StartInfo = start(cfg, localOnly = false)
+
+    /**
+     * D55: `nativeStartSessionLocal`. A library without it can't keep a router's session off
+     * the server, so the start is refused there (`local_not_ready`); a core handle is on-device.
+     */
+    override fun startSessionLocal(cfg: SessionConfig): StartInfo = start(cfg, localOnly = isRouter)
+
+    private fun start(cfg: SessionConfig, localOnly: Boolean): StartInfo = lease.use(::gone) { h ->
+        val name = if (localOnly) "nativeStartSessionLocal" else "nativeStartSessionInfo"
+        BlockingCalls.check(name)
         val json = CoreJson.encode(cfg)
         val info = try {
-            nativeStartSessionInfo(h, json) ?: throw lastError("start_session failed")
+            (if (localOnly) nativeStartSessionLocal(h, json) else nativeStartSessionInfo(h, json))
+                ?: throw lastError("start_session failed")
         } catch (e: UnsatisfiedLinkError) {
+            if (localOnly) throw CoreException("This build's engine can't wait for the phone model; update the app.", "local_not_ready")
             if (!nativeStartSession(h, json)) throw lastError("start_session failed")
             return@use StartInfo()
         }
         RouterJson.decodeStartInfo(info)
-    }
-
-    /**
-     * Load 2: `nativeStartSessionLocal`. A library without it can't keep a router's session off
-     * the server, so the start is refused there (`local_not_ready`); a core handle is on-device.
-     */
-    override fun startSessionLocal(cfg: SessionConfig): StartInfo {
-        if (!isRouter) return startSessionInfo(cfg)
-        return lease.use(::gone) { h ->
-            BlockingCalls.check("nativeStartSessionLocal")
-            val info = try {
-                nativeStartSessionLocal(h, CoreJson.encode(cfg)) ?: throw lastError("start_session failed")
-            } catch (e: UnsatisfiedLinkError) {
-                throw CoreException("This build's engine can't wait for the phone model; update the app.", "local_not_ready")
-            }
-            RouterJson.decodeStartInfo(info)
-        }
     }
 
     /** `nativePoll` (partial + endpoint + live route); `nativePartial` on an older library. */
@@ -450,7 +444,7 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
         // ---- 2026-10-22 live route + hands-free endpointing (JNI_CONTRACT.md); every flavour exports them ----
         @JvmStatic external fun nativeStartSessionInfo(handle: Long, sessionConfigJson: String): String?
         @JvmStatic external fun nativePoll(handle: Long): String
-        /** Load 2 (JNI_CONTRACT.md "Start on the phone only"). */
+        /** D55 (JNI_CONTRACT.md "Start on the phone only"). */
         @JvmStatic external fun nativeStartSessionLocal(handle: Long, sessionConfigJson: String): String?
 
         // ---- D17 router additions (JNI_CONTRACT.md "Router"); every symbol above works on router handles too ----

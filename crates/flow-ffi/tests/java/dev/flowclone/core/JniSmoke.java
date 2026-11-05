@@ -86,7 +86,7 @@ public class JniSmoke {
         System.out.println(NativeFlowCore.nativeCommit(r));
         System.out.println(NativeFlowCore.nativeRouteStatus(r));
         System.out.println(NativeFlowCore.nativeLearnEdit(r, "ask whisper now", "ask Wispr now"));
-        // Load 2: a local start stays on the phone, even with the server first and up.
+        // D55: a local start stays on the phone, even with the server first and up.
         check(NativeFlowCore.nativeStartSessionLocal(r, rsess + "}") != null, "local start: " + NativeFlowCore.nativeLastError());
         for (int c = 0; c < 25; c++) {
             for (int i = 0; i < buf.length; i++) buf[i] = (short) (Math.sin((c * 640 + i) * 0.05) * 8000);

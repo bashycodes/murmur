@@ -118,7 +118,7 @@ fn jvm_round_trip() {
         cands[0]["corrected"], "Wispr",
         "router learn_edit uses the last dictionary"
     );
-    // Load 2: the local start went to the phone, whatever the route order.
+    // D55: the local start went to the phone, whatever the route order.
     let local: serde_json::Value = serde_json::from_str(lines.next().unwrap()).unwrap();
     assert_eq!(local["status"], "RAW_TRANSCRIPT", "{local}");
     assert_eq!(local["final_text"], "hello by the way ");
@@ -210,7 +210,7 @@ fn contract_symbols_exported() {
         .collect();
     // D28: +10 OpenRouter natives; +1 Command Mode; +1 nativeBenchClean; D41: +2 model library (feature `library`);
     // D46: +7 meeting transcription; D52: +2 custom cleanup server; Load 3: +3 load
-    // timings / keep LLM / release it; Load 2: +1 local-only start.
+    // timings / keep LLM / release it; D55: +1 local-only start.
     assert_eq!(want.len(), 58, "{want:?}");
     let src = include_str!("../src/jni_api.rs");
     let have: std::collections::BTreeSet<&str> = src
