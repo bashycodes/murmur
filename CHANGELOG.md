@@ -18,6 +18,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **Android: "Keep both languages loaded" (Settings → Speech to text, off by default).** With the Hebrew model and a default model installed, both stay in memory (about 1.1 GB) so switching the keyboard between English and Hebrew never waits for a model to load; takes effect at the next dictation.
 - **Windows: AI summary and action items for a meeting (Notetaker, still hidden).** Made after the transcript on your AI cleanup order (this PC, your server, OpenRouter with consent), in the meeting's language, long meetings in chunks; a Regenerate button on the meeting's page. flow-server advertises the `summary` feature; older servers are skipped (D53).
 - **AI cleanup through your own server (LiteLLM / OpenAI-compatible).** Windows and Android (hybrid) can send AI cleanup to a server you run instead of OpenRouter: base URL (http or https), optional key, model from its list or typed; cloud speech-to-text stays on OpenRouter; its cleanups and any reported cost show on their own "Custom server" usage line, outside OpenRouter's spend and budget (D52).
 
