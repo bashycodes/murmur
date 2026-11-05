@@ -2,6 +2,7 @@ package dev.flowclone
 
 import dev.flowclone.core.CoreException
 import dev.flowclone.core.FakeFlowCore
+import dev.flowclone.data.HebrewModels
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -104,6 +105,39 @@ class EngineHolderTest {
         waitFor("ready") { h.state.value is EngineHolder.State.Ready }
         assertEquals("fake he", (h.state.value as EngineHolder.State.Ready).description)
         assertEquals(listOf("he"), built.toList())
+    }
+
+    @Test fun withBothLoadedAKeyboardSwitchNeverReloadsAndTogglingReloadsOnce() {
+        want = HebrewModels.BOTH
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        // A switch to English and back: the wanted set stays both, so nothing reloads.
+        repeat(3) { h.ensureLanguage() }
+        assertEquals(listOf("both"), built.toList())
+        assertTrue(h.state.value is EngineHolder.State.Ready)
+        // "Keep both languages loaded" turned off with the keyboard on Hebrew: one reload, to the Hebrew model.
+        want = "he"
+        h.ensureLanguage()
+        waitFor("hebrew build") { (h.state.value as? EngineHolder.State.Ready)?.description == "fake he" }
+        h.ensureLanguage()
+        assertEquals(listOf("both", "he"), built.toList())
+    }
+
+    @Test fun aLowMemoryUnloadReloadsBothModelsAtTheNextLoad() {
+        want = HebrewModels.BOTH
+        gates["both"] = CountDownLatch(1)
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("both build") { "both" in built }
+        assertEquals(EngineHolder.BOTH_LOADING, loadingMessage(h))
+        gates["both"]!!.countDown()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        h.unload() // FlowService.onTrimMemory
+        assertTrue(cores["both"]!!.unloaded)
+        h.ensureLoaded()
+        waitFor("ready again") { h.state.value is EngineHolder.State.Ready }
+        assertEquals(listOf("both", "both"), built.toList())
     }
 
     @Test fun aSwitchFromTheReadyHebrewModelNamesTheDefaultModel() {

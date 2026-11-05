@@ -33,7 +33,8 @@ import java.io.File
  *                  its consent first, as on the OpenRouter page ([OpenRouterPage.enableStt]).
  *   On this phone  the model in use (name, language, size, import date) → engine choice and imports;
  *                  "Import another model"; "Hebrew model" (D37: visible here, not only on the engine
- *                  page); keep it loaded (hybrid); Transcribe while I speak.
+ *                  page); Keep both languages loaded (D54); keep it loaded (hybrid);
+ *                  Transcribe while I speak.
  * "Use dictionary words" from the design is left out: Android has no such switch (Parakeet's beam
  * search mode stays in Developer settings → Engine options).
  */
@@ -57,6 +58,7 @@ internal class SpeechPage(
     private var importButton: android.widget.Button? = null
     private var hebrewRow: DevUi.NavRow? = null
     private var keepWarm: DevUi.ToggleRow? = null
+    private var keepBoth: DevUi.ToggleRow? = null
     private lateinit var transcribe: DevUi.ToggleRow
     private var reordering = false
     /** Set by the activity from its health probe; [checking] while one runs. */
@@ -84,6 +86,9 @@ internal class SpeechPage(
                 modelBlock()
                 // D37: the Hebrew model was only reachable through the model block → engine page.
                 hebrewRow = navRow(R.drawable.ic_set_language, "Hebrew model") { activity.startActivity(ModelImportActivity.hebrewIntent(activity)) }
+                // D54: applies at the next dictation (it reloads once then).
+                keepBoth = toggleRow("Keep both languages loaded", keepBothSummary(), s.keepBothLanguages)
+                    .also { it.onChange { on -> update { copy(keepBothLanguages = on) } } }
                 if (caps.remote) {
                     keepWarm = toggleRow("Keep loaded while the server is used", "Instant fallback if the server drops, at the cost of memory", app.dev.load().keepLocalWarm)
                         .also { it.onChange { on -> saveDev(app.dev.load().copy(keepLocalWarm = on)) } }
@@ -168,10 +173,17 @@ internal class SpeechPage(
         banner.show(w.joinToString("\n"), if (DevPages.NO_ENGINE in w) Tone.BAD else Tone.WARN)
         refreshModel(s)
         keepWarm?.let { if (it.isChecked != d.keepLocalWarm) it.isChecked = d.keepLocalWarm }
+        keepBoth?.let {
+            if (it.isChecked != s.keepBothLanguages) it.isChecked = s.keepBothLanguages
+            it.setDescription(keepBothSummary(s))
+        }
         if (transcribe.isChecked != s.decodeWhileSpeaking) transcribe.isChecked = s.decodeWhileSpeaking
     }
 
     private fun fileName(path: String?) = path?.let { File(it).name }
+
+    private fun keepBothSummary(s: Settings = app.settings.load()) =
+        SettingsSummary.keepBothLanguages(app.engine.hebrewModel() != null, app.engine.defaultModelInstalled(s))
 
     private fun refreshModel(s: Settings) {
         val title = modelTitle ?: return

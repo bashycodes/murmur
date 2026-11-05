@@ -128,6 +128,18 @@ object HebrewModels {
      */
     fun route(effectiveLanguage: String?, installed: Boolean): String? =
         LANGUAGE.takeIf { installed && isHebrew(effectiveLanguage) }
+
+    /** [loadSet]: the default model and the Hebrew model are both resident (D54). */
+    const val BOTH = "both"
+
+    /**
+     * What the phone loads for the next dictation: [BOTH] when "Keep both languages loaded"
+     * ([keepBoth]) is on and both a Hebrew model and a default model are installed, else
+     * [route] (one model in RAM, D33 decision 4). The holder reloads only when this changes, so
+     * with [BOTH] a keyboard switch never reloads, and toggling the setting reloads once.
+     */
+    fun loadSet(effectiveLanguage: String?, installed: Boolean, defaultInstalled: Boolean, keepBoth: Boolean): String? =
+        if (keepBoth && installed && defaultInstalled) BOTH else route(effectiveLanguage, installed)
 }
 
 /**

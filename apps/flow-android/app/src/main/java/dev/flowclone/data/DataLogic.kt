@@ -85,6 +85,11 @@ data class Settings(
      * up to 45 s and offer corrected words as Dictionary suggestions (never added without Add).
      */
     val learnFromEdits: Boolean = true,
+    /**
+     * D54 "Keep both languages loaded": with a Hebrew model and a default model installed, load
+     * both at once so a keyboard-language switch never reloads (≈ 1.1 GB). Off by default.
+     */
+    val keepBothLanguages: Boolean = false,
 ) {
     companion object {
         /** "Phone language": follow the phone ([LanguageDefault.effective]). */

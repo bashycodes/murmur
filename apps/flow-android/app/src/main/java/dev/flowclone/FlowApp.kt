@@ -330,6 +330,8 @@ class EngineHolder(
         const val HEBREW_LOADING = "Loading the Hebrew speech model…"
         /** D37: switching back from the Hebrew model to the default one (keyboard / language change). */
         const val DEFAULT_LOADING = "Loading the default speech model…"
+        /** D54: "Keep both languages loaded" loads the default and the Hebrew model together. */
+        const val BOTH_LOADING = "Loading the English and Hebrew speech models…"
     }
 
     sealed interface State {
@@ -363,11 +365,19 @@ class EngineHolder(
         return HebrewModels.installed(File(path))?.let { path to it }
     }
 
-    /** The language whose own model the phone loads for the next dictation (`he`), or null = the default engine. */
+    /**
+     * The language whose own model the phone loads for the next dictation (`he`), null = the
+     * default engine, or (D54) [HebrewModels.BOTH] = both together ([HebrewModels.loadSet]).
+     */
     private fun wantedRoute(s: Settings = app.settings.load()): String? =
         if (routeProbe != null) routeProbe.invoke()
         else if (!app.caps.local || s.mockEngine) null
-        else HebrewModels.route(app.effectiveLanguage(s), hebrewModel() != null)
+        else HebrewModels.loadSet(app.effectiveLanguage(s), hebrewModel() != null, s.keepBothLanguages && defaultModelInstalled(s), s.keepBothLanguages)
+
+    /** D54: a default (whisper / Parakeet) model is installed, so "Keep both languages loaded" has two models to keep. */
+    fun defaultModelInstalled(s: Settings = app.settings.load()): Boolean = EnginePlan.defaultInstalled(
+        s, app.settings.modelPath, { File(it).isFile }, app.settings.parakeetPath, { ParakeetFiles.isModelDir(File(it)) },
+    )
 
     /** The route the current (or loading) engine was planned with. */
     @Volatile private var loadedRoute: String? = null
@@ -379,7 +389,9 @@ class EngineHolder(
      * H5 (decision 4: one model in RAM): after a language change, reload when the next
      * dictation needs a different model (Hebrew ↔ default). No-op otherwise. D37: also at every
      * dictation start, since the keyboard language can change at any time; the label is set
-     * before the reload so a dictation started right now says why it has to wait.
+     * before the reload so a dictation started right now says why it has to wait. D54: with
+     * both models loaded the wanted set stays [HebrewModels.BOTH] across a switch, so nothing
+     * reloads; toggling the setting changes it, so the next dictation reloads once.
      */
     @Synchronized
     fun ensureLanguage() {
@@ -404,6 +416,7 @@ class EngineHolder(
 
     /** What a dictation started while the model for [route] loads says; [switching] = after a language change. */
     private fun labelFor(route: String?, switching: Boolean): String? = when {
+        route == HebrewModels.BOTH -> BOTH_LOADING
         route != null -> HEBREW_LOADING
         switching -> DEFAULT_LOADING
         else -> null
@@ -562,7 +575,7 @@ class EngineHolder(
             s, app.settings.modelPath, app.settings.llmModelPath, { File(it).isFile }, threads,
             parakeetPath = app.settings.parakeetPath, isModelDir = { ParakeetFiles.isModelDir(File(it)) },
             parakeetDecoding = app.dev.parakeetDecoding,
-            language = app.effectiveLanguage(s), hebrew = hebrew,
+            language = app.effectiveLanguage(s), hebrew = hebrew, keepBoth = s.keepBothLanguages,
         )
         return when (val plan = EngineRoute.plan(local, app.dev.load(), app.caps)) {
             EngineRoute.Plan.Mock -> State.Ready(FakeFlowCore("This is a test of on-device dictation."), "mock engine", mock = true)

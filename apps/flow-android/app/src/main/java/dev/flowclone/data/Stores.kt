@@ -45,6 +45,7 @@ class SettingsStore(context: Context) {
         styles = loadStyles(),
         appBuckets = WritingStyle.parseOverrides(sp.getString("app_buckets", null).orEmpty()).map,
         learnFromEdits = sp.getBoolean("learn_from_edits", true),
+        keepBothLanguages = sp.getBoolean("keep_both_languages", false),
     )
 
     /** D27: nothing stored (every install before 0.3) = the [dev.flowclone.core.Styles] defaults. */
@@ -114,6 +115,7 @@ class SettingsStore(context: Context) {
             .putString("style_other", s.styles.other.wire)
             .putString("app_buckets", WritingStyle.formatOverrides(s.appBuckets))
             .putBoolean("learn_from_edits", s.learnFromEdits)
+            .putBoolean("keep_both_languages", s.keepBothLanguages)
             .apply()
         _bubbleScale.value = s.bubbleScale
         _shrinkToDot.value = s.shrinkToDot

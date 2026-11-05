@@ -111,6 +111,20 @@ class SpeechUiTest {
         assertEquals(!was, app.settings.load().decodeWhileSpeaking)
     }
 
+    @Test fun keepBothLanguagesLoadedIsOffByDefaultAndPersists() {
+        assumeTrue(app.caps.local)
+        app.settings.save(app.settings.load().copy(keepBothLanguages = false))
+        val a = launch()
+        val row = rowTitled(a, "Keep both languages loaded")
+        assertFalse(row.createAccessibilityNodeInfo().isChecked)
+        // No Hebrew model in a fresh install: the summary says the switch does nothing.
+        assertTrue(texts(a).any { it.startsWith("No effect") })
+        row.performClick()
+        assertTrue("persisted", dev.flowclone.data.SettingsStore(a).load().keepBothLanguages)
+        row.performClick()
+        assertFalse(dev.flowclone.data.SettingsStore(a).load().keepBothLanguages)
+    }
+
     @Test fun modelCardOpensTheEnginePageAndImport() {
         assumeTrue(app.caps.local)
         app.settings.modelPath = null; app.settings.parakeetPath = null
