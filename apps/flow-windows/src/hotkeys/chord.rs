@@ -5,6 +5,13 @@
 //! (c) whether a dummy VK 0xFF must be injected *before* letting a Win/Alt
 //! key-up through (so a "lone" Win release doesn't open Start, and a lone Alt
 //! release doesn't focus the menu bar — windows-research 02 §2).
+//!
+//! A push-to-talk shortcut that is one modifier on its own (the default,
+//! Right Alt) is *armed* on key-down instead of firing (D56): it fires
+//! once held alone for [`LONE_KEY_ARM_MS`], or as a tap when released
+//! sooner, and any other key pressed meanwhile disarms it silently. So
+//! AltGr + E still types € on layouts where Right Alt is AltGr, with no
+//! dictation starting and stopping on the way.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -146,6 +153,12 @@ impl Chord {
 
     pub fn contains(&self, k: Key) -> bool {
         self.keys.contains(&k)
+    }
+
+    /// One modifier key on its own ("Right Alt"): such a push-to-talk
+    /// shortcut is armed before it fires ([`LONE_KEY_ARM_MS`]).
+    pub fn is_lone_modifier(&self) -> bool {
+        self.keys.len() == 1 && self.keys.iter().all(|k| k.is_modifier())
     }
 
     /// Is the held key `held` part of this chord (accepted by one of its keys)?
@@ -299,7 +312,7 @@ impl<'de> Deserialize<'de> for Chord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Bindings {
-    /// Hold to talk.
+    /// Hold to talk (default Right Alt, D56; Wispr's is Ctrl+Win).
     pub ptt: Chord,
     /// Press to toggle hands-free (locked) dictation.
     pub hands_free: Chord,
@@ -310,9 +323,9 @@ pub struct Bindings {
     /// Put the last transcript on the clipboard (Wispr default Shift+Alt+X).
     pub copy_last: Chord,
     /// Hold to speak a Command Mode instruction for the selected text
-    /// (Wispr default Ctrl+Win+Alt). Like hands-free it extends the
-    /// push-to-talk chord: pressing Alt while Ctrl+Win dictates turns that
-    /// dictation into a command.
+    /// (Wispr default Ctrl+Win+Alt). It may extend a push-to-talk on the
+    /// way: Right Alt held, then Ctrl+Win (or a Ctrl+Win push-to-talk, then
+    /// Alt) turns that dictation into a command.
     pub command: Chord,
     /// Open the Scratchpad window. Unset by default; `""` in prefs = unset.
     #[serde(
@@ -356,7 +369,7 @@ pub(crate) fn optional_chord<'de, D: serde::Deserializer<'de>>(
 impl Default for Bindings {
     fn default() -> Self {
         Bindings {
-            ptt: Chord::new([Key::Ctrl, Key::Win]),
+            ptt: Chord::new([Key::RAlt]),
             hands_free: Chord::new([Key::Ctrl, Key::Win, Key::Space]),
             cancel: Chord::new([Key::Esc]),
             paste_last: Chord::new([Key::Shift, Key::Alt, Key::Vk(b'Z' as u16)]),
@@ -431,7 +444,16 @@ pub struct Decision {
     /// Swallow this Win/Alt key-up and inject a masked release instead
     /// (`input::masked_release`: `[LCtrl↓, key↑, LCtrl↑]`). Implies `suppress`.
     pub mask_release: bool,
+    /// A lone-key push-to-talk was armed: start a [`LONE_KEY_ARM_MS`]
+    /// timer and call [`ChordMatcher::arm_elapsed`] when it ends.
+    pub arm: bool,
 }
+
+/// How long a one-modifier push-to-talk (Right Alt) must be held alone
+/// before dictation starts (D56). AltGr + a letter is usually typed well
+/// within it; a key pressed later still aborts the dictation, as any
+/// foreign key does.
+pub const LONE_KEY_ARM_MS: u32 = 200;
 
 /// Stateful chord matcher. Feed physical (non-injected) events only.
 #[derive(Debug, Clone)]
@@ -441,6 +463,8 @@ pub struct ChordMatcher {
     ptt_active: bool,
     /// The Command chord fired and none of its keys was released yet.
     command_active: bool,
+    /// A lone-key push-to-talk is held alone but has not fired yet.
+    ptt_armed: bool,
     /// Keys whose key-down we swallowed: their key-up must be swallowed too.
     swallowed: BTreeSet<Key>,
     /// Mask-needing keys (Win/Alt) held while some chord fired.
@@ -456,6 +480,7 @@ impl ChordMatcher {
             pressed: BTreeSet::new(),
             ptt_active: false,
             command_active: false,
+            ptt_armed: false,
             swallowed: BTreeSet::new(),
             needs_mask: BTreeSet::new(),
             altgr_ctrl: false,
@@ -514,6 +539,7 @@ impl ChordMatcher {
         self.pressed.clear();
         self.ptt_active = false;
         self.command_active = false;
+        self.ptt_armed = false;
         self.swallowed.clear();
         self.needs_mask.clear();
         self.altgr_ctrl = false;
@@ -525,12 +551,24 @@ impl ChordMatcher {
 
     /// Stale-key recovery: the OS says `key` is no longer down although we
     /// never saw its key-up (GetAsyncKeyState check). Treated as a release.
+    /// An armed push-to-talk is dropped, not reported as a tap.
     pub fn force_release(&mut self, key: Key) -> Vec<HotkeyAction> {
         if self.pressed.contains(&key) {
+            self.ptt_armed = false;
             self.handle(KeyEvent::up(key), false).actions
         } else {
             Vec::new()
         }
+    }
+
+    /// The arm timer ([`Decision::arm`]) ended: an armed push-to-talk
+    /// still held alone fires now. Nothing when it was disarmed meanwhile.
+    pub fn arm_elapsed(&mut self) -> Vec<HotkeyAction> {
+        if !std::mem::take(&mut self.ptt_armed) {
+            return Vec::new();
+        }
+        self.ptt_active = true;
+        vec![HotkeyAction::PttDown]
     }
 
     /// Process one physical key event. `dictating` = a dictation is in
@@ -543,6 +581,9 @@ impl ChordMatcher {
                 d.suppress = self.swallowed.contains(&ev.key);
                 return d;
             }
+            // Another key with an armed lone-key push-to-talk: it was a
+            // combination (AltGr + E, Right Alt + Tab), not a hold.
+            self.ptt_armed = false;
             if self.newly_matches(&self.bindings.hands_free, ev.key) {
                 // Hands-free chord supersedes a PTT that started on the way.
                 self.ptt_active = false;
@@ -562,11 +603,19 @@ impl ChordMatcher {
                     d.suppress = true;
                 }
             } else if self.newly_matches(&self.bindings.ptt, ev.key) {
-                self.ptt_active = true;
-                d.actions.push(HotkeyAction::PttDown);
+                // Marks the key for a masked release even if it is
+                // disarmed later: a lone Alt release must not reach the
+                // menu bar either way.
                 self.chord_fired();
-                if !ev.key.is_modifier() {
-                    d.suppress = true;
+                if self.bindings.ptt.is_lone_modifier() {
+                    self.ptt_armed = true;
+                    d.arm = true;
+                } else {
+                    self.ptt_active = true;
+                    d.actions.push(HotkeyAction::PttDown);
+                    if !ev.key.is_modifier() {
+                        d.suppress = true;
+                    }
                 }
             } else if self.newly_matches(&self.bindings.paste_last, ev.key) {
                 d.actions.push(HotkeyAction::PasteLast);
@@ -655,6 +704,13 @@ impl ChordMatcher {
                 // held): pass it through untouched.
                 return d;
             }
+            if self.ptt_armed && self.bindings.ptt.covers(ev.key) {
+                // A tap shorter than the arm time: report it as one, so a
+                // double tap still locks hands-free.
+                self.ptt_armed = false;
+                d.actions
+                    .extend([HotkeyAction::PttDown, HotkeyAction::PttUp]);
+            }
             if self.ptt_active && self.bindings.ptt.covers(ev.key) {
                 self.ptt_active = false;
                 d.actions.push(HotkeyAction::PttUp);
@@ -720,8 +776,13 @@ mod tests {
     use super::*;
     use HotkeyAction::*;
 
+    /// Wispr's push-to-talk, Ctrl+Win (the default before D56), with the
+    /// other defaults: most chord tests use a multi-key push-to-talk.
     fn m() -> ChordMatcher {
-        ChordMatcher::new(Bindings::default())
+        ChordMatcher::new(Bindings {
+            ptt: "Ctrl+Win".parse().unwrap(),
+            ..Bindings::default()
+        })
     }
 
     fn feed(m: &mut ChordMatcher, evs: &[KeyEvent]) -> Vec<HotkeyAction> {
@@ -914,8 +975,10 @@ mod tests {
     fn right_alt_alone_fires_ptt_and_its_release_is_masked() {
         let mut m = ralt_ptt();
         let d = m.handle_raw(RALT_VK, ALT_SCAN, true, false);
-        assert_eq!(d.actions, vec![PttDown]);
+        assert!(d.actions.is_empty() && d.arm, "armed, not fired yet");
         assert!(!d.suppress, "modifier key-down passes through");
+        assert_eq!(m.arm_elapsed(), vec![PttDown]);
+        assert!(m.arm_elapsed().is_empty(), "fires once");
         let up = m.handle_raw(RALT_VK, ALT_SCAN, false, false);
         assert_eq!(up.actions, vec![PttUp]);
         assert!(
@@ -991,7 +1054,7 @@ mod tests {
         );
         assert!(m.altgr_ctrl_down());
         let up = m.handle_raw(RALT_VK, ALT_SCAN, false, false);
-        assert_eq!(up.actions, vec![PttUp]);
+        assert_eq!(up.actions, vec![PttDown, PttUp], "a tap");
         assert!(up.mask_release);
         // The fake Ctrl is logically down but is not the user's: the masked
         // release must send its trailing LCtrl up.
@@ -1039,7 +1102,8 @@ mod tests {
     }
 
     #[test]
-    fn altgr_character_aborts_right_alt_ptt_and_reaches_the_app() {
+    fn altgr_character_never_starts_a_dictation_and_reaches_the_app() {
+        // AltGr + E (€) typed within the arm time.
         let mut m = ralt_ptt();
         let e = 0x45;
         let ds = raw(
@@ -1049,17 +1113,253 @@ mod tests {
                 (RALT_VK, ALT_SCAN, true),
                 (e, 0x12, true),
                 (e, 0x12, false),
+                (RALT_VK, ALT_SCAN, false),
+                (LCTRL_VK, FAKE_SCAN, false),
             ],
         );
-        assert_eq!(actions(&ds), vec![PttDown, PttAborted]);
-        assert!(!ds[2].suppress && !ds[3].suppress);
+        assert_eq!(actions(&ds), vec![], "no start, no abort, no tap");
+        assert!(ds[1].arm);
+        assert!(m.arm_elapsed().is_empty(), "disarmed by the letter");
+        assert!(
+            ds[..4].iter().all(|d| !d.suppress),
+            "AltGr + E reaches the app"
+        );
+        assert_eq!(ds[5], Decision::default(), "fake Ctrl up passes");
+        assert_eq!(m.pressed().count(), 0);
     }
 
     #[test]
-    fn right_alt_tab_aborts_ptt() {
+    fn altgr_character_after_the_arm_time_aborts_the_dictation() {
+        let mut m = ralt_ptt();
+        raw(
+            &mut m,
+            &[(LCTRL_VK, FAKE_SCAN, true), (RALT_VK, ALT_SCAN, true)],
+        );
+        assert_eq!(m.arm_elapsed(), vec![PttDown]);
+        let d = m.handle_raw(0x45, 0x12, true, false);
+        assert_eq!(d.actions, vec![PttAborted]);
+        assert!(!d.suppress, "the letter still reaches the app");
+        let up = m.handle_raw(RALT_VK, ALT_SCAN, false, false);
+        assert!(
+            up.actions.is_empty(),
+            "an aborted dictation reports no release"
+        );
+    }
+
+    #[test]
+    fn right_alt_tab_is_not_a_dictation() {
         let mut m = ralt_ptt();
         let ds = raw(&mut m, &[(RALT_VK, ALT_SCAN, true), (TAB_VK, 0x0F, true)]);
-        assert_eq!(actions(&ds), vec![PttDown, PttAborted]);
+        assert_eq!(actions(&ds), vec![]);
+        assert!(m.arm_elapsed().is_empty());
+        assert!(!ds[1].suppress, "Tab reaches the app");
+        let mut m = ralt_ptt();
+        m.handle_raw(RALT_VK, ALT_SCAN, true, false);
+        m.arm_elapsed();
+        let d = m.handle_raw(TAB_VK, 0x0F, true, false);
+        assert_eq!(d.actions, vec![PttAborted], "held past the arm time");
+    }
+
+    #[test]
+    fn right_alt_tap_is_reported_at_release_and_double_tap_twice() {
+        let mut m = ralt_ptt();
+        let ds = raw(
+            &mut m,
+            &[
+                (RALT_VK, ALT_SCAN, true),
+                (RALT_VK, ALT_SCAN, false),
+                (RALT_VK, ALT_SCAN, true),
+                (RALT_VK, ALT_SCAN, false),
+            ],
+        );
+        assert_eq!(
+            actions(&ds),
+            vec![PttDown, PttUp, PttDown, PttUp],
+            "the dictation state machine turns a quick double into hands-free"
+        );
+        assert!(
+            ds[1].mask_release && ds[3].mask_release,
+            "no menu bar on a tap"
+        );
+        assert!(
+            m.arm_elapsed().is_empty(),
+            "a late timer finds nothing armed"
+        );
+    }
+
+    #[test]
+    fn right_alt_autorepeat_keeps_it_armed() {
+        let mut m = ralt_ptt();
+        let ds = raw(
+            &mut m,
+            &[
+                (RALT_VK, ALT_SCAN, true),
+                (RALT_VK, ALT_SCAN, true),
+                (RALT_VK, ALT_SCAN, true),
+            ],
+        );
+        assert!(ds[0].arm && !ds[1].arm && !ds[2].arm, "one timer");
+        assert_eq!(m.arm_elapsed(), vec![PttDown]);
+    }
+
+    #[test]
+    fn reset_or_new_bindings_drop_an_armed_ptt() {
+        let mut m = ralt_ptt();
+        m.handle_raw(RALT_VK, ALT_SCAN, true, false);
+        m.reset();
+        assert!(m.arm_elapsed().is_empty());
+        m.handle_raw(RALT_VK, ALT_SCAN, true, false);
+        m.set_bindings(Bindings::default());
+        assert!(m.arm_elapsed().is_empty());
+        m.handle_raw(RALT_VK, ALT_SCAN, true, false);
+        assert!(
+            m.force_release(Key::RAlt).is_empty(),
+            "a stuck key is no tap"
+        );
+        assert!(m.arm_elapsed().is_empty());
+    }
+
+    #[test]
+    fn only_a_lone_modifier_ptt_is_armed() {
+        assert!(Chord::new([Key::RAlt]).is_lone_modifier());
+        assert!(Chord::new([Key::Ctrl]).is_lone_modifier());
+        assert!(!Chord::new([Key::Ctrl, Key::Win]).is_lone_modifier());
+        assert!(!Chord::new([Key::Vk(0x70)]).is_lone_modifier());
+        let mut m = m();
+        let d = feed(
+            &mut m,
+            &[KeyEvent::down(Key::Ctrl), KeyEvent::down(Key::Win)],
+        );
+        assert_eq!(d, vec![PttDown], "Ctrl+Win fires at once, as before");
+    }
+
+    // --- Defaults (D56): Right Alt push-to-talk next to the Ctrl+Win chords ---
+
+    fn defaults() -> ChordMatcher {
+        ChordMatcher::new(Bindings::default())
+    }
+
+    #[test]
+    fn default_push_to_talk_is_right_alt() {
+        let b = Bindings::default();
+        assert_eq!(b.ptt.to_string(), "Right Alt");
+        assert_eq!(b.hands_free.to_string(), "Ctrl+Win+Space");
+        assert_eq!(b.command.to_string(), "Ctrl+Win+Alt");
+        let mut m = defaults();
+        assert!(m
+            .handle_raw(LALT_VK, ALT_SCAN, true, false)
+            .actions
+            .is_empty());
+        assert!(!m.handle_raw(LALT_VK, ALT_SCAN, true, false).arm);
+        assert!(m.arm_elapsed().is_empty(), "Left Alt is not push-to-talk");
+    }
+
+    #[test]
+    fn default_ctrl_win_alone_is_no_shortcut_any_more() {
+        let mut m = defaults();
+        let ds = raw(
+            &mut m,
+            &[
+                (LCTRL_VK, LCTRL_SCAN, true),
+                (0x5B, 0x5B, true),
+                (0x5B, 0x5B, false),
+                (LCTRL_VK, LCTRL_SCAN, false),
+            ],
+        );
+        assert_eq!(actions(&ds), vec![]);
+        assert!(
+            ds.iter().all(|d| !d.suppress && !d.arm),
+            "Ctrl+Win untouched"
+        );
+    }
+
+    #[test]
+    fn default_hands_free_and_command_still_fire_without_push_to_talk() {
+        let mut m = defaults();
+        let ds = raw(
+            &mut m,
+            &[
+                (LCTRL_VK, LCTRL_SCAN, true),
+                (0x5B, 0x5B, true),
+                (0x20, 0x39, true),
+            ],
+        );
+        assert_eq!(actions(&ds), vec![HandsFreeToggle]);
+        assert!(ds[2].suppress);
+        let mut m = defaults();
+        let ds = raw(
+            &mut m,
+            &[
+                (LCTRL_VK, LCTRL_SCAN, true),
+                (0x5B, 0x5B, true),
+                (LALT_VK, ALT_SCAN, true),
+                (LALT_VK, ALT_SCAN, false),
+            ],
+        );
+        assert_eq!(actions(&ds), vec![CommandDown, CommandUp]);
+        assert!(ds[3].mask_release);
+    }
+
+    #[test]
+    fn default_command_with_right_alt_is_a_command_not_a_dictation() {
+        // Ctrl+Win, then Right Alt as Alt; on an AltGr layout the fake
+        // Left Ctrl comes first. Right Alt is not alone: never armed.
+        for altgr in [false, true] {
+            let mut m = defaults();
+            let mut evs = vec![(LCTRL_VK, LCTRL_SCAN, true), (0x5B, 0x5B, true)];
+            if altgr {
+                evs.push((LCTRL_VK, FAKE_SCAN, true));
+            }
+            evs.push((RALT_VK, ALT_SCAN, true));
+            let ds = raw(&mut m, &evs);
+            assert_eq!(actions(&ds), vec![CommandDown], "altgr={altgr}");
+            assert!(ds.iter().all(|d| !d.arm));
+            let up = m.handle_raw(RALT_VK, ALT_SCAN, false, false);
+            assert_eq!(up.actions, vec![CommandUp]);
+            assert!(up.mask_release);
+        }
+    }
+
+    #[test]
+    fn right_alt_then_ctrl_win_becomes_a_command() {
+        // Held past the arm time: the dictation turns into a command.
+        let mut m = defaults();
+        m.handle_raw(RALT_VK, ALT_SCAN, true, false);
+        assert_eq!(m.arm_elapsed(), vec![PttDown]);
+        let d = m.handle_raw(LCTRL_VK, LCTRL_SCAN, true, false);
+        assert!(
+            d.actions.is_empty(),
+            "Ctrl belongs to the Command chord: no abort"
+        );
+        let d = m.handle_raw(0x5B, 0x5B, true, false);
+        assert_eq!(d.actions, vec![CommandDown]);
+        let up = m.handle_raw(RALT_VK, ALT_SCAN, false, false);
+        assert_eq!(up.actions, vec![CommandUp], "no PttUp: superseded");
+        // Within the arm time: just the command, no dictation first.
+        let mut m = defaults();
+        let ds = raw(
+            &mut m,
+            &[
+                (RALT_VK, ALT_SCAN, true),
+                (LCTRL_VK, LCTRL_SCAN, true),
+                (0x5B, 0x5B, true),
+            ],
+        );
+        assert_eq!(actions(&ds), vec![CommandDown]);
+        assert!(m.arm_elapsed().is_empty());
+    }
+
+    #[test]
+    fn right_alt_does_not_fire_with_a_real_ctrl_held() {
+        // Ctrl + Right Alt is not "Right Alt alone" (and on a non-AltGr
+        // layout it is Ctrl+Alt+…, an app shortcut).
+        let mut m = defaults();
+        let ds = raw(
+            &mut m,
+            &[(LCTRL_VK, LCTRL_SCAN, true), (RALT_VK, ALT_SCAN, true)],
+        );
+        assert_eq!(actions(&ds), vec![]);
+        assert!(!ds[1].arm);
     }
 
     #[test]
@@ -1070,10 +1370,8 @@ mod tests {
         };
         for vk in [LALT_VK, RALT_VK] {
             let mut m = ChordMatcher::new(b.clone());
-            assert_eq!(
-                m.handle_raw(vk, ALT_SCAN, true, false).actions,
-                vec![PttDown]
-            );
+            assert!(m.handle_raw(vk, ALT_SCAN, true, false).arm);
+            assert_eq!(m.arm_elapsed(), vec![PttDown]);
             assert_eq!(
                 m.handle_raw(vk, ALT_SCAN, false, false).actions,
                 vec![PttUp]
@@ -1091,8 +1389,8 @@ mod tests {
         );
         assert_eq!(
             actions(&ds),
-            vec![PttDown, PttUp],
-            "second side doesn't refire"
+            vec![],
+            "two Alts aren't one held alone: disarmed, nothing fires"
         );
     }
 
@@ -1132,6 +1430,7 @@ mod tests {
     fn force_release_of_a_side_key_ends_ptt() {
         let mut m = ralt_ptt();
         m.handle_raw(RALT_VK, ALT_SCAN, true, false);
+        m.arm_elapsed();
         assert_eq!(m.force_release(Key::RAlt), vec![PttUp]);
     }
 
@@ -1320,6 +1619,11 @@ mod tests {
         let mut m = m();
         let d = m.handle(KeyEvent::up(Key::Win), false);
         assert_eq!(d, Decision::default());
+        let mut m = defaults();
+        assert_eq!(
+            m.handle(KeyEvent::up(Key::RAlt), false),
+            Decision::default()
+        );
     }
 
     #[test]
@@ -1375,7 +1679,7 @@ mod tests {
         let j = serde_json::to_string(&Bindings::default()).unwrap();
         assert_eq!(
             j,
-            r#"{"ptt":"Ctrl+Win","hands_free":"Ctrl+Win+Space","cancel":"Esc","paste_last":"Alt+Shift+Z","copy_last":"Alt+Shift+X","command":"Ctrl+Win+Alt"}"#
+            r#"{"ptt":"Right Alt","hands_free":"Ctrl+Win+Space","cancel":"Esc","paste_last":"Alt+Shift+Z","copy_last":"Alt+Shift+X","command":"Ctrl+Win+Alt"}"#
         );
         let b: Bindings = serde_json::from_str(r#"{"ptt":"Ctrl+Shift"}"#).unwrap();
         assert_eq!(b.ptt.to_string(), "Ctrl+Shift");
