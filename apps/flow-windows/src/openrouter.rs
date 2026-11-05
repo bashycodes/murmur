@@ -762,7 +762,7 @@ mod tests {
         let saved = || Some("sk-saved-LEAKCHECK".to_string());
         let mut d = dev();
         assert!(crate::credentials::saved_custom_key_withheld(
-            None,
+            false,
             true,
             &d.cloud.custom_cleanup,
             url
@@ -772,7 +772,7 @@ mod tests {
         assert_eq!(d.cloud.custom_cleanup.base_url, url);
         let cc = &d.cloud.custom_cleanup;
         assert!(!crate::credentials::saved_custom_key_withheld(
-            None, true, cc, url
+            false, true, cc, url
         ));
         assert_eq!(
             crate::credentials::custom_key_for(None, saved, cc, url).unwrap(),

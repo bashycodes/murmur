@@ -2878,7 +2878,7 @@ async fn dev_or_custom_models(
         .cloud
         .custom_cleanup
         .clone();
-    if credentials::saved_custom_key_withheld(key.as_deref(), has_saved, &cc, &base_url) {
+    if credentials::saved_custom_key_withheld(typed, has_saved, &cc, &base_url) {
         // Calling without the key would only get a 401 that hides why.
         return Ok(serde_json::json!({
             "error": "consent_needed",

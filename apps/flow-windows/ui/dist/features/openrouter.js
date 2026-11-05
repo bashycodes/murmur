@@ -309,10 +309,11 @@ function refreshCatalog(force) {
 }
 // ---- confirm dialog
 function confirmOr(title, body, ok) {
-    $("or_confirm_title").textContent = title;
-    $("or_confirm_body").textContent = body;
-    $("or_confirm_ok").textContent = ok;
-    return askDialog("or_confirm", "or_confirm_ok", "or_confirm_cancel");
+    return askDialog("or_confirm", "or_confirm_ok", "or_confirm_cancel", () => {
+        $("or_confirm_title").textContent = title;
+        $("or_confirm_body").textContent = body;
+        $("or_confirm_ok").textContent = ok;
+    });
 }
 // ---- account
 async function orSaveKey() {
@@ -456,8 +457,9 @@ async function orTestStt() {
     }
 }
 // ---- text cleanup
-/** Every cleanup-card write (switch, provider, custom server, its key and
- *  consent) runs one at a time, so a reload never reads half-saved settings
+/** Every cleanup-card write (switch, options, provider, custom server, its
+ *  key, consent from Load models / Test connection, the cleanup model
+ *  picker) runs one at a time, so a reload never reads half-saved settings
  *  and a field's save fired by a click lands before that click's own save. */
 const writes = new Serial();
 async function orApplyCleanup(consent) {
@@ -509,10 +511,12 @@ async function askCleanupConsent(provider, url) {
         return askDialog("or_cleanup_consent_dlg", "or_cleanup_consent_ok", "or_cleanup_consent_cancel");
     }
     const host = (await hostOf(url)) || url.trim();
-    $("cu_consent_host_title").textContent = host;
-    $("cu_consent_host").textContent = host;
-    $("cu_consent_http").hidden = !/^\s*http:\/\//i.test(url);
-    return askDialog("cu_consent_dlg", "cu_consent_ok", "cu_consent_cancel");
+    // Filled when shown: an ask waiting for an open one must not change its text.
+    return askDialog("cu_consent_dlg", "cu_consent_ok", "cu_consent_cancel", () => {
+        $("cu_consent_host_title").textContent = host;
+        $("cu_consent_host").textContent = host;
+        $("cu_consent_http").hidden = !/^\s*http:\/\//i.test(url);
+    });
 }
 function showCustom(v) {
     const c = v.cleanup;
@@ -618,8 +622,13 @@ function cuClearKey() {
 }
 /** `GET /v1/models` on the typed address (typed key, else the saved one).
  *  The backend sends the saved key only to a host the user agreed to (D52);
- *  for another host it answers `consent_needed` and the dialog is shown. */
-async function cuModels(outId, fill) {
+ *  for another host it answers `consent_needed` and the dialog is shown.
+ *  All of it is queued with the card's writes: it reads the saved consent,
+ *  may record it, and shares the consent dialog with a provider change. */
+function cuModels(outId, fill) {
+    return writes.run(() => cuModelsNow(outId, fill));
+}
+async function cuModelsNow(outId, fill) {
     const out = $(outId);
     const baseUrl = $("cu_base_url").value.trim();
     if (baseUrl === "") {
@@ -635,16 +644,13 @@ async function cuModels(outId, fill) {
         let r = await invoke("dev_or_custom_models", { ...args, consent: false });
         if (r.error === "consent_needed") {
             if (!(await askCleanupConsent("custom", baseUrl))) {
-                out.textContent = "Not sent: your saved key only goes to a server you agreed to send text to. Paste the key to test without agreeing.";
+                out.textContent =
+                    "Not sent: your saved key only goes to a server you agreed to send text to. A key pasted in the API key field is sent to this server for this test only.";
                 out.className = "hint err";
                 return;
             }
-            // Recording the consent is a settings write: queued with the others.
-            r = await writes.run(async () => {
-                const v = await invoke("dev_or_custom_models", { ...args, consent: true });
-                await loadOr();
-                return v;
-            });
+            r = await invoke("dev_or_custom_models", { ...args, consent: true });
+            await loadOr();
         }
         if (r.models) {
             if (fill) {
@@ -827,7 +833,11 @@ async function openPicker(purpose) {
     }
     await loadPicker();
 }
-async function pickModel(id, paraphrase) {
+/** A model from the picker (speech or cleanup), queued with the cleanup card's writes. */
+function pickModel(id, paraphrase) {
+    return writes.run(() => pickModelNow(id, paraphrase));
+}
+async function pickModelNow(id, paraphrase) {
     if (id.trim() === "")
         return;
     if (paraphrase && !paraphraseOk.has(id)) {
