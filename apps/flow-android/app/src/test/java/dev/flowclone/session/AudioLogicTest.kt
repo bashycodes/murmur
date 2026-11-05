@@ -116,3 +116,45 @@ class SilenceTrackerTest {
         assertEquals(true, t.heardSpeech)
     }
 }
+
+class StartGateTest {
+    private fun frame(i: Int) = ShortArray(1600) { i.toShort() }
+
+    @Test fun heldFramesReplayInOrderThenPassThrough() {
+        val g = StartGate()
+        repeat(3) { g.push(frame(it), 1600) }
+        val got = mutableListOf<Int>()
+        g.open { pcm, _ -> got += pcm[0].toInt() }
+        g.push(frame(3), 1600)
+        assertEquals(listOf(0, 1, 2, 3), got)
+    }
+
+    /**
+     * D55: minutes of held audio replay outside the gate's lock, so the microphone thread
+     * keeps pushing during the replay (it never blocks on it), and nothing is reordered or lost.
+     */
+    @Test fun theMicrophoneNeverWaitsForALongReplay() {
+        val held = 1500 // 150 s of 100 ms frames
+        val g = StartGate(held * 1600 + 16_000)
+        repeat(held) { g.push(frame(it % 30_000), 1600) }
+        val got = java.util.Collections.synchronizedList(mutableListOf<Int>())
+        val micPushed = java.util.concurrent.CountDownLatch(1)
+        val mic = Thread {
+            // Runs while the replay below is stuck on its first frame: never waits for it.
+            g.push(frame(held), 1600)
+            micPushed.countDown()
+        }
+        var first = true
+        g.open { pcm, _ ->
+            if (first) {
+                first = false
+                mic.start()
+                assertTrue("push returned during the replay", micPushed.await(5, java.util.concurrent.TimeUnit.SECONDS))
+            }
+            got += pcm[0].toInt()
+        }
+        mic.join()
+        assertEquals((0..held).map { it % 30_000 }, got.toList())
+        assertEquals(0, g.droppedSamples)
+    }
+}

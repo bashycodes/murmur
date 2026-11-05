@@ -222,6 +222,17 @@ throws `UnsatisfiedLinkError`; Kotlin treats that as "no timings" / "nothing kep
 | `nativeKeepLlm(h: Long): Boolean` | `(J)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeKeepLlm` | — | Hold handle `h`'s own on-device LLM (a core's, or a router's warm local engine's: `FlowCore::keep_llm`) so the next load with the same `llm_path`, `threads` and `llm_lib` (`nativeLoadModels` or the router's on-demand loader) reuses it instead of loading it again (its timing says `"reused":true`); returns whether `h` had one. Call it **before** `nativeUnload(h)`. A load takes a kept LLM out first (one that does not match is freed at once); a load whose speech model fails puts it back for the retry. False for a null handle |
 | `nativeReleaseKeptLlm()` | `()V` | `Java_dev_flowclone_core_NativeFlowCore_nativeReleaseKeptLlm` | — | Free a kept LLM now (low-memory unload, or a load that did not take it). Blocking: may free a model |
 
+## Start on the phone only (D55, 2026-11-05) — additive
+
+A dictation recorded while the phone's speech model was loading is transcribed on the phone once
+it is loaded, never by the server or the cloud (owner decision 2026-11-05, D55). Every flavour
+exports it. A library built before it throws `UnsatisfiedLinkError`; Kotlin then refuses the
+start on a router handle (`local_not_ready`) rather than letting the route order pick the server.
+
+| Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | C ABI | Semantics |
+|---|---|---|---|---|
+| `nativeStartSessionLocal(handle: Long, sessionConfigJson: String): String?` | `(JLjava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeStartSessionLocal` | — | `nativeStartSessionInfo` on the client route alone (`Router::start_session_local`), whatever the route order: no server or cloud session, no fallback hop. A cold local engine with an on-demand loader loads and replays as in D24 (`loading`); without a local engine (or with the client route off) it returns `null` with kind `local_not_ready`. Cleanup follows the cleanup order. A core handle starts as `nativeStartSessionInfo` |
+
 ## Meeting transcription (D44, D46, 2026-11-02) — additive
 
 A recording of any length (Calls page: a call recording) through `flow_core::meeting`

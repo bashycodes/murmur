@@ -27,7 +27,7 @@ fn cold_router_loads_the_first_config_that_works_and_dictates() {
     )
     .unwrap();
     let info: serde_json::Value =
-        serde_json::from_str(&json_api::start_session_info(&h, "{}").unwrap()).unwrap();
+        serde_json::from_str(&json_api::start_session_info(&h, "{}", false).unwrap()).unwrap();
     assert_eq!(info["route"]["engine"], "local");
     let h = Box::into_raw(Box::new(h));
     unsafe {

@@ -35,6 +35,9 @@ import dev.flowclone.core.PasteKey
 import dev.flowclone.core.FakeFlowCore
 import dev.flowclone.core.FlowCore
 import dev.flowclone.core.FlowCoreLoader
+import dev.flowclone.session.LoadWait
+import dev.flowclone.session.LoadedEngine
+import kotlinx.coroutines.flow.first
 import dev.flowclone.core.NativeFlowCore
 import dev.flowclone.core.CustomModels
 import dev.flowclone.data.DictionaryStore
@@ -334,6 +337,10 @@ class EngineHolder(
         const val DEFAULT_LOADING = "Loading the default speech model…"
         /** D54: "Keep both languages loaded" loads the default and the Hebrew model together. */
         const val BOTH_LOADING = "Loading the English and Hebrew speech models…"
+        /** D55: the bubble while a dictation waits for a load that names no model (cold start). */
+        const val SPEECH_LOADING = "Loading the speech model…"
+        /** D55: a dictation's wait gives up after this many unloads restarted the load (low memory). */
+        const val MAX_LOAD_RESTARTS = 3
     }
 
     sealed interface State {
@@ -347,6 +354,8 @@ class EngineHolder(
             val clientNote: String? = null,
             /** D24: the on-device ASR the router loads on demand (keep warm off), for the debug log. */
             val onDemandAsr: dev.flowclone.data.LoadedAsr? = null,
+            /** D55: the plan loaded a phone speech model before the router opened ([EngineRoute.needsLocal]). */
+            val localPlanned: Boolean = false,
         ) : State
         data class Failed(val message: String, val kind: String? = null) : State
     }
@@ -518,6 +527,45 @@ class EngineHolder(
         State.NotLoaded -> { ensureLoaded(); throw CoreException("Speech model is loading, try again in a moment.", CoreException.KIND_LOADING) }
     }
 
+    /**
+     * D55: a dictation started while [current] says "loading" records at once and starts once
+     * the load ends. Null (the start is refused as before) only in the remote flavour, which
+     * loads no phone model, and for a failed load. Any other state gets a wait too, so a load
+     * that ended between [current] and this call is simply picked up.
+     */
+    fun loadWait(): LoadWait? {
+        if (!app.caps.local || _state.value is State.Failed) return null
+        return LoadWait(loadingLabel ?: SPEECH_LOADING, ::awaitEngine)
+    }
+
+    /**
+     * D55: suspends until the load ends (a language switch meanwhile keeps it loading; an unload
+     * restarts it, at most [MAX_LOAD_RESTARTS] times) and returns the engine. `phoneOnly` = the
+     * load loaded the phone's speech model, so the held audio is transcribed there and never
+     * sent to the server; otherwise (the D24 on-demand route, a server-only plan) the dictation
+     * starts on its normal route. Throws the load's failure, or why the phone model the plan
+     * wanted is missing (the router opened with the server only).
+     */
+    private suspend fun awaitEngine(): LoadedEngine {
+        var restarts = 0
+        while (true) {
+            when (val s = state.first { it !is State.Loading }) {
+                State.NotLoaded -> {
+                    if (++restarts > MAX_LOAD_RESTARTS) throw CoreException("The speech model was unloaded while loading. Try again.", null)
+                    ensureLoaded()
+                }
+                is State.Failed -> throw CoreException(s.message, s.kind)
+                is State.Ready -> {
+                    if (s.localPlanned && !s.mock && s.asr == null) {
+                        throw CoreException("The phone speech model did not load" + (s.clientNote?.let { ": $it" } ?: ""), null)
+                    }
+                    return LoadedEngine(s.core, phoneOnly = s.mock || s.asr != null)
+                }
+                State.Loading -> Unit
+            }
+        }
+    }
+
     /** D24: why the phone route can't serve a fallback right now, or null. */
     fun clientNote(): String? = (_state.value as? State.Ready)?.clientNote
 
@@ -652,7 +700,10 @@ class EngineHolder(
                     }
                     loadedWithLocal = plan.local != null
                     (r.core as? NativeFlowCore)?.takeIf { it.isRouter }?.let(::syncCloud)
-                    State.Ready(r.core, r.description, r.llm, asr = r.asr, clientNote = r.clientNote, onDemandAsr = r.onDemandAsr)
+                    State.Ready(
+                        r.core, r.description, r.llm, asr = r.asr, clientNote = r.clientNote, onDemandAsr = r.onDemandAsr,
+                        localPlanned = plan.local != null,
+                    )
                 }
             }
         }

@@ -1501,3 +1501,91 @@ fn busy_server_with_a_cold_local_waits_instead_of_loading() {
     assert_eq!(dictate(&r).final_text, "remote 16000 com.slack");
     assert_eq!(l.loads(), 0, "busy is not down: no 1 GB load");
 }
+
+// ---- D55: audio recorded while the phone model loaded stays on the phone ----
+
+#[test]
+fn local_start_skips_a_reachable_server_first_route() {
+    // Server first, server up, warm local engine: a normal start goes to the server …
+    let k = rig(true, true);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(route(&dictate(&k.router)).engine, "remote");
+    let calls = k.factory_calls.load(Ordering::SeqCst);
+    let starts = k.remote.starts();
+    // … a local start never does.
+    let info = k
+        .router
+        .start_session_local(SessionConfig::default())
+        .unwrap();
+    assert_eq!(info.route.unwrap().engine, EngineKind::Local);
+    let r = dictate(&k.router);
+    assert_eq!(r.final_text, "local 16000 com.slack");
+    assert_eq!(route(&r).engine, "local");
+    assert_eq!(k.remote.starts(), starts, "no server session");
+    assert_eq!(k.factory_calls.load(Ordering::SeqCst), calls);
+    assert_eq!(
+        k.remote.received(),
+        16_000,
+        "only the first dictation's audio reached the server"
+    );
+}
+
+#[test]
+fn local_start_never_fails_over_to_the_server() {
+    // A broken local engine is final for a local start: no hop to the server.
+    let k = rig_with(
+        cfg(true, true),
+        Fake::new(EngineKind::Local).with_commit(CommitMode::Fail(Failure::Error)),
+        Fake::new(EngineKind::Remote),
+    );
+    k.router
+        .start_session_local(SessionConfig::default())
+        .unwrap();
+    let r = dictate(&k.router);
+    assert_eq!(r.status, CommitStatus::Error);
+    assert_eq!(k.remote.starts(), 0);
+    assert_eq!(k.factory_calls.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn local_start_without_a_local_engine_is_local_not_ready() {
+    // Local engine not loaded and no loader: the server is not asked instead.
+    let k = rig_with(
+        cfg(true, true),
+        Fake::new(EngineKind::Local).not_ready(),
+        Fake::new(EngineKind::Remote),
+    );
+    let e = k
+        .router
+        .start_session_local(SessionConfig::default())
+        .unwrap_err();
+    assert_eq!(e.kind(), "local_not_ready");
+    assert_eq!(k.remote.starts(), 0);
+    // Client route off: same.
+    let k = rig(true, false);
+    let e = k
+        .router
+        .start_session_local(SessionConfig::default())
+        .unwrap_err();
+    assert_eq!(e.kind(), "local_not_ready");
+    assert_eq!(k.remote.starts(), 0);
+}
+
+#[test]
+fn local_start_with_a_cold_engine_loads_it_and_replays() {
+    let l = Loader::new(80);
+    let remote = Fake::new(EngineKind::Remote);
+    let (r, seen) = cold_rig(cfg(true, true), remote.clone(), &l);
+    let info = r
+        .start_session_local(SessionConfig::default())
+        .expect("buffers while the model loads");
+    assert!(info.loading);
+    let res = dictate(&r);
+    assert_eq!(res.final_text, "local 16000 com.slack");
+    assert_eq!(l.loads(), 1);
+    assert_eq!(remote.starts(), 0, "the server route was not tried");
+    assert!(
+        seen.lock().unwrap().is_empty(),
+        "no server backend was built"
+    );
+}

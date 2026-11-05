@@ -5,7 +5,17 @@ import dev.flowclone.core.FakeFlowCore
 import dev.flowclone.core.FlowCore
 import dev.flowclone.core.FlowCoreLoader
 import dev.flowclone.core.ModelConfig
+import dev.flowclone.core.AsrEngine
 import dev.flowclone.data.LoadSet
+import dev.flowclone.data.LoadedAsr
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -63,7 +73,7 @@ class EngineHolderTest {
         else {
             val c = FakeFlowCore(k, hasLlm = true)
             cores[k] = c
-            EngineHolder.State.Ready(c, "fake $k")
+            EngineHolder.State.Ready(c, "fake $k", asr = LoadedAsr(AsrEngine.WHISPER, "$k.bin"))
         }
     })
 
@@ -228,4 +238,129 @@ class EngineHolderTest {
         assertEquals(emptyList<Pair<String, Boolean>>(), keeps())
         assertEquals(0, releases.get())
     }
+
+    // ---- D55: a dictation records while the engine loads ----
+
+    /** Runs [LoadWait.await] off the test thread, so the builds' latches can be released meanwhile. */
+    private fun startWaiting(w: dev.flowclone.session.LoadWait) =
+        kotlinx.coroutines.CoroutineScope(Dispatchers.Default).async { withTimeout(5_000) { w.await() } }
+
+    /** A holder whose one build returns [ready] once [gates]"x" opens. */
+    private fun holderBuilding(ready: () -> EngineHolder.State) = EngineHolder(app, loader = loader, setProbe = { want }, builder = {
+        built += "x"
+        gates["x"]?.await(5, TimeUnit.SECONDS)
+        ready()
+    })
+
+    @Test fun aWaitIsOfferedWhileLoadingAndRightAfterButNotForAFailedLoad() {
+        val h = holder()
+        gates["he"] = CountDownLatch(1)
+        h.ensureLoaded()
+        waitFor("hebrew build") { "he" in built }
+        if (!app.caps.local) {
+            assertNull("remote flavour: no phone model, the start is refused as before", h.loadWait())
+            gates["he"]!!.countDown()
+            return
+        }
+        assertEquals(EngineHolder.HEBREW_LOADING, h.loadWait()!!.label)
+        gates["he"]!!.countDown()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        // The load ended between the dictation's "still loading" and its wait: picked up at once.
+        val got = runBlocking { h.loadWait()!!.await() }
+        assertEquals(cores["he"], got.core)
+        failing += "he"
+        h.reload()
+        waitFor("failed") { h.state.value is EngineHolder.State.Failed }
+        assertNull("a failed load is refused as before", h.loadWait())
+    }
+
+    @Test fun aDictationWaitingForTheLoadGetsThePhoneEngineOnceLoaded() {
+        assumeTrue(app.caps.local)
+        gates["he"] = CountDownLatch(1)
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("hebrew build") { "he" in built }
+        val got = startWaiting(h.loadWait()!!)
+        Thread.sleep(50)
+        assertTrue("waits for the load", got.isActive)
+        gates["he"]!!.countDown()
+        val engine = runBlocking { got.await() }
+        assertEquals(cores["he"], engine.core)
+        assertTrue("a phone model loaded: transcribed on the phone only", engine.phoneOnly)
+    }
+
+    @Test fun aLanguageSwitchDuringTheWaitHandsOverTheModelLoadedLast() {
+        assumeTrue(app.caps.local)
+        gates["he"] = CountDownLatch(1)
+        gates["default"] = CountDownLatch(1)
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("hebrew build") { "he" in built }
+        val got = startWaiting(h.loadWait()!!)
+        want = LoadSet.Default
+        h.ensureLanguage()
+        gates["he"]!!.countDown()
+        waitFor("default build") { "default" in built }
+        Thread.sleep(50)
+        assertTrue("never the dropped Hebrew engine", got.isActive)
+        gates["default"]!!.countDown()
+        val engine = runBlocking { got.await() }
+        assertEquals(cores["default"], engine.core)
+    }
+
+    @Test fun aFailedLoadFailsTheWait() {
+        assumeTrue(app.caps.local)
+        gates["he"] = CountDownLatch(1)
+        failing += "he"
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("hebrew build") { "he" in built }
+        val got = startWaiting(h.loadWait()!!)
+        gates["he"]!!.countDown()
+        val e = runBlocking { runCatching { got.await() }.exceptionOrNull() }
+        assertEquals("no he model", (e as CoreException).message)
+    }
+
+    @Test fun aPlannedPhoneModelThatDidNotLoadFailsTheWaitInsteadOfUsingTheServer() {
+        assumeTrue(app.caps.local)
+        gates["x"] = CountDownLatch(1)
+        // The router opened with the server only: the phone model the plan wanted failed to load.
+        val h = holderBuilding { EngineHolder.State.Ready(FakeFlowCore("x"), "server", clientNote = "No speech model imported.", localPlanned = true) }
+        h.ensureLoaded()
+        val got = startWaiting(h.loadWait()!!)
+        gates["x"]!!.countDown()
+        val e = runBlocking { runCatching { got.await() }.exceptionOrNull() }
+        assertEquals("The phone speech model did not load: No speech model imported.", e?.message)
+    }
+
+    @Test fun theOnDemandRouteWaitsForTheRouterAndStartsOnItsNormalRoute() {
+        assumeTrue(app.caps.local)
+        gates["x"] = CountDownLatch(1)
+        // D24 keep warm off, server first: no phone model loads before the router opens.
+        val core = FakeFlowCore("x")
+        val h = holderBuilding {
+            EngineHolder.State.Ready(core, "server → phone on demand", onDemandAsr = LoadedAsr(AsrEngine.WHISPER, "he.bin"))
+        }
+        h.ensureLoaded()
+        val got = startWaiting(assertNotNullOf(h.loadWait()))
+        gates["x"]!!.countDown()
+        val engine = runBlocking { got.await() }
+        assertEquals(core, engine.core)
+        assertFalse("the server may take it", engine.phoneOnly)
+    }
+
+    @Test fun aWaitGivesUpAfterRepeatedUnloads() {
+        assumeTrue(app.caps.local)
+        // Every load ends unloaded (e.g. low memory): the wait restarts it a bounded number of times.
+        val h = holderBuilding { EngineHolder.State.NotLoaded }
+        gates["x"] = CountDownLatch(1)
+        h.ensureLoaded()
+        val got = startWaiting(h.loadWait()!!)
+        gates["x"]!!.countDown()
+        val e = runBlocking { runCatching { got.await() }.exceptionOrNull() }
+        assertEquals("The speech model was unloaded while loading. Try again.", e?.message)
+        assertEquals(1 + EngineHolder.MAX_LOAD_RESTARTS, built.size)
+    }
+
+    private fun <T : Any> assertNotNullOf(v: T?): T { assertNotNull(v); return v!! }
 }
