@@ -1,8 +1,12 @@
 # Android shell (apps/flow-android): arm64 native libs for the three flavours
 # (tools/build-native.sh), JVM unit tests, debug APKs, and the native .so/APK
-# gates. No secrets, no release signing: the artifacts are debug-signed with
-# this runner's throwaway debug key, so they install fresh but cannot update
-# an APK built on another machine (INSTALL.md "Live test on phone").
+# gates. No release signing: the artifacts are debug-signed with the owner's
+# fixed debug key (D56), restored from the repo secret ANDROID_DEBUG_KEYSTORE_B64,
+# so a CI APK installs over a locally built one (install -r keeps the app's data)
+# and the "Debug key" gate checks every APK's certificate against the pinned
+# apps/flow-android/debug-cert.sha256. Without the secret (forks) the runner
+# makes a throwaway debug key, and those APKs cannot update another machine's
+# (INSTALL.md "Live test on phone").
 # A pushed tag vX.Y.Z (tools/release.sh, D26) also checks the tag against
 # VERSION/CHANGELOG and attaches the APKs to the GitHub release vX.Y.Z.
 name: android-build
@@ -68,6 +72,23 @@ jobs:
           echo "FLOW_VERSION=$v" >> "$GITHUB_ENV"
           echo "FLOW_LABEL=$label" >> "$GITHUB_ENV"
 
+      # D56: sign the debug APKs with the owner's fixed debug key (AGP uses
+      # ~/.android/debug.keystore), before any Gradle step can create its own.
+      # The secret goes through env and a file only, never to the log.
+      - name: Debug key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::notice::ANDROID_DEBUG_KEYSTORE_B64 not set: throwaway debug key, these APKs cannot update a locally built app"
+            exit 0
+          fi
+          mkdir -p "$HOME/.android"
+          umask 077
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+          echo "FLOW_FIXED_DEBUG_KEY=1" >> "$GITHUB_ENV"
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -127,6 +148,13 @@ jobs:
           tools/dist.sh --debug-only
           cat dist/sizes.txt
 
+      # D56: with the fixed key restored, every debug APK must carry its
+      # certificate (pinned public SHA-256), or it would not install over the
+      # phone's app without wiping it.
+      - name: Debug key gate
+        if: env.FLOW_FIXED_DEBUG_KEY == '1'
+        run: apps/flow-android/tools/check-apk-cert.sh apps/flow-android/dist/*-debug.apk
+
       # I3/I4 + C2 + D28 gate, strict and cloud-strict (the defaults): every
       # flavour check runs, and neither the sources nor the shipped APKs'
       # native libs name a provider host other than openrouter.ai.
@@ -151,7 +179,8 @@ jobs:
           path: apps/flow-android/app/build/reports/
 
   # Tag pushes only: attach the APKs to the GitHub release (created here or
-  # by windows-build, whichever finishes first). Debug-signed, as above.
+  # by windows-build, whichever finishes first). Debug-signed, as above: with
+  # the fixed debug key (D56), unless the secret was missing.
   release:
     if: github.ref_type == 'tag'
     needs: apks
