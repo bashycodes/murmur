@@ -60,10 +60,11 @@ Full guide: [`apps/flow-android/INSTALL.md` "Live test on phone"](../apps/flow-a
    **`flow-clone-android-debug-apks`** of <https://github.com/bashycodes/murmur/actions/runs/39837428823> (commit b9942f1; predates the 2026-10-23 model-import and a11y-health fixes from `fix/android-live`), or
    `apps/flow-android/dist/flow-clone-hybrid-debug.apk` built on this box
    (rebuild with `tools/dist.sh` from current `integration` to get those fixes; the SHA-256 values in INSTALL.md are for the earlier build). Check it with `sha256sum` before installing.
-2. **Uninstall first** if Murmur is already on the phone and was built
-   elsewhere: the CI APK and the local one are signed with different debug
-   keys, and Android refuses one as an update of the other. Uninstalling
-   deletes settings, dictionary and history.
+2. The CI APK and one built on this box share the fixed debug key (D56), so
+   either installs over the other and keeps the app's data. **Uninstall
+   first** only if the app on the phone was built on a machine with its own
+   debug key: Android refuses it as an update. Uninstalling deletes
+   settings, dictionary and history.
 3. Install from Files ("Install unknown apps" for Files). Open Murmur and
    grant in this order: *Microphone* → *Display over other apps* →
    *Accessibility service* (greyed out: App info → ⋮ → *Allow restricted

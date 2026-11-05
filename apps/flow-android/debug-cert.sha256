@@ -1,0 +1,4 @@
+# SHA-256 of the public certificate of the fixed debug key (D56). Public, not a secret:
+# Android shows it to anyone who has the APK. CI's debug APKs must carry it
+# (tools/check-apk-cert.sh); local builds have it when ~/.android/debug.keystore is that key.
+63f0719b611dd51951c4239d1d16a0db8ad040a1e1765f98e88ee1fb78d25dfd
