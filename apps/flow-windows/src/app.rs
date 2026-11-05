@@ -2863,8 +2863,9 @@ async fn dev_or_custom_models(
 ) -> Result<serde_json::Value, String> {
     let state = app.state::<AppState>();
     let typed = key.as_deref().is_some_and(|k| !k.trim().is_empty());
-    // The page asked the consent dialog for this host (saved key, no consent).
-    if consent == Some(true) && !typed {
+    let has_saved = credentials::key_state(&*state.creds, credentials::CUSTOM).set;
+    // The page showed the consent dialog after a `consent_needed` reply.
+    if consent == Some(true) && !typed && has_saved {
         edit_cloud(&app, &state, |d| {
             crate::openrouter::apply_custom_key_consent(d, &base_url, now_unix_ms())
         })?;
@@ -2877,7 +2878,6 @@ async fn dev_or_custom_models(
         .cloud
         .custom_cleanup
         .clone();
-    let has_saved = credentials::key_state(&*state.creds, credentials::CUSTOM).set;
     if credentials::saved_custom_key_withheld(key.as_deref(), has_saved, &cc, &base_url) {
         // Calling without the key would only get a 401 that hides why.
         return Ok(serde_json::json!({

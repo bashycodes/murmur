@@ -84,6 +84,7 @@ impl Gate {
     fn check_static(st: &GateState) -> Result<Arc<dyn Cleaner>, Failure> {
         let needs_key = st.cfg.cleanup_needs_key();
         if !st.wanted
+            || !st.cfg.cleanup_ready()
             || !st.cfg.cleanup_consent_ok()
             || (needs_key && st.key.as_ref().is_none_or(|k| k.is_empty()))
         {
