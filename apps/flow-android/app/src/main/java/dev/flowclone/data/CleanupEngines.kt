@@ -22,6 +22,31 @@ object CleanupEngines {
         CleanupRoute.CLOUD -> d.cloudCleanupRouted
     }
 
+    /**
+     * The engines a dictation's AI cleanup will try, in order, as the router plans it ([d] = the
+     * effective settings; [phoneAi] = the on-device AI is on in a build that has it): switched on,
+     * the server set up, the cloud consented and usable. Empty = no AI cleanup.
+     */
+    fun planned(d: DevSettings, phoneAi: Boolean): List<CleanupRoute> = d.cleanupOrder.filter {
+        d.cleanupOn(it) && when (it) {
+            CleanupRoute.LOCAL -> phoneAi
+            CleanupRoute.SERVER -> d.serverConfigured
+            CleanupRoute.CLOUD -> d.cloudCleanupRouted && d.cloud.cleanupConsentOk && !d.cloud.customNotSetUp
+        }
+    }
+
+    /**
+     * The drawer's AI cleanup line: the [planned] engines ("On-device AI, then your server, then
+     * OpenRouter (llama-3.3-70b-instruct)"); null when there are none.
+     */
+    fun engineLine(d: DevSettings, phoneAi: Boolean): String? = planned(d, phoneAi).takeIf { it.isNotEmpty() }?.joinToString(", then ") {
+        when (it) {
+            CleanupRoute.LOCAL -> "on-device AI"
+            CleanupRoute.SERVER -> "your server"
+            CleanupRoute.CLOUD -> if (d.cloud.customProvider) d.cloud.cleanupProviderName else "${OpenRouter.NAME} (${d.cloud.cleanup.model.substringAfter('/')})"
+        }
+    }?.replaceFirstChar { it.uppercase() }
+
     /** "Change order": [r] swapped with its listed neighbour; engines this build lacks keep their place. */
     fun reorder(d: DevSettings, caps: BuildCaps, r: CleanupRoute, dir: Int): List<CleanupRoute> {
         val order = DevSettings.fullCleanupOrder(d.cleanupOrder)

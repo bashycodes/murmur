@@ -89,14 +89,17 @@ object ShellPages {
     )
 
     /**
-     * [cloud] = [OpenRouterPage.cleanupEngineLine] (null when cloud cleanup is off); otherwise the
-     * on-device LLM when it is on in a build that has it, then the formatting rules.
+     * The engines AI cleanup will use ([CleanupEngines.engineLine], [d] = the effective settings;
+     * the on-device AI only when [llmEnabled] in a [local] build); none -> the formatting rules or off.
      */
-    fun cleanupLine(cloud: String?, llmEnabled: Boolean, local: Boolean, formatting: Boolean) = when {
-        cloud != null -> EngineLine("AI cleanup", cloud, Dot.CLOUD)
-        llmEnabled && local -> EngineLine("AI cleanup", "On-device AI", Dot.OK)
-        formatting -> EngineLine("AI cleanup", "Off · formatting rules only", Dot.OFF)
-        else -> EngineLine("AI cleanup", "Off", Dot.OFF)
+    fun cleanupLine(d: DevSettings, llmEnabled: Boolean, local: Boolean, formatting: Boolean): EngineLine {
+        val engines = CleanupEngines.engineLine(d, phoneAi = llmEnabled && local)
+        val cloud = DevSettings.CleanupRoute.CLOUD in CleanupEngines.planned(d, phoneAi = false)
+        return when {
+            engines != null -> EngineLine("AI cleanup", engines, if (cloud) Dot.CLOUD else Dot.OK)
+            formatting -> EngineLine("AI cleanup", "Off · formatting rules only", Dot.OFF)
+            else -> EngineLine("AI cleanup", "Off", Dot.OFF)
+        }
     }
 
     /**

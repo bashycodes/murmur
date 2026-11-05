@@ -1,5 +1,6 @@
 package dev.flowclone.data
 
+import dev.flowclone.data.DevSettings.CleanupRoute
 import dev.flowclone.data.ShellPages.Dot
 import dev.flowclone.data.ShellPages.Extra
 import dev.flowclone.data.ShellPages.RouteKind
@@ -14,6 +15,8 @@ import java.time.ZoneOffset
 
 /** App shell: bottom-nav model, drawer lines (stats, engines, "N to fix", extras) and Home card lines. */
 class ShellPagesTest {
+    private companion object { const val NOW = 1_792_540_800_000L }
+
     @Test fun bottomNavHasTheDesignsFourTabsInOrder() {
         assertEquals(listOf("Home", "Dictionary", "Style", "Snippets"), Tab.entries.map { it.label })
         assertEquals(Tab.STYLE, ShellPages.tabOf("STYLE"))
@@ -73,12 +76,37 @@ class ShellPagesTest {
         assertEquals(Dot.BAD, ShellPages.speechLine("Dictation disabled").dot)
         assertEquals("Speech to text: Phone only", ShellPages.speechLine("Phone only").description)
 
-        val cloud = ShellPages.cleanupLine("OpenRouter (llama), then on-device", llmEnabled = true, local = true, formatting = true)
-        assertEquals("OpenRouter (llama), then on-device" to Dot.CLOUD, cloud.text to cloud.dot)
-        assertEquals("On-device AI" to Dot.OK, ShellPages.cleanupLine(null, true, true, true).let { it.text to it.dot })
+        val base = DevSettings.defaults(BuildCaps.ALL)
+        val cloud = ShellPages.cleanupLine(OpenRouterPage.enableCleanup(base, NOW).copy(cleanupOrder = listOf(CleanupRoute.CLOUD, CleanupRoute.LOCAL, CleanupRoute.SERVER)), llmEnabled = true, local = true, formatting = true)
+        assertEquals("OpenRouter (llama-3.3-70b-instruct), then on-device AI" to Dot.CLOUD, cloud.text to cloud.dot)
+        assertEquals("On-device AI" to Dot.OK, ShellPages.cleanupLine(base, true, true, true).let { it.text to it.dot })
         // remote builds have no on-device LLM, whatever the stored switch says.
-        assertEquals("Off · formatting rules only", ShellPages.cleanupLine(null, true, false, true).text)
-        assertEquals("Off" to Dot.OFF, ShellPages.cleanupLine(null, false, true, false).let { it.text to it.dot })
+        assertEquals("Off · formatting rules only", ShellPages.cleanupLine(base, true, false, true).text)
+        assertEquals("Off" to Dot.OFF, ShellPages.cleanupLine(base, false, true, false).let { it.text to it.dot })
+        // The phone's model is off for the router when its cleanup switch is off.
+        assertEquals("Off", ShellPages.cleanupLine(base.withCleanup(CleanupRoute.LOCAL, false), true, true, false).text)
+    }
+
+    @Test fun serverOnlyCleanupShowsAsOn() {
+        // Owner report: AI cleanup only on your server, everything else off -> the drawer said "Off".
+        val serverOnly = DevSettings.defaults(BuildCaps.ALL).copy(host = "100.64.0.10").withCleanup(CleanupRoute.LOCAL, false)
+        val line = ShellPages.cleanupLine(serverOnly, llmEnabled = false, local = true, formatting = true)
+        assertEquals("Your server" to Dot.OK, line.text to line.dot)
+        // A server that is not set up cleans nothing.
+        assertEquals("Off · formatting rules only", ShellPages.cleanupLine(serverOnly.copy(host = ""), false, true, true).text)
+    }
+
+    @Test fun customServerOnlyCleanupShowsAsOnAndNamesIt() {
+        FakeCustomAddress.install()
+        val base = DevSettings.defaults(BuildCaps.ALL)
+        val custom = CustomCleanupSettings(baseUrl = "http://10.0.0.5:4000/v1", model = "gpt-4o-mini")
+        val s = OpenRouterPage.enableCleanup(base.copy(cloud = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom)), NOW)
+            .withCleanup(CleanupRoute.LOCAL, false).withCleanup(CleanupRoute.SERVER, false)
+        val line = ShellPages.cleanupLine(s, llmEnabled = false, local = true, formatting = true)
+        assertEquals("Custom server (10.0.0.5)" to Dot.CLOUD, line.text to line.dot)
+        // Not usable (no model): sends nothing, so it is off, never "OpenRouter".
+        val broken = OpenRouterPage.withCustom(s) { copy(model = "") }
+        assertEquals("Off · formatting rules only", ShellPages.cleanupLine(broken, false, true, true).text)
     }
 
     @Test fun drawerExtrasOnlyWhereTheyExist() {
