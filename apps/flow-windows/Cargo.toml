@@ -1,6 +1,6 @@
 [package]
 name = "flow-windows"
-version = "1.1.1"
+version = "1.1.2"
 edition = "2021"
 description = "Windows shell (Tauri 2) of Murmur, the fully-local Wispr Flow clone"
 license = "MIT"
