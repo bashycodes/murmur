@@ -4,7 +4,7 @@
 (() => {
   const now = Date.now();
   let prefs = {
-    shortcuts: { ptt: "Ctrl+Win", hands_free: "Ctrl+Win+Space", command: "Ctrl+Win+Alt", cancel: "Esc", paste_last: "Alt+Shift+Z", copy_last: "Alt+Shift+X", scratchpad: "Ctrl+Alt+N" },
+    shortcuts: { ptt: "Right Alt", hands_free: "Ctrl+Win+Space", command: "Ctrl+Win+Alt", cancel: "Esc", paste_last: "Alt+Shift+Z", copy_last: "Alt+Shift+X", scratchpad: "Ctrl+Alt+N" },
     microphone: null, languages: [], keyboard_language: true, enable_sounds: true, mute_audio_while_dictating: true,
     launch_at_login: false, show_flow_bar_always: true, use_ax_context: true,
     cleanup_level: "light", raw_mode: false,

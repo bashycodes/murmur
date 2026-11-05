@@ -247,7 +247,7 @@ const tryIt = `
         <div class="fl-row-control">
           <span id="ob_ptt_rec" class="lw-ob-rec" role="status" hidden>Press keys… Esc to cancel</span>
           <button type="button" class="lw-link lw-ob-type" id="ob_ptt_type" hidden>Type instead</button>
-          <input id="ob_ptt" class="fl-input" spellcheck="false" placeholder="Ctrl+Win" aria-label="Push to talk shortcut" hidden />
+          <input id="ob_ptt" class="fl-input" spellcheck="false" placeholder="Right Alt" aria-label="Push to talk shortcut" hidden />
           <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="ob_ptt_change">Change</button>
         </div>
       </div>

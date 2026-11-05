@@ -16,6 +16,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+### Changed
+
+- **Windows: hold Right Alt to dictate.** Right Alt is the new push-to-talk key instead of Ctrl+Win; if you never changed Ctrl+Win, it moves to Right Alt on the next start (a shortcut you picked stays). On keyboards where Right Alt is AltGr (Hebrew, many European layouts), AltGr letters still type normally: Right Alt only dictates when held on its own, and tapping it never opens an app's menu bar. Hands-free (Ctrl+Win+Space) and Command Mode (Ctrl+Win+Alt) are unchanged (D56).
+
 ## [1.1.2] - 2026-11-05
 
 ### Added
