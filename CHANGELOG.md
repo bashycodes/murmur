@@ -25,6 +25,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
+- **Android: APKs from CI and from GitHub releases install over your own build.** They are now signed with the same debug key as the owner's local builds, so updating between them keeps your settings, dictionary, history and models instead of needing an uninstall (D56).
 - **Faster model loads.** The Hebrew Zipformer model loads about 3× faster on a laptop (6.7 s → 2.2 s; the phone, where it took 16.6 s, is not measured yet), and on Android a keyboard switch between English and Hebrew no longer reloads the AI cleanup model (~38 s on the phone). With the debug log on, each load's per-model times go to it.
 
 ### Fixed
