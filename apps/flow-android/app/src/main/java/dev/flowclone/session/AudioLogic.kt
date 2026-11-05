@@ -176,10 +176,22 @@ class StartGate(private val maxHeldSamples: Int = SAMPLE_RATE * 30) {
         }
     }
 
-    /** Replay the held frames into [to], then pass every later frame straight through. */
-    fun open(to: (ShortArray, Int) -> Unit) = synchronized(lock) {
-        while (held.isNotEmpty()) held.removeFirst().let { to(it, it.size) }
-        heldSamples = 0
-        sink = to
+    /**
+     * Replay the held frames into [to], then pass every later frame straight through. The replay
+     * runs outside the lock (D55: minutes of audio may be held), so [push] on the microphone
+     * thread never waits for it: frames pushed meanwhile are held and replayed next, in order.
+     */
+    fun open(to: (ShortArray, Int) -> Unit) {
+        while (true) {
+            val batch = synchronized(lock) {
+                if (held.isEmpty()) {
+                    heldSamples = 0
+                    sink = to
+                    return
+                }
+                held.toList().also { held.clear(); heldSamples = 0 }
+            }
+            for (f in batch) to(f, f.size)
+        }
     }
 }

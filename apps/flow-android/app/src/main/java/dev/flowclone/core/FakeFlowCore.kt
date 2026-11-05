@@ -44,6 +44,8 @@ class FakeFlowCore(@Volatile var transcript: String = "", private val hasLlm: Bo
     override fun partial(): String? = if (active) partialText else null
 
     override fun startSessionInfo(cfg: SessionConfig): StartInfo { startSession(cfg); return StartInfo(route = route) }
+    /** On-device (the mock engine): a local start is an ordinary start (D55). */
+    override fun startSessionLocal(cfg: SessionConfig): StartInfo = startSessionInfo(cfg)
 
     override fun poll(): CorePoll {
         if (!active) return CorePoll()

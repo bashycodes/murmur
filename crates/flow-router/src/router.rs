@@ -1203,7 +1203,7 @@ impl Router {
         self.start_with(cfg, false)
     }
 
-    /// Load 2: `start_session_info` on the client route alone, whatever the
+    /// D55: `start_session_info` on the client route alone, whatever the
     /// route order says: audio recorded while the phone's speech model was
     /// loading is transcribed on the phone (owner decision 2026-11-05), so
     /// neither the server nor the cloud ever sees it, and there is no

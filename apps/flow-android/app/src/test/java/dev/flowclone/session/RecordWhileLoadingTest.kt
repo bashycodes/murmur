@@ -26,7 +26,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Load 2 (D55): pressing record while the phone's speech model loads (cold start, language
+ * D55: pressing record while the phone's speech model loads (cold start, language
  * switch) records at once; the held audio is transcribed on the phone once the model is loaded.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -47,7 +47,13 @@ class RecordWhileLoadingTest {
         var endpointMs: Int? = null
         override fun feedback(e: FeedbackEvent) = Unit
         override suspend fun insert(text: String): Boolean { inserted += text; return true }
+        /** D35 History entries: (status, outcome, kept recording's samples or null). */
+        val history = mutableListOf<Triple<dev.flowclone.core.CommitStatus, String?, Int?>>()
         override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?) = Unit
+        override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?, recording: Recording?) {
+            history += Triple(result.status, outcome, recording?.pcm?.size)
+        }
+        override fun keepRetryAudio() = true
         override fun hasMicPermission() = true
         override fun captureContext() = FieldContext(appId = "com.example.notes")
         override fun sessionConfig() = SessionConfig(languages = listOf("he"))
@@ -80,7 +86,7 @@ class RecordWhileLoadingTest {
     private val host = Host()
     private val router = HybridRouter()
     @Volatile private var loading = true
-    private var load = CompletableDeferred<FlowCore>()
+    private var load = CompletableDeferred<LoadedEngine>()
     private var waits = 0
 
     private fun TestScope.controller(wait: Boolean = true) = DictationController(
@@ -95,7 +101,8 @@ class RecordWhileLoadingTest {
     /** A second tap, past the 500 ms toggle debounce. */
     private fun TestScope.tapAgain(c: DictationController) { advanceTimeBy(DictationController.TOGGLE_DEBOUNCE_MS); c.toggle(hold = false) }
 
-    private fun finishLoad() { loading = false; load.complete(router) }
+    /** [phoneOnly] = false: the load was the D24 on-demand route's router, not a phone model. */
+    private fun finishLoad(phoneOnly: Boolean = true) { loading = false; load.complete(LoadedEngine(router, phoneOnly)) }
 
     private fun DictationController.label() = RouteLabel.of(route.value)
 
@@ -197,6 +204,7 @@ class RecordWhileLoadingTest {
         )
         assertEquals(0, router.localStarts + router.serverStarts)
         assertEquals(InsertOutcome.START_FAILED, host.traces.single().insert.outcome)
+        assertEquals("kept for History's Retry", listOf(Triple(dev.flowclone.core.CommitStatus.ERROR, InsertOutcome.ERROR, 16_000)), host.history)
     }
 
     @Test fun aLoadFailureWhileRecordingStopsTheMicAndShowsTheError() = runTest {
@@ -207,6 +215,7 @@ class RecordWhileLoadingTest {
         runCurrent()
         assertEquals(DictationState.Error(ErrorKind.EngineUnavailable("The phone speech model did not load")), c.state.value)
         assertNull("microphone stopped", mic.sink)
+        assertEquals("kept for History's Retry", listOf(Triple(dev.flowclone.core.CommitStatus.ERROR, InsertOutcome.ERROR, 16_000)), host.history)
     }
 
     @Test fun aLoadThatNeverEndsGivesUpAfterTheBound() = runTest {
@@ -217,6 +226,47 @@ class RecordWhileLoadingTest {
         advanceTimeBy(DictationController.LOAD_WAIT_MS + 1)
         runCurrent()
         assertEquals(DictationState.Error(ErrorKind.EngineUnavailable(DictationController.LOAD_TIMEOUT)), c.state.value)
+        assertEquals(listOf(Triple(dev.flowclone.core.CommitStatus.ERROR, InsertOutcome.ERROR, 16_000)), host.history)
+    }
+
+    @Test fun recordingPastTheLoadBoundStopsAndGoesToRetry() = runTest {
+        val c = controller()
+        c.toggle(hold = true)
+        // Still loading after the bound: the mic stops there, the recording is kept for Retry.
+        repeat((DictationController.LOAD_WAIT_MS / 1000).toInt() + 5) { mic.speak(1000); advanceTimeBy(1000) }
+        runCurrent()
+        assertEquals(DictationState.Error(ErrorKind.EngineUnavailable(DictationController.LOAD_TIMEOUT)), c.state.value)
+        assertNull("microphone stopped", mic.sink)
+        val kept = host.history.single()
+        assertEquals(InsertOutcome.ERROR, kept.second)
+        assertTrue("the recording up to the bound", kept.third!! >= (DictationController.LOAD_WAIT_MS / 1000 * SAMPLE_RATE).toInt())
+    }
+
+    @Test fun aCancelledDictationKeepsNothing() = runTest {
+        val c = controller()
+        c.toggle(hold = false)
+        mic.speak(1000)
+        c.cancel()
+        load.completeExceptionally(CoreException("no model", null))
+        settle()
+        assertTrue(host.history.isEmpty())
+    }
+
+    @Test fun theOnDemandRouteStartsOnItsNormalRouteOnceTheRouterIsBack() = runTest {
+        // D24 keep-warm off with the server first: the language switch rebuilds the router; no
+        // phone model loads, so the held audio starts as that route normally would.
+        val c = controller()
+        c.toggle(hold = false)
+        mic.speak(1000)
+        finishLoad(phoneOnly = false)
+        runCurrent()
+        assertEquals(1, router.serverStarts)
+        assertEquals(0, router.localStarts)
+        assertEquals(16_000, router.inner.samplesPushed)
+        assertEquals("the route the router reported", "remote", c.route.value?.engine)
+        tapAgain(c)
+        settle()
+        assertEquals(listOf("a synthetic sentence"), host.inserted)
     }
 
     @Test fun handsFreeEndsOnSilenceWhileTheModelLoads() = runTest {
@@ -239,6 +289,23 @@ class RecordWhileLoadingTest {
         assertEquals(listOf(LABEL), host.loadingNotices)
         assertEquals(0, mic.starts)
         assertEquals(0, waits)
+    }
+
+    @Test fun anEngineThatCannotKeepTheRecordingOnThePhoneRefusesALocalStart() {
+        var started = false
+        val engine = object : FlowCore {
+            override fun startSession(cfg: SessionConfig) { started = true }
+            override fun pushAudio(pcm: ShortArray, length: Int) = true
+            override fun setContext(ctx: FieldContext) = Unit
+            override fun partial(): String? = null
+            override fun commit() = CommitResult(dev.flowclone.core.CommitStatus.EMPTY)
+            override fun cancel() = Unit
+            override fun learnEdit(pasted: String, edited: String) = emptyList<dev.flowclone.core.LearnCandidate>()
+            override fun unload() = Unit
+        }
+        val e = runCatching { engine.startSessionLocal(SessionConfig()) }.exceptionOrNull() as CoreException
+        assertEquals("local_not_ready", e.kind)
+        assertTrue("never fell back to a normal start", !started)
     }
 
     private companion object {
