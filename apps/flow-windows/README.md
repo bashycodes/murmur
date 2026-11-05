@@ -1,7 +1,7 @@
 # flow-windows — Windows shell of Murmur (a local Wispr Flow clone)
 
-Tauri 2 tray app: hold **Ctrl+Win** to dictate, **Ctrl+Win+Space** (or double-tap
-Ctrl+Win) for hands-free, **Ctrl+Win+Alt** for [Command Mode](#command-mode)
+Tauri 2 tray app: hold **Right Alt** to dictate, **Ctrl+Win+Space** (or double-tap
+Right Alt) for hands-free, **Ctrl+Win+Alt** for [Command Mode](#command-mode)
 (rewrite the selected text by voice), **Esc** to cancel, **Shift+Alt+Z** to
 paste the last transcript again, **Shift+Alt+X** to copy it. Text is pasted
 into the focused app.
@@ -26,16 +26,28 @@ side (also typed `LCtrl`, `RAlt`, `right-alt`; `AltGr` = `Right Alt`).
 Settings shows them as `Right Alt` etc. A key can't be named with and
 without its side in one shortcut (`Alt+Right Alt`).
 
-Push-to-talk on **Right Alt alone**: type `Right Alt` (or `RAlt`) as the
-push-to-talk shortcut. Left Alt and Alt+Tab don't start dictation; Right
-Alt with another key (Right Alt+Tab, an AltGr letter) cancels the dictation
-it started and the key reaches the app as usual. Its release is masked like
-Win's (`[LCtrl↓, RAlt↑, LCtrl↑]`), so the menu bar doesn't take focus. On
-keyboard layouts with AltGr, Windows sends a fake Left Ctrl (scan code
-0x21D) with every Right Alt press: the hook ignores it for shortcuts and
-lets it through untouched, so it never stops Right Alt from matching, never
-makes AltGr look like Ctrl+Alt, and is released normally. A shortcut that
-needs Ctrl therefore no longer fires on AltGr alone.
+Push-to-talk is **Right Alt alone** by default (D57; Wispr's Ctrl+Win
+through 1.1.2: an install that still had Ctrl+Win moves to Right Alt once at
+the first start, a shortcut you picked stays). It starts at key-down like
+any push-to-talk key; Left Alt and Alt+Tab don't start dictation. While
+Right Alt is the push-to-talk key, the hook swallows it: its down, repeats
+and up, and on AltGr layouts the fake Left Ctrl (scan code 0x21D) Windows
+sends with it, in either release order. So no app sees Right Alt: no menu
+bar takes focus, no Ctrl is left stuck, and **Right Alt no longer types
+AltGr letters; type them with Left Ctrl+Left Alt** (untouched by the hook).
+Another key pressed during the hold (Right Alt+E, Right Alt+Tab) cancels
+the dictation and reaches the app as the plain key (e, Tab). Windows'
+key state never sees a swallowed key, so the stuck-key check skips it: it
+ends on its own key-up (a key-up is swallowed exactly when its key-down
+was, also across a settings change), a hook re-install, or the dictation's
+time limit. Changing the shortcuts mid-hold cancels that dictation. A key
+already held when the hook starts (or a shortcut recording begins) is left
+alone until it is released: it starts nothing, and its key-up reaches the
+app. Ctrl+Win+Alt (Command) with Right Alt as its Alt is a command, never
+a dictation; holding Right Alt, then adding Ctrl+Win, turns the dictation
+into a command. With any other push-to-talk shortcut Right Alt passes
+through as before, and AltGr's fake Left Ctrl is ignored for shortcuts, so
+a shortcut that needs Ctrl never fires on AltGr alone.
 
 ## Scratchpad and Notes
 
@@ -503,14 +515,14 @@ More info → Run anyway.
 
 ### 10-minute smoke checklist
 
-- [ ] (1 min) Hold Ctrl+Win in Notepad, say "testing one two three", release → the text is pasted; the line above the pill said "Transcribing via server…" (hybrid, server up) or "Transcribing via this PC…".
+- [ ] (1 min) Hold Right Alt in Notepad, say "testing one two three", release → the text is pasted; the line above the pill said "Transcribing via server…" (hybrid, server up) or "Transcribing via this PC…".
 - [ ] (1 min) Stop the server (or disconnect the VPN), dictate again → still pasted; the line says "Transcribing via this PC… (server unreachable)"; Developer → Active engine row = client, fallback `connect_failed`.
-- [ ] (1 min) Start the server again; hold Ctrl+Win, stop the server while speaking, keep talking, release → the whole sentence pastes and the line switched to "this PC" mid-dictation.
+- [ ] (1 min) Start the server again; hold Right Alt, stop the server while speaking, keep talking, release → the whole sentence pastes and the line switched to "this PC" mid-dictation.
 - [ ] (1 min) Hands-free: Ctrl+Win+Space, speak, then stay silent → it stops and pastes by itself after ~1.5 s (Settings → General → "Hands-free: stop after … s of silence"; 0 = never). Push-to-talk never stops on silence.
 - [ ] (1 min) Esc while the pill is processing → nothing is pasted, no error pill; the next dictation works at once (the server is not left busy).
 - [ ] (1 min) Dictate, and while it is processing Alt+Tab to another window → nothing is typed there; the pill says "the focus moved…", Ctrl+V pastes the text. Dictate into a normal field and tab into a password box before it finishes → nothing is pasted or copied.
 - [ ] (1 min) Copy something, dictate → afterwards Ctrl+V gives your original clipboard. Press Shift+Alt+Z twice quickly → still your original clipboard afterwards. Shift+Alt+X then Win+V → the transcript is **not** in clipboard history.
-- [ ] (1 min) Run `cmd` as administrator, hold Ctrl+Win over it and release → the "runs as administrator" pill; then type `dle` in Notepad: plain letters appear (a stuck Win key would show the desktop / lock the PC), and Start did not open.
+- [ ] (1 min) Run `cmd` as administrator, hold Right Alt over it and release → the "runs as administrator" pill; then type `dle` in Notepad: plain letters appear (a stuck Alt would open Notepad's menus instead; with a Ctrl+Win push-to-talk, a stuck Win key would show the desktop / lock the PC, and Start must not open).
 - [ ] (1 min) OpenRouter (optional, costs cents): OpenRouter tab → paste key → Save key → Check key (credit shown) → Speech-to-text Test `OK · "And so, my fellow Americans"…`; tick "Transcribe with OpenRouter" → accept the audio consent; dictate → the line says "Transcribing via OpenRouter (openai/whisper-large-v3-turbo)…", the pill shows **C**. Tick "Clean up text with OpenRouter" → a *second* consent (text) appears.
 - [ ] (1 min) Client-only build: Developer tab hidden; dictation works with the model; `netstat -ano | findstr <pid>` shows no outbound connection.
 
@@ -553,23 +565,23 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 5. First launch opens Settings, because there is no `prefs.json` yet.
    - The tray icon lives in the notification area.
    - Copy a model to `%APPDATA%\FlowClone\models\ggml-base.bin` (see above). The tray menu's first line says "Speech model: ggml-base.bin" once it is loaded.
-   - Hold Ctrl+Win in Notepad and speak. When you release, the transcript is pasted.
+   - Hold Right Alt in Notepad and speak. When you release, the transcript is pasted.
 
 ### Manual verification checklist (needs real Windows; not covered by tests)
 
-- [ ] Hold Ctrl+Win: the start sound plays, the pill grows to 73x30, and the bars follow your voice.
+- [ ] Hold Right Alt: the start sound plays, the pill grows to 73x30, and the bars follow your voice.
 - [ ] Releasing pastes into Notepad, Word, Chrome and Slack.
 - [ ] Ctrl+Win+Space or a double-tap locks: the 102.5x30 pill shows ✕/✓.
 - [ ] Clicking ✓ pastes, clicking ✕ cancels, and neither click moves focus or the caret out of the target app (WebView2 + `WS_EX_NOACTIVATE`); clicks next to the pill still reach the app below.
 - [ ] The live transcript appears above the pill while speaking (Settings → "Show live transcript").
 - [ ] Shift+Alt+Z pastes the last transcript again (also after a restart, unless history retention is "Never").
-- [ ] Without a model file: tray line "⚠ Speech model missing", Settings opens, and Ctrl+Win ends in an error pill naming the path.
+- [ ] Without a model file: tray line "⚠ Speech model missing", Settings opens, and Right Alt ends in an error pill naming the path.
 - [ ] `%APPDATA%\FlowClone\history.sqlite` gains a row per dictation; retention "Never" empties it.
 - [ ] The same chord stops a locked dictation.
 - [ ] Esc cancels, and Esc is not delivered to the app while dictating.
 - [ ] Releasing Win after a chord does **not** open the Start menu.
 - [ ] Ctrl+Win+Left still switches desktops and aborts dictation.
-- [ ] Push-to-talk `Right Alt` (Settings → Shortcuts), on a layout with AltGr (e.g. Polish or German) and on US: holding Right Alt dictates and releasing pastes into Notepad; afterwards typing `s` gives `s` (no stuck Ctrl or Alt: not Ctrl+S, not an AltGr letter), the menu bar of Notepad/Explorer is not focused, and Left Alt / Alt+Tab never start dictation.
+- [ ] Push-to-talk `Right Alt` (the default), on a layout with AltGr (e.g. Polish or German) and on US: the start sound plays at once on Right Alt down; holding it dictates and releasing pastes into Notepad; afterwards typing `s` gives `s` (no stuck Ctrl or Alt: not Ctrl+S, not an AltGr letter), the menu bar of Notepad/Explorer is not focused, and Left Alt / Alt+Tab never start dictation. A quick double tap locks hands-free; a single tap is dismissed and pastes nothing. Right Alt+E types a plain `e` and cancels the dictation; Left Ctrl+Left Alt+E still types the AltGr letter (e.g. `ę` / `€`). Hold Right Alt for 10 s while speaking, and hold Right Alt, then Ctrl+Win, for 5 s (Command): neither ends early.
 - [ ] After a paste, the old clipboard is back within about 0.5 s (3 s in Outlook/Word/WhatsApp).
 - [ ] Win+V history does not contain the dictated text.
 - [ ] Dictating into an elevated window (admin cmd) shows the "runs as administrator" error and leaves the text on the clipboard.
@@ -597,7 +609,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] History tab: search filters, Copy, Re-paste (Settings hides, text lands in the previously focused app), Delete, Delete all (second click), retention change prunes.
 - [ ] Undo AI edit: the diff shows removed/added words; "Re-paste original" inserts the raw ASR text.
 - [ ] Learn from edits: dictate "I use whisper flow daily" into Notepad, fix it to "Wispr Flow" within ~45 s, click elsewhere → tray "1 dictionary suggestion…"; Dictionary tab lists it; nothing was added until "Add word". Same in Chrome (textarea), Word and Slack.
-- [ ] Scratchpad: tray → Scratchpad… (and a set *Open Scratchpad* shortcut) opens it focused; Ctrl+Win dictation lands at the caret; editing it adds no dictionary suggestion and Settings → AI cleanup → *Add* doesn't list Murmur; Quit, start again, reopen → text is there (`%APPDATA%\FlowClone\notes\scratchpad.txt`; an old `FlowClone\scratchpad.txt` from before Notes was moved there); Copy all → Ctrl+V in Notepad gives the full text; Clear → Undo clear restores it.
+- [ ] Scratchpad: tray → Scratchpad… (and a set *Open Scratchpad* shortcut) opens it focused; Right Alt dictation lands at the caret; editing it adds no dictionary suggestion and Settings → AI cleanup → *Add* doesn't list Murmur; Quit, start again, reopen → text is there (`%APPDATA%\FlowClone\notes\scratchpad.txt`; an old `FlowClone\scratchpad.txt` from before Notes was moved there); Copy all → Ctrl+V in Notepad gives the full text; Clear → Undo clear restores it.
 - [ ] Notes: tray → Notes… lists the Quick note; New note ×3 with text, Quit, start again → all 4 there with content (`%APPDATA%\FlowClone\notes\*.txt`); search finds a word from a body line; Pin moves a note to the top and survives a restart; Export… .md lands in Downloads (a second export is `(2)`); Delete twice removes the `.txt`; a set *New note + dictate* shortcut from Notepad opens a new note in front and the hands-free dictation lands in it (not in Notepad); a `.txt` copied into `notes\` by hand is listed.
 - [ ] Learn from edits ignores password fields, and a chat message sent with "press enter".
 - [ ] Dictionary editor: add/edit/delete rows, snippet with a multi-line body, Save; export writes `Downloads\flow-dictionary.json`; importing that file (merge) changes nothing; importing the Android app's export works.
@@ -617,7 +629,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Test session: "EMPTY (no_speech) via server"; with the server stopped: "via client (fallback: connect_failed)".
 - [ ] Both toggles on, server up: dictate in Notepad → Active engine row = server, rtt shown; with the S/L badge on, the pill shows **S**.
 - [ ] `systemctl stop flow-server` (or disconnect the VPN), dictate again → text still pastes (local), row = client, fallback `connect_failed`, badge **L** with a red dot; the next dictation within 5 s shows `circuit_open` and does not wait for the connect timeout; "Reset circuit" clears it.
-- [ ] Kill the server mid-dictation (hold Ctrl+Win, stop it, keep speaking, release): the whole utterance pastes, nothing from before the kill is lost.
+- [ ] Kill the server mid-dictation (hold Right Alt, stop it, keep speaking, release): the whole utterance pastes, nothing from before the kill is lost.
 - [ ] Allow client off + server down → error pill "Server unreachable (…)"; Allow server off → dictation never opens a connection (check with `netstat -n` / Resource Monitor); both off → "Dictation disabled — enable server or client in Developer settings".
 - [ ] Changing toggles / host and pressing Save takes effect on the next dictation without restarting; the local model is not reloaded (tray line unchanged).
 - [ ] Route order "Move up" (client first) with both on → dictation runs on this PC even with the server up.
@@ -638,7 +650,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Monthly budget below this month's cost → "Cloud STT failed (monthly budget reached); used this PC"; cleanup falls back to this PC / the formatted text.
 - [ ] Quit and restart: usage counters and the key are unchanged.
 - [ ] Notetaker hidden (D51): the tray has no meeting line, the sidebar's Notetaker shows the "Coming later" page, General has no meeting shortcut row, Speech to text has no Meetings group. The two Meetings checks below need it switched on.
-- [ ] Meetings: in a call, tray "Start meeting recording" → the Flow bar shows "Recording meeting · 0:0x"; speak, let the other side speak; tray "■ Stop meeting recording" → the Meetings page shows "Transcribing… n%", then Me / Others turns in order. Dictate (Ctrl+Win) during the transcription: it pastes as fast as usual.
+- [ ] Meetings: in a call, tray "Start meeting recording" → the Flow bar shows "Recording meeting · 0:0x"; speak, let the other side speak; tray "■ Stop meeting recording" → the Meetings page shows "Transcribing… n%", then Me / Others turns in order. Dictate (Right Alt) during the transcription: it pastes as fast as usual.
 - [ ] Meetings with nothing playing: the Others track stays silent, the transcript is Me only with the "No sound from the PC" note. After a 4th meeting only the newest 3 have `.wav` files in `%APPDATA%\FlowClone\meetings\`.
 
 ## Known gaps / v1 limitations

@@ -491,7 +491,7 @@ function typePtt() {
 }
 function renderTry() {
     const p = prefsStore.get();
-    const ptt = p?.shortcuts.ptt || "Ctrl+Win";
+    const ptt = p?.shortcuts.ptt || "Right Alt";
     $("ob_keys").replaceChildren(...ptt.split("+").map((k) => el("kbd", "fl-kbd", k.trim())));
     const hf = p?.shortcuts.hands_free;
     $("ob_shortcut_desc").textContent = `Hold ${ptt.replace(/\+/g, " + ")} to talk.${hf ? ` ${hf.replace(/\+/g, " + ")} = hands-free.` : ""}`;

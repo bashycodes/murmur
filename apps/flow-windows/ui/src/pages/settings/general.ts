@@ -42,7 +42,7 @@ ${group(
     // Kept in the DOM (the form reads it) but hidden with the Notetaker (D51).
     row("Start or stop a meeting recording", "", key("meeting", "Start or stop a meeting recording"), NOTETAKER_ENABLED ? "" : "hidden"),
 )}
-<p class="fl-help lw-group-help" id="keys_help" hidden>Type the keys joined by +, e.g. <code>Ctrl+Win</code>. Keys: Ctrl, Win, Alt, Shift, Space, Esc, A–Z, 0–9, F1–F24. Ctrl/Alt/Shift match either side; Left Alt, Right Alt (also Left/Right Ctrl, Shift) match one side only, e.g. push to talk = Right Alt. Max 3 keys, at least one modifier. Empty = off (Scratchpad, New note${NOTETAKER_ENABLED ? ", meeting recording" : ""}). Enter saves, Esc cancels.</p>
+<p class="fl-help lw-group-help" id="keys_help" hidden>Type the keys joined by +, e.g. <code>Ctrl+Win</code>. Keys: Ctrl, Win, Alt, Shift, Space, Esc, A–Z, 0–9, F1–F24. Ctrl/Alt/Shift match either side; Left Alt, Right Alt (also Left/Right Ctrl, Shift) match one side only, e.g. Right Alt (the push-to-talk default). Max 3 keys, at least one modifier. Empty = off (Scratchpad, New note${NOTETAKER_ENABLED ? ", meeting recording" : ""}). Enter saves, Esc cancels.</p>
 ${group(
   "Voice",
   row("Microphone", "", `<select id="microphone" class="fl-select is-wide" data-save="prefs" aria-label="Microphone"></select>`) +

@@ -5,7 +5,7 @@
 pub use crate::core_api::DictEntry;
 use crate::core_api::{CleanupLevel, SessionConfig, StyleBucket, Styles};
 use crate::dictation::Policy;
-use crate::hotkeys::{Bindings, Chord};
+use crate::hotkeys::{Bindings, Chord, Key};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -23,7 +23,10 @@ pub const FILE_NAME: &str = "prefs.json";
 /// * 4 (D37): the language follows the keyboard layout by default:
 ///   `keyboard_language` turns on for "Detect automatically" (empty
 ///   `languages`); a language the user chose stays.
-pub const PREFS_REV: u32 = 4;
+/// * 5 (D57): push to talk defaults to Right Alt instead of Ctrl+Win: a
+///   saved Ctrl+Win (the untouched old default) moves to Right Alt unless
+///   another shortcut already uses it; any other shortcut stays.
+pub const PREFS_REV: u32 = 5;
 
 /// The LLM budget default before D27 (rev ≤ 2): it timed out on nearly
 /// every dictation (docs/findings/2026-10-23-server-llm-cleanup-cost.md).
@@ -372,6 +375,15 @@ impl Prefs {
             // keyboard now; an explicit language is the user's and stays.
             self.keyboard_language = self.languages.is_empty();
         }
+        if self.prefs_rev < 5 && self.shortcuts.ptt == Chord::new([Key::Ctrl, Key::Win]) {
+            // D57: every field is saved, so a pre-D57 Ctrl+Win is the old
+            // default as often as a choice; it moves once. A Right Alt the
+            // owner gave another shortcut keeps Ctrl+Win.
+            let old = std::mem::replace(&mut self.shortcuts.ptt, Bindings::default().ptt);
+            if !self.shortcuts_distinct() {
+                self.shortcuts.ptt = old;
+            }
+        }
         // D36: the cleanup order holds all three engines (idempotent, so
         // not tied to a revision: an older shell may have saved over it).
         // An upgrade from "No AI", or from no AI engine on (this PC's model
@@ -420,22 +432,8 @@ impl Prefs {
         }
         check("command", &s.command, false)?;
         self.transforms.validate()?;
-        let mut all = vec![
-            &s.ptt,
-            &s.hands_free,
-            &s.cancel,
-            &s.paste_last,
-            &s.copy_last,
-            &s.command,
-        ];
-        all.extend(s.scratchpad.as_ref());
-        all.extend(s.new_note.as_ref());
-        all.extend(s.meeting.as_ref());
-        all.extend(self.transforms.all_chords());
-        for (i, a) in all.iter().enumerate() {
-            if all[i + 1..].contains(a) {
-                return Err("shortcuts must differ from each other".into());
-            }
+        if !self.shortcuts_distinct() {
+            return Err("shortcuts must differ from each other".into());
         }
         if let Some(k) = self
             .app_buckets
@@ -456,6 +454,26 @@ impl Prefs {
             ));
         }
         Ok(())
+    }
+
+    /// No two shortcuts (transforms' included) are the same chord.
+    fn shortcuts_distinct(&self) -> bool {
+        let s = &self.shortcuts;
+        let mut all = vec![
+            &s.ptt,
+            &s.hands_free,
+            &s.cancel,
+            &s.paste_last,
+            &s.copy_last,
+            &s.command,
+        ];
+        all.extend(s.scratchpad.as_ref());
+        all.extend(s.new_note.as_ref());
+        all.extend(s.meeting.as_ref());
+        all.extend(self.transforms.all_chords());
+        all.iter()
+            .enumerate()
+            .all(|(i, a)| !all[i + 1..].contains(a))
     }
 
     /// The shortcuts the keyboard hook serves: `shortcuts` plus the
@@ -498,6 +516,11 @@ impl Prefs {
             warn_ms: minutes.saturating_sub(1) * 60_000,
             ..Policy::default()
         }
+    }
+
+    /// The tray tooltip: names the push-to-talk shortcut in use.
+    pub fn tray_tip(&self) -> String {
+        format!("Murmur — hold {} to dictate", self.shortcuts.ptt)
     }
 
     pub fn session_config(&self) -> SessionConfig {
@@ -713,6 +736,14 @@ mod tests {
     }
 
     #[test]
+    fn tray_tip_names_the_push_to_talk_shortcut() {
+        let mut p = Prefs::default();
+        assert_eq!(p.tray_tip(), "Murmur — hold Right Alt to dictate");
+        p.shortcuts.ptt = "Ctrl+Win".parse().unwrap();
+        assert_eq!(p.tray_tip(), "Murmur — hold Ctrl+Win to dictate");
+    }
+
+    #[test]
     fn policy_respects_max_minutes() {
         let mut p = Prefs::default();
         assert_eq!(p.policy().max_ms, 20 * 60_000);
@@ -855,6 +886,68 @@ mod tests {
         assert!(!p.keyboard_language, "Detect automatically picked after D37");
         let (p, _) = load_str("kbl-on", &format!(r#"{{"prefs_rev":{PREFS_REV},"keyboard_language":true}}"#));
         assert!(p.keyboard_language);
+    }
+
+    #[test]
+    fn d57_untouched_ctrl_win_moves_to_right_alt_once() {
+        assert_eq!(
+            Prefs::default().shortcuts.ptt.to_string(),
+            "Right Alt",
+            "fresh install"
+        );
+        let old = |tag: &str, shortcuts: &str| {
+            load_str(
+                tag,
+                &format!(r#"{{"prefs_rev":4,"shortcuts":{{{shortcuts}}}}}"#),
+            )
+            .0
+        };
+        let p = old(
+            "ptt-old",
+            r#""ptt":"Ctrl+Win","hands_free":"Ctrl+Win+Space""#,
+        );
+        assert_eq!(p.shortcuts.ptt.to_string(), "Right Alt");
+        assert_eq!(p.shortcuts.hands_free.to_string(), "Ctrl+Win+Space", "kept");
+        assert_eq!(p.shortcuts.command.to_string(), "Ctrl+Win+Alt", "kept");
+        assert_eq!(p.prefs_rev, PREFS_REV);
+        assert_eq!(p.validate(), Ok(()));
+        // Written either way ("win+ctrl" is the same chord).
+        assert_eq!(
+            old("ptt-order", r#""ptt":"win+ctrl""#)
+                .shortcuts
+                .ptt
+                .to_string(),
+            "Right Alt"
+        );
+        // A shortcut the owner chose stays.
+        for chosen in [
+            "Ctrl+Shift",
+            "Left Ctrl+Win",
+            "Right Ctrl+Win",
+            "Ctrl+Alt",
+            "F9+Ctrl",
+        ] {
+            let p = old("ptt-chosen", &format!(r#""ptt":"{chosen}""#));
+            assert_eq!(p.shortcuts.ptt, chosen.parse().unwrap(), "{chosen}");
+        }
+        // Right Alt already taken by another shortcut: keep Ctrl+Win.
+        let p = old("ptt-clash", r#""ptt":"Ctrl+Win","scratchpad":"Right Alt""#);
+        assert_eq!(p.shortcuts.ptt.to_string(), "Ctrl+Win");
+        assert_eq!(p.validate(), Ok(()));
+        // A pre-D57 file from before shortcuts were saved: the new default.
+        let (p, _) = load_str("ptt-none", r#"{"prefs_rev":4}"#);
+        assert_eq!(p.shortcuts.ptt.to_string(), "Right Alt");
+        // Ctrl+Win picked after D57 is a choice: kept, also after a save.
+        let (p, _) = load_str(
+            "ptt-new",
+            &format!(r#"{{"prefs_rev":{PREFS_REV},"shortcuts":{{"ptt":"Ctrl+Win"}}}}"#),
+        );
+        assert_eq!(p.shortcuts.ptt.to_string(), "Ctrl+Win");
+        let d = tmpdir("ptt-rt");
+        let path = d.join(FILE_NAME);
+        p.save(&path).unwrap();
+        assert_eq!(Prefs::load(&path).0.shortcuts.ptt.to_string(), "Ctrl+Win");
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]
@@ -1085,7 +1178,7 @@ mod tests {
         p.shortcuts.hands_free = p.shortcuts.ptt.clone();
         assert!(p.validate().unwrap_err().contains("differ"));
         let mut p = Prefs::default();
-        p.shortcuts.cancel = "Ctrl+Win".parse().unwrap();
+        p.shortcuts.cancel = "Right Alt".parse().unwrap();
         assert!(p.validate().is_err(), "cancel == ptt");
         let mut p = Prefs::default();
         p.shortcuts.ptt = "Ctrl+Win+Alt+Shift".parse().unwrap();

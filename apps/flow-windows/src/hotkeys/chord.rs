@@ -5,6 +5,11 @@
 //! (c) whether a dummy VK 0xFF must be injected *before* letting a Win/Alt
 //! key-up through (so a "lone" Win release doesn't open Start, and a lone Alt
 //! release doesn't focus the menu bar — windows-research 02 §2).
+//!
+//! While push-to-talk is Right Alt alone (the default, D57), every Right
+//! Alt event and AltGr's fake Left Ctrl are swallowed: the app sees no Alt
+//! (no menu bar), no Ctrl and no AltGr character. AltGr characters are
+//! typed with Left Ctrl+Alt, which is untouched.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -299,7 +304,7 @@ impl<'de> Deserialize<'de> for Chord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Bindings {
-    /// Hold to talk.
+    /// Hold to talk (default Right Alt, D57; Wispr's is Ctrl+Win).
     pub ptt: Chord,
     /// Press to toggle hands-free (locked) dictation.
     pub hands_free: Chord,
@@ -310,9 +315,9 @@ pub struct Bindings {
     /// Put the last transcript on the clipboard (Wispr default Shift+Alt+X).
     pub copy_last: Chord,
     /// Hold to speak a Command Mode instruction for the selected text
-    /// (Wispr default Ctrl+Win+Alt). Like hands-free it extends the
-    /// push-to-talk chord: pressing Alt while Ctrl+Win dictates turns that
-    /// dictation into a command.
+    /// (Wispr default Ctrl+Win+Alt). It may extend a push-to-talk on the
+    /// way: Right Alt held, then Ctrl+Win (or a Ctrl+Win push-to-talk, then
+    /// Alt) turns that dictation into a command.
     pub command: Chord,
     /// Open the Scratchpad window. Unset by default; `""` in prefs = unset.
     #[serde(
@@ -356,7 +361,7 @@ pub(crate) fn optional_chord<'de, D: serde::Deserializer<'de>>(
 impl Default for Bindings {
     fn default() -> Self {
         Bindings {
-            ptt: Chord::new([Key::Ctrl, Key::Win]),
+            ptt: Chord::new([Key::RAlt]),
             hands_free: Chord::new([Key::Ctrl, Key::Win, Key::Space]),
             cancel: Chord::new([Key::Esc]),
             paste_last: Chord::new([Key::Shift, Key::Alt, Key::Vk(b'Z' as u16)]),
@@ -441,12 +446,21 @@ pub struct ChordMatcher {
     ptt_active: bool,
     /// The Command chord fired and none of its keys was released yet.
     command_active: bool,
-    /// Keys whose key-down we swallowed: their key-up must be swallowed too.
+    /// Keys whose key-down we swallowed: their key-up must be swallowed
+    /// too, so it outlives [`reset`](Self::reset) (the app never saw the
+    /// key go down). Only [`forget`](Self::forget) clears it: after missed
+    /// events a key-up that passes is harmless, a swallowed one whose
+    /// key-down passed would leave the key stuck.
     swallowed: BTreeSet<Key>,
     /// Mask-needing keys (Win/Alt) held while some chord fired.
     needs_mask: BTreeSet<Key>,
     /// The fake Left Ctrl of an AltGr press is logically down.
     altgr_ctrl: bool,
+    /// The current fake Left Ctrl's key-down was swallowed (`Some(true)`)
+    /// or passed (`Some(false)`); `None` = none seen. Its key-up follows
+    /// its key-down, whatever the bindings are by then. Kept like
+    /// `swallowed`.
+    altgr_ctrl_swallowed: Option<bool>,
 }
 
 impl ChordMatcher {
@@ -459,25 +473,70 @@ impl ChordMatcher {
             swallowed: BTreeSet::new(),
             needs_mask: BTreeSet::new(),
             altgr_ctrl: false,
+            altgr_ctrl_swallowed: None,
         }
     }
 
     /// Process one hook event as Windows reports it. The fake Left Ctrl of
     /// an AltGr press ([`is_altgr_fake_ctrl`]) is not a key the user
-    /// pressed: it never takes part in a chord and always passes through
-    /// untouched (so its key-up releases it and no Ctrl is left stuck).
+    /// pressed: it never takes part in a chord. It passes through untouched
+    /// (so its key-up releases it and no Ctrl is left stuck), except while
+    /// Right Alt is push-to-talk: then its key-down is swallowed, and so is
+    /// the key-up of a swallowed key-down (only that one).
     pub fn handle_raw(&mut self, vk: u16, scan: u32, down: bool, dictating: bool) -> Decision {
+        self.handle_hook(vk, scan, down, dictating, false)
+    }
+
+    /// [`handle_raw`](Self::handle_raw) plus `os_down`: the OS already had
+    /// this key down before the event (GetAsyncKeyState inside the hook,
+    /// which runs before the async state is updated). The hook can't tell
+    /// an auto-repeat from a fresh press, so a key-down we hold no state
+    /// for while the OS has the key down is the repeat of a key held since
+    /// before the matcher (re)started (install at login, a re-install, new
+    /// bindings): it passes and starts nothing, so its key-up passes too
+    /// and the key can't stick. Only a real fresh press fires.
+    pub fn handle_hook(
+        &mut self,
+        vk: u16,
+        scan: u32,
+        down: bool,
+        dictating: bool,
+        os_down: bool,
+    ) -> Decision {
         if is_altgr_fake_ctrl(vk, scan) {
             self.altgr_ctrl = down;
-            return Decision::default();
+            let suppress = if down {
+                // Auto-repeat keeps the first key-down's fate; a fake Ctrl
+                // the OS already has down passed before we saw it.
+                let swallow = !os_down && self.swallows_right_alt();
+                *self.altgr_ctrl_swallowed.get_or_insert(swallow)
+            } else {
+                self.altgr_ctrl_swallowed.take().unwrap_or(false)
+            };
+            return Decision {
+                suppress,
+                ..Decision::default()
+            };
         }
-        self.handle(
-            KeyEvent {
-                key: Key::from_vk(vk),
-                down,
-            },
-            dictating,
-        )
+        let key = Key::from_vk(vk);
+        if down && !self.pressed.contains(&key) {
+            if os_down {
+                self.pressed.insert(key);
+                self.swallowed.remove(&key);
+                return Decision::default();
+            }
+            if self.swallowed.contains(&key) {
+                // We swallowed its key-down and saw no key-up since: the
+                // repeat of a hold that outlived a reset. Still swallowed,
+                // and it starts nothing.
+                self.pressed.insert(key);
+                return Decision {
+                    suppress: true,
+                    ..Decision::default()
+                };
+            }
+        }
+        self.handle(KeyEvent { key, down }, dictating)
     }
 
     /// The AltGr fake Left Ctrl is down (we saw its key-down, not its key-up).
@@ -487,8 +546,13 @@ impl ChordMatcher {
 
     /// The OS says Left Ctrl is up, so a fake-Ctrl key-up we never saw
     /// can't matter any more.
+    /// A swallowed one is never in the OS key state, so only a passed one
+    /// is forgotten (with its stale fate).
     pub fn forget_altgr_ctrl(&mut self) {
-        self.altgr_ctrl = false;
+        if self.altgr_ctrl_swallowed != Some(true) {
+            self.altgr_ctrl = false;
+            self.altgr_ctrl_swallowed = None;
+        }
     }
 
     /// Is the *user's own* Left Ctrl down? `async_down` = GetAsyncKeyState
@@ -503,20 +567,77 @@ impl ChordMatcher {
         &self.bindings
     }
 
-    pub fn set_bindings(&mut self, b: Bindings) {
-        self.bindings = b;
-        self.reset();
+    /// Push-to-talk is Right Alt alone: Right Alt (and AltGr's fake Left
+    /// Ctrl) never reach the app (D57).
+    fn swallows_right_alt(&self) -> bool {
+        self.bindings.ptt == Chord::new([Key::RAlt])
     }
 
-    /// Forget all held keys (e.g. after the hook was re-installed, or the
-    /// workstation was locked).
+    /// New shortcuts. A push-to-talk or Command held right now is aborted
+    /// (returned for the caller to send), so the dictation doesn't keep
+    /// listening for a key-up that no longer belongs to a shortcut. The
+    /// same shortcuts again (any other setting was saved) change nothing.
+    pub fn set_bindings(&mut self, b: Bindings) -> Vec<HotkeyAction> {
+        if b == self.bindings {
+            return Vec::new();
+        }
+        let held = self.ptt_active || self.command_active;
+        self.bindings = b;
+        self.reset();
+        if held {
+            vec![HotkeyAction::PttAborted]
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Forget all held keys (new bindings, a shortcut recording starts).
+    /// Which key-downs were swallowed is kept: their key-ups still are.
     pub fn reset(&mut self) {
         self.pressed.clear();
         self.ptt_active = false;
         self.command_active = false;
-        self.swallowed.clear();
         self.needs_mask.clear();
         self.altgr_ctrl = false;
+    }
+
+    /// [`reset`](Self::reset) after events may have been missed (the hook
+    /// was re-installed): forget swallowed key-downs too, so every later
+    /// key-up passes and no key can be left stuck.
+    pub fn forget(&mut self) {
+        self.reset();
+        self.swallowed.clear();
+        self.altgr_ctrl_swallowed = None;
+    }
+
+    /// An event the shortcut recorder handled instead of the matcher
+    /// (`suppressed` = the recorder swallowed it): keeps the swallowed
+    /// key-down bookkeeping right for key-ups that arrive after recording.
+    pub fn note_recorded(&mut self, vk: u16, scan: u32, down: bool, suppressed: bool) {
+        if is_altgr_fake_ctrl(vk, scan) {
+            self.altgr_ctrl_swallowed = down.then_some(suppressed);
+            return;
+        }
+        let key = Key::from_vk(vk);
+        if down && suppressed {
+            self.swallowed.insert(key);
+        } else {
+            self.swallowed.remove(&key);
+        }
+    }
+
+    /// Held keys the OS says are up although we never saw their key-up
+    /// (stale-key recovery; `physically_down` asks GetAsyncKeyState). A
+    /// key we swallowed never shows there, and silence proves nothing (a
+    /// held key stops auto-repeating once another key is pressed), so it
+    /// is released only by its key-up, a [`forget`](Self::forget) or the
+    /// dictation's own time limit.
+    pub fn stale_keys(&self, physically_down: impl Fn(Key) -> bool) -> Vec<Key> {
+        self.pressed
+            .iter()
+            .copied()
+            .filter(|k| !self.swallowed.contains(k) && !physically_down(*k))
+            .collect()
     }
 
     pub fn pressed(&self) -> impl Iterator<Item = Key> + '_ {
@@ -646,13 +767,20 @@ impl ChordMatcher {
                 self.command_active = false;
                 d.actions.push(HotkeyAction::PttAborted);
             }
+            if ev.key == Key::RAlt && self.swallows_right_alt() {
+                d.suppress = true;
+            }
             if d.suppress {
                 self.swallowed.insert(ev.key);
+            } else {
+                self.swallowed.remove(&ev.key);
             }
         } else {
             if !self.pressed.remove(&ev.key) {
-                // Key-up for a key we never saw go down (hook installed while
-                // held): pass it through untouched.
+                // Key-up for a key we hold no state for (hook installed or
+                // matcher reset while held): passes, unless we swallowed
+                // its key-down.
+                d.suppress = self.swallowed.remove(&ev.key);
                 return d;
             }
             if self.ptt_active && self.bindings.ptt.covers(ev.key) {
@@ -663,8 +791,10 @@ impl ChordMatcher {
                 self.command_active = false;
                 d.actions.push(HotkeyAction::CommandUp);
             }
+            // A swallowed key-up needs no mask: the app never saw it down.
+            let mask = self.needs_mask.remove(&ev.key);
             d.suppress = self.swallowed.remove(&ev.key);
-            if !d.suppress && self.needs_mask.remove(&ev.key) {
+            if !d.suppress && mask {
                 d.mask_release = true;
                 d.suppress = true;
             }
@@ -720,8 +850,13 @@ mod tests {
     use super::*;
     use HotkeyAction::*;
 
-    fn m() -> ChordMatcher {
-        ChordMatcher::new(Bindings::default())
+    /// Wispr's push-to-talk, Ctrl+Win (the default before D57), with the
+    /// other defaults: most chord tests use a multi-key push-to-talk.
+    fn ctrl_win_ptt() -> ChordMatcher {
+        ChordMatcher::new(Bindings {
+            ptt: "Ctrl+Win".parse().unwrap(),
+            ..Bindings::default()
+        })
     }
 
     fn feed(m: &mut ChordMatcher, evs: &[KeyEvent]) -> Vec<HotkeyAction> {
@@ -732,7 +867,7 @@ mod tests {
 
     #[test]
     fn copy_last_chord_fires_and_swallows_the_letter() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         let x = Key::Vk(b'X' as u16);
         m.handle(KeyEvent::down(Key::Shift), false);
         m.handle(KeyEvent::down(Key::Alt), false);
@@ -744,7 +879,7 @@ mod tests {
 
     #[test]
     fn command_chord_extends_a_push_to_talk_on_the_way() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         let a = feed(
             &mut m,
             &[
@@ -769,7 +904,7 @@ mod tests {
 
     #[test]
     fn command_chord_alone_and_its_foreign_key_abort() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         let a = feed(
             &mut m,
             &[
@@ -797,7 +932,7 @@ mod tests {
 
     #[test]
     fn paste_last_chord_fires_and_swallows_the_letter() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         let z = Key::Vk(b'Z' as u16);
         assert!(m
             .handle(KeyEvent::down(Key::Shift), false)
@@ -911,16 +1046,18 @@ mod tests {
     }
 
     #[test]
-    fn right_alt_alone_fires_ptt_and_its_release_is_masked() {
+    fn right_alt_alone_fires_ptt_at_key_down_and_never_reaches_the_app() {
         let mut m = ralt_ptt();
         let d = m.handle_raw(RALT_VK, ALT_SCAN, true, false);
-        assert_eq!(d.actions, vec![PttDown]);
-        assert!(!d.suppress, "modifier key-down passes through");
+        assert_eq!(d.actions, vec![PttDown], "at key-down, no wait");
+        assert!(d.suppress, "no Alt for the app: no menu bar, no AltGr");
+        let rep = m.handle_raw(RALT_VK, ALT_SCAN, true, false);
+        assert!(rep.suppress && rep.actions.is_empty(), "auto-repeat");
         let up = m.handle_raw(RALT_VK, ALT_SCAN, false, false);
         assert_eq!(up.actions, vec![PttUp]);
         assert!(
-            up.mask_release && up.suppress,
-            "lone Right Alt release would focus the menu bar"
+            up.suppress && !up.mask_release,
+            "swallowed: nothing to mask"
         );
         assert_eq!(m.pressed().count(), 0);
     }
@@ -955,7 +1092,7 @@ mod tests {
     }
 
     #[test]
-    fn altgr_fake_ctrl_is_ignored_and_ptt_fires_and_releases() {
+    fn altgr_fake_ctrl_is_swallowed_and_ptt_fires_and_releases() {
         // AltGr layout; here the fake Ctrl goes up before Right Alt.
         let mut m = ralt_ptt();
         let ds = raw(
@@ -970,14 +1107,9 @@ mod tests {
             ],
         );
         assert_eq!(actions(&ds), vec![PttDown, PttUp]);
-        for i in [0, 2, 4] {
-            assert_eq!(
-                ds[i],
-                Decision::default(),
-                "fake Ctrl #{i} passes untouched"
-            );
+        for (i, d) in ds.iter().enumerate() {
+            assert!(d.suppress && !d.mask_release, "event #{i} swallowed");
         }
-        assert!(ds[5].mask_release);
         assert_eq!(m.pressed().count(), 0, "nothing left held");
         assert!(!m.altgr_ctrl_down());
     }
@@ -992,14 +1124,226 @@ mod tests {
         assert!(m.altgr_ctrl_down());
         let up = m.handle_raw(RALT_VK, ALT_SCAN, false, false);
         assert_eq!(up.actions, vec![PttUp]);
-        assert!(up.mask_release);
-        // The fake Ctrl is logically down but is not the user's: the masked
-        // release must send its trailing LCtrl up.
-        assert!(!m.real_lctrl_held(true));
+        assert!(up.suppress && !up.mask_release);
+        assert!(!m.real_lctrl_held(true), "the fake Ctrl is not the user's");
         let fake_up = m.handle_raw(LCTRL_VK, FAKE_SCAN, false, false);
-        assert_eq!(fake_up, Decision::default(), "fake Ctrl up passes through");
+        assert!(fake_up.suppress, "its down was swallowed: so is its up");
+        assert!(fake_up.actions.is_empty());
         assert!(!m.altgr_ctrl_down());
         assert_eq!(m.pressed().count(), 0);
+        // Same bindings, same key-up, but its key-down was never swallowed
+        // (the matcher started mid-hold): the key-up must pass, or Left
+        // Ctrl stays down system-wide.
+        let mut fresh = ralt_ptt();
+        let fake_up = fresh.handle_raw(LCTRL_VK, FAKE_SCAN, false, false);
+        assert_eq!(
+            fake_up,
+            Decision::default(),
+            "its down passed: so does its up"
+        );
+    }
+
+    // --- Swallowed key-ups follow their key-downs (D57) ---
+
+    /// Ctrl+Win push-to-talk, AltGr pressed (fake Ctrl + Right Alt pass),
+    /// then Right Alt becomes push-to-talk mid-hold.
+    #[test]
+    fn rebinding_to_right_alt_mid_hold_passes_the_ups_of_passed_downs() {
+        for fake_first in [true, false] {
+            let mut m = ctrl_win_ptt();
+            let ds = raw(
+                &mut m,
+                &[(LCTRL_VK, FAKE_SCAN, true), (RALT_VK, ALT_SCAN, true)],
+            );
+            assert!(ds.iter().all(|d| !d.suppress));
+            assert!(m.set_bindings(Bindings::default()).is_empty());
+            let ups = if fake_first {
+                [(LCTRL_VK, FAKE_SCAN, false), (RALT_VK, ALT_SCAN, false)]
+            } else {
+                [(RALT_VK, ALT_SCAN, false), (LCTRL_VK, FAKE_SCAN, false)]
+            };
+            for (i, d) in raw(&mut m, &ups).iter().enumerate() {
+                assert_eq!(*d, Decision::default(), "fake_first={fake_first} up #{i}");
+            }
+        }
+    }
+
+    #[test]
+    fn reset_mid_hold_still_swallows_the_ups_of_swallowed_downs() {
+        for fake_first in [true, false] {
+            let mut m = ralt_ptt();
+            let ds = raw(
+                &mut m,
+                &[(LCTRL_VK, FAKE_SCAN, true), (RALT_VK, ALT_SCAN, true)],
+            );
+            assert!(ds.iter().all(|d| d.suppress));
+            m.reset();
+            let ups = if fake_first {
+                [(LCTRL_VK, FAKE_SCAN, false), (RALT_VK, ALT_SCAN, false)]
+            } else {
+                [(RALT_VK, ALT_SCAN, false), (LCTRL_VK, FAKE_SCAN, false)]
+            };
+            for (i, d) in raw(&mut m, &ups).iter().enumerate() {
+                assert!(
+                    d.suppress && d.actions.is_empty(),
+                    "fake_first={fake_first} up #{i}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn rebinding_away_from_right_alt_mid_hold_aborts_and_swallows_its_ups() {
+        let mut m = ralt_ptt();
+        raw(
+            &mut m,
+            &[(LCTRL_VK, FAKE_SCAN, true), (RALT_VK, ALT_SCAN, true)],
+        );
+        let b = Bindings {
+            ptt: "Ctrl+Win".parse().unwrap(),
+            ..Bindings::default()
+        };
+        assert_eq!(
+            m.set_bindings(b),
+            vec![PttAborted],
+            "no dictation left listening"
+        );
+        let ds = raw(
+            &mut m,
+            &[(RALT_VK, ALT_SCAN, false), (LCTRL_VK, FAKE_SCAN, false)],
+        );
+        assert!(
+            ds.iter().all(|d| d.suppress),
+            "the app never saw them go down"
+        );
+        // The next AltGr press passes: the new push-to-talk isn't Right Alt.
+        let ds = raw(
+            &mut m,
+            &[
+                (LCTRL_VK, FAKE_SCAN, true),
+                (RALT_VK, ALT_SCAN, true),
+                (RALT_VK, ALT_SCAN, false),
+                (LCTRL_VK, FAKE_SCAN, false),
+            ],
+        );
+        assert!(ds.iter().all(|d| *d == Decision::default()));
+    }
+
+    #[test]
+    fn late_right_alt_up_after_an_abort_is_swallowed() {
+        let mut m = ralt_ptt();
+        let ds = raw(
+            &mut m,
+            &[
+                (RALT_VK, ALT_SCAN, true),
+                (0x45, 0x12, true),
+                (0x45, 0x12, false),
+            ],
+        );
+        assert_eq!(actions(&ds), vec![PttDown, PttAborted]);
+        let up = m.handle_raw(RALT_VK, ALT_SCAN, false, false);
+        assert!(up.suppress && !up.mask_release && up.actions.is_empty());
+    }
+
+    /// Recording a shortcut (`start_capture`: force-release + reset, then
+    /// the recorder sees the events) mid-way through an AltGr press.
+    #[test]
+    fn shortcut_recording_hands_back_the_right_key_up_fates() {
+        use crate::hotkeys::capture::ChordRecorder;
+        // Right Alt recorded: the recorder passes the fake Ctrl down and
+        // swallows Right Alt; recording ends at Right Alt up, so the fake
+        // Ctrl up (released last) reaches the matcher, which must pass it.
+        let mut m = ralt_ptt();
+        // An earlier swallowed press whose fake Ctrl up the recorder got.
+        m.handle_raw(LCTRL_VK, FAKE_SCAN, true, false);
+        m.reset();
+        let mut rec = ChordRecorder::new();
+        for (vk, scan, down) in [
+            (LCTRL_VK, FAKE_SCAN, false),
+            (LCTRL_VK, FAKE_SCAN, true),
+            (RALT_VK, ALT_SCAN, true),
+            (RALT_VK, ALT_SCAN, false),
+        ] {
+            let r = rec.handle_raw(vk, scan, down);
+            m.note_recorded(vk, scan, down, r.suppress);
+        }
+        let fake_up = m.handle_raw(LCTRL_VK, FAKE_SCAN, false, false);
+        assert_eq!(fake_up, Decision::default(), "Left Ctrl must not stick");
+        // Recording stopped mid-hold: Right Alt's key-down was swallowed
+        // by the recorder, so its key-up is swallowed too.
+        let mut m = ralt_ptt();
+        let mut rec = ChordRecorder::new();
+        let r = rec.handle_raw(RALT_VK, ALT_SCAN, true);
+        m.note_recorded(RALT_VK, ALT_SCAN, true, r.suppress);
+        assert!(m.handle_raw(RALT_VK, ALT_SCAN, false, false).suppress);
+    }
+
+    #[test]
+    fn forget_after_missed_events_lets_every_key_up_pass() {
+        let mut m = ralt_ptt();
+        raw(
+            &mut m,
+            &[(LCTRL_VK, FAKE_SCAN, true), (RALT_VK, ALT_SCAN, true)],
+        );
+        m.forget();
+        let ds = raw(
+            &mut m,
+            &[(RALT_VK, ALT_SCAN, false), (LCTRL_VK, FAKE_SCAN, false)],
+        );
+        assert!(ds.iter().all(|d| *d == Decision::default()));
+    }
+
+    // --- Stale-key recovery never releases a swallowed key ---
+
+    #[test]
+    fn a_right_alt_hold_without_repeats_stays_held() {
+        // Zero-repeat / FilterKeys, or the 2 s that used to end a hold: the
+        // OS never sees the swallowed Right Alt, and silence proves nothing.
+        let mut m = ralt_ptt();
+        m.handle_raw(LCTRL_VK, FAKE_SCAN, true, false);
+        assert_eq!(
+            m.handle_raw(RALT_VK, ALT_SCAN, true, false).actions,
+            vec![PttDown]
+        );
+        for _second in 0..5 {
+            assert!(m.stale_keys(|_| false).is_empty());
+        }
+        assert_eq!(
+            m.handle_raw(RALT_VK, ALT_SCAN, false, false).actions,
+            vec![PttUp]
+        );
+    }
+
+    #[test]
+    fn right_alt_ctrl_win_command_held_with_only_win_repeating_stays_a_command() {
+        let mut m = default_bindings();
+        let ds = raw(
+            &mut m,
+            &[
+                (RALT_VK, ALT_SCAN, true),
+                (LCTRL_VK, LCTRL_SCAN, true),
+                (0x5B, 0x5B, true),
+            ],
+        );
+        assert_eq!(actions(&ds), vec![PttDown, CommandDown]);
+        // Seconds pass; only Win auto-repeats. The OS sees Ctrl and Win
+        // (they passed), never Right Alt.
+        for _second in 0..5 {
+            assert!(m.handle_raw(0x5B, 0x5B, true, false).actions.is_empty());
+            let stale = m.stale_keys(|k| k != Key::RAlt);
+            assert!(stale.is_empty(), "{stale:?}");
+        }
+        assert_eq!(
+            m.handle_raw(0x5B, 0x5B, false, false).actions,
+            vec![CommandUp]
+        );
+    }
+
+    #[test]
+    fn a_passed_key_the_os_no_longer_holds_is_stale() {
+        let mut m = ctrl_win_ptt();
+        raw(&mut m, &[(LCTRL_VK, LCTRL_SCAN, true), (0x5B, 0x5B, true)]);
+        assert_eq!(m.stale_keys(|k| k != Key::Win), vec![Key::Win]);
     }
 
     #[test]
@@ -1039,7 +1383,9 @@ mod tests {
     }
 
     #[test]
-    fn altgr_character_aborts_right_alt_ptt_and_reaches_the_app() {
+    fn right_alt_with_a_letter_aborts_and_the_plain_letter_reaches_the_app() {
+        // AltGr layout: Right Alt + E during a hold. The app never saw
+        // AltGr, so it gets a plain E, never €; the dictation is aborted.
         let mut m = ralt_ptt();
         let e = 0x45;
         let ds = raw(
@@ -1049,17 +1395,198 @@ mod tests {
                 (RALT_VK, ALT_SCAN, true),
                 (e, 0x12, true),
                 (e, 0x12, false),
+                (RALT_VK, ALT_SCAN, false),
+                (LCTRL_VK, FAKE_SCAN, false),
             ],
         );
         assert_eq!(actions(&ds), vec![PttDown, PttAborted]);
-        assert!(!ds[2].suppress && !ds[3].suppress);
+        assert!(!ds[2].suppress && !ds[3].suppress, "E passes");
+        for i in [0, 1, 4, 5] {
+            assert!(ds[i].suppress && !ds[i].mask_release, "event #{i}");
+        }
+        assert_eq!(m.pressed().count(), 0);
+        assert!(!m.altgr_ctrl_down());
     }
 
     #[test]
-    fn right_alt_tab_aborts_ptt() {
+    fn right_alt_with_a_letter_fake_ctrl_up_first() {
+        // The other release order of AltGr: fake Ctrl up, then Right Alt.
+        let mut m = ralt_ptt();
+        let ds = raw(
+            &mut m,
+            &[
+                (LCTRL_VK, FAKE_SCAN, true),
+                (RALT_VK, ALT_SCAN, true),
+                (0x45, 0x12, true),
+                (0x45, 0x12, false),
+                (LCTRL_VK, FAKE_SCAN, false),
+                (RALT_VK, ALT_SCAN, false),
+            ],
+        );
+        assert_eq!(actions(&ds), vec![PttDown, PttAborted]);
+        for i in [0, 1, 4, 5] {
+            assert!(ds[i].suppress && !ds[i].mask_release, "event #{i}");
+        }
+        assert_eq!(m.pressed().count(), 0);
+        assert!(!m.altgr_ctrl_down());
+    }
+
+    #[test]
+    fn right_alt_tab_aborts_ptt_and_tab_passes() {
         let mut m = ralt_ptt();
         let ds = raw(&mut m, &[(RALT_VK, ALT_SCAN, true), (TAB_VK, 0x0F, true)]);
         assert_eq!(actions(&ds), vec![PttDown, PttAborted]);
+        assert!(!ds[1].suppress);
+        let up = m.handle_raw(RALT_VK, ALT_SCAN, false, false);
+        assert!(up.suppress && up.actions.is_empty());
+    }
+
+    #[test]
+    fn left_ctrl_alt_altgr_path_is_untouched_with_right_alt_ptt() {
+        // AltGr characters are typed with Left Ctrl+Left Alt instead.
+        let mut m = ralt_ptt();
+        let ds = raw(
+            &mut m,
+            &[
+                (LCTRL_VK, LCTRL_SCAN, true),
+                (LALT_VK, ALT_SCAN, true),
+                (0x45, 0x12, true),
+                (0x45, 0x12, false),
+                (LALT_VK, ALT_SCAN, false),
+                (LCTRL_VK, LCTRL_SCAN, false),
+            ],
+        );
+        assert_eq!(actions(&ds), vec![]);
+        for (i, d) in ds.iter().enumerate() {
+            assert_eq!(*d, Decision::default(), "event #{i} untouched");
+        }
+    }
+
+    #[test]
+    fn right_alt_passes_through_when_it_is_not_push_to_talk() {
+        // Ctrl+Win push-to-talk: AltGr works as it always did.
+        let mut m = ctrl_win_ptt();
+        let ds = raw(
+            &mut m,
+            &[
+                (LCTRL_VK, FAKE_SCAN, true),
+                (RALT_VK, ALT_SCAN, true),
+                (0x45, 0x12, true),
+                (0x45, 0x12, false),
+                (RALT_VK, ALT_SCAN, false),
+                (LCTRL_VK, FAKE_SCAN, false),
+            ],
+        );
+        for (i, d) in ds.iter().enumerate() {
+            assert_eq!(*d, Decision::default(), "event #{i} untouched");
+        }
+    }
+
+    // --- Defaults (D57): Right Alt push-to-talk next to the Ctrl+Win chords ---
+
+    fn default_bindings() -> ChordMatcher {
+        ChordMatcher::new(Bindings::default())
+    }
+
+    #[test]
+    fn default_push_to_talk_is_right_alt() {
+        let b = Bindings::default();
+        assert_eq!(b.ptt.to_string(), "Right Alt");
+        assert_eq!(b.hands_free.to_string(), "Ctrl+Win+Space");
+        assert_eq!(b.command.to_string(), "Ctrl+Win+Alt");
+        let mut m = default_bindings();
+        let d = m.handle_raw(LALT_VK, ALT_SCAN, true, false);
+        assert_eq!(d, Decision::default(), "Left Alt is not push-to-talk");
+    }
+
+    #[test]
+    fn default_ctrl_win_alone_is_no_shortcut_any_more() {
+        let mut m = default_bindings();
+        let ds = raw(
+            &mut m,
+            &[
+                (LCTRL_VK, LCTRL_SCAN, true),
+                (0x5B, 0x5B, true),
+                (0x5B, 0x5B, false),
+                (LCTRL_VK, LCTRL_SCAN, false),
+            ],
+        );
+        assert_eq!(actions(&ds), vec![]);
+        assert!(ds.iter().all(|d| !d.suppress), "Ctrl+Win untouched");
+    }
+
+    #[test]
+    fn default_hands_free_and_command_still_fire() {
+        let mut m = default_bindings();
+        let ds = raw(
+            &mut m,
+            &[
+                (LCTRL_VK, LCTRL_SCAN, true),
+                (0x5B, 0x5B, true),
+                (0x20, 0x39, true),
+            ],
+        );
+        assert_eq!(actions(&ds), vec![HandsFreeToggle]);
+        assert!(ds[2].suppress);
+        let mut m = default_bindings();
+        let ds = raw(
+            &mut m,
+            &[
+                (LCTRL_VK, LCTRL_SCAN, true),
+                (0x5B, 0x5B, true),
+                (LALT_VK, ALT_SCAN, true),
+                (LALT_VK, ALT_SCAN, false),
+            ],
+        );
+        assert_eq!(actions(&ds), vec![CommandDown, CommandUp]);
+        assert!(ds[3].mask_release);
+    }
+
+    #[test]
+    fn default_command_with_right_alt_is_a_command_not_a_dictation() {
+        // Ctrl+Win, then Right Alt as Alt (with AltGr's fake Ctrl or not).
+        for altgr in [false, true] {
+            let mut m = default_bindings();
+            let mut evs = vec![(LCTRL_VK, LCTRL_SCAN, true), (0x5B, 0x5B, true)];
+            if altgr {
+                evs.push((LCTRL_VK, FAKE_SCAN, true));
+            }
+            evs.push((RALT_VK, ALT_SCAN, true));
+            let ds = raw(&mut m, &evs);
+            assert_eq!(actions(&ds), vec![CommandDown], "altgr={altgr}");
+            let up = m.handle_raw(RALT_VK, ALT_SCAN, false, false);
+            assert_eq!(up.actions, vec![CommandUp]);
+            assert!(up.suppress && !up.mask_release, "never reached the app");
+            let win_up = m.handle_raw(0x5B, 0x5B, false, false);
+            assert!(win_up.mask_release, "no Start menu");
+        }
+    }
+
+    #[test]
+    fn right_alt_then_ctrl_win_becomes_a_command() {
+        let mut m = default_bindings();
+        let ds = raw(
+            &mut m,
+            &[
+                (RALT_VK, ALT_SCAN, true),
+                (LCTRL_VK, LCTRL_SCAN, true),
+                (0x5B, 0x5B, true),
+            ],
+        );
+        assert_eq!(actions(&ds), vec![PttDown, CommandDown]);
+        let up = m.handle_raw(RALT_VK, ALT_SCAN, false, false);
+        assert_eq!(up.actions, vec![CommandUp], "no PttUp: superseded");
+    }
+
+    #[test]
+    fn right_alt_does_not_fire_with_a_real_ctrl_held() {
+        let mut m = default_bindings();
+        let ds = raw(
+            &mut m,
+            &[(LCTRL_VK, LCTRL_SCAN, true), (RALT_VK, ALT_SCAN, true)],
+        );
+        assert_eq!(actions(&ds), vec![]);
+        assert!(ds[1].suppress, "Right Alt is still swallowed");
     }
 
     #[test]
@@ -1099,7 +1626,7 @@ mod tests {
     #[test]
     fn default_ctrl_win_still_matches_either_ctrl() {
         for ctrl in [0xA2u16, 0xA3] {
-            let mut m = m();
+            let mut m = ctrl_win_ptt();
             let ds = raw(
                 &mut m,
                 &[
@@ -1137,18 +1664,155 @@ mod tests {
 
     #[test]
     fn a_missed_fake_ctrl_up_can_be_forgotten() {
+        // Passed fake Ctrl (Ctrl+Win push-to-talk), its key-up missed.
+        let mut m = ctrl_win_ptt();
+        assert!(!m.handle_raw(LCTRL_VK, FAKE_SCAN, true, false).suppress);
+        m.forget_altgr_ctrl();
+        assert!(!m.altgr_ctrl_down());
+        // Its stale "passed" fate is gone too: with Right Alt push-to-talk
+        // the next fresh AltGr press is swallowed as it should be.
+        m.set_bindings(Bindings::default());
+        assert!(m.handle_raw(LCTRL_VK, FAKE_SCAN, true, false).suppress);
+        m.reset();
+        assert!(!m.altgr_ctrl_down());
+        // A swallowed fake Ctrl is never in the OS key state: the stale
+        // check can't judge it, so it is kept (its key-up stays swallowed).
         let mut m = ralt_ptt();
         m.handle_raw(LCTRL_VK, FAKE_SCAN, true, false);
         m.forget_altgr_ctrl();
-        assert!(!m.altgr_ctrl_down());
-        m.handle_raw(LCTRL_VK, FAKE_SCAN, true, false);
-        m.reset();
-        assert!(!m.altgr_ctrl_down());
+        assert!(m.altgr_ctrl_down());
+        assert!(m.handle_raw(LCTRL_VK, FAKE_SCAN, false, false).suppress);
+    }
+
+    // --- A key held when the matcher (re)starts: its repeats look fresh ---
+
+    /// Ways the matcher loses track of a held key: a re-install
+    /// (`forget`), a reset, new bindings to Right Alt, a fresh matcher.
+    fn restarted_mid_hold(how: usize) -> ChordMatcher {
+        match how {
+            0 => {
+                let mut m = ralt_ptt();
+                m.forget();
+                m
+            }
+            1 => {
+                let mut m = ralt_ptt();
+                m.reset();
+                m
+            }
+            2 => {
+                let mut m = ctrl_win_ptt();
+                m.set_bindings(Bindings::default());
+                m
+            }
+            _ => default_bindings(),
+        }
+    }
+
+    #[test]
+    fn right_alt_held_before_the_matcher_restarted_passes_and_starts_nothing() {
+        for how in 0..4 {
+            let mut m = restarted_mid_hold(how);
+            // Auto-repeats of the Right Alt the OS already has down.
+            for _ in 0..3 {
+                let d = m.handle_hook(RALT_VK, ALT_SCAN, true, false, true);
+                assert_eq!(
+                    d,
+                    Decision::default(),
+                    "how={how}: repeat passes, no PttDown"
+                );
+            }
+            let up = m.handle_hook(RALT_VK, ALT_SCAN, false, false, true);
+            assert_eq!(
+                up,
+                Decision::default(),
+                "how={how}: key-up passes, no stuck Alt"
+            );
+            // The next real press is push-to-talk again.
+            let d = m.handle_hook(RALT_VK, ALT_SCAN, true, false, false);
+            assert_eq!(d.actions, vec![PttDown], "how={how}");
+            assert!(d.suppress);
+        }
+    }
+
+    #[test]
+    fn a_swallowed_right_alt_held_through_new_bindings_restarts_nothing() {
+        let mut m = ralt_ptt();
+        raw(
+            &mut m,
+            &[(LCTRL_VK, FAKE_SCAN, true), (RALT_VK, ALT_SCAN, true)],
+        );
+        let b = Bindings {
+            hands_free: "Ctrl+Shift+Space".parse().unwrap(),
+            ..Bindings::default()
+        };
+        assert_eq!(m.set_bindings(b), vec![PttAborted]);
+        // The OS never saw the swallowed keys go down.
+        for _ in 0..3 {
+            let d = m.handle_hook(RALT_VK, ALT_SCAN, true, false, false);
+            assert!(d.suppress && d.actions.is_empty(), "no new PttDown");
+            assert!(
+                m.handle_hook(LCTRL_VK, FAKE_SCAN, true, false, false)
+                    .suppress
+            );
+        }
+        let ds = raw(
+            &mut m,
+            &[(RALT_VK, ALT_SCAN, false), (LCTRL_VK, FAKE_SCAN, false)],
+        );
+        assert!(ds.iter().all(|d| d.suppress && d.actions.is_empty()));
+        assert_eq!(
+            m.handle_raw(RALT_VK, ALT_SCAN, true, false).actions,
+            vec![PttDown],
+            "the next real press works"
+        );
+    }
+
+    #[test]
+    fn fake_ctrl_held_before_the_matcher_restarted_passes() {
+        for how in 0..4 {
+            let mut m = restarted_mid_hold(how);
+            for _ in 0..3 {
+                let d = m.handle_hook(LCTRL_VK, FAKE_SCAN, true, false, true);
+                assert_eq!(d, Decision::default(), "how={how}: repeat passes");
+            }
+            let up = m.handle_hook(LCTRL_VK, FAKE_SCAN, false, false, true);
+            assert_eq!(up, Decision::default(), "how={how}: no stuck Left Ctrl");
+            // The next real AltGr press is swallowed again.
+            assert!(
+                m.handle_hook(LCTRL_VK, FAKE_SCAN, true, false, false)
+                    .suppress
+            );
+        }
+    }
+
+    #[test]
+    fn altgr_held_before_the_matcher_restarted_passes_in_both_release_orders() {
+        for fake_first in [true, false] {
+            let mut m = restarted_mid_hold(0);
+            let ds: Vec<Decision> = [(LCTRL_VK, FAKE_SCAN), (RALT_VK, ALT_SCAN)]
+                .into_iter()
+                .map(|(vk, scan)| m.handle_hook(vk, scan, true, false, true))
+                .collect();
+            let ups = if fake_first {
+                [(LCTRL_VK, FAKE_SCAN), (RALT_VK, ALT_SCAN)]
+            } else {
+                [(RALT_VK, ALT_SCAN), (LCTRL_VK, FAKE_SCAN)]
+            };
+            let ups: Vec<Decision> = ups
+                .into_iter()
+                .map(|(vk, scan)| m.handle_hook(vk, scan, false, false, true))
+                .collect();
+            for (i, d) in ds.iter().chain(&ups).enumerate() {
+                assert_eq!(*d, Decision::default(), "fake_first={fake_first} #{i}");
+            }
+            assert_eq!(m.pressed().count(), 0);
+        }
     }
 
     #[test]
     fn ptt_fires_on_full_chord_and_releases_on_first_key_up() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         assert!(m
             .handle(KeyEvent::down(Key::Ctrl), false)
             .actions
@@ -1166,7 +1830,7 @@ mod tests {
 
     #[test]
     fn ptt_order_of_modifiers_does_not_matter() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         let a = feed(
             &mut m,
             &[KeyEvent::down(Key::Win), KeyEvent::down(Key::Ctrl)],
@@ -1176,7 +1840,7 @@ mod tests {
 
     #[test]
     fn autorepeat_does_not_refire() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         let a = feed(
             &mut m,
             &[
@@ -1191,7 +1855,7 @@ mod tests {
 
     #[test]
     fn hands_free_supersedes_ptt_and_release_emits_nothing() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         let a = feed(
             &mut m,
             &[
@@ -1208,7 +1872,7 @@ mod tests {
 
     #[test]
     fn hands_free_space_is_swallowed_down_and_up() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         m.handle(KeyEvent::down(Key::Ctrl), false);
         m.handle(KeyEvent::down(Key::Win), false);
         assert!(m.handle(KeyEvent::down(Key::Space), false).suppress);
@@ -1221,7 +1885,7 @@ mod tests {
 
     #[test]
     fn plain_space_is_not_swallowed() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         let d = m.handle(KeyEvent::down(Key::Space), true);
         assert!(!d.suppress);
         assert!(d.actions.is_empty());
@@ -1229,7 +1893,7 @@ mod tests {
 
     #[test]
     fn modifier_events_pass_through_except_masked_release() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         assert!(!m.handle(KeyEvent::down(Key::Ctrl), false).suppress);
         assert!(!m.handle(KeyEvent::down(Key::Win), false).suppress);
         assert!(!m.handle(KeyEvent::up(Key::Ctrl), false).suppress);
@@ -1239,7 +1903,7 @@ mod tests {
 
     #[test]
     fn win_release_after_chord_is_masked() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         m.handle(KeyEvent::down(Key::Ctrl), false);
         m.handle(KeyEvent::down(Key::Win), false);
         assert!(
@@ -1253,7 +1917,7 @@ mod tests {
 
     #[test]
     fn win_release_without_chord_is_not_masked() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         m.handle(KeyEvent::down(Key::Win), false);
         assert!(!m.handle(KeyEvent::up(Key::Win), false).mask_release);
     }
@@ -1272,7 +1936,7 @@ mod tests {
 
     #[test]
     fn esc_cancels_and_is_swallowed_only_while_dictating() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         let d = m.handle(KeyEvent::down(Key::Esc), false);
         assert_eq!(d.actions, vec![Cancel]);
         assert!(!d.suppress);
@@ -1285,7 +1949,7 @@ mod tests {
 
     #[test]
     fn foreign_key_during_ptt_aborts() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         let left = Key::Vk(0x25);
         let a = feed(
             &mut m,
@@ -1303,7 +1967,7 @@ mod tests {
 
     #[test]
     fn superset_chord_does_not_fire_ptt() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         let a = feed(
             &mut m,
             &[
@@ -1317,14 +1981,14 @@ mod tests {
 
     #[test]
     fn unseen_key_up_passes_through() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         let d = m.handle(KeyEvent::up(Key::Win), false);
         assert_eq!(d, Decision::default());
     }
 
     #[test]
     fn force_release_ends_stuck_ptt() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         feed(
             &mut m,
             &[KeyEvent::down(Key::Ctrl), KeyEvent::down(Key::Win)],
@@ -1375,7 +2039,7 @@ mod tests {
         let j = serde_json::to_string(&Bindings::default()).unwrap();
         assert_eq!(
             j,
-            r#"{"ptt":"Ctrl+Win","hands_free":"Ctrl+Win+Space","cancel":"Esc","paste_last":"Alt+Shift+Z","copy_last":"Alt+Shift+X","command":"Ctrl+Win+Alt"}"#
+            r#"{"ptt":"Right Alt","hands_free":"Ctrl+Win+Space","cancel":"Esc","paste_last":"Alt+Shift+Z","copy_last":"Alt+Shift+X","command":"Ctrl+Win+Alt"}"#
         );
         let b: Bindings = serde_json::from_str(r#"{"ptt":"Ctrl+Shift"}"#).unwrap();
         assert_eq!(b.ptt.to_string(), "Ctrl+Shift");
@@ -1403,7 +2067,7 @@ mod tests {
             m.handle(KeyEvent::down(Key::Alt), false);
             m.handle(KeyEvent::down(n), false)
         };
-        let mut unset = m();
+        let mut unset = ctrl_win_ptt();
         let d = press(&mut unset);
         assert!(d.actions.is_empty());
         assert!(!d.suppress, "an unset shortcut leaves N to the app");
@@ -1428,7 +2092,7 @@ mod tests {
             m.handle(KeyEvent::down(Key::Alt), false);
             m.handle(KeyEvent::down(Key::Vk(b'R' as u16)), false)
         };
-        let d = press(&mut m());
+        let d = press(&mut ctrl_win_ptt());
         assert!(d.actions.is_empty() && !d.suppress);
         let d = press(&mut ChordMatcher::new(b));
         assert_eq!(d.actions, vec![Meeting]);
@@ -1450,7 +2114,7 @@ mod tests {
             m.handle(KeyEvent::down(Key::Alt), false);
             m.handle(KeyEvent::down(Key::Vk(b'M' as u16)), false)
         };
-        let d = press(&mut m());
+        let d = press(&mut ctrl_win_ptt());
         assert!(d.actions.is_empty() && !d.suppress);
         let d = press(&mut ChordMatcher::new(b));
         assert_eq!(d.actions, vec![NewNote]);
@@ -1486,7 +2150,7 @@ mod tests {
 
     #[test]
     fn no_transform_chord_without_bindings_and_never_saved() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         m.handle(KeyEvent::down(Key::Win), false);
         m.handle(KeyEvent::down(Key::LAlt), false);
         let d = m.handle(KeyEvent::down(Key::Vk(b'1' as u16)), false);
@@ -1506,12 +2170,18 @@ mod tests {
 
     #[test]
     fn set_bindings_resets_state() {
-        let mut m = m();
+        let mut m = ctrl_win_ptt();
         feed(
             &mut m,
             &[KeyEvent::down(Key::Ctrl), KeyEvent::down(Key::Win)],
         );
-        m.set_bindings(Bindings::default());
+        let same = m.bindings().clone();
+        assert!(
+            m.set_bindings(same).is_empty(),
+            "unchanged: the hold goes on"
+        );
+        assert_eq!(m.pressed().count(), 2);
+        assert_eq!(m.set_bindings(Bindings::default()), vec![PttAborted]);
         assert_eq!(m.pressed().count(), 0);
         assert!(m.handle(KeyEvent::up(Key::Ctrl), false).actions.is_empty());
     }

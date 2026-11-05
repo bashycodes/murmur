@@ -344,7 +344,10 @@ fn show_suggestion_count(app: &AppHandle, pending: usize) {
 
 // ---------------------------------------------------------------- model notice
 
-const TRAY_TIP: &str = "Murmur — hold Ctrl+Win to dictate";
+/// The resting tray tooltip: names the push-to-talk shortcut in use.
+fn tray_tip(app: &AppHandle) -> String {
+    app.state::<AppState>().prefs.read().unwrap().tray_tip()
+}
 
 /// Tray notice for the model state: menu line + tooltip; Settings opens on
 /// a missing/broken model so the user sees why dictation can't start.
@@ -358,12 +361,9 @@ fn apply_model_status(app: &AppHandle, item: &MenuItem<tauri::Wry>, st: &ModelSt
     let (line, tip) = match st {
         ModelStatus::Loading { path } => (
             format!("Speech model: loading {}…", file(path)),
-            TRAY_TIP.to_string(),
+            tray_tip(app),
         ),
-        ModelStatus::Ready { path, .. } => (
-            format!("Speech model: {}", file(path)),
-            TRAY_TIP.to_string(),
-        ),
+        ModelStatus::Ready { path, .. } => (format!("Speech model: {}", file(path)), tray_tip(app)),
         ModelStatus::Missing { .. } => (
             "⚠ Speech model missing — open Settings".to_string(),
             "Murmur — speech model missing (see Settings)".to_string(),
@@ -459,6 +459,13 @@ fn save_prefs(app: &AppHandle, state: &AppState, mut prefs: Prefs) -> Result<(),
     prefs.save(&state.path).map_err(|e| e.to_string())?;
     if let Some(h) = state.hook.lock().unwrap().as_ref() {
         h.set_bindings(prefs.hotkey_bindings());
+    }
+    // A new push-to-talk shortcut: the resting tooltip names it (a model
+    // problem's tooltip stays until the model is fixed).
+    if prefs.shortcuts.ptt != state.prefs.read().unwrap().shortcuts.ptt && model_ready(state) {
+        if let Some(t) = app.tray_by_id("main") {
+            let _ = t.set_tooltip(Some(prefs.tray_tip()));
+        }
     }
     let _ = autostart::set(prefs.launch_at_login);
     let (reload, reload_llm) = {
@@ -782,9 +789,9 @@ fn show_meeting_view(app: &AppHandle, v: &meetings::View) {
     }
     if let Some(t) = app.tray_by_id("main") {
         let _ = t.set_tooltip(Some(if recording {
-            "Murmur — recording a meeting"
+            "Murmur — recording a meeting".to_string()
         } else {
-            TRAY_TIP
+            st.prefs.read().unwrap().tray_tip()
         }));
     }
     // The pill carries the chip, so it shows while recording even when
@@ -3399,7 +3406,7 @@ pub fn run() {
             ]);
             let menu = Menu::with_items(app, &items)?;
             let mut tray = TrayIconBuilder::with_id("main")
-                .tooltip(TRAY_TIP)
+                .tooltip(app.state::<AppState>().prefs.read().unwrap().tray_tip())
                 .menu(&menu)
                 .on_menu_event(|app, ev| match ev.id.as_ref() {
                     "open" | "model" | "llm" => show_settings(app),
