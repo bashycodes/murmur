@@ -1,6 +1,5 @@
 package dev.flowclone.data
 
-import dev.flowclone.data.DevSettings.CleanupRoute
 import dev.flowclone.data.DevSettings.Route
 
 /**
@@ -103,22 +102,6 @@ object OpenRouterPage {
         // A custom server's key is optional: only OpenRouter uses need [hasKey].
         val needsKey = s.allowCloud || (s.allowCloudCleanup && !s.cloud.customProvider)
         return "$speech · $cleanup" + if (!hasKey && needsKey) " · no key" else ""
-    }
-
-    /**
-     * The Home tab's AI cleanup line while cloud cleanup is on: the switched-on engines in order
-     * ("On-device, then your server, then OpenRouter (llama-3.3-70b-instruct)"); null when it is off.
-     */
-    fun cleanupEngineLine(s: DevSettings): String? {
-        if (!(s.cloudCleanupRouted && s.cloud.cleanupConsentOk) || s.cloud.customNotSetUp) return null
-        val names = s.cleanupOrder.filter { s.cleanupOn(it) }.mapNotNull {
-            when (it) {
-                CleanupRoute.LOCAL -> "on-device"
-                CleanupRoute.SERVER -> if (s.serverConfigured) "your server" else null
-                CleanupRoute.CLOUD -> if (s.cloud.customProvider) s.cloud.cleanupProviderName else "${OpenRouter.NAME} (${s.cloud.cleanup.model.substringAfter('/')})"
-            }
-        }
-        return names.joinToString(", then ").replaceFirstChar { it.uppercase() }
     }
 
     /** The cleanup model in summaries: OpenRouter's without its author, a custom server's model and host. */

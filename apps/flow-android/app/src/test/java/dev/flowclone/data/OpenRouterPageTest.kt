@@ -15,6 +15,7 @@ class OpenRouterPageTest {
 
     private val base = DevSettings.defaults(BuildCaps.ALL)
     private val now = 1_792_540_800_000L
+    private fun line(d: DevSettings, phoneAi: Boolean) = CleanupEngines.engineLine(d, CleanupEngines.planned(d, phoneAi))
 
     @Test fun sttAndCleanupAreIndependent() {
         val stt = OpenRouterPage.enableStt(base, now)
@@ -42,15 +43,15 @@ class OpenRouterPageTest {
     @Test fun cleanupOrder() {
         val cl = OpenRouterPage.enableCleanup(base, now)
         val cloudFirst = cl.copy(cleanupOrder = listOf(CleanupRoute.CLOUD, CleanupRoute.LOCAL, CleanupRoute.SERVER))
-        assertEquals("On-device, then OpenRouter (llama-3.3-70b-instruct)", OpenRouterPage.cleanupEngineLine(cl))
-        assertEquals("OpenRouter (llama-3.3-70b-instruct), then on-device", OpenRouterPage.cleanupEngineLine(cloudFirst))
+        assertEquals("This phone, then OpenRouter (llama-3.3-70b-instruct)", line(cl, phoneAi = true))
+        assertEquals("OpenRouter (llama-3.3-70b-instruct), then this phone", line(cloudFirst, phoneAi = true))
         // A configured server is named; a switched-off engine is not.
         val withServer = cl.copy(host = "100.64.0.10")
-        assertEquals("On-device, then your server, then OpenRouter (llama-3.3-70b-instruct)", OpenRouterPage.cleanupEngineLine(withServer))
-        assertEquals("Your server, then OpenRouter (llama-3.3-70b-instruct)", OpenRouterPage.cleanupEngineLine(withServer.withCleanup(CleanupRoute.LOCAL, false)))
+        assertEquals("This phone, then your server, then OpenRouter (llama-3.3-70b-instruct)", line(withServer, phoneAi = true))
+        assertEquals("Your server, then OpenRouter (llama-3.3-70b-instruct)", line(withServer.withCleanup(CleanupRoute.LOCAL, false), phoneAi = true))
         // A chosen order survives off → on.
         assertEquals(cloudFirst.cleanupOrder, OpenRouterPage.enableCleanup(OpenRouterPage.disableCleanup(cloudFirst), now).cleanupOrder)
-        assertNull(OpenRouterPage.cleanupEngineLine(base))
+        assertNull(line(base, phoneAi = false))
     }
 
     @Test fun routerJsonCarriesBothUses() {
@@ -129,7 +130,7 @@ class OpenRouterPageTest {
     @Test fun customSummariesNameTheServerAndNeedNoKey() {
         val s = OpenRouterPage.enableCleanup(base.copy(cloud = base.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = server)), now)
         assertEquals("Speech off · Cleanup on (gpt-4o-mini on 10.0.0.5)", OpenRouterPage.settingsSummary(s, hasKey = false))
-        assertTrue(OpenRouterPage.cleanupEngineLine(s)!!.contains("Custom server (10.0.0.5)"))
+        assertTrue(line(s, phoneAi = false)!!.contains("Custom server (10.0.0.5)"))
         val or = OpenRouterPage.enableCleanup(base, now)
         assertTrue(OpenRouterPage.settingsSummary(or, hasKey = false).endsWith("· no key"))
     }
@@ -139,7 +140,7 @@ class OpenRouterPageTest {
         val broken = OpenRouterPage.withCustom(on) { copy(model = "") }
         assertTrue(broken.cloud.customNotSetUp)
         assertEquals("Speech off · Cleanup off (custom server not set up)", OpenRouterPage.settingsSummary(broken, hasKey = true))
-        assertNull(OpenRouterPage.cleanupEngineLine(broken))
+        assertNull(line(broken, phoneAi = false))
         assertFalse(OpenRouterPage.settingsSummary(broken, hasKey = true).contains("OpenRouter"))
     }
 }
