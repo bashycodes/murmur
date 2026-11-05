@@ -1,9 +1,11 @@
 //! Decode wav files with the online (streaming zipformer) engine.
 //!
 //! cargo run --release -p flow-asr-sherpa --example online_check -- \
-//!   MODEL_DIR [--threads N] [--greedy] [--beam N] [--score F] [--hotwords a,b]
-//!   [--tail S] [--lead S] [--skip S] [--norm] WAV...
-//! Prints `file \t ms \t RTF \t text` per clip; load time on stderr.
+//!   MODEL_DIR [--threads N] [--greedy] [--serial] [--beam N] [--score F]
+//!   [--hotwords a,b] [--tail S] [--lead S] [--skip S] [--norm] WAV...
+//! Prints `file \t ms \t RTF \t text` per clip; load time and its phases
+//! on stderr (`--serial`: create the beam and greedy sessions one after the
+//! other, as before 2026-11-05).
 
 use std::time::Instant;
 
@@ -46,6 +48,7 @@ fn main() {
                 cfg.threads = a[i].parse().unwrap()
             }
             "--greedy" => cfg.hotwords = false,
+            "--serial" => cfg.parallel_sessions = false,
             "--tail" => {
                 i += 1;
                 cfg.tail_padding_s = a[i].parse().unwrap()
@@ -78,6 +81,9 @@ fn main() {
     let t = Instant::now();
     let eng = OnlineEngine::load(&cfg).expect("load");
     eprintln!("load: {} ms", t.elapsed().as_millis());
+    for p in eng.load_phases() {
+        eprintln!("  {}: {} ms", p.name, p.ms);
+    }
     for w in wavs {
         let mut pcm = read_wav(&w);
         if norm {

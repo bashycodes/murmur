@@ -9,8 +9,11 @@
 //! i7-6700 (docs/findings/2026-10-28-hebrew-stt-models.md). Feeding chunks
 //! live while the user speaks is a later, app-wide change.
 //!
-//! sherpa auto-detects the model type (zipformer2) from the ONNX metadata,
-//! so no `model_type` is set.
+//! The model type comes from the encoder's ONNX metadata
+//! ([`crate::onnx_model_type`]) and is passed to sherpa: left empty, sherpa
+//! creates a whole extra encoder session just to read that metadata, which
+//! was half of the zipformer-he load (2026-11-05,
+//! docs/findings/2026-11-05-phone-model-load-time.md).
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -18,14 +21,20 @@ use std::sync::Mutex;
 use sherpa_onnx::{OnlineRecognizer, OnlineRecognizerConfig, OnlineTransducerModelConfig};
 
 use crate::{
-    hotwords_arg, is_silent, vocab_path, ModelFiles, Search, SherpaError, SherpaTranscriber,
-    DEFAULT_BEAM, DEFAULT_HOTWORDS_SCORE, SAMPLE_RATE,
+    create_pair, hotwords_arg, is_silent, onnx_model_type, timed, vocab_path, LoadPhase, Make,
+    ModelFiles, Search, SherpaError, SherpaTranscriber, DEFAULT_BEAM, DEFAULT_HOTWORDS_SCORE,
+    SAMPLE_RATE,
 };
 
 /// Silence appended after the utterance before `input_finished()`. The
 /// model card's sherpa example and the 2026-10-28 probe use 0.8-1.5 s; the
 /// last word is lost without it. 1.5 s costs ≈ 75 ms at RTF 0.05.
 pub const DEFAULT_TAIL_PADDING_S: f32 = 1.5;
+
+/// Online transducer types sherpa-onnx 1.13 takes as `model_type` (the
+/// encoder metadata's own values). Anything else is left to sherpa's
+/// detection, as before.
+const KNOWN_MODEL_TYPES: [&str; 4] = ["conformer", "lstm", "zipformer", "zipformer2"];
 
 #[derive(Debug, Clone)]
 pub struct OnlineConfig {
@@ -46,12 +55,16 @@ pub struct OnlineConfig {
     pub max_active_paths: usize,
     /// With `hotwords`, also load a greedy recognizer for decodes without
     /// hotwords (greedy is faster; the zipformer is 72 MB, so the second
-    /// set of sessions is cheap).
+    /// set of sessions is cheap in RAM, and [`OnlineConfig::parallel_sessions`]
+    /// keeps it off the load time).
     pub greedy_fallback: bool,
     /// Seconds of silence fed after the audio (see [`DEFAULT_TAIL_PADDING_S`]).
     pub tail_padding_s: f32,
     /// Where to write a derived `bpe.vocab` (see `ParakeetConfig`).
     pub scratch_dir: Option<PathBuf>,
+    /// Create the beam and greedy recognizers at once (see
+    /// `ParakeetConfig::parallel_sessions`). Default true.
+    pub parallel_sessions: bool,
 }
 
 impl OnlineConfig {
@@ -66,6 +79,7 @@ impl OnlineConfig {
             greedy_fallback: true,
             tail_padding_s: DEFAULT_TAIL_PADDING_S,
             scratch_dir: None,
+            parallel_sessions: true,
         }
     }
 }
@@ -75,18 +89,23 @@ pub struct OnlineEngine {
     greedy: Option<Mutex<OnlineRecognizer>>,
     language: Option<String>,
     tail: Vec<f32>,
+    phases: Vec<LoadPhase>,
 }
 
 impl OnlineEngine {
     /// Create the onnxruntime sessions (≈ 1-5 s); call once and keep.
     pub fn load(cfg: &OnlineConfig) -> Result<Self, SherpaError> {
-        let files = ModelFiles::find(&cfg.model_dir)?;
+        let mut phases = Vec::new();
+        let files = timed(&mut phases, "files", || ModelFiles::find(&cfg.model_dir))?;
+        let model_type = timed(&mut phases, "model_type", || {
+            onnx_model_type(&files.encoder).filter(|t| KNOWN_MODEL_TYPES.contains(&t.as_str()))
+        });
         let s = |p: &Path| Some(p.to_string_lossy().into_owned());
-        let created = |c: &OnlineRecognizerConfig| {
-            OnlineRecognizer::create(c).map(Mutex::new).ok_or_else(|| {
+        let dir = cfg.model_dir.display().to_string();
+        let created = move |c: OnlineRecognizerConfig| {
+            OnlineRecognizer::create(&c).map(Mutex::new).ok_or_else(|| {
                 SherpaError::Load(format!(
-                    "{}: sherpa-onnx could not create the online recognizer (see stderr)",
-                    cfg.model_dir.display()
+                    "{dir}: sherpa-onnx could not create the online recognizer (see stderr)"
                 ))
             })
         };
@@ -97,14 +116,20 @@ impl OnlineEngine {
             joiner: s(&files.joiner),
         };
         c.model_config.tokens = s(&files.tokens);
+        c.model_config.model_type = model_type;
         c.model_config.num_threads = cfg.threads.max(1) as i32;
         c.model_config.provider = Some("cpu".into());
         // One utterance per stream: no endpointing inside it.
         c.enable_endpoint = false;
         c.decoding_method = Some("greedy_search".into());
 
-        let beam = if cfg.hotwords {
-            match vocab_path(&cfg.model_dir, cfg.scratch_dir.as_deref(), &files.tokens) {
+        let mut temp_vocab = None;
+        let mut beam_cfg = None;
+        if cfg.hotwords {
+            let vocab = timed(&mut phases, "vocab", || {
+                vocab_path(&cfg.model_dir, cfg.scratch_dir.as_deref(), &files.tokens)
+            });
+            match vocab {
                 Ok((path, is_temp)) => {
                     let mut b = c.clone();
                     b.decoding_method = Some("modified_beam_search".into());
@@ -112,32 +137,39 @@ impl OnlineEngine {
                     b.hotwords_score = cfg.hotwords_score;
                     b.model_config.modeling_unit = Some("bpe".into());
                     b.model_config.bpe_vocab = s(&path);
-                    let r = created(&b);
                     if is_temp {
-                        let _ = std::fs::remove_file(&path);
+                        temp_vocab = Some(path);
                     }
-                    Some(r?)
+                    beam_cfg = Some(b);
                 }
-                Err(e) => {
-                    eprintln!("flow-asr-sherpa: online hotwords disabled: {e}");
-                    None
-                }
+                Err(e) => eprintln!("flow-asr-sherpa: online hotwords disabled: {e}"),
             }
-        } else {
-            None
-        };
-        let greedy = if beam.is_none() || cfg.greedy_fallback {
-            Some(created(&c)?)
-        } else {
-            None
-        };
+        }
+        let want_greedy = beam_cfg.is_none() || cfg.greedy_fallback;
+        let created_b = created.clone();
+        let made = create_pair(
+            &mut phases,
+            cfg.parallel_sessions,
+            beam_cfg.map(|b| Box::new(move || created_b(b)) as Make<'_, _>),
+            want_greedy.then(|| Box::new(move || created(c)) as Make<'_, _>),
+        );
+        if let Some(p) = temp_vocab {
+            let _ = std::fs::remove_file(p);
+        }
+        let (beam, greedy) = made?;
         let tail_len = (cfg.tail_padding_s.max(0.0) * SAMPLE_RATE as f32) as usize;
         Ok(Self {
             beam,
             greedy,
             language: cfg.language.clone(),
             tail: vec![0.0; tail_len],
+            phases,
         })
+    }
+
+    /// How long each step of [`OnlineEngine::load`] took.
+    pub fn load_phases(&self) -> &[LoadPhase] {
+        &self.phases
     }
 
     pub fn supports_hotwords(&self) -> bool {
