@@ -20,7 +20,6 @@ import dev.flowclone.R
 import dev.flowclone.core.NativeFlowCore
 import dev.flowclone.data.AppVersion
 import dev.flowclone.data.DevSummary
-import dev.flowclone.data.OpenRouterPage
 import dev.flowclone.data.SetupChecklist
 import dev.flowclone.data.ShellPages
 import dev.flowclone.data.ShellPages.Extra
@@ -199,7 +198,7 @@ class MainActivity : Activity() {
             }
             enginesCard(
                 ShellPages.speechLine(DevSummary.routing(dev, app.caps)),
-                ShellPages.cleanupLine(OpenRouterPage.cleanupEngineLine(dev.effective(app.caps)), settings.llmEnabled, app.caps.local, settings.spokenCleanup),
+                ShellPages.cleanupLine(dev.effective(app.caps), settings.llmEnabled, app.caps.local, settings.spokenCleanup),
             )
             card {
                 navRow(R.drawable.ic_lw_settings, "Settings", chevron = false) { go { startActivity(SettingsActivity.intent(this@MainActivity)) } }
