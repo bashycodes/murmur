@@ -26,15 +26,17 @@ side (also typed `LCtrl`, `RAlt`, `right-alt`; `AltGr` = `Right Alt`).
 Settings shows them as `Right Alt` etc. A key can't be named with and
 without its side in one shortcut (`Alt+Right Alt`).
 
-Push-to-talk is **Right Alt alone** by default (D56; Wispr's Ctrl+Win
-until 1.1.1: an install that still had Ctrl+Win moves to Right Alt once at
+Push-to-talk is **Right Alt alone** by default (D57; Wispr's Ctrl+Win
+through 1.1.2: an install that still had Ctrl+Win moves to Right Alt once at
 the first start, a shortcut you picked stays). Left Alt and Alt+Tab don't
 start dictation. A push-to-talk that is one modifier on its own waits
-200 ms before it starts: Right Alt with another key pressed in that time
-(an AltGr letter such as AltGr+E = €, Right Alt+Tab) is just that key
-combination and starts nothing; a key pressed later cancels the dictation
-and still reaches the app. A shorter tap counts as a tap (double tap =
-hands-free). Its release is masked like
+200 ms before it starts (the first 200 ms of a hold is not recorded):
+Right Alt with another key pressed in that time (an AltGr letter such as
+AltGr+E = €, Right Alt+Tab) is just that key combination, starts nothing,
+and its release reaches the app untouched; a key pressed later cancels the
+dictation and still reaches the app. A shorter tap counts as a tap (double
+tap = hands-free; the tap windows are measured from key-down). When it
+dictated or was tapped, its release is masked like
 Win's (`[LCtrl↓, RAlt↑, LCtrl↑]`), so the menu bar doesn't take focus. On
 keyboard layouts with AltGr, Windows sends a fake Left Ctrl (scan code
 0x21D) with every Right Alt press: the hook ignores it for shortcuts and
