@@ -194,7 +194,7 @@ object SettingsSummary {
 
     /** D54 "Keep both languages loaded": what it does, or why it does nothing with one language model. */
     fun keepBothLanguages(hebrewInstalled: Boolean, defaultInstalled: Boolean): String =
-        if (hebrewInstalled && defaultInstalled) "Switching keyboard language never waits for a model to load. Uses more memory (both: about 1.1 GB)"
+        if (hebrewInstalled && defaultInstalled) "Switching keyboard language never waits for a model to load. Uses more memory (up to about 1.1 GB, depending on the models)"
         else "No effect with only one speech model installed: needs the Hebrew model and a default one"
 
     /** [whisper] / [parakeet]: imported file / folder names (null = none). */
