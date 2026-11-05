@@ -13,7 +13,7 @@ The language-model step that turns a transcript into finished text: punctuation,
 _Avoid_: post-processing, formatting rules, LLM cleanup, spoken commands (as a separate stage)
 
 **Keyboard language**:
-The language setting (Android default, Windows "Keyboard language" on) that makes a dictation use the language of the active keyboard. The keyboard is read once, when the dictation starts (D37); switching keyboards mid-recording is accepted as is and not "fixed" (D58).
+The language setting (Android default, Windows "Keyboard language" on) that makes a dictation use the language of the active keyboard. The dictation's language is read when it starts (D37); on Android a recording that waits for a model load gets the model of the keyboard active when the load ends, so a keyboard switched mid-recording can change the result's language. That is accepted, not a bug (D58).
 _Avoid_: input language, IME language
 
 **Custom cleanup server**:

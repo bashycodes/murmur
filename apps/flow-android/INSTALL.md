@@ -632,9 +632,10 @@ Every screen uses the app design (top bar, cards, light and dark):
       dictation accuracy and latency; hotwords work (`TMPDIR` = cache dir); low-RAM phone falls back to whisper.
 - [ ] core-p1: "comma"/"period" spoken → punctuation (*Settings → Language → Auto-format* on), off → literal
       words; "um uh" only → "Only filler words heard"; "… press enter" sends Enter once in a chat.
-- [ ] Keyboard language (D37): an English keyboard → English, a Hebrew one → Hebrew; the keyboard is
-      read when the dictation starts. Switching keyboards mid-recording and getting the other
-      language is accepted, not a bug (D58); note the debug line's `language` / `language_source`.
+- [ ] Keyboard language (D37): an English keyboard → English, a Hebrew one → Hebrew. Switching
+      keyboards mid-recording while the bubble says the model is loading gives the new keyboard's
+      model, so the other language: accepted, not a bug (D58). Note the debug line's `language`,
+      `language_source`, `load_wait_ms` and `model`.
 
 None of this can be checked on the build machine. Record the results in
 `PROJECT_CONTEXT.md`.

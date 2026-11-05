@@ -308,6 +308,30 @@ class EngineHolderTest {
         assertEquals(cores["default"], engine.core)
     }
 
+    /**
+     * D58: a dictation started on the English keyboard while the default model loads (D55), with
+     * the keyboard switched to Hebrew before the load ends, is handed the Hebrew model: the load
+     * re-reads the keyboard when it ends. Nothing but the keyboard changes (no tap, no ensureLanguage).
+     */
+    @Test fun keyboardSwitchedWhileARecordingWaitsGetsTheNewLanguagesModel() {
+        assumeTrue(app.caps.local)
+        want = LoadSet.Default
+        gates["default"] = CountDownLatch(1)
+        gates["he"] = CountDownLatch(1)
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("default build") { "default" in built }
+        val got = startWaiting(h.loadWait()!!)
+        want = LoadSet.Language("he") // the keyboard switched mid-recording
+        gates["default"]!!.countDown()
+        waitFor("hebrew build") { "he" in built }
+        Thread.sleep(50)
+        assertTrue("never the dropped default engine", got.isActive)
+        gates["he"]!!.countDown()
+        val engine = runBlocking { got.await() }
+        assertEquals(cores["he"], engine.core)
+    }
+
     @Test fun aFailedLoadFailsTheWait() {
         assumeTrue(app.caps.local)
         gates["he"] = CountDownLatch(1)
