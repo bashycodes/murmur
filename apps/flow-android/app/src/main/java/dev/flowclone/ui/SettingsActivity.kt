@@ -322,7 +322,10 @@ class SettingsActivity : Activity() {
                 apps.setSubtitle(SettingsSummary.apps(s))
                 timing.setSubtitle(SettingsSummary.timing(s))
                 speechRow.setSubtitle(SettingsSummary.speech(d, caps))
-                cleanup?.setSubtitle(SettingsSummary.cleanupRow(s, d.effective(caps), caps))
+                cleanup?.setSubtitle(SettingsSummary.cleanupRow(
+                    s, d.effective(caps), caps,
+                    serverLlm = if (d.serverConfigured) app.engine.router()?.cleanupStatus()?.serverLlm else null,
+                ))
                 server?.setSubtitle(SettingsSummary.server(d, caps, health, checking))
                 openRouter?.setSubtitle(
                     SettingsSummary.openRouter(app.cloudKeys.has(OpenRouter.ID), CloudUsage.decode(app.engine.router()?.cloudUsageJson() ?: app.dev.cloudUsageJson)),

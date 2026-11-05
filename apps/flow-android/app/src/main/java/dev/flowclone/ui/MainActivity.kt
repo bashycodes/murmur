@@ -198,7 +198,10 @@ class MainActivity : Activity() {
             }
             enginesCard(
                 ShellPages.speechLine(DevSummary.routing(dev, app.caps)),
-                ShellPages.cleanupLine(dev.effective(app.caps), settings.llmEnabled, app.caps.local, settings.spokenCleanup),
+                ShellPages.cleanupLine(
+                    settings, dev.effective(app.caps), phoneAi = settings.llmEnabled && app.caps.local,
+                    serverLlm = if (dev.serverConfigured) app.engine.router()?.cleanupStatus()?.serverLlm else null,
+                ),
             )
             card {
                 navRow(R.drawable.ic_lw_settings, "Settings", chevron = false) { go { startActivity(SettingsActivity.intent(this@MainActivity)) } }
