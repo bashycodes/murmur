@@ -5,21 +5,21 @@
 //! the O(1) matcher step and an `mpsc::send`, staying far below
 //! `LowLevelHooksTimeout`. A 1 s `WM_TIMER` probes held keys with
 //! `GetAsyncKeyState` to recover from missed key-ups (lock screen, UAC
-//! desktop switch, hook timeouts). The same timer runs the liveness
+//! desktop switch, hook timeouts). A key the hook swallowed (Right Alt
+//! push-to-talk, D57) never reaches the async key state, so it is judged
+//! by its own events instead: a held key auto-repeats, so a swallowed key
+//! with no event for [`SWALLOWED_STALE_MS`] is released. The same timer runs the liveness
 //! [`watchdog`](super::watchdog): Windows silently removes a hook that
 //! overran `LowLevelHooksTimeout`, so we probe it and re-install when dead.
 //! While Settings records a new shortcut ([`HookHandle::start_capture`]),
 //! key events go to a [`ChordRecorder`] instead of the matcher: no hotkey
 //! fires, and the recorded keys reach no app.
-//! A lone-key push-to-talk (Right Alt, D57) arms a one-shot
-//! [`LONE_KEY_ARM_MS`] thread timer from the callback; when it ends, the
-//! loop asks the matcher whether the key is still held alone.
 
 use super::capture::{ChordRecorder, RecordStep};
 use super::watchdog::{self, Watchdog};
-use super::{Bindings, ChordMatcher, HotkeyAction, Key, LONE_KEY_ARM_MS};
+use super::{Bindings, ChordMatcher, HotkeyAction, Key};
 use crate::input;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -42,12 +42,13 @@ const PROBE_TAG: usize = input::EXTRA_INFO_TAG ^ 0x5052_4F42; // "PROB"
 /// VK 0xFF: no key is mapped to it.
 const PROBE_VK: u16 = 0xFF;
 
+/// A swallowed key with no hook event (auto-repeat) for this long is
+/// treated as released. Windows repeats a held key every ~33 ms after a
+/// delay of at most 1 s, so 2 s never cuts a real hold short.
+const SWALLOWED_STALE_MS: u128 = 2000;
+
 /// Every hook callback bumps this (watchdog liveness signal).
 static HOOK_EVENTS: AtomicU64 = AtomicU64::new(0);
-
-/// Id of the running push-to-talk arm timer (0 = none). Set and read on
-/// the hook thread only (the callback runs there too).
-static ARM_TIMER: AtomicUsize = AtomicUsize::new(0);
 
 struct HookState {
     matcher: ChordMatcher,
@@ -55,6 +56,8 @@ struct HookState {
     dictating: Arc<AtomicBool>,
     /// Recording a shortcut: the recorder and where its result goes.
     capture: Option<(ChordRecorder, Sender<RecordStep>)>,
+    /// When each key last produced a hook event (for swallowed keys).
+    last_event: std::collections::HashMap<Key, std::time::Instant>,
 }
 
 static STATE: Mutex<Option<HookState>> = Mutex::new(None);
@@ -138,6 +141,7 @@ pub fn install(
         tx,
         dictating,
         capture: None,
+        last_event: std::collections::HashMap::new(),
     });
     let (ready_tx, ready_rx) = mpsc::channel::<Result<u32, String>>();
     let join = std::thread::Builder::new()
@@ -168,14 +172,6 @@ unsafe fn hook_thread(ready: Sender<Result<u32, String>>) {
     let mut dog = Watchdog::new(watchdog::Config::default());
     let mut msg = MSG::default();
     while GetMessageW(&mut msg, None, 0, 0).as_bool() {
-        if msg.message == WM_TIMER
-            && msg.wParam.0 != 0
-            && msg.wParam.0 == ARM_TIMER.load(Ordering::Relaxed)
-        {
-            stop_arm_timer();
-            arm_elapsed();
-            continue;
-        }
         if msg.message == WM_TIMER {
             check_stale_keys();
             let now = start.elapsed().as_millis() as u64;
@@ -198,36 +194,7 @@ unsafe fn hook_thread(ready: Sender<Result<u32, String>>) {
         DispatchMessageW(&msg);
     }
     let _ = KillTimer(None, timer);
-    stop_arm_timer();
     let _ = UnhookWindowsHookEx(hook);
-}
-
-/// (Re)start the one-shot arm timer; an older one is dropped. Hook
-/// thread only.
-fn start_arm_timer() {
-    stop_arm_timer();
-    let id = unsafe { SetTimer(None, 0, LONE_KEY_ARM_MS, None) };
-    ARM_TIMER.store(id, Ordering::Relaxed);
-}
-
-fn stop_arm_timer() {
-    let id = ARM_TIMER.swap(0, Ordering::Relaxed);
-    if id != 0 {
-        unsafe {
-            let _ = KillTimer(None, id);
-        }
-    }
-}
-
-/// The arm time is over: a push-to-talk key still held alone starts the
-/// dictation. Nothing while a shortcut is being recorded.
-fn arm_elapsed() {
-    let mut guard = state();
-    if let Some(s) = guard.as_mut().filter(|s| s.capture.is_none()) {
-        for a in s.matcher.arm_elapsed() {
-            let _ = s.tx.send(a);
-        }
-    }
 }
 
 /// Our own integrity level (constant for the process).
@@ -292,8 +259,6 @@ unsafe fn reinstall(hook: &mut HHOOK, hmod: HINSTANCE) {
         }
         s.matcher.reset();
     }
-    drop(guard);
-    stop_arm_timer();
 }
 
 fn is_physically_down(key: Key) -> bool {
@@ -310,14 +275,18 @@ fn check_stale_keys() {
     }
     let held: Vec<Key> = s.matcher.pressed().collect();
     for k in held {
-        if !is_physically_down(k) {
+        let up = if s.matcher.is_swallowed(k) {
+            s.last_event
+                .get(&k)
+                .is_none_or(|t| t.elapsed().as_millis() > SWALLOWED_STALE_MS)
+        } else {
+            !is_physically_down(k)
+        };
+        if up {
             for a in s.matcher.force_release(k) {
                 let _ = s.tx.send(a);
             }
         }
-    }
-    if !s.matcher.is_armed() {
-        stop_arm_timer();
     }
 }
 
@@ -352,6 +321,8 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                         None
                     }
                     Some(s) => {
+                        s.last_event
+                            .insert(Key::from_vk(vk), std::time::Instant::now());
                         // AltGr's fake Left Ctrl (scan 0x21D) is filtered here.
                         let d = s.matcher.handle_raw(
                             vk,
@@ -374,9 +345,6 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                 }
             };
             if let Some((d, lctrl_held)) = decision {
-                if d.arm {
-                    start_arm_timer();
-                }
                 let mut suppress = d.suppress;
                 if d.mask_release {
                     // C11: swallow the physical Win/Alt key-up only if our
