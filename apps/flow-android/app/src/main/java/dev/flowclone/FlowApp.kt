@@ -19,6 +19,7 @@ import dev.flowclone.data.OpenRouter
 import dev.flowclone.data.CustomServer
 import dev.flowclone.data.CustomModelsKey
 import dev.flowclone.data.RouterOpener
+import dev.flowclone.data.LoadSet
 import dev.flowclone.data.ParakeetFiles
 import dev.flowclone.data.EngineRoute
 import dev.flowclone.data.DevSettings
@@ -318,10 +319,10 @@ class EngineHolder(
     private val app: FlowApp,
     private val loader: FlowCoreLoader = NativeFlowCore,
     private val opener: RouterOpener = NativeFlowCore.routerOpener,
-    /** Test seam: the route the next dictation needs (null = [wantedRoute] from the settings). */
-    private val routeProbe: (() -> String?)? = null,
-    /** Test seam: builds the engine for a route instead of the native load (null = the real load). */
-    private val builder: ((String?) -> State)? = null,
+    /** Test seam: the load set the next dictation needs (null = [wantedSet] from the settings). */
+    private val setProbe: (() -> LoadSet)? = null,
+    /** Test seam: builds the engine for a load set instead of the native load (null = the real load). */
+    private val builder: ((LoadSet) -> State)? = null,
 ) {
     companion object {
         /** Longest a reload waits for the previous engine's running commit (20 s UI timeout + slack). */
@@ -365,22 +366,19 @@ class EngineHolder(
         return HebrewModels.installed(File(path))?.let { path to it }
     }
 
-    /**
-     * The language whose own model the phone loads for the next dictation (`he`), null = the
-     * default engine, or (D54) [HebrewModels.BOTH] = both together ([HebrewModels.loadSet]).
-     */
-    private fun wantedRoute(s: Settings = app.settings.load()): String? =
-        if (routeProbe != null) routeProbe.invoke()
-        else if (!app.caps.local || s.mockEngine) null
-        else HebrewModels.loadSet(app.effectiveLanguage(s), hebrewModel() != null, s.keepBothLanguages && defaultModelInstalled(s), s.keepBothLanguages)
+    /** The models the phone loads for the next dictation ([LoadSet.of]). */
+    private fun wantedSet(s: Settings = app.settings.load()): LoadSet =
+        if (setProbe != null) setProbe.invoke()
+        else if (!app.caps.local || s.mockEngine) LoadSet.Default
+        else LoadSet.of(app.effectiveLanguage(s), hebrewModel() != null, s.keepBothLanguages) { defaultModelInstalled(s) }
 
     /** D54: a default (whisper / Parakeet) model is installed, so "Keep both languages loaded" has two models to keep. */
     fun defaultModelInstalled(s: Settings = app.settings.load()): Boolean = EnginePlan.defaultInstalled(
         s, app.settings.modelPath, { File(it).isFile }, app.settings.parakeetPath, { ParakeetFiles.isModelDir(File(it)) },
     )
 
-    /** The route the current (or loading) engine was planned with. */
-    @Volatile private var loadedRoute: String? = null
+    /** The load set the current (or loading) engine was planned with. */
+    @Volatile private var loadedSet: LoadSet = LoadSet.Default
 
     /** "Loading the Hebrew model…" while a load for a language model runs (bubble / main screen). */
     @Volatile var loadingLabel: String? = null; private set
@@ -390,7 +388,7 @@ class EngineHolder(
      * dictation needs a different model (Hebrew ↔ default). No-op otherwise. D37: also at every
      * dictation start, since the keyboard language can change at any time; the label is set
      * before the reload so a dictation started right now says why it has to wait. D54: with
-     * both models loaded the wanted set stays [HebrewModels.BOTH] across a switch, so nothing
+     * both models loaded the wanted set stays [LoadSet.Both] across a switch, so nothing
      * reloads; toggling the setting changes it, so the next dictation reloads once.
      */
     @Synchronized
@@ -401,25 +399,24 @@ class EngineHolder(
                 // A native load can't be interrupted: a load for a model no longer needed is
                 // dropped when it ends and the needed one loads next ([ensureLoaded]). Meanwhile
                 // a dictation says which model it is waiting for.
-                val want = wantedRoute()
-                loadingLabel = labelFor(want, switching = loadingLabel != null || want != loadedRoute)
+                val want = wantedSet()
+                loadingLabel = labelFor(want, switching = loadingLabel != null || want != loadedSet)
                 return
             }
             else -> Unit
         }
-        val want = wantedRoute()
-        if (want != loadedRoute) {
+        val want = wantedSet()
+        if (want != loadedSet) {
             loadingLabel = labelFor(want, switching = true)
             reload()
         }
     }
 
-    /** What a dictation started while the model for [route] loads says; [switching] = after a language change. */
-    private fun labelFor(route: String?, switching: Boolean): String? = when {
-        route == HebrewModels.BOTH -> BOTH_LOADING
-        route != null -> HEBREW_LOADING
-        switching -> DEFAULT_LOADING
-        else -> null
+    /** What a dictation started while [set] loads says; [switching] = after a language change. */
+    private fun labelFor(set: LoadSet, switching: Boolean): String? = when (set) {
+        LoadSet.Both -> BOTH_LOADING
+        is LoadSet.Language -> HEBREW_LOADING
+        LoadSet.Default -> DEFAULT_LOADING.takeIf { switching }
     }
 
     /** Native library status, for the UI. */
@@ -439,13 +436,13 @@ class EngineHolder(
             // (one model in RAM: [load] waits for the free). Stays Loading throughout.
             while (true) {
                 val stale = synchronized(this@EngineHolder) {
-                    if (wantedRoute() == loadedRoute) {
+                    if (wantedSet() == loadedSet) {
                         _state.value = next
                         loadingLabel = null
                         null
                     } else next
                 } ?: break
-                Log.i("FlowEngine", "language changed during the load: dropping the ${loadedRoute ?: "default"} model")
+                Log.i("FlowEngine", "language changed during the load: dropping the $loadedSet model")
                 drop(stale)
                 next = load()
             }
@@ -565,10 +562,10 @@ class EngineHolder(
         // D28: the catalogue cache (no network here; the router's STT / cleanup resolve models from it).
         if (app.caps.cloud) runCatching { NativeFlowCore.setCloudCacheDir(app.cacheDir.path) }
         app.migrateCloud()
-        val route = wantedRoute(s)
-        loadingLabel = labelFor(route, switching = loadingLabel != null || route != loadedRoute)
-        loadedRoute = route
-        builder?.let { return it(route) }
+        val set = wantedSet(s)
+        loadingLabel = labelFor(set, switching = loadingLabel != null || set != loadedSet)
+        loadedSet = set
+        builder?.let { return it(set) }
         val hebrew = hebrewModel()?.let { (path, m) -> HebrewModels.languageModel(path, m, app.dev.parakeetDecoding) }
         val local = if (!app.caps.local && !s.mockEngine) EnginePlan.Plan.Missing("This build has no on-device engine.")
         else EnginePlan.plan(

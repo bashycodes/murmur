@@ -128,18 +128,32 @@ object HebrewModels {
      */
     fun route(effectiveLanguage: String?, installed: Boolean): String? =
         LANGUAGE.takeIf { installed && isHebrew(effectiveLanguage) }
+}
 
-    /** [loadSet]: the default model and the Hebrew model are both resident (D54). */
-    const val BOTH = "both"
+/**
+ * The speech models the phone keeps resident for the next dictation. The engine holder reloads
+ * only when this changes: with [Both] a keyboard switch never reloads, and toggling "Keep both
+ * languages loaded" reloads once.
+ */
+sealed interface LoadSet {
+    /** The default engine alone (whisper / Parakeet). */
+    data object Default : LoadSet
+    /** One language's own model alone (`load_language`, D33 decision 4: one model in RAM). */
+    data class Language(val code: String) : LoadSet
+    /** D54: the default model and the Hebrew model together. */
+    data object Both : LoadSet
 
-    /**
-     * What the phone loads for the next dictation: [BOTH] when "Keep both languages loaded"
-     * ([keepBoth]) is on and both a Hebrew model and a default model are installed, else
-     * [route] (one model in RAM, D33 decision 4). The holder reloads only when this changes, so
-     * with [BOTH] a keyboard switch never reloads, and toggling the setting reloads once.
-     */
-    fun loadSet(effectiveLanguage: String?, installed: Boolean, defaultInstalled: Boolean, keepBoth: Boolean): String? =
-        if (keepBoth && installed && defaultInstalled) BOTH else route(effectiveLanguage, installed)
+    companion object {
+        /**
+         * [Both] when [keepBoth] is on and both a Hebrew model ([hebrewInstalled]) and a default
+         * model are installed, else [HebrewModels.route]. [defaultInstalled] is only asked when
+         * [keepBoth] is on (it touches the file system).
+         */
+        fun of(effectiveLanguage: String?, hebrewInstalled: Boolean, keepBoth: Boolean, defaultInstalled: () -> Boolean): LoadSet = when {
+            keepBoth && hebrewInstalled && defaultInstalled() -> Both
+            else -> HebrewModels.route(effectiveLanguage, hebrewInstalled)?.let(::Language) ?: Default
+        }
+    }
 }
 
 /**

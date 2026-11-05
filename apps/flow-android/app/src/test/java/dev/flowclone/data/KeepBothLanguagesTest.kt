@@ -22,24 +22,30 @@ class KeepBothLanguagesTest {
         assertFalse(Settings().keepBothLanguages)
     }
 
+    private fun set(lang: String?, hebrew: Boolean, default: Boolean, keepBoth: Boolean) = LoadSet.of(lang, hebrew, keepBoth) { default }
+
     @Test fun loadSetIsBothOnlyWithTheSettingAndTwoModels() {
         for (lang in listOf("he", "en", "auto", null)) {
-            assertEquals(lang.toString(), HebrewModels.BOTH, HebrewModels.loadSet(lang, installed = true, defaultInstalled = true, keepBoth = true))
+            assertEquals(lang.toString(), LoadSet.Both, set(lang, hebrew = true, default = true, keepBoth = true))
         }
         // Off: the one-model route as before (D33 decision 4).
-        assertEquals("he", HebrewModels.loadSet("he", installed = true, defaultInstalled = true, keepBoth = false))
-        assertNull(HebrewModels.loadSet("en", installed = true, defaultInstalled = true, keepBoth = false))
+        assertEquals(LoadSet.Language("he"), set("he", hebrew = true, default = true, keepBoth = false))
+        assertEquals(LoadSet.Default, set("en", hebrew = true, default = true, keepBoth = false))
         // Only one language model installed: no effect.
-        assertEquals("he", HebrewModels.loadSet("he", installed = true, defaultInstalled = false, keepBoth = true))
-        assertNull(HebrewModels.loadSet("he", installed = false, defaultInstalled = true, keepBoth = true))
+        assertEquals(LoadSet.Language("he"), set("he", hebrew = true, default = false, keepBoth = true))
+        assertEquals(LoadSet.Default, set("he", hebrew = false, default = true, keepBoth = true))
+    }
+
+    @Test fun theDefaultModelCheckRunsOnlyWithTheSettingOn() {
+        LoadSet.of("he", hebrewInstalled = true, keepBoth = false) { throw AssertionError("file system touched while off") }
     }
 
     @Test fun aKeyboardSwitchKeepsTheSameLoadSetSoNothingReloads() {
-        val before = HebrewModels.loadSet("en", installed = true, defaultInstalled = true, keepBoth = true)
-        val after = HebrewModels.loadSet("he", installed = true, defaultInstalled = true, keepBoth = true)
+        val before = set("en", hebrew = true, default = true, keepBoth = true)
+        val after = set("he", hebrew = true, default = true, keepBoth = true)
         assertEquals(before, after)
         // Toggling the setting changes it: the next dictation reloads once.
-        assertTrue(after != HebrewModels.loadSet("he", installed = true, defaultInstalled = true, keepBoth = false))
+        assertTrue(after != set("he", hebrew = true, default = true, keepBoth = false))
     }
 
     @Test fun onLoadsWhisperAndHebrewTogetherWithWhisperAloneAsFallback() {
@@ -73,6 +79,9 @@ class KeepBothLanguagesTest {
         val r = EnginePlan.load(p) { cfg -> if (cfg.languages.isNotEmpty()) throw CoreException("model load failed: oom") else FakeFlowCore("x") }
         assertEquals(LoadedAsr(AsrEngine.WHISPER, "base.bin"), r.asr)
         assertTrue(r.description, r.description.contains("(Both languages failed: model load failed: oom)"))
+        // EngineMismatch reads the same label back.
+        val m = EngineMismatch.message(AsrEngine.PARAKEET, p, r.asr, r.description)
+        assertEquals("selected parakeet, loaded whisper base.bin: model load failed: oom", m)
     }
 
     @Test fun offOrOneModelLeavesThePlanUnchanged() {
