@@ -70,6 +70,16 @@ impl FlowHandle {
                 .map_err(|e| (e.kind(), e.to_string())),
         }
     }
+    /// Load 2: `start_session` on the on-device engine only
+    /// (`Router::start_session_local`); a core handle is on-device already.
+    fn start_session_local(&self, cfg: SessionConfig) -> Result<StartInfo, (&'static str, String)> {
+        match self {
+            FlowHandle::Core(_) => self.start_session(cfg),
+            FlowHandle::Router(r) => r
+                .start_session_local(cfg)
+                .map_err(|e| (e.kind(), e.to_string())),
+        }
+    }
     /// `Router::poll`; a core handle gives `FlowCore::poll` with no route.
     fn poll(&self) -> RouterPoll {
         match self {
@@ -274,6 +284,18 @@ pub mod json_api {
         let cfg: SessionConfig = serde_json::from_str(cfg_json)
             .map_err(|e| ("bad_config", format!("bad session config: {e}")))?;
         let info = h.start_session(cfg)?;
+        Ok(serde_json::to_string(&info).unwrap_or_else(|_| "{\"queued\":false}".into()))
+    }
+
+    /// Load 2: [`start_session_info`] on the on-device engine only: the
+    /// router never routes this session to the server or the cloud.
+    pub fn start_session_local_info(
+        h: &FlowHandle,
+        cfg_json: &str,
+    ) -> Result<String, (&'static str, String)> {
+        let cfg: SessionConfig = serde_json::from_str(cfg_json)
+            .map_err(|e| ("bad_config", format!("bad session config: {e}")))?;
+        let info = h.start_session_local(cfg)?;
         Ok(serde_json::to_string(&info).unwrap_or_else(|_| "{\"queued\":false}".into()))
     }
 
