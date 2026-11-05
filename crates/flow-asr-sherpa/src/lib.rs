@@ -20,6 +20,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Instant;
 
 mod online;
 pub use online::{OnlineConfig, OnlineEngine, DEFAULT_TAIL_PADDING_S};
@@ -78,6 +79,14 @@ pub struct ParakeetConfig {
     /// none. `None` = `std::env::temp_dir()`. The file is deleted once the
     /// recognizer has read it. Android: pass the app's cache dir.
     pub scratch_dir: Option<PathBuf>,
+    /// Create the beam and greedy recognizers on two threads at once
+    /// (onnxruntime session setup is mostly one core per session), so a
+    /// load takes about as long as the slower one instead of both in turn.
+    /// Default false: two Parakeet encoder sessions (hundreds of MB each)
+    /// initialising at once raise the load's peak RAM, unmeasured on the
+    /// phone (the zipformer, ~70 MB, does it by default:
+    /// [`OnlineConfig::parallel_sessions`]).
+    pub parallel_sessions: bool,
 }
 
 impl ParakeetConfig {
@@ -90,8 +99,80 @@ impl ParakeetConfig {
             max_active_paths: DEFAULT_BEAM,
             greedy_fallback: true,
             scratch_dir: None,
+            parallel_sessions: false,
         }
     }
+}
+
+/// One timed step of a model load (milliseconds), for the shells' load log
+/// (`docs/findings/2026-11-05-phone-model-load-time.md`). Names: `files`
+/// (find the model files), `vocab` (derive `bpe.vocab` for hotwords),
+/// `beam_sessions` / `greedy_sessions` (one recognizer's onnxruntime
+/// sessions, timed on its own thread), `sessions` (wall time of all
+/// recognizers).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LoadPhase {
+    pub name: &'static str,
+    pub ms: u64,
+}
+
+fn ms_since(t: Instant) -> u64 {
+    t.elapsed().as_millis() as u64
+}
+
+/// Run `f`, recording how long it took as phase `name`.
+fn timed<T>(phases: &mut Vec<LoadPhase>, name: &'static str, f: impl FnOnce() -> T) -> T {
+    let t = Instant::now();
+    let r = f();
+    phases.push(LoadPhase {
+        name,
+        ms: ms_since(t),
+    });
+    r
+}
+
+/// A deferred recognizer creation for [`create_pair`].
+type MakeRecognizer<'a, R> = Box<dyn FnOnce() -> Result<R, SherpaError> + Send + 'a>;
+
+/// Create an optional beam and an optional greedy recognizer, on two threads
+/// when `parallel` and both are wanted. Records `beam_sessions`,
+/// `greedy_sessions` (each one's own time) and `sessions` (wall time).
+/// An error from either is returned after both have finished.
+fn create_pair<R: Send>(
+    phases: &mut Vec<LoadPhase>,
+    parallel: bool,
+    beam: Option<MakeRecognizer<'_, R>>,
+    greedy: Option<MakeRecognizer<'_, R>>,
+) -> Result<(Option<R>, Option<R>), SherpaError> {
+    type TimedRun<R> = Option<(Result<R, SherpaError>, u64)>;
+    fn run<R>(f: Option<MakeRecognizer<'_, R>>) -> TimedRun<R> {
+        f.map(|f| {
+            let t = Instant::now();
+            (f(), ms_since(t))
+        })
+    }
+    let wall = Instant::now();
+    let (b, g): (TimedRun<R>, TimedRun<R>) = match (beam, greedy) {
+        (Some(b), Some(g)) if parallel => std::thread::scope(|s| {
+            let h = s.spawn(move || run(Some(g)));
+            let b = run(Some(b));
+            (b, h.join().expect("recognizer thread panicked"))
+        }),
+        (b, g) => (run(b), run(g)),
+    };
+    for (name, r) in [("beam_sessions", &b), ("greedy_sessions", &g)] {
+        if let Some((_, ms)) = r {
+            phases.push(LoadPhase { name, ms: *ms });
+        }
+    }
+    phases.push(LoadPhase {
+        name: "sessions",
+        ms: ms_since(wall),
+    });
+    Ok((
+        b.map(|(r, _)| r).transpose()?,
+        g.map(|(r, _)| r).transpose()?,
+    ))
 }
 
 /// The four files of a sherpa-onnx NeMo transducer directory.
@@ -214,23 +295,27 @@ pub struct ParakeetEngine {
     beam: Option<Mutex<OfflineRecognizer>>,
     /// Greedy search (always when `beam` is `None`).
     greedy: Option<Mutex<OfflineRecognizer>>,
+    phases: Vec<LoadPhase>,
 }
 
 impl ParakeetEngine {
     /// Create the onnxruntime sessions. Expensive (≈ 1-4 s warm, tens of
     /// seconds from a cold HDD); call once and keep the engine.
     pub fn load(cfg: &ParakeetConfig) -> Result<Self, SherpaError> {
-        let files = ModelFiles::find(&cfg.model_dir)?;
+        let mut phases = Vec::new();
+        let files = timed(&mut phases, "files", || ModelFiles::find(&cfg.model_dir))?;
         let s = |p: &Path| Some(p.to_string_lossy().into_owned());
-        let mut c = OfflineRecognizerConfig::default();
-        let created = |c: &OfflineRecognizerConfig| {
-            OfflineRecognizer::create(c).map(Mutex::new).ok_or_else(|| {
-                SherpaError::Load(format!(
-                    "{}: sherpa-onnx could not create the recognizer (see stderr)",
-                    cfg.model_dir.display()
-                ))
-            })
+        let dir = cfg.model_dir.display().to_string();
+        let created = move |c: OfflineRecognizerConfig| {
+            OfflineRecognizer::create(&c)
+                .map(Mutex::new)
+                .ok_or_else(|| {
+                    SherpaError::Load(format!(
+                        "{dir}: sherpa-onnx could not create the recognizer (see stderr)"
+                    ))
+                })
         };
+        let mut c = OfflineRecognizerConfig::default();
         c.model_config.transducer = OfflineTransducerModelConfig {
             encoder: s(&files.encoder),
             decoder: s(&files.decoder),
@@ -240,48 +325,53 @@ impl ParakeetEngine {
         c.model_config.model_type = Some("nemo_transducer".into());
         c.model_config.num_threads = cfg.threads.max(1) as i32;
         c.model_config.provider = Some("cpu".into());
+        c.decoding_method = Some("greedy_search".into());
 
         let mut temp_vocab = None;
-        let mut hotwords = false;
+        let mut beam_cfg = None;
         if cfg.hotwords {
-            match vocab_path(&cfg.model_dir, cfg.scratch_dir.as_deref(), &files.tokens) {
+            let vocab = timed(&mut phases, "vocab", || {
+                vocab_path(&cfg.model_dir, cfg.scratch_dir.as_deref(), &files.tokens)
+            });
+            match vocab {
                 Ok((path, is_temp)) => {
-                    c.decoding_method = Some("modified_beam_search".into());
-                    c.max_active_paths = cfg.max_active_paths.max(1) as i32;
-                    c.hotwords_score = cfg.hotwords_score;
-                    c.model_config.modeling_unit = Some("bpe".into());
-                    c.model_config.bpe_vocab = s(&path);
+                    let mut b = c.clone();
+                    b.decoding_method = Some("modified_beam_search".into());
+                    b.max_active_paths = cfg.max_active_paths.max(1) as i32;
+                    b.hotwords_score = cfg.hotwords_score;
+                    b.model_config.modeling_unit = Some("bpe".into());
+                    b.model_config.bpe_vocab = s(&path);
                     if is_temp {
                         temp_vocab = Some(path);
                     }
-                    hotwords = true;
+                    beam_cfg = Some(b);
                 }
                 // No writable place for the vocab: still transcribe, unbiased.
                 Err(e) => eprintln!("flow-asr-sherpa: hotwords disabled: {e}"),
             }
         }
-        let beam = if hotwords {
-            let r = created(&c);
-            if let Some(p) = temp_vocab {
-                let _ = std::fs::remove_file(p);
-            }
-            Some(r?)
-        } else {
-            None
-        };
-        let greedy = if beam.is_none() || cfg.greedy_fallback {
-            let mut g = c.clone();
-            g.decoding_method = Some("greedy_search".into());
-            let d = OfflineRecognizerConfig::default();
-            g.max_active_paths = d.max_active_paths;
-            g.hotwords_score = d.hotwords_score;
-            g.model_config.modeling_unit = None;
-            g.model_config.bpe_vocab = None;
-            Some(created(&g)?)
-        } else {
-            None
-        };
-        Ok(Self { beam, greedy })
+        let want_greedy = beam_cfg.is_none() || cfg.greedy_fallback;
+        let created_b = created.clone();
+        let made = create_pair(
+            &mut phases,
+            cfg.parallel_sessions,
+            beam_cfg.map(|b| Box::new(move || created_b(b)) as MakeRecognizer<'_, _>),
+            want_greedy.then(|| Box::new(move || created(c)) as MakeRecognizer<'_, _>),
+        );
+        if let Some(p) = temp_vocab {
+            let _ = std::fs::remove_file(p);
+        }
+        let (beam, greedy) = made?;
+        Ok(Self {
+            beam,
+            greedy,
+            phases,
+        })
+    }
+
+    /// How long each step of [`ParakeetEngine::load`] took.
+    pub fn load_phases(&self) -> &[LoadPhase] {
+        &self.phases
     }
 
     /// Whether per-decode hotwords are honoured (beam search + vocab loaded).
@@ -356,6 +446,84 @@ impl ParakeetEngine {
             .get_result()
             .ok_or_else(|| SherpaError::Transcribe("sherpa-onnx returned no result".into()))?;
         Ok(r.text.split_whitespace().collect::<Vec<_>>().join(" "))
+    }
+}
+
+/// The `model_type` metadata of an ONNX file (`zipformer2` for icefall's
+/// streaming zipformer), read from the top level of the `ModelProto`
+/// without parsing the graph (field 7 is skipped by its length, so this
+/// reads a few hundred bytes). `None` when absent or unreadable.
+///
+/// sherpa-onnx's online transducer creates a whole extra encoder session
+/// just to read this when `model_type` is not configured (measured
+/// 2026-11-05: half of the zipformer-he load).
+pub fn onnx_model_type(path: &Path) -> Option<String> {
+    use std::io::{BufReader, Read, Seek, SeekFrom};
+    fn varint(r: &mut impl Read) -> Option<u64> {
+        let mut v = 0u64;
+        for shift in (0..64).step_by(7) {
+            let mut b = [0u8];
+            r.read_exact(&mut b).ok()?;
+            v |= u64::from(b[0] & 0x7f) << shift;
+            if b[0] & 0x80 == 0 {
+                return Some(v);
+            }
+        }
+        None
+    }
+    /// `key`/`value` of a `StringStringEntryProto`.
+    fn entry(b: &[u8]) -> Option<(String, String)> {
+        let mut r = b;
+        let (mut k, mut v) = (String::new(), String::new());
+        while !r.is_empty() {
+            let tag = varint(&mut r)?;
+            if tag & 7 != 2 {
+                return None;
+            }
+            let len = usize::try_from(varint(&mut r)?).ok()?;
+            let (field, rest) = (r.get(..len)?, &r[len..]);
+            let text = String::from_utf8(field.to_vec()).ok()?;
+            match tag >> 3 {
+                1 => k = text,
+                2 => v = text,
+                _ => {}
+            }
+            r = rest;
+        }
+        Some((k, v))
+    }
+    const METADATA_PROPS: u64 = 14;
+    /// Metadata entries are short; anything longer is not one.
+    const MAX_ENTRY: u64 = 1 << 16;
+    let mut r = BufReader::new(std::fs::File::open(path).ok()?);
+    loop {
+        let tag = varint(&mut r)?;
+        match tag & 7 {
+            0 => {
+                varint(&mut r)?;
+            }
+            1 => {
+                r.seek_relative(8).ok()?;
+            }
+            5 => {
+                r.seek_relative(4).ok()?;
+            }
+            2 => {
+                let len = varint(&mut r)?;
+                if tag >> 3 == METADATA_PROPS && len <= MAX_ENTRY {
+                    let mut b = vec![0u8; len as usize];
+                    r.read_exact(&mut b).ok()?;
+                    if let Some((k, v)) = entry(&b) {
+                        if k == "model_type" {
+                            return Some(v);
+                        }
+                    }
+                } else {
+                    r.seek(SeekFrom::Current(i64::try_from(len).ok()?)).ok()?;
+                }
+            }
+            _ => return None,
+        }
     }
 }
 
@@ -468,6 +636,39 @@ mod tests {
         assert_eq!(f.joiner, d.join("joiner.onnx"));
         std::fs::remove_dir_all(&d).unwrap();
         assert!(ModelFiles::find(&d).is_err());
+    }
+
+    /// Protobuf length-delimited field.
+    fn len_field(field: u8, body: &[u8]) -> Vec<u8> {
+        assert!(body.len() < 128);
+        [&[field << 3 | 2, body.len() as u8][..], body].concat()
+    }
+
+    #[test]
+    fn model_type_is_read_from_the_metadata_without_the_graph() {
+        let d = std::env::temp_dir().join(format!("flow-sherpa-meta-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let entry =
+            |k: &[u8], v: &[u8]| len_field(14, &[len_field(1, k), len_field(2, v)].concat());
+        let model = [
+            vec![1 << 3, 8],                          // ir_version: 8
+            len_field(2, b"made-up-exporter"),        // producer_name
+            len_field(7, &[0xff; 100]),               // graph: skipped, not parsed
+            vec![5 << 3 | 1, 0, 0, 0, 0, 0, 0, 0, 0], // a fixed64 field
+            entry(b"version", b"1"),
+            entry(b"model_type", b"zipformer2"),
+        ]
+        .concat();
+        let f = d.join("encoder.onnx");
+        std::fs::write(&f, &model).unwrap();
+        assert_eq!(onnx_model_type(&f).as_deref(), Some("zipformer2"));
+        // No such entry, a truncated file, no file.
+        std::fs::write(&f, &model[..model.len() - 16]).unwrap();
+        assert_eq!(onnx_model_type(&f), None);
+        std::fs::write(&f, [1 << 3, 8]).unwrap();
+        assert_eq!(onnx_model_type(&f), None);
+        std::fs::remove_dir_all(&d).unwrap();
+        assert_eq!(onnx_model_type(&f), None);
     }
 
     #[test]

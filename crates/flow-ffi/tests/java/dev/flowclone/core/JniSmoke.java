@@ -9,6 +9,7 @@ public class JniSmoke {
         System.loadLibrary("flow_ffi");
         System.out.println(NativeFlowCore.nativeVersion());
         check(NativeFlowCore.nativeLastError() == null, "fresh thread has no error");
+        check(NativeFlowCore.nativeLastLoadTimings() == null, "no load yet, no timings");
         long bad = NativeFlowCore.nativeLoadModels("{\"asr_backend\":\"whisper\",\"asr_path\":\"/nonexistent.bin\",\"threads\":1}");
         check(bad == 0, "missing model must fail");
         check(NativeFlowCore.nativeLastError() != null, "load failure sets last error");
@@ -17,6 +18,12 @@ public class JniSmoke {
             "{\"asr_backend\":{\"mock\":{\"text\":\"hello btw\"}},\"asr_path\":\"\",\"llm_path\":null,\"threads\":2}");
         check(h != 0, "load failed: " + NativeFlowCore.nativeLastError());
         check(NativeFlowCore.nativeLastError() == null, "a successful load clears the previous load's error");
+        String timings = NativeFlowCore.nativeLastLoadTimings();
+        check(timings != null && timings.contains("\"kind\":\"asr\"") && timings.contains("\"backend\":\"mock\""),
+            "load timings: " + timings);
+        check(!NativeFlowCore.nativeKeepLlm(h), "no LLM loaded, nothing to keep");
+        check(!NativeFlowCore.nativeKeepLlm(0), "null handle");
+        NativeFlowCore.nativeReleaseKeptLlm();
         boolean ok = NativeFlowCore.nativeStartSession(h,
             "{\"languages\":[\"en\"],\"dictionary\":[{\"word\":\"btw\",\"replacement\":\"by the way\",\"isSnippet\":false}],"
             + "\"styles\":{\"personal\":\"formal\",\"work\":\"formal\",\"email\":\"formal\",\"other\":\"formal\"},"
@@ -103,6 +110,9 @@ class NativeFlowCore {
     static native String nativeVersion();
     static native String nativeLastError();
     static native long nativeLoadModels(String cfg);
+    static native String nativeLastLoadTimings();
+    static native boolean nativeKeepLlm(long h);
+    static native void nativeReleaseKeptLlm();
     static native void nativeUnload(long h);
     static native boolean nativeStartSession(long h, String cfg);
     static native boolean nativePushAudio(long h, short[] pcm, int len);

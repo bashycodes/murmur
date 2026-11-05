@@ -775,6 +775,12 @@ pub trait Backend: Send + Sync {
     fn llm_cleaner(&self) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
         None
     }
+    /// Load 3: hold this engine's on-device LLM for the next local load
+    /// (`FlowCore::keep_llm`); whether there was one. Default: none.
+    /// Additive.
+    fn keep_llm(&self) -> bool {
+        false
+    }
     /// D36 (remote): the server's `hello_ok` from the current or last
     /// connection, `None` before any. Default: none.
     fn server_hello(&self) -> Option<flow_protocol::HelloOk> {
