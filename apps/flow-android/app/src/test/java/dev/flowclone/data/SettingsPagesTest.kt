@@ -249,6 +249,22 @@ class SettingsPagesTest {
         assertEquals("Light · This phone, then your server, then rules", SettingsSummary.cleanupRow(s.copy(llmEnabled = true), dev, caps))
         assertEquals("Rules only", SettingsSummary.cleanupRow(s, DevSettings.defaults(caps), caps))
         assertEquals("Rules only", SettingsSummary.cleanupRow(s, dev.effective(BuildCaps.LOCAL), BuildCaps.LOCAL))
+        // A server known to have no AI model is skipped by the router, so not named.
+        assertEquals("Rules only", SettingsSummary.cleanupRow(s, dev, caps, serverLlm = false))
+        assertEquals("Light · Your server, then rules", SettingsSummary.cleanupRow(s, dev, caps, serverLlm = true))
+    }
+
+    @Test fun aiCleanupRowNamesACustomServerOnlyWhenUsable() {
+        FakeCustomAddress.install()
+        val noServer = dev.withCleanup(DevSettings.CleanupRoute.SERVER, false)
+        val custom = CustomCleanupSettings(baseUrl = "http://10.0.0.5:4000/v1", model = "gpt-4o-mini")
+        val on = OpenRouterPage.enableCleanup(noServer.copy(cloud = noServer.cloud.copy(cleanupProvider = CleanupProvider.CUSTOM, customCleanup = custom)), 1)
+        assertEquals("Light · Custom server (10.0.0.5), then rules", SettingsSummary.cleanupRow(s, on, BuildCaps.ALL))
+        // D52: not set up (no model) sends nothing: neither named nor counted as an engine off the phone.
+        val broken = OpenRouterPage.withCustom(on) { copy(model = "") }
+        assertTrue(broken.cloud.customNotSetUp)
+        assertEquals("Rules only", SettingsSummary.cleanupRow(s, broken, BuildCaps.ALL))
+        assertFalse(broken.offPhoneCleanup)
     }
 
     @Test fun serverRowFromTheLastHealthProbe() {

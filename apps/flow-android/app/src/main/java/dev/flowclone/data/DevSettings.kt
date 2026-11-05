@@ -61,13 +61,12 @@ data class DevSettings(
         else copy(cleanupOff = if (on) cleanupOff - r else cleanupOff + r)
 
     /**
-     * D36: some engine off the phone may clean this dictation (cloud on with consent, or the
-     * server on and set up), so the LLM step runs even with the on-device AI off ([Settings.cleanupFor]).
+     * D36: some engine off the phone may clean this dictation ([CleanupEngines.planned] without the
+     * phone: cloud on, consented and usable, or the server on and set up), so the LLM step runs even with the on-device AI off ([Settings.cleanupFor]).
      * Call on the effective settings.
      */
     val offPhoneCleanup: Boolean
-        get() = (cloudCleanupRouted && cloud.cleanupConsentOk) ||
-            (CleanupRoute.SERVER in cleanupOrder && cleanupOn(CleanupRoute.SERVER) && serverConfigured)
+        get() = CleanupEngines.planned(this, phoneAi = false).isNotEmpty()
 
     enum class Prefer(val wire: String) { SERVER("server"), CLIENT("client") }
 

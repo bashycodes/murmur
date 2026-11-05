@@ -1,5 +1,6 @@
 package dev.flowclone.data
 
+import dev.flowclone.core.CleanupLevel
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -89,14 +90,20 @@ object ShellPages {
     )
 
     /**
-     * [cloud] = [OpenRouterPage.cleanupEngineLine] (null when cloud cleanup is off); otherwise the
-     * on-device LLM when it is on in a build that has it, then the formatting rules.
+     * The engines AI cleanup will use ([CleanupEngines.planned]; [d] = the effective settings,
+     * [phoneAi] = the on-device AI is on in a build that has it, [serverLlm] from `cleanup_status`),
+     * "Off" when the dictation's LLM step does not run; then the formatting rules or off.
      */
-    fun cleanupLine(cloud: String?, llmEnabled: Boolean, local: Boolean, formatting: Boolean) = when {
-        cloud != null -> EngineLine("AI cleanup", cloud, Dot.CLOUD)
-        llmEnabled && local -> EngineLine("AI cleanup", "On-device AI", Dot.OK)
-        formatting -> EngineLine("AI cleanup", "Off · formatting rules only", Dot.OFF)
-        else -> EngineLine("AI cleanup", "Off", Dot.OFF)
+    fun cleanupLine(s: Settings, d: DevSettings, phoneAi: Boolean, serverLlm: Boolean? = null): EngineLine {
+        val plan = CleanupEngines.planned(d, phoneAi, serverLlm)
+        val runs = s.cleanupFor(d.offPhoneCleanup) != CleanupLevel.NONE
+        val engines = if (runs) CleanupEngines.engineLine(d, plan) else null
+        val cloudFirst = plan.firstOrNull() == DevSettings.CleanupRoute.CLOUD
+        return when {
+            engines != null -> EngineLine("AI cleanup", engines, if (cloudFirst) Dot.CLOUD else Dot.OK)
+            s.spokenCleanup -> EngineLine("AI cleanup", "Off · formatting rules only", Dot.OFF)
+            else -> EngineLine("AI cleanup", "Off", Dot.OFF)
+        }
     }
 
     /**

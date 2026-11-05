@@ -2,6 +2,7 @@
 // which cleans it up right now, and the fallback. Built only from what the
 // backend already reports (dev_get, dev_or_get, get_model_status and their
 // events); a click opens Settings → Speech to text.
+import { cleanupTarget } from "./features/openrouter.js";
 import { $ } from "./lib/dom.js";
 import { invoke, onEvent } from "./lib/ipc.js";
 import { prefsStore } from "./lib/prefs-store.js";
@@ -51,6 +52,18 @@ const FALLBACK = {
     client: "Falls back to this PC",
     cloud: "Falls back to OpenRouter",
 };
+/**
+ * The cloud cleanup engine's label when the router can use it: consent
+ * given (`consent` is the backend's `consent_ok()`, bound to the custom
+ * server's current host); D52: a custom server with a model, named by its
+ * host, never "OpenRouter".
+ */
+function cloudCleanup(or) {
+    const c = or.cleanup;
+    if (c.provider === "custom")
+        return c.custom.consent && c.custom.model ? `Custom server · ${cleanupTarget(or)}` : null;
+    return c.consent ? `OpenRouter · ${shortModel(c.model)}` : null;
+}
 function cleanupLabel() {
     const p = prefsStore.get();
     if (!p)
@@ -66,9 +79,10 @@ function cleanupLabel() {
         { route: "server", enabled: true },
     ];
     for (const e of engines) {
-        if (e.route === "cloud" && or?.supported && or.cleanup.allow)
-            return [`OpenRouter · ${shortModel(or.cleanup.model)}`, "var(--glow-300)"];
-        if (e.route === "local" && p.llm_enabled && dv?.caps.local)
+        const cloud = e.route === "cloud" && or?.supported && or.cleanup.allow ? cloudCleanup(or) : null;
+        if (cloud)
+            return [cloud, "var(--glow-300)"];
+        if (e.route === "local" && e.enabled && p.llm_enabled && dv?.caps.local)
             return [`This PC · ${fileStem(llm.path) || "local model"}`, DOT[llm.state] ?? DOT.off];
         if (e.route === "server" && e.enabled && dv?.caps.remote && dv.form.host && or?.cleanup.status.server_llm !== false) {
             const h = dv.route?.health;

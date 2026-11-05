@@ -22,6 +22,36 @@ object CleanupEngines {
         CleanupRoute.CLOUD -> d.cloudCleanupRouted
     }
 
+    /**
+     * The engines a dictation's AI cleanup will try, in order, as the router plans it ([d] = the
+     * effective settings; [phoneAi] = the on-device AI is on in a build that has it): switched on,
+     * the server set up and not known to lack an AI model ([serverLlm] = `cleanup_status.server_llm`,
+     * null = not known yet), the cloud consented and usable. Empty = no AI cleanup.
+     */
+    fun planned(d: DevSettings, phoneAi: Boolean, serverLlm: Boolean? = null): List<CleanupRoute> = d.cleanupOrder.filter {
+        d.cleanupOn(it) && when (it) {
+            CleanupRoute.LOCAL -> phoneAi
+            CleanupRoute.SERVER -> d.serverConfigured && serverLlm != false
+            CleanupRoute.CLOUD -> d.cloudCleanupRouted && d.cloud.cleanupConsentOk && !d.cloud.customNotSetUp
+        }
+    }
+
+    /** A [planned] engine in a summary line: "this phone" / "your server" / its provider ("OpenRouter", "Custom server (10.0.0.5)"). */
+    fun planName(r: CleanupRoute, d: DevSettings): String = when (r) {
+        CleanupRoute.LOCAL -> "this phone"
+        CleanupRoute.SERVER -> "your server"
+        CleanupRoute.CLOUD -> d.cloud.cleanupProviderName
+    }
+
+    /**
+     * The drawer's AI cleanup line: the [planned] engines, OpenRouter with its model ("This phone,
+     * then your server, then OpenRouter (llama-3.3-70b-instruct)"); null when there are none.
+     */
+    fun engineLine(d: DevSettings, plan: List<CleanupRoute>): String? = plan.takeIf { it.isNotEmpty() }?.joinToString(", then ") {
+        if (it == CleanupRoute.CLOUD && !d.cloud.customProvider) "${OpenRouter.NAME} (${d.cloud.cleanup.model.substringAfter('/')})"
+        else planName(it, d)
+    }?.replaceFirstChar { it.uppercase() }
+
     /** "Change order": [r] swapped with its listed neighbour; engines this build lacks keep their place. */
     fun reorder(d: DevSettings, caps: BuildCaps, r: CleanupRoute, dir: Int): List<CleanupRoute> {
         val order = DevSettings.fullCleanupOrder(d.cleanupOrder)
