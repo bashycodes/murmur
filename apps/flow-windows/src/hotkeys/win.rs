@@ -5,7 +5,12 @@
 //! the O(1) matcher step and an `mpsc::send`, staying far below
 //! `LowLevelHooksTimeout`. A 1 s `WM_TIMER` probes held keys with
 //! `GetAsyncKeyState` to recover from missed key-ups (lock screen, UAC
-//! desktop switch, hook timeouts). The same timer runs the liveness
+//! desktop switch, hook timeouts). A key the hook swallowed (Right Alt
+//! push-to-talk, D57) never reaches the async key state and is skipped
+//! there ([`ChordMatcher::stale_keys`]): it ends on its own key-up, a hook
+//! re-install, or the dictation's time limit. If its key-up is missed (a
+//! secure desktop took it), the next press only delivers that key-up, and
+//! the press after it works again. The same timer runs the liveness
 //! [`watchdog`](super::watchdog): Windows silently removes a hook that
 //! overran `LowLevelHooksTimeout`, so we probe it and re-install when dead.
 //! While Settings records a new shortcut ([`HookHandle::start_capture`]),
@@ -68,7 +73,9 @@ pub struct HookHandle {
 impl HookHandle {
     pub fn set_bindings(&self, b: Bindings) {
         if let Some(s) = state().as_mut() {
-            s.matcher.set_bindings(b);
+            for a in s.matcher.set_bindings(b) {
+                let _ = s.tx.send(a);
+            }
         }
     }
 
@@ -246,7 +253,7 @@ unsafe fn reinstall(hook: &mut HHOOK, hmod: HINSTANCE) {
                 let _ = s.tx.send(a);
             }
         }
-        s.matcher.reset();
+        s.matcher.forget();
     }
 }
 
@@ -262,12 +269,9 @@ fn check_stale_keys() {
     if s.matcher.altgr_ctrl_down() && !is_physically_down(Key::LCtrl) {
         s.matcher.forget_altgr_ctrl();
     }
-    let held: Vec<Key> = s.matcher.pressed().collect();
-    for k in held {
-        if !is_physically_down(k) {
-            for a in s.matcher.force_release(k) {
-                let _ = s.tx.send(a);
-            }
+    for k in s.matcher.stale_keys(is_physically_down) {
+        for a in s.matcher.force_release(k) {
+            let _ = s.tx.send(a);
         }
     }
 }
@@ -286,12 +290,17 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
             let msg = wparam.0 as u32;
             let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
             let vk = kb.vkCode as u16;
+            // The OS's state *before* this event: the hook runs before the
+            // async key state is updated. Down already = auto-repeat of a
+            // key the OS has (see ChordMatcher::handle_hook).
+            let os_down = (GetAsyncKeyState(i32::from(vk)) as u16) & 0x8000 != 0;
             let decision = {
                 let mut guard = state();
                 match guard.as_mut() {
                     Some(s) if s.capture.is_some() => {
                         if let Some((rec, out)) = s.capture.as_mut() {
-                            let r = rec.handle_raw(vk, kb.scanCode, down);
+                            let r = rec.handle_hook(vk, kb.scanCode, down, os_down);
+                            s.matcher.note_recorded(vk, kb.scanCode, down, r.suppress);
                             if r.step != RecordStep::Pending {
                                 let _ = out.send(r.step);
                                 s.capture = None;
@@ -304,11 +313,12 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                     }
                     Some(s) => {
                         // AltGr's fake Left Ctrl (scan 0x21D) is filtered here.
-                        let d = s.matcher.handle_raw(
+                        let d = s.matcher.handle_hook(
                             vk,
                             kb.scanCode,
                             down,
                             s.dictating.load(Ordering::Relaxed),
+                            os_down,
                         );
                         for a in &d.actions {
                             let _ = s.tx.send(*a);
