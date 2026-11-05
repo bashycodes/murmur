@@ -240,6 +240,32 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeStartSession
     }
 }
 
+/// Load 2: `nativeStartSessionInfo` on the on-device engine only (a router
+/// handle never uses the server or the cloud for this session; a core handle
+/// is on-device already). Same result and errors (additive, 2026-11-05).
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeStartSessionLocal(
+    mut env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    cfg: JString,
+) -> jstring {
+    let r = guard(None, || {
+        let Some(h) = handle(h) else {
+            set_error("null handle");
+            return None;
+        };
+        let j = jstr(&mut env, &cfg, "bad session config")?;
+        json_api::start_session_local_info(h, &j)
+            .map_err(|(kind, e)| set_error_kind(kind, e))
+            .ok()
+    });
+    match r {
+        Some(s) => guard(std::ptr::null_mut(), || out(&mut env, &s)),
+        None => std::ptr::null_mut(),
+    }
+}
+
 /// Non-blocking `RouterPoll` JSON (partial + endpoint + live route). Never
 /// null: a `0` handle gives the idle poll (2026-10-22, additive).
 #[no_mangle]

@@ -86,6 +86,14 @@ public class JniSmoke {
         System.out.println(NativeFlowCore.nativeCommit(r));
         System.out.println(NativeFlowCore.nativeRouteStatus(r));
         System.out.println(NativeFlowCore.nativeLearnEdit(r, "ask whisper now", "ask Wispr now"));
+        // Load 2: a local start stays on the phone, even with the server first and up.
+        check(NativeFlowCore.nativeStartSessionLocal(r, rsess + "}") != null, "local start: " + NativeFlowCore.nativeLastError());
+        for (int c = 0; c < 25; c++) {
+            for (int i = 0; i < buf.length; i++) buf[i] = (short) (Math.sin((c * 640 + i) * 0.05) * 8000);
+            NativeFlowCore.nativePushAudio(r, buf, buf.length);
+        }
+        System.out.println(NativeFlowCore.nativeCommit(r));
+        System.out.println("LOCAL0 " + NativeFlowCore.nativeStartSessionLocal(0, rsess + "}"));
         check(NativeFlowCore.nativeUpdateRouter(r, cfg.replace("\"prefer\":\"server\"", "\"prefer\":\"client\"")), "update: " + NativeFlowCore.nativeLastError());
         check(!NativeFlowCore.nativeUpdateRouter(r, "{\"server\":{\"port\":0}}"), "port 0 must be bad_config");
         System.out.println("KIND " + NativeFlowCore.nativeLastErrorKind());
@@ -130,6 +138,7 @@ class NativeFlowCore {
     static native String nativeRouteStatus(long h);
     static native void nativeResetCircuit(long h);
     static native String nativeStartSessionInfo(long h, String cfg);
+    static native String nativeStartSessionLocal(long h, String cfg);
     static native String nativePoll(long h);
     static native String nativeCommand(long h, String instruction, String selected);
 }
