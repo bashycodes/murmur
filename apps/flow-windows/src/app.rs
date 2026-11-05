@@ -2848,7 +2848,10 @@ fn dev_cloud_clear_custom_key(state: tauri::State<'_, AppState>) -> Result<KeySt
 
 /// D52 "Load models" / "Test connection": `GET {base_url}/models` with the
 /// typed key, else the saved one only when `base_url`'s host is the
-/// consented one ([`credentials::custom_key_for`]), else none.
+/// consented one ([`credentials::custom_key_for`]), else none. A saved key
+/// held back for want of consent is `{error: "consent_needed"}`, not a
+/// keyless call; `consent: true` (the page's dialog was accepted) records
+/// consent for the host first ([`crate::openrouter::apply_custom_key_consent`]).
 /// `flow_cloud::custom::models_json`: `{models}` or `{error, message}` (a
 /// code and a line that never holds the URL or the key).
 #[tauri::command]
@@ -2856,8 +2859,16 @@ async fn dev_or_custom_models(
     app: AppHandle,
     base_url: String,
     key: Option<String>,
+    consent: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     let state = app.state::<AppState>();
+    let typed = key.as_deref().is_some_and(|k| !k.trim().is_empty());
+    // The page asked the consent dialog for this host (saved key, no consent).
+    if consent == Some(true) && !typed {
+        edit_cloud(&app, &state, |d| {
+            crate::openrouter::apply_custom_key_consent(d, &base_url, now_unix_ms())
+        })?;
+    }
     let cc = state
         .prefs
         .read()
@@ -2866,6 +2877,14 @@ async fn dev_or_custom_models(
         .cloud
         .custom_cleanup
         .clone();
+    let has_saved = credentials::key_state(&*state.creds, credentials::CUSTOM).set;
+    if credentials::saved_custom_key_withheld(key.as_deref(), has_saved, &cc, &base_url) {
+        // Calling without the key would only get a 401 that hides why.
+        return Ok(serde_json::json!({
+            "error": "consent_needed",
+            "message": "your saved key only goes to a server you agreed to send text to",
+        }));
+    }
     let key = credentials::custom_key_for(
         key.as_deref(),
         || credentials::custom_key(&*state.creds),

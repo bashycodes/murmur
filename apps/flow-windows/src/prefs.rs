@@ -656,6 +656,26 @@ mod tests {
     }
 
     #[test]
+    fn custom_cleanup_server_survives_save_and_load() {
+        // D52: provider, address, model and consent host must round-trip
+        // through prefs.json (the owner's file had no custom_cleanup).
+        let d = tmpdir("custom-cleanup");
+        let path = d.join(FILE_NAME);
+        let mut p = Prefs::default();
+        let c = &mut p.developer.cloud;
+        c.cleanup_provider = flow_router::CleanupProvider::Custom;
+        c.custom_cleanup.base_url = "http://100.64.0.7:4100/v1".into();
+        c.custom_cleanup.model = "made-up-model".into();
+        c.custom_cleanup.consent_host = "100.64.0.7".into();
+        c.custom_cleanup.consent_at_ms = 1_700_000_000_000;
+        p.save(&path).unwrap();
+        let (q, o) = Prefs::load(&path);
+        assert_eq!(o, LoadOutcome::Loaded);
+        assert_eq!(q.developer.cloud, p.developer.cloud);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn partial_file_fills_defaults() {
         let d = tmpdir("partial");
         std::fs::create_dir_all(&d).unwrap();
