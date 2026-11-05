@@ -6,7 +6,7 @@
 import { $ } from "./lib/dom.js";
 import { invoke, onEvent } from "./lib/ipc.js";
 import { prefsStore } from "./lib/prefs-store.js";
-import type { CleanupEngine, Route } from "./lib/types.js";
+import type { CleanupEngine, OrView, Route } from "./lib/types.js";
 import { views } from "./lib/views.js";
 
 type Load = { state: string; path?: string };
@@ -65,6 +65,17 @@ const FALLBACK: Record<Route, string> = {
   cloud: "Falls back to OpenRouter",
 };
 
+/**
+ * The cloud cleanup engine's label when the router can use it (consent
+ * given; D52: a custom server set up, named by its host, never "OpenRouter").
+ */
+function cloudCleanup(or: OrView): string | null {
+  const c = or.cleanup;
+  if (c.provider === "custom")
+    return c.custom.consent && c.custom.host && c.custom.model ? `Custom server · ${c.custom.host}` : null;
+  return c.consent ? `OpenRouter · ${shortModel(c.model)}` : null;
+}
+
 function cleanupLabel(): [string, string] {
   const p = prefsStore.get();
   if (!p) return ["", DOT.off];
@@ -78,9 +89,9 @@ function cleanupLabel(): [string, string] {
     { route: "server", enabled: true },
   ];
   for (const e of engines) {
-    if (e.route === "cloud" && or?.supported && or.cleanup.allow)
-      return [`OpenRouter · ${shortModel(or.cleanup.model)}`, "var(--glow-300)"];
-    if (e.route === "local" && p.llm_enabled && dv?.caps.local)
+    const cloud = e.route === "cloud" && or?.supported && or.cleanup.allow ? cloudCleanup(or) : null;
+    if (cloud) return [cloud, "var(--glow-300)"];
+    if (e.route === "local" && e.enabled && p.llm_enabled && dv?.caps.local)
       return [`This PC · ${fileStem(llm.path) || "local model"}`, DOT[llm.state] ?? DOT.off];
     if (e.route === "server" && e.enabled && dv?.caps.remote && dv.form.host && or?.cleanup.status.server_llm !== false) {
       const h = dv.route?.health;
