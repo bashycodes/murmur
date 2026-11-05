@@ -454,3 +454,60 @@ fn bench_cases_through_the_engine() {
         sum_raw / n
     );
 }
+
+/// Load 3: a language switch on the phone frees the engine and loads the
+/// other speech model; the LLM kept from the old engine is reused instead
+/// of loaded again (~38 s for the 1.5B on the phone), once.
+#[test]
+fn a_language_switch_reuses_the_kept_llm() {
+    let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(model) = model_path() else {
+        eprintln!("SKIP: LLM model missing");
+        return;
+    };
+    if !plugin_present() && std::env::var_os("FLOW_LLM_LIB").is_none() {
+        eprintln!("SKIP: libflow_llm plugin not built");
+        return;
+    }
+    let cfg = ModelConfig {
+        asr_backend: AsrBackend::Mock {
+            text: "english words".into(),
+        },
+        languages: std::collections::BTreeMap::from([(
+            "he".to_string(),
+            flow_core::config::LanguageModel {
+                asr_backend: AsrBackend::Mock {
+                    text: "מילים בעברית".into(),
+                },
+                ..Default::default()
+            },
+        )]),
+        llm_path: Some(model.to_string_lossy().into_owned()),
+        ..Default::default()
+    };
+    let en = FlowCore::load_models_for(&cfg, Some("en")).expect("load en");
+    let first = en.load_timings().llm().expect("llm timing").clone();
+    assert!(!first.reused && first.ms > 0, "{first:?}");
+    let before = Arc::as_ptr(&en.cleaner().unwrap()) as *const () as usize;
+    assert!(flow_core::llm_keep::keep());
+    drop(en);
+
+    let t = Instant::now();
+    let he = FlowCore::load_models_for(&cfg, Some("he")).expect("load he");
+    let llm = he.load_timings().llm().unwrap();
+    assert!(llm.reused && llm.ms == 0, "{llm:?}");
+    assert_eq!(
+        Arc::as_ptr(&he.cleaner().unwrap()) as *const () as usize,
+        before,
+        "the same LLM instance"
+    );
+    eprintln!(
+        "switch: {} ms (LLM load was {} ms)",
+        t.elapsed().as_millis(),
+        first.ms
+    );
+    // Kept for one load only: without a new keep() the next load loads it.
+    drop(he);
+    let en = FlowCore::load_models_for(&cfg, Some("en")).expect("reload en");
+    assert!(!en.load_timings().llm().unwrap().reused);
+}

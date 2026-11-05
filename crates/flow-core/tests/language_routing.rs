@@ -198,6 +198,26 @@ fn load_models_routes_by_the_config_map() {
 }
 
 #[test]
+fn loads_report_each_model_they_loaded() {
+    let cfg = mock_config();
+    let he = FlowCore::load_models_for(&cfg, Some("he")).unwrap();
+    let t = he.load_timings();
+    assert_eq!(t.models.len(), 1, "{t:?}");
+    assert_eq!((t.models[0].kind, t.models[0].backend), ("asr", "mock"));
+    assert_eq!(t.models[0].language.as_deref(), Some("he"));
+    assert!(t.llm().is_none());
+    let all = FlowCore::load_models(&cfg).unwrap();
+    let langs: Vec<_> = all
+        .load_timings()
+        .models
+        .iter()
+        .map(|m| m.language.as_deref())
+        .collect();
+    assert_eq!(langs, [Some("he"), None]);
+    assert!(all.load_timings().to_json().starts_with("{\"total_ms\":"));
+}
+
+#[test]
 fn load_models_for_keeps_one_model() {
     let cfg = mock_config();
     // Hebrew only: every session decodes on it until the shell reloads.
