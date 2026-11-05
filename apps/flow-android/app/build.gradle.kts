@@ -123,6 +123,21 @@ android {
         }
     }
 
+    // D56: CI signs debug builds with the owner's fixed debug key, decoded from a repo secret to a
+    // file named by flow.debug.storeFile / FLOW_DEBUG_STORE_FILE (standard AGP debug keystore:
+    // password "android", alias "androiddebugkey"). Unset or missing file: AGP's default
+    // ~/.android/debug.keystore, as before (local builds).
+    val debugStore = (providers.gradleProperty("flow.debug.storeFile").orNull ?: System.getenv("FLOW_DEBUG_STORE_FILE"))
+        ?.let { file(it) }?.takeIf { it.isFile }
+    if (debugStore != null) {
+        signingConfigs.getByName("debug") {
+            storeFile = debugStore
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
