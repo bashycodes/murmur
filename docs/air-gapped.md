@@ -129,9 +129,9 @@ Not on the list, and not needed:
 * **Android APK:** `flow-clone-android-hybrid-<version>-debug.apk` (uses
   the server, falls back to the phone's own model). The `local` APK only
   for a phone that must never open a connection (§7). The release APKs are
-  signed with a different key than one built on your own machine:
-  switching between the two means uninstalling first, which wipes the
-  app's settings and models.
+  signed with the project's fixed debug key, not with your machine's own
+  debug key: switching between a release APK and one you built yourself
+  means uninstalling first, which wipes the app's settings and models.
 * **Server:** the Docker image file or the host build (§1), plus the repo
   (a `git clone` or the release's source zip) for the docs, the installer
   script and the config files.
