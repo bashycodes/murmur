@@ -42,6 +42,11 @@ impl SherpaOnlineAsr {
         self.language.as_deref()
     }
 
+    /// How long each step of the load took (sherpa sessions etc.).
+    pub fn load_phases(&self) -> &[flow_asr_sherpa::LoadPhase] {
+        self.engine.load_phases()
+    }
+
     pub fn greedy_retries(&self) -> u64 {
         self.greedy_retries.load(Ordering::Relaxed)
     }
