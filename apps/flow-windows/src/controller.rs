@@ -389,6 +389,11 @@ impl Controller {
             }
             input = Input::Hotkey(HotkeyAction::HandsFreeToggle);
         }
+        if matches!(input, Input::Hotkey(_)) {
+            // The shortcut may have changed in Settings since the start.
+            let arm_ms = self.prefs.read().unwrap().ptt_arm_ms();
+            self.machine.set_arm_ms(arm_ms);
+        }
         let now = (self.clock)();
         match &input {
             Input::Hotkey(HotkeyAction::PasteLast) => {

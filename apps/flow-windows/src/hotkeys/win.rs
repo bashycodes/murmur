@@ -11,7 +11,7 @@
 //! While Settings records a new shortcut ([`HookHandle::start_capture`]),
 //! key events go to a [`ChordRecorder`] instead of the matcher: no hotkey
 //! fires, and the recorded keys reach no app.
-//! A lone-key push-to-talk (Right Alt, D56) arms a one-shot
+//! A lone-key push-to-talk (Right Alt, D57) arms a one-shot
 //! [`LONE_KEY_ARM_MS`] thread timer from the callback; when it ends, the
 //! loop asks the matcher whether the key is still held alone.
 
@@ -292,6 +292,8 @@ unsafe fn reinstall(hook: &mut HHOOK, hmod: HINSTANCE) {
         }
         s.matcher.reset();
     }
+    drop(guard);
+    stop_arm_timer();
 }
 
 fn is_physically_down(key: Key) -> bool {
@@ -313,6 +315,9 @@ fn check_stale_keys() {
                 let _ = s.tx.send(a);
             }
         }
+    }
+    if !s.matcher.is_armed() {
+        stop_arm_timer();
     }
 }
 

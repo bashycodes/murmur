@@ -23,7 +23,7 @@ pub const FILE_NAME: &str = "prefs.json";
 /// * 4 (D37): the language follows the keyboard layout by default:
 ///   `keyboard_language` turns on for "Detect automatically" (empty
 ///   `languages`); a language the user chose stays.
-/// * 5 (D56): push to talk defaults to Right Alt instead of Ctrl+Win: a
+/// * 5 (D57): push to talk defaults to Right Alt instead of Ctrl+Win: a
 ///   saved Ctrl+Win (the untouched old default) moves to Right Alt unless
 ///   another shortcut already uses it; any other shortcut stays.
 pub const PREFS_REV: u32 = 5;
@@ -376,7 +376,7 @@ impl Prefs {
             self.keyboard_language = self.languages.is_empty();
         }
         if self.prefs_rev < 5 && self.shortcuts.ptt == Chord::new([Key::Ctrl, Key::Win]) {
-            // D56: every field is saved, so a pre-D56 Ctrl+Win is the old
+            // D57: every field is saved, so a pre-D57 Ctrl+Win is the old
             // default as often as a choice; it moves once. A Right Alt the
             // owner gave another shortcut keeps Ctrl+Win.
             let old = std::mem::replace(&mut self.shortcuts.ptt, Bindings::default().ptt);
@@ -514,8 +514,24 @@ impl Prefs {
         Policy {
             max_ms: minutes * 60_000,
             warn_ms: minutes.saturating_sub(1) * 60_000,
+            arm_ms: self.ptt_arm_ms(),
             ..Policy::default()
         }
+    }
+
+    /// How long after its key-down push-to-talk may start (D57): the arm
+    /// time of a one-modifier shortcut, else 0.
+    pub fn ptt_arm_ms(&self) -> u64 {
+        if self.shortcuts.ptt.is_lone_modifier() {
+            u64::from(crate::hotkeys::LONE_KEY_ARM_MS)
+        } else {
+            0
+        }
+    }
+
+    /// The tray tooltip: names the push-to-talk shortcut in use.
+    pub fn tray_tip(&self) -> String {
+        format!("Murmur — hold {} to dictate", self.shortcuts.ptt)
     }
 
     pub fn session_config(&self) -> SessionConfig {
@@ -731,6 +747,16 @@ mod tests {
     }
 
     #[test]
+    fn arm_time_and_tray_tip_follow_the_push_to_talk_shortcut() {
+        let mut p = Prefs::default();
+        assert_eq!(p.policy().arm_ms, 200, "Right Alt is armed");
+        assert_eq!(p.tray_tip(), "Murmur — hold Right Alt to dictate");
+        p.shortcuts.ptt = "Ctrl+Win".parse().unwrap();
+        assert_eq!(p.policy().arm_ms, 0, "fires at key-down");
+        assert_eq!(p.tray_tip(), "Murmur — hold Ctrl+Win to dictate");
+    }
+
+    #[test]
     fn policy_respects_max_minutes() {
         let mut p = Prefs::default();
         assert_eq!(p.policy().max_ms, 20 * 60_000);
@@ -854,10 +880,7 @@ mod tests {
 
     #[test]
     fn d37_detect_automatically_moves_to_keyboard_language_once() {
-        assert!(
-            Prefs::default().keyboard_language,
-            "new installs follow the keyboard"
-        );
+        assert!(Prefs::default().keyboard_language, "new installs follow the keyboard");
         let (p, _) = load_str("kbl-auto", r#"{"prefs_rev":3,"languages":[]}"#);
         assert!(p.keyboard_language);
         assert_eq!(p.prefs_rev, PREFS_REV);
@@ -866,29 +889,20 @@ mod tests {
         let (p, _) = load_str("kbl-en", r#"{"prefs_rev":3,"languages":["en"]}"#);
         assert!(!p.keyboard_language, "an explicit language stays");
         assert_eq!(p.languages, ["en"]);
-        let (p, _) = load_str(
-            "kbl-he",
-            r#"{"prefs_rev":3,"languages":["he"],"keyboard_language":true}"#,
-        );
+        let (p, _) = load_str("kbl-he", r#"{"prefs_rev":3,"languages":["he"],"keyboard_language":true}"#);
         assert!(!p.keyboard_language);
         // After the migration both are the user's choice.
         let (p, _) = load_str(
             "kbl-off",
             &format!(r#"{{"prefs_rev":{PREFS_REV},"languages":[],"keyboard_language":false}}"#),
         );
-        assert!(
-            !p.keyboard_language,
-            "Detect automatically picked after D37"
-        );
-        let (p, _) = load_str(
-            "kbl-on",
-            &format!(r#"{{"prefs_rev":{PREFS_REV},"keyboard_language":true}}"#),
-        );
+        assert!(!p.keyboard_language, "Detect automatically picked after D37");
+        let (p, _) = load_str("kbl-on", &format!(r#"{{"prefs_rev":{PREFS_REV},"keyboard_language":true}}"#));
         assert!(p.keyboard_language);
     }
 
     #[test]
-    fn d56_untouched_ctrl_win_moves_to_right_alt_once() {
+    fn d57_untouched_ctrl_win_moves_to_right_alt_once() {
         assert_eq!(
             Prefs::default().shortcuts.ptt.to_string(),
             "Right Alt",
@@ -933,10 +947,10 @@ mod tests {
         let p = old("ptt-clash", r#""ptt":"Ctrl+Win","scratchpad":"Right Alt""#);
         assert_eq!(p.shortcuts.ptt.to_string(), "Ctrl+Win");
         assert_eq!(p.validate(), Ok(()));
-        // A pre-D56 file from before shortcuts were saved: the new default.
+        // A pre-D57 file from before shortcuts were saved: the new default.
         let (p, _) = load_str("ptt-none", r#"{"prefs_rev":4}"#);
         assert_eq!(p.shortcuts.ptt.to_string(), "Right Alt");
-        // Ctrl+Win picked after D56 is a choice: kept, also after a save.
+        // Ctrl+Win picked after D57 is a choice: kept, also after a save.
         let (p, _) = load_str(
             "ptt-new",
             &format!(r#"{{"prefs_rev":{PREFS_REV},"shortcuts":{{"ptt":"Ctrl+Win"}}}}"#),
