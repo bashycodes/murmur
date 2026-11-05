@@ -344,7 +344,7 @@ fn show_suggestion_count(app: &AppHandle, pending: usize) {
 
 // ---------------------------------------------------------------- model notice
 
-const TRAY_TIP: &str = "Murmur — hold Ctrl+Win to dictate";
+const TRAY_TIP: &str = "Murmur — hold your push-to-talk key (default Right Alt) to dictate";
 
 /// Tray notice for the model state: menu line + tooltip; Settings opens on
 /// a missing/broken model so the user sees why dictation can't start.

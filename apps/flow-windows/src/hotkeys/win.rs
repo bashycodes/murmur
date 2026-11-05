@@ -11,12 +11,15 @@
 //! While Settings records a new shortcut ([`HookHandle::start_capture`]),
 //! key events go to a [`ChordRecorder`] instead of the matcher: no hotkey
 //! fires, and the recorded keys reach no app.
+//! A lone-key push-to-talk (Right Alt, D56) arms a one-shot
+//! [`LONE_KEY_ARM_MS`] thread timer from the callback; when it ends, the
+//! loop asks the matcher whether the key is still held alone.
 
 use super::capture::{ChordRecorder, RecordStep};
 use super::watchdog::{self, Watchdog};
-use super::{Bindings, ChordMatcher, HotkeyAction, Key};
+use super::{Bindings, ChordMatcher, HotkeyAction, Key, LONE_KEY_ARM_MS};
 use crate::input;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -41,6 +44,10 @@ const PROBE_VK: u16 = 0xFF;
 
 /// Every hook callback bumps this (watchdog liveness signal).
 static HOOK_EVENTS: AtomicU64 = AtomicU64::new(0);
+
+/// Id of the running push-to-talk arm timer (0 = none). Set and read on
+/// the hook thread only (the callback runs there too).
+static ARM_TIMER: AtomicUsize = AtomicUsize::new(0);
 
 struct HookState {
     matcher: ChordMatcher,
@@ -161,6 +168,14 @@ unsafe fn hook_thread(ready: Sender<Result<u32, String>>) {
     let mut dog = Watchdog::new(watchdog::Config::default());
     let mut msg = MSG::default();
     while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+        if msg.message == WM_TIMER
+            && msg.wParam.0 != 0
+            && msg.wParam.0 == ARM_TIMER.load(Ordering::Relaxed)
+        {
+            stop_arm_timer();
+            arm_elapsed();
+            continue;
+        }
         if msg.message == WM_TIMER {
             check_stale_keys();
             let now = start.elapsed().as_millis() as u64;
@@ -183,7 +198,36 @@ unsafe fn hook_thread(ready: Sender<Result<u32, String>>) {
         DispatchMessageW(&msg);
     }
     let _ = KillTimer(None, timer);
+    stop_arm_timer();
     let _ = UnhookWindowsHookEx(hook);
+}
+
+/// (Re)start the one-shot arm timer; an older one is dropped. Hook
+/// thread only.
+fn start_arm_timer() {
+    stop_arm_timer();
+    let id = unsafe { SetTimer(None, 0, LONE_KEY_ARM_MS, None) };
+    ARM_TIMER.store(id, Ordering::Relaxed);
+}
+
+fn stop_arm_timer() {
+    let id = ARM_TIMER.swap(0, Ordering::Relaxed);
+    if id != 0 {
+        unsafe {
+            let _ = KillTimer(None, id);
+        }
+    }
+}
+
+/// The arm time is over: a push-to-talk key still held alone starts the
+/// dictation. Nothing while a shortcut is being recorded.
+fn arm_elapsed() {
+    let mut guard = state();
+    if let Some(s) = guard.as_mut().filter(|s| s.capture.is_none()) {
+        for a in s.matcher.arm_elapsed() {
+            let _ = s.tx.send(a);
+        }
+    }
 }
 
 /// Our own integrity level (constant for the process).
@@ -325,6 +369,9 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                 }
             };
             if let Some((d, lctrl_held)) = decision {
+                if d.arm {
+                    start_arm_timer();
+                }
                 let mut suppress = d.suppress;
                 if d.mask_release {
                     // C11: swallow the physical Win/Alt key-up only if our
