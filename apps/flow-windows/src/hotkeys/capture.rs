@@ -51,6 +51,23 @@ impl ChordRecorder {
 
     /// Feed one hook event as Windows reports it.
     pub fn handle_raw(&mut self, vk: u16, scan: u32, down: bool) -> RecordDecision {
+        self.handle_hook(vk, scan, down, false)
+    }
+
+    /// [`handle_raw`](Self::handle_raw) plus `os_down`: the OS already had
+    /// this key down before the event (GetAsyncKeyState inside the hook,
+    /// which runs before the async state is updated). A key-down we hold
+    /// nothing for while the OS has the key down is the auto-repeat of a
+    /// key held since before recording began (a modifier held while
+    /// clicking Record): it passes and is not recorded, so its key-up
+    /// passes too and the key can't stick.
+    pub fn handle_hook(
+        &mut self,
+        vk: u16,
+        scan: u32,
+        down: bool,
+        os_down: bool,
+    ) -> RecordDecision {
         // AltGr's fake Left Ctrl is not a key the user pressed; let it
         // through untouched (like the matcher does) so Ctrl never sticks.
         if is_altgr_fake_ctrl(vk, scan) {
@@ -60,6 +77,12 @@ impl ChordRecorder {
             };
         }
         let key = Key::from_vk(vk);
+        if down && os_down && !self.held.contains(&key) {
+            return RecordDecision {
+                step: RecordStep::Pending,
+                suppress: false,
+            };
+        }
         if down {
             if vk == VK_ESCAPE && self.seen.is_empty() {
                 return RecordDecision {
@@ -219,6 +242,28 @@ mod tests {
             r.handle_raw(RALT, 0, true);
         }
         assert_eq!(done(r.handle_raw(RALT, 0, false).step), "Right Alt");
+    }
+
+    #[test]
+    fn a_key_held_before_recording_repeats_and_releases_through() {
+        // Ctrl held while clicking Record: its repeats look like fresh
+        // key-downs, but the OS already has it down.
+        let mut r = ChordRecorder::new();
+        let ctrl = 0xA2;
+        for _ in 0..3 {
+            let d = r.handle_hook(ctrl, 0x1D, true, true);
+            assert_eq!(d.step, RecordStep::Pending);
+            assert!(!d.suppress, "repeat of a key held before recording");
+        }
+        let up = r.handle_hook(ctrl, 0x1D, false, true);
+        assert!(!up.suppress, "its key-up reaches the OS: Ctrl can't stick");
+        assert_eq!(up.step, RecordStep::Pending, "nothing was recorded");
+        // A real press afterwards records normally.
+        assert!(r.handle_hook(0xA5, 0x38, true, false).suppress);
+        assert_eq!(
+            r.handle_hook(0xA5, 0x38, false, true).step,
+            RecordStep::Done("Right Alt".parse().unwrap())
+        );
     }
 
     #[test]
