@@ -35,6 +35,8 @@ import dev.flowclone.core.PasteKey
 import dev.flowclone.core.FakeFlowCore
 import dev.flowclone.core.FlowCore
 import dev.flowclone.core.FlowCoreLoader
+import dev.flowclone.session.LoadWait
+import kotlinx.coroutines.flow.first
 import dev.flowclone.core.NativeFlowCore
 import dev.flowclone.core.CustomModels
 import dev.flowclone.data.DictionaryStore
@@ -324,6 +326,8 @@ class EngineHolder(
     private val setProbe: (() -> LoadSet)? = null,
     /** Test seam: builds the engine for a load set instead of the native load (null = the real load). */
     private val builder: ((LoadSet) -> State)? = null,
+    /** Test seam: whether a load loads the phone's speech model (null = [loadsPhoneModel] from the settings). */
+    private val phoneModelProbe: (() -> Boolean)? = null,
 ) {
     companion object {
         /** Longest a reload waits for the previous engine's running commit (20 s UI timeout + slack). */
@@ -334,6 +338,8 @@ class EngineHolder(
         const val DEFAULT_LOADING = "Loading the default speech model…"
         /** D54: "Keep both languages loaded" loads the default and the Hebrew model together. */
         const val BOTH_LOADING = "Loading the English and Hebrew speech models…"
+        /** Load 2: the bubble while a dictation waits for a load that names no model (cold start). */
+        const val SPEECH_LOADING = "Loading the speech model…"
     }
 
     sealed interface State {
@@ -516,6 +522,40 @@ class EngineHolder(
         State.Loading -> throw CoreException(loadingLabel ?: "Speech model is still loading…", CoreException.KIND_LOADING)
         is State.Failed -> throw CoreException(s.message, s.kind)
         State.NotLoaded -> { ensureLoaded(); throw CoreException("Speech model is loading, try again in a moment.", CoreException.KIND_LOADING) }
+    }
+
+    /**
+     * Load 2 (D55): a dictation started now records at once and is transcribed on the phone once
+     * the load ends. Null = this load has no phone speech model to wait for (remote flavour, a
+     * server-only plan, the D24 on-demand route, mock engine), or nothing is loading: the start
+     * is refused as before ([current]'s "still loading").
+     */
+    fun loadWait(): LoadWait? {
+        if (_state.value != State.Loading) return null
+        if (!(phoneModelProbe?.invoke() ?: loadsPhoneModel())) return null
+        return LoadWait(loadingLabel ?: SPEECH_LOADING, ::awaitPhoneEngine)
+    }
+
+    /** The plan loads an on-device model before the router opens ([EngineRoute.needsLocal]). */
+    private fun loadsPhoneModel(): Boolean {
+        if (!app.caps.local || app.settings.load().mockEngine) return false
+        return EngineRoute.needsLocal(app.dev.load().effective(app.caps), app.caps)
+    }
+
+    /**
+     * Load 2: suspends until the load ends (a language switch meanwhile keeps it loading; an
+     * unload restarts it) and returns the engine. Throws the load's failure, or why the phone
+     * has no speech model when the router opened without one (it would otherwise use the server).
+     */
+    private suspend fun awaitPhoneEngine(): FlowCore {
+        while (true) {
+            val s = state.first { it !is State.Loading }
+            if (s == State.NotLoaded) { ensureLoaded(); continue }
+            if (s is State.Ready && !s.mock && s.asr == null) {
+                throw CoreException("The phone speech model did not load" + (s.clientNote?.let { ": $it" } ?: ""), null)
+            }
+            try { return current() } catch (e: CoreException) { if (e.kind != CoreException.KIND_LOADING) throw e }
+        }
     }
 
     /** D24: why the phone route can't serve a fallback right now, or null. */

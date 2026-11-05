@@ -5,7 +5,17 @@ import dev.flowclone.core.FakeFlowCore
 import dev.flowclone.core.FlowCore
 import dev.flowclone.core.FlowCoreLoader
 import dev.flowclone.core.ModelConfig
+import dev.flowclone.core.AsrEngine
+import dev.flowclone.data.DevSettings
 import dev.flowclone.data.LoadSet
+import dev.flowclone.data.LoadedAsr
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -54,7 +64,10 @@ class EngineHolderTest {
     /** The next build of [k] fails (the speech model did not load). */
     private val failing = ConcurrentHashMap.newKeySet<String>()
 
-    private fun holder() = EngineHolder(app, loader = loader, setProbe = { want }, builder = { set ->
+    /** Load 2: whether the load is for a phone speech model ([EngineHolder.loadWait]). */
+    @Volatile private var phoneModel = true
+
+    private fun holder() = EngineHolder(app, loader = loader, setProbe = { want }, phoneModelProbe = { phoneModel }, builder = { set ->
         val k = key(set)
         othersFreedAtStart[k] = cores.values.all { it.unloaded }
         built += k
@@ -63,7 +76,7 @@ class EngineHolderTest {
         else {
             val c = FakeFlowCore(k, hasLlm = true)
             cores[k] = c
-            EngineHolder.State.Ready(c, "fake $k")
+            EngineHolder.State.Ready(c, "fake $k", asr = LoadedAsr(AsrEngine.WHISPER, "$k.bin"))
         }
     })
 
@@ -227,5 +240,106 @@ class EngineHolderTest {
         waitFor("reloaded") { built.size == 3 && h.state.value is EngineHolder.State.Ready }
         assertEquals(emptyList<Pair<String, Boolean>>(), keeps())
         assertEquals(0, releases.get())
+    }
+
+    // ---- Load 2 (D55): a dictation records while the phone's model loads ----
+
+    /** Runs [LoadWait.await] off the test thread, so the builds' latches can be released meanwhile. */
+    private fun startWaiting(w: dev.flowclone.session.LoadWait) =
+        kotlinx.coroutines.CoroutineScope(Dispatchers.Default).async { withTimeout(5_000) { w.await() } }
+
+    @Test fun nothingToWaitForWhenTheEngineIsReadyOrTheLoadHasNoPhoneModel() {
+        val h = holder()
+        assertNull("not loading", h.loadWait())
+        gates["he"] = CountDownLatch(1)
+        h.ensureLoaded()
+        waitFor("hebrew build") { "he" in built }
+        phoneModel = false // remote flavour, server-only plan, D24 on-demand route
+        assertNull(h.loadWait())
+        phoneModel = true
+        assertEquals(EngineHolder.HEBREW_LOADING, h.loadWait()!!.label)
+        gates["he"]!!.countDown()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        assertNull(h.loadWait())
+    }
+
+    @Test fun aDictationWaitingForTheLoadGetsTheEngineOnceLoaded() {
+        gates["he"] = CountDownLatch(1)
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("hebrew build") { "he" in built }
+        val got = startWaiting(h.loadWait()!!)
+        Thread.sleep(50)
+        assertTrue("waits for the load", got.isActive)
+        gates["he"]!!.countDown()
+        val engine = runBlocking { got.await() }
+        assertEquals(cores["he"], engine)
+    }
+
+    @Test fun aLanguageSwitchDuringTheWaitHandsOverTheModelLoadedLast() {
+        gates["he"] = CountDownLatch(1)
+        gates["default"] = CountDownLatch(1)
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("hebrew build") { "he" in built }
+        val got = startWaiting(h.loadWait()!!)
+        want = LoadSet.Default
+        h.ensureLanguage()
+        gates["he"]!!.countDown()
+        waitFor("default build") { "default" in built }
+        Thread.sleep(50)
+        assertTrue("never the dropped Hebrew engine", got.isActive)
+        gates["default"]!!.countDown()
+        val engine = runBlocking { got.await() }
+        assertEquals(cores["default"], engine)
+    }
+
+    @Test fun aFailedLoadFailsTheWait() {
+        gates["he"] = CountDownLatch(1)
+        failing += "he"
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("hebrew build") { "he" in built }
+        val got = startWaiting(h.loadWait()!!)
+        gates["he"]!!.countDown()
+        val e = runBlocking { runCatching { got.await() }.exceptionOrNull() }
+        assertEquals("no he model", (e as CoreException).message)
+    }
+
+    @Test fun anEngineWithoutAPhoneModelFailsTheWaitInsteadOfUsingTheServer() {
+        gates["x"] = CountDownLatch(1)
+        val h = EngineHolder(app, loader = loader, setProbe = { want }, phoneModelProbe = { true }, builder = {
+            gates["x"]!!.await(5, TimeUnit.SECONDS)
+            // The router opened with the server only: the phone model failed to load.
+            EngineHolder.State.Ready(FakeFlowCore("x"), "server", clientNote = "No speech model imported.")
+        })
+        h.ensureLoaded()
+        val got = startWaiting(h.loadWait()!!)
+        gates["x"]!!.countDown()
+        val e = runBlocking { runCatching { got.await() }.exceptionOrNull() }
+        assertEquals("The phone speech model did not load: No speech model imported.", e?.message)
+    }
+
+    @Test fun aHybridPhoneWithAServerWaitsForItsWarmModelButNotForTheOnDemandRoute() {
+        assumeTrue("hybrid flavour", app.caps.local && app.caps.remote)
+        val saved = app.dev.load()
+        try {
+            val server = saved.copy(allowServer = true, allowClient = true, host = "192.0.2.1", keepLocalWarm = true)
+            app.dev.save(server)
+            gates["he"] = CountDownLatch(1)
+            val h = EngineHolder(app, loader = loader, setProbe = { want }, builder = { set ->
+                gates[key(set)]?.await(5, TimeUnit.SECONDS)
+                EngineHolder.State.Ready(FakeFlowCore(key(set)), "fake", asr = LoadedAsr(AsrEngine.WHISPER, "he.bin"))
+            })
+            h.ensureLoaded()
+            assertNotNull("the phone model loads before the router opens", h.loadWait())
+            // Keep warm off with a server allowed: the router loads the phone model on demand (D24).
+            app.dev.save(server.copy(keepLocalWarm = false))
+            assertNull(h.loadWait())
+            gates["he"]!!.countDown()
+            waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        } finally {
+            app.dev.save(saved)
+        }
     }
 }
