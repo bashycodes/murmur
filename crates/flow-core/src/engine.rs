@@ -22,6 +22,8 @@ use crate::dictionary::Dictionary;
 use crate::endpoint::{EndpointState, Endpointer};
 use crate::learn::{self, Candidate};
 use crate::lid::{self, LanguageId};
+use crate::llm_keep::{self, KeptLlm, LlmKey, LlmSlot};
+use crate::load_timings::{ms_since, LoadBackend, LoadTimings, ModelKind, ModelTiming, Phase};
 use crate::paste::{self, PasteSegment};
 use crate::postprocess::{self, DictMatcher};
 use crate::segment::{self, SegmentParams, Segmenter};
@@ -440,6 +442,20 @@ impl AsrRoutes {
 /// (D34): auto-detect is English-first (D33 decision 6).
 const DEFAULT_LANGUAGE: &str = "en";
 
+/// Phases a sherpa engine reported, as [`Phase`]s.
+#[cfg(feature = "parakeet")]
+fn sherpa_phases(p: &[flow_asr_sherpa::LoadPhase]) -> Vec<Phase> {
+    p.iter()
+        .map(|p| Phase {
+            name: p.name,
+            ms: p.ms,
+        })
+        .collect()
+}
+
+/// A loaded engine and how long its load took.
+type WithTiming<T> = (T, ModelTiming);
+
 /// Build the engine for one model. `language` is the language the model
 /// is configured for (`None` = the default model), reported by engines
 /// that cannot tell (Parakeet, sherpa online). Adding a backend = one arm here (see
@@ -450,11 +466,18 @@ fn load_asr(
     m: &LanguageModel,
     cfg: &ModelConfig,
     language: Option<&str>,
-) -> Result<Arc<dyn AsrEngine>, CoreError> {
+) -> Result<WithTiming<Arc<dyn AsrEngine>>, CoreError> {
     use crate::config::AsrBackend;
+    let t = Instant::now();
     let threads = m.threads.unwrap_or(cfg.threads).max(1);
-    Ok(match &m.asr_backend {
-        AsrBackend::Mock { text } => Arc::new(crate::asr::MockAsr::new(text)),
+    let (engine, backend, phases): (Arc<dyn AsrEngine>, LoadBackend, Vec<Phase>) = match &m
+        .asr_backend
+    {
+        AsrBackend::Mock { text } => (
+            Arc::new(crate::asr::MockAsr::new(text)),
+            LoadBackend::Mock,
+            Vec::new(),
+        ),
         #[cfg(feature = "whisper")]
         AsrBackend::Whisper => {
             require_file(&m.asr_path)?;
@@ -465,7 +488,7 @@ fn load_asr(
                 require_file(v)?;
                 w = w.with_silero_vad(v);
             }
-            Arc::new(w)
+            (Arc::new(w), LoadBackend::Whisper, Vec::new())
         }
         #[cfg(not(feature = "whisper"))]
         AsrBackend::Whisper => {
@@ -476,19 +499,20 @@ fn load_asr(
         #[cfg(feature = "parakeet")]
         AsrBackend::Parakeet => {
             require_dir(&m.asr_path)?;
-            Arc::new(
+            let p =
                 crate::parakeet::ParakeetAsr::load_with(&m.asr_path, threads, m.parakeet_decoding)
                     .map_err(|e| CoreError::Load(e.to_string()))?
-                    .with_language(language.unwrap_or("en")),
-            )
+                    .with_language(language.unwrap_or("en"));
+            let phases = sherpa_phases(p.load_phases());
+            (Arc::new(p), LoadBackend::Parakeet, phases)
         }
         #[cfg(feature = "parakeet")]
         AsrBackend::SherpaOnline => {
             require_dir(&m.asr_path)?;
-            Arc::new(
-                crate::sherpa_online::SherpaOnlineAsr::load(&m.asr_path, threads, language)
-                    .map_err(|e| CoreError::Load(e.to_string()))?,
-            )
+            let z = crate::sherpa_online::SherpaOnlineAsr::load(&m.asr_path, threads, language)
+                .map_err(|e| CoreError::Load(e.to_string()))?;
+            let phases = sherpa_phases(z.load_phases());
+            (Arc::new(z), LoadBackend::SherpaOnline, phases)
         }
         #[cfg(not(feature = "parakeet"))]
         AsrBackend::Parakeet | AsrBackend::SherpaOnline => {
@@ -496,20 +520,38 @@ fn load_asr(
                 "built without the `parakeet` feature".into(),
             ))
         }
-    })
+    };
+    let timing = ModelTiming {
+        kind: ModelKind::Asr,
+        language: language.map(str::to_string),
+        backend,
+        ms: ms_since(t),
+        phases,
+        reused: false,
+    };
+    Ok((engine, timing))
 }
 
 /// The language identifier of `cfg` ([`ModelConfig::lid_model`]): `None`
 /// unless `lid_path` is set and a language model is configured (D34).
-fn load_lid(cfg: &ModelConfig) -> Result<Option<Arc<dyn LanguageId>>, CoreError> {
+fn load_lid(cfg: &ModelConfig) -> Result<Option<WithTiming<Arc<dyn LanguageId>>>, CoreError> {
     let Some(path) = cfg.lid_model() else {
         return Ok(None);
     };
     #[cfg(feature = "whisper")]
     {
         require_file(path)?;
+        let t = Instant::now();
         let lid = crate::lid::WhisperLid::load(path, cfg.threads, true).map_err(CoreError::Load)?;
-        Ok(Some(Arc::new(lid)))
+        let timing = ModelTiming {
+            kind: ModelKind::Lid,
+            language: None,
+            backend: LoadBackend::Whisper,
+            ms: ms_since(t),
+            phases: Vec::new(),
+            reused: false,
+        };
+        Ok(Some((Arc::new(lid), timing)))
     }
     #[cfg(not(feature = "whisper"))]
     {
@@ -518,6 +560,113 @@ fn load_lid(cfg: &ModelConfig) -> Result<Option<Arc<dyn LanguageId>>, CoreError>
             "lid_path set but built without the `whisper` feature".into(),
         ))
     }
+}
+
+/// One [`FlowCore`] load in progress: its timings, and the LLM a previous
+/// engine kept for it ([`crate::llm_keep`]). That LLM is taken out first,
+/// so a kept model that does not match is freed before anything loads; a
+/// matching one goes back into the slot if the load fails before
+/// [`Load::finish`] (a speech model that did not load), so a retry still
+/// reuses it.
+struct Load<'s> {
+    slot: &'s LlmSlot,
+    started: Instant,
+    models: Vec<ModelTiming>,
+    kept_llm: Option<KeptLlm>,
+}
+
+impl<'s> Load<'s> {
+    fn start(slot: &'s LlmSlot, cfg: &ModelConfig) -> Self {
+        Self {
+            slot,
+            started: Instant::now(),
+            models: Vec::new(),
+            kept_llm: slot.take(LlmKey::of(cfg).as_ref()),
+        }
+    }
+
+    /// Record a loaded model's timing; returns the engine.
+    fn add<T>(&mut self, (engine, timing): WithTiming<T>) -> T {
+        self.models.push(timing);
+        engine
+    }
+
+    /// The LLM (kept or loaded), then the core.
+    fn finish(mut self, cfg: &ModelConfig, routes: AsrRoutes) -> Result<FlowCore, CoreError> {
+        let llm = match LlmKey::of(cfg) {
+            None => None,
+            Some(key) => Some(match self.kept_llm.take() {
+                Some(kept) => {
+                    self.models.push(llm_timing(0, Vec::new(), true));
+                    kept
+                }
+                None => {
+                    let t = Instant::now();
+                    let (c, phases) = load_llm(cfg, &key.path)?;
+                    self.models.push(llm_timing(ms_since(t), phases, false));
+                    (key, c)
+                }
+            }),
+        };
+        let mut core = FlowCore::from_routes(routes, llm.as_ref().map(|(_, c)| c.clone()));
+        core.llm_key = llm.map(|(k, _)| k);
+        core.load_timings = LoadTimings {
+            total_ms: ms_since(self.started),
+            models: std::mem::take(&mut self.models),
+        };
+        Ok(core)
+    }
+}
+
+impl Drop for Load<'_> {
+    fn drop(&mut self) {
+        if let Some(kept) = self.kept_llm.take() {
+            self.slot.keep(kept);
+        }
+    }
+}
+
+fn llm_timing(ms: u64, phases: Vec<Phase>, reused: bool) -> ModelTiming {
+    ModelTiming {
+        kind: ModelKind::Llm,
+        language: None,
+        backend: LoadBackend::Llama,
+        ms,
+        phases,
+        reused,
+    }
+}
+
+/// Load the on-device LLM at `path`, with the plugin's own `model` and
+/// `warm` (static prompt prefill) times.
+#[cfg(feature = "llm")]
+fn load_llm(cfg: &ModelConfig, path: &str) -> Result<(Arc<dyn Cleaner>, Vec<Phase>), CoreError> {
+    use crate::llama::{LlamaCleaner, LlamaLoadError};
+    require_file(path)?;
+    let c = LlamaCleaner::load(path, cfg.threads, cfg.llm_lib.as_deref()).map_err(|e| match e {
+        LlamaLoadError::PluginNotFound { tried } => CoreError::LlmLibNotFound { tried },
+        e => CoreError::Load(e.to_string()),
+    })?;
+    let info: serde_json::Value = serde_json::from_str(&c.info).unwrap_or_default();
+    let phases = [("model", "load_ms"), ("warm", "warm_ms")]
+        .into_iter()
+        .filter_map(|(name, field)| {
+            Some(Phase {
+                name,
+                ms: info.get(field)?.as_u64()?,
+            })
+        })
+        .collect();
+    Ok((Arc::new(c), phases))
+}
+
+/// Asking for cleanup from a build that cannot do it is a config error, not
+/// something to drop silently.
+#[cfg(not(feature = "llm"))]
+fn load_llm(_: &ModelConfig, _: &str) -> Result<(Arc<dyn Cleaner>, Vec<Phase>), CoreError> {
+    Err(CoreError::Load(
+        "llm_path set but built without the `llm` feature".into(),
+    ))
 }
 
 enum Ctrl {
@@ -605,6 +754,10 @@ pub struct FlowCore {
     cleaner_info: Option<Arc<dyn Cleaner>>,
     /// The cleaner commits use: `cleaner_info` unless `set_cleaner` replaced it.
     active_cleaner: Mutex<Option<Arc<dyn Cleaner>>>,
+    load_timings: LoadTimings,
+    /// The load `cleaner_info` came from, when it is a loaded on-device
+    /// LLM ([`FlowCore::keep_llm`]).
+    llm_key: Option<LlmKey>,
     ctrl: mpsc::Sender<Ctrl>,
     worker: Option<JoinHandle<()>>,
 }
@@ -615,16 +768,19 @@ impl FlowCore {
     /// LLM. Sessions whose forced language has a map entry decode on that
     /// model, all others on the default one.
     pub fn load_models(cfg: &ModelConfig) -> Result<Self, CoreError> {
+        let mut load = Load::start(&llm_keep::SLOT, cfg);
         let mut by_language = Vec::with_capacity(cfg.languages.len());
         for (k, m) in &cfg.languages {
-            by_language.push((k.clone(), load_asr(m, cfg, Some(k))?));
+            by_language.push((k.clone(), load.add(load_asr(m, cfg, Some(k))?)));
         }
+        let default = load.add(load_asr(&cfg.default_model(), cfg, None)?);
+        let lid = load_lid(cfg)?.map(|l| load.add(l));
         let routes = AsrRoutes {
-            default: load_asr(&cfg.default_model(), cfg, None)?,
+            default,
             by_language,
-            lid: load_lid(cfg)?,
+            lid,
         };
-        Self::with_cleaner_from(cfg, routes)
+        load.finish(cfg, routes)
     }
 
     /// Like [`FlowCore::load_models`] but with one ASR model in memory
@@ -633,13 +789,24 @@ impl FlowCore {
     /// entry, else the default model), plus the LLM. Every session then
     /// decodes on that model, whatever its language, so the shell reloads
     /// when the user switches to a language that routes elsewhere (compare
-    /// `language_route` of the old and new language).
+    /// `language_route` of the old and new language). Before freeing the
+    /// old core it can [`FlowCore::keep_llm`], which this load then reuses
+    /// instead of loading the LLM again.
     pub fn load_models_for(cfg: &ModelConfig, language: Option<&str>) -> Result<Self, CoreError> {
-        let asr = match cfg.language_route(language) {
+        Self::load_models_for_in(&llm_keep::SLOT, cfg, language)
+    }
+
+    fn load_models_for_in(
+        slot: &LlmSlot,
+        cfg: &ModelConfig,
+        language: Option<&str>,
+    ) -> Result<Self, CoreError> {
+        let mut load = Load::start(slot, cfg);
+        let asr = load.add(match cfg.language_route(language) {
             Some(k) => load_asr(&cfg.languages[k], cfg, Some(k))?,
             None => load_asr(&cfg.default_model(), cfg, None)?,
-        };
-        Self::with_cleaner_from(
+        });
+        load.finish(
             cfg,
             AsrRoutes {
                 default: asr,
@@ -649,34 +816,27 @@ impl FlowCore {
         )
     }
 
-    fn with_cleaner_from(cfg: &ModelConfig, routes: AsrRoutes) -> Result<Self, CoreError> {
-        let cleaner: Option<Arc<dyn Cleaner>> = match cfg.llm_path.as_deref() {
-            None | Some("") => None,
-            #[cfg(feature = "llm")]
-            Some(p) => {
-                use crate::llama::{LlamaCleaner, LlamaLoadError};
-                require_file(p)?;
-                Some(Arc::new(
-                    LlamaCleaner::load(p, cfg.threads, cfg.llm_lib.as_deref()).map_err(
-                        |e| match e {
-                            LlamaLoadError::PluginNotFound { tried } => {
-                                CoreError::LlmLibNotFound { tried }
-                            }
-                            e => CoreError::Load(e.to_string()),
-                        },
-                    )?,
-                ))
-            }
-            // Asking for cleanup from a build that cannot do it is a config
-            // error, not something to drop silently.
-            #[cfg(not(feature = "llm"))]
-            Some(_) => {
-                return Err(CoreError::Load(
-                    "llm_path set but built without the `llm` feature".into(),
-                ))
-            }
+    /// Load 3: hold this core's on-device LLM for the next load that names
+    /// the same model, thread count and plugin ([`crate::llm_keep`]), so a
+    /// language switch reloads only the speech model. Call it before
+    /// freeing this core. Returns whether there was an LLM to keep (none
+    /// for cores built from engines, or without `llm_path`).
+    pub fn keep_llm(&self) -> bool {
+        self.keep_llm_in(&llm_keep::SLOT)
+    }
+
+    fn keep_llm_in(&self, slot: &LlmSlot) -> bool {
+        let (Some(key), Some(c)) = (&self.llm_key, &self.cleaner_info) else {
+            return false;
         };
-        Ok(Self::from_routes(routes, cleaner))
+        slot.keep((key.clone(), c.clone()));
+        true
+    }
+
+    /// How long this core's load took, per model and phase (empty for
+    /// cores built from engines).
+    pub fn load_timings(&self) -> &LoadTimings {
+        &self.load_timings
     }
 
     /// Build a core around caller-supplied engines (tests, custom backends).
@@ -751,6 +911,8 @@ impl FlowCore {
             shared,
             active_cleaner: Mutex::new(cleaner_info.clone()),
             cleaner_info,
+            load_timings: LoadTimings::default(),
+            llm_key: None,
             ctrl: tx,
             worker: Some(worker),
         }
@@ -2050,4 +2212,87 @@ pub fn refinish(
     r.timings.llm_ms += server_llm_ms;
     r.timings.total_ms += t.elapsed().as_millis() as u64;
     r
+}
+
+#[cfg(test)]
+mod keep_llm_tests {
+    use std::sync::Weak;
+
+    use super::*;
+    use crate::cleanup::{CleanError, CleanPrompt};
+
+    struct Fake;
+    impl Cleaner for Fake {
+        fn clean(&self, p: &CleanPrompt, _: Instant) -> Result<String, CleanError> {
+            Ok(p.transcript.clone())
+        }
+    }
+
+    /// A mock-ASR config naming an LLM no test loads: only a kept one can
+    /// serve it.
+    fn cfg() -> ModelConfig {
+        ModelConfig {
+            asr_backend: crate::config::AsrBackend::Mock { text: "hi".into() },
+            llm_path: Some("invented.gguf".into()),
+            ..Default::default()
+        }
+    }
+
+    /// A core whose LLM was loaded for `cfg()`, as [`Load::finish`] builds it.
+    fn core_with_llm() -> (FlowCore, Weak<dyn Cleaner>) {
+        let c: Arc<dyn Cleaner> = Arc::new(Fake);
+        let w = Arc::downgrade(&c);
+        let mut core = FlowCore::from_engines(Arc::new(crate::asr::MockAsr::new("hi")), Some(c));
+        core.llm_key = LlmKey::of(&cfg());
+        (core, w)
+    }
+
+    fn same(a: &Arc<dyn Cleaner>, b: &Weak<dyn Cleaner>) -> bool {
+        Weak::ptr_eq(&Arc::downgrade(a), b)
+    }
+
+    #[test]
+    fn keep_holds_the_freed_engines_own_llm() {
+        let slot = LlmSlot::new();
+        let (old, old_llm) = core_with_llm();
+        // Another engine loaded since (a router's on-demand local core):
+        // keeping must not pick its LLM instead.
+        let (_other, _) = core_with_llm();
+        assert!(old.keep_llm_in(&slot));
+        drop(old);
+        let next = FlowCore::load_models_for_in(&slot, &cfg(), None).expect("reuses the kept LLM");
+        assert!(same(&next.cleaner().unwrap(), &old_llm));
+        assert!(next.load_timings().llm().unwrap().reused);
+        // The new core can keep it again for the switch after.
+        assert!(next.keep_llm_in(&slot));
+    }
+
+    #[test]
+    fn a_core_without_a_loaded_llm_keeps_nothing() {
+        let slot = LlmSlot::new();
+        let built = FlowCore::from_engines(
+            Arc::new(crate::asr::MockAsr::new("hi")),
+            Some(Arc::new(Fake)),
+        );
+        assert!(!built.keep_llm_in(&slot));
+        assert!(slot.take(LlmKey::of(&cfg()).as_ref()).is_none());
+    }
+
+    #[test]
+    fn a_failed_speech_model_load_puts_the_kept_llm_back() {
+        let slot = LlmSlot::new();
+        let (old, old_llm) = core_with_llm();
+        assert!(old.keep_llm_in(&slot));
+        drop(old);
+        let missing = ModelConfig {
+            asr_backend: crate::config::AsrBackend::Whisper,
+            asr_path: "invented/missing-model.bin".into(),
+            ..cfg()
+        };
+        assert!(FlowCore::load_models_for_in(&slot, &missing, None).is_err());
+        assert!(old_llm.upgrade().is_some(), "still kept");
+        // The retry (model now there) reuses it.
+        let retry = FlowCore::load_models_for_in(&slot, &cfg(), None).expect("retry");
+        assert!(same(&retry.cleaner().unwrap(), &old_llm));
+    }
 }

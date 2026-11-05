@@ -28,6 +28,8 @@ use crate::{
 thread_local! {
     // Reused per AudioRecord thread so pushAudio never allocates after the first call.
     static PCM: RefCell<Vec<i16>> = const { RefCell::new(Vec::new()) };
+    // Load 3: `LoadTimings` JSON of this thread's last successful nativeLoadModels.
+    static LOAD_TIMINGS: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 fn guard<T>(fallback: T, f: impl FnOnce() -> T) -> T {
@@ -124,6 +126,8 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLoadModels(
             Ok(c) => {
                 // Like the C ABI: a success leaves no stale error from an earlier failed load.
                 clear_error();
+                let t = c.load_timings().to_json();
+                LOAD_TIMINGS.with(|l| *l.borrow_mut() = Some(t));
                 Box::into_raw(Box::new(FlowHandle::Core(c))) as jlong
             }
             // The message keeps a stable prefix per kind ("model not found:
@@ -134,6 +138,46 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLoadModels(
             }
         }
     })
+}
+
+/// Load 3: how long this thread's last successful `nativeLoadModels` took,
+/// per model and phase (`flow_core::load_timings::LoadTimings` JSON); null
+/// before the first one.
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLastLoadTimings(
+    mut env: JNIEnv,
+    _c: JClass,
+) -> jstring {
+    guard(std::ptr::null_mut(), || {
+        match LOAD_TIMINGS.with(|l| l.borrow().clone()) {
+            Some(t) => out(&mut env, &t),
+            None => std::ptr::null_mut(),
+        }
+    })
+}
+
+/// Load 3: hold handle `h`'s own on-device LLM (a core's, or a router's
+/// warm local engine's) for the next load naming the same model
+/// (`FlowCore::keep_llm`); whether there was one. Call it before
+/// `nativeUnload(h)` for a language switch.
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeKeepLlm(
+    _env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+) -> jboolean {
+    guard(JNI_FALSE, || {
+        jbool(handle(h).is_some_and(FlowHandle::keep_llm))
+    })
+}
+
+/// Load 3: free an LLM `nativeKeepLlm` holds (`llm_keep::release`).
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeReleaseKeptLlm(
+    _env: JNIEnv,
+    _c: JClass,
+) {
+    guard((), flow_core::llm_keep::release)
 }
 
 #[no_mangle]

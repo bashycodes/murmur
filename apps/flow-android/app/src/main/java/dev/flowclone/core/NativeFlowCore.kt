@@ -213,6 +213,10 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
     override fun learnEdit(pasted: String, edited: String): List<LearnCandidate> =
         lease.use({ emptyList() }) { h -> CoreJson.decodeCandidates(nativeLearnEdit(h, pasted, edited)) }
 
+    override fun keepLlm(): Boolean = lease.use({ false }) { h ->
+        try { nativeKeepLlm(h) } catch (e: UnsatisfiedLinkError) { false }
+    }
+
     /** Never blocks: the native free waits for running calls and happens on a background thread. */
     override fun unload() = lease.close()
 
@@ -270,7 +274,19 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
             BlockingCalls.check("nativeLoadModels")
             val h = nativeLoadModels(CoreJson.encode(cfg))
             if (h == 0L) throw lastError("load_models failed")
+            // Same thread as the load: the native side keeps them per thread.
+            loadTimings.set(try { nativeLastLoadTimings() } catch (e: UnsatisfiedLinkError) { null })
             return NativeFlowCore(h)
+        }
+
+        private val loadTimings = java.util.concurrent.atomic.AtomicReference<String?>(null)
+
+        override fun takeLoadTimings(): String? = loadTimings.getAndSet(null)
+
+        override fun releaseKeptLlm() {
+            if (loadLibrary() !is LibraryState.Loaded) return
+            BlockingCalls.check("nativeReleaseKeptLlm")
+            try { nativeReleaseKeptLlm() } catch (_: UnsatisfiedLinkError) {}
         }
 
         /** Last error + its stable kind (`nativeLastErrorKind`, else recovered from the message prefix). */
@@ -401,6 +417,11 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
         @JvmStatic external fun nativeLastError(): String?
         @JvmStatic external fun nativeLoadModels(modelConfigJson: String): Long
         @JvmStatic external fun nativeUnload(handle: Long)
+
+        // ---- 2026-11-05 Load 3: load timings + keep the LLM across a language switch (JNI_CONTRACT.md) ----
+        @JvmStatic external fun nativeLastLoadTimings(): String?
+        @JvmStatic external fun nativeKeepLlm(handle: Long): Boolean
+        @JvmStatic external fun nativeReleaseKeptLlm()
         @JvmStatic external fun nativeStartSession(handle: Long, sessionConfigJson: String): Boolean
         @JvmStatic external fun nativePushAudio(handle: Long, pcm: ShortArray, length: Int): Boolean
         @JvmStatic external fun nativeSetContext(handle: Long, fieldContextJson: String)

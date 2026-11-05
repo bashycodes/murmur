@@ -49,6 +49,15 @@ pub enum FlowHandle {
 }
 
 impl FlowHandle {
+    /// Load 3: keep this engine's on-device LLM for the next load
+    /// (`FlowCore::keep_llm`, `Router::keep_llm`).
+    pub fn keep_llm(&self) -> bool {
+        match self {
+            FlowHandle::Core(c) => c.keep_llm(),
+            FlowHandle::Router(r) => r.keep_llm(),
+        }
+    }
+
     /// A core handle reports no route (`StartInfo::default()`).
     fn start_session(&self, cfg: SessionConfig) -> Result<StartInfo, (&'static str, String)> {
         match self {

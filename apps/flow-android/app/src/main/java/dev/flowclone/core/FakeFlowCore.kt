@@ -5,7 +5,7 @@ package dev.flowclone.core
  * received non-silent audio. Used by unit tests and by the "mock engine" debug setting
  * so the shell (bubble → insertion) can be exercised on a device without libflow_ffi.so.
  */
-class FakeFlowCore(@Volatile var transcript: String = "") : FlowCore {
+class FakeFlowCore(@Volatile var transcript: String = "", private val hasLlm: Boolean = false) : FlowCore {
     @Volatile private var active = false
     @Volatile private var heardSignal = false
     @Volatile var samplesPushed = 0; private set
@@ -82,6 +82,14 @@ class FakeFlowCore(@Volatile var transcript: String = "") : FlowCore {
     }
 
     override fun learnEdit(pasted: String, edited: String) = emptyList<LearnCandidate>()
+
+    /** Load 3: [keepLlm] calls, each with whether this engine was still loaded (tests). */
+    val keepLlmCalls = java.util.concurrent.CopyOnWriteArrayList<Boolean>()
+
+    override fun keepLlm(): Boolean {
+        keepLlmCalls += !unloaded
+        return hasLlm && !unloaded
+    }
 
     override fun unload() { active = false; unloaded = true }
 }

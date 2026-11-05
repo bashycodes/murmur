@@ -22,6 +22,10 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 - **Windows: AI summary and action items for a meeting (Notetaker, still hidden).** Made after the transcript on your AI cleanup order (this PC, your server, OpenRouter with consent), in the meeting's language, long meetings in chunks; a Regenerate button on the meeting's page. flow-server advertises the `summary` feature; older servers are skipped (D53).
 - **AI cleanup through your own server (LiteLLM / OpenAI-compatible).** Windows and Android (hybrid) can send AI cleanup to a server you run instead of OpenRouter: base URL (http or https), optional key, model from its list or typed; cloud speech-to-text stays on OpenRouter; its cleanups and any reported cost show on their own "Custom server" usage line, outside OpenRouter's spend and budget (D52).
 
+### Changed
+
+- **Faster model loads.** The Hebrew Zipformer model loads about 3× faster on a laptop (6.7 s → 2.2 s; the phone, where it took 16.6 s, is not measured yet), and on Android a keyboard switch between English and Hebrew no longer reloads the AI cleanup model (~38 s on the phone). With the debug log on, each load's per-model times go to it.
+
 ### Fixed
 
 - **Side panel names the engines that will clean up your text.** Android's drawer said "Off" when only your server (or only a custom server) cleaned; it now lists the engines in the order cleanup tries them, skipping a server with no AI model, and Settings → AI cleanup no longer names a custom server that is not set up. Windows' Engines card names a custom server instead of "OpenRouter".
