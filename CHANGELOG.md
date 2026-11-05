@@ -24,7 +24,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
-- **Faster model loads, mostly on the phone.** The Hebrew Zipformer model loads about 3× faster (6.7 s → 2.2 s on a laptop; it was 16.6 s on the phone), Parakeet loads its two search modes at once, and on Android a keyboard switch between English and Hebrew no longer reloads the AI cleanup model (~38 s on the phone); each load's per-model times go to the debug log.
+- **Faster model loads.** The Hebrew Zipformer model loads about 3× faster on a laptop (6.7 s → 2.2 s; the phone, where it took 16.6 s, is not measured yet), and on Android a keyboard switch between English and Hebrew no longer reloads the AI cleanup model (~38 s on the phone). With the debug log on, each load's per-model times go to it.
 
 ## [1.1.1] - 2026-11-04
 
