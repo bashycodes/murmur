@@ -8,6 +8,7 @@ import dev.flowclone.data.DevPages
 import dev.flowclone.data.DevSettings
 import dev.flowclone.data.DevSettings.Route
 import dev.flowclone.data.SettingsPages.Page
+import dev.flowclone.data.SettingsStore
 import dev.flowclone.data.SettingsSummary
 import dev.flowclone.ui.UiTestKit.idle
 import dev.flowclone.ui.UiTestKit.rowTitled
@@ -120,9 +121,9 @@ class SpeechUiTest {
         // No Hebrew model in a fresh install: the summary says the switch does nothing.
         assertTrue(texts(a).any { it.startsWith("No effect") })
         row.performClick()
-        assertTrue("persisted", dev.flowclone.data.SettingsStore(a).load().keepBothLanguages)
+        assertTrue("persisted", SettingsStore(a).load().keepBothLanguages)
         row.performClick()
-        assertFalse(dev.flowclone.data.SettingsStore(a).load().keepBothLanguages)
+        assertFalse(SettingsStore(a).load().keepBothLanguages)
     }
 
     @Test fun modelCardOpensTheEnginePageAndImport() {
