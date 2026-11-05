@@ -147,6 +147,8 @@ class FlowService : Service() {
             cap = app.settings.load().sessionCap(), now = SystemClock::elapsedRealtime,
             // Review C2: start_session can connect to the server (TCP + TLS + hello): never on Main.
             startDispatcher = Dispatchers.IO,
+            // Load 2 (D55): record while the phone's speech model loads, transcribe it there once loaded.
+            loadWait = { app.engine.loadWait() },
         )
         presence = BubblePresence(scope) { app.settings.load().shrinkBubble }
         overlay = BubbleOverlay(this, app.settings.bubblePosition, BubbleListener(), ::snoozeDrop)

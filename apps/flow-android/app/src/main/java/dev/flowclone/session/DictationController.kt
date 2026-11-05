@@ -17,6 +17,8 @@ import dev.flowclone.core.SessionRoute
 import dev.flowclone.debug.DebugLogger
 import dev.flowclone.debug.DictationTrace
 import dev.flowclone.debug.InsertOutcome
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -71,6 +73,13 @@ enum class FeedbackEvent {
  * = the style bucket the dictation was sent with, so a retry styles it the same way.
  */
 class Recording(val pcm: ShortArray, val appCategory: String?)
+
+/**
+ * Load 2 (D55): the phone's speech model is loading. A dictation records at once, holds its audio
+ * on the phone, and [await] (suspending, cancellable) returns the engine once it is loaded, or
+ * throws [dev.flowclone.core.CoreException] when the load failed. [label] names the model for the bubble.
+ */
+class LoadWait(val label: String, val await: suspend () -> FlowCore)
 
 /** D35: what History's "Retry with current settings" produced. */
 sealed interface RetryOutcome {
@@ -140,6 +149,11 @@ class DictationController(
     private val startDispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
     /** Epoch ms for the D21 debug trace's `ts` (the state machine itself runs on [now]). */
     private val wallClock: () -> Long = System::currentTimeMillis,
+    /**
+     * Load 2 (D55): asked when [core] says the speech model is loading. A [LoadWait] = record now
+     * and transcribe on the phone once it is loaded; null = refuse the start as before.
+     */
+    private val loadWait: () -> LoadWait? = { null },
 ) {
     constructor(
         scope: CoroutineScope, audio: AudioSource, host: Host, core: () -> FlowCore,
@@ -266,6 +280,13 @@ class DictationController(
         /** D35: samples per push when a recording is fed back (100 ms, like the microphone). */
         const val RETRY_CHUNK = 1600
 
+        /**
+         * Load 2: the longest a dictation waits for the phone's speech model (an unload wait of
+         * up to 30 s, then a cold Hebrew + LLM load of about a minute on the phone).
+         */
+        const val LOAD_WAIT_MS = 150_000L
+        const val LOAD_TIMEOUT = "The speech model took too long to load. Try again."
+
         /** D24: "Server unreachable (…)" + why the phone could not take over. */
         fun withClientNote(msg: String, kind: String?, note: String?): String =
             if (note.isNullOrBlank() || kind != RouterErrors.SERVER_UNAVAILABLE || msg.contains("phone model")) msg
@@ -305,8 +326,14 @@ class DictationController(
     private var processingJob: Job? = null
     private var processingCore: FlowCore? = null
     private var session: FlowCore? = null
-    /** Completes true once the session started (false: start failed or the dictation was dropped). */
-    private var started: Deferred<Boolean>? = null
+    /** Completes with the engine once the session started (null: start failed or the dictation was dropped). */
+    private var started: Deferred<FlowCore?>? = null
+    /** Load 2: the dictation's wait for the speech model; cancelled with the dictation. */
+    private var loadJob: Job? = null
+    /** Load 2: the dictation is recording while the model loads (its own silence endpoint applies). */
+    @Volatile private var awaitingLoad = false
+    /** Load 2: how long the dictation waited for the model (debug log `load_wait_ms`). */
+    private var loadWaitMs: Long? = null
     private var sessionAppId: String? = null
     private var sessionContext: FieldContext? = null
     /** Bumped by every start / cancel: late frames, start results and mic errors of an older dictation are ignored. */
@@ -357,7 +384,7 @@ class DictationController(
                     cleanupRoute = result?.route?.cleanupRoute, cloudFallback = result?.route?.cloudFallback,
                     rejectedText = result?.route?.rejectedText, guardDetail = result?.route?.guardDetail,
                     sttCostUsd = result?.route?.takeIf { it.engine == "cloud" }?.costUsd,
-                    source = s.source,
+                    source = s.source, loadWaitMs = loadWaitMs,
                 )
             val audioName = if (pcm == null || pcm.isEmpty()) null else try { host.onDictationAudio(trace, pcm) } catch (_: Throwable) { null }
             host.onDictationTrace(if (audioName != null) trace.copy(audio = audioName) else trace)
@@ -448,6 +475,7 @@ class DictationController(
         if (_state.value is DictationState.Processing) {
             trace(traceStart, InsertOutcome.CANCELLED, liveRoute = _route.value)
             generation++
+            loadJob?.cancel(); loadJob = null
             processingJob?.cancel(); processingJob = null
             processingCore?.cancel(); processingCore = null
             _partial.value = null
@@ -461,12 +489,14 @@ class DictationController(
         capture = null
         commandTarget = null
         generation++
+        // Load 2: stop waiting for the model (the load itself goes on); the held audio is dropped.
+        loadJob?.cancel(); loadJob = null
         endAudio()
         _partial.value = null
         _hint.value = null
         _route.value = null
         // Started: cancel it now. Still starting: the start sees the new generation and cancels itself.
-        if (started?.let { it.isCompleted && !it.isCancelled } == true) session?.cancel()
+        if (started?.isCompleted == true) session?.cancel()
         session = null
         host.feedback(FeedbackEvent.CancelHaptic)
         host.feedback(FeedbackEvent.StopSound)
@@ -578,20 +608,16 @@ class DictationController(
             host.feedback(FeedbackEvent.NeedMicPermission)
             return
         }
-        val c = try {
+        // Load 2 (D55): while the phone's speech model loads, record anyway and wait for it.
+        var wait: LoadWait? = null
+        val ready: FlowCore? = try {
             core()
         } catch (e: CoreException) {
-            val msg = RouterErrors.userMessage(e.kind, e.message ?: "engine unavailable")
-            trace(TraceStart(wallClock(), hold, null), InsertOutcome.START_FAILED, error = msg, fallback = e.kind, cause = e)
-            if (e.kind == CoreException.KIND_LOADING) {
-                // Not a failure: the bubble shows "loading" until the engine settles; a tap checks again.
-                host.engineLoading(msg)
-                _state.value = DictationState.Error(DictationState.ErrorKind.EngineLoading(msg))
-                return
-            }
-            _state.value = DictationState.Error(DictationState.ErrorKind.EngineUnavailable(msg))
-            return
+            if (e.kind == CoreException.KIND_LOADING) wait = try { loadWait() } catch (_: Exception) { null }
+            if (wait == null) { refuseStart(hold, e); return }
+            null
         }
+        val pending = wait
         val handsFree = !hold
         val base = host.sessionConfig()
         val cfg = base.copy(
@@ -612,7 +638,8 @@ class DictationController(
             style = cfg.styles.forCategory(ctx?.appCategory ?: "other").wire,
             command = command != null,
         )
-        session = c
+        session = ready
+        loadWaitMs = null
         meter.reset()
         silence.reset()
         captureDebug = runCatching { host.keepDictationAudio() }.getOrDefault(false)
@@ -620,7 +647,11 @@ class DictationController(
         val pcmCapture = if (captureDebug || captureRetry) PcmCapture(cap.maxSamples.toInt()) else null
         capture = pcmCapture
         hintJob?.cancel(); _hint.value = null; _partial.value = null; _route.value = null
-        val gate = StartGate()
+        // Load 2: the whole capped recording may wait for the model (5 min = 9.6 MB of PCM); the
+        // cap stops the recording before the gate could overflow.
+        val gate = if (pending != null) StartGate(cap.maxSamples.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()) else StartGate()
+        awaitingLoad = pending != null
+        val endpointMs = cfg.endpointSilenceMs
         host.onRecordingActive(true)
         liveFrames = gen
         val ok = audio.start({ pcm, n ->
@@ -632,6 +663,11 @@ class DictationController(
             val h = _hint.value
             if (silence.heardSpeech) { if (h == DictationHint.NoSpeechYet) _hint.value = null }
             else if (h == null && silence.leadingSilenceMs >= NO_SPEECH_HINT_AFTER_MS) _hint.value = DictationHint.NoSpeechYet
+            // Load 2: no engine to endpoint yet; a hands-free dictation ends on the same silence here.
+            if (awaitingLoad && endpointMs != null && silence.heardSpeech && silence.trailingSilenceMs >= endpointMs) {
+                awaitingLoad = false
+                scope.launch { if (generation == gen && _state.value is DictationState.Recording) stopAndSubmit() }
+            }
         }, {
             scope.launch {
                 if (generation == gen && _state.value is DictationState.Recording) {
@@ -643,6 +679,7 @@ class DictationController(
         traceStart = traceStart?.copy(source = runCatching { audio.source }.getOrNull())
         if (!ok) {
             generation++
+            awaitingLoad = false
             liveFrames = 0
             session = null
             capture = null
@@ -654,24 +691,29 @@ class DictationController(
         }
         host.feedback(FeedbackEvent.StartSound)
         _state.value = DictationState.Recording(hold, now(), command = command != null)
+        // Load 2: the bubble names the model the recording waits for.
+        if (pending != null) _route.value = SessionRoute("local", loading = true, loadingLabel = pending.label)
         // C2: the (possibly network-bound) start runs off the caller's thread; frames wait in the gate.
         started = scope.async(start = CoroutineStart.UNDISPATCHED) {
+            val c = ready ?: awaitLoad(pending!!, gen) ?: return@async null
             val info = try {
-                withContext(startDispatcher) { c.startSessionInfo(cfg) }
+                // Load 2: audio held for the phone's model is transcribed on the phone, never the server.
+                withContext(startDispatcher) { if (ready == null) c.startSessionLocal(cfg) else c.startSessionInfo(cfg) }
             } catch (e: CoreException) {
                 if (generation == gen) failStart(e)
-                return@async false
+                return@async null
             }
-            if (generation != gen) { c.cancel(); return@async false } // cancelled while connecting
+            if (generation != gen) { c.cancel(); return@async null } // cancelled while connecting
+            if (ready == null && _state.value is DictationState.Recording) session = c // X cancels it from now on
             ctx?.let(c::setContext)
             gate.open { pcm, n -> c.pushAudio(pcm, n) }
             // D24: "Loading phone model…" while the router loads the on-device engine on demand.
-            if (_route.value == null) _route.value = info.route?.copy(loading = info.loading)
-            true
+            if (_route.value == null || ready == null) _route.value = info.route?.copy(loading = info.loading)
+            c
         }
         val preview = cfg.partialIntervalMs != null
         pollJob = scope.launch {
-            if (started?.await() != true) return@launch
+            val c = started?.await() ?: return@launch
             while (generation == gen) {
                 delay(PARTIAL_POLL_MS)
                 if (generation != gen || _state.value !is DictationState.Recording) break
@@ -694,11 +736,57 @@ class DictationController(
         }
     }
 
+    /** No engine to start on: the still-loading notice (a tap checks again), or why there is none. */
+    private fun refuseStart(hold: Boolean, e: CoreException) {
+        val msg = RouterErrors.userMessage(e.kind, e.message ?: "engine unavailable")
+        loadWaitMs = null
+        trace(TraceStart(wallClock(), hold, null), InsertOutcome.START_FAILED, error = msg, fallback = e.kind, cause = e)
+        if (e.kind == CoreException.KIND_LOADING) {
+            // Not a failure: the bubble shows "loading" until the engine settles; a tap checks again.
+            host.engineLoading(msg)
+            _state.value = DictationState.Error(DictationState.ErrorKind.EngineLoading(msg))
+            return
+        }
+        _state.value = DictationState.Error(DictationState.ErrorKind.EngineUnavailable(msg))
+    }
+
+    /**
+     * Load 2: waits (cancellably, at most [LOAD_WAIT_MS]) for the speech model [wait] names.
+     * The engine, or null when the dictation was dropped meanwhile or the load failed (shown).
+     */
+    private suspend fun awaitLoad(wait: LoadWait, gen: Long): FlowCore? {
+        val t0 = now()
+        val out = CompletableDeferred<Result<FlowCore?>>()
+        val job = scope.launch {
+            out.complete(
+                try { Result.success(withTimeoutOrNull(LOAD_WAIT_MS) { wait.await() }) }
+                catch (e: CancellationException) { throw e }
+                catch (e: Exception) { Result.failure(e) },
+            )
+        }
+        job.invokeOnCompletion { out.complete(Result.success(null)) } // cancelled: no engine
+        loadJob = job
+        val r = out.await()
+        if (loadJob === job) loadJob = null
+        if (generation != gen) return null // cancelled while loading
+        awaitingLoad = false
+        loadWaitMs = now() - t0
+        r.exceptionOrNull()?.let { e ->
+            failStart(e as? CoreException ?: CoreException(e.message ?: "Speech model failed to load", null))
+            return null
+        }
+        return r.getOrNull() ?: run {
+            failStart(CoreException(LOAD_TIMEOUT, null))
+            null
+        }
+    }
+
     /** The session could not start (router: no engine, server-only and unreachable, …). */
     private fun failStart(e: CoreException) {
         val msg = withClientNote(RouterErrors.userMessage(e.kind, e.message ?: "start failed"), e.kind, runCatching { host.clientFallbackNote() }.getOrNull())
         trace(traceStart, InsertOutcome.START_FAILED, error = msg, fallback = e.kind, cause = e)
         if (_state.value is DictationState.Recording) endAudio()
+        awaitingLoad = false
         session = null
         capture = null
         commandTarget = null
@@ -738,19 +826,22 @@ class DictationController(
                 pcm = pcm?.takeIf { outcome != InsertOutcome.CANCELLED },
                 diag = diag.takeIf { r != null })
         host.feedback(FeedbackEvent.StopSound)
-        val c = session ?: return
+        // Load 2: no engine yet while the model loads; the start below hands it over.
+        val known = session
         session = null
+        awaitingLoad = false
         val appId = sessionAppId
         val ctx = sessionContext
         val cmd = commandTarget
         commandTarget = null
-        val start = started
+        val start = started ?: return
         val gen = generation
         _state.value = DictationState.Processing(rec.hold, now(), rec.command)
-        processingCore = c
+        processingCore = known
         processingJob = scope.launch {
-            // The start may still be connecting; a failed start already showed its error.
-            if (start != null && !start.await()) return@launch
+            // The start may still be connecting (or waiting for the model); a failed start already showed its error.
+            val c = start.await() ?: return@launch
+            processingCore = c
             // Not a child: a hung native commit must be abandonable.
             val pending = CoroutineScope(commitDispatcher).async {
                 c.commit().also { diag = try { c.lastRouteDiag() } catch (_: Throwable) { null } }

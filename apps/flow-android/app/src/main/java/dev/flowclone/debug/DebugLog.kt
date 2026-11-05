@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * Field names are shared with apps/flow-windows: ts, mode, route, fallback, rtt_ms, audio_ms,
  * endpoint_wait_ms, asr_ms, post_ms, total_ms, perceived_ms, target, insert, raw, text, error,
- * and since D22 wait_ms, segments, pre_asr_ms, client_ms, since D24 connect_ms, local_cold, local_load_ms (+ `kind` on every line, `stack` when there is an exception, `event` on non-dictation lines).
+ * and since D22 wait_ms, segments, pre_asr_ms, client_ms, since D24 connect_ms, local_cold, local_load_ms, since D55 load_wait_ms (+ `kind` on every line, `stack` when there is an exception, `event` on non-dictation lines).
  * Android since 2026-10-23: engine (whisper|parakeet|server|cloud|mock), model (file / folder
  * name, server-reported or cloud model), language (sent to the engine; "auto" = detect), audio
  * (kept WAV file name, Developer "Keep last dictation audio (debug)"; else null).
@@ -84,6 +84,8 @@ data class DictationTrace(
     val localCold: Boolean? = null,
     /** D24: how long that load took. */
     val localLoadMs: Long? = null,
+    /** Load 2 (D55): recording started while the phone's speech model loaded; how long the dictation waited for it. */
+    val loadWaitMs: Long? = null,
     /** Package of the field the dictation started in; redacted by [DebugRedact]. */
     val target: String? = null,
     val insert: InsertOutcome,
@@ -255,6 +257,7 @@ object DebugFormat {
         "connect_ms" to t.connectMs,
         "local_cold" to t.localCold,
         "local_load_ms" to t.localLoadMs,
+        "load_wait_ms" to t.loadWaitMs,
         "style" to t.style,
         "llm" to t.llm,
         "llm_off" to t.llmOff,
@@ -312,6 +315,7 @@ object DebugFormat {
             s("pre_asr_ms")?.takeIf { it != "0" }?.let { "(+$it early, ${s("segments")} seg)" }, s("post_ms")?.let { "post $it" },
             s("endpoint_wait_ms")?.let { "endpoint $it" }, s("rtt_ms")?.let { "rtt $it" },
             s("connect_ms")?.let { "connect $it" }, s("local_load_ms")?.let { "phone model loaded in $it" },
+            s("load_wait_ms")?.let { "recorded while the model loaded ($it ms)" },
             s("speech_ms")?.let { "speech $it ms" }, s("peak_dbfs")?.let { "peak $it dBFS" },
         ).joinToString(" · ")
         val text = s("text") ?: s("raw") ?: ""
