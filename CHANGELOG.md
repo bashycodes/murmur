@@ -23,7 +23,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
-- **Side panel shows AI cleanup on when only your server or a custom server cleans.** Android's drawer said "Off" with cleanup only on your server; it now names the engines in the order cleanup tries them. Windows names a custom server instead of "OpenRouter".
+- **Side panel names the engines that will clean up your text.** Android's drawer said "Off" when only your server (or only a custom server) cleaned; it now lists the engines in the order cleanup tries them, skipping a server with no AI model, and Settings → AI cleanup no longer names a custom server that is not set up. Windows' Engines card names a custom server instead of "OpenRouter".
 
 ## [1.1.1] - 2026-11-04
 
