@@ -2,6 +2,7 @@
 // which cleans it up right now, and the fallback. Built only from what the
 // backend already reports (dev_get, dev_or_get, get_model_status and their
 // events); a click opens Settings → Speech to text.
+import { cleanupTarget } from "./features/openrouter.js";
 import { $ } from "./lib/dom.js";
 import { invoke, onEvent } from "./lib/ipc.js";
 import { prefsStore } from "./lib/prefs-store.js";
@@ -52,13 +53,15 @@ const FALLBACK = {
     cloud: "Falls back to OpenRouter",
 };
 /**
- * The cloud cleanup engine's label when the router can use it (consent
- * given; D52: a custom server set up, named by its host, never "OpenRouter").
+ * The cloud cleanup engine's label when the router can use it: consent
+ * given (`consent` is the backend's `consent_ok()`, bound to the custom
+ * server's current host); D52: a custom server with a model, named by its
+ * host, never "OpenRouter".
  */
 function cloudCleanup(or) {
     const c = or.cleanup;
     if (c.provider === "custom")
-        return c.custom.consent && c.custom.host && c.custom.model ? `Custom server · ${c.custom.host}` : null;
+        return c.custom.consent && c.custom.model ? `Custom server · ${cleanupTarget(or)}` : null;
     return c.consent ? `OpenRouter · ${shortModel(c.model)}` : null;
 }
 function cleanupLabel() {
