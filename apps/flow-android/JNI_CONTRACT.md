@@ -210,6 +210,17 @@ request's own.
 |---|---|---|---|---|
 | `nativeBenchClean(h: Long, requestJson: String): String` | `(JLjava/lang/String;)Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeBenchClean` | — | **Blocking** (one LLM call). The request is `{"mode":"prod"\|"v4c","input","context":FieldContext,"session":SessionConfig}`, run on a **core** handle's on-device LLM. `prod` runs `flow_core::refinish` on `input` (the product's text path) and returns `output`, `status` and `fallback_reason`. `v4c` sends the raw transcript with prompt v4c to the LLM once, with no guard. Both return `llm_raw`, `llm_error`, `llm_ms`, `llm_calls`, `wall_ms` and `llm_info`. Never null; on failure, or for a router handle, it returns `{"error":…}` |
 
+## Load timings and LLM keep (Load 3, 2026-11-05) — additive
+
+A language switch reloads the speech model (D33 decision 4, D37) but not the on-device LLM, and
+each load reports how long it took. Every flavour exports them. A library built before them
+throws `UnsatisfiedLinkError`; Kotlin treats that as "no timings" / "nothing kept".
+
+| Kotlin (`@JvmStatic external`) | JNI descriptor | C symbol | C ABI | Semantics |
+|---|---|---|---|---|
+| `nativeLastLoadTimings(): String?` | `()Ljava/lang/String;` | `Java_dev_flowclone_core_NativeFlowCore_nativeLastLoadTimings` | — | This thread's last successful `nativeLoadModels`: `{"total_ms","models":[{"kind":"asr"\|"lid"\|"llm","language"?,"backend","ms","phases"?:[{"name","ms"}],"reused"?:true}]}` (`flow_core::load_timings`); sherpa phases `files`, `model_type`, `vocab`, `beam_sessions`, `greedy_sessions` (each on its own thread), `sessions` (wall); LLM phases `model`, `warm`. Null before the first load. No paths, no text |
+| `nativeKeepLlm(keep: Boolean): Boolean` | `(Z)Z` | `Java_dev_flowclone_core_NativeFlowCore_nativeKeepLlm` | — | `true`: hold the most recently loaded on-device LLM (`flow_core::llm_keep::keep`) so the next `nativeLoadModels` with the same `llm_path`, `threads` and `llm_lib` reuses it instead of loading it again (its timing says `"reused":true`); returns whether one was alive. Call it **before** `nativeUnload` of the engine being replaced. Every load takes a kept LLM out (one that does not match is freed first), so it never outlives the next load. `false`: free a kept LLM now (low-memory unload with no load to follow); returns true |
+
 ## Meeting transcription (D44, D46, 2026-11-02) — additive
 
 A recording of any length (Calls page: a call recording) through `flow_core::meeting`
@@ -276,10 +287,10 @@ Kotlin must never call a **blocking** native on the main thread.
 
 | Blocking (worker thread / `Dispatchers.IO`) | Non-blocking (any thread, incl. main and the AudioRecord thread) |
 |---|---|
-| `nativeLoadModels` (model load) | `nativePushAudio` (never waits; a mid-session failover connects on a native helper thread) |
+| `nativeLoadModels` (model load), `nativeKeepLlm(false)` (may free a model) | `nativePushAudio` (never waits; a mid-session failover connects on a native helper thread) |
 | `nativeStartSession`, `nativeStartSessionInfo` (server route: TCP + TLS + WebSocket hello, up to `connect_timeout_ms`; local: may wait for the previous commit's worker) | `nativePoll`, `nativePartial`, `nativeSetContext` |
 | `nativeCommit` (ASR + LLM; server/cloud round trip) | `nativeCancel` (also aborts a commit running on another thread, see below) |
-| `nativeProbeServer`, `nativeProbeRouter`, `nativeProbeCloud`, `nativePrewarm` (D24) | `nativeRouteStatus`, `nativeCapabilities`, `nativeCloudCapabilities`, `nativeCloudPresets`, `nativeLastError*` |
+| `nativeProbeServer`, `nativeProbeRouter`, `nativeProbeCloud`, `nativePrewarm` (D24) | `nativeRouteStatus`, `nativeCapabilities`, `nativeCloudCapabilities`, `nativeCloudPresets`, `nativeLastError*`, `nativeLastLoadTimings`, `nativeKeepLlm(true)` |
 | `nativeUnload` (joins the engine worker; waits for a running commit) | `nativeOpenRouter`, `nativeUpdateRouter`, `nativeResetCircuit`, `nativeSetLocalLoader` (no network; the load itself runs later on a router thread) |
 | `nativeRefreshCloudCatalog`, `nativeCloudKeyInfo` (D28, network), `nativeCustomCleanupModels` (D52, network), `nativeCommand` (LLM), `nativeBenchClean` (LLM), `nativeMeetingPush`, `nativeMeetingFinish` (ASR per chunk), `nativeMeetingClose` (frees the engine) | `nativeMeetingOpen`, `nativeMeetingSetTotal`, `nativeMeetingProgress`, `nativeMeetingCancel`, `nativeSetCloudKey`, `nativeSetCloudKeyFor`, `nativeCloudUsage`, `nativeSetCloudUsage`, `nativeResetCloudUsage`, `nativeMigrateCloud`, `nativeSetCleanup`, `nativeCleanupStatus`, `nativeCloudNotice`, `nativeAckCloudNotice`, `nativeSetCloudModel`, `nativeSetCloudCacheDir`, `nativeCloudCatalog` |
 
