@@ -12,7 +12,7 @@ object RouteLabel {
     fun of(route: SessionRoute?, providerLabel: (String) -> String? = { null }): String? {
         val r = route ?: return null
         val base = when (r.engine) {
-            "local" -> if (r.loading) LOADING_PHONE_MODEL else "via phone"
+            "local" -> if (r.loading) r.loadingLabel ?: LOADING_PHONE_MODEL else "via phone"
             "remote" -> "via server"
             "cloud" -> {
                 val name = r.provider?.let { providerLabel(it) ?: it } ?: "cloud"

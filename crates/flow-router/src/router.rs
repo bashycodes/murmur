@@ -1200,6 +1200,21 @@ impl Router {
     /// "Transcribing via …" label, and `queued` (server busy, waiting for
     /// a worker). Additive (2026-10-22).
     pub fn start_session_info(&self, cfg: SessionConfig) -> Result<StartInfo, RouterError> {
+        self.start_with(cfg, false)
+    }
+
+    /// D55: `start_session_info` on the client route alone, whatever the
+    /// route order says: audio recorded while the phone's speech model was
+    /// loading is transcribed on the phone (owner decision 2026-11-05), so
+    /// neither the server nor the cloud ever sees it, and there is no
+    /// fallback hop. A cold local engine with a loader loads on demand (D24);
+    /// without a local engine the start fails with `local_not_ready`.
+    /// Cleanup follows the cleanup order as for any phone dictation.
+    pub fn start_session_local(&self, cfg: SessionConfig) -> Result<StartInfo, RouterError> {
+        self.start_with(cfg, true)
+    }
+
+    fn start_with(&self, cfg: SessionConfig, local_only: bool) -> Result<StartInfo, RouterError> {
         // One start at a time: a concurrent start must see (and cancel) the
         // session this one installs, never overwrite it (review C7).
         let _starting = self.starting.lk();
@@ -1209,7 +1224,7 @@ impl Router {
         let mut st = self.state.lk();
         st.last_dictionary = cfg.dictionary.clone();
         let mut diag = RouteDiag::default();
-        let (mut active, res) = self.start_routes(&mut st, cfg, &mut diag);
+        let (mut active, res) = self.start_routes(&mut st, cfg, &mut diag, local_only);
         drop(st);
         diag.local_cold |= active.diag.local_cold;
         active.diag = diag;
@@ -1742,11 +1757,21 @@ impl Router {
         st: &mut State,
         cfg: SessionConfig,
         diag: &mut RouteDiag,
+        local_only: bool,
     ) -> (Active, Result<bool, RouterError>) {
         if let Err(e) = st.cfg.validate_order() {
             return (Active::dead(cfg, e.to_string(), None), Err(e));
         }
-        let routes = self.routes(st);
+        let mut routes = self.routes(st);
+        if local_only {
+            routes.retain(|r| *r == Route::Client);
+            if routes.is_empty() {
+                return (
+                    Active::dead(cfg, RouterError::LocalNotReady.to_string(), None),
+                    Err(RouterError::LocalNotReady),
+                );
+            }
+        }
         if routes.is_empty() {
             return (
                 Active::dead(cfg, RouterError::NoEngineEnabled.to_string(), None),

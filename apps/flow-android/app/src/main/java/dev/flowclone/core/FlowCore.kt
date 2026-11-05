@@ -31,6 +31,16 @@ interface FlowCore {
     fun startSessionInfo(cfg: SessionConfig): StartInfo { startSession(cfg); return StartInfo() }
 
     /**
+     * D55: [startSessionInfo] on the phone's own engine only. A router never sends this session
+     * to the server or the cloud, whatever its route order; without a local engine it throws
+     * (`local_not_ready`). An engine that can't promise that refuses (this default), so held
+     * audio never reaches the server by accident; on-device engines override it.
+     * @throws CoreException
+     */
+    fun startSessionLocal(cfg: SessionConfig): StartInfo =
+        throw CoreException("This engine can't keep the recording on the phone.", "local_not_ready")
+
+    /**
      * `poll(h)` (2026-10-22): one non-blocking read per preview tick: partial, hands-free
      * endpoint (D19) and the live route. Engines without it report just the partial.
      */
@@ -267,6 +277,8 @@ data class SessionRoute(
     val fallback: String? = null,
     /** Shell-side (not in the route JSON): StartInfo / RouterPoll `loading` (D24 on-demand phone model). */
     val loading: Boolean = false,
+    /** Shell-side: what the bubble says while [loading] instead of "Loading phone model…" (D55: the model a dictation waits for). */
+    val loadingLabel: String? = null,
 )
 
 /** `StartInfo` JSON: `queued` = the server accepted but has no free worker yet. */

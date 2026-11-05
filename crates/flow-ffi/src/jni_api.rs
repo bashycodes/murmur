@@ -219,18 +219,36 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeStartSession
 /// last error / kind set (2026-10-22, additive).
 #[no_mangle]
 pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeStartSessionInfo(
-    mut env: JNIEnv,
+    env: JNIEnv,
     _c: JClass,
     h: jlong,
     cfg: JString,
 ) -> jstring {
+    start_info(env, h, cfg, false)
+}
+
+/// D55: `nativeStartSessionInfo` on the on-device engine only (a router
+/// handle never uses the server or the cloud for this session; a core handle
+/// is on-device already). Same result and errors (additive, 2026-11-05).
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeStartSessionLocal(
+    env: JNIEnv,
+    _c: JClass,
+    h: jlong,
+    cfg: JString,
+) -> jstring {
+    start_info(env, h, cfg, true)
+}
+
+/// The two start exports: `StartInfo` JSON, or null with the error set.
+fn start_info(mut env: JNIEnv, h: jlong, cfg: JString, local_only: bool) -> jstring {
     let r = guard(None, || {
         let Some(h) = handle(h) else {
             set_error("null handle");
             return None;
         };
         let j = jstr(&mut env, &cfg, "bad session config")?;
-        json_api::start_session_info(h, &j)
+        json_api::start_session_info(h, &j, local_only)
             .map_err(|(kind, e)| set_error_kind(kind, e))
             .ok()
     });

@@ -58,16 +58,26 @@ impl FlowHandle {
         }
     }
 
-    /// A core handle reports no route (`StartInfo::default()`).
-    fn start_session(&self, cfg: SessionConfig) -> Result<StartInfo, (&'static str, String)> {
+    /// A core handle reports no route (`StartInfo::default()`) and is
+    /// on-device already, so `local_only` changes nothing for it; a router
+    /// handle with `local_only` starts on the phone's engine alone (D55,
+    /// `Router::start_session_local`).
+    fn start_session(
+        &self,
+        cfg: SessionConfig,
+        local_only: bool,
+    ) -> Result<StartInfo, (&'static str, String)> {
         match self {
             FlowHandle::Core(c) => c
                 .start_session(cfg)
                 .map(|_| StartInfo::default())
                 .map_err(|e| ("error", e.to_string())),
-            FlowHandle::Router(r) => r
-                .start_session_info(cfg)
-                .map_err(|e| (e.kind(), e.to_string())),
+            FlowHandle::Router(r) => if local_only {
+                r.start_session_local(cfg)
+            } else {
+                r.start_session_info(cfg)
+            }
+            .map_err(|e| (e.kind(), e.to_string())),
         }
     }
     /// `Router::poll`; a core handle gives `FlowCore::poll` with no route.
@@ -262,18 +272,21 @@ pub mod json_api {
     }
 
     pub fn start_session(h: &FlowHandle, cfg_json: &str) -> Result<(), (&'static str, String)> {
-        start_session_info(h, cfg_json).map(|_| ())
+        start_session_info(h, cfg_json, false).map(|_| ())
     }
 
     /// Like [`start_session`], returning the `StartInfo` JSON
     /// (`{"queued":bool,"route"?:SessionRoute}`; no `route` for a core handle).
+    /// `local_only`: the on-device engine alone, never the server or the
+    /// cloud (D55).
     pub fn start_session_info(
         h: &FlowHandle,
         cfg_json: &str,
+        local_only: bool,
     ) -> Result<String, (&'static str, String)> {
         let cfg: SessionConfig = serde_json::from_str(cfg_json)
             .map_err(|e| ("bad_config", format!("bad session config: {e}")))?;
-        let info = h.start_session(cfg)?;
+        let info = h.start_session(cfg, local_only)?;
         Ok(serde_json::to_string(&info).unwrap_or_else(|_| "{\"queued\":false}".into()))
     }
 
@@ -918,7 +931,7 @@ pub unsafe extern "C" fn flow_start_session_info(
             set_error("null handle or config");
             return std::ptr::null_mut();
         };
-        match json_api::start_session_info(h, j) {
+        match json_api::start_session_info(h, j, false) {
             Ok(s) => {
                 clear_error();
                 out_string(s)

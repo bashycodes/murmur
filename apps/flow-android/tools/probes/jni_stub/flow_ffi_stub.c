@@ -55,6 +55,11 @@ JNIEXPORT jstring JNICALL FN(nativeStartSessionInfo)(JNIEnv *env, jclass c, jlon
     return (*env)->NewStringUTF(env, "{\"queued\":false,\"route\":{\"engine\":\"local\"}}");
 }
 
+/* Load 2: the stub has only an on-device engine, so a local start is a start. */
+JNIEXPORT jstring JNICALL FN(nativeStartSessionLocal)(JNIEnv *env, jclass c, jlong h, jstring cfg) {
+    return FN(nativeStartSessionInfo)(env, c, h, cfg);
+}
+
 JNIEXPORT jstring JNICALL FN(nativePoll)(JNIEnv *env, jclass c, jlong h) {
     Core *k = (Core *)(intptr_t)h;
     return (*env)->NewStringUTF(env, k && k->active
