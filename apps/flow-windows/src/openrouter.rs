@@ -385,6 +385,37 @@ pub fn apply_custom_cleanup(
     Ok(())
 }
 
+/// D52 "Load models" / "Test connection" with the saved key on a host not
+/// consented to yet: the page showed the custom server's consent dialog for
+/// `base_url`'s host and it was accepted. Records that consent so the saved
+/// key may go there; the provider is not switched. While OpenRouter is the
+/// provider the address is saved too (it is not used until Custom is
+/// picked); with Custom selected, only its own saved host can be consented
+/// to here, so a test never voids the live server's consent.
+pub fn apply_custom_key_consent(
+    dev: &mut DevSettings,
+    base_url: &str,
+    now_ms: u64,
+) -> Result<(), String> {
+    let a = flow_router::cloud::custom_server_address(base_url)
+        .map_err(|e| format!("Base URL: {e}"))?;
+    let mut next = dev.clone();
+    let openrouter = next.cloud.cleanup_provider.is_openrouter();
+    let cc = &mut next.cloud.custom_cleanup;
+    if openrouter {
+        cc.base_url = a.url;
+    } else if !cc.host().eq_ignore_ascii_case(&a.host) {
+        return Err(
+            "Save this server address first: cleanup still goes to your saved server".into(),
+        );
+    }
+    cc.consent_host = a.host;
+    cc.consent_at_ms = now_ms.max(1);
+    check(&next)?;
+    *dev = next;
+    Ok(())
+}
+
 /// D52 `dev_custom_cleanup_address`: [`flow_router::cloud::custom_server_address`]
 /// plus `model_ok`, the JSON `flow_ffi::json_api::custom_cleanup_address`
 /// gives Android.
@@ -717,6 +748,40 @@ mod tests {
             timeout_ms: 4000,
             consent,
         }
+    }
+
+    #[test]
+    fn key_consent_from_a_test_lets_the_saved_key_go_to_that_host() {
+        // Owner report (1.1.2): URL typed, key saved, consent accepted, but
+        // "Test connection" sent no key (401): nothing had recorded consent
+        // for the typed host while Custom was not saved yet.
+        let url = "http://100.64.0.7:4100/v1";
+        let saved = || Some("sk-saved-LEAKCHECK".to_string());
+        let mut d = dev();
+        assert!(crate::credentials::saved_custom_key_withheld(
+            None,
+            true,
+            &d.cloud.custom_cleanup,
+            url
+        ));
+        apply_custom_key_consent(&mut d, url, 7).unwrap();
+        assert_eq!(d.cloud.cleanup_provider, CleanupProvider::OpenRouter);
+        assert_eq!(d.cloud.custom_cleanup.base_url, url);
+        let cc = &d.cloud.custom_cleanup;
+        assert!(!crate::credentials::saved_custom_key_withheld(
+            None, true, cc, url
+        ));
+        assert_eq!(
+            crate::credentials::custom_key_for(None, saved, cc, url).unwrap(),
+            Some("sk-saved-LEAKCHECK".into())
+        );
+        // The later switch to Custom needs no second consent for that host.
+        apply_custom_cleanup(&mut d, &custom("custom", url, "m", false), 9).unwrap();
+        assert!(d.cloud.cleanup_consent_ok());
+        // With Custom live, a test of another host cannot move its consent.
+        assert!(apply_custom_key_consent(&mut d, "http://100.64.0.8:4100", 11).is_err());
+        assert_eq!(d.cloud.custom_cleanup.consent_host, "100.64.0.7");
+        assert!(apply_custom_key_consent(&mut d, "not a url", 11).is_err());
     }
 
     #[test]

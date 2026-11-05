@@ -11,6 +11,7 @@ const CLOUD_HINTS = {
     timeout: "took too long",
     busy: "rate limited",
     circuit_open: "paused after recent failures",
+    consent_needed: "consent needed: press again and accept, or paste the key",
 };
 export function cloudHint(code) {
     return code ? (CLOUD_HINTS[code] ?? code) : "?";

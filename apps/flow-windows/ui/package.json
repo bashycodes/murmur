@@ -3,9 +3,11 @@
   "private": true,
   "version": "1.1.2",
   "description": "Overlay pill + settings front-end. Plain TS -> JS, no bundler, no runtime deps, no network assets.",
+  "type": "module",
   "scripts": {
     "build": "tsc -p .",
-    "check": "tsc -p . --noEmit"
+    "check": "tsc -p . --noEmit",
+    "test": "tsc -p . && node --test tests/cleanup-provider.test.mjs"
   },
   "devDependencies": {
     "typescript": "5.6.3"

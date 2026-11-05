@@ -90,7 +90,7 @@ class OpenRouterActivity : Activity() {
         page {
             card {
                 toggleRow("Cloud speech-to-text", CloudText.NOT_IN_BUILD.cap(), checked = false, enabled = false)
-                toggleRow("Clean up text with OpenRouter", CloudText.NOT_IN_BUILD.cap(), checked = false, enabled = false)
+                toggleRow(CLEANUP_SWITCH, CloudText.NOT_IN_BUILD.cap(), checked = false, enabled = false)
                 note("This build has no cloud client: nothing leaves the phone except to your own server.")
             }
         }
@@ -180,7 +180,7 @@ class OpenRouterActivity : Activity() {
     private fun LinearLayout.cleanupCard(s0: DevSettings) = with(ui) {
         sectionLabel("TEXT CLEANUP")
         card {
-            val on = toggleRow("Clean up text with OpenRouter", "Sends the dictated text (not your voice) after each dictation; off by default", s0.allowCloudCleanup)
+            val on = toggleRow(CLEANUP_SWITCH, "Sends the dictated text (not your voice) after each dictation; off by default", s0.allowCloudCleanup)
             val service = navRow(R.drawable.ic_dev_cloud, "Cleanup service") { editProvider() }
             val model = navRow(R.drawable.ic_set_sparkle, "Model") { ModelPickerActivity.open(this@OpenRouterActivity, CloudCatalog.Use.CLEANUP) }
             val sort = navRow(R.drawable.ic_dev_route, "Provider choice") { editSort() }
@@ -191,7 +191,6 @@ class OpenRouterActivity : Activity() {
             refreshers += { s ->
                 val custom = s.cloud.customProvider
                 quietly { on.isChecked = s.allowCloudCleanup }
-                on.setTitle("Clean up text with " + if (custom) "your server" else OpenRouter.NAME)
                 service.setSubtitle(if (custom) s.cloud.cleanupProviderName else OpenRouter.NAME)
                 for (row in listOf(model, sort, timeout)) row.view.visibility = if (custom) android.view.View.GONE else android.view.View.VISIBLE
                 model.setSubtitle(CloudCatalog.modelSummary(s.cloud.cleanup.model))
@@ -557,6 +556,8 @@ class OpenRouterActivity : Activity() {
 
     companion object {
         const val TITLE = "OpenRouter (cloud)"
+        /** The cleanup switch keeps one title whichever provider is picked; "Cleanup service" names it (D52). */
+        const val CLEANUP_SWITCH = "Clean up text with the cloud server"
         fun open(ctx: Context) = ctx.startActivity(Intent(ctx, OpenRouterActivity::class.java))
         private fun String.cap() = replaceFirstChar { it.uppercase() }
     }

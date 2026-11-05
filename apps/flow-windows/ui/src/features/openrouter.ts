@@ -13,6 +13,7 @@ import { $, askDialog, el, setStatus, setValue, when } from "../lib/dom.js";
 import { iconEl } from "../lib/icons.js";
 import { cleanupMonthCost, cloudHint, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
+import { ProviderChoice } from "../lib/cleanup-provider.js";
 import type {
   CatalogStatus,
   CleanupProvider,
@@ -572,6 +573,9 @@ async function orCleanupToggled(): Promise<void> {
 
 // ---- D52: custom cleanup server
 
+/** The selector's unsaved pick, kept across re-renders from the saved settings. */
+const choice = new ProviderChoice();
+
 /** The consent dialog of `provider`; the custom one names the typed host. */
 async function askCleanupConsent(provider: CleanupProvider, url: string): Promise<boolean> {
   if (provider === "openrouter") {
@@ -588,7 +592,7 @@ function showCustom(v: OrView): void {
   const c = v.cleanup;
   const cu = c.custom;
   const custom = c.provider === "custom";
-  showProviderRows(c.provider);
+  showProviderRows(choice.shown(c.provider));
   // The cleanup order's cloud row names where the text goes.
   const title = document.querySelector<HTMLElement>("#aieng_row_cloud .fl-row-title");
   if (title) title.textContent = custom ? "Custom server" : "OpenRouter";
@@ -596,9 +600,11 @@ function showCustom(v: OrView): void {
     "aria-label",
     custom ? "Use your custom server for cleanup" : "Use OpenRouter for cleanup",
   );
-  if (document.activeElement !== $("cu_base_url")) setValue("cu_base_url", cu.base_url);
+  // An unsaved provider pick keeps what was typed for it (a reload after the
+  // key's Save used to empty the address).
+  if (!choice.picking && document.activeElement !== $("cu_base_url")) setValue("cu_base_url", cu.base_url);
   void showNormalisedUrl();
-  if (document.activeElement !== $("cu_model")) setValue("cu_model", cu.model);
+  if (!choice.picking && document.activeElement !== $("cu_model")) setValue("cu_model", cu.model);
   ensureOption("cu_timeout_ms", String(cu.timeout_ms), `${cu.timeout_ms / 1000} seconds`);
   $<HTMLElement>("cu_http_warn").hidden = !cu.plain_http;
   const ks = $<HTMLElement>("cu_key_state");
@@ -608,11 +614,10 @@ function showCustom(v: OrView): void {
   $<HTMLElement>("cu_key_entry").hidden = cu.key.set;
 }
 
-/** The card's rows for `provider` (also before a first custom server is saved). */
+/** The card's rows for `provider` (also before a first custom server is saved).
+ *  Its title stays "Cloud server": the selector names the provider. */
 function showProviderRows(provider: CleanupProvider): void {
-  const custom = provider === "custom";
   $<HTMLSelectElement>("or_cleanup_provider").value = provider;
-  $<HTMLElement>("or_cleanup_title").textContent = custom ? "Custom server" : "OpenRouter";
   for (const r of $<HTMLElement>("or_cleanup_box").querySelectorAll<HTMLElement>("[data-provider]")) {
     r.hidden = r.dataset.provider !== provider;
   }
@@ -620,8 +625,9 @@ function showProviderRows(provider: CleanupProvider): void {
   $<HTMLElement>("or_cleanup_test_out").textContent = "";
 }
 
-/** Save the provider selector and the custom server's fields together. */
-async function cuApply(provider: CleanupProvider, consent: boolean): Promise<boolean> {
+/** Save the provider selector and the custom server's fields together.
+ *  `settle`: this saves the pick (not just the address under the old provider). */
+async function cuApply(provider: CleanupProvider, consent: boolean, settle = true): Promise<boolean> {
   const t = parseInt($<HTMLSelectElement>("cu_timeout_ms").value, 10);
   const form = {
     provider,
@@ -631,22 +637,32 @@ async function cuApply(provider: CleanupProvider, consent: boolean): Promise<boo
     consent,
   };
   const r = await orCall<OrView>("dev_or_set_custom_cleanup", { form }, "or_cleanup_msg", "Saved — applies to the next dictation");
-  if (r) showOr(r);
-  else if (views.or) showOr(views.or);
+  if (r) {
+    if (settle) choice.settle();
+    showOr(r);
+  } else if (views.or) showOr(views.or);
   return r !== null;
 }
 
 /** A provider switch, or a custom address on a new host, while cloud
- *  cleanup is on asks that destination's consent first. */
-async function cuChanged(provider: CleanupProvider): Promise<void> {
+ *  cleanup is on asks that destination's consent first. One at a time, so
+ *  the key's Save reloads after it. */
+function cuChanged(provider: CleanupProvider): Promise<void> {
+  return choice.run(() => cuChangedNow(provider));
+}
+
+async function cuChangedNow(provider: CleanupProvider): Promise<void> {
   const c = views.or?.cleanup;
+  choice.pick(provider, c?.provider);
   if (
     provider === "custom" &&
     c?.provider !== "custom" &&
     ($<HTMLInputElement>("cu_base_url").value.trim() === "" || $<HTMLInputElement>("cu_model").value.trim() === "")
   ) {
-    // Not switched yet: the fields first, then it is saved.
+    // Not switched yet: the fields first, then it is saved. A typed address
+    // is saved already (under the current provider), so it survives a reload.
     showProviderRows("custom");
+    if ($<HTMLInputElement>("cu_base_url").value.trim() !== "") await cuApply(c?.provider ?? "openrouter", false, false);
     setStatus("or_cleanup_msg", "Enter the server address and a model to switch", false);
     return;
   }
@@ -660,6 +676,7 @@ async function cuChanged(provider: CleanupProvider): Promise<void> {
     if (needs) {
       consent = await askCleanupConsent(provider, url);
       if (!consent) {
+        choice.settle();
         if (views.or) showOr(views.or);
         return;
       }
@@ -676,12 +693,20 @@ async function cuSaveKey(): Promise<void> {
   }
   const k = await orCall<KeyState>("dev_cloud_set_custom_key", { key: input.value }, "or_cleanup_msg", "Key saved in Credential Manager");
   input.value = "";
-  if (k) await loadOr();
+  // The reload keeps an unsaved provider pick and waits for a provider save
+  // still running (the address/model field's change fires on the click).
+  if (k) {
+    await choice.idle();
+    await loadOr();
+  }
 }
 
 async function cuClearKey(): Promise<void> {
   const k = await orCall<KeyState>("dev_cloud_clear_custom_key", {}, "or_cleanup_msg", "Key removed");
-  if (k) await loadOr();
+  if (k) {
+    await choice.idle();
+    await loadOr();
+  }
 }
 
 /** `GET /v1/models` on the typed address (typed key, else the saved one). */
@@ -697,7 +722,20 @@ async function cuModels(outId: string, fill: boolean): Promise<void> {
   out.className = "hint";
   try {
     const key = $<HTMLInputElement>("cu_key").value.trim();
-    const r = await invoke<CustomModels>("dev_or_custom_models", { baseUrl, key: key === "" ? null : key });
+    // The saved key only goes to a host the user agreed to (D52): ask here
+    // rather than call without it and get a bare 401.
+    const cu = views.or?.cleanup.custom;
+    let consent = false;
+    if (key === "" && cu?.key.set && !(cu.consent_at_ms > 0 && cu.consent_host !== "" && (await hostOf(baseUrl)) === cu.consent_host)) {
+      consent = await askCleanupConsent("custom", baseUrl);
+      if (!consent) {
+        out.textContent = "Not asked: your saved key only goes to a server you agreed to send text to. Paste the key to test without agreeing.";
+        out.className = "hint err";
+        return;
+      }
+    }
+    const r = await invoke<CustomModels>("dev_or_custom_models", { baseUrl, key: key === "" ? null : key, consent });
+    if (consent) await loadOr();
     if (r.models) {
       if (fill) {
         $<HTMLDataListElement>("cu_model_list").replaceChildren(

@@ -19,6 +19,12 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 ### Changed
 
 - **Windows: hold Right Alt to dictate.** Right Alt is the new push-to-talk key instead of Ctrl+Win, and it starts at once like any push-to-talk key; if you never changed Ctrl+Win, it moves to Right Alt on the next start, so Ctrl+Win alone no longer dictates (set it back in Settings → General → Shortcuts if you prefer it; a shortcut you picked stays). While Right Alt is your push-to-talk key, no app sees it: it never opens a menu bar, and on keyboards where Right Alt is AltGr (Hebrew, many European layouts) it no longer types AltGr letters; type them with Left Ctrl+Left Alt instead. The tray tooltip names your push-to-talk key. Hands-free (Ctrl+Win+Space) and Command Mode (Ctrl+Win+Alt) are unchanged (D57).
+- **AI cleanup: the cloud section is titled "Cloud server".** Its title no longer switches between "OpenRouter" and "Custom server" as you pick the provider; the "Send text to" list (Windows) and "Cleanup service" row (Android) name the provider, and Android's switch reads "Clean up text with the cloud server".
+
+### Fixed
+
+- **Windows: picking "Custom server" no longer flips back to OpenRouter when you save its key.** Until the server address and model are filled in, the choice is not saved yet, and saving the key reloaded the settings, reset the list to OpenRouter and emptied the address (dictation kept using OpenRouter). The choice and what you typed now stay until it is saved, a typed address is saved at once, and the key's Save waits for a provider change still being saved.
+- **Windows: "Load models" / "Test connection" with a saved custom-server key no longer fail with a bare 401.** The saved key only goes to a server you agreed to send text to; for a server not agreed to yet the page now asks first (and remembers the answer), instead of calling it without the key.
 
 ## [1.1.2] - 2026-11-05
 
