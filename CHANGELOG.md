@@ -16,6 +16,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-11-05
+
 ### Added
 
 - **Android: record while the speech model loads.** Right after the app starts, or after switching the keyboard between English and Hebrew, the bubble starts recording at once instead of saying the model is still loading. It shows which model is loading, and your words are transcribed on the phone as soon as it is ready, never sent to your server for this (X still discards it). If the model takes more than 2.5 minutes or fails to load, the recording stops, the bubble shows why, and the recording waits in History for "Retry with current settings".
@@ -1291,7 +1293,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
   adaptive connect timeout, connection pre-warm.
 - All P1/P2 findings of the 2026-10-22 review (`docs/reviews/2026-10-22-integration.md`).
 
-[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/bashycodes/murmur/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/bashycodes/murmur/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/bashycodes/murmur/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/bashycodes/murmur/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/bashycodes/murmur/compare/v0.12.0...v1.0.0
