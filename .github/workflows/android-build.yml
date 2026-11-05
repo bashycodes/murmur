@@ -153,7 +153,18 @@ jobs:
       # phone's app without wiping it.
       - name: Debug key gate
         if: env.FLOW_FIXED_DEBUG_KEY == '1'
-        run: apps/flow-android/tools/check-apk-cert.sh apps/flow-android/dist/*-debug.apk
+        # apksigner pinned to build-tools 36.0.0: the image's newest (37.0.0)
+        # printed no certificate lines for these APKs (run 42081648042). The
+        # second command only records what 37.0.0 prints, for the diagnosis.
+        run: |
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner" \
+            apps/flow-android/tools/check-apk-cert.sh apps/flow-android/dist/*-debug.apk
+          a37="$ANDROID_HOME/build-tools/37.0.0/apksigner"
+          if [ -e "$a37" ]; then
+            echo "build-tools 37.0.0 apksigner (diagnostic only):"
+            ls -la "$a37"
+            "$a37" verify --print-certs apps/flow-android/dist/flow-clone-remote-debug.apk 2>&1 | head -10 || true
+          fi
 
       # I3/I4 + C2 + D28 gate, strict and cloud-strict (the defaults): every
       # flavour check runs, and neither the sources nor the shipped APKs'
