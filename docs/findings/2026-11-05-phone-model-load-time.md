@@ -17,8 +17,10 @@ model too?
 * **Fixed** (`flow-asr-sherpa`): the app reads `model_type` from the encoder's metadata
   itself (top-level protobuf fields only; the graph is skipped by its length, so it reads a
   few hundred bytes) and passes it to sherpa; and the beam and greedy recognizers are created
-  on two threads at once (Parakeet too). On the i7-6700: **6.7 s → 2.2 s**, same text.
-  Expected on the phone: roughly 16.6 s → 5–6 s, to be measured (§ Phone measurement).
+  on two threads at once. On the i7-6700: **6.7 s → 2.2 s**, same text. The phone is not
+  measured yet; expected roughly 16.6 s → 5–6 s (§ Phone measurement). Parakeet can do the
+  same (`ParakeetConfig::parallel_sessions`) but keeps the serial load by default: two of its
+  much bigger encoder sessions initialising at once raise peak RAM, unmeasured on the phone.
 * **Not the cause:** ONNX Runtime's graph-optimisation level (the encoder takes about as long
   to set up with optimisation off), the thread count (session setup is single-threaded: 1, 2,
   4 and 8 threads load in the same time), `tokens.txt`, and the hotword vocabulary
@@ -28,7 +30,8 @@ model too?
   (D54), a switch to or from Hebrew frees the engine and loads the other speech model; the
   cleanup LLM (Qwen2.5-1.5B, 38.1 s on the phone, of which 34.4 s is the static prompt
   prefill) was loaded again with it. The phone now keeps the loaded LLM and the next load
-  reuses it (`flow_core::llm_keep`, `nativeKeepLlm`).
+  reuses it (`FlowCore::keep_llm`, `nativeKeepLlm(h)`: the LLM of the engine being freed,
+  not whichever loaded last; a load whose speech model fails puts it back for the retry).
 * **Every load logs its timings** per model and phase (§ What the log line says).
 
 ## Measurements (i7-6700, 8 threads shared, load avg 2.5–7, `nice`)
@@ -54,6 +57,10 @@ Model: `zipformer2-66m-streaming-he-int8` (encoder 70.5 MB, decoder 1.0 MB, join
   encoder took 0.73 s, but sherpa-onnx's C API cannot load one or set the level, and an
   optimised model is specific to the CPU it was made on; not pursued.
 * Parakeet-he (beam + greedy, parallel): 8.7 s here (the pins doc measured 16.7 s serial).
+  Off by default (peak RAM, above).
+* Decode threads are unchanged: beam and greedy each had their own `threads`-sized
+  onnxruntime pools before, and only one decodes at a time; the parallel load overlaps only
+  their setup.
 * Decoding is unchanged: the Hebrew FLEURS clip gave the same text greedy and beam
   (`cargo test -p flow-asr-sherpa --test online` with `FLOW_ZIPFORMER_HE_DIR` + `FLOW_HE_WAV`).
 
@@ -70,8 +77,9 @@ measured**. Two phone-only suspects remain, and the new log line checks both:
 
 ## What the log line says
 
-One line per native load, logcat tag `FlowEngine` (`load timings: {…}`) and the debug log
-event `engine_load_timings`:
+With the debug log on (Settings → Debug log; nothing is logged or read otherwise), one debug
+log event `engine_load_timings` per native load, which the debug log also writes to logcat
+(tag `FlowDebug`):
 
 ```json
 {"total_ms":5400,"models":[
@@ -90,12 +98,12 @@ loading thread's `Cpus_allowed_list`.
 ## Phone measurement (needs a native build: the fix is in the Rust libraries)
 
 1. Hybrid debug APK built with `tools/build-native.sh --flavor hybrid` (new JNI symbols
-   `nativeLastLoadTimings`, `nativeKeepLlm`; an older library just logs nothing and keeps
+   `nativeLastLoadTimings`, `nativeKeepLlm`, `nativeReleaseKeptLlm`; an older library just logs nothing and keeps
    nothing). Debug log on. Keep both languages **off**, AI cleanup on, Hebrew model =
    zipformer-he.
 2. Dictate once with the English keyboard (cold load), then switch the keyboard to Hebrew and
    dictate, then back to English and dictate. Read the three `engine_load_timings` lines
-   (logcat `FlowEngine` or Settings → Debug log).
+   (Settings → Debug log, or logcat tag `FlowDebug`).
 3. Check:
    * zipformer `ms` ≪ 16.6 s (expected ~5–6 s) and `beam_sessions` ≈ `greedy_sessions` ≈
      `sessions` (they ran at once);
