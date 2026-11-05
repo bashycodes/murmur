@@ -192,6 +192,11 @@ object SettingsSummary {
     fun hebrewModel(installed: String?): String =
         installed?.let { "$it · used when the language is Hebrew" } ?: "None imported · Hebrew uses whisper"
 
+    /** D54 "Keep both languages loaded": what it does, or why it does nothing with one language model. */
+    fun keepBothLanguages(hebrewInstalled: Boolean, defaultInstalled: Boolean): String =
+        if (hebrewInstalled && defaultInstalled) "Switching keyboard language never waits for a model to load. Uses more memory (up to about 1.1 GB, depending on the models)"
+        else "No effect with only one speech model installed: needs the Hebrew model and a default one"
+
     /** [whisper] / [parakeet]: imported file / folder names (null = none). */
     fun engine(s: Settings, whisper: String?, parakeet: String?): String = when (s.asrEngine) {
         AsrEngine.PARAKEET -> "Parakeet · " + (shortModel(parakeet) ?: "no model folder (whisper is used)")

@@ -2,6 +2,7 @@ package dev.flowclone
 
 import dev.flowclone.core.CoreException
 import dev.flowclone.core.FakeFlowCore
+import dev.flowclone.data.LoadSet
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -24,17 +25,21 @@ import java.util.concurrent.TimeUnit
 class EngineHolderTest {
     private val app get() = FlowApp.of(RuntimeEnvironment.getApplication())
 
-    @Volatile private var want: String? = "he"
+    @Volatile private var want: LoadSet = LoadSet.Language("he")
     private val gates = ConcurrentHashMap<String, CountDownLatch>()
     private val built = CopyOnWriteArrayList<String>()
     private val cores = ConcurrentHashMap<String, FakeFlowCore>()
     /** Per build: was every earlier engine already let go of when it started (one model in RAM)? */
     private val othersFreedAtStart = ConcurrentHashMap<String, Boolean>()
 
-    private fun key(route: String?) = route ?: "default"
+    private fun key(set: LoadSet) = when (set) {
+        LoadSet.Default -> "default"
+        is LoadSet.Language -> set.code
+        LoadSet.Both -> "both"
+    }
 
-    private fun holder() = EngineHolder(app, routeProbe = { want }, builder = { route ->
-        val k = key(route)
+    private fun holder() = EngineHolder(app, setProbe = { want }, builder = { set ->
+        val k = key(set)
         othersFreedAtStart[k] = cores.values.all { it.unloaded }
         built += k
         gates[k]?.await(5, TimeUnit.SECONDS)
@@ -76,7 +81,7 @@ class EngineHolderTest {
         h.ensureLoaded()
         waitFor("hebrew build") { "he" in built }
 
-        want = null // the keyboard switched to English
+        want = LoadSet.Default // the keyboard switched to English
         h.ensureLanguage()
         assertEquals("names the model the dictation now needs", EngineHolder.DEFAULT_LOADING, loadingMessage(h))
 
@@ -97,8 +102,8 @@ class EngineHolderTest {
         val h = holder()
         h.ensureLoaded()
         waitFor("hebrew build") { "he" in built }
-        want = null; h.ensureLanguage()
-        want = "he"; h.ensureLanguage()
+        want = LoadSet.Default; h.ensureLanguage()
+        want = LoadSet.Language("he"); h.ensureLanguage()
         assertEquals(EngineHolder.HEBREW_LOADING, loadingMessage(h))
         gates["he"]!!.countDown()
         waitFor("ready") { h.state.value is EngineHolder.State.Ready }
@@ -106,12 +111,45 @@ class EngineHolderTest {
         assertEquals(listOf("he"), built.toList())
     }
 
+    @Test fun withBothLoadedAKeyboardSwitchNeverReloadsAndTogglingReloadsOnce() {
+        want = LoadSet.Both
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        // A switch to English and back: the wanted set stays both, so nothing reloads.
+        repeat(3) { h.ensureLanguage() }
+        assertEquals(listOf("both"), built.toList())
+        assertTrue(h.state.value is EngineHolder.State.Ready)
+        // "Keep both languages loaded" turned off with the keyboard on Hebrew: one reload, to the Hebrew model.
+        want = LoadSet.Language("he")
+        h.ensureLanguage()
+        waitFor("hebrew build") { (h.state.value as? EngineHolder.State.Ready)?.description == "fake he" }
+        h.ensureLanguage()
+        assertEquals(listOf("both", "he"), built.toList())
+    }
+
+    @Test fun aLowMemoryUnloadReloadsBothModelsAtTheNextLoad() {
+        want = LoadSet.Both
+        gates["both"] = CountDownLatch(1)
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("both build") { "both" in built }
+        assertEquals(EngineHolder.BOTH_LOADING, loadingMessage(h))
+        gates["both"]!!.countDown()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        h.unload() // FlowService.onTrimMemory
+        assertTrue(cores["both"]!!.unloaded)
+        h.ensureLoaded()
+        waitFor("ready again") { h.state.value is EngineHolder.State.Ready }
+        assertEquals(listOf("both", "both"), built.toList())
+    }
+
     @Test fun aSwitchFromTheReadyHebrewModelNamesTheDefaultModel() {
         val h = holder()
         h.ensureLoaded()
         waitFor("ready") { h.state.value is EngineHolder.State.Ready }
         gates["default"] = CountDownLatch(1)
-        want = null
+        want = LoadSet.Default
         h.ensureLanguage()
         waitFor("default build") { "default" in built }
         assertEquals(EngineHolder.DEFAULT_LOADING, loadingMessage(h))
