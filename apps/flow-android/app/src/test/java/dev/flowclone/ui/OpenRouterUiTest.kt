@@ -175,7 +175,7 @@ class OpenRouterUiTest {
 
     @Test fun pagesHaveTheDesignTopBarWithALabelledBack() {
         val pages = listOf(
-            launch() to OpenRouter.NAME,
+            launch() to OpenRouterActivity.TITLE,
             Robolectric.buildActivity(
                 ModelPickerActivity::class.java,
                 Intent(ctx, ModelPickerActivity::class.java).putExtra(ModelPickerActivity.EXTRA_USE, CloudCatalog.Use.CLEANUP.wire),

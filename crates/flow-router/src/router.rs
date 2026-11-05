@@ -733,7 +733,9 @@ impl Router {
             g.budget = cloud.monthly_budget_usd;
             g.key = key.clone();
             // OpenRouter needs a key; a custom server may run without one.
-            let built = (custom || key.is_some()).then(|| (view, key.clone()));
+            // A custom server without a model yet is not built (D52).
+            let built =
+                (cloud.cleanup_ready() && (custom || key.is_some())).then(|| (view, key.clone()));
             if !wanted || built.is_none() {
                 g.inner = None;
                 st.cleanup_built = None;

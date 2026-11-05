@@ -76,10 +76,10 @@ class OpenRouterActivity : Activity() {
         refresh()
     }
 
-    /** The page under the design's top bar (back, "OpenRouter"). */
+    /** The page under the design's top bar (back, "Cloud server"). */
     private fun page(build: LinearLayout.() -> Unit) = with(ui) {
         screen {
-            topBar(OpenRouter.NAME, DevUi.TopNav.BACK, onNav = ::finish)
+            topBar(TITLE, DevUi.TopNav.BACK, onNav = ::finish)
             build()
         }
     }
@@ -555,7 +555,7 @@ class OpenRouterActivity : Activity() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     companion object {
-        const val TITLE = "OpenRouter (cloud)"
+        const val TITLE = "Cloud server"
         /** The cleanup switch keeps one title whichever provider is picked; "Cleanup service" names it (D52). */
         const val CLEANUP_SWITCH = "Clean up text with the cloud server"
         fun open(ctx: Context) = ctx.startActivity(Intent(ctx, OpenRouterActivity::class.java))
