@@ -259,9 +259,9 @@ impl CloudConfig {
         }
     }
 
-    /// OpenRouter needs a key; a custom server may run without one (D52).
     /// The selected provider has what a call needs besides consent and
-    /// key: always for OpenRouter, address and model for a custom server.
+    /// key: always for OpenRouter, address and model for a custom server
+    /// (D52: Custom is saved when picked, before they are set).
     pub fn cleanup_ready(&self) -> bool {
         match self.cleanup_provider {
             CleanupProvider::OpenRouter => true,
@@ -269,6 +269,7 @@ impl CloudConfig {
         }
     }
 
+    /// OpenRouter needs a key; a custom server may run without one (D52).
     pub fn cleanup_needs_key(&self) -> bool {
         self.cleanup_provider.is_openrouter()
     }

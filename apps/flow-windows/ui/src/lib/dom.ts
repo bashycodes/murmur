@@ -1,6 +1,8 @@
 // Small DOM helpers shared by every page. User text always goes in with
 // textContent; `html()` is only for the pages' own static templates.
 
+import { Serial } from "./serial.js";
+
 export const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 export function el<K extends keyof HTMLElementTagNameMap>(
@@ -44,8 +46,26 @@ export function svg(tag: string, attrs: Record<string, string | number>, text?: 
   return e;
 }
 
-/** Show a <dialog> with an OK and a Cancel button; resolves to the choice. */
-export function askDialog(id: string, okId: string, cancelId: string): Promise<boolean> {
+/** One turn at a time per dialog: a second ask while it is open waits. */
+const dialogTurns = new Map<string, Serial>();
+
+/** Show a <dialog> with an OK and a Cancel button; resolves to the choice.
+ *  Asked again while it is open, the new ask waits for the open one to be
+ *  answered (taking over its buttons would leave the first never answered).
+ *  `prepare` fills the dialog's text just before it is shown. */
+export function askDialog(id: string, okId: string, cancelId: string, prepare?: () => void): Promise<boolean> {
+  let turns = dialogTurns.get(id);
+  if (!turns) {
+    turns = new Serial();
+    dialogTurns.set(id, turns);
+  }
+  return turns.run(() => {
+    prepare?.();
+    return showDialog(id, okId, cancelId);
+  });
+}
+
+function showDialog(id: string, okId: string, cancelId: string): Promise<boolean> {
   const d = $<HTMLDialogElement>(id);
   return new Promise((resolve) => {
     const done = (ok: boolean): void => {

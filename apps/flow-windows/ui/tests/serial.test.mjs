@@ -43,3 +43,28 @@ test("a failed job does not block later ones", async () => {
   await assert.rejects(q.run(async () => { throw new Error("bad url"); }));
   assert.equal(await q.run(async () => 1), 1);
 });
+
+test("a second ask of an open dialog waits for the first answer", async () => {
+  // askDialog runs each dialog's asks on one Serial (lib/dom.ts). Before,
+  // a second ask (Test connection's consent) took over the open dialog's
+  // buttons and the first ask (a provider change's) never resolved, which
+  // wedged every later save.
+  const turns = new Serial();
+  const shown = [];
+  let answer;
+  const ask = (who) =>
+    turns.run(() => {
+      shown.push(who);
+      return new Promise((r) => (answer = r));
+    });
+  const first = ask("provider change");
+  const second = ask("test connection");
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(shown, ["provider change"], "the second waits while the first is open");
+  answer(true);
+  assert.equal(await first, true);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(shown, ["provider change", "test connection"]);
+  answer(false);
+  assert.equal(await second, false);
+});
