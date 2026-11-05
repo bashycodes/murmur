@@ -58,6 +58,10 @@ impl Backend for FlowCore {
         self.cleaner()
     }
 
+    fn keep_llm(&self) -> bool {
+        FlowCore::keep_llm(self)
+    }
+
     fn probe(&self) -> HealthReport {
         HealthReport {
             ok: true,
@@ -214,6 +218,10 @@ impl Backend for LazyLocal {
 
     fn llm_cleaner(&self) -> Option<Arc<dyn flow_core::cleanup::Cleaner>> {
         self.loaded()?.llm_cleaner()
+    }
+
+    fn keep_llm(&self) -> bool {
+        self.loaded().is_some_and(|c| c.keep_llm())
     }
 
     fn probe(&self) -> HealthReport {

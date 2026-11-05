@@ -156,24 +156,28 @@ pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeLastLoadTimi
     })
 }
 
-/// Load 3: `true` keeps the most recently loaded on-device LLM for the next
-/// `nativeLoadModels` naming the same model (`flow_core::llm_keep::keep`;
-/// returns whether there was one); call it before unloading for a language
-/// switch. `false` drops a kept LLM (`llm_keep::release`, returns true).
+/// Load 3: hold handle `h`'s own on-device LLM (a core's, or a router's
+/// warm local engine's) for the next load naming the same model
+/// (`FlowCore::keep_llm`); whether there was one. Call it before
+/// `nativeUnload(h)` for a language switch.
 #[no_mangle]
 pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeKeepLlm(
     _env: JNIEnv,
     _c: JClass,
-    keep: jboolean,
+    h: jlong,
 ) -> jboolean {
     guard(JNI_FALSE, || {
-        if keep == JNI_FALSE {
-            flow_core::llm_keep::release();
-            JNI_TRUE
-        } else {
-            jbool(flow_core::llm_keep::keep())
-        }
+        jbool(handle(h).is_some_and(FlowHandle::keep_llm))
     })
+}
+
+/// Load 3: free an LLM `nativeKeepLlm` holds (`llm_keep::release`).
+#[no_mangle]
+pub extern "system" fn Java_dev_flowclone_core_NativeFlowCore_nativeReleaseKeptLlm(
+    _env: JNIEnv,
+    _c: JClass,
+) {
+    guard((), flow_core::llm_keep::release)
 }
 
 #[no_mangle]

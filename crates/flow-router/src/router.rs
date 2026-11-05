@@ -946,6 +946,14 @@ impl Router {
         cl.available().then_some(cl)
     }
 
+    /// Load 3: hold the warm local engine's on-device LLM for the next
+    /// local load (`FlowCore::keep_llm`), before the shell frees this
+    /// router for a language switch. Whether there was one.
+    pub fn keep_llm(&self) -> bool {
+        let local = self.state.lk().warm_local();
+        local.is_some_and(|l| l.keep_llm())
+    }
+
     /// Command Mode (`flow_core::command::run`) for a shell whose local
     /// engine the router owns (Android, `nativeCommand`): the base LLM is
     /// the warm local engine's on-device model, then [`Self::command_cleaner`]
