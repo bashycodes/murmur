@@ -133,7 +133,10 @@ class DictationControllerTest {
         assertTrue(host.history.single().second)
     }
 
-    /** D37 / D58: the keyboard language is read once, at start; a keyboard switched mid-recording is not re-read at stop. */
+    /**
+     * D37 / D58: the session's language field is read once, at start, and not re-read at stop.
+     * (What a mid-recording switch can change is the engine a D55 load-wait gets: EngineHolderTest.)
+     */
     @Test fun languageIsPickedAtStartNotAtStop() = runTest {
         val c = controller()
         c.toggle(hold = false)
