@@ -28,23 +28,22 @@ without its side in one shortcut (`Alt+Right Alt`).
 
 Push-to-talk is **Right Alt alone** by default (D57; Wispr's Ctrl+Win
 through 1.1.2: an install that still had Ctrl+Win moves to Right Alt once at
-the first start, a shortcut you picked stays). Left Alt and Alt+Tab don't
-start dictation. A push-to-talk that is one modifier on its own waits
-200 ms before it starts (the first 200 ms of a hold is not recorded):
-Right Alt with another key pressed in that time (an AltGr letter such as
-AltGr+E = €, Right Alt+Tab) is just that key combination, starts nothing,
-and its release reaches the app untouched; a key pressed later cancels the
-dictation and still reaches the app. A shorter tap counts as a tap (double
-tap = hands-free; the tap windows are measured from key-down). When it
-dictated or was tapped, its release is masked like
-Win's (`[LCtrl↓, RAlt↑, LCtrl↑]`), so the menu bar doesn't take focus. On
-keyboard layouts with AltGr, Windows sends a fake Left Ctrl (scan code
-0x21D) with every Right Alt press: the hook ignores it for shortcuts and
-lets it through untouched, so it never stops Right Alt from matching, never
-makes AltGr look like Ctrl+Alt, and is released normally. A shortcut that
-needs Ctrl therefore no longer fires on AltGr alone. Ctrl+Win+Alt (Command)
-with Right Alt as its Alt is a command, never a dictation; holding Right
-Alt, then adding Ctrl+Win, turns the dictation into a command.
+the first start, a shortcut you picked stays). It starts at key-down like
+any push-to-talk key; Left Alt and Alt+Tab don't start dictation. While
+Right Alt is the push-to-talk key, the hook swallows it: its down, repeats
+and up, and on AltGr layouts the fake Left Ctrl (scan code 0x21D) Windows
+sends with it, in either release order. So no app sees Right Alt: no menu
+bar takes focus, no Ctrl is left stuck, and **Right Alt no longer types
+AltGr letters; type them with Left Ctrl+Left Alt** (untouched by the hook).
+Another key pressed during the hold (Right Alt+E, Right Alt+Tab) cancels
+the dictation and reaches the app as the plain key (e, Tab). Windows'
+key state never sees a swallowed key, so the hook releases a swallowed
+Right Alt itself when it has sent no event (held keys auto-repeat) for
+2 s. Ctrl+Win+Alt (Command) with Right Alt as its Alt is a command, never
+a dictation; holding Right Alt, then adding Ctrl+Win, turns the dictation
+into a command. With any other push-to-talk shortcut Right Alt passes
+through as before, and AltGr's fake Left Ctrl is ignored for shortcuts, so
+a shortcut that needs Ctrl never fires on AltGr alone.
 
 ## Scratchpad and Notes
 
@@ -578,7 +577,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Esc cancels, and Esc is not delivered to the app while dictating.
 - [ ] Releasing Win after a chord does **not** open the Start menu.
 - [ ] Ctrl+Win+Left still switches desktops and aborts dictation.
-- [ ] Push-to-talk `Right Alt` (the default), on a layout with AltGr (e.g. Polish or German) and on US: holding Right Alt dictates and releasing pastes into Notepad; afterwards typing `s` gives `s` (no stuck Ctrl or Alt: not Ctrl+S, not an AltGr letter), the menu bar of Notepad/Explorer is not focused, and Left Alt / Alt+Tab never start dictation.
+- [ ] Push-to-talk `Right Alt` (the default), on a layout with AltGr (e.g. Polish or German) and on US: the start sound plays at once on Right Alt down; holding it dictates and releasing pastes into Notepad; afterwards typing `s` gives `s` (no stuck Ctrl or Alt: not Ctrl+S, not an AltGr letter), the menu bar of Notepad/Explorer is not focused, and Left Alt / Alt+Tab never start dictation. A quick double tap locks hands-free; a single tap is dismissed and pastes nothing. Right Alt+E types a plain `e` and cancels the dictation; Left Ctrl+Left Alt+E still types the AltGr letter (e.g. `ę` / `€`). Hold Right Alt for 10 s while speaking: the dictation does not end early.
 - [ ] After a paste, the old clipboard is back within about 0.5 s (3 s in Outlook/Word/WhatsApp).
 - [ ] Win+V history does not contain the dictated text.
 - [ ] Dictating into an elevated window (admin cmd) shows the "runs as administrator" error and leaves the text on the clipboard.

@@ -514,18 +514,7 @@ impl Prefs {
         Policy {
             max_ms: minutes * 60_000,
             warn_ms: minutes.saturating_sub(1) * 60_000,
-            arm_ms: self.ptt_arm_ms(),
             ..Policy::default()
-        }
-    }
-
-    /// How long after its key-down push-to-talk may start (D57): the arm
-    /// time of a one-modifier shortcut, else 0.
-    pub fn ptt_arm_ms(&self) -> u64 {
-        if self.shortcuts.ptt.is_lone_modifier() {
-            u64::from(crate::hotkeys::LONE_KEY_ARM_MS)
-        } else {
-            0
         }
     }
 
@@ -747,12 +736,10 @@ mod tests {
     }
 
     #[test]
-    fn arm_time_and_tray_tip_follow_the_push_to_talk_shortcut() {
+    fn tray_tip_names_the_push_to_talk_shortcut() {
         let mut p = Prefs::default();
-        assert_eq!(p.policy().arm_ms, 200, "Right Alt is armed");
         assert_eq!(p.tray_tip(), "Murmur — hold Right Alt to dictate");
         p.shortcuts.ptt = "Ctrl+Win".parse().unwrap();
-        assert_eq!(p.policy().arm_ms, 0, "fires at key-down");
         assert_eq!(p.tray_tip(), "Murmur — hold Ctrl+Win to dictate");
     }
 

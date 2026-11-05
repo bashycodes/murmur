@@ -210,12 +210,6 @@ pub struct Policy {
     pub error_linger_ms: u64,
     /// Notice pill ("No speech heard") shows this long.
     pub notice_linger_ms: u64,
-    /// Push-to-talk arm time (D57, `hotkeys::LONE_KEY_ARM_MS`): a
-    /// one-modifier shortcut (Right Alt) reports `PttDown` up to this long
-    /// after its key-down (at the arm, or at a shorter tap's release), so
-    /// the tap, double-tap and triple-press windows, meant from key-down,
-    /// are widened by it. 0 for a multi-key shortcut (fires at key-down).
-    pub arm_ms: u64,
 }
 
 impl Default for Policy {
@@ -228,7 +222,6 @@ impl Default for Policy {
             pasted_linger_ms: 0,
             error_linger_ms: 500,
             notice_linger_ms: 1500,
-            arm_ms: 0,
         }
     }
 }
@@ -281,11 +274,6 @@ impl Dictation {
 
     pub fn policy(&self) -> &Policy {
         &self.policy
-    }
-
-    /// The push-to-talk shortcut changed (Settings): its arm time.
-    pub fn set_arm_ms(&mut self, arm_ms: u64) {
-        self.policy.arm_ms = arm_ms;
     }
 
     /// Listening or processing: Esc should be swallowed.
@@ -352,15 +340,14 @@ impl Dictation {
 
             // ---- push-to-talk ----
             (Mode::Ptt, Input::Hotkey(PttDown)) if l.early_release => {
-                if elapsed < p.debounce_ms + p.arm_ms {
+                if elapsed < p.debounce_ms {
                     self.lock(l, now_ms)
                 } else {
                     self.cancel_listening(l.session)
                 }
             }
             (Mode::Ptt, Input::Hotkey(PttUp)) if !l.early_release => {
-                // Held for `elapsed` plus up to the arm time before it.
-                if elapsed + p.arm_ms < p.debounce_ms {
+                if elapsed < p.debounce_ms {
                     l.early_release = true;
                     self.phase = Phase::Listening(l);
                     Vec::new()
@@ -391,7 +378,7 @@ impl Dictation {
             // ---- locked (hands-free) ----
             (Mode::Locked, Input::Hotkey(PttDown)) => {
                 let since_lock = now_ms.saturating_sub(l.locked_at.unwrap_or(l.since_ms));
-                if since_lock < p.debounce_ms + p.arm_ms {
+                if since_lock < p.debounce_ms {
                     self.cancel_listening(l.session) // triple press
                 } else {
                     self.stop(l.session, false, now_ms)
@@ -407,7 +394,7 @@ impl Dictation {
 
             // ---- clock ----
             (_, Input::Tick) => {
-                if l.early_release && elapsed >= p.debounce_ms + p.arm_ms {
+                if l.early_release && elapsed >= p.debounce_ms {
                     self.cancel_listening(l.session)
                 } else if elapsed >= p.max_ms {
                     self.stop(l.session, l.mode == Mode::Command, now_ms)
@@ -653,101 +640,6 @@ mod tests {
             Phase::Listening(l) => l,
             other => panic!("not listening: {other:?}"),
         }
-    }
-
-    // --- Right Alt push-to-talk (D57): the matcher's arm timing fed in ---
-
-    const RALT: u16 = 0xA5;
-    const ALT_SCAN: u32 = 0x38;
-
-    /// Right Alt presses `(down_ms, up_ms)` through the default matcher
-    /// (arm timer included) into a machine with the default prefs'
-    /// policy, ticking every 50 ms up to `until_ms`. Returns every effect.
-    fn ralt_presses(d: &mut Dictation, presses: &[(u64, u64)], until_ms: u64) -> Vec<Effect> {
-        use crate::hotkeys::{Bindings, ChordMatcher, LONE_KEY_ARM_MS};
-        let mut m = ChordMatcher::new(Bindings::default());
-        let mut keys: Vec<(u64, bool)> = presses
-            .iter()
-            .flat_map(|&(dn, up)| [(dn, true), (up, false)])
-            .collect();
-        keys.sort();
-        let mut fx = Vec::new();
-        let mut timer: Option<u64> = None;
-        let mut next = keys.into_iter().peekable();
-        for t in 0..=until_ms {
-            if timer == Some(t) {
-                timer = None;
-                for a in m.arm_elapsed() {
-                    fx.extend(d.handle(Input::Hotkey(a), t));
-                }
-            }
-            while let Some(&(kt, down)) = next.peek() {
-                if kt != t {
-                    break;
-                }
-                next.next();
-                let dec = m.handle_raw(RALT, ALT_SCAN, down, false);
-                if dec.arm {
-                    timer = Some(t + u64::from(LONE_KEY_ARM_MS));
-                }
-                for a in dec.actions {
-                    fx.extend(d.handle(Input::Hotkey(a), t));
-                }
-            }
-            if t % 50 == 0 {
-                fx.extend(d.handle(Input::Tick, t));
-            }
-        }
-        fx
-    }
-
-    fn ralt_machine() -> Dictation {
-        Dictation::new(crate::prefs::Prefs::default().policy())
-    }
-
-    fn locked(d: &Dictation) -> bool {
-        matches!(d.phase(), Phase::Listening(l) if l.mode == Mode::Locked)
-    }
-
-    #[test]
-    fn right_alt_quick_double_tap_locks_hands_free() {
-        let mut d = ralt_machine();
-        assert_eq!(d.policy().arm_ms, 200);
-        let fx = ralt_presses(&mut d, &[(0, 80), (200, 280)], 1500);
-        assert!(locked(&d), "{fx:?}");
-        assert!(fx.contains(&Effect::Sound(Sound::Lock)));
-    }
-
-    #[test]
-    fn right_alt_double_tap_with_a_held_second_press_still_locks() {
-        // Key-downs 450 ms apart (inside Wispr's 500 ms): the second press
-        // only reports at its arm (650 ms), which still counts.
-        let mut d = ralt_machine();
-        ralt_presses(&mut d, &[(0, 40), (450, 1000)], 1500);
-        assert!(locked(&d));
-    }
-
-    #[test]
-    fn right_alt_single_tap_is_dismissed_and_a_hold_dictates() {
-        let mut d = ralt_machine();
-        let fx = ralt_presses(&mut d, &[(0, 80)], 1500);
-        assert_eq!(d.phase(), &Phase::Idle);
-        assert!(fx.iter().any(|e| matches!(e, Effect::CancelSession(_))));
-        assert!(!fx.iter().any(|e| matches!(e, Effect::Commit(_))));
-        // Held 400 ms from key-down: a tap, as with an instant shortcut.
-        let mut d = ralt_machine();
-        ralt_presses(&mut d, &[(0, 400)], 1500);
-        assert_eq!(d.phase(), &Phase::Idle);
-        let mut d = ralt_machine();
-        let fx = ralt_presses(&mut d, &[(0, 1000)], 1200);
-        let s = fx
-            .iter()
-            .find_map(|e| match e {
-                Effect::BeginSession(s) => Some(*s),
-                _ => None,
-            })
-            .expect("started at the arm");
-        assert!(fx.contains(&Effect::Commit(s)), "{fx:?}");
     }
 
     fn cancel_fx(s: SessionId) -> Vec<Effect> {
@@ -1686,5 +1578,71 @@ mod tests {
         assert_eq!(p.processing_timeout_ms, 35_000);
         assert_eq!(p.error_linger_ms, 500);
         assert_eq!(p.max_samples(), 20 * 60 * 16_000);
+    }
+
+    // --- Right Alt push-to-talk end to end (D57): the real chord matcher
+    // with the default shortcuts feeding the real machine. ---
+
+    const RALT_VK: u16 = 0xA5;
+    const ALT_SCAN: u32 = 0x38;
+
+    /// Right Alt down/up at the given times (ms) on an AltGr layout (the
+    /// fake Left Ctrl rides along), with a tick every 50 ms up to `until`.
+    fn right_alt_presses(d: &mut Dictation, presses: &[(u64, u64)], until: u64) -> Vec<Effect> {
+        let mut m = crate::hotkeys::ChordMatcher::new(crate::hotkeys::Bindings::default());
+        let mut fx = Vec::new();
+        for t in 0..=until {
+            for &(down, up) in presses {
+                let mut evs = Vec::new();
+                if t == down {
+                    evs = vec![(0xA2, 0x21D, true), (RALT_VK, ALT_SCAN, true)];
+                } else if t == up {
+                    evs = vec![(0xA2, 0x21D, false), (RALT_VK, ALT_SCAN, false)];
+                }
+                for (vk, scan, is_down) in evs {
+                    let dec = m.handle_raw(vk, scan, is_down, d.is_active());
+                    assert!(dec.suppress, "Right Alt and AltGr never reach the app");
+                    for a in dec.actions {
+                        fx.extend(d.handle(Input::Hotkey(a), t));
+                    }
+                }
+            }
+            if t % 50 == 0 {
+                fx.extend(d.handle(Input::Tick, t));
+            }
+        }
+        fx
+    }
+
+    fn default_policy() -> Dictation {
+        Dictation::new(crate::prefs::Prefs::default().policy())
+    }
+
+    #[test]
+    fn right_alt_double_tap_locks_hands_free() {
+        let mut d = default_policy();
+        let fx = right_alt_presses(&mut d, &[(0, 80), (200, 280)], 3000);
+        assert!(fx.contains(&Effect::Sound(Sound::Lock)));
+        assert_eq!(listening(&d).mode, Mode::Locked);
+        assert!(!fx.iter().any(|e| matches!(e, Effect::Commit(_))));
+    }
+
+    #[test]
+    fn right_alt_hold_commits() {
+        let mut d = default_policy();
+        let fx = right_alt_presses(&mut d, &[(0, 1000)], 1100);
+        let s = session_of(&fx);
+        assert!(fx.contains(&Effect::Commit(s)));
+        assert_eq!(processing(&d), s);
+    }
+
+    #[test]
+    fn right_alt_tap_is_dismissed_with_nothing_committed() {
+        let mut d = default_policy();
+        let fx = right_alt_presses(&mut d, &[(0, 80)], 1000);
+        let s = session_of(&fx);
+        assert!(fx.contains(&Effect::CancelSession(s)));
+        assert!(!fx.iter().any(|e| matches!(e, Effect::Commit(_))));
+        assert_eq!(d.phase(), &Phase::Idle);
     }
 }
