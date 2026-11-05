@@ -115,11 +115,15 @@ object EnginePlan {
          */
         language: String? = null,
         hebrew: LanguageModel? = null,
+        /** D54 "Keep both languages loaded": with [hebrew] and a default model, load both (no `load_language`). */
+        keepBoth: Boolean = false,
     ): Plan {
         if (s.mockEngine) return Plan.Mock
         val whisperOk = asrPath != null && exists(asrPath)
         val parakeetOk = s.asrEngine == AsrEngine.PARAKEET && parakeetPath != null && isModelDir(parakeetPath)
-        val hebrewRoute = HebrewModels.route(language, hebrew != null)
+        val set = HebrewModels.loadSet(language, hebrew != null, whisperOk || parakeetOk, keepBoth)
+        val both = set == HebrewModels.BOTH
+        val hebrewRoute = set.takeIf { !both }
         if (!whisperOk && !parakeetOk && hebrewRoute == null) {
             return Plan.Missing(
                 if (s.asrEngine == AsrEngine.PARAKEET) "No Parakeet model folder imported. Open Murmur → Speech model."
@@ -139,12 +143,22 @@ object EnginePlan {
             val base = whisper ?: ModelConfig(asrPath = he.asrPath, llmPath = llmUsed, threads = threads, llmLib = llmLib, asrEngine = he.asrEngine)
             return Plan.Native(base.copy(languages = mapOf(hebrewRoute to he), loadLanguage = hebrewRoute), llm, whisperFallback = whisper)
         }
+        // D54: the core loads every language model and picks one per dictation from its language (D33).
+        val languages = if (both) mapOf(HebrewModels.LANGUAGE to hebrew!!) else emptyMap()
         if (parakeetOk) {
-            val cfg = ModelConfig(asrPath = parakeetPath!!, llmPath = llmUsed, threads = threads, llmLib = llmLib, asrEngine = AsrEngine.PARAKEET, parakeetDecoding = parakeetDecoding)
+            val cfg = ModelConfig(asrPath = parakeetPath!!, llmPath = llmUsed, threads = threads, llmLib = llmLib, asrEngine = AsrEngine.PARAKEET, parakeetDecoding = parakeetDecoding, languages = languages)
             return Plan.Native(cfg, llm, whisperFallback = whisper)
         }
-        return Plan.Native(whisper!!, llm)
+        // Both models failing to load together (RAM) falls back to whisper alone, like a failed Hebrew model.
+        return Plan.Native(whisper!!.copy(languages = languages), llm, whisperFallback = whisper.takeIf { both })
     }
+
+    /** D54: a default model the plan can load (whisper, or Parakeet when selected), as [plan] decides it. */
+    fun defaultInstalled(s: Settings, asrPath: String?, exists: (String) -> Boolean, parakeetPath: String?, isModelDir: (String) -> Boolean): Boolean =
+        (asrPath != null && exists(asrPath)) || (s.asrEngine == AsrEngine.PARAKEET && parakeetPath != null && isModelDir(parakeetPath))
+
+    /** D54: the plan loads the default and the Hebrew model together. */
+    fun loadsBoth(c: ModelConfig): Boolean = c.loadLanguage == null && c.languages.isNotEmpty()
 
     /**
      * D24: the configs [load] would try, in the same order (selected engine with its LLM, then
@@ -163,7 +177,11 @@ object EnginePlan {
         if (first.core != null || fb == null) return first
         // Parakeet / the Hebrew model failed (RAM, missing files, a build without the feature): dictate with whisper.
         val r = loadOne(Plan.Native(fb, p.llm), loader)
-        val what = if (p.config.loadLanguage != null) "Hebrew model" else "Parakeet"
+        val what = when {
+            p.config.loadLanguage != null -> "Hebrew model"
+            loadsBoth(p.config) -> "Both languages"
+            else -> "Parakeet"
+        }
         return r.copy(description = "${r.description} ($what failed: ${first.error})")
     }
 
@@ -180,7 +198,9 @@ object EnginePlan {
             p.config.loadLanguage != null -> "Hebrew "
             asr.engine == AsrEngine.PARAKEET -> "Parakeet "
             else -> ""
-        } + asr.model
+        } + asr.model + p.config.languages[HebrewModels.LANGUAGE].takeIf { loadsBoth(p.config) }?.let {
+            " + Hebrew " + it.asrPath.trimEnd('/').substringAfterLast('/')
+        }.orEmpty()
         val r = loadOneCore(p, loader, name)
         return if (r.core != null) r.copy(asr = asr) else r
     }
@@ -208,7 +228,7 @@ object EnginePlan {
 
 /** D21 event when the on-device engine that loaded is not the one selected in Settings. */
 object EngineMismatch {
-    private val PARAKEET_FAILED = Regex("""\((?:Parakeet|Hebrew model) failed: (.*?)\)(?: → |$)""")
+    private val PARAKEET_FAILED = Regex("""\((?:Parakeet|Hebrew model|Both languages) failed: (.*?)\)(?: → |$)""")
     private val CLIENT_UNAVAILABLE = Regex("""client unavailable: (.*?)(?: → |$)""")
 
     /**
