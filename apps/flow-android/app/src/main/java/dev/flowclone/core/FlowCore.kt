@@ -68,6 +68,13 @@ interface FlowCore {
      * ~25 s): never on Main. Engines without it answer [CommandOutcome.noLlm].
      */
     fun command(instruction: String, selected: String?): CommandOutcome = CommandOutcome.noLlm
+
+    /**
+     * Load 3 (`nativeKeepLlm`): hold this engine's own on-device LLM for the next
+     * [FlowCoreLoader.loadModels] with the same model (a language switch reloads only the speech
+     * model). Call it before [unload]. Returns whether there was one; false when unsupported.
+     */
+    fun keepLlm(): Boolean = false
 }
 
 /** `load_models(ModelConfig) -> Handle`. */
@@ -82,11 +89,10 @@ fun interface FlowCoreLoader {
     fun takeLoadTimings(): String? = null
 
     /**
-     * Load 3 (`nativeKeepLlm`): [keep] = true holds the loaded on-device LLM for the next
-     * [loadModels] with the same model (a language switch reloads only the speech model); returns
-     * whether one was kept. false frees a kept LLM (blocking: may free a model). False when unsupported.
+     * Load 3 (`nativeReleaseKeptLlm`): free an LLM [FlowCore.keepLlm] holds that no load took.
+     * Blocking: may free a model.
      */
-    fun keepLlm(keep: Boolean): Boolean = false
+    fun releaseKeptLlm() {}
 }
 
 /**

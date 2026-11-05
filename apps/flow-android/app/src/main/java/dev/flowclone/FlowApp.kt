@@ -409,22 +409,22 @@ class EngineHolder(
         val want = wantedSet()
         if (want != loadedSet) {
             loadingLabel = labelFor(want, switching = true)
-            keepLlmForSwitch()
-            unload()
+            keepLlmForSwitch((_state.value as? State.Ready)?.core)
+            freeEngine()
             ensureLoaded()
         }
     }
 
-    /** Load 3: [keepLlmForSwitch] kept the LLM; the next [load] reuses it, or frees it at its end. */
-    @Volatile private var llmKept = false
+    /** Load 3: [keepLlmForSwitch] kept an LLM; the next [load] reuses it, or frees it at its end. Guarded by this. */
+    private var llmKept = false
 
     /**
-     * Load 3: a language switch replaces only the speech model, so the on-device LLM of the engine
-     * about to be freed is kept for the next load (~38 s for the 1.5B on the phone). Called while
-     * that engine is still alive.
+     * Load 3: a language switch replaces only the speech model, so the on-device LLM of [core],
+     * the engine about to be freed, is kept for the next load (~38 s for the 1.5B on the phone).
+     * Called under this lock while that engine is still alive.
      */
-    private fun keepLlmForSwitch() {
-        llmKept = runCatching { loader.keepLlm(true) }.getOrDefault(false) || llmKept
+    private fun keepLlmForSwitch(core: FlowCore?) {
+        if (core != null && runCatching { core.keepLlm() }.getOrDefault(false)) llmKept = true
     }
 
     /** What a dictation started while [set] loads says; [switching] = after a language change. */
@@ -458,7 +458,7 @@ class EngineHolder(
                     } else next
                 } ?: break
                 Log.i("FlowEngine", "language changed during the load: dropping the $loadedSet model")
-                synchronized(this@EngineHolder) { keepLlmForSwitch() }
+                synchronized(this@EngineHolder) { keepLlmForSwitch((stale as? State.Ready)?.core) }
                 drop(stale)
                 next = load()
             }
@@ -490,6 +490,18 @@ class EngineHolder(
      */
     @Synchronized
     fun unload() {
+        freeEngine()
+        // Low-memory unload or a settings reload: no load is coming for a kept LLM. Freed off this
+        // thread (it may be Main); a load that starts first takes it out of the native slot anyway.
+        if (llmKept) {
+            llmKept = false
+            scope.launch { runCatching { loader.releaseKeptLlm() } }
+        }
+    }
+
+    /** [unload] for a language switch: the LLM [keepLlmForSwitch] kept stays for the next load. */
+    @Synchronized
+    private fun freeEngine() {
         runCatching { persistCloudUsage() }
         val core = (_state.value as? State.Ready)?.core
         core?.unload()
@@ -568,23 +580,28 @@ class EngineHolder(
         router()?.cloudUsageJson()?.let { app.dev.cloudUsageJson = it }
     }
 
-    /** Load 3: one `engine_load_timings` line (logcat + debug log) per native load. */
+    /** Load 3: one `engine_load_timings` debug-log event (also logcat tag FlowDebug) per native load, debug log on only. */
     private fun logLoadTimings(timings: String, set: LoadSet, threads: Int) {
+        if (!app.debugLog.isEnabled()) return
         val cpus = runCatching {
             LoadTimingsLog.cpusAllowed(File("/proc/self/task/${android.os.Process.myTid()}/status").readText())
         }.getOrNull()
-        val line = LoadTimingsLog.line(timings, set, threads, cpus)
-        Log.i("FlowEngine", "load timings: $line")
-        app.debugLog.event("engine_load_timings", line)
+        app.debugLog.event("engine_load_timings", LoadTimingsLog.line(timings, set, threads, cpus))
     }
 
-    /** [loadEngine], then frees an LLM [keepLlmForSwitch] kept that this load did not take (none, mock, server only). */
-    private fun load(): State = try {
-        loadEngine()
-    } finally {
-        if (llmKept) {
-            llmKept = false
-            runCatching { loader.keepLlm(false) }
+    /**
+     * [loadEngine], then frees an LLM [keepLlmForSwitch] kept that this load did not take (none,
+     * mock, server only). A load that failed put it back natively, so it stays kept for the retry
+     * ([unload] frees it if none comes). The free runs outside the lock.
+     */
+    private fun load(): State {
+        var s: State? = null
+        try {
+            s = loadEngine()
+            return s
+        } finally {
+            val release = synchronized(this) { (llmKept && s !is State.Failed).also { if (it) llmKept = false } }
+            if (release) runCatching { loader.releaseKeptLlm() }
         }
     }
 

@@ -41,24 +41,30 @@ class EngineHolderTest {
         LoadSet.Both -> "both"
     }
 
-    /** Load 3: `keepLlm` calls, each with whether every built engine was still alive at the call. */
-    private val keepCalls = CopyOnWriteArrayList<Pair<Boolean, Boolean>>()
+    /** Load 3: `releaseKeptLlm` calls. */
+    private val releases = java.util.concurrent.atomic.AtomicInteger()
     private val loader = object : FlowCoreLoader {
         override fun loadModels(cfg: ModelConfig): FlowCore = error("the builder seam loads")
-        override fun keepLlm(keep: Boolean): Boolean {
-            keepCalls += keep to cores.values.none { it.unloaded }
-            return keep
-        }
+        override fun releaseKeptLlm() { releases.incrementAndGet() }
     }
+
+    /** Load 3: every `keepLlm` call, as (engine, was it still loaded). */
+    private fun keeps() = cores.flatMap { (k, c) -> c.keepLlmCalls.map { k to it } }
+
+    /** The next build of [k] fails (the speech model did not load). */
+    private val failing = ConcurrentHashMap.newKeySet<String>()
 
     private fun holder() = EngineHolder(app, loader = loader, setProbe = { want }, builder = { set ->
         val k = key(set)
         othersFreedAtStart[k] = cores.values.all { it.unloaded }
         built += k
         gates[k]?.await(5, TimeUnit.SECONDS)
-        val c = FakeFlowCore(k)
-        cores[k] = c
-        EngineHolder.State.Ready(c, "fake $k")
+        if (failing.remove(k)) EngineHolder.State.Failed("no $k model", "model_not_found")
+        else {
+            val c = FakeFlowCore(k, hasLlm = true)
+            cores[k] = c
+            EngineHolder.State.Ready(c, "fake $k")
+        }
     })
 
     private fun waitFor(what: String, cond: () -> Boolean) {
@@ -174,13 +180,40 @@ class EngineHolderTest {
         val h = holder()
         h.ensureLoaded()
         waitFor("ready") { h.state.value is EngineHolder.State.Ready }
-        assertEquals("a first load keeps nothing", emptyList<Pair<Boolean, Boolean>>(), keepCalls.toList())
+        assertEquals("a first load keeps nothing", emptyList<Pair<String, Boolean>>(), keeps())
         want = LoadSet.Default
         h.ensureLanguage()
         waitFor("default ready") { (h.state.value as? EngineHolder.State.Ready)?.description == "fake default" }
-        // Kept while the Hebrew engine was still alive; whatever the load did not take is freed after it.
-        assertEquals(listOf(true to true, false to false), keepCalls.toList())
+        // The Hebrew engine's own LLM, kept while it was still loaded; what the load did not take is freed after it.
+        assertEquals(listOf("he" to true), keeps())
+        assertEquals(1, releases.get())
         assertTrue(cores["he"]!!.unloaded)
+    }
+
+    @Test fun aFailedLoadLeavesTheKeptLlmForTheRetry() {
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        failing += "default"
+        want = LoadSet.Default
+        h.ensureLanguage()
+        waitFor("failed") { h.state.value is EngineHolder.State.Failed }
+        assertEquals("still kept for the retry", 0, releases.get())
+        h.ensureLoaded() // retry
+        waitFor("default ready") { (h.state.value as? EngineHolder.State.Ready)?.description == "fake default" }
+        assertEquals(1, releases.get())
+    }
+
+    @Test fun aLowMemoryUnloadFreesAKeptLlm() {
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        failing += "default"
+        want = LoadSet.Default
+        h.ensureLanguage()
+        waitFor("failed") { h.state.value is EngineHolder.State.Failed }
+        h.unload() // FlowService.onTrimMemory
+        waitFor("released") { releases.get() == 1 }
     }
 
     @Test fun aLowMemoryUnloadOrASettingsReloadKeepsNoLlm() {
@@ -192,6 +225,7 @@ class EngineHolderTest {
         waitFor("ready again") { h.state.value is EngineHolder.State.Ready }
         h.reload() // a model or developer setting changed
         waitFor("reloaded") { built.size == 3 && h.state.value is EngineHolder.State.Ready }
-        assertTrue(keepCalls.none { it.first })
+        assertEquals(emptyList<Pair<String, Boolean>>(), keeps())
+        assertEquals(0, releases.get())
     }
 }
