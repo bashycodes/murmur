@@ -133,6 +133,19 @@ class DictationControllerTest {
         assertTrue(host.history.single().second)
     }
 
+    /** D37 / D58: the keyboard language is read once, at start; a keyboard switched mid-recording is not re-read at stop. */
+    @Test fun languageIsPickedAtStartNotAtStop() = runTest {
+        val c = controller()
+        c.toggle(hold = false)
+        host.config = SessionConfig(languages = listOf("he")) // keyboard switched while recording
+        audio.speak()
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals(listOf("hello world"), host.inserted)
+        assertEquals("en", core.lastConfig!!.languages.single())
+    }
+
     @Test fun aSuccessfulInsertStartsTheEditWatchWithTheStartContext() = runTest {
         val c = controller()
         c.toggle(hold = false)
