@@ -3560,6 +3560,20 @@ mod tests {
     }
 
     #[test]
+    fn keyboard_switched_mid_recording_keeps_the_start_language() {
+        // D58: the layout is read once, at start; a switch while
+        // recording is not re-read at stop.
+        let mut r = rig(keyboard(Some("en")), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        *r.fake.keyboard.lock().unwrap() = Some("he".into());
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump(); // Committed
+        r.pump(); // PasteFinished
+        assert_eq!(r.core.last_config().unwrap().languages, ["en"]);
+    }
+
+    #[test]
     fn unknown_layout_or_option_off_keeps_todays_languages() {
         let mut r = rig(keyboard(None), Prefs::default());
         dictate_then(&mut r, |_| {});
