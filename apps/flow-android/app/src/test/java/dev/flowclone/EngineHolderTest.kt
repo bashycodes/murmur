@@ -2,6 +2,9 @@ package dev.flowclone
 
 import dev.flowclone.core.CoreException
 import dev.flowclone.core.FakeFlowCore
+import dev.flowclone.core.FlowCore
+import dev.flowclone.core.FlowCoreLoader
+import dev.flowclone.core.ModelConfig
 import dev.flowclone.data.LoadSet
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -38,7 +41,17 @@ class EngineHolderTest {
         LoadSet.Both -> "both"
     }
 
-    private fun holder() = EngineHolder(app, setProbe = { want }, builder = { set ->
+    /** Load 3: `keepLlm` calls, each with whether every built engine was still alive at the call. */
+    private val keepCalls = CopyOnWriteArrayList<Pair<Boolean, Boolean>>()
+    private val loader = object : FlowCoreLoader {
+        override fun loadModels(cfg: ModelConfig): FlowCore = error("the builder seam loads")
+        override fun keepLlm(keep: Boolean): Boolean {
+            keepCalls += keep to cores.values.none { it.unloaded }
+            return keep
+        }
+    }
+
+    private fun holder() = EngineHolder(app, loader = loader, setProbe = { want }, builder = { set ->
         val k = key(set)
         othersFreedAtStart[k] = cores.values.all { it.unloaded }
         built += k
@@ -155,5 +168,30 @@ class EngineHolderTest {
         assertEquals(EngineHolder.DEFAULT_LOADING, loadingMessage(h))
         gates["default"]!!.countDown()
         waitFor("ready") { (h.state.value as? EngineHolder.State.Ready)?.description == "fake default" }
+    }
+
+    @Test fun aLanguageSwitchKeepsTheLlmOfTheEngineItFrees() {
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        assertEquals("a first load keeps nothing", emptyList<Pair<Boolean, Boolean>>(), keepCalls.toList())
+        want = LoadSet.Default
+        h.ensureLanguage()
+        waitFor("default ready") { (h.state.value as? EngineHolder.State.Ready)?.description == "fake default" }
+        // Kept while the Hebrew engine was still alive; whatever the load did not take is freed after it.
+        assertEquals(listOf(true to true, false to false), keepCalls.toList())
+        assertTrue(cores["he"]!!.unloaded)
+    }
+
+    @Test fun aLowMemoryUnloadOrASettingsReloadKeepsNoLlm() {
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        h.unload() // FlowService.onTrimMemory
+        h.ensureLoaded()
+        waitFor("ready again") { h.state.value is EngineHolder.State.Ready }
+        h.reload() // a model or developer setting changed
+        waitFor("reloaded") { built.size == 3 && h.state.value is EngineHolder.State.Ready }
+        assertTrue(keepCalls.none { it.first })
     }
 }

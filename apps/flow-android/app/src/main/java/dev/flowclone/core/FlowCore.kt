@@ -74,6 +74,19 @@ interface FlowCore {
 fun interface FlowCoreLoader {
     /** @throws CoreException when the model (or native library) can't be loaded. */
     fun loadModels(cfg: ModelConfig): FlowCore
+
+    /**
+     * Load 3 (`nativeLastLoadTimings`): per-model / per-phase timings JSON of the last successful
+     * [loadModels], once (cleared by the call); null when there is none or the library predates it.
+     */
+    fun takeLoadTimings(): String? = null
+
+    /**
+     * Load 3 (`nativeKeepLlm`): [keep] = true holds the loaded on-device LLM for the next
+     * [loadModels] with the same model (a language switch reloads only the speech model); returns
+     * whether one was kept. false frees a kept LLM (blocking: may free a model). False when unsupported.
+     */
+    fun keepLlm(keep: Boolean): Boolean = false
 }
 
 /**

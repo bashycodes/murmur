@@ -20,6 +20,7 @@ import dev.flowclone.data.CustomServer
 import dev.flowclone.data.CustomModelsKey
 import dev.flowclone.data.RouterOpener
 import dev.flowclone.data.LoadSet
+import dev.flowclone.data.LoadTimingsLog
 import dev.flowclone.data.ParakeetFiles
 import dev.flowclone.data.EngineRoute
 import dev.flowclone.data.DevSettings
@@ -408,8 +409,22 @@ class EngineHolder(
         val want = wantedSet()
         if (want != loadedSet) {
             loadingLabel = labelFor(want, switching = true)
-            reload()
+            keepLlmForSwitch()
+            unload()
+            ensureLoaded()
         }
+    }
+
+    /** Load 3: [keepLlmForSwitch] kept the LLM; the next [load] reuses it, or frees it at its end. */
+    @Volatile private var llmKept = false
+
+    /**
+     * Load 3: a language switch replaces only the speech model, so the on-device LLM of the engine
+     * about to be freed is kept for the next load (~38 s for the 1.5B on the phone). Called while
+     * that engine is still alive.
+     */
+    private fun keepLlmForSwitch() {
+        llmKept = runCatching { loader.keepLlm(true) }.getOrDefault(false) || llmKept
     }
 
     /** What a dictation started while [set] loads says; [switching] = after a language change. */
@@ -443,6 +458,7 @@ class EngineHolder(
                     } else next
                 } ?: break
                 Log.i("FlowEngine", "language changed during the load: dropping the $loadedSet model")
+                synchronized(this@EngineHolder) { keepLlmForSwitch() }
                 drop(stale)
                 next = load()
             }
@@ -552,7 +568,27 @@ class EngineHolder(
         router()?.cloudUsageJson()?.let { app.dev.cloudUsageJson = it }
     }
 
-    private fun load(): State {
+    /** Load 3: one `engine_load_timings` line (logcat + debug log) per native load. */
+    private fun logLoadTimings(timings: String, set: LoadSet, threads: Int) {
+        val cpus = runCatching {
+            LoadTimingsLog.cpusAllowed(File("/proc/self/task/${android.os.Process.myTid()}/status").readText())
+        }.getOrNull()
+        val line = LoadTimingsLog.line(timings, set, threads, cpus)
+        Log.i("FlowEngine", "load timings: $line")
+        app.debugLog.event("engine_load_timings", line)
+    }
+
+    /** [loadEngine], then frees an LLM [keepLlmForSwitch] kept that this load did not take (none, mock, server only). */
+    private fun load(): State = try {
+        loadEngine()
+    } finally {
+        if (llmKept) {
+            llmKept = false
+            runCatching { loader.keepLlm(false) }
+        }
+    }
+
+    private fun loadEngine(): State {
         unloading?.let { if (!it.awaitFreed(UNLOAD_WAIT_MS)) Log.w("FlowEngine", "previous engine still busy after ${UNLOAD_WAIT_MS} ms; loading anyway") }
         unloading = null
         val threads = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
@@ -581,7 +617,9 @@ class EngineHolder(
                 State.Failed(plan.message, plan.kind)
             }
             is EngineRoute.Plan.Routed -> {
+                loader.takeLoadTimings() // a stale one from an earlier load is not this load's
                 val r = EngineRoute.assemble(plan, loader, opener)
+                loader.takeLoadTimings()?.let { logLoadTimings(it, set, threads) }
                 if (r.llm is EnginePlan.LlmStatus.Failed) {
                     Log.w("FlowEngine", "LLM disabled: ${(r.llm as EnginePlan.LlmStatus.Failed).message}")
                     app.debugLog.event("llm_load", (r.llm as EnginePlan.LlmStatus.Failed).message)

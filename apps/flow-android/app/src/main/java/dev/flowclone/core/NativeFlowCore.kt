@@ -270,7 +270,19 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
             BlockingCalls.check("nativeLoadModels")
             val h = nativeLoadModels(CoreJson.encode(cfg))
             if (h == 0L) throw lastError("load_models failed")
+            // Same thread as the load: the native side keeps them per thread.
+            loadTimings = try { nativeLastLoadTimings() } catch (e: UnsatisfiedLinkError) { null }
             return NativeFlowCore(h)
+        }
+
+        @Volatile private var loadTimings: String? = null
+
+        override fun takeLoadTimings(): String? = loadTimings.also { loadTimings = null }
+
+        override fun keepLlm(keep: Boolean): Boolean {
+            if (loadLibrary() !is LibraryState.Loaded) return false
+            if (!keep) BlockingCalls.check("nativeKeepLlm")
+            return try { nativeKeepLlm(keep) } catch (e: UnsatisfiedLinkError) { false }
         }
 
         /** Last error + its stable kind (`nativeLastErrorKind`, else recovered from the message prefix). */
@@ -401,6 +413,10 @@ class NativeFlowCore private constructor(handle: Long, val isRouter: Boolean = f
         @JvmStatic external fun nativeLastError(): String?
         @JvmStatic external fun nativeLoadModels(modelConfigJson: String): Long
         @JvmStatic external fun nativeUnload(handle: Long)
+
+        // ---- 2026-11-05 Load 3: load timings + keep the LLM across a language switch (JNI_CONTRACT.md) ----
+        @JvmStatic external fun nativeLastLoadTimings(): String?
+        @JvmStatic external fun nativeKeepLlm(keep: Boolean): Boolean
         @JvmStatic external fun nativeStartSession(handle: Long, sessionConfigJson: String): Boolean
         @JvmStatic external fun nativePushAudio(handle: Long, pcm: ShortArray, length: Int): Boolean
         @JvmStatic external fun nativeSetContext(handle: Long, fieldContextJson: String)
