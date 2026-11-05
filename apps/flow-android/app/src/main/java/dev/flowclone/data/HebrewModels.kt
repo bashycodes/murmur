@@ -131,6 +131,32 @@ object HebrewModels {
 }
 
 /**
+ * The speech models the phone keeps resident for the next dictation. The engine holder reloads
+ * only when this changes: with [Both] a keyboard switch never reloads, and toggling "Keep both
+ * languages loaded" reloads once.
+ */
+sealed interface LoadSet {
+    /** The default engine alone (whisper / Parakeet). */
+    data object Default : LoadSet
+    /** One language's own model alone (`load_language`, D33 decision 4: one model in RAM). */
+    data class Language(val code: String) : LoadSet
+    /** D54: the default model and the Hebrew model together. */
+    data object Both : LoadSet
+
+    companion object {
+        /**
+         * [Both] when [keepBoth] is on and both a Hebrew model ([hebrewInstalled]) and a default
+         * model are installed, else [HebrewModels.route]. [defaultInstalled] is only asked when
+         * [keepBoth] is on (it touches the file system).
+         */
+        fun of(effectiveLanguage: String?, hebrewInstalled: Boolean, keepBoth: Boolean, defaultInstalled: () -> Boolean): LoadSet = when {
+            keepBoth && hebrewInstalled && defaultInstalled() -> Both
+            else -> HebrewModels.route(effectiveLanguage, hebrewInstalled)?.let(::Language) ?: Default
+        }
+    }
+}
+
+/**
  * H5 import: copies a Hebrew model's four files into a staging directory, hashing while it
  * copies, then [HebrewModels.identify] decides with sizes and SHA-256. JVM-testable (no Android).
  */

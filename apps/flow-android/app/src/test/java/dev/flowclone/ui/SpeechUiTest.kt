@@ -8,6 +8,7 @@ import dev.flowclone.data.DevPages
 import dev.flowclone.data.DevSettings
 import dev.flowclone.data.DevSettings.Route
 import dev.flowclone.data.SettingsPages.Page
+import dev.flowclone.data.SettingsStore
 import dev.flowclone.data.SettingsSummary
 import dev.flowclone.ui.UiTestKit.idle
 import dev.flowclone.ui.UiTestKit.rowTitled
@@ -109,6 +110,20 @@ class SpeechUiTest {
         val was = app.settings.load().decodeWhileSpeaking
         rowTitled(a, "Transcribe while I speak").performClick()
         assertEquals(!was, app.settings.load().decodeWhileSpeaking)
+    }
+
+    @Test fun keepBothLanguagesLoadedIsOffByDefaultAndPersists() {
+        assumeTrue(app.caps.local)
+        app.settings.save(app.settings.load().copy(keepBothLanguages = false))
+        val a = launch()
+        val row = rowTitled(a, "Keep both languages loaded")
+        assertFalse(row.createAccessibilityNodeInfo().isChecked)
+        // No Hebrew model in a fresh install: the summary says the switch does nothing.
+        assertTrue(texts(a).any { it.startsWith("No effect") })
+        row.performClick()
+        assertTrue("persisted", SettingsStore(a).load().keepBothLanguages)
+        row.performClick()
+        assertFalse(SettingsStore(a).load().keepBothLanguages)
     }
 
     @Test fun modelCardOpensTheEnginePageAndImport() {
