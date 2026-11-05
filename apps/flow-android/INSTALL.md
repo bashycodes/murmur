@@ -48,10 +48,12 @@ APKs built on this PC (`tools/dist.sh`, after `tools/build-native.sh --flavor lo
 
 All six built 2026-10-24 from tag `v0.5.0` (914fb5e; D28 OpenRouter-only cloud: one OpenRouter page, opt-in cloud text cleanup, one-time migration of old provider settings; versionName 0.5.0, versionCode 500, native engine `flow-ffi 0.5.0+914fb5e`; natives rebuilt from the same tree for all three flavours; native gate: 41/41 JNI symbols, 8 `flow_llm_*`; D28 host scan clean for all six; same debug key as before (cert SHA-256 `63f0719b…`), so the debug APKs install over the previous build). The `*-release-unsigned.apk` files are not installable until signed, see "Release build" below.
 
-Check a copy with `sha256sum flow-clone-hybrid-debug.apk` before installing it. An APK from
-another machine or from the CI artifact (`.github/workflows/android-build.yml`) has a different
-debug key: Android refuses it as an update, so uninstall the old app first (this deletes its
-settings, dictionary and history).
+Check a copy with `sha256sum flow-clone-hybrid-debug.apk` before installing it. The CI artifact
+and the release APKs (`.github/workflows/android-build.yml`) are signed with the same fixed debug
+key as this PC's builds (D56; cert SHA-256 in `apps/flow-android/debug-cert.sha256`, checked by
+CI), so either installs over the other with `install -r` and keeps the app's data. An APK built
+on a machine with its own debug key (or by CI on a fork, without the key) is refused as an
+update: uninstall the old app first (this deletes its settings, dictionary and history).
 
 **1. Server (on the PC).** Join the PC and the phone to the same VPN (any WireGuard-based mesh
 VPN that hands out 100.64.0.0/10 addresses works), or put both on one LAN. Then on the PC:

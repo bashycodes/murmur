@@ -50,8 +50,9 @@ python3 -I tools/probes/android_bench/prepare_bundle.py   # -> $CACHE/android-be
 
 ## 2. On the phone (orchestrator; `$ADB` = the device bridge command)
 
-The phone must run a **locally built hybrid debug APK**. If it runs a CI build instead,
-installing a debug APK means a different signing key, which wipes `files/`, models included.
+The phone must run a **hybrid debug APK** signed with the fixed debug key (D56): a local build
+or a CI build. One signed with any other key cannot install over it without an uninstall, which
+wipes `files/`, models included.
 
 ```sh
 export ADB="<device bridge> -s <serial>"
