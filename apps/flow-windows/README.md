@@ -40,7 +40,10 @@ the dictation and reaches the app as the plain key (e, Tab). Windows'
 key state never sees a swallowed key, so the stuck-key check skips it: it
 ends on its own key-up (a key-up is swallowed exactly when its key-down
 was, also across a settings change), a hook re-install, or the dictation's
-time limit. Changing the shortcuts mid-hold cancels that dictation. Ctrl+Win+Alt (Command) with Right Alt as its Alt is a command, never
+time limit. Changing the shortcuts mid-hold cancels that dictation. A key
+already held when the hook starts (or a shortcut recording begins) is left
+alone until it is released: it starts nothing, and its key-up reaches the
+app. Ctrl+Win+Alt (Command) with Right Alt as its Alt is a command, never
 a dictation; holding Right Alt, then adding Ctrl+Win, turns the dictation
 into a command. With any other push-to-talk shortcut Right Alt passes
 through as before, and AltGr's fake Left Ctrl is ignored for shortcuts, so

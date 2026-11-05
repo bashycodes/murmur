@@ -484,13 +484,32 @@ impl ChordMatcher {
     /// Right Alt is push-to-talk: then its key-down is swallowed, and so is
     /// the key-up of a swallowed key-down (only that one).
     pub fn handle_raw(&mut self, vk: u16, scan: u32, down: bool, dictating: bool) -> Decision {
+        self.handle_hook(vk, scan, down, dictating, false)
+    }
+
+    /// [`handle_raw`](Self::handle_raw) plus `os_down`: the OS already had
+    /// this key down before the event (GetAsyncKeyState inside the hook,
+    /// which runs before the async state is updated). The hook can't tell
+    /// an auto-repeat from a fresh press, so a key-down we hold no state
+    /// for while the OS has the key down is the repeat of a key held since
+    /// before the matcher (re)started (install at login, a re-install, new
+    /// bindings): it passes and starts nothing, so its key-up passes too
+    /// and the key can't stick. Only a real fresh press fires.
+    pub fn handle_hook(
+        &mut self,
+        vk: u16,
+        scan: u32,
+        down: bool,
+        dictating: bool,
+        os_down: bool,
+    ) -> Decision {
         if is_altgr_fake_ctrl(vk, scan) {
             self.altgr_ctrl = down;
             let suppress = if down {
-                // Auto-repeat keeps the first key-down's fate.
-                *self
-                    .altgr_ctrl_swallowed
-                    .get_or_insert(self.swallows_right_alt())
+                // Auto-repeat keeps the first key-down's fate; a fake Ctrl
+                // the OS already has down passed before we saw it.
+                let swallow = !os_down && self.swallows_right_alt();
+                *self.altgr_ctrl_swallowed.get_or_insert(swallow)
             } else {
                 self.altgr_ctrl_swallowed.take().unwrap_or(false)
             };
@@ -499,13 +518,25 @@ impl ChordMatcher {
                 ..Decision::default()
             };
         }
-        self.handle(
-            KeyEvent {
-                key: Key::from_vk(vk),
-                down,
-            },
-            dictating,
-        )
+        let key = Key::from_vk(vk);
+        if down && !self.pressed.contains(&key) {
+            if os_down {
+                self.pressed.insert(key);
+                self.swallowed.remove(&key);
+                return Decision::default();
+            }
+            if self.swallowed.contains(&key) {
+                // We swallowed its key-down and saw no key-up since: the
+                // repeat of a hold that outlived a reset. Still swallowed,
+                // and it starts nothing.
+                self.pressed.insert(key);
+                return Decision {
+                    suppress: true,
+                    ..Decision::default()
+                };
+            }
+        }
+        self.handle(KeyEvent { key, down }, dictating)
     }
 
     /// The AltGr fake Left Ctrl is down (we saw its key-down, not its key-up).
@@ -515,8 +546,13 @@ impl ChordMatcher {
 
     /// The OS says Left Ctrl is up, so a fake-Ctrl key-up we never saw
     /// can't matter any more.
+    /// A swallowed one is never in the OS key state, so only a passed one
+    /// is forgotten (with its stale fate).
     pub fn forget_altgr_ctrl(&mut self) {
-        self.altgr_ctrl = false;
+        if self.altgr_ctrl_swallowed != Some(true) {
+            self.altgr_ctrl = false;
+            self.altgr_ctrl_swallowed = None;
+        }
     }
 
     /// Is the *user's own* Left Ctrl down? `async_down` = GetAsyncKeyState
@@ -1628,13 +1664,150 @@ mod tests {
 
     #[test]
     fn a_missed_fake_ctrl_up_can_be_forgotten() {
+        // Passed fake Ctrl (Ctrl+Win push-to-talk), its key-up missed.
+        let mut m = ctrl_win_ptt();
+        assert!(!m.handle_raw(LCTRL_VK, FAKE_SCAN, true, false).suppress);
+        m.forget_altgr_ctrl();
+        assert!(!m.altgr_ctrl_down());
+        // Its stale "passed" fate is gone too: with Right Alt push-to-talk
+        // the next fresh AltGr press is swallowed as it should be.
+        m.set_bindings(Bindings::default());
+        assert!(m.handle_raw(LCTRL_VK, FAKE_SCAN, true, false).suppress);
+        m.reset();
+        assert!(!m.altgr_ctrl_down());
+        // A swallowed fake Ctrl is never in the OS key state: the stale
+        // check can't judge it, so it is kept (its key-up stays swallowed).
         let mut m = ralt_ptt();
         m.handle_raw(LCTRL_VK, FAKE_SCAN, true, false);
         m.forget_altgr_ctrl();
-        assert!(!m.altgr_ctrl_down());
-        m.handle_raw(LCTRL_VK, FAKE_SCAN, true, false);
-        m.reset();
-        assert!(!m.altgr_ctrl_down());
+        assert!(m.altgr_ctrl_down());
+        assert!(m.handle_raw(LCTRL_VK, FAKE_SCAN, false, false).suppress);
+    }
+
+    // --- A key held when the matcher (re)starts: its repeats look fresh ---
+
+    /// Ways the matcher loses track of a held key: a re-install
+    /// (`forget`), a reset, new bindings to Right Alt, a fresh matcher.
+    fn restarted_mid_hold(how: usize) -> ChordMatcher {
+        match how {
+            0 => {
+                let mut m = ralt_ptt();
+                m.forget();
+                m
+            }
+            1 => {
+                let mut m = ralt_ptt();
+                m.reset();
+                m
+            }
+            2 => {
+                let mut m = ctrl_win_ptt();
+                m.set_bindings(Bindings::default());
+                m
+            }
+            _ => default_bindings(),
+        }
+    }
+
+    #[test]
+    fn right_alt_held_before_the_matcher_restarted_passes_and_starts_nothing() {
+        for how in 0..4 {
+            let mut m = restarted_mid_hold(how);
+            // Auto-repeats of the Right Alt the OS already has down.
+            for _ in 0..3 {
+                let d = m.handle_hook(RALT_VK, ALT_SCAN, true, false, true);
+                assert_eq!(
+                    d,
+                    Decision::default(),
+                    "how={how}: repeat passes, no PttDown"
+                );
+            }
+            let up = m.handle_hook(RALT_VK, ALT_SCAN, false, false, true);
+            assert_eq!(
+                up,
+                Decision::default(),
+                "how={how}: key-up passes, no stuck Alt"
+            );
+            // The next real press is push-to-talk again.
+            let d = m.handle_hook(RALT_VK, ALT_SCAN, true, false, false);
+            assert_eq!(d.actions, vec![PttDown], "how={how}");
+            assert!(d.suppress);
+        }
+    }
+
+    #[test]
+    fn a_swallowed_right_alt_held_through_new_bindings_restarts_nothing() {
+        let mut m = ralt_ptt();
+        raw(
+            &mut m,
+            &[(LCTRL_VK, FAKE_SCAN, true), (RALT_VK, ALT_SCAN, true)],
+        );
+        let b = Bindings {
+            hands_free: "Ctrl+Shift+Space".parse().unwrap(),
+            ..Bindings::default()
+        };
+        assert_eq!(m.set_bindings(b), vec![PttAborted]);
+        // The OS never saw the swallowed keys go down.
+        for _ in 0..3 {
+            let d = m.handle_hook(RALT_VK, ALT_SCAN, true, false, false);
+            assert!(d.suppress && d.actions.is_empty(), "no new PttDown");
+            assert!(
+                m.handle_hook(LCTRL_VK, FAKE_SCAN, true, false, false)
+                    .suppress
+            );
+        }
+        let ds = raw(
+            &mut m,
+            &[(RALT_VK, ALT_SCAN, false), (LCTRL_VK, FAKE_SCAN, false)],
+        );
+        assert!(ds.iter().all(|d| d.suppress && d.actions.is_empty()));
+        assert_eq!(
+            m.handle_raw(RALT_VK, ALT_SCAN, true, false).actions,
+            vec![PttDown],
+            "the next real press works"
+        );
+    }
+
+    #[test]
+    fn fake_ctrl_held_before_the_matcher_restarted_passes() {
+        for how in 0..4 {
+            let mut m = restarted_mid_hold(how);
+            for _ in 0..3 {
+                let d = m.handle_hook(LCTRL_VK, FAKE_SCAN, true, false, true);
+                assert_eq!(d, Decision::default(), "how={how}: repeat passes");
+            }
+            let up = m.handle_hook(LCTRL_VK, FAKE_SCAN, false, false, true);
+            assert_eq!(up, Decision::default(), "how={how}: no stuck Left Ctrl");
+            // The next real AltGr press is swallowed again.
+            assert!(
+                m.handle_hook(LCTRL_VK, FAKE_SCAN, true, false, false)
+                    .suppress
+            );
+        }
+    }
+
+    #[test]
+    fn altgr_held_before_the_matcher_restarted_passes_in_both_release_orders() {
+        for fake_first in [true, false] {
+            let mut m = restarted_mid_hold(0);
+            let ds: Vec<Decision> = [(LCTRL_VK, FAKE_SCAN), (RALT_VK, ALT_SCAN)]
+                .into_iter()
+                .map(|(vk, scan)| m.handle_hook(vk, scan, true, false, true))
+                .collect();
+            let ups = if fake_first {
+                [(LCTRL_VK, FAKE_SCAN), (RALT_VK, ALT_SCAN)]
+            } else {
+                [(RALT_VK, ALT_SCAN), (LCTRL_VK, FAKE_SCAN)]
+            };
+            let ups: Vec<Decision> = ups
+                .into_iter()
+                .map(|(vk, scan)| m.handle_hook(vk, scan, false, false, true))
+                .collect();
+            for (i, d) in ds.iter().chain(&ups).enumerate() {
+                assert_eq!(*d, Decision::default(), "fake_first={fake_first} #{i}");
+            }
+            assert_eq!(m.pressed().count(), 0);
+        }
     }
 
     #[test]

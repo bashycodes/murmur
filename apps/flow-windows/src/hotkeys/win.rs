@@ -290,12 +290,16 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
             let msg = wparam.0 as u32;
             let down = msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
             let vk = kb.vkCode as u16;
+            // The OS's state *before* this event: the hook runs before the
+            // async key state is updated. Down already = auto-repeat of a
+            // key the OS has (see ChordMatcher::handle_hook).
+            let os_down = (GetAsyncKeyState(i32::from(vk)) as u16) & 0x8000 != 0;
             let decision = {
                 let mut guard = state();
                 match guard.as_mut() {
                     Some(s) if s.capture.is_some() => {
                         if let Some((rec, out)) = s.capture.as_mut() {
-                            let r = rec.handle_raw(vk, kb.scanCode, down);
+                            let r = rec.handle_hook(vk, kb.scanCode, down, os_down);
                             s.matcher.note_recorded(vk, kb.scanCode, down, r.suppress);
                             if r.step != RecordStep::Pending {
                                 let _ = out.send(r.step);
@@ -309,11 +313,12 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                     }
                     Some(s) => {
                         // AltGr's fake Left Ctrl (scan 0x21D) is filtered here.
-                        let d = s.matcher.handle_raw(
+                        let d = s.matcher.handle_hook(
                             vk,
                             kb.scanCode,
                             down,
                             s.dictating.load(Ordering::Relaxed),
+                            os_down,
                         );
                         for a in &d.actions {
                             let _ = s.tx.send(*a);
