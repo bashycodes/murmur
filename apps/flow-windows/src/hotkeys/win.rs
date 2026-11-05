@@ -6,9 +6,11 @@
 //! `LowLevelHooksTimeout`. A 1 s `WM_TIMER` probes held keys with
 //! `GetAsyncKeyState` to recover from missed key-ups (lock screen, UAC
 //! desktop switch, hook timeouts). A key the hook swallowed (Right Alt
-//! push-to-talk, D57) never reaches the async key state, so it is judged
-//! by its own events instead: a held key auto-repeats, so a swallowed key
-//! with no event for [`SWALLOWED_STALE_MS`] is released. The same timer runs the liveness
+//! push-to-talk, D57) never reaches the async key state and is skipped
+//! there ([`ChordMatcher::stale_keys`]): it ends on its own key-up, a hook
+//! re-install, or the dictation's time limit. If its key-up is missed (a
+//! secure desktop took it), the next press only delivers that key-up, and
+//! the press after it works again. The same timer runs the liveness
 //! [`watchdog`](super::watchdog): Windows silently removes a hook that
 //! overran `LowLevelHooksTimeout`, so we probe it and re-install when dead.
 //! While Settings records a new shortcut ([`HookHandle::start_capture`]),
@@ -42,11 +44,6 @@ const PROBE_TAG: usize = input::EXTRA_INFO_TAG ^ 0x5052_4F42; // "PROB"
 /// VK 0xFF: no key is mapped to it.
 const PROBE_VK: u16 = 0xFF;
 
-/// A swallowed key with no hook event (auto-repeat) for this long is
-/// treated as released. Windows repeats a held key every ~33 ms after a
-/// delay of at most 1 s, so 2 s never cuts a real hold short.
-const SWALLOWED_STALE_MS: u128 = 2000;
-
 /// Every hook callback bumps this (watchdog liveness signal).
 static HOOK_EVENTS: AtomicU64 = AtomicU64::new(0);
 
@@ -56,8 +53,6 @@ struct HookState {
     dictating: Arc<AtomicBool>,
     /// Recording a shortcut: the recorder and where its result goes.
     capture: Option<(ChordRecorder, Sender<RecordStep>)>,
-    /// When each key last produced a hook event (for swallowed keys).
-    last_event: std::collections::HashMap<Key, std::time::Instant>,
 }
 
 static STATE: Mutex<Option<HookState>> = Mutex::new(None);
@@ -78,7 +73,9 @@ pub struct HookHandle {
 impl HookHandle {
     pub fn set_bindings(&self, b: Bindings) {
         if let Some(s) = state().as_mut() {
-            s.matcher.set_bindings(b);
+            for a in s.matcher.set_bindings(b) {
+                let _ = s.tx.send(a);
+            }
         }
     }
 
@@ -141,7 +138,6 @@ pub fn install(
         tx,
         dictating,
         capture: None,
-        last_event: std::collections::HashMap::new(),
     });
     let (ready_tx, ready_rx) = mpsc::channel::<Result<u32, String>>();
     let join = std::thread::Builder::new()
@@ -257,7 +253,7 @@ unsafe fn reinstall(hook: &mut HHOOK, hmod: HINSTANCE) {
                 let _ = s.tx.send(a);
             }
         }
-        s.matcher.reset();
+        s.matcher.forget();
     }
 }
 
@@ -273,19 +269,9 @@ fn check_stale_keys() {
     if s.matcher.altgr_ctrl_down() && !is_physically_down(Key::LCtrl) {
         s.matcher.forget_altgr_ctrl();
     }
-    let held: Vec<Key> = s.matcher.pressed().collect();
-    for k in held {
-        let up = if s.matcher.is_swallowed(k) {
-            s.last_event
-                .get(&k)
-                .is_none_or(|t| t.elapsed().as_millis() > SWALLOWED_STALE_MS)
-        } else {
-            !is_physically_down(k)
-        };
-        if up {
-            for a in s.matcher.force_release(k) {
-                let _ = s.tx.send(a);
-            }
+    for k in s.matcher.stale_keys(is_physically_down) {
+        for a in s.matcher.force_release(k) {
+            let _ = s.tx.send(a);
         }
     }
 }
@@ -310,6 +296,7 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                     Some(s) if s.capture.is_some() => {
                         if let Some((rec, out)) = s.capture.as_mut() {
                             let r = rec.handle_raw(vk, kb.scanCode, down);
+                            s.matcher.note_recorded(vk, kb.scanCode, down, r.suppress);
                             if r.step != RecordStep::Pending {
                                 let _ = out.send(r.step);
                                 s.capture = None;
@@ -321,8 +308,6 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                         None
                     }
                     Some(s) => {
-                        s.last_event
-                            .insert(Key::from_vk(vk), std::time::Instant::now());
                         // AltGr's fake Left Ctrl (scan 0x21D) is filtered here.
                         let d = s.matcher.handle_raw(
                             vk,

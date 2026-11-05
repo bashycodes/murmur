@@ -37,9 +37,10 @@ bar takes focus, no Ctrl is left stuck, and **Right Alt no longer types
 AltGr letters; type them with Left Ctrl+Left Alt** (untouched by the hook).
 Another key pressed during the hold (Right Alt+E, Right Alt+Tab) cancels
 the dictation and reaches the app as the plain key (e, Tab). Windows'
-key state never sees a swallowed key, so the hook releases a swallowed
-Right Alt itself when it has sent no event (held keys auto-repeat) for
-2 s. Ctrl+Win+Alt (Command) with Right Alt as its Alt is a command, never
+key state never sees a swallowed key, so the stuck-key check skips it: it
+ends on its own key-up (a key-up is swallowed exactly when its key-down
+was, also across a settings change), a hook re-install, or the dictation's
+time limit. Changing the shortcuts mid-hold cancels that dictation. Ctrl+Win+Alt (Command) with Right Alt as its Alt is a command, never
 a dictation; holding Right Alt, then adding Ctrl+Win, turns the dictation
 into a command. With any other push-to-talk shortcut Right Alt passes
 through as before, and AltGr's fake Left Ctrl is ignored for shortcuts, so
@@ -577,7 +578,7 @@ terminal prints `[audio]`, `[hotkeys]`, `[cloud]` lines).
 - [ ] Esc cancels, and Esc is not delivered to the app while dictating.
 - [ ] Releasing Win after a chord does **not** open the Start menu.
 - [ ] Ctrl+Win+Left still switches desktops and aborts dictation.
-- [ ] Push-to-talk `Right Alt` (the default), on a layout with AltGr (e.g. Polish or German) and on US: the start sound plays at once on Right Alt down; holding it dictates and releasing pastes into Notepad; afterwards typing `s` gives `s` (no stuck Ctrl or Alt: not Ctrl+S, not an AltGr letter), the menu bar of Notepad/Explorer is not focused, and Left Alt / Alt+Tab never start dictation. A quick double tap locks hands-free; a single tap is dismissed and pastes nothing. Right Alt+E types a plain `e` and cancels the dictation; Left Ctrl+Left Alt+E still types the AltGr letter (e.g. `ę` / `€`). Hold Right Alt for 10 s while speaking: the dictation does not end early.
+- [ ] Push-to-talk `Right Alt` (the default), on a layout with AltGr (e.g. Polish or German) and on US: the start sound plays at once on Right Alt down; holding it dictates and releasing pastes into Notepad; afterwards typing `s` gives `s` (no stuck Ctrl or Alt: not Ctrl+S, not an AltGr letter), the menu bar of Notepad/Explorer is not focused, and Left Alt / Alt+Tab never start dictation. A quick double tap locks hands-free; a single tap is dismissed and pastes nothing. Right Alt+E types a plain `e` and cancels the dictation; Left Ctrl+Left Alt+E still types the AltGr letter (e.g. `ę` / `€`). Hold Right Alt for 10 s while speaking, and hold Right Alt, then Ctrl+Win, for 5 s (Command): neither ends early.
 - [ ] After a paste, the old clipboard is back within about 0.5 s (3 s in Outlook/Word/WhatsApp).
 - [ ] Win+V history does not contain the dictated text.
 - [ ] Dictating into an elevated window (admin cmd) shows the "runs as administrator" error and leaves the text on the clipboard.

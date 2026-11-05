@@ -1587,18 +1587,29 @@ mod tests {
     const ALT_SCAN: u32 = 0x38;
 
     /// Right Alt down/up at the given times (ms) on an AltGr layout (the
-    /// fake Left Ctrl rides along), with a tick every 50 ms up to `until`.
-    fn right_alt_presses(d: &mut Dictation, presses: &[(u64, u64)], until: u64) -> Vec<Effect> {
+    /// fake Left Ctrl rides along; at the release it goes up first if
+    /// `fake_up_first`), with a tick every 50 ms up to `until`.
+    fn right_alt_presses(
+        d: &mut Dictation,
+        presses: &[(u64, u64)],
+        until: u64,
+        fake_up_first: bool,
+    ) -> Vec<Effect> {
         let mut m = crate::hotkeys::ChordMatcher::new(crate::hotkeys::Bindings::default());
+        let fake = |down| (0xA2, 0x21D, down);
+        let ralt = |down| (RALT_VK, ALT_SCAN, down);
         let mut fx = Vec::new();
         for t in 0..=until {
             for &(down, up) in presses {
-                let mut evs = Vec::new();
-                if t == down {
-                    evs = vec![(0xA2, 0x21D, true), (RALT_VK, ALT_SCAN, true)];
+                let evs = if t == down {
+                    vec![fake(true), ralt(true)]
+                } else if t == up && fake_up_first {
+                    vec![fake(false), ralt(false)]
                 } else if t == up {
-                    evs = vec![(0xA2, 0x21D, false), (RALT_VK, ALT_SCAN, false)];
-                }
+                    vec![ralt(false), fake(false)]
+                } else {
+                    Vec::new()
+                };
                 for (vk, scan, is_down) in evs {
                     let dec = m.handle_raw(vk, scan, is_down, d.is_active());
                     assert!(dec.suppress, "Right Alt and AltGr never reach the app");
@@ -1620,29 +1631,35 @@ mod tests {
 
     #[test]
     fn right_alt_double_tap_locks_hands_free() {
-        let mut d = default_policy();
-        let fx = right_alt_presses(&mut d, &[(0, 80), (200, 280)], 3000);
-        assert!(fx.contains(&Effect::Sound(Sound::Lock)));
-        assert_eq!(listening(&d).mode, Mode::Locked);
-        assert!(!fx.iter().any(|e| matches!(e, Effect::Commit(_))));
+        for fake_up_first in [false, true] {
+            let mut d = default_policy();
+            let fx = right_alt_presses(&mut d, &[(0, 80), (200, 280)], 3000, fake_up_first);
+            assert!(fx.contains(&Effect::Sound(Sound::Lock)));
+            assert_eq!(listening(&d).mode, Mode::Locked);
+            assert!(!fx.iter().any(|e| matches!(e, Effect::Commit(_))));
+        }
     }
 
     #[test]
     fn right_alt_hold_commits() {
-        let mut d = default_policy();
-        let fx = right_alt_presses(&mut d, &[(0, 1000)], 1100);
-        let s = session_of(&fx);
-        assert!(fx.contains(&Effect::Commit(s)));
-        assert_eq!(processing(&d), s);
+        for fake_up_first in [false, true] {
+            let mut d = default_policy();
+            let fx = right_alt_presses(&mut d, &[(0, 1000)], 1100, fake_up_first);
+            let s = session_of(&fx);
+            assert!(fx.contains(&Effect::Commit(s)));
+            assert_eq!(processing(&d), s);
+        }
     }
 
     #[test]
     fn right_alt_tap_is_dismissed_with_nothing_committed() {
-        let mut d = default_policy();
-        let fx = right_alt_presses(&mut d, &[(0, 80)], 1000);
-        let s = session_of(&fx);
-        assert!(fx.contains(&Effect::CancelSession(s)));
-        assert!(!fx.iter().any(|e| matches!(e, Effect::Commit(_))));
-        assert_eq!(d.phase(), &Phase::Idle);
+        for fake_up_first in [false, true] {
+            let mut d = default_policy();
+            let fx = right_alt_presses(&mut d, &[(0, 80)], 1000, fake_up_first);
+            let s = session_of(&fx);
+            assert!(fx.contains(&Effect::CancelSession(s)));
+            assert!(!fx.iter().any(|e| matches!(e, Effect::Commit(_))));
+            assert_eq!(d.phase(), &Phase::Idle);
+        }
     }
 }
