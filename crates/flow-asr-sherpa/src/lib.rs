@@ -82,7 +82,10 @@ pub struct ParakeetConfig {
     /// Create the beam and greedy recognizers on two threads at once
     /// (onnxruntime session setup is mostly one core per session), so a
     /// load takes about as long as the slower one instead of both in turn.
-    /// Default true; `false` measures the serial cost.
+    /// Default false: two Parakeet encoder sessions (hundreds of MB each)
+    /// initialising at once raise the load's peak RAM, unmeasured on the
+    /// phone (the zipformer, ~70 MB, does it by default:
+    /// [`OnlineConfig::parallel_sessions`]).
     pub parallel_sessions: bool,
 }
 
@@ -96,7 +99,7 @@ impl ParakeetConfig {
             max_active_paths: DEFAULT_BEAM,
             greedy_fallback: true,
             scratch_dir: None,
-            parallel_sessions: true,
+            parallel_sessions: false,
         }
     }
 }
@@ -129,7 +132,7 @@ fn timed<T>(phases: &mut Vec<LoadPhase>, name: &'static str, f: impl FnOnce() ->
 }
 
 /// A deferred recognizer creation for [`create_pair`].
-type Make<'a, R> = Box<dyn FnOnce() -> Result<R, SherpaError> + Send + 'a>;
+type MakeRecognizer<'a, R> = Box<dyn FnOnce() -> Result<R, SherpaError> + Send + 'a>;
 
 /// Create an optional beam and an optional greedy recognizer, on two threads
 /// when `parallel` and both are wanted. Records `beam_sessions`,
@@ -138,18 +141,18 @@ type Make<'a, R> = Box<dyn FnOnce() -> Result<R, SherpaError> + Send + 'a>;
 fn create_pair<R: Send>(
     phases: &mut Vec<LoadPhase>,
     parallel: bool,
-    beam: Option<Make<'_, R>>,
-    greedy: Option<Make<'_, R>>,
+    beam: Option<MakeRecognizer<'_, R>>,
+    greedy: Option<MakeRecognizer<'_, R>>,
 ) -> Result<(Option<R>, Option<R>), SherpaError> {
-    type Timed<R> = Option<(Result<R, SherpaError>, u64)>;
-    fn run<R>(f: Option<Make<'_, R>>) -> Timed<R> {
+    type TimedRun<R> = Option<(Result<R, SherpaError>, u64)>;
+    fn run<R>(f: Option<MakeRecognizer<'_, R>>) -> TimedRun<R> {
         f.map(|f| {
             let t = Instant::now();
             (f(), ms_since(t))
         })
     }
     let wall = Instant::now();
-    let (b, g): (Timed<R>, Timed<R>) = match (beam, greedy) {
+    let (b, g): (TimedRun<R>, TimedRun<R>) = match (beam, greedy) {
         (Some(b), Some(g)) if parallel => std::thread::scope(|s| {
             let h = s.spawn(move || run(Some(g)));
             let b = run(Some(b));
@@ -352,8 +355,8 @@ impl ParakeetEngine {
         let made = create_pair(
             &mut phases,
             cfg.parallel_sessions,
-            beam_cfg.map(|b| Box::new(move || created_b(b)) as Make<'_, _>),
-            want_greedy.then(|| Box::new(move || created(c)) as Make<'_, _>),
+            beam_cfg.map(|b| Box::new(move || created_b(b)) as MakeRecognizer<'_, _>),
+            want_greedy.then(|| Box::new(move || created(c)) as MakeRecognizer<'_, _>),
         );
         if let Some(p) = temp_vocab {
             let _ = std::fs::remove_file(p);

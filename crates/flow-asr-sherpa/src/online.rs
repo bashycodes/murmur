@@ -21,9 +21,9 @@ use std::sync::Mutex;
 use sherpa_onnx::{OnlineRecognizer, OnlineRecognizerConfig, OnlineTransducerModelConfig};
 
 use crate::{
-    create_pair, hotwords_arg, is_silent, onnx_model_type, timed, vocab_path, LoadPhase, Make,
-    ModelFiles, Search, SherpaError, SherpaTranscriber, DEFAULT_BEAM, DEFAULT_HOTWORDS_SCORE,
-    SAMPLE_RATE,
+    create_pair, hotwords_arg, is_silent, onnx_model_type, timed, vocab_path, LoadPhase,
+    MakeRecognizer, ModelFiles, Search, SherpaError, SherpaTranscriber, DEFAULT_BEAM,
+    DEFAULT_HOTWORDS_SCORE, SAMPLE_RATE,
 };
 
 /// Silence appended after the utterance before `input_finished()`. The
@@ -150,8 +150,8 @@ impl OnlineEngine {
         let made = create_pair(
             &mut phases,
             cfg.parallel_sessions,
-            beam_cfg.map(|b| Box::new(move || created_b(b)) as Make<'_, _>),
-            want_greedy.then(|| Box::new(move || created(c)) as Make<'_, _>),
+            beam_cfg.map(|b| Box::new(move || created_b(b)) as MakeRecognizer<'_, _>),
+            want_greedy.then(|| Box::new(move || created(c)) as MakeRecognizer<'_, _>),
         );
         if let Some(p) = temp_vocab {
             let _ = std::fs::remove_file(p);
