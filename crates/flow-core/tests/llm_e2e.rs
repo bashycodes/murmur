@@ -489,7 +489,7 @@ fn a_language_switch_reuses_the_kept_llm() {
     let first = en.load_timings().llm().expect("llm timing").clone();
     assert!(!first.reused && first.ms > 0, "{first:?}");
     let before = Arc::as_ptr(&en.cleaner().unwrap()) as *const () as usize;
-    assert!(flow_core::llm_keep::keep());
+    assert!(en.keep_llm());
     drop(en);
 
     let t = Instant::now();
@@ -506,7 +506,7 @@ fn a_language_switch_reuses_the_kept_llm() {
         t.elapsed().as_millis(),
         first.ms
     );
-    // Kept for one load only: without a new keep() the next load loads it.
+    // Kept for one load only: without a new keep_llm() the next load loads it.
     drop(he);
     let en = FlowCore::load_models_for(&cfg, Some("en")).expect("reload en");
     assert!(!en.load_timings().llm().unwrap().reused);

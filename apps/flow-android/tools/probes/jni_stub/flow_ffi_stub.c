@@ -79,11 +79,12 @@ JNIEXPORT jstring JNICALL FN(nativeLearnEdit)(JNIEnv *env, jclass c, jlong h, js
     return (*env)->NewStringUTF(env, "[{\"original\":\"wisper\",\"corrected\":\"Wispr\"}]");
 }
 
-/* 2026-10-31: benchmark hook. No LLM in the stub. */
 /* Load 3: load timings and LLM keep. The stub loads nothing, so no timings and no LLM. */
 JNIEXPORT jstring JNICALL FN(nativeLastLoadTimings)(JNIEnv *env, jclass c) { return NULL; }
-JNIEXPORT jboolean JNICALL FN(nativeKeepLlm)(JNIEnv *env, jclass c, jboolean keep) { return keep ? JNI_FALSE : JNI_TRUE; }
+JNIEXPORT jboolean JNICALL FN(nativeKeepLlm)(JNIEnv *env, jclass c, jlong h) { return JNI_FALSE; }
+JNIEXPORT void JNICALL FN(nativeReleaseKeptLlm)(JNIEnv *env, jclass c) {}
 
+/* 2026-10-31: benchmark hook. No LLM in the stub. */
 JNIEXPORT jstring JNICALL FN(nativeBenchClean)(JNIEnv *env, jclass c, jlong h, jstring request) {
     return (*env)->NewStringUTF(env, "{\"error\":\"no LLM loaded on this handle\"}");
 }

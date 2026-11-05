@@ -203,9 +203,9 @@ fn contract_symbols_exported() {
         })
         .collect();
     // D28: +10 OpenRouter natives; +1 Command Mode; +1 nativeBenchClean; D41: +2 model library (feature `library`);
-    // D46: +7 meeting transcription; D52: +2 custom cleanup server; Load 3: +2 load
-    // timings / keep LLM.
-    assert_eq!(want.len(), 56, "{want:?}");
+    // D46: +7 meeting transcription; D52: +2 custom cleanup server; Load 3: +3 load
+    // timings / keep LLM / release it.
+    assert_eq!(want.len(), 57, "{want:?}");
     let src = include_str!("../src/jni_api.rs");
     let have: std::collections::BTreeSet<&str> = src
         .split(|c: char| !c.is_alphanumeric() && c != '_')

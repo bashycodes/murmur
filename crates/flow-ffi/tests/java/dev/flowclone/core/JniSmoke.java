@@ -21,8 +21,9 @@ public class JniSmoke {
         String timings = NativeFlowCore.nativeLastLoadTimings();
         check(timings != null && timings.contains("\"kind\":\"asr\"") && timings.contains("\"backend\":\"mock\""),
             "load timings: " + timings);
-        check(!NativeFlowCore.nativeKeepLlm(true), "no LLM loaded, nothing to keep");
-        check(NativeFlowCore.nativeKeepLlm(false), "release is always fine");
+        check(!NativeFlowCore.nativeKeepLlm(h), "no LLM loaded, nothing to keep");
+        check(!NativeFlowCore.nativeKeepLlm(0), "null handle");
+        NativeFlowCore.nativeReleaseKeptLlm();
         boolean ok = NativeFlowCore.nativeStartSession(h,
             "{\"languages\":[\"en\"],\"dictionary\":[{\"word\":\"btw\",\"replacement\":\"by the way\",\"isSnippet\":false}],"
             + "\"styles\":{\"personal\":\"formal\",\"work\":\"formal\",\"email\":\"formal\",\"other\":\"formal\"},"
@@ -110,7 +111,8 @@ class NativeFlowCore {
     static native String nativeLastError();
     static native long nativeLoadModels(String cfg);
     static native String nativeLastLoadTimings();
-    static native boolean nativeKeepLlm(boolean keep);
+    static native boolean nativeKeepLlm(long h);
+    static native void nativeReleaseKeptLlm();
     static native void nativeUnload(long h);
     static native boolean nativeStartSession(long h, String cfg);
     static native boolean nativePushAudio(long h, short[] pcm, int len);

@@ -7,23 +7,41 @@ use std::time::Instant;
 use serde::Serialize;
 
 /// One step of one model's load, in milliseconds.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Phase {
-    pub name: String,
+    pub name: &'static str,
     pub ms: u64,
+}
+
+/// What a [`ModelTiming`] loaded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelKind {
+    Asr,
+    Lid,
+    Llm,
+}
+
+/// The engine that loaded it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoadBackend {
+    Mock,
+    Whisper,
+    Parakeet,
+    SherpaOnline,
+    Llama,
 }
 
 /// One model of a load.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ModelTiming {
-    /// `asr`, `lid` or `llm`.
-    pub kind: &'static str,
+    pub kind: ModelKind,
     /// ASR only: the `languages` map key (D33) of a language model; absent
     /// for the default model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
-    /// `whisper`, `parakeet`, `sherpa_online`, `mock`, `llama`.
-    pub backend: &'static str,
+    pub backend: LoadBackend,
     /// Wall time of this model's load (0 when reused).
     pub ms: u64,
     /// The backend's own steps, when it reports them: sherpa models
@@ -48,7 +66,7 @@ pub struct LoadTimings {
 impl LoadTimings {
     /// The LLM's entry, if this load has one.
     pub fn llm(&self) -> Option<&ModelTiming> {
-        self.models.iter().find(|m| m.kind == "llm")
+        self.models.iter().find(|m| m.kind == ModelKind::Llm)
     }
 
     /// One JSON object (the shells' log line).
@@ -71,20 +89,20 @@ mod tests {
             total_ms: 2300,
             models: vec![
                 ModelTiming {
-                    kind: "asr",
+                    kind: ModelKind::Asr,
                     language: Some("he".into()),
-                    backend: "sherpa_online",
+                    backend: LoadBackend::SherpaOnline,
                     ms: 2200,
                     phases: vec![Phase {
-                        name: "sessions".into(),
+                        name: "sessions",
                         ms: 2190,
                     }],
                     reused: false,
                 },
                 ModelTiming {
-                    kind: "llm",
+                    kind: ModelKind::Llm,
                     language: None,
-                    backend: "llama",
+                    backend: LoadBackend::Llama,
                     ms: 0,
                     phases: Vec::new(),
                     reused: true,

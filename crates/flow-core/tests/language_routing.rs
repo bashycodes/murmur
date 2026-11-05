@@ -9,6 +9,7 @@ use flow_core::asr::MockAsr;
 use flow_core::cleanup::{CleanError, CleanPrompt, Cleaner};
 use flow_core::config::{AsrBackend, CleanupLevel, LanguageModel, ModelConfig, SessionConfig};
 use flow_core::dictionary::{DictEntry, Dictionary};
+use flow_core::load_timings::{LoadBackend, ModelKind};
 use flow_core::{CommitResult, CommitStatus, FlowCore};
 
 fn speech(ms: usize) -> Vec<i16> {
@@ -203,7 +204,10 @@ fn loads_report_each_model_they_loaded() {
     let he = FlowCore::load_models_for(&cfg, Some("he")).unwrap();
     let t = he.load_timings();
     assert_eq!(t.models.len(), 1, "{t:?}");
-    assert_eq!((t.models[0].kind, t.models[0].backend), ("asr", "mock"));
+    assert_eq!(
+        (t.models[0].kind, t.models[0].backend),
+        (ModelKind::Asr, LoadBackend::Mock)
+    );
     assert_eq!(t.models[0].language.as_deref(), Some("he"));
     assert!(t.llm().is_none());
     let all = FlowCore::load_models(&cfg).unwrap();
