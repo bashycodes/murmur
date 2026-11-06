@@ -193,4 +193,62 @@ class ProbeLogicTest {
         assertEquals(listOf<Byte>(0x34, 0x12, 0xFF.toByte(), 0xFF.toByte()), ProbePcm.toLeBytes(shortArrayOf(0x1234, -1)).toList())
         assertEquals(listOf<Byte>(0xFF.toByte(), 0xFF.toByte()), ProbePcm.toLeBytes(shortArrayOf(0x1234, -1), 1, 2).toList())
     }
+
+    // ---- folder batch ----
+
+    @Test fun batchRunsOnlyWavsInNameOrder() {
+        assertEquals(
+            listOf("a02.WAV", "b01.wav", "s10.wav"),
+            ProbeBatchPlan.wavs(listOf("s10.wav", "notes.txt", "b01.wav", ".hidden.wav", "a02.WAV", "c03.m4a")),
+        )
+    }
+
+    @Test fun clipIdIsTheFileNameWithoutWav() {
+        assertEquals("s01", ProbeBatchPlan.clipId("s01.wav"))
+        assertEquals("2026-01-02T03-04-05.678Z", ProbeBatchPlan.clipId("2026-01-02T03-04-05.678Z.WAV"))
+        assertEquals("raw.pcm", ProbeBatchPlan.clipId("raw.pcm"))
+    }
+
+    @Test fun batchSetsSkipTheResultsFolderAndHonourTheFilter() {
+        val dirs = listOf("results", "set-b", "set-a", ".tmp")
+        assertEquals(listOf("set-a", "set-b"), ProbeBatchPlan.sets(dirs, ""))
+        assertEquals(listOf("set-b"), ProbeBatchPlan.sets(dirs, " set-b , missing"))
+        assertEquals(emptyList<String>(), ProbeBatchPlan.sets(dirs, "results"))
+    }
+
+    @Test fun batchResultsFileIsPerSession() {
+        assertEquals("batch-20260102T030405Z.jsonl", ProbeBatchPlan.resultsName("20260102T030405Z"))
+    }
+
+    @Test fun batchWatchdogWaitsForTheClipWhenPacedOnly() {
+        assertEquals(70_000L, ProbeBatchPlan.watchdogMs(10_000, realTime = true))
+        assertEquals(60_000L, ProbeBatchPlan.watchdogMs(10_000, realTime = false))
+    }
+
+    @Test fun batchLineCarriesIdTextAndTimings() {
+        val r = record().copy(extras = mapOf("segmented" to true, "last_partial" to null, "biasing" to listOf("x")))
+        val line = ProbeBatchPlan.line("set-a", "clip-01", r)
+        assertFalse("one line", line.contains('\n'))
+        val o = JSONObject(line)
+        assertEquals("set-a", o.getString("set"))
+        assertEquals("clip-01", o.getString("id"))
+        assertEquals("genai", o.getString("engine"))
+        assertEquals("advanced", o.getString("mode"))
+        assertEquals("Run pytest.\nThen deploy.", o.getString("text"))
+        assertEquals(300L, o.getLong("first_partial_ms"))
+        assertEquals(250L, o.getLong("final_ms_after_audio_end"))
+        assertEquals(300L, o.getLong("completed_ms_after_audio_end"))
+        assertEquals("ok", o.getString("outcome"))
+        assertTrue(o.isNull("error"))
+        assertEquals(4_000L, o.getLong("audio_ms"))
+        assertTrue(o.getBoolean("segmented"))
+        assertTrue(o.isNull("last_partial"))
+        assertEquals("[\"x\"]", o.getJSONArray("biasing").toString())
+    }
+
+    @Test fun firstNonBlankSkipsEmptyLeadingHypotheses() {
+        assertEquals("run the tests", ProbeCodes.firstNonBlank(listOf("", "  ", null, " run the tests ", "other")))
+        assertEquals("", ProbeCodes.firstNonBlank(listOf("", null)))
+        assertEquals("", ProbeCodes.firstNonBlank(emptyList()))
+    }
 }
