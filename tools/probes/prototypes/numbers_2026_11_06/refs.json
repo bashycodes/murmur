@@ -1,0 +1,576 @@
+{
+ "_note": "synthetic spoken-number cases, see gen_cases.py",
+ "clips": {
+  "T01": {
+   "text": "The dentist moved my appointment to eleven forty five.",
+   "checks": [
+    {
+     "name": "11:45",
+     "re": "11:45"
+    }
+   ]
+  },
+  "T02": {
+   "text": "Let's grab coffee at nine thirty tomorrow.",
+   "checks": [
+    {
+     "name": "9:30",
+     "re": "9:30"
+    }
+   ]
+  },
+  "T03": {
+   "text": "The bus leaves at seven ten from the north gate.",
+   "checks": [
+    {
+     "name": "7:10",
+     "re": "7:10"
+    }
+   ]
+  },
+  "T04": {
+   "text": "Set an alarm for six a m.",
+   "checks": [
+    {
+     "name": "6 am",
+     "re": "\\b6 ?(am|a\\.m\\.|AM)"
+    }
+   ]
+  },
+  "T05": {
+   "text": "The webinar starts at four pm sharp.",
+   "checks": [
+    {
+     "name": "4 pm",
+     "re": "\\b4 ?(pm|p\\.m\\.|PM)"
+    }
+   ]
+  },
+  "T06": {
+   "text": "Dinner is booked for eight o'clock on Saturday.",
+   "checks": [
+    {
+     "name": "8",
+     "re": "\\b8( o'clock|:00)?"
+    }
+   ]
+  },
+  "T07": {
+   "text": "The pharmacy closes at five fifty five today.",
+   "checks": [
+    {
+     "name": "5:55",
+     "re": "5:55"
+    }
+   ]
+  },
+  "T08": {
+   "text": "Our train gets in at twelve twenty.",
+   "checks": [
+    {
+     "name": "12:20",
+     "re": "12:20"
+    }
+   ]
+  },
+  "M01": {
+   "text": "The repair came to two hundred and forty dollars.",
+   "checks": [
+    {
+     "name": "$240",
+     "re": "\\$240"
+    }
+   ]
+  },
+  "M02": {
+   "text": "Tickets are fifteen dollars each.",
+   "checks": [
+    {
+     "name": "$15",
+     "re": "\\$15"
+    }
+   ]
+  },
+  "M03": {
+   "text": "She lent me fifty euros for the trip.",
+   "checks": [
+    {
+     "name": "50 euros",
+     "re": "(€ ?50|50 ?(euros|€))"
+    }
+   ]
+  },
+  "M04": {
+   "text": "The monthly plan costs nine ninety nine.",
+   "checks": [
+    {
+     "name": "9.99",
+     "re": "9\\.99"
+    }
+   ]
+  },
+  "O01": {
+   "text": "The rent is due on the first of March.",
+   "checks": [
+    {
+     "name": "1st/March 1",
+     "re": "(1st of March|March 1)"
+    }
+   ]
+  },
+  "O02": {
+   "text": "Her birthday is on the twenty second.",
+   "checks": [
+    {
+     "name": "22nd",
+     "re": "22nd"
+    }
+   ]
+  },
+  "O03": {
+   "text": "The workshop runs until the ninth.",
+   "checks": [
+    {
+     "name": "the 9th",
+     "re": "the 9th"
+    }
+   ]
+  },
+  "O04": {
+   "text": "We fly out on July fourth.",
+   "checks": [
+    {
+     "name": "July 4",
+     "re": "July 4"
+    }
+   ]
+  },
+  "O05": {
+   "text": "The package arrives on the eighteenth.",
+   "checks": [
+    {
+     "name": "18th",
+     "re": "the 18th"
+    }
+   ]
+  },
+  "O06": {
+   "text": "We moved the party to the thirtieth, after the holiday.",
+   "checks": [
+    {
+     "name": "30th",
+     "re": "the 30th"
+    }
+   ]
+  },
+  "P01": {
+   "text": "Sales went up by twelve percent this quarter.",
+   "checks": [
+    {
+     "name": "12%",
+     "re": "12 ?(%|percent)"
+    }
+   ]
+  },
+  "P02": {
+   "text": "The battery was at eighty five percent.",
+   "checks": [
+    {
+     "name": "85%",
+     "re": "85 ?(%|percent)"
+    }
+   ]
+  },
+  "D01": {
+   "text": "Bake it at one hundred and eighty degrees for twenty minutes.",
+   "checks": [
+    {
+     "name": "180°",
+     "re": "180 ?(°|degrees)"
+    },
+    {
+     "name": "20 minutes",
+     "re": "\\b20 minutes"
+    }
+   ]
+  },
+  "D02": {
+   "text": "Tomorrow it will drop to minus four degrees.",
+   "checks": [
+    {
+     "name": "-4°",
+     "re": "(-|minus )4 ?(°|degrees)"
+    }
+   ]
+  },
+  "C01": {
+   "text": "The file is about thirty megabytes.",
+   "checks": [
+    {
+     "name": "30 MB",
+     "re": "\\b30 ?(MB|megabytes)"
+    }
+   ]
+  },
+  "C02": {
+   "text": "We need sixteen chairs for the hall.",
+   "checks": [
+    {
+     "name": "16 chairs",
+     "re": "\\b16 chairs"
+    }
+   ]
+  },
+  "C03": {
+   "text": "The hike is roughly twelve kilometers.",
+   "checks": [
+    {
+     "name": "12 km",
+     "re": "\\b12 ?(km|kilometers)"
+    }
+   ]
+  },
+  "C04": {
+   "text": "Room two hundred and five is on the left.",
+   "checks": [
+    {
+     "name": "205",
+     "re": "\\b205\\b"
+    }
+   ]
+  },
+  "C05": {
+   "text": "Platform nine has the delayed train.",
+   "checks": [
+    {
+     "name": "platform 9",
+     "re": "[Pp]latform 9"
+    }
+   ]
+  },
+  "S01": {
+   "text": "The gate code is four eight one six.",
+   "checks": [
+    {
+     "name": "4816",
+     "re": "4816"
+    }
+   ]
+  },
+  "S02": {
+   "text": "My booking reference is five two zero nine one.",
+   "checks": [
+    {
+     "name": "52091",
+     "re": "52091"
+    }
+   ]
+  },
+  "S03": {
+   "text": "Call the front desk on extension three three seven.",
+   "checks": [
+    {
+     "name": "337",
+     "re": "\\b337\\b"
+    }
+   ]
+  },
+  "N01": {
+   "text": "I'll take one of those blue folders.",
+   "checks": [
+    {
+     "name": "one of those",
+     "re": "\\b[Oo]ne of those"
+    }
+   ]
+  },
+  "N02": {
+   "text": "He called a second ago.",
+   "checks": [
+    {
+     "name": "a second ago",
+     "re": "a second ago"
+    }
+   ]
+  },
+  "N03": {
+   "text": "It was the first time I tried sushi.",
+   "checks": [
+    {
+     "name": "first time",
+     "re": "first time"
+    }
+   ]
+  },
+  "N04": {
+   "text": "On second thought, let's stay home.",
+   "checks": [
+    {
+     "name": "second thought",
+     "re": "[Ss]econd thought"
+    }
+   ]
+  },
+  "N05": {
+   "text": "We need a couple of volunteers.",
+   "checks": [
+    {
+     "name": "a couple",
+     "re": "a couple"
+    }
+   ]
+  },
+  "N06": {
+   "text": "I have two of those, and one of them is broken.",
+   "checks": [
+    {
+     "name": "one of them",
+     "re": "\\b[Oo]ne of them"
+    },
+    {
+     "name": "1 of",
+     "re": "\\b1 of",
+     "absent": true
+    }
+   ]
+  },
+  "N07": {
+   "text": "Give me a minute, I'm on the other line.",
+   "checks": [
+    {
+     "name": "a minute",
+     "re": "a minute"
+    }
+   ]
+  },
+  "N08": {
+   "text": "No one told me about the change.",
+   "checks": [
+    {
+     "name": "No one",
+     "re": "[Nn]o one"
+    }
+   ]
+  },
+  "N09": {
+   "text": "Those two are best friends.",
+   "checks": [
+    {
+     "name": "those two",
+     "re": "[Tt]hose two"
+    }
+   ]
+  },
+  "N10": {
+   "text": "Once in a while we eat out.",
+   "checks": [
+    {
+     "name": "once",
+     "re": "[Oo]nce in a while"
+    }
+   ]
+  },
+  "N18": {
+   "text": "Her office is on the fourth floor.",
+   "checks": [
+    {
+     "name": "fourth floor",
+     "re": "(fourth|4th) floor"
+    }
+   ]
+  },
+  "N19": {
+   "text": "I reminded him for the fifth time.",
+   "checks": [
+    {
+     "name": "fifth time",
+     "re": "fifth time"
+    }
+   ]
+  },
+  "N20": {
+   "text": "Let's pick the third option.",
+   "checks": [
+    {
+     "name": "third option",
+     "re": "third option"
+    }
+   ]
+  },
+  "N21": {
+   "text": "He finished fourth in the race.",
+   "checks": [
+    {
+     "name": "fourth",
+     "re": "finished fourth"
+    }
+   ]
+  },
+  "N22": {
+   "text": "The two of us went hiking.",
+   "checks": [
+    {
+     "name": "two of us",
+     "re": "[Tt]wo of us"
+    }
+   ]
+  },
+  "N23": {
+   "text": "I'm in two minds about the trip.",
+   "checks": [
+    {
+     "name": "two minds",
+     "re": "two minds"
+    }
+   ]
+  },
+  "N24": {
+   "text": "Respect is a two-way street.",
+   "checks": [
+    {
+     "name": "two-way",
+     "re": "two-way"
+    }
+   ]
+  },
+  "N25": {
+   "text": "It takes two to tango.",
+   "checks": [
+    {
+     "name": "two to tango",
+     "re": "two to tango"
+    }
+   ]
+  },
+  "N26": {
+   "text": "Give me one or two days to think.",
+   "checks": [
+    {
+     "name": "one or two",
+     "re": "one or two days"
+    }
+   ]
+  },
+  "N27": {
+   "text": "Three's a crowd, so I'll stay home.",
+   "checks": [
+    {
+     "name": "Three's",
+     "re": "Three's a crowd"
+    }
+   ]
+  },
+  "N11": {
+   "text": "One of those vans came by at ten forty.",
+   "checks": [
+    {
+     "name": "One of those",
+     "re": "\\b[Oo]ne of those"
+    },
+    {
+     "name": "10:40",
+     "re": "10:40"
+    }
+   ]
+  },
+  "N12": {
+   "text": "He called a second ago about the call at nine fifteen.",
+   "checks": [
+    {
+     "name": "a second ago",
+     "re": "a second ago"
+    },
+    {
+     "name": "9:15",
+     "re": "9:15"
+    }
+   ]
+  },
+  "N13": {
+   "text": "The first time we met was on the twelfth.",
+   "checks": [
+    {
+     "name": "first time",
+     "re": "[Ff]irst time"
+    },
+    {
+     "name": "12th",
+     "re": "12th"
+    }
+   ]
+  },
+  "N14": {
+   "text": "On second thought, let's leave at six twenty.",
+   "checks": [
+    {
+     "name": "second thought",
+     "re": "[Ss]econd thought"
+    },
+    {
+     "name": "6:20",
+     "re": "6:20"
+    }
+   ]
+  },
+  "N15": {
+   "text": "A couple of us will get there around four forty.",
+   "checks": [
+    {
+     "name": "a couple",
+     "re": "[Aa] couple of us"
+    },
+    {
+     "name": "4:40",
+     "re": "4:40"
+    }
+   ]
+  },
+  "N16": {
+   "text": "No one else signed up before the fifth.",
+   "checks": [
+    {
+     "name": "No one",
+     "re": "[Nn]o one"
+    },
+    {
+     "name": "5th",
+     "re": "5th"
+    }
+   ]
+  },
+  "N17": {
+   "text": "Give me a minute, the shuttle leaves at eleven fifty.",
+   "checks": [
+    {
+     "name": "a minute",
+     "re": "a minute"
+    },
+    {
+     "name": "11:50",
+     "re": "11:50"
+    }
+   ]
+  },
+  "K01": {
+   "text": "Please water the plants while I'm away.",
+   "checks": []
+  },
+  "K02": {
+   "text": "The printer on the third floor is jammed again.",
+   "checks": [
+    {
+     "name": "third floor",
+     "re": "(third|3rd) floor"
+    }
+   ]
+  },
+  "K03": {
+   "text": "Can you check whether the backup finished?",
+   "checks": []
+  },
+  "K04": {
+   "text": "The new logo looks great on the website.",
+   "checks": []
+  }
+ }
+}
