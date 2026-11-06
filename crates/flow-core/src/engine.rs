@@ -2074,7 +2074,10 @@ fn finish_text(
     // server or the cloud is still cleaned, by the hops that are not
     // on-device (it never falls through to the on-device LLM).
     let mut local_cleaner = local_cleaner;
-    if run_llm && cfg.llm_skip_clean && !cleanup::llm_can_help(&text, ctx.app_category) {
+    if run_llm
+        && cfg.llm_skip_clean
+        && !cleanup::llm_can_help(&text, ctx.app_category, language.as_deref())
+    {
         if let Some(cl) = local_cleaner.take() {
             local_cleaner = match cleanup::first_ready_engine(&cl) {
                 "local" => None,
