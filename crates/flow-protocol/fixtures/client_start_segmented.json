@@ -29,7 +29,6 @@
     "platform": "android",
     "partial_interval_ms": 500,
     "llm_timeout_ms": 1500,
-    "divergence_threshold": null,
     "ring_capacity_samples": 480000,
     "all_lowercase": false,
     "user_names": [],

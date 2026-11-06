@@ -415,8 +415,8 @@ mod tests {
             Some("AI cleaned · this PC · OpenRouter not used (llm_timeout) → this PC")
         );
         assert_eq!(
-            with_cleanup_route(None, Some("rules"), Some("llm_unsupported")).as_deref(),
-            Some("OpenRouter not used (llm_unsupported) → fixed rules")
+            with_cleanup_route(None, Some("rules"), Some("llm_empty")).as_deref(),
+            Some("OpenRouter not used (llm_empty) → fixed rules")
         );
         assert_eq!(with_cleanup_route(row(), Some("cloud"), None), row());
         assert_eq!(with_cleanup_route(row(), None, None), row());

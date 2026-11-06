@@ -546,8 +546,9 @@ It is **off by default** and never uses the network.
 
 When the formatted text leaves nothing for the model to do, it is skipped: History and
 Developer → *Active engine* show *AI not needed (already clean)*, a normal result. If cleanup
-takes longer than 3 s, or changes the text too much, the formatted transcript is inserted
-instead (History shows *AI too slow, formatted text used* / *AI result not used (llm_dropped)*).
+takes longer than 3 s, fails or answers with nothing, the formatted transcript is inserted
+instead (History shows *AI too slow, formatted text used* / *AI result not used (llm_empty)*).
+The AI's answer is otherwise used as it gave it (D59).
 
 ## 7. Use it
 

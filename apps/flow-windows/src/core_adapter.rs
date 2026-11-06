@@ -1769,7 +1769,7 @@ mod tests {
         assert_eq!(a.commit().status, CommitStatus::Error);
     }
 
-    /// Capitalise + full stop: small enough to pass the divergence guardrail.
+    /// Capitalise + full stop.
     struct Sentence;
     impl Cleaner for Sentence {
         fn clean(

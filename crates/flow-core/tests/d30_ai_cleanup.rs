@@ -1,7 +1,8 @@
 //! D30: AI cleanup is the main path. With a cloud cleaner active the raw
-//! transcript goes straight to it (prompt v4c, loosened guard); a timeout,
-//! error or reject runs today's pipeline (fallback rules, then the
-//! on-device LLM), and without an on-device LLM the fallback rules alone.
+//! transcript goes straight to it (prompt v4c) and its answer is used as
+//! given (no output guard, D59); a timeout, error or empty answer runs
+//! today's pipeline (fallback rules, then the on-device LLM), and without
+//! an on-device LLM the fallback rules alone.
 //! Without a cloud cleaner nothing changes. Fake cleaners only: no network.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -266,8 +267,9 @@ fn build_v2(t: &str) -> CleanPrompt {
 }
 
 #[test]
-fn cloud_reject_falls_back_to_the_local_pipeline() {
-    // Not backed by the transcript: the loosened guard rejects it.
+fn a_cloud_answer_the_transcript_does_not_back_is_still_used() {
+    // D59: no output guard. Until D59 the loosened guard rejected this and
+    // ran the local pipeline.
     let cloud = Arc::new(Fake::ok("Please buy a new car tomorrow.").cloud());
     let local = Arc::new(Fake::ok(LOCAL));
     let r = dictate_cfg(
@@ -277,16 +279,10 @@ fn cloud_reject_falls_back_to_the_local_pipeline() {
             ..Default::default()
         },
     );
-    assert!(
-        matches!(
-            r.cloud_fallback.as_deref(),
-            Some("llm_unsupported" | "llm_dropped")
-        ),
-        "{r:?}"
-    );
-    assert_eq!(r.cleanup_route.as_deref(), Some("local"));
-    assert_eq!(r.final_text.trim_end(), LOCAL);
-    assert_eq!((cloud.calls(), local.calls()), (1, 1));
+    assert_eq!(r.cleanup_route.as_deref(), Some("cloud"), "{r:?}");
+    assert_eq!(r.cloud_fallback, None);
+    assert_eq!(r.final_text.trim_end(), "Please buy a new car tomorrow.");
+    assert_eq!((cloud.calls(), local.calls()), (1, 0));
 }
 
 #[test]
@@ -316,7 +312,8 @@ fn cloud_error_or_refusal_falls_back_to_the_local_pipeline() {
 
 #[test]
 fn local_pipeline_after_a_cloud_failure_keeps_llm_skip_clean() {
-    let cloud = Arc::new(Fake::ok("Something else entirely here.").cloud());
+    // An empty answer: the cloud failed, the fallback pipeline runs.
+    let cloud = Arc::new(Fake::ok("  ").cloud());
     let local = Arc::new(Fake::ok(LOCAL));
     let r = dictate(&core_with("The demo is on Thursday.", &cloud, Some(&local)));
     assert_eq!(r.fallback_reason.as_deref(), Some("llm_skipped_clean"));
@@ -327,7 +324,7 @@ fn local_pipeline_after_a_cloud_failure_keeps_llm_skip_clean() {
 
 #[test]
 fn no_local_model_gives_the_fallback_rules() {
-    let cloud = Arc::new(Fake::ok("Please buy a new car tomorrow.").cloud());
+    let cloud = Arc::new(Fake::ok("  ").cloud());
     let r = dictate(&core_with(RAW, &cloud, None));
     assert_eq!(r.cleanup_route.as_deref(), Some("rules"), "{r:?}");
     assert_eq!(r.status, CommitStatus::RawTranscript);
@@ -450,9 +447,8 @@ fn ai_lists_get_a_blank_line_after_the_intro() {
     );
 }
 
-// Debug evidence for a fallback (2026-10-27): when AI cleanup's answer is
-// not used, the result carries the answer (`rejected_text`) and the
-// guard's reason (`guard_detail`), so the debug log can show why.
+// Debug evidence for a fallback (2026-10-27): when AI cleanup falls back,
+// the result says why (`fallback_detail`, JSON key `guard_detail`), so the debug log can show it.
 
 /// `cloud` must already be `.cloud()`.
 fn fallback_with(raw: &str, cloud: Fake) -> CommitResult {
@@ -467,51 +463,60 @@ fn fallback_with(raw: &str, cloud: Fake) -> CommitResult {
     )
 }
 
+// D59: dictated structure the old guard rejected (parentheses, quotes, a
+// formula) reaches the text as the model formatted it, not the uncleaned
+// text. Synthetic dictations: (transcript, model answer).
+const STRUCTURED: [(&str, &str); 4] = [
+    (
+        "bring the blue folder open paren the one on my desk close paren to the review",
+        "Bring the blue folder (the one on my desk) to the review.",
+    ),
+    (
+        "she said quote we ship on friday end quote and left",
+        "She said, \"We ship on Friday,\" and left.",
+    ),
+    (
+        "the area is pi r squared so for a radius of two it is about twelve point five",
+        "The area is πr², so for a radius of 2 it is about 12.5.",
+    ),
+    (
+        "x equals open paren a plus b close paren divided by two",
+        "x = (a + b) / 2",
+    ),
+];
+
 #[test]
-fn a_rejected_answer_is_kept_with_the_guards_detail() {
-    let r = fallback_with(RAW, Fake::ok("Please buy a new car tomorrow.").cloud());
-    assert_eq!(
-        r.cloud_fallback.as_deref(),
-        Some("llm_unsupported"),
-        "{r:?}"
-    );
-    assert_eq!(
-        r.rejected_text.as_deref(),
-        Some("Please buy a new car tomorrow.")
-    );
-    assert_eq!(
-        r.guard_detail.as_deref(),
-        Some("unsupported: Please buy a new car tomorrow")
-    );
+fn dictated_parentheses_quotes_and_a_formula_pass_through_ai_cleanup() {
+    for (raw, ai) in STRUCTURED {
+        let r = fallback_with(raw, Fake::ok(ai).cloud());
+        assert_eq!(r.cleanup_route.as_deref(), Some("cloud"), "{raw}: {r:?}");
+        assert_eq!(r.cloud_fallback, None, "{raw}");
+        assert_eq!(r.final_text.trim_end(), ai, "{raw}");
+    }
 }
 
 #[test]
-fn a_dropped_answer_is_kept_with_the_dropped_clause() {
-    let r = fallback_with(RAW, Fake::ok("The demo is on Thursday.").cloud());
-    assert_eq!(r.cloud_fallback.as_deref(), Some("llm_dropped"), "{r:?}");
-    assert_eq!(r.rejected_text.as_deref(), Some("The demo is on Thursday."));
-    let d = r.guard_detail.as_deref().unwrap();
-    assert!(d.starts_with("dropped: "), "{d}");
-    assert!(d.contains('3') || d.contains("three"), "{d}");
-}
-
-#[test]
-fn a_literal_command_mark_names_the_mark_kind() {
-    let r = fallback_with(
-        "The formula is in parentheses on the board.",
-        Fake::ok("The formula is (on the board).").cloud(),
-    );
-    assert_eq!(
-        r.cloud_fallback.as_deref(),
-        Some("llm_unsupported"),
-        "{r:?}"
-    );
-    assert_eq!(
-        r.rejected_text.as_deref(),
-        Some("The formula is (on the board).")
-    );
-    let d = r.guard_detail.as_deref().unwrap();
-    assert!(d.starts_with("unsupported: literal "), "{d}");
+fn dictated_parentheses_quotes_and_a_formula_pass_through_the_local_llm() {
+    // The on-device path (fallback rules, then the local LLM; the phone's
+    // and the PC's local cleanup, and flow-server's).
+    for (raw, ai) in STRUCTURED {
+        let local = Arc::new(Fake::ok(ai));
+        let core = FlowCore::from_engines(
+            Arc::new(MockAsr::new(raw)),
+            Some(local.clone() as Arc<dyn Cleaner>),
+        );
+        let r = dictate_cfg(
+            &core,
+            SessionConfig {
+                llm_skip_clean: false,
+                ..Default::default()
+            },
+        );
+        assert_eq!(local.calls(), 1, "{raw}");
+        assert_eq!(r.status, CommitStatus::Formatted, "{raw}: {r:?}");
+        assert_eq!(r.fallback_reason, None, "{raw}");
+        assert_eq!(r.final_text.trim_end(), ai, "{raw}");
+    }
 }
 
 #[test]
@@ -524,8 +529,7 @@ fn a_timeout_has_a_detail_but_no_answer() {
             .slow(Duration::from_millis(800)),
     );
     assert_eq!(r.cloud_fallback.as_deref(), Some("llm_timeout"));
-    assert_eq!(r.rejected_text, None);
-    assert_eq!(r.guard_detail.as_deref(), Some("no answer within 100 ms"));
+    assert_eq!(r.fallback_detail.as_deref(), Some("no answer within 100 ms"));
 }
 
 #[test]
@@ -534,30 +538,28 @@ fn an_error_has_its_message_but_no_answer() {
         RAW,
         Fake::err(CleanError::Backend("provider_error".into())).cloud(),
     );
-    assert_eq!(r.rejected_text, None);
-    assert_eq!(r.guard_detail.as_deref(), Some("error: provider_error"));
+    assert_eq!(r.fallback_detail.as_deref(), Some("error: provider_error"));
 }
 
 #[test]
 fn an_empty_answer_says_so() {
     let r = fallback_with(RAW, Fake::ok("   ").cloud());
     assert_eq!(r.cloud_fallback.as_deref(), Some("llm_empty"));
-    assert_eq!(r.rejected_text, None);
-    assert_eq!(r.guard_detail.as_deref(), Some("empty answer"));
+    assert_eq!(r.fallback_detail.as_deref(), Some("empty answer"));
 }
 
 #[test]
-fn an_accepted_answer_leaves_both_fields_empty() {
+fn an_accepted_answer_has_no_detail() {
     let cloud = Arc::new(Fake::ok(AI).cloud());
     let r = dictate(&core_with(RAW, &cloud, None));
     assert_eq!(r.cleanup_route.as_deref(), Some("cloud"));
-    assert_eq!((r.rejected_text, r.guard_detail), (None, None));
+    assert_eq!(r.fallback_detail, None);
 }
 
 #[test]
-fn cloud_off_json_has_no_rejection_fields_even_when_the_local_llm_is_rejected() {
-    // The on-device LLM alone, its answer rejected by the strict guard:
-    // today's result, with no new keys.
+fn cloud_off_json_has_no_detail_and_the_local_answer_is_used() {
+    // The on-device LLM alone (D59: its answer is used as given, even one
+    // the transcript does not back): today's result, with no new keys.
     let local = Arc::new(Fake::ok("Please buy a new car tomorrow."));
     let r = dictate_cfg(
         &FlowCore::from_engines(
@@ -570,14 +572,33 @@ fn cloud_off_json_has_no_rejection_fields_even_when_the_local_llm_is_rejected() 
         },
     );
     assert_eq!(local.calls(), 1);
-    assert!(r.fallback_reason.is_some(), "{r:?}");
-    assert_eq!(
-        (r.rejected_text.clone(), r.guard_detail.clone()),
-        (None, None)
-    );
+    assert_eq!(r.fallback_reason, None, "{r:?}");
+    assert_eq!(r.status, CommitStatus::Formatted);
+    assert_eq!(r.final_text.trim_end(), "Please buy a new car tomorrow.");
+    assert_eq!(r.fallback_detail, None);
     let json = serde_json::to_string(&r).unwrap();
     assert!(
         !json.contains("rejected_text") && !json.contains("guard_detail"),
         "{json}"
     );
+}
+
+#[test]
+fn the_fallback_detail_keeps_its_guard_detail_json_key() {
+    // Renamed in Rust (D59); the wire key is unchanged, and a pre-D59
+    // payload (with `rejected_text`) still parses.
+    let r = fallback_with(RAW, Fake::ok("   ").cloud());
+    let mut v = serde_json::to_value(&r).unwrap();
+    assert_eq!(v["guard_detail"], "empty answer");
+    assert!(v.get("fallback_detail").is_none(), "{v}");
+    v["guard_detail"] = "dropped: the demo is on thursday".into();
+    v["rejected_text"] = "The demo is on Thursday.".into();
+    let old: CommitResult = serde_json::from_value(v).unwrap();
+    assert_eq!(
+        old.fallback_detail.as_deref(),
+        Some("dropped: the demo is on thursday")
+    );
+    let route = serde_json::json!({"engine": "local", "guard_detail": "error: x", "rejected_text": "y"});
+    let route: flow_core::RouteInfo = serde_json::from_value(route).unwrap();
+    assert_eq!(route.fallback_detail.as_deref(), Some("error: x"));
 }

@@ -2626,12 +2626,11 @@ fn llm_into_route(r: &CommitResult, route: &mut RouteInfo, default_engine: &str)
         route.llm_cost_usd = l.cost_usd;
     }
     // D30: which cleanup produced the text (cloud / local / rules) and why
-    // AI cleanup's answer was not used. Only set when AI cleanup was tried.
+    // AI cleanup fell back. Only set when AI cleanup was tried.
     route.cleanup_route = r.cleanup_route.clone();
     route.cloud_fallback = r.cloud_fallback.clone();
-    // Why, in detail (debug log only; dictated text, D21 rules apply).
-    route.rejected_text = r.rejected_text.clone();
-    route.guard_detail = r.guard_detail.clone();
+    // Why, in detail (debug log only).
+    route.fallback_detail = r.fallback_detail.clone();
 }
 
 pub(crate) fn failure_from_str(s: &str) -> Option<Failure> {

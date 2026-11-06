@@ -1,6 +1,6 @@
 # Replay harness (beta debug tool): saved dictation recordings re-run through
 # speech models x cleanup models x prompt versions with the real FlowCore
-# pipeline (D30 routing, guard, post-processing). Driven by tools/replay/run.sh;
+# pipeline (D30 routing, post-processing). Driven by tools/replay/run.sh;
 # never shipped in an app.
 [package]
 name = "flow-replay"

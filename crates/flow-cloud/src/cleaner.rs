@@ -1,7 +1,6 @@
 //! Opt-in cloud text cleanup (D28 §2.5): [`OpenRouterCleaner`] implements
 //! `flow_core::cleanup::Cleaner`, so flow-core's prompt v2, hard timeout,
-//! output unwrapping, divergence threshold, guard and deterministic
-//! fallback apply unchanged.
+//! output unwrapping and deterministic fallback apply unchanged.
 //!
 //! One streamed `POST /chat/completions` per cleanup: aborting the stream
 //! (timeout / cancel) stops processing and billing at supported providers.

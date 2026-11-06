@@ -209,11 +209,9 @@ fn matrix_shape_transcript_cache_and_prompt_versions() {
 }
 
 #[test]
-fn rejected_cloud_answer_runs_the_local_pipeline() {
-    let cloud = Fake::new(
-        "cloud",
-        "Totally unrelated words about penguins and volcanoes.",
-    );
+fn a_failed_cloud_cleanup_runs_the_local_pipeline() {
+    // An empty answer (D59: nothing judges a non-empty one).
+    let cloud = Fake::new("cloud", "   ");
     let local = Fake::new(
         "local",
         "So the meeting is at 10 tomorrow and please bring the slides.",
@@ -242,7 +240,7 @@ fn rejected_cloud_answer_runs_the_local_pipeline() {
                 .is_some_and(|f| f.starts_with("llm_")),
             "{r:#?}"
         );
-        assert!(!r.output.contains("penguins"));
+        assert!(r.output.contains("slides"), "{r:#?}");
     }
     assert_eq!(local.calls(), 2);
 }

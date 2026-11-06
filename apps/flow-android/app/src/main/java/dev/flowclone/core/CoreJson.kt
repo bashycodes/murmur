@@ -10,6 +10,9 @@ import org.json.JSONObject
  * Uses the framework's org.json (no extra dependency; real impl added for JVM tests).
  */
 object CoreJson {
+    /** JSON key of [RouteInfo.fallbackDetail]: kept from before D59 (the output guard's detail), so old payloads still parse. */
+    const val FALLBACK_DETAIL_KEY = "guard_detail"
+
     fun encode(c: ModelConfig): String = JSONObject().apply {
         put("asr_backend", c.mockText?.let { JSONObject().put("mock", JSONObject().put("text", it)) } ?: c.asrEngine.wire)
         put("asr_path", c.asrPath)
@@ -97,8 +100,7 @@ object CoreJson {
         llmCostUsd = o.optDoubleOrNull("llm_cost_usd"),
         cleanupRoute = o.optStringOrNull("cleanup_route"),
         cloudFallback = o.optStringOrNull("cloud_fallback"),
-        rejectedText = o.optStringOrNull("rejected_text"),
-        guardDetail = o.optStringOrNull("guard_detail"),
+        fallbackDetail = o.optStringOrNull(FALLBACK_DETAIL_KEY),
     )
 
     fun decodeCleanUsage(o: JSONObject?): CleanUsage? = o?.let {
