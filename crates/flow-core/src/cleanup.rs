@@ -991,7 +991,7 @@ output nothing.";
 fn style_rule_for(s: Style, v: PromptVersion) -> Option<&'static str> {
     match s {
         Style::Default | Style::Formal => None,
-        Style::Casual if v != PromptVersion::V2 => Some(prompt_v4c::CASUAL),
+        Style::Casual if v.is_ai_cleanup() => Some(prompt_v4c::CASUAL),
         Style::Casual => Some("casual: sentence case, drop optional commas, final period optional"),
         Style::VeryCasual => Some("very casual: all lowercase, keep \"?\", no final period"),
         Style::Excited => Some("excited: turn enthusiastic statements and greetings into \"!\""),
@@ -1242,6 +1242,15 @@ pub enum PromptVersion {
     V5,
 }
 
+impl PromptVersion {
+    /// The one-pass AI-cleanup prompts (v4c, v5) on the raw transcript, as
+    /// opposed to v2 on the rules text. They carry their own casual STYLE
+    /// line, and their rules are the light level.
+    pub fn is_ai_cleanup(self) -> bool {
+        !matches!(self, PromptVersion::V2)
+    }
+}
+
 /// [`build_prompt_scoped`] with an explicit prompt version. Only the system
 /// prompt, the few-shots and the wording of the casual STYLE line differ;
 /// the per-dictation user message (and so the scope) is built the same way.
@@ -1261,9 +1270,10 @@ pub fn build_prompt_versioned(
     };
     // v4c's and v5's own rules are the light level; other levels (and every
     // v2 level) add their line.
-    let system = match (version, level) {
-        (PromptVersion::V4c | PromptVersion::V5, CleanupLevel::Light) => system.to_string(),
-        (_, l) => format!("{system}\n{}", level_rule(l)),
+    let system = if version.is_ai_cleanup() && level == CleanupLevel::Light {
+        system.to_string()
+    } else {
+        format!("{system}\n{}", level_rule(level))
     };
     let examples = shots
         .into_iter()
