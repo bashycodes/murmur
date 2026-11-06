@@ -97,7 +97,6 @@ object CoreJson {
         llmCostUsd = o.optDoubleOrNull("llm_cost_usd"),
         cleanupRoute = o.optStringOrNull("cleanup_route"),
         cloudFallback = o.optStringOrNull("cloud_fallback"),
-        rejectedText = o.optStringOrNull("rejected_text"),
         guardDetail = o.optStringOrNull("guard_detail"),
     )
 

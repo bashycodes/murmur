@@ -118,10 +118,6 @@ pub struct SessionConfig {
     /// [`DEFAULT_LLM_TIMEOUT_MAX_MS`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm_timeout_max_ms: Option<u64>,
-    /// Optional extra guard: reject LLM output whose word edit distance /
-    /// words exceeds this (0..1; the old 03 §7.1 check). `None` (default):
-    /// only the support/coverage guard (`guard::check`) runs.
-    pub divergence_threshold: Option<f64>,
     /// Ring-buffer capacity between `push_audio` and the worker.
     pub ring_capacity_samples: usize,
     /// Wispr "All lowercase" format mode.
@@ -198,7 +194,6 @@ impl Default for SessionConfig {
             llm_timeout_ms: 1500,
             llm_timeout_per_char_ms: None,
             llm_timeout_max_ms: None,
-            divergence_threshold: None,
             ring_capacity_samples: SAMPLE_RATE * 30,
             all_lowercase: false,
             user_names: Vec::new(),
@@ -515,7 +510,7 @@ pub fn language_name(code: &str) -> String {
 }
 
 /// Whether the English-only text rules (spoken cleanup and ITN, layout,
-/// segment capitalisation, the guard's English word lists) apply to a
+/// segment capitalisation, the AI answer's unit style) apply to a
 /// dictation the engine reported in `language` (D33): English, or unknown
 /// (the default engine is English unless it says otherwise).
 pub fn english_rules(language: Option<&str>) -> bool {
@@ -561,6 +556,19 @@ mod tests {
         assert_eq!(c.max_samples, 16_000 * 60 * 20);
         assert!(c.languages.is_empty());
         assert_eq!(c.endpoint_silence_ms, None);
+    }
+
+    #[test]
+    fn a_pre_d58_divergence_threshold_is_ignored() {
+        // D58 removed the opt-in edit-distance guard; a client or saved
+        // config that still sends the key starts a session as before.
+        for j in [
+            r#"{"divergence_threshold":null}"#,
+            r#"{"divergence_threshold":0.6,"raw_mode":true}"#,
+        ] {
+            let c: SessionConfig = serde_json::from_str(j).unwrap();
+            assert!(!serde_json::to_string(&c).unwrap().contains("divergence"));
+        }
     }
 
     #[test]

@@ -1,16 +1,16 @@
-//! Optional LLM cleanup pass (03 §6): prompt builder, timeout, guardrail.
+//! Optional LLM cleanup pass (03 §6): prompt builder, timeout, fallback.
 //!
 //! The backend (llama.cpp behind feature `llm`, or anything else) only has
 //! to implement [`Cleaner`]. Everything around it — when to run, the prompt,
-//! the time budget and the divergence guardrail — is deterministic and
-//! lives here so it is testable without a model.
+//! the time budget and the fallback on a timeout, error or empty answer —
+//! is deterministic and lives here so it is testable without a model. The
+//! model's answer is used as given (no output guard, D58).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
-use crate::align::divergence_ratio;
 use crate::asr::AbortFlag;
 use crate::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig, Style};
 use crate::dictionary::Dictionary;
@@ -396,7 +396,7 @@ pub const MIN_FALLBACK_MS: u64 = 800;
 /// Primary + optional fallback cleaner (D28 §2.5; no network code). The
 /// fallback runs only when the primary fails *fast*
 /// ([`CleanError::Unavailable`]) and at least `min_fallback_ms` remain. A
-/// timeout, a backend error or a guard rejection is final: the core then
+/// timeout, a backend error or an empty answer is final: the core then
 /// uses the deterministic text, as with a single cleaner.
 pub struct RoutedCleaner {
     pub primary: Arc<dyn Cleaner>,
@@ -540,8 +540,8 @@ pub fn off_device(cl: &Arc<dyn Cleaner>) -> Option<Arc<dyn Cleaner>> {
 /// own server, cloud) tried in order. A hop that fails — refused up front
 /// ([`CleanError::Unavailable`]), an error, or no answer within its share
 /// of the time — hands over to the next while at least
-/// `min_fallback_ms` are left. An answer is final: the core's guard
-/// judges it, as with a single cleaner.
+/// `min_fallback_ms` are left. An answer is final and used as given, as
+/// with a single cleaner.
 ///
 /// Time: the core gives the chain [`Cleaner::budget_ms`] = the sum of the
 /// hops' budgets; each hop but the last gets its own budget, the last
@@ -765,8 +765,8 @@ impl Cleaner for ChainCleaner {
 
 /// D36 server side of a text-only cleanup request: build the prompt with
 /// `cleaner`'s scope and run it under the request's `timeout_ms` (capped
-/// by `max_timeout_ms`). Returns the model's answer unjudged (the client's
-/// core runs the guard on it, as for any cleaner) or why there is none
+/// by `max_timeout_ms`). Returns the model's answer as given (the client's
+/// core post-processes it, as for any cleaner) or why there is none
 /// (`llm_timeout`, `llm_error: <code>`), plus the call's usage and time.
 pub fn clean_text(
     cleaner: Arc<dyn Cleaner>,
@@ -814,12 +814,7 @@ pub fn clean_text(
 pub enum FallbackReason {
     Timeout,
     Error(String),
-    Diverged,
     Empty,
-    /// An output sentence is not backed by the input (`guard::check`).
-    Unsupported,
-    /// Input content is missing from the output (`guard::check`).
-    Dropped,
 }
 
 impl FallbackReason {
@@ -827,10 +822,7 @@ impl FallbackReason {
         match self {
             FallbackReason::Timeout => "llm_timeout".into(),
             FallbackReason::Error(e) => format!("llm_error: {e}"),
-            FallbackReason::Diverged => "llm_diverged".into(),
             FallbackReason::Empty => "llm_empty".into(),
-            FallbackReason::Unsupported => "llm_unsupported".into(),
-            FallbackReason::Dropped => "llm_dropped".into(),
         }
     }
 }
@@ -841,15 +833,12 @@ pub enum CleanOutcome {
     Fallback(FallbackReason),
 }
 
-/// Why a cleanup answer was not used, for the debug log (2026-10-27): the
-/// model's answer when there was one, and the guard's detail (the
-/// unsupported sentence or mark kind, the dropped clause or count, the
-/// divergence, the timeout or error). Both `None` on
-/// [`CleanOutcome::Formatted`]. Holds dictated text: shells log it only
-/// under the debug log's text rules (D21).
+/// Why cleanup fell back, for the debug log (2026-10-27): the timeout,
+/// the error or the empty answer. `None` on [`CleanOutcome::Formatted`].
+/// There is no rejected answer to carry: the model's answer is never
+/// judged (D58).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Rejection {
-    pub text: Option<String>,
     pub detail: Option<String>,
 }
 
@@ -956,17 +945,6 @@ pub fn llm_can_help(text: &str, cat: AppCategory) -> bool {
     // or take an intro colon.
     let enumeration = t.matches(',').count() >= 3;
     lower_start || unpunctuated || help || repeat || run_on || enumeration
-}
-
-/// Max word-level divergence (edit distance / words) before the LLM output
-/// is distrusted. Higher levels are allowed to rewrite more.
-pub fn default_divergence(level: CleanupLevel) -> f64 {
-    match level {
-        CleanupLevel::None => 0.0,
-        CleanupLevel::Light => 0.6,
-        CleanupLevel::Medium => 0.9,
-        CleanupLevel::High => 0.9,
-    }
 }
 
 /// One line per level, appended to the short system prompt.
@@ -1464,9 +1442,8 @@ pub fn run_cleanup(
     prompt: CleanPrompt,
     asr_text: &str,
     timeout: Duration,
-    max_divergence: f64,
 ) -> CleanOutcome {
-    run_cleanup_metered(cleaner, prompt, asr_text, timeout, max_divergence).0
+    run_cleanup_metered(cleaner, prompt, asr_text, timeout).0
 }
 
 /// [`run_cleanup`] plus the call's [`CleanUsage`]. On a timeout the usage
@@ -1477,48 +1454,35 @@ pub fn run_cleanup_metered(
     prompt: CleanPrompt,
     asr_text: &str,
     timeout: Duration,
-    max_divergence: f64,
 ) -> (CleanOutcome, CleanUsage) {
-    run_cleanup_metered_for(cleaner, prompt, asr_text, timeout, max_divergence, None)
+    run_cleanup_metered_for(cleaner, prompt, asr_text, timeout, None)
 }
 
-/// [`run_cleanup_metered`] for a dictation in `language`: the guard skips
-/// its English word lists for non-English text
-/// ([`crate::guard::check_for_language`], D33). `None` / English = the
-/// same as [`run_cleanup_metered`].
+/// [`run_cleanup_metered`] for a dictation in `language`: the English
+/// unit style is skipped for non-English text (D33). `None` / English =
+/// the same as [`run_cleanup_metered`].
 pub fn run_cleanup_metered_for(
     cleaner: Arc<dyn Cleaner>,
     prompt: CleanPrompt,
     asr_text: &str,
     timeout: Duration,
-    max_divergence: f64,
     language: Option<&str>,
 ) -> (CleanOutcome, CleanUsage) {
-    let (outcome, usage, _) = run_metered(
-        cleaner,
-        prompt,
-        asr_text,
-        timeout,
-        max_divergence,
-        false,
-        language,
-    );
+    let (outcome, usage, _) = run_metered(cleaner, prompt, asr_text, timeout, false, language);
     (outcome, usage)
 }
 
 /// D30 AI cleanup: [`run_cleanup_metered`] on the **raw** transcript
-/// `raw`, judged by the loosened guard ([`crate::guard::check_loose`]), with
-/// [`blank_line_before_lists`] applied to the answer. The caller builds the
-/// prompt with [`PromptVersion::V4c`]. The [`Rejection`] says why the
-/// answer was not used (empty when it was).
+/// `raw`, with [`blank_line_before_lists`] applied to the answer. The
+/// caller builds the prompt with [`PromptVersion::V4c`]. The [`Rejection`]
+/// says why cleanup fell back (empty when the answer was used).
 pub fn run_ai_cleanup(
     cleaner: Arc<dyn Cleaner>,
     prompt: CleanPrompt,
     raw: &str,
     timeout: Duration,
-    max_divergence: f64,
 ) -> (CleanOutcome, CleanUsage, Rejection) {
-    run_metered(cleaner, prompt, raw, timeout, max_divergence, true, None)
+    run_metered(cleaner, prompt, raw, timeout, true, None)
 }
 
 /// [`run_ai_cleanup`] for a dictation in `language` (see
@@ -1528,18 +1492,9 @@ pub fn run_ai_cleanup_for(
     prompt: CleanPrompt,
     raw: &str,
     timeout: Duration,
-    max_divergence: f64,
     language: Option<&str>,
 ) -> (CleanOutcome, CleanUsage, Rejection) {
-    run_metered(
-        cleaner,
-        prompt,
-        raw,
-        timeout,
-        max_divergence,
-        true,
-        language,
-    )
+    run_metered(cleaner, prompt, raw, timeout, true, language)
 }
 
 fn run_metered(
@@ -1547,7 +1502,6 @@ fn run_metered(
     prompt: CleanPrompt,
     asr_text: &str,
     timeout: Duration,
-    max_divergence: f64,
     ai: bool,
     language: Option<&str>,
 ) -> (CleanOutcome, CleanUsage, Rejection) {
@@ -1568,7 +1522,6 @@ fn run_metered(
         Err(_) => {
             cancel.store(true, Ordering::Relaxed);
             let why = Rejection {
-                text: None,
                 detail: Some(format!("no answer within {} ms", timeout.as_millis())),
             };
             return (
@@ -1586,7 +1539,6 @@ fn run_metered(
         Ok(s) => lists_to_plain(&unwrap(&s)),
         Err(e) => {
             let why = Rejection {
-                text: None,
                 detail: Some(format!("error: {e}")),
             };
             // Refused before anything ran (no consent, open circuit, …):
@@ -1608,13 +1560,14 @@ fn run_metered(
     } else {
         out
     };
-    let strictness = if ai {
-        crate::guard::Strictness::Loose
-    } else {
-        crate::guard::Strictness::Strict
-    };
-    let (outcome, why) = judge(asr_text, out, max_divergence, strictness, language);
-    (outcome, usage, why)
+    if out.is_empty() {
+        let why = Rejection {
+            detail: Some("empty answer".into()),
+        };
+        return (CleanOutcome::Fallback(FallbackReason::Empty), usage, why);
+    }
+    // The answer is used as given: no output guard (D58).
+    (CleanOutcome::Formatted(out), usage, Rejection::default())
 }
 
 static HTML_LIST_AFTER_TEXT: LazyLock<regex::Regex> =
@@ -1646,45 +1599,6 @@ pub fn blank_line_before_lists(s: &str) -> String {
         out.push(l);
     }
     out.join("\n")
-}
-
-fn judge(
-    asr_text: &str,
-    out: String,
-    max_divergence: f64,
-    strictness: crate::guard::Strictness,
-    language: Option<&str>,
-) -> (CleanOutcome, Rejection) {
-    let reject = |reason, out: String, detail: String| {
-        let why = Rejection {
-            text: Some(out),
-            detail: Some(detail),
-        };
-        (CleanOutcome::Fallback(reason), why)
-    };
-    if out.is_empty() {
-        let why = Rejection {
-            text: None,
-            detail: Some("empty answer".into()),
-        };
-        return (CleanOutcome::Fallback(FallbackReason::Empty), why);
-    }
-    let div = divergence_ratio(asr_text, &out);
-    if div > max_divergence {
-        let detail = format!("divergence {div:.2} > {max_divergence:.2}");
-        return reject(FallbackReason::Diverged, out, detail);
-    }
-    match crate::guard::check_for_language(asr_text, &out, strictness, language) {
-        crate::guard::Verdict::Ok => (CleanOutcome::Formatted(out), Rejection::default()),
-        crate::guard::Verdict::Unsupported(s) => reject(
-            FallbackReason::Unsupported,
-            out,
-            format!("unsupported: {s}"),
-        ),
-        crate::guard::Verdict::Dropped(c) => {
-            reject(FallbackReason::Dropped, out, format!("dropped: {c}"))
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1794,7 +1708,7 @@ mod tests {
             transcript: asr.into(),
             source: None,
         };
-        run_cleanup(cl, p, asr, Duration::from_millis(timeout_ms), 0.5)
+        run_cleanup(cl, p, asr, Duration::from_millis(timeout_ms))
     }
 
     #[test]
@@ -1828,17 +1742,19 @@ mod tests {
         );
     }
 
+    // D58: no output guard. A rewrite far from the transcript is used as
+    // given; only a timeout, an error or an empty answer falls back.
     #[test]
-    fn divergent_output_falls_back() {
+    fn a_distant_rewrite_is_used_as_given() {
         let o = run(
-            Arc::new(Fixed(
-                "I cannot help with that request sorry",
-                Duration::ZERO,
-            )),
+            Arc::new(Fixed("Noon at the dock works for me.", Duration::ZERO)),
             "meet me at noon by the dock",
             500,
         );
-        assert_eq!(o, CleanOutcome::Fallback(FallbackReason::Diverged));
+        assert_eq!(
+            o,
+            CleanOutcome::Formatted("Noon at the dock works for me.".into())
+        );
     }
 
     #[test]
@@ -2180,20 +2096,6 @@ mod tests {
             assert_eq!((pair[0].0, pair[1].0), ("user", "assistant"));
         }
         assert_eq!(m.last().unwrap(), &("user", p.user.as_str()));
-        // Every example output passes the guardrail against its own input.
-        for (u, a) in &p.examples {
-            let input = u
-                .rsplit("TRANSCRIPT: \u{ab}")
-                .next()
-                .unwrap()
-                .trim_end_matches('\u{bb}');
-            let out = lists_to_plain(a);
-            assert_eq!(
-                crate::guard::check(input, &out),
-                crate::guard::Verdict::Ok,
-                "{input:?} -> {out:?}"
-            );
-        }
     }
 
     #[test]
@@ -2333,18 +2235,6 @@ mod tests {
             PromptVersion::V4c,
         );
         assert!(medium.system.ends_with(level_rule(CleanupLevel::Medium)));
-    }
-
-    #[test]
-    fn thresholds_match_03_section7() {
-        assert_eq!(default_divergence(CleanupLevel::Light), 0.6);
-        assert_eq!(default_divergence(CleanupLevel::Medium), 0.9);
-        assert_eq!(default_divergence(CleanupLevel::High), 0.9);
-    }
-
-    #[test]
-    fn default_thresholds_grow_with_level() {
-        assert!(default_divergence(CleanupLevel::Light) < default_divergence(CleanupLevel::High));
     }
 
     #[test]

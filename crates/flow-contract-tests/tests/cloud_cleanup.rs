@@ -4,7 +4,7 @@
 //!   streaming text X) commits the same `CommitResult` as one whose cleaner
 //!   is a fake local backend returning X — unwrapping and post-processing
 //!   are shared by construction (D30: the cloud gets the raw transcript
-//!   with prompt v4c and the loosened guard; the text must match anyway).
+//!   with prompt v4c; the text must match anyway).
 //! * Toggle matrix: OpenRouter down or slow → the deterministic text, within
 //!   the cleanup timeout + 50 ms.
 
@@ -77,11 +77,9 @@ fn cloud_cleaner() -> Arc<dyn Cleaner> {
 /// [`normalize`] without the per-engine metering (`llm`: engine, model,
 /// cost, generation id, latency), which is expected to differ, and
 /// without D30's route fields (`cleanup_route`, `cloud_fallback`,
-/// `rejected_text`, `guard_detail`, set only
-/// on the cloud side). D30: the cloud gets the raw transcript and the
-/// loosened guard, the local LLM the rules' text and the strict guard, so
-/// a reject may name a different reason (`fallback_reason`); the text
-/// must still be the same.
+/// `guard_detail`, set only on the cloud side). D30: the cloud gets the
+/// raw transcript, the local LLM the rules' text; the text must still be
+/// the same.
 fn same_result(r: &CommitResult) -> serde_json::Value {
     let mut v = normalize(r);
     let o = v.as_object_mut().unwrap();
@@ -89,7 +87,6 @@ fn same_result(r: &CommitResult) -> serde_json::Value {
         "llm",
         "cleanup_route",
         "cloud_fallback",
-        "rejected_text",
         "guard_detail",
         "fallback_reason",
     ] {
@@ -105,7 +102,7 @@ const CASES: [(&str, &str); 4] = [
         "i think we should uh ship it friday",
         "I think we should ship it Friday.",
     ),
-    // The guard rejects an invented sentence: both fall back identically.
+    // D58: no output guard, so an added sentence is used on both paths.
     (
         "ok so the deadline moved",
         "The deadline moved. Also buy milk.",
@@ -130,9 +127,6 @@ fn cloud_cleanup_equals_a_local_cleaner_with_the_same_output() {
         if got.fallback_reason.is_none() {
             formatted += 1;
             assert_eq!(got.cleanup_route.as_deref(), Some("cloud"));
-        } else {
-            // D30: no local LLM here, so a rejected answer leaves the rules.
-            assert_eq!(got.cleanup_route.as_deref(), Some("rules"));
         }
         let reqs = srv.requests();
         let chats = reqs
@@ -146,7 +140,12 @@ fn cloud_cleanup_equals_a_local_cleaner_with_the_same_output() {
         let leak = serde_json::to_string(&got).unwrap();
         assert!(!leak.contains(CLOUD_KEY));
     }
-    assert!(formatted >= 1, "the cloud output was used at least once");
+    // D58: nothing judges the answer, so every case uses it.
+    assert_eq!(
+        formatted,
+        CASES.len(),
+        "the cloud output was used every time"
+    );
 }
 
 #[test]

@@ -10,7 +10,6 @@ pub mod config;
 pub mod dictionary;
 pub mod endpoint;
 mod engine;
-pub mod guard;
 pub mod hallucination;
 pub mod insights;
 pub mod learn;

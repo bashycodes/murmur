@@ -620,7 +620,7 @@ fn real_llm_plugin_formats_through_the_shell() {
     assert_eq!(
         e.formatted.as_deref(),
         Some(pastes[0].as_str()),
-        "FORMATTED: the LLM output passed the guardrail and was pasted"
+        "FORMATTED: the LLM output was pasted"
     );
     let t = pastes[0].to_lowercase();
     assert!(t.contains("budget") && t.contains("tomorrow"), "{t}");
