@@ -1,0 +1,691 @@
+{
+ "_note": "Synthetic cases (gen_cases.py); made-up sentences only.",
+ "clips": {
+  "L01": {
+   "text": "For the launch we still need to:\n\n1. Update the docs\n2. Email the beta testers\n3. Tag the release",
+   "terms": [],
+   "checks": [
+    {
+     "name": "numbered list",
+     "re": "(?m)^1[.)] ?update the docs.*\\n^2[.)] ?email the beta.*\\n^3[.)] ?tag the release",
+     "flags": "i"
+    },
+    {
+     "name": "lead-in kept",
+     "re": "^\\s*for the launch",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "L02": {
+   "text": "The steps are:\n\n1. Preheat the oven\n2. Grease the pan\n3. Pour in the batter",
+   "terms": [],
+   "checks": [
+    {
+     "name": "numbered list",
+     "re": "(?m)^1[.)] ?preheat.*\\n^2[.)] ?grease.*\\n^3[.)] ?pour",
+     "flags": "i"
+    },
+    {
+     "name": "lead-in kept",
+     "re": "^\\s*the steps",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "L03": {
+   "text": "Agenda for tomorrow:\n\n- Budget review\n- Hiring plan\n- Office move",
+   "terms": [],
+   "checks": [
+    {
+     "name": "bulleted list",
+     "re": "(?m)^[-\u2022*] ?budget review.*\\n^[-\u2022*] ?hiring plan.*\\n^[-\u2022*] ?office move",
+     "flags": "i"
+    },
+    {
+     "name": "lead-in kept",
+     "re": "^\\s*agenda for tomorrow",
+     "flags": "i"
+    },
+    {
+     "name": "no literal 'bullet points'",
+     "re": "bullet points?",
+     "flags": "i",
+     "absent": true
+    }
+   ],
+   "instruction": false
+  },
+  "L04": {
+   "text": "A few things for the weekend:\n\n- Clean the gutters\n- Fix the gate\n- Call the plumber",
+   "terms": [],
+   "checks": [
+    {
+     "name": "bulleted list",
+     "re": "(?m)^[-\u2022*] ?clean the gutters.*\\n^[-\u2022*] ?fix the gate.*\\n^[-\u2022*] ?call the plumber",
+     "flags": "i"
+    },
+    {
+     "name": "lead-in kept",
+     "re": "^\\s*a few things",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "L05": {
+   "text": "What to pack:\n\n- Sunscreen\n- Towels\n- A paperback\n- Snacks",
+   "terms": [],
+   "checks": [
+    {
+     "name": "bulleted list",
+     "re": "(?m)^[-\u2022*] ?sunscreen.*\\n^[-\u2022*] ?towels.*\\n^[-\u2022*] ?a paperback.*\\n^[-\u2022*] ?snacks",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "L06": {
+   "text": "Two reasons I'm leaving early:\n\n1. The traffic\n2. My cousin is visiting",
+   "terms": [],
+   "checks": [
+    {
+     "name": "numbered list",
+     "re": "(?m)^1[.)] ?the traffic.*\\n^2[.)] ?my cousin",
+     "flags": "i"
+    },
+    {
+     "name": "lead-in kept",
+     "re": "^\\s*two reasons",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "L07": {
+   "text": "Things to do today:\n\n1. Renew the passport\n2. Book the dentist\n3. Pay the water bill",
+   "terms": [],
+   "checks": [
+    {
+     "name": "numbered list",
+     "re": "(?m)^1[.)] ?renew the passport.*\\n^2[.)] ?book the dentist.*\\n^3[.)] ?pay the water bill",
+     "flags": "i"
+    },
+    {
+     "name": "lead-in kept",
+     "re": "^\\s*things to do today",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "L08": {
+   "text": "My concerns are:\n\n1. The cost\n2. The timeline\n3. The staffing",
+   "terms": [],
+   "checks": [
+    {
+     "name": "numbered list",
+     "re": "(?m)^1[.)] ?the cost.*\\n^2[.)] ?the timeline.*\\n^3[.)] ?the staffing",
+     "flags": "i"
+    },
+    {
+     "name": "lead-in kept",
+     "re": "^\\s*my concerns",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "L09": {
+   "text": "Shopping list:\n\n- Milk\n- Eggs\n- Spinach",
+   "terms": [],
+   "checks": [
+    {
+     "name": "bulleted list",
+     "re": "(?m)^[-\u2022*] ?milk.*\\n^[-\u2022*] ?eggs.*\\n^[-\u2022*] ?spinach",
+     "flags": "i"
+    },
+    {
+     "name": "lead-in kept",
+     "re": "^\\s*shopping list",
+     "flags": "i"
+    },
+    {
+     "name": "no literal 'bullet point'",
+     "re": "bullet point",
+     "flags": "i",
+     "absent": true
+    }
+   ],
+   "instruction": false
+  },
+  "L10": {
+   "text": "Here's a list for the party:\n\n- Cups\n- Plates\n- Napkins\n- Ice",
+   "terms": [],
+   "checks": [
+    {
+     "name": "bulleted list",
+     "re": "(?m)^[-\u2022*] ?cups.*\\n^[-\u2022*] ?plates.*\\n^[-\u2022*] ?napkins.*\\n^[-\u2022*] ?ice",
+     "flags": "i"
+    },
+    {
+     "name": "lead-in kept",
+     "re": "^\\s*here's a list",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "L11": {
+   "text": "The plan for Monday is:\n\n1. We meet the client at 9\n2. We review the contract together\n3. We sign if it all looks good",
+   "terms": [],
+   "checks": [
+    {
+     "name": "numbered list",
+     "re": "(?m)^1[.)] ?(we )?meet the client.*\\n^2[.)] ?(we )?review the contract.*\\n^3[.)] ?(we )?sign",
+     "flags": "i"
+    },
+    {
+     "name": "lead-in kept",
+     "re": "^\\s*the plan for monday",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "L12": {
+   "text": "I need to remember these points:\n\n- The gym closes early on Sundays\n- The pool is shut for repairs\n- The locker code changed",
+   "terms": [],
+   "checks": [
+    {
+     "name": "bulleted list",
+     "re": "(?m)^[-\u2022*] ?the gym closes.*\\n^[-\u2022*] ?the pool is shut.*\\n^[-\u2022*] ?the locker code",
+     "flags": "i"
+    },
+    {
+     "name": "lead-in kept",
+     "re": "^\\s*i need to remember",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "C01": {
+   "text": "Buy 3 apples",
+   "terms": [],
+   "checks": [
+    {
+     "name": "three kept",
+     "re": "\\b(3|three) apples",
+     "flags": "i"
+    },
+    {
+     "name": "two dropped",
+     "re": "\\b(2|two)\\b",
+     "flags": "i",
+     "absent": true
+    }
+   ],
+   "instruction": false
+  },
+  "C02": {
+   "text": "Let's meet at 4",
+   "terms": [],
+   "checks": [
+    {
+     "name": "4 kept",
+     "re": "\\b(4|four)\\b",
+     "flags": "i"
+    },
+    {
+     "name": "3 dropped",
+     "re": "\\b(3|three)\\b",
+     "flags": "i",
+     "absent": true
+    }
+   ],
+   "instruction": false
+  },
+  "C03": {
+   "text": "The call is on Wednesday",
+   "terms": [],
+   "checks": [
+    {
+     "name": "wednesday kept",
+     "re": "wednesday",
+     "flags": "i"
+    },
+    {
+     "name": "tuesday dropped",
+     "re": "tuesday",
+     "flags": "i",
+     "absent": true
+    }
+   ],
+   "instruction": false
+  },
+  "C04": {
+   "text": "Send the draft to Priya",
+   "terms": [],
+   "checks": [
+    {
+     "name": "priya kept",
+     "re": "priya",
+     "flags": "i"
+    },
+    {
+     "name": "mark dropped",
+     "re": "\\bmark\\b",
+     "flags": "i",
+     "absent": true
+    }
+   ],
+   "instruction": false
+  },
+  "C05": {
+   "text": "The budget is $600",
+   "terms": [],
+   "checks": [
+    {
+     "name": "600 kept",
+     "re": "600|six hundred",
+     "flags": "i"
+    },
+    {
+     "name": "500 dropped",
+     "re": "500|five hundred",
+     "flags": "i",
+     "absent": true
+    }
+   ],
+   "instruction": false
+  },
+  "C06": {
+   "text": "We need 5 chairs",
+   "terms": [],
+   "checks": [
+    {
+     "name": "5 kept",
+     "re": "\\b(5|five)\\b",
+     "flags": "i"
+    },
+    {
+     "name": "4 dropped",
+     "re": "\\b(4|four)\\b",
+     "flags": "i",
+     "absent": true
+    }
+   ],
+   "instruction": false
+  },
+  "C07": {
+   "text": "Book a table for 8 people at the noodle place",
+   "terms": [],
+   "checks": [
+    {
+     "name": "8 kept",
+     "re": "\\b(8|eight)\\b",
+     "flags": "i"
+    },
+    {
+     "name": "6 dropped",
+     "re": "\\b(6|six)\\b",
+     "flags": "i",
+     "absent": true
+    }
+   ],
+   "instruction": false
+  },
+  "C08": {
+   "text": "Turn left at the bakery",
+   "terms": [],
+   "checks": [
+    {
+     "name": "bakery kept",
+     "re": "bakery",
+     "flags": "i"
+    },
+    {
+     "name": "bank dropped",
+     "re": "\\bbank\\b",
+     "flags": "i",
+     "absent": true
+    }
+   ],
+   "instruction": false
+  },
+  "C09": {
+   "text": "The flight leaves at 8:15",
+   "terms": [],
+   "checks": [
+    {
+     "name": "8:15 kept",
+     "re": "8:15",
+     "flags": "i"
+    },
+    {
+     "name": "7:45 dropped",
+     "re": "7:45|seven forty",
+     "flags": "i",
+     "absent": true
+    }
+   ],
+   "instruction": false
+  },
+  "X01": {
+   "text": "A few things to grab at the store:\n\n- Eggs\n- Oat milk\n- Bread\n- Coffee",
+   "terms": [],
+   "checks": [
+    {
+     "name": "bulleted list",
+     "re": "(?m)^[-\u2022*] ?eggs.*\\n^[-\u2022*] ?oat milk.*\\n^[-\u2022*] ?bread.*\\n^[-\u2022*] ?coffee",
+     "flags": "i"
+    },
+    {
+     "name": "whole milk dropped",
+     "re": "whole milk",
+     "flags": "i",
+     "absent": true
+    }
+   ],
+   "instruction": false
+  },
+  "X02": {
+   "text": "The order is:\n\n1. The salad\n2. The pasta\n3. Dessert",
+   "terms": [],
+   "checks": [
+    {
+     "name": "numbered list",
+     "re": "(?m)^1[.)] ?the salad.*\\n^2[.)] ?the pasta.*\\n^3[.)] ?dessert",
+     "flags": "i"
+    },
+    {
+     "name": "soup dropped",
+     "re": "soup",
+     "flags": "i",
+     "absent": true
+    }
+   ],
+   "instruction": false
+  },
+  "N01": {
+   "text": "No, I don't think we should go out tonight",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "'no' kept",
+     "re": "^\\s*no\\b",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N02": {
+   "text": "There are two, not three, reasons this design works",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "contrast kept",
+     "re": "not (3|three)",
+     "flags": "i"
+    },
+    {
+     "name": "two kept",
+     "re": "\\b(2|two)\\b",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N03": {
+   "text": "The first time I tried sushi I hated it",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "'first' kept",
+     "re": "first time",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N04": {
+   "text": "First we'll grab lunch and then we can head to the museum",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "lunch kept",
+     "re": "lunch",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N05": {
+   "text": "I packed socks, shirts and a jacket so I should be fine",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "items inline",
+     "re": "socks, shirts,? and a jacket",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N06": {
+   "text": "Sorry I missed your call, I was in a meeting",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "'sorry' kept",
+     "re": "^\\s*sorry",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N07": {
+   "text": "The movie was actually pretty good",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "'actually' kept",
+     "re": "actually",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N08": {
+   "text": "I mean it when I say thank you for everything",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "'I mean it' kept",
+     "re": "i mean it",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N09": {
+   "text": "No problem, see you at 5",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "'no problem' kept",
+     "re": "no problem",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N10": {
+   "text": "She counted one, two, three and then jumped into the lake",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "count kept inline",
+     "re": "counted (one|1),? (two|2),? (three|3)",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N11": {
+   "text": "Never mind the rain, we're going anyway",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "rain kept",
+     "re": "rain",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N12": {
+   "text": "Give me a second to find the file",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "'second' kept",
+     "re": "a second",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N13": {
+   "text": "We talked about the budget, the hiring plan and the office move before lunch and then went back to work",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "items inline",
+     "re": "budget, the hiring plan,? and the office move",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N14": {
+   "text": "It's due on Friday, not Monday",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "contrast kept",
+     "re": "not monday",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N15": {
+   "text": "She's my number one fan",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "'number one' kept",
+     "re": "number (one|1) fan",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  },
+  "N16": {
+   "text": "I can bring things like plates, cups and napkins and anything else you need for the party",
+   "terms": [],
+   "checks": [
+    {
+     "name": "no list",
+     "re": "(?m)^\\s*(\\d+[.)]|[-\u2022*])\\s",
+     "absent": true
+    },
+    {
+     "name": "items inline",
+     "re": "plates, cups,? and napkins",
+     "flags": "i"
+    }
+   ],
+   "instruction": false
+  }
+ }
+}
