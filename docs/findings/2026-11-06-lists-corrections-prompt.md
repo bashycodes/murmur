@@ -119,7 +119,7 @@ On the 1.5B, s02 goes 0/3 → 2/3. s03, s04, s08 and s12 are unchanged.
 | 1.5B | v4c | 72 % | 3 | 3 | 1 | 7 | 16 |
 | 1.5B | v5 | 73 % | **5** | 4 | 1 | 7 | 17 |
 
-**Regression: spoken "new line" / "new paragraph" on the 3B.** v5 turns
+**Regression: spoken "new line" / "new paragraph" and spoken marks on the 3B.** Spoken marks ("comma", "period", "question mark") fall from 8 to 6/9: v5 left a spoken "Period." in the text, and once it wrote a colon where "comma" was said. v5 also turns
 "<lead-in>. New paragraph. A or B." into a bulleted list, which is a false
 list, and writes "new line" as a blank line. This is the blank line the list
 format uses. Two follow-ups did not fix it, so neither shipped:
@@ -148,5 +148,6 @@ different list-rule shape or a bigger model, not more text.
 
 * A correction inside a list (X cases) fails everywhere.
 * "two, not three" (case N02) is ambiguous and fails everywhere.
+* The phone bench (debug `BenchPlan.kt` / `crates/flow-ffi/src/bench.rs`) still runs only `prod` and `v4c`. It has no v5 mode, so v5 has not been timed on the phone.
 * 1.5B self-corrections would need a bigger model or fine-tuning, not more
   prompt text.
