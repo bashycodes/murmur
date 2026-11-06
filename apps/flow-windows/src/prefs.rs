@@ -656,6 +656,43 @@ mod tests {
     }
 
     #[test]
+    fn custom_cleanup_server_survives_save_and_load() {
+        // Owner report (1.1.2): Custom picked, address typed, no model yet,
+        // then the key's Save reloaded the settings. Saved through the
+        // page's edit, it must come back as Custom with that address.
+        let d = tmpdir("custom-cleanup");
+        let path = d.join(FILE_NAME);
+        let mut p = Prefs::default();
+        crate::openrouter::apply_custom_cleanup(
+            &mut p.developer,
+            &crate::openrouter::CustomCleanupForm {
+                provider: flow_router::CleanupProvider::Custom,
+                base_url: "http://100.64.0.99:4100".into(),
+                model: String::new(),
+                timeout_ms: 4000,
+                consent: false,
+            },
+            5,
+        )
+        .unwrap();
+        p.save(&path).unwrap();
+        let (q, o) = Prefs::load(&path);
+        assert_eq!(o, LoadOutcome::Loaded);
+        let c = &q.developer.cloud;
+        assert_eq!(c.cleanup_provider, flow_router::CleanupProvider::Custom);
+        assert_eq!(c.custom_cleanup.base_url, "http://100.64.0.99:4100/v1");
+        assert_eq!(q.developer.cloud, p.developer.cloud);
+        // With a model and consent too.
+        let mut p = q;
+        p.developer.cloud.custom_cleanup.model = "made-up-model".into();
+        p.developer.cloud.custom_cleanup.consent_host = "100.64.0.99".into();
+        p.developer.cloud.custom_cleanup.consent_at_ms = 1_700_000_000_000;
+        p.save(&path).unwrap();
+        assert_eq!(Prefs::load(&path).0.developer.cloud, p.developer.cloud);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
     fn partial_file_fills_defaults() {
         let d = tmpdir("partial");
         std::fs::create_dir_all(&d).unwrap();

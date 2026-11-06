@@ -48,13 +48,13 @@ class OpenRouterUiTest {
         for (want in listOf(
             "API KEY", "PRIVACY", "SPEECH-TO-TEXT", "TEXT CLEANUP", "WHAT CLEANUP SENDS", "USAGE",
             "Stored key", "Show", "Paste", "Clear", "Save key", "Check key",
-            "Zero-retention providers only", "Deny data collection", "Cloud speech-to-text", "Clean up text with OpenRouter",
+            "Zero-retention providers only", "Deny data collection", "Cloud speech-to-text", OpenRouterActivity.CLEANUP_SWITCH,
             "Model", "Send text around the cursor", "Send on-screen words", "Send app name", "Monthly budget", "Reset counters",
             "Test speech-to-text", "this month", "speech", "cleanup",
         )) assertTrue(want, want in t)
         assertTrue(switchOf(a, "Zero-retention providers only").isChecked)
         assertTrue(switchOf(a, "Deny data collection").isChecked)
-        for (off in listOf("Cloud speech-to-text", "Clean up text with OpenRouter", "Send text around the cursor", "Send on-screen words", "Send app name")) {
+        for (off in listOf("Cloud speech-to-text", OpenRouterActivity.CLEANUP_SWITCH, "Send text around the cursor", "Send on-screen words", "Send app name")) {
             assertFalse(off, switchOf(a, off).isChecked)
         }
         assertTrue(t.any { it.startsWith(OpenRouter.DEFAULT_STT_MODEL) })
@@ -65,22 +65,22 @@ class OpenRouterUiTest {
 
     @Test fun cleanupHasItsOwnConsentAndCancelLeavesItOff() {
         val a = launch()
-        rowTitled(a, "Clean up text with OpenRouter").performClick(); idle()
+        rowTitled(a, OpenRouterActivity.CLEANUP_SWITCH).performClick(); idle()
         val d = ShadowAlertDialog.getLatestAlertDialog()
         val sd = org.robolectric.Shadows.shadowOf(d)
         assertEquals("Send dictated text to OpenRouter?", sd.title.toString())
         assertTrue(sd.message.toString().startsWith("After each dictation, the text (and your dictionary words) is sent to OpenRouter (openrouter.ai)"))
         assertEquals("Send text to OpenRouter", d.getButton(DialogInterface.BUTTON_POSITIVE).text.toString())
         d.getButton(DialogInterface.BUTTON_NEGATIVE).performClick(); idle()
-        assertFalse(switchOf(a, "Clean up text with OpenRouter").isChecked)
+        assertFalse(switchOf(a, OpenRouterActivity.CLEANUP_SWITCH).isChecked)
         assertFalse(app.dev.load().allowCloudCleanup); assertFalse(app.dev.load().cloud.cleanup.consentOk)
 
-        rowTitled(a, "Clean up text with OpenRouter").performClick(); idle()
+        rowTitled(a, OpenRouterActivity.CLEANUP_SWITCH).performClick(); idle()
         ShadowAlertDialog.getLatestAlertDialog().getButton(DialogInterface.BUTTON_POSITIVE).performClick(); idle()
         val s = app.dev.load()
         assertTrue(s.allowCloudCleanup); assertTrue(s.cloud.cleanup.consentOk); assertTrue(s.cloudCleanupRouted)
         assertFalse("cleanup never turns speech-to-text on", s.allowCloud); assertFalse(s.cloud.stt.consentOk)
-        assertTrue(switchOf(a, "Clean up text with OpenRouter").isChecked)
+        assertTrue(switchOf(a, OpenRouterActivity.CLEANUP_SWITCH).isChecked)
     }
 
     @Test fun speechToTextConsentNamesTheAudio() {
@@ -156,6 +156,7 @@ class OpenRouterUiTest {
             ))
             val c = Robolectric.buildActivity(OpenRouterActivity::class.java, Intent(ctx, OpenRouterActivity::class.java)).setup().visible()
             assertTrue("custom card shown", "10.0.0.5" in texts(c.get()).joinToString())
+            assertTrue("switch title does not follow the provider", OpenRouterActivity.CLEANUP_SWITCH in texts(c.get()))
             calls = 0
             c.pause().resume()
             assertEquals(1, calls)
@@ -174,7 +175,7 @@ class OpenRouterUiTest {
 
     @Test fun pagesHaveTheDesignTopBarWithALabelledBack() {
         val pages = listOf(
-            launch() to OpenRouter.NAME,
+            launch() to OpenRouterActivity.TITLE,
             Robolectric.buildActivity(
                 ModelPickerActivity::class.java,
                 Intent(ctx, ModelPickerActivity::class.java).putExtra(ModelPickerActivity.EXTRA_USE, CloudCatalog.Use.CLEANUP.wire),

@@ -12,6 +12,7 @@ import { $, askDialog, el, setStatus, setValue, when } from "../lib/dom.js";
 import { iconEl } from "../lib/icons.js";
 import { cleanupMonthCost, cloudHint, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
+import { Serial } from "../lib/serial.js";
 import { views } from "../lib/views.js";
 const PARAPHRASE_BADGE = "chat model, may paraphrase";
 /** Run an OpenRouter command; errors are plain strings shown in `statusId`. */
@@ -308,10 +309,11 @@ function refreshCatalog(force) {
 }
 // ---- confirm dialog
 function confirmOr(title, body, ok) {
-    $("or_confirm_title").textContent = title;
-    $("or_confirm_body").textContent = body;
-    $("or_confirm_ok").textContent = ok;
-    return askDialog("or_confirm", "or_confirm_ok", "or_confirm_cancel");
+    return askDialog("or_confirm", "or_confirm_ok", "or_confirm_cancel", () => {
+        $("or_confirm_title").textContent = title;
+        $("or_confirm_body").textContent = body;
+        $("or_confirm_ok").textContent = ok;
+    });
 }
 // ---- account
 async function orSaveKey() {
@@ -455,6 +457,11 @@ async function orTestStt() {
     }
 }
 // ---- text cleanup
+/** Every cleanup-card write (switch, options, provider, custom server, its
+ *  key, consent from Load models / Test connection, the cleanup model
+ *  picker) runs one at a time, so a reload never reads half-saved settings
+ *  and a field's save fired by a click lands before that click's own save. */
+const writes = new Serial();
 async function orApplyCleanup(consent) {
     const t = parseInt($("or_cleanup_timeout_ms").value, 10);
     const form = {
@@ -485,7 +492,9 @@ async function orCleanupToggled() {
     const c = views.or?.cleanup;
     const custom = c?.provider === "custom";
     let consent = false;
-    if (custom ? !c?.custom.consent : !c?.consent) {
+    // A custom server without an address yet has no host to agree to: it is
+    // switched on, and asked once its address is typed.
+    if (custom ? !c?.custom.consent && c?.custom.host !== "" : !c?.consent) {
         consent = await askCleanupConsent(custom ? "custom" : "openrouter", c?.custom.base_url ?? "");
         if (!consent) {
             box.checked = false;
@@ -502,10 +511,12 @@ async function askCleanupConsent(provider, url) {
         return askDialog("or_cleanup_consent_dlg", "or_cleanup_consent_ok", "or_cleanup_consent_cancel");
     }
     const host = (await hostOf(url)) || url.trim();
-    $("cu_consent_host_title").textContent = host;
-    $("cu_consent_host").textContent = host;
-    $("cu_consent_http").hidden = !/^\s*http:\/\//i.test(url);
-    return askDialog("cu_consent_dlg", "cu_consent_ok", "cu_consent_cancel");
+    // Filled when shown: an ask waiting for an open one must not change its text.
+    return askDialog("cu_consent_dlg", "cu_consent_ok", "cu_consent_cancel", () => {
+        $("cu_consent_host_title").textContent = host;
+        $("cu_consent_host").textContent = host;
+        $("cu_consent_http").hidden = !/^\s*http:\/\//i.test(url);
+    });
 }
 function showCustom(v) {
     const c = v.cleanup;
@@ -530,18 +541,19 @@ function showCustom(v) {
     $("cu_key_saved_ctl").hidden = !cu.key.set;
     $("cu_key_entry").hidden = cu.key.set;
 }
-/** The card's rows for `provider` (also before a first custom server is saved). */
+/** The card's rows for the saved `provider`. Its title stays "Cloud
+ *  server": the selector names the provider. */
 function showProviderRows(provider) {
-    const custom = provider === "custom";
     $("or_cleanup_provider").value = provider;
-    $("or_cleanup_title").textContent = custom ? "Custom server" : "OpenRouter";
     for (const r of $("or_cleanup_box").querySelectorAll("[data-provider]")) {
         r.hidden = r.dataset.provider !== provider;
     }
     // "Test cleanup" sends a fixed sample to the selected provider (D52).
     $("or_cleanup_test_out").textContent = "";
 }
-/** Save the provider selector and the custom server's fields together. */
+/** Save the provider selector and the custom server's fields together.
+ *  Custom is saved as soon as it is picked (D52): the selector always shows
+ *  what dictation uses, and the server is used once address and model are set. */
 async function cuApply(provider, consent) {
     const t = parseInt($("cu_timeout_ms").value, 10);
     const form = {
@@ -552,59 +564,71 @@ async function cuApply(provider, consent) {
         consent,
     };
     const r = await orCall("dev_or_set_custom_cleanup", { form }, "or_cleanup_msg", "Saved — applies to the next dictation");
-    if (r)
+    if (r) {
         showOr(r);
+        const cu = r.cleanup.custom;
+        if (r.cleanup.provider === "custom" && (cu.base_url === "" || cu.model === "")) {
+            setStatus("or_cleanup_msg", cu.base_url === "" ? "Saved — enter your server's address and a model to use it" : "Saved — pick a model to use your server", false);
+        }
+    }
     else if (views.or)
         showOr(views.or);
     return r !== null;
 }
 /** A provider switch, or a custom address on a new host, while cloud
- *  cleanup is on asks that destination's consent first. */
-async function cuChanged(provider) {
-    const c = views.or?.cleanup;
-    if (provider === "custom" &&
-        c?.provider !== "custom" &&
-        ($("cu_base_url").value.trim() === "" || $("cu_model").value.trim() === "")) {
-        // Not switched yet: the fields first, then it is saved.
-        showProviderRows("custom");
-        setStatus("or_cleanup_msg", "Enter the server address and a model to switch", false);
-        return;
-    }
-    let consent = false;
-    if (c?.allow) {
-        const url = $("cu_base_url").value;
-        const needs = provider === "custom"
-            ? url.trim() !== "" && (await hostOf(url)) !== c.custom.consent_host
-            : !c.consent;
-        if (needs) {
-            consent = await askCleanupConsent(provider, url);
-            if (!consent) {
-                if (views.or)
-                    showOr(views.or);
-                return;
+ *  cleanup is on asks that destination's consent first (a custom server
+ *  once it has an address). */
+function cuChanged(provider) {
+    return writes.run(async () => {
+        const c = views.or?.cleanup;
+        let consent = false;
+        if (c?.allow) {
+            const url = $("cu_base_url").value;
+            const needs = provider === "custom"
+                ? url.trim() !== "" && (await hostOf(url)) !== c.custom.consent_host
+                : !c.consent;
+            if (needs) {
+                consent = await askCleanupConsent(provider, url);
+                if (!consent) {
+                    if (views.or)
+                        showOr(views.or);
+                    return;
+                }
             }
         }
-    }
-    await cuApply(provider, consent);
+        await cuApply(provider, consent);
+    });
 }
-async function cuSaveKey() {
+/** A key change, then the card again (the key itself is never sent back). */
+function cuKey(command, args, done) {
+    return writes.run(async () => {
+        const k = await orCall(command, args, "or_cleanup_msg", done);
+        if (k)
+            await loadOr();
+    });
+}
+function cuSaveKey() {
     const input = $("cu_key");
     if (input.value.trim() === "") {
         setStatus("or_cleanup_msg", "Paste the key first", false);
-        return;
+        return Promise.resolve();
     }
-    const k = await orCall("dev_cloud_set_custom_key", { key: input.value }, "or_cleanup_msg", "Key saved in Credential Manager");
+    const key = input.value;
     input.value = "";
-    if (k)
-        await loadOr();
+    return cuKey("dev_cloud_set_custom_key", { key }, "Key saved in Credential Manager");
 }
-async function cuClearKey() {
-    const k = await orCall("dev_cloud_clear_custom_key", {}, "or_cleanup_msg", "Key removed");
-    if (k)
-        await loadOr();
+function cuClearKey() {
+    return cuKey("dev_cloud_clear_custom_key", {}, "Key removed");
 }
-/** `GET /v1/models` on the typed address (typed key, else the saved one). */
-async function cuModels(outId, fill) {
+/** `GET /v1/models` on the typed address (typed key, else the saved one).
+ *  The backend sends the saved key only to a host the user agreed to (D52);
+ *  for another host it answers `consent_needed` and the dialog is shown.
+ *  All of it is queued with the card's writes: it reads the saved consent,
+ *  may record it, and shares the consent dialog with a provider change. */
+function cuModels(outId, fill) {
+    return writes.run(() => cuModelsNow(outId, fill));
+}
+async function cuModelsNow(outId, fill) {
     const out = $(outId);
     const baseUrl = $("cu_base_url").value.trim();
     if (baseUrl === "") {
@@ -615,8 +639,19 @@ async function cuModels(outId, fill) {
     out.textContent = `Asking ${(await hostOf(baseUrl)) || "the server"} for its models…`;
     out.className = "hint";
     try {
-        const key = $("cu_key").value.trim();
-        const r = await invoke("dev_or_custom_models", { baseUrl, key: key === "" ? null : key });
+        const typed = $("cu_key").value.trim();
+        const args = { baseUrl, key: typed === "" ? null : typed };
+        let r = await invoke("dev_or_custom_models", { ...args, consent: false });
+        if (r.error === "consent_needed") {
+            if (!(await askCleanupConsent("custom", baseUrl))) {
+                out.textContent =
+                    "Not sent: your saved key only goes to a server you agreed to send text to. A key pasted in the API key field is sent to this server for this test only.";
+                out.className = "hint err";
+                return;
+            }
+            r = await invoke("dev_or_custom_models", { ...args, consent: true });
+            await loadOr();
+        }
         if (r.models) {
             if (fill) {
                 $("cu_model_list").replaceChildren(...r.models.map((id) => Object.assign(document.createElement("option"), { value: id })));
@@ -798,7 +833,11 @@ async function openPicker(purpose) {
     }
     await loadPicker();
 }
-async function pickModel(id, paraphrase) {
+/** A model from the picker (speech or cleanup), queued with the cleanup card's writes. */
+function pickModel(id, paraphrase) {
+    return writes.run(() => pickModelNow(id, paraphrase));
+}
+async function pickModelNow(id, paraphrase) {
     if (id.trim() === "")
         return;
     if (paraphrase && !paraphraseOk.has(id)) {
@@ -838,7 +877,7 @@ function wire() {
     }
     $("or_stt_change").addEventListener("click", () => void openPicker("stt"));
     $("or_stt_test").addEventListener("click", () => void orTestStt());
-    $("or_cleanup_allow").addEventListener("change", () => void orCleanupToggled());
+    $("or_cleanup_allow").addEventListener("change", () => void writes.run(orCleanupToggled));
     for (const id of [
         "or_cleanup_sort",
         "or_cleanup_timeout_ms",
@@ -846,7 +885,7 @@ function wire() {
         "or_cleanup_send_screen_words",
         "or_cleanup_send_app_name",
     ]) {
-        $(id).addEventListener("change", () => void orApplyCleanup(false));
+        $(id).addEventListener("change", () => void writes.run(() => orApplyCleanup(false)));
     }
     $("or_cleanup_change").addEventListener("click", () => void openPicker("cleanup"));
     $("or_cleanup_test").addEventListener("click", () => void orTestCleanup());

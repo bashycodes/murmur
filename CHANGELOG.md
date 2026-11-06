@@ -19,6 +19,12 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 ### Changed
 
 - **Windows: hold Right Alt to dictate.** Right Alt is the new push-to-talk key instead of Ctrl+Win, and it starts at once like any push-to-talk key; if you never changed Ctrl+Win, it moves to Right Alt on the next start, so Ctrl+Win alone no longer dictates (set it back in Settings → General → Shortcuts if you prefer it; a shortcut you picked stays). While Right Alt is your push-to-talk key, no app sees it: it never opens a menu bar, and on keyboards where Right Alt is AltGr (Hebrew, many European layouts) it no longer types AltGr letters; type them with Left Ctrl+Left Alt instead. The tray tooltip names your push-to-talk key. Hands-free (Ctrl+Win+Space) and Command Mode (Ctrl+Win+Alt) are unchanged (D57).
+- **AI cleanup: the cloud section is titled "Cloud server".** On Windows its title no longer switches between "OpenRouter" and "Custom server" as you pick the provider: the "Send text to" list names it. On Android the cloud page is titled "Cloud server" and its cleanup switch reads "Clean up text with the cloud server" whichever provider is picked.
+
+### Fixed
+
+- **Windows: picking "Custom server" is saved at once.** It used to be saved only once both the server address and the model were filled in, so saving the key in between reloaded the settings, set the list back to OpenRouter and emptied the address (dictation kept using OpenRouter). Now the list always shows what dictation uses; until the address and model are set, cleanup skips your server and the next engine in the cleanup order cleans, and while cloud cleanup is on, its row in the cleanup order shows "Enter the address" or "Pick a model".
+- **Windows: "Load models" / "Test connection" with a saved custom-server key no longer fail with a bare 401.** The saved key only goes to a server you agreed to send text to; for a server not agreed to yet the page now asks first and remembers the answer, instead of calling it without the key.
 
 ## [1.1.2] - 2026-11-05
 

@@ -217,7 +217,7 @@ pub struct CleanupForm {
 pub struct CustomCleanupForm {
     /// `"openrouter"` | `"custom"` (serde of [`CleanupProvider`]).
     pub provider: CleanupProvider,
-    /// As typed; `""` = not set yet (allowed while OpenRouter is selected).
+    /// As typed; `""` = not set yet (Custom is then saved but not used).
     pub base_url: String,
     pub model: String,
     /// i64 so 0 or 99999 reach validation instead of a parse error.
@@ -287,7 +287,9 @@ pub fn apply_cleanup(dev: &mut DevSettings, f: &CleanupForm, now_ms: u64) -> Res
     if f.consent {
         record_cleanup_consent(&mut next.cloud, now_ms);
     }
-    if f.allow && !next.cloud.cleanup_consent_ok() {
+    // A custom server without its address or model is switched on unused:
+    // its consent is asked once it has an address (`apply_custom_cleanup`).
+    if f.allow && next.cloud.cleanup_ready() && !next.cloud.cleanup_consent_ok() {
         return Err(format!(
             "Accept sending text to {} before turning this on",
             cleanup_host_name(&next.cloud)
@@ -334,9 +336,11 @@ fn cleanup_host_name(cloud: &flow_router::cloud::CloudConfig) -> String {
 
 /// D52 provider selector + custom server card: base URL (normalised and
 /// stored as normalised), model id (free text), timeout, and consent for
-/// the typed URL's host. Selecting Custom needs a URL and a model; while
-/// the cloud cleanup switch is on, the provider switched to (or a custom
-/// URL on a new host) needs its own consent first.
+/// the typed URL's host. Custom is saved as soon as it is picked, so the
+/// selector always shows what dictation uses; until its address and model
+/// are set the router skips it ([`flow_router::cloud::CustomCleanupConfig::ready`]).
+/// While the cloud cleanup switch is on, a ready provider needs its own
+/// consent first.
 pub fn apply_custom_cleanup(
     dev: &mut DevSettings,
     f: &CustomCleanupForm,
@@ -362,24 +366,54 @@ pub fn apply_custom_cleanup(
         return Err(format!("Cleanup time limit must be {lo}-{hi} ms"));
     }
     cc.timeout_ms = f.timeout_ms as u64;
-    if custom && cc.base_url.is_empty() {
-        return Err("Enter your server's base URL".into());
-    }
-    if custom && cc.model.is_empty() {
-        return Err("Enter the model id your server should use".into());
-    }
     if f.consent {
         if custom && cc.host().is_empty() {
             return Err("Enter your server's base URL".into());
         }
         record_cleanup_consent(&mut next.cloud, now_ms);
     }
-    if next.cleanup_on(CleanupRoute::Cloud) && !next.cloud.cleanup_consent_ok() {
+    // A custom server without its address or model yet is saved but not
+    // used (the router skips it); consent is asked once it could be used.
+    if next.cleanup_on(CleanupRoute::Cloud)
+        && next.cloud.cleanup_ready()
+        && !next.cloud.cleanup_consent_ok()
+    {
         return Err(format!(
             "Accept sending text to {} before using it",
             cleanup_host_name(&next.cloud)
         ));
     }
+    check(&next)?;
+    *dev = next;
+    Ok(())
+}
+
+/// D52 "Load models" / "Test connection" with the saved key on a host not
+/// consented to yet: the page showed the custom server's consent dialog for
+/// `base_url`'s host and it was accepted. Records that consent so the saved
+/// key may go there; the provider is not switched. While OpenRouter is the
+/// provider, or no address is saved yet, the address is saved too; with a
+/// custom server saved, only its own host can be consented to here, so a
+/// test never voids the live server's consent.
+pub fn apply_custom_key_consent(
+    dev: &mut DevSettings,
+    base_url: &str,
+    now_ms: u64,
+) -> Result<(), String> {
+    let a = flow_router::cloud::custom_server_address(base_url)
+        .map_err(|e| format!("Base URL: {e}"))?;
+    let mut next = dev.clone();
+    let openrouter = next.cloud.cleanup_provider.is_openrouter();
+    let cc = &mut next.cloud.custom_cleanup;
+    if openrouter || cc.host().is_empty() {
+        cc.base_url = a.url;
+    } else if !cc.host().eq_ignore_ascii_case(&a.host) {
+        return Err(
+            "Save this server address first: cleanup still goes to your saved server".into(),
+        );
+    }
+    cc.consent_host = a.host;
+    cc.consent_at_ms = now_ms.max(1);
     check(&next)?;
     *dev = next;
     Ok(())
@@ -720,6 +754,40 @@ mod tests {
     }
 
     #[test]
+    fn key_consent_from_a_test_lets_the_saved_key_go_to_that_host() {
+        // Owner report (1.1.2): URL typed, key saved, consent accepted, but
+        // "Test connection" sent no key (401): nothing had recorded consent
+        // for the typed host while Custom was not saved yet.
+        let url = "http://100.64.0.99:4100/v1";
+        let saved = || Some("sk-saved-LEAKCHECK".to_string());
+        let mut d = dev();
+        assert!(crate::credentials::saved_custom_key_withheld(
+            false,
+            true,
+            &d.cloud.custom_cleanup,
+            url
+        ));
+        apply_custom_key_consent(&mut d, url, 7).unwrap();
+        assert_eq!(d.cloud.cleanup_provider, CleanupProvider::OpenRouter);
+        assert_eq!(d.cloud.custom_cleanup.base_url, url);
+        let cc = &d.cloud.custom_cleanup;
+        assert!(!crate::credentials::saved_custom_key_withheld(
+            false, true, cc, url
+        ));
+        assert_eq!(
+            crate::credentials::custom_key_for(None, saved, cc, url).unwrap(),
+            Some("sk-saved-LEAKCHECK".into())
+        );
+        // The later switch to Custom needs no second consent for that host.
+        apply_custom_cleanup(&mut d, &custom("custom", url, "m", false), 9).unwrap();
+        assert!(d.cloud.cleanup_consent_ok());
+        // With Custom live, a test of another host cannot move its consent.
+        assert!(apply_custom_key_consent(&mut d, "http://100.64.0.98:4100", 11).is_err());
+        assert_eq!(d.cloud.custom_cleanup.consent_host, "100.64.0.99");
+        assert!(apply_custom_key_consent(&mut d, "not a url", 11).is_err());
+    }
+
+    #[test]
     fn custom_address_is_the_router_normaliser() {
         let v = custom_address("http://[2001:DB8::0:1]:4000/", "m-1");
         assert_eq!(v["url"], "http://[2001:db8::1]:4000/v1");
@@ -731,46 +799,67 @@ mod tests {
     }
 
     #[test]
-    fn provider_switch_needs_a_url_and_a_model() {
+    fn custom_is_saved_when_picked_and_used_once_ready() {
         let mut d = dev();
         // The provider is typed: an unknown one never reaches the settings.
         assert!(serde_json::from_value::<CustomCleanupForm>(
             serde_json::json!({"provider": "lmstudio", "timeout_ms": 4000})
         )
         .is_err());
-        assert_eq!(
-            apply_custom_cleanup(&mut d, &custom("custom", "", "m", false), 5).unwrap_err(),
-            "Enter your server's base URL"
-        );
-        assert!(apply_custom_cleanup(
-            &mut d,
-            &custom("custom", "http://10.0.0.5:4000", "", false),
-            5
-        )
-        .is_err());
-        assert_eq!(
-            d.cloud.cleanup_provider,
-            CleanupProvider::OpenRouter,
-            "refused = unchanged"
-        );
-        // The URL can be typed while OpenRouter is still selected.
+        // Owner report (1.1.2): Custom picked, address typed, no model yet.
+        // It is saved as picked, so the selector (and a reload after the
+        // key's Save) shows Custom, and the router skips it until ready.
+        apply_custom_cleanup(&mut d, &custom("custom", "", "", false), 5).unwrap();
+        assert_eq!(d.cloud.cleanup_provider, CleanupProvider::Custom);
+        assert!(!d.cloud.cleanup_ready());
         apply_custom_cleanup(
             &mut d,
-            &custom("openrouter", "http://10.0.0.5:4000", "", false),
+            &custom("custom", "http://10.0.0.5:4000", "", false),
             5,
         )
         .unwrap();
+        assert_eq!(d.cloud.cleanup_provider, CleanupProvider::Custom);
         assert_eq!(d.cloud.custom_cleanup.base_url, "http://10.0.0.5:4000/v1");
+        assert!(!d.cloud.cleanup_ready());
         apply_custom_cleanup(
             &mut d,
             &custom("custom", "http://10.0.0.5:4000/v1", "gpt-4o-mini", false),
             5,
         )
         .unwrap();
-        assert_eq!(d.cloud.cleanup_provider, CleanupProvider::Custom);
+        assert!(d.cloud.cleanup_ready());
         apply_custom_cleanup(&mut d, &custom("openrouter", "", "", false), 5).unwrap();
         assert_eq!(d.cloud.cleanup_provider, CleanupProvider::OpenRouter);
         assert!(d.cloud.custom_cleanup.base_url.is_empty());
+    }
+
+    #[test]
+    fn a_ready_custom_server_needs_consent_while_cleanup_is_on() {
+        let mut d = dev();
+        d.cloud.openrouter.cleanup.consent_host = OPENROUTER_HOST.into();
+        d.cloud.openrouter.cleanup.consent_at_ms = 1;
+        d.set_cleanup_on(CleanupRoute::Cloud, true);
+        // Not ready yet: saved without asking.
+        apply_custom_cleanup(
+            &mut d,
+            &custom("custom", "http://10.0.0.5:4000", "", false),
+            5,
+        )
+        .unwrap();
+        // Ready on a host not agreed to: refused until consent comes.
+        let ready = custom("custom", "http://10.0.0.5:4000", "m", false);
+        assert!(apply_custom_cleanup(&mut d, &ready, 6).is_err());
+        assert!(
+            d.cloud.custom_cleanup.model.is_empty(),
+            "refused = unchanged"
+        );
+        apply_custom_cleanup(
+            &mut d,
+            &custom("custom", "http://10.0.0.5:4000", "m", true),
+            7,
+        )
+        .unwrap();
+        assert!(d.cloud.cleanup_ready() && d.cloud.cleanup_consent_ok());
     }
 
     #[test]
