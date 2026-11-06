@@ -26,7 +26,7 @@ tasks=(assembleLocalDebug assembleHybridDebug assembleRemoteDebug)
 for f in "${flavors[@]}"; do
   cp "app/build/outputs/apk/$f/debug/app-$f-debug.apk" "dist/flow-clone-$f-debug.apk"
   tools/probes/check_native_so.sh --flavor "$f" "dist/flow-clone-$f-debug.apk" > "dist/check-$f.txt" 2>&1 \
-    || { cat "dist/check-$f.txt"; echo "native gate failed for $f" >&2; exit 1; }
+    || { cat "dist/check-$f.txt" >&2; echo "native gate failed for $f (see the FAIL lines above)" >&2; exit 1; }
   if [[ $release == 1 ]]; then
     for r in "app/build/outputs/apk/$f/release/"*.apk; do
       cp "$r" "dist/flow-clone-$f-$(basename "$r" | sed -E "s/^app-$f-//")"
