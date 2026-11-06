@@ -92,12 +92,19 @@ data class Settings(
      */
     val keepBothLanguages: Boolean = false,
 ) {
+    /** D37 / D58: the dictation language follows the keyboard (read at the start and again at the stop). */
+    val followsKeyboard: Boolean get() = language == LANGUAGE_KEYBOARD
+
     companion object {
         /** "Phone language": follow the phone ([LanguageDefault.effective]). */
         const val LANGUAGE_UNSET = ""
 
-        /** D37 "Keyboard language": the active keyboard's language at dictation start, else the phone's. */
+        /** D37 "Keyboard language": the active keyboard's language (D58: the one active when the recording stops), else the phone's. */
         const val LANGUAGE_KEYBOARD = "keyboard"
+
+        /** [SessionConfig.languages] for an effective [language]: unset / "auto" = detect (empty). */
+        fun sessionLanguages(language: String): List<String> =
+            if (language == "auto" || language.isBlank()) emptyList() else listOf(language)
 
         /**
          * The stored language after the 2026-10-23 default change (auto → phone language).
@@ -186,7 +193,7 @@ data class Settings(
 
     /** [language]: the effective one ([LanguageDefault.effective]); unset / "auto" = detect. [cloudCleanup]: see [cleanupFor]. */
     fun toSessionConfig(dictionary: List<DictEntry>, language: String = this.language, cloudCleanup: Boolean = false) = SessionConfig(
-        languages = if (language == "auto" || language.isBlank()) emptyList() else listOf(language),
+        languages = sessionLanguages(language),
         dictionary = dictionary,
         cleanupLevel = cleanupFor(cloudCleanup),
         rawMode = cleanupFor(cloudCleanup) == CleanupLevel.NONE,
@@ -238,7 +245,10 @@ object LanguageDefault {
     enum class Source(val wire: String) { KEYBOARD("keyboard"), PHONE("phone"), FIXED("fixed") }
 
     /** The language the next dictation uses ("auto" = detect) and where it came from. */
-    data class Resolved(val language: String, val source: Source)
+    data class Resolved(val language: String, val source: Source) {
+        /** [SessionConfig.languages] for it ([Settings.sessionLanguages]). */
+        val sessionLanguages: List<String> get() = Settings.sessionLanguages(language)
+    }
 
     /**
      * [deviceLanguage] = `Locale.getDefault().language`; [asr] = the loaded local ASR (null: none);

@@ -8,7 +8,9 @@
 //! the session's forced language, so a Hebrew layout routes to the Hebrew
 //! model (D33). A layout whose language is unknown, or none, keeps today's
 //! behaviour: `prefs.languages` (empty = auto-detect, with language ID when
-//! `lid_path` is set, D34).
+//! `lid_path` is set, D34). D58: the layout is read again when the
+//! recording stops, and that language decides (a change re-runs the
+//! recording, `controller::rerun_in_stop_language`).
 //!
 //! The mapping and the resolution are pure (tested on any host); the
 //! Win32 read is in [`win`].

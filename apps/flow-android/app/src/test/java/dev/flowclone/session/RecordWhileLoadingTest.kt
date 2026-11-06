@@ -61,6 +61,12 @@ class RecordWhileLoadingTest {
         override fun endpointSilenceMs() = endpointMs
         override fun engineLoading(message: String) { loadingNotices += message }
         override fun onDictationTrace(trace: dev.flowclone.debug.DictationTrace) { traces += trace }
+        /** D58: the keyboard's languages at the stop (null = not followed) and what preparing them does. */
+        var keyboardAtStop: List<String>? = null
+        var onPrepare: () -> Unit = {}
+        override fun followsKeyboard() = keyboardAtStop != null
+        override fun stopLanguage() = keyboardAtStop?.let { DictationController.StopLanguage(it, "keyboard") }
+        override fun prepareStopLanguage() = onPrepare()
     }
 
     /**
@@ -70,10 +76,12 @@ class RecordWhileLoadingTest {
     private class HybridRouter(val inner: FakeFlowCore = FakeFlowCore("a synthetic sentence")) : FlowCore by inner {
         var localStarts = 0
         var serverStarts = 0
+        /** The engine a normal start reports ("local": the router chose the phone). */
+        var startEngine = "remote"
         override fun startSessionInfo(cfg: SessionConfig): StartInfo {
             serverStarts++
             inner.startSession(cfg)
-            return StartInfo(route = SessionRoute("remote", server = "192.0.2.1:7313"))
+            return StartInfo(route = SessionRoute(startEngine, server = "192.0.2.1:7313".takeIf { startEngine == "remote" }))
         }
         override fun startSessionLocal(cfg: SessionConfig): StartInfo {
             localStarts++
@@ -124,6 +132,75 @@ class RecordWhileLoadingTest {
         settle()
         assertEquals(listOf("a synthetic sentence"), host.inserted)
         assertEquals(DictationState.Ready, c.state.value)
+    }
+
+    /**
+     * D58: the stop language needs the other model: it loads at the stop, the bubble names it
+     * while processing, and the recording is still transcribed (on the phone) and inserted.
+     */
+    @Test fun aStopLanguageWhoseModelIsNotLoadedLoadsItThenInserts() = runTest {
+        loading = false
+        router.startEngine = "local"
+        host.keyboardAtStop = listOf("he")
+        host.onPrepare = { loading = true } // the Hebrew model replaces the default one
+        val c = controller()
+        c.toggle(hold = false)
+        assertEquals("he", router.inner.lastConfig!!.languages.single())
+        mic.speak(1000)
+        host.keyboardAtStop = listOf("en")
+        tapAgain(c)
+        runCurrent()
+        assertTrue(c.state.value is DictationState.Processing)
+        assertEquals(LABEL, c.label())
+        finishLoad()
+        settle()
+        assertEquals(listOf("a synthetic sentence"), host.inserted)
+        assertEquals("en", router.inner.lastConfig!!.languages.single())
+        assertEquals("phone model: a local start", 1, router.localStarts)
+        assertNotNull(host.traces.single().loadWaitMs)
+        assertEquals("en", host.traces.single().stopLanguage)
+    }
+
+    /** D58: X while the stop language's model loads drops the dictation; the load's end starts nothing. */
+    @Test fun cancelWhileTheStopLanguageLoadsDropsTheDictation() = runTest {
+        loading = false
+        router.startEngine = "local"
+        host.keyboardAtStop = listOf("he")
+        host.onPrepare = { loading = true }
+        val c = controller()
+        c.toggle(hold = false)
+        mic.speak(1000)
+        host.keyboardAtStop = listOf("en")
+        tapAgain(c)
+        runCurrent()
+        assertEquals(LABEL, c.label())
+        c.cancel()
+        assertEquals(DictationState.Ready, c.state.value)
+        finishLoad()
+        settle()
+        assertTrue(host.inserted.isEmpty())
+        assertEquals("no re-run started", 0, router.localStarts)
+        assertEquals(1, router.serverStarts)
+        assertEquals(InsertOutcome.CANCELLED, host.traces.single().insert.outcome)
+    }
+
+    /** D58 hybrid: a dictation the server took is re-run there; the phone model is not swapped. */
+    @Test fun aServerDictationReRunsOnTheServerWithoutSwappingThePhoneModel() = runTest {
+        loading = false
+        host.keyboardAtStop = listOf("he")
+        var prepared = 0
+        host.onPrepare = { prepared++; loading = true }
+        val c = controller()
+        c.toggle(hold = false)
+        mic.speak(1000)
+        host.keyboardAtStop = listOf("en")
+        tapAgain(c)
+        settle()
+        assertEquals(listOf("a synthetic sentence"), host.inserted)
+        assertEquals(0, prepared)
+        assertEquals(2, router.serverStarts)
+        assertEquals(0, router.localStarts)
+        assertEquals("en", router.inner.lastConfig!!.languages.single())
     }
 
     @Test fun heldAudioIsTranscribedOnThePhoneNeverByTheServer() = runTest {

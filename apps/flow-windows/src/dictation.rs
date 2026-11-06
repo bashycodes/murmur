@@ -205,6 +205,9 @@ pub struct Policy {
     pub debounce_ms: u64,
     /// Processing longer than this is an error (Wispr: 35 s).
     pub processing_timeout_ms: u64,
+    /// D58: the budget instead when the stop language differs and the
+    /// whole recording is transcribed again (as Android's retry budget).
+    pub rerun_timeout_ms: u64,
     pub pasted_linger_ms: u64,
     /// Error pill shows this long, then rests (Wispr: 500 ms).
     pub error_linger_ms: u64,
@@ -219,6 +222,7 @@ impl Default for Policy {
             warn_ms: 19 * 60 * 1000,
             debounce_ms: 500,
             processing_timeout_ms: 35_000,
+            rerun_timeout_ms: 90_000,
             pasted_linger_ms: 0,
             error_linger_ms: 500,
             notice_linger_ms: 1500,
@@ -249,6 +253,9 @@ pub struct Dictation {
     auto_transform: bool,
     /// A notice to show once this session's paste is done.
     after_paste: Option<(SessionId, String)>,
+    /// D58: this session is transcribed again in its stop language
+    /// (processing gets `rerun_timeout_ms`).
+    rerun: Option<SessionId>,
 }
 
 impl Dictation {
@@ -259,7 +266,14 @@ impl Dictation {
             next_session: 1,
             auto_transform: false,
             after_paste: None,
+            rerun: None,
         }
+    }
+
+    /// D58: `session` is transcribed again in its stop language: its
+    /// processing runs on `rerun_timeout_ms` instead.
+    pub fn rerun(&mut self, session: SessionId) {
+        self.rerun = Some(session);
     }
 
     /// Auto-apply on or off (Transforms on and a transform chosen); read
@@ -412,6 +426,14 @@ impl Dictation {
         }
     }
 
+    fn processing_limit(&self, session: SessionId) -> u64 {
+        if self.rerun == Some(session) {
+            self.policy.rerun_timeout_ms
+        } else {
+            self.policy.processing_timeout_ms
+        }
+    }
+
     fn handle_processing(
         &mut self,
         session: SessionId,
@@ -499,7 +521,7 @@ impl Dictation {
                 }
                 Err(message) => self.fail(message, now_ms),
             },
-            Input::Tick if now_ms.saturating_sub(since_ms) >= self.policy.processing_timeout_ms => {
+            Input::Tick if now_ms.saturating_sub(since_ms) >= self.processing_limit(session) => {
                 let mut fx = vec![Effect::CancelSession(session)];
                 let why = if command {
                     "Command timed out"

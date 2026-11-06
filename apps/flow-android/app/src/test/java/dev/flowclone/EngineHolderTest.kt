@@ -8,7 +8,16 @@ import dev.flowclone.core.ModelConfig
 import dev.flowclone.core.AsrEngine
 import dev.flowclone.data.LoadSet
 import dev.flowclone.data.LoadedAsr
+import dev.flowclone.core.CommitResult
+import dev.flowclone.core.FieldContext
+import dev.flowclone.core.SessionConfig
+import dev.flowclone.session.AudioSource
+import dev.flowclone.session.DictationController
+import dev.flowclone.session.FeedbackEvent
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -155,6 +164,52 @@ class EngineHolderTest {
         waitFor("hebrew build") { (h.state.value as? EngineHolder.State.Ready)?.description == "fake he" }
         h.ensureLanguage()
         assertEquals(listOf("both", "he"), built.toList())
+    }
+
+    /**
+     * D58 + D54: with both languages kept loaded, a keyboard switch while recording re-runs the
+     * recording in the stop language on the loaded engine: the real [EngineHolder.ensureLanguage]
+     * path, and no load.
+     */
+    @Test fun withBothLoadedAStopLanguageSwitchReRunsWithoutALoad() {
+        want = LoadSet.Both
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        var keyboard = listOf("en")
+        var sink: ((ShortArray, Int) -> Unit)? = null
+        val inserted = CopyOnWriteArrayList<String>()
+        val host = object : DictationController.Host {
+            override fun feedback(e: FeedbackEvent) = Unit
+            override suspend fun insert(text: String): Boolean { inserted += text; return true }
+            override fun recordHistory(result: CommitResult, inserted: Boolean, appId: String?, outcome: String?) = Unit
+            override fun hasMicPermission() = true
+            override fun captureContext(): FieldContext? = null
+            override fun sessionConfig() = SessionConfig(languages = listOf("en"))
+            override fun onRecordingActive(active: Boolean) = Unit
+            override fun followsKeyboard() = true
+            override fun stopLanguage() = DictationController.StopLanguage(keyboard, "keyboard")
+            override fun prepareStopLanguage() = h.ensureLanguage()
+        }
+        val mic = object : AudioSource {
+            override fun start(onFrame: (ShortArray, Int) -> Unit): Boolean { sink = onFrame; return true }
+            override fun stop() { sink = null }
+        }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val c = DictationController(scope, mic, host, { h.current() }, Dispatchers.IO, now = System::currentTimeMillis)
+            c.onFieldFocusChanged(true)
+            c.toggle(hold = true)
+            repeat(10) { sink?.invoke(ShortArray(1600) { 3000 }, 1600) }
+            keyboard = listOf("he")
+            c.release()
+            waitFor("inserted") { inserted.isNotEmpty() }
+            assertEquals(listOf("both"), inserted.toList())
+            assertEquals("no load", listOf("both"), built.toList())
+            assertEquals(listOf("he"), cores["both"]!!.lastConfig!!.languages)
+        } finally {
+            scope.cancel()
+        }
     }
 
     @Test fun aLowMemoryUnloadReloadsBothModelsAtTheNextLoad() {
@@ -306,6 +361,30 @@ class EngineHolderTest {
         gates["default"]!!.countDown()
         val engine = runBlocking { got.await() }
         assertEquals(cores["default"], engine.core)
+    }
+
+    /**
+     * D37 / D55: a load re-reads the keyboard when it ends, so a dictation that waits for the
+     * default model while the keyboard switches to Hebrew is handed the Hebrew model (the
+     * pre-D58 way a mid-recording switch changed the result; D58's stop read then agrees).
+     */
+    @Test fun keyboardSwitchedWhileARecordingWaitsGetsTheNewLanguagesModel() {
+        assumeTrue(app.caps.local)
+        want = LoadSet.Default
+        gates["default"] = CountDownLatch(1)
+        gates["he"] = CountDownLatch(1)
+        val h = holder()
+        h.ensureLoaded()
+        waitFor("default build") { "default" in built }
+        val got = startWaiting(h.loadWait()!!)
+        want = LoadSet.Language("he") // the keyboard switched mid-recording
+        gates["default"]!!.countDown()
+        waitFor("hebrew build") { "he" in built }
+        Thread.sleep(50)
+        assertTrue("never the dropped default engine", got.isActive)
+        gates["he"]!!.countDown()
+        val engine = runBlocking { got.await() }
+        assertEquals(cores["he"], engine.core)
     }
 
     @Test fun aFailedLoadFailsTheWait() {
