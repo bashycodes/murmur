@@ -13,8 +13,9 @@ const CLOUD_HINTS = {
     circuit_open: "paused after recent failures",
     consent_needed: "consent needed: press again and accept, or paste the key",
 };
-export function cloudHint(code) {
-    return code ? (CLOUD_HINTS[code] ?? code) : "?";
+/** The words for `code`; `fallback` (default: the code itself, `?` for none) when unknown. */
+export function cloudHint(code, fallback) {
+    return code ? (CLOUD_HINTS[code] ?? fallback ?? code) : (fallback ?? "?");
 }
 /** `code — hint` (+ the backend's message) for a failed OpenRouter call. */
 export function failText(code, message) {
