@@ -627,7 +627,8 @@ class DictationController(
             }
             val cfg = host.sessionConfig().copy(maxSamples = cap.maxSamples, endpointSilenceMs = null, partialIntervalMs = null)
             // Not a child: a hung native call must be abandonable.
-            val pending = CoroutineScope(commitDispatcher).async { replay(c, cfg, ctx, pcm) { !isActive } }
+            val gen = generation
+            val pending = CoroutineScope(commitDispatcher).async { replay(c, cfg, ctx, pcm, gen) { !isActive } }
             val r = try {
                 withTimeoutOrNull(RETRY_TIMEOUT_MS) { pending.await() }
             } catch (e: CoreException) {
@@ -654,26 +655,32 @@ class DictationController(
     /**
      * D35 / D58: feeds a whole recording into a new session on [c] (100 ms chunks, like the
      * microphone) and commits; History's Retry and the re-run in the stop language. [stop] is
-     * checked before the start and before every chunk: once true the session is cancelled and
-     * the result is `cancelled`, so nothing of it reaches a later dictation. Blocking: run it
+     * checked before the start, before every chunk and before the commit: once true the result
+     * is `cancelled`, so nothing of it reaches a later dictation, and the session is cancelled
+     * unless a dictation started since [gen] (the core is then that dictation's). Blocking: run it
      * on [commitDispatcher]. Throws the start's [CoreException].
      */
     private fun replay(
-        c: FlowCore, cfg: SessionConfig, ctx: FieldContext?, pcm: ShortArray,
+        c: FlowCore, cfg: SessionConfig, ctx: FieldContext?, pcm: ShortArray, gen: Long,
         phoneOnly: Boolean = false, stop: () -> Boolean,
     ): CommitResult {
         val cancelled = CommitResult(CommitStatus.ERROR, error = "cancelled")
+        // An abandoned replay that sees its stop late: the core may hold a newer dictation by now.
+        fun abandon(): CommitResult {
+            if (generation == gen) runCatching { c.cancel() }
+            return cancelled
+        }
         if (stop()) return cancelled
         if (phoneOnly) c.startSessionLocal(cfg) else c.startSessionInfo(cfg)
         ctx?.let(c::setContext)
         var i = 0
         while (i < pcm.size) {
-            if (stop()) { runCatching { c.cancel() }; return cancelled }
+            if (stop()) return abandon()
             val n = minOf(RETRY_CHUNK, pcm.size - i)
             c.pushAudio(pcm.copyOfRange(i, i + n), n)
             i += n
         }
-        if (stop()) { runCatching { c.cancel() }; return cancelled }
+        if (stop()) return abandon()
         return c.commit()
     }
 
@@ -996,7 +1003,7 @@ class DictationController(
                 // Its own isActive: a parent waiting for a running child stays active.
                 pending = async(commitDispatcher) {
                     try {
-                        replay(c, relangCfg, ctx, pcmAll, got.phoneOnly) { !isActive || generation != gen }
+                        replay(c, relangCfg, ctx, pcmAll, gen, got.phoneOnly) { !isActive || generation != gen }
                             .also { diag = try { c.lastRouteDiag() } catch (_: Throwable) { null } }
                     } catch (e: CoreException) {
                         CommitResult(CommitStatus.ERROR, error = e.message ?: "start failed")

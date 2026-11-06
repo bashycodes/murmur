@@ -262,6 +262,35 @@ class DictationControllerTest {
     }
 
     /**
+     * D58 review 2: an abandoned re-run whose push returns after a new dictation started must
+     * not cancel that dictation's session on the shared core.
+     */
+    @Test fun aLateReplayPushDoesNotCancelTheNextDictation() = runTest {
+        val hooked = Hooked(core, hookAt = 2)
+        val gate = java.util.concurrent.CountDownLatch(1)
+        hooked.onPush = { gate.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+        val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val c = controller(hooked, dispatcher = pool.asCoroutineDispatcherForTest())
+            dictateAndSwitch(c)
+            until { hooked.pushesToHooked == 1 }
+            advanceTimeBy(DictationController.RETRY_TIMEOUT_MS + 1); runCurrent()
+            assertEquals(DictationState.Error(ErrorKind.FailedToTranscribe), c.state.value)
+            host.keyboardAtStop = listOf("en")
+            advanceTimeBy(DictationController.TOGGLE_DEBOUNCE_MS)
+            c.toggle(hold = false)
+            assertTrue(c.state.value is DictationState.Recording)
+            gate.countDown()
+            pool.submit {}.get(5, java.util.concurrent.TimeUnit.SECONDS) // the stale replay has returned
+            audio.speak()
+            advanceTimeBy(600)
+            c.toggle(hold = false)
+            until { host.inserted.isNotEmpty() }
+            assertEquals(listOf("hello world"), host.inserted)
+        } finally { pool.shutdownNow() }
+    }
+
+    /**
      * D58 review 2: a hung native commit of the re-run is abandoned at the timeout: a new
      * dictation can start, and the late result reaches nothing.
      */
