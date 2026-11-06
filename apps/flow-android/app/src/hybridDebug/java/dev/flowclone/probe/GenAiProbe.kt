@@ -102,10 +102,10 @@ object GenAiProbe {
     fun cancel() { runJob?.cancel() }
 
     /**
-     * One recognition. [clip] null = the mic. [trigger] is "screen" or "overlay". The run's
-     * record is logged (files/probe-english.jsonl + logcat) and handed to [l].
+     * One recognition. [clip] null = the mic. [trigger] is "screen", "overlay" or "batch". The run's
+     * record is handed to [l], and logged (files/probe-english.jsonl + logcat) when [log].
      */
-    fun run(ctx: Context, advanced: Boolean, clip: ProbeRuntime.Clip?, trigger: String, l: RunListener) {
+    fun run(ctx: Context, advanced: Boolean, clip: ProbeRuntime.Clip?, trigger: String, l: RunListener, log: Boolean = true) {
         if (running) { l.onState("a GenAI run is already going"); return }
         val app = ctx.applicationContext
         val onTop = ProbeRuntime.probeOnTop
@@ -190,8 +190,7 @@ object GenAiProbe {
                     "base_model" to "n/a (alpha1 has no getBaseModelName)",
                 ),
             )
-            val line = ProbeRuntime.append(app, rec)
-            l.onDone(rec, line)
+            l.onDone(rec, if (log) ProbeRuntime.append(app, rec) else rec.toJsonLine())
         }
     }
 }

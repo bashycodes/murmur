@@ -11,6 +11,7 @@ import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.text.InputType
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -162,6 +163,30 @@ class EnglishProbeActivity : Activity() {
             PlatformProbe.run(this, c, ProbeRuntime.biasing, ProbeRuntime.formatting, "screen", pOut.listener(null, ""))
         }
         button("Platform: cancel run") { PlatformProbe.cancel() }
+
+        // ---------------- folder batch ----------------
+        header("FOLDER BATCH (parity scorecard)")
+        text("Every WAV in <external files>/${ProbeBatchPlan.DIR}/<set>/ (any PCM16 WAV; 16 kHz mono needs no resampling) " +
+            "through the ticked engines, one at a time, at the pacing above. GenAI uses the mode above; platform runs " +
+            "a segmented session, no biasing, no formatting. One JSON line per file and engine in " +
+            "${ProbeBatchPlan.DIR}/${ProbeBatchPlan.RESULTS}/batch-<UTC start>.jsonl. Keep this screen on top.", 13f)
+        val bFolder = text(ProbeBatch.describe(this), 12f)
+        val bSets = edit("", "Sets (comma list; blank = all)")
+        var bGenAi = true
+        var bPlatform = true
+        check("Batch: GenAI (Gemini Nano)", bGenAi) { bGenAi = it }
+        check("Batch: platform recognizer", bPlatform) { bPlatform = it }
+        val bState = text("", 13f)
+        button("Run folder batch") {
+            bFolder.text = ProbeBatch.describe(this)
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            ProbeBatch.run(
+                this, bSets.text.toString(), ProbeBatch.Engines(bGenAi, ProbeRuntime.genAiAdvanced, bPlatform),
+                progress = { bState.text = it },
+                done = { bState.text = it; window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) },
+            )
+        }
+        button("Stop batch") { ProbeBatch.stop() }
 
         // ---------------- overlay ----------------
         header("OVERLAY TEST (another app on top)")

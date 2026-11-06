@@ -64,6 +64,9 @@ object ProbeCodes {
 
     fun mode(advanced: Boolean) = if (advanced) "advanced" else "basic"
 
+    /** A recognizer's best non-blank hypothesis ("" if none): some lists lead with an empty string. */
+    fun firstNonBlank(hypotheses: List<String?>): String = hypotheses.firstOrNull { !it.isNullOrBlank() }?.trim().orEmpty()
+
     /**
      * `checkRecognitionSupport` → one word for [lang]: installed, pending (download queued),
      * supported (on-device, not installed), online (only online), or unsupported.
@@ -254,4 +257,38 @@ object ProbePcm {
     }
 
     fun durationMs(samples: Int, rate: Int = RATE): Long = samples * 1000L / rate
+}
+
+/**
+ * Folder batch (parity scorecard): which files of a set folder run, their clip ids, and the one
+ * JSON line each (file, engine) run appends to the batch results file. Pure, so it unit-tests.
+ */
+object ProbeBatchPlan {
+    const val DIR = "nano-batch"
+    const val RESULTS = "results"
+
+    /** The WAVs of a set folder, by name (the clip ids sort like the eval's refs). */
+    fun wavs(names: List<String>): List<String> =
+        names.filter { it.endsWith(".wav", ignoreCase = true) && !it.startsWith(".") }.sorted()
+
+    /** Clip id = file name without ".wav" (the id score.py's refs use). */
+    fun clipId(fileName: String): String =
+        if (fileName.endsWith(".wav", ignoreCase = true)) fileName.dropLast(4) else fileName
+
+    /** Set folders to run: [only] if given (and present), else every folder but the results one. */
+    fun sets(dirs: List<String>, only: String): List<String> {
+        val all = dirs.filter { it != RESULTS && !it.startsWith(".") }.sorted()
+        val want = only.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        return if (want.isEmpty()) all else want.filter { it in all }
+    }
+
+    /** Results file name for one batch session; never overwrites an earlier session's file. */
+    fun resultsName(startedAtUtc: String): String = "batch-$startedAtUtc.jsonl"
+
+    /** No result this long after a clip's audio should have ended → cancel that run. */
+    fun watchdogMs(audioMs: Long, realTime: Boolean): Long = (if (realTime) audioMs else 0L) + 60_000L
+
+    /** The run's own probe-english line ([ProbeRecord.toJsonLine]) plus its "set" and clip "id". */
+    fun line(set: String, id: String, r: ProbeRecord): String =
+        JSONObject(r.toJsonLine()).put("set", set).put("id", id).toString()
 }
