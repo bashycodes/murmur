@@ -19,3 +19,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Decision ids unique
         run: tools/checks/decision-ids.sh
+      # The android-build native gate on a stub toolchain: no SIGPIPE flake,
+      # and a failure names its check.
+      - name: Native gate test
+        run: apps/flow-android/tools/probes/check_native_so_test.sh
