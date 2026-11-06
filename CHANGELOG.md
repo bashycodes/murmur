@@ -18,6 +18,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Changed
 
+- **The keyboard active when you stop dictating decides the language** (Android and Windows, with the language following the keyboard). Switch from English to Hebrew mid-dictation and the whole recording is transcribed in Hebrew; on the phone the other speech model loads first if it isn't loaded (the bubble says so), and with *Keep both languages loaded* nothing loads. The same keyboard throughout works as before. The debug log line gains `start_language` and `stop_language` (D58).
 - **Windows: hold Right Alt to dictate.** Right Alt is the new push-to-talk key instead of Ctrl+Win, and it starts at once like any push-to-talk key; if you never changed Ctrl+Win, it moves to Right Alt on the next start, so Ctrl+Win alone no longer dictates (set it back in Settings → General → Shortcuts if you prefer it; a shortcut you picked stays). While Right Alt is your push-to-talk key, no app sees it: it never opens a menu bar, and on keyboards where Right Alt is AltGr (Hebrew, many European layouts) it no longer types AltGr letters; type them with Left Ctrl+Left Alt instead. The tray tooltip names your push-to-talk key. Hands-free (Ctrl+Win+Space) and Command Mode (Ctrl+Win+Alt) are unchanged (D57).
 
 ## [1.1.2] - 2026-11-05

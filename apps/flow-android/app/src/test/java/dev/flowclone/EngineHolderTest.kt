@@ -309,9 +309,9 @@ class EngineHolderTest {
     }
 
     /**
-     * D58: a dictation started on the English keyboard while the default model loads (D55), with
-     * the keyboard switched to Hebrew before the load ends, is handed the Hebrew model: the load
-     * re-reads the keyboard when it ends. Nothing but the keyboard changes (no tap, no ensureLanguage).
+     * D37 / D55: a load re-reads the keyboard when it ends, so a dictation that waits for the
+     * default model while the keyboard switches to Hebrew is handed the Hebrew model (the
+     * pre-D58 way a mid-recording switch changed the result; D58's stop read then agrees).
      */
     @Test fun keyboardSwitchedWhileARecordingWaitsGetsTheNewLanguagesModel() {
         assumeTrue(app.caps.local)

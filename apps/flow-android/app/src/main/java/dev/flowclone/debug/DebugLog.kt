@@ -37,6 +37,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * Since 2026-10-27: source (mic | wav: debug builds can feed a WAV file as the microphone).
  * D37 (2026-10-31): language_source (keyboard | phone | fixed: where `language` came from).
  * 2026-11-02 (local-cleanup-skipped): llm_off (why no AI cleanup was tried when `llm` is null).
+ * D58 (2026-11-06): start_language / stop_language (the keyboard read at the start and at the stop;
+ * stop_language null = not re-read); `language` is the one used (the stop one).
  *
  * Logging must never affect dictation: entries are queued (bounded, drop-oldest) and written
  * on one background thread; every failure is swallowed and counted.
@@ -60,6 +62,10 @@ data class DictationTrace(
     val language: String? = null,
     /** D37: where [language] came from: keyboard | phone | fixed (null = unknown). */
     val languageSource: String? = null,
+    /** D58: the language read at the start ("auto" = none forced). */
+    val startLanguage: String? = null,
+    /** D58: the language read at the stop; null = not re-read (the language does not follow the keyboard). */
+    val stopLanguage: String? = null,
     val rttMs: Long? = null,
     val audioMs: Long? = null,
     /** Last speech → stop (shell-side energy tracker); null when no speech was heard. */
@@ -277,6 +283,8 @@ object DebugFormat {
         "stt_cost_usd" to t.sttCostUsd,
         "source" to t.source,
         "language_source" to t.languageSource,
+        "start_language" to t.startLanguage,
+        "stop_language" to t.stopLanguage,
         "target" to t.target,
         "insert" to Raw(obj("outcome" to t.insert.outcome, "steps" to t.insert.steps)),
         "raw" to t.raw,

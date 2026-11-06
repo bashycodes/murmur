@@ -61,6 +61,12 @@ class RecordWhileLoadingTest {
         override fun endpointSilenceMs() = endpointMs
         override fun engineLoading(message: String) { loadingNotices += message }
         override fun onDictationTrace(trace: dev.flowclone.debug.DictationTrace) { traces += trace }
+        /** D58: the keyboard's languages at the stop (null = not followed) and what preparing them does. */
+        var keyboardAtStop: List<String>? = null
+        var onPrepare: () -> Unit = {}
+        override fun followsKeyboard() = keyboardAtStop != null
+        override fun stopLanguages() = keyboardAtStop
+        override fun prepareStopLanguage() = onPrepare()
     }
 
     /**
@@ -124,6 +130,32 @@ class RecordWhileLoadingTest {
         settle()
         assertEquals(listOf("a synthetic sentence"), host.inserted)
         assertEquals(DictationState.Ready, c.state.value)
+    }
+
+    /**
+     * D58: the stop language needs the other model: it loads at the stop, the bubble names it
+     * while processing, and the recording is still transcribed (on the phone) and inserted.
+     */
+    @Test fun aStopLanguageWhoseModelIsNotLoadedLoadsItThenInserts() = runTest {
+        loading = false
+        host.keyboardAtStop = listOf("he")
+        host.onPrepare = { loading = true } // the Hebrew model replaces the default one
+        val c = controller()
+        c.toggle(hold = false)
+        assertEquals("he", router.inner.lastConfig!!.languages.single())
+        mic.speak(1000)
+        host.keyboardAtStop = listOf("en")
+        tapAgain(c)
+        runCurrent()
+        assertTrue(c.state.value is DictationState.Processing)
+        assertEquals(LABEL, c.label())
+        finishLoad()
+        settle()
+        assertEquals(listOf("a synthetic sentence"), host.inserted)
+        assertEquals("en", router.inner.lastConfig!!.languages.single())
+        assertEquals("phone model: a local start", 1, router.localStarts)
+        assertNotNull(host.traces.single().loadWaitMs)
+        assertEquals("en", host.traces.single().stopLanguage)
     }
 
     @Test fun heldAudioIsTranscribedOnThePhoneNeverByTheServer() = runTest {
