@@ -92,6 +92,9 @@ data class Settings(
      */
     val keepBothLanguages: Boolean = false,
 ) {
+    /** D37 / D58: the dictation language follows the keyboard (read at the start and again at the stop). */
+    val followsKeyboard: Boolean get() = language == LANGUAGE_KEYBOARD
+
     companion object {
         /** "Phone language": follow the phone ([LanguageDefault.effective]). */
         const val LANGUAGE_UNSET = ""
@@ -242,7 +245,10 @@ object LanguageDefault {
     enum class Source(val wire: String) { KEYBOARD("keyboard"), PHONE("phone"), FIXED("fixed") }
 
     /** The language the next dictation uses ("auto" = detect) and where it came from. */
-    data class Resolved(val language: String, val source: Source)
+    data class Resolved(val language: String, val source: Source) {
+        /** [SessionConfig.languages] for it ([Settings.sessionLanguages]). */
+        val sessionLanguages: List<String> get() = Settings.sessionLanguages(language)
+    }
 
     /**
      * [deviceLanguage] = `Locale.getDefault().language`; [asr] = the loaded local ASR (null: none);
