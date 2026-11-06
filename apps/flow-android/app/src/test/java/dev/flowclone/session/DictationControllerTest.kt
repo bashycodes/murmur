@@ -82,6 +82,12 @@ class DictationControllerTest {
         override fun onInserted(pasted: String, context: FieldContext?, sentKey: Boolean) { insertedFor += Triple(pasted, context, sentKey) }
         val loadingNotices = mutableListOf<String>()
         override fun engineLoading(message: String) { loadingNotices += message }
+        /** D58: the keyboard's languages at the stop; null = the language does not follow the keyboard. */
+        var keyboardAtStop: List<String>? = null
+        var prepared = 0
+        override fun followsKeyboard() = keyboardAtStop != null
+        override fun stopLanguage() = keyboardAtStop?.let { DictationController.StopLanguage(it, "keyboard") }
+        override fun prepareStopLanguage() { prepared++ }
     }
 
     /** advanceUntilIdle ignores backgroundScope work, where the controller lives. */
@@ -131,6 +137,247 @@ class DictationControllerTest {
         assertEquals(1, audio.stops)
         assertEquals(listOf(true, false), host.recordingActive)
         assertTrue(host.history.single().second)
+    }
+
+    /** D58: the keyboard active when the recording stops decides; the whole recording is transcribed again in it. */
+    @Test fun keyboardSwitchedMidRecordingUsesTheStopLanguage() = runTest {
+        host.keyboardAtStop = listOf("en")
+        val c = controller()
+        c.toggle(hold = false)
+        assertEquals("en", core.lastConfig!!.languages.single())
+        audio.speak()
+        host.keyboardAtStop = listOf("he") // the keyboard switched while recording
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals(listOf("hello world"), host.inserted)
+        assertEquals("he", core.lastConfig!!.languages.single())
+        assertEquals("the whole recording, again", 16_000, core.samplesPushed)
+        assertEquals(1, host.prepared)
+        val t = host.traces.single()
+        assertEquals(listOf("en", "he", "he"), listOf(t.startLanguage, t.stopLanguage, t.language))
+    }
+
+    @Test fun sameKeyboardAtTheStopTranscribesOnceWithoutAReload() = runTest {
+        host.keyboardAtStop = listOf("en")
+        val c = controller()
+        c.toggle(hold = false)
+        audio.speak()
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals(listOf("hello world"), host.inserted)
+        assertEquals(0, host.prepared)
+        val t = host.traces.single()
+        assertEquals(listOf("en", "en", "en"), listOf(t.startLanguage, t.stopLanguage, t.language))
+    }
+
+    /** D58: a hands-free endpoint is a stop too; the replay itself has no endpoint. */
+    @Test fun aHandsFreeEndpointStopUsesTheStopLanguage() = runTest {
+        host.keyboardAtStop = listOf("en")
+        core.endpointAfterSamples = 16_000
+        val c = controller()
+        c.toggle(hold = false)
+        audio.speak(500)
+        host.keyboardAtStop = listOf("he")
+        audio.speak(600)
+        advanceTimeBy(DictationController.PARTIAL_POLL_MS + 1); runCurrent()
+        assertTrue("the endpoint stopped it", FeedbackEvent.StopSound in host.events)
+        settle()
+        assertEquals(listOf("hello world"), host.inserted)
+        assertEquals("he", core.lastConfig!!.languages.single())
+        assertEquals(null, core.lastConfig!!.endpointSilenceMs)
+        assertEquals(17_600, core.samplesPushed)
+        assertEquals("he", host.traces.single().stopLanguage)
+        assertEquals("keyboard", host.traces.single().languageSource)
+    }
+
+    /** A core whose re-run session (the [hookAt]-th start) calls [onPush] at its first chunk. */
+    private class Hooked(val inner: FakeFlowCore, val hookAt: Int) : FlowCore by inner {
+        @Volatile var starts = 0
+        @Volatile var pushesToHooked = 0
+        @Volatile var commitsToHooked = 0
+        var onPush: () -> Unit = {}
+        /** Runs inside the hooked session's commit; that commit then returns [lateText]. */
+        var onCommit: (() -> Unit)? = null
+        val lateText = "a late sentence"
+        override fun startSession(cfg: SessionConfig) { starts++; inner.startSession(cfg) }
+        override fun startSessionInfo(cfg: SessionConfig): dev.flowclone.core.StartInfo { startSession(cfg); return dev.flowclone.core.StartInfo() }
+        override fun startSessionLocal(cfg: SessionConfig) = startSessionInfo(cfg)
+        override fun pushAudio(pcm: ShortArray, length: Int): Boolean {
+            if (starts == hookAt) { pushesToHooked++; if (pushesToHooked == 1) onPush() }
+            return inner.pushAudio(pcm, length)
+        }
+        override fun commit(): CommitResult {
+            if (starts != hookAt) return inner.commit()
+            commitsToHooked++
+            val hook = onCommit ?: return inner.commit()
+            hook()
+            return CommitResult(
+                dev.flowclone.core.CommitStatus.RAW_TRANSCRIPT, asrText = lateText, finalText = lateText,
+                segments = listOf(dev.flowclone.core.PasteSegment.Text(lateText)), plainText = lateText,
+            )
+        }
+    }
+
+    /** Runs the scheduler until [done] holds, polling in real time: for work on a real thread. */
+    private fun TestScope.until(done: () -> Boolean) {
+        val end = System.currentTimeMillis() + 5_000
+        while (!done() && System.currentTimeMillis() < end) { runCurrent(); Thread.sleep(5) }
+        runCurrent()
+        assertTrue("timed out waiting", done())
+    }
+
+    /** Starts a dictation on [c], speaks a second, switches the keyboard to Hebrew and stops it. */
+    private fun TestScope.dictateAndSwitch(c: DictationController) {
+        host.keyboardAtStop = listOf("en")
+        c.toggle(hold = false)
+        audio.speak()
+        host.keyboardAtStop = listOf("he")
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+    }
+
+    /**
+     * D58 review 2: a re-run that times out stops feeding its session, though the processing
+     * job (its parent) stays active while it waits for the stuck child.
+     */
+    @Test fun aTimedOutReRunStopsItsReplay() = runTest {
+        val hooked = Hooked(core, hookAt = 2)
+        val gate = java.util.concurrent.CountDownLatch(1)
+        hooked.onPush = { gate.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+        val pool = java.util.concurrent.Executors.newCachedThreadPool()
+        try {
+            val c = controller(hooked, dispatcher = pool.asCoroutineDispatcherForTest())
+            dictateAndSwitch(c)
+            until { hooked.pushesToHooked == 1 }
+            advanceTimeBy(DictationController.RETRY_TIMEOUT_MS + 1); runCurrent()
+            assertEquals(DictationState.Error(ErrorKind.FailedToTranscribe), c.state.value)
+            gate.countDown()
+            pool.shutdown()
+            assertTrue(pool.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals("no chunk after the timeout", 1, hooked.pushesToHooked)
+            assertEquals("no commit after the timeout", 0, hooked.commitsToHooked)
+        } finally { pool.shutdownNow() }
+    }
+
+    /**
+     * D58 review 2: an abandoned re-run whose push returns after a new dictation started must
+     * not cancel that dictation's session on the shared core.
+     */
+    @Test fun aLateReplayPushDoesNotCancelTheNextDictation() = runTest {
+        val hooked = Hooked(core, hookAt = 2)
+        val gate = java.util.concurrent.CountDownLatch(1)
+        hooked.onPush = { gate.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+        val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+        try {
+            val c = controller(hooked, dispatcher = pool.asCoroutineDispatcherForTest())
+            dictateAndSwitch(c)
+            until { hooked.pushesToHooked == 1 }
+            advanceTimeBy(DictationController.RETRY_TIMEOUT_MS + 1); runCurrent()
+            assertEquals(DictationState.Error(ErrorKind.FailedToTranscribe), c.state.value)
+            host.keyboardAtStop = listOf("en")
+            advanceTimeBy(DictationController.TOGGLE_DEBOUNCE_MS)
+            c.toggle(hold = false)
+            assertTrue(c.state.value is DictationState.Recording)
+            gate.countDown()
+            pool.submit {}.get(5, java.util.concurrent.TimeUnit.SECONDS) // the stale replay has returned
+            audio.speak()
+            advanceTimeBy(600)
+            c.toggle(hold = false)
+            until { host.inserted.isNotEmpty() }
+            assertEquals(listOf("hello world"), host.inserted)
+        } finally { pool.shutdownNow() }
+    }
+
+    /**
+     * D58 review 2: a hung native commit of the re-run is abandoned at the timeout: a new
+     * dictation can start, and the late result reaches nothing.
+     */
+    @Test fun aHungReRunIsAbandonedAtTheTimeoutAndItsLateResultDropped() = runTest {
+        val hooked = Hooked(core, hookAt = 2)
+        val gate = java.util.concurrent.CountDownLatch(1)
+        hooked.onCommit = { gate.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+        val pool = java.util.concurrent.Executors.newCachedThreadPool()
+        try {
+            val c = controller(hooked, dispatcher = pool.asCoroutineDispatcherForTest())
+            dictateAndSwitch(c)
+            until { hooked.commitsToHooked == 1 }
+            advanceTimeBy(DictationController.RETRY_TIMEOUT_MS + 1); runCurrent()
+            assertEquals(DictationState.Error(ErrorKind.FailedToTranscribe), c.state.value)
+            advanceTimeBy(DictationController.TOGGLE_DEBOUNCE_MS)
+            c.toggle(hold = false)
+            assertTrue("a new dictation starts", c.state.value is DictationState.Recording)
+            gate.countDown()
+            pool.shutdown()
+            assertTrue(pool.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS))
+            runCurrent()
+            assertTrue(host.inserted.isEmpty())
+            assertTrue(c.state.value is DictationState.Recording)
+        } finally { pool.shutdownNow() }
+    }
+
+    /** D58 review 2: a start that used up the re-run's whole budget fails as a timeout, with no re-run. */
+    @Test fun aReRunWithNoBudgetLeftFailsAsATimeout() = runTest {
+        val gate = java.util.concurrent.CountDownLatch(1)
+        var starts = 0
+        core.onStart = { if (++starts == 1) gate.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+        val pool = java.util.concurrent.Executors.newCachedThreadPool()
+        try {
+            val c = DictationController(
+                backgroundScope, audio, host, { core }, StandardTestDispatcher(testScheduler), SessionCap(), { currentTime },
+                pool.asCoroutineDispatcherForTest(),
+            ).also { it.onFieldFocusChanged(true) }
+            dictateAndSwitch(c)
+            assertTrue(c.state.value is DictationState.Processing)
+            advanceTimeBy(DictationController.RERUN_TIMEOUT_MS + 1)
+            gate.countDown()
+            until { c.state.value is DictationState.Error }
+            assertEquals(DictationState.Error(ErrorKind.FailedToTranscribe), c.state.value)
+            assertEquals("no re-run session", 1, starts)
+            val t = host.traces.single()
+            assertEquals(dev.flowclone.debug.InsertOutcome.TIMEOUT, t.insert.outcome)
+            assertEquals("no result after ${DictationController.RERUN_TIMEOUT_MS} ms", t.error)
+        } finally { pool.shutdownNow() }
+    }
+
+    /** D58: X during the re-run stops its replay at the next chunk; nothing of it reaches the next dictation. */
+    @Test fun cancelDuringTheReRunStopsItAndTheNextDictationGetsOnlyItsOwnAudio() = runTest {
+        host.keyboardAtStop = listOf("en")
+        val hooked = Hooked(core, hookAt = 2)
+        val c = controller(hooked)
+        hooked.onPush = { c.cancel() }
+        c.toggle(hold = false)
+        audio.speak()
+        host.keyboardAtStop = listOf("he")
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals(DictationState.Ready, c.state.value)
+        assertEquals("the replay stopped after the chunk in flight", 1, hooked.pushesToHooked)
+        assertTrue(host.inserted.isEmpty())
+        // The next dictation (no switch): its own second only, inserted once.
+        host.keyboardAtStop = listOf("en")
+        advanceTimeBy(DictationController.TOGGLE_DEBOUNCE_MS)
+        c.toggle(hold = false)
+        assertEquals(3, hooked.starts)
+        audio.speak()
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals(16_000, core.samplesPushed)
+        assertEquals(listOf("hello world"), host.inserted)
+    }
+
+    @Test fun aLanguageNotFollowingTheKeyboardIsNotReadAtTheStop() = runTest {
+        val c = controller()
+        c.toggle(hold = false)
+        audio.speak()
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals(listOf("hello world"), host.inserted)
+        assertEquals(null, host.traces.single().stopLanguage)
     }
 
     @Test fun aSuccessfulInsertStartsTheEditWatchWithTheStartContext() = runTest {

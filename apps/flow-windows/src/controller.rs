@@ -221,8 +221,19 @@ struct SessionInfo {
     /// app"), kept with the recording for a retry.
     base_bucket: Option<crate::core_api::StyleBucket>,
     /// D37: the session's forced language (`None` = auto) and its source.
+    /// D58: the language the transcription used (the stop one).
     language: Option<String>,
     language_source: Option<crate::keyboard_language::Source>,
+    /// D58: the language read at the start and at the stop (debug log
+    /// `start_language` / `stop_language`; `stop_language` stays `None`
+    /// when the keyboard is not followed).
+    start_language: Option<String>,
+    stop_language: Option<String>,
+    /// D58: the start session's config, to transcribe again in the stop
+    /// language, and the whole recording for it (`None` = "Keyboard
+    /// language" off).
+    start_cfg: Option<crate::core_api::SessionConfig>,
+    rerun_audio: Option<Arc<Mutex<Vec<i16>>>>,
     /// Opened by the field snapshot thread once `context` is filled in (or
     /// there is none); `None` = no snapshot was taken.
     context_done: Option<Arc<StartGate>>,
@@ -922,6 +933,13 @@ impl Controller {
                     && prefs.retry_audio_keep > 0
                     && prefs.retention != crate::prefs::Retention::Never)
                     .then(|| Arc::new(Mutex::new(Vec::new())));
+                // D58: following the keyboard, the recording is kept for a
+                // re-run in the stop language (the Retry copy when there is one).
+                let rerun_audio = keep_audio.clone().or_else(|| {
+                    prefs
+                        .keyboard_language
+                        .then(|| Arc::new(Mutex::new(Vec::new())))
+                });
                 self.shared.sessions.lock().unwrap().insert(
                     session,
                     SessionInfo {
@@ -934,6 +952,9 @@ impl Controller {
                         audio: keep_audio.clone(),
                         language: cfg.languages.first().cloned(),
                         language_source: Some(language_source),
+                        start_language: Some(language_wire(&cfg.languages)),
+                        start_cfg: prefs.keyboard_language.then(|| cfg.clone()),
+                        rerun_audio: rerun_audio.clone(),
                         ..SessionInfo::default()
                     },
                 );
@@ -1041,7 +1062,7 @@ impl Controller {
                 let cap = prefs.policy().max_samples() as usize;
                 let sink: AudioSink = Box::new(move |pcm: &[i16]| {
                     samples.fetch_add(pcm.len() as u64, Ordering::Relaxed);
-                    if let Some(k) = &keep_audio {
+                    if let Some(k) = &rerun_audio {
                         let mut k = k.lock().unwrap();
                         let room = cap.saturating_sub(k.len());
                         k.extend_from_slice(&pcm[..pcm.len().min(room)]);
@@ -1100,6 +1121,11 @@ impl Controller {
                 ) {
                     self.begin_selection_capture(session);
                 }
+                // D58: the keyboard at the stop decides the language.
+                let rerun = self.apply_stop_language(session, &prefs);
+                if rerun.is_some() {
+                    self.machine.rerun(session);
+                }
                 let core = self.core.clone();
                 let tx = self.tx.clone();
                 let shared = self.shared.clone();
@@ -1113,9 +1139,12 @@ impl Controller {
                     // A start still connecting is waited for (its buffered
                     // audio is flushed first); a failed start is the error.
                     let started = gate.map_or(Ok(()), |g| g.wait(START_WAIT));
-                    let r = match started {
-                        Ok(()) => core.commit(),
-                        Err(m) => CommitResult::failed(m),
+                    let r = match (started, rerun) {
+                        (Ok(()), None) => core.commit(),
+                        (Ok(()), Some(rerun)) => {
+                            rerun_in_stop_language(&*core, &shared, session, rerun)
+                        }
+                        (Err(m), _) => CommitResult::failed(m),
                     };
                     let outcome = to_outcome(&r);
                     if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
@@ -1650,19 +1679,10 @@ fn run_retry(
     // D37: today's keyboard language too ("the settings active now").
     let mut cfg = prefs.session_config_for(crate::dictation::Mode::Ptt);
     apply_keyboard_language(&mut cfg, &prefs, platform);
-    core.start_session_info(cfg)?;
-    if prefs.use_ax_context {
-        core.set_context(retry_context(
-            &entry,
-            rec.bucket.as_deref(),
-            &prefs,
-            own_exe,
-        ));
-    }
-    for chunk in rec.pcm.chunks(1600) {
-        core.push_audio(chunk);
-    }
-    let r = core.commit();
+    let ctx = prefs
+        .use_ax_context
+        .then(|| retry_context(&entry, rec.bucket.as_deref(), &prefs, own_exe));
+    let (_, r) = replay_recording(core, cfg, ctx, &rec.pcm, &|| false)?;
     match r.status {
         CommitStatus::Error => {
             return Err(r.error.unwrap_or_else(|| "Retry failed".into()));
@@ -1841,6 +1861,135 @@ fn debug_entry(i: &SessionInfo, insert: &str, error: Option<String>) -> Entry {
             .and_then(|x| x.cost_usd),
         language: i.language.clone(),
         language_source: i.language_source.map(|s| s.as_str().to_string()),
+        start_language: i.start_language.clone(),
+        stop_language: i.stop_language.clone(),
+    }
+}
+
+/// D58: what a session whose stop language differs from its start one
+/// is transcribed with: the stop config, the recording, and the gate the
+/// field snapshot opens.
+struct Rerun {
+    cfg: crate::core_api::SessionConfig,
+    audio: Arc<Mutex<Vec<i16>>>,
+    context_done: Option<Arc<StartGate>>,
+}
+
+/// D58: how long a re-run waits for a field snapshot still running (the
+/// start gate is already open then, so it is normally done).
+const RERUN_CONTEXT_WAIT: Duration = Duration::from_secs(2);
+
+/// Debug log language: `None` (nothing forced) is `"auto"`.
+fn language_wire(languages: &[String]) -> String {
+    languages.first().cloned().unwrap_or_else(|| "auto".into())
+}
+
+impl Controller {
+    /// D58: reads the keyboard at the stop (the same rule as at the
+    /// start, [`apply_keyboard_language`]) and writes it into the
+    /// session: `stop_language` always; `language` and `language_source`
+    /// when it changed. `Some` when it changed since the start: the
+    /// session is then transcribed again in the stop language. Otherwise
+    /// the kept re-run audio is dropped (unless Retry keeps it).
+    fn apply_stop_language(&self, session: SessionId, prefs: &Prefs) -> Option<Rerun> {
+        let start = {
+            let g = self.shared.sessions.lock().unwrap();
+            g.get(&session)?.start_cfg.clone()?
+        };
+        let mut stop = start.clone();
+        stop.languages = prefs.session_config().languages;
+        // The replay ends itself: no hands-free endpoint, no preview.
+        stop.endpoint_silence_ms = None;
+        stop.partial_interval_ms = None;
+        let source = apply_keyboard_language(&mut stop, prefs, &*self.platform);
+        let mut g = self.shared.sessions.lock().unwrap();
+        let i = g.get_mut(&session)?;
+        i.stop_language = Some(language_wire(&stop.languages));
+        if stop.languages == start.languages {
+            // Not needed: let the copy go unless Retry keeps it.
+            if i.audio.is_none() {
+                if let Some(a) = i.rerun_audio.take() {
+                    std::mem::take(&mut *a.lock().unwrap());
+                }
+            }
+            return None;
+        }
+        let audio = i.rerun_audio.clone()?;
+        i.language = stop.languages.first().cloned();
+        i.language_source = Some(source);
+        Some(Rerun {
+            cfg: stop,
+            audio,
+            context_done: i.context_done.clone(),
+        })
+    }
+}
+
+/// Starts a session with `cfg`, sets `ctx`, pushes `pcm` in 100 ms
+/// chunks and commits: History's Retry and D58's re-run. `cancelled` is
+/// checked before the start, before every chunk and before the commit; a
+/// cancelled replay cancels its session and returns `"cancelled"`. The
+/// caller holds `start_lock`, so no dictation starts in between.
+fn replay_recording(
+    core: &dyn CoreApi,
+    cfg: crate::core_api::SessionConfig,
+    ctx: Option<FieldContext>,
+    pcm: &[i16],
+    cancelled: &dyn Fn() -> bool,
+) -> Result<(Option<crate::core_api::SessionRoute>, CommitResult), String> {
+    if cancelled() {
+        return Err("cancelled".into());
+    }
+    let route = core.start_session_info(cfg)?;
+    if let Some(ctx) = ctx {
+        core.set_context(ctx);
+    }
+    for chunk in pcm.chunks(1600) {
+        if cancelled() {
+            core.cancel();
+            return Err("cancelled".into());
+        }
+        core.push_audio(chunk);
+    }
+    if cancelled() {
+        core.cancel();
+        return Err("cancelled".into());
+    }
+    Ok((route, core.commit()))
+}
+
+/// D58: the keyboard changed while recording. The start-language session
+/// (and its live partials) is dropped, and the whole recording is
+/// transcribed again in the stop language, with the same field context,
+/// all under `start_lock`; Esc (`cancelled`) stops it at any point.
+fn rerun_in_stop_language(
+    core: &dyn CoreApi,
+    shared: &Shared,
+    session: SessionId,
+    rerun: Rerun,
+) -> CommitResult {
+    // The field snapshot thread is done with the old session first.
+    if let Some(d) = &rerun.context_done {
+        let _ = d.wait(RERUN_CONTEXT_WAIT);
+    }
+    let (cancelled, ctx) = match shared.sessions.lock().unwrap().get(&session) {
+        Some(i) => (i.cancelled.clone(), i.context.clone()),
+        None => return CommitResult::failed("cancelled"),
+    };
+    let _serial = shared.start_lock.lock().unwrap();
+    core.cancel();
+    let pcm = rerun.audio.lock().unwrap().clone();
+    let stop = || cancelled.load(Ordering::SeqCst);
+    match replay_recording(core, rerun.cfg, ctx, &pcm, &stop) {
+        Ok((route, r)) => {
+            if let Some(route) = route {
+                if let Some(i) = shared.sessions.lock().unwrap().get_mut(&session) {
+                    i.route_seen = Some(route);
+                }
+            }
+            r
+        }
+        Err(m) => CommitResult::failed(m),
     }
 }
 
@@ -1857,8 +2006,11 @@ fn apply_keyboard_language(
     } else {
         None
     };
-    let (languages, source) =
-        crate::keyboard_language::resolve(&cfg.languages, prefs.keyboard_language, keyboard.as_deref());
+    let (languages, source) = crate::keyboard_language::resolve(
+        &cfg.languages,
+        prefs.keyboard_language,
+        keyboard.as_deref(),
+    );
     cfg.languages = languages;
     source
 }
@@ -3560,10 +3712,270 @@ mod tests {
     }
 
     #[test]
+    fn keyboard_switched_mid_recording_uses_the_stop_language() {
+        // D58: the layout at the stop decides; the whole recording is
+        // transcribed again in that language and pasted.
+        let mem = MemSink::default();
+        let (mut r, log) = logged(
+            Prefs::default(),
+            keyboard(Some("en")),
+            Box::new(mem.clone()),
+            true,
+        );
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        *r.fake.keyboard.lock().unwrap() = Some("he".into());
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump(); // Committed
+        r.pump(); // PasteFinished
+        assert_eq!(r.core.last_config().unwrap().languages, ["he"]);
+        assert_eq!(
+            r.core.starts(),
+            2,
+            "the start session, then the stop-language one"
+        );
+        assert!(r
+            .fake
+            .log()
+            .contains(&"paste [stub: 1.0 s of audio]".to_string()));
+        let line = lines(&mem, &log).remove(0);
+        assert_eq!(line["start_language"], "en");
+        assert_eq!(line["stop_language"], "he");
+        assert_eq!(
+            (&line["language"], &line["language_source"]),
+            (&"he".into(), &"keyboard".into())
+        );
+    }
+
+    #[test]
+    fn same_keyboard_at_the_stop_transcribes_once() {
+        // D58: no change since the start: one session, no re-run.
+        let mem = MemSink::default();
+        let (mut r, log) = logged(
+            Prefs::default(),
+            keyboard(Some("he")),
+            Box::new(mem.clone()),
+            true,
+        );
+        dictate_then(&mut r, |_| {});
+        assert_eq!(r.core.starts(), 1);
+        assert_eq!(r.core.last_config().unwrap().languages, ["he"]);
+        let line = lines(&mem, &log).remove(0);
+        assert_eq!(
+            (&line["start_language"], &line["stop_language"]),
+            (&"he".into(), &"he".into())
+        );
+    }
+
+    #[test]
+    fn a_hands_free_endpoint_stop_uses_the_stop_language() {
+        let mut r = rig(keyboard(Some("en")), Prefs::default());
+        r.at(0, Input::Hotkey(HotkeyAction::HandsFreeToggle));
+        r.wait_config(1);
+        r.fake.feed_audio(&[1000; 16_000]);
+        *r.fake.keyboard.lock().unwrap() = Some("he".into());
+        r.core.set_poll(crate::core_api::Poll {
+            endpoint_reached: true,
+            ..Default::default()
+        });
+        r.at(3000, Input::Tick);
+        r.pump(); // Finish -> stop + commit
+        r.pump(); // Committed
+        r.pump(); // PasteFinished
+        assert_eq!(r.core.starts(), 2);
+        let cfg = r.core.last_config().unwrap();
+        assert_eq!(cfg.languages, ["he"]);
+        assert_eq!(cfg.endpoint_silence_ms, None, "the replay ends itself");
+        assert!(r
+            .fake
+            .log()
+            .iter()
+            .any(|l| l.starts_with("paste [stub: 1.0 s")));
+    }
+
+    /// D58: holds the `block_at`-th start until `open`; counts the
+    /// samples pushed into that session and later ones.
+    struct GatedStart {
+        inner: Arc<StubCore>,
+        block_at: usize,
+        entered: Arc<AtomicBool>,
+        open: Arc<AtomicBool>,
+        pushed_after: Arc<AtomicU64>,
+    }
+
+    impl CoreApi for GatedStart {
+        fn start_session(&self, cfg: crate::core_api::SessionConfig) -> Result<(), String> {
+            if self.inner.starts() + 1 == self.block_at {
+                self.entered.store(true, Ordering::SeqCst);
+                while !self.open.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+            }
+            self.inner.start_session(cfg)
+        }
+        fn push_audio(&self, pcm: &[i16]) {
+            if self.inner.starts() >= self.block_at {
+                self.pushed_after
+                    .fetch_add(pcm.len() as u64, Ordering::SeqCst);
+            }
+            self.inner.push_audio(pcm)
+        }
+        fn set_context(&self, ctx: FieldContext) {
+            self.inner.set_context(ctx)
+        }
+        fn partial(&self) -> Option<String> {
+            None
+        }
+        fn poll(&self) -> crate::core_api::Poll {
+            self.inner.poll()
+        }
+        fn commit(&self) -> CommitResult {
+            self.inner.commit()
+        }
+        fn cancel(&self) {
+            self.inner.cancel()
+        }
+        fn learn_edit(&self, p: &str, e: &str) -> Vec<crate::core_api::LearnCandidate> {
+            self.inner.learn_edit(p, e)
+        }
+    }
+
+    #[test]
+    fn esc_during_the_rerun_stops_it_and_nothing_reaches_the_next_dictation() {
+        let entered = Arc::new(AtomicBool::new(false));
+        let open = Arc::new(AtomicBool::new(false));
+        let pushed_after = Arc::new(AtomicU64::new(0));
+        let (e, o, p) = (entered.clone(), open.clone(), pushed_after.clone());
+        let mut r = rig_with(keyboard(Some("en")), Prefs::default(), move |inner| {
+            Arc::new(GatedStart {
+                inner,
+                block_at: 2,
+                entered: e,
+                open: o,
+                pushed_after: p,
+            })
+        });
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        *r.fake.keyboard.lock().unwrap() = Some("he".into());
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        for _ in 0..1000 {
+            if entered.load(Ordering::SeqCst) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(entered.load(Ordering::SeqCst), "the re-run started");
+        r.at(1100, Input::Hotkey(HotkeyAction::Cancel));
+        open.store(true, Ordering::SeqCst);
+        r.pump(); // the re-run's Committed (cancelled; ignored)
+        assert_eq!(pushed_after.load(Ordering::SeqCst), 0, "no replayed audio");
+        assert!(!r.fake.log().iter().any(|l| l.starts_with("paste")));
+        // The next dictation gets only its own second of audio.
+        r.at(5000, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        r.at(6000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump(); // Committed
+        r.pump(); // PasteFinished
+        assert_eq!(pushed_after.load(Ordering::SeqCst), 16_000);
+        assert!(r
+            .fake
+            .log()
+            .contains(&"paste [stub: 1.0 s of audio]".to_string()));
+    }
+
+    /// `cancelled` turns true at its `n`-th check (1 = before the start).
+    fn cancelled_at(n: usize) -> impl Fn() -> bool {
+        let calls = std::cell::Cell::new(0);
+        move || {
+            calls.set(calls.get() + 1);
+            calls.get() >= n
+        }
+    }
+
+    #[test]
+    fn a_replay_cancelled_after_its_last_chunk_does_not_commit() {
+        // D58 review 2: the check before the commit (Android does the same).
+        let core = StubCore::new();
+        let r = replay_recording(
+            &core,
+            Default::default(),
+            None,
+            &[1000; 1600],
+            &cancelled_at(3),
+        );
+        assert_eq!(r.unwrap_err(), "cancelled");
+        assert_eq!(core.cancels(), 1);
+    }
+
+    #[test]
+    fn an_empty_replay_checks_cancel_before_committing() {
+        let core = StubCore::new();
+        let r = replay_recording(&core, Default::default(), None, &[], &cancelled_at(2));
+        assert_eq!(r.unwrap_err(), "cancelled");
+        assert_eq!((core.starts(), core.cancels()), (1, 1));
+    }
+
+    #[test]
+    fn a_rerun_whose_budget_ran_out_before_it_started_fails_as_a_timeout() {
+        // D58 review 2: the dictation's start holds the re-run back past
+        // its budget: the usual timeout, and no re-run session.
+        let entered = Arc::new(AtomicBool::new(false));
+        let open = Arc::new(AtomicBool::new(false));
+        let pushed_after = Arc::new(AtomicU64::new(0));
+        let (e, o, p) = (entered.clone(), open.clone(), pushed_after.clone());
+        let mut r = rig_with(keyboard(Some("en")), Prefs::default(), move |inner| {
+            Arc::new(GatedStart {
+                inner,
+                block_at: 1,
+                entered: e,
+                open: o,
+                pushed_after: p,
+            })
+        });
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        *r.fake.keyboard.lock().unwrap() = Some("he".into());
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        let budget = r.c.machine().policy().rerun_timeout_ms;
+        r.at(1000 + budget, Input::Tick);
+        assert!(r
+            .fake
+            .log()
+            .contains(&r#"overlay Error { message: "Transcription timed out" }"#.to_string()));
+        open.store(true, Ordering::SeqCst);
+        r.pump(); // the late Committed (ignored)
+        assert_eq!(r.core.starts(), 1, "no re-run session");
+        assert_eq!(pushed_after.load(Ordering::SeqCst), 0);
+        assert!(!r.fake.log().iter().any(|l| l.starts_with("paste")));
+    }
+
+    #[test]
+    fn keyboard_language_off_never_rereads_at_the_stop() {
+        let prefs = Prefs {
+            keyboard_language: false,
+            languages: vec!["en".into()],
+            ..Prefs::default()
+        };
+        let mut r = rig(keyboard(Some("en")), prefs);
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        *r.fake.keyboard.lock().unwrap() = Some("he".into());
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        r.pump();
+        r.pump();
+        assert_eq!(r.core.starts(), 1);
+        assert_eq!(r.core.last_config().unwrap().languages, ["en"]);
+    }
+
+    #[test]
     fn unknown_layout_or_option_off_keeps_todays_languages() {
         let mut r = rig(keyboard(None), Prefs::default());
         dictate_then(&mut r, |_| {});
-        assert!(r.core.last_config().unwrap().languages.is_empty(), "auto-detect");
+        assert!(
+            r.core.last_config().unwrap().languages.is_empty(),
+            "auto-detect"
+        );
         let prefs = Prefs {
             keyboard_language: false,
             languages: vec!["de".into()],
@@ -3588,9 +4000,18 @@ mod tests {
             dictate_then(&mut r, |_| {});
             out.push(lines(&mem, &log).remove(0));
         }
-        assert_eq!((&out[0]["language"], &out[0]["language_source"]), (&"he".into(), &"keyboard".into()));
-        assert_eq!((&out[1]["language"], &out[1]["language_source"]), (&serde_json::Value::Null, &"auto".into()));
-        assert_eq!((&out[2]["language"], &out[2]["language_source"]), (&"en".into(), &"fixed".into()));
+        assert_eq!(
+            (&out[0]["language"], &out[0]["language_source"]),
+            (&"he".into(), &"keyboard".into())
+        );
+        assert_eq!(
+            (&out[1]["language"], &out[1]["language_source"]),
+            (&serde_json::Value::Null, &"auto".into())
+        );
+        assert_eq!(
+            (&out[2]["language"], &out[2]["language_source"]),
+            (&"en".into(), &"fixed".into())
+        );
     }
 
     /// One dictation whose commit returns `result`, `password` set before

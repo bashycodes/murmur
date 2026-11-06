@@ -149,6 +149,10 @@ pub struct Entry {
     /// (`phone` instead of `auto` there).
     pub language: Option<String>,
     pub language_source: Option<String>,
+    /// D58: the language read at the start and at the stop (`null` = not
+    /// re-read: "Keyboard language" off); `language` is the one used.
+    pub start_language: Option<String>,
+    pub stop_language: Option<String>,
 }
 
 /// A non-dictation line (`"kind": "event"`): engine load, server probe,
@@ -807,6 +811,8 @@ pub(crate) mod tests {
             "stt_cost_usd",
             "language",
             "language_source",
+            "start_language",
+            "stop_language",
         ];
         want.sort();
         assert_eq!(keys, want);

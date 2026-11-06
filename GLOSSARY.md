@@ -12,6 +12,10 @@ _Avoid_: raw text, ASR output
 The language-model step that turns a transcript into finished text: punctuation, sentence and paragraph breaks, spoken commands such as "quote unquote" or "in parentheses", quotation marks, hyphens, numbers, self-corrections, lists, tone and light edits (dropping fillers, short trims, unit abbreviations), all in one pass.
 _Avoid_: post-processing, formatting rules, LLM cleanup, spoken commands (as a separate stage)
 
+**Keyboard language**:
+The language setting (Android default, Windows "Keyboard language" on) that makes a dictation use the language of the keyboard active when the recording stops (D58): a keyboard switched mid-recording changes the language, and the whole recording is transcribed again in it. The start keyboard only opens the live session (D37).
+_Avoid_: input language, IME language, start language (as the result's language)
+
 **Custom cleanup server**:
 The user's own OpenAI-compatible server (typically a LiteLLM proxy) that the cloud entry of the cleanup order can call instead of OpenRouter. Cleanup only: cloud speech-to-text always uses OpenRouter.
 _Avoid_: custom provider (for speech), LiteLLM (the usual software, not the setting), local server (that is flow-server)

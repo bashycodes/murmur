@@ -27,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -253,7 +254,22 @@ class DictationController(
 
         /** A start found the speech model still loading ([message] names it); every time, so each tap says so. */
         fun engineLoading(message: String) = Unit
+
+        /** D58: the dictation language follows the keyboard (read at record start: keep the recording for [stopLanguage]). */
+        fun followsKeyboard(): Boolean = false
+
+        /**
+         * D58: the dictation languages the keyboard gives now, at the stop, and where they came
+         * from; null = not read (the start ones stand). Must return at once; no side effects.
+         */
+        fun stopLanguage(): StopLanguage? = null
+
+        /** D58: the stop language differs from the start one: make the engine serve it (loads its model if needed). */
+        fun prepareStopLanguage() = Unit
     }
+
+    /** D58: [languages] in the [SessionConfig.languages] shape; [source] = debug log `language_source`. */
+    data class StopLanguage(val languages: List<String>, val source: String)
 
     /** What the debug trace needs from the dictation's start. */
     private data class TraceStart(
@@ -264,6 +280,10 @@ class DictationController(
         val source: String? = null,
         /** Command Mode (debug log `mode` = command). */
         val command: Boolean = false,
+        /** D58: the language read at the stop ("auto" = none forced); null = not read. */
+        val stopLanguage: String? = null,
+        /** D58: where [stopLanguage] came from (debug log `language_source`); null = the host's. */
+        val languageSource: String? = null,
     )
 
     companion object {
@@ -286,6 +306,12 @@ class DictationController(
         const val RETRY_TIMEOUT_MS = 90_000L
         /** D35: samples per push when a recording is fed back (100 ms, like the microphone). */
         const val RETRY_CHUNK = 1600
+        /**
+         * D58: the whole budget of a re-run in the stop language, from the stop: a model load
+         * (at most [LOAD_WAIT_MS], leaving [PROCESSING_TIMEOUT_MS]) plus the transcription (at
+         * most [RETRY_TIMEOUT_MS]).
+         */
+        const val RERUN_TIMEOUT_MS = 150_000L
 
         /**
          * D55: the longest a dictation waits for the speech model (an unload wait of up to 30 s,
@@ -368,9 +394,19 @@ class DictationController(
     private var captureDebug = false
     /** The [capture] is for Retry. */
     private var captureRetry = false
+    /** D58: the language follows the keyboard: the [capture] is for a re-run in the stop language. */
+    private var captureRelang = false
+    /** D58: the config the dictation started with (the re-run takes it with the stop languages). */
+    private var startCfg: SessionConfig? = null
     /** D35: a History retry holds the core; no dictation starts meanwhile. */
     @Volatile var retrying = false
         private set
+    /**
+     * D58: a dictation's re-run in the stop language is being awaited; no dictation or retry
+     * starts meanwhile. Cleared when the wait ends (result, timeout or X), not when the native
+     * call returns: a hung call is abandoned and its late result dropped by the generation check.
+     */
+    @Volatile private var replaying = false
 
     /** D21: build + hand off the trace; never throws, never suspends. */
     private fun trace(
@@ -386,7 +422,8 @@ class DictationController(
                     tsMs = s.wallMs, mode = if (s.command) "command" else if (s.hold) "hold" else "tap",
                     route = result?.route?.engine ?: liveRoute?.engine,
                     fallback = result?.route?.fallback ?: liveRoute?.fallback ?: fallback,
-                    model = result?.route?.model ?: liveRoute?.model, language = s.language,
+                    model = result?.route?.model ?: liveRoute?.model, language = s.stopLanguage ?: s.language,
+                    startLanguage = s.language, stopLanguage = s.stopLanguage,
                     rttMs = result?.route?.rttMs,
                     audioMs = t?.audioMs, endpointWaitMs = endpointWaitMs, asrMs = t?.asrMs,
                     postMs = t?.let { it.llmMs + it.postprocessMs }, totalMs = t?.totalMs,
@@ -404,7 +441,7 @@ class DictationController(
                     cleanupRoute = result?.route?.cleanupRoute, cloudFallback = result?.route?.cloudFallback,
                     rejectedText = result?.route?.rejectedText, guardDetail = result?.route?.guardDetail,
                     sttCostUsd = result?.route?.takeIf { it.engine == "cloud" }?.costUsd,
-                    source = s.source, loadWaitMs = loadWaitMs,
+                    source = s.source, loadWaitMs = loadWaitMs, languageSource = s.languageSource,
                 )
             val audioName = if (pcm == null || pcm.isEmpty()) null else try { host.onDictationAudio(trace, pcm) } catch (_: Throwable) { null }
             host.onDictationTrace(if (audioName != null) trace.copy(audio = audioName) else trace)
@@ -452,7 +489,7 @@ class DictationController(
         lastToggleAt = t
         when (_state.value) {
             // A previous start still connecting (it was cancelled): one session start at a time.
-            DictationState.Idle, DictationState.Ready, is DictationState.Error -> if (started?.isActive != true && !retrying) start(hold)
+            DictationState.Idle, DictationState.Ready, is DictationState.Error -> if (started?.isActive != true && !retrying && !replaying) start(hold)
             is DictationState.Recording -> stopAndSubmit()
             is DictationState.Processing -> Unit
         }
@@ -467,7 +504,7 @@ class DictationController(
         if (t - lastToggleAt < TOGGLE_DEBOUNCE_MS) return
         when (_state.value) {
             DictationState.Idle, DictationState.Ready, is DictationState.Error -> {
-                if (started?.isActive == true || retrying) return
+                if (started?.isActive == true || retrying || replaying) return
                 lastToggleAt = t
                 when (val target = host.captureCommand()) {
                     is CommandTarget.Refused -> failCommand(target.message)
@@ -575,6 +612,7 @@ class DictationController(
      */
     suspend fun retry(pcm: ShortArray, ctx: FieldContext?): RetryOutcome {
         if (retrying) return RetryOutcome.Failed(dev.flowclone.data.RetryLogic.RUNNING)
+        if (replaying) return RetryOutcome.Failed(dev.flowclone.data.RetryLogic.BUSY)
         val s = _state.value
         if (s is DictationState.Recording || s is DictationState.Processing || started?.isActive == true) {
             return RetryOutcome.Failed(dev.flowclone.data.RetryLogic.BUSY)
@@ -589,17 +627,8 @@ class DictationController(
             }
             val cfg = host.sessionConfig().copy(maxSamples = cap.maxSamples, endpointSilenceMs = null, partialIntervalMs = null)
             // Not a child: a hung native call must be abandonable.
-            val pending = CoroutineScope(commitDispatcher).async {
-                c.startSessionInfo(cfg)
-                ctx?.let(c::setContext)
-                var i = 0
-                while (i < pcm.size) {
-                    val n = minOf(RETRY_CHUNK, pcm.size - i)
-                    c.pushAudio(pcm.copyOfRange(i, i + n), n)
-                    i += n
-                }
-                c.commit()
-            }
+            val gen = generation
+            val pending = CoroutineScope(commitDispatcher).async { replay(c, cfg, ctx, pcm, gen) { !isActive } }
             val r = try {
                 withTimeoutOrNull(RETRY_TIMEOUT_MS) { pending.await() }
             } catch (e: CoreException) {
@@ -607,6 +636,7 @@ class DictationController(
                 return RetryOutcome.Failed(msg)
             }
             if (r == null) {
+                pending.cancel()
                 c.cancel()
                 return RetryOutcome.Failed("No result after ${RETRY_TIMEOUT_MS / 1000} s")
             }
@@ -620,6 +650,38 @@ class DictationController(
         } finally {
             retrying = false
         }
+    }
+
+    /**
+     * D35 / D58: feeds a whole recording into a new session on [c] (100 ms chunks, like the
+     * microphone) and commits; History's Retry and the re-run in the stop language. [stop] is
+     * checked before the start, before every chunk and before the commit: once true the result
+     * is `cancelled`, so nothing of it reaches a later dictation, and the session is cancelled
+     * unless a dictation started since [gen] (the core is then that dictation's). Blocking: run it
+     * on [commitDispatcher]. Throws the start's [CoreException].
+     */
+    private fun replay(
+        c: FlowCore, cfg: SessionConfig, ctx: FieldContext?, pcm: ShortArray, gen: Long,
+        phoneOnly: Boolean = false, stop: () -> Boolean,
+    ): CommitResult {
+        val cancelled = CommitResult(CommitStatus.ERROR, error = "cancelled")
+        // An abandoned replay that sees its stop late: the core may hold a newer dictation by now.
+        fun abandon(): CommitResult {
+            if (generation == gen) runCatching { c.cancel() }
+            return cancelled
+        }
+        if (stop()) return cancelled
+        if (phoneOnly) c.startSessionLocal(cfg) else c.startSessionInfo(cfg)
+        ctx?.let(c::setContext)
+        var i = 0
+        while (i < pcm.size) {
+            if (stop()) return abandon()
+            val n = minOf(RETRY_CHUNK, pcm.size - i)
+            c.pushAudio(pcm.copyOfRange(i, i + n), n)
+            i += n
+        }
+        if (stop()) return abandon()
+        return c.commit()
     }
 
     /** Command Mode target of the recording / processing command; null for a dictation. */
@@ -667,7 +729,9 @@ class DictationController(
         silence.reset()
         captureDebug = runCatching { host.keepDictationAudio() }.getOrDefault(false)
         captureRetry = command == null && runCatching { host.keepRetryAudio() }.getOrDefault(false)
-        val pcmCapture = if (captureDebug || captureRetry) PcmCapture(cap.maxSamples.toInt()) else null
+        captureRelang = runCatching { host.followsKeyboard() }.getOrDefault(false)
+        startCfg = cfg
+        val pcmCapture = if (captureDebug || captureRetry || captureRelang) PcmCapture(cap.maxSamples.toInt()) else null
         capture = pcmCapture
         hintJob?.cancel(); _hint.value = null; _partial.value = null; _route.value = null
         // D55: up to the whole load wait is held (the wait gives up before the gate is full).
@@ -849,12 +913,23 @@ class DictationController(
         val rec = _state.value as? DictationState.Recording ?: return
         val stoppedAt = now()
         endAudio()
-        // D21 trace inputs, captured before the next dictation can reset them.
-        val ts = traceStart
-        val endpointWait = if (silence.heardSpeech) silence.trailingSilenceMs else null
-        val live = _route.value
         val kept = capture?.take()
         capture = null
+        // D58: the keyboard at the stop decides the language; a change since the start re-runs
+        // the whole recording in the stop language (hands-free endpoint and cap stops too).
+        val begun = startCfg
+        val stopLang = if (captureRelang) runCatching { host.stopLanguage() }.getOrNull() else null
+        // The replay ends itself: no hands-free endpoint, no live preview.
+        val relangCfg = if (stopLang != null && begun != null && stopLang.languages != begun.languages && kept != null && kept.isNotEmpty()) {
+            begun.copy(languages = stopLang.languages, endpointSilenceMs = null, partialIntervalMs = null)
+        } else null
+        val deadline = stoppedAt + RERUN_TIMEOUT_MS
+        // D21 trace inputs, captured before the next dictation can reset them.
+        val ts = traceStart?.let { t ->
+            if (stopLang == null) t else t.copy(stopLanguage = stopLang.languages.firstOrNull() ?: "auto", languageSource = stopLang.source)
+        }
+        val endpointWait = if (silence.heardSpeech) silence.trailingSilenceMs else null
+        val live = _route.value
         val pcm = kept?.takeIf { captureDebug }
         val recording = kept?.takeIf { captureRetry && it.isNotEmpty() }?.let { Recording(it, sessionContext?.appCategory) }
         // D24 routing details for the trace, read on the commit thread right after the commit
@@ -879,20 +954,73 @@ class DictationController(
         processingCore = known
         processingJob = scope.launch {
             // The start may still be connecting (or waiting for the model); a failed start already showed its error.
-            val c = start.await() ?: return@launch
-            processingCore = c
-            // Not a child: a hung native commit must be abandonable.
-            val pending = CoroutineScope(commitDispatcher).async {
-                c.commit().also { diag = try { c.lastRouteDiag() } catch (_: Throwable) { null } }
+            val first = start.await() ?: return@launch
+            processingCore = first
+            // The existing timeout outcome; [budget] is the one used, for the trace.
+            fun timedOut(budget: Long) {
+                _route.value = null
+                _state.value = DictationState.Error(DictationState.ErrorKind.FailedToTranscribe)
+                done(InsertOutcome.TIMEOUT, error = "no result after $budget ms")
             }
-            val result = withTimeoutOrNull(PROCESSING_TIMEOUT_MS) { pending.await() }
+            val c: FlowCore
+            val pending: Deferred<CommitResult>
+            val budget: Long
+            if (relangCfg == null) {
+                c = first
+                // Not a child: a hung native commit must be abandonable.
+                pending = CoroutineScope(commitDispatcher).async {
+                    c.commit().also { diag = try { c.lastRouteDiag() } catch (_: Throwable) { null } }
+                }
+                budget = PROCESSING_TIMEOUT_MS
+            } else {
+                // D58: the start-language session (and its live preview) is dropped.
+                _partial.value = null
+                withContext(commitDispatcher) { runCatching { first.cancel() } }
+                // A start that took the whole budget (connecting, or waiting for the model): no re-run.
+                if (deadline - now() <= 0) { timedOut(RERUN_TIMEOUT_MS); return@launch }
+                val got = try {
+                    // Hybrid: a dictation the server (or cloud) took goes back there; the phone model stays.
+                    engineForStopLanguage(gen, deadline, swap = live?.engine.let { it == null || it == "local" })
+                } catch (e: CoreException) {
+                    if (generation != gen) return@launch
+                    val msg = RouterErrors.userMessage(e.kind, e.message ?: "start failed")
+                    if (cmd == null) host.recordHistory(CommitResult(CommitStatus.ERROR, error = msg), false, appId, InsertOutcome.ERROR, recording)
+                    _route.value = null
+                    _state.value = DictationState.Error(DictationState.ErrorKind.EngineUnavailable(msg))
+                    done(InsertOutcome.START_FAILED, error = msg)
+                    return@launch
+                } ?: return@launch
+                c = got.core
+                processingCore = c
+                // D58: a re-run transcribes the whole recording again, within what is left of its budget.
+                val left = deadline - now()
+                if (left <= 0) { timedOut(RERUN_TIMEOUT_MS); return@launch }
+                budget = minOf(RETRY_TIMEOUT_MS, left)
+                val pcmAll = kept!!
+                replaying = true
+                // A child of this job: X, a timeout or the service's end cancels it, and it
+                // stops before the next chunk once this dictation is no longer the live one.
+                // Its own isActive: a parent waiting for a running child stays active.
+                pending = async(commitDispatcher) {
+                    try {
+                        replay(c, relangCfg, ctx, pcmAll, gen, got.phoneOnly) { !isActive || generation != gen }
+                            .also { diag = try { c.lastRouteDiag() } catch (_: Throwable) { null } }
+                    } catch (e: CoreException) {
+                        CommitResult(CommitStatus.ERROR, error = e.message ?: "start failed")
+                    }
+                }
+            }
+            val result = try {
+                withTimeoutOrNull(budget) { pending.await() }
+            } finally {
+                replaying = false
+            }
             _partial.value = null
             if (generation != gen) return@launch
             if (result == null) {
+                pending.cancel()
                 c.cancel() // C4: the core aborts the running commit
-                _route.value = null
-                _state.value = DictationState.Error(DictationState.ErrorKind.FailedToTranscribe)
-                done(InsertOutcome.TIMEOUT, error = "no result after $PROCESSING_TIMEOUT_MS ms")
+                timedOut(budget)
                 return@launch
             }
             _route.value = null
@@ -957,6 +1085,32 @@ class DictationController(
             _state.value = if (inserted) restingState()
             else DictationState.Error(DictationState.ErrorKind.FailedToPaste(unpasted!!))
             done(if (inserted) InsertOutcome.INSERTED else InsertOutcome.PASTE_FAILED, result)
+        }
+    }
+
+    /**
+     * D58: the engine for the stop language. [Host.prepareStopLanguage] reloads the phone model
+     * when the stop language needs another one (nothing with both languages kept loaded; not
+     * at all when ![swap]: the server took the dictation); while it loads, the bubble shows the
+     * model being loaded (as D55) and this waits until [PROCESSING_TIMEOUT_MS] before
+     * [deadline] (at most [LOAD_WAIT_MS]). Null = the dictation was dropped meanwhile; throws
+     * why there is no engine.
+     */
+    private suspend fun engineForStopLanguage(gen: Long, deadline: Long, swap: Boolean): LoadedEngine? {
+        if (swap) runCatching { host.prepareStopLanguage() }
+        try {
+            return LoadedEngine(core(), phoneOnly = false)
+        } catch (e: CoreException) {
+            if (e.kind != CoreException.KIND_LOADING) throw e
+            val w = loadWait() ?: throw e
+            _route.value = SessionRoute("local", loading = true, loadingLabel = w.label)
+            val t0 = now()
+            val wait = minOf(LOAD_WAIT_MS, (deadline - PROCESSING_TIMEOUT_MS - now()).coerceAtLeast(0L))
+            val loaded = withTimeoutOrNull(wait) { w.await() }
+            loadWaitMs = (loadWaitMs ?: 0L) + (now() - t0)
+            if (generation != gen) return null
+            _route.value = null
+            return loaded ?: throw CoreException(LOAD_TIMEOUT, null)
         }
     }
 
