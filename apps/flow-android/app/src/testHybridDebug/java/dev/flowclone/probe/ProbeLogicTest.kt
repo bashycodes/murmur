@@ -236,14 +236,17 @@ class ProbeLogicTest {
         assertEquals("advanced", o.getString("mode"))
         assertEquals("Run pytest.\nThen deploy.", o.getString("text"))
         assertEquals(300L, o.getLong("first_partial_ms"))
-        assertEquals(250L, o.getLong("final_ms_after_audio_end"))
-        assertEquals(300L, o.getLong("completed_ms_after_audio_end"))
+        assertEquals(250L, o.getLong("latency_ms"))
+        assertEquals(300L, o.getLong("completed_ms"))
         assertEquals("ok", o.getString("outcome"))
         assertTrue(o.isNull("error"))
         assertEquals(4_000L, o.getLong("audio_ms"))
         assertTrue(o.getBoolean("segmented"))
         assertTrue(o.isNull("last_partial"))
         assertEquals("[\"x\"]", o.getJSONArray("biasing").toString())
+        // Same keys as the run's probe-english line, so the two never drift.
+        val single = JSONObject(r.toJsonLine())
+        assertEquals(single.keys().asSequence().toSet() + setOf("set", "id"), o.keys().asSequence().toSet())
     }
 
     @Test fun firstNonBlankSkipsEmptyLeadingHypotheses() {
