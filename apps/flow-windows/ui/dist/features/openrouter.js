@@ -10,6 +10,7 @@
 // `flow-clone/cloud/custom` and consent bound to the typed host).
 import { $, askDialog, el, setStatus, setValue, when } from "../lib/dom.js";
 import { iconEl } from "../lib/icons.js";
+import { cleanupBlockedLine, cleanupTestFailText } from "../lib/cleanup-state.js";
 import { cleanupMonthCost, cloudHint, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { Serial } from "../lib/serial.js";
@@ -214,14 +215,12 @@ function showCleanupStatus(st) {
     if (views.or)
         views.or.cleanup.status = st;
     const e = $("or_cleanup_state");
+    const blocked = cleanupBlockedLine(st, views.or);
     let text;
     let cls = "hint";
-    if (!st.supported) {
-        text = "Not in this build.";
-    }
-    else if (st.blocked) {
-        text = `Not used: ${failText(st.blocked)}`;
-        cls = "hint err";
+    if (blocked) {
+        text = blocked.text;
+        cls = blocked.cls;
     }
     else if (st.circuit?.open) {
         const until = st.circuit.until_config_change
@@ -230,12 +229,9 @@ function showCleanupStatus(st) {
         text = `Paused ${until} (${cloudHint(st.circuit.reason)})`;
         cls = "hint err";
     }
-    else if (st.enabled) {
+    else {
         text = `On · ${st.model} · up to ${st.timeout_ms} ms`;
         cls = "hint ok";
-    }
-    else {
-        text = `Off: ${st.provider === "custom" ? st.host || "your server" : "OpenRouter"} gets no text.`;
     }
     const l = st.last;
     if (l && l.engine) {
@@ -252,6 +248,20 @@ function showCleanupStatus(st) {
         text += ` · ${money(month.custom)} on your server this month (not in budget)`;
     e.textContent = text;
     e.className = cls;
+    if (blocked?.turnOn)
+        e.append(" ", turnOnButton());
+}
+/** "Turn on": the Cleanup order switch, so its consent ask runs as when clicked there. */
+function turnOnButton() {
+    const b = el("button", "lw-link", "Turn on in Cleanup order");
+    b.type = "button";
+    b.addEventListener("click", () => {
+        const box = $("or_cleanup_allow");
+        box.checked = true;
+        box.dispatchEvent(new Event("change"));
+        $("cleanup_order_group").scrollIntoView({ block: "nearest" });
+    });
+    return b;
 }
 // ---- catalogue
 let catalogInFlight = null;
@@ -681,7 +691,7 @@ async function orTestCleanup() {
             out.className = "hint ok";
         }
         else {
-            out.textContent = failText(r.error, r.message);
+            out.textContent = cleanupTestFailText(r.error, r.message);
             out.className = "hint err";
         }
     }
