@@ -184,7 +184,7 @@ fn cloud_ok_uses_the_ai_answer() {
 }
 
 #[test]
-fn cloud_gets_the_raw_transcript_with_prompt_v4c_and_no_rules_pre_pass() {
+fn cloud_gets_the_raw_transcript_with_prompt_v5_and_no_rules_pre_pass() {
     let cloud = Arc::new(Fake::ok(AI).cloud());
     let r = dictate(&core_with(RAW, &cloud, None));
     assert_eq!(r.asr_text, RAW);
@@ -196,18 +196,25 @@ fn cloud_gets_the_raw_transcript_with_prompt_v4c_and_no_rules_pre_pass() {
         "{}",
         p.user
     );
-    // Prompt v4c, not v2.
-    let v4c = flow_core::cleanup::build_prompt_versioned(
-        RAW,
-        CleanupLevel::Light,
-        Style::Default,
-        &FieldContext::default(),
-        &Dictionary::default(),
-        PromptScope::MINIMAL,
-        flow_core::cleanup::PromptVersion::V4c,
+    // Prompt v5, not v2 (nor its predecessor v4c).
+    let build = |v| {
+        flow_core::cleanup::build_prompt_versioned(
+            RAW,
+            CleanupLevel::Light,
+            Style::Default,
+            &FieldContext::default(),
+            &Dictionary::default(),
+            PromptScope::MINIMAL,
+            v,
+        )
+    };
+    let v5 = build(flow_core::cleanup::PromptVersion::V5);
+    assert_eq!(p.system, v5.system);
+    assert_eq!(p.examples, v5.examples);
+    assert_ne!(
+        p.system,
+        build(flow_core::cleanup::PromptVersion::V4c).system
     );
-    assert_eq!(p.system, v4c.system);
-    assert_eq!(p.examples, v4c.examples);
     // The cloud's minimal scope still holds.
     assert!(!p.user.contains("SCREENSECRET"));
 }
@@ -529,7 +536,10 @@ fn a_timeout_has_a_detail_but_no_answer() {
             .slow(Duration::from_millis(800)),
     );
     assert_eq!(r.cloud_fallback.as_deref(), Some("llm_timeout"));
-    assert_eq!(r.fallback_detail.as_deref(), Some("no answer within 100 ms"));
+    assert_eq!(
+        r.fallback_detail.as_deref(),
+        Some("no answer within 100 ms")
+    );
 }
 
 #[test]
@@ -598,7 +608,8 @@ fn the_fallback_detail_keeps_its_guard_detail_json_key() {
         old.fallback_detail.as_deref(),
         Some("dropped: the demo is on thursday")
     );
-    let route = serde_json::json!({"engine": "local", "guard_detail": "error: x", "rejected_text": "y"});
+    let route =
+        serde_json::json!({"engine": "local", "guard_detail": "error: x", "rejected_text": "y"});
     let route: flow_core::RouteInfo = serde_json::from_value(route).unwrap();
     assert_eq!(route.fallback_detail.as_deref(), Some("error: x"));
 }

@@ -4,7 +4,7 @@
 //!   streaming text X) commits the same `CommitResult` as one whose cleaner
 //!   is a fake local backend returning X — unwrapping and post-processing
 //!   are shared by construction (D30: the cloud gets the raw transcript
-//!   with prompt v4c; the text must match anyway).
+//!   with prompt v5; the text must match anyway).
 //! * Toggle matrix: OpenRouter down or slow → the deterministic text, within
 //!   the cleanup timeout + 50 ms.
 
