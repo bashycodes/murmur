@@ -288,25 +288,7 @@ object ProbeBatchPlan {
     /** No result this long after a clip's audio should have ended → cancel that run. */
     fun watchdogMs(audioMs: Long, realTime: Boolean): Long = (if (realTime) audioMs else 0L) + 60_000L
 
-    fun line(set: String, id: String, r: ProbeRecord): String {
-        val o = JSONObject()
-        o.put("set", set)
-        o.put("id", id)
-        o.put("engine", r.engine)
-        o.put("mode", r.mode ?: JSONObject.NULL)
-        o.put("text", r.text)
-        o.put("first_partial_ms", r.timing.firstPartialMs ?: JSONObject.NULL)
-        o.put("final_ms_after_audio_end", r.timing.latencyMs ?: JSONObject.NULL)
-        o.put("completed_ms_after_audio_end", r.timing.completedMs ?: JSONObject.NULL)
-        o.put("outcome", r.outcome)
-        o.put("error", r.error ?: JSONObject.NULL)
-        o.put("error_code", r.errorCode ?: JSONObject.NULL)
-        o.put("audio_ms", r.audioMs ?: JSONObject.NULL)
-        o.put("partials", r.partials)
-        o.put("status", r.status ?: JSONObject.NULL)
-        o.put("build", r.appBuild)
-        o.put("ts_ms", r.tsMs)
-        for ((k, v) in r.extras.toSortedMap()) o.put(k, if (v is List<*>) org.json.JSONArray(v) else v ?: JSONObject.NULL)
-        return o.toString()
-    }
+    /** The run's own probe-english line ([ProbeRecord.toJsonLine]) plus its "set" and clip "id". */
+    fun line(set: String, id: String, r: ProbeRecord): String =
+        JSONObject(r.toJsonLine()).put("set", set).put("id", id).toString()
 }
