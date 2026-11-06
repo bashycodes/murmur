@@ -18,6 +18,7 @@ use crate::Usd;
 use serde::{Deserialize, Serialize};
 
 mod prompt_v4c;
+mod prompt_v5;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CleanPrompt {
@@ -64,7 +65,7 @@ impl CleanTask {
 #[serde(default)]
 pub struct CleanRequest {
     /// The text to clean (the fallback rules' output for prompt v2, the
-    /// raw transcript for v4c).
+    /// raw transcript for v4c and v5).
     pub text: String,
     pub level: CleanupLevel,
     /// The style for the field's app category (`Styles::for_category`).
@@ -990,7 +991,7 @@ output nothing.";
 fn style_rule_for(s: Style, v: PromptVersion) -> Option<&'static str> {
     match s {
         Style::Default | Style::Formal => None,
-        Style::Casual if v == PromptVersion::V4c => Some(prompt_v4c::CASUAL),
+        Style::Casual if v != PromptVersion::V2 => Some(prompt_v4c::CASUAL),
         Style::Casual => Some("casual: sentence case, drop optional commas, final period optional"),
         Style::VeryCasual => Some("very casual: all lowercase, keep \"?\", no final period"),
         Style::Excited => Some("excited: turn enthusiastic statements and greetings into \"!\""),
@@ -1221,10 +1222,11 @@ pub fn build_prompt_scoped(
     build_prompt_versioned(asr_text, level, style, ctx, dict, scope, PromptVersion::V2)
 }
 
-/// Which system prompt + few-shots a [`CleanPrompt`] carries. Production
-/// (`Engine`, the cloud and local cleaners) builds [`PromptVersion::V2`];
-/// v4c is the all-in-one AI-cleanup prompt of the 2026-10-26 benchmark,
-/// selectable for the bench and the AI-cleanup work but not wired in.
+/// Which system prompt + few-shots a [`CleanPrompt`] carries. The
+/// on-device and server pipelines (rules first, then the LLM) build
+/// [`PromptVersion::V2`]; the D30 AI-cleanup path (raw transcript, cloud or
+/// custom server) builds [`PromptVersion::V5`]. v4c, v5's predecessor from
+/// the 2026-10-26 benchmark, stays selectable for the bench and replay.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PromptVersion {
@@ -1232,8 +1234,12 @@ pub enum PromptVersion {
     #[default]
     V2,
     /// AI cleanup prompt v4c (`cleanup/prompt_v4c.rs`): one pass on the raw
-    /// transcript, light Wispr-style edits.
+    /// transcript, light Wispr-style edits. Kept for the bench and replay.
     V4c,
+    /// AI cleanup prompt v5 (`cleanup/prompt_v5.rs`): v4c with spoken lists
+    /// (bullets and numbers) and self-corrections reworked; what the D30
+    /// AI-cleanup path sends.
+    V5,
 }
 
 /// [`build_prompt_scoped`] with an explicit prompt version. Only the system
@@ -1248,19 +1254,19 @@ pub fn build_prompt_versioned(
     scope: PromptScope,
     version: PromptVersion,
 ) -> CleanPrompt {
-    let (system, shots) = match (version, level) {
-        (PromptVersion::V2, l) => (format!("{SYSTEM}\n{}", level_rule(l)), EXAMPLES),
-        // v4c's own rules are the light level; other levels add their line.
-        (PromptVersion::V4c, CleanupLevel::Light) => {
-            (prompt_v4c::SYSTEM.to_string(), prompt_v4c::EXAMPLES)
-        }
-        (PromptVersion::V4c, l) => (
-            format!("{}\n{}", prompt_v4c::SYSTEM, level_rule(l)),
-            prompt_v4c::EXAMPLES,
-        ),
+    let (system, shots): (&str, Vec<&Example>) = match version {
+        PromptVersion::V2 => (SYSTEM, EXAMPLES.iter().collect()),
+        PromptVersion::V4c => (prompt_v4c::SYSTEM, prompt_v4c::EXAMPLES.iter().collect()),
+        PromptVersion::V5 => (prompt_v5::SYSTEM, prompt_v5::examples().collect()),
+    };
+    // v4c's and v5's own rules are the light level; other levels (and every
+    // v2 level) add their line.
+    let system = match (version, level) {
+        (PromptVersion::V4c | PromptVersion::V5, CleanupLevel::Light) => system.to_string(),
+        (_, l) => format!("{system}\n{}", level_rule(l)),
     };
     let examples = shots
-        .iter()
+        .into_iter()
         .map(|&(app, cat, style, input, output)| {
             let u = UserMsg {
                 app,
@@ -1484,7 +1490,7 @@ pub fn run_cleanup_metered_for(
 
 /// D30 AI cleanup: [`run_cleanup_metered`] on the **raw** transcript
 /// `raw`, with [`blank_line_before_lists`] applied to the answer. The
-/// caller builds the prompt with [`PromptVersion::V4c`]. The third value
+/// caller builds the prompt with [`PromptVersion::V5`]. The third value
 /// is the fallback detail for the debug log (timeout, error or empty
 /// answer; `None` when the answer was used).
 pub fn run_ai_cleanup(
@@ -2247,6 +2253,91 @@ mod tests {
                 assert!(item.starts_with(|c: char| c.is_uppercase()), "{a}");
             }
         }
+    }
+
+    #[test]
+    fn v5_is_v4c_with_reworked_lists_and_corrections() {
+        let v4c = versioned(Style::Casual, PromptVersion::V4c);
+        let v5 = versioned(Style::Casual, PromptVersion::V5);
+        // Same per-dictation message (casual line included).
+        assert_eq!(v5.user, v4c.user);
+        // The two reworked rules lead the rule list; v4c's other rules stay.
+        let rules = v5
+            .system
+            .split("Do all of this in one pass:\n")
+            .nth(1)
+            .unwrap();
+        assert!(rules.starts_with("- Self-corrections: "), "{rules}");
+        assert!(rules.contains("\n- Lists: "), "{rules}");
+        assert!(
+            v5.system.contains("\"at 5, no, 6\" -> \"at 6\""),
+            "{}",
+            v5.system
+        );
+        assert!(v5.system.contains("<ul><li>"), "{}", v5.system);
+        for line in v4c.system.lines().filter(|l| {
+            !l.starts_with("- Self-corrections") && !l.starts_with("- When the speaker counts")
+        }) {
+            // Every v4c line outside the two reworked rules is in v5 as is
+            // (a wrapped line's first words at least).
+            let head: String = line.chars().take(40).collect();
+            assert!(v5.system.contains(&head), "{head}");
+        }
+        assert!(!v5.system.contains("When the speaker counts items off"));
+        // v4c's few-shots, then v5's own, then the closing "only filler" turn.
+        let n = v4c.examples.len();
+        assert_eq!(v5.examples[..n - 1], v4c.examples[..n - 1]);
+        assert_eq!(v5.examples.last(), v4c.examples.last());
+        let own = &v5.examples[n - 1..v5.examples.len() - 1];
+        assert!(own.len() >= 6, "{}", own.len());
+        // Lists: lead-in, colon, blank line, then bullets or numbers whose
+        // items start with a capital.
+        let lists: Vec<_> = own.iter().filter(|(_, a)| a.contains("<li>")).collect();
+        assert!(lists.iter().any(|(_, a)| a.contains(":\n\n<ul><li>")));
+        assert!(lists.iter().any(|(_, a)| a.contains(":\n\n<ol><li>")));
+        for (_, a) in &lists {
+            for item in a.split("<li>").skip(1) {
+                assert!(item.starts_with(|c: char| c.is_uppercase()), "{a}");
+            }
+        }
+        // Corrections keep only the replacement: the answer drops the
+        // correction word.
+        let corrections: Vec<_> = own
+            .iter()
+            .filter(|(u, _)| {
+                [", no,", ", sorry,", " I mean "]
+                    .iter()
+                    .any(|w| u.contains(w))
+            })
+            .collect();
+        assert!(corrections.len() >= 3, "{corrections:?}");
+        for (u, a) in corrections {
+            assert!(
+                !a.contains("sorry") && !a.contains("I mean") && !a.contains(", no"),
+                "{u} -> {a}"
+            );
+        }
+        // Negatives: items inside a sentence stay inline, "not" stays.
+        assert!(own
+            .iter()
+            .any(|(_, a)| a.contains(", not ") && !a.contains("<li>")));
+    }
+
+    #[test]
+    fn v5_light_has_no_level_line_and_other_levels_add_theirs() {
+        let light = versioned(Style::Default, PromptVersion::V5);
+        assert!(!light.system.contains("Level "), "{}", light.system);
+        let high = build_prompt_versioned(
+            "x",
+            CleanupLevel::High,
+            Style::Default,
+            &FieldContext::default(),
+            &Dictionary::default(),
+            PromptScope::FULL,
+            PromptVersion::V5,
+        );
+        assert!(high.system.ends_with(level_rule(CleanupLevel::High)));
+        assert!(high.system.starts_with(prompt_v5::SYSTEM));
     }
 
     #[test]

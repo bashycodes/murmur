@@ -50,7 +50,7 @@ export FLOW_LLM_GGUF=<qwen2.5-1.5b-instruct-q4_k_m.gguf> FLOW_LLM_LIB=<libflow_l
 tools/replay/run.sh --in "$CORPUS" \
   --asr parakeet,whisper,or-stt \
   --cleanup none,local,or:meta-llama/llama-3.3-70b-instruct \
-  --prompt v4c,v2 --llm "$FLOW_LLM_GGUF" --max-spend 0.05
+  --prompt v5,v4c --llm "$FLOW_LLM_GGUF" --max-spend 0.05
 tools/replay/run.sh --score "$CORPUS/replay/<run>" --expected "$CORPUS/expected.json" --detail
 ```
 
@@ -58,7 +58,7 @@ tools/replay/run.sh --score "$CORPUS/replay/<run>" --expected "$CORPUS/expected.
 |---|---|
 | `--asr` | `parakeet[=DIR]`, `whisper[=GGML]` (host stand-in for the phone's whisper), `or-stt[=MODEL]` (OpenRouter cloud STT, the product's `CloudAsr`; default `openai/whisper-large-v3-turbo`) |
 | `--cleanup` | `none` (fallback rules), `local` (today's on-device pipeline: rules, Qwen prompt v2, strict guard, skip-clean), `or:MODEL` (OpenRouter AI cleanup, D30; with `--llm` it falls back to the local pipeline exactly as the phone does, row label `or:MODEL+local`; `--no-local-fallback` for the rules) |
-| `--prompt` | versions for the `or:` slots: `v4c` (what the product sends), `v2`. The local pipeline is always v2 (the product runs v4c only on the cloud path) |
+| `--prompt` | versions for the `or:` slots: `v5` (what the product sends, the default), `v4c` (its predecessor), `v2`. The local pipeline is always v2 (the product runs v5 only on the cloud path) |
 | `--max-spend` | OpenRouter cap for the run, USD (default 0.05); later paid calls become `spend_cap` rows |
 | `--only` | recording ids (substring) for smoke runs |
 | `--session` | a `SessionConfig` JSON instead of the phone's (v0.6.0 Android: light, casual, formal email, 3 s LLM timeout, 800 ms segments, VAD on) |
@@ -87,4 +87,4 @@ p50, cloud cost. The total OpenRouter spend is printed at the end.
 * The home flow-server is never touched; models are read from its models dir.
 
 Not covered: on-phone replay (WAV-as-mic), the user dictionary (not in a
-corpus), and the local 1.5B on prompt v4c (no product path runs it).
+corpus), and the local 1.5B on prompt v5 (no product path runs it).

@@ -2002,7 +2002,7 @@ fn finish_text(
             &ctx,
             &cfg.dictionary,
             cloud.prompt_scope(),
-            cleanup::PromptVersion::V4c,
+            cleanup::PromptVersion::V5,
         )
         .with_language(language.as_deref())
         .with_timeout(cfg.llm_budget_ms(&r.asr_text));
