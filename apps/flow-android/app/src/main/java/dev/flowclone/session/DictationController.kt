@@ -28,7 +28,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -402,7 +401,11 @@ class DictationController(
     /** D35: a History retry holds the core; no dictation starts meanwhile. */
     @Volatile var retrying = false
         private set
-    /** D35 / D58: a recording is being fed into a session ([replay]); no dictation starts meanwhile. */
+    /**
+     * D58: a dictation's re-run in the stop language is being awaited; no dictation or retry
+     * starts meanwhile. Cleared when the wait ends (result, timeout or X), not when the native
+     * call returns: a hung call is abandoned and its late result dropped by the generation check.
+     */
     @Volatile private var replaying = false
 
     /** D21: build + hand off the trace; never throws, never suspends. */
@@ -660,23 +663,18 @@ class DictationController(
         phoneOnly: Boolean = false, stop: () -> Boolean,
     ): CommitResult {
         val cancelled = CommitResult(CommitStatus.ERROR, error = "cancelled")
-        replaying = true
-        try {
-            if (stop()) return cancelled
-            if (phoneOnly) c.startSessionLocal(cfg) else c.startSessionInfo(cfg)
-            ctx?.let(c::setContext)
-            var i = 0
-            while (i < pcm.size) {
-                if (stop()) { runCatching { c.cancel() }; return cancelled }
-                val n = minOf(RETRY_CHUNK, pcm.size - i)
-                c.pushAudio(pcm.copyOfRange(i, i + n), n)
-                i += n
-            }
+        if (stop()) return cancelled
+        if (phoneOnly) c.startSessionLocal(cfg) else c.startSessionInfo(cfg)
+        ctx?.let(c::setContext)
+        var i = 0
+        while (i < pcm.size) {
             if (stop()) { runCatching { c.cancel() }; return cancelled }
-            return c.commit()
-        } finally {
-            replaying = false
+            val n = minOf(RETRY_CHUNK, pcm.size - i)
+            c.pushAudio(pcm.copyOfRange(i, i + n), n)
+            i += n
         }
+        if (stop()) { runCatching { c.cancel() }; return cancelled }
+        return c.commit()
     }
 
     /** Command Mode target of the recording / processing command; null for a dictation. */
@@ -951,18 +949,28 @@ class DictationController(
             // The start may still be connecting (or waiting for the model); a failed start already showed its error.
             val first = start.await() ?: return@launch
             processingCore = first
+            // The existing timeout outcome; [budget] is the one used, for the trace.
+            fun timedOut(budget: Long) {
+                _route.value = null
+                _state.value = DictationState.Error(DictationState.ErrorKind.FailedToTranscribe)
+                done(InsertOutcome.TIMEOUT, error = "no result after $budget ms")
+            }
             val c: FlowCore
             val pending: Deferred<CommitResult>
+            val budget: Long
             if (relangCfg == null) {
                 c = first
                 // Not a child: a hung native commit must be abandonable.
                 pending = CoroutineScope(commitDispatcher).async {
                     c.commit().also { diag = try { c.lastRouteDiag() } catch (_: Throwable) { null } }
                 }
+                budget = PROCESSING_TIMEOUT_MS
             } else {
                 // D58: the start-language session (and its live preview) is dropped.
                 _partial.value = null
                 withContext(commitDispatcher) { runCatching { first.cancel() } }
+                // A start that took the whole budget (connecting, or waiting for the model): no re-run.
+                if (deadline - now() <= 0) { timedOut(RERUN_TIMEOUT_MS); return@launch }
                 val got = try {
                     // Hybrid: a dictation the server (or cloud) took goes back there; the phone model stays.
                     engineForStopLanguage(gen, deadline, swap = live?.engine.let { it == null || it == "local" })
@@ -977,31 +985,35 @@ class DictationController(
                 } ?: return@launch
                 c = got.core
                 processingCore = c
+                // D58: a re-run transcribes the whole recording again, within what is left of its budget.
+                val left = deadline - now()
+                if (left <= 0) { timedOut(RERUN_TIMEOUT_MS); return@launch }
+                budget = minOf(RETRY_TIMEOUT_MS, left)
                 val pcmAll = kept!!
+                replaying = true
                 // A child of this job: X, a timeout or the service's end cancels it, and it
                 // stops before the next chunk once this dictation is no longer the live one.
-                val job = coroutineContext.job
+                // Its own isActive: a parent waiting for a running child stays active.
                 pending = async(commitDispatcher) {
                     try {
-                        replay(c, relangCfg, ctx, pcmAll, got.phoneOnly) { !job.isActive || generation != gen }
+                        replay(c, relangCfg, ctx, pcmAll, got.phoneOnly) { !isActive || generation != gen }
                             .also { diag = try { c.lastRouteDiag() } catch (_: Throwable) { null } }
                     } catch (e: CoreException) {
                         CommitResult(CommitStatus.ERROR, error = e.message ?: "start failed")
                     }
                 }
             }
-            // D58: a re-run transcribes the whole recording again, within what is left of its budget.
-            val budget = if (relangCfg == null) PROCESSING_TIMEOUT_MS
-                else minOf(RETRY_TIMEOUT_MS, (deadline - now()).coerceAtLeast(0L))
-            val result = withTimeoutOrNull(budget) { pending.await() }
+            val result = try {
+                withTimeoutOrNull(budget) { pending.await() }
+            } finally {
+                replaying = false
+            }
             _partial.value = null
             if (generation != gen) return@launch
             if (result == null) {
                 pending.cancel()
                 c.cancel() // C4: the core aborts the running commit
-                _route.value = null
-                _state.value = DictationState.Error(DictationState.ErrorKind.FailedToTranscribe)
-                done(InsertOutcome.TIMEOUT, error = "no result after $budget ms")
+                timedOut(budget)
                 return@launch
             }
             _route.value = null

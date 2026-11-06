@@ -194,9 +194,13 @@ class DictationControllerTest {
 
     /** A core whose re-run session (the [hookAt]-th start) calls [onPush] at its first chunk. */
     private class Hooked(val inner: FakeFlowCore, val hookAt: Int) : FlowCore by inner {
-        var starts = 0
-        var pushesToHooked = 0
+        @Volatile var starts = 0
+        @Volatile var pushesToHooked = 0
+        @Volatile var commitsToHooked = 0
         var onPush: () -> Unit = {}
+        /** Runs inside the hooked session's commit; that commit then returns [lateText]. */
+        var onCommit: (() -> Unit)? = null
+        val lateText = "a late sentence"
         override fun startSession(cfg: SessionConfig) { starts++; inner.startSession(cfg) }
         override fun startSessionInfo(cfg: SessionConfig): dev.flowclone.core.StartInfo { startSession(cfg); return dev.flowclone.core.StartInfo() }
         override fun startSessionLocal(cfg: SessionConfig) = startSessionInfo(cfg)
@@ -204,6 +208,108 @@ class DictationControllerTest {
             if (starts == hookAt) { pushesToHooked++; if (pushesToHooked == 1) onPush() }
             return inner.pushAudio(pcm, length)
         }
+        override fun commit(): CommitResult {
+            if (starts != hookAt) return inner.commit()
+            commitsToHooked++
+            val hook = onCommit ?: return inner.commit()
+            hook()
+            return CommitResult(
+                dev.flowclone.core.CommitStatus.RAW_TRANSCRIPT, asrText = lateText, finalText = lateText,
+                segments = listOf(dev.flowclone.core.PasteSegment.Text(lateText)), plainText = lateText,
+            )
+        }
+    }
+
+    /** Runs the scheduler until [done] holds, polling in real time: for work on a real thread. */
+    private fun TestScope.until(done: () -> Boolean) {
+        val end = System.currentTimeMillis() + 5_000
+        while (!done() && System.currentTimeMillis() < end) { runCurrent(); Thread.sleep(5) }
+        runCurrent()
+        assertTrue("timed out waiting", done())
+    }
+
+    /** Starts a dictation on [c], speaks a second, switches the keyboard to Hebrew and stops it. */
+    private fun TestScope.dictateAndSwitch(c: DictationController) {
+        host.keyboardAtStop = listOf("en")
+        c.toggle(hold = false)
+        audio.speak()
+        host.keyboardAtStop = listOf("he")
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+    }
+
+    /**
+     * D58 review 2: a re-run that times out stops feeding its session, though the processing
+     * job (its parent) stays active while it waits for the stuck child.
+     */
+    @Test fun aTimedOutReRunStopsItsReplay() = runTest {
+        val hooked = Hooked(core, hookAt = 2)
+        val gate = java.util.concurrent.CountDownLatch(1)
+        hooked.onPush = { gate.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+        val pool = java.util.concurrent.Executors.newCachedThreadPool()
+        try {
+            val c = controller(hooked, dispatcher = pool.asCoroutineDispatcherForTest())
+            dictateAndSwitch(c)
+            until { hooked.pushesToHooked == 1 }
+            advanceTimeBy(DictationController.RETRY_TIMEOUT_MS + 1); runCurrent()
+            assertEquals(DictationState.Error(ErrorKind.FailedToTranscribe), c.state.value)
+            gate.countDown()
+            pool.shutdown()
+            assertTrue(pool.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS))
+            assertEquals("no chunk after the timeout", 1, hooked.pushesToHooked)
+            assertEquals("no commit after the timeout", 0, hooked.commitsToHooked)
+        } finally { pool.shutdownNow() }
+    }
+
+    /**
+     * D58 review 2: a hung native commit of the re-run is abandoned at the timeout: a new
+     * dictation can start, and the late result reaches nothing.
+     */
+    @Test fun aHungReRunIsAbandonedAtTheTimeoutAndItsLateResultDropped() = runTest {
+        val hooked = Hooked(core, hookAt = 2)
+        val gate = java.util.concurrent.CountDownLatch(1)
+        hooked.onCommit = { gate.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+        val pool = java.util.concurrent.Executors.newCachedThreadPool()
+        try {
+            val c = controller(hooked, dispatcher = pool.asCoroutineDispatcherForTest())
+            dictateAndSwitch(c)
+            until { hooked.commitsToHooked == 1 }
+            advanceTimeBy(DictationController.RETRY_TIMEOUT_MS + 1); runCurrent()
+            assertEquals(DictationState.Error(ErrorKind.FailedToTranscribe), c.state.value)
+            advanceTimeBy(DictationController.TOGGLE_DEBOUNCE_MS)
+            c.toggle(hold = false)
+            assertTrue("a new dictation starts", c.state.value is DictationState.Recording)
+            gate.countDown()
+            pool.shutdown()
+            assertTrue(pool.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS))
+            runCurrent()
+            assertTrue(host.inserted.isEmpty())
+            assertTrue(c.state.value is DictationState.Recording)
+        } finally { pool.shutdownNow() }
+    }
+
+    /** D58 review 2: a start that used up the re-run's whole budget fails as a timeout, with no re-run. */
+    @Test fun aReRunWithNoBudgetLeftFailsAsATimeout() = runTest {
+        val gate = java.util.concurrent.CountDownLatch(1)
+        var starts = 0
+        core.onStart = { if (++starts == 1) gate.await(5, java.util.concurrent.TimeUnit.SECONDS) }
+        val pool = java.util.concurrent.Executors.newCachedThreadPool()
+        try {
+            val c = DictationController(
+                backgroundScope, audio, host, { core }, StandardTestDispatcher(testScheduler), SessionCap(), { currentTime },
+                pool.asCoroutineDispatcherForTest(),
+            ).also { it.onFieldFocusChanged(true) }
+            dictateAndSwitch(c)
+            assertTrue(c.state.value is DictationState.Processing)
+            advanceTimeBy(DictationController.RERUN_TIMEOUT_MS + 1)
+            gate.countDown()
+            until { c.state.value is DictationState.Error }
+            assertEquals(DictationState.Error(ErrorKind.FailedToTranscribe), c.state.value)
+            assertEquals("no re-run session", 1, starts)
+            val t = host.traces.single()
+            assertEquals(dev.flowclone.debug.InsertOutcome.TIMEOUT, t.insert.outcome)
+            assertEquals("no result after ${DictationController.RERUN_TIMEOUT_MS} ms", t.error)
+        } finally { pool.shutdownNow() }
     }
 
     /** D58: X during the re-run stops its replay at the next chunk; nothing of it reaches the next dictation. */
