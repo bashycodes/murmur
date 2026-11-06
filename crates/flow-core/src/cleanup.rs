@@ -1393,23 +1393,42 @@ static POSTAMBLE: LazyLock<regex::Regex> = LazyLock::new(|| {
 
 /// Strip preamble/commentary, then one layer of wrapping quotes or guillemets.
 pub fn unwrap_output(s: &str) -> String {
-    unwrap_output_inner(s, false)
+    unwrap_output_inner(s, false, None)
 }
 
 /// [`unwrap_output`] for an answer to `input`: when the speaker quoted the
 /// whole dictation ("quote unquote the bus was on time" → `"The bus was on
 /// time."`, or a transcript the rules already wrote that way), the
 /// wrapping double quotes are the answer, not packaging, and stay.
+/// Likewise a lead-in the speaker dictated ("here's a list for the party
+/// cups plates ..." → "Here's a list for the party:" + list) is the
+/// answer, not a label, and stays.
 pub fn unwrap_output_for(s: &str, input: &str) -> String {
     let t = input.trim_start();
     let quoted = t.starts_with(['"', '\u{201c}'])
         || crate::postprocess::spoken::spoken_cleanup(t).starts_with('"');
-    unwrap_output_inner(s, quoted)
+    unwrap_output_inner(s, quoted, Some(input))
 }
 
-fn unwrap_output_inner(s: &str, keep_quotes: bool) -> String {
+/// Lowercase words (letters, digits, apostrophes) of `s`, for comparing a
+/// label in the answer with the start of the dictation.
+fn plain_words(s: &str) -> Vec<String> {
+    s.split(|c: char| !(c.is_alphanumeric() || c == '\'' || c == '\u{2019}'))
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_lowercase().replace('\u{2019}', "'"))
+        .collect()
+}
+
+fn unwrap_output_inner(s: &str, keep_quotes: bool, input: Option<&str>) -> String {
     let t = POSTAMBLE.replace(s.trim(), "");
-    let t = PREAMBLE.replace(&t, "");
+    let dictated = |m: &str| {
+        let label = plain_words(m);
+        input.is_some_and(|i| !label.is_empty() && plain_words(i).starts_with(&label))
+    };
+    let t = match PREAMBLE.find(&t) {
+        Some(m) if !dictated(m.as_str()) => PREAMBLE.replace(&t, "").into_owned(),
+        _ => t.into_owned(),
+    };
     let mut t = t.trim();
     for (open, close) in [('"', '"'), ('\u{ab}', '\u{bb}'), ('\u{201c}', '\u{201d}')] {
         if keep_quotes && open != '\u{ab}' {
@@ -1970,6 +1989,29 @@ mod tests {
         ] {
             assert_eq!(unwrap_output(raw), want, "{raw:?}");
         }
+    }
+
+    #[test]
+    fn a_dictated_lead_in_is_not_a_preamble() {
+        let raw = "Here's a list for the party:\n\n<ul><li>Cups</li><li>Ice</li></ul>";
+        for input in [
+            "here's a list for the party cups and ice",
+            "Here's a list for the party, cups, and ice.",
+        ] {
+            assert_eq!(unwrap_output_for(raw, input), raw, "{input:?}");
+        }
+        // The model's own label still goes.
+        assert_eq!(
+            unwrap_output_for(
+                "Here is the cleaned text:\nMeet at 3 PM.",
+                "meet at three pm"
+            ),
+            "Meet at 3 PM."
+        );
+        assert_eq!(
+            unwrap_output_for("Here's the text: Here we go.", "here we go"),
+            "Here we go."
+        );
     }
 
     #[test]
