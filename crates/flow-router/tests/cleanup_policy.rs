@@ -419,7 +419,7 @@ fn provider_error_backs_off_and_falls_back_to_the_local_pipeline() {
         Some("llm_error: provider_error")
     );
     // The detail reaches the route for the debug log.
-    assert_eq!(rt.guard_detail.as_deref(), Some("error: provider_error"));
+    assert_eq!(rt.fallback_detail.as_deref(), Some("error: provider_error"));
     assert_eq!(rt.llm_engine.as_deref(), Some("local"));
     let cc = k.router.cleanup_status().circuit.unwrap();
     assert!(cc.open && !cc.until_config_change);

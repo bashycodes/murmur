@@ -246,13 +246,13 @@ class RouterJsonTest {
 
     /** 2026-10-27: why AI cleanup fell back reaches the route (debug log only). */
     @Test fun routeCarriesTheFallbackDetail() {
-        // A pre-D58 server may still send rejected_text: ignored.
+        // A pre-D59 server may still send rejected_text: ignored.
         val r = CoreJson.decodeRoute(JSONObject("""{"engine":"local","cleanup_route":"local","cloud_fallback":"llm_dropped",
             "rejected_text":"The demo is on Thursday.","guard_detail":"dropped: the demo is on thursday at 3"}"""))
         assertEquals("llm_dropped", r.cloudFallback)
-        assertEquals("dropped: the demo is on thursday at 3", r.guardDetail)
+        assertEquals("dropped: the demo is on thursday at 3", r.fallbackDetail)
         val none = CoreJson.decodeRoute(JSONObject("""{"engine":"local"}"""))
-        assertNull(none.guardDetail)
+        assertNull(none.fallbackDetail)
     }
 
     @Test fun decodesCustomModelsAndTheCleanupProvider() {

@@ -11,7 +11,7 @@
 //!   (OpenRouter cloud STT, default the product's whisper-large-v3-turbo).
 //!   Default `parakeet`.
 //! * `--cleanup`: `none` (fallback rules), `local` (the on-device pipeline:
-//!   rules, Qwen prompt v2, strict guard; needs `--llm`), `or:MODEL`
+//!   rules, Qwen prompt v2; needs `--llm`), `or:MODEL`
 //!   (OpenRouter AI cleanup, D30; with `--llm` it falls back to the local
 //!   pipeline as on the phone unless `--no-local-fallback`). Default
 //!   `none,or:meta-llama/llama-3.3-70b-instruct`.

@@ -559,8 +559,8 @@ mod tests {
     }
 
     #[test]
-    fn a_pre_d58_divergence_threshold_is_ignored() {
-        // D58 removed the opt-in edit-distance guard; a client or saved
+    fn a_pre_d59_divergence_threshold_is_ignored() {
+        // D59 removed the opt-in edit-distance guard; a client or saved
         // config that still sends the key starts a session as before.
         for j in [
             r#"{"divergence_threshold":null}"#,

@@ -1,6 +1,6 @@
 //! D30: AI cleanup is the main path. With a cloud cleaner active the raw
 //! transcript goes straight to it (prompt v4c) and its answer is used as
-//! given (no output guard, D58); a timeout, error or empty answer runs
+//! given (no output guard, D59); a timeout, error or empty answer runs
 //! today's pipeline (fallback rules, then the on-device LLM), and without
 //! an on-device LLM the fallback rules alone.
 //! Without a cloud cleaner nothing changes. Fake cleaners only: no network.
@@ -268,7 +268,7 @@ fn build_v2(t: &str) -> CleanPrompt {
 
 #[test]
 fn a_cloud_answer_the_transcript_does_not_back_is_still_used() {
-    // D58: no output guard. Until D58 the loosened guard rejected this and
+    // D59: no output guard. Until D59 the loosened guard rejected this and
     // ran the local pipeline.
     let cloud = Arc::new(Fake::ok("Please buy a new car tomorrow.").cloud());
     let local = Arc::new(Fake::ok(LOCAL));
@@ -448,7 +448,7 @@ fn ai_lists_get_a_blank_line_after_the_intro() {
 }
 
 // Debug evidence for a fallback (2026-10-27): when AI cleanup falls back,
-// the result says why (`guard_detail`), so the debug log can show it.
+// the result says why (`fallback_detail`, JSON key `guard_detail`), so the debug log can show it.
 
 /// `cloud` must already be `.cloud()`.
 fn fallback_with(raw: &str, cloud: Fake) -> CommitResult {
@@ -463,7 +463,7 @@ fn fallback_with(raw: &str, cloud: Fake) -> CommitResult {
     )
 }
 
-// D58: dictated structure the old guard rejected (parentheses, quotes, a
+// D59: dictated structure the old guard rejected (parentheses, quotes, a
 // formula) reaches the text as the model formatted it, not the uncleaned
 // text. Synthetic dictations: (transcript, model answer).
 const STRUCTURED: [(&str, &str); 4] = [
@@ -529,7 +529,7 @@ fn a_timeout_has_a_detail_but_no_answer() {
             .slow(Duration::from_millis(800)),
     );
     assert_eq!(r.cloud_fallback.as_deref(), Some("llm_timeout"));
-    assert_eq!(r.guard_detail.as_deref(), Some("no answer within 100 ms"));
+    assert_eq!(r.fallback_detail.as_deref(), Some("no answer within 100 ms"));
 }
 
 #[test]
@@ -538,14 +538,14 @@ fn an_error_has_its_message_but_no_answer() {
         RAW,
         Fake::err(CleanError::Backend("provider_error".into())).cloud(),
     );
-    assert_eq!(r.guard_detail.as_deref(), Some("error: provider_error"));
+    assert_eq!(r.fallback_detail.as_deref(), Some("error: provider_error"));
 }
 
 #[test]
 fn an_empty_answer_says_so() {
     let r = fallback_with(RAW, Fake::ok("   ").cloud());
     assert_eq!(r.cloud_fallback.as_deref(), Some("llm_empty"));
-    assert_eq!(r.guard_detail.as_deref(), Some("empty answer"));
+    assert_eq!(r.fallback_detail.as_deref(), Some("empty answer"));
 }
 
 #[test]
@@ -553,12 +553,12 @@ fn an_accepted_answer_has_no_detail() {
     let cloud = Arc::new(Fake::ok(AI).cloud());
     let r = dictate(&core_with(RAW, &cloud, None));
     assert_eq!(r.cleanup_route.as_deref(), Some("cloud"));
-    assert_eq!(r.guard_detail, None);
+    assert_eq!(r.fallback_detail, None);
 }
 
 #[test]
 fn cloud_off_json_has_no_detail_and_the_local_answer_is_used() {
-    // The on-device LLM alone (D58: its answer is used as given, even one
+    // The on-device LLM alone (D59: its answer is used as given, even one
     // the transcript does not back): today's result, with no new keys.
     let local = Arc::new(Fake::ok("Please buy a new car tomorrow."));
     let r = dictate_cfg(
@@ -575,10 +575,30 @@ fn cloud_off_json_has_no_detail_and_the_local_answer_is_used() {
     assert_eq!(r.fallback_reason, None, "{r:?}");
     assert_eq!(r.status, CommitStatus::Formatted);
     assert_eq!(r.final_text.trim_end(), "Please buy a new car tomorrow.");
-    assert_eq!(r.guard_detail, None);
+    assert_eq!(r.fallback_detail, None);
     let json = serde_json::to_string(&r).unwrap();
     assert!(
         !json.contains("rejected_text") && !json.contains("guard_detail"),
         "{json}"
     );
+}
+
+#[test]
+fn the_fallback_detail_keeps_its_guard_detail_json_key() {
+    // Renamed in Rust (D59); the wire key is unchanged, and a pre-D59
+    // payload (with `rejected_text`) still parses.
+    let r = fallback_with(RAW, Fake::ok("   ").cloud());
+    let mut v = serde_json::to_value(&r).unwrap();
+    assert_eq!(v["guard_detail"], "empty answer");
+    assert!(v.get("fallback_detail").is_none(), "{v}");
+    v["guard_detail"] = "dropped: the demo is on thursday".into();
+    v["rejected_text"] = "The demo is on Thursday.".into();
+    let old: CommitResult = serde_json::from_value(v).unwrap();
+    assert_eq!(
+        old.fallback_detail.as_deref(),
+        Some("dropped: the demo is on thursday")
+    );
+    let route = serde_json::json!({"engine": "local", "guard_detail": "error: x", "rejected_text": "y"});
+    let route: flow_core::RouteInfo = serde_json::from_value(route).unwrap();
+    assert_eq!(route.fallback_detail.as_deref(), Some("error: x"));
 }
