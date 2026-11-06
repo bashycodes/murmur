@@ -28,9 +28,19 @@ failed=()
 # fail <check> <why>: report a failed check by name; the gate exits 1 at the end.
 fail() { echo "FAIL [$1]: $2"; failed+=("$1"); }
 # A command that dies outside a check (missing tool, unreadable .so) still says what it was.
-trap 'echo "FAIL [internal]: line $LINENO: \`$BASH_COMMAND\` exited $?"; echo "native gate ($flavor): failed checks: internal"' ERR
+trap 'echo "FAIL [internal]: line $LINENO: \`$BASH_COMMAND\` exited $?"; echo "native gate ($flavor): failed checks: ${failed[*]:-} internal"' ERR
 # has_word <text> <word>: exact-word match on captured output.
 has_word() { grep -qw -- "$2" <<<"$1"; }
+# scan_so <check> <pattern> <found-msg> <clean-msg>: grep libflow_ffi.so, failing closed:
+# rc 0 is a hit (fail), 1 is clean, anything else (unreadable .so) fails too.
+scan_so() {
+  local rc=0; grep -qaE -- "$2" "$so" || rc=$?
+  case $rc in
+    0) fail "$1" "$3" ;;
+    1) echo "$4" ;;
+    *) fail "$1" "grep exited $rc reading $so" ;;
+  esac
+}
 
 want=$(grep -o 'Java_dev_flowclone_core_NativeFlowCore_native[A-Za-z]*' "$app/JNI_CONTRACT.md" | sort -u)
 # D39 / D41: hybrid / remote also export the admin API (`admin`) and the model library
@@ -90,13 +100,13 @@ if [[ -f "$sherpa" ]]; then
 fi
 case "$flavor" in
   remote)
-    bad=$(find "$dir" -maxdepth 1 -printf '%f\n' | grep -E '^lib(whisper|sherpa|onnxruntime|flow_llm|c\+\+_shared|llama|ggml)' || true)
+    bad=$(find "$dir" -mindepth 1 -maxdepth 1 -printf '%f\n' | grep -E '^lib(whisper|sherpa|onnxruntime|flow_llm|c\+\+_shared|llama|ggml)' || true)
     if [[ -z "$bad" ]]; then echo "remote: no ASR/LLM libs"; else fail remote-libs "remote: ships $bad"; fi
     n=$(grep -cE ' (whisper_|llama_|ggml_)' <<<"$so_def" || true)
     if [[ "$n" == 0 ]]; then echo "remote: libflow_ffi.so exports no whisper_/llama_/ggml_"; else fail remote-symbols "remote: $n ASR symbols exported"; fi ;;
   local)
-    if grep -qaE 'tungstenite|rustls' "$so"; then fail local-network "local: network code in libflow_ffi.so"; else echo "local: no tungstenite/rustls in libflow_ffi.so"; fi
-    if grep -qaE 'reqwest|webpki|flow-cloud' "$so"; then fail local-cloud "local: cloud STT client in libflow_ffi.so"; else echo "local: no reqwest/webpki/flow-cloud in libflow_ffi.so"; fi ;;
+    scan_so local-network 'tungstenite|rustls' "local: network code in libflow_ffi.so" "local: no tungstenite/rustls in libflow_ffi.so"
+    scan_so local-cloud 'reqwest|webpki|flow-cloud' "local: cloud STT client in libflow_ffi.so" "local: no reqwest/webpki/flow-cloud in libflow_ffi.so" ;;
 esac
 case "$flavor" in
   hybrid|remote)
@@ -104,7 +114,7 @@ case "$flavor" in
     else fail cloud-client "$flavor: libflow_ffi.so lacks the cloud client (build-native.sh --flavor $flavor adds feature cloud)"; fi ;;
 esac
 if [[ -n "${1:-}" ]]; then
-  za="${ZIPALIGN:-$(find "${ANDROID_HOME:-$HOME/Android/Sdk}"/build-tools -mindepth 1 -maxdepth 1 | sort -V | tail -1)/zipalign}"
+  za="$(find "${ANDROID_HOME:-$HOME/Android/Sdk}"/build-tools -mindepth 1 -maxdepth 1 | sort -V | tail -1)/zipalign"
   # zipalign -c exits non-zero when an entry is misaligned; its per-entry lines say which.
   za_rc=0; za_out=$("$za" -c -P 16 -v 4 "$1") || za_rc=$?
   bad=$(grep -E 'lib/.*\.so' <<<"$za_out" | grep -v '(OK' || true)
