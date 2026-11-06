@@ -32,7 +32,7 @@ object PlatformProbe {
 
     fun available(ctx: Context): Boolean = SpeechRecognizer.isOnDeviceRecognitionAvailable(ctx)
 
-    private fun intent(terms: List<String>, formatting: Boolean, pfd: ParcelFileDescriptor?) =
+    private fun intent(terms: List<String>, formatting: Boolean, pfd: ParcelFileDescriptor?, segmented: Boolean = false) =
         Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, LANG)
@@ -46,6 +46,9 @@ object PlatformProbe {
                 putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, AudioFormat.ENCODING_PCM_16BIT)
                 putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1)
                 putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, ProbePcm.RATE)
+                // One session until the pipe ends: per-segment finals (onSegmentResults), then
+                // onEndOfSegmentedSession, instead of one onResults at the first endpoint.
+                if (segmented) putExtra(RecognizerIntent.EXTRA_SEGMENTED_SESSION, RecognizerIntent.EXTRA_AUDIO_SOURCE)
             }
         }
 
@@ -90,13 +93,24 @@ object PlatformProbe {
 
     fun cancel() { finish?.invoke("cancelled") }
 
-    fun run(ctx: Context, clip: ProbeRuntime.Clip?, terms: List<String>, formatting: Boolean, trigger: String, l: RunListener) {
+    /**
+     * One recognition. [segmented] (clips only): an `EXTRA_SEGMENTED_SESSION` run over the whole
+     * clip, the text being every segment's final. Otherwise one `onResults`, as Q9 ran it (whose
+     * final came back empty after 37 partials, so the record keeps the last partial and the size
+     * of the results list next to the final). Logged to files/probe-english.jsonl when [log].
+     */
+    fun run(
+        ctx: Context, clip: ProbeRuntime.Clip?, terms: List<String>, formatting: Boolean, trigger: String, l: RunListener,
+        segmented: Boolean = false, log: Boolean = true,
+    ) {
         if (running) { l.onState("a platform run is already going"); return }
         val app = ctx.applicationContext
         val onTop = ProbeRuntime.probeOnTop
+        val seg = segmented && clip != null
+        fun emit(rec: ProbeRecord) = l.onDone(rec, if (log) ProbeRuntime.append(app, rec) else rec.toJsonLine())
         if (!available(app)) {
-            val rec = record(clip, trigger, onTop, "", 0, ProbeTiming(ProbeRuntime.now()), null, "isOnDeviceRecognitionAvailable = false", terms, formatting, false)
-            l.onDone(rec, ProbeRuntime.append(app, rec)); return
+            emit(record(clip, trigger, onTop, "", 0, ProbeTiming(ProbeRuntime.now()), null, "isOnDeviceRecognitionAvailable = false", terms, formatting, false, seg, PlatformFinal()))
+            return
         }
         val r = try { SpeechRecognizer.createOnDeviceSpeechRecognizer(app) } catch (t: Throwable) {
             l.onState("create failed: $t"); return
@@ -107,6 +121,8 @@ object PlatformProbe {
         var audioEndAt = 0L // set on the main thread only
         var partials = 0
         var text = ""
+        val fin = PlatformFinal()
+        val segments = ArrayList<String>()
         var done = false
         var pipe: Array<ParcelFileDescriptor>? = null
         var feeder: ProbeFeeder? = null
@@ -122,8 +138,8 @@ object PlatformProbe {
             rec = null; finish = null; micStop = null
             if (audioEndAt == 0L) audioEndAt = timing.completedAt ?: ProbeRuntime.now()
             timing = timing.copy(audioEndAt = audioEndAt)
-            val record = record(clip, trigger, onTop, text, partials, timing, errCode, err, terms, formatting, err == "cancelled")
-            l.onDone(record, ProbeRuntime.append(app, record))
+            if (seg) text = segments.joinToString(" ")
+            emit(record(clip, trigger, onTop, text, partials, timing, errCode, err, terms, formatting, err == "cancelled", seg, fin))
         }
         finish = { why -> runCatching { r.cancel() }; end(null, why) }
 
@@ -136,16 +152,34 @@ object PlatformProbe {
                 if (clip == null && audioEndAt == 0L) audioEndAt = ProbeRuntime.now()
                 l.onState("platform · end of speech")
             }
-            override fun onError(error: Int) = end(error, ProbeCodes.platformError(error))
+            override fun onError(error: Int) {
+                // A segmented session that already has text ends on the error with that text.
+                if (seg && segments.isNotEmpty() && error == SpeechRecognizer.ERROR_NO_MATCH) end(null, null)
+                else end(error, ProbeCodes.platformError(error))
+            }
             override fun onResults(results: Bundle?) {
                 val now = ProbeRuntime.now()
-                text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                val all = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
+                fin.resultCount = all.size
+                text = ProbeCodes.firstNonBlank(all)
                 timing = timing.copy(lastFinalAt = now, completedAt = now)
                 l.onFinal(text)
                 end(null, null)
             }
+            override fun onSegmentResults(segmentResults: Bundle) {
+                val t = ProbeCodes.firstNonBlank(segmentResults.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty())
+                fin.resultCount++
+                if (t.isNotEmpty()) segments += t
+                timing = timing.copy(lastFinalAt = ProbeRuntime.now())
+                l.onFinal(segments.joinToString(" "))
+            }
+            override fun onEndOfSegmentedSession() {
+                timing = timing.copy(completedAt = ProbeRuntime.now())
+                end(null, null)
+            }
             override fun onPartialResults(partialResults: Bundle?) {
                 val p = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
+                fin.lastPartial = p
                 partials++
                 if (timing.firstPartialAt == null) timing = timing.copy(firstPartialAt = ProbeRuntime.now())
                 l.onPartial(p)
@@ -171,7 +205,7 @@ object PlatformProbe {
             null
         }
         try {
-            r.startListening(intent(terms, formatting, pfd))
+            r.startListening(intent(terms, formatting, pfd, seg))
             feeder?.start()
         } catch (t: Throwable) {
             end(null, "startListening failed: $t")
@@ -181,6 +215,7 @@ object PlatformProbe {
     private fun record(
         clip: ProbeRuntime.Clip?, trigger: String, onTop: Boolean, text: String, partials: Int, timing: ProbeTiming,
         errCode: Int?, err: String?, terms: List<String>, formatting: Boolean, cancelled: Boolean,
+        segmented: Boolean, fin: PlatformFinal,
     ) = ProbeRecord(
         tsMs = System.currentTimeMillis(), appBuild = ProbeRuntime.build(),
         engine = "platform", mode = null, source = clip?.source ?: "mic", trigger = trigger, probeOnTop = onTop,
@@ -194,6 +229,12 @@ object PlatformProbe {
             "biasing" to terms.map { it.trim() }.filter { it.isNotEmpty() },
             "formatting" to formatting,
             "real_time" to (clip != null && ProbeRuntime.realTimePacing),
+            "segmented" to segmented,
+            "results_count" to fin.resultCount,
+            "last_partial" to fin.lastPartial,
         ),
     )
+
+    /** What the final looked like next to the partials (the Q9 empty-final question). */
+    private class PlatformFinal(var resultCount: Int = 0, var lastPartial: String? = null)
 }
