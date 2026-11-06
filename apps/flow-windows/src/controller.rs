@@ -1122,7 +1122,7 @@ impl Controller {
                     self.begin_selection_capture(session);
                 }
                 // D58: the keyboard at the stop decides the language.
-                let rerun = self.stop_language(session, &prefs);
+                let rerun = self.apply_stop_language(session, &prefs);
                 if rerun.is_some() {
                     self.machine.rerun(session);
                 }
@@ -1886,10 +1886,12 @@ fn language_wire(languages: &[String]) -> String {
 
 impl Controller {
     /// D58: reads the keyboard at the stop (the same rule as at the
-    /// start, [`apply_keyboard_language`]) and records it for the debug
-    /// line. `Some` when the language changed since the start: the
-    /// session is then transcribed again in the stop language.
-    fn stop_language(&self, session: SessionId, prefs: &Prefs) -> Option<Rerun> {
+    /// start, [`apply_keyboard_language`]) and writes it into the
+    /// session: `stop_language` always; `language` and `language_source`
+    /// when it changed. `Some` when it changed since the start: the
+    /// session is then transcribed again in the stop language. Otherwise
+    /// the kept re-run audio is dropped (unless Retry keeps it).
+    fn apply_stop_language(&self, session: SessionId, prefs: &Prefs) -> Option<Rerun> {
         let start = {
             let g = self.shared.sessions.lock().unwrap();
             g.get(&session)?.start_cfg.clone()?
@@ -1925,9 +1927,9 @@ impl Controller {
 
 /// Starts a session with `cfg`, sets `ctx`, pushes `pcm` in 100 ms
 /// chunks and commits: History's Retry and D58's re-run. `cancelled` is
-/// checked before the start and before every chunk; a cancelled replay
-/// cancels its session and returns `"cancelled"`. The caller holds
-/// `start_lock`, so no dictation starts in between.
+/// checked before the start, before every chunk and before the commit; a
+/// cancelled replay cancels its session and returns `"cancelled"`. The
+/// caller holds `start_lock`, so no dictation starts in between.
 fn replay_recording(
     core: &dyn CoreApi,
     cfg: crate::core_api::SessionConfig,
@@ -1948,6 +1950,10 @@ fn replay_recording(
             return Err("cancelled".into());
         }
         core.push_audio(chunk);
+    }
+    if cancelled() {
+        core.cancel();
+        return Err("cancelled".into());
     }
     Ok((route, core.commit()))
 }
@@ -3846,6 +3852,72 @@ mod tests {
             .fake
             .log()
             .contains(&"paste [stub: 1.0 s of audio]".to_string()));
+    }
+
+    /// `cancelled` turns true at its `n`-th check (1 = before the start).
+    fn cancelled_at(n: usize) -> impl Fn() -> bool {
+        let calls = std::cell::Cell::new(0);
+        move || {
+            calls.set(calls.get() + 1);
+            calls.get() >= n
+        }
+    }
+
+    #[test]
+    fn a_replay_cancelled_after_its_last_chunk_does_not_commit() {
+        // D58 review 2: the check before the commit (Android does the same).
+        let core = StubCore::new();
+        let r = replay_recording(
+            &core,
+            Default::default(),
+            None,
+            &[1000; 1600],
+            &cancelled_at(3),
+        );
+        assert_eq!(r.unwrap_err(), "cancelled");
+        assert_eq!(core.cancels(), 1);
+    }
+
+    #[test]
+    fn an_empty_replay_checks_cancel_before_committing() {
+        let core = StubCore::new();
+        let r = replay_recording(&core, Default::default(), None, &[], &cancelled_at(2));
+        assert_eq!(r.unwrap_err(), "cancelled");
+        assert_eq!((core.starts(), core.cancels()), (1, 1));
+    }
+
+    #[test]
+    fn a_rerun_whose_budget_ran_out_before_it_started_fails_as_a_timeout() {
+        // D58 review 2: the dictation's start holds the re-run back past
+        // its budget: the usual timeout, and no re-run session.
+        let entered = Arc::new(AtomicBool::new(false));
+        let open = Arc::new(AtomicBool::new(false));
+        let pushed_after = Arc::new(AtomicU64::new(0));
+        let (e, o, p) = (entered.clone(), open.clone(), pushed_after.clone());
+        let mut r = rig_with(keyboard(Some("en")), Prefs::default(), move |inner| {
+            Arc::new(GatedStart {
+                inner,
+                block_at: 1,
+                entered: e,
+                open: o,
+                pushed_after: p,
+            })
+        });
+        r.at(0, Input::Hotkey(HotkeyAction::PttDown));
+        r.fake.feed_audio(&[1000; 16_000]);
+        *r.fake.keyboard.lock().unwrap() = Some("he".into());
+        r.at(1000, Input::Hotkey(HotkeyAction::PttUp));
+        let budget = r.c.machine().policy().rerun_timeout_ms;
+        r.at(1000 + budget, Input::Tick);
+        assert!(r
+            .fake
+            .log()
+            .contains(&r#"overlay Error { message: "Transcription timed out" }"#.to_string()));
+        open.store(true, Ordering::SeqCst);
+        r.pump(); // the late Committed (ignored)
+        assert_eq!(r.core.starts(), 1, "no re-run session");
+        assert_eq!(pushed_after.load(Ordering::SeqCst), 0);
+        assert!(!r.fake.log().iter().any(|l| l.starts_with("paste")));
     }
 
     #[test]
