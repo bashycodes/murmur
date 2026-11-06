@@ -15,8 +15,8 @@
 //!   (OpenRouter AI cleanup, D30; with `--llm` it falls back to the local
 //!   pipeline as on the phone unless `--no-local-fallback`). Default
 //!   `none,or:meta-llama/llama-3.3-70b-instruct`.
-//! * `--prompt`: versions for the `or:` slots, `v4c` (the product) and/or
-//!   `v2`. Default `v4c`.
+//! * `--prompt`: versions for the `or:` slots, `v5` (the product), `v4c`
+//!   and/or `v2`. Default `v5`.
 //! * `--max-spend`: cap on OpenRouter spend for this run (default 0.05).
 //! * `--only`: recordings whose id contains one of these (smoke runs).
 //!
@@ -185,7 +185,7 @@ fn main() {
     let asr_specs = a.list("--asr", "parakeet");
     let cleanup_specs = a.list("--cleanup", "none,or:meta-llama/llama-3.3-70b-instruct");
     let prompts: Vec<_> = a
-        .list("--prompt", "v4c")
+        .list("--prompt", "v5")
         .iter()
         .map(|p| parse_prompt(p).unwrap_or_else(|e| die(e)))
         .collect();

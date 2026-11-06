@@ -15,7 +15,7 @@
 //! Cleanup slots mirror the phone's cleaner: `cloud` (AI cleanup, D30)
 //! wrapped in a `RoutedCleaner` with the on-device `local` LLM when there
 //! is one, `local` alone (today's pipeline: rules, prompt v2), or neither
-//! (fallback rules). The product sends prompt v4c to
+//! (fallback rules). The product sends prompt v5 to
 //! the cloud; other versions are swapped in by [`PromptOverride`], which
 //! rebuilds the prompt with `build_prompt_versioned` and changes nothing
 //! else.
@@ -96,7 +96,7 @@ pub struct Row {
     pub rec: String,
     pub asr: String,
     pub cleanup: String,
-    /// `v4c` / `v2` for cloud slots, `v2` for the local pipeline, `-`
+    /// `v5` / `v4c` / `v2` for cloud slots, `v2` for the local pipeline, `-`
     /// for the fallback rules.
     pub prompt: String,
     pub transcript: String,
@@ -154,7 +154,8 @@ pub fn parse_prompt(s: &str) -> Result<PromptVersion, String> {
     match s.trim() {
         "v2" => Ok(PromptVersion::V2),
         "v4c" => Ok(PromptVersion::V4c),
-        o => Err(format!("unknown prompt version {o:?} (v2, v4c)")),
+        "v5" => Ok(PromptVersion::V5),
+        o => Err(format!("unknown prompt version {o:?} (v2, v4c, v5)")),
     }
 }
 
@@ -162,6 +163,7 @@ pub fn prompt_name(v: PromptVersion) -> &'static str {
     match v {
         PromptVersion::V2 => "v2",
         PromptVersion::V4c => "v4c",
+        PromptVersion::V5 => "v5",
     }
 }
 
