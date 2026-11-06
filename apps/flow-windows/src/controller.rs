@@ -2006,8 +2006,11 @@ fn apply_keyboard_language(
     } else {
         None
     };
-    let (languages, source) =
-        crate::keyboard_language::resolve(&cfg.languages, prefs.keyboard_language, keyboard.as_deref());
+    let (languages, source) = crate::keyboard_language::resolve(
+        &cfg.languages,
+        prefs.keyboard_language,
+        keyboard.as_deref(),
+    );
     cfg.languages = languages;
     source
 }
@@ -3713,7 +3716,12 @@ mod tests {
         // D58: the layout at the stop decides; the whole recording is
         // transcribed again in that language and pasted.
         let mem = MemSink::default();
-        let (mut r, log) = logged(Prefs::default(), keyboard(Some("en")), Box::new(mem.clone()), true);
+        let (mut r, log) = logged(
+            Prefs::default(),
+            keyboard(Some("en")),
+            Box::new(mem.clone()),
+            true,
+        );
         r.at(0, Input::Hotkey(HotkeyAction::PttDown));
         r.fake.feed_audio(&[1000; 16_000]);
         *r.fake.keyboard.lock().unwrap() = Some("he".into());
@@ -3721,24 +3729,42 @@ mod tests {
         r.pump(); // Committed
         r.pump(); // PasteFinished
         assert_eq!(r.core.last_config().unwrap().languages, ["he"]);
-        assert_eq!(r.core.starts(), 2, "the start session, then the stop-language one");
-        assert!(r.fake.log().contains(&"paste [stub: 1.0 s of audio]".to_string()));
+        assert_eq!(
+            r.core.starts(),
+            2,
+            "the start session, then the stop-language one"
+        );
+        assert!(r
+            .fake
+            .log()
+            .contains(&"paste [stub: 1.0 s of audio]".to_string()));
         let line = lines(&mem, &log).remove(0);
         assert_eq!(line["start_language"], "en");
         assert_eq!(line["stop_language"], "he");
-        assert_eq!((&line["language"], &line["language_source"]), (&"he".into(), &"keyboard".into()));
+        assert_eq!(
+            (&line["language"], &line["language_source"]),
+            (&"he".into(), &"keyboard".into())
+        );
     }
 
     #[test]
     fn same_keyboard_at_the_stop_transcribes_once() {
         // D58: no change since the start: one session, no re-run.
         let mem = MemSink::default();
-        let (mut r, log) = logged(Prefs::default(), keyboard(Some("he")), Box::new(mem.clone()), true);
+        let (mut r, log) = logged(
+            Prefs::default(),
+            keyboard(Some("he")),
+            Box::new(mem.clone()),
+            true,
+        );
         dictate_then(&mut r, |_| {});
         assert_eq!(r.core.starts(), 1);
         assert_eq!(r.core.last_config().unwrap().languages, ["he"]);
         let line = lines(&mem, &log).remove(0);
-        assert_eq!((&line["start_language"], &line["stop_language"]), (&"he".into(), &"he".into()));
+        assert_eq!(
+            (&line["start_language"], &line["stop_language"]),
+            (&"he".into(), &"he".into())
+        );
     }
 
     #[test]
@@ -3760,7 +3786,11 @@ mod tests {
         let cfg = r.core.last_config().unwrap();
         assert_eq!(cfg.languages, ["he"]);
         assert_eq!(cfg.endpoint_silence_ms, None, "the replay ends itself");
-        assert!(r.fake.log().iter().any(|l| l.starts_with("paste [stub: 1.0 s")));
+        assert!(r
+            .fake
+            .log()
+            .iter()
+            .any(|l| l.starts_with("paste [stub: 1.0 s")));
     }
 
     /// D58: holds the `block_at`-th start until `open`; counts the
@@ -3942,7 +3972,10 @@ mod tests {
     fn unknown_layout_or_option_off_keeps_todays_languages() {
         let mut r = rig(keyboard(None), Prefs::default());
         dictate_then(&mut r, |_| {});
-        assert!(r.core.last_config().unwrap().languages.is_empty(), "auto-detect");
+        assert!(
+            r.core.last_config().unwrap().languages.is_empty(),
+            "auto-detect"
+        );
         let prefs = Prefs {
             keyboard_language: false,
             languages: vec!["de".into()],
@@ -3967,9 +4000,18 @@ mod tests {
             dictate_then(&mut r, |_| {});
             out.push(lines(&mem, &log).remove(0));
         }
-        assert_eq!((&out[0]["language"], &out[0]["language_source"]), (&"he".into(), &"keyboard".into()));
-        assert_eq!((&out[1]["language"], &out[1]["language_source"]), (&serde_json::Value::Null, &"auto".into()));
-        assert_eq!((&out[2]["language"], &out[2]["language_source"]), (&"en".into(), &"fixed".into()));
+        assert_eq!(
+            (&out[0]["language"], &out[0]["language_source"]),
+            (&"he".into(), &"keyboard".into())
+        );
+        assert_eq!(
+            (&out[1]["language"], &out[1]["language_source"]),
+            (&serde_json::Value::Null, &"auto".into())
+        );
+        assert_eq!(
+            (&out[2]["language"], &out[2]["language_source"]),
+            (&"en".into(), &"fixed".into())
+        );
     }
 
     /// One dictation whose commit returns `result`, `password` set before
