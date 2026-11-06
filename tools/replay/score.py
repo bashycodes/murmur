@@ -18,8 +18,9 @@ OUT_DIR/run.json, and prints one markdown table row per combination plus a
   period normalised) and its period-insensitive exact match.
 * vs phone: the same metrics against the phone's pasted text: how well the
   replay reproduces the phone (1.000 / all exact = identical).
-* guard fallbacks: rows whose AI cleanup answer was not used (cloud_fallback),
-  and the cleanup routes (cloud / local / rules).
+* AI fallbacks: rows where AI cleanup fell back (cloud_fallback: timeout,
+  error or empty answer; D59 removed the output guard), and the cleanup
+  routes (cloud / local / rules).
 * llm / asr p50 (ms) and the cloud cost total (cleanup + STT).
 """
 import argparse
@@ -110,7 +111,7 @@ def report(table, exp, run, detail=False):
     lines = []
     lines.append(f"expected text: {n_exp} recordings ({collections.Counter(s.split(':')[0] for _, s in exp.values())})")
     lines.append("")
-    lines.append("| speech / cleanup / prompt | n | closeness vs expected | exact | closeness vs phone | exact vs phone | guard fallbacks | routes | llm p50 ms | asr p50 ms | cloud $ |")
+    lines.append("| speech / cleanup / prompt | n | closeness vs expected | exact | closeness vs phone | exact vs phone | AI fallbacks | routes | llm p50 ms | asr p50 ms | cloud $ |")
     lines.append("|---|---|---|---|---|---|---|---|---|---|---|")
     for t in table:
         routes = ", ".join(f"{k} {v}" for k, v in sorted(t["routes"].items())) or "-"

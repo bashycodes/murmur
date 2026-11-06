@@ -229,7 +229,7 @@ class NativeFlowCoreHostTest {
             val r = core.commit()
             report("whisper+llm asr=${File(model).name} llm=${File(llmModel).name} asr_ms=${r.timings.asrMs} llm_ms=${r.timings.llmMs} status=${r.status} fallback=${r.fallbackReason}\ntext=${r.finalText}")
             assertTrue(r.toString(), r.status == CommitStatus.FORMATTED || r.status == CommitStatus.RAW_TRANSCRIPT)
-            assertTrue(r.toString(), r.fallbackReason == null || r.fallbackReason == "llm_diverged")
+            assertTrue(r.toString(), r.fallbackReason == null || r.fallbackReason == "llm_timeout")
             assertTrue(r.finalText, r.finalText.lowercase().contains("country"))
         } finally {
             core.unload()

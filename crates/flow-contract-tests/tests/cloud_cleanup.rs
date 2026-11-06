@@ -102,7 +102,7 @@ const CASES: [(&str, &str); 4] = [
         "i think we should uh ship it friday",
         "I think we should ship it Friday.",
     ),
-    // D58: no output guard, so an added sentence is used on both paths.
+    // D59: no output guard, so an added sentence is used on both paths.
     (
         "ok so the deadline moved",
         "The deadline moved. Also buy milk.",
@@ -140,7 +140,7 @@ fn cloud_cleanup_equals_a_local_cleaner_with_the_same_output() {
         let leak = serde_json::to_string(&got).unwrap();
         assert!(!leak.contains(CLOUD_KEY));
     }
-    // D58: nothing judges the answer, so every case uses it.
+    // D59: nothing judges the answer, so every case uses it.
     assert_eq!(
         formatted,
         CASES.len(),

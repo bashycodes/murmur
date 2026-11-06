@@ -426,8 +426,8 @@ data class RouteInfo(
     val cleanupRoute: String? = null,
     /** D30: why AI cleanup fell back (llm_timeout, llm_empty, llm_error: <code>). */
     val cloudFallback: String? = null,
-    /** 2026-10-27, debug log only: why AI cleanup fell back, in detail (timeout, error, empty answer). D58: no output guard. */
-    val guardDetail: String? = null,
+    /** 2026-10-27, debug log only: why AI cleanup fell back, in detail (timeout, error, empty answer). D59: no output guard. */
+    val fallbackDetail: String? = null,
 )
 
 /** D28 `CommitResult.llm` (`flow_core::CleanUsage`): the LLM step's usage; null when it did not run. */

@@ -47,8 +47,8 @@ without a model.
  segments: [{"text": "…"} | {"key": "Enter"|"Tab"|"Break"}], plain_text, empty_reason}
 ```
 Status meanings:
-* `FORMATTED`: the LLM cleanup ran and its answer was used (no output guard, D58).
-* `RAW_TRANSCRIPT`: post-processed ASR text. This covers LLM off, LLM skipped (raw mode, level `none`, terminal) and LLM failed. `fallback_reason` says why it failed: `llm_timeout`, `llm_error: …` or `llm_empty`. (Before D58 an output guard also gave `llm_unsupported`, `llm_dropped` and, with `divergence_threshold`, `llm_diverged`.)
+* `FORMATTED`: the LLM cleanup ran and its answer was used (no output guard, D59).
+* `RAW_TRANSCRIPT`: post-processed ASR text. This covers LLM off, LLM skipped (raw mode, level `none`, terminal) and LLM failed. `fallback_reason` says why it failed: `llm_timeout`, `llm_error: …` or `llm_empty`. (Before D59 an output guard also gave `llm_unsupported`, `llm_dropped` and, with `divergence_threshold`, `llm_diverged`.)
 * `EMPTY`: nothing to paste. `empty_reason`: `no_audio`; `no_speech` (the VAD found no speech, ASR was skipped); `blank_asr`; `hallucination` (a Whisper silence phrase was suppressed; `asr_text` holds it); `only_filler` (the spoken-cleanup pass removed everything). Blank counts as empty, which is the recommended deviation from Wispr Android, where `"   "` is inserted.
 * `ERROR`: ASR error, no session, or the session was cancelled or superseded.
 
@@ -98,7 +98,7 @@ shell UI thread ──start/commit/cancel──▶ control channel (mpsc) ──
    * **Prefill-ahead** (`SessionConfig.llm_prefill`, default on, only when the LLM would run). While the user speaks, the worker sends `Cleaner::prefill` the prompt the commit will probably use: at session start (empty transcript), after every `set_context`, and after every new partial. The plugin coalesces stale requests, prefills in 32-token chunks and is preempted by a commit (`Cleaner::cancel_prefill` is called before the final ASR so the two do not fight for the CPU; what was decoded stays cached). Commit then decodes only from the first token that differs.
    * The cleaner runs on its own thread with a hard timeout (`SessionConfig.llm_timeout_ms`, default 1.5 s). On timeout the core raises a cancel flag (`Cleaner::clean_cancellable`) so the backend frees its context within one decode step.
    * Output scrubbing: preambles ("Here is the cleaned text:"), trailing "Note:" commentary and one layer of quotes or guillemets are stripped.
-   * No output guard (D58, owner decision 2026-11-06). The answer is used as the model gave it (after scrubbing, list flattening and the English unit style); only a timeout, an error or an empty answer falls back to the deterministic text. The support/coverage guard (`guard::check`, 2026-10-24 to D58) and the opt-in edit-distance check (`divergence_threshold`) were removed: on the 2026-11-05 Wispr parity eval the guard rejected correct dictated parentheses, quotes and math (5/31 format points) with no word-error benefit. Text quality is the prompt's and the model's job.
+   * No output guard (D59, owner decision 2026-11-06). The answer is used as the model gave it (after scrubbing, list flattening and the English unit style); only a timeout, an error or an empty answer falls back to the deterministic text. The support/coverage guard (`guard::check`, 2026-10-24 to D59) and the opt-in edit-distance check (`divergence_threshold`) were removed: on the 2026-11-05 Wispr parity eval the guard rejected correct dictated parentheses, quotes and math (5/31 format points) with no word-error benefit. Text quality is the prompt's and the model's job.
 
 ### ASR backend: Parakeet (feature `parakeet`, crate `flow-asr-sherpa`)
 D4 makes Parakeet-TDT-0.6B-v2 int8 the English default on desktops with ≥ 4 GB RAM (`docs/model-benchmarks.md`: WER 1.2% vs 3.7% for whisper base, RTF 0.14).
@@ -262,7 +262,7 @@ Prefill-ahead removes 75-90 % of the commit's prefill (≈ 0.7-1.4 s here). Gene
 
 All additions are backward compatible: new JSON fields have serde defaults (old JSON still parses, extra fields are ignored by org.json/serde), new `SessionConfig` fields default to the recommended behaviour, and new C/plugin symbols are optional.
 
-2026-11-06 (branch `feat/remove-cleanup-guard`, D58):
+2026-11-06 (branch `feat/remove-cleanup-guard`, D59):
 * Behaviour: no output guard on any cleanup path (on-device LLM, server cleanup, AI cleanup). `fallback_reason` / `cloud_fallback` no longer take `llm_unsupported`, `llm_dropped` or `llm_diverged`; `llm_timeout`, `llm_error: <code>` and `llm_empty` stay. Shells label unknown codes generically, so old history rows still read.
 * Removed: module `guard`, `cleanup::default_divergence`, `align::divergence_ratio`, `FallbackReason::{Unsupported, Dropped, Diverged}`, `Rejection::text`, `CommitResult.rejected_text` / `RouteInfo.rejected_text`, `SessionConfig.divergence_threshold` (an old client's key is ignored). `run_cleanup*` / `run_ai_cleanup*` lose their `max_divergence` argument. `guard_detail` stays (timeout / error / empty answer).
 

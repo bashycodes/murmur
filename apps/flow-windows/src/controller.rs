@@ -1851,7 +1851,7 @@ fn debug_entry(i: &SessionInfo, insert: &str, error: Option<String>) -> Entry {
         cleanup_route: route.and_then(|x| x.cleanup_route.clone()),
         cloud_fallback: route.and_then(|x| x.cloud_fallback.clone()),
         // Redacted with `text`.
-        guard_detail: route.and_then(|x| x.guard_detail.clone()).map(redact),
+        fallback_detail: route.and_then(|x| x.fallback_detail.clone()).map(redact),
         stt_model: route
             .filter(|x| x.engine == "cloud")
             .and_then(|x| x.model.clone()),
@@ -4050,7 +4050,7 @@ mod tests {
             engine: "local".into(),
             cleanup_route: Some("local".into()),
             cloud_fallback: Some("llm_timeout".into()),
-            guard_detail: Some("no answer within 5000 ms".into()),
+            fallback_detail: Some("no answer within 5000 ms".into()),
             ..Default::default()
         });
         r
@@ -4058,7 +4058,7 @@ mod tests {
 
     #[test]
     fn debug_log_records_why_ai_cleanup_fell_back() {
-        // 2026-10-27: the fallback's detail. D58: no rejected answer field.
+        // 2026-10-27: the fallback's detail. D59: no rejected answer field.
         let l = logged_line(fallen_back_cloud_cleanup(), false);
         assert_eq!(l["cloud_fallback"], "llm_timeout");
         assert_eq!(l["guard_detail"], "no answer within 5000 ms");

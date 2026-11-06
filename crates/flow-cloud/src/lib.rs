@@ -13,7 +13,7 @@
 //!   VAD-trimmed utterance at commit (batch) through path A
 //!   (`/audio/transcriptions`) or path B (chat `input_audio`), chosen per
 //!   model from the [`catalog`].
-//! * [`CloudBackend`] wraps it in a local `FlowCore` (VAD, guard, spoken
+//! * [`CloudBackend`] wraps it in a local `FlowCore` (VAD, hallucination guard, spoken
 //!   cleanup, dictionary, LLM, post-processing stay on the device, C5) and
 //!   implements `flow_router::Backend` for the router's `cloud` route.
 //! * [`cleaner::OpenRouterCleaner`] is a `flow_core::cleanup::Cleaner` for

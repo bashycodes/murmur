@@ -1,5 +1,5 @@
 //! Real llama.cpp cleanup through the whole commit pipeline (mock ASR text
-//! → LlamaCleaner plugin → guardrail → post-processing).
+//! → LlamaCleaner plugin → post-processing; no output guard, D59).
 //!
 //! Skips with a note when the model or the plugin is missing:
 //! * model: `FLOW_LLM_MODEL`, else `models/qwen2.5-0.5b-instruct-q4_k_m.gguf`

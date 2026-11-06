@@ -514,8 +514,8 @@ fn an_unreachable_server_before_the_cloud_does_not_skip_ai_cleanup() {
     let r = dictate("The demo is on Thursday.", "The demo is on Thursday.");
     assert_eq!(r.cleanup_route.as_deref(), Some("cloud"), "{r:?}");
     assert_eq!(r.status, CommitStatus::Formatted, "{r:?}");
-    // D58: no output guard. An answer that fixes a misheard technical
-    // term ("UUID4", "pytest") is used as the model gave it; until D58 the
+    // D59: no output guard. An answer that fixes a misheard technical
+    // term ("UUID4", "pytest") is used as the model gave it; until D59 the
     // guard rejected it and the rules' text stood.
     let r = dictate(
         "Generate a UID four with pie test.",

@@ -166,10 +166,14 @@ pub struct CommitResult {
     pub cloud_fallback: Option<String>,
     /// Why AI cleanup fell back, in detail: the timeout, the error or the
     /// empty answer, for the debug log (2026-10-27). Set only with
-    /// `cloud_fallback`. Additive. (Until D58 a `rejected_text` field
+    /// `cloud_fallback`. Additive. (Until D59 a `rejected_text` field
     /// carried the answer an output guard rejected; there is no guard now.)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub guard_detail: Option<String>,
+    #[serde(
+        default,
+        rename = "guard_detail",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub fallback_detail: Option<String>,
 }
 
 /// One poll of the live session (`FlowCore::poll`, `Router::poll`): the
@@ -258,10 +262,10 @@ pub struct RouteInfo {
     pub cleanup_route: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cloud_fallback: Option<String>,
-    /// `CommitResult::guard_detail`, for the debug log only (never the
+    /// `CommitResult::fallback_detail`, for the debug log only (never the
     /// route label). Omitted while `None`. Additive.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub guard_detail: Option<String>,
+    #[serde(rename = "guard_detail", skip_serializing_if = "Option::is_none")]
+    pub fallback_detail: Option<String>,
 }
 
 /// An amount in US dollars. A plain JSON number; a newtype only so the
@@ -303,7 +307,7 @@ impl CommitResult {
             llm: None,
             cleanup_route: None,
             cloud_fallback: None,
-            guard_detail: None,
+            fallback_detail: None,
         }
     }
     fn error(msg: impl Into<String>) -> Self {
@@ -2004,7 +2008,7 @@ fn finish_text(
         .with_timeout(cfg.llm_budget_ms(&r.asr_text));
         let timeout_ms = cloud.budget_ms(cfg.llm_budget_ms(&r.asr_text));
         let t = Instant::now();
-        let (outcome, usage, rejection) = cleanup::run_ai_cleanup_for(
+        let (outcome, usage, detail) = cleanup::run_ai_cleanup_for(
             cloud,
             prompt,
             &r.asr_text,
@@ -2026,7 +2030,7 @@ fn finish_text(
                 let why = why.as_str();
                 r.cloud_fallback = Some(why.clone());
                 r.fallback_reason = Some(why);
-                r.guard_detail = rejection.detail;
+                r.fallback_detail = detail;
             }
         }
     }
@@ -2182,7 +2186,7 @@ pub fn refinish(
     r.llm = None;
     r.cleanup_route = None;
     r.cloud_fallback = None;
-    r.guard_detail = None;
+    r.fallback_detail = None;
     r.empty_reason = None;
     let server_llm_ms = r.timings.llm_ms;
     r.timings.llm_ms = 0;

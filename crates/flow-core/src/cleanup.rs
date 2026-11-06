@@ -4,7 +4,7 @@
 //! to implement [`Cleaner`]. Everything around it — when to run, the prompt,
 //! the time budget and the fallback on a timeout, error or empty answer —
 //! is deterministic and lives here so it is testable without a model. The
-//! model's answer is used as given (no output guard, D58).
+//! model's answer is used as given (no output guard, D59).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -833,15 +833,6 @@ pub enum CleanOutcome {
     Fallback(FallbackReason),
 }
 
-/// Why cleanup fell back, for the debug log (2026-10-27): the timeout,
-/// the error or the empty answer. `None` on [`CleanOutcome::Formatted`].
-/// There is no rejected answer to carry: the model's answer is never
-/// judged (D58).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Rejection {
-    pub detail: Option<String>,
-}
-
 /// Wispr skips its formatter for raw mode and terminals; level `none` is
 /// verbatim.
 pub fn should_run(cfg: &SessionConfig, cat: AppCategory) -> bool {
@@ -1474,14 +1465,15 @@ pub fn run_cleanup_metered_for(
 
 /// D30 AI cleanup: [`run_cleanup_metered`] on the **raw** transcript
 /// `raw`, with [`blank_line_before_lists`] applied to the answer. The
-/// caller builds the prompt with [`PromptVersion::V4c`]. The [`Rejection`]
-/// says why cleanup fell back (empty when the answer was used).
+/// caller builds the prompt with [`PromptVersion::V4c`]. The third value
+/// is the fallback detail for the debug log (timeout, error or empty
+/// answer; `None` when the answer was used).
 pub fn run_ai_cleanup(
     cleaner: Arc<dyn Cleaner>,
     prompt: CleanPrompt,
     raw: &str,
     timeout: Duration,
-) -> (CleanOutcome, CleanUsage, Rejection) {
+) -> (CleanOutcome, CleanUsage, Option<String>) {
     run_metered(cleaner, prompt, raw, timeout, true, None)
 }
 
@@ -1493,7 +1485,7 @@ pub fn run_ai_cleanup_for(
     raw: &str,
     timeout: Duration,
     language: Option<&str>,
-) -> (CleanOutcome, CleanUsage, Rejection) {
+) -> (CleanOutcome, CleanUsage, Option<String>) {
     run_metered(cleaner, prompt, raw, timeout, true, language)
 }
 
@@ -1504,7 +1496,7 @@ fn run_metered(
     timeout: Duration,
     ai: bool,
     language: Option<&str>,
-) -> (CleanOutcome, CleanUsage, Rejection) {
+) -> (CleanOutcome, CleanUsage, Option<String>) {
     let deadline = Instant::now() + timeout;
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = AbortFlag(Some(cancel.clone()));
@@ -1521,9 +1513,7 @@ fn run_metered(
         Ok(v) => v,
         Err(_) => {
             cancel.store(true, Ordering::Relaxed);
-            let why = Rejection {
-                detail: Some(format!("no answer within {} ms", timeout.as_millis())),
-            };
+            let why = Some(format!("no answer within {} ms", timeout.as_millis()));
             return (
                 CleanOutcome::Fallback(FallbackReason::Timeout),
                 pending,
@@ -1538,9 +1528,7 @@ fn run_metered(
         }
         Ok(s) => lists_to_plain(&unwrap(&s)),
         Err(e) => {
-            let why = Rejection {
-                detail: Some(format!("error: {e}")),
-            };
+            let why = Some(format!("error: {e}"));
             // Refused before anything ran (no consent, open circuit, …):
             // no LLM step to report, only the reason.
             let usage = match e {
@@ -1561,13 +1549,11 @@ fn run_metered(
         out
     };
     if out.is_empty() {
-        let why = Rejection {
-            detail: Some("empty answer".into()),
-        };
+        let why = Some("empty answer".into());
         return (CleanOutcome::Fallback(FallbackReason::Empty), usage, why);
     }
-    // The answer is used as given: no output guard (D58).
-    (CleanOutcome::Formatted(out), usage, Rejection::default())
+    // The answer is used as given: no output guard (D59).
+    (CleanOutcome::Formatted(out), usage, None)
 }
 
 static HTML_LIST_AFTER_TEXT: LazyLock<regex::Regex> =
@@ -1742,7 +1728,7 @@ mod tests {
         );
     }
 
-    // D58: no output guard. A rewrite far from the transcript is used as
+    // D59: no output guard. A rewrite far from the transcript is used as
     // given; only a timeout, an error or an empty answer falls back.
     #[test]
     fn a_distant_rewrite_is_used_as_given() {

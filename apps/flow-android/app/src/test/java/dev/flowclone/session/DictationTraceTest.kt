@@ -195,12 +195,12 @@ class DictationTraceTest {
         val traces = mutableListOf<DictationTrace>()
         core.shapeResult = {
             it.copy(route = dev.flowclone.core.RouteInfo("local", cleanupRoute = "local", cloudFallback = "llm_timeout",
-                guardDetail = "no answer within 5000 ms"))
+                fallbackDetail = "no answer within 5000 ms"))
         }
         dictate(controller(Host { traces += it }))
         val t = traces.single()
         assertEquals("llm_timeout", t.cloudFallback)
-        assertEquals("no answer within 5000 ms", t.guardDetail)
+        assertEquals("no answer within 5000 ms", t.fallbackDetail)
     }
 
     /**

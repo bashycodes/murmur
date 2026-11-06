@@ -253,7 +253,7 @@ fn backend_error_is_final() {
 
 #[test]
 fn an_answer_is_final_and_used_as_given() {
-    // D58: no output guard. Even an answer the transcript does not back is
+    // D59: no output guard. Even an answer the transcript does not back is
     // used as the primary gave it; no second LLM.
     let p = Arc::new(Fake::ok("Please buy a new car tomorrow.").cloud());
     let f = Arc::new(Fake::ok(OUT));

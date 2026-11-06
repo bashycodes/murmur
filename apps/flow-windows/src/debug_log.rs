@@ -134,8 +134,10 @@ pub struct Entry {
     pub cloud_fallback: Option<String>,
     /// 2026-10-27, with `cloud_fallback`: why, in detail (timeout, error,
     /// empty answer). `<redacted>` for a password field, like `text`.
-    /// (D58 removed the output guard and its `rejected_text`.)
-    pub guard_detail: Option<String>,
+    /// (D59 removed the output guard and its `rejected_text`.) The JSON
+    /// key stays `guard_detail` so old log readers keep working.
+    #[serde(rename = "guard_detail")]
+    pub fallback_detail: Option<String>,
     /// D28: OpenRouter speech-to-text model and cost of this dictation
     /// (`null` unless `route` is `cloud`).
     pub stt_model: Option<String>,
