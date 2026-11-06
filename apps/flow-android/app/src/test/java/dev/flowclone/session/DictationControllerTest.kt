@@ -86,7 +86,7 @@ class DictationControllerTest {
         var keyboardAtStop: List<String>? = null
         var prepared = 0
         override fun followsKeyboard() = keyboardAtStop != null
-        override fun stopLanguages() = keyboardAtStop
+        override fun stopLanguage() = keyboardAtStop?.let { DictationController.StopLanguage(it, "keyboard") }
         override fun prepareStopLanguage() { prepared++ }
     }
 
@@ -170,6 +170,68 @@ class DictationControllerTest {
         assertEquals(0, host.prepared)
         val t = host.traces.single()
         assertEquals(listOf("en", "en", "en"), listOf(t.startLanguage, t.stopLanguage, t.language))
+    }
+
+    /** D58: a hands-free endpoint is a stop too; the replay itself has no endpoint. */
+    @Test fun aHandsFreeEndpointStopUsesTheStopLanguage() = runTest {
+        host.keyboardAtStop = listOf("en")
+        core.endpointAfterSamples = 16_000
+        val c = controller()
+        c.toggle(hold = false)
+        audio.speak(500)
+        host.keyboardAtStop = listOf("he")
+        audio.speak(600)
+        advanceTimeBy(DictationController.PARTIAL_POLL_MS + 1); runCurrent()
+        assertTrue("the endpoint stopped it", FeedbackEvent.StopSound in host.events)
+        settle()
+        assertEquals(listOf("hello world"), host.inserted)
+        assertEquals("he", core.lastConfig!!.languages.single())
+        assertEquals(null, core.lastConfig!!.endpointSilenceMs)
+        assertEquals(17_600, core.samplesPushed)
+        assertEquals("he", host.traces.single().stopLanguage)
+        assertEquals("keyboard", host.traces.single().languageSource)
+    }
+
+    /** A core whose re-run session (the [hookAt]-th start) calls [onPush] at its first chunk. */
+    private class Hooked(val inner: FakeFlowCore, val hookAt: Int) : FlowCore by inner {
+        var starts = 0
+        var pushesToHooked = 0
+        var onPush: () -> Unit = {}
+        override fun startSession(cfg: SessionConfig) { starts++; inner.startSession(cfg) }
+        override fun startSessionInfo(cfg: SessionConfig): dev.flowclone.core.StartInfo { startSession(cfg); return dev.flowclone.core.StartInfo() }
+        override fun startSessionLocal(cfg: SessionConfig) = startSessionInfo(cfg)
+        override fun pushAudio(pcm: ShortArray, length: Int): Boolean {
+            if (starts == hookAt) { pushesToHooked++; if (pushesToHooked == 1) onPush() }
+            return inner.pushAudio(pcm, length)
+        }
+    }
+
+    /** D58: X during the re-run stops its replay at the next chunk; nothing of it reaches the next dictation. */
+    @Test fun cancelDuringTheReRunStopsItAndTheNextDictationGetsOnlyItsOwnAudio() = runTest {
+        host.keyboardAtStop = listOf("en")
+        val hooked = Hooked(core, hookAt = 2)
+        val c = controller(hooked)
+        hooked.onPush = { c.cancel() }
+        c.toggle(hold = false)
+        audio.speak()
+        host.keyboardAtStop = listOf("he")
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals(DictationState.Ready, c.state.value)
+        assertEquals("the replay stopped after the chunk in flight", 1, hooked.pushesToHooked)
+        assertTrue(host.inserted.isEmpty())
+        // The next dictation (no switch): its own second only, inserted once.
+        host.keyboardAtStop = listOf("en")
+        advanceTimeBy(DictationController.TOGGLE_DEBOUNCE_MS)
+        c.toggle(hold = false)
+        assertEquals(3, hooked.starts)
+        audio.speak()
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals(16_000, core.samplesPushed)
+        assertEquals(listOf("hello world"), host.inserted)
     }
 
     @Test fun aLanguageNotFollowingTheKeyboardIsNotReadAtTheStop() = runTest {
