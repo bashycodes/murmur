@@ -147,6 +147,9 @@ const KEEP_DOUBLE: &[&str] = &[
     "that", "had", "is", "do", "very", "really", "so", "no", "bye", "ha",
 ];
 
+/// Scale words of a spoken cardinal ("two hundred", "a thousand").
+const SCALE_WORDS: &[&str] = &["hundred", "thousand"];
+
 const MONTHS: &[&str] = &[
     "january",
     "february",
@@ -723,7 +726,7 @@ fn parse_number(c: &[String], toks: &[Tok], i: usize) -> Option<(u64, usize)> {
         } else if w == "a"
             && !any
             && c.get(j + 1)
-                .is_some_and(|n| n == "hundred" || n == "thousand")
+                .is_some_and(|n| SCALE_WORDS.contains(&n.as_str()))
         {
             cur = 1;
         } else if w == "hundred" && (any || cur == 1) {
@@ -755,7 +758,7 @@ fn parse_number(c: &[String], toks: &[Tok], i: usize) -> Option<(u64, usize)> {
 fn thousand_follows(c: &[String], k: usize) -> bool {
     c[k..]
         .iter()
-        .take_while(|w| number_word(w).is_some() || matches!(w.as_str(), "hundred" | "thousand"))
+        .take_while(|w| number_word(w).is_some() || SCALE_WORDS.contains(&w.as_str()))
         .any(|w| w == "thousand")
 }
 
@@ -915,7 +918,7 @@ fn cardinal(c: &[String], toks: &[Tok], i: usize) -> Option<(String, usize)> {
         || toks[i + n].is_break()
         || number_word(next).is_some()
         || ordinal_word(next).is_some()
-        || matches!(next.as_str(), "hundred" | "thousand")
+        || SCALE_WORDS.contains(&next.as_str())
         || CARDINAL_BLOCK_AFTER.contains(&next.as_str())
     {
         return None;
@@ -1379,6 +1382,59 @@ pub fn spoken_cleanup(text: &str) -> String {
     render(&toks)
 }
 
+/// Words that make a lone "one" / "zero" a quantity, not a pronoun
+/// ("one pm", "one percent", but "one of those").
+const NUMBER_UNITS: &[&str] = &[
+    "am", "pm", "o'clock", "percent", "dollar", "dollars", "cent", "cents", "euro", "euros",
+    "pound", "pounds", "degree", "degrees",
+];
+
+/// Words that can follow a date ordinal that ends its phrase ("the twelfth
+/// at noon", "the fifth and the sixth"); any other word after "the fifth"
+/// reads as a noun ("the fifth time", "the fourth floor").
+const DATE_ORDINAL_NEXT: &[&str] = &["at", "and", "or", "so", "please", "then", "before", "after"];
+
+/// Does `text` (English, after [`spoken_cleanup`]) still hold a number
+/// spoken as words, which the AI cleanup could write as digits ("eleven
+/// forty", "the twelfth", "gate three")? A detector only: it
+/// decides whether the on-device model runs (D63) and rewrites nothing.
+/// Idioms stay out: a lone "one" / "zero" counts only next to another
+/// number word or a unit, so "one of those" does not fire. An ordinal
+/// counts only as a date: after a month ("May third"), before "of
+/// <month>" ("the second of June"), or after "the" at the end of its
+/// phrase ("back on the twelfth."), so "a second ago", "the first time",
+/// "the fourth floor" and "the third option" do not fire. Other cardinals
+/// ("two", "three") always fire; the prompt keeps idioms such as "the two
+/// of us" as words (finding 2026-11-06-spoken-numbers).
+pub fn has_spoken_numbers(text: &str) -> bool {
+    let toks = tokenize(text);
+    let c = cores(&toks);
+    let at = |i: usize| c.get(i).map(String::as_str).unwrap_or("");
+    let numeric = |w: &str| number_word(w).is_some() || SCALE_WORDS.contains(&w);
+    let phrase_ends = |i: usize| {
+        i + 1 >= toks.len()
+            || !toks[i].suffix().is_empty()
+            || toks[i + 1].is_break()
+            || DATE_ORDINAL_NEXT.contains(&at(i + 1))
+    };
+    (0..c.len()).any(|i| {
+        let w = at(i);
+        if let Some(v) = number_word(w) {
+            return v >= 2
+                || (i > 0 && numeric(at(i - 1)))
+                || numeric(at(i + 1))
+                || NUMBER_UNITS.contains(&at(i + 1));
+        }
+        if SCALE_WORDS.contains(&w) {
+            return true;
+        }
+        ordinal_word(w).is_some()
+            && ((i > 0 && MONTHS.contains(&at(i - 1)))
+                || (at(i + 1) == "of" && MONTHS.contains(&at(i + 2)))
+                || (i > 0 && at(i - 1) == "the" && phrase_ends(i)))
+    })
+}
+
 /// Degrees and am/pm in the house style on an AI cleanup answer, which
 /// does not always follow the prompt (Qwen 1.5B kept "4 PM" and "90
 /// degrees"): "90 degrees" → "90°" (same literal-use rules as the
@@ -1839,6 +1895,48 @@ mod tests {
 
     fn t(s: &str) -> String {
         spoken_cleanup(s)
+    }
+
+    #[test]
+    fn spoken_numbers_are_detected() {
+        for s in [
+            "Move the review to eleven forty.",
+            "Lunch is at eleven forty on Tuesday.",
+            "The parcel number is four one seven seven.",
+            "It's due on the twelfth.",
+            "We moved it to the thirtieth, after the holiday.",
+            "Lunch is on the ninth at noon.",
+            "Gate twenty-two closes early.",
+            "We met on March third.",
+            "She arrives on the second of June.",
+            "Call me at one pm.",
+            "It went up by one percent.",
+            "About a hundred people came.",
+            "There were two left.",
+        ] {
+            assert!(has_spoken_numbers(s), "{s:?}");
+        }
+    }
+
+    #[test]
+    fn number_idioms_and_digits_are_not_spoken_numbers() {
+        for s in [
+            "I'll take one of those.",
+            "He left a second ago.",
+            "It was the first time we met.",
+            "On second thought, keep it.",
+            "No one came, and the third option is fine.",
+            "Move the review to 11:40 on the 12th.",
+            "The plumber charged $85 for 2 visits.",
+            "Her office is on the fourth floor.",
+            "I told him for the fifth time.",
+            "Pick the third option.",
+            "He finished fourth in the race.",
+            "Thanks a million.",
+            "",
+        ] {
+            assert!(!has_spoken_numbers(s), "{s:?}");
+        }
     }
 
     #[test]
