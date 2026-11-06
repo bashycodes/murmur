@@ -842,9 +842,8 @@ pub fn should_run(cfg: &SessionConfig, cat: AppCategory) -> bool {
 
 /// Words that mean the LLM may still have work after the deterministic
 /// pass: leftover fillers, correction cues and spoken commands the rules
-/// left as words. Number words are not listed: the rules write numbers
-/// (itn 8/8 on the eval) and the LLM's own conversions dropped words
-/// ("Don't forget that we have dinner at eight" lost "that").
+/// left as words. Number words have their own detector
+/// ([`crate::postprocess::spoken::has_spoken_numbers`], D63).
 const HELP_WORDS: &[&str] = &[
     "um",
     "uh",
@@ -894,11 +893,12 @@ const HELP_PHRASES: &[&str] = &[
 
 /// Could the LLM still improve `text` (the deterministic pass's output)?
 /// `false` only for a short, single-line, capitalised, punctuated
-/// dictation with no cue from [`HELP_WORDS`] / [`HELP_PHRASES`] and no
-/// repeated word: on the
+/// dictation with no cue from [`HELP_WORDS`] / [`HELP_PHRASES`], no
+/// repeated word and (English or unknown `language` only, D63) no number
+/// the rules left as words ("eleven forty", "the twelfth"): on the
 /// formatting-gap eval the LLM changed nothing useful on those, and it
 /// costs ~1.3 s p50 on a 4-core CPU. Email always runs (layout).
-pub fn llm_can_help(text: &str, cat: AppCategory) -> bool {
+pub fn llm_can_help(text: &str, cat: AppCategory, language: Option<&str>) -> bool {
     let t = text.trim();
     if cat == AppCategory::Email {
         return true;
@@ -936,7 +936,11 @@ pub fn llm_can_help(text: &str, cat: AppCategory) -> bool {
     // An enumeration ("eggs, milk, bread, and butter") may become a list
     // or take an intro colon.
     let enumeration = t.matches(',').count() >= 3;
-    lower_start || unpunctuated || help || repeat || run_on || enumeration
+    // D63: the rules leave times, ordinals and digit runs as words; the
+    // prompt writes them.
+    let numbers =
+        crate::config::english_rules(language) && crate::postprocess::spoken::has_spoken_numbers(t);
+    lower_start || unpunctuated || help || repeat || run_on || enumeration || numbers
 }
 
 /// One line per level, appended to the short system prompt.
@@ -955,7 +959,9 @@ fn level_rule(l: CleanupLevel) -> &'static str {
 /// spoken quote / bracket / dash commands with their literal-use guard,
 /// phone numbers, run-on punctuation, "keep formatting already present"
 /// (the deterministic pass runs first) and lists only for spoken
-/// enumerations (the 1.5B turned "new line" lines into bullets).
+/// enumerations (the 1.5B turned "new line" lines into bullets). D63 added
+/// the time / date / digit-run examples to the digits rule and two
+/// few-shots (`docs/findings/2026-11-06-spoken-numbers.md`).
 const SYSTEM: &str = "You format voice dictation. Rewrite the TRANSCRIPT as the text the speaker meant to type and \
 output only that text.
 Rules:
@@ -971,7 +977,8 @@ whole sentence. \"open paren ... close paren\" and \"in parentheses X\" wrap the
 an aside such as \"in parentheses which ...\" closes right before the sentence goes on.
 - A command word used as an ordinary word stays a word: \"a quote for the roof\", \"the trial period\", \"the Oxford \
 comma\", \"put the area code in parentheses\".
-- Write numbers, money, percentages, times, dates and phone numbers as digits; am/pm in lowercase (7 am, also for \
+- Write numbers, money, percentages, times (eleven forty → 11:40), dates (the fifth → the 5th) and phone numbers \
+as digits, and a code read digit by digit as one run (four one seven two → 4172); am/pm in lowercase (7 am, also for \
 spoken \"A M\"); temperatures and angles with ° (20°, -3°C), but \"degrees of freedom\" and \"a degree in law\" \
 stay words.
 - Add a comma before \"and\" when a new clause after it opens with a time or place phrase (\", and at noon ...\").
@@ -1088,6 +1095,22 @@ const EXAMPLES: &[Example] = &[
         Style::Formal,
         "Her number is four one five, two two two, nine eight seven six.",
         "Her number is 415-222-9876.",
+    ),
+    // D63: a digit-by-digit code and a count stay one run each; a time and
+    // a date go to digits while "one of" and "a second" stay words.
+    (
+        "Notes",
+        AppCategory::Other,
+        Style::Formal,
+        "The locker code is three one eight five two, and the bike rack is behind gate seven.",
+        "The locker code is 31852, and the bike rack is behind gate 7.",
+    ),
+    (
+        "Messages",
+        AppCategory::PersonalChat,
+        Style::Formal,
+        "One of the twins lands at seven forty on the eleventh, so give me a second to check.",
+        "One of the twins lands at 7:40 on the 11th, so give me a second to check.",
     ),
     (
         "Messages",
@@ -1826,7 +1849,7 @@ mod tests {
         // Prompt v2 is ~2x the old prefix; keep it bounded (prefill cost).
         assert!(p.system.len() < 2600, "{}", p.system.len());
         // Few-shot turns in the user-message format.
-        assert_eq!(p.examples.len(), 19);
+        assert_eq!(p.examples.len(), 21); // 19 + the two D63 number shots
         assert!(p.examples[0]
             .0
             .starts_with("APP: Messages | CATEGORY: personal chat\nTRANSCRIPT: «"));
@@ -1958,9 +1981,13 @@ mod tests {
             ("Pick up the cake (the chocolate one) before noon.", Other),
             ("Buy milk.\nCall Ben.", Other),
             ("Quick question, do we have a staging server?", WorkChat),
-            ("Don't forget that we have dinner at eight.", PersonalChat),
+            // Number idioms are not numbers to write (D63).
+            ("I'll take one of those.", PersonalChat),
+            ("He left a second ago.", PersonalChat),
+            ("It was the first time we met.", PersonalChat),
+            ("The review moved to 11:40 on the 3rd.", WorkChat),
         ] {
-            assert!(!llm_can_help(t, cat), "{t:?}");
+            assert!(!llm_can_help(t, cat, Some("en")), "{t:?}");
         }
         for (t, cat) in [
             // Email layout, fillers, corrections, leftover commands.
@@ -1979,9 +2006,24 @@ mod tests {
             ("Grocery list, eggs, milk, bread, and butter.", Other),
             // Long dictations always run.
             ("Thanks for the notes. The plan looks fine to me, and I will review the budget tomorrow morning before our call with the vendor team.", WorkChat),
+            // D63: numbers the rules left as words.
+            ("Don't forget that we have dinner at eight.", PersonalChat),
+            ("Move the review to eleven forty.", WorkChat),
+            ("The report is due on the twelfth.", WorkChat),
         ] {
-            assert!(llm_can_help(t, cat), "{t:?}");
+            assert!(llm_can_help(t, cat, Some("en")), "{t:?}");
         }
+    }
+
+    #[test]
+    fn number_words_wake_the_llm_only_for_english() {
+        // D63: a non-English dictation keeps the D27 skip; the detector's
+        // word list is English.
+        let t = "Move the review to eleven forty.";
+        for l in [None, Some("en"), Some("en-US")] {
+            assert!(llm_can_help(t, AppCategory::WorkChat, l), "{l:?}");
+        }
+        assert!(!llm_can_help(t, AppCategory::WorkChat, Some("he")));
     }
 
     #[test]
