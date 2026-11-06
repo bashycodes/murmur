@@ -246,6 +246,18 @@ pub fn custom_key_for(
     }
 }
 
+/// A key is saved but [`custom_key_for`] would not send it to `base_url`
+/// (no key was typed and that host has no consent): the page must ask
+/// for consent or say so, never call the server without the key it expects.
+pub fn saved_custom_key_withheld(
+    typed: bool,
+    has_saved: bool,
+    cfg: &flow_router::cloud::CustomCleanupConfig,
+    base_url: &str,
+) -> bool {
+    !typed && has_saved && !cfg.saved_key_allowed_for(base_url)
+}
+
 /// What a D28 migration did to the key store.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct KeyMigration {

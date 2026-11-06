@@ -174,8 +174,14 @@ function describe(r) {
             ? `Sends the transcript as text to ${cleanupTarget(v)} · ${model}.`
             : `Sends the transcript as text to ${cleanupTarget(v)}. Asks first.`;
         const st = v?.cleanup.status;
+        const cu = v?.cleanup.custom;
         if (!on)
             setBadge(r, "Off", "light");
+        // D52: Custom is saved when picked; until its address and model are set it is skipped.
+        else if (custom && cu?.base_url === "")
+            setBadge(r, "Enter the address", "warning");
+        else if (custom && cu?.model === "")
+            setBadge(r, "Pick a model", "warning");
         else if (st?.blocked)
             setBadge(r, "Not set up", "warning");
         else if (st?.circuit?.open)

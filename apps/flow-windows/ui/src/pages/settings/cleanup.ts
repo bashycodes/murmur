@@ -61,7 +61,7 @@ ${heading(
 </section>
 
 <section class="lw-section" id="or_cleanup_group" data-needs="cloud">
-  <h3 class="fl-group-title" id="or_cleanup_title">OpenRouter</h3>
+  <h3 class="fl-group-title" id="or_cleanup_title">Cloud server</h3>
   <div class="fl-group" id="or_cleanup_box">
     ${row(
       "Send text to",

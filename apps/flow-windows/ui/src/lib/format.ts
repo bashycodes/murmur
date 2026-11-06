@@ -13,6 +13,7 @@ const CLOUD_HINTS: Record<string, string> = {
   timeout: "took too long",
   busy: "rate limited",
   circuit_open: "paused after recent failures",
+  consent_needed: "consent needed: press again and accept, or paste the key",
 };
 
 export function cloudHint(code: string | null | undefined): string {

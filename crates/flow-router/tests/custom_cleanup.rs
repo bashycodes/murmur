@@ -237,6 +237,31 @@ fn custom_consent_is_bound_to_the_typed_host() {
 }
 
 #[test]
+fn custom_without_a_model_is_saved_but_skipped() {
+    // The settings page saves Custom as soon as an address is typed; the
+    // model comes later (picked from the server's list). Until then the
+    // cloud route is not ready and the next engine cleans.
+    let mut c = custom_cfg();
+    c.cloud.custom_cleanup.model = String::new();
+    c.validate().unwrap();
+    assert!(!c.cloud.cleanup_ready());
+    let k = rig(c, None);
+    assert!(dictate(&k.router).final_text.contains(LOCAL_OUT));
+    assert_eq!((k.custom.calls(), k.or.calls()), (0, 0));
+    assert!(k.custom_built.lock().unwrap().is_empty());
+    assert_eq!(
+        k.router.cleanup_status().blocked.as_deref(),
+        Some("cloud_cleanup_not_configured")
+    );
+    // The model arrives: the same config now cleans.
+    let mut c = k.router.config();
+    c.cloud.custom_cleanup.model = "Qwen/Qwen2.5-7B-Instruct".into();
+    k.router.update_config(c);
+    assert!(dictate(&k.router).final_text.contains(CUSTOM_OUT));
+    assert_eq!(k.custom.calls(), 1);
+}
+
+#[test]
 fn custom_needs_its_factory() {
     let core = FlowCore::from_engines(
         Arc::new(MockAsr::new(IN)),

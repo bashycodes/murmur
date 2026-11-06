@@ -259,6 +259,16 @@ impl CloudConfig {
         }
     }
 
+    /// The selected provider has what a call needs besides consent and
+    /// key: always for OpenRouter, address and model for a custom server
+    /// (D52: Custom is saved when picked, before they are set).
+    pub fn cleanup_ready(&self) -> bool {
+        match self.cleanup_provider {
+            CleanupProvider::OpenRouter => true,
+            CleanupProvider::Custom => self.custom_cleanup.ready(),
+        }
+    }
+
     /// OpenRouter needs a key; a custom server may run without one (D52).
     pub fn cleanup_needs_key(&self) -> bool {
         self.cleanup_provider.is_openrouter()
@@ -402,9 +412,20 @@ impl CustomCleanupConfig {
                 .is_ok_and(|a| a.host.eq_ignore_ascii_case(&self.consent_host))
     }
 
+    /// Address and model are set: the server can be called. A selected
+    /// custom server without them yet is saved but not ready, so cloud
+    /// cleanup is skipped like an unconfigured engine.
+    pub fn ready(&self) -> bool {
+        self.api_base().is_ok() && valid_custom_model_id(self.model.trim())
+    }
+
+    /// An empty address or model is allowed: the page saves Custom as soon
+    /// as it is picked, the rest is filled in later ([`Self::ready`]).
     pub fn validate(&self) -> Result<(), String> {
-        self.api_base()?;
-        if !valid_custom_model_id(self.model.trim()) {
+        if !self.base_url.trim().is_empty() {
+            self.api_base()?;
+        }
+        if !self.model.trim().is_empty() && !valid_custom_model_id(self.model.trim()) {
             return Err(format!("invalid custom cleanup model id {:?}", self.model));
         }
         let (lo, hi) = CUSTOM_CLEANUP_TIMEOUT_RANGE_MS;
@@ -1220,13 +1241,21 @@ mod tests {
         // Not serialised while default: older readers see the same JSON.
         let j = serde_json::to_value(&c).unwrap();
         assert!(j.get("cleanup_provider").is_none() && j.get("custom_cleanup").is_none());
-        // Selecting Custom validates the server entry.
+        // Selecting Custom validates what is set; an empty address or model
+        // is saved but not ready (the page saves Custom when picked).
         c.cleanup_provider = CleanupProvider::Custom;
-        assert!(c.validate().unwrap_err().contains("base URL"));
+        assert_eq!(c.validate(), Ok(()));
+        assert!(!c.cleanup_ready());
+        c.custom_cleanup.base_url = "ftp://10.0.0.5".into();
+        assert!(c.validate().is_err());
         c.custom_cleanup.base_url = "http://10.0.0.5:4000".into();
+        assert_eq!(c.validate(), Ok(()));
+        assert!(!c.cleanup_ready());
+        c.custom_cleanup.model = "two words".into();
         assert!(c.validate().unwrap_err().contains("model"));
         c.custom_cleanup.model = "Qwen/Qwen2.5-7B".into();
         assert_eq!(c.validate(), Ok(()));
+        assert!(c.cleanup_ready());
         c.custom_cleanup.timeout_ms = 40_000;
         assert!(c.validate().unwrap_err().contains("timeout"));
         c.custom_cleanup.timeout_ms = 4000;
