@@ -514,15 +514,16 @@ fn an_unreachable_server_before_the_cloud_does_not_skip_ai_cleanup() {
     let r = dictate("The demo is on Thursday.", "The demo is on Thursday.");
     assert_eq!(r.cleanup_route.as_deref(), Some("cloud"), "{r:?}");
     assert_eq!(r.status, CommitStatus::Formatted, "{r:?}");
-    // A misheard technical term is not the AI's to fix: the guard rejects
-    // words the speech did not back ("UUID4", "pytest"), so the rules'
-    // text stands. The dictionary is the fix for those (see the finding).
+    // D59: no output guard. An answer that fixes a misheard technical
+    // term ("UUID4", "pytest") is used as the model gave it; until D59 the
+    // guard rejected it and the rules' text stood.
     let r = dictate(
         "Generate a UID four with pie test.",
         "Generate a UUID4 with pytest.",
     );
-    assert_eq!(r.cleanup_route.as_deref(), Some("rules"), "{r:?}");
-    assert_eq!(r.cloud_fallback.as_deref(), Some("llm_unsupported"));
+    assert_eq!(r.cleanup_route.as_deref(), Some("cloud"), "{r:?}");
+    assert_eq!(r.cloud_fallback, None);
+    assert_eq!(r.final_text.trim_end(), "Generate a UUID4 with pytest.");
 }
 
 #[test]

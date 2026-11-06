@@ -27,7 +27,7 @@ const KEY: &str = "sk-or-LEAKCHECK-wincc-0123456789";
 const HEARD: &str = "the demo is on thursday right";
 /// Already tidy: the deterministic rules leave an LLM nothing to do (D27).
 const TIDY: &str = "The demo is on Thursday, right?";
-// Each cleaner answers differently, within what the guard accepts.
+// Each cleaner answers differently.
 const PC_OUT: &str = "The demo is on Thursday right?";
 const SERVER_OUT: &str = "The demo is on Thursday, right.";
 const CLOUD_OUT: &str = "The demo is on Thursday, right!";

@@ -130,6 +130,8 @@ class WritingStyleTest {
         assertEquals("AI cleaned", LlmOutcome.label("formatted"))
         assertEquals("AI not needed (already clean)", LlmOutcome.label("llm_skipped_clean"))
         assertEquals("AI too slow, formatted text used", LlmOutcome.label("llm_timeout"))
+        // Any other code (llm_empty; pre-D59 history rows: llm_dropped, llm_unsupported) gets the generic label.
+        assertEquals("AI result not used (llm_empty), formatted text used", LlmOutcome.label("llm_empty"))
         assertEquals("AI result not used (llm_dropped), formatted text used", LlmOutcome.label("llm_dropped"))
         assertNull(LlmOutcome.label(null))
         assertTrue(LlmOutcome.isNormal("llm_skipped_clean"))

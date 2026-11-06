@@ -1,6 +1,6 @@
 //! Replay harness (beta debug tool): saved dictation recordings re-run
 //! through speech models x cleanup models x prompt versions, on the real
-//! `FlowCore` pipeline (segmentation, VAD, D30 routing, guards, fallback
+//! `FlowCore` pipeline (segmentation, VAD, D30 routing, fallback
 //! rules, post-processing). `tools/replay/run.sh` drives the binary;
 //! `tools/replay/score.py` scores its rows.
 //!
@@ -14,8 +14,8 @@
 //!
 //! Cleanup slots mirror the phone's cleaner: `cloud` (AI cleanup, D30)
 //! wrapped in a `RoutedCleaner` with the on-device `local` LLM when there
-//! is one, `local` alone (today's pipeline: rules, prompt v2, strict
-//! guard), or neither (fallback rules). The product sends prompt v4c to
+//! is one, `local` alone (today's pipeline: rules, prompt v2), or neither
+//! (fallback rules). The product sends prompt v4c to
 //! the cloud; other versions are swapped in by [`PromptOverride`], which
 //! rebuilds the prompt with `build_prompt_versioned` and changes nothing
 //! else.

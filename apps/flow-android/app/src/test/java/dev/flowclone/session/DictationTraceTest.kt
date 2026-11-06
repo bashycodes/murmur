@@ -190,18 +190,17 @@ class DictationTraceTest {
         assertEquals(450L, t.clientMs)
     }
 
-    /** 2026-10-27: the unused AI cleanup answer and the guard's detail reach the trace. */
-    @Test fun rejectedAiAnswerReachesTheTrace() = runTest {
+    /** 2026-10-27: why AI cleanup fell back reaches the trace. */
+    @Test fun aiCleanupFallbackDetailReachesTheTrace() = runTest {
         val traces = mutableListOf<DictationTrace>()
         core.shapeResult = {
-            it.copy(route = dev.flowclone.core.RouteInfo("local", cleanupRoute = "local", cloudFallback = "llm_unsupported",
-                rejectedText = "Please buy a car.", guardDetail = "unsupported: Please buy a car"))
+            it.copy(route = dev.flowclone.core.RouteInfo("local", cleanupRoute = "local", cloudFallback = "llm_timeout",
+                fallbackDetail = "no answer within 5000 ms"))
         }
         dictate(controller(Host { traces += it }))
         val t = traces.single()
-        assertEquals("llm_unsupported", t.cloudFallback)
-        assertEquals("Please buy a car.", t.rejectedText)
-        assertEquals("unsupported: Please buy a car", t.guardDetail)
+        assertEquals("llm_timeout", t.cloudFallback)
+        assertEquals("no answer within 5000 ms", t.fallbackDetail)
     }
 
     /**

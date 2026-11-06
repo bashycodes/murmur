@@ -108,15 +108,6 @@ pub fn word_edit_distance(a: &str, b: &str) -> usize {
     table(&a, &b)[a.len()][b.len()]
 }
 
-/// Edit distance divided by the longer word count (0 = same, 1 = disjoint).
-pub fn divergence_ratio(a: &str, b: &str) -> f64 {
-    let n = tokens(a).len().max(tokens(b).len());
-    if n == 0 {
-        return 0.0;
-    }
-    word_edit_distance(a, b) as f64 / n as f64
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -153,18 +144,5 @@ mod tests {
     fn edit_distance_counts_word_edits() {
         assert_eq!(word_edit_distance("a b c", "a x c d"), 2);
         assert_eq!(word_edit_distance("", "a b"), 2);
-    }
-
-    #[test]
-    fn divergence_ratio_is_normalized() {
-        assert_eq!(divergence_ratio("a b c d", "a b c d"), 0.0);
-        assert!((divergence_ratio("a b c d", "a b x d") - 0.25).abs() < 1e-9);
-        assert_eq!(divergence_ratio("", ""), 0.0);
-        assert_eq!(divergence_ratio("", "x"), 1.0);
-    }
-
-    #[test]
-    fn divergence_ignores_case_and_punctuation() {
-        assert_eq!(divergence_ratio("hello, world", "Hello world."), 0.0);
     }
 }

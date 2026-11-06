@@ -159,23 +159,21 @@ pub struct CommitResult {
     /// Additive.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cleanup_route: Option<String>,
-    /// D30: why AI cleanup's answer was not used (`llm_timeout`,
-    /// `llm_unsupported`, `llm_dropped`, `llm_error: <code>`, …) when it
-    /// was tried and the fallback pipeline ran. Additive.
+    /// D30: why AI cleanup gave no answer (`llm_timeout`, `llm_empty`,
+    /// `llm_error: <code>`) when it was tried and the fallback pipeline
+    /// ran. Additive.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cloud_fallback: Option<String>,
-    /// AI cleanup's answer when it was not used (guard reject, divergence),
-    /// for the debug log only (2026-10-27). Dictated text: shells log it
-    /// under D21's `text` rules. Set only with `cloud_fallback`. Additive.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rejected_text: Option<String>,
-    /// Why AI cleanup's answer was not used, in detail: the guard's
-    /// unsupported sentence / literal mark kind / dropped clause or count,
-    /// the divergence, or the timeout / error. May quote dictated text
-    /// (same rules as `rejected_text`). Set only with `cloud_fallback`.
-    /// Additive.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub guard_detail: Option<String>,
+    /// Why AI cleanup fell back, in detail: the timeout, the error or the
+    /// empty answer, for the debug log (2026-10-27). Set only with
+    /// `cloud_fallback`. Additive. (Until D59 a `rejected_text` field
+    /// carried the answer an output guard rejected; there is no guard now.)
+    #[serde(
+        default,
+        rename = "guard_detail",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub fallback_detail: Option<String>,
 }
 
 /// One poll of the live session (`FlowCore::poll`, `Router::poll`): the
@@ -264,12 +262,10 @@ pub struct RouteInfo {
     pub cleanup_route: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cloud_fallback: Option<String>,
-    /// `CommitResult::rejected_text` / `guard_detail`, for the debug log
-    /// only (never the route label). Omitted while `None`. Additive.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rejected_text: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub guard_detail: Option<String>,
+    /// `CommitResult::fallback_detail`, for the debug log only (never the
+    /// route label). Omitted while `None`. Additive.
+    #[serde(rename = "guard_detail", skip_serializing_if = "Option::is_none")]
+    pub fallback_detail: Option<String>,
 }
 
 /// An amount in US dollars. A plain JSON number; a newtype only so the
@@ -311,8 +307,7 @@ impl CommitResult {
             llm: None,
             cleanup_route: None,
             cloud_fallback: None,
-            rejected_text: None,
-            guard_detail: None,
+            fallback_detail: None,
         }
     }
     fn error(msg: impl Into<String>) -> Self {
@@ -2012,14 +2007,12 @@ fn finish_text(
         .with_language(language.as_deref())
         .with_timeout(cfg.llm_budget_ms(&r.asr_text));
         let timeout_ms = cloud.budget_ms(cfg.llm_budget_ms(&r.asr_text));
-        let max_div = cfg.divergence_threshold.unwrap_or(f64::INFINITY);
         let t = Instant::now();
-        let (outcome, usage, rejection) = cleanup::run_ai_cleanup_for(
+        let (outcome, usage, detail) = cleanup::run_ai_cleanup_for(
             cloud,
             prompt,
             &r.asr_text,
             Duration::from_millis(timeout_ms),
-            max_div,
             language.as_deref(),
         );
         r.timings.llm_ms = t.elapsed().as_millis() as u64;
@@ -2037,8 +2030,7 @@ fn finish_text(
                 let why = why.as_str();
                 r.cloud_fallback = Some(why.clone());
                 r.fallback_reason = Some(why);
-                r.rejected_text = rejection.text;
-                r.guard_detail = rejection.detail;
+                r.fallback_detail = detail;
             }
         }
     }
@@ -2110,16 +2102,12 @@ fn finish_text(
         // Scaled with the text's length when the session asks (a long
         // dictation decodes more tokens; flow-server sets the rate).
         let timeout_ms = cl.budget_ms(cfg.llm_budget_ms(&text));
-        // The edit-distance guard only runs when a shell asks for it;
-        // the default guard is `guard::check` (support + coverage).
-        let max_div = cfg.divergence_threshold.unwrap_or(f64::INFINITY);
         let t = Instant::now();
         let (outcome, usage) = cleanup::run_cleanup_metered_for(
             cl.clone(),
             prompt,
             &text,
             Duration::from_millis(timeout_ms),
-            max_div,
             language.as_deref(),
         );
         // `None` when every backend refused up front (nothing ran).
@@ -2198,8 +2186,7 @@ pub fn refinish(
     r.llm = None;
     r.cleanup_route = None;
     r.cloud_fallback = None;
-    r.rejected_text = None;
-    r.guard_detail = None;
+    r.fallback_detail = None;
     r.empty_reason = None;
     let server_llm_ms = r.timings.llm_ms;
     r.timings.llm_ms = 0;

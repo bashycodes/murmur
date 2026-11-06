@@ -74,7 +74,7 @@ object BenchPlan {
     /**
      * An English dictation with "Clean up with local AI" on at the default strength (LIGHT).
      * `prod` keeps the app's LLM timeout; `v4c` gets [v4cTimeoutMs] so the raw answer is never cut
-     * (the Linux scorer applies the product's guards and reports calls over the app's budget).
+     * (the Linux scorer reports calls over the app's budget; D59: no output guard to apply).
      */
     fun cleanupSession(mode: String, v4cTimeoutMs: Long = 30_000) = SessionConfig(
         languages = listOf("en"),

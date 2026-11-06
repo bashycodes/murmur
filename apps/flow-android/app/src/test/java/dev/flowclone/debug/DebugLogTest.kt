@@ -117,32 +117,30 @@ class DebugLogTest {
         assertEquals(trace, DebugRedact.apply(trace, false, false))
     }
 
-    /** 2026-10-27: why AI cleanup's answer was not used, with the answer itself; null when not rejected. */
-    @Test fun rejectedAnswerAndGuardDetailAreAdditive() {
+    /** 2026-10-27: why AI cleanup fell back; null when it did not. D59: no rejected_text key. */
+    @Test fun fallbackDetailIsAdditive() {
         val o = JSONObject(DebugFormat.dictation(trace))
-        for (k in listOf("rejected_text", "guard_detail")) assertTrue(k, o.has(k) && o.isNull(k))
-        val t = trace.copy(cleanupRoute = "local", cloudFallback = "llm_dropped",
-            rejectedText = "The demo is on Thursday.", guardDetail = "dropped: the demo is on thursday at 3")
+        assertTrue(o.has("guard_detail") && o.isNull("guard_detail"))
+        assertFalse(o.has("rejected_text"))
+        val t = trace.copy(cleanupRoute = "local", cloudFallback = "llm_timeout", fallbackDetail = "no answer within 5000 ms")
         val p = JSONObject(DebugFormat.dictation(t))
-        assertEquals("The demo is on Thursday.", p.getString("rejected_text"))
-        assertEquals("dropped: the demo is on thursday at 3", p.getString("guard_detail"))
+        assertEquals("no answer within 5000 ms", p.getString("guard_detail"))
         val sum = DebugFormat.summary(DebugFormat.dictation(t))
-        assertTrue(sum, sum.contains("AI answer not used: dropped: the demo is on thursday at 3 · “The demo is on Thursday.”"))
-        assertFalse(DebugFormat.summary(DebugFormat.dictation(trace)).contains("AI answer not used"))
+        assertTrue(sum, sum.contains("AI cleanup fell back: no answer within 5000 ms"))
+        assertFalse(DebugFormat.summary(DebugFormat.dictation(trace)).contains("AI cleanup fell back"))
     }
 
-    @Test fun protectedTargetsNeverLogTheRejectedAnswer() {
-        val t = trace.copy(rejectedText = "my pin is 1234", guardDetail = "unsupported: my pin is 1234")
+    @Test fun protectedTargetsNeverLogTheFallbackDetail() {
+        val t = trace.copy(fallbackDetail = "error: my pin is 1234")
         for ((field, app) in listOf(true to false, false to true)) {
             val r = DebugRedact.apply(t, protectedField = field, protectedApp = app)
-            assertEquals(DebugRedact.REDACTED, r.rejectedText)
-            assertEquals(DebugRedact.REDACTED, r.guardDetail)
+            assertEquals(DebugRedact.REDACTED, r.fallbackDetail)
             assertFalse(DebugFormat.dictation(r).contains("1234"))
         }
         val guarded = DebugRedact.apply(t.copy(insert = InsertOutcome(InsertOutcome.TARGET_PROTECTED)), false, false)
         assertFalse(DebugFormat.dictation(guarded).contains("1234"))
         // Nothing to hide: no placeholder appears either.
-        assertEquals(null, DebugRedact.apply(trace, true, false).rejectedText)
+        assertEquals(null, DebugRedact.apply(trace, true, false).fallbackDetail)
     }
 
     @Test fun protectedFieldsAndAppsAreRecognised() {
