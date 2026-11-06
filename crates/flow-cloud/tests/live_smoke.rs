@@ -168,7 +168,7 @@ fn live_openrouter_cleanup() {
             &Dictionary::default(),
         );
         let t0 = Instant::now();
-        let out = flow_core::cleanup::run_cleanup(c.clone(), p, t, timeout, 0.6);
+        let out = flow_core::cleanup::run_cleanup(c.clone(), p, t, timeout);
         lat.push(t0.elapsed().as_millis() as u64);
         let call = c.last_call().unwrap_or_default();
         eprintln!(
@@ -186,8 +186,8 @@ fn live_openrouter_cleanup() {
     }
     lat.sort();
     let p90 = lat[(lat.len() * 9).div_ceil(10) - 1];
-    eprintln!("LIVE cleanup guard_ok={ok}/8 p90_ms={p90}");
-    assert!(ok >= 6, "guard passed only {ok}/8");
+    eprintln!("LIVE cleanup formatted={ok}/8 p90_ms={p90}");
+    assert!(ok >= 6, "formatted only {ok}/8");
     assert!(p90 < s.timeout_ms, "p90 {p90} ms ≥ timeout");
     let _ = c.clean_cancellable(
         &flow_core::cleanup::warm_prompt(),

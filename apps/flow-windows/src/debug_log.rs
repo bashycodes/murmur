@@ -116,7 +116,7 @@ pub struct Entry {
     pub style: Option<String>,
     /// D27: `formatted` (LLM text used), the core `fallback_reason`
     /// (`llm_skipped_clean` = nothing for the LLM to do, a normal result;
-    /// `llm_timeout`, `llm_dropped`, …), or `null` = LLM off / no result.
+    /// `llm_timeout`, `llm_empty`, …), or `null` = LLM off / no result.
     pub llm: Option<String>,
     /// D28: engine of the LLM step (`local` / `cloud` / `server`), its
     /// model, cloud cost (USD), time to first token and OpenRouter
@@ -127,17 +127,14 @@ pub struct Entry {
     pub llm_ttft_ms: Option<u32>,
     pub llm_generation_id: Option<String>,
     /// D30: what produced the text when AI cleanup (cloud) was tried
-    /// (`cloud` / `local` / `rules`) and why the cloud answer was not used
-    /// (`llm_timeout`, `llm_unsupported`, `llm_error: <code>`, …). `null`
-    /// when no cloud cleanup is on.
+    /// (`cloud` / `local` / `rules`) and why the cloud cleanup fell back
+    /// (`llm_timeout`, `llm_empty`, `llm_error: <code>`). `null` when no
+    /// cloud cleanup is on.
     pub cleanup_route: Option<String>,
     pub cloud_fallback: Option<String>,
-    /// 2026-10-27, with `cloud_fallback`: AI cleanup's answer that was not
-    /// used (`null` on a timeout / error / empty answer) and the guard's
-    /// detail (unsupported sentence or literal mark kind, dropped clause
-    /// or count, timeout, error). Dictated text: `<redacted>` for a
-    /// password field, like `text`.
-    pub rejected_text: Option<String>,
+    /// 2026-10-27, with `cloud_fallback`: why, in detail (timeout, error,
+    /// empty answer). `<redacted>` for a password field, like `text`.
+    /// (D58 removed the output guard and its `rejected_text`.)
     pub guard_detail: Option<String>,
     /// D28: OpenRouter speech-to-text model and cost of this dictation
     /// (`null` unless `route` is `cloud`).
@@ -805,7 +802,6 @@ pub(crate) mod tests {
             "llm_generation_id",
             "cleanup_route",
             "cloud_fallback",
-            "rejected_text",
             "guard_detail",
             "stt_model",
             "stt_cost_usd",

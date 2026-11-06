@@ -424,13 +424,9 @@ data class RouteInfo(
     val llmCostUsd: Double? = null,
     /** D30, only when AI cleanup (cloud) was tried: what produced the text, "cloud" | "local" | "rules". */
     val cleanupRoute: String? = null,
-    /** D30: why AI cleanup's answer was not used (llm_timeout, llm_unsupported, llm_error: <code>, …). */
+    /** D30: why AI cleanup fell back (llm_timeout, llm_empty, llm_error: <code>). */
     val cloudFallback: String? = null,
-    /**
-     * 2026-10-27, debug log only: AI cleanup's answer that was not used, and the guard's detail
-     * (unsupported sentence / mark kind, dropped clause, timeout, error). Dictated text: D21 rules.
-     */
-    val rejectedText: String? = null,
+    /** 2026-10-27, debug log only: why AI cleanup fell back, in detail (timeout, error, empty answer). D58: no output guard. */
     val guardDetail: String? = null,
 )
 

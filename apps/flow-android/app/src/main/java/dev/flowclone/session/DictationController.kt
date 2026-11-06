@@ -439,7 +439,7 @@ class DictationController(
                     llmCostUsd = result?.route?.llmCostUsd ?: result?.llm?.costUsd, llmTtftMs = result?.llm?.ttftMs,
                     llmGenerationId = result?.llm?.generationId,
                     cleanupRoute = result?.route?.cleanupRoute, cloudFallback = result?.route?.cloudFallback,
-                    rejectedText = result?.route?.rejectedText, guardDetail = result?.route?.guardDetail,
+                    guardDetail = result?.route?.guardDetail,
                     sttCostUsd = result?.route?.takeIf { it.engine == "cloud" }?.costUsd,
                     source = s.source, loadWaitMs = loadWaitMs, languageSource = s.languageSource,
                 )

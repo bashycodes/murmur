@@ -4,11 +4,11 @@
 //!
 //! Two modes, one JSON request each:
 //! * `prod`: [`flow_core::refinish`], i.e. the text half of a commit exactly
-//!   as shipped (fallback rules, prompt v2, the guard, post-processing) on
+//!   as shipped (fallback rules, prompt v2, post-processing) on
 //!   `input` as if ASR had returned it. Returns the product's `output` plus
 //!   the LLM's raw answer and timing (recorded by a pass-through wrapper).
 //! * `v4c`: the 2026-10-26 AI-cleanup design: prompt v4c on the RAW
-//!   transcript, one `clean` call, no guard. Returns the raw answer for
+//!   transcript, one `clean` call. Returns the raw answer for
 //!   `ai-cleanup-bench --mode regard` on Linux (same shape as the PC bench's
 //!   `llm_win.py` rows).
 //!

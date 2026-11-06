@@ -151,9 +151,9 @@ class CloudSettingsTest {
         // D30: AI cleanup tried, the fallback pipeline produced the text.
         assertEquals("AI cleanup: on-device · qwen2.5-1.5b · OpenRouter not used (llm_timeout)",
             CloudText.cleanupRow(RouteInfo("local", llmEngine = "local", llmModel = "qwen2.5-1.5b", cleanupRoute = "local", cloudFallback = "llm_timeout")))
-        assertEquals("AI cleanup: fixed rules · OpenRouter not used (llm_unsupported) · \$0.0016",
+        assertEquals("AI cleanup: fixed rules · OpenRouter not used (llm_empty) · \$0.0016",
             CloudText.cleanupRow(RouteInfo("local", llmEngine = "cloud", llmModel = "meta-llama/llama-3.3-70b-instruct", llmCostUsd = 0.0016,
-                cleanupRoute = "rules", cloudFallback = "llm_unsupported")))
+                cleanupRoute = "rules", cloudFallback = "llm_empty")))
         assertEquals("AI cleanup: OpenRouter · llama-3.3-70b-instruct · \$0.0016",
             CloudText.cleanupRow(RouteInfo("local", llmEngine = "cloud", llmModel = "meta-llama/llama-3.3-70b-instruct", llmCostUsd = 0.0016, cleanupRoute = "cloud")))
         assertEquals("When your server is unreachable, audio goes to OpenRouter.",

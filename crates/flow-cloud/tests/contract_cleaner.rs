@@ -200,7 +200,7 @@ fn run_cleanup_timeout_returns_deterministic_text_in_time() {
     let srv = mock_fixed(Reply::sse(&[ev; 30], Duration::from_millis(100)));
     let c: Arc<dyn Cleaner> = Arc::new(cleaner());
     let t = Instant::now();
-    let out = run_cleanup(c, prompt(), ASR, Duration::from_millis(400), 0.6);
+    let out = run_cleanup(c, prompt(), ASR, Duration::from_millis(400));
     assert!(
         t.elapsed() < Duration::from_millis(450),
         "{:?}",
@@ -217,10 +217,10 @@ fn run_cleanup_timeout_returns_deterministic_text_in_time() {
 }
 
 #[test]
-fn run_cleanup_formats_through_the_guard() {
+fn run_cleanup_uses_the_streamed_answer() {
     let _srv = mock_fixed(sse_ok());
     let c: Arc<dyn Cleaner> = Arc::new(cleaner());
-    let out = run_cleanup(c, prompt(), ASR, Duration::from_secs(3), 0.6);
+    let out = run_cleanup(c, prompt(), ASR, Duration::from_secs(3));
     assert_eq!(out, CleanOutcome::Formatted("Let's meet at noon.".into()));
 }
 

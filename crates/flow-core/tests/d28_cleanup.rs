@@ -234,13 +234,7 @@ const OUT: &str = "The demo is on Thursday, right?";
 fn fast_failure_falls_back() {
     let p = Arc::new(Fake::err(CleanError::Unavailable("connect_failed".into())).cloud());
     let f = Arc::new(Fake::ok(OUT));
-    let r = run_cleanup(
-        routed(&p, &f),
-        prompt(IN),
-        IN,
-        Duration::from_millis(2500),
-        f64::INFINITY,
-    );
+    let r = run_cleanup(routed(&p, &f), prompt(IN), IN, Duration::from_millis(2500));
     assert_eq!(r, CleanOutcome::Formatted(OUT.into()));
     assert_eq!((p.calls(), f.calls()), (1, 1));
 }
@@ -249,13 +243,7 @@ fn fast_failure_falls_back() {
 fn backend_error_is_final() {
     let p = Arc::new(Fake::err(CleanError::Backend("provider_error".into())).cloud());
     let f = Arc::new(Fake::ok(OUT));
-    let r = run_cleanup(
-        routed(&p, &f),
-        prompt(IN),
-        IN,
-        Duration::from_millis(2500),
-        f64::INFINITY,
-    );
+    let r = run_cleanup(routed(&p, &f), prompt(IN), IN, Duration::from_millis(2500));
     assert_eq!(
         r,
         CleanOutcome::Fallback(FallbackReason::Error("provider_error".into()))
@@ -264,24 +252,25 @@ fn backend_error_is_final() {
 }
 
 #[test]
-fn guard_rejection_is_final() {
-    // Output not backed by the input: the guard rejects; no second LLM.
+fn an_answer_is_final_and_used_as_given() {
+    // D58: no output guard. Even an answer the transcript does not back is
+    // used as the primary gave it; no second LLM.
     let p = Arc::new(Fake::ok("Please buy a new car tomorrow.").cloud());
     let f = Arc::new(Fake::ok(OUT));
-    let r = run_cleanup(
-        routed(&p, &f),
-        prompt(IN),
-        IN,
-        Duration::from_millis(2500),
-        f64::INFINITY,
+    let r = run_cleanup(routed(&p, &f), prompt(IN), IN, Duration::from_millis(2500));
+    assert_eq!(
+        r,
+        CleanOutcome::Formatted("Please buy a new car tomorrow.".into())
     );
-    assert!(
-        matches!(
-            r,
-            CleanOutcome::Fallback(FallbackReason::Unsupported | FallbackReason::Dropped)
-        ),
-        "{r:?}"
-    );
+    assert_eq!(f.calls(), 0);
+}
+
+#[test]
+fn an_empty_answer_falls_back_and_is_final() {
+    let p = Arc::new(Fake::ok("  ").cloud());
+    let f = Arc::new(Fake::ok(OUT));
+    let r = run_cleanup(routed(&p, &f), prompt(IN), IN, Duration::from_millis(2500));
+    assert_eq!(r, CleanOutcome::Fallback(FallbackReason::Empty));
     assert_eq!(f.calls(), 0);
 }
 
@@ -290,13 +279,7 @@ fn timeout_gives_deterministic_text_and_no_fallback() {
     let p = Arc::new(Fake::ok(OUT).cloud().slow(Duration::from_millis(400)));
     let f = Arc::new(Fake::ok(OUT));
     let t = Instant::now();
-    let r = run_cleanup(
-        routed(&p, &f),
-        prompt(IN),
-        IN,
-        Duration::from_millis(100),
-        f64::INFINITY,
-    );
+    let r = run_cleanup(routed(&p, &f), prompt(IN), IN, Duration::from_millis(100));
     assert_eq!(r, CleanOutcome::Fallback(FallbackReason::Timeout));
     assert!(
         t.elapsed() < Duration::from_millis(300),
@@ -316,13 +299,7 @@ fn fast_failure_too_close_to_the_deadline_does_not_fall_back() {
     );
     let f = Arc::new(Fake::ok(OUT));
     // 1000 ms budget, 300 ms spent: 700 < MIN_FALLBACK_MS left.
-    let r = run_cleanup(
-        routed(&p, &f),
-        prompt(IN),
-        IN,
-        Duration::from_millis(1000),
-        f64::INFINITY,
-    );
+    let r = run_cleanup(routed(&p, &f), prompt(IN), IN, Duration::from_millis(1000));
     assert_eq!(
         r,
         CleanOutcome::Fallback(FallbackReason::Error("connect_failed".into()))
@@ -397,11 +374,11 @@ fn set_cleaner_installs_and_none_restores_the_built_in() {
 
 #[test]
 fn llm_skip_clean_still_skips_the_local_llm_after_ai_cleanup() {
-    // D30: AI cleanup (cloud) always runs on the raw transcript; when the
-    // guard rejects its answer ("right" is not in the input), the fallback
-    // pipeline still skips the on-device LLM on a clean dictation.
+    // D30: AI cleanup (cloud) always runs on the raw transcript; when it
+    // falls back (here: an empty answer), the fallback pipeline still
+    // skips the on-device LLM on a clean dictation.
     let local = Arc::new(Fake::ok(OUT));
-    let cloud = Arc::new(Fake::ok(OUT).cloud());
+    let cloud = Arc::new(Fake::ok(" ").cloud());
     let core = FlowCore::from_engines(Arc::new(MockAsr::new("The demo is on Thursday.")), None);
     core.set_cleaner(Some(routed(&cloud, &local)));
     let r = dictate(&core, SessionConfig::default(), FieldContext::default());
