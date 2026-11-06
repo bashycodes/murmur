@@ -82,6 +82,12 @@ class DictationControllerTest {
         override fun onInserted(pasted: String, context: FieldContext?, sentKey: Boolean) { insertedFor += Triple(pasted, context, sentKey) }
         val loadingNotices = mutableListOf<String>()
         override fun engineLoading(message: String) { loadingNotices += message }
+        /** D58: the keyboard's languages at the stop; null = the language does not follow the keyboard. */
+        var keyboardAtStop: List<String>? = null
+        var prepared = 0
+        override fun followsKeyboard() = keyboardAtStop != null
+        override fun stopLanguages() = keyboardAtStop
+        override fun prepareStopLanguage() { prepared++ }
     }
 
     /** advanceUntilIdle ignores backgroundScope work, where the controller lives. */
@@ -133,20 +139,48 @@ class DictationControllerTest {
         assertTrue(host.history.single().second)
     }
 
-    /**
-     * D37 / D58: the session's language field is read once, at start, and not re-read at stop.
-     * (What a mid-recording switch can change is the engine a D55 load-wait gets: EngineHolderTest.)
-     */
-    @Test fun languageIsPickedAtStartNotAtStop() = runTest {
+    /** D58: the keyboard active when the recording stops decides; the whole recording is transcribed again in it. */
+    @Test fun keyboardSwitchedMidRecordingUsesTheStopLanguage() = runTest {
+        host.keyboardAtStop = listOf("en")
         val c = controller()
         c.toggle(hold = false)
-        host.config = SessionConfig(languages = listOf("he")) // keyboard switched while recording
+        assertEquals("en", core.lastConfig!!.languages.single())
+        audio.speak()
+        host.keyboardAtStop = listOf("he") // the keyboard switched while recording
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals(listOf("hello world"), host.inserted)
+        assertEquals("he", core.lastConfig!!.languages.single())
+        assertEquals("the whole recording, again", 16_000, core.samplesPushed)
+        assertEquals(1, host.prepared)
+        val t = host.traces.single()
+        assertEquals(listOf("en", "he", "he"), listOf(t.startLanguage, t.stopLanguage, t.language))
+    }
+
+    @Test fun sameKeyboardAtTheStopTranscribesOnceWithoutAReload() = runTest {
+        host.keyboardAtStop = listOf("en")
+        val c = controller()
+        c.toggle(hold = false)
         audio.speak()
         advanceTimeBy(600)
         c.toggle(hold = false)
         settle()
         assertEquals(listOf("hello world"), host.inserted)
-        assertEquals("en", core.lastConfig!!.languages.single())
+        assertEquals(0, host.prepared)
+        val t = host.traces.single()
+        assertEquals(listOf("en", "en", "en"), listOf(t.startLanguage, t.stopLanguage, t.language))
+    }
+
+    @Test fun aLanguageNotFollowingTheKeyboardIsNotReadAtTheStop() = runTest {
+        val c = controller()
+        c.toggle(hold = false)
+        audio.speak()
+        advanceTimeBy(600)
+        c.toggle(hold = false)
+        settle()
+        assertEquals(listOf("hello world"), host.inserted)
+        assertEquals(null, host.traces.single().stopLanguage)
     }
 
     @Test fun aSuccessfulInsertStartsTheEditWatchWithTheStartContext() = runTest {

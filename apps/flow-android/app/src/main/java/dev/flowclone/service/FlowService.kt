@@ -713,6 +713,20 @@ class FlowService : Service() {
             it.toSessionConfig(app.dictionary.all(), language = lang.language, cloudCleanup = cloudCleanup)
         }
 
+        override fun followsKeyboard() = app.settings.load().language == dev.flowclone.data.Settings.LANGUAGE_KEYBOARD
+
+        // D58: the keyboard active when the recording stops decides; the source goes on the debug line.
+        override fun stopLanguages(): List<String>? {
+            val s = app.settings.load()
+            if (s.language != dev.flowclone.data.Settings.LANGUAGE_KEYBOARD) return null
+            val lang = app.resolveLanguage(s)
+            languageSource = lang.source.wire
+            return dev.flowclone.data.Settings.sessionLanguages(lang.language)
+        }
+
+        // D58: the stop language may need the other model (one model in RAM); Keep both loaded: no-op.
+        override fun prepareStopLanguage() = app.engine.ensureLanguage()
+
         override fun endpointSilenceMs(): Int? = app.settings.load().handsFreeEndpointMs()
 
         override fun insertTarget(explicit: Boolean) =
