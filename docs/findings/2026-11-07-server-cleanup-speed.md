@@ -97,7 +97,7 @@ Live quality (round 1): dictionary WER 10.7 → 10.7 %, terms 8/15, format
 
 Real-time pacing (1 round, load 20–25 during it, so noisy): base 4.6 s
 (dict) / 5.2 s (no dict, 2 cleanup timeouts); new 4.6 s (dict, 1 timeout)
-/ ~3.0 s (no dict).
+/ 3.3 s (no dict).
 
 Plugin counters per commit (a local build that logged them): prefill-ahead
 completes (0 preempted) and cuts the commit's prefill from ~55 to ~25
@@ -105,7 +105,7 @@ tokens on multi-piece clips, but on this loaded CPU 25 tokens still take
 0.7–1.1 s; drafting accepts ~70 % of generated tokens (34 tokens in 7
 batched steps of ~190 ms vs ~80 ms per single step).
 
-**Target not met.** p50 ≤ 3 s is reached only without the dictionary at
+**Target not met.** The closest is 3.3 s, without the dictionary at
 real-time pacing. What is left: cleanup ~2.5 s (prefill ~1 s + generation
 ~1.5 s, both CPU-bound on a box other jobs load) plus the ASR tail
 (0.8 s, 1.3 s with the dictionary's hotword beam). Further options:
