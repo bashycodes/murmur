@@ -18,6 +18,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Added
 
+- **AI cleanup spells your dictionary words and well-known product names right** (every cleanup path: phone, PC, flow-server and AI cleanup; D64). When a dictation holds something close to a dictionary entry ("quill mate", "Marbelford") or to a built-in product name ("whisper flow", "chat GPT", "wifi"), the cleanup is told that entry and writes its spelling when the word is meant as that name; ordinary words that only look alike stay. Only the entries close to what you said are sent, at most 20, so a large dictionary does not slow cleanup down. The built-in names (TickTick, Wispr Flow, WhatsApp, GitHub and a dozen more) can be turned off with the new **Known product names** switch (Windows: Settings → AI cleanup; Android: Language → Formatting). On the phone, a tidy dictation with such a word now runs the on-device model instead of skipping it. Known limits: the 1.5B model often keeps "Whisper Flow"; "tick tick" is shortened to "tick" before the on-device model sees it.
+
 - **Android (hybrid debug builds only): English speech probe folder batch.** "Run folder batch" runs every WAV in `nano-batch/<set>/` through Gemini Nano and/or the platform recognizer and writes one line per clip and engine to a new `nano-batch/results/batch-<UTC>.jsonl` each batch; `tools/probes/wispr_parity/nano_rows.py` turns it into parity scorecard rows. Batch runs feed the platform recognizer as one segmented session, so a pause in the clip no longer ends the transcript at the first endpoint. Dictation is unchanged.
 
 ### Changed
