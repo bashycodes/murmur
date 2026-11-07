@@ -1,6 +1,8 @@
 //! Language lock for edits of existing text (Command Mode, transforms):
 //! the answer keeps the writing system of the text it replaces unless the
-//! instruction asks for another language.
+//! instruction asks for another language. Dictation cleanup checks its
+//! answer with it too (D65): a cleaned dictation keeps its transcript's
+//! script.
 //!
 //! Small on-device models (Qwen2.5-1.5B) drift to English when the
 //! instruction ("make this more formal") and the few-shot example are
