@@ -17,7 +17,7 @@
 //! is one, `local` alone (today's pipeline: rules, prompt v2), or neither
 //! (fallback rules). The product sends prompt v5 to
 //! the cloud; other versions are swapped in by [`PromptOverride`], which
-//! rebuilds the prompt with `build_prompt_versioned` and changes nothing
+//! rebuilds the prompt with the engine's `session_prompt` and changes nothing
 //! else.
 
 use std::path::{Path, PathBuf};
@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 
 use flow_core::asr::{AbortFlag, AsrEngine, AsrError, AsrOutput, AsrRequest};
 use flow_core::cleanup::{
-    build_prompt_versioned, AiParts, CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope,
+    session_prompt, AiParts, CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope,
     PromptVersion, RoutedCleaner,
 };
 use flow_core::config::{AppCategory, FieldContext, SessionConfig};
@@ -287,14 +287,15 @@ impl PromptOverride {
             app_category: cat,
             ..self.ctx.clone()
         };
-        build_prompt_versioned(
+        // The engine's own builder: only the version differs.
+        let language = p.source.as_ref().and_then(|s| s.language.clone());
+        session_prompt(
             &p.transcript,
-            self.session.cleanup_level,
-            self.session.styles.for_category(cat),
+            &self.session,
             &ctx,
-            &self.session.dictionary,
             self.inner.prompt_scope(),
             self.version,
+            language.as_deref(),
         )
     }
 }
@@ -534,5 +535,47 @@ impl Matrix {
             }
         }
         spend
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use flow_core::dictionary::{DictEntry, Dictionary};
+
+    struct Echo;
+    impl Cleaner for Echo {
+        fn clean(&self, p: &CleanPrompt, _d: Instant) -> Result<String, CleanError> {
+            Ok(p.transcript.clone())
+        }
+        fn engine(&self) -> &'static str {
+            "echo"
+        }
+    }
+
+    #[test]
+    fn an_override_to_the_engines_version_rebuilds_the_engines_prompt() {
+        let session = SessionConfig {
+            dictionary: Dictionary {
+                entries: vec![DictEntry::word("Quillmate")],
+            },
+            ..phone_session()
+        };
+        let ctx = FieldContext {
+            app_id: "com.example.notes".into(),
+            ..Default::default()
+        };
+        let cat = flow_core::postprocess::effective_category(session.platform, &ctx);
+        let engine_ctx = FieldContext {
+            app_category: cat,
+            ..ctx.clone()
+        };
+        let text = "so the quill mate notes went out";
+        for (v, lang) in [(PromptVersion::V5, None), (PromptVersion::V2, Some("he"))] {
+            let sent = session_prompt(text, &session, &engine_ctx, PromptScope::FULL, v, lang);
+            let o = PromptOverride::new(Arc::new(Echo), v, session.clone(), ctx.clone());
+            assert_eq!(o.rewrite(&sent), sent, "{v:?}");
+            assert!(sent.user.contains("DICTIONARY: Quillmate"), "{}", sent.user);
+        }
     }
 }
