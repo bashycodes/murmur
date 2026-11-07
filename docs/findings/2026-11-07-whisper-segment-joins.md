@@ -66,11 +66,40 @@ with the full window). Remaining gap: s05 (+14.8 vs whole) and s12 (8
 short pieces, +17.1), from pieces decoded with less context, not
 repetition.
 
+**Why s05 is 32.4% here but 26.5% piece by piece (Root cause, 4).** The
+26.5% decoded all three pieces with the full window. After the fix only
+piece 1 (the loop) is decoded again with the full window; pieces 2 and 3
+are clean with the fitted window, so they keep their fitted-window text,
+which has more errors. Piece by piece with the fix (fitted window, re-decode
+on a loop): 32.4%, the same as the full pipeline, so the bridges, the guard
+and the join add nothing on s05.
+
+**False alarms (D20 bench, `tests/audio_ctx_bench.rs`, 40 LibriSpeech
+clips, fitted window, `redecodes()` counter, before → after):** tiny.en 0 →
+0 re-decodes, base.en 2 → 2, small q5_1 0 → 0. No clip re-decodes that did
+not before, and all 120 outputs are byte-identical. ASR totals
+18.1 → 20.3 s, 67.9 → 67.7 s, 139.4 → 123.2 s: the same work, within run
+noise on a shared box (no added decodes). Run with
+`tools/probes/prototypes/whisper_joins_2026_11_07/bench.sh`.
+
 **Full window for every piece instead** (fit_ctx off, 4 affected clips):
 segmented 19.3% vs whole 11.9% pooled, so the gap stays, and segmented ASR
 time is 1.8× (595 vs 333 s summed on this box). Not adopted.
 
+**Limit.** Words are split on whitespace, so scripts written without
+spaces (Chinese, Japanese, Thai) get no protection from this check: a
+clause is one "word". Only the words/s cap and the old back-to-back checks
+on whole clauses can fire there.
+
 ## Tests
+
+`whisper::tests::a_loop_with_words_between_is_decoded_again_with_the_full_window`:
+`fit_then_full` (the D20 decode-then-re-decode step, now a function that
+takes the decoder) with a fake decoder. A synthetic looped fitted result
+leads to a second decode with the full window (ctx 0), whose text is
+returned, and the counter goes up. A clean fitted result is decoded once,
+and a full-window decode is never repeated.
+
 
 `whisper::tests::repetition_guard_catches_a_loop_with_words_between`:
 synthetic 12-word phrase, 4 other words, the phrase again, at a word rate the

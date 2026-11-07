@@ -3,7 +3,8 @@
 //! default; minutes per model). Run:
 //!   FLOW_BENCH_AUDIO=~/…/.cache/audio FLOW_BENCH_OUT=tools/probes/results/x.jsonl \
 //!   cargo test --release -p flow-core --features whisper,wav --test audio_ctx_bench -- --ignored --nocapture
-//! Env: FLOW_MODELS_DIR (models), FLOW_BENCH_MODELS="ggml-tiny.en.bin,…".
+//! Env: FLOW_MODELS_DIR (models), FLOW_BENCH_MODELS="ggml-tiny.en.bin,…",
+//! FLOW_BENCH_FIT="true" (fitted window only; default both).
 //! Writes one JSON line per (model, mode, clip) with the hypothesis and
 //! the ASR ms; score with `tools/probes/audio_ctx_wer.py`.
 
@@ -28,7 +29,12 @@ fn audio_ctx_vs_full_window() {
     let mut out = std::fs::File::create(&out_path).unwrap();
     for m in models.split(',') {
         let path = models_dir.join(m);
-        for fit in [false, true] {
+        let fits: Vec<bool> = match std::env::var("FLOW_BENCH_FIT").as_deref() {
+            Ok("true") => vec![true],
+            Ok("false") => vec![false],
+            _ => vec![false, true],
+        };
+        for fit in fits {
             let eng = WhisperEngine::load(path.to_str().unwrap(), 4)
                 .unwrap()
                 .with_fit_ctx(fit);
