@@ -29,8 +29,8 @@ class ParakeetDecodingTest {
         assertEquals(BEAM, pick(BEAM))
     }
 
-    @Test fun hebrewStaysGreedyUnlessOverridden() {
-        assertEquals(GREEDY, HebrewModels.decoding(null))
-        assertEquals(AUTO, HebrewModels.decoding(AUTO))
+    @Test fun hebrewAndCallsStayGreedyUnlessOverridden() {
+        assertEquals(GREEDY, EnginePlan.fixedDecoding(null))
+        assertEquals(AUTO, EnginePlan.fixedDecoding(AUTO))
     }
 }

@@ -145,7 +145,7 @@ object CoreJson {
 
     fun decodeCandidates(json: String): List<LearnCandidate> = try {
         val a = JSONArray(json)
-        (0 until a.length()).map { a.getJSONObject(it) }.map { LearnCandidate(it.getString("original"), it.getString("corrected"), it.optBoolean("name")) }
+        (0 until a.length()).map { a.getJSONObject(it) }.map { LearnCandidate(it.getString("original"), it.getString("corrected"), it.optBoolean("looks_like_name")) }
     } catch (e: JSONException) {
         emptyList()
     }

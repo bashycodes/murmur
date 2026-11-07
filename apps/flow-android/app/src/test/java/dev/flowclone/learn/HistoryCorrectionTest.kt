@@ -19,7 +19,7 @@ class HistoryCorrectionTest {
     @Test fun aNameIsOfferedAndEveryCandidateIsSuggested() {
         val l = HistoryCorrection.learn(
             "ask  gina about the cubernetes job", "ask Jenna about the kubernetes job", Suggestions(), emptyList(), "com.chat", 5,
-            core(LearnCandidate("gina", "Jenna", name = true), LearnCandidate("cubernetes", "kubernetes")),
+            core(LearnCandidate("gina", "Jenna", looksLikeName = true), LearnCandidate("cubernetes", "kubernetes")),
         )
         assertEquals("the core sees whitespace-normalised text", listOf("ask gina about the cubernetes job" to "ask Jenna about the kubernetes job"), calls)
         assertEquals(listOf("Jenna"), l.names.map { it.word })
@@ -29,22 +29,22 @@ class HistoryCorrectionTest {
 
     @Test fun aNameAlreadyInTheDictionaryOrDismissedIsNotOffered() {
         val dict = listOf(DictEntry("Jenna"))
-        val known = HistoryCorrection.learn("ask gina", "ask Jenna", Suggestions(), dict, "a", 1, core(LearnCandidate("gina", "Jenna", name = true)))
+        val known = HistoryCorrection.learn("ask gina", "ask Jenna", Suggestions(), dict, "a", 1, core(LearnCandidate("gina", "Jenna", looksLikeName = true)))
         assertTrue(known.names.isEmpty())
         val dismissed = Suggestions().dismiss("jenna")
-        val d = HistoryCorrection.learn("ask gina", "ask Jenna", dismissed, emptyList(), "a", 1, core(LearnCandidate("gina", "Jenna", name = true)))
+        val d = HistoryCorrection.learn("ask gina", "ask Jenna", dismissed, emptyList(), "a", 1, core(LearnCandidate("gina", "Jenna", looksLikeName = true)))
         assertTrue(d.names.isEmpty())
     }
 
     @Test fun aRepeatedNameIsOfferedAgainWithItsCount() {
-        val first = HistoryCorrection.learn("ask gina", "ask Jenna", Suggestions(), emptyList(), "a", 1, core(LearnCandidate("gina", "Jenna", name = true))).next
-        val again = HistoryCorrection.learn("tell gena", "tell Jenna", first, emptyList(), "a", 2, core(LearnCandidate("gena", "Jenna", name = true)))
+        val first = HistoryCorrection.learn("ask gina", "ask Jenna", Suggestions(), emptyList(), "a", 1, core(LearnCandidate("gina", "Jenna", looksLikeName = true))).next
+        val again = HistoryCorrection.learn("tell gena", "tell Jenna", first, emptyList(), "a", 2, core(LearnCandidate("gena", "Jenna", looksLikeName = true)))
         assertEquals(2, again.names.single().count)
     }
 
     @Test fun noChangeAsksTheCoreNothing() {
         val cur = Suggestions()
-        val l = HistoryCorrection.learn("same  text", "same text", cur, emptyList(), "a", 1, core(LearnCandidate("x", "Y", name = true)))
+        val l = HistoryCorrection.learn("same  text", "same text", cur, emptyList(), "a", 1, core(LearnCandidate("x", "Y", looksLikeName = true)))
         assertSame(cur, l.next)
         assertTrue(l.names.isEmpty())
         assertTrue(calls.isEmpty())
@@ -52,8 +52,8 @@ class HistoryCorrectionTest {
     }
 
     @Test fun theCoreJsonCarriesTheNameFlag() {
-        val c = CoreJson.decodeCandidates("""[{"original":"gina","corrected":"Jenna","name":true},{"original":"a","corrected":"b"}]""")
-        assertTrue(c[0].name)
-        assertFalse("an older core sends no flag", c[1].name)
+        val c = CoreJson.decodeCandidates("""[{"original":"gina","corrected":"Jenna","looks_like_name":true},{"original":"a","corrected":"b"}]""")
+        assertTrue(c[0].looksLikeName)
+        assertFalse("an older core sends no flag", c[1].looksLikeName)
     }
 }

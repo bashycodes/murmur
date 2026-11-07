@@ -107,6 +107,9 @@ object EnginePlan {
     fun parakeetDecoding(override: ParakeetDecoding?, dictionary: List<DictEntry>): ParakeetDecoding =
         override ?: if (hasHotwords(dictionary)) ParakeetDecoding.BEAM else ParakeetDecoding.GREEDY
 
+    /** D68: Parakeet-he and call transcription: the Developer [override], else greedy (D22). */
+    fun fixedDecoding(override: ParakeetDecoding?): ParakeetDecoding = override ?: ParakeetDecoding.GREEDY
+
     /** The dictionary gives the recognizer hotwords: a word entry (snippets never bias speech). */
     fun hasHotwords(dictionary: List<DictEntry>): Boolean =
         dictionary.any { !it.isSnippet && (it.replacement ?: it.word).isNotBlank() }

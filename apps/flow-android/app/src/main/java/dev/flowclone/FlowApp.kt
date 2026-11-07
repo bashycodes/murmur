@@ -9,6 +9,9 @@ import dev.flowclone.insert.ClipboardGuard
 import dev.flowclone.service.AndroidClipPort
 import dev.flowclone.data.EngineMismatch
 import dev.flowclone.data.HebrewModels
+import dev.flowclone.core.AsrEngine
+import dev.flowclone.core.LanguageModel
+import dev.flowclone.core.ParakeetDecoding
 import dev.flowclone.data.KeyboardLanguage
 import dev.flowclone.data.LanguageDefault
 import dev.flowclone.data.Settings
@@ -212,7 +215,7 @@ class FlowApp : Application() {
         migrateCloud()
         engine = EngineHolder(this)
         // D68: the first dictionary word switches Parakeet to beam search, the last one back to greedy.
-        dictionary.onChange = { engine.ensureLanguage() }
+        dictionary.onChange = { engine.dictionaryChanged() }
         calls = CallJobs(
             callsStore,
             decoder = { r -> Decoders.open(this, android.net.Uri.parse(r.uri)) },
@@ -330,7 +333,7 @@ class EngineHolder(
     /** Test seam: builds the engine for a load set instead of the native load (null = the real load). */
     private val builder: ((LoadSet) -> State)? = null,
     /** Test seam: the Parakeet search the next load needs (null = [wantedDecoding] from the settings). */
-    private val decodingProbe: (() -> dev.flowclone.core.ParakeetDecoding?)? = null,
+    private val decodingProbe: (() -> ParakeetDecoding?)? = null,
 ) {
     companion object {
         /** Longest a reload waits for the previous engine's running commit (20 s UI timeout + slack). */
@@ -399,13 +402,32 @@ class EngineHolder(
      * with an empty dictionary, beam once it has words), or null when no English Parakeet loads
      * (whisper, a Hebrew-only set, no on-device engine), so a dictionary edit then reloads nothing.
      */
-    private fun wantedDecoding(s: Settings = app.settings.load(), set: LoadSet = wantedSet(s)): dev.flowclone.core.ParakeetDecoding? =
+    private fun wantedDecoding(s: Settings = app.settings.load(), set: LoadSet = wantedSet(s)): ParakeetDecoding? =
         if (decodingProbe != null) decodingProbe.invoke()
-        else if (!app.caps.local || s.mockEngine || s.asrEngine != dev.flowclone.core.AsrEngine.PARAKEET || set is LoadSet.Language) null
+        else if (!app.caps.local || s.mockEngine || s.asrEngine != AsrEngine.PARAKEET || set is LoadSet.Language) null
         else EnginePlan.parakeetDecoding(app.dev.parakeetDecodingOverride, app.dictionary.all())
 
     /** The Parakeet search the current (or loading) engine was planned with ([wantedDecoding]). */
-    @Volatile private var loadedDecoding: dev.flowclone.core.ParakeetDecoding? = null
+    @Volatile private var loadedDecoding: ParakeetDecoding? = null
+
+    /** H5: the installed Hebrew model as a `ModelConfig.languages` entry (greedy unless overridden, D68), for dictation and calls. */
+    fun hebrewLanguageModel(): LanguageModel? = hebrewModel()?.let { (path, m) ->
+        HebrewModels.languageModel(path, m, EnginePlan.fixedDecoding(app.dev.parakeetDecodingOverride))
+    }
+
+    /**
+     * D68: the dictionary was saved, so the wanted Parakeet search may have changed. The switch
+     * frees the loaded core, so it never runs on the caller's (UI) thread nor while a dictation
+     * records or processes: it waits until [FlowApp.dictationBusy] is false, then [ensureLanguage]
+     * (a no-op when the search did not change). A dictation started first applies it itself at
+     * its start (FlowService.beforeStart → [ensureLanguage]), before it records.
+     */
+    fun dictionaryChanged() {
+        scope.launch {
+            app.dictationBusy.first { !it }
+            ensureLanguage()
+        }
+    }
 
     /** The next dictation needs a different engine than the loaded (or loading) one. */
     private fun stale(want: LoadSet = wantedSet()): Boolean = want != loadedSet || wantedDecoding(set = want) != loadedDecoding
@@ -421,7 +443,7 @@ class EngineHolder(
      * both models loaded the wanted set stays [LoadSet.Both] across a switch, so nothing
      * reloads; toggling the setting changes it, so the next dictation reloads once. D68: the
      * same when the Parakeet search changes (the dictionary got its first word or lost its
-     * last); the dictionary store calls this on every save. The on-device LLM is kept.
+     * last; a save goes through [dictionaryChanged]). The on-device LLM is kept.
      */
     @Synchronized
     fun ensureLanguage() {
@@ -691,12 +713,12 @@ class EngineHolder(
         val decoding = wantedDecoding(s, set)
         loadedDecoding = decoding
         builder?.let { return it(set) }
-        val hebrew = hebrewModel()?.let { (path, m) -> HebrewModels.languageModel(path, m, HebrewModels.decoding(app.dev.parakeetDecodingOverride)) }
+        val hebrew = hebrewLanguageModel()
         val local = if (!app.caps.local && !s.mockEngine) EnginePlan.Plan.Missing("This build has no on-device engine.")
         else EnginePlan.plan(
             s, app.settings.modelPath, app.settings.llmModelPath, { File(it).isFile }, threads,
             parakeetPath = app.settings.parakeetPath, isModelDir = { ParakeetFiles.isModelDir(File(it)) },
-            parakeetDecoding = decoding ?: dev.flowclone.core.ParakeetDecoding.GREEDY,
+            parakeetDecoding = decoding ?: ParakeetDecoding.GREEDY,
             language = app.effectiveLanguage(s), hebrew = hebrew, keepBoth = s.keepBothLanguages,
         )
         return when (val plan = EngineRoute.plan(local, app.dev.load(), app.caps)) {
