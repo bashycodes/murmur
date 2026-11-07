@@ -178,6 +178,15 @@ pub struct SessionConfig {
     /// 20000.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub segment_soft_max_ms: Option<u32>,
+    /// D64: the cleanup prompt may also name [`crate::dictionary::BUILTIN_TERMS`]
+    /// (public product names) next to the user's dictionary. Prompt-only:
+    /// no ASR hotword, no rewrite. Default on; omitted from JSON when on.
+    #[serde(skip_serializing_if = "is_true")]
+    pub builtin_terms: bool,
+}
+
+fn is_true(b: &bool) -> bool {
+    *b
 }
 
 impl Default for SessionConfig {
@@ -208,6 +217,7 @@ impl Default for SessionConfig {
             segment_pause_ms: None,
             segment_min_ms: None,
             segment_soft_max_ms: None,
+            builtin_terms: true,
         }
     }
 }
@@ -222,6 +232,12 @@ impl SessionConfig {
         self.ring_capacity_samples = self
             .ring_capacity_samples
             .max(samples.min(self.max_samples) + SAMPLE_RATE);
+    }
+
+    /// D64: the dictionary cleanup prompts pick their terms from (the
+    /// user's, then the built-in names when [`Self::builtin_terms`]).
+    pub fn prompt_dictionary(&self) -> std::borrow::Cow<'_, Dictionary> {
+        self.dictionary.with_builtin_terms(self.builtin_terms)
     }
 
     /// Forced language, if exactly one non-"auto" language is configured.
