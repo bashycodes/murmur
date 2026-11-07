@@ -14,7 +14,12 @@ set -uo pipefail
 OUT=$1; TAG=$2; SPEED=$3; shift 3
 : "${SERVER:?}" "${CONFIG:?}" "${PORT:?}" "${TOKEN:?}" "${RUN_PATHS:?}" "${CLIPS:?}" "${SESSION:?}"
 mkdir -p "$OUT"
-avail=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)
+# Shared box: wait up to 30 min for 4000 MB available, else skip.
+for _ in $(seq 1 90); do
+  avail=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)
+  (( avail >= 4000 )) && break
+  sleep 20
+done
 if (( avail < 4000 )); then echo "skip $TAG: $avail MB available" >&2; exit 1; fi
 exec 9>"$HOME/.cache/flow-clone-build.lock"
 flock 9
