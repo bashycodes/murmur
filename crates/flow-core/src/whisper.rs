@@ -4,6 +4,7 @@
 //! `initial_prompt`; language is forced or auto-detected (English-only
 //! `.en` models are always forced to `en`).
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, Once};
 
@@ -43,10 +44,23 @@ pub fn audio_ctx_for(samples: usize) -> i32 {
     }
 }
 
+/// A phrase this long seen twice anywhere in one decode is a loop, even
+/// with other words between the copies (D66). A shrunken window on a
+/// short segment piece repeated a 14-word span with 4 words between
+/// (parity eval 2026-11-07,
+/// `docs/findings/2026-11-07-whisper-segment-joins.md`), which the
+/// back-to-back checks in [`looks_degenerate`] miss.
+const LOOP_PHRASE_WORDS: usize = 6;
+
 /// Repetition/length guard for a shrunken encoder window (the benchmark
 /// saw `-ac` loop a sentence 3× on base and garble tiny): more than
 /// 4 words per second (+3), or a repeated phrase (below), means "decode
 /// again with the full window". A false alarm only costs the re-decode.
+///
+/// Words are split on whitespace, so scripts written without spaces
+/// (Chinese, Japanese, Thai) get no protection from the phrase checks: a
+/// whole clause is one "word", so only the words/s cap and back-to-back
+/// repeats of whole clauses can fire.
 pub fn looks_degenerate(text: &str, secs: f32) -> bool {
     let words: Vec<String> = text
         .split_whitespace()
@@ -68,8 +82,29 @@ pub fn looks_degenerate(text: &str, secs: f32) -> bool {
     };
     (3..=12).any(|k| rep(k, 2))
         || rep(2, 3)
+        || repeats_phrase(&words, LOOP_PHRASE_WORDS)
         || (0..words.len().saturating_sub(2))
             .any(|i| words[i].len() > 4 && words[i] == words[i + 1] && words[i] == words[i + 2])
+}
+
+/// Whether some run of `k` words occurs twice without overlapping.
+fn repeats_phrase(words: &[String], k: usize) -> bool {
+    debug_assert!(k > 0);
+    if words.len() < 2 * k {
+        return false;
+    }
+    let mut first: HashMap<&[String], usize> = HashMap::new();
+    for i in 0..=words.len() - k {
+        let g = &words[i..i + k];
+        match first.get(g) {
+            Some(&j) if i >= j + k => return true,
+            Some(_) => {}
+            None => {
+                first.insert(g, i);
+            }
+        }
+    }
+    false
 }
 
 pub fn pad(pcm: &[f32]) -> Vec<f32> {
@@ -201,14 +236,28 @@ impl WhisperEngine {
         } else {
             0
         };
-        let out = self.decode(pcm, &audio, req, ctx, abort)?;
-        if ctx > 0 && looks_degenerate(&out.text, audio.len() as f32 / SAMPLE_RATE as f32) {
-            self.redecodes
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            return self.decode(pcm, &audio, req, 0, abort);
-        }
-        Ok(out)
+        let secs = audio.len() as f32 / SAMPLE_RATE as f32;
+        fit_then_full(ctx, secs, &self.redecodes, |c| {
+            self.decode(pcm, &audio, req, c, abort)
+        })
     }
+}
+
+/// D20: decode with encoder window `ctx` (0 = full), and once more with
+/// the full window when a fitted result [`looks_degenerate`] over `secs`
+/// of audio (counted in `redecodes`). The full-window result is used as is.
+fn fit_then_full(
+    ctx: i32,
+    secs: f32,
+    redecodes: &std::sync::atomic::AtomicU64,
+    mut decode: impl FnMut(i32) -> Result<AsrOutput, AsrError>,
+) -> Result<AsrOutput, AsrError> {
+    let out = decode(ctx)?;
+    if ctx > 0 && looks_degenerate(&out.text, secs) {
+        redecodes.fetch_add(1, Ordering::Relaxed);
+        return decode(0);
+    }
+    Ok(out)
 }
 
 impl AsrEngine for WhisperEngine {
@@ -352,6 +401,70 @@ mod tests {
             3.0
         ));
         assert!(!looks_degenerate("I think, I think we should go.", 3.0));
+    }
+
+    #[test]
+    fn a_loop_with_words_between_is_decoded_again_with_the_full_window() {
+        // Fake decoder: the fitted window loops (synthetic text), the full
+        // window does not.
+        let looped = "we moved the meeting to the blue room on the third floor \
+                      and then we said we moved the meeting to the blue room on the third floor";
+        let clean = "we moved the meeting to the blue room on the third floor";
+        let n = std::sync::atomic::AtomicU64::new(0);
+        let mut seen = Vec::new();
+        let out = fit_then_full(500, 9.0, &n, |c| {
+            seen.push(c);
+            Ok(AsrOutput {
+                text: if c > 0 { looped } else { clean }.into(),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        assert_eq!(seen, [500, 0]);
+        assert_eq!(out.text, clean);
+        assert_eq!(n.load(Ordering::Relaxed), 1);
+        // A clean fitted result is kept: one decode, no re-decode.
+        seen.clear();
+        let out = fit_then_full(500, 9.0, &n, |c| {
+            seen.push(c);
+            Ok(AsrOutput {
+                text: clean.into(),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        assert_eq!((seen.as_slice(), out.text.as_str()), (&[500][..], clean));
+        // The full window (ctx 0) is never re-decoded, looped or not.
+        seen.clear();
+        fit_then_full(0, 9.0, &n, |c| {
+            seen.push(c);
+            Ok(AsrOutput {
+                text: looped.into(),
+                ..Default::default()
+            })
+        })
+        .unwrap();
+        assert_eq!(seen, [0]);
+        assert_eq!(n.load(Ordering::Relaxed), 1);
+    }
+
+    #[test]
+    fn repetition_guard_catches_a_loop_with_words_between() {
+        // Synthetic: a long phrase, a few other words, the phrase again,
+        // at a word rate the length check accepts.
+        let looped = "we moved the meeting to the blue room on the third floor \
+                      and then we said we moved the meeting to the blue room on the third floor";
+        assert!(looks_degenerate(looped, 9.0));
+        // A short phrase said twice is normal speech.
+        assert!(!looks_degenerate(
+            "Send it to the team. Then later send it to the client as well.",
+            5.0
+        ));
+        // Five words twice is still below the bar.
+        assert!(!looks_degenerate(
+            "Put the box on the table, then put the box on the shelf.",
+            5.0
+        ));
     }
 
     #[test]
