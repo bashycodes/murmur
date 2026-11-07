@@ -39,7 +39,6 @@ class SettingsStore(context: Context) {
         bubbleScale = loadBubbleScale(),
         commandButton = loadCommandButton(),
         spokenCleanup = sp.getBoolean("spoken_cleanup", true),
-        builtinTerms = sp.getBoolean("builtin_terms", true),
         asrEngine = dev.flowclone.core.AsrEngine.entries.firstOrNull { it.wire == sp.getString("asr_engine", null) } ?: dev.flowclone.core.AsrEngine.WHISPER,
         endpointSilenceMs = loadEndpointMs(),
         decodeWhileSpeaking = sp.getBoolean("decode_while_speaking", true),
@@ -104,7 +103,6 @@ class SettingsStore(context: Context) {
             .putFloat("bubble_scale", s.bubbleScale)
             .putString("command_button", s.commandButton.key)
             .putBoolean("spoken_cleanup", s.spokenCleanup)
-            .putBoolean("builtin_terms", s.builtinTerms)
             .putString("asr_engine", s.asrEngine.wire)
             .putInt("endpoint_silence_ms", s.endpointSilenceMs)
             .putBoolean(ENDPOINT_MIGRATED, true)

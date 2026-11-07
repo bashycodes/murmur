@@ -1549,7 +1549,6 @@ pub fn to_core_session(c: &SessionConfig) -> fc::SessionConfig {
         llm_prefill: c.llm_prefill,
         endpoint_silence_ms: c.endpoint_silence_ms,
         segment_pause_ms: c.segment_pause_ms,
-        builtin_terms: c.builtin_terms,
         ..fc::SessionConfig::default()
     }
 }
@@ -1697,16 +1696,6 @@ mod tests {
         assert_eq!(c.partial_interval_ms, Some(1000));
         let json = serde_json::to_string(&c.dictionary).unwrap();
         assert!(json.contains(r#""isSnippet":false"#), "{json}");
-    }
-
-    #[test]
-    fn session_mapping_carries_builtin_terms() {
-        assert!(to_core_session(&SessionConfig::default()).builtin_terms);
-        let off = SessionConfig {
-            builtin_terms: false,
-            ..SessionConfig::default()
-        };
-        assert!(!to_core_session(&off).builtin_terms);
     }
 
     #[test]

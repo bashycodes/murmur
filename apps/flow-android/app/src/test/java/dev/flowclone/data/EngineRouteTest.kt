@@ -166,11 +166,6 @@ class EngineRouteTest {
         assertFalse(Settings(spokenCleanup = false).toSessionConfig(emptyList()).spokenCleanup)
     }
 
-    @Test fun builtinTermsPrefReachesTheSessionConfig() {
-        assertTrue(Settings().toSessionConfig(emptyList()).builtinTerms)
-        assertFalse(Settings(builtinTerms = false).toSessionConfig(emptyList()).builtinTerms)
-    }
-
     // ---- D22: one Parakeet recognizer on the phone (saves ~0.6 GB RSS) ----
 
     @Test fun parakeetDecodesGreedyOnDeviceByDefault() {

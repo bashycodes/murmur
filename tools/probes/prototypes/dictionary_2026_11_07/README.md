@@ -2,12 +2,11 @@
 
 > **Status:** dated probe, research only. Findings:
 > `docs/findings/2026-11-07-dictionary-in-cleanup.md` (D64). The product
-> change lives in flow-core (`cleanup::terms`, `dictionary::BUILTIN_TERMS`,
-> prompts v2 / v5); nothing here is wired into the product.
+> change lives in flow-core (`cleanup::terms`, prompts v2 / v5, the rules'
+> stutter step); nothing here is wired into the product.
 
 Measures whether the cleanup prompt, given the dictionary terms a dictation
-plausibly misspells (the user's plus a small built-in list of product
-names), corrects near-miss spellings to the entry on every AI path, leaves
+plausibly misspells, corrects near-miss spellings to the entry on every AI path, leaves
 ordinary look-alike words alone, and what a large dictionary costs in prompt
 length and latency.
 
@@ -15,10 +14,10 @@ length and latency.
 
 | File | What |
 |---|---|
-| `gen_cases.py` -> `cases.jsonl`, `refs.json`, `dict-*.json` | 34 made-up cases: P near spellings of a made-up user dictionary (12), B near spellings of built-in names (8), N ordinary words that resemble an entry and must stay (12), K tidy lines with no entry near (2). `dict-small.json` is that 12-entry dictionary; `dict-20.json` / `dict-200.json` pad it with made-up names for the prompt-size runs |
+| `gen_cases.py` -> `cases.jsonl`, `refs.json`, `dict-*.json` | 34 made-up cases: P near spellings of a made-up user dictionary (12), B near spellings of public product names that are not in the dictionary (8; a built-in list of them was tried and removed), N ordinary words that resemble an entry and must stay (12), K tidy lines with no entry near (2). `dict-small.json` is that 12-entry dictionary; `dict-20.json` / `dict-200.json` pad it with made-up names for the prompt-size runs |
 | `score_cases.py` | Passes per group, rows the LLM ran on, rows whose prompt named a term, mean prompt characters, LLM p50 / p95 |
 | `overlap.py` | Privacy check: no added line of the branch shares a 4-word run with the private reference files (`git diff BASE -U0 \| overlap.py REFS...`) |
-| `runner/` | `wispr-parity-clean`, the numbers copy of the parity runner plus `--dictionary DICT.json`, `--no-builtin-terms` and the prompt's DICTIONARY line in each output row. Own workspace, uses this checkout's flow-core |
+| `runner/` | `wispr-parity-clean`, the numbers copy of the parity runner plus `--dictionary DICT.json` and the prompt's DICTIONARY line in each output row. Own workspace, uses this checkout's flow-core |
 
 ## Run
 

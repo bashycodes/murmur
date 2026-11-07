@@ -1,12 +1,12 @@
-//! wispr-parity-clean (dictionary copy of the numbers runner; adds `--dictionary`,
-//! `--no-builtin-terms` and the prompt's DICTIONARY line per row): replay raw transcripts
+//! wispr-parity-clean (dictionary copy of the numbers runner; adds `--dictionary`
+//! and the prompt's DICTIONARY line per row): replay raw transcripts
 //! through the real `FlowCore` commit path with one cleaner.
 //!
 //!   wispr-parity-clean --cases CASES.jsonl --session SESSION.json
 //!       --mode rules|local|server|cloud [--llm MODEL.gguf --llm-lib SO]
 //!       [--threads N] [--timeout-ms MS] [--override PROMPT.json]
 //!       [--dump-prompt OUT.json] [--language CODE]
-//!       [--dictionary DICT.json] [--no-builtin-terms]
+//!       [--dictionary DICT.json]
 //!
 //! `--override`: {"system": "...", "examples": [[user, assistant], ...]}
 //! replaces the system prompt and the few-shot turns of every prompt the
@@ -111,9 +111,6 @@ fn main() {
     if let Some(p) = get("--dictionary") {
         session.dictionary = serde_json::from_str(&std::fs::read_to_string(p).expect("dictionary")).expect("dict json");
     }
-    if argv.iter().any(|a| a == "--no-builtin-terms") {
-        session.builtin_terms = false;
-    }
     let threads: usize = get("--threads").map_or(4, |t| t.parse().expect("--threads"));
     let timeout_ms: Option<u64> = get("--timeout-ms").map(|t| t.parse().expect("--timeout-ms"));
     let over = get("--override").map(|p| {
@@ -196,7 +193,7 @@ fn main() {
                     session.cleanup_level,
                     session.styles.for_category(ctx.app_category),
                     &ctx,
-                    &session.prompt_dictionary(),
+                    &session.dictionary,
                     flow_core::cleanup::PromptScope::FULL,
                     v,
                 );

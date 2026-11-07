@@ -191,11 +191,6 @@ ${group(
       "Formatting rules",
       `Punctuation, quotes, fillers and corrections: "comma", "new line", "quote … unquote", "um", "scratch that", "$5", "3pm". Run on this PC with or without AI. Off = exactly what you said (same as Verbatim).`,
       toggle("spoken_cleanup", "Formatting rules", `data-save="prefs"`),
-    ) +
-    row(
-      "Known product names",
-      "AI cleanup also spells common product names right (TickTick, WhatsApp, GitHub, Wi-Fi…), next to your dictionary.",
-      toggle("builtin_terms", "Known product names", `data-save="prefs"`),
     ),
 )}`,
 };

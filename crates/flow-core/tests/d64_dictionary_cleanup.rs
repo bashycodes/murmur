@@ -1,8 +1,7 @@
 //! D64: the AI cleanup sees the dictionary terms a dictation plausibly
-//! misspells (the user's and, unless switched off, the built-in product
-//! names), in the per-dictation user message only; a tidy dictation with
-//! such a misspelling wakes the on-device model; built-in names never
-//! become ASR hotwords.
+//! misspells, in the per-dictation user message only; a tidy dictation
+//! with such a misspelling wakes the on-device model; the rules keep a
+//! repeated word that is an entry.
 
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -98,21 +97,20 @@ fn a_tidy_dictation_with_a_misspelled_entry_wakes_the_on_device_model() {
 }
 
 #[test]
-fn built_in_names_reach_the_prompt_unless_switched_off_and_never_the_asr() {
-    let t = "Put the dentist in tic-tic for Monday.";
-    let r = dictate(t, "local", with_dict(&["Quillmate"]));
-    assert_eq!(dictionary_line(&r.prompts[0]), Some("TickTick"));
-    assert_eq!(
-        r.hotwords,
-        vec!["Quillmate".to_string()],
-        "hotwords are the user's only"
+fn a_repeated_word_that_is_an_entry_reaches_the_on_device_model_whole() {
+    let t = "Put the dentist in bop bop for Monday.";
+    let r = dictate(t, "local", with_dict(&["BopBop"]));
+    assert_eq!(r.prompts.len(), 1, "{:?}", r.fallback_reason);
+    assert_eq!(dictionary_line(&r.prompts[0]), Some("BopBop"));
+    assert!(
+        r.prompts[0].transcript.contains("bop bop"),
+        "{}",
+        r.prompts[0].transcript
     );
-    let off = SessionConfig {
-        builtin_terms: false,
-        ..with_dict(&["Quillmate"])
-    };
-    let r = dictate(t, "local", off);
-    assert!(r.prompts.is_empty(), "nothing near: the skip holds");
+    assert_eq!(r.hotwords, vec!["BopBop".to_string()]);
+    // Without the entry it is a stutter, and the tidy line skips the model.
+    let r = dictate(t, "local", with_dict(&["Quillmate"]));
+    assert!(r.prompts.is_empty());
 }
 
 #[test]
@@ -125,9 +123,9 @@ fn ai_cleanup_names_the_entry_in_the_user_message_and_keeps_the_cached_prefix() 
     assert_eq!(dictionary_line(b), None);
     assert_eq!(a.system, b.system, "system prompt unchanged");
     assert_eq!(a.examples, b.examples, "few-shots unchanged");
-    // The request a server hop rebuilds from carries the built-in names too.
+    // The request a server hop rebuilds from carries the dictionary.
     let src = a.source.as_ref().unwrap();
-    assert!(src.dictionary.vocabulary().contains(&"TickTick"));
+    assert_eq!(src.dictionary.vocabulary(), ["Quillmate", "Marbleford"]);
 }
 
 #[test]

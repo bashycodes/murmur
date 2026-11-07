@@ -119,18 +119,6 @@ class SettingsUiTest {
         assertEquals(was, app.dev.debugLog)
     }
 
-    @Test fun knownProductNamesSwitchIsOnByDefaultAndAppliesAtOnce() {
-        val a = launch(Page.LANGUAGE)
-        val app = FlowApp.of(a)
-        assertTrue(app.settings.load().builtinTerms)
-        val row = rowTitled(a, "Known product names")
-        assertTrue(row.createAccessibilityNodeInfo().isChecked)
-        row.performClick()
-        assertFalse("applies without Save", app.settings.load().builtinTerms)
-        row.performClick()
-        assertTrue(app.settings.load().builtinTerms)
-    }
-
     @Test fun everyTouchTargetIsAtLeast48dp() {
         for (p in listOf(Page.HUB, Page.SPEECH, Page.LANGUAGE, Page.STYLE, Page.APP_STYLES, Page.TIMING, Page.BUBBLE, Page.APPS, Page.HISTORY) + if (BuildConfig.CAP_LOCAL) listOf(Page.ENGINE, Page.CLEANUP) else emptyList()) {
             val a = launch(p)

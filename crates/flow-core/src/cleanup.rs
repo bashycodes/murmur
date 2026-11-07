@@ -1281,6 +1281,34 @@ pub fn build_prompt_scoped(
     build_prompt_versioned(asr_text, level, style, ctx, dict, scope, PromptVersion::V2)
 }
 
+/// The prompt a session sends for `text` (the raw transcript on the D30
+/// AI path, the rules' output otherwise) in `ctx`, whose category is
+/// already the effective one: the session's level, the category's style,
+/// the user's dictionary, `language` named when not English, and the
+/// session's time budget recorded for chain hops. The engine and
+/// flow-replay both build through here, so a replayed prompt is the one
+/// the product sends.
+pub fn session_prompt(
+    text: &str,
+    cfg: &crate::config::SessionConfig,
+    ctx: &FieldContext,
+    scope: PromptScope,
+    version: PromptVersion,
+    language: Option<&str>,
+) -> CleanPrompt {
+    build_prompt_versioned(
+        text,
+        cfg.cleanup_level,
+        cfg.styles.for_category(ctx.app_category),
+        ctx,
+        &cfg.dictionary,
+        scope,
+        version,
+    )
+    .with_language(language)
+    .with_timeout(cfg.llm_budget_ms(text))
+}
+
 /// Which system prompt + few-shots a [`CleanPrompt`] carries. The
 /// on-device and server pipelines (rules first, then the LLM) build
 /// [`PromptVersion::V2`]; the D30 AI-cleanup path (raw transcript, cloud or

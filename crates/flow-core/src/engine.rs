@@ -1536,18 +1536,14 @@ impl Worker {
         if !cleanup::should_run(&s.cfg, ctx.app_category) {
             return;
         }
-        let style = s.cfg.styles.for_category(ctx.app_category);
-        cl.prefill(
-            &cleanup::build_prompt_scoped(
-                &transcript,
-                s.cfg.cleanup_level,
-                style,
-                &ctx,
-                &s.cfg.prompt_dictionary(),
-                cl.prompt_scope(),
-            )
-            .with_language(s.cfg.forced_language()),
-        );
+        cl.prefill(&cleanup::session_prompt(
+            &transcript,
+            &s.cfg,
+            &ctx,
+            cl.prompt_scope(),
+            cleanup::PromptVersion::V2,
+            s.cfg.forced_language(),
+        ));
     }
 
     /// The compiled matcher for `dict`, rebuilt only when it changed.
@@ -1994,18 +1990,14 @@ fn finish_text(
         .flatten();
     if let Some((cloud, local)) = ai {
         local_cleaner = local;
-        let style = cfg.styles.for_category(ctx.app_category);
-        let prompt = cleanup::build_prompt_versioned(
+        let prompt = cleanup::session_prompt(
             &r.asr_text,
-            cfg.cleanup_level,
-            style,
+            cfg,
             &ctx,
-            &cfg.prompt_dictionary(),
             cloud.prompt_scope(),
             cleanup::PromptVersion::V5,
-        )
-        .with_language(language.as_deref())
-        .with_timeout(cfg.llm_budget_ms(&r.asr_text));
+            language.as_deref(),
+        );
         let timeout_ms = cloud.budget_ms(cfg.llm_budget_ms(&r.asr_text));
         let t = Instant::now();
         let (outcome, usage, detail) = cleanup::run_ai_cleanup_for(
@@ -2044,7 +2036,7 @@ fn finish_text(
     // formatting-gap eval). Verbatim = `spoken_cleanup: false` + none.
     if cfg.spoken_cleanup && !snippet {
         if english {
-            text = postprocess::spoken::spoken_cleanup(&text);
+            text = postprocess::spoken::spoken_cleanup_keeping(&text, &cfg.dictionary.vocabulary());
             // Numbered lists and email structure without the LLM (the
             // LLM, when it runs, starts from this layout).
             text = postprocess::spoken::layout(&text, ctx.app_category);
@@ -2077,7 +2069,7 @@ fn finish_text(
     if run_llm
         && cfg.llm_skip_clean
         && !cleanup::llm_can_help(&text, ctx.app_category, language.as_deref())
-        && !cleanup::dictionary_can_help(&text, &cfg.prompt_dictionary())
+        && !cleanup::dictionary_can_help(&text, &cfg.dictionary)
     {
         if let Some(cl) = local_cleaner.take() {
             local_cleaner = match cleanup::first_ready_engine(&cl) {
@@ -2091,18 +2083,15 @@ fn finish_text(
         }
     }
     if let (true, Some(cl)) = (run_llm, &local_cleaner) {
-        let style = cfg.styles.for_category(ctx.app_category);
         // D28: a cloud backend narrows what the prompt may carry.
-        let prompt = cleanup::build_prompt_scoped(
+        let prompt = cleanup::session_prompt(
             &text,
-            cfg.cleanup_level,
-            style,
+            cfg,
             &ctx,
-            &cfg.prompt_dictionary(),
             cl.prompt_scope(),
-        )
-        .with_language(language.as_deref())
-        .with_timeout(cfg.llm_budget_ms(&text));
+            cleanup::PromptVersion::V2,
+            language.as_deref(),
+        );
         // Scaled with the text's length when the session asks (a long
         // dictation decodes more tokens; flow-server sets the rate).
         let timeout_ms = cl.budget_ms(cfg.llm_budget_ms(&text));

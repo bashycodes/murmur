@@ -90,11 +90,6 @@ class CoreJsonTest {
         assertTrue(j.getBoolean("llm_prefill"))
     }
 
-    @Test fun builtinTermsOmittedWhenOnAndSentWhenOff() {
-        assertFalse(JSONObject(CoreJson.encode(SessionConfig())).has("builtin_terms"))
-        assertFalse(JSONObject(CoreJson.encode(SessionConfig(builtinTerms = false))).getBoolean("builtin_terms"))
-    }
-
     /** Shape produced by flow-core core-p1 (`paste::PasteSegment` untagged, CR-2) + D17 `route`. */
     @Test fun decodesSegmentsPlainTextEmptyReasonAndRoute() {
         val json = """{"status":"FORMATTED","asr_text":"x","final_text":"@foo{{TAB}} bar","language":"en",
