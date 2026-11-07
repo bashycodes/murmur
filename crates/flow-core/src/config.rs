@@ -213,6 +213,17 @@ impl Default for SessionConfig {
 }
 
 impl SessionConfig {
+    /// Grow the ring so an unpaced replay of `samples` (a file pushed
+    /// faster than the worker drains) never overflows it. Capped at
+    /// `max_samples`, since the worker discards audio past that anyway.
+    /// The extra second is headroom for the pushes that land while the
+    /// worker drains: the ring itself is never shrunk.
+    pub fn fit_ring_to(&mut self, samples: usize) {
+        self.ring_capacity_samples = self
+            .ring_capacity_samples
+            .max(samples.min(self.max_samples) + SAMPLE_RATE);
+    }
+
     /// Forced language, if exactly one non-"auto" language is configured.
     pub fn forced_language(&self) -> Option<&str> {
         match self.languages.as_slice() {
@@ -546,6 +557,33 @@ impl Default for ModelConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fit_ring_to_grows_to_the_clip() {
+        let mut c = SessionConfig::default();
+        c.fit_ring_to(SAMPLE_RATE * 75);
+        assert_eq!(c.ring_capacity_samples, SAMPLE_RATE * 76);
+    }
+
+    #[test]
+    fn fit_ring_to_never_shrinks() {
+        let mut c = SessionConfig {
+            ring_capacity_samples: SAMPLE_RATE * 90,
+            ..Default::default()
+        };
+        c.fit_ring_to(SAMPLE_RATE * 5);
+        assert_eq!(c.ring_capacity_samples, SAMPLE_RATE * 90);
+    }
+
+    #[test]
+    fn fit_ring_to_caps_at_max_samples() {
+        let mut c = SessionConfig {
+            max_samples: SAMPLE_RATE * 60,
+            ..Default::default()
+        };
+        c.fit_ring_to(SAMPLE_RATE * 3 * 60 * 60);
+        assert_eq!(c.ring_capacity_samples, SAMPLE_RATE * 61);
+    }
 
     #[test]
     fn session_config_defaults_from_empty_json() {

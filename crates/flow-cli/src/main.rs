@@ -349,10 +349,7 @@ fn run(mut a: Args) -> Result<String, String> {
     let load_ms = t.elapsed().as_millis();
     // The pushes below outrun the worker's drain (no mic pacing), so a ring
     // smaller than the clip overflows and drops the tail: hold it all.
-    a.session.ring_capacity_samples = a
-        .session
-        .ring_capacity_samples
-        .max(pcm.len() + flow_core::config::SAMPLE_RATE);
+    a.session.fit_ring_to(pcm.len());
     core.start_session(a.session).map_err(|e| e.to_string())?;
     if let Some(c) = a.context {
         core.set_context(c);
