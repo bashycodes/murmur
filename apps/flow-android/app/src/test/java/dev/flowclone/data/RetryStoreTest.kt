@@ -42,6 +42,22 @@ class RetryStoreTest {
         s.close()
     }
 
+    /** D68: a History correction is kept as the next version, like a retry. */
+    @Test fun aCorrectionBecomesTheNextVersion() {
+        val s = HistoryStore(ctx)
+        val a = s.add(row(1, "Ask Gina."), Retention.KEEP)!!
+        assertNull("no change, no version", s.applyCorrection(a, "Ask Gina.", now = 3))
+        assertNull("blank is not a correction", s.applyCorrection(a, " ", now = 3))
+        assertEquals("Ask Gina.", s.applyCorrection(a, "Ask Jenna.", now = 4)!!.finalText)
+        assertEquals("Ask Jenna.", s.row(a)!!.finalText)
+        assertEquals("ask gina.", s.row(a)!!.asrText)
+        assertEquals(listOf(0 to "Ask Gina.", 1 to "Ask Jenna."), s.versions(a).map { it.n to it.finalText })
+        s.applyCorrection(a, "Ask Jenna now.", now = 5)
+        assertEquals(listOf(0, 1, 2), s.versions(a).map { it.n })
+        assertNull("a gone row", s.applyCorrection(a + 99, "x"))
+        s.close()
+    }
+
     @Test fun recordingsAndVersionsGoWithTheirRow() {
         val s = HistoryStore(ctx)
         val a = s.add(row(1), Retention.KEEP)!!

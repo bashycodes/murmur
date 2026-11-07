@@ -238,6 +238,7 @@ class HistoryActivity : Activity() {
                 card { selectableText(HistoryView.text(r, raw = true), 14f, p.muted) }
             }
             action("Copy", DevUi.Style.PRIMARY) { copy(HistoryPages.copyText(r)) }
+            if (!r.isCommand && HistoryView.text(r, raw = false).isNotBlank()) action(CORRECT) { correct(r) }
             if (HistoryPages.notInserted(r)) action(REINSERT) { offerInsert(r) }
             if (RetryLogic.canRetry(r, r.id in audio)) {
                 if (r.id in app.retrying.value) note("Retrying with your current settings…")
@@ -262,6 +263,65 @@ class HistoryActivity : Activity() {
                 HistoryPages.timings(r).takeIf { it.isNotEmpty() }?.let { infoRow("Timings", it) }
             }
             action("Delete dictation", DevUi.Style.DANGER) { delete(r) { finish() } }
+        }
+    }
+
+    /**
+     * D68 "Correct the text": edit the dictation's text. The correction is kept as the next
+     * version (like a retry); learn-from-edits turns the changed words into Dictionary
+     * suggestions, and a word changed to a capitalised name is offered for the dictionary now.
+     */
+    private fun correct(r: HistoryRow) {
+        val before = HistoryView.text(r, raw = false)
+        val edit = android.widget.EditText(this).apply {
+            setText(before); isSingleLine = false; minLines = 3; setSelection(text.length)
+            contentDescription = CORRECT_TITLE
+        }
+        val box = android.widget.FrameLayout(this).apply { setPadding(ui.dp(20), ui.dp(8), ui.dp(20), 0); addView(edit) }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(CORRECT_TITLE)
+            .setView(box)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Save") { _, _ -> saveCorrection(r, before, edit.text.toString().trim()) }
+            .show()
+    }
+
+    private fun saveCorrection(r: HistoryRow, before: String, after: String) {
+        thread(name = "history-correct") {
+            val old = runCatching { app.history.applyCorrection(r.id, after) }.getOrNull()
+            var names = emptyList<dev.flowclone.learn.Suggestion>()
+            if (old != null) {
+                runCatching {
+                    app.insights.retried(
+                        old.createdAt, RetryLogic.countedWords(old.status, old.finalText),
+                        RetryLogic.countedWords(old.status, after), old.audioMs, old.appId,
+                    )
+                }
+                val core = (app.engine.state.value as? dev.flowclone.EngineHolder.State.Ready)?.core
+                if (core != null) app.suggestions.update { cur ->
+                    val l = dev.flowclone.learn.HistoryCorrection.learn(
+                        before, after, cur, app.dictionary.all(), r.appId.orEmpty(), System.currentTimeMillis(), core::learnEdit,
+                    )
+                    names = l.names
+                    l.next
+                }
+                app.historyRevision.value = app.historyRevision.value + 1
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                ui.announce(if (old != null) "Correction saved" else "Nothing changed")
+                load()
+                offerNames(names)
+            }
+        }
+    }
+
+    /** D68: offer each name in turn; Back leaves the rest under Dictionary → Suggestions. */
+    private fun offerNames(names: List<dev.flowclone.learn.Suggestion>) {
+        val s = names.firstOrNull() ?: return
+        SuggestionDialog.show(this, s, dev.flowclone.learn.HistoryCorrection.offerTitle(s), dev.flowclone.learn.HistoryCorrection.OFFER_TEXT) {
+            ui.announce(it)
+            offerNames(names.drop(1))
         }
     }
 
@@ -295,6 +355,9 @@ class HistoryActivity : Activity() {
     companion object {
         const val EXTRA_ID = "id"
         const val REINSERT = "Insert with the bubble"
+        /** D68: the detail page's correction action and its dialog's title. */
+        const val CORRECT = "Correct the text"
+        const val CORRECT_TITLE = "Correct this dictation"
         const val REINSERT_NEEDS_SERVICE = "Turn on the bubble first (menu → Start / show bubble), then try again"
         const val LIST_TITLE = "History"
         const val DETAIL_TITLE = "Dictation"

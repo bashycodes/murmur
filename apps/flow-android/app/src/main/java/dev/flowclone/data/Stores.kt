@@ -185,8 +185,19 @@ class DictionaryStore(context: Context) {
     fun all(): List<DictEntry> = cache ?: (if (file.exists()) runCatching { CoreJson.decodeDictionary(file.readText()) }.getOrDefault(emptyList()) else emptyList())
         .also { cache = it }
 
-    @Synchronized
+    /**
+     * D68: runs after every save, outside the store lock (the engine reloads when the dictionary
+     * got its first word or lost its last, and its load reads the dictionary).
+     */
+    @Volatile var onChange: (() -> Unit)? = null
+
     fun replaceAll(entries: List<DictEntry>) {
+        write(entries)
+        onChange?.invoke()
+    }
+
+    @Synchronized
+    private fun write(entries: List<DictEntry>) {
         val tmp = File(file.parentFile, "dictionary.json.tmp")
         tmp.writeText(CoreJson.encodeDictionary(entries))
         tmp.renameTo(file)
@@ -435,15 +446,27 @@ class HistoryStore(
      * only), the new text becomes the next version and the row's text. Returns the row as it
      * was and the new version's number, or null when the row is gone.
      */
-    fun applyRetry(id: Long, r: dev.flowclone.core.CommitResult, now: Long = System.currentTimeMillis()): Pair<HistoryRow, Int>? {
+    fun applyRetry(id: Long, r: dev.flowclone.core.CommitResult, now: Long = System.currentTimeMillis()): Pair<HistoryRow, Int>? =
+        addVersion(id, now) { RetryLogic.retried(it, r) }
+
+    /**
+     * D68: the user corrected row [id]'s text to [text]. Kept like a retry (D35): version 0 holds
+     * the text as it was (first change only), the correction becomes the next version and the
+     * row's text. Returns the row as it was, or null when the row is gone or [text] is no change.
+     */
+    fun applyCorrection(id: Long, text: String, now: Long = System.currentTimeMillis()): HistoryRow? =
+        addVersion(id, now) { old -> old.copy(finalText = text).takeIf { text.isNotBlank() && text != old.finalText } }?.first
+
+    /** [applyRetry] / [applyCorrection]: [next] turns the row into its new version (null = no change). */
+    private fun addVersion(id: Long, now: Long, next: (HistoryRow) -> HistoryRow?): Pair<HistoryRow, Int>? {
         val db = writableDatabase
         db.beginTransaction()
         try {
             val old = row(id) ?: return null
+            val new = next(old) ?: return null
             val vs = versions(id)
             if (vs.isEmpty()) db.insertOrThrow("history_versions", null, versionValues(id, RetryLogic.original(old)))
             val n = (vs.maxOfOrNull { it.n } ?: 0) + 1
-            val new = RetryLogic.retried(old, r)
             db.insertOrThrow("history_versions", null, versionValues(id, HistoryVersion(n, now, new.status, new.asrText, new.finalText, new.route)))
             db.update("history", values(new), "id = ?", arrayOf(id.toString()))
             db.setTransactionSuccessful()

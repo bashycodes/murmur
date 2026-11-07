@@ -4,6 +4,7 @@ import dev.flowclone.core.RouterErrors
 
 import dev.flowclone.core.AsrEngine
 import dev.flowclone.core.CoreException
+import dev.flowclone.core.DictEntry
 import dev.flowclone.core.FlowCore
 import dev.flowclone.core.FlowCoreLoader
 import dev.flowclone.core.LanguageModel
@@ -97,6 +98,19 @@ object EnginePlan {
         data class Native(val config: ModelConfig, val llm: LlmStatus, val whisperFallback: ModelConfig? = null) : Plan
     }
 
+    /**
+     * D68: the on-device English Parakeet's search. A Developer [override] wins; otherwise beam
+     * search (the dictionary's words become hotwords, as on the PC) once the dictionary has a
+     * word, and today's greedy search (D22) while it has none. One recognizer either way, so
+     * RAM stays as it was; switching between the two reloads the speech model.
+     */
+    fun parakeetDecoding(override: ParakeetDecoding?, dictionary: List<DictEntry>): ParakeetDecoding =
+        override ?: if (hasHotwords(dictionary)) ParakeetDecoding.BEAM else ParakeetDecoding.GREEDY
+
+    /** The dictionary gives the recognizer hotwords: a word entry (snippets never bias speech). */
+    fun hasHotwords(dictionary: List<DictEntry>): Boolean =
+        dictionary.any { !it.isSnippet && (it.replacement ?: it.word).isNotBlank() }
+
     /** [asr]: what loaded (null when [core] is null). */
     data class Loaded(val core: FlowCore?, val description: String, val llm: LlmStatus, val error: String? = null, val asr: LoadedAsr? = null)
 
@@ -107,7 +121,7 @@ object EnginePlan {
     fun plan(
         s: Settings, asrPath: String?, llmPath: String?, exists: (String) -> Boolean, threads: Int, llmLib: String? = null,
         parakeetPath: String? = null, isModelDir: (String) -> Boolean = { false },
-        /** D22: greedy on the phone (one recognizer, ≈ 0.6 GB less RAM) unless Developer settings override it. */
+        /** D22 / D68: the English Parakeet's search ([parakeetDecoding]; greedy without a dictionary). */
         parakeetDecoding: ParakeetDecoding = ParakeetDecoding.GREEDY,
         /**
          * H5: [hebrew] = the installed Hebrew model (null = none); used when [language] (the

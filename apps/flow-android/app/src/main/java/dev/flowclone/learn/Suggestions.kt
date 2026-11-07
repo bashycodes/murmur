@@ -116,6 +116,33 @@ data class Suggestions(val pending: List<Suggestion> = emptyList(), val dismisse
 }
 
 /**
+ * D68 name learning: the user corrected a dictation's text in History. Every learn-from-edits
+ * candidate becomes a pending [Suggestion] (the Dictionary screen lists it, as for field
+ * edits); the ones that read as a name ([LearnCandidate.name]: a capitalised correction, not
+ * sentence case) come back in [Learned.names] so History offers them at once.
+ */
+object HistoryCorrection {
+    data class Learned(val next: Suggestions, val names: List<Suggestion>)
+
+    fun learn(
+        before: String, after: String, current: Suggestions, dict: List<DictEntry>, app: String, ts: Long,
+        learnEdit: (pasted: String, edited: String) -> List<LearnCandidate>,
+    ): Learned {
+        val b = EditText.normalize(before)
+        val a = EditText.normalize(after)
+        if (a.isEmpty() || a == b) return Learned(current, emptyList())
+        val cands = runCatching { learnEdit(b, a) }.getOrDefault(emptyList())
+        val next = current.add(cands, app, ts, dict).next
+        val nameKeys = cands.filter { it.name }.map { it.corrected.trim().lowercase() }.toSet()
+        return Learned(next, next.pending.filter { it.word.trim().lowercase() in nameKeys })
+    }
+
+    /** The offer's title and text for [s]. */
+    fun offerTitle(s: Suggestion) = "Add “${s.word}” to your dictionary?"
+    const val OFFER_TEXT = "Speech recognition then listens for it, and cleanup spells it this way. Not now keeps it in the Dictionary's suggestions."
+}
+
+/**
  * What happens when a watch ends: bound the edit, ask the core for candidates, fold them into
  * [current]. Returns null when nothing changed.
  */
