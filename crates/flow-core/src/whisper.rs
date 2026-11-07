@@ -68,8 +68,35 @@ pub fn looks_degenerate(text: &str, secs: f32) -> bool {
     };
     (3..=12).any(|k| rep(k, 2))
         || rep(2, 3)
+        || repeats_phrase(&words, LOOP_PHRASE_WORDS)
         || (0..words.len().saturating_sub(2))
             .any(|i| words[i].len() > 4 && words[i] == words[i + 1] && words[i] == words[i + 2])
+}
+
+/// A phrase this long seen twice anywhere in one decode is a loop, even
+/// with other words between the copies. A shrunken window on a short
+/// segment piece repeated a 14-word span with 4 words between (parity
+/// eval 2026-11-07, `docs/findings/2026-11-07-whisper-segment-joins.md`),
+/// which the back-to-back check above misses.
+pub const LOOP_PHRASE_WORDS: usize = 6;
+
+/// Whether some run of `k` words occurs twice without overlapping.
+fn repeats_phrase(words: &[String], k: usize) -> bool {
+    if k == 0 || words.len() < 2 * k {
+        return false;
+    }
+    let mut first: std::collections::HashMap<&[String], usize> = std::collections::HashMap::new();
+    for i in 0..=words.len() - k {
+        let g = &words[i..i + k];
+        match first.get(g) {
+            Some(&j) if i >= j + k => return true,
+            Some(_) => {}
+            None => {
+                first.insert(g, i);
+            }
+        }
+    }
+    false
 }
 
 pub fn pad(pcm: &[f32]) -> Vec<f32> {
@@ -352,6 +379,25 @@ mod tests {
             3.0
         ));
         assert!(!looks_degenerate("I think, I think we should go.", 3.0));
+    }
+
+    #[test]
+    fn repetition_guard_catches_a_loop_with_words_between() {
+        // Synthetic: a long phrase, a few other words, the phrase again,
+        // at a word rate the length check accepts.
+        let looped = "we moved the meeting to the blue room on the third floor \
+                      and then we said we moved the meeting to the blue room on the third floor";
+        assert!(looks_degenerate(looped, 9.0));
+        // A short phrase said twice is normal speech.
+        assert!(!looks_degenerate(
+            "Send it to the team. Then later send it to the client as well.",
+            5.0
+        ));
+        // Five words twice is still below the bar.
+        assert!(!looks_degenerate(
+            "Put the box on the table, then put the box on the shelf.",
+            5.0
+        ));
     }
 
     #[test]
