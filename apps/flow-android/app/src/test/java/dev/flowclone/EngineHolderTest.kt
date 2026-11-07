@@ -25,6 +25,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -172,6 +173,30 @@ class EngineHolderTest {
         assertTrue(first.unloaded)
         h.ensureLanguage()
         assertEquals(listOf("default", "default"), built.toList())
+    }
+
+    /** D68: a dictionary save never frees the core under a running dictation; the switch waits for it to end. */
+    @Test fun aDictionaryChangeWaitsForTheDictationToEnd() {
+        want = LoadSet.Default
+        var decoding: ParakeetDecoding? = ParakeetDecoding.GREEDY
+        val h = holder(decodingProbe = { decoding })
+        h.ensureLoaded()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        val first = cores["default"]!!
+        app.dictationBusy.value = true
+        try {
+            decoding = ParakeetDecoding.BEAM
+            h.dictionaryChanged()
+            Thread.sleep(200)
+            assertEquals("no reload while dictating", listOf("default"), built.toList())
+            assertFalse(first.unloaded)
+            assertSame(first, (h.state.value as EngineHolder.State.Ready).core)
+        } finally {
+            app.dictationBusy.value = false
+        }
+        waitFor("reloaded after the dictation") { built.size == 2 && h.state.value is EngineHolder.State.Ready }
+        assertTrue(first.unloaded)
+        assertEquals(listOf(true), first.keepLlmCalls.toList())
     }
 
     @Test fun withBothLoadedAKeyboardSwitchNeverReloadsAndTogglingReloadsOnce() {

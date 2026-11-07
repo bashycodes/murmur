@@ -30,12 +30,13 @@ object CallEngine {
 
     fun plan(app: FlowApp, language: String): EnginePlan.Plan {
         val s = app.settings.load().copy(llmEnabled = false, mockEngine = false)
-        val hebrew = app.engine.hebrewModel()?.let { (path, m) -> HebrewModels.languageModel(path, m, HebrewModels.decoding(app.dev.parakeetDecodingOverride)) }
+        val hebrew = app.engine.hebrewLanguageModel()
         val threads = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
         return EnginePlan.plan(
             s, app.settings.modelPath, null, { File(it).isFile }, threads,
             parakeetPath = app.settings.parakeetPath, isModelDir = { ParakeetFiles.isModelDir(File(it)) },
-            parakeetDecoding = EnginePlan.parakeetDecoding(app.dev.parakeetDecodingOverride, app.dictionary.all()), language = language, hebrew = hebrew,
+            // D68: calls stay greedy (the dictionary beam is measured on dictation only).
+            parakeetDecoding = EnginePlan.fixedDecoding(app.dev.parakeetDecodingOverride), language = language, hebrew = hebrew,
         )
     }
 

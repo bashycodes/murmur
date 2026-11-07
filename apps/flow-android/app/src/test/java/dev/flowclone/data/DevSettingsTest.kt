@@ -1,5 +1,6 @@
 package dev.flowclone.data
 
+import dev.flowclone.core.ParakeetDecoding
 import dev.flowclone.data.DevSettingsForm.Field
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -200,8 +201,8 @@ class DevSettingsTest {
         val kv = MemKV()
         val store = DevStore(kv, BuildCaps.LOCAL, RotBox)
         assertNull(store.parakeetDecodingOverride)
-        store.parakeetDecodingOverride = dev.flowclone.core.ParakeetDecoding.AUTO
-        assertEquals(dev.flowclone.core.ParakeetDecoding.AUTO, DevStore(kv, BuildCaps.LOCAL, RotBox).parakeetDecodingOverride)
+        store.parakeetDecodingOverride = ParakeetDecoding.AUTO
+        assertEquals(ParakeetDecoding.AUTO, DevStore(kv, BuildCaps.LOCAL, RotBox).parakeetDecodingOverride)
         store.parakeetDecodingOverride = null
         assertNull(DevStore(kv, BuildCaps.LOCAL, RotBox).parakeetDecodingOverride)
     }

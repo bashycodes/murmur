@@ -106,6 +106,9 @@ class DeveloperActivity : Activity() {
 
     private fun refresh() { for (r in refreshers) r() }
 
+    /** D68: the Parakeet decoding override's label; no override = the dictionary decides. */
+    private fun decodingLabel(m: ParakeetDecoding?) = m?.wire ?: "by dictionary"
+
     // ---- top bar (back, Save on the Server page) ----
 
     private fun page(build: LinearLayout.() -> Unit): LinearLayout = with(ui) {
@@ -165,7 +168,7 @@ class DeveloperActivity : Activity() {
                 val engines = navRow(R.drawable.ic_dev_engine, TITLES.getValue(Page.ENGINES)) { open(Page.ENGINES) }
                 refreshers += {
                     speech.setSubtitle("Engines and order · " + DevSummary.routing(app.dev.load(), caps))
-                    engines.setSubtitle(DevSummary.engineOptions(app.dev.load().showEngineBadge, if (caps.local) app.dev.parakeetDecodingOverride?.wire ?: "by dictionary" else null))
+                    engines.setSubtitle(DevSummary.engineOptions(app.dev.load().showEngineBadge, if (caps.local) decodingLabel(app.dev.parakeetDecodingOverride) else null))
                 }
             }
 
@@ -265,7 +268,7 @@ class DeveloperActivity : Activity() {
             ) { m ->
                 app.dev.parakeetDecodingOverride = m
                 if (app.settings.load().asrEngine == dev.flowclone.core.AsrEngine.PARAKEET) app.engine.reload()
-                Toast.makeText(this@DeveloperActivity, "Parakeet decoding: ${m?.wire ?: "by dictionary"}", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@DeveloperActivity, "Parakeet decoding: ${decodingLabel(m)}", Toast.LENGTH_SHORT).show()
             }
         }
         note("Applies immediately and reloads the engine.")

@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.Toast
+import dev.flowclone.EngineHolder
 import dev.flowclone.FlowApp
 import dev.flowclone.R
 import dev.flowclone.data.HistoryPages
@@ -23,6 +24,8 @@ import dev.flowclone.data.Retention
 import dev.flowclone.data.SettingsPages
 import dev.flowclone.data.SettingsSummary
 import dev.flowclone.data.ShellPages
+import dev.flowclone.learn.HistoryCorrection
+import dev.flowclone.learn.Suggestion
 import java.util.Date
 import kotlin.concurrent.thread
 
@@ -288,28 +291,31 @@ class HistoryActivity : Activity() {
 
     private fun saveCorrection(r: HistoryRow, before: String, after: String) {
         thread(name = "history-correct") {
-            val old = runCatching { app.history.applyCorrection(r.id, after) }.getOrNull()
-            var names = emptyList<dev.flowclone.learn.Suggestion>()
+            val saved = runCatching { app.history.applyCorrection(r.id, after) }
+            val old = saved.getOrNull()
+            var names = emptyList<Suggestion>()
+            var learned = false
             if (old != null) {
-                runCatching {
-                    app.insights.retried(
-                        old.createdAt, RetryLogic.countedWords(old.status, old.finalText),
-                        RetryLogic.countedWords(old.status, after), old.audioMs, old.appId,
-                    )
-                }
-                val core = (app.engine.state.value as? dev.flowclone.EngineHolder.State.Ready)?.core
-                if (core != null) app.suggestions.update { cur ->
-                    val l = dev.flowclone.learn.HistoryCorrection.learn(
-                        before, after, cur, app.dictionary.all(), r.appId.orEmpty(), System.currentTimeMillis(), core::learnEdit,
-                    )
-                    names = l.names
-                    l.next
+                // The core runs learn-from-edits; without a loaded engine the words are not learned (said below).
+                val core = (app.engine.state.value as? EngineHolder.State.Ready)?.core
+                if (core != null) {
+                    learned = true
+                    app.suggestions.update { cur ->
+                        val l = HistoryCorrection.learn(
+                            before, after, cur, app.dictionary.all(), r.appId.orEmpty(), System.currentTimeMillis(), core::learnEdit,
+                        )
+                        names = l.names
+                        l.next
+                    }
                 }
                 app.historyRevision.value = app.historyRevision.value + 1
             }
+            val error = saved.exceptionOrNull()
+            val (message, warn) = correctionMessage(error, saved = old != null, learned = learned)
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                ui.announce(if (old != null) "Correction saved" else "Nothing changed")
+                if (warn) Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                ui.announce(message)
                 load()
                 offerNames(names)
             }
@@ -317,10 +323,10 @@ class HistoryActivity : Activity() {
     }
 
     /** D68: offer each name in turn; Back leaves the rest under Dictionary → Suggestions. */
-    private fun offerNames(names: List<dev.flowclone.learn.Suggestion>) {
+    private fun offerNames(names: List<Suggestion>) {
         val s = names.firstOrNull() ?: return
-        SuggestionDialog.show(this, s, dev.flowclone.learn.HistoryCorrection.offerTitle(s), dev.flowclone.learn.HistoryCorrection.OFFER_TEXT) {
-            ui.announce(it)
+        SuggestionDialog.offerName(this, s) {
+            if (it.isNotEmpty()) ui.announce(it)
             offerNames(names.drop(1))
         }
     }
@@ -358,6 +364,21 @@ class HistoryActivity : Activity() {
         /** D68: the detail page's correction action and its dialog's title. */
         const val CORRECT = "Correct the text"
         const val CORRECT_TITLE = "Correct this dictation"
+        const val CORRECT_FAILED = "Couldn't save the correction"
+        const val CORRECT_SAVED = "Correction saved"
+        const val CORRECT_UNCHANGED = "Nothing changed"
+
+        /**
+         * D68: what a saved correction tells the user, and whether it also needs a toast (a failed
+         * save, or words not learned because the engine isn't Ready) beyond the TalkBack line.
+         */
+        fun correctionMessage(error: Throwable?, saved: Boolean, learned: Boolean): Pair<String, Boolean> = when {
+            error != null -> (CORRECT_FAILED + (error.message?.let { ": $it" } ?: "")) to true
+            !saved -> CORRECT_UNCHANGED to false
+            !learned -> CORRECT_NOT_LEARNED to true
+            else -> CORRECT_SAVED to false
+        }
+        const val CORRECT_NOT_LEARNED = "Correction saved. Its words were not learned: the speech engine isn't loaded yet."
         const val REINSERT_NEEDS_SERVICE = "Turn on the bubble first (menu → Start / show bubble), then try again"
         const val LIST_TITLE = "History"
         const val DETAIL_TITLE = "Dictation"

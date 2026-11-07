@@ -118,7 +118,7 @@ data class Suggestions(val pending: List<Suggestion> = emptyList(), val dismisse
 /**
  * D68 name learning: the user corrected a dictation's text in History. Every learn-from-edits
  * candidate becomes a pending [Suggestion] (the Dictionary screen lists it, as for field
- * edits); the ones that read as a name ([LearnCandidate.name]: a capitalised correction, not
+ * edits); the ones that read as a name ([LearnCandidate.looksLikeName]: a capitalised correction, not
  * sentence case) come back in [Learned.names] so History offers them at once.
  */
 object HistoryCorrection {
@@ -133,13 +133,9 @@ object HistoryCorrection {
         if (a.isEmpty() || a == b) return Learned(current, emptyList())
         val cands = runCatching { learnEdit(b, a) }.getOrDefault(emptyList())
         val next = current.add(cands, app, ts, dict).next
-        val nameKeys = cands.filter { it.name }.map { it.corrected.trim().lowercase() }.toSet()
+        val nameKeys = cands.filter { it.looksLikeName }.map { it.corrected.trim().lowercase() }.toSet()
         return Learned(next, next.pending.filter { it.word.trim().lowercase() in nameKeys })
     }
-
-    /** The offer's title and text for [s]. */
-    fun offerTitle(s: Suggestion) = "Add “${s.word}” to your dictionary?"
-    const val OFFER_TEXT = "Speech recognition then listens for it, and cleanup spells it this way. Not now keeps it in the Dictionary's suggestions."
 }
 
 /**

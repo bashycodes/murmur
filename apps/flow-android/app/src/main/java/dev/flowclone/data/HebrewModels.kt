@@ -86,9 +86,6 @@ object HebrewModels {
         return (identify(files) as? Check.Ok)?.kind
     }
 
-    /** Parakeet-he's search: the Developer override, else greedy (D22; D68's dictionary beam is English only). */
-    fun decoding(override: ParakeetDecoding?): ParakeetDecoding = override ?: ParakeetDecoding.GREEDY
-
     /** The `ModelConfig.languages` entry for an imported model. Parakeet-he decodes greedy on the phone (D22). */
     fun languageModel(dir: String, kind: Kind, parakeetDecoding: ParakeetDecoding = ParakeetDecoding.GREEDY) =
         languageModel(dir, Installed(kind.engine, kind.label, kind), parakeetDecoding)
