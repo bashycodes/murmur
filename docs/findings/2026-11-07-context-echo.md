@@ -62,6 +62,20 @@ passes when:
 | F: neutral "NOTE: … is not part of your reply" | 18/18 | 5/8 | drops dictated words that match the context, even half a sentence ("at noon") |
 | **check only (shipped)** | **18/18** | **8/8** | prompt and formatting as on base |
 
+The AI cleanup path (prompt v5 on the raw transcript, the runner's `cloud`
+mode) with Qwen2.5-3B echoes even more:
+
+| AI path, Qwen2.5-3B | E no echo | N kept |
+|---|---|---|
+| base | 3/18 (2 of the 3 are 30 s timeouts; 15 of 16 answers echoed) | 8/8 |
+| check | 18/18 | 8/8 |
+
+The check also removes an echo inside a list the model made of the context:
+"Totals so far: apples 3, pears 5. " plus "oranges two" became a 3-item list,
+and the check left "Oranges: 2". It does not catch a reworded echo. With
+" is the new door code." after the cursor, the 3B answered "The new door
+code is 5521". Only verbatim runs are removed.
+
 The prompt only changes how much the 3B copies of the field. The framing
 that stops the copying also makes it drop the speaker's own words when they
 match the field (D, F) or stop formatting (C, E). A check after the model
