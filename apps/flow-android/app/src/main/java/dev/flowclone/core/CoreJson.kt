@@ -53,6 +53,8 @@ object CoreJson {
         c.endpointSilenceMs?.let { put("endpoint_silence_ms", it) }
         // D22: omitted when off; segment_min_ms / segment_soft_max_ms stay at the core defaults.
         c.segmentPauseMs?.let { put("segment_pause_ms", it) }
+        // D64: omitted when on (the core's default), like the core's serde.
+        if (!c.builtinTerms) put("builtin_terms", false)
     }.toString()
 
     fun encode(c: FieldContext): String = JSONObject().apply {

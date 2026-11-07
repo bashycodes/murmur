@@ -105,6 +105,13 @@ pub struct SessionConfig {
     /// at pauses at least this long (shell value 800). `None` = off.
     /// `segment_min_ms` / `segment_soft_max_ms` stay at the core defaults.
     pub segment_pause_ms: Option<u32>,
+    /// D64: the cleanup prompt may name the core's built-in product names.
+    #[serde(default = "builtin_terms_default")]
+    pub builtin_terms: bool,
+}
+
+fn builtin_terms_default() -> bool {
+    true
 }
 
 impl Default for SessionConfig {
@@ -124,6 +131,7 @@ impl Default for SessionConfig {
             llm_prefill: true,
             endpoint_silence_ms: None,
             segment_pause_ms: None,
+            builtin_terms: true,
         }
     }
 }

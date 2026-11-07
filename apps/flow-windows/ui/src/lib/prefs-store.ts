@@ -56,6 +56,8 @@ export interface Prefs {
   /** Language-ID model from the server's library (D41); null = the default file. */
   lid_model_path?: string | null;
   spoken_cleanup: boolean;
+  /** D64: AI cleanup also knows a small built-in list of product names. */
+  builtin_terms: boolean;
   llm_enabled: boolean;
   llm_model_path: string | null;
   llm_lib_path: string | null;

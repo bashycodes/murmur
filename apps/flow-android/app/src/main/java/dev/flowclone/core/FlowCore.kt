@@ -339,6 +339,8 @@ data class SessionConfig(
      * turns it off by itself for engines that must not see audio before commit (cloud, D18).
      */
     val segmentPauseMs: Int? = null,
+    /** D64: AI cleanup may also name the core's built-in product names. Sent only when off. */
+    val builtinTerms: Boolean = true,
 )
 
 /** crates/flow-core `FieldContext`; [before]/[after] ≤ 500 chars (shell truncates). */

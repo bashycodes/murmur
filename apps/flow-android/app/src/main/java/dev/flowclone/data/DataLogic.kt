@@ -66,6 +66,8 @@ data class Settings(
     val commandButton: CommandButton = CommandButton.WITH_SELECTION,
     /** core-p1 deterministic spoken cleanup ("Auto-format punctuation, fillers and corrections"). */
     val spokenCleanup: Boolean = true,
+    /** D64 "Known product names": AI cleanup also spells a small built-in list of product names. */
+    val builtinTerms: Boolean = true,
     /** On-device ASR engine; Parakeet is English-only (D4/D12). */
     val asrEngine: dev.flowclone.core.AsrEngine = dev.flowclone.core.AsrEngine.WHISPER,
     /** D19: a hands-free (tap) dictation ends after this much trailing silence; 0 = only when tapped again. */
@@ -203,6 +205,7 @@ data class Settings(
         spokenCleanup = spokenCleanup,
         segmentPauseMs = if (decodeWhileSpeaking) SEGMENT_PAUSE_MS else null,
         styles = styles,
+        builtinTerms = builtinTerms,
     )
 
     /** [ctx] with the user's bucket for its app ([appBuckets]); unchanged when there is none. */
