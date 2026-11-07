@@ -1,0 +1,8 @@
+[package]
+name = "whisper-joins-probe"
+version = "0.1.0"
+edition = "2021"
+[workspace]
+[dependencies]
+flow-core = { path = "../../../../crates/flow-core", features = ["whisper", "wav"] }
+serde_json = "1"
