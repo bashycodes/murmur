@@ -19,6 +19,7 @@ use crate::script_lock::{self, Script};
 use crate::Usd;
 use serde::{Deserialize, Serialize};
 
+pub mod context_echo;
 mod prompt_v4c;
 mod prompt_v5;
 pub mod terms;
@@ -1674,6 +1675,12 @@ fn run_metered(
     language: Option<&str>,
 ) -> (CleanOutcome, CleanUsage, Option<String>) {
     let deadline = Instant::now() + timeout;
+    // D71: the field text the prompt showed (empty when its scope hid it).
+    let field = prompt
+        .source
+        .as_ref()
+        .filter(|s| s.task.is_cleanup())
+        .map(|s| (s.ctx.before.clone(), s.ctx.after.clone()));
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = AbortFlag(Some(cancel.clone()));
     let pending = CleanUsage {
@@ -1723,6 +1730,11 @@ fn run_metered(
         crate::postprocess::spoken::unit_style(&out)
     } else {
         out
+    };
+    // D71: the answer never repeats the text already in the field.
+    let out = match &field {
+        Some((before, after)) => context_echo::strip(&out, asr_text, before, after).unwrap_or(out),
+        None => out,
     };
     if out.is_empty() {
         let why = Some("empty answer".into());
@@ -2005,6 +2017,49 @@ mod tests {
         assert_eq!(
             run(Arc::new(Failing), "a", 100),
             CleanOutcome::Fallback(FallbackReason::Error("boom".into()))
+        );
+    }
+
+    // D71: an answer that starts with the field's own text loses it; the
+    // shell inserts only the dictated part (made-up label and value).
+    #[test]
+    fn the_answer_drops_text_already_before_the_cursor() {
+        let asr = "10.20.30.40 colon eight zero eight zero";
+        let field = FieldContext {
+            before: "The staging box listens on: ".into(),
+            ..Default::default()
+        };
+        let clean = |answer: &'static str, scope| {
+            let p = build_prompt_scoped(
+                asr,
+                CleanupLevel::High,
+                Style::Casual,
+                &field,
+                &Dictionary::default(),
+                scope,
+            );
+            run_cleanup(
+                Arc::new(Fixed(answer, Duration::ZERO)),
+                p,
+                asr,
+                Duration::from_millis(500),
+            )
+        };
+        assert_eq!(
+            clean(
+                "The staging box listens on: 10.20.30.40:8080",
+                PromptScope::FULL
+            ),
+            CleanOutcome::Formatted("10.20.30.40:8080".into())
+        );
+        // The same words dictated stay; a scope that hid the field compares
+        // against nothing.
+        assert_eq!(
+            clean(
+                "The staging box listens on: 10.20.30.40:8080",
+                PromptScope::MINIMAL
+            ),
+            CleanOutcome::Formatted("The staging box listens on: 10.20.30.40:8080".into())
         );
     }
 
