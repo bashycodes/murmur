@@ -30,6 +30,7 @@ asr_path = "/var/lib/flow-server/models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-in
 threads = 4            # 4 on the i7-6700: oversubscribing hyperthreads is far slower
 # llm_path = "/var/lib/flow-server/models/qwen2.5-1.5b-instruct-q4_k_m.gguf"
 # llm_lib = "/usr/local/lib/libflow_llm.so"
+# llm_draft = 4       # cleanup prompt-lookup drafting (D69): 4 by default, 0 = off
 # vad_model_path = "/var/lib/flow-server/models/ggml-silero-v5.1.2.bin"
 
 # Per-language models (D33). A session whose language is forced to one of

@@ -18,7 +18,7 @@
 
 use std::num::NonZeroU32;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::thread::JoinHandle;
@@ -179,6 +179,9 @@ pub struct Engine {
     /// Bumped by every clean and by `cancel_prefill`; a running prefill
     /// stops when it changes.
     epoch: Arc<AtomicU64>,
+    /// Prompt-lookup draft length per decode step (0 = off), read at the
+    /// start of every clean.
+    draft: Arc<AtomicUsize>,
     worker: Mutex<Option<JoinHandle<()>>>,
     pub info: Info,
 }
@@ -201,6 +204,8 @@ impl Engine {
         let wahead = ahead.clone();
         let epoch = Arc::new(AtomicU64::new(0));
         let wepoch = epoch.clone();
+        let draft = Arc::new(AtomicUsize::new(env_draft().unwrap_or(DRAFT_DEFAULT)));
+        let wdraft = draft.clone();
         let worker = std::thread::Builder::new()
             .name("flow-llm".into())
             .spawn(move || {
@@ -248,6 +253,7 @@ impl Engine {
                         ctx,
                         cached: Vec::new(),
                         stats: Stats::default(),
+                        draft: wdraft.clone(),
                     };
                     let tw = Instant::now();
                     let warm_prefill_tokens = warm.as_ref().map_or(0, |w| st.warm(w));
@@ -324,6 +330,7 @@ impl Engine {
             stats,
             ahead,
             epoch,
+            draft,
             worker: Mutex::new(Some(worker)),
             info,
         })
@@ -381,6 +388,20 @@ impl Engine {
         }
     }
 
+    /// Draft up to `n` tokens per decode step from the transcript (capped
+    /// at [`DRAFT_MAX`]; 0 = one token per step). `FLOW_LLM_DRAFT`, when
+    /// set, wins (benchmarks).
+    pub fn set_draft(&self, n: usize) {
+        if env_draft().is_none() {
+            self.draft.store(n.min(DRAFT_MAX), Ordering::Relaxed);
+        }
+    }
+
+    /// The current draft length.
+    pub fn draft(&self) -> usize {
+        self.draft.load(Ordering::Relaxed)
+    }
+
     /// Stop the running prefill-ahead (the KV cache keeps what it decoded).
     pub fn cancel_prefill(&self) {
         self.epoch.fetch_add(1, Ordering::Relaxed);
@@ -405,6 +426,7 @@ struct State<'m> {
     /// Tokens whose KV entries are in sequence 0, positions 0..len.
     cached: Vec<LlamaToken>,
     stats: Stats,
+    draft: Arc<AtomicUsize>,
 }
 
 enum PrefillErr {
@@ -626,6 +648,7 @@ impl State<'_> {
         let mut gen: Vec<LlamaToken> = Vec::new();
         let mut batch = LlamaBatch::new(DRAFT_MAX + 1, 1);
         let mut n_past = n_prompt;
+        let max_draft = self.draft.load(Ordering::Relaxed).min(DRAFT_MAX);
         // -1 = logits of the last prefill token.
         let mut tok = sampler.sample(&self.ctx, -1);
         // Accept one token; false = generation is over.
@@ -648,7 +671,7 @@ impl State<'_> {
             if !accept(tok, &mut gen, &mut bytes) {
                 break;
             }
-            let draft = lookup_draft(source, &gen, draft_max().min(max_new - gen.len()));
+            let draft = lookup_draft(source, &gen, max_draft.min(max_new - gen.len()));
             batch.clear();
             for (j, t) in std::iter::once(&tok).chain(&draft).enumerate() {
                 batch
@@ -691,19 +714,24 @@ impl State<'_> {
 
 /// Longest draft: tokens decoded speculatively per forward pass.
 const DRAFT_MAX: usize = 8;
-/// Off by default: on the 4-thread i7-6700 CPU an n-token batch cost more
-/// than the passes it saved. Drafts of 2/4/8 were 1.2-2x slower than plain
-/// greedy for Qwen2.5 0.5B/1.5B Q4_K_M (tools/probes/llm_ab.sh). Kept,
-/// exact-greedy, for GPU or faster-batch backends: `FLOW_LLM_DRAFT=n`.
+/// Off unless the caller sets it ([`Engine::set_draft`]; flow-server does,
+/// D69). On the i7-6700 home server with Qwen2.5-1.5B, 4 drafted tokens per
+/// step cut the decode of the parity main set's long dictations from 2.9 to
+/// 1.5 s p50 (`docs/findings/2026-11-07-server-cleanup-speed.md`); the
+/// 2026-10 short probes (`tools/probes/llm_ab.sh`) had found drafts slower,
+/// and the phone and the PC are not measured, so they keep it off. The
+/// batched check is greedy up to floating-point rounding (1-2 of 13 answers
+/// differed in a word or comma).
 const DRAFT_DEFAULT: usize = 0;
 
-fn draft_max() -> usize {
-    static D: OnceLock<usize> = OnceLock::new();
+/// `FLOW_LLM_DRAFT=n`, if set (read once).
+fn env_draft() -> Option<usize> {
+    static D: OnceLock<Option<usize>> = OnceLock::new();
     *D.get_or_init(|| {
         std::env::var("FLOW_LLM_DRAFT")
             .ok()
             .and_then(|s| s.parse().ok())
-            .map_or(DRAFT_DEFAULT, |d: usize| d.min(DRAFT_MAX))
+            .map(|d: usize| d.min(DRAFT_MAX))
     })
 }
 
