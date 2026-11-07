@@ -33,8 +33,13 @@ the phone).
 1. **A Hebrew few-shot, for Hebrew dictations only** (`cleanup::HEBREW_EXAMPLE`).
    A made-up casual chat line with a filler, its cleaned form, and the
    `LANGUAGE: Hebrew` line as a real Hebrew prompt has it. Prompt v2 appends
-   it after the English few-shots when the transcript is mostly Hebrew
-   letters (`script_lock::dominant`). Because it goes last, the cached prefix
+   it after the English few-shots when the dictation is Hebrew. The ASR
+   language hint decides when there is one (`he`/`iw` adds it, any other
+   language removes it, so a Yiddish dictation in Hebrew letters gets no
+   `LANGUAGE: Hebrew` example); only without a hint (missing or `auto`) do
+   the transcript's letters decide (mostly Hebrew, `script_lock::dominant`).
+   flow-server never sees an English hint (D33 sends only non-English), so
+   there the letters decide for English too. Because it goes last, the cached prefix
    (system prompt and the 21 English turns, D63) is the same bytes for every
    language. An English prompt is unchanged byte for byte (unit test), and a
    Hebrew one re-uses that prefix and prefills only the Hebrew turn and its
@@ -42,11 +47,20 @@ the phone).
    run with any probe line.
 2. **A script check after the model** (`cleanup::run_metered`, every cleanup
    path). When the transcript is in a non-Latin script (Hebrew, Arabic,
-   Cyrillic, Greek) and less than half of the answer's letters are, the
-   answer is not used. The dictation keeps the rules text, with
+   Cyrillic, Greek) and the answer's share of that script is under half the
+   transcript's own share (`script_lock::drifted_from`), the answer is not
+   used. The dictation keeps the rules text, with
    `fallback_reason: llm_language_changed` (on the AI-cleanup path also the
-   fallback detail "answer not in Hebrew"). This is the test Command Mode already uses
-   (`script_lock::drifted`, 2026-11-01). It does not judge the words, only
+   fallback detail "answer not in Hebrew"). Command Mode's lock
+   (`script_lock::drifted`, 2026-11-01) uses an absolute 0.5; cleanup uses
+   the ratio because a mixed dictation can be correctly cleaned below half:
+   "אממ תעלה את ה release notes לדרייב ותשלח בסלאק לפני ה standup" is 62 %
+   Hebrew letters, and its cleanup "תעלה release notes לדרייב ותשלח ב-Slack
+   לפני standup." 45 %. The ratio keeps it (0.73), and still catches a
+   half-translated answer (11 %, ratio 0.18). In the probe runs the two
+   groups are far apart: all 68 translated answers at 0 % Hebrew, all 170
+   Hebrew answers at ≥ 91 %. A dictation under 60 % Hebrew is never
+   checked (unit tests at both edges). It does not judge the words, only
    the writing system, so English names inside Hebrew ("ה-PDF בזום") pass.
    A Latin-script dictation is never checked: English and Spanish can't be
    told apart by their letters.
@@ -120,6 +134,16 @@ box was busier (load 7.9 vs 6.8); its time difference is the box, not the
 change.
 
 ## Not done / open
+
+What was measured: prompt v2 on Qwen2.5-1.5B (the phone's on-device model),
+on this box, with a 20 s budget. What was not: the phone's 3 s session
+budget, flow-server's model, and prompt v5 (cloud AI cleanup).
+
+* **Open question (needs a phone measurement after merge):** on the phone,
+  does a long Hebrew line finish within the 3 s budget, or does it always
+  time out and fall back to the rules text? If it always falls back, a
+  long Hebrew dictation on the phone is pasted as the (Hebrew) rules text,
+  and neither the few-shot nor the script check changes what is pasted.
 
 * **Hebrew lines are slow on the 1.5B.** 4-6 s on this box, over the phone
   session's 3 s budget; the few-shot makes Hebrew answers slightly longer to
