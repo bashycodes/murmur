@@ -47,6 +47,66 @@ fn words(s: &str) -> Vec<Word> {
     out
 }
 
+/// The digits of a spoken number word: (value, a tens word that a unit
+/// may follow).
+fn number_word(w: &str) -> Option<(u32, bool)> {
+    const UNITS: &str = "zero one two three four five six seven eight nine ten eleven twelve \
+                         thirteen fourteen fifteen sixteen seventeen eighteen nineteen";
+    const TENS: &str = "twenty thirty forty fifty sixty seventy eighty ninety";
+    if let Some(i) = UNITS.split(' ').position(|u| u == w) {
+        return Some((i as u32, false));
+    }
+    TENS.split(' ')
+        .position(|t| t == w)
+        .map(|i| (20 + 10 * i as u32, true))
+}
+
+/// `ws` with every run of spoken number words as one word of their digits
+/// ("x eighty six" -> "x", "86"; "k eight s" -> "k", "8", "s"; adjacent
+/// numbers join as a code is read: "three twelve" -> "312"). `None` when
+/// the text has no number word. D67: an entry with digits ("Go2", "K8s")
+/// is then found when its number was said as words.
+fn with_spoken_digits(ws: &[Word]) -> Option<Vec<Word>> {
+    let mut out: Vec<Word> = Vec::new();
+    let mut any = false;
+    let mut i = 0;
+    while i < ws.len() {
+        let Some((v, tens)) = number_word(&ws[i].norm) else {
+            out.push(Word {
+                start: ws[i].start,
+                end: ws[i].end,
+                norm: ws[i].norm.clone(),
+            });
+            i += 1;
+            continue;
+        };
+        any = true;
+        let mut digits = String::new();
+        let start = ws[i].start;
+        let mut end = ws[i].end;
+        let mut cur = Some((v, tens));
+        while let Some((mut v, tens)) = cur {
+            end = ws[i].end;
+            i += 1;
+            if tens {
+                if let Some((u @ 1..=9, false)) = ws.get(i).and_then(|w| number_word(&w.norm)) {
+                    v += u;
+                    end = ws[i].end;
+                    i += 1;
+                }
+            }
+            digits.push_str(&v.to_string());
+            cur = ws.get(i).and_then(|w| number_word(&w.norm));
+        }
+        out.push(Word {
+            start,
+            end,
+            norm: digits,
+        });
+    }
+    any.then_some(out)
+}
+
 /// First letter, then the consonants with h/w/y dropped, c/q as k, z as s,
 /// doubles merged: "quillbay" and "kwillbay" -> "klb".
 fn skeleton(norm: &str) -> String {
@@ -145,6 +205,12 @@ fn closeness(term: &Term, win: &Window) -> Option<f32> {
     {
         return None;
     }
+    // The skeleton ignores digits, so a term with digits needs the same
+    // digits: "velk 50" is not a misheard "Velk42".
+    let digits = |s: &[char]| s.iter().filter(|c| c.is_ascii_digit()).collect::<String>();
+    if t.iter().any(char::is_ascii_digit) && digits(t) != digits(w) {
+        return None;
+    }
     let long = t.len().max(w.len());
     if long - t.len().min(w.len()) <= long / 3 + 1 {
         let sim = 1.0 - levenshtein(t, w) as f32 / long as f32;
@@ -165,40 +231,52 @@ fn closeness(term: &Term, win: &Window) -> Option<f32> {
 /// first (ties keep dictionary order), at most `cap`. Duplicates (ignoring
 /// case) are named once.
 pub fn select_terms<'a>(terms: &[&'a str], transcript: &str, cap: usize) -> Vec<&'a str> {
-    let ws = words(transcript);
-    // Joined windows of k words, built once per k for every term.
-    let mut windows: HashMap<usize, Vec<Window>> = HashMap::new();
+    let plain = words(transcript);
+    let digits = with_spoken_digits(&plain);
+    // Joined windows of k words, built once per word list and k for every
+    // term.
+    let mut windows: HashMap<(bool, usize), Vec<Window>> = HashMap::new();
     let mut picked: Vec<(f32, usize, &'a str)> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
     for (idx, &term) in terms.iter().enumerate() {
         let tw = words(term);
         let norm: String = tw.iter().map(|w| w.norm.as_str()).collect();
+        let has_digit = norm.chars().any(|c| c.is_ascii_digit());
         let Some(t) = Term::new(&norm) else { continue };
         if !seen.insert(norm) {
             continue;
         }
-        // Words already spelled as the entry take part in no window.
-        let mut exact = vec![false; ws.len()];
-        for (i, win) in ws.windows(tw.len()).enumerate() {
-            if &transcript[win[0].start..win[tw.len() - 1].end] == term {
-                exact[i..i + tw.len()].iter_mut().for_each(|e| *e = true);
-            }
-        }
         let mut best: Option<f32> = None;
-        for k in tw.len().saturating_sub(1).max(1)..=tw.len() + 1 {
-            let wins = windows.entry(k).or_insert_with(|| {
-                ws.windows(k)
-                    .map(|win| {
-                        Window::new(&win.iter().map(|w| w.norm.as_str()).collect::<String>())
-                    })
-                    .collect()
-            });
-            for (i, win) in wins.iter().enumerate() {
-                if exact[i..i + k].contains(&true) {
-                    continue;
+        // An entry with digits is also matched against the text with its
+        // spoken numbers as digits.
+        let lists = [
+            (false, Some(&plain)),
+            (true, digits.as_ref().filter(|_| has_digit)),
+        ];
+        for (as_digits, ws) in lists {
+            let Some(ws) = ws else { continue };
+            // Words already spelled as the entry take part in no window.
+            let mut exact = vec![false; ws.len()];
+            for (i, win) in ws.windows(tw.len()).enumerate() {
+                if &transcript[win[0].start..win[tw.len() - 1].end] == term {
+                    exact[i..i + tw.len()].iter_mut().for_each(|e| *e = true);
                 }
-                if let Some(c) = closeness(&t, win) {
-                    best = Some(best.map_or(c, |b| b.max(c)));
+            }
+            for k in tw.len().saturating_sub(1).max(1)..=tw.len() + 1 {
+                let wins = windows.entry((as_digits, k)).or_insert_with(|| {
+                    ws.windows(k)
+                        .map(|win| {
+                            Window::new(&win.iter().map(|w| w.norm.as_str()).collect::<String>())
+                        })
+                        .collect()
+                });
+                for (i, win) in wins.iter().enumerate() {
+                    if exact[i..i + k].contains(&true) {
+                        continue;
+                    }
+                    if let Some(c) = closeness(&t, win) {
+                        best = Some(best.map_or(c, |b| b.max(c)));
+                    }
                 }
             }
         }
@@ -303,6 +381,68 @@ mod tests {
     fn a_term_of_one_letter_and_symbols_matches_nothing() {
         assert!(sel(&["C++", "C#"], "Plan C is to write it in c.").is_empty());
         assert_eq!(sel(&["C++", "Go2"], "We wrote it in go 2."), ["Go2"]);
+    }
+
+    #[test]
+    fn an_entry_with_digits_is_named_when_its_number_is_said_as_words() {
+        // Made-up entries (D67).
+        assert_eq!(sel(&["Zorb9"], "Open zorb nine and check."), ["Zorb9"]);
+        assert_eq!(
+            sel(&["Velk42"], "The velk forty two build is out."),
+            ["Velk42"]
+        );
+        assert_eq!(
+            sel(&["Pelto3"], "Ship it on pelto three tonight."),
+            ["Pelto3"]
+        );
+        // Another number, or the words alone, are another word.
+        assert!(sel(&["Velk42"], "The velk fifty build is out.").is_empty());
+        assert!(sel(&["Zorb9"], "Two zorbs and nine cats.").is_empty());
+        // An entry without digits never matches number words.
+        assert!(sel(&["Tenfold"], "Ten folders arrived.").is_empty());
+    }
+
+    #[test]
+    fn an_entry_with_digits_needs_exactly_its_digits() {
+        // Made-up entries (D67). Other digits name nothing.
+        assert!(sel(&["Velk42"], "The velk forty three build is out.").is_empty());
+        assert!(sel(&["Velk42"], "The velk four build is out.").is_empty());
+        // Merged number words ("three twelve" -> 312) match only an entry
+        // with exactly those digits.
+        assert_eq!(
+            sel(&["Rho312"], "Flash rho three twelve first."),
+            ["Rho312"]
+        );
+        assert!(sel(&["Rho31"], "Flash rho three twelve first.").is_empty());
+        assert!(sel(&["Rho312"], "Flash rho three eleven first.").is_empty());
+        assert!(sel(&["Rho3"], "Flash rho three twelve first.").is_empty());
+    }
+
+    #[test]
+    fn an_entry_that_is_a_word_plus_a_number_is_named_in_prose_too() {
+        // Known limit: "win ten dollars" holds the entry Win10's word and
+        // number, so the entry is named, as it already was when the speech
+        // model wrote "win 10 dollars" (D64). Naming only lists it on the
+        // DICTIONARY line; the prompt keeps a word used in its ordinary
+        // sense, so the model decides.
+        assert_eq!(sel(&["Win10"], "You could win ten dollars."), ["Win10"]);
+        assert_eq!(sel(&["Win10"], "You could win 10 dollars."), ["Win10"]);
+        // Without the entry's word nothing is named.
+        assert!(sel(&["Win10"], "We got ten dollars back.").is_empty());
+    }
+
+    #[test]
+    fn spoken_numbers_become_one_digit_word() {
+        let norms = |t: &str| -> Vec<String> {
+            with_spoken_digits(&words(t))
+                .map(|ws| ws.into_iter().map(|w| w.norm).collect())
+                .unwrap_or_default()
+        };
+        assert_eq!(norms("x eighty six"), ["x", "86"]);
+        assert_eq!(norms("three twelve now"), ["312", "now"]);
+        assert_eq!(norms("forty"), ["40"]);
+        assert_eq!(norms("twenty ten"), ["2010"]);
+        assert!(norms("no numbers here").is_empty());
     }
 
     #[test]
