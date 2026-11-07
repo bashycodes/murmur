@@ -1,0 +1,325 @@
+#!/usr/bin/env bash
+# Build the bundle to hand to colleagues: the hybrid Windows installer and
+# Android APK (CI builds, fixed debug key D56), flow-server for Linux x86_64
+# (built here: CI does not build it), the speech models, the AI cleanup
+# model and an install note (docs/colleague-install.md, version filled in).
+#
+#   tools/colleague-bundle.sh --source integration|notetaker|BRANCH|COMMIT [options]
+#
+# --source        what to bundle: a branch on origin (its newest commit) or
+#                 a commit. The CI runs are the newest green ones on that
+#                 branch at or before the commit; the models come from that
+#                 commit's catalogue, so `notetaker` brings the speaker models.
+# --out DIR       output folder (default dist/colleague-bundle in the repo;
+#                 git-ignored). Downloaded models are kept in DIR/models and
+#                 reused by the next run.
+# --cache DIR     look for model files here before downloading (repeatable;
+#                 any layout: files are found by name and size, then checked
+#                 against the pinned SHA-256), e.g. a flow-server library.
+# --llm WHICH     cleanup models: default (Qwen2.5 1.5B, 1.1 GB), all
+#                 (+ Llama 3.2 3B for GPUs, Qwen2.5 0.5B; 3.6 GB), none.
+# --only LIST     only these model folders (comma-separated ids), e.g. a test.
+# --android-run ID, --windows-run ID   use these CI runs instead.
+# --allow-stale   accept a CI run older than the commit even when the app's
+#                 files changed since (default: refuse).
+# --server-target DIR  a cargo release dir that already holds flow-server
+#                 (features whisper,parakeet,tls,llm) and libflow_llm.so
+#                 built from the same commit: no build.
+# --sherpa-lib DIR     libsherpa-onnx-c-api.so + libonnxruntime.so (default
+#                 $SHERPA_ONNX_LIB_DIR); needed to build and bundled.
+# --no-server     leave flow-server out.
+# --no-zip        stop after the folder.
+# --no-fetch      do not `git fetch origin` first.
+# --dry-run       list what would be fetched or built, with sizes; change nothing.
+#
+# The server build runs `cargo --offline -j 2` in a detached worktree of the
+# commit (DIR/.src/<sha>), target $CARGO_TARGET_DIR (default
+# ~/.cache/flow-clone-bundle-target), under flock/choom/nice, and needs
+# 4000 MB of available memory.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+HERE="$ROOT/tools/bundle"
+SOURCE="" OUT="$ROOT/dist/colleague-bundle" LLM=default ONLY="" CACHES=()
+ANDROID_RUN="" WINDOWS_RUN="" ALLOW_STALE=0 SERVER_TARGET="" NO_SERVER=0
+NO_ZIP=0 NO_FETCH=0 DRY=0 SHERPA_LIB="${SHERPA_ONNX_LIB_DIR:-}"
+
+die() { echo "colleague-bundle.sh: $*" >&2; exit 1; }
+say() { echo "== $*"; }
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --source) SOURCE="${2:?--source REF}"; shift ;;
+    --out) OUT="${2:?--out DIR}"; shift ;;
+    --cache) CACHES+=("${2:?--cache DIR}"); shift ;;
+    --llm) LLM="${2:?--llm default|all|none}"; shift ;;
+    --only) ONLY="${2:?--only LIST}"; shift ;;
+    --android-run) ANDROID_RUN="${2:?}"; shift ;;
+    --windows-run) WINDOWS_RUN="${2:?}"; shift ;;
+    --allow-stale) ALLOW_STALE=1 ;;
+    --server-target) SERVER_TARGET="${2:?}"; shift ;;
+    --sherpa-lib) SHERPA_LIB="${2:?}"; shift ;;
+    --no-server) NO_SERVER=1 ;;
+    --no-zip) NO_ZIP=1 ;;
+    --no-fetch) NO_FETCH=1 ;;
+    --dry-run) DRY=1 ;;
+    -h|--help) sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) die "unknown option: $1" ;;
+  esac
+  shift
+done
+[ -n "$SOURCE" ] || die "--source integration|notetaker|BRANCH|COMMIT is required"
+case "$LLM" in default|all|none) ;; *) die "--llm default|all|none" ;; esac
+OUT="$(realpath -m "$OUT")"
+for t in git gh python3 curl sha256sum zip; do command -v "$t" >/dev/null || die "$t not found"; done
+
+g() { git -C "$ROOT" "$@"; }
+mb() { awk -v b="$1" 'BEGIN { printf "%.0f MB", b / 1e6 }'; }
+
+# ---- source commit ----------------------------------------------------------
+[ "$NO_FETCH" = 1 ] || g fetch -q origin
+BRANCH=""
+if g rev-parse -q --verify "origin/$SOURCE^{commit}" >/dev/null; then
+  BRANCH="$SOURCE"; COMMIT=$(g rev-parse "origin/$SOURCE^{commit}")
+elif COMMIT=$(g rev-parse -q --verify "$SOURCE^{commit}"); then :
+else die "--source $SOURCE: no such branch on origin or commit"; fi
+SHA7=${COMMIT:0:7}
+VERSION=$(g show "$COMMIT:VERSION" | tr -d '[:space:]')
+VARIANT=$(printf '%s' "${BRANCH:-$SHA7}" | tr -c 'A-Za-z0-9._-' '-')
+NAME="Murmur-$VERSION-$VARIANT"
+BUNDLE="$OUT/$NAME"
+say "source $SOURCE = $SHA7, version $VERSION, bundle $NAME"
+
+# ---- models (the commit's catalogue) ---------------------------------------
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+g show "$COMMIT:docs/air-gapped-models.txt" > "$WORK/list.txt"
+g show "$COMMIT:apps/flow-windows/src/model_download.rs" > "$WORK/catalog.rs"
+g show "$COMMIT:apps/flow-windows/src/core_adapter.rs" > "$WORK/core_adapter.rs"
+python3 -I "$HERE/models_manifest.py" "$WORK/list.txt" "$WORK/catalog.rs" "$WORK/core_adapter.rs" > "$WORK/all.tsv"
+NOTETAKER=0
+grep -q $'\tdiarizer\t' "$WORK/all.tsv" && NOTETAKER=1
+awk -F'\t' -v llm="$LLM" -v only=",$ONLY," '
+  only != ",," { if (index(only, "," $1 ",")) print; next }
+  $2 != "llm" { print; next }
+  llm == "all" || (llm == "default" && $1 == "qwen2.5-1.5b-instruct-q4_k_m") { print }
+' "$WORK/all.tsv" > "$WORK/models.tsv"
+[ -s "$WORK/models.tsv" ] || die "no models selected (--only $ONLY?)"
+if [ -n "$ONLY" ]; then
+  for f in ${ONLY//,/ }; do cut -f1 "$WORK/models.tsv" | grep -qx "$f" || die "--only: no model folder $f"; done
+fi
+MODELS="$OUT/models"
+
+# Where a model file lives in the bundle's model tree (diarizer: top level).
+mpath() { if [ "$2" = diarizer ]; then echo "$1/$3"; else echo "library/$1/$3"; fi; }
+verified() { [ -f "$1" ] && [ "$(stat -c %s "$1")" = "$2" ] && [ "$(sha256sum "$1" | cut -d' ' -f1)" = "$3" ]; }
+# A cache file with this name and size (not hashed yet), if any.
+cached() {
+  local c
+  for c in "${CACHES[@]}"; do
+    [ -d "$c" ] && find -L "$c" -type f -name "$1" -size "${2}c" -print 2>/dev/null
+  done
+}
+
+# ---- CI runs ----------------------------------------------------------------
+# find_run WORKFLOW PATHS...: the newest green run on BRANCH at or before
+# COMMIT whose app files are unchanged since (or --allow-stale).
+find_run() {
+  local wf=$1 id head
+  shift
+  local -a runs
+  if [ -n "$BRANCH" ]; then
+    mapfile -t runs < <(gh run list -w "$wf.yml" -b "$BRANCH" -s success -L 40 --json databaseId,headSha -q '.[] | "\(.databaseId) \(.headSha)"')
+  else
+    mapfile -t runs < <(gh run list -w "$wf.yml" -c "$COMMIT" -s success -L 5 --json databaseId,headSha -q '.[] | "\(.databaseId) \(.headSha)"')
+  fi
+  for r in "${runs[@]}"; do
+    read -r id head <<<"$r"
+    g cat-file -e "$head^{commit}" 2>/dev/null || continue
+    g merge-base --is-ancestor "$head" "$COMMIT" || continue
+    if [ "$head" != "$COMMIT" ] && ! g diff --quiet "$head" "$COMMIT" -- "$@"; then
+      [ "$ALLOW_STALE" = 1 ] || die "$wf: newest green run $id is at ${head:0:7}, and $* changed since (wait for CI on $SHA7, or --allow-stale)"
+      echo "warning: $wf run $id is at ${head:0:7}; app files changed since (--allow-stale)" >&2
+    fi
+    echo "$id $head"
+    return 0
+  done
+  die "$wf: no green run on ${BRANCH:-$SHA7} at or before $SHA7"
+}
+APP_PATHS=(crates Cargo.lock VERSION)
+if [ -n "$ANDROID_RUN" ]; then A_RUN="$ANDROID_RUN"; else read -r A_RUN _ < <(find_run android-build apps/flow-android "${APP_PATHS[@]}"); fi
+if [ -n "$WINDOWS_RUN" ]; then W_RUN="$WINDOWS_RUN"; else read -r W_RUN _ < <(find_run windows-build apps/flow-windows "${APP_PATHS[@]}"); fi
+artifact() { # RUN PREFIX -> "name<TAB>bytes"
+  gh api "repos/{owner}/{repo}/actions/runs/$1/artifacts" \
+    -q ".artifacts[] | select(.expired | not) | select(.name | startswith(\"$2\")) | \"\(.name)\t\(.size_in_bytes)\"" | head -1
+}
+IFS=$'\t' read -r A_ART A_BYTES < <(artifact "$A_RUN" flow-clone-android-debug-apks-) || die "android run $A_RUN: no APK artifact (expired?)"
+IFS=$'\t' read -r W_ART W_BYTES < <(artifact "$W_RUN" flow-clone-windows-hybrid-) || die "windows run $W_RUN: no hybrid artifact (expired?)"
+APK="flow-clone-android-hybrid-$VERSION-debug.apk"
+WIN_EXE="Murmur_${VERSION}_x64-setup_hybrid.exe"
+MODELS_ZIP="$NAME-speech-models.zip"
+CLEANUP_ZIP="$NAME-cleanup-model.zip"
+
+# ---- dry run ----------------------------------------------------------------
+if [ "$DRY" = 1 ]; then
+  say "CI artifacts (zip sizes)"
+  printf '  android-build run %s  %s  %s -> android/%s\n' "$A_RUN" "$A_ART" "$(mb "$A_BYTES")" "$APK"
+  printf '  windows-build run %s  %s  %s -> windows/%s\n' "$W_RUN" "$W_ART" "$(mb "$W_BYTES")" "$WIN_EXE"
+  say "models (pinned, SHA-256 checked)"
+  total=0 fetch=0
+  while IFS=$'\t' read -r dir kind _ file size sha _ _; do
+    p=$(mpath "$dir" "$kind" "$file")
+    if [ -f "$MODELS/$p" ] && [ "$(stat -c %s "$MODELS/$p")" = "$size" ]; then st="have"
+    elif [ -n "$(cached "$file" "$size" | head -1)" ]; then st="cache"
+    else st="download"; fetch=$((fetch + size)); fi
+    total=$((total + size))
+    printf '  %-8s %-8s %10s  %s\n' "$st" "$kind" "$(mb "$size")" "$p"
+  done < "$WORK/models.tsv"
+  echo "  models: $(wc -l < "$WORK/models.tsv") files, $(mb "$total") in all, $(mb "$fetch") to download"
+  say "flow-server"
+  if [ "$NO_SERVER" = 1 ]; then echo "  left out (--no-server)"
+  elif [ -n "$SERVER_TARGET" ]; then echo "  from $SERVER_TARGET (no build)"
+  else echo "  build in $OUT/.src/$SHA7 (cargo --offline -j 2, release, features whisper,parakeet,tls,llm + flow-llm); sherpa libs: ${SHERPA_LIB:-MISSING (--sherpa-lib)}"; fi
+  echo "  notetaker speaker models: $([ "$NOTETAKER" = 1 ] && echo yes || echo "no (not in this commit's catalogue)")"
+  say "would write $BUNDLE/ and $OUT/{$NAME.zip,$MODELS_ZIP$([ "$LLM" != none ] && echo ",$CLEANUP_ZIP")}"
+  exit 0
+fi
+
+mkdir -p "$OUT" "$MODELS"
+[ ! -e "$BUNDLE" ] || die "$BUNDLE exists: delete it first"
+mkdir -p "$BUNDLE/windows" "$BUNDLE/android"
+
+# ---- apps -------------------------------------------------------------------
+say "CI artifacts"
+gh run download "$A_RUN" -n "$A_ART" -D "$WORK/android"
+gh run download "$W_RUN" -n "$W_ART" -D "$WORK/windows"
+[ -f "$WORK/android/flow-clone-hybrid-debug.apk" ] || die "no flow-clone-hybrid-debug.apk in $A_ART"
+[ -f "$WORK/windows/$WIN_EXE" ] || die "no $WIN_EXE in $W_ART (version mismatch?)"
+cp "$WORK/android/flow-clone-hybrid-debug.apk" "$BUNDLE/android/$APK"
+cp "$WORK/windows/$WIN_EXE" "$BUNDLE/windows/$WIN_EXE"
+APKSIGNER="${APKSIGNER:-}"
+if [ -z "$APKSIGNER" ] && [ -x "${ANDROID_HOME:-$HOME/Android/Sdk}/build-tools/36.0.0/apksigner" ]; then
+  APKSIGNER="${ANDROID_HOME:-$HOME/Android/Sdk}/build-tools/36.0.0/apksigner"
+fi
+if [ -n "$APKSIGNER" ] || command -v apksigner >/dev/null; then
+  APKSIGNER="$APKSIGNER" "$ROOT/apps/flow-android/tools/check-apk-cert.sh" "$BUNDLE/android/$APK" \
+    || die "the APK is not signed with the fixed debug key (D56)"
+else
+  echo "warning: apksigner not found; the APK's key (D56) is not checked here (CI checks it)" >&2
+fi
+
+# ---- models -----------------------------------------------------------------
+say "models"
+while IFS=$'\t' read -r dir kind engine file size sha url title; do
+  p=$(mpath "$dir" "$kind" "$file")
+  dst="$MODELS/$p"
+  mkdir -p "$(dirname "$dst")"
+  if verified "$dst" "$size" "$sha"; then
+    echo "ok        $p"
+  else
+    got=""
+    while IFS= read -r c; do
+      if verified "$c" "$size" "$sha"; then got="$c"; break; fi
+    done < <(cached "$file" "$size")
+    if [ -n "$got" ]; then
+      cp -f "$got" "$dst.part" && mv -f "$dst.part" "$dst"
+      echo "cache     $p"
+    else
+      curl -fL --retry 3 -C - -o "$dst.part" "$url" </dev/null
+      verified "$dst.part" "$size" "$sha" || { rm -f "$dst.part"; die "$p: download does not match the pinned SHA-256"; }
+      mv -f "$dst.part" "$dst"
+      echo "download  $p"
+    fi
+  fi
+  if [ "$kind" != diarizer ]; then
+    id=""; [ "$kind" = lid ] || id="catalogue_id = \"$dir\""
+    printf 'kind = "%s"\ntitle = "%s"\nengine = "%s"\n%s\n' "$kind" "$title" "$engine" "$id" > "$MODELS/library/$dir/model.toml"
+  fi
+done < "$WORK/models.tsv"
+
+# ---- flow-server ------------------------------------------------------------
+SERVER_NOTE="This bundle has no server build; ask for one."
+if [ "$NO_SERVER" = 0 ]; then
+  say "flow-server"
+  [ -n "$SHERPA_LIB" ] || die "--sherpa-lib DIR (or SHERPA_ONNX_LIB_DIR) with libsherpa-onnx-c-api.so + libonnxruntime.so is needed"
+  for l in libsherpa-onnx-c-api.so libonnxruntime.so; do [ -e "$SHERPA_LIB/$l" ] || die "$SHERPA_LIB/$l not found"; done
+  if [ -z "$SERVER_TARGET" ]; then
+    src="$OUT/.src/$SHA7"
+    [ -d "$src" ] || g worktree add -q --detach "$src" "$COMMIT"
+    avail=$(awk '/MemAvailable/ { print int($2 / 1024) }' /proc/meminfo)
+    [ "$avail" -ge 4000 ] || die "only $avail MB of memory available; the build needs 4000 (or pass --server-target)"
+    SERVER_TARGET="${CARGO_TARGET_DIR:-$HOME/.cache/flow-clone-bundle-target}/release"
+    gcc_inc="$(gcc -print-file-name=include)"
+    (cd "$src" && export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/flow-clone-bundle-target}" &&
+      flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
+        env SHERPA_ONNX_LIB_DIR="$SHERPA_LIB" cargo build --release --offline --locked -j 2 -p flow-server \
+          --no-default-features --features whisper,parakeet,tls,llm &&
+      flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
+        env BINDGEN_EXTRA_CLANG_ARGS="${BINDGEN_EXTRA_CLANG_ARGS:--I$gcc_inc}" \
+        cargo build --release --offline --locked -j 2 -p flow-llm)
+  fi
+  [ -x "$SERVER_TARGET/flow-server" ] || die "$SERVER_TARGET/flow-server not found"
+  [ -f "$SERVER_TARGET/libflow_llm.so" ] || die "$SERVER_TARGET/libflow_llm.so not found"
+  S="$BUNDLE/server"
+  mkdir -p "$S/bin" "$S/lib"
+  install -m 0755 "$SERVER_TARGET/flow-server" "$S/bin/flow-server"
+  install -m 0644 "$SERVER_TARGET/libflow_llm.so" "$S/lib/libflow_llm.so"
+  for l in libsherpa-onnx-c-api.so libonnxruntime.so; do install -m 0644 "$(readlink -f "$SHERPA_LIB/$l")" "$S/lib/$l"; done
+  gomp="$(gcc -print-file-name=libgomp.so.1 2>/dev/null || true)"
+  [ -e "$gomp" ] || die "libgomp.so.1 not found (the cleanup plugin needs it)"
+  install -m 0644 "$(readlink -f "$gomp")" "$S/lib/libgomp.so.1"
+  install -m 0755 "$HERE/flow-server.sh" "$S/flow-server.sh"
+  install -m 0644 "$HERE/server-config.toml" "$S/config.toml"
+  g show "$COMMIT:crates/flow-server/dist/flow-server.service" > "$S/flow-server.service"
+  g show "$COMMIT:crates/flow-server/dist/config.example.toml" > "$S/config.reference.toml"
+  # The binary must be this commit's build (flow_build_info::FULL is baked
+  # in), and it must start with the bundled libraries.
+  grep -aq "$VERSION+$SHA7" "$S/bin/flow-server" ||
+    die "$S/bin/flow-server is not a clean build of $VERSION+$SHA7 (rebuild, or a --server-target from this commit)"
+  FLOW_SERVER_HOME="$S" "$S/flow-server.sh" gen-token --out "$WORK/smoke-token" >/dev/null 2>&1 ||
+    die "the bundled flow-server does not start with its libraries"
+  rm -f "$WORK/smoke-token"
+  SERVER_NOTE="The \`server/\` folder holds flow-server $VERSION, built on $(lsb_release -ds 2>/dev/null || uname -sr)."
+fi
+
+# ---- install note, checksums, zips -----------------------------------------
+say "INSTALL.md"
+GLIBC=$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{ print $2 }')
+DIAR=""; [ "$NOTETAKER" = 1 ] && DIAR=", meeting speakers"
+VERSION="$VERSION" COMMIT="$SHA7" VARIANT="$VARIANT" WIN_EXE="$WIN_EXE" APK="$APK" \
+  MODELS_ZIP="$MODELS_ZIP" CLEANUP_ZIP="$CLEANUP_ZIP" GLIBC="glibc $GLIBC" DIARIZER_LIST="$DIAR" \
+  SERVER_NOTE="$SERVER_NOTE" NOTETAKER="$NOTETAKER" \
+  python3 -I "$HERE/render_install.py" "$ROOT/docs/colleague-install.md" > "$BUNDLE/INSTALL.md"
+grep -q '{{' "$BUNDLE/INSTALL.md" && die "INSTALL.md has an unfilled placeholder"
+(cd "$BUNDLE" && find . -type f -printf '%P\n' | sort | xargs -d '\n' sha256sum) > "$WORK/sums.txt"
+mv "$WORK/sums.txt" "$BUNDLE/SHA256SUMS.txt"
+
+# Model zips (stored, not compressed), with a SHA256SUMS.txt inside from the
+# pins (each file was checked above).
+zip_models() { # ZIP llm|speech
+  local z="$OUT/$1" list="$WORK/$1.list"
+  awk -F'\t' -v want="$2" '($2 == "llm") == (want == "llm")' "$WORK/models.tsv" > "$WORK/$1.tsv"
+  [ -s "$WORK/$1.tsv" ] || return 0
+  echo SHA256SUMS.txt > "$list"
+  while IFS=$'\t' read -r dir kind _ file _ sha _ _; do
+    p=$(mpath "$dir" "$kind" "$file")
+    echo "$p" >> "$list"
+    [ "$kind" = diarizer ] || echo "library/$dir/model.toml" >> "$list"
+    printf '%s  %s\n' "$sha" "$p"
+  done < "$WORK/$1.tsv" > "$MODELS/SHA256SUMS.txt"
+  rm -f "$z"
+  (cd "$MODELS" && sort -u "$list" | zip -q -0 -@ "$z")
+  rm -f "$MODELS/SHA256SUMS.txt"
+  echo "wrote $z ($(mb "$(stat -c %s "$z")"))"
+}
+if [ "$NO_ZIP" = 0 ]; then
+  say "zips"
+  rm -f "$OUT/$NAME.zip"
+  (cd "$OUT" && zip -q -r "$NAME.zip" "$NAME")
+  echo "wrote $OUT/$NAME.zip ($(mb "$(stat -c %s "$OUT/$NAME.zip")"))"
+  zip_models "$MODELS_ZIP" speech
+  zip_models "$CLEANUP_ZIP" llm
+  zips=("$NAME.zip")
+  for z in "$MODELS_ZIP" "$CLEANUP_ZIP"; do [ ! -f "$OUT/$z" ] || zips+=("$z"); done
+  (cd "$OUT" && sha256sum "${zips[@]}" > "$NAME-SHA256SUMS.txt")
+fi
+say "done: $BUNDLE"
