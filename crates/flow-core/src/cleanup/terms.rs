@@ -403,6 +403,35 @@ mod tests {
     }
 
     #[test]
+    fn an_entry_with_digits_needs_exactly_its_digits() {
+        // Made-up entries (D67). Other digits name nothing.
+        assert!(sel(&["Velk42"], "The velk forty three build is out.").is_empty());
+        assert!(sel(&["Velk42"], "The velk four build is out.").is_empty());
+        // Merged number words ("three twelve" -> 312) match only an entry
+        // with exactly those digits.
+        assert_eq!(
+            sel(&["Rho312"], "Flash rho three twelve first."),
+            ["Rho312"]
+        );
+        assert!(sel(&["Rho31"], "Flash rho three twelve first.").is_empty());
+        assert!(sel(&["Rho312"], "Flash rho three eleven first.").is_empty());
+        assert!(sel(&["Rho3"], "Flash rho three twelve first.").is_empty());
+    }
+
+    #[test]
+    fn an_entry_that_is_a_word_plus_a_number_is_named_in_prose_too() {
+        // Known limit: "win ten dollars" holds the entry Win10's word and
+        // number, so the entry is named, as it already was when the speech
+        // model wrote "win 10 dollars" (D64). Naming only lists it on the
+        // DICTIONARY line; the prompt keeps a word used in its ordinary
+        // sense, so the model decides.
+        assert_eq!(sel(&["Win10"], "You could win ten dollars."), ["Win10"]);
+        assert_eq!(sel(&["Win10"], "You could win 10 dollars."), ["Win10"]);
+        // Without the entry's word nothing is named.
+        assert!(sel(&["Win10"], "We got ten dollars back.").is_empty());
+    }
+
+    #[test]
     fn spoken_numbers_become_one_digit_word() {
         let norms = |t: &str| -> Vec<String> {
             with_spoken_digits(&words(t))

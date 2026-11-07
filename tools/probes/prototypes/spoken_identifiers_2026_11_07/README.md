@@ -1,10 +1,11 @@
 # Spoken identifiers in the AI cleanup, 2026-11-07 (dated prototype)
 
-> **Status:** dated probe, research only. Findings:
-> `docs/findings/2026-11-07-spoken-identifiers.md` (D67). The product
-> change lives in flow-core (prompts v2 / v5, `cleanup::terms` number
-> words, the on-device skip gate's cue words); nothing here is wired into
-> the product.
+> **Status:** dated probe, research only; evidence for D67
+> (`docs/findings/2026-11-07-spoken-identifiers.md`). Only the
+> dictionary part shipped (`cleanup::terms` names entries with digits when
+> the number is said as words). The prompt rule and few-shots measured
+> here (variants `rule`, `shots`, `shots2`, `lite`) were rejected: the
+> held-out half was flat. Nothing here is wired into the product.
 
 Measures whether the cleanup prompt writes spoken code names in code form
 ("retry limit in caps with underscores" -> RETRY_LIMIT, "utf eight" ->
@@ -17,7 +18,7 @@ said as words.
 | File | What |
 |---|---|
 | `gen_cases.py` -> `cases.jsonl`, `refs.json` | 38 made-up cases: I spoken forms (12), C code names whose kind sets the form, no form said (6), V technical names with a number (8), N prose with the same words (12). Every even-numbered case is "held" (not looked at while tuning) |
-| `variants.py` | Writes `--override` prompt variants from `--dump-prompt` dumps of the base v5 / v2 prompts: `rule`, `shots`, `shots2`, `lite`; checks the shots share no 4-word run with the cases (the cue "in caps with underscores" aside). The shipped prompts are `shots2` for v2 and `lite` for v5 |
+| `variants.py` | Writes `--override` prompt variants from `--dump-prompt` dumps of the base v5 / v2 prompts: `rule`, `shots`, `shots2`, `lite`; checks the shots share no 4-word run with the cases (the cue "in caps with underscores" aside). The candidate (rejected) was `shots2` for v2 and `lite` for v5 |
 | `score_cases.py` | Passes per group and on the held half, rows the LLM ran on, mean prompt characters, LLM p50 / p95. `--refs` takes any wispr_parity reference file |
 | `overlap.py` | Privacy check: no added line of the branch shares a 4-word run with the private reference files (`git diff BASE -U0 \| overlap.py REFS...`) |
 
