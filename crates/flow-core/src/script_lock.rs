@@ -163,6 +163,21 @@ pub fn drifted(locked: Script, answer: &str) -> bool {
     share(answer, locked).is_some_and(|x| x < KEPT)
 }
 
+/// D65: did `answer`, a cleanup of `source`, leave `locked`? Its share of
+/// `locked` letters is under [`KEPT`] times the source's share. Relative,
+/// because a correct cleanup of a mixed dictation writes transliterated
+/// names in Latin letters ("בסלאק" → "ב-Slack") and can fall under half
+/// Hebrew while the source was barely over [`DOMINANT`]; a translation
+/// keeps almost none (0 % on every translated probe answer). For a source
+/// all in `locked` this is [`drifted`]. No letters on either side: no
+/// verdict.
+pub fn drifted_from(locked: Script, source: &str, answer: &str) -> bool {
+    match (share(source, locked), share(answer, locked)) {
+        (Some(src), Some(ans)) => ans < KEPT * src,
+        _ => false,
+    }
+}
+
 /// The prompt line that locks the language (appended to the user turn,
 /// where small models weigh it most).
 pub fn lock_line(s: Script) -> String {
@@ -250,6 +265,20 @@ mod tests {
         assert!(!drifted(Script::Hebrew, "הפגישה נדחתה ליום שלישי הקרוב."));
         assert!(!drifted(Script::Hebrew, "הדוח של Q3 יוצג ב-Zoom מחר."));
         assert!(!drifted(Script::Hebrew, "3/11"), "no letters, no verdict");
+    }
+
+    #[test]
+    fn drift_from_a_source_is_relative_to_its_share() {
+        let mixed = "תעלה את ה release notes לדרייב ותשלח בסלאק";
+        let latinised = "תעלה release notes לדרייב ותשלח ב-Slack.";
+        assert!(share(latinised, Script::Hebrew).unwrap() < KEPT);
+        assert!(!drifted_from(Script::Hebrew, mixed, latinised));
+        assert!(drifted_from(
+            Script::Hebrew,
+            mixed,
+            "Upload the release notes to Drive and send on Slack."
+        ));
+        assert!(!drifted_from(Script::Hebrew, mixed, "3/11"));
     }
 
     #[test]

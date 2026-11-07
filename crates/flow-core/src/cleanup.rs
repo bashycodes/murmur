@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 use crate::asr::AbortFlag;
 use crate::config::{AppCategory, CleanupLevel, FieldContext, SessionConfig, Style};
 use crate::dictionary::Dictionary;
+use crate::script_lock::{self, Script};
 use crate::Usd;
 use serde::{Deserialize, Serialize};
 
@@ -139,7 +140,15 @@ impl CleanPrompt {
     /// language"). English or unknown: the prompt is returned unchanged,
     /// so English prompts stay byte-identical. Per-dictation, so it sits in
     /// the user message and the cached prefix is unaffected.
+    ///
+    /// D65: a known language also decides prompt v2's Hebrew few-shot
+    /// (Hebrew: there, any other language: not, so a Yiddish dictation
+    /// does not get a `LANGUAGE: Hebrew` example). Unknown: the
+    /// transcript's script decided it in [`build_prompt_versioned`].
     pub fn with_language(mut self, language: Option<&str>) -> Self {
+        if let Some(primary) = language.and_then(crate::config::primary_language) {
+            self.set_hebrew_turn(primary == "he");
+        }
         let Some(code) = language.filter(|l| !crate::config::english_rules(Some(l))) else {
             return self;
         };
@@ -148,6 +157,26 @@ impl CleanPrompt {
             Arc::make_mut(src).language = Some(code.to_string());
         }
         self
+    }
+
+    /// D65: add or drop [`hebrew_turn`] at the end of a v2 cleanup prompt's
+    /// few-shots.
+    fn set_hebrew_turn(&mut self, want: bool) {
+        let v2 = self
+            .source
+            .as_ref()
+            .is_some_and(|s| s.prompt == PromptVersion::V2 && s.task == CleanTask::Cleanup);
+        if !v2 {
+            return;
+        }
+        let turn = hebrew_turn();
+        match (want, self.examples.last() == Some(&turn)) {
+            (true, false) => self.examples.push(turn),
+            (false, true) => {
+                self.examples.pop();
+            }
+            _ => {}
+        }
     }
 
     /// Record the session's `llm_timeout_ms` in [`CleanPrompt::source`]
@@ -1296,24 +1325,15 @@ pub fn build_prompt_versioned(
     } else {
         format!("{system}\n{}", level_rule(level))
     };
-    let examples = shots
+    let mut examples: Vec<(String, String)> = shots
         .into_iter()
-        .map(|&(app, cat, style, input, output)| {
-            let u = UserMsg {
-                app,
-                cat,
-                style,
-                version,
-                terms: "",
-                before: "",
-                selected: "",
-                after: "",
-                transcript: input,
-            };
-            (u.render(), output.to_string())
-        })
+        .map(|e| render_example(e, version))
         .collect();
-    let examples = with_script_example(examples, asr_text, version);
+    // D65: without a language hint (`with_language` decides when there is
+    // one), the transcript's script picks the Hebrew turn.
+    if version == PromptVersion::V2 && script_kept(asr_text) == Some(Script::Hebrew) {
+        examples.push(hebrew_turn());
+    }
     let mut terms: Vec<&str> = dict.vocabulary();
     if scope.screen_words {
         terms.extend(ctx.screen_words.iter().map(String::as_str));
@@ -1402,22 +1422,13 @@ const HEBREW_EXAMPLE: Example = (
     "רציתי להגיד שהחבילה הגיעה אתמול בערב, אבל הקופסה הייתה קצת מעוכה. אני אבדוק שהכול שלם ואעדכן אותך",
 );
 
-/// D65: prompt v2 for a Hebrew-script `transcript` gets [`HEBREW_EXAMPLE`]
-/// after its English few-shots. It goes last, so the shared prefix (system
-/// prompt and English turns, D63) stays cached for every language and a
-/// prompt for any other script is unchanged.
-fn with_script_example(
-    mut examples: Vec<(String, String)>,
-    transcript: &str,
+/// A few-shot as its (user, assistant) turn: the user message of an empty
+/// context.
+fn render_example(
+    &(app, cat, style, transcript, output): &Example,
     version: PromptVersion,
-) -> Vec<(String, String)> {
-    if version != PromptVersion::V2
-        || script_kept(transcript) != Some(crate::script_lock::Script::Hebrew)
-    {
-        return examples;
-    }
-    let (app, cat, style, input, output) = HEBREW_EXAMPLE;
-    let mut u = UserMsg {
+) -> (String, String) {
+    let u = UserMsg {
         app,
         cat,
         style,
@@ -1426,19 +1437,26 @@ fn with_script_example(
         before: "",
         selected: "",
         after: "",
-        transcript: input,
-    }
-    .render();
+        transcript,
+    };
+    (u.render(), output.to_string())
+}
+
+/// D65: [`HEBREW_EXAMPLE`] as prompt v2's last turn, with the `LANGUAGE:
+/// Hebrew` line a Hebrew dictation's own message has. Last, so the shared
+/// prefix (system prompt and English turns, D63) stays cached for every
+/// language, and a prompt without it is unchanged.
+fn hebrew_turn() -> (String, String) {
+    let (mut u, a) = render_example(&HEBREW_EXAMPLE, PromptVersion::V2);
     insert_language_line(&mut u, "he");
-    examples.push((u, output.to_string()));
-    examples
+    (u, a)
 }
 
 /// D65: the non-Latin script a cleanup of `transcript` must keep (Hebrew,
 /// Arabic, …), if one dominates it. A Latin-script transcript is not
 /// locked: English and Spanish can't be told apart by their letters.
-fn script_kept(transcript: &str) -> Option<crate::script_lock::Script> {
-    crate::script_lock::dominant(transcript).filter(|s| *s != crate::script_lock::Script::Latin)
+fn script_kept(transcript: &str) -> Option<Script> {
+    script_lock::dominant(transcript).filter(|s| *s != Script::Latin)
 }
 
 /// The prompt a backend prefills at model load: light level, empty
@@ -1674,7 +1692,8 @@ fn run_metered(
     }
     // D65: a dictation is never translated. The one check on the answer
     // (otherwise used as given, D59) is its writing system.
-    if let Some(s) = script_kept(asr_text).filter(|s| crate::script_lock::drifted(*s, &out)) {
+    if let Some(s) = script_kept(asr_text).filter(|s| script_lock::drifted_from(*s, asr_text, &out))
+    {
         let why = Some(format!("answer not in {}", s.language()));
         return (
             CleanOutcome::Fallback(FallbackReason::LanguageChanged),
@@ -1777,8 +1796,14 @@ mod tests {
             &ctx,
             &Dictionary::default(),
         );
-        for l in [None, Some("en"), Some("en-GB")] {
+        for l in [None, Some("auto")] {
             assert_eq!(base.clone().with_language(l), base, "{l:?}");
+        }
+        // D65: an English hint drops the Hebrew turn the script added.
+        for l in [Some("en"), Some("en-GB")] {
+            let en = base.clone().with_language(l);
+            assert_eq!(en.user, base.user, "{l:?}");
+            assert_eq!(en.examples[..], base.examples[..EXAMPLES.len()], "{l:?}");
         }
         let he = base.clone().with_language(Some("he"));
         assert_eq!(he.system, base.system);
@@ -1814,17 +1839,14 @@ mod tests {
         assert_eq!(he.examples.len(), EXAMPLES.len() + 1);
         assert_eq!(he.examples[..EXAMPLES.len()], en.examples[..]);
         let (u, a) = he.examples.last().unwrap();
+        let (_, _, _, he_input, _) = HEBREW_EXAMPLE;
         assert!(
             u.ends_with(&format!(
-                "LANGUAGE: Hebrew (write the text in this language; never translate)\nTRANSCRIPT: \u{ab}{}\u{bb}",
-                HEBREW_EXAMPLE.3
+                "LANGUAGE: Hebrew (write the text in this language; never translate)\nTRANSCRIPT: \u{ab}{he_input}\u{bb}"
             )),
             "{u}"
         );
-        assert_eq!(
-            crate::script_lock::dominant(a),
-            Some(crate::script_lock::Script::Hebrew)
-        );
+        assert_eq!(script_lock::dominant(a), Some(Script::Hebrew));
         // A Hebrew word or two inside English is still an English prompt.
         let mixed = p("ask Dana about the שבת dinner on Friday", PromptVersion::V2);
         assert_eq!(mixed.examples, en.examples);
@@ -1833,6 +1855,43 @@ mod tests {
             v5.examples,
             p("see you at the station tomorrow", PromptVersion::V5).examples
         );
+    }
+
+    // D65: the ASR language hint, when there is one, decides the Hebrew
+    // turn; the script decides only without a hint. A Yiddish dictation is
+    // Hebrew script but gets no `LANGUAGE: Hebrew` example.
+    #[test]
+    fn the_language_hint_decides_the_hebrew_example() {
+        let p = |t: &str| {
+            build_prompt(
+                t,
+                CleanupLevel::Light,
+                Style::Default,
+                &FieldContext::default(),
+                &Dictionary::default(),
+            )
+        };
+        let hebrew_last = |c: &CleanPrompt| c.examples.last() == Some(&hebrew_turn());
+        let script = "ניפגש מחר בתחנה אחרי העבודה";
+        for l in [None, Some("auto"), Some("he"), Some("iw")] {
+            let c = p(script).with_language(l);
+            assert!(hebrew_last(&c), "{l:?}");
+            assert_eq!(c.examples.len(), EXAMPLES.len() + 1, "{l:?}");
+        }
+        // A Hebrew hint on a Latin-letter transcript (names, numbers).
+        let latin = p("Zoom 10:30").with_language(Some("he"));
+        assert!(hebrew_last(&latin));
+        assert_eq!(latin.examples.len(), EXAMPLES.len() + 1);
+        let yi = p("איך וועל דיר שרייבן מארגן").with_language(Some("yi"));
+        assert_eq!(yi.examples.len(), EXAMPLES.len());
+        assert!(yi.examples.iter().all(|(u, _)| !u.contains("LANGUAGE:")));
+        assert!(yi.user.contains("LANGUAGE: "), "{}", yi.user);
+        assert!(!yi.user.contains("LANGUAGE: Hebrew"), "{}", yi.user);
+        // Twice is once.
+        let twice = p(script)
+            .with_language(Some("he"))
+            .with_language(Some("he"));
+        assert_eq!(twice.examples.len(), EXAMPLES.len() + 1);
     }
 
     #[test]
@@ -1967,6 +2026,53 @@ mod tests {
             ),
             CleanOutcome::Formatted("Nos vemos a las 8.".into())
         );
+    }
+
+    // D65 threshold edges. The answer is measured against the dictation's
+    // own share of the locked script (ratio, not absolute): a correct
+    // cleanup of a mixed dictation that writes transliterated names in
+    // Latin letters can drop under half Hebrew; a translation drops to ~0.
+    #[test]
+    fn the_script_check_measures_the_answer_against_the_dictation() {
+        let he = |t: &str| script_lock::share(t, Script::Hebrew).unwrap();
+        let near = |x: f32, want: f32| (x - want).abs() < 0.01;
+        // ~62 % Hebrew: locked.
+        let mixed = "אממ תעלה את ה release notes לדרייב ותשלח בסלאק לפני ה standup";
+        assert!(near(he(mixed), 0.62), "{}", he(mixed));
+        assert_eq!(script_lock::dominant(mixed), Some(Script::Hebrew));
+        let use_ = |answer: &'static str, dictation: &str| {
+            run(Arc::new(Fixed(answer, Duration::ZERO)), dictation, 500)
+                == CleanOutcome::Formatted(answer.into())
+        };
+        // Fillers dropped, "בסלאק" → "ב-Slack": ~50 %, kept.
+        let a = "תעלה את ה-release notes לדרייב ותשלח ב-Slack לפני ה-standup.";
+        assert!(near(he(a), 0.50), "{}", he(a));
+        assert!(use_(a, mixed));
+        // ~45 %, under an absolute 0.5 but a correct cleanup: kept.
+        let b = "תעלה release notes לדרייב ותשלח ב-Slack לפני standup.";
+        assert!(near(he(b), 0.455), "{}", he(b));
+        assert!(use_(b, mixed));
+        // Half translated: ~11 %, falls back.
+        let c = "Upload the release notes to Drive ותשלח ב-Slack before the standup.";
+        assert!(near(he(c), 0.109), "{}", he(c));
+        assert!(!use_(c, mixed));
+        // A Hebrew dictation (~87 %) answered ~40 % Hebrew: falls back.
+        let pure = "תשלח לי את המצגת ב-Slack לפני הפגישה של מחר בבוקר";
+        let d = "Send me the slides on Slack לפני הפגישה של מחר.";
+        assert!(near(he(pure), 0.872), "{}", he(pure));
+        assert!(near(he(d), 0.405), "{}", he(d));
+        assert_eq!(
+            run(Arc::new(Fixed(d, Duration::ZERO)), pure, 500),
+            CleanOutcome::Fallback(FallbackReason::LanguageChanged)
+        );
+        // Under 60 % Hebrew: never locked, an English answer is used.
+        let under = "תעלה את ה release notes לדרייב ותשלח בסלאק לפני ה standup";
+        assert!(he(under) < 0.6, "{}", he(under));
+        assert_eq!(script_lock::dominant(under), None);
+        assert!(use_(
+            "Upload the release notes to Drive and send them on Slack before the standup.",
+            under
+        ));
     }
 
     #[test]
