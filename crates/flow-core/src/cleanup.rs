@@ -4,7 +4,8 @@
 //! to implement [`Cleaner`]. Everything around it — when to run, the prompt,
 //! the time budget and the fallback on a timeout, error or empty answer —
 //! is deterministic and lives here so it is testable without a model. The
-//! model's answer is used as given (no output guard, D59).
+//! model's answer is used as given (no output guard, D59), except that an
+//! answer that left the transcript's non-Latin script is not used (D65).
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -142,14 +143,7 @@ impl CleanPrompt {
         let Some(code) = language.filter(|l| !crate::config::english_rules(Some(l))) else {
             return self;
         };
-        let line = format!(
-            "LANGUAGE: {} (write the text in this language; never translate)\n",
-            crate::config::language_name(code)
-        );
-        match self.user.rfind("TRANSCRIPT: ") {
-            Some(i) => self.user.insert_str(i, &line),
-            None => self.user.insert_str(0, &line),
-        }
+        insert_language_line(&mut self.user, code);
         if let Some(src) = self.source.as_mut() {
             Arc::make_mut(src).language = Some(code.to_string());
         }
@@ -816,6 +810,9 @@ pub enum FallbackReason {
     Timeout,
     Error(String),
     Empty,
+    /// D65: the transcript is in a non-Latin script (Hebrew, …) and the
+    /// answer is not: the model translated the dictation.
+    LanguageChanged,
 }
 
 impl FallbackReason {
@@ -824,6 +821,7 @@ impl FallbackReason {
             FallbackReason::Timeout => "llm_timeout".into(),
             FallbackReason::Error(e) => format!("llm_error: {e}"),
             FallbackReason::Empty => "llm_empty".into(),
+            FallbackReason::LanguageChanged => "llm_language_changed".into(),
         }
     }
 }
@@ -1315,6 +1313,7 @@ pub fn build_prompt_versioned(
             (u.render(), output.to_string())
         })
         .collect();
+    let examples = with_script_example(examples, asr_text, version);
     let mut terms: Vec<&str> = dict.vocabulary();
     if scope.screen_words {
         terms.extend(ctx.screen_words.iter().map(String::as_str));
@@ -1377,6 +1376,69 @@ pub fn build_prompt_versioned(
             scope,
         })),
     }
+}
+
+/// D33: the `LANGUAGE:` line before the transcript of user message `user`.
+fn insert_language_line(user: &mut String, code: &str) {
+    let line = format!(
+        "LANGUAGE: {} (write the text in this language; never translate)\n",
+        crate::config::language_name(code)
+    );
+    match user.rfind("TRANSCRIPT: ") {
+        Some(i) => user.insert_str(i, &line),
+        None => user.insert_str(0, &line),
+    }
+}
+
+/// D65: a made-up Hebrew dictation and its cleanup. Prompt v2's rules and
+/// few-shots are English, and with only those the 1.5B translated 16 of 22
+/// long synthetic Hebrew dictations into English, even with the `LANGUAGE:`
+/// line (`docs/findings/2026-11-07-hebrew-stays-hebrew.md`).
+const HEBREW_EXAMPLE: Example = (
+    "WhatsApp",
+    AppCategory::PersonalChat,
+    Style::Casual,
+    "אז אממ רציתי להגיד שהחבילה הגיעה אתמול בערב אבל הקופסה הייתה קצת מעוכה אז אני אבדוק שהכול שלם ואעדכן אותך",
+    "רציתי להגיד שהחבילה הגיעה אתמול בערב, אבל הקופסה הייתה קצת מעוכה. אני אבדוק שהכול שלם ואעדכן אותך",
+);
+
+/// D65: prompt v2 for a Hebrew-script `transcript` gets [`HEBREW_EXAMPLE`]
+/// after its English few-shots. It goes last, so the shared prefix (system
+/// prompt and English turns, D63) stays cached for every language and a
+/// prompt for any other script is unchanged.
+fn with_script_example(
+    mut examples: Vec<(String, String)>,
+    transcript: &str,
+    version: PromptVersion,
+) -> Vec<(String, String)> {
+    if version != PromptVersion::V2
+        || script_kept(transcript) != Some(crate::script_lock::Script::Hebrew)
+    {
+        return examples;
+    }
+    let (app, cat, style, input, output) = HEBREW_EXAMPLE;
+    let mut u = UserMsg {
+        app,
+        cat,
+        style,
+        version,
+        terms: "",
+        before: "",
+        selected: "",
+        after: "",
+        transcript: input,
+    }
+    .render();
+    insert_language_line(&mut u, "he");
+    examples.push((u, output.to_string()));
+    examples
+}
+
+/// D65: the non-Latin script a cleanup of `transcript` must keep (Hebrew,
+/// Arabic, …), if one dominates it. A Latin-script transcript is not
+/// locked: English and Spanish can't be told apart by their letters.
+fn script_kept(transcript: &str) -> Option<crate::script_lock::Script> {
+    crate::script_lock::dominant(transcript).filter(|s| *s != crate::script_lock::Script::Latin)
 }
 
 /// The prompt a backend prefills at model load: light level, empty
@@ -1610,7 +1672,16 @@ fn run_metered(
         let why = Some("empty answer".into());
         return (CleanOutcome::Fallback(FallbackReason::Empty), usage, why);
     }
-    // The answer is used as given: no output guard (D59).
+    // D65: a dictation is never translated. The one check on the answer
+    // (otherwise used as given, D59) is its writing system.
+    if let Some(s) = script_kept(asr_text).filter(|s| crate::script_lock::drifted(*s, &out)) {
+        let why = Some(format!("answer not in {}", s.language()));
+        return (
+            CleanOutcome::Fallback(FallbackReason::LanguageChanged),
+            usage,
+            why,
+        );
+    }
     (CleanOutcome::Formatted(out), usage, None)
 }
 
@@ -1719,6 +1790,51 @@ mod tests {
         );
     }
 
+    // D65: a Hebrew dictation's v2 prompt ends its few-shots with a Hebrew
+    // one; the system prompt and the English turns before it are the same
+    // bytes as an English dictation's (one cached prefix), and English and
+    // AI-cleanup (v5) prompts carry no Hebrew turn.
+    #[test]
+    fn a_hebrew_dictation_gets_a_hebrew_example_after_the_shared_prefix() {
+        let p = |t: &str, v: PromptVersion| {
+            build_prompt_versioned(
+                t,
+                CleanupLevel::Light,
+                Style::Casual,
+                &FieldContext::default(),
+                &Dictionary::default(),
+                PromptScope::FULL,
+                v,
+            )
+        };
+        let en = p("see you at the station tomorrow", PromptVersion::V2);
+        let he = p("ניפגש מחר בתחנה אחרי העבודה", PromptVersion::V2);
+        assert_eq!(en.examples.len(), EXAMPLES.len());
+        assert_eq!(he.system, en.system);
+        assert_eq!(he.examples.len(), EXAMPLES.len() + 1);
+        assert_eq!(he.examples[..EXAMPLES.len()], en.examples[..]);
+        let (u, a) = he.examples.last().unwrap();
+        assert!(
+            u.ends_with(&format!(
+                "LANGUAGE: Hebrew (write the text in this language; never translate)\nTRANSCRIPT: \u{ab}{}\u{bb}",
+                HEBREW_EXAMPLE.3
+            )),
+            "{u}"
+        );
+        assert_eq!(
+            crate::script_lock::dominant(a),
+            Some(crate::script_lock::Script::Hebrew)
+        );
+        // A Hebrew word or two inside English is still an English prompt.
+        let mixed = p("ask Dana about the שבת dinner on Friday", PromptVersion::V2);
+        assert_eq!(mixed.examples, en.examples);
+        let v5 = p("ניפגש מחר בתחנה אחרי העבודה", PromptVersion::V5);
+        assert_eq!(
+            v5.examples,
+            p("see you at the station tomorrow", PromptVersion::V5).examples
+        );
+    }
+
     #[test]
     fn prompt_covers_backtracking_and_language_preservation() {
         let p = build_prompt(
@@ -1798,6 +1914,58 @@ mod tests {
         assert_eq!(
             o,
             CleanOutcome::Formatted("Noon at the dock works for me.".into())
+        );
+    }
+
+    // D65: a translated dictation is not used; the rules text stays. Only
+    // a change of writing system counts, so a Latin-script dictation
+    // (English, Spanish) and an answer without letters are used as given.
+    #[test]
+    fn an_answer_that_left_the_dictations_script_falls_back() {
+        let he = "תזכיר לי לקנות לחם וחלב בדרך הביתה אחרי העבודה";
+        let o = run(
+            Arc::new(Fixed(
+                "Remind me to buy bread and milk on the way home after work.",
+                Duration::ZERO,
+            )),
+            he,
+            500,
+        );
+        assert_eq!(o, CleanOutcome::Fallback(FallbackReason::LanguageChanged));
+        assert_eq!(
+            FallbackReason::LanguageChanged.as_str(),
+            "llm_language_changed"
+        );
+        let kept = "תזכיר לי לקנות לחם וחלב בדרך הביתה, אחרי העבודה.";
+        assert_eq!(
+            run(Arc::new(Fixed(kept, Duration::ZERO)), he, 500),
+            CleanOutcome::Formatted(kept.into())
+        );
+        // English product names inside a Hebrew answer keep it Hebrew.
+        let mixed = "תשלח את ה-PDF בזום לפני ה-standup של מחר.";
+        assert_eq!(
+            run(
+                Arc::new(Fixed(mixed, Duration::ZERO)),
+                "תשלח את ה PDF בזום לפני ה standup של מחר",
+                500
+            ),
+            CleanOutcome::Formatted(mixed.into())
+        );
+        assert_eq!(
+            run(
+                Arc::new(Fixed("12:30", Duration::ZERO)),
+                "בשתים עשרה וחצי",
+                500
+            ),
+            CleanOutcome::Formatted("12:30".into())
+        );
+        assert_eq!(
+            run(
+                Arc::new(Fixed("Nos vemos a las 8.", Duration::ZERO)),
+                "see you at eight",
+                500
+            ),
+            CleanOutcome::Formatted("Nos vemos a las 8.".into())
         );
     }
 
