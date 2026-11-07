@@ -1543,7 +1543,7 @@ impl Worker {
                 s.cfg.cleanup_level,
                 style,
                 &ctx,
-                &s.cfg.dictionary,
+                &s.cfg.prompt_dictionary(),
                 cl.prompt_scope(),
             )
             .with_language(s.cfg.forced_language()),
@@ -2000,7 +2000,7 @@ fn finish_text(
             cfg.cleanup_level,
             style,
             &ctx,
-            &cfg.dictionary,
+            &cfg.prompt_dictionary(),
             cloud.prompt_scope(),
             cleanup::PromptVersion::V5,
         )
@@ -2077,6 +2077,7 @@ fn finish_text(
     if run_llm
         && cfg.llm_skip_clean
         && !cleanup::llm_can_help(&text, ctx.app_category, language.as_deref())
+        && !cleanup::dictionary_can_help(&text, &cfg.prompt_dictionary())
     {
         if let Some(cl) = local_cleaner.take() {
             local_cleaner = match cleanup::first_ready_engine(&cl) {
@@ -2097,7 +2098,7 @@ fn finish_text(
             cfg.cleanup_level,
             style,
             &ctx,
-            &cfg.dictionary,
+            &cfg.prompt_dictionary(),
             cl.prompt_scope(),
         )
         .with_language(language.as_deref())

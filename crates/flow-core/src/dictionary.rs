@@ -5,7 +5,34 @@
 //! bias only); with a replacement it is a deterministic rewrite; with
 //! `isSnippet` the replacement is an expansion body.
 
+use std::borrow::Cow;
+
 use serde::{Deserialize, Serialize};
+
+/// D64: public product and tech names the AI cleanup knows how to spell
+/// without the user adding them (`SessionConfig::builtin_terms`, on by
+/// default). Prompt-only: never an ASR hotword and never a deterministic
+/// rewrite. Kept small and free of names that are also ordinary words
+/// ("Slack", "Zoom", "Notion"), and of near-twins ("TikTok" next to
+/// "TickTick").
+pub const BUILTIN_TERMS: &[&str] = &[
+    "TickTick",
+    "Wispr Flow",
+    "WhatsApp",
+    "ChatGPT",
+    "OpenAI",
+    "GitHub",
+    "YouTube",
+    "LinkedIn",
+    "iPhone",
+    "PowerPoint",
+    "JavaScript",
+    "TypeScript",
+    "Wi-Fi",
+    "Gmail",
+    "PayPal",
+    "WordPress",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -66,6 +93,25 @@ impl Dictionary {
             .map(|e| e.replacement.as_deref().unwrap_or(&e.word))
             .collect()
     }
+
+    /// D64: the dictionary the cleanup prompt picks its terms from: this
+    /// one, followed by [`BUILTIN_TERMS`] as plain words when `builtin`
+    /// (a built-in name the vocabulary already has, ignoring case, is not
+    /// repeated). Unchanged (borrowed) when `builtin` is off.
+    pub fn with_builtin_terms(&self, builtin: bool) -> Cow<'_, Dictionary> {
+        if !builtin {
+            return Cow::Borrowed(self);
+        }
+        let have: Vec<String> = self.vocabulary().iter().map(|w| w.to_lowercase()).collect();
+        let mut d = self.clone();
+        d.entries.extend(
+            BUILTIN_TERMS
+                .iter()
+                .filter(|t| !have.contains(&t.to_lowercase()))
+                .map(|t| DictEntry::word(t)),
+        );
+        Cow::Owned(d)
+    }
 }
 
 #[cfg(test)]
@@ -106,5 +152,22 @@ mod tests {
             ],
         };
         assert_eq!(d.vocabulary(), vec!["Kubernetes", "Wispr"]);
+    }
+
+    #[test]
+    fn builtin_terms_follow_the_users_entries_without_repeats() {
+        let d = Dictionary {
+            entries: vec![
+                DictEntry::word("Quillmate"),
+                DictEntry::replacement("git hub", "github"),
+            ],
+        };
+        let off = d.with_builtin_terms(false);
+        assert_eq!(off.vocabulary(), vec!["Quillmate", "github"]);
+        let on = d.with_builtin_terms(true);
+        let v = on.vocabulary();
+        assert_eq!(&v[..2], &["Quillmate", "github"]);
+        assert_eq!(v.len(), 2 + BUILTIN_TERMS.len() - 1, "GitHub not repeated");
+        assert!(v.contains(&"TickTick") && !v.contains(&"GitHub"));
     }
 }
