@@ -1,0 +1,470 @@
+{
+ "_note": "synthetic spoken-identifier cases, see gen_cases.py",
+ "clips": {
+  "I01": {
+   "text": "set max retry count in caps with underscores to five",
+   "checks": [
+    {
+     "name": "\\bMAX_RETRY_COUNT\\b",
+     "re": "\\bMAX_RETRY_COUNT\\b"
+    }
+   ],
+   "split": "dev"
+  },
+  "I02": {
+   "text": "the constant is default page size all caps with underscores",
+   "checks": [
+    {
+     "name": "\\bDEFAULT_PAGE_SIZE\\b",
+     "re": "\\bDEFAULT_PAGE_SIZE\\b"
+    }
+   ],
+   "split": "held"
+  },
+  "I03": {
+   "text": "call the function load user profile in snake case",
+   "checks": [
+    {
+     "name": "\\bload_user_profile\\b",
+     "re": "\\bload_user_profile\\b"
+    }
+   ],
+   "split": "dev"
+  },
+  "I04": {
+   "text": "name the variable order total in camel case",
+   "checks": [
+    {
+     "name": "\\borderTotal\\b",
+     "re": "\\borderTotal\\b"
+    }
+   ],
+   "split": "held"
+  },
+  "I05": {
+   "text": "the new class is invoice printer in pascal case",
+   "checks": [
+    {
+     "name": "\\bInvoicePrinter\\b",
+     "re": "\\bInvoicePrinter\\b"
+    }
+   ],
+   "split": "dev"
+  },
+  "I06": {
+   "text": "check out the branch fix dash login dash timeout",
+   "checks": [
+    {
+     "name": "\\bfix-login-timeout\\b",
+     "re": "\\bfix-login-timeout\\b"
+    }
+   ],
+   "split": "held"
+  },
+  "I07": {
+   "text": "the setting is cache underscore ttl underscore seconds",
+   "checks": [
+    {
+     "name": "\\bcache_ttl_seconds\\b",
+     "re": "\\bcache_ttl_seconds\\b"
+    }
+   ],
+   "split": "dev"
+  },
+  "I08": {
+   "text": "open config dot local dot json and change the port",
+   "checks": [
+    {
+     "name": "\\bconfig\\.local\\.json\\b",
+     "re": "\\bconfig\\.local\\.json\\b"
+    }
+   ],
+   "split": "held"
+  },
+  "I09": {
+   "text": "run it again with the flag dash dash dry dash run",
+   "checks": [
+    {
+     "name": "--dry-run\\b",
+     "re": "--dry-run\\b"
+    }
+   ],
+   "split": "dev"
+  },
+  "I10": {
+   "text": "rename it to user id in caps with underscores please",
+   "checks": [
+    {
+     "name": "\\bUSER_ID\\b",
+     "re": "\\bUSER_ID\\b"
+    }
+   ],
+   "split": "held"
+  },
+  "I11": {
+   "text": "the field is called last seen at in snake case",
+   "checks": [
+    {
+     "name": "\\blast_seen_at\\b",
+     "re": "\\blast_seen_at\\b"
+    }
+   ],
+   "split": "dev"
+  },
+  "I12": {
+   "text": "make the method name is ready for review in camel case",
+   "checks": [
+    {
+     "name": "\\bisReadyForReview\\b",
+     "re": "\\bisReadyForReview\\b"
+    }
+   ],
+   "split": "held"
+  },
+  "C01": {
+   "text": "export the environment variable queue depth limit before you start the worker",
+   "checks": [
+    {
+     "name": "\\bQUEUE_DEPTH_LIMIT\\b",
+     "re": "\\bQUEUE_DEPTH_LIMIT\\b"
+    }
+   ],
+   "split": "dev"
+  },
+  "C02": {
+   "text": "the env var poll interval millis is missing on staging",
+   "checks": [
+    {
+     "name": "\\bPOLL_INTERVAL_MILLIS\\b",
+     "re": "\\bPOLL_INTERVAL_MILLIS\\b"
+    }
+   ],
+   "split": "held"
+  },
+  "C03": {
+   "text": "add a constant called max upload bytes at the top of the module",
+   "checks": [
+    {
+     "name": "\\bMAX_UPLOAD_BYTES\\b",
+     "re": "\\bMAX_UPLOAD_BYTES\\b"
+    }
+   ],
+   "split": "dev"
+  },
+  "C04": {
+   "text": "set the environment variable sentry dsn on the build server",
+   "checks": [
+    {
+     "name": "\\bSENTRY_DSN\\b",
+     "re": "\\bSENTRY_DSN\\b"
+    }
+   ],
+   "split": "held"
+  },
+  "C05": {
+   "text": "we read the database host from the env var called db host",
+   "checks": [
+    {
+     "name": "\\bDB_HOST\\b",
+     "re": "\\bDB_HOST\\b"
+    }
+   ],
+   "split": "dev"
+  },
+  "C06": {
+   "text": "the environment variable feature beta search is set to true in production",
+   "checks": [
+    {
+     "name": "\\bFEATURE_BETA_SEARCH\\b",
+     "re": "\\bFEATURE_BETA_SEARCH\\b"
+    }
+   ],
+   "split": "held"
+  },
+  "V01": {
+   "text": "we still build with python three twelve on the old runner",
+   "checks": [
+    {
+     "name": "\\bPython 3\\.12\\b",
+     "re": "\\bPython 3\\.12\\b"
+    }
+   ],
+   "split": "dev"
+  },
+  "V02": {
+   "text": "save the file as utf eight before you commit it",
+   "checks": [
+    {
+     "name": "\\bUTF-8\\b",
+     "re": "\\bUTF-8\\b"
+    }
+   ],
+   "split": "held"
+  },
+  "V03": {
+   "text": "the camera only records h two six four video",
+   "checks": [
+    {
+     "name": "\\bH\\.?264\\b",
+     "re": "\\bH\\.?264\\b"
+    }
+   ],
+   "split": "dev"
+  },
+  "V04": {
+   "text": "the new board has a risc five chip",
+   "checks": [
+    {
+     "name": "\\bRISC-V\\b",
+     "re": "\\bRISC-V\\b"
+    }
+   ],
+   "split": "held"
+  },
+  "V05": {
+   "text": "the server only listens on I P V six",
+   "checks": [
+    {
+     "name": "\\bIPv6\\b",
+     "re": "\\bIPv6\\b"
+    }
+   ],
+   "split": "dev"
+  },
+  "V06": {
+   "text": "the docker image is built for arm sixty four only",
+   "checks": [
+    {
+     "name": "\\b(arm|ARM)64\\b",
+     "re": "\\b(arm|ARM)64\\b"
+    }
+   ],
+   "split": "held"
+  },
+  "V07": {
+   "text": "bump the package to version two point four point one",
+   "checks": [
+    {
+     "name": "\\b2\\.4\\.1\\b",
+     "re": "\\b2\\.4\\.1\\b"
+    }
+   ],
+   "split": "dev"
+  },
+  "V08": {
+   "text": "that old laptop is x eighty six so the new build won't run on it",
+   "checks": [
+    {
+     "name": "\\b[xX]86\\b",
+     "re": "\\b[xX]86\\b"
+    }
+   ],
+   "split": "held"
+  },
+  "N01": {
+   "text": "write your name in caps at the top of the form",
+   "checks": [
+    {
+     "name": "in caps",
+     "re": "in caps"
+    },
+    {
+     "name": "no _",
+     "re": "_",
+     "absent": true
+    },
+    {
+     "name": "no \\bNAME\\b",
+     "re": "\\bNAME\\b",
+     "absent": true
+    }
+   ],
+   "split": "dev"
+  },
+  "N02": {
+   "text": "the underscore key on my keyboard keeps sticking",
+   "checks": [
+    {
+     "name": "[Uu]nderscore key",
+     "re": "[Uu]nderscore key"
+    },
+    {
+     "name": "no _",
+     "re": "_",
+     "absent": true
+    }
+   ],
+   "split": "held"
+  },
+  "N03": {
+   "text": "she added a dash of lemon to the soup and it was perfect",
+   "checks": [
+    {
+     "name": "dash of lemon",
+     "re": "dash of lemon"
+    },
+    {
+     "name": "no _",
+     "re": "_",
+     "absent": true
+    }
+   ],
+   "split": "dev"
+  },
+  "N04": {
+   "text": "the camel walked slowly across the sand at sunset",
+   "checks": [
+    {
+     "name": "camel walked",
+     "re": "camel walked"
+    },
+    {
+     "name": "no [a-z][A-Z]",
+     "re": "[a-z][A-Z]",
+     "absent": true
+    },
+    {
+     "name": "no _",
+     "re": "_",
+     "absent": true
+    }
+   ],
+   "split": "held"
+  },
+  "N05": {
+   "text": "the zoo moved the snake case closer to the entrance",
+   "checks": [
+    {
+     "name": "snake case",
+     "re": "snake case"
+    },
+    {
+     "name": "no _",
+     "re": "_",
+     "absent": true
+    }
+   ],
+   "split": "dev"
+  },
+  "N06": {
+   "text": "dot the i's and cross the t's before you send it",
+   "checks": [
+    {
+     "name": "[Dd]ot the i",
+     "re": "[Dd]ot the i"
+    },
+    {
+     "name": "no \\.i\\b",
+     "re": "\\.i\\b",
+     "absent": true
+    }
+   ],
+   "split": "held"
+  },
+  "N07": {
+   "text": "the team ordered new caps with the club logo on them",
+   "checks": [
+    {
+     "name": "new caps",
+     "re": "new caps"
+    },
+    {
+     "name": "no _",
+     "re": "_",
+     "absent": true
+    },
+    {
+     "name": "no CLUB",
+     "re": "CLUB",
+     "absent": true
+    }
+   ],
+   "split": "dev"
+  },
+  "N08": {
+   "text": "if you type in all caps people think you are shouting",
+   "checks": [
+    {
+     "name": "all caps",
+     "re": "all caps"
+    },
+    {
+     "name": "no _",
+     "re": "_",
+     "absent": true
+    }
+   ],
+   "split": "held"
+  },
+  "N09": {
+   "text": "his version of the story was very different from hers",
+   "checks": [
+    {
+     "name": "version of the story",
+     "re": "version of the story"
+    },
+    {
+     "name": "no _",
+     "re": "_",
+     "absent": true
+    }
+   ],
+   "split": "dev"
+  },
+  "N10": {
+   "text": "we drove eighty six miles to see the lake on sunday",
+   "checks": [
+    {
+     "name": "86 miles",
+     "re": "86 miles"
+    },
+    {
+     "name": "no x86",
+     "re": "x86",
+     "absent": true
+    },
+    {
+     "name": "no _",
+     "re": "_",
+     "absent": true
+    }
+   ],
+   "split": "held"
+  },
+  "N11": {
+   "text": "the server crashed again last night so I restarted it this morning",
+   "checks": [
+    {
+     "name": "server crashed",
+     "re": "server crashed"
+    },
+    {
+     "name": "no _",
+     "re": "_",
+     "absent": true
+    },
+    {
+     "name": "no `",
+     "re": "`",
+     "absent": true
+    }
+   ],
+   "split": "dev"
+  },
+  "N12": {
+   "text": "can you underline the title and make a dash for the bus after",
+   "checks": [
+    {
+     "name": "make a dash",
+     "re": "make a dash"
+    },
+    {
+     "name": "no _",
+     "re": "_",
+     "absent": true
+    }
+   ],
+   "split": "held"
+  }
+ }
+}
