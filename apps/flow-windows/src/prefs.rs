@@ -170,6 +170,9 @@ pub struct Prefs {
     /// host (`mail.example.com`) → bucket, over the built-in lists.
     pub app_buckets: BTreeMap<String, StyleBucket>,
     pub dictionary: Vec<DictEntry>,
+    /// D64: AI cleanup also knows a small built-in list of product names
+    /// (`flow_core::dictionary::BUILTIN_TERMS`). Default on.
+    pub builtin_terms: bool,
     pub paste_method: PasteMethod,
     pub restore_clipboard: bool,
     /// Override for the wait between Ctrl+V and clipboard restore; `None` =
@@ -266,6 +269,7 @@ impl Default for Prefs {
             styles: default_styles(),
             app_buckets: BTreeMap::new(),
             dictionary: Vec::new(),
+            builtin_terms: true,
             paste_method: PasteMethod::CtrlV,
             restore_clipboard: true,
             paste_restore_delay_ms: None,
@@ -541,6 +545,7 @@ impl Prefs {
                 .then_some(self.live_preview_interval_ms.max(250)),
             llm_timeout_ms: self.llm_timeout_ms.clamp(200, 30_000),
             spoken_cleanup: self.spoken_cleanup,
+            builtin_terms: self.builtin_terms,
             // D22 "Decode while speaking": both modes; absent when off.
             segment_pause_ms: self
                 .developer
@@ -830,6 +835,18 @@ mod tests {
         assert!(c.spoken_cleanup, "core-p1 default on");
         p.spoken_cleanup = false;
         assert!(!p.session_config().spoken_cleanup);
+    }
+
+    #[test]
+    fn builtin_terms_default_on_and_reach_the_session() {
+        let p: Prefs = serde_json::from_str("{}").unwrap();
+        assert!(p.builtin_terms, "a file from before the setting reads as on");
+        assert!(p.session_config().builtin_terms);
+        let p = Prefs {
+            builtin_terms: false,
+            ..Prefs::default()
+        };
+        assert!(!p.session_config().builtin_terms);
     }
 
     #[test]
