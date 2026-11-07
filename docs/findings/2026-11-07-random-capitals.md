@@ -65,10 +65,15 @@ capitals are in the whole-clip decode too (ASR, not joins).
 * `segment::respell_cut`: when the splice is refused, the two words at
   the cut take the bridge's case and punctuation, if the bridge has that
   pair (same normalised words) exactly once, clear of its edge words.
-  Words never change, so names the bridge capitalises stay capitalised.
+  Words never change, so names, "I" and acronyms the bridge capitalises
+  stay capitalised. A sentence break is never added or removed there:
+  when the left word ends a sentence in the piece but not in the bridge,
+  or the other way round, nothing changes (the bridge already disagreed
+  somewhere, so it is not trusted to merge or split sentences).
 * In the splice, a word that follows a word without a sentence end and
   differs from the piece's spelling only by a capital first letter takes
-  the piece's spelling back.
+  the piece's spelling back, unless that word ends with a period or an
+  ellipsis ("so...", "Dr."), where a capital can be right.
 
 No cleanup-prompt change: cleanup already fixed these when it ran; the
 capital came from a deterministic stage of ours.
@@ -77,12 +82,14 @@ capital came from a deterministic stage of ours.
 
 | Set | Wrong capitals before → after | Clips changed |
 |---|---|---|
-| Parity main (13) | 5 → 3 | 2 (case and punctuation at a cut only) |
+| Parity main (13) | 5 → 4 | 1 (case at a cut only) |
 | Parity English (30) | 2 → 2 | 0 |
 | PC recordings (15) | 1 → 0 | 1 |
 
-The 3 left in the main set are a three-word product name said in title
-case. Word error rate is unchanged by construction (no word changes; the
+Of the 4 left in the main set, 3 are a three-word product name said in
+title case; the fourth is a cut where the bridge hears a sentence break
+the piece does not have, so the sentence-break guard leaves it alone
+(without the guard it became "with. Things"). Word error rate is unchanged by construction (no word changes; the
 outputs differ only in case and punctuation at cuts). Regression tests:
 `segment::tests::respell_cut_takes_the_bridge_case_at_the_cut`,
 `splice_keeps_case_next_to_the_bridge_edges` (the "fine, The" case) and
