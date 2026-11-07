@@ -11,7 +11,8 @@
 
 import { $, askDialog, el, setStatus, setValue, when } from "../lib/dom.js";
 import { iconEl } from "../lib/icons.js";
-import { cleanupMonthCost, cloudHint, failText, money, usd } from "../lib/format.js";
+import { cleanupBlockedLine, cleanupEngineName, cleanupTestFailText, plainHint } from "../lib/cleanup-state.js";
+import { cleanupMonthCost, failText, money, usd } from "../lib/format.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { Serial } from "../lib/serial.js";
 import type {
@@ -279,31 +280,27 @@ function usageRowText(r: UsageRow): string {
 function showCleanupStatus(st: CleanupStatus): void {
   if (views.or) views.or.cleanup.status = st;
   const e = $<HTMLElement>("or_cleanup_state");
+  const blocked = cleanupBlockedLine(st, views.or);
   let text: string;
   let cls = "hint";
-  if (!st.supported) {
-    text = "Not in this build.";
-  } else if (st.blocked) {
-    text = `Not used: ${failText(st.blocked)}`;
-    cls = "hint err";
+  if (blocked) {
+    text = blocked.text;
+    cls = blocked.cls;
   } else if (st.circuit?.open) {
     const until = st.circuit.until_config_change
       ? "until the key or cleanup settings change"
       : `until ${new Date(Date.now() + (st.circuit.retry_in_ms ?? 0)).toLocaleTimeString()}`;
-    text = `Paused ${until} (${cloudHint(st.circuit.reason)})`;
+    text = `Paused ${until} (${plainHint(st.circuit.reason)})`;
     cls = "hint err";
-  } else if (st.enabled) {
+  } else {
     text = `On · ${st.model} · up to ${st.timeout_ms} ms`;
     cls = "hint ok";
-  } else {
-    text = `Off: ${st.provider === "custom" ? st.host || "your server" : "OpenRouter"} gets no text.`;
   }
   const l = st.last;
   if (l && l.engine) {
     const t = l.latency_ms != null ? ` ${l.latency_ms} ms` : "";
     const ft = l.ttft_ms != null ? ` (first token ${l.ttft_ms} ms)` : "";
-    const cloud = st.provider === "custom" ? st.host || "your server" : "OpenRouter";
-    const who = l.engine === "cloud" ? cloud : l.engine === "local" ? "this PC" : l.engine;
+    const who = cleanupEngineName(l.engine, st.provider, st.host);
     text += ` · last: ${who}${l.model ? ` ${l.model}` : ""}${t}${ft}${usd(l.cost_usd)}`;
   }
   const month = cleanupMonthCost(st);
@@ -311,6 +308,20 @@ function showCleanupStatus(st: CleanupStatus): void {
   if (month.custom > 0) text += ` · ${money(month.custom)} on your server this month (not in budget)`;
   e.textContent = text;
   e.className = cls;
+  if (blocked?.turnOn) e.append(" ", turnOnButton());
+}
+
+/** "Turn on": the Cleanup order switch, so its consent ask runs as when clicked there. */
+function turnOnButton(): HTMLButtonElement {
+  const b = el("button", "lw-link", "Turn on in Cleanup order");
+  b.type = "button";
+  b.addEventListener("click", () => {
+    // orCleanupToggled reads the switch: on, it asks for consent when needed.
+    $<HTMLInputElement>("or_cleanup_allow").checked = true;
+    void writes.run(orCleanupToggled);
+    $("cleanup_order_group").scrollIntoView({ block: "nearest" });
+  });
+  return b;
 }
 
 // ---- catalogue
@@ -764,11 +775,12 @@ async function orTestCleanup(): Promise<void> {
       out.textContent = `OK · "${r.text ?? ""}" · ${r.latency_ms ?? "?"} ms${usd(r.cost_usd)}${r.model ? ` · ${r.model}` : ""}`;
       out.className = "hint ok";
     } else {
-      out.textContent = failText(r.error, r.message);
+      out.textContent = cleanupTestFailText(r.error, r.message, views.or?.cleanup.provider);
       out.className = "hint err";
     }
   } catch (e) {
-    out.textContent = String(e);
+    console.warn("cleanup test failed", e);
+    out.textContent = cleanupTestFailText(null, null, views.or?.cleanup.provider);
     out.className = "hint err";
   }
   void refreshCleanupStatus();
