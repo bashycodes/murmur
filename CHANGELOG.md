@@ -38,6 +38,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- **AI cleanup no longer repeats text that is already in the field** (every cleanup path: phone, PC, flow-server and AI cleanup; D71). The cleanup sees the text around the cursor and sometimes copied it into its answer. With "Gate code: " already typed and only the number dictated, the field read "Gate code: Gate code: 4719". Words at the start of the answer that repeat the text before the cursor, or at the end that repeat the text after it, are now dropped, unless you dictated them yourself.
 - **Whisper no longer repeats a stretch of text when "Decode while speaking" is on** (PC and phone whisper models, flow-server whisper; D66). A short piece decoded with the trimmed encoder window could loop a long phrase with a few words between the copies; that now counts as degenerate and is decoded again with the full window. Parity set, whisper small: segmented WER 20.9% → 18.3% (unsegmented 16.8%).
 - **Windows: with cloud cleanup switched off in Cleanup order, the "Try it" row says so.** With a key saved but OpenRouter (or your custom server) switched off in Cleanup order, it showed "cloud_cleanup_not_configured — … save a key". It now says cloud cleanup is off in Cleanup order and has a "Turn on in Cleanup order" button.
 - **Windows: the "Try it" row words every other cause too, without backend codes.** It tells apart a missing key, missing consent and a custom server without its address or model, and a failed Test names the cause in words.
