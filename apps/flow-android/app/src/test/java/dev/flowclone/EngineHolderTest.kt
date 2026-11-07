@@ -6,6 +6,7 @@ import dev.flowclone.core.FlowCore
 import dev.flowclone.core.FlowCoreLoader
 import dev.flowclone.core.ModelConfig
 import dev.flowclone.core.AsrEngine
+import dev.flowclone.core.ParakeetDecoding
 import dev.flowclone.data.LoadSet
 import dev.flowclone.data.LoadedAsr
 import dev.flowclone.core.CommitResult
@@ -73,7 +74,7 @@ class EngineHolderTest {
     /** The next build of [k] fails (the speech model did not load). */
     private val failing = ConcurrentHashMap.newKeySet<String>()
 
-    private fun holder() = EngineHolder(app, loader = loader, setProbe = { want }, builder = { set ->
+    private fun holder(decodingProbe: (() -> ParakeetDecoding?)? = null) = EngineHolder(app, loader = loader, setProbe = { want }, decodingProbe = decodingProbe, builder = { set ->
         val k = key(set)
         othersFreedAtStart[k] = cores.values.all { it.unloaded }
         built += k
@@ -147,6 +148,30 @@ class EngineHolderTest {
         waitFor("ready") { h.state.value is EngineHolder.State.Ready }
         assertEquals("fake he", (h.state.value as EngineHolder.State.Ready).description)
         assertEquals(listOf("he"), built.toList())
+    }
+
+    /**
+     * D68: the dictionary's first word changes the Parakeet search: one reload of the same model
+     * set, keeping the on-device LLM (like a language switch); an edit that keeps the search
+     * reloads nothing.
+     */
+    @Test fun aDecodingChangeReloadsOnceAndKeepsTheLlm() {
+        want = LoadSet.Default
+        var decoding: ParakeetDecoding? = ParakeetDecoding.GREEDY
+        val h = holder(decodingProbe = { decoding })
+        h.ensureLoaded()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        h.ensureLanguage() // a dictionary edit that keeps the search
+        assertEquals(listOf("default"), built.toList())
+        val first = cores["default"]!!
+
+        decoding = ParakeetDecoding.BEAM // the first word was added
+        h.ensureLanguage()
+        waitFor("reloaded") { built.size == 2 && h.state.value is EngineHolder.State.Ready }
+        assertEquals("the old engine's LLM was kept while it was loaded", listOf(true), first.keepLlmCalls.toList())
+        assertTrue(first.unloaded)
+        h.ensureLanguage()
+        assertEquals(listOf("default", "default"), built.toList())
     }
 
     @Test fun withBothLoadedAKeyboardSwitchNeverReloadsAndTogglingReloadsOnce() {

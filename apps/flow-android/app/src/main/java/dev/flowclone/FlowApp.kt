@@ -211,6 +211,8 @@ class FlowApp : Application() {
             .onFailure { Log.w("FlowEngine", "cleanup order migration: ${it.message}") }
         migrateCloud()
         engine = EngineHolder(this)
+        // D68: the first dictionary word switches Parakeet to beam search, the last one back to greedy.
+        dictionary.onChange = { engine.ensureLanguage() }
         calls = CallJobs(
             callsStore,
             decoder = { r -> Decoders.open(this, android.net.Uri.parse(r.uri)) },
@@ -327,6 +329,8 @@ class EngineHolder(
     private val setProbe: (() -> LoadSet)? = null,
     /** Test seam: builds the engine for a load set instead of the native load (null = the real load). */
     private val builder: ((LoadSet) -> State)? = null,
+    /** Test seam: the Parakeet search the next load needs (null = [wantedDecoding] from the settings). */
+    private val decodingProbe: (() -> dev.flowclone.core.ParakeetDecoding?)? = null,
 ) {
     companion object {
         /** Longest a reload waits for the previous engine's running commit (20 s UI timeout + slack). */
@@ -390,6 +394,22 @@ class EngineHolder(
     /** The load set the current (or loading) engine was planned with. */
     @Volatile private var loadedSet: LoadSet = LoadSet.Default
 
+    /**
+     * D68: the English Parakeet search the next load plans ([EnginePlan.parakeetDecoding]: greedy
+     * with an empty dictionary, beam once it has words), or null when no English Parakeet loads
+     * (whisper, a Hebrew-only set, no on-device engine), so a dictionary edit then reloads nothing.
+     */
+    private fun wantedDecoding(s: Settings = app.settings.load(), set: LoadSet = wantedSet(s)): dev.flowclone.core.ParakeetDecoding? =
+        if (decodingProbe != null) decodingProbe.invoke()
+        else if (!app.caps.local || s.mockEngine || s.asrEngine != dev.flowclone.core.AsrEngine.PARAKEET || set is LoadSet.Language) null
+        else EnginePlan.parakeetDecoding(app.dev.parakeetDecodingOverride, app.dictionary.all())
+
+    /** The Parakeet search the current (or loading) engine was planned with ([wantedDecoding]). */
+    @Volatile private var loadedDecoding: dev.flowclone.core.ParakeetDecoding? = null
+
+    /** The next dictation needs a different engine than the loaded (or loading) one. */
+    private fun stale(want: LoadSet = wantedSet()): Boolean = want != loadedSet || wantedDecoding(set = want) != loadedDecoding
+
     /** "Loading the Hebrew model…" while a load for a language model runs (bubble / main screen). */
     @Volatile var loadingLabel: String? = null; private set
 
@@ -399,7 +419,9 @@ class EngineHolder(
      * dictation start, since the keyboard language can change at any time; the label is set
      * before the reload so a dictation started right now says why it has to wait. D54: with
      * both models loaded the wanted set stays [LoadSet.Both] across a switch, so nothing
-     * reloads; toggling the setting changes it, so the next dictation reloads once.
+     * reloads; toggling the setting changes it, so the next dictation reloads once. D68: the
+     * same when the Parakeet search changes (the dictionary got its first word or lost its
+     * last); the dictionary store calls this on every save. The on-device LLM is kept.
      */
     @Synchronized
     fun ensureLanguage() {
@@ -416,7 +438,7 @@ class EngineHolder(
             else -> Unit
         }
         val want = wantedSet()
-        if (want != loadedSet) {
+        if (stale(want)) {
             loadingLabel = labelFor(want, switching = true)
             keepLlmForSwitch((_state.value as? State.Ready)?.core)
             freeEngine()
@@ -460,13 +482,13 @@ class EngineHolder(
             // (one model in RAM: [load] waits for the free). Stays Loading throughout.
             while (true) {
                 val stale = synchronized(this@EngineHolder) {
-                    if (wantedSet() == loadedSet) {
+                    if (!stale()) {
                         _state.value = next
                         loadingLabel = null
                         null
                     } else next
                 } ?: break
-                Log.i("FlowEngine", "language changed during the load: dropping the $loadedSet model")
+                Log.i("FlowEngine", "language or dictionary changed during the load: dropping the $loadedSet model")
                 synchronized(this@EngineHolder) { keepLlmForSwitch((stale as? State.Ready)?.core) }
                 drop(stale)
                 next = load()
@@ -666,13 +688,15 @@ class EngineHolder(
         val set = wantedSet(s)
         loadingLabel = labelFor(set, switching = loadingLabel != null || set != loadedSet)
         loadedSet = set
+        val decoding = wantedDecoding(s, set)
+        loadedDecoding = decoding
         builder?.let { return it(set) }
-        val hebrew = hebrewModel()?.let { (path, m) -> HebrewModels.languageModel(path, m, app.dev.parakeetDecoding) }
+        val hebrew = hebrewModel()?.let { (path, m) -> HebrewModels.languageModel(path, m, HebrewModels.decoding(app.dev.parakeetDecodingOverride)) }
         val local = if (!app.caps.local && !s.mockEngine) EnginePlan.Plan.Missing("This build has no on-device engine.")
         else EnginePlan.plan(
             s, app.settings.modelPath, app.settings.llmModelPath, { File(it).isFile }, threads,
             parakeetPath = app.settings.parakeetPath, isModelDir = { ParakeetFiles.isModelDir(File(it)) },
-            parakeetDecoding = app.dev.parakeetDecoding,
+            parakeetDecoding = decoding ?: dev.flowclone.core.ParakeetDecoding.GREEDY,
             language = app.effectiveLanguage(s), hebrew = hebrew, keepBoth = s.keepBothLanguages,
         )
         return when (val plan = EngineRoute.plan(local, app.dev.load(), app.caps)) {
