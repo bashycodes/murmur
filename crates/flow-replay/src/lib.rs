@@ -362,7 +362,7 @@ fn commit(
 ) -> Result<CommitResult, String> {
     let core = FlowCore::from_engines(asr, cleaner);
     let mut s = session.clone();
-    s.ring_capacity_samples = s.ring_capacity_samples.max(pcm.len() + 16_000);
+    s.fit_ring_to(pcm.len());
     core.start_session(s).map_err(|e| e.to_string())?;
     core.set_context(ctx.clone());
     // 100 ms frames, like the shells (unpaced: nothing here is live).
