@@ -38,7 +38,6 @@ const BOOL_FIELDS = [
   "live_preview",
   "learn_from_edits",
   "spoken_cleanup",
-  "builtin_terms",
 ] as const;
 
 function showModel(st: ModelStatus): void {

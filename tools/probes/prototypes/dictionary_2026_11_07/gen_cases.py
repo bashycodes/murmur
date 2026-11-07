@@ -9,7 +9,8 @@ Writes next to this script:
                   the prompt length / latency runs
 
 Groups (first letter of the id): P a near spelling of a user entry, B a
-near spelling of a built-in name (dictionary::BUILTIN_TERMS), N an ordinary
+near spelling of a public product name not in the dictionary (D64 first
+shipped a built-in list of such names; it was removed), N an ordinary
 word that resembles an entry and must stay, K a tidy line with no entry
 near (the prompt must stay the no-dictionary prompt). Every sentence and
 name is invented; nothing comes from a real dictation.

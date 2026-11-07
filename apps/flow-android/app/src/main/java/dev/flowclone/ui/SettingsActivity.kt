@@ -492,8 +492,6 @@ class SettingsActivity : Activity() {
             card {
                 toggleRow("Auto-format", "Punctuation, quotes, fillers and corrections (\"comma\", \"quote … unquote\", \"um\", \"scratch that\", \"five dollars\"); runs with or without AI cleanup. Off = exactly what you said", s.spokenCleanup)
                     .onChange { on -> applyNow { copy(spokenCleanup = on) } }
-                toggleRow("Known product names", "AI cleanup also spells common product names right (TickTick, WhatsApp, GitHub, Wi-Fi…), next to your dictionary", s.builtinTerms)
-                    .onChange { on -> applyNow { copy(builtinTerms = on) } }
             }
             sectionLabel("DICTATION LANGUAGE")
             val effective = note("")

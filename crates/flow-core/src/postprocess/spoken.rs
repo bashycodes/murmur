@@ -465,7 +465,10 @@ fn is_number_start(w: &str) -> bool {
 }
 
 /// 3. Stutters.
-fn stutters(toks: Vec<Tok>) -> Vec<Tok> {
+///
+/// A repeat that is a dictionary term once joined or spaced ("bop bop" for
+/// an entry BopBop) is the term, not a stutter (D64).
+fn stutters(toks: Vec<Tok>, terms: &[&str]) -> Vec<Tok> {
     let mut out: Vec<Tok> = Vec::with_capacity(toks.len());
     for t in toks {
         if let Some(p) = out.last() {
@@ -478,6 +481,7 @@ fn stutters(toks: Vec<Tok>) -> Vec<Tok> {
                 // "five five five" is a phone number, not a stutter.
                 && number_word(&a).is_none()
                 && a != "oh"
+                && !crate::cleanup::terms::names_a_term(terms, &format!("{a} {b}"))
             {
                 out.pop();
             }
@@ -1363,6 +1367,12 @@ pub fn tidy_whitespace(text: &str) -> String {
 
 /// Run the whole pass. Returns `text` unchanged when nothing applies.
 pub fn spoken_cleanup(text: &str) -> String {
+    spoken_cleanup_keeping(text, &[])
+}
+
+/// [`spoken_cleanup`] that keeps a repeated word whose repeat is one of
+/// `terms` (the user's dictionary vocabulary).
+pub fn spoken_cleanup_keeping(text: &str, terms: &[&str]) -> String {
     let toks = tokenize(text);
     if toks.is_empty() {
         return String::new();
@@ -1371,7 +1381,7 @@ pub fn spoken_cleanup(text: &str) -> String {
     let toks = unglue_currency(toks);
     let toks = spoken_punctuation(toks);
     let toks = fillers(toks);
-    let toks = stutters(toks);
+    let toks = stutters(toks, terms);
     let toks = backtrack(toks);
     let toks = commands::spoken_commands(toks);
     let toks = itn(toks);
@@ -1977,6 +1987,20 @@ mod tests {
         ] {
             assert_eq!(t(s), s, "{s}");
         }
+    }
+
+    #[test]
+    fn a_repeat_that_is_a_dictionary_term_is_kept() {
+        let t = "Put it in bop bop and the the list.";
+        assert_eq!(
+            spoken_cleanup_keeping(t, &["BopBop"]),
+            "Put it in bop bop and the list."
+        );
+        assert_eq!(spoken_cleanup(t), "Put it in bop and the list.");
+        assert_eq!(
+            spoken_cleanup_keeping(t, &["Quillmate"]),
+            "Put it in bop and the list."
+        );
     }
 
     #[test]
