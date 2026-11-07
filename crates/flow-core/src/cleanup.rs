@@ -904,6 +904,9 @@ const HELP_WORDS: &[&str] = &[
     "colon",
     "semicolon",
     "dot",
+    // D67: how a code name is written.
+    "underscore",
+    "underscores",
 ];
 /// Two-word cues; single "question" / "line" / "mean" are ordinary words
 /// (the LLM turned "Quick question, do we…" into "Quick question: do we…").
@@ -917,6 +920,13 @@ const HELP_PHRASES: &[&str] = &[
     "new line",
     "new paragraph",
     "full stop",
+    // D67: how a code name is written; a lone "caps" or "case" is a word.
+    "in caps",
+    "all caps",
+    "camel case",
+    "snake case",
+    "pascal case",
+    "kebab case",
 ];
 
 /// Could the LLM still improve `text` (the deterministic pass's output)?
@@ -1012,6 +1022,11 @@ whole sentence. \"open paren ... close paren\" and \"in parentheses X\" wrap the
 an aside such as \"in parentheses which ...\" closes right before the sentence goes on.
 - A command word used as an ordinary word stays a word: \"a quote for the roof\", \"the trial period\", \"the Oxford \
 comma\", \"put the area code in parentheses\".
+- Code names: a name said with its form (\"in caps\", \"with underscores\", \"underscore\", \"snake case\", \"camel \
+case\", \"dash\" or \"dot\" between its words) is written in that form without the format words (\"retry limit in \
+caps with underscores\" → RETRY_LIMIT, \"parse date in camel case\" → parseDate); an environment variable or constant \
+name is caps with underscores even when no form is said; a technical name with a number takes its usual written form \
+(\"m p three\" → MP3). In their ordinary sense these words stay.
 - Write numbers, money, percentages, times (eleven forty → 11:40), dates (the fifth → the 5th) and phone numbers \
 as digits, and a code read digit by digit as one run (four one seven two → 4172); am/pm in lowercase (7 am, also for \
 spoken \"A M\"); temperatures and angles with ° (20°, -3°C), but \"degrees of freedom\" and \"a degree in law\" \
@@ -1046,6 +1061,25 @@ fn style_rule_for(s: Style, v: PromptVersion) -> Option<&'static str> {
 /// lowercase, as dictation arrives; none overlaps an eval or benchmark
 /// case. (app, category, style, transcript, cleaned).
 type Example = (&'static str, AppCategory, Style, &'static str, &'static str);
+/// D67: the two code-name few-shots prompt v2 and v5 share (v5 has room
+/// for only these two under the local engine's 4096-token context): a name
+/// said with its form, and an environment variable named without one.
+pub(crate) const CODE_NAME_SHOTS: [Example; 2] = [
+    (
+        "Slack",
+        AppCategory::WorkChat,
+        Style::Casual,
+        "the helper is called parse invoice date in camel case and it lives in utils",
+        "The helper is called parseInvoiceDate and it lives in utils",
+    ),
+    (
+        "Notes",
+        AppCategory::Other,
+        Style::Formal,
+        "before the deploy export log verbosity as an environment variable set to two",
+        "Before the deploy, export LOG_VERBOSITY as an environment variable set to 2.",
+    ),
+];
 const EXAMPLES: &[Example] = &[
     (
         "Messages",
@@ -1182,6 +1216,46 @@ const EXAMPLES: &[Example] = &[
         Style::Formal,
         "our neighbour's dog in parentheses who barks at every bus was asleep by six P M and after that the street went quiet",
         "Our neighbour's dog (who barks at every bus) was asleep by 6 pm, and after that the street went quiet.",
+    ),
+    // D67: code names said with their form, an environment variable named
+    // without one, a technical name with its number, and the same words in
+    // prose. Made up; none is a parity-eval line.
+    (
+        "Slack",
+        AppCategory::WorkChat,
+        Style::Casual,
+        "the key is retry budget in caps with underscores and it defaults to ten",
+        "The key is RETRY_BUDGET and it defaults to 10",
+    ),
+    (
+        "Notes",
+        AppCategory::Other,
+        Style::Formal,
+        "store it in a column named created by user in snake case",
+        "Store it in a column named created_by_user.",
+    ),
+    (
+        "Notes",
+        AppCategory::Other,
+        Style::Formal,
+        "the file is called draft underscore notes underscore old",
+        "The file is called draft_notes_old.",
+    ),
+    CODE_NAME_SHOTS[0],
+    CODE_NAME_SHOTS[1],
+    (
+        "Notes",
+        AppCategory::Other,
+        Style::Formal,
+        "our router still runs w p a two so the old tablet can't join",
+        "Our router still runs WPA2, so the old tablet can't join.",
+    ),
+    (
+        "Messages",
+        AppCategory::PersonalChat,
+        Style::Casual,
+        "the kids drew a snake with a dot for each eye and it's all caps and glitter",
+        "The kids drew a snake with a dot for each eye and it's all caps and glitter",
     ),
     ("Slack", AppCategory::WorkChat, Style::Formal, "um, hmm, uh.", ""),
 ];
@@ -2167,10 +2241,11 @@ mod tests {
         ] {
             assert!(p.system.contains(phrase), "{phrase}");
         }
-        // Prompt v2 is ~2x the old prefix; keep it bounded (prefill cost).
-        assert!(p.system.len() < 2600, "{}", p.system.len());
+        // Prompt v2 is ~2x the old prefix; keep it bounded (prefill cost;
+        // D67's code-names rule took it from ~2.5k to ~3.0k characters).
+        assert!(p.system.len() < 3100, "{}", p.system.len());
         // Few-shot turns in the user-message format.
-        assert_eq!(p.examples.len(), 21); // 19 + the two D63 number shots
+        assert_eq!(p.examples.len(), 28); // 19 + 2 D63 number shots + 7 D67 code-name shots
         assert!(p.examples[0]
             .0
             .starts_with("APP: Messages | CATEGORY: personal chat\nTRANSCRIPT: «"));
@@ -2307,6 +2382,9 @@ mod tests {
             ("He left a second ago.", PersonalChat),
             ("It was the first time we met.", PersonalChat),
             ("The review moved to 11:40 on the 3rd.", WorkChat),
+            // D67: "caps" or "case" alone is an ordinary word.
+            ("The team ordered new caps for the match.", WorkChat),
+            ("Put the snake back in its case.", PersonalChat),
         ] {
             assert!(!llm_can_help(t, cat, Some("en")), "{t:?}");
         }
@@ -2331,6 +2409,10 @@ mod tests {
             ("Don't forget that we have dinner at eight.", PersonalChat),
             ("Move the review to eleven forty.", WorkChat),
             ("The report is due on the twelfth.", WorkChat),
+            // D67: a spoken code-name form.
+            ("Set the key to retry limit in caps with underscores.", WorkChat),
+            ("The helper is parse date in camel case.", WorkChat),
+            ("The setting is cache underscore size.", WorkChat),
         ] {
             assert!(llm_can_help(t, cat, Some("en")), "{t:?}");
         }
@@ -2694,6 +2776,33 @@ mod tests {
         assert!(own
             .iter()
             .any(|(_, a)| a.contains(", not ") && !a.contains("<li>")));
+    }
+
+    #[test]
+    fn code_names_rule_and_shots_reach_v2_and_v5_and_v5_stays_in_context() {
+        // D67: both prompts name the spoken forms and show the shared shots
+        // before the closing "only filler" turn.
+        for v in [PromptVersion::V2, PromptVersion::V5] {
+            let p = versioned(Style::Casual, v);
+            assert!(p.system.contains("- Code names: "), "{v:?}");
+            assert!(p.system.contains("RETRY_LIMIT"), "{v:?}");
+            let n = p.examples.len();
+            for shot in &CODE_NAME_SHOTS {
+                let (u, a) = render_example(shot, v);
+                let i = p.examples.iter().position(|e| *e == (u.clone(), a.clone()));
+                assert!(i.is_some_and(|i| i < n - 1), "{v:?} {u}");
+            }
+        }
+        // v5 sits close to the local engine's 4096-token context (D64: an
+        // overflow fails every call); its static part stays under ~13.3k
+        // characters (~3.65k tokens), leaving room for the dictation.
+        let v5 = versioned(Style::Casual, PromptVersion::V5);
+        let chars = v5.system.len()
+            + v5.examples
+                .iter()
+                .map(|(u, a)| u.len() + a.len())
+                .sum::<usize>();
+        assert!(chars < 13_300, "{chars}");
     }
 
     #[test]
