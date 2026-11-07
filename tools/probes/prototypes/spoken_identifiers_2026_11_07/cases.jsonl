@@ -1,0 +1,38 @@
+{"id": "I01", "input": "set max retry count in caps with underscores to five", "app_category": "other"}
+{"id": "I02", "input": "the constant is default page size all caps with underscores", "app_category": "other"}
+{"id": "I03", "input": "call the function load user profile in snake case", "app_category": "other"}
+{"id": "I04", "input": "name the variable order total in camel case", "app_category": "other"}
+{"id": "I05", "input": "the new class is invoice printer in pascal case", "app_category": "other"}
+{"id": "I06", "input": "check out the branch fix dash login dash timeout", "app_category": "other"}
+{"id": "I07", "input": "the setting is cache underscore ttl underscore seconds", "app_category": "other"}
+{"id": "I08", "input": "open config dot local dot json and change the port", "app_category": "other"}
+{"id": "I09", "input": "run it again with the flag dash dash dry dash run", "app_category": "other"}
+{"id": "I10", "input": "rename it to user id in caps with underscores please", "app_category": "other"}
+{"id": "I11", "input": "the field is called last seen at in snake case", "app_category": "other"}
+{"id": "I12", "input": "make the method name is ready for review in camel case", "app_category": "other"}
+{"id": "C01", "input": "export the environment variable queue depth limit before you start the worker", "app_category": "other"}
+{"id": "C02", "input": "the env var poll interval millis is missing on staging", "app_category": "other"}
+{"id": "C03", "input": "add a constant called max upload bytes at the top of the module", "app_category": "other"}
+{"id": "C04", "input": "set the environment variable sentry dsn on the build server", "app_category": "other"}
+{"id": "C05", "input": "we read the database host from the env var called db host", "app_category": "other"}
+{"id": "C06", "input": "the environment variable feature beta search is set to true in production", "app_category": "other"}
+{"id": "V01", "input": "we still build with python three twelve on the old runner", "app_category": "other"}
+{"id": "V02", "input": "save the file as utf eight before you commit it", "app_category": "other"}
+{"id": "V03", "input": "the camera only records h two six four video", "app_category": "other"}
+{"id": "V04", "input": "the new board has a risc five chip", "app_category": "other"}
+{"id": "V05", "input": "the server only listens on I P V six", "app_category": "other"}
+{"id": "V06", "input": "the docker image is built for arm sixty four only", "app_category": "other"}
+{"id": "V07", "input": "bump the package to version two point four point one", "app_category": "other"}
+{"id": "V08", "input": "that old laptop is x eighty six so the new build won't run on it", "app_category": "other"}
+{"id": "N01", "input": "write your name in caps at the top of the form", "app_category": "other"}
+{"id": "N02", "input": "the underscore key on my keyboard keeps sticking", "app_category": "other"}
+{"id": "N03", "input": "she added a dash of lemon to the soup and it was perfect", "app_category": "other"}
+{"id": "N04", "input": "the camel walked slowly across the sand at sunset", "app_category": "other"}
+{"id": "N05", "input": "the zoo moved the snake case closer to the entrance", "app_category": "other"}
+{"id": "N06", "input": "dot the i's and cross the t's before you send it", "app_category": "other"}
+{"id": "N07", "input": "the team ordered new caps with the club logo on them", "app_category": "other"}
+{"id": "N08", "input": "if you type in all caps people think you are shouting", "app_category": "other"}
+{"id": "N09", "input": "his version of the story was very different from hers", "app_category": "other"}
+{"id": "N10", "input": "we drove eighty six miles to see the lake on sunday", "app_category": "other"}
+{"id": "N11", "input": "the server crashed again last night so I restarted it this morning", "app_category": "other"}
+{"id": "N12", "input": "can you underline the title and make a dash for the bus after", "app_category": "other"}
