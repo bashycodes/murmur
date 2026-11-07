@@ -1,7 +1,6 @@
 package dev.flowclone.ui.tabs
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.ViewGroup
@@ -12,6 +11,7 @@ import dev.flowclone.data.DictionaryPages.Kind
 import dev.flowclone.learn.Suggestion
 import dev.flowclone.learn.Suggestions
 import dev.flowclone.ui.DevUi
+import dev.flowclone.ui.SuggestionDialog
 import dev.flowclone.ui.TypeScale
 
 /**
@@ -57,29 +57,18 @@ internal class DictionaryTab(activity: Activity, ui: DevUi) : EntryTab(activity,
         }
     }
 
-    private fun suggestionDialog(s: Suggestion) {
-        AlertDialog.Builder(activity)
-            .setTitle("Add “${s.word}”?")
-            .setMessage(
-                "You changed “${s.heard}” to “${s.word}” after a dictation. Add the word to teach its spelling, " +
-                    "or add it as a fix so “${s.heard}” is always replaced. Dismiss = never suggested again.",
-            )
-            .setPositiveButton("Add word") { _, _ -> addSuggestion(s.word, false) }
-            .setNeutralButton("Add as fix") { _, _ -> addSuggestion(s.word, true) }
-            .setNegativeButton("Dismiss") { _, _ -> dismissSuggestion(s.word) }
-            .show()
-    }
+    private fun suggestionDialog(s: Suggestion) = SuggestionDialog.show(
+        activity, s, "Add “${s.word}”?",
+        "You changed “${s.heard}” to “${s.word}” after a dictation. Add the word to teach its spelling, " +
+            "or add it as a fix so “${s.heard}” is always replaced. Dismiss = never suggested again.",
+    ) { done(it) }
 
-    private fun addSuggestion(word: String, asFix: Boolean) {
-        var entry: DictEntry? = null
-        app.suggestions.update { cur -> cur.accept(word, asFix).let { (next, e) -> entry = e; next } }
-        entry?.let { app.dictionary.upsert(it); ui.announce("Added ${it.replacement ?: it.word}") }
-        fill()
-    }
+    private fun addSuggestion(word: String, asFix: Boolean) = done(SuggestionDialog.add(app, word, asFix))
 
-    private fun dismissSuggestion(word: String) {
-        app.suggestions.update { it.dismiss(word) }
-        ui.announce("Dismissed $word")
+    private fun dismissSuggestion(word: String) = done(SuggestionDialog.dismiss(app, word))
+
+    private fun done(announcement: String) {
+        ui.announce(announcement)
         fill()
     }
 }

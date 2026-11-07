@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.Toast
+import dev.flowclone.EngineHolder
 import dev.flowclone.FlowApp
 import dev.flowclone.R
 import dev.flowclone.data.HistoryPages
@@ -23,6 +24,8 @@ import dev.flowclone.data.Retention
 import dev.flowclone.data.SettingsPages
 import dev.flowclone.data.SettingsSummary
 import dev.flowclone.data.ShellPages
+import dev.flowclone.learn.HistoryCorrection
+import dev.flowclone.learn.Suggestion
 import java.util.Date
 import kotlin.concurrent.thread
 
@@ -238,6 +241,7 @@ class HistoryActivity : Activity() {
                 card { selectableText(HistoryView.text(r, raw = true), 14f, p.muted) }
             }
             action("Copy", DevUi.Style.PRIMARY) { copy(HistoryPages.copyText(r)) }
+            if (!r.isCommand && HistoryView.text(r, raw = false).isNotBlank()) action(CORRECT) { correct(r) }
             if (HistoryPages.notInserted(r)) action(REINSERT) { offerInsert(r) }
             if (RetryLogic.canRetry(r, r.id in audio)) {
                 if (r.id in app.retrying.value) note("Retrying with your current settings…")
@@ -262,6 +266,68 @@ class HistoryActivity : Activity() {
                 HistoryPages.timings(r).takeIf { it.isNotEmpty() }?.let { infoRow("Timings", it) }
             }
             action("Delete dictation", DevUi.Style.DANGER) { delete(r) { finish() } }
+        }
+    }
+
+    /**
+     * D68 "Correct the text": edit the dictation's text. The correction is kept as the next
+     * version (like a retry); learn-from-edits turns the changed words into Dictionary
+     * suggestions, and a word changed to a capitalised name is offered for the dictionary now.
+     */
+    private fun correct(r: HistoryRow) {
+        val before = HistoryView.text(r, raw = false)
+        val edit = android.widget.EditText(this).apply {
+            setText(before); isSingleLine = false; minLines = 3; setSelection(text.length)
+            contentDescription = CORRECT_TITLE
+        }
+        val box = android.widget.FrameLayout(this).apply { setPadding(ui.dp(20), ui.dp(8), ui.dp(20), 0); addView(edit) }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(CORRECT_TITLE)
+            .setView(box)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Save") { _, _ -> saveCorrection(r, before, edit.text.toString().trim()) }
+            .show()
+    }
+
+    private fun saveCorrection(r: HistoryRow, before: String, after: String) {
+        thread(name = "history-correct") {
+            val saved = runCatching { app.history.applyCorrection(r.id, after) }
+            val old = saved.getOrNull()
+            var names = emptyList<Suggestion>()
+            var learned = false
+            if (old != null) {
+                // The core runs learn-from-edits; without a loaded engine the words are not learned (said below).
+                val core = (app.engine.state.value as? EngineHolder.State.Ready)?.core
+                if (core != null) {
+                    learned = true
+                    app.suggestions.update { cur ->
+                        val l = HistoryCorrection.learn(
+                            before, after, cur, app.dictionary.all(), r.appId.orEmpty(), System.currentTimeMillis(), core::learnEdit,
+                        )
+                        names = l.names
+                        l.next
+                    }
+                }
+                app.historyRevision.value = app.historyRevision.value + 1
+            }
+            val error = saved.exceptionOrNull()
+            val (message, warn) = correctionMessage(error, saved = old != null, learned = learned)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (warn) Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                ui.announce(message)
+                load()
+                offerNames(names)
+            }
+        }
+    }
+
+    /** D68: offer each name in turn; Back leaves the rest under Dictionary → Suggestions. */
+    private fun offerNames(names: List<Suggestion>) {
+        val s = names.firstOrNull() ?: return
+        SuggestionDialog.offerName(this, s) {
+            if (it.isNotEmpty()) ui.announce(it)
+            offerNames(names.drop(1))
         }
     }
 
@@ -295,6 +361,24 @@ class HistoryActivity : Activity() {
     companion object {
         const val EXTRA_ID = "id"
         const val REINSERT = "Insert with the bubble"
+        /** D68: the detail page's correction action and its dialog's title. */
+        const val CORRECT = "Correct the text"
+        const val CORRECT_TITLE = "Correct this dictation"
+        const val CORRECT_FAILED = "Couldn't save the correction"
+        const val CORRECT_SAVED = "Correction saved"
+        const val CORRECT_UNCHANGED = "Nothing changed"
+
+        /**
+         * D68: what a saved correction tells the user, and whether it also needs a toast (a failed
+         * save, or words not learned because the engine isn't Ready) beyond the TalkBack line.
+         */
+        fun correctionMessage(error: Throwable?, saved: Boolean, learned: Boolean): Pair<String, Boolean> = when {
+            error != null -> (CORRECT_FAILED + (error.message?.let { ": $it" } ?: "")) to true
+            !saved -> CORRECT_UNCHANGED to false
+            !learned -> CORRECT_NOT_LEARNED to true
+            else -> CORRECT_SAVED to false
+        }
+        const val CORRECT_NOT_LEARNED = "Correction saved. Its words were not learned: the speech engine isn't loaded yet."
         const val REINSERT_NEEDS_SERVICE = "Turn on the bubble first (menu → Start / show bubble), then try again"
         const val LIST_TITLE = "History"
         const val DETAIL_TITLE = "Dictation"

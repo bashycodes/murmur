@@ -135,6 +135,29 @@ class HistoryUiTest {
         assertEquals(HistoryActivity.REINSERT_NEEDS_SERVICE, ShadowToast.getTextOfLatestToast())
     }
 
+    /** D68: a correction is saved as the next version; with no engine loaded the user is told its words were not learned. */
+    @Test fun aCorrectionWithoutALoadedEngineSaysItsWordsWereNotLearned() {
+        add("ask gina about it")
+        val id = app.history.recent().first().id
+        org.junit.Assume.assumeFalse(app.engine.state.value is dev.flowclone.EngineHolder.State.Ready)
+        val a = settle(Robolectric.buildActivity(HistoryActivity::class.java, HistoryActivity.detailIntent(ctx, id)).setup().visible().get()) { "DETAILS" in texts(it) }
+        walk(a.window.decorView).first { it is android.widget.Button && it.text == HistoryActivity.CORRECT }.performClick()
+        val d = ShadowAlertDialog.getLatestAlertDialog()
+        walk(d.window!!.decorView).filterIsInstance<android.widget.EditText>().single().setText("ask Jenna about it")
+        d.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
+        settle(a) { ShadowToast.getTextOfLatestToast() == HistoryActivity.CORRECT_NOT_LEARNED }
+        assertEquals(HistoryActivity.CORRECT_NOT_LEARNED, ShadowToast.getTextOfLatestToast())
+        assertEquals("ask Jenna about it", app.history.row(id)!!.finalText)
+    }
+
+    @Test fun aFailedCorrectionSaysSoInsteadOfNothingChanged() {
+        val (msg, warn) = HistoryActivity.correctionMessage(IllegalStateException("disk full"), saved = false, learned = false)
+        assertEquals("${HistoryActivity.CORRECT_FAILED}: disk full", msg)
+        assertTrue(warn)
+        assertEquals(HistoryActivity.CORRECT_UNCHANGED to false, HistoryActivity.correctionMessage(null, saved = false, learned = false))
+        assertEquals(HistoryActivity.CORRECT_SAVED to false, HistoryActivity.correctionMessage(null, saved = true, learned = true))
+    }
+
     @Test fun insertedDetailHasNoReinsert() {
         add("went in")
         val id = app.history.recent().first().id

@@ -334,12 +334,13 @@ class DevStore(private val kv: KeyValue, private val caps: BuildCaps, private va
         set(v) = kv.edit { putString(SERVER_ASR_MODEL, v) }
 
     /**
-     * D22: Parakeet search mode for the on-device engine. Default greedy: one recognizer, ≈ 0.6 GB
-     * less RAM than `auto` (which adds a beam recognizer for dictionary hotwords).
+     * D22 / D68: a Developer override of the on-device Parakeet search mode; null (the default) =
+     * follow the dictionary ([EnginePlan.parakeetDecoding]: greedy while it is empty, beam with
+     * its words as hotwords once it has some, one recognizer either way).
      */
-    var parakeetDecoding: dev.flowclone.core.ParakeetDecoding
-        get() = dev.flowclone.core.ParakeetDecoding.fromWire(kv.getString(PARAKEET_DECODING)) ?: dev.flowclone.core.ParakeetDecoding.GREEDY
-        set(v) = kv.edit { putString(PARAKEET_DECODING, v.wire) }
+    var parakeetDecodingOverride: dev.flowclone.core.ParakeetDecoding?
+        get() = dev.flowclone.core.ParakeetDecoding.fromWire(kv.getString(PARAKEET_DECODING))
+        set(v) = kv.edit { if (v == null) remove(PARAKEET_DECODING) else putString(PARAKEET_DECODING, v.wire) }
 
     companion object {
         const val PARAKEET_DECODING = "parakeet_decoding"

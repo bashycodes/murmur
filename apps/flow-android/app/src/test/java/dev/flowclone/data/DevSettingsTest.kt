@@ -1,5 +1,6 @@
 package dev.flowclone.data
 
+import dev.flowclone.core.ParakeetDecoding
 import dev.flowclone.data.DevSettingsForm.Field
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -195,12 +196,15 @@ class DevSettingsTest {
         assertTrue(remote.allowServer); assertFalse(remote.allowClient)
     }
 
-    @Test fun parakeetDecodingDefaultsGreedyAndPersists() {
+    /** D68: no override by default (the dictionary decides); an override persists and clears. */
+    @Test fun parakeetDecodingOverrideDefaultsUnsetAndPersists() {
         val kv = MemKV()
         val store = DevStore(kv, BuildCaps.LOCAL, RotBox)
-        assertEquals(dev.flowclone.core.ParakeetDecoding.GREEDY, store.parakeetDecoding)
-        store.parakeetDecoding = dev.flowclone.core.ParakeetDecoding.AUTO
-        assertEquals(dev.flowclone.core.ParakeetDecoding.AUTO, DevStore(kv, BuildCaps.LOCAL, RotBox).parakeetDecoding)
+        assertNull(store.parakeetDecodingOverride)
+        store.parakeetDecodingOverride = ParakeetDecoding.AUTO
+        assertEquals(ParakeetDecoding.AUTO, DevStore(kv, BuildCaps.LOCAL, RotBox).parakeetDecodingOverride)
+        store.parakeetDecodingOverride = null
+        assertNull(DevStore(kv, BuildCaps.LOCAL, RotBox).parakeetDecodingOverride)
     }
 
     @Test fun debugLogDefaultsOffInEveryFlavourAndPersists() {

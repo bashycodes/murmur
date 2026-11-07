@@ -58,6 +58,14 @@ impl ParakeetAsr {
             cfg.hotwords = s > 0.0;
             cfg.hotwords_score = s;
         }
+        // Same, for the beam width (D68's latency probe; the default is D12's 4).
+        if let Some(b) = std::env::var("FLOW_PARAKEET_BEAM")
+            .ok()
+            .and_then(|s| s.parse::<usize>().ok())
+            .filter(|&b| b > 0)
+        {
+            cfg.max_active_paths = b;
+        }
         let engine = ParakeetEngine::load(&cfg).map_err(|e| AsrError::Load(e.to_string()))?;
         Ok(Self {
             engine,

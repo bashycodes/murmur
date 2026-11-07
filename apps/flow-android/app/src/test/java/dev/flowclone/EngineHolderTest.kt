@@ -6,6 +6,7 @@ import dev.flowclone.core.FlowCore
 import dev.flowclone.core.FlowCoreLoader
 import dev.flowclone.core.ModelConfig
 import dev.flowclone.core.AsrEngine
+import dev.flowclone.core.ParakeetDecoding
 import dev.flowclone.data.LoadSet
 import dev.flowclone.data.LoadedAsr
 import dev.flowclone.core.CommitResult
@@ -24,6 +25,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -73,7 +75,7 @@ class EngineHolderTest {
     /** The next build of [k] fails (the speech model did not load). */
     private val failing = ConcurrentHashMap.newKeySet<String>()
 
-    private fun holder() = EngineHolder(app, loader = loader, setProbe = { want }, builder = { set ->
+    private fun holder(decodingProbe: (() -> ParakeetDecoding?)? = null) = EngineHolder(app, loader = loader, setProbe = { want }, decodingProbe = decodingProbe, builder = { set ->
         val k = key(set)
         othersFreedAtStart[k] = cores.values.all { it.unloaded }
         built += k
@@ -147,6 +149,54 @@ class EngineHolderTest {
         waitFor("ready") { h.state.value is EngineHolder.State.Ready }
         assertEquals("fake he", (h.state.value as EngineHolder.State.Ready).description)
         assertEquals(listOf("he"), built.toList())
+    }
+
+    /**
+     * D68: the dictionary's first word changes the Parakeet search: one reload of the same model
+     * set, keeping the on-device LLM (like a language switch); an edit that keeps the search
+     * reloads nothing.
+     */
+    @Test fun aDecodingChangeReloadsOnceAndKeepsTheLlm() {
+        want = LoadSet.Default
+        var decoding: ParakeetDecoding? = ParakeetDecoding.GREEDY
+        val h = holder(decodingProbe = { decoding })
+        h.ensureLoaded()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        h.ensureLanguage() // a dictionary edit that keeps the search
+        assertEquals(listOf("default"), built.toList())
+        val first = cores["default"]!!
+
+        decoding = ParakeetDecoding.BEAM // the first word was added
+        h.ensureLanguage()
+        waitFor("reloaded") { built.size == 2 && h.state.value is EngineHolder.State.Ready }
+        assertEquals("the old engine's LLM was kept while it was loaded", listOf(true), first.keepLlmCalls.toList())
+        assertTrue(first.unloaded)
+        h.ensureLanguage()
+        assertEquals(listOf("default", "default"), built.toList())
+    }
+
+    /** D68: a dictionary save never frees the core under a running dictation; the switch waits for it to end. */
+    @Test fun aDictionaryChangeWaitsForTheDictationToEnd() {
+        want = LoadSet.Default
+        var decoding: ParakeetDecoding? = ParakeetDecoding.GREEDY
+        val h = holder(decodingProbe = { decoding })
+        h.ensureLoaded()
+        waitFor("ready") { h.state.value is EngineHolder.State.Ready }
+        val first = cores["default"]!!
+        app.dictationBusy.value = true
+        try {
+            decoding = ParakeetDecoding.BEAM
+            h.dictionaryChanged()
+            Thread.sleep(200)
+            assertEquals("no reload while dictating", listOf("default"), built.toList())
+            assertFalse(first.unloaded)
+            assertSame(first, (h.state.value as EngineHolder.State.Ready).core)
+        } finally {
+            app.dictationBusy.value = false
+        }
+        waitFor("reloaded after the dictation") { built.size == 2 && h.state.value is EngineHolder.State.Ready }
+        assertTrue(first.unloaded)
+        assertEquals(listOf(true), first.keepLlmCalls.toList())
     }
 
     @Test fun withBothLoadedAKeyboardSwitchNeverReloadsAndTogglingReloadsOnce() {
