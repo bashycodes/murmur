@@ -10,10 +10,6 @@
 //! two of them negatives (items inside a sentence, "not" as a contrast).
 //! Everything else, the casual STYLE line included, is v4c's.
 //!
-//! D67 (docs/findings/2026-11-07-spoken-identifiers.md) adds a short
-//! code-names rule and two few-shots; v5 sits only ~650 tokens under the
-//! local engine's 4096-token context, so it gets fewer shots than v2.
-//!
 //! Few-shot inputs share no 5-word run with the synthetic probe cases
 //! (`tools/probes/prototypes/lists_corrections_2026_11_06/variants.py`).
 
@@ -46,11 +42,6 @@ whole sentence. \"in parentheses X\" or \"open paren ... close paren\" put the w
 - A command word used in its ordinary sense stays a word (\"a quote for the gutters\", \"the grace period\", \"the new \
 paragraph reads well\"). \"in parentheses\" or \"in brackets\" that says where something is written (\"the total is in \
 brackets on the invoice\") stays words.
-- Code names: a name said with its form (\"in caps\", \"with underscores\", \"underscore\", \"snake case\", \"camel \
-case\", \"dash\" or \"dot\" between its words) is written in that form without the format words (\"retry limit in \
-caps with underscores\" -> RETRY_LIMIT, \"parse date in camel case\" -> parseDate); an environment variable or constant \
-name is caps with underscores even when no form is said; a technical name with a number takes its usual written form \
-(\"m p three\" -> MP3). In their ordinary sense these words stay.
 - Write numbers as digits: counts, money ($80), percentages (15%), times (4:15, 7 am), dates, phone numbers, ages (a \
 9-year-old), degrees (20°), and measures with the short unit (3 kg, 40 cm, 2 lbs, 10x12).
 - Put a comma before an \"and\" that starts a clause with a time phrase (\"..., and at noon it closes\").
@@ -139,12 +130,10 @@ const LIST_AND_CORRECTION_SHOTS: &[Example] = &[
 ];
 
 /// v5's few-shots in prompt order: v4c's, then [`LIST_AND_CORRECTION_SHOTS`],
-/// then the two D67 code-name shots (`super::CODE_NAME_SHOTS`), then v4c's
-/// closing "only filler" turn.
+/// then v4c's closing "only filler" turn.
 pub(super) fn examples() -> impl Iterator<Item = &'static Example> {
     let (filler, v4c) = prompt_v4c::EXAMPLES.split_last().expect("v4c has examples");
     v4c.iter()
         .chain(LIST_AND_CORRECTION_SHOTS)
-        .chain(&super::CODE_NAME_SHOTS)
         .chain(std::iter::once(filler))
 }
