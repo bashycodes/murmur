@@ -654,7 +654,7 @@ fn llm_prefill_follows_context_and_partials_while_speaking() {
         .any(|p| p.user.contains("slack.exe"))));
     push_all(&core, &speech(500));
     assert!(wait_until(|| spy.prefills.lock().unwrap().iter().any(
-        |p| p.transcript == "hello world" && p.user.contains("slack.exe")
+        |p| p.transcript.eq_ignore_ascii_case("hello world") && p.user.contains("slack.exe")
     )));
     let n = spy.prefills.lock().unwrap().len();
     let r = core.commit();
@@ -662,6 +662,63 @@ fn llm_prefill_follows_context_and_partials_while_speaking() {
     assert!(spy.cancels.load(std::sync::atomic::Ordering::Relaxed) >= 1);
     // Unchanged context + partial: no duplicate hints.
     assert!(n <= 4, "{n} prefills");
+}
+
+/// The prefill hint carries the text prompt v2 gets at commit (the spoken
+/// rules' output), so a KV-caching cleaner reuses the transcript's tokens
+/// too, not only the user message's header.
+#[test]
+fn llm_prefill_hint_is_the_rules_text_the_commit_prompt_starts_with() {
+    #[derive(Default)]
+    struct Spy {
+        prefills: std::sync::Mutex<Vec<String>>,
+        cleaned: std::sync::Mutex<Vec<String>>,
+    }
+    impl Cleaner for Spy {
+        fn clean(&self, p: &CleanPrompt, _d: Instant) -> Result<String, CleanError> {
+            self.cleaned.lock().unwrap().push(p.transcript.clone());
+            Ok(p.transcript.clone())
+        }
+        fn prefill(&self, p: &CleanPrompt) {
+            self.prefills.lock().unwrap().push(p.transcript.clone());
+        }
+    }
+    let spy = Arc::new(Spy::default());
+    let asr = "um so the meeting moved to tuesday comma right after lunch";
+    let core = FlowCore::from_engines(Arc::new(MockAsr::new(asr)), Some(spy.clone()));
+    core.start_session(SessionConfig {
+        partial_interval_ms: Some(100),
+        llm_skip_clean: false,
+        ..Default::default()
+    })
+    .unwrap();
+    push_all(&core, &speech(500));
+    assert!(wait_until(|| spy
+        .prefills
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|t| !t.is_empty())));
+    let r = core.commit();
+    assert_eq!(r.status, CommitStatus::Formatted, "{r:?}");
+    let hint = spy
+        .prefills
+        .lock()
+        .unwrap()
+        .iter()
+        .rev()
+        .find(|t| !t.is_empty())
+        .cloned()
+        .unwrap();
+    let cleaned = spy.cleaned.lock().unwrap()[0].clone();
+    assert_ne!(
+        hint, asr,
+        "the hint is the rules' text, not the raw partial"
+    );
+    assert!(
+        cleaned.starts_with(hint.trim_end()),
+        "hint {hint:?} is not where the commit prompt {cleaned:?} starts"
+    );
 }
 
 #[test]

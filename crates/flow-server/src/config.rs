@@ -6,6 +6,12 @@ use std::path::{Path, PathBuf};
 use flow_core::config::ModelConfig;
 use serde::Deserialize;
 
+/// `[model] llm_draft` when the config sets none (D69): the cleanup
+/// model guesses up to this many tokens ahead from the transcript and
+/// checks them in one decode step. On the home server's 4-core CPU this
+/// halves the decode time of a long dictation; 0 in the config turns it off.
+pub const DEFAULT_LLM_DRAFT: usize = 4;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AuthMode {
@@ -112,7 +118,10 @@ impl Default for Config {
             ws_dead_ms: flow_protocol::WS_DEAD_S * 1000,
             llm_timeout_per_char_ms: 15,
             llm_timeout_max_ms: flow_core::config::DEFAULT_LLM_TIMEOUT_MAX_MS,
-            model: ModelConfig::default(),
+            model: ModelConfig {
+                llm_draft: Some(DEFAULT_LLM_DRAFT),
+                ..ModelConfig::default()
+            },
             tls: None,
             log: LogConfig::default(),
             debug: Default::default(),
@@ -124,7 +133,9 @@ impl Default for Config {
 
 impl Config {
     pub fn from_toml(s: &str) -> Result<Self, String> {
-        toml::from_str(s).map_err(|e| e.to_string())
+        let mut c: Self = toml::from_str(s).map_err(|e| e.to_string())?;
+        c.model.llm_draft.get_or_insert(DEFAULT_LLM_DRAFT);
+        Ok(c)
     }
 
     pub fn load(path: &Path) -> Result<Self, String> {
@@ -344,6 +355,19 @@ mod tests {
         assert_eq!(c.model.language_route(Some("he-IL")), Some("he"));
         assert_eq!(c.model.language_route(Some("auto")), None);
         assert!(Config::from_toml(s).unwrap().model.languages.is_empty());
+    }
+
+    #[test]
+    fn cleanup_drafting_is_on_unless_the_config_turns_it_off() {
+        assert_eq!(Config::default().model.llm_draft, Some(DEFAULT_LLM_DRAFT));
+        let c = Config::from_toml("[model]\nasr_path = \"m\"\n").unwrap();
+        assert_eq!(c.model.llm_draft, Some(DEFAULT_LLM_DRAFT));
+        assert_eq!(
+            Config::from_toml("").unwrap().model.llm_draft,
+            Some(DEFAULT_LLM_DRAFT)
+        );
+        let off = Config::from_toml("[model]\nllm_draft = 0\n").unwrap();
+        assert_eq!(off.model.llm_draft, Some(0));
     }
 
     #[test]
