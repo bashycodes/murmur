@@ -183,15 +183,16 @@ fn error_result(msg: String) -> CommitResult {
 /// endpoint, in-session pause segmentation, partials, "press enter").
 pub fn chunk_session(base: &SessionConfig, params: &MeetingParams) -> SessionConfig {
     let max = params.max_samples();
-    SessionConfig {
+    let mut c = SessionConfig {
         max_samples: base.max_samples.max(max),
-        ring_capacity_samples: base.ring_capacity_samples.max(max + SAMPLE_RATE),
         endpoint_silence_ms: None,
         segment_pause_ms: None,
         partial_interval_ms: None,
         press_enter_enabled: false,
         ..base.clone()
-    }
+    };
+    c.fit_ring_to(max);
+    c
 }
 
 /// Cancels a running job from any thread: no new chunk starts, and the

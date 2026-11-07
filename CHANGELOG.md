@@ -36,6 +36,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 - **Windows: the "Try it" row words every other cause too, without backend codes.** It tells apart a missing key, missing consent and a custom server without its address or model, and a failed Test names the cause in words.
 - **Windows: picking "Custom server" is saved at once.** It used to be saved only once both the server address and the model were filled in, so saving the key in between reloaded the settings, set the list back to OpenRouter and emptied the address (dictation kept using OpenRouter). Now the list always shows what dictation uses; until the address and model are set, cleanup skips your server and the next engine in the cleanup order cleans, and while cloud cleanup is on, its row in the cleanup order shows "Enter the address" or "Pick a model".
 - **Windows: "Load models" / "Test connection" with a saved custom-server key no longer fail with a bare 401.** The saved key only goes to a server you agreed to send text to; for a server not agreed to yet the page now asks first and remembers the answer, instead of calling it without the key.
+- **`flow-cli transcribe` keeps the whole clip.** A WAV longer than 30 s lost everything past the first 30 s (counted as `dropped_samples`), because the replay fills the session's audio buffer faster than the core empties it. The buffer is now sized to the clip. Live dictation is unchanged.
 
 ## [1.1.2] - 2026-11-05
 

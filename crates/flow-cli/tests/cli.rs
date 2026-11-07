@@ -269,3 +269,24 @@ fn unknown_engine_is_a_usage_error() {
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("unknown engine"));
 }
+
+#[test]
+fn long_clip_replays_without_dropping_samples() {
+    // 75 s: past the default 30 s session ring. The replay pushes faster
+    // than real time, so a ring smaller than the clip overflows.
+    let wav = tmp("long_tone.wav");
+    write_wav(&wav, 75.0, 16_000, 1);
+    let out = bin()
+        .args(["transcribe", "--mock", "long clip", "--json"])
+        .arg(&wav)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["timings"]["dropped_samples"], 0, "{v}");
+    assert_eq!(v["timings"]["audio_ms"], 75_000, "{v}");
+}
