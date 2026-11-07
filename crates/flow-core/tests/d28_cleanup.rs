@@ -51,8 +51,10 @@ fn all_text(p: &CleanPrompt) -> String {
 
 #[test]
 fn minimal_scope_sends_nothing_beyond_the_dictation() {
+    // The dictation comes near the dictionary entry, so the prompt names it
+    // (D64: only entries the text plausibly misspells are named).
     let p = build_prompt_scoped(
-        "the dictated words",
+        "the dictated words about cubernetes",
         CleanupLevel::Light,
         Style::Casual,
         &leaky_ctx(),

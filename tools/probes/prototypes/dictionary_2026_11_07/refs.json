@@ -1,0 +1,371 @@
+{
+ "_note": "synthetic dictionary-term cases, see gen_cases.py",
+ "clips": {
+  "P01": {
+   "text": "Could you pass the quill mate notes to the whole team?",
+   "checks": [
+    {
+     "name": "Quillmate",
+     "re": "Quillmate"
+    }
+   ]
+  },
+  "P02": {
+   "text": "We're driving up to Marbelford on Saturday morning.",
+   "checks": [
+    {
+     "name": "Marbleford",
+     "re": "Marbleford"
+    }
+   ]
+  },
+  "P03": {
+   "text": "The Zentroba contract renews at the end of March.",
+   "checks": [
+    {
+     "name": "Zentrova",
+     "re": "Zentrova"
+    }
+   ]
+  },
+  "P04": {
+   "text": "Ask Nadeera if the slides are ready for the review.",
+   "checks": [
+    {
+     "name": "Nadira",
+     "re": "Nadira"
+    }
+   ]
+  },
+  "P05": {
+   "text": "The Talvic report still needs one more chart.",
+   "checks": [
+    {
+     "name": "Talvik",
+     "re": "Talvik"
+    }
+   ]
+  },
+  "P06": {
+   "text": "Bright loom shipped the new boxes yesterday afternoon.",
+   "checks": [
+    {
+     "name": "Brightloom",
+     "re": "Brightloom"
+    }
+   ]
+  },
+  "P07": {
+   "text": "Mr. Oscarson called about the lease on the shop.",
+   "checks": [
+    {
+     "name": "Oskarsson",
+     "re": "Oskarsson"
+    }
+   ]
+  },
+  "P08": {
+   "text": "We moved the billing service to Cubernetes last week.",
+   "checks": [
+    {
+     "name": "Kubernetes",
+     "re": "Kubernetes"
+    }
+   ]
+  },
+  "P09": {
+   "text": "The postgres sequel backup finished at midnight.",
+   "checks": [
+    {
+     "name": "PostgreSQL",
+     "re": "PostgreSQL"
+    }
+   ]
+  },
+  "P10": {
+   "text": "Please ask Daro to sign the form before Friday.",
+   "checks": [
+    {
+     "name": "Darrow",
+     "re": "Darrow"
+    }
+   ]
+  },
+  "P11": {
+   "text": "We booked a cabin near Valoria Bay for the long weekend.",
+   "checks": [
+    {
+     "name": "Velloria Bay",
+     "re": "Velloria\\ Bay"
+    }
+   ]
+  },
+  "P12": {
+   "text": "um so I think the quillmate export is broken again",
+   "checks": [
+    {
+     "name": "Quillmate",
+     "re": "Quillmate"
+    }
+   ]
+  },
+  "B01": {
+   "text": "I pushed the fix to get hub right before lunch.",
+   "checks": [
+    {
+     "name": "GitHub",
+     "re": "GitHub"
+    }
+   ]
+  },
+  "B02": {
+   "text": "Add the dentist to tick tick so I don't forget it.",
+   "checks": [
+    {
+     "name": "TickTick",
+     "re": "TickTick"
+    }
+   ]
+  },
+  "B03": {
+   "text": "I'll message you on whats app later tonight.",
+   "checks": [
+    {
+     "name": "WhatsApp",
+     "re": "WhatsApp"
+    }
+   ]
+  },
+  "B04": {
+   "text": "Ask chat GPT for a rough first draft of the intro.",
+   "checks": [
+    {
+     "name": "ChatGPT",
+     "re": "ChatGPT"
+    }
+   ]
+  },
+  "B05": {
+   "text": "The power point deck is on the shared drive.",
+   "checks": [
+    {
+     "name": "PowerPoint",
+     "re": "PowerPoint"
+    }
+   ]
+  },
+  "B06": {
+   "text": "I wrote this whole note with whisper flow on my laptop.",
+   "checks": [
+    {
+     "name": "Wispr Flow",
+     "re": "Wispr\\ Flow"
+    }
+   ]
+  },
+  "B07": {
+   "text": "She posted the clip on you tube this morning.",
+   "checks": [
+    {
+     "name": "YouTube",
+     "re": "YouTube"
+    }
+   ]
+  },
+  "B08": {
+   "text": "Send the refund through pay pal when you get a chance.",
+   "checks": [
+    {
+     "name": "PayPal",
+     "re": "PayPal"
+    }
+   ]
+  },
+  "N01": {
+   "text": "Lean over and whisper the answer so nobody hears.",
+   "checks": [
+    {
+     "name": "\\bwhisper\\b",
+     "re": "\\bwhisper\\b"
+    },
+    {
+     "name": "no Wispr",
+     "re": "Wispr",
+     "absent": true
+    }
+   ]
+  },
+  "N02": {
+   "text": "Marble floors look great in the long hallway.",
+   "checks": [
+    {
+     "name": "Marble floors",
+     "re": "Marble floors"
+    },
+    {
+     "name": "no Marbleford",
+     "re": "Marbleford",
+     "absent": true
+    }
+   ]
+  },
+  "N03": {
+   "text": "He shot the arrow right past the old barn.",
+   "checks": [
+    {
+     "name": "\\barrow\\b",
+     "re": "\\barrow\\b"
+    },
+    {
+     "name": "no Darrow",
+     "re": "Darrow",
+     "absent": true
+    }
+   ]
+  },
+  "N04": {
+   "text": "Nadia from accounting called about the invoice.",
+   "checks": [
+    {
+     "name": "Nadia\\b",
+     "re": "Nadia\\b"
+    },
+    {
+     "name": "no Nadira",
+     "re": "Nadira",
+     "absent": true
+    }
+   ]
+  },
+  "N05": {
+   "text": "Oscar's son starts school in September.",
+   "checks": [
+    {
+     "name": "Oscar's son",
+     "re": "Oscar's son"
+    },
+    {
+     "name": "no Oskarsson",
+     "re": "Oskarsson",
+     "absent": true
+    }
+   ]
+  },
+  "N06": {
+   "text": "What's up? I'll call you once I land.",
+   "checks": [
+    {
+     "name": "What's up",
+     "re": "What's up"
+    },
+    {
+     "name": "no WhatsApp",
+     "re": "WhatsApp",
+     "absent": true
+    }
+   ]
+  },
+  "N07": {
+   "text": "Tick the box and sign at the bottom of the page.",
+   "checks": [
+    {
+     "name": "Tick the box",
+     "re": "Tick the box"
+    },
+    {
+     "name": "no TickTick",
+     "re": "TickTick",
+     "absent": true
+    }
+   ]
+  },
+  "N08": {
+   "text": "The river's flow slowed down after the storm.",
+   "checks": [
+    {
+     "name": "river's flow",
+     "re": "river's flow"
+    },
+    {
+     "name": "no Wispr",
+     "re": "Wispr",
+     "absent": true
+    }
+   ]
+  },
+  "N09": {
+   "text": "I'll get the hub cap from the garage.",
+   "checks": [
+    {
+     "name": "[Hh]ub ?cap",
+     "re": "[Hh]ub ?cap"
+    },
+    {
+     "name": "no GitHub",
+     "re": "GitHub",
+     "absent": true
+    }
+   ]
+  },
+  "N10": {
+   "text": "The quill and the ink are in the top drawer.",
+   "checks": [
+    {
+     "name": "quill and (the )?ink",
+     "re": "quill and (the )?ink"
+    },
+    {
+     "name": "no Quillmate",
+     "re": "Quillmate",
+     "absent": true
+    }
+   ]
+  },
+  "N11": {
+   "text": "Bright lights make it hard to sleep at night.",
+   "checks": [
+    {
+     "name": "Bright lights",
+     "re": "Bright lights"
+    },
+    {
+     "name": "no Brightloom",
+     "re": "Brightloom",
+     "absent": true
+    }
+   ]
+  },
+  "N12": {
+   "text": "We talked about the trip, the weather, and the food.",
+   "checks": [
+    {
+     "name": "talked about",
+     "re": "talked about"
+    },
+    {
+     "name": "no Talvik",
+     "re": "Talvik",
+     "absent": true
+    }
+   ]
+  },
+  "K01": {
+   "text": "The meeting moved to the small room upstairs.",
+   "checks": [
+    {
+     "name": "small room upstairs",
+     "re": "small room upstairs"
+    }
+   ]
+  },
+  "K02": {
+   "text": "Thanks for the soup, it was perfect.",
+   "checks": [
+    {
+     "name": "soup",
+     "re": "soup"
+    }
+   ]
+  }
+ }
+}
