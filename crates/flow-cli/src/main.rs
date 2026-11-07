@@ -17,7 +17,7 @@ use flow_core::{audio, FlowCore};
 const USAGE: &str =
     "usage: flow-cli transcribe (--model ggml.bin | --engine parakeet --model DIR | --mock TEXT) [--dict dict.json] \
 [--session session.json] [--context ctx.json] [--lang xx]... [--platform windows|android] \
-[--threads N] [--llm model.gguf [--llm-lib libflow_llm.so]] [--level none|light|medium|high] \
+[--threads N] [--parakeet-decoding auto|greedy|beam] [--llm model.gguf [--llm-lib libflow_llm.so]] [--level none|light|medium|high] \
 [--realtime] [--json] file.wav
        flow-cli clean --llm model.gguf [same options, no wav/model] [--category email|work_chat|...] TEXT...
          (each TEXT runs as one dictation through LLM cleanup + post-processing; prints llm counters)
@@ -105,6 +105,10 @@ fn parse(argv: &[String]) -> Result<Args, String> {
                 })
             }
             "--threads" => model.threads = val()?.parse().map_err(|e| format!("--threads: {e}"))?,
+            "--parakeet-decoding" => {
+                model.parakeet_decoding = serde_json::from_value(serde_json::Value::String(val()?))
+                    .map_err(|e| format!("--parakeet-decoding: {e}"))?
+            }
             "--llm" => model.llm_path = Some(val()?),
             "--llm-lib" => model.llm_lib = Some(val()?),
             "--level" => {

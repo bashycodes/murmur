@@ -473,4 +473,5 @@ data class CommitResult(
     val historyText: String get() = plainText.ifEmpty { finalText }
 }
 
-data class LearnCandidate(val original: String, val corrected: String)
+/** flow_core `learn::Candidate`; [looksLikeName]: the correction reads as a name (D68, `learn::looks_like_name`). */
+data class LearnCandidate(val original: String, val corrected: String, val looksLikeName: Boolean = false)
