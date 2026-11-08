@@ -1,0 +1,1 @@
+{"platform": "windows", "cleanup_level": "high", "raw_mode": false, "llm_timeout_ms": 30000, "segment_pause_ms": 800, "spoken_cleanup": true, "vad": true, "hallucination_guard": true, "styles": {"personal": "casual", "work": "casual", "email": "formal", "other": "casual"}, "ring_capacity_samples": 9600000}

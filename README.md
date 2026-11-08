@@ -52,6 +52,24 @@ tools/fetch-models.sh --parakeet      # Parakeet-TDT-0.6B-v2 int8 (sherpa-onnx)
 The apps download a model only when you press Download, and with a server
 set only from that server's model library.
 
+## Your own server
+
+`flow-server` does the dictation for your PCs and phones over your LAN or
+VPN. With Docker, from this repo and a models folder (one folder per model
+with its `model.toml`, e.g. a bundle's unzipped `library/`):
+
+```sh
+docker build -t flow-server -f deploy/docker/Dockerfile .
+docker volume create flow_data
+docker run -d --name flow-server --restart unless-stopped -p 0.0.0.0:7313:7313 \
+  -v /path/to/models:/models:ro -v flow_data:/data flow-server
+docker exec flow-server cat /data/admin.token     # the admin key
+```
+
+Then in each app: Settings → Your server: this machine's address
+(`hostname -I`), port 7313, the key. Guide: [`docs/server-setup.md`](docs/server-setup.md)
+(without Docker: [`docs/server-advanced.md`](docs/server-advanced.md)).
+
 ## No internet
 
 Flow Clone runs on a network with no internet at all: one `flow-server`
