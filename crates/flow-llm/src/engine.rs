@@ -634,7 +634,9 @@ impl State<'_> {
     /// longest n-gram match of the output tail in the transcript proposes
     /// up to [`DRAFT_MAX`] following tokens. They are decoded in the same
     /// batch as the real token and kept while they equal the greedy choice,
-    /// so the result is exactly the greedy decode, in fewer forward passes.
+    /// so the result is the greedy decode in fewer forward passes, up to
+    /// rounding: a batch sums the same logits in another float order, which
+    /// can flip a near-tie token (1 of 13 parity answers differed, D69).
     fn generate(
         &mut self,
         n_prompt: usize,

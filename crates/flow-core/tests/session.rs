@@ -654,7 +654,7 @@ fn llm_prefill_follows_context_and_partials_while_speaking() {
         .any(|p| p.user.contains("slack.exe"))));
     push_all(&core, &speech(500));
     assert!(wait_until(|| spy.prefills.lock().unwrap().iter().any(
-        |p| p.transcript.eq_ignore_ascii_case("hello world") && p.user.contains("slack.exe")
+        |p| p.transcript == "hello world" && p.user.contains("slack.exe")
     )));
     let n = spy.prefills.lock().unwrap().len();
     let r = core.commit();
