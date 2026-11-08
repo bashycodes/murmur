@@ -1,7 +1,8 @@
 //! Models from the configured server's library (D41; server side D40).
 //!
-//! When a server is set, model downloads come from its library and never
-//! from Hugging Face (no fallback); with no server, the D31 catalogue
+//! When a server is set, model downloads come from its library by default
+//! and never from Hugging Face (no fallback); the user can pick Hugging
+//! Face instead ("Download from", D79). With no server, the D31 catalogue
 //! downloads from Hugging Face as before ([`Origin`]).
 //!
 //! * A server model tagged with a catalogue id is that catalogue model:
@@ -27,24 +28,44 @@ use serde::Serialize;
 use crate::model_download::{
     self as md, CatalogEntry, ModelEngine, ModelFile, Progress, State, Stop,
 };
-use crate::prefs::{AsrEngineChoice, HebrewModel, Prefs};
+use crate::prefs::{AsrEngineChoice, HebrewModel, ModelSource, Prefs};
 
 /// Where model downloads come from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Origin {
-    /// No server set: the D31 catalogue from Hugging Face.
+    /// No server set, or the user picked Hugging Face: the D31 catalogue.
     HuggingFace,
-    /// A server is set: its library only.
+    /// A server is set and picked (the default): its library only.
     Server(ServerConfig),
 }
 
 impl Origin {
-    pub fn of(server: Option<ServerConfig>) -> Self {
+    /// `source` (the "Download from" choice, D79) counts only while a
+    /// server is set.
+    pub fn of(server: Option<ServerConfig>, source: ModelSource) -> Self {
         match server {
-            Some(s) if s.is_configured() => Origin::Server(s),
+            Some(s) if s.is_configured() && source == ModelSource::Server => Origin::Server(s),
             _ => Origin::HuggingFace,
         }
     }
+
+    pub fn is_server(&self) -> bool {
+        matches!(self, Origin::Server(_))
+    }
+}
+
+/// `model_catalog` rows for `origin`: from the server, a catalogue model
+/// downloads through the library client whenever this build runs its
+/// engine (whether the server has it is the server listing's answer, shown
+/// as "Not on your server"); from Hugging Face, the rows are unchanged.
+pub fn catalog_for(mut rows: Vec<md::CatalogView>, origin: &Origin) -> Vec<md::CatalogView> {
+    if origin.is_server() {
+        for r in &mut rows {
+            r.from_server = true;
+            r.available = r.importable;
+        }
+    }
+    rows
 }
 
 /// The app slot a library model fills.
@@ -477,7 +498,7 @@ pub fn download_catalogue(
         .collect();
     if copies.is_empty() {
         return Err(Stop::Failed(format!(
-            "{} is not on your server. While a server is set, models come only from it: add it to the server's library (docs/server-setup.md §10)",
+            "{} is not on your server: add it to the server's library (docs/server-setup.md §10), or download from Hugging Face (Settings → Speech to text → Download models from)",
             e.title
         )));
     }
@@ -799,10 +820,11 @@ mod tests {
     }
 
     #[test]
-    fn a_set_server_replaces_hugging_face() {
-        assert_eq!(Origin::of(None), Origin::HuggingFace);
+    fn download_from_picks_the_origin_only_while_a_server_is_set() {
+        use ModelSource::{HuggingFace as Hf, Server as Srv};
+        assert_eq!(Origin::of(None, Srv), Origin::HuggingFace);
         assert_eq!(
-            Origin::of(Some(ServerConfig::default())),
+            Origin::of(Some(ServerConfig::default()), Srv),
             Origin::HuggingFace,
             "empty host = not set"
         );
@@ -810,9 +832,40 @@ mod tests {
             host: "10.0.0.2".into(),
             ..Default::default()
         };
-        assert_eq!(Origin::of(Some(s.clone())), Origin::Server(s.clone()));
-        // With a server set, Hugging Face is never asked, even when the
-        // server can't be reached.
+        assert_eq!(Origin::of(Some(s.clone()), Srv), Origin::Server(s.clone()));
+        assert_eq!(Origin::of(Some(s.clone()), Hf), Origin::HuggingFace);
+        assert_eq!(
+            Prefs::default().model_source,
+            Srv,
+            "the server is the default"
+        );
+    }
+
+    #[test]
+    fn catalogue_rows_download_from_the_server_when_it_is_picked() {
+        let d = std::env::temp_dir().join("flow-srvlib-catalog-for");
+        let rows = || md::catalog_view(&d, false, |e| e != ModelEngine::Llm);
+        let hf = catalog_for(rows(), &Origin::HuggingFace);
+        assert!(
+            hf.iter().all(|r| !r.from_server && !r.available),
+            "no download feature"
+        );
+        let srv = catalog_for(
+            rows(),
+            &Origin::Server(ServerConfig {
+                host: "10.0.0.2".into(),
+                ..Default::default()
+            }),
+        );
+        assert!(srv.iter().all(|r| r.from_server));
+        // Downloadable from the server exactly when this build runs the engine.
+        assert!(srv
+            .iter()
+            .all(|r| r.available == (r.engine != ModelEngine::Llm)));
+    }
+
+    #[test]
+    fn a_picked_server_replaces_hugging_face_and_hugging_face_skips_the_server() {
         let hf_calls = std::sync::atomic::AtomicUsize::new(0);
         let hf = || -> Result<Box<dyn md::Fetch + Send>, String> {
             hf_calls.fetch_add(1, Ordering::SeqCst);
@@ -826,10 +879,12 @@ mod tests {
         };
         let e = md::entry("whisper-base").unwrap();
         let d = std::env::temp_dir().join("flow-srvlib-origin");
+        // Server picked: Hugging Face is never asked, even when the server
+        // can't be reached.
         let r = download_catalogue(
             e,
             &d,
-            &Origin::Server(unreachable),
+            &Origin::of(Some(unreachable.clone()), ModelSource::Server),
             "t",
             &hf,
             &AtomicBool::new(false),
@@ -837,11 +892,11 @@ mod tests {
         );
         assert!(matches!(r, Err(Stop::Failed(_))));
         assert_eq!(hf_calls.load(Ordering::SeqCst), 0);
-        // No server: Hugging Face.
+        // Hugging Face picked with the server set: Hugging Face.
         let _ = download_catalogue(
             e,
             &d,
-            &Origin::HuggingFace,
+            &Origin::of(Some(unreachable), ModelSource::HuggingFace),
             "t",
             &hf,
             &AtomicBool::new(false),
