@@ -8,7 +8,8 @@ loopback, LAN and VPN addresses. It never stores audio or text.
 
 * Docker on a Linux machine (x86_64, 4 GB RAM free).
 * The Flow Clone source: `git clone` of the repo, or the source archive of
-  a release (GitHub → Releases → *Source code*), unpacked.
+  a release (GitHub → Releases → *Source code*), unpacked. With a Flow
+  Clone bundle you can skip the build (below).
 * A **models folder**: one folder per model, each with a small
   `model.toml` label. Either
   * the `library/` folder of a Flow Clone bundle's speech-models zip (and
@@ -36,6 +37,12 @@ The build compiles the server (10-15 minutes the first time). The last
 command shows the admin key: treat it like a password. The log
 (`docker logs -f flow-server`) names the models it picked, then, about a
 minute later, says `ready`.
+
+**With a Flow Clone bundle:** its `docker/` folder has the image, so
+there is nothing to build: `docker load -i docker/flow-server-image-<version>.tar`,
+then the same `docker volume create` and `docker run` (the image is called
+`flow-server`). Or unpack `docker/flow-server-source-<version>.tar.gz` and
+run the `docker build` above in it.
 
 Docker Compose does the same:
 `FLOW_MODELS_PATH=/path/to/models docker compose -f deploy/docker-compose.yml up -d --build`.

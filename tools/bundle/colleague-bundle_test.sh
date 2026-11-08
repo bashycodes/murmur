@@ -39,18 +39,24 @@ grep -q $'^speaker-test\tdiarizer\tsherpa_diarization\tspk.onnx\t1234\t' "$T/d.t
 sed '0,/^parakeet-tdt-0.6b-v2-int8 /s/ 652184296 / 652184297 /' "$LIST" > "$T/bad.txt"
 if python3 -I "$H/models_manifest.py" "$T/bad.txt" "$RS" "$CA" > /dev/null 2>&1; then fail "wrong size accepted"; fi
 
-# 4. The install note renders: no placeholder left, notetaker blocks only with NOTETAKER=1.
-render() {
-  NOTETAKER=$1 VERSION=9.9.9 COMMIT=abc1234 VARIANT=v WIN_EXE=w.exe APK=a.apk MODELS_ZIP=m.zip \
-    CLEANUP_ZIP=c.zip GLIBC="glibc 2.39" DIARIZER_LIST="" SERVER_NOTE="note" \
+# 4. The install note renders: no placeholder left, notetaker blocks only
+# with NOTETAKER=1, the Docker image's lines only when it is bundled.
+render() { # NOTETAKER IMAGE
+  NOTETAKER=$1 IMAGE=$2 NOIMAGE=$((1 - $2)) VERSION=9.9.9 COMMIT=abc1234 VARIANT=v WIN_EXE=w.exe \
+    APK=a.apk MODELS_ZIP=m.zip CLEANUP_ZIP=c.zip GLIBC="glibc 2.39" DIARIZER_LIST="" SERVER_NOTE="note" \
+    SOURCE_TGZ=flow-server-source-9.9.9.tar.gz IMAGE_TAR=flow-server-image-9.9.9.tar \
     python3 -I "$H/render_install.py" "$ROOT/docs/colleague-install.md"
 }
-render 0 > "$T/i0.md"; render 1 > "$T/i1.md"
-for f in "$T/i0.md" "$T/i1.md"; do
+render 0 1 > "$T/i0.md"; render 1 1 > "$T/i1.md"; render 0 0 > "$T/n0.md"
+for f in "$T/i0.md" "$T/i1.md" "$T/n0.md"; do
   ! grep -q '{{\|<!--' "$f" || fail "placeholder or marker left in $(basename "$f")"
+  grep -q 'tar -xzf docker/flow-server-source-9.9.9.tar.gz' "$f" || fail "source build missing in $(basename "$f")"
 done
 ! grep -qi 'notetaker' "$T/i0.md" || fail "notetaker text in the integration note"
 grep -q 'Speaker separation' "$T/i1.md" || fail "notetaker block missing"
+grep -q 'docker load -i docker/flow-server-image-9.9.9.tar' "$T/i0.md" || fail "docker load missing"
+! grep -q 'flow-server-image\|docker load' "$T/n0.md" || fail "image text without an image"
+grep -q 'no prebuilt image' "$T/n0.md" || fail "no-image note missing"
 if NOTETAKER=0 python3 -I "$H/render_install.py" "$ROOT/docs/colleague-install.md" > /dev/null 2>&1; then
   fail "missing values accepted"
 fi
