@@ -404,7 +404,7 @@ if [ "$NO_IMAGE" = 0 ]; then
   # This commit's build (flow_build_info::FULL is baked in), and it starts
   # with the image's libraries.
   docker run --rm --entrypoint cat "flow-server:$VERSION" /opt/flow-server/bin/flow-server |
-    grep -aqF "$VERSION+$SHA7" || { restore_latest; die "the image's flow-server is not $VERSION+$SHA7"; }
+    grep -acF "$VERSION+$SHA7" >/dev/null || { restore_latest; die "the image's flow-server is not $VERSION+$SHA7"; }
   docker run --rm --entrypoint /opt/flow-server/bin/flow-server "flow-server:$VERSION" gen-token --out /tmp/t >/dev/null ||
     { restore_latest; die "the image's flow-server does not start"; }
   docker save -o "$BUNDLE/docker/$IMAGE_TAR" "flow-server:$VERSION" flow-server:latest
