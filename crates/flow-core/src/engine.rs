@@ -1925,7 +1925,9 @@ impl Worker {
             .collect();
         // Punctuate across each cut: a piece decoded alone ends every pause
         // with a sentence break ("ask not. What your country"). A decode of
-        // the audio around the cut decides the words next to it.
+        // the audio around the cut decides the words next to it, at least
+        // the two at the cut when the wider splice is refused (it also
+        // starts every piece with a capital: "familiar with Things", D70).
         let bridges = std::mem::take(&mut s.bridges);
         let join = JoinMode::from_env();
         for k in 0..n.saturating_sub(1) {
@@ -1963,7 +1965,9 @@ impl Worker {
                 }
             };
             let bt = b.out.as_ref().map_or("", |o| o.text.trim());
-            if let Some((l, rt)) = segment::splice(&texts[k], &texts[k + 1], bt) {
+            let joined = segment::splice(&texts[k], &texts[k + 1], bt)
+                .or_else(|| segment::respell_cut(&texts[k], &texts[k + 1], bt));
+            if let Some((l, rt)) = joined {
                 texts[k] = l;
                 texts[k + 1] = rt;
             }
