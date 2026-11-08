@@ -338,7 +338,7 @@ fn cleanup_host_name(cloud: &flow_router::cloud::CloudConfig) -> String {
     match cloud.provider {
         CloudProvider::OpenRouter => "OpenRouter".into(),
         CloudProvider::LiteLlm => match cloud.cleanup_host() {
-            h if h.is_empty() => "your LiteLLM proxy".into(),
+            h if h.is_empty() => "your proxy".into(),
             h => h,
         },
     }

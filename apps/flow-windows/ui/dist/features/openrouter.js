@@ -68,7 +68,7 @@ async function showNormalisedUrl() {
 export function cleanupTarget(v) {
     if (v?.cleanup.provider !== "custom")
         return "openrouter.ai";
-    return v.cleanup.custom.host || "your LiteLLM proxy";
+    return v.cleanup.custom.host || "your proxy";
 }
 /** "Transcription model · $0.04/h audio" (+ this month's cleanup spend). */
 function modelDesc(info, extra) {
@@ -164,7 +164,7 @@ export function showOr(v) {
     showCleanupStatus(c.status);
     const short = (id) => id.split("/").pop() ?? id;
     // D78: LiteLLM does cleanup only; speech stays on this PC and your server.
-    const sttAvailable = s.available !== false && !custom;
+    const sttAvailable = s.available ?? !custom;
     $("or_used_stt").textContent = !sttAvailable
         ? "Your proxy has no speech model here, so speech stays on this PC and your server. Pick OpenRouter to send speech to the cloud."
         : s.allow
@@ -576,7 +576,6 @@ const PROVIDER_TEXT = {
 /** The parts of the Cloud and AI cleanup pages for the saved `provider`
  *  (`data-cloud` on the Cloud page, `data-provider` in the cleanup card). */
 function showProviderRows(provider) {
-    $("or_cleanup_provider").value = provider;
     for (const b of document.querySelectorAll("#cloud_provider_seg [data-cloud-provider]")) {
         const on = b.dataset.cloudProvider === provider;
         b.setAttribute("aria-checked", String(on));
@@ -937,16 +936,13 @@ function wire() {
     }
     $("or_cleanup_change").addEventListener("click", () => void openPicker("cleanup"));
     $("or_cleanup_test").addEventListener("click", () => void orTestCleanup());
-    const provider = () => $("or_cleanup_provider").value;
-    $("or_cleanup_provider").addEventListener("change", () => void cuChanged(provider()));
-    // D78: the Cloud page's provider switch drives the hidden selector.
+    // The saved provider; the Cloud page's switch saves a new one (D78).
+    const provider = () => views.or?.cleanup.provider ?? "openrouter";
     for (const b of document.querySelectorAll("#cloud_provider_seg [data-cloud-provider]")) {
         b.addEventListener("click", () => {
-            const sel = $("or_cleanup_provider");
-            if (sel.value === b.dataset.cloudProvider)
-                return;
-            sel.value = b.dataset.cloudProvider ?? "openrouter";
-            sel.dispatchEvent(new Event("change"));
+            const picked = (b.dataset.cloudProvider ?? "openrouter");
+            if (picked !== provider())
+                void cuChanged(picked);
         });
     }
     for (const id of ["cu_base_url", "cu_model", "cu_timeout_ms"]) {

@@ -724,9 +724,9 @@ pub const CUSTOM_PLAIN_HTTP_MSG: &str =
 /// How the page names the one cloud host.
 pub const OPENROUTER_NAME: &str = "OpenRouter (openrouter.ai)";
 
-/// Turning OpenRouter on for meetings before its audio consent (D47).
+/// Turning the cloud on for meetings before its audio consent (D47).
 pub const MEETING_CLOUD_CONSENT_MSG: &str =
-    "Accept sending audio to OpenRouter first: turn OpenRouter on under Engines above";
+    "Accept sending audio to OpenRouter first: turn Cloud on under Engines above";
 
 /// A meeting job when no route is on for meetings (D47).
 pub const NO_MEETING_ROUTE_MSG: &str =
