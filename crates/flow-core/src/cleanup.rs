@@ -19,6 +19,7 @@ use crate::script_lock::{self, Script};
 use crate::Usd;
 use serde::{Deserialize, Serialize};
 
+pub mod context_echo;
 mod prompt_v4c;
 mod prompt_v5;
 pub mod terms;
@@ -1203,6 +1204,18 @@ fn last_chars(s: &str, n: usize) -> String {
     c[c.len().saturating_sub(n)..].iter().collect()
 }
 
+/// The window of the text before the cursor a prompt shows (its last 300
+/// characters); D71's echo check compares with the same window.
+fn prompt_before(ctx: &FieldContext) -> String {
+    last_chars(&ctx.before, 300)
+}
+
+/// The window of the text after the cursor a prompt shows (its first 150
+/// characters).
+fn prompt_after(ctx: &FieldContext) -> String {
+    ctx.after.chars().take(150).collect()
+}
+
 struct UserMsg<'a> {
     app: &'a str,
     cat: AppCategory,
@@ -1379,11 +1392,7 @@ pub fn build_prompt_versioned(
     terms.truncate(200);
     let terms = terms.join(", ");
     let (before, selected, after) = if scope.surrounding_text {
-        (
-            last_chars(&ctx.before, 300),
-            ctx.selected.clone(),
-            ctx.after.chars().take(150).collect(),
-        )
+        (prompt_before(ctx), ctx.selected.clone(), prompt_after(ctx))
     } else {
         (String::new(), String::new(), String::new())
     };
@@ -1674,6 +1683,8 @@ fn run_metered(
     language: Option<&str>,
 ) -> (CleanOutcome, CleanUsage, Option<String>) {
     let deadline = Instant::now() + timeout;
+    // D71: the field the prompt showed (empty when its scope hid it).
+    let source = prompt.source.clone().filter(|s| s.task.is_cleanup());
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = AbortFlag(Some(cancel.clone()));
     let pending = CleanUsage {
@@ -1723,6 +1734,17 @@ fn run_metered(
         crate::postprocess::spoken::unit_style(&out)
     } else {
         out
+    };
+    // D71: the answer never repeats the text already in the field.
+    let out = match &source {
+        Some(s) => context_echo::strip(
+            &out,
+            asr_text,
+            &prompt_before(&s.ctx),
+            &prompt_after(&s.ctx),
+        )
+        .unwrap_or(out),
+        None => out,
     };
     if out.is_empty() {
         let why = Some("empty answer".into());
@@ -2005,6 +2027,49 @@ mod tests {
         assert_eq!(
             run(Arc::new(Failing), "a", 100),
             CleanOutcome::Fallback(FallbackReason::Error("boom".into()))
+        );
+    }
+
+    // D71: an answer that starts with the field's own text loses it; the
+    // shell inserts only the dictated part (made-up label and value).
+    #[test]
+    fn the_answer_drops_text_already_before_the_cursor() {
+        let asr = "10.20.30.40 colon eight zero eight zero";
+        let field = FieldContext {
+            before: "The staging box listens on: ".into(),
+            ..Default::default()
+        };
+        let clean = |answer: &'static str, scope| {
+            let p = build_prompt_scoped(
+                asr,
+                CleanupLevel::High,
+                Style::Casual,
+                &field,
+                &Dictionary::default(),
+                scope,
+            );
+            run_cleanup(
+                Arc::new(Fixed(answer, Duration::ZERO)),
+                p,
+                asr,
+                Duration::from_millis(500),
+            )
+        };
+        assert_eq!(
+            clean(
+                "The staging box listens on: 10.20.30.40:8080",
+                PromptScope::FULL
+            ),
+            CleanOutcome::Formatted("10.20.30.40:8080".into())
+        );
+        // The same words dictated stay; a scope that hid the field compares
+        // against nothing.
+        assert_eq!(
+            clean(
+                "The staging box listens on: 10.20.30.40:8080",
+                PromptScope::MINIMAL
+            ),
+            CleanOutcome::Formatted("The staging box listens on: 10.20.30.40:8080".into())
         );
     }
 
