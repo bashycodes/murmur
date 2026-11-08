@@ -1,0 +1,66 @@
+# flow-server container image (deploy/docker/Dockerfile, D77): checks that
+# it builds and starts. Build only: nothing is pushed or published (users
+# build it from the source, docs/server-setup.md). Runs on pull requests and
+# on integration; feature-branch pushes are covered by their pull request.
+# CPU image only: the CUDA variant (`--target cuda`) is built locally.
+name: server-image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [integration]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "deploy/docker/**"
+      - ".dockerignore"
+      - ".github/workflows/server-image.yml"
+  pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "deploy/docker/**"
+      - ".dockerignore"
+      - ".github/workflows/server-image.yml"
+
+concurrency:
+  group: server-image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          target: runtime
+          push: false
+          load: true
+          tags: flow-server:ci
+          build-args: |
+            FLOW_GIT_SHA=${{ github.sha }}
+            CARGO_BUILD_JOBS=4
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The image must start: the CLI runs with its libraries, and the
+      # entrypoint refuses an empty models folder with its message.
+      - name: Image starts
+        run: |
+          docker run --rm --entrypoint /opt/flow-server/bin/flow-server flow-server:ci gen-token --out /tmp/t
+          if docker run --rm flow-server:ci >out.txt 2>&1; then cat out.txt; exit 1; fi
+          grep -q "no speech model in /models" out.txt || { cat out.txt; exit 1; }
+          docker image ls flow-server:ci

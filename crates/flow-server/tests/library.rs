@@ -272,7 +272,7 @@ async fn models_added_changed_and_removed_without_restart() {
 }
 
 /// Editing only a tag (same files, same model set) shows on the next
-/// rescan: no restart (docs/server-setup.md §10).
+/// rescan: no restart (docs/server-advanced.md §10).
 #[tokio::test(flavor = "multi_thread")]
 async fn tag_edits_show_without_restart() {
     let d = tempfile::tempdir().unwrap();

@@ -1,0 +1,26 @@
+{"id":"E01","group":"E","before":"The staging box listens on: ","input":"10.20.30.40 colon eight zero eight zero"}
+{"id":"E02","group":"E","before":"This is the printer's address: ","input":"192.168.7.21 colon nine one zero zero"}
+{"id":"E03","group":"E","before":"Wi-Fi password for the cabin: ","input":"blue heron forty two"}
+{"id":"E04","group":"E","before":"Gate code: ","input":"four seven one nine"}
+{"id":"E05","group":"E","before":"My locker number is ","input":"two hundred and six"}
+{"id":"E06","group":"E","before":"Reminder for Thursday: ","input":"bring the spare charger"}
+{"id":"E07","group":"E","before":"Shopping list\nTo buy this week: ","input":"oat milk and lemons"}
+{"id":"E08","group":"E","before":"Hi Nora,\n\nThe tracking number is ","input":"one Z nine nine eight A seven"}
+{"id":"E09","group":"E","before":"Server for the demo: ","input":"demo dot example dot org port four four three"}
+{"id":"E10","group":"E","before":"Notes from the call. Next step: ","input":"send the draft by Friday"}
+{"id":"E11","group":"E","before":"Room booked for the review: ","input":"room twelve B"}
+{"id":"E12","group":"E","before":"This is my tablet's port: ","input":"192.0.2.9 colon five five five one"}
+{"id":"E13","group":"E","before":"I'll pick up ","input":"the cake at noon"}
+{"id":"E14","group":"E","before":"See you at the ","input":"station around six"}
+{"id":"E15","group":"E","before":"Totals so far: apples 3, pears 5. ","input":"oranges two"}
+{"id":"E16","group":"E","before":"Dear team,\n\n","input":"the build is green again thanks everyone"}
+{"id":"E17","group":"E","before":"Flight number: ","input":"L X three one eight"}
+{"id":"E18","group":"E","before":"","after":" is the new door code.","input":"five five two one"}
+{"id":"N01","group":"N","before":"Gate code: ","input":"the gate code is four seven one nine","keep":"gate code"}
+{"id":"N02","group":"N","before":"Reminder for Thursday: ","input":"reminder for Thursday bring the spare charger","keep":"Thursday"}
+{"id":"N03","group":"N","before":"The staging box listens on: ","input":"the staging box listens on port eight zero eight zero","keep":"staging box listens on"}
+{"id":"N04","group":"N","before":"We moved the meeting. ","input":"we moved the meeting because the room was taken","keep":"moved the meeting"}
+{"id":"N05","group":"N","before":"Thanks for the photos! ","input":"thanks again for the photos they look great","keep":"for the photos"}
+{"id":"N06","group":"N","before":"","input":"the printer's address is 192.168.7.21","keep":"printer's address"}
+{"id":"N07","group":"N","before":"Gate code: ","input":"gate code colon four seven one nine","keep":"Gate code"}
+{"id":"N08","group":"N","before":"See you at the ","input":"see you at the station around six","keep":"see you at the"}

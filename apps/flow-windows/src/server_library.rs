@@ -498,7 +498,7 @@ pub fn download_catalogue(
         .collect();
     if copies.is_empty() {
         return Err(Stop::Failed(format!(
-            "{} is not on your server: add it to the server's library (docs/server-setup.md §10), or download it from Hugging Face instead",
+            "{} is not on your server: add it to the server's library (docs/server-advanced.md §10), or download it from Hugging Face instead",
             e.title
         )));
     }
