@@ -1204,6 +1204,18 @@ fn last_chars(s: &str, n: usize) -> String {
     c[c.len().saturating_sub(n)..].iter().collect()
 }
 
+/// The window of the text before the cursor a prompt shows (its last 300
+/// characters); D71's echo check compares with the same window.
+fn prompt_before(ctx: &FieldContext) -> String {
+    last_chars(&ctx.before, 300)
+}
+
+/// The window of the text after the cursor a prompt shows (its first 150
+/// characters).
+fn prompt_after(ctx: &FieldContext) -> String {
+    ctx.after.chars().take(150).collect()
+}
+
 struct UserMsg<'a> {
     app: &'a str,
     cat: AppCategory,
@@ -1380,11 +1392,7 @@ pub fn build_prompt_versioned(
     terms.truncate(200);
     let terms = terms.join(", ");
     let (before, selected, after) = if scope.surrounding_text {
-        (
-            last_chars(&ctx.before, 300),
-            ctx.selected.clone(),
-            ctx.after.chars().take(150).collect(),
-        )
+        (prompt_before(ctx), ctx.selected.clone(), prompt_after(ctx))
     } else {
         (String::new(), String::new(), String::new())
     };
@@ -1675,12 +1683,8 @@ fn run_metered(
     language: Option<&str>,
 ) -> (CleanOutcome, CleanUsage, Option<String>) {
     let deadline = Instant::now() + timeout;
-    // D71: the field text the prompt showed (empty when its scope hid it).
-    let field = prompt
-        .source
-        .as_ref()
-        .filter(|s| s.task.is_cleanup())
-        .map(|s| (s.ctx.before.clone(), s.ctx.after.clone()));
+    // D71: the field the prompt showed (empty when its scope hid it).
+    let source = prompt.source.clone().filter(|s| s.task.is_cleanup());
     let cancel = Arc::new(AtomicBool::new(false));
     let flag = AbortFlag(Some(cancel.clone()));
     let pending = CleanUsage {
@@ -1732,8 +1736,14 @@ fn run_metered(
         out
     };
     // D71: the answer never repeats the text already in the field.
-    let out = match &field {
-        Some((before, after)) => context_echo::strip(&out, asr_text, before, after).unwrap_or(out),
+    let out = match &source {
+        Some(s) => context_echo::strip(
+            &out,
+            asr_text,
+            &prompt_before(&s.ctx),
+            &prompt_after(&s.ctx),
+        )
+        .unwrap_or(out),
         None => out,
     };
     if out.is_empty() {
