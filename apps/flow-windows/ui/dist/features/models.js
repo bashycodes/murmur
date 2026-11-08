@@ -811,7 +811,7 @@ function renderServerModels() {
         note.className = "hint err";
     }
     else if (!lib.models.length) {
-        note.textContent = "Your server lists no models. Add them to its library folder (server setup guide, section 10).";
+        note.textContent = "Your server lists no models. Add them to its library folder (docs/server-advanced.md, section 10).";
         note.className = "hint";
     }
     else {

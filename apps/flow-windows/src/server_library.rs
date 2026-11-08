@@ -477,7 +477,7 @@ pub fn download_catalogue(
         .collect();
     if copies.is_empty() {
         return Err(Stop::Failed(format!(
-            "{} is not on your server. While a server is set, models come only from it: add it to the server's library (docs/server-setup.md §10)",
+            "{} is not on your server. While a server is set, models come only from it: add it to the server's library (docs/server-advanced.md §10)",
             e.title
         )));
     }

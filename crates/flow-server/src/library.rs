@@ -2,7 +2,7 @@
 //!
 //! The owner copies model folders into the library folder (`[library] dir`,
 //! default `<state dir>/library`) and tags each with a `model.toml`
-//! (`docs/server-setup.md` §10). One folder = one model; its name is the
+//! (`docs/server-advanced.md` §10). One folder = one model; its name is the
 //! model id. Untagged or invalid folders are skipped with a reason
 //! (`flow-server library list`, and the log when the set changes).
 //!
