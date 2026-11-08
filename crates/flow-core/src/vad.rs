@@ -244,6 +244,36 @@ pub fn detect(pcm: &[f32]) -> Option<Speech> {
     })
 }
 
+/// The typical level of the speech in `pcm`: the median RMS of the 20 ms
+/// frames in [`detect`]'s speech runs, or `None` without speech. A median,
+/// so one short loud sound (a cough, a bump on the desk) does not move it.
+pub fn speech_level(pcm: &[f32]) -> Option<f32> {
+    let flags = frame_flags(pcm);
+    let mut rms = Vec::new();
+    let mut i = 0;
+    while i < flags.len() {
+        if !flags[i] {
+            i += 1;
+            continue;
+        }
+        let j = flags[i..].iter().take_while(|&&f| f).count() + i;
+        if j - i >= MIN_RUN {
+            rms.extend(
+                pcm.chunks(FRAME)
+                    .skip(i)
+                    .take(j - i)
+                    .map(|f| frame_stats(f).0),
+            );
+        }
+        i = j;
+    }
+    if rms.is_empty() {
+        return None;
+    }
+    let mid = rms.len() / 2;
+    Some(*rms.select_nth_unstable_by(mid, f32::total_cmp).1)
+}
+
 /// Speech quieter than this RMS (≈ -44 dBFS) is raised by [`asr_level`];
 /// twice the engines' 0.003 silence gate, so anything louder already passes it.
 pub const ASR_LEVEL_BELOW: f32 = 0.006;
@@ -479,5 +509,20 @@ mod tests {
         // The gain is capped: a -100 dB blip stays tiny.
         let blip = vec![1e-5; S];
         assert!(asr_level(&blip).iter().all(|s| *s <= 1e-3 + 1e-9));
+    }
+
+    #[test]
+    fn speech_level_is_the_typical_speech_not_a_cough() {
+        let quiet = voiced(6 * S, 0.006); // frame RMS ≈ 0.0032
+        let cough = voiced(S / 5, 0.5);
+        let gap = noise(S / 2, 0.0002, 9);
+        let alone = concat(&[gap.clone(), quiet.clone(), gap.clone()]);
+        let with_cough = concat(&[gap.clone(), cough, gap.clone(), quiet, gap]);
+        let a = speech_level(&alone).unwrap();
+        let b = speech_level(&with_cough).unwrap();
+        assert!((0.002..0.005).contains(&a), "{a}");
+        assert!((b - a).abs() < a * 0.1, "{a} vs {b}");
+        assert!(b < ASR_LEVEL_BELOW);
+        assert_eq!(speech_level(&noise(2 * S, 0.0002, 3)), None);
     }
 }
