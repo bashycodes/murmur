@@ -1,0 +1,1 @@
+{"languages":["en"],"cleanup_level":"none","max_samples":9600000,"ring_capacity_samples":2000000,"vad":true,"hallucination_guard":true}
