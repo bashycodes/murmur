@@ -24,10 +24,6 @@ ${heading("Cloud", "Bigger models that run somewhere else. Pick one provider. No
       <button type="button" role="radio" data-cloud-provider="openrouter">OpenRouter</button>
       <button type="button" role="radio" data-cloud-provider="custom">LiteLLM</button>
     </div>
-    <select id="or_cleanup_provider" hidden aria-hidden="true" tabindex="-1">
-      <option value="openrouter">OpenRouter</option>
-      <option value="custom">LiteLLM</option>
-    </select>
     <p class="fl-row-desc" id="cloud_provider_desc"></p>
     <p class="fl-row-desc" id="cloud_provider_offers"></p>
   </div>

@@ -27,7 +27,7 @@ export function plainHint(code: string | null | undefined): string {
  */
 export function cleanupBlockedLine(st: CleanupStatus, v: OrView | null): CleanupStateLine | null {
   const custom = st.provider === "custom";
-  const where = custom ? st.host || "your LiteLLM proxy" : "OpenRouter";
+  const where = custom ? st.host || "your proxy" : "OpenRouter";
   if (!st.supported) return { text: "Not in this build.", cls: "hint" };
   if (!st.enabled) {
     return { text: `Cloud cleanup is off in Cleanup order: ${where} gets no text.`, cls: "hint", turnOn: true };
@@ -47,7 +47,7 @@ export function cleanupBlockedLine(st: CleanupStatus, v: OrView | null): Cleanup
 
 /** Who cleaned the last dictation, for the row's "last:" part. */
 export function cleanupEngineName(engine: string, provider: CloudProvider | undefined, host?: string): string {
-  if (engine === "cloud") return provider === "custom" ? host || "your LiteLLM proxy" : "OpenRouter";
+  if (engine === "cloud") return provider === "custom" ? host || "your proxy" : "OpenRouter";
   if (engine === "local") return "this PC";
   if (engine === "server") return "your server";
   return "another engine";

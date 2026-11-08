@@ -16,7 +16,7 @@ export function plainHint(code) {
  */
 export function cleanupBlockedLine(st, v) {
     const custom = st.provider === "custom";
-    const where = custom ? st.host || "your LiteLLM proxy" : "OpenRouter";
+    const where = custom ? st.host || "your proxy" : "OpenRouter";
     if (!st.supported)
         return { text: "Not in this build.", cls: "hint" };
     if (!st.enabled) {
@@ -43,7 +43,7 @@ export function cleanupBlockedLine(st, v) {
 /** Who cleaned the last dictation, for the row's "last:" part. */
 export function cleanupEngineName(engine, provider, host) {
     if (engine === "cloud")
-        return provider === "custom" ? host || "your LiteLLM proxy" : "OpenRouter";
+        return provider === "custom" ? host || "your proxy" : "OpenRouter";
     if (engine === "local")
         return "this PC";
     if (engine === "server")
