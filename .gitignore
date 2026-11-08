@@ -19,3 +19,5 @@ local.properties
 .gradle/
 build/
 *.log
+# owner-PC copies made while diagnosing (never committed)
+/eval-private/

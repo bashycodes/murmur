@@ -16,6 +16,7 @@ import { $, el, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, stopCapture } from "../lib/keycapture.js";
 import { prefsStore } from "../lib/prefs-store.js";
+import { pillLine, readinessErrorLine, readinessLine } from "../lib/setup-try.js";
 import { views } from "../lib/views.js";
 import { TEMPLATE } from "./templates.js";
 const ENGINE_ROUTE = { pc: "client", server: "server", cloud: "cloud" };
@@ -36,6 +37,12 @@ const st = {
     model: null,
     info: null,
     openedAt: 0,
+    /** The pill moved since the try step opened (a press reached the app). */
+    pressed: false,
+    /** The line shown is the readiness check's "can't work yet". */
+    readyLine: false,
+    /** When a finished dictation's result was last shown (ms). */
+    resultAt: 0,
     busy: false,
 };
 let onDone = () => { };
@@ -508,19 +515,53 @@ const WHERE = {
     server: "by your server",
     cloud: "by OpenRouter",
 };
-function showResult(v) {
-    const last = v.last;
-    if (!last || last.at_ms < st.openedAt || st.step !== "try")
-        return;
+function setResult(line) {
     const r = $("ob_result");
     r.hidden = false;
+    r.classList.toggle("is-bad", line.bad);
+    $("ob_result_text").textContent = line.text;
+}
+function tryOpen() {
+    return st.step === "try" && !$("onboarding").hidden;
+}
+function showResult(v) {
+    const last = v.last;
+    if (!last || last.at_ms < st.openedAt || !tryOpen())
+        return;
+    st.resultAt = Date.now();
     const good = last.status === "FORMATTED" || last.status === "RAW_TRANSCRIPT";
-    r.classList.toggle("is-bad", !good);
     const where = WHERE[last.engine ?? ""] ?? (last.engine ? `by ${last.engine}` : "");
     const secs = (ms) => `${(ms / 1000).toFixed(1)} s`;
-    $("ob_result_text").textContent = good
-        ? `It works. Heard ${where} in ${secs(last.asr_ms)}${last.total_ms > last.asr_ms ? `, ready in ${secs(last.total_ms)}` : ""}.`
-        : `That didn't work: ${last.notice ?? last.empty_reason ?? last.status}. Try again, or check Settings → Speech to text after setup.`;
+    setResult({
+        bad: !good,
+        text: good
+            ? `It works. Heard ${where} in ${secs(last.asr_ms)}${last.total_ms > last.asr_ms ? `, ready in ${secs(last.total_ms)}` : ""}.`
+            : `That didn't work: ${last.notice ?? last.empty_reason ?? last.status}. Try again, or check Settings → Speech to text after setup.`,
+    });
+}
+/** D75: say up front when a press cannot work (no model, no server) instead
+ *  of leaving the step silent. A press that already reached the pill wins. */
+async function checkReady() {
+    const opened = st.openedAt;
+    let line;
+    try {
+        line = readinessLine(await invoke("setup_readiness"), models.busy());
+    }
+    catch (e) {
+        line = readinessErrorLine(e);
+    }
+    if (!tryOpen() || st.openedAt !== opened || st.pressed)
+        return;
+    if (line)
+        setResult(line);
+    else
+        $("ob_result").hidden = true; // ready now (a download finished)
+    st.readyLine = !!line;
+}
+/** A model finished downloading or loading while the step is open: check again. */
+function recheckReady() {
+    if (tryOpen() && st.readyLine && !st.pressed)
+        void checkReady();
 }
 // ------------------------------------------------------------ navigation
 function show(s) {
@@ -541,7 +582,10 @@ function show(s) {
     if (s === "try") {
         renderTry();
         st.openedAt = Date.now();
+        st.pressed = false;
+        st.readyLine = false;
         $("ob_result").hidden = true;
+        void checkReady();
         $("ob_try_box").focus();
     }
     panel(s).querySelector('[data-ob="next"]')?.focus({ preventScroll: true });
@@ -693,12 +737,14 @@ export const onboarding = {
                 st.model = i.status;
                 if (st.step === "model")
                     renderModel();
+                recheckReady();
             });
         });
         void onEvent("model:status", (e) => {
             st.model = e.payload;
             if (st.step === "model")
                 renderModel();
+            recheckReady();
         });
         void onEvent("llm:status", (e) => {
             if (st.info)
@@ -707,15 +753,28 @@ export const onboarding = {
                 $("ob_llm_status").textContent = llmLine(e.payload);
         });
         void onEvent("dev:route", (e) => showResult(e.payload));
+        // D75: the pill's state, so a press shows here too: listening, working,
+        // and why it failed (no model, server unreachable) instead of nothing.
+        void onEvent("dictation:status", (e) => {
+            if (!tryOpen())
+                return;
+            const line = pillLine(e.payload);
+            if (!line)
+                return;
+            st.pressed = true;
+            setResult(line);
+        });
         void onEvent("history:changed", () => {
-            if (st.step !== "try" || !$("ob_result").hidden)
+            if (!tryOpen())
                 return;
             // Builds whose dictations bypass the router still say it arrived.
+            // A route result just before or just after this one wins.
+            const at = Date.now();
             setTimeout(() => {
-                if (!$("ob_result").hidden)
+                if (st.resultAt >= at - 2000 || !tryOpen())
                     return;
-                $("ob_result").hidden = false;
-                $("ob_result_text").textContent = "It works. Your dictation arrived.";
+                st.resultAt = Date.now();
+                setResult({ text: "It works. Your dictation arrived.", bad: false });
             }, 300);
         });
     },
