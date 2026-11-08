@@ -67,8 +67,8 @@ mode) with Qwen2.5-3B echoes even more:
 
 | AI path, Qwen2.5-3B | E no echo | N kept |
 |---|---|---|
-| base | 3/18 (2 of the 3 are 30 s timeouts; 15 of 16 answers echoed) | 8/8 |
-| check | 18/18 | 8/8 |
+| base | 1/18 (no timeouts: 17 of 18 answers echoed) | 8/8 |
+| check | 18/18 (E01, E02 hit the 30 s timeout under load; the 16 answers all had the echo removed) | 8/8 |
 
 The check also removes an echo inside a list the model made of the context:
 "Totals so far: apples 3, pears 5. " plus "oranges two" became a 3-item list,
