@@ -206,7 +206,10 @@ impl CloudConfig {
             return Ok(());
         }
         if self.schema != CLOUD_SCHEMA {
-            return Err(format!("unknown cloud schema {}", self.schema));
+            return Err(format!(
+                "These cloud settings are from a newer version (schema {}): update the app.",
+                self.schema
+            ));
         }
         self.openrouter.validate()?;
         if self.cleanup_provider == CleanupProvider::Custom {
@@ -214,7 +217,7 @@ impl CloudConfig {
         }
         if let Some(b) = self.monthly_budget_usd {
             if !(b.0.is_finite() && b.0 >= 0.0) {
-                return Err("monthly budget must be a non-negative amount".into());
+                return Err("The monthly cloud budget must be zero or more.".into());
             }
         }
         Ok(())
@@ -341,6 +344,8 @@ pub const CUSTOM_CLEANUP_ID: &str = "custom";
 /// may be slower than OpenRouter's fastest provider.
 pub const DEFAULT_CUSTOM_CLEANUP_TIMEOUT_MS: u64 = 4000;
 pub const CUSTOM_CLEANUP_TIMEOUT_RANGE_MS: (u64, u64) = (800, 30_000);
+/// Connect time limit range (ms) of both cleanup services.
+pub const CONNECT_TIMEOUT_RANGE_MS: (u64, u64) = (200, 10_000);
 
 /// D52: cleanup through the user's own OpenAI-compatible server (LiteLLM
 /// proxy, vLLM, Ollama, …). Plain `http://` is allowed to any host by the
@@ -425,8 +430,12 @@ impl CustomCleanupConfig {
     /// shells show them as they are (D76).
     pub fn validate(&self) -> Result<(), String> {
         if !self.base_url.trim().is_empty() {
-            self.api_base()
-                .map_err(|e| format!("The AI cleanup server address is not usable: {e}."))?;
+            self.api_base().map_err(|e| {
+                format!(
+                    "The AI cleanup server address is not usable: {}.",
+                    e.trim_end_matches('.')
+                )
+            })?;
         }
         let model = self.model.trim();
         if !model.is_empty() && !valid_custom_model_id(model) {
@@ -441,8 +450,11 @@ impl CustomCleanupConfig {
                 "The AI cleanup server's time limit must be {lo}-{hi} ms."
             ));
         }
-        if !(200..=10_000).contains(&self.connect_timeout_ms) {
-            return Err("The AI cleanup server's connect time limit must be 200-10000 ms.".into());
+        let (lo, hi) = CONNECT_TIMEOUT_RANGE_MS;
+        if !(lo..=hi).contains(&self.connect_timeout_ms) {
+            return Err(format!(
+                "The AI cleanup server's connect time limit must be {lo}-{hi} ms."
+            ));
         }
         Ok(())
     }
@@ -610,19 +622,25 @@ impl SttConfig {
 
     pub fn validate(&self) -> Result<(), String> {
         if !valid_model_id(&self.model) {
-            return Err(format!("invalid STT model id {:?}", self.model));
+            return Err(format!(
+                "The OpenRouter speech model {:?} is not valid: use the id openrouter.ai shows (author/model).",
+                self.model
+            ));
         }
         if !["auto", "transcriptions", "chat_audio"].contains(&self.stt_path.as_str()) {
-            return Err(format!("unknown stt_path {:?}", self.stt_path));
+            return Err(format!(
+                "Unknown OpenRouter speech request type (stt_path) {:?}: use auto, transcriptions or chat_audio.",
+                self.stt_path
+            ));
         }
         if !["", "wav", "flac"].contains(&self.format_override.as_str()) {
             return Err(format!(
-                "unknown format_override {:?}",
+                "Unknown OpenRouter audio format {:?}: use wav or flac.",
                 self.format_override
             ));
         }
         if !(1000..=60_000).contains(&self.timeout_base_ms) {
-            return Err("timeout_base_ms must be 1000-60000".into());
+            return Err("The OpenRouter speech time limit (timeout) must be 1000-60000 ms.".into());
         }
         Ok(())
     }
@@ -644,17 +662,28 @@ impl CleanupConfig {
 
     pub fn validate(&self) -> Result<(), String> {
         if !valid_model_id(&self.model) {
-            return Err(format!("invalid cleanup model id {:?}", self.model));
+            return Err(format!(
+                "The OpenRouter cleanup model {:?} is not valid: use the id openrouter.ai shows (author/model).",
+                self.model
+            ));
         }
         if !["", "latency", "throughput", "price"].contains(&self.sort.as_str()) {
-            return Err(format!("unknown sort {:?}", self.sort));
+            return Err(format!(
+                "Unknown OpenRouter provider sort {:?}: use latency, throughput or price.",
+                self.sort
+            ));
         }
         let (lo, hi) = CLEANUP_TIMEOUT_RANGE_MS;
         if !(lo..=hi).contains(&self.timeout_ms) {
-            return Err(format!("cleanup timeout_ms must be {lo}-{hi}"));
+            return Err(format!(
+                "The OpenRouter cleanup time limit (timeout) must be {lo}-{hi} ms."
+            ));
         }
-        if !(200..=10_000).contains(&self.connect_timeout_ms) {
-            return Err("cleanup connect_timeout_ms must be 200-10000".into());
+        let (lo, hi) = CONNECT_TIMEOUT_RANGE_MS;
+        if !(lo..=hi).contains(&self.connect_timeout_ms) {
+            return Err(format!(
+                "The OpenRouter cleanup connect time limit must be {lo}-{hi} ms."
+            ));
         }
         Ok(())
     }
@@ -673,7 +702,7 @@ impl OpenRouterConfig {
     pub fn validate(&self) -> Result<(), String> {
         if !["deny", "allow"].contains(&self.privacy.data_collection.as_str()) {
             return Err(format!(
-                "data_collection must be deny or allow, not {:?}",
+                "OpenRouter data collection (data_collection) must be deny or allow, not {:?}.",
                 self.privacy.data_collection
             ));
         }
@@ -1329,11 +1358,15 @@ mod tests {
         );
         bad.cloud.custom_cleanup.model = String::new();
         bad.cloud.custom_cleanup.base_url = "ftp://10.0.0.5".into();
-        let e = bad.validate().unwrap_err().to_string();
+        // Shown as is by the shells: the sentence alone, one full stop.
+        let e = bad.validate().unwrap_err();
+        assert_eq!(e.kind(), "bad_config");
+        let e = e.to_string();
         assert!(
-            e.contains("The AI cleanup server address is not usable"),
+            e.starts_with("The AI cleanup server address is not usable: "),
             "{e}"
         );
+        assert!(e.ends_with('.') && !e.ends_with(".."), "{e}");
     }
 
     #[test]

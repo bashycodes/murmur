@@ -210,39 +210,55 @@ impl ServerConfig {
     /// The §5 field rules. An empty host is valid (not configured).
     pub fn validate(&self) -> Result<(), String> {
         if self.is_configured() {
-            net::validate_host(&self.host)?;
+            net::validate_host(&self.host).map_err(|e| {
+                format!(
+                    "The server address is not valid: {}.",
+                    e.trim_end_matches('.')
+                )
+            })?;
             if !self.tls && !net::classify(&self.host).plaintext_ok() {
-                return Err("public address: TLS (wss) is required".into());
+                return Err(
+                    "The server address is public, so it needs TLS (wss): turn TLS on.".into(),
+                );
             }
         }
         if self.port == 0 {
-            return Err("port must be 1-65535".into());
+            return Err("The server port must be 1-65535.".into());
         }
         if let Some(pin) = self.tls_pin_sha256.as_deref() {
             let hex: String = pin.chars().filter(|c| *c != ':').collect();
             if !hex.is_empty() && (hex.len() != 64 || !hex.chars().all(|c| c.is_ascii_hexdigit())) {
-                return Err("certificate pin must be 64 hex characters (SHA-256)".into());
+                return Err(
+                    "The server certificate pin must be 64 hex characters (SHA-256).".into(),
+                );
             }
         }
         if !self.token.is_empty() && self.token.len() < flow_protocol::MIN_TOKEN_LEN {
             return Err(format!(
-                "token must be at least {} characters",
+                "The access token must be at least {} characters.",
                 flow_protocol::MIN_TOKEN_LEN
             ));
         }
         let ranges = [
-            ("connect_timeout_ms", self.connect_timeout_ms, 100, 10_000),
             (
-                "commit_timeout_base_ms",
+                "connect time limit",
+                self.connect_timeout_ms,
+                100,
+                10_000,
+                "ms",
+            ),
+            (
+                "result time limit",
                 self.commit_timeout_base_ms,
                 500,
                 60_000,
+                "ms",
             ),
-            ("health_ttl_s", self.health_ttl_s, 5, 600),
+            ("health check interval", self.health_ttl_s, 5, 600, "s"),
         ];
-        for (name, v, lo, hi) in ranges {
+        for (name, v, lo, hi, unit) in ranges {
             if !(lo..=hi).contains(&v) {
-                return Err(format!("{name} must be {lo}-{hi}"));
+                return Err(format!("The server {name} must be {lo}-{hi} {unit}."));
             }
         }
         Ok(())
@@ -302,7 +318,7 @@ impl RouterConfig {
         for (i, r) in self.order.iter().enumerate() {
             if self.order[..i].contains(r) {
                 return Err(RouterError::BadConfig(format!(
-                    "route order lists {:?} twice",
+                    "The engine order lists {:?} twice.",
                     r
                 )));
             }
@@ -310,7 +326,7 @@ impl RouterConfig {
         for (i, r) in self.cleanup_order.iter().enumerate() {
             if self.cleanup_order[..i].contains(r) {
                 return Err(RouterError::BadConfig(format!(
-                    "cleanup order lists {:?} twice",
+                    "The AI cleanup order lists {:?} twice.",
                     r
                 )));
             }
@@ -718,7 +734,9 @@ pub enum RouterError {
     ServerNotConfigured,
     #[error("server_unavailable: {0}")]
     ServerUnavailable(String),
-    #[error("bad_config: {0}")]
+    /// A refused config. Displays as the sentence alone, which the shells
+    /// show as is (D76); [`RouterError::kind`] stays `bad_config`.
+    #[error("{0}")]
     BadConfig(String),
 }
 

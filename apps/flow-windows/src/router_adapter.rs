@@ -346,7 +346,7 @@ pub struct SessionTest {
 pub fn router_config(dev: &DevSettings, caps: BuildCaps) -> Result<RouterConfig, String> {
     let json = dev.router_config_json(caps, &dev.token());
     let cfg: RouterConfig = serde_json::from_value(json).map_err(|e| e.to_string())?;
-    cfg.validate().map_err(config_error)?;
+    cfg.validate().map_err(|e| e.to_string())?;
     Ok(cfg)
 }
 
@@ -354,17 +354,8 @@ pub fn router_config(dev: &DevSettings, caps: BuildCaps) -> Result<RouterConfig,
 pub fn server_config(dev: &DevSettings, token: &str) -> Result<ServerConfig, String> {
     let json = dev.router_config_json(BuildCaps::current(), token);
     let cfg: RouterConfig = serde_json::from_value(json).map_err(|e| e.to_string())?;
-    cfg.validate().map_err(config_error)?;
+    cfg.validate().map_err(|e| e.to_string())?;
     Ok(cfg.server)
-}
-
-/// A refused config as setup and Settings show it: the router's sentence
-/// without its `bad_config:` code (D76).
-fn config_error(e: flow_router::RouterError) -> String {
-    match e {
-        flow_router::RouterError::BadConfig(m) => m,
-        e => e.to_string(),
-    }
 }
 
 /// The remote side of this build: `None` without the `remote` feature.
@@ -1856,15 +1847,24 @@ mod tests {
     }
 
     /// D76: setup's "Where should your voice become text?" saves through
-    /// `server_config`, which validates the whole config. Custom cleanup
-    /// picked without a model (a fresh pick, or a config kept from an
-    /// earlier install) is "not configured"; a real bad model id is a
-    /// sentence, not `bad_config: invalid custom cleanup model id …`.
+    /// `dev_set` → `server_config`, which validates the whole config. The
+    /// kept prefs.json had Custom cleanup picked with an address and no
+    /// model (saved by a build that allows it); that is "not configured",
+    /// and a real bad model id is a sentence, not
+    /// `bad_config: invalid custom cleanup model id …`.
     #[test]
     fn custom_cleanup_without_model_does_not_block_setup() {
-        let mut d = DevSettings::default();
-        d.cloud.cleanup_provider = flow_router::CleanupProvider::Custom;
-        assert!(server_config(&d, "").is_ok());
+        let mut d: DevSettings = serde_json::from_value(serde_json::json!({
+            "allow_server": true, "allow_client": true, "route_order": ["server", "client"],
+            "cloud": {"schema": 2, "cleanup_provider": "custom",
+                      "custom_cleanup": {"base_url": "http://cleanup.example.lan:4000/v1", "model": "",
+                                         "timeout_ms": 4000, "connect_timeout_ms": 1500,
+                                         "consent_host": "", "consent_at_ms": 0}}
+        }))
+        .unwrap();
+        // The engine step's save (This PC first).
+        d.route_order = vec![Route::Client, Route::Server];
+        assert_eq!(server_config(&d, "").err(), None);
         assert!(router_config(&d, BOTH).is_ok());
         d.cloud.custom_cleanup.model = "two words".into();
         let e = router_config(&d, BOTH).unwrap_err();
