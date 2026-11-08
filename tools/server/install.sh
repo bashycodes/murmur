@@ -2,7 +2,7 @@
 # Build and install the self-hosted flow-server (Parakeet ASR) with its
 # systemd unit, or upgrade an existing install in place (binary and libs
 # replaced; config, token, keys and models kept). Setup guide:
-# docs/server-setup.md.
+# docs/server-advanced.md.
 #
 #   tools/server/install.sh [--system | --user] [options]
 #
@@ -361,7 +361,7 @@ if [ "$DRY" = 0 ] && exists "$CONF"; then
 else
     priv_write "$CONF" 0644 <<EOF
 # flow-server config, written by tools/server/install.sh. Reference:
-# crates/flow-server/dist/config.example.toml, docs/server-setup.md.
+# crates/flow-server/dist/config.example.toml, docs/server-advanced.md.
 # Loopback / LAN / VPN addresses only: 0.0.0.0 or a public address is
 # refused unless [tls] is set.
 bind = $BIND_TOML
@@ -379,7 +379,7 @@ else
     printf '# llm_path = "%s/<model>.gguf"   # LLM cleanup, needs --llm\n# llm_lib = "%s"\n' "$MODEL_ROOT" "$PLUGIN"
 fi )
 
-# [tls]                # optional wss:// (docs/server-setup.md "TLS")
+# [tls]                # optional wss:// (docs/server-advanced.md "TLS")
 # cert = "$CONF_DIR/cert.pem"
 # key = "$CONF_DIR/key.pem"
 
@@ -395,7 +395,7 @@ step "5. systemd unit"
 SRC_UNIT="$ROOT/crates/flow-server/dist/flow-server.service"
 if [ "$MODE" = system ]; then
     # The packaged hardened unit, with this install's paths.
-    sed -e '/^# Install (manually/,/enable --now flow-server`\.$/c\# Installed by tools/server/install.sh (see docs/server-setup.md).' \
+    sed -e '/^# Install (manually/,/enable --now flow-server`\.$/c\# Installed by tools/server/install.sh (see docs/server-advanced.md).' \
         -e "s|/usr/local/bin/flow-server|$BIN|" \
         -e "s|^LoadCredential=token:.*|LoadCredential=token:$TOKEN|" \
         -e "s|^# Environment=LD_LIBRARY_PATH=.*|Environment=LD_LIBRARY_PATH=$LIB_DIR|" \
@@ -446,7 +446,7 @@ fi
 
 cat <<EOF
 
-Next steps (docs/server-setup.md):
+Next steps (docs/server-advanced.md):
   * logs (expect "ready workers=1 asr=parakeet"):  ${SUDO}$JOURNAL
   * LLM cleanup loaded: GET /v1/health with the token shows "llm":true
   * the token for the apps:                        ${SUDO}cat $TOKEN

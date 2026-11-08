@@ -39,6 +39,12 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["serve"]
           env:
+            # The chart mounts its own config, models and state (not the
+            # image's zero-config /data layout, D77): no model download.
+            - name: FLOW_CONFIG
+              value: /etc/flow-server/config.toml
+            - name: FLOW_MODELS
+              value: none
             - name: FLOW_BIND_CONTAINER_IP
               value: {{ ternary "1" "0" .Values.bindPodIP | quote }}
             - name: FLOW_INSECURE_BIND_ANY

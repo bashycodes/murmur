@@ -8,7 +8,7 @@ Builds under test: `integration` at the commit of the CI runs below.
 
 ## (a) Server on this Linux box (~10 min)
 
-Full guide: [`docs/server-setup.md`](server-setup.md).
+Full guide: [`docs/server-advanced.md`](server-advanced.md) (Docker instead: [`docs/server-setup.md`](server-setup.md)).
 
 1. Prerequisites: the Parakeet model folder (`FLOW_PARAKEET_DIR`, or
    `models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8`) and the sherpa-onnx

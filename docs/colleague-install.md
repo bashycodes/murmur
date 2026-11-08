@@ -13,7 +13,7 @@ This bundle: version {{VERSION}}, build `{{COMMIT}}`, variant `{{VARIANT}}`.
 |---|---|
 | `windows/{{WIN_EXE}}` | Windows 10/11 installer (64-bit). Works on its own and with a server. |
 | `android/{{APK}}` | Android app (Android 13 or newer). Works on its own and with a server. |
-| `server/` | `flow-server` for Linux x86_64: the program, its libraries, a config and a systemd service. |
+| `server/` | `flow-server` for Linux x86_64 without Docker: the program, its libraries, a config and a systemd service. With Docker you do not need it (see [The server](#the-server-optional-for-a-team)). |
 | `{{MODELS_ZIP}}` | The speech models (English, many languages, Hebrew, language detection{{DIARIZER_LIST}}). |
 | `{{CLEANUP_ZIP}}` | The AI cleanup model (fixes punctuation, fillers, "scratch that"). Optional. |
 | `SHA256SUMS.txt` | Fingerprints of the files in this folder; each models zip has its own inside. Check with `sha256sum -c SHA256SUMS.txt`. |
@@ -97,11 +97,50 @@ unzipped folder checks them.
 
 ## The server (optional, for a team)
 
-One Linux machine (x86_64, {{GLIBC}} or newer, e.g. Ubuntu 24.04; 4 cores
-and 8 GB RAM are plenty) does the dictation for everyone and hands the
-models to the apps. It only listens on your network; it never connects
-anywhere.
+One Linux machine (x86_64; 4 cores and 8 GB RAM are plenty) does the
+dictation for everyone and hands the models to the apps. It only listens
+on your network; it never connects anywhere.
 
+### With Docker (recommended)
+
+```sh
+docker volume create flow_data
+docker run -d --name flow-server --restart unless-stopped \
+  -p 0.0.0.0:7313:7313 -v flow_data:/data ghcr.io/bashycodes/murmur/flow-server:{{VERSION}}
+docker logs -f flow-server
+```
+
+The first start downloads the models (about 1.9 GB), then prints the
+admin key once (`docker exec flow-server cat /data/admin.token` shows it
+again) and, about a minute later, `ready`. If `docker pull` says
+`denied`, ask whoever gave you this bundle for access to the image.
+
+No internet on the server: put the models from this bundle into the volume
+before the `docker run` above, from the folder with the zips:
+
+```sh
+unzip -q {{MODELS_ZIP}} 'library/*' -d flow-models
+unzip -q {{CLEANUP_ZIP}} 'library/*' -d flow-models     # optional: AI cleanup
+docker run --rm -v flow_data:/data -v "$PWD/flow-models/library:/seed:ro" --entrypoint sh \
+  ghcr.io/bashycodes/murmur/flow-server:{{VERSION}} -c 'mkdir -p /data/library && cp -r /seed/. /data/library/'
+```
+
+(Without the cleanup zip, add `-e FLOW_MODELS=parakeet-tdt-0.6b-v2-int8,whisper-tiny-lid,zipformer-he-int8`
+to `docker run`.) Keys, one per person or device (shown once; treat it like a
+password):
+
+```sh
+docker exec flow-server flow-server keys add alice-laptop --admin   # admin keys can manage keys from the Windows app
+docker exec flow-server flow-server keys add alice-phone
+docker exec flow-server flow-server keys list
+docker exec flow-server flow-server keys revoke alice-phone
+```
+
+Allow TCP port 7313 from your LAN/VPN in the server's firewall.
+
+### Without Docker
+
+For a server without Docker ({{GLIBC}} or newer, e.g. Ubuntu 24.04):
 {{SERVER_NOTE}}
 
 Install (as root, from the bundle's `server/` folder):
@@ -119,7 +158,7 @@ sudo flow-server gen-token --out /etc/flow-server/token
 
 The token in `/etc/flow-server/token` is the server's first admin key,
 named `owner` in `flow-server keys list`. Keep it for yourself; give
-everyone else their own key (below).
+everyone else their own key.
 
 Then edit `/etc/flow-server/config.toml`:
 
@@ -137,16 +176,7 @@ sudo journalctl -u flow-server -f      # wait for the "ready" line
 sudo flow-server library list          # the models the apps can download
 ```
 
-Keys: give each person or device its own key (shown once; treat it like a
-password):
-
-```sh
-sudo flow-server keys add alice-laptop --admin   # admin keys can manage keys from the Windows app
-sudo flow-server keys add alice-phone
-sudo flow-server keys list
-sudo flow-server keys revoke alice-phone
-```
-
+Keys: the same `keys` commands as above, as `sudo flow-server keys …`.
 Allow TCP port 7313 from your LAN/VPN in the server's firewall.
 
 ## Connect the apps to the server
