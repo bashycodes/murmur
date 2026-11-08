@@ -39,6 +39,8 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- **Windows setup: "Now try it" says why it can't work instead of doing nothing** (D75). On a clean install with no speech model on this PC and no server address, holding Right Alt in the last setup step showed nothing in the step (the reason only reached the pill). The step now checks before you talk and says what is missing in plain words (no speech model yet, no server address, your server can't be reached), and while you hold the shortcut it shows listening, working, and any error from the pill.
+
 - **Whisper no longer repeats a stretch of text when "Decode while speaking" is on** (PC and phone whisper models, flow-server whisper; D66). A short piece decoded with the trimmed encoder window could loop a long phrase with a few words between the copies; that now counts as degenerate and is decoded again with the full window. Parity set, whisper small: segmented WER 20.9% → 18.3% (unsegmented 16.8%).
 - **Windows: with cloud cleanup switched off in Cleanup order, the "Try it" row says so.** With a key saved but OpenRouter (or your custom server) switched off in Cleanup order, it showed "cloud_cleanup_not_configured — … save a key". It now says cloud cleanup is off in Cleanup order and has a "Turn on in Cleanup order" button.
 - **Windows: the "Try it" row words every other cause too, without backend codes.** It tells apart a missing key, missing consent and a custom server without its address or model, and a failed Test names the cause in words.

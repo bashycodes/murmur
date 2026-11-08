@@ -20,7 +20,7 @@
 //!   badge, and cloud failures get user-facing text (`crate::cloud`).
 
 use crate::core_adapter::{
-    from_core_result, to_core_context, to_core_session, FlowCoreAdapter, LOAD_WAIT,
+    from_core_result, to_core_context, to_core_session, FlowCoreAdapter, ModelStatus, LOAD_WAIT,
 };
 use crate::core_api::{
     CommitResult, CommitStatus, CoreApi, FieldContext, LearnCandidate, SessionConfig,
@@ -339,6 +339,18 @@ pub struct SessionTest {
     pub total_ms: u64,
 }
 
+/// D75: can a dictation start now? The setup's "try it" step asks before
+/// the user talks, so a step that cannot work says why instead of staying
+/// silent.
+#[derive(Debug, Clone, Serialize)]
+pub struct Readiness {
+    pub ready: bool,
+    /// The engine a dictation would start on: "local" | "remote" | "cloud".
+    pub engine: Option<String>,
+    /// Why not, in plain words (`None` when ready).
+    pub message: Option<String>,
+}
+
 // ------------------------------------------------------------------ config
 
 /// Developer settings → `RouterConfig` (via the §1.2 JSON, which the
@@ -568,6 +580,88 @@ impl RouterAdapter {
             engine: route.map(|x| x.engine.clone()),
             fallback: route.and_then(|x| x.fallback.clone()),
             total_ms: r.timings.total_ms,
+        }
+    }
+
+    /// D75: walk the dictation route order the way a start does (first
+    /// engine that can start wins, the rest are fallbacks) without opening
+    /// a session or sending audio. Blocking: a configured server is probed
+    /// (connect timeout), the same probe as Settings → Test connection.
+    /// A model still loading counts as ready: a start waits for it.
+    pub fn readiness(&self) -> Readiness {
+        let cfg = self.router.config();
+        let caps = self.router.capabilities();
+        let ready = |engine: &str| Readiness {
+            ready: true,
+            engine: Some(engine.into()),
+            message: None,
+        };
+        let mut why: Vec<String> = Vec::new();
+        let mut tried = false;
+        for kind in cfg.route_order() {
+            match kind {
+                EngineKind::Local if caps.local => {
+                    tried = true;
+                    let Some(l) = &self.local else { continue };
+                    match l.status() {
+                        ModelStatus::Ready { .. } | ModelStatus::Loading { .. } => {
+                            return ready("local")
+                        }
+                        ModelStatus::Missing { path, .. } => why.push(format!(
+                            "There's no speech model on this PC yet (nothing at {path}). \
+                             Go back to the speech model step and download or choose one."
+                        )),
+                        ModelStatus::Failed { message, .. } => why.push(format!(
+                            "The speech model on this PC didn't load: {message}."
+                        )),
+                    }
+                }
+                EngineKind::Remote if caps.remote => {
+                    tried = true;
+                    if !cfg.server.is_configured() {
+                        why.push(
+                            "There's no server address yet. Type your server's address in \
+                             the \"where speech runs\" step."
+                                .into(),
+                        );
+                        continue;
+                    }
+                    let h = self.router.probe_server();
+                    if h.ok {
+                        return ready("remote");
+                    }
+                    let detail = h.message.or(h.error).unwrap_or_default();
+                    why.push(if needs_tls(&detail) {
+                        SERVER_NEEDS_TLS.into()
+                    } else {
+                        format!(
+                            "Your server at {} can't be reached ({detail}). Check that it's \
+                             running and that this PC can reach it.",
+                            cfg.server.addr()
+                        )
+                    });
+                }
+                EngineKind::Cloud => {
+                    tried = true;
+                    if self.cloud_ready(&cfg) {
+                        return ready("cloud");
+                    }
+                    why.push(format!(
+                        "{}.",
+                        crate::cloud::failure_message(self.cloud_skip_reason(&cfg), None)
+                    ));
+                }
+                _ => {}
+            }
+        }
+        Readiness {
+            ready: false,
+            engine: None,
+            message: Some(if tried && !why.is_empty() {
+                why.join(" ")
+            } else {
+                NO_ENGINE_MSG.into()
+            }),
         }
     }
 
@@ -1728,6 +1822,67 @@ mod tests {
         );
         let err = router.start_session(session()).unwrap_err();
         assert!(err.contains("not found"), "{err}");
+    }
+
+    /// D75: the setup's last step asks before the user talks. No model on
+    /// this PC and no server address (a fresh install that skipped the
+    /// download) is not ready, and says both reasons in plain words.
+    #[test]
+    fn readiness_without_a_model_or_a_server_says_why() {
+        let local = FlowCoreAdapter::new();
+        local.load_now(&ModelSpec::Whisper {
+            path: "/nonexistent/ggml-base.bin".into(),
+            threads: None,
+        });
+        let mut d = dev(true, true);
+        d.server.host = String::new();
+        let factory: RemoteFactory = Box::new(|_cfg: &ServerConfig| -> Arc<dyn Backend> {
+            unreachable!("no host, no connection")
+        });
+        let r = RouterAdapter::new(router_config(&d, BOTH).unwrap(), Some(local), Some(factory));
+        let ready = r.readiness();
+        assert!(!ready.ready, "{ready:?}");
+        assert_eq!(ready.engine, None);
+        let m = ready.message.unwrap();
+        assert!(m.contains("no speech model on this PC"), "{m}");
+        assert!(m.contains("no server address"), "{m}");
+    }
+
+    #[test]
+    fn readiness_with_the_server_up_names_the_server() {
+        let r = rig(&dev(true, true));
+        let ready = r.router.readiness();
+        assert!(ready.ready && ready.message.is_none(), "{ready:?}");
+        assert_eq!(ready.engine.as_deref(), Some("remote"));
+    }
+
+    /// Server down but a model on this PC: a dictation falls back, so ready.
+    #[test]
+    fn readiness_falls_back_like_a_dictation() {
+        let r = rig(&dev(true, true));
+        r.server.up.store(false, Ordering::SeqCst);
+        let ready = r.router.readiness();
+        assert!(ready.ready, "{ready:?}");
+        assert_eq!(ready.engine.as_deref(), Some("local"));
+    }
+
+    #[test]
+    fn readiness_server_only_and_down_says_it_cannot_be_reached() {
+        let r = rig(&dev(true, false));
+        r.server.up.store(false, Ordering::SeqCst);
+        let ready = r.router.readiness();
+        assert!(!ready.ready, "{ready:?}");
+        let m = ready.message.unwrap();
+        assert!(m.contains("can't be reached"), "{m}");
+        assert!(m.contains("100.64.0.10"), "{m}");
+    }
+
+    #[test]
+    fn readiness_with_every_engine_off_is_the_no_engine_message() {
+        let r = rig(&dev(false, false));
+        let ready = r.router.readiness();
+        assert!(!ready.ready);
+        assert_eq!(ready.message.as_deref(), Some(NO_ENGINE_MSG));
     }
 
     /// The router fixtures are the spec for the settings → config mapping.
