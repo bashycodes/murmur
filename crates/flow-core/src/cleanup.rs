@@ -2697,6 +2697,22 @@ mod tests {
     }
 
     #[test]
+    fn v5_static_prompt_leaves_room_in_the_local_context() {
+        // v5 sits close to the local engine's 4096-token context, and an
+        // overflow fails every call ("prompt too long"; a 7-shot variant
+        // hit it, docs/findings/2026-11-07-spoken-identifiers.md). Its
+        // static part stays under ~13.3k characters (~3.65k tokens),
+        // leaving room for the dictation and the DICTIONARY line.
+        let v5 = versioned(Style::Casual, PromptVersion::V5);
+        let chars = v5.system.len()
+            + v5.examples
+                .iter()
+                .map(|(u, a)| u.len() + a.len())
+                .sum::<usize>();
+        assert!(chars < 13_300, "{chars}");
+    }
+
+    #[test]
     fn v5_light_has_no_level_line_and_other_levels_add_theirs() {
         let light = versioned(Style::Default, PromptVersion::V5);
         assert!(!light.system.contains("Level "), "{}", light.system);
