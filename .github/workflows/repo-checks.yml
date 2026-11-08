@@ -23,3 +23,7 @@ jobs:
       # and a failure names its check.
       - name: Native gate test
         run: apps/flow-android/tools/probes/check_native_so_test.sh
+      # The colleague bundle's model list stays in step with the apps'
+      # catalogue, and its install note renders.
+      - name: Colleague bundle helpers
+        run: tools/bundle/colleague-bundle_test.sh
