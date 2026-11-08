@@ -39,6 +39,7 @@ commit (`0.1.0+<sha>`) once versioning landed. The first tagged release is
 
 ### Fixed
 
+- **No more stray capitals mid-sentence after a pause** (PC, phone and flow-server, any speech model, with "Decode while speaking" on; D70). Pausing in the middle of a sentence could leave the next word capitalised ("we should look at Options for the room", "it went fine, The next part"), mostly when AI cleanup did not run. The words around each pause now take their case and punctuation from the decode that heard both sides; names stay capitalised.
 - **Whisper no longer repeats a stretch of text when "Decode while speaking" is on** (PC and phone whisper models, flow-server whisper; D66). A short piece decoded with the trimmed encoder window could loop a long phrase with a few words between the copies; that now counts as degenerate and is decoded again with the full window. Parity set, whisper small: segmented WER 20.9% → 18.3% (unsegmented 16.8%).
 - **Windows: with cloud cleanup switched off in Cleanup order, the "Try it" row says so.** With a key saved but OpenRouter (or your custom server) switched off in Cleanup order, it showed "cloud_cleanup_not_configured — … save a key". It now says cloud cleanup is off in Cleanup order and has a "Turn on in Cleanup order" button.
 - **Windows: the "Try it" row words every other cause too, without backend codes.** It tells apart a missing key, missing consent and a custom server without its address or model, and a failed Test names the cause in words.
