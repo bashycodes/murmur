@@ -3,18 +3,21 @@
 // that could not start (no speech model, no server) left it silent while
 // the reason went to the pill alone. Pure, so `npm test` runs it on the
 // built dist without a page.
+/** While the check's line is shown, look again this often (a server that
+ *  comes up, a model that finishes loading clears it). */
+export const RECHECK_MS = 5000;
 /** A backend sentence without its final full stop, to put inside ours. */
 const bare = (m) => m.trim().replace(/\.+$/, "");
 /** Before the user talks: `null` = ready, nothing to say. `downloading`: a
  *  speech model download started in the model step is still running. */
 export function readinessLine(r, downloading = false) {
-    if (r.ready)
+    if (r.state === "ready")
         return null;
     if (downloading) {
         return { text: "The speech model is still downloading. Hold the shortcut once it's done.", bad: false };
     }
     return {
-        text: `Dictation can't work yet. ${r.message ?? "No speech engine is set up."} You can finish setup now and fix it later in Settings → Speech to text.`,
+        text: `Dictation can't work yet. ${r.message} You can finish setup now and fix it later in Settings → Speech to text.`,
         bad: true,
     };
 }
