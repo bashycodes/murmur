@@ -22,12 +22,18 @@ use flow_router::cloud::{
     normalize_custom_base_url, valid_custom_model_id, valid_model_id, CLEANUP_TIMEOUT_RANGE_MS,
     CUSTOM_CLEANUP_TIMEOUT_RANGE_MS, OPENROUTER_HOST,
 };
-use flow_router::{CleanupProvider, CleanupRoute, CleanupStatus, CloudUsage, Usd};
+use flow_router::{CleanupRoute, CleanupStatus, CloudProvider, CloudUsage, Usd};
 use serde::{Deserialize, Serialize};
+
+/// D78: why cloud speech can't be switched on while LiteLLM is the Cloud
+/// provider.
+pub const LITELLM_NO_STT: &str = "Your Cloud provider is LiteLLM, which this app uses for AI cleanup only. Pick OpenRouter on the Cloud page to send speech to the cloud";
 
 /// Speech-to-text card.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SttView {
+    /// D78: the Cloud provider can do speech to text (OpenRouter only).
+    pub available: bool,
     pub allow: bool,
     pub consent: bool,
     pub consent_at_ms: u64,
@@ -57,7 +63,7 @@ pub struct CleanupView {
     /// D52: who the `cloud` cleanup route calls (`openrouter` | `custom`).
     /// `allow`, the order and the "send …" switches are shared; `consent`,
     /// `model` and `timeout_ms` above are OpenRouter's.
-    pub provider: CleanupProvider,
+    pub provider: CloudProvider,
     pub custom: CustomView,
 }
 
@@ -125,6 +131,7 @@ pub fn view(dev: &DevSettings, i: ViewInputs) -> OrView {
         supported: i.caps.cloud,
         privacy: or.privacy.clone(),
         stt: SttView {
+            available: dev.cloud.provider.offers_stt(),
             allow: dev.allow_cloud,
             consent: or.stt.consent_ok(),
             consent_at_ms: or.stt.consent_at_ms,
@@ -145,7 +152,7 @@ pub fn view(dev: &DevSettings, i: ViewInputs) -> OrView {
             send_screen_words: or.cleanup.send_screen_words,
             send_app_name: or.cleanup.send_app_name,
             status: i.cleanup_status,
-            provider: dev.cloud.cleanup_provider,
+            provider: dev.cloud.provider,
             custom: custom_view(&dev.cloud.custom_cleanup, i.custom_key),
         },
         budget,
@@ -215,8 +222,8 @@ pub struct CleanupForm {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(default)]
 pub struct CustomCleanupForm {
-    /// `"openrouter"` | `"custom"` (serde of [`CleanupProvider`]).
-    pub provider: CleanupProvider,
+    /// `"openrouter"` | `"custom"` (serde of [`CloudProvider`]).
+    pub provider: CloudProvider,
     /// As typed; `""` = not set yet (Custom is then saved but not used).
     pub base_url: String,
     pub model: String,
@@ -255,7 +262,10 @@ pub fn apply_stt(dev: &mut DevSettings, f: &SttForm, now_ms: u64) -> Result<(), 
         stt.consent_host = OPENROUTER_HOST.into();
         stt.consent_at_ms = now_ms.max(1);
     }
-    if f.allow && !stt.consent_ok() {
+    if f.allow && !next.cloud.provider.offers_stt() {
+        return Err(LITELLM_NO_STT.into());
+    }
+    if f.allow && !next.cloud.openrouter.stt.consent_ok() {
         return Err("Accept sending audio to OpenRouter before turning this on".into());
     }
     if f.allow && !dev.allow_cloud {
@@ -307,12 +317,12 @@ pub fn apply_cleanup(dev: &mut DevSettings, f: &CleanupForm, now_ms: u64) -> Res
 /// Consent for the selected cleanup provider's host: openrouter.ai, or
 /// the custom server's current host (D52).
 fn record_cleanup_consent(cloud: &mut flow_router::cloud::CloudConfig, now_ms: u64) {
-    match cloud.cleanup_provider {
-        CleanupProvider::OpenRouter => {
+    match cloud.provider {
+        CloudProvider::OpenRouter => {
             cloud.openrouter.cleanup.consent_host = OPENROUTER_HOST.into();
             cloud.openrouter.cleanup.consent_at_ms = now_ms.max(1);
         }
-        CleanupProvider::Custom => {
+        CloudProvider::LiteLlm => {
             let cc = &mut cloud.custom_cleanup;
             let host = cc.host();
             if !host.is_empty() {
@@ -325,10 +335,10 @@ fn record_cleanup_consent(cloud: &mut flow_router::cloud::CloudConfig, now_ms: u
 
 /// How an error names where cleanup text goes.
 fn cleanup_host_name(cloud: &flow_router::cloud::CloudConfig) -> String {
-    match cloud.cleanup_provider {
-        CleanupProvider::OpenRouter => "OpenRouter".into(),
-        CleanupProvider::Custom => match cloud.cleanup_host() {
-            h if h.is_empty() => "your server".into(),
+    match cloud.provider {
+        CloudProvider::OpenRouter => "OpenRouter".into(),
+        CloudProvider::LiteLlm => match cloud.cleanup_host() {
+            h if h.is_empty() => "your LiteLLM proxy".into(),
             h => h,
         },
     }
@@ -347,8 +357,13 @@ pub fn apply_custom_cleanup(
     now_ms: u64,
 ) -> Result<(), String> {
     let mut next = dev.clone();
-    next.cloud.cleanup_provider = f.provider;
+    next.cloud.provider = f.provider;
     let custom = !f.provider.is_openrouter();
+    // D78: one Cloud provider at a time. LiteLLM does cleanup only, so
+    // picking it turns cloud speech off (OpenRouter's consent is kept).
+    if custom {
+        next.allow_cloud = false;
+    }
     let cc = &mut next.cloud.custom_cleanup;
     let url = f.base_url.trim();
     cc.base_url = if url.is_empty() {
@@ -368,7 +383,7 @@ pub fn apply_custom_cleanup(
     cc.timeout_ms = f.timeout_ms as u64;
     if f.consent {
         if custom && cc.host().is_empty() {
-            return Err("Enter your server's base URL".into());
+            return Err("Enter your proxy's address".into());
         }
         record_cleanup_consent(&mut next.cloud, now_ms);
     }
@@ -403,7 +418,7 @@ pub fn apply_custom_key_consent(
     let a = flow_router::cloud::custom_server_address(base_url)
         .map_err(|e| format!("Base URL: {e}"))?;
     let mut next = dev.clone();
-    let openrouter = next.cloud.cleanup_provider.is_openrouter();
+    let openrouter = next.cloud.provider.is_openrouter();
     let cc = &mut next.cloud.custom_cleanup;
     if openrouter || cc.host().is_empty() {
         cc.base_url = a.url;
@@ -754,6 +769,72 @@ mod tests {
     }
 
     #[test]
+    fn litellm_as_the_cloud_provider_keeps_cloud_speech_off() {
+        // D78: one provider at a time; LiteLLM does cleanup only.
+        let mut d = dev();
+        apply_stt(&mut d, &stt(true, true), 7).unwrap();
+        assert!(d.allow_cloud);
+        apply_custom_cleanup(
+            &mut d,
+            &custom("custom", "http://10.0.0.5:4000", "local-cleanup", false),
+            8,
+        )
+        .unwrap();
+        assert!(!d.allow_cloud, "picking LiteLLM turns cloud speech off");
+        assert!(
+            d.cloud.openrouter.stt.consent_ok(),
+            "OpenRouter's consent is kept for a switch back"
+        );
+        assert_eq!(
+            apply_stt(&mut d, &stt(true, true), 9),
+            Err(LITELLM_NO_STT.into())
+        );
+        assert!(!d.allow_cloud);
+        let v = view(&d, inputs());
+        assert!(!v.stt.available);
+        // Back to OpenRouter: speech can be turned on again, no new consent.
+        apply_custom_cleanup(&mut d, &custom("openrouter", "", "", false), 10).unwrap();
+        assert!(view(&d, inputs()).stt.available);
+        apply_stt(&mut d, &stt(true, false), 11).unwrap();
+        assert!(d.allow_cloud);
+    }
+
+    #[test]
+    fn a_saved_mix_of_litellm_and_cloud_speech_is_fixed_once_on_load() {
+        let mut d = dev();
+        d.allow_cloud = true;
+        assert!(!d.one_cloud_provider(), "OpenRouter + speech is fine");
+        d.cloud.provider = CloudProvider::LiteLlm;
+        assert!(d.one_cloud_provider());
+        assert!(!d.allow_cloud);
+        assert_eq!(
+            d.cloud_notice.as_deref(),
+            Some(crate::dev_settings::LITELLM_STT_OFF_NOTICE)
+        );
+        assert!(!d.one_cloud_provider(), "once");
+    }
+
+    fn inputs() -> ViewInputs {
+        ViewInputs {
+            caps: ALL,
+            key: no_key(),
+            usage: CloudUsage::default(),
+            cleanup_status: CleanupStatus::default(),
+            catalog: serde_json::json!({}),
+            stt_model_info: None,
+            cleanup_model_info: None,
+            custom_key: no_key(),
+        }
+    }
+
+    fn no_key() -> KeyState {
+        KeyState {
+            set: false,
+            masked: String::new(),
+        }
+    }
+
+    #[test]
     fn key_consent_from_a_test_lets_the_saved_key_go_to_that_host() {
         // Owner report (1.1.2): URL typed, key saved, consent accepted, but
         // "Test connection" sent no key (401): nothing had recorded consent
@@ -768,7 +849,7 @@ mod tests {
             url
         ));
         apply_custom_key_consent(&mut d, url, 7).unwrap();
-        assert_eq!(d.cloud.cleanup_provider, CleanupProvider::OpenRouter);
+        assert_eq!(d.cloud.provider, CloudProvider::OpenRouter);
         assert_eq!(d.cloud.custom_cleanup.base_url, url);
         let cc = &d.cloud.custom_cleanup;
         assert!(!crate::credentials::saved_custom_key_withheld(
@@ -810,7 +891,7 @@ mod tests {
         // It is saved as picked, so the selector (and a reload after the
         // key's Save) shows Custom, and the router skips it until ready.
         apply_custom_cleanup(&mut d, &custom("custom", "", "", false), 5).unwrap();
-        assert_eq!(d.cloud.cleanup_provider, CleanupProvider::Custom);
+        assert_eq!(d.cloud.provider, CloudProvider::LiteLlm);
         assert!(!d.cloud.cleanup_ready());
         apply_custom_cleanup(
             &mut d,
@@ -818,7 +899,7 @@ mod tests {
             5,
         )
         .unwrap();
-        assert_eq!(d.cloud.cleanup_provider, CleanupProvider::Custom);
+        assert_eq!(d.cloud.provider, CloudProvider::LiteLlm);
         assert_eq!(d.cloud.custom_cleanup.base_url, "http://10.0.0.5:4000/v1");
         assert!(!d.cloud.cleanup_ready());
         apply_custom_cleanup(
@@ -829,7 +910,7 @@ mod tests {
         .unwrap();
         assert!(d.cloud.cleanup_ready());
         apply_custom_cleanup(&mut d, &custom("openrouter", "", "", false), 5).unwrap();
-        assert_eq!(d.cloud.cleanup_provider, CleanupProvider::OpenRouter);
+        assert_eq!(d.cloud.provider, CloudProvider::OpenRouter);
         assert!(d.cloud.custom_cleanup.base_url.is_empty());
     }
 
@@ -937,7 +1018,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(e.contains("10.0.0.5"), "{e}");
-        assert_eq!(d.cloud.cleanup_provider, CleanupProvider::OpenRouter);
+        assert_eq!(d.cloud.provider, CloudProvider::OpenRouter);
         apply_custom_cleanup(
             &mut d,
             &custom("custom", "http://10.0.0.5:4000", "m", true),

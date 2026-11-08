@@ -2678,7 +2678,7 @@ async fn dev_or_test_cleanup(app: AppHandle) -> Result<CleanupTest, String> {
     let state = app.state::<AppState>();
     let router = state.router.get().cloned().ok_or("router not ready")?;
     let cloud = state.prefs.read().unwrap().developer.cloud.clone();
-    if !cloud.cleanup_provider.is_openrouter() {
+    if !cloud.provider.is_openrouter() {
         let cc = cloud.custom_cleanup;
         let key = credentials::custom_key_for(
             None,
@@ -3155,7 +3155,9 @@ pub fn run() {
     // other providers' keys leave Credential Manager (before any router or
     // key load sees them).
     let migrated = crate::cloud::migrate_d28(&mut prefs.developer, &*creds, &usage_path);
-    if migrated.is_some() {
+    // D78: one Cloud provider at a time (LiteLLM has no cloud speech here).
+    let one_provider = prefs.developer.one_cloud_provider();
+    if migrated.is_some() || one_provider {
         if let Err(e) = prefs.save(&path) {
             eprintln!("[cloud] could not save the migrated settings: {e}");
         }
