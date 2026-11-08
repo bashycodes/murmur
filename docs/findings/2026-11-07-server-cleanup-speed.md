@@ -75,7 +75,10 @@ on s04 / s05.
 + `layout`, or the whitespace tidy for non-English) on the partial that
 the commit runs on the final transcript (`engine::spoken_rules`, shared),
 so the prefilled tokens are the commit prompt's own up to where the
-partial ends. No prompt wording or few-shot changes. Test:
+partial ends. Two cases still differ, costing reuse only: with
+auto-detect and a non-English dictation the hint (which only knows the
+forced language) gets the English rules, and a whole-utterance snippet
+runs no LLM. No prompt wording or few-shot changes. Test:
 `llm_prefill_hint_is_the_rules_text_the_commit_prompt_starts_with`
 (fails before, passes after).
 

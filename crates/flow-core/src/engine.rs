@@ -1962,13 +1962,14 @@ impl Worker {
     }
 }
 
-/// Guard, spoken cleanup, LLM and post-processing on `r.asr_text` (the
-/// session's tail of `commit`, and [`refinish`]).
-#[allow(clippy::too_many_arguments)]
 /// The deterministic spoken-cleanup pass that runs before prompt v2 (with
 /// `spoken_cleanup` on). The commit and the LLM prefill-ahead hint both
 /// call it, so the hint's transcript is the text the commit prompt starts
-/// with and the KV cache reuses it.
+/// with and the KV cache reuses it. The hint only knows the forced
+/// language: with auto-detect and a non-English dictation it applies the
+/// English rules and the reuse stops at the transcript; a whole-utterance
+/// snippet runs no LLM, so its hint is unused. Both cost reuse only, never
+/// output.
 fn spoken_rules(text: &str, cfg: &SessionConfig, cat: AppCategory, english: bool) -> String {
     if english {
         let text = postprocess::spoken::spoken_cleanup_keeping(text, &cfg.dictionary.vocabulary());
@@ -1982,6 +1983,9 @@ fn spoken_rules(text: &str, cfg: &SessionConfig, cat: AppCategory, english: bool
     }
 }
 
+/// Guard, spoken cleanup, LLM and post-processing on `r.asr_text` (the
+/// session's tail of `commit`, and [`refinish`]).
+#[allow(clippy::too_many_arguments)]
 fn finish_text(
     cleaner: Option<&Arc<dyn Cleaner>>,
     cfg: &SessionConfig,

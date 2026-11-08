@@ -62,12 +62,34 @@ fn backend_name(backend: &flow_core::config::AsrBackend, path: &str) -> (String,
     (name.into(), model)
 }
 
+/// D69: the drafting length the LLM plugin reports when it is not the one
+/// the config asks for (`None` when they match, or no LLM or no drafting
+/// was asked for). A plugin without `flow_llm_set_draft` reports no
+/// `draft` and runs its default (off): that is `Some(0)`.
+fn draft_not_applied(want: Option<usize>, info: Option<&str>) -> Option<usize> {
+    let want = want.filter(|&n| n > 0)?;
+    let info: serde_json::Value = serde_json::from_str(info?).ok()?;
+    let got = info.get("draft").and_then(|d| d.as_u64()).unwrap_or(0) as usize;
+    // The plugin caps the length at its DRAFT_MAX (8).
+    (got != want.min(8)).then_some(got)
+}
+
 impl Pool {
     /// Load `workers` cores (blocking; seconds for real models).
     pub fn load(model: &ModelConfig, workers: usize, max_queue: usize) -> Result<Self, CoreError> {
         let cores = (0..workers.max(1))
             .map(|_| FlowCore::load_models(model).map(Arc::new))
             .collect::<Result<Vec<_>, _>>()?;
+        for (worker, core) in cores.iter().enumerate() {
+            if let Some(got) = draft_not_applied(model.llm_draft, core.llm_info().as_deref()) {
+                tracing::warn!(
+                    worker,
+                    want = model.llm_draft,
+                    got,
+                    "llm_draft not applied (plugin without flow_llm_set_draft, or FLOW_LLM_DRAFT set)"
+                );
+            }
+        }
         let pool = Self::from_cores(cores, model, max_queue);
         pool.warm_llm();
         Ok(pool)
@@ -227,5 +249,26 @@ impl Pool {
             }
         };
         r
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::draft_not_applied;
+
+    #[test]
+    fn a_plugin_that_ignores_llm_draft_is_reported() {
+        // Applied, or nothing asked for: quiet.
+        assert_eq!(draft_not_applied(Some(4), Some(r#"{"draft":4}"#)), None);
+        assert_eq!(draft_not_applied(Some(0), Some(r#"{}"#)), None);
+        assert_eq!(draft_not_applied(None, Some(r#"{}"#)), None);
+        assert_eq!(draft_not_applied(Some(4), None), None);
+        // A plugin without flow_llm_set_draft reports no length: off.
+        assert_eq!(
+            draft_not_applied(Some(4), Some(r#"{"load_ms":1}"#)),
+            Some(0)
+        );
+        // FLOW_LLM_DRAFT overrode the config.
+        assert_eq!(draft_not_applied(Some(4), Some(r#"{"draft":2}"#)), Some(2));
     }
 }
