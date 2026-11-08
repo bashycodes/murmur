@@ -52,6 +52,7 @@ function fill(prefs) {
     $("asr_engine").value = prefs.asr_engine;
     setValue("parakeet_model_dir", prefs.parakeet_model_dir ?? "");
     $("hebrew_model").value = prefs.hebrew_model ?? "zipformer";
+    $("model_source").value = prefs.model_source === "huggingface" ? "huggingface" : "server";
     showEngineFields();
     setValue("ptt", prefs.shortcuts.ptt);
     setValue("hands_free", prefs.shortcuts.hands_free);
@@ -327,6 +328,7 @@ export function collectGeneral() {
     // Choosing another Hebrew model leaves a server one (D41) behind.
     if (next.hebrew_model !== prefsStore.get()?.hebrew_model)
         next.hebrew_model_dir = null;
+    next.model_source = $("model_source").value;
     next.microphone = $("microphone").value || null;
     for (const f of BOOL_FIELDS)
         next[f] = $(f).checked;

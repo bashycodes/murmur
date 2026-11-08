@@ -28,10 +28,11 @@ const head = (step: number): string => `
   <span class="fl-overline">Step ${step} of ${STEPS}</span>
 </div>`;
 
-const foot = (back: boolean, next: string, hintId = ""): string => `
+const foot = (back: boolean, next: string, hintId = "", extra = ""): string => `
 <div class="lw-ob-foot">
   ${back ? `<button type="button" class="fl-btn fl-btn-ghost" data-ob="back">Back</button>` : "<span></span>"}
   ${hintId ? `<span class="lw-ob-hint" id="${hintId}"></span>` : ""}
+  ${extra}
   <button type="button" class="fl-btn fl-btn-primary" data-ob="next">${next}</button>
 </div>`;
 
@@ -139,6 +140,7 @@ const modelRow = (id: string, title: string, desc: string, input: string, placeh
   </div>
   <span class="fl-badge" data-ob-model-badge hidden></span>
   <span class="lw-ob-model-actions">
+    <span class="fl-badge fl-badge-light" data-ob-missing hidden>Not on your server</span>
     <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" data-ob-use="${id}">Use</button>
     <button type="button" class="fl-btn ${id === "parakeet" ? "fl-btn-primary" : "fl-btn-secondary"} fl-btn-sm" data-ob-dl="${id}" hidden>Download</button>
     <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" data-ob-dl-cancel="${id}" hidden>Cancel</button>
@@ -161,7 +163,10 @@ const model = `
   ${head(3)}
   <div class="lw-ob-body is-split">
     <div class="lw-ob-side">
-      <h1 class="fl-serif lw-ob-h1" id="ob_model_title">Add a speech model</h1>
+      <div class="lw-ob-title-row">
+        <h1 class="fl-serif lw-ob-h1" id="ob_model_title">Add a speech model</h1>
+        <span class="fl-badge fl-badge-light" id="ob_model_optional" hidden>Optional</span>
+      </div>
       <p class="lw-ob-lead" id="ob_model_lead">The model is the part that listens. Get it once from where its makers publish it, then tell Murmur where it is.</p>
       <div class="lw-ob-note">
         ${ico(SHIELD, "lw-ico lw-ob-check")}
@@ -169,6 +174,14 @@ const model = `
       </div>
     </div>
     <div class="lw-ob-main">
+      <div class="lw-ob-src" id="ob_src" hidden>
+        <span class="fl-row-title" id="ob_src_label">Download from</span>
+        <div class="lw-seg" role="radiogroup" aria-labelledby="ob_src_label">
+          <button type="button" role="radio" aria-checked="false" data-ob-src="server">Your server</button>
+          <button type="button" role="radio" aria-checked="false" data-ob-src="huggingface">Hugging Face</button>
+        </div>
+        <span class="lw-ob-src-hint" id="ob_src_hint"></span>
+      </div>
       <div class="fl-group">
         ${modelRow("parakeet", "Parakeet TDT 0.6B", "English · fastest · a folder of about 660 MB", "ob_parakeet_dir", "Model folder", "Choose folder")}
         ${modelRow("whisper", "Whisper base", "Many languages · one 148 MB file (ggml-base.bin)", "ob_whisper_path", "Model file", "Choose file")}
@@ -185,7 +198,15 @@ const model = `
       </div>
     </div>
   </div>
-  ${foot(true, "Continue", "ob_model_hint")}
+  ${foot(
+    true,
+    "Continue",
+    "ob_model_hint",
+    `<div class="lw-ob-skip" id="ob_model_skip" hidden>
+      <button type="button" class="fl-btn fl-btn-ghost" data-ob="skip-model">Skip — use my server only</button>
+      <span class="lw-ob-skip-note">You can add a local model later in Settings · Speech to text.</span>
+    </div>`,
+  )}
 </div>`;
 
 const cleanupOption = (id: string, title: string, desc: string): string => `
