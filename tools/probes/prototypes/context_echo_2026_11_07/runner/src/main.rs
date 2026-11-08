@@ -74,7 +74,10 @@ impl As {
             p.user = format!("{}\n{sfx}", p.user);
         }
         *self.last_prompt_chars.lock().unwrap() = p.system.len()
-            + p.examples.iter().map(|(u, a)| u.len() + a.len()).sum::<usize>()
+            + p.examples
+                .iter()
+                .map(|(u, a)| u.len() + a.len())
+                .sum::<usize>()
             + p.user.len();
         if let Some(path) = self.dump.lock().unwrap().take() {
             let v = serde_json::json!({"system": p.system, "examples": p.examples, "user": p.user});
@@ -90,7 +93,12 @@ impl Cleaner for As {
         *self.last_raw.lock().unwrap() = r.as_ref().ok().cloned();
         r
     }
-    fn clean_cancellable(&self, p: &CleanPrompt, d: Instant, c: &AbortFlag) -> Result<String, CleanError> {
+    fn clean_cancellable(
+        &self,
+        p: &CleanPrompt,
+        d: Instant,
+        c: &AbortFlag,
+    ) -> Result<String, CleanError> {
         let r = self.inner.clean_cancellable(&self.fix(p), d, c);
         *self.last_raw.lock().unwrap() = r.as_ref().ok().cloned();
         r
@@ -114,23 +122,34 @@ impl Cleaner for As {
 
 fn main() {
     let argv: Vec<String> = std::env::args().skip(1).collect();
-    let get = |k: &str| argv.iter().position(|a| a == k).and_then(|i| argv.get(i + 1).cloned());
+    let get = |k: &str| {
+        argv.iter()
+            .position(|a| a == k)
+            .and_then(|i| argv.get(i + 1).cloned())
+    };
     let mode = get("--mode").expect("--mode rules|local|server|cloud");
     let cases = std::fs::read_to_string(get("--cases").expect("--cases")).expect("cases");
-    let session: SessionConfig =
-        serde_json::from_str(&std::fs::read_to_string(get("--session").expect("--session")).expect("session"))
-            .expect("session json");
+    let session: SessionConfig = serde_json::from_str(
+        &std::fs::read_to_string(get("--session").expect("--session")).expect("session"),
+    )
+    .expect("session json");
     let threads: usize = get("--threads").map_or(4, |t| t.parse().expect("--threads"));
     let timeout_ms: Option<u64> = get("--timeout-ms").map(|t| t.parse().expect("--timeout-ms"));
     let over = get("--override").map(|p| {
-        let v: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(p).expect("override")).expect("json");
+        let v: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(p).expect("override")).expect("json");
         Override {
             system: v["system"].as_str().expect("system").to_string(),
             examples: v["examples"]
                 .as_array()
                 .expect("examples")
                 .iter()
-                .map(|e| (e[0].as_str().unwrap().to_string(), e[1].as_str().unwrap().to_string()))
+                .map(|e| {
+                    (
+                        e[0].as_str().unwrap().to_string(),
+                        e[1].as_str().unwrap().to_string(),
+                    )
+                })
                 .collect(),
         }
     });
@@ -162,7 +181,8 @@ fn main() {
                 extra: get("--extra-shots")
                     .map(|p| {
                         let v: Vec<(String, String)> =
-                            serde_json::from_str(&std::fs::read_to_string(p).expect("extra shots")).expect("json");
+                            serde_json::from_str(&std::fs::read_to_string(p).expect("extra shots"))
+                                .expect("json");
                         v
                     })
                     .unwrap_or_default(),
@@ -174,9 +194,17 @@ fn main() {
         m => panic!("unknown --mode {m}"),
     };
     let text = Arc::new(Mutex::new(String::new()));
-    let core = FlowCore::from_engines(Arc::new(TextAsr(text.clone(), get("--language").unwrap_or_else(|| "en".into()))), cleaner);
+    let core = FlowCore::from_engines(
+        Arc::new(TextAsr(
+            text.clone(),
+            get("--language").unwrap_or_else(|| "en".into()),
+        )),
+        cleaner,
+    );
     // One second of tone so VAD and the empty-audio checks pass.
-    let tone: Vec<i16> = (0..16_000).map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16).collect();
+    let tone: Vec<i16> = (0..16_000)
+        .map(|i| ((i as f32 * 0.05).sin() * 8000.0) as i16)
+        .collect();
     let mut warmed = false;
     for line in cases.lines().filter(|l| !l.trim().is_empty()) {
         let c: serde_json::Value = serde_json::from_str(line).expect("case json");
@@ -229,8 +257,12 @@ fn main() {
             *w.last_raw.lock().unwrap() = None;
         }
         let (r, commit_ms) = run(c["input"].as_str().unwrap_or_default());
-        let chars = wrapper.as_ref().map(|w| *w.last_prompt_chars.lock().unwrap());
-        let raw = wrapper.as_ref().and_then(|w| w.last_raw.lock().unwrap().clone());
+        let chars = wrapper
+            .as_ref()
+            .map(|w| *w.last_prompt_chars.lock().unwrap());
+        let raw = wrapper
+            .as_ref()
+            .and_then(|w| w.last_raw.lock().unwrap().clone());
         println!(
             "{}",
             serde_json::json!({
