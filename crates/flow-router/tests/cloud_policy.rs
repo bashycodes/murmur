@@ -296,6 +296,27 @@ fn cloud_never_used_without_key() {
     assert_cloud_unused(&k);
 }
 
+/// D78: one Cloud provider at a time. With LiteLLM as the provider, cloud
+/// speech-to-text (OpenRouter-only) is skipped like an unconfigured route,
+/// even with OpenRouter's switch, consent and key all still saved; picking
+/// OpenRouter again brings it back.
+#[test]
+fn cloud_stt_never_used_while_litellm_is_the_cloud_provider() {
+    let mut c = cloud_cfg(&[Route::Cloud, Route::Client]);
+    c.cloud.provider = CloudProvider::LiteLlm;
+    let k = rig(c.clone());
+    k.router.start_session(SessionConfig::default()).unwrap();
+    let r = dictate(&k.router);
+    assert_eq!(route(&r).engine, "local");
+    assert_eq!(route(&r).fallback.as_deref(), Some("cloud_not_configured"));
+    assert_cloud_unused(&k);
+
+    c.cloud.provider = CloudProvider::OpenRouter;
+    k.router.update_config(c);
+    k.router.start_session(SessionConfig::default()).unwrap();
+    assert_eq!(route(&dictate(&k.router)).engine, "cloud");
+}
+
 #[test]
 fn cloud_never_used_when_order_is_empty_or_omits_cloud() {
     // Empty order = legacy D17 policy, which never includes the cloud.

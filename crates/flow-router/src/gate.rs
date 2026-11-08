@@ -20,7 +20,7 @@ use flow_core::asr::AbortFlag;
 use flow_core::cleanup::{CleanError, CleanPrompt, CleanUsage, Cleaner, PromptScope};
 
 use crate::cloud::{
-    month_of, CleanupProvider, CloudConfig, CloudUsage, SecretString, Usd, PURPOSE_CLEANUP,
+    month_of, CloudConfig, CloudProvider, CloudUsage, SecretString, Usd, PURPOSE_CLEANUP,
 };
 use crate::router::{failure_from_str, Circuit, LockExt};
 use crate::{now_unix_ms, CircuitStatus, Failure};
@@ -38,7 +38,7 @@ pub(crate) struct GateState {
     pub inner: Option<Arc<dyn Cleaner>>,
     /// Real cost of the last call per (provider, model) (estimate for
     /// unpriced models, spec §2.6 rule 5).
-    last_cost: HashMap<(CleanupProvider, String), f64>,
+    last_cost: HashMap<(CloudProvider, String), f64>,
     pub last: Option<CleanUsage>,
     /// Bumped when the cleanup config or key changes: results of calls
     /// started before do not touch the new circuit.
@@ -113,8 +113,8 @@ impl Gate {
         self.st.lk().last.clone()
     }
 
-    fn cost_key(cfg: &CloudConfig) -> (CleanupProvider, String) {
-        (cfg.cleanup_provider, cfg.cleanup_model().to_string())
+    fn cost_key(cfg: &CloudConfig) -> (CloudProvider, String) {
+        (cfg.provider, cfg.cleanup_model().to_string())
     }
 
     fn spent(&self) -> f64 {

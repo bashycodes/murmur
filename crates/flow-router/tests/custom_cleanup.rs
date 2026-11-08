@@ -1,4 +1,4 @@
-//! D52: the `cloud` cleanup route with `cloud.cleanup_provider = custom`
+//! D52: the `cloud` cleanup route with `cloud.provider = custom`
 //! calls the user's own OpenAI-compatible server (fake cleaner injected as
 //! the custom factory); OpenRouter stays the default and is unchanged.
 //! Consent binds to the typed host, the key is optional, STT is untouched
@@ -84,7 +84,7 @@ fn custom_cfg() -> RouterConfig {
         cleanup_order: vec![CleanupRoute::Cloud, CleanupRoute::Local],
         ..Default::default()
     };
-    c.cloud.cleanup_provider = CleanupProvider::Custom;
+    c.cloud.provider = CloudProvider::LiteLlm;
     c.cloud.custom_cleanup = CustomCleanupConfig {
         base_url: "http://10.0.0.5:4000".into(),
         model: "Qwen/Qwen2.5-7B-Instruct".into(),
@@ -160,7 +160,7 @@ fn custom_provider_cleans_the_cloud_route_without_a_key() {
         [("http://10.0.0.5:4000".to_string(), None)]
     );
     let st = k.router.cleanup_status();
-    assert_eq!(st.provider, CleanupProvider::Custom);
+    assert_eq!(st.provider, CloudProvider::LiteLlm);
     assert_eq!(st.host, "10.0.0.5");
     assert!(st.supported && st.enabled && st.consent && st.blocked.is_none());
     assert_eq!(st.model, "Qwen/Qwen2.5-7B-Instruct");
@@ -195,7 +195,7 @@ fn custom_key_is_its_own_and_rebuilds_the_cleaner() {
 #[test]
 fn openrouter_stays_the_default_and_unchanged() {
     let mut c = custom_cfg();
-    c.cloud.cleanup_provider = CleanupProvider::OpenRouter;
+    c.cloud.provider = CloudProvider::OpenRouter;
     c.cloud.openrouter.cleanup.consent_host = "openrouter.ai".into();
     c.cloud.openrouter.cleanup.consent_at_ms = 1;
     let k = rig(c, None);
@@ -204,11 +204,11 @@ fn openrouter_stays_the_default_and_unchanged() {
     assert_eq!((k.or.calls(), k.custom.calls()), (1, 0));
     assert!(k.custom_built.lock().unwrap().is_empty());
     let st = k.router.cleanup_status();
-    assert_eq!(st.provider, CleanupProvider::OpenRouter);
+    assert_eq!(st.provider, CloudProvider::OpenRouter);
     assert!(st.host.is_empty());
     // Switching the provider back and forth takes effect at once.
     let mut c = k.router.config();
-    c.cloud.cleanup_provider = CleanupProvider::Custom;
+    c.cloud.provider = CloudProvider::LiteLlm;
     k.router.update_config(c);
     assert!(dictate(&k.router).final_text.contains(CUSTOM_OUT));
 }
@@ -322,7 +322,7 @@ fn custom_spend_does_not_count_against_the_openrouter_budget() {
         assert!(dictate(&k.router).final_text.contains(CUSTOM_OUT));
     }
     let mut c = k.router.config();
-    c.cloud.cleanup_provider = CleanupProvider::OpenRouter;
+    c.cloud.provider = CloudProvider::OpenRouter;
     k.router.update_config(c);
     // Unpriced OpenRouter model, no OpenRouter cost recorded: refused (spec
     // §2.6 rule 5) — the custom server's cost for the same id does not
