@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Build the bundle to hand to colleagues: the hybrid Windows installer and
-# Android APK (CI builds, fixed debug key D56), flow-server for Linux x86_64
-# (built here: CI does not build it), the speech models, the AI cleanup
-# model and an install note (docs/colleague-install.md, version filled in;
-# Docker built from the source first, D77, the bundled server second).
+# Android APK (CI builds, fixed debug key D56), flow-server for Docker
+# (docker/: the server's source archive and the image built from it, D77)
+# and for Linux x86_64 without Docker (server/; built here: CI does not
+# build it), the speech models, the AI cleanup model and an install note
+# (docs/colleague-install.md, version filled in; Docker first).
 #
 #   tools/colleague-bundle.sh --source integration|notetaker|BRANCH|COMMIT [options]
 #
@@ -28,7 +29,9 @@
 #                 built from the same commit: no build.
 # --sherpa-lib DIR     libsherpa-onnx-c-api.so + libonnxruntime.so (default
 #                 $SHERPA_ONNX_LIB_DIR); needed to build and bundled.
-# --no-server     leave flow-server out.
+# --no-server     leave the host build (server/) out.
+# --no-image      leave the Docker image out (no Docker here); the source
+#                 archive is still bundled. Without it, Docker must work.
 # --no-zip        stop after the folder.
 # --no-fetch      do not `git fetch origin` first.
 # --dry-run       list what would be fetched or built, with sizes; change nothing.
@@ -36,14 +39,17 @@
 # The server build runs `cargo --offline -j 2` in a detached worktree of the
 # commit (DIR/.src/<sha>), target $CARGO_TARGET_DIR (default
 # ~/.cache/flow-clone-bundle-target), under flock/choom/nice, and needs
-# 4000 MB of available memory.
+# 4000 MB of available memory. The image is `docker build` of the bundled
+# source archive itself (needs network for crates.io and the sherpa-onnx
+# libraries), under the same lock, then `docker save`d with the tags
+# flow-server:<version> and flow-server:latest.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HERE="$ROOT/tools/bundle"
 SOURCE="" OUT="$ROOT/dist/colleague-bundle" LLM=default ONLY="" CACHES=()
 ANDROID_RUN="" WINDOWS_RUN="" ALLOW_STALE=0 SERVER_TARGET="" NO_SERVER=0
-NO_ZIP=0 NO_FETCH=0 DRY=0 SHERPA_LIB="${SHERPA_ONNX_LIB_DIR:-}"
+NO_ZIP=0 NO_FETCH=0 DRY=0 NO_IMAGE=0 SHERPA_LIB="${SHERPA_ONNX_LIB_DIR:-}"
 
 die() { echo "colleague-bundle.sh: $*" >&2; exit 1; }
 say() { echo "== $*"; }
@@ -60,10 +66,11 @@ while [ $# -gt 0 ]; do
     --server-target) SERVER_TARGET="${2:?}"; shift ;;
     --sherpa-lib) SHERPA_LIB="${2:?}"; shift ;;
     --no-server) NO_SERVER=1 ;;
+    --no-image) NO_IMAGE=1 ;;
     --no-zip) NO_ZIP=1 ;;
     --no-fetch) NO_FETCH=1 ;;
     --dry-run) DRY=1 ;;
-    -h|--help) sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
   shift
@@ -72,6 +79,10 @@ done
 case "$LLM" in default|all|none) ;; *) die "--llm default|all|none" ;; esac
 OUT="$(realpath -m "$OUT")"
 for t in git gh python3 curl sha256sum zip; do command -v "$t" >/dev/null || die "$t not found"; done
+if [ "$NO_IMAGE" = 0 ]; then
+  { command -v docker >/dev/null && docker info >/dev/null 2>&1; } ||
+    die "Docker is not available here (needed for the bundle's server image); start it, or pass --no-image"
+fi
 
 g() { git -C "$ROOT" "$@"; }
 mb() { awk -v b="$1" 'BEGIN { printf "%.0f MB", b / 1e6 }'; }
@@ -166,6 +177,19 @@ APK="flow-clone-android-hybrid-$VERSION-debug.apk"
 WIN_EXE="Murmur_${VERSION}_x64-setup_hybrid.exe"
 MODELS_ZIP="$NAME-speech-models.zip"
 CLEANUP_ZIP="$NAME-cleanup-model.zip"
+# Docker: the server's source (exactly the files `docker build` needs, plus
+# its docs) and the image built from it, in the bundle's docker/ folder.
+SOURCE_TGZ="flow-server-source-$VERSION.tar.gz"
+IMAGE_TAR="flow-server-image-$VERSION.tar"
+SRC_DIR="flow-server-source-$VERSION"
+SRC_PATHS=(Cargo.toml Cargo.lock VERSION .dockerignore crates deploy README.md
+  docs/server-setup.md docs/container.md docs/server-advanced.md)
+g cat-file -e "$COMMIT:deploy/docker/Dockerfile" 2>/dev/null || die "$SHA7 has no deploy/docker/Dockerfile"
+have=()
+for p in "${SRC_PATHS[@]}"; do
+  if g cat-file -e "$COMMIT:$p" 2>/dev/null; then have+=("$p"); fi   # older commits lack some docs
+done
+SRC_PATHS=("${have[@]}")
 
 # ---- dry run ----------------------------------------------------------------
 if [ "$DRY" = 1 ]; then
@@ -187,6 +211,10 @@ if [ "$DRY" = 1 ]; then
   if [ "$NO_SERVER" = 1 ]; then echo "  left out (--no-server)"
   elif [ -n "$SERVER_TARGET" ]; then echo "  from $SERVER_TARGET (no build)"
   else echo "  build in $OUT/.src/$SHA7 (cargo --offline -j 2, release, features whisper,parakeet,tls,llm + flow-llm); sherpa libs: ${SHERPA_LIB:-MISSING (--sherpa-lib)}"; fi
+  say "flow-server for Docker"
+  echo "  docker/$SOURCE_TGZ: $SHA7:{${SRC_PATHS[*]}} ($(mb "$(g archive --format=tar "$COMMIT" -- "${SRC_PATHS[@]}" | wc -c)") uncompressed)"
+  if [ "$NO_IMAGE" = 1 ]; then echo "  docker/$IMAGE_TAR: left out (--no-image)"
+  else echo "  docker/$IMAGE_TAR: docker build of that archive (CARGO_BUILD_JOBS=2, FLOW_GIT_SHA=$SHA7), docker save flow-server:$VERSION + :latest"; fi
   echo "  notetaker speaker models: $([ "$NOTETAKER" = 1 ] && echo yes || echo "no (not in this commit's catalogue)")"
   say "would write $BUNDLE/ and $OUT/{$NAME.zip,$MODELS_ZIP$([ "$LLM" != none ] && echo ",$CLEANUP_ZIP")}"
   exit 0
@@ -348,13 +376,49 @@ if [ "$NO_SERVER" = 0 ]; then
   SERVER_NOTE="The \`server/\` folder holds flow-server $VERSION, built on $(lsb_release -ds 2>/dev/null || uname -sr). Docker (above) is simpler where it is available."
 fi
 
+# ---- flow-server for Docker: source archive and image -----------------------
+say "flow-server source archive"
+mkdir -p "$BUNDLE/docker"
+# Tracked files of the commit only: nothing untracked or ignored can get in.
+g archive --format=tar.gz --prefix="$SRC_DIR/" -o "$BUNDLE/docker/$SOURCE_TGZ" "$COMMIT" -- "${SRC_PATHS[@]}"
+tar -tzf "$BUNDLE/docker/$SOURCE_TGZ" > "$WORK/src.list"
+for f in deploy/docker/Dockerfile deploy/docker/entrypoint.sh Cargo.lock crates/flow-server/Cargo.toml; do
+  grep -qx "$SRC_DIR/$f" "$WORK/src.list" || die "$SOURCE_TGZ has no $f"
+done
+echo "wrote docker/$SOURCE_TGZ ($(mb "$(stat -c %s "$BUNDLE/docker/$SOURCE_TGZ")"), $(wc -l < "$WORK/src.list") entries)"
+if [ "$NO_IMAGE" = 0 ]; then
+  say "flow-server image (docker build of the source archive)"
+  avail=$(awk '/MemAvailable/ { print int($2 / 1024) }' /proc/meminfo)
+  [ "$avail" -ge 4000 ] || die "only $avail MB of memory available; the image build needs 4000 (or pass --no-image)"
+  tar -xzf "$BUNDLE/docker/$SOURCE_TGZ" -C "$WORK"
+  # The builder's own flow-server:latest, if any, gets its tag back after.
+  prev_latest=$(docker image inspect -f '{{.Id}}' flow-server:latest 2>/dev/null || true)
+  flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
+    docker build -t "flow-server:$VERSION" -t flow-server:latest -f "$WORK/$SRC_DIR/deploy/docker/Dockerfile" \
+      --build-arg FLOW_GIT_SHA="$SHA7" --build-arg CARGO_BUILD_JOBS=2 "$WORK/$SRC_DIR"
+  restore_latest() {
+    docker rmi "flow-server:$VERSION" >/dev/null 2>&1 || true
+    if [ -n "$prev_latest" ]; then docker tag "$prev_latest" flow-server:latest
+    else docker rmi flow-server:latest >/dev/null 2>&1 || true; fi
+  }
+  docker run --rm --entrypoint /opt/flow-server/bin/flow-server "flow-server:$VERSION" --version |
+    grep -qF "$VERSION+$SHA7" || { restore_latest; die "the image's flow-server is not $VERSION+$SHA7"; }
+  docker save -o "$BUNDLE/docker/$IMAGE_TAR" "flow-server:$VERSION" flow-server:latest
+  restore_latest
+  if grep -aqF -e "$HOME" -e "/$(id -un)/" "$BUNDLE/docker/$IMAGE_TAR"; then
+    die "docker/$IMAGE_TAR contains this machine's home path or user name"
+  fi
+  echo "wrote docker/$IMAGE_TAR ($(mb "$(stat -c %s "$BUNDLE/docker/$IMAGE_TAR")"))"
+fi
+
 # ---- install note, checksums, zips -----------------------------------------
 say "INSTALL.md"
 GLIBC=$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{ print $2 }')
 DIAR=""; [ "$NOTETAKER" = 1 ] && DIAR=", meeting speakers"
 VERSION="$VERSION" COMMIT="$SHA7" VARIANT="$VARIANT" WIN_EXE="$WIN_EXE" APK="$APK" \
   MODELS_ZIP="$MODELS_ZIP" CLEANUP_ZIP="$CLEANUP_ZIP" GLIBC="glibc $GLIBC" DIARIZER_LIST="$DIAR" \
-  SERVER_NOTE="$SERVER_NOTE" NOTETAKER="$NOTETAKER" \
+  SERVER_NOTE="$SERVER_NOTE" NOTETAKER="$NOTETAKER" SOURCE_TGZ="$SOURCE_TGZ" IMAGE_TAR="$IMAGE_TAR" \
+  IMAGE=$((1 - NO_IMAGE)) NOIMAGE="$NO_IMAGE" \
   python3 -I "$HERE/render_install.py" "$ROOT/docs/colleague-install.md" > "$BUNDLE/INSTALL.md"
 grep -q '{{' "$BUNDLE/INSTALL.md" && die "INSTALL.md has an unfilled placeholder"
 (cd "$BUNDLE" && find . -type f -printf '%P\n' | sort | xargs -d '\n' sha256sum) > "$WORK/sums.txt"
