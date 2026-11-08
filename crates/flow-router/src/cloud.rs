@@ -316,9 +316,10 @@ pub struct CleanupView {
     pub custom: CustomCleanupConfig,
 }
 
-/// The Cloud provider (D78): the one service behind every cloud use. The
-/// pages call both "Cloud"; provider names appear only in the provider
-/// switch and its fields.
+/// The Cloud provider (D78; D52's cleanup provider): who the `cloud`
+/// cleanup route calls. The Windows pages call both "Cloud" and keep one
+/// provider for every cloud use; cloud speech-to-text itself always runs on
+/// OpenRouter, whatever this says (Android still pairs the two).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CloudProvider {
     /// OpenRouter (default; D28): speech to text and cleanup.
@@ -339,16 +340,10 @@ impl CloudProvider {
     }
 
     /// Cloud speech-to-text can run on this provider (OpenRouter only).
+    /// The router does not enforce it (Android pairs LiteLLM cleanup with
+    /// OpenRouter speech); the Windows settings do (D78).
     pub fn offers_stt(self) -> bool {
         self.is_openrouter()
-    }
-
-    /// The provider's name for the provider switch and its fields.
-    pub fn display_name(self) -> &'static str {
-        match self {
-            CloudProvider::OpenRouter => "OpenRouter",
-            CloudProvider::LiteLlm => "LiteLLM",
-        }
     }
 
     pub fn as_str(self) -> &'static str {
@@ -1298,8 +1293,6 @@ mod tests {
         let named: CloudConfig =
             serde_json::from_str(r#"{"schema":2,"cleanup_provider":"litellm"}"#).unwrap();
         assert_eq!(named.provider, CloudProvider::LiteLlm);
-        assert_eq!(CloudProvider::LiteLlm.display_name(), "LiteLLM");
-        assert_eq!(CloudProvider::OpenRouter.display_name(), "OpenRouter");
     }
 
     #[test]

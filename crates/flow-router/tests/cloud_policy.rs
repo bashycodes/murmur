@@ -296,25 +296,22 @@ fn cloud_never_used_without_key() {
     assert_cloud_unused(&k);
 }
 
-/// D78: one Cloud provider at a time. With LiteLLM as the provider, cloud
-/// speech-to-text (OpenRouter-only) is skipped like an unconfigured route,
-/// even with OpenRouter's switch, consent and key all still saved; picking
-/// OpenRouter again brings it back.
+/// D78: "one Cloud provider at a time" lives in the Windows settings, not
+/// the router. Android still pairs LiteLLM cleanup with OpenRouter speech
+/// (D52), so with LiteLLM as the cleanup provider cloud speech-to-text
+/// still goes to OpenRouter.
 #[test]
-fn cloud_stt_never_used_while_litellm_is_the_cloud_provider() {
+fn litellm_cleanup_keeps_openrouter_cloud_speech() {
     let mut c = cloud_cfg(&[Route::Cloud, Route::Client]);
     c.cloud.provider = CloudProvider::LiteLlm;
-    let k = rig(c.clone());
+    c.cloud.custom_cleanup.base_url = "http://10.0.0.5:4000/v1".into();
+    c.cloud.custom_cleanup.model = "local-cleanup".into();
+    c.validate().unwrap();
+    let k = rig(c);
     k.router.start_session(SessionConfig::default()).unwrap();
     let r = dictate(&k.router);
-    assert_eq!(route(&r).engine, "local");
-    assert_eq!(route(&r).fallback.as_deref(), Some("cloud_not_configured"));
-    assert_cloud_unused(&k);
-
-    c.cloud.provider = CloudProvider::OpenRouter;
-    k.router.update_config(c);
-    k.router.start_session(SessionConfig::default()).unwrap();
-    assert_eq!(route(&dictate(&k.router)).engine, "cloud");
+    assert_eq!(route(&r).engine, "cloud");
+    assert_eq!(route(&r).fallback, None);
 }
 
 #[test]
