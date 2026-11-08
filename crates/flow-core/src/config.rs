@@ -364,6 +364,12 @@ pub struct ModelConfig {
     /// Path of the `flow-llm` plugin library; `None` = default lookup
     /// (see `flow_core::llama`).
     pub llm_lib: Option<String>,
+    /// LLM cleanup: tokens the plugin guesses ahead per decode step by
+    /// copying the transcript (prompt-lookup drafting; the model checks
+    /// every guess). `None` = the plugin's default (off). flow-server
+    /// turns it on (D69); omitted from JSON when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_draft: Option<usize>,
     pub threads: usize,
     /// Optional Silero VAD model for whisper.cpp's built-in VAD (feature
     /// `whisper`; e.g. `ggml-silero-v5.1.2.bin`). `None` = energy VAD only.
@@ -544,6 +550,7 @@ impl Default for ModelConfig {
             asr_path: String::new(),
             llm_path: None,
             llm_lib: None,
+            llm_draft: None,
             threads: default_threads(),
             vad_model_path: None,
             whisper_fit_ctx: true,

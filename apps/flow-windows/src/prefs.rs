@@ -154,6 +154,8 @@ pub struct Prefs {
     /// Wispr default on Windows: mute other apps while dictating.
     pub mute_audio_while_dictating: bool,
     pub launch_at_login: bool,
+    /// Keep the Flow bar up while idle. Off by default: the bar shows only
+    /// while dictating (or recording a meeting).
     pub show_flow_bar_always: bool,
     /// `system` / `light` / `dark`.
     pub theme: Theme,
@@ -257,7 +259,7 @@ impl Default for Prefs {
             enable_sounds: true,
             mute_audio_while_dictating: true,
             launch_at_login: false,
-            show_flow_bar_always: true,
+            show_flow_bar_always: false,
             theme: Theme::System,
             onboarded: false,
             use_ax_context: true,
@@ -689,6 +691,23 @@ mod tests {
         p.developer.cloud.custom_cleanup.consent_at_ms = 1_700_000_000_000;
         p.save(&path).unwrap();
         assert_eq!(Prefs::load(&path).0.developer.cloud, p.developer.cloud);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn flow_bar_always_defaults_off_and_a_saved_on_survives() {
+        // Owner walkthrough: a fresh install hides the Flow bar when idle.
+        assert!(!Prefs::default().show_flow_bar_always);
+        let d = tmpdir("flow-bar-always");
+        let path = d.join(FILE_NAME);
+        assert!(!Prefs::load(&path).0.show_flow_bar_always);
+        // An existing user's saved choice (On) is kept.
+        let mut p = Prefs::default();
+        p.show_flow_bar_always = true;
+        p.save(&path).unwrap();
+        let (q, o) = Prefs::load(&path);
+        assert_eq!(o, LoadOutcome::Loaded);
+        assert!(q.show_flow_bar_always);
         let _ = std::fs::remove_dir_all(&d);
     }
 
