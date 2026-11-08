@@ -64,6 +64,7 @@ type FreeStrFn = unsafe extern "C" fn(*mut c_char);
 type UnloadFn = unsafe extern "C" fn(*mut Handle);
 type PrefillFn = unsafe extern "C" fn(*const Handle, *const c_char) -> i32;
 type PrefillCancelFn = unsafe extern "C" fn(*const Handle);
+type SetDraftFn = unsafe extern "C" fn(*const Handle, u32);
 
 /// Why [`LlamaCleaner::load`] failed.
 #[derive(Debug, thiserror::Error)]
@@ -210,6 +211,8 @@ pub struct LlamaCleaner {
     /// Optional (plugins built before prefill-ahead lack them).
     prefill: Option<PrefillFn>,
     prefill_cancel: Option<PrefillCancelFn>,
+    /// Optional (plugins built before D69 lack it).
+    set_draft: Option<SetDraftFn>,
     /// Plugin-reported load info (JSON), for the CLI and tests.
     pub info: String,
     pub plugin_path: PathBuf,
@@ -266,6 +269,10 @@ impl LlamaCleaner {
                 .get::<PrefillCancelFn>(b"flow_llm_prefill_cancel\0")
                 .ok()
                 .map(|f| *f);
+            let set_draft = lib
+                .get::<SetDraftFn>(b"flow_llm_set_draft\0")
+                .ok()
+                .map(|f| *f);
 
             // The static prompt prefix (system + example turns) of every
             // light-level commit; see `cleanup::warm_prompt`.
@@ -286,6 +293,7 @@ impl LlamaCleaner {
                 unload,
                 prefill,
                 prefill_cancel,
+                set_draft,
                 info,
                 plugin_path,
             })
@@ -304,6 +312,18 @@ impl LlamaCleaner {
     pub fn info_json(&self) -> String {
         // SAFETY: live handle.
         take_string(self.free_str, unsafe { (self.info_fn)(self.handle) })
+    }
+
+    /// Prompt-lookup drafting: guess up to `n` tokens ahead per decode
+    /// step from the transcript (0 = off). False when the plugin predates
+    /// it (it then decodes one token per step, as before).
+    pub fn set_draft(&self, n: usize) -> bool {
+        let Some(f) = self.set_draft else {
+            return false;
+        };
+        // SAFETY: live handle.
+        unsafe { f(self.handle, u32::try_from(n).unwrap_or(u32::MAX)) };
+        true
     }
 }
 

@@ -23,6 +23,8 @@
 //! void    flow_llm_prefill_cancel(void* h);
 //! // Optional (added 2026-10-30, still ABI 1): no model needed.
 //! char*   flow_llm_backends(void); // JSON {"devices":[…],"backend":"Vulkan"|"CPU","device":"…"}
+//! // Optional (added 2026-11-07 for D69, still ABI 1):
+//! void    flow_llm_set_draft(void* h, uint32_t n); // prompt-lookup draft tokens per step, 0 = off
 //! void    flow_llm_free_string(char*);
 //! void    flow_llm_unload(void* h);
 //! ```
@@ -193,6 +195,18 @@ pub unsafe extern "C" fn flow_llm_prefill(h: *const Engine, messages: *const c_c
     }
 }
 
+/// Prompt-lookup drafting: guess up to `n` tokens per decode step from the
+/// transcript (0 = off, the default; capped at 8).
+///
+/// # Safety
+/// `h` is null or a live handle from [`flow_llm_load`].
+#[no_mangle]
+pub unsafe extern "C" fn flow_llm_set_draft(h: *const Engine, n: u32) {
+    if let Some(e) = h.as_ref() {
+        e.set_draft(n as usize);
+    }
+}
+
 /// Stop a running prefill-ahead.
 ///
 /// # Safety
@@ -224,6 +238,7 @@ pub unsafe extern "C" fn flow_llm_info(h: *const Engine) -> *mut c_char {
             "backend": i.backend,
             "device": i.device,
             "gpu_error": i.gpu_error,
+            "draft": e.draft(),
             "last": {
                 "prompt_tokens": st.prompt_tokens,
                 "prefill_tokens": st.prefill_tokens,
