@@ -76,8 +76,8 @@ if [[ -f "$llm" ]]; then
   # ggml would let the dynamic linker interpose it with whisper's ggml in libflow_ffi.so.
   llm_def=$("$bin/llvm-nm" -D --defined-only "$llm")
   llm_have=$(awk '$2=="T"{print $3}' <<<"$llm_def" | sort -u)
-  llm_want=$(printf '%s\n' flow_llm_abi_version flow_llm_backends flow_llm_clean flow_llm_free_string flow_llm_info flow_llm_load flow_llm_prefill flow_llm_prefill_cancel flow_llm_unload)
-  if [[ "$llm_have" == "$llm_want" ]]; then echo "libflow_llm.so: exports exactly the 9 flow_llm_* symbols"
+  llm_want=$(printf '%s\n' flow_llm_abi_version flow_llm_backends flow_llm_clean flow_llm_free_string flow_llm_info flow_llm_load flow_llm_prefill flow_llm_prefill_cancel flow_llm_set_draft flow_llm_unload)
+  if [[ "$llm_have" == "$llm_want" ]]; then echo "libflow_llm.so: exports exactly the 10 flow_llm_* symbols"
   else fail llm-exports "libflow_llm.so: unexpected exports: $(comm -3 <(echo "$llm_have") <(echo "$llm_want") | tr -d '\t' | tr '\n' ' ')"; fi
   if grep -q ' T ggml_' <<<"$so_def"; then
     echo "note: libflow_ffi.so exports ggml_* (whisper's); the plugin keeps its own ggml private"

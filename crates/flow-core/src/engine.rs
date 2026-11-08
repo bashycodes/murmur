@@ -15,8 +15,8 @@ use crate::asr::{
 };
 use crate::cleanup::{self, CleanOutcome, Cleaner};
 use crate::config::{
-    english_rules, primary_language, CleanupLevel, FieldContext, LanguageModel, ModelConfig,
-    SessionConfig, SAMPLE_RATE,
+    english_rules, primary_language, AppCategory, CleanupLevel, FieldContext, LanguageModel,
+    ModelConfig, SessionConfig, SAMPLE_RATE,
 };
 use crate::dictionary::Dictionary;
 use crate::endpoint::{EndpointState, Endpointer};
@@ -642,6 +642,9 @@ fn load_llm(cfg: &ModelConfig, path: &str) -> Result<(Arc<dyn Cleaner>, Vec<Phas
         LlamaLoadError::PluginNotFound { tried } => CoreError::LlmLibNotFound { tried },
         e => CoreError::Load(e.to_string()),
     })?;
+    if let Some(n) = cfg.llm_draft {
+        c.set_draft(n);
+    }
     let info: serde_json::Value = serde_json::from_str(&c.info).unwrap_or_default();
     let phases = [("model", "load_ms"), ("warm", "warm_ms")]
         .into_iter()
@@ -1531,10 +1534,17 @@ impl Worker {
         }
         let mut ctx = self.shared.context.lock().unwrap().clone();
         ctx.app_category = postprocess::effective_category(s.cfg.platform, &ctx);
-        let transcript = key.1.clone().unwrap_or_default();
+        let mut transcript = key.1.clone().unwrap_or_default();
         s.prefilled = Some(key);
         if !cleanup::should_run(&s.cfg, ctx.app_category) {
             return;
+        }
+        // The commit's prompt v2 carries the rules' text, not the raw
+        // partial: hint with the same text so the cached tokens run past
+        // the user message's header into the transcript.
+        if s.cfg.spoken_cleanup && !transcript.is_empty() {
+            let english = english_rules(s.cfg.forced_language());
+            transcript = spoken_rules(&transcript, &s.cfg, ctx.app_category, english);
         }
         cl.prefill(&cleanup::session_prompt(
             &transcript,
@@ -1956,6 +1966,27 @@ impl Worker {
     }
 }
 
+/// The deterministic spoken-cleanup pass that runs before prompt v2 (with
+/// `spoken_cleanup` on). The commit and the LLM prefill-ahead hint both
+/// call it, so the hint's transcript is the text the commit prompt starts
+/// with and the KV cache reuses it. The hint only knows the forced
+/// language: with auto-detect and a non-English dictation it applies the
+/// English rules and the reuse stops at the transcript; a whole-utterance
+/// snippet runs no LLM, so its hint is unused. Both cost reuse only, never
+/// output.
+fn spoken_rules(text: &str, cfg: &SessionConfig, cat: AppCategory, english: bool) -> String {
+    if english {
+        let text = postprocess::spoken::spoken_cleanup_keeping(text, &cfg.dictionary.vocabulary());
+        // Numbered lists and email structure without the LLM (the LLM,
+        // when it runs, starts from this layout).
+        postprocess::spoken::layout(&text, cat)
+    } else {
+        // D33: English word rules would mangle other languages; only the
+        // whitespace tidy is language-neutral.
+        postprocess::spoken::tidy_whitespace(text)
+    }
+}
+
 /// Guard, spoken cleanup, LLM and post-processing on `r.asr_text` (the
 /// session's tail of `commit`, and [`refinish`]).
 #[allow(clippy::too_many_arguments)]
@@ -2039,16 +2070,7 @@ fn finish_text(
     // used to mean no cleanup at all: 17 % vs 44 % on the
     // formatting-gap eval). Verbatim = `spoken_cleanup: false` + none.
     if cfg.spoken_cleanup && !snippet {
-        if english {
-            text = postprocess::spoken::spoken_cleanup_keeping(&text, &cfg.dictionary.vocabulary());
-            // Numbered lists and email structure without the LLM (the
-            // LLM, when it runs, starts from this layout).
-            text = postprocess::spoken::layout(&text, ctx.app_category);
-        } else {
-            // D33: English word rules would mangle other languages;
-            // only the whitespace tidy is language-neutral.
-            text = postprocess::spoken::tidy_whitespace(&text);
-        }
+        text = spoken_rules(&text, cfg, ctx.app_category, english);
         if text.trim().is_empty() {
             r.empty_reason = Some("only_filler".into());
             return r;
