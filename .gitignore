@@ -19,5 +19,6 @@ local.properties
 .gradle/
 build/
 *.log
-# owner-PC copies made while diagnosing (never committed)
-/eval-private/
+
+# tools/colleague-bundle.sh output
+/dist/
