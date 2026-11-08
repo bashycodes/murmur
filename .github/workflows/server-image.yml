@@ -1,0 +1,109 @@
+# flow-server container image (deploy/docker/Dockerfile, D77). Pull
+# requests and feature branches only build it (no push); integration pushes
+# :edge, a release tag vX.Y.Z pushes :X.Y.Z and :latest, all to
+# ghcr.io/<owner>/<repo>/flow-server. CPU image only: the CUDA variant
+# (`--target cuda`) is built locally (docs/container.md).
+name: server-image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [integration, "feat/**"]
+    # Path filters are not evaluated for tag pushes: every release tag builds.
+    tags: ["v*"]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "VERSION"
+      - "deploy/docker/**"
+      - "docs/air-gapped-models.txt"
+      - ".dockerignore"
+      - ".github/workflows/server-image.yml"
+  pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "VERSION"
+      - "deploy/docker/**"
+      - "docs/air-gapped-models.txt"
+      - ".dockerignore"
+      - ".github/workflows/server-image.yml"
+
+concurrency:
+  group: server-image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Entrypoint unit test
+        run: tools/container/entrypoint_test.sh
+
+      - name: Image name and tags
+        id: meta
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/flow-server"
+          push=false tags=""
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            v="${GITHUB_REF_NAME#v}"
+            [ "$v" = "$(tr -d '[:space:]' < VERSION)" ] || { echo "tag $GITHUB_REF_NAME != VERSION"; exit 1; }
+            push=true tags="$image:$v,$image:latest"
+          elif [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_NAME" = integration ]; then
+            push=true tags="$image:edge"
+          else
+            tags="$image:ci"
+          fi
+          {
+            echo "push=$push"
+            echo "tags=$tags"
+            echo "sha=${GITHUB_SHA::7}"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr.io
+        if: steps.meta.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build${{ steps.meta.outputs.push == 'true' && ' and push' || '' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          target: runtime
+          push: ${{ steps.meta.outputs.push == 'true' }}
+          load: ${{ steps.meta.outputs.push != 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            FLOW_GIT_SHA=${{ steps.meta.outputs.sha }}
+            CARGO_BUILD_JOBS=4
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.title=flow-server
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # A built (not pushed) image must start: the CLI runs with its libraries.
+      - name: Image starts
+        if: steps.meta.outputs.push != 'true'
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/flow-server:ci"
+          docker run --rm --entrypoint /opt/flow-server/bin/flow-server "$image" gen-token --out /tmp/t
+          docker image ls "$image"

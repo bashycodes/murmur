@@ -8,7 +8,7 @@ listens, and while a server is set the apps take their models from it and
 from nowhere else.
 
 You bring everything over once, on a USB stick or any other way you like.
-Details live in `docs/server-setup.md` (host install, keys, model library)
+Details live in `docs/server-advanced.md` (host install, keys, model library)
 and `docs/container.md` (Docker); this page is the short path.
 
 ## Transfer checklist
@@ -173,16 +173,16 @@ downloads anything, and it writes `[model] asr_path`, `llm_path` and
 `llm_lib` into a new config. Start it after §2 and §3 (`--start`, or
 `systemctl restart flow-server`).
 
-**Docker.** On the connected machine, from the repo (`docs/container.md`
-§1-2):
+**Docker.** On the connected machine (`docs/container.md` §8-9):
 
 ```sh
-cd deploy && docker compose build
-docker save flow-server:local | gzip > flow-server-local.tar.gz
+docker pull ghcr.io/bashycodes/murmur/flow-server:latest   # or build it: docker build -f deploy/docker/Dockerfile -t flow-server:local .
+docker save ghcr.io/bashycodes/murmur/flow-server:latest | gzip > flow-server.tar.gz
 ```
 
-On the server: `gunzip -c flow-server-local.tar.gz | docker load`. The
-image has the cleanup plugin; models and config are mounted (§2, §3).
+On the server: `gunzip -c flow-server.tar.gz | docker load`. The image has
+the cleanup plugin; the models go into its `/data` volume (§2), and with
+them there it downloads nothing.
 
 **GPU server (optional, NVIDIA).** If the server has an NVIDIA card, also
 build and save the CUDA image (`docs/container.md` "NVIDIA CUDA image"):
@@ -194,9 +194,10 @@ installed (bring their packages too), and runs
 `docker compose up -d`.
 
 **Address.** With no VPN, bind the server's LAN address too
-(`--bind 192.168.1.20:7313`, or `FLOW_PUBLISH_ADDR` for Docker). Plain
+(`--bind 192.168.1.20:7313`; Docker publishes on every IPv4 address
+already, `-p 0.0.0.0:7313:7313`). Plain
 `ws://` is accepted only to private addresses; on a shared LAN turn on TLS
-(`docs/server-setup.md` §5) and paste the pin into the apps.
+(`docs/server-advanced.md` §5) and paste the pin into the apps.
 
 ## 2. Put models in the library
 
@@ -208,13 +209,15 @@ The library is a folder on the server, one subfolder per model, each with a
 |---|---|
 | system | `/var/lib/flow-server/library` |
 | `--user` | `~/.local/state/flow-server/library` |
-| Docker | `<models>/library`, where `<models>` is the host folder mounted as `/models` (`FLOW_MODELS_DIR`) |
+| Docker | `/data/library` in the `flow_data` volume |
 
 ```sh
 sudo mkdir -p /var/lib/flow-server/library
 sudo cp -r <usb>/flow-models/. /var/lib/flow-server/library/
-# Docker, e.g. models in /srv/flow-server:
-sudo mkdir -p /srv/flow-server/library && sudo cp -r <usb>/flow-models/. /srv/flow-server/library/
+# Docker, before the first start:
+docker volume create flow_data
+docker run --rm -v flow_data:/data -v <usb>/flow-models:/seed:ro --entrypoint sh \
+  ghcr.io/bashycodes/murmur/flow-server:latest -c 'mkdir -p /data/library && cp -r /seed/. /data/library/'
 ```
 
 A label looks like this (`catalogue_id` = a copy of a model the apps know,
@@ -228,16 +231,16 @@ engine = "parakeet"                     # whisper, parakeet, sherpa_online, gguf
 catalogue_id = "parakeet-tdt-0.6b-v2-int8"
 ```
 
-More examples: `docs/server-setup.md` §10. The server notices new folders
+More examples: `docs/server-advanced.md` §10. The server notices new folders
 within a minute, no restart. Check what it serves, and why a folder was
 skipped: `sudo flow-server library list` (Docker:
-`docker compose exec flow-server flow-server library list`).
+`docker exec flow-server flow-server library list`).
 
 ## 3. Tell the server which models to use
 
 The library only hands models to the apps. The server's own dictation uses
 the models its config names. Use the library copies, so nothing is stored
-twice (`<library>` is the folder from §2; in Docker `/models/library`):
+twice (`<library>` is the folder from §2; in Docker `/data/library`):
 
 ```toml
 [model]
@@ -257,22 +260,17 @@ asr_path = "<library>/zipformer-he-int8"
   `/etc/flow-server/config.toml` (`--user`:
   `~/.config/flow-server/config.toml`), then `flow-server check-config
   --config <file>` and restart.
-* **Docker:** copy `deploy/docker/config.toml` to `deploy/config.local.toml`,
-  set the lines above with `<library>` = `/models/library` (the copy's
-  `asr_path` must change too: it names a folder the loop doesn't make), and
-  start:
-
-  ```sh
-  cd deploy
-  FLOW_MODELS_DIR=/srv/flow-server FLOW_CONFIG_FILE=./config.local.toml \
-    FLOW_PUBLISH_ADDR=<server LAN address> docker compose up -d
-  ```
-
-  Put these three settings in `deploy/.env` so later commands use them
-  too.
+* **Docker:** nothing to write. Start it as in `docs/server-setup.md`
+  (the `docker run` there, with `flow-server:local` if you built the image
+  yourself). The first start finds the four default models (Parakeet,
+  `whisper-tiny-lid`, `zipformer-he-int8`, Qwen2.5 1.5B) in the library
+  and writes `/data/config.toml` with exactly these lines. Without one of
+  them, name the ones you have, e.g. `-e
+  FLOW_MODELS=parakeet-tdt-0.6b-v2-int8,whisper-tiny-lid,zipformer-he-int8`
+  (a missing model would be downloaded, which fails offline).
 
 After the start the log's `ready` line shows `languages=he=sherpa_online`.
-`docs/server-setup.md` §2 ("LLM cleanup", "Hebrew") has the details.
+`docs/server-advanced.md` §2 ("LLM cleanup", "Hebrew") has the details.
 
 ## 4. Create keys and hand them out
 
@@ -280,8 +278,11 @@ Each person or device gets its own key. The first one, an admin key, comes
 from the server's command line:
 
 ```sh
-sudo flow-server keys add owner --admin       # Docker: docker compose exec flow-server flow-server keys add owner --admin
+sudo flow-server keys add owner --admin
 ```
+
+(Docker made this key on its first start: the log shows it, and
+`docker exec flow-server cat /data/admin.token` shows it again.)
 
 It prints the secret once. Paste it into your own app (Settings → Your
 server → Token). From then on you can manage keys from the app instead:

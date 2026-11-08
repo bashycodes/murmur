@@ -1,58 +1,66 @@
 #!/usr/bin/env bash
-# Smoke test of the flow-server container through Docker Compose
-# (docs/container.md): first start waits for a key, `keys add` through
-# `docker compose exec`, a dictation over the real WebSocket protocol,
-# then `down` + `up` and the same key still works.
+# Smoke test of the flow-server image's quick start (docs/container.md,
+# D77): the documented `docker run` with a fresh volume, the admin key in
+# the log, a dictation over the real WebSocket protocol with that key, a
+# second key through `docker exec … flow-server keys add`, then a restart
+# (key not shown again, same key still works).
 #
-#   tools/container/smoke.sh --models DIR --config FILE --wav FILE[:LANGS] [--port N] [--build]
+#   tools/container/smoke.sh --image IMAGE --wav FILE[:LANGS] [--models LIST]
+#                            [--seed DIR] [--port N]
 #
-#   --models DIR   host models folder (mounted read-only at /models)
-#   --config FILE  config whose model paths point under /models
+#   --image IMAGE  image to test (e.g. flow-server:local)
 #   --wav FILE     16 kHz WAV to dictate (LANGS e.g. `en`; see the probe)
+#   --models LIST  FLOW_MODELS (default: default)
+#   --seed DIR     copy this folder's model folders into the volume's
+#                  library/ first (folder name = model id, files as in
+#                  docs/air-gapped-models.txt), so nothing is downloaded
 #   --port N       host port (default 17313; never the production server's)
-#   --build        build the image first (FLOW_BUILD_SOURCE applies)
 #
-# Uses its own Compose project (flow-smoke) and removes it, with its state
-# volume, at the end. The key's secret stays in a mode-0600 temp file.
+# Uses its own container (flow-smoke) and volume (flow-smoke-data) and
+# removes both at the end. The key stays in a mode-0600 temp file.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-PORT=17313
-MODELS="" CONFIG="" WAV="" BUILD=0
+PORT=17313 IMAGE="" WAV="" MODELS=default SEED=""
+NAME=flow-smoke VOL=flow-smoke-data
 die() { echo "smoke.sh: $*" >&2; exit 1; }
 while [ $# -gt 0 ]; do
     case "$1" in
-        --models) MODELS="$(readlink -f "${2:?}")"; shift ;;
-        --config) CONFIG="$(readlink -f "${2:?}")"; shift ;;
+        --image) IMAGE="${2:?}"; shift ;;
         --wav) WAV="${2:?}"; shift ;;
+        --models) MODELS="${2:?}"; shift ;;
+        --seed) SEED="$(readlink -f "${2:?}")"; shift ;;
         --port) PORT="${2:?}"; shift ;;
-        --build) BUILD=1 ;;
-        -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "unknown option: $1" ;;
     esac
     shift
 done
-if [ ! -d "$MODELS" ] || [ ! -f "$CONFIG" ] || [ -z "$WAV" ]; then
-    die "--models, --config and --wav are required"
-fi
+{ [ -n "$IMAGE" ] && [ -n "$WAV" ]; } || die "--image and --wav are required"
 
-export FLOW_MODELS_DIR="$MODELS" FLOW_CONFIG_FILE="$CONFIG" FLOW_HOST_PORT="$PORT"
-C=(docker compose -p flow-smoke -f "$ROOT/deploy/docker-compose.yml")
 TMP="$(mktemp -d)"
-trap '"${C[@]}" down -v >/dev/null 2>&1 || true; rm -rf "$TMP"' EXIT
+cleanup() {
+    docker rm -f "$NAME" >/dev/null 2>&1 || true
+    docker volume rm "$VOL" >/dev/null 2>&1 || true
+    rm -rf "$TMP"
+}
+trap cleanup EXIT
+cleanup
+mkdir -p "$TMP"
 
-wait_log() { # wait_log PATTERN SECONDS
+wait_log() { # wait_log PATTERN SECONDS [COUNT]: COUNT matching lines in the log
     local i
     for ((i = 0; i < $2; i++)); do
-        "${C[@]}" logs 2>&1 | grep -q "$1" && return 0
+        [ "$(docker logs "$NAME" 2>&1 | grep -c "$1")" -ge "${3:-1}" ] && return 0
+        docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null | grep -q true || break
         sleep 1
     done
-    "${C[@]}" logs 2>&1 | tail -20 >&2
+    docker logs "$NAME" 2>&1 | tail -20 >&2
     die "timed out waiting for: $1"
 }
-dictate() {
+dictate() { # dictate TOKEN_FILE
     python3 "$ROOT/tools/probes/prototypes/server_e2e_2026_10_31.py" \
-        --url "ws://127.0.0.1:$PORT" --token-file "$TMP/token" --wav "$WAV" \
+        --url "ws://127.0.0.1:$PORT" --token-file "$1" --wav "$WAV" \
         --llm-timeout-ms 20000 | grep '"wav"' | python3 -c '
 import json, sys
 r = json.loads(sys.stdin.read())
@@ -60,21 +68,35 @@ print("  %s lang=%s commit->result=%s ms: %s" % (r["status"], r["language"], r["
 sys.exit(0 if r["final_text"] else 1)'
 }
 
-[ "$BUILD" = 1 ] && "${C[@]}" build
-"${C[@]}" down -v >/dev/null 2>&1 || true
-echo "==> first start (no keys)"
-"${C[@]}" up -d
-wait_log "waiting for keys.json" 30
-echo "==> keys add via docker compose exec"
-(umask 077; "${C[@]}" exec -T flow-server flow-server keys add smoke --admin >"$TMP/token")
-wait_log 'flow_server: ready' 600
-echo "==> dictation"
-dictate
-echo "==> down + up: the key persists"
-"${C[@]}" down
-"${C[@]}" up -d
-wait_log 'flow_server: ready' 600
-"${C[@]}" logs 2>&1 | grep -q "waiting for keys.json" && die "keys lost across restart"
-dictate
-echo "==> health: $(docker inspect flow-smoke-flow-server-1 --format '{{.State.Health.Status}}')"
+docker volume create "$VOL" >/dev/null
+if [ -n "$SEED" ]; then
+    echo "==> seeding the library from $SEED"
+    docker run --rm -v "$VOL:/data" -v "$SEED:/seed:ro" --entrypoint sh "$IMAGE" \
+        -c 'mkdir -p /data/library && cp -r /seed/. /data/library/'
+fi
+
+echo "==> first start (FLOW_MODELS=$MODELS)"
+t0=$(date +%s)
+docker run -d --name "$NAME" -p "127.0.0.1:$PORT:7313" -v "$VOL:/data" \
+    -e FLOW_MODELS="$MODELS" -e FLOW_CONTAINER_NAME="$NAME" "$IMAGE" >/dev/null
+wait_log "The admin key, shown only this once" 1800
+# The key from the log (the banner's indented line), never echoed.
+(umask 077; docker logs "$NAME" 2>&1 | awk '/shown only this once/ { getline; getline; print $1; exit }' >"$TMP/admin")
+[ -s "$TMP/admin" ] || die "no admin key in the log"
+docker exec "$NAME" cat /data/admin.token | cmp -s - "$TMP/admin" || die "logged key != /data/admin.token"
+wait_log 'flow_server: ready' 900
+echo "    ready after $(($(date +%s) - t0)) s"
+echo "==> dictation with the admin key"
+dictate "$TMP/admin"
+echo "==> docker exec … flow-server keys add / list"
+(umask 077; docker exec "$NAME" flow-server keys add smoke-phone 2>/dev/null >"$TMP/phone")
+docker exec "$NAME" flow-server keys list | sed 's/^/    /'
+dictate "$TMP/phone"
+echo "==> restart: no key in the log, keys kept"
+docker restart "$NAME" >/dev/null
+wait_log 'flow_server: ready' 900 2
+[ "$(docker logs "$NAME" 2>&1 | grep -c "shown only this once")" = 1 ] || die "admin key shown again"
+dictate "$TMP/admin"
+docker exec "$NAME" flow-server library list | sed 's/^/    /'
+echo "==> health: $(docker inspect "$NAME" --format '{{.State.Health.Status}}')"
 echo "smoke OK"

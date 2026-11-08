@@ -2,7 +2,8 @@
 # Build the bundle to hand to colleagues: the hybrid Windows installer and
 # Android APK (CI builds, fixed debug key D56), flow-server for Linux x86_64
 # (built here: CI does not build it), the speech models, the AI cleanup
-# model and an install note (docs/colleague-install.md, version filled in).
+# model and an install note (docs/colleague-install.md, version filled in;
+# it puts the Docker image first, D77, and the bundled server second).
 #
 #   tools/colleague-bundle.sh --source integration|notetaker|BRANCH|COMMIT [options]
 #
@@ -62,7 +63,7 @@ while [ $# -gt 0 ]; do
     --no-zip) NO_ZIP=1 ;;
     --no-fetch) NO_FETCH=1 ;;
     --dry-run) DRY=1 ;;
-    -h|--help) sed -n '2,38p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,39p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
   shift
@@ -288,7 +289,7 @@ smoke_server() {
 }
 
 # ---- flow-server ------------------------------------------------------------
-SERVER_NOTE="This bundle has no server build; ask for one."
+SERVER_NOTE="This bundle has no server build: use Docker (above), or ask for one."
 if [ "$NO_SERVER" = 0 ]; then
   say "flow-server"
   [ -n "$SHERPA_LIB" ] || die "--sherpa-lib DIR (or SHERPA_ONNX_LIB_DIR) with libsherpa-onnx-c-api.so + libonnxruntime.so is needed"
@@ -344,7 +345,7 @@ if [ "$NO_SERVER" = 0 ]; then
   done
   [ ${#leaks[@]} = 0 ] || die "these files contain the home path or user name: ${leaks[*]}"
   smoke_server "$S"
-  SERVER_NOTE="The \`server/\` folder holds flow-server $VERSION, built on $(lsb_release -ds 2>/dev/null || uname -sr)."
+  SERVER_NOTE="The \`server/\` folder holds flow-server $VERSION, built on $(lsb_release -ds 2>/dev/null || uname -sr). Docker (above) is simpler where it is available."
 fi
 
 # ---- install note, checksums, zips -----------------------------------------

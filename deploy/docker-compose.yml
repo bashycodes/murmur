@@ -1,27 +1,24 @@
-# flow-server with Docker Compose (docs/container.md). From deploy/:
+# flow-server with Docker Compose (docs/container.md). The same as the
+# quick start's `docker run`, plus a restart policy and hardening:
 #
-#   docker compose build                      # CPU image flow-server:local
-#   docker compose up -d                      # waits for the first key
-#   docker compose exec flow-server flow-server keys add owner --admin
-#   docker compose logs -f                    # expect "ready … asr=parakeet"
+#   docker compose -f deploy/docker-compose.yml up -d
+#   docker compose -f deploy/docker-compose.yml logs -f    # the admin key, then "ready"
 #
-# GPU (NVIDIA, needs the NVIDIA container toolkit), instead of the CPU service:
-#   docker compose --profile gpu build flow-server-gpu
-#   docker compose --profile gpu up -d flow-server-gpu
+# Everything (config, keys, models) lives in the flow_data volume; the first
+# start downloads the models (~1.9 GB with FLOW_MODELS=default).
+# Commands: docker exec flow-server flow-server keys add phone
 #
-# Settings (environment or deploy/.env):
-#   FLOW_MODELS_DIR         host folder with the models (default ./models), mounted read-only
-#   FLOW_CONFIG_FILE        config (default ./docker/config.toml)
-#   FLOW_PUBLISH_ADDR       host address the port is published on (default 127.0.0.1;
-#                           set your LAN or VPN address, never 0.0.0.0 on a public host)
-#   FLOW_HOST_PORT          host port (default 7313)
-#   FLOW_BIND_CONTAINER_IP  1 (default): the server binds 127.0.0.1 + the container's
-#                           own (private) address, so its loopback/LAN/VPN rules and
-#                           peer filter apply unchanged; 0: the config's bind as written
-#   FLOW_INSECURE_BIND_ANY  0 (default); 1 allows a 0.0.0.0 bind without [tls] and turns
-#                           the peer filter off (docs/container.md "Binding")
-#   FLOW_BUILD_SOURCE       source (default, compile in Docker) | prebuilt
-#                           (tools/container/stage-prebuilt.sh, no network)
+# Settings (environment or a .env file next to this one):
+#   FLOW_IMAGE         image (default ghcr.io/bashycodes/murmur/flow-server:latest;
+#                      flow-server:local after `docker compose build`)
+#   FLOW_MODELS        default | english | none | model folder ids (docs/container.md)
+#   FLOW_PUBLISH_ADDR  host address the port is published on (default 0.0.0.0: every
+#                      address; the server still drops peers outside loopback/LAN/VPN).
+#                      Set your LAN or VPN address on a host with a public address.
+#   FLOW_HOST_PORT     host port (default 7313)
+#
+# GPU (NVIDIA; LLM cleanup on the GPU), instead of the CPU service, built locally:
+#   docker compose -f deploy/docker-compose.yml --profile gpu up -d --build flow-server-gpu
 name: flow-server
 
 x-server: &server
@@ -33,16 +30,11 @@ x-server: &server
   security_opt:
     - no-new-privileges:true
   environment:
-    FLOW_BIND_CONTAINER_IP: ${FLOW_BIND_CONTAINER_IP:-1}
-    FLOW_INSECURE_BIND_ANY: ${FLOW_INSECURE_BIND_ANY:-0}
+    FLOW_MODELS: ${FLOW_MODELS:-default}
   ports:
-    - "${FLOW_PUBLISH_ADDR:-127.0.0.1}:${FLOW_HOST_PORT:-7313}:7313"
+    - "${FLOW_PUBLISH_ADDR:-0.0.0.0}:${FLOW_HOST_PORT:-7313}:7313"
   volumes:
-    - ${FLOW_MODELS_DIR:-./models}:/models:ro
-    - flow-state:/var/lib/flow-server
-    - ${FLOW_CONFIG_FILE:-./docker/config.toml}:/etc/flow-server/config.toml:ro
-    # [tls]: put cert.pem + key.pem in ./tls and enable [tls] in the config
-    # - ./tls:/etc/flow-server/tls:ro
+    - flow_data:/data
   # Parakeet ~1 GB, + Qwen2.5-1.5B ~1.5 GB, + LID; same cap as the systemd unit.
   mem_limit: 8g
   stop_grace_period: 20s
@@ -50,24 +42,25 @@ x-server: &server
 services:
   flow-server:
     <<: *server
-    image: flow-server:local
+    container_name: flow-server
+    image: ${FLOW_IMAGE:-ghcr.io/bashycodes/murmur/flow-server:latest}
     build:
       context: ..
       dockerfile: deploy/docker/Dockerfile
       target: runtime
-      args:
-        SOURCE: ${FLOW_BUILD_SOURCE:-source}
 
   flow-server-gpu:
     <<: *server
     profiles: [gpu]
+    container_name: flow-server-gpu
+    environment:
+      FLOW_MODELS: ${FLOW_MODELS:-default}
+      FLOW_CONTAINER_NAME: flow-server-gpu
     image: flow-server:local-cuda
     build:
       context: ..
       dockerfile: deploy/docker/Dockerfile
       target: cuda
-      args:
-        SOURCE: ${FLOW_BUILD_SOURCE:-source}
     deploy:
       resources:
         reservations:
@@ -77,6 +70,6 @@ services:
               capabilities: [gpu]
 
 volumes:
-  # keys.json, key-usage.json, library-hashes.json. Survives `down`;
-  # `down -v` deletes the keys.
-  flow-state:
+  # config.toml, admin.token, keys, library/ (models). Survives `down`;
+  # `down -v` deletes it.
+  flow_data:

@@ -7,5 +7,6 @@
 !VERSION
 !crates/
 !deploy/docker/
+!docs/air-gapped-models.txt
 crates/**/target/
 deploy/docker/prebuilt/.gitignore
