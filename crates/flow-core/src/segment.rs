@@ -347,11 +347,23 @@ pub fn splice<'a>(left: &'a str, right: &'a str, bridge: &'a str) -> Option<(Str
     let span_end = words.len();
     words.extend(rw[hz - nt + 1..].iter().map(|w| w.to_string()));
     // Mixed sources can leave "him. the": a rewritten word (or the one
-    // after the span) that follows a sentence end starts upper case.
+    // after the span) that follows a sentence end starts upper case. And
+    // "fine, The" (D70): a bridge word capitalised after the bridge's own
+    // sentence break, kept after a piece word with no break, takes the
+    // piece's lower case back.
+    // `olds[n]` is the piece word that `words[t0 + ta + n]` replaced (the
+    // span is like-for-like); past `span_end` there is none.
+    let olds: Vec<&str> = old_l.iter().chain(old_r).copied().collect();
     for i in (t0 + ta).max(1)..=span_end.min(words.len() - 1) {
         if ends_sentence(&words[i - 1]) {
             if let Some(c) = capitalized(&words[i]) {
                 words[i] = c;
+            }
+        } else if may_end_sentence(&words[i - 1]) {
+            // "so..." or "Dr.": a capital after it may be right; keep it.
+        } else if let Some(&old) = olds.get(i - (t0 + ta)) {
+            if capitalized(old).as_deref() == Some(words[i].as_str()) {
+                words[i] = old.to_string();
             }
         }
     }
@@ -362,6 +374,52 @@ pub fn splice<'a>(left: &'a str, right: &'a str, bridge: &'a str) -> Option<(Str
 /// Words at each end of a bridge whose case and punctuation are not
 /// taken (the bridge heard them without context on one side).
 const BRIDGE_EDGE_WORDS: usize = 2;
+
+/// The two words at a cut, spelled as the bridge spells them: the
+/// fallback when [`splice`] refuses the span (a word away from the cut
+/// differs, as "quote-unquote" against "quote unquote"). A piece decoded
+/// alone starts with a capital, so without it a pause mid-sentence leaves
+/// "familiar with Things like" (D70).
+///
+/// Needs `left`'s last word and `right`'s first word next to each other,
+/// once, in the bridge (normalised words), both clear of the bridge's
+/// edge words. Only their case and punctuation can change; `None` when
+/// nothing does or the pair is missing.
+pub fn respell_cut(left: &str, right: &str, bridge: &str) -> Option<(String, String)> {
+    let (l_head, l_last) = match left.trim_end().rsplit_once(char::is_whitespace) {
+        Some((h, w)) => (Some(h), w),
+        None => (None, left.trim()),
+    };
+    let r = right.trim_start();
+    let (r_first, r_tail) = r
+        .split_once(char::is_whitespace)
+        .map_or((r, None), |(w, t)| (w, Some(t)));
+    let (kl, kr) = (key(l_last), key(r_first));
+    if kl.is_empty() || kr.is_empty() {
+        return None;
+    }
+    let bw: Vec<&str> = bridge.split_whitespace().collect();
+    let m = bw.len();
+    let mut hits = (1..m).filter(|&j| {
+        j > BRIDGE_EDGE_WORDS
+            && j + BRIDGE_EDGE_WORDS < m
+            && key(bw[j - 1]) == kl
+            && key(bw[j]) == kr
+    });
+    let j = hits.next()?;
+    if hits.next().is_some() {
+        return None; // ambiguous
+    }
+    let (new_l, new_r) = (bw[j - 1], bw[j]);
+    // The bridge refused the wider splice by disagreeing somewhere: it may
+    // only restyle the cut, never add or remove a sentence break there.
+    if new_l == l_last && new_r == r_first || ends_sentence(new_l) != ends_sentence(l_last) {
+        return None;
+    }
+    let nl = l_head.map_or(new_l.to_string(), |h| format!("{h} {new_l}"));
+    let nr = r_tail.map_or(new_r.to_string(), |t| format!("{new_r} {t}"));
+    Some((nl, nr))
+}
 
 /// Lower-case words that end with a period without ending a sentence.
 const ABBREVIATIONS: &[&str] = &[
@@ -384,6 +442,13 @@ fn ends_sentence(w: &str) -> bool {
     };
     let stem = stem.trim_start_matches(['"', '\'', '(', '[', '\u{201C}', '\u{2018}']);
     !stem.is_empty() && !ABBREVIATIONS.contains(&stem.to_lowercase().as_str())
+}
+
+/// Whether `w` ends with a period or an ellipsis, so a capital after it
+/// can be right even when [`ends_sentence`] says no ("so...", "Dr.").
+fn may_end_sentence(w: &str) -> bool {
+    let w = w.trim_end_matches(['"', '\'', ')', ']', '\u{201D}', '\u{2019}']);
+    w.ends_with(['.', '\u{2026}'])
 }
 
 /// `w` with its first letter upper-cased, when it starts with a lower-case
@@ -768,6 +833,46 @@ mod tests {
             ),
             None
         );
+        // D70: the bridge breaks the sentence at its edge ("fine. The"),
+        // where the piece's comma stands; its capital must not stay after
+        // that comma ("fine, The next step").
+        assert_eq!(
+            splice(
+                "so it all went fine, the next step is",
+                "Ready for review",
+                "went fine. The next step is ready for review now ok",
+            ),
+            Some((
+                "so it all went fine, the next step is".into(),
+                "ready for review".into()
+            ))
+        );
+        // After "..." or an abbreviation the bridge's capital stands.
+        assert_eq!(
+            splice(
+                "and then we waited...",
+                "then it rang",
+                "x and then we waited... Then it rang y z",
+            ),
+            Some(("and then we waited...".into(), "Then it rang".into()))
+        );
+        assert_eq!(
+            splice(
+                "we will ask dr",
+                "smith about it",
+                "x we will ask Dr. Smith about it y z",
+            ),
+            Some(("we will ask Dr.".into(), "Smith about it".into()))
+        );
+        // "I" and acronyms are never lowered (the piece has them capitalised).
+        assert_eq!(
+            splice(
+                "so then I think",
+                "The API works",
+                "x so then I think the API works y z",
+            ),
+            Some(("so then I think".into(), "the API works".into()))
+        );
         // A rewritten word after a kept sentence end starts upper case.
         assert_eq!(
             splice(
@@ -777,6 +882,104 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn respell_cut_takes_the_bridge_case_at_the_cut() {
+        // A pause mid-sentence: the right piece, decoded alone, starts
+        // with a capital, and splice refuses because a word away from the
+        // cut is heard differently ("the" / "a").
+        let (l, r) = ("we should look at", "Options for the meeting room");
+        let bridge = "x then we should look at options for a meeting room y";
+        assert_eq!(splice(l, r, bridge), None);
+        assert_eq!(
+            respell_cut(l, r, bridge),
+            Some((
+                "we should look at".into(),
+                "options for the meeting room".into()
+            ))
+        );
+        // A sentence break is never added or removed at the cut, only
+        // restyled: the bridge disagreed somewhere, so it is not trusted
+        // to merge or split sentences ("fine." stays, so does "fine,").
+        assert_eq!(
+            respell_cut(
+                "it went fine,",
+                "The next part",
+                "a b it went fine. The next part c d"
+            ),
+            None
+        );
+        assert_eq!(
+            respell_cut(
+                "it went fine.",
+                "The next part",
+                "a b it went fine, the next part c d"
+            ),
+            None
+        );
+        assert_eq!(
+            respell_cut("is it done.", "Yes", "a b is it done? Yes c d"),
+            Some(("is it done?".into(), "Yes".into()))
+        );
+        assert_eq!(
+            respell_cut("we went", "Home", "a b we went, home c d"),
+            Some(("we went,".into(), "home".into()))
+        );
+        // "I" and acronyms keep their capitals: the bridge has them too.
+        assert_eq!(
+            respell_cut("so then", "I left", "a b so then I left c d"),
+            None
+        );
+        assert_eq!(
+            respell_cut("call the", "API now", "a b call the API now c d"),
+            None
+        );
+        // Hebrew has no case: only punctuation of the same kind changes.
+        assert_eq!(
+            respell_cut(
+                "אמרנו שלום",
+                "וגם להתראות",
+                "א ב אמרנו שלום, וגם להתראות ג ד"
+            ),
+            Some(("אמרנו שלום,".into(), "וגם להתראות".into()))
+        );
+        assert_eq!(
+            respell_cut(
+                "אמרנו שלום.",
+                "וגם להתראות",
+                "א ב אמרנו שלום, וגם להתראות ג ד"
+            ),
+            None
+        );
+        // A name stays a name when the bridge capitalises it too.
+        assert_eq!(
+            respell_cut("ask", "Maria first", "a b c ask Maria first d e"),
+            None
+        );
+        // One-word pieces.
+        assert_eq!(
+            respell_cut("and", "Then", "a b c and then d e"),
+            Some(("and".into(), "then".into()))
+        );
+        // The pair must be clear of the bridge edges, present and unique.
+        assert_eq!(
+            respell_cut("look at", "Options", "a at options b c d"),
+            None
+        );
+        assert_eq!(
+            respell_cut("look at", "Options", "a b c at options d"),
+            None
+        );
+        assert_eq!(
+            respell_cut("look at", "Options", "a b c at the options d e"),
+            None
+        );
+        assert_eq!(
+            respell_cut("at", "Options", "a b c at options x at options d e"),
+            None
+        );
+        assert_eq!(respell_cut("", "Options", "a b c at options d e"), None);
     }
 
     #[test]

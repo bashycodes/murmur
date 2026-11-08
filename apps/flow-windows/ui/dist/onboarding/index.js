@@ -17,9 +17,11 @@ import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, stopCapture } from "../lib/keycapture.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { pillLine, readinessErrorLine, readinessLine } from "../lib/setup-try.js";
+import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
 import { views } from "../lib/views.js";
 import { TEMPLATE } from "./templates.js";
 const ENGINE_ROUTE = { pc: "client", server: "server", cloud: "cloud" };
+const ENGINE_OF = { client: "pc", server: "server", cloud: "cloud" };
 const SAMPLE = {
     rules: "So lunch is Thursday.",
     pc: "Lunch is on Thursday.",
@@ -135,7 +137,7 @@ function renderEngine() {
         b.classList.toggle("is-on", on);
         b.disabled = !has(id);
         b.querySelector("[data-ob-na]").hidden = has(id);
-        b.querySelector("[data-ob-rec]").hidden = !(id === "pc" ? has("pc") : id === "server" && !has("pc"));
+        b.querySelector("[data-ob-rec]").hidden = id !== recommendedEngine(has);
     }
     $("ob_server_detail").hidden = st.engine !== "server";
     $("ob_cloud_detail").hidden = st.engine !== "cloud";
@@ -645,8 +647,8 @@ function initialChoices() {
     const dev = views.dev?.form;
     const or = views.or;
     const first = dev?.route_order.find((r) => r === "client" ? dev.allow_client : r === "server" ? dev.allow_server && !!dev.host : !!or?.stt.allow);
-    st.engine = first === "server" ? "server" : first === "cloud" ? "cloud" : has("pc") ? "pc" : has("server") ? "server" : "cloud";
     const p = prefsStore.get();
+    st.engine = initialEngine(first ? ENGINE_OF[first] : null, !!p?.onboarded, has);
     st.cleanup = or?.cleanup.allow ? "cloud" : p?.llm_enabled && p.cleanup_level !== "none" ? "pc" : "rules";
     $("ob_host").value = dev?.host ?? "";
     $("ob_token").placeholder = dev?.token_saved ? "saved (hidden), leave empty to keep" : "from flow-server gen-token";

@@ -317,6 +317,18 @@ mod tests {
     }
 
     #[test]
+    fn colleague_bundle_config_parses() {
+        // tools/colleague-bundle.sh ships this as the bundle's config.toml.
+        let s = include_str!("../../../tools/bundle/server-config.toml");
+        let c = Config::from_toml(s).unwrap();
+        assert_eq!(c.model.asr_backend, flow_core::config::AsrBackend::Parakeet);
+        assert!(c.model.llm_path.is_some() && c.model.lid_path.is_some());
+        let he = &c.model.languages["he"];
+        assert_eq!(he.asr_backend, flow_core::config::AsrBackend::SherpaOnline);
+        assert!(!c.log.log_text);
+    }
+
+    #[test]
     fn example_hebrew_block_parses_when_uncommented() {
         // The commented `[model.languages.he]` block of the example config,
         // uncommented up to its alternative, must be valid as shipped.

@@ -19,6 +19,7 @@ import { captureChord, stopCapture } from "../lib/keycapture.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
 import { pillLine, readinessErrorLine, readinessLine, type PillState, type Readiness, type TryLine } from "../lib/setup-try.js";
 import type { DevView, FieldError, Health, KeyState, OrView, Route, RouteView } from "../lib/types.js";
+import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
 import { views } from "../lib/views.js";
 import { TEMPLATE } from "./templates.js";
 
@@ -46,6 +47,7 @@ interface ModelInfo {
 }
 
 const ENGINE_ROUTE: Record<Engine, Route> = { pc: "client", server: "server", cloud: "cloud" };
+const ENGINE_OF: Record<Route, Engine> = { client: "pc", server: "server", cloud: "cloud" };
 const SAMPLE: Record<Cleanup, string> = {
   rules: "So lunch is Thursday.",
   pc: "Lunch is on Thursday.",
@@ -171,7 +173,7 @@ function renderEngine(): void {
     b.classList.toggle("is-on", on);
     b.disabled = !has(id);
     (b.querySelector("[data-ob-na]") as HTMLElement).hidden = has(id);
-    (b.querySelector("[data-ob-rec]") as HTMLElement).hidden = !(id === "pc" ? has("pc") : id === "server" && !has("pc"));
+    (b.querySelector("[data-ob-rec]") as HTMLElement).hidden = id !== recommendedEngine(has);
   }
   $<HTMLElement>("ob_server_detail").hidden = st.engine !== "server";
   $<HTMLElement>("ob_cloud_detail").hidden = st.engine !== "cloud";
@@ -670,8 +672,8 @@ function initialChoices(): void {
   const first = dev?.route_order.find((r) =>
     r === "client" ? dev.allow_client : r === "server" ? dev.allow_server && !!dev.host : !!or?.stt.allow,
   );
-  st.engine = first === "server" ? "server" : first === "cloud" ? "cloud" : has("pc") ? "pc" : has("server") ? "server" : "cloud";
   const p = prefsStore.get();
+  st.engine = initialEngine(first ? ENGINE_OF[first] : null, !!p?.onboarded, has);
   st.cleanup = or?.cleanup.allow ? "cloud" : p?.llm_enabled && p.cleanup_level !== "none" ? "pc" : "rules";
   $<HTMLInputElement>("ob_host").value = dev?.host ?? "";
   $<HTMLInputElement>("ob_token").placeholder = dev?.token_saved ? "saved (hidden), leave empty to keep" : "from flow-server gen-token";
