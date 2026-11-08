@@ -419,21 +419,30 @@ impl CustomCleanupConfig {
         self.api_base().is_ok() && valid_custom_model_id(self.model.trim())
     }
 
-    /// An empty address or model is allowed: the page saves Custom as soon
-    /// as it is picked, the rest is filled in later ([`Self::ready`]).
+    /// An empty (or blank) address or model means "not configured" and is
+    /// allowed: the page saves Custom as soon as it is picked, the rest is
+    /// filled in later ([`Self::ready`]). Errors are plain sentences: the
+    /// shells show them as they are (D76).
     pub fn validate(&self) -> Result<(), String> {
         if !self.base_url.trim().is_empty() {
-            self.api_base()?;
+            self.api_base()
+                .map_err(|e| format!("The AI cleanup server address is not usable: {e}."))?;
         }
-        if !self.model.trim().is_empty() && !valid_custom_model_id(self.model.trim()) {
-            return Err(format!("invalid custom cleanup model id {:?}", self.model));
+        let model = self.model.trim();
+        if !model.is_empty() && !valid_custom_model_id(model) {
+            return Err(format!(
+                "The AI cleanup server's model name {model:?} is not valid: \
+                 use the name the server lists, without spaces, up to 256 characters."
+            ));
         }
         let (lo, hi) = CUSTOM_CLEANUP_TIMEOUT_RANGE_MS;
         if !(lo..=hi).contains(&self.timeout_ms) {
-            return Err(format!("custom cleanup timeout_ms must be {lo}-{hi}"));
+            return Err(format!(
+                "The AI cleanup server's time limit must be {lo}-{hi} ms."
+            ));
         }
         if !(200..=10_000).contains(&self.connect_timeout_ms) {
-            return Err("custom cleanup connect_timeout_ms must be 200-10000".into());
+            return Err("The AI cleanup server's connect time limit must be 200-10000 ms.".into());
         }
         Ok(())
     }
@@ -1257,7 +1266,7 @@ mod tests {
         assert_eq!(c.validate(), Ok(()));
         assert!(c.cleanup_ready());
         c.custom_cleanup.timeout_ms = 40_000;
-        assert!(c.validate().unwrap_err().contains("timeout"));
+        assert!(c.validate().unwrap_err().contains("time limit"));
         c.custom_cleanup.timeout_ms = 4000;
         assert_eq!(c.cleanup_model(), "Qwen/Qwen2.5-7B");
         assert_eq!(c.cleanup_timeout_ms(), 4000);
@@ -1284,6 +1293,47 @@ mod tests {
         let mut o = CloudConfig::default();
         o.custom_cleanup.base_url = "not a url".into();
         assert_eq!(o.validate(), Ok(()));
+    }
+
+    /// D76: a fresh install has no custom cleanup model. With Custom picked
+    /// (or a config kept from an earlier install), an empty or blank model is
+    /// "not configured", never `bad_config`; a real bad id gets a sentence.
+    #[test]
+    fn empty_custom_cleanup_model_is_not_configured() {
+        let fresh: crate::RouterConfig = serde_json::from_value(serde_json::json!({
+            "cloud": {"schema": CLOUD_SCHEMA, "cleanup_provider": "custom",
+                      "custom_cleanup": {"base_url": "", "model": ""}}
+        }))
+        .unwrap();
+        assert_eq!(fresh.validate(), Ok(()));
+        assert!(!fresh.cloud.cleanup_ready());
+        for blank in ["", "   ", "\t"] {
+            let mut c = fresh.clone();
+            c.cloud.custom_cleanup.base_url = "http://10.0.0.5:4000".into();
+            c.cloud.custom_cleanup.model = blank.into();
+            assert_eq!(c.validate(), Ok(()), "{blank:?}");
+            assert!(!c.cloud.cleanup_ready());
+        }
+        let mut bad = fresh.clone();
+        bad.cloud.custom_cleanup.model = "two words".into();
+        let crate::RouterError::BadConfig(m) = bad.validate().unwrap_err() else {
+            panic!("not bad_config")
+        };
+        assert!(
+            m.starts_with("The AI cleanup server's model name \"two words\""),
+            "{m}"
+        );
+        assert!(
+            !m.contains("bad_config") && !m.contains("invalid custom"),
+            "{m}"
+        );
+        bad.cloud.custom_cleanup.model = String::new();
+        bad.cloud.custom_cleanup.base_url = "ftp://10.0.0.5".into();
+        let e = bad.validate().unwrap_err().to_string();
+        assert!(
+            e.contains("The AI cleanup server address is not usable"),
+            "{e}"
+        );
     }
 
     #[test]
