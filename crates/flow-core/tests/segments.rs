@@ -396,3 +396,95 @@ fn unsegmentable_engine_gets_one_decode_at_commit() {
     assert_eq!(asr.0.load(Ordering::SeqCst), 1);
     assert_eq!(r.timings.segments, 0);
 }
+
+/// Deterministic pseudo-noise, `ms` long, in ±`amp` (PCM16).
+fn noise(ms: usize, amp: i16, seed: u32) -> Vec<i16> {
+    let mut x = seed.wrapping_mul(2_654_435_761).max(1);
+    (0..ms * S / 1000)
+        .map(|_| {
+            x ^= x << 13;
+            x ^= x >> 17;
+            x ^= x << 5;
+            ((x as f32 / u32::MAX as f32 * 2.0 - 1.0) * amp as f32) as i16
+        })
+        .collect()
+}
+
+/// `pcm` mixed over a near-silent room: hiss in ±`amp` (14 ≈ -72 dBFS, as
+/// with a noise-suppressed microphone).
+fn over_quiet_room(pcm: &[i16], amp: i16) -> Vec<i16> {
+    let hiss = noise(pcm.len() * 1000 / S + 1, amp, 21);
+    pcm.iter()
+        .zip(hiss)
+        .map(|(&p, h)| p.saturating_add(h))
+        .collect()
+}
+
+/// 2026-11-07 stray word: the key press that stops a dictation, 1.5 s
+/// after the last word, is a short click ≈ 22 dB above a near-silent
+/// floor. The quiet-recording VAD bar passes it, and the pause cut puts it
+/// alone in the last piece. The piece's own gain decision then raised the
+/// click by up to +40 dB, and the recognizer wrote a word for it. The gain
+/// is the dictation's: a click that is quiet next to the speech stays
+/// quiet, exactly as in a whole-clip decode.
+#[test]
+fn a_click_after_the_last_word_is_not_raised_into_a_word() {
+    let mut pcm = vec![0i16; 300 * S / 1000];
+    pcm.extend(phrase(3, 4500));
+    pcm.extend(vec![0i16; 1500 * S / 1000]);
+    pcm.extend(noise(80, 170, 22)); // ≈ -50 dBFS RMS
+    pcm.extend(vec![0i16; 100 * S / 1000]);
+    let pcm = over_quiet_room(&pcm, 14);
+    let core = core_with(Arc::new(BurstEchoAsr::new()));
+    let whole = dictate(
+        &core,
+        SessionConfig {
+            ring_capacity_samples: S * 130,
+            ..Default::default()
+        },
+        &pcm,
+        640,
+    );
+    assert_eq!(whole.asr_text, "w3", "{whole:?}");
+    let seg = dictate(&core, seg_cfg(), &pcm, 640);
+    assert_eq!(seg.asr_text, "w3", "{seg:?}");
+}
+
+/// The other side of the same rule: a dictation that is quiet throughout
+/// (soft voice, low-gain microphone) still has every piece raised, by the
+/// gain the whole clip would get, so segmented and whole decodes agree.
+#[test]
+fn a_quiet_dictation_is_still_raised_piece_by_piece() {
+    // Quiet "words": 200 ms of tone, 100 ms apart (one burst to
+    // `BurstEchoAsr`; the gaps keep the streaming VAD's floor low).
+    let quiet = |ms: usize| -> Vec<i16> {
+        (0..ms * S / 1000)
+            .map(|i| {
+                let on = i % (S * 3 / 10) < S / 5;
+                (on as i32 as f32 * (i as f32 * 0.05).sin() * 250.0) as i16
+            })
+            .collect()
+    };
+    let mut pcm = vec![0i16; 300 * S / 1000];
+    pcm.extend(quiet(4500));
+    pcm.extend(vec![0i16; 1200 * S / 1000]);
+    pcm.extend(quiet(3000));
+    pcm.extend(vec![0i16; 300 * S / 1000]);
+    // A fainter floor than the click test's: raised +40 dB, that hiss would
+    // read as sound to `BurstEchoAsr` and merge the whole clip's two words.
+    let pcm = over_quiet_room(&pcm, 3);
+    let core = core_with(Arc::new(BurstEchoAsr::new()));
+    let whole = dictate(
+        &core,
+        SessionConfig {
+            ring_capacity_samples: S * 130,
+            ..Default::default()
+        },
+        &pcm,
+        640,
+    );
+    let seg = dictate(&core, seg_cfg(), &pcm, 640);
+    assert_eq!(whole.asr_text, "w16 w16", "{whole:?}");
+    assert_eq!(seg.asr_text, whole.asr_text, "{seg:?}");
+    assert_eq!(seg.timings.segments, 2, "{:?}", seg.timings);
+}
