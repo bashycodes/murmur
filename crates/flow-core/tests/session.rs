@@ -564,7 +564,7 @@ fn stock_phrase_on_a_breath_is_suppressed() {
     let (core, _) = mock_core("Thank you.");
     core.start_session(SessionConfig::default()).unwrap();
     // 300 ms burst in a second of silence: VAD sees speech, too little
-    // (a shorter one is no speech at all, `vad::MIN_LONGEST_RUN_MS`).
+    // (a recording with only shorter ones is no speech, `vad::MIN_LONGEST_RUN_MS`).
     push_all(
         &core,
         &[vec![0i16; 8000], speech(300), vec![0i16; 8000]].concat(),
