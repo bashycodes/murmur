@@ -13,7 +13,11 @@ This bundle: version {{VERSION}}, build `{{COMMIT}}`, variant `{{VARIANT}}`.
 |---|---|
 | `windows/{{WIN_EXE}}` | Windows 10/11 installer (64-bit). Works on its own and with a server. |
 | `android/{{APK}}` | Android app (Android 13 or newer). Works on its own and with a server. |
-| `server/` | `flow-server` for Linux x86_64: the program, its libraries, a config and a systemd service. |
+<!-- image -->
+| `docker/{{IMAGE_TAR}}` | The `flow-server` Docker image, ready for `docker load` (see [The server](#the-server-optional-for-a-team)). |
+<!-- /image -->
+| `docker/{{SOURCE_TGZ}}` | The server's source code, to build the Docker image yourself. |
+| `server/` | `flow-server` for Linux x86_64 without Docker: the program, its libraries, a config and a systemd service. With Docker you do not need it. |
 | `{{MODELS_ZIP}}` | The speech models (English, many languages, Hebrew, language detection{{DIARIZER_LIST}}). |
 | `{{CLEANUP_ZIP}}` | The AI cleanup model (fixes punctuation, fillers, "scratch that"). Optional. |
 | `SHA256SUMS.txt` | Fingerprints of the files in this folder; each models zip has its own inside. Check with `sha256sum -c SHA256SUMS.txt`. |
@@ -97,11 +101,68 @@ unzipped folder checks them.
 
 ## The server (optional, for a team)
 
-One Linux machine (x86_64, {{GLIBC}} or newer, e.g. Ubuntu 24.04; 4 cores
-and 8 GB RAM are plenty) does the dictation for everyone and hands the
-models to the apps. It only listens on your network; it never connects
-anywhere.
+One Linux machine (x86_64; 4 cores and 8 GB RAM are plenty) does the
+dictation for everyone and hands the models to the apps. It only listens
+on your network; it never connects anywhere.
 
+### With Docker (recommended)
+
+First get the `flow-server` image, from this folder:
+
+<!-- image -->
+```sh
+docker load -i docker/{{IMAGE_TAR}}
+```
+
+Or build it yourself from the source next to it (10-15 minutes; needs
+internet for the build):
+
+<!-- /image -->
+<!-- noimage -->
+This bundle has no prebuilt image: build it from the source in `docker/`
+(10-15 minutes; needs internet for the build):
+
+<!-- /noimage -->
+```sh
+tar -xzf docker/{{SOURCE_TGZ}}
+docker build -t flow-server -f flow-server-source-{{VERSION}}/deploy/docker/Dockerfile flow-server-source-{{VERSION}}
+```
+
+Then unzip the models and start it:
+
+```sh
+unzip -q /path/to/{{MODELS_ZIP}} 'library/*' -d ~/flow-models
+unzip -q /path/to/{{CLEANUP_ZIP}} 'library/*' -d ~/flow-models   # optional: AI cleanup
+docker volume create flow_data
+docker run -d --name flow-server --restart unless-stopped -p 0.0.0.0:7313:7313 \
+  -v ~/flow-models/library:/models:ro -v flow_data:/data flow-server
+docker exec flow-server cat /data/admin.token
+```
+
+The server uses the bundle's `library/` folder as it is: it picks
+Parakeet, Hebrew, language detection and (with the cleanup zip) AI cleanup
+from it, and offers every model in it to the apps. The last command shows
+the admin key (treat it like a password); about a minute later
+`docker logs flow-server` says `ready`. In each app, Settings → Your
+server: this machine's address (`hostname -I` shows it), port 7313, the
+key. Keys, one per person or device (shown once):
+
+```sh
+docker exec flow-server flow-server keys add alice-laptop --admin   # admin keys can manage keys from the Windows app
+docker exec flow-server flow-server keys add alice-phone
+docker exec flow-server flow-server keys list
+docker exec flow-server flow-server keys revoke alice-phone
+```
+
+Ports published by Docker bypass `ufw`: the server itself refuses
+everything except loopback, LAN and VPN addresses. On a machine with a
+public address, publish on its LAN address only
+(`-p 192.168.1.20:7313:7313`). More: `docs/server-setup.md` and
+`docs/container.md` in the source archive.
+
+### Without Docker
+
+For a server without Docker ({{GLIBC}} or newer, e.g. Ubuntu 24.04):
 {{SERVER_NOTE}}
 
 Install (as root, from the bundle's `server/` folder):
@@ -119,7 +180,7 @@ sudo flow-server gen-token --out /etc/flow-server/token
 
 The token in `/etc/flow-server/token` is the server's first admin key,
 named `owner` in `flow-server keys list`. Keep it for yourself; give
-everyone else their own key (below).
+everyone else their own key.
 
 Then edit `/etc/flow-server/config.toml`:
 
@@ -137,23 +198,16 @@ sudo journalctl -u flow-server -f      # wait for the "ready" line
 sudo flow-server library list          # the models the apps can download
 ```
 
-Keys: give each person or device its own key (shown once; treat it like a
-password):
-
-```sh
-sudo flow-server keys add alice-laptop --admin   # admin keys can manage keys from the Windows app
-sudo flow-server keys add alice-phone
-sudo flow-server keys list
-sudo flow-server keys revoke alice-phone
-```
-
+Keys: the same `keys` commands as above, as `sudo flow-server keys …`.
 Allow TCP port 7313 from your LAN/VPN in the server's firewall.
 
 ## Connect the apps to the server
 
-In each app: Settings → **Your server**. Enter the server's address (no
-`http://`, no port), port `7313`, and the key. Press **Test connection**:
-it should say `OK`. Dictation then runs on the server, and falls back to
+In each app: Settings → **Your server**. Enter the server's address
+(`hostname -I` on the server shows it; no `http://`, no port) in
+**Address** (Windows) or **Host or IP** (Android), port `7313`, and the
+key in **Access token** (Windows) or **Token** (Android). Press **Test
+connection**: Windows says `Connected.` Dictation then runs on the server, and falls back to
 the device's own model when the server is unreachable (if one is
 imported). *From your server* on the model pages downloads models from
 the server's library.
