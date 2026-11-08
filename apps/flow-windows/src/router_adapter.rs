@@ -346,7 +346,7 @@ pub struct SessionTest {
 pub fn router_config(dev: &DevSettings, caps: BuildCaps) -> Result<RouterConfig, String> {
     let json = dev.router_config_json(caps, &dev.token());
     let cfg: RouterConfig = serde_json::from_value(json).map_err(|e| e.to_string())?;
-    cfg.validate().map_err(|e| e.to_string())?;
+    cfg.validate().map_err(config_error)?;
     Ok(cfg)
 }
 
@@ -354,8 +354,17 @@ pub fn router_config(dev: &DevSettings, caps: BuildCaps) -> Result<RouterConfig,
 pub fn server_config(dev: &DevSettings, token: &str) -> Result<ServerConfig, String> {
     let json = dev.router_config_json(BuildCaps::current(), token);
     let cfg: RouterConfig = serde_json::from_value(json).map_err(|e| e.to_string())?;
-    cfg.validate().map_err(|e| e.to_string())?;
+    cfg.validate().map_err(config_error)?;
     Ok(cfg.server)
+}
+
+/// A refused config as setup and Settings show it: the router's sentence
+/// without its `bad_config:` code (D76).
+fn config_error(e: flow_router::RouterError) -> String {
+    match e {
+        flow_router::RouterError::BadConfig(m) => m,
+        e => e.to_string(),
+    }
 }
 
 /// The remote side of this build: `None` without the `remote` feature.
@@ -1844,5 +1853,22 @@ mod tests {
                 "{h}"
             );
         }
+    }
+
+    /// D76: setup's "Where should your voice become text?" saves through
+    /// `server_config`, which validates the whole config. Custom cleanup
+    /// picked without a model (a fresh pick, or a config kept from an
+    /// earlier install) is "not configured"; a real bad model id is a
+    /// sentence, not `bad_config: invalid custom cleanup model id …`.
+    #[test]
+    fn custom_cleanup_without_model_does_not_block_setup() {
+        let mut d = DevSettings::default();
+        d.cloud.cleanup_provider = flow_router::CleanupProvider::Custom;
+        assert!(server_config(&d, "").is_ok());
+        assert!(router_config(&d, BOTH).is_ok());
+        d.cloud.custom_cleanup.model = "two words".into();
+        let e = router_config(&d, BOTH).unwrap_err();
+        assert!(e.starts_with("The AI cleanup server's model name"), "{e}");
+        assert!(!e.contains("bad_config"), "{e}");
     }
 }
