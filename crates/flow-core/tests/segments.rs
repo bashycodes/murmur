@@ -568,3 +568,36 @@ fn a_pause_mid_sentence_does_not_capitalise_the_next_piece() {
     assert_eq!(r.timings.segments, 2, "{r:?}");
     assert_eq!(r.asr_text, "W1 w2 w3-x w4 w5 w6 w7 w8 w9 w10", "{r:?}");
 }
+
+/// A tap-only recording (start and stop pressed with nothing said): two
+/// key clicks of 60 and 120 ms over a near-silent room. No VAD run reaches
+/// `vad::MIN_LONGEST_RUN_MS`, so it is no speech, segmented or not; before,
+/// a whole-clip decode raised the clicks +40 dB into a word. A short word
+/// (one 300 ms run, as quiet) still decodes.
+#[test]
+fn a_tap_only_recording_is_no_speech_but_a_short_word_is_not() {
+    let take = |sound: Vec<i16>| {
+        let mut pcm = vec![0i16; 300 * S / 1000];
+        pcm.extend(sound);
+        pcm.extend(vec![0i16; 600 * S / 1000]);
+        over_quiet_room(&pcm, 14)
+    };
+    let mut taps = noise(60, 170, 31);
+    taps.extend(vec![0i16; 250 * S / 1000]);
+    taps.extend(noise(120, 170, 32));
+    let taps = take(taps);
+    let word = take(noise(300, 170, 33));
+    let core = core_with(Arc::new(BurstEchoAsr::new()));
+    let whole = SessionConfig {
+        ring_capacity_samples: S * 130,
+        ..Default::default()
+    };
+    for cfg in [whole.clone(), seg_cfg()] {
+        let r = dictate(&core, cfg.clone(), &taps, 640);
+        assert_eq!(r.asr_text, "", "{cfg:?}: {r:?}");
+        assert_ne!(r.status, CommitStatus::RawTranscript, "{r:?}");
+        let r = dictate(&core, cfg.clone(), &word, 640);
+        assert_eq!(r.asr_text.split(' ').count(), 1, "{cfg:?}: {r:?}");
+        assert!(r.asr_text.starts_with('w'), "{r:?}");
+    }
+}

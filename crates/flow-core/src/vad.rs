@@ -49,6 +49,14 @@ const UNVOICED_FACTOR: f32 = 0.5;
 const ZCR_UNVOICED: f32 = 0.3;
 /// 60 ms of consecutive speech frames.
 pub(crate) const MIN_RUN: usize = 3;
+/// Audio counts as speech only when at least one of its speech runs is
+/// this long: shorter runs are taps and clicks, which raised +40 dB
+/// ([`asr_level`]) a recognizer writes a word for ("Yeah.", 2026-11-07).
+/// Measured: the stop-key clicks in two PC recordings had longest runs of
+/// 60-140 ms; real speech over 63 clips (PC recordings, parity main and
+/// English sets) never had a longest run under 300 ms
+/// (`docs/findings/2026-11-07-stray-yeah.md`).
+pub const MIN_LONGEST_RUN_MS: usize = 200;
 pub const PAD_HEAD: usize = SAMPLE_RATE * 3 / 10; // 300 ms
 pub const PAD_TAIL: usize = SAMPLE_RATE * 2 / 5; // 400 ms
 
@@ -218,10 +226,11 @@ impl StreamVad {
     }
 }
 
-/// The span of `pcm` that holds speech, or `None` when there is none.
+/// The span of `pcm` that holds speech, or `None` when there is none (no
+/// speech run reaches [`MIN_LONGEST_RUN_MS`]).
 pub fn detect(pcm: &[f32]) -> Option<Speech> {
     let flags = frame_flags(pcm);
-    let (mut first, mut last, mut frames) = (None, 0, 0);
+    let (mut first, mut last, mut frames, mut longest) = (None, 0, 0, 0);
     let mut i = 0;
     while i < flags.len() {
         if !flags[i] {
@@ -233,10 +242,14 @@ pub fn detect(pcm: &[f32]) -> Option<Speech> {
             first.get_or_insert(i);
             last = j;
             frames += j - i;
+            longest = longest.max(j - i);
         }
         i = j;
     }
     let first = first?;
+    if longest * FRAME * 1000 < MIN_LONGEST_RUN_MS * SAMPLE_RATE {
+        return None; // only taps and clicks
+    }
     Some(Speech {
         start: (first * FRAME).saturating_sub(PAD_HEAD),
         end: (last * FRAME + PAD_TAIL).min(pcm.len()),
@@ -381,6 +394,18 @@ mod tests {
             *s = 0.5;
         }
         assert_eq!(detect(&pcm), None);
+    }
+
+    #[test]
+    fn taps_shorter_than_the_longest_run_bar_are_not_speech() {
+        // A key click spans a few 20 ms frames: three or more pass MIN_RUN,
+        // but no run reaches MIN_LONGEST_RUN_MS.
+        let floor = |n| noise(n, 0.0004, 7);
+        let tap = |ms: usize| voiced(ms * S / 1000, 0.02);
+        let taps = concat(&[floor(S / 2), tap(60), floor(S / 4), tap(140), floor(S / 2)]);
+        assert_eq!(detect(&taps), None);
+        let word = concat(&[floor(S / 2), tap(300), floor(S / 2)]);
+        assert!(detect(&word).is_some());
     }
 
     #[test]

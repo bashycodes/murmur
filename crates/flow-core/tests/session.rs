@@ -563,10 +563,11 @@ fn vad_off_passes_the_whole_buffer() {
 fn stock_phrase_on_a_breath_is_suppressed() {
     let (core, _) = mock_core("Thank you.");
     core.start_session(SessionConfig::default()).unwrap();
-    // 100 ms burst in a second of silence: VAD sees speech, too little.
+    // 300 ms burst in a second of silence: VAD sees speech, too little
+    // (a shorter one is no speech at all, `vad::MIN_LONGEST_RUN_MS`).
     push_all(
         &core,
-        &[vec![0i16; 8000], speech(100), vec![0i16; 8000]].concat(),
+        &[vec![0i16; 8000], speech(300), vec![0i16; 8000]].concat(),
     );
     let r = core.commit();
     assert_eq!(r.status, CommitStatus::Empty, "{r:?}");
@@ -595,7 +596,7 @@ fn hallucination_guard_can_be_disabled() {
     .unwrap();
     push_all(
         &core,
-        &[vec![0i16; 8000], speech(100), vec![0i16; 8000]].concat(),
+        &[vec![0i16; 8000], speech(300), vec![0i16; 8000]].concat(),
     );
     assert_eq!(core.commit().status, CommitStatus::RawTranscript);
 }
