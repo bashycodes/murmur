@@ -4,47 +4,56 @@ One Linux machine does the dictation for your PCs and phones and hands the
 models to the apps. It listens only on your network and accepts only
 loopback, LAN and VPN addresses. It never stores audio or text.
 
+## What you need
+
+* Docker on a Linux machine (x86_64, 4 GB RAM free).
+* The Flow Clone source: `git clone` of the repo, or the source archive of
+  a release (GitHub → Releases → *Source code*), unpacked.
+* A **models folder**: one folder per model, each with a small
+  `model.toml` label. Either
+  * the `library/` folder of a Flow Clone bundle's speech-models zip (and
+    its cleanup zip unzipped into the same place), as it is, or
+  * the folder the download loop in [`air-gapped.md`](air-gapped.md)
+    ("Download the models") makes.
+
+  The server uses Parakeet (English), `zipformer-he-int8` (Hebrew),
+  `whisper-tiny-lid` (language detection) and Qwen2.5 1.5B (AI cleanup)
+  when they are there; only a speech model is required.
+
 ## Quick start (Docker)
 
+From the source folder:
+
 ```sh
+docker build -t flow-server -f deploy/docker/Dockerfile .
 docker volume create flow_data
-docker run -d --name flow-server --restart unless-stopped \
-  -p 0.0.0.0:7313:7313 -v flow_data:/data ghcr.io/bashycodes/murmur/flow-server:latest
-docker logs -f flow-server
+docker run -d --name flow-server --restart unless-stopped -p 0.0.0.0:7313:7313 \
+  -v /path/to/models:/models:ro -v flow_data:/data flow-server
+docker exec flow-server cat /data/admin.token
 ```
 
-The first start downloads the models (about 1.9 GB: English, Hebrew,
-language detection, AI cleanup), so it can take a few minutes. Then the log
-shows the admin key, once:
+The build compiles the server (10-15 minutes the first time). The last
+command shows the admin key: treat it like a password. The log
+(`docker logs -f flow-server`) names the models it picked, then, about a
+minute later, says `ready`.
 
-```
-=====================================================================
- flow-server is set up. The admin key, shown only this once:
-
-     <43 characters>
-
- In each app: Settings > Your server: this machine's LAN or VPN
- address, port 7313, and the key above.
- Show the key again:  docker exec flow-server cat /data/admin.token
- One key per device:  docker exec flow-server flow-server keys add phone
-=====================================================================
-```
-
-and, about a minute later, `ready … listening=…`. Stop following the log
-with Ctrl+C; the server keeps running.
+Docker Compose does the same:
+`FLOW_MODELS_PATH=/path/to/models docker compose -f deploy/docker-compose.yml up -d --build`.
 
 ## Connect your app
 
-In each app: Settings → **Your server**.
+Find this machine's address: `hostname -I` lists it (the LAN one looks
+like `192.168.1.20`, a VPN one like `100.x.y.z`).
 
-* Address: this machine's LAN IP (e.g. `192.168.1.20`) or VPN IP
-  (`100.x.y.z`), without `http://` and without the port.
-* Port: `7313`.
-* Key: the admin key above, or better one key per device (below).
+* **Windows:** Settings → Your server. **Address**: `192.168.1.20` (no
+  `ws://`, no port), and `7313` in the port box next to it. **Access
+  token**: the key. **Save**, then **Test connection**: it says
+  `Connected.`
+* **Android:** Settings → Your server. **Host or IP**: `192.168.1.20`;
+  **Port**: `7313`; **Token**: the key. Press **Test connection**.
 
-Press **Test connection**: it should say `OK`. `auth_failed` means a wrong
-key; `connect_failed` means a wrong address, a stopped server or a
-firewall in the way (allow TCP 7313 from your LAN/VPN).
+A wrong key fails with `auth_failed`; a wrong address, a stopped server or
+a firewall fails to connect.
 
 ## Everyday commands
 
@@ -53,23 +62,28 @@ docker exec flow-server flow-server keys add alice-phone   # a new key, shown on
 docker exec flow-server flow-server keys list
 docker exec flow-server flow-server keys revoke alice-phone
 docker exec flow-server flow-server library list           # models the apps can download
-docker pull ghcr.io/bashycodes/murmur/flow-server:latest   # update: pull, then
-docker rm -f flow-server                                        # recreate with the same
-                                                                # `docker run` (keys and models stay in flow_data)
+docker logs flow-server                                    # what it is doing
 ```
 
-Fewer models: add `-e FLOW_MODELS=english` to `docker run` (English only,
-660 MB). Docker Compose: `docker compose -f deploy/docker-compose.yml up -d`
-does the same as the commands above.
+Update: get the newer source, run the `docker build` again, then
+`docker rm -f flow-server` and the same `docker run`. Keys stay in
+`flow_data`; models stay in your folder.
 
-Plain `ws://` is not encrypted: use the server over a VPN or a LAN you
-trust, or turn on TLS (Advanced).
+## Safety
+
+* `-p 0.0.0.0:7313:7313` opens the port on every IPv4 address of the
+  machine. The server then refuses every peer that is not loopback, LAN or
+  VPN; that is the only guard, because **ports published by Docker bypass
+  `ufw`** and most host firewalls. On a machine with a public address,
+  publish on its LAN or VPN address only: `-p 192.168.1.20:7313:7313`.
+* Plain `ws://` is not encrypted: use the server over a VPN or a LAN you
+  trust, or turn on TLS (Advanced).
 
 ## Advanced
 
-* [`docs/container.md`](container.md): all settings (`FLOW_MODELS`,
-  ports, the config in the volume), TLS, a GPU for AI cleanup, building the
-  image yourself, machines without internet, Kubernetes (Helm).
+* [`docs/container.md`](container.md): all container settings (choosing
+  other models, your own config, ports), TLS, a GPU for AI cleanup,
+  machines without internet, Kubernetes (Helm).
 * [`docs/server-advanced.md`](server-advanced.md): without Docker (binary
   and systemd, `tools/server/install.sh`), keys in detail, TLS, firewall,
   app settings, Hebrew and AI cleanup tuning, the model library, debug

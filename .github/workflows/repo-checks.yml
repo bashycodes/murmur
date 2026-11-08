@@ -27,3 +27,7 @@ jobs:
       # catalogue, and its install note renders.
       - name: Colleague bundle helpers
         run: tools/bundle/colleague-bundle_test.sh
+      # The flow-server container's entrypoint (D77): config from a models
+      # folder, the admin key never logged; a stub server, no Docker.
+      - name: Container entrypoint
+        run: tools/container/entrypoint_test.sh

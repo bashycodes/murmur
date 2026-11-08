@@ -1,142 +1,124 @@
 # flow-server in a container: Advanced (Docker, Compose, Helm)
 
-The quick start is in [`docs/server-setup.md`](server-setup.md): one
-volume, one `docker run`, the admin key in the log. This page has the
-settings and everything else about the image. The server inside is the same
-as the host install ([`docs/server-advanced.md`](server-advanced.md)).
+The quick start is in [`docs/server-setup.md`](server-setup.md): build the
+image from the source, mount a models folder and one volume, one
+`docker run`. This page has the settings and everything else about the
+image. The server inside is the same as the host install
+([`docs/server-advanced.md`](server-advanced.md)).
 
 | file | what |
 |---|---|
 | `deploy/docker/Dockerfile` | CPU image (default target `runtime`) and NVIDIA CUDA image (`--target cuda`) |
-| `deploy/docker/entrypoint.sh` | first-start setup (models, config, admin key), bind rewrite, CLI commands; also `/usr/local/bin/flow-server` |
+| `deploy/docker/entrypoint.sh` | the config from the models folder, the admin key, bind rewrite, CLI commands; also `/usr/local/bin/flow-server` |
 | `deploy/docker/healthcheck.sh` | TCP liveness check (`flow-healthcheck`) |
 | `deploy/docker-compose.yml` | Compose: the quick start as a file, `gpu` profile |
 | `deploy/helm/flow-server/` | Helm chart |
-| `.github/workflows/server-image.yml` | CI: builds the image on PRs, pushes `:edge` (integration) and `:X.Y.Z` + `:latest` (tags) |
-| `tools/container/entrypoint_test.sh` | entrypoint unit test (no Docker) |
+| `.github/workflows/server-image.yml` | CI: builds the CPU image and checks that it starts (nothing is published) |
+| `tools/container/entrypoint_test.sh` | entrypoint unit test (no Docker; CI repo-checks) |
 | `tools/container/smoke.sh` | the quick start end to end: key, dictation, `keys add`, restart |
 | `tools/container/stage-prebuilt.sh` | stages host-built binaries for an offline image build |
 
 What the image contains: `flow-server` built with the production features
 (`whisper,parakeet,tls,llm`), the llama.cpp plugin `libflow_llm.so`, the
-sherpa-onnx and onnxruntime shared libraries, `libgomp`, curl, and the
-pinned model list (`docs/air-gapped-models.txt`). **No models**: they are
-downloaded into the volume on the first start.
+sherpa-onnx and onnxruntime shared libraries and `libgomp`. **No models**,
+and nothing in it downloads any: you mount them. There is no published
+image; build it from the source (§8).
 
-Images: `ghcr.io/bashycodes/murmur/flow-server`, tags `latest` and
-`X.Y.Z` (releases), `edge` (the newest `integration`).
+## 1. Mounts: `/models` and `/data`
 
-## 1. The volume: `/data`
-
-Everything the server keeps is in one volume mounted at `/data`:
-
-| path | what |
+| mount | what |
 |---|---|
-| `config.toml` | written on the first start from the models present; edit it and restart to change models, languages, tuning (every key: `crates/flow-server/dist/config.example.toml`) |
-| `admin.token` | the first admin key (`token_file`, the key `owner` in `keys list`), mode 0600 |
-| `library/<id>/` | the models, one folder per model with its `model.toml` (D40). The server uses them, and the apps download them from it |
-| `keys.json`, `key-usage.json`, `library-hashes.json` | keys and usage (D38), the library's hash cache |
+| `/models` (read-only) | the models folder: `<id>/` per model with its `model.toml` (D40; `docs/server-advanced.md` §10). The server uses them, and the apps download them from it (the library). A bundle's unzipped `library/` folder, or the `air-gapped.md` download loop's folder, as they are |
+| `/data` (volume) | `admin.token` (the first admin key, `token_file`, the key `owner` in `keys list`, mode 0600), `keys.json`, `key-usage.json`, `library-hashes.json`; optionally your own `config.toml` (§3) |
 
-The server runs as uid/gid 10001. A Docker named volume gets that owner
-by itself. A host folder instead of a volume (`-v /srv/flow:/data`) must
-be owned by it: `sudo chown -R 10001:10001 /srv/flow`; the entrypoint says
-so when it cannot write.
+The server runs as uid/gid 10001. A Docker named volume gets that owner by
+itself. A host folder for `/data` (`-v /srv/flow:/data`) must be owned by
+it: `sudo chown -R 10001:10001 /srv/flow`; the entrypoint says so when it
+cannot write. The models folder only needs to be readable by everyone.
 
-Backup: copy the volume (`docker run --rm -v flow_data:/data -v "$PWD":/b
-ubuntu tar czf /b/flow_data.tgz -C /data .`). Models can be left out
-(`--exclude=./library`): they download again.
+Backup: the `/data` volume (`docker run --rm -v flow_data:/data -v "$PWD":/b
+ubuntu tar czf /b/flow_data.tgz -C /data .`); the models are your folder.
 
 ## 2. Settings (environment variables)
 
 | variable | default | |
 |---|---|---|
-| `FLOW_MODELS` | `default` | models downloaded on start when missing (below) |
-| `FLOW_THREADS` | CPUs, at most 4 | `[model] threads` in the first config |
+| `FLOW_STT`, `FLOW_HEBREW`, `FLOW_LID`, `FLOW_LLM` | (picked) | a model folder id to use instead of the default pick, or `none` (§3) |
+| `FLOW_THREADS` | CPUs, at most 4 | `[model] threads` |
 | `FLOW_PORT` | `7313` | port inside the container |
 | `FLOW_CONTAINER_NAME` | `flow-server` | the container name in the hints the log prints |
 | `FLOW_BIND_CONTAINER_IP` | `1` | see Binding |
 | `FLOW_INSECURE_BIND_ANY` | `0` | see Binding |
 | `FLOW_START_GRACE_S` | `600` | healthcheck grace while the models load |
-| `FLOW_CONFIG` | `/data/config.toml` | a config elsewhere turns the first-start setup off (Helm) |
+| `FLOW_CONFIG` | (unset) | a config file elsewhere, used as is (Helm): no generated config, no admin key; the entrypoint waits for the first `keys add` |
 
-## 3. Models (`FLOW_MODELS`)
+## 3. The config
 
-On every start, before the server starts, the entrypoint downloads the
-models named by `FLOW_MODELS` that are not in `/data/library` yet: pinned
-URLs and SHA-256 from `docs/air-gapped-models.txt` (the apps' catalogue), a
-file that does not verify is an error, and an interrupted download resumes.
-This is the only time anything in the container goes online; the server
-itself never does.
+Without `/data/config.toml` the entrypoint writes the config on every start
+from the folders in `/models` and their `model.toml` (`kind`, `engine`):
 
-| value | models | download |
+| role | config | picked |
 |---|---|---|
-| `default` | `parakeet-tdt-0.6b-v2-int8` (English), `whisper-tiny-lid` (language detection), `zipformer-he-int8` (Hebrew), `qwen2.5-1.5b-instruct-q4_k_m` (AI cleanup) | 1.9 GB |
-| `english` | `parakeet-tdt-0.6b-v2-int8` | 0.66 GB |
-| `none` | nothing (bring your own, below) | |
-| folder ids | any folders of `docs/air-gapped-models.txt`, comma separated; may include `default` / `english`, e.g. `default,whisper-base-q5_1,parakeet-unified-en-0.6b-int8` | |
+| speech (`kind = "stt"`, required) | `[model] asr_engine`, `asr_path` | `parakeet-tdt-0.6b-v2-int8`, else `parakeet-unified-en-0.6b-int8`, else the first `stt` folder by name |
+| language detection (`lid`) | `lid_path` | `whisper-tiny-lid`, else the first `lid` |
+| AI cleanup (`llm`) | `llm_path` | `qwen2.5-1.5b-instruct-q4_k_m`, else the first `llm` |
+| Hebrew (`hebrew`) | `[model.languages.he]` | `zipformer-he-int8`, else the first `hebrew` |
 
-The first config uses the first speech (`stt`) model as the main model, and
-the first language-detection, cleanup and Hebrew models of the list. The
-config is written once: models added to `FLOW_MODELS` later are downloaded
-and offered to the apps (library), but the server uses them only after you
-edit `/data/config.toml`. To start over with a new config, delete it
-(`docker exec flow-server rm /data/config.toml`) and restart.
+Whisper and GGUF models are the `.bin` / `.gguf` file in their folder;
+sherpa-onnx models (Parakeet, zipformer) the folder. `FLOW_STT=<id>` (and
+the others) overrides a pick; `none` leaves that role out. The log's first
+line says which models it took. Adding a model is copying its folder into
+your models folder: the apps see it within a minute, and the server uses it
+after a restart if it is the pick.
 
-No internet on the server: put the model folders into the volume first
-(e.g. the colleague bundle's models zip, or the folders from
-`docs/air-gapped.md`), then start. Files with the pinned size and hash are
-used as they are:
+Your own config (tuning, TLS, other languages): copy the generated one into
+the volume and edit it; from then on it is used as is (restart to apply):
 
 ```sh
-docker run --rm -v flow_data:/data -v /path/to/library:/seed:ro --entrypoint sh \
-  ghcr.io/bashycodes/murmur/flow-server:latest -c 'mkdir -p /data/library && cp -r /seed/. /data/library/'
+docker exec flow-server cp /tmp/flow-server.generated.toml /data/config.toml
+docker exec -it flow-server vi /data/config.toml   # or docker cp it out and back
+docker restart flow-server
 ```
 
-Any other model (not in the list): copy its folder into
-`/data/library/<id>/` with a `model.toml` (`docs/server-advanced.md` §10)
-and point the config at it.
+Every key: `crates/flow-server/dist/config.example.toml`. Keep
+`token_file = "/data/admin.token"` and `[library] dir = "/models"`.
 
 ## 4. Keys
 
-The first start writes `/data/admin.token` and prints it once. It stays
-readable for you: `docker exec flow-server cat /data/admin.token`. Give
-every person or device its own key (`docker exec flow-server flow-server
-keys add phone`; `keys list`, `keys revoke <name>`; D38,
-`docs/server-advanced.md` §4); a running server picks key changes up on the
-next connection. Rotating the admin key: `docker exec flow-server
-flow-server gen-token --out /data/admin.token`, then restart.
+The first start writes `/data/admin.token`. It never goes to the log; read
+it with `docker exec flow-server cat /data/admin.token`. One key per
+person or device: `docker exec flow-server flow-server keys add phone`
+(`keys list`, `keys revoke <name>`); details in `docs/server-advanced.md`
+§4.
 
 ## 5. Docker Compose
 
 `deploy/docker-compose.yml` is the quick start as a file, with a restart
 policy, a read-only root filesystem, no capabilities and an 8 GB memory
-cap:
+cap. From the source folder:
 
 ```sh
-docker compose -f deploy/docker-compose.yml up -d
-docker compose -f deploy/docker-compose.yml logs -f      # the admin key, then "ready"
+FLOW_MODELS_PATH=/path/to/models docker compose -f deploy/docker-compose.yml up -d --build
+docker exec flow-server cat /data/admin.token
 ```
 
-Settings from the environment or a `.env` file: `FLOW_IMAGE`,
-`FLOW_MODELS`, `FLOW_PUBLISH_ADDR` (default `0.0.0.0`; set the host's LAN
-or VPN address on a host with a public address), `FLOW_HOST_PORT`.
-`docker compose build` builds `flow-server:local` from the source tree
-(then `FLOW_IMAGE=flow-server:local`).
+Settings from the environment or a `.env` file next to the compose file:
+`FLOW_MODELS_PATH` (required), `FLOW_STT` / `FLOW_LLM` / `FLOW_HEBREW` /
+`FLOW_LID`, `FLOW_PUBLISH_ADDR` (default `0.0.0.0`; set the host's LAN or
+VPN address on a host with a public address), `FLOW_HOST_PORT`.
 
 ## 6. TLS (`wss://`)
 
 Off by default: the server accepts only loopback, LAN and VPN peers, and a
-VPN already encrypts. For a shared LAN without a VPN: create the cert as in
-`docs/server-advanced.md` §5 and copy `cert.pem` and `key.pem` into the
-volume's `tls/` folder (`docker cp cert.pem flow-server:/data/tls/` after
-`docker exec flow-server mkdir -p /data/tls`), uncomment `[tls]` in
-`/data/config.toml`, restart, and paste the certificate's pin into the
-apps.
+VPN already encrypts. For a shared LAN without a VPN: make the certificate
+as in `docs/server-advanced.md` §5, put it in the volume
+(`docker exec flow-server mkdir -p /data/tls`, then `docker cp`), add the
+`[tls]` block to your own config (§3) with `/data/tls/...` paths, restart,
+and paste the pin into the apps.
 
 ## 7. GPU (NVIDIA)
 
-Only AI cleanup uses the GPU; the image is built locally (CI publishes the
-CPU image only). See "NVIDIA CUDA image" below, then
+Only AI cleanup uses the GPU. See "NVIDIA CUDA image" below, then
 `docker compose -f deploy/docker-compose.yml --profile gpu up -d --build flow-server-gpu`
 (it needs the NVIDIA container toolkit). Both services use the
 `flow_data` volume: run one at a time.
@@ -146,7 +128,7 @@ CPU image only). See "NVIDIA CUDA image" below, then
 ```sh
 # CPU image, compiled inside Docker. Needs network: crates.io, and GitHub
 # for the sherpa-onnx shared libraries (unless staged, see below).
-docker build -f deploy/docker/Dockerfile -t flow-server:local .
+docker build -f deploy/docker/Dockerfile -t flow-server .
 ```
 
 The build compiles whisper.cpp and llama.cpp: about 10 minutes on a 4-core box and 3-4 GB of
@@ -161,9 +143,7 @@ prune` frees them. `--build-arg FLOW_GIT_SHA=<sha>` puts the commit into
 On a machine without network, or to reuse a host build: build on the host,
 stage the files, and build the image with `SOURCE=prebuilt`. That image
 build compiles nothing and downloads nothing beyond the base image
-(`docker load` can provide it) when you also pass `--build-arg
-WITH_CURL=0`: that image cannot download models, so fill the volume's
-`library/` first (§3).
+(`docker load` can provide it).
 
 ```sh
 # sherpa-onnx 1.13.8 shared libs (libsherpa-onnx-c-api.so, libonnxruntime.so)
@@ -171,7 +151,7 @@ export SHERPA_ONNX_LIB_DIR=/path/to/sherpa-onnx/lib
 tools/container/stage-prebuilt.sh --build     # or without --build after your own
                                               # cargo build --release (features
                                               # whisper,parakeet,tls,llm) + -p flow-llm
-docker build -f deploy/docker/Dockerfile --build-arg SOURCE=prebuilt -t flow-server:local .
+docker build -f deploy/docker/Dockerfile --build-arg SOURCE=prebuilt -t flow-server .
 ```
 
 The image is Ubuntu 24.04 (glibc 2.39): build the binaries on a host with
@@ -255,8 +235,7 @@ peers outside loopback / LAN / VPN (`docs/server-advanced.md` §3, config.rs
 `/v1/health` needs a key, and the server's auth is unchanged, so the image
 checks only that the port accepts a TCP connection (`flow-healthcheck`,
 used by the Docker `HEALTHCHECK` and the chart's liveness probe). It also
-reports healthy while the entrypoint prepares the start (model downloads,
-waiting for the first key under Helm), and for
+reports healthy while the entrypoint waits for the first key (Helm), and for
 `FLOW_START_GRACE_S` (600 s) after the server process starts, because the
 models load before the listener binds (84 s for Parakeet + Hebrew + LID +
 Qwen on a loaded 4-core box). The chart's readiness probe is a plain TCP
@@ -272,11 +251,10 @@ kubectl -n flow exec deploy/flow-flow-server -- flow-server keys add owner --adm
 kubectl -n flow logs -f deploy/flow-flow-server
 ```
 
-The chart keeps its own layout instead of the `/data` volume: it sets
-`FLOW_CONFIG=/etc/flow-server/config.toml` (its ConfigMap) and
-`FLOW_MODELS=none`, so the entrypoint downloads nothing, writes no config
-and no admin token, and waits for the first key (`keys add` above). The
-published image works too: `--set image.repository=ghcr.io/bashycodes/murmur/flow-server,image.tag=latest,image.pullPolicy=IfNotPresent`.
+The chart keeps its own layout instead of `/models` + `/data`: it sets
+`FLOW_CONFIG=/etc/flow-server/config.toml` (its ConfigMap), so the
+entrypoint writes no config and no admin key, and waits for the first key
+(`keys add` above).
 
 What the chart creates: a Deployment (one replica, `Recreate`: one writer
 per state volume), PVCs for the models (mounted read-only) and the state
@@ -306,14 +284,13 @@ backend (nginx: `nginx.ingress.kubernetes.io/backend-protocol: HTTPS`).
 ## 13. Smoke test
 
 ```sh
-tools/container/smoke.sh --image flow-server:local --wav /path/to/jfk.wav:en \
-    [--models default] [--seed /path/to/library]
+tools/container/smoke.sh --image flow-server --wav /path/to/jfk.wav:en --models /path/to/models
 ```
 
 Runs the quick start's `docker run` (container `flow-smoke`, volume
-`flow-smoke-data`, host port 17313): the admin key from the log (checked
-against `/data/admin.token`), one dictation through the WebSocket protocol
-with it, `keys add` through `docker exec` and a dictation with that key,
-then a restart (the key is not printed again; the same key still works).
-`--seed` copies model folders into the volume first, so nothing is
-downloaded. It removes the container and the volume at the end.
+`flow-smoke-data`, host port 17313) with the models folder: the admin key
+read with `docker exec` and checked to be absent from the log, one
+dictation through the WebSocket protocol with it, `keys add` through
+`docker exec` and a dictation with that key, then a restart (the same key
+still works, still not logged). It removes the container and the volume at
+the end.

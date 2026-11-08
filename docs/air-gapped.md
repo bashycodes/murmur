@@ -36,7 +36,7 @@ On the closed network:
 7. Tell the server which models to use for speech, Hebrew, language
    detection and AI cleanup, and start it (§3).
 8. Create your admin key and one key per device (§4).
-9. Install the apps and connect them: **Test connection** says `OK` (§5).
+9. Install the apps and connect them: **Test connection** succeeds (§5).
 10. On each device, download the models it needs from **From your
     server** (§5).
 11. Verify: one dictation on each device in English and in Hebrew, with AI
@@ -176,13 +176,13 @@ downloads anything, and it writes `[model] asr_path`, `llm_path` and
 **Docker.** On the connected machine (`docs/container.md` §8-9):
 
 ```sh
-docker pull ghcr.io/bashycodes/murmur/flow-server:latest   # or build it: docker build -f deploy/docker/Dockerfile -t flow-server:local .
-docker save ghcr.io/bashycodes/murmur/flow-server:latest | gzip > flow-server.tar.gz
+docker build -t flow-server -f deploy/docker/Dockerfile .    # in the repo
+docker save flow-server | gzip > flow-server.tar.gz
 ```
 
 On the server: `gunzip -c flow-server.tar.gz | docker load`. The image has
-the cleanup plugin; the models go into its `/data` volume (§2), and with
-them there it downloads nothing.
+the cleanup plugin and no models; it never downloads anything. It uses
+`flow-models/` mounted as its models folder (§2).
 
 **GPU server (optional, NVIDIA).** If the server has an NVIDIA card, also
 build and save the CUDA image (`docs/container.md` "NVIDIA CUDA image"):
@@ -209,15 +209,13 @@ The library is a folder on the server, one subfolder per model, each with a
 |---|---|
 | system | `/var/lib/flow-server/library` |
 | `--user` | `~/.local/state/flow-server/library` |
-| Docker | `/data/library` in the `flow_data` volume |
+| Docker | your `flow-models/` folder itself, mounted at `/models` |
 
 ```sh
 sudo mkdir -p /var/lib/flow-server/library
 sudo cp -r <usb>/flow-models/. /var/lib/flow-server/library/
-# Docker, before the first start:
-docker volume create flow_data
-docker run --rm -v flow_data:/data -v <usb>/flow-models:/seed:ro --entrypoint sh \
-  ghcr.io/bashycodes/murmur/flow-server:latest -c 'mkdir -p /data/library && cp -r /seed/. /data/library/'
+# Docker: copy flow-models/ to the server's disk (e.g. /srv/flow-models)
+# and mount it: -v /srv/flow-models:/models:ro (docs/server-setup.md)
 ```
 
 A label looks like this (`catalogue_id` = a copy of a model the apps know,
@@ -240,7 +238,7 @@ skipped: `sudo flow-server library list` (Docker:
 
 The library only hands models to the apps. The server's own dictation uses
 the models its config names. Use the library copies, so nothing is stored
-twice (`<library>` is the folder from §2; in Docker `/data/library`):
+twice (`<library>` is the folder from §2; in Docker `/models`):
 
 ```toml
 [model]
@@ -261,13 +259,10 @@ asr_path = "<library>/zipformer-he-int8"
   `~/.config/flow-server/config.toml`), then `flow-server check-config
   --config <file>` and restart.
 * **Docker:** nothing to write. Start it as in `docs/server-setup.md`
-  (the `docker run` there, with `flow-server:local` if you built the image
-  yourself). The first start finds the four default models (Parakeet,
-  `whisper-tiny-lid`, `zipformer-he-int8`, Qwen2.5 1.5B) in the library
-  and writes `/data/config.toml` with exactly these lines. Without one of
-  them, name the ones you have, e.g. `-e
-  FLOW_MODELS=parakeet-tdt-0.6b-v2-int8,whisper-tiny-lid,zipformer-he-int8`
-  (a missing model would be downloaded, which fails offline).
+  with `-v /srv/flow-models:/models:ro`. On every start it finds the four
+  models above (Parakeet, `whisper-tiny-lid`, `zipformer-he-int8`, Qwen2.5
+  1.5B) in the folder and generates a config with exactly these lines; a
+  missing one is left out (`docs/container.md` §3).
 
 After the start the log's `ready` line shows `languages=he=sherpa_online`.
 `docs/server-advanced.md` §2 ("LLM cleanup", "Hebrew") has the details.
@@ -281,11 +276,11 @@ from the server's command line:
 sudo flow-server keys add owner --admin
 ```
 
-(Docker made this key on its first start: the log shows it, and
-`docker exec flow-server cat /data/admin.token` shows it again.)
+(Docker made this key on its first start:
+`docker exec flow-server cat /data/admin.token` shows it.)
 
 It prints the secret once. Paste it into your own app (Settings → Your
-server → Token). From then on you can manage keys from the app instead:
+server: **Access token** on Windows, **Token** on Android). From then on you can manage keys from the app instead:
 **Users & keys** appears in Settings on Windows and under Settings → Your
 server on Android, but only for an admin key. There you create a key per
 device (the secret is shown once: copy it into that device's app), see each
@@ -304,9 +299,10 @@ on the USB stick and delete the file afterwards.
 Install the apps from the files you carried over: the Windows installer,
 and on Android the APK (allow installing from files once).
 
-In each app open Settings → Your server and fill in the server's address,
-port `7313`, the key, and the TLS pin if you use TLS. **Test connection**
-should say `OK`.
+In each app open Settings → Your server: the server's address (Windows **Address**,
+Android **Host or IP**; `hostname -I` on the server shows it), port `7313`, the key
+(**Access token** / **Token**), and the TLS pin if you use TLS. **Test connection**
+says `Connected.` on Windows.
 
 **Windows.** Settings → Speech to text → **From your server** lists the
 library. Press Download (it asks first), and the model is checked,

@@ -103,31 +103,27 @@ on your network; it never connects anywhere.
 
 ### With Docker (recommended)
 
+You need the Flow Clone source of version {{VERSION}} (`git clone` at tag
+`v{{VERSION}}`, or that release's source archive; ask whoever gave you this
+bundle). Unzip the models, then build and start from the source folder:
+
 ```sh
+unzip -q /path/to/{{MODELS_ZIP}} 'library/*' -d ~/flow-models
+unzip -q /path/to/{{CLEANUP_ZIP}} 'library/*' -d ~/flow-models   # optional: AI cleanup
+docker build -t flow-server -f deploy/docker/Dockerfile .
 docker volume create flow_data
-docker run -d --name flow-server --restart unless-stopped \
-  -p 0.0.0.0:7313:7313 -v flow_data:/data ghcr.io/bashycodes/murmur/flow-server:{{VERSION}}
-docker logs -f flow-server
+docker run -d --name flow-server --restart unless-stopped -p 0.0.0.0:7313:7313 \
+  -v ~/flow-models/library:/models:ro -v flow_data:/data flow-server
+docker exec flow-server cat /data/admin.token
 ```
 
-The first start downloads the models (about 1.9 GB), then prints the
-admin key once (`docker exec flow-server cat /data/admin.token` shows it
-again) and, about a minute later, `ready`. If `docker pull` says
-`denied`, ask whoever gave you this bundle for access to the image.
-
-No internet on the server: put the models from this bundle into the volume
-before the `docker run` above, from the folder with the zips:
-
-```sh
-unzip -q {{MODELS_ZIP}} 'library/*' -d flow-models
-unzip -q {{CLEANUP_ZIP}} 'library/*' -d flow-models     # optional: AI cleanup
-docker run --rm -v flow_data:/data -v "$PWD/flow-models/library:/seed:ro" --entrypoint sh \
-  ghcr.io/bashycodes/murmur/flow-server:{{VERSION}} -c 'mkdir -p /data/library && cp -r /seed/. /data/library/'
-```
-
-(Without the cleanup zip, add `-e FLOW_MODELS=parakeet-tdt-0.6b-v2-int8,whisper-tiny-lid,zipformer-he-int8`
-to `docker run`.) Keys, one per person or device (shown once; treat it like a
-password):
+The server uses the bundle's `library/` folder as it is: it picks
+Parakeet, Hebrew, language detection and (with the cleanup zip) AI cleanup
+from it, and offers every model in it to the apps. The last command shows
+the admin key (treat it like a password); about a minute later
+`docker logs flow-server` says `ready`. In each app, Settings → Your
+server: this machine's address (`hostname -I` shows it), port 7313, the
+key. Keys, one per person or device (shown once):
 
 ```sh
 docker exec flow-server flow-server keys add alice-laptop --admin   # admin keys can manage keys from the Windows app
@@ -136,7 +132,10 @@ docker exec flow-server flow-server keys list
 docker exec flow-server flow-server keys revoke alice-phone
 ```
 
-Allow TCP port 7313 from your LAN/VPN in the server's firewall.
+Ports published by Docker bypass `ufw`: the server itself refuses
+everything except loopback, LAN and VPN addresses. On a machine with a
+public address, publish on its LAN address only
+(`-p 192.168.1.20:7313:7313`). More: `docs/server-setup.md` in the source.
 
 ### Without Docker
 
@@ -181,9 +180,11 @@ Allow TCP port 7313 from your LAN/VPN in the server's firewall.
 
 ## Connect the apps to the server
 
-In each app: Settings → **Your server**. Enter the server's address (no
-`http://`, no port), port `7313`, and the key. Press **Test connection**:
-it should say `OK`. Dictation then runs on the server, and falls back to
+In each app: Settings → **Your server**. Enter the server's address
+(`hostname -I` on the server shows it; no `http://`, no port) in
+**Address** (Windows) or **Host or IP** (Android), port `7313`, and the
+key in **Access token** (Windows) or **Token** (Android). Press **Test
+connection**: Windows says `Connected.` Dictation then runs on the server, and falls back to
 the device's own model when the server is unreachable (if one is
 imported). *From your server* on the model pages downloads models from
 the server's library.

@@ -8,25 +8,24 @@
 #
 # Also installed as /usr/local/bin/flow-server, so `docker exec <container>
 # flow-server keys add phone` finds the config without --config. Called by
-# that name it only runs CLI commands (never the setup below).
+# that name it only runs CLI commands.
 #
-# Zero-config start (D77). Everything lives in one volume, FLOW_DATA (/data):
-#   config.toml   written on the first start, yours to edit afterwards
-#   admin.token   the first admin key (token_file, imported as key "owner")
-#   library/      the models, one folder per model (D40): the server uses
-#                 them and the apps can download them from it
-#   keys.json, key-usage.json, library-hashes.json   server state
-# On every start the models named by FLOW_MODELS that are missing from
-# library/ are downloaded from the pinned list (docs/air-gapped-models.txt,
-# SHA-256 checked). FLOW_MODELS: `default` (English Parakeet, language
-# detection, Hebrew zipformer, Qwen2.5 1.5B cleanup), `english` (Parakeet
-# only), `none`, or model folder ids (comma or space separated; `default`
-# and `english` may be mixed in). The config is written once, from the
-# models present then.
+# Zero-config start (D77, FLOW_CONFIG unset):
+#   /models   (FLOW_MODELS_DIR) the models folder, mounted read-only: one
+#             folder per model, each tagged by its model.toml (D40), e.g. the
+#             colleague bundle's unzipped library/. The server uses them and
+#             serves them to the apps (the library).
+#   /data     (FLOW_DATA) the volume: admin.token (the first admin key,
+#             token_file, imported as key "owner"), keys.json,
+#             key-usage.json, library-hashes.json, and optionally your own
+#             config.toml.
+# Without /data/config.toml the config is generated on every start from the
+# tagged folders in /models (pick_model below; FLOW_STT / FLOW_LLM /
+# FLOW_HEBREW / FLOW_LID name a folder or `none`). The key is never printed:
+# the log says how to read it (`docker exec … cat /data/admin.token`).
 #
-# A config elsewhere (FLOW_CONFIG not $FLOW_DATA/config.toml, e.g. the Helm
-# chart's /etc/flow-server/config.toml) is used as is: no download, no
-# config, no admin token. Then, with no keys yet, the entrypoint waits until
+# FLOW_CONFIG set (e.g. the Helm chart's /etc/flow-server/config.toml): that
+# config as is. Then, with no keys yet, the entrypoint waits until
 # `flow-server keys add <name> --admin` creates keys.json (a crash loop
 # would make `exec` impossible).
 #
@@ -44,16 +43,14 @@ set -eu
 
 BIN="${FLOW_BIN:-/opt/flow-server/bin/flow-server}"
 DATA="${FLOW_DATA:-/data}"
-CONFIG="${FLOW_CONFIG:-$DATA/config.toml}"
-MANIFEST="${FLOW_MODEL_LIST:-/opt/flow-server/share/models.txt}"
+MODELS="${FLOW_MODELS_DIR:-/models}"
 RUN_DIR="${FLOW_RUN_DIR:-/tmp}"
 PORT="${FLOW_PORT:-7313}"
 # Container name in the hints printed to the log (the quick start's --name).
 NAME="${FLOW_CONTAINER_NAME:-flow-server}"
+GENERATED="$RUN_DIR/flow-server.generated.toml"
 PREPARING="$RUN_DIR/flow-server.preparing"
 STARTED="$RUN_DIR/flow-server.started"
-DEFAULT_MODELS="parakeet-tdt-0.6b-v2-int8 whisper-tiny-lid zipformer-he-int8 qwen2.5-1.5b-instruct-q4_k_m"
-ENGLISH_MODELS="parakeet-tdt-0.6b-v2-int8"
 
 say() { echo "flow-server: $*" >&2; }
 die() { say "error: $*"; exit 1; }
@@ -63,11 +60,133 @@ has_config_flag() {
     return 1
 }
 
-# The config to run with: $CONFIG, or a copy in $RUN_DIR with `bind`
-# replaced by loopback + the container's addresses.
+# ---- models folder (D77) ------------------------------------------------------
+
+# tag DIR KEY: a string value from DIR/model.toml (empty when absent).
+tag() {
+    sed -n -E "s/^[[:space:]]*$2[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" \
+        "$1/model.toml" 2>/dev/null | head -n 1
+}
+
+# model_file DIR: the model's single weights file (whisper .bin, GGUF).
+model_file() {
+    for f in "$1"/*.gguf "$1"/*.bin; do
+        [ -f "$f" ] && { echo "$f"; return 0; }
+    done
+    return 1
+}
+
+# engine ID: model.toml's engine, else whisper / gguf from the files.
+engine() {
+    e="$(tag "$MODELS/$1" engine)"
+    if [ -z "$e" ]; then
+        case "$(model_file "$MODELS/$1" || true)" in
+            *.gguf) e=gguf ;;
+            *.bin) e=whisper ;;
+            *) die "$MODELS/$1/model.toml has no engine (parakeet, sherpa_online, whisper, gguf)" ;;
+        esac
+    fi
+    echo "$e"
+}
+
+# model_path ID: what the config names: the folder (sherpa-onnx models) or
+# the weights file (whisper, GGUF).
+model_path() {
+    case "$(engine "$1")" in
+        whisper|gguf) model_file "$MODELS/$1" || die "$MODELS/$1: no .bin or .gguf file" ;;
+        *) echo "$MODELS/$1" ;;
+    esac
+}
+
+# pick_model KIND OVERRIDE PREFERRED...: the folder id the config uses for
+# KIND: OVERRIDE (a folder id, or `none`), else the first PREFERRED folder
+# that is there, else the first folder of that kind by name; empty if none.
+pick_model() {
+    kind="$1" want="$2"
+    shift 2
+    [ "$want" = none ] && return 0
+    if [ -n "$want" ]; then
+        [ "$(tag "$MODELS/$want" kind)" = "$kind" ] ||
+            die "$want is not a \"$kind\" model in $MODELS (no folder, or its model.toml says another kind)"
+        echo "$want"
+        return 0
+    fi
+    for id in "$@"; do
+        [ "$(tag "$MODELS/$id" kind)" = "$kind" ] && { echo "$id"; return 0; }
+    done
+    for d in "$MODELS"/*/; do
+        [ "$(tag "$d" kind)" = "$kind" ] && { basename "$d"; return 0; }
+    done
+    return 0
+}
+
+# generate_config FILE: a config for the tagged models in $MODELS.
+generate_config() {
+    [ -d "$MODELS" ] ||
+        die "no models folder at $MODELS. Mount one: -v /path/to/models:$MODELS:ro (docs/server-setup.md)"
+    stt="$(pick_model stt "${FLOW_STT:-}" parakeet-tdt-0.6b-v2-int8 parakeet-unified-en-0.6b-int8)"
+    [ -n "$stt" ] ||
+        die "no speech model in $MODELS: it needs a folder per model with a model.toml (kind = \"stt\"), e.g. the colleague bundle's library/ (docs/server-setup.md)"
+    lid="$(pick_model lid "${FLOW_LID:-}" whisper-tiny-lid)"
+    llm="$(pick_model llm "${FLOW_LLM:-}" qwen2.5-1.5b-instruct-q4_k_m)"
+    he="$(pick_model hebrew "${FLOW_HEBREW:-}" zipformer-he-int8)"
+    stt_engine="$(engine "$stt")" stt_path="$(model_path "$stt")"
+    lid_path="" llm_path="" he_engine="" he_path=""
+    [ -z "$lid" ] || lid_path="$(model_path "$lid")"
+    [ -z "$llm" ] || llm_path="$(model_path "$llm")"
+    [ -z "$he" ] || { he_engine="$(engine "$he")"; he_path="$(model_path "$he")"; }
+    threads="${FLOW_THREADS:-$(nproc 2>/dev/null || echo 4)}"
+    [ "$threads" -le 4 ] 2>/dev/null || threads=4
+    {
+        echo "# Generated by the entrypoint from the models in $MODELS. To change"
+        echo "# it, copy it to $DATA/config.toml, edit, restart (docs/container.md)."
+        echo "bind = [\"0.0.0.0:$PORT\"]   # replaced by the container's address"
+        echo "token_file = \"$DATA/admin.token\""
+        echo "state_dir = \"$DATA\""
+        echo "workers = 1"
+        echo "max_queue = 2"
+        echo
+        echo "[model]"
+        echo "asr_engine = \"$stt_engine\""
+        echo "asr_path = \"$stt_path\""
+        echo "threads = $threads"
+        [ -z "$lid_path" ] || echo "lid_path = \"$lid_path\""
+        [ -z "$llm_path" ] || echo "llm_path = \"$llm_path\""
+        if [ -n "$he_path" ]; then
+            echo
+            echo "[model.languages.he]"
+            echo "asr_backend = \"$he_engine\""
+            echo "asr_path = \"$he_path\""
+        fi
+        echo
+        echo "[library]"
+        echo "dir = \"$MODELS\""
+        echo
+        echo "[log]"
+        echo "level = \"info\""
+        echo "log_text = false"
+    } >"$1.tmp"
+    mv -f "$1.tmp" "$1"
+    say "models from $MODELS: speech $stt${lid:+, language detection $lid}${llm:+, AI cleanup $llm}${he:+, Hebrew $he}"
+}
+
+# The config file: FLOW_CONFIG, else $DATA/config.toml, else generated.
+config_file() {
+    if [ -n "${FLOW_CONFIG:-}" ]; then
+        echo "$FLOW_CONFIG"
+    elif [ -f "$DATA/config.toml" ]; then
+        echo "$DATA/config.toml"
+    else
+        generate_config "$GENERATED"
+        echo "$GENERATED"
+    fi
+}
+
+# The config to run with: $1, or a copy in $RUN_DIR with `bind` replaced by
+# loopback + the container's addresses.
 effective_config() {
     if [ "${FLOW_BIND_CONTAINER_IP:-1}" != 1 ]; then
-        echo "$CONFIG"
+        echo "$1"
         return
     fi
     host="$(cat /etc/hostname 2>/dev/null || hostname)"
@@ -81,182 +200,39 @@ effective_config() {
     done
     out="$RUN_DIR/flow-server.config.toml"
     {
-        echo "# $CONFIG with bind rewritten by the entrypoint (FLOW_BIND_CONTAINER_IP=1)"
+        echo "# $1 with bind rewritten by the entrypoint (FLOW_BIND_CONTAINER_IP=1)"
         echo "bind = [$binds]"
         # Drop the original top-level bind (single line, before any [table]).
         awk 'BEGIN { top = 1 } /^[[:space:]]*\[/ { top = 0 }
-             top && /^[[:space:]]*bind[[:space:]]*=/ { next } { print }' "$CONFIG"
+             top && /^[[:space:]]*bind[[:space:]]*=/ { next } { print }' "$1"
     } >"$out"
     echo "$out"
 }
 
-# ---- models (D77) -------------------------------------------------------------
-
-# The model folder ids FLOW_MODELS names, one per line, presets expanded,
-# duplicates dropped, order kept.
-model_ids() {
-    for m in $(echo "${FLOW_MODELS:-default}" | tr ',' ' '); do
-        case "$m" in
-            default) echo "$DEFAULT_MODELS" ;;
-            english) echo "$ENGLISH_MODELS" ;;
-            none) ;;
-            *) echo "$m" ;;
-        esac
-    done | tr ' ' '\n' | awk 'NF && !seen[$0]++'
-}
-
-# The pinned manifest lines (folder kind engine file bytes sha256 url title)
-# of one model folder.
-manifest_lines() {
-    awk -v id="$1" '!/^#/ && $1 == id' "$MANIFEST"
-}
-
-sha_of() { sha256sum "$1" | cut -d' ' -f1; }
-size_of() { stat -c %s "$1" 2>/dev/null || echo -1; }
-
-# fetch_model ID: every file of the model in $DATA/library/ID, then its
-# model.toml (written last: the library serves a folder only once tagged).
-# A tagged folder whose files have the pinned sizes is not hashed again.
-fetch_model() {
-    id="$1"
-    lines="$(manifest_lines "$id")"
-    [ -n "$lines" ] || die "FLOW_MODELS: unknown model \"$id\"; known: $(awk '!/^#/ && NF { print $1 }' "$MANIFEST" | sort -u | tr '\n' ' ')"
-    dir="$DATA/library/$id"
-    mkdir -p "$dir"
-    tagged=0
-    [ -f "$dir/model.toml" ] && tagged=1
-    echo "$lines" | while read -r _ kind engine file bytes sha url title; do
-        f="$dir/$file"
-        if [ "$(size_of "$f")" = "$bytes" ]; then
-            [ "$tagged" = 1 ] && continue
-            [ "$(sha_of "$f")" = "$sha" ] && continue
-        fi
-        command -v curl >/dev/null ||
-            die "$id/$file is missing and this image has no curl (built with WITH_CURL=0): put the model folders into $DATA/library first (docs/container.md §3)"
-        say "downloading $id/$file ($((bytes / 1000000)) MB)"
-        t0=$(date +%s)
-        curl -fL --retry 3 --retry-delay 5 -C - -sS -o "$f.part" "$url" </dev/null \
-            || { rm -f "$f.part"; die "download failed: $url"; }
-        if [ "$(sha_of "$f.part")" != "$sha" ]; then
-            rm -f "$f.part"
-            die "$id/$file does not match its pinned SHA-256 (download corrupted?)"
-        fi
-        mv -f "$f.part" "$f"
-        say "  done in $(($(date +%s) - t0)) s"
-    done
-    if [ "$tagged" = 0 ]; then
-        echo "$lines" | head -n 1 | while read -r _ kind engine _ _ _ _ title; do
-            {
-                echo "kind = \"$kind\""
-                echo "title = \"$title\""
-                echo "engine = \"$engine\""
-                # Language detection is not a catalogue model (air-gapped-models.txt).
-                [ "$kind" = lid ] || echo "catalogue_id = \"$id\""
-            } >"$dir/model.toml"
-        done
-    fi
-}
-
-# What the config uses from one model folder: its directory (sherpa-onnx
-# models) or its single file (whisper, GGUF).
-model_path() {
-    manifest_lines "$1" | {
-        read -r _ _ engine file _
-        case "$engine" in
-            whisper|gguf) echo "$DATA/library/$1/$file" ;;
-            *) echo "$DATA/library/$1" ;;
-        esac
-    }
-}
-model_field() { manifest_lines "$1" | head -n 1 | awk -v n="$2" '{ print $n }'; }
-
-# write_config: config.toml for the models now in the library. The main
-# speech model is the first `stt` model of FLOW_MODELS; the first `lid`,
-# `llm` and `hebrew` ones add language detection, AI cleanup and Hebrew.
-write_config() {
-    stt="" lid="" llm="" he=""
-    for id in $(model_ids); do
-        case "$(model_field "$id" 2)" in
-            stt) [ -n "$stt" ] || stt="$id" ;;
-            lid) [ -n "$lid" ] || lid="$id" ;;
-            llm) [ -n "$llm" ] || llm="$id" ;;
-            hebrew) [ -n "$he" ] || he="$id" ;;
-        esac
-    done
-    [ -n "$stt" ] || die "FLOW_MODELS has no speech model (kind stt), e.g. FLOW_MODELS=default; or write $CONFIG yourself"
-    threads="${FLOW_THREADS:-$(nproc 2>/dev/null || echo 4)}"
-    [ "$threads" -le 4 ] 2>/dev/null || threads=4
-    tmp="$CONFIG.tmp"
-    {
-        echo "# flow-server config, written on the first start (FLOW_MODELS=${FLOW_MODELS:-default})."
-        echo "# Edit and restart the container to change it. Every key:"
-        echo "# crates/flow-server/dist/config.example.toml in the source repo."
-        echo "#"
-        echo "# bind: the entrypoint replaces it with the container's own address"
-        echo "# (FLOW_BIND_CONTAINER_IP=1, the default); only loopback, LAN and VPN"
-        echo "# peers are accepted (docs/container.md \"Binding\")."
-        echo "bind = [\"0.0.0.0:$PORT\"]"
-        echo "token_file = \"$DATA/admin.token\"   # the first admin key, \"owner\" in \`keys list\`"
-        echo "state_dir = \"$DATA\""
-        echo "workers = 1            # dictations decoded at once; each holds its models"
-        echo "max_queue = 2"
-        echo
-        echo "[model]"
-        echo "asr_engine = \"$(model_field "$stt" 3)\""
-        echo "asr_path = \"$(model_path "$stt")\""
-        echo "threads = $threads"
-        [ -z "$lid" ] || echo "lid_path = \"$(model_path "$lid")\"   # spoken-language detection"
-        [ -z "$llm" ] || echo "llm_path = \"$(model_path "$llm")\"   # AI cleanup"
-        if [ -n "$he" ]; then
-            echo
-            echo "# Hebrew dictations (app language Hebrew, or detected by lid_path)."
-            echo "[model.languages.he]"
-            echo "asr_backend = \"$(model_field "$he" 3)\""
-            echo "asr_path = \"$(model_path "$he")\""
-        fi
-        echo
-        echo "[library]              # the models the apps can download from this server"
-        echo "dir = \"$DATA/library\""
-        echo
-        echo "[log]"
-        echo "level = \"info\""
-        echo "log_text = false       # never log transcripts"
-        echo
-        echo "# [tls]                # wss:// (docs/container.md \"TLS\")"
-        echo "# cert = \"$DATA/tls/cert.pem\""
-        echo "# key = \"$DATA/tls/key.pem\""
-    } >"$tmp"
-    mv -f "$tmp" "$CONFIG"
-    say "wrote $CONFIG (speech $stt${lid:+, detection $lid}${llm:+, cleanup $llm}${he:+, Hebrew $he})"
-}
-
-# setup: the zero-config part of a start (config in $DATA only).
-setup() {
-    [ "$CONFIG" = "$DATA/config.toml" ] || return 0
-    { [ -d "$DATA" ] && [ -w "$DATA" ]; } ||
-        die "$DATA is not writable by uid $(id -u). Use a Docker volume (-v flow_data:$DATA), or for a host folder: sudo chown -R $(id -u):$(id -g) <folder>"
-    [ -f "$MANIFEST" ] || die "model list $MANIFEST missing from the image"
-    : >"$PREPARING" 2>/dev/null || true
-    mkdir -p "$DATA/library"
-    for id in $(model_ids); do fetch_model "$id"; done
-    [ -f "$CONFIG" ] || write_config
-    if [ ! -f "$DATA/admin.token" ] && grep -q "^token_file = \"$DATA/admin.token\"" "$CONFIG"; then
-        "$BIN" gen-token --out "$DATA/admin.token" 2>/dev/null
+# admin_token CONFIG: create $DATA/admin.token when the config names it and
+# it is missing. The key itself never goes to the log (CODING_STANDARDS
+# §Privacy), only how to read it.
+admin_token() {
+    grep -q "^token_file = \"$DATA/admin.token\"" "$1" || return 0
+    if [ ! -f "$DATA/admin.token" ]; then
+        { [ -d "$DATA" ] && [ -w "$DATA" ]; } ||
+            die "$DATA is not writable by uid $(id -u). Use a Docker volume (-v flow_data:$DATA), or for a host folder: sudo chown -R $(id -u):$(id -g) <folder>"
+        "$BIN" gen-token --out "$DATA/admin.token" >/dev/null 2>&1 ||
+            die "could not write the admin key to $DATA/admin.token"
         cat >&2 <<EOF
 
 =====================================================================
- flow-server is set up. The admin key, shown only this once:
+ flow-server created its admin key. Show it (treat it like a password):
 
-     $(cat "$DATA/admin.token")
+     docker exec $NAME cat $DATA/admin.token
 
- In each app: Settings > Your server: this machine's LAN or VPN
- address, port $PORT, and the key above.
- Show the key again:  docker exec $NAME cat $DATA/admin.token
+ In each app, Settings > Your server: this machine's LAN or VPN
+ address (\`hostname -I\` on this machine), port $PORT, and the key.
  One key per device:  docker exec $NAME flow-server keys add phone
 =====================================================================
 
 EOF
-    elif [ -f "$DATA/admin.token" ]; then
+    else
         say "admin key: docker exec $NAME cat $DATA/admin.token"
     fi
 }
@@ -267,11 +243,13 @@ cli() {
     case "${1:-}" in
         keys|library)
             if has_config_flag "$@"; then exec "$BIN" "$@"; fi
-            exec "$BIN" "$@" --config "$CONFIG" ;;
+            c="$(config_file)"
+            exec "$BIN" "$@" --config "$c" ;;
         check-config)
             if has_config_flag "$@"; then exec "$BIN" "$@"; fi
             shift
-            set -- "$@" --config "$(effective_config)"
+            c="$(config_file)"
+            set -- "$@" --config "$(effective_config "$c")"
             [ "${FLOW_INSECURE_BIND_ANY:-0}" = 1 ] && set -- "$@" --insecure-bind-any
             exec "$BIN" check-config "$@" ;;
     esac
@@ -289,8 +267,9 @@ esac
 [ "${1:-}" = serve ] && shift
 
 if ! has_config_flag "$@"; then
-    setup
-    EFFECTIVE="$(effective_config)"
+    CONFIG="$(config_file)"
+    [ -n "${FLOW_CONFIG:-}" ] || admin_token "$CONFIG"
+    EFFECTIVE="$(effective_config "$CONFIG")"
     [ "$EFFECTIVE" = "$CONFIG" ] || say "bind = $(sed -n 2p "$EFFECTIVE" | cut -d= -f2-)"
     set -- --config "$EFFECTIVE" "$@"
 fi

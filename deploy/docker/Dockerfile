@@ -4,7 +4,7 @@
 # flow-server container images (docs/container.md). Build context: repo root.
 #
 #   CPU, compiled in Docker (needs crates.io + GitHub for the sherpa-onnx libs):
-#     docker build -f deploy/docker/Dockerfile -t flow-server:local .
+#     docker build -f deploy/docker/Dockerfile -t flow-server .
 #   CPU, from binaries built on the host (no network; tools/container/stage-prebuilt.sh first):
 #     docker build -f deploy/docker/Dockerfile --build-arg SOURCE=prebuilt -t flow-server:local .
 #   NVIDIA CUDA variant (LLM cleanup on the GPU):
@@ -13,9 +13,11 @@
 # Needs BuildKit (Docker 23+ default; RUN --mount, COPY --chmod). No
 # `# syntax=` line: the built-in frontend works without pulling one, so
 # offline builds need only the base images.
-# No models are baked in: on first start the entrypoint writes the config,
-# the admin key and the models into the /data volume (D77). The Helm chart
-# mounts its own config, /models and /var/lib/flow-server instead. The
+# No models are baked in: mount a models folder at /models (read-only; one
+# folder per model tagged by model.toml, e.g. the colleague bundle's
+# library/). The entrypoint derives the config from it and keeps the admin
+# key in the /data volume (D77). The Helm chart sets FLOW_CONFIG to its own
+# config instead. The
 # default target (last stage) is the CPU image.
 
 ARG SOURCE=source
@@ -109,27 +111,17 @@ FROM cuda-llm-${SOURCE} AS cuda-llm
 # Same layout in both:
 #   /opt/flow-server/bin/flow-server (+ /usr/local/bin/flow-server link)
 #   /opt/flow-server/lib  sherpa-onnx, onnxruntime, libflow_llm*.so, libgomp
-#   /opt/flow-server/share/models.txt  the pinned model list (FLOW_MODELS)
 #   /usr/local/bin/flow-server -> the entrypoint (finds the config for
 #   `docker exec … flow-server keys …`)
 # uid/gid 10001; /data (and the chart's state dir) are created owned by it
-# so a fresh named volume inherits the ownership. curl: model downloads.
+# so a fresh named volume inherits the ownership.
 FROM ${CUDA_RUNTIME_IMAGE} AS cuda
 COPY --from=artifacts /out/bin/flow-server /opt/flow-server/bin/flow-server
 COPY --from=artifacts /out/lib/ /opt/flow-server/lib/
 COPY --from=cuda-llm /out/lib/libflow_llm_cuda.so /opt/flow-server/lib/
 COPY --chmod=0755 deploy/docker/entrypoint.sh /usr/local/bin/flow-entrypoint
 COPY --chmod=0755 deploy/docker/healthcheck.sh /usr/local/bin/flow-healthcheck
-COPY docs/air-gapped-models.txt /opt/flow-server/share/models.txt
-# curl downloads the models on first start (D77). WITH_CURL=0: an offline
-# image build (no apt); its volume needs the models put in by hand.
-ARG WITH_CURL=1
 RUN set -eu; \
-    if [ "$WITH_CURL" = 1 ]; then \
-        apt-get update; \
-        apt-get install -y --no-install-recommends curl ca-certificates; \
-        rm -rf /var/lib/apt/lists/*; \
-    fi; \
     ln -s /usr/local/bin/flow-entrypoint /usr/local/bin/flow-server; \
     groupadd -g 10001 flow; \
     useradd -u 10001 -g 10001 -M -d /data -s /usr/sbin/nologin flow; \
@@ -145,11 +137,9 @@ ENV LD_LIBRARY_PATH=/opt/flow-server/lib \
     FLOW_LLM_LIB=/opt/flow-server/lib/libflow_llm_cuda.so \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility
-# Zero-config start (D77, entrypoint.sh): config, keys and models all in
-# the /data volume; FLOW_MODELS picks the models downloaded on first start.
+# Zero-config start (D77, entrypoint.sh): models from /models, key in /data.
 ENV FLOW_DATA=/data \
-    FLOW_CONFIG=/data/config.toml \
-    FLOW_MODELS=default
+    FLOW_MODELS_DIR=/models
 USER 10001:10001
 WORKDIR /data
 EXPOSE 7313
@@ -162,16 +152,7 @@ COPY --from=artifacts /out/bin/flow-server /opt/flow-server/bin/flow-server
 COPY --from=artifacts /out/lib/ /opt/flow-server/lib/
 COPY --chmod=0755 deploy/docker/entrypoint.sh /usr/local/bin/flow-entrypoint
 COPY --chmod=0755 deploy/docker/healthcheck.sh /usr/local/bin/flow-healthcheck
-COPY docs/air-gapped-models.txt /opt/flow-server/share/models.txt
-# curl downloads the models on first start (D77). WITH_CURL=0: an offline
-# image build (no apt); its volume needs the models put in by hand.
-ARG WITH_CURL=1
 RUN set -eu; \
-    if [ "$WITH_CURL" = 1 ]; then \
-        apt-get update; \
-        apt-get install -y --no-install-recommends curl ca-certificates; \
-        rm -rf /var/lib/apt/lists/*; \
-    fi; \
     ln -s /usr/local/bin/flow-entrypoint /usr/local/bin/flow-server; \
     groupadd -g 10001 flow; \
     useradd -u 10001 -g 10001 -M -d /data -s /usr/sbin/nologin flow; \
@@ -180,11 +161,9 @@ RUN set -eu; \
     chmod 0700 /data /var/lib/flow-server
 ENV LD_LIBRARY_PATH=/opt/flow-server/lib \
     FLOW_LLM_LIB=/opt/flow-server/lib/libflow_llm.so
-# Zero-config start (D77, entrypoint.sh): config, keys and models all in
-# the /data volume; FLOW_MODELS picks the models downloaded on first start.
+# Zero-config start (D77, entrypoint.sh): models from /models, key in /data.
 ENV FLOW_DATA=/data \
-    FLOW_CONFIG=/data/config.toml \
-    FLOW_MODELS=default
+    FLOW_MODELS_DIR=/models
 USER 10001:10001
 WORKDIR /data
 EXPOSE 7313
