@@ -753,3 +753,13 @@ dialog.fl-dialog .lw-dl-lead {
   font: 400 13px/20px var(--font-sans);
   color: var(--foreground-tertiary);
 }
+/* Step 2's server fields, moved to step 3/4 under "Download from: Your server" (D79) */
+.lw-ob-server-slot {
+  display: contents;
+}
+/* Cleanup on this PC: "Download from", the download row, the model file */
+.lw-ob-llm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}

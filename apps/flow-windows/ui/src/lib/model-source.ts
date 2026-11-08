@@ -1,14 +1,11 @@
-// "Download from: Your server | Hugging Face" (D79): where catalogue model
-// downloads come from, whether the server has a model, and setup's
-// Skip / Continue on the model step. Pure, so `npm test` runs it on the
-// built dist without a page.
+// "Download from: Your server | Hugging Face" (D79): what setup shows for
+// it, whether the server has a model, and setup's Skip / Continue on the
+// model step. Where downloads really come from is the backend's call
+// (server_library::Origin, seen as the catalogue's from_server); this only
+// lays the user's pick over it. Pure, so `npm test` runs it on the built
+// dist without a page.
 
 export type ModelSource = "server" | "huggingface";
-
-/** Where downloads come from: the choice (prefs.model_source, default the server) counts only with a server set. */
-export function effectiveSource(choice: string | null | undefined, hasServer: boolean): ModelSource {
-  return hasServer && choice !== "huggingface" ? "server" : "huggingface";
-}
 
 /** The parts of `server_models` this module reads. */
 export interface Listing {
@@ -26,10 +23,47 @@ export function onServer(id: string, lib: Listing | undefined): boolean | undefi
   return lib.models.some((m) => m.catalogue_id === id && !!m.slot);
 }
 
+export interface SourceState {
+  /** What the user picked on this setup run (null = nothing yet). */
+  pick: ModelSource | null;
+  /** Where downloads come from now (the backend: catalogue rows from_server). */
+  effective: ModelSource;
+  /** This build talks to servers. */
+  remote: boolean;
+  /** A server address is saved. */
+  serverSet: boolean;
+}
+
+export interface SourceView {
+  /** The switch position. */
+  shown: ModelSource;
+  /** "Your server" is offered. */
+  serverButton: boolean;
+  /** "Your server" picked with none saved: show the server fields here. */
+  serverForm: boolean;
+  /** Download buttons show: they fetch from what the switch says. */
+  downloads: boolean;
+  /** The "… download page →" links to Hugging Face show. */
+  hfLinks: boolean;
+}
+
+/** Setup's "Download from" switch over the backend's source. */
+export function sourceView(s: SourceState): SourceView {
+  const shown: ModelSource = s.remote ? (s.pick ?? s.effective) : "huggingface";
+  return {
+    shown,
+    serverButton: s.remote,
+    serverForm: shown === "server" && !s.serverSet,
+    downloads: shown === s.effective,
+    hfLinks: shown === "huggingface",
+  };
+}
+
 /** The line next to the "Download from" switch. */
-export function sourceHint(source: ModelSource, hasServer: boolean, host: string): string {
-  if (!hasServer) return "No server set up, so models come from huggingface.co";
-  return source === "server" ? `${host || "Your server"} · no internet needed` : "huggingface.co · needs the internet";
+export function sourceHint(v: SourceView, host: string): string {
+  if (v.shown === "huggingface") return "huggingface.co · needs the internet";
+  if (v.serverForm) return "Add your server below. No internet needed.";
+  return `${host || "Your server"} · no internet needed`;
 }
 
 export interface ModelStep {

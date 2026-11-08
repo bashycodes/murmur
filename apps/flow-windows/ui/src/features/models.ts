@@ -13,7 +13,7 @@
 
 import { $, askDialog, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
-import { effectiveSource, onServer, type ModelSource } from "../lib/model-source.js";
+import { onServer, type ModelSource } from "../lib/model-source.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import type { Feature } from "../lib/router.js";
 import { views } from "../lib/views.js";
@@ -645,7 +645,7 @@ export const LLM_DOWNLOAD_ROW = `
 <div class="fl-row lw-dl-row" id="llm_dl_row" data-needs="local" hidden>
   <div class="fl-row-text">
     <div class="fl-row-title"><label for="llm_dl_model">Download a model</label></div>
-    <div class="fl-row-desc">From your server or Hugging Face (Settings → Speech to text → Download models from), checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent. A downloaded or imported model turns on cleanup on this PC.<span class="lw-status-sub"><span class="lw-dl-bar" id="llm_dl_bar" hidden><span></span></span><span id="llm_dl_status"></span></span><span class="lw-status-sub hint" id="llm_dl_hw"></span></div>
+    <div class="fl-row-desc">From your server or Hugging Face (Download models from, in Speech to text), checked against a fingerprint built into this version. Only when you press Download; nothing about you is sent. A downloaded or imported model turns on cleanup on this PC.<span class="lw-status-sub"><span class="lw-dl-bar" id="llm_dl_bar" hidden><span></span></span><span id="llm_dl_status"></span></span><span class="lw-status-sub hint" id="llm_dl_hw"></span></div>
   </div>
   <div class="fl-row-control">
     <select id="llm_dl_model" class="fl-select lw-w220" aria-label="Cleanup model to download"></select>
@@ -1001,9 +1001,9 @@ export const SOURCE_ROW = `
   </div>
 </div>`;
 
-/** Where downloads come from now (the backend applies the same rule, server_library::Origin::of). */
+/** Where downloads come from now: the backend's answer (server_library::Origin), seen in the catalogue. */
 export function downloadSource(): ModelSource {
-  return effectiveSource(prefsStore.get()?.model_source, hasServer());
+  return models.fromServer() ? "server" : "huggingface";
 }
 
 let sourceKey = "";
@@ -1012,7 +1012,7 @@ let sourceKey = "";
 function sourceChanged(): void {
   const row = document.getElementById("src_row");
   if (row) row.hidden = !hasServer();
-  const key = `${serverHost()}|${downloadSource()}`;
+  const key = `${serverHost()}|${prefsStore.get()?.model_source ?? ""}`;
   if (key === sourceKey) return;
   const first = sourceKey === "";
   sourceKey = key;

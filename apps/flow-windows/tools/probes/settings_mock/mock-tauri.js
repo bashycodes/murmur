@@ -18,7 +18,7 @@
     paste_method: "ctrl_v", restore_clipboard: true, max_dictation_minutes: 20, hands_free_silence_ms: 2000, retention: "keep", retry_audio_keep: 20,
     model_path: null, live_preview: true, llm_enabled: true, llm_model_path: null, llm_lib_path: null,
     llm_timeout_ms: 1500, learn_from_edits: true,
-    asr_engine: "whisper", parakeet_model_dir: null, hebrew_model: "zipformer", spoken_cleanup: true,
+    asr_engine: "whisper", parakeet_model_dir: null, hebrew_model: "zipformer", model_source: "server", spoken_cleanup: true,
     theme: "system", onboarded: true,
     transforms: {
       enabled: false, auto_apply: null, view_changes: "Win+Alt+O",
@@ -278,14 +278,18 @@
   // ?nodl=1: a client-only build (no downloader): nothing is `available`,
   // every model is still `importable` (model_import, no network).
   const noDl = new URLSearchParams(location.search).get("nodl") === "1";
-  // ?server=1: a server is set (D41): the catalogue is not downloadable
-  // from Hugging Face (`from_server`); `server_models` lists its library.
-  // ?server=err: set, but its library can't be read.
+  // ?server=1: a server is set (D41); `server_models` lists its library.
+  // ?server=err: set, but its library can't be read. In setup (?onboard=1)
+  // a server is set once an address is saved. With one set, the catalogue
+  // downloads from it (`from_server`) unless "Download from" is Hugging
+  // Face (D79, server_library::catalog_for).
   const serverParam = new URLSearchParams(location.search).get("server");
-  const fromServer = serverParam === "1" || serverParam === "err";
+  const serverSet = () => serverParam === "1" || serverParam === "err" || (onboard && !!dev.host);
+  const fromServer = () => serverSet() && prefs.model_source !== "huggingface";
   const view = (c) => {
     const installed = dlInstalled.has(c.id);
-    const base = { ...c, available: c.available && !noDl && !fromServer, importable: true, ...(fromServer ? { from_server: true } : {}) };
+    const srv = fromServer();
+    const base = { ...c, available: srv || (c.available && !noDl), importable: true, ...(srv ? { from_server: true } : {}) };
     if (!c.language) return { ...base, installed, complete: installed, missing: installed ? 0 : c.size };
     const lid = lidPresent ? 0 : LID.size;
     return { ...base, installed, complete: installed && lidPresent, missing: installed ? lid : c.size - LID.size + lid };
@@ -728,13 +732,13 @@
       return null;
     },
     server_models: () => {
-      if (!fromServer) return { configured: false, models: [] };
+      if (!serverSet()) return { configured: false, models: [] };
       if (serverParam === "err") return { configured: true, error: "the server refused the key (HTTP 401)", models: [] };
       return { configured: true, models: srvLib.map(srvView) };
     },
     // A custom server model: ticks like a download, then the prefs of its slot.
     server_model_download: ({ id }) => {
-      if (!fromServer) throw new Error("no server is set");
+      if (!serverSet()) throw new Error("no server is set");
       const m = srvLib.find((x) => x.id === id);
       if (!m) throw new Error(`${id} is no longer on the server`);
       if (!m.slot) throw new Error(m.reason);

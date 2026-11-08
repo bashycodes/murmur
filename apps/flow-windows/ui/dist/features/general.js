@@ -52,7 +52,7 @@ function fill(prefs) {
     $("asr_engine").value = prefs.asr_engine;
     setValue("parakeet_model_dir", prefs.parakeet_model_dir ?? "");
     $("hebrew_model").value = prefs.hebrew_model ?? "zipformer";
-    $("model_source").value = prefs.model_source === "huggingface" ? "huggingface" : "server";
+    $("model_source").value = prefs.model_source;
     showEngineFields();
     setValue("ptt", prefs.shortcuts.ptt);
     setValue("hands_free", prefs.shortcuts.hands_free);
