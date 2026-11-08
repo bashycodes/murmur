@@ -374,7 +374,10 @@ pub fn describe(e: &CloudError) -> String {
             "the server address is not a valid http(s) URL".into()
         }
         CloudError::Connect(_) => "cannot reach the server".into(),
-        CloudError::Auth => "the server rejected the key".into(),
+        CloudError::Auth => "the server rejected the key, or needs one".into(),
+        CloudError::BadRequest { code: Some(c), .. } if c == http::UNKNOWN_MODEL => {
+            "the server has no model by that name: pick one from its list".into()
+        }
         CloudError::Quota => "the server says the key is over its budget".into(),
         CloudError::RateLimited { .. } => "the server is busy or rate limited".into(),
         CloudError::Timeout => "the server did not answer in time".into(),

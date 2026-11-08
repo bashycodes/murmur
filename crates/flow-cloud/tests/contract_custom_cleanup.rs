@@ -219,9 +219,7 @@ fn models_list_parses_ids() {
 fn router_dictation_uses_the_custom_server() {
     use flow_core::asr::MockAsr;
     use flow_core::FlowCore;
-    use flow_router::{
-        Backend, CleanupProvider, CleanupRoute, Router, RouterConfig, SessionConfig,
-    };
+    use flow_router::{Backend, CleanupRoute, CloudProvider, Router, RouterConfig, SessionConfig};
 
     let srv = MockServer::fixed(sse_ok());
     let mut c = RouterConfig {
@@ -230,7 +228,7 @@ fn router_dictation_uses_the_custom_server() {
         cleanup_order: vec![CleanupRoute::Cloud, CleanupRoute::Local],
         ..Default::default()
     };
-    c.cloud.cleanup_provider = CleanupProvider::Custom;
+    c.cloud.provider = CloudProvider::LiteLlm;
     c.cloud.custom_cleanup = cfg(&srv.url(""));
     c.cloud.custom_cleanup.consent_host = "127.0.0.1".into();
     c.cloud.custom_cleanup.consent_at_ms = 1;
@@ -269,7 +267,7 @@ fn router_dictation_uses_the_custom_server() {
             ("GET", "/v1/models", 0)
         );
     }
-    assert_eq!(router.cleanup_status().provider, CleanupProvider::Custom);
+    assert_eq!(router.cleanup_status().provider, CloudProvider::LiteLlm);
 }
 
 #[test]
@@ -311,5 +309,5 @@ fn models_json_is_the_shared_shape() {
     assert_eq!(v, serde_json::json!({"models": ["a"]}));
     let v = custom::models_json(Err(CloudError::Auth));
     assert_eq!(v["error"], "auth_failed");
-    assert_eq!(v["message"], "the server rejected the key");
+    assert_eq!(v["message"], "the server rejected the key, or needs one");
 }

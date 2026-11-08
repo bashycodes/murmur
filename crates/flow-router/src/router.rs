@@ -24,7 +24,7 @@ use flow_core::cleanup::{
 use flow_core::config::CleanupLevel;
 
 use crate::cloud::{
-    month_of, CleanupProvider, CleanupRoute, CleanupView, CloudUsage, OpenRouterConfig, Privacy,
+    month_of, CleanupRoute, CleanupView, CloudProvider, CloudUsage, OpenRouterConfig, Privacy,
     Route, SecretString, SttConfig, CUSTOM_CLEANUP_ID, OPENROUTER_ID,
 };
 use crate::gate::Gate;
@@ -207,6 +207,12 @@ impl State {
         let not_cfg = |m: &str| BackendError::new(Failure::CloudNotConfigured, m);
         if self.cfg.cloud.is_legacy() {
             return Err(not_cfg("cloud settings not migrated"));
+        }
+        // D78: one Cloud provider at a time; LiteLLM has no speech path.
+        if !self.cfg.cloud.provider.offers_stt() {
+            return Err(not_cfg(
+                "cloud speech to text needs OpenRouter as the Cloud provider",
+            ));
         }
         let o = self.cfg.cloud.openrouter.clone();
         o.validate().map_err(|e| not_cfg(&e))?;
@@ -621,7 +627,7 @@ impl Router {
 
     /// Enable cleanup through the user's own OpenAI-compatible server
     /// (D52): `f` builds the custom cleaner (`flow_cloud::custom_cleanup_factory`).
-    /// Used when `cloud.cleanup_provider` is `custom`. Additive.
+    /// Used when `cloud.provider` is `custom`. Additive.
     pub fn with_custom_cleanup_factory(mut self, f: CustomCleanupFactory) -> Self {
         self.custom_cleanup_factory = Some(f);
         let mut st = self.state.lk();
@@ -632,9 +638,9 @@ impl Router {
 
     /// This build can clean up with the provider `cfg` selects (D52).
     fn cleanup_supported(&self, cfg: &RouterConfig) -> bool {
-        match cfg.cloud.cleanup_provider {
-            CleanupProvider::OpenRouter => self.cleanup_factory.is_some(),
-            CleanupProvider::Custom => self.custom_cleanup_factory.is_some(),
+        match cfg.cloud.provider {
+            CloudProvider::OpenRouter => self.cleanup_factory.is_some(),
+            CloudProvider::LiteLlm => self.custom_cleanup_factory.is_some(),
         }
     }
 
@@ -678,7 +684,7 @@ impl Router {
         CleanupStatus {
             supported,
             enabled: supported && cfg.cloud_cleanup_wanted(),
-            provider: cfg.cloud.cleanup_provider,
+            provider: cfg.cloud.provider,
             host: cfg.cloud.cleanup_host(),
             order: cfg.effective_cleanup_order(),
             server_llm: self.server_clean.server_llm(),
@@ -714,7 +720,7 @@ impl Router {
         let cloud = st.cfg.cloud.clone();
         let view = cloud.cleanup_view();
         let custom = !cloud.cleanup_needs_key();
-        let key = if cloud.cleanup_provider == CleanupProvider::Custom {
+        let key = if cloud.provider == CloudProvider::LiteLlm {
             st.custom_key.clone()
         } else {
             st.cloud_key.clone()
