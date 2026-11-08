@@ -128,11 +128,13 @@ gain was above 1 and D72 left at 1, from a temporary trace in the after build (r
   below, seen once, and here it lowered WER.
 * No clip came back empty that did not before (one Hebrew clip is empty in both runs).
 
-## Tap-only "Yeah." clips (whole-clip path), not fixed here
+## Tap-only "Yeah." clips: a recording with no 200 ms run is no speech
 
 The older rows whose whole text is "Yeah." are 0.5–1.2 s with no audio kept, so they cannot
-be replayed. A generic rule that would cover them: do not raise a span (piece or whole clip)
-whose longest VAD speech run is under 200 ms. Measured with the Python VAD replica:
+be replayed. Rule (`vad::MIN_LONGEST_RUN_MS`, `vad::Speech::only_taps`, checked once in
+`engine::finalize` on the whole recording): a recording is speech only when one of its VAD
+speech runs is at least 200 ms long. A tap-only recording is "no speech" (empty, nothing
+raised or decoded), segmented or not. Measured with the Python VAD replica:
 
 * the key clicks in the two PC tails: longest run 60–140 ms;
 * real speech, longest run per clip, smallest values: PC recordings 300 / 340 / 400 ms,
@@ -140,8 +142,40 @@ whose longest VAD speech run is under 200 ms. Measured with the Python VAD repli
   300 ms).
 
 The one kept "Yeah."-only PC recording (3.85 s) has a 1000 ms run, so it is real sound and
-the rule would leave it alone. The margin (140 vs 300 ms) is from few samples; a short
+the rule leaves it alone. The margin (140 vs 300 ms) is from few samples; a short
 "yes"/"no" alone was not in any set.
+
+First version judged every span `vad::detect` saw (pieces and previews too). The parity run
+showed why that is wrong: the VAD bars are relative to the slice analysed (p10 floor), and a
+quiet FLEURS Hebrew piece (speech ≈ −48 dBFS) analysed alone gets a floor of −68 and a bar of
+−49 dBFS, so its speech breaks into 60–180 ms runs (1020 ms in all) and the piece was dropped
+(2 clips: 13 words lost at the start of one, 3 at the end of another; WER 30.35 → 31.60 %).
+The same audio inside the whole recording has 360–740 ms runs. So the rule is a property of
+the recording, judged once; pieces are left to D72.
+
+Tests: `a_tap_only_recording_is_no_speech_but_a_short_word_is_not` (segments.rs; two clicks of
+60 and 120 ms are empty, segmented or not, red with the bar at 0, where the whole clip came
+back as one word; a 300 ms run still decodes), `choppy_quiet_speech_in_a_piece_is_not_taken_for_taps`
+(a second piece of 100 ms bursts in a recording with real words still decodes; red with the
+per-span first version), `vad::tests::taps_shorter_than_the_longest_run_bar_are_only_taps`.
+Two hallucination-guard tests used a 100 ms burst as "a little speech"; they now use 300 ms
+(under the guard's 400 ms), since a recording with only a 100 ms burst is no speech.
+
+Parity, before (863dffb) → after with the tap rule judged on the whole recording (same sets
+and configs as above; flow-cli built from this branch after merging origin/integration):
+
+| set | config | WER | terms | clips changed |
+|---|---|---|---|---|
+| main 13 | PC | 11.55 → 10.89 % | 8/15 → 8/15 | 1 (s11: 3 faint end words dropped, D72 as before) |
+| main 13 | phone | 11.33 → 10.89 % | 8/15 → 8/15 | 1 (same clip, 2 end words) |
+| English 30 | PC | 6.23 → 6.23 % | 30/37 → 30/37 | 0 |
+| English 30 | phone | 6.23 → 6.23 % | 30/37 → 30/37 | 0 |
+| PC recordings 20 | PC | – | – | 2 (the two "Yeah." removed; one of them also has one word's case changed mid-text, from D70 merged in) |
+| FLEURS he 49 | phone | 30.35 → 30.35 % | – | 0 |
+
+Against the median version without the tap rule: 0 clips changed except that one case
+change (D70). No clip newly empty (he 49 keeps its one empty clip from before). The tap rule
+changes no clip in these sets: none is tap-only.
 
 ## Open
 
@@ -150,11 +184,9 @@ the rule would leave it alone. The margin (140 vs 300 ms) is from few samples; a
   so the engine returns "" for it. Before the fix it was raised on its own. Not seen in the
   two PC rows; in the parity check it changed one clip (see above).
 
-* Older "Yeah." rows (2026-10-30 … 11-05) are mostly 0.5–1.2 s recordings whose whole text
-  is "Yeah.", with no audio kept. They look like the same thing in unsegmented form: a stop
-  or start tap with no speech. They are not fixed here, because a whole-clip decode of a
-  click-only clip still gets raised. One 3.9 s row does hold real sound (≈ 2.6 s at
-  −35…−45 dBFS) and may really be the owner speaking.
+* Older "Yeah." rows (2026-10-30 … 11-05) have no audio kept, so the run-length rule is not
+  verified on them. One 3.9 s row does hold real sound (≈ 2.6 s at −35…−45 dBFS) and may
+  really be the owner speaking.
 * Phone history was not checked. The same core code runs there.
 * Live previews still raise each preview window on its own. Previews are transient, and the
   final text does not use them.

@@ -1800,6 +1800,13 @@ impl Worker {
             return r;
         }
         r.timings.peak_dbfs = Some(peak_dbfs(&s.buf));
+        // Only the key taps that start and stop the recording: raised, a
+        // recognizer writes a word for them ("Yeah.").
+        if s.cfg.vad && vad::detect(&s.buf).is_some_and(|sp| sp.only_taps()) {
+            r.timings.speech_ms = Some(0);
+            r.empty_reason = Some("no_speech".into());
+            return r;
+        }
         if s.seg.is_some() {
             return self.finalize_segmented(s, ctx, abort, r);
         }

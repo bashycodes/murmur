@@ -454,9 +454,14 @@ fn a_click_after_the_last_word_is_not_raised_into_a_word() {
 /// `BurstEchoAsr`, "w16" once raised; the gaps keep the streaming VAD's
 /// floor low).
 fn quiet_words(ms: usize) -> Vec<i16> {
+    quiet_bursts(ms, 200, 300)
+}
+
+/// A quiet tone, `on_ms` of every `period_ms`.
+fn quiet_bursts(ms: usize, on_ms: usize, period_ms: usize) -> Vec<i16> {
     (0..ms * S / 1000)
         .map(|i| {
-            let on = i % (S * 3 / 10) < S / 5;
+            let on = i % (period_ms * S / 1000) < on_ms * S / 1000;
             (on as i32 as f32 * (i as f32 * 0.05).sin() * 250.0) as i16
         })
         .collect()
@@ -570,8 +575,9 @@ fn a_pause_mid_sentence_does_not_capitalise_the_next_piece() {
 }
 
 /// A tap-only recording (start and stop pressed with nothing said): two
-/// key clicks of 60 and 120 ms over a near-silent room. No VAD run reaches
-/// `vad::MIN_LONGEST_RUN_MS`, so it is no speech, segmented or not; before,
+/// key clicks of 60 and 120 ms over a near-silent room. No VAD run in the
+/// recording reaches `vad::MIN_LONGEST_RUN_MS`, so it is no speech,
+/// segmented or not; before,
 /// a whole-clip decode raised the clicks +40 dB into a word. A short word
 /// (one 300 ms run, as quiet) still decodes.
 #[test]
@@ -600,4 +606,23 @@ fn a_tap_only_recording_is_no_speech_but_a_short_word_is_not() {
         assert_eq!(r.asr_text.split(' ').count(), 1, "{cfg:?}: {r:?}");
         assert!(r.asr_text.starts_with('w'), "{r:?}");
     }
+}
+
+/// The tap rule judges the whole recording, never a piece: quiet speech
+/// that the VAD breaks into short runs (here 100 ms bursts, as a faint
+/// voice near the bar does in FLEURS Hebrew) is kept in a piece of its own
+/// when the recording has a real word. Judged per piece, the second piece
+/// was dropped as taps.
+#[test]
+fn choppy_quiet_speech_in_a_piece_is_not_taken_for_taps() {
+    let mut pcm = vec![0i16; 300 * S / 1000];
+    pcm.extend(quiet_bursts(4500, 400, 500));
+    pcm.extend(vec![0i16; 1200 * S / 1000]);
+    pcm.extend(quiet_bursts(4000, 100, 200));
+    pcm.extend(vec![0i16; 300 * S / 1000]);
+    let pcm = over_quiet_room(&pcm, 3);
+    let core = core_with(Arc::new(BurstEchoAsr::new()));
+    let r = dictate(&core, seg_cfg(), &pcm, 640);
+    assert_eq!(r.timings.segments, 2, "{r:?}");
+    assert_eq!(r.asr_text.split(' ').count(), 2, "{r:?}");
 }
