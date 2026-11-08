@@ -9,7 +9,7 @@
 {"id":"E09","group":"E","before":"Server for the demo: ","input":"demo dot example dot org port four four three"}
 {"id":"E10","group":"E","before":"Notes from the call. Next step: ","input":"send the draft by Friday"}
 {"id":"E11","group":"E","before":"Room booked for the review: ","input":"room twelve B"}
-{"id":"E12","group":"E","before":"This is my tablet's port: ","input":"100.64.12.9 colon five five five five one"}
+{"id":"E12","group":"E","before":"This is my tablet's port: ","input":"192.0.2.9 colon five five five one"}
 {"id":"E13","group":"E","before":"I'll pick up ","input":"the cake at noon"}
 {"id":"E14","group":"E","before":"See you at the ","input":"station around six"}
 {"id":"E15","group":"E","before":"Totals so far: apples 3, pears 5. ","input":"oranges two"}

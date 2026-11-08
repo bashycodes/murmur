@@ -79,8 +79,19 @@ code is 5521". Only verbatim runs are removed.
 The prompt only changes how much the 3B copies of the field. The framing
 that stops the copying also makes it drop the speaker's own words when they
 match the field (D, F) or stop formatting (C, E). A check after the model
-can't bring those words back. The words a check removes can be recovered:
-only words the speaker did not say, compared against the transcript.
+can't bring those words back. A check after the model can be kept
+conservative: it removes only words the speaker plausibly did not say.
+
+The first version of the check removed any run the transcript didn't
+contain verbatim. Review found three ways that loses dictated words:
+- a number the model formatted ("three p m" -> "3 PM" after "Meeting at
+  3 pm. ");
+- a filler inside the dictated phrase ("next, um, step");
+- a name the model corrected from speech-to-text ("acne" -> the field's
+  "Acme").
+
+The shipped check counts those words as possibly said (below). Each case
+has a regression test.
 
 ## Fix (D71)
 
@@ -94,13 +105,31 @@ empty check:
   punctuation. The check takes the longest such run.
 - Trailing words that equal the first words of the text after the cursor
   are removed the same way.
-- A run counts only when it is at least 2 words, or the whole context
-  (`Password: `). It must also not appear anywhere in the text the model was
-  given (the transcript or the rules text). Dictated repeats stay.
-- Separators left at the cut (`: ; , - – —`) go with it. An answer that
-  would become empty is left as is.
-- The context is what the prompt's scope allowed. With surrounding text off
-  for a cloud route the field is empty, so nothing is compared.
+- The field text compared is the window the prompt shows: the last 300
+  characters before the cursor and the first 150 after it. It is what the
+  prompt's scope allowed, so with surrounding text off for a cloud route
+  nothing is compared.
+- A run counts only when it is at least 2 words, or the whole window
+  (`Password: `).
+- **Conservative by design.** A wrong cut loses dictated words; a missed one
+  only leaves the echo. So a run is removed only when fewer than half of
+  its words could come from the text the model was given (the transcript,
+  or the rules' text on the on-device path). A word counts as possibly given
+  when that text has:
+  - the word itself;
+  - a near spelling of it (edit similarity >= 0.7 for 4+ letters: the model
+    fixing "acne corp" to the field's "Acme Corp");
+  - 2-3 consecutive words that join into it ("p m" -> "pm");
+  - a longer word it abbreviates, when the answer writes it with a dot
+    ("Dr." for "doctor");
+  - or the word holds a digit, since the model writes spoken numbers as
+    digits.
+
+  Words are matched one by one, so fillers inside a dictated phrase ("next,
+  um, step") don't hide it.
+- Separators left at the cut go with it: `: ; , - – —`, the Hebrew maqaf,
+  full-width `：；，`, straight and curly quotes, guillemets. Zero-width
+  spaces count as spaces. An answer that would become empty is left as is.
 - No word lists and no per-app rules. The prompts are unchanged, so the
   cached prompt prefix and every bench set without field context are
   untouched.
@@ -108,9 +137,9 @@ empty check:
 ## Not fixed here
 
 - In the reported row, digits were also lost when the model wrote a spoken
-  port with "colon". The made-up rows show the same ("one" dropped from
-  "five five five five one"). That's a separate number-run issue on the 3B
-  path.
+  port with "colon". The made-up rows show the same: "192.168.7.21 colon
+  nine one zero zero" became "192.168.7.210". That's a separate number-run
+  issue on the 3B path.
 - Lowercasing after a colon in the field comes from cursor matching. It is
   correct for a continuing sentence, and the parallel casing work may
   revisit it.

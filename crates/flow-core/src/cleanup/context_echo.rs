@@ -5,25 +5,41 @@
 //! A small model sometimes copies it into its answer: with "Gate code: "
 //! already in the field and only "four seven one nine" dictated, the 3B
 //! answered "Gate code: 4719", and the field then read "Gate code: Gate
-//! code: 4719" (`docs/findings/2026-11-07-context-echo.md`). The prompt
-//! now says the context is already typed; this check is the backstop.
+//! code: 4719" (`docs/findings/2026-11-07-context-echo.md`). Prompt framing
+//! was measured and dropped (it made the model lose dictated words), so this
+//! check after the model is the fix.
 //!
-//! [`strip`] removes words at the start of the answer that repeat the end
-//! of the text before the cursor, and words at the end that repeat the
-//! start of the text after it, when the transcript itself never said them.
-//! Words compare case-insensitively without their edge punctuation. A run
-//! must be at least [`MIN_WORDS`] words, or the whole context when that is
-//! shorter ("Password: "). A dictation that says the words itself ("gate
-//! code is 4719" after "Gate code: ") keeps them.
+//! [`strip`] removes words at the start of the answer that repeat the end of
+//! the text before the cursor, and words at the end that repeat the start of
+//! the text after it: the same window of the field the prompt showed. Words
+//! compare case-insensitively without their edge punctuation. A run must be
+//! at least [`MIN_WORDS`] words, or the whole window when that is shorter
+//! ("Password: ").
+//!
+//! The check is conservative: a wrong strip loses dictated words, a missed
+//! one only leaves the echo. So a run is removed only when fewer than half
+//! of its words could come from the text the model was given (the
+//! transcript, or the rules' text on the on-device path). A word could come
+//! from it when that text has the word, a near spelling of it (the model
+//! fixing "acne" to "Acme"), consecutive words that join into it ("p m" ->
+//! "pm"), a longer word it abbreviates ("Dr." for "doctor"), or when it holds
+//! a digit (the model writes spoken numbers as digits). Fillers between the
+//! dictated words do not matter: words are matched one by one, not as a run.
 
-/// The shortest echo removed, unless the context is that short as a whole.
+/// The shortest echo removed, unless the context window is that short.
 pub const MIN_WORDS: usize = 2;
 
-/// A whitespace-separated word of `s`: its byte range and its compare key.
+/// A word of `s` (split at whitespace and zero-width spaces): its byte range,
+/// its compare key, and whether it is written with a final dot ("Dr.").
 struct Word {
     start: usize,
     end: usize,
     key: String,
+    dotted: bool,
+}
+
+fn is_space(c: char) -> bool {
+    c.is_whitespace() || matches!(c, '\u{200B}' | '\u{FEFF}')
 }
 
 fn key(w: &str) -> String {
@@ -37,14 +53,19 @@ fn words(s: &str) -> Vec<Word> {
     let mut out = Vec::new();
     let mut start = None;
     for (i, c) in s.char_indices().chain(std::iter::once((s.len(), ' '))) {
-        match (c.is_whitespace(), start) {
+        match (is_space(c), start) {
             (true, Some(b)) => {
-                let k = key(&s[b..i]);
+                let raw = &s[b..i];
+                let k = key(raw);
                 if !k.is_empty() {
+                    let dotted = raw
+                        .trim_end_matches(|c: char| !c.is_alphanumeric() && c != '.')
+                        .ends_with('.');
                     out.push(Word {
                         start: b,
                         end: i,
                         key: k,
+                        dotted,
                     });
                 }
                 start = None;
@@ -56,56 +77,114 @@ fn words(s: &str) -> Vec<Word> {
     out
 }
 
-fn keys(w: &[Word]) -> Vec<&str> {
-    w.iter().map(|w| w.key.as_str()).collect()
-}
-
-/// Whether `needle` occurs as a run of consecutive words in `hay`.
-fn contains_run(hay: &[&str], needle: &[&str]) -> bool {
-    !needle.is_empty() && hay.windows(needle.len()).any(|w| w == needle)
-}
-
-fn long_enough(n: usize, context_words: usize) -> bool {
-    n >= MIN_WORDS || n == context_words
-}
-
-/// Separators left between a removed echo and the dictated words.
-const SEPARATORS: &[char] = &[':', ';', ',', '-', '\u{2013}', '\u{2014}'];
-
-/// `answer` without the context it repeats (see the module docs), or
-/// `None` when it repeats none. Never returns an empty answer: an answer
-/// that is nothing but context is left to the caller as is.
-pub fn strip(answer: &str, transcript: &str, before: &str, after: &str) -> Option<String> {
-    let said = words(transcript);
-    let said = keys(&said);
-    let mut out = answer;
-    let mut changed = false;
-
-    let bw = words(before);
-    let ow = words(out);
-    let max = bw.len().min(ow.len().saturating_sub(1));
-    if let Some(n) = (1..=max).rev().find(|&n| {
-        let tail = keys(&bw[bw.len() - n..]);
-        long_enough(n, bw.len()) && keys(&ow[..n]) == tail && !contains_run(&said, &tail)
-    }) {
-        out = out[ow[n - 1].end..]
-            .trim_start_matches(|c: char| c.is_whitespace() || SEPARATORS.contains(&c));
-        changed = true;
+/// Edit similarity of two words, 1.0 = equal.
+fn similarity(a: &str, b: &str) -> f32 {
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.iter().enumerate() {
+        let mut prev = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let cur = row[j + 1];
+            row[j + 1] = (prev + usize::from(ca != cb)).min(row[j] + 1).min(cur + 1);
+            prev = cur;
+        }
     }
+    1.0 - row[b.len()] as f32 / a.len().max(b.len()).max(1) as f32
+}
 
-    let aw = words(after);
-    let ow = words(out);
-    let max = aw.len().min(ow.len().saturating_sub(1));
-    if let Some(n) = (1..=max).rev().find(|&n| {
-        let head = keys(&aw[..n]);
-        long_enough(n, aw.len()) && keys(&ow[ow.len() - n..]) == head && !contains_run(&said, &head)
-    }) {
-        out = out[..ow[ow.len() - n].start]
-            .trim_end_matches(|c: char| c.is_whitespace() || SEPARATORS.contains(&c));
-        changed = true;
+/// `short` keeps `long`'s first letter and the rest of its letters in
+/// order, and is at least two letters shorter ("dr" for "doctor", but not
+/// "for" for "four").
+fn abbreviates(short: &str, long: &str) -> bool {
+    let mut l = long.chars();
+    short.chars().count() + 2 <= long.chars().count()
+        && short.chars().next() == long.chars().next()
+        && short.chars().all(|c| l.any(|d| d == c))
+}
+
+/// Whether answer word `w` could come from the words the model was given.
+/// Only a word written with a final dot counts as an abbreviation, so "the"
+/// is not taken for "three".
+fn could_be_said(word: &Word, said: &[&str]) -> bool {
+    let w = word.key.as_str();
+    if w.chars().any(|c| c.is_ascii_digit()) {
+        return true;
     }
+    let near = |s: &&str| {
+        *s == w
+            || (w.chars().count() >= 4 && similarity(w, s) >= 0.7)
+            || (word.dotted && w.chars().count() <= 4 && abbreviates(w, s))
+    };
+    let joined = |n: usize| said.windows(n).any(|ws| ws.concat() == w);
+    said.iter().any(near) || joined(2) || joined(3)
+}
 
-    (changed && !out.is_empty()).then(|| out.to_string())
+/// The run is an echo: long enough, and mostly words the model was not given.
+fn is_echo(run: &[Word], window_words: usize, said: &[&str]) -> bool {
+    let n = run.len();
+    let could = run.iter().filter(|w| could_be_said(w, said)).count();
+    (n >= MIN_WORDS || n == window_words) && could * 2 < n
+}
+
+fn same(a: &[Word], b: &[Word]) -> bool {
+    a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.key == y.key)
+}
+
+/// Separators left between a removed echo and the dictated words: ASCII and
+/// full-width colons, semicolons, commas, dashes, the Hebrew maqaf, quotes.
+const SEPARATORS: &[char] = &[
+    ':', ';', ',', '-', '\u{2013}', '\u{2014}', '\u{05BE}', '\u{FF1A}', '\u{FF1B}', '\u{FF0C}',
+    '"', '\'', '\u{201C}', '\u{201D}', '\u{2018}', '\u{2019}', '\u{00AB}', '\u{00BB}',
+];
+
+fn is_cut(c: char) -> bool {
+    is_space(c) || SEPARATORS.contains(&c)
+}
+
+/// Which end of the answer an echo sits at.
+#[derive(Clone, Copy)]
+enum Side {
+    /// The answer starts with the end of the text before the cursor.
+    Before,
+    /// The answer ends with the start of the text after the cursor.
+    After,
+}
+
+/// The answer without the echo of `window` at `side`, if there is one.
+fn strip_side<'a>(answer: &'a str, window: &str, said: &[&str], side: Side) -> Option<&'a str> {
+    let cw = words(window);
+    let aw = words(answer);
+    // Keep at least one answer word: an answer that is only context stays.
+    let max = cw.len().min(aw.len().saturating_sub(1));
+    let n = (1..=max).rev().find(|&n| {
+        let (ctx, ans) = match side {
+            Side::Before => (&cw[cw.len() - n..], &aw[..n]),
+            Side::After => (&cw[..n], &aw[aw.len() - n..]),
+        };
+        same(ctx, ans) && is_echo(ans, cw.len(), said)
+    })?;
+    let out = match side {
+        Side::Before => answer[aw[n - 1].end..].trim_start_matches(is_cut),
+        Side::After => answer[..aw[aw.len() - n].start].trim_end_matches(is_cut),
+    };
+    (!out.is_empty()).then_some(out)
+}
+
+/// `answer` without the context it repeats (see the module docs), or `None`
+/// when it repeats none. `given` is the text the model was given; `before` /
+/// `after` are the windows of the field the prompt showed. Never returns an
+/// empty answer.
+pub fn strip(answer: &str, given: &str, before: &str, after: &str) -> Option<String> {
+    let said = words(given);
+    let said: Vec<&str> = said.iter().map(|w| w.key.as_str()).collect();
+    let lead = strip_side(answer, before, &said, Side::Before);
+    let rest = lead.unwrap_or(answer);
+    let tail = strip_side(rest, after, &said, Side::After);
+    match (lead, tail) {
+        (None, None) => None,
+        _ => Some(tail.unwrap_or(rest).to_string()),
+    }
 }
 
 #[cfg(test)]
@@ -116,12 +195,9 @@ mod tests {
     fn a_label_before_the_cursor_is_removed_from_the_answer() {
         // The shape of the 2026-11-07 report, with made-up text.
         let before = "This is my tablet's port: ";
-        let t = "100.64.12.9 colon five five five five one";
-        let a = "This is my tablet's port: 100.64.12.9:55551";
-        assert_eq!(
-            strip(a, t, before, "").as_deref(),
-            Some("100.64.12.9:55551")
-        );
+        let t = "192.0.2.9 colon five five five one";
+        let a = "This is my tablet's port: 192.0.2.9:5551";
+        assert_eq!(strip(a, t, before, "").as_deref(), Some("192.0.2.9:5551"));
     }
 
     #[test]
@@ -173,6 +249,67 @@ mod tests {
     }
 
     #[test]
+    fn spoken_numbers_and_abbreviations_the_model_formatted_stay() {
+        // Review case 1: "3 pm" is not in the transcript as written.
+        assert_eq!(
+            strip("3 PM works.", "three p m works", "Meeting at 3 pm. ", ""),
+            None
+        );
+        assert_eq!(
+            strip("3 pm works.", "three p m works", "Meeting at 3 pm ", ""),
+            None
+        );
+        assert_eq!(
+            strip("Dr. Lane is in.", "doctor lane is in", "Ask Dr. Lane ", ""),
+            None
+        );
+    }
+
+    #[test]
+    fn a_short_word_is_an_abbreviation_only_when_written_with_a_dot() {
+        // "the" is not "three" in the spoken port.
+        let given = "demo dot example dot org port four four three";
+        assert_eq!(
+            strip(
+                "Server for the demo: demo.example.org port 443.",
+                given,
+                "Server for the demo: ",
+                ""
+            )
+            .as_deref(),
+            Some("demo.example.org port 443.")
+        );
+    }
+
+    #[test]
+    fn fillers_between_the_dictated_words_do_not_make_an_echo() {
+        // Review case 2: the raw transcript has "um" inside the phrase.
+        assert_eq!(
+            strip(
+                "Next step: send it.",
+                "next, um, step: send it",
+                "Plan. Next step: ",
+                ""
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_name_the_model_corrected_stays() {
+        // Review case 3: speech-to-text heard "acne", the field says Acme.
+        assert_eq!(
+            strip(
+                "Acme Corp: invoice sent.",
+                "acne corp invoice sent",
+                "Acme Corp: ",
+                ""
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn one_word_is_an_echo_only_when_it_is_the_whole_context() {
         assert_eq!(
             strip(
@@ -202,6 +339,38 @@ mod tests {
         assert_eq!(
             strip("5521 is the new door code.", "five five two one", "", after).as_deref(),
             Some("5521")
+        );
+    }
+
+    #[test]
+    fn a_quote_at_the_cut_goes_with_the_echo() {
+        let after = "\" was all she wrote.";
+        assert_eq!(
+            strip("on my way\" was all she wrote.", "on my way", "", after).as_deref(),
+            Some("on my way")
+        );
+        let before = "Tag:\u{200B}\u{201C}";
+        assert_eq!(
+            strip("Tag: \u{201C}blue sky", "blue sky", before, "").as_deref(),
+            Some("blue sky")
+        );
+    }
+
+    #[test]
+    fn hebrew_and_full_width_separators_are_cut() {
+        assert_eq!(
+            strip("קוד שער: \u{05BE}4719", "ארבע שבע אחת תשע", "קוד שער: ", "").as_deref(),
+            Some("4719")
+        );
+        assert_eq!(
+            strip(
+                "Gate code\u{FF1A} 4719",
+                "four seven one nine",
+                "Gate code\u{FF1A} ",
+                ""
+            )
+            .as_deref(),
+            Some("4719")
         );
     }
 

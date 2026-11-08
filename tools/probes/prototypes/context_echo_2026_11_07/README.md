@@ -16,7 +16,8 @@ Measures whether a cleanup answer repeats the text already in the field
 | `runner/` | `wispr-parity-clean`, the Hebrew runner plus per-case `before` / `after` / `selected` / `app_id`. Own workspace, uses this checkout's flow-core |
 | `variants/` | Prompt overrides tried (`--override`): A system rule, B rule + two context few-shots |
 | `run.sh`, `score.py` | One pass + score: E rows without echo, N rows kept, LLM p50 |
-| `results/` | The runs in the findings table |
+| `batch.sh` | The headline rows: base and check on the PC path (Llama-3.2-3B, v2) and the AI path (Qwen2.5-3B, v5) |
+| `results/` | The runs in the findings table. `base-*` / `check-*` are from the final cases and code. Variants A-F ran before E12's address was changed to a documentation range (192.0.2.x); their files were relabelled to match, otherwise unchanged. E ran with the first version of the check |
 
 ## Run
 
