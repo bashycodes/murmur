@@ -1,17 +1,45 @@
-// "Download from" (D79): the server is the default source while one is set,
-// Hugging Face otherwise or when picked; a catalogue model the server lacks is
-// "Not on your server"; setup's model step offers Skip when speech runs on the
-// server. Runs on the built dist: `npm test`.
+// "Download from" (D79): setup's switch over the backend's source (steps 3
+// and 4), with step 2's server fields when Your server is picked with none
+// saved; a catalogue model the server lacks is "Not on your server"; the
+// model step offers Skip when speech runs on the server. Runs on the built
+// dist: `npm test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { effectiveSource, modelStepFoot, onServer, sourceHint } from "../dist/lib/model-source.js";
+import { modelStepFoot, onServer, sourceHint, sourceView } from "../dist/lib/model-source.js";
 
-test("the server is the default source, only while one is set", () => {
-  assert.equal(effectiveSource(undefined, true), "server");
-  assert.equal(effectiveSource("server", true), "server");
-  assert.equal(effectiveSource("huggingface", true), "huggingface");
-  assert.equal(effectiveSource("server", false), "huggingface");
-  assert.equal(effectiveSource(undefined, false), "huggingface");
+test("the switch follows the backend until the user picks", () => {
+  // A server is saved and the backend downloads from it (the default).
+  const v = sourceView({ pick: null, effective: "server", remote: true, serverSet: true });
+  assert.deepEqual(v, { shown: "server", serverButton: true, serverForm: false, downloads: true, hfLinks: false });
+  // No server: the backend uses Hugging Face, the links to its pages show.
+  const hf = sourceView({ pick: null, effective: "huggingface", remote: true, serverSet: false });
+  assert.deepEqual(hf, { shown: "huggingface", serverButton: true, serverForm: false, downloads: true, hfLinks: true });
+});
+
+test("air-gapped setup on This PC: Your server with none saved shows the server fields, no Download until it's saved", () => {
+  const v = sourceView({ pick: "server", effective: "huggingface", remote: true, serverSet: false });
+  assert.equal(v.shown, "server");
+  assert.equal(v.serverForm, true);
+  // Download would still fetch from Hugging Face, so it waits for the server.
+  assert.equal(v.downloads, false);
+  assert.equal(v.hfLinks, false);
+  assert.equal(sourceHint(v, ""), "Add your server below. No internet needed.");
+  // Connected: the backend now downloads from the server; the fields go.
+  const saved = sourceView({ pick: "server", effective: "server", remote: true, serverSet: true });
+  assert.deepEqual(saved, { shown: "server", serverButton: true, serverForm: false, downloads: true, hfLinks: false });
+  assert.equal(sourceHint(saved, "box.example.net"), "box.example.net · no internet needed");
+});
+
+test("picking Hugging Face waits for the backend before offering Download", () => {
+  const v = sourceView({ pick: "huggingface", effective: "server", remote: true, serverSet: true });
+  assert.equal(v.shown, "huggingface");
+  assert.equal(v.downloads, false);
+  assert.equal(sourceHint(v, "box.example.net"), "huggingface.co · needs the internet");
+});
+
+test("a build without servers offers Hugging Face only", () => {
+  const v = sourceView({ pick: "server", effective: "huggingface", remote: false, serverSet: false });
+  assert.deepEqual(v, { shown: "huggingface", serverButton: false, serverForm: false, downloads: true, hfLinks: true });
 });
 
 test("a catalogue model is on the server only as a usable tagged copy", () => {
@@ -29,12 +57,6 @@ test("a catalogue model is on the server only as a usable tagged copy", () => {
   // Not read yet, or unreadable: unknown, so Download stays offered.
   assert.equal(onServer("whisper-base", undefined), undefined);
   assert.equal(onServer("whisper-base", { error: "refused", models: [] }), undefined);
-});
-
-test("the hint names where the files come from", () => {
-  assert.equal(sourceHint("server", true, "box.example.net"), "box.example.net · no internet needed");
-  assert.equal(sourceHint("huggingface", true, "box.example.net"), "huggingface.co · needs the internet");
-  assert.equal(sourceHint("huggingface", false, ""), "No server set up, so models come from huggingface.co");
 });
 
 test("setup's model step: skip while speech runs on the server and nothing is ready", () => {

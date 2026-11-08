@@ -6,8 +6,8 @@ Probe (Playwright + its bundled Chromium):
 With a server set (?server=1) Settings -> Speech to text lists the server's
 library under "From your server": every model with its kind and size, a
 Download / Use button for the ones this app can load and the reason for the
-others. The catalogue rows stop offering Hugging Face downloads and point
-there. Covers: a custom whisper model (confirm dialog says "your server" and
+others. The catalogue rows download from the server ("Download models
+from: Your server", D79); one the library lacks says "Not on your server". Covers: a custom whisper model (confirm dialog says "your server" and
 the server-listed fingerprint, `server_model_download`, prefs point at it,
 "in use"), a catalogue copy (built-in fingerprint, `model_download_start`
 with the catalogue id), a custom Hebrew model (the Hebrew row says it uses
@@ -73,13 +73,13 @@ with sync_playwright() as p:
         txt = row(pg, "whisper-base").inner_text()
         check(tag + "catalogue copy already here: in use", "same as the built-in model" in txt and "in use" in txt, txt)
         check(tag + "cleanup + LID + Hebrew kinds", "AI cleanup" in row(pg, "qwen15").inner_text() and "Language detection" in row(pg, "tiny-lid").inner_text() and "Hebrew · he" in row(pg, "zipformer-he-v2").inner_text())
-        # Catalogue rows: no Hugging Face download, a pointer instead.
+        # Catalogue rows: downloaded from the server (D79), not Hugging Face.
         cat = pg.evaluate("window.__TAURI__.core.invoke('model_catalog')")
-        check(tag + "catalogue: nothing downloadable from Hugging Face", all(not c["available"] and c.get("from_server") for c in cat))
+        check(tag + "catalogue: every row from the server", all(c["available"] and c.get("from_server") for c in cat))
         pg.select_option("#dl_model", "whisper-small-q5_1")
         pg.wait_for_timeout(100)
         st = pg.inner_text("#dl_status")
-        check(tag + "speech row: no Download, points at the server list", not pg.is_visible("#dl_start") and pg.is_visible("#dl_import") and "From your server" in st, st)
+        check(tag + "speech row: not on the server, no Download", not pg.is_visible("#dl_start") and pg.is_visible("#dl_import") and pg.is_visible("#dl_missing") and "doesn't have" in st, st)
         if scheme == "light":
             pg.locator("#srv_group").screenshot(path=str(out / "server-list.png"))
 
@@ -87,7 +87,7 @@ with sync_playwright() as p:
         row(pg, "whisper-large-he").locator("button").click()
         pg.wait_for_timeout(100)
         check(tag + "confirm dialog first", pg.is_visible("#dl_confirm") and calls(pg, "server_model_download") == [])
-        check(tag + "dialog: from your server, its fingerprint", pg.inner_text("#dl_from") == "Your server's model library" and "your server lists" in pg.inner_text("#dl_check"), pg.inner_text("#dl_check"))
+        check(tag + "dialog: from your server, its fingerprint", pg.inner_text("#dl_from").startswith("Your server") and "your server lists" in pg.inner_text("#dl_check"), pg.inner_text("#dl_check"))
         check(tag + "dialog: saved under models\\server", pg.inner_text("#dl_dest").endswith("server\\whisper-large-he\\ggml-large-he.bin"), pg.inner_text("#dl_dest"))
         if scheme == "light":
             pg.locator("#dl_confirm").screenshot(path=str(out / "server-confirm.png"))

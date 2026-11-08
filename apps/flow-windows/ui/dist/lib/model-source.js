@@ -1,11 +1,9 @@
-// "Download from: Your server | Hugging Face" (D79): where catalogue model
-// downloads come from, whether the server has a model, and setup's
-// Skip / Continue on the model step. Pure, so `npm test` runs it on the
-// built dist without a page.
-/** Where downloads come from: the choice (prefs.model_source, default the server) counts only with a server set. */
-export function effectiveSource(choice, hasServer) {
-    return hasServer && choice !== "huggingface" ? "server" : "huggingface";
-}
+// "Download from: Your server | Hugging Face" (D79): what setup shows for
+// it, whether the server has a model, and setup's Skip / Continue on the
+// model step. Where downloads really come from is the backend's call
+// (server_library::Origin, seen as the catalogue's from_server); this only
+// lays the user's pick over it. Pure, so `npm test` runs it on the built
+// dist without a page.
 /**
  * The server's library holds a usable copy of catalogue model `id` (tagged with
  * its id, pins matching, engine in this build). undefined = not known: not read
@@ -16,11 +14,24 @@ export function onServer(id, lib) {
         return undefined;
     return lib.models.some((m) => m.catalogue_id === id && !!m.slot);
 }
+/** Setup's "Download from" switch over the backend's source. */
+export function sourceView(s) {
+    const shown = s.remote ? (s.pick ?? s.effective) : "huggingface";
+    return {
+        shown,
+        serverButton: s.remote,
+        serverForm: shown === "server" && !s.serverSet,
+        downloads: shown === s.effective,
+        hfLinks: shown === "huggingface",
+    };
+}
 /** The line next to the "Download from" switch. */
-export function sourceHint(source, hasServer, host) {
-    if (!hasServer)
-        return "No server set up, so models come from huggingface.co";
-    return source === "server" ? `${host || "Your server"} · no internet needed` : "huggingface.co · needs the internet";
+export function sourceHint(v, host) {
+    if (v.shown === "huggingface")
+        return "huggingface.co · needs the internet";
+    if (v.serverForm)
+        return "Add your server below. No internet needed.";
+    return `${host || "Your server"} · no internet needed`;
 }
 /**
  * Setup's model step footer: "Skip — use my server only" while speech runs on
