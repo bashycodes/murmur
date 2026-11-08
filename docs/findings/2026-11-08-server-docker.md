@@ -2,77 +2,85 @@
 
 Owner: "The flow-server setup is way too overcomplicated. A 10 step, 500
 line setup.md file proves that. I want it to be as close to a simple docker
-setup as possible" (n8n as the model: `docker volume create` + one
-`docker run`).
+setup as possible" (n8n as the model). After the first version (published
+image, models downloaded on first start), two more decisions: "make it
+buildable via Dockerfile" (no published image as the quick start) and "no
+need for it to download models, just allow pointing it … to a folder
+containing all the models and a metadata file".
 
 ## What changed for the person setting it up
 
 | | before | now |
 |---|---|---|
-| guide | `docs/server-setup.md`, 485 lines, 10 sections | `docs/server-setup.md`, ~80 lines: 3 commands + "connect your app" |
-| steps | fetch models, build sherpa-onnx or point at its libs, run `install.sh` (sudo), `gen-token`, edit `bind`, add `lid_path` / `[model.languages.he]` / `llm_path` by hand, firewall, restart | `docker volume create flow_data`, `docker run …`, `docker logs -f flow-server` |
-| Docker path before | build the image locally, copy models into a host folder, copy and edit `config.toml`, `docker compose up`, `docker compose exec … keys add owner --admin` | pull the published image; nothing to copy or edit |
-| models | manual download or copy | downloaded on first start (pinned, SHA-256 checked) into the volume's library, so the apps can download them from the server too |
-| admin key | `keys add` by hand | printed once in the log; `docker exec flow-server cat /data/admin.token` shows it again |
+| guide | `docs/server-setup.md`, 485 lines, 10 sections | `docs/server-setup.md`, ~90 lines: build, run, read the key, connect the apps |
+| steps | fetch models, build sherpa-onnx or point at its libs, run `install.sh` (sudo), `gen-token`, edit `bind`, add `lid_path` / `[model.languages.he]` / `llm_path` by hand, firewall, restart | `docker build`, `docker volume create`, `docker run` (models folder + volume), `docker exec … cat /data/admin.token` |
+| Docker path before | build the image, copy models into a host folder, copy and edit `config.toml`, `docker compose up`, `docker compose exec … keys add owner --admin` | no config to copy or edit: it is derived from the models folder |
+| models | manual download or copy, then name each path in the config | mount any D40 library folder (a bundle's unzipped `library/`, the `air-gapped.md` loop's folder) read-only at `/models`; the tags pick the models |
+| admin key | `keys add` by hand | written to the volume on the first start; never logged; `docker exec flow-server cat /data/admin.token` |
 
 Moved out of the quick start: install without Docker (systemd,
 `install.sh`), keys in detail, TLS, firewall, app settings, Hebrew / AI
 cleanup tuning, library, debug capture → `docs/server-advanced.md` (the old
 guide, sections kept so `§N` references still work). Container settings,
-TLS in the container, GPU, building the image, offline images, Helm →
+your own config, TLS in the container, GPU, offline images, Helm →
 `docs/container.md`.
+
+## How the config is picked
+
+From each `/models/<id>/model.toml` (`kind`, `engine`): speech =
+`parakeet-tdt-0.6b-v2-int8`, else `parakeet-unified-en-0.6b-int8`, else the
+first `stt` by name; `lid`, `llm`, `hebrew` likewise with
+`whisper-tiny-lid`, `qwen2.5-1.5b-instruct-q4_k_m`, `zipformer-he-int8`
+preferred. Whisper and GGUF models point at the file in the folder,
+sherpa-onnx ones at the folder. `FLOW_STT` / `FLOW_LID` / `FLOW_LLM` /
+`FLOW_HEBREW` override (folder id or `none`). `/models` is also the
+`[library] dir`, so the apps download the same copies (the hash cache is in
+`/data`; the server never writes to the library folder, so `:ro` works).
 
 ## Measurements (this box, i7-6700 4C/8T, loaded by parallel agent builds)
 
-* Image (CPU, `runtime`): 201 MB on disk, 51.5 MB compressed (the old
-  image was 186 MB; +15 MB for curl and CA certificates).
-* Image build from source in Docker (`CARGO_BUILD_JOBS=2`, cold cargo
-  cache): the cargo step took 353 s; rebuild after an entrypoint change 61 s
-  (BuildKit cache mounts).
-* First start with `FLOW_MODELS=default` and the four models seeded into
-  the volume (no download; the 1.9 GB are SHA-256 checked once): `ready`
-  125 s after `docker run` (hashing + config + key + model load). Restart:
-  model load 33 s (`load_ms`).
-* First start with a real download (`FLOW_MODELS=whisper-tiny-en-q5_1`,
-  32 MB): `ready` after 12-15 s. The default set (1.9 GB) is
-  download-bound: about 3 min at 100 Mbit/s.
+* Image (CPU, `runtime`): 188 MB (no curl or CA certificates any more).
+* Image build from source in Docker (`CARGO_BUILD_JOBS=2`): cargo step
+  353 s with a cold cache, about a minute with the BuildKit cache.
+* First start with the four default models mounted: `ready` 65 s after
+  `docker run`.
 * Dictation (jfk.wav, 11 s) through the published port: Parakeet + Qwen
-  cleanup 3.5 s commit→result warm (18-20 s on the first, cold dictation
-  while other builds ran); whisper tiny.en without cleanup 0.3-0.4 s.
+  cleanup 3.2 s commit→result warm; the first, cold dictation after a
+  start took 20-21 s while other builds ran (one hit the 20 s LLM timeout
+  and returned the raw transcript).
 
 ## Tests
 
-* `tools/container/smoke.sh` (rewritten: tests the quick start's
-  `docker run`): admin key from the log equals `/data/admin.token`,
-  dictation with it, `docker exec … flow-server keys add` + dictation with
-  that key, restart (key not printed again, same key works), `library
-  list` shows the 4 models tagged, healthcheck healthy. Passed with the
-  default set (seeded) and with a downloaded whisper model.
-* `tools/container/entrypoint_test.sh` (no Docker, in CI): presets, config
-  contents, key printed once, second start downloads nothing and keeps an
-  edited config, seeded folders used, errors (unknown model, hash
-  mismatch, no speech model, unwritable `/data`), Helm-style config waits
-  for keys, `flow-server` name adds `--config`.
+* `tools/container/smoke.sh --models DIR`: the quick start's `docker run`
+  with the models folder; the key read with `docker exec` and checked
+  absent from the log (first start and after restart); dictation with it;
+  `keys add` + dictation with that key; restart; `library list` shows the
+  4 tagged models; healthcheck healthy. Passed.
+* `tools/container/entrypoint_test.sh` (no Docker; CI repo-checks): picks
+  and paths, overrides and `none`, wrong-kind override, own
+  `/data/config.toml` used by serve and CLI, key never in the output,
+  errors (no folder, no speech model, gen-token failure, unwritable
+  `/data`), Helm-style `FLOW_CONFIG` waits for keys, `flow-server` name.
 * hadolint clean; shellcheck clean; `docker compose config` clean (both
-  profiles). Helm not installed here: the chart change (two env vars) is
-  not rendered.
+  profiles); colleague-bundle test passes. Helm not installed here: the
+  chart change (one env var) is not rendered.
 
 ## Binding and TLS
 
-No TLS by default. The entrypoint still rewrites `bind` to 127.0.0.1 + the
+No TLS by default. The entrypoint rewrites `bind` to 127.0.0.1 + the
 container's address, so the server's peer filter (loopback / LAN / VPN
 only) applies to the real client address: checked, a LAN client showed as
 its LAN address in the log. Over IPv6, Docker's userland proxy connects
 from the bridge gateway, so the server saw `172.17.0.1` for a `[::1]`
 client: a public IPv6 client would pass the filter. That is why the quick
-start publishes `-p 0.0.0.0:7313:7313` (IPv4 only), not `-p 7313:7313`.
-TLS needs a pin pasted into every app, the complexity being removed; it is
-one config block in the volume (`docs/container.md` §6).
+start publishes `-p 0.0.0.0:7313:7313` (IPv4 only). On `0.0.0.0` the peer
+filter is the only guard: Docker-published ports bypass `ufw`, and the
+container has no systemd `IPAddressDeny`. The docs say to publish on the
+LAN/VPN address on a host with a public address.
 
 ## Not done
 
-* The CUDA image is not built or published by CI (a CUDA llama.cpp build
-  is long and needs no runner GPU, but doubles CI time); it stays a local
-  `--target cuda` build.
-* The image on ghcr.io inherits the repository's visibility (private), so
-  colleagues need access or the owner makes the package public.
+* No published image (owner decision); CI only builds it and checks it
+  starts. The CUDA image is a local `--target cuda` build.
+* The colleague bundle does not carry the source; its note says to get
+  the matching source (tag `v<version>`) from whoever gave the bundle.
