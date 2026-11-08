@@ -1,0 +1,14 @@
+# Text-only cleanup replay with per-call LLM counters (tools/probes/prototypes/server_cleanup_speed_2026_11_07).
+# Own workspace (like the other probe runners) so the product workspace is
+# untouched; uses this checkout's flow-core.
+[package]
+name = "server-speed-clean"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+flow-core = { path = "../../../../../crates/flow-core", features = ["llm"] }
+serde_json = "1"

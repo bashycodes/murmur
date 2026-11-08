@@ -113,7 +113,7 @@ const engine = `
         <div class="fl-row-control"><input id="ob_token" class="fl-input" type="password" autocomplete="off" spellcheck="false" placeholder="from flow-server gen-token" /><button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="ob_test_conn">Test</button></div>
       </div>
       <div class="lw-ob-status" id="ob_server_status"></div>
-      <p class="lw-ob-small lw-ob-help">No server yet? ${extLink(SERVER_HELP, "Set up a server →", "lw-link lw-ob-copy")}</p>
+      <p class="lw-ob-small lw-ob-help">No server yet? Pick This PC above, or ${extLink(SERVER_HELP, "set up a server →", "lw-link lw-ob-copy")}</p>
     </div>
     <div class="fl-group lw-ob-detail" id="ob_cloud_detail" hidden>
       <div class="fl-row" data-ob-key-row>

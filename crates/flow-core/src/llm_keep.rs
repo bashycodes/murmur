@@ -25,6 +25,7 @@ pub(crate) struct LlmKey {
     pub(crate) path: String,
     threads: usize,
     lib: Option<String>,
+    draft: Option<usize>,
 }
 
 impl LlmKey {
@@ -35,6 +36,7 @@ impl LlmKey {
             path: path.to_string(),
             threads: cfg.threads,
             lib: cfg.llm_lib.clone(),
+            draft: cfg.llm_draft,
         })
     }
 }
@@ -99,6 +101,7 @@ mod tests {
             path: path.into(),
             threads: 4,
             lib: None,
+            draft: None,
         }
     }
 
@@ -170,7 +173,8 @@ mod tests {
             Some(LlmKey {
                 path: "m.gguf".into(),
                 threads: 3,
-                lib: None
+                lib: None,
+                draft: None
             })
         );
         for none in [None, Some(String::new())] {

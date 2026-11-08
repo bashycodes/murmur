@@ -36,7 +36,7 @@ case "\$f:\$mode" in
     [[ -z "\${EXTRA_EXPORT:-}" ]] || echo "0000000000001000 T \$EXTRA_EXPORT" ;;
   libflow_ffi.so:all) echo "0000000000002000 T whisper_full"; tail_lines ;;
   libflow_llm.so:def)
-    for s in flow_llm_abi_version flow_llm_backends flow_llm_clean flow_llm_free_string flow_llm_info flow_llm_load flow_llm_prefill flow_llm_prefill_cancel flow_llm_unload; do echo "0000000000001000 T \$s"; done ;;
+    for s in flow_llm_abi_version flow_llm_backends flow_llm_clean flow_llm_free_string flow_llm_info flow_llm_load flow_llm_prefill flow_llm_prefill_cancel flow_llm_set_draft flow_llm_unload; do echo "0000000000001000 T \$s"; done ;;
   libsherpa-onnx-c-api.so:def) for s in $sherpa_syms; do echo "0000000000001000 T \$s"; done; tail_lines ;;
 esac
 EOF
