@@ -258,16 +258,25 @@ const ASR_MAX_GAIN: f32 = 100.0;
 /// recognizers' log-mel features hardly depend on level, but their own
 /// RMS < 0.003 gate would return "" for quiet speech (`blank_asr`).
 pub fn asr_level(pcm: &[f32]) -> std::borrow::Cow<'_, [f32]> {
-    use std::borrow::Cow;
+    with_gain(pcm, asr_gain(pcm))
+}
+
+/// The gain [`asr_level`] applies to `pcm` (1.0 = left as is).
+pub fn asr_gain(pcm: &[f32]) -> f32 {
     if pcm.is_empty() {
-        return Cow::Borrowed(pcm);
+        return 1.0;
     }
     let rms = (pcm.iter().map(|s| s * s).sum::<f32>() / pcm.len() as f32).sqrt();
     let peak = pcm.iter().fold(0f32, |m, s| m.max(s.abs()));
     if rms >= ASR_LEVEL_BELOW || peak <= 0.0 {
-        return Cow::Borrowed(pcm);
+        return 1.0;
     }
-    let gain = (ASR_TARGET_PEAK / peak).min(ASR_MAX_GAIN);
+    (ASR_TARGET_PEAK / peak).clamp(1.0, ASR_MAX_GAIN)
+}
+
+/// `pcm` scaled by `gain` (borrowed when the gain is not above 1).
+pub fn with_gain(pcm: &[f32], gain: f32) -> std::borrow::Cow<'_, [f32]> {
+    use std::borrow::Cow;
     if gain <= 1.0 {
         return Cow::Borrowed(pcm);
     }

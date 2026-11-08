@@ -1295,6 +1295,30 @@ fn prior_for(done: &[SegOut], guard: bool) -> Option<String> {
     prior_words(&join_pieces(done.iter().map(|d| d.kept_text(false, guard))))
 }
 
+/// Audio before a piece that sets its gain ([`piece_gain`]): the same
+/// 30 s the streaming VAD takes its noise floor from.
+const GAIN_CONTEXT: usize = SAMPLE_RATE * 30;
+
+/// The gain for a piece's VAD span `span` (D72): [`vad::asr_gain`] of the
+/// span, but never above the gain of the speech in the dictation up to the
+/// piece's end (at most [`GAIN_CONTEXT`] before it). The level is a
+/// property of the recording, not of one piece: a pause cut can leave a
+/// piece that holds only a key click on a near-silent floor, and raised on
+/// its own (+40 dB) the recognizer writes a word for it. A whole-clip
+/// decode hears the same click at its true level next to the speech. A
+/// dictation that is quiet throughout still gets every piece raised. A
+/// pure function of the audio, so pieces decoded while recording and at
+/// commit agree.
+fn piece_gain(buf: &[f32], range: std::ops::Range<usize>, span: &[f32]) -> f32 {
+    let own = vad::asr_gain(span);
+    if own <= 1.0 {
+        return own;
+    }
+    let ctx = &buf[range.start.min(range.end.saturating_sub(GAIN_CONTEXT))..range.end];
+    let around = vad::detect(ctx).map_or(own, |sp| vad::asr_gain(&ctx[sp.start..sp.end]));
+    own.min(around)
+}
+
 /// Decode `buf[range]` (VAD-trimmed when `vad`). `key` is stored; `req`
 /// is what the engine gets (with its abort flag and purpose).
 fn decode_piece(
@@ -1325,9 +1349,10 @@ fn decode_piece(
             }
         }
     }
-    // Quiet speech the VAD passed: raise it above the engines' own gate.
+    // Quiet speech the VAD passed: raise it above the engines' own gate,
+    // by no more than the dictation around it would be raised.
     let level = if use_vad {
-        vad::asr_level(pcm)
+        vad::with_gain(pcm, piece_gain(buf, range.clone(), pcm))
     } else {
         pcm.into()
     };
