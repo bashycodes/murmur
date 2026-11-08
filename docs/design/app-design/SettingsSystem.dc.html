@@ -33,7 +33,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
         <div class="fl-nav-rule"></div>
         <div class="fl-nav-section">Connections</div>
         <a class="fl-nav" href="SettingsServer.dc.html" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01"></path></svg><span class="fl-nav-label">Your server</span></a>
-        <a class="fl-nav" href="SettingsOpenRouter.dc.html" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-7.970A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"></path></svg><span class="fl-nav-label">OpenRouter</span></a>
+        <a class="fl-nav" href="SettingsOpenRouter.dc.html" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-7.970A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"></path></svg><span class="fl-nav-label">Cloud</span></a>
       </div>
       <div class="fl-modal-foot"><span>Murmur 0.6.0</span><span class="fl-badge fl-badge-light">Up to date</span></div>
     </div>
@@ -48,11 +48,11 @@ a{color:#1a1a1a}a:hover{color:#30302f}
           <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Launch app at login"></x-import></div>
         </div>
         <div class="fl-row">
-          <div class="fl-row-text"><div class="fl-row-title">Show Flow bar at all times</div><div class="fl-row-desc">Otherwise it only appears while you dictate.</div></div>
+          <div class="fl-row-text"><div class="fl-row-title">Show Flow bar at all times</div><div class="fl-row-desc">Off by default: it only appears while you dictate.</div></div>
           <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" label="Show Flow bar at all times"></x-import></div>
         </div>
         <div class="fl-row">
-          <div class="fl-row-text"><div class="fl-row-title">Show which engine was used</div><div class="fl-row-desc">A small <b>L</b>, <b>S</b> or <b>C</b> on the Flow bar after each dictation: this PC, your server or OpenRouter.</div></div>
+          <div class="fl-row-text"><div class="fl-row-title">Show which engine was used</div><div class="fl-row-desc">A small <b>L</b>, <b>S</b> or <b>C</b> on the Flow bar after each dictation: this PC, your server or the cloud.</div></div>
           <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Show which engine was used"></x-import></div>
         </div>
       </div>

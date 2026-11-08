@@ -60,19 +60,19 @@ a{color:#1a1a1a}a:hover{color:#30302f}
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { picked: 'pc' };
+    this.state = { picked: 'server' };
   }
   renderVals() {
     const defs = [
-      { id: 'pc', title: 'This PC', rec: true, icon: 'M6 6h12v12H6zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4',
+      { id: 'server', title: 'Your server', rec: true, icon: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
+        desc: 'A computer you own does the work. Fastest on most laptops, and works without the internet.',
+        facts: ['Needs flow-server at home or on Tailscale', 'Audio goes to your server, encrypted', 'Models download from it too. This PC steps in if it’s away'] },
+      { id: 'pc', title: 'This PC', rec: false, icon: 'M6 6h12v12H6zM9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4',
         desc: 'Private and works offline. Fast on most computers from the last five years.',
         facts: ['Needs a 0.7 GB model file', 'About 1 second after you stop talking', 'Nothing leaves this PC'] },
-      { id: 'server', title: 'Your server', rec: false, icon: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01',
-        desc: 'A faster computer you own does the work. Good for older laptops.',
-        facts: ['Needs flow-server running at home or on Tailscale', 'Audio goes to your server, encrypted', 'This PC can step in if it’s offline'] },
-      { id: 'cloud', title: 'OpenRouter', rec: false, icon: 'M7 18a4 4 0 0 1-.5-7.97A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z',
-        desc: 'A cloud model. No download, but your audio leaves this computer.',
-        facts: ['Needs an OpenRouter API key', 'From $0.012 per hour of audio', 'Zero-retention providers only'] }
+      { id: 'cloud', title: 'Cloud', rec: false, icon: 'M7 18a4 4 0 0 1-.5-7.97A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z',
+        desc: 'OpenRouter, or your own LiteLLM proxy. No download, but your audio leaves this computer.',
+        facts: ['Needs an OpenRouter key or a LiteLLM address', 'OpenRouter from $0.012 per hour of audio', 'LiteLLM only if your proxy has a speech model'] }
     ];
     return {
       options: defs.map((d) => {
