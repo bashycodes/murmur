@@ -522,3 +522,49 @@ fn a_cough_in_a_quiet_dictation_does_not_silence_the_pieces_after_it() {
     // Commit decoded the tail only.
     assert_eq!(asr.calls(), before + 1, "{:?}", asr.requests());
 }
+
+/// Words like BurstEchoAsr, written as a sentence-case model writes a
+/// decode heard alone: the first word capitalised, no closing stop. The
+/// burst at amplitude 3 is "w3 x" in a decode that also hears "w6" (the
+/// bridge) and "w3-x" in the first piece, so the bridge disagrees on a
+/// word away from the cut and the wide splice is refused.
+struct SentenceCaseAsr;
+impl AsrEngine for SentenceCaseAsr {
+    fn transcribe(&self, pcm: &[f32], _req: &AsrRequest) -> Result<AsrOutput, AsrError> {
+        let words = BurstEchoAsr::words(pcm);
+        let three = if words.contains("w6") { "w3 x" } else { "w3-x" };
+        let text = words
+            .split(' ')
+            .map(|w| if w == "w3" { three } else { w })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let mut c = text.chars();
+        let text = c
+            .next()
+            .map_or(String::new(), |f| f.to_uppercase().chain(c).collect());
+        Ok(AsrOutput {
+            text,
+            language: Some("en".into()),
+            no_speech_prob: None,
+        })
+    }
+}
+
+#[test]
+fn a_pause_mid_sentence_does_not_capitalise_the_next_piece() {
+    // D70: a piece decoded alone starts with a capital; a cut at a pause
+    // inside a sentence left it mid-sentence ("w5 W6") whenever the
+    // splice was refused. The bridge spells the two words at the cut.
+    let group = |ks: std::ops::RangeInclusive<i16>, last_pause: usize| {
+        let mut v: Vec<(i16, usize, usize)> = ks.map(|k| (k, 500, 400)).collect();
+        v.last_mut().unwrap().2 = last_pause;
+        v
+    };
+    let mut parts = group(1..=5, 1000);
+    parts.extend(group(6..=10, 300));
+    let (pcm, _) = dictation(&parts);
+    let core = core_with(Arc::new(SentenceCaseAsr));
+    let r = dictate(&core, seg_cfg(), &pcm, 640);
+    assert_eq!(r.timings.segments, 2, "{r:?}");
+    assert_eq!(r.asr_text, "W1 w2 w3-x w4 w5 w6 w7 w8 w9 w10", "{r:?}");
+}

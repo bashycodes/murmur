@@ -19,3 +19,6 @@ local.properties
 .gradle/
 build/
 *.log
+
+# tools/colleague-bundle.sh output
+/dist/
