@@ -725,3 +725,31 @@ dialog.fl-dialog .lw-dl-lead {
   background: var(--glow-900);
   color: var(--glow-200);
 }
+
+/* Speech model step: "Download from" switch, Optional badge, Skip (D79) */
+.lw-ob-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.lw-ob-src {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.lw-ob-src-hint {
+  font: 400 13px/20px var(--font-sans);
+  color: var(--foreground-tertiary);
+}
+.lw-ob-skip {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.lw-ob-skip-note {
+  font: 400 13px/20px var(--font-sans);
+  color: var(--foreground-tertiary);
+}

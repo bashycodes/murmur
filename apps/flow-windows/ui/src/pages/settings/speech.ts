@@ -7,7 +7,7 @@ import { ICON, iconSvg } from "../../lib/icons.js";
 import { group, heading, row, toggle } from "../../lib/markup.js";
 import type { Page } from "../../lib/router.js";
 import { NOTETAKER_ENABLED } from "../notetaker.js";
-import { browseButton, DOWNLOAD_ROW, HEBREW_ROW, SERVER_MODELS_GROUP } from "../../features/models.js";
+import { browseButton, DOWNLOAD_ROW, HEBREW_ROW, SERVER_MODELS_GROUP, SOURCE_ROW } from "../../features/models.js";
 
 /** One engine in a ranked list (`<prefix>_row_<key>`, `_desc_`, `_badge_`):
  *  rank, tile, text, status badge, move up/down, switch. The feature module
@@ -86,6 +86,7 @@ ${group(
       `<input id="parakeet_model_dir" class="fl-input is-wide lw-mono-input" data-save="prefs" spellcheck="false" />${browseButton("parakeet_model_dir")}`,
       `data-engine="parakeet"`,
     ) +
+    SOURCE_ROW +
     DOWNLOAD_ROW +
     HEBREW_ROW +
     row(

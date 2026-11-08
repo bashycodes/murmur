@@ -8,13 +8,16 @@
 // onboarded = true. Nothing downloads by itself (D9/D31): the model step
 // points the app at files the user already has, or downloads a catalogue
 // model after the user pressed Download and confirmed it (3a/3b, through
-// features/models.ts). A server test or an OpenRouter key/consent happens
+// features/models.ts), from the user's server or Hugging Face ("Download
+// from", D79). With speech on the server the step is optional ("Skip — use
+// my server only"). A server test or an OpenRouter key/consent happens
 // only on the user's own click.
-import { mb, models, pickPath, progressLine } from "../features/models.js";
+import { downloadSource, hasServer, mb, models, pickPath, progressLine, setDownloadSource } from "../features/models.js";
 import { devStore } from "../lib/dev-store.js";
 import { $, el, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, stopCapture } from "../lib/keycapture.js";
+import { modelStepFoot, sourceHint } from "../lib/model-source.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
 import { views } from "../lib/views.js";
@@ -219,16 +222,20 @@ function activeModel() {
 }
 function renderModel() {
     const needed = st.engine === "pc";
-    $("ob_model_title").textContent = needed ? "Add a speech model" : "A backup model (optional)";
+    const onServer = st.engine === "server";
+    $("ob_model_optional").hidden = needed;
     const dl = models.canDownload();
-    $("ob_model_lead").textContent = !needed
-        ? "Your choice does the listening. A model on this PC keeps dictation working when it can't be reached. You can skip this."
-        : dl
-            ? "The model is the part that listens. We can download it for you once, from where its makers publish it, or you can add the file yourself."
-            : "The model is the part that listens. Get it once from where its makers publish it, then tell Murmur where it is.";
+    $("ob_model_lead").textContent = onServer
+        ? "The model is the part that listens. This PC uses it whenever your server can't be reached. We download it once, from your server or from Hugging Face, or you can add the file yourself."
+        : !needed
+            ? "Your choice does the listening. A model on this PC keeps dictation working when it can't be reached. You can skip this."
+            : dl
+                ? "The model is the part that listens. We can download it for you once, from your server or from Hugging Face, or you can add the file yourself."
+                : "The model is the part that listens. Get it once from where its makers publish it, then tell Murmur where it is.";
     $("ob_model_note").textContent = dl
-        ? "A download only fetches the file. Nothing about you or your voice is sent, and the file is checked against a fingerprint built into the app before it's used."
+        ? "A download only fetches the file. Nothing about you or your voice is sent. Every file is checked against its SHA-256 fingerprint before it's used, wherever it came from."
         : "Murmur never downloads anything by itself. Your voice is turned into text by the model on this PC.";
+    renderSource(dl);
     const p = prefsStore.get();
     if (p) {
         const pk = $("ob_parakeet_dir");
@@ -273,16 +280,33 @@ function renderModel() {
         line.classList.add(m.state === "ready" ? "ok" : m.state === "loading" ? "hint" : "err");
     }
     const downloading = models.busy();
-    const ok = !needed || downloading || (!!m && (m.state === "ready" || m.state === "loading"));
+    const foot = modelStepFoot({ needed, serverEngine: onServer, ready: !!m && (m.state === "ready" || m.state === "loading"), busy: downloading });
     const next = nextBtn("model");
-    next.disabled = !ok;
-    $("ob_model_hint").textContent = !ok
+    next.hidden = foot.next === "hidden";
+    next.disabled = foot.next === "disabled";
+    $("ob_model_skip").hidden = !foot.skip;
+    $("ob_model_hint").textContent = foot.next === "disabled"
         ? "Add a speech model to continue"
-        : downloading
-            ? "You can carry on. It finishes in the background."
-            : m?.state === "loading"
-                ? "You can carry on. It finishes loading in the background."
-                : "";
+        : foot.next === "hidden"
+            ? ""
+            : downloading
+                ? "You can carry on. It finishes in the background."
+                : m?.state === "loading"
+                    ? "You can carry on. It finishes loading in the background."
+                    : "";
+}
+/** "Download from: Your server | Hugging Face" (D79): the server only while one is set. */
+function renderSource(dl) {
+    const server = hasServer();
+    const src = downloadSource();
+    $("ob_src").hidden = !dl && !server;
+    for (const b of document.querySelectorAll("#onboarding [data-ob-src]")) {
+        const on = b.dataset.obSrc === src;
+        b.hidden = b.dataset.obSrc === "server" && !server;
+        b.classList.toggle("is-on", on);
+        b.setAttribute("aria-checked", String(on));
+    }
+    $("ob_src_hint").textContent = sourceHint(src, server, views.dev?.form.host.trim() ?? "");
 }
 /** A row's Download / Cancel buttons and progress (3b). */
 function renderDownload(r, id) {
@@ -296,11 +320,15 @@ function renderDownload(r, id) {
     const bar = r.querySelector("[data-ob-dl-bar]");
     const line = r.querySelector("[data-ob-dl-line]");
     const desc = r.querySelector("[data-ob-model-desc]");
+    const missing = models.notOnServer(e) && !e?.installed;
     if (e) {
         const what = e.files.length > 1 ? `a folder of ${mb(e.size)}` : `a ${mb(e.size)} file`;
-        desc.textContent = `${e.desc} · ${what}${e.installed ? " · downloaded and checked" : ""}`;
+        desc.textContent = missing
+            ? `${e.desc} · ${mb(e.size)}. Your server doesn't have this one. Ask whoever runs it to add it, or switch to Hugging Face.`
+            : `${e.desc} · ${what}${e.installed ? " · downloaded and checked" : ""}`;
     }
-    dl.hidden = !e || !e.available || e.installed || busy;
+    r.querySelector("[data-ob-missing]").hidden = !missing || busy;
+    dl.hidden = !e || !models.canStart(e) || e.installed || busy;
     dl.disabled = models.busy();
     dl.textContent = p?.state === "error" ? "Try again" : "Download";
     cancel.hidden = !busy;
@@ -536,8 +564,12 @@ function show(s) {
         over.textContent = `Step ${n} of ${list.length}`;
     if (s === "engine")
         renderEngine();
-    if (s === "model")
+    if (s === "model") {
         renderModel();
+        // A fresh listing for "Not on your server" each time the step opens.
+        if (models.fromServer())
+            void models.refreshServer();
+    }
     if (s === "cleanup")
         renderCleanup();
     if (s === "try") {
@@ -580,6 +612,13 @@ async function next() {
         if (st.step === "model")
             renderModel();
     }
+}
+/** "Skip — use my server only": on to the next step with no model on this PC. */
+function skipModel() {
+    if (st.step !== "model")
+        return;
+    const list = steps();
+    show(list[list.indexOf("model") + 1]);
 }
 function back() {
     const list = steps();
@@ -628,6 +667,8 @@ export const onboarding = {
                 back();
             else if (act === "skip")
                 void finish();
+            else if (act === "skip-model")
+                skipModel();
             const eng = t.closest("[data-ob-engine]")?.dataset.obEngine;
             if (eng)
                 pickEngine(eng);
@@ -640,6 +681,9 @@ export const onboarding = {
             const pick = t.closest("[data-ob-pick]")?.dataset.obPick;
             if (pick)
                 void pickModel(pick);
+            const src = t.closest("[data-ob-src]")?.dataset.obSrc;
+            if (src)
+                void setDownloadSource(src).catch((err) => console.error("model_source", err));
             const dl = t.closest("[data-ob-dl]")?.dataset.obDl;
             if (dl)
                 void models.confirmAndStart(CATALOG_ID[dl]);
