@@ -208,12 +208,9 @@ impl State {
         if self.cfg.cloud.is_legacy() {
             return Err(not_cfg("cloud settings not migrated"));
         }
-        // D78: one Cloud provider at a time; LiteLLM has no speech path.
-        if !self.cfg.cloud.provider.offers_stt() {
-            return Err(not_cfg(
-                "cloud speech to text needs OpenRouter as the Cloud provider",
-            ));
-        }
+        // D78: "one Cloud provider at a time" is a Windows settings rule
+        // (prefs), not the router's: Android still pairs LiteLLM cleanup
+        // with OpenRouter speech, so speech never looks at the provider.
         let o = self.cfg.cloud.openrouter.clone();
         o.validate().map_err(|e| not_cfg(&e))?;
         if !o.stt.consent_ok() {
