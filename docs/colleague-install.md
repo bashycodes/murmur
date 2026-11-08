@@ -60,10 +60,12 @@ other participants' consent where you are; ask them.
    service, battery optimisation. If the accessibility switch is greyed
    out ("restricted setting"): Android Settings → Apps → Murmur → ⋮
    → *Allow restricted settings*, then try again.
-3. Import a speech model: Menu → Settings → Speech model (or Parakeet, or
-   Hebrew model) → *Import model file…* / *Import model folder…*, and pick
-   the files from the unzipped models. With a server set (below) you can
-   instead tap *From your server* and download from it.
+3. Import a speech model: Murmur → **Speech model** → *Import
+   model folder…* (Parakeet) or *Import model file…* (whisper),
+   and pick the files from the unzipped models. For Hebrew: Settings →
+   Speech to text → **Hebrew model** → *Import model folder…*. With a
+   server set (below) you can instead tap *From your server* on those
+   pages and download from it.
 
 Updates: every Murmur APK is signed with the same key, so a newer APK
 installs over this one and keeps your settings, dictionary and models.
@@ -114,6 +116,10 @@ sudo unzip -q <path>/{{MODELS_ZIP}} 'library/*' -d /var/lib/flow-server/
 sudo unzip -q <path>/{{CLEANUP_ZIP}} 'library/*' -d /var/lib/flow-server/   # optional: AI cleanup
 sudo flow-server gen-token --out /etc/flow-server/token
 ```
+
+The token in `/etc/flow-server/token` is the server's first admin key,
+named `owner` in `flow-server keys list`. Keep it for yourself; give
+everyone else their own key (below).
 
 Then edit `/etc/flow-server/config.toml`:
 

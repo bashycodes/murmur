@@ -121,8 +121,10 @@ cached() {
 }
 
 # ---- CI runs ----------------------------------------------------------------
-# find_run WORKFLOW PATHS...: the newest green run on BRANCH at or before
-# COMMIT whose app files are unchanged since (or --allow-stale).
+# find_run WORKFLOW PATHS...: prints the id of the newest green run on BRANCH
+# at or before COMMIT whose app files are unchanged since (or --allow-stale).
+# Runs in a command substitution: on failure it prints why and returns 1,
+# and the caller stops (a `die` here would only end the subshell).
 find_run() {
   local wf=$1 id head
   shift
@@ -137,17 +139,22 @@ find_run() {
     g cat-file -e "$head^{commit}" 2>/dev/null || continue
     g merge-base --is-ancestor "$head" "$COMMIT" || continue
     if [ "$head" != "$COMMIT" ] && ! g diff --quiet "$head" "$COMMIT" -- "$@"; then
-      [ "$ALLOW_STALE" = 1 ] || die "$wf: newest green run $id is at ${head:0:7}, and $* changed since (wait for CI on $SHA7, or --allow-stale)"
+      if [ "$ALLOW_STALE" != 1 ]; then
+        echo "colleague-bundle.sh: $wf: newest green run $id is at ${head:0:7}, and $* changed since (wait for CI on $SHA7, or --allow-stale)" >&2
+        return 1
+      fi
       echo "warning: $wf run $id is at ${head:0:7}; app files changed since (--allow-stale)" >&2
     fi
-    echo "$id $head"
+    echo "$id"
     return 0
   done
-  die "$wf: no green run on ${BRANCH:-$SHA7} at or before $SHA7"
+  echo "colleague-bundle.sh: $wf: no green run on ${BRANCH:-$SHA7} at or before $SHA7" >&2
+  return 1
 }
 APP_PATHS=(crates Cargo.lock VERSION)
-if [ -n "$ANDROID_RUN" ]; then A_RUN="$ANDROID_RUN"; else read -r A_RUN _ < <(find_run android-build apps/flow-android "${APP_PATHS[@]}"); fi
-if [ -n "$WINDOWS_RUN" ]; then W_RUN="$WINDOWS_RUN"; else read -r W_RUN _ < <(find_run windows-build apps/flow-windows "${APP_PATHS[@]}"); fi
+A_RUN="$ANDROID_RUN" W_RUN="$WINDOWS_RUN"
+[ -n "$A_RUN" ] || A_RUN=$(find_run android-build apps/flow-android "${APP_PATHS[@]}") || exit 1
+[ -n "$W_RUN" ] || W_RUN=$(find_run windows-build apps/flow-windows "${APP_PATHS[@]}") || exit 1
 artifact() { # RUN PREFIX -> "name<TAB>bytes"
   gh api "repos/{owner}/{repo}/actions/runs/$1/artifacts" \
     -q ".artifacts[] | select(.expired | not) | select(.name | startswith(\"$2\")) | \"\(.name)\t\(.size_in_bytes)\"" | head -1
@@ -236,6 +243,50 @@ while IFS=$'\t' read -r dir kind engine file size sha url title; do
   fi
 done < "$WORK/models.tsv"
 
+# ---- flow-server smoke test -------------------------------------------------
+# smoke_server DIR: start the bundled server (DIR = the bundle's server/) on
+# a free loopback port with the bundle's config, pointed at the models
+# fetched above, and wait for "ready". Model loading dlopens
+# lib/libflow_llm.so with the cleanup model, so a broken plugin or a
+# missing library fails here. Without the cleanup or parakeet model
+# (--llm none, --only) it only checks that the binary starts.
+smoke_server() {
+  local S=$1 lib="$MODELS/library" d="$WORK/smoke" port pid ok=0 i
+  local llm="$lib/qwen2.5-1.5b-instruct-q4_k_m/qwen2.5-1.5b-instruct-q4_k_m.gguf"
+  mkdir -p "$d/state"
+  FLOW_SERVER_HOME="$S" "$S/flow-server.sh" gen-token --out "$d/token" >/dev/null 2>&1 ||
+    die "the bundled flow-server does not start with its libraries"
+  if [ ! -f "$llm" ] || [ ! -d "$lib/parakeet-tdt-0.6b-v2-int8" ]; then
+    echo "warning: no cleanup or parakeet model in this run; libflow_llm.so is not load-tested" >&2
+    return 0
+  fi
+  port=$(python3 -I -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+  # The bundle's config with this run's paths; the [library] section is
+  # left out (it would hash every model file).
+  sed -e "s|^bind = .*|bind = [\"127.0.0.1:$port\"]|" \
+      -e "s|^token_file = .*|token_file = \"$d/token\"|" \
+      -e "s|^state_dir = .*|state_dir = \"$d/state\"|" \
+      -e "s|/var/lib/flow-server/library|$lib|g" -e "s|/opt/flow-server|$S|g" \
+      -e '/^\[library\]/,/^$/d' "$HERE/server-config.toml" > "$d/config.toml"
+  [ -f "$lib/whisper-tiny-lid/ggml-tiny-q5_1.bin" ] || sed -i '/^lid_path/d' "$d/config.toml"
+  [ -d "$lib/zipformer-he-int8" ] || sed -i '/^\[model.languages.he\]/,/^$/d' "$d/config.toml"
+  say "smoke test: flow-server with the cleanup model"
+  FLOW_SERVER_HOME="$S" "$S/flow-server.sh" --config "$d/config.toml" > "$d/log" 2>&1 &
+  pid=$!
+  for ((i = 0; i < 300; i++)); do
+    if grep -q '"ready"\| ready' "$d/log"; then ok=1; break; fi
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 1
+  done
+  kill "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+  if [ "$ok" != 1 ] || ! grep -q 'llm warmed' "$d/log"; then
+    tail -n 20 "$d/log" >&2
+    die "the bundled flow-server did not start with the cleanup model (log above)"
+  fi
+  echo "flow-server started, cleanup plugin loaded and warmed"
+}
+
 # ---- flow-server ------------------------------------------------------------
 SERVER_NOTE="This bundle has no server build; ask for one."
 if [ "$NO_SERVER" = 0 ]; then
@@ -249,7 +300,15 @@ if [ "$NO_SERVER" = 0 ]; then
     [ "$avail" -ge 4000 ] || die "only $avail MB of memory available; the build needs 4000 (or pass --server-target)"
     SERVER_TARGET="${CARGO_TARGET_DIR:-$HOME/.cache/flow-clone-bundle-target}/release"
     gcc_inc="$(gcc -print-file-name=include)"
+    # No build path may end up in the binaries: the cargo registry and the
+    # target dir sit under $HOME, and panic messages and llama.cpp's asserts
+    # keep source paths. Map them away (the last matching rule wins).
+    cargo_home="$(realpath -m "${CARGO_HOME:-$HOME/.cargo}")"
+    remap="--remap-path-prefix=$HOME=~ --remap-path-prefix=$cargo_home=cargo --remap-path-prefix=$src=."
+    cmap="-ffile-prefix-map=$HOME=~ -ffile-prefix-map=$cargo_home=cargo -ffile-prefix-map=$src=."
     (cd "$src" && export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cache/flow-clone-bundle-target}" &&
+      export RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }$remap" CFLAGS="${CFLAGS:+$CFLAGS }$cmap" \
+        CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }$cmap" &&
       flock "$HOME/.cache/flow-clone-build.lock" choom -n 1000 -- nice -n 10 \
         env SHERPA_ONNX_LIB_DIR="$SHERPA_LIB" cargo build --release --offline --locked -j 2 -p flow-server \
           --no-default-features --features whisper,parakeet,tls,llm &&
@@ -267,6 +326,8 @@ if [ "$NO_SERVER" = 0 ]; then
   gomp="$(gcc -print-file-name=libgomp.so.1 2>/dev/null || true)"
   [ -e "$gomp" ] || die "libgomp.so.1 not found (the cleanup plugin needs it)"
   install -m 0644 "$(readlink -f "$gomp")" "$S/lib/libgomp.so.1"
+  strip "$S/bin/flow-server"
+  strip --strip-unneeded "$S/lib/libflow_llm.so"
   install -m 0755 "$HERE/flow-server.sh" "$S/flow-server.sh"
   install -m 0644 "$HERE/server-config.toml" "$S/config.toml"
   g show "$COMMIT:crates/flow-server/dist/flow-server.service" > "$S/flow-server.service"
@@ -275,9 +336,14 @@ if [ "$NO_SERVER" = 0 ]; then
   # in), and it must start with the bundled libraries.
   grep -aq "$VERSION+$SHA7" "$S/bin/flow-server" ||
     die "$S/bin/flow-server is not a clean build of $VERSION+$SHA7 (rebuild, or a --server-target from this commit)"
-  FLOW_SERVER_HOME="$S" "$S/flow-server.sh" gen-token --out "$WORK/smoke-token" >/dev/null 2>&1 ||
-    die "the bundled flow-server does not start with its libraries"
-  rm -f "$WORK/smoke-token"
+  # Nothing in the bundle may name this machine's home folder or user
+  # (CI-built apps aren't built here; the copied libraries are checked too).
+  user="$(id -un)" leaks=()
+  for f in "$S"/bin/* "$S"/lib/*; do
+    if grep -aqF -e "$HOME" -e "$user" "$f"; then leaks+=("${f#"$BUNDLE"/}"); fi
+  done
+  [ ${#leaks[@]} = 0 ] || die "these files contain the home path or user name: ${leaks[*]}"
+  smoke_server "$S"
   SERVER_NOTE="The \`server/\` folder holds flow-server $VERSION, built on $(lsb_release -ds 2>/dev/null || uname -sr)."
 fi
 
