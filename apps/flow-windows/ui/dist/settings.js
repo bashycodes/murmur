@@ -91,7 +91,7 @@ const SETTINGS_NAV = [
             { page: "settings-server", label: "Your server", icon: ICON.server, id: "tab_server" },
             // D39: only when this app's server token is an admin key.
             { page: "settings-keys", label: "Users & keys", icon: ICON.keys, id: "tab_keys" },
-            { page: "settings-openrouter", label: "OpenRouter", icon: ICON.cloud, id: "tab_openrouter", badge: "or_badge" },
+            { page: "settings-openrouter", label: "Cloud", icon: ICON.cloud, id: "tab_openrouter", badge: "or_badge" },
         ],
         "nav_connections",
     ],

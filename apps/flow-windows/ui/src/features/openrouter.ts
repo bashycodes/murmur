@@ -17,7 +17,7 @@ import { invoke, onEvent } from "../lib/ipc.js";
 import { Serial } from "../lib/serial.js";
 import type {
   CatalogStatus,
-  CleanupProvider,
+  CloudProvider,
   CleanupStatus,
   Health,
   KeyState,
@@ -126,7 +126,7 @@ async function showNormalisedUrl(): Promise<void> {
 /** Where cloud cleanup text goes, for status lines. */
 export function cleanupTarget(v: OrView | null): string {
   if (v?.cleanup.provider !== "custom") return "openrouter.ai";
-  return v.cleanup.custom.host || "your server";
+  return v.cleanup.custom.host || "your LiteLLM proxy";
 }
 
 /** "Transcription model · $0.04/h audio" (+ this month's cleanup spend). */
@@ -226,18 +226,34 @@ export function showOr(v: OrView): void {
   $<HTMLInputElement>("or_cleanup_send_app_name").checked = c.send_app_name;
   showCleanupStatus(c.status);
   const short = (id: string): string => id.split("/").pop() ?? id;
-  $<HTMLElement>("or_used_stt").textContent = s.allow ? `Sends audio · ${short(s.model)}` : `Would send audio · ${short(s.model)}`;
-  // D36: OpenRouter's place among the engines that are on.
+  // D78: LiteLLM does cleanup only; speech stays on this PC and your server.
+  const sttAvailable = s.available !== false && !custom;
+  $<HTMLElement>("or_used_stt").textContent = !sttAvailable
+    ? "Your proxy has no speech model here, so speech stays on this PC and your server. Pick OpenRouter to send speech to the cloud."
+    : s.allow
+      ? `Sends audio · ${short(s.model)}`
+      : `Would send audio · ${short(s.model)}`;
+  // D36: the cloud's place among the engines that are on.
   const firstOn = c.engines.find((e) => e.enabled)?.route;
-  $<HTMLElement>("or_used_cleanup").textContent = custom
-    ? `Not used: text cleanup goes to your own server (${c.custom.host || "not set up"})`
-    : `${c.allow ? "Sends" : "Would send"} text · ${short(c.model)}${
-        c.allow ? ` · ${firstOn === "cloud" ? "first" : "as a fallback"}` : ""
-      }`;
-  setBadge("or_used_stt_badge", s.allow);
-  setBadge("or_used_cleanup_badge", c.allow && !custom);
-  $<HTMLElement>("or_used_stt_link").textContent = s.allow ? "Manage →" : "Set up →";
-  $<HTMLElement>("or_used_cleanup_link").textContent = c.allow || custom ? "Manage →" : "Set up →";
+  const cleanupModel = custom ? c.custom.model || "no model picked yet" : short(c.model);
+  $<HTMLElement>("or_used_cleanup").textContent = `${c.allow ? "Sends" : "Would send"} text · ${cleanupModel}${
+    c.allow ? ` · ${firstOn === "cloud" ? "first" : "as a fallback"}` : ""
+  }`;
+  setBadge("or_used_stt_badge", s.allow && sttAvailable);
+  if (!sttAvailable) {
+    const b = $<HTMLElement>("or_used_stt_badge");
+    b.textContent = "Not available";
+    b.className = "fl-badge fl-badge-light";
+  }
+  setBadge("or_used_cleanup_badge", c.allow);
+  const sttLink = $<HTMLElement>("or_used_stt_link");
+  sttLink.hidden = !sttAvailable;
+  sttLink.textContent = s.allow ? "Manage →" : "Set up →";
+  $<HTMLElement>("or_used_cleanup_link").textContent = c.allow ? "Manage →" : "Set up →";
+  $<HTMLElement>("cloud_ll_host").textContent = c.custom.host || "your proxy";
+  $<HTMLElement>("cloud_ll_consent").textContent = c.custom.consent
+    ? `You agreed on ${new Date(c.custom.consent_at_ms).toLocaleDateString()} to send dictated text here.`
+    : "Asks before the first dictation is sent.";
 
   if (document.activeElement !== $("or_budget")) {
     ensureOption("or_budget", v.budget == null ? "" : String(v.budget), `$${v.budget} a month`);
@@ -594,7 +610,7 @@ async function orCleanupToggled(): Promise<void> {
 // ---- D52: custom cleanup server
 
 /** The consent dialog of `provider`; the custom one names the typed host. */
-async function askCleanupConsent(provider: CleanupProvider, url: string): Promise<boolean> {
+async function askCleanupConsent(provider: CloudProvider, url: string): Promise<boolean> {
   if (provider === "openrouter") {
     return askDialog("or_cleanup_consent_dlg", "or_cleanup_consent_ok", "or_cleanup_consent_cancel");
   }
@@ -610,15 +626,7 @@ async function askCleanupConsent(provider: CleanupProvider, url: string): Promis
 function showCustom(v: OrView): void {
   const c = v.cleanup;
   const cu = c.custom;
-  const custom = c.provider === "custom";
   showProviderRows(c.provider);
-  // The cleanup order's cloud row names where the text goes.
-  const title = document.querySelector<HTMLElement>("#aieng_row_cloud .fl-row-title");
-  if (title) title.textContent = custom ? "Custom server" : "OpenRouter";
-  $<HTMLInputElement>("or_cleanup_allow").setAttribute(
-    "aria-label",
-    custom ? "Use your custom server for cleanup" : "Use OpenRouter for cleanup",
-  );
   if (document.activeElement !== $("cu_base_url")) setValue("cu_base_url", cu.base_url);
   void showNormalisedUrl();
   if (document.activeElement !== $("cu_model")) setValue("cu_model", cu.model);
@@ -631,10 +639,36 @@ function showCustom(v: OrView): void {
   $<HTMLElement>("cu_key_entry").hidden = cu.key.set;
 }
 
-/** The card's rows for the saved `provider`. Its title stays "Cloud
- *  server": the selector names the provider. */
-function showProviderRows(provider: CleanupProvider): void {
+/** D78 provider texts on the Cloud page (design: provDesc / offers). */
+const PROVIDER_TEXT: Record<CloudProvider, { name: string; desc: string; offers: string }> = {
+  openrouter: {
+    name: "OpenRouter",
+    desc: "openrouter.ai: hundreds of models from many companies. Pay per use with your own key.",
+    offers: "Speech to text: yes · AI cleanup: yes",
+  },
+  custom: {
+    name: "LiteLLM",
+    desc: "Your own LiteLLM proxy (or any OpenAI-compatible server), on your network or wherever you run it.",
+    offers: "Speech to text: not yet · AI cleanup: yes",
+  },
+};
+
+/** The parts of the Cloud and AI cleanup pages for the saved `provider`
+ *  (`data-cloud` on the Cloud page, `data-provider` in the cleanup card). */
+function showProviderRows(provider: CloudProvider): void {
   $<HTMLSelectElement>("or_cleanup_provider").value = provider;
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#cloud_provider_seg [data-cloud-provider]")) {
+    const on = b.dataset.cloudProvider === provider;
+    b.setAttribute("aria-checked", String(on));
+    b.classList.toggle("is-on", on);
+  }
+  const t = PROVIDER_TEXT[provider];
+  $<HTMLElement>("cloud_provider_desc").textContent = t.desc;
+  $<HTMLElement>("cloud_provider_offers").textContent = t.offers;
+  for (const n of document.querySelectorAll<HTMLElement>("[data-cloud-name]")) n.textContent = t.name;
+  for (const r of document.querySelectorAll<HTMLElement>("[data-cloud]")) {
+    r.hidden = r.dataset.cloud !== provider;
+  }
   for (const r of $<HTMLElement>("or_cleanup_box").querySelectorAll<HTMLElement>("[data-provider]")) {
     r.hidden = r.dataset.provider !== provider;
   }
@@ -645,7 +679,7 @@ function showProviderRows(provider: CleanupProvider): void {
 /** Save the provider selector and the custom server's fields together.
  *  Custom is saved as soon as it is picked (D52): the selector always shows
  *  what dictation uses, and the server is used once address and model are set. */
-async function cuApply(provider: CleanupProvider, consent: boolean): Promise<boolean> {
+async function cuApply(provider: CloudProvider, consent: boolean): Promise<boolean> {
   const t = parseInt($<HTMLSelectElement>("cu_timeout_ms").value, 10);
   const form = {
     provider,
@@ -659,7 +693,7 @@ async function cuApply(provider: CleanupProvider, consent: boolean): Promise<boo
     showOr(r);
     const cu = r.cleanup.custom;
     if (r.cleanup.provider === "custom" && (cu.base_url === "" || cu.model === "")) {
-      setStatus("or_cleanup_msg", cu.base_url === "" ? "Saved — enter your server's address and a model to use it" : "Saved — pick a model to use your server", false);
+      setStatus("or_cleanup_msg", cu.base_url === "" ? "Saved — enter your proxy's address, then pick a model on the AI cleanup page" : "Saved — pick a model on the AI cleanup page to use your proxy", false);
     }
   } else if (views.or) showOr(views.or);
   return r !== null;
@@ -668,7 +702,7 @@ async function cuApply(provider: CleanupProvider, consent: boolean): Promise<boo
 /** A provider switch, or a custom address on a new host, while cloud
  *  cleanup is on asks that destination's consent first (a custom server
  *  once it has an address). */
-function cuChanged(provider: CleanupProvider): Promise<void> {
+function cuChanged(provider: CloudProvider): Promise<void> {
   return writes.run(async () => {
     const c = views.or?.cleanup;
     let consent = false;
@@ -726,15 +760,16 @@ async function cuModelsNow(outId: string, fill: boolean): Promise<void> {
   const out = $<HTMLElement>(outId);
   const baseUrl = $<HTMLInputElement>("cu_base_url").value.trim();
   if (baseUrl === "") {
-    out.textContent = "Enter the server address first.";
+    out.textContent = "Enter your proxy's address on the Cloud page first.";
     out.className = "hint err";
     return;
   }
-  out.textContent = `Asking ${(await hostOf(baseUrl)) || "the server"} for its models…`;
+  out.textContent = `Asking ${(await hostOf(baseUrl)) || "your proxy"} for its models…`;
   out.className = "hint";
   try {
     const typed = $<HTMLInputElement>("cu_key").value.trim();
     const args = { baseUrl, key: typed === "" ? null : typed };
+    let t0 = performance.now();
     let r = await invoke<CustomModels>("dev_or_custom_models", { ...args, consent: false });
     if (r.error === "consent_needed") {
       if (!(await askCleanupConsent("custom", baseUrl))) {
@@ -743,17 +778,18 @@ async function cuModelsNow(outId: string, fill: boolean): Promise<void> {
         out.className = "hint err";
         return;
       }
+      t0 = performance.now();
       r = await invoke<CustomModels>("dev_or_custom_models", { ...args, consent: true });
       await loadOr();
     }
+    const ms = Math.round(performance.now() - t0);
     if (r.models) {
-      if (fill) {
-        $<HTMLDataListElement>("cu_model_list").replaceChildren(
-          ...r.models.map((id) => Object.assign(document.createElement("option"), { value: id })),
-        );
-      }
+      // The AI cleanup page's Model field offers the proxy's list (D78).
+      $<HTMLDataListElement>("cu_model_list").replaceChildren(
+        ...r.models.map((id) => Object.assign(document.createElement("option"), { value: id })),
+      );
       const n = r.models.length;
-      out.textContent = `Connected · ${n} model${n === 1 ? "" : "s"}${fill && n ? ": pick one in the Model field" : ""}`;
+      out.textContent = `Connected · ${n} model${n === 1 ? "" : "s"} · ${ms} ms${fill && n ? ": pick one in the Model field" : ""}`;
       out.className = "hint ok";
     } else {
       out.textContent = failText(r.error, r.message);
@@ -995,8 +1031,17 @@ function wire(): void {
   }
   $<HTMLButtonElement>("or_cleanup_change").addEventListener("click", () => void openPicker("cleanup"));
   $<HTMLButtonElement>("or_cleanup_test").addEventListener("click", () => void orTestCleanup());
-  const provider = (): CleanupProvider => $<HTMLSelectElement>("or_cleanup_provider").value as CleanupProvider;
+  const provider = (): CloudProvider => $<HTMLSelectElement>("or_cleanup_provider").value as CloudProvider;
   $<HTMLSelectElement>("or_cleanup_provider").addEventListener("change", () => void cuChanged(provider()));
+  // D78: the Cloud page's provider switch drives the hidden selector.
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#cloud_provider_seg [data-cloud-provider]")) {
+    b.addEventListener("click", () => {
+      const sel = $<HTMLSelectElement>("or_cleanup_provider");
+      if (sel.value === b.dataset.cloudProvider) return;
+      sel.value = b.dataset.cloudProvider ?? "openrouter";
+      sel.dispatchEvent(new Event("change"));
+    });
+  }
   for (const id of ["cu_base_url", "cu_model", "cu_timeout_ms"]) {
     $<HTMLElement>(id).addEventListener("change", () => void cuChanged(provider()));
   }

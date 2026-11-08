@@ -20,7 +20,7 @@ ${group(
     ) +
     row(
       "Show which engine was used",
-      "A small <b>L</b>, <b>S</b> or <b>C</b> on the Flow bar after each dictation: this PC, your server or OpenRouter.",
+      "A small <b>L</b>, <b>S</b> or <b>C</b> on the Flow bar after each dictation: this PC, your server or the cloud.",
       toggle("dev_show_engine_badge", "Show which engine was used", `data-save="dev"`),
       `data-needs="dev"`,
     ),

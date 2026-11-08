@@ -236,7 +236,7 @@ function showAiEngine() {
         server: "your server",
         cloud: views.or?.cleanup.provider === "custom"
             ? `${cleanupTarget(views.or)} (${views.or.cleanup.custom.model})`
-            : `OpenRouter (${views.or?.cleanup.model ?? ""})`,
+            : `the cloud (${views.or?.cleanup.model ?? ""})`,
     };
     const used = engines()
         .map((e) => e.route)
