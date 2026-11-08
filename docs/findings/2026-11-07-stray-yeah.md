@@ -66,11 +66,16 @@ with greedy search plus hotwords, and the word is in the piece itself) are not i
 
 ## Fix (D72, `crates/flow-core`)
 
-* `engine::piece_gain`: a piece's gain is its own `vad::asr_gain`, but never more than the
-  gain of the dictation's speech up to the piece's end, looking back at most 30 s.
+* `engine::piece_gain`: a piece gets its own `vad::asr_gain` only when the dictation is
+  quiet, else none. Quiet means `vad::speech_level` of the dictation up to the piece's end
+  (looking back at most 30 s) is under `ASR_LEVEL_BELOW` (0.006). `speech_level` is the
+  median RMS of the 20 ms frames in the VAD's speech runs.
   * In a normal-level dictation, a trailing click now stays at its true level, as in a
     whole-clip decode, and the engine's gate blanks it.
   * A dictation that is quiet throughout still has every piece raised.
+  * A median, not the peak: the first version of the fix (c7dba90) capped a piece at the
+    gain of the context's peak, so one cough or desk bump in a quiet dictation stopped every
+    later quiet piece from being raised, and they came back empty (review finding).
   * The gain is a pure function of the audio, so pieces decoded while recording and at
     commit still match.
 * `vad::asr_gain` / `vad::with_gain` split `asr_level` into "how much" and "apply". The
@@ -89,13 +94,61 @@ with greedy search plus hotwords, and the word is in the piece itself) are not i
 * `a_quiet_dictation_is_still_raised_piece_by_piece`: a quiet two-piece dictation is still
   raised, and the segmented and whole-clip decodes agree. It passes before and after the
   fix, so the fix does not take the quiet-speech gain away.
+* `a_cough_in_a_quiet_dictation_does_not_silence_the_pieces_after_it`: quiet piece, a loud
+  150 ms burst, quiet piece, quiet piece. The last piece must still be raised (red with the
+  peak version: its word was missing), and commit decodes only the tail (pieces decoded
+  while recording are reused).
+* `engine::piece_gain_tests::only_the_last_30_s_set_the_level`: normal speech that ends just
+  before the 30 s window does not stop a quiet piece from being raised; inside it, it does.
+* `vad::tests::speech_level_is_the_typical_speech_not_a_cough`.
+
+## Parity check (before 863dffb vs after, the median version)
+
+Probe `parity_sets.sh` / `parity_ab.py` / `compare.py`; `flow-cli transcribe --level none`
+(full pipeline: VAD, guard, D22 segmentation, no LLM), Parakeet, 2 threads. PC config:
+`session-pc` + unified-en, `auto` decoding, the set's dictionary. Phone config:
+`session-phone` + unified-en, `beam` + dictionary (D68); Hebrew: the phone's Hebrew Parakeet,
+greedy. WER and terms from the wispr_parity scorer; Hebrew WER on plain Unicode words against
+the FLEURS normalised text. "Not raised" counts piece decodes (bridges included) whose own
+gain was above 1 and D72 left at 1, from a temporary trace in the after build (removed).
+
+| set | config | WER before → after | terms | clips with changed text | pieces not raised (under 0.003 gate) |
+|---|---|---|---|---|---|
+| parity main, 13 | PC | 11.55 → 10.89 % | 8/15 → 8/15 | 1 | 3 (1) |
+| parity main, 13 | phone | 11.33 → 10.89 % | 8/15 → 8/15 | 1 | 3 (1) |
+| parity English, 30 | PC | 6.23 → 6.23 % | 30/37 → 30/37 | 0 | 0 |
+| parity English, 30 | phone | 6.23 → 6.23 % | 30/37 → 30/37 | 0 | 0 |
+| PC recordings, 20 | PC | (no refs) | — | 2 | 2 (2) |
+| FLEURS he dev, first 49 | phone | 30.35 → 30.35 % | — | 0 | 5 (3) |
+
+* Every changed clip lost words at its very end; nothing else moved. The two PC changes are
+  the two "Yeah." rows. The main-set change is one clip cut out of a longer recording: its
+  last 0.5 s holds faint sound at −35…−44 dBFS at the cut edge (2–3 words, not in the
+  reference), which the old per-piece gain decoded and now is not. That is the trade-off
+  below, seen once, and here it lowered WER.
+* No clip came back empty that did not before (one Hebrew clip is empty in both runs).
+
+## Tap-only "Yeah." clips (whole-clip path), not fixed here
+
+The older rows whose whole text is "Yeah." are 0.5–1.2 s with no audio kept, so they cannot
+be replayed. A generic rule that would cover them: do not raise a span (piece or whole clip)
+whose longest VAD speech run is under 200 ms. Measured with the Python VAD replica:
+
+* the key clicks in the two PC tails: longest run 60–140 ms;
+* real speech, longest run per clip, smallest values: PC recordings 300 / 340 / 400 ms,
+  parity main 360 / 520 / 620 ms, parity English 400 / 740 / 880 ms (63 clips, none under
+  300 ms).
+
+The one kept "Yeah."-only PC recording (3.85 s) has a 1000 ms run, so it is real sound and
+the rule would leave it alone. The margin (140 vs 300 ms) is from few samples; a short
+"yes"/"no" alone was not in any set.
 
 ## Open
 
 * Trade-off: a piece of real speech whose span RMS is under the engines' 0.003 gate
   (≈ −50 dBFS, 15+ dB softer than the rest of a normal-level dictation) is no longer raised,
   so the engine returns "" for it. Before the fix it was raised on its own. Not seen in the
-  two rows; the parity sets were not re-run.
+  two PC rows; in the parity check it changed one clip (see above).
 
 * Older "Yeah." rows (2026-10-30 … 11-05) are mostly 0.5–1.2 s recordings whose whole text
   is "Yeah.", with no audio kept. They look like the same thing in unsegmented form: a stop

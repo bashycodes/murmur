@@ -450,25 +450,27 @@ fn a_click_after_the_last_word_is_not_raised_into_a_word() {
     assert_eq!(seg.asr_text, "w3", "{seg:?}");
 }
 
+/// Quiet "words" (≈ -45 dBFS): 200 ms of tone, 100 ms apart (one burst to
+/// `BurstEchoAsr`, "w16" once raised; the gaps keep the streaming VAD's
+/// floor low).
+fn quiet_words(ms: usize) -> Vec<i16> {
+    (0..ms * S / 1000)
+        .map(|i| {
+            let on = i % (S * 3 / 10) < S / 5;
+            (on as i32 as f32 * (i as f32 * 0.05).sin() * 250.0) as i16
+        })
+        .collect()
+}
+
 /// The other side of the same rule: a dictation that is quiet throughout
 /// (soft voice, low-gain microphone) still has every piece raised, by the
 /// gain the whole clip would get, so segmented and whole decodes agree.
 #[test]
 fn a_quiet_dictation_is_still_raised_piece_by_piece() {
-    // Quiet "words": 200 ms of tone, 100 ms apart (one burst to
-    // `BurstEchoAsr`; the gaps keep the streaming VAD's floor low).
-    let quiet = |ms: usize| -> Vec<i16> {
-        (0..ms * S / 1000)
-            .map(|i| {
-                let on = i % (S * 3 / 10) < S / 5;
-                (on as i32 as f32 * (i as f32 * 0.05).sin() * 250.0) as i16
-            })
-            .collect()
-    };
     let mut pcm = vec![0i16; 300 * S / 1000];
-    pcm.extend(quiet(4500));
+    pcm.extend(quiet_words(4500));
     pcm.extend(vec![0i16; 1200 * S / 1000]);
-    pcm.extend(quiet(3000));
+    pcm.extend(quiet_words(3000));
     pcm.extend(vec![0i16; 300 * S / 1000]);
     // A fainter floor than the click test's: raised +40 dB, that hiss would
     // read as sound to `BurstEchoAsr` and merge the whole clip's two words.
@@ -487,4 +489,36 @@ fn a_quiet_dictation_is_still_raised_piece_by_piece() {
     assert_eq!(whole.asr_text, "w16 w16", "{whole:?}");
     assert_eq!(seg.asr_text, whole.asr_text, "{seg:?}");
     assert_eq!(seg.timings.segments, 2, "{:?}", seg.timings);
+}
+
+/// One loud short sound (a cough, a bump on the desk) in a quiet dictation
+/// does not make the dictation "loud": the quiet piece after it is still
+/// raised. The dictation's level is its typical speech, not its peak. The
+/// pieces decoded while recording are reused at commit.
+#[test]
+fn a_cough_in_a_quiet_dictation_does_not_silence_the_pieces_after_it() {
+    let mut pcm = vec![0i16; 300 * S / 1000];
+    pcm.extend(quiet_words(4500));
+    pcm.extend(vec![0i16; 1200 * S / 1000]);
+    pcm.extend(phrase(8, 150)); // the cough, ≈ -15 dBFS
+    pcm.extend(vec![0i16; 600 * S / 1000]);
+    pcm.extend(quiet_words(4000));
+    pcm.extend(vec![0i16; 1200 * S / 1000]);
+    pcm.extend(quiet_words(4500));
+    pcm.extend(vec![0i16; 300 * S / 1000]);
+    let pcm = over_quiet_room(&pcm, 3);
+    let asr = Arc::new(BurstEchoAsr::new());
+    let core = core_with(asr.clone());
+    core.start_session(seg_cfg()).unwrap();
+    push_chunks(&core, &pcm, 640);
+    // Two pieces and their two bridges are decoded while recording.
+    assert!(wait_until(5, || asr.calls() >= 4), "{}", asr.calls());
+    let before = asr.calls();
+    let r = core.commit();
+    // The cough's piece is loud on its own and is not raised (its quiet
+    // words stay under `BurstEchoAsr`'s bar, as in a whole-clip decode).
+    assert_eq!(r.asr_text, "w16 w8 w16", "{r:?}");
+    assert_eq!(r.timings.segments, 3, "{:?}", r.timings);
+    // Commit decoded the tail only.
+    assert_eq!(asr.calls(), before + 1, "{:?}", asr.requests());
 }

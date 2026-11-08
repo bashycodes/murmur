@@ -1300,13 +1300,15 @@ fn prior_for(done: &[SegOut], guard: bool) -> Option<String> {
 const GAIN_CONTEXT: usize = SAMPLE_RATE * 30;
 
 /// The gain for a piece's VAD span `span` (D72): [`vad::asr_gain`] of the
-/// span, but never above the gain of the speech in the dictation up to the
-/// piece's end (at most [`GAIN_CONTEXT`] before it). The level is a
-/// property of the recording, not of one piece: a pause cut can leave a
-/// piece that holds only a key click on a near-silent floor, and raised on
-/// its own (+40 dB) the recognizer writes a word for it. A whole-clip
-/// decode hears the same click at its true level next to the speech. A
-/// dictation that is quiet throughout still gets every piece raised. A
+/// span when the dictation is quiet, else none (1.0). Quiet means the
+/// typical speech of the dictation up to the piece's end (at most
+/// [`GAIN_CONTEXT`] before it, [`vad::speech_level`]) is under
+/// [`vad::ASR_LEVEL_BELOW`]. The level is a property of the recording, not
+/// of one piece: a pause cut can leave a piece that holds only a key click
+/// on a near-silent floor, and raised on its own (+40 dB) the recognizer
+/// writes a word for it, while a whole-clip decode hears the click at its
+/// true level next to the speech. A median, not the peak, so one cough in a
+/// quiet dictation does not stop the pieces after it from being raised. A
 /// pure function of the audio, so pieces decoded while recording and at
 /// commit agree.
 fn piece_gain(buf: &[f32], range: std::ops::Range<usize>, span: &[f32]) -> f32 {
@@ -1315,8 +1317,46 @@ fn piece_gain(buf: &[f32], range: std::ops::Range<usize>, span: &[f32]) -> f32 {
         return own;
     }
     let ctx = &buf[range.start.min(range.end.saturating_sub(GAIN_CONTEXT))..range.end];
-    let around = vad::detect(ctx).map_or(own, |sp| vad::asr_gain(&ctx[sp.start..sp.end]));
-    own.min(around)
+    match vad::speech_level(ctx) {
+        Some(level) if level >= vad::ASR_LEVEL_BELOW => 1.0,
+        _ => own,
+    }
+}
+
+#[cfg(test)]
+mod piece_gain_tests {
+    use super::*;
+
+    const S: usize = SAMPLE_RATE;
+
+    fn tone(buf: &mut [f32], from_s: f32, secs: f32, amp: f32) {
+        let a = (from_s * S as f32) as usize;
+        let b = a + (secs * S as f32) as usize;
+        for (i, x) in buf[a..b].iter_mut().enumerate() {
+            *x = (i as f32 * 0.05).sin() * amp;
+        }
+    }
+
+    /// 3 s of normal speech ending just before the last [`GAIN_CONTEXT`]
+    /// (30 s) of a quiet piece no longer counts: the piece is raised. Inside
+    /// it, the speech makes the dictation normal-level: not raised.
+    #[test]
+    fn only_the_last_30_s_set_the_level() {
+        let quiet = 0.0076; // frame RMS ≈ 0.0054: raised on its own
+        let piece = 37 * S..40 * S;
+        for (loud_at, raised) in [(6.9, true), (10.0, false)] {
+            let mut buf = vec![0f32; 40 * S];
+            tone(&mut buf, loud_at, 3.0, 0.1);
+            tone(&mut buf, 37.5, 2.0, quiet);
+            let sp = vad::detect(&buf[piece.clone()]).unwrap();
+            let span = &buf[piece.start + sp.start..piece.start + sp.end];
+            let g = piece_gain(&buf, piece.clone(), span);
+            assert_eq!(g > 1.0, raised, "loud at {loud_at} s: gain {g}");
+            if raised {
+                assert_eq!(g, vad::asr_gain(span));
+            }
+        }
+    }
 }
 
 /// Decode `buf[range]` (VAD-trimmed when `vad`). `key` is stored; `req`
