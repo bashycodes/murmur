@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Unit test of the container entrypoint's zero-config start (D77,
-# deploy/docker/entrypoint.sh) without Docker: a stub flow-server binary, a
-# temp /data and a model list whose URLs are local file:// copies.
-# Seconds; needs sh, curl, sha256sum. Run by CI (repo-checks).
+# Unit test of the container entrypoint (D77, deploy/docker/entrypoint.sh)
+# without Docker: a stub flow-server binary, a temp /data and a models folder
+# in the library layout (one folder per model, tagged by model.toml).
+# Seconds; needs only sh. Run by CI (repo-checks).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -11,130 +11,125 @@ T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
 ok() { echo "ok: $*"; }
+SECRET="stub-secret-0123"
 
-# Stub server: gen-token writes a fixed token, check-config passes unless
-# STUB_NO_KEYS is set, serve prints its arguments.
-mkdir -p "$T/bin" "$T/src"
-cat >"$T/bin/flow-server" <<'EOF'
+# Stub server: gen-token writes a fixed key (or fails with STUB_GEN_FAIL),
+# check-config passes unless STUB_NO_KEYS is set, serve prints its arguments.
+mkdir -p "$T/bin"
+cat >"$T/bin/flow-server" <<EOF
 #!/bin/sh
-case "$1" in
-  gen-token) (umask 077; echo "stub-secret-0123" >"$3"); exit 0 ;;
-  check-config) [ -z "${STUB_NO_KEYS:-}" ] || { echo "no keys"; exit 1; }; exit 0 ;;
-  keys) echo "stub keys $*"; exit 0 ;;
+case "\$1" in
+  gen-token) [ -z "\${STUB_GEN_FAIL:-}" ] || exit 1; (umask 077; echo "$SECRET" >"\$3"); exit 0 ;;
+  check-config) [ -z "\${STUB_NO_KEYS:-}" ] || { echo "no keys"; exit 1; }; exit 0 ;;
+  keys) echo "stub keys \$*"; exit 0 ;;
 esac
-echo "stub serve $*"
+echo "stub serve \$*"
 EOF
 chmod +x "$T/bin/flow-server"
 
-# Model files and a manifest in the real list's format.
-printf 'stt-model-bytes' >"$T/src/enc.onnx"
-printf 'tokens' >"$T/src/tokens.txt"
-printf 'lid' >"$T/src/lid.bin"
-printf 'gguf' >"$T/src/llm.gguf"
-line() { # folder kind engine file title
-    local f="$T/src/$4"
-    echo "$1 $2 $3 $4 $(stat -c %s "$f") $(sha256sum "$f" | cut -d' ' -f1) file://$f $5"
+# model DIR ID KIND ENGINE [FILE]: a tagged model folder, as the colleague
+# bundle's library/ has them.
+model() {
+    mkdir -p "$1/$2"
+    printf 'kind = "%s"\ntitle = "%s test"\nengine = "%s"\n' "$3" "$2" "$4" >"$1/$2/model.toml"
+    if [ -n "${5:-}" ]; then printf 'w' >"$1/$2/$5"; else printf 'w' >"$1/$2/encoder.onnx"; fi
 }
-{
-    echo "# test list"
-    line parakeet-tdt-0.6b-v2-int8 stt parakeet enc.onnx "Parakeet test"
-    line parakeet-tdt-0.6b-v2-int8 stt parakeet tokens.txt "Parakeet test"
-    line whisper-tiny-lid lid whisper lid.bin "LID test"
-    line qwen2.5-1.5b-instruct-q4_k_m llm gguf llm.gguf "Qwen test"
-    echo "zipformer-he-int8 hebrew sherpa_online bad.onnx 3 0000000000000000000000000000000000000000000000000000000000000000 file://$T/src/tokens.txt Hebrew bad hash"
-} >"$T/models.txt"
+M="$T/models"
+model "$M" another-stt stt parakeet
+model "$M" parakeet-tdt-0.6b-v2-int8 stt parakeet
+model "$M" whisper-tiny-lid lid whisper ggml-tiny-q5_1.bin
+model "$M" qwen2.5-1.5b-instruct-q4_k_m llm gguf qwen2.5-1.5b-instruct-q4_k_m.gguf
+model "$M" zipformer-he-int8 hebrew sherpa_online
+mkdir -p "$M/untagged"
 
 run() { # DATA [env...]: run the entrypoint, output in $T/out
     local data="$1"
     shift
     mkdir -p "$T/run"
-    env FLOW_BIN="$T/bin/flow-server" FLOW_DATA="$data" FLOW_CONFIG="$data/config.toml" \
-        FLOW_MODEL_LIST="$T/models.txt" FLOW_RUN_DIR="$T/run" FLOW_KEY_POLL_S=0 "$@" \
+    env -u FLOW_CONFIG FLOW_BIN="$T/bin/flow-server" FLOW_DATA="$data" FLOW_MODELS_DIR="$M" \
+        FLOW_RUN_DIR="$T/run" FLOW_KEY_POLL_S=0 "$@" \
         sh "$EP" >"$T/out" 2>&1
 }
+G="$T/run/flow-server.generated.toml"
 
-# 1. English preset: download, model.toml, config, the key printed once.
+# 1. First start: config from the folder, the key created but never printed.
 D="$T/d1"
 mkdir -p "$D"
-run "$D" FLOW_MODELS=english || { cat "$T/out"; fail "english start"; }
-[ "$(cat "$D/library/parakeet-tdt-0.6b-v2-int8/enc.onnx")" = stt-model-bytes ] || fail "model not downloaded"
-grep -q 'catalogue_id = "parakeet-tdt-0.6b-v2-int8"' "$D/library/parakeet-tdt-0.6b-v2-int8/model.toml" || fail "model.toml"
-grep -q "^asr_path = \"$D/library/parakeet-tdt-0.6b-v2-int8\"" "$D/config.toml" || fail "asr_path"
-grep -q '^asr_engine = "parakeet"' "$D/config.toml" || fail "asr_engine"
-grep -q "^token_file = \"$D/admin.token\"" "$D/config.toml" || fail "token_file"
-! grep -q '^llm_path\|^lid_path\|^\[model.languages' "$D/config.toml" || fail "english config has extras"
+run "$D" || { cat "$T/out"; fail "first start"; }
+grep -q "^asr_path = \"$M/parakeet-tdt-0.6b-v2-int8\"" "$G" || fail "preferred stt"
+grep -q '^asr_engine = "parakeet"' "$G" || fail "asr_engine"
+grep -q "^lid_path = \"$M/whisper-tiny-lid/ggml-tiny-q5_1.bin\"" "$G" || fail "lid file"
+grep -q "^llm_path = \"$M/qwen2.5-1.5b-instruct-q4_k_m/qwen2.5-1.5b-instruct-q4_k_m.gguf\"" "$G" || fail "llm file"
+grep -q '^asr_backend = "sherpa_online"' "$G" || fail "hebrew engine"
+grep -q "^dir = \"$M\"" "$G" || fail "library dir"
+grep -q "^token_file = \"$D/admin.token\"" "$G" || fail "token_file"
+grep -q "^state_dir = \"$D\"" "$G" || fail "state_dir"
 [ "$(stat -c %a "$D/admin.token")" = 600 ] || fail "admin.token mode"
-grep -q "stub-secret-0123" "$T/out" || fail "key not printed on first start"
-grep -q "docker exec flow-server cat $D/admin.token" "$T/out" || fail "show-again hint"
+! grep -q "$SECRET" "$T/out" || fail "key printed to the log"
+grep -q "docker exec flow-server cat $D/admin.token" "$T/out" || fail "show-key hint"
+grep -q "hostname -I" "$T/out" || fail "LAN address hint"
 grep -q "stub serve --config $T/run/flow-server.config.toml" "$T/out" || fail "serve with rewritten config"
 grep -q '^bind = \["127.0.0.1:7313"' "$T/run/flow-server.config.toml" || fail "bind rewrite"
-ok "english preset: download, config, key shown"
+ok "first start: config from the models folder, key created, not logged"
 
-# 2. Second start: nothing downloaded, the key not printed again, the config kept.
+# 2. Second start: the key kept, not printed, a one-line hint.
+run "$D" || { cat "$T/out"; fail "second start"; }
+[ "$(cat "$D/admin.token")" = "$SECRET" ] || fail "key replaced"
+! grep -q "$SECRET" "$T/out" || fail "key printed on restart"
+grep -q "admin key: docker exec" "$T/out" || fail "restart hint"
+ok "second start: key kept, not logged"
+
+# 3. Overrides: FLOW_STT picks another folder, none drops a model.
+run "$D" FLOW_STT=another-stt FLOW_LLM=none FLOW_HEBREW=none || { cat "$T/out"; fail "overrides"; }
+grep -q "^asr_path = \"$M/another-stt\"" "$G" || fail "FLOW_STT"
+! grep -q '^llm_path\|^\[model.languages' "$G" || fail "none not honoured"
+run "$D" FLOW_STT=qwen2.5-1.5b-instruct-q4_k_m && fail "wrong-kind FLOW_STT accepted"
+grep -q 'is not a "stt" model' "$T/out" || fail "wrong-kind message"
+ok "FLOW_STT / FLOW_LLM=none / wrong kind"
+
+# 4. Own config in /data wins; the CLI uses it too.
+cp "$G" "$D/config.toml"
 echo "# edited" >>"$D/config.toml"
-rm "$T/src/enc.onnx"   # a download attempt would now fail
-run "$D" FLOW_MODELS=english || { cat "$T/out"; fail "second start"; }
-grep -q stub-secret-0123 "$T/out" && fail "key printed again"
-grep -q "downloading" "$T/out" && fail "downloaded again"
-grep -q "^# edited" "$D/config.toml" || fail "config overwritten"
-ok "second start: no download, key not shown, config kept"
-printf 'stt-model-bytes' >"$T/src/enc.onnx"
+run "$D" || { cat "$T/out"; fail "own config"; }
+grep -q "^# edited" "$T/run/flow-server.config.toml" || fail "own config not used"
+env -u FLOW_CONFIG FLOW_BIN="$T/bin/flow-server" FLOW_DATA="$D" FLOW_MODELS_DIR="$M" \
+    FLOW_RUN_DIR="$T/run" sh "$EP" keys list >"$T/out" 2>&1 || fail "keys via entrypoint"
+grep -q "stub keys keys list --config $D/config.toml" "$T/out" || fail "keys --config"
+rm "$D/config.toml"
+ok "own /data/config.toml used by serve and CLI"
 
-# 3. Default-style list: LID, cleanup and the main model in the config.
-D="$T/d2"
-mkdir -p "$D"
-run "$D" FLOW_MODELS="english,whisper-tiny-lid qwen2.5-1.5b-instruct-q4_k_m" || { cat "$T/out"; fail "list start"; }
-grep -q "^lid_path = \"$D/library/whisper-tiny-lid/lid.bin\"" "$D/config.toml" || fail "lid_path"
-grep -q "^llm_path = \"$D/library/qwen2.5-1.5b-instruct-q4_k_m/llm.gguf\"" "$D/config.toml" || fail "llm_path"
-! grep -q catalogue_id "$D/library/whisper-tiny-lid/model.toml" || fail "lid has catalogue_id"
-ok "model list: lid + llm in config"
-
-# 4. A seeded (pre-copied) folder with the right files is used, not downloaded.
-D="$T/d3"
-mkdir -p "$D/library/parakeet-tdt-0.6b-v2-int8"
-cp "$T/src/enc.onnx" "$T/src/tokens.txt" "$D/library/parakeet-tdt-0.6b-v2-int8/"
-run "$D" FLOW_MODELS=english || { cat "$T/out"; fail "seeded start"; }
-grep -q downloading "$T/out" && fail "seeded model downloaded"
-ok "seeded library used"
-
-# 5. Errors: unknown model, hash mismatch, no speech model, unwritable data.
-D="$T/d4"
-mkdir -p "$D"
-run "$D" FLOW_MODELS=nope && fail "unknown model accepted"
-grep -q 'unknown model "nope"' "$T/out" || fail "unknown model message"
-run "$D" FLOW_MODELS=zipformer-he-int8 && fail "bad hash accepted"
-grep -q "does not match its pinned SHA-256" "$T/out" || fail "hash message"
-[ ! -e "$D/library/zipformer-he-int8/bad.onnx.part" ] || fail ".part left behind"
-run "$D" FLOW_MODELS=whisper-tiny-lid && fail "config without stt accepted"
-grep -q "no speech model" "$T/out" || fail "no stt message"
+# 5. Errors: no models folder, no speech model, gen-token failure, read-only data.
+run "$D" FLOW_MODELS_DIR="$T/none" && fail "missing models folder accepted"
+grep -q "no models folder at $T/none" "$T/out" || fail "missing folder message"
+mkdir -p "$T/empty/untagged"
+run "$D" FLOW_MODELS_DIR="$T/empty" && fail "no stt accepted"
+grep -q "no speech model in $T/empty" "$T/out" || fail "no stt message"
+mkdir -p "$T/d5"
+run "$T/d5" STUB_GEN_FAIL=1 && fail "gen-token failure accepted"
+grep -q "could not write the admin key" "$T/out" || fail "gen-token message"
+mkdir -p "$T/ro" && chmod 500 "$T/ro"
 if [ "$(id -u)" != 0 ]; then
-    mkdir -p "$T/ro" && chmod 0555 "$T/ro"
-    run "$T/ro" FLOW_MODELS=english && fail "read-only data accepted"
-    grep -q "is not writable" "$T/out" || fail "not writable message"
+    run "$T/ro" && fail "read-only data accepted"
+    grep -q "is not writable by uid" "$T/out" || fail "read-only message"
 fi
-ok "errors: unknown model, bad hash, no speech model, unwritable /data"
+chmod 700 "$T/ro"
+ok "errors: no folder, no speech model, gen-token, read-only /data"
 
-# 6. A config elsewhere (Helm): no setup; with no keys it waits.
-mkdir -p "$T/etc"
-echo 'bind = ["0.0.0.0:7313"]' >"$T/etc/config.toml"
-D="$T/d5"
-mkdir -p "$D"
-env FLOW_BIN="$T/bin/flow-server" FLOW_DATA="$D" FLOW_CONFIG="$T/etc/config.toml" \
-    FLOW_MODEL_LIST="$T/models.txt" FLOW_RUN_DIR="$T/run" FLOW_KEY_POLL_S=0.2 FLOW_MODELS=english \
-    STUB_NO_KEYS=1 sh "$EP" >"$T/out" 2>&1 &
-pid=$!
-sleep 0.5
-grep -q "waiting for keys.json" "$T/out" || { cat "$T/out"; fail "no wait for keys"; }
-kill "$pid" 2>/dev/null || true
-wait "$pid" 2>/dev/null || true
-{ [ ! -e "$D/config.toml" ] && [ ! -d "$D/library" ]; } || fail "setup ran for an outside config"
-ok "outside config: no setup, waits for keys"
+# 6. FLOW_CONFIG (Helm): used as is, no admin.token, waits for keys.
+cp "$G" "$T/helm.toml"
+mkdir -p "$T/d6"
+env FLOW_BIN="$T/bin/flow-server" FLOW_DATA="$T/d6" FLOW_CONFIG="$T/helm.toml" \
+    FLOW_MODELS_DIR="$T/none" FLOW_RUN_DIR="$T/run" STUB_NO_KEYS=1 FLOW_KEY_POLL_S=0.1 \
+    timeout 1 sh "$EP" >"$T/out" 2>&1 && fail "started without keys"
+grep -q "waiting for keys.json" "$T/out" || fail "no wait message"
+[ ! -e "$T/d6/admin.token" ] || fail "admin.token created under FLOW_CONFIG"
+ok "FLOW_CONFIG: waits for keys, no admin.token"
 
-# 7. Called as flow-server (docker exec): CLI with the config added.
-mkdir -p "$T/as"
-ln -s "$EP" "$T/as/flow-server"
-out=$(env FLOW_BIN="$T/bin/flow-server" FLOW_DATA="$T/d1" FLOW_CONFIG="$T/d1/config.toml" \
-    sh "$T/as/flow-server" keys add phone)
-[ "$out" = "stub keys keys add phone --config $T/d1/config.toml" ] || fail "cli keys: $out"
-ok "flow-server CLI name adds --config"
-echo "entrypoint tests passed"
+# 7. Called as flow-server (docker exec): CLI with the right config.
+mkdir -p "$T/cli" && ln -s "$EP" "$T/cli/flow-server"
+env -u FLOW_CONFIG FLOW_BIN="$T/bin/flow-server" FLOW_DATA="$D" FLOW_MODELS_DIR="$M" \
+    FLOW_RUN_DIR="$T/run" sh "$T/cli/flow-server" keys add phone >"$T/out" 2>&1 || fail "cli name"
+grep -q "stub keys keys add phone --config $G" "$T/out" || fail "cli config"
+ok "flow-server name: CLI with the generated config"
+
+echo "all entrypoint tests passed"

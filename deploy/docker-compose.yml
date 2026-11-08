@@ -1,23 +1,27 @@
-# flow-server with Docker Compose (docs/container.md). The same as the
-# quick start's `docker run`, plus a restart policy and hardening:
+# flow-server with Docker Compose (docs/server-setup.md). The same as the
+# quick start's `docker run`, plus a restart policy and hardening. From the
+# repo root:
 #
-#   docker compose -f deploy/docker-compose.yml up -d
-#   docker compose -f deploy/docker-compose.yml logs -f    # the admin key, then "ready"
+#   FLOW_MODELS_PATH=/path/to/models docker compose -f deploy/docker-compose.yml up -d --build
+#   docker exec flow-server cat /data/admin.token     # the admin key
 #
-# Everything (config, keys, models) lives in the flow_data volume; the first
-# start downloads the models (~1.9 GB with FLOW_MODELS=default).
+# FLOW_MODELS_PATH: a folder with one folder per model, each tagged by its
+# model.toml (e.g. the colleague bundle's unzipped library/), mounted
+# read-only at /models. The config is derived from it on every start;
+# keys and the admin key live in the flow_data volume.
 # Commands: docker exec flow-server flow-server keys add phone
 #
 # Settings (environment or a .env file next to this one):
-#   FLOW_IMAGE         image (default ghcr.io/bashycodes/murmur/flow-server:latest;
-#                      flow-server:local after `docker compose build`)
-#   FLOW_MODELS        default | english | none | model folder ids (docs/container.md)
+#   FLOW_MODELS_PATH   the models folder on this machine (required)
+#   FLOW_STT / FLOW_LLM / FLOW_HEBREW / FLOW_LID
+#                      a model folder to use instead of the default pick, or none
 #   FLOW_PUBLISH_ADDR  host address the port is published on (default 0.0.0.0: every
-#                      address; the server still drops peers outside loopback/LAN/VPN).
+#                      IPv4 address; the server's peer filter, loopback/LAN/VPN only,
+#                      is then the only guard, and Docker-published ports bypass ufw).
 #                      Set your LAN or VPN address on a host with a public address.
 #   FLOW_HOST_PORT     host port (default 7313)
 #
-# GPU (NVIDIA; LLM cleanup on the GPU), instead of the CPU service, built locally:
+# GPU (NVIDIA; LLM cleanup on the GPU), instead of the CPU service:
 #   docker compose -f deploy/docker-compose.yml --profile gpu up -d --build flow-server-gpu
 name: flow-server
 
@@ -29,11 +33,15 @@ x-server: &server
   cap_drop: [ALL]
   security_opt:
     - no-new-privileges:true
-  environment:
-    FLOW_MODELS: ${FLOW_MODELS:-default}
+  environment: &env
+    FLOW_STT: ${FLOW_STT:-}
+    FLOW_LLM: ${FLOW_LLM:-}
+    FLOW_HEBREW: ${FLOW_HEBREW:-}
+    FLOW_LID: ${FLOW_LID:-}
   ports:
     - "${FLOW_PUBLISH_ADDR:-0.0.0.0}:${FLOW_HOST_PORT:-7313}:7313"
   volumes:
+    - ${FLOW_MODELS_PATH:?set FLOW_MODELS_PATH to your models folder}:/models:ro
     - flow_data:/data
   # Parakeet ~1 GB, + Qwen2.5-1.5B ~1.5 GB, + LID; same cap as the systemd unit.
   mem_limit: 8g
@@ -43,7 +51,7 @@ services:
   flow-server:
     <<: *server
     container_name: flow-server
-    image: ${FLOW_IMAGE:-ghcr.io/bashycodes/murmur/flow-server:latest}
+    image: flow-server
     build:
       context: ..
       dockerfile: deploy/docker/Dockerfile
@@ -54,7 +62,7 @@ services:
     profiles: [gpu]
     container_name: flow-server-gpu
     environment:
-      FLOW_MODELS: ${FLOW_MODELS:-default}
+      <<: *env
       FLOW_CONTAINER_NAME: flow-server-gpu
     image: flow-server:local-cuda
     build:
@@ -70,6 +78,6 @@ services:
               capabilities: [gpu]
 
 volumes:
-  # config.toml, admin.token, keys, library/ (models). Survives `down`;
-  # `down -v` deletes it.
+  # admin.token, keys.json, key usage, library hashes. Survives `down`;
+  # `down -v` deletes it (and with it every key).
   flow_data:

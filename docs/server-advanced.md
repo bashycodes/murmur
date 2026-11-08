@@ -10,8 +10,7 @@ the commands as `docker exec flow-server flow-server …`). Design and rules:
 `docs/hybrid-architecture.md` §2.6 (transport security) and §3 (server),
 `docs/protocol.md` §1.
 
-The server only listens. It makes no outbound connections (the container's
-entrypoint downloads the models before the server starts, D77), never writes audio
+The server only listens. It makes no outbound connections, never writes audio
 or text to disk (unless you turn on the debug capture, §9), and accepts peers only from loopback, private LAN and
 VPN (100.64.0.0/10) addresses.
 
@@ -294,6 +293,14 @@ sudo ufw allow from 192.168.1.0/24 to any port 7313 proto tcp       # LAN (TLS)
 
 Never forward port 7313 on your router. The server is not meant to be
 reachable from the internet.
+
+**Docker:** ports published with `docker run -p` / Compose bypass `ufw`
+(Docker inserts its own iptables rules ahead of ufw's), and the container
+has no systemd `IPAddressDeny`. With the quick start's `-p 0.0.0.0:7313:7313`
+the server's peer filter (loopback/LAN/VPN only) is the only guard. To
+limit who reaches the port, publish it on one address
+(`-p 192.168.1.20:7313:7313`, Compose `FLOW_PUBLISH_ADDR`) or add rules to
+the `DOCKER-USER` iptables chain.
 
 ## 7. App settings (Developer page, same keys on Windows and Android)
 

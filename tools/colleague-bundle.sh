@@ -3,7 +3,7 @@
 # Android APK (CI builds, fixed debug key D56), flow-server for Linux x86_64
 # (built here: CI does not build it), the speech models, the AI cleanup
 # model and an install note (docs/colleague-install.md, version filled in;
-# it puts the Docker image first, D77, and the bundled server second).
+# Docker built from the source first, D77, the bundled server second).
 #
 #   tools/colleague-bundle.sh --source integration|notetaker|BRANCH|COMMIT [options]
 #
