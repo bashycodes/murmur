@@ -7,7 +7,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use flow_cloud::custom::{self, CustomCleaner, COST_HEADER};
+use flow_cloud::custom::{self, CustomCleaner, COST_HEADER, COST_HEADER_ORIGINAL};
 use flow_cloud::testing::{MockServer, Reply};
 use flow_cloud::CloudError;
 use flow_core::cleanup::{build_prompt, CleanPrompt, Cleaner, PromptScope};
@@ -268,6 +268,15 @@ fn router_dictation_uses_the_custom_server() {
         );
     }
     assert_eq!(router.cleanup_status().provider, CloudProvider::LiteLlm);
+}
+
+/// D78: LiteLLM's streamed answers carry only the `-original` cost header.
+#[test]
+fn streamed_cost_falls_back_to_the_original_cost_header() {
+    let srv = MockServer::fixed(sse_ok().header(COST_HEADER_ORIGINAL, "0.00003"));
+    let t = custom::test_cleanup(&cfg(&srv.url("")), None);
+    assert!(t.ok, "{t:?}");
+    assert_eq!(t.cost_usd, Some(0.00003));
 }
 
 #[test]
