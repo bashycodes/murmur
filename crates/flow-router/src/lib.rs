@@ -639,6 +639,15 @@ pub struct CircuitStatus {
     pub until_config_change: bool,
 }
 
+/// One dictation route as a start would see it now ([`Router::route_checks`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RouteCheck {
+    pub kind: EngineKind,
+    /// Why a start would skip this route without trying it; `None` = it
+    /// would be tried (a server may still fail to answer).
+    pub skip: Option<BackendError>,
+}
+
 /// Developer page "Active engine" + "Circuit" + "Server info" rows.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]

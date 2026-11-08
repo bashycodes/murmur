@@ -1,39 +1,50 @@
-# 2026-11-08: setup's "Now try it" did nothing on a clean install (D75)
+# 2026-11-08: setup's "Now try it" did nothing (D75; walkthrough cause D76)
 
-**Report.** Owner walkthrough of a clean Windows install (notetaker build
-`7bd69c0`): the last setup step says "hold Right Alt and talk into the
-box"; holding Right Alt and talking put no text in the box and the step
-showed nothing. The app log at startup said the speech model was not found
-(`…\models\ggml-base.bin … Nothing is downloaded automatically.`) and
-`[hotkeys] keyboard hook stopped receiving events; re-installing`.
+**Report.** Owner walkthrough on Windows: the last setup step says "hold
+Right Alt and talk into the box"; holding Right Alt and talking put no
+text in the box and the step showed nothing. The app log at startup said
+the speech model was not found (`…\models\ggml-base.bin … Nothing is
+downloaded automatically.`) and `[hotkeys] keyboard hook stopped receiving
+events; re-installing`.
+
+**What was installed.** Not a clean profile: the owner installed the
+v1.1.2 GitHub release over a profile left by earlier builds. In that state
+every setup save failed with `bad_config: invalid custom cleanup model id
+""` (D76, fixed on its own branch), so the engine step's choice (and its
+server address) was never stored.
 
 **Evidence (read-only, owner's PC, copies kept out of the repo).**
 
 - `%APPDATA%\FlowClone\prefs.json`: `asr_engine` whisper, `model_path`
   null, `developer.allow_server` true, `server.host` empty,
-  `route_order` [server, client]: the shipped engine defaults.
-- No `models` folder under `%APPDATA%\FlowClone`: no speech model was
-  downloaded or chosen.
+  `route_order` [server, client]: the shipped engine defaults, consistent
+  with every setup save being refused.
+- No `models` folder under `%APPDATA%\FlowClone`: no speech model.
 - `history.sqlite`: 0 rows: no dictation ever finished, not even a failed
   one.
 - Debug log off, so no per-dictation lines.
 
 ## Root cause
 
-With no speech model on the PC and no server address, no dictation engine
-can start. A press then fails at session start: the router returns
-`LocalNotReady` (the server route is skipped for having no host), the
-controller turns the start error into the pill's error state, and that is
-all. The setup step only listened for a *finished* dictation
-(`dev:route` from the router's route callback, `history:changed`), and a
-start failure produces neither. So the step stayed silent by design, and
-nothing checked before the user talked whether a press could work at all.
+**The walkthrough failure is D76.** The refused saves left no engine set
+up: no server address and no speech model. Every press then failed at
+session start: the router skips the server (no host) and the local route
+returns `LocalNotReady`; the controller turns that into the pill's error
+state, and that is all.
+
+**Why the step was silent (D75).** The step only listened for a
+*finished* dictation (`dev:route` from the router's route callback,
+`history:changed`), and a start failure produces neither. Nothing checked
+before the user talked whether a press could work at all. The same silence
+happens on a truly clean install where nothing is set up yet (the user
+skipped the model and gave no server address), which is what D75 fixes.
 
 Hypotheses checked:
 
 1. **No engine can start (no model, no server).** Confirmed by the prefs,
    the missing models folder and the empty history above, and by the code
    path (`RouterAdapter::start_error` → `Input::StartFailed` → pill only).
+   Why nothing was set up: D76.
 2. **Engine choice applied only after a restart.** Ruled out: the engine
    step saves through `dev_set`, which applies to the next session without
    a reload (`settings_apply_to_the_next_session_without_reload`).
@@ -47,34 +58,37 @@ Hypotheses checked:
    the app now shows "Listening…" in the step, so a press that shows
    nothing at all means the shortcut never arrived.
 
-Open question: the saved engine settings are the defaults, although the
-engine step saves the chosen engine (this PC first, or the server with
-its address). Either setup was run again or skipped later, or the choice
-did not persist. Another branch (`feat/setup-bad-config`) looks at what
-setup saves.
-
 ## Fix (D75)
 
-- `RouterAdapter::readiness()` and command `setup_readiness`: walks the
-  dictation route order like a start, without a session or audio. A model
-  that is ready or still loading counts; a configured server gets the same
-  probe as Test connection; the cloud route only its key/consent check.
-  When nothing can start it returns the reasons in plain words ("There's
-  no speech model on this PC yet…", "There's no server address yet…",
-  "Your server at … can't be reached…").
-- The step calls it on opening and shows "Dictation can't work yet. …"
-  when nothing can start.
+- `Router::route_checks()` (flow-router, read-only, no network): the
+  dictation routes a start would walk, in order, each with the reason a
+  start would skip it without trying (no server host, an open or sticky
+  circuit with a viable fallback, missing cloud consent/key/budget, no
+  local engine). `RouterAdapter::local_first` uses it too, so the walk
+  lives in one place next to `start_routes`.
+- `RouterAdapter::readiness()` → `Readiness::Ready { engine }` or
+  `NotReady { message }`, command `setup_readiness`. A model ready or still
+  loading counts; a server a start would try is probed with
+  `probe_server`, which, like a failed start, updates the server's circuit
+  breaker and "Server info" health. No session, no audio. The message is
+  the reason of the first route in the order, the engine the user chose:
+  with "Your server" chosen and down, it names the server only.
+- The step calls it on opening and shows "Dictation can't work yet. …";
+  while that line is up it checks again every 5 s and when a model
+  finishes downloading or loading, and clears the line once ready.
 - The pill's `dictation:status` is also sent to the settings window; the
   step shows listening, working, and the pill's error or notice.
 
 ## Tests
 
-- `router_adapter::tests::readiness_*` (5): no model and no host → both
-  reasons; server up → remote; server down with a model → local; server
-  only and down → "can't be reached" with the address; every engine off
-  → the no-engine message.
+- `router_adapter::tests::readiness_*` (6): server chosen, no host, no
+  model → the server reason only; this PC chosen, no model → the model
+  reason only; server up → remote; server down with a model → local, the
+  circuit opens and the next check skips the server; server only and down
+  → "can't be reached" with the address; every engine off → the no-engine
+  message.
 - `ui/tests/setup-try.test.mjs`: the step's words for readiness and for
   each pill state.
 
 Not covered by an automated test: the Windows-only wiring (Tauri event to
-the settings window, the WebView step). Retest on the PC.
+the settings window, the WebView step, the 5 s re-check). Retest on the PC.

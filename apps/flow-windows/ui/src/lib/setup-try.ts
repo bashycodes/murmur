@@ -5,11 +5,18 @@
 // built dist without a page.
 
 /** `setup_readiness`: can a dictation start now (router_adapter::Readiness). */
-export interface Readiness {
-  ready: boolean;
-  engine: string | null;
-  message: string | null;
-}
+export type Readiness =
+  | { state: "ready"; engine: "local" | "remote" | "cloud" }
+  | { state: "not_ready"; message: string };
+
+/** What the line under the box shows now. `check`: the readiness check's
+ *  "can't work yet" (re-checked while shown); `press`: a press reached the
+ *  pill or a dictation finished (a later check never covers it). */
+export type TryLineSource = "none" | "check" | "press";
+
+/** While the check's line is shown, look again this often (a server that
+ *  comes up, a model that finishes loading clears it). */
+export const RECHECK_MS = 5000;
 
 /** The pill's state (dictation::OverlayState, `dictation:status`). */
 export interface PillState {
@@ -28,12 +35,12 @@ export interface TryLine {
 /** Before the user talks: `null` = ready, nothing to say. `downloading`: a
  *  speech model download started in the model step is still running. */
 export function readinessLine(r: Readiness, downloading = false): TryLine | null {
-  if (r.ready) return null;
+  if (r.state === "ready") return null;
   if (downloading) {
     return { text: "The speech model is still downloading. Hold the shortcut once it's done.", bad: false };
   }
   return {
-    text: `Dictation can't work yet. ${r.message ?? "No speech engine is set up."} You can finish setup now and fix it later in Settings → Speech to text.`,
+    text: `Dictation can't work yet. ${r.message} You can finish setup now and fix it later in Settings → Speech to text.`,
     bad: true,
   };
 }

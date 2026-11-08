@@ -17,7 +17,7 @@ import { $, el, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, stopCapture } from "../lib/keycapture.js";
 import { prefsStore, type Prefs } from "../lib/prefs-store.js";
-import { pillLine, readinessErrorLine, readinessLine, type PillState, type Readiness, type TryLine } from "../lib/setup-try.js";
+import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS, type PillState, type Readiness, type TryLine, type TryLineSource } from "../lib/setup-try.js";
 import type { DevView, FieldError, Health, KeyState, OrView, Route, RouteView } from "../lib/types.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
 import { views } from "../lib/views.js";
@@ -66,10 +66,8 @@ const st = {
   model: null as ModelStatus | null,
   info: null as ModelInfo | null,
   openedAt: 0,
-  /** The pill moved since the try step opened (a press reached the app). */
-  pressed: false,
-  /** The line shown is the readiness check's "can't work yet". */
-  readyLine: false,
+  /** Who set the try step's line (setup-try.ts). */
+  line: "none" as TryLineSource,
   /** When a finished dictation's result was last shown (ms). */
   resultAt: 0,
   busy: false,
@@ -567,7 +565,7 @@ function showResult(v: RouteView): void {
   const good = last.status === "FORMATTED" || last.status === "RAW_TRANSCRIPT";
   const where = WHERE[last.engine ?? ""] ?? (last.engine ? `by ${last.engine}` : "");
   const secs = (ms: number): string => `${(ms / 1000).toFixed(1)} s`;
-  setResult({
+  pressLine({
     bad: !good,
     text: good
       ? `It works. Heard ${where} in ${secs(last.asr_ms)}${last.total_ms > last.asr_ms ? `, ready in ${secs(last.total_ms)}` : ""}.`
@@ -575,9 +573,14 @@ function showResult(v: RouteView): void {
   });
 }
 
+let recheckTimer: ReturnType<typeof setTimeout> | undefined;
+
 /** D75: say up front when a press cannot work (no model, no server) instead
- *  of leaving the step silent. A press that already reached the pill wins. */
+ *  of leaving the step silent. A press that already reached the pill wins.
+ *  While the line is shown it is checked again every RECHECK_MS, so a server
+ *  that comes up or a model that finishes clears it. */
 async function checkReady(): Promise<void> {
+  clearTimeout(recheckTimer);
   const opened = st.openedAt;
   let line: TryLine | null;
   try {
@@ -585,15 +588,27 @@ async function checkReady(): Promise<void> {
   } catch (e) {
     line = readinessErrorLine(e);
   }
-  if (!tryOpen() || st.openedAt !== opened || st.pressed) return;
-  if (line) setResult(line);
-  else $<HTMLElement>("ob_result").hidden = true; // ready now (a download finished)
-  st.readyLine = !!line;
+  if (!tryOpen() || st.openedAt !== opened || st.line === "press") return;
+  if (line) {
+    setResult(line);
+    st.line = "check";
+    recheckTimer = setTimeout(recheckReady, RECHECK_MS);
+  } else {
+    if (st.line === "check") $<HTMLElement>("ob_result").hidden = true; // ready now
+    st.line = "none";
+  }
 }
 
-/** A model finished downloading or loading while the step is open: check again. */
+/** Check again while the "can't work yet" line is up (timer, model events). */
 function recheckReady(): void {
-  if (tryOpen() && st.readyLine && !st.pressed) void checkReady();
+  if (tryOpen() && st.line === "check") void checkReady();
+}
+
+/** A press reached the pill or a dictation finished: it owns the line now. */
+function pressLine(line: TryLine): void {
+  clearTimeout(recheckTimer);
+  st.line = "press";
+  setResult(line);
 }
 
 // ------------------------------------------------------------ navigation
@@ -611,8 +626,7 @@ function show(s: Step): void {
   if (s === "try") {
     renderTry();
     st.openedAt = Date.now();
-    st.pressed = false;
-    st.readyLine = false;
+    st.line = "none";
     $<HTMLElement>("ob_result").hidden = true;
     void checkReady();
     $<HTMLTextAreaElement>("ob_try_box").focus();
@@ -768,9 +782,7 @@ export const onboarding = {
     void onEvent<PillState>("dictation:status", (e) => {
       if (!tryOpen()) return;
       const line = pillLine(e.payload);
-      if (!line) return;
-      st.pressed = true;
-      setResult(line);
+      if (line) pressLine(line);
     });
     void onEvent<null>("history:changed", () => {
       if (!tryOpen()) return;
@@ -780,7 +792,7 @@ export const onboarding = {
       setTimeout(() => {
         if (st.resultAt >= at - 2000 || !tryOpen()) return;
         st.resultAt = Date.now();
-        setResult({ text: "It works. Your dictation arrived.", bad: false });
+        pressLine({ text: "It works. Your dictation arrived.", bad: false });
       }, 300);
     });
   },

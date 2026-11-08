@@ -8,13 +8,12 @@ import assert from "node:assert/strict";
 import { pillLine, readinessErrorLine, readinessLine } from "../dist/lib/setup-try.js";
 
 test("ready: nothing to say before the user talks", () => {
-  assert.equal(readinessLine({ ready: true, engine: "local", message: null }), null);
+  assert.equal(readinessLine({ state: "ready", engine: "local" }), null);
 });
 
 test("not ready: the backend's reason, in a bad line", () => {
   const l = readinessLine({
-    ready: false,
-    engine: null,
+    state: "not_ready",
     message: "There's no speech model on this PC yet (nothing at C:\\models\\ggml-base.bin).",
   });
   assert.ok(l?.bad);
@@ -23,10 +22,10 @@ test("not ready: the backend's reason, in a bad line", () => {
 });
 
 test("not ready while the model downloads: wait, not an error", () => {
-  const l = readinessLine({ ready: false, engine: null, message: "There's no speech model on this PC yet." }, true);
+  const l = readinessLine({ state: "not_ready", message: "There's no speech model on this PC yet." }, true);
   assert.equal(l?.bad, false);
   assert.match(l.text, /still downloading/);
-  assert.equal(readinessLine({ ready: true, engine: "remote", message: null }, true), null);
+  assert.equal(readinessLine({ state: "ready", engine: "remote" }, true), null);
 });
 
 test("a failed check still says something", () => {
