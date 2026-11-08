@@ -2,7 +2,8 @@
 //! flow-server with a temp library, the Windows planner and installer on
 //! top of flow-remote's client. A custom model downloads, verifies,
 //! installs under `models\server\<id>` and is selected; a catalogue
-//! model comes from the server (its pins), never from Hugging Face.
+//! model comes from the server (its pins), never from Hugging Face, and
+//! with Hugging Face unreachable it still installs and resumes (D79).
 #![cfg(feature = "remote")]
 
 use std::path::{Path, PathBuf};
@@ -13,7 +14,7 @@ use flow_core::config::{AsrBackend, ModelConfig};
 use flow_remote::library::LibraryClient;
 use flow_router::ServerConfig;
 use flow_windows::model_download::{self as md, CatalogEntry, ModelEngine, ModelFile, State, Stop};
-use flow_windows::prefs::{AsrEngineChoice, Prefs};
+use flow_windows::prefs::{AsrEngineChoice, ModelSource, Prefs};
 use flow_windows::server_library::{self as sl, Origin, Slot};
 use sha2::{Digest, Sha256};
 
@@ -199,7 +200,7 @@ fn catalogue_models_come_from_the_server_never_hugging_face() {
         hf_calls.fetch_add(1, Ordering::SeqCst);
         Err("Hugging Face must not be asked".into())
     };
-    let origin = Origin::of(Some(cfg.clone()));
+    let origin = Origin::of(Some(cfg.clone()), ModelSource::Server);
     let e = pinned_entry();
 
     // The server's copy matches the (synthetic) pin: installed where the
@@ -255,6 +256,84 @@ fn catalogue_models_come_from_the_server_never_hugging_face() {
         hf_calls.load(Ordering::SeqCst),
         0,
         "no Hugging Face request while a server is set"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Hugging Face as an air-gapped network sees it: every request fails.
+struct Blocked(&'static AtomicUsize);
+
+impl md::Fetch for Blocked {
+    fn open(&self, _url: &str) -> Result<Box<dyn std::io::Read + Send>, String> {
+        self.0.fetch_add(1, Ordering::SeqCst);
+        Err("huggingface.co: network unreachable".into())
+    }
+}
+
+#[test]
+fn with_no_internet_the_server_serves_and_resumes_catalogue_models() {
+    let d = tmp("offline");
+    put(
+        &d.join("lib/wb/model.toml"),
+        b"kind = \"stt\"\ntitle = \"Whisper base\"\ncatalogue_id = \"whisper-base\"\n",
+    );
+    put(&d.join("lib/wb/ggml-base.bin"), CATALOGUE);
+    let (s, cfg) = start(&d.join("lib"), &d.join("state"), 1);
+    static HF_REQUESTS: AtomicUsize = AtomicUsize::new(0);
+    let hf =
+        || -> Result<Box<dyn md::Fetch + Send>, String> { Ok(Box::new(Blocked(&HF_REQUESTS))) };
+    let e = pinned_entry();
+
+    // "Download from: Hugging Face" fails on this network.
+    let r = sl::download_catalogue(
+        &e,
+        &d.join("hf"),
+        &Origin::of(Some(cfg.clone()), ModelSource::HuggingFace),
+        "t",
+        &hf,
+        &AtomicBool::new(false),
+        &mut |_| {},
+    );
+    assert!(matches!(r, Err(Stop::Failed(_))), "{r:?}");
+    assert_eq!(HF_REQUESTS.swap(0, Ordering::SeqCst), 1);
+
+    // "Your server" (the default): an interrupted download left a prefix
+    // in the `.part` file; the retry fetches only the rest with a Range
+    // request, checks the pin and installs it.
+    let models = d.join("models");
+    let cut = 8;
+    put(&models.join("ggml-base.bin.part"), &CATALOGUE[..cut]);
+    let mut events = Vec::new();
+    let path = sl::download_catalogue(
+        &e,
+        &models,
+        &Origin::of(Some(cfg), Prefs::default().model_source),
+        "t",
+        &hf,
+        &AtomicBool::new(false),
+        &mut |p| events.push(p),
+    )
+    .unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), CATALOGUE);
+    assert!(!models.join("ggml-base.bin.part").exists());
+    assert!(events.iter().any(|p| p.state == State::Verifying));
+    assert_eq!(
+        HF_REQUESTS.load(Ordering::SeqCst),
+        0,
+        "Hugging Face never asked"
+    );
+    let mut sent = 0;
+    for _ in 0..50 {
+        sent = s.handle.keys().unwrap().list()[0].usage.download_bytes;
+        if sent > 0 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert_eq!(
+        sent,
+        (CATALOGUE.len() - cut) as u64,
+        "only the rest was sent"
     );
     let _ = std::fs::remove_dir_all(&d);
 }
