@@ -9,7 +9,7 @@ use flow_core::config::{FieldContext, SessionConfig};
 use flow_core::dictionary::{DictEntry, Dictionary};
 use flow_core::{CommitStatus, FlowCore};
 
-const CHUNK: usize = 640; // 40 ms @ 16 kHz, Wispr's chunk size
+const CHUNK: usize = 640; // 40 ms @ 16 kHz, the clients' chunk size
 
 fn speech(ms: usize) -> Vec<i16> {
     (0..ms * 16)
@@ -299,9 +299,9 @@ fn learn_edit_uses_session_dictionary() {
         ..Default::default()
     })
     .unwrap();
-    let c = core.learn_edit("use cubernetes and whisper", "use Kubernetes and Wispr");
+    let c = core.learn_edit("use cubernetes and whisper", "use Kubernetes and Zephyr");
     assert_eq!(c.len(), 1);
-    assert_eq!(c[0].corrected, "Wispr");
+    assert_eq!(c[0].corrected, "Zephyr");
 }
 
 #[test]
@@ -343,7 +343,7 @@ fn postprocess_dictionary_and_cursor_context_applied() {
 
 #[test]
 fn pronoun_i_keeps_capital_mid_sentence() {
-    // Intentional divergence from Wispr vector ctx_pronoun_I_quirk.
+    // Intentional divergence from vector ctx_pronoun_I_quirk.
     let ctx = FieldContext {
         before: "and then".into(),
         ..Default::default()
@@ -375,7 +375,7 @@ fn press_enter_is_reported_on_windows_only() {
         FieldContext::default(),
     );
     assert!(r.press_enter);
-    // Wispr trims before the phrase; the closing period (D25) moves onto
+    // The text is trimmed before the phrase; the closing period (D25) moves onto
     // the text, as with server-punctuated "Send it press enter."
     assert_eq!(r.final_text, "Send it.");
     let android = SessionConfig {
@@ -1261,7 +1261,8 @@ fn wait_ms_reports_a_commit_queued_behind_the_worker() {
     }
 }
 
-/// Ticket 6aded21e: four dictation shapes the fallback rules mangled (a quote, money and a height), with AI cleanup off as Android sends it.
+/// Ticket 6aded21e: four dictation shapes the fallback rules mangled (a list,
+/// a quote, money and a height), with AI cleanup off as Android sends it.
 #[test]
 fn fallback_rules_fix_the_four_ab_shapes_without_ai() {
     use flow_core::config::{CleanupLevel, Platform};
@@ -1283,8 +1284,8 @@ fn fallback_rules_fix_the_four_ab_shapes_without_ai() {
         "Okay:\n\n1. Send the invoice\n2. Call the landlord\n3. Please remind me about the dentist"
     );
     assert_eq!(
-        run("he told me and I quote I'm never doing that again unquote and then he did it the next day"),
-        "He told me, \"I'm never doing that again,\" and then he did it the next day."
+        run("she wrote and I quote the build is green again unquote and then she logged off"),
+        "She wrote, \"The build is green again,\" and then she logged off."
     );
     for s in [
         "we spent about two hundred and fifty dollars on the trip in parentheses not counting gas which was another sixty dollars",

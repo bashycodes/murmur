@@ -1,5 +1,5 @@
-//! Mute/duck other apps' audio while dictating (Wispr's `shouldMuteAudio`,
-//! default on for Windows). Plan + restore rules are pure; `win` enumerates
+//! Mute/duck other apps' audio while dictating (on by default on
+//! Windows). Plan + restore rules are pure; `win` enumerates
 //! WASAPI render sessions (`IAudioSessionManager2` → `ISimpleAudioVolume`).
 
 #[cfg(windows)]

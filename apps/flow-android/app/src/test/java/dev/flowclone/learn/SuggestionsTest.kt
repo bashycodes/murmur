@@ -12,16 +12,16 @@ class SuggestionsTest {
     private fun cand(heard: String, word: String) = LearnCandidate(original = heard, corrected = word)
 
     @Test fun addSkipsKnownAndDismissedAndCountsRepeats() {
-        val r = Suggestions().add(listOf(cand("whisper", "Wispr"), cand("cooper netties", "Kubernetes")), "com.slack", 1, listOf(DictEntry("kubernetes")))
-        assertEquals(listOf("Wispr"), r.added.map { it.word })
+        val r = Suggestions().add(listOf(cand("tailskale", "Tailscale"), cand("cooper netties", "Kubernetes")), "com.slack", 1, listOf(DictEntry("kubernetes")))
+        assertEquals(listOf("Tailscale"), r.added.map { it.word })
         assertEquals(1, r.next.pending.size)
-        val again = r.next.add(listOf(cand("whisper", "wispr")), "x", 2, emptyList())
+        val again = r.next.add(listOf(cand("tailskale", "tailscale")), "x", 2, emptyList())
         assertTrue("a repeat is not new", again.added.isEmpty())
         assertEquals(2, again.next.pending.single().count)
-        val gone = again.next.dismiss("WISPR")
+        val gone = again.next.dismiss("TAILSCALE")
         assertTrue(gone.pending.isEmpty())
-        assertTrue("dismissed words are never suggested again", gone.add(listOf(cand("whisper", "Wispr")), "x", 3, emptyList()).added.isEmpty())
-        assertTrue(gone.add(listOf(cand("whisper", "Wispr")), "x", 3, emptyList()).next.pending.isEmpty())
+        assertTrue("dismissed words are never suggested again", gone.add(listOf(cand("tailskale", "Tailscale")), "x", 3, emptyList()).added.isEmpty())
+        assertTrue(gone.add(listOf(cand("tailskale", "Tailscale")), "x", 3, emptyList()).next.pending.isEmpty())
     }
 
     @Test fun replacementTargetsCountAsKnown() {

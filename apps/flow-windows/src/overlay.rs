@@ -2,7 +2,7 @@
 //! click-through; in hands-free mode the shell polls the cursor and turns
 //! click-through off only while it is over the locked pill, so the ✕/✓
 //! buttons work without the transparent canvas eating clicks meant for the
-//! app underneath (Wispr does the same with `setShape` / alpha hit-testing).
+//! app underneath.
 //!
 //! Geometry mirrors `ui/dist/overlay.css`: the pill is centred horizontally,
 //! its bottom 14 CSS px above the canvas bottom; locked (hands-free) = 187 x 36.

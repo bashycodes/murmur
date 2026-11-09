@@ -93,7 +93,7 @@ fn hebrew_skips_english_rules_but_keeps_tidy_and_closing_period() {
     let (core, _, _) = routed("x", raw);
     let r = dictate(&core, lang("he"));
     assert_eq!(r.status, CommitStatus::RawTranscript, "{r:?}");
-    // (The trailing space after a sentence end is the cursor-context step, as in English.)
+    // (The trailing space after a sentence end is added as in English.)
     assert_eq!(
         r.final_text,
         "שלום um מה comma twenty נשמע scratch that היום. "
@@ -105,18 +105,18 @@ fn hebrew_skips_english_rules_but_keeps_tidy_and_closing_period() {
 
 #[test]
 fn hebrew_keeps_dictionary_and_press_enter() {
-    let (core, _, _) = routed("x", "שלחתי את זה ב וויספר press enter");
+    let (core, _, _) = routed("x", "שלחתי את זה ב זפיר press enter");
     let r = dictate(
         &core,
         SessionConfig {
             dictionary: Dictionary {
-                entries: vec![DictEntry::replacement("וויספר", "Wispr")],
+                entries: vec![DictEntry::replacement("זפיר", "Zephyr")],
             },
             ..lang("he")
         },
     );
     assert!(r.press_enter, "{r:?}");
-    assert_eq!(r.final_text, "שלחתי את זה ב Wispr.");
+    assert_eq!(r.final_text, "שלחתי את זה ב Zephyr.");
 }
 
 /// Records the prompt; answers with a fixed text.

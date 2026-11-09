@@ -4,7 +4,7 @@
 # engine configs, via parity_ab.py. All data paths come from the
 # environment; rows land in $OUT/<label>/<set>-<config>.jsonl.
 #
-#   CLI=<flow-cli, feature parakeet> PARITY=<wispr-flow eval dir: cfg/, clips/>
+#   CLI=<flow-cli, feature parakeet> PARITY=<parity eval dir: cfg/, clips/>
 #   EN=<en-set WAV dir> PC=<PC recordings WAV dir> HE=<FLEURS he WAV dir>
 #   UNI=<parakeet unified-en model> HEM=<parakeet he model> OUT=<private dir>
 #   parity_sets.sh <label>

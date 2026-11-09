@@ -38,14 +38,14 @@ const TEMPLATE = `
     </div>
     <div class="fl-card lw-ins-card">
       <div class="fl-metric" id="ins_fixes">0</div>
-      <div class="fl-metric-cap">Fixes made for you</div>
+      <div class="fl-metric-cap">Corrections applied</div>
       <div class="lw-ins-rule"></div>
-      <div class="lw-ins-kv"><span>AI cleanup edits</span><span id="ins_fix_ai">0</span></div>
-      <div class="lw-ins-kv"><span>Dictionary fixes</span><span id="ins_fix_dict">0</span></div>
+      <div class="lw-ins-kv"><span>By AI cleanup</span><span id="ins_fix_ai">0</span></div>
+      <div class="lw-ins-kv"><span>From your dictionary</span><span id="ins_fix_dict">0</span></div>
     </div>
     <div class="fl-card lw-ins-card">
       <div class="fl-metric" id="ins_total">0</div>
-      <div class="fl-metric-cap">Total words dictated</div>
+      <div class="fl-metric-cap">Words dictated so far</div>
       <div class="lw-ins-rule"></div>
       <div class="lw-split" id="ins_split"></div>
       <span class="lw-ins-note" id="ins_split_note">Where your speech was turned into text this week</span>

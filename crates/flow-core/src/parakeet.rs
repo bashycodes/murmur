@@ -254,13 +254,13 @@ mod tests {
         let d = Dictionary {
             entries: vec![
                 DictEntry::word("Kubernetes"),
-                DictEntry::replacement("wispr", "Wispr Flow"),
+                DictEntry::replacement("zephyr", "Zephyr Cloud"),
             ],
         };
         let p = build_initial_prompt(&d, &["Alice".into()]);
         assert_eq!(
             hotwords_from_prompt(&p),
-            ["Kubernetes", "Wispr Flow", "Alice"]
+            ["Kubernetes", "Zephyr Cloud", "Alice"]
         );
         assert!(hotwords_from_prompt("").is_empty());
     }

@@ -1,6 +1,6 @@
 """Probe (stray "yeah", 2026-11-07, D72 parity check): compare two
 parity_ab.py runs (before / after) of one clip set. Prints numbers only:
-pooled WER and term hits (with the wispr_parity scorer and its reference
+pooled WER and term hits (with the parity scorer and its reference
 file, or a plain Unicode word WER against a FLEURS-style TSV), how many
 clips changed text and the shape of each change (words added / removed at
 the end, elsewhere), and from the after run's `.debug` trace how many

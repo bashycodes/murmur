@@ -343,7 +343,7 @@ Session semantics (2026-10-22, review fixes):
  "languages":{"he":{"asr_backend":"sherpa_online" /* or "parakeet" */, "asr_path":"…/files/hebrew/zipformer-he"}},
  "load_language":"he"}
 // SessionConfig
-{"languages":["en"], "dictionary":[{"word":"wispr","replacement":"Wispr","isSnippet":false}],
+{"languages":["en"], "dictionary":[{"word":"tailscail","replacement":"Tailscale","isSnippet":false}],
  "styles":{"personal":"formal","work":"formal","email":"formal","other":"formal"},
  "cleanup_level":"none", "raw_mode":false, "max_samples":4800000, "platform":"android",
  "partial_interval_ms":null, "llm_timeout_ms":1500,

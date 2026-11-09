@@ -11,20 +11,20 @@ import org.junit.Test
 
 /** Dictionary & Snippets tabs (rows, labels, empty states) and the edit form (Save when changed + valid). */
 class DictionaryPagesTest {
-    private val wispr = DictEntry("wisper", "Wispr", false)
+    private val tailscale = DictEntry("tailscail", "Tailscale", false)
     private val kubectl = DictEntry("kubectl", null, false)
     private val sig = DictEntry("my signature", "Best,\nAlex", true)
-    private val all = listOf(wispr, kubectl, sig)
+    private val all = listOf(tailscale, kubectl, sig)
 
     @Test fun listPagesShowOnlyTheirKindSortedAndFiltered() {
-        assertEquals(listOf(kubectl, wispr), DictionaryPages.entries(all, Kind.WORDS, ""))
+        assertEquals(listOf(kubectl, tailscale), DictionaryPages.entries(all, Kind.WORDS, ""))
         assertEquals(listOf(sig), DictionaryPages.entries(all, Kind.SNIPPETS, ""))
-        assertEquals(listOf(wispr), DictionaryPages.entries(all, Kind.WORDS, "wis"))
+        assertEquals(listOf(tailscale), DictionaryPages.entries(all, Kind.WORDS, "tai"))
         assertEquals(listOf(sig), DictionaryPages.entries(all, Kind.SNIPPETS, "alex"))
     }
 
     @Test fun tabRowsShowHeardArrowWordAndSnippetText() {
-        assertEquals(DictionaryPages.Row("wisper", "Wispr", "", "wisper, replaced with Wispr"), DictionaryPages.row(wispr))
+        assertEquals(DictionaryPages.Row("tailscail", "Tailscale", "", "tailscail, replaced with Tailscale"), DictionaryPages.row(tailscale))
         assertEquals(DictionaryPages.Row(null, "kubectl", "", "kubectl"), DictionaryPages.row(kubectl))
         assertEquals(DictionaryPages.Row(null, "my signature", "Best, Alex", "my signature, inserts Best, Alex"), DictionaryPages.row(sig))
         val long = DictionaryPages.row(DictEntry("x", "a".repeat(200), true)).detail
@@ -65,8 +65,8 @@ class DictionaryPagesTest {
     }
 
     @Test fun duplicateWordIsAnInlineWordError() {
-        val d = DictionaryDraft.new(Kind.WORDS).copy(word = "WISPER")
-        assertEquals("\"WISPER\" is already in the dictionary.", d.visibleErrors(all)[Field.WORD])
+        val d = DictionaryDraft.new(Kind.WORDS).copy(word = "TAILSCAIL")
+        assertEquals("\"TAILSCAIL\" is already in the dictionary.", d.visibleErrors(all)[Field.WORD])
         assertFalse(d.canSave(all))
     }
 
@@ -81,16 +81,16 @@ class DictionaryPagesTest {
     }
 
     @Test fun editingAnEntryIsCleanUntilChangedAndReplacesInPlace() {
-        val d = DictionaryDraft.of(wispr)
+        val d = DictionaryDraft.of(tailscale)
         assertFalse(d.dirty)
         assertFalse("unchanged", d.canSave(all))
         // Whitespace-only changes normalise away: still clean.
-        assertFalse(d.copy(word = " wisper ").dirty)
-        val renamed = d.copy(word = "whisper", replacement = "Wispr")
+        assertFalse(d.copy(word = " tailscail ").dirty)
+        val renamed = d.copy(word = "tailskale", replacement = "Tailscale")
         assertTrue(renamed.canSave(all))
-        assertEquals(listOf(DictEntry("whisper", "Wispr", false), kubectl, sig), renamed.save(all))
+        assertEquals(listOf(DictEntry("tailskale", "Tailscale", false), kubectl, sig), renamed.save(all))
         // Keeping its own word is not a clash.
-        assertTrue(d.copy(replacement = "Wispr Flow").canSave(all))
+        assertTrue(d.copy(replacement = "Tailscale VPN").canSave(all))
     }
 
     @Test fun switchingKindIsAChangeAndKeepsValidation() {
@@ -108,7 +108,7 @@ class DictionaryPagesTest {
             DictionaryDraft.new(Kind.WORDS).copy(word = ""),
             DictionaryDraft.new(Kind.SNIPPETS).copy(word = "b", replacement = " "),
             DictionaryDraft.new(Kind.SNIPPETS).copy(word = "b", replacement = "text"),
-            DictionaryDraft.of(sig).copy(word = "wisper"),
+            DictionaryDraft.of(sig).copy(word = "tailscail"),
         )
         for (c in cases) {
             val old = DictionaryEdit.validate(all, c.original?.word, c.entry(), wantSnippet = c.snippet)

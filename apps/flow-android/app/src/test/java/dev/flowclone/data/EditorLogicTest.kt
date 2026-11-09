@@ -158,21 +158,21 @@ class EnginePlanTest {
 }
 
 class DictionaryEditTest {
-    private val all = listOf(DictEntry("Wispr"), DictEntry("brb", "be right back", true), DictEntry("kubectl", "kubectl"))
+    private val all = listOf(DictEntry("Tailscale"), DictEntry("brb", "be right back", true), DictEntry("kubectl", "kubectl"))
 
     @Test fun validation() {
         assertNotNull(DictionaryEdit.validate(all, null, DictEntry(" ")))
         assertNotNull(DictionaryEdit.validate(all, null, DictEntry("x".repeat(61))))
         assertNull(DictionaryEdit.validate(all, null, DictEntry("x".repeat(60))))
         assertNotNull(DictionaryEdit.validate(all, null, DictEntry("sig", null, isSnippet = true)))
-        assertNotNull("duplicate", DictionaryEdit.validate(all, null, DictEntry("wispr")))
-        assertNull("editing itself is fine", DictionaryEdit.validate(all, "Wispr", DictEntry("wispr", "Wispr")))
-        assertNotNull("rename onto another", DictionaryEdit.validate(all, "Wispr", DictEntry("BRB")))
+        assertNotNull("duplicate", DictionaryEdit.validate(all, null, DictEntry("tailscale")))
+        assertNull("editing itself is fine", DictionaryEdit.validate(all, "Tailscale", DictEntry("tailscale", "Tailscale")))
+        assertNotNull("rename onto another", DictionaryEdit.validate(all, "Tailscale", DictEntry("BRB")))
     }
 
     @Test fun applyEditKeepsPositionAndRenames() {
         val out = DictionaryEdit.apply(all, "brb", DictEntry("brb2", "be right back!", true))
-        assertEquals(listOf("Wispr", "brb2", "kubectl"), out.map { it.word })
+        assertEquals(listOf("Tailscale", "brb2", "kubectl"), out.map { it.word })
         assertEquals("be right back!", out[1].replacement)
     }
 
@@ -183,10 +183,10 @@ class DictionaryEditTest {
     }
 
     @Test fun filterByTabAndQuery() {
-        assertEquals(listOf("kubectl", "Wispr"), DictionaryEdit.filter(all, "", DictionaryEdit.Tab.WORDS).map { it.word })
+        assertEquals(listOf("kubectl", "Tailscale"), DictionaryEdit.filter(all, "", DictionaryEdit.Tab.WORDS).map { it.word })
         assertEquals(listOf("brb"), DictionaryEdit.filter(all, "", DictionaryEdit.Tab.SNIPPETS).map { it.word })
         assertEquals(listOf("brb"), DictionaryEdit.filter(all, "RIGHT", DictionaryEdit.Tab.ALL).map { it.word })
-        assertEquals(listOf("Wispr"), DictionaryEdit.filter(all, "wis", DictionaryEdit.Tab.ALL).map { it.word })
+        assertEquals(listOf("Tailscale"), DictionaryEdit.filter(all, "tai", DictionaryEdit.Tab.ALL).map { it.word })
     }
 
     @Test fun normalizesWhitespaceAndSnippetWithoutTextIsAWord() {

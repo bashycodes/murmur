@@ -1,4 +1,4 @@
-//! flow-core: shared Rust core of Murmur, the local Wispr Flow clone (spec §9 v2).
+//! flow-core: shared Rust core of Murmur, a self-hosted dictation app.
 //!
 //! See `docs/core-architecture.md`. Entry point: [`FlowCore`].
 pub mod align;
@@ -46,7 +46,7 @@ pub use engine::{
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Revision of the deterministic pipeline (VAD, hallucination guard,
-/// spoken cleanup, Wispr post-processing, paste segments). Bump it whenever
+/// spoken cleanup, client post-processing, paste segments). Bump it whenever
 /// any of them changes output for the same input, so a hybrid client and
 /// its server can detect pipeline skew (D17).
 pub const POSTPROCESS_REV: &str = "2026-10-26.1";

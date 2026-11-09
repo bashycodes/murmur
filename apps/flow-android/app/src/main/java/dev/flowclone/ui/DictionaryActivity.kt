@@ -90,7 +90,7 @@ class DictionaryActivity : Activity() {
                 wordRow = fieldRow(
                     if (d.snippet) "Trigger phrase" else "Word or name", d.word,
                     InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS,
-                    help = "Up to ${DictionaryEdit.MAX_WORD} characters", hint = if (d.snippet) "my address" else "Wispr",
+                    help = "Up to ${DictionaryEdit.MAX_WORD} characters", hint = if (d.snippet) "my address" else "Tailscale",
                 ) { validate() }
                 replRow = fieldRow(
                     replLabel(d.snippet), d.replacement,

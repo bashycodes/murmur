@@ -5,8 +5,8 @@ Phase 1 and Phase 2 in the crates; shells (Phase 3) work from
 `docs/proposals/streaming-asr-shell-api.md`. Measured before/after: §8.
 Differences from the design below are listed in §9. Originally: research + design, 2026-10-23. Probe:
 `tools/probes/prototypes/segmented_asr_2026_10_23.py` (dated). Raw rows:
-`~/Claude/research/wispr/.cache/segmented-2026-10-23/20261023-152738/rows.jsonl`
-(A+B+C) and `.../20261023-155524/rows.jsonl` (A+C rerun; `20261023-152113` is a void first run that overflowed the CLI's ring).
+`$CACHE/segmented-2026-10-23/20261023-152738/rows.jsonl`
+(`$CACHE` = the local bench cache, outside the repo; A+B+C) and `.../20261023-155524/rows.jsonl` (A+C rerun; `20261023-152113` is a void first run that overflowed the CLI's ring).
 
 **Measurement caveat.** This box was at load 10-29 on 8 threads during every
 run (other agents: Gradle, rustc, an STT survey). Absolute times here are
@@ -275,7 +275,7 @@ is ≈ 2.0 s instead of today's ~6 s, without touching the endpoint. The
 endpoint then becomes the *only* latency, which makes lowering it
 worthwhile. 1500 ms saves another 0.5 s. 1200 ms starts to end
 dictations on thinking pauses: mid-monologue hesitation pauses of
-1-2 s are common, and Wispr has no value to copy (D19). Recommendation:
+1-2 s are common (D19). Recommendation:
 default 1500 ms after Phase 1 ships, keep the 300-10000 setting, and log
 the longest mid-dictation pause per session (local history only), so the
 default can be tuned on the user's own data.
@@ -394,7 +394,7 @@ test flow-server on 127.0.0.1 (one worker, same model). Clips are the
 probe's LibriSpeech joins (700 ms gaps). "before" = base commit `0d61885`;
 "P0" = this branch without segmentation; "D22" = this branch with
 `segment_pause_ms: 800`. Raw TSVs and server logs:
-`~/Claude/research/wispr/.cache/streaming-latency-2026-10-23/20261023-173931/`.
+`$CACHE/streaming-latency-2026-10-23/20261023-173931/`.
 The box was shared with other agents (load varied during the run), so read the ratios.
 
 | audio | before local / server | P0 local / server | **D22 local / server** | D22 server log: pieces, wait, tail asr, pre-asr |
@@ -504,8 +504,8 @@ decoded at commit on a loaded box. Still flat in length.
   join (and every spliced span) capitalises the word after `.`/`?`/`!`;
   the bridge covers 6 s before the cut (4 s after, so it is still
   decoded 4 s after the cut while recording); the engine closes an open
-  dictation of ≥ 4 words before the client post-processing (`postprocess::terminal`). The
-  trailing space in `final_text` is the cursor-context rule and stays.
+  dictation of ≥ 4 words before the terminal-punctuation pass (`postprocess::terminal`). The
+  trailing space in `final_text` is the post-processing paste-spacing rule and stays.
   Bridge left side, `segment_bench::segmented_punctuation_matches_whole_clip`
   (punctuated-token error vs the whole clip, `bridge` mode; Parakeet-unified
   int8, so the absolute numbers differ from the table above):

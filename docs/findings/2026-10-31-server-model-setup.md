@@ -68,14 +68,14 @@ The box was loaded (other agents' builds, load 6–13, swap ~95 % full).
 
 ## Cleanup suite through the server (`server_clean_bench_2026_10_31.py`)
 
-The 102 bench cases (88-suite + 14 Wispr), raw input, prompt v4c, one `clean`
+The 102 bench cases (88-suite + 14 reference cases), raw input, prompt v4c, one `clean`
 each, 8 s timeout, scored with `ai_cleanup_bench_2026_10_26/score.py`. This is
 **raw-in AI cleanup without guard or fallback rules** (the server returns the
 model's answer; the client guards under D36), so it is comparable to the
 "raw-in" rows, not to the 92 % production pipeline (rules → v2 → guard → skip
 inside a session), which `clean` cannot exercise.
 
-| run | 88-suite | target-closeness | LLM p50 / p90 |
+| run | 88-suite | reference closeness | LLM p50 / p90 |
 |---|---|---|---|
 | this box, server `clean`, v4c, 1.5B (loaded box) | **65 %** | 0.803 | 2252 / 4844 ms (5 timeouts) |
 | 2026-10-26 raw-in v4b 1.5B (this box, local runner) | 69 % | 0.866–0.871 | ~1.5 s |

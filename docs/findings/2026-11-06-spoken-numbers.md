@@ -1,6 +1,6 @@
 # 2026-11-06: spoken numbers, times and money on the on-device path (D63)
 
-**Question.** On the phone, the Wispr parity English set (30 lines) wrote
+**Question.** On the phone, the parity English set (30 lines) wrote
 clock times, ordinals and digit runs as words on most lines (like "eleven
 forty", "the twelfth"): format 6/14. Can the AI cleanup fix this without pre-AI number
 rules (owner principle: text quality belongs in the prompt and the model)?
@@ -110,8 +110,8 @@ it through.
   Quotes, parens, spoken marks, newline, ITN, casual, email and fillers are
   unchanged. Negatives go 18 → 17/19: "Don't forget that we have dinner at
   eight" is now cleaned, and the 1.5B drops "that" in both runs. This is the
-  D27 example, and it is the one real regression. Wispr closeness on the 14
-  Wispr pairs goes 0.863 → 0.848. One pair hit the 3 s timeout, and others
+  D27 example, and it is the one real regression. Reference closeness on the 14
+  reference pairs goes 0.863 → 0.848. One pair hit the 3 s timeout, and others
   changed commas.
 * Parity main set (13 clips): format 18 → 18/31, WER 10.5 → 10.0–10.2 %,
   instructions kept 3/3.

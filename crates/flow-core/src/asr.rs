@@ -1,15 +1,15 @@
 //! ASR engine abstraction + Whisper initial-prompt builder.
 //!
 //! Engines take the whole utterance (16 kHz mono f32) and return text; the
-//! session worker owns buffering. Bias replaces Wispr's server-side
-//! DynamicVocabulary with Whisper's `initial_prompt`.
+//! session worker owns buffering. Vocabulary bias goes through Whisper's
+//! `initial_prompt`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crate::dictionary::Dictionary;
 
-/// Whisper's prompt window is ~224 tokens; 200 words is Wispr's dictionary cap.
+/// Whisper's prompt window is ~224 tokens; 200 words keeps the dictionary inside it.
 pub const MAX_PROMPT_WORDS: usize = 200;
 
 /// Cooperative cancellation for best-effort decodes (live partials): the
@@ -332,11 +332,11 @@ mod tests {
         let d = Dictionary {
             entries: vec![
                 DictEntry::word("Kubernetes"),
-                DictEntry::replacement("wispr", "Wispr"),
+                DictEntry::replacement("zephyr", "Zephyr"),
             ],
         };
-        let p = build_initial_prompt(&d, &["Alice".into(), "Wispr".into()]);
-        assert_eq!(p, "Kubernetes, Wispr, Alice.");
+        let p = build_initial_prompt(&d, &["Alice".into(), "Zephyr".into()]);
+        assert_eq!(p, "Kubernetes, Zephyr, Alice.");
     }
 
     #[test]
@@ -364,20 +364,20 @@ mod tests {
     #[test]
     fn dedupe_terms_keeps_order_and_skips_seen() {
         let mut seen = Vec::new();
-        let d = dedupe_terms(["Kubernetes", " wispr ", "", "kubernetes"], &mut seen);
-        assert_eq!(d, ["Kubernetes", "wispr"]);
-        let s = dedupe_terms(["Alice", "WISPR"], &mut seen);
+        let d = dedupe_terms(["Kubernetes", " zephyr ", "", "kubernetes"], &mut seen);
+        assert_eq!(d, ["Kubernetes", "zephyr"]);
+        let s = dedupe_terms(["Alice", "ZEPHYR"], &mut seen);
         assert_eq!(s, ["Alice"]);
     }
 
     #[test]
     fn prompt_carries_prior_words_after_the_dictionary() {
-        assert_eq!(compose_prompt("Wispr.", None), "Wispr.");
-        assert_eq!(compose_prompt("Wispr.", Some(" ")), "Wispr.");
+        assert_eq!(compose_prompt("Zephyr.", None), "Zephyr.");
+        assert_eq!(compose_prompt("Zephyr.", Some(" ")), "Zephyr.");
         assert_eq!(compose_prompt("", Some("and then")), "and then");
         assert_eq!(
-            compose_prompt("Wispr.", Some("and then")),
-            "Wispr. and then"
+            compose_prompt("Zephyr.", Some("and then")),
+            "Zephyr. and then"
         );
         let big: String = (0..150).map(|i| format!("w{i}, ")).collect();
         assert_eq!(compose_prompt(&big, Some("x")), big);
@@ -409,7 +409,7 @@ mod tests {
     fn mock_records_last_request() {
         let m = MockAsr::new("x");
         let req = AsrRequest {
-            initial_prompt: "Wispr.".into(),
+            initial_prompt: "Zephyr.".into(),
             language: Some("de".into()),
             ..Default::default()
         };

@@ -10,15 +10,14 @@ strict guards, fallback rules, post-processing), and scored.
   test of the matrix: `crates/flow-replay/tests/matrix.rs`.
 * Score report: `score.py`, reusing
   `tools/probes/prototypes/ai_cleanup_bench_2026_10_26/score.py`'s
-  target-closeness and exact match. Test: `python3 -I tools/replay/test_score.py`.
+  closeness and exact match. Test: `python3 -I tools/replay/test_score.py`.
 
 ## Privacy
 
 Recordings and anything derived from them (transcripts, outputs, expected
 text) stay **out of the repo**: the corpus lives in a temp dir (pulled from
 the phone), and results go next to it (`run.sh` refuses an `--out` inside the
-repo). The only committed expected text is the Wispr A/B pairs already in
-`tools/probes/prototypes/wispr_ab_2026_10_25/pairs.jsonl`.
+repo). No expected text is committed.
 
 The OpenRouter key is read by the binary from
 `$HOME/.config/flow-clone/openrouter.key` (or `--key-file`) only when an
@@ -36,8 +35,9 @@ phone comparison.
 
 Expected text: `CORPUS/expected.json`, `{recording id (WAV stem): text}`
 (keys starting with `_` are comments), owner-editable. Recordings missing
-from it fall back to the Wispr output of the A/B pair whose script matches
-the phone's transcript (`pairs.jsonl`, closeness >= 0.6).
+from it fall back to the `expected` of the reference pair (`--pairs FILE`,
+JSONL `{id, spoken, expected}`) whose script matches the phone's transcript
+(closeness >= 0.6).
 
 ## Run
 
@@ -88,3 +88,5 @@ p50, cloud cost. The total OpenRouter spend is printed at the end.
 
 Not covered: on-phone replay (WAV-as-mic), the user dictionary (not in a
 corpus), and the local 1.5B on prompt v5 (no product path runs it).
+
+The cache default is `~/.cache/flow-clone`; set CACHE=<dir> to reuse an existing cache.

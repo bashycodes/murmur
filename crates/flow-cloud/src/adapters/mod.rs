@@ -128,24 +128,24 @@ mod tests {
             max_total_words: 4,
         };
         let terms: Vec<String> = [
-            "Wispr",
+            "Zephyr",
             "a very long phrase here",
             "Kubernetes1234",
             "line\nbreak",
             "<tag>",
-            "wispr",
+            "zephyr",
             "x y",
             "z",
         ]
         .iter()
         .map(|s| s.to_string())
         .collect();
-        assert_eq!(b.cap(&terms), ["Wispr", "line break", "tag"]);
+        assert_eq!(b.cap(&terms), ["Zephyr", "line break", "tag"]);
         let b2 = TermBudget {
             max_total_words: 3,
             ..b
         };
-        assert_eq!(b2.cap(&terms), ["Wispr", "line break"]);
+        assert_eq!(b2.cap(&terms), ["Zephyr", "line break"]);
         assert!(TermBudget::NONE.cap(&terms).is_empty());
     }
 }

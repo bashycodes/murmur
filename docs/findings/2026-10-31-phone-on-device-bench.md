@@ -37,7 +37,7 @@ inside the app on the device? Which should the phone default to?
 | App | 0.12.0 hybrid debug, `feat/android-bench` (`BenchActivity`) |
 | Run | `r3`: suite all, 4 threads, `pace=fast` (all audio pushed, then commit) |
 | Thermal | 0 → 0 for every model (no throttling) |
-| Fixtures | 40 LibriSpeech test-clean clips (353 s); 49 FLEURS he_il dev clips (416 s); 102 cleanup cases (88-suite + 14 Wispr targets) |
+| Fixtures | 40 LibriSpeech test-clean clips (353 s); 49 FLEURS he_il dev clips (416 s); 102 cleanup cases (88-suite + 14 reference cases) |
 | Harness | `tools/probes/android_bench/` (README); scored with `score.py` |
 
 All models were read in place from the app's storage. Qwen2.5-0.5B was skipped because
@@ -93,7 +93,7 @@ the guard, post-processing and the 3 s Android budget.
 | | qwen1.5b `prod` |
 |---|---|
 | **88-suite pass** | **92 %** (81/88); `v4c` 75 % |
-| Wispr exact / closeness / char ratio (14) | 2/14 / 0.796 / 0.859 |
+| reference exact / closeness / char ratio (14) | 2/14 / 0.796 / 0.859 |
 | guard rejects, strict and loose (good answers rejected) | 0 (0) |
 | reached the LLM | ~50 of 102 (52 `llm_skipped_clean`) |
 | answered | 37 |
@@ -112,7 +112,7 @@ the guard, post-processing and the 3 s Android budget.
   case starts, so these latencies may be pessimistic for back-to-back dictations.
 * **`v4c`** sends prompt v4c on the raw transcript, has no rules in front, and is judged
   with the product's strict guard, as in the 2026-10-30 laptop bench.
-  * It scores **75 %** on the 88-suite with target-closeness 0.812. The laptop CPU scored
+  * It scores **75 %** on the 88-suite with reference closeness 0.812. The laptop CPU scored
     74–76 % with 0.813 for the same model, so the phone's quantised build behaves the same.
   * Its LLM time is p50 **1977 ms** and p90 3262 ms. 15 of the 102 calls exceed 3 s, and
     the guard rejects 6 answers.

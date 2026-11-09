@@ -206,7 +206,7 @@ class DictationTraceTest {
     /**
      * 2026-10-23 phone diag (docs/findings/2026-10-23-phone-quality-regression.md): every device
      * line had endpoint_wait_ms=0. SilenceTracker's fixed bar (mean s^2 > 33856, RMS 184 ~ -45 dBFS,
-     * Wispr's "can't hear you" threshold) is below a real mic's room-noise floor, so trailing
+     * the "can't hear you" threshold) is below a real mic's room-noise floor, so trailing
      * silence after the last word still counts as signal. Expected: ~300 ms. Fixed by the noise-floor-adaptive
      * bar for the trailing measure (SilenceTracker).
      */

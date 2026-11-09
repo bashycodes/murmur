@@ -9,7 +9,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Main screen SETUP card: one row per permission in Wispr's order, the problem banner on top. */
+/** Main screen SETUP card: one row per permission in onboarding order, the problem banner on top. */
 class SetupChecklistTest {
     private val allOk = SetupChecklist.State(mic = true, overlay = true, a11y = Status.OK, batteryExempt = true, notifications = true)
 

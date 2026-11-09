@@ -78,7 +78,7 @@ class SilenceTrackerTest {
 
     @Test fun roomNoiseAfterSpeechIsTrailingSilence() {
         val t = SilenceTracker()
-        t.feed(300, noise(300)) // phone room noise ≈ −41 dBFS, above Wispr's fixed −45 dBFS bar
+        t.feed(300, noise(300)) // phone room noise ≈ −41 dBFS, above a fixed −45 dBFS bar
         t.feed(1000) { 3000 }
         t.feed(500, noise(300))
         assertEquals(500L, t.trailingSilenceMs)

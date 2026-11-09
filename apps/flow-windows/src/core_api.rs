@@ -1,4 +1,4 @@
-//! Seam to `flow-core` (spec 10 §9 v2 API).
+//! Seam to `flow-core` (the shell-facing v2 API).
 //!
 //! The shell codes against [`CoreApi`] only; `core_adapter.rs` implements it
 //! on top of `flow_core::FlowCore` (the shell's types are mapped there, so
@@ -17,7 +17,7 @@ pub use flow_core::paste::{PasteKey, PasteSegment};
 /// Which engine produced a result (D17), filled by the router.
 pub use flow_core::RouteInfo;
 
-/// Shared dictionary/snippet export shape (spec §9): `{word, replacement, isSnippet}`.
+/// Shared dictionary/snippet export shape: `{word, replacement, isSnippet}`.
 /// No replacement = vocabulary word (ASR bias); replacement = deterministic
 /// rewrite; `isSnippet` = the replacement is an expansion body.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

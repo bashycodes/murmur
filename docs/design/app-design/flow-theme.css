@@ -1,4 +1,4 @@
-/* Wispr Flow tokens (light theme), resolved from the design system's tokens.json.
+/* Design tokens (light theme), resolved from the design system's tokens.json.
    The system ships no tokens.css, so the bundle's var(--…) references are defined here. */
 :root {
   --sand-50:#fcfcfb;--sand-100:#faf9f7;--sand-200:#f8f7f3;--sand-300:#f7f6f2;--sand-400:#f6f5f1;--sand-500:#f5f4f0;--sand-600:#eeebe3;--sand-700:#c5c0b3;--sand-800:#a39d8e;--sand-900:#736e62;--sand-950:#4d4a42;
@@ -49,8 +49,7 @@
 .lw-dark .lw-route.is-cloud { background: var(--glow-900); color: var(--glow-200); }
 .lw-dark .fl-badge-success { background: rgba(52,211,153,0.15); color: #34d399; }
 
-/* Android: Wispr's Android app uses its own cool-grey Material-style surfaces.
-   Values sampled from screenshots of the Wispr Android app (not in the design system). */
+/* Android: cool-grey Material-style surfaces (not in the design system). */
 .lw-android {
   --a-bg:#eeeef0; --a-bg-settings:#f5f5f5; --a-card:#ffffff; --a-ink:#1a1a1a; --a-ink-2:#79767d;
   --a-outline:#cac4d0; --a-selected:#dcdcdc; --a-divider:#dae0dc; --a-button:#48454e;

@@ -260,7 +260,7 @@ object ProbePcm {
 }
 
 /**
- * Folder batch (parity scorecard): which files of a set folder run, their clip ids, and the one
+ * Folder batch (quality scorecard): which files of a set folder run, their clip ids, and the one
  * JSON line each (file, engine) run appends to the batch results file. Pure, so it unit-tests.
  */
 object ProbeBatchPlan {

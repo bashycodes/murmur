@@ -42,7 +42,7 @@ public class JniSmoke {
         NativeFlowCore.nativeSetContext(h, "not json"); // ignored
         System.out.println(NativeFlowCore.nativePartial(h));
         System.out.println(NativeFlowCore.nativeCommit(h));
-        System.out.println(NativeFlowCore.nativeLearnEdit(h, "ask whisper now", "ask Wispr now"));
+        System.out.println(NativeFlowCore.nativeLearnEdit(h, "ask whisper now", "ask Zephyr now"));
         check(!NativeFlowCore.nativeStartSession(h, "["), "bad json accepted");
         System.out.println("ERR " + NativeFlowCore.nativeLastError());
         NativeFlowCore.nativeCancel(h);
@@ -85,7 +85,7 @@ public class JniSmoke {
         }
         System.out.println(NativeFlowCore.nativeCommit(r));
         System.out.println(NativeFlowCore.nativeRouteStatus(r));
-        System.out.println(NativeFlowCore.nativeLearnEdit(r, "ask whisper now", "ask Wispr now"));
+        System.out.println(NativeFlowCore.nativeLearnEdit(r, "ask whisper now", "ask Zephyr now"));
         // D55: a local start stays on the phone, even with the server first and up.
         check(NativeFlowCore.nativeStartSessionLocal(r, rsess + "}") != null, "local start: " + NativeFlowCore.nativeLastError());
         for (int c = 0; c < 25; c++) {

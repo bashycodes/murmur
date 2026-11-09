@@ -1,7 +1,7 @@
 package dev.flowclone.insert
 
 /**
- * Injectable editor abstraction for the V3 insertion state machine (spec 07 §3.2).
+ * Injectable editor abstraction for the V3 insertion state machine.
  *
  * The Android implementation (`service/AndroidInsertionEnvironment`) adapts
  * `AccessibilityService.InputMethod` + `AccessibilityNodeInfo`; tests use fakes.
@@ -19,7 +19,7 @@ interface InputConnectionPort {
     fun getSurroundingText(before: Int, after: Int): SurroundingText?
 }
 
-/** Plain-value read of an editable node, used by the placeholder rules (06 §4). */
+/** Plain-value read of an editable node, used by the placeholder rules. */
 data class NodeSnapshot(
     val text: String?,
     val hint: String? = null,
@@ -42,7 +42,7 @@ interface EditableNode {
     fun setText(text: String): Boolean
 }
 
-/** Everything the inserter reads from the a11y service / InputMethod (07 §3.2 table). */
+/** Everything the inserter reads from the a11y service / InputMethod. */
 interface InsertionEnvironment {
     /** `onStartInput` seen and not yet finished. */
     fun isInputSessionActive(): Boolean

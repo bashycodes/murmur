@@ -697,7 +697,7 @@ fn buffer_is_capped_at_max_samples() {
 fn learn_edit_uses_the_last_session_dictionary() {
     let k = rig(false, true);
     let dict = Dictionary {
-        entries: vec![DictEntry::word("Wispr")],
+        entries: vec![DictEntry::word("Zephyr")],
     };
     k.router
         .start_session(SessionConfig {
@@ -707,7 +707,7 @@ fn learn_edit_uses_the_last_session_dictionary() {
         .unwrap();
     dictate(&k.router);
     let pasted = "I use whisper flow and kubernetes daily";
-    let edited = "I use Wispr Flow and Kubernetes daily";
+    let edited = "I use Zephyr Cloud and Kubernetes daily";
     assert_eq!(
         k.router.learn_edit(pasted, edited),
         flow_core::learn::learn_edit(pasted, edited, &dict)

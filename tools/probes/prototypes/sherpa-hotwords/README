@@ -1,6 +1,8 @@
 Hotword probes for sherpa-onnx + Parakeet-TDT (2026-10-20), run with
-~/Claude/research/wispr/.cache/sherpa-onnx/bin/sherpa-onnx-offline
+~/.cache/flow-clone/sherpa-onnx/bin/sherpa-onnx-offline
 --decoding-method=modified_beam_search --modeling-unit=bpe --bpe-vocab=bpe.vocab
 --hotwords-file=hw3.txt. bpe.vocab = tokens.txt with score -id (promoted to
 flow_asr_sherpa::bpe_vocab_from_tokens). hw3.txt carries the nonsense word
 "Zebrafish" to detect false insertions; results in docs/core-architecture.md.
+
+The cache default is `~/.cache/flow-clone`; set CACHE=<dir> to reuse an existing cache.

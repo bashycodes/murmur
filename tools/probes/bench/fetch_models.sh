@@ -2,7 +2,7 @@
 # Fetch benchmark models (not in git) into $CACHE/models. Idempotent.
 # Usage: tools/probes/bench/fetch_models.sh [asr|llm|parakeet|all]
 set -euo pipefail
-CACHE="${CACHE:-$HOME/Claude/research/wispr/.cache}"
+CACHE="${CACHE:-$HOME/.cache/flow-clone}"
 M="$CACHE/models"; mkdir -p "$M"
 what="${1:-all}"
 

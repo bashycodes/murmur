@@ -3,7 +3,7 @@
 #   MODE prod|ai|rules (see runner/src/main.rs). env: MODELS (gguf dir),
 #   FLOW_LLM_LIB (libflow_llm.so), BENCH_BIN (default: the release build under
 #   the repo's target/ai-bench).
-# Runs the 102 cases (88 formatting-eval + 14 Wispr) with 4 LLM threads, as a
+# Runs the formatting-eval cases with 4 LLM threads, as a
 # low-priority, earlyoom-first process under the shared build lock, and only
 # when MemAvailable >= model size + 2000 MB (the home flow-server must not be
 # the one earlyoom picks). Peak RSS goes to results/LABEL.time.
@@ -11,7 +11,7 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 bin="${BENCH_BIN:-$here/../../../../target/ai-bench/release/ai-cleanup-bench}"
 label="$1"; mode="$2"; model="${3:-}"; prompt="${4:-}"
-cat "$here/../formatting_eval_2026_10_24/cases.jsonl" "$here/wispr_cases.jsonl" > "$here/results/all_cases.jsonl"
+cat "$here/../formatting_eval_2026_10_24/cases.jsonl" > "$here/results/all_cases.jsonl"
 args=(--mode "$mode" --cases "$here/results/all_cases.jsonl" --session "$here/sessions/prod.json" --threads 4 --timeout-ms 8000)
 if [[ -n "$model" && "$model" != - ]]; then
   need=$(( $(stat -c %s "$MODELS/$model") / 1048576 + 2000 ))

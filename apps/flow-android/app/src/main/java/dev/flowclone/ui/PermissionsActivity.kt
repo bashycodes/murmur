@@ -32,7 +32,7 @@ import dev.flowclone.health.OemGuidance
 /**
  * Permissions (drawer → Permissions; AndroidSetup.dc.html): "3 of 5 done" progress, the problem
  * callout, the first missing required step in its own card with a filled button, then one card
- * per step with its state badge or the action that fixes it ([SetupChecklist], Wispr's order),
+ * per step with its state badge or the action that fixes it ([SetupChecklist], onboarding order),
  * the phone-specific "Keep it running" steps, and STATUS (engine, language, cleanup, version: the
  * old main screen's card, which the device checklist in INSTALL.md reads). Re-checks every 2 s while open (the user comes
  * back from system screens) and announces what became done.

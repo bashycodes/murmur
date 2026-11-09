@@ -110,7 +110,7 @@ dictations, so the plain q5_0 (about 1 s) is the safer default.
 
 The new model files can stay or be deleted from `models\`. They are about 2.1 GB.
 
-Leftovers in the bench folder (`wispr-bench`):
+Leftovers in the bench folder (on the laptop):
 * `models\ivrit-turbo-q5_0.bin` (574 MB)
 * `audio-he\` (13 MB)
 * `bin\whisper-vk2` (whisper + llama ggml DLLs)

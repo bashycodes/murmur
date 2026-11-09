@@ -108,7 +108,7 @@ Probe `parity_sets.sh` / `parity_ab.py` / `compare.py`; `flow-cli transcribe --l
 (full pipeline: VAD, guard, D22 segmentation, no LLM), Parakeet, 2 threads. PC config:
 `session-pc` + unified-en, `auto` decoding, the set's dictionary. Phone config:
 `session-phone` + unified-en, `beam` + dictionary (D68); Hebrew: the phone's Hebrew Parakeet,
-greedy. WER and terms from the wispr_parity scorer; Hebrew WER on plain Unicode words against
+greedy. WER and terms from the parity scorer; Hebrew WER on plain Unicode words against
 the FLEURS normalised text. "Not raised" counts piece decodes (bridges included) whose own
 gain was above 1 and D72 left at 1, from a temporary trace in the after build (removed).
 

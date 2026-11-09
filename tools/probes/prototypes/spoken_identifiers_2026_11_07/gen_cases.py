@@ -3,7 +3,7 @@
 
 Writes next to this script:
   cases.jsonl  runner cases (id, input, app_category)
-  refs.json    checks per case (wispr_parity reference shape) plus "split"
+  refs.json    checks per case (parity reference shape) plus "split"
 
 Groups (first letter of the id):
   I  the speaker says how to write a name: "in caps with underscores",

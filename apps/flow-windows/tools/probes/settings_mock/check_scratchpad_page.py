@@ -4,7 +4,7 @@ Probe (Playwright + its bundled Chromium):
     python3 tools/probes/settings_mock/serve.py 8765 &
     python3 tools/probes/settings_mock/check_scratchpad_page.py [port]
 Checks the pinned / recent lists, the configured shortcut, opening a note
-(`note_open`), Start new note (`note_create` then `note_open`), pin, search,
+(`note_open`), New note (`note_create` then `note_open`), pin, search,
 and that the page never asks for a note's text (`note_load` etc. are the
 notes window's only). With the Notetaker hidden (D51, `NOTETAKER_ENABLED`
 false) also checks its sidebar entry opens the static preview page, that
@@ -47,7 +47,7 @@ with sync_playwright() as p:
     pg.click('#sp_recent [data-id="note-2"] .lw-sp-open')
     pg.wait_for_timeout(100)
     check(pg.evaluate("window.__opened") == ["note-2"], "row opens its note")
-    # Start new note.
+    # New note.
     pg.click("#sp_new")
     pg.wait_for_timeout(200)
     opened = pg.evaluate("window.__opened")

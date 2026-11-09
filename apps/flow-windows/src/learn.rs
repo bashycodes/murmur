@@ -10,8 +10,7 @@
 //! **suggestions** the user must accept (`suggestions.rs`): nothing is
 //! ever added to the dictionary automatically.
 //!
-//! End reasons: anchor
-//! mismatch / region removed / paste never observed don't count (no
+//! End reasons: anchor mismatch / region removed / paste never observed don't count (no
 //! learning); a timeout or a focus change keep the last observation.
 
 use crate::context::{head_chars, tail_chars};
@@ -40,7 +39,7 @@ pub trait FieldReader {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WatchOpts {
-    /// Total observation window (about 30 s).
+    /// Total observation window; long enough to fix a word and move on.
     pub window_ms: u64,
     /// The pasted text must show up in the field within this time.
     pub baseline_ms: u64,
@@ -71,8 +70,8 @@ pub enum EndReason {
 }
 
 impl EndReason {
-    /// Whether the last observation may be learned from (it drops
-    /// anchor_mismatch / transcript_region_removed observations).
+    /// Whether the last observation may be learned from (an anchor
+    /// mismatch or a removed region says nothing reliable about the edit).
     pub fn counts(self) -> bool {
         matches!(self, EndReason::Timeout | EndReason::FocusChanged)
     }
@@ -303,9 +302,9 @@ mod tests {
 
     #[test]
     fn region_between_anchors() {
-        let f = "Dear Bob, I use whisper flow daily. Thanks";
+        let f = "Dear Bob, I use cora note daily. Thanks";
         let r = region(f, &a("Dear Bob, ", " Thanks"), 30);
-        assert_eq!(r, Some("I use whisper flow daily."));
+        assert_eq!(r, Some("I use cora note daily."));
         assert_eq!(region(f, &a("Dear Alice, ", ""), 10), None);
         assert_eq!(region("hello", &a("", ""), 5), Some("hello"), "empty field");
     }
@@ -333,20 +332,20 @@ mod tests {
 
     #[test]
     fn edit_then_timeout_yields_the_correction() {
-        let mut w = EditWatch::new("I use whisper flow daily. ", a("Hi. ", ""), 0, FAST);
+        let mut w = EditWatch::new("I use cora note daily. ", a("Hi. ", ""), 0, FAST);
         assert_eq!(
-            w.observe(0, Read::Text("Hi. I use whisper flow daily. ".into())),
+            w.observe(0, Read::Text("Hi. I use cora note daily. ".into())),
             Step::Continue
         );
         assert_eq!(
-            w.observe(3_000, Read::Text("Hi. I use Wispr Flow daily.".into())),
+            w.observe(3_000, Read::Text("Hi. I use Korra Note daily.".into())),
             Step::Continue
         );
         assert_eq!(
-            w.observe(10_000, Read::Text("Hi. I use Wispr Flow daily.".into())),
+            w.observe(10_000, Read::Text("Hi. I use Korra Note daily.".into())),
             Step::Done(Outcome {
                 reason: EndReason::Timeout,
-                edited: Some("I use Wispr Flow daily.".into())
+                edited: Some("I use Korra Note daily.".into())
             })
         );
     }
@@ -448,8 +447,8 @@ mod tests {
     #[test]
     fn bound_edit_drops_text_typed_after_the_dictation() {
         assert_eq!(
-            bound_edit("I use wispr", "I use Wispr. How are you today"),
-            "I use Wispr."
+            bound_edit("I use korra", "I use Korra. How are you today"),
+            "I use Korra."
         );
         assert_eq!(
             bound_edit("meet at noon", "Ok so meet at 12 noon"),

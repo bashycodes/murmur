@@ -287,7 +287,7 @@ pub struct Migrated {
     pub usage_rewritten: bool,
 }
 
-/// One-time D28 migration at startup (spec §2.1, changelog W5 step 1), on
+/// One-time D28 migration at startup (openrouter-only-cloud.md §2.1, changelog W5 step 1), on
 /// the stored settings before the router is built:
 /// 1. `DevSettings::migrate_d28` (schema 1 → 2; the notice is kept in
 ///    `cloud_notice` until the user dismisses it);

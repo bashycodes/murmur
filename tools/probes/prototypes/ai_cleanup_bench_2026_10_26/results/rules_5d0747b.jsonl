@@ -1,0 +1,89 @@
+{"commit_ms":4,"id":"q1","output":"He called it \"innovative.\" "}
+{"commit_ms":0,"id":"q2","output":"She said, \"I'll be there soon,\" and then never showed up "}
+{"commit_ms":41,"id":"q3","output":"The client wrote, \"We need this by Friday,\" so let's prioritize it. "}
+{"commit_ms":0,"id":"q4","output":"Can you change the button text to \"Get started\"? "}
+{"commit_ms":0,"id":"q5","output":"\"The only way out is through.\" Robert Frost. "}
+{"commit_ms":0,"id":"q6","output":"It was \"fine.\" "}
+{"commit_ms":0,"id":"q7","output":"The error message says, \"File not found.\" "}
+{"commit_ms":0,"id":"q8","output":"He literally just said \"whatever.\" "}
+{"commit_ms":0,"id":"p1","output":"I'll bring the charger (the USB-C one) to the meeting. "}
+{"commit_ms":0,"id":"p2","output":"I'll bring the charger (the USB-C one) to the meeting. "}
+{"commit_ms":0,"id":"p3","output":"The deadline (which is flexible) is Friday. "}
+{"commit_ms":0,"id":"p4","output":"Add the new field [optional] to the form. "}
+{"commit_ms":0,"id":"p5","output":"Grab the blue folder (the one on my desk) "}
+{"commit_ms":0,"id":"p6","output":"The new build (version 2.3) is live "}
+{"commit_ms":0,"id":"s1","output":"Buy milk, eggs, and bread. "}
+{"commit_ms":0,"id":"s2","output":"Are you coming tonight? "}
+{"commit_ms":0,"id":"s3","output":"That's amazing! "}
+{"commit_ms":0,"id":"s4","output":"Agenda: budget, hiring, and launch. "}
+{"commit_ms":0,"id":"s5","output":"The deadline — which nobody likes — is Friday. "}
+{"commit_ms":0,"id":"s6","output":"Thanks for the update. I'll review it tomorrow. "}
+{"commit_ms":0,"id":"s7","output":"Quick question, do we have a staging server? "}
+{"commit_ms":0,"id":"s8","output":"We tested it twice; both runs failed. "}
+{"commit_ms":0,"id":"s9","output":"Did you see the game last night? It was insane! "}
+{"commit_ms":0,"id":"n1","output":"Shopping list\nApples\nBananas\nCoffee "}
+{"commit_ms":0,"id":"n2","output":"Hi team,\n\nThe release is moving to Thursday.\n\nThanks,\nDana "}
+{"commit_ms":0,"id":"n3","output":"First point is done.\nSecond point is pending. "}
+{"commit_ms":0,"id":"n4","output":"Ideas for the weekend.\n\nHiking or a movie. "}
+{"commit_ms":0,"id":"n5","output":"Hey,\nAre we still on for lunch? "}
+{"commit_ms":0,"id":"c1","output":"Let's meet at the cafe at four "}
+{"commit_ms":0,"id":"c2","output":"Send it to Sarah. "}
+{"commit_ms":0,"id":"c3","output":"The meeting is on Wednesday "}
+{"commit_ms":0,"id":"c4","output":"We need three, sorry, four more chairs. "}
+{"commit_ms":0,"id":"c5","output":"I already bought some "}
+{"commit_ms":0,"id":"c6","output":"Book flights for June 12th. "}
+{"commit_ms":0,"id":"c7","output":"Push the fix to main, I mean to the release branch "}
+{"commit_ms":0,"id":"i1","output":"The total is $42.50. "}
+{"commit_ms":0,"id":"i2","output":"Meet me at 7:30 tonight "}
+{"commit_ms":0,"id":"i3","output":"The invoice is due on March 5th. "}
+{"commit_ms":0,"id":"i4","output":"Revenue grew by 12%. "}
+{"commit_ms":0,"id":"i5","output":"We have about 250 users on the beta "}
+{"commit_ms":0,"id":"i6","output":"My number is 555-123-4567. "}
+{"commit_ms":0,"id":"i7","output":"I'll be there in like 10 minutes "}
+{"commit_ms":0,"id":"i8","output":"The meeting is on October 21st at 2 PM. "}
+{"commit_ms":0,"id":"l1","output":"For the trip I need to pack:\n\n1. My passport\n2. Chargers\n3. A rain jacket "}
+{"commit_ms":0,"id":"l2","output":"Our priorities are:\n\n1. Hiring\n2. Onboarding\n3. Retention "}
+{"commit_ms":0,"id":"l3","output":"Hi Sam,\n\nA few things for tomorrow.\n\n1. Book the room.\n2. Print the slides.\n3. Order lunch.\n\nThanks,\nAlex "}
+{"commit_ms":0,"id":"l4","output":"Grocery list, eggs, milk, bread, and butter. "}
+{"commit_ms":0,"id":"l5","output":"Three things for the release, update the docs, fix the login bug, and tag the build "}
+{"commit_ms":0,"id":"k1","output":"Hey, are you free tonight? "}
+{"commit_ms":0,"id":"k2","output":"I'm running a bit late. I'll be there soon "}
+{"commit_ms":0,"id":"k3","output":"Sounds good. Let's do it "}
+{"commit_ms":0,"id":"k4","output":"Haha, that's hilarious. I can't believe he did that "}
+{"commit_ms":0,"id":"k5","output":"Okay, I will call you when I get home "}
+{"commit_ms":0,"id":"k6","output":"Yeah, I do not think that is going to work "}
+{"commit_ms":0,"id":"k7","output":"Thank you so much. See you tomorrow "}
+{"commit_ms":0,"id":"e1","output":"Hi Maria,\n\nI wanted to follow up on the proposal. Could you send me the final numbers by Friday?\n\nBest regards,\nTom "}
+{"commit_ms":0,"id":"e2","output":"Dear Mr. Patel,\n\nThank you for your time yesterday. I've attached the contract for your review.\n\nSincerely,\nLaura Chen "}
+{"commit_ms":0,"id":"e3","output":"Hey John,\n\nJust a quick note. The meeting moved to 3 PM.\n\nThanks, "}
+{"commit_ms":0,"id":"e4","output":"Please find the report attached. Let me know if you have any questions. "}
+{"commit_ms":0,"id":"e5","output":"Hi everyone,\n\nJust a reminder that the office is closed on Monday.\n\nThanks,\nPriya "}
+{"commit_ms":0,"id":"f1","output":"I was thinking, we could go to the beach "}
+{"commit_ms":0,"id":"f2","output":"The build is kind of broken right now "}
+{"commit_ms":0,"id":"f3","output":"I just wanted to check in about the invoice. "}
+{"commit_ms":0,"id":"f4","output":"The results were basically the same as last quarter. "}
+{"commit_ms":0,"id":"f5","output":"I think the problem is with the router "}
+{"commit_ms":0,"id":"f6","output":""}
+{"commit_ms":0,"id":"r1","output":"so I talked to the landlord and he said the repair guy is coming tomorrow morning but he doesn't know what time so I might work from home. "}
+{"commit_ms":0,"id":"r2","output":"yeah that works for me what time should I come over "}
+{"commit_ms":0,"id":"r3","output":"I reviewed the draft it looks good overall but the second section needs more detail. "}
+{"commit_ms":0,"id":"r4","output":"Before we start, however we need to agree on the scope. "}
+{"commit_ms":0,"id":"r5","output":"can you take a look at the PR when you get a chance thanks "}
+{"commit_ms":0,"id":"r6","output":"ok cool see you at eight "}
+{"commit_ms":0,"id":"h1","output":"He is about 158 cm tall. "}
+{"commit_ms":0,"id":"x1","output":"The word quote comes from Latin. "}
+{"commit_ms":0,"id":"x2","output":"Can you send me a quote for the new roof? "}
+{"commit_ms":0,"id":"x3","output":"The trial period ends next week. "}
+{"commit_ms":0,"id":"x4","output":"In British English, a period is called a full stop. "}
+{"commit_ms":0,"id":"x5","output":"Always use the Oxford comma in lists. "}
+{"commit_ms":0,"id":"x6","output":"Don't forget that we have dinner at eight "}
+{"commit_ms":0,"id":"x7","output":"Put a comma after the greeting. "}
+{"commit_ms":0,"id":"x8","output":"There's no wait at the new place, let's go there "}
+{"commit_ms":0,"id":"x9","output":"They launched a new line of sneakers. "}
+{"commit_ms":0,"id":"x10","output":"The question mark at the end looks wrong. "}
+{"commit_ms":0,"id":"x11","output":"I mean it when I say this is our best quarter. "}
+{"commit_ms":0,"id":"x12","output":"Quote me on that "}
+{"commit_ms":0,"id":"x13","output":"The formula is in parentheses on the board. "}
+{"commit_ms":0,"id":"x14","output":"Put the area code in parentheses. "}
+{"commit_ms":0,"id":"x15","output":"The answer is in brackets at the bottom of the page. "}
+{"commit_ms":0,"id":"x16","output":"Can you get me a quote by end of day? "}

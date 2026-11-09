@@ -1,4 +1,4 @@
-# flow-android: Android shell of Murmur (a local Wispr Flow clone)
+# flow-android: Android shell of Murmur (self-hosted voice dictation)
 
 This is a Kotlin shell around the shared Rust core (`crates/flow-core` via `crates/flow-ffi`).
 It's single-process with no AndroidX. minSdk 33 (it needs `AccessibilityService.InputMethod`),
@@ -58,9 +58,9 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
 ## Layout (`app/src/main/java/dev/flowclone/`)
 | Package | What | Tested on JVM |
 |---|---|---|
-| `core/` | `FlowCore` (§9 mirror), `CoreJson` (wire format), `RouterJson` + `DevText` (router JSON, D17), `NativeFlowCore` (JNI, core + router handles), `FakeFlowCore` | yes, plus the stub link test and `RouterJsonTest` on `crates/flow-router/fixtures` |
-| `insert/` | `V3Inserter` (07 §3), `InsertionCoordinator` (mutex, 3500 ms budget, sensitive clipboard), `ImeKeepAlive` (07 §3.5), `TextMatching` (06 §4), `Ports` (injectable editor abstraction) | yes |
-| `policy/` | `EditorInputType`, `BubbleVisibilityPolicy` (sensitive + restricted (banking) apps + user denylist + clone deviations), `AppCategorizer`, `OwnAppGate` (our own screens: no bubble except the Scratchpad), `PolicyLists` (app groups and naming rules) | yes |
+| `core/` | `FlowCore` (mirror of the Rust core API), `CoreJson` (wire format), `RouterJson` + `DevText` (router JSON, D17), `NativeFlowCore` (JNI, core + router handles), `FakeFlowCore` | yes, plus the stub link test and `RouterJsonTest` on `crates/flow-router/fixtures` |
+| `insert/` | `V3Inserter`, `InsertionCoordinator` (mutex, 3500 ms budget, sensitive clipboard), `ImeKeepAlive`, `TextMatching`, `Ports` (injectable editor abstraction) | yes |
+| `policy/` | `EditorInputType`, `BubbleVisibilityPolicy` (sensitive + restricted (banking) apps + user denylist + extra hiding rules), `AppCategorizer`, `OwnAppGate` (our own screens: no bubble except the Scratchpad), `PolicyLists` (app groups and naming rules) | yes |
 | `session/` | `DictationController` (state machine, debounce, cap 239/299 s, 20 s timeout), `LevelMeter`, `AudioBatcher`, `SessionCap` | yes |
 | `bubble/` | `BubbleGesture` (tap / hold / drag), `BubblePositioner` (anchors + persistence), `Waveform`, `BubblePresence` (minimise 5 s, snooze 10 min, shake reveal), `ShakeDetector`, `SnoozeTarget`, `PreviewContent`/`PreviewPlacement` (live preview line); `BubbleView`/`BubbleOverlay` (Android: bubble + preview + snooze-target windows) | logic yes |
 | `data/` | `Retention`, `DictionaryMerge`, `Settings`, `FieldContextBuilder`, `EnginePlan` (ASR + optional LLM, ASR-only fallback), `ModelFiles` (ggml/GGUF sniffing, LLM recommendations), `DictionaryEdit`, `HistoryView`; `Stores` (SharedPreferences, JSON dictionary file, SQLite history v2); D17: `DevSettings` (+ `HostRules`, `DevSettingsForm`, `DevUnlock`), `DevStore` + `SecretVault` (Keystore AES-GCM: server token, cloud keys), `EngineRoute` (local engine → router), `ParakeetFiles`; D18: `CloudSettings` (`CloudProvider`, presets, consent, `CloudRules`, `CloudText`, `CloudUsage`), `CloudKeyStore` | logic yes |
@@ -76,21 +76,21 @@ Install on a phone (sideload, permissions, model import, device checklist): [`IN
 (packed as a Java resource), the file flow-core and the Windows app use too (D81; the JSON and
 the PolicyLists header document the method and sources).
 
-## Deviations from Wispr (deliberate)
-- V3 inserter only, with every A/B feature on. No Legacy path.
+## Design choices
+- One insertion path (`V3Inserter`) with every step always on.
 - Single process, so no AIDL bridge and no JobScheduler recovery job. The watchdog lives in
   the a11y service's 15 s health tick (respawns FlowService ≥ 5 s apart); `BootReceiver`
   covers boot/update/unlock; FlowService re-checks on `USER_PRESENT`.
-- Shake, snooze target and minimise follow 07 §5.3/§5.5 (no gravity pull on the target).
+- Shake, snooze target and minimise have no gravity pull on the target.
   Minimise and shake are settings (default on). The accelerometer is only registered while
   the screen is on. Sounds use `ToneGenerator` beeps instead of bundled samples.
 - The bubble position is persisted; a snooze puts it back on its saved anchor.
 - Live preview: a click-through window above the bubble shows the core's partial
   (`partial_interval_ms` 1500, polled every 250 ms) plus "can't hear you" after 3 s of
-  leading silence and "no speech detected" on EMPTY. Wispr has neither.
+  leading silence and "no speech detected" on EMPTY.
 - LLM cleanup is opt-in (default off), with a 3 s budget on Android (desktop 1.5 s). If the
   plugin or GGUF fails to load, dictation keeps working ASR-only and the Permissions page says why.
-- Snippet expansions may be up to 2000 characters (Wispr: 60).
+- Snippet expansions may be up to 2000 characters (long enough for signatures).
 - The cap is configurable (1–20 min, default 5) and warns 61 s / stops 1 s before the cap.
 - A blank transcript is treated as empty. Browser+GO never un-hides a password field.
   `isAccessibilityDataSensitive` hides the bubble. A user app denylist sits next to the

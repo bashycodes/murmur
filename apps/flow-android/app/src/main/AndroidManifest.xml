@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Spec 07 §1 minus everything network-related (the flavour manifests decide that). -->
+    <!-- Everything except network permissions (the flavour manifests decide those). -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -15,7 +15,7 @@
     <!-- D49: read new call recordings from the media index (asked for only when the owner turns
          on "Transcribe new call recordings" on the Calls page; files are only read). -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
-    <!-- P1 recovery (07 §1/§6): restart after boot / update; battery-optimisation onboarding step. -->
+    <!-- P1 recovery: restart after boot / update; battery-optimisation onboarding step. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
@@ -36,7 +36,7 @@
     </queries>
 
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
-    <!-- Shake to un-snooze / reveal. Wispr requires it; the clone works without it. -->
+    <!-- Shake to un-snooze / reveal. Optional: the app works without an accelerometer. -->
     <uses-feature android:name="android.hardware.sensor.accelerometer" android:required="false" />
 
     <application
@@ -120,7 +120,7 @@
             android:exported="false"
             android:permission="android.permission.BIND_JOB_SERVICE" />
 
-        <!-- Single process (07 §1 clone manifest). isAccessibilityTool is kept: this
+        <!-- Single process. isAccessibilityTool is kept: this
              build targets sideload / F-Droid, not Play. -->
         <service
             android:name=".service.FlowAccessibilityService"

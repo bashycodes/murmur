@@ -19,7 +19,7 @@ pub mod vk {
     pub const INSERT: u16 = 0x2D;
     pub const V: u16 = 0x56;
     pub const C: u16 = 0x43;
-    /// Masking key for lone Win/Alt releases (Wispr uses VK_LCONTROL, not 0xFF).
+    /// Masking key for lone Win/Alt releases (VK_LCONTROL rather than 0xFF).
     pub const LCONTROL: u16 = 0xA2;
 }
 
@@ -49,7 +49,7 @@ impl Stroke {
 /// physical key-up the hook swallowed: `[LCtrl↓, key↑, LCtrl↑]`. The shell
 /// sees "another key was involved", so Start / the menu bar don't open.
 /// The trailing LCtrl↑ is skipped when LCtrl is physically held (the user's
-/// Ctrl must stay logically down). Mirrors Wispr's helper (02 §REA note 3).
+/// Ctrl must stay logically down).
 pub fn masked_release(vk: u16, lctrl_held: bool) -> Vec<Stroke> {
     let mut v = vec![Stroke::down(vk::LCONTROL), Stroke::up(vk)];
     if !lctrl_held {
@@ -77,7 +77,7 @@ pub const PASTE_HOLD_MS: u64 = 50;
 
 /// For each physically-held Alt/Win: `[Ctrl↓, key↑, Ctrl↑]`, so our Ctrl+V
 /// isn't read as Ctrl+Win+V / Ctrl+Alt+V while the user still holds the PTT
-/// chord. Held Ctrl/Shift are left alone (Wispr parity, 02 §REA note 6):
+/// chord. Held Ctrl/Shift are left alone:
 /// with a Ctrl physically held (`ctrl_held`) the trailing Ctrl↑ is
 /// skipped, so the user's Ctrl stays logically down (review C13).
 pub fn release_before_paste(held_vks: &[u16], ctrl_held: bool) -> Vec<Stroke> {
@@ -169,7 +169,7 @@ pub fn unicode_text(text: &str) -> Vec<Stroke> {
 }
 
 /// `dwExtraInfo` on every event we inject; our hook passes events carrying
-/// it straight to `CallNextHookEx` (Wispr does the same with "WFMK").
+/// it straight to `CallNextHookEx`.
 pub const EXTRA_INFO_TAG: usize = 0x464C_4F57; // "FLOW"
 
 #[cfg(windows)]
@@ -233,7 +233,7 @@ pub mod win {
 mod tests {
     use super::*;
 
-    // Wispr helper 0x1403235c0 (02 §REA note 3): [LCtrl↓, key↑, LCtrl↑].
+    // [LCtrl↓, key↑, LCtrl↑].
     #[test]
     fn masked_release_wraps_key_up_in_lcontrol() {
         assert_eq!(
@@ -250,7 +250,7 @@ mod tests {
         );
     }
 
-    // 02 §REA note 6: only held Alt/Win get [Ctrl↓, key↑, Ctrl↑]; Ctrl and
+    // Only held Alt/Win get [Ctrl↓, key↑, Ctrl↑]; Ctrl and
     // Shift are left alone.
     #[test]
     fn a_held_ctrl_stays_down_through_the_release() {
@@ -288,7 +288,7 @@ mod tests {
         assert!(release_before_paste(&[], false).is_empty());
     }
 
-    // 02 §REA note 4: downs in one SendInput, 50 ms, ups in reverse order.
+    // Downs in one SendInput, 50 ms, ups in reverse order.
     #[test]
     fn paste_chord_is_down_batch_then_reversed_up_batch() {
         let (d, u) = paste_chord(false);

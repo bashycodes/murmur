@@ -1,0 +1,88 @@
+{"id": "q1", "llm_raw": "He called it, \"innovative,\".", "error": null, "llm_ms": 649, "prompt_n": 39, "prompt_ms": 229.876, "gen_n": 10, "gen_ms": 353.659, "in_words": 6}
+{"id": "q2", "llm_raw": "She said, “I’ll be there soon,” and then never showed up.", "error": null, "llm_ms": 988, "prompt_n": 64, "prompt_ms": 244.375, "gen_n": 18, "gen_ms": 690.425, "in_words": 13}
+{"id": "q3", "llm_raw": "The client wrote, “We need this by Friday,” so let’s prioritize it.", "error": null, "llm_ms": 1045, "prompt_n": 43, "prompt_ms": 236.818, "gen_n": 19, "gen_ms": 737.319, "in_words": 16}
+{"id": "q4", "llm_raw": "Can you change the button text to, “Get started”?", "error": null, "llm_ms": 812, "prompt_n": 59, "prompt_ms": 245.757, "gen_n": 13, "gen_ms": 499.626, "in_words": 12}
+{"id": "q5", "llm_raw": "“Quote, the only way out is through, unquote. Robert Frost.”", "error": null, "llm_ms": 947, "prompt_n": 35, "prompt_ms": 228.288, "gen_n": 17, "gen_ms": 659.881, "in_words": 10}
+{"id": "q6", "llm_raw": "It was, “quote unquote,” fine.", "error": null, "llm_ms": 773, "prompt_n": 52, "prompt_ms": 243.053, "gen_n": 11, "gen_ms": 458.99, "in_words": 5}
+{"id": "q7", "llm_raw": "The error message says, “file not found.”", "error": null, "llm_ms": 778, "prompt_n": 40, "prompt_ms": 243.391, "gen_n": 11, "gen_ms": 478.883, "in_words": 9}
+{"id": "q8", "llm_raw": "He literally just said, “whatever.”", "error": null, "llm_ms": 713, "prompt_n": 52, "prompt_ms": 289.551, "gen_n": 9, "gen_ms": 353.627, "in_words": 6}
+{"id": "p1", "llm_raw": "I’ll bring the charger (the USB-C one) to the meeting.", "error": null, "llm_ms": 1062, "prompt_n": 37, "prompt_ms": 232.384, "gen_n": 18, "gen_ms": 760.013, "in_words": 12}
+{"id": "p2", "llm_raw": "I’ll bring the charger (the USB-C one) to the meeting.", "error": null, "llm_ms": 1107, "prompt_n": 19, "prompt_ms": 341.647, "gen_n": 18, "gen_ms": 694.731, "in_words": 12}
+{"id": "p3", "llm_raw": "The deadline, (which is flexible), is Friday.", "error": null, "llm_ms": 732, "prompt_n": 38, "prompt_ms": 219.962, "gen_n": 12, "gen_ms": 448.664, "in_words": 11}
+{"id": "p4", "llm_raw": "Add the new field, [optional], to the form.", "error": null, "llm_ms": 859, "prompt_n": 19, "prompt_ms": 301.416, "gen_n": 13, "gen_ms": 492.617, "in_words": 10}
+{"id": "p5", "llm_raw": "Grab the blue folder (the one on my desk).", "error": null, "llm_ms": 760, "prompt_n": 57, "prompt_ms": 234.173, "gen_n": 12, "gen_ms": 467.569, "in_words": 11}
+{"id": "p6", "llm_raw": "The new build (version 2.3) is live.", "error": null, "llm_ms": 805, "prompt_n": 61, "prompt_ms": 237.062, "gen_n": 14, "gen_ms": 520.722, "in_words": 13}
+{"id": "s1", "llm_raw": "Buy milk, eggs, and bread.", "error": null, "llm_ms": 627, "prompt_n": 34, "prompt_ms": 226.326, "gen_n": 9, "gen_ms": 324.76, "in_words": 8}
+{"id": "s2", "llm_raw": "Are you coming tonight?", "error": null, "llm_ms": 486, "prompt_n": 50, "prompt_ms": 229.93, "gen_n": 6, "gen_ms": 203.713, "in_words": 6}
+{"id": "s3", "llm_raw": "That’s amazing!", "error": null, "llm_ms": 511, "prompt_n": 12, "prompt_ms": 248.508, "gen_n": 6, "gen_ms": 208.761, "in_words": 4}
+{"id": "s4", "llm_raw": "Agenda: budget, hiring, and launch.", "error": null, "llm_ms": 641, "prompt_n": 35, "prompt_ms": 211.128, "gen_n": 10, "gen_ms": 365.771, "in_words": 6}
+{"id": "s5", "llm_raw": "The deadline—which nobody likes—is Friday.", "error": null, "llm_ms": 704, "prompt_n": 15, "prompt_ms": 237.949, "gen_n": 11, "gen_ms": 413.397, "in_words": 9}
+{"id": "s6", "llm_raw": "Thanks for the update. I’ll review it tomorrow.", "error": null, "llm_ms": 866, "prompt_n": 29, "prompt_ms": 318.327, "gen_n": 13, "gen_ms": 491.804, "in_words": 10}
+{"id": "s7", "llm_raw": "Quick question, do we have a staging server?", "error": null, "llm_ms": 724, "prompt_n": 55, "prompt_ms": 234.541, "gen_n": 11, "gen_ms": 432.827, "in_words": 11}
+{"id": "s8", "llm_raw": "We tested it twice; both runs failed.", "error": null, "llm_ms": 689, "prompt_n": 35, "prompt_ms": 234.596, "gen_n": 10, "gen_ms": 383.061, "in_words": 8}
+{"id": "s9", "llm_raw": "Did you see the game last night? It was insane!", "error": null, "llm_ms": 801, "prompt_n": 58, "prompt_ms": 243.229, "gen_n": 13, "gen_ms": 499.877, "in_words": 14}
+{"id": "n1", "llm_raw": "Shopping list:\n\n<ol><li>Apples</li><li>Bananas</li><li>Coffee</li></ol>", "error": null, "llm_ms": 1287, "prompt_n": 32, "prompt_ms": 313.162, "gen_n": 22, "gen_ms": 898.415, "in_words": 11}
+{"id": "n2", "llm_raw": "Hi team,\n\nThe release is moving to Thursday.\n\nThanks,\nDana", "error": null, "llm_ms": 992, "prompt_n": 36, "prompt_ms": 245.08, "gen_n": 17, "gen_ms": 688.749, "in_words": 14}
+{"id": "n3", "llm_raw": "First point is done.\nSecond point is pending.", "error": null, "llm_ms": 749, "prompt_n": 35, "prompt_ms": 226.433, "gen_n": 12, "gen_ms": 449.839, "in_words": 10}
+{"id": "n4", "llm_raw": "Ideas for the weekend.\n\nHiking or a movie.", "error": null, "llm_ms": 840, "prompt_n": 29, "prompt_ms": 321.23, "gen_n": 12, "gen_ms": 445.162, "in_words": 10}
+{"id": "n5", "llm_raw": "Hey, are we still on for lunch?", "error": null, "llm_ms": 805, "prompt_n": 55, "prompt_ms": 228.245, "gen_n": 10, "gen_ms": 494.464, "in_words": 9}
+{"id": "c1", "llm_raw": "Let’s meet at the cafe at four.", "error": null, "llm_ms": 823, "prompt_n": 21, "prompt_ms": 312.732, "gen_n": 11, "gen_ms": 425.287, "in_words": 11}
+{"id": "c2", "llm_raw": "Send it to Sarah.", "error": null, "llm_ms": 484, "prompt_n": 33, "prompt_ms": 221.832, "gen_n": 6, "gen_ms": 196.614, "in_words": 10}
+{"id": "c3", "llm_raw": "The meeting is on Wednesday.", "error": null, "llm_ms": 532, "prompt_n": 54, "prompt_ms": 216.344, "gen_n": 7, "gen_ms": 248.957, "in_words": 9}
+{"id": "c4", "llm_raw": "We need three, sorry, four more chairs.", "error": null, "llm_ms": 691, "prompt_n": 36, "prompt_ms": 208.537, "gen_n": 11, "gen_ms": 417.185, "in_words": 7}
+{"id": "c5", "llm_raw": "Grab some milk. Never mind, I already bought some.", "error": null, "llm_ms": 798, "prompt_n": 55, "prompt_ms": 218.033, "gen_n": 13, "gen_ms": 512.853, "in_words": 9}
+{"id": "c6", "llm_raw": "Book flights for June 12th.", "error": null, "llm_ms": 726, "prompt_n": 35, "prompt_ms": 248.353, "gen_n": 10, "gen_ms": 424.549, "in_words": 12}
+{"id": "c7", "llm_raw": "Push the fix to main, I mean to the release branch.", "error": null, "llm_ms": 904, "prompt_n": 56, "prompt_ms": 240.786, "gen_n": 14, "gen_ms": 593.429, "in_words": 11}
+{"id": "i1", "llm_raw": "The total is $42.50.", "error": null, "llm_ms": 817, "prompt_n": 30, "prompt_ms": 318.534, "gen_n": 11, "gen_ms": 442.434, "in_words": 9}
+{"id": "i2", "llm_raw": "Meet me at 7:30 tonight", "error": null, "llm_ms": 701, "prompt_n": 50, "prompt_ms": 239.232, "gen_n": 10, "gen_ms": 408.484, "in_words": 6}
+{"id": "i3", "llm_raw": "The invoice is due on March fifth.", "error": null, "llm_ms": 725, "prompt_n": 28, "prompt_ms": 300.025, "gen_n": 9, "gen_ms": 355.912, "in_words": 7}
+{"id": "i4", "llm_raw": "Revenue grew by twelve percent.", "error": null, "llm_ms": 618, "prompt_n": 28, "prompt_ms": 301.85, "gen_n": 7, "gen_ms": 241.748, "in_words": 5}
+{"id": "i5", "llm_raw": "We have about 250 users on the beta.", "error": null, "llm_ms": 757, "prompt_n": 55, "prompt_ms": 217.177, "gen_n": 13, "gen_ms": 483.785, "in_words": 11}
+{"id": "i6", "llm_raw": "My number is 555-123-4567.", "error": null, "llm_ms": 960, "prompt_n": 36, "prompt_ms": 234.81, "gen_n": 18, "gen_ms": 666.532, "in_words": 13}
+{"id": "i7", "llm_raw": "I’ll be there in like ten minutes.", "error": null, "llm_ms": 679, "prompt_n": 53, "prompt_ms": 233.802, "gen_n": 11, "gen_ms": 388.208, "in_words": 7}
+{"id": "i8", "llm_raw": "The meeting is on the 21st of October at 2 PM.", "error": null, "llm_ms": 903, "prompt_n": 39, "prompt_ms": 220.612, "gen_n": 17, "gen_ms": 616.51, "in_words": 12}
+{"id": "l1", "llm_raw": "For the trip, I need to pack:\n\n<ol><li>My passport</li><li>Chargers</li><li>A rain jacket</li></ol>", "error": null, "llm_ms": 1430, "prompt_n": 40, "prompt_ms": 219.421, "gen_n": 30, "gen_ms": 1143.07, "in_words": 17}
+{"id": "l2", "llm_raw": "Our priorities are:\n\n<ol><li>Hiring</li><li>Onboarding</li><li>Retention</li></ol>", "error": null, "llm_ms": 1178, "prompt_n": 37, "prompt_ms": 218.65, "gen_n": 23, "gen_ms": 896.447, "in_words": 9}
+{"id": "l3", "llm_raw": "Hi Sam,\n\nA few things for tomorrow:\n\nFirst, book the room.\nSecond, print the slides.\nThird, order lunch.\n\nThanks,\nAlex", "error": null, "llm_ms": 1764, "prompt_n": 46, "prompt_ms": 229.302, "gen_n": 36, "gen_ms": 1448.861, "in_words": 20}
+{"id": "l4", "llm_raw": "Grocery list: eggs, milk, bread, and butter.", "error": null, "llm_ms": 905, "prompt_n": 28, "prompt_ms": 351.358, "gen_n": 13, "gen_ms": 488.796, "in_words": 7}
+{"id": "l5", "llm_raw": "Three things for the release: update the docs, fix the login bug, and tag the build.", "error": null, "llm_ms": 1086, "prompt_n": 63, "prompt_ms": 244.474, "gen_n": 21, "gen_ms": 788.585, "in_words": 16}
+{"id": "k1", "llm_raw": "Hey, are you free tonight?", "error": null, "llm_ms": 579, "prompt_n": 50, "prompt_ms": 238.807, "gen_n": 8, "gen_ms": 280.09, "in_words": 5}
+{"id": "k2", "llm_raw": "I'm running a bit late. I'll be there soon.", "error": null, "llm_ms": 988, "prompt_n": 20, "prompt_ms": 315.104, "gen_n": 16, "gen_ms": 616.658, "in_words": 9}
+{"id": "k3", "llm_raw": "Sounds good. Let’s do it.", "error": null, "llm_ms": 657, "prompt_n": 52, "prompt_ms": 222.023, "gen_n": 10, "gen_ms": 359.946, "in_words": 5}
+{"id": "k4", "llm_raw": "Haha, that's hilarious. I can't believe he did that.", "error": null, "llm_ms": 962, "prompt_n": 59, "prompt_ms": 218.056, "gen_n": 17, "gen_ms": 667.588, "in_words": 9}
+{"id": "k5", "llm_raw": "Okay, I will call you when I get home.", "error": null, "llm_ms": 765, "prompt_n": 16, "prompt_ms": 240.628, "gen_n": 12, "gen_ms": 452.73, "in_words": 9}
+{"id": "k6", "llm_raw": "Yeah, I do not think that is going to work.", "error": null, "llm_ms": 788, "prompt_n": 55, "prompt_ms": 215.604, "gen_n": 13, "gen_ms": 492.022, "in_words": 10}
+{"id": "k7", "llm_raw": "Thank you so much. See you tomorrow.", "error": null, "llm_ms": 638, "prompt_n": 52, "prompt_ms": 222.789, "gen_n": 10, "gen_ms": 362.31, "in_words": 7}
+{"id": "e1", "llm_raw": "Hi Maria,\n\nI wanted to follow up on the proposal. Could you send me the final numbers by Friday?\n\nBest regards,\nTom", "error": null, "llm_ms": 1508, "prompt_n": 47, "prompt_ms": 225.648, "gen_n": 30, "gen_ms": 1217.675, "in_words": 22}
+{"id": "e2", "llm_raw": "Dear Mr. Patel,\n\nThank you for your time yesterday. I've attached the contract for your review.\n\nSincerely,\nLaura Chen", "error": null, "llm_ms": 1623, "prompt_n": 32, "prompt_ms": 322.377, "gen_n": 30, "gen_ms": 1240.441, "in_words": 19}
+{"id": "e3", "llm_raw": "Hey John,\n\nJust a quick note. The meeting moved to 3 PM.\n\nThanks.", "error": null, "llm_ms": 1207, "prompt_n": 22, "prompt_ms": 338.055, "gen_n": 21, "gen_ms": 818.735, "in_words": 13}
+{"id": "e4", "llm_raw": "Please find the report attached. Let me know if you have any questions.", "error": null, "llm_ms": 989, "prompt_n": 20, "prompt_ms": 314.708, "gen_n": 16, "gen_ms": 617.499, "in_words": 13}
+{"id": "e5", "llm_raw": "Hi everyone,\n\nJust a reminder that the office is closed on Monday.\n\nThanks,\nPriya", "error": null, "llm_ms": 1232, "prompt_n": 25, "prompt_ms": 311.427, "gen_n": 22, "gen_ms": 860.269, "in_words": 15}
+{"id": "f1", "llm_raw": "Um, so I was thinking, we could go to the beach.", "error": null, "llm_ms": 870, "prompt_n": 59, "prompt_ms": 235.705, "gen_n": 15, "gen_ms": 580.159, "in_words": 12}
+{"id": "f2", "llm_raw": "The build is, you know, kind of broken right now.", "error": null, "llm_ms": 851, "prompt_n": 60, "prompt_ms": 238.678, "gen_n": 14, "gen_ms": 537.316, "in_words": 12}
+{"id": "f3", "llm_raw": "Um, I just wanted to check in about the invoice.", "error": null, "llm_ms": 763, "prompt_n": 35, "prompt_ms": 208.147, "gen_n": 13, "gen_ms": 484.998, "in_words": 11}
+{"id": "f4", "llm_raw": "The results were, um, basically the same as last quarter.", "error": null, "llm_ms": 831, "prompt_n": 35, "prompt_ms": 216.883, "gen_n": 14, "gen_ms": 542.774, "in_words": 10}
+{"id": "f5", "llm_raw": "I think the problem is with the router.", "error": null, "llm_ms": 673, "prompt_n": 54, "prompt_ms": 232.457, "gen_n": 10, "gen_ms": 371.17, "in_words": 10}
+{"id": "f6", "llm_raw": "", "error": null, "llm_ms": 342, "prompt_n": 24, "prompt_ms": 292.47, "gen_n": 1, "gen_ms": 0.001, "in_words": 2}
+{"id": "r1", "llm_raw": "So I talked to the landlord and he said the repair guy is coming tomorrow morning, but he doesn't know what time, so I might work from home.", "error": null, "llm_ms": 1633, "prompt_n": 36, "prompt_ms": 206.522, "gen_n": 34, "gen_ms": 1363.126, "in_words": 28}
+{"id": "r2", "llm_raw": "Yeah, that works for me. What time should I come over?", "error": null, "llm_ms": 900, "prompt_n": 55, "prompt_ms": 228.795, "gen_n": 15, "gen_ms": 596.933, "in_words": 11}
+{"id": "r3", "llm_raw": "I reviewed the draft. It looks good overall, but the second section needs more detail.", "error": null, "llm_ms": 1005, "prompt_n": 36, "prompt_ms": 225.287, "gen_n": 19, "gen_ms": 730.84, "in_words": 15}
+{"id": "r4", "llm_raw": "Before we start, however, we need to agree on the scope.", "error": null, "llm_ms": 850, "prompt_n": 35, "prompt_ms": 225.428, "gen_n": 15, "gen_ms": 555.562, "in_words": 11}
+{"id": "r5", "llm_raw": "Can you take a look at the PR when you get a chance, thanks", "error": null, "llm_ms": 922, "prompt_n": 58, "prompt_ms": 233.811, "gen_n": 16, "gen_ms": 625.475, "in_words": 14}
+{"id": "r6", "llm_raw": "Ok, cool, see you at eight", "error": null, "llm_ms": 606, "prompt_n": 50, "prompt_ms": 227.66, "gen_n": 9, "gen_ms": 326.541, "in_words": 6}
+{"id": "x1", "llm_raw": "The word “quote” comes from Latin.", "error": null, "llm_ms": 638, "prompt_n": 33, "prompt_ms": 209.595, "gen_n": 10, "gen_ms": 363.515, "in_words": 6}
+{"id": "x2", "llm_raw": "Can you send me a quote for the new roof?", "error": null, "llm_ms": 817, "prompt_n": 27, "prompt_ms": 312.196, "gen_n": 12, "gen_ms": 430.154, "in_words": 10}
+{"id": "x3", "llm_raw": "The trial period ends next week.", "error": null, "llm_ms": 640, "prompt_n": 29, "prompt_ms": 315.546, "gen_n": 8, "gen_ms": 275.749, "in_words": 6}
+{"id": "x4", "llm_raw": "In British English, a period is called a full stop.", "error": null, "llm_ms": 846, "prompt_n": 17, "prompt_ms": 297.946, "gen_n": 13, "gen_ms": 470.169, "in_words": 10}
+{"id": "x5", "llm_raw": "Always use the Oxford comma in lists.", "error": null, "llm_ms": 622, "prompt_n": 13, "prompt_ms": 230.211, "gen_n": 9, "gen_ms": 319.342, "in_words": 7}
+{"id": "x6", "llm_raw": "Don’t forget that we have dinner at eight.", "error": null, "llm_ms": 738, "prompt_n": 54, "prompt_ms": 213.143, "gen_n": 12, "gen_ms": 453.679, "in_words": 8}
+{"id": "x7", "llm_raw": "Put a comma after the greeting.", "error": null, "llm_ms": 556, "prompt_n": 33, "prompt_ms": 208.953, "gen_n": 8, "gen_ms": 278.16, "in_words": 6}
+{"id": "x8", "llm_raw": "There’s no wait at the new place, let’s go there.", "error": null, "llm_ms": 962, "prompt_n": 59, "prompt_ms": 227.475, "gen_n": 17, "gen_ms": 675.617, "in_words": 10}
+{"id": "x9", "llm_raw": "They launched a new line of sneakers.", "error": null, "llm_ms": 615, "prompt_n": 34, "prompt_ms": 203.567, "gen_n": 9, "gen_ms": 340.185, "in_words": 7}
+{"id": "x10", "llm_raw": "The question mark at the end looks wrong.", "error": null, "llm_ms": 872, "prompt_n": 14, "prompt_ms": 453.338, "gen_n": 10, "gen_ms": 362.348, "in_words": 8}
+{"id": "x11", "llm_raw": "I mean it when I say this is our best quarter.", "error": null, "llm_ms": 823, "prompt_n": 17, "prompt_ms": 308.051, "gen_n": 13, "gen_ms": 459.447, "in_words": 11}
+{"id": "x12", "llm_raw": "Quote me on that", "error": null, "llm_ms": 440, "prompt_n": 48, "prompt_ms": 217.225, "gen_n": 5, "gen_ms": 154.856, "in_words": 4}
+{"id": "x13", "llm_raw": "The formula is in parentheses on the board.", "error": null, "llm_ms": 600, "prompt_n": 35, "prompt_ms": 194.087, "gen_n": 10, "gen_ms": 336.495, "in_words": 8}
+{"id": "x14", "llm_raw": "Put the area code in parentheses.", "error": null, "llm_ms": 549, "prompt_n": 12, "prompt_ms": 231.94, "gen_n": 8, "gen_ms": 263.125, "in_words": 6}
+{"id": "x15", "llm_raw": "The answer is in brackets at the bottom of the page.", "error": null, "llm_ms": 822, "prompt_n": 17, "prompt_ms": 303.104, "gen_n": 13, "gen_ms": 454.02, "in_words": 11}
+{"id": "x16", "llm_raw": "Can you get me a quote by end of day?", "error": null, "llm_ms": 678, "prompt_n": 54, "prompt_ms": 203.023, "gen_n": 12, "gen_ms": 429.267, "in_words": 10}

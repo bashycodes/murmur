@@ -28,7 +28,7 @@ fn session_config() -> SessionConfig {
         languages: vec!["en".into()],
         dictionary: Dictionary {
             entries: vec![
-                DictEntry::replacement("wispr", "Wispr"),
+                DictEntry::replacement("zephyr", "Zephyr"),
                 DictEntry::snippet("my address", "1 Main St"),
             ],
         },
@@ -50,7 +50,7 @@ fn context() -> FieldContext {
 
 /// A real core result with deterministic timings.
 fn commit_result() -> CommitResult {
-    let core = FlowCore::from_engines(Arc::new(MockAsr::new("um ask not what wispr can do")), None);
+    let core = FlowCore::from_engines(Arc::new(MockAsr::new("um ask not what zephyr can do")), None);
     core.start_session(session_config()).unwrap();
     core.set_context(context());
     core.push_audio(&speech(1000));

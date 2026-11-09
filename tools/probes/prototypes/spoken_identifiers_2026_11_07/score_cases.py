@@ -6,7 +6,7 @@ usage: score_cases.py ROWS.jsonl [ROWS.jsonl ...] [--refs REFS.json] [--fails]
 ROWS: this probe's runner output (`id`, `text`, `llm_ms`, `fallback_reason`,
 `prompt_chars`). A case passes when every check in the refs holds (regex
 must match, or must not with "absent"). Default refs: `refs.json` next to
-this script; any wispr_parity reference file works too (only clips with
+this script; any parity reference file works too (only clips with
 checks count, so the parity eval's identifier lines can be scored with a
 private refs file holding just their checks). Per file: passes per group
 (first letter of the id), passes on the held-out half (refs "split":

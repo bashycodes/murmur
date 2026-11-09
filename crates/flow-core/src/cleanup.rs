@@ -1,4 +1,4 @@
-//! Optional LLM cleanup pass (03 §6): prompt builder, timeout, fallback.
+//! Optional LLM cleanup pass: prompt builder, timeout, fallback.
 //!
 //! The backend (llama.cpp behind feature `llm`, or anything else) only has
 //! to implement [`Cleaner`]. Everything around it — when to run, the prompt,
@@ -31,7 +31,7 @@ pub struct CleanPrompt {
     pub examples: Vec<(String, String)>,
     pub user: String,
     /// The raw ASR text alone; backends size their output budget from it
-    /// (03 §7.5: max tokens = 2 x input + 32).
+    /// (max tokens = 2 x input + 32).
     pub transcript: String,
     /// D36: what the prompt was built from (text + context, already
     /// narrowed to the prompt's scope), so a backend that builds its own
@@ -863,7 +863,7 @@ pub enum CleanOutcome {
     Fallback(FallbackReason),
 }
 
-/// Wispr skips its formatter for raw mode and terminals; level `none` is
+/// The formatter is skipped for raw mode and terminals; level `none` is
 /// verbatim.
 pub fn should_run(cfg: &SessionConfig, cat: AppCategory) -> bool {
     !cfg.raw_mode && cfg.cleanup_level != CleanupLevel::None && cat != AppCategory::Terminal
@@ -1262,7 +1262,7 @@ impl UserMsg<'_> {
 }
 
 /// Short system prompt + few-shot turns (docs/model-benchmarks.md; replaces
-/// the long 03 §7.2 rule list). Cursor matching is left to post-processing.
+/// the earlier long rule list). Cursor matching is left to post-processing.
 ///
 /// Layout is chosen for KV-cache reuse: the system prompt and the example
 /// turns depend only on the cleanup level, and everything per-dictation
@@ -1334,7 +1334,7 @@ pub enum PromptVersion {
     #[default]
     V2,
     /// AI cleanup prompt v4c (`cleanup/prompt_v4c.rs`): one pass on the raw
-    /// transcript, light Wispr-style edits. Kept for the bench and replay.
+    /// transcript, light edits. Kept for the bench and replay.
     V4c,
     /// AI cleanup prompt v5 (`cleanup/prompt_v5.rs`): v4c with spoken lists
     /// (bullets and numbers) and self-corrections reworked; what the D30
@@ -1521,7 +1521,7 @@ pub fn warm_prompt() -> CleanPrompt {
     )
 }
 
-/// LLM HTML lists -> plain-text lines (`1.` / `- `), per 03 §7.5.
+/// LLM HTML lists -> plain-text lines (`1.` / `- `).
 pub fn lists_to_plain(s: &str) -> String {
     let re = regex::Regex::new(r"(?s)<(ol|ul)>(.*?)</(?:ol|ul)>").unwrap();
     let li = regex::Regex::new(r"(?s)<li>(.*?)</li>").unwrap();
@@ -1544,7 +1544,7 @@ pub fn lists_to_plain(s: &str) -> String {
 }
 
 /// Labels small instruct models like to put before the answer, and the
-/// commentary they put after it. 03 §7.2 asks for "only the cleaned text";
+/// commentary they put after it. The prompt asks for "only the cleaned text";
 /// this enforces it instead of trusting the model.
 static PREAMBLE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(

@@ -1,0 +1,803 @@
+{
+ "about": "Few-shot LLM outputs from the 2026-10-20 cleanup benchmark (docs/model-benchmarks.md; results llm-fewshot-20261020-160825-t4 and, for 7B, -161801-t4) with the manual A/M/H judgements from tools/probes/bench/llm_judgements.json. A = paste-ready, M = safe miss, H = harmful.",
+ "rows": [
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c02",
+   "judgement": "M",
+   "input": "Um, so I I think the the build is uh broken again on main, can you take a look when you get a chance?",
+   "output": "Um, so I think the build is broken again on main, can you take a look when you get a chance?"
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c03",
+   "judgement": "H",
+   "input": "Let's meet at the cafe at 3pm. Scratch that, let's meet at the library at 4pm.",
+   "output": "Let's meet at the cafe at 3pm."
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c04",
+   "judgement": "M",
+   "input": "Send the report to Sarah, actually I mean send it to Michael, by Friday.",
+   "output": "Send the report to Sarah, actually I mean send it to Michael, by Friday."
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c05",
+   "judgement": "A",
+   "input": "I actually really liked the new design, it's actually much cleaner than the old one.",
+   "output": "I actually really liked the new design, it's actually much cleaner than the old one."
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c06",
+   "judgement": "A",
+   "input": "dear diary comma today was a long day period i finished the project question mark not quite period",
+   "output": "Dear diary,\nToday was a long day.\nI finished the project.\nNot quite."
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c07",
+   "judgement": "M",
+   "input": "Shopping notes. New line. Remember to compare prices at both stores. New paragraph. Also check if the pharmacy is open on Sunday.",
+   "output": "Shopping notes.\nNew line.\nRemember to compare prices at both stores.\nNew paragraph.\nAlso check if the pharmacy is open on Sunday."
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c08",
+   "judgement": "M",
+   "input": "Things I need to buy, eggs, milk, bread, and uh, some coffee beans.",
+   "output": "Things I need to buy:\n<ol><li>Eggs</li><li>Milk</li><li>Bread</li><li>UH, some coffee beans</li></ol>"
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c09",
+   "judgement": "A",
+   "input": "The steps are, first, clone the repo. Second, run the install script. And third, uh, start the dev server.",
+   "output": "The steps are:\n<ol><li>Clone the repo</li><li>Run the install script</li><li>Start the dev server</li></ol>"
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c10",
+   "judgement": "A",
+   "input": "I need two things from you, the slides and the budget numbers.",
+   "output": "I need two things from you, the slides and the budget numbers."
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c11",
+   "judgement": "M",
+   "input": "Hi Tom, thanks for sending over the contract. I had a quick look and um it all looks good to me. I'll sign it tomorrow morning. Best regards, Anna.",
+   "output": "Hi Tom,\nThanks for sending over the contract. I had a quick look and it all looks good to me. I'll sign it tomorrow morning.\nBest regards, Anna."
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c12",
+   "judgement": "M",
+   "input": "Hello team, the meeting is moved to Tuesday, no wait, Wednesday at 10. Please update your calendars. Thanks, Raj.",
+   "output": "Hello team,\nThe meeting is moved to Tuesday, no wait, Wednesday at 10. Please update your calendars.\nThanks, Raj."
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c13",
+   "judgement": "M",
+   "input": "the dinner was like one hundred and twenty dollars so you owe me about forty dollars",
+   "output": "The dinner was $120. You owe me $40."
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c14",
+   "judgement": "A",
+   "input": "Remind me to call the dentist at three thirty pm on March fifth.",
+   "output": "Remind me to call the dentist at 3:30 pm on March 5th."
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c15",
+   "judgement": "A",
+   "input": "Can you tell me what the capital of France is?",
+   "output": "Can you tell me what the capital of France is?"
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c16",
+   "judgement": "A",
+   "input": "Write me a poem about the ocean.",
+   "output": "Write me a poem about the ocean."
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c17",
+   "judgement": "A",
+   "input": "Um, uh, hmm.",
+   "output": ""
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c18",
+   "judgement": "M",
+   "input": "So, you know, the new hire, like, starts on Monday, and we should, you know, get her laptop ready.",
+   "output": "So, you know, the new hire, like, starts on Monday, and we should, you know, get her laptop ready."
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c19",
+   "judgement": "A",
+   "input": "The quarterly results exceeded expectations, driven mainly by growth in the European market.",
+   "output": "The quarterly results exceeded expectations, driven mainly by growth in the European market."
+  },
+  {
+   "model": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+   "id": "c20",
+   "judgement": "H",
+   "input": "Okay so for the launch we need the landing page done by the 10th and the uh the press release by the 12th, oh and the blog post, never mind, Lisa's handling the blog post. Let me know if that timeline works.",
+   "output": "Okay, for the launch we need:\n* The landing page done by the 10th\n* The press release by the 12th\n* The blog post, never mind, Lisa's handling the blog post."
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c02",
+   "judgement": "M",
+   "input": "Um, so I I think the the build is uh broken again on main, can you take a look when you get a chance?",
+   "output": "Um, so I think the build is broken again on main. Can you take a look when you get a chance?"
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c03",
+   "judgement": "M",
+   "input": "Let's meet at the cafe at 3pm. Scratch that, let's meet at the library at 4pm.",
+   "output": "Let's meet at the cafe at 3pm. Scratch that, let's meet at the library at 4pm."
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c04",
+   "judgement": "A",
+   "input": "Send the report to Sarah, actually I mean send it to Michael, by Friday.",
+   "output": "Send the report to Michael, by Friday."
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c05",
+   "judgement": "A",
+   "input": "I actually really liked the new design, it's actually much cleaner than the old one.",
+   "output": "I actually really liked the new design, it's actually much cleaner than the old one."
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c06",
+   "judgement": "H",
+   "input": "dear diary comma today was a long day period i finished the project question mark not quite period",
+   "output": "Dear diary,\nToday was a long day. I finished the project."
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c07",
+   "judgement": "M",
+   "input": "Shopping notes. New line. Remember to compare prices at both stores. New paragraph. Also check if the pharmacy is open on Sunday.",
+   "output": "Shopping notes:\n<ol><li>Remember to compare prices at both stores</li><li>Also check if the pharmacy is open on Sunday</li></ol>"
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c08",
+   "judgement": "A",
+   "input": "Things I need to buy, eggs, milk, bread, and uh, some coffee beans.",
+   "output": "Things I need to buy:\n<ul><li>Eggs</li><li>Milk</li><li>Bread</li><li>Coffee beans</li></ul>"
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c09",
+   "judgement": "A",
+   "input": "The steps are, first, clone the repo. Second, run the install script. And third, uh, start the dev server.",
+   "output": "The steps are:\n<ol><li>Clone the repo</li><li>Run the install script</li><li>Start the dev server</li></ol>"
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c10",
+   "judgement": "A",
+   "input": "I need two things from you, the slides and the budget numbers.",
+   "output": "I need two things from you: the slides and the budget numbers."
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c11",
+   "judgement": "A",
+   "input": "Hi Tom, thanks for sending over the contract. I had a quick look and um it all looks good to me. I'll sign it tomorrow morning. Best regards, Anna.",
+   "output": "Hi Tom,\nThanks for sending over the contract. I had a quick look and it all looks good to me. I'll sign it tomorrow morning.\nBest regards,\nAnna"
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c12",
+   "judgement": "M",
+   "input": "Hello team, the meeting is moved to Tuesday, no wait, Wednesday at 10. Please update your calendars. Thanks, Raj.",
+   "output": "Hello team,\nThe meeting is moved to Wednesday at 10 AM. Please update your calendars.\nThanks,\nRaj"
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c13",
+   "judgement": "A",
+   "input": "the dinner was like one hundred and twenty dollars so you owe me about forty dollars",
+   "output": "The dinner was $120, so you owe me about $40."
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c14",
+   "judgement": "A",
+   "input": "Remind me to call the dentist at three thirty pm on March fifth.",
+   "output": "Remind me to call the dentist at 3:30 pm on March 5th."
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c15",
+   "judgement": "A",
+   "input": "Can you tell me what the capital of France is?",
+   "output": "Can you tell me what the capital of France is?"
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c16",
+   "judgement": "A",
+   "input": "Write me a poem about the ocean.",
+   "output": "Write me a poem about the ocean."
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c17",
+   "judgement": "M",
+   "input": "Um, uh, hmm.",
+   "output": "Hmm, uh, um."
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c18",
+   "judgement": "A",
+   "input": "So, you know, the new hire, like, starts on Monday, and we should, you know, get her laptop ready.",
+   "output": "So, the new hire starts on Monday, and we should get her laptop ready."
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c19",
+   "judgement": "A",
+   "input": "The quarterly results exceeded expectations, driven mainly by growth in the European market.",
+   "output": "The quarterly results exceeded expectations, driven mainly by growth in the European market."
+  },
+  {
+   "model": "qwen2.5-1.5b-instruct-q4_k_m.gguf",
+   "id": "c20",
+   "judgement": "A",
+   "input": "Okay so for the launch we need the landing page done by the 10th and the uh the press release by the 12th, oh and the blog post, never mind, Lisa's handling the blog post. Let me know if that timeline works.",
+   "output": "Okay, for the launch, the landing page is due by the 10th, and the press release by the 12th. Lisa's handling the blog post. Let me know if that timeline works."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c02",
+   "judgement": "A",
+   "input": "Um, so I I think the the build is uh broken again on main, can you take a look when you get a chance?",
+   "output": "So I think the build is broken again on main, can you take a look when you get a chance?"
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c03",
+   "judgement": "A",
+   "input": "Let's meet at the cafe at 3pm. Scratch that, let's meet at the library at 4pm.",
+   "output": "Let's meet at the library at 4pm."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c04",
+   "judgement": "A",
+   "input": "Send the report to Sarah, actually I mean send it to Michael, by Friday.",
+   "output": "Send the report to Michael, by Friday."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c05",
+   "judgement": "A",
+   "input": "I actually really liked the new design, it's actually much cleaner than the old one.",
+   "output": "I actually really liked the new design, it's actually much cleaner than the old one."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c06",
+   "judgement": "M",
+   "input": "dear diary comma today was a long day period i finished the project question mark not quite period",
+   "output": "dear diary, today was a long day. I finished the project. not quite."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c07",
+   "judgement": "M",
+   "input": "Shopping notes. New line. Remember to compare prices at both stores. New paragraph. Also check if the pharmacy is open on Sunday.",
+   "output": "Shopping notes.\n- Remember to compare prices at both stores.\n- Also check if the pharmacy is open on Sunday."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c08",
+   "judgement": "A",
+   "input": "Things I need to buy, eggs, milk, bread, and uh, some coffee beans.",
+   "output": "Things I need to buy: eggs, milk, bread, and coffee beans."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c09",
+   "judgement": "A",
+   "input": "The steps are, first, clone the repo. Second, run the install script. And third, uh, start the dev server.",
+   "output": "The steps are:\n<ol>\n<li>Clone the repo</li>\n<li>Run the install script</li>\n<li>Start the dev server</li>\n</ol>"
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c10",
+   "judgement": "M",
+   "input": "I need two things from you, the slides and the budget numbers.",
+   "output": "I need the slides and the budget numbers."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c11",
+   "judgement": "A",
+   "input": "Hi Tom, thanks for sending over the contract. I had a quick look and um it all looks good to me. I'll sign it tomorrow morning. Best regards, Anna.",
+   "output": "Hi Tom,\nThanks for sending over the contract. I had a quick look and it all looks good to me. I'll sign it tomorrow morning.\nBest regards,\nAnna."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c12",
+   "judgement": "A",
+   "input": "Hello team, the meeting is moved to Tuesday, no wait, Wednesday at 10. Please update your calendars. Thanks, Raj.",
+   "output": "Hello team,\nThe meeting is moved to Wednesday at 10.\nPlease update your calendars.\nThanks,\nRaj"
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c13",
+   "judgement": "A",
+   "input": "the dinner was like one hundred and twenty dollars so you owe me about forty dollars",
+   "output": "The dinner was $120 so you owe me about $40."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c14",
+   "judgement": "A",
+   "input": "Remind me to call the dentist at three thirty pm on March fifth.",
+   "output": "Remind me to call the dentist at 3:30 PM on March 5."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c15",
+   "judgement": "A",
+   "input": "Can you tell me what the capital of France is?",
+   "output": "Can you tell me what the capital of France is?"
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c16",
+   "judgement": "A",
+   "input": "Write me a poem about the ocean.",
+   "output": "Write me a poem about the ocean."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c17",
+   "judgement": "M",
+   "input": "Um, uh, hmm.",
+   "output": "Hmm."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c18",
+   "judgement": "A",
+   "input": "So, you know, the new hire, like, starts on Monday, and we should, you know, get her laptop ready.",
+   "output": "So, the new hire starts on Monday, and we should get her laptop ready."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c19",
+   "judgement": "A",
+   "input": "The quarterly results exceeded expectations, driven mainly by growth in the European market.",
+   "output": "The quarterly results exceeded expectations, driven mainly by growth in the European market."
+  },
+  {
+   "model": "qwen2.5-3b-instruct-q4_k_m.gguf",
+   "id": "c20",
+   "judgement": "A",
+   "input": "Okay so for the launch we need the landing page done by the 10th and the uh the press release by the 12th, oh and the blog post, never mind, Lisa's handling the blog post. Let me know if that timeline works.",
+   "output": "Okay, so for the launch we need the landing page done by the 10th and the press release by the 12th. Lisa's handling the blog post. Let me know if that timeline works."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c02",
+   "judgement": "H",
+   "input": "Um, so I I think the the build is uh broken again on main, can you take a look when you get a chance?",
+   "output": "I'll take a look at the build when I get a chance."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c03",
+   "judgement": "A",
+   "input": "Let's meet at the cafe at 3pm. Scratch that, let's meet at the library at 4pm.",
+   "output": "Let's meet at the library at 4pm."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c04",
+   "judgement": "A",
+   "input": "Send the report to Sarah, actually I mean send it to Michael, by Friday.",
+   "output": "Send the report to Michael, by Friday."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c05",
+   "judgement": "A",
+   "input": "I actually really liked the new design, it's actually much cleaner than the old one.",
+   "output": "I actually really liked the new design, it's actually much cleaner than the old one."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c06",
+   "judgement": "H",
+   "input": "dear diary comma today was a long day period i finished the project question mark not quite period",
+   "output": "Dear diary,\nToday was a long day.\nI finished the project."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c07",
+   "judgement": "A",
+   "input": "Shopping notes. New line. Remember to compare prices at both stores. New paragraph. Also check if the pharmacy is open on Sunday.",
+   "output": "Shopping notes.\nRemember to compare prices at both stores.\nAlso check if the pharmacy is open on Sunday."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c08",
+   "judgement": "M",
+   "input": "Things I need to buy, eggs, milk, bread, and uh, some coffee beans.",
+   "output": "<ol><li>Eggs</li><li>Milk</li><li>Bread</li><li>Coffee beans</li></ol>"
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c09",
+   "judgement": "M",
+   "input": "The steps are, first, clone the repo. Second, run the install script. And third, uh, start the dev server.",
+   "output": "Clone the repo.\nRun the install script.\nStart the dev server."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c10",
+   "judgement": "A",
+   "input": "I need two things from you, the slides and the budget numbers.",
+   "output": "I need two things from you, the slides and the budget numbers."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c11",
+   "judgement": "M",
+   "input": "Hi Tom, thanks for sending over the contract. I had a quick look and um it all looks good to me. I'll sign it tomorrow morning. Best regards, Anna.",
+   "output": "Hi Tom,\nThanks for sending over the contract. I had a quick look and it all looks good to me. I'll sign it tomorrow morning. Best regards, Anna."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c12",
+   "judgement": "M",
+   "input": "Hello team, the meeting is moved to Tuesday, no wait, Wednesday at 10. Please update your calendars. Thanks, Raj.",
+   "output": "Hello team,\nThe meeting is moved to Wednesday at 10.\nPlease update your calendars.\nThanks, Raj."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c13",
+   "judgement": "H",
+   "input": "the dinner was like one hundred and twenty dollars so you owe me about forty dollars",
+   "output": "You owe me $40."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c14",
+   "judgement": "H",
+   "input": "Remind me to call the dentist at three thirty pm on March fifth.",
+   "output": "Reminder: Call the dentist at 3:30 PM on 05/03."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c15",
+   "judgement": "A",
+   "input": "Can you tell me what the capital of France is?",
+   "output": "Can you tell me what the capital of France is?"
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c16",
+   "judgement": "H",
+   "input": "Write me a poem about the ocean.",
+   "output": "<ol><li>Write me a poem about the ocean.</li><li>Write me a poem about the ocean.</li><li>Write me a poem about the ocean.</li></ol>"
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c17",
+   "judgement": "M",
+   "input": "Um, uh, hmm.",
+   "output": "Um, uh, hmm."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c18",
+   "judgement": "A",
+   "input": "So, you know, the new hire, like, starts on Monday, and we should, you know, get her laptop ready.",
+   "output": "So, the new hire starts on Monday, and we should get her laptop ready."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c19",
+   "judgement": "A",
+   "input": "The quarterly results exceeded expectations, driven mainly by growth in the European market.",
+   "output": "The quarterly results exceeded expectations, driven mainly by growth in the European market."
+  },
+  {
+   "model": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+   "id": "c20",
+   "judgement": "H",
+   "input": "Okay so for the launch we need the landing page done by the 10th and the uh the press release by the 12th, oh and the blog post, never mind, Lisa's handling the blog post. Let me know if that timeline works.",
+   "output": "Let me know if that timeline works."
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c02",
+   "judgement": "A",
+   "input": "Um, so I I think the the build is uh broken again on main, can you take a look when you get a chance?",
+   "output": "I think the build is broken again on main, can you take a look when you get a chance?"
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c03",
+   "judgement": "A",
+   "input": "Let's meet at the cafe at 3pm. Scratch that, let's meet at the library at 4pm.",
+   "output": "Let's meet at the library at 4pm."
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c04",
+   "judgement": "A",
+   "input": "Send the report to Sarah, actually I mean send it to Michael, by Friday.",
+   "output": "Send the report to Michael, by Friday."
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c05",
+   "judgement": "A",
+   "input": "I actually really liked the new design, it's actually much cleaner than the old one.",
+   "output": "I actually really liked the new design, it's actually much cleaner than the old one."
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c06",
+   "judgement": "A",
+   "input": "dear diary comma today was a long day period i finished the project question mark not quite period",
+   "output": "Dear Diary,\nToday was a long day. I finished the project. Not quite."
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c07",
+   "judgement": "A",
+   "input": "Shopping notes. New line. Remember to compare prices at both stores. New paragraph. Also check if the pharmacy is open on Sunday.",
+   "output": "Shopping notes.\nRemember to compare prices at both stores.\nAlso check if the pharmacy is open on Sunday."
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c08",
+   "judgement": "A",
+   "input": "Things I need to buy, eggs, milk, bread, and uh, some coffee beans.",
+   "output": "Things I need to buy:\n<ol>\n<li>Eggs</li>\n<li>Milk</li>\n<li>Bread</li>\n<li>Coffee beans</li>\n</ol>"
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c09",
+   "judgement": "A",
+   "input": "The steps are, first, clone the repo. Second, run the install script. And third, uh, start the dev server.",
+   "output": "The steps are:\n<ol>\n<li>Clone the repo</li>\n<li>Run the install script</li>\n<li>Start the dev server</li>\n</ol>"
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c10",
+   "judgement": "M",
+   "input": "I need two things from you, the slides and the budget numbers.",
+   "output": "I need two things from you:\n<ol>\n<li>The slides</li>\n<li>The budget numbers</li>\n</ol>"
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c11",
+   "judgement": "A",
+   "input": "Hi Tom, thanks for sending over the contract. I had a quick look and um it all looks good to me. I'll sign it tomorrow morning. Best regards, Anna.",
+   "output": "Hi Tom,\nThanks for sending over the contract. I had a quick look and it all looks good to me. I'll sign it tomorrow morning.\nBest regards,\nAnna"
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c12",
+   "judgement": "A",
+   "input": "Hello team, the meeting is moved to Tuesday, no wait, Wednesday at 10. Please update your calendars. Thanks, Raj.",
+   "output": "Hello team,\nThe meeting is moved to Wednesday at 10. Please update your calendars.\nThanks,\nRaj"
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c13",
+   "judgement": "M",
+   "input": "the dinner was like one hundred and twenty dollars so you owe me about forty dollars",
+   "output": "The dinner was $120. You owe me $40."
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c14",
+   "judgement": "M",
+   "input": "Remind me to call the dentist at three thirty pm on March fifth.",
+   "output": "Remind me to call the dentist at 3:30 pm on 3/5."
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c15",
+   "judgement": "A",
+   "input": "Can you tell me what the capital of France is?",
+   "output": "Can you tell me what the capital of France is?"
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c16",
+   "judgement": "A",
+   "input": "Write me a poem about the ocean.",
+   "output": "Write me a poem about the ocean."
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c17",
+   "judgement": "A",
+   "input": "Um, uh, hmm.",
+   "output": ""
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c18",
+   "judgement": "A",
+   "input": "So, you know, the new hire, like, starts on Monday, and we should, you know, get her laptop ready.",
+   "output": "So, the new hire starts on Monday, and we should get her laptop ready."
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c19",
+   "judgement": "A",
+   "input": "The quarterly results exceeded expectations, driven mainly by growth in the European market.",
+   "output": "The quarterly results exceeded expectations, driven mainly by growth in the European market."
+  },
+  {
+   "model": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+   "id": "c20",
+   "judgement": "H",
+   "input": "Okay so for the launch we need the landing page done by the 10th and the uh the press release by the 12th, oh and the blog post, never mind, Lisa's handling the blog post. Let me know if that timeline works.",
+   "output": "Okay so for the launch we need the landing page done by the 10th and the press release by the 12th. Let me know if that timeline works."
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c02",
+   "judgement": "A",
+   "input": "Um, so I I think the the build is uh broken again on main, can you take a look when you get a chance?",
+   "output": "So I think the build is broken again on main. Can you take a look when you get a chance?"
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c03",
+   "judgement": "A",
+   "input": "Let's meet at the cafe at 3pm. Scratch that, let's meet at the library at 4pm.",
+   "output": "Let's meet at the library at 4:00 pm."
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c04",
+   "judgement": "A",
+   "input": "Send the report to Sarah, actually I mean send it to Michael, by Friday.",
+   "output": "Send the report to Michael by Friday."
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c05",
+   "judgement": "M",
+   "input": "I actually really liked the new design, it's actually much cleaner than the old one.",
+   "output": "I actually really liked the new design; it's much cleaner than the old one."
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c06",
+   "judgement": "H",
+   "input": "dear diary comma today was a long day period i finished the project question mark not quite period",
+   "output": "Dear diary,\nToday was a long day. I finished the project. Not quite.\n日记"
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c07",
+   "judgement": "M",
+   "input": "Shopping notes. New line. Remember to compare prices at both stores. New paragraph. Also check if the pharmacy is open on Sunday.",
+   "output": "Shopping notes.\n- Remember to compare prices at both stores.\n- Also check if the pharmacy is open on Sunday."
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c08",
+   "judgement": "A",
+   "input": "Things I need to buy, eggs, milk, bread, and uh, some coffee beans.",
+   "output": "Things I need to buy:\n<ul><li>eggs</li><li>milk</li><li>bread</li><li>some coffee beans</li></ul>"
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c09",
+   "judgement": "A",
+   "input": "The steps are, first, clone the repo. Second, run the install script. And third, uh, start the dev server.",
+   "output": "The steps are:\n<ol><li>Clone the repo.</li><li>Run the install script.</li><li>Start the dev server.</li></ol>"
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c10",
+   "judgement": "A",
+   "input": "I need two things from you, the slides and the budget numbers.",
+   "output": "I need two things from you: the slides and the budget numbers."
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c11",
+   "judgement": "A",
+   "input": "Hi Tom, thanks for sending over the contract. I had a quick look and um it all looks good to me. I'll sign it tomorrow morning. Best regards, Anna.",
+   "output": "Hi Tom,\nThanks for sending over the contract. I had a quick look and it all looks good to me. I'll sign it tomorrow morning.\nBest regards,\nAnna"
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c12",
+   "judgement": "A",
+   "input": "Hello team, the meeting is moved to Tuesday, no wait, Wednesday at 10. Please update your calendars. Thanks, Raj.",
+   "output": "Hello team,\nThe meeting is moved to Wednesday at 10.\nPlease update your calendars.\nThanks,\nRaj"
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c13",
+   "judgement": "A",
+   "input": "the dinner was like one hundred and twenty dollars so you owe me about forty dollars",
+   "output": "The dinner was $120, so you owe me about $40."
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c14",
+   "judgement": "A",
+   "input": "Remind me to call the dentist at three thirty pm on March fifth.",
+   "output": "Remind me to call the dentist at 3:30 PM on March 5."
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c15",
+   "judgement": "A",
+   "input": "Can you tell me what the capital of France is?",
+   "output": "Can you tell me what the capital of France is?"
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c16",
+   "judgement": "A",
+   "input": "Write me a poem about the ocean.",
+   "output": "Write me a poem about the ocean."
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c17",
+   "judgement": "A",
+   "input": "Um, uh, hmm.",
+   "output": ""
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c18",
+   "judgement": "A",
+   "input": "So, you know, the new hire, like, starts on Monday, and we should, you know, get her laptop ready.",
+   "output": "So the new hire starts on Monday, and we should get her laptop ready."
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c19",
+   "judgement": "A",
+   "input": "The quarterly results exceeded expectations, driven mainly by growth in the European market.",
+   "output": "The quarterly results exceeded expectations, driven mainly by growth in the European market."
+  },
+  {
+   "model": "Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+   "id": "c20",
+   "judgement": "H",
+   "input": "Okay so for the launch we need the landing page done by the 10th and the uh the press release by the 12th, oh and the blog post, never mind, Lisa's handling the blog post. Let me know if that timeline works.",
+   "output": "Okay, so for the launch we need the landing page done by the 10th and the press release by the 12th. Let me know if that timeline works."
+  }
+ ]
+}

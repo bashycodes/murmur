@@ -2085,7 +2085,7 @@ fn finish_text(
     let language = r.language.clone();
     let english = english_rules(language.as_deref());
     // A whole-utterance snippet trigger is pasted as its expansion; the
-    // LLM must not see (or reword) it (03 §7.1).
+    // LLM must not see (or reword) it.
     let snippet = matcher.whole_snippet(&r.asr_text).is_some();
     // D30: with a cloud cleaner active, AI cleanup gets the raw
     // transcript first (no rules pre-pass, no skip); the rules and the
@@ -2150,7 +2150,7 @@ fn finish_text(
     }
     if (cfg.spoken_cleanup || cfg.cleanup_level != CleanupLevel::None) && !snippet {
         // Parakeet-unified often ends without a period, whisper on a
-        // comma; Wispr's server would close the sentence (D25).
+        // comma; close the sentence as server output would be (D25).
         text = postprocess::terminal::close_sentence(&text);
     }
     r.status = CommitStatus::RawTranscript;
@@ -2232,7 +2232,7 @@ fn finish_text(
     post(cfg, matcher, &ctx, r, text)
 }
 
-/// Post-processing (dictionary, cursor context, paste plan) on the
+/// Post-processing (dictionary, terminal punctuation, cursor context, paste plan) on the
 /// cleaned `text`.
 fn post(
     cfg: &SessionConfig,

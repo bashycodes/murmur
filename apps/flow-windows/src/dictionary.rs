@@ -162,7 +162,7 @@ mod tests {
     #[test]
     fn parse_is_tolerant_but_validates() {
         let (v, skipped) = parse(
-            r#"["Wispr", {"word":"gh","replacement":"GitHub"},
+            r#"["Korra", {"word":"gh","replacement":"GitHub"},
                 {"word":"sig","is_snippet":true,"replacement":"Best,\n Me","extra":1},
                 {"word":"  "}, {"word":"empty","isSnippet":true},
                 {"word":"GH","replacement":"GitHub Inc"}]"#,
@@ -171,7 +171,7 @@ mod tests {
         assert_eq!(
             v,
             vec![
-                e("Wispr", None, false),
+                e("Korra", None, false),
                 e("GH", Some("GitHub Inc"), false),
                 e("sig", Some("Best,\n Me"), true),
             ],
@@ -187,15 +187,15 @@ mod tests {
 
     #[test]
     fn merge_updates_in_place_and_appends() {
-        let have = vec![e("gh", Some("GitHub"), false), e("Wispr", None, false)];
+        let have = vec![e("gh", Some("GitHub"), false), e("Korra", None, false)];
         let r = import(
             &have,
-            r#"[{"word":"GH","replacement":"GitHub!"},{"word":"wispr"},{"word":"new"}]"#,
+            r#"[{"word":"GH","replacement":"GitHub!"},{"word":"korra"},{"word":"new"}]"#,
             false,
         )
         .unwrap();
         assert_eq!(r.added, 1);
-        assert_eq!(r.updated, 2, "case change of Wispr counts as an update");
+        assert_eq!(r.updated, 2, "case change of Korra counts as an update");
         assert_eq!(r.entries[0], e("GH", Some("GitHub!"), false));
         assert_eq!(r.entries[2].word, "new");
         let r = import(&have, r#"[{"word":"only"}]"#, true).unwrap();

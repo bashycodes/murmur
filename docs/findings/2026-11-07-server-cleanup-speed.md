@@ -20,7 +20,7 @@ Two harnesses:
   eval's `run_paths.py server` at 4× real time, as the ticket's numbers.
 
 Quality: the parity `score.py` (WER, CER, dictionary terms, format, kept
-instructions) against the Wispr references.
+instructions) against the reference transcripts.
 
 ## Where the time goes
 

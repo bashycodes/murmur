@@ -1,9 +1,7 @@
 //! Hands-free endpointing: notice that the user stopped talking.
 //!
-//! Wispr Flow has no speech endpointing (hands-free ends on a key press or
-//! the check button; its only silence detector is a broken-mic warning on
-//! all-zero chunks). This is a clone addition (D19), opt-in per session with
-//! `SessionConfig.endpoint_silence_ms`.
+//! Without it, hands-free ends on a key press or the check button. Opt-in
+//! per session (D19) with `SessionConfig.endpoint_silence_ms`.
 //!
 //! It is the commit-time VAD (`vad`, D16) run as a stream: the same 20 ms
 //! frames, the same RMS/ZCR speech bars and the same 60 ms minimum run, but
@@ -139,7 +137,7 @@ mod tests {
             .collect()
     }
 
-    /// Push `pcm` in 40 ms chunks (Wispr's chunk size); returns the
+    /// Push `pcm` in 40 ms chunks (the clients' chunk size); returns the
     /// pushed time (ms) at which the endpoint was first reached.
     fn fire_at(ep: &mut Endpointer, pcm: &[i16], offset_ms: usize) -> Option<usize> {
         for (i, c) in pcm.chunks(S / 25).enumerate() {

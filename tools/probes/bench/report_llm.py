@@ -2,7 +2,7 @@
 """Print per-case LLM cleanup outputs side by side from one or more bench_llm.py JSONL files.
 
 Usage: python3 -I tools/probes/bench/report_llm.py $CACHE/results/llm-*.jsonl [--case c03]
-Flags per row: X = exact match, G = §7.1 guardrail would reject (raw ASR pasted instead).
+Flags per row: X = exact match, G = output guardrail would reject (raw ASR pasted instead).
 """
 import argparse, json, pathlib, sys
 

@@ -147,7 +147,7 @@ fn press_enter_is_a_trailing_enter_segment() {
     );
     assert!(r.press_enter);
     // The open dictation gets its period ("…press enter."), which the
-    // press-enter rule moves onto the text, as for Wispr's server output.
+    // press-enter rule moves onto the text, as for server-punctuated output.
     assert_eq!(r.segments, vec![text("Send it."), key(PasteKey::Enter)]);
 }
 
@@ -259,7 +259,7 @@ fn asr_request_carries_dictionary_and_screen_terms_separately() {
         dictionary: Dictionary {
             entries: vec![
                 DictEntry::word("Kubernetes"),
-                DictEntry::replacement("wispr", "Wispr"),
+                DictEntry::replacement("zephyr", "Zephyr"),
                 DictEntry::word("kubernetes"),
             ],
         },
@@ -267,18 +267,18 @@ fn asr_request_carries_dictionary_and_screen_terms_separately() {
     };
     core.start_session(cfg).unwrap();
     core.set_context(FieldContext {
-        screen_words: vec!["Alice".into(), "WISPR".into(), " ".into()],
+        screen_words: vec!["Alice".into(), "ZEPHYR".into(), " ".into()],
         ..Default::default()
     });
     core.push_audio(&speech(300));
     core.commit();
     let reqs = spy.0.lock().unwrap();
     let req = reqs.last().unwrap();
-    assert_eq!(req.dictionary_terms, ["Kubernetes", "Wispr"]);
+    assert_eq!(req.dictionary_terms, ["Kubernetes", "Zephyr"]);
     assert_eq!(req.screen_terms, ["Alice"]);
     assert_eq!(req.purpose, AsrPurpose::Final);
     // The whisper prompt is unchanged.
-    assert_eq!(req.initial_prompt, "Kubernetes, Wispr, Alice.");
+    assert_eq!(req.initial_prompt, "Kubernetes, Zephyr, Alice.");
 }
 
 #[test]

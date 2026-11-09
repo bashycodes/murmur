@@ -1,6 +1,6 @@
 # 2026-11-06: spoken lists and "X, no, Y" self-corrections in the AI cleanup prompt (v5)
 
-**Question.** The Wispr parity eval (2026-11-05) lost format points on dictated
+**Question.** The parity eval (2026-11-05) lost format points on dictated
 lists (no bullets or numbers, lead-in dropped) and on spoken self-corrections
 (both versions kept). Can the AI-cleanup prompt alone fix this on the ≤3B
 models we run, with no pre-AI rules (owner principle: text quality belongs in
@@ -12,7 +12,7 @@ the prompt and the model)?
   format on Parakeet greedy (beam + dictionary 22 → 23/31), with instructions
   kept 3/3, on the list and correction clips. WER moves 13.9 → 14.4 % (greedy),
   13.7 → 14.4 % (beam), almost all of it from one clip where v5 keeps a spoken
-  clause that the Wispr reference drops (v4c dropped it too). That is a WER cost
+  clause that the reference drops (v4c dropped it too). That is a WER cost
   against the reference, not a word lost from what was said.
 * **1.5B: lists yes, corrections no.** On the synthetic cases, lists go
   6 → 11/12. Corrections stay at 1–3/9 for every prompt we tried, including a
@@ -110,7 +110,7 @@ the box was busy, so both sides were run again):
 
 On the 1.5B, s02 goes 0/3 → 2/3. s03, s04, s08 and s12 are unchanged.
 
-**113-case AI-cleanup suite** (`ai_cleanup_bench_2026_10_26`, synthetic plus the Wispr pairs):
+**113-case AI-cleanup suite** (`ai_cleanup_bench_2026_10_26`, synthetic plus the reference pairs):
 
 | model | prompt | suite pass | corrections /7 | lists /5 | newline /5 | spoken marks /9 | negatives /19 |
 |---|---|---|---|---|---|---|---|

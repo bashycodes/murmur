@@ -112,7 +112,7 @@ class BubblePresenceTest {
         assertFalse(p.snooze())
         p.onState(DictationState.Ready)
         p.repair = true
-        assertFalse(p.snooze()) // refused in Repair (07 §5.5)
+        assertFalse(p.snooze()) // refused in Repair
     }
 
     @Test fun shakeWhileSnoozedUnsnoozes() = runTest {

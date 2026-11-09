@@ -9,8 +9,8 @@ import dev.flowclone.policy.PolicyLists
 import kotlinx.coroutines.delay
 
 /**
- * Wispr `KeepAliveFirstTextInserter.insert` (V3, smali-verified; spec 05 §Flow, 07 §3.3),
- * with every V3 feature on (`v3_attack_miss_hint_aware`).
+ * The V3 insertion path: keep the IME connection alive first, then insert, with every step on
+ * (including the hint-aware miss check).
  *
  * Contract: `commitText` at most once; verify by polling for 700 ms; fall back to
  * `ACTION_SET_TEXT` only into an empty / placeholder field; whole run bounded by

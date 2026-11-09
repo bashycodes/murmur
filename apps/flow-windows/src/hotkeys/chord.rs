@@ -167,8 +167,8 @@ impl Chord {
             && pressed.iter().all(|p| self.covers(*p))
     }
 
-    /// Validation used for user-configured chords (mirrors Wispr's rule:
-    /// at most 3 keys, at least one modifier). `allow_single` permits a lone
+    /// Validation used for user-configured chords (at most 3 keys, at
+    /// least one modifier). `allow_single` permits a lone
     /// non-modifier key (used for the cancel key, Esc).
     pub fn parse_validated(s: &str, allow_single: bool) -> Result<Chord, ChordError> {
         let c: Chord = s.parse()?;
@@ -304,18 +304,18 @@ impl<'de> Deserialize<'de> for Chord {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Bindings {
-    /// Hold to talk (default Right Alt, D57; Wispr's is Ctrl+Win).
+    /// Hold to talk (default Right Alt, D57; Ctrl+Win before that).
     pub ptt: Chord,
     /// Press to toggle hands-free (locked) dictation.
     pub hands_free: Chord,
     /// Cancel the current dictation (only swallowed while dictating).
     pub cancel: Chord,
-    /// Re-insert the last transcript (Wispr Windows default Shift+Alt+Z).
+    /// Re-insert the last transcript (default Shift+Alt+Z).
     pub paste_last: Chord,
-    /// Put the last transcript on the clipboard (Wispr default Shift+Alt+X).
+    /// Put the last transcript on the clipboard (default Shift+Alt+X).
     pub copy_last: Chord,
     /// Hold to speak a Command Mode instruction for the selected text
-    /// (Wispr default Ctrl+Win+Alt). It may extend a push-to-talk on the
+    /// (default Ctrl+Win+Alt). It may extend a push-to-talk on the
     /// way: Right Alt held, then Ctrl+Win (or a Ctrl+Win push-to-talk, then
     /// Alt) turns that dictation into a command.
     pub command: Chord,
@@ -850,7 +850,7 @@ mod tests {
     use super::*;
     use HotkeyAction::*;
 
-    /// Wispr's push-to-talk, Ctrl+Win (the default before D57), with the
+    /// Push-to-talk Ctrl+Win (the default before D57), with the
     /// other defaults: most chord tests use a multi-key push-to-talk.
     fn ctrl_win_ptt() -> ChordMatcher {
         ChordMatcher::new(Bindings {
