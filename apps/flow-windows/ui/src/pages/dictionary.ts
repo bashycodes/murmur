@@ -78,7 +78,7 @@ const DICT_TEMPLATE = `
     </div>
     <div class="lw-dict-status"><span id="dict_status" class="lw-status"></span></div>
   </div>
-  <p class="lw-dict-note">Words here help Parakeet and Whisper hear names correctly, and the AI cleanup spell them your way. With "heard as", what was heard is always rewritten. They're sent to OpenRouter only if you allow it in Settings.</p>
+  <p class="lw-dict-note">Words here help Parakeet and Whisper hear names correctly, and the AI cleanup spell them your way. With "heard as", what was heard is always rewritten. They're sent to the cloud only if you allow it in Settings.</p>
 
   <section class="lw-section">
     <h3 class="fl-group-title">Import and export</h3>

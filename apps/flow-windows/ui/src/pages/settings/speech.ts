@@ -49,7 +49,7 @@ ${heading(
   <div class="fl-group" id="dev_routes">
     ${engineRow("eng", "route", "client", ICON.chip, "This PC", toggle("dev_allow_client", "Use this PC", `data-save="dev"`))}
     ${engineRow("eng", "route", "server", ICON.server, "Your server", toggle("dev_allow_server", "Use your server", `data-save="dev"`))}
-    ${engineRow("eng", "route", "cloud", ICON.cloud, "OpenRouter", toggle("or_stt_allow", "Use OpenRouter for speech"))}
+    ${engineRow("eng", "route", "cloud", ICON.cloud, "Cloud", toggle("or_stt_allow", "Use the cloud for speech"))}
   </div>
   <ul id="dev_warnings" class="lw-warnings"></ul>
 </section>
@@ -59,7 +59,7 @@ ${heading(
   <div class="fl-group" id="meet_routes">
     ${engineRow("meet", "meeting", "client", ICON.chip, "This PC", toggle("meet_on_client", "Transcribe meetings on this PC"))}
     ${engineRow("meet", "meeting", "server", ICON.server, "Your server", toggle("meet_on_server", "Transcribe meetings on your server"))}
-    ${engineRow("meet", "meeting", "cloud", ICON.cloud, "OpenRouter", toggle("meet_on_cloud", "Transcribe meetings with OpenRouter"))}
+    ${engineRow("meet", "meeting", "cloud", ICON.cloud, "Cloud", toggle("meet_on_cloud", "Transcribe meetings in the cloud"))}
     <div class="fl-row lw-foot-row"><div class="fl-row-desc">Recorded meetings are transcribed after they end by the first engine that is on and answers; if it fails, the next one picks up the same part of the meeting. Dictation always goes first. <span id="meet_follow"></span> <span id="meet_order_msg" class="hint"></span></div></div>
   </div>
 </section>
@@ -107,7 +107,7 @@ ${group(
 ${SERVER_MODELS_GROUP}
 
 <section class="lw-section" id="or_stt_group" data-needs="cloud">
-  <h3 class="fl-group-title lw-title-badge">OpenRouter <span class="fl-badge fl-badge-light" id="or_stt_used_badge">Used only when on above</span></h3>
+  <h3 class="fl-group-title lw-title-badge">Cloud · OpenRouter <span class="fl-badge fl-badge-light" id="or_stt_used_badge">Used only when on above</span> <button type="button" class="lw-link lw-link-sm" data-go="settings-openrouter">Change provider →</button></h3>
   <div class="fl-group" id="or_stt_box">
     ${row(
       `<span id="or_stt_model_name"></span> <span id="or_stt_model_badges" class="pills"></span>`,
@@ -141,7 +141,7 @@ ${group(
   "",
   row(
     "Transcribe while I speak",
-    "Each phrase is turned into text as you pause, so long dictations finish about a second after you let go. Off = the whole recording is transcribed after you stop. OpenRouter always gets the whole recording.",
+    "Each phrase is turned into text as you pause, so long dictations finish about a second after you let go. Off = the whole recording is transcribed after you stop. The cloud always gets the whole recording.",
     toggle("dev_decode_while_speaking", "Transcribe while I speak", `data-save="dev"`),
   ),
   `data-needs="dev"`,

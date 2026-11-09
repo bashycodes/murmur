@@ -56,7 +56,7 @@ const TEMPLATE = `
     </div>
     <div class="fl-stats-sec" id="home_quota_sec" hidden>
       <div class="fl-quota" id="home_quota"></div>
-      <p class="fl-help" id="home_quota_help">OpenRouter spend this month.</p>
+      <p class="fl-help" id="home_quota_help">Cloud spend this month.</p>
       <button type="button" class="fl-btn fl-btn-outline fl-btn-block" id="home_usage">View usage</button>
     </div>
   </aside>
@@ -333,16 +333,16 @@ function showPrivacy() {
     const textOut = !!or?.supported && or.cleanup.allow;
     const server = !!dv?.caps.remote && !!dv.form.allow_server;
     $("privacy_title").textContent = audioOut
-        ? "Your voice can go to OpenRouter"
+        ? "Your voice can go to the cloud"
         : server
             ? "Your voice stays on your devices"
             : "Your voice stays on this PC";
     let line;
     if (audioOut) {
-        line = `Speech runs on your own engines and on OpenRouter (${or?.stt.model ?? ""}), in the order you set.${textOut ? " Text for AI cleanup goes there too." : ""}`;
+        line = `Speech runs on your own engines and in the cloud (${or?.stt.model ?? ""}), in the order you set.${textOut ? " Text for AI cleanup goes there too." : ""}`;
     }
     else if (textOut) {
-        line = `Speech runs on ${server ? "this PC or your own server" : "this PC"}. OpenRouter only gets text for AI cleanup.`;
+        line = `Speech runs on ${server ? "this PC or your own server" : "this PC"}. The cloud only gets text for AI cleanup.`;
     }
     else if (server) {
         line = "Speech runs on this PC or your own server. Nothing goes to a third party.";
@@ -408,8 +408,8 @@ function showQuota() {
     $("home_quota_help").textContent = u.budget_reached
         ? "Budget reached: dictation stays on your own engines until next month."
         : u.budget != null
-            ? "OpenRouter spend this month. Dictation switches to your own engines when the budget runs out."
-            : "OpenRouter spend this month. No budget set.";
+            ? "Cloud spend this month. Dictation switches to your own engines when the budget runs out."
+            : "Cloud spend this month. No budget set.";
 }
 export const homePage = {
     id: "home",

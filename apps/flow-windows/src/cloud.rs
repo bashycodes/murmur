@@ -244,7 +244,7 @@ pub fn usage_view(u: &CloudUsage, budget: Option<f64>) -> UsageView {
             label: match purpose {
                 PURPOSE_STT => "Speech-to-text",
                 PURPOSE_CLEANUP => "Text cleanup",
-                PURPOSE_CUSTOM => "Custom server",
+                PURPOSE_CUSTOM => "Your proxy",
                 _ => "Removed providers (before OpenRouter only)",
             }
             .into(),
@@ -531,7 +531,7 @@ mod tests {
                 row.requests,
                 row.cost.as_str()
             ),
-            (PURPOSE_CUSTOM, "Custom server", 9, "$5.00")
+            (PURPOSE_CUSTOM, "Your proxy", 9, "$5.00")
         );
     }
 

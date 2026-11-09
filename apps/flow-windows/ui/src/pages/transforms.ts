@@ -34,7 +34,7 @@ const TEMPLATE = `
 
   <div class="fl-banner fl-banner-mist">
     <h3 class="fl-banner-title">Transform works anywhere you write</h3>
-    <p class="fl-banner-body">Select text in any app, press a shortcut, and it's rewritten in place. Uses your AI cleanup engine: OpenRouter, then this PC.</p>
+    <p class="fl-banner-body">Select text in any app, press a shortcut, and it's rewritten in place. Uses your AI cleanup engine: the cloud, then this PC.</p>
     <div class="fl-banner-actions">
       <button type="button" class="fl-btn fl-btn-lumen" id="tf_try">Try it out</button>
       <button type="button" class="fl-btn fl-btn-link-light" data-go="settings-cleanup">How it works</button>

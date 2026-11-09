@@ -45,7 +45,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
           <div class="fl-callout fl-callout-lilac" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px;">
             <div class="fl-grow" style="flex: 1;">
               <div class="fl-callout-title">Your voice stays on your devices</div>
-              <div class="fl-callout-body">Speech runs on this PC or your own server. OpenRouter only gets what you turn on: right now, text for AI cleanup.</div>
+              <div class="fl-callout-body">Speech runs on this PC or your own server. The cloud only gets what you turn on: right now, text for AI cleanup.</div>
             </div>
             <a class="lw-link" href="SettingsPrivacy.dc.html" style="white-space: nowrap;">Review →</a>
           </div>
@@ -90,7 +90,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
             <div style="display: flex; flex-direction: column; gap: 4px; font: 400 13px/20px var(--font-sans);">
               <span style="display: flex; align-items: center; gap: 8px;"><span class="lw-dot" style="background: var(--fathom-900);"></span><span style="flex: 1;">This PC</span><span>85%</span></span>
               <span style="display: flex; align-items: center; gap: 8px;"><span class="lw-dot" style="background: var(--fathom-500);"></span><span style="flex: 1;">Your server</span><span>15%</span></span>
-              <span style="display: flex; align-items: center; gap: 8px;"><span class="lw-dot" style="background: var(--background-secondary);"></span><span style="flex: 1;">OpenRouter</span><span>Off</span></span>
+              <span style="display: flex; align-items: center; gap: 8px;"><span class="lw-dot" style="background: var(--background-secondary);"></span><span style="flex: 1;">Cloud</span><span>Off</span></span>
             </div>
           </div>
           <div class="fl-stats-sec">
@@ -109,7 +109,7 @@ a{color:#1a1a1a}a:hover{color:#30302f}
 class Component extends DCLogic {
   renderVals() {
     const themeClass = (this.props.theme ?? 'light') === 'dark' ? 'lw-dark' : '';
-    const route = (k) => ({ pc: ['This PC', 'lw-route is-pc'], server: ['Server', 'lw-route is-server'], cloud: ['OpenRouter', 'lw-route is-cloud'] })[k];
+    const route = (k) => ({ pc: ['This PC', 'lw-route is-pc'], server: ['Server', 'lw-route is-server'], cloud: ['Cloud', 'lw-route is-cloud'] })[k];
     const row = (time, text, k, hover) => ({ time, text, hover: !!hover, route: route(k)[0], routeClass: route(k)[1] });
     return {
       themeClass,
