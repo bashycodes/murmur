@@ -518,6 +518,25 @@ for h in HOSTS:
         C.append({"id": f"r3e_cat_{plat[0]}h_{h}", "kind": "category", "platform": plat, "ctx": {"app_id": app, "url_host": h}})
     ap(f"r3e_chath_{h}", SEE, {"app_id": "chrome.exe", "url_host": h})
     ap(f"r3e_sigh_{h}", "Hi Tom, thanks.", {"app_id": "chrome.exe", "url_host": h}, SIG)
+# --- round 4: shared app groups (A3): own-app and Notion skips, new members ---
+for app, plat in [("flow-windows.exe", "windows"), ("murmur.exe", "windows"), ("Murmur.exe", "windows"),
+                  ("notion.id", "android"), ("com.notion.id", "android"), ("Notion.exe", "windows"),
+                  ("dev.flowclone", "android")]:
+    for n, c in [("empty", {}), ("so", {"before": "so "}), ("ok", {"before": "ok "}), ("long", {"before": "we went to the shop "}),
+                 ("after", {"after": "x"}), ("so_after", {"before": "so ", "after": "x"}), ("sel", {"selected": "bad"}),
+                 ("nosp", {"before": "Done."}), ("ell", {"before": "we went..."})]:
+        ap(f"r4_{app}_{n}", T, {"app_id": app, **c}, {"platform": plat})
+    ap(f"r4_{app}_casual", T, {"app_id": app, "before": "so "}, {"platform": plat, **sty("casual")})
+    ap(f"r4_{app}_enter", "Send it press enter.", {"app_id": app}, {"platform": plat})
+for h in ["notion.so", "notion.so/page", "www.notion.so", "x.notion.site", "Notion.so"]:
+    for n, c in [("so", {"before": "so "}), ("long", {"before": "we went to the shop "})]:
+        ap(f"r4_host_{h}_{n}", T, {"app_id": "chrome.exe", "url_host": h, **c})
+        ap(f"r4_ahost_{h}_{n}", T, {"app_id": "com.android.chrome", "url_host": h, **c}, AND)
+for i in ["olk", "ms-teams", "teams", "zoom", "hxoutlook", "notepad", "winword", "perplexity", "kitty"]:
+    ap(f"r4_chatw_{i}", SEE, {"app_id": i + ".exe"})
+    ap(f"r4_sigw_{i}", "Hi Tom, thanks.", {"app_id": i + ".exe"}, SIG)
+for i in ["com.slack", "us.zoom.videomeetings", "com.tencent.mm", "com.microsoft.outlook.lite", "com.example.mail"]:
+    ap(f"r4_chata_{i}", SEE, {"app_id": i}, AND)
 ap("r3e_snip_sig_empty_text", "", {"app_id": "outlook.exe"}, {**D(SN2), **SIG}, raw="my address")
 
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cases.json")

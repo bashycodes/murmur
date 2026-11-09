@@ -12,6 +12,7 @@ case "$1" in
   test) "${lock[@]}" cargo test -j 2 --offline --workspace --exclude flow-replay --no-fail-fast ;;
   clippy) "${lock[@]}" cargo clippy -j 2 --offline --workspace --exclude flow-replay --all-targets -- -D warnings ;;
   one) shift; "${lock[@]}" cargo test -j 2 --offline "$@" ;;
+  cargo) shift; sub="$1"; shift; "${lock[@]}" cargo "$sub" -j 2 --offline "$@" ;;
   gradle) cd apps/flow-android && export ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}" && "${lock[@]}" ./gradlew --offline --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx2g testHybridDebugUnitTest ;;
 esac
 echo "rc=$?"

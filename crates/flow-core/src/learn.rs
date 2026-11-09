@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::align::{align_words, Op, Step};
 use crate::dictionary::Dictionary;
 
-/// A block whose original side has more words than this is a rewrite, not
+/// A run with more words than this on either side is a rewrite, not
 /// vocabulary.
 pub const MAX_RUN_WORDS: usize = 4;
 /// At most this many candidates per edit.
@@ -87,20 +87,22 @@ fn candidate(block: &[Step], sentence_initial: bool, dict: &Dictionary) -> Optio
     };
     let orig = words(|s| s.from.as_deref());
     let corr = words(|s| s.to.as_deref());
-    if orig.is_empty() || orig.len() > MAX_RUN_WORDS || corr.is_empty() {
+    if orig.is_empty()
+        || corr.is_empty()
+        || orig.len() > MAX_RUN_WORDS
+        || corr.len() > MAX_RUN_WORDS
+    {
         return None;
     }
     let original = orig.join(" ");
     let corrected = corr.join(" ");
-    let sentence_case = orig.len() == 1
-        && corr.len() == 1
-        && sentence_initial
-        && original.to_lowercase() == corrected.to_lowercase();
+    let sentence_case = sentence_initial && original.to_lowercase() == corrected.to_lowercase();
     if sentence_case
         || corr.iter().all(|w| is_stopword(w))
-        || corr.iter().any(|w| is_contraction(w))
-        || letters_and_digits(&original) == letters_and_digits(&corrected)
-        || in_dictionary(&original, &corrected, dict)
+        || [&original, &corrected]
+            .iter()
+            .any(|s| s.contains(['\'', '’']))
+        || in_dictionary(&corrected, dict)
         || !corrected.chars().any(char::is_alphabetic)
     {
         return None;
@@ -116,54 +118,26 @@ fn trim_punct(w: &str) -> &str {
     w.trim_matches(|c: char| !c.is_alphanumeric())
 }
 
-/// The word ends a sentence (closing quotes and brackets aside).
+/// The word ends in `.`, `!` or `?`: the next word starts a sentence.
 fn ends_sentence(w: &str) -> bool {
-    w.trim_end_matches(['"', '\'', ')', ']', '”', '’'])
-        .ends_with(['.', '!', '?', '…'])
+    w.ends_with(['.', '!', '?'])
 }
 
-/// The text with only letters, digits and single spaces.
-fn letters_and_digits(s: &str) -> String {
-    s.chars()
-        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
-        .collect::<String>()
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-/// Corrected is already a dictionary word or replacement target, or
-/// original is already a replacement key.
-fn in_dictionary(original: &str, corrected: &str, dict: &Dictionary) -> bool {
-    let same = |a: &str, b: &str| a.trim().to_lowercase() == b.to_lowercase();
-    dict.entries.iter().any(|e| {
-        same(&e.word, corrected)
-            || (!e.is_snippet && e.replacement.as_deref().is_some_and(|r| same(r, corrected)))
-            || (e.replacement.is_some() && same(&e.word, original))
-    })
-}
-
-/// An apostrophe contraction: "don't", "it's", "we're", "I've", "you'll",
-/// "she'd", "I'm".
-fn is_contraction(w: &str) -> bool {
-    let lower = w.to_lowercase().replace('’', "'");
-    let Some((stem, suffix)) = lower.rsplit_once('\'') else {
-        return false;
-    };
-    !stem.is_empty()
-        && (matches!(suffix, "s" | "re" | "ve" | "ll" | "d" | "m")
-            || (suffix == "t" && stem.ends_with('n')))
+/// Corrected is already a dictionary word or a replacement target.
+fn in_dictionary(corrected: &str, dict: &Dictionary) -> bool {
+    let same = |a: &str| a.trim().to_lowercase() == corrected.to_lowercase();
+    dict.entries
+        .iter()
+        .any(|e| same(&e.word) || e.replacement.as_deref().is_some_and(same))
 }
 
 const STOPWORDS: &[&str] = &[
-    "a", "an", "the", "i", "me", "my", "mine", "you", "your", "yours", "he", "him", "his", "she",
-    "her", "hers", "it", "its", "we", "us", "our", "ours", "they", "them", "their", "theirs",
-    "this", "that", "these", "those", "who", "whom", "what", "which", "to", "of", "in", "on", "at",
-    "for", "with", "by", "from", "as", "into", "onto", "about", "over", "under", "up", "down",
-    "out", "off", "through", "after", "before", "and", "or", "but", "so", "if", "nor", "yet",
-    "than", "then", "because", "is", "am", "are", "was", "were", "be", "been", "being", "do",
-    "does", "did", "have", "has", "had", "will", "would", "can", "could", "shall", "should", "may",
-    "might", "must", "not", "no",
+    "um", "uh", "like", "okay", "ok", "yes", "no", "just", "very", "there", "here", "so", "then",
+    "not", "the", "a", "an", "and", "or", "but", "to", "of", "in", "on", "at", "for", "with", "is",
+    "it", "this", "that", "i", "you", "we", "they", "he", "she", "my", "your", "be", "have", "do",
+    "was", "are", "will", "can", "would", "should", "if", "what", "who", "me", "us", "him", "her",
+    "them", "its", "our", "their", "these", "those", "which", "as", "by", "from", "were", "been",
+    "has", "had", "does", "did", "could",
 ];
 
 fn is_stopword(w: &str) -> bool {
@@ -221,18 +195,64 @@ mod tests {
     }
 
     #[test]
-    fn replacement_keys_and_targets_are_dropped() {
+    fn replacement_targets_are_dropped_but_keys_are_kept() {
         let dict = Dictionary {
             entries: vec![DictEntry::replacement("lumo", "Lumio")],
         };
-        assert!(learn_edit("ask lumo now", "ask Lumeo now", &dict).is_empty());
         assert!(learn_edit("ask lomu now", "ask lumio now", &dict).is_empty());
+        assert_eq!(
+            words(&learn_edit("ask lumo now", "ask Lumia now", &dict)),
+            vec![("lumo", "Lumia")]
+        );
     }
 
     #[test]
-    fn contractions_are_dropped() {
+    fn apostrophes_on_either_side_are_dropped() {
         assert!(learn("I do not know", "I don't know").is_empty());
         assert!(learn("so it is fine", "so it's fine").is_empty());
+        assert!(learn("I dont know", "I don’t know").is_empty());
+        assert!(learn("ask lumo’s team", "ask Lumio team").is_empty());
+    }
+
+    #[test]
+    fn either_side_over_the_run_limit_is_dropped() {
+        assert!(learn("ask lumo now", "ask one two three four five now").is_empty());
+        assert!(learn("x a b c d e y", "x Lumio y").is_empty());
+        assert_eq!(
+            words(&learn("x a b c d y", "x Lumio y")),
+            vec![("a b c d", "Lumio")]
+        );
+    }
+
+    #[test]
+    fn stopwords_are_exactly_the_list() {
+        for w in [
+            "um", "uh", "like", "okay", "ok", "yes", "just", "very", "here", "could", "those",
+        ] {
+            assert!(
+                learn("we zentra fine", &format!("we {w} fine")).is_empty(),
+                "{w}"
+            );
+        }
+        for w in [
+            "his", "yeah", "well", "oh", "now", "really", "where", "am", "may", "er",
+        ] {
+            assert_eq!(
+                words(&learn("we zentra fine", &format!("we {w} fine"))),
+                vec![("zentra", w)],
+                "{w}"
+            );
+        }
+        // Case-insensitive, and only the corrected side counts.
+        assert!(learn("we zentra fine", "we The fine").is_empty());
+        assert_eq!(
+            words(&learn("we um fine", "we Zentra fine")),
+            vec![("um", "Zentra")]
+        );
+        assert_eq!(
+            words(&learn("we zentra fine", "we the Lumio fine")),
+            vec![("zentra", "the Lumio")]
+        );
     }
 
     #[test]
@@ -247,16 +267,34 @@ mod tests {
     #[test]
     fn punctuation_only_changes_are_ignored() {
         assert!(learn("hello world", "Hello, world.").is_empty());
-        assert!(learn("send the e-mail now", "send the email now").is_empty());
     }
 
     #[test]
     fn sentence_case_is_not_a_correction() {
         assert!(learn("zentrix is down", "Zentrix is down").is_empty());
+        assert!(learn("lumo hub one is here", "Lumo Hub One is here").is_empty());
+        assert!(learn("Lumo is here", "lumo is here").is_empty());
+        assert!(learn("Done. lumo is here", "Done. Lumo is here").is_empty());
+        assert!(learn("Done? lumo hub", "Done? Lumo Hub").is_empty());
         assert_eq!(
             words(&learn("the zentrix is down", "the Zentrix is down")),
             vec![("zentrix", "Zentrix")]
         );
+        for (a, b) in [
+            ("ok lumo", "ok Lumo"),
+            ("ok\nlumo", "ok\nLumo"),
+            ("ok: lumo", "ok: Lumo"),
+            ("wait… lumo", "wait… Lumo"),
+        ] {
+            assert_eq!(words(&learn(a, b)), vec![("lumo", "Lumo")], "{a:?}");
+        }
+    }
+
+    #[test]
+    fn sentence_initial_single_word_is_not_a_name() {
+        let c = learn("lumo is here", "Lumio is here");
+        assert_eq!(words(&c), vec![("lumo", "Lumio")]);
+        assert_eq!(names(&c), vec![("Lumio", false)]);
     }
 
     #[test]
