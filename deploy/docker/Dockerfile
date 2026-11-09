@@ -111,6 +111,7 @@ FROM cuda-llm-${SOURCE} AS cuda-llm
 # Same layout in both:
 #   /opt/flow-server/bin/flow-server (+ /usr/local/bin/flow-server link)
 #   /opt/flow-server/lib  sherpa-onnx, onnxruntime, libflow_llm*.so, libgomp
+#   /opt/flow-server/{COPYRIGHT,NOTICE}  rights and third-party licences
 #   /usr/local/bin/flow-server -> the entrypoint (finds the config for
 #   `docker exec … flow-server keys …`)
 # uid/gid 10001; /data (and the chart's state dir) are created owned by it
@@ -121,6 +122,7 @@ COPY --from=artifacts /out/lib/ /opt/flow-server/lib/
 COPY --from=cuda-llm /out/lib/libflow_llm_cuda.so /opt/flow-server/lib/
 COPY --chmod=0755 deploy/docker/entrypoint.sh /usr/local/bin/flow-entrypoint
 COPY --chmod=0755 deploy/docker/healthcheck.sh /usr/local/bin/flow-healthcheck
+COPY COPYRIGHT NOTICE /opt/flow-server/
 RUN set -eu; \
     ln -s /usr/local/bin/flow-entrypoint /usr/local/bin/flow-server; \
     groupadd -g 10001 flow; \
@@ -152,6 +154,7 @@ COPY --from=artifacts /out/bin/flow-server /opt/flow-server/bin/flow-server
 COPY --from=artifacts /out/lib/ /opt/flow-server/lib/
 COPY --chmod=0755 deploy/docker/entrypoint.sh /usr/local/bin/flow-entrypoint
 COPY --chmod=0755 deploy/docker/healthcheck.sh /usr/local/bin/flow-healthcheck
+COPY COPYRIGHT NOTICE /opt/flow-server/
 RUN set -eu; \
     ln -s /usr/local/bin/flow-entrypoint /usr/local/bin/flow-server; \
     groupadd -g 10001 flow; \

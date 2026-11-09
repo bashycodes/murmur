@@ -192,6 +192,28 @@ tasks.withType<Test>().configureEach {
     }
 }
 
+// D80: the repo's COPYRIGHT and NOTICE ship in every APK as assets/licenses/{COPYRIGHT,NOTICE}.txt
+// (next to the fonts' OFL texts), copied from the repo root at build time so there is one copy.
+abstract class LegalAssets : DefaultTask() {
+    @get:InputFiles abstract val sources: ConfigurableFileCollection
+    @get:OutputDirectory abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun copy() {
+        val dir = outputDir.get().asFile.resolve("licenses")
+        dir.deleteRecursively()
+        dir.mkdirs()
+        for (f in sources.files) {
+            if (!f.isFile) throw GradleException("$f not found (D80: every APK carries it)")
+            f.copyTo(dir.resolve("${f.name}.txt"), overwrite = true)
+        }
+    }
+}
+val legalAssets = tasks.register<LegalAssets>("legalAssets") {
+    sources.from(file("../../../COPYRIGHT"), file("../../../NOTICE"))
+    outputDir.set(layout.buildDirectory.dir("generated/legal-assets"))
+}
+
 // ---- Per-flavour privacy / packaging gates (docs/hybrid-architecture.md §1.4) ----
 // Each reads the variant's MERGED manifest (so permissions added by any dependency count)
 // or its packaged APK. assemble*/test*UnitTest/check depend on them; ManifestPrivacyTest
@@ -335,6 +357,7 @@ androidComponents {
             ?.hostTests?.get(com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE)?.enable = true
     }
     onVariants { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(legalAssets, LegalAssets::outputDir)
         val cap = variant.name.replaceFirstChar { it.uppercase() }
         val bt = (variant.buildType ?: "").replaceFirstChar { it.uppercase() }
         val flavor = variant.flavorName ?: ""
