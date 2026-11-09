@@ -9,7 +9,7 @@ import dev.flowclone.policy.BubbleVisibilityPolicy
 import dev.flowclone.policy.EditorInputType
 import dev.flowclone.session.SessionCap
 
-/** History retention pref (10-clone-spec-android §4.8: keep / 24 h / never). */
+/** History retention pref: keep / 24 h / never. */
 enum class Retention(val key: String) {
     KEEP("keep"), DAY("day"), NEVER("never");
 
