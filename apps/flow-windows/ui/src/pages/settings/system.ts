@@ -12,11 +12,11 @@ export const settingsSystemPage: Page = {
 ${heading("System")}
 ${group(
   "App settings",
-  row("Launch app at login", "", toggle("launch_at_login", "Launch app at login", `data-save="prefs"`)) +
+  row("Start when you sign in to Windows", "", toggle("launch_at_login", "Start when you sign in to Windows", `data-save="prefs"`)) +
     row(
-      "Show Flow bar at all times",
+      "Keep the Flow bar on screen",
       "Otherwise it only appears while you dictate.",
-      toggle("show_flow_bar_always", "Show Flow bar at all times", `data-save="prefs"`),
+      toggle("show_flow_bar_always", "Keep the Flow bar on screen", `data-save="prefs"`),
     ) +
     row(
       "Show which engine was used",
