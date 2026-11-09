@@ -109,7 +109,9 @@ fn plain_commit_is_one_text_segment() {
 }
 
 #[test]
-fn ide_tagging_becomes_break_and_tab_keys_while_final_text_keeps_markers() {
+fn ide_file_names_are_not_tagged() {
+    // Spec text-postprocess §10: `@file` tagging was removed (no shell
+    // fills `file_names`); paste markers are covered by `segments` below.
     let ctx = FieldContext {
         app_id: "cursor".into(),
         file_names: vec!["index.ts".into(), "app.tsx".into()],
@@ -120,22 +122,8 @@ fn ide_tagging_becomes_break_and_tab_keys_while_final_text_keeps_markers() {
         SessionConfig::default(),
         ctx,
     );
-    assert!(r.final_text.contains("@{{BREAK}}index.ts{{TAB}}"), "{r:?}");
-    let i = r.final_text.find('@').unwrap();
-    let head = &r.final_text[..=i];
-    let tail = &r.final_text[r.final_text.find("{{TAB}}").unwrap() + 7..];
-    assert_eq!(
-        r.segments,
-        vec![
-            text(head),
-            key(PasteKey::Break),
-            text("index.ts"),
-            key(PasteKey::Tab),
-            text(tail),
-        ]
-    );
-    assert!(!r.plain_text.contains("{{"), "{r:?}");
-    assert!(r.plain_text.contains("@index.ts"), "{r:?}");
+    assert_eq!(r.final_text, "Look at index dot ts and fix it. ");
+    assert_eq!(r.segments, vec![text(&r.final_text)]);
 }
 
 #[test]
@@ -147,7 +135,7 @@ fn press_enter_is_a_trailing_enter_segment() {
     );
     assert!(r.press_enter);
     // The open dictation gets its period ("…press enter."), which the
-    // press-enter rule moves onto the text, as for server-punctuated output.
+    // press-enter rule moves onto the text.
     assert_eq!(r.segments, vec![text("Send it."), key(PasteKey::Enter)]);
 }
 

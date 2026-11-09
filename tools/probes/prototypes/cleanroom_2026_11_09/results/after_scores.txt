@@ -1,0 +1,21 @@
+| category | n | shipped | styles |
+|---|---|---|---|
+| quote | 11 | 10/11 | 11/11 |
+| paren | 8 | 8/8 | 8/8 |
+| spoken_punct | 9 | 9/9 | 9/9 |
+| newline | 5 | 5/5 | 5/5 |
+| correction | 7 | 3/7 | 5/7 |
+| itn | 10 | 9/10 | 10/10 |
+| list | 5 | 3/5 | 3/5 |
+| casual | 7 | 1/7 | 7/7 |
+| email | 5 | 5/5 | 5/5 |
+| filler | 6 | 3/6 | 6/6 |
+| runon | 7 | 0/7 | 0/7 |
+| regression | 4 | 4/4 | 4/4 |
+| negative | 19 | 16/19 | 19/19 |
+| **pass** | 103 | 74% | 89% |
+| **exact** | 103 | 57% | 75% |
+| **sim** | 103 | 0.990 | 0.992 |
+| llm ms p50/p90 | | 0/0 | 0/0 |
+| commit ms p50/p90 | | 0/0 | 0/0 |
+| fallbacks | | - | - |

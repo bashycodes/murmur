@@ -1,4 +1,4 @@
-//! Word-level alignment (Levenshtein with backtrace), labelled per step:
+//! Word-level alignment (Levenshtein with backtrace), each step labelled
 //! C = correct, S = substitution, I = insertion
 //! (word only in the edited text), D = deletion (word only in the original).
 
@@ -19,10 +19,14 @@ pub struct Step {
     pub to: Option<String>,
 }
 
+/// `w` without the characters around it that are not letters or digits.
+pub fn trim_punct(w: &str) -> &str {
+    w.trim_matches(|c: char| !c.is_alphanumeric())
+}
+
 /// Normalized comparison key: lowercase, surrounding punctuation trimmed.
 pub fn norm_word(w: &str) -> String {
-    w.trim_matches(|c: char| !c.is_alphanumeric())
-        .to_lowercase()
+    trim_punct(w).to_lowercase()
 }
 
 fn tokens(s: &str) -> Vec<&str> {
@@ -30,12 +34,11 @@ fn tokens(s: &str) -> Vec<&str> {
 }
 
 /// Align with exact (case-sensitive) word equality, so a casing fix like
-/// `zephyr -> Zephyr` shows up as a substitution.
+/// `zentrix -> Zentrix` shows up as a substitution.
 pub fn align_words(a: &str, b: &str) -> Vec<Step> {
     let (a, b) = (tokens(a), tokens(b));
-    let key = |w: &str| w.trim_matches(|c: char| !c.is_alphanumeric()).to_string();
-    let ak: Vec<String> = a.iter().map(|w| key(w)).collect();
-    let bk: Vec<String> = b.iter().map(|w| key(w)).collect();
+    let ak: Vec<String> = a.iter().map(|w| trim_punct(w).to_string()).collect();
+    let bk: Vec<String> = b.iter().map(|w| trim_punct(w).to_string()).collect();
     let dp = table(&ak, &bk);
     let (mut i, mut j) = (a.len(), b.len());
     let mut out = Vec::new();
@@ -124,7 +127,7 @@ mod tests {
 
     #[test]
     fn single_substitution() {
-        assert_eq!(ops("ask whisper flow", "ask Zephyr flow"), vec![C, S, C]);
+        assert_eq!(ops("ask zentrix flow", "ask Zentrix flow"), vec![C, S, C]);
     }
 
     #[test]

@@ -1,6 +1,7 @@
 //! Structured paste plan (CR-2): the commit's text split at the in-band
-//! `{{BREAK}}` / `{{TAB}}` markers that `postprocess::cursor_tag` emits,
-//! plus a trailing Enter for spoken "press enter".
+//! `{{BREAK}}` / `{{TAB}}` markers, plus a trailing Enter for spoken
+//! "press enter". Post-processing no longer produces the markers (D82);
+//! they act only when the text carries them, e.g. a snippet body.
 //!
 //! `final_text` keeps the markers for shells built before this existed.
 //! A shell that pastes `segments` must not also act on `press_enter`.

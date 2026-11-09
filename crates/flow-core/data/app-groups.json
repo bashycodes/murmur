@@ -208,10 +208,6 @@
     "flow": {
       "about": "This app itself (no context matching inside it).",
       "apps": { "exact": ["flow-windows", "murmur"] }
-    },
-    "tagging_ide": {
-      "about": "IDEs with @file tagging (VS Code excluded).",
-      "apps": { "exact": ["cursor", "windsurf"] }
     }
   },
   "compose_placeholders": [

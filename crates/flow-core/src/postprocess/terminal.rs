@@ -1,11 +1,11 @@
 //! Closing punctuation for a dictation the ASR left open.
 //!
-//! Not part of the client post-processing, which never adds
-//! punctuation. Parakeet-unified often
+//! Post-processing itself never adds punctuation. Parakeet-unified often
 //! ends a clip without a period, even on whole clips ("…any other school"),
 //! and whisper sometimes ends on a comma. The engine runs this on the
-//! dictation before the LLM and the client post-processing, so the cursor-context step still drops the period
-//! where Wispr would (messaging apps, a continuation after the cursor).
+//! dictation before the LLM and post-processing, so cursor fitting and the
+//! style rules can still drop the period where it does not belong (chat
+//! apps, a continuation after the cursor; `docs/specs/text-postprocess.md`).
 
 /// Dictations shorter than this stay as they are: names, search terms and
 /// form values ("John Smith", "pizza near me").
