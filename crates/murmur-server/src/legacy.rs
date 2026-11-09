@@ -137,8 +137,8 @@ mod tests {
             Some(PathBuf::from("/etc/flow-server/config.toml"))
         );
         assert_eq!(
-            old_spelling(Path::new("/home/u/.local/state/murmur-server")),
-            Some(PathBuf::from("/home/u/.local/state/flow-server"))
+            old_spelling(Path::new("/srv/u/.local/state/murmur-server")),
+            Some(PathBuf::from("/srv/u/.local/state/flow-server"))
         );
         assert_eq!(old_spelling(Path::new("/srv/config.toml")), None);
     }
