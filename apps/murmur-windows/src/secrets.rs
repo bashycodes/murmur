@@ -13,7 +13,7 @@ use base64::Engine;
 /// Extra entropy bound into every blob: another app calling
 /// `CryptUnprotectData` on our blob without it fails.
 #[cfg_attr(not(windows), allow(dead_code))]
-const ENTROPY: &[u8] = b"FlowClone/secret/v1";
+const ENTROPY: &[u8] = b"Murmur/secret/v1";
 
 /// Encrypt `plain` for the current user. `""` stays `""` (= no secret).
 pub fn protect(plain: &str) -> Result<String, String> {
@@ -63,7 +63,7 @@ mod imp {
         unsafe {
             CryptProtectData(
                 &input,
-                windows::core::w!("FlowClone"),
+                windows::core::w!("Murmur"),
                 Some(&entropy),
                 None,
                 None,
