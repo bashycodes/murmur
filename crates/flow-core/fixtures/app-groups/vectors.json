@@ -129,6 +129,22 @@
     {"platform": "windows", "group": "document", "app": "notepad", "expect": true},
     {"platform": "windows", "group": "document", "host": "docs.google.com", "expect": true},
     {"platform": "windows", "group": "flow", "app": "flow-windows", "expect": true},
-    {"platform": "windows", "group": "messaging", "app": "calc", "expect": false}
+    {"platform": "windows", "group": "messaging", "app": "calc", "expect": false},
+    {"platform": "android", "bucket": "work", "app": "com.cisco.wx2.android"},
+    {"platform": "android", "bucket": "work", "app": "com.figma.mirror"},
+    {"platform": "android", "bucket": "work", "app": "com.box.android"},
+    {"platform": "android", "bucket": "email", "app": "com.microsoft.outlooklite"},
+    {"platform": "android", "bucket": "work", "app": "com.android.chrome", "host": "drive.google.com"},
+    {"platform": "android", "bucket": "work", "app": "com.android.chrome", "host": "trello.com"},
+    {"platform": "android", "bucket": "personal", "app": "com.android.chrome", "host": "signal.org"},
+    {"platform": "android", "bucket": "email", "app": "com.android.chrome", "host": "www.icloud.com"},
+    {"platform": "windows", "group": "ai", "app": "code - insiders", "expect": true},
+    {"platform": "windows", "group": "ai", "app": "Ollama", "expect": true},
+    {"platform": "windows", "group": "ai", "host": "aistudio.google.com", "expect": true},
+    {"platform": "windows", "group": "ai", "host": "bolt.new", "expect": true},
+    {"platform": "windows", "group": "email", "app": "mailspring", "expect": true},
+    {"platform": "windows", "group": "terminal", "app": "wezterm", "expect": true},
+    {"platform": "windows", "group": "terminal", "app": "kitty", "expect": true},
+    {"platform": "windows", "group": "ai", "app": "codex-helper", "expect": false}
   ]
 }

@@ -26,7 +26,12 @@ fn app_group_vectors() {
     for v in vectors() {
         let (app, host) = (s(&v, "app"), s(&v, "host"));
         let (want, got) = if let Some(bucket) = v.get("bucket").and_then(Value::as_str) {
-            let got = apps::classify(Platform::Android, app, host).bucket.as_str();
+            let platform = match s(&v, "platform") {
+                "android" => Platform::Android,
+                "windows" => Platform::Windows,
+                p => panic!("bucket vector with unknown platform {p:?}: {v}"),
+            };
+            let got = apps::classify(platform, app, host).bucket.as_str();
             (Value::from(bucket), Value::from(got))
         } else {
             let g = match s(&v, "platform") {

@@ -89,9 +89,33 @@ struct Data {
 fn data() -> &'static Data {
     static D: OnceLock<Data> = OnceLock::new();
     D.get_or_init(|| {
-        serde_json::from_str(include_str!("../data/app-groups.json"))
-            .expect("data/app-groups.json is valid")
+        let mut d: Data = serde_json::from_str(RAW).expect("data/app-groups.json is valid");
+        // Lowercase on load, as PolicyLists.kt does, so a mixed-case entry
+        // still matches the lowercased lookup on both platforms.
+        for g in d.android.values_mut().chain(d.windows.values_mut()) {
+            let (a, h) = (&mut g.apps, &mut g.hosts);
+            for list in [
+                &mut a.exact,
+                &mut a.families,
+                &mut a.parts,
+                &mut a.words,
+                &mut h.suffixes,
+                &mut h.prefixes,
+            ] {
+                lower(list);
+            }
+        }
+        lower(&mut d.compose_placeholders);
+        d
     })
+}
+
+const RAW: &str = include_str!("../data/app-groups.json");
+
+fn lower(list: &mut [String]) {
+    for s in list {
+        *s = s.trim().to_lowercase();
+    }
 }
 
 /// An Android group by name (`email`, `restricted`, `browser`, …).
@@ -140,16 +164,22 @@ mod tests {
 
     #[test]
     fn data_is_lowercase_and_every_named_group_exists() {
-        for g in data().android.values().chain(data().windows.values()) {
-            let a = &g.apps;
+        // The raw file itself is lowercase (ids, hosts, placeholders), so
+        // the Kotlin and Rust readers see the same strings either way.
+        let raw: Data = serde_json::from_str(RAW).unwrap();
+        for g in raw.android.values().chain(raw.windows.values()) {
+            let (a, h) = (&g.apps, &g.hosts);
             for s in a
                 .exact
                 .iter()
                 .chain(&a.families)
                 .chain(&a.parts)
                 .chain(&a.words)
+                .chain(&h.suffixes)
+                .chain(&h.prefixes)
+                .chain(&raw.compose_placeholders)
             {
-                assert_eq!(*s, s.to_lowercase(), "{s}");
+                assert_eq!(*s, s.trim().to_lowercase(), "{s}");
             }
         }
         for n in WINDOWS_GROUPS {

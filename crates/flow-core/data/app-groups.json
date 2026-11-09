@@ -1,8 +1,8 @@
 {
   "about": [
-    "Which apps get special handling: one source for flow-core (Rust, both platforms), the Windows app and, through a parity test, the Android PolicyLists.kt.",
+    "Which apps get special handling: one source for flow-core (Rust, both platforms), the Windows app (through flow-core) and the Android PolicyLists.kt (packed as a Java resource).",
     "Method: each group is defined by what its caller does with it (see docs/DECISIONS.md D80). Membership comes from public sources only: an app's package name is the id in its public Google Play listing (play.google.com/store/apps/details?id=<package>), a Windows id is the program's own executable name as its vendor ships it, a web host is the vendor's own address. Naming rules cover whole families where the vendor's naming makes that safe; lists hold the rest.",
-    "Matching (all lowercase): exact = equal; families = equal or starts with '<family>.'; parts = one dot-separated part equals; words = substring. Hosts (lowercase, no 'www.'): suffixes = equal or ends with '.<suffix>'; prefixes = starts with."
+    "Matching (any case; ids and hosts are lowercased on load and on lookup): exact = equal; families = equal or starts with '<family>.'; parts = one dot-separated part equals; words = substring. Windows ids are exe names without '.exe', matched exactly (the old lists matched by prefix). Hosts (no 'www.'): suffixes = equal or ends with '.<suffix>'; prefixes = starts with."
   ],
   "android": {
     "restart_prone": {
@@ -63,7 +63,7 @@
       }
     },
     "compose_placeholder_apps": {
-      "about": "Apps whose compose box shows 'Message' as real text (see compose_placeholders).",
+      "about": "Apps whose compose box shows 'Message' as real text (see compose_placeholders): WhatsApp and any com.whatsapp.* package.",
       "apps": { "families": ["com.whatsapp"] }
     },
     "restricted": {
@@ -96,12 +96,13 @@
         "exact": [
           "com.google.android.gm", "com.microsoft.office.outlook", "com.microsoft.outlook.lite",
           "ch.protonmail.android", "de.tutao.tutanota", "net.thunderbird.android", "com.fsck.k9",
-          "com.readdle.spark", "com.fastmail.app", "com.aol.mobile.aolmail"
+          "com.readdle.spark", "com.fastmail.app", "com.aol.mobile.aolmail",
+          "com.microsoft.outlooklite"
         ],
         "parts": ["mail", "email"]
       },
       "hosts": {
-        "suffixes": ["outlook.live.com", "outlook.office.com", "outlook.office365.com", "app.fastmail.com", "app.tuta.com"],
+        "suffixes": ["outlook.live.com", "outlook.office.com", "outlook.office365.com", "app.fastmail.com", "app.tuta.com", "icloud.com"],
         "prefixes": ["mail.", "webmail."]
       }
     },
@@ -112,15 +113,17 @@
           "com.slack", "com.microsoft.teams", "com.google.android.apps.dynamite", "com.google.android.apps.meetings",
           "us.zoom.videomeetings", "com.cisco.webex.meetings", "com.mattermost.rn", "chat.rocket.android",
           "com.zulipmobile", "notion.id", "com.asana.app", "com.github.android", "com.microsoft.skydrive",
-          "com.dropbox.android"
+          "com.dropbox.android",
+          "com.cisco.wx2.android", "com.facebook.workplace", "com.glip.mobile", "ringcentral.android", "com.larksuite.suite", "com.alibaba.android.rimet", "com.box.android"
         ],
-        "families": ["com.atlassian", "com.microsoft.office", "com.google.android.apps.docs", "com.zoho", "com.salesforce", "com.linkedin"]
+        "families": ["com.atlassian", "com.microsoft.office", "com.google.android.apps.docs", "com.zoho", "com.salesforce", "com.linkedin", "com.figma", "com.miro", "com.monday", "com.clickup"]
       },
       "hosts": {
         "suffixes": [
           "slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com", "meet.google.com",
           "docs.google.com", "linkedin.com", "github.com", "gitlab.com", "atlassian.net", "notion.so",
-          "linear.app", "figma.com", "zoom.us", "office.com", "sharepoint.com"
+          "linear.app", "figma.com", "zoom.us", "office.com", "sharepoint.com",
+          "drive.google.com", "trello.com", "asana.com", "dropbox.com"
         ]
       }
     },
@@ -141,7 +144,8 @@
       "hosts": {
         "suffixes": [
           "whatsapp.com", "telegram.org", "t.me", "discord.com", "messenger.com", "instagram.com", "facebook.com",
-          "x.com", "twitter.com", "reddit.com", "threads.net", "bsky.app", "tiktok.com"
+          "x.com", "twitter.com", "reddit.com", "threads.net", "bsky.app", "tiktok.com",
+          "pinterest.com", "line.me", "signal.org"
         ]
       }
     },
@@ -165,36 +169,36 @@
   "windows": {
     "work": {
       "about": "Style bucket work (checked after email). Ids are exe names without '.exe'.",
-      "apps": { "exact": ["slack", "ms-teams", "msteams", "teams", "mattermost", "zoom"] },
-      "hosts": { "suffixes": ["slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com", "linkedin.com"] }
+      "apps": { "exact": ["slack", "ms-teams", "msteams", "teams", "mattermost", "zoom", "zulip", "rocket.chat", "ringcentral", "webex"] },
+      "hosts": { "suffixes": ["slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com", "linkedin.com", "zulipchat.com", "ringcentral.com"] }
     },
     "messaging": {
       "about": "Chat apps, work or personal (flow-core: trailing-period drop). Not work = style bucket personal.",
       "apps": {
-        "exact": ["slack", "ms-teams", "msteams", "teams", "mattermost", "whatsapp", "whatsapp.root", "telegram", "discord", "signal", "messenger", "viber", "line", "wechat"]
+        "exact": ["slack", "ms-teams", "msteams", "teams", "mattermost", "whatsapp", "whatsapp.root", "telegram", "discord", "signal", "messenger", "viber", "line", "wechat", "element", "zulip", "rocket.chat", "ringcentral", "webex"]
       },
       "hosts": {
-        "suffixes": ["slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com", "whatsapp.com", "telegram.org", "discord.com", "messenger.com", "instagram.com", "messages.google.com"]
+        "suffixes": ["slack.com", "teams.microsoft.com", "teams.live.com", "chat.google.com", "whatsapp.com", "telegram.org", "discord.com", "messenger.com", "instagram.com", "messages.google.com", "app.element.io", "zulipchat.com"]
       }
     },
     "email": {
       "about": "Style bucket email.",
-      "apps": { "exact": ["outlook", "olk", "hxoutlook", "thunderbird", "mailbird", "mailclient"] },
+      "apps": { "exact": ["outlook", "olk", "hxoutlook", "thunderbird", "mailbird", "mailclient", "mailspring", "hey"] },
       "hosts": {
-        "suffixes": ["outlook.live.com", "outlook.office.com", "outlook.office365.com", "app.fastmail.com", "app.tuta.com"],
+        "suffixes": ["outlook.live.com", "outlook.office.com", "outlook.office365.com", "app.fastmail.com", "app.tuta.com", "app.hey.com"],
         "prefixes": ["mail.", "webmail."]
       }
     },
     "ai": {
-      "about": "AI assistants and AI code editors (AI prompt formatting; wins over terminal).",
-      "apps": { "exact": ["chatgpt", "claude", "code", "cursor", "windsurf", "zed", "warp", "devenv", "idea64", "pycharm64"] },
+      "about": "AI assistants and AI code editors (AI prompt formatting; wins over terminal). Exe names are matched exactly; variants (Insiders builds) are listed.",
+      "apps": { "exact": ["chatgpt", "claude", "code", "cursor", "windsurf", "zed", "warp", "devenv", "idea64", "pycharm64", "code - insiders", "code-insiders", "copilot", "ollama", "ollama app", "lm studio", "perplexity"] },
       "hosts": {
-        "suffixes": ["chatgpt.com", "chat.openai.com", "claude.ai", "gemini.google.com", "perplexity.ai", "copilot.microsoft.com", "chat.deepseek.com", "grok.com"]
+        "suffixes": ["chatgpt.com", "chat.openai.com", "claude.ai", "gemini.google.com", "perplexity.ai", "copilot.microsoft.com", "chat.deepseek.com", "grok.com", "notebooklm.google.com", "meta.ai", "aistudio.google.com", "replit.com", "v0.dev", "bolt.new"]
       }
     },
     "terminal": {
       "about": "Terminals and shells.",
-      "apps": { "exact": ["windowsterminal", "wt", "cmd", "powershell", "pwsh", "conhost", "wezterm-gui", "alacritty", "mintty", "putty"] }
+      "apps": { "exact": ["windowsterminal", "wt", "cmd", "powershell", "pwsh", "conhost", "wezterm-gui", "alacritty", "mintty", "putty", "kitty", "wezterm", "hyper"] }
     },
     "document": {
       "about": "Editors and document apps.",
