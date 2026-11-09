@@ -2,7 +2,7 @@
 name = "flow-asr-sherpa"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 description = "sherpa-onnx ASR for flow-core: Parakeet-TDT (offline NeMo transducer) and streaming zipformer2 (online transducer)"
 
 # Standalone on purpose: no flow-core dependency, so flow-core can depend on

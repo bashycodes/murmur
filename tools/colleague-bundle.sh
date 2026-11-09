@@ -4,7 +4,8 @@
 # (docker/: the server's source archive and the image built from it, D77)
 # and for Linux x86_64 without Docker (server/; built here: CI does not
 # build it), the speech models, the AI cleanup model and an install note
-# (docs/colleague-install.md, version filled in; Docker first).
+# (docs/colleague-install.md, version filled in; Docker first), plus
+# COPYRIGHT.txt and NOTICE.txt (D80).
 #
 #   tools/colleague-bundle.sh --source integration|notetaker|BRANCH|COMMIT [options]
 #
@@ -70,7 +71,7 @@ while [ $# -gt 0 ]; do
     --no-zip) NO_ZIP=1 ;;
     --no-fetch) NO_FETCH=1 ;;
     --dry-run) DRY=1 ;;
-    -h|--help) sed -n '2,45p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,46p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown option: $1" ;;
   esac
   shift
@@ -182,7 +183,7 @@ CLEANUP_ZIP="$NAME-cleanup-model.zip"
 SOURCE_TGZ="flow-server-source-$VERSION.tar.gz"
 IMAGE_TAR="flow-server-image-$VERSION.tar"
 SRC_DIR="flow-server-source-$VERSION"
-SRC_PATHS=(Cargo.toml Cargo.lock VERSION .dockerignore crates deploy README.md
+SRC_PATHS=(Cargo.toml Cargo.lock VERSION COPYRIGHT NOTICE .dockerignore crates deploy README.md
   docs/server-setup.md docs/container.md docs/server-advanced.md)
 g cat-file -e "$COMMIT:deploy/docker/Dockerfile" 2>/dev/null || die "$SHA7 has no deploy/docker/Dockerfile"
 have=()
@@ -223,6 +224,10 @@ fi
 mkdir -p "$OUT" "$MODELS"
 [ ! -e "$BUNDLE" ] || die "$BUNDLE exists: delete it first"
 mkdir -p "$BUNDLE/windows" "$BUNDLE/android"
+# Rights and third-party licences (D80), from the bundled commit.
+for f in COPYRIGHT NOTICE; do
+  g show "$COMMIT:$f" > "$BUNDLE/$f.txt" 2>/dev/null || { rm -f "$BUNDLE/$f.txt"; die "$SHA7 has no $f"; }
+done
 
 # ---- apps -------------------------------------------------------------------
 say "CI artifacts"
@@ -382,7 +387,7 @@ mkdir -p "$BUNDLE/docker"
 # Tracked files of the commit only: nothing untracked or ignored can get in.
 g archive --format=tar.gz --prefix="$SRC_DIR/" -o "$BUNDLE/docker/$SOURCE_TGZ" "$COMMIT" -- "${SRC_PATHS[@]}"
 tar -tzf "$BUNDLE/docker/$SOURCE_TGZ" > "$WORK/src.list"
-for f in deploy/docker/Dockerfile deploy/docker/entrypoint.sh Cargo.lock crates/flow-server/Cargo.toml; do
+for f in deploy/docker/Dockerfile deploy/docker/entrypoint.sh Cargo.lock crates/flow-server/Cargo.toml COPYRIGHT NOTICE; do
   grep -qx "$SRC_DIR/$f" "$WORK/src.list" || die "$SOURCE_TGZ has no $f"
 done
 echo "wrote docker/$SOURCE_TGZ ($(mb "$(stat -c %s "$BUNDLE/docker/$SOURCE_TGZ")"), $(wc -l < "$WORK/src.list") entries)"

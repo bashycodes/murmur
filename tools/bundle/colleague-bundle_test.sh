@@ -63,4 +63,22 @@ fi
 
 # 5. The bundle's server config is valid TOML (the Rust test parses it as a Config).
 python3 -I -c 'import sys, tomllib; tomllib.load(open(sys.argv[1], "rb"))' "$H/server-config.toml" || fail "server-config.toml"
+
+# 6. COPYRIGHT and NOTICE (D80) travel with every bundle: the bundle root and
+# its server source archive, the Docker build context and image, the Windows
+# installer's resources and the APK's assets.
+for f in COPYRIGHT NOTICE; do [ -s "$ROOT/$f" ] || fail "$f missing at the repo root"; done
+grep -q 'All rights reserved' "$ROOT/COPYRIGHT" || fail "COPYRIGHT does not reserve rights"
+grep -q '^--- BEGIN GENERATED: Rust crates' "$ROOT/NOTICE" || fail "NOTICE has no crate section"
+B="$ROOT/tools/colleague-bundle.sh"
+grep -q '^SRC_PATHS=(.* COPYRIGHT NOTICE ' "$B" || fail "source archive leaves COPYRIGHT/NOTICE out"
+grep -q '^for f in COPYRIGHT NOTICE; do' "$B" || fail "bundle root leaves COPYRIGHT/NOTICE out"
+grep -qx '!COPYRIGHT' "$ROOT/.dockerignore" && grep -qx '!NOTICE' "$ROOT/.dockerignore" || fail ".dockerignore drops COPYRIGHT/NOTICE"
+[ "$(grep -c '^COPY COPYRIGHT NOTICE /opt/flow-server/$' "$ROOT/deploy/docker/Dockerfile")" = 2 ] || fail "an image leaves COPYRIGHT/NOTICE out"
+python3 -I -c 'import json, sys
+r = json.load(open(sys.argv[1]))["bundle"]["resources"]
+assert r.get("../../COPYRIGHT") == "COPYRIGHT.txt" and r.get("../../NOTICE") == "NOTICE.txt", r' \
+  "$ROOT/apps/flow-windows/tauri.conf.json" || fail "Windows installer resources lack COPYRIGHT/NOTICE"
+grep -q 'sources.from(file("../../../COPYRIGHT"), file("../../../NOTICE"))' "$ROOT/apps/flow-android/app/build.gradle.kts" ||
+  fail "APK assets lack COPYRIGHT/NOTICE"
 echo "colleague-bundle helpers: ok"
