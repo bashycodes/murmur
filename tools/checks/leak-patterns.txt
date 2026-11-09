@@ -1,0 +1,29 @@
+# Repo-local leak patterns, read by tools/checks/leak-scan.py.
+#
+# One pattern per line: `<name> <python-regex>` (name, one space, regex).
+# Lines starting with # and blank lines are ignored. A match is a leak unless
+# leak-allow.txt allows it (the fake test values and doc addresses).
+#
+# Never put a real value in this file or in the allowlist: describe the shape.
+
+# OpenRouter / OpenAI style API keys: `sk-` plus at least 20 key characters.
+openai-key (?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}
+# GitHub tokens: personal (ghp_), OAuth (gho_), user-to-server (ghu_),
+# server-to-server (ghs_), refresh (ghr_), and fine-grained PATs.
+github-token (?<![A-Za-z0-9])gh[pousr]_[A-Za-z0-9]{20,}
+github-pat (?<![A-Za-z0-9])github_pat_[A-Za-z0-9_]{20,}
+# Hugging Face access tokens.
+hf-token (?<![A-Za-z0-9])hf_[A-Za-z0-9]{20,}
+# AWS access key ids: long-term (AKIA) and temporary STS (ASIA).
+aws-key-id (?<![A-Z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![A-Z0-9])
+# PEM private keys of any kind (RSA, EC, OPENSSH, plain). The class, not `.*`,
+# keeps this line from matching itself.
+private-key -----BEGIN [A-Z0-9 ]*PRIVATE KEY-----
+# JWT-shaped strings: base64url JSON header and payload, then a signature.
+jwt (?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}
+# Tailnet (CGNAT 100.64.0.0/10) addresses: the home server and devices.
+tailnet-ip (?<![0-9.])100\.(?:6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])(?:\.[0-9]{1,3}){2}(?![0-9])
+# Absolute home paths name the account owner. Root-anchored (or a file:// URL):
+# `$T/home/.config` in a test is a temp folder, not an account.
+home-path (?:(?<=file://)|(?<![A-Za-z0-9_.}$)/-]))/home/[a-z_][A-Za-z0-9._-]*
+windows-home-path (?i:[a-z]:(?:\\{1,2}|/)users(?:\\{1,2}|/))[A-Za-z0-9._-]+
