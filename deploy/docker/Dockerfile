@@ -38,14 +38,23 @@ ARG FEATURES=whisper,parakeet,tls,llm
 # Baked into `flow-server --version`/health (no .git in the context).
 ARG FLOW_GIT_SHA=unknown
 ARG CARGO_BUILD_JOBS=2
-# sherpa-onnx-sys downloads its shared-lib release unless SHERPA_ONNX_LIB_DIR
-# is set; staged libs in deploy/docker/prebuilt/lib are used when present.
+# sherpa-onnx: staged libs in deploy/docker/prebuilt/lib when present, else
+# upstream's no-TTS shared-lib release, pinned (D80: the default release links
+# espeak-ng, GPL-3.0, for text-to-speech, which flow-server never uses).
 # bindgen's libclang misses the compiler's own headers on some images.
+ARG SHERPA_VERSION=1.13.8
+ARG SHERPA_NO_TTS_SHA256=bf2d998c8b07012cd5098f3b92673bc1333fd9b927767d7cb664be8190d8bc0b
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/src/target \
     set -eu; \
     if [ -e deploy/docker/prebuilt/lib/libsherpa-onnx-c-api.so ]; then \
-        export SHERPA_ONNX_LIB_DIR=/src/deploy/docker/prebuilt/lib; fi; \
+        export SHERPA_ONNX_LIB_DIR=/src/deploy/docker/prebuilt/lib; \
+    else \
+        n="sherpa-onnx-v$SHERPA_VERSION-linux-x64-shared-no-tts-lib"; \
+        curl -fsSL -o /tmp/sherpa.tar.bz2 "https://github.com/k2-fsa/sherpa-onnx/releases/download/v$SHERPA_VERSION/$n.tar.bz2"; \
+        echo "$SHERPA_NO_TTS_SHA256  /tmp/sherpa.tar.bz2" | sha256sum -c -; \
+        tar -xjf /tmp/sherpa.tar.bz2 -C /opt; rm /tmp/sherpa.tar.bz2; \
+        export SHERPA_ONNX_LIB_DIR="/opt/$n/lib"; fi; \
     BINDGEN_EXTRA_CLANG_ARGS="-I$(gcc -print-file-name=include)"; export BINDGEN_EXTRA_CLANG_ARGS; \
     export FLOW_GIT_SHA FLOW_GIT_DIRTY=0; \
     cargo build --release --locked -j "$CARGO_BUILD_JOBS" -p flow-server \
@@ -55,7 +64,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cp target/release/flow-server /out/bin/; \
     cp -L target/release/libflow_llm.so /out/lib/; \
     for l in libsherpa-onnx-c-api.so libonnxruntime.so; do \
-        cp -L "${SHERPA_ONNX_LIB_DIR:-target/release}/$l" /out/lib/; done; \
+        cp -L "$SHERPA_ONNX_LIB_DIR/$l" /out/lib/; done; \
     cp -L "$(gcc -print-file-name=libgomp.so.1)" /out/lib/
 
 FROM scratch AS artifacts-source
@@ -111,6 +120,8 @@ FROM cuda-llm-${SOURCE} AS cuda-llm
 # Same layout in both:
 #   /opt/flow-server/bin/flow-server (+ /usr/local/bin/flow-server link)
 #   /opt/flow-server/lib  sherpa-onnx, onnxruntime, libflow_llm*.so, libgomp
+#   /opt/flow-server/{COPYRIGHT,NOTICE,THIRD-PARTY-LICENSES}  rights, third-party
+#   notices and their full licence texts (D80)
 #   /usr/local/bin/flow-server -> the entrypoint (finds the config for
 #   `docker exec … flow-server keys …`)
 # uid/gid 10001; /data (and the chart's state dir) are created owned by it
@@ -121,7 +132,11 @@ COPY --from=artifacts /out/lib/ /opt/flow-server/lib/
 COPY --from=cuda-llm /out/lib/libflow_llm_cuda.so /opt/flow-server/lib/
 COPY --chmod=0755 deploy/docker/entrypoint.sh /usr/local/bin/flow-entrypoint
 COPY --chmod=0755 deploy/docker/healthcheck.sh /usr/local/bin/flow-healthcheck
+COPY COPYRIGHT NOTICE THIRD-PARTY-LICENSES /opt/flow-server/
+# D80: no espeak-ng/piper (TTS, GPL-3.0) code in the shipped libraries.
 RUN set -eu; \
+    if grep -a -l -E 'espeak-ng|espeak_|piper_phonemize|phontab' /opt/flow-server/lib/*.so*; then \
+        echo "a library above carries sherpa-onnx's TTS code (espeak-ng); stage the no-TTS build" >&2; exit 1; fi; \
     ln -s /usr/local/bin/flow-entrypoint /usr/local/bin/flow-server; \
     groupadd -g 10001 flow; \
     useradd -u 10001 -g 10001 -M -d /data -s /usr/sbin/nologin flow; \
@@ -152,7 +167,11 @@ COPY --from=artifacts /out/bin/flow-server /opt/flow-server/bin/flow-server
 COPY --from=artifacts /out/lib/ /opt/flow-server/lib/
 COPY --chmod=0755 deploy/docker/entrypoint.sh /usr/local/bin/flow-entrypoint
 COPY --chmod=0755 deploy/docker/healthcheck.sh /usr/local/bin/flow-healthcheck
+COPY COPYRIGHT NOTICE THIRD-PARTY-LICENSES /opt/flow-server/
+# D80: no espeak-ng/piper (TTS, GPL-3.0) code in the shipped libraries.
 RUN set -eu; \
+    if grep -a -l -E 'espeak-ng|espeak_|piper_phonemize|phontab' /opt/flow-server/lib/*.so*; then \
+        echo "a library above carries sherpa-onnx's TTS code (espeak-ng); stage the no-TTS build" >&2; exit 1; fi; \
     ln -s /usr/local/bin/flow-entrypoint /usr/local/bin/flow-server; \
     groupadd -g 10001 flow; \
     useradd -u 10001 -g 10001 -M -d /data -s /usr/sbin/nologin flow; \

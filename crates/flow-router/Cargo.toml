@@ -2,7 +2,7 @@
 name = "flow-router"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 description = "Hybrid local/server router: the §9 session API over a local FlowCore and an injected remote backend (no network code)"
 
 [dependencies]
