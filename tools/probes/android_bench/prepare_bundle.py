@@ -9,7 +9,7 @@ Public fixtures only, nothing personal:
     (tools/probes/prototypes/laptop_bench_2026_10_30/he_manifest.json, CC BY 4.0), extracted from
     google/fleurs data/he_il/audio/dev.tar.gz (153 MB, downloaded once into $CACHE/dl/fleurs-he/)
     and converted float32 -> PCM16 here (stdlib only).
-  * cleanup: the 102 cases of the 2026-10-26 AI-cleanup bench (88-suite + 14 Wispr targets,
+  * cleanup: the 88 cases of the 2026-10-26 AI-cleanup bench (88-suite,
     ai_cleanup_bench_2026_10_26/results/v4c_cases.jsonl), reduced to id/app/category/input.
 
 Output (default $CACHE/android-bench/bundle/, never committed): manifest.json, audio/{en,he}/*.wav,
@@ -21,7 +21,7 @@ import argparse, array, json, os, pathlib, shutil, struct, sys, tarfile, urllib.
 
 HERE = pathlib.Path(__file__).resolve().parent
 PROBES = HERE.parent
-CACHE = pathlib.Path(os.environ.get("CACHE", pathlib.Path.home() / "Claude/research/wispr/.cache"))
+CACHE = pathlib.Path(os.environ.get("CACHE", pathlib.Path.home() / ".cache/flow-clone"))
 EN_MANIFEST = PROBES / "bench/asr_manifest_extended.json"
 HE_MANIFEST = PROBES / "prototypes/laptop_bench_2026_10_30/he_manifest.json"
 CASES = PROBES / "prototypes/ai_cleanup_bench_2026_10_26/results/v4c_cases.jsonl"

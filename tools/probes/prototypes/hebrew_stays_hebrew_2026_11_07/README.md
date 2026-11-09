@@ -20,12 +20,12 @@ which prompt changes fix it, and that English dictations come out the same.
 | `run.sh` | One locked, low-priority runner pass into `results/LABEL.jsonl` (needs >= 4000 MB available) |
 | `batch.sh dev\|holdout\|product\|english\|guard` | The rows of the findings doc. `dev` / `holdout`: prompt variants on the base commit's runner; `product`: the shipped prompt and check (`TAG=before\|after`, Hebrew, then `english` = the numbers probe's 61 English cases); `guard`: this branch's runner with the base prompt (`results/prompt_he_before.json`, dumped by `run.sh he_before he_cases.jsonl he --dump-prompt ...` on the base runner), so only the script check acts |
 | `session-phone.json` | The phone's session (light, casual styles, 3 s LLM budget, skip on) |
-| `runner/` | `wispr-parity-clean`, the numbers probe's runner plus `--user-suffix TEXT`, `--extra-shots FILE` and a `raw` field (the model's answer before the core's post-processing). Own workspace, uses this checkout's flow-core |
+| `runner/` | `parity-clean`, the numbers probe's runner plus `--user-suffix TEXT`, `--extra-shots FILE` and a `raw` field (the model's answer before the core's post-processing). Own workspace, uses this checkout's flow-core |
 
 ## Run
 
     CARGO_TARGET_DIR=... cargo build --release --offline -j 2 --manifest-path runner/Cargo.toml
-    BIN=.../wispr-parity-clean MODEL=qwen2.5-1.5b-instruct-q4_k_m.gguf FLOW_LLM_LIB=libflow_llm.so \
+    BIN=.../parity-clean MODEL=qwen2.5-1.5b-instruct-q4_k_m.gguf FLOW_LLM_LIB=libflow_llm.so \
         ./batch.sh dev
     python3 score_he.py he_cases.jsonl results/he_*_t20.jsonl
 

@@ -14,7 +14,7 @@ set -euo pipefail
 PKG=dev.flowclone
 EXT=/sdcard/Android/data/$PKG/files/bench
 TMP=/data/local/tmp/flow-bench
-CACHE="${CACHE:-$HOME/Claude/research/wispr/.cache}"
+CACHE="${CACHE:-$HOME/.cache/flow-clone}"
 act="$PKG/.debug.BenchActivity"
 cmd="${1:-}"; shift || true
 case "$cmd" in

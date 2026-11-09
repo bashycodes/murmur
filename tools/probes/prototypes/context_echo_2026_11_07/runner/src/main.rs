@@ -1,10 +1,10 @@
-//! wispr-parity-clean (context-echo copy of the Hebrew runner,
+//! parity-clean (context-echo copy of the Hebrew runner,
 //! tools/probes/prototypes/hebrew_stays_hebrew_2026_11_07): replay raw
 //! transcripts through the real `FlowCore` commit path with one cleaner.
 //! Each case may carry the field context the shell reads: `before`,
 //! `after`, `selected`, `app_id` (all optional).
 //!
-//!   wispr-parity-clean --cases CASES.jsonl --session SESSION.json
+//!   parity-clean --cases CASES.jsonl --session SESSION.json
 //!       --mode rules|local|server|cloud [--llm MODEL.gguf --llm-lib SO]
 //!       [--threads N] [--timeout-ms MS] [--override PROMPT.json]
 //!       [--dump-prompt OUT.json] [--language CODE] [--user-suffix TEXT]

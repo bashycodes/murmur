@@ -14,7 +14,7 @@ Questions it answers on this box (i7-6700, release flow-cli):
 Not promoted to a permanent tool; the consumer is the proposal doc's
 tables (copy the printed summary).  Inputs: LibriSpeech clips + refs from
 tools/probes/bench/asr_manifest_extended.json, in $AUDIO_DIR.  Outputs
-(WAVs, JSONL) go to $OUT_DIR (default ~/Claude/research/wispr/.cache/
+(WAVs, JSONL) go to $OUT_DIR (default ~/.cache/flow-clone/
 segmented-2026-10-23/<timestamp>/) - per-run directory, never overwritten.
 
 Usage:
@@ -124,7 +124,7 @@ def main():
     ap.add_argument("--cli", required=True)
     ap.add_argument("--whisper")
     ap.add_argument("--parakeet")
-    ap.add_argument("--audio", default=os.path.expanduser("~/Claude/research/wispr/.cache/audio"))
+    ap.add_argument("--audio", default=os.path.expanduser("~/.cache/flow-clone/audio"))
     ap.add_argument("--manifest", default=os.path.join(HERE, "..", "bench", "asr_manifest_extended.json"))
     ap.add_argument("--out", default=None)
     ap.add_argument("--threads", type=int, default=4)
@@ -134,7 +134,7 @@ def main():
     ap.add_argument("--pause-ms", default="500,800")
     args = ap.parse_args()
     out = args.out or os.path.expanduser(
-        f"~/Claude/research/wispr/.cache/segmented-2026-10-23/{time.strftime('%Y%m%d-%H%M%S')}")
+        f"~/.cache/flow-clone/segmented-2026-10-23/{time.strftime('%Y%m%d-%H%M%S')}")
     os.makedirs(out, exist_ok=True)
     manifest = json.load(open(args.manifest))
     targets = [int(x) for x in args.targets.split(",")]

@@ -162,7 +162,7 @@ def main():
                 p = judged / f.name
                 regard(a.bench_bin, f, p)
                 specs.append(f"{label}={p}:out_strict")
-        out.append("## Cleanup (88-suite + 14 Wispr targets)\n")
+        out.append("## Cleanup (88-suite)\n")
         out.append("`prod` = the app's own pipeline and 3 s budget; `v4c` = raw transcript + prompt v4c, product strict guard "
                    "(as the 2026-10-30 laptop bench). llm ms = one on-device LLM call.\n")
         if specs:

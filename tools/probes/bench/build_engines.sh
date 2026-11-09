@@ -2,7 +2,7 @@
 # Build whisper.cpp + llama.cpp (CPU, static) into the shared cache, outside the repo.
 # Usage: tools/probes/bench/build_engines.sh   (env CACHE overrides the cache dir)
 set -euo pipefail
-CACHE="${CACHE:-$HOME/Claude/research/wispr/.cache}"
+CACHE="${CACHE:-$HOME/.cache/flow-clone}"
 JOBS="${JOBS:-6}"
 mkdir -p "$CACHE"
 [ -d "$CACHE/whisper.cpp" ] || git clone --depth 1 https://github.com/ggml-org/whisper.cpp "$CACHE/whisper.cpp"

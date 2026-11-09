@@ -31,7 +31,7 @@ the fixture bundle (about 25 MB, public clips only).
 | `whisper-base` | `models/ggml-base-q5_1.bin` | en |
 | `zipformer-he` | `hebrew/zipformer-he` | he: 49 FLEURS he_il dev clips, 416 s |
 | `parakeet-he` | `hebrew/parakeet-v3-he` | he |
-| `qwen1.5b` | `llm/qwen2.5-1.5b-instruct-q4_k_m.gguf` | 102 cleanup cases (the 88-suite plus 14 Wispr targets) |
+| `qwen1.5b` | `llm/qwen2.5-1.5b-instruct-q4_k_m.gguf` | 88 cleanup cases (the 88-suite) |
 | `qwen0.5b` | `llm/qwen2.5-0.5b-instruct-q4_k_m.gguf` | skipped when the file is absent |
 
 A missing model, or one that fails to load, is noted in `meta.json` and skipped.
@@ -70,7 +70,7 @@ $S pull r1                    # -> $CACHE/android-bench/results/r1
   * stop after the current item: `$ADB shell am start -n dev.flowclone/.debug.BenchActivity --ez stop true`
 * Keep the activity in front. It holds the screen on, and the work runs on its thread.
 * Expected run time with every model is about 15–25 min: 4 × ~6.5 min of audio at RTF < 0.1,
-  plus 2 × 102 LLM calls per LLM.
+  plus 2 × 88 LLM calls per LLM.
 * Pacing:
   * `pace=fast` (the default) pushes all audio, then commits, so `commit_ms` holds the whole
     decode. This is the worst case, and the number to compare with the PC benches.

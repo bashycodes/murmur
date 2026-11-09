@@ -4,7 +4,7 @@
 Consumer: docs/findings/2026-10-31-server-model-setup.md (cleanup row).
 Not a permanent tool.
 
-Sends each case of the 2026-10-26 bench (88 formatting-eval + 14 Wispr cases,
+Sends each case of the 2026-10-26 bench (the formatting-eval cases,
 the 4 `regression` rows skipped like `v4c_cases.jsonl`) as one `clean`
 request with the case's raw `input`, app category and style, and writes rows
 in the bench runner's shape (`id`, `output`, `llm_ms`, `fallback`) so
@@ -25,8 +25,7 @@ import time
 import websockets
 
 here = os.path.dirname(os.path.abspath(__file__))
-CASES = [os.path.join(here, "formatting_eval_2026_10_24", "cases.jsonl"),
-         os.path.join(here, "ai_cleanup_bench_2026_10_26", "wispr_cases.jsonl")]
+CASES = [os.path.join(here, "formatting_eval_2026_10_24", "cases.jsonl")]
 STYLE = {"neutral": "default"}
 
 

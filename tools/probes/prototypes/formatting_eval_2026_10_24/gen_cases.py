@@ -7,7 +7,7 @@ expected = what the user wants typed. `accept` lists other outputs a
 reasonable user would also take (quote-punctuation placement, 4 vs four).
 
 Style is implied by the app: chat apps (personal_chat / work_chat) expect
-Wispr "casual" (sentence case, final period dropped, contractions OK),
+"casual" (sentence case, final period dropped, contractions OK),
 email expects formal layout, "other" (notes/docs) expects formal punctuation.
 App ids are Android packages the shell really sends; Android never sends
 category "document", so docs apps go out as "other".
@@ -83,7 +83,7 @@ C = [
     ("i6", "itn", KEEP, "My number is five five five, one two three, four five six seven.", "My number is 555-123-4567.", []),
     ("i7", "itn", WA, "I'll be there in like ten minutes.", "I'll be there in 10 minutes", ["I'll be there in like 10 minutes"]),
     ("i8", "itn", DOCS, "The meeting is on the twenty first of October at two PM.", "The meeting is on October 21st at 2 pm.", ["The meeting is on October 21st at 2 PM.", "The meeting is on the 21st of October at 2 PM.", "The meeting is on October 21st at 2:00 PM."]),
-    # Degrees and split "A M" (2026-11-01): "21°", lowercase "am" as Wispr writes it.
+    # Degrees and split "A M" (2026-11-01): "21°", lowercase "am".
     ("i9", "itn", KEEP, "Set the thermostat to twenty one degrees before we get home.", "Set the thermostat to 21° before we get home.", []),
     ("i10", "itn", WA, "The bakery opens at 7 A M on Saturdays.", "The bakery opens at 7 am on Saturdays", ["The bakery opens at 7 am on Saturdays."]),
     # --- lists -------------------------------------------------------------
@@ -123,13 +123,12 @@ C = [
     # Comma before "and" + a clause opening with a time phrase (2026-11-01).
     ("r7", "runon", KEEP, "The bins go out on Tuesday and at six the truck comes past.", "The bins go out on Tuesday, and at 6 the truck comes past.", ["The bins go out on Tuesday, and at six the truck comes past."]),
     # --- fallback-rule regressions (2026-10-26, ticket 6aded21e) -----------
-    # Inputs: the owner's Wispr A/B script (../wispr_ab_2026_10_25/pairs.jsonl
-    # ab5, ab7, ab8) and the 158 cm height from the AI-cleanup benchmark.
-    ("ab8", "regression", KEEP, "okay first thing send the invoice second thing call the landlord and third thing please remind me about the dentist", "Okay:\n\n1. Send the invoice\n2. Call the landlord\n3. Please remind me about the dentist", ["1. Send the invoice\n2. Call the landlord\n3. Please remind me about the dentist", "- Send the invoice.\n- Call the landlord.\n- Please remind me about the dentist."]),
-    ("ab5", "regression", KEEP, "he told me and I quote I'm never doing that again unquote and then he did it the next day", 'He told me, "I\'m never doing that again," and then he did it the next day.', []),
+    # Inputs: owner-read test scripts (ab7, ab8) and the 158 cm height from
+    # the AI-cleanup benchmark.
+    ("ab8", "regression", KEEP, "okay first thing send the invoice second thing call the landlord and third thing please remind me about the dentist", "Okay:\n\n1. Send the invoice\n2. Call the landlord\n3. Please remind me about the dentist", ["1. Send the invoice\n2. Call the landlord\n3. Please remind me about the dentist"]),
     # ab7 pins the currency spacing only: the bare "in parentheses not …"
     # aside and the implied "$60" are AI-cleanup work (out of the ticket).
-    ("ab7", "regression", KEEP, "we spent about two hundred and fifty dollars on the trip in parentheses not counting gas which was another sixty", "We spent about $250 on the trip (not counting gas, which was another $60).", ["We spent about $250 on the trip in parentheses not counting gas which was another sixty."]),
+    ("ab7", "regression", KEEP, "we spent about two hundred and fifty dollars on the trip in parentheses not counting gas which was another sixty", "We spent about $250 on the trip in parentheses not counting gas which was another sixty.", []),
     ("h1", "regression", KEEP, "he is about a hundred and fifty eight cm tall", "He is about 158 cm tall.", []),
     # --- negatives: command words used literally ---------------------------
     ("x1", "negative", DOCS, "The word quote comes from Latin.", "The word quote comes from Latin.", ['The word "quote" comes from Latin.']),

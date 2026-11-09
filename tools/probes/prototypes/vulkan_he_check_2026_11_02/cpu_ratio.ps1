@@ -1,6 +1,6 @@
 # Is the plugin's CPU path slow for every model or only ivrit q5_0? ggml-base (f16) on the 10.4 s
 # clip: whisper-cli b5454 (CPU, OpenMP) vs the installed plugin with FLOW_WHISPER_DEVICE=cpu.
-$b = "$env:USERPROFILE\wispr-bench"
+$b = "$env:USERPROFILE\flow-bench"
 $m = "$env:APPDATA\FlowClone\models\ggml-base.bin"
 $wav = "$b\audio-he\4872784854716589132.wav"
 foreach ($fa in @($false, $true)) {

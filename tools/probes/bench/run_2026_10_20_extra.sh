@@ -7,7 +7,7 @@
 #  4. whisper -ac (audio_ctx sized to clip) on the core set: latency win for short dictations?
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-CACHE="${CACHE:-$HOME/Claude/research/wispr/.cache}"
+CACHE="${CACHE:-$HOME/.cache/flow-clone}"
 TS="$(date +%Y%m%d-%H%M%S)"; L="$CACHE/logs"
 {
   for m in qwen2.5-0.5b-instruct-q4_k_m.gguf qwen2.5-1.5b-instruct-q4_k_m.gguf qwen2.5-3b-instruct-q4_k_m.gguf \

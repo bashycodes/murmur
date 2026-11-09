@@ -2,7 +2,7 @@
 """Local LLM dictation-cleanup benchmark (llama.cpp llama-server, CPU).
 
 For each GGUF model: start llama-server (model stays resident, like the app would keep it), then for
-every case in cleanup_cases.json send the 03 §7.2-derived system prompt + §7.2 user message via
+every case in cleanup_cases.json send the system prompt (cleanup_system_prompt.txt) + user message via
 /v1/chat/completions (temperature 0, max_tokens = 2*input_tokens+32 capped at 256, model's own chat
 template). The system prompt is app-agnostic so its KV prefix is reused across requests
 (cache_prompt), which is how the clone should run it. Before the cases, one "cold-prompt" request with
@@ -11,7 +11,7 @@ cache_prompt=false measures full prompt processing.
 Quality per case:
   * exact  — output == expected after whitespace/quote normalisation
   * sim    — 1 - char-level Levenshtein / max(len) (1.0 = identical)
-  * guard  — would the §7.1 guardrail reject it (word edit distance raw->out / words(raw) > 0.6, or
+  * guard  — would the output guardrail reject it (word edit distance raw->out / words(raw) > 0.6, or
              empty output for non-empty expected)? A rejected output means raw ASR is pasted instead.
 
 Writes $CACHE/results/llm-<ts>.jsonl. Usage:
@@ -23,7 +23,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from wer import edit_distance, normalise  # noqa: E402
 
-CACHE = pathlib.Path(os.environ.get("CACHE", pathlib.Path.home() / "Claude/research/wispr/.cache"))
+CACHE = pathlib.Path(os.environ.get("CACHE", pathlib.Path.home() / ".cache/flow-clone"))
 SERVER = CACHE / "llama.cpp/build/bin/llama-server"
 DEFAULT_MODELS = ["qwen2.5-0.5b-instruct-q4_k_m.gguf", "qwen2.5-1.5b-instruct-q4_k_m.gguf",
                   "qwen2.5-3b-instruct-q4_k_m.gguf", "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
@@ -85,7 +85,7 @@ def main():
     ap.add_argument("--threads", type=int, default=8)
     ap.add_argument("--port", type=int, default=8091)
     ap.add_argument("--prompt", choices=["rules", "fewshot"], default="rules",
-                    help="rules = 03 §7.2 long rule list; fewshot = cleanup_fewshot.json short prompt + examples")
+                    help="rules = long rule list (cleanup_system_prompt.txt); fewshot = cleanup_fewshot.json short prompt + examples")
     a = ap.parse_args()
     if a.prompt == "rules":
         prefix = [{"role": "system", "content": (HERE / "cleanup_system_prompt.txt").read_text()}]

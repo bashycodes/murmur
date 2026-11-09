@@ -1,8 +1,8 @@
-# Text-only cleanup replay for the Wispr parity eval (tools/probes/prototypes/context_echo_2026_11_07).
+# Text-only cleanup replay for the parity eval (tools/probes/prototypes/context_echo_2026_11_07).
 # Own workspace (like the other probe runners) so the product workspace is
 # untouched; uses this checkout's flow-core.
 [package]
-name = "wispr-parity-clean"
+name = "parity-clean"
 version = "0.0.0"
 edition = "2021"
 publish = false

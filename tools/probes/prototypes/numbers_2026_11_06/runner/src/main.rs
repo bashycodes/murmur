@@ -1,7 +1,7 @@
-//! wispr-parity-clean (numbers copy of the lists/corrections runner): replay raw transcripts
+//! parity-clean (numbers copy of the lists/corrections runner): replay raw transcripts
 //! through the real `FlowCore` commit path with one cleaner.
 //!
-//!   wispr-parity-clean --cases CASES.jsonl --session SESSION.json
+//!   parity-clean --cases CASES.jsonl --session SESSION.json
 //!       --mode rules|local|server|cloud [--llm MODEL.gguf --llm-lib SO]
 //!       [--threads N] [--timeout-ms MS] [--override PROMPT.json]
 //!       [--dump-prompt OUT.json] [--language CODE]

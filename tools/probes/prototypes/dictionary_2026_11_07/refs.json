@@ -155,11 +155,11 @@
    ]
   },
   "B06": {
-   "text": "I wrote this whole note with whisper flow on my laptop.",
+   "text": "I saved this whole note to drop box on my laptop.",
    "checks": [
     {
-     "name": "Wispr Flow",
-     "re": "Wispr\\ Flow"
+     "name": "Dropbox",
+     "re": "Dropbox"
     }
    ]
   },
@@ -182,15 +182,15 @@
    ]
   },
   "N01": {
-   "text": "Lean over and whisper the answer so nobody hears.",
+   "text": "Whistle the tune again so nobody forgets it.",
    "checks": [
     {
-     "name": "\\bwhisper\\b",
-     "re": "\\bwhisper\\b"
+     "name": "\\b[Ww]histle\\b",
+     "re": "\\b[Ww]histle\\b"
     },
     {
-     "name": "no Wispr",
-     "re": "Wispr",
+     "name": "no Whistlr",
+     "re": "Whistlr",
      "absent": true
     }
    ]
@@ -280,15 +280,15 @@
    ]
   },
   "N08": {
-   "text": "The river's flow slowed down after the storm.",
+   "text": "Drop the box by the door on your way out.",
    "checks": [
     {
-     "name": "river's flow",
-     "re": "river's flow"
+     "name": "[Dd]rop the box",
+     "re": "[Dd]rop the box"
     },
     {
-     "name": "no Wispr",
-     "re": "Wispr",
+     "name": "no Dropbox",
+     "re": "Dropbox",
      "absent": true
     }
    ]
