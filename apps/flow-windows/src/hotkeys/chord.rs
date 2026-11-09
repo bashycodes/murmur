@@ -4,7 +4,7 @@
 //! (a) which hotkey actions fired, (b) whether to swallow the event, and
 //! (c) whether a dummy VK 0xFF must be injected *before* letting a Win/Alt
 //! key-up through (so a "lone" Win release doesn't open Start, and a lone Alt
-//! release doesn't focus the menu bar — windows-research 02 §2).
+//! release doesn't focus the menu bar).
 //!
 //! While push-to-talk is Right Alt alone (the default, D57), every Right
 //! Alt event and AltGr's fake Left Ctrl are swallowed: the app sees no Alt

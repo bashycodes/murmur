@@ -17,8 +17,7 @@ crates/      Rust workspace: flow-core (session engine, ASR/LLM seams, VAD,
              post-processing), flow-ffi (C ABI + JNI), flow-cli (dev harness),
              flow-llm (llama.cpp cleanup plugin), flow-asr-sherpa (Parakeet)
 apps/        flow-windows (Tauri 2 shell), flow-android (Kotlin shell)
-docs/        decisions, core and hybrid architecture, model benchmarks,
-             handoffs/ (session handoff notes)
+docs/        decisions, core and hybrid architecture, model benchmarks
 tools/       fetch-models.sh, build-android-parakeet.sh, probes/
 ```
 
@@ -87,6 +86,3 @@ Owner guide: [`docs/air-gapped.md`](docs/air-gapped.md).
   estimated time saved, top apps) is computed on the PC from a local
   per-day count file (`%APPDATA%\FlowClone\insights.json`, no text). It is
   never sent anywhere and survives deleting History.
-* The research notes describe the original app's network use for comparison.
-  Vendor credentials found during that research are redacted and never
-  recorded.
