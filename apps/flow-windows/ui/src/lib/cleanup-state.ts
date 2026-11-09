@@ -3,7 +3,7 @@
 // it on the built dist without a page.
 
 import { cloudHint } from "./format.js";
-import type { CleanupProvider, CleanupStatus, OrView } from "./types.js";
+import type { CloudProvider, CleanupStatus, OrView } from "./types.js";
 
 /** What the row says; `turnOn` = offer a button that switches cloud cleanup on in Cleanup order. */
 export interface CleanupStateLine {
@@ -27,7 +27,7 @@ export function plainHint(code: string | null | undefined): string {
  */
 export function cleanupBlockedLine(st: CleanupStatus, v: OrView | null): CleanupStateLine | null {
   const custom = st.provider === "custom";
-  const where = custom ? st.host || "your server" : "OpenRouter";
+  const where = custom ? st.host || "your proxy" : "OpenRouter";
   if (!st.supported) return { text: "Not in this build.", cls: "hint" };
   if (!st.enabled) {
     return { text: `Cloud cleanup is off in Cleanup order: ${where} gets no text.`, cls: "hint", turnOn: true };
@@ -37,7 +37,7 @@ export function cleanupBlockedLine(st: CleanupStatus, v: OrView | null): Cleanup
     return { text: `Not used: ${plainHint(st.blocked)}.`, cls: "hint err" };
   }
   let why: string;
-  if (custom && !v?.cleanup.custom.base_url) why = "enter the server address";
+  if (custom && !v?.cleanup.custom.base_url) why = "enter your proxy's address on the Cloud page";
   else if (custom && !v?.cleanup.custom.model) why = "pick a model";
   else if (!st.consent) why = "accept the consent first (turn it off and on again in Cleanup order)";
   else if (!custom && v && !v.key.set) why = "save an OpenRouter key";
@@ -46,8 +46,8 @@ export function cleanupBlockedLine(st: CleanupStatus, v: OrView | null): Cleanup
 }
 
 /** Who cleaned the last dictation, for the row's "last:" part. */
-export function cleanupEngineName(engine: string, provider: CleanupProvider | undefined, host?: string): string {
-  if (engine === "cloud") return provider === "custom" ? host || "your server" : "OpenRouter";
+export function cleanupEngineName(engine: string, provider: CloudProvider | undefined, host?: string): string {
+  if (engine === "cloud") return provider === "custom" ? host || "your proxy" : "OpenRouter";
   if (engine === "local") return "this PC";
   if (engine === "server") return "your server";
   return "another engine";
@@ -65,11 +65,11 @@ const CODE_LIKE = /\b[a-z0-9]+(?:_[a-z0-9]+)+\b/;
 export function cleanupTestFailText(
   code: string | null | undefined,
   message: string | null | undefined,
-  provider: CleanupProvider | undefined,
+  provider: CloudProvider | undefined,
 ): string {
   let why: string;
   if (code === "cloud_not_configured") {
-    why = provider === "custom" ? "this build can't reach a cleanup server" : "save an OpenRouter key first";
+    why = provider === "custom" ? "this build can't reach your proxy" : "save an OpenRouter key first";
   } else {
     why = plainHint(code ?? "error");
   }

@@ -97,10 +97,10 @@ const engine = `
         "Audio goes only to your server",
         "This PC can step in if it’s offline",
       ])}
-      ${engineCard("cloud", ICON.cloud, "OpenRouter", "A cloud model. No model file, but your audio leaves this computer.", [
+      ${engineCard("cloud", ICON.cloud, "Cloud", "Speech to text by OpenRouter. No download, but your audio leaves this computer.", [
         "Needs an OpenRouter API key",
         "Pay per use, a few cents an hour of audio",
-        "Zero-retention providers only",
+        "A LiteLLM proxy can clean up text, not do speech",
       ])}
     </div>
     <div class="fl-group lw-ob-detail" id="ob_server_detail" hidden>
@@ -214,7 +214,7 @@ const cleanup = `
     <div role="radiogroup" aria-label="AI cleanup" class="lw-ob-main">
       ${cleanupOption("rules", "Rules only", 'Instant. Punctuation, numbers and "scratch that" by fixed rules. No model needed.')}
       ${cleanupOption("pc", "On this PC", "A small model on this PC. Private, adds about a second. Needs a 0.4–1 GB GGUF file.")}
-      ${cleanupOption("cloud", "OpenRouter", "A large cloud model. Best quality, costs a few cents a month. Sends text, never audio.")}
+      ${cleanupOption("cloud", "Cloud", "A large model from OpenRouter or your own LiteLLM proxy. Best quality. Sends text, never audio.")}
       <div class="fl-group" id="ob_llm_detail" hidden>
         <div class="fl-row">
           <div class="fl-row-text"><label class="fl-row-title" for="ob_llm_path">Model file</label><div class="fl-row-desc" id="ob_llm_status"></div></div>
@@ -223,13 +223,36 @@ const cleanup = `
         <p class="lw-ob-small">A GGUF chat model, e.g. Qwen2.5-1.5B-Instruct Q4_K_M. ${extLink(URL_LLM, "Get it from Hugging Face →", "lw-link lw-ob-copy")}</p>
       </div>
       <div class="fl-group" id="ob_or_detail" hidden>
-        <div class="fl-row" data-ob-key-row>
-          <div class="fl-row-text"><label class="fl-row-title" for="ob_clean_key">OpenRouter API key</label><div class="fl-row-desc" data-ob-key-desc>Your words are sent as text, to zero-retention providers only.</div></div>
+        <div class="fl-row">
+          <div class="fl-row-text"><span class="fl-row-title">Provider</span><div class="fl-row-desc" id="ob_cloud_prov_hint"></div></div>
+          <div class="fl-row-control">
+            <div class="lw-seg" role="radiogroup" aria-label="Cloud provider" id="ob_cloud_prov_seg">
+              <button type="button" role="radio" data-ob-cloud-provider="openrouter">OpenRouter</button>
+              <button type="button" role="radio" data-ob-cloud-provider="custom">LiteLLM</button>
+            </div>
+          </div>
+        </div>
+        <div class="fl-row" data-ob-key-row id="ob_or_key_row">
+          <div class="fl-row-text"><label class="fl-row-title" for="ob_clean_key">OpenRouter API key</label><div class="fl-row-desc" data-ob-key-desc>Kept in Windows Credential Manager, never shown again.</div></div>
           <div class="fl-row-control"><input id="ob_clean_key" class="fl-input" data-ob-key type="password" autocomplete="off" spellcheck="false" placeholder="sk-or-…" /></div>
+        </div>
+        <div id="ob_ll_rows" hidden>
+          <div class="fl-row">
+            <div class="fl-row-text"><label class="fl-row-title" for="ob_ll_url">Address</label><div class="fl-row-desc">Your proxy's OpenAI-compatible address, e.g. http://10.0.0.5:4000/v1</div></div>
+            <div class="fl-row-control"><input id="ob_ll_url" class="fl-input is-wide" type="url" spellcheck="false" placeholder="http://10.0.0.5:4000/v1" /></div>
+          </div>
+          <div class="fl-row">
+            <div class="fl-row-text"><label class="fl-row-title" for="ob_ll_key">API key (optional)</label><div class="fl-row-desc" id="ob_ll_key_desc">Only if your proxy asks for one.</div></div>
+            <div class="fl-row-control"><input id="ob_ll_key" class="fl-input" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…" /></div>
+          </div>
+          <div class="fl-row">
+            <div class="fl-row-text"><label class="fl-row-title" for="ob_ll_model">Model</label><div class="fl-row-desc" id="ob_ll_test_out">Test connection lists your proxy's models.</div></div>
+            <div class="fl-row-control"><input id="ob_ll_model" class="fl-input" list="ob_ll_models" spellcheck="false" /><datalist id="ob_ll_models"></datalist><button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="ob_ll_test">Test connection</button></div>
+          </div>
         </div>
         <label class="fl-row lw-ob-consent">
           <input type="checkbox" id="ob_clean_consent" />
-          <span class="fl-row-text"><span class="fl-row-title">Send my dictated text to OpenRouter</span><span class="fl-row-desc">After each dictation the text and your dictionary words go to openrouter.ai and the provider it routes to. Your voice is not sent unless OpenRouter speech to text is also on.</span></span>
+          <span class="fl-row-text"><span class="fl-row-title" id="ob_clean_consent_title">Send my dictated text to OpenRouter</span><span class="fl-row-desc" id="ob_clean_consent_desc"></span></span>
         </label>
       </div>
       <div class="lw-ob-status" id="ob_cleanup_status"></div>

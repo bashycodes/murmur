@@ -16,9 +16,13 @@ _Avoid_: post-processing, formatting rules, LLM cleanup, spoken commands (as a s
 The language setting (Android default, Windows "Keyboard language" on) that makes a dictation use the language of the keyboard active when the recording stops (D58): a keyboard switched mid-recording changes the language, and the whole recording is transcribed again in it. The start keyboard only opens the live session (D37).
 _Avoid_: input language, IME language, start language (as the result's language)
 
-**Custom cleanup server**:
-The user's own OpenAI-compatible server (typically a LiteLLM proxy) that the cloud entry of the cleanup order can call instead of OpenRouter. Cleanup only: cloud speech-to-text always uses OpenRouter.
-_Avoid_: custom provider (for speech), LiteLLM (the usual software, not the setting), local server (that is flow-server)
+**Cloud**:
+Online models the app can use, through one **Cloud provider** at a time (enforced by the Windows settings; Android still pairs the two): OpenRouter (speech to text and AI cleanup) or the user's LiteLLM proxy (AI cleanup only for now). The UI says "Cloud"; a provider's name appears only in the provider switch and its own fields (D78).
+_Avoid_: OpenRouter (as the umbrella term), online service
+
+**LiteLLM proxy**:
+The Cloud provider that is the user's own OpenAI-compatible server (typically LiteLLM; vLLM or Ollama work too). In code and settings it is still `custom` (`cloud.cleanup_provider = "custom"`, `cloud.custom_cleanup`, key id `custom`; D52, D78).
+_Avoid_: custom server (in UI copy), local server (that is flow-server), your server (that is flow-server)
 
 **Fallback rules**:
 The fixed text rules used only when AI cleanup cannot run or its answer is rejected.

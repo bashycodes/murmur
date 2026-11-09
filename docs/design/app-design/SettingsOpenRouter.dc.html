@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Settings: OpenRouter</title>
+<title>Settings: Cloud</title>
 <script src="./support.js"></script>
 <link rel="stylesheet" href="flow-theme.css">
 <link rel="stylesheet" href="ds/flow/components/bundle.css">
@@ -17,8 +17,8 @@ body{margin:0}
 a{color:#1a1a1a}a:hover{color:#30302f}
 </style>
 </helmet>
-<div class="fl {{themeClass}}" style="width: 1040px; height: 1200px; box-sizing: border-box; padding: 40px; background: var(--scrim); font-family: var(--font-sans); color: var(--foreground);">
-  <div class="fl-modal" role="dialog" aria-label="Settings" style="max-width: 960px; height: 1120px; position: relative;">
+<div class="fl {{themeClass}}" style="width: 1040px; height: 1400px; box-sizing: border-box; padding: 40px; background: var(--scrim); font-family: var(--font-sans); color: var(--foreground);">
+  <div class="fl-modal" role="dialog" aria-label="Settings" style="max-width: 960px; height: 1320px; position: relative;">
 
     <div class="fl-modal-nav">
       <div class="fl-modal-nav-top">
@@ -33,80 +33,190 @@ a{color:#1a1a1a}a:hover{color:#30302f}
         <div class="fl-nav-rule"></div>
         <div class="fl-nav-section">Connections</div>
         <a class="fl-nav" href="SettingsServer.dc.html" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01"></path></svg><span class="fl-nav-label">Your server</span></a>
-        <a class="fl-nav is-active" aria-current="page" href="SettingsOpenRouter.dc.html" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-7.97A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"></path></svg><span class="fl-nav-label">OpenRouter</span></a>
+        <a class="fl-nav is-active" aria-current="page" href="SettingsOpenRouter.dc.html" style="text-decoration: none;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.5-7.97A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"></path></svg><span class="fl-nav-label">Cloud</span></a>
       </div>
       <div class="fl-modal-foot"><span>Murmur 0.6.0</span><span class="fl-badge fl-badge-light">Up to date</span></div>
     </div>
 
     <div class="fl-modal-body" style="overflow: hidden;">
-      <h2 class="fl-modal-title" style="margin-bottom: 8px;">OpenRouter</h2>
-      <p style="margin: 0 0 32px; font: 400 15px/20px var(--font-sans); color: var(--neutral-600); max-width: 580px;">The only online service Murmur can talk to. Nothing is sent until you turn it on for speech or cleanup, and each asks for permission first.</p>
+      <h2 class="fl-modal-title" style="margin-bottom: 8px;">Cloud</h2>
+      <p style="margin: 0 0 32px; font: 400 15px/20px var(--font-sans); color: var(--neutral-600); max-width: 580px;">Bigger models that run somewhere else. Pick one provider. Nothing is sent until you turn on speech or cleanup below, and each asks for permission first.</p>
 
-      <div class="fl-group-title">API key</div>
-      <div class="fl-group">
-        <div class="fl-row">
-          <div class="fl-row-text"><div class="fl-row-title lw-mono" style="font-size: 14px;">sk-or-v1-••••••••a91f</div><div class="fl-row-desc">Saved in Windows Credential Manager. Never written to settings files or logs.</div></div>
-          <div class="fl-row-control" style="gap: 8px;"><x-import component-from-global-scope="Flow.Button" variant="ghost">Remove</x-import><x-import component-from-global-scope="Flow.Button" variant="secondary">Check key</x-import></div>
+      <div class="fl-group-title">Provider</div>
+      <div class="fl-group" style="padding: 16px;">
+        <div class="lw-seg" role="radiogroup" aria-label="Cloud provider">
+          <sc-for list="{{providers}}" as="p" hint-placeholder-count="2">
+            <button type="button" role="radio" class="{{p.cls}}" aria-checked="{{p.on}}" onClick="{{p.pick}}">{{p.label}}</button>
+          </sc-for>
         </div>
-        <div class="fl-row">
-          <div class="fl-row-text"><div class="fl-row-title">Credit</div><div class="fl-row-desc">$8.42 left of a $10.00 limit on this key.</div></div>
-          <div class="fl-row-control"><span class="fl-badge fl-badge-success">Valid</span></div>
+        <div class="fl-row-desc" style="margin-top: 12px;">{{provDesc}}</div>
+        <div style="display: grid; grid-template-columns: 1fr auto auto; column-gap: 24px; row-gap: 6px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); font: 400 13px/20px var(--font-sans); color: var(--neutral-600);">
+          <span class="fl-overline">Offers</span><span class="fl-overline">Speech to text</span><span class="fl-overline">AI cleanup</span>
+          <span>OpenRouter</span><span>Yes</span><span>Yes</span>
+          <span>LiteLLM</span><span>If your proxy has a speech model</span><span>Yes</span>
         </div>
       </div>
+
+      <sc-if value="{{isOR}}" hint-placeholder-val="{{true}}">
+        <div class="fl-group-title" style="margin-top: 32px;">API key</div>
+        <div class="fl-group">
+          <div class="fl-row">
+            <div class="fl-row-text"><div class="fl-row-title lw-mono" style="font-size: 14px;">sk-or-v1-••••••••a91f</div><div class="fl-row-desc">Saved in Windows Credential Manager. Only ever sent to openrouter.ai.</div></div>
+            <div class="fl-row-control" style="gap: 8px;"><x-import component-from-global-scope="Flow.Button" variant="ghost">Remove</x-import><x-import component-from-global-scope="Flow.Button" variant="secondary">Check key</x-import></div>
+          </div>
+          <div class="fl-row">
+            <div class="fl-row-text"><div class="fl-row-title">Credit</div><div class="fl-row-desc">$8.42 left of a $10.00 limit on this key.</div></div>
+            <div class="fl-row-control"><span class="fl-badge fl-badge-success">Valid</span></div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{isLL}}" hint-placeholder-val="{{false}}">
+        <div class="fl-group-title" style="margin-top: 32px;">Your LiteLLM proxy</div>
+        <div class="fl-group">
+          <div class="fl-row">
+            <div class="fl-row-text"><label class="fl-row-title" for="ll-url">Address</label><div class="fl-row-desc">Any OpenAI-compatible server works. We add /v1 if you leave it off.</div></div>
+            <div class="fl-row-control"><input id="ll-url" class="fl-input lw-mono" type="url" value="http://llm.home.lan:4000" style="width: 260px;"></div>
+          </div>
+          <div class="fl-row">
+            <div class="fl-row-text"><label class="fl-row-title" for="ll-key">API key</label><div class="fl-row-desc">Optional. Saved in Windows Credential Manager, sent only to this address.</div></div>
+            <div class="fl-row-control"><input id="ll-key" class="fl-input" type="password" placeholder="Leave empty if none" style="width: 260px;"></div>
+          </div>
+          <div class="fl-row">
+            <div class="fl-row-text"><div class="fl-row-title">Connection</div><div class="fl-row-desc">Connected · 6 models · 41 ms</div></div>
+            <div class="fl-row-control" style="gap: 12px; align-items: center;"><span class="fl-badge fl-badge-success">Works</span><x-import component-from-global-scope="Flow.Button" variant="secondary">Test connection</x-import></div>
+          </div>
+          <div class="fl-row" style="padding: 12px 0;">
+            <div class="fl-callout fl-callout-warning" style="flex: 1;"><div class="fl-callout-body">This address starts with http, so your key and your words cross the network unencrypted. Use https if your proxy supports it.</div></div>
+          </div>
+        </div>
+      </sc-if>
 
       <div class="fl-group-title" style="margin-top: 32px;">Used for</div>
       <div class="fl-group">
         <div class="fl-row">
-          <div class="fl-row-text"><div class="fl-row-title">Speech to text</div><div class="fl-row-desc">Would send audio · whisper-large-v3-turbo</div></div>
-          <div class="fl-row-control" style="gap: 16px; align-items: center;"><span class="fl-badge fl-badge-light">Off</span><a class="lw-link" href="SettingsSpeech.dc.html">Set up →</a></div>
+          <div class="fl-row-text"><div class="fl-row-title">Speech to text</div><div class="fl-row-desc">{{sttDesc}}</div></div>
+          <div class="fl-row-control" style="gap: 16px; align-items: center;"><span class="{{sttBadgeCls}}">{{sttBadge}}</span><sc-if value="{{sttLink}}" hint-placeholder-val="{{true}}"><a class="lw-link" href="SettingsSpeech.dc.html">Set up →</a></sc-if></div>
         </div>
         <div class="fl-row">
-          <div class="fl-row-text"><div class="fl-row-title">AI cleanup</div><div class="fl-row-desc">Sends text · llama-3.3-70b-instruct · first, then this PC</div></div>
-          <div class="fl-row-control" style="gap: 16px; align-items: center;"><span class="fl-badge fl-badge-success">On</span><a class="lw-link" href="SettingsCleanup.dc.html">Manage →</a></div>
+          <div class="fl-row-text"><div class="fl-row-title">AI cleanup</div><div class="fl-row-desc">{{cleanDesc}}</div></div>
+          <div class="fl-row-control" style="gap: 16px; align-items: center;">
+            <sc-if value="{{isLL}}" hint-placeholder-val="{{false}}"><x-import component-from-global-scope="Flow.Select" options="{{llModels}}" default-value="qwen2.5-32b" width="{{w200}}"></x-import></sc-if>
+            <span class="{{cleanBadgeCls}}">{{cleanBadge}}</span><a class="lw-link" href="SettingsCleanup.dc.html">Manage →</a>
+          </div>
         </div>
+        <sc-if value="{{showStatus}}" hint-placeholder-val="{{false}}">
+          <div class="fl-row">
+            <span class="lw-dot" style="background: var(--warning-700);"></span>
+            <div class="fl-row-text"><div class="fl-row-title">{{statusTitle}}</div><div class="fl-row-desc">{{statusDesc}}</div></div>
+            <sc-if value="{{canRetry}}" hint-placeholder-val="{{true}}"><div class="fl-row-control"><x-import component-from-global-scope="Flow.Button" variant="secondary">Try now</x-import></div></sc-if>
+          </div>
+        </sc-if>
       </div>
 
       <div class="fl-group-title" style="margin-top: 32px;">Privacy</div>
       <div class="fl-group">
         <div class="fl-row">
-          <div class="fl-row-text"><div class="fl-row-title">Zero-retention providers only</div><div class="fl-row-desc">Only providers that delete your request as soon as they answer.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Zero-retention providers only"></x-import></div>
+          <span class="lw-tile"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9c-4-1.5-7-4.5-7-9V6zM9 12l2 2 4-4"></path></svg></span>
+          <div class="fl-row-text"><div class="fl-row-title">{{consentTitle}}</div><div class="fl-row-desc">{{consentDesc}}</div></div>
         </div>
-        <div class="fl-row">
-          <div class="fl-row-text"><div class="fl-row-title">Block providers that collect data</div><div class="fl-row-desc">Skips providers that may train on what you send.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Block providers that collect data"></x-import></div>
-        </div>
+        <sc-if value="{{isOR}}" hint-placeholder-val="{{true}}">
+          <div class="fl-row">
+            <div class="fl-row-text"><div class="fl-row-title">Zero-retention providers only</div><div class="fl-row-desc">Only providers that delete your request as soon as they answer.</div></div>
+            <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Zero-retention providers only"></x-import></div>
+          </div>
+          <div class="fl-row">
+            <div class="fl-row-text"><div class="fl-row-title">Block providers that collect data</div><div class="fl-row-desc">Skips providers that may train on what you send.</div></div>
+            <div class="fl-row-control"><x-import component-from-global-scope="Flow.Toggle" default-checked="{{yes}}" label="Block providers that collect data"></x-import></div>
+          </div>
+        </sc-if>
       </div>
 
       <div class="fl-group-title" style="margin-top: 32px;">This month</div>
-      <div class="fl-group">
-        <div class="fl-row" style="flex-direction: column; align-items: stretch; gap: 10px;">
-          <div style="display: flex; align-items: baseline; gap: 8px;"><span class="fl-serif" style="font-size: 28px; line-height: 28px;">$1.18</span><span style="font: 400 15px/20px var(--font-sans); color: var(--neutral-600);">of your $5.00 budget</span></div>
-          <div style="display: flex; height: 8px; border-radius: 4px; background: var(--background-secondary); overflow: hidden;"><span style="width: 23.6%; background: var(--fathom-900);"></span></div>
-          <div style="display: flex; gap: 24px; font: 400 13px/20px var(--font-sans); color: var(--neutral-600);"><span>Speech $0.00</span><span>Cleanup $1.18 · 412 dictations</span></div>
+      <sc-if value="{{isOR}}" hint-placeholder-val="{{true}}">
+        <div class="fl-group">
+          <div class="fl-row" style="flex-direction: column; align-items: stretch; gap: 10px;">
+            <div style="display: flex; align-items: baseline; gap: 8px;"><span class="fl-serif" style="font-size: 28px; line-height: 28px;">{{spent}}</span><span style="font: 400 15px/20px var(--font-sans); color: var(--neutral-600);">of your $5.00 budget</span></div>
+            <div style="display: flex; height: 8px; border-radius: 4px; background: var(--background-secondary); overflow: hidden;"><span style="width: {{spentPct}}; background: var(--fathom-900);"></span></div>
+            <div style="display: flex; gap: 24px; font: 400 13px/20px var(--font-sans); color: var(--neutral-600);"><span>Speech $0.00</span><span>Cleanup {{spent}} · 412 dictations</span></div>
+          </div>
+          <div class="fl-row">
+            <div class="fl-row-text"><div class="fl-row-title">Monthly budget</div><div class="fl-row-desc">When it runs out, OpenRouter pauses and this PC does the work until next month.</div></div>
+            <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{budgetOpts}}" default-value="5" width="{{w160}}"></x-import></div>
+          </div>
         </div>
-        <div class="fl-row">
-          <div class="fl-row-text"><div class="fl-row-title">Monthly budget</div><div class="fl-row-desc">When it runs out, everything switches to this PC until next month.</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Select" options="{{budgetOpts}}" default-value="5" width="{{w160}}"></x-import></div>
+      </sc-if>
+      <sc-if value="{{isLL}}" hint-placeholder-val="{{false}}">
+        <div class="fl-group">
+          <div class="fl-row">
+            <div class="fl-row-text"><div class="fl-row-title">$0.21 reported by your proxy</div><div class="fl-row-desc">Cleanup · 388 dictations. Shown when your proxy reports a cost. Your own proxy has no budget here; the OpenRouter budget never counts it.</div></div>
+          </div>
         </div>
-        <div class="fl-row">
-          <div class="fl-row-text"><div class="fl-row-title">Reset counters</div></div>
-          <div class="fl-row-control"><x-import component-from-global-scope="Flow.Button" variant="secondary">Reset</x-import></div>
-        </div>
-      </div>
+      </sc-if>
     </div>
 
     <button type="button" aria-label="Close settings" class="fl-iconbtn" style="position: absolute; top: 16px; right: 16px;"><svg class="fl-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"$preview":{"width":1040,"height":1200}}'>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"provider":{"editor":"enum","options":["openrouter","litellm"],"default":"openrouter"},"status":{"editor":"enum","options":["working","paused","budget"],"default":"working"},"litellmSpeech":{"editor":"enum","options":["none","found"],"default":"none"},"$preview":{"width":1040,"height":1400}}'>
 class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { provider: null };
+  }
   renderVals() {
+    const prov = this.state.provider ?? this.props.provider ?? 'openrouter';
+    const or = prov === 'openrouter';
+    let status = this.props.status ?? 'working';
+    if (!or && status === 'budget') status = 'working';
+    const llStt = (this.props.litellmSpeech ?? 'none') === 'found';
+    const paused = status !== 'working';
+    const sttAvail = or || llStt;
     return {
       themeClass: (this.props.theme ?? 'light') === 'dark' ? 'lw-dark' : '',
       yes: true,
       w160: 160,
+      w200: 200,
+      isOR: or,
+      isLL: !or,
+      providers: [['openrouter', 'OpenRouter'], ['litellm', 'LiteLLM']].map(([id, label]) => ({
+        label,
+        on: id === prov ? 'true' : 'false',
+        cls: id === prov ? 'is-on' : '',
+        pick: () => this.setState({ provider: id })
+      })),
+      provDesc: or
+        ? 'openrouter.ai: hundreds of models from many companies. Pay per use with your own key.'
+        : 'Your own LiteLLM proxy (or any OpenAI-compatible server), on your network or wherever you run it.',
+      sttDesc: or
+        ? 'Would send audio · openai/whisper-large-v3-turbo'
+        : (llStt ? 'Would send audio · whisper-1, found on your proxy' : 'Your proxy has no speech model, so speech stays on this PC and your server. Add one to the proxy and it shows up here.'),
+      sttBadge: sttAvail ? 'Off' : 'Not available',
+      sttBadgeCls: 'fl-badge fl-badge-light',
+      sttLink: sttAvail,
+      cleanDesc: or ? 'Sends text · meta-llama/llama-3.3-70b-instruct' : 'Sends text · model from your proxy’s list, or type its name',
+      cleanBadge: paused ? 'Paused' : 'On',
+      cleanBadgeCls: paused ? 'fl-badge fl-badge-warning' : 'fl-badge fl-badge-success',
+      showStatus: paused,
+      canRetry: status === 'paused',
+      statusTitle: status === 'budget' ? 'Monthly budget reached' : 'Paused after recent failures',
+      statusDesc: status === 'budget'
+        ? 'OpenRouter is paused until 1 December. This PC does the cleanup until then, or raise the budget below.'
+        : (or ? 'OpenRouter took too long 3 times. This PC does the cleanup until 14:32, then the cloud is tried again.'
+              : 'Couldn’t reach llm.home.lan 3 times. This PC does the cleanup until 14:32, then the proxy is tried again.'),
+      consentTitle: or ? 'Sent only to openrouter.ai' : 'Sent only to llm.home.lan',
+      consentDesc: or
+        ? 'Speech and cleanup each ask once before their first request: audio for speech, text for cleanup. Silence is never sent.'
+        : 'You agreed on 8 November to send dictated text here. Pointing the address at another server asks again. Where the proxy sends it next is up to how you set it up.',
+      spent: status === 'budget' ? '$5.00' : '$1.18',
+      spentPct: status === 'budget' ? '100%' : '23.6%',
+      llModels: [
+        { value: 'qwen2.5-32b', label: 'qwen2.5-32b' },
+        { value: 'llama-3.3-70b', label: 'llama-3.3-70b' },
+        { value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
+        { value: 'other', label: 'Type a name…' }
+      ],
       budgetOpts: [
         { value: 'none', label: 'No limit' },
         { value: '2', label: '$2 a month' },

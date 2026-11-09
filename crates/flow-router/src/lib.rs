@@ -20,7 +20,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 pub use cloud::{
-    month_of, CleanupConfig, CleanupProvider, CleanupRoute, CloudConfig, CloudProviderConfig,
+    month_of, CleanupConfig, CleanupRoute, CloudConfig, CloudProvider, CloudProviderConfig,
     CloudUsage, CustomCleanupConfig, OpenRouterConfig, Privacy, ProviderUsage, Route, SecretString,
     SttConfig, Usd,
 };
@@ -707,7 +707,7 @@ pub struct CleanupStatus {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server_circuit: Option<CircuitStatus>,
     /// D52: `openrouter` or `custom` (the service behind `cloud`). Additive.
-    pub provider: crate::cloud::CleanupProvider,
+    pub provider: crate::cloud::CloudProvider,
     /// D52: the custom server's host (consent, status line); `""` for
     /// OpenRouter. Additive.
     #[serde(skip_serializing_if = "String::is_empty")]

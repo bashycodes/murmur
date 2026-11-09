@@ -221,7 +221,7 @@ async function refreshList() {
 const SUMMARY_BY = {
     local: "this PC's AI model",
     server: "your server",
-    cloud: "OpenRouter",
+    cloud: "Cloud",
 };
 /** What the summary box says about its state ("" when it just shows it). */
 export function summaryState(s, running) {
@@ -262,7 +262,7 @@ function showSummary(m) {
 const ROUTE_NAMES = {
     local: "This PC",
     remote: "Your server",
-    cloud: "OpenRouter",
+    cloud: "Cloud",
 };
 /** "Transcribed on: This PC"; with several routes, the most used first
  * with the share of chunks ("This PC 4, Your server 2"). */
