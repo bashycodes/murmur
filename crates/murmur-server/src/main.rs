@@ -1,22 +1,22 @@
-//! `flow-server [--config PATH] [--token-file PATH] [--insecure-bind-any]`
-//! `flow-server gen-token --out PATH`
-//! `flow-server check-config [--config PATH]`
-//! `flow-server keys add <name> [--admin] | list | revoke <name|id> [--force]` (D38)
-//! `flow-server library list` (D40)
+//! `murmur-server [--config PATH] [--token-file PATH] [--insecure-bind-any]`
+//! `murmur-server gen-token --out PATH`
+//! `murmur-server check-config [--config PATH]`
+//! `murmur-server keys add <name> [--admin] | list | revoke <name|id> [--force]` (D38)
+//! `murmur-server library list` (D40)
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Instant;
 
-use flow_server::{config, Config, Pool};
+use murmur_server::{config, Config, Pool};
 
-const DEFAULT_CONFIG: &str = "/etc/flow-server/config.toml";
-const SYSTEM_STATE_DIR: &str = "/var/lib/flow-server";
+const DEFAULT_CONFIG: &str = "/etc/murmur-server/config.toml";
+const SYSTEM_STATE_DIR: &str = "/var/lib/murmur-server";
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage:\n  flow-server [--config PATH] [--token-file PATH] [--insecure-bind-any]\n  flow-server gen-token --out PATH\n  flow-server check-config [--config PATH] [--token-file PATH]\n  flow-server keys add <name> [--admin] [--config PATH] [--state-dir DIR]\n  flow-server keys list [--config PATH] [--state-dir DIR]\n  flow-server keys revoke <name|id> [--force] [--config PATH] [--state-dir DIR]\n  flow-server library list [--config PATH] [--state-dir DIR]"
+        "usage:\n  murmur-server [--config PATH] [--token-file PATH] [--insecure-bind-any]\n  murmur-server gen-token --out PATH\n  murmur-server check-config [--config PATH] [--token-file PATH]\n  murmur-server keys add <name> [--admin] [--config PATH] [--state-dir DIR]\n  murmur-server keys list [--config PATH] [--state-dir DIR]\n  murmur-server keys revoke <name|id> [--force] [--config PATH] [--state-dir DIR]\n  murmur-server library list [--config PATH] [--state-dir DIR]"
     );
     ExitCode::from(2)
 }
@@ -70,7 +70,13 @@ fn parse() -> Option<Args> {
 }
 
 fn load_unchecked(a: &Args) -> Result<Config, String> {
-    let mut c = Config::load(&a.config)?;
+    // D83: a missing murmur-server config falls back to the earlier
+    // install's flow-server one (read only, with a notice).
+    let (path, note) = murmur_server::legacy::config_path(&a.config);
+    if let Some(n) = note {
+        murmur_server::legacy::notice(&n);
+    }
+    let mut c = Config::load(&path)?;
     if a.token_file.is_some() {
         c.token_file = a.token_file.clone();
     }
@@ -84,7 +90,11 @@ fn load_unchecked(a: &Args) -> Result<Config, String> {
         && std::env::var_os("STATE_DIRECTORY").is_none()
         && a.config.starts_with("/etc")
     {
-        c.state_dir = Some(SYSTEM_STATE_DIR.into());
+        let (dir, note) = murmur_server::legacy::state_dir(SYSTEM_STATE_DIR.into());
+        if let Some(n) = note {
+            murmur_server::legacy::notice(&n);
+        }
+        c.state_dir = Some(dir);
     }
     c.insecure_bind_any = a.insecure_bind_any;
     Ok(c)
@@ -122,7 +132,7 @@ fn main() -> ExitCode {
                     println!("language {lang}: asr={:?} {}", m.asr_backend, m.asr_path);
                 }
                 if let Some(d) = c.keys_dir().filter(|_| c.auth == config::AuthMode::Token) {
-                    println!("keys: {}", d.join(flow_server::keys::KEYS_FILE).display());
+                    println!("keys: {}", d.join(murmur_server::keys::KEYS_FILE).display());
                 }
                 if c.debug.capture {
                     println!(
@@ -145,7 +155,7 @@ fn main() -> ExitCode {
     }
 }
 
-/// `flow-server keys …` (D38). Works on the same files as the running
+/// `murmur-server keys …` (D38). Works on the same files as the running
 /// server, which picks the change up on the next connection.
 fn keys(a: &Args) -> ExitCode {
     let run = || -> Result<(), String> {
@@ -157,7 +167,7 @@ fn keys(a: &Args) -> ExitCode {
             .keys_dir()
             .ok_or("no state directory for the keys file (pass --state-dir)")?;
         // Imports token_file as `owner` first, exactly as the server would.
-        let store = flow_server::keys::KeyStore::open(&dir, c.resolve_token()?.as_deref())?;
+        let store = murmur_server::keys::KeyStore::open(&dir, c.resolve_token()?.as_deref())?;
         match a.rest.iter().map(String::as_str).collect::<Vec<_>>()[..] {
             ["add", name] => {
                 let (k, secret) = store.add(name, a.admin)?;
@@ -169,10 +179,10 @@ fn keys(a: &Args) -> ExitCode {
                 );
                 println!("{secret}");
             }
-            ["list"] => print!("{}", flow_server::keys::table(&store.list())),
+            ["list"] => print!("{}", murmur_server::keys::table(&store.list())),
             ["revoke", who] => {
                 let k = store.revoke(who, a.force).map_err(|e| match e {
-                    flow_server::keys::KeyError::LastAdmin(m) => {
+                    murmur_server::keys::KeyError::LastAdmin(m) => {
                         format!("{m} (or pass --force)")
                     }
                     e => e.to_string(),
@@ -200,7 +210,7 @@ fn keys(a: &Args) -> ExitCode {
     }
 }
 
-/// `flow-server library list` (D40): scans the library like the server does
+/// `murmur-server library list` (D40): scans the library like the server does
 /// (sharing its hash cache) and prints what is served and what is skipped.
 fn library(a: &Args) -> ExitCode {
     let run = || -> Result<(), String> {
@@ -208,10 +218,10 @@ fn library(a: &Args) -> ExitCode {
             return Err("expected `library list`".into());
         }
         let c = load_unchecked(a)?;
-        let lib = flow_server::library::Library::from_config(&c)
+        let lib = murmur_server::library::Library::from_config(&c)
             .ok_or("no library folder: set [library] dir or state_dir (or pass --state-dir)")?;
         let idx = lib.rescan();
-        print!("{}", flow_server::library::table(lib.dir(), &idx));
+        print!("{}", murmur_server::library::table(lib.dir(), &idx));
         Ok(())
     };
     match run() {
@@ -231,7 +241,7 @@ fn serve(a: &Args) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    flow_server::logging::init(&cfg.log.level);
+    murmur_server::logging::init(&cfg.log.level);
 
     // Models load before any listener binds.
     let t0 = Instant::now();
@@ -266,7 +276,7 @@ fn serve(a: &Args) -> ExitCode {
             .iter()
             .map(|(k, (b, _))| format!("{k}={b}"))
             .collect();
-        let h = match flow_server::serve_with_pool(cfg, pool, listeners).await {
+        let h = match murmur_server::serve_with_pool(cfg, pool, listeners).await {
             Ok(h) => h,
             Err(e) => {
                 tracing::error!("{e}");
@@ -275,7 +285,7 @@ fn serve(a: &Args) -> ExitCode {
         };
         let addrs: Vec<String> = h.addrs.iter().map(|a| a.to_string()).collect();
         tracing::info!(
-            version = flow_build_info::FULL,
+            version = murmur_build_info::FULL,
             workers,
             asr = %asr,
             languages = %languages.join(","),

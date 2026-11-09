@@ -1,4 +1,4 @@
-//! Admin API (D39) against a real in-process flow-server: whoami, list /
+//! Admin API (D39) against a real in-process murmur-server: whoami, list /
 //! create / revoke, 401 / 403, the last-admin guard, revoke = next
 //! request, `auth = "none"`, and the CLI writing the same keys file.
 
@@ -8,9 +8,9 @@ use std::net::SocketAddr;
 use std::path::Path;
 
 use common::*;
-use flow_protocol::admin::{code, AdminError, CreatedKey, KeyList, RevokedKey, WhoAmI};
-use flow_server::keys::{KeyStore, KEYS_FILE, OWNER};
-use flow_server::Config;
+use murmur_protocol::admin::{code, AdminError, CreatedKey, KeyList, RevokedKey, WhoAmI};
+use murmur_server::keys::{KeyStore, KEYS_FILE, OWNER};
+use murmur_server::Config;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -234,7 +234,7 @@ async fn last_admin_key_cannot_be_revoked() {
 async fn auth_off_has_no_admin_api() {
     let mut c = mock_cfg("hello");
     c.token = None;
-    c.auth = flow_server::config::AuthMode::None;
+    c.auth = murmur_server::config::AuthMode::None;
     let s = start(c).await;
     for p in ["/v1/whoami", "/v1/admin/keys"] {
         let (st, body) = http(s.addr(), "GET", p, None, None).await;

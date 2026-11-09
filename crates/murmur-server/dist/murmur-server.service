@@ -1,11 +1,11 @@
-# systemd unit for flow-server (docs/hybrid-architecture.md §3.4).
-# Install (manually, as root): copy the binary to /usr/local/bin/flow-server,
-# this file to /etc/systemd/system/, the config to /etc/flow-server/config.toml,
-# create the token with `flow-server gen-token --out /etc/flow-server/token`
+# systemd unit for murmur-server (docs/hybrid-architecture.md §3.4).
+# Install (manually, as root): copy the binary to /usr/local/bin/murmur-server,
+# this file to /etc/systemd/system/, the config to /etc/murmur-server/config.toml,
+# create the token with `murmur-server gen-token --out /etc/murmur-server/token`
 # (readable by the service: DynamicUser gets it via LoadCredential below), put
-# models under /var/lib/flow-server/models, then `systemctl enable --now flow-server`.
+# models under /var/lib/murmur-server/models, then `systemctl enable --now murmur-server`.
 [Unit]
-Description=flow-server (self-hosted dictation ASR; LAN/VPN only)
+Description=murmur-server (self-hosted dictation ASR; LAN/VPN only)
 # Bound to a VPN address that is not up yet at boot, the start fails and
 # Restart= below retries every 3 s until it is.
 After=network-online.target
@@ -13,14 +13,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/flow-server --config /etc/flow-server/config.toml --token-file ${CREDENTIALS_DIRECTORY}/token
-LoadCredential=token:/etc/flow-server/token
+ExecStart=/usr/local/bin/murmur-server --config /etc/murmur-server/config.toml --token-file ${CREDENTIALS_DIRECTORY}/token
+LoadCredential=token:/etc/murmur-server/token
 DynamicUser=yes
-StateDirectory=flow-server
-Environment=TMPDIR=/var/lib/flow-server/tmp
+StateDirectory=murmur-server
+Environment=TMPDIR=/var/lib/murmur-server/tmp
 # Parakeet builds: libsherpa-onnx-c-api.so + libonnxruntime.so must be findable.
-# Environment=LD_LIBRARY_PATH=/usr/local/lib/flow-server
-ExecStartPre=/bin/mkdir -p /var/lib/flow-server/tmp
+# Environment=LD_LIBRARY_PATH=/usr/local/lib/murmur-server
+ExecStartPre=/bin/mkdir -p /var/lib/murmur-server/tmp
 Restart=on-failure
 RestartSec=3
 Nice=5

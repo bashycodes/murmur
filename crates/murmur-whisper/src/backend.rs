@@ -1,9 +1,9 @@
 //! Which ggml device runs the whisper model: a GPU (Vulkan, in the Windows
-//! `flow_whisper_vulkan.dll` build) or the CPU. Same policy as the cleanup
-//! engine (flow-llm `backend`).
+//! `murmur_whisper_vulkan.dll` build) or the CPU. Same policy as the cleanup
+//! engine (murmur-llm `backend`).
 //!
 //! [`choose`] is pure, so the policy is unit-tested without whisper.cpp:
-//! * `FLOW_WHISPER_DEVICE=cpu` forces the CPU (A/B runs, a misbehaving
+//! * `MURMUR_WHISPER_DEVICE=cpu` forces the CPU (A/B runs, a misbehaving
 //!   driver);
 //! * otherwise the best real GPU: a discrete GPU before an integrated one,
 //!   then the one with the most free memory. Software rasterisers
@@ -92,9 +92,10 @@ fn is_real_gpu(d: &Device) -> bool {
         && !SOFTWARE_GPUS.iter().any(|s| n.contains(s))
 }
 
-/// `FLOW_WHISPER_DEVICE`: "cpu" forces the CPU; anything else (or unset) = auto.
+/// `MURMUR_WHISPER_DEVICE`: "cpu" forces the CPU; anything else (or unset) = auto.
 pub fn force_cpu_from_env() -> bool {
-    std::env::var("FLOW_WHISPER_DEVICE").is_ok_and(|v| v.trim().eq_ignore_ascii_case("cpu"))
+    murmur_build_info::env::var("MURMUR_WHISPER_DEVICE")
+        .is_ok_and(|v| v.trim().eq_ignore_ascii_case("cpu"))
 }
 
 /// See the module docs.
@@ -153,10 +154,11 @@ pub fn devices() -> Vec<Device> {
             };
             // whisper.cpp counts GPU and integrated GPU devices for
             // `gpu_device` (whisper_backend_init_gpu).
-            let gpu_index = matches!(kind, DeviceKind::Gpu | DeviceKind::IntegratedGpu).then(|| {
-                gpus += 1;
-                gpus - 1
-            });
+            let gpu_index =
+                matches!(kind, DeviceKind::Gpu | DeviceKind::IntegratedGpu).then(|| {
+                    gpus += 1;
+                    gpus - 1
+                });
             let (mut free, mut total) = (0usize, 0usize);
             sys::ggml_backend_dev_memory(dev, &mut free, &mut total);
             let reg = sys::ggml_backend_dev_backend_reg(dev);
@@ -223,7 +225,12 @@ mod tests {
             gpu_index,
             name: desc.into(),
             description: desc.into(),
-            backend: if kind == DeviceKind::Cpu { "CPU" } else { "Vulkan" }.into(),
+            backend: if kind == DeviceKind::Cpu {
+                "CPU"
+            } else {
+                "Vulkan"
+            }
+            .into(),
             kind,
             memory_free: free_mb << 20,
             memory_total: free_mb << 20,
@@ -244,7 +251,12 @@ mod tests {
     fn an_integrated_gpu_is_used() {
         let p = choose(
             &[
-                dev(Some(0), DeviceKind::IntegratedGpu, "Intel(R) Arc(TM) 140V GPU", 18_000),
+                dev(
+                    Some(0),
+                    DeviceKind::IntegratedGpu,
+                    "Intel(R) Arc(TM) 140V GPU",
+                    18_000,
+                ),
                 cpu(),
             ],
             false,
@@ -257,7 +269,10 @@ mod tests {
                 description: "Intel(R) Arc(TM) 140V GPU".into()
             }
         );
-        assert_eq!((p.backend(), p.device(), p.is_gpu()), ("Vulkan", "Intel(R) Arc(TM) 140V GPU", true));
+        assert_eq!(
+            (p.backend(), p.device(), p.is_gpu()),
+            ("Vulkan", "Intel(R) Arc(TM) 140V GPU", true)
+        );
     }
 
     #[test]
@@ -268,12 +283,18 @@ mod tests {
             dev(Some(2), DeviceKind::Gpu, "big dGPU", 8_000),
             cpu(),
         ];
-        assert!(matches!(choose(&devs, false), Plan::Gpu { gpu_index: 2, .. }));
+        assert!(matches!(
+            choose(&devs, false),
+            Plan::Gpu { gpu_index: 2, .. }
+        ));
         let tie = [
             dev(Some(0), DeviceKind::Gpu, "a", 4_000),
             dev(Some(1), DeviceKind::Gpu, "b", 4_000),
         ];
-        assert!(matches!(choose(&tie, false), Plan::Gpu { gpu_index: 0, .. }));
+        assert!(matches!(
+            choose(&tie, false),
+            Plan::Gpu { gpu_index: 0, .. }
+        ));
     }
 
     #[test]
@@ -283,15 +304,28 @@ mod tests {
             "SwiftShader Device (Subzero)",
             "Microsoft Basic Render Driver",
         ] {
-            assert_eq!(choose(&[dev(Some(0), DeviceKind::Gpu, name, 8_000), cpu()], false), Plan::Cpu, "{name}");
+            assert_eq!(
+                choose(&[dev(Some(0), DeviceKind::Gpu, name, 8_000), cpu()], false),
+                Plan::Cpu,
+                "{name}"
+            );
         }
     }
 
     #[test]
     fn force_cpu_wins_and_accelerators_are_not_used() {
-        let devs = [dev(Some(0), DeviceKind::IntegratedGpu, "iGPU", 16_000), cpu()];
+        let devs = [
+            dev(Some(0), DeviceKind::IntegratedGpu, "iGPU", 16_000),
+            cpu(),
+        ];
         assert_eq!(choose(&devs, true), Plan::Cpu);
-        assert_eq!(choose(&[dev(None, DeviceKind::Accelerator, "BLAS", 0), cpu()], false), Plan::Cpu);
+        assert_eq!(
+            choose(
+                &[dev(None, DeviceKind::Accelerator, "BLAS", 0), cpu()],
+                false
+            ),
+            Plan::Cpu
+        );
     }
 
     #[test]
@@ -305,9 +339,14 @@ mod tests {
     fn this_build_lists_its_devices_without_panicking() {
         // CPU build: the CPU only. A Vulkan build may add GPUs.
         let d = devices();
-        assert!(d.iter().all(|d| d.gpu_index.is_some() == matches!(d.kind, DeviceKind::Gpu | DeviceKind::IntegratedGpu)));
+        assert!(d.iter().all(|d| d.gpu_index.is_some()
+            == matches!(d.kind, DeviceKind::Gpu | DeviceKind::IntegratedGpu)));
         if !cfg!(feature = "vulkan") {
-            assert!(d.iter().all(|d| d.kind != DeviceKind::Gpu && d.kind != DeviceKind::IntegratedGpu), "{d:?}");
+            assert!(
+                d.iter()
+                    .all(|d| d.kind != DeviceKind::Gpu && d.kind != DeviceKind::IntegratedGpu),
+                "{d:?}"
+            );
             assert!(gpu_starts(0).is_err());
         }
     }

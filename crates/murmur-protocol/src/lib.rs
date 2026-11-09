@@ -1,7 +1,7 @@
-//! flow-server wire protocol v1 (our own protocol; D8/D17).
+//! murmur-server wire protocol v1 (our own protocol; D8/D17).
 //!
 //! Normative spec: `docs/protocol.md`. This crate holds the message types,
-//! constants and helpers shared by `flow-remote` (client) and `flow-server`.
+//! constants and helpers shared by `murmur-remote` (client) and `murmur-server`.
 //! It contains no network code.
 //!
 //! * Binary WebSocket frame = PCM16 LE mono 16 kHz audio for the current
@@ -9,24 +9,30 @@
 //! * Text frame = JSON control message tagged by `"t"` ([`ClientMsg`],
 //!   [`ServerMsg`]). Unknown fields are ignored everywhere.
 //!
-//! `SessionConfig`, `FieldContext` and `CommitResult` are flow-core's serde
+//! `SessionConfig`, `FieldContext` and `CommitResult` are murmur-core's serde
 //! types verbatim, so additive core fields need no protocol change.
 
 use serde::{Deserialize, Serialize};
 
-pub mod library;
 pub mod admin;
+pub mod library;
 
-pub use flow_core::cleanup::CleanRequest;
-pub use flow_core::config::{FieldContext, SessionConfig};
-pub use flow_core::CommitResult;
+pub use murmur_core::cleanup::CleanRequest;
+pub use murmur_core::config::{FieldContext, SessionConfig};
+pub use murmur_core::CommitResult;
 
 /// Lowest protocol minor this build speaks.
 pub const PROTO_MIN: u32 = 1;
 /// Highest protocol minor this build speaks.
 pub const PROTO_MAX: u32 = 1;
 /// WebSocket subprotocol (`Sec-WebSocket-Protocol`).
-pub const SUBPROTOCOL: &str = "flow.v1";
+pub const SUBPROTOCOL: &str = "murmur.v1";
+/// The subprotocol's name before the Murmur rename (D83). Same protocol;
+/// servers still accept it, and clients still offer it after
+/// [`SUBPROTOCOL`], for one transition period (old apps, old servers).
+pub const OLD_SUBPROTOCOL: &str = "flow.v1";
+/// What a client offers: the new name first, then the old one.
+pub const CLIENT_SUBPROTOCOLS: &str = "murmur.v1, flow.v1";
 pub const PATH_STREAM: &str = "/v1/stream";
 pub const PATH_HEALTH: &str = "/v1/health";
 pub const DEFAULT_PORT: u16 = 7313;
@@ -63,9 +69,9 @@ pub mod code {
 pub struct Hello {
     pub proto_min: u32,
     pub proto_max: u32,
-    /// e.g. `"flow-android 0.2.0"`.
+    /// e.g. `"murmur-android 0.2.0"`.
     pub client: String,
-    /// Client's flow-core version.
+    /// Client's murmur-core version.
     pub core: String,
     pub postprocess_rev: String,
 }
@@ -76,8 +82,8 @@ impl Default for Hello {
             proto_min: PROTO_MIN,
             proto_max: PROTO_MAX,
             client: String::new(),
-            core: flow_core::VERSION.into(),
-            postprocess_rev: flow_core::POSTPROCESS_REV.into(),
+            core: murmur_core::VERSION.into(),
+            postprocess_rev: murmur_core::POSTPROCESS_REV.into(),
         }
     }
 }
@@ -87,7 +93,7 @@ impl Default for Hello {
 #[serde(default)]
 pub struct HelloOk {
     pub proto: u32,
-    /// e.g. `"flow-server 0.1.0"`.
+    /// e.g. `"murmur-server 0.1.0"`.
     pub server: String,
     pub core: String,
     pub postprocess_rev: String,
@@ -317,7 +323,7 @@ pub fn decode_pcm(bytes: &[u8]) -> Result<Vec<i16>, FrameError> {
 
 /// Milliseconds of 16 kHz audio in `samples`.
 pub fn samples_to_ms(samples: u64) -> u64 {
-    samples * 1000 / flow_core::config::SAMPLE_RATE as u64
+    samples * 1000 / murmur_core::config::SAMPLE_RATE as u64
 }
 
 #[cfg(test)]

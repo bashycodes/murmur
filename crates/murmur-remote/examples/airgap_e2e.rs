@@ -1,6 +1,6 @@
 //! Air-gapped end-to-end client (tools/e2e/airgap/run.sh): drives a real,
-//! separately started flow-server through the same client code the apps
-//! use (flow-remote's AdminClient, LibraryClient, RemoteBackend).
+//! separately started murmur-server through the same client code the apps
+//! use (murmur-remote's AdminClient, LibraryClient, RemoteBackend).
 //!
 //!   airgap_e2e --port N --admin-token-file F --wav F --expect-text WORD
 //!              --out DIR --expect ID/FILE=SHA256 [--expect …]
@@ -16,12 +16,12 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use flow_core::config::SessionConfig;
-use flow_protocol::admin::code;
-use flow_remote::admin::AdminClient;
-use flow_remote::library::{ErrorKind, LibraryClient};
-use flow_remote::RemoteBackend;
-use flow_router::{Backend, Failure, ServerConfig};
+use murmur_core::config::SessionConfig;
+use murmur_protocol::admin::code;
+use murmur_remote::admin::AdminClient;
+use murmur_remote::library::{ErrorKind, LibraryClient};
+use murmur_remote::RemoteBackend;
+use murmur_router::{Backend, Failure, ServerConfig};
 use sha2::{Digest, Sha256};
 
 const UA: &str = "airgap-e2e";
@@ -274,7 +274,7 @@ fn main() -> std::process::ExitCode {
     );
 
     // 5. One dictation over the user key.
-    let pcm = match flow_core::audio::read_wav_16k_mono(&a.wav) {
+    let pcm = match murmur_core::audio::read_wav_16k_mono(&a.wav) {
         Ok(p) => p,
         Err(e) => {
             run.step("dictation", Err(format!("read {}: {e}", a.wav.display())));

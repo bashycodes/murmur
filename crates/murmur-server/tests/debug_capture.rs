@@ -8,8 +8,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use common::*;
-use flow_core::config::{FieldContext, SessionConfig};
-use flow_protocol::{ClientMsg, ServerMsg};
+use murmur_core::config::{FieldContext, SessionConfig};
+use murmur_protocol::{ClientMsg, ServerMsg};
 
 const SAID: &str = "replay me please";
 const CTX_SECRET: &str = "marmalade-invoice";

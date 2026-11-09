@@ -4,7 +4,7 @@
 //! default `<state dir>/library`) and tags each with a `model.toml`
 //! (`docs/server-advanced.md` §10). One folder = one model; its name is the
 //! model id. Untagged or invalid folders are skipped with a reason
-//! (`flow-server library list`, and the log when the set changes).
+//! (`murmur-server library list`, and the log when the set changes).
 //!
 //! Interface: [`Library::rescan`] (blocking: stat every file, hash what
 //! changed, swap the new [`Index`] in), [`Library::index`] (the current
@@ -32,7 +32,7 @@ use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::Router;
-use flow_protocol::library::{
+use murmur_protocol::library::{
     catalogue, is_safe_name, LibraryFile, LibraryModel, ModelKind, ModelList,
 };
 use serde::{Deserialize, Serialize};
@@ -531,7 +531,7 @@ pub(crate) fn spawn_rescan(
 
 pub(crate) fn routes() -> Router<Arc<AppState>> {
     Router::new()
-        .route(flow_protocol::library::PATH_MODELS, get(list_handler))
+        .route(murmur_protocol::library::PATH_MODELS, get(list_handler))
         .route("/v1/models/{id}/files/{*name}", get(file_handler))
 }
 
@@ -735,7 +735,7 @@ async fn file_handler(
     r
 }
 
-/// `flow-server library list`: the served models, then the skipped folders.
+/// `murmur-server library list`: the served models, then the skipped folders.
 pub fn table(dir: &Path, idx: &Index) -> String {
     let mut out = format!("library: {}\n", dir.display());
     if let Some(why) = &idx.missing {

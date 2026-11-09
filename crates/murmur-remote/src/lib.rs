@@ -1,9 +1,9 @@
-//! `RemoteBackend`: the `flow_router::Backend` that streams a session to a
-//! self-hosted `flow-server` over WebSocket (protocol: `docs/protocol.md`).
+//! `RemoteBackend`: the `murmur_router::Backend` that streams a session to a
+//! self-hosted `murmur-server` over WebSocket (protocol: `docs/protocol.md`).
 //!
 //! This crate is the only client-side network code. Client-only builds do
 //! not link it; hybrid / server-only builds pass [`factory`] to
-//! `flow_router::Router::new`.
+//! `murmur_router::Router::new`.
 //!
 //! Threading: each backend owns a small tokio runtime (one worker). The
 //! sync `Backend` methods talk to per-connection reader/writer tasks through
@@ -21,10 +21,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_core::config::{FieldContext, SessionConfig};
-use flow_core::{CommitResult, RouteInfo};
-use flow_protocol::{code, encode_pcm, ClientMsg, MAX_FRAME_BYTES};
-use flow_router::{
+use murmur_core::config::{FieldContext, SessionConfig};
+use murmur_core::{CommitResult, RouteInfo};
+use murmur_protocol::{code, encode_pcm, ClientMsg, MAX_FRAME_BYTES};
+use murmur_router::{
     net, Backend, BackendError, EngineKind, Failure, HealthReport, RemoteFactory, Rtt,
     ServerConfig, StartInfo,
 };
@@ -35,7 +35,7 @@ use conn::{Conn, Outgoing};
 pub const WRITER_QUEUE: usize = 64;
 
 /// The factory the router needs: one `RemoteBackend` per server config.
-/// `client` names this app in `hello` (e.g. `"flow-windows 0.2.0"`).
+/// `client` names this app in `hello` (e.g. `"murmur-windows 0.2.0"`).
 pub fn factory(client: &str) -> RemoteFactory {
     let client = client.to_string();
     Box::new(move |cfg: &ServerConfig| {
@@ -70,7 +70,7 @@ struct Inner {
     /// D36 `clean` request ids.
     next_clean: AtomicU64,
     /// The `hello_ok` of the last connection (D36 feature check).
-    hello: Mutex<Option<flow_protocol::HelloOk>>,
+    hello: Mutex<Option<murmur_protocol::HelloOk>>,
 }
 
 impl Drop for Inner {
@@ -88,7 +88,7 @@ impl RemoteBackend {
     pub fn new(cfg: ServerConfig, client: &str) -> Self {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
-            .thread_name("flow-remote")
+            .thread_name("murmur-remote")
             .enable_all()
             .build()
             .expect("tokio runtime");
@@ -338,7 +338,7 @@ impl Backend for RemoteBackend {
             }),
             server_version: Some(hello.server.clone()),
             server_core: Some(hello.core.clone()),
-            postprocess_match: Some(hello.postprocess_rev == flow_core::POSTPROCESS_REV),
+            postprocess_match: Some(hello.postprocess_rev == murmur_core::POSTPROCESS_REV),
             postprocess_rev: Some(hello.postprocess_rev),
             proto: Some(hello.proto),
             asr_backend: Some(hello.asr_backend),
@@ -358,19 +358,19 @@ impl Backend for RemoteBackend {
         self.connection().map(|_| ())
     }
 
-    fn server_hello(&self) -> Option<flow_protocol::HelloOk> {
+    fn server_hello(&self) -> Option<murmur_protocol::HelloOk> {
         self.inner.hello.lock().unwrap().clone()
     }
 
     /// D36: on the warm connection (independent of a session on it).
     fn clean_text(
         &self,
-        req: &flow_core::cleanup::CleanRequest,
+        req: &murmur_core::cleanup::CleanRequest,
         deadline: Instant,
-    ) -> Result<flow_protocol::Cleaned, BackendError> {
+    ) -> Result<murmur_protocol::Cleaned, BackendError> {
         let conn = self.connection()?;
         if let Some(error) = clean_refusal(conn.hello(), req) {
-            return Ok(flow_protocol::Cleaned {
+            return Ok(murmur_protocol::Cleaned {
                 error: Some(error.into()),
                 ..Default::default()
             });
@@ -397,13 +397,13 @@ impl Backend for RemoteBackend {
 /// server without the `summary` feature, which would clean the text
 /// instead), or `None` = send it.
 pub(crate) fn clean_refusal(
-    hello: &flow_protocol::HelloOk,
-    req: &flow_core::cleanup::CleanRequest,
+    hello: &murmur_protocol::HelloOk,
+    req: &murmur_core::cleanup::CleanRequest,
 ) -> Option<&'static str> {
     let has = |f: &str| hello.features.iter().any(|x| x == f);
-    if !has(flow_protocol::FEATURE_CLEAN) {
+    if !has(murmur_protocol::FEATURE_CLEAN) {
         Some("no_llm")
-    } else if !req.task.is_cleanup() && !has(flow_protocol::FEATURE_SUMMARY) {
+    } else if !req.task.is_cleanup() && !has(murmur_protocol::FEATURE_SUMMARY) {
         Some("no_summary")
     } else {
         None
@@ -447,11 +447,11 @@ pub(crate) fn failure_for_code(c: &str) -> Failure {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use flow_core::cleanup::CleanRequest;
-    use flow_core::cleanup::CleanTask;
+    use murmur_core::cleanup::CleanRequest;
+    use murmur_core::cleanup::CleanTask;
 
-    fn hello(features: &[&str]) -> flow_protocol::HelloOk {
-        flow_protocol::HelloOk {
+    fn hello(features: &[&str]) -> murmur_protocol::HelloOk {
+        murmur_protocol::HelloOk {
             features: features.iter().map(|f| f.to_string()).collect(),
             ..Default::default()
         }
@@ -464,7 +464,10 @@ mod tests {
             task: CleanTask::MeetingNotes,
             ..Default::default()
         };
-        let (c, s) = (flow_protocol::FEATURE_CLEAN, flow_protocol::FEATURE_SUMMARY);
+        let (c, s) = (
+            murmur_protocol::FEATURE_CLEAN,
+            murmur_protocol::FEATURE_SUMMARY,
+        );
         assert_eq!(clean_refusal(&hello(&[]), &clean), Some("no_llm"));
         assert_eq!(clean_refusal(&hello(&[]), &notes), Some("no_llm"));
         // An older server: cleans, but would clean a meeting task too.

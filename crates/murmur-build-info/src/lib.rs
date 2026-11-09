@@ -6,20 +6,22 @@
 //! * [`FULL`] `0.2.0+abc1234.dirty` — SemVer with build metadata; what logs,
 //!   the server's `hello_ok.server` and the shells' About rows show.
 //!
-//! The protocol version (`flow_protocol::PROTO_*`) is separate on purpose.
+//! The protocol version (`murmur_protocol::PROTO_*`) is separate on purpose.
 
 include!("describe.rs");
+
+pub mod env;
 
 /// Product version, `MAJOR.MINOR.PATCH`.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Short commit (7 hex) or empty when git was unavailable.
-pub const GIT_SHA: &str = env!("FLOW_GIT_SHA");
+pub const GIT_SHA: &str = env!("MURMUR_GIT_SHA");
 /// Tracked files differed from `GIT_SHA` when this was built.
-pub const GIT_DIRTY: bool = matches!(env!("FLOW_GIT_DIRTY").as_bytes(), b"1");
+pub const GIT_DIRTY: bool = matches!(env!("MURMUR_GIT_DIRTY").as_bytes(), b"1");
 /// `abc1234`, `abc1234-dirty` or `unknown`.
-pub const BUILD: &str = env!("FLOW_BUILD");
+pub const BUILD: &str = env!("MURMUR_BUILD");
 /// `0.2.0+abc1234` / `0.2.0+abc1234.dirty` / `0.2.0+unknown`.
-pub const FULL: &str = env!("FLOW_FULL");
+pub const FULL: &str = env!("MURMUR_FULL");
 
 #[cfg(test)]
 mod tests {

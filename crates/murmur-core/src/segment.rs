@@ -207,10 +207,10 @@ const SPLICE_WORDS: usize = 6;
 const SPLICE_FREE_WORDS: usize = 2;
 
 /// The bridge window around `cut`, within the two pieces `lo..hi`.
-/// `FLOW_BRIDGE_LEFT_MS` overrides the left side (bench knob, like
-/// `FLOW_SEGMENT_JOIN`; `tests/segment_bench.rs`).
+/// `MURMUR_BRIDGE_LEFT_MS` overrides the left side (bench knob, like
+/// `MURMUR_SEGMENT_JOIN`; `tests/segment_bench.rs`).
 pub fn bridge_range(cut: usize, lo: usize, hi: usize) -> Range<usize> {
-    let left = std::env::var("FLOW_BRIDGE_LEFT_MS")
+    let left = murmur_build_info::env::var("MURMUR_BRIDGE_LEFT_MS")
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
         .map_or(BRIDGE_LEFT_SAMPLES, |ms| ms * SAMPLE_RATE / 1000);

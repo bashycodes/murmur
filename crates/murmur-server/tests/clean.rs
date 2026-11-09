@@ -6,12 +6,12 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::*;
-use flow_core::asr::MockAsr;
-use flow_core::cleanup::{CleanError, CleanPrompt, CleanRequest, Cleaner};
-use flow_core::config::CleanupLevel;
-use flow_core::FlowCore;
-use flow_protocol::{ClientMsg, ServerMsg, FEATURE_CLEAN, FEATURE_SUMMARY, MAX_CLEAN_TEXT_BYTES};
-use flow_server::{Pool, ServerHandle};
+use murmur_core::asr::MockAsr;
+use murmur_core::cleanup::{CleanError, CleanPrompt, CleanRequest, Cleaner};
+use murmur_core::config::CleanupLevel;
+use murmur_core::MurmurCore;
+use murmur_protocol::{ClientMsg, ServerMsg, FEATURE_CLEAN, FEATURE_SUMMARY, MAX_CLEAN_TEXT_BYTES};
+use murmur_server::{Pool, ServerHandle};
 
 /// Upper-cases the raw transcript after `delay`.
 struct Upper {
@@ -40,13 +40,13 @@ impl Cleaner for Upper {
 async fn llm_server(delay: Duration, max_queue: usize) -> ServerHandle {
     let mut cfg = mock_cfg("words");
     cfg.max_queue = max_queue;
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new("words")),
         Some(Arc::new(Upper { delay }) as Arc<dyn Cleaner>),
     );
     let pool = Pool::from_cores(vec![Arc::new(core)], &cfg.model, cfg.max_queue);
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    flow_server::serve_with_pool(cfg, Arc::new(pool), vec![l])
+    murmur_server::serve_with_pool(cfg, Arc::new(pool), vec![l])
         .await
         .unwrap()
 }
@@ -60,7 +60,7 @@ fn req(text: &str) -> Box<CleanRequest> {
     })
 }
 
-async fn cleaned(ws: &mut Ws) -> flow_protocol::Cleaned {
+async fn cleaned(ws: &mut Ws) -> murmur_protocol::Cleaned {
     match recv(ws).await {
         Some(ServerMsg::Cleaned(c)) => c,
         other => panic!("expected cleaned, got {other:?}"),
@@ -235,7 +235,7 @@ fn warm_llm_cleans_once_per_worker_with_an_llm() {
     let cfg = mock_cfg("words");
     let cl = Arc::new(Counting(Default::default()));
     let with = |c: Option<Arc<dyn Cleaner>>| {
-        Arc::new(FlowCore::from_engines(Arc::new(MockAsr::new("w")), c))
+        Arc::new(MurmurCore::from_engines(Arc::new(MockAsr::new("w")), c))
     };
     let pool = Pool::from_cores(
         vec![with(Some(cl.clone())), with(None), with(Some(cl.clone()))],
@@ -253,7 +253,7 @@ async fn session_fallback(per_char_ms: u32) -> Option<String> {
     let text = &text[..100];
     let mut cfg = mock_cfg(text);
     cfg.llm_timeout_per_char_ms = per_char_ms;
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new(text)),
         Some(Arc::new(Upper {
             delay: Duration::from_millis(700),
@@ -261,11 +261,11 @@ async fn session_fallback(per_char_ms: u32) -> Option<String> {
     );
     let pool = Pool::from_cores(vec![Arc::new(core)], &cfg.model, cfg.max_queue);
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let s = flow_server::serve_with_pool(cfg, Arc::new(pool), vec![l])
+    let s = murmur_server::serve_with_pool(cfg, Arc::new(pool), vec![l])
         .await
         .unwrap();
     let mut ws = session(s.addr()).await;
-    let config = flow_core::config::SessionConfig {
+    let config = murmur_core::config::SessionConfig {
         llm_timeout_ms: 300,
         llm_skip_clean: false,
         ..Default::default()
@@ -296,8 +296,8 @@ async fn session_llm_budget_scales_with_the_transcript_length() {
 /// would build (synthetic text), not the cleanup prompt.
 #[tokio::test]
 async fn meeting_tasks_build_the_summary_prompt() {
-    use flow_core::cleanup::CleanTask;
-    use flow_core::summary::build_prompt;
+    use murmur_core::cleanup::CleanTask;
+    use murmur_core::summary::build_prompt;
     let s = llm_server(Duration::ZERO, 4).await;
     let mut ws = session(s.addr()).await;
     for (id, task, want) in [

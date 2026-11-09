@@ -1,33 +1,33 @@
-//! The integration point with `flow-core`: implements [`CoreApi`] on top of
-//! `flow_core::FlowCore` and owns model loading.
+//! The integration point with `murmur-core`: implements [`CoreApi`] on top of
+//! `murmur_core::MurmurCore` and owns model loading.
 //!
 //! * Models load on background threads at startup, so the tray comes up at
 //!   once. A dictation started while the speech model loads waits up to
 //!   [`LOAD_WAIT`] for it; a missing model file is a clear error state
 //!   ([`ModelStatus::Missing`]) and is never downloaded (DECISIONS D9).
 //! * **Two-phase load.** The speech engine and the optional LLM cleaner
-//!   (llama.cpp in the `flow_llm` plugin, D10) load independently and are
-//!   composed with `FlowCore::from_engines`. Dictation works as soon as ASR
+//!   (llama.cpp in the `murmur_llm` plugin, D10) load independently and are
+//!   composed with `MurmurCore::from_engines`. Dictation works as soon as ASR
 //!   is ready (results are RAW_TRANSCRIPT); when the LLM finishes loading
 //!   (10-50 s on CPU) the core is rebuilt around the same ASR engine plus
 //!   the cleaner. An LLM failure never blocks dictation: it is reported as
 //!   [`LlmStatus`] and the shell keeps pasting deterministic output.
 //!   Toggling the LLM never reloads whisper.
-//! * The shell's API types are mapped onto flow-core's here (pure functions,
-//!   unit-tested), so the rest of the shell never names a flow-core type.
-//! * Default models: `%APPDATA%\FlowClone\models\ggml-base.bin` (D4 CPU
+//! * The shell's API types are mapped onto murmur-core's here (pure functions,
+//!   unit-tested), so the rest of the shell never names a murmur-core type.
+//! * Default models: `%APPDATA%\Murmur\models\ggml-base.bin` (D4 CPU
 //!   tier) and, when cleanup is on, `qwen2.5-1.5b-instruct-q4_k_m.gguf`
 //!   (D11; the 0.5B file when only that one is there). Threads =
-//!   flow-core's default unless prefs `asr_threads` says otherwise.
+//!   murmur-core's default unless prefs `asr_threads` says otherwise.
 
 use crate::core_api::{
     AppKind, CleanupLevel, CommitResult, CommitStatus, CoreApi, DictEntry, FieldContext,
     LearnCandidate, SessionConfig, StyleBucket, Styles, Timings,
 };
-use flow_core::asr::AsrEngine;
-use flow_core::cleanup::Cleaner;
-use flow_core::config as fc;
-use flow_core::whisper_plugin::WhisperBackend;
+use murmur_core::asr::AsrEngine;
+use murmur_core::cleanup::Cleaner;
+use murmur_core::config as fc;
+use murmur_core::whisper_plugin::WhisperBackend;
 use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, RwLock};
 use std::time::{Duration, Instant};
@@ -37,7 +37,7 @@ pub const DEFAULT_MODEL_FILE: &str = "ggml-base.bin";
 /// English only; faster and more accurate than whisper on this CPU tier.
 pub const DEFAULT_PARAKEET_DIR: &str = "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8";
 /// The Hebrew models' folders (docs/findings/2026-10-30-hebrew-model-pins.md),
-/// the names `fetch-models.sh` and the flow-core tests use too.
+/// the names `fetch-models.sh` and the murmur-core tests use too.
 pub const ZIPFORMER_HE_DIR: &str = "zipformer2-66m-streaming-he-int8";
 pub const PARAKEET_HE_DIR: &str = "parakeet-tdt-0.6b-v3-he-int8";
 /// ivrit-ai whisper-large-v3-turbo q5_0 (`prefs.hebrew_model = ivrit_turbo`):
@@ -59,7 +59,7 @@ pub const LEGACY_LLM_FILE: &str = "qwen2.5-0.5b-instruct-q4_k_m.gguf";
 /// `start_session` runs on the controller loop, which must stay responsive.
 pub const LOAD_WAIT: Duration = Duration::from_secs(3);
 
-/// `%APPDATA%\FlowClone\models`.
+/// `%APPDATA%\Murmur\models`.
 pub fn models_dir(appdata: Option<&str>) -> PathBuf {
     appdata
         .map(PathBuf::from)
@@ -94,7 +94,7 @@ fn default_llm_in(dir: &std::path::Path) -> PathBuf {
 
 /// File name of the llama.cpp plugin the shell ships next to its exe.
 pub fn llm_plugin_file() -> &'static str {
-    flow_core::llama::PLUGIN_FILE
+    murmur_core::llama::PLUGIN_FILE
 }
 
 // ------------------------------------------------------------------ status
@@ -104,9 +104,9 @@ pub fn llm_plugin_file() -> &'static str {
 /// bug 2).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CpuReason {
-    /// `FLOW_WHISPER_DEVICE=cpu`.
+    /// `MURMUR_WHISPER_DEVICE=cpu`.
     Forced,
-    /// No `flow_whisper_vulkan.dll` next to the exe (or no Vulkan driver to
+    /// No `murmur_whisper_vulkan.dll` next to the exe (or no Vulkan driver to
     /// load it): the built-in CPU engine runs it.
     NoPlugin,
     /// The plugin loaded but found no Vulkan device.
@@ -117,7 +117,7 @@ pub enum CpuReason {
 
 impl CpuReason {
     /// Classify a whisper backend: `None` when it runs on a GPU.
-    /// `plugin` = the GPU plugin loaded; `forced` = `FLOW_WHISPER_DEVICE=cpu`.
+    /// `plugin` = the GPU plugin loaded; `forced` = `MURMUR_WHISPER_DEVICE=cpu`.
     pub fn of(b: &WhisperBackend, plugin: bool, forced: bool) -> Option<Self> {
         if b.is_gpu() {
             return None;
@@ -146,10 +146,10 @@ impl CpuReason {
     /// Settings' reason text, completing "Runs on the CPU: …".
     pub fn label(&self) -> String {
         match self {
-            Self::Forced => "the CPU is forced (FLOW_WHISPER_DEVICE=cpu)".into(),
+            Self::Forced => "the CPU is forced (MURMUR_WHISPER_DEVICE=cpu)".into(),
             Self::NoPlugin => format!(
                 "the graphics chip plugin ({}) is missing",
-                flow_core::whisper_plugin::GPU_PLUGIN_FILE
+                murmur_core::whisper_plugin::GPU_PLUGIN_FILE
             ),
             Self::NoGpu => "no Vulkan graphics chip found".into(),
             Self::GpuError(e) => format!("the graphics chip failed ({e})"),
@@ -157,16 +157,21 @@ impl CpuReason {
     }
 }
 
-/// `FLOW_WHISPER_DEVICE=cpu`, read the way the plugin reads it
-/// (flow-whisper `backend::force_cpu_from_env`).
+/// `MURMUR_WHISPER_DEVICE=cpu`, read the way the plugin reads it
+/// (murmur-whisper `backend::force_cpu_from_env`).
 pub fn whisper_cpu_forced() -> bool {
-    std::env::var("FLOW_WHISPER_DEVICE").is_ok_and(|v| v.trim().eq_ignore_ascii_case("cpu"))
+    murmur_build_info::env::var("MURMUR_WHISPER_DEVICE")
+        .is_ok_and(|v| v.trim().eq_ignore_ascii_case("cpu"))
 }
 
 /// First line of an error, at most 100 characters (Settings shows it inline).
 pub fn short_error(e: &str) -> String {
     const MAX: usize = 100;
-    let line = e.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("unknown error");
+    let line = e
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("unknown error");
     if line.chars().count() <= MAX {
         return line.to_string();
     }
@@ -216,7 +221,7 @@ pub enum ModelStatus {
     Ready {
         path: String,
         load_ms: u64,
-        /// Where it runs: a GPU (whisper through `flow_whisper_vulkan.dll`)
+        /// Where it runs: a GPU (whisper through `murmur_whisper_vulkan.dll`)
         /// or the CPU. `None` for the mock engine. Boxed: keeps the status
         /// small.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -271,19 +276,19 @@ pub enum LlmStatus {
     },
     Ready {
         path: String,
-        /// The `flow_llm` plugin that was loaded.
+        /// The `murmur_llm` plugin that was loaded.
         plugin: String,
         load_ms: u64,
         /// GPU or CPU (older plugins do not say). Boxed: keeps the status
         /// (the loader's error type) small.
         #[serde(skip_serializing_if = "Option::is_none")]
-        backend: Option<Box<flow_core::llama::LlmBackend>>,
+        backend: Option<Box<murmur_core::llama::LlmBackend>>,
     },
     /// The GGUF file does not exist. Never downloaded automatically.
     Missing {
         path: String,
     },
-    /// `flow_llm.dll` was not found next to the exe (or at `llm_lib_path`).
+    /// `murmur_llm.dll` was not found next to the exe (or at `llm_lib_path`).
     PluginMissing {
         path: String,
         message: String,
@@ -336,7 +341,7 @@ pub enum ModelSpec {
         threads: Option<usize>,
         decoding: fc::ParakeetDecoding,
     },
-    /// flow-core's `MockAsr` (fixed transcript): tests and model-free dev.
+    /// murmur-core's `MockAsr` (fixed transcript): tests and model-free dev.
     Mock { text: String },
 }
 
@@ -394,7 +399,7 @@ impl ModelSpec {
         }
     }
 
-    /// The equivalent flow-core config (ASR only; the LLM is composed in
+    /// The equivalent murmur-core config (ASR only; the LLM is composed in
     /// separately, see the module docs).
     pub fn model_config(&self) -> fc::ModelConfig {
         match self {
@@ -466,10 +471,10 @@ impl LanguageSpec {
     }
 }
 
-/// The whole flow-core model config the prefs describe: the default model
+/// The whole murmur-core model config the prefs describe: the default model
 /// plus the per-language routes (`languages.he`). The shell loads the parts
 /// itself (two-phase, see the module docs); this is the same config as one
-/// value (logs, tests, `flow-core` JSON).
+/// value (logs, tests, `murmur-core` JSON).
 pub fn model_config(prefs: &crate::prefs::Prefs, appdata: Option<&str>) -> fc::ModelConfig {
     let mut cfg = ModelSpec::from_prefs(prefs, appdata).model_config();
     if let Some(l) = LanguageSpec::from_prefs(prefs, appdata) {
@@ -483,7 +488,7 @@ pub fn model_config(prefs: &crate::prefs::Prefs, appdata: Option<&str>) -> fc::M
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LlmSpec {
     pub model_path: PathBuf,
-    /// Explicit `flow_llm` plugin; `None` = next to the exe (flow-core lookup).
+    /// Explicit `murmur_llm` plugin; `None` = next to the exe (murmur-core lookup).
     pub lib_path: Option<PathBuf>,
     pub threads: Option<usize>,
 }
@@ -508,14 +513,14 @@ impl LlmSpec {
 pub struct LlmLoaded {
     pub cleaner: Arc<dyn Cleaner>,
     pub plugin: String,
-    pub backend: Option<flow_core::llama::LlmBackend>,
+    pub backend: Option<murmur_core::llama::LlmBackend>,
 }
 
 /// Loads a cleaner; injectable so the two-phase logic is testable without
 /// llama.cpp.
 pub type LlmLoader = Arc<dyn Fn(&LlmSpec) -> Result<LlmLoaded, LlmStatus> + Send + Sync>;
 
-/// The real loader: GGUF existence check, then `flow_core::llama`.
+/// The real loader: GGUF existence check, then `murmur_core::llama`.
 pub fn llama_loader() -> LlmLoader {
     Arc::new(|spec: &LlmSpec| {
         let path = spec.model_path.display().to_string();
@@ -524,7 +529,7 @@ pub fn llama_loader() -> LlmLoader {
         }
         let threads = spec.threads.unwrap_or_else(fc::default_threads).max(1);
         let lib = spec.lib_path.as_ref().map(|p| p.display().to_string());
-        match flow_core::llama::LlamaCleaner::load(&path, threads, lib.as_deref()) {
+        match murmur_core::llama::LlamaCleaner::load(&path, threads, lib.as_deref()) {
             Ok(c) => Ok(LlmLoaded {
                 plugin: c.plugin_path.display().to_string(),
                 backend: c.backend(),
@@ -537,7 +542,7 @@ pub fn llama_loader() -> LlmLoader {
 
 /// Where local AI cleanup would run on this PC (Settings → AI cleanup
 /// recommends a model by it): the plugin the loader picks (GPU build first,
-/// flow-core `llama::plugin_candidates`) and the device it would use.
+/// murmur-core `llama::plugin_candidates`) and the device it would use.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct LlmBackendView {
     /// A GPU runs the model (Vulkan).
@@ -557,7 +562,7 @@ pub struct LlmBackendView {
 
 impl LlmBackendView {
     pub fn from_probe(
-        r: Result<(PathBuf, flow_core::llama::LlmBackend), flow_core::llama::LlamaLoadError>,
+        r: Result<(PathBuf, murmur_core::llama::LlmBackend), murmur_core::llama::LlamaLoadError>,
     ) -> Self {
         match r {
             Ok((path, b)) => Self {
@@ -589,7 +594,7 @@ pub fn llm_backend_probe(lib_path: Option<&str>) -> LlmBackendView {
     if let Some((_, v)) = CACHE.lock().unwrap().iter().find(|(k, _)| *k == key) {
         return v.clone();
     }
-    let v = LlmBackendView::from_probe(flow_core::llama::probe_backend(lib_path));
+    let v = LlmBackendView::from_probe(murmur_core::llama::probe_backend(lib_path));
     // A missing plugin is not cached: it may be put next to the exe later.
     if v.plugin.is_some() {
         CACHE.lock().unwrap().push((key, v.clone()));
@@ -599,13 +604,13 @@ pub fn llm_backend_probe(lib_path: Option<&str>) -> LlmBackendView {
 
 /// Where a whisper model would run on this PC (Settings → Speech to text
 /// recommends the Hebrew model by it and says where Hebrew runs): the GPU
-/// plugin's device when `flow_whisper_vulkan.dll` loads, else the built-in
+/// plugin's device when `murmur_whisper_vulkan.dll` loads, else the built-in
 /// CPU engine (`plugin: None`, `error` says why the plugin did not load).
 pub fn whisper_backend_view(
-    r: Result<(PathBuf, WhisperBackend), flow_core::whisper_plugin::WhisperPluginError>,
+    r: Result<(PathBuf, WhisperBackend), murmur_core::whisper_plugin::WhisperPluginError>,
     forced: bool,
 ) -> LlmBackendView {
-    use flow_core::whisper_plugin::WhisperPluginError;
+    use murmur_core::whisper_plugin::WhisperPluginError;
     match r {
         Ok((path, b)) => LlmBackendView {
             gpu: b.is_gpu(),
@@ -641,7 +646,7 @@ pub fn whisper_backend_probe() -> LlmBackendView {
         return v;
     }
     let v = whisper_backend_view(
-        flow_core::whisper_plugin::probe_backend(None),
+        murmur_core::whisper_plugin::probe_backend(None),
         whisper_cpu_forced(),
     );
     if v.plugin.is_some() {
@@ -651,9 +656,9 @@ pub fn whisper_backend_probe() -> LlmBackendView {
 }
 
 /// Typed since core-p1 (CR-1): "plugin not found" gets its own status so
-/// the settings page can say "ship flow_llm.dll".
-fn classify_llm_error(path: String, e: flow_core::llama::LlamaLoadError) -> LlmStatus {
-    use flow_core::llama::LlamaLoadError;
+/// the settings page can say "ship murmur_llm.dll".
+fn classify_llm_error(path: String, e: murmur_core::llama::LlamaLoadError) -> LlmStatus {
+    use murmur_core::llama::LlamaLoadError;
     let message = e.to_string();
     match e {
         LlamaLoadError::PluginNotFound { .. } => LlmStatus::PluginMissing { path, message },
@@ -673,15 +678,15 @@ struct Slot {
     lang_spec: Option<LanguageSpec>,
     lang_asr: Option<(String, Arc<dyn AsrEngine>)>,
     /// Auto-detect's language identifier (H6), with the language model.
-    lang_lid: Option<Arc<dyn flow_core::lid::LanguageId>>,
+    lang_lid: Option<Arc<dyn murmur_core::lid::LanguageId>>,
     lang_generation: u64,
     llm_status: LlmStatus,
     cleaner: Option<Arc<dyn Cleaner>>,
     /// `from_engines(asr, cleaner)`; rebuilt whenever either changes.
-    core: Option<Arc<flow_core::FlowCore>>,
+    core: Option<Arc<murmur_core::MurmurCore>>,
     /// The router's cleanup plan (D28/D36), installed on every rebuilt
     /// core so a reload keeps the server and cloud hops.
-    plan: Option<flow_router::CleanupPlan>,
+    plan: Option<murmur_router::CleanupPlan>,
     /// Bumped per load so a slow, superseded load can't win.
     generation: u64,
     llm_generation: u64,
@@ -690,7 +695,7 @@ struct Slot {
 impl Slot {
     fn rebuild(&mut self) {
         self.core = self.asr.as_ref().map(|asr| {
-            Arc::new(flow_core::FlowCore::from_language_engines_with_lid(
+            Arc::new(murmur_core::MurmurCore::from_language_engines_with_lid(
                 asr.clone(),
                 self.lang_asr.iter().cloned().collect(),
                 self.lang_asr.as_ref().and(self.lang_lid.clone()),
@@ -703,30 +708,30 @@ impl Slot {
     /// Put the router's cleanup plan on the current core (if any).
     fn apply_plan(&self) {
         if let Some(c) = &self.core {
-            flow_router::install_cleanup_plan(c, self.plan.as_ref());
+            murmur_router::install_cleanup_plan(c, self.plan.as_ref());
         }
     }
 }
 
-pub struct FlowCoreAdapter {
+pub struct MurmurCoreAdapter {
     slot: Mutex<Slot>,
     loaded: Condvar,
     /// Core of the open session (stays fixed even if a reload lands mid-session).
-    active: RwLock<Option<Arc<flow_core::FlowCore>>>,
+    active: RwLock<Option<Arc<murmur_core::MurmurCore>>>,
     listener: Mutex<Option<Listener<ModelStatus>>>,
     lang_listener: Mutex<Option<Listener<Option<ModelStatus>>>>,
     llm_listener: Mutex<Option<Listener<LlmStatus>>>,
     llm_loader: LlmLoader,
 }
 
-impl FlowCoreAdapter {
+impl MurmurCoreAdapter {
     pub fn new() -> Arc<Self> {
         Self::with_llm_loader(llama_loader())
     }
 
     /// Adapter whose LLM comes from `loader` (tests: a fake cleaner).
     pub fn with_llm_loader(loader: LlmLoader) -> Arc<Self> {
-        Arc::new(FlowCoreAdapter {
+        Arc::new(MurmurCoreAdapter {
             slot: Mutex::new(Slot {
                 status: ModelStatus::Loading {
                     path: String::new(),
@@ -795,7 +800,7 @@ impl FlowCoreAdapter {
         let spec = spec.expect("begin_language returns a generation only for Some");
         let me = self.clone();
         let spawned = std::thread::Builder::new()
-            .name("flow-lang-load".into())
+            .name("murmur-lang-load".into())
             .spawn(move || {
                 let (st, asr) = load_language_asr(&spec);
                 let lid = asr.as_ref().and_then(|_| load_lid(&spec));
@@ -815,7 +820,7 @@ impl FlowCoreAdapter {
         }
     }
 
-    /// Synchronous [`FlowCoreAdapter::load_language`] (tests, on-demand load).
+    /// Synchronous [`MurmurCoreAdapter::load_language`] (tests, on-demand load).
     pub fn load_language_now(&self, spec: Option<LanguageSpec>) -> Option<ModelStatus> {
         if let Some(generation) = self.begin_language(spec.clone()) {
             let spec = spec.expect("Some");
@@ -859,7 +864,7 @@ impl FlowCoreAdapter {
         spec: &LanguageSpec,
         status: ModelStatus,
         asr: Option<Arc<dyn AsrEngine>>,
-        lid: Option<Arc<dyn flow_core::lid::LanguageId>>,
+        lid: Option<Arc<dyn murmur_core::lid::LanguageId>>,
     ) {
         {
             let mut s = self.slot.lock().unwrap();
@@ -894,7 +899,7 @@ impl FlowCoreAdapter {
         self.notify();
         let me = self.clone();
         let spawned = std::thread::Builder::new()
-            .name("flow-model-load".into())
+            .name("murmur-model-load".into())
             .spawn(move || {
                 let (status, asr) = load_asr(&spec);
                 me.finish(generation, status, asr);
@@ -947,7 +952,7 @@ impl FlowCoreAdapter {
         let generation = self.begin_llm(&spec);
         let me = self.clone();
         let spawned = std::thread::Builder::new()
-            .name("flow-llm-load".into())
+            .name("murmur-llm-load".into())
             .spawn(move || {
                 let t0 = Instant::now();
                 let r = (me.llm_loader)(&spec);
@@ -1058,7 +1063,7 @@ impl FlowCoreAdapter {
     }
 
     /// The loaded core, waiting up to `wait` while a load is in progress.
-    fn ready_core(&self, wait: Duration) -> Result<Arc<flow_core::FlowCore>, String> {
+    fn ready_core(&self, wait: Duration) -> Result<Arc<murmur_core::MurmurCore>, String> {
         let deadline = Instant::now() + wait;
         let mut s = self.slot.lock().unwrap();
         loop {
@@ -1076,7 +1081,7 @@ impl FlowCoreAdapter {
         }
     }
 
-    fn active(&self) -> Option<Arc<flow_core::FlowCore>> {
+    fn active(&self) -> Option<Arc<murmur_core::MurmurCore>> {
         self.active.read().unwrap().clone()
     }
 }
@@ -1143,9 +1148,13 @@ fn load_language_asr(spec: &LanguageSpec) -> (ModelStatus, Option<Arc<dyn AsrEng
 /// Auto-detect's language identifier (H6/D34) for `spec`, when its model is
 /// there. A failure only logs: the language model still serves dictations
 /// with the language set, and auto-detect stays on the default model.
-fn load_lid(spec: &LanguageSpec) -> Option<Arc<dyn flow_core::lid::LanguageId>> {
+fn load_lid(spec: &LanguageSpec) -> Option<Arc<dyn murmur_core::lid::LanguageId>> {
     let path = spec.lid_path.as_deref()?;
-    let threads = spec.model.threads.unwrap_or_else(fc::default_threads).max(1);
+    let threads = spec
+        .model
+        .threads
+        .unwrap_or_else(fc::default_threads)
+        .max(1);
     match whisper_lid(path, threads) {
         Ok(l) => Some(l),
         Err(e) => {
@@ -1156,20 +1165,26 @@ fn load_lid(spec: &LanguageSpec) -> Option<Arc<dyn flow_core::lid::LanguageId>> 
 }
 
 #[cfg(feature = "whisper")]
-fn whisper_lid(path: &str, threads: usize) -> Result<Arc<dyn flow_core::lid::LanguageId>, String> {
-    flow_core::lid::WhisperLid::load(path, threads, true).map(|l| Arc::new(l) as _)
+fn whisper_lid(
+    path: &str,
+    threads: usize,
+) -> Result<Arc<dyn murmur_core::lid::LanguageId>, String> {
+    murmur_core::lid::WhisperLid::load(path, threads, true).map(|l| Arc::new(l) as _)
 }
 
 #[cfg(not(feature = "whisper"))]
-fn whisper_lid(_path: &str, _threads: usize) -> Result<Arc<dyn flow_core::lid::LanguageId>, String> {
+fn whisper_lid(
+    _path: &str,
+    _threads: usize,
+) -> Result<Arc<dyn murmur_core::lid::LanguageId>, String> {
     Err("this build has no whisper engine (feature `whisper`)".into())
 }
 
 /// Typed load errors (CR-1): `ModelNotFound` is the "put a model there"
 /// state; everything else is a failed load.
-fn status_of_load_error(path: String, engine: &str, e: flow_core::CoreError) -> ModelStatus {
+fn status_of_load_error(path: String, engine: &str, e: murmur_core::CoreError) -> ModelStatus {
     match e {
-        flow_core::CoreError::ModelNotFound { path } => ModelStatus::Missing {
+        murmur_core::CoreError::ModelNotFound { path } => ModelStatus::Missing {
             path,
             engine: engine.into(),
         },
@@ -1181,15 +1196,15 @@ fn status_of_load_error(path: String, engine: &str, e: flow_core::CoreError) -> 
 }
 
 /// The shell composes engines itself (two-phase LLM load), so it cannot go
-/// through `FlowCore::load_models`; this mirrors its existence check and
+/// through `MurmurCore::load_models`; this mirrors its existence check and
 /// returns the same typed errors.
-fn require(p: &std::path::Path, dir: bool) -> Result<String, flow_core::CoreError> {
+fn require(p: &std::path::Path, dir: bool) -> Result<String, murmur_core::CoreError> {
     let ok = if dir { p.is_dir() } else { p.is_file() };
     let s = p.display().to_string();
     if ok {
         Ok(s)
     } else {
-        Err(flow_core::CoreError::ModelNotFound { path: s })
+        Err(murmur_core::CoreError::ModelNotFound { path: s })
     }
 }
 
@@ -1197,7 +1212,7 @@ fn require(p: &std::path::Path, dir: bool) -> Result<String, flow_core::CoreErro
 type Loaded = (Arc<dyn AsrEngine>, Option<RunsOn>);
 
 fn mock_engine(text: &str) -> Loaded {
-    (Arc::new(flow_core::asr::MockAsr::new(text)), None)
+    (Arc::new(murmur_core::asr::MockAsr::new(text)), None)
 }
 
 /// The sherpa-onnx engines run on the CPU.
@@ -1206,14 +1221,14 @@ fn on_cpu(e: Arc<dyn AsrEngine>) -> Loaded {
 }
 
 /// A whisper model: on the GPU through the Vulkan plugin
-/// (`flow_whisper_vulkan.dll` next to the exe, flow-core `whisper_plugin`),
+/// (`murmur_whisper_vulkan.dll` next to the exe, murmur-core `whisper_plugin`),
 /// else on the built-in CPU engine. The plugin itself uses the CPU when it
 /// finds no usable GPU or the GPU fails to load the model; when the plugin
 /// does not load at all (no Vulkan driver: no `vulkan-1.dll`), or fails,
-/// the built-in engine takes over. `FLOW_WHISPER_DEVICE=cpu` keeps the
+/// the built-in engine takes over. `MURMUR_WHISPER_DEVICE=cpu` keeps the
 /// plugin on the CPU.
-fn whisper_engine(p: &std::path::Path, threads: usize) -> Result<Loaded, flow_core::CoreError> {
-    use flow_core::whisper_plugin::{PluginOptions, PluginWhisper, WhisperPluginError};
+fn whisper_engine(p: &std::path::Path, threads: usize) -> Result<Loaded, murmur_core::CoreError> {
+    use murmur_core::whisper_plugin::{PluginOptions, PluginWhisper, WhisperPluginError};
     let path = require(p, false)?;
     let opts = PluginOptions {
         threads,
@@ -1249,15 +1264,21 @@ fn whisper_engine(p: &std::path::Path, threads: usize) -> Result<Loaded, flow_co
 }
 
 #[cfg(feature = "whisper")]
-fn builtin_whisper(path: &str, threads: usize) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
-    flow_core::whisper::WhisperEngine::load(path, threads)
+fn builtin_whisper(
+    path: &str,
+    threads: usize,
+) -> Result<Arc<dyn AsrEngine>, murmur_core::CoreError> {
+    murmur_core::whisper::WhisperEngine::load(path, threads)
         .map(|e| Arc::new(e) as Arc<dyn AsrEngine>)
-        .map_err(|e| flow_core::CoreError::Load(e.to_string()))
+        .map_err(|e| murmur_core::CoreError::Load(e.to_string()))
 }
 
 #[cfg(not(feature = "whisper"))]
-fn builtin_whisper(_path: &str, _threads: usize) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
-    Err(flow_core::CoreError::Load(
+fn builtin_whisper(
+    _path: &str,
+    _threads: usize,
+) -> Result<Arc<dyn AsrEngine>, murmur_core::CoreError> {
+    Err(murmur_core::CoreError::Load(
         "this build has no whisper engine (feature `whisper`)".into(),
     ))
 }
@@ -1267,11 +1288,11 @@ fn parakeet_engine(
     dir: &std::path::Path,
     threads: usize,
     decoding: fc::ParakeetDecoding,
-) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+) -> Result<Arc<dyn AsrEngine>, murmur_core::CoreError> {
     let path = require(dir, true)?;
-    flow_core::parakeet::ParakeetAsr::load_with(&path, threads, decoding)
+    murmur_core::parakeet::ParakeetAsr::load_with(&path, threads, decoding)
         .map(|e| Arc::new(e) as Arc<dyn AsrEngine>)
-        .map_err(|e| flow_core::CoreError::Load(e.to_string()))
+        .map_err(|e| murmur_core::CoreError::Load(e.to_string()))
 }
 
 #[cfg(not(feature = "parakeet"))]
@@ -1279,9 +1300,9 @@ fn parakeet_engine(
     dir: &std::path::Path,
     _threads: usize,
     _decoding: fc::ParakeetDecoding,
-) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+) -> Result<Arc<dyn AsrEngine>, murmur_core::CoreError> {
     require(dir, true)?;
-    Err(flow_core::CoreError::Load(
+    Err(murmur_core::CoreError::Load(
         "this build has no Parakeet engine (feature `parakeet`)".into(),
     ))
 }
@@ -1292,11 +1313,11 @@ fn parakeet_language_engine(
     threads: usize,
     decoding: fc::ParakeetDecoding,
     language: &str,
-) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+) -> Result<Arc<dyn AsrEngine>, murmur_core::CoreError> {
     let path = require(dir, true)?;
-    flow_core::parakeet::ParakeetAsr::load_with(&path, threads, decoding)
+    murmur_core::parakeet::ParakeetAsr::load_with(&path, threads, decoding)
         .map(|e| Arc::new(e.with_language(language)) as Arc<dyn AsrEngine>)
-        .map_err(|e| flow_core::CoreError::Load(e.to_string()))
+        .map_err(|e| murmur_core::CoreError::Load(e.to_string()))
 }
 
 #[cfg(not(feature = "parakeet"))]
@@ -1305,7 +1326,7 @@ fn parakeet_language_engine(
     threads: usize,
     decoding: fc::ParakeetDecoding,
     _language: &str,
-) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+) -> Result<Arc<dyn AsrEngine>, murmur_core::CoreError> {
     parakeet_engine(dir, threads, decoding)
 }
 
@@ -1315,11 +1336,11 @@ fn sherpa_online_engine(
     dir: &std::path::Path,
     threads: usize,
     language: &str,
-) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+) -> Result<Arc<dyn AsrEngine>, murmur_core::CoreError> {
     let path = require(dir, true)?;
-    flow_core::sherpa_online::SherpaOnlineAsr::load(&path, threads, Some(language))
+    murmur_core::sherpa_online::SherpaOnlineAsr::load(&path, threads, Some(language))
         .map(|e| Arc::new(e) as Arc<dyn AsrEngine>)
-        .map_err(|e| flow_core::CoreError::Load(e.to_string()))
+        .map_err(|e| murmur_core::CoreError::Load(e.to_string()))
 }
 
 #[cfg(not(feature = "parakeet"))]
@@ -1327,17 +1348,17 @@ fn sherpa_online_engine(
     dir: &std::path::Path,
     _threads: usize,
     _language: &str,
-) -> Result<Arc<dyn AsrEngine>, flow_core::CoreError> {
+) -> Result<Arc<dyn AsrEngine>, murmur_core::CoreError> {
     require(dir, true)?;
-    Err(flow_core::CoreError::Load(
+    Err(murmur_core::CoreError::Load(
         "this build has no sherpa-onnx engine (feature `parakeet`)".into(),
     ))
 }
 
-/// Session calls in flow-core's own types: what the router's local
+/// Session calls in murmur-core's own types: what the router's local
 /// backend (`router_adapter::LocalBackend`) drives. The [`CoreApi`] impl
 /// below maps the shell's types onto these.
-impl FlowCoreAdapter {
+impl MurmurCoreAdapter {
     /// Speech model loaded (dictation can start without waiting).
     pub fn is_ready(&self) -> bool {
         self.slot.lock().unwrap().core.is_some()
@@ -1352,7 +1373,7 @@ impl FlowCoreAdapter {
     /// The router's cleanup plan (D36 order: this PC → server → cloud):
     /// installed on the loaded core now and on every core a later load
     /// builds. `None` = the built-in LLM alone.
-    pub fn set_cleanup_plan(&self, plan: Option<flow_router::CleanupPlan>) {
+    pub fn set_cleanup_plan(&self, plan: Option<murmur_router::CleanupPlan>) {
         let mut s = self.slot.lock().unwrap();
         s.plan = plan;
         s.apply_plan();
@@ -1388,12 +1409,16 @@ impl FlowCoreAdapter {
     }
 
     /// `None` = no active session.
-    pub fn core_commit(&self) -> Option<flow_core::CommitResult> {
+    pub fn core_commit(&self) -> Option<murmur_core::CommitResult> {
         let core = self.active.write().unwrap().take();
         core.map(|c| c.commit())
     }
 
-    pub fn core_learn_edit(&self, pasted: &str, edited: &str) -> Vec<flow_core::learn::Candidate> {
+    pub fn core_learn_edit(
+        &self,
+        pasted: &str,
+        edited: &str,
+    ) -> Vec<murmur_core::learn::Candidate> {
         let core = self
             .active()
             .or_else(|| self.slot.lock().unwrap().core.clone());
@@ -1402,7 +1427,7 @@ impl FlowCoreAdapter {
     }
 }
 
-impl CoreApi for FlowCoreAdapter {
+impl CoreApi for MurmurCoreAdapter {
     fn start_session(&self, cfg: SessionConfig) -> Result<(), String> {
         self.core_start(to_core_session(&cfg))
     }
@@ -1457,8 +1482,8 @@ impl CoreApi for FlowCoreAdapter {
 }
 
 /// Startup entry: an adapter already loading the models from prefs.
-pub fn make_core(prefs: &crate::prefs::Prefs, appdata: Option<&str>) -> Arc<FlowCoreAdapter> {
-    let a = FlowCoreAdapter::new();
+pub fn make_core(prefs: &crate::prefs::Prefs, appdata: Option<&str>) -> Arc<MurmurCoreAdapter> {
+    let a = MurmurCoreAdapter::new();
     a.load(ModelSpec::from_prefs(prefs, appdata));
     a.load_language(LanguageSpec::from_prefs(prefs, appdata));
     a.load_llm(LlmSpec::from_prefs(prefs, appdata));
@@ -1474,7 +1499,11 @@ pub fn needs_reload(old: &crate::prefs::Prefs, new: &crate::prefs::Prefs) -> boo
 /// the choice changed, or it is chosen but not loaded (a folder that was
 /// missing may be there now, e.g. after a download). Never touches the
 /// default model.
-pub fn needs_language_reload(core: &FlowCoreAdapter, new: &crate::prefs::Prefs, appdata: Option<&str>) -> bool {
+pub fn needs_language_reload(
+    core: &MurmurCoreAdapter,
+    new: &crate::prefs::Prefs,
+    appdata: Option<&str>,
+) -> bool {
     let want = LanguageSpec::from_prefs(new, appdata);
     if core.language_spec() != want {
         return true;
@@ -1515,11 +1544,11 @@ fn to_core_level(l: CleanupLevel) -> fc::CleanupLevel {
     }
 }
 
-fn to_core_dict(d: &[DictEntry]) -> flow_core::dictionary::Dictionary {
-    flow_core::dictionary::Dictionary {
+fn to_core_dict(d: &[DictEntry]) -> murmur_core::dictionary::Dictionary {
+    murmur_core::dictionary::Dictionary {
         entries: d
             .iter()
-            .map(|e| flow_core::dictionary::DictEntry {
+            .map(|e| murmur_core::dictionary::DictEntry {
                 word: e.word.clone(),
                 replacement: e.replacement.clone(),
                 is_snippet: e.is_snippet && e.replacement.is_some(),
@@ -1572,7 +1601,7 @@ pub fn to_core_category(kind: AppKind, bucket: StyleBucket) -> fc::AppCategory {
 
 pub fn to_core_context(c: &FieldContext) -> fc::FieldContext {
     fc::FieldContext {
-        // flow-core's Windows lists key on the exe stem.
+        // murmur-core's Windows lists key on the exe stem.
         app_id: c.app_id.trim_end_matches(".exe").to_string(),
         url_host: c.url_host.clone().unwrap_or_default(),
         app_category: to_core_category(c.app_kind, c.app_category),
@@ -1585,8 +1614,8 @@ pub fn to_core_context(c: &FieldContext) -> fc::FieldContext {
     }
 }
 
-pub fn from_core_result(r: flow_core::CommitResult) -> CommitResult {
-    use flow_core::CommitStatus as S;
+pub fn from_core_result(r: murmur_core::CommitResult) -> CommitResult {
+    use murmur_core::CommitStatus as S;
     let status = match r.status {
         S::Formatted => CommitStatus::Formatted,
         S::RawTranscript => CommitStatus::RawTranscript,
@@ -1654,7 +1683,7 @@ mod tests {
     #[test]
     fn default_model_path_is_under_appdata() {
         let p = default_model_path(Some(r"C:\Users\u\AppData\Roaming"));
-        assert!(p.ends_with(Path::new("FlowClone").join("models").join("ggml-base.bin")));
+        assert!(p.ends_with(Path::new("Murmur").join("models").join("ggml-base.bin")));
     }
 
     #[test]
@@ -1726,7 +1755,7 @@ mod tests {
 
     #[test]
     fn missing_model_is_a_clear_error_and_never_loads() {
-        let a = FlowCoreAdapter::new();
+        let a = MurmurCoreAdapter::new();
         let st = a.load_now(&ModelSpec::Whisper {
             path: PathBuf::from("/nonexistent/ggml-base.bin"),
             threads: None,
@@ -1740,7 +1769,7 @@ mod tests {
 
     #[test]
     fn async_load_is_awaited_by_start_session() {
-        let a = FlowCoreAdapter::new();
+        let a = MurmurCoreAdapter::new();
         let seen = Arc::new(Mutex::new(Vec::new()));
         let s2 = seen.clone();
         a.on_status(move |st| s2.lock().unwrap().push(st.clone()));
@@ -1761,7 +1790,7 @@ mod tests {
 
     #[test]
     fn cancel_then_commit_is_error_not_stale_text() {
-        let a = FlowCoreAdapter::new();
+        let a = MurmurCoreAdapter::new();
         a.load_now(&ModelSpec::Mock { text: "x".into() });
         a.start_session(session()).unwrap();
         a.push_audio(&[3000; 16_000]);
@@ -1774,9 +1803,9 @@ mod tests {
     impl Cleaner for Sentence {
         fn clean(
             &self,
-            p: &flow_core::cleanup::CleanPrompt,
+            p: &murmur_core::cleanup::CleanPrompt,
             _deadline: Instant,
-        ) -> Result<String, flow_core::cleanup::CleanError> {
+        ) -> Result<String, murmur_core::cleanup::CleanError> {
             let t = p.transcript.trim();
             let mut c = t.chars();
             let first = c.next().map(|f| f.to_uppercase().collect::<String>());
@@ -1808,7 +1837,7 @@ mod tests {
 
     const SPEECH: &str = "please send the report today";
 
-    fn dictate(a: &FlowCoreAdapter) -> CommitResult {
+    fn dictate(a: &MurmurCoreAdapter) -> CommitResult {
         a.start_session(session()).unwrap();
         a.push_audio(&[3000; 16_000]);
         a.commit()
@@ -1837,7 +1866,10 @@ mod tests {
         // without a GPU; the env var tells them apart.
         let r = RunsOn::whisper(WhisperBackend::cpu(), true, true);
         assert_eq!(r.cpu_reason, Some("forced"));
-        assert_eq!(r.cpu_why.as_deref(), Some("the CPU is forced (FLOW_WHISPER_DEVICE=cpu)"));
+        assert_eq!(
+            r.cpu_why.as_deref(),
+            Some("the CPU is forced (MURMUR_WHISPER_DEVICE=cpu)")
+        );
         // Forced also wins without the plugin.
         let r = RunsOn::whisper(WhisperBackend::cpu(), false, true);
         assert_eq!(r.cpu_reason, Some("forced"));
@@ -1849,7 +1881,7 @@ mod tests {
         assert_eq!(r.cpu_reason, Some("no_plugin"));
         let want = format!(
             "the graphics chip plugin ({}) is missing",
-            flow_core::whisper_plugin::GPU_PLUGIN_FILE
+            murmur_core::whisper_plugin::GPU_PLUGIN_FILE
         );
         assert_eq!(r.cpu_why.as_deref(), Some(want.as_str()));
         let j = serde_json::to_value(&r).unwrap();
@@ -1879,7 +1911,10 @@ mod tests {
         // The full error stays in `gpu_error`.
         assert!(r.backend.gpu_error.unwrap().contains("stack"));
         // The plugin failing outright (built-in engine took over) is the same reason.
-        assert_eq!(RunsOn::whisper(b, false, false).cpu_reason, Some("gpu_error"));
+        assert_eq!(
+            RunsOn::whisper(b, false, false).cpu_reason,
+            Some("gpu_error")
+        );
         let long = "x".repeat(300);
         let s = short_error(&long);
         assert_eq!(s.chars().count(), 100);
@@ -1895,8 +1930,8 @@ mod tests {
 
     #[test]
     fn whisper_probe_view_says_why_the_cpu() {
-        use flow_core::whisper_plugin::WhisperPluginError;
-        let p = || PathBuf::from("C:/app/flow_whisper_vulkan.dll");
+        use murmur_core::whisper_plugin::WhisperPluginError;
+        let p = || PathBuf::from("C:/app/murmur_whisper_vulkan.dll");
         let gpu = whisper_backend_view(Ok((p(), vk())), false);
         assert!(gpu.gpu && gpu.cpu_why.is_none());
         let why = |v: LlmBackendView| v.cpu_why.unwrap();
@@ -1923,9 +1958,9 @@ mod tests {
 
     #[test]
     fn backend_probe_view() {
-        use flow_core::llama::{LlamaLoadError, LlmBackend};
+        use murmur_core::llama::{LlamaLoadError, LlmBackend};
         let gpu = LlmBackendView::from_probe(Ok((
-            PathBuf::from("C:/app/flow_llm_vulkan.dll"),
+            PathBuf::from("C:/app/murmur_llm_vulkan.dll"),
             LlmBackend {
                 backend: "Vulkan".into(),
                 device: "Intel(R) Arc(TM) 140V GPU".into(),
@@ -1934,9 +1969,9 @@ mod tests {
         )));
         assert!(gpu.gpu);
         assert_eq!(gpu.device, "Intel(R) Arc(TM) 140V GPU");
-        assert_eq!(gpu.plugin.as_deref(), Some("C:/app/flow_llm_vulkan.dll"));
+        assert_eq!(gpu.plugin.as_deref(), Some("C:/app/murmur_llm_vulkan.dll"));
         let cpu = LlmBackendView::from_probe(Ok((
-            PathBuf::from("C:/app/flow_llm.dll"),
+            PathBuf::from("C:/app/murmur_llm.dll"),
             LlmBackend {
                 backend: "CPU".into(),
                 device: "CPU".into(),
@@ -1944,11 +1979,13 @@ mod tests {
             },
         )));
         assert!(!cpu.gpu && cpu.error.is_none());
-        let none = LlmBackendView::from_probe(Err(LlamaLoadError::PluginNotFound { tried: vec!["x: gone".into()] }));
+        let none = LlmBackendView::from_probe(Err(LlamaLoadError::PluginNotFound {
+            tried: vec!["x: gone".into()],
+        }));
         assert!(!none.gpu && none.plugin.is_none());
         assert!(none.error.unwrap().contains("plugin not found"));
         // A missing plugin is reported, not cached as "CPU".
-        let v = llm_backend_probe(Some("/nonexistent/flow_llm_vulkan.dll"));
+        let v = llm_backend_probe(Some("/nonexistent/murmur_llm_vulkan.dll"));
         assert!(!v.gpu && v.plugin.is_none() && v.error.is_some());
         let j = serde_json::to_value(&gpu).unwrap();
         assert_eq!(j["gpu"], true);
@@ -1959,9 +1996,9 @@ mod tests {
     fn ready_status_says_where_cleanup_runs() {
         let st = LlmStatus::Ready {
             path: "m.gguf".into(),
-            plugin: "flow_llm_vulkan.dll".into(),
+            plugin: "murmur_llm_vulkan.dll".into(),
             load_ms: 3,
-            backend: Some(Box::new(flow_core::llama::LlmBackend {
+            backend: Some(Box::new(murmur_core::llama::LlmBackend {
                 backend: "Vulkan".into(),
                 device: "iGPU".into(),
                 gpu_error: None,
@@ -1972,7 +2009,7 @@ mod tests {
         assert_eq!(j["backend"]["device"], "iGPU");
         let old = LlmStatus::Ready {
             path: "m.gguf".into(),
-            plugin: "flow_llm.dll".into(),
+            plugin: "murmur_llm.dll".into(),
             load_ms: 3,
             backend: None,
         };
@@ -1981,7 +2018,7 @@ mod tests {
 
     #[test]
     fn llm_off_means_raw_transcript() {
-        let a = FlowCoreAdapter::with_llm_loader(fake_loader(0, None));
+        let a = MurmurCoreAdapter::with_llm_loader(fake_loader(0, None));
         a.load_now(&ModelSpec::Mock {
             text: SPEECH.into(),
         });
@@ -1991,7 +2028,7 @@ mod tests {
 
     #[test]
     fn llm_joins_a_running_core_and_can_leave_again() {
-        let a = FlowCoreAdapter::with_llm_loader(fake_loader(0, None));
+        let a = MurmurCoreAdapter::with_llm_loader(fake_loader(0, None));
         let seen = Arc::new(Mutex::new(Vec::new()));
         let s2 = seen.clone();
         a.on_llm_status(move |st| s2.lock().unwrap().push(st.clone()));
@@ -2014,7 +2051,7 @@ mod tests {
 
     #[test]
     fn llm_ready_before_asr_is_used_once_asr_lands() {
-        let a = FlowCoreAdapter::with_llm_loader(fake_loader(0, None));
+        let a = MurmurCoreAdapter::with_llm_loader(fake_loader(0, None));
         a.load_llm_now(Some(spec()));
         a.load_now(&ModelSpec::Mock {
             text: SPEECH.into(),
@@ -2028,7 +2065,7 @@ mod tests {
             path: "/m/qwen.gguf".into(),
             message: "llm plugin not found (x)".into(),
         };
-        let a = FlowCoreAdapter::with_llm_loader(fake_loader(0, Some(missing.clone())));
+        let a = MurmurCoreAdapter::with_llm_loader(fake_loader(0, Some(missing.clone())));
         a.load_now(&ModelSpec::Mock {
             text: SPEECH.into(),
         });
@@ -2044,7 +2081,7 @@ mod tests {
 
     #[test]
     fn superseded_llm_load_does_not_win() {
-        let a = FlowCoreAdapter::with_llm_loader(fake_loader(150, None));
+        let a = MurmurCoreAdapter::with_llm_loader(fake_loader(150, None));
         a.load_now(&ModelSpec::Mock {
             text: SPEECH.into(),
         });
@@ -2069,7 +2106,7 @@ mod tests {
         assert!(st.problem().unwrap().contains("Nothing is downloaded"));
         let Err(st) = load(&LlmSpec {
             model_path: PathBuf::from(env!("CARGO_MANIFEST_PATH")),
-            lib_path: Some(PathBuf::from("/nonexistent/libflow_llm.so")),
+            lib_path: Some(PathBuf::from("/nonexistent/libmurmur_llm.so")),
             threads: Some(1),
         }) else {
             panic!("loaded a nonexistent plugin")
@@ -2079,7 +2116,7 @@ mod tests {
 
     #[test]
     fn default_llm_is_the_1_5b_unless_only_the_old_0_5b_is_there() {
-        let dir = std::env::temp_dir().join(format!("flow-default-llm-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("murmur-default-llm-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         // Nothing there: the 1.5B (what the "not found" message names).
@@ -2141,7 +2178,7 @@ mod tests {
         assert!(dir.ends_with(DEFAULT_PARAKEET_DIR));
         assert_eq!(spec.model_config().asr_backend, fc::AsrBackend::Parakeet);
         assert!(needs_reload(&crate::prefs::Prefs::default(), &p));
-        let a = FlowCoreAdapter::new();
+        let a = MurmurCoreAdapter::new();
         let st = a.load_now(&ModelSpec::Parakeet {
             dir: PathBuf::from("/nonexistent/parakeet"),
             threads: None,
@@ -2188,7 +2225,7 @@ mod tests {
 
     #[test]
     fn core_p1_result_fields_survive_mapping() {
-        let a = FlowCoreAdapter::new();
+        let a = MurmurCoreAdapter::new();
         a.load_now(&ModelSpec::Mock {
             text: "ship it press enter".into(),
         });
@@ -2225,7 +2262,7 @@ mod tests {
 
     #[test]
     fn d22_result_fields_map_and_default_to_zero() {
-        let mut r: flow_core::CommitResult = serde_json::from_value(serde_json::json!({
+        let mut r: murmur_core::CommitResult = serde_json::from_value(serde_json::json!({
             "status": "FORMATTED", "asr_text": "a", "final_text": "a", "language": null,
             "press_enter": false, "fallback_reason": null, "truncated": false, "error": null,
             "timings": {"audio_ms": 1, "asr_ms": 2, "llm_ms": 0, "postprocess_ms": 0,
@@ -2244,7 +2281,7 @@ mod tests {
         r.timings.pre_asr_ms = 900;
         r.route.as_mut().unwrap().client_ms = Some(450);
         let j = serde_json::to_value(&r).unwrap();
-        let back: flow_core::CommitResult = serde_json::from_value(j).unwrap();
+        let back: murmur_core::CommitResult = serde_json::from_value(j).unwrap();
         let s = from_core_result(back);
         assert_eq!(
             (s.timings.wait_ms, s.timings.segments, s.timings.pre_asr_ms),
@@ -2265,7 +2302,7 @@ mod tests {
         }
     }
 
-    fn dictate_in(a: &FlowCoreAdapter, languages: &[&str]) -> CommitResult {
+    fn dictate_in(a: &MurmurCoreAdapter, languages: &[&str]) -> CommitResult {
         a.start_session(SessionConfig {
             languages: languages.iter().map(|l| l.to_string()).collect(),
             ..session()
@@ -2282,15 +2319,24 @@ mod tests {
             asr_engine: crate::prefs::AsrEngineChoice::Parakeet,
             ..Prefs::default()
         };
-        assert_eq!(p.hebrew_model, HebrewModel::Zipformer, "recommended default");
+        assert_eq!(
+            p.hebrew_model,
+            HebrewModel::Zipformer,
+            "recommended default"
+        );
         let cfg = model_config(&p, Some("C:/AppData"));
-        assert_eq!(cfg.asr_backend, fc::AsrBackend::Parakeet, "default model unchanged");
+        assert_eq!(
+            cfg.asr_backend,
+            fc::AsrBackend::Parakeet,
+            "default model unchanged"
+        );
         let he = &cfg.languages["he"];
         assert_eq!(he.asr_backend, fc::AsrBackend::SherpaOnline);
-        assert!(Path::new(&he.asr_path).ends_with(Path::new("FlowClone").join("models").join(ZIPFORMER_HE_DIR)));
+        assert!(Path::new(&he.asr_path)
+            .ends_with(Path::new("Murmur").join("models").join(ZIPFORMER_HE_DIR)));
         assert_eq!(cfg.language_route(Some("he-IL")), Some("he"));
         assert_eq!(cfg.language_route(Some("en")), None);
-        // The same JSON flow-core / flow-server read.
+        // The same JSON murmur-core / murmur-server read.
         let j = serde_json::to_value(&cfg).unwrap();
         assert_eq!(j["languages"]["he"]["asr_backend"], "sherpa_online");
         p.hebrew_model = HebrewModel::ParakeetHe;
@@ -2299,7 +2345,10 @@ mod tests {
         assert!(he.asr_path.ends_with(PARAKEET_HE_DIR));
         p.hebrew_model = HebrewModel::None;
         assert!(model_config(&p, None).languages.is_empty());
-        assert!(serde_json::to_value(model_config(&p, None)).unwrap().get("languages").is_none());
+        assert!(serde_json::to_value(model_config(&p, None))
+            .unwrap()
+            .get("languages")
+            .is_none());
         // Old prefs files get the recommended model.
         let old: Prefs = serde_json::from_str(r#"{"asr_engine":"parakeet"}"#).unwrap();
         assert_eq!(old.hebrew_model, HebrewModel::Zipformer);
@@ -2310,7 +2359,7 @@ mod tests {
     #[test]
     fn language_id_is_set_only_when_its_model_is_there() {
         use crate::prefs::{HebrewModel, Prefs};
-        let appdata = std::env::temp_dir().join(format!("flow-lid-{}", std::process::id()));
+        let appdata = std::env::temp_dir().join(format!("murmur-lid-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&appdata);
         let ad = appdata.display().to_string();
         let mut p = Prefs::default();
@@ -2323,7 +2372,11 @@ mod tests {
         std::fs::write(dir.join(LID_FILE), b"x").unwrap();
         let cfg = model_config(&p, Some(&ad));
         assert!(cfg.lid_path.as_deref().unwrap().ends_with(LID_FILE));
-        assert_eq!(cfg.lid_model(), cfg.lid_path.as_deref(), "on: a Hebrew route exists");
+        assert_eq!(
+            cfg.lid_model(),
+            cfg.lid_path.as_deref(),
+            "on: a Hebrew route exists"
+        );
         let spec = LanguageSpec::from_prefs(&p, Some(&ad)).unwrap();
         assert_eq!(spec.lid_path, cfg.lid_path);
         // No Hebrew model chosen: no route, no language ID.
@@ -2334,7 +2387,7 @@ mod tests {
 
     #[test]
     fn hebrew_dictations_decode_on_the_hebrew_model_next_to_the_default() {
-        let a = FlowCoreAdapter::new();
+        let a = MurmurCoreAdapter::new();
         a.load_now(&ModelSpec::Mock {
             text: "hello there".into(),
         });
@@ -2342,22 +2395,36 @@ mod tests {
         let st = a.load_language_now(Some(mock_lang("שלום עולם", "mock-he")));
         assert!(matches!(st, Some(ModelStatus::Ready { .. })), "{st:?}");
         assert!(dictate_in(&a, &["he"]).final_text.contains("שלום עולם"));
-        assert!(dictate_in(&a, &["en"]).final_text.to_lowercase().contains("hello there"));
+        assert!(dictate_in(&a, &["en"])
+            .final_text
+            .to_lowercase()
+            .contains("hello there"));
         // Auto-detect stays on the default model (D33 decision 6).
-        assert!(dictate_in(&a, &[]).final_text.to_lowercase().contains("hello there"));
+        assert!(dictate_in(&a, &[])
+            .final_text
+            .to_lowercase()
+            .contains("hello there"));
         // Dropping the route sends Hebrew back to the default model.
         assert_eq!(a.load_language_now(None), None);
-        assert!(dictate_in(&a, &["he"]).final_text.to_lowercase().contains("hello there"));
+        assert!(dictate_in(&a, &["he"])
+            .final_text
+            .to_lowercase()
+            .contains("hello there"));
     }
 
     #[test]
     fn a_missing_hebrew_folder_never_blocks_the_default_model() {
-        let a = FlowCoreAdapter::new();
-        a.load_now(&ModelSpec::Mock { text: "fine".into() });
+        let a = MurmurCoreAdapter::new();
+        a.load_now(&ModelSpec::Mock {
+            text: "fine".into(),
+        });
         let mut spec = mock_lang("x", "/nonexistent/zipformer-he");
         spec.model.asr_backend = fc::AsrBackend::SherpaOnline;
         let st = a.load_language_now(Some(spec.clone()));
-        assert!(matches!(st, Some(ModelStatus::Missing { ref path, .. }) if path.contains("zipformer-he")), "{st:?}");
+        assert!(
+            matches!(st, Some(ModelStatus::Missing { ref path, .. }) if path.contains("zipformer-he")),
+            "{st:?}"
+        );
         assert!(a.status().is_ready());
         assert!(dictate_in(&a, &["he"]).final_text.contains("fine"));
         // Saving prefs again retries a missing model (it may have been
@@ -2371,7 +2438,10 @@ mod tests {
         assert!(!needs_language_reload(&a, &p, None));
         p.hebrew_model = crate::prefs::HebrewModel::Zipformer;
         a.load_language_now(LanguageSpec::from_prefs(&p, None));
-        assert!(matches!(a.language_status(), Some(ModelStatus::Missing { .. })));
+        assert!(matches!(
+            a.language_status(),
+            Some(ModelStatus::Missing { .. })
+        ));
         assert!(needs_language_reload(&a, &p, None), "missing = retry");
     }
 

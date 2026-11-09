@@ -1,5 +1,5 @@
 [package]
-name = "flow-core"
+name = "murmur-core"
 version.workspace = true
 edition.workspace = true
 license-file.workspace = true
@@ -9,14 +9,15 @@ description = "Shared local dictation core: ASR session, cleanup, deterministic 
 default = []
 whisper = ["dep:whisper-rs"]
 llm = ["dep:libloading"]
-# The GPU whisper.cpp plugin (crate flow-whisper; Windows
-# flow_whisper_vulkan.dll), loaded at runtime like the `llm` plugin.
+# The GPU whisper.cpp plugin (crate murmur-whisper; Windows
+# murmur_whisper_vulkan.dll), loaded at runtime like the `llm` plugin.
 whisper-plugin = ["dep:libloading"]
 wav = ["dep:hound"]
 # Parakeet-TDT via sherpa-onnx (links libsherpa-onnx-c-api + libonnxruntime).
-parakeet = ["dep:flow-asr-sherpa"]
+parakeet = ["dep:murmur-asr-sherpa"]
 
 [dependencies]
+murmur-build-info = { path = "../murmur-build-info" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -27,7 +28,7 @@ rtrb = "0.3"
 whisper-rs = { version = "0.16", optional = true }
 hound = { version = "3", optional = true }
 libloading = { version = "0.8", optional = true }
-flow-asr-sherpa = { path = "../flow-asr-sherpa", optional = true }
+murmur-asr-sherpa = { path = "../murmur-asr-sherpa", optional = true }
 
 [[test]]
 name = "whisper_e2e"

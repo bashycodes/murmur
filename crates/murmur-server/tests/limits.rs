@@ -1,10 +1,10 @@
-//! S8: client-supplied sizes are bounded before they reach flow-core.
+//! S8: client-supplied sizes are bounded before they reach murmur-core.
 
 mod common;
 
 use common::*;
-use flow_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
-use flow_protocol::{code, ClientMsg, ServerMsg};
+use murmur_core::config::{FieldContext, SessionConfig, SAMPLE_RATE};
+use murmur_protocol::{code, ClientMsg, ServerMsg};
 
 async fn start_with(ws: &mut Ws, sid: u64, config: SessionConfig) -> Option<ServerMsg> {
     send(ws, &ClientMsg::Start { sid, config }).await;
@@ -46,7 +46,7 @@ async fn a_huge_ring_is_rejected_and_the_server_survives() {
 async fn ring_up_to_the_session_cap_plus_replay_headroom_is_accepted() {
     // The router enlarges the ring to replay buffered audio after a
     // fallback; that must keep working.
-    let cfg = flow_server::Config {
+    let cfg = murmur_server::Config {
         max_session_s: 60,
         ..mock_cfg("x")
     };
@@ -69,7 +69,7 @@ async fn ring_up_to_the_session_cap_plus_replay_headroom_is_accepted() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn max_samples_is_clamped_to_the_server_limit_and_advertised() {
-    let cfg = flow_server::Config {
+    let cfg = murmur_server::Config {
         max_session_s: 2,
         ..mock_cfg("x")
     };
@@ -83,7 +83,7 @@ async fn max_samples_is_clamped_to_the_server_limit_and_advertised() {
     );
     let (status, body) = http_get(s.addr(), "/v1/health", Some(TOKEN)).await;
     assert_eq!(status, 200);
-    let h: flow_protocol::HelloOk = serde_json::from_str(&body).unwrap();
+    let h: murmur_protocol::HelloOk = serde_json::from_str(&body).unwrap();
     assert_eq!(h.max_samples, 2 * SAMPLE_RATE as u64);
     // An absurd client value is clamped, not trusted.
     let big = SessionConfig {

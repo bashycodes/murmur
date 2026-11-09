@@ -1,4 +1,4 @@
-//! flow-server: runs the unmodified flow-core pipeline for hybrid clients
+//! murmur-server: runs the unmodified murmur-core pipeline for hybrid clients
 //! over WebSocket (D17; `docs/protocol.md`, `docs/hybrid-architecture.md` §3).
 //!
 //! Privacy: audio, transcripts, contexts and dictionaries live only in memory
@@ -14,6 +14,7 @@ pub mod capture;
 pub mod config;
 mod health;
 pub mod keys;
+pub mod legacy;
 pub mod library;
 pub mod limits;
 pub mod logging;
@@ -219,7 +220,7 @@ pub async fn serve_with_pool(
             "auth: named keys"
         );
         if n == 0 {
-            tracing::warn!("no active keys: every request gets 401 until `flow-server keys add`");
+            tracing::warn!("no active keys: every request gets 401 until `murmur-server keys add`");
         }
     }
     let wide = cfg.check_bind()?;
@@ -278,8 +279,8 @@ pub async fn serve_with_pool(
         per_ip: Mutex::new(HashMap::new()),
     });
     let app = Router::new()
-        .route(flow_protocol::PATH_STREAM, get(stream_handler))
-        .route(flow_protocol::PATH_HEALTH, get(health::handler))
+        .route(murmur_protocol::PATH_STREAM, get(stream_handler))
+        .route(murmur_protocol::PATH_HEALTH, get(health::handler))
         .merge(library::routes())
         .merge(admin::routes())
         .with_state(state.clone());
@@ -427,11 +428,18 @@ async fn stream_handler(
         tracing::info!(%peer, "rejected: bad or missing token");
         return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
     };
-    ws.protocols([flow_protocol::SUBPROTOCOL])
-        .max_message_size(limits::MAX_WS_MESSAGE_BYTES)
-        .max_frame_size(limits::MAX_WS_MESSAGE_BYTES)
-        .on_upgrade(move |socket| async move {
-            let _slot = slot; // the WebSocket keeps its connection slot
-            ws::run(socket, state, peer, key).await
-        })
+    let offered = headers
+        .get(axum::http::header::SEC_WEBSOCKET_PROTOCOL)
+        .and_then(|v| v.to_str().ok());
+    legacy::note_subprotocol(offered, peer);
+    ws.protocols([
+        murmur_protocol::SUBPROTOCOL,
+        murmur_protocol::OLD_SUBPROTOCOL,
+    ])
+    .max_message_size(limits::MAX_WS_MESSAGE_BYTES)
+    .max_frame_size(limits::MAX_WS_MESSAGE_BYTES)
+    .on_upgrade(move |socket| async move {
+        let _slot = slot; // the WebSocket keeps its connection slot
+        ws::run(socket, state, peer, key).await
+    })
 }

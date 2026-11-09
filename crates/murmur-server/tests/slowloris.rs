@@ -10,7 +10,7 @@ use common::*;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
-fn cfg(f: impl FnOnce(&mut flow_server::Config)) -> flow_server::Config {
+fn cfg(f: impl FnOnce(&mut murmur_server::Config)) -> murmur_server::Config {
     let mut c = mock_cfg("x");
     f(&mut c);
     c
@@ -151,7 +151,7 @@ async fn a_stalled_tls_handshake_is_closed() {
     std::fs::write(&key, ck.key_pair.serialize_pem()).unwrap();
     let s = start(cfg(|c| {
         c.handshake_timeout_ms = 300;
-        c.tls = Some(flow_server::config::TlsConfig { cert, key });
+        c.tls = Some(murmur_server::config::TlsConfig { cert, key });
     }))
     .await;
     let mut t = TcpStream::connect(s.addr()).await.unwrap();
@@ -169,7 +169,7 @@ async fn a_client_that_never_reads_cannot_grow_the_outbound_queue() {
     let s = start(mock_cfg("x")).await;
     let mut ws = session(s.addr()).await;
     assert_eq!(s.open_connections(), 1);
-    let ping = flow_protocol::ClientMsg::Ping { n: 1 }.to_json();
+    let ping = murmur_protocol::ClientMsg::Ping { n: 1 }.to_json();
     let t0 = Instant::now();
     'flood: for _ in 0..2000 {
         for _ in 0..500 {

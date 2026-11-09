@@ -1,6 +1,6 @@
 //! Model library client (D40 server side, D41 client side): list the
-//! models a flow-server serves and download their files, resumable and
-//! verified. Shared by the Windows app and (through flow-ffi) Android.
+//! models a murmur-server serves and download their files, resumable and
+//! verified. Shared by the Windows app and (through murmur-ffi) Android.
 //!
 //! Interface: [`LibraryClient::new`] with the same [`ServerConfig`] as
 //! dictation (host, port, TLS + pin or Mozilla roots, bearer key), then
@@ -28,10 +28,6 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::time::Duration;
 
-use flow_protocol::library::{
-    file_path, is_safe_name, LibraryFile, LibraryModel, ModelList, PATH_MODELS,
-};
-use flow_router::{BackendError, Failure, ServerConfig};
 use http_body_util::{BodyExt, Empty};
 use hyper::body::{Bytes, Incoming};
 use hyper::header::{
@@ -39,6 +35,10 @@ use hyper::header::{
 };
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
+use murmur_protocol::library::{
+    file_path, is_safe_name, LibraryFile, LibraryModel, ModelList, PATH_MODELS,
+};
+use murmur_router::{BackendError, Failure, ServerConfig};
 use sha2::{Digest, Sha256};
 
 /// A body frame must arrive within this (a stalled download fails and
@@ -136,7 +136,7 @@ pub struct LibraryClient {
 }
 
 impl LibraryClient {
-    /// `client` names the app in `User-Agent` (`"flow-windows 0.12.0"`).
+    /// `client` names the app in `User-Agent` (`"murmur-windows 0.12.0"`).
     pub fn new(cfg: ServerConfig, client: &str) -> Result<Self, LibraryError> {
         crate::check_address(&cfg)?;
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -532,7 +532,7 @@ mod tests {
         let m = |id: &str, files: Vec<LibraryFile>| LibraryModel {
             id: id.into(),
             title: "t".into(),
-            kind: flow_protocol::library::ModelKind::Stt,
+            kind: murmur_protocol::library::ModelKind::Stt,
             language: None,
             catalogue_id: None,
             engine: None,

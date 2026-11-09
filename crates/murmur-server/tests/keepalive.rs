@@ -7,12 +7,12 @@ mod common;
 use std::time::{Duration, Instant};
 
 use common::*;
-use flow_core::config::SessionConfig;
-use flow_protocol::{code, ClientMsg, ServerMsg};
 use futures_util::StreamExt;
+use murmur_core::config::SessionConfig;
+use murmur_protocol::{code, ClientMsg, ServerMsg};
 use tokio_tungstenite::tungstenite::Message;
 
-fn fast(f: impl FnOnce(&mut flow_server::Config)) -> flow_server::Config {
+fn fast(f: impl FnOnce(&mut murmur_server::Config)) -> murmur_server::Config {
     let mut c = mock_cfg("x");
     c.ws_ping_ms = 100;
     c.ws_dead_ms = 400;
@@ -35,7 +35,7 @@ async fn start_leased(ws: &mut Ws, sid: u64) {
     );
 }
 
-async fn wait_idle(s: &flow_server::ServerHandle, limit: Duration) -> bool {
+async fn wait_idle(s: &murmur_server::ServerHandle, limit: Duration) -> bool {
     let t0 = Instant::now();
     while t0.elapsed() < limit {
         if s.pool().busy() == 0 {

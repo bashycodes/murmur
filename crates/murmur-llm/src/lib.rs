@@ -1,32 +1,32 @@
-//! flow-llm: the llama.cpp cleanup engine behind flow-core's `llm` feature.
+//! murmur-llm: the llama.cpp cleanup engine behind murmur-core's `llm` feature.
 //!
-//! flow-core never links this crate. It loads the cdylib at runtime
-//! (`libflow_llm.so` / `flow_llm.dll` / `libflow_llm.dylib`) and calls the
+//! murmur-core never links this crate. It loads the cdylib at runtime
+//! (`libmurmur_llm.so` / `murmur_llm.dll` / `libmurmur_llm.dylib`) and calls the
 //! C ABI below, because llama.cpp's ggml and whisper.cpp's ggml cannot be
 //! linked into the same binary (duplicate symbols). All strings are UTF-8,
 //! NUL-terminated. Strings returned by the plugin are freed with
-//! [`flow_llm_free_string`].
+//! [`murmur_llm_free_string`].
 //!
 //! ABI version 1:
 //! ```c
-//! uint32_t flow_llm_abi_version(void);
-//! void*   flow_llm_load(const char* model, int32_t threads,
+//! uint32_t murmur_llm_abi_version(void);
+//! void*   murmur_llm_load(const char* model, int32_t threads,
 //!                       const char* warm_messages /* nullable */, char** err);
-//! int32_t flow_llm_clean(void* h, const char* messages, const char* transcript,
+//! int32_t murmur_llm_clean(void* h, const char* messages, const char* transcript,
 //!                        uint64_t budget_ms,
 //!                        const bool* cancel /* nullable, read atomically */, char** out);
 //!         // 0 = ok (*out = text), 1 = cancelled/deadline, 2 = error (*out = message)
 //! // messages = JSON [["system","…"],["user","…"],["assistant","…"],…,["user","…"]]
-//! char*   flow_llm_info(void* h);   // JSON
+//! char*   murmur_llm_info(void* h);   // JSON
 //! // Optional (added 2026-10, still ABI 1; loaders look them up lazily):
-//! int32_t flow_llm_prefill(void* h, const char* messages); // non-blocking, 0 ok / 2 bad json
-//! void    flow_llm_prefill_cancel(void* h);
+//! int32_t murmur_llm_prefill(void* h, const char* messages); // non-blocking, 0 ok / 2 bad json
+//! void    murmur_llm_prefill_cancel(void* h);
 //! // Optional (added 2026-10-30, still ABI 1): no model needed.
-//! char*   flow_llm_backends(void); // JSON {"devices":[…],"backend":"Vulkan"|"CPU","device":"…"}
+//! char*   murmur_llm_backends(void); // JSON {"devices":[…],"backend":"Vulkan"|"CPU","device":"…"}
 //! // Optional (added 2026-11-07 for D69, still ABI 1):
-//! void    flow_llm_set_draft(void* h, uint32_t n); // prompt-lookup draft tokens per step, 0 = off
-//! void    flow_llm_free_string(char*);
-//! void    flow_llm_unload(void* h);
+//! void    murmur_llm_set_draft(void* h, uint32_t n); // prompt-lookup draft tokens per step, 0 = off
+//! void    murmur_llm_free_string(char*);
+//! void    murmur_llm_unload(void* h);
 //! ```
 
 pub mod backend;
@@ -61,7 +61,7 @@ unsafe fn from_c(p: *const c_char) -> String {
 }
 
 #[no_mangle]
-pub extern "C" fn flow_llm_abi_version() -> u32 {
+pub extern "C" fn murmur_llm_abi_version() -> u32 {
     ABI_VERSION
 }
 
@@ -75,7 +75,7 @@ fn parse_messages(json: &str) -> Result<Vec<(String, String)>, String> {
 /// # Safety
 /// String arguments are null or NUL-terminated; `err` is null or writable.
 #[no_mangle]
-pub unsafe extern "C" fn flow_llm_load(
+pub unsafe extern "C" fn murmur_llm_load(
     model: *const c_char,
     threads: i32,
     warm_messages: *const c_char,
@@ -119,11 +119,11 @@ pub unsafe extern "C" fn flow_llm_load(
 }
 
 /// # Safety
-/// `h` is a live handle from [`flow_llm_load`]; strings are null or
+/// `h` is a live handle from [`murmur_llm_load`]; strings are null or
 /// NUL-terminated; `cancel` is null or points at a `bool` that stays valid
 /// for the call and is only written atomically; `out` is writable.
 #[no_mangle]
-pub unsafe extern "C" fn flow_llm_clean(
+pub unsafe extern "C" fn murmur_llm_clean(
     h: *const Engine,
     messages: *const c_char,
     transcript: *const c_char,
@@ -169,13 +169,13 @@ pub unsafe extern "C" fn flow_llm_clean(
 }
 
 /// Non-blocking prefill-ahead of `messages` (same JSON as
-/// [`flow_llm_clean`]). 0 = queued, 2 = bad arguments.
+/// [`murmur_llm_clean`]). 0 = queued, 2 = bad arguments.
 ///
 /// # Safety
-/// `h` is a live handle from [`flow_llm_load`]; `messages` is null or
+/// `h` is a live handle from [`murmur_llm_load`]; `messages` is null or
 /// NUL-terminated.
 #[no_mangle]
-pub unsafe extern "C" fn flow_llm_prefill(h: *const Engine, messages: *const c_char) -> i32 {
+pub unsafe extern "C" fn murmur_llm_prefill(h: *const Engine, messages: *const c_char) -> i32 {
     let Some(e) = h.as_ref() else {
         return CLEAN_ERROR;
     };
@@ -199,9 +199,9 @@ pub unsafe extern "C" fn flow_llm_prefill(h: *const Engine, messages: *const c_c
 /// transcript (0 = off, the default; capped at 8).
 ///
 /// # Safety
-/// `h` is null or a live handle from [`flow_llm_load`].
+/// `h` is null or a live handle from [`murmur_llm_load`].
 #[no_mangle]
-pub unsafe extern "C" fn flow_llm_set_draft(h: *const Engine, n: u32) {
+pub unsafe extern "C" fn murmur_llm_set_draft(h: *const Engine, n: u32) {
     if let Some(e) = h.as_ref() {
         e.set_draft(n as usize);
     }
@@ -210,18 +210,18 @@ pub unsafe extern "C" fn flow_llm_set_draft(h: *const Engine, n: u32) {
 /// Stop a running prefill-ahead.
 ///
 /// # Safety
-/// `h` is null or a live handle from [`flow_llm_load`].
+/// `h` is null or a live handle from [`murmur_llm_load`].
 #[no_mangle]
-pub unsafe extern "C" fn flow_llm_prefill_cancel(h: *const Engine) {
+pub unsafe extern "C" fn murmur_llm_prefill_cancel(h: *const Engine) {
     if let Some(e) = h.as_ref() {
         e.cancel_prefill();
     }
 }
 
 /// # Safety
-/// `h` is a live handle from [`flow_llm_load`].
+/// `h` is a live handle from [`murmur_llm_load`].
 #[no_mangle]
-pub unsafe extern "C" fn flow_llm_info(h: *const Engine) -> *mut c_char {
+pub unsafe extern "C" fn murmur_llm_info(h: *const Engine) -> *mut c_char {
     let Some(e) = h.as_ref() else {
         return std::ptr::null_mut();
     };
@@ -262,9 +262,9 @@ pub unsafe extern "C" fn flow_llm_info(h: *const Engine) -> *mut c_char {
 
 /// The devices this build sees and where a model would load (JSON, see the
 /// module docs), without loading one. Settings uses it to recommend a
-/// cleanup model for this PC. Free with [`flow_llm_free_string`].
+/// cleanup model for this PC. Free with [`murmur_llm_free_string`].
 #[no_mangle]
-pub extern "C" fn flow_llm_backends() -> *mut c_char {
+pub extern "C" fn murmur_llm_backends() -> *mut c_char {
     let r = std::panic::catch_unwind(|| {
         let devices = backend::devices();
         let plan = backend::choose(&devices, backend::force_cpu_from_env());
@@ -283,7 +283,7 @@ pub extern "C" fn flow_llm_backends() -> *mut c_char {
 /// # Safety
 /// `s` is null or a string returned by this library, freed once.
 #[no_mangle]
-pub unsafe extern "C" fn flow_llm_free_string(s: *mut c_char) {
+pub unsafe extern "C" fn murmur_llm_free_string(s: *mut c_char) {
     if !s.is_null() {
         drop(CString::from_raw(s));
     }
@@ -292,9 +292,9 @@ pub unsafe extern "C" fn flow_llm_free_string(s: *mut c_char) {
 /// Free the context and the model.
 ///
 /// # Safety
-/// `h` is null or a handle from [`flow_llm_load`], not used afterwards.
+/// `h` is null or a handle from [`murmur_llm_load`], not used afterwards.
 #[no_mangle]
-pub unsafe extern "C" fn flow_llm_unload(h: *mut Engine) {
+pub unsafe extern "C" fn murmur_llm_unload(h: *mut Engine) {
     if !h.is_null() {
         drop(Box::from_raw(h));
     }

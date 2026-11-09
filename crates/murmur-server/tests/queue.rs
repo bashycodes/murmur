@@ -5,11 +5,11 @@ mod common;
 use std::time::Duration;
 
 use common::*;
-use flow_core::config::SessionConfig;
-use flow_protocol::{code, ClientMsg, ServerMsg};
+use murmur_core::config::SessionConfig;
+use murmur_protocol::{code, ClientMsg, ServerMsg};
 
-fn cfg(max_queue: usize, queue_timeout_ms: u64) -> flow_server::Config {
-    flow_server::Config {
+fn cfg(max_queue: usize, queue_timeout_ms: u64) -> murmur_server::Config {
+    murmur_server::Config {
         max_queue,
         queue_timeout_ms,
         ..mock_cfg("queued words")

@@ -1,9 +1,9 @@
 [package]
-name = "flow-remote"
+name = "murmur-remote"
 version.workspace = true
 edition.workspace = true
 license-file.workspace = true
-description = "RemoteBackend: WebSocket client of flow-server behind flow_router::Router (the only client-side network code)"
+description = "RemoteBackend: WebSocket client of murmur-server behind murmur_router::Router (the only client-side network code)"
 
 [features]
 default = []
@@ -14,9 +14,9 @@ tls = ["dep:tokio-rustls", "dep:rustls", "dep:webpki-roots", "dep:sha2"]
 library = ["dep:hyper", "dep:hyper-util", "dep:http-body-util", "dep:sha2"]
 
 [dependencies]
-flow-core = { path = "../flow-core", default-features = false }
-flow-protocol = { path = "../flow-protocol" }
-flow-router = { path = "../flow-router" }
+murmur-core = { path = "../murmur-core", default-features = false }
+murmur-protocol = { path = "../murmur-protocol" }
+murmur-router = { path = "../murmur-router" }
 serde.workspace = true
 serde_json.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "macros", "io-util"] }
@@ -31,11 +31,11 @@ hyper-util = { version = "0.1", optional = true, default-features = false, featu
 http-body-util = { version = "0.1", optional = true }
 
 [dev-dependencies]
-# tests/library.rs: a real in-process flow-server with a temp library.
-flow-server = { path = "../flow-server", default-features = false, features = ["tls"] }
+# tests/library.rs: a real in-process murmur-server with a temp library.
+murmur-server = { path = "../murmur-server", default-features = false, features = ["tls"] }
 tempfile = "3"
 # examples/airgap_e2e.rs reads the test clip.
-flow-core = { path = "../flow-core", default-features = false, features = ["wav"] }
+murmur-core = { path = "../murmur-core", default-features = false, features = ["wav"] }
 
 [[test]]
 name = "library"

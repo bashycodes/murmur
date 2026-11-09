@@ -1,4 +1,4 @@
-//! RemoteBackend against a minimal in-test WebSocket server (no flow-server):
+//! RemoteBackend against a minimal in-test WebSocket server (no murmur-server):
 //! cancel during commit (review C4, client side) and the resolved-address
 //! cleartext rule (review S6).
 #![allow(clippy::result_large_err)] // tungstenite's handshake callback signature
@@ -7,11 +7,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use flow_core::config::SessionConfig;
-use flow_protocol::{ClientMsg, HelloOk, ServerMsg, SUBPROTOCOL};
-use flow_remote::RemoteBackend;
-use flow_router::{Backend, Failure, ServerConfig};
 use futures_util::{SinkExt, StreamExt};
+use murmur_core::config::SessionConfig;
+use murmur_protocol::{ClientMsg, HelloOk, ServerMsg, OLD_SUBPROTOCOL, SUBPROTOCOL};
+use murmur_remote::RemoteBackend;
+use murmur_router::{Backend, Failure, ServerConfig};
 use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
 use tokio_tungstenite::tungstenite::http::HeaderValue;
 use tokio_tungstenite::tungstenite::Message;
@@ -25,6 +25,11 @@ struct SilentServer {
 
 impl SilentServer {
     fn start() -> Self {
+        Self::start_speaking(SUBPROTOCOL)
+    }
+
+    /// A server that answers the upgrade with `subprotocol`.
+    fn start_speaking(subprotocol: &'static str) -> Self {
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
             .enable_all()
@@ -43,7 +48,7 @@ impl SilentServer {
                     let cb = |_: &Request, mut resp: Response| {
                         resp.headers_mut().insert(
                             "sec-websocket-protocol",
-                            HeaderValue::from_static(SUBPROTOCOL),
+                            HeaderValue::from_static(subprotocol),
                         );
                         Ok(resp)
                     };
@@ -151,7 +156,7 @@ fn cleartext_to_a_name_is_decided_by_its_resolved_addresses() {
     ok.cancel();
     // A single-label name no longer counts as private by its name: if it
     // does not resolve, nothing is sent and the reason says so.
-    let nx = RemoteBackend::new(server_cfg("flow-no-such-host-zz9", srv.port), "test");
+    let nx = RemoteBackend::new(server_cfg("murmur-no-such-host-zz9", srv.port), "test");
     let e = nx.start_session(&SessionConfig::default()).unwrap_err();
     assert_eq!(e.kind, Failure::ConnectFailed);
     assert!(
@@ -159,6 +164,18 @@ fn cleartext_to_a_name_is_decided_by_its_resolved_addresses() {
         "{}",
         e.message
     );
+}
+
+/// D83: a server from before the Murmur rename answers with the old
+/// subprotocol name; the client still offers it, so the session starts.
+#[test]
+fn a_server_speaking_the_old_subprotocol_name_still_works() {
+    let srv = SilentServer::start_speaking(OLD_SUBPROTOCOL);
+    let b = RemoteBackend::new(server_cfg("127.0.0.1", srv.port), "test");
+    b.start_session(&SessionConfig::default())
+        .expect("old server accepted");
+    assert!(srv.got("hello"));
+    b.cancel();
 }
 
 #[test]

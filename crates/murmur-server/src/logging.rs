@@ -3,9 +3,9 @@
 //! `RUST_LOG` (or `[log] level`) chooses what is printed, but no setting can
 //! make a dependency print payloads: tungstenite logs every received text
 //! frame at trace (dictionary, context), hyper/axum can dump requests
-//! (the bearer token). Events from any target outside `flow_server` are
+//! (the bearer token). Events from any target outside `murmur_server` are
 //! capped at INFO, whatever the filter says. The only way to get text into
-//! the log is `log_text = true`, which makes flow-server itself print the
+//! the log is `log_text = true`, which makes murmur-server itself print the
 //! result at debug.
 
 use tracing::{Level, Metadata};
@@ -18,7 +18,7 @@ pub const DEPENDENCY_MAX_LEVEL: Level = Level::INFO;
 /// True when an event or span with this metadata may be logged at all.
 pub fn allowed(meta: &Metadata<'_>) -> bool {
     let t = meta.target();
-    let ours = t == "flow_server" || t.starts_with("flow_server::");
+    let ours = t == "murmur_server" || t.starts_with("murmur_server::");
     ours || *meta.level() <= DEPENDENCY_MAX_LEVEL
 }
 
@@ -70,8 +70,8 @@ mod tests {
             "tokio_tungstenite",
             "hyper::proto",
             "axum::rejection",
-            "flow_core",
-            "flow_serverx",
+            "murmur_core",
+            "murmur_serverx",
         ] {
             assert!(!allowed(&meta(t, Level::TRACE)), "{t}");
             assert!(!allowed(&meta(t, Level::DEBUG)), "{t}");
@@ -81,8 +81,8 @@ mod tests {
     }
 
     #[test]
-    fn flow_server_keeps_its_own_levels() {
-        assert!(allowed(&meta("flow_server", Level::TRACE)));
-        assert!(allowed(&meta("flow_server::ws", Level::DEBUG)));
+    fn murmur_server_keeps_its_own_levels() {
+        assert!(allowed(&meta("murmur_server", Level::TRACE)));
+        assert!(allowed(&meta("murmur_server::ws", Level::DEBUG)));
     }
 }

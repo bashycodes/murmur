@@ -1,21 +1,21 @@
 [package]
-name = "flow-server"
+name = "murmur-server"
 version.workspace = true
 edition.workspace = true
 license-file.workspace = true
-description = "Self-hosted flow-core server for hybrid dictation (LAN/VPN only; stores no audio or text unless [debug] capture is on)"
+description = "Self-hosted murmur-core server for hybrid dictation (LAN/VPN only; stores no audio or text unless [debug] capture is on)"
 
 [features]
 default = ["whisper", "tls"]
-whisper = ["flow-core/whisper"]
-parakeet = ["flow-core/parakeet"]
-llm = ["flow-core/llm"]
+whisper = ["murmur-core/whisper"]
+parakeet = ["murmur-core/parakeet"]
+llm = ["murmur-core/llm"]
 tls = ["dep:tokio-rustls", "dep:rustls", "dep:rustls-pemfile"]
 
 [dependencies]
-flow-build-info = { path = "../flow-build-info" }
-flow-core = { path = "../flow-core" }
-flow-protocol = { path = "../flow-protocol" }
+murmur-build-info = { path = "../murmur-build-info" }
+murmur-core = { path = "../murmur-core" }
+murmur-protocol = { path = "../murmur-protocol" }
 serde.workspace = true
 serde_json.workspace = true
 axum = { version = "0.8", default-features = false, features = ["ws", "http1", "tokio"] }
@@ -35,7 +35,7 @@ rustls-pemfile = { version = "2", optional = true }
 
 [dev-dependencies]
 # `wav`: tests/languages.rs reads a Hebrew clip for the real-model test.
-flow-core = { path = "../flow-core", features = ["wav"] }
+murmur-core = { path = "../murmur-core", features = ["wav"] }
 tempfile = "3"
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "handshake"] }
 rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }

@@ -1,6 +1,6 @@
 //! Model library (D40) over HTTP: auth, listing, downloads with Range,
 //! traversal refused, per-key download counters, rescan without restart,
-//! and the `flow-server library list` CLI.
+//! and the `murmur-server library list` CLI.
 
 mod common;
 
@@ -9,8 +9,8 @@ use std::path::Path;
 use std::time::Duration;
 
 use common::*;
-use flow_protocol::library::{file_path, ModelKind, ModelList, PATH_MODELS};
-use flow_server::{Config, ServerHandle};
+use murmur_protocol::library::{file_path, ModelKind, ModelList, PATH_MODELS};
+use murmur_server::{Config, ServerHandle};
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
@@ -316,7 +316,7 @@ fn cli_library_list_shows_served_and_skipped() {
         ),
     )
     .unwrap();
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_flow-server"))
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_murmur-server"))
         .args(["library", "list", "--config"])
         .arg(&conf)
         .arg("--state-dir")

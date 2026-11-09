@@ -1,9 +1,9 @@
-//! `/etc/flow-server/config.toml` (docs/hybrid-architecture.md §3.2).
+//! `/etc/murmur-server/config.toml` (docs/hybrid-architecture.md §3.2).
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
-use flow_core::config::ModelConfig;
+use murmur_core::config::ModelConfig;
 use serde::Deserialize;
 
 /// `[model] llm_draft` when the config sets none (D69): the cleanup
@@ -59,7 +59,7 @@ pub struct Config {
     pub token: Option<String>,
     /// Where `keys.json` and `key-usage.json` live (D38). Default:
     /// [`crate::capture::state_dir`] (systemd's `$STATE_DIRECTORY`, else
-    /// the XDG state dir); the CLI falls back to `/var/lib/flow-server`
+    /// the XDG state dir); the CLI falls back to `/var/lib/murmur-server`
     /// for a config under `/etc` (see `main.rs`).
     pub state_dir: Option<PathBuf>,
     pub workers: usize,
@@ -101,7 +101,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            bind: vec![format!("127.0.0.1:{}", flow_protocol::DEFAULT_PORT)],
+            bind: vec![format!("127.0.0.1:{}", murmur_protocol::DEFAULT_PORT)],
             token_file: None,
             auth: AuthMode::Token,
             token: None,
@@ -114,10 +114,10 @@ impl Default for Config {
             handshake_timeout_ms: 10_000,
             max_connections: 64,
             max_connections_per_ip: 16,
-            ws_ping_ms: flow_protocol::WS_PING_S * 1000,
-            ws_dead_ms: flow_protocol::WS_DEAD_S * 1000,
+            ws_ping_ms: murmur_protocol::WS_PING_S * 1000,
+            ws_dead_ms: murmur_protocol::WS_DEAD_S * 1000,
             llm_timeout_per_char_ms: 15,
-            llm_timeout_max_ms: flow_core::config::DEFAULT_LLM_TIMEOUT_MAX_MS,
+            llm_timeout_max_ms: murmur_core::config::DEFAULT_LLM_TIMEOUT_MAX_MS,
             model: ModelConfig {
                 llm_draft: Some(DEFAULT_LLM_DRAFT),
                 ..ModelConfig::default()
@@ -145,7 +145,7 @@ impl Config {
 
     /// The server's per-session audio cap (`max_session_s` at 16 kHz).
     pub fn max_session_samples(&self) -> usize {
-        (self.max_session_s as usize).saturating_mul(flow_core::config::SAMPLE_RATE)
+        (self.max_session_s as usize).saturating_mul(murmur_core::config::SAMPLE_RATE)
     }
 
     pub fn bind_addrs(&self) -> Result<Vec<SocketAddr>, String> {
@@ -206,10 +206,10 @@ impl Config {
                 .to_string(),
             (None, None) => return Ok(None),
         };
-        if t.len() < flow_protocol::MIN_TOKEN_LEN {
+        if t.len() < murmur_protocol::MIN_TOKEN_LEN {
             return Err(format!(
                 "token shorter than {} characters",
-                flow_protocol::MIN_TOKEN_LEN
+                murmur_protocol::MIN_TOKEN_LEN
             ));
         }
         Ok(Some(t))
@@ -283,7 +283,7 @@ impl Config {
     }
 }
 
-const NO_KEYS: &str = "no keys: set token_file (`flow-server gen-token --out PATH`) or add one with `flow-server keys add <name> --admin`";
+const NO_KEYS: &str = "no keys: set token_file (`murmur-server gen-token --out PATH`) or add one with `murmur-server keys add <name> --admin`";
 
 /// 32 random bytes, base64url without padding (43 chars).
 pub fn gen_token() -> String {
@@ -332,10 +332,16 @@ mod tests {
         // tools/colleague-bundle.sh ships this as the bundle's config.toml.
         let s = include_str!("../../../tools/bundle/server-config.toml");
         let c = Config::from_toml(s).unwrap();
-        assert_eq!(c.model.asr_backend, flow_core::config::AsrBackend::Parakeet);
+        assert_eq!(
+            c.model.asr_backend,
+            murmur_core::config::AsrBackend::Parakeet
+        );
         assert!(c.model.llm_path.is_some() && c.model.lid_path.is_some());
         let he = &c.model.languages["he"];
-        assert_eq!(he.asr_backend, flow_core::config::AsrBackend::SherpaOnline);
+        assert_eq!(
+            he.asr_backend,
+            murmur_core::config::AsrBackend::SherpaOnline
+        );
         assert!(!c.log.log_text);
     }
 
@@ -359,9 +365,15 @@ mod tests {
             out.push('\n');
         }
         let c = Config::from_toml(&out).unwrap();
-        assert_eq!(c.model.asr_backend, flow_core::config::AsrBackend::Parakeet);
+        assert_eq!(
+            c.model.asr_backend,
+            murmur_core::config::AsrBackend::Parakeet
+        );
         let he = &c.model.languages["he"];
-        assert_eq!(he.asr_backend, flow_core::config::AsrBackend::SherpaOnline);
+        assert_eq!(
+            he.asr_backend,
+            murmur_core::config::AsrBackend::SherpaOnline
+        );
         assert!(he.asr_path.ends_with("/zipformer2-66m-streaming-he-int8"));
         assert_eq!(he.threads, Some(4));
         assert_eq!(c.model.language_route(Some("he-IL")), Some("he"));
@@ -384,7 +396,7 @@ mod tests {
 
     #[test]
     fn debug_section_parses_and_validates() {
-        let ok = "auth = \"none\"\n[debug]\ncapture = true\nmax_files = 5\nmax_age_h = 24\ndir = \"/var/lib/flow-server/debug\"\n";
+        let ok = "auth = \"none\"\n[debug]\ncapture = true\nmax_files = 5\nmax_age_h = 24\ndir = \"/var/lib/murmur-server/debug\"\n";
         let c = Config::from_toml(ok).unwrap();
         assert!(c.debug.capture);
         assert_eq!((c.debug.max_files, c.debug.max_age_h), (5, 24));
@@ -405,7 +417,7 @@ mod tests {
         .unwrap();
         assert!(matches!(
             c.model.asr_backend,
-            flow_core::config::AsrBackend::Mock { .. }
+            murmur_core::config::AsrBackend::Mock { .. }
         ));
         assert_eq!(c.resolve_token().unwrap(), None);
     }
@@ -418,7 +430,10 @@ mod tests {
         )
         .unwrap();
         let he = &c.model.languages["he"];
-        assert_eq!(he.asr_backend, flow_core::config::AsrBackend::SherpaOnline);
+        assert_eq!(
+            he.asr_backend,
+            murmur_core::config::AsrBackend::SherpaOnline
+        );
         assert_eq!(he.asr_path, "/m/zip-he");
     }
 

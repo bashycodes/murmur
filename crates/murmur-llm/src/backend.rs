@@ -1,8 +1,8 @@
 //! Which ggml device runs the model: a GPU (Vulkan, in the Windows
-//! `flow_llm_vulkan.dll` build) or the CPU.
+//! `murmur_llm_vulkan.dll` build) or the CPU.
 //!
 //! [`choose`] is pure, so the policy is unit-tested without llama.cpp:
-//! * `FLOW_LLM_DEVICE=cpu` forces the CPU (A/B runs, a misbehaving driver);
+//! * `MURMUR_LLM_DEVICE=cpu` forces the CPU (A/B runs, a misbehaving driver);
 //! * otherwise the best real GPU: a discrete GPU before an integrated one,
 //!   then the one with the most free memory. Software rasterisers
 //!   (llvmpipe, SwiftShader, Microsoft Basic Render) are not GPUs;
@@ -92,9 +92,10 @@ fn is_real_gpu(d: &Device) -> bool {
         && !SOFTWARE_GPUS.iter().any(|s| n.contains(s))
 }
 
-/// `FLOW_LLM_DEVICE`: "cpu" forces the CPU; anything else (or unset) = auto.
+/// `MURMUR_LLM_DEVICE`: "cpu" forces the CPU; anything else (or unset) = auto.
 pub fn force_cpu_from_env() -> bool {
-    std::env::var("FLOW_LLM_DEVICE").is_ok_and(|v| v.trim().eq_ignore_ascii_case("cpu"))
+    murmur_build_info::env::var("MURMUR_LLM_DEVICE")
+        .is_ok_and(|v| v.trim().eq_ignore_ascii_case("cpu"))
 }
 
 /// See the module docs.

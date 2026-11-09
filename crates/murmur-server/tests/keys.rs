@@ -1,6 +1,6 @@
 //! Named keys (D38): migration from the single token, revoke on the next
 //! connection, hot reload of CLI changes, usage stats across a restart,
-//! and the `flow-server keys` CLI.
+//! and the `murmur-server keys` CLI.
 
 mod common;
 
@@ -8,10 +8,10 @@ use std::path::Path;
 use std::process::Command;
 
 use common::*;
-use flow_core::config::SessionConfig;
-use flow_protocol::{ClientMsg, ServerMsg};
-use flow_server::keys::{KeyStore, KEYS_FILE, OWNER, USAGE_FILE};
-use flow_server::Config;
+use murmur_core::config::SessionConfig;
+use murmur_protocol::{ClientMsg, ServerMsg};
+use murmur_server::keys::{KeyStore, KEYS_FILE, OWNER, USAGE_FILE};
+use murmur_server::Config;
 
 /// A config as an upgraded install has it: `token_file` + a state dir.
 fn file_cfg(dir: &Path) -> Config {
@@ -131,7 +131,7 @@ async fn keys_file_without_token_file_is_enough() {
 }
 
 fn run(dir: &Path, args: &[&str]) -> (bool, String, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_flow-server"))
+    let out = Command::new(env!("CARGO_BIN_EXE_murmur-server"))
         .args(["--config"])
         .arg(dir.join("config.toml"))
         .args(args)

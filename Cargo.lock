@@ -582,209 +582,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "flow-asr-sherpa"
-version = "1.1.2"
-dependencies = [
- "hound",
- "serde_json",
- "sherpa-onnx",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "flow-build-info"
-version = "1.1.2"
-dependencies = [
- "serde_json",
-]
-
-[[package]]
-name = "flow-cli"
-version = "1.1.2"
-dependencies = [
- "flow-core",
- "flow-remote",
- "flow-router",
- "hound",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "flow-cloud"
-version = "1.1.2"
-dependencies = [
- "base64 0.22.1",
- "claxon",
- "flacenc",
- "flow-cloud",
- "flow-core",
- "flow-router",
- "hound",
- "reqwest",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "flow-contract-tests"
-version = "1.1.2"
-dependencies = [
- "base64 0.22.1",
- "claxon",
- "flow-cloud",
- "flow-core",
- "flow-protocol",
- "flow-remote",
- "flow-router",
- "flow-server",
- "rcgen",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "flow-core"
-version = "1.1.2"
-dependencies = [
- "fancy-regex",
- "flow-asr-sherpa",
- "hound",
- "libloading",
- "regex",
- "rtrb",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "unicode-normalization",
- "whisper-rs",
-]
-
-[[package]]
-name = "flow-ffi"
-version = "1.1.2"
-dependencies = [
- "flow-build-info",
- "flow-cloud",
- "flow-core",
- "flow-protocol",
- "flow-remote",
- "flow-router",
- "flow-server",
- "jni",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "flow-llm"
-version = "1.1.2"
-dependencies = [
- "llama-cpp-2",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "flow-protocol"
-version = "1.1.2"
-dependencies = [
- "flow-core",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "flow-remote"
-version = "1.1.2"
-dependencies = [
- "flow-core",
- "flow-protocol",
- "flow-router",
- "flow-server",
- "futures-util",
- "http-body-util",
- "hyper",
- "hyper-util",
- "rustls",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "tokio",
- "tokio-rustls",
- "tokio-tungstenite 0.30.0",
- "webpki-roots 1.0.10",
-]
-
-[[package]]
-name = "flow-replay"
-version = "1.1.2"
-dependencies = [
- "flow-cloud",
- "flow-core",
- "flow-router",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "flow-router"
-version = "1.1.2"
-dependencies = [
- "flow-core",
- "flow-protocol",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "url",
-]
-
-[[package]]
-name = "flow-server"
-version = "1.1.2"
-dependencies = [
- "axum",
- "base64 0.22.1",
- "flow-build-info",
- "flow-core",
- "flow-protocol",
- "futures-util",
- "getrandom 0.2.17",
- "hyper",
- "hyper-util",
- "rcgen",
- "rustls",
- "rustls-pemfile",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "tokio",
- "tokio-rustls",
- "tokio-tungstenite 0.30.0",
- "toml",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "flow-whisper"
-version = "1.1.2"
-dependencies = [
- "flow-core",
- "serde",
- "serde_json",
- "whisper-rs",
-]
-
-[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1462,6 +1259,212 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "murmur-asr-sherpa"
+version = "1.1.2"
+dependencies = [
+ "hound",
+ "serde_json",
+ "sherpa-onnx",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "murmur-build-info"
+version = "1.1.2"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "murmur-cli"
+version = "1.1.2"
+dependencies = [
+ "hound",
+ "murmur-core",
+ "murmur-remote",
+ "murmur-router",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "murmur-cloud"
+version = "1.1.2"
+dependencies = [
+ "base64 0.22.1",
+ "claxon",
+ "flacenc",
+ "hound",
+ "murmur-cloud",
+ "murmur-core",
+ "murmur-router",
+ "reqwest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "murmur-contract-tests"
+version = "1.1.2"
+dependencies = [
+ "base64 0.22.1",
+ "claxon",
+ "murmur-cloud",
+ "murmur-core",
+ "murmur-protocol",
+ "murmur-remote",
+ "murmur-router",
+ "murmur-server",
+ "rcgen",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "murmur-core"
+version = "1.1.2"
+dependencies = [
+ "fancy-regex",
+ "hound",
+ "libloading",
+ "murmur-asr-sherpa",
+ "murmur-build-info",
+ "regex",
+ "rtrb",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "unicode-normalization",
+ "whisper-rs",
+]
+
+[[package]]
+name = "murmur-ffi"
+version = "1.1.2"
+dependencies = [
+ "jni",
+ "murmur-build-info",
+ "murmur-cloud",
+ "murmur-core",
+ "murmur-protocol",
+ "murmur-remote",
+ "murmur-router",
+ "murmur-server",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "murmur-llm"
+version = "1.1.2"
+dependencies = [
+ "llama-cpp-2",
+ "murmur-build-info",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "murmur-protocol"
+version = "1.1.2"
+dependencies = [
+ "murmur-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "murmur-remote"
+version = "1.1.2"
+dependencies = [
+ "futures-util",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "murmur-core",
+ "murmur-protocol",
+ "murmur-router",
+ "murmur-server",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tokio-rustls",
+ "tokio-tungstenite 0.30.0",
+ "webpki-roots 1.0.10",
+]
+
+[[package]]
+name = "murmur-replay"
+version = "1.1.2"
+dependencies = [
+ "murmur-cloud",
+ "murmur-core",
+ "murmur-router",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "murmur-router"
+version = "1.1.2"
+dependencies = [
+ "murmur-core",
+ "murmur-protocol",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "url",
+]
+
+[[package]]
+name = "murmur-server"
+version = "1.1.2"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "futures-util",
+ "getrandom 0.2.17",
+ "hyper",
+ "hyper-util",
+ "murmur-build-info",
+ "murmur-core",
+ "murmur-protocol",
+ "rcgen",
+ "rustls",
+ "rustls-pemfile",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tokio-rustls",
+ "tokio-tungstenite 0.30.0",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "murmur-whisper"
+version = "1.1.2"
+dependencies = [
+ "murmur-build-info",
+ "murmur-core",
+ "serde",
+ "serde_json",
+ "whisper-rs",
 ]
 
 [[package]]

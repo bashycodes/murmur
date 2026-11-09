@@ -6,24 +6,24 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::*;
-use flow_core::asr::MockAsr;
-use flow_core::config::SessionConfig;
-use flow_core::FlowCore;
-use flow_protocol::{ClientMsg, ServerMsg};
-use flow_server::{Pool, ServerHandle};
+use murmur_core::asr::MockAsr;
+use murmur_core::config::SessionConfig;
+use murmur_core::MurmurCore;
+use murmur_protocol::{ClientMsg, ServerMsg};
+use murmur_server::{Pool, ServerHandle};
 
 const COMMIT: Duration = Duration::from_millis(1500);
 
 /// One worker whose final decode takes `COMMIT`.
 async fn slow_server() -> ServerHandle {
     let cfg = mock_cfg("slow words");
-    let core = FlowCore::from_engines(
+    let core = MurmurCore::from_engines(
         Arc::new(MockAsr::new("slow words").with_delay(COMMIT)),
         None,
     );
     let pool = Pool::from_cores(vec![Arc::new(core)], &cfg.model, cfg.max_queue);
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    flow_server::serve_with_pool(cfg, Arc::new(pool), vec![l])
+    murmur_server::serve_with_pool(cfg, Arc::new(pool), vec![l])
         .await
         .unwrap()
 }
@@ -122,8 +122,8 @@ async fn a_cancel_after_the_job_never_touches_the_next_lessee() {
     }
 }
 
-/// Both halves of C4: the server calls `FlowCore::cancel()` on the in-flight
-/// core, and flow-core's commit abort flag stops the final decode, so the
+/// Both halves of C4: the server calls `MurmurCore::cancel()` on the in-flight
+/// core, and murmur-core's commit abort flag stops the final decode, so the
 /// worker goes back to the pool long before the job would have ended.
 #[tokio::test(flavor = "multi_thread")]
 async fn cancel_during_commit_frees_the_worker_promptly() {
@@ -143,12 +143,12 @@ async fn cancel_during_commit_frees_the_worker_promptly() {
 }
 
 struct PanickingAsr;
-impl flow_core::asr::AsrEngine for PanickingAsr {
+impl murmur_core::asr::AsrEngine for PanickingAsr {
     fn transcribe(
         &self,
         _: &[f32],
-        _: &flow_core::asr::AsrRequest,
-    ) -> Result<flow_core::asr::AsrOutput, flow_core::asr::AsrError> {
+        _: &murmur_core::asr::AsrRequest,
+    ) -> Result<murmur_core::asr::AsrOutput, murmur_core::asr::AsrError> {
         panic!("engine crashed (test)")
     }
 }
@@ -156,10 +156,10 @@ impl flow_core::asr::AsrEngine for PanickingAsr {
 #[tokio::test(flavor = "multi_thread")]
 async fn a_start_on_a_dead_worker_is_an_error_not_started() {
     let cfg = mock_cfg("x");
-    let core = FlowCore::from_engines(Arc::new(PanickingAsr), None);
+    let core = MurmurCore::from_engines(Arc::new(PanickingAsr), None);
     let pool = Pool::from_cores(vec![Arc::new(core)], &cfg.model, cfg.max_queue);
     let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let s = flow_server::serve_with_pool(cfg, Arc::new(pool), vec![l])
+    let s = murmur_server::serve_with_pool(cfg, Arc::new(pool), vec![l])
         .await
         .unwrap();
     let mut ws = session(s.addr()).await;
@@ -179,7 +179,7 @@ async fn a_start_on_a_dead_worker_is_an_error_not_started() {
     .await;
     match recv(&mut ws).await {
         Some(ServerMsg::Error(e)) => {
-            assert_eq!(e.code, flow_protocol::code::SERVER_ERROR, "{e:?}");
+            assert_eq!(e.code, murmur_protocol::code::SERVER_ERROR, "{e:?}");
             assert_eq!(e.sid, Some(2));
         }
         other => panic!("expected server_error, got {other:?}"),
