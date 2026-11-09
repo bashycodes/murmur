@@ -70,13 +70,7 @@ fn parse() -> Option<Args> {
 }
 
 fn load_unchecked(a: &Args) -> Result<Config, String> {
-    // D83: a missing murmur-server config falls back to the earlier
-    // install's flow-server one (read only, with a notice).
-    let (path, note) = murmur_server::legacy::config_path(&a.config);
-    if let Some(n) = note {
-        murmur_server::legacy::notice(&n);
-    }
-    let mut c = Config::load(&path)?;
+    let mut c = Config::load(&a.config)?;
     if a.token_file.is_some() {
         c.token_file = a.token_file.clone();
     }
@@ -90,11 +84,7 @@ fn load_unchecked(a: &Args) -> Result<Config, String> {
         && std::env::var_os("STATE_DIRECTORY").is_none()
         && a.config.starts_with("/etc")
     {
-        let (dir, note) = murmur_server::legacy::state_dir(SYSTEM_STATE_DIR.into());
-        if let Some(n) = note {
-            murmur_server::legacy::notice(&n);
-        }
-        c.state_dir = Some(dir);
+        c.state_dir = Some(SYSTEM_STATE_DIR.into());
     }
     c.insecure_bind_any = a.insecure_bind_any;
     Ok(c)

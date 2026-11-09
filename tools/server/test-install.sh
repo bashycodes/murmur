@@ -290,8 +290,8 @@ if [ "$(id -u)" != 0 ]; then
 fi
 
 # 13. D83: an install from before the rename (flow-server paths) and no new
-# config: its config, token and keys are copied once, the old files and
-# the old unit are left alone (with a warning about the shared port).
+# config: its config and token are copied once (keys are not), the old
+# files and the old unit are left alone (with a warning about the shared port).
 printf '#!/usr/bin/env bash\ncase "$1" in gen-token) echo new >"$3";; esac\nexit 0\n' >"$T/target/release/murmur-server"
 chmod +x "$T/target/release/murmur-server"
 H="$T/home2"
@@ -321,7 +321,8 @@ check "old install: llm on from the old config" "$o" "llm      on"
 check "old install: token copied" "$(cat "$NC/token")" "^old-synthetic-token$"
 check "old install: token_file rewritten" "$(cat "$NC/config.toml")" "^token_file = \"$NC/token\"$"
 check "old install: llm_lib rewritten" "$(cat "$NC/config.toml")" "^llm_lib = \"$H/.local/lib/murmur-server/libmurmur_llm.so\"$"
-check "old install: keys copied" "$(cat "$H/.local/state/murmur-server/keys.json")" "synthetic"
+check "old install: keys not carried over" "$(ls "$H/.local/state")" "murmur-server" "!"
+check "old install: keys note" "$o" "keys of the old install are not carried over"
 check "old install: old config unchanged" "$(cmp "$T/oldconf.before" "$OC/config.toml" && echo same)" "same"
 check "old install: old keys kept" "$(cat "$H/.local/state/flow-server/keys.json")" "synthetic"
 check "old install: old unit warning" "$o" "warning: the unit from before the rename"

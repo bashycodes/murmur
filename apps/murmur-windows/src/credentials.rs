@@ -3,9 +3,9 @@
 //! Keys live only in the OS secure store and in Rust memory: never in
 //! `prefs.json`, Tauri events, logs or crash text. On Windows the store is
 //! Credential Manager, one generic credential named
-//! `murmur/cloud/openrouter` (D28: OpenRouter is the only cloud
+//! `flow-clone/cloud/openrouter` (D28: OpenRouter is the only cloud
 //! provider; [`apply_migration`] moves / deletes the D18 per-provider
-//! entries `murmur/cloud/<id>` once) (`CRED_PERSIST_LOCAL_MACHINE`: this
+//! entries `flow-clone/cloud/<id>` once) (`CRED_PERSIST_LOCAL_MACHINE`: this
 //! user on this PC, not roamed). Other hosts (the Linux test/CI build) use
 //! [`MemoryStore`], the keyring stand-in the tests run against.
 //!
@@ -17,34 +17,7 @@ use std::sync::{Arc, Mutex};
 
 /// Credential Manager target name of a provider's key.
 pub fn target_name(provider_id: &str) -> String {
-    format!("murmur/cloud/{provider_id}")
-}
-
-/// D83: the target name before the Murmur rename. Read (and copied to
-/// [`target_name`]) when the new one is missing; never written.
-pub fn old_target_name(provider_id: &str) -> String {
     format!("flow-clone/cloud/{provider_id}")
-}
-
-/// [`CredentialStore::get`] over raw target reads/writes: the key under
-/// [`target_name`], else one under [`old_target_name`], which is copied to
-/// the new target on the way (the old entry stays for the old app).
-fn get_or_pick_up(
-    read: impl Fn(&str) -> Result<Option<String>, String>,
-    write: impl Fn(&str, &str) -> Result<(), String>,
-    provider_id: &str,
-) -> Result<Option<String>, String> {
-    let new = target_name(provider_id);
-    if let Some(v) = read(&new)? {
-        return Ok(Some(v));
-    }
-    match read(&old_target_name(provider_id)) {
-        Ok(Some(v)) => {
-            let _ = write(&new, &v);
-            Ok(Some(v))
-        }
-        _ => Ok(None),
-    }
 }
 
 /// Secure storage for provider keys, keyed by provider id.
@@ -78,14 +51,12 @@ impl MemoryStore {
 
 impl CredentialStore for MemoryStore {
     fn get(&self, provider_id: &str) -> Result<Option<String>, String> {
-        get_or_pick_up(
-            |t| Ok(self.map.lock().unwrap().get(t).cloned()),
-            |t, k| {
-                self.map.lock().unwrap().insert(t.into(), k.into());
-                Ok(())
-            },
-            provider_id,
-        )
+        Ok(self
+            .map
+            .lock()
+            .unwrap()
+            .get(&target_name(provider_id))
+            .cloned())
     }
     fn set(&self, provider_id: &str, key: &str) -> Result<(), String> {
         self.map
@@ -95,10 +66,7 @@ impl CredentialStore for MemoryStore {
         Ok(())
     }
     fn delete(&self, provider_id: &str) -> Result<(), String> {
-        let mut m = self.map.lock().unwrap();
-        m.remove(&target_name(provider_id));
-        // Or the next get would pick the old one up again.
-        m.remove(&old_target_name(provider_id));
+        self.map.lock().unwrap().remove(&target_name(provider_id));
         Ok(())
     }
 }
@@ -168,8 +136,8 @@ pub fn normalize_key(raw: &str) -> Result<String, String> {
 // ------------------------------------------------ host + adapter binding
 
 /// The id of the one OpenRouter key (D28): Credential Manager
-/// `murmur/cloud/openrouter`.
-pub const OPENROUTER: &str = murmur_router::cloud::OPENROUTER_ID;
+/// `flow-clone/cloud/openrouter`.
+pub const OPENROUTER: &str = flow_router::cloud::OPENROUTER_ID;
 
 /// A stored key and the endpoint it was saved for (review S4): the host
 /// and adapter. D28: the only binding is `(openrouter.ai, openrouter)`;
@@ -181,28 +149,23 @@ pub struct StoredKey {
     pub bound: Option<(String, String)>,
 }
 
-const BOUND_V1: &str = "murmur-bound-v1\n";
-/// D83: the blob header before the Murmur rename; [`decode`] reads it.
-const OLD_BOUND_V1: &str = "flow-bound-v1\n";
+const BOUND_V1: &str = "flow-bound-v1\n";
 
 /// The binding of the OpenRouter key.
 pub fn openrouter_binding() -> (String, String) {
     (
-        murmur_router::cloud::OPENROUTER_HOST.to_string(),
+        flow_router::cloud::OPENROUTER_HOST.to_string(),
         "openrouter".to_string(),
     )
 }
 
-/// Credential blob: `murmur-bound-v1\n<host>\n<adapter>\n<key>`.
+/// Credential blob: `flow-bound-v1\n<host>\n<adapter>\n<key>`.
 pub fn encode(key: &str, bound: &(String, String)) -> String {
     format!("{BOUND_V1}{}\n{}\n{key}", bound.0, bound.1)
 }
 
 pub fn decode(raw: &str) -> StoredKey {
-    if let Some(rest) = raw
-        .strip_prefix(BOUND_V1)
-        .or_else(|| raw.strip_prefix(OLD_BOUND_V1))
-    {
+    if let Some(rest) = raw.strip_prefix(BOUND_V1) {
         let mut it = rest.splitn(3, '\n');
         if let (Some(h), Some(a), Some(k)) = (it.next(), it.next(), it.next()) {
             return StoredKey {
@@ -245,11 +208,11 @@ pub fn openrouter_key(store: &dyn CredentialStore) -> Option<String> {
 }
 
 /// D52: the id of the optional key for the user's own OpenAI-compatible
-/// cleanup server: Credential Manager `murmur/cloud/custom`. Not bound
+/// cleanup server: Credential Manager `flow-clone/cloud/custom`. Not bound
 /// to a host (the base URL is the user's to change); the router only calls
 /// a server whose host the user consented to, so a changed URL sends
 /// nothing, key included, until that consent is given again.
-pub const CUSTOM: &str = murmur_router::cloud::CUSTOM_CLEANUP_ID;
+pub const CUSTOM: &str = flow_router::cloud::CUSTOM_CLEANUP_ID;
 
 /// Save the custom cleanup server's key.
 pub fn store_custom_key(store: &dyn CredentialStore, key: &str) -> Result<(), String> {
@@ -273,7 +236,7 @@ pub fn custom_key(store: &dyn CredentialStore) -> Option<String> {
 pub fn custom_key_for(
     typed: Option<&str>,
     saved: impl FnOnce() -> Option<String>,
-    cfg: &murmur_router::cloud::CustomCleanupConfig,
+    cfg: &flow_router::cloud::CustomCleanupConfig,
     base_url: &str,
 ) -> Result<Option<String>, String> {
     match typed.map(str::trim).filter(|k| !k.is_empty()) {
@@ -289,7 +252,7 @@ pub fn custom_key_for(
 pub fn saved_custom_key_withheld(
     typed: bool,
     has_saved: bool,
-    cfg: &murmur_router::cloud::CustomCleanupConfig,
+    cfg: &flow_router::cloud::CustomCleanupConfig,
     base_url: &str,
 ) -> bool {
     !typed && has_saved && !cfg.saved_key_allowed_for(base_url)
@@ -308,13 +271,13 @@ pub struct KeyMigration {
 }
 
 /// Apply `RouterConfig::migrate_d28`'s report to Credential Manager: move
-/// `murmur/cloud/<key_from>` to `murmur/cloud/openrouter` (only if
+/// `flow-clone/cloud/<key_from>` to `flow-clone/cloud/openrouter` (only if
 /// that key was saved for openrouter.ai: bound to it, or a legacy unbound
 /// key of an entry whose base URL was openrouter.ai, `legacy_host`), and
 /// delete every `delete_keys` entry. Idempotent.
 pub fn apply_migration(
     store: &dyn CredentialStore,
-    report: &murmur_router::MigrationReport,
+    report: &flow_router::MigrationReport,
     legacy_host: &dyn Fn(&str) -> Option<String>,
 ) -> KeyMigration {
     let mut out = KeyMigration::default();
@@ -329,7 +292,7 @@ pub fn apply_migration(
                 let for_openrouter = match &sk.bound {
                     Some(b) => *b == openrouter_binding(),
                     None => {
-                        legacy_host(from).as_deref() == Some(murmur_router::cloud::OPENROUTER_HOST)
+                        legacy_host(from).as_deref() == Some(flow_router::cloud::OPENROUTER_HOST)
                     }
                 };
                 if for_openrouter && !sk.key.is_empty() {
@@ -358,7 +321,7 @@ pub fn apply_migration(
 
 #[cfg(windows)]
 mod win {
-    use super::{get_or_pick_up, old_target_name, target_name, CredentialStore};
+    use super::{target_name, CredentialStore};
     use windows::core::{HSTRING, PWSTR};
     use windows::Win32::Foundation::ERROR_NOT_FOUND;
     use windows::Win32::Security::Credentials::{
@@ -372,71 +335,61 @@ mod win {
         e.code() == ERROR_NOT_FOUND.to_hresult()
     }
 
-    fn read(target: &str) -> Result<Option<String>, String> {
-        let target = HSTRING::from(target);
-        let mut p: *mut CREDENTIALW = std::ptr::null_mut();
-        unsafe {
-            if let Err(e) = CredReadW(&target, CRED_TYPE_GENERIC, 0, &mut p) {
-                return if not_found(&e) {
-                    Ok(None)
-                } else {
-                    Err(format!("Credential Manager read failed ({})", e.code()))
-                };
-            }
-            let c = &*p;
-            let blob = std::slice::from_raw_parts(c.CredentialBlob, c.CredentialBlobSize as usize)
-                .to_vec();
-            CredFree(p as *const _);
-            String::from_utf8(blob)
-                .map(Some)
-                .map_err(|_| "stored key is not UTF-8".to_string())
-        }
-    }
-
-    fn write(target: &str, key: &str) -> Result<(), String> {
-        let mut target: Vec<u16> = target.encode_utf16().chain(Some(0)).collect();
-        let mut user: Vec<u16> = "murmur".encode_utf16().chain(Some(0)).collect();
-        let mut blob = key.as_bytes().to_vec();
-        let cred = CREDENTIALW {
-            Flags: CRED_FLAGS(0),
-            Type: CRED_TYPE_GENERIC,
-            TargetName: PWSTR(target.as_mut_ptr()),
-            CredentialBlobSize: blob.len() as u32,
-            CredentialBlob: blob.as_mut_ptr(),
-            Persist: CRED_PERSIST_LOCAL_MACHINE,
-            UserName: PWSTR(user.as_mut_ptr()),
-            ..Default::default()
-        };
-        let r = unsafe { CredWriteW(&cred, 0) };
-        // Wipe our copy of the key bytes.
-        for b in blob.iter_mut() {
-            unsafe { std::ptr::write_volatile(b, 0) };
-        }
-        r.map_err(|e| format!("Credential Manager write failed ({})", e.code()))
-    }
-
-    fn remove(target: &str) -> Result<(), String> {
-        let target = HSTRING::from(target);
-        match unsafe { CredDeleteW(&target, CRED_TYPE_GENERIC, 0) } {
-            Ok(()) => Ok(()),
-            Err(e) if not_found(&e) => Ok(()),
-            Err(e) => Err(format!("Credential Manager delete failed ({})", e.code())),
-        }
-    }
-
     impl CredentialStore for WindowsCredentialStore {
         fn get(&self, provider_id: &str) -> Result<Option<String>, String> {
-            get_or_pick_up(read, write, provider_id)
+            let target = HSTRING::from(target_name(provider_id));
+            let mut p: *mut CREDENTIALW = std::ptr::null_mut();
+            unsafe {
+                if let Err(e) = CredReadW(&target, CRED_TYPE_GENERIC, 0, &mut p) {
+                    return if not_found(&e) {
+                        Ok(None)
+                    } else {
+                        Err(format!("Credential Manager read failed ({})", e.code()))
+                    };
+                }
+                let c = &*p;
+                let blob =
+                    std::slice::from_raw_parts(c.CredentialBlob, c.CredentialBlobSize as usize)
+                        .to_vec();
+                CredFree(p as *const _);
+                String::from_utf8(blob)
+                    .map(Some)
+                    .map_err(|_| "stored key is not UTF-8".to_string())
+            }
         }
 
         fn set(&self, provider_id: &str, key: &str) -> Result<(), String> {
-            write(&target_name(provider_id), key)
+            let mut target: Vec<u16> = target_name(provider_id)
+                .encode_utf16()
+                .chain(Some(0))
+                .collect();
+            let mut user: Vec<u16> = "flow-clone".encode_utf16().chain(Some(0)).collect();
+            let mut blob = key.as_bytes().to_vec();
+            let cred = CREDENTIALW {
+                Flags: CRED_FLAGS(0),
+                Type: CRED_TYPE_GENERIC,
+                TargetName: PWSTR(target.as_mut_ptr()),
+                CredentialBlobSize: blob.len() as u32,
+                CredentialBlob: blob.as_mut_ptr(),
+                Persist: CRED_PERSIST_LOCAL_MACHINE,
+                UserName: PWSTR(user.as_mut_ptr()),
+                ..Default::default()
+            };
+            let r = unsafe { CredWriteW(&cred, 0) };
+            // Wipe our copy of the key bytes.
+            for b in blob.iter_mut() {
+                unsafe { std::ptr::write_volatile(b, 0) };
+            }
+            r.map_err(|e| format!("Credential Manager write failed ({})", e.code()))
         }
 
         fn delete(&self, provider_id: &str) -> Result<(), String> {
-            remove(&target_name(provider_id))?;
-            // Or the next get would pick the old one up again (D83).
-            remove(&old_target_name(provider_id))
+            let target = HSTRING::from(target_name(provider_id));
+            match unsafe { CredDeleteW(&target, CRED_TYPE_GENERIC, 0) } {
+                Ok(()) => Ok(()),
+                Err(e) if not_found(&e) => Ok(()),
+                Err(e) => Err(format!("Credential Manager delete failed ({})", e.code())),
+            }
         }
     }
 }
@@ -454,7 +407,7 @@ mod tests {
             s.get("legacy-1").unwrap().as_deref(),
             Some("sk-0123456789abcdef")
         );
-        assert_eq!(s.targets(), vec!["murmur/cloud/legacy-1".to_string()]);
+        assert_eq!(s.targets(), vec!["flow-clone/cloud/legacy-1".to_string()]);
         s.set("legacy-1", "sk-other-key-000000").unwrap();
         assert_eq!(
             s.get("legacy-1").unwrap().as_deref(),
@@ -499,7 +452,7 @@ mod tests {
             custom_key(&*s).as_deref(),
             Some("sk-litellm-LEAKCHECK-0001")
         );
-        assert!(s.targets().contains(&"murmur/cloud/custom".to_string()));
+        assert!(s.targets().contains(&"flow-clone/cloud/custom".to_string()));
         assert_eq!(key_state(&*s, CUSTOM).masked, "••••0001");
         assert_eq!(
             openrouter_key(&*s).as_deref(),
@@ -522,7 +475,7 @@ mod tests {
                 bound: Some(("openrouter.ai".into(), "openrouter".into()))
             }
         );
-        assert_eq!(s.targets(), vec!["murmur/cloud/openrouter".to_string()]);
+        assert_eq!(s.targets(), vec!["flow-clone/cloud/openrouter".to_string()]);
         assert_eq!(key_state(&*s, OPENROUTER).masked, "••••1234");
         assert_eq!(
             openrouter_key(&*s).as_deref(),
@@ -553,8 +506,8 @@ mod tests {
         assert!(decode(&s.get(OPENROUTER).unwrap().unwrap()).bound.is_some());
     }
 
-    fn report(from: Option<&str>, delete: &[&str]) -> murmur_router::MigrationReport {
-        murmur_router::MigrationReport {
+    fn report(from: Option<&str>, delete: &[&str]) -> flow_router::MigrationReport {
+        flow_router::MigrationReport {
             migrated: true,
             key_from: from.map(str::to_string),
             key_to: from.map(|_| OPENROUTER.to_string()),
@@ -585,7 +538,7 @@ mod tests {
         let m = apply_migration(&*s, &report(Some("openrouter-1"), &["legacy-1"]), &|_| None);
         assert_eq!(m.moved_from.as_deref(), Some("openrouter-1"));
         assert_eq!(m.deleted, vec!["legacy-1".to_string()]);
-        assert_eq!(s.targets(), vec!["murmur/cloud/openrouter".to_string()]);
+        assert_eq!(s.targets(), vec!["flow-clone/cloud/openrouter".to_string()]);
         assert_eq!(
             openrouter_key(&*s).as_deref(),
             Some("sk-or-v1-LEAKCHECK-0001")
@@ -629,7 +582,7 @@ mod tests {
 
     #[test]
     fn custom_key_goes_to_the_consented_host_only() {
-        let cfg = murmur_router::cloud::CustomCleanupConfig {
+        let cfg = flow_router::cloud::CustomCleanupConfig {
             base_url: "http://10.0.0.5:4000".into(),
             consent_host: "10.0.0.5".into(),
             consent_at_ms: 1,
@@ -654,7 +607,7 @@ mod tests {
         assert_eq!(pick(None, "http://attacker.example:4000").unwrap(), None);
         assert_eq!(pick(None, "http://10.0.0.6:4000").unwrap(), None);
         assert_eq!(pick(None, "not a url").unwrap(), None);
-        let unconsented = murmur_router::cloud::CustomCleanupConfig {
+        let unconsented = flow_router::cloud::CustomCleanupConfig {
             consent_at_ms: 0,
             ..cfg.clone()
         };
@@ -663,40 +616,5 @@ mod tests {
             None
         );
         assert!(pick(Some("two words"), "http://10.0.0.5:4000").is_err());
-    }
-
-    #[test]
-    fn a_key_stored_before_the_rename_is_picked_up_once_and_kept_for_the_old_app() {
-        let s = MemoryStore::new();
-        let old_blob = format!(
-            "flow-bound-v1\n{}\nopenrouter\nsk-synthetic-old",
-            murmur_router::cloud::OPENROUTER_HOST
-        );
-        s.map
-            .lock()
-            .unwrap()
-            .insert(old_target_name(OPENROUTER), old_blob.clone());
-        assert_eq!(
-            openrouter_key(s.as_ref()).as_deref(),
-            Some("sk-synthetic-old")
-        );
-        // Copied to the new target, left under the old one.
-        assert_eq!(
-            s.map.lock().unwrap().get(&target_name(OPENROUTER)),
-            Some(&old_blob)
-        );
-        assert_eq!(
-            s.map.lock().unwrap().get(&old_target_name(OPENROUTER)),
-            Some(&old_blob)
-        );
-        // The new one wins from now on.
-        store_openrouter_key(s.as_ref(), "sk-synthetic-new").unwrap();
-        assert_eq!(
-            openrouter_key(s.as_ref()).as_deref(),
-            Some("sk-synthetic-new")
-        );
-        // Deleting removes both, so it does not come back.
-        s.delete(OPENROUTER).unwrap();
-        assert_eq!(s.get(OPENROUTER).unwrap(), None);
     }
 }
