@@ -7,7 +7,8 @@
 #
 #   --build           first build flow-server (features whisper,parakeet,tls,llm)
 #                     and the flow-llm plugin, release, --offline
-#   --sherpa-lib DIR  dir with libsherpa-onnx-c-api.so + libonnxruntime.so
+#   --sherpa-lib DIR  dir with libsherpa-onnx-c-api.so + libonnxruntime.so, the no-TTS
+#                     build (sherpa-onnx-v1.13.8-linux-x64-shared-no-tts-lib/lib; D80)
 #                     (default $SHERPA_ONNX_LIB_DIR, else target/release)
 #   --cuda-llm FILE   a CUDA build of libflow_llm.so (`cargo build --release
 #                     -p flow-llm --features cuda`), staged as
@@ -64,6 +65,9 @@ for l in libsherpa-onnx-c-api.so libonnxruntime.so; do
     install -m 0644 "$(readlink -f "$SHERPA_LIB/$l")" "$OUT/lib/$l"
 done
 install -m 0644 "$(readlink -f "$GOMP")" "$OUT/lib/libgomp.so.1"
+# D80: the no-TTS sherpa-onnx build only (no espeak-ng, GPL-3.0).
+"$ROOT/tools/checks/no-tts-libs.sh" "$OUT"/lib/libsherpa-onnx-c-api.so "$OUT"/lib/libonnxruntime.so ||
+    die "--sherpa-lib: use sherpa-onnx-v1.13.8-linux-x64-shared-no-tts-lib (docs/air-gapped.md)"
 if [ -n "$CUDA_LLM" ]; then
     [ -f "$CUDA_LLM" ] || die "--cuda-llm $CUDA_LLM: no such file"
     install -m 0644 "$CUDA_LLM" "$OUT/lib/libflow_llm_cuda.so"

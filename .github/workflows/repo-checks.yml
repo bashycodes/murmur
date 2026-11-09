@@ -1,5 +1,6 @@
 # Cheap repo-wide checks that the path-filtered app builds would skip
-# (docs-only branches never trigger them). Seconds on ubuntu; no toolchains.
+# (docs-only branches never trigger them). A few minutes on ubuntu; only the
+# runner's own Rust toolchain (cargo fetch + metadata, nothing compiled).
 name: repo-checks
 
 on:
@@ -14,7 +15,7 @@ permissions:
 jobs:
   checks:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,3 +60,13 @@ jobs:
       # folder, the admin key never logged; a stub server, no Docker.
       - name: Container entrypoint
         run: tools/container/entrypoint_test.sh
+      # D80: the installer notice check on stub MSI/NSIS layouts (no 7-Zip).
+      - name: Installer notice check
+        run: apps/flow-windows/tools/ci/check-installer-notices_test.sh
+      # D80: NOTICE's crate section and THIRD-PARTY-LICENSES (the full texts)
+      # match both lockfiles; the registry fetch is all it needs.
+      - name: Third-party notices current
+        run: |
+          cargo fetch --locked --manifest-path Cargo.toml
+          cargo fetch --locked --manifest-path apps/flow-windows/Cargo.toml
+          python3 -I tools/notice/crate-licences.py --check

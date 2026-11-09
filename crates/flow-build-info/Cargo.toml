@@ -2,7 +2,7 @@
 name = "flow-build-info"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license-file.workspace = true
 description = "Product version + git commit of this build (D26, docs/versioning.md); no dependencies"
 build = "build.rs"
 
