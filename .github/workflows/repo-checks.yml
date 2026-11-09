@@ -18,6 +18,34 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the leak scan diffs the pushed range
+      # Repo-local leak scan (docs/security.md): credentials, tailnet IPs,
+      # home paths, non-noreply commit identities. CI is what sees a merge made
+      # on github.com, which the local pre-push hook never does.
+      - name: Leak scan tests
+        run: tools/checks/leak-scan_test.sh
+      - name: Leak scan (tree and pushed commits)
+        env:
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          tools/checks/leak-scan.py --tree
+          head="${PR_HEAD:-$GITHUB_SHA}"
+          base="$BEFORE"
+          if [ -n "$PR_BASE" ]; then
+            # From the merge-base, so lines integration deleted after the
+            # branch point don't read as added by the PR.
+            base="$(git merge-base "$PR_BASE" "$PR_HEAD")"
+          fi
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            # New branch or rewritten history: scan what is not on integration.
+            base="$(git merge-base origin/integration "$head" 2>/dev/null || true)"
+          fi
+          if [ -n "$base" ] && [ "$base" != "$head" ]; then
+            tools/checks/leak-scan.py "$base..$head"
+          fi
       - name: Decision ids unique
         run: tools/checks/decision-ids.sh
       # The android-build native gate on a stub toolchain: no SIGPIPE flake,
