@@ -32,7 +32,7 @@ object TextMatching {
 
     /** KnownComposeHints.candidatesFor(pkg, hintAware = true, staleProbed). */
     fun knownComposeHints(pkg: String?, staleProbed: Boolean): Set<String> =
-        if (staleProbed && pkg in PolicyLists.COMPOSE_HINT_PACKAGES) PolicyLists.COMPOSE_PLACEHOLDERS else emptySet()
+        if (staleProbed && PolicyLists.usesComposePlaceholders(pkg)) PolicyLists.COMPOSE_PLACEHOLDERS else emptySet()
 
     private fun matchesKnown(s: String, known: Set<String>): Boolean {
         val n = normalizePlaceholder(Normalizer.normalize(s, Normalizer.Form.NFC))
