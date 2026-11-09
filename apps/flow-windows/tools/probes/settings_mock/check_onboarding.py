@@ -93,7 +93,8 @@ def walk(pg, scheme):
     nxt(pg)
     d = dev(pg)
     check(tag + "server saved", visible_step(pg) == "model" and d["host"] == "100.64.0.10" and d["allow_server"] and d["route_order"][0] == "server", str(d))
-    check(tag + "model optional for server", not pg.is_disabled("[data-ob-step=model] [data-ob=next]") and "optional" in pg.inner_text("#ob_model_title"))
+    # D79: Optional badge, "Skip — use my server only" until a model is ready.
+    check(tag + "model optional for server", pg.is_visible("#ob_model_optional") and pg.is_visible("[data-ob=skip-model]"))
     back(pg)
 
     # OpenRouter: key + consent before it is turned on.

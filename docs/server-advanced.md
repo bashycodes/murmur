@@ -487,9 +487,13 @@ The wire format (`GET /v1/models`, downloads with `Range`) is in
 
 ### What the apps do with it (D41)
 
-With this server set, the Windows app downloads models **only** from the
-library (Settings → Speech to text → From your server): it never contacts
-Hugging Face, even for a model the library lacks. Folders with a
+With this server set, the Windows app downloads models from the library
+by default (setup's model steps and Settings → Speech to text → Download
+models from: **Your server**, D79): it then never contacts Hugging Face,
+even for a model the library lacks (that one shows *Not on your server*;
+pick Hugging Face there to get it from the internet). Built-in models
+download from their usual rows; anything else from *From your server*.
+Folders with a
 `catalogue_id` must match the hashes built into the app (a different copy
 is refused); other folders are trusted by the hash the server lists. `kind`
 + `engine` decide what a model is used for: `stt` + `whisper` / `parakeet`,

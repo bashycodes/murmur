@@ -21,10 +21,11 @@ const head = (step) => `
   <span class="lw-ob-brand">Murmur</span>
   <span class="fl-overline">Step ${step} of ${STEPS}</span>
 </div>`;
-const foot = (back, next, hintId = "") => `
+const foot = (back, next, hintId = "", extra = "") => `
 <div class="lw-ob-foot">
   ${back ? `<button type="button" class="fl-btn fl-btn-ghost" data-ob="back">Back</button>` : "<span></span>"}
   ${hintId ? `<span class="lw-ob-hint" id="${hintId}"></span>` : ""}
+  ${extra}
   <button type="button" class="fl-btn fl-btn-primary" data-ob="next">${next}</button>
 </div>`;
 const bullet = (b, rest) => `<li>${ico(CHECK, "lw-ico lw-ob-check")}<span><b>${b}</b> ${rest}</span></li>`;
@@ -91,6 +92,7 @@ const engine = `
     "A LiteLLM proxy can clean up text, not do speech",
 ])}
     </div>
+    <div class="lw-ob-server-slot" data-ob-server-slot="engine">
     <div class="fl-group lw-ob-detail" id="ob_server_detail" hidden>
       <div class="fl-row">
         <div class="fl-row-text"><label class="fl-row-title" for="ob_host">Server address</label><div class="fl-row-desc">A name or IP address, without ws:// or a port. <small class="field-err" id="ob_host_err"></small></div></div>
@@ -101,7 +103,8 @@ const engine = `
         <div class="fl-row-control"><input id="ob_token" class="fl-input" type="password" autocomplete="off" spellcheck="false" placeholder="from flow-server gen-token" /><button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="ob_test_conn">Test</button></div>
       </div>
       <div class="lw-ob-status" id="ob_server_status"></div>
-      <p class="lw-ob-small lw-ob-help">No server yet? Pick This PC above, or ${extLink(SERVER_HELP, "set up a server →", "lw-link lw-ob-copy")}</p>
+      <p class="lw-ob-small lw-ob-help"><span id="ob_server_help">No server yet? Pick This PC above, or</span> ${extLink(SERVER_HELP, "set up a server →", "lw-link lw-ob-copy")}</p>
+    </div>
     </div>
     <div class="fl-group lw-ob-detail" id="ob_cloud_detail" hidden>
       <div class="fl-row" data-ob-key-row>
@@ -117,6 +120,20 @@ const engine = `
   </div>
   ${foot(true, "Continue", "ob_engine_hint")}
 </div>`;
+/**
+ * "Download from: Your server | Hugging Face" (D79) on a step, and the slot the
+ * step-2 server fields move into when "Your server" is picked with none saved.
+ */
+const source = (step) => `
+<div class="lw-ob-src" data-ob-src-box hidden>
+  <span class="fl-row-title" id="ob_src_label_${step}">Download from</span>
+  <div class="lw-seg" role="radiogroup" aria-labelledby="ob_src_label_${step}">
+    <button type="button" role="radio" aria-checked="false" data-ob-src="server">Your server</button>
+    <button type="button" role="radio" aria-checked="false" data-ob-src="huggingface">Hugging Face</button>
+  </div>
+  <span class="lw-ob-src-hint" data-ob-src-hint></span>
+</div>
+<div class="lw-ob-server-slot" data-ob-server-slot="${step}"></div>`;
 const modelRow = (id, title, desc, input, placeholder, pick) => `
 <div class="fl-row lw-ob-model" data-ob-model="${id}">
   <span class="lw-tile">${ico(id === "parakeet" ? FOLDER : FILE, "")}</span>
@@ -126,6 +143,7 @@ const modelRow = (id, title, desc, input, placeholder, pick) => `
   </div>
   <span class="fl-badge" data-ob-model-badge hidden></span>
   <span class="lw-ob-model-actions">
+    <span class="fl-badge fl-badge-light" data-ob-missing hidden>Not on your server</span>
     <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" data-ob-use="${id}">Use</button>
     <button type="button" class="fl-btn ${id === "parakeet" ? "fl-btn-primary" : "fl-btn-secondary"} fl-btn-sm" data-ob-dl="${id}" hidden>Download</button>
     <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" data-ob-dl-cancel="${id}" hidden>Cancel</button>
@@ -147,7 +165,10 @@ const model = `
   ${head(3)}
   <div class="lw-ob-body is-split">
     <div class="lw-ob-side">
-      <h1 class="fl-serif lw-ob-h1" id="ob_model_title">Add a speech model</h1>
+      <div class="lw-ob-title-row">
+        <h1 class="fl-serif lw-ob-h1" id="ob_model_title">Add a speech model</h1>
+        <span class="fl-badge fl-badge-light" id="ob_model_optional" hidden>Optional</span>
+      </div>
       <p class="lw-ob-lead" id="ob_model_lead">The model is the part that listens. Get it once from where its makers publish it, then tell Murmur where it is.</p>
       <div class="lw-ob-note">
         ${ico(SHIELD, "lw-ico lw-ob-check")}
@@ -155,6 +176,7 @@ const model = `
       </div>
     </div>
     <div class="lw-ob-main">
+      ${source("model")}
       <div class="fl-group">
         ${modelRow("parakeet", "Parakeet TDT 0.6B", "English · fastest · a folder of about 660 MB", "ob_parakeet_dir", "Model folder", "Choose folder")}
         ${modelRow("whisper", "Whisper base", "Many languages · one 148 MB file (ggml-base.bin)", "ob_whisper_path", "Model file", "Choose file")}
@@ -163,7 +185,7 @@ const model = `
         ${ico("M12 15V4M8 8l4-4 4 4M5 13v7h14v-7", "lw-ico")}
         <div class="lw-ob-drop-text">
           <span>Put the files in <code class="lw-mono" id="ob_models_dir"></code>, or type where they are. Empty = the default name in that folder.</span>
-          <span class="lw-ob-links">
+          <span class="lw-ob-links" id="ob_model_links">
             ${extLink(URL_PARAKEET, "Parakeet download page →", "lw-link lw-ob-copy")}
             ${extLink(URL_WHISPER, "Whisper download page →", "lw-link lw-ob-copy")}
           </span>
@@ -171,7 +193,10 @@ const model = `
       </div>
     </div>
   </div>
-  ${foot(true, "Continue", "ob_model_hint")}
+  ${foot(true, "Continue", "ob_model_hint", `<div class="lw-ob-skip" id="ob_model_skip" hidden>
+      <button type="button" class="fl-btn fl-btn-ghost" data-ob="skip-model">Skip — use my server only</button>
+      <span class="lw-ob-skip-note">You can add a local model later in Settings · Speech to text.</span>
+    </div>`)}
 </div>`;
 const cleanupOption = (id, title, desc) => `
 <button type="button" role="radio" class="lw-ob-option" data-ob-cleanup="${id}" aria-checked="false">
@@ -199,12 +224,31 @@ const cleanup = `
       ${cleanupOption("rules", "Rules only", 'Instant. Punctuation, numbers and "scratch that" by fixed rules. No model needed.')}
       ${cleanupOption("pc", "On this PC", "A small model on this PC. Private, adds about a second. Needs a 0.4–1 GB GGUF file.")}
       ${cleanupOption("cloud", "Cloud", "A large model from OpenRouter or your own LiteLLM proxy. Best quality. Sends text, never audio.")}
-      <div class="fl-group" id="ob_llm_detail" hidden>
-        <div class="fl-row">
-          <div class="fl-row-text"><label class="fl-row-title" for="ob_llm_path">Model file</label><div class="fl-row-desc" id="ob_llm_status"></div></div>
-          <div class="fl-row-control"><input id="ob_llm_path" class="fl-input is-wide" spellcheck="false" /><button type="button" class="fl-btn fl-btn-ghost fl-btn-sm" data-ob-pick="llm">Choose file</button></div>
+      <div class="lw-ob-llm" id="ob_llm_detail" hidden>
+        ${source("cleanup")}
+        <div class="fl-group">
+          <div class="fl-row lw-ob-model is-on" id="ob_llm_dl" hidden>
+            <span class="lw-tile">${ico(FILE, "")}</span>
+            <div class="fl-row-text">
+              <div class="fl-row-title" id="ob_llm_dl_title"></div>
+              <div class="fl-row-desc" id="ob_llm_dl_desc"></div>
+            </div>
+            <span class="lw-ob-model-actions">
+              <span class="fl-badge fl-badge-light" id="ob_llm_missing" hidden>Not on your server</span>
+              <button type="button" class="fl-btn fl-btn-primary fl-btn-sm" id="ob_llm_dl_start" hidden>Download</button>
+              <button type="button" class="fl-btn fl-btn-secondary fl-btn-sm" id="ob_llm_dl_cancel" hidden>Cancel</button>
+            </span>
+            <div class="lw-ob-dl" id="ob_llm_dl_box" hidden>
+              <div class="lw-ob-bar" role="progressbar" aria-label="Downloading the cleanup model" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="ob_llm_dl_bar"><span></span></div>
+              <span class="lw-ob-dl-line" id="ob_llm_dl_line"></span>
+            </div>
+          </div>
+          <div class="fl-row">
+            <div class="fl-row-text"><label class="fl-row-title" for="ob_llm_path">Model file</label><div class="fl-row-desc" id="ob_llm_status"></div></div>
+            <div class="fl-row-control"><input id="ob_llm_path" class="fl-input is-wide" spellcheck="false" /><button type="button" class="fl-btn fl-btn-ghost fl-btn-sm" data-ob-pick="llm">Choose file</button></div>
+          </div>
         </div>
-        <p class="lw-ob-small">A GGUF chat model, e.g. Qwen2.5-1.5B-Instruct Q4_K_M. ${extLink(URL_LLM, "Get it from Hugging Face →", "lw-link lw-ob-copy")}</p>
+        <p class="lw-ob-small">A GGUF chat model, e.g. Qwen2.5-1.5B-Instruct Q4_K_M.<span id="ob_llm_hf"> ${extLink(URL_LLM, "Get it from Hugging Face →", "lw-link lw-ob-copy")}</span></p>
       </div>
       <div class="fl-group" id="ob_or_detail" hidden>
         <div class="fl-row">

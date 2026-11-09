@@ -8,13 +8,18 @@
 // onboarded = true. Nothing downloads by itself (D9/D31): the model step
 // points the app at files the user already has, or downloads a catalogue
 // model after the user pressed Download and confirmed it (3a/3b, through
-// features/models.ts). A server test or an OpenRouter key/consent happens
-// only on the user's own click.
-import { mb, models, pickPath, progressLine } from "../features/models.js";
+// features/models.ts), from the user's server or Hugging Face ("Download
+// from", D79; picking Your server with none saved shows step 2's server
+// fields right there). Step 4 offers the same for the cleanup model. With
+// speech on the server the step is optional ("Skip — use my server only").
+// A server test or an OpenRouter key/consent happens only on the user's
+// own click.
+import { downloadSource, hasServer, mb, models, pickPath, progressLine, recommendedLlm, setDownloadSource } from "../features/models.js";
 import { devStore } from "../lib/dev-store.js";
 import { $, el, html } from "../lib/dom.js";
 import { invoke, onEvent } from "../lib/ipc.js";
 import { captureChord, stopCapture } from "../lib/keycapture.js";
+import { modelStepFoot, sourceHint, sourceView } from "../lib/model-source.js";
 import { prefsStore } from "../lib/prefs-store.js";
 import { pillLine, readinessErrorLine, readinessLine, RECHECK_MS } from "../lib/setup-try.js";
 import { initialEngine, recommendedEngine } from "../lib/setup-engine.js";
@@ -46,6 +51,8 @@ const st = {
     /** When a finished dictation's result was last shown (ms). */
     resultAt: 0,
     busy: false,
+    /** "Download from" as picked on this run (null = as the backend has it). */
+    pick: null,
 };
 let onDone = () => { };
 // ------------------------------------------------------------ capabilities
@@ -139,7 +146,7 @@ function renderEngine() {
         b.querySelector("[data-ob-na]").hidden = has(id);
         b.querySelector("[data-ob-rec]").hidden = id !== recommendedEngine(has);
     }
-    $("ob_server_detail").hidden = st.engine !== "server";
+    placeServerForm();
     $("ob_cloud_detail").hidden = st.engine !== "cloud";
     $("ob_engine_hint").textContent = "";
 }
@@ -157,6 +164,52 @@ async function testServer() {
         status("ob_server_status", errText(e), false);
     }
 }
+/** Save the server fields (address + token) with `patch`; errors go next to them. */
+async function saveServer(patch) {
+    $("ob_host_err").textContent = "";
+    $("ob_token_err").textContent = "";
+    const host = $("ob_host").value.trim();
+    if (!host) {
+        $("ob_host_err").textContent = "Type your server's address.";
+        return false;
+    }
+    try {
+        await devStore.save({ ...patch, host, token: $("ob_token").value.trim() });
+        $("ob_token").value = "";
+        return true;
+    }
+    catch (e) {
+        if (Array.isArray(e)) {
+            for (const f of e) {
+                const slot = document.getElementById(`ob_${f.field}_err`);
+                if (slot)
+                    slot.textContent = f.message;
+                else
+                    status("ob_server_status", f.message, false);
+            }
+        }
+        else
+            status("ob_server_status", String(e), false);
+        return false;
+    }
+}
+/** "Connect" on steps 3/4: save the server (downloads only; speech keeps its route), then test it. */
+async function connectServer() {
+    if (await saveServer({}))
+        await testServer();
+}
+/** Step 2's server fields live on step 2, or on step 3/4 while "Your server" is picked with none saved. */
+function placeServerForm() {
+    const form = $("ob_server_detail");
+    const here = st.step === "model" || st.step === "cleanup" ? st.step : "engine";
+    const slot = document.querySelector(`#onboarding [data-ob-server-slot="${here}"]`);
+    if (slot && form.parentElement !== slot)
+        slot.append(form);
+    form.hidden = here === "engine" ? st.engine !== "server" : !srcView().serverForm;
+    $("ob_test_conn").textContent = here === "engine" ? "Test" : "Connect";
+    $("ob_server_help").textContent =
+        here === "engine" ? "No server yet? Pick This PC above, or" : "No server yet? Download from Hugging Face, or";
+}
 /** Continue on the engine step: turn the picked engine on and put it first. */
 async function applyEngine() {
     const dev = views.dev;
@@ -168,34 +221,8 @@ async function applyEngine() {
         await devStore.save({ allow_client: true, allow_server: dev.form.allow_server && !!dev.form.host, route_order: order });
         return true;
     }
-    if (st.engine === "server") {
-        $("ob_host_err").textContent = "";
-        $("ob_token_err").textContent = "";
-        const host = $("ob_host").value.trim();
-        if (!host) {
-            $("ob_host_err").textContent = "Type your server's address.";
-            return false;
-        }
-        try {
-            await devStore.save({ allow_server: true, host, token: $("ob_token").value.trim(), route_order: order });
-            $("ob_token").value = "";
-            return true;
-        }
-        catch (e) {
-            if (Array.isArray(e)) {
-                for (const f of e) {
-                    const slot = document.getElementById(`ob_${f.field}_err`);
-                    if (slot)
-                        slot.textContent = f.message;
-                    else
-                        status("ob_server_status", f.message, false);
-                }
-            }
-            else
-                status("ob_server_status", String(e), false);
-            return false;
-        }
-    }
+    if (st.engine === "server")
+        return saveServer({ allow_server: true, route_order: order });
     // OpenRouter speech: key + this use's consent (D18/D28), then cloud first.
     if (!(await saveKey("ob_stt_key", "ob_cloud_status")))
         return false;
@@ -226,16 +253,21 @@ function activeModel() {
 }
 function renderModel() {
     const needed = st.engine === "pc";
-    $("ob_model_title").textContent = needed ? "Add a speech model" : "A backup model (optional)";
+    const onServer = st.engine === "server";
+    $("ob_model_optional").hidden = needed;
     const dl = models.canDownload();
-    $("ob_model_lead").textContent = !needed
-        ? "Your choice does the listening. A model on this PC keeps dictation working when it can't be reached. You can skip this."
-        : dl
-            ? "The model is the part that listens. We can download it for you once, from where its makers publish it, or you can add the file yourself."
-            : "The model is the part that listens. Get it once from where its makers publish it, then tell Murmur where it is.";
+    $("ob_model_lead").textContent = onServer
+        ? "The model is the part that listens. This PC uses it whenever your server can't be reached. We download it once, from your server or from Hugging Face, or you can add the file yourself."
+        : !needed
+            ? "Your choice does the listening. A model on this PC keeps dictation working when it can't be reached. You can skip this."
+            : dl
+                ? "The model is the part that listens. We can download it for you once, from your server or from Hugging Face, or you can add the file yourself."
+                : "The model is the part that listens. Get it once from where its makers publish it, then tell Murmur where it is.";
     $("ob_model_note").textContent = dl
-        ? "A download only fetches the file. Nothing about you or your voice is sent, and the file is checked against a fingerprint built into the app before it's used."
+        ? "A download only fetches the file. Nothing about you or your voice is sent. Every file is checked against its SHA-256 fingerprint before it's used, wherever it came from."
         : "Murmur never downloads anything by itself. Your voice is turned into text by the model on this PC.";
+    const v = renderSource("model", dl);
+    $("ob_model_links").hidden = !v.hfLinks;
     const p = prefsStore.get();
     if (p) {
         const pk = $("ob_parakeet_dir");
@@ -261,7 +293,7 @@ function renderModel() {
         const line = r.querySelector("[data-ob-model-status]");
         const use = r.querySelector("[data-ob-use]");
         use.textContent = on ? "Check again" : "Use";
-        renderDownload(r, id);
+        renderDownload(r, id, v);
         badge.hidden = !on || !m;
         line.textContent = "";
         line.className = "lw-ob-model-status";
@@ -280,38 +312,43 @@ function renderModel() {
         line.classList.add(m.state === "ready" ? "ok" : m.state === "loading" ? "hint" : "err");
     }
     const downloading = models.busy();
-    const ok = !needed || downloading || (!!m && (m.state === "ready" || m.state === "loading"));
+    const foot = modelStepFoot({ needed, serverEngine: onServer, ready: !!m && (m.state === "ready" || m.state === "loading"), busy: downloading });
     const next = nextBtn("model");
-    next.disabled = !ok;
-    $("ob_model_hint").textContent = !ok
+    next.hidden = foot.next === "hidden";
+    next.disabled = foot.next === "disabled";
+    $("ob_model_skip").hidden = !foot.skip;
+    $("ob_model_hint").textContent = foot.next === "disabled"
         ? "Add a speech model to continue"
-        : downloading
-            ? "You can carry on. It finishes in the background."
-            : m?.state === "loading"
-                ? "You can carry on. It finishes loading in the background."
-                : "";
+        : foot.next === "hidden"
+            ? ""
+            : downloading
+                ? "You can carry on. It finishes in the background."
+                : m?.state === "loading"
+                    ? "You can carry on. It finishes loading in the background."
+                    : "";
 }
-/** A row's Download / Cancel buttons and progress (3b). */
-function renderDownload(r, id) {
-    const e = models.entry(CATALOG_ID[id]);
-    const p = e ? models.progress(e.id) : undefined;
-    const busy = !!e && models.busy(e.id);
-    const dl = r.querySelector("[data-ob-dl]");
-    const cancel = r.querySelector("[data-ob-dl-cancel]");
-    const use = r.querySelector("[data-ob-use]");
-    const box = r.querySelector("[data-ob-dl-box]");
-    const bar = r.querySelector("[data-ob-dl-bar]");
-    const line = r.querySelector("[data-ob-dl-line]");
-    const desc = r.querySelector("[data-ob-model-desc]");
-    if (e) {
-        const what = e.files.length > 1 ? `a folder of ${mb(e.size)}` : `a ${mb(e.size)} file`;
-        desc.textContent = `${e.desc} · ${what}${e.installed ? " · downloaded and checked" : ""}`;
+/** "Download from" over where downloads come from (the backend's catalogue). */
+function srcView() {
+    return sourceView({ pick: st.pick, effective: downloadSource(), remote: !!views.dev?.caps.remote, serverSet: hasServer() });
+}
+/** Step 3/4's "Download from: Your server | Hugging Face" (D79) and the server fields under it. */
+function renderSource(step, dl) {
+    const v = srcView();
+    const box = panel(step).querySelector("[data-ob-src-box]");
+    box.hidden = !dl && !v.serverButton;
+    for (const b of box.querySelectorAll("[data-ob-src]")) {
+        const on = b.dataset.obSrc === v.shown;
+        b.hidden = b.dataset.obSrc === "server" && !v.serverButton;
+        b.classList.toggle("is-on", on);
+        b.setAttribute("aria-checked", String(on));
     }
-    dl.hidden = !e || !e.available || e.installed || busy;
-    dl.disabled = models.busy();
-    dl.textContent = p?.state === "error" ? "Try again" : "Download";
-    cancel.hidden = !busy;
-    use.hidden = busy;
+    box.querySelector("[data-ob-src-hint]").textContent = sourceHint(v, views.dev?.form.host.trim() ?? "");
+    placeServerForm();
+    return v;
+}
+/** A download's progress bar and line (3b), shared by the speech and cleanup rows. */
+function renderProgress(box, bar, line, e, busy) {
+    const p = e ? models.progress(e.id) : undefined;
     const shown = !!p && p.state !== "done";
     box.hidden = !shown;
     box.classList.toggle("is-err", p?.state === "error");
@@ -322,6 +359,33 @@ function renderDownload(r, id) {
     bar.setAttribute("aria-valuenow", String(pct));
     bar.firstElementChild.style.width = `${pct}%`;
     line.textContent = progressLine(p, e);
+}
+/** "Your server doesn't have this one" description of a catalogue model. */
+const missingDesc = (e) => `${e.desc} · ${mb(e.size)}. Your server doesn't have this one. Ask whoever runs it to add it, or switch to Hugging Face.`;
+/** A row's Download / Cancel buttons and progress (3b). */
+function renderDownload(r, id, v) {
+    const e = models.entry(CATALOG_ID[id]);
+    const p = e ? models.progress(e.id) : undefined;
+    const busy = !!e && models.busy(e.id);
+    const dl = r.querySelector("[data-ob-dl]");
+    const cancel = r.querySelector("[data-ob-dl-cancel]");
+    const use = r.querySelector("[data-ob-use]");
+    const box = r.querySelector("[data-ob-dl-box]");
+    const bar = r.querySelector("[data-ob-dl-bar]");
+    const line = r.querySelector("[data-ob-dl-line]");
+    const desc = r.querySelector("[data-ob-model-desc]");
+    const missing = models.notOnServer(e) && !e?.installed;
+    if (e) {
+        const what = e.files.length > 1 ? `a folder of ${mb(e.size)}` : `a ${mb(e.size)} file`;
+        desc.textContent = missing ? missingDesc(e) : `${e.desc} · ${what}${e.installed ? " · downloaded and checked" : ""}`;
+    }
+    r.querySelector("[data-ob-missing]").hidden = !missing || busy;
+    dl.hidden = !e || !v.downloads || !models.canStart(e) || e.installed || busy;
+    dl.disabled = models.busy();
+    dl.textContent = p?.state === "error" ? "Try again" : "Download";
+    cancel.hidden = !busy;
+    use.hidden = busy;
+    renderProgress(box, bar, line, e, busy);
 }
 /** "Choose folder" / "Choose file": the native picker, then Use it. */
 async function pickModel(id) {
@@ -395,6 +459,11 @@ function renderCleanup() {
     $("ob_llm_detail").hidden = st.cleanup !== "pc";
     $("ob_or_detail").hidden = st.cleanup !== "cloud";
     renderCloudProvider();
+    status("ob_cleanup_status", "");
+    renderLlmModel();
+}
+/** The cleanup model's file field, its status and the Download row (redrawn as downloads and prefs change). */
+function renderLlmModel() {
     const p = prefsStore.get();
     const path = $("ob_llm_path");
     if (p && document.activeElement !== path)
@@ -402,7 +471,43 @@ function renderCleanup() {
     if (st.info)
         path.placeholder = st.info.default_llm_path;
     $("ob_llm_status").textContent = llmLine(st.info?.llm);
-    status("ob_cleanup_status", "");
+    renderLlmDownload();
+}
+/** The cleanup model setup recommends (the CPU pick: setup doesn't probe the graphics chip). */
+function llmEntry() {
+    return recommendedLlm(models.catalog().filter((c) => c.engine === "llm"), false);
+}
+/** Step 4's "Download from" and Download row for the cleanup model (D79), as on step 3. */
+function renderLlmDownload() {
+    const e = llmEntry();
+    const v = renderSource("cleanup", !!e?.available);
+    $("ob_llm_hf").hidden = !v.hfLinks;
+    const row = $("ob_llm_dl");
+    row.hidden = !e;
+    if (!e)
+        return;
+    const busy = models.busy(e.id);
+    const missing = models.notOnServer(e) && !e.installed;
+    $("ob_llm_dl_title").textContent = e.title;
+    $("ob_llm_dl_desc").textContent = missing
+        ? missingDesc(e)
+        : `${e.desc} · a ${mb(e.size)} file${e.installed ? " · downloaded and checked" : ""}`;
+    $("ob_llm_missing").hidden = !missing || busy;
+    const start = $("ob_llm_dl_start");
+    start.hidden = !v.downloads || !models.canStart(e) || e.installed || busy;
+    start.disabled = models.busy();
+    start.textContent = models.progress(e.id)?.state === "error" ? "Try again" : "Download";
+    $("ob_llm_dl_cancel").hidden = !busy;
+    renderProgress($("ob_llm_dl_box"), $("ob_llm_dl_bar"), $("ob_llm_dl_line"), e, busy);
+}
+/** Re-draw the open step after the server, the catalogue or a download changed. */
+function rerender() {
+    if (st.step === "model")
+        renderModel();
+    else if (st.step === "cleanup")
+        renderLlmModel();
+    else if (st.step === "engine")
+        placeServerForm();
 }
 /** D78: the OpenRouter | LiteLLM switch of the Cloud cleanup option. */
 function renderCloudProvider() {
@@ -728,10 +833,17 @@ function show(s) {
         over.textContent = `Step ${n} of ${list.length}`;
     if (s === "engine")
         renderEngine();
-    if (s === "model")
+    if (s === "model") {
         renderModel();
-    if (s === "cleanup")
+        // A fresh listing for "Not on your server" each time the step opens.
+        if (models.fromServer())
+            void models.refreshServer();
+    }
+    if (s === "cleanup") {
         renderCleanup();
+        if (models.fromServer())
+            void models.refreshServer();
+    }
     if (s === "try") {
         renderTry();
         st.openedAt = Date.now();
@@ -774,6 +886,20 @@ async function next() {
         if (st.step === "model")
             renderModel();
     }
+}
+/** "Download from": the pick shows at once; the backend switches after the save. */
+function pickSource(src) {
+    st.pick = src;
+    status("ob_server_status", "");
+    rerender();
+    void setDownloadSource(src).catch((err) => console.error("model_source", err));
+}
+/** "Skip — use my server only": on to the next step with no model on this PC. */
+function skipModel() {
+    if (st.step !== "model")
+        return;
+    const list = steps();
+    show(list[list.indexOf("model") + 1]);
 }
 function back() {
     const list = steps();
@@ -829,6 +955,8 @@ export const onboarding = {
                 back();
             else if (act === "skip")
                 void finish();
+            else if (act === "skip-model")
+                skipModel();
             const eng = t.closest("[data-ob-engine]")?.dataset.obEngine;
             if (eng)
                 pickEngine(eng);
@@ -841,6 +969,9 @@ export const onboarding = {
             const pick = t.closest("[data-ob-pick]")?.dataset.obPick;
             if (pick)
                 void pickModel(pick);
+            const src = t.closest("[data-ob-src]")?.dataset.obSrc;
+            if (src)
+                pickSource(src);
             const dl = t.closest("[data-ob-dl]")?.dataset.obDl;
             if (dl)
                 void models.confirmAndStart(CATALOG_ID[dl]);
@@ -862,7 +993,17 @@ export const onboarding = {
         }
         $("ob_ll_test").addEventListener("click", () => void testProxy());
         $("ob_ll_url").addEventListener("input", renderCloudProvider);
-        $("ob_test_conn").addEventListener("click", () => void testServer());
+        $("ob_test_conn").addEventListener("click", () => void (st.step === "engine" ? testServer() : connectServer()));
+        $("ob_llm_dl_start").addEventListener("click", () => {
+            const e = llmEntry();
+            if (e)
+                void models.confirmAndStart(e.id);
+        });
+        $("ob_llm_dl_cancel").addEventListener("click", () => {
+            const e = llmEntry();
+            if (e)
+                void models.cancel(e.id);
+        });
         $("ob_mic").addEventListener("change", () => {
             void prefsStore.save({ microphone: $("ob_mic").value || null });
         });
@@ -885,14 +1026,9 @@ export const onboarding = {
             renderTry();
         });
         // Download progress, and the prefs the backend saved when one finished.
-        models.onChange(() => {
-            if (st.step === "model")
-                renderModel();
-        });
-        prefsStore.subscribe(() => {
-            if (st.step === "model")
-                renderModel();
-        });
+        models.onChange(rerender);
+        prefsStore.subscribe(rerender);
+        views.onDev(rerender);
         void onEvent("model:download", (e) => {
             if (e.payload.state !== "done")
                 return;
@@ -959,6 +1095,7 @@ export const onboarding = {
             console.error("setup: model status failed", e);
         }
         initialChoices();
+        st.pick = null;
         $("onboarding").hidden = false;
         document.body.classList.add("lw-ob-open");
         show("welcome");

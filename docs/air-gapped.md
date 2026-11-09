@@ -307,8 +307,9 @@ says `Connected.` on Windows.
 **Windows.** Settings → Speech to text → **From your server** lists the
 library. Press Download (it asks first), and the model is checked,
 installed and selected; **Use** switches to one you already have. AI
-cleanup and Hebrew models come the same way. With a server set, the app
-never contacts Hugging Face.
+cleanup and Hebrew models come the same way. With a server set, downloads
+come from it (Download models from: **Your server**, the default; setup's
+model steps offer it too, D79) and the app never contacts Hugging Face.
 
 **Android, hybrid APK.** Each model screen (Speech model, Parakeet, Hebrew
 model, AI cleanup) has **From your server**: tap *Show models on your

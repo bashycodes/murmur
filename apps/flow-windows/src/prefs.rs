@@ -133,6 +133,19 @@ pub enum HebrewModel {
     None,
 }
 
+/// Where catalogue model downloads come from while a server is set (D79).
+/// Without a server they always come from Hugging Face.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelSource {
+    /// The server's model library (D41): works with no internet.
+    #[default]
+    Server,
+    /// Hugging Face (D31), as with no server.
+    #[serde(rename = "huggingface")]
+    HuggingFace,
+}
+
 /// Recordings kept for retry by default (the newest history rows).
 pub const DEFAULT_RETRY_AUDIO_KEEP: u32 = 20;
 /// Most recordings the setting accepts.
@@ -204,6 +217,9 @@ pub struct Prefs {
     /// = whisper, and then this is the model file). `None` = the catalogue
     /// folder. Choosing a catalogue Hebrew model clears it.
     pub hebrew_model_dir: Option<String>,
+    /// Where model downloads come from while a server is set (D79);
+    /// ignored without one (Hugging Face then).
+    pub model_source: ModelSource,
     /// Language-ID whisper model (H6/D34) from the server's library (D41);
     /// `None` = `ggml-tiny-q5_1.bin` in the models folder, when there.
     pub lid_model_path: Option<String>,
@@ -281,6 +297,7 @@ impl Default for Prefs {
             parakeet_model_dir: None,
             hebrew_model: HebrewModel::Zipformer,
             hebrew_model_dir: None,
+            model_source: ModelSource::Server,
             lid_model_path: None,
             spoken_cleanup: true,
             live_preview: true,
